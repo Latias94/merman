@@ -293,7 +293,7 @@ cargo run -p xtask -- verify --strict
 cargo run -p xtask -- wasm-size-matrix --surface web \
   --web-package-root platforms/web/packages \
   --budget-file docs/release/WASM_SIZE_BUDGETS.json
-cargo run -p xtask -- wasm-size-matrix --surface typst \
+cargo run --locked -p xtask -- build-typst-package --profile publish \
   --budget-file docs/release/WASM_SIZE_BUDGETS.json
 cargo fmt --all -- --check
 cargo clippy --workspace --all-targets --all-features -- -D warnings

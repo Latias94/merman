@@ -8,6 +8,7 @@ import json
 import shutil
 import subprocess
 import sys
+import tomllib
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -87,7 +88,24 @@ def cargo_metadata(repo_root: Path, *, quiet: bool = False) -> dict:
     )
     if cp.returncode != 0:
         raise RuntimeError("cargo metadata failed")
-    return json.loads(cp.stdout)
+    metadata = json.loads(cp.stdout)
+    manifest = repo_root / "crates" / "merman-android-jni" / "Cargo.toml"
+    package = tomllib.loads(manifest.read_text(encoding="utf-8")).get("package")
+    if not isinstance(package, dict) or package.get("publish") is not False:
+        raise PublishGraphError(
+            "merman-android-jni must remain publish = false; its public delivery is the AAR"
+        )
+    publish_names = set(crates_io_publish_order(metadata))
+    if "merman-android-jni" in publish_names:
+        raise PublishGraphError("merman-android-jni must not enter the crates.io publish graph")
+    missing = sorted({
+        "merman-bindings-core", "merman-ffi", "merman-uniffi", "merman-wasm",
+    } - publish_names)
+    if missing:
+        raise PublishGraphError(
+            "required source packages are absent from the crates.io graph: " + ", ".join(missing)
+        )
+    return metadata
 
 
 def publish_field_allows_crates_io(publish_raw: object) -> bool:

@@ -1039,14 +1039,11 @@ jobs:
           cargo nextest run --locked -p merman-typst-plugin --no-default-features \
             --features all-diagrams,analysis,layout-cytoscape,layout-elk,svg
 
-      - name: Check exact Typst WASM size budget
-        run: cargo run --locked -p xtask -- wasm-size-matrix --surface typst --budget-file docs/release/WASM_SIZE_BUDGETS.json
-
       - name: Check exact Typst dependency closure
         run: python3 scripts/verify_artifact_dependency_closures.py --profile typst-wasm
 
-      - name: Build and validate Typst package
-        run: cargo run --locked -p xtask -- build-typst-package --profile publish
+      - name: Build, budget and validate Typst package
+        run: cargo run --locked -p xtask -- build-typst-package --profile publish --budget-file docs/release/WASM_SIZE_BUDGETS.json
 
       - name: Smoke Typst package
         shell: bash
@@ -1099,14 +1096,11 @@ jobs:
           name: wasm-opt
           tag: version_133
 
-      - name: Check WASM size budgets
-        run: cargo run --locked -p xtask -- wasm-size-matrix --surface typst --budget-file docs/release/WASM_SIZE_BUDGETS.json
-
       - name: Check exact Typst dependency closure
         run: python3 scripts/verify_artifact_dependency_closures.py --profile typst-wasm
 
-      - name: Build and validate Typst package
-        run: cargo run --locked -p xtask -- build-typst-package --profile publish
+      - name: Build, budget and validate Typst package
+        run: cargo run --locked -p xtask -- build-typst-package --profile publish --budget-file docs/release/WASM_SIZE_BUDGETS.json
 
       - name: Download Typst compatibility version
         shell: bash

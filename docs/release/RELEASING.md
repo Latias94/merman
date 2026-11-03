@@ -155,16 +155,18 @@ own workflows. `merman-android-jni` is intentionally `publish = false`; its publ
 AAR, not a crates.io package. A green preflight proves that those owner builds can succeed, but it
 does not publish them and it does not imply that every surface ran.
 
-Run the static, machine-readable FFI/native ownership check before dispatching any owner workflow:
+Inspect the crates.io publish order before dispatching a source-crate release:
 
 ```bash
-VERSION="<version>"
-python3 scripts/release_surface_contract.py --version "$VERSION"
+python3 tools/publish.py --list-crates-io-packages
 ```
 
-The check is a contract of workflow, artifact profile, and source-crate ownership for the five
-FFI/native surfaces above. It does not replace the complete workflow table, and it does not cache
-registry status; after publication, query each owning registry or GitHub Release directly.
+The metadata entry point enforces the JNI-private policy and requires the four binding source
+crates in the coupled publish graph. Exact artifact profiles belong to
+`capabilities/artifact-profiles-v2.json`; their recipe tests, native builders, and archive
+qualification enforce package selection. The workflow table identifies the publication owners,
+and reusable preflight evidence requires successful results from every owner. After publication,
+query each owning registry or GitHub Release directly.
 
 Most platform owners use manual `workflow_dispatch`. Apple, Android and Python accept a
 `release_tag` version label and `source_ref`, resolving the selected source to an immutable commit
@@ -655,7 +657,7 @@ gh workflow run release-preflight.yml --ref "$PREFLIGHT_REF" \
   -f android_maven_group="io.merman.preflight"
 ```
 
-The preflight workflow verifies release versions, the static release-surface contract,
+The preflight workflow verifies release versions and crates.io publication policies,
 prerelease fresh-resolution compatibility, independent-crate Rust API compatibility,
 package file lists, registry-independent Rust crate publish dry-runs, the five-target Python wheel
 matrix, Android's external Maven app and 16 KB checks, extracted Apple local package/device/simulator
@@ -902,10 +904,10 @@ npm run smoke --prefix platforms/web
 cargo run -p xtask -- wasm-size-matrix --surface web \
   --web-package-root platforms/web/packages \
   --budget-file docs/release/WASM_SIZE_BUDGETS.json
-cargo run -p xtask -- wasm-size-matrix --surface typst --budget-file docs/release/WASM_SIZE_BUDGETS.json
 cargo run --locked -p xtask -- verify-typst-profile-constants
 python3 scripts/verify_artifact_dependency_closures.py --profile typst-wasm
-cargo run --locked -p xtask -- build-typst-package --profile publish
+cargo run --locked -p xtask -- build-typst-package --profile publish \
+  --budget-file docs/release/WASM_SIZE_BUDGETS.json
 cargo run --locked -p xtask -- typst-package-smoke --profile publish --skip-wasm-build
 ```
 
@@ -915,8 +917,10 @@ package as an independently installable artifact. Release preflight must build/c
 package's matching TypeScript, wasm-bindgen glue, single WASM, provenance, generated binding API,
 editor schema,
 and the complete descriptor-defined language catalog; it is not valid to publish only a wrapper declaration.
-Typst package builds additionally require Binaryen `wasm-opt version 133` and `wasm-tools`; the
-post-link optimizer and stripper versions are recorded in the artifact manifest.
+Typst package builds additionally require Binaryen `wasm-opt version 133` and `wasm-tools`
+(CI pins 1.261.0); the post-link optimizer and stripper versions are recorded in the artifact
+manifest. CI uses Rust 1.95.0 with `wasm32-unknown-unknown`, Typst 0.15.1 for the current consumer,
+and Typst 0.15.0 for the compatibility consumer.
 `merman-typst-plugin` is the Typst-compatible transport and must remain separate from
 browser/wasm-bindgen artifacts. Cargo defaults are intentionally empty. The sole public package
 profile is `publish`; it consumes the exact `typst-wasm` artifact recipe, which pins
@@ -928,11 +932,17 @@ pure-Rust dependencies of invariant Mermaid language, configuration, and sanitiz
 They remain covered by the exact artifact size budget and final WASM import gate; browser bindings,
 randomness, clocks, and other system adapters remain forbidden. Release validation requires Typst
 plugin ABI 3, independently from native ABI 3, the closed export surface including `analyze_json`
-and `theme_operation_json`, and the descriptor-owned `publish` artifact. Its private directory contains the
-stripped WASM and provenance manifest; `--skip-wasm-build` is allowed only because it validates the manifest's
+and `theme_operation_json`, and the descriptor-owned `publish` artifact. One producer owns Cargo
+build, optimization, stripping, and the private schema-4 manifest with raw/optimized/final digests.
+The package builder's `--budget-file` gate consumes those verified bytes before staging; it does
+not run another Cargo build, optimizer, or stripper. See the [size metric definitions](PACKAGE_SURFACES.md#wasm-size-matrix).
+`wasm-size-matrix --surface typst` and `--artifact-profile typst-wasm` are retired; migrate each
+old budget/build pair to the single package-build command above. The limits are unchanged.
+`--skip-wasm-build` is accepted only by `typst-package-smoke`, which validates the manifest's
 exact artifact profile, package feature bundle, default-feature policy, inputs, tools, versions,
-flags, and artifact digest before package
-reuse. Do not package the private raw Cargo output under `target/wasm-build/`. The artifact provenance
+flags, and all three artifact digests before frozen final-WASM reuse. Old schema-3 manifests
+require a fresh build; do not use smoke reuse to replace the fresh production/budget gate.
+Do not package the private raw Cargo output under `target/wasm-build/`. The artifact provenance
 manifest remains private to `target/typst-wasm-artifacts/`; the package transaction binds the
 verified artifact to an in-memory frozen wrapper/license source snapshot and must fail before
 replacing the prior version if live source or any staged byte changes.

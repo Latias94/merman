@@ -320,7 +320,7 @@ These are verified local source-gate results at the 2026-10-12 preparation check
 | --- | --- |
 | Version projection | The `release-version.py` final source projection gate passed for workspace 0.9.0 and its coupled package versions. Revalidate after later projection or source changes. |
 | Workspace compilation | `cargo check --workspace --all-targets --locked` passed in 17m24s. This checks compilation, not Rust behavior tests or platform package delivery. |
-| Release declaration gates | `verify_release_changelog.py` passed 0.9.0 preparation admission; `release_surface_contract.py` passed the five static FFI/native surface declarations. Dated preflight and real artifacts remain separate gates. |
+| Changelog admission | `verify_release_changelog.py` passed 0.9.0 preparation admission. Dated preflight and real artifacts remain separate gates. |
 | Source/process regression tests | 37 Python tests across `test_release_process`, changelog, projection, and RustSec suites passed. |
 | RustSec exception governance | The two governed exceptions passed `verify_rustsec_exceptions.py`. This is not a new `cargo deny` result or evidence that the exceptions have disappeared. |
 | Security source gate | SHA-256-verified official cargo-deny 0.20.2 returned exit 0 for `cargo deny check advisories bans licenses sources`; all four summaries were `ok`. Upstream duplicate-version warnings remain, as do the two governed exceptions with review due 2027-01-11. |
@@ -483,7 +483,7 @@ The unmerged theme development source uses Typst plugin ABI `3`, Options `3`, an
 value; these additions are absent from the independently submitted ABI 2 package `0.5.0` and the
 frozen `0.3.0`/`0.4.0` registry artifacts. Select the next package release during its own preparation.
 
-For a future Typst submission, bind the package to the reviewed 40-character source SHA and run the owner gates from `docs/release/RELEASING.md`: `verify-typst-profile-constants`, the `typst-wasm` dependency-closure check, the Typst size matrix, `build-typst-package --profile publish`, and the full Typst package smoke. Inspect the private artifact manifest under `target/typst-wasm-artifacts/` together with `LICENSE`, `THIRD_PARTY_NOTICES.md`, and `THIRD_PARTY_LICENSES/` in the staged package. The provenance manifest is a preflight input, not a runtime package file. Before a future submission, finish and inspect the package README with final import and usage examples. After acceptance, query the registry for the exact package and update this release record with observed publication evidence.
+For a future Typst submission, bind the package to the reviewed 40-character source SHA and run the owner gates from `docs/release/RELEASING.md`: `verify-typst-profile-constants`, the `typst-wasm` dependency-closure check, `build-typst-package --profile publish --budget-file docs/release/WASM_SIZE_BUDGETS.json` for one production/budget/package pass, and the full Typst package smoke. Inspect the private artifact manifest under `target/typst-wasm-artifacts/` together with `LICENSE`, `THIRD_PARTY_NOTICES.md`, and `THIRD_PARTY_LICENSES/` in the staged package. The provenance manifest is a preflight input, not a runtime package file. Before a future submission, finish and inspect the package README with final import and usage examples. After acceptance, query the registry for the exact package and update this release record with observed publication evidence.
 
 ## Publish Order
 

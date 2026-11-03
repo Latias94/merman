@@ -661,6 +661,32 @@ class SdkArchiveTests(unittest.TestCase):
         with self.assertRaises(sdk_archive.ArchiveVerificationError):
             sdk_archive.build_command(self.profile, "../target", self.descriptor, self.repo)
 
+    def test_missing_profile_or_wrong_transport_package_blocks_packaging_and_verification(self):
+        for wasi, target in ((False, "x86_64-unknown-linux-gnu"), (True, sdk_archive.WASI_TARGET)):
+            for flavor in ("standard", "math", "full"):
+                self.configure(wasi=wasi, flavor=flavor, target=target)
+                archive = self.package(output_dir=self.output / self.profile)
+                original = self.descriptor.read_text(encoding="utf-8")
+                for mutation in ("missing", "wrong-package"):
+                    document = json.loads(original)
+                    if mutation == "missing":
+                        document["profiles"] = []
+                        message = "must occur exactly once"
+                    else:
+                        document["profiles"][0]["cargo"]["package"] = "merman-ffi" if wasi else "merman-wasi"
+                        message = "recipe package does not match its transport"
+                    self.descriptor.write_text(json.dumps(document), encoding="utf-8")
+                    with self.subTest(profile=self.profile, mutation=mutation):
+                        with self.assertRaisesRegex(RuntimeError, message):
+                            self.package()
+                        with self.assertRaisesRegex(RuntimeError, message):
+                            sdk_archive.verify_sdk_archive(
+                                repo_root=self.repo, profile=self.profile, target=self.target,
+                                archive=archive, checksum=Path(str(archive) + ".sha256"),
+                                source_commit=self.commit, version=self.version,
+                                descriptor=self.descriptor,
+                            )
+
 
 class SourceIdentityTests(unittest.TestCase):
     def test_source_is_derived_from_head_not_caller_labels(self):

@@ -263,13 +263,15 @@ class AndroidToolchainTests(unittest.TestCase):
             build_android.cargo_build_args("i686-linux-android")
 
     def test_android_build_rejects_a_recipe_with_the_wrong_transport_package(self) -> None:
-        recipe = replace(
-            build_android.FLUTTER_ANDROID_NATIVE_RECIPE,
-            package="merman-android-jni",
-        )
-
-        with self.assertRaisesRegex(RuntimeError, "flutter-android-native"):
-            build_android.validate_android_native_recipe(recipe)
+        for recipe, package in (
+            (build_android.ANDROID_NATIVE_RECIPE, "merman-ffi"),
+            (build_android.FLUTTER_ANDROID_NATIVE_RECIPE, "merman-android-jni"),
+        ):
+            with (
+                self.subTest(profile=recipe.profile_id),
+                self.assertRaisesRegex(RuntimeError, recipe.profile_id),
+            ):
+                build_android.validate_android_native_recipe(replace(recipe, package=package))
 
 
 if __name__ == "__main__":

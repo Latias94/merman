@@ -161,14 +161,21 @@ class WorkflowSecurityBoundaries(unittest.TestCase):
                 ),
             },
         }
-        for filename, expected in owners.items():
+        cases = (
+            (filename, expected, renamed)
+            for filename, expected in owners.items()
+            for renamed in (False, True)
+        )
+        for filename, expected, renamed in cases:
             text = read(WORKFLOW_ROOT / filename)
+            if renamed:
+                text = re.sub(r"(?m)^      - name: .+$", "      - name: Renamed step", text)
             jobs = re.findall(r"(?m)^  ([a-z][a-z0-9_-]*):$", text.split("\njobs:\n", 1)[1])
             privileged = {
                 name for name in jobs
                 if any(capability in workflow_job(text, name) for capability in WRITE_CAPABILITIES)
             }
-            with self.subTest(workflow=filename):
+            with self.subTest(workflow=filename, renamed_steps=renamed):
                 self.assertRegex(text, r"(?m)^      publish:\n(?:        .*\n)*        default: false$")
                 self.assertEqual(privileged, set(expected))
                 for name, condition in expected.items():
@@ -925,7 +932,7 @@ jobs:
         self.assertNotIn("cargo yank", text)
         self.assertNotIn("--token \"$CARGO_REGISTRY_TOKEN\"", text)
 
-    def test_release_preflight_keeps_prerelease_and_surface_contract_gates(self) -> None:
+    def test_release_preflight_keeps_prerelease_and_reference_gates(self) -> None:
         preflight = read(WORKFLOW_ROOT / "release-preflight.yml")
         crates = read(WORKFLOW_ROOT / "release-crates.yml")
         self.assertIn("mermaid-reference-materialized:", preflight)
@@ -938,10 +945,6 @@ jobs:
             ("release-crates.yml", crates),
         ):
             with self.subTest(workflow=workflow_name):
-                self.assertIn(
-                    "scripts/release_surface_contract.py --version \"$VERSION\"",
-                    text,
-                )
                 self.assertIn("scripts/verify_prerelease_compatibility.py", text)
                 self.assertIn("previous_tag=", text)
 
@@ -991,21 +994,6 @@ jobs:
                 self.assertNotIn("secrets.CARGO_REGISTRY_TOKEN", protected)
                 if filename != "release-tree-sitter-mermaid.yml":
                     self.assertNotIn("id-token: write", workflow_job(text, "preflight"))
-
-    def test_release_surface_contract_distinguishes_source_crates_from_native_artifacts(
-        self,
-    ) -> None:
-        contract = read(ROOT / "scripts" / "release_surface_contract.py")
-        for surface in (
-            "rust-crates-and-ffi-source",
-            "android-aar",
-            "apple-xcframework",
-            "python-wheel",
-            "flutter-pub",
-        ):
-            with self.subTest(surface=surface):
-                self.assertIn(surface, contract)
-        self.assertIn("merman-android-jni must remain publish = false", contract)
 
     def test_roughr_semver_gate_is_pinned_before_publication(self) -> None:
         workflows = {

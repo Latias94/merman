@@ -1,10 +1,8 @@
 use crate::{
     XtaskError,
     cmd::{
-        artifact_profiles::load_wasm_size_artifact_profiles,
-        paths,
-        typst_artifact::{optimize_typst_wasm, verify_typst_wasm_optimizer},
-        wasm_build_lock::WorkspaceWasmBuildLock,
+        artifact_profiles::load_wasm_size_artifact_profiles, paths,
+        typst_artifact::VerifiedTypstArtifact, wasm_build_lock::WorkspaceWasmBuildLock,
     },
 };
 use flate2::{Compression, write::GzEncoder};
@@ -219,34 +217,7 @@ pub(crate) fn wasm_size_matrix(args: Vec<String>) -> Result<(), XtaskError> {
             options.no_strip,
             package_path.map(PathBuf::as_path),
         )?;
-        let display_artifact = measurement
-            .artifact_path
-            .canonicalize()
-            .unwrap_or_else(|_| measurement.artifact_path.clone());
-
-        println!(
-            "wasm-size-matrix surface={} artifact_profile={} package={} manifest={} cargo_profile={} target={} default_features={} features={} capabilities={} runtime_ids={} outputs={} raw_bytes={} stripped_bytes={} gzip_bytes={} brotli_bytes={} compressed_source={} artifact={}",
-            artifact.surface.label(),
-            artifact.id,
-            artifact.package,
-            artifact.manifest_path.display(),
-            artifact.cargo_profile,
-            artifact.target_triple,
-            artifact.default_features,
-            value_label(&artifact.features),
-            value_label(&artifact.capabilities),
-            value_label(&artifact.runtime_ids),
-            value_label(&artifact.outputs),
-            measurement.raw_bytes,
-            measurement
-                .stripped_bytes
-                .map(|bytes| bytes.to_string())
-                .unwrap_or_else(|| "skipped".to_string()),
-            measurement.gzip_bytes,
-            measurement.brotli_bytes,
-            measurement.compressed_source.label(),
-            display_artifact.display()
-        );
+        println_measurement(artifact, &measurement);
 
         if let Some(budgets) = budgets.as_ref() {
             budget_failures.extend(check_budget(artifact, &measurement, budgets));
@@ -264,6 +235,80 @@ pub(crate) fn wasm_size_matrix(args: Vec<String>) -> Result<(), XtaskError> {
     } else {
         Err(XtaskError::WasmSizeMatrixFailed(budget_failures.join("\n")))
     }
+}
+
+pub(crate) fn check_typst_artifact_budget(
+    verified: &VerifiedTypstArtifact,
+    budget_file: &Path,
+) -> Result<(), XtaskError> {
+    let artifacts = all_artifacts()?;
+    let artifact = artifacts
+        .iter()
+        .find(|artifact| {
+            artifact.surface == Surface::Typst && artifact.id == verified.artifact_profile()
+        })
+        .ok_or_else(|| {
+            XtaskError::WasmSizeMatrixFailed(
+                "the exact Typst artifact recipe is missing".to_string(),
+            )
+        })?;
+    let budgets = load_budget_file(budget_file, &artifacts)?;
+    let (raw_bytes, stripped_bytes) = verified.verified_sizes()?;
+    let artifact_path = verified.wasm_path().to_path_buf();
+    let measurement = WasmMeasurement {
+        raw_bytes,
+        stripped_bytes: Some(stripped_bytes),
+        gzip_bytes: gzip_size(&artifact_path)?,
+        brotli_bytes: brotli_size(&artifact_path)?,
+        artifact_path,
+        compressed_source: CompressionSource::Stripped,
+    };
+    verified.verified_sizes()?;
+    println_measurement(artifact, &measurement);
+    println!(
+        "wasm-size-matrix artifact_profile={} artifact_manifest={}",
+        artifact.id,
+        verified.manifest_path().display()
+    );
+    let failures = check_budget(artifact, &measurement, &budgets);
+    if !failures.is_empty() {
+        return Err(XtaskError::WasmSizeMatrixFailed(failures.join("\n")));
+    }
+    println!(
+        "wasm-size-matrix budget_file={} result=ok",
+        resolve_repo_path(budget_file).display()
+    );
+    Ok(())
+}
+
+fn println_measurement(artifact: &WasmArtifact, measurement: &WasmMeasurement) {
+    let display_artifact = measurement
+        .artifact_path
+        .canonicalize()
+        .unwrap_or_else(|_| measurement.artifact_path.clone());
+    println!(
+        "wasm-size-matrix surface={} artifact_profile={} package={} manifest={} cargo_profile={} target={} default_features={} features={} capabilities={} runtime_ids={} outputs={} raw_bytes={} stripped_bytes={} gzip_bytes={} brotli_bytes={} compressed_source={} artifact={}",
+        artifact.surface.label(),
+        artifact.id,
+        artifact.package,
+        artifact.manifest_path.display(),
+        artifact.cargo_profile,
+        artifact.target_triple,
+        artifact.default_features,
+        value_label(&artifact.features),
+        value_label(&artifact.capabilities),
+        value_label(&artifact.runtime_ids),
+        value_label(&artifact.outputs),
+        measurement.raw_bytes,
+        measurement
+            .stripped_bytes
+            .map(|bytes| bytes.to_string())
+            .unwrap_or_else(|| "skipped".to_string()),
+        measurement.gzip_bytes,
+        measurement.brotli_bytes,
+        measurement.compressed_source.label(),
+        display_artifact.display()
+    );
 }
 
 fn parse_options(args: Vec<String>, artifacts: &[WasmArtifact]) -> Result<Options, XtaskError> {
@@ -312,8 +357,7 @@ fn parse_options(args: Vec<String>, artifacts: &[WasmArtifact]) -> Result<Option
 
     if options.surface.is_none() && options.artifact_profile.is_none() {
         return Err(XtaskError::WasmSizeMatrixFailed(
-            "select --surface or --artifact-profile because Web packages and Typst plugins use different artifact producers"
-                .to_string(),
+            "select --surface or --artifact-profile for the Web artifacts to measure".to_string(),
         ));
     }
 
@@ -322,12 +366,16 @@ fn parse_options(args: Vec<String>, artifacts: &[WasmArtifact]) -> Result<Option
 
 fn print_usage(artifacts: &[WasmArtifact]) {
     println!(
-        "usage: xtask wasm-size-matrix (--surface web|typst | --artifact-profile <id>) [--web-package-root <path>] [--no-strip] [--budget-file <path>]"
+        "usage: xtask wasm-size-matrix (--surface web | --artifact-profile <web-id>) [--web-package-root <path>] [--no-strip] [--budget-file <path>]"
     );
     println!("  --web-package-root  measure assembled Web package artifacts instead of rebuilding");
+    println!("  Typst: use build-typst-package --profile publish --budget-file <path>");
     println!();
     println!("Artifact profiles:");
-    for artifact in artifacts {
+    for artifact in artifacts
+        .iter()
+        .filter(|artifact| artifact.surface == Surface::Web)
+    {
         println!(
             "  {:<18} surface={} package={} manifest={} cargo_profile={} target={} default_features={} features={} capabilities={} outputs={}",
             artifact.id,
@@ -651,6 +699,16 @@ fn selected_artifacts<'a>(
         ));
     }
 
+    if artifacts
+        .iter()
+        .any(|artifact| artifact.surface == Surface::Typst)
+    {
+        return Err(XtaskError::WasmSizeMatrixFailed(
+            "Typst size production moved to build-typst-package --profile publish --budget-file <path>; wasm-size-matrix only measures Web artifacts"
+                .to_string(),
+        ));
+    }
+
     Ok(artifacts)
 }
 
@@ -729,19 +787,10 @@ fn strip_copy(
     wasm_path: &Path,
     strip_dir: &Path,
 ) -> Result<PathBuf, XtaskError> {
-    let optimized_path = if artifact.surface == Surface::Typst {
-        verify_typst_wasm_optimizer()?;
-        let path = strip_dir.join(format!("{}.optimized.wasm", artifact.id));
-        optimize_typst_wasm(wasm_path, &path)?;
-        Some(path)
-    } else {
-        None
-    };
-    let strip_input = optimized_path.as_deref().unwrap_or(wasm_path);
     let stripped_path = strip_dir.join(format!("{}.stripped.wasm", artifact.id));
     let status = Command::new("wasm-tools")
         .args(["strip", "--all"])
-        .arg(strip_input)
+        .arg(wasm_path)
         .arg("-o")
         .arg(&stripped_path)
         .current_dir(paths::workspace_root())
@@ -841,7 +890,7 @@ mod tests {
     fn surface_filter_selects_only_that_surface() {
         let all_artifacts = artifacts();
         let options = Options {
-            surface: Some(Surface::Typst),
+            surface: Some(Surface::Web),
             ..Options::default()
         };
         let selected = selected_artifacts(&options, all_artifacts).unwrap();
@@ -850,8 +899,26 @@ mod tests {
         assert!(
             selected
                 .iter()
-                .all(|artifact| artifact.surface == Surface::Typst)
+                .all(|artifact| artifact.surface == Surface::Web)
         );
+    }
+
+    #[test]
+    fn typst_selection_requires_the_single_package_producer() {
+        for args in [
+            vec!["--surface".to_string(), "typst".to_string()],
+            vec!["--artifact-profile".to_string(), "typst-wasm".to_string()],
+        ] {
+            let options = parse_options(args, artifacts()).unwrap();
+            let error = selected_artifacts(&options, artifacts()).unwrap_err();
+
+            assert!(
+                error
+                    .to_string()
+                    .contains("build-typst-package --profile publish --budget-file"),
+                "{error}"
+            );
+        }
     }
 
     #[test]

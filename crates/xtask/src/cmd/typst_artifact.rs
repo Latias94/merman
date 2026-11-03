@@ -7,6 +7,7 @@ use crate::{
         typst_profiles::{
             TypstPackageProfile, TypstProfileCatalog, validate_typst_artifact_profiles,
         },
+        wasm_build_lock::WorkspaceWasmBuildLock,
     },
     util::sha256_hex,
 };
@@ -18,9 +19,11 @@ use std::io::{self, Write};
 use std::path::{Component, Path, PathBuf};
 use std::process::Command;
 
-const MANIFEST_SCHEMA_VERSION: u32 = 3;
+const MANIFEST_SCHEMA_VERSION: u32 = 4;
 const ARTIFACT_ROOT_NAME: &str = "typst-wasm-artifacts";
 const MANIFEST_FILE_NAME: &str = "manifest.json";
+const RAW_FILE_NAME: &str = "raw.wasm";
+const OPTIMIZED_FILE_NAME: &str = "optimized.wasm";
 const TARGET_TRIPLE: &str = "wasm32-unknown-unknown";
 const CARGO_PROFILE: &str = "wasm-size";
 const WASM_OPT_VERSION: &str = "wasm-opt version 133";
@@ -56,6 +59,7 @@ pub(crate) struct TypstArtifactSpec {
 pub(crate) struct VerifiedTypstArtifact {
     wasm_path: PathBuf,
     manifest_path: PathBuf,
+    manifest: ArtifactManifest,
     _lock: ProfileArtifactLock,
 }
 
@@ -102,6 +106,8 @@ struct ArtifactManifest {
     mermaid_source_commit: String,
     input: InputFingerprint,
     tools: ToolFingerprint,
+    raw: ArtifactFingerprint,
+    optimized: ArtifactFingerprint,
     artifact: ArtifactFingerprint,
 }
 
@@ -209,6 +215,7 @@ struct ProfileArtifactLock {
 }
 
 trait ArtifactRuntime {
+    fn build_wasm(&mut self, spec: &TypstArtifactSpec) -> Result<PathBuf, XtaskError>;
     fn cargo_metadata(
         &mut self,
         spec: &TypstArtifactSpec,
@@ -337,6 +344,8 @@ impl TypstArtifactSpec {
         &self,
         input: InputFingerprint,
         tools: ToolFingerprint,
+        raw: ArtifactFingerprint,
+        optimized: ArtifactFingerprint,
         artifact: ArtifactFingerprint,
     ) -> ArtifactManifest {
         ArtifactManifest {
@@ -355,18 +364,33 @@ impl TypstArtifactSpec {
             mermaid_source_commit: self.mermaid_source_commit.clone(),
             input,
             tools,
+            raw,
+            optimized,
             artifact,
         }
     }
 }
 
 impl VerifiedTypstArtifact {
+    pub(crate) fn artifact_profile(&self) -> &str {
+        &self.manifest.artifact_profile
+    }
+
     pub(crate) fn wasm_path(&self) -> &Path {
         &self.wasm_path
     }
 
     pub(crate) fn manifest_path(&self) -> &Path {
         &self.manifest_path
+    }
+
+    pub(crate) fn verified_sizes(&self) -> Result<(u64, u64), XtaskError> {
+        let directory = self
+            .manifest_path
+            .parent()
+            .ok_or_else(|| artifact_error("artifact manifest must have a parent directory"))?;
+        validate_artifact_fingerprints(directory, &self.manifest)?;
+        Ok((self.manifest.raw.bytes, self.manifest.artifact.bytes))
     }
 }
 
@@ -393,6 +417,45 @@ impl ToolIdentity {
 }
 
 impl ArtifactRuntime for SystemArtifactRuntime {
+    fn build_wasm(&mut self, spec: &TypstArtifactSpec) -> Result<PathBuf, XtaskError> {
+        let target_root = paths::wasm_build_target_root();
+        let mut command = Command::new("cargo");
+        command
+            .args([
+                "build",
+                "--locked",
+                "-p",
+                &spec.cargo_package,
+                "--profile",
+                CARGO_PROFILE,
+                "--target",
+                TARGET_TRIPLE,
+            ])
+            .arg("--target-dir")
+            .arg(&target_root)
+            .arg("--manifest-path")
+            .arg(&spec.cargo_manifest_path)
+            .current_dir(&spec.workspace_root);
+        if !spec.default_features {
+            command.arg("--no-default-features");
+        }
+        if !spec.features.is_empty() {
+            command.arg("--features").arg(spec.features.join(","));
+        }
+        let status = command.status().map_err(|source| {
+            artifact_io_error("build raw WASM", &spec.cargo_manifest_path, source)
+        })?;
+        if !status.success() {
+            return Err(artifact_error(format!(
+                "cargo build failed with status {status}"
+            )));
+        }
+        Ok(target_root
+            .join(TARGET_TRIPLE)
+            .join(CARGO_PROFILE)
+            .join(&spec.artifact_name))
+    }
+
     fn cargo_metadata(
         &mut self,
         spec: &TypstArtifactSpec,
@@ -477,7 +540,7 @@ impl ArtifactRuntime for SystemArtifactRuntime {
     }
 }
 
-pub(crate) fn verify_typst_wasm_optimizer() -> Result<String, XtaskError> {
+fn verify_typst_wasm_optimizer() -> Result<String, XtaskError> {
     let version = command_version("wasm-opt", &["--version"])?;
     validate_typst_wasm_optimizer_version(&version)?;
     Ok(version)
@@ -502,7 +565,7 @@ fn validate_typst_wasm_optimizer_version(version: &str) -> Result<(), XtaskError
     Ok(())
 }
 
-pub(crate) fn optimize_typst_wasm(input: &Path, output: &Path) -> Result<(), XtaskError> {
+fn optimize_typst_wasm(input: &Path, output: &Path) -> Result<(), XtaskError> {
     let command_output = Command::new("wasm-opt")
         .arg("-Oz")
         .args(WASM_OPT_FEATURES)
@@ -521,12 +584,12 @@ pub(crate) fn optimize_typst_wasm(input: &Path, output: &Path) -> Result<(), Xta
     Ok(())
 }
 
-pub(crate) fn install_typst_artifact(
+pub(crate) fn produce_typst_artifact(
     spec: &TypstArtifactSpec,
-    raw_wasm: &Path,
 ) -> Result<VerifiedTypstArtifact, XtaskError> {
+    let _build_lock = WorkspaceWasmBuildLock::acquire()?;
     let mut runtime = SystemArtifactRuntime;
-    install_with_runtime(spec, raw_wasm, &mut runtime)
+    produce_with_runtime(spec, &mut runtime)
 }
 
 pub(crate) fn verify_typst_artifact(
@@ -536,18 +599,18 @@ pub(crate) fn verify_typst_artifact(
     verify_with_runtime(spec, &mut runtime)
 }
 
-fn install_with_runtime<R: ArtifactRuntime>(
+fn produce_with_runtime<R: ArtifactRuntime>(
     spec: &TypstArtifactSpec,
-    raw_wasm: &Path,
     runtime: &mut R,
 ) -> Result<VerifiedTypstArtifact, XtaskError> {
     spec.validate()?;
-    validate_raw_wasm(raw_wasm)?;
     let artifact_root = prepare_artifact_root(spec)?;
     let lock = acquire_profile_lock(spec, &artifact_root)?;
     let metadata = runtime.cargo_metadata(spec)?;
     let input = collect_input_fingerprint(spec, &metadata)?;
     let tools = runtime.tool_identity()?.fingerprint();
+    let raw_wasm = runtime.build_wasm(spec)?;
+    validate_raw_wasm(&raw_wasm)?;
 
     let staging = tempfile::Builder::new()
         .prefix(&format!(".{}.staging-", spec.profile))
@@ -555,22 +618,29 @@ fn install_with_runtime<R: ArtifactRuntime>(
         .map_err(|source| {
             artifact_io_error("create artifact staging directory", &artifact_root, source)
         })?;
+    let staged_raw = staging.path().join(RAW_FILE_NAME);
+    fs::copy(&raw_wasm, &staged_raw)
+        .map_err(|source| artifact_io_error("freeze raw WASM", &raw_wasm, source))?;
     let private_raw = staging.path().join(".raw.wasm");
-    fs::copy(raw_wasm, &private_raw)
-        .map_err(|source| artifact_io_error("copy raw WASM into staging", raw_wasm, source))?;
-    let optimized_wasm = staging.path().join(".optimized.wasm");
+    fs::copy(&staged_raw, &private_raw)
+        .map_err(|source| artifact_io_error("copy raw optimizer input", &staged_raw, source))?;
+    let optimized_wasm = staging.path().join(OPTIMIZED_FILE_NAME);
     runtime.optimize_wasm(&private_raw, &optimized_wasm)?;
     validate_regular_file(&optimized_wasm, "optimized WASM artifact")?;
+    let private_optimized = staging.path().join(".optimized.wasm");
+    fs::copy(&optimized_wasm, &private_optimized).map_err(|source| {
+        artifact_io_error("copy optimized strip input", &optimized_wasm, source)
+    })?;
     let staged_wasm = staging.path().join(&spec.artifact_name);
-    runtime.strip_wasm(&optimized_wasm, &staged_wasm)?;
+    runtime.strip_wasm(&private_optimized, &staged_wasm)?;
     validate_regular_file(&staged_wasm, "stripped WASM artifact")?;
     fs::remove_file(&private_raw).map_err(|source| {
         artifact_io_error("remove private raw WASM copy", &private_raw, source)
     })?;
-    fs::remove_file(&optimized_wasm).map_err(|source| {
+    fs::remove_file(&private_optimized).map_err(|source| {
         artifact_io_error(
             "remove private optimized WASM copy",
-            &optimized_wasm,
+            &private_optimized,
             source,
         )
     })?;
@@ -583,8 +653,16 @@ fn install_with_runtime<R: ArtifactRuntime>(
             spec.profile
         )));
     }
+    if runtime.tool_identity()?.fingerprint() != tools {
+        return Err(artifact_error(format!(
+            "artifact toolchain or effective Rust flags changed while profile `{}` was being staged",
+            spec.profile
+        )));
+    }
+    let raw = fingerprint_artifact(&staged_raw, RAW_FILE_NAME)?;
+    let optimized = fingerprint_artifact(&optimized_wasm, OPTIMIZED_FILE_NAME)?;
     let artifact = fingerprint_artifact(&staged_wasm, &spec.artifact_name)?;
-    let manifest = spec.manifest(input.clone(), tools.clone(), artifact);
+    let manifest = spec.manifest(input.clone(), tools.clone(), raw, optimized, artifact);
     write_manifest(&staging.path().join(MANIFEST_FILE_NAME), &manifest)?;
     validate_directory_manifest(spec, staging.path(), &input, &tools, &manifest)?;
 
@@ -592,6 +670,7 @@ fn install_with_runtime<R: ArtifactRuntime>(
     Ok(VerifiedTypstArtifact {
         wasm_path: spec.output_wasm(),
         manifest_path: spec.output_directory().join(MANIFEST_FILE_NAME),
+        manifest,
         _lock: lock,
     })
 }
@@ -606,10 +685,11 @@ fn verify_with_runtime<R: ArtifactRuntime>(
     let metadata = runtime.cargo_metadata(spec)?;
     let input = collect_input_fingerprint(spec, &metadata)?;
     let tools = runtime.tool_identity()?.fingerprint();
-    let wasm_path = verify_directory(spec, &spec.output_directory(), &input, &tools)?;
+    let manifest = verify_directory(spec, &spec.output_directory(), &input, &tools)?;
     Ok(VerifiedTypstArtifact {
-        wasm_path,
+        wasm_path: spec.output_wasm(),
         manifest_path: spec.output_directory().join(MANIFEST_FILE_NAME),
+        manifest,
         _lock: lock,
     })
 }
@@ -619,7 +699,7 @@ fn verify_directory(
     directory: &Path,
     input: &InputFingerprint,
     tools: &ToolFingerprint,
-) -> Result<PathBuf, XtaskError> {
+) -> Result<ArtifactManifest, XtaskError> {
     let manifest_path = directory.join(MANIFEST_FILE_NAME);
     validate_regular_file(&manifest_path, "artifact manifest")?;
     let manifest_bytes = fs::read(&manifest_path)
@@ -630,15 +710,8 @@ fn verify_directory(
             manifest_path.display()
         ))
     })?;
-    let wasm_path = validate_directory_manifest(spec, directory, input, tools, &manifest)?;
-    let artifact = fingerprint_artifact(&wasm_path, &spec.artifact_name)?;
-    if manifest.artifact != artifact {
-        return Err(artifact_error(format!(
-            "artifact digest or byte length is stale for {}",
-            wasm_path.display()
-        )));
-    }
-    Ok(wasm_path)
+    validate_directory_manifest(spec, directory, input, tools, &manifest)?;
+    Ok(manifest)
 }
 
 fn validate_directory_manifest(
@@ -647,11 +720,15 @@ fn validate_directory_manifest(
     input: &InputFingerprint,
     tools: &ToolFingerprint,
     manifest: &ArtifactManifest,
-) -> Result<PathBuf, XtaskError> {
+) -> Result<(), XtaskError> {
     validate_output_directory(directory)?;
     let actual_entries = directory_entries(directory)?;
-    let expected_entries =
-        BTreeSet::from([MANIFEST_FILE_NAME.to_string(), spec.artifact_name.clone()]);
+    let expected_entries = BTreeSet::from([
+        MANIFEST_FILE_NAME.to_string(),
+        RAW_FILE_NAME.to_string(),
+        OPTIMIZED_FILE_NAME.to_string(),
+        spec.artifact_name.clone(),
+    ]);
     if actual_entries != expected_entries {
         return Err(artifact_error(format!(
             "artifact directory {} contains unexpected or missing entries; expected exactly [{}], found [{}]",
@@ -773,9 +850,32 @@ fn validate_directory_manifest(
         )));
     }
 
-    let wasm_path = directory.join(&spec.artifact_name);
-    validate_regular_file(&wasm_path, "WASM artifact")?;
-    Ok(wasm_path)
+    if manifest.raw.file != RAW_FILE_NAME
+        || manifest.optimized.file != OPTIMIZED_FILE_NAME
+        || manifest.artifact.file != spec.artifact_name
+    {
+        return Err(artifact_error("artifact stage file names are stale"));
+    }
+    validate_artifact_fingerprints(directory, manifest)?;
+    Ok(())
+}
+
+fn validate_artifact_fingerprints(
+    directory: &Path,
+    manifest: &ArtifactManifest,
+) -> Result<(), XtaskError> {
+    for expected in [&manifest.raw, &manifest.optimized, &manifest.artifact] {
+        let path = directory.join(&expected.file);
+        validate_regular_file(&path, "WASM artifact")?;
+        let actual = fingerprint_artifact(&path, &expected.file)?;
+        if *expected != actual {
+            return Err(artifact_error(format!(
+                "artifact digest or byte length is stale for {}",
+                path.display()
+            )));
+        }
+    }
+    Ok(())
 }
 
 fn replace_output_directory<R: ArtifactRuntime>(
@@ -1515,6 +1615,8 @@ fn validate_artifact_name(name: &str) -> Result<(), XtaskError> {
         || components.next().is_some()
         || Path::new(name).extension().and_then(|value| value.to_str()) != Some("wasm")
         || name == MANIFEST_FILE_NAME
+        || name == RAW_FILE_NAME
+        || name == OPTIMIZED_FILE_NAME
     {
         return Err(artifact_error(format!(
             "artifact name `{name}` must be a single .wasm file name"
@@ -1677,6 +1779,12 @@ mod tests {
     }
 
     impl ArtifactRuntime for FakeRuntime {
+        fn build_wasm(&mut self, spec: &TypstArtifactSpec) -> Result<PathBuf, XtaskError> {
+            let path = spec.target_root.join("raw/merman_typst_plugin.wasm");
+            write(&path, "raw-wasm");
+            Ok(path)
+        }
+
         fn cargo_metadata(
             &mut self,
             spec: &TypstArtifactSpec,
@@ -1836,6 +1944,23 @@ mod tests {
             path
         }
 
+        fn budget_file(&self, max_raw_bytes: u64, max_stripped_bytes: u64) -> PathBuf {
+            let mut budgets: serde_json::Value = serde_json::from_slice(
+                &fs::read(paths::workspace_root().join("docs/release/WASM_SIZE_BUDGETS.json"))
+                    .unwrap(),
+            )
+            .unwrap();
+            budgets["artifact_profiles"]["typst-wasm"] = serde_json::json!({
+                "max_raw_bytes": max_raw_bytes,
+                "max_stripped_bytes": max_stripped_bytes,
+                "max_gzip_bytes": 1024,
+                "max_brotli_bytes": 1024,
+            });
+            let path = self.target.join("budgets.json");
+            fs::write(&path, serde_json::to_vec_pretty(&budgets).unwrap()).unwrap();
+            path
+        }
+
         fn runtime(&self) -> FakeRuntime {
             FakeRuntime {
                 metadata: self.metadata(),
@@ -1992,7 +2117,7 @@ mod tests {
         let raw_wasm = fixture.raw_wasm();
         let mut runtime = fixture.runtime();
 
-        let installed = install_with_runtime(&spec, &raw_wasm, &mut runtime).unwrap();
+        let installed = produce_with_runtime(&spec, &mut runtime).unwrap();
 
         assert_eq!(fs::read(&raw_wasm).unwrap(), b"raw-wasm");
         assert_eq!(
@@ -2003,7 +2128,18 @@ mod tests {
             &fs::read(spec.output_directory().join(MANIFEST_FILE_NAME)).unwrap(),
         )
         .unwrap();
-        assert_eq!(manifest.schema_version, 3);
+        assert_eq!(manifest.schema_version, 4);
+        assert_eq!(manifest.raw.bytes, 8);
+        assert_eq!(manifest.raw.sha256, sha256_hex(b"raw-wasm"));
+        assert_eq!(
+            fs::read(spec.output_directory().join("raw.wasm")).unwrap(),
+            b"raw-wasm"
+        );
+        assert_eq!(manifest.optimized.bytes, 18);
+        assert_eq!(
+            fs::read(spec.output_directory().join("optimized.wasm")).unwrap(),
+            b"optimized:raw-wasm"
+        );
         assert_eq!(manifest.artifact_profile, "typst-wasm");
         assert_eq!(manifest.profile, "publish");
         assert!(!manifest.default_features);
@@ -2046,17 +2182,128 @@ mod tests {
             directory_entries(&spec.output_directory()).unwrap(),
             BTreeSet::from([
                 MANIFEST_FILE_NAME.to_string(),
-                "merman_typst_plugin.wasm".to_string()
+                "merman_typst_plugin.wasm".to_string(),
+                "raw.wasm".to_string(),
+                "optimized.wasm".to_string(),
             ])
         );
+    }
+
+    #[test]
+    fn skip_rejects_changed_raw_or_optimized_bytes() {
+        for file in ["raw.wasm", "optimized.wasm"] {
+            let fixture = Fixture::new();
+            let spec = fixture.spec("publish");
+            produce_with_runtime(&spec, &mut fixture.runtime()).unwrap();
+            let path = spec.output_directory().join(file);
+            let mut bytes = fs::read(&path).unwrap();
+            bytes[0] ^= 1;
+            fs::write(&path, bytes).unwrap();
+
+            let error = verify_with_runtime(&spec, &mut fixture.runtime()).unwrap_err();
+
+            assert!(error.to_string().contains("artifact digest or byte length"));
+        }
+    }
+
+    #[test]
+    fn skip_rejects_a_changed_raw_size_in_the_manifest() {
+        let fixture = Fixture::new();
+        let spec = fixture.spec("publish");
+        produce_with_runtime(&spec, &mut fixture.runtime()).unwrap();
+        let manifest_path = spec.output_directory().join(MANIFEST_FILE_NAME);
+        let mut manifest: serde_json::Value =
+            serde_json::from_slice(&fs::read(&manifest_path).unwrap()).unwrap();
+        manifest["raw"]["bytes"] = serde_json::json!(1);
+        fs::write(
+            &manifest_path,
+            serde_json::to_vec_pretty(&manifest).unwrap(),
+        )
+        .unwrap();
+
+        let error = verify_with_runtime(&spec, &mut fixture.runtime()).unwrap_err();
+
+        assert!(error.to_string().contains("artifact digest or byte length"));
+    }
+
+    #[test]
+    fn budget_consumes_raw_before_optimization_and_final_stripped_bytes() {
+        let fixture = Fixture::new();
+        let spec = fixture.spec("publish");
+        let artifact = produce_with_runtime(&spec, &mut fixture.runtime()).unwrap();
+
+        crate::cmd::wasm_size_matrix::check_typst_artifact_budget(
+            &artifact,
+            &fixture.budget_file(8, 27),
+        )
+        .unwrap();
+
+        for (raw_limit, stripped_limit, expected) in [
+            (7, 27, "exceeds raw_bytes: actual=8 max=7"),
+            (8, 26, "exceeds stripped_bytes: actual=27 max=26"),
+        ] {
+            let error = crate::cmd::wasm_size_matrix::check_typst_artifact_budget(
+                &artifact,
+                &fixture.budget_file(raw_limit, stripped_limit),
+            )
+            .unwrap_err();
+
+            let XtaskError::WasmSizeMatrixFailed(message) = error else {
+                panic!("expected a size budget failure, found {error}");
+            };
+            assert_eq!(message, format!("artifact profile typst-wasm {expected}"));
+        }
+    }
+
+    #[test]
+    fn budget_rejects_mutated_producer_bytes_without_rebuilding_them() {
+        for file in ["raw.wasm", "optimized.wasm", "merman_typst_plugin.wasm"] {
+            let fixture = Fixture::new();
+            let spec = fixture.spec("publish");
+            let artifact = produce_with_runtime(&spec, &mut fixture.runtime()).unwrap();
+            let path = spec.output_directory().join(file);
+            let mut bytes = fs::read(&path).unwrap();
+            bytes[0] ^= 1;
+            fs::write(&path, &bytes).unwrap();
+
+            let error = crate::cmd::wasm_size_matrix::check_typst_artifact_budget(
+                &artifact,
+                &fixture.budget_file(8, 27),
+            )
+            .unwrap_err();
+
+            assert!(error.to_string().contains("artifact digest or byte length"));
+            assert_eq!(fs::read(&path).unwrap(), bytes);
+        }
+    }
+
+    #[test]
+    fn skip_requires_a_manifest_with_all_production_stages() {
+        let fixture = Fixture::new();
+        let spec = fixture.spec("publish");
+        produce_with_runtime(&spec, &mut fixture.runtime()).unwrap();
+        let manifest_path = spec.output_directory().join(MANIFEST_FILE_NAME);
+        let mut manifest: serde_json::Value =
+            serde_json::from_slice(&fs::read(&manifest_path).unwrap()).unwrap();
+        manifest["schema_version"] = serde_json::json!(3);
+        manifest.as_object_mut().unwrap().remove("raw");
+        manifest.as_object_mut().unwrap().remove("optimized");
+        fs::write(
+            &manifest_path,
+            serde_json::to_vec_pretty(&manifest).unwrap(),
+        )
+        .unwrap();
+
+        let error = verify_with_runtime(&spec, &mut fixture.runtime()).unwrap_err();
+
+        assert!(error.to_string().contains("schema-4"));
     }
 
     #[test]
     fn skip_rejects_a_stale_local_input_tree() {
         let fixture = Fixture::new();
         let spec = fixture.spec("publish");
-        let raw_wasm = fixture.raw_wasm();
-        install_with_runtime(&spec, &raw_wasm, &mut fixture.runtime()).unwrap();
+        produce_with_runtime(&spec, &mut fixture.runtime()).unwrap();
         write(
             &fixture.workspace.join("crates/plugin/src/lib.rs"),
             "pub fn render() { println!(\"changed\"); }\n",
@@ -2071,8 +2318,7 @@ mod tests {
     fn skip_rejects_a_change_in_a_reachable_production_dependency() {
         let fixture = Fixture::new();
         let spec = fixture.spec("publish");
-        let raw_wasm = fixture.raw_wasm();
-        install_with_runtime(&spec, &raw_wasm, &mut fixture.runtime()).unwrap();
+        produce_with_runtime(&spec, &mut fixture.runtime()).unwrap();
         write(
             &fixture.workspace.join("crates/reachable/src/lib.rs"),
             "pub fn reachable() { println!(\"changed\"); }\n",
@@ -2087,8 +2333,7 @@ mod tests {
     fn skip_ignores_unreachable_dev_and_test_inputs() {
         let fixture = Fixture::new();
         let spec = fixture.spec("publish");
-        let raw_wasm = fixture.raw_wasm();
-        install_with_runtime(&spec, &raw_wasm, &mut fixture.runtime()).unwrap();
+        produce_with_runtime(&spec, &mut fixture.runtime()).unwrap();
         write(
             &fixture.workspace.join("crates/xtask/src/lib.rs"),
             "pub fn xtask() { println!(\"changed\"); }\n",
@@ -2111,8 +2356,7 @@ mod tests {
     fn skip_rejects_a_changed_feature_set() {
         let fixture = Fixture::new();
         let spec = fixture.spec("publish");
-        let raw_wasm = fixture.raw_wasm();
-        install_with_runtime(&spec, &raw_wasm, &mut fixture.runtime()).unwrap();
+        produce_with_runtime(&spec, &mut fixture.runtime()).unwrap();
         let mut changed = spec.clone();
         changed.features.retain(|feature| feature != "analysis");
 
@@ -2125,8 +2369,7 @@ mod tests {
     fn skip_rejects_a_changed_exact_artifact_profile() {
         let fixture = Fixture::new();
         let spec = fixture.spec("publish");
-        let raw_wasm = fixture.raw_wasm();
-        install_with_runtime(&spec, &raw_wasm, &mut fixture.runtime()).unwrap();
+        produce_with_runtime(&spec, &mut fixture.runtime()).unwrap();
         let mut changed = spec.clone();
         changed.artifact_profile = "typst-other".to_string();
 
@@ -2139,8 +2382,7 @@ mod tests {
     fn skip_rejects_a_changed_default_feature_policy() {
         let fixture = Fixture::new();
         let spec = fixture.spec("publish");
-        let raw_wasm = fixture.raw_wasm();
-        install_with_runtime(&spec, &raw_wasm, &mut fixture.runtime()).unwrap();
+        produce_with_runtime(&spec, &mut fixture.runtime()).unwrap();
         let mut changed = spec.clone();
         changed.default_features = true;
 
@@ -2153,11 +2395,10 @@ mod tests {
     fn cargo_metadata_failure_is_fail_closed() {
         let fixture = Fixture::new();
         let spec = fixture.spec("publish");
-        let raw_wasm = fixture.raw_wasm();
         let mut runtime = fixture.runtime();
         runtime.metadata_error = Some("injected failure".to_string());
 
-        let error = install_with_runtime(&spec, &raw_wasm, &mut runtime).unwrap_err();
+        let error = produce_with_runtime(&spec, &mut runtime).unwrap_err();
 
         assert!(error.to_string().contains("cargo metadata failed"));
         assert!(!spec.output_directory().exists());
@@ -2189,8 +2430,7 @@ mod tests {
     fn skip_rejects_a_stale_wasm_digest() {
         let fixture = Fixture::new();
         let spec = fixture.spec("publish");
-        let raw_wasm = fixture.raw_wasm();
-        let wasm = install_with_runtime(&spec, &raw_wasm, &mut fixture.runtime()).unwrap();
+        let wasm = produce_with_runtime(&spec, &mut fixture.runtime()).unwrap();
         let wasm_path = wasm.wasm_path().to_path_buf();
         drop(wasm);
         write(&wasm_path, "tampered");
@@ -2205,8 +2445,7 @@ mod tests {
         let fixture = Fixture::new();
         let original = fixture.spec("publish");
         let other = fixture.spec("other-profile");
-        let raw_wasm = fixture.raw_wasm();
-        install_with_runtime(&original, &raw_wasm, &mut fixture.runtime()).unwrap();
+        produce_with_runtime(&original, &mut fixture.runtime()).unwrap();
         fs::rename(original.output_directory(), other.output_directory()).unwrap();
 
         let error = verify_with_runtime(&other, &mut fixture.runtime()).unwrap_err();
@@ -2218,10 +2457,9 @@ mod tests {
     fn installation_replaces_the_complete_profile_directory() {
         let fixture = Fixture::new();
         let spec = fixture.spec("publish");
-        let raw_wasm = fixture.raw_wasm();
         write(&spec.output_directory().join("obsolete.txt"), "obsolete");
 
-        install_with_runtime(&spec, &raw_wasm, &mut fixture.runtime()).unwrap();
+        produce_with_runtime(&spec, &mut fixture.runtime()).unwrap();
 
         assert!(!spec.output_directory().join("obsolete.txt").exists());
         verify_with_runtime(&spec, &mut fixture.runtime()).unwrap();
@@ -2231,12 +2469,11 @@ mod tests {
     fn failed_atomic_install_restores_the_previous_directory() {
         let fixture = Fixture::new();
         let spec = fixture.spec("publish");
-        let raw_wasm = fixture.raw_wasm();
         write(&spec.output_directory().join("previous.txt"), "previous");
         let mut runtime = fixture.runtime();
         runtime.fail_rename_at = Some(2);
 
-        let error = install_with_runtime(&spec, &raw_wasm, &mut runtime).unwrap_err();
+        let error = produce_with_runtime(&spec, &mut runtime).unwrap_err();
 
         assert!(error.to_string().contains("previous artifact restored"));
         assert_eq!(
@@ -2258,8 +2495,7 @@ mod tests {
     fn skip_rejects_stale_tool_versions_and_rustflags() {
         let fixture = Fixture::new();
         let spec = fixture.spec("publish");
-        let raw_wasm = fixture.raw_wasm();
-        install_with_runtime(&spec, &raw_wasm, &mut fixture.runtime()).unwrap();
+        produce_with_runtime(&spec, &mut fixture.runtime()).unwrap();
         let mut changed = fixture.runtime();
         changed.identity.rustflags = Some("-C opt-level=s".to_string());
 
@@ -2276,8 +2512,7 @@ mod tests {
     fn manifest_parsing_fails_closed_on_unknown_fields() {
         let fixture = Fixture::new();
         let spec = fixture.spec("publish");
-        let raw_wasm = fixture.raw_wasm();
-        install_with_runtime(&spec, &raw_wasm, &mut fixture.runtime()).unwrap();
+        produce_with_runtime(&spec, &mut fixture.runtime()).unwrap();
         let manifest_path = spec.output_directory().join(MANIFEST_FILE_NAME);
         let mut manifest: serde_json::Value =
             serde_json::from_slice(&fs::read(&manifest_path).unwrap()).unwrap();

@@ -194,6 +194,14 @@ class ArtifactProfileRecipeTests(unittest.TestCase):
             "flutter-desktop-native": ("merman-ffi", "native-distribution"),
             "flutter-ios-native": ("merman-ffi", "native-distribution"),
             "python-uniffi-native": ("merman-uniffi", "native-distribution"),
+            **{
+                f"sdk-{kind}-{variant}": (package, cargo_profile)
+                for kind, package, cargo_profile in (
+                    ("native", "merman-ffi", "native-sdk"),
+                    ("wasi", "merman-wasi", "wasm-size"),
+                )
+                for variant in ("standard", "math", "full")
+            },
         }
         for profile_id, (package, cargo_profile) in expected_recipes.items():
             with self.subTest(profile_id=profile_id):

@@ -22,7 +22,7 @@ The `0.10.0-alpha.1` baseline selects Mermaid `12.2.0`, retaining parser `2.0.1`
 `12.0.0`. Its source and artifact admission are recorded in [ADR-0094](../adr/0094-mermaid-12-2-upstream-transition.md).
 This transition does not change package versions, feature ownership, or transport schemas.
 
-The alpha uses Options JSON schema `3` and Web transport API `8`, including prepared sources and mounted diagrams. Its projected package version does not establish publication. The [host guide](PREBUILT_PRODUCTS.md#published-versions) records verified channel versions; use immutable `v0.9.3` and its matching documentation for the published maintenance APIs. See the [alpha changelog](../../CHANGELOG.md#0100-alpha1---2026-11-02) for required migrations.
+The alpha uses Options JSON schema `3`, Web transport API `9`, analysis facts schema `3`, and theme execution evidence schema `2`, including prepared sources and mounted diagrams. Its projected package version does not establish publication. The [host guide](PREBUILT_PRODUCTS.md#published-versions) records verified channel versions; use immutable `v0.9.3` and its matching documentation for the published maintenance APIs. See the [alpha changelog](../../CHANGELOG.md#0100-alpha1---2026-11-02) for required migrations.
 
 This alpha requires the independently published `roughr-merman 0.12.5` and Tree-sitter `0.3.2`. Typst wrapper `0.5.0` bundles Merman `0.9.0`; wrapper `0.4.0` bundles `0.8.0`. See the [dependency policy](../DEPENDENCY_POLICY.md) for compatible version requirements and intentional upgrade exceptions.
 
@@ -178,13 +178,19 @@ The repository-owned delivery routes are:
 
 The source-crate route and native-artifact routes must be audited separately. Publishing
 `merman-ffi` or `merman-uniffi` to crates.io does not publish an Android AAR, Apple XCFramework,
-Python wheel, or Flutter package. Use `scripts/release_surface_contract.py` to enumerate the owner
-workflows and artifact profiles before treating a release as complete.
+Python wheel, or Flutter package. The workflow table above identifies each publication owner;
+`capabilities/artifact-profiles-v2.json` owns the exact build recipes. Check the selected owner's
+qualification evidence and the registry or GitHub Release assets before treating a release as complete.
 
 ## CI Gates
 
 Merman CI keeps publication separate from validation:
 
+- `tools/publish.py` admits Cargo metadata only when `merman-android-jni` explicitly declares
+  `publish = false`, stays outside the crates.io graph, and `merman-bindings-core`, `merman-ffi`,
+  `merman-uniffi`, and `merman-wasm` remain in the coupled graph. Artifact recipe tests and native
+  builders check the exact profile/package relationships. Release preflight evidence requires
+  every owner job to succeed; publication credentials stay with the protected publish jobs.
 - `cargo run -p xtask -- verify-mermaid-reference` checks that the selected Mermaid and companion
   behavior graph, package locks, generated runtime labels, and provenance agree.
 - `cargo run -p xtask -- verify-editor-language-contract` checks parser-owned rename-policy and
@@ -359,7 +365,7 @@ library-size evidence.
 
 ## WASM Size Matrix
 
-Use the xtask size matrix before changing an artifact profile:
+Use the owner-specific size gates before changing an artifact profile:
 
 ```bash
 npm ci --prefix platforms/web
@@ -368,19 +374,43 @@ npm run smoke --prefix platforms/web
 cargo run -p xtask -- wasm-size-matrix --surface web \
   --web-package-root platforms/web/packages \
   --budget-file docs/release/WASM_SIZE_BUDGETS.json
-cargo run -p xtask -- wasm-size-matrix --surface typst \
+cargo run --locked -p xtask -- build-typst-package --profile publish \
   --budget-file docs/release/WASM_SIZE_BUDGETS.json
 ```
 
 The Web command measures the wasm-bindgen artifacts inside the assembled npm package directories;
 the preceding smoke proves their provenance and package closure. It must not rebuild an alternate
-Cargo-only size artifact. The Typst
-command builds its descriptor-owned `wasm-size` artifact because that transport has a separate
-package producer. Both report raw, stripped, gzip, and Brotli bytes together with the exact Cargo
+Cargo-only size artifact. The Typst package producer builds its descriptor-owned `wasm-size`
+artifact once, optimizes with Binaryen 133 `wasm-opt -Oz`, and strips with `wasm-tools strip --all`.
+Its optional `--budget-file` consumer checks those same frozen bytes before package staging,
+without producing another WASM. Both gates report raw, stripped, gzip, and Brotli bytes with the exact Cargo
 profile, target, feature set, runtime IDs, capabilities, and output IDs. The schema-2 budget file
 must cover every exact Web and Typst artifact profile once, with no legacy feature-profile entries
 or stale profiles. Compare only artifacts with the same profile and target; browser and Typst
 transports deliberately have different closures.
+
+The metrics in `WASM_SIZE_BUDGETS.json` retain these definitions and unchanged limits:
+
+| Metric | Web | Typst |
+| --- | --- | --- |
+| `raw_bytes` | Final assembled npm WASM before the measurement-only strip | Frozen Cargo WASM before `wasm-opt` or stripping |
+| `stripped_bytes` | `wasm-tools strip --all` on that npm WASM | Final `wasm-tools strip --all` output after `wasm-opt -Oz`; these are the packaged WASM bytes |
+| `gzip_bytes` | gzip best compression of stripped bytes | Same compression of final stripped bytes |
+| `brotli_bytes` | Brotli quality 11, window 22, buffer 4096 on stripped bytes | Same compression of final stripped bytes |
+
+Typst's private schema-4 manifest extends the existing identity with raw and optimized file names,
+byte lengths, and SHA-256 digests; the existing `artifact` entry still identifies final stripped
+WASM. Current source, exact features/default-feature policy, versions, tools, Rust flags, and
+every stage digest remain checked. The budget consumer rechecks file digests before and after
+compression, then compares the four independently measured sizes with the committed ceilings.
+Neither optimized nor final size may substitute for raw size. This is integrity binding, not a
+second receipt or an independent rebuild of the producer's transformation.
+
+The old Typst size-matrix selections (`--surface typst`, `--artifact-profile typst-wasm`) now fail
+with the replacement command. `build-typst-package --skip-wasm-build` is no longer accepted;
+reuse belongs only to real `typst-package-smoke --skip-wasm-build`, with current identity checks.
+The producer's raw and optimized files and manifest remain private, and only the final WASM
+enters the package. A schema-3 artifact requires one fresh production pass.
 
 The latest main-line math-inclusive Web measurements and budget rationale belong to
 [the 2026-11-01 binding WASM report](../performance/binding_wasm_budget_2026-11-01.md).

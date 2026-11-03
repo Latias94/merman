@@ -104,30 +104,24 @@ class PreflightEvidenceTests(unittest.TestCase):
         for source_ref in ("main", "refs/heads/main", "v0.8.0-alpha.7"):
             with self.subTest(source_ref=source_ref):
                 self.assertIsNone(evidence.create_receipt(self.identity, source_ref, self.needs, 100, 2))
-        for result in ("failure", "cancelled", "skipped", None):
-            with self.subTest(result=result):
+        for owner in (
+            "versions-and-packages", "web-npm-dry-run", "android-aar", "apple-xcframework",
+            "python-wheel", "flutter-dry-run", "sdk-archives",
+        ):
+            self.assertIn(owner, evidence.REQUIRED_JOBS)
+            for result in ("failure", "cancelled", "skipped", None):
+                with self.subTest(owner=owner, result=result):
+                    needs = copy.deepcopy(self.needs)
+                    needs[owner]["result"] = result
+                    with self.assertRaises(evidence.EvidenceError):
+                        evidence.create_receipt(self.identity, self.identity.source_sha, needs, 100, 2)
+            with self.subTest(owner=owner, result="missing"):
                 needs = copy.deepcopy(self.needs)
-                needs["web-npm-dry-run"]["result"] = result
+                del needs[owner]
                 with self.assertRaises(evidence.EvidenceError):
                     evidence.create_receipt(self.identity, self.identity.source_sha, needs, 100, 2)
-        needs = copy.deepcopy(self.needs)
-        del needs["flutter-dry-run"]
-        with self.assertRaises(evidence.EvidenceError):
-            evidence.create_receipt(self.identity, self.identity.source_sha, needs, 100, 2)
         with self.assertRaises(evidence.EvidenceError):
             evidence.create_receipt(self.identity, "d" * 40, self.needs, 100, 2)
-
-    def test_sdk_archive_owner_is_required_and_cannot_fail_or_be_skipped(self):
-        self.assertIn("sdk-archives", evidence.REQUIRED_JOBS)
-        for result in ("failure", "cancelled", "skipped", None):
-            needs = copy.deepcopy(self.needs)
-            needs["sdk-archives"] = {"result": result}
-            with self.subTest(result=result), self.assertRaises(evidence.EvidenceError):
-                evidence.create_receipt(self.identity, self.identity.source_sha, needs, 100, 2)
-        needs = copy.deepcopy(self.needs)
-        del needs["sdk-archives"]
-        with self.assertRaises(evidence.EvidenceError):
-            evidence.create_receipt(self.identity, self.identity.source_sha, needs, 100, 2)
 
     def test_finds_source_input_independently_of_workflow_head(self):
         self.assertNotEqual(self.identity.source_sha, self.run["head_sha"])
@@ -518,7 +512,7 @@ class PreflightWorkflowTests(unittest.TestCase):
         self.assertIn("if: ${{ steps.evidence.outputs.reusable != 'true' }}", preflight)
         self.assertEqual(preflight.count("        if:"), 1)
         for command in ("verify_prerelease_compatibility.py", "verify-independent-crate-version-bumps.py",
-                        "release_surface_contract.py", "--list-crates-io-packages"):
+                        "--list-crates-io-packages"):
             self.assertIn(command, preflight)
         self.assertNotIn("\n    if:", web)
         contracts = web.split("      - name: Verify generated Web contracts\n", 1)[1].split("      - name:", 1)[0]
