@@ -18,7 +18,7 @@ main's workspace version does not establish a download on every registry.
 | Rust | `0.9.3` | `0.10.0-alpha.1` | `cargo add merman@0.10.0-alpha.1`; [alpha source feature choices](https://github.com/Latias94/merman/blob/v0.10.0-alpha.1/README.md) |
 | CLI / standalone LSP | `0.9.3` | `0.10.0-alpha.1` | [Alpha release installers and archives](https://github.com/Latias94/merman/releases/tag/v0.10.0-alpha.1) |
 | Browser / Worker | `0.9.3` | `0.10.0-alpha.1` | `npm install @mermanjs/web@0.9.3` or `@mermanjs/web@alpha` |
-| Native Node | `0.9.2` | Deferred | `npm install @mermanjs/node@0.9.2` |
+| Native Node | `0.9.3` | Deferred | `npm install @mermanjs/node@0.9.3` |
 | Python | `0.9.3` | Deferred | `python -m pip install merman==0.9.3` |
 | Flutter / native Dart | `0.9.3` | Deferred | `flutter pub add merman:0.9.3` |
 | Android | `0.9.3` AAR | Deferred | [Tagged Android guide](https://github.com/Latias94/merman/blob/v0.9.3/platforms/android/README.md) |
@@ -26,9 +26,6 @@ main's workspace version does not establish a download on every registry.
 | Native C / WASI SDK | `0.9.3` | `0.10.0-alpha.1` | [Alpha SDK downloads and flavor choices](https://github.com/Latias94/merman/releases/tag/v0.10.0-alpha.1) |
 
 Web's five alpha packages use the `alpha` dist-tag; their stable `latest` is `0.9.3`.
-Web, Python, Flutter and Android stable backfills are delivered. Node's seven-member group is
-incomplete after a provenance error; its recommended loader remains `0.9.2`. See the
-[publication record](PUBLISH_ORDER.md#093-binding-backfill) for the retained incident evidence.
 Published Web full/render includes math. Published Node, Python, Flutter, Android and legacy Apple
 products keep their version-specific, math-free capability selections. Main's expanded products
 and new delivery handoffs below require their matching packages. Use documentation at the matching
@@ -53,7 +50,7 @@ future packages.
 | Your application | Start here | Outputs and boundaries |
 | --- | --- | --- |
 | Browser or browser Worker | `@mermanjs/web`: [stable guide](https://github.com/Latias94/merman/blob/v0.9.3/platforms/web/README.md), [alpha guide](https://github.com/Latias94/merman/blob/v0.10.0-alpha.1/platforms/web/README.md) | Complete browser SDK; use `web-render` for SVG alone, or analysis/editor/ASCII task packages |
-| Node, static-site generation or server rendering | [`@mermanjs/node`](https://github.com/Latias94/merman/blob/v0.9.2/platforms/node/README.md) | Platform package selected automatically; `node-wasm` is an explicit portable alternative |
+| Node, static-site generation or server rendering | [`@mermanjs/node`](https://github.com/Latias94/merman/blob/v0.9.3/platforms/node/README.md) | Platform package selected automatically; `node-wasm` is an explicit portable alternative |
 | Python | [`merman` wheel](https://github.com/Latias94/merman/blob/v0.9.3/platforms/python/merman/README.md) | pip/uv selects a matching native wheel; no Rust for ordinary supported installs |
 | Flutter or native Dart | [`merman` on pub.dev](https://github.com/Latias94/merman/blob/v0.9.3/platforms/flutter/README.md) | Stable package bundles its native libraries; no separate target download |
 | Kotlin on Android | [Release AAR](https://github.com/Latias94/merman/blob/v0.9.3/platforms/android/README.md) | Matching Kotlin/JNI in one AAR; add the local AAR to Gradle |
@@ -147,7 +144,7 @@ support merely by installing Rust; see the explicit source-helper route in the P
 
 Node native packages distinguish glibc from musl. Keep optional dependencies enabled and
 install on the deployment target; copying macOS `node_modules` to Linux does not select a
-Linux binary. Main adds Linux ARM64 coverage; it is not present in published `0.9.2` native
+Linux binary. Main adds Linux ARM64 coverage; it is not present in published `0.9.3` native
 packages. Node-WASM is a separate explicit choice and is not the browser transport.
 
 Stable Flutter bundles the native libraries in the pub package. Native Dart support does not

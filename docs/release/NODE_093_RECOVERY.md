@@ -1,12 +1,12 @@
 # Node 0.9.3 Publication Incident
 
-Status: prepared recovery; no incident exception or new Windows send is authorized.
+Status: complete. The approved Windows recovery and all seven original Node packages are
+published and independently reconciled at `0.9.3`.
 Observed on 2026-11-03 (Asia/Shanghai).
 
-The stable Web group, Python wheels, Flutter package and Android AAR are delivered. Node's loader and WASM
-package remain at `0.9.2` while its original seven-member `0.9.3` publication is incomplete.
-The Windows member has an uncertain upload outcome. Its missing registry version is not
-permission to resend it. See the [publication ledger](PUBLISH_ORDER.md#093-binding-backfill).
+The stable Web group, Python wheels, Flutter package and Android AAR are delivered. The original
+Node attempt-2 report retains its uncertain Windows outcome unchanged; the approved later
+Windows send is reconciled below. See the [publication ledger](PUBLISH_ORDER.md#093-binding-backfill).
 
 ## Retained Evidence
 
@@ -23,7 +23,7 @@ permission to resend it. See the [publication ledger](PUBLISH_ORDER.md#093-bindi
 - Attempt 2's Windows command failed with `TLOG_CREATE_ENTRY_ERROR` and a Rekor HTTP 409.
   Its original reconciliation report has SHA-256
   `af9657804c7c1c3560913574b73a27dd1f002a838b9760abe0e81b875d0d7bb3`.
-  Windows remains `upload_outcome_unknown`; WASM and the loader are `not_attempted`.
+  That report records Windows as `upload_outcome_unknown`, with WASM and the loader `not_attempted`.
   Preserve this report unchanged.
 
 The pinned npm `12.2.1` awaits provenance generation before its registry PUT. The error is
@@ -69,10 +69,10 @@ SHA-256: 1429c00b9b5529514ac0cc4316acafca391e642908e6097158e8faa2d3c0652d
 Integrity: sha512-UsUD3zbPv0cy4usMFMFFfQFhPY7An7meHj1YZLPEqLnx6HBG1BJ/ONvy5nxSZ9Ai/Oj9JozKI0VS3SYTl8geSQ==
 ```
 
-## Proposed One-Time Recovery
+## Approved One-Time Recovery
 
-This proposal requires an explicit maintainer decision accepting one Windows send based on
-the incident evidence above. The original report remains unchanged; approval is limited to
+The maintainer explicitly approved this incident recovery with “可以重试” on 2026-11-03.
+The original report remains unchanged; approval is limited to
 this exact package, version, artifact and bundle. It is not an automatic retry rule for TLOG
 errors or other unknown outcomes.
 
@@ -106,5 +106,53 @@ errors or other unknown outcomes.
    tarballs, provenance and complete tag maps before declaring the group delivered.
 
 No product rebuild, new version, tag move, accepted-package replacement, provenance suppression
-or generic uncertainty override is part of this proposal. A workflow-only execution revision
+or generic uncertainty override is part of this recovery. A workflow-only execution revision
 must be recorded separately from the stable product source and the original proof's attempt.
+
+The separately reviewed [incident execution](https://github.com/Latias94/merman/actions/runs/41558175355)
+uses workflow revision `3a5179d92bd75aa4ad82b47bc806a68ebf53fe3e` on
+`release/node-093-windows-recovery-20261103`; that temporary sender is not intended for merging
+into the normal release workflow. It pins the original seven-member artifact, stable owner,
+report and proof. A repository-visible send-intent artifact is uploaded before the npm command.
+A prior intent, including one from a different run, or a rerun selects observation only.
+The normal group publisher is excluded during this incident dispatch. Independent review,
+103 owner protocol/security checks, seven offline incident-preparation checks, actionlint,
+zizmor and the official Sigstore identity verification passed before dispatch.
+
+## Execution And Public Reconciliation
+
+[Incident run 41558175355](https://github.com/Latias94/merman/actions/runs/41558175355), attempt 1,
+completed successfully. It uploaded `merman-node-093-windows-single-send-intent` before the single
+npm command; the original report and package-group artifact were not changed or rebuilt.
+
+At `2026-11-03T01:20:25Z`, independent public-registry reconciliation confirmed the Windows
+tarball is byte-identical to the original artifact, its integrity is the value above, and
+`latest=0.9.3`. The old `alpha` and staging tags are unchanged. The public provenance retains
+the original statement, certificate, DSSE signature, Rekor inclusion evidence and invocation
+`41503526369/attempts/2`; npm's response adds only an empty optional
+`timestampVerificationData: null`. The official Sigstore verifier passes against the public
+bundle with the exact original workflow identity and issuer.
+
+Only after that reconciliation was the original failed group-publisher job resumed as attempt 3.
+It restored the untouched attempt-2 report, observed all five accepted native members and
+published only the originally unattempted WASM and loader. The original run completed successfully
+with `status=released`. Final report artifact `13196367052` has ZIP digest
+`sha256:6a90be693677a048a34569ab3c1d1f1039a5691ad88fd425f4febaf9ed2ab059`;
+the extracted report SHA-256 is
+`c49483765e025a8b5e133083a970708daf3df4d1fe5f5a7d79044d14e6e0daa9`.
+The original manifest identity is unchanged.
+
+Independent reconciliation confirms all seven public tarballs are byte-identical to the original
+group, their integrities and complete tag maps match, and each registry provenance binds the
+stable source and the corresponding original invocation:
+
+| Members | Provenance attempt in run `41503526369` |
+| --- | --- |
+| macOS ARM64 | 1 |
+| macOS x64, GNU Linux x64, musl Linux x64, Windows x64 | 2 |
+| Node-WASM and loader | 3 |
+
+The official npm `12.2.1` consumer audit verifies all seven registry signatures and attestations.
+A clean ordinary install runs the native macOS ARM64 and explicit Node-WASM transports through
+the stable installed-package SVG and Iconify lifecycle smoke. No additional Windows send,
+product rebuild, source change or tag move was needed.
