@@ -332,6 +332,10 @@ class WorkflowSecurityBoundaries(unittest.TestCase):
         self.assertLess(publish.index("--owner flutter"), publish.index("dart pub publish"))
         self.assertIn('--authentication-tag "$AUTHENTICATION_TAG"', publish)
         self.assertIn('--authentication-sha "$AUTHENTICATION_SHA"', publish)
+        self.assertIn("if: ${{ steps.send.outputs.upload == 'true' }}", publish)
+        before_send = publish.split("      - name: Reconcile before permitting a pub.dev upload\n", 1)[1].split("\n      - ", 1)[0]
+        self.assertLess(before_send.index("reconcile_pub_package"), before_send.index("--owner flutter"))
+        self.assertIn("echo 'upload=false'", before_send)
         self.assertIn("--force --skip-validation", publish)
         self.assertNotIn("dart run", publish)
         self.assertNotIn("flutter pub get", publish)

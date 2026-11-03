@@ -322,14 +322,24 @@ jobs:
           gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$AUTHENTICATION_TAG" > /dev/null
           test "$(gh api "repos/$GITHUB_REPOSITORY/commits/$AUTHENTICATION_TAG" --jq .sha)" = "$AUTHENTICATION_SHA"
 
-      - name: Require an unattempted pub.dev upload
+      - name: Reconcile before permitting a pub.dev upload
+        id: send
         env:
           GH_TOKEN: ${{ github.token }}
           RUN_ATTEMPT: ${{ github.run_attempt }}
           AUTHENTICATION_TAG: ${{ needs.validate-inputs.outputs.authentication_tag }}
           AUTHENTICATION_SHA: ${{ needs.validate-inputs.outputs.authentication_sha }}
+          VERSION: ${{ needs.validate-inputs.outputs.version }}
         run: |
           set -euo pipefail
+          state="$(cd trusted && python3 -m scripts.reconcile_pub_package \
+            --archive "$GITHUB_WORKSPACE/target/flutter-package/merman-flutter-package.tar.gz" \
+            --package merman --version "$VERSION")"
+          if test "$state" = exact; then
+            echo 'upload=false' >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          test "$state" = missing
           history="$(python3 trusted/scripts/release_attempt_history.py \
             --owner flutter --repository "$GITHUB_REPOSITORY" \
             --run-id "$GITHUB_RUN_ID" --before-attempt "$RUN_ATTEMPT" \
@@ -338,11 +348,14 @@ jobs:
             echo '::error::The earlier pub.dev upload outcome is unresolved. Observe the original package; do not resend.' >&2
             exit 1
           }
+          echo 'upload=true' >> "$GITHUB_OUTPUT"
 
       - name: Setup Dart with pub.dev OIDC credentials
+        if: ${{ steps.send.outputs.upload == 'true' }}
         uses: dart-lang/setup-dart@v1.8.1
 
       - name: Publish to pub.dev
+        if: ${{ steps.send.outputs.upload == 'true' }}
         working-directory: target/flutter-publish
         run: dart pub publish --force --skip-validation
 
