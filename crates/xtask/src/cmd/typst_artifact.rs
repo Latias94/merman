@@ -1770,10 +1770,21 @@ mod tests {
         target: PathBuf,
     }
 
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    enum ProductionFault {
+        Build,
+        Optimize,
+        Strip,
+        SourceChange,
+        ToolIdentityChange,
+    }
+
     struct FakeRuntime {
         metadata: CargoMetadataOutput,
         metadata_error: Option<String>,
         identity: ToolIdentity,
+        production_fault: Option<ProductionFault>,
+        raw_contents: &'static str,
         rename_count: usize,
         fail_rename_at: Option<usize>,
     }
@@ -1781,7 +1792,17 @@ mod tests {
     impl ArtifactRuntime for FakeRuntime {
         fn build_wasm(&mut self, spec: &TypstArtifactSpec) -> Result<PathBuf, XtaskError> {
             let path = spec.target_root.join("raw/merman_typst_plugin.wasm");
-            write(&path, "raw-wasm");
+            write(&path, self.raw_contents);
+            match self.production_fault {
+                Some(ProductionFault::Build) => {
+                    return Err(artifact_error("injected build failure"));
+                }
+                Some(ProductionFault::SourceChange) => write(
+                    &spec.workspace_root.join("crates/plugin/src/lib.rs"),
+                    "pub fn render() -> u8 { 1 }\n",
+                ),
+                _ => {}
+            }
             Ok(path)
         }
 
@@ -1824,7 +1845,11 @@ mod tests {
                 artifact_io_error("write fake optimize output", output, source)
             })?;
             fs::write(input, b"mutated private raw copy")
-                .map_err(|source| artifact_io_error("mutate fake optimize input", input, source))
+                .map_err(|source| artifact_io_error("mutate fake optimize input", input, source))?;
+            if self.production_fault == Some(ProductionFault::Optimize) {
+                return Err(artifact_error("injected optimize failure"));
+            }
+            Ok(())
         }
 
         fn strip_wasm(&mut self, input: &Path, output: &Path) -> Result<(), XtaskError> {
@@ -1835,7 +1860,19 @@ mod tests {
             fs::write(output, stripped)
                 .map_err(|source| artifact_io_error("write fake strip output", output, source))?;
             fs::write(input, b"mutated private copy")
-                .map_err(|source| artifact_io_error("mutate fake strip input", input, source))
+                .map_err(|source| artifact_io_error("mutate fake strip input", input, source))?;
+            match self.production_fault {
+                Some(ProductionFault::Strip) => {
+                    return Err(artifact_error("injected strip failure"));
+                }
+                Some(ProductionFault::ToolIdentityChange) => {
+                    self.identity
+                        .rustc_version
+                        .push_str(" (changed during strip)");
+                }
+                _ => {}
+            }
+            Ok(())
         }
 
         fn rename(&mut self, from: &Path, to: &Path) -> io::Result<()> {
@@ -1973,6 +2010,8 @@ mod tests {
                     rustflags: Some("-C target-feature=+bulk-memory".to_string()),
                     cargo_encoded_rustflags: None,
                 },
+                production_fault: None,
+                raw_contents: "raw-wasm",
                 rename_count: 0,
                 fail_rename_at: None,
             }
@@ -2463,6 +2502,96 @@ mod tests {
 
         assert!(!spec.output_directory().join("obsolete.txt").exists());
         verify_with_runtime(&spec, &mut fixture.runtime()).unwrap();
+    }
+
+    #[test]
+    fn production_failures_preserve_verified_artifacts_and_allow_retry() {
+        for (fault, expected_error) in [
+            (ProductionFault::Build, "injected build failure"),
+            (ProductionFault::Optimize, "injected optimize failure"),
+            (ProductionFault::Strip, "injected strip failure"),
+            (
+                ProductionFault::SourceChange,
+                "artifact input tree changed while profile",
+            ),
+            (
+                ProductionFault::ToolIdentityChange,
+                "artifact toolchain or effective Rust flags changed while profile",
+            ),
+        ] {
+            let fixture = Fixture::new();
+            let spec = fixture.spec("publish");
+            let previous = produce_with_runtime(&spec, &mut fixture.runtime()).unwrap();
+            let previous_manifest = previous.manifest.clone();
+            drop(previous);
+            let read_artifact_files = || {
+                directory_entries(&spec.output_directory())
+                    .unwrap()
+                    .into_iter()
+                    .map(|name| {
+                        let bytes = fs::read(spec.output_directory().join(&name)).unwrap();
+                        (name, bytes)
+                    })
+                    .collect::<BTreeMap<_, _>>()
+            };
+            let previous_files = read_artifact_files();
+            let mut runtime = fixture.runtime();
+            runtime.production_fault = Some(fault);
+            runtime.raw_contents = "replacement-wasm";
+
+            let error = produce_with_runtime(&spec, &mut runtime).unwrap_err();
+
+            assert!(
+                error.to_string().contains(expected_error),
+                "fault={fault:?}: {error}"
+            );
+            assert_eq!(read_artifact_files(), previous_files, "fault={fault:?}");
+            assert_eq!(
+                verify_directory(
+                    &spec,
+                    &spec.output_directory(),
+                    &previous_manifest.input,
+                    &previous_manifest.tools,
+                )
+                .unwrap(),
+                previous_manifest,
+                "fault={fault:?}"
+            );
+            let root_entries = fs::read_dir(spec.artifact_root())
+                .unwrap()
+                .map(|entry| entry.unwrap().file_name().into_string().unwrap())
+                .collect::<BTreeSet<_>>();
+            assert_eq!(
+                root_entries,
+                BTreeSet::from([".locks".to_string(), "publish".to_string()]),
+                "fault={fault:?}"
+            );
+            let lock = OpenOptions::new()
+                .read(true)
+                .write(true)
+                .open(spec.artifact_root().join(".locks/publish.lock"))
+                .unwrap();
+            fs2::FileExt::try_lock_exclusive(&lock)
+                .unwrap_or_else(|error| panic!("fault={fault:?}: profile lock leaked: {error}"));
+            drop(lock);
+
+            runtime.production_fault = None;
+            let retried = produce_with_runtime(&spec, &mut runtime)
+                .unwrap_or_else(|error| panic!("fault={fault:?}: retry failed: {error}"));
+            assert_eq!(
+                fs::read(retried.wasm_path()).unwrap(),
+                b"stripped:optimized:replacement-wasm",
+                "fault={fault:?}"
+            );
+            let retried_manifest = retried.manifest.clone();
+            assert_ne!(retried_manifest, previous_manifest, "fault={fault:?}");
+            drop(retried);
+            assert_eq!(
+                verify_with_runtime(&spec, &mut runtime).unwrap().manifest,
+                retried_manifest,
+                "fault={fault:?}"
+            );
+        }
     }
 
     #[test]

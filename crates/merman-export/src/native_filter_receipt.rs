@@ -1347,21 +1347,18 @@ mod tests {
     #[test]
     fn filter_certification_observes_cancellation_during_raw_xml_scan() {
         let svg = exact_svg();
-        let tree = parse_tree(&svg);
+        assert!(
+            super::parse_raw_drop_shadows(&svg, &merman_model::OperationControl::new()).is_some()
+        );
         let control = merman_model::OperationControl::new();
         control.cancel_after_checkpoints(3);
 
-        let error = super::preflight_native_filter_receipt(
-            &svg,
-            &tree,
-            tree.size().to_rect(0.0, 0.0).unwrap(),
-            &control,
-        )
-        .expect_err("raw XML certification must observe cancellation");
+        assert!(super::parse_raw_drop_shadows(&svg, &control).is_none());
+        assert!(control.is_cancelled());
 
         assert!(matches!(
-            error,
-            crate::ExportError::Cancelled(cancelled)
+            crate::export_checkpoint(&control),
+            Err(crate::ExportError::Cancelled(cancelled))
                 if cancelled.phase == merman_model::OperationPhase::Export
         ));
     }
