@@ -112,9 +112,9 @@ cargo run -p xtask -- gen-mermaid-reference
 
 This command owns `crates/merman-model/src/baseline.rs`,
 `crates/xtask/src/generated/mermaid_reference.rs`, and
-`playground/src/generated/mermaid-reference.ts`. `crates/merman-core/src/baseline.rs` intentionally
-re-exports the generated constants; verify that its public baseline still resolves to the new tag,
-version, and suffix instead of hand-editing a second version source.
+`playground/src/generated/mermaid-reference.ts`. Core consumes the model-owned constants
+internally; the facade exposes them through `merman::baseline`. Verify that these consumers
+resolve to the selected tag, version, and suffix instead of hand-editing another version source.
 
 Never hand-edit generated Rust, TypeScript, runtime-version, provenance, or package projections.
 Verify the clean-clone graph:

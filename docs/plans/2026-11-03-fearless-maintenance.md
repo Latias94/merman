@@ -275,6 +275,12 @@ Exercise true final Web/Node/Typst consumers when their artifacts or protocols c
 Run integrated format, warnings-denied lint, relevant workspace tests, and independent
 correctness/security/contract reviews before declaring completion.
 
+Development probes may run while unrelated workers author changes. Completion
+evidence is collected only after the relevant unit and dependency-file owners
+have handed off stable inputs. Formatting and generation obey the same rule.
+Later related changes invalidate that evidence and require the affected checks
+to run again; unrelated work need not freeze the whole repository.
+
 ## Definition of Done
 
 All eleven audited responsibilities are resolved in the final implementation;

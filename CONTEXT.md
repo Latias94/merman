@@ -14,6 +14,10 @@ the public surface.
 
 Primary capability areas:
 
+- `merman-model`: canonical family data, configuration values, frozen presentation
+  data, and shared lifecycle, operation, runtime, and resource contracts.
+- `merman-markup`: shared HTML/URL safety, CSS structural predicates, and color
+  operations used by source ingestion and graphical output.
 - `merman-core`: detection, preprocessing, configuration merge, parsing,
   sanitization, compatibility semantic JSON, parser-backed editor facts, and typed render model
   projection.
@@ -36,11 +40,11 @@ Authoritative baseline sources:
 
 - `tools/upstreams/REPOS.lock.json`
 - `docs/adr/0001-upstream-baseline.md`
-- `crates/merman-core/src/baseline.rs`
+- `crates/merman-model/src/baseline.rs`
 
 Historical implementation comments may still name the Mermaid release where an algorithm was first
 ported. Current assets and APIs must instead use the owning registry's
-`pinned_mermaid_baseline()` constructor or constants from `merman_core::baseline`; stale version
+`pinned_mermaid_baseline()` constructor or constants from `merman_model::baseline`; stale version
 suffixes are not an authority for current behavior.
 
 ## Architecture Boundaries
@@ -52,7 +56,10 @@ Current contract:
   behavior-bearing module. Public adapters choose input/output shape; they do not rebuild that flow.
 - The **Parse Pipeline** owns preprocessing, detection or known-type metadata projection, runtime
   date hooks, family dispatch, lenient error behavior, timing diagnostics, source remapping, and
-  common sanitization. `Engine` remains the public facade; family modules own grammar meaning.
+  sanitization orchestration. Family construction owns source sanitization where its model
+  requires it; custom JSON admission still sanitizes at the pipeline boundary. `SemanticParser`
+  owns lean semantic requests; `MermaidEngine` owns presentation-aware parsing. Family modules
+  own grammar meaning.
 - **Diagram Family Facts** are the single pinned-baseline catalog for ids, aliases, detector order,
   semantic/editor/render adapters, config namespaces, authoring headers, public metadata, and
   admission capability. The complete language catalog is invariant across feature combinations;
@@ -104,7 +111,8 @@ Current non-goal:
 - Architecture issue ledger:
   `docs/quality/ARCHITECTURE_ISSUES_2026-06-01.md`
 - Family-owned architecture contract:
-  `docs/adr/0073-family-owned-diagram-architecture.md`
+  `docs/adr/0073-family-owned-diagram-architecture.md` and
+  `docs/adr/0099-model-and-source-boundaries.md`
 - Current config/frontmatter support:
   `docs/alignment/CONFIG_FRONTMATTER_SUPPORT.md`
 - Upstream baseline policy:
@@ -136,6 +144,7 @@ Prefer focused gates first, then widen only when the touched surface needs it.
 - For Playground changes, run hermetic source/manifest tests first, then prepared unit/build gates.
   Chromium desktop and Firefox/WebKit smoke are mandatory browser lanes; focused Chromium mobile
   interactions are an explicit on-demand lane with a separate real-device residual checklist.
-- For release-level confidence, use the documented strict gate in
-  `docs/workstreams/fearless-refactor/GATES.md` or the current `xtask verify`
-  command set.
+- For verification ownership and current feature recipes, use
+  `docs/development/CI.md`, the affected package manifests, and `xtask verify`.
+  `cargo run --locked -p xtask -- verify --strict` runs the integrated strict gate;
+  select focused owners first rather than copying historical workstream commands.
