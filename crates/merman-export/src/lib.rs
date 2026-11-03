@@ -1932,7 +1932,7 @@ fn prepare_raster_source_on_backend_stack(
         )?,
         None => None,
     };
-    let font_plan = font_plan.finish_with_tree(&tree);
+    let font_plan = font_plan.finish_with_tree(&tree, control)?;
     #[cfg(feature = "native-fonts")]
     if let Some(context) = &options.font_context {
         check_export_glyph_coverage(context, font_plan)?;
@@ -2282,7 +2282,7 @@ fn parse_pdf_tree(
         context.check()?;
     }
     let tree = tree?;
-    let font_plan = font_plan.finish_with_tree(&tree);
+    let font_plan = font_plan.finish_with_tree(&tree, control)?;
     #[cfg(feature = "native-fonts")]
     if let Some(context) = &options.font_context {
         check_export_glyph_coverage(context, font_plan)?;
