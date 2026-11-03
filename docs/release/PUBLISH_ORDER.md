@@ -24,7 +24,7 @@ Complete [preflight 41453348164](https://github.com/Latias94/merman/actions/runs
 | Native C/WASI SDK | All 18 archives and 18 SHA-256 sidecars are public. Anonymous archive bytes match the original producer artifacts; manifests, catalogs, ABI, licenses and payload hashes pass verification. Parsed public sidecars match each archive. One verified source/tag/signer attestation covers all 18 archive digests. | [41501709585](https://github.com/Latias94/merman/actions/runs/41501709585), producer preflight above |
 | Web npm | All five packages at `0.10.0-alpha.1` under `alpha`. Integrities, public tarballs and registry provenance match the original frozen group from artifact `13166603161`; artifact digest `sha256:33088b6f1431b427d2bf7782a55759436b2c05a27e57d7da814742eed1a5a565`. A fresh registry consumer verifies five registry signatures and five attestations. `latest=0.9.2` and all other tags were retained at publication. | [41491775050](https://github.com/Latias94/merman/actions/runs/41491775050), attempt 1 |
 
-The explicit [bootstrap 41491262832](https://github.com/Latias94/merman/actions/runs/41491262832) first published three names using the configured Actions environment token. Their original `.crate` bytes match the public downloads, API and sparse index. They have no OIDC attestation; the normal publisher retained matching accepted bytes. The maintainer will configure repository `Latias94/merman`, workflow `release-crates.yml`, environment `crates.io` for each name before its next new-version publication.
+The explicit [bootstrap 41491262832](https://github.com/Latias94/merman/actions/runs/41491262832) first published three names using the configured Actions environment token. Their original `.crate` bytes match the public downloads, API and sparse index. They have no OIDC attestation; the normal publisher retained matching accepted bytes. On 2026-11-03, the maintainer confirmed that Trusted Publishing is configured for all three names using repository `Latias94/merman`, workflow `release-crates.yml` and environment `crates.io`. The next new-version upload will exercise those OIDC bindings; no accepted alpha artifact is republished to test them.
 
 | First-published crate | Accepted SHA-256 |
 | --- | --- |
@@ -35,6 +35,20 @@ The explicit [bootstrap 41491262832](https://github.com/Latias94/merman/actions/
 The CLI run's first macOS ARM64 builder also never received a hosted runner. Its single-job rerun retained the other four targets and passed all dependent native verification, attestation and upload. Neither recovery moved the tag or changed accepted package bytes. The public Release notes present the theme gallery, migration examples and installation-guide links. Delivery scope, deferred bindings and artifact receipts are recorded here. After release qualification, the previously paused Dependabot CI `41415708144` was resumed.
 
 Node, Python, Flutter and Android retained public `0.9.2` at the alpha completion boundary; Apple retained legacy `0.9.3`. Stable package managers, VS Code Marketplace, new SwiftPM repository rollout and Maven Central were outside this alpha. The newly authorized stable binding backfill below is a separate operation from the immutable `v0.9.3` source; it does not expand the alpha's delivered channels.
+
+## 0.10.0-alpha.1 platform backfill
+
+On 2026-11-03, the maintainer explicitly requested completing the remaining alpha platform bindings. All selected products retain immutable source `808f4c406e3453b0fa492b98cf7075a539811f1f`, tree `1c3ede040366d16672a7678cc2f5f28148e1b024`, and the successful complete preflight above. Published crates, CLI/LSP, Web and C/WASI SDK bytes are unchanged. Stable `0.9.3` tags and registry tags remain independent.
+
+| Selected platform | Current preparation or delivery | Owner |
+| --- | --- | --- |
+| Apple | Selected: seven version-matched XCFramework/local SwiftPM/remote-tree assets. Public Git-based SwiftPM installation requires a separately selected delivery repository and exact remote consumer proof. | [41563756795](https://github.com/Latias94/merman/actions/runs/41563756795), immutable alpha workflow/source |
+| Python | Selected: all five wheels on GitHub Release and PyPI as `0.10.0a1`; GNU Linux uses glibc 2.28. | [41563699231](https://github.com/Latias94/merman/actions/runs/41563699231), immutable alpha workflow/source |
+| Flutter | Selected: thin facade plus all target-pinned native assets. `flutter-v0.10.0-alpha.1` points at the same alpha source; its prerelease exists before the dependent native uploader. | [41564915086](https://github.com/Latias94/merman/actions/runs/41564915086), tag-triggered owner |
+| Node | Selected: complete nine-member group under `alpha`, preserving stable `latest=0.9.3`. The two new Linux ARM64 names need first publication and future trusted-publisher registration; local npm authentication is being refreshed. Build and retain one exact group before bootstrap, then resume only that run's publisher. | Workflow-only bootstrap preflight in preparation |
+| Android | Selected: qualified AAR and complete Maven repository ZIP with checksums. The current owner unnecessarily couples these GitHub assets to Central signing; a workflow-only correction separates the existing installable artifact route. Maven Central signing/namespace remain unconfigured and cannot be claimed as delivered. | Workflow-only correction in preparation |
+
+The three first-published Rust crate names now have maintainer-confirmed Trusted Publishing configuration. Their original bootstrap provenance boundary remains recorded above; configuration does not retroactively add an attestation or justify resending accepted versions.
 
 ## 0.10.0-alpha.1 preparation
 
