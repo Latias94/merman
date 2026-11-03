@@ -97,4 +97,5 @@ usvg = { workspace = true, optional = true, features = ["text"] }
 
 [dev-dependencies]
 base64.workspace = true
+merman-model = { workspace = true, features = ["test-support"] }
 png.workspace = true

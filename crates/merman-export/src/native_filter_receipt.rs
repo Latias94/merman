@@ -1,5 +1,6 @@
 use std::collections::{BTreeMap, HashSet};
 
+use merman_model::OperationControl;
 use merman_render::__private::{
     EffectColorSpace, EffectComposition, EffectInput, MAX_NATIVE_SHADOW_STAGES,
     NativeSvgFilterApplication, NativeSvgFilterReceipt, NativeSvgFilterUnits, NativeSvgShadowStage,
@@ -55,15 +56,24 @@ pub(super) fn preflight_native_filter_receipt(
     svg: &str,
     tree: &usvg::Tree,
     viewport: usvg::Rect,
-) -> Option<NativeSvgFilterReceipt> {
-    let shadows = parse_raw_drop_shadows(svg)?;
-    if !resolved_tree_matches(tree, &shadows, viewport) {
-        return None;
-    }
-    NativeSvgFilterReceipt::from_applications(shadows)
+    control: &OperationControl,
+) -> crate::Result<Option<NativeSvgFilterReceipt>> {
+    crate::export_checkpoint(control)?;
+    let receipt = (|| {
+        let shadows = parse_raw_drop_shadows(svg, control)?;
+        if !resolved_tree_matches(tree, &shadows, viewport, control) {
+            return None;
+        }
+        NativeSvgFilterReceipt::from_applications(shadows)
+    })();
+    crate::export_checkpoint(control)?;
+    Ok(receipt)
 }
 
-fn parse_raw_drop_shadows(svg: &str) -> Option<Vec<NativeSvgFilterApplication>> {
+fn parse_raw_drop_shadows(
+    svg: &str,
+    control: &OperationControl,
+) -> Option<Vec<NativeSvgFilterApplication>> {
     let mut reader = NsReader::from_str(svg);
     reader.config_mut().enable_all_checks(true);
     let mut depth = 0usize;
@@ -72,6 +82,7 @@ fn parse_raw_drop_shadows(svg: &str) -> Option<Vec<NativeSvgFilterApplication>> 
     let mut references = BTreeMap::<String, usize>::new();
 
     loop {
+        crate::export_checkpoint(control).ok()?;
         match reader.read_event().ok()? {
             Event::Start(element) => {
                 record_typed_reference(&reader, &element, &mut references).ok()?;
@@ -144,6 +155,7 @@ fn parse_raw_drop_shadows(svg: &str) -> Option<Vec<NativeSvgFilterApplication>> 
 
     let mut shadows = Vec::with_capacity(references.len());
     for (filter_id, reference_count) in references {
+        crate::export_checkpoint(control).ok()?;
         if reference_count != 1 {
             return None;
         }
@@ -790,6 +802,7 @@ fn resolved_tree_matches(
     tree: &usvg::Tree,
     shadows: &[NativeSvgFilterApplication],
     viewport: usvg::Rect,
+    control: &OperationControl,
 ) -> bool {
     if tree.filters().len() != shadows.len() {
         return false;
@@ -800,6 +813,9 @@ fn resolved_tree_matches(
         .collect::<BTreeMap<_, _>>();
     let mut resolved_ids = HashSet::with_capacity(tree.filters().len());
     for filter in tree.filters() {
+        if crate::export_checkpoint(control).is_err() {
+            return false;
+        }
         let Some(shadow) = expected.get(filter.id()) else {
             return false;
         };
@@ -820,6 +836,7 @@ fn resolved_tree_matches(
         &mut visited,
         viewport,
         false,
+        control,
     )
     .is_none()
     {
@@ -1103,7 +1120,9 @@ fn visit_group(
     visited: &mut HashSet<*const usvg::Group>,
     viewport: usvg::Rect,
     ancestor_clipped: bool,
+    control: &OperationControl,
 ) -> Option<TextPaint> {
+    crate::export_checkpoint(control).ok()?;
     if !visited.insert(std::ptr::from_ref(group)) {
         return Some(TextPaint::default());
     }
@@ -1113,10 +1132,12 @@ fn visit_group(
         ..TextPaint::default()
     };
     for node in group.children() {
+        crate::export_checkpoint(control).ok()?;
         match node {
             usvg::Node::Group(child) => {
-                let child_paint =
-                    visit_group(child, expected, references, visited, viewport, clipped)?;
+                let child_paint = visit_group(
+                    child, expected, references, visited, viewport, clipped, control,
+                )?;
                 if let Some(bounds) = child_paint.bounds {
                     text_paint.include(bounds.transform(child.transform())?)?;
                     text_paint.restricted |= child_paint.restricted;
@@ -1134,9 +1155,10 @@ fn visit_group(
             let mut subroots_match = true;
             node.subroots(|subroot| {
                 if subroots_match {
-                    subroots_match =
-                        visit_group(subroot, expected, references, visited, viewport, true)
-                            .is_some();
+                    subroots_match = visit_group(
+                        subroot, expected, references, visited, viewport, true, control,
+                    )
+                    .is_some();
                 }
             });
             if !subroots_match {
@@ -1185,12 +1207,12 @@ fn visit_group(
     }
 
     if let Some(clip_path) = group.clip_path()
-        && !visit_clip_path(clip_path, expected, references, visited, viewport)
+        && !visit_clip_path(clip_path, expected, references, visited, viewport, control)
     {
         return None;
     }
     if let Some(mask) = group.mask()
-        && !visit_mask(mask, expected, references, visited, viewport)
+        && !visit_mask(mask, expected, references, visited, viewport, control)
     {
         return None;
     }
@@ -1257,6 +1279,7 @@ fn visit_clip_path(
     references: &mut BTreeMap<String, usize>,
     visited: &mut HashSet<*const usvg::Group>,
     viewport: usvg::Rect,
+    control: &OperationControl,
 ) -> bool {
     visit_group(
         clip_path.root(),
@@ -1265,11 +1288,12 @@ fn visit_clip_path(
         visited,
         viewport,
         true,
+        control,
     )
     .is_some()
-        && clip_path
-            .clip_path()
-            .is_none_or(|nested| visit_clip_path(nested, expected, references, visited, viewport))
+        && clip_path.clip_path().is_none_or(|nested| {
+            visit_clip_path(nested, expected, references, visited, viewport, control)
+        })
 }
 
 fn visit_mask(
@@ -1278,11 +1302,21 @@ fn visit_mask(
     references: &mut BTreeMap<String, usize>,
     visited: &mut HashSet<*const usvg::Group>,
     viewport: usvg::Rect,
+    control: &OperationControl,
 ) -> bool {
-    visit_group(mask.root(), expected, references, visited, viewport, true).is_some()
-        && mask
-            .mask()
-            .is_none_or(|nested| visit_mask(nested, expected, references, visited, viewport))
+    visit_group(
+        mask.root(),
+        expected,
+        references,
+        visited,
+        viewport,
+        true,
+        control,
+    )
+    .is_some()
+        && mask.mask().is_none_or(|nested| {
+            visit_mask(nested, expected, references, visited, viewport, control)
+        })
 }
 
 #[cfg(test)]
@@ -1308,6 +1342,49 @@ mod tests {
 
     fn parse_tree(svg: &str) -> usvg::Tree {
         usvg::Tree::from_str(svg, &usvg::Options::default()).expect("valid SVG test tree")
+    }
+
+    #[test]
+    fn filter_certification_observes_cancellation_during_raw_xml_scan() {
+        let svg = exact_svg();
+        let tree = parse_tree(&svg);
+        let control = merman_model::OperationControl::new();
+        control.cancel_after_checkpoints(3);
+
+        let error = super::preflight_native_filter_receipt(
+            &svg,
+            &tree,
+            tree.size().to_rect(0.0, 0.0).unwrap(),
+            &control,
+        )
+        .expect_err("raw XML certification must observe cancellation");
+
+        assert!(matches!(
+            error,
+            crate::ExportError::Cancelled(cancelled)
+                if cancelled.phase == merman_model::OperationPhase::Export
+        ));
+    }
+
+    #[test]
+    fn filter_certification_observes_cancellation_during_resolved_tree_walk() {
+        let svg = exact_svg();
+        let tree = parse_tree(&svg);
+        let control = merman_model::OperationControl::new();
+        let shadows = parse_raw_drop_shadows(&svg).expect("valid raw filter definitions");
+        control.cancel_after_checkpoints(3);
+
+        assert!(!resolved_tree_matches(
+            &tree,
+            &shadows,
+            tree.size().to_rect(0.0, 0.0).unwrap(),
+            &control,
+        ));
+        assert!(matches!(
+            crate::export_checkpoint(&control),
+            Err(crate::ExportError::Cancelled(cancelled))
+                if cancelled.phase == merman_model::OperationPhase::Export
+        ));
     }
 
     fn independent_svg(color_space: &str) -> String {
@@ -1384,7 +1461,17 @@ mod tests {
         svg: &str,
         tree: &usvg::Tree,
     ) -> Option<NativeSvgFilterReceipt> {
-        super::preflight_native_filter_receipt(svg, tree, tree.size().to_rect(0.0, 0.0)?)
+        super::preflight_native_filter_receipt(
+            svg,
+            tree,
+            tree.size().to_rect(0.0, 0.0)?,
+            &OperationControl::new(),
+        )
+        .expect("active filter certification")
+    }
+
+    fn parse_raw_drop_shadows(svg: &str) -> Option<Vec<NativeSvgFilterApplication>> {
+        super::parse_raw_drop_shadows(svg, &OperationControl::new())
     }
 
     fn parse_text_tree(svg: &str) -> usvg::Tree {
@@ -1567,8 +1654,14 @@ mod tests {
         );
         let tree = parse_text_tree(&source);
         let reference_viewport = usvg::Rect::from_xywh(0.0, 0.0, 512.0, 512.0).unwrap();
-        let expected = super::preflight_native_filter_receipt(&source, &tree, reference_viewport)
-            .expect("the full reference viewport contains the effect");
+        let expected = super::preflight_native_filter_receipt(
+            &source,
+            &tree,
+            reference_viewport,
+            &OperationControl::new(),
+        )
+        .expect("active filter certification")
+        .expect("the full reference viewport contains the effect");
         let metadata =
             crate::parse_root_svg_metadata(&source, &crate::OperationControl::new()).unwrap();
         let (geometry, translated) = crate::raster_geometry_for_svg(metadata, &tree);
@@ -1581,7 +1674,13 @@ mod tests {
         )
         .unwrap();
         assert_eq!(
-            super::preflight_native_filter_receipt(&source, &tree, actual_viewport),
+            super::preflight_native_filter_receipt(
+                &source,
+                &tree,
+                actual_viewport,
+                &OperationControl::new(),
+            )
+            .expect("active filter certification"),
             Some(expected),
             "dimensionless content fitting retains the exact unclipped glyph-glow receipt"
         );
@@ -1590,7 +1689,9 @@ mod tests {
                 &source,
                 &tree,
                 tree.root().abs_stroke_bounding_box(),
+                &OperationControl::new(),
             )
+            .expect("active filter certification")
             .is_none(),
             "the old stroke-only content crop excludes glow and must never be certified"
         );
@@ -1623,7 +1724,13 @@ mod tests {
         )
         .unwrap();
         assert_eq!(
-            super::preflight_native_filter_receipt(&source, &tree, actual_viewport),
+            super::preflight_native_filter_receipt(
+                &source,
+                &tree,
+                actual_viewport,
+                &OperationControl::new(),
+            )
+            .expect("active filter certification"),
             Some(expected),
             "raster preparation preserves the exact unclipped text-shadow receipt"
         );

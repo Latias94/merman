@@ -1921,15 +1921,17 @@ fn prepare_raster_source_on_backend_stack(
     }
     let tree = tree?;
     let (geometry, translate_min_to_origin) = raster_geometry_for_svg(root_metadata, &tree);
-    let native_filter_receipt = usvg::Rect::from_xywh(
+    let native_filter_receipt = match usvg::Rect::from_xywh(
         geometry.min_x,
         geometry.min_y,
         geometry.width,
         geometry.height,
-    )
-    .and_then(|viewport| {
-        native_filter_receipt::preflight_native_filter_receipt(source, &tree, viewport)
-    });
+    ) {
+        Some(viewport) => native_filter_receipt::preflight_native_filter_receipt(
+            source, &tree, viewport, control,
+        )?,
+        None => None,
+    };
     let font_plan = font_plan.finish_with_tree(&tree);
     #[cfg(feature = "native-fonts")]
     if let Some(context) = &options.font_context {
@@ -2026,9 +2028,12 @@ fn prepare_pdf_on_backend_stack(
         } else {
             false
         };
-    let native_filter_receipt = tree.size().to_rect(0.0, 0.0).and_then(|viewport| {
-        native_filter_receipt::preflight_native_filter_receipt(source, &tree, viewport)
-    });
+    let native_filter_receipt = match tree.size().to_rect(0.0, 0.0) {
+        Some(viewport) => native_filter_receipt::preflight_native_filter_receipt(
+            source, &tree, viewport, control,
+        )?,
+        None => None,
+    };
     let conversion_plan = plan_svg_conversion(&tree, options.conversion_limits, control)?;
     let embedded_image_plan =
         plan_embedded_images(&tree, options.embedded_image_limit, data_plan, control)?;
