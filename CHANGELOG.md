@@ -6,7 +6,7 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
 
 ## [0.10.0-alpha.1] - 2026-11-02
 
-Changes since the [0.9.3 maintenance release](#093---2026-10-30); see [upgrade actions](#breaking-changes-and-upgrade-actions) before migrating. Use matching wrappers and runtime artifacts; the [host installation guide](docs/release/PREBUILT_PRODUCTS.md) lists each channel's independently published version.
+Changes since [0.9.3](#093---2026-10-30); see [upgrade actions](#breaking-changes-and-upgrade-actions) before migrating. Use the [host installation guide](docs/release/PREBUILT_PRODUCTS.md) to choose a package and keep its wrapper and runtime artifacts on the same version.
 
 ### Diagram themes (alpha)
 
@@ -65,18 +65,19 @@ try {
 
 For an interactive page, Web `mountDiagram` manages redraws, resizing and cleanup while retaining the last successful diagram if an update fails. Select browser text measurement when layout must match the page's fonts, and opt into `layout.adaptation: "fit-width"` for responsive Kanban columns. See the [Web lifecycle examples](platforms/web/README.md#maintain-a-mounted-diagram) and [Rust migration](docs/migrations/render-reuse-host-integration.md).
 
-### Binding installation and delivery
+### Host integration changes
 
-Ordinary Apple, Android, Python, Flutter, native Node and Node-WASM SVG products now include math. Output codecs and host font services remain separate capabilities. The [host installation guide](docs/release/PREBUILT_PRODUCTS.md) explains supported targets and the publication steps still needed for each channel. [#265](https://github.com/Latias94/merman/pull/265), [#266](https://github.com/Latias94/merman/pull/266)
+All five Web packages export a matching `./wasm` asset for bundler or self-hosted loading. Full/render retain their existing math support.
 
-| Host | Installation change |
+The alpha source adds SVG formula rendering to Apple, Android, Python, Flutter, native Node and Node-WASM builds, together with the integration improvements below. Use the [host installation guide](docs/release/PREBUILT_PRODUCTS.md) for matching prebuilt versions or source-build instructions. Output codecs and host font services remain separate capabilities. [#265](https://github.com/Latias94/merman/pull/265), [#266](https://github.com/Latias94/merman/pull/266)
+
+| Host | Change in the alpha source |
 | --- | --- |
-| Swift / Apple | A complete local SwiftPM ZIP includes the facade, resources and XCFramework. A thin remote package tree references the matching binary by URL and checksum; URL-based installation awaits a hosted delivery repository and tag. |
-| Android | Release candidates include the selected-version Maven repository and a signed Central upload bundle. Central publication remains a separate step. |
-| Python | Prebuilt wheel candidates cover macOS ARM64/x86-64, GNU Linux ARM64/x86-64 and Windows x86-64. The Linux baseline is manylinux 2.28; supported wheel installs need no Rust compiler. |
+| Swift / Apple | A complete local SwiftPM ZIP includes the facade, resources and XCFramework. A thin remote package pins the binary URL and checksum; URL-based installation requires a hosted package repository and tag. |
+| Android | A versioned Maven repository archive supports local Gradle resolution. The signed Central bundle remains a separate publication handoff. |
+| Python | Wheel targets expand to macOS ARM64/x86-64, GNU Linux ARM64/x86-64 and Windows x86-64. The Linux baseline is manylinux 2.28; supported wheel installs need no Rust compiler. |
 | Flutter / native Dart | A thin Dart package downloads and verifies only the selected native target during the build. Local assets, mirrors and offline builds have explicit options. Flutter apps require `3.47.7+`; native Dart retains `3.10+`. |
 | Node | Native optional packages add GNU and musl Linux ARM64. Root-package installation selects the matching native package; Node-WASM remains an explicit alternative. |
-| Browser / Worker | All five Web packages export a matching `./wasm` asset for bundler or self-hosted loading. Full/render retain their existing math support. |
 
 ### Lighter Rust embedding
 

@@ -70,10 +70,12 @@ published ABI boundaries, historical evidence identities and unknown-version rej
   its artifact. Independently published wrappers use their own intended publication date.
 - Prepare normal install/import examples as documentation of the target package. Keep public binary
   download instructions for deferred channels at their verified published versions. Keep detailed
-  availability evidence, pending PRs, source identities, and receipts in operator records; summarize
-  actual channel delivery in the public Release body.
-- For a selected headless SDK release, describe the `standard`, `math`, and `full` choices and
-  supported transports in user-facing notes; claim downloads are available only after the SDK
+  availability evidence, pending PRs, source identities, and receipts in operator records. Write
+  the public Release body for users: final changes, upgrade actions, examples and relevant limits.
+  Link the host installation guide for package/version choices instead of copying a channel ledger.
+- For a selected headless SDK release, link the verified SDK guide. Describe profile and transport
+  choices in release notes when they change or require an upgrade action; keep unchanged choices
+  and the full target matrix in the guide. Claim downloads are available only after the SDK
   publisher succeeds and the matching GitHub Release assets are verified.
 - Describe ordinary prebuilt SVG products through the current artifact recipes and
   [host guide](../../../docs/release/PREBUILT_PRODUCTS.md). Keep source feature choices,
@@ -179,9 +181,10 @@ both the exact native asset downloads and the reconciled pub.dev facade.
 For SDK publication, reconcile all 18 archives and their 18 SHA-256 sidecars against the verified
 producer run and the matching GitHub Release before marking the SDK available; the release body
 must link only to assets confirmed present on that release.
-The public Release body must list the channels actually delivered and the deferred channels still
-on their verified older versions. Keep selected channels awaiting delivery explicitly pending;
-retain detailed evidence in Publish Order without treating deferred channels as unfinished scope.
+Record delivered, pending and deferred channels in Publish Order, and keep the host installation
+guide accurate. Release notes and changelogs describe user-visible changes and required actions;
+do not append upload counts, workflow recovery history or publication checklists. Link only verified
+installation choices, and explain a delivery limitation there when it affects the reader's next step.
 Confirm the latest commit's relevant CI after workflow repairs; identify cancellations or external
 failures separately from source regressions.
 
