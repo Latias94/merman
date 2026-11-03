@@ -18,6 +18,8 @@ use crate::options::{OrderingStrategy, PortConstraints, PortSortingStrategy};
 use crate::work::{WorkControl, WorkError, checked_add, checked_mul, checked_sum};
 
 pub mod counting;
+#[cfg(test)]
+mod feedback_work_tests;
 pub mod sweep;
 
 pub(crate) fn initialize_crossing_minimization_port_ids(graph: &mut LGraph) {
@@ -707,13 +709,35 @@ fn model_order_relation_update_work(
 ) -> Result<usize, WorkError> {
     let smaller_relations = bigger.get(&small).map_or(0, HashSet::len);
     let larger_relations = smaller.get(&large).map_or(0, HashSet::len);
-    let relation_count = checked_add(smaller_relations, larger_relations)?;
-    let set_bound = checked_add(relation_count, 1)?;
-    let per_relation = checked_add(2, checked_mul(set_bound, 2)?)?;
+    if large == small
+        || bigger
+            .get(&small)
+            .is_some_and(|relations| relations.contains(&large))
+        || smaller
+            .get(&large)
+            .is_some_and(|relations| relations.contains(&small))
+    {
+        let relation_count = checked_add(smaller_relations, larger_relations)?;
+        let set_bound = checked_add(relation_count, 1)?;
+        let per_relation = checked_add(2, checked_mul(set_bound, 2)?)?;
+        return checked_sum([
+            relation_count,
+            2,
+            checked_mul(relation_count, per_relation)?,
+        ]);
+    }
     checked_sum([
-        relation_count,
+        smaller_relations,
+        larger_relations,
         2,
-        checked_mul(relation_count, per_relation)?,
+        checked_mul(
+            smaller_relations,
+            checked_add(2, checked_mul(larger_relations, 2)?)?,
+        )?,
+        checked_mul(
+            larger_relations,
+            checked_add(2, checked_mul(smaller_relations, 2)?)?,
+        )?,
     ])
 }
 
@@ -2140,6 +2164,23 @@ mod tests {
         // Unrelated owners cannot inflate the cost of comparing this pair.
         bigger.insert(99, (100..200).collect());
         assert_eq!(model_order_relation_work(2, 3, &bigger, &smaller), Ok(3));
+    }
+
+    #[test]
+    fn model_order_relation_admission_keeps_one_sided_updates_linear() {
+        let mut bigger = HashMap::new();
+        let mut smaller = HashMap::new();
+        for owner in 0..500 {
+            update_bigger_and_smaller_associations(owner, owner + 1, &mut bigger, &mut smaller);
+        }
+        let units = model_order_relation_update_work(501, 0, &bigger, &smaller).unwrap();
+        assert!(
+            units < 2_000,
+            "one-sided update was charged as dense work: {units}"
+        );
+        update_bigger_and_smaller_associations(501, 0, &mut bigger, &mut smaller);
+        assert_eq!(bigger[&501].len(), 501);
+        assert_eq!(smaller[&0].len(), 1);
     }
 
     #[test]

@@ -54,6 +54,17 @@ also inspected for the additional provider sources absent from that supplied lis
 | `Core.melk` JSON shape/edge coordinates, label softwrapping, top-down approximators | New options are not part of the measured Rust graph API or Mermaid's emitted presets. No new JSON coordinate contract is claimed. |
 | Java classloader metadata, removed imports and formatting | No headless runtime behavior to translate. Existing EPL-2.0 selection remains; the new upstream secondary-license alternative does not require changing this crate's chosen license. |
 
+The final workspace run exposed an overestimate in relation-update admission: a single growing
+side was charged as though both sides crossed every relation. The bound now follows the two
+actual sets: their initial clones, direct inserts, and each side's clone/extend of the other set.
+It remains linear for a one-sided update and retains the product term for crossing closures.
+Feedback helper comparisons can temporarily install a reverse relation; those updates and
+self-updates retain the original conservative bound because their clone sources can grow.
+Admission still precedes mutation, arithmetic remains checked, and continuation-unwind rejection
+stays covered. The unchanged 500-table native-font ER regression failed at `14,204,116` requested
+units under the existing `14,100,000` default and passes after this correction. Neither the
+default ceiling nor its historical calibration is changed; this is not a latency measurement.
+
 ## Explicitly unclosed surfaces
 
 - New SCC/BFS/DFS cycle-breaking modes, Median crossing minimization, layer unzipping,
@@ -162,6 +173,12 @@ crates/merman-layout-elk/src/lib.rs
 ```
 
 ## Coordinator verification
+
+Coordinator follow-up on 2026-11-04: the corrected two-crate suite passed all 513 tests with
+no skips (`/tmp/merman-12.3-elk-all-green.log`). Both crate doctest owners passed, including
+the adapter's compile-fail boundary, and all-target Clippy passed with `-D warnings` after
+correcting two documentation paragraph separators. These results validate this Rust unit;
+renderer family comparisons and complete reference admission remain separate gates below.
 
 This unit did not run Cargo. The coordinator reported 7/7 focused tests passed and 511/512
 whole-crate tests passed in `/tmp/merman-12.3-elk-all.log`. The sole failure was the historical
