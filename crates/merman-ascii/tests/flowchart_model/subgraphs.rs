@@ -398,6 +398,7 @@ fn render_model_subgraph_direction_override_renders_local_left_right_layout_with
             style: Vec::new(),
             animate: None,
             animation: None,
+            step: None,
             length: 1,
         }],
         subgraphs: vec![merman_model::families::flowchart::FlowSubgraph {
@@ -411,6 +412,7 @@ fn render_model_subgraph_direction_override_renders_local_left_right_layout_with
             styles: Vec::new(),
             nodes: vec!["A".to_string(), "B".to_string()],
         }],
+        dropped_subgraph_members: Vec::new(),
         subgraph_vertex_styles: Default::default(),
         tooltips: Default::default(),
         warning_facts: Vec::new(),

@@ -405,7 +405,7 @@ fn docs_basic_geometry_preserves_swimlane_topology() {
     assert_eq!(number(request, "x"), number(triage, "x"));
     assert_eq!(number(receive, "x"), number(answer, "x"));
     assert_eq!(number(receive, "x"), number(fix, "x"));
-    assert!(number(request, "x") < number(investigate, "x"));
+    assert_eq!(number(request, "x"), number(investigate, "x"));
     assert!(number(investigate, "x") < number(receive, "x"));
     assert!(number(request, "y") < number(triage, "y"));
     assert!(number(triage, "y") < number(investigate, "y"));
@@ -420,9 +420,9 @@ fn docs_basic_geometry_preserves_swimlane_topology() {
         nodes,
         "edge-label-triage-investigate-L_triage_investigate_0",
     );
-    assert_eq!(number(code_change, "y"), number(investigate, "y"));
-    assert!(number(triage, "x") < number(code_change, "x"));
-    assert!(number(code_change, "x") < number(investigate, "x"));
+    assert_eq!(number(code_change, "x"), number(investigate, "x"));
+    assert!(number(triage, "y") < number(code_change, "y"));
+    assert!(number(code_change, "y") < number(investigate, "y"));
 
     let customer = by_id(&layout["lanes"], "Customer");
     let support = by_id(&layout["lanes"], "Support");

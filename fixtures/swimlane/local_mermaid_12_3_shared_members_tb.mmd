@@ -1,0 +1,30 @@
+---
+config:
+  look: classic
+  htmlLabels: false
+  flowchart:
+    htmlLabels: false
+---
+swimlane-beta TB
+%% Adapted from Mermaid 12.3 swimlanes/__tests__/helpers.prepareLayout.spec.ts.
+subgraph retained[Retained lane]
+  subgraph inner[Nested owner]
+    A[Shared task]
+  end
+  B[Next task]
+end
+subgraph dropped[Emptied by shared member]
+  A
+end
+subgraph used[Kept by incident edge]
+  A
+end
+subgraph partial[Kept by another member]
+  A
+  C[Remaining task]
+end
+subgraph placeholder[Authored empty lane]
+end
+A --> B
+B --> used
+B --> C

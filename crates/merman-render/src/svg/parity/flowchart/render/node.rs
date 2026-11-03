@@ -186,6 +186,8 @@ pub(in crate::svg::parity::flowchart) fn render_flowchart_node(
     let target = resolved.target;
     let shape: &str = resolved.shape;
     let node_classes = resolved.node_classes;
+    let bpmn_classes =
+        crate::flowchart::bpmn::BpmnShape::resolve(shape).map(|shape| shape.classes());
 
     let empty_classes: &[String] = &[];
     let node_classes_for_wrapper = match shape {
@@ -197,7 +199,8 @@ pub(in crate::svg::parity::flowchart) fn render_flowchart_node(
         _ => node_classes,
     };
     let wrapper_classes =
-        helpers::NodeWrapperClasses::new(class_attr_base, node_classes_for_wrapper);
+        helpers::NodeWrapperClasses::new(class_attr_base, node_classes_for_wrapper)
+            .with_extra(bpmn_classes);
     helpers::open_node_wrapper(
         out,
         helpers::NodeWrapperAttrs {

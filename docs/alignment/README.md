@@ -14,7 +14,7 @@ be corrected.
 | Primary SVG matrix and compare commands | [`../../crates/xtask/src/cmd/compare/diagrams.rs`](../../crates/xtask/src/cmd/compare/diagrams.rs) |
 | Admission consistency checks | [`../../crates/xtask/src/cmd/admission.rs`](../../crates/xtask/src/cmd/admission.rs) |
 | Family fixture admission | Per-family `_baseline-manifest.json` files under [`../../fixtures/upstream-svgs/`](../../fixtures/upstream-svgs/) |
-| Theme override behavior oracle | [`../../fixtures/_verification/theme_variables_oracle_12_2_0.json`](../../fixtures/_verification/theme_variables_oracle_12_2_0.json) |
+| Theme override behavior oracle | [`../../fixtures/_verification/theme_variables_oracle.json`](../../fixtures/_verification/theme_variables_oracle.json) |
 | Deterministic root contracts | [`../../fixtures/_verification/deterministic-root-contracts.json`](../../fixtures/_verification/deterministic-root-contracts.json) |
 | Semantic label residuals | [`../../fixtures/_verification/label-geometry-residuals.json`](../../fixtures/_verification/label-geometry-residuals.json) |
 
@@ -37,7 +37,8 @@ The paired family documents remain useful for source provenance and review, but 
 pair count, wording, and embedded paths are not standing release evidence. Rewording or
 consolidating them must not change machine admission unless a structured owner changes too.
 
-The [12.2 fixture coverage review](FIXTURE_COVERAGE_12_2.md) explains changed-behavior coverage,
+The [12.3 migration](../migrations/mermaid-12-3.md) describes current source behavior and dependency
+selection. The historical [12.2 fixture coverage review](FIXTURE_COVERAGE_12_2.md) explains changed-behavior coverage,
 primary versus family-local evidence, and useful follow-up combinations.
 
 The [fixture version policy](../../fixtures/README.md) distinguishes historical input comments

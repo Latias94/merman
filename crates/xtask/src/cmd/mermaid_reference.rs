@@ -2816,13 +2816,16 @@ mod tests {
         assert_eq!(
             packages,
             BTreeSet::from([
+                "@braintree/sanitize-url",
                 "@mermaid-js/layout-tidy-tree",
                 "@mermaid-js/mermaid-cli",
                 "@mermaid-js/mermaid-zenuml",
                 "@mermaid-js/parser",
                 "@puppeteer/browsers",
                 "@zenuml/core",
+                "cytoscape",
                 "dompurify",
+                "elkjs",
                 "esbuild",
                 "mermaid",
                 "puppeteer",

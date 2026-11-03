@@ -1,7 +1,5 @@
 use crate::model::{LayoutPoint, SwimlaneDirection, SwimlaneTitleRect};
 use indexmap::IndexMap;
-#[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
-use std::collections::{HashMap, HashSet};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) enum WorkingNodeKind {
@@ -11,12 +9,19 @@ pub(super) enum WorkingNodeKind {
     Dummy,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) enum ProducerLaneRole {
+    Pool,
+    Lane,
+}
+
 #[derive(Debug, Clone)]
 pub(super) struct WorkingNode {
     pub id: String,
     pub label: String,
     pub label_type: String,
     pub shape: String,
+    pub producer_lane_role: Option<ProducerLaneRole>,
     pub kind: WorkingNodeKind,
     pub parent_id: Option<String>,
     pub top_lane_id: Option<String>,
@@ -35,15 +40,36 @@ pub(super) struct WorkingNode {
 }
 
 impl WorkingNode {
+    pub fn drawn_size(&self) -> (f64, f64) {
+        #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
+        if let Some(shape) = crate::flowchart::bpmn::BpmnShape::resolve(&self.shape)
+            && !matches!(
+                shape,
+                crate::flowchart::bpmn::BpmnShape::Activity
+                    | crate::flowchart::bpmn::BpmnShape::Annotation
+            )
+        {
+            let geometry = shape.geometry(
+                crate::text::TextMetrics {
+                    width: 0.0,
+                    height: 0.0,
+                    line_count: 0,
+                },
+                false,
+                false,
+                false,
+            );
+            return (geometry.drawn_width, geometry.drawn_height);
+        }
+        (self.width, self.height)
+    }
+
     pub fn is_group(&self) -> bool {
         self.kind == WorkingNodeKind::Group
     }
 
     pub fn is_layout_node(&self) -> bool {
-        matches!(
-            self.kind,
-            WorkingNodeKind::Content | WorkingNodeKind::EdgeLabel | WorkingNodeKind::Dummy
-        )
+        matches!(self.kind, WorkingNodeKind::Content | WorkingNodeKind::Dummy)
     }
 }
 
@@ -76,30 +102,9 @@ pub(super) struct WorkingLayout {
 impl WorkingLayout {
     #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
     pub fn refresh_top_lane_ids(&mut self) {
-        let parents: HashMap<String, Option<String>> = self
-            .nodes
-            .iter()
-            .map(|(id, node)| (id.clone(), node.parent_id.clone()))
-            .collect();
-        let groups: HashSet<String> = self
-            .nodes
-            .iter()
-            .filter(|(_, node)| node.is_group())
-            .map(|(id, _)| id.clone())
-            .collect();
-
+        let lanes = super::lanes::LaneModel::new(&self.nodes);
         for node in self.nodes.values_mut() {
-            let mut current = node.parent_id.clone();
-            let mut top = None;
-            let mut visited = HashSet::new();
-            while let Some(parent) = current {
-                if !visited.insert(parent.clone()) || !groups.contains(&parent) {
-                    break;
-                }
-                top = Some(parent.clone());
-                current = parents.get(&parent).and_then(Clone::clone);
-            }
-            node.top_lane_id = top;
+            node.top_lane_id = lanes.lane_of(&node.id).map(str::to_string);
         }
     }
 

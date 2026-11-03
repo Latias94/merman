@@ -854,9 +854,7 @@ mod tests {
                 theme_recipe: None,
             },
             RenderSemanticModel::Mindmap(model),
-            PresentationContext::Mindmap {
-                diagram_id: "independent-mindmap".to_string(),
-            },
+            PresentationContext::None,
             &InputResourcePolicy::default(),
             &OperationControl::new(),
         )

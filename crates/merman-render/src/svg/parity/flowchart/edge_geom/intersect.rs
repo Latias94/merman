@@ -68,6 +68,12 @@ pub(in crate::svg::parity::flowchart) fn is_polygon_layout_shape(
 pub(in crate::svg::parity::flowchart) fn force_intersect_for_layout_shape(
     layout_shape: Option<&str>,
 ) -> bool {
+    if layout_shape
+        .and_then(crate::flowchart::bpmn::BpmnShape::resolve)
+        .is_some()
+    {
+        return true;
+    }
     matches!(
         layout_shape,
         Some(
@@ -934,6 +940,18 @@ pub(in crate::svg::parity::flowchart) fn intersect_for_layout_shape(
     layout_shape: Option<&str>,
     point: &crate::model::LayoutPoint,
 ) -> crate::model::LayoutPoint {
+    if let Some(shape) = layout_shape.and_then(crate::flowchart::bpmn::BpmnShape::resolve) {
+        return shape.intersect(
+            &crate::model::LayoutPoint {
+                x: node.x,
+                y: node.y,
+            },
+            node.width,
+            node.height,
+            point,
+            false,
+        );
+    }
     fn generate_full_sine_wave_points(
         x1: f64,
         y1: f64,

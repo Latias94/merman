@@ -604,6 +604,7 @@ mod tests {
             style: style.iter().map(|value| (*value).to_string()).collect(),
             animate: None,
             animation: None,
+            step: None,
             length: 1,
         }
     }

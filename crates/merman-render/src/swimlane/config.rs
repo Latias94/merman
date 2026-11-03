@@ -11,6 +11,9 @@ pub(super) const TOP_LANE_TITLE_BAND_HEIGHT: f64 = 21.0;
 pub(super) const MIN_TOP_LANE_HORIZONTAL_PADDING: f64 = 20.0;
 pub(super) const TOP_LANE_MIN_HEADER_MARGIN: f64 = 36.0;
 pub(super) const LR_TITLE_BAND_SIZE: f64 = 36.0;
+pub(super) const EDGE_LABEL_CLEARANCE: f64 = 16.0;
+pub(super) const MIN_ARROWHEAD_SPACING: f64 = 12.0;
+pub(super) const ROUTE_TOUCH_TOLERANCE: f64 = 6.0;
 
 pub(super) const ROUTER_NODE_PADDING: f64 = 8.0;
 pub(super) const HORIZONTAL_PIPE_MARGIN: f64 = 15.0;

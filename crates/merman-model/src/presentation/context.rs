@@ -17,8 +17,6 @@ pub enum PresentationContext {
     Flowchart(crate::families::flowchart::FlowchartRenderContext),
     #[cfg(feature = "diagram-class")]
     Class(crate::families::class::ClassStylePrecedenceFacts),
-    #[cfg(feature = "diagram-mindmap")]
-    Mindmap { diagram_id: String },
     #[cfg(feature = "diagram-info")]
     Info(crate::families::info::InfoOutputData),
     #[cfg(feature = "diagram-pie")]
@@ -46,8 +44,6 @@ impl PresentationContext {
             Self::Flowchart(_) => Some("flowchart"),
             #[cfg(feature = "diagram-class")]
             Self::Class(_) => Some("class"),
-            #[cfg(feature = "diagram-mindmap")]
-            Self::Mindmap { .. } => Some("mindmap"),
             #[cfg(feature = "diagram-info")]
             Self::Info(_) => Some("info"),
             #[cfg(feature = "diagram-pie")]
@@ -87,18 +83,7 @@ impl PresentationContext {
         }
     }
 
-    #[cfg(feature = "diagram-mindmap")]
-    pub fn mindmap_diagram_id(&self) -> Option<&str> {
-        match self {
-            Self::Mindmap { diagram_id } => Some(diagram_id),
-            _ => None,
-        }
-    }
-
     /// Counts the same retained authored family text as the source producer's former context.
-    ///
-    /// A frozen Mindmap operation identity remains output metadata; freezing it does not add
-    /// that metadata to the existing authored-model text budget.
     pub fn retained_text_bytes(&self) -> usize {
         match self {
             #[cfg(any(

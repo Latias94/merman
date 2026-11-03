@@ -1,0 +1,25 @@
+---
+config:
+  look: classic
+  htmlLabels: false
+  flowchart:
+    htmlLabels: false
+    wrappingWidth: 400
+---
+swimlane-beta LR
+%% Adapted from Mermaid 12.3 edgeLabelRanks.spec.ts and nestedGroupInLane.spec.ts.
+subgraph sales[Sales]
+  subgraph intake[Intake]
+    A[Receive order]
+    B[Check stock]
+  end
+  C[Confirm]
+end
+subgraph warehouse[Warehouse]
+  D[Pick]
+  E[Ship]
+end
+A -->|Reserve this label width once along the flow| B
+B --> C
+C --> D
+D --> E

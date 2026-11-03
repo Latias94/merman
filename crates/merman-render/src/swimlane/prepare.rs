@@ -1,5 +1,6 @@
 use super::config::{DEFAULT_LANE_ID, DEFAULT_LANE_PADDING, GROUP_PADDING};
-use super::working::{WorkingEdge, WorkingLayout, WorkingNode, WorkingNodeKind};
+use super::lanes::LaneModel;
+use super::working::{ProducerLaneRole, WorkingEdge, WorkingLayout, WorkingNode, WorkingNodeKind};
 use crate::flowchart::{
     FlowchartConfigView, FlowchartLabelMetricsRequest, FlowchartRenderModelRef,
     FlowchartSvgLabelOwner, FlowchartSvgLabelSidecarBuilder, FlowchartSvgWidthMode,
@@ -17,6 +18,51 @@ use merman_model::families::flowchart::{
 };
 use merman_model::presentation::PresentationConfig;
 use std::collections::{HashMap, HashSet};
+
+pub(super) fn measure_zero_width_lane_titles(
+    layout: &mut WorkingLayout,
+    model: &FlowchartModel,
+    render_context: &FlowchartRenderContext,
+    config: &PresentationConfig,
+    measurer: &dyn TextMeasurer,
+    svg_label_sidecar: Option<&FlowchartSvgLabelSidecarBuilder>,
+) {
+    let config_view = FlowchartConfigView::new(config.as_value());
+    if config_view.swimlane_title_html_labels() {
+        return;
+    }
+    let settings = svg_label_sidecar.map_or_else(
+        || config_view.layout_settings(),
+        |sidecar| sidecar.layout_settings(config.as_value()),
+    );
+    let render_model = FlowchartRenderModelRef::new(model, render_context);
+    for (index, subgraph) in model.subgraphs.iter().enumerate() {
+        let Some(lane) = layout.nodes.get_mut(&subgraph.id) else {
+            continue;
+        };
+        if !lane.is_group() || lane.shape != "swimlane" || lane.width != 0.0 {
+            continue;
+        }
+        let (classes, styles) = render_model.effective_subgraph_css(index, subgraph);
+        let style = flowchart_effective_text_style_for_classes_with_provenance(
+            &settings.text_style,
+            &model.class_defs,
+            classes,
+            styles,
+        );
+        let rows = crate::flowchart::zero_width_lane_title_rows(
+            render_model.subgraph_title_for_render(index, subgraph),
+        );
+        let metrics = crate::text::measure_svg_markdown_word_lines(
+            measurer,
+            &rows,
+            style.as_ref(),
+            crate::text::SvgTextEntityMode::DecodedModel,
+        );
+        lane.label_width = metrics.width;
+        lane.label_height = metrics.height;
+    }
+}
 
 fn normalize_direction(direction: Option<&str>) -> SwimlaneDirection {
     match direction
@@ -53,6 +99,10 @@ fn measure_content_node(
     ctx: &MeasureContext<'_>,
 ) -> WorkingNode {
     let wrap_mode = ctx.settings.node_wrap_mode;
+    let wrapping_width = crate::flowchart::bpmn::wrapping_width(
+        node.layout_shape.as_deref(),
+        ctx.settings.wrapping_width,
+    );
     let base_style = if wrap_mode == WrapMode::HtmlLike {
         &ctx.settings.html_label_text_style
     } else {
@@ -82,7 +132,7 @@ fn measure_content_node(
             raw_label: label,
             label_type,
             style: style.as_ref(),
-            max_width_px: Some(ctx.settings.wrapping_width),
+            max_width_px: Some(wrapping_width),
             wrap_mode,
             config: ctx.config,
             math_renderer: ctx.math_renderer,
@@ -101,7 +151,7 @@ fn measure_content_node(
         layout_direction: ctx.direction.as_str(),
         metrics,
         has_label: !label.is_empty(),
-        wrapping_width: ctx.settings.wrapping_width,
+        wrapping_width,
         node_constraint: node.constraint.as_deref(),
         padding: ctx.settings.node_padding,
         look_is_neo: crate::config::mermaid_config_diagram_look(ctx.config).is_neo(),
@@ -124,6 +174,7 @@ fn measure_content_node(
             .clone()
             .unwrap_or_else(|| "squareRect".to_string()),
         kind: WorkingNodeKind::Content,
+        producer_lane_role: None,
         parent_id: None,
         top_lane_id: None,
         requested_dir: None,
@@ -194,6 +245,7 @@ fn measure_edge_label(
         label_type: label_type.to_string(),
         shape: "labelRect".to_string(),
         kind: WorkingNodeKind::EdgeLabel,
+        producer_lane_role: None,
         parent_id,
         top_lane_id: None,
         requested_dir: None,
@@ -327,6 +379,16 @@ pub(super) fn prepare(
         let render_title = model.subgraph_title_for_render(subgraph_index, subgraph);
         let (label_width, label_height) =
             measure_group_title(subgraph_index, subgraph, render_title, &measure_ctx);
+        let producer_lane_role = match subgraph
+            .metadata
+            .as_ref()
+            .and_then(|metadata| metadata.get("laneRole"))
+            .and_then(serde_json::Value::as_str)
+        {
+            Some("pool") => Some(ProducerLaneRole::Pool),
+            Some("lane") => Some(ProducerLaneRole::Lane),
+            _ => None,
+        };
         nodes.insert(
             subgraph.id.clone(),
             WorkingNode {
@@ -337,6 +399,7 @@ pub(super) fn prepare(
                     .clone()
                     .unwrap_or_else(|| "text".to_string()),
                 shape: "rect".to_string(),
+                producer_lane_role,
                 kind: WorkingNodeKind::Group,
                 parent_id: parent_by_id.get(&subgraph.id).cloned(),
                 top_lane_id: None,
@@ -410,6 +473,50 @@ pub(super) fn prepare(
         nodes.insert(id.clone(), measured);
     }
 
+    let lane_model = LaneModel::new(&nodes);
+    let mut emptied = HashSet::new();
+    for member in &model.dropped_subgraph_members {
+        let kept_by = if lane_model.is_lane(&member.kept_by) {
+            Some(member.kept_by.as_str())
+        } else {
+            lane_model.lane_of(&member.kept_by)
+        };
+        if kept_by.is_some_and(|lane| lane != member.dropped_from)
+            && lane_model.is_lane(&member.dropped_from)
+        {
+            emptied.insert(member.dropped_from.as_str());
+        }
+    }
+    let used_groups: HashSet<&str> = nodes
+        .values()
+        .filter_map(|node| node.parent_id.as_deref())
+        .chain(
+            model
+                .edges
+                .iter()
+                .flat_map(|edge| [edge.from.as_str(), edge.to.as_str()]),
+        )
+        .collect();
+    let removed: HashSet<String> = emptied
+        .into_iter()
+        .filter(|id| !used_groups.contains(id))
+        .map(str::to_string)
+        .collect();
+    nodes.retain(|id, _| !removed.contains(id));
+
+    let lane_model = LaneModel::new(&nodes);
+    for node in nodes.values_mut() {
+        if lane_model.is_lane(&node.id) || lane_model.is_pool(&node.id) {
+            node.shape = if lane_model.is_lane(&node.id) {
+                "swimlane"
+            } else {
+                "pool"
+            }
+            .to_string();
+            node.requested_dir = Some(direction.as_str().to_string());
+        }
+    }
+
     let loose_ids: Vec<String> = nodes
         .values()
         .filter(|node| !node.is_group() && node.parent_id.is_none())
@@ -433,6 +540,7 @@ pub(super) fn prepare(
                     label_type: "text".to_string(),
                     shape: "swimlane".to_string(),
                     kind: WorkingNodeKind::Group,
+                    producer_lane_role: None,
                     parent_id: None,
                     top_lane_id: None,
                     requested_dir: Some(direction.as_str().to_string()),
@@ -457,16 +565,7 @@ pub(super) fn prepare(
         }
     }
 
-    // Only top-level groups are swimlanes. Nested groups keep the regular rect shape.
-    for node in nodes.values_mut() {
-        if node.is_group() && node.parent_id.is_none() {
-            node.shape = "swimlane".to_string();
-            node.requested_dir = Some(direction.as_str().to_string());
-        }
-    }
-
     let mut original_edges = Vec::with_capacity(model.edges.len());
-    let mut graph_edges = Vec::with_capacity(model.edges.len() * 2);
     let transport_plan =
         crate::flowchart::FlowchartEdgeTransportPlan::for_semantic_edges(&model.edges);
     for (edge_index, edge) in model.edges.iter().enumerate() {
@@ -514,46 +613,25 @@ pub(super) fn prepare(
             )?;
             nodes.insert(label_node_id.clone(), label_node);
             original.label_node_id = Some(label_node_id.clone());
-            graph_edges.push(WorkingEdge {
-                id: format!("{transport_id}-to-label"),
-                from: edge.from.clone(),
-                to: label_node_id.clone(),
-                reference_id: transport_id.to_string(),
-                label_node_id: None,
-                reversed_for_layout: false,
-                points: Vec::new(),
-            });
-            graph_edges.push(WorkingEdge {
-                id: format!("{transport_id}-from-label"),
-                from: label_node_id,
-                to: edge.to.clone(),
-                reference_id: transport_id.to_string(),
-                label_node_id: None,
-                reversed_for_layout: false,
-                points: Vec::new(),
-            });
-        } else {
-            graph_edges.push(original.clone());
         }
         original_edges.push(original);
     }
 
-    let group_order: Vec<String> = nodes
-        .values()
-        .filter(|node| node.is_group())
-        .map(|node| node.id.clone())
-        .collect();
-    let top_lane_order = group_order
+    let lane_model = LaneModel::new(&nodes);
+    let lane_indices: HashMap<&str, f64> = model
+        .subgraphs
         .iter()
-        .rev()
-        .filter(|id| nodes.get(*id).is_some_and(|node| node.parent_id.is_none()))
-        .cloned()
+        .filter_map(|subgraph| {
+            let index = subgraph.metadata.as_ref()?.get("laneIndex")?.as_f64()?;
+            index.is_finite().then_some((subgraph.id.as_str(), index))
+        })
         .collect();
+    let top_lane_order = lane_model.order(&nodes, &lane_indices);
 
     let mut layout = WorkingLayout {
         direction,
         nodes,
-        graph_edges,
+        graph_edges: original_edges.clone(),
         original_edges,
         top_lane_order,
     };

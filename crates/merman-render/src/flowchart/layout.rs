@@ -1811,6 +1811,7 @@ fn layout_flowchart_with_model(
             continue;
         }
         let raw_label = model.node_label_for_render(n).unwrap_or(&n.id);
+        let wrapping_width = super::bpmn::wrapping_width(n.layout_shape.as_deref(), wrapping_width);
         let label_type = n.label_type.as_deref().unwrap_or("text");
         let node_text_style = flowchart_effective_text_style_for_node_classes_with_provenance(
             node_label_base_style.as_ref(),
@@ -4934,6 +4935,7 @@ flowchart TD
             style: Vec::new(),
             animate: None,
             animation: None,
+            step: None,
             length: 1,
         };
         let meta = FlowchartSelfLoopSegmentMeta {

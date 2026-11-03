@@ -81,7 +81,7 @@ Keep the presentation owner alive while borrowing `FamilyRenderArtifact<'_>`. `P
 
 An application that already owns typed data can use `PresentationDiagram::try_new` with `AuthoredPresentationMetadata`, a full typed model, `PresentationContext`, construction policy, and operation control. The checked frozen route is `try_from_frozen`. These constructors validate declared relationships and observe construction budgets and cancellation. They do not create a core parsed result, authenticate source history, or replace the output owner's admission checks.
 
-Use `PresentationContext` for irrecoverable family facts such as explicit empty output, Flowchart label/style order, and Class style precedence. Manual values default to their ordinary model projection. A nonempty Mindmap requires an explicit output identity; source producers capture it once and repeated outputs reuse it. Mermaid's internal Mindmap node identities form a single-parent tree; repeated authored names and label text remain valid.
+Use `PresentationContext` for irrecoverable family facts such as explicit empty output, Flowchart label/style order, and Class style precedence. Manual values default to their ordinary model projection. Current Mermaid 12.3 source builds construct Mindmap with `PresentationContext::None`; output identity belongs to explicit SVG render options and is absent from compatibility JSON. See the [12.3 migration](mermaid-12-3.md) for the removed development APIs. Mermaid's internal Mindmap node identities form a single-parent tree; repeated authored names and label text remain valid.
 
 Direct producers must also preserve the full model's structural representation. Output admission
 returns typed errors for invalid data, including these family requirements:

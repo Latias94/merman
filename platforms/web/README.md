@@ -24,11 +24,14 @@ static-site builds, use [`@mermanjs/node`](../node/packages/node/README.md).
 | ASCII or Unicode output | [`@mermanjs/web-ascii`](packages/ascii/README.md) | Supported terminal-oriented diagram output |
 
 All browser packages built from current development source use one lockstep version, Web transport API `9`, and
-[Options JSON schema `3`](../../docs/bindings/OPTIONS_JSON.md). They target Mermaid `12.2.0`;
+[Options JSON schema `3`](../../docs/bindings/OPTIONS_JSON.md). They target Mermaid `12.3.0`;
 ASCII-capable packages use schema-3 ASCII output. Keep the package facade, generated glue, and
 WASM binary at the same exact version.
 
-Published `0.10.0-alpha.1` retains Web transport API `8`, facts schema `2` and theme execution
+The [Mermaid 12.3 migration](../../docs/migrations/mermaid-12-3.md) describes Step animations,
+their closed browser admission, and the static SVG projection used for native export.
+
+Published `0.10.0-alpha.1` retains Mermaid `12.2.0`, Web transport API `8`, facts schema `2` and theme execution
 evidence schema `1`. The installation commands below use that published version. Use matching
 source-built packages for the [development contracts](../../docs/release/UNRELEASED_CONTRACT_VERSIONS.md#source-appearance-and-render-evidence-follow-up).
 

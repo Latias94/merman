@@ -317,11 +317,11 @@
     {
       "id": "cytoscape",
       "name": "Cytoscape.js",
-      "version": "3.34.0",
+      "version": "3.34.4",
       "source": {
         "repository": "https://github.com/cytoscape/cytoscape.js.git",
-        "ref": "v3.34.0",
-        "commit": "22716bfb75834b56fa6679648b0abb06f4ae691c",
+        "ref": "v3.34.4",
+        "commit": "e394aa858b0699a67be8f9ab426823ae1aae7813",
         "path": "."
       },
       "relationships": ["behavior-reference", "translated"],
@@ -331,7 +331,7 @@
         {
           "path": "THIRD_PARTY_LICENSES/cytoscape/LICENSE",
           "sha256": "eb319c6e6f233607f71e8e2f450391751883cfc0eeb3ca7ef574c13d1d9c2203",
-          "source_url": "https://raw.githubusercontent.com/cytoscape/cytoscape.js/22716bfb75834b56fa6679648b0abb06f4ae691c/LICENSE",
+          "source_url": "https://raw.githubusercontent.com/cytoscape/cytoscape.js/e394aa858b0699a67be8f9ab426823ae1aae7813/LICENSE",
           "source_path": "LICENSE",
           "role": "license"
         }
@@ -476,21 +476,22 @@
     {
       "id": "eclipse-elk",
       "name": "Eclipse Layout Kernel",
-      "version": "0.9.1",
+      "version": "0.12.0",
       "source": {
         "repository": "https://github.com/eclipse-elk/elk.git",
-        "ref": "v0.9.1",
-        "commit": "62d5909f96fad541bc101ad52dabaece6b7eab7e",
+        "ref": "v0.12.0",
+        "commit": "323312916048544e4e594eab3303cdb0d01e2929",
         "path": "plugins"
       },
       "relationships": ["modified", "translated"],
       "local_paths": ["crates/merman-elk-layered", "crates/merman-layout-elk"],
-      "license_expression": "EPL-2.0",
+      "license_expression": "(EPL-2.0 OR GPL-3.0-or-later)",
+      "selected_license": "EPL-2.0",
       "license_files": [
         {
           "path": "THIRD_PARTY_LICENSES/eclipse-elk/LICENSE.md",
-          "sha256": "89591d4578fb1ebd91501312a3d25f021bd865a2e436641c1cf7b1bc7e3c1617",
-          "source_url": "https://raw.githubusercontent.com/eclipse-elk/elk/62d5909f96fad541bc101ad52dabaece6b7eab7e/LICENSE.md",
+          "sha256": "22080908c4e8696d8ea137db9c51b0dd67c19a4440b3be689b9d06d397aa88fd",
+          "source_url": "https://raw.githubusercontent.com/eclipse-elk/elk/323312916048544e4e594eab3303cdb0d01e2929/LICENSE.md",
           "source_path": "LICENSE.md",
           "role": "license"
         }
@@ -498,43 +499,48 @@
       "locks": [
         {
           "type": "pinned-source",
-          "evidence": "Source references in crates/merman-elk-layered and the v0.9.1 Git tag"
+          "evidence": "crates/merman-elk-layered/MERMAID_12_3_DELTA.md records the historical v0.9.1 derivation at 62d5909f96fad541bc101ad52dabaece6b7eab7e and the v0.12.0 Java source comparison at 323312916048544e4e594eab3303cdb0d01e2929, with supported behavior ports checked against published elkjs@0.12.0 observations."
         }
       ],
-      "notice": "The merman-elk-layered crate contains modified Rust source translations of Eclipse ELK layered, Box, Force, Stress, Mr. Tree, Radial, Rectangle Packing, and SPOrE overlap-removal algorithms, including common and core layout utilities, under EPL-2.0."
+      "notice": "The merman-elk-layered crate contains modified Rust source translations of Eclipse ELK layered, Box, Force, Stress, Mr. Tree, Radial, Rectangle Packing, and SPOrE overlap-removal algorithms, including common and core layout utilities. The historical derivation is v0.9.1 at 62d5909f96fad541bc101ad52dabaece6b7eab7e. Supported behavior ports from the v0.12.0 source comparison are documented in crates/merman-elk-layered/MERMAID_12_3_DELTA.md and checked against the published elkjs@0.12.0 behavior oracle. The Java tag is a source comparison point, not a proven unique Java build input of that npm package; elkjs CI checks out Eclipse ELK master. Merman retains its EPL-2.0 selection and preserves the current source license, including its conditional GPL-3.0-or-later secondary-license option."
     },
     {
       "id": "elkjs",
       "name": "elkjs",
-      "version": "0.9.3",
+      "version": "0.12.0",
       "source": {
         "repository": "https://github.com/kieler/elkjs.git",
-        "ref": "npm:elkjs@0.9.3",
-        "commit": "a8304cf79fde75bc2ab1a89d28320f53f8637436",
+        "ref": "0.12.0",
+        "commit": "ff5771d7165445c42c408bb8a090c8035272218c",
         "path": "."
       },
       "relationships": ["behavior-reference"],
       "local_paths": ["crates/merman-layout-elk", "playground"],
-      "license_expression": "EPL-2.0",
+      "license_expression": "(EPL-2.0 OR GPL-3.0-or-later)",
+      "selected_license": "EPL-2.0",
       "license_files": [
         {
           "path": "THIRD_PARTY_LICENSES/elkjs/LICENSE.md",
-          "sha256": "89591d4578fb1ebd91501312a3d25f021bd865a2e436641c1cf7b1bc7e3c1617",
-          "source_url": "https://raw.githubusercontent.com/kieler/elkjs/a8304cf79fde75bc2ab1a89d28320f53f8637436/LICENSE.md",
+          "sha256": "637e81f4a1b6b4079535c499fca05e238cf7605c1ff5b76d60d7da7ce96700c9",
+          "source_url": "https://raw.githubusercontent.com/kieler/elkjs/ff5771d7165445c42c408bb8a090c8035272218c/LICENSE.md",
           "source_path": "LICENSE.md",
           "role": "license"
         }
       ],
       "locks": [
         {
+          "type": "repository",
+          "repository_id": "elkjs"
+        },
+        {
           "type": "npm",
           "path": "playground/package-lock.json",
           "package_path": "node_modules/elkjs",
-          "version": "0.9.3",
-          "integrity": "sha512-f/ZeWvW/BCXbhGEf1Ujp29EASo/lk1FDnETgNKwJrsVvGZhUWCZyg3xLJjAsxfOmt8KjswHmI5EwCQcPMpOYhQ=="
+          "version": "0.12.0",
+          "integrity": "sha512-YZcKynxVxYoKIOEpywEPwCFdg+BTbxQRNf3pbwdDCvc8O3kQD8bmIwSxKU1eOTVc4Xo+VG9Te+575mlfvOrhEQ=="
         }
       ],
-      "notice": "Mermaid's ELK adapter behavior is compared against this JavaScript distribution, which is generated from Eclipse ELK sources."
+      "notice": "Mermaid's ELK adapter behavior is compared against the published elkjs@0.12.0 JavaScript distribution. Its source tag and npm publish gitHead identify the elkjs wrapper; the tag's CI checks out Eclipse ELK master and does not prove a unique Java source commit for the npm build. The separate Eclipse ELK v0.12.0 source comparison and historical v0.9.1 port derivation are recorded in crates/merman-elk-layered/MERMAID_12_3_DELTA.md. Merman selects EPL-2.0 from the declared EPL-2.0 OR GPL-3.0-or-later options and preserves the exact license with its conditional secondary-license notice."
     },
     {
       "id": "fmin",
@@ -679,11 +685,11 @@
     {
       "id": "mermaid",
       "name": "Mermaid",
-      "version": "12.2.0",
+      "version": "12.3.0",
       "source": {
         "repository": "https://github.com/mermaid-js/mermaid.git",
-        "ref": "mermaid@12.2.0",
-        "commit": "1fb7869866dd619168d840291c9c54b4f129758b",
+        "ref": "mermaid@12.3.0",
+        "commit": "2086904e76c692331e34a45d7cc3bc30860d040e",
         "path": "packages/mermaid"
       },
       "relationships": ["behavior-reference", "copied", "fixtures", "generated", "modified", "translated"],
@@ -700,7 +706,7 @@
         {
           "path": "THIRD_PARTY_LICENSES/mermaid/LICENSE",
           "sha256": "ec9fb67dcb25eccc416ed56e1aab819222c805a2a4bfe4cb19e7556bf2ffde80",
-          "source_url": "https://raw.githubusercontent.com/mermaid-js/mermaid/1fb7869866dd619168d840291c9c54b4f129758b/LICENSE",
+          "source_url": "https://raw.githubusercontent.com/mermaid-js/mermaid/2086904e76c692331e34a45d7cc3bc30860d040e/LICENSE",
           "source_path": "LICENSE",
           "role": "license"
         }
@@ -922,11 +928,11 @@
     {
       "id": "sanitize-url",
       "name": "sanitize-url",
-      "version": "7.1.1",
+      "version": "7.1.2",
       "source": {
         "repository": "https://github.com/braintree/sanitize-url.git",
-        "ref": "v7.1.1",
-        "commit": "b1e8d50e4066a9af00fa042176676374747f754b",
+        "ref": "v7.1.2",
+        "commit": "206cb8b942b10dad28dd3d31db3bf39e3fcdd7aa",
         "path": "src"
       },
       "relationships": ["modified", "translated"],
@@ -936,7 +942,7 @@
         {
           "path": "THIRD_PARTY_LICENSES/sanitize-url/LICENSE",
           "sha256": "0984740e0c3d725c8044dec7edcefe1dbce180ef5a7bc710c251e19607000158",
-          "source_url": "https://raw.githubusercontent.com/braintree/sanitize-url/b1e8d50e4066a9af00fa042176676374747f754b/LICENSE",
+          "source_url": "https://raw.githubusercontent.com/braintree/sanitize-url/206cb8b942b10dad28dd3d31db3bf39e3fcdd7aa/LICENSE",
           "source_path": "LICENSE",
           "role": "license"
         }

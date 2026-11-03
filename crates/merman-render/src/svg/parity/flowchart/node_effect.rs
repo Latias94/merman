@@ -1,7 +1,6 @@
 //! Prepared node facet selections and shadow geometry shared by bounds and terminal emission.
 
 use rustc_hash::FxHashMap;
-use std::fmt::Write as _;
 
 use super::render::node::helpers::resolve_node_render_info;
 use super::*;

@@ -151,6 +151,7 @@ Chain: (Vec<Vec<Node>>, Vec<Vec<Edge>>) = {
             is_user_defined_id: false,
             animate: None,
             animation: None,
+            step: None,
           });
         }
       }

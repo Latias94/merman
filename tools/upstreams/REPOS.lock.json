@@ -2,10 +2,10 @@
   "schemaVersion": 1,
   "repos": {
     "mermaid": {
-      "path": "repo-ref/mermaid",
+      "path": "repo-ref/mermaid-12.3.0",
       "url": "https://github.com/mermaid-js/mermaid.git",
-      "ref": "mermaid@12.2.0",
-      "commit": "1fb7869866dd619168d840291c9c54b4f129758b"
+      "ref": "mermaid@12.3.0",
+      "commit": "2086904e76c692331e34a45d7cc3bc30860d040e"
     },
     "monaqa-tree-sitter-mermaid": {
       "path": "repo-ref/tree-sitter-mermaid-monaqa",
@@ -56,10 +56,10 @@
       "commit": "859253415e69dce28bd65cd5a7c1d1ae8b39f4a1"
     },
     "cytoscape": {
-      "path": "repo-ref/cytoscape.js",
+      "path": "repo-ref/cytoscape-3.34.4",
       "url": "https://github.com/cytoscape/cytoscape.js.git",
-      "ref": "v3.34.0",
-      "commit": "22716bfb75834b56fa6679648b0abb06f4ae691c"
+      "ref": "v3.34.4",
+      "commit": "e394aa858b0699a67be8f9ab426823ae1aae7813"
     },
     "cytoscape-cose-bilkent": {
       "path": "repo-ref/cytoscape-cose-bilkent",
@@ -122,16 +122,22 @@
       "commit": "a77a3e78b59f72fa4d1c83f22e121ad9cc7d3575"
     },
     "sanitize-url": {
-      "path": "repo-ref/sanitize-url",
+      "path": "repo-ref/sanitize-url-7.1.2",
       "url": "https://github.com/braintree/sanitize-url.git",
-      "ref": "v7.1.1",
-      "commit": "b1e8d50e4066a9af00fa042176676374747f754b"
+      "ref": "v7.1.2",
+      "commit": "206cb8b942b10dad28dd3d31db3bf39e3fcdd7aa"
     },
     "mermaid-cli": {
-      "path": "repo-ref/mermaid-cli",
-      "url": "https://github.com/mermaid-js/mermaid-cli",
-      "ref": "12.0.0",
-      "commit": "db1ceebbe529d7975474eb0d0e9c23e9dc57cd37"
+      "path": "repo-ref/mermaid-cli-12.2.0",
+      "url": "https://github.com/mermaid-js/mermaid-cli.git",
+      "ref": "12.2.0",
+      "commit": "a5372aa93ff4effdc7fe9d91c3371f980c15346e"
+    },
+    "elkjs": {
+      "path": "repo-ref/elkjs-0.12.0",
+      "url": "https://github.com/kieler/elkjs.git",
+      "ref": "0.12.0",
+      "commit": "ff5771d7165445c42c408bb8a090c8035272218c"
     },
     "zenuml-core": {
       "path": "repo-ref/zenuml-core",

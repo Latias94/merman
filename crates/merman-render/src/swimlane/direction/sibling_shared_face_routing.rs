@@ -6,7 +6,7 @@ use super::geometry::{
 };
 use crate::Result;
 use crate::model::LayoutPoint;
-use crate::swimlane::config::EPSILON;
+use crate::swimlane::config::{EPSILON, MIN_ARROWHEAD_SPACING};
 use std::collections::HashMap;
 
 const MINIMUM_PORT_SPACING: f64 = 8.0;
@@ -23,6 +23,46 @@ struct LabelDimensions {
 enum ShiftAxis {
     X,
     Y,
+}
+
+fn crowds_face_neighbour(
+    edges: &[WorkingEdge],
+    edge_index: usize,
+    node_id: &str,
+    centre: (f64, f64),
+    end: &LayoutPoint,
+    axis: ShiftAxis,
+) -> bool {
+    let across = |point: &LayoutPoint| match axis {
+        ShiftAxis::X => point.y,
+        ShiftAxis::Y => point.x,
+    };
+    let along = |point: &LayoutPoint| match axis {
+        ShiftAxis::X => point.x,
+        ShiftAxis::Y => point.y,
+    };
+    let centre_across = match axis {
+        ShiftAxis::X => centre.1,
+        ShiftAxis::Y => centre.0,
+    };
+    let side = |point: &LayoutPoint| {
+        let delta = across(point) - centre_across;
+        if delta == 0.0 { 0.0 } else { delta.signum() }
+    };
+    edges
+        .iter()
+        .enumerate()
+        .filter(|(index, _)| *index != edge_index)
+        .any(|(_, edge)| {
+            let start = (edge.from == node_id)
+                .then(|| edge.points.first())
+                .flatten();
+            let finish = (edge.to == node_id).then(|| edge.points.last()).flatten();
+            start.into_iter().chain(finish).any(|point| {
+                side(point) == side(end)
+                    && (along(point) - along(end)).abs() < MIN_ARROWHEAD_SPACING
+            })
+        })
 }
 
 fn pair_key<'a>(first: &'a str, second: &'a str) -> (&'a str, &'a str) {
@@ -169,6 +209,7 @@ pub(super) fn straighten_collinear_sibling_detours(
             work_budget,
         )?;
         let effective_shift = label_shift.max(PORT_SHIFT);
+        let mut crowded = None;
         for delta in [0.0, effective_shift, -effective_shift] {
             let mut shifted_source = target_source.clone();
             let mut shifted_destination = target_destination.clone();
@@ -220,8 +261,34 @@ pub(super) fn straighten_collinear_sibling_detours(
                 continue;
             }
 
-            layout.original_edges[edge_index].points = vec![shifted_source, shifted_destination];
+            work_budget.charge(layout.original_edges.len().saturating_mul(2))?;
+            let crowds = crowds_face_neighbour(
+                &layout.original_edges,
+                edge_index,
+                &node_pair.src_id,
+                (node_pair.src_info.cx, node_pair.src_info.cy),
+                &shifted_source,
+                shift_axis,
+            ) || crowds_face_neighbour(
+                &layout.original_edges,
+                edge_index,
+                &node_pair.dst_id,
+                (node_pair.dst_info.cx, node_pair.dst_info.cy),
+                &shifted_destination,
+                shift_axis,
+            );
+            let rescued = vec![shifted_source, shifted_destination];
+            if crowds {
+                if crowded.is_none() {
+                    crowded = Some(rescued);
+                }
+                continue;
+            }
+            crowded = Some(rescued);
             break;
+        }
+        if let Some(points) = crowded {
+            layout.original_edges[edge_index].points = points;
         }
     }
     Ok(())
@@ -252,6 +319,7 @@ mod tests {
             label_type: "text".to_string(),
             shape: "rect".to_string(),
             kind,
+            producer_lane_role: None,
             parent_id: None,
             top_lane_id: None,
             requested_dir: None,

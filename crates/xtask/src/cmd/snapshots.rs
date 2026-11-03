@@ -614,8 +614,8 @@ fn verify_dompurify_defaults_artifact(tmp_dir: &Path) -> Result<Option<String>, 
 fn verify_theme_snapshot_artifact(tmp_dir: &Path) -> Result<Option<String>, XtaskError> {
     let expected_runtime = PathBuf::from(super::theme_snapshot::THEME_RUNTIME_OUTPUT);
     let expected_audit = PathBuf::from(super::theme_snapshot::THEME_AUDIT_OUTPUT);
-    let actual_runtime = tmp_dir.join("theme_variables_12_2_0.actual.json");
-    let actual_audit = tmp_dir.join("theme_variables_oracle_12_2_0.actual.json");
+    let actual_runtime = tmp_dir.join("theme_variables.actual.json");
+    let actual_audit = tmp_dir.join("theme_variables_oracle.actual.json");
     super::gen_theme_snapshot(vec![
         "--out".to_string(),
         actual_runtime.display().to_string(),
@@ -814,12 +814,6 @@ pub(crate) fn update_snapshots(args: Vec<String>) -> Result<(), XtaskError> {
         let mut model = parsed.model.into_unmanaged_value();
         if let JsonValue::Object(obj) = &mut model {
             obj.remove("config");
-            if parsed.meta.diagram_type == "mindmap" && obj.get("diagramId").is_some() {
-                obj.insert(
-                    "diagramId".to_string(),
-                    JsonValue::String("<dynamic>".to_string()),
-                );
-            }
 
             if parsed.meta.diagram_type == "gantt" {
                 let date_format = obj

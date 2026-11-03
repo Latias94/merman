@@ -10,9 +10,7 @@ pub(super) use crate::swimlane::direction::geometry::{
     simplify_polyline,
 };
 use crate::swimlane::direction::{LayoutWorkBudget, unordered_pair_count};
-pub(super) use crate::swimlane::working::{
-    WorkingEdge, WorkingLayout, WorkingNode, WorkingNodeKind,
-};
+pub(super) use crate::swimlane::working::{WorkingEdge, WorkingLayout, WorkingNode};
 use indexmap::{IndexMap, IndexSet};
 
 pub(super) const MINIMUM_SHARED_LENGTH: f64 = 8.0;

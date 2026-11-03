@@ -93,7 +93,7 @@ fn write_swimlane_rect(
                 &ctx.hand_drawn_seed,
             )
         {
-            out.push_str("<g>");
+            let _ = write!(out, r#"<g class="{}">"#, escape_xml_display(class_name));
             if let Some(fill) = fill {
                 let background_style = rough_style_from_node_style(node_style, |key| key == "fill")
                     .replace("fill", "stroke");
@@ -151,6 +151,11 @@ pub(in crate::svg::parity::flowchart) fn render_swimlane_cluster(
     origin_y: f64,
 ) -> crate::Result<()> {
     ctx.checkpoint_emit()?;
+    if !super::is_lane_or_pool_cluster(ctx, lane.id.as_str()) {
+        return Err(crate::Error::InvalidModel {
+            message: format!("Swimlane shell `{}` is neither a lane nor a pool", lane.id),
+        });
+    }
     let subgraph = ctx.subgraphs_by_id.get(cluster.id.as_str()).copied();
     let subgraph_index = ctx.subgraph_indices_by_id.get(cluster.id.as_str()).copied();
     let class_names = subgraph
@@ -207,7 +212,27 @@ pub(in crate::svg::parity::flowchart) fn render_swimlane_cluster(
     // The body has no compatibility fill path in hand-drawn output. Only a direct typed fill may
     // add one; a typed stroke owns the outline independently and must not recolor the body.
     let body_fill = typed_lane_fill;
-    let mut classes = String::from("cluster swimlane");
+    let is_pool = super::uses_pool_shell(ctx, lane.id.as_str());
+    let body_class = if is_pool {
+        "pool-body swimlane-body"
+    } else {
+        "swimlane-body"
+    };
+    let title_class = if is_pool {
+        "pool-title swimlane-title"
+    } else {
+        "swimlane-title"
+    };
+    let label_class = if is_pool {
+        "pool-label swimlane-label"
+    } else {
+        "swimlane-label"
+    };
+    let mut classes = String::from(if is_pool {
+        "cluster pool swimlane"
+    } else {
+        "cluster swimlane"
+    });
     for class in class_names {
         let class = class.trim();
         if !class.is_empty() {
@@ -257,7 +282,7 @@ pub(in crate::svg::parity::flowchart) fn render_swimlane_cluster(
             out,
             ctx,
             compiled,
-            "swimlane-body",
+            body_class,
             node_style,
             typed_stroke_width,
             body_x,
@@ -271,7 +296,7 @@ pub(in crate::svg::parity::flowchart) fn render_swimlane_cluster(
             out,
             ctx,
             compiled,
-            "swimlane-title",
+            title_class,
             node_style,
             typed_stroke_width,
             lane_left,
@@ -306,7 +331,7 @@ pub(in crate::svg::parity::flowchart) fn render_swimlane_cluster(
             out,
             ctx,
             compiled,
-            "swimlane-body",
+            body_class,
             node_style,
             typed_stroke_width,
             lane_left,
@@ -320,7 +345,7 @@ pub(in crate::svg::parity::flowchart) fn render_swimlane_cluster(
             out,
             ctx,
             compiled,
-            "swimlane-title",
+            title_class,
             node_style,
             typed_stroke_width,
             lane_left,
@@ -400,7 +425,8 @@ pub(in crate::svg::parity::flowchart) fn render_swimlane_cluster(
         );
         let _ = write!(
             out,
-            r#"<g class="cluster-label swimlane-label" transform="{}"><foreignObject width="{}" height="{}"><div xmlns="http://www.w3.org/1999/xhtml" style="{}"><span class="nodeLabel"{}>{}</span></div></foreignObject></g>"#,
+            r#"<g class="cluster-label {}" transform="{}"><foreignObject width="{}" height="{}"><div xmlns="http://www.w3.org/1999/xhtml" style="{}"><span class="nodeLabel"{}>{}</span></div></foreignObject></g>"#,
+            label_class,
             escape_xml_display(&transform),
             fmt_display(label_width),
             fmt_display(label_height),
@@ -434,7 +460,8 @@ pub(in crate::svg::parity::flowchart) fn render_swimlane_cluster(
         };
         let _ = write!(
             out,
-            r#"<g class="cluster-label swimlane-label" transform="{}"><g><rect class="background" style="stroke: none"/>"#,
+            r#"<g class="cluster-label {}" transform="{}"><g><rect class="background" style="stroke: none"/>"#,
+            label_class,
             escape_xml_display(&transform),
         );
         let title_text_style = terminal.title_text_style.as_ref();
@@ -448,8 +475,17 @@ pub(in crate::svg::parity::flowchart) fn render_swimlane_cluster(
             true,
             crate::flowchart::FlowchartSvgWidthMode::Bbox,
         );
-        let prepared_title = prepared.is_prepared();
-        if prepared_title {
+        let zero_width_title = lane.width == 0.0;
+        let prepared_title = !zero_width_title && prepared.is_prepared();
+        if zero_width_title {
+            let rows = crate::flowchart::zero_width_lane_title_rows(render_title);
+            crate::svg::parity::label::write_svg_markdown_word_lines_with_style(
+                out,
+                &rows,
+                Some(""),
+                crate::text::SvgTextEntityMode::DecodedModel,
+            );
+        } else if prepared_title {
             write_flowchart_svg_label_plan(out, &prepared, true);
         } else {
             write_flowchart_svg_text_markdown(out, render_title, true);

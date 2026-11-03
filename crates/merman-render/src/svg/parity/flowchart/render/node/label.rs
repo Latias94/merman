@@ -113,6 +113,8 @@ impl<'a> FlowchartNodeLabelEmissionPlan<'a> {
         width: f64,
         height: f64,
     ) -> super::emission::FlowchartNodeLabelEmissionReceipt {
+        let wrapping_width =
+            crate::flowchart::bpmn::wrapping_width(Some(common.shape), ctx.wrapping_width);
         let text_style = self.text_style(ctx);
         let owner = ctx.svg_label_sidecar.and_then(|sidecar| {
             sidecar.node_owner(common.node_id, ctx.swimlane_direction.is_some())
@@ -125,7 +127,7 @@ impl<'a> FlowchartNodeLabelEmissionPlan<'a> {
                     label.text,
                     ctx.measurer,
                     text_style.as_ref(),
-                    Some(ctx.wrapping_width),
+                    Some(wrapping_width),
                     true,
                     crate::flowchart::flowchart_node_svg_width_mode(
                         label.text,
@@ -229,6 +231,8 @@ fn render_flowchart_node_label_with_wrapper(
     close_node_wrapper: bool,
 ) -> super::emission::FlowchartNodeLabelEmissionReceipt {
     let node_text_style = common.label_emission.text_style(ctx);
+    let wrapping_width =
+        crate::flowchart::bpmn::wrapping_width(Some(common.shape), ctx.wrapping_width);
     let owner = ctx
         .svg_label_sidecar
         .and_then(|sidecar| sidecar.node_owner(common.node_id, ctx.swimlane_direction.is_some()));
@@ -239,7 +243,7 @@ fn render_flowchart_node_label_with_wrapper(
             label.text,
             ctx.measurer,
             node_text_style.as_ref(),
-            Some(ctx.wrapping_width),
+            Some(wrapping_width),
             true,
             crate::flowchart::flowchart_node_svg_width_mode(
                 label.text,
@@ -254,7 +258,11 @@ fn render_flowchart_node_label_with_wrapper(
         |prepared| prepared.plain_text().to_string(),
     );
     let mut label_dy = label.dy;
-    if !ctx.node_html_labels
+    if !ctx.node_html_labels && crate::flowchart::bpmn::BpmnShape::resolve(common.shape).is_some() {
+        label_dy -= ctx
+            .measurer
+            .measure_svg_create_text_bbox_y_offset_px(label.text, &node_text_style);
+    } else if !ctx.node_html_labels
         && flowchart_node_label_uses_markdown_bbox(label.label_type, label.text)
         && matches!(
             common.shape,
@@ -389,7 +397,7 @@ fn render_flowchart_node_label_with_wrapper(
                 &label_group_style,
                 ctx.measurer,
                 &node_text_style,
-                Some(ctx.wrapping_width),
+                Some(wrapping_width),
             );
         } else {
             let typed_label_fill_style = common.label_emission.typed_label_fill_style();
@@ -465,7 +473,7 @@ fn render_flowchart_node_label_with_wrapper(
                             raw_label: label.text,
                             label_type: label.label_type,
                             style: &node_text_style,
-                            max_width_px: Some(ctx.wrapping_width),
+                            max_width_px: Some(wrapping_width),
                             wrap_mode: ctx.node_wrap_mode,
                             config: ctx.config,
                             math_renderer: ctx.math_renderer,
@@ -475,7 +483,7 @@ fn render_flowchart_node_label_with_wrapper(
                     metrics
                 };
                 label_below_minimum = natural.width < min_width;
-                natural.width >= ctx.wrapping_width - 0.01
+                natural.width >= wrapping_width - 0.01
             } else {
                 let raw = crate::graph_label::flowchart_html_label_metrics_for_layout(
                     crate::flowchart::FlowchartLabelMetricsRequest {
@@ -492,7 +500,7 @@ fn render_flowchart_node_label_with_wrapper(
                 )
                 .width;
                 label_below_minimum = raw < min_width;
-                raw > ctx.wrapping_width
+                raw > wrapping_width
             }
         } else {
             false
@@ -504,20 +512,20 @@ fn render_flowchart_node_label_with_wrapper(
             let _ = write!(
                 &mut div_style,
                 "display: table; white-space: break-spaces; line-height: 1.5; max-width: {mw}px; text-align: center; width: {mw}px;",
-                mw = fmt_display(ctx.wrapping_width)
+                mw = fmt_display(wrapping_width)
             );
         } else if label_below_minimum {
             let _ = write!(
                 &mut div_style,
                 "display: table; white-space: nowrap; line-height: 1.5; max-width: {mw}px; text-align: center; width: {min}px;",
-                mw = fmt_display(ctx.wrapping_width),
+                mw = fmt_display(wrapping_width),
                 min = fmt_display(min_width),
             );
         } else {
             let _ = write!(
                 &mut div_style,
                 "display: table-cell; white-space: nowrap; line-height: 1.5; max-width: {mw}px; text-align: center;",
-                mw = fmt_display(ctx.wrapping_width)
+                mw = fmt_display(wrapping_width)
             );
         }
         let _ = write!(

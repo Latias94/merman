@@ -86,7 +86,7 @@ pub(in crate::svg::parity::flowchart) fn prepare_edge_route(
             boundary_for_node(ctx, layout_from, origin_x, origin_y),
             boundary_for_node(ctx, layout_to, origin_x, origin_y),
         ) {
-            super::swimlane_points::clip_swimlane_endpoints(
+            super::super::swimlane::clip_swimlane_endpoints(
                 base_points,
                 |point| {
                     intersect_for_layout_shape(
@@ -106,6 +106,7 @@ pub(in crate::svg::parity::flowchart) fn prepare_edge_route(
                         point,
                     )
                 },
+                super::arrow_types_for_edge(edge.edge_type.as_deref()).1,
                 points_after_intersect,
             );
         }

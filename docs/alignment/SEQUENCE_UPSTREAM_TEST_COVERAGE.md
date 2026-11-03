@@ -9,7 +9,18 @@ This document tracks which upstream Mermaid `sequenceDiagram` tests are covered 
 
 Scope: Mermaid tag `@11.16.1`.
 
-## Current 11.16 alignment status
+## Mermaid 12.3 reference collection
+
+The selected 12.3 collection adds 20 exact browser-text snapshots for changed wrapping
+and its derived grouping. Replaying the complete archived 12.2 runtime and selected 12.3
+runtime under the same Chrome 156 environment produces byte-identical upstream SVGs for
+these inputs. Old and current Rust outputs are also byte-identical. These observations
+bound collector-environment drift; they do not identify browser, locale or fonts individually.
+The [migration](../migrations/mermaid-12-3.md) records that evidence. The verification-only
+catalog binds each input, complete upstream SVG, complete local signature and admitted mode;
+new or changed snapshots remain blocking. No text or child-count normalization is added.
+
+## Historical 11.16 alignment status
 
 The complete structure-level matrix currently compares 321 renderable fixtures, with one additional
 fixture skipped because Mermaid 11.16 rejects its historical input. All 321 renderable fixtures match
@@ -21,7 +32,7 @@ regression-tested by
 `sequence_nested_opt_wraps_from_source_block_width_like_mermaid_11_16`, including a serialized
 layout roundtrip so the render-only width calculation does not leak into the public layout model.
 
-Sequence has no accepted exact-DOM residual policy. Any new structure or parity mismatch fails both
+Outside the exact reviewed browser snapshots, a new structure or parity mismatch fails both
 the direct family compare and the unfiltered `compare-all-svgs` gate. The Math fixture participates
 when the managed Node KaTeX backend is available; unavailable external tooling remains an explicit
 reported skip rather than a comparator exception.

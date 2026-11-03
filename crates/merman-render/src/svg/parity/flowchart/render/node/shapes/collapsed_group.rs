@@ -87,6 +87,7 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_collapsed_group_bo
                     &path,
                     effective_stroke_width,
                     common.stroke_dasharray,
+                    common.work_meter,
                     common.hand_drawn_seed,
                 )
             })
@@ -214,9 +215,11 @@ pub(super) fn advance_rough_geometry(
     let agentflow = ctx.diagram_type == "agentflow";
     let path = rounded_rect_path_d(x, y, w, h, if agentflow { 10.0 } else { RADIUS });
     let _ = super::super::roughjs::roughjs_prepare_paths_for_svg_path_single_set(
+        super::super::roughjs::RoughGeometryTarget::Query,
         &path,
         if agentflow { 0.75 } else { common.stroke_width },
         common.stroke_dasharray,
+        common.work_meter,
         common.hand_drawn_seed,
     );
 }

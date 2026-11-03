@@ -3,6 +3,17 @@
 Scope: Mermaid tag `@11.16.1`, commit
 `7ecca0cd7f1658ef74f4e7e91f925724ef403bbf`.
 
+## Mermaid 12.3 additions
+
+Current development selects `2086904e76c692331e34a45d7cc3bc30860d040e`. The
+[source delta record](../../crates/merman-render/src/swimlane/MERMAID_12_3_DELTA.md)
+maps lane preparation, shared-member provenance, label ranks, nested bounds, directional routing
+and drawn-body endpoint docking to their selected upstream owners. Five `local_mermaid_12_3_*`
+fixtures have semantic/layout goldens and freshly executed upstream SVGs. Focused layout/SVG
+regressions also retain authored empty lanes, declaration/color slots and curved endpoint commands.
+The historical inventory below is not a claim that its original three fixtures are the current
+complete corpus. Overall admission belongs to the final three-mode comparison and strict receipt.
+
 ## Mermaid 12.2 additions
 
 The historical inventory below retains its original source version. New source-order, lane-title

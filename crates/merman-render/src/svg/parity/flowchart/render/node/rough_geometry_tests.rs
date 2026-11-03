@@ -183,6 +183,7 @@ fn next_rough_path(ctx: &FlowchartRenderCtx<'_>) -> String {
     crate::svg::parity::roughjs_common::paths::roughjs_hand_drawn_stroke_path_for_svg_path(
         "M0 0 L31 17 L60 4",
         0.7,
+        ctx.work_meter,
         &ctx.hand_drawn_seed,
     )
     .unwrap()

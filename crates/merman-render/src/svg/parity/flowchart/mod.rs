@@ -20,6 +20,7 @@ pub(crate) use node_inventory::{FlowchartNodeLayoutView, FlowchartPreparedNodes}
 mod render;
 mod render_config;
 mod render_input;
+mod step;
 mod style;
 mod swimlane;
 mod types;

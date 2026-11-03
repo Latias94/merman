@@ -34,7 +34,14 @@ pub(crate) fn wasm_build_target_root() -> PathBuf {
 }
 
 pub(crate) fn mermaid_repo_root() -> PathBuf {
-    repo_ref_root().join("mermaid")
+    let selected = fs::read_to_string(workspace_root().join("tools/upstreams/REPOS.lock.json"))
+        .ok()
+        .and_then(|text| serde_json::from_str::<serde_json::Value>(&text).ok())
+        .and_then(|lock| lock["repos"]["mermaid"]["path"].as_str().map(str::to_owned));
+    selected.map_or_else(
+        || repo_ref_root().join("mermaid"),
+        |path| workspace_root().join(path),
+    )
 }
 
 pub(crate) fn dompurify_repo_root() -> PathBuf {

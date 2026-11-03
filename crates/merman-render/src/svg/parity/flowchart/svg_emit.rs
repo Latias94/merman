@@ -144,10 +144,10 @@ pub(super) fn render_flowchart_svg_model(
                 diagram_title,
                 title_anchor_x,
                 source_paint_bounds,
-                bbox_min_x,
-                bbox_min_y,
-                bbox_max_x,
-                bbox_max_y,
+                mut bbox_min_x,
+                mut bbox_min_y,
+                mut bbox_max_x,
+                mut bbox_max_y,
             } = prepare_flowchart_viewbox_bounds(
                 FlowchartViewboxBoundsRequest {
                     ctx,
@@ -187,6 +187,18 @@ pub(super) fn render_flowchart_svg_model(
             }
             let mut edge_labels =
                 super::paint::FlowchartEdgeLabels::prepare(ctx, hierarchy_plan, &edge_path_cache)?;
+            let step_badges = super::step::StepBadges::prepare(
+                ctx,
+                hierarchy_plan,
+                &edge_path_cache,
+                &edge_labels,
+            )?;
+            step_badges.include_bounds(
+                &mut bbox_min_x,
+                &mut bbox_min_y,
+                &mut bbox_max_x,
+                &mut bbox_max_y,
+            );
             let document = prepare_flowchart_svg_document(FlowchartSvgDocumentRequest {
                 family_id: if swimlane_layout.is_some() {
                     crate::DiagramFamilyId::SWIMLANE
@@ -279,6 +291,7 @@ pub(super) fn render_flowchart_svg_model(
                 hierarchy_plan,
                 marker_plan: &marker_plan,
                 edge_labels: &mut edge_labels,
+                step_badges: &step_badges,
             };
             if layout.uses_elk_adapter_dom {
                 out.push_str("<g>");
@@ -342,6 +355,7 @@ pub(super) fn render_flowchart_svg_model(
                     );
                 }
             }
+            ctx.steps.write_style(&mut out, diagram_id);
             out.push_str("</svg>\n");
             out.checkpoint()?;
 

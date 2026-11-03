@@ -955,6 +955,8 @@ pub(crate) fn render_requirement_diagram_svg_model(
             w: n.width,
             h: n.height,
             stroke_width: stroke_width as f32,
+            work_meter: options.work_meter(),
+            phase: merman_model::OperationPhase::Emit,
             randomness: &hand_drawn_seed,
         })
         .map(|(_, stroke_d)| stroke_d)
@@ -1113,6 +1115,8 @@ pub(crate) fn render_requirement_diagram_svg_model(
                     w: n.width,
                     h: 0.001,
                     stroke_width: stroke_width as f32,
+                    work_meter: options.work_meter(),
+                    phase: merman_model::OperationPhase::Emit,
                     randomness: &hand_drawn_seed,
                 })
                 .unwrap_or_else(|| {

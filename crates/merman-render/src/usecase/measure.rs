@@ -779,14 +779,14 @@ pub(super) fn measure(
         };
         let (text, kind, start, end, dotted) = match edge.relationship_type {
             UsecaseRelationshipType::Include => (
-                Some("include"),
+                Some("«include»"),
                 UsecaseLabelType::Text,
                 None,
                 Some("arrow_point"),
                 true,
             ),
             UsecaseRelationshipType::Extend => (
-                Some("extend"),
+                Some("«extend»"),
                 UsecaseLabelType::Text,
                 None,
                 Some("arrow_point"),

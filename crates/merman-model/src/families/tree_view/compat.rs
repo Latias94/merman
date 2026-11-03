@@ -145,7 +145,6 @@ mod tests {
             config: &config,
             authored_config: &config,
             title: None,
-            diagram_id: None,
         };
         let value = project(&model, &metadata).unwrap();
         assert_eq!(value["root"], serde_json::to_value(&model.root).unwrap());
@@ -177,7 +176,6 @@ mod tests {
             config: &config,
             authored_config: &config,
             title: None,
-            diagram_id: None,
         };
         let control = OperationControl::new();
         // The first child has completed and is managed by its parent's frame at this checkpoint.

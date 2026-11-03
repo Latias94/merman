@@ -1678,6 +1678,8 @@ fn node_dimensions_and_label(
     ctx: NodeMeasureContext<'_>,
 ) -> (f64, f64, elk::Label) {
     let raw_label = ctx.model.node_label_for_render(node).unwrap_or(&node.id);
+    let wrapping_width =
+        super::bpmn::wrapping_width(node.layout_shape.as_deref(), ctx.wrapping_width);
     let label_type = node.label_type.as_deref().unwrap_or("text");
     let node_text_style = flowchart_effective_text_style_for_node_classes_with_provenance(
         ctx.node_label_base_style,
@@ -1700,7 +1702,7 @@ fn node_dimensions_and_label(
             raw_label,
             label_type,
             style: node_text_style.as_ref(),
-            max_width_px: Some(ctx.wrapping_width),
+            max_width_px: Some(wrapping_width),
             wrap_mode: ctx.node_wrap_mode,
             config: ctx.effective_config,
             math_renderer: ctx.math_renderer,
@@ -1742,7 +1744,7 @@ fn node_dimensions_and_label(
         },
         metrics,
         has_label: !raw_label.is_empty(),
-        wrapping_width: ctx.wrapping_width,
+        wrapping_width,
         node_constraint: node.constraint.as_deref(),
         padding: ctx.node_padding,
         look_is_neo: crate::config::mermaid_config_diagram_look(ctx.effective_config).is_neo(),
@@ -2471,6 +2473,7 @@ C["$$x$$"] -->|"$$x$$"| D
             style: Vec::new(),
             animate: None,
             animation: None,
+            step: None,
             length: 1,
         }
     }
@@ -2487,6 +2490,7 @@ C["$$x$$"] -->|"$$x$$"| D
             nodes,
             edges,
             subgraphs: Vec::new(),
+            dropped_subgraph_members: Vec::new(),
             subgraph_vertex_styles: Default::default(),
             tooltips: Default::default(),
             warning_facts: Vec::new(),

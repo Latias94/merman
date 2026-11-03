@@ -78,6 +78,7 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_tag_rect(
                 &rect_path,
                 common.stroke_width,
                 common.stroke_dasharray,
+                common.work_meter,
                 common.hand_drawn_seed,
             )
         })
@@ -89,6 +90,7 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_tag_rect(
                 &tag_path,
                 common.stroke_width,
                 common.stroke_dasharray,
+                common.work_meter,
                 common.hand_drawn_seed,
             )
         })

@@ -1,0 +1,139 @@
+{
+  "diagramType": "swimlane",
+  "layout": {
+    "SwimlaneDiagram": {
+      "bounds": {
+        "max_x": 945.322,
+        "max_y": 67.5,
+        "min_x": -72.0,
+        "min_y": -67.5
+      },
+      "direction": "RL",
+      "edges": [
+        {
+          "curve": "rounded",
+          "from": "A",
+          "id": "L_A_B_0",
+          "label_node_id": "edge-label-A-B-L_A_B_0",
+          "points": [
+            {
+              "x": 711.322,
+              "y": 0.0
+            },
+            {
+              "x": 126.0,
+              "y": 0.0
+            }
+          ],
+          "reversed_for_layout": false,
+          "to": "B"
+        }
+      ],
+      "lanes": [
+        {
+          "content_top": -31.5,
+          "height": 135.0,
+          "id": "sales",
+          "padding": 8.0,
+          "parent_id": null,
+          "requested_dir": "RL",
+          "title": "Sales",
+          "title_label_height": 17.0,
+          "title_label_width": 30.375,
+          "title_rect": {
+            "bottom": 67.5,
+            "left": 909.322,
+            "right": 945.322,
+            "top": -67.5
+          },
+          "width": 1017.322,
+          "x": 436.661,
+          "y": 0.0
+        },
+        {
+          "content_top": null,
+          "height": 63.0,
+          "id": "intake",
+          "padding": 8.0,
+          "parent_id": "sales",
+          "requested_dir": null,
+          "title": "Intake",
+          "title_label_height": 17.0,
+          "title_label_width": 35.984,
+          "title_rect": null,
+          "width": 961.322,
+          "x": 418.661,
+          "y": 0.0
+        },
+        {
+          "content_top": null,
+          "height": 55.0,
+          "id": "checks",
+          "padding": 8.0,
+          "parent_id": "intake",
+          "requested_dir": null,
+          "title": "Checks",
+          "title_label_height": 17.0,
+          "title_label_width": 40.188,
+          "title_rect": null,
+          "width": 953.322,
+          "x": 418.661,
+          "y": 0.0
+        }
+      ],
+      "nodes": [
+        {
+          "height": 47.0,
+          "id": "A",
+          "is_edge_label": false,
+          "label": "Receive order",
+          "label_height": 17.0,
+          "label_type": "text",
+          "label_width": 120.0,
+          "layer": 0.0,
+          "order": 0.0,
+          "parent_id": "checks",
+          "shape": "squareRect",
+          "top_lane_id": "sales",
+          "width": 180.0,
+          "x": 801.322,
+          "y": 0.0
+        },
+        {
+          "height": 47.0,
+          "id": "B",
+          "is_edge_label": false,
+          "label": "Check stock",
+          "label_height": 17.0,
+          "label_type": "text",
+          "label_width": 120.0,
+          "layer": 1.0,
+          "order": 0.0,
+          "parent_id": "checks",
+          "shape": "squareRect",
+          "top_lane_id": "sales",
+          "width": 180.0,
+          "x": 36.0,
+          "y": 0.0
+        },
+        {
+          "height": 17.0,
+          "id": "edge-label-A-B-L_A_B_0",
+          "is_edge_label": true,
+          "label": "verified",
+          "label_height": 17.0,
+          "label_type": "text",
+          "label_width": 43.96,
+          "layer": 0.0,
+          "order": 0.0,
+          "parent_id": "sales",
+          "shape": "labelRect",
+          "top_lane_id": "sales",
+          "width": 43.96,
+          "x": 418.661,
+          "y": 0.0
+        }
+      ]
+    }
+  }
+}

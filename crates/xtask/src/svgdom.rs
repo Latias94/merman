@@ -1522,6 +1522,200 @@ fn canonical_flowchart_root_gradient_identifier(
     .then(|| "gradient-root".to_string())
 }
 
+fn is_flowchart_step_animation(node: roxmltree::Node<'_, '_>) -> bool {
+    let Some(parent) = node.parent_element() else {
+        return false;
+    };
+    let dot = parent.has_tag_name("circle") && has_class_token(parent, "edge-step-dot");
+    let highlight = parent.has_tag_name("path") && has_class_token(parent, "edge-step-highlight");
+    is_flowchart_diagram(node)
+        && parent.attribute("data-step").is_some()
+        && parent
+            .parent_element()
+            .is_some_and(|group| group.has_tag_name("g") && has_class_token(group, "edgePaths"))
+        && ((node.has_tag_name("animateMotion") && dot)
+            || (node.has_tag_name("animateTransform") && (dot || highlight)))
+}
+
+fn canonical_flowchart_step_motion_identifier(
+    node: roxmltree::Node<'_, '_>,
+    value: &str,
+) -> Option<String> {
+    use std::fmt::Write as _;
+
+    if !node.has_tag_name("animateMotion")
+        || !is_flowchart_step_animation(node)
+        || node.attribute("id") != Some(value)
+    {
+        return None;
+    }
+    let root = flowchart_svg_root(node)?;
+    let scope = format!("{}-", root.attribute("id")?);
+    let group = node.parent_element()?.parent_element()?;
+    let mut owners = group.children().filter(|candidate| {
+        if !is_flowchart_edge(*candidate) || candidate.attribute("data-et") != Some("edge") {
+            return false;
+        }
+        let Some(edge_id) = candidate
+            .attribute("id")
+            .filter(|id| id.starts_with(&scope))
+        else {
+            return false;
+        };
+        let mut derived = String::from("step_");
+        for character in edge_id.chars().chain("-step".chars()) {
+            if character.is_ascii_alphanumeric() {
+                derived.push(character);
+            } else {
+                let _ = write!(derived, "_{:x}_", character as u32);
+            }
+        }
+        derived == value
+    });
+    let owner = owners.next()?;
+    if owners.next().is_some() {
+        return None;
+    }
+    let edge_id = owner.attribute("id")?;
+    let semantic_id = owner
+        .attribute("data-id")
+        .filter(|value| !value.is_empty())?;
+    for id in [value, edge_id] {
+        if node
+            .document()
+            .root()
+            .descendants()
+            .filter(|candidate| candidate.is_element() && candidate.attribute("id") == Some(id))
+            .count()
+            != 1
+        {
+            return None;
+        }
+    }
+    if root
+        .descendants()
+        .filter(|candidate| {
+            is_flowchart_edge(*candidate) && candidate.attribute("data-id") == Some(semantic_id)
+        })
+        .count()
+        != 1
+    {
+        return None;
+    }
+    let canonical = format!(
+        "step-{}",
+        canonical_flowchart_identifier(owner, "id", edge_id)?
+    );
+    if root
+        .descendants()
+        .any(|candidate| candidate != node && candidate.attribute("id") == Some(canonical.as_str()))
+    {
+        return None;
+    }
+    Some(canonical)
+}
+
+fn canonical_flowchart_step_begin(
+    node: roxmltree::Node<'_, '_>,
+    value: &str,
+    mode: DomMode,
+    decimals: u32,
+) -> Option<String> {
+    if node.has_tag_name("animateMotion") {
+        let id = node.attribute("id")?;
+        let canonical = canonical_flowchart_step_motion_identifier(node, id)?;
+        let (initial, repeat) = value.split_once(';')?;
+        let gap = repeat.strip_prefix(&format!("{id}.end+"))?;
+        for clock in [initial, gap] {
+            let seconds = clock.strip_suffix('s')?.parse::<f64>().ok()?;
+            if !seconds.is_finite() || seconds < 0.0 {
+                return None;
+            }
+        }
+        return Some(format!(
+            "{};{canonical}.end+{}",
+            normalize_numeric_tokens_mode(initial, decimals, mode),
+            normalize_numeric_tokens_mode(gap, decimals, mode)
+        ));
+    }
+    let fragment = value.strip_suffix(".begin")?;
+    let root = flowchart_svg_root(node)?;
+    let mut targets = root
+        .descendants()
+        .filter(|candidate| candidate.is_element() && candidate.attribute("id") == Some(fragment));
+    let target = targets.next()?;
+    if targets.next().is_some() || flowchart_svg_root(target) != Some(root) {
+        return None;
+    }
+    canonical_flowchart_step_motion_identifier(target, fragment)
+        .map(|canonical| format!("{canonical}.begin"))
+}
+
+fn canonical_flowchart_step_motion_path(node: roxmltree::Node<'_, '_>) -> Option<String> {
+    let id = node.attribute("id")?;
+    canonical_flowchart_step_motion_identifier(node, id)?;
+    let path = node.attribute("path")?;
+    let dot = node.parent_element()?;
+    let begin = format!("{id}.begin");
+    let matching_highlights = dot
+        .parent_element()?
+        .children()
+        .filter(|candidate| {
+            candidate.has_tag_name("path")
+                && has_class_token(*candidate, "edge-step-highlight")
+                && candidate.attribute("data-step") == dot.attribute("data-step")
+                && candidate.attribute("d") == Some(path)
+                && candidate.children().any(|animation| {
+                    animation.has_tag_name("animateTransform")
+                        && animation.attribute("begin") == Some(begin.as_str())
+                })
+        })
+        .count();
+    if matching_highlights != 1
+        || re_num().find_iter(path).any(|number| {
+            number
+                .as_str()
+                .parse::<f64>()
+                .map_or(true, |value| !value.is_finite())
+        })
+    {
+        return None;
+    }
+    let mut structure = String::new();
+    for segment in svgtypes::PathParser::from(path) {
+        let segment = segment.ok()?;
+        let (command, absolute, coordinates) = match segment {
+            svgtypes::PathSegment::MoveTo { abs, .. } => ('M', abs, 2),
+            svgtypes::PathSegment::LineTo { abs, .. } => ('L', abs, 2),
+            svgtypes::PathSegment::HorizontalLineTo { abs, .. } => ('H', abs, 1),
+            svgtypes::PathSegment::VerticalLineTo { abs, .. } => ('V', abs, 1),
+            svgtypes::PathSegment::CurveTo { abs, .. } => ('C', abs, 6),
+            svgtypes::PathSegment::SmoothCurveTo { abs, .. } => ('S', abs, 4),
+            svgtypes::PathSegment::Quadratic { abs, .. } => ('Q', abs, 4),
+            svgtypes::PathSegment::SmoothQuadratic { abs, .. } => ('T', abs, 2),
+            svgtypes::PathSegment::EllipticalArc { abs, .. } => ('A', abs, 3),
+            svgtypes::PathSegment::ClosePath { abs } => ('Z', abs, 0),
+        };
+        structure.push(if absolute {
+            command
+        } else {
+            command.to_ascii_lowercase()
+        });
+        for _ in 0..coordinates {
+            structure.push_str("<n>");
+        }
+        if let svgtypes::PathSegment::EllipticalArc {
+            large_arc, sweep, ..
+        } = segment
+        {
+            structure.push(if large_arc { '1' } else { '0' });
+            structure.push(if sweep { '1' } else { '0' });
+            structure.push_str("<n><n>");
+        }
+    }
+    (!structure.is_empty()).then_some(structure)
+}
+
 /// Returns a canonical identity only for a recognized Flowchart producer role.
 ///
 /// `None` is intentional: callers must retain the original value so authored IDs and malformed
@@ -1539,6 +1733,9 @@ pub(crate) fn canonical_flowchart_identifier(
         return Some(canonical);
     }
     if let Some(canonical) = canonical_flowchart_elk_cluster_identifier(node, value) {
+        return Some(canonical);
+    }
+    if let Some(canonical) = canonical_flowchart_step_motion_identifier(node, value) {
         return Some(canonical);
     }
 
@@ -1660,6 +1857,7 @@ fn preserves_flowchart_identity_attribute(
             let fragment = strip_flowchart_document_scope(node, value);
             canonical_flowchart_identifier(node, key, value).is_some()
                 || is_flowchart_semantic_element(node)
+                || (node.has_tag_name("animateMotion") && is_flowchart_step_animation(node))
                 || matches!(
                     node.tag_name().name(),
                     "title" | "desc" | "marker" | "filter" | "clipPath" | "linearGradient"
@@ -1961,6 +2159,27 @@ fn build_node(
         for a in n.attributes() {
             let key = a.name().to_string();
             let mut val = a.value().to_string();
+
+            if is_flowchart_step_animation(n) {
+                if key == "begin" {
+                    if mode != DomMode::Strict {
+                        val = match canonical_flowchart_step_begin(n, &val, mode, decimals) {
+                            Some(canonical) => format!("resolved-step:{canonical}"),
+                            None => format!("raw-step:{val}"),
+                        };
+                    }
+                    attrs.insert(key, val);
+                    continue;
+                }
+                if key == "path" && n.has_tag_name("animateMotion") && mode != DomMode::Strict {
+                    val = match canonical_flowchart_step_motion_path(n) {
+                        Some(canonical) => format!("resolved-step-path:{canonical}"),
+                        None => format!("raw-step-path:{val}"),
+                    };
+                    attrs.insert(key, val);
+                    continue;
+                }
+            }
 
             if mode != DomMode::Strict && is_flowchart_diagram(n) {
                 if matches!(key.as_str(), "data-et" | "data-id")
@@ -3193,6 +3412,203 @@ mod tests {
                 dom_signature(authored_a, mode, 3).unwrap(),
                 dom_signature(&authored_b, mode, 3).unwrap(),
                 "mode={mode:?}"
+            );
+        }
+    }
+
+    const FLOWCHART_STEP_UPSTREAM: &str = r#"<svg id="diagram" aria-roledescription="flowchart-v2"><g class="edges edgePaths"><path class="flowchart-link" id="diagram-e1" data-et="edge" data-id="e1" d="M0,0L10,0"/><path class="edge-step-highlight" data-step="1" d="M0,0L10,0"><animateTransform attributeName="transform" type="scale" values="1;1" dur="1s" begin="step_diagram_2d_e1_2d_step.begin"/></path><circle class="edge-step-dot" data-step="1"><animateMotion id="step_diagram_2d_e1_2d_step" path="M0,0L10,0" dur="1s" begin="0s;step_diagram_2d_e1_2d_step.end+1s"/><animateTransform attributeName="transform" type="scale" values="1;1" dur="1s" begin="step_diagram_2d_e1_2d_step.begin"/></circle><path class="flowchart-link" id="diagram-e2" data-et="edge" data-id="e2" d="M0,10L10,10"/><path class="edge-step-highlight" data-step="2" d="M0,10L10,10"><animateTransform attributeName="transform" type="scale" values="1;1" dur="1s" begin="step_diagram_2d_e2_2d_step.begin"/></path><circle class="edge-step-dot" data-step="2"><animateMotion id="step_diagram_2d_e2_2d_step" path="M0,10L10,10" dur="1s" begin="1s;step_diagram_2d_e2_2d_step.end+1s"/><animateTransform attributeName="transform" type="scale" values="1;1" dur="1s" begin="step_diagram_2d_e2_2d_step.begin"/></circle></g></svg>"#;
+
+    fn flowchart_step_local() -> String {
+        FLOWCHART_STEP_UPSTREAM
+            .replace("diagram-e1", "diagram-merman-flowchart-document-edge-0")
+            .replace("diagram-e2", "diagram-merman-flowchart-document-edge-1")
+            .replace(
+                "step_diagram_2d_e1_2d_step",
+                "step_diagram_2d_merman_2d_flowchart_2d_document_2d_edge_2d_0_2d_step",
+            )
+            .replace(
+                "step_diagram_2d_e2_2d_step",
+                "step_diagram_2d_merman_2d_flowchart_2d_document_2d_edge_2d_1_2d_step",
+            )
+    }
+
+    #[test]
+    fn flowchart_step_normalizes_only_closed_derived_ids_and_smil_references() {
+        assert_flowchart_non_strict_equivalent(FLOWCHART_STEP_UPSTREAM, &flowchart_step_local());
+        let semantic_change = flowchart_step_local().replace(r#"data-id="e1""#, r#"data-id="e3""#);
+        for mode in NON_STRICT_FLOWCHART_MODES {
+            assert_ne!(
+                dom_signature(FLOWCHART_STEP_UPSTREAM, mode, 3).unwrap(),
+                dom_signature(&semantic_change, mode, 3).unwrap(),
+                "Step identity must retain the semantic edge owner: {mode:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn flowchart_step_smil_references_reject_wrong_missing_and_cross_step_targets() {
+        let local = flowchart_step_local();
+        let first = "step_diagram_2d_merman_2d_flowchart_2d_document_2d_edge_2d_0_2d_step";
+        let second = "step_diagram_2d_merman_2d_flowchart_2d_document_2d_edge_2d_1_2d_step";
+        for changed in [
+            local.replace(&format!("{first}.begin"), &format!("{second}.begin")),
+            local.replace(&format!("{first}.end+"), &format!("{second}.end+")),
+            local.replace(&format!("{first}.begin"), "missing1.begin"),
+            local.replace(&format!("{first}.end+"), "missing2.end+"),
+            local.replace(&format!("{first}.begin"), "step-edge-e1.begin"),
+            local.replace(
+                &format!(r#"begin="{first}.begin"/></circle>"#),
+                r#"begin="step-edge-e1.begin"/></circle>"#,
+            ),
+        ] {
+            for mode in NON_STRICT_FLOWCHART_MODES {
+                assert_ne!(
+                    dom_signature(&local, mode, 3).unwrap(),
+                    dom_signature(&changed, mode, 3).unwrap(),
+                    "SMIL graph changes must remain observable: {mode:?}"
+                );
+            }
+        }
+        for changed in [
+            local.replace("end+1s", "end+2s"),
+            local.replace("begin=\"1s;", "begin=\"2s;"),
+            local.replace("dur=\"1s\"", "dur=\"2s\""),
+        ] {
+            for mode in [DomMode::Parity, DomMode::ParityRoot] {
+                assert_ne!(
+                    dom_signature(&local, mode, 3).unwrap(),
+                    dom_signature(&changed, mode, 3).unwrap(),
+                    "Step clocks must remain observable: {mode:?}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn flowchart_step_smil_reference_graph_is_independent_of_path_projection() {
+        let local = flowchart_step_local();
+        let document = roxmltree::Document::parse(&local).unwrap();
+        let transform = document
+            .descendants()
+            .find(|node| node.has_tag_name("animateTransform"))
+            .unwrap();
+        let motions = document
+            .descendants()
+            .filter(|node| node.has_tag_name("animateMotion"))
+            .collect::<Vec<_>>();
+        let first = motions[0].attribute("id").unwrap();
+        let second = motions[1].attribute("id").unwrap();
+        for mode in NON_STRICT_FLOWCHART_MODES {
+            assert_eq!(
+                canonical_flowchart_step_begin(transform, &format!("{first}.begin"), mode, 3),
+                Some("step-edge-e1.begin".to_owned())
+            );
+            assert_eq!(
+                canonical_flowchart_step_begin(transform, &format!("{second}.begin"), mode, 3),
+                Some("step-edge-e2.begin".to_owned()),
+                "a closed reference must retain its actual target"
+            );
+            for reference in [
+                "missing1.begin",
+                "step-edge-e1.begin",
+                "diagram-merman-flowchart-document-edge-0.begin",
+                "step_other_2d_e1_2d_step.begin",
+            ] {
+                assert_eq!(
+                    canonical_flowchart_step_begin(transform, reference, mode, 3),
+                    None,
+                    "missing, wrong-kind and foreign targets must remain unnormalized"
+                );
+            }
+            assert_eq!(
+                canonical_flowchart_step_begin(motions[0], &format!("0s;{second}.end+1s"), mode, 3),
+                None,
+                "the restart event must refer to the motion itself"
+            );
+        }
+    }
+
+    #[test]
+    fn flowchart_step_identity_rejects_ambiguous_unscoped_and_unrecognized_owners() {
+        let local = flowchart_step_local();
+        let first = "step_diagram_2d_merman_2d_flowchart_2d_document_2d_edge_2d_0_2d_step";
+        for changed in [
+            local.replace("</svg>", &format!(r#"<g id="{first}"/></svg>"#)),
+            local.replace("</svg>", r#"<g id="step-edge-e1"/></svg>"#),
+            local.replace(
+                "</svg>",
+                r#"<g id="diagram-merman-flowchart-document-edge-0"/></svg>"#,
+            ),
+            local.replace(r#"data-id="e2""#, r#"data-id="e1""#),
+            local.replace(r#"data-et="edge""#, r#"data-et="node""#),
+            local.replace("edge-step-dot", "authored-dot"),
+            local.replace("step_diagram_2d_", "step_other_2d_"),
+            local.replace(first, "authored-motion1"),
+        ] {
+            let document = roxmltree::Document::parse(&changed).unwrap();
+            let motion = document
+                .descendants()
+                .find(|node| node.has_tag_name("animateMotion"))
+                .unwrap();
+            assert_eq!(
+                canonical_flowchart_identifier(motion, "id", motion.attribute("id").unwrap()),
+                None,
+                "only an unambiguous scoped Step producer may be canonicalized"
+            );
+        }
+    }
+
+    #[test]
+    fn flowchart_step_motion_path_projects_geometry_but_keeps_commands_and_structure() {
+        let local = flowchart_step_local();
+        let moved = local.replace("M0,0L10,0", "M2,3L20,3");
+        for mode in NON_STRICT_FLOWCHART_MODES {
+            assert_eq!(
+                dom_signature(&local, mode, 3).unwrap(),
+                dom_signature(&moved, mode, 3).unwrap(),
+                "closed Step paths share the existing edge geometry projection: {mode:?}"
+            );
+        }
+        assert_ne!(
+            dom_signature(&local, DomMode::Strict, 3).unwrap(),
+            dom_signature(&moved, DomMode::Strict, 3).unwrap()
+        );
+        for path in ["M0,0Q5,2 10,0", "M0,0L5,0L10,0", "M0,0l10,0", "M0,0"] {
+            let changed = local.replace("M0,0L10,0", path);
+            for mode in NON_STRICT_FLOWCHART_MODES {
+                assert_ne!(
+                    dom_signature(&local, mode, 3).unwrap(),
+                    dom_signature(&changed, mode, 3).unwrap(),
+                    "Step path command structure must remain observable: {mode:?} {path}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn flowchart_step_motion_path_requires_matching_highlight_and_valid_finite_geometry() {
+        let local = flowchart_step_local();
+        for changed in [
+            local.replace(r#"path="M0,0L10,0""#, r#"path="M2,3L20,3""#),
+            local.replace("M0,0L10,0", "M0,0L1e999,0"),
+            local.replace("M0,0L10,0", "M0,0LNaN,0"),
+            local.replace("M0,0L10,0", "M0,0L10"),
+        ] {
+            for mode in NON_STRICT_FLOWCHART_MODES {
+                assert_ne!(
+                    dom_signature(&local, mode, 3).unwrap(),
+                    dom_signature(&changed, mode, 3).unwrap(),
+                    "unclosed or invalid motion paths must not be projected: {mode:?}"
+                );
+            }
+        }
+        let arc = local.replace("M0,0L10,0", "M0,0A5,5 0 0,0 10,0");
+        let changed_arc = arc.replace("0 0,0 10,0", "0 1,0 10,0");
+        for mode in NON_STRICT_FLOWCHART_MODES {
+            assert_ne!(
+                dom_signature(&arc, mode, 3).unwrap(),
+                dom_signature(&changed_arc, mode, 3).unwrap(),
+                "arc flags are structural: {mode:?}"
             );
         }
     }
@@ -4599,6 +5015,38 @@ mod tests {
             path.attrs.get("label-offset-y").map(|s| s.as_str()),
             Some("9.193")
         );
+    }
+
+    #[test]
+    fn step_motion_identity_keeps_document_wide_duplicate_ids_observable() {
+        let first = r#"<svg id="d" aria-roledescription="flowchart-v2"><g class="edgePaths"><path class="flowchart-link" id="d-e-x" data-et="edge" data-id="one"/><circle class="edge-step-dot" data-step="1"><animateMotion id="step_d_2d_e_2d_x_2d_step" path="M0,0L10,0" dur="1s" begin="0s;step_d_2d_e_2d_x_2d_step.end+1s"/></circle></g></svg>"#;
+        let second = r#"<svg id="d-e" aria-roledescription="flowchart-v2"><g class="edgePaths"><path class="flowchart-link" id="d-e-y" data-et="edge" data-id="two"/><circle class="edge-step-dot" data-step="2"><animateMotion id="step_d_2d_e_2d_y_2d_step" path="M0,10L10,10" dur="1s" begin="1s;step_d_2d_e_2d_y_2d_step.end+1s"/></circle></g></svg>"#;
+        let duplicate = second
+            .replace("d-e-y", "d-e-x")
+            .replace("step_d_2d_e_2d_y_2d_step", "step_d_2d_e_2d_x_2d_step");
+        let unique = format!("<svg>{first}{second}</svg>");
+        let ambiguous = format!("<svg>{first}{duplicate}</svg>");
+        for mode in [DomMode::Structure, DomMode::Parity, DomMode::ParityRoot] {
+            assert_ne!(
+                dom_signature(&unique, mode, 3).unwrap(),
+                dom_signature(&ambiguous, mode, 3).unwrap()
+            );
+        }
+    }
+
+    #[test]
+    fn step_motion_raw_path_cannot_impersonate_a_projected_path() {
+        let valid = r#"<svg id="d" aria-roledescription="flowchart-v2"><g class="edgePaths"><path class="flowchart-link" id="d-e" data-et="edge" data-id="e"/><path class="edge-step-highlight" data-step="1" d="M0,0L10,0"><animateTransform begin="step_d_2d_e_2d_step.begin"/></path><circle class="edge-step-dot" data-step="1"><animateMotion id="step_d_2d_e_2d_step" path="M0,0L10,0" begin="0s;step_d_2d_e_2d_step.end+1s"/></circle></g></svg>"#;
+        let invalid = valid.replace(
+            "path=\"M0,0L10,0\"",
+            "path=\"M&lt;n&gt;&lt;n&gt;L&lt;n&gt;&lt;n&gt;\"",
+        );
+        for mode in [DomMode::Structure, DomMode::Parity, DomMode::ParityRoot] {
+            assert_ne!(
+                dom_signature(valid, mode, 3).unwrap(),
+                dom_signature(&invalid, mode, 3).unwrap()
+            );
+        }
     }
 
     #[test]

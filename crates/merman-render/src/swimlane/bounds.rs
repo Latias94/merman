@@ -4,15 +4,19 @@ use super::config::{
 use super::geometry::Rect;
 use super::working::WorkingLayout;
 use crate::model::SwimlaneTitleRect;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 fn group_depth(layout: &WorkingLayout, id: &str) -> usize {
     let mut depth = 0;
+    let mut seen = HashSet::from([id]);
     let mut current = layout
         .nodes
         .get(id)
         .and_then(|node| node.parent_id.as_deref());
     while let Some(parent) = current {
+        if !seen.insert(parent) {
+            break;
+        }
         let Some(node) = layout.nodes.get(parent) else {
             break;
         };
@@ -25,15 +29,26 @@ fn group_depth(layout: &WorkingLayout, id: &str) -> usize {
     depth
 }
 
-fn child_bounds(layout: &WorkingLayout, group_id: &str) -> Option<Rect> {
+fn child_bounds(layout: &WorkingLayout, group_id: &str, include_label_width: bool) -> Option<Rect> {
     let mut bounds: Option<Rect> = None;
+    let mut label_top = f64::INFINITY;
+    let mut label_bottom = f64::NEG_INFINITY;
     for child in layout.children_of(group_id) {
         let rect = Rect::from_center(child.x, child.y, child.width, child.height);
+        if !include_label_width && child.kind == super::working::WorkingNodeKind::EdgeLabel {
+            label_top = label_top.min(rect.top);
+            label_bottom = label_bottom.max(rect.bottom);
+            continue;
+        }
         if let Some(current) = &mut bounds {
             current.union(rect);
         } else {
             bounds = Some(rect);
         }
+    }
+    if let Some(bounds) = &mut bounds {
+        bounds.top = bounds.top.min(label_top);
+        bounds.bottom = bounds.bottom.max(label_bottom);
     }
     bounds
 }
@@ -73,7 +88,7 @@ pub(super) fn assign_canonical_group_bounds(layout: &mut WorkingLayout) {
 
     let mut source_bounds = HashMap::new();
     for id in &group_ids {
-        let Some(bounds) = child_bounds(layout, id) else {
+        let Some(bounds) = child_bounds(layout, id, false) else {
             continue;
         };
         let Some(group) = layout.nodes.get_mut(id) else {
@@ -92,10 +107,11 @@ pub(super) fn assign_canonical_group_bounds(layout: &mut WorkingLayout) {
         source_bounds.insert(id.clone(), bounds);
     }
 
+    let lane_model = super::lanes::LaneModel::new(&layout.nodes);
     let top_lane_ids: Vec<String> = layout
         .nodes
         .values()
-        .filter(|node| node.is_group() && node.parent_id.is_none())
+        .filter(|node| lane_model.is_lane(&node.id))
         .map(|node| node.id.clone())
         .collect();
     let mut global_min_y = f64::INFINITY;
@@ -197,7 +213,7 @@ pub(super) fn recompute_nested_group_bounds(layout: &mut WorkingLayout) {
         .collect();
     group_ids.sort_by_key(|id| std::cmp::Reverse(group_depth(layout, id)));
     for id in group_ids {
-        let Some(bounds) = child_bounds(layout, &id) else {
+        let Some(bounds) = child_bounds(layout, &id, true) else {
             continue;
         };
         if let Some(group) = layout.nodes.get_mut(&id) {

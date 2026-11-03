@@ -304,9 +304,7 @@ mod mindmap {
         PresentationDiagram::try_new(
             metadata("mindmap"),
             RenderSemanticModel::Mindmap(model),
-            PresentationContext::Mindmap {
-                diagram_id: "explicit-tree-id".to_string(),
-            },
+            PresentationContext::None,
             &InputResourcePolicy::default(),
             &OperationControl::new(),
         )
@@ -315,7 +313,7 @@ mod mindmap {
     }
 
     #[test]
-    fn nonempty_mindmap_requires_an_explicit_output_identity() {
+    fn nonempty_mindmap_accepts_the_default_output_context() {
         let result = PresentationDiagram::try_new(
             metadata("mindmap"),
             RenderSemanticModel::Mindmap(model()),
@@ -324,21 +322,16 @@ mod mindmap {
             &OperationControl::new(),
         )
         .unwrap();
-        assert!(matches!(
-            result,
-            Err(PresentationDataError::MissingOutputIdentity { family: "mindmap" })
-        ));
+        assert!(result.is_ok());
     }
 
     #[cfg(feature = "compat-json")]
     #[test]
-    fn frozen_mindmap_identity_is_reused_without_runtime_state() {
+    fn mindmap_projection_reuses_declared_data_without_runtime_identity() {
         let diagram = PresentationDiagram::try_new(
             metadata("mindmap"),
             RenderSemanticModel::Mindmap(model()),
-            PresentationContext::Mindmap {
-                diagram_id: "external-producer-id".to_string(),
-            },
+            PresentationContext::None,
             &InputResourcePolicy::default(),
             &OperationControl::new(),
         )
@@ -347,7 +340,7 @@ mod mindmap {
         let first = diagram.compatibility_json().unwrap();
         let second = diagram.clone().compatibility_json().unwrap();
         assert_eq!(first, second);
-        assert_eq!(first["diagramId"], "external-producer-id");
+        assert!(first.get("diagramId").is_none());
     }
 
     #[cfg(feature = "compat-json")]
@@ -360,9 +353,7 @@ mod mindmap {
         let diagram = PresentationDiagram::try_new(
             metadata("mindmap"),
             RenderSemanticModel::Mindmap(model),
-            PresentationContext::Mindmap {
-                diagram_id: "cycle".to_string(),
-            },
+            PresentationContext::None,
             &InputResourcePolicy::default(),
             &OperationControl::new(),
         )
@@ -416,7 +407,7 @@ mod mindmap {
 
     #[cfg(feature = "compat-json")]
     #[test]
-    fn raw_model_missing_identity_drops_deep_projection_values_iteratively() {
+    fn raw_model_drops_deep_projection_values_iteratively() {
         std::thread::Builder::new()
             .stack_size(128 * 1024)
             .spawn(|| {
@@ -439,10 +430,11 @@ mod mindmap {
                     effective_config,
                     title: None,
                 };
-                let error = RenderSemanticModel::Mindmap(model())
+                let projected = RenderSemanticModel::Mindmap(model())
                     .compatibility_json(&metadata)
-                    .unwrap_err();
-                assert!(error.message().contains("diagram id is missing"));
+                    .unwrap();
+                assert!(projected.get("diagramId").is_none());
+                drop(projected);
             })
             .unwrap()
             .join()

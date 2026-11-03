@@ -3,22 +3,22 @@
   "projectionSchemaVersion": 3,
   "selectionDecision": {
     "path": "tools/upstreams/MERMAID_SELECTION_DECISION.json",
-    "sha256": "34578989e50c2fc2980770a4c9aa44da63a74deb02b026ba0444820ea4ea296d"
+    "sha256": "90a6e204f3a6877b8dea85a2bf2c183d536a85fb509e7e54ab0a8a44634f08f5"
   },
   "release": {
     "id": "mermaid",
     "role": "core",
     "package": "mermaid",
-    "version": "12.2.0",
-    "declaredRange": "12.2.0",
-    "integrity": "sha512-w7nr/SFrLO7BaVTs3dQTvYSV6nYSBj0Yy9DjBhsIJtAcHqRzXSq4Pg32ujHZ/AdWsAMNEvvhbm5dt9E2tOiHzw==",
-    "tarballUrl": "https://registry.npmjs.org/mermaid/-/mermaid-12.2.0.tgz",
-    "installedContentSha256": "428bc8e4372395ef8c7d3c35c0e9845fe016e7c4cba6f1e442d752251232dd87",
+    "version": "12.3.0",
+    "declaredRange": "12.3.0",
+    "integrity": "sha512-4113TdXeLAsMruJ79OpFL5O8+LTFXhQqZ260rF3tgUmiNAtRm4Uume04I+65PRN6yZ69J4f8rVYWW8zRk65UYw==",
+    "tarballUrl": "https://registry.npmjs.org/mermaid/-/mermaid-12.3.0.tgz",
+    "installedContentSha256": "8dea6d2895b9a75667443ef8a82fc4b8d30f962de057686c7b6ef860bc69d251",
     "source": {
       "repository": "https://github.com/mermaid-js/mermaid.git",
-      "reference": "mermaid@12.2.0",
-      "commit": "1fb7869866dd619168d840291c9c54b4f129758b",
-      "checkoutPath": "repo-ref/mermaid",
+      "reference": "mermaid@12.3.0",
+      "commit": "2086904e76c692331e34a45d7cc3bc30860d040e",
+      "checkoutPath": "repo-ref/mermaid-12.3.0",
       "packagePath": "packages/mermaid"
     },
     "requiredSurfaces": [
@@ -123,7 +123,7 @@
     },
     "layouts": {
       "sourcePath": "packages/mermaid/src/rendering-util/render.ts",
-      "sourceSha256": "9d900493575ce1dd9c834c6ea56d37a2e21b70818be8dcb2b175373330ee1cf2",
+      "sourceSha256": "08f376cc21e285a9335287758d7ca125fe3fe2e994f6c3f4ca22a724a2437ebe",
       "ids": [
         "dagre",
         "swimlane",
@@ -237,16 +237,16 @@
       "id": "mermaid-cli",
       "role": "reference-cli",
       "package": "@mermaid-js/mermaid-cli",
-      "version": "12.0.0",
-      "declaredRange": "12.0.0",
-      "integrity": "sha512-AA18uaJtWVlM5PX7RGBxrVrqTTesmEaWCmfV+l5RkD6A1CnpUAtPpL+wWhkQAZrDSfyAw5FZyj084MsnDIPY3g==",
-      "tarballUrl": "https://registry.npmjs.org/@mermaid-js/mermaid-cli/-/mermaid-cli-12.0.0.tgz",
-      "installedContentSha256": "8f204052d8117c099211557288ef4c34597785da3843d1864a46fa12b1c8663d",
+      "version": "12.2.0",
+      "declaredRange": "12.2.0",
+      "integrity": "sha512-oPfUxf4ly4MEf2wIgJh7DvtCz5mQFn9KFqCOZv5k2Vo7AtCAXO3NULy3W3UpNHDrP05Lbld7Gn6XeUgUWVpA2g==",
+      "tarballUrl": "https://registry.npmjs.org/@mermaid-js/mermaid-cli/-/mermaid-cli-12.2.0.tgz",
+      "installedContentSha256": "7d43b6fab89acc14a4d1164d59675ceccbdcfe5d68944229461597031688ac5d",
       "source": {
         "repository": "https://github.com/mermaid-js/mermaid-cli.git",
-        "reference": "12.0.0",
-        "commit": "db1ceebbe529d7975474eb0d0e9c23e9dc57cd37",
-        "checkoutPath": null,
+        "reference": "12.2.0",
+        "commit": "a5372aa93ff4effdc7fe9d91c3371f980c15346e",
+        "checkoutPath": "repo-ref/mermaid-cli-12.2.0",
         "packagePath": "."
       },
       "requiredSurfaces": [
@@ -255,8 +255,8 @@
       ]
     },
     "workspace": "tools/mermaid-cli",
-    "packageJsonSha256": "7a5b463202555d13b49d58353ead90dfac8ae7390cbf0020a9cad53a5e44131c",
-    "packageLockSha256": "399cd8e13fdda8965f048abfcc8a160c66252d660e2eccdf56c2472529845289",
+    "packageJsonSha256": "a84a0b50e1d198b67f07292f4122fcba73565044e8699d8ccd6ee7a996450adb",
+    "packageLockSha256": "24d30b0c2b10586e8a41451352da1217a0dce2ec6172c390ec084597fab8f66b",
     "configSha256": "da34e9d1dae1882d3b32a479e6223bad495f31877e6d0a3f0a3e3a157832eacc"
   },
   "rendererTools": [
@@ -344,6 +344,62 @@
         "upstream-svg",
         "provenance"
       ]
+    }
+  ],
+  "behaviorDependencies": [
+    {
+      "id": "elkjs",
+      "role": "behavior",
+      "package": "elkjs",
+      "version": "0.12.0",
+      "declaredRange": "^0.12.0",
+      "integrity": "sha512-YZcKynxVxYoKIOEpywEPwCFdg+BTbxQRNf3pbwdDCvc8O3kQD8bmIwSxKU1eOTVc4Xo+VG9Te+575mlfvOrhEQ==",
+      "tarballUrl": "https://registry.npmjs.org/elkjs/-/elkjs-0.12.0.tgz",
+      "installedContentSha256": "1db4aa1a396126b7f12581f795954620362171811b2305b644631e3f5a63a313",
+      "source": {
+        "repository": "https://github.com/kieler/elkjs.git",
+        "reference": "0.12.0",
+        "commit": "ff5771d7165445c42c408bb8a090c8035272218c",
+        "checkoutPath": "repo-ref/elkjs-0.12.0",
+        "packagePath": "."
+      },
+      "requiredSurfaces": ["layout-elk", "playground", "reference-cli"]
+    },
+    {
+      "id": "cytoscape",
+      "role": "behavior",
+      "package": "cytoscape",
+      "version": "3.34.4",
+      "declaredRange": "^3.34.0",
+      "integrity": "sha512-msY99tMY8iWTg+sIPGfSqDcPNOt4xcj+v/K/7qUFaCUxxlqnMkUYLBjRUzn9W5CU/R2hrmtJa5+UtovrEM2ctg==",
+      "tarballUrl": "https://registry.npmjs.org/cytoscape/-/cytoscape-3.34.4.tgz",
+      "installedContentSha256": "8a50eb353a66ae470b95e8cda459e9195aaf1be36793e4c9e5d48f71c2f4f4a9",
+      "source": {
+        "repository": "https://github.com/cytoscape/cytoscape.js.git",
+        "reference": "v3.34.4",
+        "commit": "e394aa858b0699a67be8f9ab426823ae1aae7813",
+        "checkoutPath": "repo-ref/cytoscape-3.34.4",
+        "packagePath": "."
+      },
+      "requiredSurfaces": ["layout-cytoscape", "playground", "reference-cli"]
+    },
+    {
+      "id": "sanitize-url",
+      "role": "behavior",
+      "package": "@braintree/sanitize-url",
+      "version": "7.1.2",
+      "declaredRange": "^7.1.2",
+      "integrity": "sha512-jigsZK+sMF/cuiB7sERuo9V7N9jx+dhmHHnQyDSVdpZwVutaBu7WvNYqMDLSgFgfB30n452TP3vjDAvFC973mA==",
+      "tarballUrl": "https://registry.npmjs.org/@braintree/sanitize-url/-/sanitize-url-7.1.2.tgz",
+      "installedContentSha256": "5307c719e51d1a829ccf806c4291301ef59417e6fd6a2af9e13d0133a2b6a402",
+      "source": {
+        "repository": "https://github.com/braintree/sanitize-url.git",
+        "reference": "v7.1.2",
+        "commit": "206cb8b942b10dad28dd3d31db3bf39e3fcdd7aa",
+        "checkoutPath": "repo-ref/sanitize-url-7.1.2",
+        "packagePath": "."
+      },
+      "requiredSurfaces": ["rust-sanitizer", "playground", "reference-cli"]
     }
   ],
   "installPolicy": {

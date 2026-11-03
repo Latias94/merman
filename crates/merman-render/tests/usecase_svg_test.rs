@@ -33,6 +33,16 @@ fn render(source: &str, layout: &str) -> (merman_model::ManagedJson, String) {
     )
 }
 
+#[test]
+fn usecase_relationship_labels_use_mermaid_12_3_stereotypes() {
+    let (_, svg) = render(
+        "usecase-beta\nA[Base]\nB[Included]\nC[Extension]\nA ..> : include B\nC ..> : extend A\n",
+        "dagre",
+    );
+    assert!(svg.contains("«include»"), "include label is missing");
+    assert!(svg.contains("«extend»"), "extend label is missing");
+}
+
 fn render_config(source: &str, config: serde_json::Value) -> (merman_model::ManagedJson, String) {
     render_config_with_environment(source, config, RenderEnvironment::deterministic())
 }

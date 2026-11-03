@@ -1,0 +1,246 @@
+{
+  "diagramType": "swimlane",
+  "layout": {
+    "SwimlaneDiagram": {
+      "bounds": {
+        "max_x": 280.0,
+        "max_y": 229.0,
+        "min_x": -280.0,
+        "min_y": -36.0
+      },
+      "direction": "TB",
+      "edges": [
+        {
+          "curve": "rounded",
+          "from": "A",
+          "id": "L_A_B_0",
+          "label_node_id": "edge-label-A-B-L_A_B_0",
+          "points": [
+            {
+              "x": -140.0,
+              "y": 47.0
+            },
+            {
+              "x": -140.0,
+              "y": 146.0
+            }
+          ],
+          "reversed_for_layout": false,
+          "to": "B"
+        },
+        {
+          "curve": "rounded",
+          "from": "A",
+          "id": "L_A_B_2",
+          "label_node_id": "edge-label-A-B-L_A_B_2",
+          "points": [
+            {
+              "x": -117.54,
+              "y": 47.0
+            },
+            {
+              "x": -117.54,
+              "y": 146.0
+            }
+          ],
+          "reversed_for_layout": false,
+          "to": "B"
+        },
+        {
+          "curve": "rounded",
+          "from": "A",
+          "id": "L_A_C_0",
+          "label_node_id": "edge-label-A-C-L_A_C_0",
+          "points": [
+            {
+              "x": -50.0,
+              "y": 31.333
+            },
+            {
+              "x": -50.0,
+              "y": 31.333
+            },
+            {
+              "x": 140.0,
+              "y": 31.333
+            },
+            {
+              "x": 140.0,
+              "y": 146.0
+            },
+            {
+              "x": 140.0,
+              "y": 146.0
+            }
+          ],
+          "reversed_for_layout": false,
+          "to": "C"
+        },
+        {
+          "curve": "rounded",
+          "from": "B",
+          "id": "L_B_C_0",
+          "label_node_id": null,
+          "points": [
+            {
+              "x": -50.0,
+              "y": 169.5
+            },
+            {
+              "x": 50.0,
+              "y": 169.5
+            }
+          ],
+          "reversed_for_layout": false,
+          "to": "C"
+        }
+      ],
+      "lanes": [
+        {
+          "content_top": 0.0,
+          "height": 265.0,
+          "id": "second",
+          "padding": 8.0,
+          "parent_id": null,
+          "requested_dir": "TB",
+          "title": "Second lane",
+          "title_label_height": 17.0,
+          "title_label_width": 65.094,
+          "title_rect": {
+            "bottom": -15.0,
+            "left": 0.0,
+            "right": 280.0,
+            "top": -36.0
+          },
+          "width": 280.0,
+          "x": 140.0,
+          "y": 96.5
+        },
+        {
+          "content_top": 0.0,
+          "height": 265.0,
+          "id": "first",
+          "padding": 8.0,
+          "parent_id": null,
+          "requested_dir": "TB",
+          "title": "First lane",
+          "title_label_height": 17.0,
+          "title_label_width": 56.984,
+          "title_rect": {
+            "bottom": -15.0,
+            "left": -280.0,
+            "right": 0.0,
+            "top": -36.0
+          },
+          "width": 280.0,
+          "x": -140.0,
+          "y": 96.5
+        }
+      ],
+      "nodes": [
+        {
+          "height": 47.0,
+          "id": "A",
+          "is_edge_label": false,
+          "label": "Receive",
+          "label_height": 17.0,
+          "label_type": "text",
+          "label_width": 120.0,
+          "layer": 0.0,
+          "order": 0.0,
+          "parent_id": "first",
+          "shape": "squareRect",
+          "top_lane_id": "first",
+          "width": 180.0,
+          "x": -140.0,
+          "y": 23.5
+        },
+        {
+          "height": 47.0,
+          "id": "B",
+          "is_edge_label": false,
+          "label": "Approve",
+          "label_height": 17.0,
+          "label_type": "text",
+          "label_width": 120.0,
+          "layer": 1.0,
+          "order": 0.0,
+          "parent_id": "first",
+          "shape": "squareRect",
+          "top_lane_id": "first",
+          "width": 180.0,
+          "x": -140.0,
+          "y": 169.5
+        },
+        {
+          "height": 47.0,
+          "id": "C",
+          "is_edge_label": false,
+          "label": "Notify",
+          "label_height": 17.0,
+          "label_type": "text",
+          "label_width": 120.0,
+          "layer": 1.0,
+          "order": 0.0,
+          "parent_id": "second",
+          "shape": "squareRect",
+          "top_lane_id": "second",
+          "width": 180.0,
+          "x": 140.0,
+          "y": 169.5
+        },
+        {
+          "height": 17.0,
+          "id": "edge-label-A-B-L_A_B_0",
+          "is_edge_label": true,
+          "label": "review",
+          "label_height": 17.0,
+          "label_type": "text",
+          "label_width": 38.92,
+          "layer": 0.0,
+          "order": 0.0,
+          "parent_id": "first",
+          "shape": "labelRect",
+          "top_lane_id": "first",
+          "width": 38.92,
+          "x": -140.0,
+          "y": 96.5
+        },
+        {
+          "height": 17.0,
+          "id": "edge-label-A-B-L_A_B_2",
+          "is_edge_label": true,
+          "label": "record",
+          "label_height": 17.0,
+          "label_type": "text",
+          "label_width": 36.12,
+          "layer": 0.0,
+          "order": 0.0,
+          "parent_id": "first",
+          "shape": "labelRect",
+          "top_lane_id": "first",
+          "width": 36.12,
+          "x": -117.54,
+          "y": 71.75
+        },
+        {
+          "height": 17.0,
+          "id": "edge-label-A-C-L_A_C_0",
+          "is_edge_label": true,
+          "label": "same rank",
+          "label_height": 17.0,
+          "label_type": "text",
+          "label_width": 59.36,
+          "layer": 0.0,
+          "order": 0.0,
+          "parent_id": "second",
+          "shape": "labelRect",
+          "top_lane_id": "second",
+          "width": 59.36,
+          "x": 45.0,
+          "y": 31.333
+        }
+      ]
+    }
+  }
+}

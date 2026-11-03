@@ -468,12 +468,61 @@ fn flowchart_text_bytes(model: &FlowchartModel) -> usize {
                 subtotal.saturating_add(value.len())
             });
     }
+    total = model
+        .dropped_subgraph_members
+        .iter()
+        .fold(total, |subtotal, member| {
+            subtotal
+                .saturating_add(member.node.len())
+                .saturating_add(member.kept_by.len())
+                .saturating_add(member.dropped_from.len())
+        });
     total = model.tooltips.iter().fold(total, |subtotal, (id, value)| {
         subtotal
             .saturating_add(id.len())
             .saturating_add(value.len())
     });
     total.saturating_add(model.subgraph_vertex_styles.retained_bytes())
+}
+
+#[cfg(all(
+    test,
+    any(
+        feature = "diagram-flowchart",
+        feature = "diagram-swimlane",
+        feature = "diagram-agentflow"
+    )
+))]
+mod flowchart_tests {
+    use super::*;
+    use crate::families::flowchart::FlowDroppedSubgraphMember;
+    use crate::resources::{InputResourceLimitId, InputResourcePolicy, ResourceProfile};
+
+    #[test]
+    fn dropped_subgraph_members_count_utf8_bytes_at_the_exact_model_text_limit() {
+        let mut model: FlowchartModel = serde_json::from_str(r#"{"nodes":[],"edges":[]}"#).unwrap();
+        let baseline = FlowchartComplexity::from_model(&model);
+        let member = FlowDroppedSubgraphMember {
+            node: "节点".to_string(),
+            kept_by: "保留".to_string(),
+            dropped_from: "丢弃".to_string(),
+        };
+        model.dropped_subgraph_members = vec![member.clone(), member];
+        let expected_bytes = baseline.label_bytes + 2 * "节点保留丢弃".len();
+        let policy = InputResourcePolicy::for_profile(ResourceProfile::UnboundedForTrustedInput)
+            .with_limit(InputResourceLimitId::MaxModelTextBytes, expected_bytes)
+            .unwrap();
+        let measured = policy.check_flowchart_complexity(&model).unwrap();
+        assert_eq!(measured.label_bytes, expected_bytes);
+        let error = policy
+            .with_limit(InputResourceLimitId::MaxModelTextBytes, expected_bytes - 1)
+            .unwrap()
+            .check_flowchart_complexity(&model)
+            .unwrap_err();
+        assert_eq!(error.limit, "max_model_text_bytes");
+        assert_eq!(error.actual, expected_bytes);
+        assert_eq!(error.max, expected_bytes - 1);
+    }
 }
 
 #[cfg(any(

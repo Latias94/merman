@@ -1,4 +1,4 @@
-use super::super::roughjs_common::{ops_to_svg_path_d, parse_hex_color_to_srgba};
+use super::super::roughjs_common::{controlled, ops_to_svg_path_d, parse_hex_color_to_srgba};
 use super::super::*;
 use crate::ishikawa::IshikawaTextThemePlan;
 use crate::model::{
@@ -6,10 +6,11 @@ use crate::model::{
     IshikawaLineLayout, IshikawaSubGroupLayout, IshikawaTextLayout,
 };
 
-struct RoughContext {
+struct RoughContext<'a> {
     randomness: roughr::core::RoughRandomness,
     line_color: String,
     fill_color: String,
+    work_meter: &'a crate::resources::OperationWorkMeter,
 }
 
 #[derive(Clone, Copy)]
@@ -60,6 +61,7 @@ pub(crate) fn render_ishikawa_diagram_svg_with_theme(
             ),
             line_color: theme.line_color.clone(),
             fill_color: theme.main_bkg.clone(),
+            work_meter: options.work_meter(),
         };
         push_hand_drawn_diagram(&mut out, layout, &rough, &mut text_terminals)?;
     } else {
@@ -272,13 +274,20 @@ fn push_rough_line(
         .stroke_width(2.0)
         .build()
         .expect("static Ishikawa rough line options must be valid");
-    let drawable = roughr::generator::Generator::default().line::<f64>(
-        line.x1,
-        line.y1,
-        line.x2,
-        line.y2,
-        &Some(options),
-    );
+    let drawable = controlled::generate(
+        rough.work_meter,
+        merman_model::OperationPhase::Emit,
+        |control| {
+            roughr::generator::Generator::default().line_with_control::<f64>(
+                line.x1,
+                line.y1,
+                line.x2,
+                line.y2,
+                &Some(options),
+                control,
+            )
+        },
+    )?;
     push_rough_group(
         out,
         Some(&line.class_name),
@@ -298,8 +307,17 @@ fn push_rough_hachure_path(
     path_d: &str,
     rough: &RoughContext,
 ) -> Result<()> {
-    let drawable = roughr::generator::Generator::default()
-        .path::<f64>(path_d.to_string(), &Some(rough_hachure_options(rough)));
+    let drawable = controlled::generate(
+        rough.work_meter,
+        merman_model::OperationPhase::Emit,
+        |control| {
+            roughr::generator::Generator::default().path_with_control::<f64>(
+                path_d,
+                &Some(rough_hachure_options(rough)),
+                control,
+            )
+        },
+    )?;
     push_rough_group(
         out,
         Some(class_name),
@@ -319,13 +337,20 @@ fn push_rough_hachure_rect(
     label_box: &IshikawaLabelBoxLayout,
     rough: &RoughContext,
 ) -> Result<()> {
-    let drawable = roughr::generator::Generator::default().rectangle::<f64>(
-        label_box.x,
-        label_box.y,
-        label_box.width,
-        label_box.height,
-        &Some(rough_hachure_options(rough)),
-    );
+    let drawable = controlled::generate(
+        rough.work_meter,
+        merman_model::OperationPhase::Emit,
+        |control| {
+            roughr::generator::Generator::default().rectangle_with_control::<f64>(
+                label_box.x,
+                label_box.y,
+                label_box.width,
+                label_box.height,
+                &Some(rough_hachure_options(rough)),
+                control,
+            )
+        },
+    )?;
     push_rough_group(
         out,
         Some(class_name),
@@ -378,7 +403,17 @@ fn push_rough_arrow_marker(
         .stroke_width(1.0)
         .build()
         .expect("static Ishikawa rough arrow options must be valid");
-    let drawable = roughr::generator::Generator::default().path::<f64>(path_d, &Some(options));
+    let drawable = controlled::generate(
+        rough.work_meter,
+        merman_model::OperationPhase::Emit,
+        |control| {
+            roughr::generator::Generator::default().path_with_control::<f64>(
+                &path_d,
+                &Some(options),
+                control,
+            )
+        },
+    )?;
     push_rough_group(
         out,
         None,

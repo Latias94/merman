@@ -311,18 +311,20 @@ pub(super) fn write_node(
                 .rough_randomness(context.css_binding.hand_drawn_seed, "usecase-note");
             let note_fill = &context.css_binding.note;
             let note_stroke = &context.css_binding.note_border;
-            let (fill, stroke) =
-                roughjs_common::roughjs_paths_for_rect(roughjs_common::RoughRectSpec {
-                    x: -node.width / 2.0,
-                    y: -node.height / 2.0,
-                    w: node.width,
-                    h: node.height,
-                    stroke_width: 1.3,
-                    randomness: &randomness,
-                })
-                .ok_or_else(|| Error::InvalidModel {
-                    message: "failed to construct Usecase note geometry".into(),
-                })?;
+            let paths = roughjs_common::roughjs_paths_for_rect(roughjs_common::RoughRectSpec {
+                x: -node.width / 2.0,
+                y: -node.height / 2.0,
+                w: node.width,
+                h: node.height,
+                stroke_width: 1.3,
+                work_meter: context.options.work_meter(),
+                phase: merman_model::OperationPhase::Emit,
+                randomness: &randomness,
+            });
+            context.options.checkpoint_emit()?;
+            let (fill, stroke) = paths.ok_or_else(|| Error::InvalidModel {
+                message: "failed to construct Usecase note geometry".into(),
+            })?;
             let _ = write!(
                 out,
                 r#"<g class="basic label-container outer-path"><path d="{fill}" stroke="none" stroke-width="0" fill="{}" style="{}"/><path d="{stroke}" stroke="{}" stroke-width="1.3" fill="none" stroke-dasharray="0 0" style="{}"/></g>"#,

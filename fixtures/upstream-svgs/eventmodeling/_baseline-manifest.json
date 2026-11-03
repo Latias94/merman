@@ -1,12 +1,12 @@
 {
   "schema_version": 4,
   "source": {
-    "mermaid_version": "12.2.0",
-    "mermaid_cli_version": "12.0.0",
-    "mermaid_source_tag": "mermaid@12.2.0",
-    "mermaid_source_commit": "1fb7869866dd619168d840291c9c54b4f129758b",
-    "package_json_sha256": "7a5b463202555d13b49d58353ead90dfac8ae7390cbf0020a9cad53a5e44131c",
-    "package_lock_sha256": "399cd8e13fdda8965f048abfcc8a160c66252d660e2eccdf56c2472529845289",
+    "mermaid_version": "12.3.0",
+    "mermaid_cli_version": "12.2.0",
+    "mermaid_source_tag": "mermaid@12.3.0",
+    "mermaid_source_commit": "2086904e76c692331e34a45d7cc3bc30860d040e",
+    "package_json_sha256": "a84a0b50e1d198b67f07292f4122fcba73565044e8699d8ccd6ee7a996450adb",
+    "package_lock_sha256": "24d30b0c2b10586e8a41451352da1217a0dce2ec6172c390ec084597fab8f66b",
     "mermaid_config_sha256": "da34e9d1dae1882d3b32a479e6223bad495f31877e6d0a3f0a3e3a157832eacc",
     "renderer_revision": "xtask-upstream-svg-v5"
   },
@@ -14,10 +14,10 @@
     "mode": "generated",
     "render_environment": {
       "browser": {
-        "product": "HeadlessChrome",
-        "version": "151.0.7922.77",
-        "revision": "@ff37cfca210138f2a40b843b4a8195ab7e4fc7ff",
-        "locale": "en-US",
+        "product": "Chrome",
+        "version": "156.0.8078.47",
+        "revision": "@1d17a2e2ee147bb7d6ae2ab6abdb3a2510c17775",
+        "locale": "zh-CN",
         "timezone": "Asia/Shanghai"
       },
       "puppeteer": {
@@ -29,18 +29,18 @@
         "release": "27.0.0"
       },
       "mermaid_runtime": {
-        "mermaid_version": "12.2.0",
+        "mermaid_version": "12.3.0",
         "dompurify_version": "3.4.17",
         "compiler_version": "0.28.1",
-        "artifact_sha256": "29d255aa0a6d1d69e6d7c56a67b64c6c89318e2acf079587ec85743c70b44a2e",
+        "artifact_sha256": "555d901f1da7635d0727be0a5b95cc1b84a4770e08126fed19e53966515a8911",
         "dompurify_package_sha256": "2a67a4d0cb2f51dbde8e63138391edd707e0d4bef608b1ad19c509d162e75bb6",
         "compiler_package_sha256": "410ea1c459ed1e9424a17e132f4cd84518faf824abe3377081ab54b42687f6f4",
-        "mermaid_package_sha256": "428bc8e4372395ef8c7d3c35c0e9845fe016e7c4cba6f1e442d752251232dd87",
-        "mermaid_cli_package_sha256": "8f204052d8117c099211557288ef4c34597785da3843d1864a46fa12b1c8663d"
+        "mermaid_package_sha256": "8dea6d2895b9a75667443ef8a82fc4b8d30f962de057686c7b6ef860bc69d251",
+        "mermaid_cli_package_sha256": "7d43b6fab89acc14a4d1164d59675ceccbdcfe5d68944229461597031688ac5d"
       },
       "font_probe": {
         "revision": "mermaid-font-probe-v1",
-        "sha256": "f03521bd4356783dc11fec2ed2219380d6ae8fa24313e2008f50b1a8cd70ce14"
+        "sha256": "c6b2b6ad65d9a2e47ff3b8c2b54afabae3c184561c20ae0f5b5bb11a35e890e2"
       }
     }
   },
@@ -48,52 +48,52 @@
   "fixtures": {
     "upstream_cypress_eventmodeling_spec_renders_a_state_change_pattern_002": {
       "input_sha256": "4fa469993691159bb1177fbf51c353208099984fed8524fa7cfaaccbda234843",
-      "svg_sha256": "c1e7eecb3fb7de68af8da453735ffdf687e9ae6ff9edc7a4d4ceed9004ff179e",
+      "svg_sha256": "3b4741e1534b1b7d5e84fdccfab06c99d46dde92e21e32942cd7486247ec8728",
       "renderer_profile": "owned-runtime-seeded-puppeteer-seed-1-fixed-date-1704067200000"
     },
     "upstream_cypress_eventmodeling_spec_renders_a_state_view_pattern_001": {
       "input_sha256": "4a3476697c346dd1761b96ff99e052fe1b3fc188e01cb59d97325618615d351d",
-      "svg_sha256": "954388fc080d375147e6d439224dbb8373357611352aa0dad5760a4da03b8b48",
+      "svg_sha256": "55ead7b4e95f4478acba80aaf8ca4b73455896134147f8b39a71d9a6d109fa84",
       "renderer_profile": "owned-runtime-seeded-puppeteer-seed-1-fixed-date-1704067200000"
     },
     "upstream_cypress_eventmodeling_spec_renders_a_translation_pattern_003": {
       "input_sha256": "5f173b75c8fd3176639595ac607892946ee7529c557b5574dfa7251736b645d4",
-      "svg_sha256": "b5b1078b18eddb28300ac99950faa3856a244bb9fec236df809ef86cddaeaf8e",
+      "svg_sha256": "ddb5c72c1897bc4b43eefafa7dba6bb88b9932155f32a5cc50eda86948f2f35d",
       "renderer_profile": "owned-runtime-seeded-puppeteer-seed-1-fixed-date-1704067200000"
     },
     "upstream_cypress_eventmodeling_spec_renders_with_data_block_reference_004": {
       "input_sha256": "544dd3d3df331679ee12ec0ccc31f8b185bfadb8f8903402859b4c2677251da5",
-      "svg_sha256": "011a014322b519da15465c8efeabbe80a650bdb471b87adbc42cc84be57adae3",
+      "svg_sha256": "09455d9c5077aaf112af9ebd7481aecfa430409e96be6b01f5351f131f0a98da",
       "renderer_profile": "owned-runtime-seeded-puppeteer-seed-1-fixed-date-1704067200000"
     },
     "upstream_cypress_eventmodeling_spec_renders_with_multiple_source_relations_006": {
       "input_sha256": "4782b875dc20caa43c7da63626e22700119d2a5e4cf466197d334e97cad4acb2",
-      "svg_sha256": "9f764a6b9b6e2cb93b968aebf5a951ba2de11bc7273bfc7787374221bf68ec5e",
+      "svg_sha256": "2c7b6bbcda2227001d286e2f5b01a1cb701329ad51ba1b306e0614569f16c808",
       "renderer_profile": "owned-runtime-seeded-puppeteer-seed-1-fixed-date-1704067200000"
     },
     "upstream_cypress_eventmodeling_spec_renders_with_qualified_names_005": {
       "input_sha256": "9ea6c0c02ff1d547eea368e1f36c76e309b1f76231a5058b16651b17a3b01e7e",
-      "svg_sha256": "d8db7adef56a08f98ea4ce5afddb9f9810d91b1a915b0f181a5a53bc88871012",
+      "svg_sha256": "ecc2e12dea5c082524c5b77d49a4377d0ea153e6ca8cb014a026e6c523e2dacd",
       "renderer_profile": "owned-runtime-seeded-puppeteer-seed-1-fixed-date-1704067200000"
     },
     "upstream_docs_eventmodeling_minimum": {
       "input_sha256": "2bcc1dbb84cbc06630732871f89a593fb555bd04df1b56f781c7542c922d8fee",
-      "svg_sha256": "cb999af8c42d58299e3c96a35dea20f99b1b0e67a4b058b1580d705f3eca5e54",
+      "svg_sha256": "b0d62c03fc9c942d0780367a582089d18795ef1bb666da0ed9c63a793c6d8805",
       "renderer_profile": "owned-runtime-seeded-puppeteer-seed-1-fixed-date-1704067200000"
     },
     "upstream_parser_eventmodeling_full_syntax_spec": {
       "input_sha256": "e94a3d7d90012b57b3af697ee27108b2c3bc159367a2ce886213049b7696c7a8",
-      "svg_sha256": "a45e5fd06f867fbba14f3876700198f5e874cd5d144c766db12aaaa9fb0080a8",
+      "svg_sha256": "250188f15acd841178c534636d829c9c3cb2b335c1797bd5b5b457355df0f1aa",
       "renderer_profile": "owned-runtime-seeded-puppeteer-seed-1-fixed-date-1704067200000"
     },
     "upstream_parser_eventmodeling_qualified_names_spec": {
       "input_sha256": "ffcc826f2b8cba6c050266b3321600db3a5a7e1f5144ccee38581f42eda75114",
-      "svg_sha256": "57eafeff3c8afd455b81e898cabee7669e1acfb5e5813c496f1b2adcf56b11eb",
+      "svg_sha256": "8b8cca5c3160466a588072a5fb1eb3a645bfcd51f6657d1cdea0b84752d9aa50",
       "renderer_profile": "owned-runtime-seeded-puppeteer-seed-1-fixed-date-1704067200000"
     },
     "upstream_parser_eventmodeling_resetframe_spec": {
       "input_sha256": "e7fc2bcc6d13ebdd11636e018d5b380377d9ff856d91cb8ecf90f45c1bc227f6",
-      "svg_sha256": "a82def0ad790804d9c97bce2d4655bc8aa4de0441d11435f1ccf485e548b8752",
+      "svg_sha256": "836abd7d0dee0779cecbee0d7cbf8b2facb1f2dc4930e22375ec033ee373f166",
       "renderer_profile": "owned-runtime-seeded-puppeteer-seed-1-fixed-date-1704067200000"
     }
   },

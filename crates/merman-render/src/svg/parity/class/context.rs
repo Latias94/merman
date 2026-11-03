@@ -6,11 +6,18 @@ use std::time::Duration;
 #[derive(Clone, Copy)]
 pub(super) struct ClassEmitCheckpoint<'a> {
     checkpoint: &'a dyn Fn() -> crate::Result<()>,
+    pub(super) work_meter: &'a crate::resources::OperationWorkMeter,
 }
 
 impl<'a> ClassEmitCheckpoint<'a> {
-    pub(super) fn new(checkpoint: &'a dyn Fn() -> crate::Result<()>) -> Self {
-        Self { checkpoint }
+    pub(super) fn new(
+        checkpoint: &'a dyn Fn() -> crate::Result<()>,
+        work_meter: &'a crate::resources::OperationWorkMeter,
+    ) -> Self {
+        Self {
+            checkpoint,
+            work_meter,
+        }
     }
 
     pub(super) fn checkpoint(self) -> crate::Result<()> {

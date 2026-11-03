@@ -201,6 +201,7 @@ fn single_node_flowchart_model(layout_shape: &str, label: &str) -> FlowchartMode
         }],
         edges: Vec::new(),
         subgraphs: Vec::new(),
+        dropped_subgraph_members: Vec::new(),
         subgraph_vertex_styles: Default::default(),
         tooltips: Default::default(),
         warning_facts: Vec::new(),

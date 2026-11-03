@@ -818,6 +818,7 @@ fn render_class_node_id<O: SvgOutput>(
         n,
         position,
         &ClassNodeBasicContainerContext {
+            work_meter: ctx.emit.work_meter,
             diagram_id: ctx.diagram_id,
             node_fill_style_attr: node_fill_style_attr.as_str(),
             node_stroke_style_attr: node_stroke_style_attr.as_str(),
@@ -846,6 +847,7 @@ fn render_class_node_id<O: SvgOutput>(
             basic_container.geometry,
             node_label_plan,
             &ClassHtmlNodeBodyContext {
+                work_meter: ctx.emit.work_meter,
                 measurer: ctx.measurer,
                 text_style: settings.text_style(),
                 html_calc_text_style: settings.html_calc_text_style(),
@@ -883,6 +885,7 @@ fn render_class_node_id<O: SvgOutput>(
             basic_container.geometry,
             prepared_title,
             &ClassSvgNodeBodyContext {
+                work_meter: ctx.emit.work_meter,
                 measurer: ctx.measurer,
                 text_style: settings.text_style(),
                 html_calc_text_style: settings.html_calc_text_style(),

@@ -5,6 +5,9 @@ use crate::model::SwimlaneDirection;
 use std::cmp::Ordering;
 use std::collections::{HashMap, HashSet};
 
+#[path = "sugiyama/labels.rs"]
+mod labels;
+
 #[derive(Debug)]
 struct CycleResult {
     edges: Vec<WorkingEdge>,
@@ -215,6 +218,7 @@ fn normalized_edges(layout: &WorkingLayout) -> Vec<WorkingEdge> {
         .graph_edges
         .iter()
         .filter(|edge| layout.nodes.contains_key(&edge.from) && layout.nodes.contains_key(&edge.to))
+        .filter(|edge| edge.from != edge.to)
         .filter(|edge| seen.insert(edge.layout_key()))
         .cloned()
         .collect()
@@ -320,8 +324,15 @@ fn indegrees(
 }
 
 fn topo_order(layout: &WorkingLayout, edges: &[WorkingEdge], by_generation: bool) -> Vec<String> {
-    let mut indegree = indegrees(layout.nodes.keys().cloned(), edges);
-    let successors = successor_map(layout.nodes.keys().cloned(), edges);
+    let node_ids = || {
+        layout
+            .nodes
+            .values()
+            .filter(|node| node.kind != WorkingNodeKind::EdgeLabel)
+            .map(|node| node.id.clone())
+    };
+    let mut indegree = indegrees(node_ids(), edges);
+    let successors = successor_map(node_ids(), edges);
     let mut frontier: Vec<String> = indegree
         .iter()
         .filter(|(_, degree)| **degree == 0)
@@ -387,10 +398,10 @@ fn topo_order(layout: &WorkingLayout, edges: &[WorkingEdge], by_generation: bool
         }
     }
 
-    if output.len() == layout.nodes.len() {
+    if output.len() == indegree.len() {
         output
     } else {
-        let mut fallback: Vec<String> = layout.nodes.keys().cloned().collect();
+        let mut fallback: Vec<String> = node_ids().collect();
         fallback.sort_by(|left, right| deterministic_identifier_cmp(left, right));
         fallback
     }
@@ -724,6 +735,7 @@ fn make_proper_layering(
                     label_type: "text".to_string(),
                     shape: "rect".to_string(),
                     kind: WorkingNodeKind::Dummy,
+                    producer_lane_role: None,
                     parent_id: None,
                     top_lane_id: None,
                     requested_dir: None,
@@ -1013,7 +1025,7 @@ fn assign_coordinates(
         layout.direction,
         SwimlaneDirection::Lr | SwimlaneDirection::Rl
     );
-    let layer_heights: Vec<f64> = layers
+    let mut layer_heights: Vec<f64> = layers
         .iter()
         .map(|layer| {
             layer
@@ -1024,21 +1036,6 @@ fn assign_coordinates(
         })
         .collect();
     let mut extra_gaps = vec![0.0; layers.len()];
-    if is_horizontal {
-        for index in 0..layers.len().saturating_sub(1) {
-            let max_width = |layer: &[String]| {
-                layer
-                    .iter()
-                    .filter_map(|id| layout.nodes.get(id))
-                    .map(|node| node.width)
-                    .fold(0.0, f64::max)
-            };
-            let normal = layer_heights[index] / 2.0 + layer_heights[index + 1] / 2.0;
-            let required = (max_width(&layers[index]) + max_width(&layers[index + 1])) / 2.0;
-            extra_gaps[index] = (required - normal - config.layer_gap).max(0.0);
-        }
-    }
-
     let mut used_lanes = HashSet::new();
     let mut has_null_lane = false;
     for id in layers.iter().flatten() {
@@ -1060,6 +1057,22 @@ fn assign_coordinates(
             .cloned()
             .map(Some),
     );
+    let label_placement = labels::LabelPlacement::new(layout, layers, &lane_columns);
+    label_placement.reserve_flow(layout, &mut layer_heights, &mut extra_gaps);
+    if is_horizontal {
+        for index in 0..layers.len().saturating_sub(1) {
+            let max_width = |layer: &[String]| {
+                layer
+                    .iter()
+                    .filter_map(|id| layout.nodes.get(id))
+                    .map(|node| node.width)
+                    .fold(0.0, f64::max)
+            };
+            let normal = layer_heights[index] / 2.0 + layer_heights[index + 1] / 2.0;
+            let required = (max_width(&layers[index]) + max_width(&layers[index + 1])) / 2.0;
+            extra_gaps[index] += (required - normal - config.layer_gap).max(0.0);
+        }
+    }
     let mut lane_width: HashMap<Option<String>, f64> = HashMap::new();
     for layer in layers {
         let mut by_lane: HashMap<Option<String>, Vec<&WorkingNode>> = HashMap::new();
@@ -1081,6 +1094,7 @@ fn assign_coordinates(
                 .or_insert(width);
         }
     }
+    label_placement.reserve_lanes(layout, config.node_gap, &mut lane_width);
     let widths: Vec<f64> = lane_columns
         .iter()
         .map(|lane| lane_width.get(lane).copied().unwrap_or(0.0))
@@ -1099,6 +1113,7 @@ fn assign_coordinates(
     }
 
     let mut y_offset = 0.0;
+    let mut gap_centers = Vec::with_capacity(layers.len());
     for (layer_index, layer) in layers.iter().enumerate() {
         let layer_height = layer_heights[layer_index];
         let mut by_lane: HashMap<Option<String>, Vec<String>> = HashMap::new();
@@ -1131,8 +1146,12 @@ fn assign_coordinates(
                 }
             }
         }
-        y_offset += layer_height + config.layer_gap + extra_gaps[layer_index];
+        let gap = config.layer_gap + extra_gaps[layer_index];
+        gap_centers.push(y_offset + layer_height + gap / 2.0);
+        y_offset += layer_height + gap;
     }
+
+    label_placement.place(layout, &gap_centers, config.node_gap);
 
     let mut chains: HashMap<&str, Vec<&ProperEdge>> = HashMap::new();
     for edge in edges {
@@ -1203,6 +1222,7 @@ mod tests {
                         } else {
                             WorkingNodeKind::Content
                         },
+                        producer_lane_role: None,
                         parent_id: None,
                         top_lane_id: None,
                         requested_dir: None,

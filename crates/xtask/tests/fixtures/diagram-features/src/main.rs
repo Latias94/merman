@@ -208,6 +208,7 @@ fn flowchart_data() -> merman_model::ParsedSemanticDiagram {
         style: Vec::new(),
         animate: None,
         animation: None,
+        step: None,
         length: 1,
     };
     declared(
@@ -222,6 +223,7 @@ fn flowchart_data() -> merman_model::ParsedSemanticDiagram {
             nodes,
             edges: vec![edge],
             subgraphs: Vec::new(),
+            dropped_subgraph_members: Vec::new(),
             subgraph_vertex_styles: Default::default(),
             tooltips: Default::default(),
             warning_facts: Vec::new(),

@@ -2499,6 +2499,7 @@ mod tests {
                 style: Vec::new(),
                 animate: None,
                 animation: None,
+                step: None,
                 length: 1,
             }],
             subgraphs: vec![FlowSubgraph {
@@ -2512,6 +2513,7 @@ mod tests {
                 styles: Vec::new(),
                 nodes: vec!["A".to_string()],
             }],
+            dropped_subgraph_members: Vec::new(),
             subgraph_vertex_styles: Default::default(),
             tooltips: Default::default(),
             warning_facts: Vec::new(),

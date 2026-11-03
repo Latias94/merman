@@ -929,24 +929,17 @@ fn every_combined_catalog_variant_matches_its_standalone_semantic_and_editor_pro
         assert_eq!(standalone.meta.diagram_type, row.variant_id);
         assert_eq!(combined.metadata().diagram_type, row.variant_id);
 
-        let mut standalone_model = standalone.model.into_unmanaged_value();
-        let mut combined_model = combined
+        let standalone_model = standalone.model.into_unmanaged_value();
+        let combined_model = combined
             .outcome()
             .parsed_model()
             .expect("combined parse must retain a model")
             .clone();
         if row.variant_id == "mindmap" {
-            let standalone_id = standalone_model
-                .as_object_mut()
-                .and_then(|model| model.remove("diagramId"));
-            let combined_id = combined_model
-                .as_value_mut()
-                .as_object_mut()
-                .and_then(|model| model.remove("diagramId"));
             assert!(
-                standalone_id.is_some_and(|value| value.is_string())
-                    && combined_id.is_some_and(|value| value.is_string()),
-                "mindmap diagramId must remain a string projection"
+                standalone_model.get("diagramId").is_none()
+                    && combined_model.get("diagramId").is_none(),
+                "Mindmap compatibility data must not retain a generated output identity"
             );
         }
         assert_eq!(
@@ -982,7 +975,7 @@ fn mindmap_combined_projections_match_standalone_public_entrypoints() {
         &MermaidEngine::new(),
         "mindmap",
         source,
-        Some("diagramId"),
+        None,
     );
     assert_eq!(model["rootNode"]["descr"], "Root Node");
     assert_eq!(model["rootNode"]["children"].as_array().unwrap().len(), 2);

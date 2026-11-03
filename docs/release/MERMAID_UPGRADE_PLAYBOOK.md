@@ -5,7 +5,24 @@ release or changing any behavior-owning companion. A release is a pinned behavio
 single npm version. Completion means parser, semantics, editor services, headless output, browser
 reference execution, examples, provenance, and package surfaces all describe the same graph.
 
-## Current Transition: Mermaid 12.2.0
+## Current Transition: Mermaid 12.3.0
+
+Development selects `mermaid@12.3.0` at `2086904e76c692331e34a45d7cc3bc30860d040e`.
+The exact selected graph includes ELK `0.12.0`, Cytoscape `3.34.4`,
+`@braintree/sanitize-url 7.1.2`, reference CLI `12.2.0`, parser `2.0.1`, and DOMPurify `3.4.17`.
+The [reference bundle](../../tools/upstreams/MERMAID_REFERENCE_BUNDLE.json) and its digest-bound
+[selection decision](../../tools/upstreams/MERMAID_SELECTION_DECISION.json) own the complete graph.
+The transition adds Flowchart Step edges and nine BPMN shapes, moves observable ELK behavior,
+updates Swimlane preparation/routing, and removes Mindmap's ambient output identity. It adds no
+registered diagram, layout, Cargo feature, transport schema, or independent Tree-sitter baseline.
+Grid and the unwired anchor pipeline remain upstream groundwork rather than admitted capabilities.
+
+See the [development migration](../migrations/mermaid-12-3.md) for Rust changes, animated/static SVG
+contracts, selected versus investigated companion versions, and bounded reference-collection
+residuals. Published artifacts retain their release identities. Verification and artifact receipts
+must bind the settled source; this scope note is not a gate result or publication statement.
+
+### Historical Transition: Mermaid 12.2.0
 
 As of 2026-10-13, development selects `mermaid@12.2.0` at
 `1fb7869866dd619168d840291c9c54b4f129758b`, `@mermaid-js/parser@2.0.1`, and

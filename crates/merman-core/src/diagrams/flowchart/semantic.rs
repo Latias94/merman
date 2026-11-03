@@ -560,6 +560,9 @@ impl<'a> FlowchartSemanticContext<'a> {
             return false;
         }
 
+        if map.is_empty() {
+            return true;
+        }
         let metadata = subgraph
             .metadata
             .get_or_insert_with(|| serde_json::Value::Object(serde_json::Map::new()));
@@ -617,6 +620,14 @@ impl<'a> FlowchartSemanticContext<'a> {
                     "curve" => {
                         if let Some(value) = value_to_string(value) {
                             edge.interpolate = Some(value);
+                        }
+                    }
+                    "step" => {
+                        if let Some(step) = value
+                            .as_f64()
+                            .filter(|step| super::FlowEdge::is_valid_step(*step))
+                        {
+                            edge.step = Some(step);
                         }
                     }
                     _ => {}
@@ -696,6 +707,7 @@ mod tests {
                 is_user_defined_id: true,
                 animate: None,
                 animation: None,
+                step: None,
             })
             .collect::<Vec<_>>();
         let mut subgraphs = Vec::new();

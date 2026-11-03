@@ -427,6 +427,29 @@ ishikawa-beta
 }
 
 #[test]
+fn ishikawa_hand_drawn_generation_consumes_the_operation_work_budget() {
+    let policy = RenderResourcePolicy::unbounded_for_trusted_input()
+        .with_limit(ResourceLimitId::MaxLayoutWorkUnits, 20_000)
+        .unwrap();
+    let source = "---\nconfig:\n  look: classic\n  handDrawnSeed: 1\n  fontSize: 512\n---\nishikawa-beta\n  Effect\n  Cause\n    Detail\n";
+    try_render_ishikawa_svg_with_resource_policy(source, policy)
+        .expect("the small model and classic geometry fit the work budget");
+    let error = match try_render_ishikawa_svg_with_resource_policy(
+        &source.replace("look: classic", "look: handDrawn"),
+        policy,
+    ) {
+        Ok(_) => panic!("hachure generation must consume the remaining operation work budget"),
+        Err(error) => error,
+    };
+    let merman_render::Error::ResourceLimitExceeded(details) = error else {
+        panic!("expected generation work rejection, got {error}");
+    };
+    assert_eq!(details.limit, ResourceLimitId::MaxLayoutWorkUnits.as_str());
+    assert_eq!(details.cause, ResourceLimitCause::Ceiling);
+    assert_eq!(details.phase, ResourceLimitPhase::LayoutModel);
+}
+
+#[test]
 fn ishikawa_hand_drawn_renders_rough_primitives_in_mermaid_dom_order() {
     let render = |seed| {
         let input = format!(

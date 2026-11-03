@@ -1176,7 +1176,7 @@ fn resolve_shape(value: &str) -> String {
     match value {
         "task" => "roundedRect".to_string(),
         "tool" => "subroutine".to_string(),
-        "input" => "lean-right".to_string(),
+        "input" | "lean_right" => "lean-right".to_string(),
         "refdoc" => "lin-doc".to_string(),
         "action" => "hexagon".to_string(),
         "round" => "rect".to_string(),
@@ -3315,6 +3315,26 @@ a --> b
             panic!("unknown shape must fail with a source span");
         };
         assert_eq!(&source[span.start..span.end], "@{ shape: unknown }");
+    }
+
+    #[test]
+    fn input_syntax_resolves_the_mermaid_12_3_internal_shape_alias() {
+        let model = parse_agentflow_model_for_render_controlled(
+            "agentflow-beta\na[/Input/] --> b[Task]\n",
+            &meta(),
+            &OperationControl::new(),
+        )
+        .unwrap()
+        .unwrap();
+        assert_eq!(model.vertices[0].shape.as_deref(), Some("lean-right"));
+        assert!(model.diagnostics.is_empty());
+        let (flow, _) = model.to_flowchart_model();
+        assert!(
+            flow.nodes[0]
+                .classes
+                .iter()
+                .any(|class| class == "af-kind-input")
+        );
     }
 
     #[test]

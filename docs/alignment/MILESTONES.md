@@ -9,7 +9,7 @@ and verification output for the exact revision under review. The superseded
 
 ## Current transition
 
-The active unreleased target is Mermaid `@12.2.0` at `1fb7869866dd619168d840291c9c54b4f129758b`; milestone evidence below remains historical `12.0.0` admission evidence until refresh.
+The active unreleased target is Mermaid `@12.3.0` at `2086904e76c692331e34a45d7cc3bc30860d040e`; milestone evidence below remains historical `12.0.0` admission evidence until refresh. The [migration](../migrations/mermaid-12-3.md) records the current transition without transferring earlier gate results.
 
 ## Previous baseline evidence
 

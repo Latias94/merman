@@ -1,0 +1,19 @@
+---
+config:
+  look: neo
+  htmlLabels: true
+  flowchart:
+    htmlLabels: true
+    wrappingWidth: 240
+---
+%% Source-backed: Mermaid mermaid@12.3.0, commit 2086904e76c692331e34a45d7cc3bc30860d040e.
+%% packages/mermaid/src/rendering-util/rendering-elements/shapes/bpmnShapeCore.ts reserves captions separately.
+%% bpmnEvent.ts and bpmnGateway.ts keep fixed bodies; bpmnAnnotation.ts sets wrappingWidth to 160.
+flowchart LR
+  S@{ shape: bpmn-start, label: "Go" }
+  L@{ shape: bpmn-start, label: "A long caption reserves space around a fixed event ring" }
+  G@{ shape: bpmn-gateway, label: "A long gateway caption keeps the diamond at its notation size" }
+  A@{ shape: bpmn-activity, label: "An activity expands to contain its caption" }
+  D@{ shape: bpmn-data-store, label: "A data store keeps its body separate from the caption" }
+  T@{ shape: bpmn-annotation, label: "This annotation wraps at its own width and offers the left bracket as its attachment face" }
+  S --> L --> G --> A --> D --> T

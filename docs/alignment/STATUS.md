@@ -10,10 +10,10 @@ prose ownership boundary.
 | Item | Current state |
 | --- | --- |
 | Dashboard | Active |
-| Current transition | Development targets Mermaid `@12.2.0` at `1fb7869866dd619168d840291c9c54b4f129758b`; published Merman 0.9.0 and 0.9.1 retain their historical 12.1.0 target |
-| Selected reference evidence | All 37 primary SVG manifests bind the executed 12.2.0 runtime; final-source three-mode DOM and strict validation passed on 2026-10-13; see ADR-0094 for gate results and platform boundaries |
+| Current transition | Development selects Mermaid `@12.3.0` at `2086904e76c692331e34a45d7cc3bc30860d040e`; published artifacts retain their release baseline |
+| Selected reference evidence | All 37 primary SVG manifests bind fresh renders from the selected 12.3.0 runtime; current-source integrated validation is recorded separately from historical 12.2 results |
 | Reference graph | The selected bundle passes materialized and trusted-base verification and binds source, package, lock and provenance identities |
-| Dashboard review | The 12.2 source delta is recorded in ADR-0094; exact strict gate state belongs to the revision that ran it |
+| Dashboard review | The [12.3 migration](../migrations/mermaid-12-3.md) records current behavior and breaking changes; ADR-0094 retains historical 12.2 evidence |
 | Admission | 37 families in the primary SVG matrix; `zenuml` has a separate external-renderer comparison lane |
 | Root viewport | Every primary-matrix family has covered root-viewport evidence |
 | Semantic edge labels | C4, Flowchart ELK, Architecture, Requirement, State, Class, and ER use fail-closed identity/geometry/presentation admission |

@@ -138,6 +138,7 @@ pub(super) fn render_class_note_node<O: SvgOutput>(
             note_stroke,
             1.3,
             "0 0",
+            ctx.emit.work_meter,
             &rough_seed,
         )
         .unwrap_or_else(|| {

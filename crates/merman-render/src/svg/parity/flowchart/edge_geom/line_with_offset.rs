@@ -91,6 +91,8 @@ pub(in crate::svg::parity::flowchart) fn arrow_types_for_edge(
         Some("arrow_open") => None,
         Some("arrow_cross") => Some("arrow_cross"),
         Some("arrow_circle") => Some("arrow_circle"),
+        Some("arrow_open_head") => Some("arrow_open_head"),
+        Some("arrow_hollow_circle") => Some("arrow_hollow_circle"),
         Some("double_arrow_point" | "arrow_point") => Some("arrow_point"),
         Some("double_arrow_circle") => Some("arrow_circle"),
         Some("double_arrow_cross") => Some("arrow_cross"),

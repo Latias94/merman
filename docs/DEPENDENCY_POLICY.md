@@ -31,7 +31,15 @@ Wasmi 2 tooling explicitly enables `validate`, `stable`, `simd`, and `auto-dispa
 
 ## Reference tools and JavaScript compatibility
 
-The 0.9.0 preparation audit selected Mermaid 12.1.0. Development now selects 12.2.0 through [ADR-0094](adr/0094-mermaid-12-2-upstream-transition.md); published releases retain their original baseline. Its reference host graph is frozen and independently admitted: updating a reference dependency changes the oracle and requires the Mermaid alignment workflow. The 2026-10-26 audit observed ZenUML 4.11.0, which falls outside the selected plugin's `^3.47.9` contract and is not substituted without coordinated admission.
+The 0.9.0 preparation audit selected Mermaid 12.1.0. Development selects 12.3.0 through the
+[selected reference graph](../tools/upstreams/MERMAID_REFERENCE_BUNDLE.json) and
+[development migration](migrations/mermaid-12-3.md); [ADR-0094](adr/0094-mermaid-12-2-upstream-transition.md)
+retains the historical 12.2 transition. Published releases retain their original baseline.
+The reference host graph is frozen and independently admitted: updating a reference dependency
+changes the oracle and requires the Mermaid alignment workflow. ELK follows the exact target
+workspace oracle `0.12.0`; the investigated `0.12.1` candidate has not completed admission.
+The 2026-10-26 audit observed ZenUML 4.11.0, which falls outside the selected plugin's `^3.47.9`
+contract and is not substituted without coordinated admission.
 
 Application TypeScript remains on the compatible 6.0.3 line. The 2026-10-26 audit observed TypeScript 7.0.2; typescript-eslint 8.72.0 still requires TypeScript `>=4.8.4 <6.1.0`, and application scripts use the old compiler API. VS Code independently admits TypeScript 7. Retain this as a documented compatibility exception; do not treat a tool's major version as an unconditional application upgrade.
 

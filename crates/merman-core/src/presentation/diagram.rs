@@ -4,6 +4,7 @@ use crate::Error;
 use crate::OperationPhase;
 #[cfg(all(feature = "compat-json", feature = "editor-facts"))]
 use crate::diagram::CapturedPanic;
+#[cfg(feature = "compat-json")]
 use crate::json_value::ManagedJson as ManagedSemanticJson;
 #[cfg(all(feature = "compat-json", feature = "editor-facts"))]
 use crate::preprocess::SourceConfigEvidence;
@@ -385,13 +386,7 @@ impl RenderSemanticParseOutput {
     pub(crate) fn mindmap(
         model: merman_model::families::mindmap::MindmapDiagramRenderModel,
     ) -> Self {
-        let diagram_id = merman_model::families::mindmap::diagram_id_from_context(
-            &crate::runtime::active_operation_context(),
-        );
-        Self {
-            model: RenderSemanticModel::Mindmap(model),
-            context: PresentationContext::Mindmap { diagram_id },
-        }
+        Self::new(RenderSemanticModel::Mindmap(model))
     }
 
     #[cfg(feature = "diagram-class")]

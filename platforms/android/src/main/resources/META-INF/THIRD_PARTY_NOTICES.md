@@ -191,10 +191,10 @@ Manatee contains Rust translations and adaptations of the newer CoSE base behavi
 
 Architecture layout and styling use source-backed Cytoscape behavior and defaults.
 
-- Version: `3.34.0`
+- Version: `3.34.4`
 - Source: <https://github.com/cytoscape/cytoscape.js.git>
-- Source ref: `v3.34.0`
-- Source commit: `22716bfb75834b56fa6679648b0abb06f4ae691c`
+- Source ref: `v3.34.4`
+- Source commit: `e394aa858b0699a67be8f9ab426823ae1aae7813`
 - Source path: `.`
 - Relationship: `behavior-reference`, `translated`
 - License expression: `MIT`
@@ -286,35 +286,37 @@ Merman selects DOMPurify's Apache-2.0 option for generated sanitizer defaults; t
 
 ### Eclipse Layout Kernel (`eclipse-elk`)
 
-The merman-elk-layered crate contains modified Rust source translations of Eclipse ELK layered, Box, Force, Stress, Mr. Tree, Radial, Rectangle Packing, and SPOrE overlap-removal algorithms, including common and core layout utilities, under EPL-2.0.
+The merman-elk-layered crate contains modified Rust source translations of Eclipse ELK layered, Box, Force, Stress, Mr. Tree, Radial, Rectangle Packing, and SPOrE overlap-removal algorithms, including common and core layout utilities. The historical derivation is v0.9.1 at 62d5909f96fad541bc101ad52dabaece6b7eab7e. Supported behavior ports from the v0.12.0 source comparison are documented in crates/merman-elk-layered/MERMAID_12_3_DELTA.md and checked against the published elkjs@0.12.0 behavior oracle. The Java tag is a source comparison point, not a proven unique Java build input of that npm package; elkjs CI checks out Eclipse ELK master. Merman retains its EPL-2.0 selection and preserves the current source license, including its conditional GPL-3.0-or-later secondary-license option.
 
-- Version: `0.9.1`
+- Version: `0.12.0`
 - Source: <https://github.com/eclipse-elk/elk.git>
-- Source ref: `v0.9.1`
-- Source commit: `62d5909f96fad541bc101ad52dabaece6b7eab7e`
+- Source ref: `v0.12.0`
+- Source commit: `323312916048544e4e594eab3303cdb0d01e2929`
 - Source path: `plugins`
 - Relationship: `modified`, `translated`
-- License expression: `EPL-2.0`
+- License expression: `(EPL-2.0 OR GPL-3.0-or-later)`
+- Selected license path: `EPL-2.0`
 - Artifact scopes: `cli-default`, `cli-release`, `elk-render`, `sdk-full`, `sdk-native-full`, `source-archive`, `typst-publish`, `web-full`, `web-render`
 - Local evidence: `crates/merman-elk-layered`, `crates/merman-layout-elk`
 - Legal files:
-  - [`THIRD_PARTY_LICENSES/eclipse-elk/LICENSE.md`](THIRD_PARTY_LICENSES/eclipse-elk/LICENSE.md) (license, SHA-256 `89591d4578fb1ebd91501312a3d25f021bd865a2e436641c1cf7b1bc7e3c1617`)
+  - [`THIRD_PARTY_LICENSES/eclipse-elk/LICENSE.md`](THIRD_PARTY_LICENSES/eclipse-elk/LICENSE.md) (license, SHA-256 `22080908c4e8696d8ea137db9c51b0dd67c19a4440b3be689b9d06d397aa88fd`)
 
 ### elkjs (`elkjs`)
 
-Mermaid's ELK adapter behavior is compared against this JavaScript distribution, which is generated from Eclipse ELK sources.
+Mermaid's ELK adapter behavior is compared against the published elkjs@0.12.0 JavaScript distribution. Its source tag and npm publish gitHead identify the elkjs wrapper; the tag's CI checks out Eclipse ELK master and does not prove a unique Java source commit for the npm build. The separate Eclipse ELK v0.12.0 source comparison and historical v0.9.1 port derivation are recorded in crates/merman-elk-layered/MERMAID_12_3_DELTA.md. Merman selects EPL-2.0 from the declared EPL-2.0 OR GPL-3.0-or-later options and preserves the exact license with its conditional secondary-license notice.
 
-- Version: `0.9.3`
+- Version: `0.12.0`
 - Source: <https://github.com/kieler/elkjs.git>
-- Source ref: `npm:elkjs@0.9.3`
-- Source commit: `a8304cf79fde75bc2ab1a89d28320f53f8637436`
+- Source ref: `0.12.0`
+- Source commit: `ff5771d7165445c42c408bb8a090c8035272218c`
 - Source path: `.`
 - Relationship: `behavior-reference`
-- License expression: `EPL-2.0`
+- License expression: `(EPL-2.0 OR GPL-3.0-or-later)`
+- Selected license path: `EPL-2.0`
 - Artifact scopes: `cli-default`, `cli-release`, `elk-render`, `playground-reference`, `sdk-full`, `sdk-native-full`, `source-archive`, `typst-publish`, `web-full`, `web-render`
 - Local evidence: `crates/merman-layout-elk`, `playground`
 - Legal files:
-  - [`THIRD_PARTY_LICENSES/elkjs/LICENSE.md`](THIRD_PARTY_LICENSES/elkjs/LICENSE.md) (license, SHA-256 `89591d4578fb1ebd91501312a3d25f021bd865a2e436641c1cf7b1bc7e3c1617`)
+  - [`THIRD_PARTY_LICENSES/elkjs/LICENSE.md`](THIRD_PARTY_LICENSES/elkjs/LICENSE.md) (license, SHA-256 `637e81f4a1b6b4079535c499fca05e238cf7605c1ff5b76d60d7da7ce96700c9`)
 
 ### fmin (`fmin`)
 
@@ -401,10 +403,10 @@ Manatee also follows the newer layout-base behavior selected by the FCoSE depend
 
 Merman independently implements Mermaid-compatible behavior while translating selected algorithms, generating defaults, copying architecture icon data, and retaining upstream fixtures and snapshots.
 
-- Version: `12.2.0`
+- Version: `12.3.0`
 - Source: <https://github.com/mermaid-js/mermaid.git>
-- Source ref: `mermaid@12.2.0`
-- Source commit: `1fb7869866dd619168d840291c9c54b4f129758b`
+- Source ref: `mermaid@12.3.0`
+- Source commit: `2086904e76c692331e34a45d7cc3bc30860d040e`
 - Source path: `packages/mermaid`
 - Relationship: `behavior-reference`, `copied`, `fixtures`, `generated`, `modified`, `translated`
 - License expression: `MIT`
@@ -564,10 +566,10 @@ The renderer privately imports roxmltree 0.21.1 with its official iterative elem
 
 Merman's URL sanitization behavior is a source-backed Rust translation of sanitize-url.
 
-- Version: `7.1.1`
+- Version: `7.1.2`
 - Source: <https://github.com/braintree/sanitize-url.git>
-- Source ref: `v7.1.1`
-- Source commit: `b1e8d50e4066a9af00fa042176676374747f754b`
+- Source ref: `v7.1.2`
+- Source commit: `206cb8b942b10dad28dd3d31db3bf39e3fcdd7aa`
 - Source path: `src`
 - Relationship: `modified`, `translated`
 - License expression: `MIT`

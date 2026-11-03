@@ -6,6 +6,9 @@ Accepted for the development baseline. The reference refresh and strict verifica
 on 2026-10-13. This records local verification of the selected graph, not a publication decision.
 This decision does not authorize publication or modify the published 0.9.0 release history.
 
+The [Mermaid 12.3 development transition](../migrations/mermaid-12-3.md) supersedes this baseline
+selection. This ADR retains its original source identities, observations and verification scope.
+
 ## Date
 
 2026-10-13

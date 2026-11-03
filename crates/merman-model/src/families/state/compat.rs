@@ -531,7 +531,6 @@ mod tests {
             config: &config,
             authored_config: &config,
             title: None,
-            diagram_id: None,
         };
         test_support::reset_projected_document_count();
         let value = project(&model, &metadata).unwrap();

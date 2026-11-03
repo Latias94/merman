@@ -5,7 +5,8 @@ use crate::block::{
     block_label_is_effectively_empty,
 };
 use crate::model::{LayoutEdge, LayoutPoint};
-use crate::svg::parity::roughjs_common::{closed_path_d_from_points, ops_to_svg_path_d};
+use crate::svg::parity::roughjs_common::closed_path_d_from_points;
+use crate::svg::parity::roughjs_common::paths::roughjs_paths_for_svg_path;
 
 // Block diagram SVG renderer implementation (split from parity.rs).
 
@@ -323,67 +324,6 @@ pub(crate) fn render_block_diagram_svg_model_with_theme(
         raw.replace("&nbsp;", "\u{00A0}")
     }
 
-    fn roughjs_block_paths(
-        path_data: &str,
-        stroke_width: f32,
-        randomness: &roughr::core::RoughRandomness,
-    ) -> Option<(String, String)> {
-        let mut stroke_options = roughr::core::OptionsBuilder::default()
-            .randomness(randomness.clone())
-            .roughness(0.0)
-            .bowing(1.0)
-            .fill_style(roughr::core::FillStyle::Solid)
-            .stroke_width(stroke_width)
-            .stroke_line_dash(vec![0.0, 0.0])
-            .stroke_line_dash_offset(0.0)
-            .fill_line_dash(vec![0.0, 0.0])
-            .fill_line_dash_offset(0.0)
-            .disable_multi_stroke(false)
-            .disable_multi_stroke_fill(false)
-            .build()
-            .ok()?;
-
-        // Mermaid's RoughJS path emitter draws the outline first, then reuses the advanced
-        // randomizer for the solid fill pass.  Keep that order even at roughness zero because the
-        // seeded path data is part of the stable SVG contract.
-        let stroke_opset =
-            roughr::renderer::svg_path::<f64>(path_data.to_string(), &mut stroke_options);
-        let distance = 0.5;
-        let sets = roughr::points_on_path::points_on_path::<f64>(
-            path_data.to_string(),
-            Some(1.0),
-            Some(distance),
-        );
-        let mut fill_options = stroke_options.clone();
-        let fill_opset = if sets.len() == 1 {
-            fill_options.disable_multi_stroke = Some(true);
-            fill_options.roughness = Some(0.0);
-            let mut opset =
-                roughr::renderer::svg_path::<f64>(path_data.to_string(), &mut fill_options);
-            opset.ops = opset
-                .ops
-                .iter()
-                .cloned()
-                .enumerate()
-                .filter_map(|(index, op)| {
-                    if index != 0 && op.op == roughr::core::OpType::Move {
-                        None
-                    } else {
-                        Some(op)
-                    }
-                })
-                .collect();
-            opset
-        } else {
-            roughr::renderer::solid_fill_polygon(&sets, &mut fill_options)
-        };
-
-        Some((
-            ops_to_svg_path_d(&fill_opset),
-            ops_to_svg_path_d(&stroke_opset),
-        ))
-    }
-
     fn block_stadium_points(width: f64, height: f64) -> Vec<LayoutPoint> {
         fn circle_points(
             center_x: f64,
@@ -454,10 +394,15 @@ pub(crate) fn render_block_diagram_svg_model_with_theme(
         out: &mut impl SvgOutput,
         path_data: &str,
         options: RoughPathRenderOptions<'_>,
+        work_meter: &crate::resources::OperationWorkMeter,
     ) -> bool {
-        if let Some((fill_d, stroke_d)) =
-            roughjs_block_paths(path_data, options.stroke_width, options.randomness)
-        {
+        if let Some((fill_d, stroke_d)) = roughjs_paths_for_svg_path(
+            path_data,
+            options.stroke_width,
+            "0 0",
+            work_meter,
+            options.randomness,
+        ) {
             if let Some((tx, ty)) = options.transform {
                 let _ = write!(
                     out,
@@ -903,6 +848,7 @@ pub(crate) fn render_block_diagram_svg_model_with_theme(
                         randomness: &hand_drawn_seed,
                         transform: None,
                     },
+                    options.work_meter(),
                 );
                 if rough_emitted {
                     has_rough_path = true;
@@ -968,6 +914,7 @@ pub(crate) fn render_block_diagram_svg_model_with_theme(
                             randomness: &hand_drawn_seed,
                             transform: Some((translation.x, translation.y)),
                         },
+                        options.work_meter(),
                     );
                 if rough_emitted {
                     has_rough_path = true;

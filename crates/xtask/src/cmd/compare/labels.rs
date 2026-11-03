@@ -271,7 +271,7 @@ const SEMANTIC_LABEL_FIXTURE_CONTRACTS: &[SemanticLabelFixtureContract] = &[
         diagram: "c4",
         fixture: C4_DYNAMIC_LABEL_FIXTURE,
         input_sha256: "78a9531bbd743e92f73152dffaa28a9dd63c07dfa8da36f7e8c727800c53a284",
-        upstream_svg_sha256: "0c98d72ed85a700e1b30641ae343f1fcd451fc64ec88ff66873ac6a0881d43af",
+        upstream_svg_sha256: "8764b570e88b94e9a6d8e5360d8a25689cff62518f416b463d6ccba15a457ab1",
         adapter: SemanticLabelAdapter::C4,
     },
     SemanticLabelFixtureContract {
@@ -292,7 +292,7 @@ const SEMANTIC_LABEL_FIXTURE_CONTRACTS: &[SemanticLabelFixtureContract] = &[
         diagram: "requirement",
         fixture: REQUIREMENT_TRACES_LABEL_FIXTURE,
         input_sha256: "90985768cd5ffa56131287abbe99ec8ca4fbdd0ae5002dda8572d1fa094de57c",
-        upstream_svg_sha256: "4dd9853433f34679ac40647201415f923aed4aba8e6fc20bf4ad4f85109506a4",
+        upstream_svg_sha256: "93d5b1bb00001d155eefea2494fb1ee837aed53a792fcae565540f53ccde3537",
         adapter: SemanticLabelAdapter::DataId,
     },
     SemanticLabelFixtureContract {
@@ -306,7 +306,7 @@ const SEMANTIC_LABEL_FIXTURE_CONTRACTS: &[SemanticLabelFixtureContract] = &[
         diagram: "class",
         fixture: CLASS_MANY_RELATION_LABEL_FIXTURE,
         input_sha256: "6134c7861579118e7e5849aff872d7f0585ac1bad5ac067bf29a256d2a3cc92c",
-        upstream_svg_sha256: "cb5543297d473c9b3b3a55c09b321398c6e7dbd7fd2863c5158a46a290ed7341",
+        upstream_svg_sha256: "aa7d3a4e88d823c53e0a4df72b3436b5eb98b237037dc1ed9e1cdc941d3e25f2",
         adapter: SemanticLabelAdapter::DataId,
     },
     SemanticLabelFixtureContract {

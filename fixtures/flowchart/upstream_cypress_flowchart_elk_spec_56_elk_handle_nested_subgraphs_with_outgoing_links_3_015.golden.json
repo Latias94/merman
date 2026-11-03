@@ -196,6 +196,15 @@
         "styles": []
       }
     ],
+    "other": {
+      "droppedSubGraphMembers": [
+        {
+          "droppedFrom": "container_Alpha",
+          "keptBy": "container_Beta",
+          "node": "process_C"
+        }
+      ]
+    },
     "subgraphs": [
       {
         "classes": [],

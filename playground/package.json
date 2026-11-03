@@ -73,7 +73,7 @@
     "i18next": "^26.5.11",
     "i18next-browser-languagedetector": "^8.2.3",
     "lucide-react": "^1.61.0",
-    "mermaid": "12.2.0",
+    "mermaid": "12.3.0",
     "monaco-editor": "^0.57.0",
     "react": "19.3.1",
     "react-dom": "19.3.1",
@@ -85,10 +85,13 @@
     "zustand": "^5.0.16"
   },
   "overrides": {
+    "@braintree/sanitize-url": "7.1.2",
     "@zenuml/core": "3.50.1",
     "brace-expansion": "5.0.12",
     "cytoscape": "3.34.4",
     "dompurify": "3.4.17",
+    "elkjs": "0.12.0",
+    "js-yaml": "4.3.2",
     "katex": "0.19.1",
     "mermaid": {
       "katex": "0.18.10"

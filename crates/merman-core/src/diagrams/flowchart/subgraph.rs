@@ -3,6 +3,7 @@ use super::{
     is_ecmascript_trim_char, strip_wrapping_backticks, trim_flowdb_label_text, unquote,
 };
 use crate::{OperationControl, OperationControlResult};
+use merman_model::families::flowchart::FlowDroppedSubgraphMember;
 use std::collections::{HashMap, HashSet};
 
 #[derive(Debug, Clone)]
@@ -15,9 +16,9 @@ pub(super) struct SubgraphBuilder {
     sub_count: usize,
     pub(super) subgraphs: Vec<FlowSubGraph>,
     pub(super) declaration_owners: Vec<usize>,
+    pub(super) dropped_subgraph_members: Vec<FlowDroppedSubgraphMember>,
     subgraph_index: HashMap<String, usize>,
-    // Exactly the retained membership union, never candidate members or group IDs.
-    claimed_members: HashSet<String>,
+    claimed_members: HashMap<String, usize>,
     inherit_dir: bool,
     global_dir: Option<String>,
 }
@@ -28,8 +29,9 @@ impl SubgraphBuilder {
             sub_count: 0,
             subgraphs: Vec::new(),
             declaration_owners: Vec::new(),
+            dropped_subgraph_members: Vec::new(),
             subgraph_index: HashMap::new(),
-            claimed_members: HashSet::new(),
+            claimed_members: HashMap::new(),
             inherit_dir,
             global_dir,
         }
@@ -167,15 +169,50 @@ impl SubgraphBuilder {
             if index % 128 == 0 {
                 control.checkpoint()?;
             }
-            if member != id && !self.claimed_members.contains(member.as_str()) {
-                // Update both indexes together, including on an interrupted completion.
-                self.subgraphs[owner].nodes.push(member.clone());
-                self.claimed_members.insert(member);
+            if member == id {
+                continue;
             }
+            if let Some(&previous_owner) = self.claimed_members.get(member.as_str()) {
+                if previous_owner != owner && !self.is_nested_in(previous_owner, &seen, control)? {
+                    self.dropped_subgraph_members
+                        .push(FlowDroppedSubgraphMember {
+                            node: member,
+                            kept_by: self.subgraphs[previous_owner].id.clone(),
+                            dropped_from: id.clone(),
+                        });
+                }
+                continue;
+            }
+            self.subgraphs[owner].nodes.push(member.clone());
+            self.claimed_members.insert(member, owner);
         }
         self.declaration_owners.push(owner);
 
         Ok(id)
+    }
+
+    fn is_nested_in(
+        &self,
+        owner: usize,
+        ancestor_members: &HashSet<String>,
+        control: &OperationControl,
+    ) -> OperationControlResult<bool> {
+        let mut current = Some(owner);
+        let mut visited = HashSet::new();
+        while let Some(index) = current {
+            if visited.len().is_multiple_of(128) {
+                control.checkpoint()?;
+            }
+            if !visited.insert(index) {
+                break;
+            }
+            let id = self.subgraphs[index].id.as_str();
+            if ancestor_members.contains(id) {
+                return Ok(true);
+            }
+            current = self.claimed_members.get(id).copied();
+        }
+        Ok(false)
     }
 }
 
@@ -291,8 +328,11 @@ mod tests {
             let retained = builder
                 .subgraphs
                 .iter()
-                .flat_map(|subgraph| subgraph.nodes.iter().cloned())
-                .collect::<HashSet<_>>();
+                .enumerate()
+                .flat_map(|(index, subgraph)| {
+                    subgraph.nodes.iter().cloned().map(move |id| (id, index))
+                })
+                .collect::<HashMap<_, _>>();
             assert_eq!(builder.claimed_members, retained);
         }
         assert_eq!(builder.subgraphs.len(), 3);
@@ -332,7 +372,8 @@ mod tests {
                 .nodes
                 .iter()
                 .cloned()
-                .collect::<HashSet<_>>()
+                .map(|id| (id, 0))
+                .collect::<HashMap<_, _>>()
         );
     }
 }

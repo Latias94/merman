@@ -943,6 +943,7 @@ mod tests {
             nodes: Vec::new(),
             edges: Vec::new(),
             subgraphs: Vec::new(),
+            dropped_subgraph_members: Vec::new(),
             subgraph_vertex_styles: Default::default(),
             tooltips: Default::default(),
             warning_facts: Vec::new(),
@@ -994,6 +995,7 @@ mod tests {
             style: Vec::new(),
             animate: None,
             animation: None,
+            step: None,
             length: 1,
         }
     }

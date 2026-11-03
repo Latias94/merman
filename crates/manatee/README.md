@@ -8,6 +8,6 @@ Headless compound graph layout algorithms in Rust.
 
 The crate contains the COSE-Bilkent and FCoSE algorithms used by Mermaid's Cytoscape-backed layouts. Randomized initialization is always controlled by an explicit seed or `FcoseRandomPolicy`; layout never consults ambient process randomness.
 
-Source baselines include Cytoscape `v3.34.0`, `cytoscape-fcose` `v2.2.0`, `cytoscape-cose-bilkent` `v4.1.0`, and their pinned `layout-base` and `cose-base` dependencies. Exact revisions are authoritative in [`tools/upstreams/REPOS.lock.json`](https://github.com/Latias94/merman/blob/main/tools/upstreams/REPOS.lock.json).
+Source baselines include Cytoscape `v3.34.4`, `cytoscape-fcose` `v2.2.0`, `cytoscape-cose-bilkent` `v4.1.0`, and their pinned `layout-base` and `cose-base` dependencies. Exact revisions are authoritative in [`tools/upstreams/REPOS.lock.json`](https://github.com/Latias94/merman/blob/main/tools/upstreams/REPOS.lock.json). The Cytoscape 3.34.0–3.34.4 source delta does not change the represented Cose/FCoSE kernels; historical measurements retain their original source versions.
 
 Licensed under either Apache-2.0 or MIT at your option. Ported source attribution is collected in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).

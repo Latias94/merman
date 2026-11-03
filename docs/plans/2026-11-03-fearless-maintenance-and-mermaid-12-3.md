@@ -42,6 +42,7 @@ removing a safeguard merely because its code appears duplicated.
 | Current documentation | Correct context/schema and benchmark/feature recipes, current navigation and integrated-check guidance. | Owner manifests/commands, links, skill validation; retain historical ADRs and measurements. |
 | Mermaid 12.3 reference graph | Verify exact tag/commit, registry integrity/provenance, companion ranges and source identity; update selected descriptors/locks and regenerate projections with existing tooling. | Official npm signatures, source/materialized/base-bound verification, installed graph consistency and runtime builder tests. |
 | Mermaid 12.3 behavior | Inventory registrations, parsers, semantic/config/theme/render/editor/host deltas, port observable behavior and regenerate actual references/provenance. | Source-backed focused regressions, parser generation if needed, actual browser oracle and applicable three-mode structural/parity comparisons. |
+| Markdown accessibility follow-up | After release alignment, fix [issue 276](https://github.com/Latias94/merman/issues/276): derive batch image alternative text from parsed `accDescr`, with the reference CLI's escaping and fallback rules. | The issue's ER reproduction, multiline and escaped descriptions, mixed batches, and a real CLI invocation against the selected reference. |
 
 ## Conditional decisions
 
@@ -49,13 +50,19 @@ Resolve these against the implemented tree before deleting their existing owner:
 
 - ASCII metrics: preserve emitted extent, trimming, Unicode/deferred text,
   count-before-allocation and explicit work accounting. Reuse existing metrics
-  only after an independent decoding oracle establishes equivalence.
+  only after an independent decoding oracle establishes equivalence. Retain the
+  current scan: encoder admission returns a byte count, while final metrics also
+  decode styling, observe emitted trimming, and join Unicode graphemes across
+  fragments. No equivalent existing result or measured saving justifies deletion.
 - Rough path preparation: reuse normalized segments and remove Block's local
   outline-first protocol only after ops and following random state agree.
   State's different fill-first recipe remains family-owned.
 - Flutter one-shot: specify runtime policy, duplicate raw fields, authoring
   profiles, byte limits and cancellation ordering before a controlled C one-shot
-  ABI migration. Retain existing behavior until the replacement is complete.
+  ABI migration. Retain the existing temporary engine in this round: a direct
+  shared one-shot migration still initializes a Rust engine and changes concrete
+  raw-option, authoring-budget and pre-cancellation error contracts. Existing
+  smoke tests and their historical repairs establish consumers of that policy.
 - Fresh resolution: exercise representative real family APIs and resolved
   package identities using the existing compatibility owner; retain historical
   recipes and describe its actual resolution-compilation guarantee.
@@ -64,6 +71,31 @@ No standalone deletion of the six public async wrappers or benchmark-profile
 reset is planned: the review found real consumers and retention evidence.
 
 ## Scheduling and integration
+
+### Reusable investigation and implementation prompt
+
+```text
+Investigate {scope} against the selected source and the maintenance review.
+Trace direct, indirect, generated and public consumers; inspect relevant Git
+history before calling a responsibility redundant. Breaking development changes
+are authorized. Retire a replaced owner and migrate its consumers together.
+
+For each finding, give its concrete trigger, file/line, observed or inferred
+failure, replacement owner, deletion boundary, and independent behavioral oracle.
+Preserve resource admission, cancellation, error precedence and source identity.
+Do not infer a performance gain from fewer lines or a behavior pass from source.
+Challenge proposed deletions against counterexamples and intentional safeguards.
+
+Implement accepted findings only within {write_set}, using apply_patch. Other
+workers share this tree: preserve their edits. Do not run Cargo, edit locks,
+commit, publish, generate repository baselines, or expand tooling into a compiler.
+Report a short checkpoint as soon as cross-file wiring can compile. Distinguish
+actual red/green observations, source deductions, and validation still pending.
+
+The coordinator owns serial bounded Cargo, exact dependency admission, generated
+artifacts and final integration. A separate reviewer challenges the completed
+change. Resolve verified findings and retire completed workers before handoff.
+```
 
 The coordinator immediately prepares the upstream source and package environment.
 Independent writers own disjoint paths: RoughR/render generation; configuration;

@@ -270,6 +270,7 @@ pub(super) fn with_flowchart_paint_context<T>(
         uses_elk_adapter_dom: layout.uses_elk_adapter_dom,
         class_defs: &model.class_defs,
         edge_style_plan,
+        steps: super::step::FlowchartSteps::new(model, effective_config),
         document_ids: std::cell::OnceCell::new(),
         layout,
         swimlane_layout,
@@ -448,6 +449,7 @@ pub(super) fn prepare_rough_edge_paths(
             render::node::roughjs::roughjs_hand_drawn_stroke_path_for_svg_path(
                 &entry.geom.d,
                 0.3,
+                ctx.work_meter,
                 &ctx.hand_drawn_seed,
             );
     }
@@ -576,7 +578,7 @@ impl FlowchartEdgeLabels {
             })
     }
 
-    fn position(
+    pub(super) fn position(
         &self,
         key: crate::flowchart::FlowchartEdgeKey,
     ) -> Option<crate::model::LayoutPoint> {

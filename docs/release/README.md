@@ -5,6 +5,11 @@ Use this index to choose an upgrade path by the version you have installed. Merm
 The `0.10.0-alpha.1` candidate targets Mermaid `12.2.0`; see [ADR-0094](../adr/0094-mermaid-12-2-upstream-transition.md)
 for the selected graph and behavior changes. Published release histories retain their original baselines.
 
+Current source development selects Mermaid `12.3.0`. See its
+[development migration](../migrations/mermaid-12-3.md) for layout dependencies, Rust changes,
+Step animation admission and static output. Build source wrappers and artifacts together;
+this transition does not change an already published package's baseline.
+
 The alpha's
 [prepared rendering and host integration migration](../migrations/render-reuse-host-integration.md)
 covering Rust borrowing/snapshots, geometry budgets, Web mounts and explicit Kanban width adaptation.
@@ -20,7 +25,7 @@ The [alpha changelog](../../CHANGELOG.md#0100-alpha1---2026-11-02) introduces re
 
 ## 0.9 maintenance line
 
-`release/0.9.x` carries compatible patch releases, including published `0.9.3`. It retains Mermaid 12.1.0, the Presentation API, and Options JSON schema 2. The compiled-theme migration and Mermaid 12.2.0 development remain on `main`. See the [maintenance changelog](https://github.com/Latias94/merman/blob/release/0.9.x/CHANGELOG.md) for the selected fixes and the [maintenance policy](RELEASING.md#maintenance-branches) for backport and tag ownership.
+`release/0.9.x` carries compatible patch releases, including published `0.9.3`. It retains Mermaid 12.1.0, the Presentation API, and Options JSON schema 2. The compiled-theme migration and newer Mermaid development remain on `main`. See the [maintenance changelog](https://github.com/Latias94/merman/blob/release/0.9.x/CHANGELOG.md) for the selected fixes and the [maintenance policy](RELEASING.md#maintenance-branches) for backport and tag ownership.
 
 ## Merman 0.9.3
 

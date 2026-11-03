@@ -424,20 +424,34 @@ fn c4_hand_drawn_paths(
     work_meter: &crate::resources::OperationWorkMeter,
     randomness: &roughr::core::RoughRandomness,
 ) -> Result<(String, String)> {
-    roughjs_paths_for_hand_drawn_svg_path(path_data, stroke_width, "0 0", work_meter, randomness)
-        .ok_or_else(|| crate::Error::InvalidModel {
-            message: "c4: handDrawn shape geometry generation failed".to_string(),
-        })
+    let paths = roughjs_paths_for_hand_drawn_svg_path(
+        path_data,
+        stroke_width,
+        "0 0",
+        work_meter,
+        randomness,
+    );
+    work_meter.checkpoint(merman_model::OperationPhase::Emit)?;
+    paths.ok_or_else(|| crate::Error::InvalidModel {
+        message: "c4: handDrawn shape geometry generation failed".to_string(),
+    })
 }
 
 fn c4_hand_drawn_stroke(
     path_data: &str,
+    work_meter: &crate::resources::OperationWorkMeter,
     randomness: &roughr::core::RoughRandomness,
 ) -> Result<String> {
-    roughjs_hand_drawn_stroke_path_for_svg_path(path_data, C4_HAND_DRAWN_ROUGHNESS, randomness)
-        .ok_or_else(|| crate::Error::InvalidModel {
-            message: "c4: failed to generate handDrawn stroke geometry".to_string(),
-        })
+    let path = roughjs_hand_drawn_stroke_path_for_svg_path(
+        path_data,
+        C4_HAND_DRAWN_ROUGHNESS,
+        work_meter,
+        randomness,
+    );
+    work_meter.checkpoint(merman_model::OperationPhase::Emit)?;
+    path.ok_or_else(|| crate::Error::InvalidModel {
+        message: "c4: failed to generate handDrawn stroke geometry".to_string(),
+    })
 }
 
 fn c4_write_hand_drawn_pair(
@@ -506,7 +520,7 @@ fn c4_write_unified_shape(
                     fmt(frame_x),
                     fmt(height / 2.0),
                 );
-                let frame_d = c4_hand_drawn_stroke(&frame_path, randomness)?;
+                let frame_d = c4_hand_drawn_stroke(&frame_path, work_meter, randomness)?;
                 out.push_str(r#"<g class="basic label-container">"#);
                 out.checkpoint()?;
                 c4_write_hand_drawn_pair(out, &pair, fill, stroke, 2.0)?;
@@ -545,8 +559,9 @@ fn c4_write_unified_shape(
                     true,
                     work_meter,
                     randomness,
-                )
-                .ok_or_else(|| crate::Error::InvalidModel {
+                );
+                work_meter.checkpoint(merman_model::OperationPhase::Emit)?;
+                let head_pair = head_pair.ok_or_else(|| crate::Error::InvalidModel {
                     message: "c4: handDrawn person geometry generation failed".to_string(),
                 })?;
                 out.push_str(r#"<g class="basic label-container">"#);

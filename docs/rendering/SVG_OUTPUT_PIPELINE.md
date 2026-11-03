@@ -14,6 +14,13 @@ surface for upstream Mermaid fixtures. Consumers that need renderer compatibilit
 a pipeline explicitly. Mermaid-parity SVG may contain `<foreignObject>` HTML labels; that is
 expected and should not be treated as the export-safe surface.
 
+Mermaid 12.3 Flowchart Step edges also emit animated parity SVG: scoped motion dots,
+edge highlights, and optional numbered badges. Browser admission accepts only the fixed Step
+structure, finite timing, scoped identities and matching paths. Reduced-motion preferences hide
+the moving marks while retaining the badges. Static-inline and resvg-safe conversion remove the
+validated animation carriers and retain the original edges and numbers; PNG/JPEG/PDF use that
+static projection. Select those consumer policies when an application requires passive output.
+
 ## Generation and consumer admission
 
 Ordinary renderer-owned parity SVG is serialized by its writers and is not reparsed as an unknown

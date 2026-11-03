@@ -36,7 +36,7 @@ pub(in crate::svg::parity) fn render_class_diagram_svg_model_with_config(
     let mut detail = ClassRenderDetails::default();
     let diagram_id = options.diagram_id_or("merman");
     let checkpoint_emit = || options.checkpoint_emit();
-    let emit = ClassEmitCheckpoint::new(&checkpoint_emit);
+    let emit = ClassEmitCheckpoint::new(&checkpoint_emit, options.work_meter());
     let aria_roledescription = model.model().diagram_type.as_str();
 
     let build_ctx_guard = timing.section(&mut timings.build_ctx);

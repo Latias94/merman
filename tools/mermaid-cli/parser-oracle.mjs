@@ -9,9 +9,9 @@ const require = createRequire(import.meta.url);
 const MAX_SOURCE_BYTES = 4096;
 const MAX_BATCH_CASES = 10064;
 const MAX_REQUEST_BYTES = 48 * 1024 * 1024;
-// The selected 12.2 package exports these actual helpers from this shared chunk.
+// The selected 12.3 package exports these actual helpers from this shared chunk.
 // A changed selected package must admit its new seam explicitly instead of guessing a decoder.
-const decoderModule = "mermaid/dist/chunks/mermaid.core/chunk-7S6XSTFO.mjs";
+const decoderModule = "mermaid/dist/chunks/mermaid.core/chunk-6MUBBAK2.mjs";
 
 export async function prepareObservationAdapter(directory) {
   const compiler = require("esbuild");

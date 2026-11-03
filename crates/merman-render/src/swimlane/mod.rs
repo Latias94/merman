@@ -4,6 +4,7 @@ mod direction;
 #[cfg(feature = "diagram-mindmap")]
 mod flat;
 mod geometry;
+mod lanes;
 
 #[cfg(feature = "diagram-mindmap")]
 pub(crate) use flat::layout_flat;
@@ -11,6 +12,8 @@ pub(crate) use flat::layout_flat;
 mod prepare;
 mod routing;
 mod sugiyama;
+#[cfg(all(test, any(feature = "diagram-flowchart", feature = "diagram-swimlane")))]
+mod tests;
 mod work_budget;
 mod working;
 
@@ -101,6 +104,14 @@ pub(crate) fn layout_swimlane_typed_with_work_meter_and_svg_label_sidecar(
         edge_style_plan,
     )?;
     run_layout_core(&mut working, config, work_meter)?;
+    prepare::measure_zero_width_lane_titles(
+        &mut working,
+        model,
+        render_label_sources,
+        effective_config,
+        measurer,
+        svg_label_sidecar,
+    );
 
     // Mermaid's swimlane core only normalizes the implicit `basis` curve to
     // `rounded`; an explicit edge/default/config curve remains authoritative.
@@ -305,7 +316,7 @@ fn swimlane_layout_preflight_work_units(nodes: usize, edges: usize) -> usize {
 }
 
 #[cfg(test)]
-mod tests {
+mod work_tests {
     use super::{
         deterministic_identifier_cmp, swimlane_core_layout_work_units,
         swimlane_layout_preflight_work_units,

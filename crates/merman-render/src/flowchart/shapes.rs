@@ -5,6 +5,7 @@ use kurbo::{Arc, Point, SvgArc, Vec2};
 pub(crate) enum FlowchartShape {
     Anchor,
     Bang,
+    Bpmn(super::bpmn::BpmnShape),
     Browser,
     BowTieRectangle,
     BraceLeft,
@@ -70,6 +71,9 @@ pub(crate) enum FlowchartShape {
 
 impl FlowchartShape {
     pub(crate) fn resolve(name: &str) -> Result<Self> {
+        if let Some(shape) = super::bpmn::BpmnShape::resolve(name) {
+            return Ok(Self::Bpmn(shape));
+        }
         let shape = match name {
             "anchor" => Self::Anchor,
             "bang" => Self::Bang,

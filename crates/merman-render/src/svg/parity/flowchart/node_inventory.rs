@@ -580,6 +580,8 @@ fn prepared_cluster_ids(
                     .map(|subgraph| subgraph.id.clone()),
             );
         }
+    } else if let FlowchartNodeLayoutView::Swimlane(layout) = layout {
+        ids.extend(layout.lanes.iter().map(|lane| lane.id.clone()));
     } else {
         for id in input.subgraphs_by_id.keys().copied() {
             if !input.subgraph_has_children(id) || !input.layout_clusters_by_id.contains_key(id) {
@@ -593,22 +595,6 @@ fn prepared_cluster_ids(
             if root.is_none_or(|root| scheduled_roots.contains(root)) {
                 ids.push(id.to_owned());
             }
-        }
-        if let FlowchartNodeLayoutView::Swimlane(layout) = layout {
-            ids.extend(
-                layout
-                    .lanes
-                    .iter()
-                    .filter(|lane| {
-                        !input.subgraphs_by_id.contains_key(lane.id.as_str())
-                            && input.layout_clusters_by_id.contains_key(lane.id.as_str())
-                            && lane
-                                .parent_id
-                                .as_deref()
-                                .is_none_or(|root| scheduled_roots.contains(root))
-                    })
-                    .map(|lane| lane.id.clone()),
-            );
         }
     }
     let mut seen = FxHashSet::default();

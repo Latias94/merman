@@ -1,0 +1,435 @@
+{
+  "diagramType": "swimlane",
+  "layout": {
+    "SwimlaneDiagram": {
+      "bounds": {
+        "max_x": 369.06,
+        "max_y": 542.8,
+        "min_x": -305.18,
+        "min_y": -45.0
+      },
+      "direction": "TB",
+      "edges": [
+        {
+          "curve": "rounded",
+          "from": "Start",
+          "id": "L_Start_B_0",
+          "label_node_id": null,
+          "points": [
+            {
+              "x": -136.62,
+              "y": 112.8
+            },
+            {
+              "x": -136.62,
+              "y": 162.8
+            }
+          ],
+          "reversed_for_layout": false,
+          "to": "B"
+        },
+        {
+          "curve": "rounded",
+          "from": "B",
+          "id": "L_B_C_0",
+          "label_node_id": "edge-label-B-C-L_B_C_0",
+          "points": [
+            {
+              "x": -61.12,
+              "y": 178.8
+            },
+            {
+              "x": -61.12,
+              "y": 178.8
+            },
+            {
+              "x": 200.5,
+              "y": 178.8
+            },
+            {
+              "x": 200.5,
+              "y": 162.8
+            },
+            {
+              "x": 200.5,
+              "y": 162.8
+            }
+          ],
+          "reversed_for_layout": false,
+          "to": "C"
+        },
+        {
+          "curve": "rounded",
+          "from": "C",
+          "id": "L_C_D_0",
+          "label_node_id": "edge-label-C-D-L_C_D_0",
+          "points": [
+            {
+              "x": 200.5,
+              "y": 194.8
+            },
+            {
+              "x": 200.5,
+              "y": 293.8
+            }
+          ],
+          "reversed_for_layout": false,
+          "to": "D"
+        },
+        {
+          "curve": "rounded",
+          "from": "D",
+          "id": "L_D_G_0",
+          "label_node_id": null,
+          "points": [
+            {
+              "x": 200.5,
+              "y": 325.8
+            },
+            {
+              "x": 200.5,
+              "y": 442.3
+            }
+          ],
+          "reversed_for_layout": false,
+          "to": "G"
+        },
+        {
+          "curve": "rounded",
+          "from": "G",
+          "id": "L_G_End_0",
+          "label_node_id": null,
+          "points": [
+            {
+              "x": 125.5,
+              "y": 465.8
+            },
+            {
+              "x": -76.62,
+              "y": 465.8
+            }
+          ],
+          "reversed_for_layout": false,
+          "to": "End"
+        },
+        {
+          "curve": "rounded",
+          "from": "B",
+          "id": "L_B_End_0",
+          "label_node_id": "edge-label-B-End-L_B_End_0",
+          "points": [
+            {
+              "x": -158.59,
+              "y": 194.8
+            },
+            {
+              "x": -158.59,
+              "y": 424.8
+            }
+          ],
+          "reversed_for_layout": false,
+          "to": "End"
+        },
+        {
+          "curve": "rounded",
+          "from": "C",
+          "id": "L_C_End_0",
+          "label_node_id": "edge-label-C-End-L_C_End_0",
+          "points": [
+            {
+              "x": 200.5,
+              "y": 162.8
+            },
+            {
+              "x": 200.5,
+              "y": 162.8
+            },
+            {
+              "x": 200.5,
+              "y": -20.0
+            },
+            {
+              "x": -232.12,
+              "y": -20.0
+            },
+            {
+              "x": -232.12,
+              "y": 465.8
+            },
+            {
+              "x": -196.62,
+              "y": 465.8
+            },
+            {
+              "x": -196.62,
+              "y": 465.8
+            }
+          ],
+          "reversed_for_layout": false,
+          "to": "End"
+        },
+        {
+          "curve": "rounded",
+          "from": "D",
+          "id": "L_D_End_0",
+          "label_node_id": "edge-label-D-End-L_D_End_0",
+          "points": [
+            {
+              "x": 125.0,
+              "y": 309.8
+            },
+            {
+              "x": 125.0,
+              "y": 309.8
+            },
+            {
+              "x": -127.62,
+              "y": 309.8
+            },
+            {
+              "x": -127.62,
+              "y": 424.8
+            },
+            {
+              "x": -127.62,
+              "y": 424.8
+            }
+          ],
+          "reversed_for_layout": false,
+          "to": "End"
+        }
+      ],
+      "lanes": [
+        {
+          "content_top": 0.0,
+          "height": 587.8,
+          "id": "work",
+          "padding": 8.0,
+          "parent_id": null,
+          "requested_dir": "TB",
+          "title": "Work",
+          "title_label_height": 17.0,
+          "title_label_width": 31.641,
+          "title_rect": {
+            "bottom": -24.0,
+            "left": 31.94,
+            "right": 369.06,
+            "top": -45.0
+          },
+          "width": 337.12,
+          "x": 200.5,
+          "y": 248.9
+        },
+        {
+          "content_top": 0.0,
+          "height": 587.8,
+          "id": "review",
+          "padding": 8.0,
+          "parent_id": null,
+          "requested_dir": "TB",
+          "title": "Review",
+          "title_label_height": 17.0,
+          "title_label_width": 41.297,
+          "title_rect": {
+            "bottom": -24.0,
+            "left": -305.18,
+            "right": 31.94,
+            "top": -45.0
+          },
+          "width": 337.12,
+          "x": -136.62,
+          "y": 248.9
+        }
+      ],
+      "nodes": [
+        {
+          "height": 112.8,
+          "id": "Start",
+          "is_edge_label": false,
+          "label": "Wide start event caption",
+          "label_height": 32.4,
+          "label_type": "markdown",
+          "label_width": 120.0,
+          "layer": 0.0,
+          "order": 0.0,
+          "parent_id": "review",
+          "shape": "bpmn-start",
+          "top_lane_id": "review",
+          "width": 120.0,
+          "x": -136.62,
+          "y": 56.4
+        },
+        {
+          "height": 32.0,
+          "id": "B",
+          "is_edge_label": false,
+          "label": "Review",
+          "label_height": 17.0,
+          "label_type": "text",
+          "label_width": 120.0,
+          "layer": 1.0,
+          "order": 0.0,
+          "parent_id": "review",
+          "shape": "hexagon",
+          "top_lane_id": "review",
+          "width": 151.0,
+          "x": -136.62,
+          "y": 178.8
+        },
+        {
+          "height": 82.0,
+          "id": "End",
+          "is_edge_label": false,
+          "label": "Complete",
+          "label_height": 17.0,
+          "label_type": "markdown",
+          "label_width": 120.0,
+          "layer": 3.0,
+          "order": 0.0,
+          "parent_id": "review",
+          "shape": "bpmn-end",
+          "top_lane_id": "review",
+          "width": 120.0,
+          "x": -136.62,
+          "y": 465.8
+        },
+        {
+          "height": 32.0,
+          "id": "C",
+          "is_edge_label": false,
+          "label": "Check",
+          "label_height": 17.0,
+          "label_type": "text",
+          "label_width": 120.0,
+          "layer": 1.0,
+          "order": 0.0,
+          "parent_id": "work",
+          "shape": "hexagon",
+          "top_lane_id": "work",
+          "width": 151.0,
+          "x": 200.5,
+          "y": 178.8
+        },
+        {
+          "height": 32.0,
+          "id": "D",
+          "is_edge_label": false,
+          "label": "Confirm",
+          "label_height": 17.0,
+          "label_type": "text",
+          "label_width": 120.0,
+          "layer": 2.0,
+          "order": 0.0,
+          "parent_id": "work",
+          "shape": "hexagon",
+          "top_lane_id": "work",
+          "width": 151.0,
+          "x": 200.5,
+          "y": 309.8
+        },
+        {
+          "height": 47.0,
+          "id": "G",
+          "is_edge_label": false,
+          "label": "Ready",
+          "label_height": 17.0,
+          "label_type": "markdown",
+          "label_width": 120.0,
+          "layer": 3.0,
+          "order": 0.0,
+          "parent_id": "work",
+          "shape": "notch-pent",
+          "top_lane_id": "work",
+          "width": 150.0,
+          "x": 200.5,
+          "y": 465.8
+        },
+        {
+          "height": 17.0,
+          "id": "edge-label-B-C-L_B_C_0",
+          "is_edge_label": true,
+          "label": "accept",
+          "label_height": 17.0,
+          "label_type": "text",
+          "label_width": 36.12,
+          "layer": 0.0,
+          "order": 0.0,
+          "parent_id": "work",
+          "shape": "labelRect",
+          "top_lane_id": "work",
+          "width": 36.12,
+          "x": 69.69,
+          "y": 178.8
+        },
+        {
+          "height": 17.0,
+          "id": "edge-label-C-D-L_C_D_0",
+          "is_edge_label": true,
+          "label": "accept",
+          "label_height": 17.0,
+          "label_type": "text",
+          "label_width": 36.12,
+          "layer": 0.0,
+          "order": 0.0,
+          "parent_id": "work",
+          "shape": "labelRect",
+          "top_lane_id": "work",
+          "width": 36.12,
+          "x": 200.5,
+          "y": 244.3
+        },
+        {
+          "height": 17.0,
+          "id": "edge-label-B-End-L_B_End_0",
+          "is_edge_label": true,
+          "label": "decline",
+          "label_height": 17.0,
+          "label_type": "text",
+          "label_width": 37.94,
+          "layer": 0.0,
+          "order": 0.0,
+          "parent_id": "review",
+          "shape": "labelRect",
+          "top_lane_id": "review",
+          "width": 37.94,
+          "x": -158.59,
+          "y": 309.8
+        },
+        {
+          "height": 17.0,
+          "id": "edge-label-C-End-L_C_End_0",
+          "is_edge_label": true,
+          "label": "decline",
+          "label_height": 17.0,
+          "label_type": "text",
+          "label_width": 37.94,
+          "layer": 0.0,
+          "order": 0.0,
+          "parent_id": "review",
+          "shape": "labelRect",
+          "top_lane_id": "review",
+          "width": 37.94,
+          "x": -15.81,
+          "y": -20.0
+        },
+        {
+          "height": 17.0,
+          "id": "edge-label-D-End-L_D_End_0",
+          "is_edge_label": true,
+          "label": "decline",
+          "label_height": 17.0,
+          "label_type": "text",
+          "label_width": 37.94,
+          "layer": 0.0,
+          "order": 0.0,
+          "parent_id": "review",
+          "shape": "labelRect",
+          "top_lane_id": "review",
+          "width": 37.94,
+          "x": -1.31,
+          "y": 309.8
+        }
+      ]
+    }
+  }
+}

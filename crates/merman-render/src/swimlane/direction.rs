@@ -78,6 +78,21 @@ fn mirror_axis(layout: &mut WorkingLayout, horizontal: bool) {
     }
 }
 
+pub(super) fn flow_axis_stretch(layout: &WorkingLayout) -> f64 {
+    let (width, height) = layout
+        .nodes
+        .values()
+        .filter(|node| node.kind == WorkingNodeKind::Content)
+        .fold((0.0, 0.0), |(width, height), node| {
+            (width + node.width, height + node.height)
+        });
+    if height > 0.0 {
+        (width / height).max(1.0)
+    } else {
+        1.0
+    }
+}
+
 fn transform_lr(layout: &mut WorkingLayout) {
     let content_ids = layout_content_ids(layout);
     if content_ids.is_empty() {
@@ -91,17 +106,7 @@ fn transform_lr(layout: &mut WorkingLayout) {
         .iter()
         .map(|id| layout.nodes[id].y)
         .fold(f64::INFINITY, f64::min);
-    let (total_width, total_height) = content_ids.iter().fold((0.0, 0.0), |acc, id| {
-        let node = &layout.nodes[id];
-        (acc.0 + node.width, acc.1 + node.height)
-    });
-    let average_width = total_width / content_ids.len() as f64;
-    let average_height = total_height / content_ids.len() as f64;
-    let horizontal_scale = if average_height > 0.0 {
-        (average_width / average_height).max(1.0)
-    } else {
-        1.0
-    };
+    let horizontal_scale = flow_axis_stretch(layout);
     let transform = |point: &LayoutPoint| LayoutPoint {
         x: (point.y - min_y) * horizontal_scale + LR_TITLE_BAND_SIZE,
         y: point.x - min_x,
@@ -124,21 +129,28 @@ fn transform_lr(layout: &mut WorkingLayout) {
     }
 
     recompute_nested_group_bounds(layout);
+    let lane_model = super::lanes::LaneModel::new(&layout.nodes);
     let top_lane_ids: Vec<String> = layout
         .nodes
         .values()
-        .filter(|node| node.is_group() && node.parent_id.is_none())
+        .filter(|node| lane_model.is_lane(&node.id))
         .map(|node| node.id.clone())
         .collect();
     let mut children_by_lane: HashMap<String, Vec<String>> = HashMap::new();
-    for id in &content_ids {
-        let Some(lane_id) = layout.nodes[id].top_lane_id.clone() else {
+    for node in layout.nodes.values() {
+        if node.kind == WorkingNodeKind::Dummy
+            || lane_model.is_lane(&node.id)
+            || lane_model.is_pool(&node.id)
+        {
+            continue;
+        }
+        let Some(lane_id) = lane_model.lane_of(&node.id) else {
             continue;
         };
         children_by_lane
-            .entry(lane_id)
+            .entry(lane_id.to_string())
             .or_default()
-            .push(id.clone());
+            .push(node.id.clone());
     }
 
     let max_padding = top_lane_ids
@@ -338,6 +350,7 @@ mod resource_tests {
                     label_type: "text".to_string(),
                     shape: "rect".to_string(),
                     kind: WorkingNodeKind::Content,
+                    producer_lane_role: None,
                     parent_id: None,
                     top_lane_id: None,
                     requested_dir: None,
@@ -424,6 +437,7 @@ mod resource_tests {
                         label_type: "text".to_string(),
                         shape: "rect".to_string(),
                         kind: WorkingNodeKind::Content,
+                        producer_lane_role: None,
                         parent_id: None,
                         top_lane_id: None,
                         requested_dir: None,

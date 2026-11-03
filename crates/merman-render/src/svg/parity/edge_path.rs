@@ -17,7 +17,8 @@ pub(super) fn write_neo_edge_mask(
 
     fn mask_offset(arrow_type: Option<&str>) -> f64 {
         match arrow_type {
-            Some("arrow_point") => 4.0,
+            Some("arrow_point" | "arrow_open_head") => 4.0,
+            Some("arrow_hollow_circle") => 8.0,
             Some("arrow_cross" | "arrow_circle") => 12.5,
             _ => 0.0,
         }
@@ -245,6 +246,8 @@ mod tests {
             (Some("extension"), -2.75, 62.75),
             (Some("composition"), -2.75, 62.75),
             (Some("arrow_circle"), -20.0, 80.0),
+            (Some("arrow_open_head"), -20.0, 80.0),
+            (Some("arrow_hollow_circle"), -20.0, 80.0),
             (None, -20.0, 80.0),
         ] {
             let output = line_with_offset_points(&input, marker, marker);
@@ -252,6 +255,20 @@ mod tests {
             assert_eq!((output[0].x, output[0].y), (expected_start_x, 5.0));
             assert_eq!((output[1].x, output[1].y), (expected_end_x, 5.0));
         }
+    }
+
+    #[test]
+    fn bpmn_marker_clearance_belongs_to_the_neo_mask_table() {
+        let mut style = String::new();
+        write_neo_edge_mask(
+            &mut style,
+            40.0,
+            Some("arrow_hollow_circle"),
+            Some("arrow_open_head"),
+            false,
+            false,
+        );
+        assert_eq!(style, "stroke-dasharray: 0 8 28 4; stroke-dashoffset: 0;");
     }
 
     #[test]

@@ -140,14 +140,6 @@ fn normalize_model(diagram_type: &str, model: &mut Value) {
 
     obj.remove("config");
 
-    // Mermaid mindmap includes a random UUID v4-based diagram id.
-    if diagram_type == "mindmap" && obj.get("diagramId").is_some() {
-        obj.insert(
-            "diagramId".to_string(),
-            Value::String("<dynamic>".to_string()),
-        );
-    }
-
     // Mermaid gantt uses local time; epoch millis are timezone-dependent and not portable as goldens.
     // Normalize task timestamps into local ISO strings so snapshots are stable across timezones.
     if diagram_type == "gantt" {

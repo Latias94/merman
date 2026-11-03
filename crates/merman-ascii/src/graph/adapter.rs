@@ -910,6 +910,7 @@ mod tests {
             nodes: vec![flow_node("A"), flow_node("B")],
             edges: vec![edge],
             subgraphs: Vec::new(),
+            dropped_subgraph_members: Vec::new(),
             subgraph_vertex_styles: Default::default(),
             tooltips: Default::default(),
             warning_facts: Vec::new(),
@@ -936,6 +937,7 @@ mod tests {
             style: Vec::new(),
             animate: None,
             animation: None,
+            step: None,
             length: 1,
         }
     }
@@ -970,6 +972,7 @@ mod tests {
             nodes: Vec::new(),
             edges: Vec::new(),
             subgraphs,
+            dropped_subgraph_members: Vec::new(),
             subgraph_vertex_styles: Default::default(),
             tooltips: Default::default(),
             warning_facts: Vec::new(),
@@ -1239,6 +1242,7 @@ mod tests {
             style: Vec::new(),
             animate: None,
             animation: None,
+            step: None,
             length: 1,
         });
         let options = AsciiRenderOptions::ascii();
@@ -1274,6 +1278,7 @@ mod tests {
                 .collect(),
             edges: Vec::new(),
             subgraphs: Vec::new(),
+            dropped_subgraph_members: Vec::new(),
             subgraph_vertex_styles: Default::default(),
             tooltips: Default::default(),
             warning_facts: Vec::new(),
@@ -1374,6 +1379,7 @@ mod tests {
                 styles: Vec::new(),
                 nodes: vec!["member".to_string()],
             }],
+            dropped_subgraph_members: Vec::new(),
             subgraph_vertex_styles: Default::default(),
             tooltips: Default::default(),
             warning_facts: Vec::new(),
@@ -1435,6 +1441,7 @@ mod tests {
                 styles: vec!["fill:#00aa00".to_string()],
                 nodes: vec!["member".to_string()],
             }],
+            dropped_subgraph_members: Vec::new(),
             subgraph_vertex_styles: Default::default(),
             tooltips: Default::default(),
             warning_facts: Vec::new(),

@@ -33,6 +33,9 @@ pub(in super::super) fn render_flowchart_shape(
         FlowchartShape::Bang => {
             super::render_bang(out, ctx, common, label, details);
         }
+        FlowchartShape::Bpmn(shape) => {
+            super::render_bpmn(out, ctx, common, label, shape)?;
+        }
         FlowchartShape::Browser => {
             super::render_browser(out, ctx, common, label, details);
         }

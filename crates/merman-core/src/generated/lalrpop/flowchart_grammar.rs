@@ -1,5 +1,5 @@
 // auto-generated: "lalrpop 0.23.2"
-// sha3: fde118c36750a97112a2d5bb551d74ae2e6d671a7b867a08665e7e950546549b
+// sha3: ddcc4c157eebe51ac6e1e9a304af8aa9cad045b7c158e909ee9fd9386816c320
 // features:
 use crate::diagrams::flowchart::{
   ArrowToken, ClassAssignStmt, ClassDefStmt, ClickStmt, DirectionStatementToken, Edge, FlowchartAst,
@@ -3224,6 +3224,7 @@ fn __action23<
             is_user_defined_id: false,
             animate: None,
             animation: None,
+            step: None,
           });
         }
       }

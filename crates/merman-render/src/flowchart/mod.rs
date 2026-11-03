@@ -1,4 +1,5 @@
 mod base_typography;
+pub(crate) mod bpmn;
 mod compatibility;
 mod config;
 mod edge_label_padding;
@@ -6,6 +7,7 @@ mod edge_occurrence;
 #[cfg(feature = "layout-elk")]
 pub mod elk;
 use crate::graph_label as label;
+mod lane_title;
 mod layout;
 mod node;
 mod self_loop;
@@ -26,6 +28,7 @@ pub(crate) use edge_label_padding::FlowchartEdgeLabelPadding;
 pub(crate) use edge_occurrence::{
     FlowchartEdgeKey, FlowchartEdgeOwners, FlowchartEdgeTransportPlan,
 };
+pub(crate) use lane_title::zero_width_lane_title_rows;
 
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct FlowchartRenderModelRef<'a> {

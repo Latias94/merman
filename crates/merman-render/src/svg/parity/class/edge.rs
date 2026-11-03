@@ -180,7 +180,12 @@ pub(super) fn render_class_edge_paths<'edges, O: SvgOutput>(
             detail.edge_curve += s.elapsed();
         }
         let rough_d = if ctx.look == "handDrawn" {
-            class_rough_hand_drawn_stroke_path_for_svg_path(&d, 0.3, &ctx.hand_drawn_seed)
+            class_rough_hand_drawn_stroke_path_for_svg_path(
+                &d,
+                0.3,
+                ctx.work_meter,
+                &ctx.hand_drawn_seed,
+            )
         } else {
             None
         };

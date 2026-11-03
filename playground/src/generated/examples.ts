@@ -28,7 +28,7 @@ export type ExampleEvidence =
 
 export const PLAYGROUND_MERMAN_VERSION = "0.10.0-alpha.1" as const;
 
-export const PLAYGROUND_EXAMPLE_BASELINE = "mermaid@12.2.0" as const;
+export const PLAYGROUND_EXAMPLE_BASELINE = "mermaid@12.3.0" as const;
 
 export const GENERATED_EXAMPLES = [
   {

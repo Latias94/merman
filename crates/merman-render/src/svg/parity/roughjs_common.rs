@@ -1,7 +1,10 @@
 //! Shared RoughJS formatting and path-geometry helpers used by multiple parity renderers.
 
+pub(in crate::svg::parity) mod controlled;
+
 #[cfg(any(
     feature = "diagram-c4",
+    feature = "diagram-block",
     feature = "diagram-flowchart",
     feature = "diagram-swimlane",
     feature = "diagram-agentflow"
@@ -126,6 +129,8 @@ pub(in crate::svg::parity) struct RoughRectSpec<'a> {
     pub(in crate::svg::parity) w: f64,
     pub(in crate::svg::parity) h: f64,
     pub(in crate::svg::parity) stroke_width: f32,
+    pub(in crate::svg::parity) work_meter: &'a crate::resources::OperationWorkMeter,
+    pub(in crate::svg::parity) phase: merman_model::OperationPhase,
     pub(in crate::svg::parity) randomness: &'a roughr::core::RoughRandomness,
 }
 
@@ -145,6 +150,8 @@ pub(in crate::svg::parity) fn roughjs_rect_operations(
         w,
         h,
         stroke_width,
+        work_meter,
+        phase,
         randomness,
     } = spec;
 
@@ -164,19 +171,24 @@ pub(in crate::svg::parity) fn roughjs_rect_operations(
         .build()
         .ok()?;
 
-    let fill_poly = vec![vec![
-        roughr::Point2D::new(x, y),
-        roughr::Point2D::new(x + w, y),
-        roughr::Point2D::new(x + w, y + h),
-        roughr::Point2D::new(x, y + h),
-    ]];
     // Rough.js computes the rectangle outline first (advancing the PRNG state), then the fill, and
     // finally emits the fill path before the stroke path. Keep the same generation order to match
     // Mermaid's seeded output.
-    let stroke_opset = roughr::renderer::rectangle::<f64>(x, y, w, h, &mut opts);
-    let fill_opset = roughr::renderer::solid_fill_polygon(&fill_poly, &mut opts);
-
-    Some((fill_opset, stroke_opset))
+    controlled::generate(work_meter, phase, |control| {
+        let stroke =
+            roughr::renderer::rectangle_with_control::<f64>(x, y, w, h, &mut opts, control)?;
+        roughr::work::WorkControl::charge(control, 4)?;
+        let polygons = vec![vec![
+            roughr::Point2D::new(x, y),
+            roughr::Point2D::new(x + w, y),
+            roughr::Point2D::new(x + w, y + h),
+            roughr::Point2D::new(x, y + h),
+        ]];
+        let fill =
+            roughr::renderer::solid_fill_polygon_with_control(&polygons, &mut opts, control)?;
+        Ok((fill, stroke))
+    })
+    .ok()
 }
 
 pub(in crate::svg::parity) fn roughjs_circle_path_d(

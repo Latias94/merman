@@ -1,0 +1,17 @@
+---
+config:
+  htmlLabels: false
+  flowchart:
+    stepDuration: 0.25
+    stepNumbers: true
+---
+%% Derived from flowchart-step-duration.spec.ts and flowchart-step-numbers.spec.ts at
+%% https://github.com/mermaid-js/mermaid/tree/2086904e76c692331e34a45d7cc3bc30860d040e/e2e/rendering/flowchart/pr-check
+flowchart LR
+  A e1@--> B
+  A e2@--> C
+  B e3@-->|label| D
+  e1@{ step: 1, animate: true }
+  e2@{ step: 1 }
+  e3@{ step: 5 }
+  linkStyle 0 stroke:#236abc

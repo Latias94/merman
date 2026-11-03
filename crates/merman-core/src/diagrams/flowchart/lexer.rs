@@ -618,8 +618,6 @@ impl<'input> Lexer<'input> {
             return None;
         }
 
-        // Mermaid's `[^\s"]+@(?=[^\{"])` LINK_ID rule runs before ordinary identifiers and
-        // greedily captures the last eligible `@` in a non-whitespace run.
         let mut cursor = start;
         let mut at = None;
         while cursor < self.input.len() {
@@ -627,7 +625,9 @@ impl<'input> Lexer<'input> {
                 .chars()
                 .next()
                 .expect("edge id scan position must contain a character");
-            if is_ecmascript_trim_char(ch) || ch == '"' {
+            if is_ecmascript_trim_char(ch)
+                || matches!(ch, '"' | '[' | ']' | '(' | ')' | '{' | '}' | '|')
+            {
                 break;
             }
             if ch == '@' {

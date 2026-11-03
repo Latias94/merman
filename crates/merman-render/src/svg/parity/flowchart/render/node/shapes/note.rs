@@ -63,6 +63,8 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_note(
                 w,
                 h,
                 stroke_width: common.stroke_width,
+                work_meter: common.work_meter,
+                phase: merman_model::OperationPhase::Emit,
                 randomness: common.hand_drawn_seed,
             })
         })
@@ -124,6 +126,8 @@ pub(super) fn advance_rough_geometry(common: &super::super::FlowchartNodeGeometr
             w,
             h,
             stroke_width: common.stroke_width,
+            work_meter: common.work_meter,
+            phase: merman_model::OperationPhase::Layout,
             randomness: common.hand_drawn_seed,
         });
     }

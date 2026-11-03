@@ -206,6 +206,10 @@ Merman `0.10.0-alpha.1` targets Mermaid `12.2.0`, compiled diagram themes and Op
 for installed packages. See the [alignment dashboard] for current source-backed checks of semantic
 models, layout, and SVG structure.
 
+Current source development selects Mermaid `12.3.0`; the
+[development migration](docs/migrations/mermaid-12-3.md) covers its layout dependencies,
+Step SVG policy, new shared shapes and Rust source changes.
+
 Text measurement, browser font fallback, HTML labels, `foreignObject`, and hand-drawn paths can
 produce differences from browser output. Pixel-identical Chromium rendering is not guaranteed.
 For consumers that cannot display HTML labels, choose the resvg-safe SVG pipeline or a typed

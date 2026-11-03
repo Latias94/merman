@@ -30,6 +30,8 @@ use crate::{
 #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
 use indexmap::IndexMap;
 #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
+use merman_model::families::flowchart::FlowDroppedSubgraphMember;
+#[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
 use serde_json::Value;
 #[cfg(all(test, any(feature = "diagram-flowchart", feature = "diagram-swimlane")))]
 use serde_json::json;
@@ -84,6 +86,8 @@ mod lex;
 mod lexer;
 mod lexer_iter;
 mod link;
+#[cfg(all(test, any(feature = "diagram-flowchart", feature = "diagram-swimlane")))]
+mod mermaid_12_3_tests;
 mod model;
 #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
 mod semantic;
@@ -193,6 +197,7 @@ struct FlowchartSemanticSource {
     nodes: Vec<Node>,
     edges: Vec<Edge>,
     subgraphs: Vec<FlowSubGraph>,
+    dropped_subgraph_members: Vec<FlowDroppedSubgraphMember>,
     subgraph_vertex_styles: FlowchartSubgraphStyles,
     #[cfg(feature = "presentation")]
     collapsed_subgraphs: Option<rustc_hash::FxHashSet<String>>,
@@ -642,6 +647,7 @@ fn parse_flowchart_semantic_source_from_ast_controlled<M: FlowchartMetadata>(
         nodes,
         edges,
         subgraphs: builder.subgraphs,
+        dropped_subgraph_members: builder.dropped_subgraph_members,
         subgraph_vertex_styles,
         #[cfg(feature = "presentation")]
         collapsed_subgraphs,
@@ -705,7 +711,13 @@ fn prepare_flowchart_shape_data_document(
     if documents.contains_key(source) {
         return control.checkpoint();
     }
-    let document = crate::inline_config::parse_mermaid_inline_object_controlled(source, control)?;
+    let mut document =
+        crate::inline_config::parse_mermaid_inline_object_controlled(source, control)?;
+    if let Ok(Value::Object(map)) = &mut document {
+        for key in ["laneRole", "laneIndex", "drawnExtent"] {
+            map.remove(key);
+        }
+    }
     documents.insert(source.to_string(), document);
     Ok(())
 }
@@ -906,11 +918,22 @@ fn recover_flowchart_editor_facts_from_tokens(
     let mut facts = EditorSemanticFacts::new();
     facts.mark_recovered();
     let mut collector = FlowchartRecoveryFactCollector::default();
-    for (index, (start, token, end)) in trace.editor_tokens().enumerate() {
+    let mut tokens = trace.editor_tokens().enumerate().peekable();
+    while let Some((index, (start, token, end))) = tokens.next() {
         if index % 128 == 0 {
             control.checkpoint()?;
         }
-        collector.accept(code, token, *start, *end, &mut facts, editor_demand);
+        let shape_data_target = tokens
+            .peek()
+            .is_some_and(|(_, (_, token, _))| matches!(token, Tok::ShapeData(_)));
+        collector.accept(
+            code,
+            token,
+            SourceSpan::new(*start, *end),
+            shape_data_target,
+            &mut facts,
+            editor_demand,
+        );
     }
     let pending = collector.finish(code.len());
     let mut has_eof_expected = pending.is_some_and(|span| span.end == code.len());
@@ -1044,6 +1067,7 @@ fn collect_expected_syntax_from_tokens<'a>(
 struct FlowchartRecoveryFactCollector {
     pending_node_identifier: Option<FlowchartRecoveryTargetState>,
     seen_entities: HashSet<String>,
+    seen_edge_ids: HashSet<String>,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -1061,11 +1085,12 @@ impl FlowchartRecoveryFactCollector {
         &mut self,
         code: &str,
         token: &Tok,
-        start: usize,
-        end: usize,
+        span: SourceSpan,
+        shape_data_target: bool,
         #[cfg(feature = "editor-facts")] facts: &mut EditorSemanticFacts,
         editor_demand: EditorFactsDemand,
     ) {
+        let SourceSpan { start, end } = span;
         enum TokenKind {
             Arrow,
             EdgeLabel,
@@ -1082,7 +1107,21 @@ impl FlowchartRecoveryFactCollector {
             _ => TokenKind::Other,
         };
         if editor_demand.captures_rich() {
-            collect_editor_fact_from_token(code, token, start, end, facts, &mut self.seen_entities);
+            if let Tok::EdgeId(id) = token {
+                self.seen_edge_ids.insert(id.clone());
+            }
+            let edge_metadata = shape_data_target
+                && matches!(token, Tok::Id(id) if self.seen_edge_ids.contains(id));
+            if !edge_metadata {
+                collect_editor_fact_from_token(
+                    code,
+                    token,
+                    start,
+                    end,
+                    facts,
+                    &mut self.seen_entities,
+                );
+            }
         }
         match token_kind {
             TokenKind::Arrow => {
@@ -1944,6 +1983,7 @@ impl FlowchartSemanticSource {
             mut nodes,
             edges,
             subgraphs,
+            dropped_subgraph_members,
             subgraph_vertex_styles,
             #[cfg(feature = "presentation")]
             collapsed_subgraphs,
@@ -2031,6 +2071,7 @@ impl FlowchartSemanticSource {
             nodes: render_nodes,
             edges: render_edges,
             subgraphs: render_subgraphs,
+            dropped_subgraph_members,
             subgraph_vertex_styles,
             tooltips: render_tooltips,
             warning_facts,
@@ -2195,6 +2236,7 @@ fn flow_edge_to_model<M: FlowchartMetadata>(
         interpolate: e.interpolate,
         animate: e.animate,
         animation: e.animation,
+        step: e.step,
     })
 }
 

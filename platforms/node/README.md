@@ -17,6 +17,11 @@ The loader, selected native platform package, and explicit `@mermanjs/node-wasm`
 exact package-group version. The packages target Mermaid `12.2.0` and use
 [Options JSON schema `3`](../../docs/bindings/OPTIONS_JSON.md).
 
+Current source builds select Mermaid `12.3.0`; published alpha.1 packages keep their original
+baseline. Build matching wrappers and native/WASM artifacts from one source revision. See the
+[development migration](../../docs/migrations/mermaid-12-3.md) for Step animation and static
+output policy, shared shapes, and layout changes.
+
 ```sh
 npm install --save-exact @mermanjs/node@0.10.0-alpha.1
 ```

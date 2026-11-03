@@ -7,6 +7,14 @@ This document tracks which upstream Mermaid timeline parser tests are covered in
 
 Scope: Mermaid tag `@11.16.1`.
 
+The current 12.3 reference collection adds one exact browser-text snapshot for
+`upstream_cypress_timeline_spec_12_should_render_timeline_with_proper_vertical_line_lengths_for_012`.
+The complete archived 12.2 runtime and selected 12.3 runtime render byte-identical SVGs
+under the same Chrome 156 environment, and old/current Rust SVGs are byte-identical.
+Its wrapping differs from the historical browser collection. The verification-only catalog
+binds the complete input and both artifacts; text, child counts and line spacing remain
+observable. See the [12.3 migration](../migrations/mermaid-12-3.md).
+
 ## `timeline.spec.js`
 
 Source: `repo-ref/mermaid/packages/mermaid/src/diagrams/timeline/timeline.spec.js`

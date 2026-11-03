@@ -38,8 +38,10 @@ pub(in crate::svg::parity::flowchart) fn advance_rough_geometry(
     if ctx.diagram_type == "agentflow" {
         let path = rounded_rect_path_d(left, top, width, height, 10.0);
         let _ = super::node::roughjs::roughjs_prepare_hand_drawn_stroke_path_for_svg_path(
+            super::node::roughjs::RoughGeometryTarget::Query,
             &path,
             FLOWCHART_CLUSTER_HAND_DRAWN_ROUGHNESS,
+            ctx.work_meter,
             &ctx.hand_drawn_seed,
         );
     } else {
@@ -155,6 +157,7 @@ fn write_flowchart_cluster_shape(
                 super::node::roughjs::roughjs_hand_drawn_stroke_path_for_svg_path(
                     &path,
                     FLOWCHART_CLUSTER_HAND_DRAWN_ROUGHNESS,
+                    ctx.work_meter,
                     &ctx.hand_drawn_seed,
                 )
             {
@@ -283,7 +286,7 @@ pub(in crate::svg::parity) fn render_flowchart_cluster(
     origin_y: f64,
 ) -> crate::Result<()> {
     if let Some(lane) = ctx.swimlane_lanes_by_id.get(cluster.id.as_str())
-        && lane.parent_id.is_none()
+        && super::super::swimlane::is_lane_or_pool_cluster(ctx, cluster.id.as_str())
     {
         super::super::swimlane::render_swimlane_cluster(
             out, ctx, cluster, lane, origin_x, origin_y,

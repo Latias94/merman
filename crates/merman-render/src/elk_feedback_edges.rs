@@ -14,6 +14,7 @@ use std::collections::HashMap;
 pub(crate) struct FeedbackOrientation<'a> {
     graph: &'a mut elk::Graph,
     reversed: Vec<usize>,
+    order_swaps: Vec<(usize, usize)>,
 }
 
 impl FeedbackOrientation<'_> {
@@ -64,6 +65,9 @@ impl Drop for FeedbackOrientation<'_> {
             let edge = &mut self.graph.edges[index];
             std::mem::swap(&mut edge.source, &mut edge.target);
         }
+        for &(left, right) in self.order_swaps.iter().rev() {
+            self.graph.edges.swap(left, right);
+        }
     }
 }
 
@@ -85,7 +89,90 @@ pub(crate) fn orient_feedback_edges<'a>(
         let edge = &mut graph.edges[index];
         std::mem::swap(&mut edge.source, &mut edge.target);
     }
-    Ok(FeedbackOrientation { graph, reversed })
+    let mut orientation = FeedbackOrientation {
+        graph,
+        reversed,
+        order_swaps: Vec::new(),
+    };
+    let order = nested_edge_order(orientation.graph, work)?;
+    charge_adapter_work(work, checked_adapter_mul(work, order.len(), 5)?)?;
+    if order
+        .iter()
+        .enumerate()
+        .all(|(index, original)| index == *original)
+    {
+        return Ok(orientation);
+    }
+    let mut original_at_position: Vec<_> = (0..order.len()).collect();
+    let mut position_by_original = original_at_position.clone();
+    orientation.order_swaps.reserve(order.len());
+    for (target, original) in order.into_iter().enumerate() {
+        let source = position_by_original[original];
+        if source != target {
+            orientation.graph.edges.swap(target, source);
+            original_at_position.swap(target, source);
+            position_by_original[original_at_position[target]] = target;
+            position_by_original[original_at_position[source]] = source;
+            orientation.order_swaps.push((target, source));
+        }
+    }
+    for index in &mut orientation.reversed {
+        *index = position_by_original[*index];
+    }
+    Ok(orientation)
+}
+
+fn nested_edge_order(
+    graph: &elk::Graph,
+    work: &mut Option<&mut OperationLayoutWorkControl>,
+) -> Result<Vec<usize>> {
+    charge_adapter_work(
+        work,
+        checked_adapter_add(work, graph.nodes.len(), graph.edges.len())?,
+    )?;
+    let mut order: Vec<_> = (0..graph.edges.len()).collect();
+    if !graph.nodes.iter().any(|node| node.parent.is_some()) || graph.edges.len() < 2 {
+        return Ok(order);
+    }
+    let hierarchy = HierarchyIndex::build(
+        graph
+            .nodes
+            .iter()
+            .map(|node| (node.id.as_str(), node.parent.as_deref())),
+        graph.nodes.len(),
+        work,
+    )?;
+    for (index, edge) in graph.edges.iter().enumerate() {
+        charge_adapter_work(work, order.len())?;
+        let from = order
+            .iter()
+            .position(|&original| original == index)
+            .unwrap();
+        let mut to = None;
+        for (position, &earlier) in order[..from].iter().enumerate() {
+            charge_adapter_work(work, 1)?;
+            let earlier = &graph.edges[earlier];
+            let source_inside = earlier.target == edge.target
+                && edge.source != earlier.source
+                && hierarchy.index_of(&earlier.source).is_some()
+                && hierarchy.common_ancestor_index(&edge.source, &earlier.source, work)?
+                    == hierarchy.index_of(&earlier.source);
+            let target_inside = earlier.source == edge.source
+                && edge.target != earlier.target
+                && hierarchy.index_of(&earlier.target).is_some()
+                && hierarchy.common_ancestor_index(&edge.target, &earlier.target, work)?
+                    == hierarchy.index_of(&earlier.target);
+            if source_inside || target_inside {
+                to = Some(position);
+                break;
+            }
+        }
+        if let Some(to) = to {
+            charge_adapter_work(work, from - to + 1)?;
+            order[to..=from].rotate_right(1);
+        }
+    }
+    Ok(order)
 }
 
 #[derive(Clone, Copy)]
@@ -278,6 +365,101 @@ mod tests {
     }
 
     #[test]
+    fn nested_edge_order_matches_mermaid_12_3_source_cases() {
+        for (parents, pairs, expected) in [
+            (
+                vec![("da", "inner"), ("inner", "middle"), ("middle", "outer")],
+                vec![("outer", "a"), ("da", "a")],
+                vec![1, 0],
+            ),
+            (
+                vec![("da", "outer")],
+                vec![("a", "outer"), ("a", "da")],
+                vec![1, 0],
+            ),
+            (
+                vec![("b1", "two"), ("c2", "three")],
+                vec![("three", "two"), ("c2", "two")],
+                vec![1, 0],
+            ),
+            (
+                vec![("da", "outer")],
+                vec![("da", "a"), ("outer", "a")],
+                vec![0, 1],
+            ),
+            (
+                vec![("da", "outer")],
+                vec![("outer", "a"), ("da", "b"), ("x", "outer")],
+                vec![0, 1, 2],
+            ),
+            (
+                vec![("a1", "A"), ("b1", "B")],
+                vec![("A", "t"), ("b1", "t")],
+                vec![0, 1],
+            ),
+            (
+                vec![("s1", "S")],
+                vec![("x", "y"), ("S", "t"), ("x", "z"), ("s1", "t"), ("S", "u")],
+                vec![0, 3, 1, 2, 4],
+            ),
+        ] {
+            let mut graph = graph(&parents, &pairs);
+            let original = graph.clone();
+            assert_eq!(
+                nested_edge_order(&graph, &mut Some(&mut work())).unwrap(),
+                expected
+            );
+            let guard = orient_feedback_edges(
+                &mut graph,
+                &serde_json::json!({"elk":{"orientFeedbackEdges":false}}),
+                &mut Some(&mut work()),
+            )
+            .unwrap();
+            assert_eq!(
+                guard
+                    .graph()
+                    .edges
+                    .iter()
+                    .map(|edge| edge.id.clone())
+                    .collect::<Vec<_>>(),
+                expected
+                    .iter()
+                    .map(|index| format!("e{index}"))
+                    .collect::<Vec<_>>()
+            );
+            drop(guard);
+            assert_eq!(graph, original);
+        }
+    }
+
+    #[test]
+    fn nested_order_budget_rejections_restore_semantic_edges() {
+        let scene = graph(
+            &[("inner", "outer"), ("a", "inner")],
+            &[("outer", "target"), ("a", "target")],
+        );
+        let mut measured = work();
+        let mut input = scene.clone();
+        drop(
+            orient_feedback_edges(&mut input, &serde_json::json!({}), &mut Some(&mut measured))
+                .unwrap(),
+        );
+        assert_eq!(input, scene);
+        for limit in 1..measured.adapter_work() {
+            let mut input = scene.clone();
+            assert!(
+                orient_feedback_edges(
+                    &mut input,
+                    &serde_json::json!({}),
+                    &mut Some(&mut limited_work(limit))
+                )
+                .is_err()
+            );
+            assert_eq!(input, scene, "limit {limit}");
+        }
+    }
+
+    #[test]
     fn feedback_flags_match_pinned_subgraph_cycles_and_source_first_dfs() {
         let parents = [("A", "G"), ("B", "G"), ("C", "G")];
         for (parents, pairs, expected) in [
@@ -433,7 +615,7 @@ mod tests {
             .unwrap();
         assert_eq!(graph, original_graph);
         assert_eq!(provider, original_provider);
-        assert_eq!(measured.adapter_work(), 0);
+        assert!(measured.adapter_work() > 0);
     }
 
     #[test]

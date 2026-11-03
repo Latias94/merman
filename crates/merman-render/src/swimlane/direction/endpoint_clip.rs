@@ -564,6 +564,7 @@ mod tests {
             label_type: "text".to_string(),
             shape: "rect".to_string(),
             kind: WorkingNodeKind::Content,
+            producer_lane_role: None,
             parent_id: None,
             top_lane_id: None,
             requested_dir: None,

@@ -2,6 +2,12 @@
 
 This page targets `0.10.0-alpha.1`, including experimental compiled themes and Mermaid `12.2.0`. Use the [host guide](release/PREBUILT_PRODUCTS.md) for independently published channel versions and the [alpha changelog](../CHANGELOG.md#0100-alpha1---2026-11-02) for upgrade actions. Workspace path snippets are for source development. See the [Rust embedding guide](rendering/RUST_EMBEDDING.md) for host integration.
 
+Current source development selects Mermaid `12.3.0`, with the exact `elkjs 0.12.0` behavior oracle,
+Cytoscape `3.34.4`, and reference CLI `12.2.0`. The selected
+[reference graph](../tools/upstreams/MERMAID_REFERENCE_BUNDLE.json) and its generated constants
+own these development identities; published artifacts retain their release baseline. See the
+[Mermaid 12.3 migration](migrations/mermaid-12-3.md) for its Rust and SVG changes.
+
 Choose the diagram families your application accepts and the operations it performs. Positive
 `diagram-*` Cargo features select data, source parsers, or output handlers at the owning package. Selected
 families preserve the pinned Mermaid semantics; lightweight detection, configuration namespaces,

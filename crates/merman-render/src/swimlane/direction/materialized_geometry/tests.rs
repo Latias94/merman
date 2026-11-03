@@ -19,6 +19,7 @@ fn node(id: &str, kind: WorkingNodeKind, x: f64, y: f64, width: f64, height: f64
         label_type: "text".to_string(),
         shape: "rect".to_string(),
         kind,
+        producer_lane_role: None,
         parent_id: None,
         top_lane_id: None,
         requested_dir: None,

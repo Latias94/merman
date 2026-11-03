@@ -406,9 +406,18 @@ fn lane_hand_drawn_shell_strokes(document: &roxmltree::Document<'_>) -> Vec<Vec<
         })
         .expect("Lane terminal group");
 
-    lane.children()
-        .filter(|node| node.has_tag_name("g") && node.attribute("class").is_none())
-        .map(|shell| {
+    ["swimlane-body", "swimlane-title"]
+        .into_iter()
+        .map(|class_name| {
+            let shell = lane
+                .children()
+                .find(|node| {
+                    node.has_tag_name("g")
+                        && node.attribute("class").is_some_and(|classes| {
+                            classes.split_whitespace().any(|class| class == class_name)
+                        })
+                })
+                .unwrap_or_else(|| panic!("Lane {class_name} hand-drawn shell"));
             shell
                 .children()
                 .filter(|node| node.has_tag_name("path"))

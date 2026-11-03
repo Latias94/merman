@@ -86,6 +86,51 @@
           "end_label_left": null,
           "end_label_right": null,
           "end_marker": null,
+          "from": "Left",
+          "from_cluster": "Left",
+          "id": "L_Left_rightA_0",
+          "label": null,
+          "points": [
+            {
+              "x": 590.0,
+              "y": 83.25
+            },
+            {
+              "x": 640.0,
+              "y": 83.25
+            },
+            {
+              "x": 640.0,
+              "y": 72.0
+            },
+            {
+              "x": 660.0,
+              "y": 72.0
+            },
+            {
+              "x": 876.0,
+              "y": 72.0
+            },
+            {
+              "x": 876.0,
+              "y": 85.35
+            },
+            {
+              "x": 906.0,
+              "y": 85.35
+            }
+          ],
+          "start_label_left": null,
+          "start_label_right": null,
+          "start_marker": null,
+          "stroke_dasharray": null,
+          "to": "rightA",
+          "to_cluster": null
+        },
+        {
+          "end_label_left": null,
+          "end_label_right": null,
+          "end_marker": null,
           "from": "Right",
           "from_cluster": "Right",
           "id": "L_Right_Left_0",
@@ -154,51 +199,6 @@
           "start_marker": null,
           "stroke_dasharray": null,
           "to": "leftA",
-          "to_cluster": null
-        },
-        {
-          "end_label_left": null,
-          "end_label_right": null,
-          "end_marker": null,
-          "from": "Left",
-          "from_cluster": "Left",
-          "id": "L_Left_rightA_0",
-          "label": null,
-          "points": [
-            {
-              "x": 590.0,
-              "y": 83.25
-            },
-            {
-              "x": 640.0,
-              "y": 83.25
-            },
-            {
-              "x": 640.0,
-              "y": 72.0
-            },
-            {
-              "x": 660.0,
-              "y": 72.0
-            },
-            {
-              "x": 876.0,
-              "y": 72.0
-            },
-            {
-              "x": 876.0,
-              "y": 85.35
-            },
-            {
-              "x": 906.0,
-              "y": 85.35
-            }
-          ],
-          "start_label_left": null,
-          "start_label_right": null,
-          "start_marker": null,
-          "stroke_dasharray": null,
-          "to": "rightA",
           "to_cluster": null
         },
         {
