@@ -1,7 +1,9 @@
 import * as assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import Module from "node:module";
 import * as path from "node:path";
 import { describe, it } from "node:test";
+import { transformSync } from "esbuild";
 import type * as vscode from "vscode";
 
 import { BUNDLED_ANALYSIS_CONFIG_PROJECTION } from "../generated/analysis-config-baseline.js";
@@ -336,6 +338,16 @@ function deferred(): { promise: Promise<void>; resolve(): void } {
 }
 
 function loadExtension(host: FakeExtensionHost): typeof import("../extension.js") {
+  const extensionPath = require.resolve("../extension.js");
+  const extensionModule = new Module(extensionPath, module) as Module & {
+    _compile(source: string, filename: string): void;
+  };
+  extensionModule.filename = extensionPath;
+  extensionModule.paths = module.paths;
+  const { code } = transformSync(
+    readFileSync(path.resolve(__dirname, "../../src/extension.ts"), "utf8"),
+    { loader: "ts", format: "cjs", target: "node22" },
+  );
   type LoadModule = (this: unknown, request: string, parent: unknown, isMain: boolean) => unknown;
   const moduleWithLoad = Module as typeof Module & { _load: LoadModule };
   const originalLoad = moduleWithLoad._load;
@@ -379,10 +391,11 @@ function loadExtension(host: FakeExtensionHost): typeof import("../extension.js"
     return originalLoad.call(this, request, parent, isMain);
   };
   try {
-    for (const name of ["extension", "server", "config", "workspace", "language-server-output"]) {
+    for (const name of ["server", "config", "workspace", "language-server-output"]) {
       delete require.cache[require.resolve(`../${name}.js`)];
     }
-    return require("../extension.js") as typeof import("../extension.js");
+    extensionModule._compile(code, extensionPath);
+    return extensionModule.exports as typeof import("../extension.js");
   } finally {
     moduleWithLoad._load = originalLoad;
   }
