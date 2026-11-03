@@ -1040,15 +1040,17 @@ mod tests {
     }
 
     fn palette_plan(colors: &[&str]) -> (PieThemePlan, Vec<String>) {
-        let mut model = PieDiagramModel::default();
-        model.sections = colors
-            .iter()
-            .enumerate()
-            .map(|(index, _)| PieSection {
-                label: format!("Slice {index}"),
-                value: 1.0,
-            })
-            .collect();
+        let model = PieDiagramModel {
+            sections: colors
+                .iter()
+                .enumerate()
+                .map(|(index, _)| PieSection {
+                    label: format!("Slice {index}"),
+                    value: 1.0,
+                })
+                .collect(),
+            ..Default::default()
+        };
         let config = crate::test_support::presentation_config(json!({}));
         let theme = resolved_slice_palette(colors);
         let work_meter =
@@ -1064,14 +1066,16 @@ mod tests {
     }
 
     fn static_fill_plan(fill: CanvasPaint) -> (PieThemePlan, Vec<String>) {
-        let mut model = PieDiagramModel::default();
-        model.sections = ["Alpha", "Beta"]
-            .into_iter()
-            .map(|label| PieSection {
-                label: label.to_string(),
-                value: 1.0,
-            })
-            .collect();
+        let model = PieDiagramModel {
+            sections: ["Alpha", "Beta"]
+                .into_iter()
+                .map(|label| PieSection {
+                    label: label.to_string(),
+                    value: 1.0,
+                })
+                .collect(),
+            ..Default::default()
+        };
         let config = crate::test_support::presentation_config(json!({}));
         let theme = DiagramThemeCompiler::new()
             .compile(

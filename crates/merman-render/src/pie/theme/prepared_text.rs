@@ -545,14 +545,16 @@ mod tests {
             )
             .unwrap()
             .resolve(DiagramFamilyId::PIE);
-        let mut model = PieDiagramModel::default();
-        model.title = Some("Title".to_owned());
-        model.sections = ["#32;\u{1}", "Beta"]
-            .map(|label| PieSection {
-                label: label.to_owned(),
-                value: 1.0,
-            })
-            .to_vec();
+        let model = PieDiagramModel {
+            title: Some("Title".to_owned()),
+            sections: ["#32;\u{1}", "Beta"]
+                .map(|label| PieSection {
+                    label: label.to_owned(),
+                    value: 1.0,
+                })
+                .to_vec(),
+            ..Default::default()
+        };
         let (plan, css) = PiePreparedText::new(
             &model,
             model.title.as_deref(),

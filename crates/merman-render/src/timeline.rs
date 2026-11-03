@@ -1216,13 +1216,15 @@ mod tests {
     #[test]
     fn sectionless_orphan_tasks_keep_model_order() {
         for direction in [TimelineDirection::LeftToRight, TimelineDirection::TopDown] {
-            let mut model = TimelineDiagramModel::default();
-            model.direction = direction;
-            model.tasks = vec![
-                timeline_task(0, "", None, "First"),
-                timeline_task(1, "Legacy", None, "Second"),
-                timeline_task(2, "", None, "Third"),
-            ];
+            let model = TimelineDiagramModel {
+                direction,
+                tasks: vec![
+                    timeline_task(0, "", None, "First"),
+                    timeline_task(1, "Legacy", None, "Second"),
+                    timeline_task(2, "", None, "Third"),
+                ],
+                ..Default::default()
+            };
 
             let layout = layout_timeline_model(&model);
 

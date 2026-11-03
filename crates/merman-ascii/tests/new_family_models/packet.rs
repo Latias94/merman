@@ -2,32 +2,33 @@ use super::*;
 
 #[test]
 fn packet_render_model_renders_rows_and_ranges() {
-    let mut model = PacketDiagramModel::default();
-    model.title = Some("Packet".to_string());
-    model.acc_title = Some("Packet title".to_string());
-    model.acc_descr = Some("Packet description".to_string());
-    model.packet = vec![
-        vec![
-            PacketBlock {
-                start: 0,
-                end: 7,
-                bits: 8,
-                label: "header".to_string(),
-            },
-            PacketBlock {
-                start: 8,
-                end: 15,
-                bits: 8,
-                label: "payload".to_string(),
-            },
+    let model = PacketDiagramModel {
+        title: Some("Packet".to_string()),
+        acc_title: Some("Packet title".to_string()),
+        acc_descr: Some("Packet description".to_string()),
+        packet: vec![
+            vec![
+                PacketBlock {
+                    start: 0,
+                    end: 7,
+                    bits: 8,
+                    label: "header".to_string(),
+                },
+                PacketBlock {
+                    start: 8,
+                    end: 15,
+                    bits: 8,
+                    label: "payload".to_string(),
+                },
+            ],
+            vec![PacketBlock {
+                start: 16,
+                end: 31,
+                bits: 16,
+                label: "footer".to_string(),
+            }],
         ],
-        vec![PacketBlock {
-            start: 16,
-            end: 31,
-            bits: 16,
-            label: "footer".to_string(),
-        }],
-    ];
+    };
 
     let rendered = render(RenderSemanticModel::Packet(model));
 
@@ -70,13 +71,15 @@ fn packet_parser_split_blocks_render_inclusive_bit_counts() {
 
 #[test]
 fn packet_render_model_rejects_noninclusive_bit_counts() {
-    let mut model = PacketDiagramModel::default();
-    model.packet = vec![vec![PacketBlock {
-        start: 11,
-        end: 31,
-        bits: 20,
-        label: "multiple".to_string(),
-    }]];
+    let model = PacketDiagramModel {
+        packet: vec![vec![PacketBlock {
+            start: 11,
+            end: 31,
+            bits: 20,
+            label: "multiple".to_string(),
+        }]],
+        ..Default::default()
+    };
 
     let error = render_model(
         &RenderSemanticModel::Packet(model),
@@ -94,28 +97,32 @@ fn packet_render_model_rejects_noninclusive_bit_counts() {
 
 #[test]
 fn packet_labels_cannot_forge_following_block_boundaries() {
-    let mut forged = PacketDiagramModel::default();
-    forged.packet = vec![vec![PacketBlock {
-        start: 0,
-        end: 7,
-        bits: 8,
-        label: "header (8 bits) | [8..15] payload".to_string(),
-    }]];
-    let mut split = PacketDiagramModel::default();
-    split.packet = vec![vec![
-        PacketBlock {
+    let forged = PacketDiagramModel {
+        packet: vec![vec![PacketBlock {
             start: 0,
             end: 7,
             bits: 8,
-            label: "header".to_string(),
-        },
-        PacketBlock {
-            start: 8,
-            end: 15,
-            bits: 8,
-            label: "payload".to_string(),
-        },
-    ]];
+            label: "header (8 bits) | [8..15] payload".to_string(),
+        }]],
+        ..Default::default()
+    };
+    let split = PacketDiagramModel {
+        packet: vec![vec![
+            PacketBlock {
+                start: 0,
+                end: 7,
+                bits: 8,
+                label: "header".to_string(),
+            },
+            PacketBlock {
+                start: 8,
+                end: 15,
+                bits: 8,
+                label: "payload".to_string(),
+            },
+        ]],
+        ..Default::default()
+    };
 
     assert_ne!(
         render(RenderSemanticModel::Packet(forged)),
@@ -123,20 +130,24 @@ fn packet_labels_cannot_forge_following_block_boundaries() {
         "length-framed packet labels must distinguish one authored block from two blocks"
     );
 
-    let mut leading = PacketDiagramModel::default();
-    leading.packet = vec![vec![PacketBlock {
-        start: 0,
-        end: 7,
-        bits: 8,
-        label: " label".to_string(),
-    }]];
-    let mut trailing = PacketDiagramModel::default();
-    trailing.packet = vec![vec![PacketBlock {
-        start: 0,
-        end: 7,
-        bits: 8,
-        label: "label ".to_string(),
-    }]];
+    let leading = PacketDiagramModel {
+        packet: vec![vec![PacketBlock {
+            start: 0,
+            end: 7,
+            bits: 8,
+            label: " label".to_string(),
+        }]],
+        ..Default::default()
+    };
+    let trailing = PacketDiagramModel {
+        packet: vec![vec![PacketBlock {
+            start: 0,
+            end: 7,
+            bits: 8,
+            label: "label ".to_string(),
+        }]],
+        ..Default::default()
+    };
     assert_ne!(
         render(RenderSemanticModel::Packet(leading)),
         render(RenderSemanticModel::Packet(trailing)),

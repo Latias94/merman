@@ -79,13 +79,15 @@ fn journey_duplicate_sections_preserve_parser_occurrence_ownership() {
 
 #[test]
 fn direct_models_disclose_unknown_and_unsectioned_tasks_once() {
-    let mut timeline = TimelineDiagramModel::default();
-    timeline.sections = vec!["Known".to_string()];
-    timeline.tasks = vec![
-        timeline_task("Known", Some(0), "Declared"),
-        timeline_task("Missing", None, "Unknown"),
-        timeline_task("", None, "Loose"),
-    ];
+    let timeline = TimelineDiagramModel {
+        sections: vec!["Known".to_string()],
+        tasks: vec![
+            timeline_task("Known", Some(0), "Declared"),
+            timeline_task("Missing", None, "Unknown"),
+            timeline_task("", None, "Loose"),
+        ],
+        ..Default::default()
+    };
     let timeline_rendered = render_model(
         &RenderSemanticModel::Timeline(timeline),
         &AsciiRenderOptions::ascii(),
@@ -104,13 +106,15 @@ fn direct_models_disclose_unknown_and_unsectioned_tasks_once() {
         )
     );
 
-    let mut journey = JourneyDiagramModel::default();
-    journey.sections = vec!["Known".to_string()];
-    journey.tasks = vec![
-        journey_task("Known", Some(0), "Declared"),
-        journey_task("Missing", None, "Unknown"),
-        journey_task("", None, "Loose"),
-    ];
+    let journey = JourneyDiagramModel {
+        sections: vec!["Known".to_string()],
+        tasks: vec![
+            journey_task("Known", Some(0), "Declared"),
+            journey_task("Missing", None, "Unknown"),
+            journey_task("", None, "Loose"),
+        ],
+        ..Default::default()
+    };
     let journey_rendered = render_model(
         &RenderSemanticModel::Journey(journey),
         &AsciiRenderOptions::ascii(),
@@ -131,9 +135,11 @@ fn direct_models_disclose_unknown_and_unsectioned_tasks_once() {
 
 #[test]
 fn duplicate_direct_section_labels_require_an_occurrence_index() {
-    let mut timeline = TimelineDiagramModel::default();
-    timeline.sections = vec!["Repeated".to_string(), "Repeated".to_string()];
-    timeline.tasks = vec![timeline_task("Repeated", None, "Ambiguous")];
+    let timeline = TimelineDiagramModel {
+        sections: vec!["Repeated".to_string(), "Repeated".to_string()],
+        tasks: vec![timeline_task("Repeated", None, "Ambiguous")],
+        ..Default::default()
+    };
     let error = render_model(
         &RenderSemanticModel::Timeline(timeline),
         &AsciiRenderOptions::ascii(),
@@ -147,9 +153,11 @@ fn duplicate_direct_section_labels_require_an_occurrence_index() {
         }
     );
 
-    let mut journey = JourneyDiagramModel::default();
-    journey.sections = vec!["Repeated".to_string(), "Repeated".to_string()];
-    journey.tasks = vec![journey_task("Repeated", None, "Ambiguous")];
+    let journey = JourneyDiagramModel {
+        sections: vec!["Repeated".to_string(), "Repeated".to_string()],
+        tasks: vec![journey_task("Repeated", None, "Ambiguous")],
+        ..Default::default()
+    };
     let error = render_model(
         &RenderSemanticModel::Journey(journey),
         &AsciiRenderOptions::ascii(),
@@ -166,9 +174,11 @@ fn duplicate_direct_section_labels_require_an_occurrence_index() {
 
 #[test]
 fn explicit_section_occurrences_must_be_in_bounds_and_match_the_label() {
-    let mut timeline = TimelineDiagramModel::default();
-    timeline.sections = vec!["Known".to_string()];
-    timeline.tasks = vec![timeline_task("Known", Some(1), "Out of bounds")];
+    let timeline = TimelineDiagramModel {
+        sections: vec!["Known".to_string()],
+        tasks: vec![timeline_task("Known", Some(1), "Out of bounds")],
+        ..Default::default()
+    };
     let error = render_model(
         &RenderSemanticModel::Timeline(timeline),
         &AsciiRenderOptions::ascii(),
@@ -182,9 +192,11 @@ fn explicit_section_occurrences_must_be_in_bounds_and_match_the_label() {
         }
     );
 
-    let mut journey = JourneyDiagramModel::default();
-    journey.sections = vec!["Known".to_string()];
-    journey.tasks = vec![journey_task("Other", Some(0), "Mismatch")];
+    let journey = JourneyDiagramModel {
+        sections: vec!["Known".to_string()],
+        tasks: vec![journey_task("Other", Some(0), "Mismatch")],
+        ..Default::default()
+    };
     let error = render_model(
         &RenderSemanticModel::Journey(journey),
         &AsciiRenderOptions::ascii(),

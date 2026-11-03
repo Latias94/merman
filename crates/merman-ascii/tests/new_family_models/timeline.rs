@@ -2,32 +2,33 @@ use super::*;
 
 #[test]
 fn timeline_render_model_renders_sections_tasks_and_events() {
-    let mut model = TimelineDiagramModel::default();
-    model.title = Some("Timeline".to_string());
-    model.acc_title = Some("Timeline title".to_string());
-    model.acc_descr = Some("Timeline description".to_string());
-    model.direction = TimelineDirection::TopDown;
-    model.sections = vec!["Planning".to_string()];
-    model.tasks = vec![
-        TimelineTask {
-            id: 0,
-            section: "Planning".to_string(),
-            section_index: Some(0),
-            task_type: "Planning".to_string(),
-            task: "Design".to_string(),
-            score: 0,
-            events: vec!["Kickoff".to_string()],
-        },
-        TimelineTask {
-            id: 1,
-            section: "Planning".to_string(),
-            section_index: Some(0),
-            task_type: "Planning".to_string(),
-            task: "Implement".to_string(),
-            score: 3,
-            events: vec!["Build spec".to_string(), "Review".to_string()],
-        },
-    ];
+    let model = TimelineDiagramModel {
+        title: Some("Timeline".to_string()),
+        acc_title: Some("Timeline title".to_string()),
+        acc_descr: Some("Timeline description".to_string()),
+        direction: TimelineDirection::TopDown,
+        sections: vec!["Planning".to_string()],
+        tasks: vec![
+            TimelineTask {
+                id: 0,
+                section: "Planning".to_string(),
+                section_index: Some(0),
+                task_type: "Planning".to_string(),
+                task: "Design".to_string(),
+                score: 0,
+                events: vec!["Kickoff".to_string()],
+            },
+            TimelineTask {
+                id: 1,
+                section: "Planning".to_string(),
+                section_index: Some(0),
+                task_type: "Planning".to_string(),
+                task: "Implement".to_string(),
+                score: 3,
+                events: vec!["Build spec".to_string(), "Review".to_string()],
+            },
+        ],
+    };
 
     let rendered = render(RenderSemanticModel::Timeline(model));
 
@@ -49,9 +50,9 @@ fn timeline_render_model_renders_sections_tasks_and_events() {
 }
 #[test]
 fn timeline_render_model_wraps_long_task_and_event_text() {
-    let mut model = TimelineDiagramModel::default();
-    model.sections = vec!["Planning".to_string()];
-    model.tasks = vec![TimelineTask {
+    let model = TimelineDiagramModel {
+        sections: vec!["Planning".to_string()],
+        tasks: vec![TimelineTask {
             id: 0,
             section: "Planning".to_string(),
             section_index: Some(0),
@@ -61,7 +62,9 @@ fn timeline_render_model_wraps_long_task_and_event_text() {
             events: vec![
                 "Capture every upstream payload variant without losing the important operational context".to_string(),
             ],
-        }];
+        }],
+        ..Default::default()
+    };
 
     let rendered = render(RenderSemanticModel::Timeline(model));
 
@@ -80,16 +83,18 @@ fn timeline_render_model_wraps_long_task_and_event_text() {
 
 #[test]
 fn timeline_structured_text_framing_distinguishes_task_text_from_events() {
-    let mut embedded_event = TimelineDiagramModel::default();
-    embedded_event.tasks = vec![TimelineTask {
-        id: 1,
-        section: String::new(),
-        section_index: None,
-        task_type: String::new(),
-        task: "Task\n* Event".to_string(),
-        score: 0,
-        events: Vec::new(),
-    }];
+    let embedded_event = TimelineDiagramModel {
+        tasks: vec![TimelineTask {
+            id: 1,
+            section: String::new(),
+            section_index: None,
+            task_type: String::new(),
+            task: "Task\n* Event".to_string(),
+            score: 0,
+            events: Vec::new(),
+        }],
+        ..Default::default()
+    };
 
     let mut explicit_event = embedded_event.clone();
     explicit_event.tasks[0].task = "Task".to_string();

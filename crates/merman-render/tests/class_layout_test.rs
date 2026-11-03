@@ -227,8 +227,7 @@ fn class_direct_input_parent_validation_preserves_operation_error_priority() {
         .begin_session_with_control(control.clone())
         .unwrap();
     let error = family::plan_render(&parsed, &session)
-        .err()
-        .expect("raw resource admission must precede hierarchy validation");
+        .expect_err("raw resource admission must precede hierarchy validation");
     let merman_render::Error::ResourceLimitExceeded(first) = error else {
         panic!("expected model resource limit, got {error:?}");
     };

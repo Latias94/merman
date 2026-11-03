@@ -2,31 +2,33 @@ use super::*;
 
 #[test]
 fn journey_render_model_renders_actors_sections_and_scores() {
-    let mut model = JourneyDiagramModel::default();
-    model.title = Some("Journey".to_string());
-    model.acc_title = Some("Journey title".to_string());
-    model.acc_descr = Some("Journey description".to_string());
-    model.sections = vec!["Discovery".to_string()];
-    model.tasks = vec![
-        JourneyTask {
-            score: 5,
-            score_is_nan: false,
-            people: vec!["Alice".to_string(), "Bob".to_string()],
-            section: "Discovery".to_string(),
-            section_index: Some(0),
-            task_type: "Discovery".to_string(),
-            task: "Research".to_string(),
-        },
-        JourneyTask {
-            score: 3,
-            score_is_nan: false,
-            people: vec!["Bob".to_string()],
-            section: "Discovery".to_string(),
-            section_index: Some(0),
-            task_type: "Discovery".to_string(),
-            task: "Ship".to_string(),
-        },
-    ];
+    let model = JourneyDiagramModel {
+        title: Some("Journey".to_string()),
+        acc_title: Some("Journey title".to_string()),
+        acc_descr: Some("Journey description".to_string()),
+        sections: vec!["Discovery".to_string()],
+        tasks: vec![
+            JourneyTask {
+                score: 5,
+                score_is_nan: false,
+                people: vec!["Alice".to_string(), "Bob".to_string()],
+                section: "Discovery".to_string(),
+                section_index: Some(0),
+                task_type: "Discovery".to_string(),
+                task: "Research".to_string(),
+            },
+            JourneyTask {
+                score: 3,
+                score_is_nan: false,
+                people: vec!["Bob".to_string()],
+                section: "Discovery".to_string(),
+                section_index: Some(0),
+                task_type: "Discovery".to_string(),
+                task: "Ship".to_string(),
+            },
+        ],
+        ..Default::default()
+    };
 
     let rendered = render(RenderSemanticModel::Journey(model));
 
@@ -45,11 +47,15 @@ fn journey_render_model_renders_actors_sections_and_scores() {
 }
 #[test]
 fn journey_structured_text_framing_distinguishes_actor_list_items() {
-    let mut one_actor = JourneyDiagramModel::default();
-    one_actor.actors = vec!["Alice, Bob".to_string()];
+    let one_actor = JourneyDiagramModel {
+        actors: vec!["Alice, Bob".to_string()],
+        ..Default::default()
+    };
 
-    let mut two_actors = JourneyDiagramModel::default();
-    two_actors.actors = vec!["Alice".to_string(), "Bob".to_string()];
+    let two_actors = JourneyDiagramModel {
+        actors: vec!["Alice".to_string(), "Bob".to_string()],
+        ..Default::default()
+    };
 
     assert_ne!(
         render(RenderSemanticModel::Journey(one_actor)),

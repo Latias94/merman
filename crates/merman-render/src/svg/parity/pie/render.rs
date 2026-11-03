@@ -599,14 +599,16 @@ mod tests {
                 fill: "#ECECFF".to_string(),
             })
             .collect::<Vec<_>>();
-        let mut model = PieDiagramModel::default();
-        model.sections = slices
-            .iter()
-            .map(|slice| merman_model::families::pie::PieSection {
-                label: slice.label.clone(),
-                value: slice.value,
-            })
-            .collect();
+        let model = PieDiagramModel {
+            sections: slices
+                .iter()
+                .map(|slice| merman_model::families::pie::PieSection {
+                    label: slice.label.clone(),
+                    value: slice.value,
+                })
+                .collect(),
+            ..Default::default()
+        };
         let effective_config = serde_json::json!({});
         let paint_plan = crate::pie::PieThemePlan::baseline(&model, &effective_config);
         let mut out = RejectAfterFirstWrite::default();

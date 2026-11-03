@@ -398,13 +398,12 @@ mod tests {
                 )],
             }),
             #[cfg(feature = "diagram-radar")]
-            RenderSemanticModel::Radar({
-                let mut model = merman_model::families::radar::RadarDiagramModel::default();
-                model.axes = vec![merman_model::families::radar::RadarAxis {
+            RenderSemanticModel::Radar(merman_model::families::radar::RadarDiagramModel {
+                axes: vec![merman_model::families::radar::RadarAxis {
                     name: "speed".to_string(),
                     label: "Speed".to_string(),
-                }];
-                model
+                }],
+                ..Default::default()
             }),
             #[cfg(feature = "diagram-requirement")]
             RenderSemanticModel::Requirement(RequirementDiagramModel {
