@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
-"""Tests for the Flutter pub package size gate."""
+"""Tests for the Flutter pub package layout and size gates."""
 
 from __future__ import annotations
 
 import argparse
 from contextlib import redirect_stderr, redirect_stdout
 import io
+import json
 from pathlib import Path
 import subprocess
 import sys
@@ -15,6 +16,8 @@ from unittest import mock
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
+from flutter_native_assets import NativeAssetsError, TARGET_LIBRARIES, stage
+from flutter_release_archive import _pubspec_scalar
 from verify_flutter_pub_package import (
     FlutterPackageSizeError,
     compressed_archive_megabytes,
@@ -24,33 +27,103 @@ from verify_flutter_pub_package import (
 )
 
 
+class FlutterThinPackageTests(unittest.TestCase):
+    def setUp(self) -> None:
+        temporary = tempfile.TemporaryDirectory()
+        self.addCleanup(temporary.cleanup)
+        root = Path(temporary.name)
+        self.package = root / "package"
+        source = Path(__file__).resolve().parents[1] / "platforms/flutter"
+        for relative in (
+            "pubspec.yaml",
+            "hook/build.dart",
+            "lib/src/native_assets.dart",
+            "lib/src/generated/package_version.dart",
+        ):
+            path = self.package / relative
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_bytes((source / relative).read_bytes())
+        native = root / "native"
+        for target, library in TARGET_LIBRARIES.items():
+            path = native / target / library
+            path.parent.mkdir(parents=True)
+            path.write_bytes(b"tiny native fixture")
+        version = _pubspec_scalar((self.package / "pubspec.yaml").read_bytes(), "version")
+        stage(
+            native, root / "assets", version=version, source_sha="1" * 40,
+            source_tree="2" * 40, base_url=f"https://example.org/flutter-v{version}/",
+        )
+        self.manifest = self.package / "hook/native-assets.json"
+        self.manifest.write_bytes((root / "assets/native-assets.json").read_bytes())
+
+    def test_real_legacy_layout_fails_and_moved_helper_passes(self) -> None:
+        helper = self.package / "lib/src/native_assets.dart"
+        build = self.package / "hook/build.dart"
+        helper_bytes, build_bytes = helper.read_bytes(), build.read_bytes()
+        manifest_bytes = self.manifest.read_bytes()
+        legacy = helper.rename(self.package / "hook/native_assets.dart")
+        legacy.write_bytes(helper_bytes.replace(
+            b"import 'generated/package_version.dart';",
+            b"import '../lib/src/generated/package_version.dart';",
+        ))
+        build.write_bytes(build_bytes.replace(
+            b"import '../lib/src/native_assets.dart';", b"import 'native_assets.dart';",
+        ))
+        errors = io.StringIO()
+        with (
+            mock.patch("verify_flutter_pub_package.subprocess.run") as run,
+            redirect_stderr(errors),
+        ):
+            result = main(["--package-root", str(self.package), "--require-thin"])
+        self.assertEqual(result, 1)
+        self.assertIn("hook/native_assets.dart", errors.getvalue())
+        run.assert_not_called()
+
+        legacy.rename(helper)
+        helper.write_bytes(helper_bytes)
+        build.write_bytes(build_bytes)
+        verify_thin_package(self.package)
+        self.assertEqual(self.manifest.read_bytes(), manifest_bytes)
+
+    def test_only_the_official_hook_entrypoints_are_allowed(self) -> None:
+        (self.package / "hook/link.dart").write_text("void main() {}\n", encoding="utf-8")
+        verify_thin_package(self.package)
+        for relative in (
+            "hook/helpers/native_assets.dart",
+            "hook/nested/build.dart",
+            "hook/nested/link.dart",
+        ):
+            with self.subTest(relative=relative):
+                path = self.package / relative
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_text("void main() {}\n", encoding="utf-8")
+                with self.assertRaisesRegex(
+                    FlutterPackageSizeError, r"only allows hook/build\.dart and hook/link\.dart",
+                ) as raised:
+                    verify_thin_package(self.package)
+                self.assertIn(relative, str(raised.exception))
+                path.unlink()
+
+    def test_thin_package_checks_actual_files(self) -> None:
+        verify_thin_package(self.package)
+        (self.package / "native").mkdir()
+        (self.package / ".pubignore").write_text("/native/\n", encoding="utf-8")
+        with self.assertRaisesRegex(FlutterPackageSizeError, "must not contain native"):
+            verify_thin_package(self.package)
+        (self.package / "native").rmdir()
+        (self.package / "hidden.so").write_bytes(b"binary outside native")
+        with self.assertRaisesRegex(FlutterPackageSizeError, "native archive/library"):
+            verify_thin_package(self.package)
+
+    def test_native_manifest_version_remains_pinned(self) -> None:
+        manifest = json.loads(self.manifest.read_bytes())
+        manifest["version"] = "0.0.0"
+        self.manifest.write_text(json.dumps(manifest), encoding="utf-8")
+        with self.assertRaisesRegex(NativeAssetsError, "version identity differs"):
+            verify_thin_package(self.package)
+
+
 class FlutterPubPackageSizeTests(unittest.TestCase):
-    def test_thin_package_checks_actual_files_and_pinned_manifest(self):
-        from flutter_native_assets import TARGET_LIBRARIES, stage
-
-        with tempfile.TemporaryDirectory() as temp_dir:
-            root = Path(temp_dir)
-            native = root / "native"
-            package = root / "package"
-            (package / "hook").mkdir(parents=True)
-            (package / "pubspec.yaml").write_text("name: merman\nversion: 0.9.3\n")
-            for target, library in TARGET_LIBRARIES.items():
-                path = native / target / library
-                path.parent.mkdir(parents=True)
-                path.write_bytes(b"tiny native fixture")
-            stage(native, root / "assets", version="0.9.3", source_sha="1" * 40,
-                  source_tree="2" * 40, base_url="https://example.org/flutter-v0.9.3/")
-            (package / "hook/native-assets.json").write_bytes((root / "assets/native-assets.json").read_bytes())
-            verify_thin_package(package)
-            (package / "native").mkdir()
-            (package / ".pubignore").write_text("/native/\n")
-            with self.assertRaisesRegex(FlutterPackageSizeError, "must not contain native"):
-                verify_thin_package(package)
-            (package / "native").rmdir()
-            (package / "hidden.so").write_bytes(b"binary outside native")
-            with self.assertRaisesRegex(FlutterPackageSizeError, "native archive/library"):
-                verify_thin_package(package)
-
     def test_reads_the_total_compressed_archive_size(self) -> None:
         self.assertEqual(
             compressed_archive_megabytes("Total compressed archive size: 94 MB.\n"),

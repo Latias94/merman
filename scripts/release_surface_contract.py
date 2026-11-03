@@ -67,7 +67,7 @@ SURFACES = (
     ReleaseSurface(
         surface_id="android-aar",
         workflow=WORKFLOW_ROOT / "release-android.yml",
-        delivery="GitHub Release AAR, selected-version Maven ZIP, and signed Central bundle handoff",
+        delivery="GitHub Release AAR and selected-version Maven ZIP; optional signed Central bundle handoff",
         publication_mode="manual-dispatch",
         preflight_job="android-aar",
         workflow_markers=(

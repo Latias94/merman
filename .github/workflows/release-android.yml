@@ -21,7 +21,7 @@ on:
         default: false
         type: boolean
       publish:
-        description: "Upload qualified assets to an existing GitHub Release; never uploads to Central"
+        description: "Upload qualified AAR and Maven repository to an existing GitHub Release; signing is optional"
         default: false
         type: boolean
 
@@ -51,7 +51,6 @@ jobs:
           DISPATCH_RELEASE_TAG: ${{ inputs.release_tag }}
           DISPATCH_SOURCE_REF: ${{ inputs.source_ref }}
           PUBLISH: ${{ inputs.publish }}
-          PREPARE_CENTRAL_BUNDLE: ${{ inputs.prepare_central_bundle }}
           MAVEN_GROUP: ${{ inputs.maven_group }}
         run: |
           set -euo pipefail
@@ -78,7 +77,6 @@ jobs:
           fi
           if [ "$PUBLISH" = "true" ]; then
             [ "$SOURCE_REF" = "refs/tags/$RELEASE_TAG" ] || fail "publishing requires source_ref to be the matching immutable tag"
-            [ "$PREPARE_CENTRAL_BUNDLE" = "true" ] || fail "publishing requires the complete signed Maven handoff"
           fi
           group_re='^[A-Za-z_][A-Za-z_0-9]*(\.[A-Za-z_][A-Za-z_0-9]*)+$'
           [[ "$MAVEN_GROUP" =~ $group_re ]] || fail "maven_group must be an explicit dotted Maven group ID."
@@ -258,10 +256,12 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p target/release-assets
-          group_path="${MAVEN_GROUP//./\/}"
+          group_path="${MAVEN_GROUP//.//}"
           staged_aar="platforms/android/build/repo/${group_path}/merman-android/${VERSION}/merman-android-${VERSION}.aar"
           test -f "$staged_aar"
-          cp "$staged_aar" "target/release-assets/merman-android-${RELEASE_TAG}.aar"
+          release_aar="target/release-assets/merman-android-${RELEASE_TAG}.aar"
+          cp "$staged_aar" "$release_aar"
+          sha256sum "$release_aar" | cut -d ' ' -f 1 > "$release_aar.sha256"
 
       - name: Retain candidate Maven publication and AAR
         uses: actions/upload-artifact@v7.0.2
@@ -338,6 +338,8 @@ jobs:
           GNUPGHOME: ${{ runner.temp }}/merman-android-gnupg
         run: |
           set -euo pipefail
+          test -n "$SIGNING_KEY"
+          test -n "$SIGNING_KEY_ID"
           archive="target/release-assets/merman-android-${VERSION}-maven.zip"
           test "$(sha256sum "$archive" | cut -d ' ' -f 1)" = "$(cat "$archive.sha256")"
           python3 -m zipfile -e "$archive" target/signing/repository
@@ -355,24 +357,52 @@ jobs:
           if-no-files-found: error
 
   upload-release:
-    if: ${{ inputs.publish }}
+    if: ${{ !cancelled() && inputs.publish && needs.validate-inputs.result == 'success' && needs.build.result == 'success' && ((!inputs.prepare_central_bundle && needs.central-bundle.result == 'skipped') || (inputs.prepare_central_bundle && needs.central-bundle.result == 'success')) }}
     needs: [validate-inputs, build, central-bundle]
     runs-on: ubuntu-24.04
     environment: github-release
     permissions:
       contents: write
     steps:
-      - name: Download AAR artifact
+      - name: Download qualified Maven publication and AAR
         uses: actions/download-artifact@v8.0.2
         with:
           name: merman-android-aar
-          path: target/release-assets
+          path: target/candidate-release-assets
 
       - name: Download signed Maven handoff
+        if: ${{ inputs.prepare_central_bundle }}
         uses: actions/download-artifact@v8.0.2
         with:
           name: merman-android-signed-maven
-          path: target/release-assets
+          path: target/signed-release-assets
+
+      - name: Select and verify GitHub Release assets
+        shell: bash
+        env:
+          RELEASE_TAG: ${{ needs.validate-inputs.outputs.release_tag }}
+          VERSION: ${{ needs.validate-inputs.outputs.version }}
+          PREPARE_CENTRAL_BUNDLE: ${{ inputs.prepare_central_bundle }}
+        run: |
+          set -euo pipefail
+          candidate_dir="target/candidate-release-assets"
+          maven_dir="$candidate_dir"
+          if [ "$PREPARE_CENTRAL_BUNDLE" = "true" ]; then
+            maven_dir="target/signed-release-assets"
+          fi
+          assets=(
+            "$candidate_dir/merman-android-${RELEASE_TAG}.aar"
+            "$maven_dir/merman-android-${VERSION}-maven.zip"
+          )
+          if [ "$PREPARE_CENTRAL_BUNDLE" = "true" ]; then
+            assets+=("$maven_dir/merman-android-${VERSION}-central.zip")
+          fi
+          mkdir -p target/release-assets
+          for asset in "${assets[@]}"; do
+            test -f "$asset"
+            test "$(sha256sum "$asset" | cut -d ' ' -f 1)" = "$(cat "$asset.sha256")"
+            cp "$asset" "$asset.sha256" target/release-assets/
+          done
 
       - name: Upload AAR to GitHub Release
         env:

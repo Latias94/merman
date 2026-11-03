@@ -126,9 +126,34 @@ Those operations have not been performed by preparing this change.
 ## GitHub Release Assets
 
 `publish=true` requires `source_ref` to name the matching immutable release tag and
-`prepare_central_bundle=true`. Only then does the protected `github-release` job upload the
-qualified AAR, signed repository ZIP, Central bundle and SHA-256 sidecars. It requires an existing
-GitHub Release, rechecks the tag's remote commit at the mutation boundary, refuses to replace
-existing assets, and compares GitHub's public asset digests after upload. It does not upload to
-Maven Central. Keep workflow revision, selected source commit/tree and producing run/attempt in
-the eventual release record; a workflow definition is not completed qualification evidence.
+an existing GitHub Release. With `prepare_central_bundle=false`, the protected `github-release`
+job uploads the externally qualified AAR and complete selected-version Maven repository ZIP,
+each with its SHA-256 sidecar; this normal public installation route needs no Central account or
+signing configuration. Setting `prepare_central_bundle=true` additionally requires the configured
+verified namespace and signing key, and uploads the signed Maven repository ZIP, standard Central
+bundle and their SHA-256 sidecars alongside the AAR. Signing is optional and does not upload to
+Maven Central or claim that the selected namespace is owned by Merman.
+
+Both routes require an existing GitHub Release, recheck the tag's remote commit at the mutation
+boundary, refuse to replace existing assets, and compare GitHub's public asset bytes after upload.
+Keep workflow revision, selected source commit/tree and producing run/attempt in the eventual
+release record; a workflow definition is not completed qualification evidence.
+
+For a GitHub-only publication, select the reviewed workflow revision separately from the
+immutable artifact source:
+
+```sh
+gh workflow run release-android.yml --ref <reviewed-workflow-ref> \
+  -f release_tag=v0.10.0-alpha.1 -f source_ref=v0.10.0-alpha.1 \
+  -f maven_group=<selected-group> -f publish=true -f prepare_central_bundle=false
+```
+
+This is an operator recipe, not a dispatched run. After the owner succeeds and the public
+downloads are verified, consumers can download the repository ZIP and its SHA-256 sidecar from
+the GitHub Release, verify the checksum, and use the extracted repository with the
+[Maven dependency setup](README.md#resolve-a-candidate-maven-publication). The complete repository
+preserves transitive dependencies; downloading the standalone AAR alone does not resolve them.
+
+If a GitHub-only repository ZIP has already been accepted, keep its bytes unchanged. Prepare a
+later signed Central handoff with `prepare_central_bundle=true, publish=false`; the signed Maven
+ZIP has the same asset name and must not replace the existing unsigned ZIP on the GitHub Release.

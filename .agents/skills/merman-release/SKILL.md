@@ -135,8 +135,9 @@ owning trigger. Preflight and Actions artifacts do not establish public delivery
 
 Apple, Android and Python default to nonpublishing candidates. Their `publish=true` path
 requires the matching immutable tag and an existing GitHub Release; PyPI additionally requires
-`publish_to_pypi=true`. Android release uploads also require the verified Maven group and
-signed Central bundle. Preparing that bundle does not submit or promote it in Central.
+`publish_to_pypi=true`. Android's GitHub AAR and complete Maven ZIP route requires an explicit
+group. Its optional Central bundle additionally requires the verified namespace and protected
+signing configuration. Preparing that bundle does not submit or promote it in Central.
 
 For Apple remote SwiftPM rollout, use the complete thin delivery tree with matching sources
 and the frozen binary URL/checksum. Native producer and delivery-repository commits are

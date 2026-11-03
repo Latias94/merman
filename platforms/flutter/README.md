@@ -4,7 +4,7 @@
 
 Parse, analyze, lay out, and render Mermaid diagrams in Flutter or standalone Dart without a browser or JavaScript runtime. The package is a Dart-friendly facade over Merman's native ABI 3 table and uses Native Assets to bundle size-oriented native libraries for supported targets.
 
-This guide targets the `0.10.0-alpha.1` candidate; see the [host guide](../../docs/release/PREBUILT_PRODUCTS.md) for version and channel availability.
+This guide targets the `0.10.0-alpha.1` prerelease; see the [host guide](../../docs/release/PREBUILT_PRODUCTS.md) for stable and alpha installation choices.
 
 > `Merman.open()` accepts only the exact native package version `0.10.0-alpha.1` paired with this Dart release. `Merman.openPath(...)` may load another package version, but both entry points require the current complete ABI 3 table, runtime catalog fields, Options JSON schema `3`, metadata and payload schemas, and service constructor. Historical partial ABI 3 producers and ABI 2 are not fallback paths.
 
@@ -26,7 +26,7 @@ dependencies:
 
 Run `flutter pub get` after adding the dependency.
 
-For a legacy `0.9.2` installation, use the [tagged guide](https://github.com/Latias94/merman/blob/v0.9.2/platforms/flutter/README.md).
+For a stable `0.9.3` installation, use the [tagged guide](https://github.com/Latias94/merman/blob/v0.9.3/platforms/flutter/README.md).
 That release uses Options JSON schema `2` and math-free native libraries; keep its facade and
 artifacts together rather than using them with the theme API documented here.
 

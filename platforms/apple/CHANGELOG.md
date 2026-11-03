@@ -6,7 +6,7 @@ The format is based on Keep a Changelog, and this package follows the merman wor
 
 ## [0.10.0-alpha.1] - 2026-11-02
 
-Changes below are relative to the published `0.9.3` package. These alpha bindings are available from source only; see the [host installation guide](../../docs/release/PREBUILT_PRODUCTS.md) for published versions.
+Changes below are relative to `0.9.3`. Download the complete local SwiftPM package using the [host installation guide](../../docs/release/PREBUILT_PRODUCTS.md); public Git-URL installation requires a separately hosted package repository.
 
 ### Added
 

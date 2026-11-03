@@ -4,7 +4,7 @@
 Node.js 22+ and static-site builds. A small loader selects one exact-version native package for the
 current host; it has no browser-WASM fallback or postinstall downloader.
 
-This guide targets the `0.10.0-alpha.1` release candidate. Check the
+This guide targets the `0.10.0-alpha.1` prerelease. Check the
 [prebuilt product status](../../docs/release/PREBUILT_PRODUCTS.md) and
 [publish order](../../docs/release/PUBLISH_ORDER.md) for verified public availability. See the
 [current Node changelog](CHANGELOG.md) for changes and upgrade actions.

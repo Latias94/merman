@@ -5,7 +5,7 @@ Status: maintained release operator guide.
 Merman releases use a preflight-first flow. Run the release preflight workflow against the intended
 source ref and version before any registry or GitHub Release publication. After preflight passes,
 push a `v<version>` workspace tag only for the tag-triggered CLI/LSP and crates.io surfaces. Flutter
-uses its own `flutter-v<version>` tag because pub.dev requires a tag-triggered workflow; Python,
+uses its own `flutter-v<version>` tag for the configured pub.dev Trusted Publisher; Python,
 Android, Apple, Web, Node, and VS Code remain owner-dispatched surfaces.
 
 Main's [binding delivery plan](../plans/2026-11-01-1248-refactor-binding-delivery-plan.md)
@@ -97,7 +97,7 @@ workflows/descriptors, and use the release skill for the sequence and conditiona
 | `release-apple.yml` | Seven assets: binary ZIP, complete local SwiftPM ZIP, thin remote tree ZIP, three checksum sidecars and remote manifest | Actions candidates by default; existing GitHub Release with `publish=true` |
 | `release-python.yml` | Five `merman` wheels: macOS ARM64/x86-64, GNU Linux ARM64/x86-64 and Windows x86-64 MSVC | Actions candidates by default; existing GitHub Release with `publish=true`, plus PyPI with `publish_to_pypi=true` |
 | `release-flutter.yml` | Frozen thin `merman` facade and separate target-pinned native assets for Android, iOS, macOS, Windows and Linux | Tag-triggered native assets to an existing Flutter GitHub Release, then facade to pub.dev; manual runs validate only |
-| `release-android.yml` | AAR, complete Maven repository ZIP and signed standard Central bundle handoff | Actions candidates by default; existing GitHub Release with `publish=true`; no Central upload |
+| `release-android.yml` | AAR and complete Maven repository ZIP; optional signed standard Central bundle handoff | Actions candidates by default; existing GitHub Release with `publish=true`; no Central upload |
 | `release-web.yml` | admitted `@mermanjs/web` browser package group | Actions candidates by default; npm with `publish_to_npm=true` |
 | `release-node.yml` | experimental `@mermanjs/node` loader, seven native platform packages, and explicit `@mermanjs/node-wasm`: nine packages | Actions candidates by default; npm with `publish_to_npm=true` |
 | `release-tree-sitter-mermaid.yml` | `tree-sitter-mermaid` crate, `@mermanjs/tree-sitter-mermaid`, language WASM, and source archive | crates.io, npm, and GitHub Release |
@@ -171,13 +171,19 @@ and tree before building. With the default `publish=false`, `source_ref` may be 
 40-character commit or the matching tag; the candidate version's tag need not exist. With
 `publish=true`, it must be the matching immutable tag and the GitHub Release must already exist.
 The workflow definition may come from `main` for workflow-only recovery without changing that
-artifact source. Android additionally requires an explicit `maven_group` and
-`prepare_central_bundle=true` for release uploads; PyPI requires both `publish=true` and
+artifact source. Android additionally requires an explicit `maven_group` for its GitHub assets;
+`prepare_central_bundle=true` separately selects protected signing and the Central handoff.
+PyPI requires both `publish=true` and
 `publish_to_pypi=true`. Web/Node default to `publish_to_npm=false`; publication accepts the matching
 tag or a reviewed full commit, while `main` is build-only. VS Code resolves its explicit
-`source_ref` for packaging. Flutter is the exception: pub.dev automated publishing only accepts GitHub
-Actions runs triggered by a pushed git tag, so `release-flutter.yml` publishes from a
+`source_ref` for packaging. Flutter's current `release-flutter.yml` publishes from a pushed
 `flutter-v<version>` tag and uses manual runs with an explicit `source_ref` for validation only.
+This is the repository owner's current trigger policy. The
+[pub.dev implementation](https://github.com/dart-lang/pub-dev/blob/6e5702a1db0c207ad2546e7c240ff1f159066011/app/lib/package/backend.dart#L2269-L2305)
+also admits tag-ref `workflow_dispatch` when that event is enabled in the package's publisher
+settings; a branch dispatch does not acquire tag identity by checking out a tag. The current
+workflow has no manual publication path. Existing Trusted Publishing remains valid across
+package versions and does not require a local login for normal tag publication.
 Its native-asset job requires an existing non-draft Release for that Flutter tag and verifies
 every pinned public download before pub.dev publication. The pub.dev trusted publisher must use
 the matching `flutter-v{{version}}` tag pattern.
@@ -369,6 +375,12 @@ Before starting a Web or Node publication that includes new package names, choos
    artifact and record the lack of npm provenance for manually accepted versions. Configure
    trusted publishers for later versions. Do not bootstrap only a subset and start a new build
    to complete that same version.
+3. A publishing run may stop at the package-name bootstrap preflight before its actual upload
+   step. Retain that run's complete verified group, bootstrap the new names from those exact
+   tarballs, then rerun only its failed publisher. The existing attempt-history owner must prove
+   the actual group upload step was skipped in every prior attempt before allowing the remaining
+   uploads. Missing or ambiguous history remains observation-only. This is not recovery from a
+   report-less build-only candidate, and it never starts another product build.
 
 Neither procedure uses report-less cross-run recovery to authorize new uploads. A build-only
 candidate has no publishing history report; the recovery owner deliberately observes registry
@@ -962,18 +974,25 @@ commands for channels selected in the release scope; this list is a command refe
 
 ```bash
 RELEASE_TAG="v<version>"
-MAVEN_GROUP="<verified-owned-group>"
+MAVEN_GROUP="<selected-local-maven-group>"
 gh workflow run release-python.yml \
   -f release_tag="$RELEASE_TAG" -f source_ref="$RELEASE_TAG" \
   -f publish=true -f publish_to_pypi=true
 gh workflow run release-android.yml \
   -f release_tag="$RELEASE_TAG" -f source_ref="$RELEASE_TAG" \
-  -f maven_group="$MAVEN_GROUP" -f prepare_central_bundle=true -f publish=true
+  -f maven_group="$MAVEN_GROUP" -f prepare_central_bundle=false -f publish=true
 gh workflow run release-web.yml -f release_tag="$RELEASE_TAG" -f source_ref="$RELEASE_TAG" -f publish_to_npm=true
 gh workflow run release-node.yml -f release_tag="$RELEASE_TAG" -f source_ref="$SOURCE_SHA" -f publish_to_npm=true
 gh workflow run vscode-extension.yml -f source_ref="$RELEASE_TAG"
 gh workflow run homebrew.yml
 ```
+
+The Android command publishes the qualified AAR, complete local Maven repository ZIP and their
+checksums without Central credentials. For a separately selected Central handoff, use
+`prepare_central_bundle=true` with the protected signing configuration and verified owned group.
+If the unsigned Maven ZIP is already public, prepare the later signed handoff with `publish=false`
+to preserve its accepted bytes. Neither route submits to Maven Central. See the
+[Android release guide](../../platforms/android/RELEASING.md#github-release-assets).
 
 For a selected Apple release, normally use the workflow definition from the immutable release tag:
 
@@ -1060,7 +1079,7 @@ For a workflow-only recovery after a release tag already exists, Python, Android
 the updated workflow definition from `main`, but they still check out and verify the immutable
 release-tag commit and tree. For Apple, use `--ref main` only for that workflow-only recovery and
 keep `-f release_tag="$RELEASE_TAG"` unchanged; the artifact source always remains the fixed tag.
-Also keep `-f source_ref="$RELEASE_TAG" -f publish=true`; Android retains
+Also keep `-f source_ref="$RELEASE_TAG" -f publish=true`; Android's optional Central handoff retains
 `prepare_central_bundle=true` and its verified group, and PyPI retains `publish_to_pypi=true` when
 that registry is selected.
 

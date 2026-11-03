@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Run Dart's publish dry-run and enforce the Flutter package size budget."""
+"""Run Dart's publish dry-run and enforce the Flutter package layout and size."""
 
 from __future__ import annotations
 
@@ -41,7 +41,7 @@ UNIT_TO_MB = {
 
 
 class FlutterPackageSizeError(RuntimeError):
-    """The Dart dry-run output did not satisfy the package-size contract."""
+    """The Flutter package violates its layout or compressed-size contract."""
 
 
 def compressed_archive_megabytes(output: str) -> float:
@@ -67,6 +67,13 @@ def positive_float(value: str) -> float:
 
 
 def verify_thin_package(package_root: Path) -> None:
+    for hook_file in (package_root / "hook").rglob("*.dart"):
+        relative = hook_file.relative_to(package_root).as_posix()
+        if relative not in {"hook/build.dart", "hook/link.dart"}:
+            raise FlutterPackageSizeError(
+                f"unsupported Flutter hook Dart file: {relative}; "
+                "pub.dev only allows hook/build.dart and hook/link.dart"
+            )
     if (package_root / "native").exists():
         raise FlutterPackageSizeError("thin Flutter package must not contain native/")
     for directory, directories, files in os.walk(package_root):

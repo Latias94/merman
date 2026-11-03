@@ -69,9 +69,9 @@ For an interactive page, Web `mountDiagram` manages redraws, resizing and cleanu
 
 All five Web packages export a matching `./wasm` asset for bundler or self-hosted loading. Full/render retain their existing math support.
 
-The alpha source adds SVG formula rendering to Apple, Android, Python, Flutter, native Node and Node-WASM builds, together with the integration improvements below. Use the [host installation guide](docs/release/PREBUILT_PRODUCTS.md) for matching prebuilt versions or source-build instructions. Output codecs and host font services remain separate capabilities. [#265](https://github.com/Latias94/merman/pull/265), [#266](https://github.com/Latias94/merman/pull/266)
+The alpha's prebuilt Apple, Android, Python, Flutter, native Node and Node-WASM products add SVG formula rendering, together with the integration improvements below. Use the [host installation guide](docs/release/PREBUILT_PRODUCTS.md) for matching prebuilt versions or source-build instructions. Output codecs and host font services remain separate capabilities. [#265](https://github.com/Latias94/merman/pull/265), [#266](https://github.com/Latias94/merman/pull/266)
 
-| Host | Change in the alpha source |
+| Host | Integration change |
 | --- | --- |
 | Swift / Apple | A complete local SwiftPM ZIP includes the facade, resources and XCFramework. A thin remote package pins the binary URL and checksum; URL-based installation requires a hosted package repository and tag. |
 | Android | A versioned Maven repository archive supports local Gradle resolution. The signed Central bundle remains a separate publication handoff. |

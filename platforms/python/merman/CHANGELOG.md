@@ -6,11 +6,11 @@ The format is based on Keep a Changelog, and this package follows the merman wor
 
 ## [0.10.0a1] - 2026-11-02
 
-Changes below are relative to the published `0.9.3` package. These alpha bindings are available from source only; see the [host installation guide](../../../docs/release/PREBUILT_PRODUCTS.md) for published versions.
+Changes below are relative to `0.9.3`. Install the exact prerelease with `python -m pip install --only-binary=:all: merman==0.10.0a1`; see the [host installation guide](../../../docs/release/PREBUILT_PRODUCTS.md) for stable and alpha choices.
 
 ### Added
 
-- Install a native SVG wheel without Rust on macOS ARM64/x86-64, GNU Linux ARM64/x86-64 or Windows x86-64. Linux wheel candidates use manylinux 2.28 and require glibc 2.28 or newer. See the [package guide](README.md). [#265](https://github.com/Latias94/merman/pull/265), [#266](https://github.com/Latias94/merman/pull/266)
+- Install a native SVG wheel without Rust on macOS ARM64/x86-64, GNU Linux ARM64/x86-64 or Windows x86-64. Linux wheels use manylinux 2.28 and require glibc 2.28 or newer. See the [package guide](README.md). [#265](https://github.com/Latias94/merman/pull/265), [#266](https://github.com/Latias94/merman/pull/266)
 - Render formulas with the ordinary SVG wheel; no custom math-enabled build is needed. Image encoders and system font discovery remain outside this product.
 - Apply 11 alpha theme presets or share your own editable JSON recipe. `theme_catalog_json()` lists presets and their intended diagram families; theme authoring operations export recipes and query styling support for your diagram and output. See the [theme guide and gallery](../../../docs/rendering/custom-diagram-themes.md) and [Python example](examples/theme_authoring.py). [#178](https://github.com/Latias94/merman/pull/178), [#223](https://github.com/Latias94/merman/pull/223), [#234](https://github.com/Latias94/merman/pull/234), [#253](https://github.com/Latias94/merman/pull/253)
 
