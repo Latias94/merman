@@ -858,15 +858,27 @@ mod tests {
 
     #[test]
     fn typst_resource_policy_preserves_stricter_caller_limits() {
-        let options = typst_options_json(br#"{"resources":{"limits":{"max_source_bytes":4096}}}"#)
-            .expect("valid options");
-        let payload: Value = serde_json::from_slice(&options).expect("valid options JSON");
+        for wrapper in [None, Some("analysis"), Some("merman")] {
+            let analysis = json!({ "resources": { "limits": {
+                "max_source_bytes": 4096,
+                "max_model_items": 1
+            } } });
+            let input = wrapper
+                .map(|wrapper| json!({ wrapper: analysis.clone() }))
+                .unwrap_or(analysis);
+            let options =
+                typst_options_json(&serde_json::to_vec(&input).unwrap()).expect("valid options");
+            let payload: Value = serde_json::from_slice(&options).expect("valid options JSON");
+            let resources = wrapper
+                .map(|wrapper| &payload[wrapper]["resources"])
+                .unwrap_or(&payload["resources"]);
 
-        assert_eq!(payload["resources"]["profile"], "constrained");
-        assert_eq!(
-            payload["resources"]["limits"]["max_source_bytes"],
-            Value::from(4096)
-        );
+            assert_eq!(resources["profile"], "constrained");
+            assert_eq!(resources["limits"]["max_source_bytes"], Value::from(4096));
+            assert_eq!(resources["limits"]["max_model_items"], Value::from(1));
+            assert_eq!(payload["runtime_policy"], "deterministic");
+            assert_eq!(payload.get("resources").is_some(), wrapper.is_none());
+        }
     }
 
     #[test]
@@ -925,14 +937,19 @@ mod tests {
     }
 
     #[test]
-    fn explicit_looser_resource_profile_is_rejected() {
-        let error =
-            typst_options_json(br#"{"resources":{"profile":"trusted-native"}}"#).unwrap_err();
-        assert_eq!(
-            error.status(),
-            merman_bindings_core::BindingStatus::OptionsJsonError
-        );
-        assert!(error.message().contains("loosen the transport ceiling"));
+    fn typst_resource_policy_rejects_looser_profiles_and_limits() {
+        for input in [
+            br#"{"resources":{"profile":"trusted-native"}}"#.as_slice(),
+            br#"{"analysis":{"resources":{"limits":{"max_source_bytes":1048577}}}}"#.as_slice(),
+            br#"{"merman":{"resources":{"limits":{"max_model_items":1000000000}}}}"#.as_slice(),
+        ] {
+            let error = typst_options_json(input).unwrap_err();
+            assert_eq!(
+                error.status(),
+                merman_bindings_core::BindingStatus::OptionsJsonError
+            );
+            assert!(error.message().contains("loosen the transport ceiling"));
+        }
     }
 
     #[test]

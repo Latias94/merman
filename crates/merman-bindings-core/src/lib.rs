@@ -51,6 +51,8 @@ pub use catalog_contract::{
     RUNTIME_CATALOG_FIELD_IDENTIFIER_PATTERN, RUNTIME_CATALOG_IDENTIFIER_PATTERN,
     RUNTIME_CATALOG_MAX_SAFE_INTEGER,
 };
+#[cfg(feature = "analysis")]
+pub use common::analysis_options_with_resource_ceiling;
 #[cfg(feature = "svg")]
 #[doc(hidden)]
 pub use common::prepare_theme_authoring_options_json;

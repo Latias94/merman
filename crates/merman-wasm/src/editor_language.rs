@@ -15,11 +15,7 @@ use merman_editor_core::{
     prepare_rename, references, rename, search_document_symbols,
 };
 use serde::Serialize;
-use std::{
-    cell::RefCell,
-    collections::HashMap,
-    sync::{Arc, OnceLock},
-};
+use std::{cell::RefCell, collections::HashMap, sync::Arc};
 use wasm_bindgen::prelude::*;
 
 #[derive(Debug, Serialize)]
@@ -759,223 +755,14 @@ fn parse_analysis_options(options_json: Option<&str>) -> Result<AnalysisOptions,
     let options_json = options_json
         .filter(|options_json| !options_json.trim().is_empty())
         .unwrap_or_default();
-    let ceiling = editor_resource_ceiling()?;
-    let normalized = merman_bindings_core::apply_resource_ceiling_json(
-        options_json.as_bytes(),
-        ceiling.profile_id,
-        &[],
-    )?;
-    let normalized = serde_json::from_slice::<serde_json::Value>(&normalized).map_err(|err| {
-        BindingError::new(
-            BindingStatus::InternalError,
-            format!("failed to decode normalized editor options_json: {err}"),
-        )
-    })?;
-    let resource_limits = normalized_editor_analysis_resource_limits(&normalized, ceiling)?;
-
-    let mut analysis_value = normalized;
-    prepare_binding_options_for_analysis(&mut analysis_value);
-    let options = merman_analysis::analysis_options_from_json_value(&analysis_value)
-        .map_err(|err| BindingError::new(BindingStatus::InvalidArgument, err.to_string()))?;
-    Ok(options
-        .with_max_source_bytes(Some(resource_limits.max_source_bytes))
-        .with_max_document_diagrams(Some(resource_limits.max_document_diagrams)))
-}
-
-#[derive(Debug, Clone, Copy)]
-struct EditorResourceCeiling {
-    profile_id: &'static str,
-    max_source_bytes: usize,
-    max_document_diagrams: usize,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-struct EditorAnalysisResourceLimits {
-    max_source_bytes: usize,
-    max_document_diagrams: usize,
-}
-
-fn editor_resource_ceiling() -> Result<EditorResourceCeiling, BindingError> {
-    static CEILING: OnceLock<Option<EditorResourceCeiling>> = OnceLock::new();
-
-    CEILING
-        .get_or_init(|| {
-            let resources = crate::wasm_runtime_catalog().resources;
-            let profile_id = resources.general_binding_default_profile;
-            let profile = resources
-                .profiles
-                .iter()
-                .find(|profile| profile.id == profile_id)?;
-            let max_source_bytes = profile
-                .limits
-                .get("max_source_bytes")
-                .copied()
-                .flatten()?;
-            let max_document_diagrams = profile
-                .limits
-                .get(merman_analysis::MAX_DOCUMENT_DIAGRAMS_RESOURCE_LIMIT_ID)
-                .copied()
-                .flatten()?;
-            Some(EditorResourceCeiling {
-                profile_id,
-                max_source_bytes,
-                max_document_diagrams,
-            })
-        })
-        .as_ref()
-        .copied()
-        .ok_or_else(|| {
-            BindingError::new(
-                BindingStatus::InternalError,
-                "WASM runtime catalog default resource profile must define all editor analysis limits",
-            )
-        })
-}
-
-fn normalized_editor_analysis_resource_limits(
-    normalized: &serde_json::Value,
-    ceiling: EditorResourceCeiling,
-) -> Result<EditorAnalysisResourceLimits, BindingError> {
-    let root = normalized.as_object().ok_or_else(|| {
-        BindingError::new(
-            BindingStatus::InternalError,
-            "normalized editor options_json root must be an object",
-        )
-    })?;
-    let options = ["analysis", "merman"]
-        .into_iter()
-        .find_map(|key| root.get(key).and_then(serde_json::Value::as_object))
-        .unwrap_or(root);
-    let resources = options
-        .get("resources")
-        .and_then(serde_json::Value::as_object)
-        .ok_or_else(|| {
-            BindingError::new(
-                BindingStatus::InternalError,
-                "normalized editor options_json omitted resources",
-            )
-        })?;
-
-    let profile_id = resources
-        .get("profile")
-        .and_then(serde_json::Value::as_str)
-        .unwrap_or(ceiling.profile_id);
-    let catalog = crate::wasm_runtime_catalog();
-    let profile = catalog
+    let ceiling = crate::wasm_runtime_catalog()
         .resources
-        .profiles
-        .iter()
-        .find(|profile| profile.id == profile_id)
-        .ok_or_else(|| {
-            BindingError::new(
-                BindingStatus::InternalError,
-                format!("normalized editor resource profile `{profile_id}` is absent from the WASM runtime catalog"),
-            )
-        })?;
-    let max_source_bytes = normalized_editor_analysis_limit(
-        resources,
-        profile,
-        "max_source_bytes",
-        ceiling.max_source_bytes,
-    )?;
-    let mut max_document_diagrams = None;
-    for descriptor in merman_analysis::ANALYSIS_RESOURCE_LIMIT_DESCRIPTORS {
-        match descriptor.stable_id {
-            merman_analysis::MAX_DOCUMENT_DIAGRAMS_RESOURCE_LIMIT_ID => {
-                max_document_diagrams = Some(normalized_editor_analysis_limit(
-                    resources,
-                    profile,
-                    descriptor.stable_id,
-                    ceiling.max_document_diagrams,
-                )?);
-            }
-            unknown => {
-                return Err(BindingError::new(
-                    BindingStatus::InternalError,
-                    format!(
-                        "WASM editor analysis resource projection has no owner for `{unknown}`"
-                    ),
-                ));
-            }
-        }
-    }
-    let max_document_diagrams = max_document_diagrams.ok_or_else(|| {
-        BindingError::new(
-            BindingStatus::InternalError,
-            "WASM editor analysis resource descriptors omitted max_document_diagrams",
-        )
-    })?;
-
-    Ok(EditorAnalysisResourceLimits {
-        max_source_bytes,
-        max_document_diagrams,
-    })
-}
-
-fn normalized_editor_analysis_limit(
-    resources: &serde_json::Map<String, serde_json::Value>,
-    profile: &merman_bindings_core::RuntimeResourceProfile,
-    limit_id: &str,
-    ceiling: usize,
-) -> Result<usize, BindingError> {
-    let profile_value = profile
-        .limits
-        .get(limit_id)
-        .copied()
-        .flatten()
-        .ok_or_else(|| {
-            BindingError::new(
-                BindingStatus::InternalError,
-                format!(
-                    "WASM runtime catalog profile `{}` must define {limit_id}",
-                    profile.id
-                ),
-            )
-        })?;
-
-    match resources
-        .get("limits")
-        .and_then(serde_json::Value::as_object)
-        .and_then(|limits| limits.get(limit_id))
-    {
-        Some(value) => value
-            .as_u64()
-            .and_then(|value| usize::try_from(value).ok())
-            .ok_or_else(|| {
-                BindingError::new(
-                    BindingStatus::InternalError,
-                    format!("normalized {limit_id} must fit usize"),
-                )
-            }),
-        None => Ok(profile_value.min(ceiling)),
-    }
-}
-
-fn prepare_binding_options_for_analysis(value: &mut serde_json::Value) {
-    let Some(root) = value.as_object_mut() else {
-        return;
-    };
-    // The shared binding envelope owns render parsing policy. Editor analysis accepts the same
-    // transport string, but only consumes analysis-owned fields from its root.
-    root.remove("parse");
-    remove_resource_profile(root);
-    for wrapper in ["analysis", "merman"] {
-        if let Some(options) = root
-            .get_mut(wrapper)
-            .and_then(serde_json::Value::as_object_mut)
-        {
-            remove_resource_profile(options);
-        }
-    }
-}
-
-fn remove_resource_profile(options: &mut serde_json::Map<String, serde_json::Value>) {
-    if let Some(resources) = options
-        .get_mut("resources")
-        .and_then(serde_json::Value::as_object_mut)
-    {
-        resources.remove("profile");
-    }
+        .general_binding_default_profile;
+    merman_bindings_core::analysis_options_with_resource_ceiling(
+        options_json.as_bytes(),
+        ceiling,
+        &[],
+    )
 }
 
 fn code_actions_for_diagnostics(
@@ -1081,16 +868,19 @@ mod tests {
 
     #[test]
     fn editor_language_enforces_the_web_interactive_source_ceiling_by_default() {
-        let ceiling = editor_resource_ceiling().expect("WASM editor resource ceiling");
-        assert_eq!(ceiling.profile_id, "interactive");
-        assert_eq!(ceiling.max_source_bytes, 2 * 1024 * 1024);
-        assert_eq!(ceiling.max_document_diagrams, 256);
+        let ceiling = crate::wasm_runtime_catalog()
+            .resources
+            .general_binding_default_profile;
+        assert_eq!(ceiling, "interactive");
 
         let options = parse_analysis_options(None).expect("default editor analysis options");
-        assert_eq!(options.max_source_bytes(), Some(ceiling.max_source_bytes));
+        assert_eq!(options.max_source_bytes(), Some(2 * 1024 * 1024));
         assert_eq!(options.max_document_diagrams(), Some(256));
+        for empty in ["", " \n\t", "{}", r#"{"resources":{"limits":{}}}"#] {
+            assert_eq!(parse_analysis_options(Some(empty)).unwrap(), options);
+        }
 
-        let source = "x".repeat(ceiling.max_source_bytes + 1);
+        let source = "x".repeat(2 * 1024 * 1024 + 1);
         let error = build_editor_document_analysis(&source, "file:///tmp/oversized.mmd", 1, None)
             .expect_err("oversized editor source must not create a snapshot");
         assert_eq!(error.status(), BindingStatus::ResourceLimitExceeded);
@@ -1216,15 +1006,25 @@ mod tests {
 
     #[test]
     fn editor_language_extracts_analysis_options_from_the_shared_binding_envelope() {
-        let options = parse_analysis_options(Some(
-            r#"{
-                "version": 3,
-                "parse": { "suppress_errors": true },
-                "resources": { "profile": "constrained" }
-            }"#,
-        ))
-        .expect("binding-owned parse policy must not leak into analysis decoding");
-        assert_eq!(options.max_source_bytes(), Some(1024 * 1024));
+        for wrapper in [None, Some("analysis"), Some("merman")] {
+            let analysis = serde_json::json!({
+                "resources": {
+                    "profile": "constrained",
+                    "limits": { "max_model_items": 1 }
+                }
+            });
+            let mut input = wrapper
+                .map(|wrapper| serde_json::json!({ wrapper: analysis.clone() }))
+                .unwrap_or(analysis);
+            input["version"] = serde_json::Value::from(3);
+            input["parse"] = serde_json::json!({ "suppress_errors": true });
+            let input = input.to_string();
+            let options = parse_analysis_options(Some(&input)).expect(
+                "validated binding resource and parse policy must not leak into analysis decoding",
+            );
+            assert_eq!(options.max_source_bytes(), Some(1024 * 1024));
+            assert_eq!(options.max_document_diagrams(), Some(128));
+        }
 
         let error =
             parse_analysis_options(Some(r#"{"analysis":{"parse":{"suppress_errors":true}}}"#))
@@ -1245,6 +1045,13 @@ mod tests {
         .expect("stricter editor analysis limits");
         assert_eq!(options.max_source_bytes(), Some(32));
         assert_eq!(options.max_document_diagrams(), Some(2));
+
+        let zero = parse_analysis_options(Some(
+            r#"{"merman":{"resources":{"limits":{"max_document_diagrams":0}}}}"#,
+        ))
+        .expect("zero diagram limit must remain a finite limit");
+        assert_eq!(zero.max_source_bytes(), Some(2 * 1024 * 1024));
+        assert_eq!(zero.max_document_diagrams(), Some(0));
 
         let error = build_editor_document_analysis(
             "flowchart TD\nA-->B\nA-->C\n",
@@ -1298,6 +1105,46 @@ mod tests {
                 parse_analysis_options(Some(&options)).expect_err("looser editor resource profile");
             assert_eq!(error.status(), BindingStatus::OptionsJsonError);
             assert!(error.message().contains("loosen the transport ceiling"));
+        }
+    }
+
+    #[test]
+    fn editor_language_preserves_resource_and_envelope_error_precedence() {
+        for (input, status, message) in [
+            (
+                r#"{"resources":{"limits":{"max_model_items":1000000000}}}"#,
+                BindingStatus::OptionsJsonError,
+                "loosen the transport ceiling for `max_model_items`",
+            ),
+            (
+                r#"{"version":2,"resources":{"limits":{"max_source_bytes":2097153}}}"#,
+                BindingStatus::OptionsJsonError,
+                "loosen the transport ceiling",
+            ),
+            (
+                r#"{"analysis":[],"resources":{"profile":"trusted-native"}}"#,
+                BindingStatus::OptionsJsonError,
+                "wrapper must be an object",
+            ),
+            (
+                r#"{"resources":{"limits":{"max_source_bytes":0}},"fixed_today":"invalid"}"#,
+                BindingStatus::InvalidArgument,
+                "resources.limits.max_source_bytes must be at least 1",
+            ),
+            (
+                r#"{"fixed_today":"invalid","fixed_local_offset_minutes":1440}"#,
+                BindingStatus::InvalidArgument,
+                "fixed_local_offset_minutes",
+            ),
+            (
+                r#"{"fixed_today":"invalid"}"#,
+                BindingStatus::InvalidArgument,
+                "fixed_today must be a canonical civil date",
+            ),
+        ] {
+            let error = parse_analysis_options(Some(input)).unwrap_err();
+            assert_eq!(error.status(), status, "input={input}");
+            assert!(error.message().contains(message), "{error:?}");
         }
     }
 
@@ -1631,7 +1478,9 @@ mod tests {
             source,
             uri,
             1,
-            Some(r#"{"lint":{"profile":"recommended"}}"#),
+            Some(
+                r#"{"version":3,"parse":{"suppress_errors":true},"analysis":{"lint":{"profile":"recommended"},"resources":{"profile":"constrained"}}}"#,
+            ),
         )
         .expect("analysis context");
         let generation = context.shared_analysis_generation();

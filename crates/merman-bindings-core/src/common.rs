@@ -1223,6 +1223,7 @@ fn legacy_validation_fallback_status(
     }
 }
 
+#[cfg(test)]
 pub(crate) fn parse_options(bytes: &[u8]) -> Result<BindingOptions, BindingError> {
     parse_options_value(&options_json_value(bytes)?)
 }
@@ -2663,6 +2664,13 @@ pub fn resource_options_json(
     profile_id: Option<&str>,
     overrides: &[(&str, usize)],
 ) -> Result<Vec<u8>, BindingError> {
+    serde_json::to_vec(&resource_options_value(profile_id, overrides)?).map_err(internal_json_error)
+}
+
+fn resource_options_value(
+    profile_id: Option<&str>,
+    overrides: &[(&str, usize)],
+) -> Result<Value, BindingError> {
     let profile = profile_id
         .map(|profile_id| {
             merman::model::resources::ResourceProfile::from_id(profile_id).ok_or_else(|| {
@@ -2722,7 +2730,7 @@ pub fn resource_options_json(
         }
         root.insert("resources".to_string(), Value::Object(resources));
     }
-    serde_json::to_vec(&Value::Object(root)).map_err(internal_json_error)
+    Ok(Value::Object(root))
 }
 
 /// Applies a transport-owned resource ceiling while preserving stricter caller limits.
@@ -2736,8 +2744,44 @@ pub fn apply_resource_ceiling_json(
     ceiling_profile_id: &str,
     ceiling_overrides: &[(&str, usize)],
 ) -> Result<Vec<u8>, BindingError> {
-    let ceiling_json = resource_options_json(Some(ceiling_profile_id), ceiling_overrides)?;
-    let ceiling = parse_options(&ceiling_json)?
+    let value =
+        options_value_with_resource_ceiling(options_json, ceiling_profile_id, ceiling_overrides)?;
+    let serialized = serde_json::to_vec(&value).map_err(internal_json_error)?;
+    enforce_options_json_byte_budget(&serialized)?;
+    #[cfg(feature = "svg")]
+    {
+        let text = std::str::from_utf8(&serialized)
+            .expect("serialized binding options are always valid UTF-8");
+        preflight_options_theme_json(text, &serialized, None)?;
+    }
+    parse_options_value(&value)?;
+    Ok(serialized)
+}
+
+/// Prepares typed analysis options under an explicit host resource ceiling.
+///
+/// The binding envelope and every compiled resource override are validated before projection.
+/// Analysis consumes only its own limits and configuration; top-level parse and output options
+/// retain their binding-owned validation without entering the analysis grammar. Byte admission
+/// applies to the original input, since this entry point produces no normalized JSON document.
+#[cfg(feature = "analysis")]
+pub fn analysis_options_with_resource_ceiling(
+    options_json: &[u8],
+    ceiling_profile_id: &str,
+    ceiling_overrides: &[(&str, usize)],
+) -> Result<merman_analysis::AnalysisOptions, BindingError> {
+    let value =
+        options_value_with_resource_ceiling(options_json, ceiling_profile_id, ceiling_overrides)?;
+    artifact_analysis_options(&parse_options_value(&value)?)
+}
+
+fn options_value_with_resource_ceiling(
+    options_json: &[u8],
+    ceiling_profile_id: &str,
+    ceiling_overrides: &[(&str, usize)],
+) -> Result<Value, BindingError> {
+    let ceiling_value = resource_options_value(Some(ceiling_profile_id), ceiling_overrides)?;
+    let ceiling = parse_options_value(&ceiling_value)?
         .analysis
         .resources
         .ok_or_else(|| {
@@ -2815,9 +2859,7 @@ pub fn apply_resource_ceiling_json(
         serde_json::to_value(resources).map_err(internal_json_error)?,
     );
 
-    let serialized = serde_json::to_vec(&value).map_err(internal_json_error)?;
-    parse_options(&serialized)?;
-    Ok(serialized)
+    Ok(value)
 }
 
 fn options_json_value(options_json: &[u8]) -> Result<Value, BindingError> {
@@ -2866,10 +2908,7 @@ fn options_json_value_with_theme_ceiling(
             format!("invalid options_json UTF-8: {error}"),
         )
     })?;
-    let hints = theme_resource_profile_hints(text);
-    let policy = theme_resource_preflight_policy(&hints, host_ceiling);
-    let compiler = merman::svg::DiagramThemeCompiler::new().with_resource_policy(policy.clone());
-    crate::theme::validate_theme_input_json_with(&compiler, options_json)?;
+    preflight_options_theme_json(text, options_json, host_ceiling)?;
     let value = serde_json::from_str(text).map_err(|error| {
         BindingError::new(
             BindingStatus::OptionsJsonError,
@@ -2877,6 +2916,18 @@ fn options_json_value_with_theme_ceiling(
         )
     })?;
     Ok(value)
+}
+
+#[cfg(feature = "svg")]
+fn preflight_options_theme_json(
+    text: &str,
+    options_json: &[u8],
+    host_ceiling: Option<&merman::svg::ThemeResourcePolicy>,
+) -> Result<(), BindingError> {
+    let hints = theme_resource_profile_hints(text);
+    let policy = theme_resource_preflight_policy(&hints, host_ceiling);
+    let compiler = merman::svg::DiagramThemeCompiler::new().with_resource_policy(policy);
+    crate::theme::validate_theme_input_json_with(&compiler, options_json)
 }
 
 #[doc(hidden)]
@@ -4406,17 +4457,24 @@ mod tests {
     #[test]
     fn resource_ceiling_preserves_stricter_limits_and_wrapper_shape() {
         for wrapper in [None, Some("analysis"), Some("merman")] {
-            let input = match wrapper {
-                Some(wrapper) => format!(
-                    r#"{{"{wrapper}":{{"site_config":{{"theme":"dark"}},"resources":{{"limits":{{"max_source_bytes":4096,"max_document_diagrams":64}}}}}}}}"#
-                ),
-                None => {
-                    r#"{"parse":{"suppress_errors":true},"resources":{"limits":{"max_source_bytes":4096,"max_document_diagrams":64}}}"#
-                        .to_string()
-                }
-            };
-            let constrained =
-                apply_resource_ceiling_json(input.as_bytes(), "constrained", &[]).unwrap();
+            let analysis = serde_json::json!({
+                "fixed_today": "2026-08-01",
+                "fixed_local_offset_minutes": 60,
+                "site_config": { "theme": "dark" },
+                "lint": { "profile": "recommended" },
+                "resources": { "limits": {
+                    "max_source_bytes": 4096,
+                    "max_document_diagrams": 64,
+                    "max_model_items": 1
+                } }
+            });
+            let mut input = wrapper
+                .map(|wrapper| serde_json::json!({ wrapper: analysis.clone() }))
+                .unwrap_or(analysis);
+            input["version"] = Value::from(3);
+            input["parse"] = serde_json::json!({ "suppress_errors": true });
+            let input = serde_json::to_vec(&input).unwrap();
+            let constrained = apply_resource_ceiling_json(&input, "constrained", &[]).unwrap();
             let value: Value = serde_json::from_slice(&constrained).unwrap();
             let resources = wrapper
                 .map(|wrapper| &value[wrapper]["resources"])
@@ -4425,9 +4483,192 @@ mod tests {
             assert_eq!(resources["profile"], "constrained");
             assert_eq!(resources["limits"]["max_source_bytes"], 4096);
             assert_eq!(resources["limits"]["max_document_diagrams"], 64);
+            assert_eq!(resources["limits"]["max_model_items"], 1);
+            assert_eq!(value["version"], 3);
+            assert_eq!(value["parse"]["suppress_errors"], true);
             assert!(value.get("resources").is_some() == wrapper.is_none());
             parse_options(&constrained).unwrap();
+
+            let typed = analysis_options_with_resource_ceiling(&input, "constrained", &[]).unwrap();
+            assert_eq!(typed.max_source_bytes(), Some(4096));
+            assert_eq!(typed.max_document_diagrams(), Some(64));
+            assert_eq!(typed.site_config().unwrap().as_value()["theme"], "dark");
+            assert_eq!(
+                typed.rule_config().profile(),
+                merman_analysis::AnalysisRuleProfile::Recommended
+            );
+            assert_eq!(
+                typed.runtime_policy().fixed_local_offset_minutes(),
+                Some(60)
+            );
+            let operation = typed.runtime_policy().begin_operation().unwrap();
+            let today = operation.today_local();
+            assert_eq!((today.year(), today.month(), today.day()), (2026, 8, 1));
+            assert!(operation.today_is_fixed());
         }
+    }
+
+    #[cfg(feature = "analysis")]
+    #[test]
+    fn analysis_resource_ceiling_projects_default_stricter_and_zero_limits() {
+        for (input, source_bytes, document_diagrams) in [
+            (b"".as_slice(), 2 * 1024 * 1024, 256),
+            (br#"{"resources":{}}"#.as_slice(), 2 * 1024 * 1024, 256),
+            (
+                br#"{"resources":{"profile":null,"limits":{}}}"#.as_slice(),
+                2 * 1024 * 1024,
+                256,
+            ),
+            (
+                br#"{"resources":{"profile":"constrained"}}"#.as_slice(),
+                1024 * 1024,
+                128,
+            ),
+            (
+                br#"{"merman":{"resources":{"limits":{"max_source_bytes":1,"max_document_diagrams":0}}}}"#.as_slice(),
+                1,
+                0,
+            ),
+        ] {
+            let options = analysis_options_with_resource_ceiling(input, "interactive", &[]).unwrap();
+            assert_eq!(options.max_source_bytes(), Some(source_bytes));
+            assert_eq!(options.max_document_diagrams(), Some(document_diagrams));
+        }
+
+        let options = analysis_options_with_resource_ceiling(
+            br#"{"analysis":{"resources":{"limits":{"max_document_diagrams":0}}}}"#,
+            "interactive",
+            &[("max_source_bytes", 32), ("max_document_diagrams", 2)],
+        )
+        .unwrap();
+        assert_eq!(options.max_source_bytes(), Some(32));
+        assert_eq!(options.max_document_diagrams(), Some(0));
+    }
+
+    #[cfg(feature = "analysis")]
+    #[test]
+    fn analysis_resource_ceiling_preserves_binding_error_status_and_order() {
+        for (input, status, message) in [
+            (
+                b"\xff".as_slice(),
+                BindingStatus::Utf8Error,
+                "invalid options_json UTF-8",
+            ),
+            (
+                br#"{"analysis":[],"resources":{"profile":"trusted-native"}}"#.as_slice(),
+                BindingStatus::OptionsJsonError,
+                "`analysis` wrapper must be an object",
+            ),
+            (
+                br#"{"analysis":{},"merman":{},"version":2}"#.as_slice(),
+                BindingStatus::OptionsJsonError,
+                "must not contain both `analysis` and `merman` wrappers",
+            ),
+            (
+                br#"{"analysis":{},"resources":{"profile":"missing"}}"#.as_slice(),
+                BindingStatus::OptionsJsonError,
+                "must not mix top-level resources",
+            ),
+            (
+                br#"{"analysis":{},"fixed_today":"bad"}"#.as_slice(),
+                BindingStatus::OptionsJsonError,
+                "must not mix top-level analysis options",
+            ),
+            (
+                br#"{"version":2,"resources":{"limits":{"max_source_bytes":2097153}}}"#.as_slice(),
+                BindingStatus::OptionsJsonError,
+                "loosen the transport ceiling",
+            ),
+            (
+                br#"{"version":2,"fixed_today":"bad"}"#.as_slice(),
+                BindingStatus::OptionsJsonError,
+                "unsupported options_json schema version",
+            ),
+            (
+                br#"{"merman":{"parse":{"suppress_errors":true}}}"#.as_slice(),
+                BindingStatus::OptionsJsonError,
+                "analysis option `parse` was removed",
+            ),
+            (
+                br#"{"parse":{"suppress_errors":"yes"},"fixed_today":"bad"}"#.as_slice(),
+                BindingStatus::OptionsJsonError,
+                "expected a boolean",
+            ),
+            (
+                br#"{"resources":{"max_source_bytes":1}}"#.as_slice(),
+                BindingStatus::OptionsJsonError,
+                "unknown field `max_source_bytes`",
+            ),
+            (
+                br#"{"resources":{"limits":null}}"#.as_slice(),
+                BindingStatus::OptionsJsonError,
+                "invalid options_json resources",
+            ),
+            (
+                br#"{"resources":{"limits":{"max_source_bytes":0}}}"#.as_slice(),
+                BindingStatus::InvalidArgument,
+                "resources.limits.max_source_bytes must be at least 1",
+            ),
+            (
+                br#"{"resources":{"profile":"Constrained"}}"#.as_slice(),
+                BindingStatus::InvalidArgument,
+                "unsupported resources.profile: Constrained",
+            ),
+            (
+                br#"{"resources":{"limits":{"unknown_limit":1}}}"#.as_slice(),
+                BindingStatus::InvalidArgument,
+                "resource limit id `unknown_limit`",
+            ),
+        ] {
+            let typed_error =
+                analysis_options_with_resource_ceiling(input, "interactive", &[]).unwrap_err();
+            let wire_error = apply_resource_ceiling_json(input, "interactive", &[]).unwrap_err();
+            assert_eq!(typed_error.status(), status, "input={input:?}");
+            assert!(typed_error.message().contains(message), "{typed_error:?}");
+            assert_eq!(wire_error.status(), status, "input={input:?}");
+            assert_eq!(
+                typed_error.message(),
+                wire_error.message(),
+                "input={input:?}"
+            );
+        }
+
+        for input in [
+            br#"{"resources":{"limits":{"max_source_bytes":33}}}"#.as_slice(),
+            br#"{"analysis":{"resources":{"profile":"constrained","limits":{"max_source_bytes":33}}}}"#.as_slice(),
+        ] {
+            let error = analysis_options_with_resource_ceiling(
+                input,
+                "interactive",
+                &[("max_source_bytes", 32)],
+            )
+            .unwrap_err();
+            assert_eq!(error.status(), BindingStatus::OptionsJsonError);
+            assert!(error.message().contains("requested 33, maximum 32"));
+        }
+    }
+
+    #[cfg(feature = "analysis")]
+    #[test]
+    fn resource_ceiling_json_enforces_the_normalized_wire_byte_budget() {
+        let prefix = r#"{"site_config":{"padding":""#;
+        let suffix = r#""}}"#;
+        let input = format!(
+            "{prefix}{}{suffix}",
+            "x".repeat(BINDING_OPTIONS_JSON_MAX_BYTES - prefix.len() - suffix.len())
+        );
+        assert_eq!(input.len(), BINDING_OPTIONS_JSON_MAX_BYTES);
+
+        let error = apply_resource_ceiling_json(input.as_bytes(), "interactive", &[]).unwrap_err();
+        assert_eq!(error.status(), BindingStatus::ResourceLimitExceeded);
+        assert_eq!(
+            error.resource_details().unwrap().limit_id,
+            BINDING_OPTIONS_JSON_LIMIT_ID
+        );
+        let options =
+            analysis_options_with_resource_ceiling(input.as_bytes(), "interactive", &[]).unwrap();
+        assert_eq!(options.max_source_bytes(), Some(2 * 1024 * 1024));
+        assert_eq!(options.max_document_diagrams(), Some(256));
     }
 
     #[cfg(feature = "svg")]
@@ -4442,6 +4683,60 @@ mod tests {
         let value: Value = serde_json::from_slice(&constrained).unwrap();
 
         assert_eq!(value["resources"]["profile"], "constrained");
+    }
+
+    #[cfg(all(feature = "analysis", feature = "svg"))]
+    #[test]
+    fn analysis_resource_ceiling_preserves_theme_admission_and_error_order() {
+        for wrapper in [None, Some("analysis"), Some("merman")] {
+            let mut input = wrapper
+                .map(|wrapper| serde_json::json!({ wrapper: {} }))
+                .unwrap_or_else(|| serde_json::json!({}));
+            input["theme"] = serde_json::json!({ "preset": "editor-light" });
+            let input = serde_json::to_vec(&input).unwrap();
+            let options =
+                analysis_options_with_resource_ceiling(&input, "constrained", &[]).unwrap();
+            assert_eq!(options.max_source_bytes(), Some(1024 * 1024));
+            assert_eq!(options.max_document_diagrams(), Some(128));
+        }
+
+        for (input, message) in [
+            (
+                br#"{"version":2,"theme":{"spec":null}}"#.as_slice(),
+                "unsupported options_json schema version",
+            ),
+            (
+                br#"{"theme":{"spec":null},"fixed_today":"invalid"}"#.as_slice(),
+                "must not be null",
+            ),
+            (
+                br#"{"theme":{"preset":"editor-dark","spec":{}},"fixed_today":"invalid"}"#
+                    .as_slice(),
+                "must not contain both `preset` and `spec`",
+            ),
+        ] {
+            let typed_error =
+                analysis_options_with_resource_ceiling(input, "constrained", &[]).unwrap_err();
+            let wire_error = apply_resource_ceiling_json(input, "constrained", &[]).unwrap_err();
+            assert_eq!(typed_error.status(), BindingStatus::OptionsJsonError);
+            assert!(typed_error.message().contains(message), "{typed_error:?}");
+            assert_eq!(typed_error.message(), wire_error.message());
+        }
+
+        let maximum = merman::svg::ThemeResourcePolicy::constrained()
+            .value(merman::svg::ThemeResourceLimitId::MaxThemeEncodedBytes)
+            .unwrap();
+        let input = format!(
+            r#"{{"version":2,"theme":{{{}"preset":"editor-light"}}}}"#,
+            " ".repeat(maximum)
+        );
+        let error = analysis_options_with_resource_ceiling(input.as_bytes(), "constrained", &[])
+            .unwrap_err();
+        assert_eq!(error.status(), BindingStatus::ResourceLimitExceeded);
+        let details = error.resource_details().unwrap();
+        assert_eq!(details.limit_id, "max_theme_encoded_bytes");
+        assert_eq!(details.profile, "constrained");
+        assert_eq!(details.max, u64::try_from(maximum).unwrap());
     }
 
     #[test]
