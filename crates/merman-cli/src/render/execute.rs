@@ -229,7 +229,7 @@ fn execute_graphical_with_pipeline(
                     );
                     let (svg, _) = svg.into_parts();
                     #[cfg(feature = "markdown")]
-                    let metadata = svg_metadata(&svg);
+                    let metadata = chart.map_or((None, None), |_| svg_metadata(&svg));
                     Ok(ExecutedArtifact {
                         bytes: svg.into_bytes(),
                         theme_result,
@@ -249,7 +249,7 @@ fn execute_graphical_with_pipeline(
                     merman::RenderOutput::Document(Some(document)),
                 ) => {
                     #[cfg(feature = "markdown")]
-                    let metadata = svg_metadata(document.svg());
+                    let metadata = chart.map_or((None, None), |_| svg_metadata(document.svg()));
                     let export = document.prepare_png_export(options, control.clone())?;
                     let report = export.export_report();
                     let actual_weight = super::admission::actual_raster_weight(
@@ -295,7 +295,7 @@ fn execute_graphical_with_pipeline(
                     merman::RenderOutput::Document(Some(document)),
                 ) => {
                     #[cfg(feature = "markdown")]
-                    let metadata = svg_metadata(document.svg());
+                    let metadata = chart.map_or((None, None), |_| svg_metadata(document.svg()));
                     let export = document.prepare_jpeg_export(options, control.clone())?;
                     let report = export.export_report();
                     let actual_weight = super::admission::actual_raster_weight(
@@ -341,7 +341,7 @@ fn execute_graphical_with_pipeline(
                     merman::RenderOutput::Document(Some(document)),
                 ) => {
                     #[cfg(feature = "markdown")]
-                    let metadata = svg_metadata(document.svg());
+                    let metadata = chart.map_or((None, None), |_| svg_metadata(document.svg()));
                     let export = document.prepare_pdf_export(options, control.clone())?;
                     let report = export.export_report();
                     let actual_weight = super::admission::actual_pdf_weight(
@@ -448,7 +448,7 @@ fn execute_raw_svg(
     stderr: &SharedWriter,
 ) -> Result<ExecutedArtifact, CliError> {
     #[cfg(feature = "markdown")]
-    let metadata = svg_metadata(svg.as_str());
+    let metadata = (None, None);
     match output {
         PreparedGraphicalOutput::Svg => Err(CliError::InvalidOutput(
             "SVG output entered the encoded backend".to_string(),

@@ -18,6 +18,18 @@ const TWO_CHARTS: &str = concat!(
     "```\n",
 );
 
+#[cfg(feature = "diagram-er")]
+const ISSUE_276_ER: &str = concat!(
+    "```mermaid\n",
+    "erDiagram\n",
+    "    accDescr: Test Description\n",
+    "\n",
+    "    a ::: A {\n",
+    "        uuid id\n",
+    "    }\n",
+    "```\n",
+);
+
 fn cli() -> PathBuf {
     assert_cmd::cargo::cargo_bin!("merman-cli").to_path_buf()
 }
@@ -116,6 +128,162 @@ fn snapshot_tree(root: &Path) -> BTreeMap<PathBuf, Vec<u8>> {
     let mut snapshot = BTreeMap::new();
     visit(root, root, &mut snapshot);
     snapshot
+}
+
+#[cfg(feature = "diagram-er")]
+fn assert_svg_accessibility(path: &Path, title: Option<&str>, desc: Option<&str>) {
+    let svg = fs::read_to_string(path).expect("read generated SVG");
+    let document = roxmltree::Document::parse(&svg).expect("valid generated SVG XML");
+    let root = document.root_element();
+    assert!(root.has_tag_name(("http://www.w3.org/2000/svg", "svg")));
+    let text = |tag| {
+        root.children()
+            .find(|node| node.has_tag_name(("http://www.w3.org/2000/svg", tag)))
+            .map(|node| {
+                node.descendants()
+                    .filter(|child| child.is_text())
+                    .filter_map(|child| child.text())
+                    .collect::<String>()
+            })
+    };
+    assert_eq!(text("title").as_deref(), title, "{}", path.display());
+    assert_eq!(text("desc").as_deref(), desc, "{}", path.display());
+}
+
+#[cfg(feature = "diagram-er")]
+#[test]
+fn mmdc_markdown_issue_276_exact_er_description_becomes_image_alt() {
+    let temp = tempfile::tempdir().expect("tempdir");
+    fs::write(temp.path().join("test.md"), ISSUE_276_ER).expect("write issue 276 input");
+
+    let output = run_in(
+        temp.path(),
+        &["mmdc", "-i", "test.md", "-o", "test_converted.md"],
+    );
+    assert_success(&output);
+
+    assert_svg_accessibility(
+        &temp.path().join("test_converted-1.svg"),
+        None,
+        Some("Test Description"),
+    );
+    assert_eq!(
+        fs::read_to_string(temp.path().join("test_converted.md"))
+            .expect("read issue 276 Markdown output"),
+        "![Test Description](./test_converted-1.svg)\n"
+    );
+}
+
+#[cfg(all(
+    feature = "diagram-er",
+    feature = "diagram-flowchart",
+    feature = "diagram-sequence"
+))]
+#[test]
+fn markdown_accessibility_metadata_stays_with_each_chart_in_mixed_batches() {
+    let source = [
+        ISSUE_276_ER,
+        concat!(
+            "```mermaid\nsequenceDiagram\n",
+            "    accTitle: Calls \"quoted\" \\ route\n",
+            "    accDescr: Second [chart] \\ path & \"quoted\"\n",
+            "    Alice->>Bob: Hello\n```\n",
+        ),
+        concat!(
+            "```mermaid\nflowchart LR\n",
+            "    accDescr {\n",
+            "        First [line] & one\n",
+            "        Second \\ line\n",
+            "    }\n",
+            "    A-->B\n```\n",
+        ),
+        concat!(
+            "```mermaid\nerDiagram\n",
+            "    accTitle: Title only\n",
+            "    a {\n        uuid id\n    }\n```\n",
+        ),
+        concat!(
+            "```mermaid\nerDiagram\n",
+            "    accDescr {}\n",
+            "    a {\n        uuid id\n    }\n```\n",
+        ),
+        "```mermaid\nerDiagram\n    a {\n        uuid id\n    }\n```\n",
+    ]
+    .join("\n");
+    let job_counts = [
+        None,
+        #[cfg(feature = "parallel-markdown")]
+        Some("3"),
+    ];
+    for jobs in job_counts {
+        let temp = tempfile::tempdir().expect("tempdir");
+        fs::write(temp.path().join("mixed.md"), &source).expect("write mixed Markdown input");
+
+        for (mut args, markdown_path, artifact_directory, stem) in [
+            (
+                vec!["mmdc", "-i", "mixed.md", "-o", "mixed_converted.md"],
+                "mixed_converted.md",
+                "",
+                "mixed_converted",
+            ),
+            (
+                vec!["batch", "mixed.md", "--output-dir", "generated"],
+                "generated/mixed.md",
+                "generated",
+                "mixed",
+            ),
+        ] {
+            if let Some(jobs) = jobs {
+                args.extend(["--jobs", jobs]);
+            }
+            args.push("--quiet");
+            let output = run_in(temp.path(), &args);
+            assert_success(&output);
+
+            let expected = format!(
+                r#"![Test Description](./{stem}-1.svg)
+
+![Second \[chart\] \\ path & "quoted"](./{stem}-2.svg "Calls \"quoted\" \\ route")
+
+![First \[line\] & one
+Second \\ line](./{stem}-3.svg)
+
+![diagram](./{stem}-4.svg "Title only")
+
+![diagram](./{stem}-5.svg)
+
+![diagram](./{stem}-6.svg)
+"#
+            );
+            let rewritten = fs::read_to_string(temp.path().join(markdown_path))
+                .expect("read mixed Markdown output");
+            assert_eq!(rewritten, expected, "args={args:?}, jobs={jobs:?}");
+
+            for (index, (title, desc)) in [
+                (None, Some("Test Description")),
+                (
+                    Some(r#"Calls "quoted" \ route"#),
+                    Some(r#"Second [chart] \ path & "quoted""#),
+                ),
+                (None, Some("First [line] & one\nSecond \\ line")),
+                (Some("Title only"), None),
+                (None, None),
+                (None, None),
+            ]
+            .into_iter()
+            .enumerate()
+            {
+                assert_svg_accessibility(
+                    &temp
+                        .path()
+                        .join(artifact_directory)
+                        .join(format!("{stem}-{}.svg", index + 1)),
+                    title,
+                    desc,
+                );
+            }
+        }
+    }
 }
 
 #[test]
