@@ -269,6 +269,8 @@ class WorkflowSecurityBoundaries(unittest.TestCase):
                           "dart run tool/theme_authoring_smoke.dart"):
             self.assertIn(operation, builder)
         self.assertIn("merman-flutter-native-assets", builder)
+        self.assertIn('.head_sha == env.NATIVE_SOURCE_SHA', builder)
+        self.assertIn('--source-sha "$NATIVE_SOURCE_SHA" --source-tree "$NATIVE_SOURCE_TREE"', builder)
         self.assertIn("--paginate --slurp", builder)
         self.assertIn("artifact-ids: ${{ steps.native-producer.outputs.artifact_id }}", builder)
         self.assertIn("scripts/flutter_native_assets.py materialize", builder)
@@ -276,6 +278,52 @@ class WorkflowSecurityBoundaries(unittest.TestCase):
                           "Build Apple and desktop native libraries", "Freeze target native assets"):
             step = builder.split(f"      - name: {step_name}\n", 1)[1].split("\n      - ", 1)[0]
             self.assertIn("if: ${{ inputs.native_run_id == '' }}", step)
+
+    @unittest.skipUnless(BASH and shutil.which("jq"), "producer validation requires Bash and jq")
+    def test_flutter_native_reuse_rejects_wrong_or_unqualified_producers(self) -> None:
+        builder = read(WORKFLOW_ROOT / "build-flutter.yml")
+        step = builder.split("      - name: Verify the selected native producer\n", 1)[1].split("\n      - ", 1)[0]
+        command = textwrap.dedent(step.split("        run: |\n", 1)[1])
+        run = {
+            "repository": {"full_name": "example/project"}, "status": "completed",
+            "head_sha": "a" * 40, "event": "push", "conclusion": "failure",
+            "path": ".github/workflows/release-flutter.yml",
+        }
+        jobs = [{"jobs": [{"name": "build / build", "status": "completed", "conclusion": "success"}]}]
+        artifact = {"id": 101, "name": "merman-flutter-native-assets", "expired": False}
+        cases = (
+            (run, jobs, [artifact], True),
+            (dict(run, head_sha="b" * 40), jobs, [artifact], False),
+            (dict(run, event="pull_request"), jobs, [artifact], False),
+            (dict(run, path=".github/workflows/ci.yml"), jobs, [artifact], False),
+            (run, [{"jobs": [{"name": "build / build", "status": "completed", "conclusion": "failure"}]}], [artifact], False),
+            (run, jobs, [dict(artifact, expired=True)], False),
+            (run, jobs, [artifact, dict(artifact, id=102)], False),
+        )
+        for index, (run_data, job_data, artifacts, accepted) in enumerate(cases):
+            with self.subTest(case=index), tempfile.TemporaryDirectory() as temporary:
+                root = Path(temporary)
+                (root / "run.json").write_text(json.dumps(run_data))
+                (root / "jobs.json").write_text(json.dumps(job_data))
+                (root / "artifacts.json").write_text(json.dumps([{"artifacts": artifacts}]))
+                fake = root / "gh"
+                fake.write_text(
+                    '#!/bin/sh\ncase "$*" in\n'
+                    '  *artifacts*) cat "$RUNNER_TEMP/artifacts.json" ;;\n'
+                    '  *jobs*) cat "$RUNNER_TEMP/jobs.json" ;;\n'
+                    '  *) cat "$RUNNER_TEMP/run.json" ;;\nesac\n'
+                )
+                fake.chmod(0o755)
+                result = subprocess.run(
+                    [BASH, "-c", command], capture_output=True, text=True,
+                    env=dict(os.environ, PATH=str(root) + os.pathsep + os.environ["PATH"],
+                             RUNNER_TEMP=str(root), GITHUB_OUTPUT=str(root / "output"),
+                             NATIVE_RUN_ID="42", NATIVE_SOURCE_SHA="a" * 40,
+                             REPOSITORY="example/project"),
+                )
+                self.assertEqual(result.returncode == 0, accepted, result.stderr)
+                if accepted:
+                    self.assertEqual((root / "output").read_text(), "artifact_id=101\n")
 
     def test_flutter_upload_does_not_rerun_hooks_or_resend_unknown_outcomes(self) -> None:
         publish = workflow_job(read(WORKFLOW_ROOT / "release-flutter.yml"), "publish")

@@ -11,6 +11,14 @@ on:
         description: "Reviewed immutable facade source commit"
         required: true
         type: string
+      native_source_sha:
+        description: "Immutable workspace commit that produced the native libraries"
+        required: true
+        type: string
+      native_source_tree:
+        description: "Workspace tree paired with native_source_sha"
+        required: true
+        type: string
       native_run_id:
         description: "Completed Flutter/preflight run holding the original native assets; empty builds them"
         required: false
@@ -31,13 +39,20 @@ jobs:
         env:
           RELEASE_TAG: ${{ inputs.release_tag }}
           SOURCE_SHA: ${{ inputs.source_sha }}
+          NATIVE_SOURCE_SHA: ${{ inputs.native_source_sha }}
+          NATIVE_SOURCE_TREE: ${{ inputs.native_source_tree }}
           NATIVE_RUN_ID: ${{ inputs.native_run_id }}
         run: |
           set -euo pipefail
           semver_re='(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-(alpha|beta|rc)\.(0|[1-9][0-9]*))?(\+[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*)?'
           [[ "$RELEASE_TAG" =~ ^v${semver_re}$ ]] || exit 1
           [[ "$SOURCE_SHA" =~ ^[0-9a-f]{40}$ ]] || exit 1
+          [[ "$NATIVE_SOURCE_SHA" =~ ^[0-9a-f]{40}$ ]] || exit 1
+          [[ "$NATIVE_SOURCE_TREE" =~ ^[0-9a-f]{40}$ ]] || exit 1
           [[ -z "$NATIVE_RUN_ID" || "$NATIVE_RUN_ID" =~ ^[1-9][0-9]*$ ]] || exit 1
+          if [[ -z "$NATIVE_RUN_ID" ]]; then
+            test "$SOURCE_SHA" = "$NATIVE_SOURCE_SHA"
+          fi
           printf 'version=%s\n' "${RELEASE_TAG#v}" >> "$GITHUB_OUTPUT"
 
       - uses: actions/checkout@v7.0.1
@@ -49,9 +64,14 @@ jobs:
         id: source
         env:
           SOURCE_SHA: ${{ inputs.source_sha }}
+          NATIVE_SOURCE_TREE: ${{ inputs.native_source_tree }}
+          NATIVE_RUN_ID: ${{ inputs.native_run_id }}
         run: |
           set -euo pipefail
           test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
+          if [[ -z "$NATIVE_RUN_ID" ]]; then
+            test "$(git rev-parse 'HEAD^{tree}')" = "$NATIVE_SOURCE_TREE"
+          fi
           printf 'source_tree=%s\n' "$(git rev-parse 'HEAD^{tree}')" >> "$GITHUB_OUTPUT"
 
       - name: Verify candidate version projections
@@ -65,16 +85,22 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           NATIVE_RUN_ID: ${{ inputs.native_run_id }}
+          NATIVE_SOURCE_SHA: ${{ inputs.native_source_sha }}
           REPOSITORY: ${{ github.repository }}
         run: |
           set -euo pipefail
           gh api "repos/$REPOSITORY/actions/runs/$NATIVE_RUN_ID" > "$RUNNER_TEMP/native-run.json"
           jq -e --arg repository "$REPOSITORY" '
             .repository.full_name == $repository and .status == "completed" and
+            .head_sha == env.NATIVE_SOURCE_SHA and
             (.event == "workflow_dispatch" or .event == "push") and
             (.path == ".github/workflows/release-flutter.yml" or
              .path == ".github/workflows/release-preflight.yml")
           ' "$RUNNER_TEMP/native-run.json" > /dev/null
+          gh api --paginate --slurp "repos/$REPOSITORY/actions/runs/$NATIVE_RUN_ID/jobs?per_page=100" | \
+            jq -e '[.[].jobs[] | select(.name == "build" or .name == "build / build" or
+              .name == "flutter-dry-run / build")] | length == 1 and
+              .[0].status == "completed" and .[0].conclusion == "success"' > /dev/null
           gh api --paginate --slurp "repos/$REPOSITORY/actions/runs/$NATIVE_RUN_ID/artifacts?per_page=100" | \
             jq -er '[.[].artifacts[] | select(.name == "merman-flutter-native-assets")] |
               if length == 1 and .[0].expired == false then .[0].id
@@ -143,9 +169,9 @@ jobs:
       - name: Freeze target native assets
         if: ${{ inputs.native_run_id == '' }}
         env:
-          SOURCE_SHA: ${{ inputs.source_sha }}
-          SOURCE_TREE: ${{ steps.source.outputs.source_tree }}
           VERSION: ${{ steps.release.outputs.version }}
+          NATIVE_SOURCE_SHA: ${{ inputs.native_source_sha }}
+          NATIVE_SOURCE_TREE: ${{ inputs.native_source_tree }}
           RELEASE_TAG: ${{ inputs.release_tag }}
           REPOSITORY: ${{ github.repository }}
         run: |
@@ -153,27 +179,34 @@ jobs:
             --native-root platforms/flutter/native \
             --output "$RUNNER_TEMP/flutter-native-assets" \
             --base-url "https://github.com/$REPOSITORY/releases/download/$RELEASE_TAG/" \
-            --source-sha "$SOURCE_SHA" --source-tree "$SOURCE_TREE" --version "$VERSION"
+            --source-sha "$NATIVE_SOURCE_SHA" --source-tree "$NATIVE_SOURCE_TREE" --version "$VERSION"
 
       - name: Verify the frozen native assets
         env:
           VERSION: ${{ steps.release.outputs.version }}
+          NATIVE_SOURCE_SHA: ${{ inputs.native_source_sha }}
+          NATIVE_SOURCE_TREE: ${{ inputs.native_source_tree }}
           RELEASE_TAG: ${{ inputs.release_tag }}
           REPOSITORY: ${{ github.repository }}
         run: |
           python3 scripts/flutter_native_assets.py verify \
             --manifest "$RUNNER_TEMP/flutter-native-assets/native-assets.json" \
             --assets-root "$RUNNER_TEMP/flutter-native-assets" --version "$VERSION" \
+            --source-sha "$NATIVE_SOURCE_SHA" --source-tree "$NATIVE_SOURCE_TREE" \
             --base-url "https://github.com/$REPOSITORY/releases/download/$RELEASE_TAG/"
 
       - name: Restore the reused host library for source checks
         if: ${{ inputs.native_run_id != '' }}
+        env:
+          NATIVE_SOURCE_SHA: ${{ inputs.native_source_sha }}
+          NATIVE_SOURCE_TREE: ${{ inputs.native_source_tree }}
         run: |
           host_target="$(python3 -c 'import platform; print("macos/arm64" if platform.machine().lower() in {"arm64", "aarch64"} else "macos/x86_64")')"
           python3 scripts/flutter_native_assets.py materialize \
             --manifest "$RUNNER_TEMP/flutter-native-assets/native-assets.json" \
             --assets-root "$RUNNER_TEMP/flutter-native-assets" \
-            --native-root platforms/flutter/native --target "$host_target"
+            --native-root platforms/flutter/native --target "$host_target" \
+            --source-sha "$NATIVE_SOURCE_SHA" --source-tree "$NATIVE_SOURCE_TREE"
 
       - name: Setup Flutter
         uses: subosito/flutter-action@v2.23.0

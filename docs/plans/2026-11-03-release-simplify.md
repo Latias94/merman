@@ -97,9 +97,14 @@ without performing another publication.
   across skipped uploads. The completed three-crate bootstrap workflow and tests are removed.
 - Independent correctness and security reviews found one cross-run Flutter resend hole, now
   closed by checking all runs/attempts for the immutable authentication tag before a send.
+- Native reuse also requires a successful producer build, the workspace tag's exact commit/tree,
+  and unchanged main-Release URLs. A failed registry upload may retain a successful native build;
+  a different source or unqualified native producer cannot be imported.
 - Local validation passes 319 focused tests plus 115 release-regression tests, followed by 111
   targeted history/security checks after the cross-run repair. Actionlint 1.7.12 and high-severity
   zizmor 1.30.1 report no findings for the changed workflows.
+- The complete hygiene Python suite passes 1,052 tests before the final native-producer checks;
+  the follow-up workflow/history/surface subset passes 120 tests.
 - A real Dart 3.12.2/macOS ARM64 consumer uses the corrected frozen facade with the original alpha
   native manifest/assets. Official pub.dev dry-run has zero warnings; runtime/formula/callback and
   frozen-release theme consumers pass. This proves native Dart composition, not a newly executed

@@ -1496,6 +1496,8 @@ jobs:
     with:
       release_tag: ${{ needs.validate-inputs.outputs.release_tag }}
       source_sha: ${{ needs.validate-inputs.outputs.source_sha }}
+      native_source_sha: ${{ needs.validate-inputs.outputs.source_sha }}
+      native_source_tree: ${{ needs.validate-inputs.outputs.source_tree }}
 
   sdk-archives:
     if: ${{ inputs.scope == 'release' }}

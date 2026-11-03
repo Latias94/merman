@@ -40,6 +40,8 @@ jobs:
       source_sha: ${{ steps.source.outputs.source_sha }}
       source_tree: ${{ steps.source.outputs.source_tree }}
       authentication_sha: ${{ steps.source.outputs.authentication_sha }}
+      native_source_sha: ${{ steps.source.outputs.native_source_sha }}
+      native_source_tree: ${{ steps.source.outputs.native_source_tree }}
       release_tag: ${{ steps.release.outputs.release_tag }}
       authentication_tag: ${{ steps.release.outputs.authentication_tag }}
       publish: ${{ steps.release.outputs.publish }}
@@ -106,15 +108,26 @@ jobs:
         run: |
           set -euo pipefail
           source_sha="$(git rev-parse 'HEAD^{commit}')"
-          if [[ "$PUBLISH" == true ]]; then
-            printf 'authentication_sha=%s\n' "$(git rev-parse "refs/tags/$AUTHENTICATION_TAG^{commit}")" >> "$GITHUB_OUTPUT"
+          native_source_sha="$source_sha"
+          native_source_tree="$(git rev-parse 'HEAD^{tree}')"
+          if [[ "$PUBLISH" == true || -n "$NATIVE_RUN_ID" ]]; then
+            git fetch --no-tags origin \
+              "refs/tags/$RELEASE_TAG:refs/tags/$RELEASE_TAG"
+            native_source_sha="$(git rev-parse "refs/tags/$RELEASE_TAG^{commit}")"
+            native_source_tree="$(git rev-parse "refs/tags/$RELEASE_TAG^{tree}")"
+            if [[ "$PUBLISH" == true && -z "$NATIVE_RUN_ID" ]]; then
+              test "$source_sha" = "$native_source_sha"
+            fi
           fi
-          if [[ "$PUBLISH" == true && -z "$NATIVE_RUN_ID" ]]; then
-            test "$source_sha" = "$(git rev-parse "refs/tags/$RELEASE_TAG^{commit}")"
+          if [[ "$PUBLISH" == true ]]; then
+            authentication_sha="$(git rev-parse "refs/tags/$AUTHENTICATION_TAG^{commit}")"
+            printf 'authentication_sha=%s\n' "$authentication_sha" >> "$GITHUB_OUTPUT"
           fi
           {
             printf 'source_sha=%s\n' "$source_sha"
             printf 'source_tree=%s\n' "$(git rev-parse 'HEAD^{tree}')"
+            printf 'native_source_sha=%s\n' "$native_source_sha"
+            printf 'native_source_tree=%s\n' "$native_source_tree"
           } >> "$GITHUB_OUTPUT"
 
   build:
@@ -126,6 +139,8 @@ jobs:
     with:
       release_tag: ${{ needs.validate-inputs.outputs.release_tag }}
       source_sha: ${{ needs.validate-inputs.outputs.source_sha }}
+      native_source_sha: ${{ needs.validate-inputs.outputs.native_source_sha }}
+      native_source_tree: ${{ needs.validate-inputs.outputs.native_source_tree }}
       native_run_id: ${{ inputs.native_run_id }}
 
   pubdev_version:
@@ -194,6 +209,8 @@ jobs:
         env:
           SOURCE_SHA: ${{ needs.validate-inputs.outputs.source_sha }}
           SOURCE_TREE: ${{ needs.validate-inputs.outputs.source_tree }}
+          NATIVE_SOURCE_SHA: ${{ needs.validate-inputs.outputs.native_source_sha }}
+          NATIVE_SOURCE_TREE: ${{ needs.validate-inputs.outputs.native_source_tree }}
           VERSION: ${{ needs.validate-inputs.outputs.version }}
           RELEASE_TAG: ${{ needs.validate-inputs.outputs.release_tag }}
           REPOSITORY: ${{ github.repository }}
@@ -207,9 +224,9 @@ jobs:
           python3 trusted/scripts/flutter_native_assets.py verify \
             --manifest target/flutter-facade/hook/native-assets.json \
             --base-url "https://github.com/$REPOSITORY/releases/download/$RELEASE_TAG/" \
-            --version "$VERSION" --assets-root target/flutter-native-assets
-          native_source="$(python3 -c 'import json; print(json.load(open("target/flutter-facade/hook/native-assets.json"))["source_sha"])')"
-          printf 'source_sha=%s\n' "$native_source" >> "$GITHUB_OUTPUT"
+            --version "$VERSION" --source-sha "$NATIVE_SOURCE_SHA" \
+            --source-tree "$NATIVE_SOURCE_TREE" --assets-root target/flutter-native-assets
+          printf 'source_sha=%s\n' "$NATIVE_SOURCE_SHA" >> "$GITHUB_OUTPUT"
 
       - name: Upload missing native assets to the workspace Release
         env:
@@ -294,11 +311,14 @@ jobs:
           AUTHENTICATION_TAG: ${{ needs.validate-inputs.outputs.authentication_tag }}
           AUTHENTICATION_SHA: ${{ needs.validate-inputs.outputs.authentication_sha }}
           SOURCE_SHA: ${{ needs.publish-native-assets.outputs.native_source_sha }}
+          SOURCE_TREE: ${{ needs.validate-inputs.outputs.native_source_tree }}
         run: |
           set -euo pipefail
           gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$RELEASE_TAG" > /dev/null
           observed="$(gh api "repos/$GITHUB_REPOSITORY/commits/$RELEASE_TAG" --jq .sha)"
           test "$observed" = "$SOURCE_SHA"
+          native_tree="$(gh api "repos/$GITHUB_REPOSITORY/git/commits/$SOURCE_SHA" --jq .tree.sha)"
+          test "$native_tree" = "$SOURCE_TREE"
           gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$AUTHENTICATION_TAG" > /dev/null
           test "$(gh api "repos/$GITHUB_REPOSITORY/commits/$AUTHENTICATION_TAG" --jq .sha)" = "$AUTHENTICATION_SHA"
 

@@ -1079,7 +1079,8 @@ Release. Every manifest-pinned URL/digest must pass anonymous public readback be
 For a facade-only repair, select an original completed `release-flutter.yml` or
 `release-preflight.yml` run in this repository holding exactly one unexpired immutable
 `merman-flutter-native-assets` artifact. A successful preflight artifact uses the same name and
-schema and is reusable. Verify the optional pub.dev dispatch event first. Keep the authentication
+schema and is reusable. Its native build must have succeeded and its workflow source must match
+the workspace tag's native commit. Verify the optional pub.dev dispatch event first. Keep the authentication
 tag immutable and the native source at the workspace tag; review the newer facade commit
 separately:
 
