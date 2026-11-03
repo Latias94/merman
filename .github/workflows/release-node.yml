@@ -696,6 +696,43 @@ jobs:
             --source-sha "$SOURCE_SHA" \
             --target-dist-tag "$NPM_DIST_TAG"
 
+      - name: Check npm package-name bootstrap before any group upload
+        run: |
+          python3 - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+          import urllib.error
+          import urllib.parse
+          import urllib.request
+
+          manifest = json.loads(Path("target/node-npm-package-group/node-package-group.json").read_text())
+          missing = []
+          for package in manifest["packages"]:
+              name = package["name"]
+              url = "https://registry.npmjs.org/" + urllib.parse.quote(name, safe="@")
+              try:
+                  with urllib.request.urlopen(url, timeout=30) as response:
+                      metadata = json.load(response)
+              except urllib.error.HTTPError as error:
+                  if error.code != 404:
+                      raise
+                  missing.append(name)
+                  continue
+              if metadata.get("name") != name or not metadata.get("versions"):
+                  raise ValueError(f"Invalid npm project metadata for {name}")
+          if missing:
+              message = (
+                  "First publication is required for: " + ", ".join(missing) + ". "
+                  "No group upload was attempted. Bootstrap these names from this run's exact "
+                  "merman-node-npm-package-group artifact, configure their trusted publishers, "
+                  "then rerun only this failed publishing job. Do not rebuild the group."
+              )
+              with Path(os.environ["GITHUB_STEP_SUMMARY"]).open("a") as summary:
+                  summary.write(message + "\n")
+              raise SystemExit(message)
+          PY
+
       - name: Restore prior npm reconciliation report
         id: npm-recovery
         if: ${{ needs.validate-inputs.outputs.recovery_run_id != '' || github.run_attempt > 1 }}

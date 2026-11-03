@@ -4,12 +4,15 @@ from __future__ import annotations
 
 import io
 import json
+import os
 import shutil
 import subprocess
 import sys
 import tarfile
 import tempfile
+import textwrap
 import unittest
+import urllib.error
 from pathlib import Path
 from unittest import mock
 
@@ -25,6 +28,55 @@ from scripts.npm_package_group import (
 
 ROOT = Path(__file__).resolve().parents[1]
 DESCRIPTOR = ROOT / "platforms" / "node" / "package-surfaces.json"
+
+
+class NodeBootstrapBoundaryTests(unittest.TestCase):
+    def run_check(self, response: object) -> tuple[BaseException | None, str]:
+        workflow = (ROOT / ".github/workflows/release-node.yml").read_text()
+        step = workflow.split("- name: Check npm package-name bootstrap before any group upload\n", 1)[1].split("\n      - name:", 1)[0]
+        script = textwrap.dedent(step.split("        run: |\n", 1)[1])
+        code = script.split("python3 - <<'PY'\n", 1)[1].rsplit("\nPY", 1)[0]
+        manifest = json.dumps({"packages": [{"name": "@test/native"}]})
+        with tempfile.TemporaryDirectory() as temporary:
+            summary = Path(temporary) / "summary"
+            with mock.patch.object(Path, "read_text", return_value=manifest), mock.patch.dict(
+                os.environ, {"GITHUB_STEP_SUMMARY": str(summary)},
+            ), mock.patch("urllib.request.urlopen") as lookup:
+                if isinstance(response, BaseException):
+                    lookup.side_effect = response
+                else:
+                    lookup.return_value = io.StringIO(json.dumps(response))
+                failure = None
+                try:
+                    exec(compile(code, "node-bootstrap-check", "exec"), {})
+                except (SystemExit, ValueError, urllib.error.HTTPError) as error:
+                    failure = error
+            return failure, summary.read_text() if summary.exists() else ""
+
+    def test_existing_project_can_proceed_without_a_matching_release_version(self) -> None:
+        failure, summary = self.run_check({"name": "@test/native", "versions": {"0.1.0": {}}})
+        self.assertIsNone(failure)
+        self.assertEqual(summary, "")
+
+    def test_new_name_stops_before_upload_with_exact_artifact_handoff(self) -> None:
+        failure, summary = self.run_check(urllib.error.HTTPError("registry", 404, "missing", {}, None))
+        self.assertIsInstance(failure, SystemExit)
+        self.assertIn("@test/native", summary)
+        self.assertIn("No group upload was attempted", summary)
+        self.assertIn("this run's exact", summary)
+        workflow = (ROOT / ".github/workflows/release-node.yml").read_text()
+        self.assertLess(workflow.index("Check npm package-name bootstrap"), workflow.index("- name: Publish npm package group\n"))
+
+    def test_registry_failure_and_invalid_project_do_not_authorize_upload(self) -> None:
+        for response in (
+            urllib.error.HTTPError("registry", 503, "unavailable", {}, None),
+            {"name": "@other/native", "versions": {"0.1.0": {}}},
+            {"name": "@test/native", "versions": {}},
+        ):
+            with self.subTest(response=response):
+                failure, summary = self.run_check(response)
+                self.assertIsNotNone(failure)
+                self.assertEqual(summary, "")
 
 
 class NpmCliTests(unittest.TestCase):
