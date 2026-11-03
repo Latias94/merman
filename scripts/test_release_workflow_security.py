@@ -154,9 +154,9 @@ class WorkflowSecurityBoundaries(unittest.TestCase):
                 ),
             },
             "release-flutter.yml": {
-                "publish-native-assets": "github.event_name == 'push'",
+                "publish-native-assets": "needs.validate-inputs.outputs.publish == 'true'",
                 "publish": (
-                    "github.event_name == 'push' && needs.pubdev_version.outputs.exists != 'true'"
+                    "needs.validate-inputs.outputs.publish == 'true' && needs.pubdev_version.outputs.exists != 'true'"
                     " && needs.publish-native-assets.outputs.public_verified == 'true'"
                 ),
             },
@@ -169,8 +169,7 @@ class WorkflowSecurityBoundaries(unittest.TestCase):
                 if any(capability in workflow_job(text, name) for capability in WRITE_CAPABILITIES)
             }
             with self.subTest(workflow=filename):
-                if filename != "release-flutter.yml":
-                    self.assertRegex(text, r"(?m)^      publish:\n(?:        .*\n)*        default: false$")
+                self.assertRegex(text, r"(?m)^      publish:\n(?:        .*\n)*        default: false$")
                 self.assertEqual(privileged, set(expected))
                 for name, condition in expected.items():
                     job = workflow_job(text, name)
@@ -196,10 +195,99 @@ class WorkflowSecurityBoundaries(unittest.TestCase):
         self.assertIn("trusted/scripts/flutter_native_assets.py verify-public", assets)
         self.assertLess(assets.index("verify-public"), assets.index("echo 'verified=true'"))
         self.assertIn("public_verified: ${{ steps.public.outputs.verified }}", assets)
-        self.assertIn("      - pubdev_version\n", assets)
-        self.assertIn("      - publish-native-assets\n", publish)
+        self.assertIn("needs: [validate-inputs, build, pubdev_version]", assets)
+        self.assertIn("needs: [validate-inputs, build, pubdev_version, publish-native-assets]", publish)
         self.assertIn("needs.publish-native-assets.outputs.public_verified == 'true'", publish)
         self.assertNotIn("--clobber", assets)
+
+    @unittest.skipUnless(BASH, "workflow execution requires Bash")
+    def test_flutter_authentication_tag_does_not_require_another_github_release(self) -> None:
+        text = read(WORKFLOW_ROOT / "release-flutter.yml")
+        self.assertIn('      - "flutter-v*"', text)
+        self.assertNotIn("gh release create", text)
+        validate = workflow_job(text, "validate-inputs")
+        step = validate.split("      - name: Validate release inputs\n", 1)[1].split("\n      - ", 1)[0]
+        command = textwrap.dedent(step.split("        run: |\n", 1)[1])
+        commit = "a" * 40
+        tag = "v0.10.0-alpha.2"
+        cases = (
+            (False, "refs/heads/main", "main", "", "refs/heads/main"),
+            (False, "refs/heads/feature", commit, "", commit),
+            (True, f"refs/tags/flutter-{tag}", tag, "", f"refs/tags/{tag}"),
+            (True, f"refs/tags/flutter-{tag}", commit, "42", commit),
+            (True, f"refs/tags/{tag}", tag, "", None),
+            (True, "refs/heads/main", tag, "", None),
+            (True, "refs/tags/v0.10.0-alpha.1", tag, "", None),
+            (True, f"refs/tags/{tag}", "main", "", None),
+            (False, "refs/heads/main", "feature/other", "", None),
+            (False, "refs/heads/main", commit, "0", None),
+            (False, "refs/heads/main", commit, "42\n43", None),
+        )
+        for publish, git_ref, source, native_run_id, expected in cases:
+            with self.subTest(publish=publish, ref=git_ref, source=source, native_run=native_run_id):
+                with tempfile.TemporaryDirectory() as temporary:
+                    output = Path(temporary) / "output"
+                    result = subprocess.run(
+                        [BASH, "-c", command], capture_output=True, text=True,
+                        env=dict(os.environ, RELEASE_TAG=tag, SOURCE_REF=source,
+                                 NATIVE_RUN_ID=native_run_id, PUBLISH=str(publish).lower(),
+                                 GIT_REF=git_ref, EVENT_NAME="workflow_dispatch",
+                                 GITHUB_OUTPUT=str(output)),
+                    )
+                    if expected:
+                        self.assertEqual(result.returncode, 0, result.stderr)
+                        self.assertIn(f"source_ref={expected}\n", output.read_text())
+                        self.assertIn(f"release_tag={tag}\n", output.read_text())
+                        self.assertIn(f"authentication_tag=flutter-{tag}\n", output.read_text())
+                    else:
+                        self.assertNotEqual(result.returncode, 0)
+                        self.assertFalse(output.exists())
+        with tempfile.TemporaryDirectory() as temporary:
+            output = Path(temporary) / "output"
+            result = subprocess.run(
+                [BASH, "-c", command], capture_output=True, text=True,
+                env=dict(os.environ, RELEASE_TAG="", SOURCE_REF="", NATIVE_RUN_ID="",
+                         PUBLISH="", GIT_REF=f"refs/tags/flutter-{tag}", EVENT_NAME="push",
+                         GITHUB_OUTPUT=str(output)),
+            )
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertIn(f"release_tag={tag}\n", output.read_text())
+            self.assertIn("publish=true\n", output.read_text())
+
+    def test_flutter_preflight_and_publisher_share_the_read_only_builder(self) -> None:
+        builder = read(WORKFLOW_ROOT / "build-flutter.yml")
+        for workflow, job in (("release-preflight.yml", "flutter-dry-run"),
+                              ("release-flutter.yml", "build")):
+            call = workflow_job(read(WORKFLOW_ROOT / workflow), job)
+            self.assertIn("uses: ./.github/workflows/build-flutter.yml", call)
+            self.assertNotIn("runs-on:", call)
+            self.assertNotIn("secrets:", call)
+        for capability in WRITE_CAPABILITIES:
+            self.assertNotIn(capability, builder)
+        for operation in ("flutter_release_archive.py pack", "flutter_release_archive.py extract",
+                          "verify_flutter_pub_package.py", "qualify_packaged_app.py",
+                          "dart run tool/theme_authoring_smoke.dart"):
+            self.assertIn(operation, builder)
+        self.assertIn("merman-flutter-native-assets", builder)
+        self.assertIn("--paginate --slurp", builder)
+        self.assertIn("artifact-ids: ${{ steps.native-producer.outputs.artifact_id }}", builder)
+        self.assertIn("scripts/flutter_native_assets.py materialize", builder)
+        for step_name in ("Install Rust toolchain", "Build Android native libraries",
+                          "Build Apple and desktop native libraries", "Freeze target native assets"):
+            step = builder.split(f"      - name: {step_name}\n", 1)[1].split("\n      - ", 1)[0]
+            self.assertIn("if: ${{ inputs.native_run_id == '' }}", step)
+
+    def test_flutter_upload_does_not_rerun_hooks_or_resend_unknown_outcomes(self) -> None:
+        publish = workflow_job(read(WORKFLOW_ROOT / "release-flutter.yml"), "publish")
+        self.assertLess(publish.index("flutter_release_archive.py extract"),
+                        publish.index("Setup Dart with pub.dev OIDC credentials"))
+        self.assertLess(publish.index("--owner flutter"), publish.index("dart pub publish"))
+        self.assertIn('--authentication-tag "$AUTHENTICATION_TAG"', publish)
+        self.assertIn('--authentication-sha "$AUTHENTICATION_SHA"', publish)
+        self.assertIn("--force --skip-validation", publish)
+        self.assertNotIn("dart run", publish)
+        self.assertNotIn("flutter pub get", publish)
+        self.assertFalse((WORKFLOW_ROOT / "release-crates-bootstrap.yml").exists())
 
     def test_apple_floor_uses_real_swift_59_and_retains_apple_consumers(self) -> None:
         workflow = read(CI_WORKFLOW)
@@ -1844,22 +1932,18 @@ jobs:
             with self.subTest(surface=surface):
                 publish = workflow_job(read(WORKFLOW_ROOT / f"release-{surface}.yml"), "publish")
                 self.assertIn("Restore prior npm reconciliation report", publish)
-                self.assertIn("github.run_attempt > 1", publish)
-                self.assertIn("github.run_attempt > 1 && github.run_id || needs.validate-inputs.outputs.recovery_run_id", publish)
+                self.assertIn("RUN_ATTEMPT: ${{ github.run_attempt }}", publish)
                 self.assertIn("--paginate --slurp", publish)
-                find_report = publish.split("find_report() {", 1)[1].split("\n          }", 1)[0]
-                self.assertNotIn("--jq", find_report)
-                self.assertIn('jq -r --arg expected_name "$expected_name"', find_report)
-                self.assertIn("if length == 1 then .[0].name else empty end", find_report)
-                self.assertIn("prior_attempt=$((RUN_ATTEMPT - 1))", publish)
+                self.assertIn("--select-npm-report --ancestor-run-id", publish)
+                self.assertIn("artifact-ids: ${{ steps.npm-recovery.outputs.artifact_id }}", publish)
+                self.assertIn("run-id: ${{ steps.npm-recovery.outputs.run_id }}", publish)
                 self.assertIn("--publication-run-id", publish)
                 self.assertIn("--recovery-run-id", publish)
-                self.assertIn('RECOVERY_RUN_ID="$ANCESTOR_RUN_ID"', publish)
                 self.assertNotIn("sort_by(.id) | last", publish)
                 self.assertIn("--recovery-report target/npm-recovery/reconciliation-report.json", publish)
-                self.assertIn("recovery_args+=(--observe-only)", publish)
+                self.assertIn("recovery_args=(--observe-only)", publish)
                 self.assertIn("scripts/release_attempt_history.py", publish)
-                self.assertIn('if [ "$history" != "never-attempted" ]; then', publish)
+                self.assertIn('if [ "$OBSERVE_ONLY" = "false" ]; then', publish)
                 self.assertIn("Retain the exact recovery package group", publish)
                 self.assertIn("github.run_attempt == 1", publish)
                 self.assertIn(f"merman-{surface}-npm-reconciliation-report-attempt-", publish)

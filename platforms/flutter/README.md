@@ -57,6 +57,10 @@ For this version, the manifest's native asset URLs use the release path
 such as `merman-flutter-native-0.10.0-alpha.1-macos-arm64.gz`. Keep the facade, manifest and
 target assets from the same release together.
 
+Future workspace releases attach these assets to the main `v<version>` Merman Release rather
+than creating another Flutter Release. Existing versions retain their original download URLs;
+the hook always follows the manifest packaged with the installed version.
+
 The cache lives in the hooks runner's `outputDirectoryShared` under `.dart_tool`. Preserve that
 directory between online and offline builds of the same app and package version. Configure
 acquisition in the **consuming app's** `pubspec.yaml`:

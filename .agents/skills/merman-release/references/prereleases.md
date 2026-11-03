@@ -20,7 +20,12 @@ Done: fresh downstream resolution and the required previous-facade lane compile.
 
 Qualify the projected version at its frozen source with `scope=release`; unreleased
 `scope=bindings` evidence does not admit a new prerelease. Use the version projection's npm
-dist-tag and Python PEP 440 mapping, and the owners' matching workspace/Flutter tag formats.
+dist-tag and Python PEP 440 mapping. Main-line Flutter uses the workspace `v<version>` tag as the
+native source anchor and Release destination. Push its `flutter-v<version>` authentication tag only
+after that primary Release exists; this triggers publication without a separate Flutter Release.
+The existing pub.dev publisher pattern and 0.9.x maintenance workflow remain unchanged. Only manual
+publication recovery needs the optional pub.dev dispatch event and an authentication-tag workflow
+ref; see Required Credentials.
 Keep a new compatibility line's intentional breaks in migration notes; do not infer same-line
 backward compatibility or universal theme qualification from an alpha label.
 
@@ -35,6 +40,11 @@ unselected workspace development at `[Unreleased]`. Bind the reviewed source com
 owner manifest. A newer source than the same-named workspace tag is a distinct publication
 snapshot, so record that source mapping and provenance separately. Keep other publishers outside
 the requested scope.
+
+For a Flutter facade-only snapshot, follow [recovery](recovery.md): the newer reviewed facade
+commit needs `native_run_id`, while the unchanged native manifest must still identify the workspace
+tag's source. Requalify the facade against the reused bytes; a channel backfill cannot rewrite an
+accepted package or historical native download URL.
 
 Done: the channel artifact's source, version and provenance are verified, with any historical
 exception or cross-channel source difference recorded in the publication receipt.

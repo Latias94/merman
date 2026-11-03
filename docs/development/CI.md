@@ -77,6 +77,14 @@ Retain the compiler/SDK versions and results in release evidence. Neither Linux 
 Apple SDK nor a deployment-target flag establishes that older-stack result. The migration
 does not raise the package's declared Swift or OS requirements.
 
+## Flutter Binding Checks
+
+Flutter preflight and publication call the same read-only `build-flutter.yml` candidate owner.
+It freezes the thin package and target assets, checks the source binding, and runs the external
+relocated macOS app consumer before retaining artifacts. A facade repair may explicitly reuse
+an original native-asset run; the same candidate checks then exercise the repaired facade against
+those unchanged libraries. Upload and OIDC permissions remain in `release-flutter.yml` only.
+
 ## Windows Checkout Paths
 
 Repository-relative tracked paths are limited to 160 UTF-16 code units by

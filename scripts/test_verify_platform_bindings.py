@@ -64,11 +64,7 @@ class NativeSdkRecipeTests(unittest.TestCase):
             MODULE_PATH.parents[1]
             / ".github"
             / "workflows"
-            / "release-flutter.yml",
-            MODULE_PATH.parents[1]
-            / ".github"
-            / "workflows"
-            / "release-preflight.yml",
+            / "build-flutter.yml",
         )
 
         self.assertIn('sdk: ">=3.10.0 <4.0.0"', pubspec)
