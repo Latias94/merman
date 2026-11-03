@@ -256,6 +256,7 @@ def create_archive(
     native_manifest: Path | None = None,
     limits: ArchiveLimits = DEFAULT_LIMITS,
 ) -> dict[str, object]:
+    """Bind facade source to the receipt and include a same-version native manifest verbatim."""
     receipt = _receipt_identity(source_sha, source_tree, version)
     package_root, archive_path, receipt_path = map(Path, (package_root, archive_path, receipt_path))
     if archive_path.name != ARCHIVE_NAME or receipt_path.name != RECEIPT_NAME:
@@ -269,7 +270,8 @@ def create_archive(
 
     if native_manifest is not None:
         try:
-            load_manifest(native_manifest, version=version, source_sha=source_sha, source_tree=source_tree)
+            # Native source is independent; the archive digest binds its frozen manifest bytes.
+            load_manifest(native_manifest, version=version)
         except NativeAssetsError as error:
             raise FlutterReleaseArchiveError(str(error)) from error
     files = _collect_files(package_root, limits, thin=native_manifest is not None)
@@ -465,6 +467,7 @@ def verify_and_extract(
     require_thin: bool = False,
     limits: ArchiveLimits = DEFAULT_LIMITS,
 ) -> dict[str, object]:
+    """Verify facade identity and archive bytes, then validate the thin native manifest's version."""
     expected = _receipt_identity(expected_source_sha, expected_source_tree, expected_version)
     archive_path, receipt_path, destination = map(Path, (archive_path, receipt_path, destination))
     if archive_path.name != ARCHIVE_NAME or receipt_path.name != RECEIPT_NAME:
@@ -492,8 +495,7 @@ def verify_and_extract(
         _scan_archive(stream, limits, destination=destination, expected=signatures)
     if require_thin:
         try:
-            load_manifest(destination / MANIFEST_PATH, version=expected_version,
-                          source_sha=expected_source_sha, source_tree=expected_source_tree)
+            load_manifest(destination / MANIFEST_PATH, version=expected_version)
         except NativeAssetsError as error:
             raise FlutterReleaseArchiveError(str(error)) from error
     return receipt

@@ -14,6 +14,7 @@ import unittest
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
+from flutter_native_assets import MANIFEST_PATH, TARGET_LIBRARIES, stage
 from flutter_release_archive import (
     ARCHIVE_NAME,
     DEFAULT_LIMITS,
@@ -29,6 +30,8 @@ from flutter_release_archive import (
 
 SOURCE_SHA = "1" * 40
 SOURCE_TREE = "2" * 40
+NATIVE_SOURCE_SHA = "3" * 40
+NATIVE_SOURCE_TREE = "4" * 40
 VERSION = "0.8.0-alpha.5"
 
 
@@ -138,40 +141,143 @@ class FlutterReleaseArchiveTests(unittest.TestCase):
         with self.assertRaisesRegex(FlutterReleaseArchiveError, "digest"):
             self.verify(archive, receipt, root / "publish-digest")
 
-    def test_thin_archive_contains_frozen_manifest_and_no_native_or_owner_tooling(self):
-        from flutter_native_assets import TARGET_LIBRARIES, stage
-
+    def test_thin_archive_composes_distinct_sources_and_preserves_original_manifest(self):
         root = self.case("thin")
         package = root / "package"
         self.write_package(package)
-        for target, library in TARGET_LIBRARIES.items():
-            path = package / "native" / target / library
-            path.parent.mkdir(parents=True)
-            path.write_bytes(b"frozen native fixture")
+        manifest_path = self.write_native_manifest(root)
+        manifest_bytes = b"\r\n" + manifest_path.read_bytes().replace(b"\n", b"\r\n") + b"\t\r\n"
+        manifest_path.write_bytes(manifest_bytes)
         (package / "tool").mkdir()
         (package / "tool/owner.dart").write_text("repository only")
-        stage(
-            package / "native", root / "assets", version=VERSION,
-            source_sha=SOURCE_SHA, source_tree=SOURCE_TREE,
-            base_url=f"https://example.org/flutter-v{VERSION}/",
+        (package / "hook").mkdir()
+        (package / MANIFEST_PATH).write_text("{}\n", encoding="utf-8")
+        archive, receipt = root / ARCHIVE_NAME, root / RECEIPT_NAME
+        created = create_archive(
+            package, archive, receipt, source_sha=SOURCE_SHA,
+            source_tree=SOURCE_TREE, version=VERSION,
+            native_manifest=manifest_path,
         )
+        self.assertEqual(created, {
+            "schema_version": SCHEMA_VERSION,
+            "package": PACKAGE_NAME,
+            "version": VERSION,
+            "source_sha": SOURCE_SHA,
+            "source_tree": SOURCE_TREE,
+            "archive_sha256": hashlib.sha256(archive.read_bytes()).hexdigest(),
+        })
+        with tarfile.open(archive, "r:gz") as packed:
+            with packed.extractfile(MANIFEST_PATH) as manifest:
+                self.assertEqual(manifest.read(), manifest_bytes)
+        destination = root / "publish"
+        verified = self.verify(archive, receipt, destination, require_thin=True)
+        self.assertEqual(created, verified)
+        self.assertFalse((destination / "native").exists())
+        self.assertFalse((destination / "tool").exists())
+        self.assertEqual((destination / MANIFEST_PATH).read_bytes(), manifest_bytes)
+        self.assertEqual(manifest_path.read_bytes(), manifest_bytes)
+        manifest = json.loads(manifest_bytes)
+        self.assertEqual(manifest["source_sha"], NATIVE_SOURCE_SHA)
+        self.assertEqual(manifest["source_tree"], NATIVE_SOURCE_TREE)
+        self.assertTrue(all(
+            entry["url"].startswith(f"https://example.org/flutter-v{VERSION}/")
+            for entry in manifest["targets"].values()
+        ))
+
+    def test_original_schema1_alpha_archive_and_receipt_remain_extractable(self) -> None:
+        root = self.case("original-alpha")
+        manifest_path = self.write_native_manifest(
+            root, source_sha=SOURCE_SHA, source_tree=SOURCE_TREE,
+        )
+        manifest_bytes = manifest_path.read_bytes()
+        archive, receipt = self.write_raw_artifact(
+            root, [raw_member(MANIFEST_PATH, manifest_bytes)],
+        )
+        archive_bytes, receipt_bytes = archive.read_bytes(), receipt.read_bytes()
+        destination = root / "publish"
+
+        verified = self.verify(archive, receipt, destination, require_thin=True)
+
+        self.assertEqual(verified, json.loads(receipt_bytes))
+        self.assertEqual((destination / MANIFEST_PATH).read_bytes(), manifest_bytes)
+        self.assertEqual(archive.read_bytes(), archive_bytes)
+        self.assertEqual(receipt.read_bytes(), receipt_bytes)
+
+    def test_pack_and_extract_reject_wrong_native_version(self) -> None:
+        root = self.case("wrong-native-version")
+        manifest_path = self.write_native_manifest(root, version="0.8.0-alpha.6")
+        self.assert_native_manifest_rejected(
+            root, manifest_path.read_bytes(), "version identity differs",
+        )
+
+    def test_pack_and_extract_reject_malformed_native_identity_and_targets(self) -> None:
+        root = self.case("malformed-native")
+        manifest = json.loads(self.write_native_manifest(root).read_bytes())
+        for name, field, value, pattern in (
+            ("schema", "schema_version", 2, "schema"),
+            ("package", "package", "other", "package identity"),
+            ("source-sha", "source_sha", "not-a-sha", "source_sha identity"),
+            ("source-tree", "source_tree", None, "source_tree identity"),
+            ("missing-targets", "targets", {}, "supported targets"),
+        ):
+            with self.subTest(name=name):
+                self.assert_native_manifest_rejected(
+                    self.case(name), json.dumps({**manifest, field: value}).encode(), pattern,
+                )
+
+        target = "macos/arm64"
+        entry = manifest["targets"][target]
+        for name, field, value, pattern in (
+            ("asset-path", "asset", "../escape.gz", "asset name"),
+            ("library-path", "library", "../escape.dylib", "library name"),
+            ("asset-hash", "sha256", "not-a-digest", "native sha256"),
+            ("library-hash", "library_sha256", "0" * 63, "native library_sha256"),
+            ("asset-size", "size", 0, "native size"),
+            ("library-size", "library_size", -1, "native library_size"),
+            ("asset-url", "url", "https://example.org/wrong.gz", "asset URL"),
+        ):
+            with self.subTest(name=name):
+                changed = {
+                    **manifest,
+                    "targets": {**manifest["targets"], target: {**entry, field: value}},
+                }
+                self.assert_native_manifest_rejected(
+                    self.case(name), json.dumps(changed).encode(), pattern,
+                )
+
+        for name, data in (("invalid-json", b"{"), ("not-an-object", b"[]")):
+            with self.subTest(name=name):
+                self.assert_native_manifest_rejected(
+                    self.case(name), data, "cannot read.*manifest|manifest schema",
+                )
+
+    def test_thin_archive_digest_rejects_changed_native_manifest(self) -> None:
+        root = self.case("manifest-tamper")
+        package = root / "package"
+        self.write_package(package)
+        manifest_path = self.write_native_manifest(root)
         archive, receipt = root / ARCHIVE_NAME, root / RECEIPT_NAME
         create_archive(
             package, archive, receipt, source_sha=SOURCE_SHA,
-            source_tree=SOURCE_TREE, version=VERSION,
-            native_manifest=root / "assets/native-assets.json",
+            source_tree=SOURCE_TREE, version=VERSION, native_manifest=manifest_path,
         )
+        manifest = json.loads(manifest_path.read_bytes())
+        manifest["targets"]["macos/arm64"]["library_sha256"] = "a" * 64
+        tampered = root / "tampered.tar.gz"
+        with tarfile.open(archive, "r:gz") as original, tarfile.open(tampered, "w:gz") as changed:
+            for member in original:
+                with original.extractfile(member) as source:
+                    data = source.read()
+                if member.name == MANIFEST_PATH:
+                    data = json.dumps(manifest).encode()
+                    member.size = len(data)
+                changed.addfile(member, io.BytesIO(data))
+        tampered.replace(archive)
         destination = root / "publish"
-        verify_and_extract(
-            archive, receipt, destination, expected_source_sha=SOURCE_SHA,
-            expected_source_tree=SOURCE_TREE, expected_version=VERSION, require_thin=True,
-        )
-        self.assertFalse((destination / "native").exists())
-        self.assertFalse((destination / "tool").exists())
-        self.assertEqual(
-            (destination / "hook/native-assets.json").read_bytes(),
-            (root / "assets/native-assets.json").read_bytes(),
-        )
+
+        with self.assertRaisesRegex(FlutterReleaseArchiveError, "archive digest"):
+            self.verify(archive, receipt, destination, require_thin=True)
+        self.assertFalse(destination.exists())
 
     def test_required_thin_extraction_rejects_legacy_package_before_writing(self):
         root = self.case("require-thin")
@@ -330,6 +436,43 @@ class FlutterReleaseArchiveTests(unittest.TestCase):
         return archive, receipt
 
     @staticmethod
+    def write_native_manifest(
+        root: Path,
+        *,
+        version: str = VERSION,
+        source_sha: str = NATIVE_SOURCE_SHA,
+        source_tree: str = NATIVE_SOURCE_TREE,
+    ) -> Path:
+        native_root = root / "package/native"
+        for target, library in TARGET_LIBRARIES.items():
+            path = native_root / target / library
+            path.parent.mkdir(parents=True)
+            path.write_bytes(f"frozen native fixture: {target}".encode())
+        stage(
+            native_root, root / "assets", version=version,
+            source_sha=source_sha, source_tree=source_tree,
+            base_url=f"https://example.org/flutter-v{version}/",
+        )
+        return root / "assets/native-assets.json"
+
+    def assert_native_manifest_rejected(self, root: Path, data: bytes, pattern: str) -> None:
+        package = root / "package"
+        self.write_package(package)
+        manifest_path = root / "invalid-native-assets.json"
+        manifest_path.write_bytes(data)
+        archive, receipt = root / ARCHIVE_NAME, root / RECEIPT_NAME
+        with self.assertRaisesRegex(FlutterReleaseArchiveError, pattern):
+            create_archive(
+                package, archive, receipt, source_sha=SOURCE_SHA,
+                source_tree=SOURCE_TREE, version=VERSION, native_manifest=manifest_path,
+            )
+        self.assertFalse(archive.exists())
+        self.assertFalse(receipt.exists())
+        archive, receipt = self.write_raw_artifact(root, [raw_member(MANIFEST_PATH, data)])
+        with self.assertRaisesRegex(FlutterReleaseArchiveError, pattern):
+            self.verify(archive, receipt, root / "publish", require_thin=True)
+
+    @staticmethod
     def write_raw_artifact(
         root: Path,
         additions: list[tuple[tarfile.TarInfo, bytes]],
@@ -386,6 +529,7 @@ class FlutterReleaseArchiveTests(unittest.TestCase):
         receipt: Path,
         destination: Path,
         *,
+        require_thin: bool = False,
         limits: ArchiveLimits = DEFAULT_LIMITS,
     ) -> dict[str, object]:
         return verify_and_extract(
@@ -395,6 +539,7 @@ class FlutterReleaseArchiveTests(unittest.TestCase):
             expected_source_sha=SOURCE_SHA,
             expected_source_tree=SOURCE_TREE,
             expected_version=VERSION,
+            require_thin=require_thin,
             limits=limits,
         )
 
