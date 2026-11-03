@@ -2,7 +2,7 @@
 
 ## [0.10.0-alpha.1] - 2026-11-02
 
-Changes below are relative to the published `0.9.3` package. These alpha bindings are available from source only; see the [host installation guide](../../docs/release/PREBUILT_PRODUCTS.md) for published versions.
+Changes below are relative to `0.9.3`. Install the exact prerelease with `flutter pub add 'merman:0.10.0-alpha.1'`; see the [host installation guide](../../docs/release/PREBUILT_PRODUCTS.md) for stable and alpha choices.
 
 ### Breaking changes
 

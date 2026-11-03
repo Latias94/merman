@@ -5,7 +5,7 @@ import 'dart:io';
 import 'package:crypto/crypto.dart';
 import 'package:hooks/hooks.dart';
 
-import '../lib/src/generated/package_version.dart';
+import 'generated/package_version.dart';
 
 const nativeManifestPath = 'hook/native-assets.json';
 

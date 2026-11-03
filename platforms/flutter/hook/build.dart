@@ -1,7 +1,7 @@
 import 'package:code_assets/code_assets.dart';
 import 'package:hooks/hooks.dart';
 
-import 'native_assets.dart';
+import '../lib/src/native_assets.dart';
 
 const _assetName = 'src/generated/native_abi.dart';
 
