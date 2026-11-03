@@ -44,6 +44,8 @@ struct MermaidReferenceBundle {
     playground: WorkspaceLocation,
     reference_cli: ReferenceCli,
     renderer_tools: Vec<PackageReference>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    behavior_dependencies: Vec<PackageReference>,
     install_policy: InstallPolicy,
     feature_decision: FeatureDecision,
     generated_outputs: Vec<String>,
@@ -323,6 +325,7 @@ fn package_references(bundle: &MermaidReferenceBundle) -> Vec<&PackageReference>
     ];
     references.extend(bundle.external_layouts.iter());
     references.extend(bundle.renderer_tools.iter());
+    references.extend(bundle.behavior_dependencies.iter());
     for diagram in &bundle.external_diagrams {
         references.extend([&diagram.plugin, &diagram.behavior]);
     }
@@ -440,6 +443,14 @@ fn validate_bundle(bundle: &MermaidReferenceBundle) -> Result<(), XtaskError> {
         failures.push(
             "externalLayouts must contain only selected external-layout packages".to_string(),
         );
+    }
+    if bundle
+        .behavior_dependencies
+        .iter()
+        .any(|reference| reference.role != "behavior")
+    {
+        failures
+            .push("behaviorDependencies must contain only selected behavior packages".to_string());
     }
     for reference in materialized_runtime_references(bundle)? {
         if reference.installed_content_sha256.is_none() {
@@ -1428,6 +1439,7 @@ fn workspace_graph_expectations<'a>(
         &bundle.sanitizer,
     ];
     playground_expected.extend(layout_refs.iter().copied());
+    playground_expected.extend(bundle.behavior_dependencies.iter());
     let puppeteer = bundle
         .renderer_tools
         .iter()
@@ -1455,18 +1467,21 @@ fn workspace_graph_expectations<'a>(
     ];
     cli_expected.extend(layout_refs.iter().copied());
     cli_expected.extend(bundle.renderer_tools.iter());
+    cli_expected.extend(bundle.behavior_dependencies.iter());
+    let mut required_overrides = vec![&zenuml.behavior, &bundle.sanitizer];
+    required_overrides.extend(bundle.behavior_dependencies.iter());
     vec![
         WorkspaceGraphExpectation {
             workspace: "playground",
             direct_dependencies: playground_direct,
             expected_packages: playground_expected,
-            required_overrides: vec![&zenuml.behavior, &bundle.sanitizer],
+            required_overrides: required_overrides.clone(),
         },
         WorkspaceGraphExpectation {
             workspace: &bundle.reference_cli.workspace,
             direct_dependencies: cli_direct,
             expected_packages: cli_expected,
-            required_overrides: vec![&zenuml.behavior, &bundle.sanitizer],
+            required_overrides,
         },
     ]
 }
@@ -1774,6 +1789,28 @@ fn selection_identity_from_bundle_value(bundle: &JsonValue) -> Result<JsonValue,
             .insert(
                 "rendererTools".to_string(),
                 JsonValue::Array(selected_renderer_tools),
+            );
+    }
+    if let Some(dependencies) = bundle
+        .get("behaviorDependencies")
+        .and_then(JsonValue::as_array)
+        && !dependencies.is_empty()
+    {
+        let mut dependencies = dependencies
+            .iter()
+            .map(package_selection_identity)
+            .collect::<Result<Vec<_>, _>>()?;
+        dependencies.sort_by(|left, right| {
+            left.get("package")
+                .and_then(JsonValue::as_str)
+                .cmp(&right.get("package").and_then(JsonValue::as_str))
+        });
+        identity
+            .as_object_mut()
+            .expect("selection identity is an object")
+            .insert(
+                "behaviorDependencies".to_string(),
+                JsonValue::Array(dependencies),
             );
     }
     Ok(identity)
@@ -2396,6 +2433,61 @@ mod tests {
         let root = crate::cmd::workspace_root();
         let bundle = load_bundle(&root.join(BUNDLE_RELATIVE_PATH)).expect("load bundle");
         verify_selection_receipt(&root, &bundle).expect("verify committed receipt");
+    }
+
+    #[test]
+    fn behavior_dependencies_bind_receipts_packages_and_both_runtime_workspaces() {
+        let root = crate::cmd::workspace_root();
+        let previous = read_json(&root.join(BUNDLE_RELATIVE_PATH)).unwrap();
+        let mut selected = previous.clone();
+        let mut dependency = selected["release"].clone();
+        dependency["id"] = serde_json::json!("elkjs");
+        dependency["role"] = serde_json::json!("behavior");
+        dependency["package"] = serde_json::json!("elkjs");
+        selected["behaviorDependencies"] = serde_json::json!([dependency]);
+        let bundle: MermaidReferenceBundle = serde_json::from_value(selected.clone()).unwrap();
+        validate_bundle(&bundle).unwrap();
+        assert!(
+            package_references(&bundle)
+                .iter()
+                .any(|package| package.package == "elkjs")
+        );
+        assert!(
+            materialized_runtime_references(&bundle)
+                .unwrap()
+                .iter()
+                .any(|package| package.package == "elkjs")
+        );
+        let zenuml = bundle
+            .external_diagrams
+            .iter()
+            .find(|diagram| diagram.id == "zenuml")
+            .unwrap();
+        for workspace in workspace_graph_expectations(&bundle, zenuml) {
+            assert!(
+                workspace
+                    .expected_packages
+                    .iter()
+                    .any(|package| package.package == "elkjs")
+            );
+            assert!(
+                workspace
+                    .required_overrides
+                    .iter()
+                    .any(|package| package.package == "elkjs")
+            );
+        }
+        let previous_identity = selection_identity_from_bundle_value(&previous).unwrap();
+        let current_identity = selection_identity_from_bundle_value(&selected).unwrap();
+        assert_ne!(
+            selection_identity_digest(&previous_identity).unwrap(),
+            selection_identity_digest(&current_identity).unwrap()
+        );
+        assert!(
+            changed_current_selection_packages(&previous_identity, &current_identity)
+                .iter()
+                .any(|(package, _, _)| package == "elkjs")
+        );
     }
 
     #[test]

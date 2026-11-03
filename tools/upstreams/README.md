@@ -36,6 +36,12 @@ esbuild compiler, are selected packages rather than ambient tooling. They carry 
 source identity, installed-content digests, lock verification, and selection-receipt coverage
 alongside Mermaid and its runtime companions.
 
+`behaviorDependencies` binds algorithm and normalization packages that Mermaid imports from the
+selected npm graph, including layout engines. Each record participates in selection receipts,
+source verification, installed-content digests and both workspace locks. Explicit overrides keep
+these behavior owners consistent between the Playground and reference CLI; a source range alone
+does not establish which implementation produced an artifact.
+
 The executable behavior oracle is the selected npm graph. `tools/mermaid-cli/reference-runtime.mjs`
 builds a self-contained browser artifact from Mermaid's module entry point using the selected
 esbuild compiler and the reference CLI's installed packages. Baseline generation, renderability
