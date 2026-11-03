@@ -6,11 +6,11 @@ The format is based on Keep a Changelog, and this package follows the merman wor
 
 ## [0.10.0-alpha.1] - 2026-11-02
 
-Changes below are relative to the published `0.9.3` package.
+Changes below are relative to the published `0.9.3` package. These alpha bindings are available from source only; see the [host installation guide](../../docs/release/PREBUILT_PRODUCTS.md) for published versions.
 
 ### Added
 
-- Install a complete local SwiftPM package containing the matching Swift sources, resources, notices and XCFramework without a Rust checkout. A separate remote-delivery archive prepares the package for URL-based installation; hosting its repository and version tag remains a separate rollout. See the [installation guide](README.md#add-the-complete-swift-package). [#265](https://github.com/Latias94/merman/pull/265), [#266](https://github.com/Latias94/merman/pull/266)
+- Install a complete local SwiftPM package containing the matching Swift sources, resources, notices and XCFramework without a Rust checkout. URL-based installation requires the matching thin package in a hosted repository with a version tag. See the [installation guide](README.md#add-the-complete-swift-package). [#265](https://github.com/Latias94/merman/pull/265), [#266](https://github.com/Latias94/merman/pull/266)
 - Render formulas with the ordinary SVG product; no custom math-enabled build is needed. Image encoders and system font discovery remain outside this product.
 - Apply 11 alpha theme presets or share your own editable JSON recipe. `themeCatalogJson()` lists presets and their intended diagram families; theme authoring operations export recipes and query styling support for your diagram and output. See the [theme guide and gallery](../../docs/rendering/custom-diagram-themes.md) for examples and alpha limitations. [#178](https://github.com/Latias94/merman/pull/178), [#223](https://github.com/Latias94/merman/pull/223), [#234](https://github.com/Latias94/merman/pull/234), [#253](https://github.com/Latias94/merman/pull/253)
 
@@ -24,9 +24,7 @@ Changes below are relative to the published `0.9.3` package.
 
 ## [0.9.3] - 2026-10-30
 
-The matching XCFramework archive and checksum are available on the
-[v0.9.3 Release](https://github.com/Latias94/merman/releases/tag/v0.9.3). Use the `v0.9.3`
-checkout for the generated Swift facade and `Package.swift`.
+The matching XCFramework archive and checksum are available on the [v0.9.3 Release](https://github.com/Latias94/merman/releases/tag/v0.9.3). Use the `v0.9.3` checkout for the generated Swift facade and `Package.swift`.
 
 - Fix clipped labels, font sizing, literal text, and HTML/entity handling, including wrapped Swimlane edge labels and valid Class-note XML. [#245](https://github.com/Latias94/merman/pull/245), [#247](https://github.com/Latias94/merman/pull/247), [#250](https://github.com/Latias94/merman/pull/250)
 - Restore Neo shadows in Sequence diagrams and GitGraph tag backgrounds, and prevent Sequence boxes from clipping at the diagram edges. [#255](https://github.com/Latias94/merman/pull/255)

@@ -6,7 +6,7 @@ The format is based on Keep a Changelog, and this package follows the merman wor
 
 ## [0.10.0-alpha.1] - 2026-11-02
 
-For users upgrading from the published `0.9.2` package, this release also includes the [source-only `0.9.3` fixes below](#093---2026-10-30).
+Changes below are relative to the published `0.9.3` package. These alpha bindings are available from source only; see the [host installation guide](../../docs/release/PREBUILT_PRODUCTS.md) for published versions.
 
 ### Breaking changes
 
@@ -18,13 +18,13 @@ For users upgrading from the published `0.9.2` package, this release also includ
 
 ### Added
 
-- Resolve the AAR and its dependencies from a complete, selected-version Maven repository archive. A signed Central upload bundle is prepared separately; this does not establish an available Maven Central release. See the [Maven installation guide](README.md#resolve-a-candidate-maven-publication). [#265](https://github.com/Latias94/merman/pull/265), [#266](https://github.com/Latias94/merman/pull/266)
+- Resolve the AAR and its dependencies from a complete, selected-version Maven repository archive. See the [Maven installation guide](README.md#resolve-a-candidate-maven-publication). [#265](https://github.com/Latias94/merman/pull/265), [#266](https://github.com/Latias94/merman/pull/266)
 - Render formulas with the ordinary SVG product; no custom math-enabled build is needed. Image encoders and system font discovery remain outside this product.
 - Apply 11 alpha theme presets or share your own editable JSON recipe. `themeCatalogJson()` lists presets and their intended diagram families; theme authoring operations export recipes and query styling support for your diagram and output. See the [theme guide and gallery](../../docs/rendering/custom-diagram-themes.md) for examples and alpha limitations. [#178](https://github.com/Latias94/merman/pull/178), [#223](https://github.com/Latias94/merman/pull/223), [#234](https://github.com/Latias94/merman/pull/234), [#253](https://github.com/Latias94/merman/pull/253)
 
 ## [0.9.3] - 2026-10-30
 
-These changes are available in the `v0.9.3` source. The published AAR release asset remains at `0.9.2`.
+The `0.9.3` AAR is available on the [v0.9.3 Release](https://github.com/Latias94/merman/releases/tag/v0.9.3).
 
 - Fix clipped labels, font sizing, literal text, and HTML/entity handling, including wrapped Swimlane edge labels and valid Class-note XML. [#245](https://github.com/Latias94/merman/pull/245), [#247](https://github.com/Latias94/merman/pull/247), [#250](https://github.com/Latias94/merman/pull/250)
 - Restore Neo shadows in Sequence diagrams and GitGraph tag backgrounds, and prevent Sequence boxes from clipping at the diagram edges. [#255](https://github.com/Latias94/merman/pull/255)

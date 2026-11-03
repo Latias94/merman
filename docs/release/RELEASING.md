@@ -9,8 +9,10 @@ uses its own `flutter-v<version>` tag because pub.dev requires a tag-triggered w
 Android, Apple, Web, Node, and VS Code remain owner-dispatched surfaces.
 
 Main's [binding delivery plan](../plans/2026-11-01-1248-refactor-binding-delivery-plan.md)
-adds complete SVG math products and ecosystem-specific handoffs. These are unreleased changes;
-they do not replace published 0.9.x artifacts. Use [prebuilt product choices](PREBUILT_PRODUCTS.md)
+adds complete SVG math products and ecosystem-specific handoffs. The selected Rust, CLI/LSP,
+C/WASI SDK and Web surfaces shipped in `0.10.0-alpha.1`; the other alpha bindings remain prepared
+source until their own channel release. Stable binding backfills retain the original 0.9.x products
+and do not deliver main's math or packaging changes. Use [prebuilt product choices](PREBUILT_PRODUCTS.md)
 for host selection and the tagged package guides for existing installations. Candidate
 qualification, a complete handoff and a publicly resolvable package are distinct release states.
 
@@ -118,11 +120,12 @@ GitHub Release assets confirms the exact version and matching artifacts. A succe
 preflight build, an existing Actions artifact, or an asset name alone does not prove delivery of
 the selected source and bytes.
 
-The public GitHub Release body must identify the channels actually delivered and the deferred
-channels still on their verified older versions. Keep selected channels awaiting delivery explicitly
-pending, and add download links only for confirmed public artifacts. Detailed source identities,
-receipts, and dated observations remain in Publish Order; this scope review adds no automatic
-publication of deferred channels.
+Write the public GitHub Release body for users: final capabilities, behavior changes, required
+upgrade actions, examples and relevant limitations. Link the host installation guide for package
+and version choices; add download links only for confirmed public artifacts. Record selected,
+pending and deferred delivery, upload counts, workflow recovery, source identities and receipts
+in Publish Order. Do not copy that operator ledger into release notes or changelogs. This scope
+review adds no automatic publication of deferred channels.
 
 The SDK workflow is deliberately separate from the normal tag-triggered Release: preflight uploads
 qualified SDK archives as Actions artifacts, while `release-sdk-publish.yml` manually attaches them
@@ -245,7 +248,8 @@ can be registered. Inspect the release's package plan for new names, bootstrap e
 crate in dependency order, then configure its owning workflow binding for later versions. Record
 the exact accepted version and checksum in Publish Order.
 
-For `0.10.0-alpha.1`, the explicit `release-crates-bootstrap.yml` owner admits only
+The `0.10.0-alpha.1` first publication is complete. Do not dispatch bootstrap again for that
+accepted release. For historical recovery, the explicit `release-crates-bootstrap.yml` owner admits only
 `merman-model`, `merman-theme-contract`, and `merman-markup`. It uses the existing environment
 secret without exporting it from Actions or changing the ordinary OIDC publisher. Run it once
 after complete source-matched release preflight and before pushing the workspace tag:
@@ -567,7 +571,7 @@ Keep the target Changelog entry marked `Unreleased` during ordinary preparation.
 
 Treat the root `CHANGELOG.md` as the canonical project-wide release narrative and package changelogs as audience-specific projections of the same release delta. Update only the package changelogs for surfaces included in the release; do not copy the complete root entry or create one changelog per Rust crate.
 
-For a stable release following several prereleases, make the pending stable entry cumulative from the previous stable version and label that comparison explicitly. Lead with an upgrade-path table and final breaking contracts, then group new capabilities, changes/fixes, security, measurement evidence, and availability by user impact. Keep published alpha entries unchanged; use the versioned upgrade guides for incremental alpha-to-alpha actions. Do not carry superseded intermediate API names or alpha-only benchmark claims into the final contract. The stable upgrade guide owns detailed old-to-new instructions and examples; the embedding guide owns runnable Rust recipes. Package projections must use their own publication boundary (for example, Node has no 0.7.0 package), final schema/API versions, and actual capability recipe.
+For a stable release following several prereleases, make the pending stable entry cumulative from the previous stable version and label that comparison explicitly. Lead with an upgrade-path table and final breaking contracts, then group new capabilities, changes/fixes, security, measurement evidence and adoption-relevant limitations by user impact. Keep published alpha entries unchanged except for factual or editorial corrections; use the versioned upgrade guides for incremental alpha-to-alpha actions. Do not carry superseded intermediate API names or alpha-only benchmark claims into the final contract. The stable upgrade guide owns detailed old-to-new instructions and examples; the embedding guide owns runnable Rust recipes. Package projections must use their own publication boundary (for example, Node has no 0.7.0 package), final schema/API versions, and actual capability recipe.
 
 
 | Surface | Registry or audience behavior | Changelog source |
@@ -1014,8 +1018,9 @@ gh workflow run release-sdk-publish.yml \
 
 This step adds all 18 native C and WASI SDK archives to the existing Release only after checking the
 producer run, tag commit, manifests, catalogs, payload hashes, and checksum sidecars. It does not
-rebuild the SDK or update the release notes body; after verifying the assets, add a concise download
-table for the available profiles and targets to that release's notes.
+rebuild the SDK or update the release notes body. After verifying the assets, link the SDK guide
+and explain its profile choices in the release notes when those choices are new for the release;
+keep the complete target/download matrix in the installation guide.
 
 The VS Code workflow currently packages and verifies platform VSIX artifacts only; Marketplace or
 Open VSX publishing requires a separate credential-backed release workflow.

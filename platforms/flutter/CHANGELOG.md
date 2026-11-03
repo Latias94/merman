@@ -2,7 +2,7 @@
 
 ## [0.10.0-alpha.1] - 2026-11-02
 
-For users upgrading from the published `0.9.2` package, this release also includes the [source-only `0.9.3` fixes below](#093---2026-10-30).
+Changes below are relative to the published `0.9.3` package. These alpha bindings are available from source only; see the [host installation guide](../../docs/release/PREBUILT_PRODUCTS.md) for published versions.
 
 ### Breaking changes
 
@@ -20,7 +20,7 @@ For users upgrading from the published `0.9.2` package, this release also includ
 
 ## [0.9.3] - 2026-10-30
 
-These changes are available in the `v0.9.3` source. The published pub.dev package remains at `0.9.2`.
+These fixes are included in the published `0.9.3` pub.dev package.
 
 - Fix clipped labels, font sizing, literal text, and HTML/entity handling, including wrapped Swimlane edge labels and valid Class-note XML. [#245](https://github.com/Latias94/merman/pull/245), [#247](https://github.com/Latias94/merman/pull/247), [#250](https://github.com/Latias94/merman/pull/250)
 - Restore Neo shadows in Sequence diagrams and GitGraph tag backgrounds, and prevent Sequence boxes from clipping at the diagram edges. [#255](https://github.com/Latias94/merman/pull/255)

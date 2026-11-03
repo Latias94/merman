@@ -4,12 +4,12 @@ Choose a package or artifact for the environment where you use Merman. Match gen
 and native or WASM artifacts to the same Merman version.
 
 For ordinary prebuilt use, start with [host and output choices](PREBUILT_PRODUCTS.md).
-The `0.10.0-alpha.1` ordinary SVG products include math and both layout engines; the native C/WASI
-full SDKs remain the recommendation for explicit fonts and binary outputs. Expert source features
-and reduced SDK recipes remain available. The expanded binding products and delivery handoffs are
-part of this alpha candidate under [ADR-0101](../adr/0101-binding-product-delivery.md) and the
-[binding delivery plan](../plans/2026-11-01-1248-refactor-binding-delivery-plan.md); they do not
-change published v0.9.x assets.
+The alpha's Web full/render and ordinary SVG binding recipes include math and both layout
+engines; the native C/WASI full SDKs are the recommendation for explicit fonts and binary outputs.
+Expert source features and reduced SDK recipes remain available. The expanded native binding
+recipes and delivery handoffs are available from the alpha source under
+[ADR-0101](../adr/0101-binding-product-delivery.md); consult the host guide for matching prebuilt
+versions. They do not change published v0.9.x capabilities.
 
 ## Release versions
 
@@ -24,7 +24,7 @@ This transition does not change package versions, feature ownership, or transpor
 
 The alpha uses Options JSON schema `3` and Web transport API `8`, including prepared sources and mounted diagrams. Its projected package version does not establish publication. The [host guide](PREBUILT_PRODUCTS.md#published-versions) records verified channel versions; use immutable `v0.9.3` and its matching documentation for the published maintenance APIs. See the [alpha changelog](../../CHANGELOG.md#0100-alpha1---2026-11-02) for required migrations.
 
-Independent prerequisites prepared for this alpha are `roughr-merman 0.12.5` and Tree-sitter `0.3.2`; their latest verified published versions remain `0.12.4` and `0.3.1` until their own release owners complete. Typst wrapper `0.5.0` bundles Merman `0.9.0`; wrapper `0.4.0` bundles `0.8.0`. See the [dependency policy](../DEPENDENCY_POLICY.md) for compatible version requirements and intentional upgrade exceptions.
+This alpha requires the independently published `roughr-merman 0.12.5` and Tree-sitter `0.3.2`. Typst wrapper `0.5.0` bundles Merman `0.9.0`; wrapper `0.4.0` bundles `0.8.0`. See the [dependency policy](../DEPENDENCY_POLICY.md) for compatible version requirements and intentional upgrade exceptions.
 
 ## Choose A Surface
 
@@ -39,10 +39,10 @@ Independent prerequisites prepared for this alpha are `roughr-merman 0.12.5` and
 | Checked Rustdoc fragments with no consumer renderer dependency | `merman-cli rustdoc` | Default source CLI and standard release archive |
 | One-step Rustdoc Mermaid attributes | `merman-rustdoc` | crates.io |
 | Browser SVG, analysis, ASCII, or editor SDK | one `@mermanjs/web*` package | npm package group |
-| Native Node.js / static-site SVG rendering | `@mermanjs/node` | npm package group (alpha) |
+| Native Node.js / static-site SVG rendering | `@mermanjs/node` | npm package group; select a version in the host guide |
 | Python host integration | `merman` | PyPI and release wheels; main targets five OS/CPU combinations |
 | Flutter/Dart host integration | `merman` | pub.dev; main freezes a thin facade with target-pinned native assets |
-| Android host integration | Maven coordinate selected by the publisher on main; legacy `merman-android-<tag>.aar` for published 0.9.2 | Complete Maven repository ZIP and signed Central bundle handoff; Central rollout is separate |
+| Android host integration | Maven coordinate selected by the publisher on main; legacy `merman-android-<tag>.aar` for published 0.9.3 | Complete Maven repository ZIP and signed Central bundle handoff; Central rollout is separate |
 | Apple host integration | Complete `Merman-swiftpm-v<version>.zip` on main; legacy XCFramework route for v0.9.3 | Local SwiftPM package, separate binary ZIP and complete thin remote delivery tree; no hosted repository is established |
 | Language-neutral native embedding with explicit fonts and binary exports | `sdk-native-full` recommended | C headers, static/shared libraries, CMake and pkg-config; reduced `standard`/`math` available |
 | Non-JavaScript sandbox embedding | `sdk-wasi-full` recommended | `wasm32-wasip1` reactor with independent scalar ABI 1; reduced `standard`/`math` available |
@@ -57,7 +57,7 @@ Android, Python, and Flutter main-line prebuilt products select math explicitly 
 semantic and layout operations, both supported layout engines, ASCII, analysis, validation, and
 document analysis. Published 0.9.x packages retain their version-specific capabilities. Main's
 Apple product, both Node transports, and Web full/render also select math explicitly. Published
-Web full/render 0.9.2 already includes math; published Node, Python, Flutter, Android and legacy
+Web full/render 0.9.3 includes math; published Node, Python, Flutter, Android and legacy
 Apple products retain their math-free selections. PNG, JPEG, PDF, and native runtime adapters
 remain available to custom source builds but are not bundled in these default language products.
 These platform artifacts intentionally include ELK and therefore ship under an artifact-specific
