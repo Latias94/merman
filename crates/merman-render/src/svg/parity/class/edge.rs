@@ -65,110 +65,6 @@ pub(super) struct ClassEdgePathEmission<'edges> {
     label_centers: FxHashMap<&'edges str, LayoutPoint>,
 }
 
-pub(super) fn class_line_with_marker_offset_points_into(
-    input: &[LayoutPoint],
-    relation: Option<ClassSvgRelation<'_>>,
-    out: &mut Vec<LayoutPoint>,
-) {
-    fn marker_offset_for(arrow_type: Option<&str>) -> Option<f64> {
-        match arrow_type {
-            Some("dependency") => Some(6.0),
-            Some("lollipop") => Some(13.5),
-            Some("aggregation" | "extension" | "composition") => Some(17.25),
-            _ => None,
-        }
-    }
-
-    fn calculate_delta_and_angle(a: &LayoutPoint, b: &LayoutPoint) -> (f64, f64, f64) {
-        let delta_x = b.x - a.x;
-        let delta_y = b.y - a.y;
-        let angle = (delta_y / delta_x).atan();
-        (angle, delta_x, delta_y)
-    }
-
-    out.clear();
-    out.reserve(input.len());
-    if input.len() < 2 {
-        out.extend(input.iter().cloned());
-        return;
-    }
-
-    let arrow_type_start =
-        relation.and_then(|rel| class_arrow_type_for_relation_end(rel.relation.type1));
-    let arrow_type_end =
-        relation.and_then(|rel| class_arrow_type_for_relation_end(rel.relation.type2));
-    let start = &input[0];
-    let end = &input[input.len() - 1];
-    let x_direction_is_left = start.x < end.x;
-    let y_direction_is_down = start.y < end.y;
-    let extra_room = 1.0;
-    let start_marker_height = marker_offset_for(arrow_type_start);
-    let end_marker_height = marker_offset_for(arrow_type_end);
-
-    for (idx, point) in input.iter().enumerate() {
-        let mut offset_x = 0.0;
-        let mut offset_y = 0.0;
-
-        if idx == 0 {
-            if let Some(height) = start_marker_height {
-                let (angle, delta_x, delta_y) = calculate_delta_and_angle(&input[0], &input[1]);
-                offset_x = height * angle.cos() * if delta_x >= 0.0 { 1.0 } else { -1.0 };
-                offset_y = height * angle.sin().abs() * if delta_y >= 0.0 { 1.0 } else { -1.0 };
-            }
-        } else if idx == input.len() - 1
-            && let Some(height) = end_marker_height
-        {
-            let (angle, delta_x, delta_y) =
-                calculate_delta_and_angle(&input[input.len() - 1], &input[input.len() - 2]);
-            offset_x = height * angle.cos() * if delta_x >= 0.0 { 1.0 } else { -1.0 };
-            offset_y = height * angle.sin().abs() * if delta_y >= 0.0 { 1.0 } else { -1.0 };
-        }
-
-        if let Some(height) = end_marker_height {
-            let diff_x = (point.x - end.x).abs();
-            let diff_y = (point.y - end.y).abs();
-            if diff_x < height && diff_x > 0.0 && diff_y < height {
-                let mut adjustment = height + extra_room - diff_x;
-                adjustment *= if !x_direction_is_left { -1.0 } else { 1.0 };
-                offset_x -= adjustment;
-            }
-        }
-        if let Some(height) = start_marker_height {
-            let diff_x = (point.x - start.x).abs();
-            let diff_y = (point.y - start.y).abs();
-            if diff_x < height && diff_x > 0.0 && diff_y < height {
-                let mut adjustment = height + extra_room - diff_x;
-                adjustment *= if !x_direction_is_left { -1.0 } else { 1.0 };
-                offset_x += adjustment;
-            }
-        }
-
-        if let Some(height) = end_marker_height {
-            let diff_y = (point.y - end.y).abs();
-            let diff_x = (point.x - end.x).abs();
-            if diff_y < height && diff_y > 0.0 && diff_x < height {
-                let mut adjustment = height + extra_room - diff_y;
-                adjustment *= if !y_direction_is_down { -1.0 } else { 1.0 };
-                offset_y -= adjustment;
-            }
-        }
-        if let Some(height) = start_marker_height {
-            let diff_y = (point.y - start.y).abs();
-            let diff_x = (point.x - start.x).abs();
-            if diff_y < height && diff_y > 0.0 && diff_x < height {
-                let mut adjustment = height + extra_room - diff_y;
-                adjustment *= if !y_direction_is_down { -1.0 } else { 1.0 };
-                offset_y += adjustment;
-            }
-        }
-
-        out.push(LayoutPoint {
-            x: point.x + offset_x,
-            y: point.y + offset_y,
-        });
-    }
-}
-
 pub(super) fn render_class_edge_paths<'edges, O: SvgOutput>(
     out: &mut O,
     content_bounds: &mut Option<Bounds>,
@@ -249,9 +145,10 @@ pub(super) fn render_class_edge_paths<'edges, O: SvgOutput>(
                 relation.and_then(|rel| class_arrow_type_for_relation_end(rel.relation.type2)),
             );
         } else {
-            class_line_with_marker_offset_points_into(
+            super::super::edge_path::line_with_offset_points_into(
                 &edge_raw_points,
-                relation,
+                relation.and_then(|rel| class_arrow_type_for_relation_end(rel.relation.type1)),
+                relation.and_then(|rel| class_arrow_type_for_relation_end(rel.relation.type2)),
                 &mut edge_marker_points,
             );
         }

@@ -63,6 +63,17 @@ pub(super) fn line_with_offset_points(
     arrow_type_start: Option<&str>,
     arrow_type_end: Option<&str>,
 ) -> Vec<crate::model::LayoutPoint> {
+    let mut out = Vec::with_capacity(input.len());
+    line_with_offset_points_into(input, arrow_type_start, arrow_type_end, &mut out);
+    out
+}
+
+pub(super) fn line_with_offset_points_into(
+    input: &[crate::model::LayoutPoint],
+    arrow_type_start: Option<&str>,
+    arrow_type_end: Option<&str>,
+    out: &mut Vec<crate::model::LayoutPoint>,
+) {
     fn calculate_delta_and_angle(
         a: &crate::model::LayoutPoint,
         b: &crate::model::LayoutPoint,
@@ -73,8 +84,11 @@ pub(super) fn line_with_offset_points(
         (angle, delta_x, delta_y)
     }
 
+    out.clear();
+    out.reserve(input.len());
     if input.len() < 2 {
-        return input.to_vec();
+        out.extend(input.iter().cloned());
+        return;
     }
 
     let start = &input[0];
@@ -87,7 +101,6 @@ pub(super) fn line_with_offset_points(
     let start_marker_height = marker_offset_for(arrow_type_start);
     let end_marker_height = marker_offset_for(arrow_type_end);
 
-    let mut out = Vec::with_capacity(input.len());
     for (i, p) in input.iter().enumerate() {
         let mut ox = 0.0;
         let mut oy = 0.0;
@@ -150,8 +163,6 @@ pub(super) fn line_with_offset_points(
             y: p.y + oy,
         });
     }
-
-    out
 }
 
 pub(super) fn rounded_line_with_marker_offsets_points(
@@ -212,5 +223,150 @@ pub(super) fn render_path(
         "monotoneX" => curve::curve_monotone_path_d_and_bounds(&points, false).0,
         "monotoneY" => curve::curve_monotone_path_d_and_bounds(&points, true).0,
         _ => curve::curve_basis_path_d(&points),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::model::LayoutPoint;
+
+    #[test]
+    fn ordinary_marker_offsets_match_fixed_horizontal_endpoints() {
+        let input = [
+            LayoutPoint { x: -20.0, y: 5.0 },
+            LayoutPoint { x: 80.0, y: 5.0 },
+        ];
+        for (marker, expected_start_x, expected_end_x) in [
+            (Some("arrow_point"), -16.0, 76.0),
+            (Some("dependency"), -14.0, 74.0),
+            (Some("lollipop"), -6.5, 66.5),
+            (Some("aggregation"), -2.75, 62.75),
+            (Some("extension"), -2.75, 62.75),
+            (Some("composition"), -2.75, 62.75),
+            (Some("arrow_circle"), -20.0, 80.0),
+            (None, -20.0, 80.0),
+        ] {
+            let output = line_with_offset_points(&input, marker, marker);
+            assert_eq!(output.len(), 2);
+            assert_eq!((output[0].x, output[0].y), (expected_start_x, 5.0));
+            assert_eq!((output[1].x, output[1].y), (expected_end_x, 5.0));
+        }
+    }
+
+    #[test]
+    fn ordinary_marker_offsets_keep_diagonal_endpoint_directions() {
+        for (input, expected) in [
+            ([(0.0, 0.0), (60.0, 80.0)], [(3.6, 4.8), (49.65, 66.2)]),
+            ([(60.0, 80.0), (0.0, 0.0)], [(56.4, 75.2), (10.35, 13.8)]),
+            ([(0.0, 80.0), (60.0, 0.0)], [(3.6, 75.2), (49.65, 13.8)]),
+            ([(60.0, 0.0), (0.0, 80.0)], [(56.4, 4.8), (10.35, 66.2)]),
+        ] {
+            let input = input.map(|(point_x, point_y)| LayoutPoint {
+                x: point_x,
+                y: point_y,
+            });
+            let output = line_with_offset_points(&input, Some("dependency"), Some("composition"));
+            assert_eq!(output.len(), expected.len());
+            for (point, (expected_x, expected_y)) in output.iter().zip(expected) {
+                assert!((point.x - expected_x).abs() < 1e-12, "{output:?}");
+                assert!((point.y - expected_y).abs() < 1e-12, "{output:?}");
+            }
+        }
+    }
+
+    #[test]
+    fn ordinary_marker_offsets_keep_short_stubs_and_overlapping_adjustments() {
+        for (input, expected) in [
+            (
+                [(0.0, 0.0), (5.0, 0.0), (95.0, 0.0), (100.0, 0.0)],
+                [(6.0, 0.0), (7.0, 0.0), (81.75, 0.0), (82.75, 0.0)],
+            ),
+            (
+                [(100.0, 0.0), (95.0, 0.0), (5.0, 0.0), (0.0, 0.0)],
+                [(94.0, 0.0), (93.0, 0.0), (18.25, 0.0), (17.25, 0.0)],
+            ),
+            (
+                [(0.0, 0.0), (0.0, 5.0), (0.0, 95.0), (0.0, 100.0)],
+                [(0.0, 6.0), (0.0, 7.0), (0.0, 81.75), (0.0, 82.75)],
+            ),
+            (
+                [(0.0, 100.0), (0.0, 95.0), (0.0, 5.0), (0.0, 0.0)],
+                [(0.0, 94.0), (0.0, 93.0), (0.0, 18.25), (0.0, 17.25)],
+            ),
+            (
+                [(0.0, 0.0), (5.0, 0.0), (6.0, 0.0), (10.0, 0.0)],
+                [(-2.25, 0.0), (-6.25, 0.0), (-8.25, 0.0), (-7.25, 0.0)],
+            ),
+        ] {
+            let input = input.map(|(point_x, point_y)| LayoutPoint {
+                x: point_x,
+                y: point_y,
+            });
+            let mut output = Vec::new();
+            line_with_offset_points_into(
+                &input,
+                Some("dependency"),
+                Some("composition"),
+                &mut output,
+            );
+            assert_eq!(output.len(), expected.len());
+            for (point, (expected_x, expected_y)) in output.iter().zip(expected) {
+                assert!((point.x - expected_x).abs() < 1e-12, "{output:?}");
+                assert!((point.y - expected_y).abs() < 1e-12, "{output:?}");
+            }
+        }
+    }
+
+    #[test]
+    fn ordinary_marker_offsets_reuse_output_for_empty_single_and_coincident_points() {
+        let mut output = Vec::with_capacity(8);
+        output.push(LayoutPoint { x: 100.0, y: 200.0 });
+        let original_pointer = output.as_ptr();
+        let original_capacity = output.capacity();
+
+        line_with_offset_points_into(&[], Some("dependency"), Some("composition"), &mut output);
+        assert!(output.is_empty());
+
+        let single = [LayoutPoint { x: -0.0, y: 7.0 }];
+        line_with_offset_points_into(
+            &single,
+            Some("dependency"),
+            Some("composition"),
+            &mut output,
+        );
+        assert_eq!(output.len(), 1);
+        assert_eq!(output[0].x.to_bits(), (-0.0_f64).to_bits());
+        assert_eq!(output[0].y, 7.0);
+
+        let coincident = [
+            LayoutPoint { x: 2.0, y: 3.0 },
+            LayoutPoint { x: 2.0, y: 3.0 },
+        ];
+        line_with_offset_points_into(
+            &coincident,
+            Some("dependency"),
+            Some("composition"),
+            &mut output,
+        );
+        assert_eq!(output.len(), 2);
+        assert!(
+            output
+                .iter()
+                .all(|point| point.x.is_nan() && point.y.is_nan())
+        );
+
+        line_with_offset_points_into(&coincident, None, Some("unknown"), &mut output);
+        assert_eq!(output.len(), 2);
+        for point in &output {
+            assert_eq!((point.x, point.y), (2.0, 3.0));
+        }
+
+        line_with_offset_points_into(&single, None, None, &mut output);
+        assert_eq!(output.len(), 1);
+        assert_eq!(output[0].x.to_bits(), (-0.0_f64).to_bits());
+        assert_eq!(output[0].y, 7.0);
+        assert_eq!(output.as_ptr(), original_pointer);
+        assert_eq!(output.capacity(), original_capacity);
     }
 }
