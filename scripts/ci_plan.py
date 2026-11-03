@@ -147,6 +147,14 @@ _CRATE_OWNER_RULES = (
         {"core", "hygiene", "npm", "vscode", "web"},
     ),
     ("crates/xtask/src/cmd/native_abi.rs", {"core", "hygiene", "platform"}),
+    (
+        "crates/xtask/src/cmd/wasm_size_matrix.rs",
+        {"core", "hygiene", "typst", "web"},
+    ),
+    (
+        "crates/xtask/src/cmd/wasm_module_surface.rs",
+        {"core", "hygiene", "typst"},
+    ),
     ("crates/xtask/", _CORE_OWNERS),
 )
 _SCRIPT_EXACT_OWNER_RULES = {

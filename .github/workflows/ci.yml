@@ -598,6 +598,7 @@ jobs:
 
       - name: Test architecture compile-fail contracts
         run: |
+          cargo test --locked -p merman-core --no-default-features --features diagram-flowchart,diagram-sequence,diagram-state --doc
           cargo test -p merman-render --doc --features all-diagrams
           cargo test -p merman --doc --no-default-features --features all-diagrams,layout-cytoscape,layout-elk,math,svg,system-clock,system-random,system-timezone,system-timing
 

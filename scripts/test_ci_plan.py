@@ -352,6 +352,17 @@ class PlannerTests(unittest.TestCase):
 
     def test_xtask_changes_select_their_artifact_consumers(self) -> None:
         fixtures = {
+            "crates/xtask/src/cmd/wasm_size_matrix.rs": {
+                "core",
+                "hygiene",
+                "typst",
+                "web",
+            },
+            "crates/xtask/src/cmd/wasm_module_surface.rs": {
+                "core",
+                "hygiene",
+                "typst",
+            },
             "crates/xtask/src/cmd/typst_package.rs": {
                 "core",
                 "hygiene",
@@ -1145,6 +1156,17 @@ class WorkflowFontDependenciesTests(unittest.TestCase):
         self.assertIn("--test header_smoke --test c_consumer_smoke", job)
         self.assertIn("Test explicit native fonts on every host", job)
         self.assertIn("candidate: [node-wasm, napi]", workflow_job(ci, "node-contracts"))
+
+    def test_lean_core_compile_fail_contracts_have_a_feature_contract_owner(self) -> None:
+        from scripts.test_release_workflow_security import workflow_job
+
+        workflow = (Path(__file__).resolve().parents[1] / ".github/workflows/ci.yml").read_text(encoding="utf-8")
+        job = workflow_job(workflow, "feature-contracts")
+        self.assertIn("runs-on: ubuntu-24.04", job)
+        self.assertIn(
+            "cargo test --locked -p merman-core --no-default-features --features diagram-flowchart,diagram-sequence,diagram-state --doc",
+            job,
+        )
 
     def test_linux_font_query_owners_install_dependencies_before_checks(self) -> None:
         workflow = (
