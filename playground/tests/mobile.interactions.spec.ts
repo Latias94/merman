@@ -132,6 +132,9 @@ test("hidden editor workspace defers Preview rendering and resumes the latest so
         performance.getEntriesByName("merman:initial-preview-presented").length,
     ),
   ).toBe(1);
+  const presentedSvg = await host.evaluate(
+    (element) => element.shadowRoot?.querySelector("svg")?.outerHTML,
+  );
 
   await editorTab.tap();
   await replaceEditorSource(
@@ -139,7 +142,10 @@ test("hidden editor workspace defers Preview rendering and resumes the latest so
     "flowchart LR\n  hidden[Hidden] --> newest[Newest source]",
   );
   await page.waitForTimeout(450);
-  await expect(host).toHaveCount(0);
+  await expect(host).toBeHidden();
+  expect(await host.evaluate(
+    (element) => element.shadowRoot?.querySelector("svg")?.outerHTML,
+  )).toBe(presentedSvg);
 
   await page.getByRole("button", { name: "Export", exact: true }).tap();
   await expect(

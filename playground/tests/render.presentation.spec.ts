@@ -826,6 +826,7 @@ function fontOnlyConfig(theme: string): string {
 async function renderSource(page: Page, source: string): Promise<void> {
   await replaceEditorSource(page, source);
   await waitForPreviewSvg(page);
+  await expect(page.getByRole("button", { name: "Copy SVG", exact: true }).first()).toBeEnabled();
 }
 
 async function sequenceTitlePresentation(viewport: Locator) {
