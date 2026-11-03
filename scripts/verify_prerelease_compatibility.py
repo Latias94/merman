@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 from dataclasses import dataclass
+import json
 import os
 from pathlib import Path
 import shutil
@@ -24,7 +25,45 @@ from tools.publish import cargo_metadata, publish_field_allows_crates_io
 TOP_LEVEL_PACKAGE = "merman"
 PACKAGE_EDITION = "2024"
 FEATURES = ("ascii", "svg")
+CANDIDATE_FEATURES = (*FEATURES, "diagram-flowchart", "diagram-sequence")
 PROJECT_PREFIX = "merman-prerelease-compatibility"
+CANDIDATE_CONSUMER = r"""use merman::model::SemanticDiagramModel;
+use merman::{
+    AsciiRequest, OperationControl, RenderOutput, RenderRequest, Renderer, SvgRequest,
+};
+
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let renderer = Renderer::new();
+    let flowchart = "flowchart LR\nA[Start] --> B[Done]";
+    let parsed = renderer
+        .parse_semantic(flowchart, OperationControl::new())?
+        .ok_or("no Flowchart diagram")?;
+    assert!(matches!(parsed.model(), SemanticDiagramModel::Flowchart(_)));
+    let RenderOutput::Svg(Some(svg)) = renderer.render(RenderRequest::svg(
+        flowchart,
+        OperationControl::new(),
+        SvgRequest::default(),
+    ))? else {
+        return Err("no SVG output".into());
+    };
+    assert!(svg.svg().contains("<svg"));
+
+    let sequence = "sequenceDiagram\nAlice->>Bob: Hello\nBob-->>Alice: Hi";
+    let parsed = renderer
+        .parse_semantic(sequence, OperationControl::new())?
+        .ok_or("no Sequence diagram")?;
+    assert!(matches!(parsed.model(), SemanticDiagramModel::Sequence(_)));
+    let RenderOutput::Ascii(Some(report)) = renderer.render(RenderRequest::ascii(
+        sequence,
+        OperationControl::new(),
+        AsciiRequest::default(),
+    ))? else {
+        return Err("no ASCII output".into());
+    };
+    assert!(!report.text.is_empty());
+    Ok(())
+}
+"""
 
 
 class PrereleaseCompatibilityError(RuntimeError):
@@ -118,6 +157,8 @@ def toml_string(value: str) -> str:
 def render_manifest(
     dependency_version: str,
     patches: tuple[CandidatePackage, ...],
+    *,
+    features: tuple[str, ...] = FEATURES,
 ) -> str:
     """Render a deliberately lockfile-free consumer project."""
     lines = [
@@ -131,7 +172,7 @@ def render_manifest(
         (
             f'{TOP_LEVEL_PACKAGE} = {{ version = "={dependency_version}", '
             "default-features = false, "
-            f'features = [{", ".join(toml_string(feature) for feature in FEATURES)}] }}'
+            f'features = [{", ".join(toml_string(feature) for feature in features)}] }}'
         ),
     ]
     if patches:
@@ -175,6 +216,69 @@ def same_compatibility_line(first: ReleaseVersion, second: ReleaseVersion) -> bo
     return first.major == second.major
 
 
+def _report_resolution(
+    lane: str,
+    version: str,
+    patches: tuple[CandidatePackage, ...],
+    metadata: dict,
+) -> None:
+    """Report resolved package IDs and check selected candidate patch identities."""
+    try:
+        selected_ids = {node["id"] for node in metadata["resolve"]["nodes"]}
+        packages_by_id = {package["id"]: package for package in metadata["packages"]}
+        selected = [packages_by_id[package_id] for package_id in sorted(selected_ids)]
+    except (KeyError, TypeError) as error:
+        raise PrereleaseCompatibilityError(
+            f"{lane}: cargo metadata lacks resolved package identities"
+        ) from error
+    facades = [package for package in selected if package["name"] == TOP_LEVEL_PACKAGE]
+    if len(facades) != 1 or facades[0]["version"] != version:
+        raise PrereleaseCompatibilityError(
+            f"{lane}: expected exactly one resolved {TOP_LEVEL_PACKAGE} {version}"
+        )
+
+    patches_by_name = {package.name: package for package in patches}
+    used_patches: set[str] = set()
+    for package in selected:
+        name = package["name"]
+        patch = patches_by_name.get(name)
+        if name != TOP_LEVEL_PACKAGE and patch is None:
+            continue
+        manifest = package["manifest_path"]
+        source = package["source"]
+        print(
+            f"{lane}: selected {name} id={package['id']} version={package['version']} "
+            f"source={source!r} manifest_path={manifest}"
+        )
+        if patch is not None and (
+            lane == "candidate" or package["version"] == patch.version or source is None
+        ):
+            expected_manifest = (patch.path / "Cargo.toml").resolve()
+            if (
+                package["version"] != patch.version
+                or source is not None
+                or Path(manifest).resolve() != expected_manifest
+            ):
+                raise PrereleaseCompatibilityError(
+                    f"{lane}: {name} resolved to a different candidate identity; expected "
+                    f"version={patch.version} source=None manifest_path={expected_manifest}"
+                )
+            used_patches.add(name)
+    for patch in patches:
+        if patch.name not in used_patches:
+            print(f"{lane}: unused patch: {patch.name} {patch.version} at {patch.path}")
+    if lane != "candidate":
+        print(
+            f"{lane}: selected candidate sibling patches: "
+            + (", ".join(sorted(used_patches)) or "none")
+        )
+        if not used_patches:
+            print(
+                f"{lane}: mixed old/new compatibility NOT VERIFIED; "
+                "resolved siblings did not use candidate patches"
+            )
+
+
 def _run_lane(
     lane: str,
     version: str,
@@ -187,10 +291,12 @@ def _run_lane(
     project = root / lane
     project.mkdir()
     manifest = project / "Cargo.toml"
-    manifest.write_text(render_manifest(version, patches), encoding="utf-8")
+    features = CANDIDATE_FEATURES if lane == "candidate" else FEATURES
+    manifest.write_text(render_manifest(version, patches, features=features), encoding="utf-8")
     source = project / "src"
     source.mkdir()
-    (source / "main.rs").write_text("fn main() {}\n", encoding="utf-8")
+    consumer = CANDIDATE_CONSUMER if lane == "candidate" else "fn main() {}\n"
+    (source / "main.rs").write_text(consumer, encoding="utf-8")
     if (project / "Cargo.lock").exists():
         raise PrereleaseCompatibilityError(
             f"fresh {lane} consumer unexpectedly contains Cargo.lock"
@@ -213,6 +319,25 @@ def _run_lane(
             f"{lane} lane failed for merman {version}: "
             f"{detail or f'exit status {completed.returncode}'}"
         )
+    if not (project / "Cargo.lock").is_file():
+        raise PrereleaseCompatibilityError(f"{lane}: cargo check did not generate Cargo.lock")
+    completed = run_check(
+        ["cargo", "metadata", "--manifest-path", str(manifest),
+         "--format-version", "1", "--locked"],
+        cwd=project,
+        env=environment,
+    )
+    if completed.returncode != 0:
+        detail = (completed.stderr or completed.stdout or "").strip()
+        raise PrereleaseCompatibilityError(
+            f"{lane}: resolved cargo metadata failed: "
+            f"{detail or f'exit status {completed.returncode}'}"
+        )
+    try:
+        metadata = json.loads(completed.stdout)
+        _report_resolution(lane, version, patches, metadata)
+    except (json.JSONDecodeError, KeyError, TypeError) as error:
+        raise PrereleaseCompatibilityError(f"{lane}: invalid resolved cargo metadata: {error}") from error
     print(f"{lane}: merman {version} compiled from a fresh resolution")
 
 

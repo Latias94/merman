@@ -546,12 +546,19 @@ paths against the new lockfile.
 The gate discovers workspace members and validates their inherited package versions, internal workspace dependency requirements, `Cargo.lock`, Web package and lock metadata, the Playground's local Web lock, the fuzz-workspace lock, Python's PEP 440 projection, and Android and Flutter manifests. For a prerelease, every coupled root workspace dependency must use the exact Cargo requirement `=X.Y.Z-alpha.N`, `=X.Y.Z-beta.N`, or `=X.Y.Z-rc.N`; stable releases continue to use the ordinary compatible requirement. This permits intentional alpha API breaks without allowing a fresh Cargo resolution to mix sibling release lines.
 
 `cargo check --locked` is not sufficient evidence for a prerelease. The release gates also create
-fresh consumers without a copied lockfile and compile the candidate graph plus the previous facade
-against candidate sibling packages with both `ascii` and `svg` enabled when both versions are on the
-same Cargo compatibility line. These features exercise the facade/core and facade/renderer boundaries;
-this check does not replace the complete release feature and artifact matrix. A
-failure in that same-line previous-facade lane means the release must restore compatibility or start
-a new release line; do not rely on downstream lockfiles to hide the mixed graph. Published registry
+fresh consumers without a copied lockfile. The current candidate selects `ascii`, `svg`,
+`diagram-flowchart`, and `diagram-sequence`; its consumer matches the public typed Flowchart and
+Sequence semantic variants and calls the public SVG and ASCII APIs. The previous facade retains
+the historical `ascii,svg` recipe and empty consumer when both versions are on the same Cargo
+compatibility line, with candidate sibling patches offered to Cargo. After each successful check,
+locked metadata from the generated consumer lockfile reports selected coupled package IDs, versions,
+sources and manifest paths, validates selected candidate patches against their local identities,
+and reports unused patches. Exact previous sibling requirements may retain published old siblings;
+that compilation does not verify an old/new mix when no candidate sibling patch is selected.
+This is a resolution and API compilation check, not a rendering execution test or a replacement
+for the complete release feature and artifact matrix. A failure in the same-line previous-facade
+lane means the release must restore compatibility or start a new release line; do not rely on
+downstream lockfiles to hide the mixed graph. Published registry
 tarballs are immutable, so a dependency requirement defect cannot be repaired by editing this
 repository after publication; the next release must carry the corrected manifest and pass this gate.
 
