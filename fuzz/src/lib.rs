@@ -1,15 +1,22 @@
 #![forbid(unsafe_code)]
 
+#[cfg(feature = "parse")]
 use merman as parse_api;
+#[cfg(feature = "render")]
 use merman::svg::{RenderResourcePolicy, ResourceLimitId, SvgPipeline, TextMeasurementPolicy};
+#[cfg(feature = "render")]
 use merman::{
     OperationControl, ParseOptions, RenderOutput, RenderRequest, Renderer, SvgEnvironment,
     SvgRequest, model::runtime::RuntimePolicy,
 };
+#[cfg(feature = "svg")]
 use roxmltree::Document;
 
+#[cfg(feature = "parse")]
 pub const MAX_PARSE_INPUT_BYTES: usize = 256 * 1024;
+#[cfg(feature = "render")]
 pub const MAX_RENDER_INPUT_BYTES: usize = 32 * 1024;
+#[cfg(feature = "svg")]
 pub const MAX_SVG_INPUT_BYTES: usize = 256 * 1024;
 
 pub fn bounded_utf8(data: &[u8], max_bytes: usize) -> Option<&str> {
@@ -19,18 +26,22 @@ pub fn bounded_utf8(data: &[u8], max_bytes: usize) -> Option<&str> {
     std::str::from_utf8(data).ok()
 }
 
+#[cfg(feature = "parse")]
 #[path = "../../crates/merman-core/tests/support/parse_equivalence.rs"]
 mod parse_equivalence;
+#[cfg(feature = "parse")]
 pub use parse_equivalence::{
     assert_known_type_parse_paths, assert_parse_paths, deterministic_engine,
 };
 
+#[cfg(feature = "render")]
 #[derive(Debug, Clone)]
 pub struct BoundedRenderer {
     renderer: Renderer,
     request: SvgRequest,
 }
 
+#[cfg(feature = "render")]
 impl BoundedRenderer {
     pub fn render_resvg_safe_svg(
         &self,
@@ -48,6 +59,7 @@ impl BoundedRenderer {
     }
 }
 
+#[cfg(feature = "render")]
 pub fn bounded_renderer() -> BoundedRenderer {
     let mut limits = RenderResourcePolicy::interactive();
     for (id, value) in [
@@ -83,6 +95,7 @@ pub fn bounded_renderer() -> BoundedRenderer {
     BoundedRenderer { renderer, request }
 }
 
+#[cfg(feature = "svg")]
 pub fn is_well_formed_svg(svg: &str) -> bool {
     Document::parse(svg).is_ok_and(|document| {
         document
@@ -93,6 +106,7 @@ pub fn is_well_formed_svg(svg: &str) -> bool {
     })
 }
 
+#[cfg(feature = "svg")]
 pub fn assert_resvg_safe_svg(svg: &str) {
     let session = merman_render::environment::RenderEnvironment::deterministic()
         .begin_session()
@@ -130,6 +144,7 @@ pub fn assert_resvg_safe_svg(svg: &str) {
     }
 }
 
+#[cfg(feature = "svg")]
 fn is_active_svg_element(name: &str) -> bool {
     matches!(
         name.to_ascii_lowercase().as_str(),
@@ -137,6 +152,7 @@ fn is_active_svg_element(name: &str) -> bool {
     )
 }
 
+#[cfg(feature = "svg")]
 fn is_event_handler_attribute(name: &str) -> bool {
     let bytes = name.as_bytes();
     bytes.len() > 2
@@ -146,16 +162,19 @@ fn is_event_handler_attribute(name: &str) -> bool {
         && bytes[2].is_ascii_alphabetic()
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "tree-sitter"))]
 mod tree_sitter_edits;
 
 #[cfg(test)]
 mod tests {
-    use super::{
-        ParseOptions, assert_known_type_parse_paths, assert_parse_paths, assert_resvg_safe_svg,
-        deterministic_engine,
-    };
+    #[cfg(feature = "svg")]
+    use super::assert_resvg_safe_svg;
+    #[cfg(feature = "parse")]
+    use super::{assert_known_type_parse_paths, assert_parse_paths, deterministic_engine};
+    #[cfg(feature = "parse")]
+    use merman::ParseOptions;
 
+    #[cfg(feature = "parse")]
     #[test]
     fn incomplete_directive_recovery_preserves_each_parse_path_contract() {
         let engine = deterministic_engine();
@@ -178,6 +197,7 @@ mod tests {
         }
     }
 
+    #[cfg(feature = "svg")]
     #[test]
     fn css_url_oracle_does_not_treat_function_name_suffixes_as_url_functions() {
         assert_resvg_safe_svg(
@@ -185,6 +205,7 @@ mod tests {
         );
     }
 
+    #[cfg(feature = "svg")]
     #[test]
     fn terminal_finalizer_is_idempotent_for_unclosed_css_crash_seed() {
         let svg = include_str!("../seeds/svg/04_unclosed-css-ci.svg");
@@ -199,6 +220,7 @@ mod tests {
         assert!(!sanitized.contains("animatiw:"), "{sanitized}");
     }
 
+    #[cfg(feature = "svg")]
     #[test]
     fn terminal_finalizer_is_idempotent_for_unquoted_trailing_css_escape() {
         let session = merman_render::environment::RenderEnvironment::deterministic()
@@ -226,6 +248,7 @@ mod tests {
         }
     }
 
+    #[cfg(feature = "svg")]
     #[test]
     fn terminal_finalizer_preserves_closed_css_identifier_escapes() {
         assert_resvg_safe_svg(
@@ -233,6 +256,7 @@ mod tests {
         );
     }
 
+    #[cfg(feature = "svg")]
     #[test]
     fn terminal_finalizer_drops_unclosed_css_tokens_and_preserves_safe_css() {
         let svg = include_str!("../seeds/svg/05_unclosed-css-tokens.svg");
@@ -269,6 +293,7 @@ mod tests {
         assert_eq!(rect.attribute("style"), Some("fill:#123456"));
     }
 
+    #[cfg(feature = "svg")]
     #[test]
     #[should_panic(expected = "resvg-safe output was not terminally normalized")]
     fn terminal_oracle_rejects_an_actual_unsafe_css_url() {

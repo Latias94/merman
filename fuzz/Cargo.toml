@@ -8,18 +8,36 @@ edition = "2024"
 cargo-fuzz = true
 
 [features]
-default = ["editor-facts"]
-editor-facts = ["merman/editor-facts"]
+default = []
+parse = [
+    "dep:merman",
+    "dep:merman-model",
+    "merman/all-diagrams",
+    "merman/compat-json",
+    "editor-facts",
+]
+editor-facts = ["merman?/editor-facts"]
+render = [
+    "parse",
+    "svg",
+    "merman/svg",
+    "merman/layout-cytoscape",
+    "merman/layout-elk",
+    "merman/math",
+]
+svg = ["dep:merman-render", "dep:roxmltree"]
+ffi = ["dep:merman-ffi"]
+tree-sitter = ["dep:tree-sitter", "dep:tree-sitter-mermaid"]
 
 [dependencies]
 libfuzzer-sys = "0.4"
-merman = { path = "../crates/merman", default-features = false, features = ["all-diagrams", "compat-json", "svg", "layout-cytoscape", "layout-elk", "math"] }
-merman-model = { path = "../crates/merman-model", default-features = false }
-merman-ffi = { path = "../crates/merman-ffi", default-features = false, features = ["all-diagrams", "analysis", "fixes", "ascii", "svg", "png", "jpeg", "pdf", "layout-cytoscape", "layout-elk", "math", "native-runtime"] }
-merman-render = { path = "../crates/merman-render", default-features = false, features = ["all-diagrams"] }
-roxmltree = "0.21.2"
-tree-sitter = "=0.27.1"
-tree-sitter-mermaid = { path = "../distribution/tree-sitter-mermaid" }
+merman = { path = "../crates/merman", default-features = false, optional = true }
+merman-model = { path = "../crates/merman-model", default-features = false, optional = true }
+merman-ffi = { path = "../crates/merman-ffi", default-features = false, optional = true, features = ["all-diagrams", "analysis", "fixes", "ascii", "svg", "png", "jpeg", "pdf", "layout-cytoscape", "layout-elk", "math", "native-runtime"] }
+merman-render = { path = "../crates/merman-render", default-features = false, optional = true }
+roxmltree = { version = "0.21.2", optional = true }
+tree-sitter = { version = "=0.27.1", optional = true }
+tree-sitter-mermaid = { path = "../distribution/tree-sitter-mermaid", optional = true }
 
 # Use independent workspace for fuzzers.
 [workspace]
@@ -28,6 +46,7 @@ members = ["."]
 [[bin]]
 name = "parse_mermaid"
 path = "fuzz_targets/parse_mermaid.rs"
+required-features = ["parse"]
 test = false
 doc = false
 bench = false
@@ -35,6 +54,7 @@ bench = false
 [[bin]]
 name = "render_mermaid"
 path = "fuzz_targets/render_mermaid.rs"
+required-features = ["render"]
 test = false
 doc = false
 bench = false
@@ -42,6 +62,7 @@ bench = false
 [[bin]]
 name = "svg_pipeline"
 path = "fuzz_targets/svg_pipeline.rs"
+required-features = ["svg"]
 test = false
 doc = false
 bench = false
@@ -49,6 +70,7 @@ bench = false
 [[bin]]
 name = "ffi_api"
 path = "fuzz_targets/ffi_api.rs"
+required-features = ["ffi"]
 test = false
 doc = false
 bench = false
@@ -56,6 +78,7 @@ bench = false
 [[bin]]
 name = "tree_sitter_mermaid_parse"
 path = "fuzz_targets/tree_sitter_mermaid_parse.rs"
+required-features = ["tree-sitter"]
 test = false
 doc = false
 bench = false
@@ -63,6 +86,7 @@ bench = false
 [[bin]]
 name = "tree_sitter_mermaid_edits"
 path = "fuzz_targets/tree_sitter_mermaid_edits.rs"
+required-features = ["tree-sitter"]
 test = false
 doc = false
 bench = false
@@ -70,6 +94,7 @@ bench = false
 [[bin]]
 name = "tree_sitter_mermaid_scanner"
 path = "fuzz_targets/tree_sitter_mermaid_scanner.rs"
+required-features = ["tree-sitter"]
 test = false
 doc = false
 bench = false
