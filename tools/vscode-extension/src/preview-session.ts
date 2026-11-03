@@ -9,11 +9,11 @@ import {
   type PreviewSnapshot,
 } from "./preview-model.js";
 import {
-  extractPreviewInput,
-  listPreviewInputsFromDocument,
+  getPreviewSourceSnapshot,
   type PreviewInput,
   previewSourceIdentity,
   resolvePreviewInputIdentity,
+  selectPreviewInput,
   type PreviewSourceIdentity,
 } from "./preview-source.js";
 
@@ -27,6 +27,13 @@ export interface PreviewSessionDefaults {
   diagramTheme: PreviewDiagramTheme;
   displayMode: PreviewDisplayMode;
   background: PreviewBackground;
+}
+
+export interface PreviewSourceResolution {
+  editor: vscode.TextEditor;
+  inputs: readonly PreviewInput[];
+  input: PreviewInput;
+  selected: boolean;
 }
 
 const DEFAULT_PREVIEW_SESSION_DEFAULTS: PreviewSessionDefaults = {
@@ -174,17 +181,13 @@ export class PreviewSession {
     visibleEditors: readonly vscode.TextEditor[],
     diagnosticsProvider: PreviewDiagnosticsProvider,
   ): PreviewSnapshot | undefined {
-    const editor = this.resolveSnapshotEditor(activeEditor, visibleEditors);
-    if (!editor) {
+    const source =
+      this.takePreferredSource(visibleEditors) ?? this.resolveSource(activeEditor, visibleEditors);
+    if (!source) {
       return this.locked ? this.createSnapshotFromCurrentState() : undefined;
     }
 
-    const input = this.resolvePreviewInput(editor);
-    if (!input) {
-      return this.locked ? this.createSnapshotFromCurrentState() : undefined;
-    }
-
-    const sources = listPreviewInputsFromDocument(editor.document, editor.selection.active.line);
+    const { editor, input, inputs, selected } = source;
     const diagnostics = diagnosticsProvider(
       editor.document.uri,
       input.diagnosticRange,
@@ -194,10 +197,10 @@ export class PreviewSession {
       documentUri: editor.document.uri.toString(),
       documentVersion: editor.document.version,
       input,
-      sources,
+      sources: inputs,
       diagnostics,
       selectionLine: editor.selection.active.line,
-      selected: this.isSelectedInput(input),
+      selected,
       diagramTheme: this.theme,
       displayMode: this.displayMode,
       background: this.background,
@@ -205,33 +208,30 @@ export class PreviewSession {
     });
   }
 
-  resolvePreviewEditor(
+  resolveSource(
     activeEditor: vscode.TextEditor | undefined,
     visibleEditors: readonly vscode.TextEditor[],
-  ): vscode.TextEditor | undefined {
-    if (!this.locked && activeEditor && this.resolvePreviewInput(activeEditor)) {
-      return activeEditor;
+  ): PreviewSourceResolution | undefined {
+    if (!this.locked && activeEditor) {
+      const source = this.resolveEditorSource(activeEditor);
+      if (source) {
+        return source;
+      }
     }
 
     if (!this.lastPreviewEditorUri) {
       return undefined;
     }
 
-    return visibleEditors.find(
-      (editor) =>
-        editor.document.uri.toString() === this.lastPreviewEditorUri &&
-        this.resolvePreviewInput(editor) !== null,
-    );
-  }
-
-  private resolveSnapshotEditor(
-    activeEditor: vscode.TextEditor | undefined,
-    visibleEditors: readonly vscode.TextEditor[],
-  ): vscode.TextEditor | undefined {
-    return (
-      this.takePreferredEditor(visibleEditors) ??
-      this.resolvePreviewEditor(activeEditor, visibleEditors)
-    );
+    for (const editor of visibleEditors) {
+      if (editor.document.uri.toString() === this.lastPreviewEditorUri) {
+        const source = this.resolveEditorSource(editor);
+        if (source) {
+          return source;
+        }
+      }
+    }
+    return undefined;
   }
 
   selectSource(
@@ -239,17 +239,18 @@ export class PreviewSession {
     visibleEditors: readonly vscode.TextEditor[],
     source: string | PreviewSourceIdentity,
   ): boolean {
-    const editor = this.resolvePreviewEditor(activeEditor, visibleEditors);
-    if (!editor || (typeof source === "string" && source.length === 0)) {
+    if (typeof source === "string" && source.length === 0) {
       return false;
     }
-    const input =
-      typeof source === "string"
-        ? extractPreviewInput(editor, source)
-        : resolvePreviewInputIdentity(
-            listPreviewInputsFromDocument(editor.document, editor.selection.active.line),
-            source,
-          );
+    const resolved = this.resolveSource(activeEditor, visibleEditors);
+    if (!resolved) {
+      return false;
+    }
+    const { editor, inputs } = resolved;
+    const input = selectPreviewInput(
+      inputs,
+      typeof source === "string" ? { sourceId: source } : { sourceIdentity: source },
+    );
     if (!input) {
       return false;
     }
@@ -288,12 +289,12 @@ export class PreviewSession {
     return true;
   }
 
-  private resolvePreviewInput(editor: vscode.TextEditor): PreviewInput | null {
+  private resolveEditorSource(editor: vscode.TextEditor): PreviewSourceResolution | undefined {
+    const { inputs } = getPreviewSourceSnapshot(editor.document);
     const editorUri = editor.document.uri.toString();
     if (this.selectedSource?.uri === editorUri) {
-      const inputs = listPreviewInputsFromDocument(editor.document, editor.selection.active.line);
       if (this.trackedLockedMarkdownSource?.invalid) {
-        return null;
+        return undefined;
       }
       const hadTrackedContentChange = this.trackedLockedMarkdownSource?.contentChanged === true;
       const tracked = this.resolveTrackedMarkdownInput(editorUri, editor.document.version, inputs);
@@ -304,37 +305,40 @@ export class PreviewSession {
           : resolvePreviewInputIdentity(inputs, this.selectedSource.identity));
       if (selected) {
         this.rememberResolvedSelectedInput(selected, editor.document.version);
-        return selected;
+        return {
+          editor,
+          inputs,
+          input: selected,
+          selected: this.lastPreviewEditorUri === editorUri,
+        };
       }
       if (this.locked) {
-        return null;
+        return undefined;
       }
       this.selectedSource = undefined;
     }
-    return extractPreviewInput(editor);
+    const input = selectPreviewInput(inputs, { activeLine: editor.selection.active.line });
+    return input ? { editor, inputs, input, selected: false } : undefined;
   }
 
-  private isSelectedInput(input: PreviewInput | undefined): boolean {
-    return (
-      !!input &&
-      !!this.selectedSource &&
-      this.lastPreviewEditorUri === this.selectedSource.uri &&
-      inputMatchesSelection(input, this.selectedSource)
-    );
-  }
-
-  private takePreferredEditor(visibleEditors: readonly vscode.TextEditor[]): vscode.TextEditor | undefined {
+  private takePreferredSource(
+    visibleEditors: readonly vscode.TextEditor[],
+  ): PreviewSourceResolution | undefined {
     if (this.locked || !this.preferredEditorUri) {
       return undefined;
     }
 
     const preferredEditorUri = this.preferredEditorUri;
     this.preferredEditorUri = undefined;
-    return visibleEditors.find(
-      (editor) =>
-        editor.document.uri.toString() === preferredEditorUri &&
-        this.resolvePreviewInput(editor) !== null,
-    );
+    for (const editor of visibleEditors) {
+      if (editor.document.uri.toString() === preferredEditorUri) {
+        const source = this.resolveEditorSource(editor);
+        if (source) {
+          return source;
+        }
+      }
+    }
+    return undefined;
   }
 
   private createSnapshotFromCurrentState(): PreviewSnapshot | undefined {
@@ -461,17 +465,6 @@ function sameSelection(
     first.identity.kind === second.identity.kind &&
     first.identity.sourceRange.startLine === second.identity.sourceRange.startLine &&
     first.identity.sourceRange.endLine === second.identity.sourceRange.endLine
-  );
-}
-
-function inputMatchesSelection(input: PreviewInput, selection: PreviewSourceSelection): boolean {
-  const identity = previewSourceIdentity(input);
-  return (
-    identity.kind === selection.identity.kind &&
-    identity.sourceId === selection.identity.sourceId &&
-    identity.sourceHash === selection.identity.sourceHash &&
-    identity.sourceRange.startLine === selection.identity.sourceRange.startLine &&
-    identity.sourceRange.endLine === selection.identity.sourceRange.endLine
   );
 }
 

@@ -4,9 +4,10 @@ import type * as vscode from "vscode";
 
 import {
   extractPreviewInputFromText,
-  listPreviewInputsFromDocument,
+  getPreviewSourceSnapshot,
   listPreviewInputsFromText,
   previewSourceIdentity,
+  selectPreviewInput,
 } from "../preview-source.js";
 
 describe("preview source extraction", () => {
@@ -143,30 +144,129 @@ describe("preview source extraction", () => {
     );
   });
 
-  it("scans Markdown TextDocuments by line without copying the whole document", () => {
+  it("shares unchanged Markdown source facts without copying or rescanning the document", () => {
     const lines = [
       "# Notes",
       "```mermaid title=Main",
       "flowchart LR",
       "```",
     ];
+    let lineReads = 0;
     const document = {
       languageId: "markdown",
       fileName: "/workspace/notes.md",
-      uri: { fsPath: "/workspace/notes.md" },
+      uri: {
+        fsPath: "/workspace/notes.md",
+        toString: () => "file:///workspace/notes.md",
+      },
+      version: 1,
       lineCount: lines.length,
-      lineAt: (lineIndex: number) => ({ text: lines[lineIndex] ?? "" }),
+      lineAt: (lineIndex: number) => {
+        lineReads += 1;
+        return { text: lines[lineIndex] ?? "" };
+      },
       getText: () => {
         throw new Error("Markdown preview extraction should not copy whole documents");
       },
     } as unknown as vscode.TextDocument;
 
-    const inputs = listPreviewInputsFromDocument(document);
+    const snapshot = getPreviewSourceSnapshot(document);
 
     assert.deepEqual(
-      inputs.map((input) => input.source),
+      snapshot.inputs.map((input) => input.source),
       ["flowchart LR"],
     );
+    assert.equal(getPreviewSourceSnapshot(document), snapshot);
+    assert.equal(selectPreviewInput(snapshot.inputs, { activeLine: 2 }), snapshot.inputs[0]);
+    assert.equal(lineReads, lines.length);
+  });
+
+  it("replaces the current version facts while keeping earlier snapshots unchanged", () => {
+    const { document, state } = sourceDocument(markdownWithTwoFences());
+    const original = getPreviewSourceSnapshot(document);
+
+    state.lines = ["```mermaid", "pie title Updated", "```"];
+    state.version = 4;
+    const updated = getPreviewSourceSnapshot(document);
+
+    assert.notEqual(updated, original);
+    assert.equal(updated.documentVersion, 4);
+    assert.deepEqual(updated.inputs.map((input) => input.source), ["pie title Updated"]);
+    assert.deepEqual(original.inputs.map((input) => input.source), [
+      "flowchart TD\nA --> B",
+      "sequenceDiagram\nA->>B: hi",
+    ]);
+    assert.equal(getPreviewSourceSnapshot(document), updated);
+    assert.equal(state.lineReads, 12);
+    assert.equal(state.textReads, 0);
+    assert.equal(Object.isFrozen(updated.inputs), true);
+    assert.equal(Object.isFrozen(updated.inputs[0]), true);
+    assert.equal(Object.isFrozen(updated.inputs[0]?.sourceRange), true);
+    assert.equal(Object.isFrozen(updated.inputs[0]?.diagnosticRange), true);
+  });
+
+  it("keeps only current language facts even when the document version does not change", () => {
+    const { document, state } = sourceDocument("```mermaid\nflowchart LR\n```", "notes.txt");
+    const markdown = getPreviewSourceSnapshot(document);
+    assert.equal(markdown.inputs[0]?.kind, "markdown-fence");
+
+    state.languageId = "plaintext";
+    const plain = getPreviewSourceSnapshot(document);
+    assert.deepEqual(plain.inputs, []);
+    assert.equal(getPreviewSourceSnapshot(document), plain);
+
+    state.languageId = "mermaid";
+    const mermaid = getPreviewSourceSnapshot(document);
+    assert.equal(mermaid.inputs[0]?.kind, "mermaid-file");
+    assert.equal(mermaid.inputs[0]?.source, "```mermaid\nflowchart LR\n```");
+    assert.equal(getPreviewSourceSnapshot(document), mermaid);
+
+    state.languageId = "markdown";
+    const restored = getPreviewSourceSnapshot(document);
+    assert.notEqual(restored, markdown);
+    assert.equal(restored.inputs[0]?.source, "flowchart LR");
+    assert.equal(state.lineReads, 6);
+    assert.equal(state.textReads, 1);
+  });
+
+  it("does not share source facts between replacement documents with the same URI and version", () => {
+    const first = sourceDocument("```mermaid\nflowchart LR\n```");
+    const replacement = sourceDocument("```mermaid\nsequenceDiagram\n```");
+
+    const original = getPreviewSourceSnapshot(first.document);
+    const updated = getPreviewSourceSnapshot(replacement.document);
+
+    assert.equal(original.documentUri, updated.documentUri);
+    assert.equal(original.documentVersion, updated.documentVersion);
+    assert.equal(original.inputs[0]?.source, "flowchart LR");
+    assert.equal(updated.inputs[0]?.source, "sequenceDiagram");
+    assert.equal(first.state.lineReads, 3);
+    assert.equal(replacement.state.lineReads, 3);
+  });
+
+  it("does not reuse closed-document facts when the URI is reopened", () => {
+    const first = sourceDocument("```mermaid\nflowchart LR\n```");
+    const original = getPreviewSourceSnapshot(first.document);
+    first.state.isClosed = true;
+
+    assert.deepEqual(getPreviewSourceSnapshot(first.document).inputs, []);
+    assert.equal(first.state.lineReads, 3);
+
+    const reopened = sourceDocument("```mermaid\nsequenceDiagram\n```");
+    const snapshot = getPreviewSourceSnapshot(reopened.document);
+    assert.equal(snapshot.inputs[0]?.source, "sequenceDiagram");
+    assert.equal(original.inputs[0]?.source, "flowchart LR");
+    assert.equal(reopened.state.lineReads, 3);
+  });
+
+  it("shares empty source facts without repeating Markdown extraction", () => {
+    const { document, state } = sourceDocument("# Notes\n\nNo diagrams");
+    const snapshot = getPreviewSourceSnapshot(document);
+
+    assert.deepEqual(snapshot.inputs, []);
+    assert.equal(selectPreviewInput(snapshot.inputs), null);
+    assert.equal(getPreviewSourceSnapshot(document), snapshot);
+    assert.equal(state.lineReads, 3);
   });
 
   it("accepts the same Markdown Mermaid fence forms as analysis", () => {
@@ -334,4 +434,43 @@ function markdownWithTwoFences(): string {
     "A->>B: hi",
     "```",
   ].join("\n");
+}
+
+function sourceDocument(text: string, fileName = "notes.md") {
+  const state = {
+    lines: text.split(/\r?\n/),
+    version: 1,
+    languageId: "markdown",
+    isClosed: false,
+    lineReads: 0,
+    textReads: 0,
+  };
+  const document = {
+    uri: {
+      fsPath: `/workspace/${fileName}`,
+      toString: () => `file:///workspace/${fileName}`,
+    },
+    fileName,
+    get languageId() {
+      return state.languageId;
+    },
+    get version() {
+      return state.version;
+    },
+    get isClosed() {
+      return state.isClosed;
+    },
+    get lineCount() {
+      return state.lines.length;
+    },
+    lineAt: (lineIndex: number) => {
+      state.lineReads += 1;
+      return { text: state.lines[lineIndex] ?? "" };
+    },
+    getText: () => {
+      state.textReads += 1;
+      return state.lines.join("\n");
+    },
+  } as unknown as vscode.TextDocument;
+  return { document, state };
 }

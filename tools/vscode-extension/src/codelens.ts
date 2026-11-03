@@ -2,7 +2,7 @@ import * as vscode from "vscode";
 
 import { getSourceActionSettings } from "./config.js";
 import { pngClipboardAvailable } from "./export-options.js";
-import { listPreviewInputsFromDocument } from "./preview-source.js";
+import { getPreviewSourceSnapshot } from "./preview-source.js";
 import {
   buildMermaidSourceCodeLensSpecs,
   mermaidSourceCommandIdentity,
@@ -52,7 +52,7 @@ class MermaidSourceCodeLensProvider implements vscode.CodeLensProvider, vscode.D
   constructor(private readonly includeCopyPng: boolean) {}
 
   provideCodeLenses(document: vscode.TextDocument): vscode.CodeLens[] {
-    const inputs = listPreviewInputsFromDocument(document);
+    const { inputs } = getPreviewSourceSnapshot(document);
     const specs = buildMermaidSourceCodeLensSpecs(
       inputs,
       getSourceActionSettings(document.uri),

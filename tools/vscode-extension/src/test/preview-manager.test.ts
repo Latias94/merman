@@ -3,6 +3,8 @@ import Module from "node:module";
 import type * as vscode from "vscode";
 import { describe, it } from "node:test";
 
+import type { PreviewSnapshotMessagePayload } from "../preview-messages.js";
+
 type CommandHandler = (target?: unknown) => Promise<void> | void;
 
 interface FakeDisposable {
@@ -68,6 +70,7 @@ class FakePreviewHost {
     selection?: unknown;
   }> = [];
   readonly subscriptions: FakeDisposable[] = [];
+  readonly codeLensProviders: vscode.CodeLensProvider[] = [];
   private saveDialogCounter = 0;
   readonly activeDocument = textDocument("file:///workspace/notes.txt", "notes.txt", "plain text", "plaintext");
   readonly targetDocument = textDocument(
@@ -88,6 +91,7 @@ class FakePreviewHost {
   private readonly disposables: FakeDisposable[] = [];
   private readonly activeTextEditorListeners: Array<() => void> = [];
   private readonly textDocumentChangeListeners: Array<(event: { document: vscode.TextDocument }) => void> = [];
+  private readonly textDocumentCloseListeners: Array<(document: vscode.TextDocument) => void> = [];
   private readonly documents = new Map<string, vscode.TextDocument>();
   private readonly deferredDocumentOpens = new Map<string, { promise: Promise<void>; release: () => void }>();
   private readonly deferredRenders: DeferredRender[] = [];
@@ -221,6 +225,8 @@ class FakePreviewHost {
                 return "svg";
               case "preview.background":
                 return "paper";
+              case "languageIntelligence.enabled":
+                return false;
               default:
                 return fallback;
             }
@@ -249,10 +255,19 @@ class FakePreviewHost {
           host.textDocumentChangeListeners.push(listener);
           return host.disposable();
         },
+        onDidCloseTextDocument: (listener: (document: vscode.TextDocument) => void) => {
+          host.textDocumentCloseListeners.push(listener);
+          return host.disposable();
+        },
+        onDidChangeConfiguration: () => host.disposable(),
       },
       languages: {
         getDiagnostics: () => [],
         onDidChangeDiagnostics: () => host.disposable(),
+        registerCodeLensProvider: (_selector: unknown, provider: vscode.CodeLensProvider) => {
+          host.codeLensProviders.push(provider);
+          return host.disposable();
+        },
       },
       env: {
         clipboard: {
@@ -273,14 +288,26 @@ class FakePreviewHost {
           readonly character: number,
         ) {}
       },
+      CodeLens: class {
+        constructor(readonly range: unknown, readonly command: vscode.Command) {}
+      },
+      EventEmitter: class {
+        readonly event = () => host.disposable();
+        fire(): void {}
+        dispose(): void {}
+      },
     };
   })();
 
   setActiveDocument(document: vscode.TextDocument): void {
     const editor = textEditor(document);
-    if (!this.visibleEditors.some((visible) => sameUri(visible.document.uri, document.uri))) {
+    const existingIndex = this.visibleEditors.findIndex((visible) => sameUri(visible.document.uri, document.uri));
+    if (existingIndex < 0) {
       this.visibleEditors.push(editor);
+    } else {
+      this.visibleEditors[existingIndex] = editor;
     }
+    this.documents.set(document.uri.toString(), document);
     this.activeEditor = editor;
     for (const listener of this.activeTextEditorListeners) {
       listener();
@@ -290,6 +317,12 @@ class FakePreviewHost {
   fireDocumentChange(document: vscode.TextDocument): void {
     for (const listener of this.textDocumentChangeListeners) {
       listener({ document });
+    }
+  }
+
+  fireDocumentClose(document: vscode.TextDocument): void {
+    for (const listener of this.textDocumentCloseListeners) {
+      listener(document);
     }
   }
 
@@ -391,6 +424,119 @@ class FakePreviewHost {
 }
 
 describe("preview manager", () => {
+  it("shares extraction across CodeLens and independently configured panels with language intelligence disabled", async () => {
+    const host = new FakePreviewHost();
+    const { registerPreview, registerSourceCodeLens } = loadPreviewModule(host);
+    const reads = { lineAt: 0 };
+    const document = textDocument(
+      "file:///workspace/notes.md",
+      "notes.md",
+      "```mermaid\nflowchart LR\n```\n\n```mermaid\nsequenceDiagram\n```",
+      "markdown",
+      1,
+      reads,
+    );
+    host.setActiveDocument(document);
+    const context = {
+      extensionUri: uri("file:///extension"),
+      subscriptions: host.subscriptions,
+    } as unknown as vscode.ExtensionContext;
+    registerPreview(context);
+    registerSourceCodeLens(context);
+    const provider = host.codeLensProviders[0];
+    assert.ok(provider);
+    const lenses = await provider.provideCodeLenses(document, {} as vscode.CancellationToken);
+    assert.equal(lenses?.length, 4);
+    await provider.provideCodeLenses(document, {} as vscode.CancellationToken);
+
+    await host.commands.get("merman.openPreview")?.(lenses?.[2]?.command?.arguments?.[0]);
+    await host.panels[0]?.receive({ type: "ready" });
+    await host.commands.get("merman.togglePreviewLock")?.();
+    await host.commands.get("merman.openPreview")?.(lenses?.[0]?.command?.arguments?.[0]);
+    await host.panels[1]?.receive({ type: "ready" });
+    await host.panels[0]?.receive({ type: "setDiagramTheme", theme: "dark" });
+    await host.panels[1]?.receive({ type: "setBackground", background: "transparent" });
+    await host.commands.get("merman.refreshPreview")?.();
+    await flushPreviewWork();
+
+    const locked = lastRenderedSnapshot(host.panels[0]);
+    const followed = lastRenderedSnapshot(host.panels[1]);
+    assert.equal(locked.sourceId, "fence-2");
+    assert.equal(locked.locked, true);
+    assert.equal(locked.diagramTheme, "dark");
+    assert.equal(locked.background, "paper");
+    assert.equal(followed.sourceId, "fence-1");
+    assert.equal(followed.locked, false);
+    assert.equal(followed.diagramTheme, "source");
+    assert.equal(followed.background, "transparent");
+    assert.equal(reads.lineAt, document.lineCount);
+
+    host.fireDocumentChange(document);
+    await host.panels[1]?.receive({ type: "copySvg", svg: "<svg></svg>", sourceKey: followed.sourceKey });
+    assert.deepEqual(host.clipboardWrites, []);
+    assert.equal(reads.lineAt, document.lineCount);
+
+    await host.commands.get("merman.refreshPreview")?.();
+    await flushPreviewWork();
+    await host.panels[0]?.receive({ type: "exportRendered", format: "svg", sourceKey: locked.sourceKey });
+    await flushPreviewWork();
+    assert.equal(host.writtenFiles.length, 1);
+    assert.equal(host.renderCalls.at(-1)?.source, "sequenceDiagram");
+    assert.equal(reads.lineAt, document.lineCount);
+
+    Object.defineProperty(document, "isClosed", { value: true });
+    host.fireDocumentClose(document);
+    const closedLenses = await provider.provideCodeLenses(document, {} as vscode.CancellationToken);
+    assert.deepEqual(closedLenses, []);
+    assert.equal(reads.lineAt, document.lineCount);
+
+    const reopenedReads = { lineAt: 0 };
+    const reopened = textDocument(
+      "file:///workspace/notes.md",
+      "notes.md",
+      "```mermaid\npie title Reopened\n```",
+      "markdown",
+      1,
+      reopenedReads,
+    );
+    host.setActiveDocument(reopened);
+    const reopenedLenses = await provider.provideCodeLenses(reopened, {} as vscode.CancellationToken);
+    assert.equal(reopenedLenses?.length, 2);
+    assert.equal(reopenedReads.lineAt, reopened.lineCount);
+    for (const subscription of host.subscriptions) {
+      subscription.dispose();
+    }
+  });
+
+  it("renders replacement documents with the same URI and version from their own source facts", async () => {
+    const host = new FakePreviewHost();
+    const { registerPreview } = loadPreviewModule(host);
+    const original = textDocument("file:///workspace/notes.md", "notes.md", "```mermaid\nflowchart LR\n```", "markdown");
+    const replacement = textDocument("file:///workspace/notes.md", "notes.md", "```mermaid\nsequenceDiagram\n```", "markdown");
+    host.setActiveDocument(original);
+    registerPreview({
+      extensionUri: uri("file:///extension"),
+      subscriptions: host.subscriptions,
+    } as unknown as vscode.ExtensionContext);
+    await host.commands.get("merman.openPreview")?.();
+    await host.panels[0]?.receive({ type: "ready" });
+    await flushPreviewWork();
+    const staleSourceKey = lastRenderedSourceKey(host.panels[0]);
+
+    host.setActiveDocument(replacement);
+    host.fireDocumentChange(replacement);
+    await host.panels[0]?.receive({ type: "exportRendered", format: "svg", sourceKey: staleSourceKey });
+    assert.deepEqual(host.writtenFiles, []);
+
+    await host.commands.get("merman.refreshPreview")?.();
+    await flushPreviewWork();
+    assert.equal(host.renderCalls.at(-1)?.source, "sequenceDiagram");
+    assert.notDeepEqual(lastRenderedSourceKey(host.panels[0]), staleSourceKey);
+    for (const subscription of host.subscriptions) {
+      subscription.dispose();
+    }
+  });
+
   it("registers preview commands and reuses the follow preview panel", async () => {
     const host = new FakePreviewHost();
     const { registerPreview } = loadPreviewModule(host);
@@ -989,7 +1135,9 @@ describe("preview manager", () => {
   });
 });
 
-function loadPreviewModule(host: FakePreviewHost): typeof import("../preview.js") {
+function loadPreviewModule(
+  host: FakePreviewHost,
+): typeof import("../preview.js") & typeof import("../codelens.js") {
   type LoadModule = (this: unknown, request: string, parent: unknown, isMain: boolean) => unknown;
   const moduleWithLoad = Module as typeof Module & { _load: LoadModule };
   const originalLoad = moduleWithLoad._load;
@@ -1044,7 +1192,11 @@ function loadPreviewModule(host: FakePreviewHost): typeof import("../preview.js"
     delete require.cache[require.resolve("../preview-webview-client.js")];
     delete require.cache[require.resolve("../export-workflow.js")];
     delete require.cache[require.resolve("../renderer.js")];
-    return require("../preview.js") as typeof import("../preview.js");
+    delete require.cache[require.resolve("../codelens.js")];
+    return {
+      ...(require("../preview.js") as typeof import("../preview.js")),
+      ...(require("../codelens.js") as typeof import("../codelens.js")),
+    };
   } finally {
     moduleWithLoad._load = originalLoad;
   }
@@ -1066,18 +1218,26 @@ function textDocument(
   fileName: string,
   text: string,
   languageId = "mermaid",
+  version = 1,
+  reads?: { lineAt: number },
 ): vscode.TextDocument {
   const lines = text.split(/\r?\n/);
   return {
     uri: uri(uriValue, fileName),
     fileName,
     languageId,
-    version: 1,
+    version,
     lineCount: lines.length,
-    getText: () => text,
-    lineAt: (lineIndex: number) => ({
-      text: lines[lineIndex] ?? "",
-    }),
+    getText: () => {
+      assert.notEqual(languageId, "markdown", "Markdown extraction must use lineAt");
+      return text;
+    },
+    lineAt: (lineIndex: number) => {
+      if (reads) {
+        reads.lineAt += 1;
+      }
+      return { text: lines[lineIndex] ?? "" };
+    },
   } as unknown as vscode.TextDocument;
 }
 
@@ -1100,14 +1260,18 @@ async function waitUntil(predicate: () => boolean): Promise<void> {
 }
 
 function lastRenderedSourceKey(panel: FakePanel | undefined): unknown {
+  return lastRenderedSnapshot(panel).sourceKey;
+}
+
+function lastRenderedSnapshot(panel: FakePanel | undefined): PreviewSnapshotMessagePayload {
   assert.ok(panel, "Expected preview panel");
   for (let index = panel.postedMessages.length - 1; index >= 0; index -= 1) {
     const message = panel.postedMessages[index] as {
       type?: string;
-      snapshot?: { sourceKey?: unknown };
+      snapshot?: PreviewSnapshotMessagePayload;
     };
     if (message.type === "renderSucceeded" && message.snapshot?.sourceKey) {
-      return message.snapshot.sourceKey;
+      return message.snapshot;
     }
   }
   assert.fail("Expected a renderSucceeded message with a sourceKey");

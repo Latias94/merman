@@ -1,7 +1,3 @@
-interface EditorLike {
-  readonly document: unknown;
-}
-
 interface UriLike {
   toString(): string;
 }
@@ -13,16 +9,9 @@ export function isActiveEditorSelectionChange(
   return activeEditor !== undefined && eventEditor === activeEditor;
 }
 
-export function isTrackedPreviewDocumentChange(
-  trackedEditor: EditorLike | undefined,
-  changedDocument: unknown,
-): boolean {
-  return trackedEditor !== undefined && changedDocument === trackedEditor.document;
-}
-
 export function isTrackedPreviewDiagnosticsChange(
-  trackedUri: UriLike | undefined,
+  trackedUri: string | undefined,
   changedUris: readonly UriLike[],
 ): boolean {
-  return trackedUri !== undefined && changedUris.some((uri) => uri.toString() === trackedUri.toString());
+  return trackedUri !== undefined && changedUris.some((uri) => uri.toString() === trackedUri);
 }
