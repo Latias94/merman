@@ -1499,6 +1499,116 @@ mod tests {
 
     #[cfg(all(feature = "svg", feature = "diagram-flowchart"))]
     #[test]
+    fn shared_cold_render_initialization_rechecks_request_deadlines_and_cancellation() {
+        use std::sync::{atomic::AtomicBool, mpsc};
+        use std::time::{Duration, Instant};
+
+        const SOURCE: &[u8] = b"flowchart TD\nA[Shared] --> B[Recovered]";
+        const WAIT: Duration = Duration::from_secs(5);
+
+        for deadline_exceeded in [true, false] {
+            let engine = Arc::new(BindingEngine::new(b"").unwrap());
+            assert!(engine.render.get().is_none());
+            let (initializing_sender, initializing_receiver) = mpsc::channel();
+            let (release_sender, release_receiver) = mpsc::channel();
+            let (before_cache_sender, before_cache_receiver) = mpsc::channel();
+            let clock_reads = Arc::new(AtomicUsize::new(0));
+            let expired = Arc::new(AtomicBool::new(false));
+            let observed_reads = Arc::clone(&clock_reads);
+            let observed_expired = Arc::clone(&expired);
+            let base = Instant::now();
+            let control = OperationControl::with_test_clock(Arc::new(move || {
+                let now = if observed_expired.load(Ordering::SeqCst) {
+                    base + Duration::from_millis(2)
+                } else {
+                    base
+                };
+                if observed_reads.fetch_add(1, Ordering::SeqCst) == 2 {
+                    before_cache_sender.send(()).unwrap();
+                }
+                now
+            }))
+            .with_deadline(Duration::from_millis(1));
+
+            std::thread::scope(|scope| {
+                let initializing_engine = Arc::clone(&engine);
+                let initializing = scope.spawn(move || {
+                    let before = full_engine_materializations();
+                    initializing_engine.render.get_or_init(|| {
+                        initializing_sender.send(()).unwrap();
+                        release_receiver
+                            .recv_timeout(WAIT)
+                            .expect("release the occupied cold render initializer");
+                        initializing_engine
+                            .render_config
+                            .clone()
+                            .materialize(&initializing_engine.services)
+                    });
+                    assert_eq!(full_engine_materializations(), (before.0, before.1 + 1));
+                });
+                initializing_receiver
+                    .recv_timeout(WAIT)
+                    .expect("the shared cold render initializer must be occupied");
+
+                let waiting_engine = Arc::clone(&engine);
+                let waiting_control = control.clone();
+                let waiting = scope.spawn(move || {
+                    let before = full_engine_materializations();
+                    let result = waiting_engine.execute_data(
+                        crate::BindingOperationRequest::new("svg", SOURCE)
+                            .with_control(waiting_control),
+                    );
+                    assert_eq!(full_engine_materializations(), before);
+                    result
+                });
+                let reached_cache = before_cache_receiver.recv_timeout(WAIT);
+                let cache_is_cold = engine.render.get().is_none();
+                if deadline_exceeded {
+                    expired.store(true, Ordering::SeqCst);
+                } else {
+                    control.cancel();
+                }
+                let request_is_pending = !waiting.is_finished();
+                release_sender.send(()).unwrap();
+                initializing.join().expect("complete shared initialization");
+                let result = waiting.join().expect("settle the waiting request");
+
+                reached_cache
+                    .expect("request must pass admission and the pre-cache parse checkpoint");
+                assert!(cache_is_cold);
+                assert!(request_is_pending);
+                let error =
+                    result.expect_err("a terminal raised during initialization must survive");
+                assert_eq!(error.status(), crate::BindingStatus::Cancelled);
+                assert_eq!(
+                    error.cancellation_details(),
+                    Some(crate::BindingCancellationErrorDetails {
+                        reason: if deadline_exceeded {
+                            "deadline_exceeded"
+                        } else {
+                            "requested"
+                        },
+                        phase: "admission",
+                    }),
+                );
+            });
+
+            let cached = engine
+                .render
+                .get()
+                .expect("shared initialization completed");
+            let before = full_engine_materializations();
+            let svg = String::from_utf8(engine.render_svg(SOURCE).unwrap()).unwrap();
+            assert!(svg.contains("<svg"));
+            assert!(svg.contains("Recovered"));
+            assert!(std::ptr::eq(cached, engine.render_engine()));
+            assert_eq!(full_engine_materializations(), before);
+            assert!(engine.semantic.get().is_none());
+        }
+    }
+
+    #[cfg(all(feature = "svg", feature = "diagram-flowchart"))]
+    #[test]
     fn delayed_render_engine_preserves_constructor_services_and_prepared_ownership() {
         let before = full_engine_materializations();
         let counter = CountingHostTextMeasurer::new();
