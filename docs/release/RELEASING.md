@@ -969,18 +969,25 @@ commands for channels selected in the release scope; this list is a command refe
 
 ```bash
 RELEASE_TAG="v<version>"
-MAVEN_GROUP="<verified-owned-group>"
+MAVEN_GROUP="<selected-local-maven-group>"
 gh workflow run release-python.yml \
   -f release_tag="$RELEASE_TAG" -f source_ref="$RELEASE_TAG" \
   -f publish=true -f publish_to_pypi=true
 gh workflow run release-android.yml \
   -f release_tag="$RELEASE_TAG" -f source_ref="$RELEASE_TAG" \
-  -f maven_group="$MAVEN_GROUP" -f prepare_central_bundle=true -f publish=true
+  -f maven_group="$MAVEN_GROUP" -f prepare_central_bundle=false -f publish=true
 gh workflow run release-web.yml -f release_tag="$RELEASE_TAG" -f source_ref="$RELEASE_TAG" -f publish_to_npm=true
 gh workflow run release-node.yml -f release_tag="$RELEASE_TAG" -f source_ref="$SOURCE_SHA" -f publish_to_npm=true
 gh workflow run vscode-extension.yml -f source_ref="$RELEASE_TAG"
 gh workflow run homebrew.yml
 ```
+
+The Android command publishes the qualified AAR, complete local Maven repository ZIP and their
+checksums without Central credentials. For a separately selected Central handoff, use
+`prepare_central_bundle=true` with the protected signing configuration and verified owned group.
+If the unsigned Maven ZIP is already public, prepare the later signed handoff with `publish=false`
+to preserve its accepted bytes. Neither route submits to Maven Central. See the
+[Android release guide](../../platforms/android/RELEASING.md#github-release-assets).
 
 For a selected Apple release, normally use the workflow definition from the immutable release tag:
 

@@ -2,12 +2,12 @@
 
 Parse, analyze, lay out, and render Mermaid diagrams in Android apps without a WebView or a JavaScript runtime. The Kotlin API uses a direct JNI transport over Merman's shared binding engine.
 
-This guide targets the `0.10.0-alpha.1` candidate; see the [host guide](../../docs/release/PREBUILT_PRODUCTS.md) for version and channel availability.
+This guide targets the `0.10.0-alpha.1` AAR and local Maven repository; see the [host guide](../../docs/release/PREBUILT_PRODUCTS.md) for stable and alpha installation choices.
 
 > **Binding contract:** The `0.10.0-alpha.1` AAR uses Options JSON schema `3`. Kotlin classes
-> and `libmerman_android_jni.so` must come from the same publication. The candidate Maven
-> repository is a qualification artifact; no Maven Central namespace or published coordinate
-> is claimed here.
+> and `libmerman_android_jni.so` must come from the same publication. The downloadable Maven
+> repository uses local coordinate `io.merman:merman-android:0.10.0-alpha.1`. This release does
+> not publish that coordinate to Maven Central.
 
 ## Requirements
 
@@ -17,10 +17,14 @@ This guide targets the `0.10.0-alpha.1` candidate; see the [host guide](../../do
 
 At load time, the wrapper validates the runtime catalog schema, transport API, native package metadata, Options JSON schema, both binding payload schemas, capability implications, callable operation/output/metadata relations, output policies, resource profiles, and the text-measurement protocol rather than relying on C ABI symbols or per-method JNI name lookup. The default Android AAR carries SVG with math, Cytoscape and ELK layout, ASCII, analysis, validation, and document analysis. Every known ID in that generated artifact contract must be present in stable sorted order. Unknown future IDs and fields remain additive and are preserved. The optional option-group and constructor-service sections may be omitted only for legacy schema-1 producers; when present, their known IDs and contracts must match the generated Android contract. Exact package-version equality is not checked, so always ship the Kotlin classes and native library from the same AAR.
 
-## Resolve A Candidate Maven Publication
+## Resolve The Local Maven Package
 
-Extract `merman-android-0.10.0-alpha.1-maven.zip` from the candidate workflow artifacts into
-a local directory. The ZIP is a complete Maven repository for exactly the selected version:
+<a id="resolve-a-candidate-maven-publication"></a>
+
+Download [the Maven repository ZIP](https://github.com/Latias94/merman/releases/download/v0.10.0-alpha.1/merman-android-0.10.0-alpha.1-maven.zip)
+and [its SHA-256 sidecar](https://github.com/Latias94/merman/releases/download/v0.10.0-alpha.1/merman-android-0.10.0-alpha.1-maven.zip.sha256),
+verify the checksum and extract the ZIP into a local directory.
+The ZIP is a complete Maven repository for exactly this version:
 AAR, POM, Gradle module metadata, sources,
 API documentation, available detached signatures, and checksum sidecars. Other staged versions
 are excluded, and repository metadata lists only the selected version. The POM and Gradle
@@ -56,10 +60,10 @@ dependencies {
 ```
 
 Pass `-PmermanRepository=/absolute/path/to/extracted/repository`,
-`-PmermanGroup=<selected-group>` and `-PmermanVersion=0.10.0-alpha.1` to Gradle. Use the group
-recorded by the candidate owner. Central installation requires a separately verified namespace,
-publication and public resolution of that exact coordinate. `io.merman` remains a local build
-default; it is not evidence of Central ownership.
+`-PmermanGroup=io.merman` and `-PmermanVersion=0.10.0-alpha.1` to Gradle. The repository path is
+the extraction root containing `io/merman/merman-android/`. Central installation requires a
+separately verified namespace, publication and public resolution of that exact coordinate;
+the local group name is not evidence of Central ownership.
 
 ## Render A Diagram
 
@@ -258,21 +262,21 @@ The helper uses the checked-in Gradle Wrapper, pinned JDK 17/NDK toolchain, and 
 
 ## Legacy: Add A Release AAR
 
-The published `0.9.2` channel uses `merman-android-v0.9.2.aar` from the matching
-[GitHub Release](https://github.com/Latias94/merman/releases/tag/v0.9.2). Place it in the
+The stable `0.9.3` channel uses `merman-android-v0.9.3.aar` from the matching
+[GitHub Release](https://github.com/Latias94/merman/releases/tag/v0.9.3). Place it in the
 application's `app/libs/` directory and add it as a local dependency:
 
 ```kotlin
 dependencies {
-    implementation(files("libs/merman-android-v0.9.2.aar"))
+    implementation(files("libs/merman-android-v0.9.3.aar"))
 }
 ```
 
 The AAR contains the Kotlin API and `libmerman_android_jni.so` for both supported Android ABIs.
 Do not package a second native library beside it. This legacy release uses Options JSON
 schema `2` and omits math and binary codecs. Follow its
-[tagged guide](https://github.com/Latias94/merman/blob/v0.9.2/platforms/android/README.md) for API
-examples; the schema-3 theme examples in this README require the candidate's matching AAR.
+[tagged guide](https://github.com/Latias94/merman/blob/v0.9.3/platforms/android/README.md) for API
+examples; the schema-3 theme examples in this README require the alpha's matching AAR.
 
 ## Documentation And Releases
 

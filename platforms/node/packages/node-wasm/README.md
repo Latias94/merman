@@ -4,7 +4,7 @@ Explicit Node-targeted WebAssembly rendering for Node.js 22+ and static-site bui
 This is a separate opt-in package; `@mermanjs/node` remains the native N-API package and never
 silently falls back to browser or Node WASM.
 
-This guide targets the `0.10.0-alpha.1` release candidate with Options JSON schema `3`. Check the
+This guide targets the `0.10.0-alpha.1` prerelease with Options JSON schema `3`. Check the
 [prebuilt product status](https://github.com/Latias94/merman/blob/main/docs/release/PREBUILT_PRODUCTS.md)
 and [publish order](https://github.com/Latias94/merman/blob/main/docs/release/PUBLISH_ORDER.md)
 for verified public availability.

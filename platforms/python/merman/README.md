@@ -4,7 +4,7 @@
 
 Parse, analyze, lay out, and render Mermaid diagrams from Python without a browser or JavaScript runtime. The package ships Merman's Rust engine and exposes it through UniFFI.
 
-This guide targets the `0.10.0-alpha.1` candidate; see the [host guide](../../../docs/release/PREBUILT_PRODUCTS.md) for version and channel availability.
+This guide targets `0.10.0-alpha.1`, published on PyPI as `0.10.0a1`; see the [host guide](../../../docs/release/PREBUILT_PRODUCTS.md) for stable and alpha installation choices.
 
 > The Python package version is `0.10.0a1` (PEP 440), corresponding to native Merman `0.10.0-alpha.1`. It uses direct UniFFI binding API `7` and Options JSON schema `3`, independently of the C ABI and text-measurement protocol. Install the Python wrapper and native library as one wheel rather than mixing releases.
 
@@ -33,7 +33,7 @@ There is no qualified source distribution; use the repository's explicit source 
 building from the matching `0.10.0-alpha.1` source revision. Build the wrapper and native library
 together to preserve the binding contract.
 
-For a legacy `0.9.2` installation, use the [tagged guide](https://github.com/Latias94/merman/blob/v0.9.2/platforms/python/merman/README.md).
+For a stable `0.9.3` installation, use the [tagged guide](https://github.com/Latias94/merman/blob/v0.9.3/platforms/python/merman/README.md).
 That release uses Options JSON schema `2`, omits math, and has three wheels, including a
 `manylinux_2_35_x86_64` wheel. Its binaries do not provide the theme API documented here.
 

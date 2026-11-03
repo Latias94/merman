@@ -2,7 +2,7 @@
 
 Parse, analyze, lay out, and render Mermaid diagrams from Swift on iOS and macOS without a WebView or JavaScript runtime. The `Merman` SwiftPM product is a direct UniFFI binding packaged as a binary XCFramework plus generated Swift source.
 
-This guide targets the `0.10.0-alpha.1` candidate; see the [host guide](../../docs/release/PREBUILT_PRODUCTS.md) for version and channel availability.
+This guide targets the `0.10.0-alpha.1` local SwiftPM package and XCFramework; see the [host guide](../../docs/release/PREBUILT_PRODUCTS.md) for stable and alpha installation choices.
 
 > **Binding contract:** Merman `0.10.0-alpha.1` uses direct UniFFI binding API `7` and Options JSON schema `3`. Use the Swift source and XCFramework produced by the same Merman build. UniFFI rejects incompatible contract or API checksum pairs, but it does not compare Merman release versions when the generated interface is unchanged.
 
@@ -17,8 +17,10 @@ For Swift 5.9 iOS integration, use Xcode 15.2 or newer. The SwiftPM 5.9 command-
 
 ## Add the Complete Swift Package
 
-Use `Merman-swiftpm-v0.10.0-alpha.1.zip` and its `.zip.checksum` from the candidate owner,
-or produce them from the matching source revision with [Build The Local Package](#build-the-local-package).
+Download [the complete SwiftPM ZIP](https://github.com/Latias94/merman/releases/download/v0.10.0-alpha.1/Merman-swiftpm-v0.10.0-alpha.1.zip)
+and [its SHA-256 checksum](https://github.com/Latias94/merman/releases/download/v0.10.0-alpha.1/Merman-swiftpm-v0.10.0-alpha.1.zip.checksum),
+and verify the checksum before extraction. For custom builds, use the matching source revision
+with [Build The Local Package](#build-the-local-package).
 Extract the archive and add the resulting `Merman-swiftpm-v0.10.0-alpha.1` directory as a
 local package in Xcode. A Swift package can declare:
 
@@ -53,7 +55,7 @@ Its matching checkout supplies the generated Swift facade and `Package.swift`;
 mixing tags is unsupported. That artifact uses Options JSON schema `2`, omits math and
 binary codecs, and does not provide the complete SwiftPM archives. Follow its
 [tagged guide](https://github.com/Latias94/merman/blob/v0.9.3/platforms/apple/README.md) for API
-examples; the schema-3 theme examples in this README require the candidate's matching build.
+examples; the schema-3 theme examples in this README require the alpha's matching build.
 
 ## Build The Local Package
 

@@ -4,7 +4,7 @@ All notable changes to the `@mermanjs/node` package group will be documented in 
 
 ## [0.10.0-alpha.1] - 2026-11-02
 
-Changes below are relative to the published `0.9.3` package group. These alpha bindings are available from source only; see the [host installation guide](../../docs/release/PREBUILT_PRODUCTS.md) for published versions.
+Changes below are relative to `0.9.3`. Install the exact prerelease with `npm install --save-exact @mermanjs/node@0.10.0-alpha.1`, or explicitly select `@mermanjs/node-wasm@0.10.0-alpha.1`; see the [host installation guide](../../docs/release/PREBUILT_PRODUCTS.md).
 
 ### Breaking changes
 
