@@ -1,4 +1,6 @@
 import * as assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import * as path from "node:path";
 import { describe, it } from "node:test";
 import type * as vscode from "vscode";
 
@@ -9,8 +11,133 @@ import {
   previewSourceIdentity,
   selectPreviewInput,
 } from "../preview-source.js";
+import { buildMermaidSourceCodeLensSpecs } from "../source-actions.js";
+
+interface HostFenceCase {
+  name: string;
+  language: string;
+  text: string;
+  fences: {
+    start_line: number;
+    end_line: number;
+    body: string;
+    closing: string | null;
+  }[];
+}
+
+const hostFenceCases: HostFenceCase[] = JSON.parse(readFileSync(
+  path.resolve(__dirname, "../../../../crates/merman-analysis/tests/fixtures/editor_host_fences.json"),
+  "utf8",
+)).cases;
+
+describe("shared editor-host fence contract", () => {
+  for (const fixture of hostFenceCases) {
+    it(fixture.name, () => {
+      const expected = fixture.fences
+        .map((fence, index) => ({
+          sourceId: `fence-${index + 1}`,
+          source: fence.closing === null
+            ? fence.body.replace(/\r\n|\r/g, "\n")
+            : fence.body.replace(/\r\n|\r/g, "\n").replace(/\n$/, ""),
+          sourceRange: { startLine: fence.start_line, endLine: fence.end_line },
+          diagnosticRange: {
+            startLine: fence.start_line + 1,
+            endLine: fence.closing === null
+              ? fence.end_line
+              : Math.max(fence.end_line - 1, fence.start_line),
+          },
+        }))
+        .filter((input) => input.source.trim().length > 0);
+      const project = (inputs: ReturnType<typeof listPreviewInputsFromText>) => inputs.map(
+        ({ sourceId, source, sourceRange, diagnosticRange }) => ({
+          sourceId, source, sourceRange, diagnosticRange,
+        }),
+      );
+      const inputs = listPreviewInputsFromText({
+        text: fixture.text,
+        languageId: fixture.language,
+        fileName: `/workspace/notes.${fixture.language === "mdx" ? "mdx" : "md"}`,
+      });
+      assert.deepEqual(project(inputs), expected);
+
+      const { document, state } = sourceDocument(fixture.text);
+      state.lines = fixture.text.split(/\r\n|[\r\n]/);
+      state.languageId = fixture.language;
+      const snapshot = getPreviewSourceSnapshot(document);
+      assert.deepEqual(project([...snapshot.inputs]), expected);
+      assert.equal(getPreviewSourceSnapshot(document), snapshot);
+      assert.equal(state.textReads, 0);
+      assert.equal(state.lineReads, state.lines.length);
+
+      const specs = buildMermaidSourceCodeLensSpecs(snapshot.inputs);
+      assert.equal(specs.length, expected.length * 2);
+      assert.deepEqual(
+        specs.filter((spec) => spec.title === "Preview")
+          .map((spec) => [spec.sourceId, spec.line]),
+        expected.map((input) => [input.sourceId, input.sourceRange.startLine]),
+      );
+      for (const input of inputs) {
+        assert.equal(
+          selectPreviewInput(inputs, { sourceIdentity: previewSourceIdentity(input) }),
+          input,
+        );
+      }
+      if (expected.length === 0) {
+        assert.equal(selectPreviewInput(inputs), null);
+      }
+    });
+  }
+});
 
 describe("preview source extraction", () => {
+  it("preserves JavaScript trim semantics when filtering preview content", () => {
+    for (const [text, expectedCount] of [["\ufeff", 0], ["\u0085", 1]] as const) {
+      const documentInputs = listPreviewInputsFromText({
+        text,
+        languageId: "mermaid",
+        fileName: "/workspace/diagram.mmd",
+      });
+      const fenceInputs = listPreviewInputsFromText({
+        text: `\`\`\`mermaid\n${text}\n\`\`\``,
+        languageId: "markdown",
+        fileName: "/workspace/notes.md",
+      });
+      assert.equal(documentInputs.length, expectedCount);
+      assert.equal(fenceInputs.length, expectedCount);
+      if (expectedCount > 0) {
+        assert.equal(documentInputs[0]?.source, text);
+        assert.equal(fenceInputs[0]?.source, text);
+      }
+    }
+  });
+
+  it("refreshes preview and CodeLens sources when comments hide and reveal a fence", () => {
+    const lines = ["```mermaid", "sequenceDiagram", "Alice->>Bob: 😀", "```"];
+    const { document, state } = sourceDocument(lines.join("\n"));
+    const visible = getPreviewSourceSnapshot(document);
+    const identity = previewSourceIdentity(visible.inputs[0]!);
+
+    state.lines = ["<!--", ...lines];
+    state.version += 1;
+    const hidden = getPreviewSourceSnapshot(document);
+    assert.deepEqual(hidden.inputs, []);
+    assert.deepEqual(buildMermaidSourceCodeLensSpecs(hidden.inputs), []);
+    assert.equal(selectPreviewInput(hidden.inputs, { sourceIdentity: identity }), null);
+
+    state.lines = ["<!-- closed -->", ...lines];
+    state.version += 1;
+    const revealed = getPreviewSourceSnapshot(document);
+    const selected = selectPreviewInput(revealed.inputs, { sourceIdentity: identity });
+    assert.equal(selected?.source, "sequenceDiagram\nAlice->>Bob: 😀");
+    assert.deepEqual(selected?.sourceRange, { startLine: 1, endLine: 4 });
+    assert.deepEqual(
+      buildMermaidSourceCodeLensSpecs(revealed.inputs).map((spec) => spec.line),
+      [1, 1],
+    );
+    assert.equal(visible.inputs.length, 1);
+    assert.equal(state.textReads, 0);
+  });
+
   it("extracts Mermaid files as whole-document sources", () => {
     const input = extractPreviewInputFromText({
       text: "flowchart TD\n  A --> B\n",

@@ -13,6 +13,7 @@ mod diagnostic_projection;
 pub mod document;
 mod document_limits;
 pub mod editor;
+mod fence_locator;
 #[cfg(all(test, feature = "diagram-flowchart"))]
 mod fix_generation_tests;
 pub mod markdown;
@@ -55,6 +56,7 @@ pub use document::{
     source_descriptor_for_markdown_path, source_descriptor_for_uri, source_language,
 };
 pub use editor::{ByteSpan, FenceTextIndex, FenceTextIndexSource};
+pub use fence_locator::{EditorHostFence, locate_editor_host_fences_cancellable};
 pub use options_json::{
     AnalysisOptionsJson, AnalysisOptionsJsonError, LintOptionsJson, LintRuleSeverityOverrideJson,
     ResourceOptionsJson, analysis_options_from_json_value, analysis_options_json_from_json_value,

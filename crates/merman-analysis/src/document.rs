@@ -1,5 +1,6 @@
 use crate::analyzer::{CaptureCancellation, CaptureMode};
 use crate::diagnostic_projection::{DiagnosticCandidate, append_projected_diagnostic_candidates};
+use crate::fence_locator::{EditorHostFence, visit_editor_host_fences};
 use crate::{
     AnalysisCaptureOutcome, AnalysisDiagnostic, AnalysisGeneration, AnalysisPayload, Analyzer,
     DiagnosticFix, DiagnosticFixEdit, DiagnosticRelated, DiagnosticSpan, SourceDescriptor,
@@ -10,53 +11,13 @@ use std::ops::ControlFlow;
 use std::path::Path;
 use std::sync::Arc;
 
+pub use crate::fence_locator::{FenceDelimiter, FenceDelimiterSpans, FenceMarker};
 pub use crate::source_map::SharedTextSlice;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DocumentDiagramKind {
     WholeDocument,
     MermaidFence,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum FenceMarker {
-    Backtick,
-    Tilde,
-    Colon,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct FenceDelimiter {
-    marker: FenceMarker,
-    len: usize,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct FenceDelimiterSpans {
-    pub opening: std::ops::Range<usize>,
-    pub closing: Option<std::ops::Range<usize>>,
-}
-
-impl FenceDelimiter {
-    pub const fn new(marker: FenceMarker, len: usize) -> Self {
-        Self { marker, len }
-    }
-
-    pub const fn marker(self) -> FenceMarker {
-        self.marker
-    }
-
-    pub const fn marker_len(self) -> usize {
-        self.len
-    }
-
-    const fn marker_byte(self) -> u8 {
-        match self.marker {
-            FenceMarker::Backtick => b'`',
-            FenceMarker::Tilde => b'~',
-            FenceMarker::Colon => b':',
-        }
-    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -763,12 +724,12 @@ fn scan_markdown_diagrams_bounded(
     max_document_diagrams: Option<usize>,
     cancellation: &crate::AnalysisCancellationToken,
 ) -> Result<
-    Result<Vec<ScannedMarkdownDiagram>, MarkdownDocumentDiagramLimitExceeded>,
+    Result<Vec<EditorHostFence>, MarkdownDocumentDiagramLimitExceeded>,
     crate::AnalysisCancelled,
 > {
     let mut diagrams = Vec::new();
     let mut observed_document_diagrams = 0usize;
-    let result = visit_markdown_diagrams(
+    let result = visit_editor_host_fences(
         text,
         cancellation,
         |opening_marker| {
@@ -782,9 +743,7 @@ fn scan_markdown_diagrams_bounded(
                 ControlFlow::Continue(())
             }
         },
-        |bounds, delimiter| {
-            diagrams.push(ScannedMarkdownDiagram { bounds, delimiter });
-        },
+        |fence| diagrams.push(fence),
     )?;
     cancellation.checkpoint()?;
     Ok(match result {
@@ -796,7 +755,7 @@ fn scan_markdown_diagrams_bounded(
 fn materialize_markdown_diagrams(
     text: &Arc<str>,
     source: &SourceDescriptor,
-    diagrams: Vec<ScannedMarkdownDiagram>,
+    diagrams: Vec<EditorHostFence>,
     cancellation: &crate::AnalysisCancellationToken,
 ) -> Result<Vec<DocumentDiagram>, crate::AnalysisCancelled> {
     cancellation.checkpoint()?;
@@ -805,13 +764,7 @@ fn materialize_markdown_diagrams(
         if index.is_multiple_of(128) {
             cancellation.checkpoint()?;
         }
-        push_markdown_diagram(
-            &mut materialized,
-            Arc::clone(text),
-            source,
-            diagram.bounds,
-            diagram.delimiter,
-        );
+        push_markdown_diagram(&mut materialized, Arc::clone(text), source, diagram);
     }
     cancellation.checkpoint()?;
     Ok(materialized)
@@ -828,7 +781,7 @@ pub(crate) fn markdown_document_diagram_limit_exceeded_cancellable(
     cancellation: &crate::AnalysisCancellationToken,
 ) -> Result<Option<MarkdownDocumentDiagramLimitExceeded>, crate::AnalysisCancelled> {
     let mut observed_document_diagrams = 0usize;
-    let result = visit_markdown_diagrams(
+    let result = visit_editor_host_fences(
         document_text,
         cancellation,
         |opening_marker| {
@@ -842,7 +795,7 @@ pub(crate) fn markdown_document_diagram_limit_exceeded_cancellable(
                 ControlFlow::Continue(())
             }
         },
-        |_, _| {},
+        |_| {},
     )?;
     Ok(match result {
         ControlFlow::Continue(()) => None,
@@ -850,108 +803,11 @@ pub(crate) fn markdown_document_diagram_limit_exceeded_cancellable(
     })
 }
 
-fn visit_markdown_diagrams<B>(
-    document_text: &str,
-    cancellation: &crate::AnalysisCancellationToken,
-    mut visit_opening: impl FnMut(std::ops::Range<usize>) -> ControlFlow<B>,
-    mut visit: impl FnMut(MarkdownFenceBounds, FenceDelimiter),
-) -> Result<ControlFlow<B>, crate::AnalysisCancelled> {
-    let mut cursor = 0;
-
-    while cursor < document_text.len() {
-        cancellation.checkpoint()?;
-        let line_end = next_line_end_cancellable(document_text, cursor, cancellation)?;
-        let line = trim_line_ending(&document_text[cursor..line_end]);
-
-        if let Some(opening) = markdown_fence_opening(line, cancellation)? {
-            if !opening.is_mermaid {
-                cursor =
-                    skip_markdown_fence(document_text, line_end, opening.delimiter, cancellation)?;
-                continue;
-            }
-
-            let delimiter = opening.delimiter;
-            let opening_marker = cursor + opening.marker_offset
-                ..cursor + opening.marker_offset + delimiter.marker_len();
-            if let ControlFlow::Break(value) = visit_opening(opening_marker.clone()) {
-                return Ok(ControlFlow::Break(value));
-            }
-            let body_start = line_end;
-            let mut body_end = document_text.len();
-            let mut search_start = body_start;
-
-            while search_start < document_text.len() {
-                cancellation.checkpoint()?;
-                let closing_end =
-                    next_line_end_cancellable(document_text, search_start, cancellation)?;
-                let closing_line = trim_line_ending(&document_text[search_start..closing_end]);
-                if let Some(closing_marker) =
-                    matching_closing_fence_marker(closing_line, delimiter, cancellation)?
-                {
-                    body_end = search_start;
-                    visit(
-                        MarkdownFenceBounds {
-                            fence: cursor..closing_end,
-                            body: body_start..body_end,
-                            opening_marker: opening_marker.clone(),
-                            closing_marker: Some(
-                                search_start + closing_marker.start
-                                    ..search_start + closing_marker.end,
-                            ),
-                        },
-                        delimiter,
-                    );
-                    cursor = closing_end;
-                    break;
-                }
-                search_start = closing_end;
-            }
-
-            if body_end == document_text.len() {
-                visit(
-                    MarkdownFenceBounds {
-                        fence: cursor..document_text.len(),
-                        body: body_start..body_end,
-                        opening_marker,
-                        closing_marker: None,
-                    },
-                    delimiter,
-                );
-                break;
-            }
-
-            continue;
-        }
-
-        cursor = if line_end == cursor {
-            document_text.len()
-        } else {
-            line_end
-        };
-    }
-
-    cancellation.checkpoint()?;
-    Ok(ControlFlow::Continue(()))
-}
-
-struct MarkdownFenceBounds {
-    fence: std::ops::Range<usize>,
-    body: std::ops::Range<usize>,
-    opening_marker: std::ops::Range<usize>,
-    closing_marker: Option<std::ops::Range<usize>>,
-}
-
-struct ScannedMarkdownDiagram {
-    bounds: MarkdownFenceBounds,
-    delimiter: FenceDelimiter,
-}
-
 fn push_markdown_diagram(
     diagrams: &mut Vec<DocumentDiagram>,
     text: Arc<str>,
     document_source: &SourceDescriptor,
-    bounds: MarkdownFenceBounds,
-    fence_delimiter: FenceDelimiter,
+    fence: EditorHostFence,
 ) {
     let index = diagrams.len();
     diagrams.push(DocumentDiagram {
@@ -962,216 +818,14 @@ fn push_markdown_diagram(
             .clone()
             .with_diagram_index(index)
             .with_language("mermaid"),
-        start: bounds.fence.start,
-        body_start: bounds.body.start,
-        body_end: bounds.body.end,
-        end: bounds.fence.end,
-        text: SharedTextSlice::new(text, bounds.body.start, bounds.body.end),
-        fence_delimiter: Some(fence_delimiter),
-        fence_delimiter_spans: Some(FenceDelimiterSpans {
-            opening: bounds.opening_marker,
-            closing: bounds.closing_marker,
-        }),
+        start: fence.fence.start,
+        body_start: fence.body.start,
+        body_end: fence.body.end,
+        end: fence.fence.end,
+        text: SharedTextSlice::new(text, fence.body.start, fence.body.end),
+        fence_delimiter: Some(fence.delimiter),
+        fence_delimiter_spans: Some(fence.delimiter_spans),
     });
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-struct MarkdownFenceOpening {
-    delimiter: FenceDelimiter,
-    is_mermaid: bool,
-    marker_offset: usize,
-}
-
-const MARKDOWN_FENCE_SCAN_CHECKPOINT_BYTES: usize = 4 * 1024;
-
-fn markdown_fence_opening(
-    line: &str,
-    cancellation: &crate::AnalysisCancellationToken,
-) -> Result<Option<MarkdownFenceOpening>, crate::AnalysisCancelled> {
-    cancellation.checkpoint()?;
-    let Some(trimmed) = trim_fence_indent(line) else {
-        return Ok(None);
-    };
-    let marker_offset = line.len() - trimmed.len();
-    let Some(first) = trimmed.as_bytes().first().copied() else {
-        return Ok(None);
-    };
-    let marker = match first {
-        b'`' => FenceMarker::Backtick,
-        b'~' => FenceMarker::Tilde,
-        b':' => FenceMarker::Colon,
-        _ => return Ok(None),
-    };
-    let len = repeated_marker_len_cancellable(trimmed.as_bytes(), first, cancellation)?;
-    if len < 3 {
-        return Ok(None);
-    }
-
-    let rest = trim_start_whitespace_cancellable(&trimmed[len..], cancellation)?;
-    if rest.is_empty() {
-        return Ok(Some(MarkdownFenceOpening {
-            delimiter: FenceDelimiter::new(marker, len),
-            is_mermaid: false,
-            marker_offset,
-        }));
-    }
-
-    let language = "mermaid";
-    let language_len = language.len();
-    if !rest
-        .as_bytes()
-        .get(..language_len)
-        .is_some_and(|prefix| prefix.eq_ignore_ascii_case(language.as_bytes()))
-    {
-        return Ok(Some(MarkdownFenceOpening {
-            delimiter: FenceDelimiter::new(marker, len),
-            is_mermaid: false,
-            marker_offset,
-        }));
-    }
-    let tail = &rest[language_len..];
-    let is_mermaid = tail.is_empty() || tail.chars().next().is_some_and(char::is_whitespace);
-    cancellation.checkpoint()?;
-    Ok(Some(MarkdownFenceOpening {
-        delimiter: FenceDelimiter::new(marker, len),
-        is_mermaid,
-        marker_offset,
-    }))
-}
-
-fn matching_closing_fence_marker(
-    line: &str,
-    delimiter: FenceDelimiter,
-    cancellation: &crate::AnalysisCancellationToken,
-) -> Result<Option<std::ops::Range<usize>>, crate::AnalysisCancelled> {
-    cancellation.checkpoint()?;
-    let Some(trimmed) = trim_fence_indent(line) else {
-        return Ok(None);
-    };
-    let marker_offset = line.len() - trimmed.len();
-    let marker = delimiter.marker_byte();
-    let len = repeated_marker_len_cancellable(trimmed.as_bytes(), marker, cancellation)?;
-    if len < delimiter.marker_len() {
-        return Ok(None);
-    }
-    Ok(all_whitespace_cancellable(&trimmed[len..], cancellation)?
-        .then_some(marker_offset..marker_offset + len))
-}
-
-fn skip_markdown_fence(
-    text: &str,
-    mut cursor: usize,
-    delimiter: FenceDelimiter,
-    cancellation: &crate::AnalysisCancellationToken,
-) -> Result<usize, crate::AnalysisCancelled> {
-    while cursor < text.len() {
-        cancellation.checkpoint()?;
-        let line_end = next_line_end_cancellable(text, cursor, cancellation)?;
-        let line = trim_line_ending(&text[cursor..line_end]);
-        if matching_closing_fence_marker(line, delimiter, cancellation)?.is_some() {
-            return Ok(line_end);
-        }
-        cursor = line_end;
-    }
-    Ok(text.len())
-}
-
-fn trim_fence_indent(line: &str) -> Option<&str> {
-    let mut spaces = 0usize;
-    for (index, byte) in line.bytes().enumerate() {
-        match byte {
-            b' ' if spaces < 3 => spaces += 1,
-            b' ' => return None,
-            b'\t' => return None,
-            _ => return Some(&line[index..]),
-        }
-    }
-    Some("")
-}
-
-fn repeated_marker_len_cancellable(
-    bytes: &[u8],
-    marker: u8,
-    cancellation: &crate::AnalysisCancellationToken,
-) -> Result<usize, crate::AnalysisCancelled> {
-    let mut index = 0usize;
-    let mut next_checkpoint = 0usize;
-    while bytes.get(index) == Some(&marker) {
-        if index >= next_checkpoint {
-            cancellation.checkpoint()?;
-            next_checkpoint = index.saturating_add(MARKDOWN_FENCE_SCAN_CHECKPOINT_BYTES);
-        }
-        index += 1;
-    }
-    cancellation.checkpoint()?;
-    Ok(index)
-}
-
-fn trim_start_whitespace_cancellable<'a>(
-    text: &'a str,
-    cancellation: &crate::AnalysisCancellationToken,
-) -> Result<&'a str, crate::AnalysisCancelled> {
-    let mut trimmed_start = 0usize;
-    let mut next_checkpoint = 0usize;
-    for (offset, character) in text.char_indices() {
-        if offset >= next_checkpoint {
-            cancellation.checkpoint()?;
-            next_checkpoint = offset.saturating_add(MARKDOWN_FENCE_SCAN_CHECKPOINT_BYTES);
-        }
-        if !character.is_whitespace() {
-            return Ok(&text[offset..]);
-        }
-        trimmed_start = offset + character.len_utf8();
-    }
-    cancellation.checkpoint()?;
-    Ok(&text[trimmed_start..])
-}
-
-fn all_whitespace_cancellable(
-    text: &str,
-    cancellation: &crate::AnalysisCancellationToken,
-) -> Result<bool, crate::AnalysisCancelled> {
-    let mut next_checkpoint = 0usize;
-    for (offset, character) in text.char_indices() {
-        if offset >= next_checkpoint {
-            cancellation.checkpoint()?;
-            next_checkpoint = offset.saturating_add(MARKDOWN_FENCE_SCAN_CHECKPOINT_BYTES);
-        }
-        if !character.is_whitespace() {
-            return Ok(false);
-        }
-    }
-    cancellation.checkpoint()?;
-    Ok(true)
-}
-
-fn trim_line_ending(line: &str) -> &str {
-    line.strip_suffix('\n')
-        .map(|line| line.strip_suffix('\r').unwrap_or(line))
-        .unwrap_or_else(|| line.strip_suffix('\r').unwrap_or(line))
-}
-
-fn next_line_end_cancellable(
-    source: &str,
-    start: usize,
-    cancellation: &crate::AnalysisCancellationToken,
-) -> Result<usize, crate::AnalysisCancelled> {
-    let bytes = source.as_bytes();
-    let mut index = start;
-    let mut next_checkpoint = start;
-    while index < bytes.len() {
-        if index >= next_checkpoint {
-            cancellation.checkpoint()?;
-            next_checkpoint = index.saturating_add(MARKDOWN_FENCE_SCAN_CHECKPOINT_BYTES);
-        }
-        match bytes[index] {
-            b'\n' => return Ok(index + 1),
-            b'\r' if bytes.get(index + 1) == Some(&b'\n') => return Ok(index + 2),
-            b'\r' => return Ok(index + 1),
-            _ => index += 1,
-        }
-    }
-    Ok(source.len())
 }
 
 #[cfg(test)]
@@ -1181,6 +835,335 @@ mod tests {
         AnalysisDiagnostic, AnalysisOptions, Analyzer, DiagnosticCategory, DiagnosticFix,
         DiagnosticFixEdit, DiagnosticRelated,
     };
+
+    #[derive(serde::Deserialize)]
+    struct HostFenceFixtures {
+        cases: Vec<HostFenceCase>,
+    }
+
+    #[derive(serde::Deserialize)]
+    struct HostFenceCase {
+        name: String,
+        language: String,
+        text: String,
+        #[cfg(feature = "diagram-sequence")]
+        valid: Option<bool>,
+        fences: Vec<HostFenceExpectation>,
+    }
+
+    #[derive(serde::Deserialize)]
+    struct HostFenceExpectation {
+        start_line: usize,
+        end_line: usize,
+        opening: String,
+        closing: Option<String>,
+        body: String,
+    }
+
+    fn host_fence_cases() -> Vec<HostFenceCase> {
+        serde_json::from_str::<HostFenceFixtures>(include_str!(
+            "../tests/fixtures/editor_host_fences.json"
+        ))
+        .unwrap()
+        .cases
+    }
+
+    #[test]
+    fn editor_host_fence_contract_preserves_ranges_and_admission() {
+        for fixture in host_fence_cases() {
+            let descriptor =
+                source_descriptor_for_markdown_path(Some(if fixture.language == "mdx" {
+                    "fixture.mdx"
+                } else {
+                    "fixture.md"
+                }));
+            let document = DocumentSource::new(fixture.text.as_str(), descriptor.clone());
+            assert_eq!(
+                document.diagrams().len(),
+                fixture.fences.len(),
+                "{}",
+                fixture.name
+            );
+            for (index, (diagram, expected)) in
+                document.diagrams().iter().zip(&fixture.fences).enumerate()
+            {
+                assert_eq!(
+                    diagram.id,
+                    format!("mermaid-fence-{}", index + 1),
+                    "{}",
+                    fixture.name
+                );
+                assert_eq!(diagram.index, index);
+                assert_eq!(diagram.source.diagram_index, Some(index));
+                assert_eq!(diagram.source.kind, descriptor.kind);
+                assert_eq!(diagram.text.as_str(), expected.body, "{}", fixture.name);
+                assert_eq!(
+                    diagram.body_start,
+                    document
+                        .source_map()
+                        .line_start(expected.start_line + 1)
+                        .unwrap_or(fixture.text.len())
+                );
+                assert_eq!(
+                    diagram.start,
+                    document
+                        .source_map()
+                        .line_start(expected.start_line)
+                        .unwrap()
+                );
+                let opening = diagram.fence_delimiter_spans.as_ref().unwrap();
+                assert_eq!(
+                    &fixture.text[opening.opening.clone()],
+                    expected.opening,
+                    "{}",
+                    fixture.name
+                );
+                assert_eq!(
+                    opening
+                        .closing
+                        .as_ref()
+                        .map(|range| &fixture.text[range.clone()]),
+                    expected.closing.as_deref(),
+                    "{}",
+                    fixture.name
+                );
+                if expected.closing.is_some() {
+                    assert_eq!(
+                        diagram.body_end,
+                        document.source_map().line_start(expected.end_line).unwrap()
+                    );
+                    assert_eq!(
+                        diagram.end,
+                        document
+                            .source_map()
+                            .line_start(expected.end_line + 1)
+                            .unwrap_or(fixture.text.len())
+                    );
+                } else {
+                    assert_eq!(diagram.body_end, fixture.text.len());
+                    assert_eq!(diagram.end, fixture.text.len());
+                }
+            }
+
+            let cancellation = crate::AnalysisCancellationToken::new();
+            assert!(
+                markdown_document_diagram_limit_exceeded_cancellable(
+                    &fixture.text,
+                    fixture.fences.len(),
+                    &cancellation,
+                )
+                .unwrap()
+                .is_none(),
+                "{}",
+                fixture.name
+            );
+            for (limit, diagram) in document.diagrams().iter().enumerate() {
+                let exceeded = markdown_document_diagram_limit_exceeded_cancellable(
+                    &fixture.text,
+                    limit,
+                    &cancellation,
+                )
+                .unwrap()
+                .expect("the first visible excess opener must reject admission");
+                assert_eq!(
+                    exceeded.observed_document_diagrams,
+                    limit + 1,
+                    "{}",
+                    fixture.name
+                );
+                assert_eq!(
+                    exceeded.opening_marker,
+                    diagram.fence_delimiter_spans.as_ref().unwrap().opening,
+                    "{}",
+                    fixture.name
+                );
+            }
+        }
+    }
+
+    #[test]
+    #[cfg(feature = "diagram-sequence")]
+    fn editor_host_fence_contract_drives_diagnostics_and_facts() {
+        for fixture in host_fence_cases() {
+            let descriptor =
+                source_descriptor_for_markdown_path(Some(if fixture.language == "mdx" {
+                    "fixture.mdx"
+                } else {
+                    "fixture.md"
+                }));
+            let analyzer = Analyzer::with_options(
+                AnalysisOptions::default().with_max_document_diagrams(Some(fixture.fences.len())),
+            );
+            let generation =
+                analyze_document_generation(&fixture.text, &analyzer, descriptor.clone())
+                    .into_ready()
+                    .expect("hidden fences must not consume the diagram budget");
+            assert_eq!(
+                generation.diagrams().len(),
+                fixture.fences.len(),
+                "{}",
+                fixture.name
+            );
+            let payload = analyze_document(&fixture.text, &analyzer, descriptor);
+            let facts = generation.to_facts_payload(analyzer.options().diagnostic_policy());
+            assert_eq!(
+                generation.project(analyzer.options().diagnostic_policy()),
+                payload,
+                "{}",
+                fixture.name
+            );
+            if let Some(valid) = fixture.valid {
+                assert_eq!(
+                    payload.valid, valid,
+                    "{}: {:?}",
+                    fixture.name, payload.diagnostics
+                );
+            }
+            assert_eq!(facts.diagnostics, payload.diagnostics, "{}", fixture.name);
+            assert_eq!(facts.diagrams.len(), fixture.fences.len());
+            if fixture.valid == Some(true) {
+                assert!(
+                    payload.diagnostics.is_empty(),
+                    "{}: {:?}",
+                    fixture.name,
+                    payload.diagnostics
+                );
+            } else if fixture.valid == Some(false) {
+                assert!(!payload.diagnostics.is_empty(), "{}", fixture.name);
+            }
+            for diagnostic in &payload.diagnostics {
+                let span = diagnostic
+                    .span
+                    .expect("visible diagnostics keep host positions");
+                assert!(
+                    generation.diagrams().iter().any(|diagram| {
+                        diagram.document_range().start <= span.byte_start
+                            && span.byte_end <= diagram.document_range().end
+                    }),
+                    "{}: {:?}",
+                    fixture.name,
+                    diagnostic
+                );
+                assert_eq!(
+                    span,
+                    generation
+                        .source_map()
+                        .span(span.byte_start, span.byte_end)
+                        .unwrap()
+                );
+            }
+            for (diagram, expected) in facts.diagrams.iter().zip(&fixture.fences) {
+                let body_span = diagram.body_span.unwrap();
+                assert_eq!(
+                    body_span.byte_start,
+                    generation
+                        .source_map()
+                        .line_start(expected.start_line + 1)
+                        .unwrap_or(fixture.text.len()),
+                    "{}",
+                    fixture.name
+                );
+                assert_eq!(
+                    &fixture.text[body_span.byte_start..body_span.byte_end],
+                    expected.body
+                );
+                if fixture.valid == Some(true) {
+                    assert!(diagram.syntax.parser_backed, "{}", fixture.name);
+                    assert_eq!(
+                        diagram.syntax.diagram_type.as_deref(),
+                        Some("sequence"),
+                        "{}",
+                        fixture.name
+                    );
+                }
+                for item in &diagram.syntax.semantic_items {
+                    if let Some(span) = item.selection.document {
+                        assert!(
+                            body_span.byte_start <= span.byte_start
+                                && span.byte_end <= body_span.byte_end,
+                            "{}",
+                            fixture.name
+                        );
+                        assert_eq!(
+                            span,
+                            generation
+                                .source_map()
+                                .span(span.byte_start, span.byte_end)
+                                .unwrap()
+                        );
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    #[cfg(feature = "diagram-sequence")]
+    fn editor_host_comment_filter_preserves_unicode_fact_and_limit_coordinates() {
+        let fixture = host_fence_cases()
+            .into_iter()
+            .find(|fixture| fixture.name == "crlf_and_unicode_host_coordinates")
+            .unwrap();
+        let descriptor = source_descriptor_for_markdown_path(Some("fixture.mdx"));
+        let analyzer =
+            Analyzer::with_options(AnalysisOptions::default().with_max_document_diagrams(Some(1)));
+        let facts = analyze_document_facts(&fixture.text, &analyzer, descriptor.clone());
+        assert!(facts.valid, "{:?}", facts.diagnostics);
+        let message_start = fixture.text.find("😀 中\r\n").unwrap();
+        let message = facts.diagrams[0]
+            .syntax
+            .semantic_items
+            .iter()
+            .filter_map(|item| item.selection.document)
+            .find(|span| span.byte_start == message_start)
+            .expect("the visible Unicode message retains its semantic selection");
+        assert_eq!(&fixture.text[message.byte_start..message.byte_end], "😀 中");
+        assert_eq!(
+            message.lsp_range.start,
+            crate::Utf16Position {
+                line: 8,
+                character: 13
+            }
+        );
+        assert_eq!(
+            message.lsp_range.end,
+            crate::Utf16Position {
+                line: 8,
+                character: 17
+            }
+        );
+
+        let analyzer =
+            Analyzer::with_options(AnalysisOptions::default().with_max_document_diagrams(Some(0)));
+        let rejection = analyze_document_generation(&fixture.text, &analyzer, descriptor)
+            .into_ready()
+            .expect_err("only the visible opener exceeds the zero budget");
+        assert_eq!(
+            rejection.resource_limit(),
+            crate::AnalysisResourceLimit::DocumentDiagrams {
+                observed_document_diagrams: 1,
+                max_document_diagrams: 0,
+            }
+        );
+        let span = rejection.payload().diagnostics[0].span.unwrap();
+        assert_eq!(&fixture.text[span.byte_start..span.byte_end], "```");
+        assert_eq!(span.line, 7);
+        assert_eq!(span.column, 3);
+        assert_eq!(
+            span.lsp_range.start,
+            crate::Utf16Position {
+                line: 6,
+                character: 2
+            }
+        );
+        assert_eq!(
+            span.lsp_range.end,
+            crate::Utf16Position {
+                line: 6,
+                character: 5
+            }
+        );
+    }
 
     #[test]
     fn plain_documents_use_plain_analysis_path() {
@@ -1322,49 +1305,6 @@ mod tests {
             markdown_document_diagram_limit_exceeded_cancellable(&source, 1, &cancellation,),
             Err(crate::AnalysisCancelled)
         ));
-    }
-
-    #[test]
-    fn markdown_fence_opening_marker_scan_observes_scheduled_cancellation() {
-        let line = format!("{}mermaid", "`".repeat(32 * 1024));
-        let cancellation = crate::AnalysisCancellationToken::new();
-        cancellation.cancel_after_checkpoints(2);
-
-        assert!(matches!(
-            markdown_fence_opening(&line, &cancellation),
-            Err(crate::AnalysisCancelled)
-        ));
-        assert!(cancellation.is_cancelled());
-    }
-
-    #[test]
-    fn markdown_fence_opening_info_indent_scan_observes_scheduled_cancellation() {
-        let line = format!("```{}mermaid", " ".repeat(32 * 1024));
-        let cancellation = crate::AnalysisCancellationToken::new();
-        cancellation.cancel_after_checkpoints(4);
-
-        assert!(matches!(
-            markdown_fence_opening(&line, &cancellation),
-            Err(crate::AnalysisCancelled)
-        ));
-        assert!(cancellation.is_cancelled());
-    }
-
-    #[test]
-    fn markdown_fence_closing_tail_scan_observes_scheduled_cancellation() {
-        let line = format!("```{}", " ".repeat(32 * 1024));
-        let cancellation = crate::AnalysisCancellationToken::new();
-        cancellation.cancel_after_checkpoints(4);
-
-        assert!(matches!(
-            matching_closing_fence_marker(
-                &line,
-                FenceDelimiter::new(FenceMarker::Backtick, 3),
-                &cancellation,
-            ),
-            Err(crate::AnalysisCancelled)
-        ));
-        assert!(cancellation.is_cancelled());
     }
 
     #[test]
