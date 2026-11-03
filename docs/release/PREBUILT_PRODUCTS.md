@@ -20,7 +20,7 @@ main's workspace version does not establish a download on every registry.
 | Browser / Worker | `0.9.3` | `0.10.0-alpha.1` | `npm install --save-exact @mermanjs/web@0.10.0-alpha.1` |
 | Native Node / Node-WASM | [`0.9.3`](https://github.com/Latias94/merman/blob/v0.9.3/platforms/node/README.md) | `0.10.0-alpha.1` | `npm install --save-exact @mermanjs/node@0.10.0-alpha.1` |
 | Python | [`0.9.3`](https://github.com/Latias94/merman/blob/v0.9.3/platforms/python/merman/README.md) | `0.10.0a1` | `python -m pip install --only-binary=:all: merman==0.10.0a1` |
-| Flutter / native Dart | [`0.9.3`](https://github.com/Latias94/merman/blob/v0.9.3/platforms/flutter/README.md) | Pending pub.dev publication | Use stable `flutter pub add merman:0.9.3` or the [alpha source guide](../../platforms/flutter/README.md) |
+| Flutter / native Dart | [`0.9.3`](https://github.com/Latias94/merman/blob/v0.9.3/platforms/flutter/README.md) | `0.10.0-alpha.1` | `flutter pub add 'merman:0.10.0-alpha.1'` |
 | Android | [`0.9.3` AAR](https://github.com/Latias94/merman/blob/v0.9.3/platforms/android/README.md) | `0.10.0-alpha.1` AAR / local Maven ZIP | [Android installation](../../platforms/android/README.md) |
 | Apple | `0.9.3` legacy XCFramework | `0.10.0-alpha.1` complete local SwiftPM / XCFramework | [Swift installation](#swift-installation) |
 | Native C / WASI SDK | `0.9.3` | `0.10.0-alpha.1` | [Alpha SDK downloads and flavor choices](https://github.com/Latias94/merman/releases/tag/v0.10.0-alpha.1) |
@@ -41,16 +41,16 @@ packages below. No public delivery repository or Central coordinate is advertise
 | Browser or browser Worker | `@mermanjs/web`: [stable guide](https://github.com/Latias94/merman/blob/v0.9.3/platforms/web/README.md), [alpha guide](https://github.com/Latias94/merman/blob/v0.10.0-alpha.1/platforms/web/README.md) | Complete browser SDK; use `web-render` for SVG alone, or analysis/editor/ASCII task packages |
 | Node, static-site generation or server rendering | [`@mermanjs/node`](../../platforms/node/README.md) | Platform package selected automatically; `node-wasm` is an explicit portable alternative |
 | Python | [`merman` wheel](../../platforms/python/merman/README.md) | pip/uv selects a matching native wheel; no Rust for ordinary supported installs |
-| Flutter or native Dart | [Stable `merman` on pub.dev](https://github.com/Latias94/merman/blob/v0.9.3/platforms/flutter/README.md) | Stable bundles its libraries; the alpha thin facade is awaiting publication |
+| Flutter or native Dart | [`merman` on pub.dev](../../platforms/flutter/README.md) | Alpha downloads and verifies only the build target's library; prepare assets or a warm cache for offline builds |
 | Kotlin on Android | [Local Maven repository](../../platforms/android/README.md#resolve-a-candidate-maven-publication) | Alpha ZIP retains AAR metadata and transitive dependencies; a standalone AAR is also available |
 | Swift on iOS or macOS | [Complete local SwiftPM package](../../platforms/apple/README.md#add-the-complete-swift-package) | Alpha ZIP includes the facade, resources, manifest and XCFramework; add the extracted package in Xcode |
 | Native application with C/C++ interoperability | `sdk-native-full` for your target | SVG, PNG, JPEG, PDF and ASCII; math and ELK; caller-owned font bytes |
 | Go, Python or another non-JavaScript sandbox host | `sdk-wasi-full` | SVG and PNG; math and ELK; one WASI reactor with a separate ABI |
 | Rust, CLI/LSP, Rustdoc, Typst or editor integration | [Package surfaces](PACKAGE_SURFACES.md) | Source crates and independent task products keep their existing installation routes |
 
-Web full/render and the alpha Swift, Android, Python and Node products include SVG math.
-The prepared Flutter alpha facade uses the same math-capable native recipe. Stable `0.9.3`
-native bindings omit math. These native bindings do not include PNG/JPEG/PDF encoders or native C/WASI's memory-font service. Native C/WASI SDK flavors have their own output
+Web full/render and the alpha Swift, Android, Python, Flutter and Node products include SVG
+math. Stable `0.9.3` native bindings omit math. These native bindings do not include PNG/JPEG/PDF
+encoders or native C/WASI's memory-font service. Native C/WASI SDK flavors have their own output
 and font services. Dedicated analysis/editor/ASCII packages retain their task
 scope. Check the loaded runtime catalog and the matching version's guide for available operations.
 
@@ -164,10 +164,8 @@ alternative, explicitly install `@mermanjs/node-wasm@0.10.0-alpha.1`
 and follow its [Node-WASM guide](../../platforms/node/packages/node-wasm/README.md). The native
 loader does not switch transports on failure; Node-WASM is separate from the browser package.
 
-Flutter alpha's native target downloads are public, while its corrected thin facade is awaiting
-pub.dev publication. Use stable `0.9.3` or the explicit alpha source/local-library route until
-the facade is available. The alpha requires Flutter `3.47.7+`; native Dart retains `3.10+`. Its
-thin facade verifies and downloads only the target library at build time, and the application bundles it for runtime.
+Alpha Flutter requires Flutter `3.47.7+`; native Dart retains `3.10+`. Its thin facade verifies
+and downloads only the target library at build time, and the application bundles it for runtime.
 For offline builds, prepare the exact target assets or supply a local native directory; a cold
 cache cannot download offline. Mirrors retain manifest checksum verification. See the
 [Flutter installation and offline options](../../platforms/flutter/README.md#install).

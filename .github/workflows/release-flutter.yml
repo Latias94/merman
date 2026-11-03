@@ -514,4 +514,4 @@ jobs:
     steps:
       - name: Explain manual pub.dev publish skip
         run: |
-          echo "::warning::pub.dev automated publishing only accepts GitHub Actions runs triggered by a pushed Flutter release tag. This manual run completed validation but did not publish."
+          echo "::warning::This workflow's manual runs validate candidates only. Its publication path uses a pushed Flutter release tag and the configured pub.dev Trusted Publisher. No package was published by this manual run."

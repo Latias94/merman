@@ -5,7 +5,7 @@ Status: maintained release operator guide.
 Merman releases use a preflight-first flow. Run the release preflight workflow against the intended
 source ref and version before any registry or GitHub Release publication. After preflight passes,
 push a `v<version>` workspace tag only for the tag-triggered CLI/LSP and crates.io surfaces. Flutter
-uses its own `flutter-v<version>` tag because pub.dev requires a tag-triggered workflow; Python,
+uses its own `flutter-v<version>` tag for the configured pub.dev Trusted Publisher; Python,
 Android, Apple, Web, Node, and VS Code remain owner-dispatched surfaces.
 
 Main's [binding delivery plan](../plans/2026-11-01-1248-refactor-binding-delivery-plan.md)
@@ -176,9 +176,14 @@ artifact source. Android additionally requires an explicit `maven_group` for its
 PyPI requires both `publish=true` and
 `publish_to_pypi=true`. Web/Node default to `publish_to_npm=false`; publication accepts the matching
 tag or a reviewed full commit, while `main` is build-only. VS Code resolves its explicit
-`source_ref` for packaging. Flutter is the exception: pub.dev automated publishing only accepts GitHub
-Actions runs triggered by a pushed git tag, so `release-flutter.yml` publishes from a
+`source_ref` for packaging. Flutter's current `release-flutter.yml` publishes from a pushed
 `flutter-v<version>` tag and uses manual runs with an explicit `source_ref` for validation only.
+This is the repository owner's current trigger policy. The
+[pub.dev implementation](https://github.com/dart-lang/pub-dev/blob/6e5702a1db0c207ad2546e7c240ff1f159066011/app/lib/package/backend.dart#L2269-L2305)
+also admits tag-ref `workflow_dispatch` when that event is enabled in the package's publisher
+settings; a branch dispatch does not acquire tag identity by checking out a tag. The current
+workflow has no manual publication path. Existing Trusted Publishing remains valid across
+package versions and does not require a local login for normal tag publication.
 Its native-asset job requires an existing non-draft Release for that Flutter tag and verifies
 every pinned public download before pub.dev publication. The pub.dev trusted publisher must use
 the matching `flutter-v{{version}}` tag pattern.
