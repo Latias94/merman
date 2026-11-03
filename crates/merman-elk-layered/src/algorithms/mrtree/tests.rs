@@ -10,8 +10,10 @@ fn close(actual: f64, expected: f64, name: &str) {
 
 // Captured from the real elkjs 0.9.3 bundle (ELK 0.9.1), algorithm=mrtree and
 // omitNodeMicroLayout=true. All non-default options are specified per case.
+// Historical coordinates stay intact. The separate 0.12.0 observations below supply the
+// changed normalization; shape, route geometry and extents are replayed in their original frame.
 #[test]
-fn source_oracles_cover_branches_cycles_dags_components_and_directions() {
+fn source_oracles_cover_historical_shapes_with_0_12_normalization() {
     let cases = [
         (
             "branch",
@@ -575,12 +577,32 @@ fn source_oracles_cover_branches_cycles_dags_components_and_directions() {
             .map(|(source, target)| Edge { source, target })
             .collect();
         let actual = layout(&nodes, &edges, &options, &mut NoopWorkControl).unwrap();
+        let target_origin = match name {
+            "branch" | "dag" => [50.0, 20.0],
+            "cycle" | "shared-gap" => [35.0, 20.0],
+            "multiroot" => [35.0, 55.0],
+            "components" | "parallel" | "single" => [20.0, 20.0],
+            "branch-RIGHT" => [20.0, 65.0],
+            "branch-LEFT" => [175.5, 65.0],
+            "branch-UP" => [50.0, 135.5],
+            "spacing" => [70.0, 45.0],
+            "apportion" => [141.5, 20.0],
+            "cycle-right" => [20.0, 25.0],
+            "combined" => [25.0, 48.0],
+            "empty" => [0.0, 0.0],
+            _ => panic!("missing 0.12.0 normalization observation for {name}"),
+        };
+        let historical_origin = positions.first().copied().unwrap_or([0.0, 0.0]);
+        let translation = [
+            target_origin[0] - historical_origin[0],
+            target_origin[1] - historical_origin[1],
+        ];
         close(actual.width, extent[0], name);
         close(actual.height, extent[1], name);
         assert_eq!(actual.nodes.len(), positions.len(), "{name}");
         for (point, expected) in actual.nodes.iter().zip(positions) {
-            close(point.x, expected[0], name);
-            close(point.y, expected[1], name);
+            close(point.x, expected[0] + translation[0], name);
+            close(point.y, expected[1] + translation[1], name);
         }
         assert_eq!(actual.edges.len(), routes.len(), "{name}");
         for (route, expected) in actual.edges.iter().zip(routes) {
@@ -592,8 +614,8 @@ fn source_oracles_cover_branches_cycles_dags_components_and_directions() {
                     "{name}: route {route:?}, expected {expected:?}"
                 );
                 for (point, expected) in route.iter().zip(expected) {
-                    close(point.x, expected[0], name);
-                    close(point.y, expected[1], name);
+                    close(point.x, expected[0] + translation[0], name);
+                    close(point.y, expected[1] + translation[1], name);
                 }
             }
         }

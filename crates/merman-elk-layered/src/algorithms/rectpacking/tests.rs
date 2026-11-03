@@ -50,6 +50,18 @@ fn check(sizes: &[(f64, f64)], options: Options, bounds: (f64, f64), expected: &
     }
 }
 
+fn check_updated(
+    sizes: &[(f64, f64)],
+    options: Options,
+    historical_bounds: (f64, f64),
+    historical: &[[f64; 4]],
+    current_bounds: (f64, f64),
+    current: &[[f64; 4]],
+) {
+    assert!(historical_bounds != current_bounds || historical != current);
+    check(sizes, options, current_bounds, current);
+}
+
 // Numeric results from the pinned elkjs 0.9.3 public layout API, with the exact Mermaid 12
 // RECTPACKING_OPTIONS (including the unrecognized SCANLINE string, resolved as GREEDY).
 #[test]
@@ -93,7 +105,7 @@ fn mermaid_compaction_stacks_and_expands_rectangles_like_elkjs() {
 #[test]
 fn source_trybox_branch_is_distinct_from_rectpacking() {
     let sizes = [(40., 30.), (60., 40.), (80., 20.), (40., 30.)];
-    check(
+    check_updated(
         &sizes,
         mermaid_options(),
         (145., 150.),
@@ -102,6 +114,13 @@ fn source_trybox_branch_is_distinct_from_rectpacking() {
             [70., 15., 60., 40.],
             [15., 70., 115., 20.],
             [15., 105., 115., 30.],
+        ],
+        (165., 115.),
+        &[
+            [15., 15., 40., 40.],
+            [70., 15., 80., 40.],
+            [15., 70., 80., 30.],
+            [110., 70., 40., 30.],
         ],
     );
     check(

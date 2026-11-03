@@ -3,13 +3,18 @@
 //! Optional ELK layout engine integration for `merman`.
 //!
 //! Source-port policy:
-//! - Mermaid's adapter layer is
+//! - The historical Mermaid adapter derivation is
 //!   https://github.com/mermaid-js/mermaid/blob/21f72f07ea22c0af48a3149c550654e80d8e40cb/packages/mermaid/src/rendering-util/layout-algorithms/elk/render.ts.
-//! - Mermaid pins `elkjs@0.9.3`; the corresponding source checkout is
+//! - The historical `elkjs@0.9.3` derivation is
 //!   https://github.com/kieler/elkjs/tree/a8304cf79fde75bc2ab1a89d28320f53f8637436.
-//! - `elkjs` is generated from Eclipse ELK Java sources. The current source baseline is
+//! - The historical Eclipse ELK Java derivation is
 //!   https://github.com/eclipse-elk/elk/tree/62d5909f96fad541bc101ad52dabaece6b7eab7e,
-//!   which is the 0.9.x ELK release tag available for the `elkjs@0.9.3` release window.
+//! - Mermaid 12.3.0's exact engine oracle is elkjs 0.12.0 at
+//!   https://github.com/kieler/elkjs/tree/ff5771d7165445c42c408bb8a090c8035272218c,
+//!   compared with Eclipse ELK 0.12.0 at
+//!   https://github.com/eclipse-elk/elk/tree/323312916048544e4e594eab3303cdb0d01e2929.
+//!   elkjs CI clones ELK master, so this tag is not a proven unique npm build input.
+//!   The engine crate's `MERMAID_12_3_DELTA.md` records ported deltas and unsupported options.
 //!
 //! The crate exposes one Mermaid adapter over the source-backed ELK providers. Additional providers
 //! handle flat graphs and recursive containers, including Mermaid's explicit metadata presets

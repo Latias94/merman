@@ -2,6 +2,8 @@
 //!
 //! Ported from Eclipse ELK 0.9.1, EPL-2.0, `BoxLayoutProvider.sort/placeBoxes`:
 //! https://github.com/eclipse-elk/elk/blob/62d5909f96fad541bc101ad52dabaece6b7eab7e/plugins/org.eclipse.elk.core/src/org/eclipse/elk/core/util/BoxLayoutProvider.java
+//! Padding-aware row width follows the 0.12.0 revision:
+//! https://github.com/eclipse-elk/elk/blob/323312916048544e4e594eab3303cdb0d01e2929/plugins/org.eclipse.elk.core/src/org/eclipse/elk/core/util/BoxLayoutProvider.java
 //!
 //! Rectangles arrive after node measurement and effective minimum-size resolution. The algorithm
 //! does not route edges. Container expansion returns content translations separately: callers must
@@ -194,6 +196,8 @@ pub fn layout(
     // handle that case rather than depending on Rust/Java's different NaN max semantics.
     if rectangles.len() > 1 {
         total_area += rectangles.len() as f64 * (variance / (rectangles.len() - 1) as f64).sqrt();
+        total_area += total_area.sqrt() * (options.padding.bottom + options.padding.top);
+        total_area += total_area.sqrt() * options.padding.right;
         let target_area = total_area * aspect_ratio;
         if !target_area.is_finite() {
             return Err(Error::NonFiniteGeometry);
@@ -426,6 +430,18 @@ mod tests {
         result
     }
 
+    fn assert_updated_oracle(
+        input: &[Rectangle],
+        options: Options,
+        historical_bounds: (f64, f64),
+        historical: &[(f64, f64, f64, f64)],
+        current_bounds: (f64, f64),
+        current: &[(f64, f64, f64, f64)],
+    ) {
+        assert!(historical_bounds != current_bounds || historical != current);
+        assert_oracle(input, options, current_bounds, current);
+    }
+
     #[test]
     fn elkjs_empty_and_single() {
         assert_oracle(&[], Options::default(), (0.0, 0.0), &[]);
@@ -449,7 +465,7 @@ mod tests {
 
     #[test]
     fn elkjs_varied_sizes_use_sample_deviation_row_width() {
-        assert_oracle(
+        assert_updated_oracle(
             &rectangles(&[
                 (80.0, 20.0),
                 (20.0, 80.0),
@@ -466,12 +482,20 @@ mod tests {
                 (15.0, 190.0, 110.0, 15.0),
                 (15.0, 15.0, 12.0, 12.0),
             ],
+            (145.0, 185.0),
+            &[
+                (15.0, 60.0, 80.0, 20.0),
+                (110.0, 60.0, 20.0, 80.0),
+                (42.0, 15.0, 35.0, 30.0),
+                (15.0, 155.0, 110.0, 15.0),
+                (15.0, 15.0, 12.0, 12.0),
+            ],
         );
     }
 
     #[test]
     fn elkjs_equal_area_ties_retain_input_order() {
-        assert_oracle(
+        assert_updated_oracle(
             &rectangles(&[(40.0, 40.0), (80.0, 20.0), (20.0, 80.0), (40.0, 40.0)]),
             Options::default(),
             (110.0, 200.0),
@@ -480,6 +504,13 @@ mod tests {
                 (15.0, 70.0, 80.0, 20.0),
                 (15.0, 105.0, 20.0, 80.0),
                 (50.0, 105.0, 40.0, 40.0),
+            ],
+            (145.0, 220.0),
+            &[
+                (15.0, 15.0, 40.0, 40.0),
+                (15.0, 70.0, 80.0, 20.0),
+                (110.0, 70.0, 20.0, 80.0),
+                (15.0, 165.0, 40.0, 40.0),
             ],
         );
     }
@@ -533,7 +564,7 @@ mod tests {
     #[test]
     fn elkjs_container_expansion_and_title_padding() {
         let input = rectangles(&[(80.0, 20.0), (20.0, 80.0), (35.0, 30.0), (110.0, 15.0)]);
-        assert_oracle(
+        assert_updated_oracle(
             &input,
             Options {
                 padding: Padding {
@@ -555,6 +586,13 @@ mod tests {
                 (24.0, 198.0, 272.0, 80.0),
                 (24.0, 48.0, 272.0, 30.0),
                 (24.0, 328.0, 272.0, 15.0),
+            ],
+            (320.0, 297.0),
+            &[
+                (109.0, 48.0, 187.0, 30.0),
+                (24.0, 128.0, 272.0, 80.0),
+                (24.0, 48.0, 35.0, 30.0),
+                (24.0, 258.0, 272.0, 15.0),
             ],
         );
     }
@@ -622,7 +660,7 @@ mod tests {
             ],
         );
         // GWT's Java floatValue does not round to binary32; match elkjs, not native Java's cast.
-        assert_oracle(
+        assert_updated_oracle(
             &rectangles(&[(15.25, 12.125), (11.75, 33.625), (30.125, 15.25)]),
             Options {
                 spacing: 0.123456789,
@@ -633,6 +671,12 @@ mod tests {
                 (15.0, 15.0, 15.25, 12.125),
                 (30.373456789000002, 15.0, 11.75, 33.625),
                 (15.0, 48.748456789, 30.125, 15.25),
+            ],
+            (87.371913578, 63.625),
+            &[
+                (15.0, 15.0, 15.25, 12.125),
+                (30.373456789000002, 15.0, 11.75, 33.625),
+                (42.246913578000004, 15.0, 30.125, 15.25),
             ],
         );
     }

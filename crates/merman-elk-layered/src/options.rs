@@ -602,8 +602,8 @@ impl LayeredOptions {
 impl LongEdgeOrderingStrategy {
     pub fn return_value(self) -> i64 {
         match self {
-            Self::DummyNodeOver => i64::MAX,
-            Self::DummyNodeUnder => -1,
+            Self::DummyNodeOver => i64::from(i32::MAX),
+            Self::DummyNodeUnder => i64::from(i32::MIN),
             Self::Equal => 0,
         }
     }
@@ -677,5 +677,18 @@ mod tests {
         assert_eq!(DirectionDown.transpose(), DirectionUp);
         assert_eq!(SmartUp.transpose(), SmartDown);
         assert_eq!(SmartDown.transpose(), SmartUp);
+    }
+
+    #[test]
+    fn elk_0_12_long_edge_ordering_uses_java_integer_extremes() {
+        assert_eq!(
+            LongEdgeOrderingStrategy::DummyNodeUnder.return_value(),
+            -2_147_483_648
+        );
+        assert_eq!(
+            LongEdgeOrderingStrategy::DummyNodeOver.return_value(),
+            2_147_483_647
+        );
+        assert_eq!(LongEdgeOrderingStrategy::Equal.return_value(), 0);
     }
 }

@@ -351,7 +351,7 @@ pub(super) fn layout(
                 .iter()
                 .zip(node_contexts)
                 .zip(&result.nodes)
-                .map(|((node, context), measured)| mrtree::Node {
+                .map(|((node, _context), measured)| mrtree::Node {
                     width: measured.width,
                     height: measured.height,
                     // Mermaid leaf nodes have no ELK node-label array. MrTree derives identity
@@ -360,11 +360,6 @@ pub(super) fn layout(
                         node.label_text.clone().unwrap_or_default()
                     } else {
                         String::new()
-                    },
-                    padding: if node.kind == NodeKind::Group {
-                        provider_padding(context.mode.padding(node))
-                    } else {
-                        mrtree::Node::default().padding
                     },
                     ..Default::default()
                 })

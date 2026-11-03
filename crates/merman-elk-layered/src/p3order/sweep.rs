@@ -1896,6 +1896,15 @@ impl BarycenterHeuristic {
         first: usize,
         second: usize,
     ) -> std::cmp::Ordering {
+        if [first, second].into_iter().any(|node| {
+            matches!(
+                graph.layerless_nodes[node].layer_constraint,
+                crate::options::LayerConstraint::FirstSeparate
+                    | crate::options::LayerConstraint::LastSeparate
+            )
+        }) {
+            return std::cmp::Ordering::Equal;
+        }
         if let Some(ordering) = self.transitive_ordering(first, second) {
             return ordering;
         }
@@ -1905,8 +1914,10 @@ impl BarycenterHeuristic {
             graph.layerless_nodes[second].model_order,
         ) {
             let ordering = first_order.cmp(&second_order);
-            self.update_model_order_associations(first, second, ordering);
-            return ordering;
+            if ordering != std::cmp::Ordering::Equal {
+                self.update_model_order_associations(first, second, ordering);
+                return ordering;
+            }
         }
 
         let first_barycenter = self.states.get(&first).and_then(|state| state.barycenter);
@@ -5549,22 +5560,45 @@ mod tests {
 
         crate::compound::preprocess_source_ported_compound_graph(&mut graph);
         crate::configurator::configure_graph_properties(&mut graph).unwrap();
-        crate::pipeline::execute_ported_compound_processors_until(
+        crate::pipeline::execute_ported_compound_processors_until_processor(
             &mut graph,
-            crate::pipeline::LayeredPhase::P3NodeOrdering,
+            crate::pipeline::ProcessorKind::SortByInputModelProcessor,
         )
         .unwrap();
+        let trace = debug_crossings_layer_sweep_hierarchical_with_type(
+            &mut graph,
+            CrossMinType::Barycenter,
+        )
+        .unwrap();
+        let runs = trace
+            .runs
+            .iter()
+            .filter(|run| run.graph_id == "root")
+            .collect::<Vec<_>>();
+        assert_eq!(
+            runs.iter().map(|run| run.crossings).collect::<Vec<_>>(),
+            [2.0, 2.0, 2.0, 1.0, 2.0, 1.0, 2.0]
+        );
+        assert!(runs[0].first_try_with_initial_order);
+        assert!(
+            runs[1..]
+                .iter()
+                .all(|run| !run.first_try_with_initial_order)
+        );
 
         let first_layer_order = node_order_by_id(&graph, &graph.layers[0].nodes);
         let last_layer_order = node_order_by_id(&graph, &graph.layers[2].nodes);
         // Pinned elkjs 0.9.3 puts the inverted L_D_E port dummy before both groups.
-        // Assigning SECOND_TRY a distinct Property ID instead reproduces the old
-        // [bar, B, dummy] / [foo, dummy] order, rather than the source's shared-ID behavior.
-        assert!(first_layer_order[0].starts_with("invertedPort:"));
+        // The 0.12.0 oracle's hierarchical-randomized-tries case observes [B, bar, dummy]
+        // and [foo, dummy] after the two-pass input sort and seven randomized tries.
+        // FIRST/SECOND_TRY still share their Property ID; the first strictly best run wins.
+        assert_eq!(first_layer_order.len(), 3);
+        assert_eq!(first_layer_order[0], "B", "{first_layer_order:?}");
         assert_eq!(first_layer_order[1], "bar");
-        assert_eq!(first_layer_order[2], "B");
-        assert!(last_layer_order[0].starts_with("invertedPort:"));
-        assert_eq!(last_layer_order[1], "foo");
+        assert!(first_layer_order[2].starts_with("invertedPort:"));
+        assert_eq!(last_layer_order.len(), 2);
+        assert_eq!(last_layer_order[0], "foo", "{last_layer_order:?}");
+        assert!(last_layer_order[1].starts_with("invertedPort:"));
     }
 
     #[test]

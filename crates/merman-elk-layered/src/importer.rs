@@ -897,6 +897,11 @@ fn import_flat_graph(
     for (model_order, node) in index.children(parent).iter().copied().enumerate() {
         transform_node(node, graph, needs_model_order.then_some(model_order));
     }
+    graph.max_model_order_nodes = if needs_model_order {
+        graph.layerless_nodes.len()
+    } else {
+        0
+    };
 
     for (model_order, edge) in input.edges.iter().enumerate() {
         let source_parent = index.node_parent(edge.source.as_str());
@@ -1226,6 +1231,9 @@ fn import_hierarchical_graph(
         }
     }
 
+    arena
+        .graph_mut(ROOT_IMPORT_GRAPH_SLOT)
+        .max_model_order_nodes = model_order;
     Ok(arena.into_root())
 }
 
@@ -1360,6 +1368,8 @@ fn needs_model_order_based_on_parent(options: &LayeredOptions) -> bool {
             CycleBreakingStrategy::ModelOrder | CycleBreakingStrategy::GreedyModelOrder
         )
         || options.force_node_model_order
+        || options.consider_model_order_crossing_counter_node_influence != 0.0
+        || options.consider_model_order_crossing_counter_port_influence != 0.0
         || matches!(
             options.layering_strategy,
             LayeringStrategy::BreadthFirstModelOrder | LayeringStrategy::DepthFirstModelOrder

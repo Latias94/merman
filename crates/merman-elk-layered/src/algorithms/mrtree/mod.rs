@@ -7,6 +7,8 @@
 //! BFS treeification and optional compaction are not selected by that adapter.
 //! Measurement, ports, compound traversal and edge labels remain caller-owned. The source
 //! importer ignores self loops and does not lay out edge labels.
+//! Component bounds and normalization follow ELK 0.12.0:
+//! https://github.com/eclipse-elk/elk/blob/323312916048544e4e594eab3303cdb0d01e2929/plugins/org.eclipse.elk.alg.mrtree/src/org/eclipse/elk/alg/mrtree/ComponentsProcessor.java
 
 use crate::work::{WorkControl, WorkError, checked_add, checked_mul, checked_n_log_n};
 use std::collections::BTreeSet;
@@ -29,8 +31,6 @@ pub struct Node {
     pub priority: i32,
     /// First ELK node label, used by the source's edge identity comparison.
     pub label: String,
-    /// Mr. Tree normalization reads the first child's padding, independently of graph padding.
-    pub padding: Padding,
 }
 
 impl Default for Node {
@@ -40,7 +40,6 @@ impl Default for Node {
             height: 0.0,
             priority: 1,
             label: String::new(),
-            padding: default_padding(),
         }
     }
 }
@@ -209,7 +208,7 @@ pub fn layout(
         placement::place(component, options, work)?;
         routing::route(component, options, work)?;
     }
-    pack(&mut components, nodes, options, work)?;
+    pack(&mut components, options, work)?;
     let mut result = Layout {
         nodes: vec![Point::default(); nodes.len()],
         edges: vec![None; edges.len()],
@@ -264,14 +263,7 @@ fn validate(
 ) -> Result<(), Error> {
     work.charge(checked_add(nodes.len(), edges.len())?)?;
     for (index, node) in nodes.iter().enumerate() {
-        for (field, value) in [
-            ("width", node.width),
-            ("height", node.height),
-            ("padding.top", node.padding.top),
-            ("padding.right", node.padding.right),
-            ("padding.bottom", node.padding.bottom),
-            ("padding.left", node.padding.left),
-        ] {
+        for (field, value) in [("width", node.width), ("height", node.height)] {
             if !value.is_finite() || value < 0.0 {
                 return Err(Error::InvalidNode { index, field });
             }
@@ -449,7 +441,6 @@ fn move_component(
 
 fn pack(
     components: &mut [Component],
-    inputs: &[Node],
     options: &Options,
     work: &mut dyn WorkControl,
 ) -> Result<(), Error> {
@@ -491,14 +482,20 @@ fn pack(
             x += width + options.spacing;
         }
     }
-    // Source property merging keeps the last component's pre-pack GRAPH_X/YMIN. It then
-    // normalizes all components using the first child's padding, without recalculating bounds.
-    let last = &components[components.len() - 1];
-    let first_input = components[0].nodes[0].input.ok_or(Error::NumericRange)?;
-    let padding = inputs[first_input].padding;
+    let mut minimum = Point {
+        x: f64::INFINITY,
+        y: f64::INFINITY,
+    };
+    for component in components.iter() {
+        work.charge(component.nodes.len())?;
+        for node in &component.nodes {
+            minimum.x = minimum.x.min(node.position.x);
+            minimum.y = minimum.y.min(node.position.y);
+        }
+    }
     let offset = Point {
-        x: padding.left + padding.right - last.min.x,
-        y: padding.top + padding.bottom - last.min.y,
+        x: options.padding.left - minimum.x,
+        y: options.padding.top - minimum.y,
     };
     for c in components {
         move_component(c, offset, work)?;

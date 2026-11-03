@@ -14,6 +14,11 @@ Port provenance baselines:
 
 These are the translated port's historical derivation points, not the workspace's current Mermaid baseline. The current adapter revision is pinned by [`merman-layout-elk`](../merman-layout-elk/src/lib.rs) and [`REPOS.lock.json`](../../tools/upstreams/REPOS.lock.json).
 
+The Mermaid 12.3 engine unit compares the existing supported surface with published elkjs
+0.12.0. [The source delta and verification handoff](MERMAID_12_3_DELTA.md) records actual
+behavior changes, additional runtime evidence, the Java-source mapping limit and unclosed
+options. Historical 0.9.3 measurements below retain their original identities.
+
 The crate contains the production layered graph, option model, processor assembly, and layout phases used by `merman-layout-elk`. Corrections and new behavior must continue to follow the pinned Eclipse ELK sources rather than approximating fixture output.
 
 Additional ELK algorithm translations stay in this existing EPL-2.0 crate so they share its
