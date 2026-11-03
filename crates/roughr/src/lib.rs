@@ -169,6 +169,7 @@ pub mod geometry;
 mod path_segment;
 pub mod points_on_path;
 pub mod renderer;
+pub mod work;
 
 pub use euclid::Point2D;
 pub use palette::Srgba;

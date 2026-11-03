@@ -8,7 +8,8 @@ use num_traits::{Float, FromPrimitive};
 
 use super::traits::PatternFiller;
 use crate::core::{_c, OpSet, Options};
-use crate::geometry::{rotate_lines, rotate_points, Line};
+use crate::geometry::{rotate_lines_with_control, rotate_points_with_control, Line};
+use crate::work::{advance, finite, sort_by, UnlimitedWork, WorkControl, WorkError};
 
 #[derive(Clone)]
 struct EdgeEntry<F: Float + FromPrimitive + Trig> {
@@ -31,6 +32,7 @@ impl<F: Float + FromPrimitive + Trig> std::fmt::Display for EdgeEntry<F> {
     }
 }
 
+#[derive(Clone)]
 struct ActiveEdgeEntry<F: Float + FromPrimitive + Trig> {
     pub(crate) edge: EdgeEntry<F>,
 }
@@ -39,6 +41,17 @@ pub fn polygon_hachure_lines<F: Float + FromPrimitive + Trig>(
     polygon_list: &mut [Vec<Point2D<F>>],
     options: &Options,
 ) -> Vec<Line<F>> {
+    polygon_hachure_lines_with_control(polygon_list, options, &mut UnlimitedWork)
+        .expect("invalid hachure geometry")
+}
+
+pub fn polygon_hachure_lines_with_control<F: Float + FromPrimitive + Trig>(
+    polygon_list: &mut [Vec<Point2D<F>>],
+    options: &Options,
+    control: &mut impl WorkControl,
+) -> Result<Vec<Line<F>>, WorkError> {
+    control.charge(1)?;
+    crate::renderer::validate_options(options)?;
     let angle = options.hachure_angle.unwrap_or(0.0) + 90.0;
     let mut gap = options.hachure_gap.unwrap_or(0.0);
     if gap < 0.0 {
@@ -46,41 +59,60 @@ pub fn polygon_hachure_lines<F: Float + FromPrimitive + Trig>(
     }
 
     gap = f32::max(gap, 0.1);
+    finite(&[angle, gap])?;
 
     let center = Point2D::new(_c(0.0), _c(0.0));
     if angle != 0.0 {
-        polygon_list
-            .iter_mut()
-            .for_each(|polygon| *polygon = rotate_points(polygon, &center, _c(angle)))
+        rotate_polygons(polygon_list, &center, _c(angle), control)?;
     }
 
-    let mut lines = straight_hachure_lines(polygon_list, _c(gap));
+    let mut lines = straight_hachure_lines_with_control(polygon_list, _c(gap), control)?;
 
     if angle != 0.0 {
-        polygon_list
-            .iter_mut()
-            .for_each(|polygon| *polygon = rotate_points(polygon, &center, _c(-angle)));
-        lines = rotate_lines(&lines, &center, _c(-angle));
+        rotate_polygons(polygon_list, &center, _c(-angle), control)?;
+        lines = rotate_lines_with_control(&lines, &center, _c(-angle), control)?;
     }
 
-    lines
+    Ok(lines)
 }
 
+fn rotate_polygons<F: Float + FromPrimitive + Trig>(
+    polygons: &mut [Vec<Point2D<F>>],
+    center: &Point2D<F>,
+    angle: F,
+    control: &mut impl WorkControl,
+) -> Result<(), WorkError> {
+    for polygon in polygons {
+        control.charge(1)?;
+        *polygon = rotate_points_with_control(polygon, center, angle, control)?;
+    }
+    Ok(())
+}
+
+#[cfg(test)]
 fn straight_hachure_lines<F>(polygon_list: &mut [Vec<Point2D<F>>], gap: F) -> Vec<Line<F>>
 where
     F: Float + FromPrimitive + Trig,
 {
-    let mut vertex_array: Vec<Vec<Point2D<F>>> = vec![];
+    straight_hachure_lines_with_control(polygon_list, gap, &mut UnlimitedWork)
+        .expect("invalid scanline geometry")
+}
+
+fn straight_hachure_lines_with_control<F: Float + FromPrimitive + Trig>(
+    polygon_list: &mut [Vec<Point2D<F>>],
+    gap: F,
+    control: &mut impl WorkControl,
+) -> Result<Vec<Line<F>>, WorkError> {
+    finite(&[gap])?;
     for polygon in polygon_list.iter_mut() {
+        control.charge(1)?;
         if polygon.first() != polygon.last() {
+            control.charge(1)?;
             polygon.push(
                 *polygon
                     .first()
                     .expect("can not get first element of polygon"),
             );
-        }
-        if polygon.len() > 2 {
-            vertex_array.push(polygon.clone());
         }
     }
 
@@ -90,117 +122,126 @@ where
     // create sorted edges table
     let mut edges: Vec<EdgeEntry<F>> = vec![];
 
-    for vertices in vertex_array.iter() {
-        let mut edge_extension = vertices[..]
-            .windows(2)
-            .filter_map(|w| {
-                let p1 = w[0];
-                let p2 = w[1];
-                if p1.y != p2.y {
-                    let ymin = F::min(p1.y, p2.y);
-                    Some(EdgeEntry {
-                        ymin,
-                        ymax: F::max(p1.y, p2.y),
-                        x: if ymin == p1.y { p1.x } else { p2.x },
-                        islope: (p2.x - p1.x) / (p2.y - p1.y),
-                    })
-                } else {
-                    None
-                }
-            })
-            .collect::<Vec<EdgeEntry<F>>>();
-
-        edges.append(&mut edge_extension);
-    }
-
-    edges.sort_by(|e1, e2| {
-        if e1.ymin < e2.ymin {
-            Ordering::Less
-        } else if e1.ymin > e2.ymin {
-            Ordering::Greater
-        } else if e1.x < e2.x {
-            Ordering::Less
-        } else if e1.x > e2.x {
-            Ordering::Greater
-        } else if e1.ymax == e2.ymax {
-            Ordering::Equal
-        } else {
-            let ordering = (e1.ymax - e2.ymax) / F::abs(e1.ymax - e2.ymax);
-            if ordering > _c(0.0) {
-                Ordering::Greater
-            } else if ordering < _c(0.0) {
-                Ordering::Less
-            } else {
-                Ordering::Equal
+    for vertices in polygon_list.iter().filter(|vertices| vertices.len() > 2) {
+        control.charge(1)?;
+        for w in vertices.windows(2) {
+            control.charge(1)?;
+            let p1 = w[0];
+            let p2 = w[1];
+            finite(&[p1.x, p1.y, p2.x, p2.y])?;
+            if p1.y != p2.y {
+                let ymin = F::min(p1.y, p2.y);
+                let islope = (p2.x - p1.x) / (p2.y - p1.y);
+                finite(&[islope])?;
+                edges.push(EdgeEntry {
+                    ymin,
+                    ymax: F::max(p1.y, p2.y),
+                    x: if ymin == p1.y { p1.x } else { p2.x },
+                    islope,
+                });
             }
         }
-    });
+    }
+
+    sort_by(
+        &mut edges,
+        |e1, e2| {
+            if e1.ymin < e2.ymin {
+                Ordering::Less
+            } else if e1.ymin > e2.ymin {
+                Ordering::Greater
+            } else if e1.x < e2.x {
+                Ordering::Less
+            } else if e1.x > e2.x {
+                Ordering::Greater
+            } else if e1.ymax == e2.ymax {
+                Ordering::Equal
+            } else {
+                if e1.ymax > e2.ymax {
+                    Ordering::Greater
+                } else if e1.ymax < e2.ymax {
+                    Ordering::Less
+                } else {
+                    Ordering::Equal
+                }
+            }
+        },
+        control,
+    )?;
 
     if edges.is_empty() {
-        return lines;
+        return Ok(lines);
     }
 
     let mut active_edges: Vec<ActiveEdgeEntry<F>> = Vec::new();
     let mut y = edges.first().unwrap().ymin;
+    let mut next_edge = 0;
 
     loop {
-        if !edges.is_empty() {
-            let ix = edges
-                .iter()
-                .enumerate()
-                .find(|(_ind, v)| v.ymin > y)
-                .map(|(ind, _v)| ind);
-
-            if let Some(indx) = ix {
-                let removed_elements = edges.splice(0..indx, vec![]);
-
-                removed_elements
-                    .into_iter()
-                    .for_each(|ee| active_edges.push(ActiveEdgeEntry { edge: ee }));
-            } else {
-                let removed_elements = edges.splice(0..edges.len(), vec![]);
-
-                removed_elements
-                    .into_iter()
-                    .for_each(|ee| active_edges.push(ActiveEdgeEntry { edge: ee }));
+        control.charge(1)?;
+        while next_edge < edges.len() {
+            control.charge(1)?;
+            if edges[next_edge].ymin > y {
+                break;
             }
+            active_edges.push(ActiveEdgeEntry {
+                edge: edges[next_edge].clone(),
+            });
+            next_edge += 1;
         }
 
-        active_edges.retain(|ae| ae.edge.ymax > y);
-
-        active_edges.sort_by(|ae1, ae2| {
-            if ae1.edge.x == ae2.edge.x {
-                Ordering::Equal
-            } else {
-                let ratio = (ae1.edge.x - ae2.edge.x) / F::abs(ae1.edge.x - ae2.edge.x);
-                if ratio > _c(0.0) {
-                    Ordering::Greater
-                } else {
-                    Ordering::Less
-                }
+        let mut retained = 0;
+        for index in 0..active_edges.len() {
+            control.charge(1)?;
+            if active_edges[index].edge.ymax > y {
+                active_edges.swap(retained, index);
+                retained += 1;
             }
-        });
+        }
+        active_edges.truncate(retained);
+
+        sort_by(
+            &mut active_edges,
+            |ae1, ae2| {
+                if ae1.edge.x == ae2.edge.x {
+                    Ordering::Equal
+                } else {
+                    if ae1.edge.x > ae2.edge.x {
+                        Ordering::Greater
+                    } else {
+                        Ordering::Less
+                    }
+                }
+            },
+            control,
+        )?;
         if active_edges.len() > 1 {
-            active_edges[..].chunks(2).for_each(|ae| {
+            if !active_edges.len().is_multiple_of(2) {
+                return Err(WorkError::InvalidGeometry);
+            }
+            for ae in active_edges.chunks_exact(2) {
+                control.charge(1)?;
                 let ce = &ae[0];
                 let ne = &ae[1];
                 lines.push(Line::from(&[
                     euclid::Point2D::new(ce.edge.x, y),
                     euclid::Point2D::new(ne.edge.x, y),
                 ]));
-            });
+            }
         }
 
-        y = y + gap;
-        active_edges.iter_mut().for_each(|ae| {
+        y = advance(y, gap)?;
+        for ae in &mut active_edges {
+            control.charge(1)?;
             ae.edge.x = ae.edge.x + (gap * ae.edge.islope);
-        });
-        if edges.is_empty() && active_edges.is_empty() {
+            finite(&[ae.edge.x])?;
+        }
+        if next_edge == edges.len() && active_edges.is_empty() {
             break;
         }
     }
 
-    lines
+    Ok(lines)
 }
 
 pub struct ScanlineHachureFiller<F> {
@@ -213,38 +254,49 @@ where
     P: BorrowMut<Vec<Vec<Point2D<F>>>>,
 {
     fn fill_polygons(&self, mut polygon_list: P, o: &mut Options) -> crate::core::OpSet<F> {
-        let lines = polygon_hachure_lines(polygon_list.borrow_mut().as_mut_slice(), o);
-        let ops = ScanlineHachureFiller::render_lines(lines, o);
-        OpSet {
-            op_set_type: crate::core::OpSetType::FillSketch,
-            ops,
-            size: None,
-            path: None,
-        }
+        self.fill_polygons_with_control(polygon_list.borrow_mut(), o, &mut UnlimitedWork)
+            .expect("invalid hachure fill")
     }
 }
 
 impl<F: Float + Trig + FromPrimitive> ScanlineHachureFiller<F> {
+    pub fn fill_polygons_with_control(
+        &self,
+        polygons: &mut [Vec<Point2D<F>>],
+        options: &mut Options,
+        control: &mut impl WorkControl,
+    ) -> Result<OpSet<F>, WorkError> {
+        let lines = polygon_hachure_lines_with_control(polygons, options, control)?;
+        let mut ops = Vec::new();
+        for line in lines {
+            control.charge(4)?;
+            finite(&[(line.start_point.x - line.end_point.x).powi(2)
+                + (line.start_point.y - line.end_point.y).powi(2)])?;
+            let mut line_ops = crate::renderer::_double_line(
+                line.start_point.x,
+                line.start_point.y,
+                line.end_point.x,
+                line.end_point.y,
+                options,
+                true,
+            );
+            for operation in &line_ops {
+                finite(&operation.data)?;
+            }
+            ops.append(&mut line_ops);
+        }
+        Ok(OpSet {
+            op_set_type: crate::core::OpSetType::FillSketch,
+            ops,
+            size: None,
+            path: None,
+        })
+    }
+
     pub fn new() -> Self {
         ScanlineHachureFiller {
             _phantom: PhantomData,
         }
-    }
-
-    fn render_lines(lines: Vec<Line<F>>, o: &mut Options) -> Vec<crate::core::Op<F>> {
-        let mut ops: Vec<crate::core::Op<F>> = vec![];
-        lines.iter().for_each(|l| {
-            ops.extend(crate::renderer::_double_line(
-                l.start_point.x,
-                l.start_point.y,
-                l.end_point.x,
-                l.end_point.y,
-                o,
-                true,
-            ))
-        });
-
-        ops
     }
 }
 

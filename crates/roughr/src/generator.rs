@@ -13,6 +13,7 @@ use crate::renderer::{
     linear_path, pattern_fill_arc, pattern_fill_polygons, rectangle, solid_fill_polygon, svg_path,
     svg_segments, ArcParams, ArcRenderParams,
 };
+use crate::work::{WorkControl, WorkError};
 use crate::SvgPathSegment;
 use euclid::default::Point2D;
 use euclid::Trig;
@@ -37,6 +38,211 @@ impl Default for Generator {
 }
 
 impl Generator {
+    pub fn line_with_control<F: Float + Trig + FromPrimitive>(
+        &self,
+        x1: F,
+        y1: F,
+        x2: F,
+        y2: F,
+        options: &Option<Options>,
+        control: &mut impl WorkControl,
+    ) -> Result<Drawable<F>, WorkError> {
+        let mut resolved = options
+            .clone()
+            .unwrap_or_else(|| self.default_options.clone());
+        let outline = crate::renderer::line_with_control(x1, y1, x2, y2, &mut resolved, control)?;
+        Ok(self.d("line", &[outline], options))
+    }
+
+    pub fn rectangle_with_control<F: Float + Trig + FromPrimitive>(
+        &self,
+        x: F,
+        y: F,
+        width: F,
+        height: F,
+        options: &Option<Options>,
+        control: &mut impl WorkControl,
+    ) -> Result<Drawable<F>, WorkError> {
+        let mut options = options
+            .clone()
+            .unwrap_or_else(|| self.default_options.clone());
+        let mut paths = Vec::new();
+        let outline =
+            crate::renderer::rectangle_with_control(x, y, width, height, &mut options, control)?;
+        if options.fill.is_some() {
+            control.charge(4)?;
+            let mut polygons = vec![vec![
+                Point2D::new(x, y),
+                Point2D::new(x + width, y),
+                Point2D::new(x + width, y + height),
+                Point2D::new(x, y + height),
+            ]];
+            paths.push(if options.fill_style == Some(FillStyle::Solid) {
+                crate::renderer::solid_fill_polygon_with_control(&polygons, &mut options, control)?
+            } else {
+                crate::renderer::hachure_fill_polygons_with_control(
+                    &mut polygons,
+                    &mut options,
+                    control,
+                )?
+            });
+        }
+        if options.stroke.is_some() {
+            paths.push(outline);
+        }
+        Ok(Drawable {
+            shape: "rectangle".into(),
+            options,
+            sets: paths,
+        })
+    }
+
+    pub fn ellipse_with_control<F: Float + Trig + FromPrimitive>(
+        &self,
+        x: F,
+        y: F,
+        width: F,
+        height: F,
+        options: &Option<Options>,
+        control: &mut impl WorkControl,
+    ) -> Result<Drawable<F>, WorkError> {
+        let mut options = options
+            .clone()
+            .unwrap_or_else(|| self.default_options.clone());
+        let mut paths = Vec::new();
+        let params = crate::renderer::generate_ellipse_params_with_control(
+            width,
+            height,
+            &mut options,
+            control,
+        )?;
+        let outline = crate::renderer::ellipse_with_params_with_control(
+            x,
+            y,
+            &mut options,
+            &params,
+            control,
+        )?;
+        if options.fill.is_some() {
+            paths.push(if options.fill_style == Some(FillStyle::Solid) {
+                let mut fill = crate::renderer::ellipse_with_params_with_control(
+                    x,
+                    y,
+                    &mut options,
+                    &params,
+                    control,
+                )?
+                .opset;
+                fill.op_set_type = OpSetType::FillPath;
+                fill
+            } else {
+                crate::renderer::hachure_fill_polygons_with_control(
+                    &mut [outline.estimated_points],
+                    &mut options,
+                    control,
+                )?
+            });
+        }
+        if options.stroke.is_some() {
+            paths.push(outline.opset);
+        }
+        Ok(Drawable {
+            shape: "ellipse".into(),
+            options,
+            sets: paths,
+        })
+    }
+
+    pub fn circle_with_control<F: Float + Trig + FromPrimitive>(
+        &self,
+        x: F,
+        y: F,
+        diameter: F,
+        options: &Option<Options>,
+        control: &mut impl WorkControl,
+    ) -> Result<Drawable<F>, WorkError> {
+        let mut result = self.ellipse_with_control(x, y, diameter, diameter, options, control)?;
+        result.shape = "circle".into();
+        Ok(result)
+    }
+
+    pub fn path_with_control<F>(
+        &self,
+        path: &str,
+        options: &Option<Options>,
+        control: &mut impl WorkControl,
+    ) -> Result<Drawable<F>, WorkError>
+    where
+        F: Float + Trig + FromPrimitive + MulAssign + Display,
+    {
+        let mut options = options
+            .clone()
+            .unwrap_or_else(|| self.default_options.clone());
+        let mut paths = Vec::new();
+        control.charge(1)?;
+        crate::renderer::validate_options(&options)?;
+        if !path.is_empty() {
+            let simplified = options.simplification.is_some_and(|value| value < 1.0);
+            let distance = if simplified {
+                _c::<F>(4.0) - _c::<F>(4.0) * _c::<F>(options.simplification.unwrap())
+            } else {
+                (_c::<F>(1.0) + _c::<F>(options.roughness.unwrap_or(1.0))) / _c::<F>(2.0)
+            };
+            let segments = crate::points_on_path::normalized_path_with_control(path, control)?;
+            let sets = crate::points_on_path::points_on_normalized_segments_with_control(
+                &segments,
+                Some(_c(1.0)),
+                Some(distance),
+                control,
+            )?;
+            if options.fill.is_some() {
+                paths.push(if options.fill_style == Some(FillStyle::Solid) {
+                    crate::renderer::solid_fill_polygon_with_control(&sets, &mut options, control)?
+                } else {
+                    let mut polygons = Vec::new();
+                    for set in &sets {
+                        control.charge(1)?;
+                        let mut polygon = Vec::new();
+                        for point in set {
+                            control.charge(1)?;
+                            polygon.push(*point);
+                        }
+                        polygons.push(polygon);
+                    }
+                    crate::renderer::hachure_fill_polygons_with_control(
+                        &mut polygons,
+                        &mut options,
+                        control,
+                    )?
+                });
+            }
+            if options.stroke.is_some() {
+                if simplified {
+                    for set in &sets {
+                        control.charge(1)?;
+                        paths.push(crate::renderer::linear_path_with_control(
+                            set,
+                            false,
+                            &mut options,
+                            control,
+                        )?);
+                    }
+                } else {
+                    paths.push(crate::renderer::svg_normalized_segments_with_control(
+                        &segments,
+                        &mut options,
+                        control,
+                    )?);
+                }
+            }
+        }
+        Ok(Drawable {
+            shape: "path".into(),
+            options,
+            sets: paths,
+        })
+    }
+
     fn d<T, F>(&self, name: T, op_sets: &[OpSet<F>], options: &Option<Options>) -> Drawable<F>
     where
         T: Into<String>,

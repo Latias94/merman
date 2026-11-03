@@ -3,6 +3,7 @@ use std::cmp::{max_by, min_by};
 use std::fmt::Display;
 use std::ops::MulAssign;
 
+use crate::work::{finite, UnlimitedWork, WorkControl, WorkError};
 use euclid::default::Point2D;
 use euclid::point2;
 use num_traits::Float;
@@ -64,46 +65,69 @@ where
     ux + uy
 }
 
-fn simplify_points<F>(
+fn simplify_points_with_control<F: Float + Display>(
     points: &[Point2D<F>],
     start: usize,
     end: usize,
     epsilon: F,
-    new_points: &mut Vec<Point2D<F>>,
-) -> Vec<Point2D<F>>
-where
-    F: Float + Display,
-{
-    let s = points[start];
-    let e = points[end - 1];
-    let mut max_dist_sq = F::zero();
-    let mut max_ndx = 0;
-    for p in points.iter().enumerate().take(end - 1).skip(start + 1) {
-        let distance_sq = distance_to_segment_squared(*p.1, s, e);
-        if distance_sq > max_dist_sq {
-            max_dist_sq = distance_sq;
-            max_ndx = p.0;
+    output: &mut Vec<Point2D<F>>,
+    control: &mut impl WorkControl,
+) -> Result<(), WorkError> {
+    finite(&[epsilon])?;
+    if start == end {
+        return Ok(());
+    }
+    control.charge(1)?;
+    let mut pending = vec![(start, end)];
+    while let Some((start, end)) = pending.pop() {
+        control.charge(1)?;
+        let first = points[start];
+        let last = points[end - 1];
+        finite(&[first.x, first.y, last.x, last.y])?;
+        let length_squared = first.distance_to(last).powi(2);
+        finite(&[length_squared])?;
+        let mut maximum = F::zero();
+        let mut split = start;
+        for (index, point) in points.iter().enumerate().take(end - 1).skip(start + 1) {
+            control.charge(1)?;
+            finite(&[
+                point.x,
+                point.y,
+                (point.x - first.x) * (last.x - first.x) + (point.y - first.y) * (last.y - first.y),
+            ])?;
+            let distance = distance_to_segment_squared(*point, first, last);
+            finite(&[distance])?;
+            if distance > maximum {
+                maximum = distance;
+                split = index;
+            }
+        }
+        if maximum.sqrt() > epsilon {
+            if split <= start || split >= end - 1 {
+                return Err(WorkError::InvalidGeometry);
+            }
+            control.charge(2)?;
+            pending.push((split, end));
+            pending.push((start, split + 1));
+        } else {
+            control.charge(2)?;
+            if output.is_empty() {
+                output.push(first);
+            }
+            output.push(last);
         }
     }
-
-    if max_dist_sq.sqrt() > epsilon {
-        simplify_points(points, start, max_ndx + 1, epsilon, new_points);
-        simplify_points(points, max_ndx, end, epsilon, new_points);
-    } else {
-        if new_points.is_empty() {
-            new_points.push(s);
-        }
-        new_points.push(e);
-    }
-
-    new_points.to_vec()
+    Ok(())
 }
 
-pub(crate) fn simplify<F>(points: &[Point2D<F>], distance: F) -> Vec<Point2D<F>>
-where
-    F: Float + Display,
-{
-    simplify_points(points, 0, points.len(), distance, &mut vec![])
+pub(crate) fn simplify_with_control<F: Float + Display>(
+    points: &[Point2D<F>],
+    distance: F,
+    control: &mut impl WorkControl,
+) -> Result<Vec<Point2D<F>>, WorkError> {
+    let mut output = Vec::new();
+    simplify_points_with_control(points, 0, points.len(), distance, &mut output, control)?;
+    Ok(output)
 }
 
 fn get_points_on_bezier_curve_with_splitting<F>(
@@ -111,42 +135,61 @@ fn get_points_on_bezier_curve_with_splitting<F>(
     offset: usize,
     tolerance: F,
     new_points: &mut Vec<Point2D<F>>,
-) -> Vec<Point2D<F>>
+    control: &mut impl WorkControl,
+) -> Result<(), WorkError>
 where
     F: Float + MulAssign,
 {
-    if flatness(points, offset) < tolerance {
-        let p0 = points[offset];
-        if !new_points.is_empty() {
-            let d = new_points.last().unwrap().distance_to(p0);
-            if d > F::one() {
+    control.charge(1)?;
+    let mut pending = vec![[
+        points[offset],
+        points[offset + 1],
+        points[offset + 2],
+        points[offset + 3],
+    ]];
+    while let Some(curve) = pending.pop() {
+        control.charge(1)?;
+        for point in curve {
+            finite(&[point.x, point.y])?;
+        }
+        let flatness = flatness(&curve, 0);
+        finite(&[flatness])?;
+        if flatness < tolerance {
+            control.charge(2)?;
+            let p0 = curve[0];
+            if !new_points.is_empty() {
+                let d = new_points.last().unwrap().distance_to(p0);
+                if d > F::one() {
+                    new_points.push(p0);
+                }
+            } else {
                 new_points.push(p0);
             }
+            new_points.push(curve[3]);
         } else {
-            new_points.push(p0);
+            let t = F::from(0.5).unwrap();
+            let [p1, p2, p3, p4] = curve;
+
+            let q1 = p1.lerp(p2, t);
+            let q2 = p2.lerp(p3, t);
+            let q3 = p3.lerp(p4, t);
+
+            let r1 = q1.lerp(q2, t);
+            let r2 = q2.lerp(q3, t);
+
+            let red = r1.lerp(r2, t);
+
+            let left = [p1, q1, r1, red];
+            let right = [red, r2, q3, p4];
+            if left == curve || right == curve {
+                return Err(WorkError::InvalidGeometry);
+            }
+            control.charge(2)?;
+            pending.push(right);
+            pending.push(left);
         }
-        new_points.push(points[offset + 3]);
-    } else {
-        let t = F::from(0.5).unwrap();
-        let p1 = points[offset];
-        let p2 = points[offset + 1];
-        let p3 = points[offset + 2];
-        let p4 = points[offset + 3];
-
-        let q1 = p1.lerp(p2, t);
-        let q2 = p2.lerp(p3, t);
-        let q3 = p3.lerp(p4, t);
-
-        let r1 = q1.lerp(q2, t);
-        let r2 = q2.lerp(q3, t);
-
-        let red = r1.lerp(r2, t);
-
-        get_points_on_bezier_curve_with_splitting(&[p1, q1, r1, red], 0, tolerance, new_points);
-        get_points_on_bezier_curve_with_splitting(&[red, r2, q3, p4], 0, tolerance, new_points);
     }
-
-    new_points.to_vec()
+    Ok(())
 }
 
 pub(crate) fn points_on_bezier_curves<F>(
@@ -157,19 +200,42 @@ pub(crate) fn points_on_bezier_curves<F>(
 where
     F: Float + MulAssign + Display,
 {
+    points_on_bezier_curves_with_control(points, tolerance, distance, &mut UnlimitedWork)
+        .expect("invalid bezier sampling")
+}
+
+pub(crate) fn points_on_bezier_curves_with_control<F>(
+    points: &[Point2D<F>],
+    tolerance: F,
+    distance: Option<F>,
+    control: &mut impl WorkControl,
+) -> Result<Vec<Point2D<F>>, WorkError>
+where
+    F: Float + MulAssign + Display,
+{
+    finite(&[tolerance])?;
+    if tolerance <= F::zero() {
+        return Err(WorkError::InvalidGeometry);
+    }
     let mut new_points = vec![];
     let num_segments = points.len() / 3;
     for i in 0..num_segments {
         let offset = i * 3;
-        get_points_on_bezier_curve_with_splitting(points, offset, tolerance, &mut new_points);
+        get_points_on_bezier_curve_with_splitting(
+            points,
+            offset,
+            tolerance,
+            &mut new_points,
+            control,
+        )?;
     }
 
     if let Some(dst) = distance {
         if dst > F::zero() {
-            return simplify_points(&new_points, 0, new_points.len(), dst, &mut vec![]);
+            return simplify_with_control(&new_points, dst, control);
         }
     }
-    new_points
+    Ok(new_points)
 }
 
 pub(crate) fn curve_to_bezier<F>(
