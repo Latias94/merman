@@ -1,0 +1,291 @@
+name: Build Flutter Package
+
+on:
+  workflow_call:
+    inputs:
+      release_tag:
+        description: "Workspace version tag for the native download URLs"
+        required: true
+        type: string
+      source_sha:
+        description: "Reviewed immutable facade source commit"
+        required: true
+        type: string
+      native_source_sha:
+        description: "Immutable workspace commit that produced the native libraries"
+        required: true
+        type: string
+      native_source_tree:
+        description: "Workspace tree paired with native_source_sha"
+        required: true
+        type: string
+      native_run_id:
+        description: "Completed Flutter/preflight run holding the original native assets; empty builds them"
+        required: false
+        default: ""
+        type: string
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  build:
+    runs-on: macos-15
+    steps:
+      - name: Validate candidate inputs
+        id: release
+        shell: bash
+        env:
+          RELEASE_TAG: ${{ inputs.release_tag }}
+          SOURCE_SHA: ${{ inputs.source_sha }}
+          NATIVE_SOURCE_SHA: ${{ inputs.native_source_sha }}
+          NATIVE_SOURCE_TREE: ${{ inputs.native_source_tree }}
+          NATIVE_RUN_ID: ${{ inputs.native_run_id }}
+        run: |
+          set -euo pipefail
+          semver_re='(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-(alpha|beta|rc)\.(0|[1-9][0-9]*))?(\+[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*)?'
+          [[ "$RELEASE_TAG" =~ ^v${semver_re}$ ]] || exit 1
+          [[ "$SOURCE_SHA" =~ ^[0-9a-f]{40}$ ]] || exit 1
+          [[ "$NATIVE_SOURCE_SHA" =~ ^[0-9a-f]{40}$ ]] || exit 1
+          [[ "$NATIVE_SOURCE_TREE" =~ ^[0-9a-f]{40}$ ]] || exit 1
+          [[ -z "$NATIVE_RUN_ID" || "$NATIVE_RUN_ID" =~ ^[1-9][0-9]*$ ]] || exit 1
+          if [[ -z "$NATIVE_RUN_ID" ]]; then
+            test "$SOURCE_SHA" = "$NATIVE_SOURCE_SHA"
+          fi
+          printf 'version=%s\n' "${RELEASE_TAG#v}" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/checkout@v7.0.1
+        with:
+          ref: ${{ inputs.source_sha }}
+          persist-credentials: false
+
+      - name: Resolve facade source identity
+        id: source
+        env:
+          SOURCE_SHA: ${{ inputs.source_sha }}
+          NATIVE_SOURCE_TREE: ${{ inputs.native_source_tree }}
+          NATIVE_RUN_ID: ${{ inputs.native_run_id }}
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
+          if [[ -z "$NATIVE_RUN_ID" ]]; then
+            test "$(git rev-parse 'HEAD^{tree}')" = "$NATIVE_SOURCE_TREE"
+          fi
+          printf 'source_tree=%s\n' "$(git rev-parse 'HEAD^{tree}')" >> "$GITHUB_OUTPUT"
+
+      - name: Verify candidate version projections
+        env:
+          VERSION: ${{ steps.release.outputs.version }}
+        run: python3 scripts/release-version.py check --version "$VERSION"
+
+      - name: Verify the selected native producer
+        id: native-producer
+        if: ${{ inputs.native_run_id != '' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          NATIVE_RUN_ID: ${{ inputs.native_run_id }}
+          NATIVE_SOURCE_SHA: ${{ inputs.native_source_sha }}
+          REPOSITORY: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          gh api "repos/$REPOSITORY/actions/runs/$NATIVE_RUN_ID" > "$RUNNER_TEMP/native-run.json"
+          jq -e --arg repository "$REPOSITORY" '
+            .repository.full_name == $repository and .status == "completed" and
+            .head_sha == env.NATIVE_SOURCE_SHA and
+            (.event == "workflow_dispatch" or .event == "push") and
+            (.path == ".github/workflows/release-flutter.yml" or
+             .path == ".github/workflows/release-preflight.yml")
+          ' "$RUNNER_TEMP/native-run.json" > /dev/null
+          gh api --paginate --slurp "repos/$REPOSITORY/actions/runs/$NATIVE_RUN_ID/jobs?per_page=100" | \
+            jq -e '[.[].jobs[] | select(.name == "build" or .name == "build / build" or
+              .name == "flutter-dry-run / build")] | length == 1 and
+              .[0].status == "completed" and .[0].conclusion == "success"' > /dev/null
+          gh api --paginate --slurp "repos/$REPOSITORY/actions/runs/$NATIVE_RUN_ID/artifacts?per_page=100" | \
+            jq -er '[.[].artifacts[] | select(.name == "merman-flutter-native-assets")] |
+              if length == 1 and .[0].expired == false then .[0].id
+              else error("A single unexpired original Flutter native artifact is required") end' \
+            > "$RUNNER_TEMP/native-artifact-id"
+          printf 'artifact_id=%s\n' "$(cat "$RUNNER_TEMP/native-artifact-id")" >> "$GITHUB_OUTPUT"
+
+      - name: Download the exact original native assets
+        if: ${{ inputs.native_run_id != '' }}
+        uses: actions/download-artifact@v8.0.2
+        with:
+          artifact-ids: ${{ steps.native-producer.outputs.artifact_id }}
+          merge-multiple: true
+          path: ${{ runner.temp }}/flutter-native-assets
+          github-token: ${{ github.token }}
+          repository: ${{ github.repository }}
+          run-id: ${{ inputs.native_run_id }}
+
+      - name: Read Android toolchain versions
+        id: android-toolchain
+        if: ${{ inputs.native_run_id == '' }}
+        run: echo "ndk=$(python3 platforms/android/build-android.py --print-version ndk)" >> "$GITHUB_OUTPUT"
+
+      - name: Install Rust toolchain
+        if: ${{ inputs.native_run_id == '' }}
+        uses: dtolnay/rust-toolchain@1.95.0
+        with:
+          components: llvm-tools-preview
+          targets: aarch64-linux-android,armv7-linux-androideabi,x86_64-linux-android,aarch64-apple-ios,aarch64-apple-ios-sim,x86_64-apple-ios,aarch64-apple-darwin,x86_64-apple-darwin,x86_64-unknown-linux-gnu,aarch64-unknown-linux-gnu,x86_64-pc-windows-gnu
+
+      - name: Rust cache
+        if: ${{ inputs.native_run_id == '' }}
+        uses: Swatinem/rust-cache@v2.9.2
+
+      - name: Install desktop cross tools
+        if: ${{ inputs.native_run_id == '' }}
+        run: |
+          if ! command -v zig >/dev/null 2>&1; then
+            brew install zig
+          fi
+          cargo install cargo-zigbuild --version 0.23.4 --locked
+
+      - name: Setup Android SDK
+        if: ${{ inputs.native_run_id == '' }}
+        uses: android-actions/setup-android@v4.0.4
+        with:
+          packages: platform-tools
+
+      - name: Install Android NDK
+        if: ${{ inputs.native_run_id == '' }}
+        env:
+          ANDROID_NDK_VERSION: ${{ steps.android-toolchain.outputs.ndk }}
+        run: |
+          set -euo pipefail
+          sdkmanager --install "ndk;${ANDROID_NDK_VERSION}"
+          echo "ANDROID_NDK_HOME=${ANDROID_HOME}/ndk/${ANDROID_NDK_VERSION}" >> "$GITHUB_ENV"
+
+      - name: Build Android native libraries
+        if: ${{ inputs.native_run_id == '' }}
+        run: python3 platforms/android/build-android.py --artifact-profile flutter-android-native --targets aarch64-linux-android armv7-linux-androideabi x86_64-linux-android
+
+      - name: Build Apple and desktop native libraries
+        if: ${{ inputs.native_run_id == '' }}
+        run: python3 platforms/flutter/build-native.py all-desktop
+
+      - name: Freeze target native assets
+        if: ${{ inputs.native_run_id == '' }}
+        env:
+          VERSION: ${{ steps.release.outputs.version }}
+          NATIVE_SOURCE_SHA: ${{ inputs.native_source_sha }}
+          NATIVE_SOURCE_TREE: ${{ inputs.native_source_tree }}
+          RELEASE_TAG: ${{ inputs.release_tag }}
+          REPOSITORY: ${{ github.repository }}
+        run: |
+          python3 scripts/flutter_native_assets.py stage \
+            --native-root platforms/flutter/native \
+            --output "$RUNNER_TEMP/flutter-native-assets" \
+            --base-url "https://github.com/$REPOSITORY/releases/download/$RELEASE_TAG/" \
+            --source-sha "$NATIVE_SOURCE_SHA" --source-tree "$NATIVE_SOURCE_TREE" --version "$VERSION"
+
+      - name: Verify the frozen native assets
+        env:
+          VERSION: ${{ steps.release.outputs.version }}
+          NATIVE_SOURCE_SHA: ${{ inputs.native_source_sha }}
+          NATIVE_SOURCE_TREE: ${{ inputs.native_source_tree }}
+          RELEASE_TAG: ${{ inputs.release_tag }}
+          REPOSITORY: ${{ github.repository }}
+        run: |
+          python3 scripts/flutter_native_assets.py verify \
+            --manifest "$RUNNER_TEMP/flutter-native-assets/native-assets.json" \
+            --assets-root "$RUNNER_TEMP/flutter-native-assets" --version "$VERSION" \
+            --source-sha "$NATIVE_SOURCE_SHA" --source-tree "$NATIVE_SOURCE_TREE" \
+            --base-url "https://github.com/$REPOSITORY/releases/download/$RELEASE_TAG/"
+
+      - name: Restore the reused host library for source checks
+        if: ${{ inputs.native_run_id != '' }}
+        env:
+          NATIVE_SOURCE_SHA: ${{ inputs.native_source_sha }}
+          NATIVE_SOURCE_TREE: ${{ inputs.native_source_tree }}
+        run: |
+          host_target="$(python3 -c 'import platform; print("macos/arm64" if platform.machine().lower() in {"arm64", "aarch64"} else "macos/x86_64")')"
+          python3 scripts/flutter_native_assets.py materialize \
+            --manifest "$RUNNER_TEMP/flutter-native-assets/native-assets.json" \
+            --assets-root "$RUNNER_TEMP/flutter-native-assets" \
+            --native-root platforms/flutter/native --target "$host_target" \
+            --source-sha "$NATIVE_SOURCE_SHA" --source-tree "$NATIVE_SOURCE_TREE"
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2.23.0
+        with:
+          flutter-version: "3.47.7"
+          channel: stable
+          cache: true
+
+      - name: Validate Flutter package
+        working-directory: platforms/flutter
+        run: |
+          flutter pub get
+          dart run ffigen --config ffigen.yaml
+          git ls-files --error-unmatch -- lib/src/generated/native_abi.dart
+          git diff --exit-code -- lib/src/generated/native_abi.dart
+          flutter analyze
+          dart format --set-exit-if-changed \
+            lib/merman.dart lib/src/merman_ffi.dart lib/src/operation_metadata.dart \
+            example tool hook
+          dart run tool/abi3_contract_test.dart
+          dart run tool/native_assets_contract_test.dart
+          dart run example/main.dart
+          dart run example/smoke.dart
+          dart run tool/theme_authoring_smoke.dart
+
+      - name: Verify legal material projections
+        run: python3 scripts/sync-release-legal-materials.py --check
+
+      - name: Package Flutter release artifact
+        env:
+          SOURCE_SHA: ${{ inputs.source_sha }}
+          SOURCE_TREE: ${{ steps.source.outputs.source_tree }}
+          VERSION: ${{ steps.release.outputs.version }}
+        run: |
+          python3 scripts/flutter_release_archive.py pack \
+            --package-root platforms/flutter \
+            --native-manifest "$RUNNER_TEMP/flutter-native-assets/native-assets.json" \
+            --archive "$RUNNER_TEMP/merman-flutter-package.tar.gz" \
+            --receipt "$RUNNER_TEMP/merman-flutter-package.receipt.json" \
+            --source-sha "$SOURCE_SHA" --source-tree "$SOURCE_TREE" --version "$VERSION"
+
+      - name: Qualify the frozen thin package and relocated app
+        env:
+          SOURCE_SHA: ${{ inputs.source_sha }}
+          SOURCE_TREE: ${{ steps.source.outputs.source_tree }}
+          VERSION: ${{ steps.release.outputs.version }}
+        run: |
+          set -euo pipefail
+          python3 scripts/flutter_release_archive.py extract \
+            --archive "$RUNNER_TEMP/merman-flutter-package.tar.gz" \
+            --receipt "$RUNNER_TEMP/merman-flutter-package.receipt.json" \
+            --destination "$RUNNER_TEMP/flutter-thin-package" --require-thin \
+            --source-sha "$SOURCE_SHA" --source-tree "$SOURCE_TREE" --version "$VERSION"
+          python3 scripts/verify_flutter_pub_package.py \
+            --package-root "$RUNNER_TEMP/flutter-thin-package" --require-thin --max-compressed-mb 99
+          python3 platforms/flutter/tool/qualify_packaged_app.py \
+            --package-root "$RUNNER_TEMP/flutter-thin-package" \
+            --assets-root "$RUNNER_TEMP/flutter-native-assets" \
+            --output "$RUNNER_TEMP/flutter-packaged-app.json"
+
+      - name: Upload Flutter package artifact
+        uses: actions/upload-artifact@v7.0.2
+        with:
+          name: merman-flutter-package
+          if-no-files-found: error
+          path: |
+            ${{ runner.temp }}/merman-flutter-package.tar.gz
+            ${{ runner.temp }}/merman-flutter-package.receipt.json
+
+      - name: Upload frozen native target assets
+        uses: actions/upload-artifact@v7.0.2
+        with:
+          name: merman-flutter-native-assets
+          path: ${{ runner.temp }}/flutter-native-assets/
+          if-no-files-found: error
+
+      - name: Upload packaged app qualification
+        uses: actions/upload-artifact@v7.0.2
+        with:
+          name: merman-flutter-packaged-app
+          path: ${{ runner.temp }}/flutter-packaged-app.json
+          if-no-files-found: error

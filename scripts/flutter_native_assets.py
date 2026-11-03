@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Freeze per-target Flutter libraries and verify their public release downloads."""
+"""Freeze, verify, and materialize per-target Flutter native libraries."""
 
 from __future__ import annotations
 
@@ -7,11 +7,13 @@ import argparse
 import gzip
 import hashlib
 import json
+import os
 from pathlib import Path
 import re
 import sys
 from urllib.parse import urlsplit
 from urllib.request import urlopen
+import zlib
 
 if __package__:
     from .release_archive import sha256_file
@@ -137,13 +139,15 @@ def stage(
     return manifest
 
 
-def _verify_stream(stream, entry: dict) -> None:
+def _verify_stream(stream, entry: dict, *, output=None) -> None:
     digest, size = hashlib.sha256(), 0
     while chunk := stream.read(min(CHUNK_BYTES, entry["size"] - size + 1)):
         size += len(chunk)
         if size > entry["size"]:
             raise NativeAssetsError(f"native asset size differs: {entry['asset']}")
         digest.update(chunk)
+        if output is not None:
+            output.write(chunk)
     if size != entry["size"] or digest.hexdigest() != entry["sha256"]:
         raise NativeAssetsError(f"native asset digest or size differs: {entry['asset']}")
 
@@ -170,6 +174,42 @@ def verify_public(manifest: dict) -> None:
             raise NativeAssetsError(f"cannot read public native asset {entry['asset']}: {error}") from error
 
 
+def materialize(manifest: dict, assets_root: Path, native_root: Path, target: str) -> Path:
+    validate_manifest(manifest)
+    if target not in TARGET_LIBRARIES or target not in manifest["targets"]:
+        raise NativeAssetsError(f"unsupported Flutter native target: {target}")
+    entry = manifest["targets"][target]
+    asset_path = assets_root / entry["asset"]
+    if assets_root.is_symlink() or asset_path.is_symlink() or not asset_path.is_file():
+        raise NativeAssetsError(f"missing regular native asset: {asset_path}")
+    library_path = native_root / target / entry["library"]
+    for directory in (native_root, library_path.parent.parent, library_path.parent):
+        if directory.is_symlink():
+            raise NativeAssetsError(f"symlink native library directory: {directory}")
+    part_path = library_path.with_name(library_path.name + ".part")
+    for path in (library_path, part_path):
+        if path.exists() or path.is_symlink():
+            raise NativeAssetsError(f"native library output already exists: {path}")
+    try:
+        with asset_path.open("rb") as source:
+            _verify_stream(source, entry)
+            source.seek(0)
+            library_path.parent.mkdir(parents=True, exist_ok=True)
+            output = part_path.open("xb")
+            try:
+                with output, gzip.GzipFile(fileobj=source, mode="rb") as library:
+                    _verify_stream(library, {
+                        "asset": entry["library"], "size": entry["library_size"],
+                        "sha256": entry["library_sha256"],
+                    }, output=output)
+                os.link(part_path, library_path)
+            finally:
+                part_path.unlink(missing_ok=True)
+    except (OSError, EOFError, zlib.error) as error:
+        raise NativeAssetsError(f"cannot materialize Flutter native library {target}: {error}") from error
+    return library_path
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     commands = parser.add_subparsers(dest="command", required=True)
@@ -179,23 +219,31 @@ def main(argv: list[str] | None = None) -> int:
     freeze.add_argument("--base-url", required=True)
     for flag in ("version", "source-sha", "source-tree"):
         freeze.add_argument(f"--{flag}", required=True)
-    for command in ("verify", "verify-public", "list"):
+    for command in ("verify", "verify-public", "list", "materialize"):
         child = commands.add_parser(command)
         child.add_argument("--manifest", type=Path, required=True)
         child.add_argument("--base-url", help="Require the exact release URL prefix.")
-        if command == "verify":
+        for flag in ("version", "source-sha", "source-tree"):
+            child.add_argument(f"--{flag}")
+        if command in {"verify", "materialize"}:
             child.add_argument("--assets-root", type=Path, required=True)
+        if command == "materialize":
+            child.add_argument("--native-root", type=Path, required=True)
+            child.add_argument("--target", required=True)
     args = parser.parse_args(argv)
     try:
         if args.command == "stage":
             stage(args.native_root, args.output, version=args.version, source_sha=args.source_sha,
                   source_tree=args.source_tree, base_url=args.base_url)
         else:
-            manifest = load_manifest(args.manifest, base_url=args.base_url)
+            manifest = load_manifest(args.manifest, version=args.version, source_sha=args.source_sha,
+                                     source_tree=args.source_tree, base_url=args.base_url)
             if args.command == "verify":
                 verify_assets(manifest, args.assets_root)
             elif args.command == "verify-public":
                 verify_public(manifest)
+            elif args.command == "materialize":
+                materialize(manifest, args.assets_root, args.native_root, args.target)
             else:
                 print("\n".join(entry["asset"] for entry in manifest["targets"].values()))
     except (NativeAssetsError, OSError) as error:

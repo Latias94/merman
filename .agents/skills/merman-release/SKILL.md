@@ -113,6 +113,8 @@ the selected release commit.
 Read [Required Credentials](../../../docs/release/RELEASING.md#required-credentials) for the
 selected registries. Distinguish configured bindings, live token exchange, and successful upload.
 Existing bindings generally span versions; a new package name may need bootstrap and registration.
+Flutter keeps the existing pub.dev publisher pattern. Only manual publication recovery needs
+the optional dispatch event enabled in the package settings; verify it through Required Credentials.
 Inspect the descriptor's complete npm group, including newly added platform packages, for
 first-publication bootstrap and Trusted Publisher setup before starting the group publication.
 Follow the frozen-group bootstrap procedure in Required Credentials: hold an actual publishing
@@ -128,7 +130,11 @@ credentials and upload constraints are ready for the authorized publication.
 
 Follow [Tag And Push](../../../docs/release/RELEASING.md#tag-and-push) and each selected workflow's
 actual inputs. Keep workflow revision, artifact source, producing run/attempt, and receipts
-distinct. Workspace, Flutter and independent grammar tags retain their owning trigger contracts.
+distinct. Workspace and independent grammar tags retain their owning triggers; main-line Flutter
+retains the `flutter-v<version>` authentication-tag trigger but uses the workspace Release for
+native downloads. Preserve historical Flutter tags, Releases and download URLs, and use the
+unchanged 0.9.x owners for that maintenance line. Keep the existing pub.dev publisher pattern;
+no configuration switching between release lines is needed.
 
 Dispatch every selected manual owner using Tag And Push; tag-triggered owners keep their
 owning trigger. Preflight and Actions artifacts do not establish public delivery.
@@ -144,10 +150,16 @@ and the frozen binary URL/checksum. Native producer and delivery-repository comm
 separate identities. Creating or tagging that repository is a separately scoped operation;
 uploading the package archives alone does not establish public URL-based installation.
 
-For Flutter, follow the pushed `flutter-v<version>` tag owner: freeze target assets and the
-thin facade, upload native assets to its existing non-draft GitHub Release, verify every
-manifest-pinned public download, then publish the same frozen facade to pub.dev. Manual runs
-validate only. Keep the public native downloads available before exposing the dependent facade.
+For Flutter, push the immutable `flutter-v<version>` authentication tag at the workspace release
+source only after the primary `v<version>` Release exists. That push triggers `release-flutter.yml`
+publication without a separate Flutter Release. Manual candidates default to `publish=false`;
+manual `publish=true` requires the authentication tag as the workflow ref, `release_tag=v<version>`,
+a reviewed full source SHA and the optional pub.dev dispatch event. The shared read-only builder
+freezes the facade and native assets; the owner reconciles an existing exact pub.dev version's
+complete file set before writes, attaches all eleven native archives to the same workspace
+Release and verifies every public download before OIDC. Matching accepted facade bytes are
+retained; different bytes stop publication. For a reviewed facade-only repair using
+`native_run_id`, read [recovery](references/recovery.md) before dispatching.
 
 If the SDK surface is selected, publish its full matrix after the primary GitHub Release exists,
 using the manual SDK publisher and successful source-matched qualification run. Do not treat

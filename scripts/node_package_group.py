@@ -21,6 +21,7 @@ try:
         ReconciliationError,
         reconcile_group,
         validate_registry_manifest,
+        write_reconciliation_report,
     )
 except ModuleNotFoundError:
     from npm_package_group import (
@@ -31,6 +32,7 @@ except ModuleNotFoundError:
         ReconciliationError,
         reconcile_group,
         validate_registry_manifest,
+        write_reconciliation_report,
     )
 
 
@@ -521,11 +523,10 @@ def main(argv: list[str] | None = None) -> int:
         )
         if isinstance(client, DryRunNpmClient):
             report["dry_run_operations"] = client.operations
-        write_json(args.report, report)
+            write_reconciliation_report(args.report, report)
         print(args.report)
         return 0
     except ReconciliationError as exc:
-        write_json(args.report, exc.report)
         print(f"error: {exc}", file=sys.stderr)
         return 1
     except PackageGroupError as exc:

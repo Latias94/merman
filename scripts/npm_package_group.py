@@ -297,6 +297,8 @@ def reconcile_group(
     Recovery uses the original manifest and tarballs. A recorded upload attempt is
     observation-only, including when registry replicas still return 404. Existing
     exact versions must still match both integrity and the requested final tag.
+    Owners may supply an older report's actual run/attempt only after proving that
+    every later upload was skipped; the report and manifest remain bound below.
     """
 
     if observation_attempts < 1:

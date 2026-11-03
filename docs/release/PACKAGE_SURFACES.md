@@ -155,7 +155,11 @@ The repository-owned delivery routes are:
    Hosting and tagging a SwiftPM delivery repository remain separate rollout operations.
 5. GitHub Release wheels and PyPI publishing for Python, with five main-line target lanes.
 6. A thin Flutter facade on pub.dev after its pinned native target assets are uploaded and read
-   back from the existing `flutter-v<version>` GitHub Release.
+   back from the matching `v<version>` workspace GitHub Release. Push the `flutter-v<version>`
+   authentication tag only after that primary Release exists; no separate Flutter Release is
+   created. The existing pub.dev publisher pattern, historical downloads and 0.9.x workflow remain
+   unchanged; manual publication recovery additionally needs the
+   [pub.dev dispatch event](RELEASING.md#required-credentials).
 7. Android AAR and complete Maven repository ZIP, with a protected signing job producing the
    standard Central bundle handoff. The workflow does not upload to Maven Central or establish
    ownership of a namespace.
@@ -225,10 +229,17 @@ Merman CI keeps publication separate from validation:
 Release preflight is manual and publish-free. Crates and cargo-dist remain tag-driven after
 preflight passes. Apple, Android and Python dispatches default to `publish=false` and accept
 `main`, an exact commit or the matching tag for candidate builds. Uploads require `publish=true`
-and the matching immutable tag as `source_ref`; Android additionally requires a signed handoff,
-and PyPI additionally requires `publish_to_pypi=true`. Web/Node default to
-`publish_to_npm=false`. Flutter manual runs only validate; its native-asset and pub.dev jobs run
-from the pushed Flutter tag with separate write/OIDC permissions. See
+and the matching immutable tag as `source_ref`; Android's AAR/Maven ZIP route requires an explicit
+`maven_group`, while protected signing is selected separately with `prepare_central_bundle=true`.
+PyPI additionally requires `publish_to_pypi=true`. Web/Node default to `publish_to_npm=false`.
+Flutter shares the read-only `build-flutter.yml` builder with preflight. Pushing its
+`flutter-v<version>` authentication tag triggers publication after the primary workspace Release
+exists. Manual candidates use `release_tag=v<version>` and default `publish=false`; manual
+publication requires the matching authentication tag as the workflow ref and the optional pub.dev
+dispatch event. The existing `flutter-v{{version}}` publisher pattern stays unchanged.
+Optional `native_run_id` reuses an original completed Flutter or preflight native artifact for a
+reviewed facade repair, preserving native source identity while requalifying the facade. Its
+native-asset and pub.dev jobs keep separate write/OIDC permissions. See
 [the operator guide](RELEASING.md) for exact inputs, protected environments and recovery rules.
 
 ## Browser WASM Package Group

@@ -113,16 +113,16 @@ SURFACES = (
     ReleaseSurface(
         surface_id="flutter-pub",
         workflow=WORKFLOW_ROOT / "release-flutter.yml",
-        delivery="pub.dev facade with immutable per-target GitHub Release Native Assets",
-        publication_mode="flutter-tag-or-manual-validation",
+        delivery="pub.dev facade with immutable per-target assets on the workspace GitHub Release",
+        publication_mode="flutter-authentication-tag-with-workspace-assets",
         preflight_job="flutter-dry-run",
         workflow_markers=(
-            '      - "flutter-v*"',
             "workflow_dispatch:",
+            '      - "flutter-v*"',
+            "uses: ./.github/workflows/build-flutter.yml",
             "environment: pub.dev",
             "reconcile_pub_package",
             "scripts/flutter_native_assets.py verify-public",
-            "scripts/release-version.py check --version \"$VERSION\"",
         ),
         profile_packages=(
             ("flutter-android-native", "merman-ffi"),

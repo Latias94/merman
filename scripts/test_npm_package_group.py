@@ -133,6 +133,66 @@ class NpmRecoveryTests(unittest.TestCase):
         self.assertEqual(self.saved()["publication"], {"run_id": "42", "attempt": 3})
         self.assertEqual(self.saved()["package_states"]["@test/root"], "upload_outcome_unknown")
 
+    def test_partial_upload_then_skipped_setup_resumes_from_actual_report_attempt(self) -> None:
+        self.client.delay = 3600
+        with self.assertRaises(npm.ReconciliationError):
+            self.run_group()
+        first_report = self.saved()
+        self.assertEqual(first_report["package_states"]["@test/root"], "not_attempted")
+        prefix = "repos/example/project/actions/runs/42"
+        responses = {
+            prefix: {
+                "id": 42, "path": ".github/workflows/release-node.yml",
+                "repository": {"full_name": "example/project"}, "event": "workflow_dispatch",
+                "run_attempt": 3,
+            },
+            prefix + "/artifacts?per_page=100": [{"total_count": 1, "artifacts": [{
+                "id": 101, "name": "merman-node-npm-reconciliation-report-attempt-1", "expired": False,
+            }]}],
+            prefix + "/attempts/2/jobs?per_page=100": [{"total_count": 1, "jobs": [{
+                "id": 202, "name": "publish npm package group",
+                "status": "completed", "conclusion": "failure",
+                "steps": [{"name": "Publish npm package group", "status": "completed", "conclusion": "skipped"}],
+            }]}],
+        }
+        with mock.patch.object(history, "read_api", side_effect=lambda path, **_: responses[path]):
+            selected = history.select_npm_recovery("example/project", 42, 3, "node")
+        self.assertEqual((selected.run_id, selected.attempt, selected.observe_only), (42, 1, False))
+        self.clock.now = 3600
+        self.client.delay = 0
+        result = self.run_group(
+            recovery_report=first_report, publication_attempt=3,
+            recovery_run_id=str(selected.run_id), recovery_attempt=selected.attempt,
+            observe_only=selected.observe_only,
+        )
+        self.assertEqual(result["status"], "released")
+        self.assertEqual(self.client.calls, ["@test/dependency", "@test/root"])
+        self.assertEqual(result["already_published"], ["@test/dependency"])
+        self.assertEqual(self.saved()["publication"], {"run_id": "42", "attempt": 3})
+
+    def test_unknown_member_in_selected_older_report_still_cannot_be_resent(self) -> None:
+        self.client.delay = 3600
+        self.client.response_loss = True
+        with self.assertRaises(npm.ReconciliationError):
+            self.run_group()
+        report = self.saved()
+        with self.assertRaises(npm.ReconciliationError):
+            self.run_group(
+                recovery_report=report, publication_attempt=3,
+                recovery_run_id="42", recovery_attempt=1,
+            )
+        self.assertEqual(self.client.calls, ["@test/dependency"])
+        self.assertEqual(self.saved()["package_states"]["@test/dependency"], "upload_outcome_unknown")
+        self.assertEqual(self.saved()["package_states"]["@test/root"], "not_attempted")
+
+    def test_interrupted_atomic_report_replace_preserves_prior_complete_report(self) -> None:
+        previous = {"status": "pending", "package_states": {"@test/root": "upload_started"}}
+        npm.write_reconciliation_report(self.report, previous)
+        with mock.patch.object(npm.os, "replace", side_effect=OSError("interrupted replace")):
+            with self.assertRaisesRegex(OSError, "interrupted replace"):
+                npm.write_reconciliation_report(self.report, {"status": "released"})
+        self.assertEqual(self.saved(), previous)
+
     def test_lookup_failure_cannot_launder_unknown_history_into_attempt_four(self) -> None:
         self.client.delay = 3600
         with self.assertRaises(npm.ReconciliationError):

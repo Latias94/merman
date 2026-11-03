@@ -37,19 +37,44 @@ For first-publication bootstrap, follow Required Credentials' same-artifact proc
 nonpublishing candidate has no upload history report; cross-run observation-only recovery
 must not be used to publish the rest of a partially bootstrapped group.
 
+Node and Web use the same report selector in `scripts/release_attempt_history.py`. It may select
+the nearest valid older report only when every intervening upload was explicitly skipped;
+preserve the selected report's actual run/attempt and manifest identity. Missing, malformed or
+ambiguous history remains observation-only. The shared `scripts/npm_package_group.py` reconciler
+atomically persists upload intent and recovery state before subprocesses can lose them. A dated
+Windows incident decision is not a general resend override.
+
 For Python wheel assets, rerun the original run's failed upload job with its retained wheels.
 It compares all existing same-name assets before sending missing ones, then compares the
 complete anonymous public downloads. Preserve that successful GitHub handoff before resuming
 the dependent PyPI job; do not rebuild wheels to repair a partial upload.
 
-For Flutter, retain the frozen thin facade, its source/tree/version/digest receipt and all
-manifest-pinned native assets from the original run. Rerun failed upload/publication jobs from
-that run rather than rebuilding. If the Flutter-tagged GitHub Release is missing, create it
-within the authorized release scope before retrying the native-asset job. Matching existing
-native assets are kept; different bytes stop recovery. Require anonymous verification of every
-native download before publishing the facade. Use the trusted extractor and archive verifier
-before configuring OIDC. Reconcile pub.dev paths, executable bits, sizes and bytes; a workflow
-upload success alone does not establish byte identity.
+For Flutter with unchanged facade source, retain the frozen thin facade, its
+source/tree/version/digest receipt and all manifest-pinned native assets. Rerun only the original
+run's failed upload/publication jobs. Main-line native assets belong to the existing non-draft
+`v<version>` workspace Release. Matching assets are kept; different bytes stop recovery. Reconcile
+every existing pub.dev file's path, executable bits, size and bytes before writes, and require
+anonymous verification of all eleven native target downloads before OIDC. An exact accepted
+facade needs no new upload; a conflicting accepted package cannot be repaired in place. If an
+earlier authentication-tag run or attempt has an unknown upload outcome, continue observation of that frozen package. Registry
+absence does not authorize an automatic resend or a fresh run that bypasses the history.
+
+For a facade-only repair before that facade is accepted, use Tag And Push's dispatch recipe:
+keep `--ref` at the immutable `flutter-v<version>` authentication tag and `release_tag` at the
+workspace `v<version>` label. Verify the optional pub.dev dispatch event is enabled, set
+`source_ref` to the newer reviewed full 40-character facade commit, and pass `native_run_id` for
+the original completed `release-flutter.yml` or `release-preflight.yml` run. Require exactly one unexpired immutable
+`merman-flutter-native-assets` artifact; a successful preflight uses the same artifact name and
+schema. The native manifest's source must still match the workspace tag. The read-only builder
+reuses those assets and the unchanged manifest, then repackages, analyzes, dry-runs and qualifies
+the facade against them without native cross-builds. Full consumer-contract checks remain
+required. The schema-1 archive receipt identifies facade source/tree, the schema-1 manifest
+identifies native source/tree, and their versions agree; the archive digest binds the included
+manifest. Preserve historical `flutter-v<version>` downloads and recover 0.9.x through its original
+tagged workflow without changing accepted artifacts. The existing `flutter-v{{version}}` publisher
+pattern remains valid for both lines; no maintenance configuration switch is needed. See
+[Required Credentials](../../../../docs/release/RELEASING.md#required-credentials) only for the
+additional event setting when selecting manual publication recovery.
 
 Acquire registry credentials only at the actual upload boundary. Workspace Cargo owners mint a
 fresh temporary token for each upload after batch dry runs and revoke it afterwards; single-crate

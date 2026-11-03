@@ -4,17 +4,18 @@ Status: maintained release operator guide.
 
 Merman releases use a preflight-first flow. Run the release preflight workflow against the intended
 source ref and version before any registry or GitHub Release publication. After preflight passes,
-push a `v<version>` workspace tag only for the tag-triggered CLI/LSP and crates.io surfaces. Flutter
-uses its own `flutter-v<version>` tag for the configured pub.dev Trusted Publisher; Python,
-Android, Apple, Web, Node, and VS Code remain owner-dispatched surfaces.
+push a `v<version>` workspace tag for the tag-triggered CLI/LSP and crates.io surfaces, then
+invoke the other selected owners. After the primary Release exists, push Flutter's
+`flutter-v<version>` authentication tag to trigger publication. Flutter attaches its native assets
+to that same workspace Release before publishing its facade to pub.dev; it needs no separate
+GitHub Release.
 
-Main's [binding delivery plan](../plans/2026-11-01-1248-refactor-binding-delivery-plan.md)
-adds complete SVG math products and ecosystem-specific handoffs. The selected Rust, CLI/LSP,
-C/WASI SDK and Web surfaces shipped in `0.10.0-alpha.1`; the other alpha bindings remain prepared
-source until their own channel release. Stable binding backfills retain the original 0.9.x products
-and do not deliver main's math or packaging changes. Use [prebuilt product choices](PREBUILT_PRODUCTS.md)
-for host selection and the tagged package guides for existing installations. Candidate
-qualification, a complete handoff and a publicly resolvable package are distinct release states.
+Use the [host installation guide](PREBUILT_PRODUCTS.md#published-versions) for verified channel
+versions and [prebuilt product choices](PREBUILT_PRODUCTS.md) for host selection. This guide
+describes main's release protocol. The `release/0.9.x` line retains its original workflows,
+products and Flutter tag trigger. Preserve historical `flutter-v<version>` tags, Releases and
+download URLs; recover those releases through their matching tagged workflows and documentation.
+The existing `flutter-v{{version}}` pub.dev publisher pattern remains unchanged for both lines.
 
 Release classification follows SemVer syntax, not the major version number. Versions without a
 prerelease suffix, including `0.7.0` and `0.8.0`, are regular releases. Only versions with a
@@ -87,16 +88,16 @@ workflows/descriptors, and use the release skill for the sequence and conditiona
 | Workflow | Publishes | Channel |
 | --- | --- | --- |
 | `release-preflight.yml` | Nothing; dry-run/build verification only | GitHub Actions artifacts |
+| `build-flutter.yml` | Nothing; read-only reusable native/facade builder for preflight and Flutter release | GitHub Actions artifacts |
 | `release-sdk.yml` | Nothing; qualifies native C and WASI standard/math/full archives | GitHub Actions artifacts |
 | `release-sdk-publish.yml` | Already-qualified SDK archives from a successful, tag-matched run | Existing GitHub Release only |
 | `release.yml` | `merman-cli` and `merman-lsp` binary archives, installers, and checksums | GitHub Release |
 | `release-cli-registries.yml` | Nothing; verifies published stable assets and produces separately validated WinGet/Scoop candidates | GitHub Actions artifacts |
 | `release-crates.yml` | Rust workspace crates | crates.io |
-| `release-crates-bootstrap.yml` | Explicit first publication of the three new alpha workspace crate names | crates.io, using the existing environment API-token secret |
 | `release-yank-crates.yml` | Selected workspace-coupled versions after an incomplete publication | crates.io |
 | `release-apple.yml` | Seven assets: binary ZIP, complete local SwiftPM ZIP, thin remote tree ZIP, three checksum sidecars and remote manifest | Actions candidates by default; existing GitHub Release with `publish=true` |
 | `release-python.yml` | Five `merman` wheels: macOS ARM64/x86-64, GNU Linux ARM64/x86-64 and Windows x86-64 MSVC | Actions candidates by default; existing GitHub Release with `publish=true`, plus PyPI with `publish_to_pypi=true` |
-| `release-flutter.yml` | Frozen thin `merman` facade and separate target-pinned native assets for Android, iOS, macOS, Windows and Linux | Tag-triggered native assets to an existing Flutter GitHub Release, then facade to pub.dev; manual runs validate only |
+| `release-flutter.yml` | Frozen thin `merman` facade and eleven target-pinned native archives for Android, iOS, macOS, Windows and Linux | Pushed `flutter-v<version>` authentication tag publishes to the existing workspace Release and pub.dev; manual candidates default to `publish=false`, with publication only from the authentication tag |
 | `release-android.yml` | AAR and complete Maven repository ZIP; optional signed standard Central bundle handoff | Actions candidates by default; existing GitHub Release with `publish=true`; no Central upload |
 | `release-web.yml` | admitted `@mermanjs/web` browser package group | Actions candidates by default; npm with `publish_to_npm=true` |
 | `release-node.yml` | experimental `@mermanjs/node` loader, seven native platform packages, and explicit `@mermanjs/node-wasm`: nine packages | Actions candidates by default; npm with `publish_to_npm=true` |
@@ -176,17 +177,14 @@ artifact source. Android additionally requires an explicit `maven_group` for its
 PyPI requires both `publish=true` and
 `publish_to_pypi=true`. Web/Node default to `publish_to_npm=false`; publication accepts the matching
 tag or a reviewed full commit, while `main` is build-only. VS Code resolves its explicit
-`source_ref` for packaging. Flutter's current `release-flutter.yml` publishes from a pushed
-`flutter-v<version>` tag and uses manual runs with an explicit `source_ref` for validation only.
-This is the repository owner's current trigger policy. The
-[pub.dev implementation](https://github.com/dart-lang/pub-dev/blob/6e5702a1db0c207ad2546e7c240ff1f159066011/app/lib/package/backend.dart#L2269-L2305)
-also admits tag-ref `workflow_dispatch` when that event is enabled in the package's publisher
-settings; a branch dispatch does not acquire tag identity by checking out a tag. The current
-workflow has no manual publication path. Existing Trusted Publishing remains valid across
-package versions and does not require a local login for normal tag publication.
-Its native-asset job requires an existing non-draft Release for that Flutter tag and verifies
-every pinned public download before pub.dev publication. The pub.dev trusted publisher must use
-the matching `flutter-v{{version}}` tag pattern.
+`source_ref` for packaging. Flutter normally publishes on a pushed `flutter-v<version>`
+authentication tag after the primary workspace Release exists. Its manual inputs are
+`release_tag=v<version>`, `source_ref`, optional `native_run_id` and default `publish=false`.
+Manual `publish=true` requires the workflow ref `refs/tags/flutter-v<version>` and pub.dev's
+optional dispatch event to be enabled; a branch dispatch cannot gain tag identity by checking
+out a tag. Its read-only `build-flutter.yml` builder is shared with preflight. See
+[Required Credentials](#required-credentials) for publisher settings and
+[Tag And Push](#tag-and-push) for normal and facade-repair inputs.
 
 The crates.io workflow is idempotent only when deterministic local re-packaging produces the checksum
 already recorded by the registry. Before each topological batch it packages every member from the
@@ -203,9 +201,8 @@ For WinGet and Scoop, run the independent [CLI registry candidate workflow](../r
 | Surface | Credential |
 | --- | --- |
 | crates.io publish | Trusted Publishing / OIDC for each crate, its owning release workflow, and the `crates.io` environment |
-| New alpha crate bootstrap | Existing `CARGO_REGISTRY_TOKEN` secret in the `crates.io` environment, only for the explicit manual bootstrap owner |
 | crates.io incident yank | Dedicated `CARGO_REGISTRY_YANK_TOKEN` secret with yank permission in the `crates.io` environment |
-| pub.dev | Automated publishing configured for `merman`, this repository, tag pattern `flutter-v{{version}}`, and the `pub.dev` environment |
+| pub.dev | Existing automated publishing for `merman`, this repository, tag pattern `flutter-v{{version}}`, and environment `pub.dev`; enable `workflow_dispatch` separately only when using manual publication recovery |
 | PyPI | Trusted Publishing / OIDC configured for `merman` and `release-python.yml` |
 | npm | Trusted Publishing / OIDC configured for every admitted `@mermanjs/web*` and `@mermanjs/node*` package plus `@mermanjs/tree-sitter-mermaid`, this repository, each owning release workflow, and the `npm` environment; allow direct `npm publish` for these operators |
 | GitHub Release assets | `GITHUB_TOKEN` from Actions |
@@ -229,9 +226,16 @@ repository, workflow and environment. A newly admitted npm package or PyPI/pub.d
 its own binding before its first automated upload. Homebrew, Scoop and WinGet use external
 repository review and require no registry Trusted Publisher binding.
 
-pub.dev's publisher settings bind the repository, version tag pattern and optional required
-environment. They do not expose a workflow-filename field. The repository owns the
-`release-flutter.yml` implementation that handles the matching tag.
+Keep pub.dev's existing `flutter-v{{version}}` tag pattern, repository and `pub.dev` environment.
+The normal tag-push publisher remains valid; neither main-line releases nor 0.9.x require a pattern
+migration or configuration switching. The authentication tag does not need its own GitHub Release.
+`release-flutter.yml` remains the repository's publishing owner; pub.dev's publisher settings have
+no workflow-filename field.
+
+Only for manual publication recovery, separately enable `workflow_dispatch` in the package's
+automated-publishing settings and dispatch on the matching `flutter-v<version>` tag. Build-only
+manual candidates do not need that event enabled. Repository edits do not change the live pub.dev
+settings; verify the event before using manual `publish=true` rather than assuming it is enabled.
 
 For crates.io, register owner `Latias94`, repository `merman`, environment `crates.io`, and the
 workflow filename belonging to each crate:
@@ -254,35 +258,12 @@ can be registered. Inspect the release's package plan for new names, bootstrap e
 crate in dependency order, then configure its owning workflow binding for later versions. Record
 the exact accepted version and checksum in Publish Order.
 
-The `0.10.0-alpha.1` first publication is complete. Do not dispatch bootstrap again for that
-accepted release. For historical recovery, the explicit `release-crates-bootstrap.yml` owner admits only
-`merman-model`, `merman-theme-contract`, and `merman-markup`. It uses the existing environment
-secret without exporting it from Actions or changing the ordinary OIDC publisher. Run it once
-after complete source-matched release preflight and before pushing the workspace tag:
-
-```text
-gh workflow run release-crates-bootstrap.yml --ref main \
-  -f source_sha="$SOURCE_SHA" -f version="$VERSION" \
-  -f preflight_run_id="$PREFLIGHT_RUN_ID"
-```
-
-The selected product source must be a reviewed commit on main's history. Recovery tooling may use
-a separately reviewed workflow revision; the selected preflight run must still have the exact
-product source as its HEAD. The owner verifies that complete preflight receipt, derives dependency order from Cargo metadata,
-keeps the credential out of package checks, records upload intent and retained crate bytes, and
-reconciles both API and sparse-index checksums. Reruns observe the original source without
-uploading missing names again; unresolved or unattempted members need operator review of the
-original receipts before any further action. Do not dispatch a new run to retry an uncertain upload.
-Matching accepted versions are retained by the ordinary workspace publisher. Register Trusted
-Publishers for these names after their initial upload; the bootstrap itself does not have OIDC
-provenance. This owner is deliberately limited to the new alpha names, not a token fallback for
-ordinary registry authentication failures.
-
-Local workflow and mocked protocol/recovery checks validate the integration without uploading
-another version; they do not prove live token exchange or registry upload. Confirm those on the
-next new-version publication, then remove the old publishing secret and optionally enforce
-trusted-only uploads. Keep the observed authentication state in Publish Order. The dedicated
-yank credential remains separate: Trusted Publishing does not authorize incident yanks.
+The completed three-crate alpha bootstrap workflow and its dedicated tests are retired. Its
+accepted versions, original provenance boundary and configured Trusted Publishers remain in the
+[dated alpha publication record](PUBLISH_ORDER.md#0100-alpha1-publication). Ordinary workspace
+publication owns later versions through OIDC. Local protocol tests do not prove live token
+exchange; verify that boundary on a new-version upload. The dedicated yank credential remains
+separate: Trusted Publishing does not authorize incident yanks.
 
 If a crates.io run stops after publishing only part of a release, keep the tag immutable and retain
 the uploaded `crates-io-receipts-*` artifact. Rerun the workflow only from that same immutable tag.
@@ -484,9 +465,20 @@ Missing, expired, older-workflow, or unverifiable evidence falls back to the ori
 
 An accepted upload can remain absent from a registry replica or its consumer index. npm publication records upload intent before sending and keeps the original manifest-bound package group; crates.io completes a batch only after both its API and Cargo sparse index expose matching, non-yanked checksums. Observation has a bounded wall-clock budget. A propagation timeout is a recoverable observation result, not permission to rebuild the artifact or resend an uncertain upload.
 
-Recovery reports bind their producing run and attempt. Workflows select the immediately preceding attempt, or the explicitly selected source run's current attempt. Missing reports, gaps in publication history, or incompatible older reports preserve observation-only mode across subsequent retries and all remaining batches. A successful prefix does not prove that a later package was never uploaded. Only complete job history showing that the actual upload step was skipped can establish that no send occurred.
+Recovery reports bind their producing run and attempt. Cargo requires the preceding attempt's
+receipts or the explicitly selected source run's current attempt. Node and Web share the report
+selector in `scripts/release_attempt_history.py`: select the nearest valid report only when every
+intervening upload was explicitly skipped. Preserve that report's actual run/attempt and its
+manifest binding. Missing, malformed or ambiguous history remains observation-only; a successful
+prefix does not prove that a later package was never uploaded. The shared npm reconciler in
+`scripts/npm_package_group.py` atomically persists upload intent before sending and retains the
+report across failures and interruption.
 
-Keep the original run, artifact, and receipts when retrying. If observation still cannot establish the registry state, inspect that state before taking further publishing action; do not clear the uncertainty flag, substitute an older report, move the tag, or treat a 404 alone as evidence that an upload never happened. Conflicting hashes stop immediately.
+Keep the original run, artifact, and receipts when retrying. If observation still cannot establish
+the registry state, continue observation before taking further publishing action. Keep the
+uncertainty flag and immutable tag; an older report is usable only through the verified skipped
+history above. A 404 alone is not evidence that an upload never happened. Conflicting hashes stop
+immediately.
 
 ## Version Checklist
 
@@ -713,7 +705,7 @@ gh workflow run release-web.yml \
 gh workflow run release-node.yml \
   -f release_tag="$RELEASE_TAG" -f source_ref="$SOURCE_SHA" -f publish_to_npm=false
 gh workflow run release-flutter.yml \
-  -f release_tag="flutter-v<version>" -f source_ref="$SOURCE_SHA"
+  -f release_tag="$RELEASE_TAG" -f source_ref="$SOURCE_SHA" -f publish=false
 ```
 
 Apple remote qualification additionally requires both `remote_package_url` and
@@ -786,10 +778,14 @@ dart run example/smoke.dart
 dart pub publish --dry-run
 ```
 
-These are local source spot checks. Release/preflight owners build all supported native targets,
-then `scripts/flutter_native_assets.py stage` freezes separate compressed assets and generates the
-manifest into staging. `scripts/flutter_release_archive.py pack --native-manifest` produces a thin
-facade, and `extract --require-thin` verifies that frozen archive into a fresh directory before
+These are local source spot checks. Release and preflight share the read-only
+`build-flutter.yml` builder. By default it builds all supported native targets, then
+`scripts/flutter_native_assets.py stage` freezes separate compressed assets and generates the
+manifest into staging. With `native_run_id`, it instead verifies and reuses the original native
+artifact, including one from a successful preflight with the same artifact name and schema;
+it does not cross-build those targets again.
+`scripts/flutter_release_archive.py pack --native-manifest` produces a thin facade, and
+`extract --require-thin` verifies that frozen archive into a fresh directory before
 its dry-run. The facade contains `hook/native-assets.json` and no native libraries or archives;
 the manifest pins target URLs, sizes and both compressed/library digests. Do not replace that
 final-package check with a dry-run from the source directory.
@@ -959,15 +955,18 @@ Do not move or force-update release tags after publication. Release tags are the
 anchor for crates, CLI/LSP artifacts, and platform assets.
 
 `release.yml` creates the primary GitHub Release and uploads CLI and standalone LSP artifacts.
-Apple, Android, and Python attach their additional assets to that existing release only when
-`publish=true`. Their upload jobs fail if the Release does not exist; retained Actions artifacts
-alone do not establish delivery. Flutter's native assets use its separate Flutter-tagged Release.
+Apple, Android and Python attach their additional assets to that existing Release only when
+`publish=true`. Flutter attaches native assets there through its authentication-tag push or
+explicit manual `publish=true`. Upload jobs fail if the Release does not exist; retained Actions
+artifacts alone do not establish delivery. Main-line Flutter retains an authentication tag, not
+a separate GitHub Release or asset bucket.
 
 Asset uploads are intentionally non-destructive: never use `--clobber`, delete an accepted asset,
 or replace its bytes. Python, Android, Apple and Flutter's native-asset owners support
-byte-verified recovery from the original run artifact; mismatches stop the upload. Rerun only
-the original run's failed upload/publication jobs and preserve its successful builders.
-Inspect the original run and existing release before recovering.
+byte-verified recovery from the original run artifact; mismatches stop the upload. For an unchanged
+facade, rerun only the original run's failed upload/publication jobs and preserve its successful
+builders. Flutter facade repairs can reuse native assets through `native_run_id` as described
+below. Inspect the original run and existing release before recovering.
 
 After the primary release exists, dispatch the selected manual platform owners. Run only the
 commands for channels selected in the release scope; this list is a command reference:
@@ -1044,36 +1043,73 @@ keep the complete target/download matrix in the installation guide.
 The VS Code workflow currently packages and verifies platform VSIX artifacts only; Marketplace or
 Open VSX publishing requires a separate credential-backed release workflow.
 
-Do not rely on a manual `release-flutter.yml` run for pub.dev publication. A manual run still builds,
-freezes target native assets and a thin facade, analyzes, formats, performs the frozen package
-dry-run and executes the packaged-app qualifier. Only a pushed `flutter-v<version>` tag enables
-native-asset upload and the real pub.dev publish job. For an independent Flutter release, first
-validate the intended source, then create the package tag on the
-resolved reviewed commit:
+For a selected main-line Flutter release, first verify that the non-draft primary workspace
+Release exists, then push the authentication tag at the reviewed workspace release source:
 
 ```bash
-gh workflow run release-flutter.yml \
-  -f release_tag="flutter-v<version>" \
-  -f source_ref="<reviewed-commit>"
-git tag "flutter-v<version>" "<reviewed-commit>"
-git push origin "flutter-v<version>"
+RELEASE_TAG="v<version>"
+AUTHENTICATION_TAG="flutter-$RELEASE_TAG"
+test "$(gh release view "$RELEASE_TAG" --json isDraft --jq .isDraft)" = false
+git tag "$AUTHENTICATION_TAG" "$(git rev-parse "$RELEASE_TAG^{commit}")"
+git push origin "$AUTHENTICATION_TAG"
 ```
 
-The Flutter tag needs an existing non-draft GitHub Release before native-asset upload; creating
-that Release remains an operator step. Retain the frozen build artifacts when that prerequisite
-is pending and rerun the failed jobs from the same run once it is satisfied. The protected
-`publish-native-assets` job verifies the facade receipt and target manifest from the trusted
-workflow revision, keeps byte-identical existing assets, uploads only missing assets, and reads
-back every exact pinned target URL/digest without authentication. pub.dev publication depends on
-that readback; the facade must never be published while its target downloads are unavailable.
+That push triggers `release-flutter.yml` publication using the existing pub.dev Trusted Publisher.
+The derived `flutter-v<version>` tag supplies authentication identity; the `v<version>` workspace
+tag supplies the native source and public asset destination. Keep both remote tags immutable and
+verify their source identities before uploading. Create no Flutter-specific GitHub Release. If
+the authentication tag already exists, recover the original run rather than moving or pushing it
+again.
 
-The Flutter build job emits a package archive receipt binding the release commit, tree, version, and
-archive digest. The pub.dev job runs the trusted verifier from the workflow revision, enforces
-bounded regular-file-only extraction into a new directory with `--require-thin`, and configures
-Dart OIDC only after that verification succeeds. It publishes the already-qualified bytes with
-`dart pub publish --force --skip-validation` and reconciles the public package members afterward;
-it does not rerun package hooks under publication credentials. Do not replace this boundary with
-a direct `tar -x` step.
+For manual runs, `release_tag` remains the workspace `v<version>` label and `publish` defaults to
+`false`. Use `main` only for nonpublishing candidates and a reviewed full 40-character facade
+commit for immutable manual source selection. Without native reuse, a publishing source must resolve to the
+workspace tag commit. Manual `publish=true` is allowed only when dispatched on
+`refs/tags/flutter-v<version>` after verifying the optional
+[pub.dev dispatch event](#required-credentials). A successful build-only run leaves Actions
+artifacts and establishes no public delivery.
+
+Before any upload, the owner reconciles every member of an existing exact pub.dev version:
+paths, executable bits, sizes and bytes must match the frozen facade. An exact version is retained
+without another pub.dev upload; differing content stops publication. The protected native uploader
+requires the manifest's native source to match the workspace tag, keeps matching existing assets,
+and uploads only missing ones. All eleven native target archives go on the same `v<version>`
+Release. Every manifest-pinned URL/digest must pass anonymous public readback before Dart OIDC.
+
+For a facade-only repair, select an original completed `release-flutter.yml` or
+`release-preflight.yml` run in this repository holding exactly one unexpired immutable
+`merman-flutter-native-assets` artifact. A successful preflight artifact uses the same name and
+schema and is reusable. Its native build must have succeeded and its workflow source must match
+the workspace tag's native commit. Verify the optional pub.dev dispatch event first. Keep the authentication
+tag immutable and the native source at the workspace tag; review the newer facade commit
+separately:
+
+```bash
+RELEASE_TAG="v<version>"
+AUTHENTICATION_TAG="flutter-$RELEASE_TAG"
+FACADE_SHA="<reviewed-40-character-facade-commit>"
+NATIVE_RUN_ID="<original-native-producer-run-id>"
+gh workflow run release-flutter.yml \
+  --ref "$AUTHENTICATION_TAG" \
+  -f release_tag="$RELEASE_TAG" -f source_ref="$FACADE_SHA" \
+  -f native_run_id="$NATIVE_RUN_ID" -f publish=true
+```
+
+This path reuses the exact native assets and manifest, then repackages, analyzes, dry-runs and
+qualifies the facade against those bytes without another native cross-build. The schema-1 archive
+receipt's `source_sha`/`source_tree` identify the facade; the unchanged schema-1 native manifest's
+fields identify the native producer. Their versions must agree. The archive digest binds the
+included manifest; no additional identity format is needed. A facade repair cannot replace an
+already accepted, different pub.dev package at the same version.
+
+The pub.dev job uses the trusted verifier from the workflow revision, enforces bounded
+regular-file-only extraction into a new directory with `--require-thin`, and configures Dart OIDC
+only after artifact, public-native and upload-history checks succeed. It publishes the qualified
+bytes with `dart pub publish --force --skip-validation`, then reconciles public package members;
+package hooks do not execute with publication credentials. Upload history covers every matching
+authentication-tag run and attempt, including a new manual dispatch. If an earlier upload
+has an unknown outcome, retain the frozen package and continue observation. A 404 does not permit
+an automatic resend or a new run that bypasses that uncertainty.
 
 For a workflow-only recovery after a release tag already exists, Python, Android, and Apple may use
 the updated workflow definition from `main`, but they still check out and verify the immutable
