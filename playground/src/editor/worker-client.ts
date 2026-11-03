@@ -676,12 +676,12 @@ class WorkerClient implements MermanLanguageWorkerClient {
   }
 
   private failAll(error: Error): void {
-    for (const pending of this.outstanding.values()) {
-      disposeRequest(pending);
-      pending.settlement?.reject(error);
+    for (const [requestId, pending] of this.outstanding) {
+      const settlement = pending.settlement;
+      pending.settlement = null;
+      this.releaseRequest(requestId, pending);
+      settlement?.reject(error);
     }
-    this.outstanding.clear();
-    this.outstandingQueries = 0;
   }
 
   private poison(error: Error): void {

@@ -1151,6 +1151,33 @@ test("a synchronous postMessage failure removes pending state and poisons once",
   assert.equal(worker.terminateCalls, 1);
 });
 
+for (const trigger of ["timeout", "postMessage"] as const) {
+  test(`a reentrant cancellation disposer preserves the ${trigger} failure`, async (t) => {
+    t.mock.timers.enable({ apis: ["setTimeout"] });
+    const worker = new PendingWorkerPort();
+    const client = await openedClient(worker, { requestTimeoutMs: 100 });
+    t.after(() => client.dispose());
+    if (trigger === "postMessage") worker.throwOnType = "query";
+    const cancellation: EditorCancellationToken = {
+      isCancellationRequested: false,
+      onCancellationRequested(listener) {
+        return { dispose: listener };
+      },
+    };
+    const query = assert.rejects(
+      client.query(identity(1), { kind: "diagnostics" }, cancellation),
+      trigger === "timeout" ? /timed out after 100 ms/ : /postMessage rejected/,
+    );
+    if (trigger === "timeout") {
+      await worker.takeEventually("query");
+      t.mock.timers.tick(100);
+    }
+    await query;
+    assert.equal(worker.terminateCalls, 1);
+    assert.equal(worker.listenerCount(), 0);
+  });
+}
+
 class TestCancellationSource {
   private cancelled = false;
   private readonly listeners = new Set<() => void>();
