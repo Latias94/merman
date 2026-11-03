@@ -13,11 +13,11 @@ owners rather than being duplicated across Markdown files.
 | Choose a registry package or delivery channel | [Package surface guide](release/PACKAGE_SURFACES.md) |
 | Integrate a browser, Node.js, editor, linter, or Rust host | [Integration guide](integrations/README.md) |
 | Develop or release the Tree-sitter grammar | [Tree-sitter development guide](development/TREE_SITTER_MERMAID.md) and [release guide](release/TREE_SITTER_MERMAID.md) |
-| Check diagram coverage and parity evidence | [Alignment dashboard](alignment/STATUS.md) |
+| Check the selected upstream, diagram coverage, or parity evidence | [Alignment authority map](alignment/README.md) and [dashboard](alignment/STATUS.md) |
 | Embed or export SVG safely | [SVG output pipeline](rendering/SVG_OUTPUT_PIPELINE.md) and [rendering security](security/RENDERING_SECURITY.md) |
-| Understand architecture decisions | [Architecture decision records](adr/) and [alignment authority map](alignment/README.md) |
-| Follow the breaking model/source dependency cleanup | [Execution plan](plans/2026-10-30-model-and-source-boundaries.md), [implementation record](reviews/2026-10-30-model-source-boundaries-implementation.md), [family inventory](plans/2026-10-30-family-data-inventory.md), and [ADR-0099](adr/0099-model-and-source-boundaries.md) |
+| Understand current architecture | [Repository context](../CONTEXT.md), [model/source ownership](adr/0099-model-and-source-boundaries.md), and [family/operation contract](adr/0073-family-owned-diagram-architecture.md) |
 | Contribute or understand CI ownership | [CI guide](development/CI.md) |
+| Measure or investigate performance | [Benchmark contract](performance/BENCHMARKING.md) and [runbook](performance/RUNBOOK.md) |
 | Prepare or operate a release | [Release operator guide](release/RELEASING.md) |
 | Compare releases or substantiate release claims | [Comparative release reports](release/RELEASE_REPORTS.md) |
 | Upgrade between releases or native/query contracts | [Versioned upgrade index](release/README.md), including [alpha.7 → 0.8.0](release/ALPHA7_TO_0_8_0_UPGRADE_GUIDE.md) |
@@ -29,17 +29,18 @@ owners rather than being duplicated across Markdown files.
 
 | Class | Meaning | Representative entries |
 | --- | --- | --- |
-| Current authority | Defines current architecture, policy, or supported behavior. | [`adr/`](adr/), [`alignment/STATUS.md`](alignment/STATUS.md), [`workstreams/PARITY_BOUNDARY.md`](workstreams/PARITY_BOUNDARY.md) |
+| Current authority | Defines current architecture, policy, or supported behavior. | [`../CONTEXT.md`](../CONTEXT.md), [`adr/0099-model-and-source-boundaries.md`](adr/0099-model-and-source-boundaries.md), [`alignment/README.md`](alignment/README.md) |
 | Operator guide | Gives a maintained procedure for contributors or release operators. | [`release/RELEASING.md`](release/RELEASING.md), [`release/MERMAID_UPGRADE_PLAYBOOK.md`](release/MERMAID_UPGRADE_PLAYBOOK.md), [`rendering/UPSTREAM_SVG_BASELINES.md`](rendering/UPSTREAM_SVG_BASELINES.md) |
 | Machine input | Is consumed as structured data by code or automation at an owner path. | [`../capabilities/feature-surface-v1.json`](../capabilities/feature-surface-v1.json), [`../capabilities/artifact-profiles-v2.json`](../capabilities/artifact-profiles-v2.json), [`../tools/upstreams/REPOS.lock.json`](../tools/upstreams/REPOS.lock.json) |
 | Implementation plan or workstream | Records a scoped design or active implementation effort. Check its explicit status before treating it as current guidance. | [`plans/`](plans/), [`workstreams/`](workstreams/) |
-| Historical report | Preserves a dated measurement, release checkpoint, or investigation without claiming to be current guidance. | [`release/ALPHA3_TO_ALPHA5_REFACTORING_REPORT.md`](release/ALPHA3_TO_ALPHA5_REFACTORING_REPORT.md), [`performance/`](performance/), [`research/`](research/) |
+| Historical report | Preserves a dated measurement, release checkpoint, or investigation without claiming to be current guidance. | [June architecture audit](quality/ARCHITECTURE_ISSUES_2026-06-01.md), [`release/ALPHA3_TO_ALPHA5_REFACTORING_REPORT.md`](release/ALPHA3_TO_ALPHA5_REFACTORING_REPORT.md), dated reports under [`performance/`](performance/) and [`research/`](research/) |
 | Archived history | Preserves completed or superseded context for durable links; removed journals remain available in Git history. | [`ARCHIVE.md`](ARCHIVE.md) |
 
 A directory name alone does not make every file current. Read the document's stated status and use
 the current authority or operator guide for decisions. Implementation plans remain useful decision
 records after their work is complete, but Git history—not prose rewritten after the fact—records
-their execution.
+their execution. Read an ADR's status and amendments before applying it; revalidate historical
+audit findings against current owners and callers.
 
 Machine gates may validate structured inputs, executable examples, manifests, fixtures, and
 generated projections. They must not depend on ordinary prose wording, Markdown file pairing,

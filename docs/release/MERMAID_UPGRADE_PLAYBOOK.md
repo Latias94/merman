@@ -280,31 +280,46 @@ descriptor, WASM input digest, package locks, runtime labels, and readable statu
 supported family should have source-backed positive and recovery examples; public transport changes
 must switch LSP, WASM, Monaco, and the unpublished VS Code extension atomically.
 
-Run focused parser, semantic, renderer, editor, and browser tests first. Then run the applicable
-repository gates:
+During iteration, run focused parser, semantic, renderer, editor, and browser tests. Use individual
+generated, alignment, or DOM commands to diagnose the affected owner. Once source and generated
+inputs are settled, run one final integrated pass:
 
 ```bash
-cargo run -p xtask -- verify-mermaid-reference --materialized
-cargo run -p xtask -- verify-editor-language-contract
-cargo run -p xtask -- verify-playground-example-catalog
-cargo run -p xtask -- verify-web-diagram-catalog
-cargo run -p xtask -- check-alignment
-cargo run -p xtask -- verify --strict
+cargo run --locked -p xtask -- verify --strict
+```
+
+The [verifier](../../crates/xtask/src/cmd/verify.rs) owns formatting, workspace Clippy with all
+targets/features, the feature matrix, workspace `nextest` and doctests, materialized reference
+verification, generated contracts, alignment, and the `structure`, `parity`, and `parity-root` DOM
+suite. Its [generated checks](../../crates/xtask/src/cmd/snapshots.rs) include LALRPOP, editor
+contracts, and Web/Playground catalogs. Strict also runs Web contracts/build/smoke/prepack,
+Playground unit/lint/build and desktop Chromium plus focused Firefox/WebKit smoke, and VS Code
+package tests. Reuse this result for every covered checklist row; run covered checks again only
+to diagnose a failure or validate subsequent source/artifact changes.
+
+Keep distinct evidence outside strict:
+
+- Reference transition trust: the base-bound receipt, official npm verification, installed
+  `npm ls --all` graphs, reference-runtime tests, and fresh browser/reference provenance from
+  steps 2–3. Materialized verification alone does not supply those observations.
+- Dependency/feature changes: the target build matrix and the Web/Typst artifact owners below.
+- Changed host surfaces: reference CLI, LSP protocol, platform, and extension-host matrices;
+  the independent Tree-sitter package keeps its own gates in step 5.
+- Compact navigation, dialogs, viewport gestures, or visual viewport changes: the focused mobile
+  browser command and its real-device residual checklist.
+
+For dependency or feature ownership changes, run the artifact checks:
+
+```bash
 cargo run -p xtask -- wasm-size-matrix --surface web \
   --web-package-root platforms/web/packages \
   --budget-file docs/release/WASM_SIZE_BUDGETS.json
 cargo run --locked -p xtask -- build-typst-package --profile publish \
   --budget-file docs/release/WASM_SIZE_BUDGETS.json
-cargo fmt --all -- --check
-cargo clippy --workspace --all-targets --all-features -- -D warnings
 ```
 
-The strict command owns Web contracts/build/smoke/prepack, Playground unit/lint/build and desktop
-Chromium, focused Firefox/WebKit smoke, VS Code package tests, generated contracts, and all release
-DOM modes. Run the focused mobile command when the change affects compact navigation, dialogs,
-viewport gestures, or visual viewport behavior. Also prove package locks with `npm ls --all`, run
-reference CLI and LSP tests, and run any additional platform or extension-host matrices affected by
-the change. A stale generated or WASM artifact must fail before the UI starts.
+A stale generated or WASM artifact must fail before the UI starts. Record any unexecuted owner and
+its reason explicitly; a focused success alone does not close final integrated acceptance.
 
 ## 8. Hand Off Without Hidden Residuals
 

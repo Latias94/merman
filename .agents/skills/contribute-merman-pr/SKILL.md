@@ -46,21 +46,27 @@ Run:
 - focused `cargo nextest run` for affected crates/tests, using `--locked` when the workflow does;
 - `python3 -m py_compile` for changed Python scripts and the narrowest relevant Python unit tests.
 
-Do not run every matrix combination locally by habit. The central CI workflow owns the broad default
-workspace test; local work should prove the changed seam first and record any intentionally deferred
-lane. Completion criterion: baseline checks pass and deferred checks have a stated owner and reason.
+Use these checks during focused iteration. When final integrated strict verification is in scope,
+reuse its settled-source result for covered checks; use the
+[upgrade verification schedule](../../../docs/release/MERMAID_UPGRADE_PLAYBOOK.md#7-refresh-generated-surfaces-and-evidence)
+for its coverage and distinct additional owners. Run covered checks again only for diagnosis or
+subsequent changes. Otherwise select the changed seam's checks and record intentionally deferred
+lanes. Completion criterion: applicable checks pass and deferred checks have a stated owner and reason.
 
 ## Validate Mermaid SVG provenance and root contracts
 
-When tracked SVG bytes under `fixtures/upstream-svgs/` change, verify the selected upstream source:
+When tracked SVG bytes under `fixtures/upstream-svgs/` change, verify the selected upstream source
+with the focused command below or the materialized reference check in final strict:
 
 ```text
 cargo run --locked -p xtask -- verify-mermaid-reference
 ```
 
 When a renderer implementation, renderer profile, comparator normalization, or tracked upstream SVG
-changes, run the first blocking Linux CI comparison exactly before handoff. A focused `--diagram`
-or `--filter` run is useful while iterating but does not replace this full structure gate:
+changes, final evidence must include the full-corpus structure comparison. A successful final strict
+pass supplies all three DOM modes. Without strict, select the structure-only command below, or the
+combined command for comparator/root changes. Focused `--diagram` or `--filter` runs diagnose
+changes during iteration:
 
 ```text
 cargo run --locked --release -p xtask -- compare-all-svgs \
@@ -68,18 +74,13 @@ cargo run --locked --release -p xtask -- compare-all-svgs \
   --diagnostic-browser-text-layout
 ```
 
-When comparator or root viewport behavior changes, also run the focused root-contract tests and the
-remaining blocking parity modes. A single full-corpus invocation with
-`--dom-modes structure,parity,parity-root --report-root` proves the same three policies while
-reusing parsing and rendering; use separate modes only for diagnosis:
+For comparator or root viewport changes, use focused root-contract tests during iteration. For
+final acceptance without strict, run the combined comparison in place of the structure-only command:
 
 ```text
 cargo nextest run --locked -p xtask -E 'test(root_contract)' --cargo-quiet
 cargo run --locked --release -p xtask -- compare-all-svgs \
-  --check-dom --dom-mode parity --dom-decimals 3 \
-  --diagnostic-browser-text-layout
-cargo run --locked --release -p xtask -- compare-all-svgs \
-  --check-dom --dom-mode parity-root --dom-decimals 3 \
+  --check-dom --dom-modes structure,parity,parity-root --dom-decimals 3 \
   --diagnostic-browser-text-layout \
   --report-root
 ```
@@ -204,12 +205,17 @@ This gate proves that every registered boundary scale completes under the probe'
 policy; the Python-only contracts cannot detect a compiled render being rejected mid-schedule.
 
 Keep compiled Criterion discovery and native-memory probes on the performance-labelled, main,
-scheduled, or manual lanes. When that lane is explicitly in scope, use the complete pipeline
-capability set:
+scheduled, or manual lanes. When that lane is explicitly in scope, use the verifier's maintained
+default pipeline recipe:
 
 ```text
-python3 tools/bench/verify_pipeline_bench_list.py --features all-diagrams,svg,layout-cytoscape,layout-elk,math
+python3 tools/bench/verify_pipeline_bench_list.py
 ```
+
+The verifier owns its defaults-off feature list; the
+[benchmark guide](../../../docs/performance/BENCHMARKING.md#native-criterion-benchmarks) explains
+the pipeline's compatibility JSON and editor-facts requirements. Use package manifests and the
+corpus for executable requirements instead of copying this recipe into another feature list.
 
 A high-cost check earns a standing PR slot only when it detects a unique merge-blocking failure.
 Otherwise narrow it to unique tests or move it to the owner performance lane, and add or update the

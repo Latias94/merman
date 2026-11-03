@@ -54,6 +54,12 @@ transport capability IDs. Defaults-off family selections and ASCII use canonical
 `compat-json`. Rich language tooling selects its required editor facts independently. See the
 [semantic/full migration](migrations/render-reuse-host-integration.md#reuse-parsed-source-in-rust).
 
+Benchmark executables have their own feature requirements. The full `pipeline` bench selects
+`svg,compat-json,editor-facts` even for a filtered SVG timing group; its recipe does not define
+the feature requirements of an SVG application. Use the
+[benchmark guide](performance/BENCHMARKING.md#native-criterion-benchmarks) and the owning
+[`[[bench]]` manifest entries](../crates/merman/Cargo.toml) for current commands.
+
 `merman-model/terminal-text` owns shared terminal normalization and Unicode width helpers. ASCII and facade diagnostics explicitly select it; direct core semantic parsing does not. `merman-model` has no source ingestion or rendering dependency. ASCII, Render, and Export consume shared models or SVG without a production core dependency; the [model/source migration](migrations/model-source-boundaries.md) covers package selection and breaking Rust imports.
 
 The current development branch retains `complete-svg = ["svg", "layout-cytoscape"]` and

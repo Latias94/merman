@@ -218,18 +218,17 @@ compile, and package-surface documentation matches the resulting graph.
 
 ## Verify and Hand Off
 
-Start with focused family/parser/editor/browser tests, then run the applicable strict gates:
+Use the [upgrade verification schedule](../../../docs/release/MERMAID_UPGRADE_PLAYBOOK.md#7-refresh-generated-surfaces-and-evidence):
+run focused family/parser/editor/browser owners during iteration, then one final integrated pass at
+settled source:
 
 ```bash
-cargo run -p xtask -- verify-mermaid-reference
-cargo run -p xtask -- verify-playground-example-catalog
-cargo run -p xtask -- verify-web-diagram-catalog
-cargo run -p xtask -- check-alignment
-cargo run -p xtask -- verify-lalrpop-parsers
-cargo run -p xtask -- verify --strict
-cargo fmt --all -- --check
-cargo clippy --workspace --all-targets --all-features -- -D warnings
+cargo run --locked -p xtask -- verify --strict
 ```
+
+Use its receipt for every covered checklist row. Run covered commands separately only to diagnose a
+failure or validate subsequent changes. Complete the schedule's distinct reference-trust, artifact,
+and changed-platform checks as applicable; strict does not replace those claims.
 
 When the independent Tree-sitter baseline or package surface changes, also run its maintained
 package-owned gates:
@@ -242,12 +241,7 @@ npm run check:wasm --prefix distribution/tree-sitter-mermaid
 npm run test:package-smoke --prefix distribution/tree-sitter-mermaid
 ```
 
-The strict command owns release DOM comparisons in `structure`, `parity`, and `parity-root`, Web
-contract/build/smoke/prepack, Playground unit/lint/build/browser, and VS Code package gates. Run
-reference CLI, LSP, platform, and extension-host matrices whenever those surfaces changed. Run the
-WASM size matrix and target build matrix whenever dependency or feature ownership changed. Use
-`npm ls --all` in the Playground and reference CLI to prove that materialized companion graphs match
-the descriptor. The Tree-sitter Rust suite owns its one-way fixture conformance, incremental,
+The Tree-sitter Rust suite owns its one-way fixture conformance, incremental,
 scanner, query, and adversarial checks; do not recreate those guarantees in an `xtask` verifier or
 a second package-local evidence engine. Use `cargo nextest` for Rust tests.
 

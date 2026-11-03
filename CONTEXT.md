@@ -78,9 +78,13 @@ Current contract:
   own root emission or consult fixture-derived root data.
 - Editor body semantics are parser-complete, parser-recovered, or unavailable. Generic TextScan
   semantics are deleted; legal source-start headers remain catalog-backed.
-- Analysis diagnostics and parser-backed facts use independent schemas: diagnostics `1`, facts `2`.
-  Other facts versions are rejected at the version boundary, and the superseded TextScan path is
-  not supported in parallel.
+- Analysis diagnostics and parser-backed facts use independent schemas. Current development uses
+  diagnostics `1` and facts `3`, with other facts versions rejected at the version boundary; see
+  the [payload owner](crates/merman-analysis/src/payload.rs) and
+  [current facts contract](docs/lsp/CAPABILITIES.md#typed-snapshot-and-analysis-facts-wire-contracts).
+  Published `0.10.0-alpha.1` retains facts `2`; the
+  [development migration](docs/release/UNRELEASED_CONTRACT_VERSIONS.md#source-appearance-and-render-evidence-follow-up)
+  applies to matching source-built wrappers and artifacts.
 - **Capability and Artifact Profiles** are separate contracts. The capability descriptor owns
   additive semantic vocabulary and implications; artifact profiles own exact Cargo build recipes.
   Neither substitutes for the ABI, protocol, package, runtime, or release authority at the surface
@@ -108,34 +112,31 @@ Current non-goal:
 
 ## Where To Look First
 
-- Architecture issue ledger:
-  `docs/quality/ARCHITECTURE_ISSUES_2026-06-01.md`
-- Family-owned architecture contract:
-  `docs/adr/0073-family-owned-diagram-architecture.md` and
-  `docs/adr/0099-model-and-source-boundaries.md`
-- Current config/frontmatter support:
-  `docs/alignment/CONFIG_FRONTMATTER_SUPPORT.md`
-- Upstream baseline policy:
-  `docs/adr/0001-upstream-baseline.md`
-  and `docs/adr/0014-upstream-parity-policy.md`
-- Rendering strategy and pipeline decisions:
-  `docs/adr/0042-rendering-strategy.md`,
-  `docs/adr/0063-extensible-svg-output-pipeline.md`,
-  `docs/adr/0064-host-styling-svg-postprocessors.md`
-- SVG root and text-measurement policy:
-  `docs/adr/0050-svg-viewbox-parity.md`,
-  `docs/adr/0057-headless-svg-text-bbox.md`,
-  `docs/adr/0062-fixture-derived-overrides.md`
-- ASCII boundary:
-  `docs/adr/0065-ascii-output-boundary.md`,
-  `docs/adr/0067-ascii-color-role-api.md`
+- Task navigation: [documentation index](docs/README.md).
+- Current package/data ownership: [ADR-0099](docs/adr/0099-model-and-source-boundaries.md);
+  family semantics and operation ownership: [ADR-0073](docs/adr/0073-family-owned-diagram-architecture.md).
+- Selected upstream and parity evidence: [alignment authority map](docs/alignment/README.md) and
+  [dashboard](docs/alignment/STATUS.md).
+- Config/frontmatter support: [support guide](docs/alignment/CONFIG_FRONTMATTER_SUPPORT.md).
+- Rendering and prepared-source APIs: [Rust embedding guide](docs/rendering/RUST_EMBEDDING.md),
+  [SVG output pipeline](docs/rendering/SVG_OUTPUT_PIPELINE.md), and
+  [ADR-0096](docs/adr/0096-prepared-source-output-ownership.md).
+- SVG root and text measurement: [ADR-0073 root protocol](docs/adr/0073-family-owned-diagram-architecture.md#root-viewport-owns-every-root-svg),
+  [ADR-0057](docs/adr/0057-headless-svg-text-bbox.md), and
+  [fixture override policy](docs/adr/0062-fixture-derived-overrides.md).
+- ASCII boundary: [ADR-0065](docs/adr/0065-ascii-output-boundary.md) and
+  [color roles](docs/adr/0067-ascii-color-role-api.md).
 - Browser runtime, Playground, benchmark, and editor ownership:
-  `docs/adr/0074-browser-runtime-and-benchmark-ownership.md` and
-  `docs/workstreams/web-wasm-playground/DESIGN.md`
+  [ADR-0074](docs/adr/0074-browser-runtime-and-benchmark-ownership.md) and
+  [LSP/editor contracts](docs/lsp/README.md).
+
+The [June architecture issue ledger](docs/quality/ARCHITECTURE_ISSUES_2026-06-01.md) is a historical
+investigation. Revalidate its findings against current owners and callers before starting work;
+its older open-status notes do not select the current task queue.
 
 ## Validation Defaults
 
-Prefer focused gates first, then widen only when the touched surface needs it.
+Use focused owner checks during iteration; widen when the touched surface needs it.
 
 - Format Rust changes with `cargo fmt`.
 - Prefer `cargo nextest` for Rust tests.
@@ -145,6 +146,9 @@ Prefer focused gates first, then widen only when the touched surface needs it.
   Chromium desktop and Firefox/WebKit smoke are mandatory browser lanes; focused Chromium mobile
   interactions are an explicit on-demand lane with a separate real-device residual checklist.
 - For verification ownership and current feature recipes, use
-  `docs/development/CI.md`, the affected package manifests, and `xtask verify`.
-  `cargo run --locked -p xtask -- verify --strict` runs the integrated strict gate;
-  select focused owners first rather than copying historical workstream commands.
+  [the CI guide](docs/development/CI.md), the affected package manifests, and
+  [the verifier](crates/xtask/src/cmd/verify.rs). When strict verification is applicable, settle
+  the source and run `cargo run --locked -p xtask -- verify --strict` once for final acceptance.
+  The [verification schedule](docs/release/MERMAID_UPGRADE_PLAYBOOK.md#7-refresh-generated-surfaces-and-evidence)
+  identifies its coverage and the distinct reference-trust, artifact, and platform owners.
+  Reuse covered results; rerun for failures or subsequent changes.
