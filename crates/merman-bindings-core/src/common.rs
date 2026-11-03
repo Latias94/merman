@@ -1061,21 +1061,34 @@ pub fn binding_error_js_payload_json_bytes(error: &BindingError) -> Vec<u8> {
     })
 }
 
-/// Projects the complete error details for JSON-based transports.
+/// Projects complete error details with ordinary JSON integer counts.
+#[doc(hidden)]
+pub fn binding_error_details_json(
+    error: &BindingError,
+) -> Result<Option<serde_json::Value>, serde_json::Error> {
+    binding_error_details_json_with(error, std::convert::identity)
+}
+
+/// Projects the complete error details for JavaScript transports.
 ///
 /// Resource counts above JavaScript's exact integer range use canonical decimal strings.
 #[doc(hidden)]
 pub fn binding_error_js_details_json(
     error: &BindingError,
 ) -> Result<Option<serde_json::Value>, serde_json::Error> {
+    binding_error_details_json_with(error, BindingResourceErrorDetails::js_safe_json)
+}
+
+fn binding_error_details_json_with<R: Serialize>(
+    error: &BindingError,
+    resource: impl FnOnce(BindingResourceErrorDetails) -> R,
+) -> Result<Option<serde_json::Value>, serde_json::Error> {
     error
         .details
         .as_deref()
         .map(|details| {
             serde_json::to_value(ErrorDetails {
-                resource: details
-                    .resource
-                    .map(BindingResourceErrorDetails::js_safe_json),
+                resource: details.resource.map(resource),
                 diagnostic: details.diagnostic.as_ref(),
                 icon_registry: details.icon_registry.as_ref(),
                 cancellation: details.cancellation.as_ref(),
@@ -3680,6 +3693,50 @@ mod tests {
             "merman.internal.failure"
         );
         assert!(payload["details"]["diagnostic"]["field"].is_null());
+    }
+
+    #[test]
+    fn error_details_projections_share_fields_and_preserve_transport_integer_encoding() {
+        let diagnostic = BindingDiagnosticErrorDetails::new("merman.parse.diagram_parse")
+            .with_span(BindingDiagnosticSpan::new(54, 55, "exact"))
+            .with_diagram_type("flowchart-v2");
+        let error = BindingError::resource_limit_with_cause(
+            BindingResourceLimitCause::ArithmeticOverflow,
+            "layout_model",
+            "max_layout_work_units",
+            u64::MAX,
+            BINDING_JSON_SAFE_INTEGER_MAX + 1,
+            "constrained",
+            "layout work accounting overflowed",
+        )
+        .with_diagnostic_details(diagnostic.clone());
+        let ordinary = binding_error_details_json(&error).unwrap().unwrap();
+        let javascript = binding_error_js_details_json(&error).unwrap().unwrap();
+
+        assert_eq!(
+            ordinary["diagnostic"],
+            serde_json::to_value(diagnostic).unwrap()
+        );
+        assert_eq!(ordinary["resource"]["actual"].as_u64(), Some(u64::MAX));
+        assert_eq!(
+            ordinary["resource"]["max"].as_u64(),
+            Some(BINDING_JSON_SAFE_INTEGER_MAX + 1),
+        );
+        let mut expected_javascript = ordinary.clone();
+        expected_javascript["resource"]["actual"] = serde_json::json!("18446744073709551615");
+        expected_javascript["resource"]["max"] = serde_json::json!("9007199254740992");
+        assert_eq!(javascript, expected_javascript);
+
+        let payload: Value = serde_json::from_slice(&binding_error_payload_json_bytes(&error))
+            .expect("ordinary error payload");
+        assert_eq!(ordinary, payload["details"]);
+        let payload: Value = serde_json::from_slice(&binding_error_js_payload_json_bytes(&error))
+            .expect("JavaScript error payload");
+        assert_eq!(javascript, payload["details"]);
+
+        let plain = BindingError::invalid_argument("invalid request");
+        assert_eq!(binding_error_details_json(&plain).unwrap(), None);
+        assert_eq!(binding_error_js_details_json(&plain).unwrap(), None);
     }
 
     #[test]
