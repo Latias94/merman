@@ -12,6 +12,7 @@ import {
   parseRuntimeCatalogJsonText,
   parseTransportJsonText,
   sameJsonValue,
+  snapshotTransportJsonValue,
 } from "./errors.mjs";
 import {
   BINDING_OPTION_GROUP_SPECS,
@@ -149,11 +150,16 @@ function encodeIconPacks(packs) {
 
 export function normalizeBindingOptions(value = {}) {
   if (!isPlainObject(value)) throw new TypeError("bindingOptions must be a plain object.");
-  const normalized = cloneBoundedJsonValue(value, "bindingOptions");
+  const normalized = snapshotTransportJsonValue(
+    value,
+    "bindingOptions",
+    NODE_TRANSPORT_LIMITS.binding_options,
+  );
   normalized.version ??= BINDING_OPTIONS_SCHEMA_VERSION;
   if (normalized.version !== BINDING_OPTIONS_SCHEMA_VERSION) {
+    const version = typeof normalized.version === "object" ? "non-scalar" : normalized.version;
     throw new RangeError(
-      `Unsupported binding options schema version \`${normalized.version}\`; expected ${BINDING_OPTIONS_SCHEMA_VERSION}.`,
+      `Unsupported binding options schema version \`${version}\`; expected ${BINDING_OPTIONS_SCHEMA_VERSION}.`,
     );
   }
   normalized.runtime_policy ??= "deterministic";
@@ -162,13 +168,16 @@ export function normalizeBindingOptions(value = {}) {
       "bindingOptions.runtime_policy must be `deterministic` for @mermanjs/node.",
     );
   }
-  normalized.resources ??= {};
+  normalized.resources ??= Object.create(null);
   if (!isPlainObject(normalized.resources)) {
     throw new TypeError("bindingOptions.resources must be a plain object.");
   }
   normalized.resources.profile ??= "interactive";
   if (!RESOURCE_PROFILES.has(normalized.resources.profile)) {
-    throw new RangeError(`Unknown resource profile \`${normalized.resources.profile}\`.`);
+    const profile = typeof normalized.resources.profile === "object"
+      ? "non-scalar"
+      : normalized.resources.profile;
+    throw new RangeError(`Unknown resource profile \`${profile}\`.`);
   }
   if (normalized.environment !== undefined) {
     if (!isPlainObject(normalized.environment)) {
@@ -1240,139 +1249,6 @@ function sortedUniqueFieldIdentifiers(value, field) {
     );
   }
   return value;
-}
-
-function cloneBoundedJsonValue(root, label) {
-  const limits = NODE_TRANSPORT_LIMITS.binding_options;
-  const active = new WeakSet();
-  const clone = jsonContainerClone(root, label);
-  const stack = [{ depth: 1, source: root, target: clone, exiting: false }];
-  let members = 0;
-  let tokens = 1;
-
-  while (stack.length > 0) {
-    const frame = stack.pop();
-    if (frame.exiting) {
-      active.delete(frame.source);
-      continue;
-    }
-    if (active.has(frame.source)) {
-      throw new TypeError(`${label} must not contain cyclic references.`);
-    }
-    if (frame.depth > limits.max_depth) {
-      throw new RangeError(`${label} exceeds the structural depth limit ${limits.max_depth}.`);
-    }
-    active.add(frame.source);
-    stack.push({ ...frame, exiting: true });
-
-    const entries = jsonContainerEntries(
-      frame.source,
-      label,
-      limits.max_members - members,
-      limits.max_members,
-    );
-    members += entries.length;
-    if (members > limits.max_members) {
-      throw new RangeError(`${label} exceeds the member-work limit ${limits.max_members}.`);
-    }
-
-    for (let index = entries.length - 1; index >= 0; index -= 1) {
-      const [key, child] = entries[index];
-      assertUtf8Field(key, `${label} object key`, limits.max_string_utf8_bytes);
-      tokens += 1;
-      if (tokens > limits.max_tokens) {
-        throw new RangeError(`${label} exceeds the token-work limit ${limits.max_tokens}.`);
-      }
-
-      if (child === null || typeof child === "boolean") {
-        defineJsonValue(frame.target, key, child);
-      } else if (typeof child === "string") {
-        assertUtf8Field(child, `${label}.${key}`, limits.max_string_utf8_bytes);
-        defineJsonValue(frame.target, key, child);
-      } else if (typeof child === "number") {
-        if (!Number.isFinite(child)) {
-          throw new TypeError(`${label}.${key} must be a finite JSON number.`);
-        }
-        defineJsonValue(frame.target, key, child);
-      } else if (typeof child === "object") {
-        const childClone = jsonContainerClone(child, `${label}.${key}`);
-        defineJsonValue(frame.target, key, childClone);
-        stack.push({
-          depth: frame.depth + 1,
-          source: child,
-          target: childClone,
-          exiting: false,
-        });
-      } else {
-        throw new TypeError(`${label}.${key} is not a JSON wire value.`);
-      }
-    }
-  }
-  return clone;
-}
-
-function jsonContainerClone(value, label) {
-  if (Array.isArray(value)) return [];
-  if (!isPlainObject(value)) {
-    throw new TypeError(`${label} must contain only arrays and plain objects.`);
-  }
-  return Object.getPrototypeOf(value) === null ? Object.create(null) : {};
-}
-
-function jsonContainerEntries(value, label, remainingMembers, maxMembers) {
-  if (Array.isArray(value)) {
-    if (value.length > remainingMembers) {
-      throw new RangeError(`${label} exceeds the member-work limit ${maxMembers}.`);
-    }
-    const keys = Reflect.ownKeys(value);
-    if (keys.some((key) => typeof key === "symbol")) {
-      throw new TypeError(`${label} must not contain symbol keys.`);
-    }
-    for (let index = 0; index < value.length; index += 1) {
-      if (!Object.hasOwn(value, index)) {
-        throw new TypeError(`${label} arrays must not contain holes.`);
-      }
-    }
-    if (keys.length !== value.length + 1) {
-      throw new TypeError(`${label} arrays must not contain custom properties.`);
-    }
-    const entries = new Array(value.length);
-    for (let index = 0; index < value.length; index += 1) {
-      const key = String(index);
-      const descriptor = Object.getOwnPropertyDescriptor(value, key);
-      if (!descriptor?.enumerable || !("value" in descriptor)) {
-        throw new TypeError(`${label}.${key} must be an enumerable data property.`);
-      }
-      entries[index] = [key, descriptor.value];
-    }
-    return entries;
-  }
-
-  const entries = [];
-  for (const key of Reflect.ownKeys(value)) {
-    if (typeof key === "symbol") {
-      throw new TypeError(`${label} must not contain symbol keys.`);
-    }
-    const descriptor = Object.getOwnPropertyDescriptor(value, key);
-    if (!descriptor?.enumerable || !("value" in descriptor)) {
-      throw new TypeError(`${label}.${key} must be an enumerable data property.`);
-    }
-    entries.push([key, descriptor.value]);
-  }
-  return entries;
-}
-
-function defineJsonValue(target, key, value) {
-  if (Array.isArray(target)) {
-    target[Number(key)] = value;
-    return;
-  }
-  Object.defineProperty(target, key, {
-    configurable: true,
-    enumerable: true,
-    value,
-    writable: true,
-  });
 }
 
 function isPlainObject(value) {

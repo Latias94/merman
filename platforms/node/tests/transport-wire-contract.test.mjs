@@ -11,6 +11,7 @@ import {
   decodeWireResponse,
   encodeTransportJson,
   parseTransportJsonText,
+  snapshotTransportJsonValue,
 } from "../src/errors.mjs";
 import { BINDING_OPERATION_EXPECTATIONS } from "../src/generated/binding-contract.mjs";
 
@@ -192,8 +193,8 @@ test("bounded JSON encoding rejects shared-value amplification before stringify"
 
 test("bounded JSON encoding counts escaped and Unicode output bytes exactly", () => {
   const value = {
-    escaped: '"\\\u0000\n',
-    unicode: "é😀",
+    escaped: '"\\\u0000\b\t\n\f\r\u001f',
+    unicode: "é😀\u2028\u2029",
   };
   const expected = JSON.stringify(value);
   const exactBytes = Buffer.byteLength(expected);
@@ -233,7 +234,7 @@ test("bounded JSON encoding retains exact structural and string limits", () => {
   const limits = {
     ...NODE_TRANSPORT_LIMITS.binding_options,
     max_depth: 2,
-    max_members: 2,
+    max_members: 3,
     max_tokens: 6,
     max_string_utf8_bytes: 6,
   };
@@ -256,6 +257,180 @@ test("bounded JSON encoding retains exact structural and string limits", () => {
         return true;
       },
       field,
+    );
+  }
+});
+
+test("bounded JSON snapshots reject member, token, and string work before stringify", (context) => {
+  const stringify = context.mock.method(JSON, "stringify");
+  for (const [value, overrides, message] of [
+    [[null, null], { max_members: 1 }, /member-work limit/i],
+    [{ a: null }, { max_tokens: 2 }, /token-work limit/i],
+    [{ a: "é😀" }, { max_string_utf8_bytes: 5 }, /field limit/i],
+  ]) {
+    const callsBefore = stringify.mock.callCount();
+    assert.throws(
+      () => encodeTransportJson(value, "boundary", {
+        ...NODE_TRANSPORT_LIMITS.binding_options,
+        ...overrides,
+      }),
+      (error) => {
+        assert.ok(error instanceof MermanInvalidTransportError);
+        assert.match(error.cause?.message ?? error.message, message);
+        return true;
+      },
+    );
+    assert.equal(stringify.mock.callCount(), callsBefore);
+  }
+});
+
+test("bounded JSON encoding counts expanded array elements in the member budget", () => {
+  const shared = [null, null];
+  const value = { first: shared, second: shared };
+  const limits = {
+    ...NODE_TRANSPORT_LIMITS.binding_options,
+    max_members: 6,
+    max_tokens: 9,
+  };
+  assert.equal(encodeTransportJson(value, "boundary", limits), JSON.stringify(value));
+  assert.throws(
+    () => encodeTransportJson(value, "boundary", { ...limits, max_members: 5 }),
+    /member-work limit/i,
+  );
+  assert.throws(
+    () => encodeTransportJson(value, "boundary", { ...limits, max_tokens: 8 }),
+    /token-work limit/i,
+  );
+});
+
+test("binding option snapshots enforce escaped wire bytes before applying product policy", () => {
+  const limits = NODE_TRANSPORT_LIMITS.binding_options;
+  const value = {
+    runtime_policy: "native",
+    payload: "\u0000".repeat(Math.floor(limits.max_utf8_bytes / 6)),
+  };
+  assert.throws(
+    () => normalizeBindingOptions(value),
+    (error) => {
+      assert.ok(error instanceof MermanInvalidTransportError);
+      assert.match(error.message, /wire limit/i);
+      return true;
+    },
+  );
+  assert.equal(value.runtime_policy, "native");
+  assert.throws(
+    () => normalizeBindingOptions({ first: undefined, later: NaN }),
+    (error) => {
+      assert.ok(error instanceof TypeError);
+      assert.match(error.message, /bindingOptions\.first is not a JSON wire value/i);
+      return true;
+    },
+  );
+});
+
+test("bounded JSON encoding never invokes own or inherited JSON hooks", (context) => {
+  let hookCalls = 0;
+  const hook = () => {
+    hookCalls += 1;
+    throw new Error("JSON hooks must not run.");
+  };
+  for (const value of [
+    { toJSON: hook },
+    Object.defineProperty({}, "toJSON", { enumerable: true, get: hook }),
+    Object.defineProperty([null], "0", { enumerable: true, get: hook }),
+  ]) {
+    assert.throws(
+      () => encodeTransportJson(value, "boundary", NODE_TRANSPORT_LIMITS.binding_options),
+      MermanInvalidTransportError,
+    );
+  }
+  for (const prototype of [Object.prototype, Array.prototype]) {
+    const descriptor = Object.getOwnPropertyDescriptor(prototype, "toJSON");
+    Object.defineProperty(prototype, "toJSON", { configurable: true, get: hook });
+    context.after(() => {
+      if (descriptor) Object.defineProperty(prototype, "toJSON", descriptor);
+      else Reflect.deleteProperty(prototype, "toJSON");
+    });
+  }
+  assert.equal(
+    encodeTransportJson({ values: [null] }, "boundary", NODE_TRANSPORT_LIMITS.binding_options),
+    '{"values":[null]}',
+  );
+  assert.equal(hookCalls, 0);
+});
+
+test("bounded JSON snapshots are detached, prototype-free, and safe to snapshot again", () => {
+  const shared = Object.freeze([Object.freeze({ value: "é😀" })]);
+  const input = Object.freeze(Object.defineProperty({ first: shared, second: shared }, "__proto__", {
+    enumerable: true,
+    value: Object.freeze({ polluted: true }),
+  }));
+  const snapshot = snapshotTransportJsonValue(
+    input, "boundary", NODE_TRANSPORT_LIMITS.binding_options,
+  );
+  assert.equal(Object.getPrototypeOf(snapshot), null);
+  assert.equal(Object.getPrototypeOf(snapshot.first), null);
+  assert.equal(Object.getPrototypeOf(snapshot.first[0]), null);
+  assert.equal(Array.isArray(snapshot.first), true);
+  assert.deepEqual(Reflect.ownKeys(snapshot.first), ["0", "length"]);
+  assert.notEqual(snapshot.first, input.first);
+  assert.notEqual(snapshot.first, snapshot.second);
+  assert.equal(Object.hasOwn(snapshot, "__proto__"), true);
+  assert.equal(Object.hasOwn(Object.prototype, "polluted"), false);
+  assert.equal(
+    encodeTransportJson(snapshot, "boundary", NODE_TRANSPORT_LIMITS.binding_options),
+    '{"first":[{"value":"é😀"}],"second":[{"value":"é😀"}],"__proto__":{"polluted":true}}',
+  );
+  snapshot.first[0].value = "changed";
+  assert.equal(input.first[0].value, "é😀");
+  assert.equal(snapshot.second[0].value, "é😀");
+});
+
+test("a mutable snapshot never bypasses ordinary encoder validation", () => {
+  let getterCalls = 0;
+  for (const change of [
+    (snapshot) => { snapshot.value = new Date(); },
+    (snapshot) => { snapshot.self = snapshot; },
+    (snapshot) => { snapshot.value = "\ud800"; },
+    (snapshot) => { snapshot.value = new Array(1); },
+    (snapshot) => { snapshot.toJSON = () => { throw new Error("Must not run."); }; },
+    (snapshot) => Object.defineProperty(snapshot, "value", {
+      enumerable: true,
+      get() {
+        getterCalls += 1;
+        return null;
+      },
+    }),
+  ]) {
+    const snapshot = snapshotTransportJsonValue(
+      { value: null }, "boundary", NODE_TRANSPORT_LIMITS.binding_options,
+    );
+    change(snapshot);
+    assert.throws(
+      () => encodeTransportJson(snapshot, "boundary", NODE_TRANSPORT_LIMITS.binding_options),
+      MermanInvalidTransportError,
+    );
+  }
+  assert.equal(getterCalls, 0);
+});
+
+test("ordinary JSON encoding rejects all non-JSON external values without coercion", () => {
+  const limits = NODE_TRANSPORT_LIMITS.binding_options;
+  const cycle = {};
+  cycle.self = cycle;
+  const customArray = [null];
+  customArray.custom = true;
+  const symbolKey = { [Symbol("key")]: null };
+  const hidden = Object.defineProperty({}, "hidden", { value: null });
+  for (const value of [
+    undefined, () => {}, 1n, Symbol("value"), NaN, Infinity, -Infinity,
+    new Date(), new Map(), new Set(), /pattern/, new Uint8Array(1),
+    cycle, new Array(1), customArray, symbolKey, hidden,
+    "\ud800", "\udc00", { "\ud800": null }, [undefined],
+  ]) {
+    assert.throws(
+      () => encodeTransportJson(value, "external", limits),
+      MermanInvalidTransportError,
     );
   }
 });
@@ -759,7 +934,10 @@ test("response data field accepts its exact UTF-8 ceiling and rejects plus one",
 test("binding option normalization rejects non-JSON host values without invoking accessors", () => {
   const cycle = {};
   cycle.self = cycle;
-  assert.throws(() => normalizeBindingOptions(cycle), /cyclic references/i);
+  assert.throws(
+    () => normalizeBindingOptions(cycle),
+    { name: "TypeError", message: /cyclic references/i },
+  );
 
   let exactDepth = {};
   let cursor = exactDepth;
@@ -769,7 +947,10 @@ test("binding option normalization rejects non-JSON host values without invoking
   }
   assert.doesNotThrow(() => normalizeBindingOptions(exactDepth));
   cursor.next = {};
-  assert.throws(() => normalizeBindingOptions(exactDepth), /structural depth limit/i);
+  assert.throws(
+    () => normalizeBindingOptions(exactDepth),
+    { name: "RangeError", message: /structural depth limit/i },
+  );
 
   for (const value of [new Date(), new Map(), Number.NaN, Number.POSITIVE_INFINITY]) {
     assert.throws(
@@ -792,7 +973,7 @@ test("binding option normalization rejects non-JSON host values without invoking
   oversizedSparse.length = NODE_TRANSPORT_LIMITS.binding_options.max_members;
   assert.throws(
     () => normalizeBindingOptions({ oversizedSparse }),
-    /member-work limit/i,
+    { name: "MermanInvalidTransportError", message: /member-work limit/i },
   );
 
   let getterCalled = false;
