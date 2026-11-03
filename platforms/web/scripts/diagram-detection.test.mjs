@@ -166,9 +166,28 @@ test("detectDiagramFacts treats an unavailable parse disposition as unavailable"
   assert.equal(webApi.detectDiagramFacts("ignored").status, "unavailable");
 });
 
+test("detection returns appearance from the same facts call without parsing source", () => {
+  const appearance = { state: "known", theme: {
+    value: "forest", origin: { kind: "directive", directive_index: 3 }, construct_span: { start: 8, end: 60 },
+  }, font: null, look: null };
+  analysisResult = facts("flowchart-v2", "dagre", "recovered");
+  analysisResult.diagrams[0].appearance = appearance;
+  const detection = webApi.detectDiagramFacts("deliberately not Mermaid");
+  assert.deepEqual(detection.appearance, appearance);
+  assert.equal(Object.isFrozen(detection.appearance.theme.construct_span), true);
+  appearance.theme.value = "changed";
+  assert.equal(detection.appearance.theme.value, "forest");
+  analysisResult.diagrams[0].parse_disposition = "unavailable";
+  assert.equal(webApi.detectDiagramFacts("ignored").appearance.theme.value, "changed");
+  for (const malformed of [undefined, { state: "known" }, { state: "known", theme: { value: "dark" }, font: null, look: null }]) {
+    analysisResult.diagrams[0].appearance = malformed;
+    assert.equal(webApi.detectDiagramFacts("ignored").appearance, undefined);
+  }
+});
+
 function facts(syntaxId, effectiveLayoutId, parseDisposition) {
   return {
-    version: 2,
+    version: 3,
     valid: true,
     diagrams: [diagram(syntaxId, effectiveLayoutId, parseDisposition)],
   };
@@ -177,6 +196,7 @@ function facts(syntaxId, effectiveLayoutId, parseDisposition) {
 function diagram(syntaxId, effectiveLayoutId, parseDisposition) {
   return {
     parse_disposition: parseDisposition,
+    appearance: { state: "unknown" },
     syntax: {
       diagram_type: syntaxId,
       effective_layout: effectiveLayoutId,

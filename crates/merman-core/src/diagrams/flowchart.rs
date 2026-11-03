@@ -127,10 +127,7 @@ use model::{Edge, EdgeDefaults, FlowNodeSyntax, FlowSubgraphVertexStyle, Node};
 
 pub(crate) use tokens::{ArrowToken, DirectionStatementToken, LexError, NodeLabelToken, Tok};
 
-#[cfg(all(
-    any(test, feature = "compat-json"),
-    any(feature = "diagram-flowchart", feature = "diagram-swimlane")
-))]
+#[cfg(all(test, any(feature = "diagram-flowchart", feature = "diagram-swimlane")))]
 use accessibility::scan_flowchart_accessibility;
 #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
 use accessibility::{FlowchartAccessibilityScan, scan_flowchart_accessibility_controlled};
@@ -235,23 +232,18 @@ impl FlowchartMetadata for crate::SemanticMetadata {
 
 #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
 #[cfg(feature = "compat-json")]
-pub(crate) fn parse_flowchart(code: &str, meta: &SourcePresentationMetadata) -> Result<Value> {
-    parse_flowchart_with_warning_facts(code, meta)
-        .map(crate::family::WarningSemanticParse::into_model)
-}
-
-#[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
-#[cfg(feature = "compat-json")]
-pub(crate) fn parse_flowchart_with_warning_facts(
+pub(crate) fn parse_flowchart_compatibility_model_controlled(
     code: &str,
     meta: &SourcePresentationMetadata,
-) -> Result<crate::family::WarningSemanticParse> {
-    let model = parse_flowchart_semantic_source(code, meta)?.into_model(meta)?;
-    let compatibility = render_model_to_compat_json(&model, meta)?;
-    Ok(crate::family::WarningSemanticParse::new(
-        compatibility,
-        model.warning_facts,
-    ))
+    control: &OperationControl,
+) -> OperationControlResult<Result<crate::family::FamilySemanticModel>> {
+    let source = parse_flowchart_semantic_source_controlled(code, meta, control)?;
+    let model = match source {
+        Ok(source) => source.into_model_controlled(meta, control)?,
+        Err(error) => Err(error),
+    };
+    control.checkpoint()?;
+    Ok(model.map(|model| crate::family::FamilySemanticModel::Flowchart(Box::new(model))))
 }
 
 #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
@@ -268,17 +260,11 @@ pub(crate) fn parse_flowchart_json_and_editor_facts(
         EditorFactsDemand::Capture,
         control,
     )?;
-    let (model, warning_facts) = match construction.model {
-        Ok(model) => (
-            render_model_to_compat_json(&model, meta),
-            model.warning_facts,
-        ),
-        Err(error) => (Err(error), Vec::new()),
-    };
     let parsed = crate::family::CombinedSemanticParse::from_parts(
-        model,
+        construction
+            .model
+            .map(|model| crate::family::FamilySemanticModel::Flowchart(Box::new(model))),
         construction.editor_facts.unwrap_or_default(),
-        warning_facts,
     );
     control.checkpoint()?;
     Ok(parsed)
@@ -423,7 +409,7 @@ pub(crate) fn parse_semantic_model_controlled(
 }
 
 #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
-#[cfg(feature = "compat-json")]
+#[cfg(all(test, feature = "compat-json"))]
 pub(crate) fn render_model_to_compat_json(
     model: &FlowchartModel,
     meta: &SourcePresentationMetadata,
@@ -432,10 +418,7 @@ pub(crate) fn render_model_to_compat_json(
         .map_err(crate::Error::from)
 }
 
-#[cfg(all(
-    any(test, feature = "compat-json"),
-    any(feature = "diagram-flowchart", feature = "diagram-swimlane")
-))]
+#[cfg(all(test, any(feature = "diagram-flowchart", feature = "diagram-swimlane")))]
 fn parse_flowchart_semantic_source<M: FlowchartMetadata>(
     code: &str,
     meta: &M,
@@ -753,7 +736,7 @@ fn flowchart_edge_limit_error(message: impl Into<String>, span: Option<SourceSpa
 }
 
 #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
-#[cfg(any(test, feature = "compat-json"))]
+#[cfg(test)]
 fn parse_flowchart_ast<M: FlowchartMetadata>(code: &str, meta: &M) -> Result<FlowchartAst> {
     parse_flowchart_ast_controlled(code, meta, &OperationControl::new())?
 }
@@ -1901,7 +1884,7 @@ struct FlowchartModelProjection {
 
 #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
 impl FlowchartSemanticSource {
-    #[cfg(any(test, feature = "compat-json"))]
+    #[cfg(test)]
     fn into_model<M: FlowchartMetadata>(self, meta: &M) -> Result<FlowchartModel> {
         self.into_model_controlled(meta, &OperationControl::new())
             .expect("a private parse control cannot be cancelled")
@@ -2676,14 +2659,12 @@ mod tests {
     fn duplicate_subgraph_editor_facts_keep_each_declaration_span() {
         let source = "flowchart TB\nsubgraph S[First]\nx\nend\nsubgraph S[Second]\ny\nend\nclass S hot\nS --> z\n";
         let control = OperationControl::new();
-        let (model, facts, _) = parse_flowchart_json_and_editor_facts(
-            source,
-            &flowchart_test_meta("flowchart-v2"),
-            &control,
+        let meta = flowchart_test_meta("flowchart-v2");
+        let (model, facts) = crate::family::test_support::into_projected_result(
+            parse_flowchart_json_and_editor_facts(source, &meta, &control),
+            &meta,
         )
-        .unwrap()
-        .into_parts();
-        let model = model.unwrap();
+        .unwrap();
         let symbols: Vec<_> = facts
             .symbols
             .iter()
@@ -3451,7 +3432,7 @@ A -->|second &lt; owner| B
             &control,
         )
         .expect("the controlled parser should return a combined result");
-        let (model, facts, _) = parsed.into_parts();
+        let (model, facts) = parsed.into_parts();
         let error = model.expect_err("the traced parser should reject the expanded edge group");
         assert!(error.to_string().contains("Flowchart edge limit exceeded"));
         assert!(

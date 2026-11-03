@@ -42,7 +42,7 @@ HTML label transforms and IDs, and the locked rustls dependency. See the
 [0.9.1 changelog](../../CHANGELOG.md#091---2026-10-18) for the complete delta and the
 [publication snapshot](PUBLISH_ORDER.md#091-publication-snapshot) for channel evidence.
 
-The theme refactor, Options JSON schema `3`, Web transport API `8`, and Mermaid `12.2.0` alignment belong to the `0.10` line. They are absent from published `0.9.1` artifacts. For source builds of the
+The theme refactor, Options JSON schema `3`, and Mermaid `12.2.0` alignment belong to the `0.10` line and are absent from published `0.9.1` artifacts. Current development source additionally uses Web transport API `9`, analysis facts schema `3`, and theme execution evidence schema `2`; published `0.10.0-alpha.1` retains their earlier versions `8`, `2`, and `1`. See the [development contract migration](UNRELEASED_CONTRACT_VERSIONS.md#source-appearance-and-render-evidence-follow-up). For source builds of the
 published patch, use `v0.9.1`; match generated wrappers and artifacts to that same tag. Typst wrapper
 `0.5.0` continues to bundle Merman `0.9.0`.
 

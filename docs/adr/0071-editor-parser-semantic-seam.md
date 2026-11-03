@@ -112,12 +112,17 @@ or whole-document degraded fallback. Serialized facts keep `source_mapped_spans`
 compatibility: it is true for parser-backed facts and false for `Unavailable`. `Unavailable`
 produces no body completion, hover, symbols, navigation, rename, or semantic tokens.
 
-### Analysis facts v2 is the sole parser-only wire contract
+### Analysis facts v3 is the sole source-facts wire contract
+
+The [2026-11-03 source appearance migration](../release/UNRELEASED_CONTRACT_VERSIONS.md#source-appearance-and-render-evidence-follow-up)
+adds required per-diagram `appearance` evidence tagged `known` or `unknown`. The parser-body
+constraints established by schema 2 below remain in force; source declarations do not certify
+rendered presentation.
 
 The diagnostics-only `AnalysisPayload` and richer `AnalysisFactsPayload` are independently
-versioned. `AnalysisPayload` remains version `1`. `AnalysisFactsPayload` version `2` is the sole
-parser-only semantic contract produced after this migration. It contains generic parser/editor
-facts and no Flowchart-only rich graph:
+versioned. `AnalysisPayload` remains version `1`. `AnalysisFactsPayload` version `3` is the sole
+source-facts contract produced by current development builds. It contains generic parser/editor
+facts and appearance declarations, with no Flowchart-only rich graph:
 
 - `fact_source: "text_scan"` is removed and `"unavailable"` represents honest absence;
 - semantic item roles are the closed schema-2 set `entity`, `class_definition`, `reference`,
@@ -128,7 +133,7 @@ facts and no Flowchart-only rich graph:
 
 The TextScan-capable prerelease shape is deleted. This decision deliberately resets the contract during
 the coordinated refactor: consumers must regenerate against the current package, and every discriminator
-other than version `2` is rejected before its body is decoded.
+other than version `3` is rejected before its body is decoded.
 
 `AnalysisFactsPayload` is a binding wire projection, not the internal exchange format between
 analysis, editor-core, and LSP. Those modules share typed `AnalysisGeneration`,

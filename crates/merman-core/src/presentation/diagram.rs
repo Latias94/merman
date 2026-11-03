@@ -32,8 +32,51 @@ pub type DiagramSemanticParser = fn(
 
 /// Parser used by the pinned built-in semantic JSON path.
 #[cfg(feature = "compat-json")]
-pub(crate) type BuiltInDiagramSemanticParser =
-    fn(code: &str, meta: &SourcePresentationMetadata) -> Result<Value>;
+#[derive(Debug, Clone, Copy)]
+pub(crate) enum BuiltInDiagramSemanticParser {
+    Json(fn(code: &str, meta: &SourcePresentationMetadata) -> Result<Value>),
+    #[cfg(any(
+        feature = "diagram-flowchart",
+        feature = "diagram-swimlane",
+        feature = "diagram-git-graph",
+        feature = "diagram-block",
+        feature = "diagram-agentflow"
+    ))]
+    Typed(
+        fn(
+            code: &str,
+            meta: &SourcePresentationMetadata,
+            control: &OperationControl,
+        ) -> OperationControlResult<Result<crate::family::FamilySemanticModel>>,
+    ),
+}
+
+#[cfg(feature = "compat-json")]
+impl BuiltInDiagramSemanticParser {
+    pub(crate) fn parse_controlled(
+        self,
+        code: &str,
+        meta: &SourcePresentationMetadata,
+        control: &OperationControl,
+    ) -> OperationControlResult<Result<crate::family::FamilySemanticModel>> {
+        control.checkpoint()?;
+        let parsed = match self {
+            Self::Json(parser) => parser(code, meta)
+                .map(ManagedSemanticJson::from)
+                .map(crate::family::FamilySemanticModel::Json),
+            #[cfg(any(
+                feature = "diagram-flowchart",
+                feature = "diagram-swimlane",
+                feature = "diagram-git-graph",
+                feature = "diagram-block",
+                feature = "diagram-agentflow"
+            ))]
+            Self::Typed(parser) => parser(code, meta, control)?,
+        };
+        control.checkpoint()?;
+        Ok(parsed)
+    }
+}
 
 /// Parser used by the built-in typed render-model path for one Mermaid diagram family.
 pub(crate) type BuiltInRenderSemanticParser =
@@ -478,14 +521,6 @@ pub(crate) fn sanitize_common_db_fields(model: &mut RenderSemanticModel, config:
         }
         #[cfg(feature = "diagram-c4")]
         RenderSemanticModel::C4(v) => crate::diagrams::c4::sanitize_common_db_fields(v, config),
-        #[cfg(feature = "diagram-cynefin")]
-        RenderSemanticModel::Cynefin(v) => {
-            crate::diagrams::cynefin::sanitize_common_db_fields(v, config)
-        }
-        #[cfg(feature = "diagram-railroad")]
-        RenderSemanticModel::Railroad(v) => {
-            crate::diagrams::railroad::sanitize_common_db_fields(v, config)
-        }
         #[cfg(feature = "diagram-kanban")]
         RenderSemanticModel::Kanban(_) => {}
         #[cfg(feature = "diagram-gantt")]
@@ -552,10 +587,6 @@ pub(crate) fn sanitize_common_db_fields(model: &mut RenderSemanticModel, config:
         }
         #[cfg(feature = "diagram-venn")]
         RenderSemanticModel::Venn(v) => crate::diagrams::venn::sanitize_common_db_fields(v, config),
-        #[cfg(feature = "diagram-wardley")]
-        RenderSemanticModel::Wardley(v) => {
-            crate::diagrams::wardley::sanitize_common_db_fields(v, config)
-        }
         #[cfg(feature = "diagram-usecase")]
         RenderSemanticModel::Usecase(v) => {
             crate::diagrams::usecase::sanitize_common_db_fields(v, config)
@@ -859,10 +890,18 @@ pub(crate) fn parse_or_unsupported_controlled(
         }));
     };
     let result = match parser {
-        ResolvedSemanticParser::BuiltIn(parser) => parser(code, meta),
-        ResolvedSemanticParser::Custom(parser) => parser(code, meta, control)?,
-    }
-    .map(ManagedSemanticJson::from);
+        ResolvedSemanticParser::BuiltIn(parser) => {
+            match parser.parse_controlled(code, meta, control)? {
+                Ok(model) => model
+                    .into_compatibility_json_controlled(&meta.compat_json_metadata(), control)?
+                    .map(|(model, _)| model),
+                Err(error) => Err(error),
+            }
+        }
+        ResolvedSemanticParser::Custom(parser) => {
+            parser(code, meta, control)?.map(ManagedSemanticJson::from)
+        }
+    };
     control.checkpoint()?;
     Ok(result)
 }

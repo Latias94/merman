@@ -4,6 +4,13 @@ All notable changes to this project will be documented in this file.
 
 The format is based on *Keep a Changelog*, and this project adheres to *Semantic Versioning*.
 
+## Unreleased
+
+- Playground appearance guidance now reads parser-owned declarations and provenance; automatic canvas backing uses the materialized palette from the displayed SVG's render metadata. Updating a preview retains its previous SVG and backing until the replacement is ready.
+- **Binding migration:** analysis facts advance to schema `3`, theme execution evidence to schema `2`, and Web transport API to `9`. Update matching wrappers, generated glue and WASM together; Rust/TypeScript consumers use the V2 theme evidence type. Diagnostics, operation metadata, Options JSON and native ABI versions are unchanged. See the [contract version follow-up](docs/release/UNRELEASED_CONTRACT_VERSIONS.md#source-appearance-and-render-evidence-follow-up).
+- Native filter certification observes operation cancellation during its own traversals. Railroad, Cynefin and Wardley sanitize source fields once, preserving pinned Mermaid results for HTML that changes under repeated sanitization.
+- **Maintainer tooling:** replace Typst size-matrix/build pairs with `build-typst-package --profile publish --budget-file docs/release/WASM_SIZE_BUDGETS.json`; only smoke commands accept freshness-checked reuse. Publication policies now run through the Cargo graph and artifact owners; the old release surface substring checker is removed. See the [release guide](docs/release/RELEASING.md).
+
 ## [0.10.0-alpha.1] - 2026-11-02
 
 Changes since [0.9.3](#093---2026-10-30); see [upgrade actions](#breaking-changes-and-upgrade-actions) before migrating. Use the [host installation guide](docs/release/PREBUILT_PRODUCTS.md) to choose a package and keep its wrapper and runtime artifacts on the same version.

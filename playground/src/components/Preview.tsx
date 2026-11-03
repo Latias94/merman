@@ -1,7 +1,6 @@
 import {
   useCallback,
   useEffect,
-  useMemo,
   useRef,
   useState,
   type KeyboardEvent,
@@ -9,7 +8,6 @@ import {
 } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
-import { diagramFamilyCapabilities } from "@mermanjs/web";
 import {
   selectMermanFailure,
   selectMermanLoadStage,
@@ -113,8 +111,6 @@ const EMPTY_DIAGNOSTICS: Record<DiagnosticKey, DiagnosticArtifact> = {
 export function Preview({ active = true, className }: PreviewProps) {
   const { t } = useTranslation();
   const code = useAppStore((state) => state.code);
-  const diagramTheme = useAppStore((state) => state.diagramTheme);
-  const mermaidConfig = useAppStore((state) => state.mermaidConfig);
   const resolvedTheme = useAppStore((state) => state.resolvedTheme);
   const editorTheme = WORKBENCH_EDITOR_THEMES[resolvedTheme].name;
   const previewMode = useAppStore((state) => state.previewMode);
@@ -161,14 +157,13 @@ export function Preview({ active = true, className }: PreviewProps) {
 
   const currentPublicationId = currentBatch?.snapshot.publicationId ?? null;
   const detectedDiagramType = selectCurrentDiagramType(renderState);
-  const currentMerman = successfulMerman(currentBatch?.merman ?? null);
-  const svgArtifact = currentMerman?.artifact ?? null;
+  const visibleMerman = successfulMerman(visibleBatch?.merman ?? null);
+  const svgArtifact = visibleMerman?.artifact ?? null;
   const svg = svgArtifact?.svg ?? null;
   const asciiResult = currentBatch?.ascii ?? null;
   const error = failedMessage(currentBatch?.merman ?? null);
   const errorDetail = failedDetail(currentBatch?.merman ?? null);
   const errorStage = failedStage(currentBatch?.merman ?? null);
-  const visibleMerman = successfulMerman(visibleBatch?.merman ?? null);
   const visibleMermaid = successfulMermaid(visibleBatch?.mermaid ?? null);
   const mermaidSvgArtifact = visibleMermaid?.artifact ?? null;
   const mermaidError = failedMessage(visibleBatch?.mermaid ?? null);
@@ -185,29 +180,10 @@ export function Preview({ active = true, className }: PreviewProps) {
   const asciiSupportLabel = t(asciiSupportLabelKey(asciiCapability));
   const asciiSupportLimit = asciiSupportDescription(asciiCapability);
   const svgViewport = useSvgViewportController();
-  const canvasBatch = previewMode === "compare" ? visibleBatch : currentBatch;
+  const canvasBatch = visibleBatch;
   const canvasOperation = canvasBatch?.snapshot.operation;
-  const canvasSyntaxId = canvasBatch?.detection.status === "available"
-    ? canvasBatch.detection.syntaxId
-    : null;
-  const canvasConfigNamespace = useMemo(
-    () => ready && canvasSyntaxId
-      ? diagramFamilyCapabilities().find(
-          (family) => family.diagram_type === canvasSyntaxId,
-        )?.config_namespace
-      : undefined,
-    [ready, canvasSyntaxId],
-  );
-  const automaticCanvasTone = useMemo(
-    () =>
-      resolveMermaidCanvasTone(
-        canvasOperation?.configJson ?? mermaidConfig,
-        canvasOperation?.theme ?? diagramTheme,
-        canvasOperation?.source ?? code,
-        canvasConfigNamespace,
-      ),
-    [canvasOperation, canvasConfigNamespace, code, diagramTheme, mermaidConfig],
-  );
+  const automaticCanvasTone = resolveMermaidCanvasTone(canvasBatch?.merman.status === "success"
+    ? canvasBatch.merman.metadata?.theme_execution_evidence : null);
   const canvasTone = previewBacking === "dark" ? "dark" : previewBacking === "light" || previewBacking === "transparency" ? "light" : automaticCanvasTone;
   const canvasMode = previewMode === "svg" || previewMode === "compare";
 
@@ -581,7 +557,7 @@ export function Preview({ active = true, className }: PreviewProps) {
                 <SvgViewport
                   artifact={svgArtifact}
                   canvasTone={canvasTone}
-                  presentationKey={currentPublicationId}
+                  presentationKey={visibleBatch?.snapshot.publicationId ?? null}
                   controller={svgViewport}
                   showSvgBounds={showSvgBounds}
                   presentationMode={svgPresentationMode}
@@ -595,9 +571,9 @@ export function Preview({ active = true, className }: PreviewProps) {
                     />
                   )}
                   onPresentationReady={(at) => {
-                    if (currentBatch) {
+                    if (visibleBatch) {
                       markRenderCoordinatorPresented(
-                        currentBatch.snapshot.publicationId,
+                        visibleBatch.snapshot.publicationId,
                         "merman",
                         at,
                       );

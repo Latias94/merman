@@ -4,7 +4,7 @@ import {
 } from "@mermanjs/web";
 
 import type { DiagramFont } from "../lib/diagram-font.ts";
-import { buildMermaidOperationInput, type MermaidConfigObject } from "../lib/mermaid-config.ts";
+import { buildMermaidOperationInput, type InjectedMermaidConfigSpan, type MermaidConfigObject } from "../lib/mermaid-config.ts";
 import {
   DEFAULT_WORKSPACE_SNAPSHOT,
   type WorkspaceSnapshot,
@@ -49,6 +49,7 @@ export interface ConfiguredMermanOperationInput {
   readonly bindingOptionsJson: string | null;
   readonly configurationError: ErrorProjection | null;
   readonly configuredSource: string;
+  readonly injectedConfigSpan: Readonly<InjectedMermaidConfigSpan> | null;
   readonly source: string;
   readonly textMeasurementMode: MermanTextMeasurementMode;
 }
@@ -213,8 +214,9 @@ function freezeConfiguredInput(
   let configurationError: ErrorProjection | null = null;
   let bindingOptionsJson: string | null = null;
   let initializationConfig: Readonly<MermaidConfigObject> | undefined;
+  let injectedConfigSpan: Readonly<InjectedMermaidConfigSpan> | null = null;
   try {
-    ({ configuredSource, initializationConfig } = buildMermaidOperationInput(
+    ({ configuredSource, initializationConfig, injectedConfigSpan } = buildMermaidOperationInput(
       source, theme, configJson, { diagramFont: options.diagramFont },
     ));
   } catch (error) {
@@ -236,6 +238,7 @@ function freezeConfiguredInput(
     bindingOptionsJson,
     configurationError,
     configuredSource,
+    injectedConfigSpan,
     source,
     textMeasurementMode: options.textMeasurementMode,
   });

@@ -845,7 +845,7 @@ mod tests {
                 assert_eq!(diagnostic.message(), "expected pie");
                 assert_eq!(diagnostic.span(), Some(span));
             }
-            let (model, facts, _) =
+            let (model, facts) =
                 parse_pie_json_and_editor_facts(source, &meta, &crate::OperationControl::new())
                     .unwrap()
                     .into_parts();

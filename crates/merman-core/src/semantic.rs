@@ -228,7 +228,7 @@ impl SemanticParser {
                 editor_demand,
                 control,
             )?;
-            let source_config = captured.source_config;
+            let mut source_config = captured.source_config;
             let pre = match captured.outcome {
                 PreprocessCaptureResult::Ready(pre) => *pre,
                 PreprocessCaptureResult::Failed(error) => {
@@ -255,7 +255,12 @@ impl SemanticParser {
                         Err(error) => return Ok(Err(error)),
                     },
                 };
-                self.prepare_semantic_source_controlled(diagram_type, pre, control)
+                self.prepare_semantic_source_controlled(
+                    diagram_type,
+                    pre,
+                    Some(&mut source_config),
+                    control,
+                )
             }));
             let (metadata, source) = match prepared {
                 Ok(ready) => match ready? {
@@ -501,11 +506,16 @@ impl SemanticParser {
         options: crate::ParseOptions,
         control: &OperationControl,
     ) -> OperationControlResult<Result<ParsedSemanticDiagram>> {
-        let (mut metadata, source) =
-            match self.prepare_semantic_source_controlled(diagram_type, pre, control)? {
-                Ok(prepared) => prepared,
-                Err(error) => return Ok(Err(error)),
-            };
+        let (mut metadata, source) = match self.prepare_semantic_source_controlled(
+            diagram_type,
+            pre,
+            #[cfg(feature = "editor-facts")]
+            None,
+            control,
+        )? {
+            Ok(prepared) => prepared,
+            Err(error) => return Ok(Err(error)),
+        };
         control.checkpoint_at(crate::OperationPhase::Semantic)?;
         let parsed = match crate::family::canonical_parser(diagram_type) {
             Some(parser) => {
@@ -548,6 +558,9 @@ impl SemanticParser {
         &self,
         diagram_type: &str,
         pre: crate::PreprocessResult,
+        #[cfg(feature = "editor-facts")] source_config: Option<
+            &mut crate::preprocess::SourceConfigEvidence,
+        >,
         control: &OperationControl,
     ) -> OperationControlResult<Result<(SemanticMetadata, crate::PreprocessedSource)>> {
         control.checkpoint()?;
@@ -561,6 +574,10 @@ impl SemanticParser {
         } else {
             crate::config::source_filtered_overrides(&self.site_config, &pre.config, control)?
         };
+        #[cfg(feature = "editor-facts")]
+        if let Some(evidence) = source_config {
+            evidence.freeze_appearance(diagram_type, &admitted_source);
+        }
         let mut semantic_config = self.site_config.clone();
         if !admitted_source.is_empty_object() {
             semantic_config.deep_merge(admitted_source.as_value());

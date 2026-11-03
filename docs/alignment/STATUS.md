@@ -18,7 +18,7 @@ prose ownership boundary.
 | Root viewport | Every primary-matrix family has covered root-viewport evidence |
 | Semantic edge labels | C4, Flowchart ELK, Architecture, Requirement, State, Class, and ER use fail-closed identity/geometry/presentation admission |
 | Language catalog | All 37 built-in families are available independently of optional render backends |
-| Editor facts | Strict facts use schema `2`, diagnostics use schema `1`, and all 37 families share one Tree-sitter grammar/query for tolerant syntax highlighting |
+| Editor facts | Strict facts use schema `3` with required `known`/`unknown` source appearance evidence, diagnostics use schema `1`, and all 37 families share one Tree-sitter grammar/query for tolerant syntax highlighting |
 | Verification boundary | Capability projections and exact artifact recipes are checked in normal CI; a strict result belongs to the exact revision that ran it |
 
 Admission describes available capability and required evidence. It does not certify that every

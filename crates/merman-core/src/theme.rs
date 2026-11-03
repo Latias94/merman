@@ -1836,6 +1836,7 @@ pub(crate) fn apply_theme_defaults(
                 "themeVariables",
                 Value::Object(variables),
             );
+            config.set_materialized_theme(theme);
             return Ok(());
         }
         let resolution = staged::Resolution::execute_with_owners(
@@ -1848,6 +1849,7 @@ pub(crate) fn apply_theme_defaults(
         // so defer that side effect until every evaluated assignment has succeeded.
         config.retain_normalized_theme_compatibility_variables(&explicit);
         resolution.materialize_into(config);
+        config.set_materialized_theme(theme);
         return Ok(());
     }
 
@@ -1870,6 +1872,7 @@ pub(crate) fn apply_theme_defaults(
             .collect::<Vec<_>>();
         program.propagate_derived_ownership(&explicit_dependency_variables, config);
     }
+    config.set_materialized_theme(theme);
     Ok(())
 }
 

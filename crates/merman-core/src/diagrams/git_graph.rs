@@ -19,7 +19,7 @@ pub(crate) use merman_model::families::git_graph::{
     GitGraphBranch, GitGraphCommit, GitGraphDiagramModel,
 };
 use merman_model::warnings::{DiagramWarningFact, GIT_GRAPH_DUPLICATE_COMMIT_WARNING_RULE_ID};
-#[cfg(feature = "compat-json")]
+#[cfg(all(test, feature = "compat-json"))]
 use serde_json::Value;
 #[cfg(all(test, feature = "compat-json"))]
 use serde_json::json;
@@ -1514,22 +1514,34 @@ fn parse_git_graph_command(
     }))
 }
 
-#[cfg(feature = "compat-json")]
+#[cfg(all(test, feature = "compat-json"))]
 pub(crate) fn parse_git_graph(code: &str, meta: &SourcePresentationMetadata) -> Result<Value> {
-    parse_git_graph_with_warning_facts(code, meta).map(family::WarningSemanticParse::into_model)
+    let control = crate::OperationControl::new();
+    parse_git_graph_compatibility_model_controlled(code, meta, &control)
+        .expect("a private parse control cannot be cancelled")?
+        .into_compatibility_json_controlled(&meta.compat_json_metadata(), &control)
+        .expect("a private projection control cannot be cancelled")
+        .map(|(model, _)| model.into_unmanaged_value())
 }
 
 #[cfg(feature = "compat-json")]
-pub(crate) fn parse_git_graph_with_warning_facts(
+pub(crate) fn parse_git_graph_compatibility_model_controlled(
     code: &str,
     meta: &SourcePresentationMetadata,
-) -> Result<family::WarningSemanticParse> {
-    let model = parse_git_graph_semantic_source(code, meta)?.model;
-    let compatibility = render_model_to_compat_json(&model, meta)?;
-    Ok(family::WarningSemanticParse::new(
-        compatibility,
-        model.warning_facts,
-    ))
+    control: &crate::OperationControl,
+) -> crate::OperationControlResult<Result<family::FamilySemanticModel>> {
+    let construction = construct_git_graph_semantic_source_controlled(
+        code,
+        &meta.diagram_type,
+        meta.effective_config.as_config(),
+        #[cfg(feature = "editor-facts")]
+        EditorFactsDemand::Omit,
+        control,
+    )?;
+    control.checkpoint()?;
+    Ok(construction
+        .map(|source| family::FamilySemanticModel::GitGraph(Box::new(source.model)))
+        .map_err(|failure| *failure.error))
 }
 
 #[cfg(all(feature = "compat-json", feature = "editor-facts"))]
@@ -1539,40 +1551,28 @@ pub(crate) fn parse_git_graph_json_and_editor_facts(
     control: &crate::OperationControl,
 ) -> crate::OperationControlResult<family::CombinedSemanticParse> {
     control.checkpoint()?;
-    let parsed = family::CombinedSemanticParse::from_construction_with_warning_facts(
-        construct_git_graph_semantic_source_controlled(
-            code,
-            &meta.diagram_type,
-            meta.effective_config.as_config(),
-            EditorFactsDemand::Capture,
-            control,
-        )?,
-        |source| {
-            let compatibility = render_model_to_compat_json(&source.model, meta);
-            (
-                compatibility,
-                source.editor_facts.unwrap_or_default(),
-                source.model.warning_facts,
-            )
-        },
-        |failure| {
-            (
-                *failure.error,
-                failure.editor_facts.map(|facts| *facts).unwrap_or_default(),
-            )
-        },
-    );
+    let construction = construct_git_graph_semantic_source_controlled(
+        code,
+        &meta.diagram_type,
+        meta.effective_config.as_config(),
+        EditorFactsDemand::Capture,
+        control,
+    )?;
+    let (model, editor_facts) = match construction {
+        Ok(source) => (
+            Ok(family::FamilySemanticModel::GitGraph(Box::new(
+                source.model,
+            ))),
+            source.editor_facts.unwrap_or_default(),
+        ),
+        Err(failure) => (
+            Err(*failure.error),
+            failure.editor_facts.map(|facts| *facts).unwrap_or_default(),
+        ),
+    };
+    let parsed = family::CombinedSemanticParse::from_parts(model, editor_facts);
     control.checkpoint()?;
     Ok(parsed)
-}
-
-#[cfg(feature = "compat-json")]
-pub(crate) fn render_model_to_compat_json(
-    model: &GitGraphDiagramModel,
-    meta: &SourcePresentationMetadata,
-) -> Result<Value> {
-    merman_model::families::git_graph::compat::project(model, &meta.compat_json_metadata())
-        .map_err(crate::Error::from)
 }
 
 #[cfg(all(test, feature = "presentation"))]
@@ -1697,23 +1697,6 @@ pub(crate) fn parse_git_graph_semantic_model_controlled(
             editor_facts: failure.editor_facts.map(|facts| *facts),
         },
     })
-}
-
-#[cfg(feature = "compat-json")]
-fn parse_git_graph_semantic_source(
-    code: &str,
-    meta: &SourcePresentationMetadata,
-) -> Result<GitGraphSemanticSource> {
-    construct_git_graph_semantic_source_controlled(
-        code,
-        &meta.diagram_type,
-        meta.effective_config.as_config(),
-        #[cfg(feature = "editor-facts")]
-        EditorFactsDemand::Omit,
-        &crate::OperationControl::new(),
-    )
-    .expect("a private parse control cannot be cancelled")
-    .map_err(|failure| *failure.error)
 }
 
 fn construct_git_graph_semantic_source_controlled(
@@ -3209,8 +3192,9 @@ mod semantic_tests {
             ),
             title: None,
         };
-        let (json, facts) = crate::family::test_support::into_result(
+        let (json, facts) = crate::family::test_support::into_projected_result(
             parse_git_graph_json_and_editor_facts(source, &meta, &crate::OperationControl::new()),
+            &meta,
         )
         .unwrap();
         assert_eq!(json["commits"].as_array().unwrap().len(), 3);

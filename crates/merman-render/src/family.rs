@@ -827,6 +827,7 @@ pub struct FamilyRenderReport {
     root_theme: RootThemeReport,
     style: FamilyStyleReport,
     session: RenderSessionReport,
+    materialized_theme: Option<merman_model::config::MermaidThemeId>,
 }
 
 impl FamilyRenderReport {
@@ -834,6 +835,7 @@ impl FamilyRenderReport {
         root_theme: RootThemeReport,
         style: FamilyStyleReport,
         session: RenderSession,
+        materialized_theme: Option<merman_model::config::MermaidThemeId>,
     ) -> Self {
         let theme_diagnostics = theme_diagnostics::project(&root_theme, &style, session.theme());
         Self {
@@ -841,12 +843,17 @@ impl FamilyRenderReport {
             root_theme,
             style,
             session: session.report(),
+            materialized_theme,
         }
     }
 
     /// User explanations captured after rendering and postprocessing, separate from admission.
     pub fn theme_diagnostics(&self) -> &[ThemeDiagnostic] {
         &self.theme_diagnostics
+    }
+
+    pub const fn materialized_theme(&self) -> Option<merman_model::config::MermaidThemeId> {
+        self.materialized_theme
     }
 
     pub(crate) fn into_session_and_theme_diagnostics(
@@ -3677,6 +3684,7 @@ impl RenderedFamilySvg {
             root_theme,
             style_report,
             session: self.session,
+            materialized_theme: self.metadata.effective_config.materialized_theme(),
         })
     }
 
@@ -3730,6 +3738,7 @@ impl RenderedFamilySvg {
             root_theme: self.root_theme,
             style_report: self.style_report,
             session: self.session,
+            materialized_theme: self.metadata.effective_config.materialized_theme(),
         })
     }
 
@@ -3752,14 +3761,19 @@ impl RenderedFamilySvg {
             root_theme,
             style_report,
             session,
-            metadata: _,
+            metadata,
             required_capabilities: _,
             layout_adaptation,
         } = self;
         FamilyRenderCompletion {
             layout_adaptation,
             output: svg,
-            report: FamilyRenderReport::freeze(root_theme, style_report, session),
+            report: FamilyRenderReport::freeze(
+                root_theme,
+                style_report,
+                session,
+                metadata.effective_config.materialized_theme(),
+            ),
         }
     }
 }
@@ -3771,6 +3785,7 @@ pub struct RenderedResvgCompatibleSvg {
     root_theme: RootThemeReport,
     style_report: FamilyStyleReport,
     session: RenderSession,
+    materialized_theme: Option<merman_model::config::MermaidThemeId>,
 }
 
 impl RenderedResvgCompatibleSvg {
@@ -3795,7 +3810,12 @@ impl RenderedResvgCompatibleSvg {
         FamilyRenderCompletion {
             layout_adaptation: self.layout_adaptation,
             output: self.svg,
-            report: FamilyRenderReport::freeze(self.root_theme, self.style_report, self.session),
+            report: FamilyRenderReport::freeze(
+                self.root_theme,
+                self.style_report,
+                self.session,
+                self.materialized_theme,
+            ),
         }
     }
 
@@ -3806,6 +3826,7 @@ impl RenderedResvgCompatibleSvg {
             root_theme: self.root_theme,
             style_report: self.style_report,
             session: self.session,
+            materialized_theme: self.materialized_theme,
         }
     }
 }
@@ -3817,6 +3838,7 @@ pub struct RenderedStandaloneSvg {
     root_theme: RootThemeReport,
     style_report: FamilyStyleReport,
     session: RenderSession,
+    materialized_theme: Option<merman_model::config::MermaidThemeId>,
 }
 
 impl RenderedStandaloneSvg {
@@ -3855,7 +3877,12 @@ impl RenderedStandaloneSvg {
         FamilyRenderCompletion {
             layout_adaptation: self.layout_adaptation,
             output: self.artifact,
-            report: FamilyRenderReport::freeze(self.root_theme, self.style_report, self.session),
+            report: FamilyRenderReport::freeze(
+                self.root_theme,
+                self.style_report,
+                self.session,
+                self.materialized_theme,
+            ),
         }
     }
 }

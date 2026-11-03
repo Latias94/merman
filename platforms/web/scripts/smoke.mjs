@@ -572,7 +572,8 @@ if (hasCapability("svg")) {
   assert.equal(outcome.metadata.media_type, "image/svg+xml");
   assert.equal(outcome.metadata.byte_length, Buffer.byteLength(outcome.svg, "utf8"));
   assert.ok(outcome.metadata.byte_length > outcome.svg.length, "UTF-8 bytes differ for Chinese labels");
-  assert.equal(outcome.metadata.theme_execution_evidence.version, 1);
+  assert.equal(outcome.metadata.theme_execution_evidence.version, 2);
+  assert.equal(outcome.metadata.theme_execution_evidence.materialized_theme, "redux-color");
   assert.equal(outcome.metadata.theme_execution_evidence.family_id, "class");
   assert.ok(["residual", "incomplete"].includes(outcome.metadata.theme_execution_evidence.theme_status));
   assert.notEqual(outcome.metadata.theme_execution_evidence.target_status, "portable");
@@ -888,8 +889,14 @@ if (hasCapability("analysis")) {
   );
 
   const flowchartFacts = api.analysisFacts("flowchart TD\nA-->B\n", deterministicTime);
-  assert.equal(flowchartFacts.version, 2);
+  assert.equal(flowchartFacts.version, 3);
   assert.equal(flowchartFacts.valid, true);
+  assert.deepEqual(flowchartFacts.diagrams[0].appearance, {
+    state: "known",
+    theme: null,
+    font: null,
+    look: null,
+  });
   assert.equal(flowchartFacts.diagrams[0].syntax.fact_source, "parser_complete");
   assert.equal(flowchartFacts.diagrams[0].syntax.source_mapped_spans, true);
   assert.equal(flowchartFacts.diagrams[0].syntax.effective_layout, "elk");
@@ -906,6 +913,7 @@ if (hasCapability("analysis")) {
     diagramType: "flowchart",
     syntaxId: "flowchart-v2",
     effectiveLayoutId: "elk",
+    appearance: { state: "known", theme: null, font: null, look: null },
   });
   assert.deepEqual(
     api.detectDiagramFacts("classDiagram\nclass A\n", {
@@ -918,6 +926,7 @@ if (hasCapability("analysis")) {
       diagramType: "class",
       syntaxId: "classDiagram",
       effectiveLayoutId: "elk",
+      appearance: { state: "known", theme: null, font: null, look: null },
     }
   );
   assert.equal(
@@ -947,6 +956,7 @@ if (hasCapability("analysis")) {
       diagramType: "flowchart",
       syntaxId: "flowchart-v2",
       effectiveLayoutId: "elk",
+      appearance: { state: "known", theme: null, font: null, look: null },
     }
   );
   assert.deepEqual(api.detectDiagramFacts("flowchart-elk TD\nA-->B\n", deterministicTime), {
@@ -955,6 +965,7 @@ if (hasCapability("analysis")) {
     diagramType: "flowchart",
     syntaxId: "flowchart-elk",
     effectiveLayoutId: "elk",
+    appearance: { state: "known", theme: null, font: null, look: null },
   });
 
   const mappedSequenceFacts = api.analysisFacts(

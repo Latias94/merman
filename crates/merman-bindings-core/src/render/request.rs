@@ -1043,7 +1043,7 @@ mod tests {
             .metadata()
             .theme_execution_evidence()
             .unwrap()
-            .as_v1()
+            .as_v2()
             .unwrap();
         let diagnostics = evidence.diagnostics().unwrap();
         let rules = diagnostics

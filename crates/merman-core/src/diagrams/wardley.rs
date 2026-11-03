@@ -28,15 +28,6 @@ use serde_json::Value;
 
 const HEADER: &str = "wardley-beta";
 
-pub(crate) fn sanitize_common_db_fields(
-    model: &mut WardleyDiagramModel,
-    config: &crate::MermaidConfig,
-) {
-    crate::common_db::sanitize_optional_title(&mut model.title, config);
-    crate::common_db::sanitize_optional_acc_title(&mut model.acc_title, config);
-    crate::common_db::sanitize_optional_acc_descr(&mut model.acc_descr, config);
-}
-
 #[cfg(feature = "compat-json")]
 pub(crate) fn parse_wardley(code: &str, meta: &SourcePresentationMetadata) -> Result<Value> {
     construct_wardley_semantic_source(code, meta)
@@ -178,9 +169,9 @@ struct WardleySemanticSource {
 
 impl WardleySemanticSource {
     #[cfg(all(test, feature = "presentation"))]
-    fn into_render_model(mut self, meta: &SourcePresentationMetadata) -> WardleyDiagramModel {
-        sanitize_common_db_fields(&mut self.model, meta.effective_config.as_config());
-        self.model
+    fn into_render_model(self, meta: &SourcePresentationMetadata) -> WardleyDiagramModel {
+        self.into_render_model_controlled(meta, &OperationControl::new())
+            .expect("a private parse control cannot be cancelled")
     }
 
     fn into_model_controlled(
@@ -189,7 +180,9 @@ impl WardleySemanticSource {
         control: &OperationControl,
     ) -> OperationControlResult<WardleyDiagramModel> {
         control.checkpoint()?;
-        sanitize_common_db_fields(&mut self.model, config);
+        crate::common_db::sanitize_optional_title(&mut self.model.title, config);
+        crate::common_db::sanitize_optional_acc_title(&mut self.model.acc_title, config);
+        crate::common_db::sanitize_optional_acc_descr(&mut self.model.acc_descr, config);
         control.checkpoint()?;
         Ok(self.model)
     }
@@ -223,16 +216,12 @@ impl WardleySemanticSource {
     #[cfg(feature = "compat-json")]
     #[cfg(feature = "editor-facts")]
     fn into_combined_parts_controlled(
-        self,
+        mut self,
         meta: &SourcePresentationMetadata,
         control: &OperationControl,
     ) -> OperationControlResult<(Result<Value>, EditorSemanticFacts)> {
-        let Self {
-            mut model,
-            editor_facts,
-        } = self;
-        control.checkpoint()?;
-        sanitize_common_db_fields(&mut model, meta.effective_config.as_config());
+        let editor_facts = std::mem::take(&mut self.editor_facts);
+        let model = self.into_render_model_controlled(meta, control)?;
         let json = render_model_to_compat_json_controlled(&model, meta, control)?;
         control.checkpoint()?;
         Ok((json, editor_facts))
@@ -3300,6 +3289,44 @@ mod semantic_tests {
                 "securityLevel": "strict"
             })),
             title: None,
+        }
+    }
+
+    #[test]
+    fn semantic_sanitization_preserves_domain_payloads_and_accessibility_normalization() {
+        let source = concat!(
+            "wardley-beta\n",
+            "title <script>secret</script><b>Header &amp; &#x3C;</b>\n",
+            "accTitle: <script>secret</script>   Accessible\n",
+            "accDescr {First\n    <b>Second &amp; &#x3C;</b>}\n",
+            "component \"<script>raw</script>&amp;\" [0.5, 0.25]\n",
+            "note \"<b>raw &amp;</b>\" [0.4, 0.3]\n",
+        );
+        for security_level in ["strict", "loose"] {
+            let mut metadata = metadata();
+            metadata.semantic_config = crate::MermaidConfig::from_value(serde_json::json!({
+                "securityLevel": security_level,
+                "htmlLabels": true
+            }));
+            let model = parse_wardley_semantic_model_controlled(
+                source,
+                &metadata,
+                #[cfg(feature = "editor-facts")]
+                EditorFactsDemand::Omit,
+                &OperationControl::new(),
+            )
+            .unwrap()
+            .model
+            .unwrap();
+            assert_eq!(model.title.as_deref(), Some("<b>Header &amp; &lt;</b>"));
+            assert_eq!(model.acc_title.as_deref(), Some("Accessible"));
+            assert_eq!(
+                model.acc_descr.as_deref(),
+                Some("First\n<b>Second &amp; &lt;</b>")
+            );
+            assert_eq!(model.nodes[0].id, "<script>raw</script>&amp;");
+            assert_eq!(model.nodes[0].label, "<script>raw</script>&amp;");
+            assert_eq!(model.notes[0].text, "<b>raw &amp;</b>");
         }
     }
 

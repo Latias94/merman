@@ -10,6 +10,326 @@ use parse_equivalence::{
     assert_known_type_parse_paths, assert_pair, assert_parse_paths, deterministic_engine,
 };
 
+#[cfg(any(
+    feature = "diagram-railroad",
+    feature = "diagram-cynefin",
+    feature = "diagram-wardley"
+))]
+#[test]
+fn family_sanitization_has_independent_single_pass_results_across_projections() {
+    use merman_core::SemanticParser;
+    use merman_model::config::MermaidConfig;
+    use merman_model::operation::OperationControl;
+    use merman_model::semantic::SemanticDiagramModel;
+    use serde_json::{Value, json};
+
+    let families = [
+        #[cfg(feature = "diagram-railroad")]
+        ("railroad", "railroad-beta"),
+        #[cfg(feature = "diagram-railroad")]
+        ("railroadEbnf", "railroad-ebnf-beta"),
+        #[cfg(feature = "diagram-railroad")]
+        ("railroadAbnf", "railroad-abnf-beta"),
+        #[cfg(feature = "diagram-railroad")]
+        ("railroadPeg", "railroad-peg-beta"),
+        #[cfg(feature = "diagram-cynefin")]
+        ("cynefin", "cynefin-beta"),
+        #[cfg(feature = "diagram-wardley")]
+        ("wardley", "wardley-beta"),
+    ];
+    let cases = [
+        (
+            "<script>secret</script><b>Safe &amp; &lt;</b>",
+            "<b>Safe &amp; &lt;</b>",
+            "<b>Safe &amp; &lt;</b>",
+            json!({}),
+        ),
+        (
+            "<a href=javascript&colon;alert(1) onclick=alert(1)>A &amp; B</a>",
+            "<a>A &amp; B</a>",
+            "<a>A &amp; B</a>",
+            json!({}),
+        ),
+        (
+            "<b><i>one</b>two</i>",
+            "<b><i>one</i></b><i>two</i>",
+            "<b><i>one</i></b><i>two</i>",
+            json!({}),
+        ),
+        (
+            "Text &amp; &amp;lt; &lt; &bogus;",
+            "Text &amp; &amp;lt; &lt; &bogus;",
+            "Text &amp; &amp;lt; &lt; &amp;bogus;",
+            json!({}),
+        ),
+        (
+            "<p><table><tr><td>value &amp; &lt;</td></tr></table>tail</p>",
+            "<p><tbody><tr><td>value &amp; &lt;</td></tr></tbody>tail</p>",
+            "<p><tbody><tr><td>value &amp; &lt;</td></tr></tbody>tail</p>",
+            json!({"dompurifyConfig": {"FORBID_TAGS": ["table"]}}),
+        ),
+    ];
+    for security_level in ["strict", "loose"] {
+        for (payload, expected, expected_acc_title, overrides) in &cases {
+            let mut config = overrides.clone();
+            config["securityLevel"] = json!(security_level);
+            config["htmlLabels"] = json!(true);
+            let engine = deterministic_engine().with_site_config(
+                merman_core::presentation::SourcePresentationConfig::from_value(config.clone()),
+            );
+            let parser = SemanticParser::new().with_site_config(MermaidConfig::from_value(config));
+            let context = parser.begin_operation().unwrap();
+            for (diagram_type, header) in families {
+                let body = match diagram_type {
+                    "railroad" => format!(
+                        "entry = sequence(optional(terminal(\"{payload}\")), choice(nonterminal(\"{payload}\"), zeroOrMore(special(\"{payload}\")))) ;\r\n"
+                    ),
+                    "railroadEbnf" | "railroadAbnf" => {
+                        format!("entry = [ \"{payload}\" ] ;\r\n")
+                    }
+                    "railroadPeg" => format!("entry <- \"{payload}\" ;\r\n"),
+                    "cynefin" => {
+                        format!("complex\r\n\"{payload}\"\r\ncomplex --> clear : \"{payload}\"\r\n")
+                    }
+                    "wardley" => format!(
+                        "component \"{payload}\" [0.5, 0.25]\r\nnote \"{payload}\" [0.4, 0.3]\r\n"
+                    ),
+                    _ => unreachable!(),
+                };
+                let source = format!(
+                    "\u{feff}---\r\ntitle: '<i>Front &amp; &lt;</i>'\r\n---\r\n%% removed comment\r\n{header}\r\ntitle {payload}\r\naccTitle: <script>secret</script>   {payload}\r\naccDescr {{First\r\n    {payload}\r\n}}\r\n{body}"
+                );
+                let assert_model = |model: &Value| {
+                    assert_eq!(model["title"], *expected, "{security_level}: {source}");
+                    assert_eq!(
+                        model["accTitle"], *expected_acc_title,
+                        "{security_level}: {source}"
+                    );
+                    assert_eq!(
+                        model["accDescr"],
+                        format!("First\n{expected}"),
+                        "{security_level}: {source}"
+                    );
+                    match diagram_type {
+                        "railroad" => assert_eq!(
+                            model["rules"],
+                            json!([{"name": "entry", "definition": {
+                                "type": "sequence", "elements": [
+                                    {"type": "optional", "element": {"type": "terminal", "value": expected}},
+                                    {"type": "choice", "alternatives": [
+                                        {"type": "nonterminal", "name": expected},
+                                        {"type": "repetition", "min": 0, "max": null,
+                                         "element": {"type": "special", "text": expected}}
+                                    ]}
+                                ]
+                            }}]),
+                            "{security_level}: {source}"
+                        ),
+                        "railroadEbnf" | "railroadAbnf" => assert_eq!(
+                            model["rules"],
+                            json!([{"name": "entry", "definition": {
+                                "type": "optional", "element": {"type": "terminal", "value": expected}
+                            }}]),
+                            "{security_level}: {source}"
+                        ),
+                        "railroadPeg" => assert_eq!(
+                            model["rules"],
+                            json!([{"name": "entry", "definition": {"type": "terminal", "value": expected}}]),
+                            "{security_level}: {source}"
+                        ),
+                        "cynefin" => {
+                            assert_eq!(model["domains"][0]["items"][0]["label"], *payload);
+                            assert_eq!(model["transitions"][0]["label"], *payload);
+                        }
+                        "wardley" => {
+                            assert_eq!(model["nodes"][0]["id"], *payload);
+                            assert_eq!(model["nodes"][0]["label"], *payload);
+                            assert_eq!(model["notes"][0]["text"], *payload);
+                        }
+                        _ => unreachable!(),
+                    }
+                };
+                let assert_semantic = |model: &SemanticDiagramModel| {
+                    let model = match model {
+                        #[cfg(feature = "diagram-railroad")]
+                        SemanticDiagramModel::Railroad(model) => serde_json::to_value(model),
+                        #[cfg(feature = "diagram-cynefin")]
+                        SemanticDiagramModel::Cynefin(model) => serde_json::to_value(model),
+                        #[cfg(feature = "diagram-wardley")]
+                        SemanticDiagramModel::Wardley(model) => serde_json::to_value(model),
+                        _ => panic!("expected {diagram_type} model"),
+                    }
+                    .unwrap();
+                    assert_model(&model);
+                };
+                for options in [ParseOptions::strict(), ParseOptions::lenient()] {
+                    let parsed = engine
+                        .parse_diagram_sync(&source, options)
+                        .unwrap()
+                        .unwrap();
+                    assert_eq!(
+                        parsed.meta.title.as_deref(),
+                        Some("<i>Front &amp; &lt;</i>")
+                    );
+                    assert_model(&parsed.model);
+                    let typed = engine
+                        .parse_diagram_for_render_model_sync(&source, options)
+                        .unwrap()
+                        .unwrap();
+                    assert_model(&typed.compatibility_json().unwrap());
+                    let semantic = parser
+                        .parse_diagram_with_options_controlled_in_context_sync(
+                            &source,
+                            options,
+                            &OperationControl::new(),
+                            &context,
+                        )
+                        .unwrap()
+                        .unwrap()
+                        .unwrap();
+                    assert_semantic(&semantic.model);
+                }
+                #[cfg(feature = "editor-facts")]
+                {
+                    let snapshot = engine
+                        .parse_diagram_snapshot_sync(&source)
+                        .unwrap()
+                        .unwrap();
+                    let merman_core::DiagramParseOutcome::Parsed { model, .. } = snapshot.outcome()
+                    else {
+                        panic!("expected {diagram_type} editor model");
+                    };
+                    assert_model(model);
+                    let merman_core::ParsedEditorFacts::Available(facts) = snapshot.editor_facts()
+                    else {
+                        panic!("expected {diagram_type} editor facts");
+                    };
+                    let payload_symbol = facts
+                        .symbols
+                        .iter()
+                        .find(|symbol| {
+                            symbol.name == *payload
+                                && &source[symbol.selection.start..symbol.selection.end] == *payload
+                        })
+                        .expect("editor payload and selection retain authored HTML");
+                    assert_eq!(payload_symbol.name, *payload);
+                    let merman_core::SemanticSnapshotCapture::Snapshot(snapshot) =
+                        parser.capture_diagram_snapshot_sync(&source)
+                    else {
+                        panic!("expected {diagram_type} semantic snapshot");
+                    };
+                    let merman_core::SemanticParseOutcome::Parsed(model) = snapshot.outcome()
+                    else {
+                        panic!("expected {diagram_type} semantic model");
+                    };
+                    assert_semantic(model);
+                }
+                assert_parse_paths(&engine, &source);
+                assert_known_type_parse_paths(&engine, diagram_type, &source);
+            }
+        }
+    }
+}
+
+#[cfg(any(
+    feature = "diagram-railroad",
+    feature = "diagram-cynefin",
+    feature = "diagram-wardley"
+))]
+#[test]
+fn custom_overlays_with_family_names_keep_json_sanitization() {
+    use merman_core::SourcePresentationMetadata;
+    use merman_model::operation::{OperationControl, OperationControlResult};
+    use merman_model::presentation::CustomJsonRenderModel;
+    use serde_json::{Value, json};
+
+    fn custom_json(
+        _code: &str,
+        meta: &SourcePresentationMetadata,
+        control: &OperationControl,
+    ) -> OperationControlResult<merman_core::Result<Value>> {
+        control.checkpoint()?;
+        Ok(Ok(json!({
+            "type": meta.diagram_type,
+            "title": "<script>secret</script><b>Custom &amp; &lt;</b>",
+            "accTitle": "<script>secret</script>   Accessible",
+            "accDescr": "First\n   <b>Second</b>"
+        })))
+    }
+
+    fn custom_render(
+        code: &str,
+        meta: &SourcePresentationMetadata,
+        control: &OperationControl,
+    ) -> OperationControlResult<merman_core::Result<CustomJsonRenderModel>> {
+        Ok(custom_json(code, meta, control)?
+            .map(|model| CustomJsonRenderModel::new("custom-family", model)))
+    }
+
+    let assert_model = |model: &Value| {
+        assert_eq!(model["title"], "<b>Custom &amp; &lt;</b>");
+        assert_eq!(model["accTitle"], "Accessible");
+        assert_eq!(model["accDescr"], "First\n<b>Second</b>");
+    };
+    for security_level in ["strict", "loose"] {
+        for diagram_type in [
+            "railroad",
+            "railroadEbnf",
+            "railroadAbnf",
+            "railroadPeg",
+            "cynefin",
+            "wardley",
+        ] {
+            let mut engine = deterministic_engine().with_site_config(
+                merman_core::presentation::SourcePresentationConfig::from_value(json!({
+                    "securityLevel": security_level,
+                    "htmlLabels": true
+                })),
+            );
+            engine
+                .diagram_registry_mut()
+                .insert(diagram_type, custom_json);
+            let parsed = engine
+                .parse_diagram_with_type_sync(diagram_type, "custom input", ParseOptions::strict())
+                .unwrap()
+                .unwrap();
+            assert_model(&parsed.model);
+            #[cfg(feature = "editor-facts")]
+            {
+                let snapshot = engine
+                    .parse_diagram_snapshot_with_type_sync(diagram_type, "custom input")
+                    .unwrap()
+                    .unwrap();
+                assert_model(snapshot.outcome().parsed_model().unwrap());
+                assert!(matches!(
+                    snapshot.editor_facts(),
+                    merman_core::ParsedEditorFacts::Unavailable
+                ));
+            }
+            for explicit_render_overlay in [false, true] {
+                if explicit_render_overlay {
+                    engine
+                        .render_diagram_registry_mut()
+                        .insert(diagram_type, custom_render);
+                }
+                let typed = engine
+                    .parse_diagram_for_render_model_with_type_sync(
+                        diagram_type,
+                        "custom input",
+                        ParseOptions::strict(),
+                    )
+                    .unwrap()
+                    .unwrap();
+                assert!(matches!(
+                    typed.model(),
+                    merman_model::presentation::RenderSemanticModel::CustomJson(_)
+                ));
+                assert_model(&typed.compatibility_json().unwrap());
+            }
+        }
+    }
+}
+
 #[cfg(feature = "diagram-flowchart")]
 #[test]
 #[should_panic(expected = "different parser acceptance")]
@@ -421,6 +741,172 @@ fn authored_configuration_labels_accessibility_links_styles_and_warnings_are_los
         assert_eq!(
             parsed.meta.effective_config.as_value()["flowchart"]["nodeSpacing"],
             73
+        );
+    }
+}
+
+#[cfg(any(
+    feature = "diagram-flowchart",
+    feature = "diagram-git-graph",
+    feature = "diagram-block"
+))]
+#[test]
+fn built_in_warnings_keep_original_coordinates_field_presence_and_order() {
+    use serde_json::{Value, json};
+
+    let engine = deterministic_engine();
+    let cases = [
+        #[cfg(feature = "diagram-flowchart")]
+        (
+            "\u{feff}---\r\ntitle: Warn\r\n---\r\n%% removed\r\nflowchart\r\nA --> B\r\n%% middle\r\nstyle Missing fill:red\r\nstyle Other fill:blue\r\n",
+            json!([
+                {
+                    "ruleId": "merman.semantic.flowchart.unknown_style_target",
+                    "message": "Style applied to unknown node \"Missing\". This may indicate a typo. The node will be created automatically.",
+                    "span": {"start": 75, "end": 82}
+                },
+                {
+                    "ruleId": "merman.semantic.flowchart.unknown_style_target",
+                    "message": "Style applied to unknown node \"Other\". This may indicate a typo. The node will be created automatically.",
+                    "span": {"start": 99, "end": 104}
+                },
+                {
+                    "ruleId": "merman.authoring.flowchart.explicit_direction",
+                    "message": "flowchart headers should declare an explicit direction such as `TB`, `TD`, `BT`, `LR`, or `RL`",
+                    "span": {"start": 38, "end": 47},
+                    "fixSpan": {"start": 47, "end": 47}
+                }
+            ]),
+        ),
+        #[cfg(feature = "diagram-git-graph")]
+        (
+            "\u{feff}---\r\ntitle: Warn\r\n---\r\n%% removed\r\ngitGraph\r\ncommit id:\"dup\"\r\n%% middle\r\ncommit id:\"dup\"\r\ncommit id:\"dup\"\r\n",
+            json!([
+                {
+                    "ruleId": "merman.git_graph.duplicate_commit_id",
+                    "message": "Commit ID dup already exists",
+                    "span": {"start": 76, "end": 91}
+                },
+                {
+                    "ruleId": "merman.git_graph.duplicate_commit_id",
+                    "message": "Commit ID dup already exists",
+                    "span": {"start": 93, "end": 108}
+                }
+            ]),
+        ),
+        #[cfg(feature = "diagram-block")]
+        (
+            "\u{feff}---\r\ntitle: Warn\r\n---\r\n%% removed\r\nblock-beta\r\ncolumns 1\r\nA:1\r\n%% middle\r\nB:2\r\nC:3\r\n",
+            json!([
+                {
+                    "ruleId": "merman.block.width_exceeds_columns",
+                    "message": "Block B width 2 exceeds configured column width 1"
+                },
+                {
+                    "ruleId": "merman.block.width_exceeds_columns",
+                    "message": "Block C width 3 exceeds configured column width 1"
+                }
+            ]),
+        ),
+    ];
+    for (source, expected) in cases {
+        let assert_model = |model: &Value| {
+            assert_eq!(model["warningFacts"], expected, "{source}");
+            let messages: Vec<_> = expected
+                .as_array()
+                .unwrap()
+                .iter()
+                .map(|fact| fact["message"].clone())
+                .collect();
+            assert_eq!(model["warnings"], json!(messages), "{source}");
+        };
+        for options in [ParseOptions::strict(), ParseOptions::lenient()] {
+            let parsed = engine.parse_diagram_sync(source, options).unwrap().unwrap();
+            assert_model(&parsed.model);
+            let typed = engine
+                .parse_diagram_for_render_model_sync(source, options)
+                .unwrap()
+                .unwrap();
+            assert_model(&typed.compatibility_json().unwrap());
+        }
+        #[cfg(feature = "editor-facts")]
+        {
+            let snapshot = engine.parse_diagram_snapshot_sync(source).unwrap().unwrap();
+            let merman_core::DiagramParseOutcome::Parsed {
+                model,
+                warning_facts,
+            } = snapshot.outcome()
+            else {
+                panic!("warning-bearing snapshot must parse: {source}");
+            };
+            assert_model(model);
+            assert_eq!(json!(warning_facts), expected, "{source}");
+        }
+    }
+    for (source, has_empty_field) in [
+        #[cfg(feature = "diagram-flowchart")]
+        ("flowchart TD\nA --> B\n", false),
+        #[cfg(feature = "diagram-git-graph")]
+        ("gitGraph\ncommit id:\"one\"\n", true),
+        #[cfg(feature = "diagram-block")]
+        ("block\ncolumns 1\nA:1\n", true),
+    ] {
+        let parsed = engine
+            .parse_diagram_sync(source, ParseOptions::strict())
+            .unwrap()
+            .unwrap();
+        let expected = has_empty_field.then(|| json!([]));
+        assert_eq!(parsed.model.get("warningFacts"), expected.as_ref());
+        assert_eq!(parsed.model.get("warnings"), expected.as_ref());
+    }
+}
+
+#[cfg(feature = "diagram-agentflow")]
+#[test]
+fn agentflow_omits_warning_json_but_retains_original_diagnostic_positions() {
+    use serde_json::{Value, json};
+
+    let source = "\u{feff}---\r\ntitle: Warn\r\n---\r\n%% removed\r\nagentflow-beta\r\nA@{ shape: cylinder, label: \"Data\" }\r\nA --> B\r\n";
+    let engine = deterministic_engine();
+    let assert_model = |model: &Value| {
+        assert!(model.get("warningFacts").is_none());
+        assert!(model.get("warnings").is_none());
+        assert_eq!(model["diagnostics"].as_array().unwrap().len(), 1);
+        assert_eq!(model["diagnostics"][0]["id"], "SHAPE_REMOVED");
+        assert_eq!(
+            model["diagnostics"][0]["position"],
+            json!({
+                "startLine": 6, "startColumn": 0,
+                "endLine": 6, "endColumn": 35,
+                "startIndex": 0, "endIndex": 0
+            })
+        );
+    };
+    let parsed = engine
+        .parse_diagram_sync(source, ParseOptions::strict())
+        .unwrap()
+        .unwrap();
+    assert_model(&parsed.model);
+    let typed = engine
+        .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
+        .unwrap()
+        .unwrap();
+    assert_model(&typed.compatibility_json().unwrap());
+    #[cfg(feature = "editor-facts")]
+    {
+        let snapshot = engine.parse_diagram_snapshot_sync(source).unwrap().unwrap();
+        let merman_core::DiagramParseOutcome::Parsed {
+            model,
+            warning_facts,
+        } = snapshot.outcome()
+        else {
+            panic!("Agentflow snapshot must parse");
+        };
+        assert_model(model);
+        assert_eq!(warning_facts.len(), 1);
+        assert_eq!(
+            warning_facts[0].span,
+            Some(merman_model::source::SourceSpan::new(54, 90))
         );
     }
 }

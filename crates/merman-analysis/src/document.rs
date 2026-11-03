@@ -668,6 +668,7 @@ fn capture_source_cancellable(
                         .expect("rich diagram capture must retain syntax facts"),
                     captured.candidates,
                     captured.parse_disposition,
+                    captured.appearance,
                 ))
             }
         }

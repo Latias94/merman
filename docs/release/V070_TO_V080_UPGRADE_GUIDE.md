@@ -143,7 +143,7 @@ measurements, and unmeasured surfaces distinct.
 ## Current development (unreleased)
 
 The current development branch after published `0.9.3` uses compiled themes, Options JSON
-schema 3, and Web transport API 8. Replace `presentation.theme` with top-level `theme` and
+schema 3, and Web transport API 9. Replace `presentation.theme` with top-level `theme` and
 `presentationCatalog()` with `themeCatalog()` only when migrating to matching current-source
 wrappers, package facades, generated glue, and native/WASM artifacts. See the
 [current theme guide](../rendering/custom-diagram-themes.md),

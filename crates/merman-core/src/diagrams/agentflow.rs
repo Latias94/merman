@@ -70,17 +70,22 @@ struct Context {
 }
 
 /// Parse the compatibility JSON path used by the public Mermaid facade.
-#[cfg(feature = "compat-json")]
+#[cfg(all(test, feature = "compat-json"))]
 pub(crate) fn parse_agentflow(code: &str, meta: &SourcePresentationMetadata) -> Result<Value> {
-    parse_agentflow_with_warning_facts(code, meta).map(family::WarningSemanticParse::into_model)
+    let control = OperationControl::new();
+    parse_agentflow_compatibility_model_controlled(code, meta, &control)
+        .expect("a private parse control cannot be cancelled")?
+        .into_compatibility_json_controlled(&meta.compat_json_metadata(), &control)
+        .expect("a private projection control cannot be cancelled")
+        .map(|(model, _)| model.into_unmanaged_value())
 }
 
 #[cfg(feature = "compat-json")]
-pub(crate) fn parse_agentflow_with_warning_facts(
+pub(crate) fn parse_agentflow_compatibility_model_controlled(
     code: &str,
     meta: &SourcePresentationMetadata,
-) -> Result<family::WarningSemanticParse> {
-    let control = OperationControl::new();
+    control: &OperationControl,
+) -> OperationControlResult<Result<family::FamilySemanticModel>> {
     let construction = construct_source(
         code,
         &meta.diagram_type,
@@ -89,18 +94,12 @@ pub(crate) fn parse_agentflow_with_warning_facts(
         #[cfg(feature = "editor-facts")]
         EditorFactsDemand::Omit,
         false,
-        &control,
-    )
-    .expect("a private operation control cannot be cancelled")
-    .map_err(family::CombinedSemanticFailure::into_error)?;
-    Ok(family::WarningSemanticParse::new(
-        merman_model::families::agentflow::compat::project_semantic(
-            &construction.model,
-            &meta.compat_json_metadata(),
-        )
-        .map_err(crate::Error::from)?,
-        construction.model.warning_facts,
-    ))
+        control,
+    )?;
+    control.checkpoint()?;
+    Ok(construction
+        .map(|construction| family::FamilySemanticModel::Agentflow(Box::new(construction.model)))
+        .map_err(family::CombinedSemanticFailure::into_error))
 }
 
 pub(crate) fn parse_agentflow_semantic_model_controlled(
@@ -189,25 +188,24 @@ pub(crate) fn parse_agentflow_json_and_editor_facts(
         false,
         control,
     )?;
-    Ok(
-        family::CombinedSemanticParse::from_construction_with_warning_facts(
-            construction,
-            |construction| {
-                (
-                    merman_model::families::agentflow::compat::project_semantic(
-                        &construction.model,
-                        &meta.compat_json_metadata(),
-                    )
-                    .map_err(crate::Error::from),
-                    construction
-                        .editor_facts
-                        .expect("Agentflow combined parse requests editor facts"),
-                    construction.model.warning_facts,
-                )
-            },
-            family::CombinedSemanticFailure::into_parts,
+    let (model, editor_facts) = match construction {
+        Ok(construction) => (
+            Ok(family::FamilySemanticModel::Agentflow(Box::new(
+                construction.model,
+            ))),
+            construction
+                .editor_facts
+                .expect("Agentflow combined parse requests editor facts"),
         ),
-    )
+        Err(failure) => {
+            let (error, editor_facts) = failure.into_parts();
+            (Err(error), editor_facts)
+        }
+    };
+    Ok(family::CombinedSemanticParse::from_parts(
+        model,
+        editor_facts,
+    ))
 }
 
 #[cfg(all(test, feature = "compat-json"))]
@@ -1292,36 +1290,6 @@ fn offset_diagnostic_position(
     }
     position.start_line += line_offset;
     position.end_line += line_offset;
-}
-
-#[cfg(feature = "compat-json")]
-pub(crate) fn offset_compatibility_diagnostic_positions(
-    model: &mut Value,
-    line_offset: usize,
-    column_offset: usize,
-) {
-    if (line_offset == 0 && column_offset == 0) || model["type"] != "agentflow" {
-        return;
-    }
-    let Some(diagnostics) = model.get_mut("diagnostics").and_then(Value::as_array_mut) else {
-        return;
-    };
-    for diagnostic in diagnostics {
-        let Some(position) = diagnostic.get_mut("position") else {
-            continue;
-        };
-        for (line_key, column_key) in [("startLine", "startColumn"), ("endLine", "endColumn")] {
-            let Some(line) = position[line_key].as_u64() else {
-                continue;
-            };
-            if line == 1
-                && let Some(column) = position[column_key].as_u64()
-            {
-                position[column_key] = Value::from(column + column_offset as u64);
-            }
-            position[line_key] = Value::from(line + line_offset as u64);
-        }
-    }
 }
 
 fn vertex_kind(shape: Option<&str>) -> AgentflowVertexKind {
@@ -2424,8 +2392,9 @@ mod semantic_tests {
         AGENTFLOW_SYNTAX_CONSTRUCTION_COUNT.set(0);
         let combined =
             parse_agentflow_json_and_editor_facts(SOURCE, &meta, &OperationControl::new()).unwrap();
-        let (combined_model, editor_facts, _) = combined.into_parts();
-        assert_eq!(combined_model.unwrap().as_value(), &json);
+        let (combined_model, editor_facts) =
+            crate::family::test_support::into_projected_result(Ok(combined), &meta).unwrap();
+        assert_eq!(combined_model, json);
         assert!(editor_facts.symbols.iter().any(|symbol| symbol.name == "A"));
         #[cfg(feature = "editor-facts")]
         assert_eq!(crate::editor::test_work::read().collections, 1);

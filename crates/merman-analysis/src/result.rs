@@ -7,6 +7,7 @@ use crate::{
     FenceDelimiterSpans, FenceMarker, FenceTextIndex, FenceTextIndexSource, SharedTextSlice,
     SourceDescriptor, SourceMap, Summary,
 };
+use merman_core::preprocess::SourceAppearanceSummary;
 use merman_core::{
     EditorExpectedSyntax, EditorExpectedSyntaxKind, EditorRenamePolicy, EditorSemanticKind,
     EditorSemanticRole, EditorSemanticSymbol,
@@ -347,6 +348,7 @@ pub struct AnalyzedDiagram {
     pub(crate) syntax: AnalysisSyntaxFacts,
     pub(crate) diagnostic_candidates: Vec<DiagnosticCandidate>,
     pub(crate) parse_disposition: DiagramParseDisposition,
+    pub(crate) appearance: SourceAppearanceSummary,
 }
 
 impl AnalyzedDiagram {
@@ -395,6 +397,7 @@ impl AnalyzedDiagram {
         syntax: AnalysisSyntaxFacts,
         diagnostic_candidates: Vec<DiagnosticCandidate>,
         parse_disposition: DiagramParseDisposition,
+        appearance: SourceAppearanceSummary,
     ) -> Self {
         Self {
             source_id: diagram.id.clone(),
@@ -411,12 +414,17 @@ impl AnalyzedDiagram {
             syntax,
             diagnostic_candidates,
             parse_disposition,
+            appearance,
         }
     }
 
     /// Returns the parser-owned outcome retained by this analysis generation.
     pub fn parse_disposition(&self) -> DiagramParseDisposition {
         self.parse_disposition
+    }
+
+    pub fn appearance(&self) -> &SourceAppearanceSummary {
+        &self.appearance
     }
 
     fn estimated_owned_heap_bytes_excluding_source(
@@ -427,6 +435,7 @@ impl AnalyzedDiagram {
         weight.add_string(&self.source_id);
         weight.add(self.source.estimated_owned_heap_bytes());
         weight.add(self.syntax.estimated_owned_heap_bytes());
+        weight.add(self.appearance.estimated_owned_heap_bytes());
         weight.add_array::<DiagnosticCandidate>(self.diagnostic_candidates.capacity());
         for candidate in &self.diagnostic_candidates {
             candidate.add_estimated_owned_heap_bytes(diagnostic_weight);
@@ -591,6 +600,7 @@ pub struct AnalysisDiagramFacts {
     #[serde(default)]
     pub parse_disposition: DiagramParseDisposition,
     pub syntax: AnalysisDiagramSyntaxFacts,
+    pub appearance: SourceAppearanceSummary,
 }
 
 impl AnalysisDiagramFacts {
@@ -625,6 +635,7 @@ impl AnalysisDiagramFacts {
                 .map(AnalysisFenceDelimiterFacts::from),
             parse_disposition: diagram.parse_disposition(),
             syntax,
+            appearance: diagram.appearance.clone(),
         })
     }
 }

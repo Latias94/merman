@@ -981,7 +981,9 @@ function mermaidFailure(
 function freezeDetection(
   detection: DiagramDetectionFacts,
 ): DiagramDetectionFacts {
-  return Object.freeze({ ...detection });
+  const snapshot = structuredClone(detection);
+  freezeMetadataValue(snapshot);
+  return snapshot;
 }
 
 function freezeRenderMetadata(metadata: SvgRenderMetadata | null): SvgRenderMetadata | null {

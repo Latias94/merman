@@ -2,7 +2,8 @@
 
 Use Merman's Rust parser, renderers, analysis, and editor APIs in a browser through WebAssembly.
 
-This guide targets the `0.10.0-alpha.1` release candidate. Check the
+The installation examples use published `0.10.0-alpha.1`. Current development source has later
+contracts described below; it does not change those published artifacts. Check the
 [prebuilt product status](../../docs/release/PREBUILT_PRODUCTS.md) and
 [publish order](../../docs/release/PUBLISH_ORDER.md) for verified public availability. See the
 [current changelog](../../CHANGELOG.md) for changes and upgrade actions.
@@ -22,10 +23,14 @@ static-site builds, use [`@mermanjs/node`](../node/packages/node/README.md).
 | Editor intelligence in a Worker | [`@mermanjs/web-editor`](packages/editor/README.md) | Analysis and parser-backed editor sessions |
 | ASCII or Unicode output | [`@mermanjs/web-ascii`](packages/ascii/README.md) | Supported terminal-oriented diagram output |
 
-All public browser packages use one lockstep version, Web transport API `8`, and
+All browser packages built from current development source use one lockstep version, Web transport API `9`, and
 [Options JSON schema `3`](../../docs/bindings/OPTIONS_JSON.md). They target Mermaid `12.2.0`;
 ASCII-capable packages use schema-3 ASCII output. Keep the package facade, generated glue, and
 WASM binary at the same exact version.
+
+Published `0.10.0-alpha.1` retains Web transport API `8`, facts schema `2` and theme execution
+evidence schema `1`. The installation commands below use that published version. Use matching
+source-built packages for the [development contracts](../../docs/release/UNRELEASED_CONTRACT_VERSIONS.md#source-appearance-and-render-evidence-follow-up).
 
 Full/render products include mathematical labels, Cytoscape and ELK layouts, compiled themes,
 prepared-source reuse, and mounted-diagram updates with explicit Kanban width adaptation.
@@ -390,7 +395,7 @@ contract.
 ## Deadlines and cancellation
 
 Use `transportApiVersion()` and `runtimeCatalog()` to inspect the loaded runtime. Initialization
-validates Web transport API `8` and all required exports before making the module available.
+validates Web transport API `9` and all required exports before making the module available.
 
 SVG calls, preparation and each prepared output expose a typed top-level `timeout_ms` option.
 Other transport-dispatched one-shot operations accept this field through their JSON-string options.

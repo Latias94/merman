@@ -2,7 +2,7 @@ import type {
   DiagramDetectionFacts,
   DiagramFamilyCapability,
   SvgRenderMetadata,
-  ThemeExecutionEvidenceV1,
+  ThemeExecutionEvidenceV2,
   ThemePresetCatalogEntry,
   ThemePresetFamilyDesign,
 } from "@mermanjs/web";
@@ -10,6 +10,7 @@ import type { CompletedRenderBatch, RenderCoordinatorState } from "../runtime/re
 import type { FrozenRenderOperation } from "../runtime/merman-operation-input.ts";
 import type { WorkspaceSnapshot } from "./workspace-snapshot.ts";
 import type { ThemeEditSession } from "./theme-edit-session.ts";
+import { readMermaidAppearanceOverrides } from "./mermaid-appearance.ts";
 
 export type ThemeFamilyTreatment = "dedicated" | "base_only" | "unreviewed";
 
@@ -52,6 +53,17 @@ export function currentDiagramDetection(
   return batch && matchesDiagramDetectionInputs(batch.snapshot.operation, workspace) ? batch.detection : null;
 }
 
+export function currentAppearanceOverrides(
+  state: RenderCoordinatorState,
+  workspace: Readonly<WorkspaceSnapshot>,
+) {
+  const batch = state.status === "updating" ? state.previous
+    : state.status === "success" || state.status === "partial" || state.status === "failed" ? state : null;
+  return batch && matchesDiagramDetectionInputs(batch.snapshot.operation, workspace)
+    ? readMermaidAppearanceOverrides(batch.detection.appearance, batch.snapshot.operation.injectedConfigSpan)
+    : null;
+}
+
 export type CurrentThemeRender =
   | { readonly status: "waiting"; readonly reason: "render" | "importing" | "validating" | "invalid"; readonly batch: null }
   | { readonly status: "failed" | "ready"; readonly batch: CompletedRenderBatch };
@@ -85,16 +97,16 @@ function matchesDiagramDetectionInputs(operation: FrozenRenderOperation, workspa
     operation.theme === workspace.diagramTheme && operation.diagramFont === workspace.diagramFont;
 }
 
-export function readThemeExecutionEvidence(metadata: SvgRenderMetadata | null): ThemeExecutionEvidenceV1 | null {
+export function readThemeExecutionEvidence(metadata: SvgRenderMetadata | null): ThemeExecutionEvidenceV2 | null {
   const evidence = metadata?.theme_execution_evidence;
-  if (evidence?.version !== 1 || typeof evidence.family_id !== "string" ||
+  if (evidence?.version !== 2 || typeof evidence.family_id !== "string" ||
     typeof evidence.theme_status !== "string" || typeof evidence.target_status !== "string" ||
     typeof evidence.target_kind !== "string" || typeof evidence.font_source !== "string" ||
     typeof evidence.output_mutated !== "boolean" || !Array.isArray(evidence.target_reason_ids)) return null;
-  return evidence as ThemeExecutionEvidenceV1;
+  return evidence as ThemeExecutionEvidenceV2;
 }
 
-export function themeEvidenceOutcome(evidence: ThemeExecutionEvidenceV1 | null) {
+export function themeEvidenceOutcome(evidence: ThemeExecutionEvidenceV2 | null) {
   switch (evidence?.theme_status) {
     case "verified": return "applied";
     case "residual": return "residual";
@@ -104,7 +116,7 @@ export function themeEvidenceOutcome(evidence: ThemeExecutionEvidenceV1 | null) 
   }
 }
 
-export function themeTargetOutcome(evidence: ThemeExecutionEvidenceV1 | null) {
+export function themeTargetOutcome(evidence: ThemeExecutionEvidenceV2 | null) {
   switch (evidence?.target_status) {
     case "portable": return "checked";
     case "host_dependent": return "host_dependent";

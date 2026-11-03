@@ -18,8 +18,8 @@ mod source_edit_map;
 pub(crate) use source_config::SourceConfigPath;
 #[cfg(feature = "editor-facts")]
 pub use source_config::{
-    FrontmatterSourceEvidence, SourceConfigEvidence, SourceConfigKeyEvidence, SourceConfigOrigin,
-    SourceDirectiveEvidence,
+    FrontmatterSourceEvidence, SourceAppearanceDeclaration, SourceAppearanceSummary,
+    SourceConfigEvidence, SourceConfigKeyEvidence, SourceConfigOrigin, SourceDirectiveEvidence,
 };
 pub use source_edit_map::PreprocessedSource;
 
@@ -33,6 +33,8 @@ use crate::{
     Error, MermaidConfig, OperationControl, OperationControlResult, Result, diagram::CapturedPanic,
 };
 use serde_json::{Map, Value};
+#[cfg(feature = "editor-facts")]
+use source_config::{SourceAppearanceCapture, SourceAppearanceOwner};
 use source_edit_map::{ReplacementMapping, SourceEdit};
 use std::borrow::Cow;
 #[cfg(test)]
@@ -260,6 +262,10 @@ fn preprocess_source_capture_controlled(
     let mut source_config = SourceConfigEvidence::empty();
     #[cfg(feature = "editor-facts")]
     if capture_mode.collects() {
+        source_config.appearance_complete = true;
+    }
+    #[cfg(feature = "editor-facts")]
+    if capture_mode.collects() {
         if let Some(config_insert_span) = source.try_map_span(SourceSpan::new(0, 0)) {
             source_config.set_config_insert_span(config_insert_span);
         } else {
@@ -275,6 +281,20 @@ fn preprocess_source_capture_controlled(
     #[cfg(feature = "editor-facts")]
     if capture_mode.collects() {
         append_frontmatter_evidence(&source, &frontmatter, &mut source_config, control)?;
+        if let (Some(full), Ok(_)) = (frontmatter.full, &frontmatter.result) {
+            if let Some(construct_span) = source.try_map_span(SourceSpan::new(full.start, full.end))
+            {
+                source_config.appearance_capture.record(
+                    &[],
+                    SourceAppearanceOwner {
+                        origin: SourceConfigOrigin::Frontmatter,
+                        construct_span,
+                    },
+                );
+            } else {
+                source_config.appearance_complete = false;
+            }
+        }
     }
     let frontmatter_len = frontmatter.full.map_or(0, |full| full.end);
     let mut first_error = None;
@@ -325,8 +345,13 @@ fn preprocess_source_capture_controlled(
         control,
     )?;
     #[cfg(feature = "editor-facts")]
+    let mut processed_directives = processed_directives;
+    #[cfg(feature = "editor-facts")]
     if capture_mode.collects() {
         append_directive_evidence(&source, &processed_directives, &mut source_config, control)?;
+        source_config.appearance_complete &= processed_directives.appearance_complete
+            && !processed_directives.recovered_incomplete_directive
+            && processed_directives.appearance_capture.map_spans(&source);
     }
     if let Some(panic) = processed_directives.panic {
         control.checkpoint()?;
@@ -376,6 +401,20 @@ fn preprocess_source_capture_controlled(
         control,
     )?;
 
+    #[cfg(feature = "editor-facts")]
+    if capture_mode.collects() {
+        source_config.appearance_capture.merge(
+            &mut frontmatter_config,
+            &processed_directives.config,
+            &processed_directives.appearance_capture,
+        );
+        source_config
+            .appearance_capture
+            .normalize_font_alias(&frontmatter_config);
+    } else {
+        frontmatter_config.deep_merge(processed_directives.config.as_value());
+    }
+    #[cfg(not(feature = "editor-facts"))]
     frontmatter_config.deep_merge(processed_directives.config.as_value());
 
     control.checkpoint()?;
@@ -1669,6 +1708,10 @@ struct ProcessedDirectives {
     evidence: Vec<LocalDirectiveEvidence>,
     error: Option<Error>,
     panic: Option<CapturedPanic>,
+    #[cfg(feature = "editor-facts")]
+    appearance_capture: SourceAppearanceCapture,
+    #[cfg(feature = "editor-facts")]
+    appearance_complete: bool,
 }
 
 #[cfg(feature = "editor-facts")]
@@ -1690,6 +1733,10 @@ fn process_directives_controlled(
     control: &OperationControl,
 ) -> OperationControlResult<ProcessedDirectives> {
     control.checkpoint()?;
+    #[cfg(feature = "editor-facts")]
+    let mut appearance_capture = SourceAppearanceCapture::default();
+    #[cfg(feature = "editor-facts")]
+    let mut appearance_complete = true;
     let blocks = directive_blocks_controlled(input, directive_recovery, control)?;
     if blocks.is_empty() {
         return Ok(ProcessedDirectives {
@@ -1703,6 +1750,10 @@ fn process_directives_controlled(
             evidence: Vec::new(),
             error: None,
             panic: None,
+            #[cfg(feature = "editor-facts")]
+            appearance_capture,
+            #[cfg(feature = "editor-facts")]
+            appearance_complete,
         });
     }
     #[cfg(feature = "editor-facts")]
@@ -1733,7 +1784,19 @@ fn process_directives_controlled(
         )?;
         if let Some(directive) = parsed.directive {
             #[cfg(feature = "editor-facts")]
+            let mut directive = directive;
+            #[cfg(feature = "editor-facts")]
+            if matches!(directive.ty.as_str(), "init" | "initialize") {
+                appearance_complete &= directive.arguments_complete;
+            }
+            #[cfg(feature = "editor-facts")]
             if capture_mode.collects() {
+                directive.appearance_owner = Some(SourceAppearanceOwner {
+                    origin: SourceConfigOrigin::Directive {
+                        directive_index: evidence.len(),
+                    },
+                    construct_span: SourceSpan::new(block.range.start, block.range.end),
+                });
                 let keyword_span = SourceSpan::new(
                     block.raw_start.saturating_add(directive.keyword_span.start),
                     block.raw_start.saturating_add(directive.keyword_span.end),
@@ -1784,6 +1847,10 @@ fn process_directives_controlled(
                 evidence,
                 error: first_error,
                 panic: None,
+                #[cfg(feature = "editor-facts")]
+                appearance_capture,
+                #[cfg(feature = "editor-facts")]
+                appearance_complete: false,
             });
         }
     }
@@ -1814,9 +1881,13 @@ fn process_directives_controlled(
                 &directives,
                 input_without_directives.as_ref(),
                 detector,
+                #[cfg(feature = "editor-facts")]
+                &mut appearance_capture,
                 control,
             )
         };
+        #[cfg(feature = "editor-facts")]
+        let mut detect_init = detect_init;
         #[cfg(feature = "editor-facts")]
         {
             if capture_mode.collects() {
@@ -1834,6 +1905,10 @@ fn process_directives_controlled(
                             evidence,
                             error: first_error,
                             panic: Some(CapturedPanic::from_payload(payload)),
+                            #[cfg(feature = "editor-facts")]
+                            appearance_capture,
+                            #[cfg(feature = "editor-facts")]
+                            appearance_complete: false,
                         });
                     }
                 }
@@ -1872,6 +1947,10 @@ fn process_directives_controlled(
         evidence,
         error: first_error,
         panic: None,
+        #[cfg(feature = "editor-facts")]
+        appearance_capture,
+        #[cfg(feature = "editor-facts")]
+        appearance_complete,
     })
 }
 
@@ -1879,6 +1958,7 @@ fn detect_init_controlled(
     directives: &[Directive],
     input: &str,
     detector: &DiagramTypeDetector<'_>,
+    #[cfg(feature = "editor-facts")] appearance_capture: &mut SourceAppearanceCapture,
     control: &OperationControl,
 ) -> OperationControlResult<Result<MermaidConfig>> {
     control.checkpoint()?;
@@ -1929,6 +2009,13 @@ fn detect_init_controlled(
         sanitize_directive_controlled(&mut args, control)?;
         crate::config::mirror_legacy_font_family_into_theme_variables_value(&mut args);
 
+        #[cfg(feature = "editor-facts")]
+        merged.merge_with_mutation_observer(&args, &mut |path| {
+            if let Some(owner) = d.appearance_owner {
+                appearance_capture.record(path, owner);
+            }
+        });
+        #[cfg(not(feature = "editor-facts"))]
         merged.deep_merge(&args);
     }
 
@@ -1946,6 +2033,10 @@ struct Directive {
     config_keys: Vec<source_config::Json5ConfigKeyEvidence>,
     #[cfg(feature = "editor-facts")]
     rewrite_safe: bool,
+    #[cfg(feature = "editor-facts")]
+    appearance_owner: Option<SourceAppearanceOwner>,
+    #[cfg(feature = "editor-facts")]
+    arguments_complete: bool,
 }
 
 #[derive(Debug)]
@@ -2550,6 +2641,10 @@ fn parse_directive_capture_controlled(
                 config_keys: Vec::new(),
                 #[cfg(feature = "editor-facts")]
                 rewrite_safe: false,
+                #[cfg(feature = "editor-facts")]
+                appearance_owner: None,
+                #[cfg(feature = "editor-facts")]
+                arguments_complete: false,
             }),
             error: None,
         });
@@ -2561,6 +2656,8 @@ fn parse_directive_capture_controlled(
     let mut config_keys = Vec::new();
     #[cfg(feature = "editor-facts")]
     let mut rewrite_safe = true;
+    #[cfg(feature = "editor-facts")]
+    let mut arguments_complete = true;
 
     let args = if raw.as_bytes().get(position) == Some(&b':') {
         checkpoints.scanned(1)?;
@@ -2588,6 +2685,10 @@ fn parse_directive_capture_controlled(
                         config_keys,
                         #[cfg(feature = "editor-facts")]
                         rewrite_safe: false,
+                        #[cfg(feature = "editor-facts")]
+                        appearance_owner: None,
+                        #[cfg(feature = "editor-facts")]
+                        arguments_complete: false,
                     }),
                     error: Some(Error::InvalidDirectiveJson {
                         message: format!(
@@ -2607,6 +2708,10 @@ fn parse_directive_capture_controlled(
                         config_keys,
                         #[cfg(feature = "editor-facts")]
                         rewrite_safe: false,
+                        #[cfg(feature = "editor-facts")]
+                        appearance_owner: None,
+                        #[cfg(feature = "editor-facts")]
+                        arguments_complete: false,
                     }),
                     error: Some(Error::InvalidDirectiveJson {
                         message: format!(
@@ -2622,6 +2727,10 @@ fn parse_directive_capture_controlled(
                 capture_mode,
                 control,
             )?;
+            #[cfg(feature = "editor-facts")]
+            {
+                arguments_complete = captured.value.is_some();
+            }
             #[cfg(feature = "editor-facts")]
             {
                 rewrite_safe &= captured.rewrite_safe;
@@ -2665,6 +2774,10 @@ fn parse_directive_capture_controlled(
             config_keys,
             #[cfg(feature = "editor-facts")]
             rewrite_safe,
+            #[cfg(feature = "editor-facts")]
+            appearance_owner: None,
+            #[cfg(feature = "editor-facts")]
+            arguments_complete,
         }),
         error: None,
     })

@@ -1726,7 +1726,7 @@ mod tests {
 
     fn known_theme_execution_evidence_json() -> Value {
         serde_json::json!({
-            "version": 1,
+            "version": 2,
             "family_id": "flowchart",
             "theme_status": "verified",
             "output_mutated": false,
@@ -1734,6 +1734,7 @@ mod tests {
             "target_status": "portable",
             "target_reason_ids": ["host_dependent_text_layout"],
             "font_source": "embedded",
+            "materialized_theme": "dark",
         })
     }
 
@@ -1743,12 +1744,13 @@ mod tests {
             metadata_json_with_theme_execution_evidence(known_theme_execution_evidence_json());
         let metadata = BindingOperationMetadata::from_json_bytes(&json).unwrap();
 
-        let Some(crate::BindingThemeExecutionEvidence::V1(evidence)) =
+        let Some(crate::BindingThemeExecutionEvidence::V2(evidence)) =
             metadata.theme_execution_evidence()
         else {
-            panic!("expected version-one theme execution evidence");
+            panic!("expected version-two theme execution evidence");
         };
-        assert_eq!(metadata.theme_execution_evidence().unwrap().version(), 1);
+        assert_eq!(metadata.theme_execution_evidence().unwrap().version(), 2);
+        assert_eq!(evidence.materialized_theme(), Some("dark"));
         assert_eq!(evidence.family_id(), "flowchart");
         assert_eq!(evidence.theme_status_id(), "verified");
         assert!(!evidence.output_mutated());
@@ -1766,6 +1768,71 @@ mod tests {
     }
 
     #[test]
+    fn materialized_theme_is_required_nullable_and_never_the_configuration_sentinel() {
+        let mut wire = known_theme_execution_evidence_json();
+        wire["materialized_theme"] = Value::Null;
+        let metadata = BindingOperationMetadata::from_json_bytes(
+            &metadata_json_with_theme_execution_evidence(wire.clone()),
+        )
+        .unwrap();
+        assert_eq!(
+            metadata
+                .theme_execution_evidence()
+                .unwrap()
+                .as_v2()
+                .unwrap()
+                .materialized_theme(),
+            None
+        );
+        for value in [
+            serde_json::json!("null"),
+            serde_json::json!("future-theme"),
+            serde_json::json!(true),
+        ] {
+            wire["materialized_theme"] = value;
+            let error = BindingOperationMetadata::from_json_bytes(
+                &metadata_json_with_theme_execution_evidence(wire.clone()),
+            )
+            .unwrap_err();
+            assert!(error.message().contains("materialized_theme"));
+        }
+        wire.as_object_mut().unwrap().remove("materialized_theme");
+        assert!(
+            BindingOperationMetadata::from_json_bytes(
+                &metadata_json_with_theme_execution_evidence(wire),
+            )
+            .unwrap_err()
+            .message()
+            .contains("materialized_theme")
+        );
+    }
+
+    #[cfg(all(feature = "svg", feature = "diagram-flowchart"))]
+    #[test]
+    fn rendered_theme_evidence_keeps_the_executed_palette_for_the_sentinel() {
+        let engine = BindingEngine::new(br#"{"site_config":{"theme":"dark"}}"#).unwrap();
+        for (source, expected) in [
+            ("flowchart TD\nA-->B", "dark"),
+            ("%%{init: {theme: 'null'}}%%\nflowchart TD\nA-->B", "dark"),
+            (
+                "%%{init: {flowchart: {theme: 'forest'}}}%%\nflowchart TD\nA-->B",
+                "forest",
+            ),
+        ] {
+            let result = engine
+                .execute(BindingOperationRequest::new("svg", source.as_bytes()))
+                .unwrap();
+            let evidence = result
+                .metadata()
+                .theme_execution_evidence()
+                .unwrap()
+                .as_v2()
+                .unwrap();
+            assert_eq!(evidence.materialized_theme(), Some(expected));
+        }
+    }
+
+    #[test]
     fn theme_diagnostics_distinguish_missing_from_empty_and_preserve_open_ids() {
         let mut wire = known_theme_execution_evidence_json();
         let metadata = BindingOperationMetadata::from_json_bytes(
@@ -1775,7 +1842,7 @@ mod tests {
         let evidence = metadata
             .theme_execution_evidence()
             .unwrap()
-            .as_v1()
+            .as_v2()
             .unwrap();
         assert!(evidence.diagnostics().is_none());
         assert!(
@@ -1793,7 +1860,7 @@ mod tests {
         let evidence = metadata
             .theme_execution_evidence()
             .unwrap()
-            .as_v1()
+            .as_v2()
             .unwrap();
         assert_eq!(evidence.diagnostics().unwrap().len(), 0);
         assert_eq!(serde_json::to_value(evidence).unwrap(), wire);
@@ -1821,7 +1888,7 @@ mod tests {
         let evidence = metadata
             .theme_execution_evidence()
             .unwrap()
-            .as_v1()
+            .as_v2()
             .unwrap();
         assert_eq!(evidence.theme_status_id(), "future-theme-status");
         assert_eq!(evidence.target_status_id(), "future-target-status");
@@ -1967,9 +2034,9 @@ mod tests {
 
         for evidence in [
             serde_json::json!([]),
-            serde_json::json!({"version": 1}),
+            serde_json::json!({"version": 2}),
             serde_json::json!({
-                "version": 1,
+                "version": 2,
                 "family_id": "flowchart",
                 "theme_status": "verified",
                 "output_mutated": false,
@@ -3140,7 +3207,8 @@ mod tests {
         let decoded = BindingOperationMetadata::from_json_bytes(result.metadata_json()).unwrap();
         assert_eq!(decoded.svg_viewport(), Some(viewport));
         let evidence = &metadata["theme_execution_evidence"];
-        assert_eq!(evidence["version"], 1);
+        assert_eq!(evidence["version"], 2);
+        assert_eq!(evidence["materialized_theme"], "redux-color");
         assert_eq!(evidence["family_id"], "flowchart");
         assert_eq!(evidence["theme_status"], "not_applicable");
         assert_eq!(evidence["output_mutated"], false);
@@ -3163,6 +3231,7 @@ mod tests {
                 "diagnostics",
                 "family_id",
                 "font_source",
+                "materialized_theme",
                 "output_mutated",
                 "target_kind",
                 "target_reason_ids",
@@ -3217,10 +3286,10 @@ mod tests {
         )
         .unwrap();
 
-        let Some(crate::BindingThemeExecutionEvidence::V1(evidence)) =
+        let Some(crate::BindingThemeExecutionEvidence::V2(evidence)) =
             result.metadata().theme_execution_evidence()
         else {
-            panic!("expected version-one theme execution evidence");
+            panic!("expected version-two theme execution evidence");
         };
         assert_eq!(evidence.family_id(), "state");
         assert_eq!(evidence.theme_status_id(), "verified");

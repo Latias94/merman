@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 
 /// Schema version for renderer-owned theme execution evidence and explanatory diagnostics.
-pub const BINDING_THEME_EXECUTION_EVIDENCE_SCHEMA_VERSION: u32 = 1;
+pub const BINDING_THEME_EXECUTION_EVIDENCE_SCHEMA_VERSION: u32 = 2;
 
 /// Maximum UTF-8 byte length accepted for one identifier in known evidence.
 pub const BINDING_THEME_EXECUTION_EVIDENCE_MAX_ID_UTF8_BYTES: usize = 128;
@@ -13,13 +13,13 @@ pub const BINDING_THEME_EXECUTION_EVIDENCE_MAX_TARGET_REASON_IDS: usize = 32;
 
 /// Versioned theme execution evidence attached to successful render metadata.
 ///
-/// Version one projects renderer-owned render evidence and target admission as coarse states.
+/// Version two projects renderer-owned render evidence and target admission as coarse states.
 /// Diagnostics explain residuals without exposing internal rule IDs or conferring certification.
 /// Unknown versions remain opaque so bindings can forward metadata produced by newer revisions.
 #[derive(Debug, Clone, PartialEq)]
 #[non_exhaustive]
 pub enum BindingThemeExecutionEvidence {
-    V1(BindingThemeExecutionEvidenceV1),
+    V2(BindingThemeExecutionEvidenceV2),
     Unknown(BindingUnknownThemeExecutionEvidence),
 }
 
@@ -27,15 +27,15 @@ impl BindingThemeExecutionEvidence {
     #[must_use]
     pub const fn version(&self) -> u32 {
         match self {
-            Self::V1(_) => BINDING_THEME_EXECUTION_EVIDENCE_SCHEMA_VERSION,
+            Self::V2(_) => BINDING_THEME_EXECUTION_EVIDENCE_SCHEMA_VERSION,
             Self::Unknown(evidence) => evidence.version(),
         }
     }
 
     #[must_use]
-    pub const fn as_v1(&self) -> Option<&BindingThemeExecutionEvidenceV1> {
+    pub const fn as_v2(&self) -> Option<&BindingThemeExecutionEvidenceV2> {
         match self {
-            Self::V1(evidence) => Some(evidence),
+            Self::V2(evidence) => Some(evidence),
             Self::Unknown(_) => None,
         }
     }
@@ -49,19 +49,24 @@ impl BindingThemeExecutionEvidence {
         let theme_status_id = theme_status_id(theme.status()).ok_or_else(|| {
             BindingError::internal("renderer returned an unsupported theme evidence status")
         })?;
-        BindingThemeExecutionEvidenceV1::new(
-            render_evidence.family_id().as_str().to_owned(),
-            theme_status_id.to_owned(),
-            theme.output_mutated(),
-            admission.artifact_kind().id().to_owned(),
-            admission.status().id().to_owned(),
-            admission
+        BindingThemeExecutionEvidenceV2 {
+            family_id: render_evidence.family_id().as_str().to_owned(),
+            theme_status_id: theme_status_id.to_owned(),
+            output_mutated: theme.output_mutated(),
+            target_kind_id: admission.artifact_kind().id().to_owned(),
+            target_status_id: admission.status().id().to_owned(),
+            target_reason_ids: admission
                 .reasons()
                 .iter()
                 .map(|reason| reason.id().to_owned())
                 .collect(),
-            admission.font_source().id().to_owned(),
-        )
+            font_source_id: admission.font_source().id().to_owned(),
+            materialized_theme: render_evidence
+                .materialized_theme()
+                .map(|theme| theme.as_str().to_owned()),
+            diagnostics: None,
+        }
+        .validate()
         .map(|mut evidence| {
             evidence.diagnostics = Some(
                 render_evidence
@@ -78,7 +83,7 @@ impl BindingThemeExecutionEvidence {
                     })
                     .collect(),
             );
-            Self::V1(evidence)
+            Self::V2(evidence)
         })
         .map_err(|message| {
             BindingError::internal(format!(
@@ -94,7 +99,7 @@ impl Serialize for BindingThemeExecutionEvidence {
         S: serde::Serializer,
     {
         match self {
-            Self::V1(evidence) => evidence.serialize(serializer),
+            Self::V2(evidence) => evidence.serialize(serializer),
             Self::Unknown(evidence) => evidence.serialize(serializer),
         }
     }
@@ -158,10 +163,10 @@ impl BindingThemeDiagnostic {
     }
 }
 
-/// Known version-one projection of successful renderer theme and target evidence.
+/// Known version-two projection of successful renderer theme and target evidence.
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[non_exhaustive]
-pub struct BindingThemeExecutionEvidenceV1 {
+pub struct BindingThemeExecutionEvidenceV2 {
     family_id: String,
     theme_status_id: String,
     output_mutated: bool,
@@ -170,49 +175,40 @@ pub struct BindingThemeExecutionEvidenceV1 {
     target_reason_ids: Box<[String]>,
     font_source_id: String,
     diagnostics: Option<Box<[BindingThemeDiagnostic]>>,
+    materialized_theme: Option<String>,
 }
 
-impl BindingThemeExecutionEvidenceV1 {
-    fn new(
-        family_id: String,
-        theme_status_id: String,
-        output_mutated: bool,
-        target_kind_id: String,
-        target_status_id: String,
-        target_reason_ids: Vec<String>,
-        font_source_id: String,
-    ) -> Result<Self, String> {
+impl BindingThemeExecutionEvidenceV2 {
+    fn validate(self) -> Result<Self, String> {
         for (field, id) in [
-            ("family_id", family_id.as_str()),
-            ("theme_status", theme_status_id.as_str()),
-            ("target_kind", target_kind_id.as_str()),
-            ("target_status", target_status_id.as_str()),
-            ("font_source", font_source_id.as_str()),
+            ("family_id", self.family_id.as_str()),
+            ("theme_status", self.theme_status_id.as_str()),
+            ("target_kind", self.target_kind_id.as_str()),
+            ("target_status", self.target_status_id.as_str()),
+            ("font_source", self.font_source_id.as_str()),
         ] {
             validate_id(field, id)?;
         }
-        if target_reason_ids.len() > BINDING_THEME_EXECUTION_EVIDENCE_MAX_TARGET_REASON_IDS {
+        if self.target_reason_ids.len() > BINDING_THEME_EXECUTION_EVIDENCE_MAX_TARGET_REASON_IDS {
             return Err(format!(
                 "`target_reason_ids` must contain at most {BINDING_THEME_EXECUTION_EVIDENCE_MAX_TARGET_REASON_IDS} entries"
             ));
         }
-        for (index, reason) in target_reason_ids.iter().enumerate() {
+        for (index, reason) in self.target_reason_ids.iter().enumerate() {
             validate_id(&format!("target_reason_ids[{index}]"), reason)?;
-            if target_reason_ids[..index].contains(reason) {
+            if self.target_reason_ids[..index].contains(reason) {
                 return Err("`target_reason_ids` entries must be unique".to_owned());
             }
         }
+        if let Some(theme) = &self.materialized_theme
+            && !merman::supported_themes().contains(&theme.as_str())
+        {
+            return Err(
+                "`materialized_theme` must be a registered Mermaid theme or null".to_owned(),
+            );
+        }
 
-        Ok(Self {
-            family_id,
-            theme_status_id,
-            output_mutated,
-            target_kind_id,
-            target_status_id,
-            target_reason_ids: target_reason_ids.into_boxed_slice(),
-            font_source_id,
-            diagnostics: None,
-        })
+        Ok(self)
     }
 
     #[must_use]
@@ -250,6 +246,11 @@ impl BindingThemeExecutionEvidenceV1 {
         &self.font_source_id
     }
 
+    #[must_use]
+    pub fn materialized_theme(&self) -> Option<&str> {
+        self.materialized_theme.as_deref()
+    }
+
     /// `None` means the producer did not supply diagnostics. An empty slice means it supplied
     /// no explanations; consumers must still inspect the theme and target admission states.
     #[must_use]
@@ -258,12 +259,12 @@ impl BindingThemeExecutionEvidenceV1 {
     }
 }
 
-impl Serialize for BindingThemeExecutionEvidenceV1 {
+impl Serialize for BindingThemeExecutionEvidenceV2 {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
         S: serde::Serializer,
     {
-        BindingThemeExecutionEvidenceV1Wire {
+        BindingThemeExecutionEvidenceV2Wire {
             version: BINDING_THEME_EXECUTION_EVIDENCE_SCHEMA_VERSION,
             family_id: self.family_id(),
             theme_status: self.theme_status_id(),
@@ -273,6 +274,7 @@ impl Serialize for BindingThemeExecutionEvidenceV1 {
             target_reason_ids: self.target_reason_ids(),
             font_source: self.font_source_id(),
             diagnostics: self.diagnostics(),
+            materialized_theme: self.materialized_theme(),
         }
         .serialize(serializer)
     }
@@ -308,7 +310,7 @@ impl Serialize for BindingUnknownThemeExecutionEvidence {
 }
 
 #[derive(Serialize)]
-struct BindingThemeExecutionEvidenceV1Wire<'a> {
+struct BindingThemeExecutionEvidenceV2Wire<'a> {
     version: u32,
     family_id: &'a str,
     theme_status: &'a str,
@@ -317,6 +319,7 @@ struct BindingThemeExecutionEvidenceV1Wire<'a> {
     target_status: &'a str,
     target_reason_ids: &'a [String],
     font_source: &'a str,
+    materialized_theme: Option<&'a str>,
     #[serde(skip_serializing_if = "Option::is_none")]
     diagnostics: Option<&'a [BindingThemeDiagnostic]>,
 }
@@ -379,18 +382,31 @@ pub(crate) fn parse_theme_execution_evidence(
         })
         .transpose()?;
 
-    BindingThemeExecutionEvidenceV1::new(
-        required_bounded_id(object, "family_id")?,
-        required_bounded_id(object, "theme_status")?,
-        required_bool(object, "output_mutated")?,
-        required_bounded_id(object, "target_kind")?,
-        required_bounded_id(object, "target_status")?,
-        target_reason_ids,
-        required_bounded_id(object, "font_source")?,
-    )
+    let materialized_theme = match required_value(object, "materialized_theme")? {
+        Value::Null => None,
+        Value::String(theme) => Some(theme.clone()),
+        _ => {
+            return Err(invalid_evidence(
+                "`theme_execution_evidence.materialized_theme` must be a string or null",
+            ));
+        }
+    };
+
+    BindingThemeExecutionEvidenceV2 {
+        family_id: required_bounded_id(object, "family_id")?,
+        theme_status_id: required_bounded_id(object, "theme_status")?,
+        output_mutated: required_bool(object, "output_mutated")?,
+        target_kind_id: required_bounded_id(object, "target_kind")?,
+        target_status_id: required_bounded_id(object, "target_status")?,
+        target_reason_ids: target_reason_ids.into_boxed_slice(),
+        font_source_id: required_bounded_id(object, "font_source")?,
+        materialized_theme,
+        diagnostics: None,
+    }
+    .validate()
     .map(|mut evidence| {
         evidence.diagnostics = diagnostics;
-        BindingThemeExecutionEvidence::V1(evidence)
+        BindingThemeExecutionEvidence::V2(evidence)
     })
     .map_err(|message| invalid_evidence(format!("`theme_execution_evidence`: {message}")))
 }
@@ -553,7 +569,7 @@ mod native_quality_tests {
                 );
             }
             for evidence in projections {
-                let projection = evidence.as_v1().unwrap();
+                let projection = evidence.as_v2().unwrap();
                 assert_eq!(
                     projection.target_status_id(),
                     "rejected",

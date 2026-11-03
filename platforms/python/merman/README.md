@@ -108,7 +108,10 @@ The effective `layout_profile` remains Canonical or Compact. Replace `binding_ap
 with `binding_api_version_v7()` and regenerate the package and native library together; published
 alpha.6 wheels retain API 6.
 
-Diagnostics use schema `1` and parser facts use schema `2`, independently of UniFFI binding API `7`. Other facts versions are rejected at the boundary; consumers of the removed TextScan shape and Flowchart-only rich graph must migrate to generic parser-backed items and explicit unavailable bodies.
+Diagnostics use schema `1` and parser facts use schema `3`, independently of UniFFI binding API `7`. Other facts versions are rejected at the boundary; consumers of the removed TextScan shape and Flowchart-only rich graph must migrate to generic parser-backed items and explicit unavailable bodies. Every diagram now requires `appearance` with `known` or `unknown` state; known declarations carry source provenance and byte spans. See the [source appearance migration](../../../docs/release/UNRELEASED_CONTRACT_VERSIONS.md#source-appearance-and-render-evidence-follow-up).
+
+Facts schema `3` describes current development builds, not the published `0.10.0a1` wheel, which
+retains facts schema `2`. Build and install a matching wrapper/native wheel to use the new contract.
 
 For generic operations, construct `MermanOperationControl(timeout_ms=...)`, retain it in the host,
 and put it in `MermanOperationRequestV4.control`. Calling `cancel()` from another thread requests

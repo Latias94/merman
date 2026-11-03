@@ -51,7 +51,7 @@ policy.
 
 LSP language behavior is projected from typed `DocumentSnapshot` / `FenceTextIndex` data built
 directly from `AnalysisGeneration`; the server does not round-trip serialized facts JSON. The separately
-exposed `AnalysisFactsPayload` version 2 is the equivalent parser-only wire contract for binding
+exposed `AnalysisFactsPayload` version 3 is the equivalent source-facts wire contract for binding
 consumers:
 
 - `fact_source: "text_scan"` is removed;
@@ -62,9 +62,13 @@ consumers:
   and `false` only when the body fact source is unavailable.
 
 The TextScan-capable prerelease shape and Flowchart-only rich graph are deleted rather than retained behind a decoder, executor, alias,
-or dual projection path. The final parser facts contract is schema 2 and rejects every other
+or dual projection path. The current facts contract is schema 3 and rejects every other
 version discriminator at the boundary. The diagnostics-only `AnalysisPayload` is a separate
 contract and independently remains version 1.
+
+Each diagram also requires `appearance`, tagged `known` or `unknown`, for source-owned declarations
+and provenance. This evidence is distinct from rendered presentation; see the
+[source appearance migration](../release/UNRELEASED_CONTRACT_VERSIONS.md#source-appearance-and-render-evidence-follow-up).
 
 These schema versions do not rename Mermaid grammar ids such as `flowchart-v2`,
 `stateDiagram-v2`, or `classDiagram-v2`. They are also unrelated to LSP

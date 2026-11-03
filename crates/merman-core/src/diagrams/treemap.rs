@@ -1708,7 +1708,7 @@ classDef important stroke:#333
         let parsed =
             parse_treemap_json_and_editor_facts(&text, &meta(), &crate::OperationControl::new())
                 .expect("budget rejection must remain a semantic result");
-        let (model, facts, _) = parsed.into_parts();
+        let (model, facts) = parsed.into_parts();
         let error = model.expect_err("oversized compatibility output must not be truncated");
         assert!(
             error

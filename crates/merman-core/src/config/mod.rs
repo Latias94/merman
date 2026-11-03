@@ -157,28 +157,12 @@ pub(crate) fn mirror_legacy_font_family_into_theme_variables(config: &mut Mermai
 }
 
 pub(crate) fn mirror_legacy_font_family_into_theme_variables_value(value: &mut Value) {
+    let Some(font_family) = legacy_font_family_for_mirroring(value).map(str::to_owned) else {
+        return;
+    };
     let Some(root) = value.as_object_mut() else {
         return;
     };
-    let Some(font_family) = root
-        .get("fontFamily")
-        .and_then(Value::as_str)
-        .map(str::trim)
-        .filter(|s| !s.is_empty())
-        .map(str::to_string)
-    else {
-        return;
-    };
-
-    let has_theme_font_family = root
-        .get("themeVariables")
-        .and_then(Value::as_object)
-        .and_then(|theme_variables| theme_variables.get("fontFamily"))
-        .and_then(Value::as_str)
-        .is_some_and(|s| !s.trim().is_empty());
-    if has_theme_font_family {
-        return;
-    }
 
     let theme_variables = root
         .entry("themeVariables")
@@ -191,6 +175,27 @@ pub(crate) fn mirror_legacy_font_family_into_theme_variables_value(value: &mut V
             theme_variables.insert("fontFamily".to_string(), Value::String(font_family))
     {
         drop_value_nonrecursive(old);
+    }
+}
+
+pub(crate) fn legacy_font_family_for_mirroring(value: &Value) -> Option<&str> {
+    let root = value.as_object()?;
+    let font_family = root
+        .get("fontFamily")
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|s| !s.is_empty())?;
+
+    let has_theme_font_family = root
+        .get("themeVariables")
+        .and_then(Value::as_object)
+        .and_then(|theme_variables| theme_variables.get("fontFamily"))
+        .and_then(Value::as_str)
+        .is_some_and(|s| !s.trim().is_empty());
+    if has_theme_font_family {
+        None
+    } else {
+        Some(font_family)
     }
 }
 

@@ -443,7 +443,7 @@ export const BINDING_OPERATION_METADATA_CONTRACT = {
   ],
   "theme_execution_evidence_versions": [
     {
-      "version": 1,
+      "version": 2,
       "fields": [
         {
           "name": "version",
@@ -500,6 +500,13 @@ export const BINDING_OPERATION_METADATA_CONTRACT = {
           "required": true,
           "integer_width_bits": null,
           "open_value": true
+        },
+        {
+          "name": "materialized_theme",
+          "json_type": "string-or-null",
+          "required": true,
+          "integer_width_bits": null,
+          "open_value": false
         },
         {
           "name": "diagnostics",

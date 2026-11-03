@@ -167,3 +167,11 @@ The unreleased compact definition was replaced in place by `ThemeDesignV1`: type
 explicit references, semantic defaults, scoped exceptions, canvas and effects. `ThemeRecipeV1`
 uses `kind: "design"` or `kind: "complete_spec"`, with `schema_version: 1`. No V2 document, old
 definition decoder, or migration branch is retained. The materialized version tuple remains 1.
+
+## Source appearance and render evidence follow-up
+
+On 2026-11-03, analysis facts changed from schema 2 to schema 3 to carry source-owned appearance declarations, their exact original byte spans, and frontmatter/directive provenance. Theme execution evidence changed from schema 1 to schema 2 to include the actual materialized Mermaid palette or null. The earlier table's retained schema-1 evidence decision is superseded for this shape; diagnostics, theme authoring, target evidence, operation metadata, native ABI and Options JSON versions remain unchanged.
+
+Each diagram requires an `appearance` sibling of `syntax`: either `{ "state": "unknown" }`, or `state: "known"` with nullable `theme`, `font`, and `look` declarations. A declaration contains `value`, `origin` (`frontmatter`, or `directive` with `directive_index`), and `construct_span` (`start`, `end`) in original diagram-local UTF-8 bytes, with an exclusive end. Markdown consumers must use the diagram's source context when mapping these spans into the containing document. Equal values can still have different winning origins. Source declarations describe admitted configuration; successful render metadata separately reports the actual `materialized_theme` as a registered Mermaid theme string or JSON null.
+
+The Web transport epoch is now 9 so wrappers expecting facts schema 3 cannot silently initialize an older module. Deploy the generated facade, glue and WASM from the same revision. Known evidence uses the version-two Rust/TypeScript types; unknown evidence versions remain opaque. Source declarations do not certify rendering, and the configuration sentinel `"null"` is not an executed palette identity. This records development contracts, not a publication or a change to existing release artifacts.

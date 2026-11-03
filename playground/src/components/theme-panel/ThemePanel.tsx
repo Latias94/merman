@@ -9,11 +9,10 @@ import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { downloadBlob } from "@/src/lib/export";
 import { DIAGRAM_FONT_VALUES, isDiagramFont } from "@/src/lib/diagram-font";
-import { readMermaidAppearanceOverrides } from "@/src/lib/mermaid-appearance";
 import type { MermaidThemeSelection } from "@/src/lib/mermaid-theme-name";
 import { SHARE_THEME_RECIPE_BYTES } from "@/src/lib/share";
 import { isThemeDraftChanged, type ThemeValidationToken } from "@/src/lib/theme-edit-session";
-import { currentDiagramDetection, currentThemeRender, detectedThemeFamily, reviewedThemeFamilies, themeFamilyMetadataId, themeFamilyTreatment } from "@/src/lib/theme-discovery";
+import { currentAppearanceOverrides, currentDiagramDetection, currentThemeRender, detectedThemeFamily, reviewedThemeFamilies, themeFamilyMetadataId, themeFamilyTreatment } from "@/src/lib/theme-discovery";
 import { exceedsUtf8ByteBudget } from "@/src/lib/utf8";
 import { projectError } from "@/src/runtime/error-projection";
 import { selectMermanFacade, useMermanRuntime } from "@/src/runtime/use-merman-runtime";
@@ -57,12 +56,8 @@ export function ThemePanel({ className, onClose }: { className?: string; onClose
     catch { return []; }
   }, [facade]);
   const familyId = detectedThemeFamily(detection, families);
-  const configNamespace = families.find((family) => family.family_id === familyId)?.config_namespace;
   const familyLabel = (id: string) => t(`diagramTypes.${themeFamilyMetadataId(id, families) ?? id}`, { defaultValue: id });
-  const appearanceOverrides = useMemo(() => {
-    try { return readMermaidAppearanceOverrides(workspace.code, workspace.mermaidConfig, configNamespace); }
-    catch { return null; }
-  }, [workspace.code, workspace.mermaidConfig, configNamespace]);
+  const appearanceOverrides = currentAppearanceOverrides(coordinator, workspace);
   const presets = useMemo(() => {
     const rank = { dedicated: 0, base_only: 1, unreviewed: 2 };
     return [...(catalog?.presets ?? [])].sort((left, right) =>

@@ -20,8 +20,10 @@ use merman_model::family::{
     DiagramFamilyDefinition, DiagramTypeId, FAMILY_CATALOG, FamilyVariantIdentity,
 };
 use merman_model::family::{DiagramFamilyId, DiagramHeaderFact, diagram_type_family_id};
-use serde::Serialize;
 #[cfg(feature = "compat-json")]
+use merman_model::presentation::compat::CompatProjectionError;
+use serde::Serialize;
+#[cfg(all(feature = "compat-json", feature = "editor-facts"))]
 use serde_json::Value;
 use std::sync::OnceLock;
 #[cfg(feature = "presentation")]
@@ -87,36 +89,115 @@ pub(crate) type CombinedSemanticParser = fn(
     control: &OperationControl,
 ) -> OperationControlResult<CombinedSemanticParse>;
 
+#[derive(Debug)]
 #[cfg(feature = "compat-json")]
-pub(crate) type WarningSemanticParser =
-    fn(code: &str, meta: &SourcePresentationMetadata) -> Result<WarningSemanticParse>;
-
-/// Built-in compatibility JSON paired with the typed warnings that produced its warning field.
-#[cfg(feature = "compat-json")]
-pub(crate) struct WarningSemanticParse {
-    model: ManagedSemanticJson,
-    warning_facts: Vec<DiagramWarningFact>,
+pub(crate) enum FamilySemanticModel {
+    Json(ManagedSemanticJson),
+    #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
+    Flowchart(Box<merman_model::families::flowchart::FlowchartModel>),
+    #[cfg(feature = "diagram-git-graph")]
+    GitGraph(Box<merman_model::families::git_graph::GitGraphDiagramModel>),
+    #[cfg(feature = "diagram-block")]
+    Block(Box<merman_model::families::block::BlockDiagramRenderModel>),
+    #[cfg(feature = "diagram-agentflow")]
+    Agentflow(Box<merman_model::families::agentflow::AgentflowDiagramModel>),
 }
 
-#[allow(
-    dead_code,
-    reason = "Warning construction is used only by warning-producing diagram families."
-)]
 #[cfg(feature = "compat-json")]
-impl WarningSemanticParse {
-    pub(crate) fn new(model: Value, warning_facts: Vec<DiagramWarningFact>) -> Self {
-        Self {
-            model: model.into(),
-            warning_facts,
+impl FamilySemanticModel {
+    pub(crate) fn json_mut(&mut self) -> Option<&mut ManagedSemanticJson> {
+        match self {
+            Self::Json(model) => Some(model),
+            #[allow(unreachable_patterns)]
+            _ => None,
         }
     }
 
-    pub(crate) fn into_model(self) -> Value {
-        self.model.into_unmanaged_value()
+    pub(crate) fn warning_facts_mut(&mut self) -> &mut [DiagramWarningFact] {
+        match self {
+            Self::Json(_) => &mut [],
+            #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
+            Self::Flowchart(model) => &mut model.warning_facts,
+            #[cfg(feature = "diagram-git-graph")]
+            Self::GitGraph(model) => &mut model.warning_facts,
+            #[cfg(feature = "diagram-block")]
+            Self::Block(model) => &mut model.semantic.warning_facts,
+            #[cfg(feature = "diagram-agentflow")]
+            Self::Agentflow(model) => &mut model.warning_facts,
+        }
     }
 
-    pub(crate) fn into_parts(self) -> (ManagedSemanticJson, Vec<DiagramWarningFact>) {
-        (self.model, self.warning_facts)
+    pub(crate) fn sanitize_typed_common_fields(&mut self, config: &MermaidConfig) {
+        let _ = config;
+        match self {
+            Self::Json(_) => {}
+            #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
+            Self::Flowchart(model) => {
+                crate::diagrams::flowchart::sanitize_common_db_fields(model, config);
+            }
+            #[cfg(feature = "diagram-git-graph")]
+            Self::GitGraph(model) => {
+                crate::diagrams::git_graph::sanitize_common_db_fields(model, config);
+            }
+            #[cfg(feature = "diagram-block")]
+            Self::Block(_) => {}
+            #[cfg(feature = "diagram-agentflow")]
+            Self::Agentflow(model) => {
+                crate::diagrams::agentflow::sanitize_common_db_fields(model, config);
+            }
+        }
+    }
+
+    pub(crate) fn offset_diagnostic_positions(&mut self, line_offset: usize, column_offset: usize) {
+        let _ = (line_offset, column_offset);
+        #[cfg(feature = "diagram-agentflow")]
+        if let Self::Agentflow(model) = self {
+            crate::diagrams::agentflow::offset_diagnostic_positions(
+                model,
+                line_offset,
+                column_offset,
+            );
+        }
+    }
+
+    pub(crate) fn into_compatibility_json_controlled(
+        self,
+        meta: &merman_model::presentation::compat::CompatJsonMetadata<'_>,
+        control: &OperationControl,
+    ) -> OperationControlResult<Result<(ManagedSemanticJson, Vec<DiagramWarningFact>)>> {
+        control.checkpoint()?;
+        let _ = meta;
+        let (model, warning_facts) = match self {
+            Self::Json(model) => (Ok(model), Vec::new()),
+            #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
+            Self::Flowchart(model) => (
+                merman_model::families::flowchart::compat::project(&model, meta)
+                    .map(ManagedSemanticJson::from),
+                model.warning_facts,
+            ),
+            #[cfg(feature = "diagram-git-graph")]
+            Self::GitGraph(model) => (
+                merman_model::families::git_graph::compat::project(&model, meta)
+                    .map(ManagedSemanticJson::from),
+                model.warning_facts,
+            ),
+            #[cfg(feature = "diagram-block")]
+            Self::Block(model) => (
+                merman_model::families::block::compat::project_controlled(&model, meta, control)?
+                    .map(ManagedSemanticJson::from),
+                model.semantic.warning_facts,
+            ),
+            #[cfg(feature = "diagram-agentflow")]
+            Self::Agentflow(model) => (
+                merman_model::families::agentflow::compat::project_semantic(&model, meta)
+                    .map(ManagedSemanticJson::from),
+                model.warning_facts,
+            ),
+        };
+        control.checkpoint()?;
+        Ok(model
+            .map(|model| (model, warning_facts))
+            .map_err(|error: CompatProjectionError| Error::from(error)))
     }
 }
 
@@ -127,9 +208,8 @@ impl WarningSemanticParse {
 /// prevents callers from invoking a second recovery parser over the same source.
 #[cfg(all(feature = "compat-json", feature = "editor-facts"))]
 pub(crate) struct CombinedSemanticParse {
-    model: Result<ManagedSemanticJson>,
+    model: Result<FamilySemanticModel>,
     editor_facts: EditorSemanticFacts,
-    warning_facts: Vec<DiagramWarningFact>,
 }
 
 /// Closed failure handoff produced after a family has retained its recovery journal.
@@ -246,14 +326,12 @@ mod combined_semantic_failure_tests {
 #[cfg(all(feature = "compat-json", feature = "editor-facts"))]
 impl CombinedSemanticParse {
     pub(crate) fn from_parts(
-        model: Result<Value>,
+        model: Result<FamilySemanticModel>,
         editor_facts: EditorSemanticFacts,
-        warning_facts: Vec<DiagramWarningFact>,
     ) -> Self {
         Self {
-            model: model.map(ManagedSemanticJson::from),
+            model,
             editor_facts,
-            warning_facts,
         }
     }
 
@@ -269,11 +347,14 @@ impl CombinedSemanticParse {
         match construction {
             Ok(source) => {
                 let (model, editor_facts) = success(source);
-                Self::from_parts(model, editor_facts, Vec::new())
+                Self::from_parts(
+                    model.map(|model| FamilySemanticModel::Json(model.into())),
+                    editor_facts,
+                )
             }
             Err(parse_failure) => {
                 let (error, editor_facts) = failure(parse_failure);
-                Self::from_parts(Err(error), editor_facts, Vec::new())
+                Self::from_parts(Err(error), editor_facts)
             }
         }
     }
@@ -301,9 +382,8 @@ impl CombinedSemanticParse {
             Ok(source) => {
                 let (model, editor_facts) = success(source)?;
                 Ok(Self {
-                    model,
+                    model: model.map(FamilySemanticModel::Json),
                     editor_facts,
-                    warning_facts: Vec::new(),
                 })
             }
             Err(parse_failure) => {
@@ -312,41 +392,13 @@ impl CombinedSemanticParse {
                 Ok(Self {
                     model: Err(error),
                     editor_facts,
-                    warning_facts: Vec::new(),
                 })
             }
         }
     }
 
-    #[allow(
-        dead_code,
-        reason = "Shared parser facilities have different consumers in each family selection."
-    )]
-    pub(crate) fn from_construction_with_warning_facts<S, F>(
-        construction: std::result::Result<S, F>,
-        success: impl FnOnce(S) -> (Result<Value>, EditorSemanticFacts, Vec<DiagramWarningFact>),
-        failure: impl FnOnce(F) -> (Error, EditorSemanticFacts),
-    ) -> Self {
-        match construction {
-            Ok(source) => {
-                let (model, editor_facts, warning_facts) = success(source);
-                Self::from_parts(model, editor_facts, warning_facts)
-            }
-            Err(parse_failure) => {
-                let (error, editor_facts) = failure(parse_failure);
-                Self::from_parts(Err(error), editor_facts, Vec::new())
-            }
-        }
-    }
-
-    pub(crate) fn into_parts(
-        self,
-    ) -> (
-        Result<ManagedSemanticJson>,
-        EditorSemanticFacts,
-        Vec<DiagramWarningFact>,
-    ) {
-        (self.model, self.editor_facts, self.warning_facts)
+    pub(crate) fn into_parts(self) -> (Result<FamilySemanticModel>, EditorSemanticFacts) {
+        (self.model, self.editor_facts)
     }
 }
 
@@ -356,7 +408,7 @@ impl CombinedSemanticParse {
     reason = "Test helpers serve different optional family suites."
 )]
 pub(crate) mod test_support {
-    use super::{CombinedSemanticParse, CombinedSemanticParser};
+    use super::{CombinedSemanticParse, CombinedSemanticParser, FamilySemanticModel};
     use crate::{
         EditorSemanticFacts, Error, OperationControl, OperationControlResult,
         SourcePresentationMetadata,
@@ -366,10 +418,35 @@ pub(crate) mod test_support {
     pub(crate) fn into_result(
         parsed: OperationControlResult<CombinedSemanticParse>,
     ) -> std::result::Result<(Value, EditorSemanticFacts), Error> {
-        let (model, editor_facts, _) = parsed
+        let (model, editor_facts) = parsed
             .expect("a private parse control cannot be cancelled")
             .into_parts();
-        model.map(|model| (model.into_unmanaged_value(), editor_facts))
+        model.map(|model| {
+            let model = match model {
+                FamilySemanticModel::Json(model) => model,
+                #[allow(unreachable_patterns)]
+                _ => panic!("typed family test projection requires source metadata"),
+            };
+            (model.into_unmanaged_value(), editor_facts)
+        })
+    }
+
+    pub(crate) fn into_projected_result(
+        parsed: OperationControlResult<CombinedSemanticParse>,
+        meta: &SourcePresentationMetadata,
+    ) -> std::result::Result<(Value, EditorSemanticFacts), Error> {
+        let (model, editor_facts) = parsed
+            .expect("a private parse control cannot be cancelled")
+            .into_parts();
+        model.and_then(|model| {
+            model
+                .into_compatibility_json_controlled(
+                    &meta.compat_json_metadata(),
+                    &OperationControl::new(),
+                )
+                .expect("a private projection control cannot be cancelled")
+                .map(|(model, _)| (model.into_unmanaged_value(), editor_facts))
+        })
     }
 
     pub(crate) fn editor_facts(
@@ -710,11 +787,6 @@ pub(crate) fn combined_parser(diagram_type: &str) -> Option<CombinedSemanticPars
         .find_map(|fact| (fact.id == diagram_type).then_some(fact.parser))
 }
 
-#[cfg(feature = "compat-json")]
-pub(crate) fn warning_semantic_parser(diagram_type: &str) -> Option<WarningSemanticParser> {
-    find_variant(diagram_type).and_then(|(_, variant)| variant.implementation.warning_semantic)
-}
-
 pub(crate) fn supported_diagram_metadata_ids() -> &'static [&'static str] {
     family_catalog_projection()
         .supported_diagram_metadata_ids
@@ -822,8 +894,6 @@ struct FamilyImplementation {
     canonical_editor_facts: bool,
     #[cfg(feature = "compat-json")]
     semantic: Option<Ordered<BuiltInDiagramSemanticParser>>,
-    #[cfg(feature = "compat-json")]
-    warning_semantic: Option<WarningSemanticParser>,
     #[cfg(all(feature = "compat-json", feature = "editor-facts"))]
     combined: Option<Ordered<CombinedSemanticParser>>,
     #[cfg(feature = "presentation")]
@@ -928,7 +998,6 @@ macro_rules! variant {
         $(canonical: $canonical:expr,)?
         $(canonical_editor_facts: $canonical_editor_facts:expr,)?
         semantic: $semantic:expr,
-        $(warning_semantic: $warning_semantic:expr,)?
         combined: $combined:expr,
         typed: $typed:expr $(,)?
     ) => {
@@ -945,8 +1014,6 @@ macro_rules! variant {
                         canonical_editor_facts: variant!(@canonical_editor_facts $($canonical_editor_facts)?),
                         #[cfg(feature = "compat-json")]
                         semantic: $semantic,
-                        #[cfg(feature = "compat-json")]
-                        warning_semantic: variant!(@warning_semantic $($warning_semantic)?),
                         #[cfg(all(feature = "compat-json", feature = "editor-facts"))]
                         combined: $combined,
                         #[cfg(feature = "presentation")]
@@ -961,8 +1028,6 @@ macro_rules! variant {
                         canonical_editor_facts: false,
                         #[cfg(feature = "compat-json")]
                         semantic: None,
-                        #[cfg(feature = "compat-json")]
-                        warning_semantic: None,
                         #[cfg(all(feature = "compat-json", feature = "editor-facts"))]
                         combined: None,
                         #[cfg(feature = "presentation")]
@@ -982,12 +1047,6 @@ macro_rules! variant {
     (@canonical $canonical:expr) => { Some($canonical) };
     (@canonical_editor_facts) => { true };
     (@canonical_editor_facts $canonical_editor_facts:expr) => { $canonical_editor_facts };
-    (@warning_semantic) => {
-        None
-    };
-    (@warning_semantic $warning_semantic:expr) => {
-        Some($warning_semantic)
-    };
 }
 
 fn variants() -> impl Iterator<Item = (&'static DiagramFamilyDefinition, FamilyVariantDefinition)> {
@@ -1070,7 +1129,7 @@ fn bind_variant(identity: &FamilyVariantIdentity) -> FamilyVariantDefinition {
             detector: Some(ordered(0, crate::detect::detector_error)),
             canonical: crate::diagrams::error_diagram::canonical_error,
             canonical_editor_facts: false,
-            semantic: Some(ordered(0, crate::diagrams::error_diagram::parse_error)),
+            semantic: Some(ordered(0, BuiltInDiagramSemanticParser::Json(crate::diagrams::error_diagram::parse_error))),
             combined: None,
             typed: Some(ordered(38, render_error)),
         },
@@ -1080,8 +1139,7 @@ fn bind_variant(identity: &FamilyVariantIdentity) -> FamilyVariantDefinition {
             detector: Some(ordered(2, crate::detect::detector_flowchart_elk)),
             detector_effect: DetectorConfigEffect::ElkLayout,
             canonical: semantic::canonical_flowchart,
-            semantic: Some(ordered(3, crate::diagrams::flowchart::parse_flowchart)),
-            warning_semantic: crate::diagrams::flowchart::parse_flowchart_with_warning_facts,
+            semantic: Some(ordered(3, BuiltInDiagramSemanticParser::Typed(crate::diagrams::flowchart::parse_flowchart_compatibility_model_controlled))),
             combined: Some(ordered(2, crate::diagrams::flowchart::parse_flowchart_json_and_editor_facts)),
             typed: Some(ordered(7, render_flowchart)),
         },
@@ -1090,8 +1148,7 @@ fn bind_variant(identity: &FamilyVariantIdentity) -> FamilyVariantDefinition {
             identity: *identity,
             detector: Some(ordered(17, crate::detect::detector_flowchart_v2)),
             canonical: semantic::canonical_flowchart,
-            semantic: Some(ordered(1, crate::diagrams::flowchart::parse_flowchart)),
-            warning_semantic: crate::diagrams::flowchart::parse_flowchart_with_warning_facts,
+            semantic: Some(ordered(1, BuiltInDiagramSemanticParser::Typed(crate::diagrams::flowchart::parse_flowchart_compatibility_model_controlled))),
             combined: Some(ordered(0, crate::diagrams::flowchart::parse_flowchart_json_and_editor_facts)),
             typed: Some(ordered(5, render_flowchart)),
         },
@@ -1100,8 +1157,7 @@ fn bind_variant(identity: &FamilyVariantIdentity) -> FamilyVariantDefinition {
             identity: *identity,
             detector: None,
             canonical: semantic::canonical_flowchart,
-            semantic: Some(ordered(2, crate::diagrams::flowchart::parse_flowchart)),
-            warning_semantic: crate::diagrams::flowchart::parse_flowchart_with_warning_facts,
+            semantic: Some(ordered(2, BuiltInDiagramSemanticParser::Typed(crate::diagrams::flowchart::parse_flowchart_compatibility_model_controlled))),
             combined: Some(ordered(1, crate::diagrams::flowchart::parse_flowchart_json_and_editor_facts)),
             typed: Some(ordered(6, render_flowchart)),
         },
@@ -1110,8 +1166,7 @@ fn bind_variant(identity: &FamilyVariantIdentity) -> FamilyVariantDefinition {
             identity: *identity,
             detector: Some(ordered(16, crate::detect::detector_swimlane)),
             canonical: semantic::canonical_flowchart,
-            semantic: Some(ordered(9, crate::diagrams::flowchart::parse_flowchart)),
-            warning_semantic: crate::diagrams::flowchart::parse_flowchart_with_warning_facts,
+            semantic: Some(ordered(9, BuiltInDiagramSemanticParser::Typed(crate::diagrams::flowchart::parse_flowchart_compatibility_model_controlled))),
             combined: Some(ordered(3, crate::diagrams::flowchart::parse_flowchart_json_and_editor_facts)),
             typed: Some(ordered(39, render_flowchart)),
         },
@@ -1120,7 +1175,7 @@ fn bind_variant(identity: &FamilyVariantIdentity) -> FamilyVariantDefinition {
             identity: *identity,
             detector: Some(ordered(3, crate::detect::detector_mindmap)),
             canonical: semantic::canonical_mindmap,
-            semantic: Some(ordered(22, crate::diagrams::mindmap::parse_mindmap)),
+            semantic: Some(ordered(22, BuiltInDiagramSemanticParser::Json(crate::diagrams::mindmap::parse_mindmap))),
             combined: Some(ordered(5, crate::diagrams::mindmap::parse_mindmap_json_and_editor_facts)),
             typed: Some(ordered(0, render_mindmap)),
         },
@@ -1129,7 +1184,7 @@ fn bind_variant(identity: &FamilyVariantIdentity) -> FamilyVariantDefinition {
             identity: *identity,
             detector: Some(ordered(4, crate::detect::detector_architecture)),
             canonical: semantic::canonical_architecture,
-            semantic: Some(ordered(27, crate::diagrams::architecture::parse_architecture)),
+            semantic: Some(ordered(27, BuiltInDiagramSemanticParser::Json(crate::diagrams::architecture::parse_architecture))),
             combined: Some(ordered(4, crate::diagrams::architecture::parse_architecture_json_and_editor_facts)),
             typed: Some(ordered(16, render_architecture)),
         },
@@ -1138,7 +1193,7 @@ fn bind_variant(identity: &FamilyVariantIdentity) -> FamilyVariantDefinition {
             identity: *identity,
             detector: Some(ordered(5, crate::detect::detector_zenuml)),
             canonical: semantic::canonical_zenuml,
-            semantic: Some(ordered(15, crate::diagrams::zenuml::parse_zenuml)),
+            semantic: Some(ordered(15, BuiltInDiagramSemanticParser::Json(crate::diagrams::zenuml::parse_zenuml))),
             combined: Some(ordered(36, crate::diagrams::zenuml::parse_zenuml_json_and_editor_facts)),
             typed: Some(ordered(3, render_zenuml)),
         },
@@ -1147,7 +1202,7 @@ fn bind_variant(identity: &FamilyVariantIdentity) -> FamilyVariantDefinition {
             identity: *identity,
             detector: Some(ordered(15, crate::detect::detector_sequence)),
             canonical: semantic::canonical_sequence,
-            semantic: Some(ordered(8, crate::diagrams::sequence::parse_sequence)),
+            semantic: Some(ordered(8, BuiltInDiagramSemanticParser::Json(crate::diagrams::sequence::parse_sequence))),
             combined: Some(ordered(19, crate::diagrams::sequence::parse_sequence_json_and_editor_facts)),
             typed: Some(ordered(4, render_sequence)),
         },
@@ -1156,7 +1211,7 @@ fn bind_variant(identity: &FamilyVariantIdentity) -> FamilyVariantDefinition {
             identity: *identity,
             detector: Some(ordered(6, crate::detect::detector_c4)),
             canonical: semantic::canonical_c4,
-            semantic: Some(ordered(6, crate::diagrams::c4::parse_c4)),
+            semantic: Some(ordered(6, BuiltInDiagramSemanticParser::Json(crate::diagrams::c4::parse_c4))),
             combined: Some(ordered(28, crate::diagrams::c4::parse_c4_json_and_editor_facts)),
             typed: Some(ordered(10, render_c4)),
         },
@@ -1165,7 +1220,7 @@ fn bind_variant(identity: &FamilyVariantIdentity) -> FamilyVariantDefinition {
             identity: *identity,
             detector: Some(ordered(7, crate::detect::detector_kanban)),
             canonical: semantic::canonical_kanban,
-            semantic: Some(ordered(26, crate::diagrams::kanban::parse_kanban)),
+            semantic: Some(ordered(26, BuiltInDiagramSemanticParser::Json(crate::diagrams::kanban::parse_kanban))),
             combined: Some(ordered(29, crate::diagrams::kanban::parse_kanban_json_and_editor_facts)),
             typed: Some(ordered(17, render_kanban)),
         },
@@ -1174,7 +1229,7 @@ fn bind_variant(identity: &FamilyVariantIdentity) -> FamilyVariantDefinition {
             identity: *identity,
             detector: Some(ordered(8, crate::detect::detector_class_v2)),
             canonical: semantic::canonical_class,
-            semantic: Some(ordered(16, crate::diagrams::class::parse_class)),
+            semantic: Some(ordered(16, BuiltInDiagramSemanticParser::Json(crate::diagrams::class::parse_class))),
             combined: Some(ordered(20, crate::diagrams::class::parse_class_json_and_editor_facts)),
             typed: Some(ordered(8, render_class)),
         },
@@ -1183,7 +1238,7 @@ fn bind_variant(identity: &FamilyVariantIdentity) -> FamilyVariantDefinition {
             identity: *identity,
             detector: None,
             canonical: semantic::canonical_class,
-            semantic: Some(ordered(17, crate::diagrams::class::parse_class)),
+            semantic: Some(ordered(17, BuiltInDiagramSemanticParser::Json(crate::diagrams::class::parse_class))),
             combined: Some(ordered(21, crate::diagrams::class::parse_class_json_and_editor_facts)),
             typed: Some(ordered(9, render_class)),
         },
@@ -1192,7 +1247,7 @@ fn bind_variant(identity: &FamilyVariantIdentity) -> FamilyVariantDefinition {
             identity: *identity,
             detector: Some(ordered(10, crate::detect::detector_er)),
             canonical: semantic::canonical_er,
-            semantic: Some(ordered(18, crate::diagrams::er::parse_er)),
+            semantic: Some(ordered(18, BuiltInDiagramSemanticParser::Json(crate::diagrams::er::parse_er))),
             combined: Some(ordered(17, crate::diagrams::er::parse_er_json_and_editor_facts)),
             typed: Some(ordered(29, render_er)),
         },
@@ -1201,7 +1256,7 @@ fn bind_variant(identity: &FamilyVariantIdentity) -> FamilyVariantDefinition {
             identity: *identity,
             detector: None,
             canonical: semantic::canonical_er,
-            semantic: Some(ordered(19, crate::diagrams::er::parse_er)),
+            semantic: Some(ordered(19, BuiltInDiagramSemanticParser::Json(crate::diagrams::er::parse_er))),
             combined: Some(ordered(18, crate::diagrams::er::parse_er_json_and_editor_facts)),
             typed: Some(ordered(30, render_er)),
         },
@@ -1210,7 +1265,7 @@ fn bind_variant(identity: &FamilyVariantIdentity) -> FamilyVariantDefinition {
             identity: *identity,
             detector: Some(ordered(11, crate::detect::detector_gantt)),
             canonical: semantic::canonical_gantt,
-            semantic: Some(ordered(23, crate::diagrams::gantt::parse_gantt)),
+            semantic: Some(ordered(23, BuiltInDiagramSemanticParser::Json(crate::diagrams::gantt::parse_gantt))),
             combined: Some(ordered(30, crate::diagrams::gantt::parse_gantt_json_and_editor_facts)),
             typed: Some(ordered(18, render_gantt)),
         },
@@ -1219,7 +1274,7 @@ fn bind_variant(identity: &FamilyVariantIdentity) -> FamilyVariantDefinition {
             identity: *identity,
             detector: Some(ordered(12, crate::detect::detector_info)),
             canonical: semantic::canonical_info,
-            semantic: Some(ordered(4, crate::diagrams::info::parse_info)),
+            semantic: Some(ordered(4, BuiltInDiagramSemanticParser::Json(crate::diagrams::info::parse_info))),
             combined: Some(ordered(10, crate::diagrams::info::parse_info_json_and_editor_facts)),
             typed: Some(ordered(26, render_info)),
         },
@@ -1228,7 +1283,7 @@ fn bind_variant(identity: &FamilyVariantIdentity) -> FamilyVariantDefinition {
             identity: *identity,
             detector: Some(ordered(13, crate::detect::detector_pie)),
             canonical: semantic::canonical_pie,
-            semantic: Some(ordered(5, crate::diagrams::pie::parse_pie)),
+            semantic: Some(ordered(5, BuiltInDiagramSemanticParser::Json(crate::diagrams::pie::parse_pie))),
             combined: Some(ordered(11, crate::diagrams::pie::parse_pie_json_and_editor_facts)),
             typed: Some(ordered(19, render_pie)),
         },
@@ -1237,7 +1292,7 @@ fn bind_variant(identity: &FamilyVariantIdentity) -> FamilyVariantDefinition {
             identity: *identity,
             detector: Some(ordered(14, crate::detect::detector_requirement)),
             canonical: semantic::canonical_requirement,
-            semantic: Some(ordered(7, crate::diagrams::requirement::parse_requirement)),
+            semantic: Some(ordered(7, BuiltInDiagramSemanticParser::Json(crate::diagrams::requirement::parse_requirement))),
             combined: Some(ordered(31, crate::diagrams::requirement::parse_requirement_json_and_editor_facts)),
             typed: Some(ordered(23, render_requirement)),
         },
@@ -1246,7 +1301,7 @@ fn bind_variant(identity: &FamilyVariantIdentity) -> FamilyVariantDefinition {
             identity: *identity,
             detector: Some(ordered(19, crate::detect::detector_timeline)),
             canonical: semantic::canonical_timeline,
-            semantic: Some(ordered(24, crate::diagrams::timeline::parse_timeline)),
+            semantic: Some(ordered(24, BuiltInDiagramSemanticParser::Json(crate::diagrams::timeline::parse_timeline))),
             combined: Some(ordered(32, crate::diagrams::timeline::parse_timeline_json_and_editor_facts)),
             typed: Some(ordered(21, render_timeline)),
         },
@@ -1255,8 +1310,7 @@ fn bind_variant(identity: &FamilyVariantIdentity) -> FamilyVariantDefinition {
             identity: *identity,
             detector: Some(ordered(20, crate::detect::detector_git_graph)),
             canonical: semantic::canonical_git_graph,
-            semantic: Some(ordered(29, crate::diagrams::git_graph::parse_git_graph)),
-            warning_semantic: crate::diagrams::git_graph::parse_git_graph_with_warning_facts,
+            semantic: Some(ordered(29, BuiltInDiagramSemanticParser::Typed(crate::diagrams::git_graph::parse_git_graph_compatibility_model_controlled))),
             combined: Some(ordered(15, crate::diagrams::git_graph::parse_git_graph_json_and_editor_facts)),
             typed: Some(ordered(33, render_git_graph)),
         },
@@ -1265,7 +1319,7 @@ fn bind_variant(identity: &FamilyVariantIdentity) -> FamilyVariantDefinition {
             identity: *identity,
             detector: Some(ordered(21, crate::detect::detector_state_v2)),
             canonical: semantic::canonical_state,
-            semantic: Some(ordered(20, crate::diagrams::state::parse_state)),
+            semantic: Some(ordered(20, BuiltInDiagramSemanticParser::Json(crate::diagrams::state::parse_state))),
             combined: Some(ordered(26, crate::diagrams::state::parse_state_json_and_editor_facts)),
             typed: Some(ordered(1, render_state)),
         },
@@ -1274,7 +1328,7 @@ fn bind_variant(identity: &FamilyVariantIdentity) -> FamilyVariantDefinition {
             identity: *identity,
             detector: None,
             canonical: semantic::canonical_state,
-            semantic: Some(ordered(21, crate::diagrams::state::parse_state)),
+            semantic: Some(ordered(21, BuiltInDiagramSemanticParser::Json(crate::diagrams::state::parse_state))),
             combined: Some(ordered(27, crate::diagrams::state::parse_state_json_and_editor_facts)),
             typed: Some(ordered(2, render_state)),
         },
@@ -1283,7 +1337,7 @@ fn bind_variant(identity: &FamilyVariantIdentity) -> FamilyVariantDefinition {
             identity: *identity,
             detector: Some(ordered(23, crate::detect::detector_journey)),
             canonical: semantic::canonical_journey,
-            semantic: Some(ordered(25, crate::diagrams::journey::parse_journey)),
+            semantic: Some(ordered(25, BuiltInDiagramSemanticParser::Json(crate::diagrams::journey::parse_journey))),
             combined: Some(ordered(33, crate::diagrams::journey::parse_journey_json_and_editor_facts)),
             typed: Some(ordered(22, render_journey)),
         },
@@ -1292,7 +1346,7 @@ fn bind_variant(identity: &FamilyVariantIdentity) -> FamilyVariantDefinition {
             identity: *identity,
             detector: Some(ordered(24, crate::detect::detector_quadrant)),
             canonical: semantic::canonical_quadrant_chart,
-            semantic: Some(ordered(30, crate::diagrams::quadrant_chart::parse_quadrant_chart)),
+            semantic: Some(ordered(30, BuiltInDiagramSemanticParser::Json(crate::diagrams::quadrant_chart::parse_quadrant_chart))),
             combined: Some(ordered(34, crate::diagrams::quadrant_chart::parse_quadrant_chart_json_and_editor_facts)),
             typed: Some(ordered(31, render_quadrant_chart)),
         },
@@ -1301,7 +1355,7 @@ fn bind_variant(identity: &FamilyVariantIdentity) -> FamilyVariantDefinition {
             identity: *identity,
             detector: Some(ordered(25, crate::detect::detector_sankey)),
             canonical: semantic::canonical_sankey,
-            semantic: Some(ordered(38, crate::diagrams::sankey::parse_sankey)),
+            semantic: Some(ordered(38, BuiltInDiagramSemanticParser::Json(crate::diagrams::sankey::parse_sankey))),
             combined: Some(ordered(16, crate::diagrams::sankey::parse_sankey_json_and_editor_facts)),
             typed: Some(ordered(24, render_sankey)),
         },
@@ -1310,7 +1364,7 @@ fn bind_variant(identity: &FamilyVariantIdentity) -> FamilyVariantDefinition {
             identity: *identity,
             detector: Some(ordered(26, crate::detect::detector_packet)),
             canonical: semantic::canonical_packet,
-            semantic: Some(ordered(31, crate::diagrams::packet::parse_packet)),
+            semantic: Some(ordered(31, BuiltInDiagramSemanticParser::Json(crate::diagrams::packet::parse_packet))),
             combined: Some(ordered(12, crate::diagrams::packet::parse_packet_json_and_editor_facts)),
             typed: Some(ordered(20, render_packet)),
         },
@@ -1319,7 +1373,7 @@ fn bind_variant(identity: &FamilyVariantIdentity) -> FamilyVariantDefinition {
             identity: *identity,
             detector: Some(ordered(27, crate::detect::detector_xychart)),
             canonical: semantic::canonical_xychart,
-            semantic: Some(ordered(39, crate::diagrams::xychart::parse_xychart)),
+            semantic: Some(ordered(39, BuiltInDiagramSemanticParser::Json(crate::diagrams::xychart::parse_xychart))),
             combined: Some(ordered(38, crate::diagrams::xychart::parse_xychart_json_and_editor_facts)),
             typed: Some(ordered(32, render_xychart)),
         },
@@ -1328,8 +1382,7 @@ fn bind_variant(identity: &FamilyVariantIdentity) -> FamilyVariantDefinition {
             identity: *identity,
             detector: Some(ordered(28, crate::detect::detector_block)),
             canonical: semantic::canonical_block,
-            semantic: Some(ordered(28, crate::diagrams::block::parse_block)),
-            warning_semantic: crate::diagrams::block::parse_block_with_warning_facts,
+            semantic: Some(ordered(28, BuiltInDiagramSemanticParser::Typed(crate::diagrams::block::parse_block_compatibility_model_controlled))),
             combined: Some(ordered(37, crate::diagrams::block::parse_block_json_and_editor_facts)),
             typed: Some(ordered(28, render_block)),
         },
@@ -1338,7 +1391,7 @@ fn bind_variant(identity: &FamilyVariantIdentity) -> FamilyVariantDefinition {
             identity: *identity,
             detector: Some(ordered(29, crate::detect::detector_eventmodeling)),
             canonical: semantic::canonical_eventmodeling,
-            semantic: Some(ordered(35, crate::diagrams::eventmodeling::parse_eventmodeling)),
+            semantic: Some(ordered(35, BuiltInDiagramSemanticParser::Json(crate::diagrams::eventmodeling::parse_eventmodeling))),
             combined: Some(ordered(22, crate::diagrams::eventmodeling::parse_eventmodeling_json_and_editor_facts)),
             typed: Some(ordered(36, render_eventmodeling)),
         },
@@ -1347,7 +1400,7 @@ fn bind_variant(identity: &FamilyVariantIdentity) -> FamilyVariantDefinition {
             identity: *identity,
             detector: Some(ordered(30, crate::detect::detector_tree_view)),
             canonical: semantic::canonical_tree_view,
-            semantic: Some(ordered(33, crate::diagrams::tree_view::parse_tree_view)),
+            semantic: Some(ordered(33, BuiltInDiagramSemanticParser::Json(crate::diagrams::tree_view::parse_tree_view))),
             combined: Some(ordered(23, crate::diagrams::tree_view::parse_tree_view_json_and_editor_facts)),
             typed: Some(ordered(34, render_tree_view)),
         },
@@ -1356,7 +1409,7 @@ fn bind_variant(identity: &FamilyVariantIdentity) -> FamilyVariantDefinition {
             identity: *identity,
             detector: Some(ordered(31, crate::detect::detector_radar)),
             canonical: semantic::canonical_radar,
-            semantic: Some(ordered(32, crate::diagrams::radar::parse_radar)),
+            semantic: Some(ordered(32, BuiltInDiagramSemanticParser::Json(crate::diagrams::radar::parse_radar))),
             combined: Some(ordered(14, crate::diagrams::radar::parse_radar_json_and_editor_facts)),
             typed: Some(ordered(25, render_radar)),
         },
@@ -1365,7 +1418,7 @@ fn bind_variant(identity: &FamilyVariantIdentity) -> FamilyVariantDefinition {
             identity: *identity,
             detector: Some(ordered(32, crate::detect::detector_ishikawa)),
             canonical: semantic::canonical_ishikawa,
-            semantic: Some(ordered(34, crate::diagrams::ishikawa::parse_ishikawa)),
+            semantic: Some(ordered(34, BuiltInDiagramSemanticParser::Json(crate::diagrams::ishikawa::parse_ishikawa))),
             combined: Some(ordered(24, crate::diagrams::ishikawa::parse_ishikawa_json_and_editor_facts)),
             typed: Some(ordered(35, render_ishikawa)),
         },
@@ -1374,7 +1427,7 @@ fn bind_variant(identity: &FamilyVariantIdentity) -> FamilyVariantDefinition {
             identity: *identity,
             detector: Some(ordered(33, crate::detect::detector_treemap)),
             canonical: semantic::canonical_treemap,
-            semantic: Some(ordered(36, crate::diagrams::treemap::parse_treemap)),
+            semantic: Some(ordered(36, BuiltInDiagramSemanticParser::Json(crate::diagrams::treemap::parse_treemap))),
             combined: Some(ordered(25, crate::diagrams::treemap::parse_treemap_json_and_editor_facts)),
             typed: Some(ordered(27, render_treemap)),
         },
@@ -1383,7 +1436,7 @@ fn bind_variant(identity: &FamilyVariantIdentity) -> FamilyVariantDefinition {
             identity: *identity,
             detector: Some(ordered(34, crate::detect::detector_railroad)),
             canonical: semantic::canonical_railroad,
-            semantic: Some(ordered(11, crate::diagrams::railroad::parse_railroad)),
+            semantic: Some(ordered(11, BuiltInDiagramSemanticParser::Json(crate::diagrams::railroad::parse_railroad))),
             combined: Some(ordered(6, crate::diagrams::railroad::parse_railroad_json_and_editor_facts)),
             typed: Some(ordered(12, render_railroad)),
         },
@@ -1392,7 +1445,7 @@ fn bind_variant(identity: &FamilyVariantIdentity) -> FamilyVariantDefinition {
             identity: *identity,
             detector: Some(ordered(35, crate::detect::detector_railroad_ebnf)),
             canonical: semantic::canonical_railroad_ebnf,
-            semantic: Some(ordered(12, crate::diagrams::railroad::parse_railroad_ebnf)),
+            semantic: Some(ordered(12, BuiltInDiagramSemanticParser::Json(crate::diagrams::railroad::parse_railroad_ebnf))),
             combined: Some(ordered(7, crate::diagrams::railroad::parse_railroad_ebnf_json_and_editor_facts)),
             typed: Some(ordered(13, render_railroad_ebnf)),
         },
@@ -1401,7 +1454,7 @@ fn bind_variant(identity: &FamilyVariantIdentity) -> FamilyVariantDefinition {
             identity: *identity,
             detector: Some(ordered(36, crate::detect::detector_railroad_abnf)),
             canonical: semantic::canonical_railroad_abnf,
-            semantic: Some(ordered(13, crate::diagrams::railroad::parse_railroad_abnf)),
+            semantic: Some(ordered(13, BuiltInDiagramSemanticParser::Json(crate::diagrams::railroad::parse_railroad_abnf))),
             combined: Some(ordered(8, crate::diagrams::railroad::parse_railroad_abnf_json_and_editor_facts)),
             typed: Some(ordered(14, render_railroad_abnf)),
         },
@@ -1410,7 +1463,7 @@ fn bind_variant(identity: &FamilyVariantIdentity) -> FamilyVariantDefinition {
             identity: *identity,
             detector: Some(ordered(37, crate::detect::detector_railroad_peg)),
             canonical: semantic::canonical_railroad_peg,
-            semantic: Some(ordered(14, crate::diagrams::railroad::parse_railroad_peg)),
+            semantic: Some(ordered(14, BuiltInDiagramSemanticParser::Json(crate::diagrams::railroad::parse_railroad_peg))),
             combined: Some(ordered(9, crate::diagrams::railroad::parse_railroad_peg_json_and_editor_facts)),
             typed: Some(ordered(15, render_railroad_peg)),
         },
@@ -1419,7 +1472,7 @@ fn bind_variant(identity: &FamilyVariantIdentity) -> FamilyVariantDefinition {
             identity: *identity,
             detector: Some(ordered(38, crate::detect::detector_venn)),
             canonical: semantic::canonical_venn,
-            semantic: Some(ordered(37, crate::diagrams::venn::parse_venn)),
+            semantic: Some(ordered(37, BuiltInDiagramSemanticParser::Json(crate::diagrams::venn::parse_venn))),
             combined: Some(ordered(35, crate::diagrams::venn::parse_venn_json_and_editor_facts)),
             typed: Some(ordered(37, render_venn)),
         },
@@ -1428,7 +1481,7 @@ fn bind_variant(identity: &FamilyVariantIdentity) -> FamilyVariantDefinition {
             identity: *identity,
             detector: Some(ordered(39, crate::detect::detector_wardley)),
             canonical: semantic::canonical_wardley,
-            semantic: Some(ordered(40, crate::diagrams::wardley::parse_wardley)),
+            semantic: Some(ordered(40, BuiltInDiagramSemanticParser::Json(crate::diagrams::wardley::parse_wardley))),
             combined: Some(ordered(39, crate::diagrams::wardley::parse_wardley_json_and_editor_facts)),
             typed: Some(ordered(40, render_wardley)),
         },
@@ -1437,7 +1490,7 @@ fn bind_variant(identity: &FamilyVariantIdentity) -> FamilyVariantDefinition {
             identity: *identity,
             detector: Some(ordered(40, crate::detect::detector_cynefin)),
             canonical: semantic::canonical_cynefin,
-            semantic: Some(ordered(10, crate::diagrams::cynefin::parse_cynefin)),
+            semantic: Some(ordered(10, BuiltInDiagramSemanticParser::Json(crate::diagrams::cynefin::parse_cynefin))),
             combined: Some(ordered(13, crate::diagrams::cynefin::parse_cynefin_json_and_editor_facts)),
             typed: Some(ordered(11, render_cynefin)),
         },
@@ -1446,7 +1499,7 @@ fn bind_variant(identity: &FamilyVariantIdentity) -> FamilyVariantDefinition {
             identity: *identity,
             detector: Some(ordered(42, crate::detect::detector_usecase)),
             canonical: semantic::canonical_usecase,
-            semantic: Some(ordered(42, crate::diagrams::usecase::parse_usecase)),
+            semantic: Some(ordered(42, BuiltInDiagramSemanticParser::Json(crate::diagrams::usecase::parse_usecase))),
             combined: Some(ordered(42, crate::diagrams::usecase::parse_usecase_json_and_editor_facts)),
             typed: Some(ordered(42, render_usecase)),
         },
@@ -1455,8 +1508,7 @@ fn bind_variant(identity: &FamilyVariantIdentity) -> FamilyVariantDefinition {
             identity: *identity,
             detector: Some(ordered(43, crate::detect::detector_agentflow)),
             canonical: semantic::canonical_agentflow,
-            semantic: Some(ordered(43, crate::diagrams::agentflow::parse_agentflow)),
-            warning_semantic: crate::diagrams::agentflow::parse_agentflow_with_warning_facts,
+            semantic: Some(ordered(43, BuiltInDiagramSemanticParser::Typed(crate::diagrams::agentflow::parse_agentflow_compatibility_model_controlled))),
             combined: Some(ordered(43, crate::diagrams::agentflow::parse_agentflow_json_and_editor_facts)),
             typed: Some(ordered(43, render_agentflow)),
         },

@@ -141,7 +141,7 @@ fn generation_refactor_preserves_independent_public_diagnostics_json() {
 #[test]
 fn facts_schema2_keeps_generic_parser_semantics_without_flowchart_graph() {
     let facts = Analyzer::new().analyze_facts("flowchart TD\nA-->B\n");
-    assert_eq!(facts.version, 2);
+    assert_eq!(facts.version, 3);
 
     let diagram = &facts.diagrams[0];
     assert_eq!(

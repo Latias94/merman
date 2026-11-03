@@ -5,7 +5,7 @@ import { SUPPORTED_THEMES } from "@mermanjs/web";
 import { encodeShareHash } from "../src/lib/share";
 import { DEFAULT_WORKSPACE_SNAPSHOT } from "../src/lib/workspace-snapshot";
 import type { MermaidThemeSelection } from "../src/lib/mermaid-theme-name";
-import { monitorBrowserErrors } from "./helpers/playground";
+import { monitorBrowserErrors, replaceEditorSource, waitForPreviewSvg } from "./helpers/playground";
 
 const cases: {
   name: string;
@@ -25,6 +25,32 @@ const cases: {
   { name: "authored secure cannot protect theme as a host setting", theme: "dark", config: { secure: ["theme"] }, frontmatter: "config: {theme: forest}", directive: { theme: "neutral", flowchart: { theme: "default" } }, tone: "light", fill: "rgb(236, 236, 255)" },
   { name: "authored secure cannot suppress a source namespace", theme: "default", config: { secure: ["flowchart"], flowchart: { theme: "dark" } }, tone: "dark", fill: "rgb(31, 32, 32)" },
 ];
+
+test("SVG updates retain the visible dark artifact and its backing until replacement", async ({ page }) => {
+  await page.addInitScript(() => {
+    if (window === window.top) localStorage.setItem("merman-language", "en");
+  });
+  await page.goto(`./${encodeShareHash({
+    ...DEFAULT_WORKSPACE_SNAPSHOT,
+    code: "flowchart LR\nA[Before] --> B",
+    diagramTheme: "dark",
+  })}`, { waitUntil: "domcontentloaded" });
+  await waitForPreviewSvg(page);
+  const panel = page.locator("#preview-mode-panel");
+  const svg = panel.locator(".preview-container svg").first();
+  await expect(panel).toHaveAttribute("data-preview-canvas-tone", "dark");
+  const original = await svg.elementHandle();
+  await page.clock.install();
+  await page.clock.pauseAt(await page.evaluate(() => Date.now() + 1000));
+  await replaceEditorSource(page, "flowchart LR\nA[After] --> B");
+  await expect(panel).toHaveAttribute("data-preview-canvas-tone", "dark");
+  await expect(svg).toContainText("Before");
+  expect(await svg.evaluate((element, previous) => element === previous, original)).toBe(true);
+  await page.clock.runFor(1000);
+  await expect(svg).toContainText("After");
+  await expect(panel).toHaveAttribute("data-preview-canvas-tone", "dark");
+  await original?.dispose();
+});
 
 for (const scenario of cases) {
   test(`Compare configuration: ${scenario.name}`, async ({ page }) => {

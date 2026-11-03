@@ -13,7 +13,7 @@ use crate::{
 use crate::{Error, MermaidConfig, OperationControl, OperationControlResult, Result, SourceSpan};
 use indexmap::IndexMap;
 use merman_model::warnings::{BLOCK_WIDTH_WARNING_RULE_ID, DiagramWarningFact};
-#[cfg(feature = "compat-json")]
+#[cfg(all(test, feature = "compat-json"))]
 use serde_json::Value;
 #[cfg(all(test, feature = "compat-json"))]
 use serde_json::json;
@@ -967,23 +967,20 @@ pub(crate) fn parse_block_json_and_editor_facts(
         true,
         control,
     )?;
-    let construction = match construction {
+    let (model, editor_facts) = match construction {
         Ok(source) => {
             let model = block_db_to_render_model(source.db, control)?;
-            let compatibility = render_model_to_compat_json_controlled(&model, meta, control)?;
-            Ok((
-                compatibility,
+            (
+                Ok(crate::family::FamilySemanticModel::Block(Box::new(model))),
                 source.editor_facts.unwrap_or_default(),
-                model.semantic.warning_facts,
-            ))
+            )
         }
-        Err(failure) => Err(failure),
+        Err(failure) => {
+            let (error, editor_facts) = failure.into_error_and_editor_facts();
+            (Err(error), editor_facts)
+        }
     };
-    let parsed = crate::family::CombinedSemanticParse::from_construction_with_warning_facts(
-        construction,
-        |parts| parts,
-        BlockParseFailure::into_error_and_editor_facts,
-    );
+    let parsed = crate::family::CombinedSemanticParse::from_parts(model, editor_facts);
     control.checkpoint()?;
     Ok(parsed)
 }
@@ -2526,7 +2523,7 @@ impl<'input, 'control> Parser<'input, 'control> {
     }
 }
 
-#[cfg(feature = "compat-json")]
+#[cfg(all(test, feature = "compat-json"))]
 pub(crate) fn render_model_to_compat_json(
     model: &BlockDiagramRenderModel,
     meta: &SourcePresentationMetadata,
@@ -2535,7 +2532,7 @@ pub(crate) fn render_model_to_compat_json(
         .map_err(Into::into)
 }
 
-#[cfg(all(feature = "compat-json", any(test, feature = "editor-facts")))]
+#[cfg(all(test, feature = "compat-json"))]
 pub(crate) fn render_model_to_compat_json_controlled(
     model: &BlockDiagramRenderModel,
     meta: &SourcePresentationMetadata,
@@ -2549,33 +2546,39 @@ pub(crate) fn render_model_to_compat_json_controlled(
     .map_err(Into::into))
 }
 
-#[cfg(feature = "compat-json")]
+#[cfg(all(test, feature = "compat-json"))]
 pub(crate) fn parse_block(code: &str, meta: &SourcePresentationMetadata) -> Result<Value> {
-    parse_block_with_warning_facts(code, meta).map(crate::family::WarningSemanticParse::into_model)
+    let control = OperationControl::new();
+    parse_block_compatibility_model_controlled(code, meta, &control)
+        .expect("a private parse control cannot be cancelled")?
+        .into_compatibility_json_controlled(&meta.compat_json_metadata(), &control)
+        .expect("a private projection control cannot be cancelled")
+        .map(|(model, _)| model.into_unmanaged_value())
 }
 
 #[cfg(feature = "compat-json")]
-pub(crate) fn parse_block_with_warning_facts(
+pub(crate) fn parse_block_compatibility_model_controlled(
     code: &str,
     meta: &SourcePresentationMetadata,
-) -> Result<crate::family::WarningSemanticParse> {
-    let source = construct_block_semantic_source(
+    control: &OperationControl,
+) -> OperationControlResult<Result<crate::family::FamilySemanticModel>> {
+    let construction = construct_block_semantic_source(
         code,
         meta.effective_config.as_config(),
         #[cfg(feature = "editor-facts")]
         EditorFactsDemand::Omit,
         true,
-        &OperationControl::new(),
-    )
-    .expect("a private parse control cannot be cancelled")
-    .map_err(|failure| *failure.error)?;
-    let model = block_db_to_render_model(source.db, &OperationControl::new())
-        .expect("a private conversion control cannot be cancelled");
-    let compatibility = render_model_to_compat_json(&model, meta)?;
-    Ok(crate::family::WarningSemanticParse::new(
-        compatibility,
-        model.semantic.warning_facts,
-    ))
+        control,
+    )?;
+    let source = match construction {
+        Ok(source) => source,
+        Err(failure) => return Ok(Err(*failure.error)),
+    };
+    let model = block_db_to_render_model(source.db, control)?;
+    control.checkpoint()?;
+    Ok(Ok(crate::family::FamilySemanticModel::Block(Box::new(
+        model,
+    ))))
 }
 #[cfg(all(test, feature = "presentation"))]
 mod presentation_data_tests {
@@ -2960,8 +2963,9 @@ C<["Route"]>(left,down)
         let meta = meta();
 
         reset_block_syntax_construction_count();
-        let (combined_json, combined_facts) = crate::family::test_support::into_result(
+        let (combined_json, combined_facts) = crate::family::test_support::into_projected_result(
             parse_block_json_and_editor_facts(text, &meta, &OperationControl::new()),
+            &meta,
         )
         .unwrap();
         assert_eq!(

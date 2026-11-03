@@ -3,8 +3,10 @@
 Detect, validate, and analyze Mermaid source in a browser without shipping SVG rendering, ASCII
 output, or retained editor sessions.
 
-This guide targets the `0.10.0-alpha.1` release candidate, with Web transport API `8` and Options
-JSON schema `3`. Check the
+The installation example uses published `0.10.0-alpha.1`, with Web transport API `8`, facts schema
+`2` and Options JSON schema `3`. Current development builds use Web transport API `9` and facts
+schema `3`; build matching facade, glue and WASM from one revision for those contracts. See the
+[development migration](https://github.com/Latias94/merman/blob/main/docs/release/UNRELEASED_CONTRACT_VERSIONS.md#source-appearance-and-render-evidence-follow-up). Check the
 [prebuilt product status](https://github.com/Latias94/merman/blob/main/docs/release/PREBUILT_PRODUCTS.md)
 and [publish order](https://github.com/Latias94/merman/blob/main/docs/release/PUBLISH_ORDER.md)
 for verified public availability.

@@ -126,7 +126,7 @@ pub use theme_execution_evidence::{
     BINDING_THEME_EXECUTION_EVIDENCE_MAX_ID_UTF8_BYTES,
     BINDING_THEME_EXECUTION_EVIDENCE_MAX_TARGET_REASON_IDS,
     BINDING_THEME_EXECUTION_EVIDENCE_SCHEMA_VERSION, BindingThemeDiagnostic,
-    BindingThemeExecutionEvidence, BindingThemeExecutionEvidenceV1,
+    BindingThemeExecutionEvidence, BindingThemeExecutionEvidenceV2,
     BindingUnknownThemeExecutionEvidence,
 };
 

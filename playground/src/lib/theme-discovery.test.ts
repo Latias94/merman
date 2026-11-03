@@ -1,11 +1,12 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import type { SvgRenderMetadata, ThemeExecutionEvidenceV1 } from "@mermanjs/web";
+import type { SvgRenderMetadata, ThemeExecutionEvidenceV2 } from "@mermanjs/web";
 import type { CompletedRenderBatch, RenderPublicationId } from "../runtime/render-coordinator.ts";
 import type { NavigableInlineSvg } from "../runtime/render-artifact.ts";
 import {
   boundedThemeReasonCodes,
   currentDiagramDetection,
+  currentAppearanceOverrides,
   currentThemeRender,
   detectedThemeFamily,
   readThemeExecutionEvidence,
@@ -20,9 +21,10 @@ import { beginThemeEditSession, beginThemeImport, completeThemeImport, rejectThe
 import { DEFAULT_WORKSPACE_SNAPSHOT } from "./workspace-snapshot.ts";
 
 const workspace = { ...DEFAULT_WORKSPACE_SNAPSHOT, themePresetId: "catalog-preset" };
-const evidence: ThemeExecutionEvidenceV1 = {
-  version: 1, family_id: "flowchart", theme_status: "verified", output_mutated: true,
+const evidence: ThemeExecutionEvidenceV2 = {
+  version: 2, family_id: "flowchart", theme_status: "verified", output_mutated: true,
   target_kind: "inline_svg", target_status: "host_dependent", target_reason_ids: ["host-font"], font_source: "browser",
+  materialized_theme: "dark",
 };
 const metadata: SvgRenderMetadata = {
   version: 1, operation_id: "svg", media_type: "image/svg+xml", runtime_policy: "default", byte_length: 6,
@@ -34,6 +36,7 @@ const batch: CompletedRenderBatch = {
   detection: { status: "available", diagramType: "flowchart", syntaxId: "flowchart-v2", effectiveLayoutId: "dagre", validity: "valid" },
   snapshot: { publicationId, operation: {
     source: workspace.code, configuredSource: workspace.code, configurationError: null,
+    injectedConfigSpan: null,
     bindingOptions: { version: 3 }, bindingOptionsJson: null,
     theme: workspace.diagramTheme, configJson: workspace.mermaidConfig,
     themePresetId: workspace.themePresetId, themeRecipeJson: workspace.themeRecipeJson,
@@ -45,6 +48,19 @@ const batch: CompletedRenderBatch = {
     artifact: { svg: "<svg/>", kind: "navigable-inline-svg" } as NavigableInlineSvg },
 };
 const familyCapabilities = [{ diagram_type: "flowchart-v2", family_id: "flowchart", metadata_id: "flowchart" }];
+
+test("appearance evidence is visible only for the matching configured operation", () => {
+  const operation = { ...batch.snapshot.operation, injectedConfigSpan: { start: 8, end: 40 } };
+  const current: CompletedRenderBatch = { ...batch,
+    snapshot: { ...batch.snapshot, operation },
+    detection: { ...batch.detection, appearance: { state: "known", font: null, look: null,
+      theme: { value: "dark", origin: { kind: "directive", directive_index: 0 }, construct_span: { start: 8, end: 40 } } } },
+  };
+  assert.deepEqual(currentAppearanceOverrides(current, workspace)?.theme, { value: "dark", origin: "config" });
+  assert.equal(currentAppearanceOverrides(current, { ...workspace, code: "new source" }), null);
+  assert.equal(currentAppearanceOverrides(current, { ...workspace, mermaidConfig: '{"theme":"light"}' }), null);
+  assert.equal(currentAppearanceOverrides(batch, workspace), null);
+});
 
 test("recommended settings recursively preserve unrelated Mermaid config without mutating the catalog", () => {
   const original = {

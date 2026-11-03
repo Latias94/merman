@@ -16,7 +16,8 @@ use merman_core::{
 };
 use merman_core::{
     EditorSemanticFacts, Error as CoreError, ParsedEditorFacts, SemanticParseOutcome,
-    SemanticParser, SemanticSnapshotCapture, preprocess::SourceConfigEvidence,
+    SemanticParser, SemanticSnapshotCapture,
+    preprocess::{SourceAppearanceSummary, SourceConfigEvidence},
 };
 #[cfg(feature = "compat-json")]
 use merman_model::presentation::PresentationMetadata;
@@ -624,6 +625,7 @@ impl Analyzer {
             mode,
             cancellation,
         )?;
+        captured.appearance = evidence.source_config().appearance().clone();
         cancellation.checkpoint()?;
         captured.candidates =
             crate::document::normalize_document_diagnostic_candidates_cancellable(
@@ -947,6 +949,7 @@ impl Analyzer {
             candidates,
             syntax,
             parse_disposition,
+            appearance: SourceAppearanceSummary::Unknown,
         })
     }
 }
@@ -1214,6 +1217,7 @@ pub(crate) struct CapturedDiagram {
     pub(crate) candidates: Vec<DiagnosticCandidate>,
     pub(crate) syntax: Option<AnalysisSyntaxFacts>,
     pub(crate) parse_disposition: DiagramParseDisposition,
+    pub(crate) appearance: SourceAppearanceSummary,
 }
 
 fn semantic_parser_from_options(options: &AnalysisOptions) -> SemanticParser {
