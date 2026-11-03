@@ -593,6 +593,46 @@ class WebPackageArtifactTests(unittest.TestCase):
         for record in manifest["packages"]:
             self.assertEqual(client.tags[(record["name"], "alpha")], VERSION)
 
+    def test_cli_real_reconciliation_keeps_shared_report_on_success_and_failure(self) -> None:
+        path = self.create_manifest()
+        manifest = web_package_group.verify_artifact(path, self.artifacts)
+        report_path = self.artifacts / "reconciliation-report.json"
+        for conflict in (False, True):
+            with self.subTest(conflict=conflict):
+                client = FakeNpm()
+                client.manifest = manifest
+                if conflict:
+                    first = manifest["packages"][0]
+                    client.versions[(first["name"], VERSION)] = "sha512-b3RoZXI="
+                with (mock.patch.object(web_package_group, "NpmCli", return_value=client),
+                      mock.patch.object(web_package_group, "write_json", side_effect=AssertionError("entrypoint overwrite")),
+                      mock.patch.object(web_package_group, "write_reconciliation_report") as extra_write):
+                    status = web_package_group.main([
+                        "reconcile", "--manifest", str(path), "--artifact-dir", str(self.artifacts),
+                        "--report", str(report_path),
+                    ])
+                self.assertEqual(status, int(conflict))
+                self.assertEqual(json.loads(report_path.read_text())["status"],
+                                 "failed-before-publish" if conflict else "released")
+                extra_write.assert_not_called()
+
+    def test_cli_dry_run_adds_operations_with_shared_atomic_writer(self) -> None:
+        path = self.create_manifest()
+        report_path = self.artifacts / "reconciliation-report.json"
+        with mock.patch.object(
+            web_package_group, "write_reconciliation_report",
+            wraps=web_package_group.write_reconciliation_report,
+        ) as write:
+            status = web_package_group.main([
+                "reconcile", "--manifest", str(path), "--artifact-dir", str(self.artifacts),
+                "--report", str(report_path), "--dry-run",
+            ])
+        self.assertEqual(status, 0)
+        write.assert_called_once()
+        report = json.loads(report_path.read_text())
+        self.assertEqual(report["status"], "released")
+        self.assertEqual(len(report["dry_run_operations"]), len(report["package_states"]))
+
     def test_reconciliation_skips_an_already_released_group(self) -> None:
         path = self.create_manifest()
         manifest = web_package_group.verify_artifact(path, self.artifacts)

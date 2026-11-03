@@ -280,6 +280,54 @@ class NodePackageGroupTests(unittest.TestCase):
         self.assertEqual(retry["published"], [])
         self.assertEqual(retry["already_published"][-1], "@mermanjs/node")
 
+    def test_cli_real_reconciliation_keeps_shared_report_on_success_and_failure(self) -> None:
+        manifest_path = node_package_group.create_manifest(
+            self.artifacts, DESCRIPTOR, version=self.version,
+            source_sha="a" * 40, target_dist_tag="alpha",
+        )
+        manifest = node_package_group.verify_artifact(
+            manifest_path, self.artifacts, descriptor_path=DESCRIPTOR,
+        )
+        report_path = self.artifacts / "reconciliation-report.json"
+        for conflict in (False, True):
+            with self.subTest(conflict=conflict):
+                client = mock.Mock(wraps=DryRunNpmClient(manifest))
+                if conflict:
+                    client.version_integrity.return_value = "sha512-b3RoZXI="
+                with (mock.patch.object(node_package_group, "NpmCli", return_value=client),
+                      mock.patch.object(node_package_group, "write_json", side_effect=AssertionError("entrypoint overwrite")),
+                      mock.patch.object(node_package_group, "write_reconciliation_report") as extra_write):
+                    status = node_package_group.main([
+                        "reconcile", "--manifest", str(manifest_path),
+                        "--artifact-dir", str(self.artifacts), "--descriptor", str(DESCRIPTOR),
+                        "--report", str(report_path),
+                    ])
+                self.assertEqual(status, int(conflict))
+                self.assertEqual(json.loads(report_path.read_text())["status"],
+                                 "failed-before-publish" if conflict else "released")
+                extra_write.assert_not_called()
+
+    def test_cli_dry_run_adds_operations_with_shared_atomic_writer(self) -> None:
+        manifest_path = node_package_group.create_manifest(
+            self.artifacts, DESCRIPTOR, version=self.version,
+            source_sha="a" * 40, target_dist_tag="alpha",
+        )
+        report_path = self.artifacts / "reconciliation-report.json"
+        with mock.patch.object(
+            node_package_group, "write_reconciliation_report",
+            wraps=node_package_group.write_reconciliation_report,
+        ) as write:
+            status = node_package_group.main([
+                "reconcile", "--manifest", str(manifest_path),
+                "--artifact-dir", str(self.artifacts), "--descriptor", str(DESCRIPTOR),
+                "--report", str(report_path), "--dry-run",
+            ])
+        self.assertEqual(status, 0)
+        write.assert_called_once()
+        report = json.loads(report_path.read_text())
+        self.assertEqual(report["status"], "released")
+        self.assertEqual(len(report["dry_run_operations"]), len(report["package_states"]))
+
     def test_tampered_tarball_is_rejected(self) -> None:
         manifest_path = node_package_group.create_manifest(
             self.artifacts,
