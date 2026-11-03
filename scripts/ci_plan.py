@@ -147,16 +147,12 @@ _CRATE_OWNER_RULES = (
         {"core", "hygiene", "npm", "vscode", "web"},
     ),
     ("crates/xtask/src/cmd/native_abi.rs", {"core", "hygiene", "platform"}),
-    (
-        "crates/xtask/src/cmd/wasm_size_matrix.rs",
-        {"core", "hygiene", "typst", "web"},
-    ),
-    (
-        "crates/xtask/src/cmd/wasm_module_surface.rs",
-        {"core", "hygiene", "typst"},
-    ),
     ("crates/xtask/", _CORE_OWNERS),
 )
+_CRATE_EXACT_OWNER_RULES = {
+    "crates/xtask/src/cmd/wasm_size_matrix.rs": frozenset({"core", "hygiene", "typst", "web"}),
+    "crates/xtask/src/cmd/wasm_module_surface.rs": frozenset({"core", "hygiene", "typst"}),
+}
 _SCRIPT_EXACT_OWNER_RULES = {
     "platforms/node/scripts/install-root-package.py": frozenset({"hygiene", "node", "npm"}),
     "scripts/test_build_python_uniffi_wheel.py": frozenset({"hygiene", "python"}),
@@ -697,6 +693,8 @@ def _classify_path(path: str) -> tuple[frozenset[str], str, bool]:
             False,
         )
     if path.startswith("crates/"):
+        if selected := _CRATE_EXACT_OWNER_RULES.get(path):
+            return selected, f"Rust tool consumer changed: {path}", False
         for prefix, selected in _CRATE_OWNER_RULES:
             if path.startswith(prefix):
                 owners = set(selected)

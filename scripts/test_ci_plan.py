@@ -363,6 +363,8 @@ class PlannerTests(unittest.TestCase):
                 "hygiene",
                 "typst",
             },
+            "crates/xtask/src/cmd/wasm_size_matrix.rs.backup": {"core", "hygiene"},
+            "crates/xtask/src/cmd/wasm_module_surface.rs.next": {"core", "hygiene"},
             "crates/xtask/src/cmd/typst_package.rs": {
                 "core",
                 "hygiene",
