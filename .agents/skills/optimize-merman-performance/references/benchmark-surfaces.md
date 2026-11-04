@@ -113,14 +113,9 @@ Do not call SVG latency parse latency. Do not claim admission from one host.
 
 ## Browser and WASM
 
-For Web artifact size, use exact artifact profiles:
-
-```console
-cargo run -p xtask -- wasm-size-matrix \
-  --surface web \
-  --artifact-profile web-full \
-  --budget-file docs/release/WASM_SIZE_BUDGETS.json
-```
+For Web artifact size, use the [upgrade playbook's artifact budget
+commands](../../../../docs/release/MERMAID_UPGRADE_PLAYBOOK.md#7-refresh-generated-surfaces-and-evidence)
+against the built package root and its exact artifact profiles.
 
 Record raw, stripped, gzip, and Brotli bytes and the profile capabilities. Compare browser
 renderers with the checked-in family corpus:

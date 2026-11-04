@@ -56,6 +56,14 @@ ordinary builders can use its default empty collection. These new data use
 defaulted, omitted-when-empty JSON fields where applicable. Author metadata
 cannot set internal `laneRole`, `laneIndex`, or `drawnExtent` values.
 
+Direct Rectpacking `Options` literals add `regular_packing_minimum: None` when
+they have no regular-pipeline title floor; literals using `..Default::default()`
+need no change. That floor is distinct from `minimum_width`/`minimum_height`,
+which also apply to the earlier Box branch. The ELK input importer now omits
+empty-string layout labels, matching the selected worker; measured-only adapter
+labels retain a nonempty placeholder. Raw owner-title dimensions still reserve
+compound space before that text filter.
+
 Mindmap compatibility JSON no longer includes `diagramId`. Its former generated
 UUID owner, `diagram_id_from_context`, `PresentationContext::Mindmap`,
 `PresentationContext::mindmap_diagram_id`, `CompatJsonMetadata::diagram_id`, and
@@ -75,7 +83,7 @@ bounds, directional layout and endpoint docking follow the selected source.
 contracts. This Mermaid runtime move intentionally leaves that syntax baseline
 unchanged. Tree-sitter output does not become semantic input to Merman.
 
-## Verified reference evidence (2026-11-04)
+## Initial reference evidence (2026-11-04)
 
 The four verification catalogs and seven semantic-label fixture contracts bind
 actual Mermaid 12.3 SVGs and their selected-source manifests. The collection
@@ -111,7 +119,7 @@ admission. Actual DOMPurify `3.4.17` rejects both `stroke:DarkGray` and
 values; marker identity is unchanged. Browser tests verify timing, update and
 document isolation, and reduced motion in Classic, Neo and Hand-drawn looks.
 
-Final `verify --strict` passes: 14,026 Rust tests, architecture/doctest owners,
+The initial `verify --strict` pass covered 14,026 Rust tests, architecture/doctest owners,
 all 37 three-mode family comparisons, Web build/contracts/smoke, Playground
 tests/build/browsers and 316 VS Code tests. Independent size, installed Node and
 real Typst consumers pass with the original budgets. The
@@ -120,3 +128,10 @@ names exact artifacts, source identities, review closure and explicit limits.
 The upgrade playbook's
 [current transition](../release/MERMAID_UPGRADE_PLAYBOOK.md#current-transition-mermaid-1230)
 describes the selected development graph.
+
+The subsequent [independent audit and repair record](../reviews/2026-11-04-fearless-parity-audit.md)
+covers CI checkout-path consumers, Step route/observation checks, parser recovery
+and older ELK gaps. It owns verification of those later repairs; the initial
+counts above remain historical. Current comparison receipts bind 146 exact
+entries and 384 fixture/mode pairs. The additional entry retains raw hand-drawn
+Step motion geometry rather than discarding its route coordinates.

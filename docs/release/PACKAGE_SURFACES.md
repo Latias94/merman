@@ -27,7 +27,14 @@ and Cytoscape `3.34.4`. Published alpha.1 identities remain unchanged. See the
 [development migration](../migrations/mermaid-12-3.md) for source and output changes, including
 the explicit static projection for animated Step edges.
 
-The alpha uses Options JSON schema `3`, Web transport API `9`, analysis facts schema `3`, and theme execution evidence schema `2`, including prepared sources and mounted diagrams. Its projected package version does not establish publication. The [host guide](PREBUILT_PRODUCTS.md#published-versions) records verified channel versions; use immutable `v0.9.3` and its matching documentation for the published maintenance APIs. See the [alpha changelog](../../CHANGELOG.md#0100-alpha1---2026-11-02) for required migrations.
+Published `0.10.0-alpha.1` uses Options JSON schema `3`, Web transport API `8`, analysis facts
+schema `2`, and theme execution evidence schema `1`. Current development source retains Options
+JSON schema `3` and uses Web transport API `9`, analysis facts schema `3`, and theme execution
+evidence schema `2`. Both provide prepared sources and mounted diagrams; their wrappers and
+artifacts must match the same contract versions. A projected package version does not establish
+publication. The [host guide](PREBUILT_PRODUCTS.md#published-versions) records verified channel
+versions; use immutable `v0.9.3` and its matching documentation for the published maintenance APIs.
+See the [alpha changelog](../../CHANGELOG.md#0100-alpha1---2026-11-02) for required migrations.
 
 This alpha requires the independently published `roughr-merman 0.12.5` and Tree-sitter `0.3.2`. Typst wrapper `0.5.0` bundles Merman `0.9.0`; wrapper `0.4.0` bundles `0.8.0`. See the [dependency policy](../DEPENDENCY_POLICY.md) for compatible version requirements and intentional upgrade exceptions.
 

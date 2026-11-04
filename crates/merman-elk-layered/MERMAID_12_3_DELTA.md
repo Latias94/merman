@@ -96,7 +96,7 @@ version other than 0.12.0 and runs without installation or lifecycle scripts:
 
 ```text
 node crates/merman-elk-layered/tests/elkjs_0_12_0_oracle.cjs \
-  /Users/frankorz/Documents/projects/rust/merman/target/mermaid-12.3/cli/node_modules/elkjs \
+  target/mermaid-12.3/cli/node_modules/elkjs \
   target/mermaid-12.3/elk-engine/oracle-0.12.0-randomized-tries.json
 ```
 
