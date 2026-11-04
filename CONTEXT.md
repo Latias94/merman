@@ -1,7 +1,7 @@
 # Project Context
 
-This file is the current-facing entry point for repository context. ADRs and
-workstream documents remain authoritative for detailed decisions; this page
+This file is the current-facing entry point for repository context. ADRs remain
+authoritative for detailed decisions; this page
 keeps the active baseline, boundaries, and navigation local to the repository
 root.
 
@@ -129,10 +129,6 @@ Current non-goal:
 - Browser runtime, Playground, benchmark, and editor ownership:
   [ADR-0074](docs/adr/0074-browser-runtime-and-benchmark-ownership.md) and
   [LSP/editor contracts](docs/lsp/README.md).
-
-The [June architecture issue ledger](docs/quality/ARCHITECTURE_ISSUES_2026-06-01.md) is a historical
-investigation. Revalidate its findings against current owners and callers before starting work;
-its older open-status notes do not select the current task queue.
 
 ## Validation Defaults
 

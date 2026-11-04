@@ -6,6 +6,8 @@ several categorical claims in the article.
 
 **Audited:** 2026-07-27
 
+References to "current" Merman below mean the July 27 snapshots listed here, not today's release.
+
 **Article snapshot:** [Markdown source](https://xingwangzhe.fun/posts/satteri-mermaid-npm-package.md)
 retrieved at 2026-07-27 21:20 CST. The page is dated 2026-07-19 but returned
 `Last-Modified: Sun, 26 Jul 2026 23:01:50 GMT`; it is therefore a mutable snapshot, not an immutable
@@ -281,7 +283,7 @@ families" is not.
 The current repository provides strong evidence for **major** color customization:
 
 - the generated Mermaid 11.16
-  [`theme-variable artifact`](../../crates/merman-core/src/generated/theme_variables_11_16_0.json)
+  [`theme-variable artifact`](https://github.com/Latias94/merman/blob/869a26d6d6a19617cc99137ec7a2536cb9171625/crates/merman-core/src/generated/theme_variables_11_16_0.json)
   contains 271 default keys with exact source provenance;
 - [`theme.rs`](../../crates/merman-core/src/theme.rs) checks all 11 default snapshots and generated
   override-oracle cases;

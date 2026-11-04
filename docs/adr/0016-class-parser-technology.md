@@ -49,5 +49,5 @@ other crates (renderers, CLI, converters).
 
 - Upstream grammar: `repo-ref/mermaid/packages/mermaid/src/diagrams/class/parser/classDiagram.jison`
 - Upstream DB: `repo-ref/mermaid/packages/mermaid/src/diagrams/class/classDb.ts`
-- Alignment slice: `docs/alignment/CLASS_MINIMUM.md`
+- [Family compatibility notes](../alignment/FAMILY_NOTES.md#class)
 

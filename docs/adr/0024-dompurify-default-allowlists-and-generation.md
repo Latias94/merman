@@ -29,7 +29,7 @@ and a reproducible way to keep them pinned to Mermaid's baseline dependency vers
 - Pin the shared browser, reference-CLI, and Rust generation baseline to the release-contract
   version (`dompurify@3.4.17` for the Mermaid 12.2.0 reference graph). This security patch retains
   Mermaid 12.2.0, parser 2.0.1, and reference CLI 12.0.0. The accompanying Puppeteer security
-  update is documented in the selected-reference receipt and security verification.
+  update follows the same selected-reference admission contract.
 - For a dependency-only sanitizer patch, regenerate every upstream family once and inspect every
   changed SVG before accepting baseline churn. The historical 3.4.13 refresh changed no generated
   allowlist entries; its candidate SVG deltas were limited to generated node IDs, the wall-clock
@@ -51,8 +51,8 @@ and a reproducible way to keep them pinned to Mermaid's baseline dependency vers
   (SMIL `attributeName=href` in XHTML mode). The generated default sets are unchanged. Validate
   the selected reference-runtime instance and both published browser builds against the pinned
   upstream browser suite; do not infer live-DOM API parity from the Rust string-input sanitizer.
-  See the [2026-10-24 security verification](../reviews/2026-10-24-dompurify-security.md) for
-  signatures, real browser results, baseline generation, and remaining owner gates.
+  The [Mermaid upgrade playbook](../release/MERMAID_UPGRADE_PLAYBOOK.md) owns companion
+  selection, signature verification, reference generation, and admission requirements.
 - Generate a Rust module containing DOMPurify's default allowlists via `xtask`:
   - source: `repo-ref/dompurify/dist/purify.cjs.js`
   - output: `crates/merman-core/src/generated/dompurify_defaults.rs`

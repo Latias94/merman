@@ -1,8 +1,0 @@
-{
-  "svg": {
-    "pipeline": "resvg-safe"
-  },
-  "raster": {
-    "scale": 2
-  }
-}

@@ -11,7 +11,7 @@ source mapping, and output lifecycle decisions remain in force.
 
 [ADR-0099](0099-model-and-source-boundaries.md) selects the subsequent development package/API
 ownership for independent model, terminal, graphical and diagnostic consumers. It preserves this
-decision's execution boundary; its execution plan records actual extraction progress and evidence.
+decision's execution boundary and distinguishes implementation from platform qualification.
 
 ## Context
 
@@ -57,7 +57,6 @@ preserve their previous mathematical-label support.
 Host transport envelopes, schemas, and capability IDs retain the synchronized baseline: Web
 transport API 8, options schema 3, geometry schema 1, and native ABI 3.
 
-This records the implemented boundary for
-[plan U8](../plans/2026-10-20-1252-refactor-semantic-capability-boundaries-plan.md#u8-update-installed-products-generated-contracts-and-migration-docs).
-It does not certify U1-U9 completion or a measured performance improvement; verification and
-performance receipts remain separate evidence.
+This records the implemented execution boundary. Acceptance does not certify completion of every
+migration or installed-product qualification, or establish a measured performance improvement.
+Those claims require their own current consumer and measurement evidence.

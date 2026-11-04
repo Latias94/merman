@@ -67,4 +67,5 @@ normalized variants using the Langium grammar, e.g.:
 
 - `db:L -- R:server`
 
-See `docs/alignment/ARCHITECTURE_UPSTREAM_TEST_COVERAGE.md`.
+See the [Architecture compatibility notes](../alignment/FAMILY_NOTES.md#architecture). Historical
+normalization names do not exclude an input that the currently selected source accepts.

@@ -2,13 +2,21 @@
 
 ## Status
 
-Accepted as the development architecture direction on 2026-10-30, with explicit maintainer authorization for breaking Rust source changes. Implementation was merged in [#258](https://github.com/Latias94/merman/pull/258) on 2026-10-31. The [execution plan](../plans/2026-10-30-model-and-source-boundaries.md) and [implementation record](../reviews/2026-10-30-model-source-boundaries-implementation.md) distinguish completed ownership changes and recorded measurements from the remaining Flutter Apple/macOS qualification. Acceptance of this decision alone does not establish dependency, package-size or runtime improvements.
+Accepted as the development architecture direction on 2026-10-30, with explicit maintainer
+authorization for breaking Rust source changes. Implementation was merged in
+[#258](https://github.com/Latias94/merman/pull/258) on 2026-10-31. Acceptance of this decision alone
+does not establish dependency, package-size or runtime improvements, or qualify later platform
+artifacts.
 
 This decision amends the Rust package/API ownership clauses of [ADR-0010](0010-semantic-model-boundary.md), [ADR-0011](0011-semantic-model-versioning.md), [ADR-0073](0073-family-owned-diagram-architecture.md), [ADR-0091](0091-selectable-diagram-families.md) and [ADR-0098](0098-semantic-presentation-capabilities.md). Their single semantic construction, pinned Mermaid behavior, deep lifecycle, source admission, requested projections and operation contracts remain in force.
 
 ## Context
 
-The [2026-10-30 dependency review](../research/2026-10-30-dependency-review.md) measured real independent consumer graphs. Recent semantic/presentation and controlled-kernel refactors removed unrequested work, but existing models, config values, execution types and family grammar still share the core package. A model-to-ASCII application therefore compiles source ingestion even though it never parses Mermaid. Diagnostic-only analysis also compiles the YAML serializer used to generate fixes.
+Independent consumer graphs inspected on 2026-10-30 exposed a remaining ownership problem after
+the semantic/presentation and controlled-kernel refactors: models, config values, execution types
+and family grammar still shared the core package. A model-to-ASCII application therefore compiled
+source ingestion even though it never parsed Mermaid. Diagnostic-only analysis also compiled the
+YAML serializer used to generate fixes.
 
 Render and export have related ownership friction. Render consumes core models and frozen facts, but also core sanitization and an engine-installation bridge. Export needs Render's sealed SVG, measurement interface and font policy, plus core operation/resource types. Removing one direct dependency without resolving these paths would leave the same source stack transitively reachable.
 
@@ -81,4 +89,22 @@ Two source packages join the coupled publish order and generated legal ownership
 
 Acceptance comes from independent compiled consumers, exact normal/build exclusions and the current semantic, lifecycle, terminal, feature, sanitizer, CSS/color, SVG/seal, measurement and installed-product owners. Include core presentation without its JSON serializer feeding Render projection, source-history authority controls and conservative authored construction. Artifact size and cold compilation are separate controlled measurements with honest inconclusive outcomes. Historical performance evidence is not rebound to the new implementation by editing its hashes.
 
-Use the [execution plan](../plans/2026-10-30-model-and-source-boundaries.md) and [family checklist](../plans/2026-10-30-family-data-inventory.md) for sequencing, retirement, consumer cases and completion. Implementation is merged; full qualification remains open until the outstanding platform owner records its execution evidence.
+The [migration guide](../migrations/model-source-boundaries.md) owns current consumer migration.
+Current platform delivery and qualified release scopes belong to
+[package surfaces](../release/PACKAGE_SURFACES.md) and the
+[publication record](../release/PUBLISH_ORDER.md).
+
+### Platform qualification boundary
+
+Release Preflight's `flutter-dry-run` owns the complete Flutter iOS/macOS native slices,
+artifact-matrix checks, and macOS Dart ABI 3, example, and theme consumers. Its existing workflow
+and package responsibilities are documented by the [release guide](../release/RELEASING.md) and
+[Flutter binding guide](../bindings/FLUTTER_DART_FFI.md). Apple Swift/UniFFI smoke success and
+ordinary Ubuntu binding CI do not qualify this separate scope. Dispatching a workflow without
+completed execution is not qualification evidence.
+
+The required evidence covers slice builds, symbols, packaging, and Dart execution on the macOS
+runner's host architecture. It does not establish iOS device execution, runtime execution on both
+macOS architectures, or installation from pub.dev. Use the existing platform owner against the
+final candidate; historical correctness or measurement results do not transfer that qualification
+to later source or authorize publication.

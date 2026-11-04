@@ -48,5 +48,5 @@ Installed final-package consumers prove the supported OS, CPU, libc and host-run
 Source builds, candidate artifacts, public publication and registry installation are distinct
 states. This decision does not authorize a registry publication or modify v0.9.x artifacts.
 
-See the [implementation plan](../plans/2026-11-01-1248-refactor-binding-delivery-plan.md)
-and [binding delivery study](../research/2026-11-01-binding-delivery.md).
+The [prebuilt product guide](../release/PREBUILT_PRODUCTS.md) owns recommended host selections;
+the [release guide](../release/RELEASING.md) owns package qualification and publication handoffs.

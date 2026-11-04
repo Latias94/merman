@@ -3,10 +3,8 @@
 This document describes how to generate **upstream Mermaid SVG outputs** that act as baselines for
 1:1 parity work.
 
-Baseline version: Mermaid `@12.0.0`.
-
 Historical fixture notes may still mention the baseline version that introduced a fixture or
-normalization rule. The current authoritative baseline is ADR-0090 and
+normalization rule. The current authoritative baseline is
 `tools/upstreams/MERMAID_REFERENCE_BUNDLE.json`; `tools/upstreams/REPOS.lock.json` pins source checkouts.
 
 ## Why This Exists
@@ -54,7 +52,7 @@ local comparisons. Comparisons apply that explicit root-only projection to the l
 before evaluating all DOM modes, without ignoring background differences in the comparator.
 Public-API tests separately assert that core SVG output has no implicit canvas background.
 
-The reference workspace under `tools/mermaid-cli/` pins Mermaid `12.0.0`, the CLI host,
+The reference workspace under `tools/mermaid-cli/` pins the selected Mermaid package, CLI host,
 companions, browser driver, and esbuild compiler. `reference-runtime.mjs` builds Mermaid's module
 entry point against that locked graph. Published Mermaid IIFE and ESM bundles embed dependency
 copies, so an npm override alone cannot update the sanitizer they execute.
@@ -443,7 +441,7 @@ Generate a report comparing upstream flowchart SVGs and the current Rust Stage-B
   - `cargo run -p xtask -- compare-flowchart-svgs --check-dom --dom-mode structure --dom-decimals 3`
 - For root `<svg>` viewport parity (`viewBox` / `style="max-width: ..."`), use `parity-root` and the root-delta report:
   - `cargo run -p xtask -- compare-flowchart-svgs --check-dom --dom-mode parity-root --dom-decimals 3 --report-root`
-  - See `docs/alignment/FLOWCHART_ROOT_VIEWBOX_PARITY_GAPS.md` for current status.
+  - See the [root viewport transition](../alignment/PARITY_POLICY.md#root-viewport-transition) for the current verification contract.
 
 ## Compare (Block)
 

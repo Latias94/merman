@@ -32,15 +32,17 @@ owners rather than being duplicated across Markdown files.
 | Current authority | Defines current architecture, policy, or supported behavior. | [`../CONTEXT.md`](../CONTEXT.md), [`adr/0099-model-and-source-boundaries.md`](adr/0099-model-and-source-boundaries.md), [`alignment/README.md`](alignment/README.md) |
 | Operator guide | Gives a maintained procedure for contributors or release operators. | [`release/RELEASING.md`](release/RELEASING.md), [`release/MERMAID_UPGRADE_PLAYBOOK.md`](release/MERMAID_UPGRADE_PLAYBOOK.md), [`rendering/UPSTREAM_SVG_BASELINES.md`](rendering/UPSTREAM_SVG_BASELINES.md) |
 | Machine input | Is consumed as structured data by code or automation at an owner path. | [`../capabilities/feature-surface-v1.json`](../capabilities/feature-surface-v1.json), [`../capabilities/artifact-profiles-v2.json`](../capabilities/artifact-profiles-v2.json), [`../tools/upstreams/REPOS.lock.json`](../tools/upstreams/REPOS.lock.json) |
-| Implementation plan or workstream | Records a scoped design or active implementation effort. Check its explicit status before treating it as current guidance. | [`plans/`](plans/), [`workstreams/`](workstreams/) |
-| Historical report | Preserves a dated measurement, release checkpoint, or investigation without claiming to be current guidance. | [June architecture audit](quality/ARCHITECTURE_ISSUES_2026-06-01.md), [`release/ALPHA3_TO_ALPHA5_REFACTORING_REPORT.md`](release/ALPHA3_TO_ALPHA5_REFACTORING_REPORT.md), dated reports under [`performance/`](performance/) and [`research/`](research/) |
-| Archived history | Preserves completed or superseded context for durable links; removed journals remain available in Git history. | [`ARCHIVE.md`](ARCHIVE.md) |
+| Reproducible evidence | Supports a maintained compatibility, release, or performance contract. | Selected-source fixture manifests, admission receipts, and [`performance/contracts/`](performance/contracts/) |
 
-A directory name alone does not make every file current. Read the document's stated status and use
-the current authority or operator guide for decisions. Implementation plans remain useful decision
-records after their work is complete, but Git history—not prose rewritten after the fact—records
-their execution. Read an ADR's status and amendments before applying it; revalidate historical
-audit findings against current owners and callers.
+Keep documentation that helps users choose, integrate, operate, or understand Merman. Preserve
+architectural decisions in ADRs and explain current limitations beside their owning guide or
+contract. Read an ADR's status and amendments before applying it.
+
+Completed implementation plans, agent handoffs, session logs, duplicate audits, and superseded
+status reports belong in Git history. Delete them when their useful decisions have reached the
+maintained owner; do not create an archive directory or a second execution ledger. Temporary
+investigations and raw local verification output belong under ignored `target/` or outside the
+repository. Keep measured evidence only when a maintained claim or executable contract needs it.
 
 Machine gates may validate structured inputs, executable examples, manifests, fixtures, and
 generated projections. They must not depend on ordinary prose wording, Markdown file pairing,

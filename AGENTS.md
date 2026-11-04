@@ -10,6 +10,15 @@ This repository is public. Keep agent-facing instructions clear, respectful, and
 - When unrelated local changes or untracked files are present, leave them untouched and stage only the files required for the current task.
 - If a branch pointer needs to be moved without checking it out, verify first that the move is a fast-forward and that the branch has no local-only commits.
 
+## Documentation
+
+Use `docs/README.md` to find the maintained owner for a user guide, architecture decision,
+operator procedure, or required compatibility/performance evidence. Update that owner when behavior
+changes. Keep temporary plans, agent handoffs, investigation logs, and raw local verification under
+ignored `target/` or outside the repository. Delete completed or superseded records after migrating
+useful decisions; Git retains their history. Commit a separate execution record only when the
+maintainer explicitly requests it.
+
 ## Mermaid Parity Strategy
 
 For Mermaid parity work, prefer source-backed semantic and structural convergence over forced

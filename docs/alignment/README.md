@@ -1,46 +1,59 @@
-# Alignment Documentation Authority
+# Mermaid Compatibility and Evidence
 
-[`STATUS.md`](STATUS.md) is the current human-readable dashboard for Mermaid alignment. Exact
-admission, fixture, baseline, and comparison facts live in structured code or manifests; when a
-prose document disagrees with one of those owners, the structured owner wins and the prose should
-be corrected.
+This directory contains maintained compatibility guidance and policy. Start with
+[current status](STATUS.md), then use the guide for the boundary under investigation. Exact
+capabilities, fixture admission, baseline provenance, and comparison facts belong to structured
+owners. When prose disagrees with an owner, correct the prose.
+
+## Guides and Policies
+
+| Document | Purpose |
+| --- | --- |
+| [Status](STATUS.md) | Selected baseline, support boundaries, and verification entry points. |
+| [Admission model](ADMISSION_INVENTORY.md) | How capabilities, compare policy, and evidence establish admission. |
+| [Family notes](FAMILY_NOTES.md) | Family-specific caveats with implementation and test owners. |
+| [Parity policy](PARITY_POLICY.md) | Required semantic/structural convergence and bounded browser residuals. |
+| [Semantic edge labels](SEMANTIC_LABEL_PARITY.md) | Identity, geometry, presentation, and exact residual contracts. |
+| [Config and frontmatter](CONFIG_FRONTMATTER_SUPPORT.md) | Accepted, merged, consumed, and rendered configuration behavior. |
+| [CLI compatibility](CLI_COMPATIBILITY.md) | Versioned `mmdc` command-line compatibility and deliberate divergences. |
+| [External sources and licensing](EXTERNAL_FIXTURES.md) | Fixture provenance, comparison lanes, design references, and attribution. |
+
+Completed plans, review rounds, import lists, and test-count reports are not maintained here.
+Family syntax and fixture inventories live with their implementation, tests, and manifests;
+ordinary verification does not require matching Markdown document pairs.
+
+The [release-facts collector](../../scripts/collect_release_facts.py) has a legacy fallback that
+parses the [37-family status table](STATUS.md#primary-svg-matrix). Its section headings and
+first-column family IDs remain a compatibility surface for that consumer; structured compare facts
+still own admission.
 
 ## Machine Authorities
 
 | Concern | Owner |
 | --- | --- |
-| Selected Mermaid and companion sources | [`../../tools/upstreams/REPOS.lock.json`](../../tools/upstreams/REPOS.lock.json) |
-| Built-in family and parser capabilities | [`../../crates/merman-core/src/family.rs`](../../crates/merman-core/src/family.rs) |
-| Primary SVG matrix and compare commands | [`../../crates/xtask/src/cmd/compare/diagrams.rs`](../../crates/xtask/src/cmd/compare/diagrams.rs) |
-| Admission consistency checks | [`../../crates/xtask/src/cmd/admission.rs`](../../crates/xtask/src/cmd/admission.rs) |
-| Family fixture admission | Per-family `_baseline-manifest.json` files under [`../../fixtures/upstream-svgs/`](../../fixtures/upstream-svgs/) |
-| Theme override behavior oracle | [`../../fixtures/_verification/theme_variables_oracle.json`](../../fixtures/_verification/theme_variables_oracle.json) |
-| Deterministic root contracts | [`../../fixtures/_verification/deterministic-root-contracts.json`](../../fixtures/_verification/deterministic-root-contracts.json) |
-| Semantic label residuals | [`../../fixtures/_verification/label-geometry-residuals.json`](../../fixtures/_verification/label-geometry-residuals.json) |
+| Selected Mermaid and companion sources | [Source lock](../../tools/upstreams/REPOS.lock.json), [reference bundle](../../tools/upstreams/MERMAID_REFERENCE_BUNDLE.json), and [selection receipt](../../tools/upstreams/MERMAID_SELECTION_DECISION.json) |
+| Canonical family and parser/render capabilities | [`family.rs`](../../crates/merman-core/src/family.rs) |
+| Primary SVG matrix, commands, default DOM modes, and exact exclusions | [Compare facts](../../crates/xtask/src/cmd/compare/diagrams.rs) and their family adapters |
+| Admission consistency | [`admission.rs`](../../crates/xtask/src/cmd/admission.rs) |
+| Semantic/layout input evidence | Family directories under [fixtures](../../fixtures/) and their goldens |
+| Upstream SVG provenance and per-input exclusions | Per-family `_baseline-manifest.json` files under [upstream SVGs](../../fixtures/upstream-svgs/) |
+| Theme override oracle | [`theme_variables_oracle.json`](../../fixtures/_verification/theme_variables_oracle.json) |
+| Semantic-label residuals | [Signed label geometry](../../fixtures/_verification/label-geometry-residuals.json) and [comparator](../../crates/xtask/src/cmd/compare/labels.rs) |
+| Browser text/layout residuals | [Signed snapshots](../../fixtures/_verification/browser-text-layout-residuals.json) and [comparator](../../crates/xtask/src/cmd/compare/browser_text_layout.rs) |
+| Root viewport contracts | [Deterministic examples](../../fixtures/_verification/deterministic-root-contracts.json), [root comparator](../../crates/xtask/src/cmd/compare/root_contract.rs), [browser oracle](../../playground/tests/root-viewport-oracle.ts), and [signed paint residuals](../../fixtures/_verification/root-viewport-residuals.json) |
 
-`cargo run -p xtask -- check-alignment` verifies canonical family capabilities, compare ownership,
-fixtures, semantic/layout goldens, and upstream baseline manifests. It does not parse ordinary
-alignment prose or require paired Markdown documents.
+`cargo run -p xtask -- check-alignment` cross-checks capabilities, compare ownership, semantic/layout
+goldens, fixtures, and upstream manifests. It does not parse ordinary alignment prose.
 
-## Prose Roles
+The [12.3 migration](../migrations/mermaid-12-3.md) describes current development behavior and
+dependency selection. ADRs retain the scope of their original decisions. The
+[fixture version policy](../../fixtures/README.md) distinguishes historical input comments from
+selected runtime and SVG provenance; an old authoring version does not select current behavior.
 
-| Documents | Lifecycle role |
-| --- | --- |
-| [`STATUS.md`](STATUS.md) | Current human dashboard and verification entry point. |
-| [`ADMISSION_INVENTORY.md`](ADMISSION_INVENTORY.md) | Human explanation of the structured admission model; not the model itself. |
-| `*_MINIMUM.md` | Family scope and behavior notes, often retaining the source version at first admission. Read their status and source date before treating a claim as current. |
-| `*_UPSTREAM_TEST_COVERAGE.md` | Source and fixture evidence reports. Counts and commands may be dated; manifests and executable compare facts remain authoritative. |
-| [`GAP_BACKLOG.md`](GAP_BACKLOG.md) and [`MILESTONES.md`](MILESTONES.md) | Active work and maintained exit criteria; neither records a current successful gate run. |
-| [`FIXTURE_EXPANSION_TODO.md`](FIXTURE_EXPANSION_TODO.md), [`PARITY_HARDENING_PLAN.md`](PARITY_HARDENING_PLAN.md), and completed admission plans | Historical import or decision evidence; revisit individual claims against the selected source before new work. |
-
-The paired family documents remain useful for source provenance and review, but their filenames,
-pair count, wording, and embedded paths are not standing release evidence. Rewording or
-consolidating them must not change machine admission unless a structured owner changes too.
-
-The [12.3 migration](../migrations/mermaid-12-3.md) describes current source behavior and dependency
-selection. The historical [12.2 fixture coverage review](FIXTURE_COVERAGE_12_2.md) explains changed-behavior coverage,
-primary versus family-local evidence, and useful follow-up combinations.
-
-The [fixture version policy](../../fixtures/README.md) distinguishes historical input comments
-from the selected runtime and generated SVG provenance. Old authoring or normalization versions
-do not select the current behavior baseline.
+See the [upstream baseline guide](../rendering/UPSTREAM_SVG_BASELINES.md) for regeneration,
+[SVG output contract](../rendering/SVG_OUTPUT_PIPELINE.md) for consumer/export boundaries, and
+[upgrade playbook](../release/MERMAID_UPGRADE_PLAYBOOK.md) for source-release admission.
+Focused geometry inspection is documented by the
+[Class](../rendering/CLASS_DEBUG_SVG.md), [ER](../rendering/ER_DEBUG_SVG.md),
+[Flowchart](../rendering/FLOWCHART_DEBUG_SVG.md), and [State](../rendering/STATE_DEBUG_SVG.md)
+debug SVG guides.

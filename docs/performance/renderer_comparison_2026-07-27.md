@@ -5,9 +5,9 @@
 > Durable release checkpoint captured on 2026-07-27 for the alpha.4 candidate. See
 > `PERF_PLAN.md` for current priorities and interpretation thresholds.
 >
-> This historical checkpoint targets Merman `d2698d0a3`. The post-optimization Merman/mmdr
-> checkpoint at `901afd393`, including byte-identical input gating, is
-> [`renderer_comparison_2026-07-27_901afd393_vs_mmdr.md`](renderer_comparison_2026-07-27_901afd393_vs_mmdr.md).
+> This historical checkpoint targets Merman `d2698d0a3`. The retained
+> [July 28 Merman/mmdr comparison](renderer_comparison_2026-07-28_75c9fd156_vs_mmdr.md)
+> measures `75c9fd156` after Requirement label preparation and gates ratios on byte-identical inputs.
 > This report's mmdr aggregate predates that gate and includes different same-named Treemap and
 > XYChart inputs. Preserve the raw timings, but do not use its mmdr ratios as a comparable ranking.
 

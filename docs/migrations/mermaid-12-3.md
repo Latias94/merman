@@ -83,55 +83,21 @@ bounds, directional layout and endpoint docking follow the selected source.
 contracts. This Mermaid runtime move intentionally leaves that syntax baseline
 unchanged. Tree-sitter output does not become semantic input to Merman.
 
-## Initial reference evidence (2026-11-04)
+## Compatibility evidence and limits
 
-The four verification catalogs and seven semantic-label fixture contracts bind
-actual Mermaid 12.3 SVGs and their selected-source manifests. The collection
-rendered 3,748 reference SVGs. The 37-family comparison selects a different
-inventory: 3,740 rendered inputs, 27 explicit source/host skips and three DOM modes.
-All modes pass the blocking policy, including 145 exact browser-measurement
-entries covering 381 fixture/mode pairs and separate parser-diagnostic residuals.
-No comparison tolerance or broad normalization was added.
+The [alignment authority map](../alignment/README.md) identifies the selected-source
+fixture manifests and exact comparison receipts. The
+[upgrade playbook](../release/MERMAID_UPGRADE_PLAYBOOK.md#7-refresh-generated-surfaces-and-evidence)
+defines verification for a source build. A previous successful run does not qualify a
+later revision or a separately built artifact.
 
-Controlled replay of the full archived 12.2 lock graph and selected 12.3 runtime,
-under Node `24.21.0`, Chrome `156.0.8078.47`, `zh-CN` and equal fonts/config/seed,
-establishes byte continuity for 21 newly admitted measurement cases: 20 Sequence
-fixtures and one Timeline fixture. Old N-API and current Rust SVGs also match for
-those cases. Their complete signatures bind only the observed modes; browser,
-locale and font causes were not individually isolated.
+Headless text measurement, browser `getBBox()` values, fonts, HTML labels and
+hand-drawn output retain bounded artifact differences. Comparison receipts bind
+specific inputs, SVG signatures and admitted modes; they do not grant a general
+geometry tolerance or establish pixel parity.
 
-C4's five refreshed upstream geometry snapshots use controlled collection
-evidence while all 28 local geometry snapshots remain unchanged. Six ELK local
-signatures follow the actual `0.9.3` to `0.12.0` layout observations. Ten parser
-hashes come from newly rendered SVGs; changing only their displayed version back
-reproduces the old hashes. The converged Statecross and Sequence
-`stress_br_in_messages_notes_011` receipts were deleted. Raw controlled replay
-and signature reports remain under ignored `target/mermaid-12.3-c4-controlled/`.
-
-All 46 ELK browser-measurement entries were recollected: five fixtures account for
-78 changed raw routes, and three historical label-key corruptions were corrected.
-All 78 literal SVG probes were remeasured without numeric changes. Both matrices
-identify the current capture and retain old metadata in `historical_collection`.
-
-Step's strict/sandbox marker attributes reuse shared DOMPurify DOM-value
-admission. Actual DOMPurify `3.4.17` rejects both `stroke:DarkGray` and
-`stroke:#123456` while preserving ordinary colors. Loose mode retains the raw
-values; marker identity is unchanged. Browser tests verify timing, update and
-document isolation, and reduced motion in Classic, Neo and Hand-drawn looks.
-
-The initial `verify --strict` pass covered 14,026 Rust tests, architecture/doctest owners,
-all 37 three-mode family comparisons, Web build/contracts/smoke, Playground
-tests/build/browsers and 316 VS Code tests. Independent size, installed Node and
-real Typst consumers pass with the original budgets. The
-[completion record](../knowledge/engineering/verification/2026-11/2026-11-04T000111Z-round2-completion-b98b1ed2141546f3aefb98ba51840f11.md)
-names exact artifacts, source identities, review closure and explicit limits.
-The upgrade playbook's
-[current transition](../release/MERMAID_UPGRADE_PLAYBOOK.md#current-transition-mermaid-1230)
-describes the selected development graph.
-
-The subsequent [independent audit and repair record](../reviews/2026-11-04-fearless-parity-audit.md)
-covers CI checkout-path consumers, Step route/observation checks, parser recovery
-and older ELK gaps. It owns verification of those later repairs; the initial
-counts above remain historical. Current comparison receipts bind 146 exact
-entries and 384 fixture/mode pairs. The additional entry retains raw hand-drawn
-Step motion geometry rather than discarding its route coordinates.
+Step's strict/sandbox marker attributes use the shared DOMPurify DOM-value
+admission. The selected DOMPurify rejects `stroke:DarkGray` and `stroke:#123456`
+while preserving ordinary colors. Loose mode retains the raw values; marker
+identity is unchanged. Classic, Neo and Hand-drawn outputs share the animation,
+document isolation and reduced-motion contracts described above.

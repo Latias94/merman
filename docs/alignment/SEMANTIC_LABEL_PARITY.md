@@ -2,7 +2,9 @@
 
 Status: Active
 
-Baseline: Mermaid `12.0.0` at `98a0945418c76238f15df2afaddbba4272656c3b`
+Baseline: the [selected upstream source](README.md#machine-authorities), bound independently by
+the residual catalog and signed canaries. A historical investigation does not certify a later
+baseline or an untested revision.
 
 Comparator: `semantic-label-v3`
 
@@ -45,7 +47,9 @@ execute the browser cascade.
 Semantic geometry is quantized to three decimals with a maximum rounding error of `0.0005`. This
 precision is fixed even when canonical DOM comparison uses six decimals.
 
-The reviewed catalog is `fixtures/_verification/label-geometry-residuals.json`. Schema 3 binds
+The reviewed catalog is
+[`label-geometry-residuals.json`](../../fixtures/_verification/label-geometry-residuals.json).
+Schema 3 binds
 every entry to:
 
 - the Mermaid version, source commit, comparator revision, and fixed precision;
@@ -54,19 +58,45 @@ every entry to:
 - complete upstream and local geometry signatures;
 - a non-empty evidence kind and rationale.
 
-The current 28 entries are browser-measurement residuals: C4 5, Class 8, ER 2, Flowchart ELK 2,
-Requirement 8, and State 3. Architecture requires exact label geometry. The largest admitted
-anchor differences are approximately `7.5px` by `42.29px` for C4, `29.592px` by `0.333px` for
-Class, `14.496px` for ER, `0.957px` for Flowchart ELK, `33.07px` by `0.125px` for Requirement, and
-`0.19px` for State. The larger coordinate shifts are deterministic propagation of changed text and
-node dimensions through the owning layout engine, not coordinate tolerances. These values are
-observations only. Admission requires the entire signed signature to match exactly.
+The catalog owns the exact registered entries and their baseline identities. Architecture requires
+exact label geometry. Browser text and node dimensions can propagate into larger layout shifts;
+their magnitude is not a coordinate tolerance. Admission requires the entire signed signature to
+match exactly.
 
 An entry becomes stale when local geometry converges, disappears, changes, or no longer belongs to
 the signed artifact. Hash, text, key, version, schema, and comparator drift also fail. New residuals
 must be generated as candidates, reviewed against pinned source and browser evidence, and accepted
 as exact signatures. Broad coordinate tolerances and fixture-name production branches are not
 allowed.
+
+<a id="class-elk-measurement-residuals"></a>
+
+## Class HTML Measurement and ELK
+
+The Class canary
+[`stress_class_many_relations_labels_020.mmd`](../../fixtures/class/stress_class_many_relations_labels_020.mmd)
+has eight `stable_edge` residual entries. Their rationale is the distinction between browser
+HTML measurement and deterministic measurement of the emitted XHTML. Mermaid's `shapeUtil.ts`
+uses `getBBox()` / `getBoundingClientRect()` for final bounds, separately from its wrapping-budget
+probe. Merman's [`class_prepare_html_label`](../../crates/merman-render/src/class.rs) measures the
+final XHTML with the effective CSS font, including the title's inherited `bolder` weight. The
+wrapping probe must not replace those final metrics or reintroduce the old Markdown width grid.
+
+Changed node dimensions propagate through ELK placement, strict boundary clipping, terminal-channel
+straightening, label anchors, and Neo path-length masks. Numeric port rows and route bends can
+therefore differ from the browser artifact. The residual requires preserved directed relation
+identities, text, explicit presentation, markers, stylesheet semantics, and attachment to the
+intended source/target side. Every admitted path and label geometry still has to match its complete
+catalog signature; this rationale grants no general route-topology exemption.
+
+The causal review originated against Mermaid 12.2. Current source, input, upstream artifact, and
+local signatures must be verified from the catalog on each refresh. Candidate extraction alone
+cannot admit a change or establish pixel parity. The executable owners are the
+[Class HTML typography tests](../../crates/merman-render/tests/class_html_typography_test.rs),
+[Class SVG tests](../../crates/merman-render/tests/class_svg_test.rs), shared
+[ELK endpoint geometry](../../crates/merman-render/src/elk_edge_geometry.rs) and
+[terminal-channel rules](../../crates/merman-render/src/elk_terminal_jogs.rs), and the
+[semantic-label comparator and mutation tests](../../crates/xtask/src/cmd/compare/labels.rs).
 
 ## Source-Side Evidence
 
@@ -83,9 +113,9 @@ edges, reverse edges, width changes, and compound endpoints.
 
 ## Verification
 
-Run from Windows PowerShell:
+Run from the repository root:
 
-```powershell
+```sh
 cargo nextest run -p xtask compare::labels::tests --no-fail-fast
 cargo run -p xtask -- compare-c4-svgs --filter upstream_docs_c4_c4_dynamic_diagram_c4dynamic_010 --check-dom --dom-mode parity --dom-decimals 3
 cargo run -p xtask -- compare-state-svgs --check-dom --dom-mode parity-root --dom-decimals 3

@@ -1046,8 +1046,8 @@ fn deferred_with_baselines_reason(diagram_dir: &str, fixture_text: &str) -> Opti
     // Keep `--with-baselines` aligned with the current parity hardening scope.
     //
     // Some examples require upstream (browser) features we have not yet replicated in the
-    // headless pipeline. Import them later in dedicated parity work items (tracked in
-    // `docs/alignment/FIXTURE_EXPANSION_TODO.md`).
+    // headless pipeline. Admit them through the source-backed evidence layers documented in
+    // `docs/alignment/ADMISSION_INVENTORY.md#evidence-boundaries`.
     match diagram_dir {
         "flowchart" => {
             // Explicit neo is the Mermaid 12 default appearance. Retain this

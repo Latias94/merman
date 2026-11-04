@@ -23,5 +23,4 @@ different rendering contract. New theme behavior is outside this decision.
 
 See the [consumer migration](../migrations/render-reuse-host-integration.md),
 [family architecture](0073-family-owned-diagram-architecture.md),
-[browser ownership](0074-browser-runtime-and-benchmark-ownership.md) and
-[implementation plan](../plans/2026-10-19-1806-refactor-render-reuse-host-integration-plan.md).
+[browser ownership](0074-browser-runtime-and-benchmark-ownership.md).

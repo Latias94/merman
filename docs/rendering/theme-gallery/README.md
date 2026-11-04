@@ -50,10 +50,10 @@ Brutalist, Spotless, Cyberpunk, and Ghibli use visual design references from
 Modern Mermaid Team for the original visual designs. The reference snapshot is commit
 [`a021cbce37fc0b07a9f4791c28e983101ea06f2d`](https://github.com/gotoailab/modern_mermaid/tree/a021cbce37fc0b07a9f4791c28e983101ea06f2d),
 particularly its [`src/utils/themes.ts`](https://github.com/gotoailab/modern_mermaid/blob/a021cbce37fc0b07a9f4791c28e983101ea06f2d/src/utils/themes.ts).
-That project is MIT-licensed, copyright 2024 Modern Mermaid Team; the
-[retained license notice](../../../fixtures/themes/licenses/modern-mermaid-MIT.txt) and
-[source capability corpus](../../alignment/MODERN_MERMAID_THEME_CAPABILITY_CORPUS.md) preserve
-the provenance of the reference material.
+That project is MIT-licensed, copyright 2024 Modern Mermaid Team. Keep the
+[license notice](../../../fixtures/themes/licenses/modern-mermaid-MIT.txt) and follow the
+[design-reference and font policy](../../alignment/EXTERNAL_FIXTURES.md#design-references-and-fonts)
+when refreshing the reference material.
 
 Merman adapts selected mechanisms into its own typed recipes and semantic diagram targets.
 The Ghibli example is Merman's scoped Pie adaptation of the reference's warm paper identity.

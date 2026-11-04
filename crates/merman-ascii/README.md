@@ -11,6 +11,10 @@ terminal state or own a pager, cache, viewer, clipboard, or source-display polic
 [host integration recipes](../merman/examples/README.md#host-integration-recipes) show facade requests
 for terminal text and plain agent/log output without adding a host-policy abstraction.
 
+Display-cell width differs from byte length and Unicode character count. Keep the same width
+profile through wrapping, layout, extent reporting, and encoding. Color supplements glyphs,
+spacing, and semantic disclosure; it must not be the only carrier of a relationship or status.
+
 Terminal geometry uses `TerminalWidthProfile::Unicode` by default. Select
 `TerminalWidthProfile::Cjk` when the target terminal renders East Asian ambiguous characters as
 wide. Measurement, wrapping, truncation, placement, and output use the selected profile together;

@@ -8,7 +8,7 @@
 | Hidden compatibility alias | Root-level `mmdc` options; permanently supported and not advertised |
 | Native format transition | `render` / `batch -e` through `0.8.x`; use `-f/--format`; removed in `v0.9.0` |
 | Reference source | `tools/mermaid-cli/node_modules/@mermaid-js/mermaid-cli/src/index.js` |
-| Last updated | 2026-08-15 |
+| Last reviewed | 2026-11-04 |
 
 Merman provides a browserless compatibility command for scripts that use the official Mermaid CLI. Compatibility is explicit and release-pinned: `merman-cli mmdc` owns the supported `mmdc@11.16.0` argument names, browser-independent defaults, file naming, Markdown detection, warnings, and fence scanner. The repository does not install an `mmdc` executable alias.
 
@@ -39,7 +39,10 @@ The default output names intentionally differ:
 
 The permanent root rewrite uses the exact `mmdc` parser, defaults, validation, and execution path and emits no compatibility-layer warning. It is intentionally absent from root help and completions; explicit `merman-cli mmdc` remains the preferred spelling for new compatibility scripts. Bare root inputs and options that are not owned by `mmdc` still fail with exit `2` and a targeted workflow message.
 
-Native `render -e` and `batch -e` are separate temporary aliases for `-f/--format`. They are hidden from help and completions, their bounded migration warnings remain visible even with `--quiet`, and they are removed in `v0.9.0`. The removal does not apply to `mmdc -e/--outputFormat`.
+Native `render` and `batch` use `-f/--format`; their former `-e` aliases were removed in
+`v0.9.0`. The removal does not apply to `mmdc -e/--outputFormat`. The
+[process contract tests](../../crates/merman-cli/tests/process_contract.rs) cover rejection before
+input acquisition.
 
 ## Contract Boundary
 
@@ -158,7 +161,8 @@ Exit classes are stable across command dialects:
 
 ## Version Lifecycle
 
-The compatibility version is generated from `tools/upstreams/MERMAID_REFERENCE_BUNDLE.json` and reported by:
+The compatibility version is generated from the
+[reference bundle](../../tools/upstreams/MERMAID_REFERENCE_BUNDLE.json) and reported by:
 
 ```sh
 merman-cli capabilities --json
@@ -177,5 +181,10 @@ Coverage is maintained by:
 - a 24-row exact Cargo feature process matrix;
 - generated help, completion, man page, and capability contracts;
 - release-archive structural checks plus host-native runtime smoke before publishing.
+
+Executable owners include the [mmdc contract](../../crates/merman-cli/tests/mmdc_contract.rs),
+[process contract](../../crates/merman-cli/tests/process_contract.rs),
+[Markdown scanner](../../crates/merman-cli/tests/markdown_scanner.rs), and
+[output integrity tests](../../crates/merman-cli/tests/output_integrity.rs).
 
 The implementation target is functional and structural convergence backed by pinned source. Browser font metrics, `getBBox()` floats, `foreignObject`, RoughJS geometry, and Chromium export behavior remain bounded residuals rather than pixel-perfect claims.

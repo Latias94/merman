@@ -75,8 +75,7 @@ export/import regressions separately require identical SVG and PNG bytes.
 
 This profile replaces Cyberpunk's obsolete palette-only qualification. It does not qualify HTML
 labels, PDF, other font environments, exhaustive clipping containment or Mermaid reference-image
-equivalence. Browser and PDF probes remain separate evidence; see the
-[scene verification record](../knowledge/engineering/verification/2026-09-19-cyberpunk-controlled-scenes.md).
+equivalence. Browser and PDF probes remain separate from this qualification profile.
 
 ## Record a candidate
 

@@ -80,8 +80,7 @@ Installed `0.9.3` artifacts retain their published recipes.
 The ELK notices and source provenance still accompany artifacts that include it. To omit ELK,
 disable defaults and select required families plus `svg` and the required layout leaves.
 
-For measured consumer dependency graphs, optional-stack costs, and the remaining core floor, see
-the [2026-10-30 dependency review](research/2026-10-30-dependency-review.md). Its package counts
+Use `cargo tree` with the intended consumer features to inspect dependency costs. Package counts
 include build inputs and are not executable-size or compilation-time measurements. Core syntax,
 configuration, HTML and URL normalization remain part of the precise parser contract even when
 output backends are disabled.
@@ -174,8 +173,6 @@ In CLI discovery, the encoded defaults report
 `system_discovery: "platform-initialization-then-on-demand-families"`. Release
 verification rejects those experimental values and requires bounded discovery
 before layout.
-See the [candidate plan](plans/2026-10-10-system-font-query-candidate.md) for
-validation scope and remaining platform/fallback requirements.
 
 `--font-file` and `--font-dir` are repeatable and preserve argument order.
 Directories use bounded, stable traversal and skip discovered symlinks. Earlier

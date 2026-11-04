@@ -21,8 +21,8 @@ Accepted
   - a deterministic, state-machine lexer (mode switching where required),
   - an LALR(1) grammar implemented via `lalrpop`,
   - a DB-like semantic model builder aligned to Mermaid `SequenceDB` outputs (headless).
-- Drive parity using upstream specs (`repo-ref/mermaid/.../sequenceDiagram.spec.js`) and keep a
-  living alignment document (`docs/alignment/SEQUENCE_MINIMUM.md`) for incremental slices.
+- Drive parity using upstream specs (`repo-ref/mermaid/.../sequenceDiagram.spec.js`) and the
+  [family compatibility notes](../alignment/FAMILY_NOTES.md#sequence-and-timeline).
 
 ## Consequences
 

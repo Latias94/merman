@@ -105,6 +105,13 @@ discards stale completions, and atomically publishes only the latest coherent Me
 Request parse, render, or SVG-safety failures remain request artifacts and never transition the
 Merman runtime to `error`.
 
+The Mermaid source and Config editor document share one source-configuration boundary: the
+[operation builder](../../playground/src/lib/mermaid-config.ts) inserts the complete Config object
+after frontmatter and before authored directives. Host initialization admits only a known theme
+name and validated font-control choice; authored `secure`, `securityLevel`, `themeCSS`, startup
+controls and resource limits remain untrusted source inputs to each engine's sanitizer and cannot
+replace or weaken host-site policy in Compare or benchmark.
+
 The product path performs no synthetic SVG warmup. Interactive render time is engine execution
 feedback for the actual source. `presentedAt` is recorded only after the corresponding validated SVG
 has reached the preview presentation boundary. It is not a substitute for the benchmark phase

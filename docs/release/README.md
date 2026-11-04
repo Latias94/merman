@@ -1,8 +1,8 @@
 # Releases and upgrades
 
-Use this index to choose an upgrade path by the version you have installed. Merman `0.9.3` is the latest published workspace release and retains Mermaid `12.1.0`, the Presentation API, and Options JSON schema `2`. Its Rust crates, CLI/LSP, native C/WASI SDKs, and Apple XCFramework are available; Web, Node, Python, Flutter, and Android retain their separately published `0.9.2` packages. Typst, Tree-sitter, Roughr, and the VS Code extension use independent version numbers.
+Use this index to choose an upgrade path by the version you have installed. Stable `0.9.3` retains Mermaid `12.1.0`, the Presentation API, and Options JSON schema `2`. Published prerelease `0.10.0-alpha.1` retains Mermaid `12.2.0` and Options JSON schema `3`. Use the [host installation guide](PREBUILT_PRODUCTS.md) for independently delivered package versions and channels. Typst, Tree-sitter, Roughr, and the VS Code extension use independent version numbers.
 
-The `0.10.0-alpha.1` candidate targets Mermaid `12.2.0`; see [ADR-0094](../adr/0094-mermaid-12-2-upstream-transition.md)
+The `0.10.0-alpha.1` release targets Mermaid `12.2.0`; see [ADR-0094](../adr/0094-mermaid-12-2-upstream-transition.md)
 for the selected graph and behavior changes. Published release histories retain their original baselines.
 
 Current source development selects Mermaid `12.3.0`. See its
@@ -17,11 +17,11 @@ The [model/source migration](../migrations/model-source-boundaries.md) covers in
 Current Rust source keeps math opt-in, including for the retained complete SVG feature aggregates;
 see [ADR-0097](../adr/0097-explicit-math-capability.md). Ordinary prebuilt SVG products, including
 Web full/render and CLI release archives, select math explicitly. Source-default CLI omits it.
-The [host guide](PREBUILT_PRODUCTS.md) distinguishes the candidate products from independently published artifacts.
+The [host guide](PREBUILT_PRODUCTS.md) distinguishes stable, alpha and source-built products.
 
-## Merman 0.10.0-alpha.1 candidate
+## Merman 0.10.0-alpha.1
 
-The [alpha changelog](../../CHANGELOG.md#0100-alpha1---2026-11-02) introduces reusable diagram themes, prepared rendering, lighter Rust model/output packages and updated binding delivery. It consolidates the changes from `0.9.3` and names required Options, Rust, text-measurement and resource-policy migrations. Package guides use the exact alpha version; this preparation does not establish a published tag or registry artifact. See [Publish Order](PUBLISH_ORDER.md) for qualification and channel rollout state.
+The [alpha changelog](../../CHANGELOG.md#0100-alpha1---2026-11-02) introduces reusable diagram themes, prepared rendering, lighter Rust model/output packages and updated binding delivery. It consolidates the changes from `0.9.3` and names required Options, Rust, text-measurement and resource-policy migrations. The [public prerelease](https://github.com/Latias94/merman/releases/tag/v0.10.0-alpha.1) and [publication record](PUBLISH_ORDER.md#0100-alpha1-publication) identify the frozen source; each platform's delivery remains independently qualified. Later development migrations do not change those published bytes.
 
 ## 0.9 maintenance line
 
@@ -31,7 +31,7 @@ The [alpha changelog](../../CHANGELOG.md#0100-alpha1---2026-11-02) introduces re
 
 This maintenance patch adds prebuilt native C and WASI SDKs, improves text and formula rendering, restores diagram shadows, and fixes parsing and configuration handling. CLI PNG/JPEG/PDF exports share fonts between layout and painting by default when built with `system-fonts`; review snapshots and the [font/CSS migration notes](../../CHANGELOG.md#093---2026-10-30). See the [0.9.3 SDK guide](https://github.com/Latias94/merman/blob/v0.9.3/distribution/sdk/README.md) for standard, math, and full profiles, and the [publication snapshot](PUBLISH_ORDER.md#093-publication) for verified delivery.
 
-Use immutable `v0.9.3` and matching wrappers/artifacts for the published maintenance source. Main's `0.10.0-alpha.1` candidate has the separate migration described above.
+Use immutable `v0.9.3` and matching wrappers/artifacts for the published maintenance source. The `0.10.0-alpha.1` prerelease has the separate migration described above.
 
 ## Merman 0.9.2
 
@@ -67,7 +67,7 @@ Package-local changelogs project the release delta onto each SDK's actual APIs, 
 
 | Installed version | Target version | Migration reference |
 | --- | --- | --- |
-| `0.9.x` | `0.10.0-alpha.1` candidate | [Alpha changelog](../../CHANGELOG.md#0100-alpha1---2026-11-02), [model/source migration](../migrations/model-source-boundaries.md) and [prepared-rendering migration](../migrations/render-reuse-host-integration.md); match wrappers and artifacts, and verify channel availability separately |
+| `0.9.x` | `0.10.0-alpha.1` | [Alpha changelog](../../CHANGELOG.md#0100-alpha1---2026-11-02), [model/source migration](../migrations/model-source-boundaries.md) and [prepared-rendering migration](../migrations/render-reuse-host-integration.md); match wrappers and artifacts, and verify channel availability separately |
 | `0.9.2` | `0.9.3` | [Patch changelog](../../CHANGELOG.md#093---2026-10-30): native C/WASI SDKs, text and formula fixes, and CLI native font/CSS migration; retains Mermaid 12.1 and the published binding contracts |
 | `0.9.1` | `0.9.2` | [Patch changelog](../../CHANGELOG.md#092---2026-10-22): font, host-theme, parser, CSS, and packaging fixes; retains Mermaid 12.1 and the published binding contracts |
 | `0.9.0` | `0.9.1` | [Patch changelog](../../CHANGELOG.md#091---2026-10-18): selected fixes; retains Mermaid 12.1 and the published binding contracts |
@@ -106,4 +106,4 @@ Keep coupled Rust dependencies, generated wrappers, and native or WASM artifacts
 | Compare releases or justify performance claims | [Comparative release reports](RELEASE_REPORTS.md) |
 | Check CLI/LSP platform evidence | [Target admission](CLI_TARGET_ADMISSION.md) |
 
-The [alpha.3-to-alpha.5 refactoring report](ALPHA3_TO_ALPHA5_REFACTORING_REPORT.md) preserves measurements from named historical commits. It is evidence, not a current upgrade procedure. The [documentation archive index](../ARCHIVE.md) explains how other historical plans and reports are retained.
+The [alpha.3-to-alpha.5 refactoring report](ALPHA3_TO_ALPHA5_REFACTORING_REPORT.md) supports published release claims with measurements from named historical commits. It is evidence, not a current upgrade procedure.

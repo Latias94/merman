@@ -14,10 +14,8 @@ allocation/work removal, not a latency improvement or proof of v0.9.0 convergenc
 ## Frozen experiment
 
 The clean adjacent baseline is `a6742779c80252e40f535a3de087f842a61ba94c`. Registration and
-independent review precede baseline capture and production application. All six baseline steps
-complete successfully, and four actual baseline probe executables are SHA-frozen and made
-read-only before applying the candidate. The preceding full19 release confirmation reaches its
-real terminal exit and archives both selected executables before any baseline native work.
+independent review precede baseline capture and production application. Four baseline probe
+executables are SHA-frozen and made read-only before applying the candidate.
 
 The Apple M4 Pro / native aarch64 macOS host uses Rust 1.95.0, optimized release, retained defaults
 and the full public feature set. Library and probe builds use one Cargo job. Focused and full
@@ -84,9 +82,9 @@ All 13 candidate command stages complete and the real runner exits 0:
 Independent raw review reconstructs both sides' five samples and confirms all four gates, exact
 outputs, callbacks, errors, inputs, frozen probes and linked optimized libraries. The terminal
 review verifies actual successful checks rather than treating started stages as completed.
-The formal release result remains the [separate full19 confirmation](theme_v090_post_initialization_confirmation_macos_2026-10-20.md)
-at its own clean revision. This query reduction does not claim to fix the measured default
-ZenUML, Packet or Kanban regressions.
+The retained [v0.9.0 release comparison](theme_v090_appearance_css_macos_2026-10-20.md#complete-results)
+measures separate release revisions after the appearance/CSS repairs. This query reduction does
+not supply a new release classification or close the ZenUML, Packet or Kanban findings.
 
 ## Evidence identities
 

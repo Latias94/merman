@@ -366,7 +366,7 @@ Alpha.7 is planned as the final alpha in the 0.8.0 release cycle. It moves the c
 ### Known limitations and next steps
 
 - The broader theme refactor announced in alpha.6 is deferred to a future release because the remaining implementation work, code-size impact, and performance concerns need more time. Alpha.7 includes the Mermaid 12 theme defaults and targeted theme fixes above, but does not complete the planned reusable theme system across first-party surfaces. Stabilization is the next focus for the 0.8.0 line.
-- Deterministic headless text measurement does not load the display font. Browser font metrics can still overflow some calculated bounds, including the documented Flowchart title case. Hosts requiring display-font measurement should supply their own measurement callback; see the [font-boundary report](docs/alignment/MERMAID_12_TITLE_029_FONT_BOUNDARY_2026_09_30.md).
+- Deterministic headless text measurement does not load the display font. Browser font metrics can still overflow some calculated bounds, including the documented Flowchart title case. Hosts requiring display-font measurement should supply their own measurement callback; see the [measurement boundary](docs/alignment/PARITY_POLICY.md#measurement-and-output-surfaces).
 
 ## [0.8.0-alpha.6] - 2026-09-02
 
@@ -839,7 +839,7 @@ This release is mostly about rendering fidelity and the render pipeline. If you 
 ### Added
 
 - `xtask`: support custom fixture roots in SVG baseline generation/comparison, add Markdown-aware text measurement, and integrate an opt-in Node/Puppeteer KaTeX path when `tools/mermaid-cli` is available.
-- Docs: add and expand `docs/workstreams/*` parity planning material, including root viewport (`parity-root`) checks and text-measurement alignment notes.
+- Docs: expand contributor guidance for root viewport (`parity-root`) checks and text-measurement alignment.
 - Tests/Fixtures: add a broad parity corpus covering font-size precedence, HTML label wrapping, Markdown `<br/>` continuations, unknown XML entities, KaTeX flowcharts, text-style overrides, and root viewport probes across multiple diagram types.
 
 ### Changed
