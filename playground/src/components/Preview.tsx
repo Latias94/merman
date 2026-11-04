@@ -17,7 +17,6 @@ import {
 import { retryMermanRuntime } from "@/src/runtime/merman";
 import type { MermanRuntimeFailure } from "@/src/runtime/merman-core";
 import { useAsciiSupport } from "@/src/lib/ascii-capabilities";
-import { resolveMermaidCanvasTone } from "@/src/lib/mermaid-canvas-tone";
 import {
   SVG_PRESENTATION_MODES,
   type SvgPresentationMode,
@@ -40,6 +39,7 @@ import {
   selectCompletedRenderBatch,
   selectCurrentDiagramType,
   selectRenderPending,
+  selectVisibleCanvasTone,
   selectVisibleRenderBatch,
   useRenderCoordinator,
 } from "@/src/runtime/use-render-coordinator";
@@ -182,8 +182,7 @@ export function Preview({ active = true, className }: PreviewProps) {
   const svgViewport = useSvgViewportController();
   const canvasBatch = visibleBatch;
   const canvasOperation = canvasBatch?.snapshot.operation;
-  const automaticCanvasTone = resolveMermaidCanvasTone(canvasBatch?.merman.status === "success"
-    ? canvasBatch.merman.metadata?.theme_execution_evidence : null);
+  const automaticCanvasTone = selectVisibleCanvasTone(renderState);
   const canvasTone = previewBacking === "dark" ? "dark" : previewBacking === "light" || previewBacking === "transparency" ? "light" : automaticCanvasTone;
   const canvasMode = previewMode === "svg" || previewMode === "compare";
 

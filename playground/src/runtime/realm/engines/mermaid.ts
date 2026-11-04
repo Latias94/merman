@@ -11,6 +11,7 @@ import {
   assertRealmSourceBudget,
   assertRealmSvgBudget,
   type CompareOperationStage,
+  type CompareRenderOutput,
   type CompareRenderPayload,
 } from "../channel-protocol.ts";
 import {
@@ -18,13 +19,7 @@ import {
   type ErrorProjection,
 } from "../../error-projection.ts";
 
-export interface MermaidEngineResult {
-  readonly prepareTimeMs: number;
-  readonly presentationTimeMs: number;
-  readonly renderTimeMs: number;
-  readonly svg: string;
-  readonly version: string;
-}
+export type MermaidEngineResult = CompareRenderOutput;
 
 export class MermaidEngineError extends Error {
   readonly error: ErrorProjection;
@@ -69,9 +64,18 @@ export async function renderWithMermaid(
   assertRealmSourceBudget(configuredSource);
   const renderStartedAt = performance.now();
   onStage("render");
+  // initialize() retains old source directives until render resets them.
+  const initializedTheme = mermaid.mermaidAPI.getSiteConfig().theme ?? null;
+  let materializedTheme: string | null;
   let result;
   try {
-    result = await mermaid.render(nextRenderId(), configuredSource);
+    // The realm queue owns serialization. This API resolves config synchronously
+    // before its first await and clears that scope before its promise settles.
+    const rendered = mermaid.mermaidAPI.render(nextRenderId(), configuredSource);
+    const theme = mermaid.mermaidAPI.getConfig().theme ?? null;
+    // The "null" sentinel disables theme rules but retains the initialized palette.
+    materializedTheme = theme === "null" ? initializedTheme : theme;
+    result = await rendered;
   } catch (error) {
     throw new MermaidEngineError("render", error);
   }
@@ -89,6 +93,7 @@ export async function renderWithMermaid(
 
   return {
     svg,
+    materializedTheme,
     prepareTimeMs: renderStartedAt - operationStartedAt,
     renderTimeMs: budgetedSvgReadyAt - renderStartedAt,
     presentationTimeMs: presentationReadyAt - operationStartedAt,

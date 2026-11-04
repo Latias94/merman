@@ -5,6 +5,7 @@ import {
   REALM_BUDGETS,
   REALM_PROTOCOL_VERSION,
   type CompareRenderRequest,
+  type CompareRenderResponse,
   type RealmIdentity,
 } from "./channel-protocol.ts";
 import { serveCompareRealmPort } from "./compare-bootstrap.ts";
@@ -14,6 +15,57 @@ const IDENTITY: RealmIdentity = {
   realmId: "realm-1",
   realmToken: "t".repeat(43),
 };
+
+test("compare replies preserve each successful engine palette through realm reuse", async () => {
+  const harness = createRealmServerHarness([
+    async () => ({ ...engineSuccess("<svg />"), materializedTheme: "dark" }),
+    async () => ({ ...engineSuccess("<svg />"), materializedTheme: "default" }),
+  ]);
+  try {
+    for (const [index, theme] of ["dark", "default"].entries()) {
+      const requestId = `request-${index + 1}`;
+      harness.dispatch(renderRequest(index + 1, requestId));
+      const response = await harness.waitForTerminal(requestId);
+      assert.equal(response.type, "render-success");
+      assert.equal(response.materializedTheme, theme);
+    }
+  } finally {
+    harness.dispose();
+  }
+});
+
+test("the realm queue serializes complete engine steps before another theme can initialize", async () => {
+  const first = Promise.withResolvers<ReturnType<typeof engineSuccess>>();
+  const started: string[] = [];
+  const harness = createRealmServerHarness([
+    async () => {
+      started.push("dark");
+      return first.promise;
+    },
+    async () => {
+      started.push("default");
+      return { ...engineSuccess("<svg />"), materializedTheme: "default" };
+    },
+  ]);
+  try {
+    harness.dispatch(renderRequest(1, "request-1"));
+    harness.dispatch(renderRequest(2, "request-2"));
+    await waitFor(() => started.length > 0 ? true : undefined);
+    assert.deepEqual(started, ["dark"]);
+    first.resolve(engineSuccess("<svg />"));
+    const dark = await harness.waitForTerminal("request-1");
+    const light = await harness.waitForTerminal("request-2");
+    assert.equal(dark.type, "render-success");
+    assert.equal(light.type, "render-success");
+    if (dark.type !== "render-success" || light.type !== "render-success") return;
+    assert.equal(dark.materializedTheme, "dark");
+    assert.equal(light.materializedTheme, "default");
+    assert.deepEqual(started, ["dark", "default"]);
+    assertConsecutiveSequences(harness.messages);
+  } finally {
+    harness.dispose();
+  }
+});
 
 test("encoded response overflow fails fast without poisoning the realm queue", async () => {
   const escapedSvg = '"'.repeat(Math.floor(REALM_BUDGETS.messageBytes / 2) + 1024);
@@ -157,18 +209,7 @@ function createRealmServerHarness(
               candidate.type === "render-failure")
         )
       );
-      return message as
-        | {
-            type: "render-success";
-            sequence: number;
-          }
-        | {
-            type: "render-failure";
-            detail: string | null;
-            message: string;
-            sequence: number;
-            stage: string;
-          };
+      return message as unknown as CompareRenderResponse;
     },
     dispose() {
       channel.port1.close();
@@ -206,6 +247,7 @@ function renderRequest(
 function engineSuccess(svg: string) {
   return {
     svg,
+    materializedTheme: "dark",
     prepareTimeMs: 1,
     renderTimeMs: 2,
     presentationTimeMs: 3,

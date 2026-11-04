@@ -448,6 +448,7 @@ function completedPublication(
     }),
     mermaid: Object.freeze({
       artifact: projectNavigableInlineSvg(svg("mermaid")),
+      materializedTheme: "default",
       engine: "mermaid",
       prepareTimeMs: 1,
       presentationTimeMs: 1,

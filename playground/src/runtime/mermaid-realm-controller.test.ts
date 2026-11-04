@@ -343,6 +343,7 @@ function success(label: string): MermaidRealmExecutionResult {
   return {
     status: "success",
     svg: `<svg xmlns="http://www.w3.org/2000/svg"><text>${label}</text></svg>`,
+    materializedTheme: "dark",
     prepareTimeMs: 1,
     renderTimeMs: 2,
     presentationTimeMs: 3,

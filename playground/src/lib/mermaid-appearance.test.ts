@@ -25,11 +25,10 @@ test("appearance declarations use producer spans even when values match", () => 
 });
 
 test("canvas tone reads only the rendered materialized palette", () => {
-  assert.equal(resolveMermaidCanvasTone({ version: 2, materialized_theme: "dark" }), "dark");
-  assert.equal(resolveMermaidCanvasTone({ version: 2, materialized_theme: "forest" }), "light");
-  for (const evidence of [null, undefined, { version: 1, materialized_theme: "dark" },
-    { version: 99, materialized_theme: "dark" }, { version: 2, materialized_theme: null },
-    { version: 2, materialized_theme: "null" }, { version: 2, materialized_theme: "unknown" }]) {
-    assert.equal(resolveMermaidCanvasTone(evidence), "light");
+  for (const theme of ["dark", "neo-dark", "redux-dark", "redux-dark-color"]) {
+    assert.equal(resolveMermaidCanvasTone(theme), "dark");
+  }
+  for (const theme of ["default", "forest", null, undefined, "null", "unknown", { theme: "dark" }]) {
+    assert.equal(resolveMermaidCanvasTone(theme), "light");
   }
 });

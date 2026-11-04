@@ -16,10 +16,7 @@ const MERMAID_CANVAS_TONES = {
   "redux-dark-color": "dark",
 } as const satisfies Record<ThemeName, MermaidCanvasTone>;
 
-export function resolveMermaidCanvasTone(
-  evidence: { readonly version: number; readonly materialized_theme?: unknown } | null | undefined,
-): MermaidCanvasTone {
-  const theme = evidence?.version === 2 ? evidence.materialized_theme : null;
+export function resolveMermaidCanvasTone(theme: unknown): MermaidCanvasTone {
   return typeof theme === "string" && Object.hasOwn(MERMAID_CANVAS_TONES, theme)
     ? MERMAID_CANVAS_TONES[theme as ThemeName]
     : "light";
