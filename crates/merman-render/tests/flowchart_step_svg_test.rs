@@ -161,3 +161,74 @@ fn step_default_duration_and_strict_boolean_badges_match_upstream() {
         assert!(!rendered.svg().contains("edge-step-badge"));
     }
 }
+
+#[test]
+fn ordinary_step_routes_follow_their_semantic_edges_in_every_direction() {
+    for direction in ["TB", "BT", "LR", "RL"] {
+        for look in ["classic", "neo"] {
+            let source = format!(
+                "---\nconfig:\n  look: {look}\n  flowchart:\n    stepNumbers: true\n---\nflowchart {direction}\n subgraph group[Group]\n A e1@-->|first| B\n B e2@--> C\n end\n A e3@--> C\n e1@{{ step: 1 }}\n e2@{{ step: 2 }}\n e3@{{ step: 3 }}\n"
+            );
+            let rendered = render(&source, "routes");
+            let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+            let motions: Vec<_> = document
+                .descendants()
+                .filter(|node| node.has_tag_name("animateMotion"))
+                .collect();
+            assert_eq!(motions.len(), 3);
+            let mut observed_edges = std::collections::BTreeSet::new();
+            for motion in motions {
+                let owners: Vec<_> = document
+                    .descendants()
+                    .filter(|node| node.attribute("data-edge") == Some("true"))
+                    .filter(|node| {
+                        let mut expected = String::from("step_");
+                        for character in
+                            node.attribute("id").unwrap().chars().chain("-step".chars())
+                        {
+                            if character.is_ascii_alphanumeric() {
+                                expected.push(character);
+                            } else {
+                                use std::fmt::Write;
+                                write!(&mut expected, "_{:x}_", character as u32).unwrap();
+                            }
+                        }
+                        motion.attribute("id") == Some(expected.as_str())
+                    })
+                    .collect();
+                assert_eq!(owners.len(), 1);
+                let owner = owners[0];
+                let dot = motion.parent().unwrap();
+                let step = dot.attribute("data-step").unwrap();
+                assert_eq!(
+                    owner.attribute("data-id"),
+                    Some(format!("e{step}").as_str())
+                );
+                assert!(observed_edges.insert(owner.attribute("data-id").unwrap()));
+                assert_eq!(
+                    motion.attribute("path"),
+                    owner.attribute("d"),
+                    "Step route must follow its actual edge for {look}/{direction}"
+                );
+                let begin = format!("{}.begin", motion.attribute("id").unwrap());
+                let highlights: Vec<_> = dot
+                    .parent()
+                    .unwrap()
+                    .children()
+                    .filter(|node| node.attribute("class") == Some("edge-step-highlight"))
+                    .filter(|node| node.attribute("data-step") == Some(step))
+                    .collect();
+                assert_eq!(highlights.len(), 1);
+                assert_eq!(highlights[0].attribute("d"), owner.attribute("d"));
+                assert!(highlights[0].children().any(|node| {
+                    node.has_tag_name("animateTransform")
+                        && node.attribute("begin") == Some(begin.as_str())
+                }));
+            }
+            assert_eq!(
+                observed_edges,
+                std::collections::BTreeSet::from(["e1", "e2", "e3"])
+            );
+        }
+    }
+}

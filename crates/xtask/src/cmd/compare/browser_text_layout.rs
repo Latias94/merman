@@ -510,6 +510,69 @@ mod tests {
     }
 
     #[test]
+    fn handdrawn_step_receipts_reject_joint_motion_and_highlight_route_changes() {
+        use crate::cmd::compare::{
+            render_source_svg, svg_compare_engine_with_site_config, svg_request,
+        };
+
+        let fixture = "local_mermaid_12_3_step_short_handdrawn";
+        let input = include_str!(
+            "../../../../../fixtures/flowchart/local_mermaid_12_3_step_short_handdrawn.mmd"
+        );
+        let reviewed = include_str!(
+            "../../../../../fixtures/upstream-svgs/flowchart/local_mermaid_12_3_step_short_handdrawn.svg"
+        );
+        let renderer = merman::Renderer::new().with_presentation_engine(
+            svg_compare_engine_with_site_config(serde_json::json!({"handDrawnSeed": 1})),
+        );
+        let output = render_source_svg(
+            &renderer,
+            input,
+            svg_request(
+                merman::SvgEnvironment::deterministic().without_math_renderer(),
+                merman_render::LayoutOptions::default(),
+                Some(fixture.to_owned()),
+            ),
+        )
+        .unwrap();
+        let local_svg =
+            crate::cmd::apply_upstream_svg_capture_background("flowchart", output.svg());
+        let document = roxmltree::Document::parse(&local_svg).unwrap();
+        let motion = document
+            .descendants()
+            .find(|node| node.has_tag_name("animateMotion"))
+            .unwrap();
+        let route = motion.attribute("path").unwrap();
+        assert!(route.starts_with('M'));
+        let changed_route = format!("M9999{}", &route[route.find(',').unwrap()..]);
+        assert_ne!(route, changed_route);
+        let changed = local_svg.replace(route, &changed_route);
+        let reviewed_signature = local_signature(&local_svg, DOM_DECIMALS);
+        let changed_signature = local_signature(&changed, DOM_DECIMALS);
+        let modes = [
+            crate::svgdom::DomMode::Structure,
+            crate::svgdom::DomMode::Parity,
+            crate::svgdom::DomMode::ParityRoot,
+        ];
+        let receipt = browser_text_layout_residual("flowchart", fixture)
+            .unwrap()
+            .unwrap();
+        receipt
+            .validate_source_artifacts(input.as_bytes(), reviewed.as_bytes())
+            .unwrap();
+        for mode in modes {
+            receipt
+                .validate_local_svg_signature(mode, DOM_DECIMALS, &reviewed_signature)
+                .unwrap();
+            assert!(
+                receipt
+                    .validate_local_svg_signature(mode, DOM_DECIMALS, &changed_signature)
+                    .is_err()
+            );
+        }
+    }
+
+    #[test]
     fn receipt_quantizes_only_submillipixel_local_geometry_drift() {
         let input = "flowchart LR\nA --> B";
         let upstream = r#"<svg class="flowchart" aria-roledescription="flowchart-v2"><text>browser</text></svg>"#;

@@ -1537,10 +1537,10 @@ fn is_flowchart_step_animation(node: roxmltree::Node<'_, '_>) -> bool {
             || (node.has_tag_name("animateTransform") && (dot || highlight)))
 }
 
-fn canonical_flowchart_step_motion_identifier(
-    node: roxmltree::Node<'_, '_>,
+fn flowchart_step_motion_owner<'document, 'input>(
+    node: roxmltree::Node<'document, 'input>,
     value: &str,
-) -> Option<String> {
+) -> Option<(roxmltree::Node<'document, 'input>, String)> {
     use std::fmt::Write as _;
 
     if !node.has_tag_name("animateMotion")
@@ -1612,7 +1612,14 @@ fn canonical_flowchart_step_motion_identifier(
     {
         return None;
     }
-    Some(canonical)
+    Some((owner, canonical))
+}
+
+fn canonical_flowchart_step_motion_identifier(
+    node: roxmltree::Node<'_, '_>,
+    value: &str,
+) -> Option<String> {
+    flowchart_step_motion_owner(node, value).map(|(_, canonical)| canonical)
 }
 
 fn canonical_flowchart_step_begin(
@@ -1653,8 +1660,11 @@ fn canonical_flowchart_step_begin(
 
 fn canonical_flowchart_step_motion_path(node: roxmltree::Node<'_, '_>) -> Option<String> {
     let id = node.attribute("id")?;
-    canonical_flowchart_step_motion_identifier(node, id)?;
+    let (owner, _) = flowchart_step_motion_owner(node, id)?;
     let path = node.attribute("path")?;
+    if owner.attribute("d") != Some(path) {
+        return None;
+    }
     let dot = node.parent_element()?;
     let begin = format!("{id}.begin");
     let matching_highlights = dot
@@ -3614,6 +3624,49 @@ mod tests {
     }
 
     #[test]
+    fn flowchart_step_motion_path_keeps_a_route_disconnected_from_its_owner_observable() {
+        let local = flowchart_step_local();
+        let changed = local
+            .replacen(
+                r#"class="edge-step-highlight" data-step="1" d="M0,0L10,0""#,
+                r#"class="edge-step-highlight" data-step="1" d="M0,10L10,10""#,
+                1,
+            )
+            .replacen(r#"path="M0,0L10,0""#, r#"path="M0,10L10,10""#, 1);
+        assert_ne!(local, changed);
+        for mode in NON_STRICT_FLOWCHART_MODES {
+            assert_ne!(
+                dom_signature(&local, mode, 3).unwrap(),
+                dom_signature(&changed, mode, 3).unwrap(),
+                "matching motion and highlight must still belong to their semantic edge: {mode:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn flowchart_step_motion_path_keeps_raw_geometry_when_the_owner_is_a_rough_stroke() {
+        let rough = flowchart_step_local().replacen(
+            r#"d="M0,0L10,0""#,
+            r#"data-look="handDrawn" d="M0,0C3,1 7,-1 10,0""#,
+            1,
+        );
+        let changed = rough.replace("M0,0L10,0", "M0,10L10,10");
+        let document = roxmltree::Document::parse(&rough).unwrap();
+        let motion = document
+            .descendants()
+            .find(|node| node.has_tag_name("animateMotion"))
+            .unwrap();
+        assert_eq!(canonical_flowchart_step_motion_path(motion), None);
+        for mode in NON_STRICT_FLOWCHART_MODES {
+            assert_ne!(
+                dom_signature(&rough, mode, 3).unwrap(),
+                dom_signature(&changed, mode, 3).unwrap(),
+                "rough stroke output cannot independently prove the base motion route: {mode:?}"
+            );
+        }
+    }
+
+    #[test]
     fn agentflow_non_strict_normalizes_closed_producer_ids_and_references() {
         let upstream = r##"<svg id="diagram" aria-roledescription="agentflow"><defs><filter id="diagram-drop-shadow"/><marker id="diagram_agentflow-pointEnd-margin"/></defs><g class="nodes"><g class="node default af-kind-input" id="diagram-agentflow-input-0"><rect filter="url(#diagram-drop-shadow)"/></g><g class="node default af-kind-task" id="diagram-agentflow-task-2"><rect/></g></g><g class="edgePaths"><path class="flowchart-link" id="diagram-L_input_task_0" data-et="edge" data-id="L_input_task_0" marker-end="url(#diagram_agentflow-pointEnd-margin)"/></g></svg>"##;
         let local = upstream
@@ -5036,11 +5089,22 @@ mod tests {
 
     #[test]
     fn step_motion_raw_path_cannot_impersonate_a_projected_path() {
-        let valid = r#"<svg id="d" aria-roledescription="flowchart-v2"><g class="edgePaths"><path class="flowchart-link" id="d-e" data-et="edge" data-id="e"/><path class="edge-step-highlight" data-step="1" d="M0,0L10,0"><animateTransform begin="step_d_2d_e_2d_step.begin"/></path><circle class="edge-step-dot" data-step="1"><animateMotion id="step_d_2d_e_2d_step" path="M0,0L10,0" begin="0s;step_d_2d_e_2d_step.end+1s"/></circle></g></svg>"#;
+        let valid = r#"<svg id="d" aria-roledescription="flowchart-v2"><g class="edgePaths"><path class="flowchart-link" id="d-e" data-et="edge" data-id="e" d="M0,0L10,0"/><path class="edge-step-highlight" data-step="1" d="M0,0L10,0"><animateTransform begin="step_d_2d_e_2d_step.begin"/></path><circle class="edge-step-dot" data-step="1"><animateMotion id="step_d_2d_e_2d_step" path="M0,0L10,0" begin="0s;step_d_2d_e_2d_step.end+1s"/></circle></g></svg>"#;
         let invalid = valid.replace(
             "path=\"M0,0L10,0\"",
             "path=\"M&lt;n&gt;&lt;n&gt;L&lt;n&gt;&lt;n&gt;\"",
         );
+        for (svg, projected) in [(valid, true), (invalid.as_str(), false)] {
+            let document = roxmltree::Document::parse(svg).unwrap();
+            let motion = document
+                .descendants()
+                .find(|node| node.has_tag_name("animateMotion"))
+                .unwrap();
+            assert_eq!(
+                canonical_flowchart_step_motion_path(motion).is_some(),
+                projected
+            );
+        }
         for mode in [DomMode::Structure, DomMode::Parity, DomMode::ParityRoot] {
             assert_ne!(
                 dom_signature(valid, mode, 3).unwrap(),

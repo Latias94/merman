@@ -151,6 +151,18 @@
     },
     {
       "diagram": "flowchart",
+      "fixture": "local_mermaid_12_3_step_short_handdrawn",
+      "modes": [
+        "structure",
+        "parity",
+        "parity-root"
+      ],
+      "local_svg_signature_sha256": "aa20a2a5dcf692dad0d8439f6e3df47e0ebfb9697518ee39e15e07e7b8e5ec9f",
+      "input_sha256": "f279d607d8871475a7214a1226b6f3105ba38a69e48a8354c258a3b4a80929f7",
+      "upstream_svg_sha256": "bfeabe62a7580c36c277e82d38da11a282825f81b6d78624dcb3527003509da4"
+    },
+    {
+      "diagram": "flowchart",
       "fixture": "stress_flowchart_edge_labels_far_from_arrows_066",
       "modes": [
         "parity",
