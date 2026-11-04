@@ -3,6 +3,7 @@ import { expect, test, type Locator, type Page } from "@playwright/test";
 import {
   monitorBrowserErrors,
   openPlayground,
+  openWorkbenchTool,
   previewSvgText,
   replaceEditorSource,
   waitForPreviewSvg,
@@ -201,7 +202,7 @@ test("Visual and Compare switch between Infinite Canvas and ViewBox Frame as pre
   );
   expect(darkTransparencyGrid).not.toBe("none");
   expect(darkTransparencyGrid).not.toBe(lightTransparencyGrid);
-  await page.getByRole("tab", { name: "Compare", exact: true }).click();
+  await openWorkbenchTool(page, "Compare");
   const compareCanvas = page.locator(
     '[data-merman-compare-scroll-owner="true"]',
   );
@@ -423,7 +424,7 @@ test("Event Model keeps Mermaid HTML labels readable in a dark Playground", asyn
     .poll(() => previewSvgText(page))
     .toContain("ItemAdded");
 
-  await page.getByRole("tab", { name: "Compare", exact: true }).click();
+  await openWorkbenchTool(page, "Compare");
   const mermaidPane = page.locator('[data-merman-compare-engine="mermaid"]');
   const mermaidHost = mermaidPane.locator(".preview-container > div");
   await expect(mermaidPane).toBeVisible();
@@ -477,7 +478,7 @@ test("ZenUML Mermaid comparison remains self-contained", async ({ page }) => {
   await exampleCard.click();
   await waitForPreviewSvg(page);
   await expect.poll(() => previewSvgText(page)).toContain("Alice");
-  await page.getByRole("tab", { name: "Compare", exact: true }).click();
+  await openWorkbenchTool(page, "Compare");
 
   const mermaidHost = page.locator(
     '[data-merman-compare-engine="mermaid"] .preview-container > div'
@@ -498,7 +499,7 @@ test("Compare keeps Mermaid JS failures owned by the Mermaid pane", async ({ pag
   await openPlayground(page);
   await replaceEditorSource(page, "flowchart TD\n  Alpha --> Beta");
   await waitForPreviewSvg(page);
-  await page.getByRole("tab", { name: "Compare", exact: true }).click();
+  await openWorkbenchTool(page, "Compare");
   const mermaidPane = page.locator('[data-merman-compare-engine="mermaid"]');
   await expect(mermaidPane).toBeVisible();
   await expect
@@ -632,7 +633,7 @@ test("Block class definitions match Mermaid computed fills", async ({ page }) =>
   await openPlayground(page);
   await renderSource(page, BLOCK_SYSTEM_ARCHITECTURE_EXAMPLE.source);
 
-  await page.getByRole("tab", { name: "Compare", exact: true }).click();
+  await openWorkbenchTool(page, "Compare");
   const expected = {
     front: await browserComputedFill(page, "#696"),
     back: [
@@ -658,7 +659,7 @@ test("C4 uses the same browser layout environment in both compare panes", async 
   const errors = monitorBrowserErrors(page);
   await openPlayground(page);
   await renderSource(page, C4_CONTAINER_EXAMPLE.source);
-  await page.getByRole("tab", { name: "Compare", exact: true }).click();
+  await openWorkbenchTool(page, "Compare");
 
   await expect
     .poll(() => compareViewBoxesMatch(page), {
@@ -677,7 +678,7 @@ test("C4 relation labels and lines match Mermaid computed presentation", async (
     `${fontOnlyConfig("forest")}\n${C4_DYNAMIC_EXAMPLE.source}`,
   ]) {
     await renderSource(page, source);
-    await page.getByRole("tab", { name: "Compare", exact: true }).click();
+    await openWorkbenchTool(page, "Compare");
 
     await expect
       .poll(() => c4RelationPresentations(page, 2), {
@@ -727,8 +728,9 @@ test("resvg-compatible SVG rejects coordinates admitted by Mermaid SVG", async (
     viewBoxWidth: 100_000_000,
     viewBoxHeight: 1_000_000,
   });
-  await page.getByRole("button", { name: "Render settings", exact: true }).click();
+  await page.getByRole("button", { name: "Export", exact: true }).click();
   await page.getByRole("menuitemradio", { name: "resvg-compatible SVG", exact: true }).click();
+  await page.keyboard.press("Escape");
   const error = page.getByRole("alert").filter({ hasText: "Merman · Render Error" });
   await expect(error).toContainText("svg_backend_coordinate_magnitude");
   await expect(error).toContainText("actual=100000000 maximum=16777216");

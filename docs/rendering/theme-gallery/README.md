@@ -63,29 +63,21 @@ not presented as Modern Mermaid designs. Fonts are resolved independently on the
 
 ## Playground
 
-Paste one of the included sources into the editor, open **Theme**, choose its preset, and inspect
-the preview. The **Merman preset** selector at the top lists the current diagram's design
-treatment next to each preset. **Browse presets** adds recipe color swatches. For Brutalist,
-choose **Use Classic look** to explicitly preview Classic.
-This keeps other configuration and the layout intact. **Apply** commits the panel's theme,
-font and recommended configuration together; **Cancel** discards these drafts while preserving
-independent source/config editor edits. Leave the font at **Inherit from theme / source** to use
-the recipe's typography. **None** removes
-Merman styling and keeps the selected Mermaid base theme.
+Paste one of the included sources into the editor and open **Appearance**. The unified collection
+includes Mermaid themes, built-in Merman presets, and standalone explorations. Choosing a theme
+updates the current diagram immediately; closing the panel keeps that selection. **Undo appearance**
+restores an earlier choice while keeping source edits.
 
-Read **Current preview** for this diagram's result. **Designed for this diagram** describes
-catalog intent, not a guarantee that every requested effect rendered. An unreviewed family
-can still receive the recipe's base styling. Use **Download JSON** for an editable standalone
-recipe and a workspace share link to include source, settings and the applied recipe together.
+For Brutalist, choose **Use Classic look** to explicitly apply its recommended configuration.
+This keeps other settings and the layout intact. Leave the font at **Inherit from theme / source**
+to use recipe typography. Advanced settings retain the Mermaid base and the choice to remove only
+Merman styling.
 
-| Earlier panel | Current panel |
-| --- | --- |
-| ![Earlier panel with an implicit Trebuchet override and expanded verification text](theme-panel-before.png) | ![Current panel with explicit font inheritance, one Apply/Cancel model and optional output details](theme-panel.png) |
-
-The current panel screenshot requests Ghibli's `Open Sans, Noto Sans SC, sans-serif` stack. A browser may
-resolve the generic fallback when the named fonts are absent. The earlier panel always injected
-Trebuchet, even when the user had not chosen a font. These are real Playground screenshots;
-font installation and rasterization remain host-dependent.
+Read **Current preview** for this diagram's result. Catalog design scope does not guarantee every
+requested effect or output target. An unreviewed family can still receive base styling. **Use in a
+project** provides adoption code and source/theme files; downloading a theme alone produces a
+reusable recipe. A workspace link restores the current source, settings, and theme. Check the
+frozen image's output compatibility in **Export**, separately from the design's family scope.
 
 ## Native CLI
 

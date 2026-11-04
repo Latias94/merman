@@ -17,8 +17,8 @@ test("theme selection survives family changes without authoring controls", async
   });
   await page.goto(`./${hash}`, { waitUntil: "domcontentloaded" });
   await waitForPreviewSvg(page);
-  await page.getByRole("button", { name: "Theme", exact: true }).click();
-  const workbench = page.locator("#theme-panel");
+  await page.getByRole("button", { name: "Appearance", exact: true }).click();
+  const workbench = page.getByRole("region", { name: "Appearance", exact: true });
   const scenes = [
     { family: "Flowchart", source: null, treatment: "dedicated", label: "Designed for this diagram" },
     { family: "Class", source: "classDiagram\nclass Account {\n  +String name\n}", treatment: "base_only", label: "Shared styling" },
@@ -31,13 +31,14 @@ test("theme selection survives family changes without authoring controls", async
     if (!scene.source) {
       await page.screenshot({ path: test.info().outputPath("theme-panel-selection.png") });
     }
-    await expect(workbench.getByRole("tab")).toHaveCount(0);
+    await expect(workbench.getByRole("button", { name: /^(New recipe|Customize|Create from)/ })).toHaveCount(0);
     await expect(workbench.getByTestId("theme-current-family")).toHaveText(`Current diagram: ${scene.family}`);
-    const selected = workbench.getByRole("button", { name: /^Brutalist/ });
+    const selected = workbench.locator('[data-theme-choice="preset:brutalist"]');
     await expect(selected).toHaveAttribute("aria-pressed", "true");
     await expect(selected).toHaveAttribute("data-theme-treatment", scene.treatment);
     await expect(selected).toContainText(scene.label);
   }
+  await workbench.getByTestId("theme-advanced").locator("summary").first().click();
   await expect(workbench.getByTestId("theme-reviewed-families")).toContainText("does not mean unsupported");
   errors.assertNone();
 });
@@ -54,11 +55,11 @@ for (const scene of [
         themeRecipeJson: null, svgPipeline: "parity", textMeasurementMode: "browser", diagramFont: "trebuchet",
       })}`, { waitUntil: "domcontentloaded" });
       await waitForPreviewSvg(page);
-      await page.getByRole("button", { name: language === "en" ? "Theme" : "主题", exact: true }).click();
-      const panel = page.locator("#theme-panel");
+      await page.getByRole("button", { name: language === "en" ? "Appearance" : "外观", exact: true }).click();
+      const panel = page.getByRole("region", { name: language === "en" ? "Appearance" : "外观", exact: true });
       await expect(panel.getByTestId("theme-current-family")).toHaveText(language === "en"
         ? `Current diagram: ${scene.family}` : `当前图表：${scene.zhFamily}`);
-      const selected = panel.getByRole("button", { name: language === "en" ? /^Brutalist/ : /^粗野主义/ });
+      const selected = panel.locator('[data-theme-choice="preset:brutalist"]');
       await expect(selected).toHaveAttribute("aria-pressed", "true");
       await expect(selected).toHaveAttribute("data-theme-treatment", "unreviewed");
       await expect(selected).toContainText(language === "en" ? "Not yet reviewed for this diagram" : "尚未针对此图表评审");
@@ -73,16 +74,16 @@ test("Ghibli lists only its reviewed Pie design and retains selection for unrevi
     themePresetId: "ghibli", themeRecipeJson: null, svgPipeline: "parity", textMeasurementMode: "browser", diagramFont: "trebuchet",
   })}`, { waitUntil: "domcontentloaded" });
   await waitForPreviewSvg(page);
-  await page.getByRole("button", { name: "Theme", exact: true }).click();
-  const panel = page.locator("#theme-panel");
-  const card = panel.getByRole("button", { name: /^Ghibli/ });
+  await page.getByRole("button", { name: "Appearance", exact: true }).click();
+  const panel = page.getByRole("region", { name: "Appearance", exact: true });
+  const card = panel.locator('[data-theme-choice="preset:ghibli"]');
   await expect(panel.getByTestId("theme-current-family")).toHaveText("Current diagram: Pie Chart");
   await expect(card).toHaveAttribute("data-theme-treatment", "dedicated");
+  await panel.getByTestId("theme-advanced").locator("summary").first().click();
   const reviewed = panel.getByTestId("theme-reviewed-families");
   await expect(reviewed.getByRole("listitem")).toHaveCount(1);
   await expect(reviewed.getByRole("listitem")).toContainText("Pie Chart");
   await expect(reviewed.getByRole("listitem")).toContainText("Designed for this diagram");
-  await panel.locator("summary").filter({ hasText: /^Advanced$/ }).click();
   const catalogSummary = panel.locator("summary").filter({ hasText: /^Preset runtime details$/ });
   await catalogSummary.click();
   const details = catalogSummary.locator("..");
@@ -101,7 +102,9 @@ test("Ghibli lists only its reviewed Pie design and retains selection for unrevi
   await expect(card).toHaveAttribute("aria-pressed", "true");
   await expect(card).toHaveAttribute("data-theme-treatment", "unreviewed");
   await expect(card).toContainText("Not yet reviewed for this diagram");
-  await expect(panel.getByRole("button", { name: "Apply", exact: true })).toBeEnabled();
+  await expect(panel.getByTestId("theme-render-evidence")).not.toHaveAttribute("data-theme-evidence-state", "waiting");
+  const execution = JSON.parse((await panel.getByTestId("theme-execution-metadata").textContent())!);
+  expect(execution.theme_execution_evidence.family_id).toBe("flowchart");
   await expect(reviewed.getByRole("listitem")).toHaveCount(1);
 });
 
@@ -132,18 +135,28 @@ test("an unknown saved preset keeps its selection while preview and export use t
   await page.getByRole("menuitem", { name: "Export image…", exact: true }).click();
   await expect(page.getByTestId("export-theme-preset-fallback")).toContainText("future-preset was not applied");
   await page.getByRole("button", { name: "Close export", exact: true }).click();
-  await page.getByRole("tab", { name: "Compare", exact: true }).click();
+  await page.getByRole("button", { name: "Tools", exact: true }).click();
+  await page.getByRole("menuitem", { name: "Compare", exact: true }).click();
   await expect(page.locator('[data-merman-compare-engine="merman"]')).toHaveAttribute("data-merman-artifact-state", "ready");
   await expect(page.locator('[data-merman-compare-engine="mermaid"]')).toHaveAttribute("data-merman-artifact-state", "ready");
-  await page.getByRole("button", { name: "Theme", exact: true }).click();
-  const workbench = page.locator("#theme-panel");
+  const fills = await page.locator(".preview-container > div").evaluateAll((hosts) => hosts.map((host) => {
+    const node = host.shadowRoot?.querySelector("g.node rect");
+    return node ? getComputedStyle(node).fill : null;
+  }));
+  expect(fills).toHaveLength(2);
+  expect(fills[0]).not.toBeNull();
+  expect(fills[0]).toBe(fills[1]);
+  await page.getByRole("button", { name: "Appearance", exact: true }).click();
+  const workbench = page.getByRole("region", { name: "Appearance", exact: true });
   await expect(workbench.locator("header")).toContainText("future-preset");
   await expect(workbench).toContainText("future-preset");
-  await expect(workbench).toContainText("Unavailable in this runtime:");
-  await expect(workbench).toContainText("selection is preserved");
-  await expect(workbench.getByRole("button", { name: "Apply", exact: true })).toBeDisabled();
+  const unavailable = workbench.locator('[data-theme-choice="preset:future-preset"]');
+  await expect(unavailable).toBeDisabled();
+  await expect(unavailable).toHaveAttribute("aria-pressed", "true");
+  await expect(unavailable).toContainText("Unavailable in this runtime");
+  await expect(unavailable).toContainText("Selection preserved");
   await expect(workbench.getByRole("button", { name: "Download JSON", exact: true })).toBeDisabled();
-  await expect(workbench.locator('button[aria-pressed="true"]')).toHaveCount(0);
+  await expect(workbench.getByTestId("theme-catalog-choices").locator('button[aria-pressed="true"]')).toHaveCount(1);
   await expect(workbench.getByTestId("theme-outcome")).toContainText("Mermaid base theme");
   await page.screenshot({ path: test.info().outputPath("unavailable-preset-desktop.png") });
   await page.setViewportSize({ width: 390, height: 844 });

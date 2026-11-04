@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import type { SvgRenderMetadata } from "@mermanjs/web";
 
 import { isAsciiExportAvailable } from "../components/toolbar-artifact-availability.ts";
 import {
@@ -81,43 +82,13 @@ test("selects copied SVG and ASCII only from the named current publication", asy
   ]);
 });
 
-test("unapplied theme drafts block SVG actions while source ASCII remains available", async () => {
-  const publication = completedPublication("draft");
-  const publicationId = publication.snapshot.publicationId;
-  const calls: string[] = [];
-  let dirty = false;
-  const dependencies = {
-    getRenderState: () => publication,
-    getRuntimeState: () => readyRuntime(),
-    hasUnappliedThemeDraft: () => dirty,
-  };
-  const owner = createArtifactActionOwner({ ...dependencies, io: recordingIo(calls) });
-  const exports = createExportTargetOwner(dependencies);
-  const target = exports.freeze({ engine: "merman", publicationId });
-  dirty = true;
-  for (const engine of ["merman", "mermaid"] as const) {
-    await assert.rejects(owner({ action: "copy-svg", engine, publicationId }), {
-      code: "theme-draft-unapplied",
-    });
-    assert.throws(() => exports.freeze({ engine, publicationId }), {
-      code: "theme-draft-unapplied",
-    });
-  }
-  assert.throws(() => exports.rasterArtifact(target), { code: "theme-draft-unapplied" });
-  await owner({ action: "copy-ascii", publicationId });
-  assert.deepEqual(calls, ["copy-ascii:ascii-draft"]);
-  dirty = false;
-  await owner({ action: "copy-svg", engine: "merman", publicationId });
-  assert.deepEqual(calls, ["copy-ascii:ascii-draft", "copy-svg:merman"]);
-});
-
-test("a discarded draft publication cannot be exported as the applied workspace", async () => {
+test("a stale publication cannot be exported as the current workspace", async () => {
   const publication = completedPublication("draft-render");
   const calls: string[] = [];
   const owner = createArtifactActionOwner({
     getRenderState: () => publication,
     getRuntimeState: () => readyRuntime(),
-    getAppliedWorkspace: () => ({ ...DEFAULT_WORKSPACE_SNAPSHOT, code: "applied source" }),
+    getWorkspace: () => ({ ...DEFAULT_WORKSPACE_SNAPSHOT, code: "applied source" }),
     io: recordingIo(calls),
   });
   await assert.rejects(owner({ action: "copy-svg", engine: "merman", publicationId: publication.snapshot.publicationId }), {
@@ -126,7 +97,7 @@ test("a discarded draft publication cannot be exported as the applied workspace"
   assert.deepEqual(calls, []);
 });
 
-test("export rejects a publication whose theme alone differs from the applied selection", async () => {
+test("export rejects a publication whose theme alone differs from the current selection", async () => {
   const publication = completedPublication("same-source");
   const publicationId = publication.snapshot.publicationId;
   for (const theme of [
@@ -137,7 +108,7 @@ test("export rejects a publication whose theme alone differs from the applied se
     const dependencies = {
       getRenderState: () => publication,
       getRuntimeState: () => readyRuntime(),
-      getAppliedWorkspace: () => ({ ...workspace("same-source"), ...theme }),
+      getWorkspace: () => ({ ...workspace("same-source"), ...theme }),
     };
     const owner = createArtifactActionOwner({ ...dependencies, io: recordingIo(calls) });
     await assert.rejects(owner({ action: "copy-svg", engine: "merman", publicationId }), {
@@ -164,7 +135,7 @@ test("export freezes the unavailable preset notice with the actual base-theme ra
       inputs.push(input);
       return { artifact: projectNavigableInlineSvg(svg("raster-base")), error: null, metadata: null, renderTime: 1, status: "success" };
     }),
-    getAppliedWorkspace: () => applied,
+    getWorkspace: () => applied,
   });
   const target = owner.freeze({ engine: "merman", publicationId: publication.snapshot.publicationId });
   assert.equal(target.unavailableThemePresetId, "future-preset");
@@ -350,7 +321,18 @@ test("rejects stale, missing, and updating publications before I/O", async () =>
 });
 
 test("freezes an export target that does not retarget after a newer publication", () => {
-  const first = completedPublication("first");
+  const initial = completedPublication("first");
+  if (initial.status !== "success" || initial.mermaid === null) throw new Error("Expected fixture SVG pair");
+  const metadata: SvgRenderMetadata = {
+    version: 1, operation_id: "svg", media_type: "image/svg+xml",
+    runtime_policy: "default", byte_length: initial.merman.artifact.svg.length,
+    theme_execution_evidence: {
+      version: 2, family_id: "flowchart", theme_status: "verified", output_mutated: false,
+      target_kind: "inline_svg", target_status: "unverified", target_reason_ids: [],
+      font_source: "browser", materialized_theme: "default",
+    },
+  };
+  const first: CompletedRenderBatch = { ...initial, merman: { ...initial.merman, metadata } };
   let state: RenderCoordinatorState = first;
   const renderInputs: ConfiguredMermanOperationInput[] = [];
   const targetOwner = createExportTargetOwner({
@@ -380,6 +362,10 @@ test("freezes an export target that does not retarget after a newer publication"
   assert.equal(label(target.svgArtifact.svg), "merman");
   assert.equal(label(mermaidTarget.svgArtifact.svg), "mermaid");
   assert.equal(target.publicationId, first.snapshot.publicationId);
+  assert.equal(target.metadata, metadata);
+  assert.equal(target.svgPipeline, first.snapshot.operation.svgPipeline);
+  assert.equal(mermaidTarget.metadata, null);
+  assert.equal(mermaidTarget.svgPipeline, null);
   assert.equal(label(targetOwner.rasterArtifact(target).svg), "frozen-raster");
   assert.equal(label(targetOwner.rasterArtifact(target).svg), "frozen-raster");
   assert.equal(renderInputs.length, 1);

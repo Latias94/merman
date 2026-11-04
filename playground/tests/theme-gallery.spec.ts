@@ -15,82 +15,68 @@ const workspace = {
   themePresetId: "brutalist",
 };
 
-async function start(page: Page) {
+async function start(page: Page, openPanel = true) {
   await page.addInitScript(() => localStorage.setItem("merman-language", "en"));
   await page.goto(`./${encodeShareHash(workspace)}`, { waitUntil: "domcontentloaded" });
   if ((page.viewportSize()?.width ?? 1280) < 768) {
     await page.getByRole("tab", { name: "Preview", exact: true }).click();
   }
   await waitForPreviewSvg(page);
-  await page.getByRole("button", { name: "Theme", exact: true }).click();
+  if (openPanel) await page.locator("[data-theme-launcher]:visible").click();
   return page.locator("#theme-panel");
 }
 
-async function browse(page: Page) {
-  await page.getByRole("button", { name: "Browse themes", exact: true }).click();
-  const dialog = page.getByRole("dialog", { name: "Theme library", exact: true });
-  await expect(dialog).toBeVisible();
-  return dialog;
-}
-
-test("theme gallery loads on demand and browsing preserves the current theme draft", async ({ page }) => {
+test("one theme catalog loads with the appearance panel and searches every source", async ({ page }) => {
   const errors = monitorBrowserErrors(page);
   const galleryOutput = optionalFeatureOutput("themes");
   const requests: string[] = [];
   page.on("request", (request) => requests.push(request.url()));
-  const panel = await start(page);
-  await panel.getByLabel("Mermaid base theme", { exact: true }).selectOption("forest");
-  await expect(panel.locator("[data-theme-draft-status]")).toContainText("Theme preview");
+  const panel = await start(page, false);
   expect(requests.some((url) => url.endsWith(galleryOutput))).toBe(false);
   let releaseLoad!: () => void;
   const loading = new Promise<void>((resolve) => { releaseLoad = resolve; });
   await page.route(`**/${galleryOutput}`, async (route) => { await loading; await route.continue(); });
-  await page.getByRole("button", { name: "Browse themes", exact: true }).click();
-  await expect(page.getByRole("dialog")).toContainText("Loading Theme library");
-  await page.keyboard.press("Escape");
-  releaseLoad();
-  await expect(page.getByRole("dialog")).toBeHidden();
-  await expect(panel).toBeVisible();
-  const dialog = await browse(page);
+  try {
+    await page.locator("[data-theme-launcher]:visible").click();
+    await expect(panel).toContainText("Loading Themes");
+    await panel.getByRole("button", { name: "Close appearance panel", exact: true }).click();
+    await expect(panel).toBeHidden();
+  } finally { releaseLoad(); }
+  await expect(page.locator("[data-theme-launcher]:visible")).toBeFocused();
+  await page.locator("[data-theme-launcher]:visible").click();
+  const catalog = panel.getByTestId("theme-catalog");
+  await expect(catalog.locator("[data-theme-exploration]")).toHaveCount(4);
+  await expect(catalog.locator('[data-theme-choice="mermaid:forest"]')).toBeVisible();
+  await expect(catalog.locator('[data-theme-choice="preset:brutalist"]')).toHaveAttribute("aria-pressed", "true");
   expect(requests.some((url) => url.endsWith(galleryOutput))).toBe(true);
-  await expect(dialog.locator("[data-theme-exploration]")).toHaveCount(4);
-  await dialog.getByLabel("Appearance", { exact: true }).selectOption("dark");
-  await expect(dialog.locator("[data-theme-exploration]")).toHaveCount(1);
-  await dialog.locator('[data-theme-exploration="nightfall"]').click();
-  await expect(dialog.getByRole("heading", { name: "Nightfall", exact: true })).toBeVisible();
-  await dialog.getByLabel("Appearance", { exact: true }).selectOption("all");
-  await dialog.getByRole("searchbox", { name: "Search themes", exact: true }).fill("missing-theme");
-  await expect(dialog).toContainText("No themes match");
-  await page.keyboard.press("Escape");
-  await expect(dialog).toBeHidden();
+  await expect(panel.getByRole("button", { name: "Browse themes", exact: true })).toHaveCount(0);
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+  const search = catalog.getByRole("searchbox", { name: "Search themes", exact: true });
+  for (const [query, key] of [["forest", "mermaid:forest"], ["brutalist", "preset:brutalist"], ["nightfall", "exploration:nightfall"]]) {
+    await search.fill(query);
+    await expect(catalog.locator("[data-theme-choice]")).toHaveCount(1);
+    await expect(catalog.locator(`[data-theme-choice="${key}"]`)).toBeVisible();
+  }
+  await search.fill("missing-theme");
+  await expect(catalog).toContainText("No themes match");
+  await search.press("Escape");
+  await expect(search).toHaveValue("");
   await expect(panel).toBeVisible();
-  await expect(panel.getByLabel("Mermaid base theme", { exact: true })).toHaveValue("forest");
-  await expect(panel.getByLabel("Merman preset", { exact: true })).toHaveValue("preset:brutalist");
-  await expect(panel.locator("[data-theme-draft-status]")).toContainText("Theme preview");
-  await expect(panel.getByRole("button", { name: "Browse themes", exact: true })).toBeFocused();
+  await expect(panel.getByTestId("theme-current-name")).toHaveText("Brutalist");
   errors.assertNone();
 });
 
-test("trying an exploration uses Apply and Cancel and shares the standalone recipe", async ({ page }) => {
+test("selecting an exploration updates the current diagram immediately and shares its original recipe and name", async ({ page }) => {
   const errors = monitorBrowserErrors(page);
   await page.context().grantPermissions(["clipboard-read", "clipboard-write"]);
-  let panel = await start(page);
-  let dialog = await browse(page);
-  await dialog.locator('[data-theme-exploration="nightfall"]').click();
-  await dialog.getByRole("button", { name: "Try on current diagram", exact: true }).click();
-  await expect(dialog).toBeHidden();
-  await expect(panel.getByLabel("Merman preset", { exact: true })).toHaveValue("custom");
-  await expect(panel.getByRole("button", { name: "Apply", exact: true })).toBeEnabled();
-  await expect(panel.getByTestId("theme-render-evidence")).not.toHaveAttribute("data-theme-evidence-state", "failed");
-  await panel.getByRole("button", { name: "Cancel", exact: true }).click();
-  await page.getByRole("button", { name: "Theme", exact: true }).click();
-  panel = page.locator("#theme-panel");
-  await expect(panel.getByLabel("Merman preset", { exact: true })).toHaveValue("preset:brutalist");
-  dialog = await browse(page);
-  await dialog.locator('[data-theme-exploration="atlas"]').click();
-  await dialog.getByRole("button", { name: "Try on current diagram", exact: true }).click();
-  await expect(panel.getByRole("button", { name: "Apply", exact: true })).toBeEnabled();
-  await panel.getByRole("button", { name: "Apply", exact: true }).click();
+  const panel = await start(page);
+  await panel.locator('[data-theme-choice="exploration:atlas"]').click();
+  await expect(panel.getByTestId("theme-current-name")).toHaveText("Atlas");
+  await expect(panel.getByTestId("theme-current-source")).toHaveText("Exploration");
+  await expect(panel.getByTestId("theme-render-evidence")).toHaveAttribute("data-theme-evidence-state", "applied");
+  await expect(panel.getByRole("button", { name: "Apply", exact: true })).toHaveCount(0);
+  await expect(panel.getByRole("button", { name: "Cancel", exact: true })).toHaveCount(0);
+  await panel.getByRole("button", { name: "Close appearance panel", exact: true }).click();
   await page.getByRole("button", { name: "Share", exact: true }).click();
   await page.getByRole("menuitem", { name: "Copy workspace link", exact: true }).click();
   const url = await page.evaluate(() => navigator.clipboard.readText());
@@ -98,62 +84,68 @@ test("trying an exploration uses Apply and Cancel and shares the standalone reci
   const recipe = await readFile(new URL("../src/themes/recipes/atlas.theme.json", import.meta.url), "utf8");
   expect(applied.themeRecipeJson).toBe(recipe);
   expect(applied.themePresetId).toBeNull();
+  expect(applied.themeRecipeLabel).toEqual({ name: "Atlas", source: "exploration" });
   for (const key of ["code", "mermaidConfig", "diagramTheme", "diagramFont", "svgPipeline", "textMeasurementMode"] as const) {
     expect(applied[key]).toBe(workspace[key]);
   }
   await page.goto(url, { waitUntil: "domcontentloaded" });
   await waitForPreviewSvg(page);
-  await page.getByRole("button", { name: "Theme", exact: true }).click();
-  panel = page.locator("#theme-panel");
-  await panel.locator("summary").filter({ hasText: /^Advanced$/ }).click();
+  await page.locator("[data-theme-launcher]:visible").click();
+  await expect(panel.getByTestId("theme-current-name")).toHaveText("Atlas");
+  await expect(panel.locator('[data-theme-choice="exploration:atlas"]')).toHaveAttribute("aria-pressed", "true");
+  await panel.getByTestId("theme-advanced").locator("summary").first().click();
   await expect(panel.getByRole("textbox", { name: "Theme JSON", exact: true })).toHaveValue(recipe);
   errors.assertNone();
 });
 
-test("the four explorations show five real samples and download their original recipes", async ({ page }) => {
+test("the four explorations label their five fixed samples as examples and download original recipes", async ({ page }) => {
   const errors = monitorBrowserErrors(page);
   await page.setViewportSize({ width: 1440, height: 1000 });
-  await start(page);
-  const dialog = await browse(page);
+  const panel = await start(page);
   for (const id of ["atlas", "nightfall", "letterpress", "grove"]) {
-    await dialog.locator(`[data-theme-exploration="${id}"]`).click();
+    await panel.locator(`[data-theme-choice="exploration:${id}"]`).click();
+    const examples = panel.getByTestId("theme-examples");
+    await examples.locator("summary").first().click();
+    await expect(examples).toContainText("These are fixed examples");
     for (const sample of ["Flowchart", "Sequence", "Class", "XY Chart", "Pie"]) {
-      await dialog.getByRole("button", { name: sample, exact: true }).click();
-      const preview = dialog.getByTestId("theme-gallery-preview");
+      await examples.getByRole("button", { name: sample, exact: true }).click();
+      const preview = examples.getByTestId("theme-gallery-preview");
+      await expect(preview).toHaveAttribute("alt", /^Example /);
       await expect.poll(() => preview.evaluate((image) => (image as HTMLImageElement).complete && (image as HTMLImageElement).naturalWidth > 0)).toBe(true);
-      await dialog.getByTestId("theme-gallery-detail").screenshot({ path: test.info().outputPath(`${id}-${sample.replaceAll(" ", "-").toLowerCase()}.png`) });
     }
     const download = page.waitForEvent("download");
-    await dialog.getByRole("button", { name: /^Download .+ JSON$/ }).click();
+    await examples.getByRole("button", { name: /^Download .+ JSON$/ }).click();
     const artifact = await download;
     expect(artifact.suggestedFilename()).toBe(`${id}.theme.json`);
     expect(await readFile((await artifact.path())!, "utf8"))
       .toBe(await readFile(new URL(`../src/themes/recipes/${id}.theme.json`, import.meta.url), "utf8"));
   }
-  await dialog.locator("summary").filter({ hasText: /^View sample source$/ }).click();
-  await expect(dialog.locator("pre").first()).toContainText("pie");
-  await expect(dialog.locator("pre").last()).toContainText("htmlLabels");
+  const examples = panel.getByTestId("theme-examples");
+  await examples.locator("summary").filter({ hasText: /^View sample source$/ }).click();
+  await expect(examples.locator("pre").first()).toContainText("pie");
+  await expect(examples.locator("pre").last()).toContainText("htmlLabels");
   await expectNoDocumentOverflow(page);
-  await page.screenshot({ path: test.info().outputPath("theme-library-desktop.png") });
   errors.assertNone();
 });
 
-test("the theme library fits a narrow viewport and Escape retains the sidebar", async ({ page }) => {
+test("the unified catalog fits a narrow viewport and closing retains the selected theme", async ({ page }) => {
   const errors = monitorBrowserErrors(page);
   await page.setViewportSize({ width: 390, height: 844 });
   const panel = await start(page);
-  const dialog = await browse(page);
   await expectNoDocumentOverflow(page);
-  await page.screenshot({ path: test.info().outputPath("theme-library-mobile-browse.png") });
-  await dialog.locator('[data-theme-exploration="letterpress"]').click();
-  await dialog.getByRole("button", { name: "XY Chart", exact: true }).click();
-  await expect(dialog.getByTestId("theme-gallery-preview")).toBeVisible();
+  await panel.locator('[data-theme-choice="exploration:letterpress"]').click();
+  const examples = panel.getByTestId("theme-examples");
+  await examples.locator("summary").first().click();
+  await examples.getByRole("button", { name: "XY Chart", exact: true }).click();
+  await expect(examples.getByTestId("theme-gallery-preview")).toBeVisible();
   await expectNoDocumentOverflow(page);
-  await page.screenshot({ path: test.info().outputPath("theme-library-mobile-detail.png") });
+  await page.screenshot({ path: test.info().outputPath("appearance-catalog-mobile.png") });
   await page.keyboard.press("Escape");
-  await expect(dialog).toBeHidden();
-  await expect(panel).toBeVisible();
-  await expect(panel.getByRole("button", { name: "Browse themes", exact: true })).toBeFocused();
+  await expect(panel).toBeHidden();
+  await expect(page.locator("[data-theme-launcher]:visible")).toBeFocused();
+  await page.locator("[data-theme-launcher]:visible").click();
+  await expect(panel.getByTestId("theme-current-name")).toHaveText("Letterpress");
+  await expect(panel.locator('[data-theme-choice="exploration:letterpress"]')).toHaveAttribute("aria-pressed", "true");
   errors.assertNone();
 });
 
@@ -170,7 +162,7 @@ for (const id of ["atlas", "nightfall", "letterpress", "grove"]) {
         diagramTheme: "default", themeRecipeJson: recipe,
       })}`, { waitUntil: "domcontentloaded" });
       await waitForPreviewSvg(page);
-      await page.getByRole("button", { name: "Theme", exact: true }).click();
+      await page.locator("[data-theme-launcher]:visible").click();
       const panel = page.locator("#theme-panel");
       await expect(panel.getByTestId("theme-render-evidence")).toHaveAttribute("data-theme-evidence-state", "applied");
       await expect(panel.getByTestId("theme-diagnostic-reasons")).toHaveCount(0);

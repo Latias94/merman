@@ -11,9 +11,9 @@ Choose the kind of change you want:
 
 | Choice | Playground | CLI | Web options | Scope |
 | --- | --- | --- | --- | --- |
-| Mermaid's base appearance | **Mermaid theme** | `--theme dark` | `site_config: {theme: "dark"}` | Shared Mermaid configuration; affects both engines in Compare |
-| A Merman visual design | **Merman styling**, preview, **Apply** | `--theme-preset ghibli` | `theme: {preset: "ghibli"}` | Merman recipe: colors, canvas, typography and supported family effects |
-| Your own Merman design | **Import JSON**, preview, **Apply** | `--theme-file theme.json` | `theme: recipe` | The same editable recipe, independent of the installed catalog |
+| Mermaid's base appearance | **Appearance**, Mermaid collection | `--theme dark` | `site_config: {theme: "dark"}` | Shared Mermaid configuration; affects both engines in Compare |
+| A Merman visual design | **Appearance**, built-in collection | `--theme-preset ghibli` | `theme: {preset: "ghibli"}` | Merman recipe: colors, canvas, typography and supported family effects |
+| Your own Merman design | **Import JSON**, validate and adopt | `--theme-file theme.json` | `theme: recipe` | The same editable recipe, independent of the installed catalog |
 
 These inputs can be combined. The Mermaid base supplies defaults, and a Merman recipe supplies
 its supported styling. Explicit diagram styles and configuration retain property-specific
@@ -29,15 +29,14 @@ designs and a base palette adaptation for Class. The catalog records each preset
 unlisted families are **not yet reviewed**. A dedicated design does not guarantee every shape,
 effect or export format. Review the actual preview outcome for your diagram.
 
-In Playground the selected preset displays its reviewed families and application notes.
-Use the **Merman preset** selector at the top for direct selection with current-family design
-treatments, or **Browse presets** to compare the recipe color swatches.
-The panel's base theme, font and recommended configuration use the same preview as the Merman
-selection. **Apply** commits these appearance choices together; **Cancel** discards them.
-Recommendations change only their listed keys and preserve unrelated configuration. Source
-directives can still override them. Independent edits in the source/config editor remain live
-through either action. Downloading a recipe does not package Mermaid configuration or a UI font
-override; a workspace share link includes these inputs.
+Playground presents these sources in one theme collection. Select a theme to apply it immediately
+to the current diagram; its name and source stay visible after selection and sharing. The selected
+preset shows reviewed families and application notes. Advanced settings retain the independent
+Mermaid base and Merman extension choices. Font selection has one owner in Appearance.
+Recommendations change only their listed keys and preserve unrelated configuration; source
+statements can still override them. **Undo appearance** restores earlier choices while preserving
+later source/configuration edits. A theme file contains the recipe; **Use in a project** packages
+adoption code and the inputs of the current render.
 
 For CLI discovery, run `merman-cli capabilities` to see presets with their design scope and
 settings guidance, or `capabilities --json` for the same structured metadata. In Web:
@@ -127,27 +126,31 @@ the recipe with the skill or an external JSON editor, then import it to inspect 
 
 ## Select, preview, and share in the Playground
 
-Open **Theme** to keep the theme panel beside the diagram. Choose a preset or import a theme,
-inspect its preview, then select **Apply**. On narrow screens, the panel reserves space for a
-compact diagram preview. Drag the separator, or focus it and use the arrow keys, to adjust the
-panel width on desktop or height in a stacked layout. These two local display preferences are
-remembered separately.
+Open **Appearance** to keep the panel beside the current diagram. One collection offers Mermaid
+native themes, runtime-discovered Merman presets, standalone explorations, and the current imported
+recipe. Search by name or source. Choosing a valid theme updates the workspace immediately;
+closing the panel keeps that choice. **Undo appearance** reverses selections and font changes
+without discarding source edits. Selecting a Mermaid native theme removes the Merman extension;
+Advanced retains explicit composition of a base theme and an extension.
 
-Choose **Browse themes** to open the theme library. Atlas (technical light), Nightfall (quiet
-dark), Letterpress (warm editorial), and Grove (natural green) are Playground explorations.
-Each has real Flowchart, Sequence, Class, XY Chart, and Pie examples, with their source and
-configuration available in the library. Selecting a card changes only the library preview.
-**Try on current diagram** imports the standalone recipe as a draft using your current source,
-base theme, font, and configuration; use the panel's **Apply** or **Cancel** to finish. Closing
-the library, including with Escape, preserves the panel's existing draft.
+On narrow screens, the panel reserves space for the diagram preview. Drag the separator, or focus
+it and use the arrow keys, to adjust the panel width on desktop or height in a stacked layout.
+These two local display preferences are remembered separately.
 
-**Download _name_ JSON** saves that exploration's original editable recipe without applying it.
-The recipes, shared samples, configurations, and SVG previews live in
-[`playground/src/themes`](../../playground/src/themes/). These themes are not registered core
-presets. After Apply, a workspace link includes the full recipe independently of the library.
-The fixed previews use native SVG labels and host-resolved fonts. The five example families
-have been rendered with each recipe; other families and export targets still need their own
-review. Current source styles and explicit font/configuration choices can change the result.
+### Standalone explorations and example scenes
+
+Atlas (technical light), Nightfall (quiet dark), Letterpress (warm editorial), and Grove (natural
+green) are standalone exploration recipes. Selecting one uses that recipe on the current source,
+base theme, font, and configuration. They are not core preset IDs: use their downloaded recipe
+with CLI `--theme-file`, Rust `compile_recipe`, or Web `theme: recipe`. Their names and source
+labels are display metadata, not claims of runtime availability or family support.
+
+The example viewer contains Flowchart, Sequence, Class, XY Chart, and Pie scenes with their source
+and configuration. Its saved SVGs are fixed examples, not live previews of the current document.
+The recipes, shared samples, configurations, and SVGs live in
+[`playground/src/themes`](../../playground/src/themes/). The five example families have been
+rendered with each recipe; other families and targets need their own review. Source styles and
+explicit font/configuration choices can change the result.
 
 To refresh a library SVG, render its saved source, configuration, and recipe together, for example:
 
@@ -155,129 +158,105 @@ To refresh a library SVG, render its saved source, configuration, and recipe tog
 merman-cli render playground/src/themes/samples/xychart.mmd --config-file playground/src/themes/samples/xychart.config.json --theme-file playground/src/themes/recipes/atlas.theme.json --svg-id atlas-xychart --svg-pipeline parity --font-measurement deterministic --font-system off -o playground/src/themes/previews/atlas-xychart.svg
 ```
 
-The Letterpress Class preview instead uses native measurement with Menlo to size its monospace
-signatures (`--font-file /System/Library/Fonts/Menlo.ttc --font-system off` on macOS, replacing the
-deterministic measurement flag). Fonts are not embedded. With another host font, review the new
-preview's label bounds before replacing the asset. Native SVG text does not imply native font
-measurement; both approximate and native measurements still depend on the viewing host's fonts.
+The Letterpress Class preview uses native measurement with Menlo to size its monospace signatures
+(`--font-file /System/Library/Fonts/Menlo.ttc --font-system off` on macOS, replacing the deterministic
+measurement flag). Fonts are not embedded. With another host font, review label bounds before
+replacing the asset. Native SVG text does not imply native font measurement.
 
-**Mermaid base theme** previews the workspace setting shared by both engines. The pinned
-Mermaid catalog includes `default`, `base`, `dark`, `forest`, `neutral`, `neo`, `neo-dark`,
-`redux`, `redux-dark`, `redux-color`, and `redux-dark-color`. **Merman styling** is a separate
-selection that affects Merman only. Its preset cards come from the loaded runtime's catalog;
-card swatches illustrate the preset rather than render the current diagram.
-Unknown or unavailable saved preset IDs remain in the workspace and shared link. Playground
-omits that extension preset for preview, keeps the Mermaid base theme and source styles, and
-shows a notice beside the diagram and in the image export dialog. The core render APIs continue
-to reject unknown preset IDs. Invalid custom recipes and diagram errors retain their normal
-failure behavior; they do not trigger this preset fallback.
-Each card also reports the current family's design treatment. The selected preset lists
-reviewed diagram families and any settings guidance. The render outcome appears directly in
-the panel; optional output details and **Advanced** retain exact evidence for developers.
+### Effective appearance and imports
 
-**Inherit from theme / source** is the initial font choice in new workspaces. It does not inject
-a host font. Select a named font to override it, or return to inheritance to release that
-override. Historical links keep their original Trebuchet default; new links encode inheritance
-explicitly. Fonts are resolved on the receiving host and are not downloaded or embedded.
+Mermaid base themes affect both engines in Compare. Merman presets and recipes affect Merman only.
+The pinned Mermaid catalog includes `default`, `base`, `dark`, `forest`, `neutral`, `neo`,
+`neo-dark`, `redux`, `redux-dark`, `redux-color`, and `redux-dark-color`. `auto` is the Playground's
+choice to omit an initialization override, not a Mermaid theme name. Source/configuration
+declarations retain their normal precedence. The panel shows detected theme, font, and look
+locations and offers navigation to their owner; selecting a theme does not silently remove them.
 
-Choose **Import JSON** to load a standalone version-1 recipe created with the
-[theme design skill](#design-a-theme-with-an-agent) or an external editor. The original authored
-JSON is retained, including its formatting and explicit shared-value relationships. The panel
-provides no visual creation forms or editable JSON. To revise a theme, export it, edit it with
-the skill or your editor, then import the revised file. Selecting another preset or importing
-another file directly replaces the pending selection; **Cancel** remains available to return
-to the applied theme.
+Unknown or unavailable saved preset IDs remain in the workspace and shared link. Playground omits
+that extension for preview, keeps the Mermaid base and source styles, and shows a notice beside
+the diagram and in image export. Core APIs still reject unknown preset IDs. Invalid recipes and
+diagram errors retain their failure behavior; they do not trigger this fallback.
 
-The existing Rust compiler validates each import. A valid recipe updates the preview without
-changing the applied workspace theme. An invalid import reports its error and disables Apply;
-the preview continues using the last valid selection with the current diagram source,
-configuration, and font. Choose **Restore last valid theme**, import a corrected file, or
-select a preset to recover. A diagram parse/render error does not prevent a valid recipe from
-being imported, downloaded, or applied.
-Files over 256 KiB are rejected before reading and leave the current selection intact.
+**Inherit from theme / source** adds no host font override. A named font is an explicit host
+choice; returning to inheritance releases it. Historical links keep their original Trebuchet
+default. Fonts resolve on the receiving host and are not downloaded or embedded.
 
-**Apply** commits the panel's Merman selection, base theme, font and recommended configuration
-together and keeps the panel open. **Cancel** closes the panel and discards those drafts.
-Independent source/configuration edits made during the session remain. A recommendation is
-merged into the latest valid configuration at Apply; invalid live JSON is reported instead
-of being overwritten. Returning to the panel starts from the last applied appearance.
+**Import JSON** reads a standalone version-1 recipe. The Rust compiler validates it before the
+user adopts it. Invalid imports stay local to the import proposal; the current diagram, image
+export, and sharing remain usable. A later selection, closed panel, or workspace replacement
+invalidates pending import work. Files over 256 KiB are rejected before reading. A diagram error
+does not make an otherwise valid recipe invalid.
 
-Apply affects the current in-memory workspace; it does not establish local persistence or
-replace the browser address. Save a workspace link and open that link to restore the complete
-scene after reload. Download an imported recipe when you also need a reusable standalone theme.
+Original authored JSON, formatting, and shared-value relationships are retained. Export a recipe,
+edit it with the [theme design skill](#design-a-theme-with-an-agent) or another editor, then import
+the revision. The panel does not offer a visual theme editor.
 
-A Merman preset and a custom recipe are mutually exclusive applied selections. **None** removes
-Merman recipe styling after Apply; it does not remove the Mermaid theme or guarantee a
-transparent diagram. Mermaid configuration and source styles retain their ownership and
-precedence. The panel does not infer a winning source location for every field.
+**Download JSON** exports the actual standalone design for a runtime preset, or the original
+JSON for an imported/exploration recipe. No diagram render is required. A native Mermaid theme
+has no Merman recipe to download. Advanced settings can remove Merman styling while retaining
+the Mermaid base; this does not guarantee a transparent diagram.
 
-**Download JSON** exports the selected recipe independently of Apply and diagram rendering.
-For a preset, the runtime exports its actual standalone design, including canvas layers,
-effects, typography, assets, family rules, and shared-value bindings. An imported recipe exports
-its original authored JSON. **None** has no recipe to download. The exported file is accepted by
-native CLI `render --theme-file` and Web `options.theme`; subsequent catalog changes do not alter
-that standalone file.
+### Adopt the current render in a project
 
-### Advanced inspection
+**Use in a project** provides Rust, CLI, and Web adoption code and downloadable files from a
+matching completed render. The handoff preserves configured source and initialization settings
+separately. Playground's configuration editor is injected into source `init`; moving those values
+to CLI `--config-file` or Web `site_config` can change precedence. The generated materials must
+retain their original ownership. The dialog freezes its input so later editing does not mix two
+scenes in one download.
 
-Expand **Advanced** to view the read-only **Theme JSON**, use **Copy JSON**, and inspect runtime
-support information and metadata for the displayed SVG. An invalid imported file remains
-inspectable there, but cannot be copied or downloaded as a validated theme. Correct it outside
-the panel and import it again.
+Use the theme file alone to reuse its design on another diagram. Use the complete handoff to
+carry source, settings, recipe, output pipeline, and recorded environment conditions together.
+Host fonts and browser measurement callbacks remain application responsibilities. Matching
+inputs do not promise identical pixels across different font installations or measurement modes.
+An unavailable preset fallback cannot be presented as working core-preset adoption code. Recipes
+must pass the current runtime compiler before independent adoption; a diagram error does not
+prevent adopting a valid recipe. Generated Rust materials enable `math` for mathematical labels;
+CLI consumers need the matching optional capability when the source contains formulas.
 
-Catalog design scope, capability discovery, and the displayed render's theme outcome answer
-different questions. Design scope describes catalog intent; discovery describes declared family,
-target, and facet support; the render outcome belongs to the exact displayed execution. Theme
-and output-target statuses remain separate. Missing evidence, unknown evidence versions/statuses,
-or an empty diagnostic list do not establish portability. Inspect the outcome when a requested
-style is conditional or appears unchanged, and check the intended export target separately.
+### Inspection, output, and sharing
 
-### Share a workspace or a standalone theme
+Advanced inspection exposes read-only recipe JSON, runtime support information, and same-render
+theme metadata. Catalog intent, mechanism support, and actual execution answer different
+questions. Unknown evidence versions/statuses and an empty diagnostic list do not prove support.
 
-**Share → Copy workspace link** includes the applied recipe together with the diagram, config,
-font selection, and SVG pipeline. Custom recipes use the `s3` compressed URL format; preset-only
-workspaces continue to use `s2`, and existing links remain readable. Recipe JSON is limited to
-256 KiB before compression, with additional limits on the complete URL. Use **Download JSON**
-when distributing a reusable theme separately from a diagram. Links reference the receiving
-Playground runtime; they do not pin an engine version or embed fonts.
+**Export** owns image format, size, background, and compatibility information for its frozen
+artifact. `parity`, `readable`, and `resvg-safe` select pipelines; selecting one does not prove
+portability. Output-target results stay separate from whether theme styling was applied.
 
-While a changed selection is being previewed, apply it before copying a workspace/issue link or
-copying/exporting SVG, PNG, or JPEG. After Apply, artifact actions wait for the corresponding
-current render. A previously opened image-export workbench cannot start another export from an
-unapplied selection. Source and ASCII actions remain available; the visual recipe does not style
-ASCII.
+**Share → Copy workspace link** includes source, config, font, pipeline, and the selected recipe
+or preset. Named recipes use the `s4` compressed envelope; unnamed recipes use `s3`, and preset-only
+workspaces use `s2`. Existing links remain readable. Recipe JSON is bounded to 256 KiB before
+compression, with separate limits on the complete URL. Links reference the receiving runtime;
+they do not pin an engine revision or embed fonts. Choices apply to the in-memory workspace;
+save and reopen a workspace link to restore it after reload.
 
-External Markdown image links and Mermaid Live carry Mermaid configuration only. They cannot
-reproduce Merman presets or custom recipes; use a Playground workspace link or export the rendered
-SVG when preserving the Merman appearance matters. Theme validation checks the recipe, not visual
-quality or compatibility with every diagram family and export target.
+Image actions wait for the corresponding current render. An already-open image export stays bound
+to its frozen artifact even when the workspace changes. Source and ASCII actions remain separate;
+visual recipes do not style ASCII. External Mermaid Live and Markdown image services re-render
+Mermaid inputs without Merman recipes; their actions identify that boundary before use.
 
 ### Theme background, preview backing, and Compare
 
 Canvas paint belongs to the theme and exported image. Its base supports omission, explicit
-transparency, a color, or a gradient; a design can bind it to a shared paint. Omission preserves
-the diagram's base behavior and does not imply transparency. A transparent base retains
-decorative layers such as grids and gradients. To remove all theme canvas paint, set the base to
-`"transparent"` and remove its layers in the recipe. Diagram-owned background shapes may still be
-visible. A complete-spec import preserves concrete values without inferring shared relationships
-from equal colors.
+transparency, a color, or a gradient. Omission preserves diagram behavior and does not imply
+transparency. A transparent base retains decorative grids/gradients. Remove all theme canvas
+paint by setting the base to `"transparent"` and removing its layers; diagram-owned backgrounds
+may still remain. Complete-spec import does not infer shared relationships from equal colors.
 
-Canvas layers retain their authored paint order: later layers appear above earlier ones. A
-recipe can specify opacity, blend mode, offsets, linear/radial gradients, and gradient repetition.
-Serialization support alone does not guarantee every output target consumes every paint; check
-the runtime diagnostics and actual result. For examples, see
-[Add shadows and layered backgrounds](#add-shadows-and-layered-backgrounds).
+Canvas layers retain paint order. Recipes can specify opacity, blend mode, offsets, linear/radial
+gradients, and repetition. Serialization alone does not establish output support; inspect the
+actual result and diagnostics. See [Add shadows and layered backgrounds](#add-shadows-and-layered-backgrounds).
 
-**Preview backing** offers **Automatic**, **Light**, **Dark**, and **Transparency grid** in Visual
-and Compare. Both Compare panes use the same backing. This is a display preference: it does not
-change theme JSON, trigger another render, or add paint to image exports. Authored SVG root
-backgrounds and theme canvas layers remain visible, including explicit white or transparent
-paint. Automatic uses the current Mermaid appearance; a dark Merman recipe can therefore differ
-from its backing.
+**Preview backing** offers Automatic, Light, Dark, and Transparency grid in Visual and Compare.
+It is a display preference, shared by both Compare panes. It does not change theme JSON, trigger
+a render, or add image paint. Authored backgrounds remain visible. Automatic uses Mermaid
+appearance, so a dark recipe can differ from its backing.
 
-Compare applies the Merman preset or recipe only to Merman. Mermaid.js receives Mermaid source,
-configuration, and the shared Mermaid theme. To compare without Merman recipe styling, select
-**None** in the theme panel and apply it. This leaves the Mermaid theme and preview backing intact.
+**Tools** contains engine comparison, diagnostics, and benchmarking. Compare applies the Merman
+extension only to Merman; Mermaid.js receives Mermaid source, configuration, and the shared base.
+Inspect that difference separately from theme A/B comparisons. Advanced settings can remove only
+Merman styling for a common-input comparison; undo restores the prior selection.
 
 ## Choose a recipe for a diagram
 

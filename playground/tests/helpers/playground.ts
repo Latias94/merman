@@ -64,6 +64,24 @@ export async function waitForPreviewSvg(page: Page): Promise<void> {
     .toBe(true);
 }
 
+export async function openWorkbenchTool(
+  page: Page,
+  tool: "Compare" | "Diagnostics" | "Benchmark",
+): Promise<void> {
+  const trigger = page.getByRole("button", { name: "Tools", exact: true });
+  await trigger.click();
+  await page.getByRole("menuitem", { name: tool, exact: true }).click();
+  if (tool !== "Benchmark") {
+    await expect(page.getByRole("menu")).toHaveCount(0);
+    await expect(trigger).toBeFocused();
+  }
+}
+
+export async function openAdvancedRendering(page: Page): Promise<void> {
+  await page.getByRole("button", { name: "Tools", exact: true }).click();
+  await page.getByRole("menuitem", { name: "Advanced rendering", exact: true }).click();
+}
+
 export async function previewSvgText(page: Page): Promise<string> {
   const host = page.locator(".preview-container > div").first();
   return host.evaluate(

@@ -16,6 +16,7 @@ import {
 } from "./share.ts";
 import {
   DEFAULT_WORKSPACE_SNAPSHOT,
+  selectWorkspaceSnapshot,
   useAppStore,
   type WorkspaceSnapshot,
 } from "../store/index.ts";
@@ -60,6 +61,37 @@ test("round-trips a custom recipe through s3 without changing s2 links", () => {
     null,
   );
 });
+
+test("named recipes retain their identity in s4 while old envelopes stay strict", () => {
+  const snapshot: WorkspaceSnapshot = {
+    ...COMPLETE_SNAPSHOT, themePresetId: null, themeRecipeJson: CUSTOM_THEME_RECIPE,
+    themeRecipeLabel: { name: "Nightfall", source: "exploration" },
+  };
+  const hash = encodeShareHash(snapshot);
+  assert.match(hash, /^#s4:[A-Za-z0-9_-]+$/u);
+  assert.deepEqual(decodeShareHash(hash), snapshot);
+  assert.equal(decodeShareHash(hash.replace("#s4:", "#s3:")), null);
+  useAppStore.getState().applyWorkspaceSnapshot(snapshot);
+  assert.equal(selectWorkspaceSnapshot(useAppStore.getState()).themeRecipeLabel?.name, "Nightfall");
+  useAppStore.getState().applyWorkspaceSnapshot(COMPLETE_SNAPSHOT);
+  assert.equal(selectWorkspaceSnapshot(useAppStore.getState()).themeRecipeLabel, undefined);
+});
+
+test("share metadata cannot claim a name without a recipe or exceed its display boundary", () => {
+  for (const label of [
+    { name: " ", source: "imported" },
+    { name: "x".repeat(257), source: "imported" },
+    { name: "Theme", source: "future" },
+    { name: "Theme", source: "exploration", trusted: true },
+  ]) {
+    assert.throws(() => encodeShareHash({
+      ...COMPLETE_SNAPSHOT, themePresetId: null, themeRecipeJson: CUSTOM_THEME_RECIPE,
+      themeRecipeLabel: label as WorkspaceSnapshot["themeRecipeLabel"],
+    }), /share URL contract/u);
+  }
+  assert.throws(() => encodeShareHash({ ...COMPLETE_SNAPSHOT, themeRecipeLabel: { name: "Theme", source: "imported" } }), /share URL contract/u);
+});
+
 
 test("s3 defaults do not inherit later application or caller theme choices", () => {
   assert.equal(Object.isFrozen(WORKSPACE_V3_DEFAULTS), true);

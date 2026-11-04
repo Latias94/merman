@@ -9,7 +9,6 @@ import type {
 import type { CompletedRenderBatch, RenderCoordinatorState } from "../runtime/render-coordinator.ts";
 import type { FrozenRenderOperation } from "../runtime/merman-operation-input.ts";
 import type { WorkspaceSnapshot } from "./workspace-snapshot.ts";
-import type { ThemeEditSession } from "./theme-edit-session.ts";
 import { readMermaidAppearanceOverrides } from "./mermaid-appearance.ts";
 
 export type ThemeFamilyTreatment = "dedicated" | "base_only" | "unreviewed";
@@ -43,7 +42,7 @@ export function themeFamilyMetadataId(
   return capabilities.find((entry) => entry.family_id === familyId && entry.metadata_id !== null)?.metadata_id ?? null;
 }
 
-/** Diagram identity stays usable across theme drafts when its own detection inputs are unchanged. */
+/** Diagram identity stays usable when its own detection inputs are unchanged. */
 export function currentDiagramDetection(
   state: RenderCoordinatorState,
   workspace: Readonly<WorkspaceSnapshot>,
@@ -65,18 +64,14 @@ export function currentAppearanceOverrides(
 }
 
 export type CurrentThemeRender =
-  | { readonly status: "waiting"; readonly reason: "render" | "importing" | "validating" | "invalid"; readonly batch: null }
+  | { readonly status: "waiting"; readonly reason: "render"; readonly batch: null }
   | { readonly status: "failed" | "ready"; readonly batch: CompletedRenderBatch };
 
 /** Check inputs as well as pending state: React can render before the coordinator bridge's effect. */
 export function currentThemeRender(
   state: RenderCoordinatorState,
   workspace: Readonly<WorkspaceSnapshot>,
-  session: ThemeEditSession | null,
 ): CurrentThemeRender {
-  if (session?.importing) return { status: "waiting", reason: "importing", batch: null };
-  if (session?.validation === "pending") return { status: "waiting", reason: "validating", batch: null };
-  if (session?.validation === "invalid") return { status: "waiting", reason: "invalid", batch: null };
   if (state.status !== "success" && state.status !== "partial" && state.status !== "failed") {
     return { status: "waiting", reason: "render", batch: null };
   }

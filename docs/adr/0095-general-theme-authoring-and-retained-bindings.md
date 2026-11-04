@@ -88,9 +88,10 @@ Acceptance requires the following behavior at the owning public interfaces:
 - Missing references, cycles, incompatible types/units, non-finite values, and expansion-limit
   violations report bounded authoring-path errors. Shared aliases cannot allocate an amplified
   concrete specification before admission rejects it.
-- Invalid edits retain the last valid preview. Undo/redo and Apply/Cancel preserve independent
-  source/config changes. Prepared rendering adds no authoring traversal; performance claims require
-  representative measured workloads rather than acceptance of this decision.
+- Invalid imports do not replace the current valid workspace. Valid appearance selections apply
+  immediately; undo preserves independent source/config edits. Import and authoring proposals may
+  retain an explicit confirmation boundary. Prepared rendering adds no authoring traversal;
+  performance claims require representative measured workloads rather than acceptance of this decision.
 
 The [theme guide](../rendering/custom-diagram-themes.md) owns current public vocabulary and authoring
 workflows. These acceptance requirements do not themselves qualify any preset, family/look/output

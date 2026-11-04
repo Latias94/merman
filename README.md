@@ -67,11 +67,12 @@ cargo run --locked -p merman --example render_svg > diagram.svg
 
 ## Diagram themes
 
-Use compiled visual presets such as Brutalist, Spotless,
-Cyberpunk, and Ghibli. Open the Playground's **Theme** panel: **Mermaid theme** chooses the
-base appearance shared by both engines; **Merman styling** adds a preset or imported recipe
-to Merman. Cards describe the current diagram's design scope, and the selected preset shows
-application guidance. Preview the styling, then **Apply** it. See the
+Use compiled visual presets such as Brutalist, Spotless, Cyberpunk, and Ghibli. Open the
+Playground's **Appearance** panel to choose a Mermaid theme, a built-in Merman preset, an
+exploration, or your own recipe in one collection. Valid choices update the current diagram
+immediately; **Undo appearance** restores earlier choices without discarding source edits.
+Family guidance explains the selected design's scope. **Use in a project** provides Rust,
+CLI, and Web code with the files needed to adopt the current appearance. See the
 [theme gallery](docs/rendering/theme-gallery/README.md) for six presets across Flowchart, Pie,
 Sequence, Class, and XY Chart, or run the Rust example:
 
@@ -83,9 +84,9 @@ Brutalist, Spotless, Cyberpunk, and Ghibli use visual design references from
 [Modern Mermaid by gotoailab](https://github.com/gotoailab/modern_mermaid); see the
 [design credits and retained MIT notice](docs/rendering/theme-gallery/README.md#design-references-and-license).
 
-Use **Import JSON** in the panel to validate and preview a versioned theme recipe; download it
+Use **Import JSON** in the panel to validate a versioned theme recipe before adopting it; download it
 to edit with an external editor or the theme-design skill. Workspace share links preserve
-the applied custom recipe and configuration. The same JSON can be used through Rust, Web,
+the selected custom recipe, its display name, and configuration. The same JSON can be used through Rust, Web,
 Node, and native CLI APIs. The authoring format is alpha; see
 [Create, Customize, and Share Diagram Themes](docs/rendering/custom-diagram-themes.md) for examples,
 configuration precedence, and export limitations.

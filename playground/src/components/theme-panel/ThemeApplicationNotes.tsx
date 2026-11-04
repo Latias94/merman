@@ -17,22 +17,22 @@ function containsRecommendation(configJson: string, recommended: Record<string, 
   } catch { return false; }
 }
 
-export function ThemeApplicationNotes({ notes, workspace, declaredLook, onPreview }: {
+export function ThemeApplicationNotes({ notes, workspace, declaredLook, onApply }: {
   notes: readonly ThemePresetApplicationNote[];
   workspace: Readonly<WorkspaceSnapshot>;
   declaredLook?: MermaidAppearanceOverride;
-  onPreview(): void;
+  onApply(): void;
 }) {
   const { t } = useTranslation();
   const [error, setError] = useState<string | null>(null);
 
-  function previewConfig(config: Record<string, unknown>) {
+  function applyConfig(config: Record<string, unknown>) {
     try {
-      useAppStore.getState().previewThemeConfig(config);
+      useAppStore.getState().applyThemeConfig(config);
       setError(null);
-      onPreview();
+      onApply();
     } catch (cause) {
-      setError(t("themePanel.recommendedConfigError", { error: projectError(cause).summary }));
+      setError(t("appearance.recommendedConfigError", { error: projectError(cause).summary }));
     }
   }
 
@@ -48,9 +48,9 @@ export function ThemeApplicationNotes({ notes, workspace, declaredLook, onPrevie
         <p className="leading-relaxed text-muted-foreground">{t(`themeApplicationNotes.${note.id}`, { defaultValue: note.message })}</p>
         {config !== null && <>
           {configured || inSource
-            ? <p role="status" className="text-[11px] font-medium" data-testid="theme-recommended-state">{t(inSource ? "themePanel.recommendationInSource" : "themePanel.recommendationInConfig")}</p>
-            : <Button type="button" variant="outline" size="sm" className="h-auto max-w-full whitespace-normal py-1.5" onClick={() => previewConfig(config)}>
-              {t(`themeApplicationActions.${note.id}`, { defaultValue: t("themePanel.previewRecommendedConfig") })}
+            ? <p role="status" className="text-[11px] font-medium" data-testid="theme-recommended-state">{t(inSource ? "themePanel.recommendationInSource" : "appearance.recommendationInConfig")}</p>
+            : <Button type="button" variant="outline" size="sm" className="h-auto max-w-full whitespace-normal py-1.5" onClick={() => applyConfig(config)}>
+              {t(`themeApplicationActions.${note.id}`, { defaultValue: t("appearance.applyRecommendedConfig") })}
             </Button>}
           {classicAction && declaredLook?.origin === "source" && !inSource && <p className="text-[11px] leading-relaxed text-muted-foreground" data-testid="theme-recommendation-source-override">
             {t("themePanel.recommendationSourceOverride", { value: declaredLook.value })}
@@ -58,7 +58,7 @@ export function ThemeApplicationNotes({ notes, workspace, declaredLook, onPrevie
           <details className="text-[11px] text-muted-foreground">
             <summary className="cursor-pointer">{t("themePanel.showRecommendedConfig")}</summary>
             <pre className="mt-2 overflow-x-auto whitespace-pre-wrap break-words rounded bg-muted/30 p-2">{JSON.stringify(config, null, 2)}</pre>
-            <p className="mt-2 leading-relaxed">{t("themePanel.recommendedConfigHint")}</p>
+            <p className="mt-2 leading-relaxed">{t("appearance.recommendedConfigHint")}</p>
           </details>
         </>}
       </div>;

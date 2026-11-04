@@ -1,132 +1,124 @@
-import { useCallback, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { useShallow } from "zustand/react/shallow";
-import { GitFork, Languages, Monitor, Moon, Palette, Sun, Type } from "lucide-react";
+import { GitFork, Monitor, Moon, Palette, Settings, Sun } from "lucide-react";
+
 import { Button } from "@/components/ui/button";
 import {
-  DropdownMenu, DropdownMenuContent, DropdownMenuLabel, DropdownMenuRadioGroup,
-  DropdownMenuRadioItem, DropdownMenuSeparator, DropdownMenuTrigger,
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
-import { selectRenderInputSnapshot, useAppStore, type UITheme } from "@/src/store";
-import { DIAGRAM_FONT_VALUES, isDiagramFont } from "@/src/lib/diagram-font";
-import { isMermanSvgPipeline, MERMAN_SVG_PIPELINES } from "@/src/runtime/merman-core";
-import { selectCurrentMermanRenderTime, useRenderCoordinator } from "@/src/runtime/use-render-coordinator";
 import { languages, changeLanguage, getCurrentLanguage } from "@/src/i18n";
+import { useAppStore } from "@/src/store";
+import { ProjectUseLauncher } from "./ProjectUseLauncher";
 import { ToolbarArtifactActions, useToolbarArtifactActions } from "./ToolbarArtifactActions";
+import { ToolsMenu } from "./ToolsMenu";
 
-const UI_THEME_ICONS: Record<UITheme, ReactNode> = {
-  light: <Sun className="size-4" />,
-  dark: <Moon className="size-4" />,
-  system: <Monitor className="size-4" />,
+const UI_THEME_ICONS = {
+  light: Sun,
+  dark: Moon,
+  system: Monitor,
 };
 
 export function ToolbarControls() {
   const { t } = useTranslation();
-  const state = useAppStore(useShallow((current) => ({
-    diagramFont: selectRenderInputSnapshot(current).diagramFont,
-    textMeasurementMode: current.textMeasurementMode, setTextMeasurementMode: current.setTextMeasurementMode,
-    svgPipeline: current.svgPipeline, setSvgPipeline: current.setSvgPipeline,
-    uiTheme: current.uiTheme, setUITheme: current.setUITheme,
-    themeEditSession: current.themeEditSession,
-  })));
-  const lastRenderTime = useRenderCoordinator(selectCurrentMermanRenderTime);
+  const themePanelOpen = useAppStore((state) => state.themePanelOpen);
   const artifactActions = useToolbarArtifactActions();
-  const currentLang = getCurrentLanguage();
-  const handleLanguageChange = useCallback((language: string) => changeLanguage(language as "en" | "zh"), []);
 
-  function openThemePanel() {
+  function openAppearance() {
     const store = useAppStore.getState();
-    if (store.themeEditSession) {
-      document.querySelector<HTMLElement>("#theme-panel h2")?.focus();
-      return;
-    }
-    store.beginThemeEdit();
     store.setWorkspacePane("preview");
+    store.openThemePanel();
+    requestAnimationFrame(() => {
+      document.querySelector<HTMLElement>("#theme-panel h2")?.focus();
+    });
   }
 
-  function themeLauncher(compact: boolean) {
-    return (
+  return (
+    <div className="ml-auto flex shrink-0 items-center gap-1 xl:gap-2">
       <Tooltip>
         <TooltipTrigger asChild>
-          <Button variant="outline" size={compact ? "icon-sm" : "sm"}
-            aria-label={t("toolbar.theme")} aria-expanded={state.themeEditSession !== null}
-            aria-controls="theme-panel" data-theme-launcher onClick={openThemePanel}>
+          <Button
+            variant="outline"
+            size="sm"
+            className="w-8 px-0 xl:w-auto xl:px-2.5"
+            aria-label={t("workbench.appearance")}
+            aria-expanded={themePanelOpen}
+            aria-controls="theme-panel"
+            data-theme-launcher
+            onClick={openAppearance}
+          >
             <Palette className="size-4" />
-            {!compact && <span>{t("toolbar.theme")}</span>}
+            <span className="hidden xl:inline">{t("workbench.appearance")}</span>
           </Button>
         </TooltipTrigger>
-        <TooltipContent>{t("toolbar.theme")}</TooltipContent>
+        <TooltipContent>{t("workbench.appearance")}</TooltipContent>
       </Tooltip>
-    );
-  }
 
-  function renderSettings(compact: boolean) {
-    return (
-      <DropdownMenu>
-        <DropdownMenuTrigger asChild>
-          <Button variant="outline" size={compact ? "icon-sm" : "sm"} aria-label={t("toolbar.renderSettings")}>
-            <Type className="size-4" />{!compact && <span>{t("toolbar.renderSettings")}</span>}
-          </Button>
-        </DropdownMenuTrigger>
-        <DropdownMenuContent align="end" className="max-h-[80dvh] overflow-y-auto">
-          <DropdownMenuLabel>{t("toolbar.font")}</DropdownMenuLabel>
-          <DropdownMenuRadioGroup value={state.diagramFont} onValueChange={(value) => {
-            if (!isDiagramFont(value)) return;
-            const store = useAppStore.getState();
-            if (store.themeEditSession) store.previewThemeSettings({ diagramFont: value });
-            else store.setDiagramFont(value);
-          }}>
-            {DIAGRAM_FONT_VALUES.map((font) => <DropdownMenuRadioItem key={font} value={font}>{t(`diagramFonts.${font}`)}</DropdownMenuRadioItem>)}
-          </DropdownMenuRadioGroup>
-          <DropdownMenuSeparator />
-          <DropdownMenuLabel>{t("toolbar.textMeasurement")}</DropdownMenuLabel>
-          <DropdownMenuRadioGroup value={state.textMeasurementMode} onValueChange={(value) => state.setTextMeasurementMode(value === "headless" ? "headless" : "browser")}>
-            {["browser", "headless"].map((mode) => <DropdownMenuRadioItem key={mode} value={mode}>{t(`textMeasurement.${mode}`)}</DropdownMenuRadioItem>)}
-          </DropdownMenuRadioGroup>
-          <DropdownMenuSeparator />
-          <DropdownMenuLabel>{t("toolbar.svgOutput")}</DropdownMenuLabel>
-          <DropdownMenuRadioGroup value={state.svgPipeline} onValueChange={(value) => state.setSvgPipeline(isMermanSvgPipeline(value) ? value : "parity")}>
-            {MERMAN_SVG_PIPELINES.map((pipeline) => <DropdownMenuRadioItem key={pipeline} value={pipeline} aria-description={t(`svgPipelineDescriptions.${pipeline}`)}>{t(`svgPipelines.${pipeline}`)}</DropdownMenuRadioItem>)}
-          </DropdownMenuRadioGroup>
-          <DropdownMenuSeparator />
-          <DropdownMenuLabel>{t("toolbar.toggleTheme")}</DropdownMenuLabel>
-          <DropdownMenuRadioGroup value={state.uiTheme} onValueChange={(value) => state.setUITheme(value as UITheme)}>
-            {(["light", "dark", "system"] as const).map((theme) => <DropdownMenuRadioItem key={theme} value={theme}>{UI_THEME_ICONS[theme]}{t(`uiThemes.${theme}`)}</DropdownMenuRadioItem>)}
-          </DropdownMenuRadioGroup>
-          <DropdownMenuSeparator />
-          <DropdownMenuLabel>{t("toolbar.language")}</DropdownMenuLabel>
-          <DropdownMenuRadioGroup value={currentLang} onValueChange={handleLanguageChange}>
-            {languages.map((language) => <DropdownMenuRadioItem key={language.code} value={language.code}>{language.flag} {language.name}</DropdownMenuRadioItem>)}
-          </DropdownMenuRadioGroup>
-        </DropdownMenuContent>
-      </DropdownMenu>
-    );
-  }
+      <ToolbarArtifactActions compact={false} owner={artifactActions}>
+        <div className="max-xl:[&>button]:w-8 max-xl:[&>button]:px-0 max-xl:[&>button>span]:hidden">
+          <ProjectUseLauncher compact={false} />
+        </div>
+      </ToolbarArtifactActions>
+      <ToolsMenu />
+      <AppSettings />
+    </div>
+  );
+}
 
-  return <>
-    <div className="absolute right-3 top-1/2 flex -translate-y-1/2 items-center gap-1 xl:hidden">
-      {themeLauncher(true)}{renderSettings(true)}
-      <ToolbarArtifactActions compact owner={artifactActions} />
-      <Button variant="ghost" size="icon-sm" className="hidden sm:inline-flex" asChild><a href="https://github.com/Latias94/merman" target="_blank" rel="noopener noreferrer" aria-label={t("toolbar.viewSource")}><GitFork className="size-4" /></a></Button>
-    </div>
-    <div className="ml-auto hidden min-w-0 items-center gap-2 xl:flex">
-      {lastRenderTime > 0 && <span className="text-xs text-muted-foreground">{lastRenderTime.toFixed(1)}ms</span>}
-      {themeLauncher(false)}{renderSettings(false)}
-      <ToolbarArtifactActions compact={false} owner={artifactActions} />
-      <DropdownMenu>
-        <DropdownMenuTrigger asChild><Button variant="ghost" size="icon-sm" aria-label={t("toolbar.language")}><Languages className="size-4" /></Button></DropdownMenuTrigger>
-        <DropdownMenuContent align="end"><DropdownMenuRadioGroup value={currentLang} onValueChange={handleLanguageChange}>
-          {languages.map((language) => <DropdownMenuRadioItem key={language.code} value={language.code}>{language.flag} {language.name}</DropdownMenuRadioItem>)}
-        </DropdownMenuRadioGroup></DropdownMenuContent>
-      </DropdownMenu>
-      <DropdownMenu>
-        <DropdownMenuTrigger asChild><Button variant="ghost" size="icon-sm" aria-label={t("toolbar.toggleTheme")}>{UI_THEME_ICONS[state.uiTheme]}</Button></DropdownMenuTrigger>
-        <DropdownMenuContent align="end"><DropdownMenuRadioGroup value={state.uiTheme} onValueChange={(value) => state.setUITheme(value as UITheme)}>
-          {(["light", "dark", "system"] as const).map((theme) => <DropdownMenuRadioItem key={theme} value={theme}>{UI_THEME_ICONS[theme]}{t(`uiThemes.${theme}`)}</DropdownMenuRadioItem>)}
-        </DropdownMenuRadioGroup></DropdownMenuContent>
-      </DropdownMenu>
-      <Button variant="ghost" size="icon-sm" asChild><a href="https://github.com/Latias94/merman" target="_blank" rel="noopener noreferrer" aria-label={t("toolbar.viewSource")}><GitFork className="size-4" /></a></Button>
-    </div>
-  </>;
+function AppSettings() {
+  const { t } = useTranslation();
+  const { uiTheme, setUITheme } = useAppStore(useShallow((state) => ({
+    uiTheme: state.uiTheme,
+    setUITheme: state.setUITheme,
+  })));
+
+  return (
+    <DropdownMenu>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <DropdownMenuTrigger asChild>
+            <Button variant="ghost" size="icon-sm" aria-label={t("workbench.appSettings")}>
+              <Settings className="size-4" />
+            </Button>
+          </DropdownMenuTrigger>
+        </TooltipTrigger>
+        <TooltipContent>{t("workbench.appSettings")}</TooltipContent>
+      </Tooltip>
+      <DropdownMenuContent align="end" className="w-56 max-w-[calc(100vw-1rem)]">
+        <DropdownMenuLabel>{t("workbench.appTheme")}</DropdownMenuLabel>
+        <DropdownMenuRadioGroup value={uiTheme} onValueChange={(value) => {
+          if (value === "light" || value === "dark" || value === "system") setUITheme(value);
+        }}>
+          {(["light", "dark", "system"] as const).map((theme) => {
+            const Icon = UI_THEME_ICONS[theme];
+            return <DropdownMenuRadioItem key={theme} value={theme}>
+              <Icon className="size-4" />{t(`uiThemes.${theme}`)}
+            </DropdownMenuRadioItem>;
+          })}
+        </DropdownMenuRadioGroup>
+        <DropdownMenuSeparator />
+        <DropdownMenuLabel>{t("toolbar.language")}</DropdownMenuLabel>
+        <DropdownMenuRadioGroup value={getCurrentLanguage()} onValueChange={(value) => {
+          if (value === "en" || value === "zh") changeLanguage(value);
+        }}>
+          {languages.map((language) => <DropdownMenuRadioItem key={language.code} value={language.code}>
+            {language.flag} {language.name}
+          </DropdownMenuRadioItem>)}
+        </DropdownMenuRadioGroup>
+        <DropdownMenuSeparator />
+        <DropdownMenuItem asChild>
+          <a href="https://github.com/Latias94/merman" target="_blank" rel="noopener noreferrer">
+            <GitFork className="size-4" />{t("toolbar.viewSource")}
+          </a>
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
 }

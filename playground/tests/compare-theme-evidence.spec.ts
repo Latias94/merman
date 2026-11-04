@@ -2,7 +2,7 @@ import { expect, test, type Page } from "@playwright/test";
 
 import { encodeShareHash } from "../src/lib/share";
 import { DEFAULT_WORKSPACE_SNAPSHOT, type WorkspaceSnapshot } from "../src/lib/workspace-snapshot";
-import { monitorBrowserErrors, replaceEditorSource } from "./helpers/playground";
+import { monitorBrowserErrors, openWorkbenchTool, replaceEditorSource } from "./helpers/playground";
 
 test("Compare keeps the successful Mermaid dark canvas when Merman rejects a custom theme", async ({ page }) => {
   const errors = monitorBrowserErrors(page);
@@ -111,7 +111,7 @@ async function openPartialCompare(page: Page, workspace: Partial<WorkspaceSnapsh
   })}`, { waitUntil: "domcontentloaded" });
   await expect(page.locator("footer")).toContainText("Ready");
   await expect(page.getByRole("textbox", { name: "Mermaid source", exact: true })).toBeVisible();
-  await page.getByRole("tab", { name: "Compare", exact: true }).click();
+  await openWorkbenchTool(page, "Compare");
   const merman = page.locator('[data-merman-compare-engine="merman"]');
   await expect(merman).toHaveAttribute("data-merman-artifact-state", "rejected");
   await expect(merman).toContainText("not_a_theme_field");

@@ -4,7 +4,7 @@ import { isThemeName } from "@mermanjs/web";
 import { isMermaidThemeSelection } from "./mermaid-theme-name.ts";
 import { isDiagramFont } from "./diagram-font.ts";
 import { exceedsUtf8ByteBudget, utf8ByteLength } from "./utf8.ts";
-import type { WorkspaceSnapshot } from "./workspace-snapshot.ts";
+import type { ThemeRecipeLabel, WorkspaceSnapshot } from "./workspace-snapshot.ts";
 import { isMermanSvgPipeline } from "../runtime/merman-core.ts";
 
 const SHARE_SOURCE_BYTES = 2 * 1024 * 1024;
@@ -26,6 +26,7 @@ export const SHARE_LIMITS = Object.freeze({
 
 export const SHARE_V2_PREFIX = "#s2:" as const;
 export const SHARE_V3_PREFIX = "#s3:" as const;
+export const SHARE_V4_PREFIX = "#s4:" as const;
 
 export const SHARE_V3_LIMITS = Object.freeze({
   ...SHARE_LIMITS,
@@ -68,6 +69,22 @@ export const WORKSPACE_V3_DEFAULTS: Readonly<WorkspaceSnapshot> = Object.freeze(
   diagramFont: "trebuchet",
 });
 
+// Named recipes use a new envelope; existing links retain their historical defaults.
+export const WORKSPACE_V4_DEFAULTS: Readonly<WorkspaceSnapshot> = Object.freeze({
+  code: `flowchart TD
+    A[Start] --> B{Condition?}
+    B -->|Yes| C[Execute]
+    B -->|No| D[End]
+    C --> D`,
+  mermaidConfig: "{\n}\n",
+  diagramTheme: "auto",
+  themePresetId: null,
+  themeRecipeJson: null,
+  svgPipeline: "parity",
+  textMeasurementMode: "browser",
+  diagramFont: "inherit",
+});
+
 const MAX_LEGACY_ENCODED_HASH_CHARS = SHARE_LIMITS.jsonBytes * 4 + 4;
 const WORKSPACE_V2_KEYS = new Set([
   "code",
@@ -80,6 +97,7 @@ const WORKSPACE_V2_KEYS = new Set([
   "diagramFont",
 ]);
 const WORKSPACE_V3_KEYS = new Set([...WORKSPACE_V2_KEYS, "themeRecipeJson"]);
+const WORKSPACE_V4_KEYS = new Set([...WORKSPACE_V3_KEYS, "themeRecipeLabel"]);
 const utf8Encoder = new TextEncoder();
 const utf8Decoder = new TextDecoder("utf-8", { fatal: true });
 
@@ -89,11 +107,13 @@ export function encodeShareHash(data: WorkspaceSnapshot): string {
   }
 
   const customTheme = data.themeRecipeJson !== null;
-  const prefix = customTheme ? SHARE_V3_PREFIX : SHARE_V2_PREFIX;
+  const namedTheme = data.themeRecipeLabel != null;
+  const prefix = namedTheme ? SHARE_V4_PREFIX : customTheme ? SHARE_V3_PREFIX : SHARE_V2_PREFIX;
   const limits = customTheme ? SHARE_V3_LIMITS : SHARE_LIMITS;
-  const defaults = customTheme ? WORKSPACE_V3_DEFAULTS : WORKSPACE_V2_DEFAULTS;
+  const defaults = namedTheme ? WORKSPACE_V4_DEFAULTS : customTheme ? WORKSPACE_V3_DEFAULTS : WORKSPACE_V2_DEFAULTS;
   const payload = encodeWorkspacePayload(data, defaults);
   if (customTheme) payload.themeRecipeJson = data.themeRecipeJson;
+  if (namedTheme) payload.themeRecipeLabel = data.themeRecipeLabel;
   const json = JSON.stringify(payload);
   if (utf8ByteLength(json) > limits.jsonBytes) {
     throw new RangeError("Workspace exceeds the share URL contract.");
@@ -112,10 +132,13 @@ export function decodeShareHash(
 ): WorkspaceSnapshot | null {
   const fragment = hash.startsWith("#") ? hash : `#${hash}`;
   if (fragment.startsWith(SHARE_V2_PREFIX)) {
-    return decodeCompressedWorkspace(fragment.slice(SHARE_V2_PREFIX.length), false);
+    return decodeCompressedWorkspace(fragment.slice(SHARE_V2_PREFIX.length), 2);
   }
   if (fragment.startsWith(SHARE_V3_PREFIX)) {
-    return decodeCompressedWorkspace(fragment.slice(SHARE_V3_PREFIX.length), true);
+    return decodeCompressedWorkspace(fragment.slice(SHARE_V3_PREFIX.length), 3);
+  }
+  if (fragment.startsWith(SHARE_V4_PREFIX)) {
+    return decodeCompressedWorkspace(fragment.slice(SHARE_V4_PREFIX.length), 4);
   }
   return decodeLegacyWorkspaceHash(hash, legacyDefaults);
 }
@@ -176,12 +199,13 @@ function encodeWorkspacePayload(
 
 function decodeCompressedWorkspace(
   encoded: string,
-  customThemes: boolean,
+  version: 2 | 3 | 4,
 ): WorkspaceSnapshot | null {
+  const customThemes = version !== 2;
   const limits = customThemes ? SHARE_V3_LIMITS : SHARE_LIMITS;
-  const prefix = customThemes ? SHARE_V3_PREFIX : SHARE_V2_PREFIX;
-  const defaults = customThemes ? WORKSPACE_V3_DEFAULTS : WORKSPACE_V2_DEFAULTS;
-  const keys = customThemes ? WORKSPACE_V3_KEYS : WORKSPACE_V2_KEYS;
+  const prefix = version === 4 ? SHARE_V4_PREFIX : customThemes ? SHARE_V3_PREFIX : SHARE_V2_PREFIX;
+  const defaults = version === 4 ? WORKSPACE_V4_DEFAULTS : customThemes ? WORKSPACE_V3_DEFAULTS : WORKSPACE_V2_DEFAULTS;
+  const keys = version === 4 ? WORKSPACE_V4_KEYS : customThemes ? WORKSPACE_V3_KEYS : WORKSPACE_V2_KEYS;
   try {
     if (
       encoded.length === 0 ||
@@ -236,6 +260,7 @@ function decodeWorkspaceRecord(
     defaults.themeRecipeJson,
     SHARE_THEME_RECIPE_BYTES,
   );
+  const themeRecipeLabel = value.themeRecipeLabel;
   if (
     code === null ||
     diagramTheme === null ||
@@ -245,6 +270,7 @@ function decodeWorkspaceRecord(
     renderOptions === null ||
     themeRecipeJson === undefined ||
     !isThemeRecipeJson(themeRecipeJson) ||
+    (themeRecipeLabel !== undefined && (!isThemeRecipeLabel(themeRecipeLabel) || themeRecipeJson === null)) ||
     (themeRecipeJson !== null && renderOptions.themePresetId !== null)
   ) {
     return null;
@@ -256,6 +282,7 @@ function decodeWorkspaceRecord(
     mermaidConfig,
     ...renderOptions,
     themeRecipeJson,
+    ...(themeRecipeLabel ? { themeRecipeLabel: themeRecipeLabel as ThemeRecipeLabel } : {}),
     textMeasurementMode,
     diagramFont,
   };
@@ -304,6 +331,7 @@ function decodeLegacyWorkspaceHash(
       diagramFont === null ||
       Object.hasOwn(value, "renderViewportMode") ||
       Object.hasOwn(value, "hostThemePreset") ||
+      Object.hasOwn(value, "themeRecipeLabel") ||
       Object.hasOwn(value, "themeRecipeJson")
     ) {
       return null;
@@ -453,11 +481,18 @@ function isValidShareSnapshot(value: WorkspaceSnapshot): boolean {
     isMermaidThemeSelection(value.diagramTheme) &&
     isOptionalId(value.themePresetId) &&
     isThemeRecipeJson(value.themeRecipeJson) &&
+    (value.themeRecipeLabel == null || (isThemeRecipeLabel(value.themeRecipeLabel) && value.themeRecipeJson !== null)) &&
     (value.themeRecipeJson === null || value.themePresetId === null) &&
     isMermanSvgPipeline(value.svgPipeline) &&
     isTextMeasurementMode(value.textMeasurementMode) &&
     isDiagramFontValue(value.diagramFont)
   );
+}
+
+function isThemeRecipeLabel(value: unknown): value is ThemeRecipeLabel {
+  return isRecord(value) && hasOnlyKeys(value, new Set(["name", "source"])) &&
+    isBoundedString(value.name, 256) && value.name.trim().length > 0 &&
+    (value.source === "exploration" || value.source === "imported");
 }
 
 // Rust owns recipe schema validation. Sharing checks only the bounded envelope.
