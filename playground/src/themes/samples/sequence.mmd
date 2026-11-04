@@ -1,0 +1,14 @@
+sequenceDiagram
+    autonumber
+    participant Author
+    participant Editor
+    participant Archive
+    Author->>Editor: Submit draft
+    activate Editor
+    Note over Author,Editor: Keep the original source
+    loop Review each section
+        Editor->>Archive: Read reference
+        Archive-->>Editor: Return context
+    end
+    Editor-->>Author: Share review
+    deactivate Editor

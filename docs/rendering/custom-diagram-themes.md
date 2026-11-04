@@ -133,6 +133,34 @@ compact diagram preview. Drag the separator, or focus it and use the arrow keys,
 panel width on desktop or height in a stacked layout. These two local display preferences are
 remembered separately.
 
+Choose **Browse themes** to open the theme library. Atlas (technical light), Nightfall (quiet
+dark), Letterpress (warm editorial), and Grove (natural green) are Playground explorations.
+Each has real Flowchart, Sequence, Class, XY Chart, and Pie examples, with their source and
+configuration available in the library. Selecting a card changes only the library preview.
+**Try on current diagram** imports the standalone recipe as a draft using your current source,
+base theme, font, and configuration; use the panel's **Apply** or **Cancel** to finish. Closing
+the library, including with Escape, preserves the panel's existing draft.
+
+**Download _name_ JSON** saves that exploration's original editable recipe without applying it.
+The recipes, shared samples, configurations, and SVG previews live in
+[`playground/src/themes`](../../playground/src/themes/). These themes are not registered core
+presets. After Apply, a workspace link includes the full recipe independently of the library.
+The fixed previews use native SVG labels and host-resolved fonts. The five example families
+have been rendered with each recipe; other families and export targets still need their own
+review. Current source styles and explicit font/configuration choices can change the result.
+
+To refresh a library SVG, render its saved source, configuration, and recipe together, for example:
+
+```console
+merman-cli render playground/src/themes/samples/xychart.mmd --config-file playground/src/themes/samples/xychart.config.json --theme-file playground/src/themes/recipes/atlas.theme.json --svg-id atlas-xychart --svg-pipeline parity --font-measurement deterministic --font-system off -o playground/src/themes/previews/atlas-xychart.svg
+```
+
+The Letterpress Class preview instead uses native measurement with Menlo to size its monospace
+signatures (`--font-file /System/Library/Fonts/Menlo.ttc --font-system off` on macOS, replacing the
+deterministic measurement flag). Fonts are not embedded. With another host font, review the new
+preview's label bounds before replacing the asset. Native SVG text does not imply native font
+measurement; both approximate and native measurements still depend on the viewing host's fonts.
+
 **Mermaid base theme** previews the workspace setting shared by both engines. The pinned
 Mermaid catalog includes `default`, `base`, `dark`, `forest`, `neutral`, `neo`, `neo-dark`,
 `redux`, `redux-dark`, `redux-color`, and `redux-dark-color`. **Merman styling** is a separate

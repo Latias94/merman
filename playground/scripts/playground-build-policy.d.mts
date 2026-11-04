@@ -3,6 +3,7 @@ export const OPTIONAL_FEATURE_SOURCES: Readonly<{
   config: "src/components/ConfigEditorFeature.tsx";
   editor: "src/components/EditorFeature.tsx";
   examples: "src/components/ExampleGallery.tsx";
+  themes: "src/components/theme-panel/ThemeGallery.tsx";
   viewer: "src/components/ReadOnlyEditorFeature.tsx";
   viewerJson: "src/components/ReadOnlyJsonEditorFeature.tsx";
 }>;

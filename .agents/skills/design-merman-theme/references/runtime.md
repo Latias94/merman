@@ -95,9 +95,9 @@ Import the standalone recipe through Playground's Theme → Import JSON, preview
 Native CLI can render it with:
 
 ```text
-merman-cli render diagram.mmd --theme-file theme.json -o diagram.svg
+merman-cli render diagram.mmd --theme-file theme.json --theme-report theme-result.json -o diagram.svg
 ```
 
-The CLI currently renders recipes but does not expose the theme export/materialize/support
-subcommands or the same-render metadata sidecar; the helper uses the Node engine for those jobs.
+`--theme-report` writes the theme evidence and target outcome from that same native render.
+Use the Node helper for export/materialize/support operations and full operation metadata.
 Native binary export must be tested separately when PNG/PDF is required.

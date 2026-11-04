@@ -447,6 +447,38 @@
     "tooLarge": "主题 JSON 不能超过 {{limit}} KiB。",
     "apply": "应用"
   },
+  "themeGallery": {
+    "title": "主题库",
+    "exploration": "主题探索",
+    "description": "四种原创主题，五类图表。先比较风格，再放到自己的图中试看。",
+    "browse": "浏览主题",
+    "browseHint": "用真实示例比较不同风格，再在当前图表中试看。",
+    "close": "关闭主题库",
+    "collection": "探索主题",
+    "search": "搜索主题",
+    "appearance": "明暗风格",
+    "all": "全部风格",
+    "light": "浅色",
+    "dark": "深色",
+    "noResults": "没有匹配的主题，请调整搜索词或明暗风格。",
+    "explorationHint": "这些是 Playground 中的探索主题，可下载为独立 JSON 配方，尚未纳入内置预设。",
+    "detail": "{{name}} 示例",
+    "sample": "示例图表",
+    "samples": { "flowchart": "流程图", "sequence": "时序图", "class": "类图", "xychart": "XY 图表", "pie": "饼图" },
+    "previewAlt": "使用 {{name}} 渲染的{{sample}}",
+    "previewHint": "这里展示 Merman 渲染的固定示例，使用原生 SVG 标签。字体由设备决定；源码样式、配置和显式字体可能改变实际效果。",
+    "sampleSource": "查看示例源码",
+    "sampleConfig": "示例配置",
+    "tryHint": "试看保留当前图表与设置。回到主题面板检查草稿后，可选择应用或取消。",
+    "download": "下载 {{name}} JSON",
+    "try": "在当前图中试看",
+    "themes": {
+      "atlas": "克制的蓝灰配色，适合技术笔记与系统图。",
+      "nightfall": "安静的深灰蓝底色，搭配柔和配色与清晰标签。",
+      "letterpress": "暖纸底色、衬线标题与锈红点缀，适合编辑式图表。",
+      "grove": "象牙白、苔绿与矿物配色，带来温暖自然的观感。"
+    }
+  },
   "themePanel": {
     "presets": "预设",
     "browsePresets": "浏览预设",

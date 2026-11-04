@@ -1,0 +1,74 @@
+{
+  "schema_version": 1,
+  "kind": "design",
+  "design": {
+    "tokens": {
+      "canvas": { "type": "paint", "value": "#171D27" },
+      "surface": { "type": "paint", "value": "#242D3B" },
+      "surface-alt": { "type": "paint", "value": "#202938" },
+      "ink": { "type": "paint", "value": "#E7ECF4" },
+      "muted-ink": { "type": "paint", "value": "#ADBACD" },
+      "outline": { "type": "paint", "value": "#72839B" },
+      "connector": { "type": "paint", "value": "#9AAEC8" },
+      "accent": { "type": "color", "value": "#96B9D8" },
+      "accent-paint": { "type": "paint", "value": { "kind": "solid", "color": { "ref": "accent" } } },
+      "note-surface": { "type": "paint", "value": "#31394A" },
+      "note-ink": { "type": "paint", "value": "#E8D4AC" },
+      "number-ink": { "type": "paint", "value": { "ref": "canvas" } },
+      "body-font": { "type": "font-stack", "value": ["system-ui", "-apple-system", "BlinkMacSystemFont", "Segoe UI", "Noto Sans CJK SC", "sans-serif"] },
+      "series": { "type": "palette", "value": [{ "ref": "accent" }, "#93BCAF", "#D4B486", "#B6A1CB", "#CB9EAA", "#AABF8B"] },
+      "pie-series": { "type": "palette", "value": ["#3D5B78", "#3D635B", "#735B3A", "#605076", "#754D5B", "#53633D"] }
+    },
+    "canvas": { "base": { "ref": "canvas" } },
+    "typography": {
+      "default": { "font_stack": { "ref": "body-font" } },
+      "families": {
+        "flowchart": { "font_size_px": 15 },
+        "sequence": { "font_size_px": 14 },
+        "class": { "font_size_px": 15 }
+      }
+    },
+    "styles": {
+      "text": { "fill": { "ref": "ink" } }
+    },
+    "rules": [
+      { "family": "flowchart", "target": "node", "style": { "fill": { "ref": "surface" }, "stroke": { "paint": { "ref": "outline" }, "width": 1.5 }, "radius": 6 } },
+      { "family": "flowchart", "target": "node-label", "style": { "fill": { "ref": "ink" }, "typography": { "font_weight": 600 } } },
+      { "family": "flowchart", "target": "edge", "style": { "stroke": { "paint": { "ref": "connector" }, "width": 1.5 } } },
+      { "family": "flowchart", "target": "edge-label-background", "style": { "fill": { "ref": "canvas" } } },
+      { "family": "flowchart", "target": "cluster", "style": { "fill": { "ref": "surface-alt" }, "stroke": { "paint": { "ref": "outline" }, "width": 1 } } },
+      { "family": "flowchart", "target": "cluster-label", "style": { "fill": { "ref": "muted-ink" } } },
+      { "family": "sequence", "target": "actor", "style": { "fill": { "ref": "surface" }, "stroke": { "paint": { "ref": "outline" } } } },
+      { "family": "sequence", "target": "actor-label", "style": { "fill": { "ref": "ink" }, "typography": { "font_size_px": 15, "font_weight": 600 } } },
+      { "family": "sequence", "target": "lifeline", "style": { "stroke": { "paint": { "ref": "outline" } } } },
+      { "family": "sequence", "target": "message", "style": { "stroke": { "paint": { "ref": "connector" } } } },
+      { "family": "sequence", "target": "message-label", "style": { "fill": { "ref": "ink" }, "typography": { "font_size_px": 14 } } },
+      { "family": "sequence", "target": "note", "style": { "fill": { "ref": "note-surface" }, "stroke": { "paint": { "ref": "outline" } } } },
+      { "family": "sequence", "target": "note-label", "style": { "fill": { "ref": "note-ink" }, "typography": { "font_size_px": 14 } } },
+      { "family": "sequence", "target": "activation", "style": { "fill": { "ref": "surface-alt" }, "stroke": { "paint": { "ref": "accent-paint" } } } },
+      { "family": "sequence", "target": "loop", "style": { "stroke": { "paint": { "ref": "outline" } } } },
+      { "family": "sequence", "target": "loop-label-background", "style": { "fill": { "ref": "surface-alt" }, "stroke": { "paint": { "ref": "outline" } } } },
+      { "family": "sequence", "target": "loop-label", "style": { "fill": { "ref": "muted-ink" }, "typography": { "font_size_px": 13 } } },
+      { "family": "sequence", "target": "sequence-number", "style": { "fill": { "ref": "number-ink" } } },
+      { "family": "class", "target": "node", "style": { "fill": { "ref": "surface" }, "stroke": { "paint": { "ref": "outline" } } } },
+      { "family": "class", "target": "node-label", "style": { "fill": { "ref": "ink" } } },
+      { "family": "class", "target": "edge", "style": { "stroke": { "paint": { "ref": "connector" }, "width": 1.5 } } },
+      { "family": "class", "target": "edge-label-background", "style": { "fill": { "ref": "canvas" } } },
+      { "family": "class", "target": "cluster", "style": { "fill": { "ref": "surface-alt" }, "stroke": { "paint": { "ref": "outline" } } } },
+      { "family": "xychart", "target": "axis", "style": { "fill": { "ref": "muted-ink" }, "stroke": { "paint": { "ref": "connector" } } } },
+      { "family": "xychart", "target": "axis-tick", "style": { "stroke": { "paint": { "ref": "outline" } } } },
+      { "family": "xychart", "target": "title", "style": { "fill": { "ref": "ink" }, "typography": { "font_size_px": 21, "font_weight": 600 } } },
+      { "family": "xychart", "target": "axis-title", "style": { "fill": { "ref": "muted-ink" }, "typography": { "font_size_px": 13, "font_weight": 600 } } },
+      { "family": "xychart", "target": "axis-label", "style": { "fill": { "ref": "muted-ink" }, "typography": { "font_size_px": 12 } } },
+      { "family": "xychart", "target": "legend", "style": { "fill": { "ref": "muted-ink" }, "typography": { "font_size_px": 13 } } },
+      { "family": "pie", "target": "pie-slice", "style": { "stroke": { "paint": { "ref": "outline" } } } },
+      { "family": "pie", "target": "text", "style": { "fill": { "ref": "ink" }, "typography": { "font_size_px": 15, "font_weight": 600 } } },
+      { "family": "pie", "target": "title", "style": { "fill": { "ref": "ink" }, "typography": { "font_size_px": 21, "font_weight": 600 } } },
+      { "family": "pie", "target": "legend", "style": { "fill": { "ref": "muted-ink" }, "typography": { "font_size_px": 13 } } }
+    ],
+    "palettes": {
+      "chart-series": { "ref": "series" },
+      "pie-slice": { "ref": "pie-series" }
+    }
+  }
+}

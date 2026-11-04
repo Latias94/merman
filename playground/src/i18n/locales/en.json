@@ -443,6 +443,38 @@
     "tooLarge": "Theme JSON must be {{limit}} KiB or smaller.",
     "apply": "Apply"
   },
+  "themeGallery": {
+    "title": "Theme library",
+    "exploration": "Theme explorations",
+    "description": "Four original themes, five kinds of diagram. Find a direction, then try it on your own work.",
+    "browse": "Browse themes",
+    "browseHint": "Compare original themes on real examples before trying one on your diagram.",
+    "close": "Close theme library",
+    "collection": "Explore themes",
+    "search": "Search themes",
+    "appearance": "Appearance",
+    "all": "All appearances",
+    "light": "Light",
+    "dark": "Dark",
+    "noResults": "No themes match. Try another search or appearance.",
+    "explorationHint": "These are Playground explorations, available as independent JSON recipes. They are not built-in presets.",
+    "detail": "{{name}} examples",
+    "sample": "Example diagram",
+    "samples": { "flowchart": "Flowchart", "sequence": "Sequence", "class": "Class", "xychart": "XY Chart", "pie": "Pie" },
+    "previewAlt": "{{sample}} rendered with {{name}}",
+    "previewHint": "Fixed Merman examples with native SVG labels. Fonts depend on your device; source styles, configuration and an explicit font can change the result.",
+    "sampleSource": "View sample source",
+    "sampleConfig": "Sample configuration",
+    "tryHint": "Try keeps your diagram and settings. Review the draft in the theme panel, then Apply or Cancel.",
+    "download": "Download {{name}} JSON",
+    "try": "Try on current diagram",
+    "themes": {
+      "atlas": "Blue-gray precision for technical notes and system diagrams.",
+      "nightfall": "Quiet slate, soft color and clear labels for dark canvases.",
+      "letterpress": "Warm paper, serif titles and rust accents for editorial diagrams.",
+      "grove": "Ivory, moss green and mineral colors for a warmer view."
+    }
+  },
   "themePanel": {
     "presets": "Presets",
     "browsePresets": "Browse presets",

@@ -163,6 +163,12 @@ function validManifest() {
       isDynamicEntry: true,
       imports: ["shared"],
     },
+    [OPTIONAL_FEATURE_SOURCES.themes]: {
+      file: "assets/themes.js",
+      src: OPTIONAL_FEATURE_SOURCES.themes,
+      isDynamicEntry: true,
+      imports: ["shared"],
+    },
     [OPTIONAL_FEATURE_SOURCES.viewer]: {
       file: "assets/viewer.js",
       src: OPTIONAL_FEATURE_SOURCES.viewer,

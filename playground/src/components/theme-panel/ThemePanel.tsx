@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
+import { lazy, useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import { Copy, Download, FileUp, Palette, X } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
@@ -7,6 +7,7 @@ import { useShallow } from "zustand/react/shallow";
 
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
+import { LazyFeatureBoundary } from "@/src/components/LazyFeatureBoundary";
 import { downloadBlob } from "@/src/lib/export";
 import { DIAGRAM_FONT_VALUES, isDiagramFont } from "@/src/lib/diagram-font";
 import type { MermaidThemeSelection } from "@/src/lib/mermaid-theme-name";
@@ -22,12 +23,15 @@ import { ThemePresetCards } from "./ThemePresetCards";
 import { ThemeRenderEvidence } from "./ThemeRenderEvidence";
 import { ThemeApplicationNotes } from "./ThemeApplicationNotes";
 
+const ThemeGallery = lazy(() => import("./ThemeGallery"));
+
 export function ThemePanel({ className, onClose }: { className?: string; onClose(): void }) {
   const { t } = useTranslation();
   const headingId = useId();
   const heading = useRef<HTMLHeadingElement>(null);
   const selectionHeading = useRef<HTMLHeadingElement>(null);
   const fileInput = useRef<HTMLInputElement>(null);
+  const browseButton = useRef<HTMLButtonElement>(null);
   const facade = useMermanRuntime(selectMermanFacade);
   const session = useAppStore((state) => state.themeEditSession);
   const workspace = useAppStore(useShallow(selectRenderInputSnapshot));
@@ -37,6 +41,7 @@ export function ThemePanel({ className, onClose }: { className?: string; onClose
   const batch = render.batch;
   const metadata = batch?.merman.status === "success" ? batch.merman.metadata : null;
   const [advanced, setAdvanced] = useState(false);
+  const [galleryOpen, setGalleryOpen] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
   const [catalogState, setCatalogState] = useState<{ catalog: ThemeCatalog | null; error: string | null }>({ catalog: null, error: null });
 
@@ -137,6 +142,16 @@ export function ThemePanel({ className, onClose }: { className?: string; onClose
     }
   }
 
+  function tryRecipe(raw: string) {
+    const store = useAppStore.getState();
+    const token = store.beginThemeImport();
+    if (!token) return;
+    setActionError(null);
+    const validationToken = store.completeThemeImport(token, raw);
+    if (validationToken) validateNow(raw, validationToken);
+    setGalleryOpen(false);
+  }
+
   function recipeForExchange(): string {
     if (!facade) throw new Error(t("wasm.notLoaded"));
     const current = useAppStore.getState().themeEditSession;
@@ -169,7 +184,7 @@ export function ThemePanel({ className, onClose }: { className?: string; onClose
     <aside id="theme-panel" role="region" aria-labelledby={headingId} data-theme-panel
       className={cn("flex min-h-0 min-w-0 flex-col overflow-hidden border-t bg-background lg:border-l lg:border-t-0", className)}
       onKeyDown={(event) => {
-        if (event.key === "Escape" && !event.defaultPrevented) { event.preventDefault(); event.stopPropagation(); close(); }
+        if (event.key === "Escape" && !event.defaultPrevented && !galleryOpen) { event.preventDefault(); event.stopPropagation(); close(); }
       }}>
       <header className="flex shrink-0 items-start justify-between gap-2 border-b px-3 py-2">
         <div className="min-w-0 space-y-1">
@@ -181,6 +196,13 @@ export function ThemePanel({ className, onClose }: { className?: string; onClose
         <Button type="button" variant="ghost" size="icon-sm" aria-label={t("themePanel.close")} onClick={close}><X className="size-4" /></Button>
       </header>
       <div className="min-h-0 flex-1 space-y-4 overflow-y-auto overscroll-contain p-3">
+        <section className="space-y-2 rounded-md border bg-muted/15 p-3">
+          <h3 className="text-xs font-semibold">{t("themeGallery.title")}</h3>
+          <p className="text-[11px] leading-relaxed text-muted-foreground">{t("themeGallery.browseHint")}</p>
+          <Button ref={browseButton} type="button" variant="outline" size="sm" onClick={() => setGalleryOpen(true)}>
+            <Palette className="size-3.5" />{t("themeGallery.browse")}
+          </Button>
+        </section>
         <section className="space-y-2">
           <label htmlFor={`${headingId}-mermaid-theme`} className="block text-xs font-semibold">{t("themePanel.mermaidTheme")}</label>
           <select id={`${headingId}-mermaid-theme`} className="h-8 w-full min-w-0 rounded-md border bg-background px-2 text-xs"
@@ -342,6 +364,13 @@ export function ThemePanel({ className, onClose }: { className?: string; onClose
           }}>{t("customTheme.apply")}</Button>
         </div>
       </div>
+      {galleryOpen && <LazyFeatureBoundary feature={t("themeGallery.title")} presentation={{
+        kind: "dialog", open: galleryOpen, onOpenChange: setGalleryOpen,
+        restoreFocus: () => browseButton.current?.focus(),
+      }}>
+        <ThemeGallery open={galleryOpen} onOpenChange={setGalleryOpen} restoreFocus={() => browseButton.current?.focus()}
+          canTry={Boolean(facade)} onTryRecipe={tryRecipe} />
+      </LazyFeatureBoundary>}
     </aside>
   );
 }
