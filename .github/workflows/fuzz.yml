@@ -384,14 +384,20 @@ jobs:
           commit = selected["commit"]
           if not re.fullmatch(r"[0-9a-f]{40}", commit):
               raise SystemExit("Invalid selected Mermaid commit")
+          path = selected["path"]
+          if (not isinstance(path, str)
+              or not re.fullmatch(r"repo-ref/[A-Za-z0-9._/-]+", path)
+              or any(part in ("", ".", "..") for part in path.split("/"))):
+              raise SystemExit("Invalid selected Mermaid path")
           with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as output:
               print(f"commit={commit}", file=output)
+              print(f"path={path}", file=output)
       - name: Checkout selected Mermaid parser source
         uses: actions/checkout@v7.0.1
         with:
           repository: mermaid-js/mermaid
           ref: ${{ steps.parser-source.outputs.commit }}
-          path: repo-ref/mermaid
+          path: ${{ steps.parser-source.outputs.path }}
           persist-credentials: false
           sparse-checkout: |
             packages/mermaid/src/Diagram.ts

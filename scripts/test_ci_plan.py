@@ -4,8 +4,11 @@
 from __future__ import annotations
 
 import json
+import os
 import subprocess
+import sys
 import tempfile
+import textwrap
 import unittest
 from contextlib import redirect_stderr, redirect_stdout
 from io import StringIO
@@ -939,6 +942,78 @@ class TreeSitterWindowsWorkflowTests(unittest.TestCase):
             self.assertIn(command, windows)
 
 
+class ParserSourceWorkflowTests(unittest.TestCase):
+    def test_selected_parser_checkout_consumes_validated_lock_outputs(self) -> None:
+        from scripts.test_release_workflow_security import workflow_job
+
+        root = Path(__file__).resolve().parents[1]
+        selected = json.loads(
+            (root / "tools/upstreams/REPOS.lock.json").read_text(encoding="utf-8")
+        )["repos"]["mermaid"]
+        cases = [
+            (selected["commit"], selected["path"], True),
+            ("a" * 40, "repo-ref/mermaid", True),
+            ("b" * 40, "repo-ref/selected/mermaid-99.0.1", True),
+            ("invalid-commit", "repo-ref/mermaid", False),
+        ]
+        cases.extend(("a" * 40, path, False) for path in (
+            None,
+            "",
+            "repo-ref",
+            "repo-ref/",
+            "other/mermaid",
+            "/repo-ref/mermaid",
+            "C:/repo-ref/mermaid",
+            "repo-ref/../outside",
+            "repo-ref/mermaid/../../outside",
+            "repo-ref/mermaid/..",
+            "repo-ref/./mermaid",
+            "repo-ref//mermaid",
+            "repo-ref/mermaid\npath=../outside",
+            "repo-ref/mermaid\rpath=../outside",
+            "repo-ref\\mermaid",
+            "repo-ref/mermaid\\..\\outside",
+        ))
+        for filename, owner in (("ci.yml", "svg-parity"), ("fuzz.yml", "parser-differential")):
+            job = workflow_job(
+                (root / ".github/workflows" / filename).read_text(encoding="utf-8"), owner,
+            )
+            producer = job.split("        id: parser-source\n", 1)[1].split("\n      - ", 1)[0]
+            self.assertIn("        shell: python\n", producer)
+            command = textwrap.dedent(producer.split("        run: |\n", 1)[1])
+            checkout_marker = "      - name: Checkout selected Mermaid parser source\n"
+            checkout = job.split(checkout_marker, 1)[1].split("\n      - ", 1)[0]
+            self.assertIn("        uses: actions/checkout@", checkout)
+            self.assertIn("          repository: mermaid-js/mermaid\n", checkout)
+            self.assertIn("          ref: ${{ steps.parser-source.outputs.commit }}\n", checkout)
+            self.assertIn("          path: ${{ steps.parser-source.outputs.path }}\n", checkout)
+            self.assertIn("          persist-credentials: false\n", checkout)
+            self.assertLess(job.index("        id: parser-source\n"), job.index(checkout_marker))
+            for commit, path, valid in cases:
+                with self.subTest(workflow=filename, commit=commit, path=path), tempfile.TemporaryDirectory() as temporary:
+                    temporary_root = Path(temporary)
+                    lock = temporary_root / "tools/upstreams/REPOS.lock.json"
+                    lock.parent.mkdir(parents=True)
+                    lock.write_text(
+                        json.dumps({"repos": {"mermaid": {"commit": commit, "path": path}}}),
+                        encoding="utf-8",
+                    )
+                    output = temporary_root / "output"
+                    result = subprocess.run(
+                        [sys.executable, "-c", command], cwd=temporary_root,
+                        env=dict(os.environ, GITHUB_OUTPUT=str(output)),
+                        capture_output=True, text=True,
+                    )
+                    if valid:
+                        self.assertEqual(result.returncode, 0, result.stderr)
+                        self.assertEqual(
+                            output.read_text(encoding="utf-8"), f"commit={commit}\npath={path}\n",
+                        )
+                    else:
+                        self.assertNotEqual(result.returncode, 0)
+                        self.assertFalse(output.exists())
+
+
 class WorkflowFontDependenciesTests(unittest.TestCase):
     def test_performance_paths_include_shared_model_and_markup_sources(self) -> None:
         workflow = (
@@ -1077,7 +1152,6 @@ class WorkflowFontDependenciesTests(unittest.TestCase):
         libfuzzer = workflow_job(fuzz, "libfuzzer")
         self.assertIn("parser-differential --cases 256", ci)
         self.assertIn("browsers install chrome-headless-shell", ci)
-        self.assertIn("path: repo-ref/mermaid", ci)
         self.assertLess(ci.index("browsers install chrome-headless-shell"), ci.index("parser-differential --cases 256"))
         self.assertIn("parser-differential --cases 5000 --timeout-seconds 900", discovery)
         self.assertIn("github.event_name == 'schedule'", discovery)
