@@ -75,83 +75,48 @@ bounds, directional layout and endpoint docking follow the selected source.
 contracts. This Mermaid runtime move intentionally leaves that syntax baseline
 unchanged. Tree-sitter output does not become semantic input to Merman.
 
-## Reference-contract review (2026-11-04)
+## Verified reference evidence (2026-11-04)
 
-The four verification catalogs and seven semantic-label fixture contracts now bind
-the generated 12.3 SVGs. All 148 distinct fixture inputs and their old SVG hashes
-were checked against Git base `84ef69b30f128d8a4f955e3aafb50f6378a4de5c`;
-the new hashes match the selected-source manifests. All five deterministic upstream
-root signatures are unchanged. Initial rebinding preserved entry identities, modes,
-precision, 126 complete local browser signatures, 28 upstream/local label-geometry
-snapshots, and ten local parser SVG hashes. The subsequent C4 review below refreshes
-five upstream geometry snapshots while retaining all local geometry.
+The four verification catalogs and seven semantic-label fixture contracts bind
+actual Mermaid 12.3 SVGs and their selected-source manifests. The collection
+rendered 3,748 reference SVGs. The 37-family comparison selects a different
+inventory: 3,740 rendered inputs, 27 explicit source/host skips and three DOM modes.
+All modes pass the blocking policy, including 145 exact browser-measurement
+entries covering 381 fixture/mode pairs and separate parser-diagnostic residuals.
+No comparison tolerance or broad normalization was added.
 
-Final integrated validation remains with the main worker's freshly built
-three-mode comparison and strict verification.
-Controlled C4 replay is complete: both reviewed C4Dynamic fixtures produce
-byte-identical raw SVGs with Mermaid 12.2 and 12.3 under Node `24.21.0`, Chrome
-`156.0.8078.47`, `zh-CN`, the same font probe, seed, clock, viewport and config.
-Rebuilding the trusted 12.2 lock graph reproduces archived bundle
-`29d255aa0a6d1d69e6d7c56a67b64c6c89318e2acf079587ec85743c70b44a2e`
-and the current 12.3 SVGs. The verified old N-API addon and current Rust renderer
-also produce byte-identical complete local SVGs with deterministic measurement
-and white capture. C4 and shared-text source is unchanged. The five upstream
-geometry snapshots now bind the measured reference, including the first message
-anchor `(667.948, 396.913)`, while all local snapshots remain unchanged. This is a
-bounded residual of the new reference collection; browser, locale and font effects
-were not individually isolated.
-The other 23 upstream label-geometry snapshots retain their numeric SVG evidence;
-Class and Requirement SVG changes are confined to XHTML inline styles. Twelve
-existing browser receipts have changed upstream artifacts, including ELK routes
-across the `0.9.3` to `0.12.0` engine transition. The main worker rebound six ELK
-local signatures using Halley's controlled old N-API and current Rust evidence.
-The Statecross case fully converged, and its obsolete receipt was removed before
-the 21-entry admission below. The ten parser upstream SVGs change only the
-displayed Mermaid version. The main worker rebound all ten local hashes from
-actual generated `target/compare` SVGs. Reversing only the displayed version text
-in those newly rendered local SVGs reproduces all ten old recorded byte hashes
-exactly. That reverse-version check establishes continuity; the admitted new
-hashes come from the actual new SVG bytes.
+Controlled replay of the full archived 12.2 lock graph and selected 12.3 runtime,
+under Node `24.21.0`, Chrome `156.0.8078.47`, `zh-CN` and equal fonts/config/seed,
+establishes byte continuity for 21 newly admitted measurement cases: 20 Sequence
+fixtures and one Timeline fixture. Old N-API and current Rust SVGs also match for
+those cases. Their complete signatures bind only the observed modes; browser,
+locale and font causes were not individually isolated.
 
-The completed follow-up admits 21 exact browser-measurement receipts: 20 Sequence
-fixtures and one Timeline fixture, each limited to its observed `structure`,
-`parity` and `parity-root` failures. The catalog grows from 125 to 146 entries;
-the existing 125 entries remain unchanged, preserving the main worker's six local
-signature rebindings and removal of the converged Statecross receipt. Every new
-input/upstream hash comes from the actual artifacts, and every complete local
-signature comes from the existing Rust `canonical_local_svg_signature` owner.
-No comparison rules, tolerances or normalization change.
+C4's five refreshed upstream geometry snapshots use controlled collection
+evidence while all 28 local geometry snapshots remain unchanged. Six ELK local
+signatures follow the actual `0.9.3` to `0.12.0` layout observations. Ten parser
+hashes come from newly rendered SVGs; changing only their displayed version back
+reproduces the old hashes. The converged Statecross and Sequence
+`stress_br_in_messages_notes_011` receipts were deleted. Raw controlled replay
+and signature reports remain under ignored `target/mermaid-12.3-c4-controlled/`.
 
-All 21 fixtures produce byte-identical 12.2/12.3 raw SVGs in the same controlled
-environment described above, including replay of the complete archived lock graph.
-The verified old N-API addon and current Rust output are also byte-identical for
-every fixture. Per-fixture DOM review confirms unchanged IDs, label content,
-text ownership and path commands; the new differences are line grouping and its
-derived geometry. Existing presentation differences were checked against the old
-artifacts and existing comparator. The 63 exact mode receipts bound these visible
-browser-measurement residuals; they do not establish an implementation fix or
-pixel-perfect parity, nor isolate a particular browser, locale or font cause.
-Raw replay, DOM review and owner-signature reports remain under
-`target/mermaid-12.3-c4-controlled/`, with admission evidence in `admission-21/`.
-The final unfiltered comparison also found that Sequence
-`stress_br_in_messages_notes_011` now matches in all three modes. Its stale
-historical receipt was deleted, leaving 145 current catalog entries. A Step
-hand-drawn fixture exposed a separate marker paint defect: strict/sandbox marker
-attributes now reuse the shared DOMPurify DOM-value admission instead of a local
-hex-color exception. Actual DOMPurify `3.4.17` in Chrome `156.0.8078.47` rejects
-both `stroke:DarkGray` and `stroke:#123456` while preserving ordinary colors.
-Loose mode retains the upstream raw values and marker identity is unchanged.
-Herschel separately recollected all 46 ELK browser-measurement entries against
-the selected runtime: five fixtures account for 78 changed raw routes, and three
-historically corrupted label keys were corrected. All 78 literal SVG probes were
-also remeasured, retaining their numeric values. Both
-`flowchart-elk-browser-measurements.json` and
-`flowchart-svg-terminal-measurements.json` now identify the current Mermaid 12.3
-capture at the top level; their old provenance is archived under
-`historical_collection`. This unit preserves that separately owned collection
-without editing either matrix.
+All 46 ELK browser-measurement entries were recollected: five fixtures account for
+78 changed raw routes, and three historical label-key corruptions were corrected.
+All 78 literal SVG probes were remeasured without numeric changes. Both matrices
+identify the current capture and retain old metadata in `historical_collection`.
 
-The upgrade playbook's [current 12.3 transition](../release/MERMAID_UPGRADE_PLAYBOOK.md#current-transition-mermaid-1230)
-describes the selected development graph. Final integrated strict verification
-remains pending at this handoff; these artifact checks do not claim that gate has
-passed.
+Step's strict/sandbox marker attributes reuse shared DOMPurify DOM-value
+admission. Actual DOMPurify `3.4.17` rejects both `stroke:DarkGray` and
+`stroke:#123456` while preserving ordinary colors. Loose mode retains the raw
+values; marker identity is unchanged. Browser tests verify timing, update and
+document isolation, and reduced motion in Classic, Neo and Hand-drawn looks.
+
+Final `verify --strict` passes: 14,026 Rust tests, architecture/doctest owners,
+all 37 three-mode family comparisons, Web build/contracts/smoke, Playground
+tests/build/browsers and 316 VS Code tests. Independent size, installed Node and
+real Typst consumers pass with the original budgets. The
+[completion record](../knowledge/engineering/verification/2026-11/2026-11-04T000111Z-round2-completion-b98b1ed2141546f3aefb98ba51840f11.md)
+names exact artifacts, source identities, review closure and explicit limits.
+The upgrade playbook's
+[current transition](../release/MERMAID_UPGRADE_PLAYBOOK.md#current-transition-mermaid-1230)
+describes the selected development graph.
