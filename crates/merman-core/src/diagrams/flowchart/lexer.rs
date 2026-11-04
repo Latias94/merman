@@ -173,7 +173,11 @@ impl<'input> Lexer<'input> {
         self.label_scanner.work
     }
 
-    fn find_label_end(&mut self, start: usize, delim: &str) -> Result<Option<usize>, LexError> {
+    fn find_label_end(
+        &mut self,
+        start: usize,
+        delim: &'static str,
+    ) -> Result<Option<usize>, LexError> {
         self.label_scanner
             .find_unquoted_delim(self.input, start, delim)
             .map_err(|_| {
@@ -2014,4 +2018,277 @@ fn labeled_text_with_spans(
         )
     }));
     text
+}
+
+#[cfg(all(test, feature = "diagram-flowchart"))]
+mod tests {
+    use super::*;
+    use crate::{SemanticDiagramModel, SemanticParser};
+
+    fn assert_linear_label_scan_work(lexer: &Lexer<'_>, source: &str) {
+        assert!(
+            lexer.label_scan_work() <= 4 * source.len(),
+            "ordinary label scans must be linear: {} steps for {} bytes",
+            lexer.label_scan_work(),
+            source.len(),
+        );
+    }
+
+    fn assert_repeated_slanted_label_scan_work(open: &str, close: &str, shape: &str, suffix: &str) {
+        let parser = SemanticParser::new();
+        let header = "flowchart TD\n";
+        let statement = format!("A{open}x{close}\n");
+        for repetitions in [64, 128, 256] {
+            let source = format!("{header}{}{suffix}", statement.repeat(repetitions));
+            let mut lexer = Lexer::new(&source);
+            let tokens = lexer
+                .by_ref()
+                .collect::<Result<Vec<_>, _>>()
+                .expect("repeated slanted labels must tokenize");
+            let labels = tokens
+                .iter()
+                .filter_map(|(start, token, end)| match token {
+                    Tok::NodeLabel(label) => Some((*start, label, *end)),
+                    _ => None,
+                })
+                .collect::<Vec<_>>();
+            assert_eq!(labels.len(), repetitions + usize::from(!suffix.is_empty()));
+            for (index, (start, label, end)) in labels[..repetitions].iter().enumerate() {
+                let expected_start = header.len() + index * statement.len() + 1;
+                let expected_end = header.len() + (index + 1) * statement.len() - 1;
+                assert_eq!((*start, *end), (expected_start, expected_end));
+                assert_eq!(label.shape, shape);
+                assert_eq!(label.text.text, "x");
+                assert_eq!(label.text.kind, TitleKind::Text);
+                assert_eq!(label.text.span, Some(SourceSpan::new(*start, *end)));
+                assert_eq!(
+                    label.text.selection,
+                    Some(SourceSpan::new(
+                        *start + open.len(),
+                        *start + open.len() + 1
+                    )),
+                );
+                assert!(label.recovery_error.is_none());
+            }
+            let parsed = parser
+                .parse_diagram_sync(&source)
+                .expect("repeated definitions of the same node must parse");
+            let SemanticDiagramModel::Flowchart(model) = parsed.model else {
+                panic!("expected Flowchart model");
+            };
+            assert_eq!(model.nodes.len(), 1 + usize::from(!suffix.is_empty()));
+            assert_eq!(model.nodes[0].id, "A");
+            assert_eq!(model.nodes[0].label.as_deref(), Some("x"));
+            assert_linear_label_scan_work(&lexer, &source);
+        }
+    }
+
+    #[test]
+    fn ordinary_label_scans_are_linear_with_slash_closers() {
+        for (open, shape) in [("[/", "lean_right"), ("[\\", "inv_trapezoid")] {
+            assert_repeated_slanted_label_scan_work(open, "/]", shape, "");
+        }
+    }
+
+    #[test]
+    fn ordinary_label_scans_are_linear_with_backslash_closers() {
+        for (open, shape) in [("[\\", "lean_left"), ("[/", "trapezoid")] {
+            assert_repeated_slanted_label_scan_work(open, "\\]", shape, "");
+        }
+    }
+
+    #[test]
+    fn ordinary_label_scans_are_linear_with_distant_alternate_closers() {
+        for (open, close, shape, suffix) in [
+            ("[/", "/]", "lean_right", "B[\\y\\]\n"),
+            ("[\\", "\\]", "lean_left", "B[/y/]\n"),
+        ] {
+            assert_repeated_slanted_label_scan_work(open, close, shape, suffix);
+        }
+    }
+
+    #[test]
+    fn ordinary_label_scans_preserve_multiline_utf8_and_quoted_closers() {
+        let header = "flowchart TD\r\n";
+        for (raw, payload, kind, payload_offset) in [
+            (
+                "first 雪😀\r\nlast",
+                "first 雪😀\r\nlast",
+                TitleKind::Text,
+                0,
+            ),
+            (
+                "\"first 雪😀 /] \\]\r\nlast\"",
+                "first 雪😀 /] \\]\r\nlast",
+                TitleKind::String,
+                1,
+            ),
+            (
+                "\"`first 雪😀 /] \\]\r\nlast`\"",
+                "first 雪😀 /] \\]\r\nlast",
+                TitleKind::Markdown,
+                2,
+            ),
+        ] {
+            for (open, close, shape, suffix) in [
+                ("[/", "/]", "lean_right", "B[\\tail\\]\r\n"),
+                ("[\\", "/]", "inv_trapezoid", "B[\\tail\\]\r\n"),
+                ("[\\", "\\]", "lean_left", "B[/tail/]\r\n"),
+                ("[/", "\\]", "trapezoid", "B[/tail/]\r\n"),
+            ] {
+                let statement = format!("A{open}{raw}{close}\r\n");
+                let source = format!("{header}{}{suffix}", statement.repeat(64));
+                let mut lexer = Lexer::new(&source);
+                let tokens = lexer
+                    .by_ref()
+                    .collect::<Result<Vec<_>, _>>()
+                    .expect("multiline labels must tokenize");
+                let labels = tokens
+                    .iter()
+                    .filter_map(|(start, token, end)| match token {
+                        Tok::NodeLabel(label) => Some((*start, label, *end)),
+                        _ => None,
+                    })
+                    .collect::<Vec<_>>();
+                assert_eq!(labels.len(), 65);
+                for (index, (start, label, end)) in labels[..64].iter().enumerate() {
+                    assert_eq!(*start, header.len() + index * statement.len() + 1);
+                    assert_eq!(*end, header.len() + (index + 1) * statement.len() - 2);
+                    assert_eq!(label.shape, shape);
+                    assert_eq!(label.text.text, payload);
+                    assert_eq!(label.text.kind, kind);
+                    assert_eq!(label.text.span, Some(SourceSpan::new(*start, *end)));
+                    let selection_start = *start + open.len() + payload_offset;
+                    let selection =
+                        SourceSpan::new(selection_start, selection_start + payload.len());
+                    assert_eq!(label.text.selection, Some(selection));
+                    assert_eq!(&source[selection.start..selection.end], payload);
+                    assert!(label.recovery_error.is_none());
+                }
+                let parsed = SemanticParser::new()
+                    .parse_diagram_sync(&source)
+                    .expect("quoted closers must stay inside the multiline payload");
+                let SemanticDiagramModel::Flowchart(model) = parsed.model else {
+                    panic!("expected Flowchart model");
+                };
+                assert_eq!(model.nodes.len(), 2);
+                assert_eq!(model.nodes[0].label, Some(payload.replace("\r\n", "\n")));
+                assert_linear_label_scan_work(&lexer, &source);
+            }
+        }
+    }
+
+    #[cfg(feature = "editor-facts")]
+    #[test]
+    fn ordinary_label_scans_observe_cancellation_before_materializing_plain_payloads() {
+        for (open, close) in [("[/", "/]"), ("[\\", "\\]"), ("[", "]")] {
+            for payload in ["x".repeat(32768), "雪😀x".repeat(8192)] {
+                let source = format!("flowchart TD\nA{open}{payload}{close}\n");
+                for recover in [false, true] {
+                    let control = OperationControl::new().for_phase(crate::OperationPhase::Parse);
+                    control.cancel_after_checkpoints(0);
+                    let mut lexer = if recover {
+                        Lexer::recovering(&source)
+                    } else {
+                        Lexer::new(&source)
+                    }
+                    .with_control(&control);
+                    let tokens = lexer.by_ref().collect::<Vec<_>>();
+                    assert!(tokens.iter().any(|item| item.is_err()));
+                    assert!(
+                        tokens
+                            .iter()
+                            .all(|item| !matches!(item, Ok((_, Tok::NodeLabel(_), _))))
+                    );
+                    assert!(control.is_cancelled());
+                    assert_eq!(lexer.label_scan_work(), 4096);
+                    assert!(lexer.next().is_none());
+                }
+            }
+        }
+    }
+
+    #[cfg(feature = "editor-facts")]
+    fn assert_unterminated_node_label_scan_work(recover: bool) {
+        let header = "flowchart TD\n";
+        for (open, shape) in [
+            ("[/", "lean_right"),
+            ("[\\", "inv_trapezoid"),
+            ("[", "square"),
+            ("(", "round"),
+            ("{", "diamond"),
+            ("[[", "subroutine"),
+            ("{{", "hexagon"),
+            ("((", "circle"),
+            ("(((", "doublecircle"),
+            ("(-", "ellipse"),
+            ("([", "stadium"),
+            ("[(", "cylinder"),
+            (">", "odd"),
+        ] {
+            let statement = format!("A{open}x\n");
+            for repetitions in [64, 128, 256] {
+                let source = format!("{header}{}B --> C\n", statement.repeat(repetitions));
+                let mut lexer = if recover {
+                    Lexer::recovering(&source)
+                } else {
+                    Lexer::new(&source)
+                };
+                let mut errors = Vec::new();
+                let mut labels = Vec::new();
+                let mut ids = Vec::new();
+                for item in lexer.by_ref() {
+                    match item {
+                        Ok((_, Tok::Id(id), _)) => ids.push(id),
+                        Ok((start, Tok::NodeLabel(label), end)) => {
+                            assert!(recover);
+                            assert_eq!(label.shape, shape);
+                            assert_eq!(label.text.text, "x");
+                            assert_eq!(label.text.kind, TitleKind::Text);
+                            assert_eq!(label.text.span, Some(SourceSpan::new(start, end)));
+                            assert_eq!(
+                                label.text.selection,
+                                Some(SourceSpan::new(start + open.len(), end)),
+                            );
+                            errors.push(label.recovery_error.expect("incomplete label error"));
+                            labels.push((start, end));
+                        }
+                        Err(error) => {
+                            assert!(!recover, "recovery must emit a partial node label: {error}");
+                            errors.push(error);
+                        }
+                        _ => {}
+                    }
+                }
+                assert_eq!(errors.len(), repetitions);
+                assert_eq!(labels.len(), if recover { repetitions } else { 0 });
+                assert_eq!(ids.len(), repetitions + 2);
+                assert!(ids[..repetitions].iter().all(|id| id == "A"));
+                assert_eq!(&ids[repetitions..], &["B", "C"]);
+                for (index, error) in errors.iter().enumerate() {
+                    let start = header.len() + index * statement.len() + 1;
+                    let end = header.len() + (index + 1) * statement.len() - 1;
+                    assert!(error.message.starts_with("Unterminated node label"));
+                    assert_eq!(error.span, Some(SourceSpan::new(start, end)));
+                    if recover {
+                        assert_eq!(labels[index], (start, end));
+                    }
+                }
+                assert!(SemanticParser::new().parse_diagram_sync(&source).is_err());
+                assert_linear_label_scan_work(&lexer, &source);
+            }
+        }
+    }
+
+    #[cfg(feature = "editor-facts")]
+    #[test]
+    fn ordinary_label_scans_are_linear_after_strict_unterminated_labels() {
+        assert_unterminated_node_label_scan_work(false);
+    }
+
+    #[cfg(feature = "editor-facts")]
+    #[test]
+    fn ordinary_label_scans_are_linear_after_recovered_unterminated_labels() {
+        assert_unterminated_node_label_scan_work(true);
+    }
 }
