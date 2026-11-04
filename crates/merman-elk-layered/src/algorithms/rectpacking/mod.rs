@@ -30,6 +30,8 @@ pub struct Options {
     /// Effective parent minimum, resolved before entering the provider.
     pub minimum_width: f64,
     pub minimum_height: f64,
+    /// Owner label-grid minimum from `MinSizePreProcessor`, excluded from the early Box branch.
+    pub regular_packing_minimum: Option<crate::LSize>,
     pub horizontal_content_alignment: ContentAlignment,
     pub vertical_content_alignment: ContentAlignment,
 }
@@ -47,6 +49,7 @@ impl Default for Options {
             eliminate_whitespace: false,
             minimum_width: 0.0,
             minimum_height: 0.0,
+            regular_packing_minimum: None,
             horizontal_content_alignment: ContentAlignment::Start,
             vertical_content_alignment: ContentAlignment::Start,
         }
@@ -86,6 +89,16 @@ pub fn layout(
     ] {
         if !value.is_finite() || value < 0.0 {
             return Err(Error::InvalidOption(name));
+        }
+    }
+    if let Some(minimum) = options.regular_packing_minimum {
+        for (name, value) in [
+            ("regular_packing_minimum.width", minimum.width),
+            ("regular_packing_minimum.height", minimum.height),
+        ] {
+            if !value.is_finite() || value < 0.0 {
+                return Err(Error::InvalidOption(name));
+            }
         }
     }
     if !options.aspect_ratio.is_finite() || options.aspect_ratio <= 0.0 {
@@ -155,6 +168,20 @@ pub fn layout(
             work,
         )?);
     }
+    let regular_options = Options {
+        minimum_width: options.minimum_width.max(
+            options
+                .regular_packing_minimum
+                .map_or(0.0, |minimum| minimum.width),
+        ),
+        minimum_height: options.minimum_height.max(
+            options
+                .regular_packing_minimum
+                .map_or(0.0, |minimum| minimum.height),
+        ),
+        ..*options
+    };
+    let options = &regular_options;
     let target_width =
         approximation::target_width(rectangles, options, work)?.max(options.minimum_width);
     let mut original = packing::pack(rectangles, options, target_width, work)?;

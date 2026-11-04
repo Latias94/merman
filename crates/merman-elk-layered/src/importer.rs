@@ -17,15 +17,13 @@ use crate::graph::{
     LayeredEdge, PortRef, PortSide, PortType, create_external_port_dummy,
 };
 use crate::options::{
-    CycleBreakingStrategy, ElkDirection, ElkPadding, HierarchyHandling, LayerConstraint,
-    LayeredOptions, LayeringStrategy, NodeLabelPlacement, OrderingStrategy, PortConstraints,
+    CycleBreakingStrategy, ELK_DEFAULT_EDGE_THICKNESS, ElkDirection, ElkPadding, HierarchyHandling,
+    LayerConstraint, LayeredOptions, LayeringStrategy, NodeLabelPlacement, OrderingStrategy,
+    PortConstraints,
 };
 use crate::random::RandomSeedAuthority;
 use crate::work::{NoopWorkControl, WorkControl, WorkError, ceil_log2, checked_mul, checked_sum};
 use crate::{GraphSeedScope, OperationSeed};
-
-// `org.eclipse.elk.edge.thickness` defaults to 1 in the pinned elkjs 0.9.3 CoreOptions.
-const ELK_DEFAULT_EDGE_THICKNESS: f64 = 1.0;
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct ElkInputGraph {
@@ -639,10 +637,10 @@ fn materialize_scoped_edge_segments(
                 .iter()
                 .zip(&label_segments)
                 .filter(|(_, owner)| **owner == segment_index)
-                .map(|(label, _)| {
-                    let mut label = label_to_lgraph(label);
+                .filter_map(|(label, _)| {
+                    let mut label = label_to_lgraph(label)?;
                     label.original_label_edge = Some(scoped.edge.id.clone());
-                    label
+                    Some(label)
                 })
                 .collect();
             pending_segments.push(ScopedHierarchySegment {
@@ -1126,10 +1124,7 @@ fn import_hierarchical_graph(
                 );
                 nested_graph.parent_node_id = Some(node.id.clone());
                 apply_graph_padding_from_options(&mut nested_graph);
-                apply_inside_node_label_padding(
-                    &mut nested_graph,
-                    &parent_graph.layerless_nodes[node_index],
-                );
+                apply_inside_node_label_padding(&mut nested_graph, node);
                 // The input exposes a single owner title. This is the Mermaid-reachable
                 // NodeLabelAndSizeCalculator minimum used by ElkGraphImporter.
                 if node.node_label_placement == NodeLabelPlacement::InsideTopCenter
@@ -1261,14 +1256,14 @@ fn transform_inside_self_loop(
     )?;
 
     let mut labels = Vec::new();
-    for label in &edge.labels {
+    for label in edge.labels.iter().filter_map(label_to_lgraph) {
         match label.placement {
             EdgeLabelPlacement::Center => graph.graph_properties.center_labels = true,
             EdgeLabelPlacement::Head | EdgeLabelPlacement::Tail => {
                 graph.graph_properties.end_labels = true;
             }
         }
-        labels.push(label_to_lgraph(label));
+        labels.push(label);
     }
 
     let edge_index = graph
@@ -1459,75 +1454,29 @@ fn apply_graph_padding_from_options(graph: &mut LGraph) {
     graph.padding.left += left;
 }
 
-fn apply_inside_node_label_padding(graph: &mut LGraph, parent_node: &LNode) {
-    let padding = compute_inside_node_label_padding(&graph.options, parent_node);
-    graph.padding.top += padding.top;
-    graph.padding.right += padding.right;
-    graph.padding.bottom += padding.bottom;
-    graph.padding.left += padding.left;
-}
-
-fn compute_inside_node_label_padding(options: &LayeredOptions, node: &LNode) -> ElkPadding {
-    let mut cells = [LabelCellSize::default(); 9];
-    for label in &node.labels {
-        let Some((row, col)) = inside_node_label_cell(node.node_label_placement) else {
-            continue;
-        };
-        cells[row * 3 + col].add_label(label, options.spacing.label_label);
-    }
-
-    let container_gap = 2.0 * options.spacing.label_label;
-    let mut padding = ElkPadding {
-        top: max_cell_height(&cells, [0, 1, 2]),
-        right: max_cell_width(&cells, [2, 5, 8]),
-        bottom: max_cell_height(&cells, [6, 7, 8]),
-        left: max_cell_width(&cells, [0, 3, 6]),
+fn apply_inside_node_label_padding(graph: &mut LGraph, node: &ElkInputNode) {
+    let Some(label) = node.label.as_ref() else {
+        return;
     };
-    if padding.top > 0.0 {
-        padding.top += options.node_labels_padding.top + container_gap;
-    }
-    if padding.right > 0.0 {
-        padding.right += options.node_labels_padding.right + container_gap;
-    }
-    if padding.bottom > 0.0 {
-        padding.bottom += options.node_labels_padding.bottom + container_gap;
-    }
-    if padding.left > 0.0 {
-        padding.left += options.node_labels_padding.left + container_gap;
-    }
-    padding
-}
-
-#[derive(Debug, Clone, Copy, Default)]
-struct LabelCellSize {
-    min_width: f64,
-    min_height: f64,
-    label_count: usize,
-}
-
-impl LabelCellSize {
-    fn add_label(&mut self, label: &LLabel, label_gap: f64) {
-        self.min_width = self.min_width.max(label.size.width);
-        if self.label_count > 0 {
-            self.min_height += label_gap;
+    let Some((row, col)) = inside_node_label_cell(node.node_label_placement) else {
+        return;
+    };
+    let container_gap = 2.0 * graph.options.spacing.label_label;
+    let padding = graph.options.node_labels_padding;
+    if label.height > 0.0 {
+        if row == 0 {
+            graph.padding.top += label.height + padding.top + container_gap;
+        } else if row == 2 {
+            graph.padding.bottom += label.height + padding.bottom + container_gap;
         }
-        self.min_height += label.size.height;
-        self.label_count += 1;
     }
-}
-
-fn max_cell_height(cells: &[LabelCellSize; 9], indices: [usize; 3]) -> f64 {
-    indices
-        .into_iter()
-        .map(|index| cells[index].min_height)
-        .fold(0.0, f64::max)
-}
-
-fn max_cell_width(cells: &[LabelCellSize; 9], indices: [usize; 3]) -> f64 {
-    indices
-        .into_iter()
-        .map(|index| cells[index].min_width)
-        .fold(0.0, f64::max)
+    if label.width > 0.0 {
+        if col == 0 {
+            graph.padding.left += label.width + padding.left + container_gap;
+        } else if col == 2 {
+            graph.padding.right += label.width + padding.right + container_gap;
+        }
+    }
 }
 
 fn inside_node_label_cell(placement: NodeLabelPlacement) -> Option<(usize, usize)> {
@@ -1565,8 +1514,8 @@ fn transform_node(node: &ElkInputNode, graph: &mut LGraph, model_order: Option<u
         lnode.layer_constraint = layer_constraint;
         lnode.layer_constraint_explicit = true;
     }
-    if let Some(label) = node.label.as_ref() {
-        lnode.labels.push(label_to_lgraph(label));
+    if let Some(label) = node.label.as_ref().and_then(label_to_lgraph) {
+        lnode.labels.push(label);
     }
     lnode.node_label_placement = node.node_label_placement;
     lnode.node_flexibility = node.node_flexibility;
@@ -1613,14 +1562,14 @@ fn transform_edge(
     }
 
     let mut labels = Vec::new();
-    for label in &edge.labels {
+    for label in edge.labels.iter().filter_map(label_to_lgraph) {
         match label.placement {
             EdgeLabelPlacement::Center => graph.graph_properties.center_labels = true,
             EdgeLabelPlacement::Head | EdgeLabelPlacement::Tail => {
                 graph.graph_properties.end_labels = true;
             }
         }
-        labels.push(label_to_lgraph(label));
+        labels.push(label);
     }
 
     let edge_index = graph
@@ -1737,7 +1686,7 @@ fn transform_cross_hierarchy_edge(
         target_port_key,
         source_path,
         target_path,
-        labels: edge.labels.iter().map(label_to_lgraph).collect(),
+        labels: edge.labels.iter().filter_map(label_to_lgraph).collect(),
         minlen: edge.minlen.max(1),
         model_order,
         priority_direction: edge.priority_direction,
@@ -1856,13 +1805,16 @@ fn port_side_from_direction(direction: ElkDirection) -> PortSide {
     }
 }
 
-fn label_to_lgraph(label: &ElkInputLabel) -> LLabel {
+fn label_to_lgraph(label: &ElkInputLabel) -> Option<LLabel> {
+    if label.text.is_empty() {
+        return None;
+    }
     let mut llabel = LLabel::new(label.text.clone(), label.width, label.height);
     llabel.source_index = label.source_index;
     llabel.placement = label.placement;
     llabel.inline = label.inline;
     llabel.label_side = None;
-    llabel
+    Some(llabel)
 }
 
 fn node_materializes_children(
@@ -2559,6 +2511,29 @@ mod tests {
             options: LayeredOptions::mermaid_flowchart_defaults(ElkDirection::Down),
             nodes,
             edges,
+        }
+    }
+
+    #[test]
+    fn label_conversion_ignores_empty_text_even_with_nonzero_size() {
+        for (width, height) in [(0.0, 0.0), (120.0, 10.0)] {
+            assert!(label_to_lgraph(&ElkInputLabel::center("", width, height)).is_none());
+        }
+    }
+
+    #[test]
+    fn label_conversion_preserves_whitespace_and_zero_size_measurement_placeholders() {
+        for text in [" ", "\t\n", "\u{fffc}"] {
+            let mut input = ElkInputLabel::center(text, 0.0, 0.0);
+            input.source_index = Some(7);
+            input.placement = EdgeLabelPlacement::Tail;
+            input.inline = false;
+            let label = label_to_lgraph(&input).unwrap();
+            assert_eq!(label.text, text);
+            assert_eq!(label.size, LSize::default());
+            assert_eq!(label.source_index, Some(7));
+            assert_eq!(label.placement, EdgeLabelPlacement::Tail);
+            assert!(!label.inline);
         }
     }
 

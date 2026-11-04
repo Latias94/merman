@@ -46,8 +46,9 @@ use crate::p2layers::{LayeringError, layer_network_simplex, layer_with_strategy}
 use crate::p3order::{
     process_port_sides, sort_by_input_model, sort_port_lists,
     sweep::{
-        CrossMinType, HierarchySweepDebugTrace, debug_crossings_layer_sweep_hierarchical_with_type,
-        minimize_crossings_layer_sweep_hierarchical_with_type,
+        CrossMinType, HierarchySweepDebugTrace,
+        debug_crossings_layer_sweep_hierarchical_with_work_control,
+        minimize_crossings_layer_sweep_hierarchical_with_work_control,
         minimize_crossings_layer_sweep_with_type, minimize_crossings_layer_sweep_with_work_control,
     },
 };
@@ -848,9 +849,13 @@ pub fn inspect_compound_crossings_after_processor_with_work_control(
     )?;
     // The diagnostic path additionally snapshots graph/run/layer state while executing the same
     // barycenter sweep. Fold that extra base copy into every preflight prefix so the sweep cannot
-    // be admitted on its own; the complete diagnostic still consumes one indivisible charge.
+    // be admitted on its own; the pre-admitted scans consume one indivisible charge.
     work_control.charge(diagnostic_work)?;
-    let trace = debug_crossings_layer_sweep_hierarchical_with_type(graph, CrossMinType::Barycenter);
+    let trace = debug_crossings_layer_sweep_hierarchical_with_work_control(
+        graph,
+        CrossMinType::Barycenter,
+        work_control,
+    )?;
     Ok((executions, trace))
 }
 
@@ -975,7 +980,7 @@ fn execute_compound_algorithm_until_pause(
                 )?;
             } else {
                 charge_hierarchy_processor_work(graph, kind, work_control)?;
-                execute_hierarchy_aware_processor(graph, kind)?;
+                execute_hierarchy_aware_processor(graph, kind, work_control)?;
             }
             actual_graph_size(graph)
         } else {
@@ -1185,22 +1190,29 @@ fn execute_compound_graph_round(
 fn execute_hierarchy_aware_processor(
     graph: &mut LGraph,
     kind: ProcessorKind,
+    work_control: &mut dyn WorkControl,
 ) -> PipelineResult<()> {
     match kind {
         ProcessorKind::LayerSweepCrossingMinimizerBarycenter => {
-            minimize_crossings_layer_sweep_hierarchical_with_type(graph, CrossMinType::Barycenter);
+            minimize_crossings_layer_sweep_hierarchical_with_work_control(
+                graph,
+                CrossMinType::Barycenter,
+                work_control,
+            )?;
         }
         ProcessorKind::LayerSweepCrossingMinimizerOneSidedGreedySwitch => {
-            minimize_crossings_layer_sweep_hierarchical_with_type(
+            minimize_crossings_layer_sweep_hierarchical_with_work_control(
                 graph,
                 CrossMinType::OneSidedGreedySwitch,
-            );
+                work_control,
+            )?;
         }
         ProcessorKind::LayerSweepCrossingMinimizerTwoSidedGreedySwitch => {
-            minimize_crossings_layer_sweep_hierarchical_with_type(
+            minimize_crossings_layer_sweep_hierarchical_with_work_control(
                 graph,
                 CrossMinType::TwoSidedGreedySwitch,
-            );
+                work_control,
+            )?;
         }
         _ => return Err(PipelineError::UnsupportedProcessor { kind }),
     }
@@ -3222,7 +3234,10 @@ mod tests {
         FixedAlignment, GreedySwitchType, LayerConstraint, LayeredOptions, LayeringStrategy,
         NodePlacementStrategy, OrderingStrategy, PortConstraints, WrappingStrategy,
     };
-    use crate::p3order::{counting::CrossingsCounter, process_port_sides, sort_port_lists};
+    use crate::p3order::{
+        counting::CrossingsCounter, process_port_sides, sort_port_lists,
+        sweep::minimize_crossings_layer_sweep_hierarchical_with_type,
+    };
 
     fn kinds(options: &LayeredOptions) -> Vec<ProcessorKind> {
         assemble_processors(options)

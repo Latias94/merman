@@ -1253,7 +1253,7 @@ fn build_flowchart_elk_graph_with_render_labels_and_work_control_inner(
         cluster_title_wrapping_width: wrapping_width,
         cluster_wrap_mode,
         svg_label_sidecar,
-        node_padding,
+        title_padding: cluster_padding,
     };
     let node_measure_ctx = NodeMeasureContext {
         model: render_model,
@@ -1373,7 +1373,7 @@ struct ElkMeasureContext<'a> {
     cluster_label_base_style: &'a TextStyle,
     cluster_title_wrapping_width: f64,
     cluster_wrap_mode: WrapMode,
-    node_padding: f64,
+    title_padding: f64,
     svg_label_sidecar: Option<&'a FlowchartSvgLabelSidecarBuilder>,
 }
 
@@ -1899,7 +1899,7 @@ fn subgraph_to_elk_node(
                 .and_then(|metadata| metadata.get("algorithm"))
                 .and_then(serde_json::Value::as_str)
                 .and_then(elk::Algorithm::from_container_name),
-            padding: ctx.node_padding,
+            padding: ctx.title_padding,
         },
         label_text: Some(
             ctx.model
@@ -1960,8 +1960,82 @@ mod tests {
                     .expect("measured graph");
             let group = graph.nodes.iter().find(|node| node.id == "G").unwrap();
             assert_eq!(group.container.algorithm, expected, "{requested}");
-            assert_eq!(group.container.padding, 15.0);
+            assert_eq!(group.container.padding, 8.0);
         }
+    }
+
+    #[test]
+    fn elk_wide_group_titles_keep_fixed_padding_while_leaf_padding_is_configurable() {
+        let measurer = crate::text::DeterministicTextMeasurer::default();
+        for explicit in [false, true] {
+            for direction in ["LR", "TD"] {
+                let mut model = model(vec![node("A", Some("A"), None)], Vec::new());
+                model.direction = Some(direction.to_owned());
+                let mut group = subgraph("G".into(), vec!["A".into()]);
+                group.title = "Wide unwrapped group title ".repeat(20);
+                if explicit {
+                    group.metadata = Some(json!({"algorithm": "elk.layered"}));
+                }
+                model.subgraphs.push(group);
+                let mut previous_leaf_size = None;
+                for padding in [15.0, 40.0] {
+                    let config = crate::test_support::presentation_config(json!({
+                        "htmlLabels": false,
+                        "flowchart": {"htmlLabels": false, "padding": padding}
+                    }));
+                    let graph =
+                        build_flowchart_elk_graph(&model, &config, &measurer, None).unwrap();
+                    let group = graph.nodes.iter().find(|node| node.id == "G").unwrap();
+                    let leaf = graph.nodes.iter().find(|node| node.id == "A").unwrap();
+                    assert_eq!(group.container.padding, 8.0);
+                    if let Some((width, height)) = previous_leaf_size {
+                        assert!(leaf.width > width && leaf.height > height);
+                    }
+                    previous_leaf_size = Some((leaf.width, leaf.height));
+                    let title = group.label.unwrap();
+                    assert!(title.width > leaf.width + 100.0);
+                    let output = elk::layout(&graph).unwrap();
+                    let frame = output.nodes.iter().find(|node| node.id == "G").unwrap();
+                    let source_derived_extra_width = if explicit { 16.0 } else { 10.0 };
+                    let title_extent = if explicit || direction == "LR" {
+                        frame.width
+                    } else {
+                        frame.height
+                    };
+                    assert!(
+                        (title_extent - title.width - source_derived_extra_width).abs() < 1e-7,
+                        "elkjs title floor/grid: explicit={explicit}, direction={direction}, padding={padding}, frame={frame:?}"
+                    );
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn elk_nested_subgraph_without_inherited_direction_uses_layered_default() {
+        let parsed = MermaidEngine::new()
+            .parse_diagram_for_render_model_sync(
+                "---\nconfig:\n  flowchart:\n    inheritDir: false\n---\nflowchart TB\nsubgraph outer\ndirection BT\nsubgraph inner\na --> b\nend\nend\n",
+                ParseOptions::default(),
+            )
+            .expect("parse")
+            .expect("diagram")
+            .into_presentation();
+        let graph = super::build_flowchart_elk_graph(
+            &parsed,
+            &crate::text::DeterministicTextMeasurer::default(),
+            None,
+        )
+        .expect("measured graph");
+        let outer = graph.nodes.iter().find(|node| node.id == "outer").unwrap();
+        let inner = graph.nodes.iter().find(|node| node.id == "inner").unwrap();
+        assert_eq!(outer.direction, Some(elk::Direction::Up));
+        assert_eq!(inner.direction, None);
+        let output = elk::layout(&graph).unwrap();
+        let source = output.nodes.iter().find(|node| node.id == "a").unwrap();
+        let target = output.nodes.iter().find(|node| node.id == "b").unwrap();
+        assert!(source.x < target.x);
+        assert!((source.y - target.y).abs() < 1e-7);
     }
 
     struct NonLatticeComputedLengthMeasurer;

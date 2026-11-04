@@ -615,8 +615,7 @@ fn pack(
         widest = widest.max(max.x - min.x);
         area += (max.x - min.x) * (max.y - min.y);
     }
-    // Source explicitly rounds the square-root and aspect-ratio product to Java float.
-    widest = widest.max(((area.sqrt() as f32) * (options.aspect_ratio as f32)) as f64);
+    widest = widest.max(area.sqrt() * options.aspect_ratio);
     let mut x = 0.0;
     let mut y = 0.0;
     let mut tallest: f64 = 0.0;

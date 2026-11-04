@@ -3,6 +3,9 @@
 //! Mermaid 12 `createRootElkGraph` only changes non-layered provider defaults for
 //! Rectpacking. In particular, Layered's base spacing of 40 is not a Force/Tree option.
 //! Hierarchy and renderer-side missing-section handling remain separate responsibilities.
+//!
+//! Owner label minima enter only regular Rectpacking, after its optional Box early return:
+//! https://github.com/eclipse-elk/elk/blob/323312916048544e4e594eab3303cdb0d01e2929/plugins/org.eclipse.elk.alg.rectpacking/src/org/eclipse/elk/alg/rectpacking/intermediate/MinSizePreProcessor.java
 
 use super::*;
 use source_port::algorithms::{
@@ -28,6 +31,7 @@ pub(super) enum ScopeContext<'a> {
 pub(super) struct NodeContext {
     pub mode: ContainerMode,
     pub size_constraints_active: bool,
+    pub label_margin: source_port::LMargin,
 }
 
 pub(super) fn layout(
@@ -139,15 +143,16 @@ pub(super) fn layout(
     let mut edge_translation = Point { x: 0.0, y: 0.0 };
     // Ordinary directional containers retain buildSubgraphLayoutOptions' padding and node
     // spacing. Their algorithms do not inherit the root-only Rectpacking preset.
-    let (container_padding, minimum, explicit) = match context {
-        ScopeContext::Root => (None, None, false),
+    let (container_padding, owner_minimum, owner_label, explicit) = match context {
+        ScopeContext::Root => (None, None, None, false),
         ScopeContext::Container { node, mode } => (
             Some(provider_padding(mode.padding(node))),
             mode.minimum(node),
+            node.label,
             matches!(mode, ContainerMode::Explicit(_)),
         ),
     };
-    let minimum = effective_minimum(minimum);
+    let minimum = effective_minimum(owner_minimum);
     let minimum_width = minimum.width;
     let minimum_height = minimum.height;
     match graph.options.algorithm {
@@ -197,6 +202,21 @@ pub(super) fn layout(
                 }
                 box_layout::layout(&rectangles, &options, work)?
             } else {
+                let regular_packing_minimum = if container_padding.is_some() {
+                    Some(
+                        source_port::inside_top_center_micro_layout(
+                            minimum,
+                            owner_minimum,
+                            owner_label.map(|label| source_port::LSize {
+                                width: label.width,
+                                height: label.height,
+                            }),
+                        )?
+                        .0,
+                    )
+                } else {
+                    None
+                };
                 // render.ts RECTPACKING_OPTIONS. SCANLINE is absent from elkjs 0.9.3's
                 // enum, so it resolves to GREEDY, the kernel's implemented default.
                 let options = if !explicit && let Some(padding) = container_padding {
@@ -205,6 +225,7 @@ pub(super) fn layout(
                         spacing: 50.0,
                         minimum_width,
                         minimum_height,
+                        regular_packing_minimum,
                         ..Default::default()
                     }
                 } else {
@@ -219,6 +240,7 @@ pub(super) fn layout(
                         padding: container_padding.unwrap_or_default(),
                         minimum_width,
                         minimum_height,
+                        regular_packing_minimum,
                         ..Default::default()
                     }
                 };
@@ -476,9 +498,16 @@ pub(super) fn layout(
             let nodes: Vec<_> = graph
                 .nodes
                 .iter()
-                .map(|node| spore_overlap::Node {
+                .zip(node_contexts)
+                .map(|(node, context)| spore_overlap::Node {
                     width: node.width,
                     height: node.height,
+                    margin: box_layout::Padding {
+                        top: context.label_margin.top,
+                        right: context.label_margin.right,
+                        bottom: context.label_margin.bottom,
+                        left: context.label_margin.left,
+                    },
                     ..Default::default()
                 })
                 .collect();

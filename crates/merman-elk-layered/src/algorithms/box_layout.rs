@@ -75,7 +75,7 @@ impl Default for Options {
         Self {
             spacing: 15.0,
             padding: Padding::default(),
-            aspect_ratio: 1.3,
+            aspect_ratio: 1.3_f32 as f64,
             expand_nodes: false,
             interactive: false,
             minimum_width: 0.0,

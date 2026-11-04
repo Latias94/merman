@@ -76,8 +76,8 @@ packing modes are outside Mermaid 12's exposed configuration and are not adverti
 `org.eclipse.elk.alg.force` sources. `algorithms::stress` translates Stress majorization,
 including the source's Force initialization, fixed nodes, dimension selection, and desired
 edge lengths. Both share source import, component ordering/packing, label placement and
-rectangle endpoint clipping. The measured flat-graph entry points do not yet enable Mermaid
-root or container dispatch; that integration remains separate.
+rectangle endpoint clipping. `merman-layout-elk` integrates both kernels into Mermaid root
+and container dispatch, including provider-specific title sizing and compound scope scheduling.
 
 The kernels consume the caller's work control and resolved Java seed. Stress admits its
 quadratic distance/weight storage before allocation. Force rejects coincident coordinates
@@ -102,8 +102,8 @@ The same source boundary now contains the remaining Mermaid 12 algorithm kernels
   algorithm only for containers, not through a root `elk.radial` registration.
 - `algorithms::rectpacking`: greedy width approximation, block/stack compaction, repeated
   compaction and equal whitespace expansion. It preserves the provider's explicit `trybox`
-  branch. Mermaid's `SCANLINE` option is not an ELK 0.9.1 enum value and resolves to GREEDY in
-  the selected elkjs 0.9.3 runtime. Container dimensions and content translations are returned.
+  branch. Mermaid's `SCANLINE` option is not a selected ELK enum value and resolves to GREEDY in
+  the selected elkjs 0.12.0 runtime. Container dimensions and content translations are returned.
 - `algorithms::spore_overlap`: scanline detection, source Bowyer-Watson triangulation,
   minimum spanning tree growth and straight-edge clipping. Source hash-bucket traversal is
   preserved for equal-cost edge choices. Duplicate centers use an explicitly supplied random

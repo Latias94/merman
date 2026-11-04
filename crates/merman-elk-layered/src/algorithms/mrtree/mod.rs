@@ -458,7 +458,7 @@ fn pack(
             max_width = max_width.max(c.max.x - c.min.x);
             total_area += (c.max.x - c.min.x) * (c.max.y - c.min.y);
         }
-        max_width = max_width.max((total_area.sqrt() as f32) as f64 * options.aspect_ratio);
+        max_width = max_width.max(total_area.sqrt() * options.aspect_ratio);
         let mut x = 0.0;
         let mut y = 0.0;
         let mut row_height: f64 = 0.0;

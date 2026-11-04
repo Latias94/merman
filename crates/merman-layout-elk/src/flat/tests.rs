@@ -49,6 +49,77 @@ fn close(actual: f64, expected: f64) {
     );
 }
 
+fn titled_rectpacking_graph(child_count: usize) -> Graph {
+    let mut input = graph(Algorithm::Box);
+    input.nodes.truncate(child_count);
+    input.edges.clear();
+    for child in &mut input.nodes {
+        child.parent = Some("g".into());
+        child.width = 40.0;
+        child.height = 20.0;
+    }
+    let mut group = input.nodes[0].clone();
+    group.id = "g".into();
+    group.parent = None;
+    group.kind = NodeKind::Group;
+    group.width = 0.0;
+    group.height = 0.0;
+    group.container = ContainerNodeOptions {
+        algorithm: Some(Algorithm::Rectpacking),
+        padding: 8.0,
+    };
+    group.label = Some(Label {
+        width: 30.0,
+        height: 100.0,
+    });
+    input.nodes.insert(0, group);
+    input
+}
+
+#[test]
+fn rectpacking_regular_branch_applies_owner_title_minimum() {
+    let input = titled_rectpacking_graph(1);
+    let output = super::super::layout(&input).unwrap();
+    let group = output.nodes.iter().find(|node| node.id == "g").unwrap();
+    assert_eq!(
+        group.height, 210.0,
+        "elkjs 0.12.0 MinSizePreProcessor owner title minimum"
+    );
+    let child = output.nodes.iter().find(|node| node.id == "n0").unwrap();
+    assert_eq!(
+        child.height, 90.0,
+        "elkjs 0.12.0 Rectpacking expansion before packing"
+    );
+    close(
+        child.y - child.height / 2.0 - (group.y - group.height / 2.0),
+        110.0,
+    );
+}
+
+#[test]
+fn rectpacking_trybox_branch_retains_original_owner_minimum() {
+    let input = titled_rectpacking_graph(3);
+    let output = super::super::layout(&input).unwrap();
+    let group = output.nodes.iter().find(|node| node.id == "g").unwrap();
+    assert_eq!(group.width, 115.0, "source-derived elkjs 0.12.0 Box width");
+    assert_eq!(
+        group.height, 175.0,
+        "source-derived elkjs 0.12.0 Box height excludes the regular title floor"
+    );
+    let origin = (group.x - group.width / 2.0, group.y - group.height / 2.0);
+    for (id, expected) in [
+        ("n0", [10.0, 110.0, 40.0, 20.0]),
+        ("n1", [65.0, 110.0, 40.0, 20.0]),
+        ("n2", [10.0, 145.0, 95.0, 20.0]),
+    ] {
+        let child = output.nodes.iter().find(|node| node.id == id).unwrap();
+        close(child.x - child.width / 2.0 - origin.0, expected[0]);
+        close(child.y - child.height / 2.0 - origin.1, expected[1]);
+        close(child.width, expected[2]);
+        close(child.height, expected[3]);
+    }
+}
+
 #[test]
 fn container_sizing_lifecycle_matches_elkjs_across_parent_providers() {
     // Actual elkjs 0.9.3, same explicit-container input as the dedicated provider test.

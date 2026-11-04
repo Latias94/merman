@@ -1,7 +1,8 @@
 # Mermaid 12.3 ELK engine delta
 
-This is an implementation and test handoff for the existing supported option surface. It is
-not a claim that every Eclipse ELK option or every renderer fixture is aligned.
+This records release deltas and repairs of older gaps in the supported option surface.
+It distinguishes source inspection, executed worker observations and platform boundaries;
+finite fixture evidence does not establish equivalence for every Eclipse ELK option.
 
 ## Identities and delivery boundary
 
@@ -20,8 +21,8 @@ not a claim that every Eclipse ELK option or every renderer fixture is aligned.
 - The standing workspace graph was still Mermaid 12.2.0 at task entry. Its selection identity
   was `886f6d2bb684331b93b11498933c2615f92e363f61ebd7d7ed5d20ed5db615f8`; its receipt SHA-256
   was `34578989e50c2fc2980770a4c9aa44da63a74deb02b026ba0444820ea4ea296d`.
-  Reference descriptors, npm/Cargo locks, renderer adapters and release admission stay with
-  the coordinator. This unit changes only the two ELK crates, without commits or Cargo runs.
+  These are historical identities at the initial ELK work-unit boundary. The current selected
+  reference graph is owned by the repository bundle and decision receipt, not this record.
 
 ## Source delta classification
 
@@ -42,14 +43,14 @@ also inspected for the additional provider sources absent from that supplied lis
 | `.../graph/transform/ElkGraphImporter.java` | Nonzero node/port crossing-score influence also requests model order. Existing breadth-first compound import order is retained. |
 | `.../p2layers/CoffmanGrahamLayerer.java` | Add node-ID secondary comparison for empty predecessor ties. Keep the source's unusual iterator `hasNext` branch and GWT boxed-integer semantics. |
 | `.../p3order/ModelOrderBarycenterHeuristic.java` | First/last-separate nodes compare equal; equal model orders fall through to barycenter. New nondefault group IDs are outside the represented surface. |
-| `.../p3order/LayerSweepCrossingMinimizer.java` | Use the updated comparators for model-order scoring. The source's null-best-sweep parent-port guard is already represented by Rust's optional best sweep. Median is unexposed. |
-| `.../intermediate/loops/{SelfLoopEdge,routing/LabelPlacer,routing/OrthogonalSelfLoopRouter}.java` | Clear unsupported inline mode on one-side, corner and four-side loops. Opposing/three-side loops retain inline labels, choose the appropriate full side, omit edge-label clearance and shift adjacent corners by half the label size. |
+| `.../p3order/LayerSweepCrossingMinimizer.java` | Share fractional weighted scoring between flat and compound sweeps, retain the published worker's node-influence activation condition, and resolve absent fixed-port target caches without mutation. Hierarchy scoring carries caller work control; port comparisons charge each visited reference-layer node before access. The null-best-sweep parent-port guard is already represented by Rust's optional best sweep. Median is unexposed. |
+| `.../intermediate/loops/{SelfLoopEdge,routing/LabelPlacer,routing/OrthogonalSelfLoopRouter}.java` | Clear inline mode for simple one-side, corner and four-side loops, not sequenced north/south loops. Sequenced labels retain inline mode and align outward in source port order. Opposing/three-side loops retain inline labels, choose the appropriate full side, omit edge-label clearance and shift adjacent corners by half the label size. |
 | `core/.../util/BoxLayoutProvider.java` | Include top/bottom and then right padding in row-width area estimation. Preserve source ordering, expansion and content translation. This also changes Rectpacking's explicit `trybox` branch. |
 | `alg.mrtree/.../ComponentsProcessor.java` | Recompute merged graph minima after component placement, then translate by graph left/top padding. Delete the historical first-child-padding API and last-component-minimum workaround from the adapter and kernel. |
 | `alg.rectpacking/.../p2packing/InitialPlacement.java` | A new block subrow must fit within `row.y + row.height`; remove the old single-block bypass for this branch. |
-| `alg.rectpacking/.../intermediate/MinSizePreProcessor.java` | Its new label-derived minimum is already covered for the represented single inside-top-center title by the adapter's effective minimum. Wide/narrow title observations cover the production metadata preset. |
+| `alg.rectpacking/.../intermediate/MinSizePreProcessor.java` | Apply the single inside-top-center title grid floor only after selecting the regular packing pipeline. The earlier `trybox` return retains the raw effective minimum. A tall title with one child yields height 210; three equal children select Box and yield height 175. |
 | `alg.common/.../nodespacing/internal/{NodeContext,algorithm/NodeSizeCalculator}.java` | New behavior is conditional on `TOPDOWN_LAYOUT`; that option is not represented or emitted. The supported bottom-up micro-layout behavior is unchanged, and title lifecycle observations are retained. |
-| Layered compound pre/postprocessing, components/SimpleRow, normal P4/P5 algorithms; Force, Stress, Radial, SPOrE | No semantic algorithm-body change found in the compared supported paths. Copyright/secondary-license text, unused imports and debug changes do not justify algorithm rewrites. Runtime observations cover representative inputs; this is not exhaustive geometry equivalence. |
+| Layered compound pre/postprocessing, components/SimpleRow, normal P4/P5 algorithms; Force, Stress, Radial, SPOrE | No semantic algorithm-body change found in the compared supported paths. This does not certify the old port: the follow-up audit fixes double-precision packing, compound default thickness, empty-label import, outside labels, independent scope direction and SPOrE title margins below. Copyright/secondary-license text, unused imports and debug changes do not justify algorithm rewrites. |
 | `.../graph/transform/ElkGraphLayoutTransferrer.java`, `LPadding.java`, `core/.../math/KVectorChain.java` | New nonmutating debugging export and copying helpers; no production output change to port. Rust already owns value copies. |
 | `Core.melk` JSON shape/edge coordinates, label softwrapping, top-down approximators | New options are not part of the measured Rust graph API or Mermaid's emitted presets. No new JSON coordinate contract is claimed. |
 | Java classloader metadata, removed imports and formatting | No headless runtime behavior to translate. Existing EPL-2.0 selection remains; the new upstream secondary-license alternative does not require changing this crate's chosen license. |
@@ -71,10 +72,11 @@ default ceiling nor its historical calibration is changed; this is not a latency
   group model order, optional repeated node placement, Rectpacking `orderBySize`, top-down
   layout, and VertiFlex are not represented by this API or emitted by Mermaid's admitted
   presets. They are not silently selected or advertised as supported.
-- Pre-existing unsupported processors remain typed failures, including north/south port dummy
-  processing and horizontal graph compaction. Their upstream changes (model-order port reversal,
-  self-loop-label compaction offset), partition preprocessing, component-group placement and
-  broader JSON coordinates are not closed by this work.
+- Optional admitted options that require unported processors remain typed failures, including
+  actual north/south port dummy processing, interactive node placement and polyline/spline
+  routing. Horizontal graph compaction, partitioning and node promotion are not exposed by
+  the public options; an internal processor enum is not evidence of public reachability.
+  Broader JSON coordinates and those unexposed algorithms are not closed by this work.
 - Renderer `nestedEdgeOrder.ts` semantics and all family SVG/baseline changes belong to the
   coordinator. No renderer adapter, historical SVG identity, normalization rule or npm graph
   is changed here.
@@ -140,39 +142,53 @@ Stress's Force initialization fixes the graph size before the parent Box invocat
 adapter already models this lifecycle. Its test retains the historical value and appends the
 target observation; this correction is not attributed to a version change.
 
-## Changed files
+## Follow-up audit: old gaps and source/runtime comparison
 
-All paths below are repository-relative. The generated oracle JSON remains under ignored
-`target/` and is not a standing reference descriptor.
+The independent review at `d8b904987aad6baa95ce917653794323d338799e` rechecked the
+Mermaid 12.2-to-12.3 and ELK derivation-to-0.12 source diffs, including P1–P5,
+compound import, node spacing, components and the provider adapter. Normal P4/P5
+algorithm bodies do not change in the compared sources; that conclusion is not
+used to excuse pre-existing port defects. The resulting repairs also cover:
 
-```text
-crates/merman-elk-layered/MERMAID_12_3_DELTA.md
-crates/merman-elk-layered/README.md
-crates/merman-elk-layered/src/algorithms/box_layout.rs
-crates/merman-elk-layered/src/algorithms/mrtree/mod.rs
-crates/merman-elk-layered/src/algorithms/mrtree/tests.rs
-crates/merman-elk-layered/src/algorithms/rectpacking/packing.rs
-crates/merman-elk-layered/src/algorithms/rectpacking/tests.rs
-crates/merman-elk-layered/src/graph.rs
-crates/merman-elk-layered/src/importer.rs
-crates/merman-elk-layered/src/lib.rs
-crates/merman-elk-layered/src/options.rs
-crates/merman-elk-layered/src/p1cycles.rs
-crates/merman-elk-layered/src/p2layers/coffman_graham.rs
-crates/merman-elk-layered/src/p2layers/elkjs_0_9_3_cases.rs
-crates/merman-elk-layered/src/p3order.rs
-crates/merman-elk-layered/src/p3order/sweep.rs
-crates/merman-elk-layered/src/pipeline.rs
-crates/merman-elk-layered/src/selfloops.rs
-crates/merman-elk-layered/tests/elk_0_12_0.rs
-crates/merman-elk-layered/tests/elkjs_0_12_0_oracle.cjs
-crates/merman-layout-elk/README.md
-crates/merman-layout-elk/src/flat.rs
-crates/merman-layout-elk/src/flat/tests.rs
-crates/merman-layout-elk/src/lib.rs
-```
+- Empty strings are omitted when constructing node and edge `LLabel`s; whitespace
+  is retained. Raw owner-label geometry still contributes to compound padding and
+  minimum calculation **before** this text filter, following the worker's import
+  order. Measured adapter labels without a text field use a nonempty U+FFFC
+  placeholder rather than masquerading as authored empty strings.
+- Ordinary and cross-hierarchy edge segments share the default thickness of 1.
+  A 10-high non-inline center label with spacing 2 needs a 14-high dummy, not 12.
+  Restored hierarchical-port helper edges also retain this default.
+- All twelve public outside-node-label placements position whole label groups,
+  preserve direction transforms and reserve their actual margins. Fixed labels
+  retain their coordinates; inside labels keep their existing behavior.
+- Component packing retains JavaScript binary64 arithmetic. Runtime `as f32`
+  narrowing is removed from Layered, Force and Mr. Tree. Box's default aspect
+  ratio retains the selected worker's widened float literal; an explicit ratio
+  and its nonpositive fallback remain separate contracts.
+- Separately scheduled Layered containers resolve their own default direction;
+  compound descendants still inherit within their shared invocation. Flowchart
+  groups use FlowDB's fixed padding 8, not configurable leaf padding.
+- A separately scheduled Radial title keeps its imported origin and contributes
+  its overhanging margin to the parent SPOrE importer. No fake edge route or
+  pixel-tuning constant is added.
 
-## Coordinator verification
+The maintained collector now includes tall-title regular/Box branches, fixed-port
+and fractional scoring, sequenced loops, precision thresholds, all twelve outside
+positions in four directions and empty/whitespace label imports. It records full
+public inputs/outputs, reused-instance replay and nonmutating phase observations.
+The exact command above regenerates this ignored evidence; the selected worker
+hashes remain unchanged. The follow-up completion receipt records final counts
+and verification, rather than treating these observations as a new reference lock.
+
+A same-input replay of 227 follow-up inputs through the retained published
+0.9.3 and selected 0.12.0 packages found 180 identical geometric projections and
+47 changed ones. This distinguishes actual release deltas from old port gaps:
+empty-label filtering, outside placement and default thickness were already
+required, while the observed sequenced-inline and tall-Rectpacking cases change
+across the two workers. Equal outputs for these finite inputs do not prove
+complete version equivalence.
+
+## Initial coordinator verification
 
 Coordinator follow-up on 2026-11-04: the corrected two-crate suite passed all 513 tests with
 no skips (`/tmp/merman-12.3-elk-all-green.log`). Both crate doctest owners passed, including
@@ -180,30 +196,11 @@ the adapter's compile-fail boundary, and all-target Clippy passed with `-D warni
 correcting two documentation paragraph separators. These results validate this Rust unit;
 renderer family comparisons and complete reference admission remain separate gates below.
 
-This unit did not run Cargo. The coordinator reported 7/7 focused tests passed and 511/512
-whole-crate tests passed in `/tmp/merman-12.3-elk-all.log`. The sole failure was the historical
-compound-cycle layer-order assertion described above. Its target-backed correction and stronger
-attempt assertions still require the coordinator's rerun. A follow-up caller-budget regression
-also covers a 256-dummy reference chain and interruption before its last unwound relation is
-installed. The source helper's repeated relation updates retain their call order and each gets
-its own admission check. These follow-ups require a full crate rerun after the focused checks.
-Standalone rustfmt parse/format
-checking and `git diff --check` were run without writing source files outside `apply_patch`.
-The coordinator should run these commands serially:
-
-```text
-cargo nextest run --locked -p merman-elk-layered hierarchical_barycenter_keeps_current_order_between_randomized_tries --no-fail-fast
-cargo nextest run --locked -p merman-elk-layered feedback_reference_comparisons_charge_each_unwound_relation --no-fail-fast
-cargo nextest run --locked -p merman-elk-layered --test elk_0_12_0 --no-fail-fast
-cargo nextest run --locked -p merman-elk-layered -p merman-layout-elk --no-fail-fast
-cargo test --locked -p merman-elk-layered -p merman-layout-elk --doc
-cargo fmt --all -- --check
-cargo clippy --locked -p merman-elk-layered -p merman-layout-elk --all-targets -- -D warnings
-```
-
-The whole-crate suites include the existing execution-boundary tests for unresolved Java seeds,
-work interruption, numeric failure and input preservation. Renderer ELK/family tests and strict
-reference/DOM admission follow under the coordinator's broader scope.
+The follow-up two-crate suite passes 583 tests without skips, including raw-title import
+order, outside positions, scoring, work interruption, numeric thresholds and sequenced loop
+coordinates by edge identity. Renderer tests additionally check fixed group padding and
+independent-scope direction. The repository upgrade playbook owns the integrated verification
+schedule; completed worker instructions and duplicate command lists are retired here.
 
 No new dependency or feature boundary is introduced. All algorithm translations stay in the
 existing EPL-2.0 crate; the MIT/Apache adapter delegates rather than translating algorithms.

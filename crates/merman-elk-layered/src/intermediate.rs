@@ -27,7 +27,8 @@ use crate::graph::{
     reverse_edge,
 };
 use crate::options::{
-    Alignment, EdgeLabelSideSelection, ElkDirection, LayerConstraint, PortConstraints,
+    Alignment, ELK_DEFAULT_EDGE_THICKNESS, EdgeLabelSideSelection, ElkDirection, LayerConstraint,
+    PortConstraints,
 };
 use crate::p5edges::orthogonal::{RoutingDirection, route_edges};
 
@@ -3446,7 +3447,7 @@ fn connect_replacement_dummy_to_original(graph: &mut LGraph, replacement: usize,
         priority_direction: 0,
         priority_shortness: 0,
         priority_straightness: 0,
-        thickness: 0.0,
+        thickness: ELK_DEFAULT_EDGE_THICKNESS,
         original_opposite_port: None,
         compound_segment: None,
     };
@@ -5880,6 +5881,10 @@ mod tests {
             .iter()
             .position(|edge| edge.id.ends_with(":hierarchical-origin"))
             .unwrap();
+        assert_eq!(
+            graph.edges[detached_edge].thickness,
+            ELK_DEFAULT_EDGE_THICKNESS
+        );
         assert!(!graph.edge_source_attached(detached_edge));
         assert!(!graph.edge_target_attached(detached_edge));
     }
