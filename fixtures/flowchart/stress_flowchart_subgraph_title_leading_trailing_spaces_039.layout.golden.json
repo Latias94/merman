@@ -3,7 +3,7 @@
   "layout": {
     "FlowchartV2": {
       "bounds": {
-        "max_x": 236.86,
+        "max_x": 229.86,
         "max_y": 198.0,
         "min_x": 12.0,
         "min_y": 12.0
@@ -21,13 +21,13 @@
           "title_label": {
             "height": 19.0,
             "width": 209.86,
-            "x": 124.43,
+            "x": 120.93,
             "y": 21.5
           },
           "title_margin_bottom": 0.0,
           "title_margin_top": 0.0,
-          "width": 224.86,
-          "x": 124.43,
+          "width": 217.86,
+          "x": 120.93,
           "y": 105.0
         }
       ],
@@ -63,8 +63,8 @@
           "height": 186.0,
           "id": "sg_spaces",
           "is_cluster": true,
-          "width": 224.86,
-          "x": 124.43,
+          "width": 217.86,
+          "x": 120.93,
           "y": 105.0
         },
         {
