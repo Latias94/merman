@@ -172,7 +172,7 @@ fn native_flowchart_does_not_inspect_svg_literal_tags() {
 fn native_flowchart_admission_follows_effective_markdown_html() {
     for (label, property) in [
         (
-            "Literal: `<span style='font-size:64px'>AVAVAV</span>`",
+            "Literal: &#96;<span style='font-size:64px'>AVAVAV</span>&#96;",
             "font-size",
         ),
         (
