@@ -5,7 +5,7 @@
 Merman is an independent, headless Rust implementation of Mermaid-compatible behavior. It
 is not affiliated with or endorsed by Mermaid or the projects listed below.
 
-The machine-readable source of truth is [`docs/release/THIRD_PARTY_COMPONENTS.json`](docs/release/THIRD_PARTY_COMPONENTS.json).
+The machine-readable source of truth is [`docs/release/THIRD_PARTY_COMPONENTS.json`](https://github.com/Latias94/merman/blob/main/docs/release/THIRD_PARTY_COMPONENTS.json).
 It records exact source revisions, local relationships, artifact scopes, and SHA-256-bound
 license or notice files. This inventory is engineering evidence, not legal advice.
 
