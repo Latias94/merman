@@ -8746,7 +8746,7 @@ A@{{ img: "https://mermaid.js.org/favicon.svg", label: "{label}", pos: "t", h: 6
 #[test]
 fn flowchart_stadium_preserves_measured_nontext_html_label_height() {
     for look in ["neo", "classic"] {
-        for label in ["<br/><br/>", "<i class='fa fa-car'></i>", ""] {
+        for label in ["<br/><br/>", "<i class='fa fa-car'></i>", " "] {
             let source = format!(
                 "%%{{init: {{\"look\": \"{look}\"}}}}%%\nflowchart LR\nA([\"{label}\"]) --> B[Rect]\n"
             );
