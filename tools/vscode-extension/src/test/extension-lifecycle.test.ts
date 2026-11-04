@@ -38,6 +38,12 @@ class FakeLanguageClient {
   }
 
   async stop(): Promise<void> {
+    const gate = this.host.stopGate;
+    this.host.stopGate = undefined;
+    if (gate) {
+      gate.entered.resolve();
+      await gate.release.promise;
+    }
     this.stopped = true;
     this.changeState(states.Stopped);
   }
@@ -81,6 +87,10 @@ class FakeExtensionHost {
     subscriptions: [],
   } as unknown as vscode.ExtensionContext;
   configurationGate: {
+    entered: ReturnType<typeof deferred>;
+    release: ReturnType<typeof deferred>;
+  } | undefined;
+  stopGate: {
     entered: ReturnType<typeof deferred>;
     release: ReturnType<typeof deferred>;
   } | undefined;
@@ -129,10 +139,67 @@ class FakeExtensionHost {
     this.configurationGate = gate;
     return gate;
   }
+
+  blockNextStop() {
+    const gate = { entered: deferred(), release: deferred() };
+    this.stopGate = gate;
+    return gate;
+  }
 }
 
 if (process.env.MERMAN_LIFECYCLE_EXTENSION_HOST !== "1") {
   describe("extension configuration lifecycle", () => {
+    it("starts with the latest arguments after configuration changes during a blocked stop", async () => {
+      const host = new FakeExtensionHost();
+      const extension = loadExtension(host);
+      await extension.activate(host.context);
+      const originalClient = host.clients[0];
+      assert.ok(originalClient);
+      const gate = host.blockNextStop();
+      const restart = host.changeSetting("merman.server.path", process.execPath);
+      await gate.entered.promise;
+      try {
+        const argumentsChange = host.changeSetting("merman.server.args", ["--latest"]);
+        const preview = host.changeSetting("merman.preview.background", "dark");
+        gate.release.resolve();
+        await Promise.all([restart, argumentsChange, preview]);
+        assert.equal(originalClient.stopped, true);
+        assert.equal(host.clients.length, 2);
+        assert.equal(host.clients[1]?.stopped, false);
+        assert.deepEqual(host.clients[1]?.serverOptions.run.args, ["--latest"]);
+        assert.match(host.status.text, /Running$/);
+        assert.deepEqual(host.errors, []);
+      } finally {
+        gate.release.resolve();
+        await extension.deactivate();
+      }
+    });
+
+    it("restarts after language intelligence is reenabled during a blocked stop", async () => {
+      const host = new FakeExtensionHost();
+      const extension = loadExtension(host);
+      await extension.activate(host.context);
+      const originalClient = host.clients[0];
+      assert.ok(originalClient);
+      const gate = host.blockNextStop();
+      const disable = host.changeSetting("merman.languageIntelligence.enabled", false);
+      await gate.entered.promise;
+      try {
+        const enable = host.changeSetting("merman.languageIntelligence.enabled", true);
+        const preview = host.changeSetting("merman.preview.background", "dark");
+        gate.release.resolve();
+        await Promise.all([disable, enable, preview]);
+        assert.equal(originalClient.stopped, true);
+        assert.equal(host.clients.length, 2);
+        assert.equal(host.clients[1]?.stopped, false);
+        assert.match(host.status.text, /Running$/);
+        assert.deepEqual(host.errors, []);
+      } finally {
+        gate.release.resolve();
+        await extension.deactivate();
+      }
+    });
+
     it("keeps a required restart when a preview setting changes behind a blocked notification", async () => {
       const host = new FakeExtensionHost();
       const extension = loadExtension(host);
