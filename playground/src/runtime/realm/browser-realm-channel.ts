@@ -117,6 +117,13 @@ export async function createAuthenticatedBrowserRealmChannel(
   const viewportAbort = new AbortController();
   const isReady = () => state === "ready";
 
+  const waitForViewportLayout = async () => {
+    await nextAnimationFrame(viewportAbort.signal, label);
+    await nextAnimationFrame(viewportAbort.signal, label);
+    if (state === "disposed" || !iframe.isConnected || !iframe.contentWindow) {
+      throw new RealmProtocolError(`${label} viewport host is unavailable.`);
+    }
+  };
   const cleanupHandshake = () => {
     window.removeEventListener("message", onHello);
     signal.removeEventListener("abort", onAbort);
@@ -187,7 +194,7 @@ export async function createAuthenticatedBrowserRealmChannel(
       fail(error);
     }
   };
-  const onHello = (event: MessageEvent) => {
+  const onHello = async (event: MessageEvent) => {
     if (
       state !== "handshaking" ||
       event.origin !== (opaque ? "null" : frameUrl?.origin) ||
@@ -213,10 +220,13 @@ export async function createAuthenticatedBrowserRealmChannel(
         engineArtifact,
       };
       assertRealmInitBudget(init);
+      // Child scripts can send HELLO before the iframe's initial layout.
+      await waitForViewportLayout();
+      if (state !== "handshaking") return;
       const peer = transferredPort;
       if (!peer) throw new RealmProtocolError(`${label} INIT was replayed.`);
-      transferredPort = null;
       iframe.contentWindow?.postMessage(init, frameUrl?.origin ?? "*", [peer]);
+      transferredPort = null;
     } catch (error) {
       fail(error);
     }
@@ -269,11 +279,7 @@ export async function createAuthenticatedBrowserRealmChannel(
       }
       if (viewportsMatch(normalized, viewport)) return;
       applyViewport(iframe, normalized);
-      await nextAnimationFrame(viewportAbort.signal, label);
-      await nextAnimationFrame(viewportAbort.signal, label);
-      if (state !== "ready" || !iframe.isConnected || !iframe.contentWindow) {
-        throw new RealmProtocolError(`${label} viewport host is unavailable.`);
-      }
+      await waitForViewportLayout();
       viewport = normalized;
     },
   };
