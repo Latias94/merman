@@ -23,6 +23,10 @@ const SOURCE_FILES: &[&str] = &[
 ];
 const FIXTURES: &[(&str, &str)] = &[
     ("flowchart", "flowchart/basic.mmd"),
+    (
+        "flowchart",
+        "flowchart/local_mermaid_12_3_step_parallel_gaps.mmd",
+    ),
     ("sequence", "sequence/basic.mmd"),
     ("sequence", "sequence/alt_loop.mmd"),
     ("sequence", "sequence/notes_placements.mmd"),
@@ -379,6 +383,9 @@ fn flow_observation(model: &Value, title: Option<&str>) -> Value {
                 "endMarker",
                 "strokeKind",
                 "visibility",
+                "stepCount",
+                "stepDuration",
+                "showStepNumber",
             ] {
                 object.remove(key);
             }
@@ -465,14 +472,40 @@ fn local(case: &Case) -> Result<Outcome, XtaskError> {
         ))),
     }
 }
-fn mismatch(local: &Outcome, upstream: &Outcome) -> Option<&'static str> {
-    if local.status != upstream.status {
-        Some("acceptance")
-    } else if local.observation != upstream.observation {
-        Some("semantic")
-    } else {
-        None
+fn normalize_flowchart_step_numbers(observation: &mut Option<Value>) {
+    let Some(edges) = observation
+        .as_mut()
+        .and_then(|value| value.get_mut("edges"))
+        .and_then(Value::as_array_mut)
+    else {
+        return;
+    };
+    for edge in edges {
+        if let Some(step) = edge.get_mut("step")
+            && let Some(value) = step.as_f64()
+        {
+            *step = json!(value);
+        }
     }
+}
+
+fn mismatch(local: &Outcome, upstream: &Outcome, family: &str) -> Option<&'static str> {
+    if local.status != upstream.status {
+        return Some("acceptance");
+    }
+    if local.observation == upstream.observation {
+        return None;
+    }
+    if family == "flowchart" {
+        let mut local = local.observation.clone();
+        let mut upstream = upstream.observation.clone();
+        normalize_flowchart_step_numbers(&mut local);
+        normalize_flowchart_step_numbers(&mut upstream);
+        if local == upstream {
+            return None;
+        }
+    }
+    Some("semantic")
 }
 
 fn base_case(
@@ -491,13 +524,39 @@ fn base_case(
     }
 }
 fn corpus() -> Result<(Vec<Case>, String), XtaskError> {
-    let mut cases = Vec::new();
+    let mut cases = vec![base_case(
+        "flow-step-cold",
+        "flowchart",
+        "flowchart LR\n A first@--> B\n A second@--> C\n B last@--> D\n A --> E\n",
+        "grammar",
+        "strict",
+    )];
     for (family, relative) in FIXTURES {
         let bytes = read(&super::fixtures_root().join(relative))?;
         let source = String::from_utf8(bytes).map_err(|error| failure(error.to_string()))?;
         cases.push(base_case(*relative, family, source, "grammar", "strict"));
     }
     for (id, family, source) in [
+        (
+            "flow-step-reset",
+            "flowchart",
+            "flowchart LR\n A first@--> B\n A second@--> C\n B last@--> D\n A --> E\n",
+        ),
+        (
+            "flow-step-repeat-valid",
+            "flowchart",
+            "flowchart LR\n A e1@--> B\ne1@{ step: 3 }\ne1@{ step: 1 }\n",
+        ),
+        (
+            "flow-step-repeat-same",
+            "flowchart",
+            "flowchart LR\n A e1@--> B\ne1@{ step: 3 }\ne1@{ step: 3 }\n",
+        ),
+        (
+            "flow-step-invalid-then-valid",
+            "flowchart",
+            "flowchart LR\n A e1@--> B\ne1@{ step: '2' }\ne1@{ step: 2 }\n",
+        ),
         (
             "flow-records",
             "flowchart",
@@ -535,6 +594,42 @@ fn corpus() -> Result<(Vec<Case>, String), XtaskError> {
         ),
     ] {
         cases.push(base_case(id, family, source, "grammar", "strict"));
+    }
+    for (index, value) in [
+        "1",
+        "1.0",
+        "2",
+        "9007199254740992",
+        "9223372036854775808",
+        "1e100",
+        "1.7976931348623157e308",
+    ]
+    .iter()
+    .enumerate()
+    {
+        cases.push(base_case(
+            format!("flow-step-positive-{index}"),
+            "flowchart",
+            format!("flowchart LR\n A e1@--> B\n A --> C\ne1@{{ step: {value} }}\n"),
+            "grammar",
+            "strict",
+        ));
+    }
+    for (index, value) in [
+        "0", "-0", "-1", "1.5", "true", "null", "'2'", ".inf", ".nan", "[2]",
+    ]
+    .iter()
+    .enumerate()
+    {
+        for (prefix, previous) in [("invalid", ""), ("valid-then-invalid", "e1@{ step: 3 }\n")] {
+            cases.push(base_case(
+                format!("flow-step-{prefix}-{index}"),
+                "flowchart",
+                format!("flowchart LR\n A e1@--> B\n A --> C\n{previous}e1@{{ step: {value} }}\n"),
+                "grammar",
+                "strict",
+            ));
+        }
     }
     let mut loose = cases
         .iter()
@@ -698,6 +793,64 @@ fn corpus() -> Result<(Vec<Case>, String), XtaskError> {
     custom_secure.site_config["secure"] = json!(["securityLevel", "maxTextSize"]);
     cases.push(custom_secure);
     cases.push(base_case("nested-secure", "flowchart", "%%{init: {\"flowchart\":{\"securityLevel\":\"loose\",\"htmlLabels\":false}}}%%\nflowchart TD\n A-->B", "public", "strict"));
+    for (id, source) in [
+        (
+            "flow-markdown-internal-quote",
+            "flowchart TD\nA[\"`first\n  X[\"雪 &amp; text\"]\nlast`\"]",
+        ),
+        (
+            "flow-markdown-comment-runs",
+            "flowchart TD\nA[\"`first\n%% comment\n\n%% comment\nlast`\"]",
+        ),
+    ] {
+        cases.push(base_case(id, "flowchart", source, "grammar", "strict"));
+    }
+    for (index, raw) in [
+        r#""`ok`""#,
+        r#""`""ok`""#,
+        r#""`ok""`""#,
+        r#""`""ok""`""#,
+        r#""`first""last`""#,
+        r#""`first"quote"last`""#,
+        r#""`"quote"ok`""#,
+        r#""`first`code`last`""#,
+        r#""``""#,
+        r#""`""`""#,
+        r#""`""""ok`""#,
+        r#""`"雪"`""#,
+        r#""`""雪`""#,
+        "\"`a\n\"\"b`\"",
+        r#""`ok`""""#,
+        r#""`""ok`""""#,
+        concat!("\"\"``\"", "`ok`", "\""),
+        concat!("\"\"``\"", "`", "\""),
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        for (shape, statement) in [
+            ("node", format!("A[{raw}]")),
+            ("pipe", format!("A -->|{raw}| B")),
+            ("edge", format!("A -- {raw} --> B")),
+            ("subgraph", format!("subgraph SG[{raw}]\nB\nend")),
+            ("implicit-subgraph", format!("subgraph {raw}\nB\nend")),
+        ] {
+            cases.push(base_case(
+                format!("flow-markdown-token-{index}-{shape}"),
+                "flowchart",
+                format!("flowchart TD\n{statement}"),
+                "grammar",
+                "strict",
+            ));
+        }
+    }
+    cases.push(base_case(
+        "flow-markdown-unclosed-recovery",
+        "flowchart",
+        format!("flowchart TD\n{}B[valid]\n", "A[\"`\"]\n".repeat(64)),
+        "grammar",
+        "strict",
+    ));
     let digest = crate::util::sha256_hex(&serde_json::to_vec(&cases)?);
     Ok((cases, digest))
 }
@@ -883,7 +1036,7 @@ pub(crate) fn run(args: Vec<String>) -> Result<(), XtaskError> {
             .batch(std::slice::from_ref(&saved.case), options.timeout)?
             .remove(0);
         let observed_local = local(&saved.case)?;
-        let class = mismatch(&observed_local, &upstream);
+        let class = mismatch(&observed_local, &upstream, &saved.case.family);
         if options.minimize.is_none() {
             println!("replay {}: {}", path.display(), class.unwrap_or("resolved"));
             return class.map_or(Ok(()), |class| {
@@ -922,7 +1075,9 @@ pub(crate) fn run(args: Vec<String>) -> Result<(), XtaskError> {
                         options.timeout.saturating_sub(started.elapsed()),
                     )?
                     .remove(0);
-                if mismatch(&local(&candidate)?, &upstream) == Some(saved.mismatch_class.as_str()) {
+                if mismatch(&local(&candidate)?, &upstream, &candidate.family)
+                    == Some(saved.mismatch_class.as_str())
+                {
                     case = candidate;
                     origin.mutations.push(mutation);
                     changed = true;
@@ -981,7 +1136,9 @@ pub(crate) fn run(args: Vec<String>) -> Result<(), XtaskError> {
                         options.timeout.saturating_sub(started.elapsed()),
                     )?
                     .remove(0);
-                if mismatch(&local(&candidate)?, &upstream) == Some(saved.mismatch_class.as_str()) {
+                if mismatch(&local(&candidate)?, &upstream, &candidate.family)
+                    == Some(saved.mismatch_class.as_str())
+                {
                     case = candidate;
                     origin.mutations.push(mutation);
                     changed = true;
@@ -1044,7 +1201,7 @@ pub(crate) fn run(args: Vec<String>) -> Result<(), XtaskError> {
                 rejected += 1;
             }
             let local = local(case)?;
-            if let Some(class) = mismatch(&local, &upstream) {
+            if let Some(class) = mismatch(&local, &upstream, &case.family) {
                 mismatches.push(save(&oracle, case, origin.clone(), local, upstream, class)?);
             }
         }
@@ -1073,6 +1230,124 @@ pub(crate) fn run(args: Vec<String>) -> Result<(), XtaskError> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn flow_step_fixture_projects_declared_values_without_render_fields() {
+        let (cases, _) = corpus().unwrap();
+        let case = cases
+            .iter()
+            .find(|case| case.id == "flowchart/local_mermaid_12_3_step_parallel_gaps.mmd")
+            .unwrap();
+        let outcome = local(case).unwrap();
+        assert_eq!(outcome.status, "accepted");
+        let observation = outcome.observation.unwrap();
+        let edges = observation["edges"].as_array().unwrap();
+        assert_eq!(edges.len(), 3);
+        for (edge, (id, step)) in edges.iter().zip([("first", 1), ("second", 1), ("last", 5)]) {
+            assert_eq!(edge["id"], json!(id));
+            assert_eq!(edge["step"], json!(step));
+            for key in ["stepCount", "stepDuration", "showStepNumber"] {
+                assert!(edge.get(key).is_none(), "{key}");
+            }
+        }
+    }
+
+    #[test]
+    fn flow_step_projection_keeps_defaults_and_detects_missing_or_incorrect_values() {
+        let case = base_case(
+            "step-projection",
+            "flowchart",
+            concat!(
+                "flowchart LR\n A e1@--> B\n B e2@--> C\n C e3@--> D\n D --> E\n",
+                "e1@{ step: 3 }\ne1@{ step: 0 }\n",
+                "e2@{ step: 3 }\ne2@{ step: 1 }\ne3@{ step: '2' }\n",
+            ),
+            "grammar",
+            "strict",
+        );
+        let observed = local(&case).unwrap();
+        assert_eq!(observed.status, "accepted");
+        let edges = observed.observation.as_ref().unwrap()["edges"]
+            .as_array()
+            .unwrap();
+        assert_eq!(edges.len(), 4);
+        assert_eq!(edges[0]["step"], json!(3));
+        assert_eq!(edges[1]["step"], json!(1));
+        for edge in &edges[2..] {
+            assert!(edge.get("step").is_none());
+        }
+        let plain = local(&base_case(
+            "no-step",
+            "flowchart",
+            "flowchart LR\n A e1@--> B\n A --> C\n",
+            "grammar",
+            "strict",
+        ))
+        .unwrap();
+        for edge in plain.observation.unwrap()["edges"].as_array().unwrap() {
+            assert!(edge.get("step").is_none());
+        }
+
+        let mut upstream = observed.clone();
+        upstream.observation.as_mut().unwrap()["edges"][0]
+            .as_object_mut()
+            .unwrap()
+            .remove("step");
+        assert_eq!(
+            mismatch(&observed, &upstream, "flowchart"),
+            Some("semantic")
+        );
+        upstream.observation.as_mut().unwrap()["edges"][0]["step"] = json!(4);
+        assert_eq!(
+            mismatch(&observed, &upstream, "flowchart"),
+            Some("semantic")
+        );
+        upstream.observation.as_mut().unwrap()["edges"][0]["step"] = json!(3);
+        assert_eq!(mismatch(&observed, &upstream, "flowchart"), None);
+    }
+
+    #[test]
+    fn flow_step_comparison_uses_binary64_without_coercing_other_values() {
+        let observed = local(&base_case(
+            "step-binary64",
+            "flowchart",
+            "flowchart LR\nA e1@--> B\ne1@{ step: 9223372036854775808 }\n",
+            "grammar",
+            "strict",
+        ))
+        .unwrap();
+        let mut upstream = observed.clone();
+        upstream.observation.as_mut().unwrap()["edges"][0]["step"] = json!(9223372036854776000u64);
+        assert_eq!(mismatch(&observed, &upstream, "flowchart"), None);
+        assert_eq!(mismatch(&observed, &upstream, "sequence"), Some("semantic"));
+
+        for changed in [
+            json!(9223372036854777856u64),
+            json!("9223372036854775808"),
+            Value::Null,
+            json!(true),
+        ] {
+            upstream.observation.as_mut().unwrap()["edges"][0]["step"] = changed;
+            assert_eq!(
+                mismatch(&observed, &upstream, "flowchart"),
+                Some("semantic")
+            );
+        }
+        upstream.observation.as_mut().unwrap()["edges"][0]
+            .as_object_mut()
+            .unwrap()
+            .remove("step");
+        assert_eq!(
+            mismatch(&observed, &upstream, "flowchart"),
+            Some("semantic")
+        );
+        upstream.observation.as_mut().unwrap()["edges"][0]["step"] = json!(9223372036854776000u64);
+        upstream.observation.as_mut().unwrap()["edges"][0]["length"] = json!(2);
+        assert_eq!(
+            mismatch(&observed, &upstream, "flowchart"),
+            Some("semantic")
+        );
+    }
 
     #[test]
     fn scheduled_discovery_batches_retain_the_entire_corpus_and_both_family_budgets() {
@@ -1178,7 +1453,11 @@ mod tests {
         assert_eq!(saved.origin.corpus_sha256, "old-corpus");
         assert_eq!(saved.mismatch_class, "acceptance");
         assert_eq!(
-            mismatch(&local(&saved.case).unwrap(), &saved.upstream),
+            mismatch(
+                &local(&saved.case).unwrap(),
+                &saved.upstream,
+                &saved.case.family
+            ),
             Some("acceptance")
         );
 
@@ -1256,12 +1535,12 @@ mod tests {
         let mut two = one.clone();
         two.source = "flowchart TD\n A-->C".into();
         assert_eq!(
-            mismatch(&local(&one).unwrap(), &local(&two).unwrap()),
+            mismatch(&local(&one).unwrap(), &local(&two).unwrap(), &one.family),
             Some("semantic")
         );
         two.source = "flowchart TD\n A[".into();
         assert_eq!(
-            mismatch(&local(&one).unwrap(), &local(&two).unwrap()),
+            mismatch(&local(&one).unwrap(), &local(&two).unwrap(), &one.family),
             Some("acceptance")
         );
     }

@@ -14,6 +14,452 @@ fn parse(source: &str) -> FlowchartModel {
     parse_flowchart_model_for_render(source, &metadata()).expect("valid Flowchart source")
 }
 
+#[cfg(feature = "editor-facts")]
+#[test]
+fn unclosed_label_recovery_reuses_quote_frames_without_losing_later_valid_labels() {
+    let suffix = concat!(
+        "B[\"`first\n雪 [value] (round) | -->\nlast`\"]\n",
+        "C[\"first\n雪 [value] (round) | -->\nlast\"]\nD[valid]\n",
+    );
+    for repetitions in [0, 64, 128, 256] {
+        let source = format!("flowchart TD\n{}{suffix}", "A[\"`\"]\n".repeat(repetitions));
+        let mut lexer = Lexer::recovering(&source);
+        let tokens = lexer
+            .by_ref()
+            .collect::<std::result::Result<Vec<_>, _>>()
+            .unwrap();
+        let labels = tokens
+            .iter()
+            .filter_map(|(_, token, _)| match token {
+                Tok::NodeLabel(label) => Some(label),
+                _ => None,
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(labels.len(), repetitions + 3);
+        assert!(
+            labels[..repetitions]
+                .iter()
+                .all(|label| label.recovery_error.is_some())
+        );
+        assert!(
+            labels[repetitions..]
+                .iter()
+                .all(|label| label.recovery_error.is_none())
+        );
+        assert_eq!(labels[repetitions].text.kind, TitleKind::Markdown);
+        assert_eq!(labels[repetitions + 1].text.kind, TitleKind::String);
+        for label in &labels[repetitions..repetitions + 2] {
+            assert_eq!(label.text.text, "first\n雪 [value] (round) | -->\nlast");
+        }
+        assert_eq!(labels[repetitions + 2].text.text, "valid");
+        assert!(
+            lexer.label_scan_work() <= 4 * source.len(),
+            "quote scan work must be linear: {repetitions} lines, {} steps for {} bytes",
+            lexer.label_scan_work(),
+            source.len(),
+        );
+        assert_eq!(
+            parse_flowchart_model_for_render(&source, &metadata()).is_ok(),
+            repetitions == 0,
+            "unclosed Markdown must remain invalid",
+        );
+    }
+}
+
+#[cfg(feature = "editor-facts")]
+#[test]
+fn long_label_scan_observes_cancellation_before_materializing_its_payload() {
+    let source = format!("flowchart TD\nA[\"`{}`\"]\n", "雪".repeat(32_768));
+    let control = OperationControl::new().for_phase(crate::OperationPhase::Parse);
+    control.cancel_after_checkpoints(0);
+    let mut lexer = Lexer::recovering(&source).with_control(&control);
+    assert!(lexer.by_ref().any(|item| item.is_err()));
+    assert!(control.is_cancelled());
+    assert_eq!(lexer.label_scan_work(), 4096);
+    assert!(lexer.next().is_none());
+
+    let control = OperationControl::new().for_phase(crate::OperationPhase::Parse);
+    control.cancel_after_checkpoints(1);
+    assert!(matches!(
+        construct_flowchart_token_trace(&source, &control),
+        Err(crate::OperationCancelled {
+            phase: crate::OperationPhase::Parse,
+            reason: crate::CancelReason::Requested,
+        })
+    ));
+}
+
+#[cfg(feature = "diagram-flowchart")]
+#[test]
+fn subgraphs_keep_the_parsed_string_payload_and_contextual_token_kind() {
+    let parser = crate::SemanticParser::new();
+    for (raw, title, explicit_kind, bare_kind) in [
+        (r#"""``"`ok`""#, "`ok`", "string", "text"),
+        (r#""`ok`""#, "ok", "markdown", "markdown"),
+        ("`ok`", "`ok`", "text", "text"),
+    ] {
+        let source = format!("flowchart TD\nsubgraph SG[{raw}]\nA\nend\nsubgraph {raw}\nB\nend\n");
+        let assert_subgraphs = |model: &FlowchartModel| {
+            assert_eq!(model.subgraphs.len(), 2);
+            assert_eq!(model.subgraphs[0].id, "SG");
+            assert_eq!(model.subgraphs[1].id, title);
+            for (subgraph, kind) in model.subgraphs.iter().zip([explicit_kind, bare_kind]) {
+                assert_eq!(subgraph.title, title, "{source:?}");
+                assert_eq!(subgraph.label_type.as_deref(), Some(kind), "{source:?}");
+            }
+        };
+        assert_subgraphs(&parse(&source));
+        for known_type in [false, true] {
+            let parsed = if known_type {
+                parser.parse_diagram_with_type_sync("flowchart-v2", &source)
+            } else {
+                parser.parse_diagram_sync(&source)
+            }
+            .expect("single STR and MD_STR subgraph headers must parse");
+            let crate::SemanticDiagramModel::Flowchart(model) = parsed.model else {
+                panic!("expected Flowchart model");
+            };
+            assert_subgraphs(&model);
+        }
+    }
+}
+
+#[test]
+fn empty_quote_transitions_keep_the_actual_payload_selection() {
+    let source = "flowchart TD\nA[\"\"``\"`\"]\n";
+    let tokens = Lexer::new(source)
+        .collect::<std::result::Result<Vec<_>, _>>()
+        .unwrap();
+    let label = tokens
+        .iter()
+        .find_map(|(_, token, _)| match token {
+            Tok::NodeLabel(label) => Some(&label.text),
+            _ => None,
+        })
+        .unwrap();
+    assert_eq!(label.text, "`");
+    assert_eq!(label.kind, TitleKind::String);
+    assert_eq!(label.selection, Some(SourceSpan::new(20, 21)));
+    assert_eq!(parse(source).nodes[0].label.as_deref(), Some("`"));
+}
+
+#[cfg(all(feature = "editor-facts", feature = "diagram-flowchart"))]
+#[test]
+fn payload_selections_survive_unicode_crlf_preprocessing_and_editor_recovery() {
+    use crate::{
+        EditorSemanticCompleteness, ParsedEditorFacts, SemanticParser, SemanticSnapshotCapture,
+    };
+
+    let parser = SemanticParser::new();
+    for (raw, payload, offset) in [
+        (r#"""``"`""#.to_string(), "`", 5),
+        ("\"\"``\"\u{00a0}`雪`\u{feff}\"".to_string(), "`雪`", 7),
+    ] {
+        let prefix = "\u{feff}---\r\ntitle: 雪😀\r\n---\r\n%% 中文😀\r\nflowchart TD\r\n";
+        let mut source = prefix.to_string();
+        let mut expected = Vec::new();
+        for (before, after, detail) in [
+            ("A[", "]\r\n", "flowchart node label"),
+            ("A -->|", "| B\r\n", "flowchart edge label"),
+            ("B -- ", " --> C\r\n", "flowchart edge label"),
+        ] {
+            source.push_str(before);
+            let start = source.len() + offset;
+            expected.push((detail, SourceSpan::new(start, start + payload.len())));
+            source.push_str(&raw);
+            source.push_str(after);
+        }
+        if payload == "`" {
+            source.push_str("subgraph ");
+            let start = source.len() + offset;
+            expected.push(("subgraph", SourceSpan::new(start, start + payload.len())));
+            source.push_str(&raw);
+            source.push_str("\r\nD\r\nend\r\n");
+        }
+        source.push_str("subgraph ");
+        let start = source.len() + offset;
+        expected.push(("subgraph", SourceSpan::new(start, start + payload.len())));
+        source.push_str(&raw);
+        source.push_str("[Title]\r\nE\r\nend\r\n");
+
+        for known_type in [false, true] {
+            let parsed = if known_type {
+                parser.parse_diagram_with_type_sync("flowchart-v2", &source)
+            } else {
+                parser.parse_diagram_sync(&source)
+            }
+            .expect("empty quote transitions must preserve a single string token");
+            let crate::SemanticDiagramModel::Flowchart(model) = parsed.model else {
+                panic!("expected Flowchart model");
+            };
+            assert_eq!(model.nodes[0].label.as_deref(), Some(payload));
+            assert!(
+                model
+                    .edges
+                    .iter()
+                    .all(|edge| edge.label.as_deref() == Some(payload))
+            );
+        }
+        for suffix in ["", "F -->"] {
+            let source = format!("{source}{suffix}");
+            let SemanticSnapshotCapture::Snapshot(snapshot) =
+                parser.capture_diagram_snapshot_sync(&source)
+            else {
+                panic!("source snapshot must survive label recovery");
+            };
+            let ParsedEditorFacts::Available(facts) = snapshot.editor_facts() else {
+                panic!("expected Flowchart editor facts");
+            };
+            assert_eq!(
+                facts.completeness,
+                if suffix.is_empty() {
+                    EditorSemanticCompleteness::Complete
+                } else {
+                    EditorSemanticCompleteness::Recovered
+                },
+            );
+            for (detail, selection) in &expected {
+                assert!(
+                    facts.symbols.iter().any(|symbol| {
+                        symbol.name == payload
+                            && symbol.detail.as_deref() == Some(*detail)
+                            && symbol.selection == *selection
+                    }),
+                    "missing {detail} selection {selection:?} in {source:?}",
+                );
+                assert_eq!(&source[selection.start..selection.end], payload);
+            }
+        }
+    }
+}
+
+#[cfg(feature = "diagram-flowchart")]
+#[test]
+fn parser_differential_markdown_replays_use_the_complete_source_pipeline() {
+    let parser = crate::SemanticParser::new();
+    for known_type in [false, true] {
+        let parse_source = |source: &str| {
+            if known_type {
+                parser.parse_diagram_with_type_sync("flowchart-v2", source)
+            } else {
+                parser.parse_diagram_sync(source)
+            }
+        };
+        let invalid = "flowchart TD\nA[\"`first\n  X[\"雪 &amp; text\"]\nlast`\"]";
+        assert!(parse_source(invalid).is_err(), "{invalid:?}");
+
+        let source = "flowchart TD\nA[\"`first\n%% comment\n\n%% comment\nlast`\"]";
+        let parsed = parse_source(source).expect("comment runs must preserve valid Markdown");
+        let crate::SemanticDiagramModel::Flowchart(model) = parsed.model else {
+            panic!("expected Flowchart model");
+        };
+        assert_eq!(model.nodes.len(), 1);
+        assert_eq!(model.nodes[0].id, "A");
+        assert_eq!(model.nodes[0].label.as_deref(), Some("first\nlast"));
+        assert_eq!(model.nodes[0].label_type.as_deref(), Some("markdown"));
+
+        let html = "flowchart TD\nA[\"`first\n<span title=\"雪\">text</span>\nlast`\"]";
+        assert!(
+            parse_source(html).is_ok(),
+            "HTML attribute quotes must be normalized before Markdown lexing: {html:?}",
+        );
+    }
+}
+
+#[test]
+fn markdown_empty_quotes_preserve_token_payloads_in_raw_and_public_parsers() {
+    let parser = crate::SemanticParser::new();
+    for (diagram_type, header) in [
+        #[cfg(feature = "diagram-flowchart")]
+        ("flowchart-v2", "flowchart TD"),
+        #[cfg(feature = "diagram-swimlane")]
+        ("swimlane", "swimlane-beta TD"),
+    ] {
+        for raw in [r#""`""ok`""#, r#""`ok`""""#, r#""`""ok`""""#] {
+            let source = format!(
+                "{header}\nA[{raw}]\nF({raw})\nG{{{raw}}}\nA -->|{raw}| B\nB -- {raw} --> C\nsubgraph SG[{raw}]\nD\nend\nsubgraph {raw}\nE\nend\n"
+            );
+            let assert_labels = |model: &FlowchartModel| {
+                for id in ["A", "F", "G"] {
+                    let node = model.nodes.iter().find(|node| node.id == id).unwrap();
+                    assert_eq!(node.label.as_deref(), Some("ok"), "{source:?}");
+                    assert_eq!(node.label_type.as_deref(), Some("markdown"));
+                }
+                assert_eq!(model.edges.len(), 2);
+                for edge in &model.edges {
+                    assert_eq!(edge.label.as_deref(), Some("ok"), "{source:?}");
+                    assert_eq!(edge.label_type.as_deref(), Some("markdown"));
+                }
+                assert_eq!(model.subgraphs.len(), 2);
+                for subgraph in &model.subgraphs {
+                    assert_eq!(subgraph.title, "ok", "{source:?}");
+                    assert_eq!(subgraph.label_type.as_deref(), Some("markdown"));
+                }
+                assert_eq!(model.subgraphs[1].id, "ok", "{source:?}");
+            };
+            assert_labels(&parse(&source));
+            for line_ending in ["\n", "\r\n"] {
+                let source = source.replace('\n', line_ending);
+                for known_type in [false, true] {
+                    let parsed = if known_type {
+                        parser.parse_diagram_with_type_sync(diagram_type, &source)
+                    } else {
+                        parser.parse_diagram_sync(&source)
+                    }
+                    .expect("empty quote transitions must preserve the Markdown token");
+                    let crate::SemanticDiagramModel::Flowchart(model) = parsed.model else {
+                        panic!("expected Flowchart model");
+                    };
+                    assert_labels(&model);
+                }
+            }
+        }
+    }
+}
+
+#[test]
+fn invalid_markdown_nodes_keep_original_label_spans_before_valid_nodes() {
+    let parser = crate::SemanticParser::new();
+    let raw = r#""`雪 `code` last`""#;
+    for (diagram_type, header) in [
+        #[cfg(feature = "diagram-flowchart")]
+        ("flowchart-v2", "flowchart TD"),
+        #[cfg(feature = "diagram-swimlane")]
+        ("swimlane", "swimlane-beta TD"),
+    ] {
+        for (open, close) in [("[", "]"), ("(", ")"), ("{", "}")] {
+            let body = format!("{header}\n雪[valid]\nA{open}{raw}{close}\nB[valid]\n");
+            let mut tokens = Lexer::new(&body);
+            let error = tokens
+                .find_map(|token| token.err())
+                .expect("invalid Markdown node");
+            let start = body.find(raw).unwrap();
+            assert_eq!(error.span, Some(SourceSpan::new(start, start + raw.len())));
+            assert!(tokens.any(|token| matches!(token, Ok((_, Tok::Id(id), _)) if id == "B")));
+
+            for line_ending in ["\n", "\r\n"] {
+                let source = format!("---\ntitle: 中文😀\n---\n%% 中文😀\n{body}")
+                    .replace('\n', line_ending);
+                let start = source.find(raw).unwrap();
+                for known_type in [false, true] {
+                    let parsed = if known_type {
+                        parser.parse_diagram_with_type_sync(diagram_type, &source)
+                    } else {
+                        parser.parse_diagram_sync(&source)
+                    };
+                    let Err(crate::Error::DiagramParse { diagnostic, .. }) = parsed else {
+                        panic!("expected a Markdown label diagnostic: {source:?}");
+                    };
+                    assert_eq!(
+                        diagnostic.span_kind(),
+                        crate::ParseDiagnosticSpanKind::Exact
+                    );
+                    assert_eq!(
+                        diagnostic.span(),
+                        Some(SourceSpan::new(start, start + raw.len())),
+                        "{source:?}",
+                    );
+                }
+            }
+        }
+    }
+}
+
+#[test]
+fn markdown_labels_reject_invalid_jison_tokens_in_nodes_edges_and_subgraphs() {
+    let parser = crate::SemanticParser::new();
+    for raw in [
+        "\"`first\n  X[\"雪 &amp; text\"]\nlast`\"",
+        r#""`first "quoted" last`""#,
+        r#""`first \"quoted\" last`""#,
+        r#""`first `code` last`""#,
+        r#""``""#,
+        r#""`unterminated""#,
+        r#""`ok""`""#,
+        "\"\"",
+        concat!("\"first\"", "\"last\""),
+        concat!("\"`first`\"", "\"`last`\""),
+        concat!("\"first\"", "\"`last`\""),
+        concat!("\"`first`\"", "\"last\""),
+    ] {
+        for statement in [
+            format!("A[{raw}]"),
+            format!("A({raw})"),
+            format!("A{{{raw}}}"),
+            format!("A -->|{raw}| B"),
+            format!("A -- {raw} --> B"),
+            format!("subgraph SG[{raw}]\nB\nend"),
+            format!("subgraph {raw}\nB\nend"),
+        ] {
+            let source = format!("flowchart TD\n{statement}");
+            assert!(
+                parse_flowchart_model_for_render(&source, &metadata()).is_err(),
+                "invalid Markdown token must be rejected: {source:?}",
+            );
+            for (diagram_type, header) in [
+                #[cfg(feature = "diagram-flowchart")]
+                ("flowchart-v2", "flowchart TD"),
+                #[cfg(feature = "diagram-swimlane")]
+                ("swimlane", "swimlane-beta TD"),
+            ] {
+                let source = format!("{header}\n{statement}");
+                for known_type in [false, true] {
+                    let parsed = if known_type {
+                        parser.parse_diagram_with_type_sync(diagram_type, &source)
+                    } else {
+                        parser.parse_diagram_sync(&source)
+                    };
+                    assert!(parsed.is_err(), "invalid label tokens: {source:?}");
+                }
+            }
+        }
+    }
+}
+
+#[test]
+fn markdown_comment_combinations_preserve_labels_in_all_shared_parser_paths() {
+    for (payload, expected) in [
+        ("first\n%% comment\n\n%% comment\nlast", "first\nlast"),
+        ("first\n\n \t\n%% comment\nlast", "first\nlast"),
+        ("first\n%% comment\n\nlast", "first\n\nlast"),
+        ("first\n\nlast", "first\n\nlast"),
+        ("first\n%% \"`invalid `code`\"\nlast", "first\nlast"),
+        (
+            "first &quot;雪&quot; &amp; text\n%% comment\n\n%% comment\nlast",
+            "first \"雪\" & text\nlast",
+        ),
+    ] {
+        let raw = format!("\"`{payload}`\"");
+        let input = format!(
+            "flowchart TD\nA[{raw}] -->|{raw}| B\nB -- {raw} --> C\nsubgraph SG[{raw}]\nD\nend\nsubgraph {raw}\nE\nend\n"
+        );
+        for line_ending in ["\n", "\r\n"] {
+            let input = input.replace('\n', line_ending);
+            let preprocessed = crate::preprocess::preprocess_builtin_semantic_controlled(
+                &input,
+                Some("flowchart-v2"),
+                &OperationControl::new(),
+            )
+            .expect("active operation")
+            .expect("source preprocessing");
+            let model = parse(preprocessed.code());
+            let node = model.nodes.iter().find(|node| node.id == "A").unwrap();
+            assert_eq!(node.label.as_deref(), Some(expected), "{input:?}");
+            assert_eq!(node.label_type.as_deref(), Some("markdown"));
+            assert_eq!(model.edges.len(), 2);
+            for edge in &model.edges {
+                assert_eq!(edge.label.as_deref(), Some(expected), "{input:?}");
+                assert_eq!(edge.label_type.as_deref(), Some("markdown"));
+            }
+            assert_eq!(model.subgraphs.len(), 2);
+            for subgraph in &model.subgraphs {
+                assert_eq!(subgraph.title, expected, "{input:?}");
+                assert_eq!(subgraph.label_type.as_deref(), Some("markdown"));
+            }
+        }
+    }
+}
+
 #[test]
 fn attached_edge_ids_preserve_node_shapes_and_endpoints() {
     for node in [

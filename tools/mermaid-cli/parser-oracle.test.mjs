@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
+import { readFile } from "node:fs/promises";
 import { createRequire } from "node:module";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -80,6 +81,58 @@ test("real Flowchart and Sequence DBs retain semantic records and reset conflict
   assert.ok(sequence.messages.some((message) => message.message === "note" && message.placement === 2));
   assert.ok(sequence.messages.some((message) => message.activate));
   assert.deepEqual(last.actorOrder, ["X", "Y"]);
+});
+
+test("real Flowchart DB observes the step fixture and omits step on cold and reused diagrams", async () => {
+  const fixture = await readFile(path.resolve(workspace, "../../fixtures/flowchart/local_mermaid_12_3_step_parallel_gaps.mmd"), "utf8");
+  const plain = "flowchart LR\n A first@--> B\n A second@--> C\n B last@--> D\n A --> E\n";
+  const response = await observe([
+    row("cold", "flowchart", plain),
+    row("step-fixture", "flowchart", fixture),
+    row("reused", "flowchart", plain),
+  ]);
+  assert.ok(response.outcomes.every(outcome => outcome.status === "accepted"));
+  const [cold, stepped, reused] = response.outcomes.map(outcome => outcome.observation);
+  assert.deepEqual(stepped.edges.map(edge => [edge.id, edge.step]), [["first", 1], ["second", 1], ["last", 5]]);
+  assert.deepEqual(reused, cold);
+  for (const observation of [cold, reused]) {
+    assert.equal(observation.edges.length, 4);
+    assert.ok(observation.edges.every(edge => !Object.hasOwn(edge, "step")));
+  }
+  for (const edge of stepped.edges) {
+    for (const key of ["stepCount", "stepDuration", "showStepNumber"]) {
+      assert.ok(!Object.hasOwn(edge, key), key);
+    }
+  }
+});
+
+test("real Flowchart DB observes positive JavaScript integer steps and valid or invalid repeated assignments", async () => {
+  const cases = [
+    ["one", "e1@{ step: 1 }", 1],
+    ["integral-float", "e1@{ step: 1.0 }", 1],
+    ["two", "e1@{ step: 2 }", 2],
+    ["beyond-safe-integer", "e1@{ step: 9007199254740992 }", 9007199254740992],
+    ["binary64-integer-spelling", "e1@{ step: 9223372036854775808 }", 2 ** 63],
+    ["large-exponent", "e1@{ step: 1e100 }", 1e100],
+    ["largest-finite", "e1@{ step: 1.7976931348623157e308 }", Number.MAX_VALUE],
+    ["repeat-valid", "e1@{ step: 3 }\ne1@{ step: 1 }", 1],
+    ["repeat-same", "e1@{ step: 3 }\ne1@{ step: 3 }", 3],
+    ["invalid-then-valid", "e1@{ step: '2' }\ne1@{ step: 2 }", 2],
+  ];
+  for (const [index, value] of ["0", "-0", "-1", "1.5", "true", "null", "'2'", ".inf", ".nan", "[2]"].entries()) {
+    cases.push([`invalid-${index}`, `e1@{ step: ${value} }`, undefined]);
+    cases.push([`valid-then-invalid-${index}`, `e1@{ step: 3 }\ne1@{ step: ${value} }`, 3]);
+  }
+  const response = await observe(cases.map(([id, assignments]) =>
+    row(id, "flowchart", `flowchart LR\n A e1@--> B\n A --> C\n${assignments}\n`)));
+  for (const [index, [id, , expected]] of cases.entries()) {
+    const outcome = response.outcomes[index];
+    assert.equal(outcome.status, "accepted", id);
+    const [assigned, plain] = outcome.observation.edges;
+    assert.equal(assigned.step, expected, id);
+    assert.equal(Object.hasOwn(assigned, "step"), expected !== undefined, id);
+    assert.ok(!Object.hasOwn(plain, "step"), id);
+  }
 });
 
 test("public parse lane observes actual frontmatter and init configuration separately from grammar DB", async () => {

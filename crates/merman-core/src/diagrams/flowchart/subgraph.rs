@@ -1,6 +1,6 @@
 use super::{
     FlowSubGraph, FlowchartAst, StatementEvent, Stmt, SubgraphBlock, TitleKind,
-    is_ecmascript_trim_char, strip_wrapping_backticks, trim_flowdb_label_text, unquote,
+    is_ecmascript_trim_char, trim_flowdb_label_text,
 };
 use crate::{OperationControl, OperationControlResult};
 use merman_model::families::flowchart::FlowDroppedSubgraphMember;
@@ -103,21 +103,8 @@ impl SubgraphBuilder {
             }
         });
 
-        let raw_id = sg.header.raw_id.as_str();
-        let (title_raw, title_kind) =
-            parse_subgraph_title(&sg.header.raw_title, sg.header.id_equals_title);
-        let id_raw = if raw_id.starts_with('"') && raw_id.ends_with('"') {
-            // Only a double-quoted header enters Mermaid's string state. Markdown backticks are
-            // meaningful after that quote has been removed; bare backticks stay in the id.
-            let unquoted = unquote(raw_id);
-            let (without_backticks, _) = strip_wrapping_backticks(&unquoted);
-            trim_flowdb_label_text(&without_backticks).to_string()
-        } else {
-            raw_id.to_string()
-        };
-
         let mut id: Option<String> = {
-            let trimmed = trim_flowdb_label_text(&id_raw);
+            let trimmed = trim_flowdb_label_text(&sg.header.raw_id);
             if trimmed.is_empty() {
                 None
             } else {
@@ -135,8 +122,8 @@ impl SubgraphBuilder {
         }
 
         let id = id.unwrap_or_else(|| format!("subGraph{}", self.sub_count));
-        let title = trim_flowdb_label_text(&title_raw).to_string();
-        let label_type = match title_kind {
+        let title = trim_flowdb_label_text(&sg.header.raw_title).to_string();
+        let label_type = match sg.header.title_kind {
             TitleKind::Text => "text",
             TitleKind::String => "string",
             TitleKind::Markdown => "markdown",
@@ -266,39 +253,6 @@ pub(super) fn subgraphs_exist(subgraphs: &[FlowSubGraph], node_id: &str) -> bool
     subgraphs
         .iter()
         .any(|sg| sg.nodes.iter().any(|n| n == node_id))
-}
-
-fn parse_subgraph_title(raw_title: &str, id_equals_title: bool) -> (String, TitleKind) {
-    let quoted = raw_title.starts_with('"') && raw_title.ends_with('"');
-    let unquoted = if quoted {
-        // Keep flowchart subgraph titles raw (strip only surrounding quotes).
-        // This matches upstream and avoids mangling backslash-heavy labels.
-        unquote(raw_title)
-    } else {
-        raw_title.to_string()
-    };
-
-    if quoted {
-        let (no_backticks, is_markdown) = strip_wrapping_backticks(&unquoted);
-        if is_markdown {
-            return (
-                trim_flowdb_label_text(&no_backticks).to_string(),
-                TitleKind::Markdown,
-            );
-        }
-    }
-
-    if !id_equals_title && quoted {
-        return (
-            trim_flowdb_label_text(&unquoted).to_string(),
-            TitleKind::String,
-        );
-    }
-
-    (
-        trim_flowdb_label_text(&unquoted).to_string(),
-        TitleKind::Text,
-    )
 }
 
 #[cfg(test)]

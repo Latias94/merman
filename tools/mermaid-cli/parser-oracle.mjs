@@ -88,7 +88,7 @@ async function observeCase(item) {
         type: edge.type ?? null, stroke: edge.stroke ?? null, length: edge.length,
         id: edge.isUserDefinedId ? edge.id : null, isUserDefinedId: edge.isUserDefinedId,
         classes: edge.classes, style: edge.style ?? [], interpolate: edge.interpolate ?? null,
-        animate: edge.animate ?? null, animation: edge.animation ?? null,
+        animate: edge.animate ?? null, animation: edge.animation ?? null, step: edge.step,
       })),
       edgeDefaults: { style: db.getEdges().defaultStyle ?? [], interpolate: db.getEdges().defaultInterpolate ?? null },
       subgraphs: db.getSubGraphs().map((group) => ({ id: group.id, title: flowLabel(group.title), dir: group.dir ?? null, labelType: group.labelType ?? null, classes: group.classes, nodes: group.nodes, metadata: group.metadata ?? null })),

@@ -629,31 +629,57 @@ fn remove_mermaid_comments_controlled(
     let mut edits = Vec::new();
     #[cfg(feature = "editor-facts")]
     let mut comments = Vec::new();
+    #[cfg(feature = "editor-facts")]
     let mut line_start = 0usize;
-    while line_start < text.len() {
-        let newline = find_newline_controlled(text, line_start, &mut checkpoints)?;
-        let line_end = newline.map_or(text.len(), |newline| newline + 1);
-        let line = &text[line_start..line_end];
-        let trimmed_start = trim_start_whitespace_controlled(line, &mut checkpoints)?;
-        let trimmed = &line[trimmed_start..];
-        if let Some(after_marker) = trimmed.strip_prefix("%%") {
+    let mut whitespace_start = 0usize;
+    let mut cursor = 0usize;
+    let mut at_line_start = true;
+    while cursor < text.len() {
+        let ch = text[cursor..]
+            .chars()
+            .next()
+            .expect("comment scan position must contain a character");
+        checkpoints.scanned(ch.len_utf8())?;
+        if at_line_start && is_js_regex_whitespace(ch) {
+            cursor += ch.len_utf8();
+            #[cfg(feature = "editor-facts")]
+            if matches!(ch, '\n' | '\r' | '\u{2028}' | '\u{2029}') {
+                line_start = cursor;
+            }
+            continue;
+        }
+        if at_line_start && let Some(after_marker) = text[cursor..].strip_prefix("%%") {
             let has_comment_body = after_marker.chars().next().is_some_and(|ch| ch != '\n');
             if !after_marker.starts_with('{') && has_comment_body {
-                let range = line_start..line_end;
+                let newline = find_newline_controlled(text, cursor + 2, &mut checkpoints)?;
+                let line_end = newline.map_or(text.len(), |newline| newline + 1);
                 #[cfg(feature = "editor-facts")]
                 if capture_editor_evidence {
                     comments.push(SourceSpan::new(
-                        range.start,
-                        editor_evidence_line_end(text, range.end),
+                        line_start,
+                        editor_evidence_line_end(text, line_end),
                     ));
                 }
-                edits.push(SourceEdit::delete(range));
+                edits.push(SourceEdit::delete(whitespace_start..line_end));
+                cursor = line_end;
+                #[cfg(feature = "editor-facts")]
+                {
+                    line_start = cursor;
+                }
+                whitespace_start = cursor;
+                continue;
             }
         }
-        let Some(newline) = newline else {
-            break;
-        };
-        line_start = newline + 1;
+        at_line_start = false;
+        cursor += ch.len_utf8();
+        if matches!(ch, '\n' | '\r' | '\u{2028}' | '\u{2029}') {
+            #[cfg(feature = "editor-facts")]
+            {
+                line_start = cursor;
+            }
+            whitespace_start = cursor;
+            at_line_start = true;
+        }
     }
     checkpoints.finish()?;
     #[cfg(feature = "editor-facts")]
@@ -667,7 +693,14 @@ fn remove_mermaid_comments_controlled(
     source.set_first_line_column_offset(0);
 
     let mut checkpoints = ControlledScanCheckpoints::new(control)?;
-    let leading_whitespace = trim_start_whitespace_controlled(source.text(), &mut checkpoints)?;
+    let mut leading_whitespace = 0usize;
+    for ch in source.text().chars() {
+        checkpoints.scanned(ch.len_utf8())?;
+        if !is_js_regex_whitespace(ch) {
+            break;
+        }
+        leading_whitespace += ch.len_utf8();
+    }
     checkpoints.finish()?;
     if leading_whitespace > 0 {
         source.apply_edits(vec![SourceEdit::delete(0..leading_whitespace)], control)?;
@@ -3026,6 +3059,118 @@ fn yaml_inline_sequence_indicator_count_controlled(
 mod tests {
     use super::*;
     use serde_json::{Map, json};
+
+    #[test]
+    fn comments_consume_preceding_blank_lines_but_preserve_following_blank_lines() {
+        for (input, expected) in [
+            ("first\n%% one\n\n%% two\nlast", "first\nlast"),
+            ("first\n\n \t\n%% one\nlast", "first\nlast"),
+            ("first\n%% one\n\nlast", "first\n\nlast"),
+            ("first\n\nlast", "first\n\nlast"),
+            ("first\n%% one\n \t\n%% two\n\nlast", "first\n\nlast"),
+            ("first\n\n%% one", "first\n"),
+            ("first %% inline\n\nlast", "first %% inline\n\nlast"),
+            ("first\n\n%%\nlast", "first\n\n%%\nlast"),
+            ("first\n\n%%", "first\n\n%%"),
+            ("first\n\n%% \nlast", "first\nlast"),
+            (
+                "first\n\n%%{init: {}}%%\nlast",
+                "first\n\n%%{init: {}}%%\nlast",
+            ),
+        ] {
+            let mut source = PreprocessedSource::new(input);
+            remove_mermaid_comments_controlled(
+                &mut source,
+                #[cfg(feature = "editor-facts")]
+                false,
+                &OperationControl::new(),
+            )
+            .expect("active operation");
+            assert_eq!(source.text(), expected, "{input:?}");
+        }
+    }
+
+    #[test]
+    fn comments_follow_ecmascript_whitespace_and_multiline_anchors() {
+        for (input, expected) in [
+            ("\u{feff}\n \t%% comment\nfirst", "first"),
+            ("\u{feff}first", "first"),
+            ("\u{0085}first", "\u{0085}first"),
+            (
+                "first\n\u{0085}%% comment\nlast",
+                "first\n\u{0085}%% comment\nlast",
+            ),
+            ("first\n\u{feff} \n\u{3000}%% comment\nlast", "first\nlast"),
+            ("first\u{2028}%% comment\nlast", "first\u{2028}last"),
+            ("first\u{2029}%% comment\nlast", "first\u{2029}last"),
+            ("first\n%% comment\u{2028}last\nend", "first\nend"),
+        ] {
+            let mut source = PreprocessedSource::new(input);
+            remove_mermaid_comments_controlled(
+                &mut source,
+                #[cfg(feature = "editor-facts")]
+                false,
+                &OperationControl::new(),
+            )
+            .expect("active operation");
+            assert_eq!(source.text(), expected, "{input:?}");
+        }
+    }
+
+    #[test]
+    fn comment_runs_preserve_original_utf8_spans_after_source_cleanup() {
+        let input = concat!(
+            "\u{feff}---\r\ntitle: Comments\r\n---\r\n",
+            "%%{init: {flowchart: {htmlLabels: false}}}%%\r\n",
+            "flowchart TD\r\nA[\"`first\r\n%% comment\r\n\r\n%% comment\r\nlast 雪`\"]\r\n",
+        );
+        for known_type in [None, Some("flowchart-v2")] {
+            let result =
+                preprocess_builtin_semantic_controlled(input, known_type, &OperationControl::new())
+                    .expect("active operation")
+                    .expect("source preprocessing");
+            assert_eq!(result.title.as_deref(), Some("Comments"));
+            assert_eq!(result.config.as_value()["flowchart"]["htmlLabels"], false);
+            assert_eq!(result.code(), "flowchart TD\nA[\"`first\nlast 雪`\"]\n");
+            for value in ["first", "last 雪"] {
+                let start = result.code().find(value).expect("retained label text");
+                let original_start = input.find(value).expect("original label text");
+                assert_eq!(
+                    result
+                        .source
+                        .try_map_span(crate::SourceSpan::new(start, start + value.len())),
+                    Some(crate::SourceSpan::new(
+                        original_start,
+                        original_start + value.len(),
+                    )),
+                );
+            }
+            let first = result.code().find("first").unwrap();
+            let last = result.code().find("last 雪").unwrap() + "last 雪".len();
+            assert_eq!(
+                result
+                    .source
+                    .try_map_span(crate::SourceSpan::new(first, last)),
+                None,
+            );
+        }
+    }
+
+    #[cfg(feature = "editor-facts")]
+    #[test]
+    fn comment_evidence_excludes_consumed_blank_lines() {
+        let input = "first\n \t\n  %% 雪\n\n\u{feff}%% last\nlast";
+        let mut source = PreprocessedSource::new(input);
+        remove_mermaid_comments_controlled(&mut source, true, &OperationControl::new())
+            .expect("active operation");
+        assert_eq!(source.text(), "first\nlast");
+        let comments = source
+            .global_expected_syntax()
+            .iter()
+            .map(|expected| &input[expected.span.start..expected.span.end])
+            .collect::<Vec<_>>();
+        assert_eq!(comments, ["  %% 雪", "\u{feff}%% last"]);
+    }
 
     #[test]
     fn preprocess_keeps_entity_encoding_and_source_maps_on_both_parser_buffers() {

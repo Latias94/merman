@@ -1,4 +1,177 @@
-use super::TitleKind;
+use super::{LexError, TitleKind};
+use crate::{OperationControl, OperationControlResult, SourceSpan};
+use std::collections::HashMap;
+
+#[derive(Default)]
+pub(super) struct LabelStringState {
+    stack: Vec<TitleKind>,
+}
+
+impl LabelStringState {
+    pub(super) fn is_plain(&self) -> bool {
+        self.stack.is_empty()
+    }
+
+    pub(super) fn consume_delimiter(&mut self, rest: &str) -> Option<usize> {
+        if self.stack.last() == Some(&TitleKind::Markdown) && rest.starts_with("`\"") {
+            self.stack.pop();
+            return Some(2);
+        }
+        if rest.starts_with("\"`") {
+            self.stack.push(TitleKind::Markdown);
+            return Some(2);
+        }
+        if rest.starts_with('"') {
+            if self.stack.last() == Some(&TitleKind::String) {
+                self.stack.pop();
+            } else {
+                self.stack.push(TitleKind::String);
+            }
+            return Some(1);
+        }
+        None
+    }
+}
+
+#[derive(Default)]
+pub(super) struct LabelScanner {
+    quote_ends: HashMap<usize, Option<usize>>,
+    control: Option<OperationControl>,
+    steps_since_checkpoint: usize,
+    #[cfg(test)]
+    pub(super) work: usize,
+}
+
+impl LabelScanner {
+    #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
+    pub(super) fn set_control(&mut self, control: &OperationControl) {
+        self.control = Some(control.clone());
+    }
+
+    fn scanned(&mut self) -> OperationControlResult<()> {
+        #[cfg(test)]
+        {
+            self.work += 1;
+        }
+        self.steps_since_checkpoint += 1;
+        if self.steps_since_checkpoint == 4096 {
+            self.steps_since_checkpoint = 0;
+            if let Some(control) = &self.control {
+                control.checkpoint()?;
+            }
+        }
+        Ok(())
+    }
+
+    pub(super) fn find_unquoted_delim(
+        &mut self,
+        input: &str,
+        start: usize,
+        delim: &str,
+    ) -> OperationControlResult<Option<usize>> {
+        let mut pos = start;
+        while pos + delim.len() <= input.len() {
+            self.scanned()?;
+            let rest = &input[pos..];
+            if rest.starts_with(delim) {
+                return Ok(Some(pos));
+            }
+            if rest.starts_with('"') {
+                let Some(end) = self.quoted_end(input, pos)? else {
+                    return Ok(None);
+                };
+                pos = end;
+            } else {
+                pos += rest
+                    .chars()
+                    .next()
+                    .expect("label scan character")
+                    .len_utf8();
+            }
+        }
+        Ok(None)
+    }
+
+    fn quoted_end(&mut self, input: &str, start: usize) -> OperationControlResult<Option<usize>> {
+        let mut state = LabelStringState::default();
+        let mut frames = Vec::new();
+        let mut pos = start;
+        while pos < input.len() {
+            self.scanned()?;
+            let rest = &input[pos..];
+            let depth = state.stack.len();
+            if let Some(consumed) = state.consume_delimiter(rest) {
+                if state.stack.len() > depth {
+                    match self.quote_ends.get(&pos).copied() {
+                        Some(Some(end)) => {
+                            state.stack.pop();
+                            pos = end;
+                            if state.is_plain() {
+                                return Ok(Some(end));
+                            }
+                            continue;
+                        }
+                        Some(None) => break,
+                        None => frames.push(pos),
+                    }
+                } else {
+                    let opener = frames.pop().expect("closing label string frame");
+                    self.quote_ends.insert(opener, Some(pos + consumed));
+                    if state.is_plain() {
+                        return Ok(Some(pos + consumed));
+                    }
+                }
+                pos += consumed;
+            } else {
+                pos += rest
+                    .chars()
+                    .next()
+                    .expect("quoted label character")
+                    .len_utf8();
+            }
+        }
+        for opener in frames {
+            self.scanned()?;
+            self.quote_ends.insert(opener, None);
+        }
+        Ok(None)
+    }
+}
+
+pub(super) fn borrowed_span(source: &str, slice: &str) -> SourceSpan {
+    let start = slice.as_ptr() as usize - source.as_ptr() as usize;
+    debug_assert!(start <= source.len() && slice.len() <= source.len() - start);
+    SourceSpan::new(start, start + slice.len())
+}
+
+pub(super) fn parse_quoted_label(raw: &str) -> Result<(&str, TitleKind), LexError> {
+    let invalid = || LexError::new("Invalid string token sequence in flowchart label");
+    let mut state = LabelStringState::default();
+    let mut pos = 0;
+    let mut token = None;
+    while pos < raw.len() {
+        let rest = &raw[pos..];
+        if let Some(consumed) = state.consume_delimiter(rest) {
+            pos += consumed;
+            continue;
+        }
+        let kind = state.stack.last().ok_or_else(invalid)?;
+        let len = match kind {
+            TitleKind::Markdown => rest.find(['`', '"']).unwrap_or(rest.len()),
+            TitleKind::String => rest.find('"').unwrap_or(rest.len()),
+            TitleKind::Text => unreachable!(),
+        };
+        if len == 0 || token.is_some() {
+            return Err(invalid());
+        }
+        token = Some((&rest[..len], kind.clone()));
+        pos += len;
+    }
+    if !state.is_plain() {
+        return Err(invalid());
+    }
+    token.ok_or_else(invalid)
+}
 
 #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
 pub(super) fn title_kind_str(kind: &TitleKind) -> &'static str {
@@ -10,6 +183,14 @@ pub(super) fn title_kind_str(kind: &TitleKind) -> &'static str {
 }
 
 pub(super) fn unquote(s: &str) -> String {
+    if s.starts_with('"')
+        && let Ok((payload, kind)) = parse_quoted_label(s)
+    {
+        return match kind {
+            TitleKind::Markdown => format!("`{payload}`"),
+            _ => payload.to_string(),
+        };
+    }
     let bytes = s.as_bytes();
     if bytes.len() >= 2 && bytes[0] == b'"' && bytes[bytes.len() - 1] == b'"' {
         return s[1..s.len() - 1].to_string();
@@ -30,6 +211,11 @@ pub(super) fn trim_flowdb_label_text(text: &str) -> &str {
 }
 
 pub(super) fn parse_label_text(raw: &str) -> (String, TitleKind) {
+    if raw.starts_with('"')
+        && let Ok((payload, kind)) = parse_quoted_label(raw)
+    {
+        return (trim_flowdb_label_text(payload).to_string(), kind);
+    }
     // Jison classifies TEXT / STR / MD_STR before FlowDB trims the parser payload. Do not trim
     // `raw` before deciding whether the whole token is a quoted string: surrounding whitespace
     // produces a mixed token sequence upstream and must not be reinterpreted as STR here.

@@ -100,7 +100,7 @@ mod tokens;
 
 use text::{is_ecmascript_trim_char, parse_edge_label_text, parse_label_text};
 #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
-use text::{strip_wrapping_backticks, title_kind_str, trim_flowdb_label_text, unquote};
+use text::{title_kind_str, trim_flowdb_label_text};
 
 #[cfg(feature = "presentation")]
 #[doc(hidden)]
@@ -532,7 +532,7 @@ fn parse_flowchart_ast_controlled<M: FlowchartMetadata>(
     let mut statements = StatementArena::default();
     let edge_budget = flowchart_edge_budget(meta);
     let mut emitted = 0usize;
-    let tokens = Lexer::new(code).take_while(|_| {
+    let tokens = Lexer::new(code).with_control(control).take_while(|_| {
         let active = !emitted.is_multiple_of(128) || control.checkpoint().is_ok();
         emitted = emitted.saturating_add(1);
         active
@@ -826,7 +826,7 @@ fn construct_flowchart_token_trace(
     );
 
     let mut items = Vec::new();
-    for item in Lexer::recovering(code) {
+    for item in Lexer::recovering(code).with_control(control) {
         if items.len() % 128 == 0 {
             control.checkpoint()?;
         }
@@ -1854,34 +1854,18 @@ fn flowchart_subgraph_symbol_id(header: &SubgraphHeader) -> Option<(String, Sour
 
     let raw_span = header.raw_id_span?;
     let raw = header.raw_id.as_str();
-    let mut start = 0usize;
-    let mut end = raw.len();
-
-    if raw.starts_with('"') && raw.ends_with('"') && raw.len() >= 2 {
-        start += 1;
-        end -= 1;
-        let unquoted = &raw[start..end];
-        if unquoted.starts_with('`') && unquoted.ends_with('`') && unquoted.len() >= 2 {
-            start += 1;
-            end -= 1;
-        }
-    }
-
-    let candidate = &raw[start..end];
-    let leading = candidate
-        .len()
-        .saturating_sub(candidate.trim_start_matches(is_ecmascript_trim_char).len());
-    start += leading;
-    let trimmed = &raw[start..end];
-    end = start + trimmed.trim_end_matches(is_ecmascript_trim_char).len();
-
-    let name = raw[start..end].to_string();
+    let trimmed = trim_flowdb_label_text(raw);
+    let selection = text::borrowed_span(raw, trimmed);
+    let name = trimmed.to_string();
     if name.is_empty() {
         return None;
     }
     Some((
         name,
-        SourceSpan::new(raw_span.start + start, raw_span.start + end),
+        SourceSpan::new(
+            raw_span.start + selection.start,
+            raw_span.start + selection.end,
+        ),
     ))
 }
 
