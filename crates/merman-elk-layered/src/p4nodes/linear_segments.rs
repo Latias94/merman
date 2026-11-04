@@ -4,6 +4,7 @@
 //! - https://github.com/eclipse-elk/elk/blob/62d5909f96fad541bc101ad52dabaece6b7eab7e/plugins/org.eclipse.elk.alg.layered/src/org/eclipse/elk/alg/layered/p4nodes/LinearSegmentsNodePlacer.java
 
 use super::simple::place_nodes_simple;
+use super::vertical_spacing;
 use crate::graph::{LGraph, LNodeKind};
 
 pub fn place_nodes_linear_segments(graph: &mut LGraph) {
@@ -13,27 +14,102 @@ pub fn place_nodes_linear_segments(graph: &mut LGraph) {
 
     place_nodes_simple(graph);
 
-    let segments = discover_segments(graph);
+    let mut layer_positions = vec![None; graph.layerless_nodes.len()];
+    for (layer_index, layer) in graph.layers.iter().enumerate() {
+        for (position, &node_index) in layer.nodes.iter().enumerate() {
+            layer_positions[node_index] = Some((layer_index, position));
+        }
+    }
+
+    let segments = discover_segments(graph, &layer_positions);
     for segment in segments {
         if segment.len() < 2 {
             continue;
         }
 
+        let Some((min_center, max_center)) =
+            segment_center_bounds(graph, &layer_positions, &segment)
+        else {
+            // Keep the feasible simple placement when this segment cannot be aligned as a whole.
+            continue;
+        };
+
+        // Simple placement gives nonnegative centers. An online mean keeps a long segment's
+        // finite centers finite even when their sum would exceed f64::MAX.
         let target_center = segment
             .iter()
-            .map(|node_index| node_center_y(graph, *node_index))
-            .sum::<f64>()
-            / segment.len() as f64;
+            .enumerate()
+            .fold(0.0, |mean, (index, node_index)| {
+                mean + (node_center_y(graph, *node_index) - mean) / (index + 1) as f64
+            })
+            .clamp(min_center, max_center);
 
         for node_index in segment {
             let node = &graph.layerless_nodes[node_index];
-            graph.layerless_nodes[node_index].position.y =
-                target_center - node.margin.top - node.size.height / 2.0;
+            graph.layerless_nodes[node_index].position.y = target_center - node.size.height / 2.0;
         }
     }
 }
 
-fn discover_segments(graph: &LGraph) -> Vec<Vec<usize>> {
+fn segment_center_bounds(
+    graph: &LGraph,
+    layer_positions: &[Option<(usize, usize)>],
+    segment: &[usize],
+) -> Option<(f64, f64)> {
+    let mut min_center: f64 = 0.0;
+    let mut max_center = f64::INFINITY;
+    let mut previous_layer = None;
+
+    // LinearSegmentsNodePlacer.postProcess uses the current neighbors' margin envelopes and
+    // vertical spacing. Intersect those bounds before moving any node of this segment.
+    for &node_index in segment {
+        let (layer_index, position) = layer_positions[node_index]?;
+        if previous_layer == Some(layer_index) {
+            // A branched component can contain several nodes in one layer; aligning it would
+            // collapse their required separation. Preserve their existing feasible placement.
+            return None;
+        }
+        previous_layer = Some(layer_index);
+
+        let layer = &graph.layers[layer_index];
+        let node = &graph.layerless_nodes[node_index];
+        let half_height = node.size.height / 2.0;
+        let above = if position == 0 {
+            node.margin.top + half_height
+        } else {
+            let neighbor_index = layer.nodes[position - 1];
+            let neighbor = &graph.layerless_nodes[neighbor_index];
+            neighbor.position.y
+                + neighbor.size.height
+                + neighbor.margin.bottom
+                + vertical_spacing(graph, neighbor_index, node_index)
+                + node.margin.top
+                + half_height
+        };
+        min_center = min_center.max(above);
+
+        if let Some(&neighbor_index) = layer.nodes.get(position + 1) {
+            let neighbor = &graph.layerless_nodes[neighbor_index];
+            let below = neighbor.position.y
+                - neighbor.margin.top
+                - vertical_spacing(graph, node_index, neighbor_index)
+                - node.margin.bottom
+                - half_height;
+            max_center = max_center.min(below);
+        }
+
+        if min_center > max_center {
+            return None;
+        }
+    }
+
+    Some((min_center, max_center))
+}
+
+fn discover_segments(
+    graph: &LGraph,
+    layer_positions: &[Option<(usize, usize)>],
+) -> Vec<Vec<usize>> {
     let mut visited = vec![false; graph.layerless_nodes.len()];
     let mut segments = Vec::new();
 
@@ -58,24 +134,8 @@ fn discover_segments(graph: &LGraph) -> Vec<Vec<usize>> {
                 }
             }
 
-            segment.sort_by_key(|node| {
-                (
-                    graph.layerless_nodes[*node]
-                        .layer_index
-                        .unwrap_or(usize::MAX),
-                    graph
-                        .layers
-                        .iter()
-                        .enumerate()
-                        .find_map(|(layer_index, layer)| {
-                            layer
-                                .nodes
-                                .iter()
-                                .position(|candidate| candidate == node)
-                                .map(|position| (layer_index, position))
-                        })
-                        .unwrap_or((usize::MAX, usize::MAX)),
-                )
+            segment.sort_unstable_by_key(|node| {
+                layer_positions[*node].unwrap_or((usize::MAX, usize::MAX))
             });
             segments.push(segment);
         }
@@ -125,15 +185,16 @@ fn is_segment_node(graph: &LGraph, node_index: usize) -> bool {
 
 fn node_center_y(graph: &LGraph, node_index: usize) -> f64 {
     let node = &graph.layerless_nodes[node_index];
-    node.position.y + node.margin.top + node.size.height / 2.0
+    node.position.y + node.size.height / 2.0
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::graph::LMargin;
     use crate::importer::{ElkInputEdge, ElkInputGraph, ElkInputNode, import_graph};
     use crate::intermediate::split_long_edges;
-    use crate::options::{ElkDirection, LayeredOptions};
+    use crate::options::{ElkDirection, LayeredOptions, SpacingOptions};
     use crate::p2layers::layer_network_simplex;
 
     fn node(id: &str) -> ElkInputNode {
@@ -168,6 +229,223 @@ mod tests {
             priority_shortness: 0,
             priority_straightness: 0,
         }
+    }
+
+    fn layered_graph(layers: &[&[&str]], connections: &[(&str, &str)]) -> LGraph {
+        let mut graph = import_graph(&ElkInputGraph {
+            id: "root".into(),
+            options: LayeredOptions {
+                direction: ElkDirection::Right,
+                spacing: SpacingOptions {
+                    node_node: 31.0,
+                    edge_node: 17.0,
+                    edge_edge: 7.0,
+                    label_node: 11.0,
+                    ..Default::default()
+                },
+                ..Default::default()
+            },
+            nodes: layers
+                .iter()
+                .flat_map(|layer| layer.iter().map(|id| node(id)))
+                .collect(),
+            edges: connections
+                .iter()
+                .enumerate()
+                .map(|(index, (source, target))| edge(&format!("e{index}"), source, target))
+                .collect(),
+        })
+        .unwrap();
+        let mut node_index = 0;
+        for (layer_index, layer) in layers.iter().enumerate() {
+            for _ in *layer {
+                graph.set_node_layer(node_index, layer_index);
+                node_index += 1;
+            }
+        }
+        graph
+    }
+
+    fn assert_layer_spacing(graph: &LGraph) {
+        for layer in &graph.layers {
+            if let Some(&first) = layer.nodes.first() {
+                let node = &graph.layerless_nodes[first];
+                assert!(
+                    node.position.y >= node.margin.top,
+                    "{} lost its top margin",
+                    node.id
+                );
+            }
+            for pair in layer.nodes.windows(2) {
+                let above = &graph.layerless_nodes[pair[0]];
+                let below = &graph.layerless_nodes[pair[1]];
+                let gap = below.position.y
+                    - below.margin.top
+                    - (above.position.y + above.size.height + above.margin.bottom);
+                let spacing = super::super::vertical_spacing(graph, pair[0], pair[1]);
+                assert!(
+                    gap >= spacing,
+                    "{} -> {}: gap={gap}, spacing={spacing}",
+                    above.id,
+                    below.id
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn linear_segments_placer_respects_predecessor_margins_and_edge_node_spacing() {
+        let mut graph = layered_graph(&[&["above", "a"], &["b"]], &[("a", "b")]);
+        graph.layerless_nodes[0].size.height = 40.0;
+        graph.layerless_nodes[0].margin = LMargin {
+            top: 3.0,
+            bottom: 7.0,
+            ..Default::default()
+        };
+        graph.layerless_nodes[1].kind = LNodeKind::LongEdge;
+        graph.layerless_nodes[1].size.height = 4.0;
+        graph.layerless_nodes[1].margin = LMargin {
+            top: 5.0,
+            bottom: 6.0,
+            ..Default::default()
+        };
+        graph.layerless_nodes[2].kind = LNodeKind::NorthSouthPort;
+        graph.layerless_nodes[2].size.height = 10.0;
+        graph.layerless_nodes[2].margin = LMargin {
+            top: 2.0,
+            bottom: 8.0,
+            ..Default::default()
+        };
+
+        place_nodes_linear_segments(&mut graph);
+
+        // The predecessor requires a.y >= 3 + 40 + 7 + 17 + 5 = 72.
+        assert_eq!(graph.layerless_nodes[1].position.y, 72.0);
+        assert_eq!(graph.layerless_nodes[2].position.y, 69.0);
+        assert_eq!(
+            graph.layerless_nodes[1].position.y + 2.0,
+            graph.layerless_nodes[2].position.y + 5.0
+        );
+        assert_eq!(graph.layers[0].nodes, [0, 1]);
+        assert_layer_spacing(&graph);
+    }
+
+    #[test]
+    fn linear_segments_placer_respects_successor_margins_and_label_node_spacing() {
+        let mut graph = layered_graph(&[&["a", "below"], &["b"]], &[("a", "b")]);
+        graph.layerless_nodes[0].kind = LNodeKind::NorthSouthPort;
+        graph.layerless_nodes[0].size.height = 4.0;
+        graph.layerless_nodes[0].margin = LMargin {
+            top: 5.0,
+            bottom: 6.0,
+            ..Default::default()
+        };
+        graph.layerless_nodes[1].kind = LNodeKind::Label;
+        graph.layerless_nodes[1].size.height = 40.0;
+        graph.layerless_nodes[1].margin = LMargin {
+            top: 7.0,
+            bottom: 3.0,
+            ..Default::default()
+        };
+        graph.layerless_nodes[2].kind = LNodeKind::LongEdge;
+        graph.layerless_nodes[2].size.height = 10.0;
+        graph.layerless_nodes[2].margin = LMargin {
+            top: 2.0,
+            bottom: 8.0,
+            ..Default::default()
+        };
+
+        place_nodes_linear_segments(&mut graph);
+
+        // The successor requires a.y <= 33 - 7 - 11 - 4 - 6 = 5.
+        assert_eq!(graph.layerless_nodes[0].position.y, 5.0);
+        assert_eq!(graph.layerless_nodes[2].position.y, 2.0);
+        assert_eq!(
+            graph.layerless_nodes[0].position.y + 2.0,
+            graph.layerless_nodes[2].position.y + 5.0
+        );
+        assert_eq!(graph.layers[0].nodes, [0, 1]);
+        assert_layer_spacing(&graph);
+    }
+
+    #[test]
+    fn linear_segments_placer_preserves_feasible_positions_when_center_intersection_is_empty() {
+        let mut graph = layered_graph(&[&["above", "a"], &["b", "below"]], &[("a", "b")]);
+        graph.layerless_nodes[0].size.height = 40.0;
+        graph.layerless_nodes[0].margin = LMargin {
+            top: 3.0,
+            bottom: 7.0,
+            ..Default::default()
+        };
+        graph.layerless_nodes[1].kind = LNodeKind::LongEdge;
+        graph.layerless_nodes[1].size.height = 4.0;
+        graph.layerless_nodes[1].margin = LMargin {
+            top: 5.0,
+            bottom: 6.0,
+            ..Default::default()
+        };
+        graph.layerless_nodes[2].kind = LNodeKind::NorthSouthPort;
+        graph.layerless_nodes[2].size.height = 10.0;
+        graph.layerless_nodes[2].margin = LMargin {
+            top: 2.0,
+            bottom: 8.0,
+            ..Default::default()
+        };
+        graph.layerless_nodes[3].kind = LNodeKind::Label;
+        graph.layerless_nodes[3].size.height = 100.0;
+        graph.layerless_nodes[3].margin = LMargin {
+            top: 9.0,
+            bottom: 1.0,
+            ..Default::default()
+        };
+        let mut expected = graph.clone();
+        place_nodes_simple(&mut expected);
+
+        place_nodes_linear_segments(&mut graph);
+
+        // a needs a center >= 103.5, while b needs a center <= 7.
+        assert_eq!(graph.layerless_nodes[1].position.y, 101.5);
+        assert_eq!(graph.layerless_nodes[2].position.y, 2.0);
+        assert_eq!(graph, expected);
+        assert_layer_spacing(&graph);
+    }
+
+    #[test]
+    fn linear_segments_placer_uses_current_positions_of_previously_aligned_segments() {
+        let mut graph = layered_graph(
+            &[&["a0", "tail0"], &["a1", "b1"], &["b2", "tail2"]],
+            &[("a0", "a1"), ("b1", "b2")],
+        );
+        for index in [0, 2, 3, 4] {
+            graph.layerless_nodes[index].kind = LNodeKind::LongEdge;
+            graph.layerless_nodes[index].size.height = 2.0;
+        }
+        graph.layerless_nodes[1].size.height = 100.0;
+        graph.layerless_nodes[5].size.height = 80.0;
+
+        place_nodes_linear_segments(&mut graph);
+
+        // Moving a1 from 54 to 0 opens b1's feasible center interval [10, 11].
+        assert_eq!(graph.layerless_nodes[0].position.y, 0.0);
+        assert_eq!(graph.layerless_nodes[2].position.y, 0.0);
+        assert_eq!(graph.layerless_nodes[3].position.y, 10.0);
+        assert_eq!(graph.layerless_nodes[4].position.y, 10.0);
+        assert_eq!(graph.layers[1].nodes, [2, 3]);
+        assert_layer_spacing(&graph);
+    }
+
+    #[test]
+    fn linear_segments_placer_does_not_collapse_branched_nodes_in_the_same_layer() {
+        let mut graph = layered_graph(&[&["a"], &["b", "c"]], &[("a", "b"), ("a", "c")]);
+        for node in &mut graph.layerless_nodes {
+            node.kind = LNodeKind::LongEdge;
+            node.size.height = 2.0;
+        }
+
+        place_nodes_linear_segments(&mut graph);
+
+        assert_eq!(graph.layers[1].nodes, [1, 2]);
+        assert_layer_spacing(&graph);
     }
 
     #[test]

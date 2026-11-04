@@ -1,8 +1,10 @@
 use merman_elk_layered::{
-    ElkDirection, ElkPadding, LGraph, LLabel, LNode, LPoint, LSize, LayeredOptions,
-    NodeLabelPlacement, PipelineError, ProcessorKind, WorkControl, WorkError,
-    execute_ported_processors, execute_processors_until_processor,
-    execute_processors_until_processor_with_work_control,
+    CrossingMinimizationStrategy, ElkDirection, ElkInputEdge, ElkInputGraph, ElkInputLabel,
+    ElkInputNode, ElkPadding, LGraph, LLabel, LNode, LPoint, LSize, LayeredOptions,
+    LayeringStrategy, NodeFlexibility, NodeLabelPlacement, NodePlacementStrategy, PipelineError,
+    ProcessorKind, SpacingOptions, WorkControl, WorkError, execute_ported_processors,
+    execute_processors_until_processor, execute_processors_until_processor_with_work_control,
+    import_graph,
 };
 
 fn graph(placement: NodeLabelPlacement, direction: ElkDirection) -> LGraph {
@@ -115,6 +117,155 @@ fn public_pipeline_places_the_whole_outside_group_before_restoring_input_directi
                 width: 80.0,
                 height: 70.0
             }
+        );
+    }
+}
+
+fn linear_segments_input(nodes: &[(&str, f64)], label_height: f64) -> ElkInputGraph {
+    ElkInputGraph {
+        id: "root".into(),
+        options: LayeredOptions {
+            direction: ElkDirection::Right,
+            layering_strategy: LayeringStrategy::LongestPath,
+            crossing_minimization_strategy: CrossingMinimizationStrategy::None,
+            node_placement_strategy: NodePlacementStrategy::LinearSegments,
+            spacing: SpacingOptions {
+                edge_node: 10.0,
+                label_node: 5.0,
+                ..Default::default()
+            },
+            ..Default::default()
+        },
+        nodes: nodes
+            .iter()
+            .copied()
+            .map(|(id, height)| ElkInputNode {
+                id: id.into(),
+                width: 80.0,
+                height,
+                parent: None,
+                direction: None,
+                hierarchy_handling: None,
+                layer_constraint: None,
+                port_constraints: None,
+                port_alignment: None,
+                node_label_placement: if id == "N" {
+                    NodeLabelPlacement::OutsideBottomCenter
+                } else {
+                    NodeLabelPlacement::Fixed
+                },
+                node_flexibility: NodeFlexibility::None,
+                ports_surrounding: None,
+                nested_options: None,
+                label: (id == "N").then(|| ElkInputLabel::center("outside", 80.0, label_height)),
+            })
+            .collect(),
+        edges: nodes
+            .windows(2)
+            .map(|pair| (pair[0].0, pair[1].0))
+            .chain([("S", "T")])
+            .map(|(source, target)| ElkInputEdge {
+                id: format!("{source}{target}"),
+                source: source.into(),
+                target: target.into(),
+                labels: Vec::new(),
+                minlen: 1,
+                inside_self_loops_yo: false,
+                model_order: None,
+                priority_direction: 0,
+                priority_shortness: 0,
+                priority_straightness: 0,
+            })
+            .collect(),
+    }
+}
+
+#[test]
+fn imported_linear_segments_long_edge_preserves_outside_label_clearance() {
+    let input = linear_segments_input(
+        &[("S", 40.0), ("N", 40.0), ("M", 100.0), ("T", 40.0)],
+        200.0,
+    );
+    let mut graph = import_graph(&input).unwrap();
+
+    let executed = execute_ported_processors(&mut graph).unwrap();
+
+    assert!(executed.contains(&ProcessorKind::LinearSegmentsNodePlacer));
+    let node = graph
+        .layerless_nodes
+        .iter()
+        .find(|node| node.id == "N")
+        .unwrap();
+    let label = &node.labels[0];
+    assert_eq!(
+        node.size,
+        LSize {
+            width: 80.0,
+            height: 40.0
+        }
+    );
+    assert_eq!(label.position, LPoint { x: 0.0, y: 45.0 });
+    let left = node.position.x + label.position.x;
+    let top = node.position.y + label.position.y;
+    let right = left + label.size.width;
+    let bottom = top + label.size.height;
+    let edge = graph.edges.iter().find(|edge| edge.id == "ST").unwrap();
+    let mut route = Vec::new();
+    let source = &graph.layerless_nodes[edge.source.node];
+    let source_port = &source.ports[edge.source.port];
+    route.push(LPoint {
+        x: source.position.x + source_port.position.x + source_port.anchor.x,
+        y: source.position.y + source_port.position.y + source_port.anchor.y,
+    });
+    route.extend_from_slice(&edge.bend_points);
+    let target = &graph.layerless_nodes[edge.target.node];
+    let target_port = &target.ports[edge.target.port];
+    route.push(LPoint {
+        x: target.position.x + target_port.position.x + target_port.anchor.x,
+        y: target.position.y + target_port.position.y + target_port.anchor.y,
+    });
+    let clearance = input.options.spacing.edge_node;
+    for segment in route.windows(2) {
+        let [start, end] = [segment[0], segment[1]];
+        assert!(
+            start.x == end.x || start.y == end.y,
+            "non-orthogonal ST segment: {segment:?}"
+        );
+        assert!(
+            start.x.max(end.x) <= left - clearance
+                || start.x.min(end.x) >= right + clearance
+                || start.y.max(end.y) <= top - clearance
+                || start.y.min(end.y) >= bottom + clearance,
+            "ST segment {segment:?} must keep {clearance} clearance from N's outside label \
+             [left={left}, top={top}, right={right}, bottom={bottom}]"
+        );
+    }
+}
+
+#[test]
+fn imported_linear_segments_large_finite_centers_do_not_overflow_the_mean() {
+    let input = linear_segments_input(
+        &[
+            ("S", 40.0),
+            ("N", 40.0),
+            ("M", 100.0),
+            ("K", 40.0),
+            ("T", 40.0),
+        ],
+        1e308,
+    );
+    let mut graph = import_graph(&input).unwrap();
+    execute_ported_processors(&mut graph).unwrap();
+
+    assert!(graph.size.width.is_finite() && graph.size.height.is_finite());
+    for node in &graph.layerless_nodes {
+        assert!(node.position.x.is_finite() && node.position.y.is_finite());
+    }
+    for edge in &graph.edges {
+        assert!(
+            edge.bend_points
+                .iter()
+                .all(|point| point.x.is_finite() && point.y.is_finite())
         );
     }
 }
