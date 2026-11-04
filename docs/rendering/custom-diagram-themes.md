@@ -138,6 +138,11 @@ Mermaid catalog includes `default`, `base`, `dark`, `forest`, `neutral`, `neo`, 
 `redux`, `redux-dark`, `redux-color`, and `redux-dark-color`. **Merman styling** is a separate
 selection that affects Merman only. Its preset cards come from the loaded runtime's catalog;
 card swatches illustrate the preset rather than render the current diagram.
+Unknown or unavailable saved preset IDs remain in the workspace and shared link. Playground
+omits that extension preset for preview, keeps the Mermaid base theme and source styles, and
+shows a notice beside the diagram and in the image export dialog. The core render APIs continue
+to reject unknown preset IDs. Invalid custom recipes and diagram errors retain their normal
+failure behavior; they do not trigger this preset fallback.
 Each card also reports the current family's design treatment. The selected preset lists
 reviewed diagram families and any settings guidance. The render outcome appears directly in
 the panel; optional output details and **Advanced** retain exact evidence for developers.

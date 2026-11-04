@@ -455,6 +455,8 @@
     "validating": "Validating recipe…",
     "applied": "Applied to this workspace",
     "unknownPreset": "Unavailable in this runtime: {{id}}. Your selection is preserved.",
+    "unavailablePresetPreview": "Preset {{id}} is unavailable. This preview uses the Mermaid base theme and source styles; your selection is preserved.",
+    "unavailablePresetExport": "Preset {{id}} was not applied. This export uses the Mermaid base theme and source styles shown in the preview.",
     "mermaidTheme": "Mermaid base theme",
     "mermanStyling": "Merman styling · Merman only",
     "compatibilityHint": "Base theme and font preview in both engines. Apply uses all panel changes for this workspace. Cancel discards them; source and config editor edits stay.",

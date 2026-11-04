@@ -627,7 +627,7 @@ test("does not inspect hidden workspace source until rendering resumes", async (
   assert.ok(sourceReads > 0);
 });
 
-test("passes one frozen operation to every Merman projection", async () => {
+test("passes one frozen base-theme preview to every projection while preserving an unknown preset", async () => {
   const operations: FrozenRenderOperation[] = [];
   const capture = (input: ConfiguredMermanOperationInput) => {
     operations.push(input as FrozenRenderOperation);
@@ -687,11 +687,62 @@ test("passes one frozen operation to every Merman projection", async () => {
   assert.ok(
     operations.every((operation) => operation === state.snapshot.operation),
   );
+  assert.equal(state.snapshot.operation.themePresetId, "future-theme");
+  assert.equal(state.snapshot.operation.unavailableThemePresetId, "future-theme");
+  assert.equal(state.snapshot.operation.bindingOptions.theme, undefined);
   assert.equal(Object.isFrozen(state), true);
   assert.equal(Object.isFrozen(state.detection), true);
   assert.equal(Object.isFrozen(state.diagnostics), true);
   assert.equal(Object.isFrozen(state.merman), true);
   assert.equal(Reflect.set(state, "publishedAt", 99), false);
+});
+
+test("unavailable preset previews render once with the base theme without hiding other failures", async (t) => {
+  for (const failSource of [false, true]) {
+    const rendered: ConfiguredMermanOperationInput[] = [];
+    const base = facade();
+    const domain: MermanDomainFacade = {
+      ...base,
+      render(operation) {
+        rendered.push(operation);
+        if (operation.bindingOptions.theme || failSource) {
+          return {
+            artifact: null, metadata: null, error: { summary: "Invalid source or theme", detail: null },
+            renderTime: 0, stage: "render", status: "failure",
+          };
+        }
+        return base.render(operation);
+      },
+    };
+    const coordinator = createRenderCoordinator({ compare: fakeCompare([]), debounceMs: 0 });
+    t.after(() => coordinator.dispose());
+    coordinator.setInput(input("source", domain, { themePresetId: "future-preset" }));
+    await waitFor(() => coordinator.store.getState().status === (failSource ? "failed" : "success"));
+    assert.equal(rendered.length, 1);
+    assert.equal(rendered[0].bindingOptions.theme, undefined);
+  }
+});
+
+test("a failed preview catalog query retains the strict theme request and its error", async (t) => {
+  const rendered: ConfiguredMermanOperationInput[] = [];
+  const domain: MermanDomainFacade = {
+    ...facade(),
+    themeCatalog() { throw new Error("Catalog unavailable"); },
+    render(operation) {
+      rendered.push(operation);
+      return {
+        artifact: null, metadata: null, error: { summary: "Unknown preset", detail: null },
+        renderTime: 0, stage: "render", status: "failure",
+      };
+    },
+  };
+  const coordinator = createRenderCoordinator({ compare: fakeCompare([]), debounceMs: 0 });
+  t.after(() => coordinator.dispose());
+  coordinator.setInput(input("source", domain, { themePresetId: "future-preset" }));
+  await waitFor(() => coordinator.store.getState().status === "failed");
+  assert.equal(rendered.length, 1);
+  assert.deepEqual(rendered[0].bindingOptions.theme, { preset: "future-preset" });
+  assert.equal((rendered[0] as FrozenRenderOperation).unavailableThemePresetId, null);
 });
 
 test("external pane geometry cannot change operation identity or enqueue another render", async () => {

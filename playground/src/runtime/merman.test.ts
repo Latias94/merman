@@ -352,6 +352,32 @@ test("runtime preserves authored theme and font overrides after safe UI initiali
   assert.equal(input.configurationError, null);
 });
 
+test("preview catalog admission preserves selections and only omits unavailable presets", () => {
+  for (const [themePresets, unavailable] of [
+    [undefined, false],
+    [[], true],
+    [[{ id: "ghibli", available: false }], true],
+    [[{ id: "ghibli", available: true }], false],
+  ] as const) {
+    const frozen = operation({ workspace: { themePresetId: " ghibli " }, themePresets });
+    assert.equal(frozen.themePresetId, " ghibli ");
+    assert.equal(frozen.unavailableThemePresetId, unavailable ? " ghibli " : null);
+    assert.deepEqual(frozen.bindingOptions.theme, unavailable ? undefined : { preset: " ghibli " });
+    const raster = renderOperationWithSvgPipeline(frozen, "resvg-safe");
+    assert.equal(raster.unavailableThemePresetId, frozen.unavailableThemePresetId);
+    assert.deepEqual(raster.bindingOptions.theme, frozen.bindingOptions.theme);
+  }
+  const invalid = operation({
+    themePresets: [],
+    workspace: {
+      themePresetId: "future-preset",
+      themeRecipeJson: '{"schema_version":1,"kind":"complete_spec","complete_spec":{}}',
+    },
+  });
+  assert.ok(invalid.configurationError);
+  assert.equal(invalid.unavailableThemePresetId, null);
+});
+
 test("keeps Mermaid theme, compiled theme preset, and SVG pipeline independent", () => {
   const plain = configuredMermanOperationInput(
     "flowchart TD\nA",
@@ -485,6 +511,7 @@ function operation({
   },
   versions = { merman: "test", mermaid: "11.16.0" },
   viewport = { width: 800, height: 600 },
+  themePresets,
   workspace: workspaceOverrides = {},
 }: {
   asciiEnabled?: boolean;
@@ -493,6 +520,7 @@ function operation({
   layoutEnvironment?: FreezeRenderOperationInput["layoutEnvironment"];
   versions?: FreezeRenderOperationInput["versions"];
   viewport?: FreezeRenderOperationInput["viewport"];
+  themePresets?: FreezeRenderOperationInput["themePresets"];
   workspace?: Partial<WorkspaceSnapshot>;
 } = {}) {
   const workspace: WorkspaceSnapshot = {
@@ -507,6 +535,7 @@ function operation({
     layoutEnvironment,
     versions,
     viewport,
+    themePresets,
     workspace,
   });
 }

@@ -28,6 +28,7 @@ export interface FrozenExportTarget {
   readonly filename: string;
   readonly publicationId: RenderPublicationId;
   readonly svgArtifact: NavigableInlineSvg;
+  readonly unavailableThemePresetId: string | null;
 }
 
 export interface FreezeExportTargetCommand {
@@ -114,6 +115,7 @@ export function createExportTargetOwner({
         filename: `${command.engine}-diagram`,
         publicationId: command.publicationId,
         svgArtifact,
+        unavailableThemePresetId: command.engine === "merman" ? publication.snapshot.operation.unavailableThemePresetId : null,
       });
       authorities.set(
         target,

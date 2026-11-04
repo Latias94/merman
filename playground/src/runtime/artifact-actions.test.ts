@@ -150,6 +150,29 @@ test("export rejects a publication whose theme alone differs from the applied se
   }
 });
 
+test("export freezes the unavailable preset notice with the actual base-theme raster operation", () => {
+  const base = completedPublication("base-theme");
+  const applied = { ...workspace("base-theme"), themePresetId: "future-preset" };
+  const operation = freezeRenderOperation({
+    ...base.snapshot.operation, workspace: applied, themePresets: [],
+  });
+  const publication: CompletedRenderBatch = { ...base, snapshot: { ...base.snapshot, operation } };
+  const inputs: ConfiguredMermanOperationInput[] = [];
+  const owner = createExportTargetOwner({
+    getRenderState: () => publication,
+    getRuntimeState: () => readyRuntime((input) => {
+      inputs.push(input);
+      return { artifact: projectNavigableInlineSvg(svg("raster-base")), error: null, metadata: null, renderTime: 1, status: "success" };
+    }),
+    getAppliedWorkspace: () => applied,
+  });
+  const target = owner.freeze({ engine: "merman", publicationId: publication.snapshot.publicationId });
+  assert.equal(target.unavailableThemePresetId, "future-preset");
+  owner.rasterArtifact(target);
+  assert.equal(inputs[0].bindingOptions.theme, undefined);
+  assert.equal(owner.freeze({ engine: "mermaid", publicationId: publication.snapshot.publicationId }).unavailableThemePresetId, null);
+});
+
 test("renders and caches ASCII only after an explicit artifact action", async () => {
   const completed = completedPublication("on-demand");
   const publication: CompletedRenderBatch = Object.freeze({

@@ -425,6 +425,9 @@ function ExportDialog({
               publication: target.publicationId,
             })}
           </DialogDescription>
+          {target.unavailableThemePresetId && <p role="status" className="break-words text-xs text-muted-foreground" data-testid="export-theme-preset-fallback">
+            {t("themePanel.unavailablePresetExport", { id: target.unavailableThemePresetId })}
+          </p>}
           <DialogClose asChild>
             <Button
               type="button"

@@ -40,6 +40,7 @@ const batch: CompletedRenderBatch = {
     bindingOptions: { version: 3 }, bindingOptionsJson: null,
     theme: workspace.diagramTheme, configJson: workspace.mermaidConfig,
     themePresetId: workspace.themePresetId, themeRecipeJson: workspace.themeRecipeJson,
+    unavailableThemePresetId: null,
     textMeasurementMode: workspace.textMeasurementMode, diagramFont: workspace.diagramFont, svgPipeline: workspace.svgPipeline,
     layoutEnvironment: { containerWidth: 800, containerHeight: 600 }, viewport: { width: 800, height: 600 },
     versions: { merman: "test", mermaid: "test" }, asciiEnabled: false, compareEnabled: false, diagnosticsEnabled: false,

@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { encodeShareHash } from "../src/lib/share";
+import { decodeShareHash, encodeShareHash } from "../src/lib/share";
 import { monitorBrowserErrors, replaceEditorSource, waitForPreviewSvg } from "./helpers/playground";
 
 test("theme selection survives family changes without authoring controls", async ({ page }) => {
@@ -106,7 +106,8 @@ test("Ghibli lists only its reviewed Pie design and retains selection for unrevi
 });
 
 
-test("an unknown saved preset remains selected and is explained as unavailable", async ({ page }) => {
+test("an unknown saved preset keeps its selection while preview and export use the base theme", async ({ page }) => {
+  await page.context().grantPermissions(["clipboard-read", "clipboard-write"]);
   await page.addInitScript(() => window.localStorage.setItem("merman-language", "en"));
   const hash = encodeShareHash({
     code: "flowchart LR\nA --> B",
@@ -120,6 +121,20 @@ test("an unknown saved preset remains selected and is explained as unavailable",
   });
   await page.goto(`./${hash}`, { waitUntil: "domcontentloaded" });
   await expect(page.locator("footer")).toContainText("Ready");
+  await waitForPreviewSvg(page);
+  await expect(page.getByTestId("theme-preset-fallback")).toContainText("future-preset");
+  await expect(page.getByTestId("theme-preset-fallback")).toContainText("Mermaid base theme");
+  await page.getByRole("button", { name: "Share", exact: true }).click();
+  await page.getByRole("menuitem", { name: "Copy workspace link", exact: true }).click();
+  const shareUrl = await page.evaluate(() => navigator.clipboard.readText());
+  expect(decodeShareHash(new URL(shareUrl).hash)?.themePresetId).toBe("future-preset");
+  await page.getByRole("button", { name: "Export", exact: true }).click();
+  await page.getByRole("menuitem", { name: "Export image…", exact: true }).click();
+  await expect(page.getByTestId("export-theme-preset-fallback")).toContainText("future-preset was not applied");
+  await page.getByRole("button", { name: "Close export", exact: true }).click();
+  await page.getByRole("tab", { name: "Compare", exact: true }).click();
+  await expect(page.locator('[data-merman-compare-engine="merman"]')).toHaveAttribute("data-merman-artifact-state", "ready");
+  await expect(page.locator('[data-merman-compare-engine="mermaid"]')).toHaveAttribute("data-merman-artifact-state", "ready");
   await page.getByRole("button", { name: "Theme", exact: true }).click();
   const workbench = page.locator("#theme-panel");
   await expect(workbench.locator("header")).toContainText("future-preset");
@@ -129,4 +144,10 @@ test("an unknown saved preset remains selected and is explained as unavailable",
   await expect(workbench.getByRole("button", { name: "Apply", exact: true })).toBeDisabled();
   await expect(workbench.getByRole("button", { name: "Download JSON", exact: true })).toBeDisabled();
   await expect(workbench.locator('button[aria-pressed="true"]')).toHaveCount(0);
+  await expect(workbench.getByTestId("theme-outcome")).toContainText("Mermaid base theme");
+  await page.screenshot({ path: test.info().outputPath("unavailable-preset-desktop.png") });
+  await page.setViewportSize({ width: 390, height: 844 });
+  await expect(page.getByTestId("theme-preset-fallback")).toBeVisible();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+  await page.screenshot({ path: test.info().outputPath("unavailable-preset-mobile.png") });
 });

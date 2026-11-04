@@ -459,6 +459,8 @@
     "validating": "正在校验配方…",
     "applied": "已应用于当前工作区",
     "unknownPreset": "当前运行时不支持 {{id}}，已保留所选预设。",
+    "unavailablePresetPreview": "预设 {{id}} 当前不可用。预览使用 Mermaid 基础主题和源码样式，已保留所选预设。",
+    "unavailablePresetExport": "预设 {{id}} 未应用。导出使用预览中显示的 Mermaid 基础主题和源码样式。",
     "mermaidTheme": "Mermaid 基础主题",
     "choosePreset": "Merman 预设",
     "howThemesCombine": "主题、源码设置与字体如何共同生效",

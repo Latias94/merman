@@ -4,7 +4,7 @@ import { encodeShareHash } from "../src/lib/share";
 import { DEFAULT_WORKSPACE_SNAPSHOT, type WorkspaceSnapshot } from "../src/lib/workspace-snapshot";
 import { monitorBrowserErrors, replaceEditorSource } from "./helpers/playground";
 
-test("Compare keeps the successful Mermaid dark canvas when Merman rejects a saved preset", async ({ page }) => {
+test("Compare keeps the successful Mermaid dark canvas when Merman rejects a custom theme", async ({ page }) => {
   const errors = monitorBrowserErrors(page);
   await openPartialCompare(page);
   const mermaid = page.locator('[data-merman-compare-engine="mermaid"]');
@@ -105,7 +105,8 @@ async function openPartialCompare(page: Page, workspace: Partial<WorkspaceSnapsh
     code: "flowchart LR\nA --> B",
     mermaidConfig: "{}",
     diagramTheme: "dark",
-    themePresetId: "future-preset",
+    themePresetId: null,
+    themeRecipeJson: '{"schema_version":1,"kind":"complete_spec","complete_spec":{"not_a_theme_field":true}}',
     ...workspace,
   })}`, { waitUntil: "domcontentloaded" });
   await expect(page.locator("footer")).toContainText("Ready");
@@ -113,6 +114,6 @@ async function openPartialCompare(page: Page, workspace: Partial<WorkspaceSnapsh
   await page.getByRole("tab", { name: "Compare", exact: true }).click();
   const merman = page.locator('[data-merman-compare-engine="merman"]');
   await expect(merman).toHaveAttribute("data-merman-artifact-state", "rejected");
-  await expect(merman).toContainText("future-preset");
+  await expect(merman).toContainText("not_a_theme_field");
   await expect(page.locator('[data-merman-compare-engine="mermaid"]')).toHaveAttribute("data-merman-artifact-state", "ready");
 }

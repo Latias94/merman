@@ -23,11 +23,13 @@ export function ThemeRenderEvidence({ render }: { render: CurrentThemeRender }) 
     ? readThemeExecutionEvidence(render.batch.merman.metadata) : null;
   const outcome = render.status === "ready" ? themeEvidenceOutcome(evidence) : render.status;
   const target = themeTargetOutcome(evidence);
+  const unavailablePreset = render.batch?.snapshot.operation.unavailableThemePresetId;
   return <section className="space-y-2 rounded-md border p-3 text-xs" aria-label={t("themePanel.renderOutcome")}
     data-testid="theme-render-evidence" data-theme-evidence-state={outcome} aria-live="polite" aria-atomic="true">
     <h3 className="font-semibold">{t("themePanel.renderOutcome")}</h3>
     <p data-testid="theme-outcome" className="leading-relaxed">
-      {render.status === "waiting" ? t(`themePanel.waiting.${render.reason}`) : t(`themePanel.outcome.${outcome}`)}
+      {unavailablePreset ? t("themePanel.unavailablePresetPreview", { id: unavailablePreset })
+        : render.status === "waiting" ? t(`themePanel.waiting.${render.reason}`) : t(`themePanel.outcome.${outcome}`)}
     </p>
     {render.status === "failed" && render.batch.merman.status === "failure" &&
       <p className="break-words text-destructive">{render.batch.merman.message}</p>}

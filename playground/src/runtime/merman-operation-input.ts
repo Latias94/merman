@@ -1,6 +1,7 @@
 import {
   BINDING_OPTIONS_SCHEMA_VERSION,
   type HostTextMeasurerSvgBindingOptions,
+  type ThemePresetCatalogEntry,
 } from "@mermanjs/web";
 
 import type { DiagramFont } from "../lib/diagram-font.ts";
@@ -69,6 +70,7 @@ export interface FrozenRenderOperation
   readonly layoutEnvironment: Readonly<MermanLayoutEnvironment>;
   readonly themePresetId: string | null;
   readonly themeRecipeJson: string | null;
+  readonly unavailableThemePresetId: string | null;
   readonly svgPipeline: MermanSvgPipeline;
   readonly theme: WorkspaceSnapshot["diagramTheme"];
   readonly versions: Readonly<RenderOperationVersions>;
@@ -83,6 +85,7 @@ export interface FreezeRenderOperationInput {
   readonly versions: RenderOperationVersions;
   readonly viewport: RealmViewport | null;
   readonly workspace: Readonly<WorkspaceSnapshot>;
+  readonly themePresets?: readonly Pick<ThemePresetCatalogEntry, "id" | "available">[];
 }
 
 export function configuredMermanOperationInput(
@@ -112,8 +115,13 @@ export function freezeRenderOperation({
   versions,
   viewport,
   workspace,
+  themePresets,
 }: FreezeRenderOperationInput): FrozenRenderOperation {
   const frozenLayout = freezeLayoutEnvironment(layoutEnvironment);
+  const selectedPreset = workspace.themePresetId;
+  const unavailableThemePresetId = selectedPreset && workspace.themeRecipeJson === null &&
+    themePresets && !themePresets.some((preset) => preset.id === selectedPreset.trim() && preset.available)
+    ? selectedPreset : null;
   const configured = freezeConfiguredInput(
     workspace.code,
     workspace.diagramTheme,
@@ -121,7 +129,7 @@ export function freezeRenderOperation({
     {
       diagramFont: workspace.diagramFont,
       layoutEnvironment: frozenLayout,
-      themePresetId: workspace.themePresetId,
+      themePresetId: unavailableThemePresetId === null ? workspace.themePresetId : null,
       themeRecipeJson: workspace.themeRecipeJson,
       svgPipeline: workspace.svgPipeline,
       textMeasurementMode: workspace.textMeasurementMode,
@@ -137,6 +145,7 @@ export function freezeRenderOperation({
     layoutEnvironment: frozenLayout,
     themePresetId: workspace.themePresetId,
     themeRecipeJson: workspace.themeRecipeJson,
+    unavailableThemePresetId,
     svgPipeline: workspace.svgPipeline,
     theme: workspace.diagramTheme,
     versions: Object.freeze({ ...versions }),
@@ -176,6 +185,7 @@ export function sameRenderOperation(
     left.configJson === right.configJson &&
     left.themePresetId === right.themePresetId &&
     left.themeRecipeJson === right.themeRecipeJson &&
+    left.unavailableThemePresetId === right.unavailableThemePresetId &&
     left.textMeasurementMode === right.textMeasurementMode &&
     left.diagramFont === right.diagramFont &&
     left.layoutEnvironment.containerWidth ===

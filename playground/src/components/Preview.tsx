@@ -499,7 +499,7 @@ export function Preview({ active = true, className }: PreviewProps) {
     <div className={cn("flex flex-col h-full", className)}>
       {renderTabBar(toolbarActions)}
       {canvasMode && <ThemeRenderStatus />}
-      {previewMode === "compare" && Boolean(canvasOperation?.themePresetId || canvasOperation?.themeRecipeJson) && <p className="shrink-0 border-b bg-muted/20 px-3 py-1 text-xs text-muted-foreground">{t("themePanel.compareStyled")}</p>}
+      {previewMode === "compare" && !canvasOperation?.unavailableThemePresetId && Boolean(canvasOperation?.themePresetId || canvasOperation?.themeRecipeJson) && <p className="shrink-0 border-b bg-muted/20 px-3 py-1 text-xs text-muted-foreground">{t("themePanel.compareStyled")}</p>}
       {canvasMode && svgPipeline === "readable" && (
         <div className="flex shrink-0 flex-wrap items-center gap-2 border-b bg-muted/50 px-3 py-2">
           <p role="status" className="min-w-0 flex-1 text-xs text-muted-foreground">
