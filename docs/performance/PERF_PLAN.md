@@ -103,6 +103,35 @@ balanced AB/BA pairs per case, with 10,000 paired-bootstrap resamples. Regressio
 relative and absolute bounds to exceed 10% and 50 us. Neither comparison has contract failures;
 exit 1 records regression. New runs require fresh calibration, not reuse of these observations.
 
+### Current Class diagnostic — 2026-11-04
+
+Frozen source `3adcb9206ce8934cee5a50da5fddb1ea70cd34fa`, its unmodified `pipeline` harness and
+locked dependencies were measured on Apple M4 Pro / macOS 27.0 arm64, Rust 1.95.0, bench profile.
+Defaults remain enabled with `all-diagrams,svg,compat-json,editor-facts,layout-cytoscape,layout-elk,math`.
+Builds used one job, no incremental/debug information; sampling used two Rayon threads and no
+concurrent build, browser test, or theme render. Three serial repetitions selected each exact
+`{end_to_end,parse,layout,render}/class_{tiny,medium}` case, with 30 samples, 2 s warmup and 3 s
+measurement per call. All 24 calls succeeded and retained identical per-case pre/postflight output.
+
+Values below are the **median of three invocation means**, in microseconds; parentheses show
+the observed minimum–maximum, not confidence bounds. Stages are independently scoped attribution
+lanes, not an additive decomposition of the public operation.
+
+| Fixture | Public rich SVG E2E | Reused-engine parse | Layout | Prepared SVG emission |
+| --- | ---: | ---: | ---: | ---: |
+| Class tiny | 142.28 (135.94–143.68) | 88.03 (86.37–88.07) | 17.20 (16.58–17.29) | 31.57 (31.14–31.80) |
+| Class medium | 606.29 (596.77–615.42) | 151.04 (148.99–153.19) | 215.76 (212.12–215.86) | 233.84 (231.66–240.58) |
+
+The unchanged 43/995-byte fixtures now produce 16,466/77,724-byte SVGs with 95/576 elements and
+SHA-256 `d28d3c2056c65eaaf0bcc23dbd5cc7ac19b818ecfd81e15bc454da3a3a8a63f9` /
+`5382f40ca4f7dd6a0813387d0133d6bd2d1f9222d09556b49ff57c61fad04be7` respectively. Both differ
+from the retained alpha.6 and v0.9.0 full SVG identities: those release comparisons are
+**non-comparable**, and the September regression remains open. No A/A, A/B, recovery, or
+optimization admission is claimed. Investigate the tiny parse boundary and medium layout/emission
+owners before selecting a production hypothesis. Preregistration, executable/source/input hashes,
+commands, logs and raw Criterion samples remain under ignored
+`target/bench/experiments/class-current-20261104/` (`diagnostic-metadata.json`, `criterion/`).
+
 ### Class renewal — 2026-09-21
 
 Production base is alpha.6 `d529f858ea3d337a1bdc8fe12e44e1403ededf2e`; production head is
