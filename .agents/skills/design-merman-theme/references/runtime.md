@@ -91,7 +91,8 @@ target evidence under BestEffort; the sidecar, not the process exit alone, expla
 
 ## Use the result
 
-Import the standalone recipe through Playground's Theme → Import JSON, preview it, then Apply.
+Import the standalone recipe through Playground's Appearance → Import JSON, then choose
+Use imported theme after validation. Use in project provides adoption code and companion files.
 Native CLI can render it with:
 
 ```text
