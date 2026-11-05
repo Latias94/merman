@@ -89,6 +89,19 @@ Merman recipe is also selected. Keep the location as well as the value when repr
 appearance. Playground lists detected theme, font and look declarations with their source;
 these hints describe authored settings, not an independent certificate of computed SVG styling.
 
+Sequence's colored Redux palettes use participant and activation color arrays. With a compiled
+paint rule, explicitly configured arrays retain their paint ownership; derived default arrays
+yield to that property's authored scalar color. Without a Merman theme, Mermaid's original
+array-versus-scalar behavior is preserved. For supported Neo participant rectangles, use an Actor
+effect or effect Clear to control the body shadow; the raw `dropShadow` variable does not control
+every participant glyph in the Mermaid baseline.
+
+Partial source configuration also preserves Mermaid's initialized derived colors. To change an
+XY Chart or Wardley backdrop from source, set `themeVariables.xyChart.backgroundColor` or
+`themeVariables.wardley.backgroundColor` directly. Changing only the root `background` in source
+does not necessarily recompute an already initialized family backdrop. Root canvas paint remains
+separate from these diagram-owned backgrounds.
+
 C4 presets pair node surfaces with label colors; compiled edge, marker, boundary-label and
 text colors reach their visible terminals. Filled boundaries paint behind their descendants. Gantt presets preserve normal, active,
 done and critical task paints with paired inside-label colors; outside labels use the surrounding
@@ -289,12 +302,13 @@ Ghibli adds a warm, textured canvas and a five-color muted Pie palette with type
 percentage and legend text sizes. Its fonts resolve on the receiving host. The paper texture
 uses tiled gradients; this does not imply generic pattern or every effect primitive is supported.
 
-Flowchart node, edge and label glow/shadow effects currently require `flowchart.look: classic`.
-The default Neo look does not consume these effect bindings; selecting Cyberpunk alone does not
-change the look. Both ELK and Dagre support the Classic effect path. For example, set
-`{"flowchart":{"look":"classic","layout":"elk"}}` in Mermaid configuration to retain ELK
-and request the demonstrated Flowchart effects. Color and typography support has its own target
-coverage and should be inspected separately from effects.
+Flowchart Classic and the default Neo look both apply supported node, edge and label glow/shadow
+effects with ELK or Dagre. Node body effects cover rectangles, rounded rectangles, diamonds,
+circles and double circles. Hand-drawn geometry and other shapes can leave requested effects
+unapplied; inspect the current preview and execution diagnostics for those cases. Theme selection
+preserves the authored look, layout, configuration and source. Source styles retain precedence,
+including explicit filters. Color and typography support has its own target coverage and should
+be inspected separately from effects.
 
 Exporting a complete recipe does not qualify every scene.
 `describeThemeSupport()` answers mechanism questions for a family and target; it does not inspect
@@ -482,7 +496,11 @@ as Node and NodeLabel require their own styles. Diagram-owned styles retain thei
 
 Omitted patch fields leave ownership unchanged, `null` means Clear, and `"transparent"` explicitly
 requests transparent paint. Clear restores family base behavior, rather than exposing a previous
-matching rule. Canvas base is a paint rather than a patch field: use `"transparent"`, not `null`.
+matching rule. Supported Flowchart body-effect terminals distinguish omission from Clear:
+omission retains the look's default shadow, while Clear explicitly suppresses that shadow.
+An explicit theme effect replaces the look's default instead of implicitly stacking with it.
+Source filter ownership still takes precedence. Canvas base is a paint rather than a patch field:
+use `"transparent"`, not `null`.
 An omitted canvas leaves background ownership with the ordinary renderer behavior.
 
 ## Add shadows and layered backgrounds

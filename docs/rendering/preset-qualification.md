@@ -25,11 +25,11 @@ pixel checks exercise the vertical Dagre connection, its arrowhead, and the sepa
 background. Other family settings retain their current defaults. These are runner conditions; public
 preset recipes do not force a look or layout.
 
-The profile does not qualify the default Neo look for Flowchart or Sequence. In particular,
-Sequence Neo can combine preset-owned filters with a built-in filter on the loop label box. That
-mixed filter tree is outside the current native typed-filter receipt and remains rejected; choosing
-classic for this profile does not upgrade its admission. A separate explicit Neo PNG regression
-checks that Spotless note fill survives the built-in scoped filter.
+The profile does not qualify the default Neo look for Flowchart or Sequence. Native typed-filter
+receipts allow independent built-in and typed sibling filters, but reject built-in filters that
+enclose or feed typed paint. Separate Neo regressions cover Flowchart body, edge and label effects,
+Sequence glyph-label shadows, and Spotless note fill. Those checks do not extend this profile's
+qualification scope.
 
 The Rust runner emits its exact `render_config`; CLI replay consumes that configuration rather
 than maintaining a separate copy. Replay explicitly selects deterministic text measurement for both

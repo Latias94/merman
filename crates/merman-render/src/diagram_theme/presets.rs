@@ -527,21 +527,29 @@ mod tests {
                 .iter()
                 .any(|color| color == "#FFE66D")
         );
-        let note = &brutalist.application_notes[0];
-        assert_eq!(note.family_id, "flowchart");
-        assert_eq!(
-            note.recommended_config.as_ref().unwrap()["flowchart"]["look"],
-            "classic"
-        );
-        let theme = compiler.compile_preset(ThemePreset::Brutalist).unwrap();
-        assert_eq!(
-            theme
-                .spec()
-                .mermaid()
-                .to_mermaid_config()
-                .get_str("flowchart.look"),
-            None
-        );
+        for (preset, note_id) in [
+            (ThemePreset::Brutalist, "flowchart-basic-shadows"),
+            (ThemePreset::Cyberpunk, "flowchart-basic-glow"),
+        ] {
+            let descriptor = catalog
+                .iter()
+                .find(|entry| entry.id == preset.id())
+                .unwrap();
+            assert_eq!(descriptor.application_notes.len(), 1);
+            let note = &descriptor.application_notes[0];
+            assert_eq!(note.id, note_id);
+            assert_eq!(note.family_id, "flowchart");
+            assert_eq!(note.recommended_config, None);
+            let theme = compiler.compile_preset(preset).unwrap();
+            assert_eq!(
+                theme
+                    .spec()
+                    .mermaid()
+                    .to_mermaid_config()
+                    .get_str("flowchart.look"),
+                None
+            );
+        }
         let ghibli = catalog.iter().find(|preset| preset.id == "ghibli").unwrap();
         assert_eq!(
             ghibli.family_designs,

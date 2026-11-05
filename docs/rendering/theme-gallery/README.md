@@ -35,7 +35,8 @@ Brutalist and Cyberpunk without changing the diagram.
 All presets remain alpha, and the catalog has no qualified output cells. Dedicated design
 scope records family-specific styling, while base styling records a shared appearance.
 Neither is a guarantee for every shape or export target; an unlisted family is unreviewed.
-Brutalist's hard shadows and Cyberpunk's node glow need supported Classic Flowchart shapes.
+Brutalist's hard shadows and Cyberpunk's node glow work with supported basic Flowchart shapes
+in both Classic and Neo. These saved previews retain their recorded Classic/Dagre configuration.
 
 In these native PNG renders, Brutalist, Ghibli, Spotless, and Cyberpunk report verified theme
 application with a host-dependent target. One Dark and Gruvbox Light retain the
@@ -68,8 +69,8 @@ includes Mermaid themes, built-in Merman presets, and standalone explorations. C
 updates the current diagram immediately; closing the panel keeps that selection. **Undo appearance**
 restores an earlier choice while keeping source edits.
 
-For Brutalist, choose **Use Classic look** to explicitly apply its recommended configuration.
-This keeps other settings and the layout intact. Leave the font at **Inherit from theme / source**
+Brutalist applies supported hard shadows in Classic and the default Neo look without changing
+the source or configuration. Leave the font at **Inherit from theme / source**
 to use recipe typography. Advanced settings retain the Mermaid base and the choice to remove only
 Merman styling.
 

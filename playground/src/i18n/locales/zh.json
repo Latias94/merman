@@ -381,8 +381,8 @@
     "ghibli": "吉卜力"
   },
   "themeApplicationNotes": {
-    "flowchart-classic-shadows": "节点硬阴影需要 Classic 外观，且仅适用于已支持的基本形状（矩形、菱形和圆形）。选择此预设会保留当前外观设置。",
-    "flowchart-classic-glow": "节点发光需要 Classic 外观，且仅适用于已支持的基本形状。选择此预设会保留当前外观设置。"
+    "flowchart-basic-shadows": "Classic 和 Neo 外观均支持基本形状（矩形、圆角矩形、菱形、圆形和双圆）的节点硬阴影。手绘和其他形状可能无法应用效果，源码样式仍优先。",
+    "flowchart-basic-glow": "Classic 和 Neo 外观均支持基本形状（矩形、圆角矩形、菱形、圆形和双圆）的节点发光。手绘和其他形状可能无法应用效果，源码样式仍优先。"
   },
   "svgPipelines": {
     "parity": "Mermaid SVG（默认）",
@@ -533,8 +533,6 @@
       "stable": "稳定"
     },
     "maturityLabel": "{{maturity}}预设",
-    "recommendationInSource": "源码中已声明 Classic 外观",
-    "recommendationSourceOverride": "源码将外观声明为“{{value}}”，可能覆盖此配置；如需改变，请编辑源码中的声明。",
     "authoringTitle": "创作主题（可选）",
     "authoringHint": "可用自己的工具编辑下载的 JSON，再重新导入。如果你的代理已安装 $design-merman-theme 技能，也可以使用它创作主题；此技能并非必需。",
     "detectedOverrides": "配置与源码声明",
@@ -553,10 +551,6 @@
       "source": "编辑源码"
     },
     "explicitFontHint": "此字体用于两个引擎；配置或源码中的显式字体仍可能优先。"
-  },
-  "themeApplicationActions": {
-    "flowchart-classic-shadows": "使用 Classic 外观",
-    "flowchart-classic-glow": "使用 Classic 外观"
   },
   "appearance": {
     "title": "外观",

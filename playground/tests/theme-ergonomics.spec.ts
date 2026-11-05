@@ -92,41 +92,54 @@ test("the unified catalog switches between built-in, native and exploration them
   expect(exploration.mermaidConfig).toBe(original.mermaidConfig);
 });
 
-test("theme, font and recommended config apply immediately and closing preserves editor changes", async ({ page }) => {
+test("Brutalist applies hard shadows in default Neo without changing source or config, and closing preserves editor changes", async ({ page }) => {
   const errors = monitorBrowserErrors(page);
   const config = {
     layout: "dagre", htmlLabels: false,
-    flowchart: { look: "handDrawn", layout: "dagre", nodeSpacing: 42, curve: "linear" },
+    flowchart: { layout: "dagre", nodeSpacing: 42, curve: "linear" },
     sequence: { actorMargin: 72 }, themeVariables: { primaryColor: "#123456" },
   };
-  await start(page, JSON.stringify(config), null, "flowchart LR\nA[Authored source] --> B");
+  const original = await start(page, JSON.stringify(config), null,
+    "flowchart LR\nA[Authored source] --> B(Rounded) --> C{Diamond} --> D((Circle)) --> E(((Double)))");
   const panel = await openPanel(page);
   await expect(panel.getByLabel("Diagram font", { exact: true })).toHaveValue("inherit");
   await panel.getByRole("button", { name: /^Dark/ }).click();
   await panel.getByLabel("Diagram font", { exact: true }).selectOption("arial");
   await panel.getByRole("button", { name: /^Brutalist/ }).click();
-  const note = panel.locator('[data-theme-application-note="flowchart-classic-shadows"]');
-  await expect(note).toContainText("Classic look");
+  const note = panel.locator('[data-theme-application-note="flowchart-basic-shadows"]');
+  await expect(note).toContainText("Classic and Neo");
   await expect(note).toContainText("basic shapes");
-  const recommended = note.getByRole("button", { name: "Use Classic look", exact: true });
-  await recommended.focus();
-  await recommended.press("Enter");
-  await expect(note.getByTestId("theme-recommended-state")).toHaveText("Already in the current config");
-  await expect(recommended).toHaveCount(0);
-  await openAdvanced(panel);
-  await expect(panel.getByTestId("theme-appearance-overrides")).toContainText("classic");
+  await expect.poll(() => page.locator(".preview-container > div").first().evaluate((host) => {
+    const root = host.shadowRoot?.querySelector("svg");
+    return [...(root?.querySelectorAll("g.node > .label-container") ?? [])].map((body) => {
+      const binding = body.getAttribute("filter") ?? (body as SVGElement).style.filter;
+      const id = /^url\(["']?#([^)"']+)["']?\)$/u.exec(binding)?.[1];
+      const graph = id ? root?.querySelector(`[id="${id}"]`) : null;
+      return {
+        themed: Boolean(id?.includes("-theme-effect-")),
+        wins: Boolean(id && getComputedStyle(body).filter.includes(`#${id}`)),
+        childrenUnfiltered: [...body.querySelectorAll("circle")]
+          .every((child) => getComputedStyle(child).filter === "none"),
+        offsets: [...(graph?.querySelectorAll("feOffset") ?? [])].map((offset) => [
+          Number(offset.getAttribute("dx")), Number(offset.getAttribute("dy")),
+        ]),
+        deviations: [...(graph?.querySelectorAll("feGaussianBlur") ?? [])]
+          .map((blur) => Number(blur.getAttribute("stdDeviation"))),
+      };
+    });
+  })).toEqual(Array(5).fill({ themed: true, wins: true, childrenUnfiltered: true, offsets: [[6, 6]], deviations: [0] }));
   await expect.poll(() => svg(page)).toContain("Arial");
   const applied = await workspaceFromLink(page);
   expect(applied.diagramTheme).toBe("dark");
   expect(applied.diagramFont).toBe("arial");
   expect(applied.themePresetId).toBe("brutalist");
-  expect(JSON.parse(applied.mermaidConfig)).toEqual({ ...config, flowchart: { ...config.flowchart, look: "classic" } });
+  expect(applied.code).toBe(original.code);
+  expect(applied.mermaidConfig).toBe(original.mermaidConfig);
 
   const editedSource = "flowchart LR\nEdited[Editor changes stay] --> B";
-  const editedConfig = JSON.stringify({ ...config, flowchart: { ...config.flowchart, look: "classic" }, sequence: { actorMargin: 96 } });
+  const editedConfig = JSON.stringify({ ...config, sequence: { actorMargin: 96 } });
   await replaceEditorSource(page, editedSource);
   await replaceMermaidConfig(page, editedConfig);
-  await expect(note.getByTestId("theme-recommended-state")).toHaveText("Already in the current config");
   await panel.getByRole("button", { name: "Close appearance panel", exact: true }).click();
   const closed = await workspaceFromLink(page);
   expect(closed.diagramTheme).toBe("dark");
@@ -161,11 +174,12 @@ test("Undo appearance preserves source and config authored after a theme choice"
   expect(restored.mermaidConfig).toBe(editedConfig);
 });
 
-test("Undo a recommended config preserves its unrelated settings and subsequent source edits", async ({ page }) => {
+test("Undo a font choice preserves authored config and subsequent source edits", async ({ page }) => {
   const config = '{"flowchart":{"look":"handDrawn","nodeSpacing":42},"sequence":{"actorMargin":72}}';
   await start(page, config, "brutalist", "flowchart LR\nA --> B");
   const panel = await openPanel(page);
-  await panel.getByRole("button", { name: "Use Classic look", exact: true }).click();
+  const font = panel.getByLabel("Diagram font", { exact: true });
+  await font.selectOption("arial");
   const editedSource = "flowchart LR\nEdited[Source survives undo] --> B";
   await replaceEditorSource(page, editedSource);
   await panel.getByRole("button", { name: "Undo appearance change", exact: true }).click();
@@ -173,11 +187,11 @@ test("Undo a recommended config preserves its unrelated settings and subsequent 
   expect(restored.code).toBe(editedSource);
   expect(restored.mermaidConfig).toBe(config);
   expect(restored.themePresetId).toBe("brutalist");
-  await expect(panel.getByRole("button", { name: "Use Classic look", exact: true })).toBeVisible();
+  await expect(font).toHaveValue("inherit");
 });
 
 test("source look overrides are explained with a source editor entry", async ({ page }) => {
-  await start(page, '{"theme":"forest","fontFamily":"Georgia"}');
+  const original = await start(page, '{"theme":"forest","fontFamily":"Georgia","flowchart":{"look":"neo"}}');
   const panel = await openPanel(page);
   await panel.getByRole("button", { name: /^Brutalist/ }).click();
   await openAdvanced(panel);
@@ -185,40 +199,46 @@ test("source look overrides are explained with a source editor entry", async ({ 
   await expect(overrides).toContainText("forest");
   await expect(overrides).toContainText("Georgia");
   await expect(overrides).toContainText("handDrawn");
+  await expect(overrides.locator("dt").filter({ hasText: "Look" })).toHaveText("Look · Source declaration");
   await overrides.getByRole("button", { name: "Edit config", exact: true }).click();
   await expect(page.getByRole("tab", { name: "Config", exact: true })).toHaveAttribute("aria-selected", "true");
-  await panel.getByRole("button", { name: "Use Classic look", exact: true }).click();
-  await expect(panel.getByTestId("theme-recommendation-source-override")).toContainText("Source declares the look as “handDrawn”");
   await overrides.getByRole("button", { name: "Edit source", exact: true }).click();
   await expect(page.getByRole("tab", { name: "Code", exact: true })).toHaveAttribute("aria-selected", "true");
+  const saved = await workspaceFromLink(page);
+  expect(saved.code).toBe(original.code);
+  expect(saved.mermaidConfig).toBe(original.mermaidConfig);
 });
 
 for (const declaration of [
-  { origin: "config", config: '{"look":"classic"}', source: "flowchart LR\nA --> B", state: "Already in the current config" },
-  { origin: "source", config: "{}", source: 'flowchart LR\nA --> B\n%%{init: {"flowchart":{"look":"classic"}}}%%', state: "Classic look is already declared in the source" },
+  { origin: "Config", config: '{"look":"classic"}', source: "flowchart LR\nA --> B", look: "classic" },
+  { origin: "Source", config: "{}", source: 'flowchart LR\nA --> B\n%%{init: {"flowchart":{"look":"neo"}}}%%', look: "neo" },
 ]) {
-  test(`a Classic look declaration in ${declaration.origin} avoids repeating the recommendation`, async ({ page }) => {
-    await start(page, declaration.config, "brutalist", declaration.source);
+  test(`a theme choice preserves the look and its ${declaration.origin.toLowerCase()} declaration`, async ({ page }) => {
+    await start(page, declaration.config, null, declaration.source);
     const panel = await openPanel(page);
-    await expect(panel.getByTestId("theme-recommended-state")).toHaveText(declaration.state);
-    await expect(panel.getByRole("button", { name: "Use Classic look", exact: true })).toHaveCount(0);
+    await panel.getByRole("button", { name: /^Brutalist/ }).click();
+    await openAdvanced(panel);
+    const overrides = panel.getByTestId("theme-appearance-overrides");
+    await expect(overrides.locator("dt").filter({ hasText: "Look" })).toHaveText(`Look · ${declaration.origin} declaration`);
+    await expect(overrides).toContainText(declaration.look);
+    const saved = await workspaceFromLink(page);
+    expect(saved.code).toBe(declaration.source);
+    expect(saved.mermaidConfig).toBe(declaration.config);
   });
 }
 
-test("Pie never shows a Flowchart application action", async ({ page }) => {
+test("Pie keeps application notes scoped to its diagram family", async ({ page }) => {
   await start(page, "{}", "brutalist", 'pie title Tea time\n"Tea": 4\n"Cake": 3');
   const panel = await openPanel(page);
   await expect(panel.getByTestId("theme-current-family")).toHaveText("Current diagram: Pie Chart");
   await expect(panel.locator("[data-theme-application-note]")).toHaveCount(0);
-  await expect(panel.getByRole("button", { name: "Use Classic look", exact: true })).toHaveCount(0);
   await expect(panel.getByRole("button", { name: /^Brutalist/ })).toBeEnabled();
 });
 
 test("invalid authored config remains repairable after an immediate theme choice and closing", async ({ page }) => {
-  await start(page, '{"flowchart":{"look":"handDrawn"}}', null, "flowchart LR\nA --> B");
+  await start(page, '{"flowchart":{"nodeSpacing":42}}', null, "flowchart LR\nA --> B");
   const panel = await openPanel(page);
   await panel.getByRole("button", { name: /^Brutalist/ }).click();
-  await panel.getByRole("button", { name: "Use Classic look", exact: true }).click();
   await page.getByRole("tab", { name: "Config", exact: true }).click();
   const config = page.getByRole("textbox", { name: "Mermaid configuration", exact: true });
   await config.focus();
@@ -234,18 +254,21 @@ test("invalid authored config remains repairable after an immediate theme choice
   const saved = await workspaceFromLink(page);
   expect(saved.mermaidConfig).toBe("{");
   expect(saved.themePresetId).toBe("brutalist");
-  await replaceMermaidConfig(page, '{"flowchart":{"look":"classic"}}');
+  await replaceMermaidConfig(page, "{}");
   const reopened = await openPanel(page);
   await expect(reopened.getByRole("button", { name: /^Brutalist/ })).toHaveAttribute("aria-pressed", "true");
   await expect(reopened.getByTestId("theme-render-evidence")).not.toHaveAttribute("data-theme-evidence-state", "failed");
 });
 
-test("Brutalist shows styling diagnostics in Appearance and compatibility evidence in Export", async ({ page }) => {
-  await start(page, "{}", "brutalist", "flowchart LR\nA[Authored source] --> B");
+test("hand-drawn Brutalist shows styling diagnostics in Appearance and compatibility evidence in Export", async ({ page }) => {
+  await start(page, '{"flowchart":{"look":"handDrawn"}}', "brutalist", "flowchart LR\nA[Authored source] --> B");
   const panel = await openPanel(page);
   const reasons = panel.getByTestId("theme-diagnostic-reasons");
-  await expect(reasons.locator('[data-theme-reason-code="unsupported-effect"]')).toContainText("shadow or glow");
-  await expect(reasons).toContainText("Review Application notes");
+  // A multi-facet preset reports its rule's first residual, rather than one reason per facet.
+  await expect(reasons.locator('[data-theme-reason-code="unsupported-paint"]')).toContainText("current look or shape");
+  await expect(reasons.locator('[data-theme-reason-code="unsupported-geometry"]')).toContainText("shape or border");
+  await expect(panel.locator('[data-theme-application-note="flowchart-basic-shadows"]'))
+    .toContainText("Hand-drawn and other shapes may leave effects unapplied");
   await expect(panel.getByTestId("theme-target-details")).toHaveCount(0);
   await expect(panel.getByTestId("theme-execution-metadata")).toHaveCount(0);
   await openAdvanced(panel);
@@ -340,16 +363,18 @@ test("Ghibli inherits its recipe font and releases explicit UI font overrides", 
   await expect.poll(titleFont).toContain("Open Sans");
 });
 
-test("recommendations apply with the keyboard and Escape closes Appearance without rolling them back", async ({ page }) => {
-  await start(page, "{}", "brutalist", "flowchart LR\nA --> B");
+test("Brutalist applies with the keyboard and Escape closes Appearance without rolling it back", async ({ page }) => {
+  const original = await start(page, "{}", null, "flowchart LR\nA --> B");
   const panel = await openPanel(page);
-  const recommended = panel.getByRole("button", { name: "Use Classic look", exact: true });
-  await recommended.focus();
-  await recommended.press("Enter");
-  await expect(panel.getByTestId("theme-recommended-state")).toHaveText("Already in the current config");
+  const brutalist = panel.getByRole("button", { name: /^Brutalist/ });
+  await brutalist.focus();
+  await brutalist.press("Enter");
+  await expect(brutalist).toHaveAttribute("aria-pressed", "true");
   await page.keyboard.press("Escape");
   await expect(panel).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Appearance", exact: true })).toBeFocused();
   const saved = await workspaceFromLink(page);
-  expect(JSON.parse(saved.mermaidConfig)).toEqual({ flowchart: { look: "classic" } });
+  expect(saved.themePresetId).toBe("brutalist");
+  expect(saved.code).toBe(original.code);
+  expect(saved.mermaidConfig).toBe(original.mermaidConfig);
 });

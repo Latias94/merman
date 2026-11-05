@@ -48,15 +48,21 @@ A `shadow-stack` uses `composition: "independent"` for shadows from the original
 `std_deviation` are pixel lengths; zero deviation makes a hard shadow. Deviation is Gaussian sigma,
 not CSS blur radius. There is no spread, inset, or backdrop-shadow convenience field.
 
-Flowchart Classic and Neo have different effect consumers. Current Flowchart body/edge/label
-shadows require `flowchart.look: classic`; preserve the requested look, report this condition, and
-change it only as an explicit design choice. `resvg-safe` is an SVG pipeline, not proof that all
-theme facets or PDF conversion are portable. Validate the actual requested target separately.
+Flowchart Classic and Neo both consume supported body, edge and label effects with ELK or Dagre.
+Body shadows cover rectangles, rounded rectangles, diamonds, circles and double circles; hand-drawn
+geometry and other shapes can leave effects unapplied. Preserve the requested look and source
+styles, and inspect execution diagnostics for the actual input. `resvg-safe` is an SVG pipeline,
+not proof that all theme facets or PDF conversion are portable. Validate the requested target
+separately.
+
+On supported Flowchart bodies, an explicit effect replaces the look's default shadow; an omitted
+effect retains it. An explicit effect Clear also suppresses the look shadow. Source filter
+ownership still takes precedence. Body and label effects remain independent, including Clear.
 
 `design.mermaid` admits `theme`, `dark_mode`, and a scalar `variables` map; it is not arbitrary
 Mermaid configuration. Put `flowchart.look` and other diagram configuration in the accompanying
 render options or source frontmatter. When the design needs those settings, deliver and explain
-them alongside the JSON; importing the recipe alone does not select Classic.
+them alongside the JSON; importing the recipe preserves the diagram's look.
 
 ## Check the result
 

@@ -257,7 +257,7 @@ export function ThemePanel({ className, onClose }: { className?: string; onClose
         </LazyFeatureBoundary>
       </section>
       {applicationNotes.length > 0 && <ThemeApplicationNotes key={`${workspace.themePresetId}:${familyId}`}
-        notes={applicationNotes} workspace={workspace} declaredLook={appearanceOverrides?.look} onApply={() => { setActionError(null); heading.current?.focus(); }} />}
+        notes={applicationNotes} workspace={workspace} onApply={() => { setActionError(null); heading.current?.focus(); }} />}
       <details open={advanced} onToggle={(event) => setAdvanced(event.currentTarget.open)} className="min-w-0 border-t pt-3" data-testid="theme-advanced">
         <summary className="cursor-pointer text-xs font-medium">{t("themePanel.advanced")}</summary>
         {advanced && <div className="mt-3 min-w-0 space-y-4 text-xs">

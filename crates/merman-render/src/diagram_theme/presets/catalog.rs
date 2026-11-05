@@ -125,12 +125,12 @@ impl PresetCatalogEntry {
     pub(super) fn application_notes(&self) -> Vec<ThemePresetApplicationNoteV1> {
         let (id, message) = match self.preset {
             ThemePreset::Brutalist => (
-                "flowchart-classic-shadows",
-                "Hard node shadows need Classic look and supported basic shapes (rectangles, diamonds and circles). Selecting this preset does not change the diagram's look.",
+                "flowchart-basic-shadows",
+                "Hard node shadows work with supported basic shapes (rectangles, rounded rectangles, diamonds, circles and double circles) in Classic and Neo. Hand-drawn and other shapes may leave effects unapplied. Source styles take precedence.",
             ),
             ThemePreset::Cyberpunk => (
-                "flowchart-classic-glow",
-                "Node glow needs Classic look and supported basic shapes. Selecting this preset does not change the diagram's look.",
+                "flowchart-basic-glow",
+                "Node glow works with supported basic shapes (rectangles, rounded rectangles, diamonds, circles and double circles) in Classic and Neo. Hand-drawn and other shapes may leave effects unapplied. Source styles take precedence.",
             ),
             _ => return Vec::new(),
         };
@@ -138,12 +138,7 @@ impl PresetCatalogEntry {
             id: id.to_owned(),
             family_id: "flowchart".to_owned(),
             message: message.to_owned(),
-            recommended_config: Some(
-                serde_json::json!({"flowchart": {"look": "classic"}})
-                    .as_object()
-                    .expect("catalog recommendation is a configuration object")
-                    .clone(),
-            ),
+            recommended_config: None,
         }]
     }
 

@@ -508,9 +508,9 @@ test("Chinese theme panel keeps import, preview and advanced JSON reachable on a
   await expect(panel.getByLabel("图表字体", { exact: true })).toHaveValue("inherit");
   await expect(panel).toContainText("由主题和源码决定字体");
   await panel.getByRole("button", { name: /^粗野主义/ }).click();
-  const note = panel.locator('[data-theme-application-note="flowchart-classic-shadows"]');
-  await expect(note).toContainText("节点硬阴影需要 Classic 外观");
-  await expect(note.getByRole("button", { name: "使用 Classic 外观", exact: true })).toBeVisible();
+  const note = panel.locator('[data-theme-application-note="flowchart-basic-shadows"]');
+  await expect(note).toContainText("Classic 和 Neo 外观均支持基本形状");
+  await expect(note).toContainText("手绘和其他形状可能无法应用效果");
   const input = panel.getByLabel("导入 JSON", { exact: true });
   await input.setInputFiles({ name: "invalid.json", mimeType: "application/json", buffer: Buffer.from("{") });
   await expect(panel.getByRole("alert")).toBeVisible();

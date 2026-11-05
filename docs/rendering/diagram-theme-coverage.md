@@ -85,8 +85,9 @@ reproducing a render, including where each configuration value originated.
 A selected route is not proof of emission: missing labels, unmatched ordinals, source-owned paint,
 shape geometry and look selection can change what actually applies. Partial support is local to
 the target, property and value; it does not make a whole family supported or unsupported.
-For example, Flowchart glow/shadow bindings currently require Classic; selecting Cyberpunk does
-not change Neo to Classic. Native fonts, HTML labels, filter composition, clipping and resource
+For example, Flowchart Classic and Neo apply basic-shape glow/shadow bindings, while hand-drawn
+and other shapes can retain residual effects. Theme selection preserves the authored look.
+Native fonts, HTML labels, filter composition, clipping and resource
 ceilings still require the concrete target's evidence. Keep residuals visible when a sibling facet
 applies; do not silently substitute a preset, drop effects or relax budgets.
 

@@ -70,19 +70,21 @@ node .agents/skills/design-merman-theme/scripts/theme-tool.mjs render output/the
   not rewrite them or force a different look. Read the metadata sidecar after every changed render.
 
 Render options use Options JSON 3 and must omit `theme`, which comes from its own file. For a new
-design explicitly intended for Classic Flowchart shadows, an example is:
+Flowchart preview with SVG text and the default Neo look, an example is:
 
 ```json
 {
   "version": 3,
-  "site_config": { "htmlLabels": false, "flowchart": { "look": "classic" } },
+  "site_config": { "htmlLabels": false },
   "svg": { "pipeline": "parity" }
 }
 ```
 
 Leave the original options unchanged for comparisons and user-supplied diagrams. Recipe `mermaid`
 holds only `theme`, `dark_mode`, and scalar `variables`; `flowchart.look` belongs to these separate
-options or source frontmatter. Deliver required options and explain them in the design note.
+options or source frontmatter. Classic and Neo both support basic-shape shadows; use
+[authoring.md](authoring.md) for shape and hand-drawn conditions. Deliver required options and
+explain them in the design note.
 
 The helper writes fresh files by default. Use new revision names or `--force` when overwriting
 outputs is intentional; inputs are protected even with `--force`. It returns structured operation

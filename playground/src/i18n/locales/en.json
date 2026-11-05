@@ -530,8 +530,6 @@
       "stable": "Stable"
     },
     "maturityLabel": "{{maturity}} preset",
-    "recommendationInSource": "Classic look is already declared in the source",
-    "recommendationSourceOverride": "Source declares the look as “{{value}}” and may override this config. Edit the source to change that declaration.",
     "authoringTitle": "Creating a theme (optional)",
     "authoringHint": "Edit the downloaded JSON with your own tools and import it again. If your agent has the $design-merman-theme skill installed, you can also use it to create a theme; the skill is optional.",
     "detectedOverrides": "Config and source declarations",
@@ -552,12 +550,8 @@
     "explicitFontHint": "Use this font in both engines. Config and source font settings may take precedence."
   },
   "themeApplicationNotes": {
-    "flowchart-classic-shadows": "Hard node shadows need the Classic look and supported basic shapes (rectangles, diamonds and circles). Selecting this preset keeps your current look.",
-    "flowchart-classic-glow": "Node glow needs the Classic look and supported basic shapes. Selecting this preset keeps your current look."
-  },
-  "themeApplicationActions": {
-    "flowchart-classic-shadows": "Use Classic look",
-    "flowchart-classic-glow": "Use Classic look"
+    "flowchart-basic-shadows": "Hard node shadows work with supported basic shapes (rectangles, rounded rectangles, diamonds, circles and double circles) in Classic and Neo. Hand-drawn and other shapes may leave effects unapplied. Source styles take precedence.",
+    "flowchart-basic-glow": "Node glow works with supported basic shapes (rectangles, rounded rectangles, diamonds, circles and double circles) in Classic and Neo. Hand-drawn and other shapes may leave effects unapplied. Source styles take precedence."
   },
   "appearance": {
     "title": "Appearance",
