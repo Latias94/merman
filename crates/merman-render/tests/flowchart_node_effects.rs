@@ -257,9 +257,11 @@ fn self_loop_label_placeholders_do_not_receive_body_effects_or_application_count
             format!("---\nconfig:\n  layout: {layout}\n---\nflowchart LR\nA[Loop] -->|Again| A");
         let rendered = render(&source, &theme, look, true).unwrap();
         assert_eq!(applications(rendered.svg()), 1, "{look}, {layout}");
+        let uses_elk = layout == "elk" && cfg!(feature = "layout-elk");
         assert_eq!(
             rendered.svg().contains("synthetic-label-"),
-            layout == "dagre"
+            !uses_elk,
+            "{look}, requested layout={layout}"
         );
         let completion = rendered.into_completion();
         assert_eq!(

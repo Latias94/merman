@@ -106,21 +106,32 @@ impl WardleyPaintContext<'_> {
     }
 }
 
+struct WardleyLineStyle<'a> {
+    class: Option<&'a str>,
+    stroke: &'a str,
+    stroke_width: Option<f64>,
+    dash: Option<&'a str>,
+}
+
 fn write_themed_line(
     out: &mut impl SvgOutput,
     line: WardleyLineLayout,
-    class: Option<&str>,
-    stroke: &str,
-    width: Option<f64>,
-    dash: Option<&str>,
+    style: WardleyLineStyle<'_>,
     context: &mut WardleyPaintContext<'_>,
     target: ThemeTarget,
     ordinal: usize,
     paths: &[&str],
 ) -> Result<()> {
-    let paint = context.line_stroke(target, ordinal, paths, stroke)?;
-    let actual = paint.as_ref().map_or(stroke, TerminalPaint::css);
-    write_line(out, line, class, actual, width, dash)?;
+    let paint = context.line_stroke(target, ordinal, paths, style.stroke)?;
+    let actual = paint.as_ref().map_or(style.stroke, TerminalPaint::css);
+    write_line(
+        out,
+        line,
+        style.class,
+        actual,
+        style.stroke_width,
+        style.dash,
+    )?;
     context.plan.record(paint.as_ref(), actual);
     Ok(())
 }
@@ -147,12 +158,16 @@ fn dominant_baseline(baseline: WardleyDominantBaseline) -> &'static str {
     }
 }
 
+struct WardleyTextStyle<'a> {
+    class: Option<&'a str>,
+    fill: &'a str,
+    include_font_weight: bool,
+}
+
 fn write_text(
     out: &mut impl SvgOutput,
     text: &WardleyTextLayout,
-    class: Option<&str>,
-    fill: &str,
-    include_font_weight: bool,
+    style: WardleyTextStyle<'_>,
     role: crate::wardley::WardleyTextRole,
     surface_receipt: &mut crate::wardley::WardleySurfaceReceipt,
     paint_context: &mut WardleyPaintContext<'_>,
@@ -165,9 +180,9 @@ fn write_text(
     if typed_fill.is_some() {
         surface_receipt.paint_overridden_text_roles.insert(role);
     }
-    let fill = typed_fill.as_ref().map_or(fill, TerminalPaint::css);
+    let fill = typed_fill.as_ref().map_or(style.fill, TerminalPaint::css);
     out.push_str("<text");
-    if let Some(class) = class {
+    if let Some(class) = style.class {
         let _ = write!(out, r#" class="{}""#, escape_attr_display(class));
     }
     let _ = write!(
@@ -178,7 +193,7 @@ fn write_text(
         escape_attr_display(fill),
         fmt(text.font_size)
     );
-    if include_font_weight {
+    if style.include_font_weight {
         let _ = write!(out, r#" font-weight="{}""#, font_weight(text.font_weight));
     }
     let _ = write!(out, r#" text-anchor="{}""#, text_anchor(text.text_anchor));
@@ -200,7 +215,7 @@ fn write_text(
     }
     let _ = write!(out, ">{}</text>", escape_xml_display(&text.text));
     out.checkpoint()?;
-    surface_receipt.record_text(role, class, &text.text, fill);
+    surface_receipt.record_text(role, style.class, &text.text, fill);
     paint_context.plan.record(typed_fill.as_ref(), fill);
     Ok(())
 }
@@ -300,10 +315,12 @@ fn write_axes(
     write_themed_line(
         out,
         layout.axes.x_axis,
-        None,
-        &theme.axis_color,
-        Some(1.0),
-        None,
+        WardleyLineStyle {
+            class: None,
+            stroke: &theme.axis_color,
+            stroke_width: Some(1.0),
+            dash: None,
+        },
         paint_context,
         ThemeTarget::Axis,
         1,
@@ -312,10 +329,12 @@ fn write_axes(
     write_themed_line(
         out,
         layout.axes.y_axis,
-        None,
-        &theme.axis_color,
-        Some(1.0),
-        None,
+        WardleyLineStyle {
+            class: None,
+            stroke: &theme.axis_color,
+            stroke_width: Some(1.0),
+            dash: None,
+        },
         paint_context,
         ThemeTarget::Axis,
         2,
@@ -324,9 +343,11 @@ fn write_axes(
     write_text(
         out,
         &layout.axes.x_label,
-        Some("wardley-axis-label wardley-axis-label-x"),
-        &theme.axis_text_color,
-        true,
+        WardleyTextStyle {
+            class: Some("wardley-axis-label wardley-axis-label-x"),
+            fill: &theme.axis_text_color,
+            include_font_weight: true,
+        },
         crate::wardley::WardleyTextRole::AxisLabel,
         surface_receipt,
         paint_context,
@@ -334,9 +355,11 @@ fn write_axes(
     write_text(
         out,
         &layout.axes.y_label,
-        Some("wardley-axis-label wardley-axis-label-y"),
-        &theme.axis_text_color,
-        true,
+        WardleyTextStyle {
+            class: Some("wardley-axis-label wardley-axis-label-y"),
+            fill: &theme.axis_text_color,
+            include_font_weight: true,
+        },
         crate::wardley::WardleyTextRole::AxisLabel,
         surface_receipt,
         paint_context,
@@ -362,10 +385,12 @@ fn write_stages(
             write_themed_line(
                 out,
                 divider,
-                None,
-                &theme.stage_divider_color,
-                Some(1.0),
-                Some("5 5"),
+                WardleyLineStyle {
+                    class: None,
+                    stroke: &theme.stage_divider_color,
+                    stroke_width: Some(1.0),
+                    dash: Some("5 5"),
+                },
                 paint_context,
                 ThemeTarget::Axis,
                 index + 3,
@@ -377,9 +402,11 @@ fn write_stages(
         write_text(
             out,
             &stage.label,
-            Some("wardley-stage-label"),
-            &theme.axis_text_color,
-            false,
+            WardleyTextStyle {
+                class: Some("wardley-stage-label"),
+                fill: &theme.axis_text_color,
+                include_font_weight: false,
+            },
             crate::wardley::WardleyTextRole::StageLabel,
             surface_receipt,
             paint_context,
@@ -404,10 +431,12 @@ fn write_grid(
         write_themed_line(
             out,
             grid.vertical,
-            None,
-            &theme.grid_color,
-            None,
-            Some("2 6"),
+            WardleyLineStyle {
+                class: None,
+                stroke: &theme.grid_color,
+                stroke_width: None,
+                dash: Some("2 6"),
+            },
             paint_context,
             ThemeTarget::Axis,
             index * 2 + layout.stages.len() + 3,
@@ -416,10 +445,12 @@ fn write_grid(
         write_themed_line(
             out,
             grid.horizontal,
-            None,
-            &theme.grid_color,
-            None,
-            Some("2 6"),
+            WardleyLineStyle {
+                class: None,
+                stroke: &theme.grid_color,
+                stroke_width: None,
+                dash: Some("2 6"),
+            },
             paint_context,
             ThemeTarget::Axis,
             index * 2 + layout.stages.len() + 4,
@@ -477,10 +508,12 @@ fn write_pipelines(
         write_themed_line(
             out,
             link.line,
-            Some("wardley-pipeline-evolution-link"),
-            &theme.link_stroke,
-            Some(1.0),
-            Some("4 4"),
+            WardleyLineStyle {
+                class: Some("wardley-pipeline-evolution-link"),
+                stroke: &theme.link_stroke,
+                stroke_width: Some(1.0),
+                dash: Some("4 4"),
+            },
             paint_context,
             ThemeTarget::Edge,
             index + 1,
@@ -512,10 +545,12 @@ fn write_links(
         write_themed_line(
             out,
             link.line,
-            Some(class),
-            &theme.link_stroke,
-            Some(1.0),
-            link.dashed.then_some("6 6"),
+            WardleyLineStyle {
+                class: Some(class),
+                stroke: &theme.link_stroke,
+                stroke_width: Some(1.0),
+                dash: link.dashed.then_some("6 6"),
+            },
             paint_context,
             ThemeTarget::Edge,
             layout.pipeline_links.len() + index + 1,
@@ -543,9 +578,11 @@ fn write_links(
             write_text(
                 out,
                 label,
-                Some("wardley-link-label"),
-                &theme.axis_text_color,
-                false,
+                WardleyTextStyle {
+                    class: Some("wardley-link-label"),
+                    fill: &theme.axis_text_color,
+                    include_font_weight: false,
+                },
                 crate::wardley::WardleyTextRole::LinkLabel,
                 surface_receipt,
                 paint_context,
@@ -571,10 +608,12 @@ fn write_trends(
         write_themed_line(
             out,
             trend.line,
-            Some("wardley-trend"),
-            &theme.evolution_stroke,
-            Some(1.0),
-            Some("4 4"),
+            WardleyLineStyle {
+                class: Some("wardley-trend"),
+                stroke: &theme.evolution_stroke,
+                stroke_width: Some(1.0),
+                dash: Some("4 4"),
+            },
             paint_context,
             ThemeTarget::Edge,
             layout.pipeline_links.len() + layout.links.len() + index + 1,
@@ -785,10 +824,12 @@ fn write_nodes(
             write_themed_line(
                 out,
                 inertia,
-                Some("wardley-inertia"),
-                &theme.component_stroke,
-                Some(6.0),
-                None,
+                WardleyLineStyle {
+                    class: Some("wardley-inertia"),
+                    stroke: &theme.component_stroke,
+                    stroke_width: Some(6.0),
+                    dash: None,
+                },
                 paint_context,
                 ThemeTarget::Node,
                 index + 1,
@@ -812,9 +853,11 @@ fn write_nodes(
         write_text(
             out,
             &node.label_layout,
-            Some("wardley-node-label"),
-            label_fill,
-            true,
+            WardleyTextStyle {
+                class: Some("wardley-node-label"),
+                fill: label_fill,
+                include_font_weight: true,
+            },
             label_role,
             surface_receipt,
             paint_context,
@@ -854,9 +897,11 @@ fn write_annotations_box(
         write_text(
             out,
             line,
-            None,
-            &theme.annotation_text,
-            false,
+            WardleyTextStyle {
+                class: None,
+                fill: &theme.annotation_text,
+                include_font_weight: false,
+            },
             crate::wardley::WardleyTextRole::AnnotationBoxLine,
             surface_receipt,
             paint_context,
@@ -906,9 +951,11 @@ fn write_annotations(
             write_text(
                 out,
                 &point.label,
-                None,
-                &theme.annotation_text,
-                true,
+                WardleyTextStyle {
+                    class: None,
+                    fill: &theme.annotation_text,
+                    include_font_weight: true,
+                },
                 crate::wardley::WardleyTextRole::AnnotationPoint,
                 surface_receipt,
                 paint_context,
@@ -940,9 +987,11 @@ fn write_notes(
         write_text(
             out,
             &note.text,
-            None,
-            &theme.axis_text_color,
-            true,
+            WardleyTextStyle {
+                class: None,
+                fill: &theme.axis_text_color,
+                include_font_weight: true,
+            },
             crate::wardley::WardleyTextRole::Note,
             surface_receipt,
             paint_context,
@@ -979,9 +1028,11 @@ fn write_arrow(
     write_text(
         out,
         &arrow.label,
-        None,
-        &theme.arrow_text,
-        true,
+        WardleyTextStyle {
+            class: None,
+            fill: &theme.arrow_text,
+            include_font_weight: true,
+        },
         role,
         surface_receipt,
         paint_context,
@@ -1200,9 +1251,11 @@ pub(crate) fn render_wardley_diagram_svg_model(
         write_text(
             &mut out,
             title,
-            Some("wardley-title"),
-            &theme.axis_text_color,
-            true,
+            WardleyTextStyle {
+                class: Some("wardley-title"),
+                fill: &theme.axis_text_color,
+                include_font_weight: true,
+            },
             crate::wardley::WardleyTextRole::Title,
             &mut surface_receipt,
             &mut paint_context,

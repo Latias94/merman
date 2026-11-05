@@ -29,8 +29,7 @@ pub(super) fn prepare_body_shadows<'a>(
             .source_style
             .split(';')
             .filter_map(crate::mermaid_style::parse_style_declaration)
-            .filter(|declaration| declaration.property() == "stroke-width")
-            .last();
+            .rfind(|declaration| declaration.property() == "stroke-width");
         let width = if let Some(declaration) = source_width {
             // A source width must have a finite SVG length before bounding the filter.
             declaration.svg_number_or_px()

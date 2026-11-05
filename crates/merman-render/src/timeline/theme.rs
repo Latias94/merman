@@ -209,9 +209,9 @@ impl TimelineEventTheme {
             {
                 if title_fill_winner != Some(rule_index) {
                     evidence.mark_not_applicable(theme.family_mechanism_key(*route));
-                } else if !title_fill
+                } else if title_fill
                     .as_ref()
-                    .is_some_and(|fill| fill.rule_index() == rule_index)
+                    .is_none_or(|fill| fill.rule_index() != rule_index)
                 {
                     evidence.mark_residual(
                         theme.family_mechanism_key(*route),

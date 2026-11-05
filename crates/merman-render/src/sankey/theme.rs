@@ -285,10 +285,10 @@ impl SankeyTypographyThemePlan {
             let mut observation = SankeyTextRuleObservation::default();
             for occurrence in observations {
                 if occurrence.ordinal.is_some_and(|ordinal| {
-                    !receipt
+                    receipt
                         .visible_labels
                         .as_ref()
-                        .is_some_and(|visible| visible.get(ordinal - 1).copied() == Some(true))
+                        .is_none_or(|visible| visible.get(ordinal - 1).copied() != Some(true))
                 }) {
                     continue;
                 }

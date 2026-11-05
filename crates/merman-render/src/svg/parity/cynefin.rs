@@ -649,17 +649,17 @@ fn push_items(
             fmt(item.text_x),
             fmt(item.text_y)
         );
-        if !item.label.trim().is_empty() {
-            if write_label_paint(
+        if !item.label.trim().is_empty()
+            && write_label_paint(
                 out,
                 paint_plan,
                 ThemeTarget::NodeLabel,
                 ordinal,
                 false,
                 &base.text_color,
-            )? {
-                surface_receipt.record_text_fill_override();
-            }
+            )?
+        {
+            surface_receipt.record_text_fill_override();
         }
         let _ = write!(out, ">{}</text></g>", escape_xml_display(&item.label));
         out.checkpoint()?;
