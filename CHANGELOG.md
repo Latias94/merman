@@ -6,15 +6,27 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
 
 ## Unreleased
 
-- Target Mermaid `12.3.0` and its selected companion graph, including ELK `0.12.0`. Flowchart adds timed Step edges and nine BPMN shapes; Swimlane layout, Agentflow shape aliases and Usecase labels follow the selected source. See the [development migration](docs/migrations/mermaid-12-3.md) for dependency identities, output changes and bounded browser residuals.
-- **Rust model migration:** add `step: None` to existing `FlowEdge` literals and initialize `FlowchartModel::dropped_subgraph_members` when constructing models directly. Mindmap presentations use `PresentationContext::None`; the removed ambient `diagramId` compatibility field no longer owns SVG identity. Set SVG identity through render options. See the [migration](docs/migrations/mermaid-12-3.md#rust-source-changes).
-- Cancelled browser Worker requests retain transport ownership until their responses drain. VS Code reconciles queued language-server changes and escalates render-process cleanup while output pipes remain open; editor extraction ignores Mermaid fences inside HTML comments.
-- Markdown batch images preserve root accessibility descriptions, titles, XML entities and CDATA without reading nested node descriptions. The ER example and mixed batches from [#276](https://github.com/Latias94/merman/issues/276) are covered; the original example already passed before this related metadata-boundary repair.
-- Typst preserves shared binding error details, including parse diagnostics and source spans. Hand-drawn generation and final glyph-evidence traversal observe operation cancellation and work limits within their own loops; shared configuration values use iterative lifecycle operations even on their final concurrent release.
-- Playground appearance guidance now reads parser-owned declarations and provenance; automatic canvas backing uses the materialized palette from the displayed SVG's render metadata. Updating a preview retains its previous SVG and backing until the replacement is ready.
-- **Binding migration:** analysis facts advance to schema `3`, theme execution evidence to schema `2`, and Web transport API to `9`. Update matching wrappers, generated glue and WASM together; Rust/TypeScript consumers use the V2 theme evidence type. Diagnostics, operation metadata, Options JSON and native ABI versions are unchanged. See the [contract version follow-up](docs/release/UNRELEASED_CONTRACT_VERSIONS.md#source-appearance-and-render-evidence-follow-up).
-- Native filter certification observes operation cancellation during its own traversals. Railroad, Cynefin and Wardley sanitize source fields once, preserving pinned Mermaid results for HTML that changes under repeated sanitization.
-- **Maintainer tooling:** replace Typst size-matrix/build pairs with `build-typst-package --profile publish --budget-file docs/release/WASM_SIZE_BUDGETS.json`; only smoke commands accept freshness-checked reuse. Publication policies now run through the Cargo graph and artifact owners; the old release surface substring checker is removed. See the [release guide](docs/release/RELEASING.md).
+### Highlights
+
+- **Mermaid 12.3 support.** Render timed Flowchart Step edges and nine BPMN shapes, with updated Swimlane layouts, Agentflow shape aliases and Usecase labels. Static exports keep the ordinary edges and step badges without animation. See the [Mermaid 12.3 guide](docs/migrations/mermaid-12-3.md).
+- **Broader theme coverage.** Built-in presets and custom recipes now apply core colors and typography across all 34 diagram families. Shadows and other effects still depend on the diagram, shape, look and output; see [theme coverage](docs/rendering/diagram-theme-coverage.md).
+- **A simpler Playground appearance workflow.** Browse official Mermaid.js themes, Merman built-in presets, JSON examples and imports in distinct groups. Selections update the current diagram immediately; closing keeps them, and **Undo appearance** reverses changes. **Use in project** provides Rust, CLI and Web integration code with the files needed to reproduce the selected theme or diagram.
+- **Four editable theme examples.** Try Atlas, Nightfall, Letterpress and Grove on your diagram, inspect their sample scenes, or download their JSON to customize and reuse. These are standalone recipes, not additional preset IDs. See the [theme guide](docs/rendering/custom-diagram-themes.md#standalone-explorations-and-example-scenes).
+
+### Upgrade notes
+
+- **Rust source changes:** update direct `FlowEdge`, `FlowchartModel` and Rectpacking `Options` literals for the new fields. Mindmap compatibility JSON no longer includes `diagramId`; use `PresentationContext::None` and set SVG identity through render options. The [Rust migration](docs/migrations/mermaid-12-3.md#rust-source-changes) lists the replacements.
+- **Custom binding integrations:** analysis facts use schema `3`, theme execution evidence uses schema `2`, and Web transport API advances to `9`. Deploy matching wrappers, generated glue and WASM together; Rust/TypeScript evidence consumers use `ThemeExecutionEvidenceV2`. See the [binding migration](docs/release/UNRELEASED_CONTRACT_VERSIONS.md#source-appearance-and-render-evidence-follow-up).
+
+### Fixes
+
+- ELK layouts follow the selected `0.12.0` behavior for outside-label clearance, compound containers, titles, self-loops and component packing. Review layout and image snapshots after upgrading; the [ELK guide](crates/merman-elk-layered/MERMAID_12_3_DELTA.md) describes the supported scope.
+- Brutalist hard shadows appear on supported Classic and Neo Flowchart shapes. Usecase preset arrowheads follow their connector colors.
+- HTML-to-SVG text conversion preserves supported inline font sizes, weights and code fonts. Railroad, Cynefin and Wardley labels retain text that previously changed during sanitization.
+- Markdown batch conversion preserves the diagram's accessibility title and description, including entities and CDATA, without substituting nested node descriptions. Thanks [@malte-laukoetter](https://github.com/malte-laukoetter) for the report. Related: [#276](https://github.com/Latias94/merman/issues/276).
+- Playground keeps the previous preview and its matching canvas background visible during updates. Source-declared themes initialize correctly, and unavailable saved preset IDs show a notice while the diagram renders with its Mermaid base theme.
+- VS Code previews stay synchronized after rapid configuration changes, with improved cleanup after cancellation or timeouts. Editor integrations ignore Mermaid fences inside HTML comments; hand-drawn rendering and native export respond to cancellation during more of their work.
+- Typst errors retain structured parse diagnostics and original source locations, including diagrams with frontmatter or non-ASCII text.
 
 ## [0.10.0-alpha.1] - 2026-11-02
 
