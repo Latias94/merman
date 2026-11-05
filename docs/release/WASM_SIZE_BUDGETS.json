@@ -1,14 +1,14 @@
 {
   "schema_version": 2,
-  "updated": "2026-11-01",
+  "updated": "2026-11-05",
   "compression_source": "stripped",
-  "notes": "Semantic/presentation boundary baseline 1a9e8b377, measured by Linux CI run 40113172363 with Rust 1.95.0, wasm-pack 0.15.0, Binaryen 133 and wasm-tools 1.261.0. Each raw, stripped, gzip and Brotli ceiling is its measured value plus 3%, rounded upward to 1,000 bytes. All six canonical profiles are reassessed, including lower full/render ceilings after math becomes explicit. Web uses wasm-tools strip --all on final assembled npm WASM; Typst retains release wasm-opt -Oz and strip. Feature recipes, compression and functional gates are unchanged by this budget decision. Downloaded Web artifacts, source/closure analysis, exact measurements and old/new limits are recorded in docs/performance/semantic_wasm_budget_2026-10-25.md. This does not establish equal-capability full/render savings, latency or memory acceptance, or U1-U9 completion. Main binding-delivery refresh on 2026-11-01 replaces only web-full and web-render ceilings after explicit math inclusion. Final assembled npm WASM measurements and installed Chromium/Worker startup and linear-memory observations are in docs/performance/binding_wasm_budget_2026-11-01.md. Each replacement ceiling uses the measured bytes plus 3%, rounded upward to 1,000 bytes. This is a product capability change, not an equal-capability performance optimization; other four profile ceilings are unchanged.",
+  "notes": "Semantic/presentation boundary baseline 1a9e8b377, measured by Linux CI run 40113172363 with Rust 1.95.0, wasm-pack 0.15.0, Binaryen 133 and wasm-tools 1.261.0. Each raw, stripped, gzip and Brotli ceiling is its measured value plus 3%, rounded upward to 1,000 bytes. All six canonical profiles are reassessed, including lower full/render ceilings after math becomes explicit. Web uses wasm-tools strip --all on final assembled npm WASM; Typst retains release wasm-opt -Oz and strip. Feature recipes, compression and functional gates are unchanged by this budget decision. Downloaded Web artifacts, source/closure analysis, exact measurements and old/new limits are recorded in docs/performance/semantic_wasm_budget_2026-10-25.md. This does not establish equal-capability full/render savings, latency or memory acceptance, or U1-U9 completion. Main binding-delivery refresh on 2026-11-01 replaces only web-full and web-render ceilings after explicit math inclusion. Final assembled npm WASM measurements and installed Chromium/Worker startup and linear-memory observations are in docs/performance/binding_wasm_budget_2026-11-01.md. Each replacement ceiling uses the measured bytes plus 3%, rounded upward to 1,000 bytes. This is a product capability change, not an equal-capability performance optimization; other four profile ceilings are unchanged. Typst Mermaid 12.3 and cross-family theme support reassessment on 2026-11-05 replaces only typst-wasm ceilings using Linux CI run 41986465583 measurements plus the same 3%, rounded upward to 1,000 bytes. Feature recipes, Rust profile, Binaryen optimization and compression settings remain unchanged. The source attribution, exact measurements and package validation are recorded in docs/performance/typst_theme_budget_2026-11-05.md. Web ceilings are unchanged.",
   "artifact_profiles": {
     "typst-wasm": {
-      "max_raw_bytes": 20729000,
-      "max_stripped_bytes": 12663000,
-      "max_gzip_bytes": 4801000,
-      "max_brotli_bytes": 3543000
+      "max_raw_bytes": 21609000,
+      "max_stripped_bytes": 13178000,
+      "max_gzip_bytes": 4996000,
+      "max_brotli_bytes": 3697000
     },
     "web-analysis": {
       "max_raw_bytes": 4156000,
