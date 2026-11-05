@@ -1520,6 +1520,14 @@ fn parse_tag_attributes<E>(
                 }
             }
         }
+        // Attribute values enter CSS and selector matching as logical XML values.
+        // Decode exactly once here; generated fallback markup escapes them on output.
+        checkpoint()?;
+        let value = value.map(|raw| match quick_xml::escape::unescape(&raw) {
+            Ok(std::borrow::Cow::Owned(decoded)) => decoded,
+            _ => raw,
+        });
+        checkpoint()?;
         attributes.push(SourceAttribute { name, value });
     }
 
@@ -3905,5 +3913,21 @@ mod tests {
             .unwrap()
         );
         assert_eq!(rules.len(), 1);
+    }
+
+    #[test]
+    fn source_attributes_decode_xml_entities_exactly_once() {
+        let mut checkpoint = || Ok::<(), Infallible>(());
+        let element = CascadeIndex::source_element(
+            r#"<g id="A&amp;amp;B" class="a&#32;b" style="font-family:&quot;A&amp;B&quot;,monospace;"/>"#,
+            Namespace::Svg,
+            &mut checkpoint,
+        ).unwrap();
+        assert_eq!(element.id.as_deref(), Some("A&amp;B"));
+        assert!(element.classes.contains("a") && element.classes.contains("b"));
+        assert_eq!(
+            element.attributes["style"].as_deref(),
+            Some("font-family:\"A&B\",monospace;")
+        );
     }
 }

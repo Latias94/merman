@@ -35,7 +35,7 @@ pub fn flowchart_html_has_inline_style_tags(lower_html: &str) -> bool {
             continue;
         }
         let name = &lower_html[start..i];
-        if matches!(name, "strong" | "b" | "em" | "i") {
+        if matches!(name, "strong" | "b" | "em" | "i" | "code") {
             return true;
         }
     }
