@@ -28,6 +28,15 @@ Packet layout settings such as `showBits` and `rowHeight` belong under `packet`;
 font sizes belong under `themeVariables.packet`. Root `packet.labelColor` and other root style
 keys are ignored. Source theme variables remain subject to the site's secure-key policy.
 
+Within Flowchart, BPMN event rings accept Node fill, stroke and dash patterns while keeping
+their notation-specific ring widths. Annotation brackets accept stroke, stroke width and dash
+patterns. A fill request on an annotation or a ring-width request remains a residual even when
+another property of the same rule applies.
+
+Block label colors target the ordinary paragraph in its prepared HTML label. Source colors still
+own visible HTML blocks that inherit them; custom HTML outside that paragraph remains an unsupported
+paint request when the writer cannot prove that the visible text consumed the theme color.
+
 All families can receive root canvas styling. A diagram-owned background is a separate surface and
 can cover the canvas according to source/configuration precedence. A canvas-only verified result
 does not establish node, label, line or effect support.

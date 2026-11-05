@@ -647,14 +647,19 @@ Save the complete `ThemeRecipeV1` document as JSON. A fresh consumer imports it 
 not need to extract a spec or call a preset by its old name:
 
 ```ts
-const restored: unknown = JSON.parse(saved);
-const svg = renderSvg(source, JSON.stringify({ theme: restored }));
+JSON.parse(saved); // Verify that saved contains one complete JSON value.
+const optionsJson = `{"theme":${saved}}`; // Preserve the original recipe text.
+const svg = renderSvg(source, optionsJson);
 ```
 
-Passing JSON through the public API validates it in Rust. A TypeScript type assertion alone does
-not validate a downloaded document. Keep the serialized `schema_version` and `kind`; unknown
-versions and ambiguous preset/spec/recipe combinations are rejected. Normal resource admission
-still applies. Do not assume identical output across artifacts with different capabilities or fonts.
+Use `renderSvg`'s raw-JSON options argument to pass the recipe unchanged to the Rust runtime.
+`JSON.parse(saved)` only checks that the input is one complete JSON value; the runtime validates
+the recipe schema and rejects duplicate keys. Do not reserialize the parsed recipe: doing so
+silently discards duplicate keys before the runtime can reject them. A TypeScript type assertion
+alone does not validate a downloaded document. Keep the serialized `schema_version` and `kind`;
+unknown versions and ambiguous preset/spec/recipe combinations are rejected. Normal resource
+admission still applies. Do not assume identical output across artifacts with different capabilities
+or fonts.
 
 A recipe's canvas is part of the exported image. Scaling the complete SVG or raster also scales
 its grid, background and diagram. A host's separate screen-fixed background is not carried by a
