@@ -318,7 +318,7 @@ pub(super) fn push_architecture_groups<'a, O: SvgOutput>(
     ctx: &mut ArchitectureNodeRenderContext<'a, O>,
     group_rects: &[GroupRect<'a>],
     group_inline_style: Option<&str>,
-    group_style_emitted: &mut bool,
+    group_emitted: &mut bool,
 ) -> crate::Result<()> {
     let checkpoints = ctx.checkpoints;
     checkpoints.checkpoint()?;
@@ -457,7 +457,8 @@ pub(super) fn push_architecture_groups<'a, O: SvgOutput>(
 
             out.push_str("</g>");
             out.checkpoint()?;
-            *group_style_emitted |= group_inline_style.is_some();
+            // Clear consumes the successfully emitted baseline without an inline style.
+            *group_emitted = true;
             if has_title && let Some(emission) = typography_emission.as_deref_mut() {
                 emission.record_visible_text();
             }

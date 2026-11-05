@@ -2368,6 +2368,147 @@ fn pie_role_weight_and_style_have_a_bounded_native_consumer() {
     }
 }
 
+fn pie_role_typography_patch(property: &str, clear: bool) -> ThemeStylePatch {
+    use merman_render::diagram_theme::{FontStyle, Specified};
+
+    let mut patch = ThemeStylePatch::default();
+    match property {
+        "font-size" => {
+            patch.typography.font_size_px = if clear {
+                Specified::Clear
+            } else {
+                Specified::Value(31.0)
+            };
+        }
+        "font-weight" => {
+            patch.typography.font_weight = if clear {
+                Specified::Clear
+            } else {
+                Specified::Value(650)
+            };
+        }
+        "font-style" => {
+            patch.typography.font_style = if clear {
+                Specified::Clear
+            } else {
+                Specified::Value(FontStyle::Italic)
+            };
+        }
+        _ => unreachable!("bounded Pie role typography fixture"),
+    }
+    patch
+}
+
+#[test]
+fn pie_role_typography_clear_keeps_baseline_css_and_independent_text_roles() {
+    let source = "pie title Baseline typography\n  \"Alpha\" : 2\n  \"Beta\" : 1\n";
+    for target in [ThemeTarget::Text, ThemeTarget::Title, ThemeTarget::Legend] {
+        for property in ["font-size", "font-weight", "font-style"] {
+            // A Text request remains on percentage labels when another role is cleared.
+            let fallback = (target != ThemeTarget::Text).then(|| {
+                ThemeRule::new(
+                    ThemeTarget::Text,
+                    pie_role_typography_patch(property, false),
+                )
+            });
+            let baseline = render_pie_with_theme(source, &pie_rules_theme(fallback.clone()));
+            for previous_value in [false, true] {
+                for variant in [None, Some(ThemeVariant::Default)] {
+                    let mut rules = fallback.clone().into_iter().collect::<Vec<_>>();
+                    if previous_value {
+                        rules.push(ThemeRule::new(
+                            target,
+                            pie_role_typography_patch(property, false),
+                        ));
+                    }
+                    let clear = ThemeRule::new(target, pie_role_typography_patch(property, true));
+                    rules
+                        .push(variant.map_or(clear.clone(), |variant| clear.with_variant(variant)));
+                    let rendered = try_render_pie_with_theme_requirement(
+                        source,
+                        &pie_rules_theme(rules),
+                        ThemePortabilityRequirement::RequirePortable,
+                    )
+                    .expect("a winning typography Clear must be portable");
+                    assert_eq!(
+                        rendered.svg(),
+                        baseline.svg(),
+                        "{target:?}/{property}/previous={previous_value}/variant={variant:?}"
+                    );
+                    let evidence = merman_render::__private::family_evidence(
+                        rendered.into_completion().report(),
+                    );
+                    assert_eq!(
+                        evidence.required_count(),
+                        1 + usize::from(previous_value) + usize::from(fallback.is_some())
+                    );
+                    assert_eq!(
+                        evidence.applied_count(),
+                        1 + usize::from(fallback.is_some())
+                    );
+                    assert_eq!(evidence.not_applicable_count(), usize::from(previous_value));
+                    assert_eq!(evidence.accounted_count(), evidence.required_count());
+                    assert_eq!(evidence.theme_residual_count(), 0);
+                }
+            }
+        }
+    }
+}
+
+#[test]
+fn pie_role_typography_clear_preserves_source_sizes_and_requires_real_text() {
+    use merman_render::diagram_theme::Specified;
+
+    let config = serde_json::json!({"themeVariables": {
+        "fontSize": "20px",
+        "pieTitleTextSize": "150%",
+        "pieSectionTextSize": "1.25em",
+        "pieLegendTextSize": "inherit"
+    }});
+    for (body, present) in [
+        ("pie\n", [false, false, false]),
+        ("pie title Title only\n", [true, false, false]),
+        ("pie\n  \"Alpha\" : 0\n", [false, false, true]),
+        ("pie title All roles\n  \"Alpha\" : 1\n", [true, true, true]),
+    ] {
+        let source = format!("%%{{init: {config}}}%%\n{body}");
+        let baseline = render_pie_with_theme(&source, &pie_rules_theme([]));
+        for (index, target) in [ThemeTarget::Title, ThemeTarget::Text, ThemeTarget::Legend]
+            .into_iter()
+            .enumerate()
+        {
+            for size_only in [true, false] {
+                let mut value = pie_role_typography_patch("font-size", false);
+                let mut clear = pie_role_typography_patch("font-size", true);
+                if !size_only {
+                    value.typography.font_weight = Specified::Value(650);
+                    value.typography.font_style =
+                        Specified::Value(merman_render::diagram_theme::FontStyle::Italic);
+                    clear.typography.font_weight = Specified::Clear;
+                    clear.typography.font_style = Specified::Clear;
+                }
+                let theme =
+                    pie_rules_theme([ThemeRule::new(target, value), ThemeRule::new(target, clear)]);
+                let rendered = try_render_pie_with_theme_requirement(
+                    &source,
+                    &theme,
+                    ThemePortabilityRequirement::RequirePortable,
+                )
+                .expect("source size ownership must not suppress weight/style Clear");
+                assert_eq!(rendered.svg(), baseline.svg(), "{target:?}/{body:?}");
+                let evidence =
+                    merman_render::__private::family_evidence(rendered.into_completion().report());
+                let applied = usize::from(present[index] && !size_only);
+                assert_eq!(evidence.required_count(), 2);
+                assert_eq!(evidence.applied_count(), applied);
+                assert_eq!(evidence.not_applicable_count(), 2 - applied);
+                assert_eq!(evidence.accounted_count(), 2);
+                assert_eq!(evidence.theme_residual_count(), 0);
+            }
+        }
+    }
+}
+
 #[test]
 fn pie_base_size_needs_a_visible_inherited_role_and_respects_source_base_size() {
     let theme = pie_typography_theme(ThemeTextStyle::default().with_font_size_px(24.0).unwrap());

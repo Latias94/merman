@@ -313,6 +313,212 @@ fn prepare_architecture_with_theme_and_environment(
     (parsed, LayoutOptions::headless_svg_defaults(), session)
 }
 
+fn try_render_architecture_with_theme(
+    source: &str,
+    theme: &DiagramTheme,
+) -> merman_render::Result<family::RenderedFamilySvg> {
+    let engine = MermaidEngine::new().with_site_config(
+        merman_core::presentation::SourcePresentationConfig::from_value(json!({
+            "architecture": {"numIter": 1, "randomize": false}
+        })),
+    );
+    let (parsed, options, session) = prepare_architecture_with_theme_and_environment(
+        source,
+        theme,
+        engine,
+        RenderEnvironment::deterministic(),
+    );
+    family::prepare(&parsed, &options, session)?
+        .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+}
+
+#[test]
+fn architecture_group_clear_restores_baseline_with_complete_evidence() {
+    use merman_render::diagram_theme::Specified;
+
+    let source =
+        "architecture-beta\ngroup backend(cloud)[Backend]\nservice api(server)[API] in backend";
+    let baseline_theme = DiagramThemeCompiler::new()
+        .compile(DiagramThemeSpec::new())
+        .unwrap();
+    let baseline = try_render_architecture_with_theme(source, &baseline_theme).unwrap();
+    let document = roxmltree::Document::parse(baseline.svg()).unwrap();
+    assert!(document.descendants().any(|node| {
+        node.has_tag_name("rect") && node.attribute("id") == Some("architecture-group-backend")
+    }));
+
+    for (clear_fill, clear_stroke) in [(true, false), (false, true), (true, true)] {
+        for preceding_value in [false, true] {
+            let mut value = ThemeStylePatch::default();
+            let mut clear = ThemeStylePatch::default();
+            if clear_fill {
+                value.paint.fill = Specified::Value(CanvasPaint::solid("#123456").unwrap());
+                clear.paint.fill = Specified::Clear;
+            }
+            if clear_stroke {
+                value.stroke.paint = Specified::Value(CanvasPaint::solid("#654321").unwrap());
+                clear.stroke.paint = Specified::Clear;
+            }
+            let mut rules = ThemeRuleSet::default();
+            if preceding_value {
+                rules = rules.with_rule(ThemeRule::new(ThemeTarget::Cluster, value));
+            }
+            let theme = DiagramThemeCompiler::new()
+                .compile(
+                    DiagramThemeSpec::new()
+                        .with_styles(rules.with_rule(ThemeRule::new(ThemeTarget::Cluster, clear))),
+                )
+                .unwrap();
+
+            // Reproduction: Clear emits no inline style, but a real group still seals it.
+            let rendered = try_render_architecture_with_theme(source, &theme)
+                .expect("a checkpointed group must complete a winning Clear in strict mode");
+            assert_eq!(rendered.svg(), baseline.svg());
+            let completion = rendered.into_completion();
+            let evidence = merman_render::__private::family_evidence(completion.report());
+            assert_eq!(evidence.required_count(), 1 + usize::from(preceding_value));
+            assert_eq!(evidence.accounted_count(), evidence.required_count());
+            assert_eq!(evidence.applied_count(), 1);
+            assert_eq!(
+                evidence.not_applicable_count(),
+                usize::from(preceding_value)
+            );
+            assert_eq!(evidence.theme_residual_count(), 0);
+
+            let absent = try_render_architecture_with_theme(
+                "architecture-beta\nservice api(server)[API]",
+                &theme,
+            )
+            .unwrap();
+            let completion = absent.into_completion();
+            let evidence = merman_render::__private::family_evidence(completion.report());
+            assert_eq!(evidence.accounted_count(), evidence.required_count());
+            assert_eq!(evidence.applied_count(), 0);
+            assert_eq!(evidence.not_applicable_count(), evidence.required_count());
+            assert_eq!(evidence.theme_residual_count(), 0);
+        }
+    }
+}
+
+#[test]
+fn architecture_edge_nonmatching_variants_are_not_applicable() {
+    use merman_render::diagram_theme::OrdinalSelector;
+
+    let source =
+        "architecture-beta\nservice api(server)[API]\nservice db(database)[DB]\napi:R --> L:db";
+    let baseline_theme = DiagramThemeCompiler::new()
+        .compile(DiagramThemeSpec::new())
+        .unwrap();
+    let baseline = try_render_architecture_with_theme(source, &baseline_theme).unwrap();
+    let document = roxmltree::Document::parse(baseline.svg()).unwrap();
+    assert!(
+        document
+            .descendants()
+            .any(|node| { node.has_tag_name("path") && node.attribute("class") == Some("edge") })
+    );
+
+    for ordinal in [None, Some(OrdinalSelector::Exact(1))] {
+        let mut rule = ThemeRule::new(
+            ThemeTarget::Edge,
+            ThemeStylePatch::default().with_stroke(CanvasPaint::solid("#ff0000").unwrap()),
+        )
+        .with_variant(ThemeVariant::Primary);
+        if let Some(ordinal) = ordinal {
+            rule = rule.with_ordinal(ordinal);
+        }
+        let theme = DiagramThemeCompiler::new()
+            .compile(DiagramThemeSpec::new().with_styles(ThemeRuleSet::default().with_rule(rule)))
+            .unwrap();
+
+        // Reproduction: Primary has no Architecture edge terminal, even at a real ordinal.
+        let rendered = try_render_architecture_with_theme(source, &theme)
+            .expect("a nonmatching variant must not create a strict-mode paint residual");
+        assert_eq!(rendered.svg(), baseline.svg());
+        let completion = rendered.into_completion();
+        let evidence = merman_render::__private::family_evidence(completion.report());
+        assert_eq!(evidence.required_count(), 1);
+        assert_eq!(evidence.accounted_count(), 1);
+        assert_eq!(evidence.applied_count(), 0);
+        assert_eq!(evidence.not_applicable_count(), 1);
+        assert_eq!(evidence.theme_residual_count(), 0);
+    }
+}
+
+#[test]
+fn architecture_edge_overridden_default_variant_is_not_applicable() {
+    let source =
+        "architecture-beta\nservice api(server)[API]\nservice db(database)[DB]\napi:R --> L:db";
+    let winner = ThemeRule::new(
+        ThemeTarget::Edge,
+        ThemeStylePatch::default().with_stroke(CanvasPaint::solid("#123456").unwrap()),
+    );
+    let baseline_theme = DiagramThemeCompiler::new()
+        .compile(
+            DiagramThemeSpec::new().with_styles(ThemeRuleSet::default().with_rule(winner.clone())),
+        )
+        .unwrap();
+    let baseline = try_render_architecture_with_theme(source, &baseline_theme).unwrap();
+    let theme = DiagramThemeCompiler::new()
+        .compile(
+            DiagramThemeSpec::new().with_styles(
+                ThemeRuleSet::default()
+                    .with_rule(
+                        ThemeRule::new(
+                            ThemeTarget::Edge,
+                            ThemeStylePatch::default()
+                                .with_stroke(CanvasPaint::solid("#ff0000").unwrap()),
+                        )
+                        .with_variant(ThemeVariant::Default),
+                    )
+                    .with_rule(winner),
+            ),
+        )
+        .unwrap();
+
+    // Reproduction: matching Default must also win its property to produce a residual.
+    let rendered = try_render_architecture_with_theme(source, &theme)
+        .expect("a superseded Default request must not reject the supported winner");
+    assert_eq!(rendered.svg(), baseline.svg());
+    let completion = rendered.into_completion();
+    let evidence = merman_render::__private::family_evidence(completion.report());
+    assert_eq!(evidence.required_count(), 2);
+    assert_eq!(evidence.accounted_count(), 2);
+    assert_eq!(evidence.applied_count(), 1);
+    assert_eq!(evidence.not_applicable_count(), 1);
+    assert_eq!(evidence.theme_residual_count(), 0);
+}
+
+#[test]
+fn architecture_edge_winning_default_variant_retains_unsupported_residual() {
+    use merman_render::diagram_theme::OrdinalSelector;
+
+    let source =
+        "architecture-beta\nservice api(server)[API]\nservice db(database)[DB]\napi:R --> L:db";
+    for ordinal in [None, Some(OrdinalSelector::Exact(1))] {
+        let mut rule = ThemeRule::new(
+            ThemeTarget::Edge,
+            ThemeStylePatch::default().with_stroke(CanvasPaint::solid("#ff0000").unwrap()),
+        )
+        .with_variant(ThemeVariant::Default);
+        if let Some(ordinal) = ordinal {
+            rule = rule.with_ordinal(ordinal);
+        }
+        let theme = DiagramThemeCompiler::new()
+            .compile(DiagramThemeSpec::new().with_styles(ThemeRuleSet::default().with_rule(rule)))
+            .unwrap();
+
+        // Guard: matching, winning Default selectors retain the existing unsupported contract.
+        let error = try_render_architecture_with_theme(source, &theme)
+            .err()
+            .expect("an unsupported Default winner must remain rejected in strict mode");
+        assert_eq!(
+            error.unverified_family_theme(),
+            Some((DiagramFamilyId::ARCHITECTURE, 1))
+        );
+        assert_eq!(error.incomplete_family_theme(), None);
+    }
+}
+
 fn render_architecture_fixture(fixture_name: &str) -> String {
     render_architecture_fixture_with_options(
         fixture_name,
