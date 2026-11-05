@@ -51,6 +51,8 @@ pub use catalog_contract::{
     RUNTIME_CATALOG_FIELD_IDENTIFIER_PATTERN, RUNTIME_CATALOG_IDENTIFIER_PATTERN,
     RUNTIME_CATALOG_MAX_SAFE_INTEGER,
 };
+#[cfg(feature = "analysis")]
+pub use common::analysis_options_with_resource_ceiling;
 #[cfg(feature = "svg")]
 #[doc(hidden)]
 pub use common::prepare_theme_authoring_options_json;
@@ -64,7 +66,7 @@ pub use common::{
 };
 #[doc(hidden)]
 pub use common::{
-    BindingJsSafeResourceErrorDetails, binding_error_js_details_json,
+    BindingJsSafeResourceErrorDetails, binding_error_details_json, binding_error_js_details_json,
     binding_error_js_payload_json_bytes, enforce_options_json_byte_budget,
     enforce_options_json_byte_len,
 };
@@ -124,7 +126,7 @@ pub use theme_execution_evidence::{
     BINDING_THEME_EXECUTION_EVIDENCE_MAX_ID_UTF8_BYTES,
     BINDING_THEME_EXECUTION_EVIDENCE_MAX_TARGET_REASON_IDS,
     BINDING_THEME_EXECUTION_EVIDENCE_SCHEMA_VERSION, BindingThemeDiagnostic,
-    BindingThemeExecutionEvidence, BindingThemeExecutionEvidenceV1,
+    BindingThemeExecutionEvidence, BindingThemeExecutionEvidenceV2,
     BindingUnknownThemeExecutionEvidence,
 };
 

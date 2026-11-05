@@ -2,7 +2,6 @@ import { create } from "zustand";
 import type { MermaidThemeSelection } from "../lib/mermaid-theme-name.ts";
 import type { DiagramFont } from "../lib/diagram-font.ts";
 import { mergeRecommendedMermaidConfig, type MermaidConfigObject } from "../lib/mermaid-config.ts";
-import { projectError } from "../runtime/error-projection.ts";
 import type {
   ShareViewWarning,
   StartupShareHydration,
@@ -20,25 +19,15 @@ import {
   type SvgPresentationMode,
 } from "../lib/svg-presentation.ts";
 import {
-  acceptThemeValidation,
-  advanceThemeBaseline,
-  beginThemeEditSession,
-  beginThemeImport,
-  completeThemeImport,
-  failThemeImport,
-  isThemeDraftChanged,
-  rejectThemeValidation,
-  restoreValidThemeDraft,
-  selectThemeCandidate,
-  themeCandidateFromFields,
-  themeValidationToken,
-  themePreviewWorkspace,
-  type ThemeCandidate,
-  type ThemeEditSession,
-  type ThemeImportToken,
-  type ThemeValidationToken,
-  type ThemeSettingsDraft,
-} from "../lib/theme-edit-session.ts";
+  appearanceChanged,
+  selectDiagramAppearance,
+  themeChoiceFields,
+  undoAppearanceFields,
+  type AppearanceChange,
+  type DiagramAppearance,
+  type DiagramThemeChoice,
+  type ThemeRecipeLabel,
+} from "../lib/diagram-appearance.ts";
 
 export type Theme = MermaidThemeSelection;
 export type UITheme = "light" | "dark" | "system";
@@ -66,23 +55,15 @@ export interface AppState {
   diagramTheme: Theme;
   setDiagramTheme: (theme: Theme) => void;
   themePresetId: string | null;
-  setThemePresetId: (presetId: string | null) => void;
   themeRecipeJson: string | null;
-  setThemeRecipeJson: (recipeJson: string | null) => void;
-  themeEditSession: ThemeEditSession | null;
-  themeEditGeneration: number;
-  beginThemeEdit: () => ThemeValidationToken;
-  acceptThemeValidation: (token: ThemeValidationToken, recipeJson: string) => boolean;
-  rejectThemeValidation: (token: ThemeValidationToken, error: string) => boolean;
-  selectThemeCandidate: (candidate: Exclude<ThemeCandidate, { kind: "custom" }>) => void;
-  previewThemeSettings: (settings: Pick<ThemeSettingsDraft, "diagramTheme" | "diagramFont">) => void;
-  previewThemeConfig: (config: Readonly<MermaidConfigObject>) => void;
-  restoreValidThemeDraft: () => boolean;
-  beginThemeImport: () => ThemeImportToken | null;
-  completeThemeImport: (token: ThemeImportToken, rawJson: string) => ThemeValidationToken | null;
-  failThemeImport: (token: ThemeImportToken, error: string) => boolean;
-  applyThemeEdit: () => boolean;
-  cancelThemeEdit: () => void;
+  themeRecipeLabel: ThemeRecipeLabel | null;
+  themePanelOpen: boolean;
+  openThemePanel: () => void;
+  closeThemePanel: () => void;
+  selectTheme: (choice: DiagramThemeChoice) => void;
+  applyThemeConfig: (config: Readonly<MermaidConfigObject>) => void;
+  appearanceHistory: readonly AppearanceChange[];
+  undoAppearance: () => boolean;
   svgPipeline: SvgPipeline;
   setSvgPipeline: (pipeline: SvgPipeline) => void;
   textMeasurementMode: TextMeasurementMode;
@@ -120,28 +101,11 @@ export function selectWorkspaceSnapshot(
     diagramTheme: state.diagramTheme,
     themePresetId: state.themePresetId,
     themeRecipeJson: state.themeRecipeJson,
+    ...(state.themeRecipeLabel ? { themeRecipeLabel: state.themeRecipeLabel } : {}),
     svgPipeline: state.svgPipeline,
     textMeasurementMode: state.textMeasurementMode,
     diagramFont: state.diagramFont,
   };
-}
-
-export function selectRenderInputSnapshot(
-  state: Pick<AppState, keyof WorkspaceSnapshot | "themeEditSession">,
-): WorkspaceSnapshot {
-  const workspace = selectWorkspaceSnapshot(state);
-  const session = state.themeEditSession;
-  if (!session) return workspace;
-  try {
-    return themePreviewWorkspace(workspace, session);
-  } catch {
-    // Let the renderer report live invalid JSON instead of retaining an old config snapshot.
-    return themePreviewWorkspace(workspace, { ...session, settings: { ...session.settings, config: undefined } });
-  }
-}
-
-export function selectThemeDraftChanged(state: Pick<AppState, "themeEditSession">): boolean {
-  return isThemeDraftChanged(state.themeEditSession);
 }
 
 function getInitialUITheme(): UITheme {
@@ -193,171 +157,100 @@ function applyResolvedTheme(resolvedTheme: ResolvedUITheme): void {
 const initialUITheme = getInitialUITheme();
 const initialResolvedTheme = resolveUITheme(initialUITheme);
 
-export const useAppStore = create<AppState>((set, get) => ({
-  // Editor state
-  code: DEFAULT_WORKSPACE_SNAPSHOT.code,
-  setCode: (code) => set({ code }),
-  mermaidConfig: DEFAULT_WORKSPACE_SNAPSHOT.mermaidConfig,
-  setMermaidConfig: (mermaidConfig) => set((state) => ({
-    mermaidConfig,
-    ...(state.themeEditSession?.applyError ? { themeEditSession: { ...state.themeEditSession, applyError: null } } : {}),
-  })),
-  editorMode: "code",
-  setEditorMode: (editorMode) => set({ editorMode }),
+export const useAppStore = create<AppState>((set, get) => {
+  function changeAppearance(fields: Partial<DiagramAppearance>): void {
+    const state = get();
+    const before = selectDiagramAppearance(state);
+    const after = { ...before, ...fields };
+    if (!appearanceChanged(before, after)) return;
+    set({ ...fields, appearanceHistory: [...state.appearanceHistory.slice(-31), { before, after }] });
+  }
 
-  // Diagram rendering
-  diagramTheme: DEFAULT_WORKSPACE_SNAPSHOT.diagramTheme,
-  setDiagramTheme: (diagramTheme) => set({ diagramTheme }),
-  themePresetId: DEFAULT_WORKSPACE_SNAPSHOT.themePresetId,
-  setThemePresetId: (themePresetId) => set({ themePresetId, themeRecipeJson: null, themeEditSession: null }),
-  themeRecipeJson: DEFAULT_WORKSPACE_SNAPSHOT.themeRecipeJson,
-  setThemeRecipeJson: (themeRecipeJson) =>
-    set(
-      themeRecipeJson === null
-        ? { themeRecipeJson, themeEditSession: null }
-        : { themeRecipeJson, themePresetId: null, themeEditSession: null },
-    ),
-  themeEditSession: null,
-  themeEditGeneration: 0,
-  beginThemeEdit: () => {
-    const state = get();
-    if (state.themeEditSession) return themeValidationToken(state.themeEditSession);
-    const generation = state.themeEditGeneration + 1;
-    const session = beginThemeEditSession(generation, themeCandidateFromFields(state));
-    set({ themeEditSession: session, themeEditGeneration: generation });
-    return themeValidationToken(session);
-  },
-  acceptThemeValidation: (token, recipeJson) => {
-    const current = get().themeEditSession;
-    if (!current) return false;
-    const session = acceptThemeValidation(current, token, recipeJson);
-    if (session === current) return false;
-    set({ themeEditSession: session });
-    return true;
-  },
-  rejectThemeValidation: (token, error) => {
-    const current = get().themeEditSession;
-    if (!current) return false;
-    const session = rejectThemeValidation(current, token, error);
-    if (session === current) return false;
-    set({ themeEditSession: session });
-    return true;
-  },
-  selectThemeCandidate: (candidate) => {
-    const current = get().themeEditSession;
-    if (current) set({ themeEditSession: selectThemeCandidate(current, candidate) });
-  },
-  previewThemeSettings: (update) => {
-    const state = get();
-    const current = state.themeEditSession;
-    if (!current) return;
-    const settings = { ...current.settings, ...update };
-    if (settings.diagramTheme === state.diagramTheme) delete settings.diagramTheme;
-    if (settings.diagramFont === state.diagramFont) delete settings.diagramFont;
-    set({ themeEditSession: { ...current, settings } });
-  },
-  previewThemeConfig: (config) => {
-    const state = get();
-    const current = state.themeEditSession;
-    if (!current) return;
-    const patch = JSON.parse(mergeRecommendedMermaidConfig(JSON.stringify(current.settings.config ?? {}), config)) as MermaidConfigObject;
-    // Validate against the current authored config before exposing a preview action as successful.
-    mergeRecommendedMermaidConfig(state.mermaidConfig, patch);
-    set({ themeEditSession: { ...current, settings: { ...current.settings, config: patch }, applyError: null } });
-  },
-  restoreValidThemeDraft: () => {
-    const current = get().themeEditSession;
-    if (!current) return false;
-    const session = restoreValidThemeDraft(current);
-    if (session === current) return false;
-    set({ themeEditSession: session });
-    return true;
-  },
-  beginThemeImport: () => {
-    const current = get().themeEditSession;
-    if (!current) return null;
-    const session = beginThemeImport(current);
-    set({ themeEditSession: session });
-    return { ...themeValidationToken(session), generation: session.importGeneration };
-  },
-  completeThemeImport: (token, rawJson) => {
-    const current = get().themeEditSession;
-    if (!current) return null;
-    const session = completeThemeImport(current, token, rawJson);
-    if (session === current) return null;
-    set({ themeEditSession: session });
-    return themeValidationToken(session);
-  },
-  failThemeImport: (token, error) => {
-    const current = get().themeEditSession;
-    if (!current) return false;
-    const session = failThemeImport(current, token, error);
-    if (session === current) return false;
-    set({ themeEditSession: session });
-    return true;
-  },
-  applyThemeEdit: () => {
-    const state = get();
-    const current = state.themeEditSession;
-    if (!current || current.validation !== "valid" || current.importing) return false;
-    try {
-      const workspace = themePreviewWorkspace(selectWorkspaceSnapshot(state), current);
-      const session = advanceThemeBaseline(current);
-      set({ ...workspace, themeEditSession: { ...session, error: null, applyError: null } });
-      return true;
-    } catch (cause) {
-      set({ themeEditSession: { ...current, applyError: projectError(cause).summary } });
+  return {
+    // Editor state
+    code: DEFAULT_WORKSPACE_SNAPSHOT.code,
+    setCode: (code) => set({ code }),
+    mermaidConfig: DEFAULT_WORKSPACE_SNAPSHOT.mermaidConfig,
+    setMermaidConfig: (mermaidConfig) => set({ mermaidConfig }),
+    editorMode: "code",
+    setEditorMode: (editorMode) => set({ editorMode }),
+
+    // Diagram rendering
+    diagramTheme: DEFAULT_WORKSPACE_SNAPSHOT.diagramTheme,
+    setDiagramTheme: (diagramTheme) => changeAppearance({ diagramTheme }),
+    themePresetId: DEFAULT_WORKSPACE_SNAPSHOT.themePresetId,
+    themeRecipeJson: DEFAULT_WORKSPACE_SNAPSHOT.themeRecipeJson,
+    themeRecipeLabel: null,
+    themePanelOpen: false,
+    openThemePanel: () => set({ themePanelOpen: true }),
+    closeThemePanel: () => set({ themePanelOpen: false }),
+    selectTheme: (choice) => changeAppearance(themeChoiceFields(choice)),
+    applyThemeConfig: (config) => changeAppearance({ mermaidConfig: mergeRecommendedMermaidConfig(get().mermaidConfig, config) }),
+    appearanceHistory: [],
+    undoAppearance: () => {
+      const state = get();
+      const history = [...state.appearanceHistory];
+      while (history.length > 0) {
+        const change = history.pop()!;
+        const fields = undoAppearanceFields(selectDiagramAppearance(state), change);
+        if (Object.keys(fields).length > 0) {
+          set({ ...fields, appearanceHistory: history });
+          return true;
+        }
+      }
+      set({ appearanceHistory: [] });
       return false;
-    }
-  },
-  cancelThemeEdit: () => set({ themeEditSession: null }),
-  svgPipeline: DEFAULT_WORKSPACE_SNAPSHOT.svgPipeline,
-  setSvgPipeline: (svgPipeline) => set({ svgPipeline }),
-  textMeasurementMode: DEFAULT_WORKSPACE_SNAPSHOT.textMeasurementMode,
-  setTextMeasurementMode: (textMeasurementMode) => set({ textMeasurementMode }),
-  diagramFont: DEFAULT_WORKSPACE_SNAPSHOT.diagramFont,
-  setDiagramFont: (diagramFont) => set({ diagramFont }),
-  applyWorkspaceSnapshot: (snapshot) => set({ ...snapshot, themeEditSession: null }),
-  shareViewWarning: null,
-  applyStartupShareHydration: ({ workspace, view, warning }) =>
-    set({
-      ...workspace,
-      themeEditSession: null,
-      workspacePane: view.workspacePane,
-      editorMode: view.editorMode,
-      previewMode: view.previewMode,
-      svgPresentationMode: view.svgPresentationMode,
-      showSvgBounds: view.showSvgBounds,
-      shareViewWarning: warning,
-    }),
+    },
+    svgPipeline: DEFAULT_WORKSPACE_SNAPSHOT.svgPipeline,
+    setSvgPipeline: (svgPipeline) => set({ svgPipeline }),
+    textMeasurementMode: DEFAULT_WORKSPACE_SNAPSHOT.textMeasurementMode,
+    setTextMeasurementMode: (textMeasurementMode) => set({ textMeasurementMode }),
+    diagramFont: DEFAULT_WORKSPACE_SNAPSHOT.diagramFont,
+    setDiagramFont: (diagramFont) => changeAppearance({ diagramFont }),
+    applyWorkspaceSnapshot: (snapshot) => set({ ...snapshot, themeRecipeLabel: snapshot.themeRecipeLabel ?? null, appearanceHistory: [], themePanelOpen: false }),
+    shareViewWarning: null,
+    applyStartupShareHydration: ({ workspace, view, warning }) =>
+      set({
+        ...workspace,
+        themeRecipeLabel: workspace.themeRecipeLabel ?? null,
+        appearanceHistory: [],
+        themePanelOpen: false,
+        workspacePane: view.workspacePane,
+        editorMode: view.editorMode,
+        previewMode: view.previewMode,
+        svgPresentationMode: view.svgPresentationMode,
+        showSvgBounds: view.showSvgBounds,
+        shareViewWarning: warning,
+      }),
 
-  // Workbench theme
-  uiTheme: initialUITheme,
-  resolvedTheme: initialResolvedTheme,
-  setUITheme: (uiTheme) => {
-    const resolvedTheme = resolveUITheme(uiTheme);
-    persistUITheme(uiTheme);
-    applyResolvedTheme(resolvedTheme);
-    set({ uiTheme, resolvedTheme });
-  },
+    // Workbench theme
+    uiTheme: initialUITheme,
+    resolvedTheme: initialResolvedTheme,
+    setUITheme: (uiTheme) => {
+      const resolvedTheme = resolveUITheme(uiTheme);
+      persistUITheme(uiTheme);
+      applyResolvedTheme(resolvedTheme);
+      set({ uiTheme, resolvedTheme });
+    },
 
-  // Workspace navigation
-  workspacePane: "editor",
-  setWorkspacePane: (workspacePane) => set({ workspacePane }),
-  previewMode: "svg",
-  setPreviewMode: (previewMode) => set({ previewMode }),
-  svgPresentationMode: DEFAULT_SVG_PRESENTATION_MODE,
-  setSvgPresentationMode: (svgPresentationMode) =>
-    set((state) =>
-      state.svgPresentationMode === svgPresentationMode
-        ? state
-        : { svgPresentationMode },
-    ),
-  showSvgBounds: false,
-  setShowSvgBounds: (showSvgBounds) => set({ showSvgBounds }),
-  previewBacking: "automatic",
-  setPreviewBacking: (previewBacking) => set({ previewBacking }),
-}));
+    // Workspace navigation
+    workspacePane: "editor",
+    setWorkspacePane: (workspacePane) => set({ workspacePane }),
+    previewMode: "svg",
+    setPreviewMode: (previewMode) => set({ previewMode }),
+    svgPresentationMode: DEFAULT_SVG_PRESENTATION_MODE,
+    setSvgPresentationMode: (svgPresentationMode) =>
+      set((state) =>
+        state.svgPresentationMode === svgPresentationMode
+          ? state
+          : { svgPresentationMode },
+      ),
+    showSvgBounds: false,
+    setShowSvgBounds: (showSvgBounds) => set({ showSvgBounds }),
+    previewBacking: "automatic",
+    setPreviewBacking: (previewBacking) => set({ previewBacking }),
+  };
+});
 
 applyResolvedTheme(initialResolvedTheme);
 

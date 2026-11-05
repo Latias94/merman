@@ -3,7 +3,9 @@ import { expect, test } from "@playwright/test";
 
 import {
   monitorBrowserErrors,
+  openAdvancedRendering,
   openPlayground,
+  openWorkbenchTool,
   previewSvgText,
   replaceEditorSource,
   waitForPreviewSvg,
@@ -104,11 +106,41 @@ test("optional workbenches request code only after user activation", async ({
   ).toBeVisible();
   expect(wasRequested(requests, featureOutputs.config)).toBe(true);
 
-  await page.getByRole("button", { name: "Bench", exact: true }).click();
+  await page.getByRole("button", { name: "Tools", exact: true }).click();
+  expect(wasRequested(requests, featureOutputs.benchmark)).toBe(false);
+  await page.getByRole("menuitem", { name: "Benchmark", exact: true }).click();
   await expect(
     page.getByRole("dialog", { name: "Browser Benchmark" }),
   ).toBeVisible();
   expect(wasRequested(requests, featureOutputs.benchmark)).toBe(true);
+  errors.assertNone();
+});
+
+test("Tools keeps rendering controls separate from app settings", async ({ page }) => {
+  const errors = monitorBrowserErrors(page);
+  await openPlayground(page);
+  await waitForPreviewSvg(page);
+
+  await expect(page.getByRole("button", { name: "Appearance", exact: true })).toHaveCount(1);
+  await expect(page.getByRole("button", { name: "Render settings", exact: true })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Bench", exact: true })).toHaveCount(0);
+  await openAdvancedRendering(page);
+  await expect(page.getByRole("menuitemradio", { name: "Browser", exact: true })).toHaveAttribute("aria-checked", "true");
+  await expect(page.getByRole("menuitemradio", { name: "Arial", exact: true })).toHaveCount(0);
+  await page.getByRole("menuitemradio", { name: "Headless", exact: true }).click();
+  await expect(page.getByRole("button", { name: "Tools", exact: true })).toBeFocused();
+  await openAdvancedRendering(page);
+  await expect(page.getByRole("menuitemradio", { name: "Headless", exact: true })).toHaveAttribute("aria-checked", "true");
+  await page.keyboard.press("Escape");
+  await page.keyboard.press("Escape");
+
+  const settings = page.getByRole("button", { name: "App settings", exact: true });
+  await settings.click();
+  await expect(page.getByRole("menuitemradio", { name: "English", exact: false })).toBeVisible();
+  await expect(page.getByRole("menuitemradio", { name: "Browser", exact: true })).toHaveCount(0);
+  await page.getByRole("menuitemradio", { name: "Light", exact: true }).click();
+  await expect(page.locator("html")).not.toHaveClass(/dark/);
+  await expect(settings).toBeFocused();
   errors.assertNone();
 });
 
@@ -223,6 +255,10 @@ test("export workbench targets toolbar and Compare artifacts through one dialog"
 
   const trigger = page.getByRole("button", { name: "Export", exact: true });
   await trigger.click();
+  await expect(page.getByRole("menuitem", { name: "Copy Mermaid source", exact: true }))
+    .toHaveAccessibleDescription("Copies the source text. Appearance selected in this workspace is not included.");
+  await expect(page.getByRole("menuitem", { name: "Open in Mermaid Live", exact: true }))
+    .toHaveAccessibleDescription("Mermaid.ink and Mermaid Live render the source again. Merman appearance extensions are not included.");
   await page.getByRole("menuitem", { name: "Export image…" }).click();
   const dialog = page.getByRole("dialog", { name: "Export image" });
   await expect(dialog).toHaveAttribute("data-export-engine", "merman");
@@ -230,8 +266,15 @@ test("export workbench targets toolbar and Compare artifacts through one dialog"
     dialog.getByRole("button", { name: "SVG", exact: true }),
   ).toHaveAttribute("aria-pressed", "true");
   await expect(dialog.getByRole("status")).toHaveText("Ready");
+  const outputCompatibility = dialog.getByTestId("output-compatibility");
+  await expect(outputCompatibility).toBeVisible();
+  const frozenEvidence = await outputCompatibility.getAttribute("data-output-target-state");
+  await expect(outputCompatibility).toContainText("SVG pipeline: Mermaid SVG (default)");
+  await expect(dialog.getByRole("combobox", { name: "SVG output" })).toHaveCount(0);
 
   await dialog.getByRole("button", { name: "PNG", exact: true }).click();
+  await expect(outputCompatibility).toHaveAttribute("data-output-target-state", frozenEvidence!);
+  await expect(outputCompatibility).toHaveAccessibleName("Source SVG compatibility");
   await dialog.getByRole("button", { name: "Transparent", exact: true }).click();
   await dialog.getByRole("button", { name: "Width", exact: true }).click();
   await dialog.getByRole("textbox", { name: /^Width/u }).fill("320");
@@ -313,10 +356,11 @@ test("export workbench targets toolbar and Compare artifacts through one dialog"
   await dialog.getByRole("button", { name: "Close export" }).click();
   await expect(trigger).toBeFocused();
 
-  await page.getByRole("tab", { name: "Compare", exact: true }).click();
+  await openWorkbenchTool(page, "Compare");
   const mermaidPane = page.locator('[data-merman-compare-engine="mermaid"]');
   await mermaidPane.getByRole("button", { name: "Export image" }).click();
   await expect(dialog).toHaveAttribute("data-export-engine", "mermaid");
+  await expect(outputCompatibility).toHaveAttribute("data-output-target-state", "unknown");
   await expect(dialog).toContainText("Mermaid JS");
   await page.keyboard.press("Escape");
   await expect(dialog).toBeHidden();
@@ -364,18 +408,18 @@ test("preview tabs use manual keyboard activation", async ({ page }) => {
   await expect.poll(() => requestCount(requests, viewerOutput)).toBe(1);
   expect(wasRequested(requests, viewerJsonOutput)).toBe(false);
   expect(workers.some((url) => /json\.worker/i.test(url))).toBe(false);
-  const diagnosticsTab = page.getByRole("tab", {
-    name: "Diagnostics",
-    exact: true,
-  });
-  await expect(diagnosticsTab).toBeEnabled();
+  await expect(page.getByRole("tab", { name: "Diagnostics", exact: true })).toHaveCount(0);
+  await expect(page.getByRole("tab", { name: "Compare", exact: true })).toHaveCount(0);
   const svgTab = page.getByRole("tab", { name: "SVG", exact: true });
+  const asciiTab = page.getByRole("tab", { name: "ASCII", exact: true });
   await svgTab.focus();
   await page.keyboard.press("End");
-  await expect(diagnosticsTab).toBeFocused();
+  await expect(asciiTab).toBeFocused();
   await expect(svgTab).toHaveAttribute("aria-selected", "true");
   await page.keyboard.press("Enter");
-  await expect(diagnosticsTab).toHaveAttribute("aria-selected", "true");
+  await expect(asciiTab).toHaveAttribute("aria-selected", "true");
+  await openWorkbenchTool(page, "Diagnostics");
+  await expect(page.getByRole("region", { name: "Diagnostics", exact: true })).toBeVisible();
   await expect(page.getByRole("tab", { name: "Parse JSON" })).toBeVisible();
   await expect.poll(() => requestCount(requests, viewerJsonOutput)).toBe(1);
   await expect.poll(() => workers.some((url) => /json\.worker/i.test(url))).toBe(true);
@@ -383,6 +427,9 @@ test("preview tabs use manual keyboard activation", async ({ page }) => {
   expect(
     requests.some((url) => url.startsWith("https://cdn.jsdelivr.net/")),
   ).toBe(false);
+  await svgTab.click();
+  await expect(svgTab).toHaveAttribute("aria-selected", "true");
+  await expect(page.getByRole("heading", { name: "Diagnostics", exact: true })).toHaveCount(0);
   errors.assertNone();
 });
 

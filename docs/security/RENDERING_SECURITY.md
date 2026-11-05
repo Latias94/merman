@@ -12,6 +12,14 @@ unsafe URL schemes are blocked unless the caller intentionally uses loose Mermai
 and returned output carries no Mermaid `bindFunctions` execution hook. A host text-measurement
 callback, when configured, still runs synchronously inside the render operation.
 
+Flowchart Step edges in Mermaid 12.3 use a closed animated-SVG contract. Browser and editor
+admission validate the original-edge/highlight/dot sibling structure, exact animation attributes,
+finite clocks, matching paths and unique same-diagram identities. This exception permits the
+renderer-owned Step motion and scale synchronization; it does not admit arbitrary SMIL. Static
+inline and resvg-safe output remove the validated animated carriers while retaining the original
+edges and numbered badges. Raw parity SVG can therefore contain motion; hosts requiring passive
+output must select the static consumer policy.
+
 `securityLevel` is a sanitization policy in Merman. It is not an execution sandbox. In particular,
 Mermaid's browser renderer wraps `securityLevel: "sandbox"` output in a sandboxed iframe; Merman is
 headless and does not create an iframe, process sandbox, origin boundary, or content-security policy.

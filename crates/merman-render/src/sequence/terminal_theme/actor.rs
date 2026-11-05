@@ -31,10 +31,12 @@ impl SequencePreparedActorTheme {
         };
 
         let has_actors = !model.actor_order.is_empty();
-        let fill_overridden =
-            sanitize_config.config_paint_overrides_typed_default("themeVariables.actorBkg");
-        let stroke_overridden =
-            sanitize_config.config_paint_overrides_typed_default("themeVariables.actorBorder");
+        let (palette_fill_overridden, palette_stroke_overridden) =
+            super::super::SequenceCompatBinding::configured_palette_paints(sanitize_config);
+        let fill_overridden = palette_fill_overridden
+            || sanitize_config.config_paint_overrides_typed_default("themeVariables.actorBkg");
+        let stroke_overridden = palette_stroke_overridden
+            || sanitize_config.config_paint_overrides_typed_default("themeVariables.actorBorder");
         let Some(theme) = theme else {
             return Ok(Self {
                 fill_overridden,

@@ -302,11 +302,7 @@ pub(crate) fn render_model_to_compat_json_controlled(
     meta: &SourcePresentationMetadata,
     control: &OperationControl,
 ) -> OperationControlResult<Result<Value>> {
-    let diagram_id = merman_model::families::mindmap::diagram_id_from_context(
-        &crate::runtime::active_operation_context(),
-    );
-    let mut projection = meta.compat_json_metadata();
-    projection.diagram_id = Some(&diagram_id);
+    let projection = meta.compat_json_metadata();
     merman_model::families::mindmap::compat::project_controlled(model, &projection, control)
         .map(|result| result.map_err(Error::from))
 }

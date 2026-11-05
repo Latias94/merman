@@ -1,9 +1,42 @@
 {
   "schema_version": 1,
-  "mermaid_version": "12.2.0",
-  "mermaid_source_commit": "1fb7869866dd619168d840291c9c54b4f129758b",
-  "browser": "Edg/156.0.4314.50",
-  "measurement_source": "Literal single-tspan height and row-zero createFormattedText bbox y, independently measured from pinned SVG word DOM with its computed typography. Both row-start and leading-space forms are probed with textContent. Complete raw and DOMPurify-sanitized source/plain payloads used by label placement are also independently probed with textContent, never parsed as terminal markup. Responsive viewBox scaling is removed; no fonts are injected.",
+  "mermaid_version": "12.3.0",
+  "mermaid_source_commit": "2086904e76c692331e34a45d7cc3bc30860d040e",
+  "browser": "Chrome/156.0.8078.47",
+  "measurement_source": "Literal single-tspan height and row-zero createFormattedText bbox y independently remeasured in the selected Mermaid 12.3.0 browser render. Existing 78 probe identities across five fixtures are preserved, including row-start, leading-space, complete raw, and DOMPurify-sanitized source/plain text payloads. Typography is read from the matching current rendered SVG face; payloads are assigned with textContent. Responsive viewBox scaling is removed only after capturing the natural SVG and provider graph. No fonts or dimensions are injected. historical_collection is archival metadata only.",
+  "capture": {
+    "node_version": "v24.21.0",
+    "browser": {
+      "product": "Chrome",
+      "version": "156.0.8078.47",
+      "revision": "@1d17a2e2ee147bb7d6ae2ab6abdb3a2510c17775",
+      "locale": "zh-CN",
+      "timezone": "Asia/Shanghai"
+    },
+    "puppeteer_version": "25.16.0",
+    "reference_runtime_sha256": "555d901f1da7635d0727be0a5b95cc1b84a4770e08126fed19e53966515a8911",
+    "instrumented_runtime_sha256": "bc4a5d4e11c0f489c0485a18760c3dea7896fbcb5beca3213c8e9f0dfdc2589a",
+    "harness_sha256": "a6410c16076de07446cbf3aa23bab410f19e41de0b12f01ee8f463965921b89f",
+    "viewport": {
+      "width": 800,
+      "height": 600,
+      "deviceScaleFactor": 1
+    },
+    "initialize": {
+      "startOnLoad": false,
+      "handDrawnSeed": 1
+    },
+    "seed": "1",
+    "fixed_wall_clock_ms": 1704067200000
+  },
+  "historical_collection": {
+    "schema_version": 1,
+    "mermaid_version": "12.2.0",
+    "mermaid_source_commit": "1fb7869866dd619168d840291c9c54b4f129758b",
+    "browser": "Edg/156.0.4314.50",
+    "measurement_source": "Literal single-tspan height and row-zero createFormattedText bbox y, independently measured from pinned SVG word DOM with its computed typography. Both row-start and leading-space forms are probed with textContent. Complete raw and DOMPurify-sanitized source/plain payloads used by label placement are also independently probed with textContent, never parsed as terminal markup. Responsive viewBox scaling is removed; no fonts are injected.",
+    "entry_captures": []
+  },
   "entries": [
     {
       "fixture": "upstream_cypress_flowchart_handdrawn_spec_fdh27_set_text_color_of_nodes_and_links_according_to_styles_when_027",

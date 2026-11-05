@@ -126,19 +126,6 @@ fn is_valid_railroad_rule_identifier(candidate: &str, dialect: RailroadDialect) 
     })
 }
 
-pub(crate) fn sanitize_common_db_fields(
-    model: &mut RailroadDiagramModel,
-    config: &crate::MermaidConfig,
-) {
-    crate::common_db::sanitize_optional_title(&mut model.title, config);
-    crate::common_db::sanitize_optional_acc_title(&mut model.acc_title, config);
-    crate::common_db::sanitize_optional_acc_descr(&mut model.acc_descr, config);
-    for rule in &mut model.rules {
-        rule.name = sanitize_text(&rule.name, config);
-        sanitize_ast_node(&mut rule.definition, config);
-    }
-}
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum CommonFieldKind {
     Title,
@@ -343,12 +330,15 @@ fn parse_railroad_semantic_model_for_dialect_controlled(
         control,
     )?;
     Ok(match construction {
-        Ok(mut source) => {
-            sanitize_common_db_fields(&mut source.model, &metadata.semantic_config);
+        Ok(source) => {
+            #[cfg(feature = "editor-facts")]
+            let mut source = source;
+            #[cfg(feature = "editor-facts")]
+            let editor_facts = source.editor_facts.take();
             crate::family::SemanticConstruction {
-                model: Ok(source.model),
+                model: Ok(source.into_model(&metadata.semantic_config)),
                 #[cfg(feature = "editor-facts")]
-                editor_facts: source.editor_facts,
+                editor_facts,
             }
         }
         Err(failure) => crate::family::SemanticConstruction {
@@ -366,16 +356,26 @@ struct RailroadSemanticSource {
 }
 
 impl RailroadSemanticSource {
+    fn into_model(mut self, config: &crate::MermaidConfig) -> RailroadDiagramModel {
+        crate::common_db::sanitize_optional_title(&mut self.model.title, config);
+        crate::common_db::sanitize_optional_acc_title(&mut self.model.acc_title, config);
+        crate::common_db::sanitize_optional_acc_descr(&mut self.model.acc_descr, config);
+        for rule in &mut self.model.rules {
+            rule.name = sanitize_text(&rule.name, config);
+            sanitize_ast_node(&mut rule.definition, config);
+        }
+        self.model
+    }
+
     #[cfg(feature = "compat-json")]
-    fn into_compat_json(mut self, meta: &SourcePresentationMetadata) -> Result<Value> {
-        sanitize_common_db_fields(&mut self.model, meta.effective_config.as_config());
-        render_model_to_compat_json(&self.model, meta)
+    fn into_compat_json(self, meta: &SourcePresentationMetadata) -> Result<Value> {
+        let model = self.into_model(meta.effective_config.as_config());
+        render_model_to_compat_json(&model, meta)
     }
 
     #[cfg(feature = "presentation")]
-    fn into_render_model(mut self, meta: &SourcePresentationMetadata) -> RailroadDiagramModel {
-        sanitize_common_db_fields(&mut self.model, meta.effective_config.as_config());
-        self.model
+    fn into_render_model(self, meta: &SourcePresentationMetadata) -> RailroadDiagramModel {
+        self.into_model(meta.effective_config.as_config())
     }
 }
 
@@ -3456,28 +3456,48 @@ mod semantic_tests {
 
     #[test]
     fn semantic_entry_sanitizes_with_semantic_config() {
-        let source = "railroad-beta\ntitle <b>Header</b>\nentry = terminal(\"<b>value</b>\") ;\n";
-        let mut meta = metadata(RailroadDialect::Ir);
-        meta.semantic_config
-            .set_value("securityLevel", serde_json::json!("strict"));
-        let model = parse_railroad_semantic_model_controlled(
-            source,
-            &meta,
-            #[cfg(feature = "editor-facts")]
-            EditorFactsDemand::Omit,
-            &OperationControl::new(),
-        )
-        .unwrap()
-        .model
-        .unwrap();
-        assert_eq!(
-            model.title.as_deref(),
-            Some(sanitize_text("<b>Header</b>", &meta.semantic_config).as_str())
+        let source = concat!(
+            "railroad-beta\n",
+            "title <script>secret</script><b>Header &amp; &#x3C;</b>\n",
+            "accTitle: <script>secret</script>   Accessible\n",
+            "accDescr {First\n    <b>Second &amp; &#x3C;</b>}\n",
+            "entry = terminal(\"<a href=javascript&colon;alert(1) onclick=alert(1)>value &amp; &#x3C;</a>\") ;\n",
         );
-        let RailroadAstNode::Terminal { value, .. } = &model.rules[0].definition else {
-            panic!("expected terminal");
-        };
-        assert_eq!(value, &sanitize_text("<b>value</b>", &meta.semantic_config));
+        for security_level in ["strict", "loose"] {
+            let mut meta = metadata(RailroadDialect::Ir);
+            meta.semantic_config = crate::MermaidConfig::from_value(serde_json::json!({
+                "securityLevel": security_level,
+                "htmlLabels": true
+            }));
+            let model = parse_railroad_semantic_model_controlled(
+                source,
+                &meta,
+                #[cfg(feature = "editor-facts")]
+                EditorFactsDemand::Omit,
+                &OperationControl::new(),
+            )
+            .unwrap()
+            .model
+            .unwrap();
+            assert_eq!(model.title.as_deref(), Some("<b>Header &amp; &lt;</b>"));
+            assert_eq!(model.acc_title.as_deref(), Some("Accessible"));
+            assert_eq!(
+                model.acc_descr.as_deref(),
+                Some("First\n<b>Second &amp; &lt;</b>")
+            );
+            assert_eq!(model.rules[0].name, "entry");
+            let RailroadAstNode::Terminal {
+                value, selection, ..
+            } = &model.rules[0].definition
+            else {
+                panic!("expected terminal");
+            };
+            assert_eq!(value, "<a>value &amp; &lt;</a>");
+            assert_eq!(
+                &source[selection.start..selection.end],
+                "<a href=javascript&colon;alert(1) onclick=alert(1)>value &amp; &#x3C;</a>"
+            );
+        }
     }
 }
 

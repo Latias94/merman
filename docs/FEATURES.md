@@ -2,6 +2,12 @@
 
 This page targets `0.10.0-alpha.1`, including experimental compiled themes and Mermaid `12.2.0`. Use the [host guide](release/PREBUILT_PRODUCTS.md) for independently published channel versions and the [alpha changelog](../CHANGELOG.md#0100-alpha1---2026-11-02) for upgrade actions. Workspace path snippets are for source development. See the [Rust embedding guide](rendering/RUST_EMBEDDING.md) for host integration.
 
+Current source development selects Mermaid `12.3.0`, with the exact `elkjs 0.12.0` behavior oracle,
+Cytoscape `3.34.4`, and reference CLI `12.2.0`. The selected
+[reference graph](../tools/upstreams/MERMAID_REFERENCE_BUNDLE.json) and its generated constants
+own these development identities; published artifacts retain their release baseline. See the
+[Mermaid 12.3 migration](migrations/mermaid-12-3.md) for its Rust and SVG changes.
+
 Choose the diagram families your application accepts and the operations it performs. Positive
 `diagram-*` Cargo features select data, source parsers, or output handlers at the owning package. Selected
 families preserve the pinned Mermaid semantics; lightweight detection, configuration namespaces,
@@ -54,6 +60,12 @@ transport capability IDs. Defaults-off family selections and ASCII use canonical
 `compat-json`. Rich language tooling selects its required editor facts independently. See the
 [semantic/full migration](migrations/render-reuse-host-integration.md#reuse-parsed-source-in-rust).
 
+Benchmark executables have their own feature requirements. The full `pipeline` bench selects
+`svg,compat-json,editor-facts` even for a filtered SVG timing group; its recipe does not define
+the feature requirements of an SVG application. Use the
+[benchmark guide](performance/BENCHMARKING.md#native-criterion-benchmarks) and the owning
+[`[[bench]]` manifest entries](../crates/merman/Cargo.toml) for current commands.
+
 `merman-model/terminal-text` owns shared terminal normalization and Unicode width helpers. ASCII and facade diagnostics explicitly select it; direct core semantic parsing does not. `merman-model` has no source ingestion or rendering dependency. ASCII, Render, and Export consume shared models or SVG without a production core dependency; the [model/source migration](migrations/model-source-boundaries.md) covers package selection and breaking Rust imports.
 
 The current development branch retains `complete-svg = ["svg", "layout-cytoscape"]` and
@@ -68,8 +80,7 @@ Installed `0.9.3` artifacts retain their published recipes.
 The ELK notices and source provenance still accompany artifacts that include it. To omit ELK,
 disable defaults and select required families plus `svg` and the required layout leaves.
 
-For measured consumer dependency graphs, optional-stack costs, and the remaining core floor, see
-the [2026-10-30 dependency review](research/2026-10-30-dependency-review.md). Its package counts
+Use `cargo tree` with the intended consumer features to inspect dependency costs. Package counts
 include build inputs and are not executable-size or compilation-time measurements. Core syntax,
 configuration, HTML and URL normalization remain part of the precise parser contract even when
 output backends are disabled.
@@ -162,8 +173,6 @@ In CLI discovery, the encoded defaults report
 `system_discovery: "platform-initialization-then-on-demand-families"`. Release
 verification rejects those experimental values and requires bounded discovery
 before layout.
-See the [candidate plan](plans/2026-10-10-system-font-query-candidate.md) for
-validation scope and remaining platform/fallback requirements.
 
 `--font-file` and `--font-dir` are repeatable and preserve argument order.
 Directories use bounded, stable traversal and skip discovered symlinks. Earlier

@@ -1,5 +1,0 @@
-{
-  "htmlLabels": false,
-  "flowchart": { "look": "classic", "layout": "dagre" },
-  "sequence": { "look": "classic" }
-}

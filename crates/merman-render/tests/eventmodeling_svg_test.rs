@@ -23,6 +23,501 @@ tf 02 cmd Run ->> 01
 tf 03 evt Done ->> 02
 "#;
 
+const CORE_PAINT_SOURCE: &str = "eventmodeling\ntf 01 ui View\ntf 02 cmd Run ->> 01\ntf 03 evt Done ->> 02\ntf 04 rmo State ->> 03\ntf 05 pcr Work ->> 04\n";
+
+fn eventmodeling_core_paint_theme(transparent: bool, explicit_default: bool) -> DiagramTheme {
+    let paint = |color| {
+        if transparent {
+            CanvasPaint::Transparent
+        } else {
+            CanvasPaint::solid(color).unwrap()
+        }
+    };
+    let rules = [
+        ThemeRule::new(
+            ThemeTarget::Node,
+            ThemeStylePatch::default()
+                .with_fill(paint("#123456"))
+                .with_stroke(paint("#345678")),
+        ),
+        ThemeRule::new(
+            ThemeTarget::NodeLabel,
+            ThemeStylePatch::default().with_fill(paint("#56789a")),
+        ),
+        ThemeRule::new(
+            ThemeTarget::Edge,
+            ThemeStylePatch::default().with_stroke(paint("#789abc")),
+        ),
+        ThemeRule::new(
+            ThemeTarget::Marker,
+            ThemeStylePatch::default().with_fill(paint("#9abcde")),
+        ),
+        ThemeRule::new(
+            ThemeTarget::Cluster,
+            ThemeStylePatch::default()
+                .with_fill(paint("#abcdef"))
+                .with_stroke(paint("#cdefab")),
+        ),
+        ThemeRule::new(
+            ThemeTarget::ClusterLabel,
+            ThemeStylePatch::default().with_fill(paint("#defabc")),
+        ),
+    ];
+    DiagramThemeCompiler::new()
+        .compile(
+            DiagramThemeSpec::new().with_styles(rules.into_iter().fold(
+                ThemeRuleSet::default(),
+                |rules, rule| {
+                    rules.with_rule(if explicit_default {
+                        rule.with_variant(merman_render::diagram_theme::ThemeVariant::Default)
+                    } else {
+                        rule
+                    })
+                },
+            )),
+        )
+        .unwrap()
+}
+
+#[test]
+fn eventmodeling_core_paints_reach_all_real_frame_kinds_lanes_and_relations() {
+    for transparent in [false, true] {
+        for explicit_default in [false, true] {
+            let theme = eventmodeling_core_paint_theme(transparent, explicit_default);
+            let rendered =
+                render_eventmodeling_with_theme(CORE_PAINT_SOURCE, &theme, MermaidEngine::new())
+                    .unwrap();
+            let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+            let expected = |solid: &'static str| if transparent { "transparent" } else { solid };
+            let boxes = document
+                .descendants()
+                .filter(|node| node.attribute("class") == Some("em-box"))
+                .collect::<Vec<_>>();
+            assert_eq!(boxes.len(), 5);
+            for box_node in boxes {
+                let rect = box_node
+                    .children()
+                    .find(|node| node.has_tag_name("rect"))
+                    .unwrap();
+                assert_eq!(rect.attribute("fill"), Some(expected("#123456")));
+                assert_eq!(rect.attribute("stroke"), Some(expected("#345678")));
+                assert!(box_node.descendants().any(|node| node.has_tag_name("span")));
+            }
+            let lanes = document
+                .descendants()
+                .filter(|node| node.attribute("class") == Some("em-swimlane"))
+                .collect::<Vec<_>>();
+            assert!(!lanes.is_empty());
+            for lane in lanes {
+                let rect = lane
+                    .children()
+                    .find(|node| node.has_tag_name("rect"))
+                    .unwrap();
+                assert_eq!(rect.attribute("fill"), Some(expected("#abcdef")));
+                assert_eq!(rect.attribute("stroke"), Some(expected("#cdefab")));
+                assert!(lane.children().any(|node| node.has_tag_name("text")));
+            }
+            let relations = document
+                .descendants()
+                .filter(|node| node.attribute("class") == Some("em-relation"))
+                .collect::<Vec<_>>();
+            assert!(!relations.is_empty());
+            for relation in relations {
+                assert_eq!(relation.attribute("stroke"), Some(expected("#789abc")));
+            }
+            assert_eq!(
+                document
+                    .descendants()
+                    .find(|node| node.has_tag_name("polygon"))
+                    .unwrap()
+                    .attribute("fill"),
+                Some(expected("#9abcde"))
+            );
+            let css = eventmodeling_stylesheet(rendered.svg());
+            let node_text = expected("#56789a");
+            let lane_text = expected("#defabc");
+            assert!(css.contains(&format!(
+                ".em-box span {{ fill: {node_text}; color: {node_text}; }}"
+            )));
+            assert!(css.contains(&format!(
+                ".em-swimlane text {{ fill: {lane_text}; color: {lane_text}; }}"
+            )));
+            let evidence =
+                merman_render::__private::family_evidence(rendered.into_completion().report());
+            assert_eq!(evidence.required_count(), 6);
+            assert_eq!(evidence.applied_count(), 6);
+            assert_eq!(evidence.theme_residual_count(), 0);
+        }
+    }
+}
+
+#[test]
+fn eventmodeling_config_colors_override_only_the_matching_role_and_property() {
+    let theme = eventmodeling_core_paint_theme(false, false);
+    let engine = MermaidEngine::new().with_site_config(
+        merman_core::presentation::SourcePresentationConfig::from_value(
+            serde_json::json!({ "themeVariables": {
+                "emCommandFill": "#de3163", "emEventStroke": "#fedcba",
+                "emSwimlaneBackgroundOdd": "#112233", "emRelationStroke": "#bada55"
+            }}),
+        ),
+    );
+    let rendered = render_eventmodeling_with_theme(CORE_PAINT_SOURCE, &theme, engine).unwrap();
+    let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+    let boxes = document
+        .descendants()
+        .filter(|node| node.attribute("class") == Some("em-box"))
+        .map(|node| {
+            node.children()
+                .find(|node| node.has_tag_name("rect"))
+                .unwrap()
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(boxes[1].attribute("fill"), Some("#de3163"));
+    assert_eq!(boxes[1].attribute("stroke"), Some("#345678"));
+    assert_eq!(boxes[2].attribute("fill"), Some("#123456"));
+    assert_eq!(boxes[2].attribute("stroke"), Some("#fedcba"));
+    for lane in document
+        .descendants()
+        .filter(|node| node.attribute("class") == Some("em-swimlane"))
+    {
+        let rect = lane
+            .children()
+            .find(|node| node.has_tag_name("rect"))
+            .unwrap();
+        assert_eq!(rect.attribute("fill"), Some("#112233"));
+        assert_eq!(rect.attribute("stroke"), Some("#cdefab"));
+    }
+    assert!(
+        document
+            .descendants()
+            .filter(|node| node.attribute("class") == Some("em-relation"))
+            .all(|node| node.attribute("stroke") == Some("#bada55"))
+    );
+    let evidence = merman_render::__private::family_evidence(rendered.into_completion().report());
+    assert_eq!(evidence.applied_count(), 5);
+    assert_eq!(evidence.not_applicable_count(), 1);
+    assert_eq!(evidence.theme_residual_count(), 0);
+}
+
+#[test]
+fn eventmodeling_empty_compiled_theme_preserves_unthemed_svg_bytes() {
+    let theme = DiagramThemeCompiler::new()
+        .compile(DiagramThemeSpec::new())
+        .unwrap();
+    let environment = RenderEnvironment::deterministic();
+    let render = |theme: Option<&DiagramTheme>| {
+        let engine = match theme {
+            Some(theme) => common::install_parse_compatibility(theme, MermaidEngine::new()),
+            None => MermaidEngine::new(),
+        };
+        let parsed = engine
+            .parse_diagram_for_render_model_sync(CORE_PAINT_SOURCE, ParseOptions::strict())
+            .unwrap()
+            .unwrap()
+            .into_presentation();
+        let session = match theme {
+            Some(theme) => environment.begin_session_with_theme(theme).unwrap(),
+            None => environment.begin_session().unwrap(),
+        };
+        family::prepare(&parsed, &LayoutOptions::headless_svg_defaults(), session)
+            .unwrap()
+            .render_svg(
+                &SvgRenderOptions {
+                    diagram_id: Some("eventmodeling-theme".into()),
+                    ..Default::default()
+                },
+                &SvgDebugOptions::default(),
+            )
+            .unwrap()
+            .svg()
+            .to_owned()
+    };
+    assert_eq!(render(None).as_bytes(), render(Some(&theme)).as_bytes());
+}
+
+#[test]
+fn eventmodeling_mixed_node_rule_preserves_fill_when_gradient_stroke_is_overridden() {
+    use merman_render::diagram_theme::{GradientStop, LinearGradient};
+    let gradient = CanvasPaint::LinearGradient(
+        LinearGradient::new(
+            90.0,
+            [
+                GradientStop::new(0.0, ThemeColorValue::parse("#123456").unwrap()).unwrap(),
+                GradientStop::new(1.0, ThemeColorValue::parse("#abcdef").unwrap()).unwrap(),
+            ],
+        )
+        .unwrap(),
+    );
+    for owner in ["later-rule", "source", "uncovered"] {
+        let mut rules = ThemeRuleSet::default().with_rule(ThemeRule::new(
+            ThemeTarget::Node,
+            ThemeStylePatch::default()
+                .with_fill(CanvasPaint::solid("#b316cd").unwrap())
+                .with_stroke(gradient.clone()),
+        ));
+        if owner == "later-rule" {
+            rules = rules.with_rule(ThemeRule::new(
+                ThemeTarget::Node,
+                ThemeStylePatch::default().with_stroke(CanvasPaint::solid("#2468ac").unwrap()),
+            ));
+        }
+        let engine = if owner == "source" {
+            MermaidEngine::new().with_site_config(merman_core::presentation::SourcePresentationConfig::from_value(serde_json::json!({
+                "themeVariables": { "emUiStroke": "#2468ac", "emCommandStroke": "#2468ac", "emEventStroke": "#2468ac" }
+            })))
+        } else {
+            MermaidEngine::new()
+        };
+        let theme = DiagramThemeCompiler::new()
+            .compile(DiagramThemeSpec::new().with_styles(rules))
+            .unwrap();
+        let rendered = render_eventmodeling_with_theme_requirement(
+            THEME_TEXT_SOURCE,
+            &theme,
+            engine,
+            ThemePortabilityRequirement::BestEffort,
+        )
+        .unwrap();
+        let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+        for node in document
+            .descendants()
+            .filter(|node| node.attribute("class") == Some("em-box"))
+        {
+            let rect = node
+                .children()
+                .find(|node| node.has_tag_name("rect"))
+                .unwrap();
+            assert_eq!(rect.attribute("fill"), Some("#b316cd"));
+            if owner != "uncovered" {
+                assert_eq!(rect.attribute("stroke"), Some("#2468ac"));
+            }
+        }
+        let evidence =
+            merman_render::__private::family_evidence(rendered.into_completion().report());
+        assert_eq!(
+            evidence.applied_count(),
+            match owner {
+                "later-rule" => 2,
+                "source" => 1,
+                _ => 0,
+            },
+            "owner={owner}"
+        );
+        assert_eq!(
+            evidence.theme_residual_count(),
+            usize::from(owner == "uncovered"),
+            "owner={owner}"
+        );
+        assert_eq!(evidence.not_applicable_count(), 0, "owner={owner}");
+    }
+}
+
+#[test]
+fn eventmodeling_label_and_marker_strokes_remain_residual_on_real_elements() {
+    for target in [
+        ThemeTarget::NodeLabel,
+        ThemeTarget::ClusterLabel,
+        ThemeTarget::Marker,
+    ] {
+        for mixed in [false, true] {
+            let mut style =
+                ThemeStylePatch::default().with_stroke(CanvasPaint::solid("#ff00ff").unwrap());
+            if mixed {
+                style = style.with_fill(CanvasPaint::solid("#123456").unwrap());
+            }
+            let theme =
+                DiagramThemeCompiler::new()
+                    .compile(DiagramThemeSpec::new().with_styles(
+                        ThemeRuleSet::default().with_rule(ThemeRule::new(target, style)),
+                    ))
+                    .unwrap();
+            let rendered = render_eventmodeling_with_theme_requirement(
+                THEME_TEXT_SOURCE,
+                &theme,
+                MermaidEngine::new(),
+                ThemePortabilityRequirement::BestEffort,
+            )
+            .unwrap();
+            let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+            match target {
+                ThemeTarget::NodeLabel => {
+                    assert!(document.descendants().any(|node| node.has_tag_name("span")))
+                }
+                ThemeTarget::ClusterLabel => {
+                    assert!(document.descendants().any(|node| node.has_tag_name("text")))
+                }
+                ThemeTarget::Marker => assert!(
+                    document
+                        .descendants()
+                        .any(|node| node.has_tag_name("polygon"))
+                ),
+                _ => unreachable!(),
+            }
+            if mixed {
+                if target == ThemeTarget::Marker {
+                    assert_eq!(
+                        document
+                            .descendants()
+                            .find(|node| node.has_tag_name("polygon"))
+                            .unwrap()
+                            .attribute("fill"),
+                        Some("#123456")
+                    );
+                } else {
+                    let selector = if target == ThemeTarget::NodeLabel {
+                        ".em-box span"
+                    } else {
+                        ".em-swimlane text"
+                    };
+                    assert!(
+                        eventmodeling_stylesheet(rendered.svg())
+                            .contains(&format!("{selector} {{ fill: #123456; color: #123456; }}"))
+                    );
+                }
+            }
+            let evidence =
+                merman_render::__private::family_evidence(rendered.into_completion().report());
+            assert_eq!(evidence.required_count(), 1);
+            assert_eq!(evidence.applied_count(), 0);
+            assert_eq!(evidence.not_applicable_count(), 0);
+            assert_eq!(evidence.theme_residual_count(), 1);
+            let error =
+                render_eventmodeling_with_theme(THEME_TEXT_SOURCE, &theme, MermaidEngine::new())
+                    .err()
+                    .unwrap();
+            assert_eq!(
+                error.unverified_family_theme(),
+                Some((DiagramFamilyId::EVENT_MODELING, 1))
+            );
+        }
+    }
+    // A definition without an attached relation has no visible Marker occurrence.
+    let theme = DiagramThemeCompiler::new()
+        .compile(
+            DiagramThemeSpec::new().with_styles(ThemeRuleSet::default().with_rule(ThemeRule::new(
+                ThemeTarget::Marker,
+                ThemeStylePatch::default().with_stroke(CanvasPaint::solid("#ff00ff").unwrap()),
+            ))),
+        )
+        .unwrap();
+    let rendered = render_eventmodeling_with_theme(
+        "eventmodeling\ntf 01 ui View\n",
+        &theme,
+        MermaidEngine::new(),
+    )
+    .unwrap();
+    let evidence = merman_render::__private::family_evidence(rendered.into_completion().report());
+    assert_eq!(evidence.not_applicable_count(), 1);
+    assert_eq!(evidence.theme_residual_count(), 0);
+}
+
+#[test]
+fn eventmodeling_ordinal_text_fill_is_accounted_at_the_exact_role_occurrence() {
+    use merman_render::diagram_theme::ThemeVariant;
+    let source = "eventmodeling\ntf 01 ui View\n";
+    for role in [ThemeTarget::NodeLabel, ThemeTarget::ClusterLabel] {
+        let covered = if role == ThemeTarget::NodeLabel { 2 } else { 1 };
+        for case in [
+            "covered",
+            "uncovered",
+            "outside",
+            "cycle",
+            "warning",
+            "stroke-sibling",
+        ] {
+            let ordinal = match case {
+                "uncovered" => 3 - covered,
+                "outside" => 3,
+                _ => covered,
+            };
+            let mut text_style =
+                ThemeStylePatch::default().with_fill(CanvasPaint::solid("#ff00ff").unwrap());
+            if case == "stroke-sibling" {
+                text_style = text_style.with_stroke(CanvasPaint::solid("#00ffff").unwrap());
+            }
+            let mut text_rule =
+                ThemeRule::new(ThemeTarget::Text, text_style).with_ordinal(if case == "cycle" {
+                    OrdinalSelector::cycle(1, 0).unwrap()
+                } else {
+                    OrdinalSelector::exact(ordinal).unwrap()
+                });
+            if case == "warning" {
+                text_rule = text_rule.with_variant(ThemeVariant::Warning);
+            }
+            let theme = DiagramThemeCompiler::new()
+                .compile(
+                    DiagramThemeSpec::new().with_styles(
+                        ThemeRuleSet::default()
+                            .with_rule(ThemeRule::new(
+                                role,
+                                ThemeStylePatch::default()
+                                    .with_fill(CanvasPaint::solid("#123456").unwrap()),
+                            ))
+                            .with_rule(text_rule),
+                    ),
+                )
+                .unwrap();
+            let rendered = render_eventmodeling_with_theme_requirement(
+                source,
+                &theme,
+                MermaidEngine::new(),
+                ThemePortabilityRequirement::BestEffort,
+            )
+            .unwrap();
+            let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+            assert_eq!(
+                document
+                    .descendants()
+                    .filter(|node| node.attribute("class") == Some("em-swimlane"))
+                    .count(),
+                1
+            );
+            assert_eq!(
+                document
+                    .descendants()
+                    .filter(|node| node.attribute("class") == Some("em-box"))
+                    .count(),
+                1
+            );
+            let selector = if role == ThemeTarget::NodeLabel {
+                ".em-box span"
+            } else {
+                ".em-swimlane text"
+            };
+            assert!(
+                eventmodeling_stylesheet(rendered.svg())
+                    .contains(&format!("{selector} {{ fill: #123456; color: #123456; }}"))
+            );
+            let residual = matches!(case, "uncovered" | "cycle" | "stroke-sibling");
+            let evidence =
+                merman_render::__private::family_evidence(rendered.into_completion().report());
+            assert_eq!(evidence.required_count(), 2, "role={role:?} case={case}");
+            assert_eq!(evidence.applied_count(), 1, "role={role:?} case={case}");
+            assert_eq!(
+                evidence.theme_residual_count(),
+                usize::from(residual),
+                "role={role:?} case={case}"
+            );
+            assert_eq!(
+                evidence.not_applicable_count(),
+                usize::from(!residual),
+                "role={role:?} case={case}"
+            );
+            let strict = render_eventmodeling_with_theme(source, &theme, MermaidEngine::new());
+            if residual {
+                assert_eq!(
+                    strict.err().unwrap().unverified_family_theme(),
+                    Some((DiagramFamilyId::EVENT_MODELING, 1)),
+                    "role={role:?} case={case}"
+                );
+            } else {
+                assert!(strict.is_ok(), "role={role:?} case={case}");
+            }
+        }
+    }
+}
+
 fn eventmodeling_text_fill_theme(fill: CanvasPaint) -> DiagramTheme {
     DiagramThemeCompiler::new()
         .compile(

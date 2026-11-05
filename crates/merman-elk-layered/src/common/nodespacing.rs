@@ -4,8 +4,11 @@
 //! - https://github.com/eclipse-elk/elk/blob/62d5909f96fad541bc101ad52dabaece6b7eab7e/plugins/org.eclipse.elk.alg.common/src/org/eclipse/elk/alg/common/nodespacing/NodeDimensionCalculation.java
 //! - https://github.com/eclipse-elk/elk/blob/62d5909f96fad541bc101ad52dabaece6b7eab7e/plugins/org.eclipse.elk.alg.common/src/org/eclipse/elk/alg/common/nodespacing/NodeLabelAndSizeCalculator.java
 //! - https://github.com/eclipse-elk/elk/blob/62d5909f96fad541bc101ad52dabaece6b7eab7e/plugins/org.eclipse.elk.alg.common/src/org/eclipse/elk/alg/common/nodespacing/NodeMarginCalculator.java
+//! - https://github.com/eclipse-elk/elk/blob/323312916048544e4e594eab3303cdb0d01e2929/plugins/org.eclipse.elk.alg.common/src/org/eclipse/elk/alg/common/nodespacing/internal/algorithm/NodeLabelCellCreator.java
+//! - https://github.com/eclipse-elk/elk/blob/323312916048544e4e594eab3303cdb0d01e2929/plugins/org.eclipse.elk.alg.common/src/org/eclipse/elk/alg/common/nodespacing/internal/algorithm/LabelPlacer.java
+//! - https://github.com/eclipse-elk/elk/blob/323312916048544e4e594eab3303cdb0d01e2929/plugins/org.eclipse.elk.alg.common/src/org/eclipse/elk/alg/common/nodespacing/cellsystem/LabelCell.java
 
-use crate::graph::{LGraph, LMargin, LPort, PortSide};
+use crate::graph::{LGraph, LLabel, LMargin, LPort, LSize, PortSide};
 use crate::options::{NodeLabelPlacement, PortAlignment, PortConstraints};
 
 /// The reachable `NodeMicroLayout` operation for one inside-top-center container title.
@@ -174,9 +177,18 @@ enum VerticalLabelAlignment {
     Bottom,
 }
 
+#[derive(Debug, Clone, Copy)]
+enum NodeLabelArea {
+    Inside,
+    OutsideTop,
+    OutsideBottom,
+    OutsideLeft,
+    OutsideRight,
+}
+
 fn place_node_labels(graph: &mut LGraph, node: usize) {
-    let Some((horizontal_alignment, vertical_alignment)) =
-        inside_label_alignment(graph.layerless_nodes[node].node_label_placement)
+    let Some((area, horizontal_alignment, vertical_alignment)) =
+        node_label_location(graph.layerless_nodes[node].node_label_placement)
     else {
         return;
     };
@@ -186,31 +198,55 @@ fn place_node_labels(graph: &mut LGraph, node: usize) {
 
     let padding = graph.options.node_labels_padding;
     let gap = graph.options.spacing.label_label;
+    let node_spacing = graph.options.spacing.label_node;
     let horizontal_layout_mode = !graph.options.direction.is_vertical();
     let node = &mut graph.layerless_nodes[node];
-    let content_left = padding.left;
-    let content_top = padding.top;
-    let content_width = node.size.width - padding.left - padding.right;
-    let content_height = node.size.height - padding.top - padding.bottom;
+    let group_size = node_label_group_size(&node.labels, gap, horizontal_layout_mode);
+    let content = match area {
+        NodeLabelArea::Inside => Rect {
+            x: padding.left,
+            y: padding.top,
+            width: node.size.width - padding.left - padding.right,
+            height: node.size.height - padding.top - padding.bottom,
+        },
+        NodeLabelArea::OutsideTop => Rect {
+            x: 0.0,
+            y: -node_spacing - group_size.height,
+            width: node.size.width,
+            height: group_size.height,
+        },
+        NodeLabelArea::OutsideBottom => Rect {
+            x: 0.0,
+            y: node.size.height + node_spacing,
+            width: node.size.width,
+            height: group_size.height,
+        },
+        NodeLabelArea::OutsideLeft => Rect {
+            x: -node_spacing - group_size.width,
+            y: 0.0,
+            width: group_size.width,
+            height: node.size.height,
+        },
+        NodeLabelArea::OutsideRight => Rect {
+            x: node.size.width + node_spacing,
+            y: 0.0,
+            width: group_size.width,
+            height: node.size.height,
+        },
+    };
 
     if horizontal_layout_mode {
-        let labels_height = node
-            .labels
-            .iter()
-            .map(|label| label.size.height)
-            .sum::<f64>()
-            + gap * node.labels.len().saturating_sub(1) as f64;
         let mut y = aligned_position(
-            content_top,
-            content_height,
-            labels_height,
+            content.y,
+            content.height,
+            group_size.height,
             vertical_alignment,
         );
 
         for label in &mut node.labels {
             label.position.x = aligned_position(
-                content_left,
-                content_width,
+                content.x,
+                content.width,
                 label.size.width,
                 horizontal_alignment,
             );
@@ -218,24 +254,18 @@ fn place_node_labels(graph: &mut LGraph, node: usize) {
             y += label.size.height + gap;
         }
     } else {
-        let labels_width = node
-            .labels
-            .iter()
-            .map(|label| label.size.width)
-            .sum::<f64>()
-            + gap * node.labels.len().saturating_sub(1) as f64;
         let mut x = aligned_position(
-            content_left,
-            content_width,
-            labels_width,
+            content.x,
+            content.width,
+            group_size.width,
             horizontal_alignment,
         );
 
         for label in &mut node.labels {
             label.position.x = x;
             label.position.y = aligned_position(
-                content_top,
-                content_height,
+                content.y,
+                content.height,
                 label.size.height,
                 vertical_alignment,
             );
@@ -244,26 +274,61 @@ fn place_node_labels(graph: &mut LGraph, node: usize) {
     }
 }
 
-fn inside_label_alignment(
+fn node_label_group_size(labels: &[LLabel], gap: f64, horizontal_layout_mode: bool) -> LSize {
+    let mut size = LSize::default();
+    for label in labels {
+        if horizontal_layout_mode {
+            size.width = size.width.max(label.size.width);
+            size.height += label.size.height;
+        } else {
+            size.width += label.size.width;
+            size.height = size.height.max(label.size.height);
+        }
+    }
+    let total_gap = gap * labels.len().saturating_sub(1) as f64;
+    if horizontal_layout_mode {
+        size.height += total_gap;
+    } else {
+        size.width += total_gap;
+    }
+    size
+}
+
+fn node_label_location(
     placement: NodeLabelPlacement,
-) -> Option<(HorizontalLabelAlignment, VerticalLabelAlignment)> {
+) -> Option<(
+    NodeLabelArea,
+    HorizontalLabelAlignment,
+    VerticalLabelAlignment,
+)> {
     use HorizontalLabelAlignment::{Center as HCenter, Left, Right};
+    use NodeLabelArea::{Inside, OutsideBottom, OutsideLeft, OutsideRight, OutsideTop};
     use NodeLabelPlacement::*;
     use VerticalLabelAlignment::{Bottom, Center as VCenter, Top};
 
     match placement {
-        InsideTopLeft => Some((Left, Top)),
-        InsideTopCenter => Some((HCenter, Top)),
-        InsideTopRight => Some((Right, Top)),
-        InsideCenterLeft => Some((Left, VCenter)),
-        InsideCenter => Some((HCenter, VCenter)),
-        InsideCenterRight => Some((Right, VCenter)),
-        InsideBottomLeft => Some((Left, Bottom)),
-        InsideBottomCenter => Some((HCenter, Bottom)),
-        InsideBottomRight => Some((Right, Bottom)),
-        Fixed | OutsideTopLeft | OutsideTopCenter | OutsideTopRight | OutsideBottomLeft
-        | OutsideBottomCenter | OutsideBottomRight | OutsideLeftTop | OutsideLeftCenter
-        | OutsideLeftBottom | OutsideRightTop | OutsideRightCenter | OutsideRightBottom => None,
+        Fixed => None,
+        InsideTopLeft => Some((Inside, Left, Top)),
+        InsideTopCenter => Some((Inside, HCenter, Top)),
+        InsideTopRight => Some((Inside, Right, Top)),
+        InsideCenterLeft => Some((Inside, Left, VCenter)),
+        InsideCenter => Some((Inside, HCenter, VCenter)),
+        InsideCenterRight => Some((Inside, Right, VCenter)),
+        InsideBottomLeft => Some((Inside, Left, Bottom)),
+        InsideBottomCenter => Some((Inside, HCenter, Bottom)),
+        InsideBottomRight => Some((Inside, Right, Bottom)),
+        OutsideTopLeft => Some((OutsideTop, Left, Bottom)),
+        OutsideTopCenter => Some((OutsideTop, HCenter, Bottom)),
+        OutsideTopRight => Some((OutsideTop, Right, Bottom)),
+        OutsideBottomLeft => Some((OutsideBottom, Left, Top)),
+        OutsideBottomCenter => Some((OutsideBottom, HCenter, Top)),
+        OutsideBottomRight => Some((OutsideBottom, Right, Top)),
+        OutsideLeftTop => Some((OutsideLeft, Right, Top)),
+        OutsideLeftCenter => Some((OutsideLeft, Right, VCenter)),
+        OutsideLeftBottom => Some((OutsideLeft, Right, Bottom)),
+        OutsideRightTop => Some((OutsideRight, Left, Top)),
+        OutsideRightCenter => Some((OutsideRight, Left, VCenter)),
+        OutsideRightBottom => Some((OutsideRight, Left, Bottom)),
     }
 }
 
@@ -550,6 +615,9 @@ fn process_node_margin(graph: &mut LGraph, node: usize) {
         right: (bounds.x + bounds.width - (position.x + size.width)).max(0.0),
     };
 }
+
+#[cfg(test)]
+mod outside_node_labels_tests;
 
 #[cfg(test)]
 mod tests {

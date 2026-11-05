@@ -1,14 +1,14 @@
 {
   "schema_version": 1,
-  "mermaid_version": "12.2.0",
-  "mermaid_source_commit": "1fb7869866dd619168d840291c9c54b4f129758b",
+  "mermaid_version": "12.3.0",
+  "mermaid_source_commit": "2086904e76c692331e34a45d7cc3bc30860d040e",
   "comparison_revision": "root-viewport-contract-v2",
   "entries": [
     {
       "diagram": "error",
       "fixture": "basic",
       "input_sha256": "f097b5f4f46cda2da21b954c9ff4097e1e14ae7064ecdee2c2cec2d3c1f08e6b",
-      "upstream_svg_sha256": "beae75762714741f9686597e9961f277ede68e712dc1f02d4a4159292812c134",
+      "upstream_svg_sha256": "ba5eabe73b2c236d23d9835f67181943271e8b0e37749dce518bf55de4c72d83",
       "root": {
         "style": "max-width: 512px;",
         "view_box": "0 0 2412 512",
@@ -20,7 +20,7 @@
       "diagram": "info",
       "fixture": "upstream_info_show_info_spec",
       "input_sha256": "dbe1669f106bc61a4fac393605fe5198db59a66e5f6aa223022efc0b57c6dc4d",
-      "upstream_svg_sha256": "4242fbc59fe040c10c486a5ee82d8683de68095357c8605fb628ebc677d114ce",
+      "upstream_svg_sha256": "945964a80ef6b6083ba171f1afaf3bd42168424e3e941fa3a00d3532a142a626",
       "root": {
         "style": "max-width: 400px; background-color: white;",
         "view_box": null,

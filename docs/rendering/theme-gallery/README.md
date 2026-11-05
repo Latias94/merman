@@ -35,7 +35,8 @@ Brutalist and Cyberpunk without changing the diagram.
 All presets remain alpha, and the catalog has no qualified output cells. Dedicated design
 scope records family-specific styling, while base styling records a shared appearance.
 Neither is a guarantee for every shape or export target; an unlisted family is unreviewed.
-Brutalist's hard shadows and Cyberpunk's node glow need supported Classic Flowchart shapes.
+Brutalist's hard shadows and Cyberpunk's node glow work with supported basic Flowchart shapes
+in both Classic and Neo. These saved previews retain their recorded Classic/Dagre configuration.
 
 In these native PNG renders, Brutalist, Ghibli, Spotless, and Cyberpunk report verified theme
 application with a host-dependent target. One Dark and Gruvbox Light retain the
@@ -50,10 +51,10 @@ Brutalist, Spotless, Cyberpunk, and Ghibli use visual design references from
 Modern Mermaid Team for the original visual designs. The reference snapshot is commit
 [`a021cbce37fc0b07a9f4791c28e983101ea06f2d`](https://github.com/gotoailab/modern_mermaid/tree/a021cbce37fc0b07a9f4791c28e983101ea06f2d),
 particularly its [`src/utils/themes.ts`](https://github.com/gotoailab/modern_mermaid/blob/a021cbce37fc0b07a9f4791c28e983101ea06f2d/src/utils/themes.ts).
-That project is MIT-licensed, copyright 2024 Modern Mermaid Team; the
-[retained license notice](../../../fixtures/themes/licenses/modern-mermaid-MIT.txt) and
-[source capability corpus](../../alignment/MODERN_MERMAID_THEME_CAPABILITY_CORPUS.md) preserve
-the provenance of the reference material.
+That project is MIT-licensed, copyright 2024 Modern Mermaid Team. Keep the
+[license notice](../../../fixtures/themes/licenses/modern-mermaid-MIT.txt) and follow the
+[design-reference and font policy](../../alignment/EXTERNAL_FIXTURES.md#design-references-and-fonts)
+when refreshing the reference material.
 
 Merman adapts selected mechanisms into its own typed recipes and semantic diagram targets.
 The Ghibli example is Merman's scoped Pie adaptation of the reference's warm paper identity.
@@ -63,29 +64,21 @@ not presented as Modern Mermaid designs. Fonts are resolved independently on the
 
 ## Playground
 
-Paste one of the included sources into the editor, open **Theme**, choose its preset, and inspect
-the preview. The **Merman preset** selector at the top lists the current diagram's design
-treatment next to each preset. **Browse presets** adds recipe color swatches. For Brutalist,
-choose **Use Classic look** to explicitly preview Classic.
-This keeps other configuration and the layout intact. **Apply** commits the panel's theme,
-font and recommended configuration together; **Cancel** discards these drafts while preserving
-independent source/config editor edits. Leave the font at **Inherit from theme / source** to use
-the recipe's typography. **None** removes
-Merman styling and keeps the selected Mermaid base theme.
+Paste one of the included sources into the editor and open **Appearance**. The unified collection
+includes Mermaid themes, built-in Merman presets, and standalone explorations. Choosing a theme
+updates the current diagram immediately; closing the panel keeps that selection. **Undo appearance**
+restores an earlier choice while keeping source edits.
 
-Read **Current preview** for this diagram's result. **Designed for this diagram** describes
-catalog intent, not a guarantee that every requested effect rendered. An unreviewed family
-can still receive the recipe's base styling. Use **Download JSON** for an editable standalone
-recipe and a workspace share link to include source, settings and the applied recipe together.
+Brutalist applies supported hard shadows in Classic and the default Neo look without changing
+the source or configuration. Leave the font at **Inherit from theme / source**
+to use recipe typography. Advanced settings retain the Mermaid base and the choice to remove only
+Merman styling.
 
-| Earlier panel | Current panel |
-| --- | --- |
-| ![Earlier panel with an implicit Trebuchet override and expanded verification text](theme-panel-before.png) | ![Current panel with explicit font inheritance, one Apply/Cancel model and optional output details](theme-panel.png) |
-
-The current panel screenshot requests Ghibli's `Open Sans, Noto Sans SC, sans-serif` stack. A browser may
-resolve the generic fallback when the named fonts are absent. The earlier panel always injected
-Trebuchet, even when the user had not chosen a font. These are real Playground screenshots;
-font installation and rasterization remain host-dependent.
+Read **Current preview** for this diagram's result. Catalog design scope does not guarantee every
+requested effect or output target. An unreviewed family can still receive base styling. **Use in a
+project** provides adoption code and source/theme files; downloading a theme alone produces a
+reusable recipe. A workspace link restores the current source, settings, and theme. Check the
+frozen image's output compatibility in **Export**, separately from the design's family scope.
 
 ## Native CLI
 

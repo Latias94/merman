@@ -118,6 +118,8 @@ parallel operation enums.
 - The FFI crate must own extra gates: header checks, memory ownership tests, panic containment, and
   dynamic/static linking smoke tests.
 
-## Follow-up
+## Integration guidance
 
-Open `docs/workstreams/ffi-api` to design and implement the first stable FFI slice.
+The [native ABI protocol](../bindings/FFI_PROTOCOL.md) owns current C-compatible host integration,
+discovery, result ownership, and contract evolution. The [UniFFI guide](../bindings/UNIFFI.md)
+documents the high-level transport over the same safe facade.

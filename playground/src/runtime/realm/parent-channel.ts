@@ -140,6 +140,7 @@ export async function createBrowserCompareRealmSession(
     current.resolve({
       status: "success",
       svg: response.svg,
+      materializedTheme: response.materializedTheme,
       prepareTimeMs: response.prepareTimeMs,
       renderTimeMs: response.renderTimeMs,
       presentationTimeMs: response.presentationTimeMs,

@@ -5,7 +5,7 @@ are not submodules, and must resolve to the selected revisions in `REPOS.lock.js
 
 Typical selected checkouts include:
 
-- `repo-ref/mermaid` for Mermaid `12.2.0`;
+- `repo-ref/mermaid-12.3.0` for Mermaid `12.3.0`;
 - `repo-ref/dompurify` for the selected sanitizer source;
 - `repo-ref/zenuml-core` for the selected ZenUML Core `3.50.1` source;
 - the selected Dagre, Graphlib, Cytoscape, and layout sources listed in the lock.
@@ -36,6 +36,12 @@ esbuild compiler, are selected packages rather than ambient tooling. They carry 
 source identity, installed-content digests, lock verification, and selection-receipt coverage
 alongside Mermaid and its runtime companions.
 
+`behaviorDependencies` binds algorithm and normalization packages that Mermaid imports from the
+selected npm graph, including layout engines. Each record participates in selection receipts,
+source verification, installed-content digests and both workspace locks. Explicit overrides keep
+these behavior owners consistent between the Playground and reference CLI; a source range alone
+does not establish which implementation produced an artifact.
+
 The executable behavior oracle is the selected npm graph. `tools/mermaid-cli/reference-runtime.mjs`
 builds a self-contained browser artifact from Mermaid's module entry point using the selected
 esbuild compiler and the reference CLI's installed packages. Baseline generation, renderability
@@ -47,13 +53,13 @@ The renderer probes the built artifact's Mermaid version and verifies that a str
 render calls its selected DOMPurify instance. It records the artifact SHA-256 and compiler identity,
 then executes the verified bytes. Package and artifact drift block baseline promotion.
 
-Mermaid 12.2.0 owns ELK in its standard runtime. The selected reference CLI 12.0.0 no longer
+Mermaid 12.3.0 owns ELK in its standard runtime. The selected reference CLI 12.2.0 no longer
 carries the legacy ELK adapter. Do not register that adapter alongside the built-in implementation:
 it replaces core layout/shape registrations and can break Agentflow and Usecase.
 
 Tidy Tree 1.0.1 and ZenUML 1.0.1 remain external companions. Their published package tags resolve
-to `a86a2bf4d8fd2a9045f564b5b37c4c70cde18ca6`, independently of Mermaid 12.2.0's
-`1fb7869866dd619168d840291c9c54b4f129758b`. Parser 2.0.1 retains its own source commit
+to `a86a2bf4d8fd2a9045f564b5b37c4c70cde18ca6`, independently of Mermaid 12.3.0's
+`2086904e76c692331e34a45d7cc3bc30860d040e`. Parser 2.0.1 retains its own source commit
 `21f72f07ea22c0af48a3149c550654e80d8e40cb`; unchanged packages are not relabeled with the core's newer tag.
 The bundle records each package's own source and
 installed-content identity. Historical baseline and source-corpus records retain their original

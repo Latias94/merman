@@ -2272,6 +2272,7 @@ fn markdown_fallback_recovery_is_scoped_per_fence_and_decorated_last() {
             crate::AnalysisSyntaxFacts::unavailable(Some("flowchart-v2".to_string())),
             candidates,
             crate::DiagramParseDisposition::Recovered,
+            merman_core::preprocess::SourceAppearanceSummary::Unknown,
         ));
     }
 

@@ -126,6 +126,6 @@ These packages use independent version numbers. Review the [dependency policy](.
 
 ## Current development migration (unreleased)
 
-The current development branch after published `0.9.3` replaces the Presentation API with compiled `DiagramTheme` requests and `theme-catalog` discovery. Bindings use Options JSON schema 3 with a top-level `theme` group; Web uses transport API 8. Deploy matching wrappers, package facades, generated glue, and native/WASM artifacts from the same revision. These are unreleased contracts and do not change the 0.9.0 instructions above.
+The current development branch after published `0.9.3` replaces the Presentation API with compiled `DiagramTheme` requests and `theme-catalog` discovery. Bindings use Options JSON schema 3 with a top-level `theme` group; Web uses transport API 9, analysis facts use schema 3, and render theme execution evidence uses schema 2. Deploy matching wrappers, package facades, generated glue, and native/WASM artifacts from the same revision. These are unreleased contracts and do not change the 0.9.0 instructions above.
 
 Use the [current theme guide](../rendering/custom-diagram-themes.md), [binding theme grammar](../bindings/OPTIONS_JSON.md#diagram-theme), and [Web SDK](../../platforms/web/README.md) for that migration. The [prepared rendering and host integration migration](../migrations/render-reuse-host-integration.md) covers the later Rust model, prepared-source, and geometry resource changes.

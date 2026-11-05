@@ -13,6 +13,10 @@ pub(crate) struct VennCirclePaintBinding {
     pub(crate) fill_opacity: String,
     pub(crate) stroke: String,
     pub(crate) stroke_width: String,
+    pub(super) source_fill_owned: bool,
+    pub(super) source_stroke_owned: bool,
+    pub(super) source_text_owned: bool,
+    pub(super) fill_config_role: Option<usize>,
 }
 
 #[derive(Debug)]
@@ -284,7 +288,7 @@ impl VennCssBinding {
         let option = |key: &str| config_string(config, &["themeVariables", key]);
         let dark = is_dark(&option("background").unwrap_or_else(|| "#f4f4f4".into()))?;
         let palette = (1..=8)
-            .filter_map(|index| option(&format!("venn{index}")))
+            .filter_map(|index| option(&format!("venn{index}")).map(|color| (index, color)))
             .collect::<Vec<_>>();
         let primary = option("primaryColor").unwrap_or_else(|| "#ECECFF".into());
         let mut styles = HashMap::<String, BTreeMap<String, String>>::new();
@@ -325,7 +329,7 @@ impl VennCssBinding {
                 let fill = value("fill").unwrap_or_else(|| {
                     palette
                         .get(circle_index % palette.len().max(1))
-                        .cloned()
+                        .map(|(_, color)| color.clone())
                         .unwrap_or_else(|| primary.clone())
                 });
                 let text = match value("color") {
@@ -333,8 +337,15 @@ impl VennCssBinding {
                     None if dark => lighten(&fill, 30.0)?,
                     None => darken(&fill, 30.0)?,
                 };
+                let fill_config_role = palette
+                    .get(circle_index % palette.len().max(1))
+                    .map(|(index, _)| *index);
                 circle_index += 1;
                 Ok(VennAreaPaintBinding::Circle(VennCirclePaintBinding {
+                    source_fill_owned: value("fill").is_some(),
+                    source_stroke_owned: value("stroke").is_some(),
+                    source_text_owned: value("color").is_some(),
+                    fill_config_role,
                     fill_opacity: value("fill-opacity").unwrap_or_else(|| "0.1".into()),
                     stroke: value("stroke").unwrap_or_else(|| fill.clone()),
                     stroke_width: value("stroke-width").unwrap_or_else(|| {

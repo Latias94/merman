@@ -8,6 +8,10 @@ import type {
   RenderCoordinatorState,
 } from "./render-coordinator.ts";
 import { isCompletedRenderState } from "./render-coordinator.ts";
+import {
+  resolveMermaidCanvasTone,
+  type MermaidCanvasTone,
+} from "../lib/mermaid-canvas-tone.ts";
 
 export function useRenderCoordinator<T>(
   selector: (state: RenderCoordinatorState) => T
@@ -26,6 +30,21 @@ export function selectVisibleRenderBatch(
 ): CompletedRenderBatch | null {
   if (isCompletedRenderState(state)) return state;
   return state.status === "updating" ? state.previous : null;
+}
+
+export function selectVisibleCanvasTone(
+  state: RenderCoordinatorState,
+): MermaidCanvasTone {
+  const batch = selectVisibleRenderBatch(state);
+  if (batch?.merman.status === "success") {
+    const evidence = batch.merman.metadata?.theme_execution_evidence;
+    return resolveMermaidCanvasTone(
+      evidence?.version === 2 ? evidence.materialized_theme : null,
+    );
+  }
+  return resolveMermaidCanvasTone(
+    batch?.mermaid?.status === "success" ? batch.mermaid.materializedTheme : null,
+  );
 }
 
 export function selectCurrentDiagramType(

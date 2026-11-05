@@ -68,11 +68,14 @@ pub(super) struct PacketTextColorOwnership {
 
 impl PacketTextColorOwnership {
     pub(super) fn from_config(config: &PresentationConfig) -> Self {
+        let packet = crate::packet::config::PacketConfigView::new(config.as_value());
+        let owns =
+            |key, path| packet_config_path_owns(config, path) && packet.style_value(key).is_some();
         Self {
-            byte_start: packet_config_path_owns(config, "packet.startByteColor"),
-            byte_end: packet_config_path_owns(config, "packet.endByteColor"),
-            label: packet_config_path_owns(config, "packet.labelColor"),
-            title: packet_config_path_owns(config, "packet.titleColor"),
+            byte_start: owns("startByteColor", "themeVariables.packet.startByteColor"),
+            byte_end: owns("endByteColor", "themeVariables.packet.endByteColor"),
+            label: owns("labelColor", "themeVariables.packet.labelColor"),
+            title: owns("titleColor", "themeVariables.packet.titleColor"),
         }
     }
 
@@ -284,13 +287,13 @@ mod tests {
             (complete_roles, serde_json::json!({}), true, true),
             (
                 complete_roles,
-                serde_json::json!({"packet": {"startByteColor": "#654321"}}),
+                serde_json::json!({"themeVariables": {"packet": {"startByteColor": "#654321"}}}),
                 true,
                 false,
             ),
             (
                 complete_roles,
-                serde_json::json!({"packet": {"endByteColor": "#654321"}}),
+                serde_json::json!({"themeVariables": {"packet": {"endByteColor": "#654321"}}}),
                 true,
                 true,
             ),

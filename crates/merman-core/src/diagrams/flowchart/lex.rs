@@ -7,53 +7,40 @@ use super::{
 use crate::{SourceSpan, diagrams::scan::is_ecmascript_whitespace};
 
 pub(super) fn parse_node_label_text(raw: &str) -> std::result::Result<LabeledText, LexError> {
-    let quoted = raw.starts_with('"') && raw.ends_with('"');
+    let (payload, kind) = parse_node_label_payload(raw)?;
+    Ok(parsed_label_text(raw, payload, kind))
+}
 
-    let (text, kind) = super::parse_label_text(raw);
-
-    match kind {
-        TitleKind::Text => {
-            // Mermaid Jison-based flowchart lexer treats these as structural tokens (PS/PE/SQE/etc)
-            // and will throw parse errors if they appear inside TEXT.
-            if text.contains('"')
-                || text.contains('(')
-                || text.contains(')')
-                || text.contains('[')
-                || text.contains(']')
-                || text.contains('{')
-                || text.contains('}')
-                || text.contains('|')
-            {
-                return Err(LexError::new(
-                    "Invalid text label: contains structural characters; quote it to use them",
-                ));
-            }
-            if contains_bound_at(raw) {
-                return Err(LexError::new(
-                    "Invalid text label: unquoted `@` must be preceded by whitespace",
-                ));
-            }
-        }
-        TitleKind::String => {
-            // Mermaid's Jison string state closes on every double quote; backslashes are literal.
-            if quoted {
-                let inner = raw.get(1..raw.len().saturating_sub(1)).unwrap_or_default();
-                if inner.contains('"') {
-                    return Err(LexError::new(
-                        "Invalid string label: contains nested quotes".to_string(),
-                    ));
-                }
-            }
-        }
-        TitleKind::Markdown => {}
+pub(super) fn parse_node_label_payload(raw: &str) -> Result<(&str, TitleKind), LexError> {
+    if raw.starts_with('"') {
+        return super::text::parse_quoted_label(raw);
     }
 
-    Ok(LabeledText {
-        text,
+    let text = super::text::trim_flowdb_label_text(raw);
+
+    // Mermaid Jison-based flowchart lexer treats these as structural tokens (PS/PE/SQE/etc)
+    // and will throw parse errors if they appear inside TEXT.
+    if text.contains(['"', '(', ')', '[', ']', '{', '}', '|']) {
+        return Err(LexError::new(
+            "Invalid text label: contains structural characters; quote it to use them",
+        ));
+    }
+    if contains_bound_at(raw) {
+        return Err(LexError::new(
+            "Invalid text label: unquoted `@` must be preceded by whitespace",
+        ));
+    }
+    Ok((raw, TitleKind::Text))
+}
+
+fn parsed_label_text(raw: &str, payload: &str, kind: TitleKind) -> LabeledText {
+    let text = super::text::trim_flowdb_label_text(payload);
+    LabeledText {
+        text: text.to_string(),
         kind,
         span: None,
-        selection: None,
-    })
+        selection: Some(super::text::borrowed_span(raw, text)),
+    }
 }
 
 fn contains_bound_at(raw: &str) -> bool {
@@ -73,43 +60,22 @@ pub(super) fn parse_edge_text(raw: &str) -> std::result::Result<LabeledText, Lex
         ));
     }
 
-    if raw.starts_with("\"`") {
-        if raw.len() < 4 || !raw.ends_with("`\"") {
-            return Err(LexError::new(
-                "Invalid Markdown string in flowchart edge label",
-            ));
-        }
-        let inner = &raw[2..raw.len() - 2];
-        if inner.is_empty() || inner.contains(['`', '"']) {
-            return Err(LexError::new(
-                "Invalid Markdown string in flowchart edge label",
-            ));
-        }
-    } else if raw.starts_with('"') {
-        if raw.len() < 2 || !raw.ends_with('"') {
-            return Err(LexError::new(
-                "Invalid edge label: quoted strings cannot be mixed with unquoted text",
-            ));
-        }
-        let inner = &raw[1..raw.len() - 1];
-        if inner.is_empty() || inner.contains('"') {
-            return Err(LexError::new(
-                "Invalid edge label: expected exactly one quoted string token",
-            ));
-        }
-    } else if raw.contains('"') {
+    if raw.starts_with('"') {
+        return parse_node_label_text(raw);
+    }
+    if raw.contains('"') {
         return Err(LexError::new(
             "Invalid edge label: quoted strings cannot be mixed with unquoted text",
         ));
     }
 
     let (text, kind) = super::parse_edge_label_text(raw);
-
+    let payload = super::text::trim_flowdb_label_text(raw);
     Ok(LabeledText {
         text,
         kind,
         span: None,
-        selection: None,
+        selection: Some(super::text::borrowed_span(raw, payload)),
     })
 }
 
@@ -128,37 +94,6 @@ pub(super) fn parse_rect_border_label(raw: &str) -> (&'static str, &str, usize) 
         return ("rect", label, offset);
     }
     ("square", raw, 0)
-}
-
-pub(super) fn find_unquoted_delim(input: &str, start: usize, delim: &str) -> Option<usize> {
-    let bytes = input.as_bytes();
-    let len = bytes.len();
-    let delim_bytes = delim.as_bytes();
-    let mut pos = start;
-
-    while pos + delim_bytes.len() <= len {
-        if bytes[pos..pos + delim_bytes.len()] == *delim_bytes {
-            return Some(pos);
-        }
-
-        // Mermaid's flowchart lexer stays in a label-specific text state until the shape closer,
-        // so newlines and semicolons inside node labels are label text rather than statement ends.
-        match bytes[pos] {
-            b'"' => {
-                pos += 1;
-                while pos < len {
-                    if bytes[pos] == b'"' {
-                        pos += 1;
-                        break;
-                    }
-                    pos += 1;
-                }
-            }
-            _ => pos += 1,
-        }
-    }
-
-    None
 }
 
 fn split_first_word(s: &str) -> Option<(&str, &str)> {
@@ -893,6 +828,40 @@ pub(super) fn parse_link_style_stmt(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn markdown_labels_preserve_valid_payloads_and_plain_backticks() {
+        for (raw, expected, expected_kind) in [
+            (r#""`""ok`""#, "ok", TitleKind::Markdown),
+            (r#""`ok`""""#, "ok", TitleKind::Markdown),
+            (r#""`""ok`""""#, "ok", TitleKind::Markdown),
+            ("\"\"\"ok\"", "ok", TitleKind::String),
+            ("\"ok\"\"\"", "ok", TitleKind::String),
+            (
+                "\"`first\n [雪] {text} (round) | -->\nlast`\"",
+                "first\n [雪] {text} (round) | -->\nlast",
+                TitleKind::Markdown,
+            ),
+            (
+                r#""`Path: C:\Temp\file\n`""#,
+                r#"Path: C:\Temp\file\n"#,
+                TitleKind::Markdown,
+            ),
+            ("\"` \n `\"", "", TitleKind::Markdown),
+            (
+                "\"first `code` last\"",
+                "first `code` last",
+                TitleKind::String,
+            ),
+            ("`first`", "`first`", TitleKind::Text),
+        ] {
+            for label in [parse_node_label_text(raw), parse_edge_text(raw)] {
+                let label = label.expect("valid Jison label token");
+                assert_eq!(label.text, expected, "{raw:?}");
+                assert_eq!(label.kind, expected_kind, "{raw:?}");
+            }
+        }
+    }
 
     #[test]
     fn parse_click_stmt_parses_callback() {

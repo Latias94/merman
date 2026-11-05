@@ -1753,3 +1753,165 @@ fn quadrantchart_axis_palette_reconciles_real_label_and_border_winners() {
         assert_eq!(evidence.not_applicable_count(), usize::from(shadowed));
     }
 }
+
+#[test]
+fn quadrantchart_legend_requests_are_not_applicable_without_legend_terminals() {
+    let fill = ThemeStylePatch::default().with_fill(CanvasPaint::solid("#123456").unwrap());
+    let theme = quadrantchart_series_rules_theme([
+        ThemeRule::new(ThemeTarget::Legend, fill.clone()),
+        ThemeRule::new(ThemeTarget::Legend, fill.clone()).with_variant(ThemeVariant::Default),
+        ThemeRule::new(ThemeTarget::Legend, fill).with_ordinal(OrdinalSelector::Exact(1)),
+    ]);
+    let baseline = DiagramThemeCompiler::new()
+        .compile(DiagramThemeSpec::new())
+        .unwrap();
+    for source in [TEXT_PAINT_SOURCE, "quadrantChart\n    title Empty\n"] {
+        let rendered =
+            render_quadrantchart_with_theme_and_engine(source, &theme, MermaidEngine::new());
+        let unthemed =
+            render_quadrantchart_with_theme_and_engine(source, &baseline, MermaidEngine::new());
+        assert_eq!(rendered.svg(), unthemed.svg());
+        let completion = rendered.into_completion();
+        let evidence = merman_render::__private::family_evidence(completion.report());
+        assert_eq!(evidence.required_count(), 3);
+        assert_eq!(evidence.not_applicable_count(), 3);
+        assert_eq!(evidence.applied_count(), 0);
+        assert_eq!(evidence.theme_residual_count(), 0);
+    }
+}
+
+#[test]
+fn quadrantchart_presets_have_complete_role_accounting() {
+    for descriptor in merman_render::diagram_theme::theme_preset_descriptors() {
+        let theme = DiagramThemeCompiler::new()
+            .compile_preset(descriptor.preset())
+            .unwrap();
+        let rendered = render_quadrantchart_with_theme_requirement_and_engine(
+            TEXT_PAINT_SOURCE,
+            &theme,
+            MermaidEngine::new(),
+            ThemePortabilityRequirement::BestEffort,
+        )
+        .unwrap();
+        let completion = rendered.into_completion();
+        let evidence = merman_render::__private::family_evidence(completion.report());
+        assert!(evidence.required_count() > 0);
+        assert_eq!(
+            evidence.accounted_count(),
+            evidence.required_count(),
+            "{}",
+            descriptor.id()
+        );
+    }
+}
+
+#[test]
+fn quadrantchart_title_palette_follows_visible_title_and_actual_fill_winners() {
+    for typed_text in [false, true] {
+        let mut styles = ThemeRuleSet::default().with_ordinal_palette(
+            ThemeTarget::Title,
+            OrdinalPalette::new([ThemeColorValue::parse("#123456").unwrap()]).unwrap(),
+        );
+        if typed_text {
+            styles = styles.with_rule(ThemeRule::new(
+                ThemeTarget::Text,
+                ThemeStylePatch::default().with_fill(CanvasPaint::solid("#abcdef").unwrap()),
+            ));
+        }
+        let theme = DiagramThemeCompiler::new()
+            .compile(DiagramThemeSpec::new().with_styles(styles))
+            .unwrap();
+        for (source, visible) in [
+            ("quadrantChart\n    title Example\n", true),
+            ("quadrantChart\n", false),
+        ] {
+            let rendered = render_quadrantchart_with_theme_requirement_and_engine(
+                source,
+                &theme,
+                MermaidEngine::new(),
+                ThemePortabilityRequirement::BestEffort,
+            )
+            .unwrap();
+            let evidence =
+                merman_render::__private::family_evidence(rendered.into_completion().report());
+            let required = 1 + usize::from(typed_text);
+            assert_eq!(evidence.required_count(), required);
+            assert_eq!(evidence.accounted_count(), required);
+            assert_eq!(evidence.applied_count(), usize::from(visible && typed_text));
+            assert_eq!(
+                evidence.theme_residual_count(),
+                usize::from(visible && !typed_text)
+            );
+            assert_eq!(
+                evidence.not_applicable_count(),
+                if !visible {
+                    required
+                } else {
+                    usize::from(typed_text)
+                }
+            );
+        }
+    }
+}
+
+#[test]
+fn quadrantchart_title_effect_binding_is_residual_only_with_a_real_title() {
+    use merman_render::diagram_theme::{
+        DiagramEffectSet, EffectBinding, EffectGraph, EffectInput, EffectPrimitive,
+    };
+    let effects = DiagramEffectSet::default()
+        .with_graph(
+            EffectGraph::new(
+                "blur",
+                [EffectPrimitive::GaussianBlur {
+                    input: EffectInput::SourceGraphic,
+                    std_deviation: 1.0,
+                }],
+            )
+            .unwrap(),
+        )
+        .unwrap()
+        .with_binding(EffectBinding::new(ThemeTarget::Title, "blur").unwrap())
+        .unwrap();
+    let theme = DiagramThemeCompiler::new()
+        .compile(DiagramThemeSpec::new().with_effects(effects))
+        .unwrap();
+    for (source, visible) in [
+        ("quadrantChart\n    title Example\n", true),
+        ("quadrantChart\n", false),
+    ] {
+        let rendered = render_quadrantchart_with_theme_requirement_and_engine(
+            source,
+            &theme,
+            MermaidEngine::new(),
+            ThemePortabilityRequirement::BestEffort,
+        )
+        .unwrap();
+        let evidence =
+            merman_render::__private::family_evidence(rendered.into_completion().report());
+        assert_eq!(evidence.required_count(), 1);
+        assert_eq!(evidence.accounted_count(), 1);
+        assert_eq!(evidence.theme_residual_count(), usize::from(visible));
+        assert_eq!(evidence.not_applicable_count(), usize::from(!visible));
+    }
+}
+
+#[test]
+fn quadrantchart_empty_theme_preserves_unthemed_svg_bytes() {
+    let theme = DiagramThemeCompiler::new()
+        .compile(DiagramThemeSpec::new())
+        .unwrap();
+    let parsed = MermaidEngine::new()
+        .parse_diagram_for_render_model_sync(TEXT_PAINT_SOURCE, ParseOptions::strict())
+        .unwrap()
+        .unwrap()
+        .into_presentation();
+    let session = RenderEnvironment::deterministic().begin_session().unwrap();
+    let plain = family::prepare(&parsed, &LayoutOptions::default(), session)
+        .unwrap()
+        .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+        .unwrap();
+    let themed =
+        render_quadrantchart_with_theme_and_engine(TEXT_PAINT_SOURCE, &theme, MermaidEngine::new());
+    assert_eq!(plain.svg(), themed.svg());
+}

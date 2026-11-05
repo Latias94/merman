@@ -4,6 +4,30 @@ All notable changes to this project will be documented in this file.
 
 The format is based on *Keep a Changelog*, and this project adheres to *Semantic Versioning*.
 
+## Unreleased
+
+### Highlights
+
+- **Mermaid 12.3 support.** Render timed Flowchart Step edges and nine BPMN shapes, with updated Swimlane layouts, Agentflow shape aliases and Usecase labels. Static exports keep the ordinary edges and step badges without animation. See the [Mermaid 12.3 guide](docs/migrations/mermaid-12-3.md).
+- **Broader theme coverage.** Built-in presets and custom recipes now apply core colors and typography across all 34 diagram families. Shadows and other effects still depend on the diagram, shape, look and output; see [theme coverage](docs/rendering/diagram-theme-coverage.md).
+- **A simpler Playground appearance workflow.** Browse official Mermaid.js themes, Merman built-in presets, JSON examples and imports in distinct groups. Selections update the current diagram immediately; closing keeps them, and **Undo appearance** reverses changes. **Use in project** provides Rust, CLI and Web integration code with the files needed to reproduce the selected theme or diagram.
+- **Four editable theme examples.** Try Atlas, Nightfall, Letterpress and Grove on your diagram, inspect their sample scenes, or download their JSON to customize and reuse. These are standalone recipes, not additional preset IDs. See the [theme guide](docs/rendering/custom-diagram-themes.md#standalone-explorations-and-example-scenes).
+
+### Upgrade notes
+
+- **Rust source changes:** update direct `FlowEdge`, `FlowchartModel` and Rectpacking `Options` literals for the new fields. Mindmap compatibility JSON no longer includes `diagramId`; use `PresentationContext::None` and set SVG identity through render options. The [Rust migration](docs/migrations/mermaid-12-3.md#rust-source-changes) lists the replacements.
+- **Custom binding integrations:** analysis facts use schema `3`, theme execution evidence uses schema `2`, and Web transport API advances to `9`. Deploy matching wrappers, generated glue and WASM together; Rust/TypeScript evidence consumers use `ThemeExecutionEvidenceV2`. See the [binding migration](docs/release/UNRELEASED_CONTRACT_VERSIONS.md#source-appearance-and-render-evidence-follow-up).
+
+### Fixes
+
+- ELK layouts follow the selected `0.12.0` behavior for outside-label clearance, compound containers, titles, self-loops and component packing. Review layout and image snapshots after upgrading; the [ELK guide](crates/merman-elk-layered/MERMAID_12_3_DELTA.md) describes the supported scope.
+- Brutalist hard shadows appear on supported Classic and Neo Flowchart shapes. Usecase preset arrowheads follow their connector colors.
+- HTML-to-SVG text conversion preserves supported inline font sizes, weights and code fonts. Railroad, Cynefin and Wardley labels retain text that previously changed during sanitization.
+- Markdown batch conversion preserves the diagram's accessibility title and description, including entities and CDATA, without substituting nested node descriptions. Thanks [@malte-laukoetter](https://github.com/malte-laukoetter) for the report. Related: [#276](https://github.com/Latias94/merman/issues/276).
+- Playground keeps the previous preview and its matching canvas background visible during updates. Source-declared themes initialize correctly, and unavailable saved preset IDs show a notice while the diagram renders with its Mermaid base theme.
+- VS Code previews stay synchronized after rapid configuration changes, with improved cleanup after cancellation or timeouts. Editor integrations ignore Mermaid fences inside HTML comments; hand-drawn rendering and native export respond to cancellation during more of their work.
+- Typst errors retain structured parse diagnostics and original source locations, including diagrams with frontmatter or non-ASCII text.
+
 ## [0.10.0-alpha.1] - 2026-11-02
 
 Changes since [0.9.3](#093---2026-10-30); see [upgrade actions](#breaking-changes-and-upgrade-actions) before migrating. Use the [host installation guide](docs/release/PREBUILT_PRODUCTS.md) to choose a package and keep its wrapper and runtime artifacts on the same version.
@@ -354,7 +378,7 @@ Alpha.7 is planned as the final alpha in the 0.8.0 release cycle. It moves the c
 ### Known limitations and next steps
 
 - The broader theme refactor announced in alpha.6 is deferred to a future release because the remaining implementation work, code-size impact, and performance concerns need more time. Alpha.7 includes the Mermaid 12 theme defaults and targeted theme fixes above, but does not complete the planned reusable theme system across first-party surfaces. Stabilization is the next focus for the 0.8.0 line.
-- Deterministic headless text measurement does not load the display font. Browser font metrics can still overflow some calculated bounds, including the documented Flowchart title case. Hosts requiring display-font measurement should supply their own measurement callback; see the [font-boundary report](docs/alignment/MERMAID_12_TITLE_029_FONT_BOUNDARY_2026_09_30.md).
+- Deterministic headless text measurement does not load the display font. Browser font metrics can still overflow some calculated bounds, including the documented Flowchart title case. Hosts requiring display-font measurement should supply their own measurement callback; see the [measurement boundary](docs/alignment/PARITY_POLICY.md#measurement-and-output-surfaces).
 
 ## [0.8.0-alpha.6] - 2026-09-02
 
@@ -827,7 +851,7 @@ This release is mostly about rendering fidelity and the render pipeline. If you 
 ### Added
 
 - `xtask`: support custom fixture roots in SVG baseline generation/comparison, add Markdown-aware text measurement, and integrate an opt-in Node/Puppeteer KaTeX path when `tools/mermaid-cli` is available.
-- Docs: add and expand `docs/workstreams/*` parity planning material, including root viewport (`parity-root`) checks and text-measurement alignment notes.
+- Docs: expand contributor guidance for root viewport (`parity-root`) checks and text-measurement alignment.
 - Tests/Fixtures: add a broad parity corpus covering font-size precedence, HTML label wrapping, Markdown `<br/>` continuations, unknown XML entities, KaTeX flowcharts, text-style overrides, and root viewport probes across multiple diagram types.
 
 ### Changed

@@ -3,13 +3,18 @@
 //! Optional ELK layout engine integration for `merman`.
 //!
 //! Source-port policy:
-//! - Mermaid's adapter layer is
+//! - The historical Mermaid adapter derivation is
 //!   https://github.com/mermaid-js/mermaid/blob/21f72f07ea22c0af48a3149c550654e80d8e40cb/packages/mermaid/src/rendering-util/layout-algorithms/elk/render.ts.
-//! - Mermaid pins `elkjs@0.9.3`; the corresponding source checkout is
+//! - The historical `elkjs@0.9.3` derivation is
 //!   https://github.com/kieler/elkjs/tree/a8304cf79fde75bc2ab1a89d28320f53f8637436.
-//! - `elkjs` is generated from Eclipse ELK Java sources. The current source baseline is
+//! - The historical Eclipse ELK Java derivation is
 //!   https://github.com/eclipse-elk/elk/tree/62d5909f96fad541bc101ad52dabaece6b7eab7e,
-//!   which is the 0.9.x ELK release tag available for the `elkjs@0.9.3` release window.
+//! - Mermaid 12.3.0's exact engine oracle is elkjs 0.12.0 at
+//!   https://github.com/kieler/elkjs/tree/ff5771d7165445c42c408bb8a090c8035272218c,
+//!   compared with Eclipse ELK 0.12.0 at
+//!   https://github.com/eclipse-elk/elk/tree/323312916048544e4e594eab3303cdb0d01e2929.
+//!   elkjs CI clones ELK master, so this tag is not a proven unique npm build input.
+//!   The engine crate's `MERMAID_12_3_DELTA.md` records ported deltas and unsupported options.
 //!
 //! The crate exposes one Mermaid adapter over the source-backed ELK providers. Additional providers
 //! handle flat graphs and recursive containers, including Mermaid's explicit metadata presets
@@ -20,6 +25,8 @@ use std::collections::{HashMap, HashSet, VecDeque};
 use std::fmt::Write as _;
 use std::num::NonZeroU64;
 
+#[cfg(test)]
+mod adapter_tests;
 mod container;
 mod flat;
 mod model;
@@ -57,6 +64,8 @@ use source_port::{
     ElkDirection, ElkInputEdge, ElkInputGraph, ElkInputLabel, ElkInputNode, LGraph, LNodeKind,
     LPoint, LayeredOptions as SourceLayeredOptions, NodeLabelPlacement, PortRef,
 };
+
+const MEASURED_LABEL_PLACEHOLDER: &str = "\u{fffc}";
 
 /// A guarded diagnostic session for inspecting the source-backed layered pipeline.
 ///
@@ -349,8 +358,15 @@ fn graph_to_source_input(graph: &Graph) -> Result<ElkInputGraph> {
                 label: if node.kind == NodeKind::Group
                     && node_ids_with_direct_children.contains(node.id.as_str())
                 {
-                    node.label
-                        .map(|label| ElkInputLabel::center("", label.width, label.height))
+                    node.label.map(|label| {
+                        ElkInputLabel::center(
+                            node.label_text
+                                .as_deref()
+                                .unwrap_or(MEASURED_LABEL_PLACEHOLDER),
+                            label.width,
+                            label.height,
+                        )
+                    })
                 } else {
                     None
                 },
@@ -380,7 +396,7 @@ fn source_edge_labels(edge: &Edge, center: bool, start: bool, end: bool) -> Vec<
         .label
         .filter(|_| center)
         .into_iter()
-        .map(|label| ElkInputLabel::center("", label.width, label.height))
+        .map(|label| ElkInputLabel::center(MEASURED_LABEL_PLACEHOLDER, label.width, label.height))
         .collect();
     labels.extend(
         edge.terminal_labels
@@ -388,7 +404,7 @@ fn source_edge_labels(edge: &Edge, center: bool, start: bool, end: bool) -> Vec<
             .filter(|terminal| if terminal.key.at_start() { start } else { end })
             .map(|terminal| ElkInputLabel {
                 source_index: Some(terminal.key.source_index()),
-                text: String::new(),
+                text: MEASURED_LABEL_PLACEHOLDER.to_owned(),
                 width: terminal.label.width,
                 height: terminal.label.height,
                 placement: if terminal.key.at_start() {
@@ -476,6 +492,7 @@ struct ScopeLayout {
     edge_metadata: HashMap<String, ScopeEdgeMetadata>,
     content_shifts: HashMap<String, Point>,
     size_constraints_active: bool,
+    label_margin: source_port::LMargin,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -527,6 +544,9 @@ fn layout_scopes(
                         size_constraints_active: index.child_scope_by_anchor[node]
                             .and_then(|child| arena[child].as_ref())
                             .is_some_and(|child| child.size_constraints_active),
+                        label_margin: index.child_scope_by_anchor[node]
+                            .and_then(|child| arena[child].as_ref())
+                            .map_or_else(source_port::LMargin::default, |child| child.label_margin),
                     })
                     .collect::<Vec<_>>(),
                 operation_seed,
@@ -539,6 +559,12 @@ fn layout_scopes(
                 edge_metadata,
                 content_shifts: output.content_shifts,
                 size_constraints_active: output.size_constraints_active,
+                label_margin: container::scope_title_margin(
+                    index.scopes[scope]
+                        .anchor
+                        .and_then(|node| graph.nodes[node].label),
+                    output.size,
+                ),
             });
             continue;
         }
@@ -575,12 +601,19 @@ fn layout_scopes(
         let export_work = source_graph_output_work_units(&lgraph)?;
         work_control.check(export_work)?;
         work_control.charge(export_work)?;
+        let size = actual_source_graph_size(&lgraph);
         arena[scope] = Some(ScopeLayout {
             layout: source_graph_to_layout_result(&lgraph),
-            size: actual_source_graph_size(&lgraph),
+            size,
             edge_metadata,
             content_shifts: HashMap::new(),
             size_constraints_active: false,
+            label_margin: container::scope_title_margin(
+                index.scopes[scope]
+                    .anchor
+                    .and_then(|node| graph.nodes[node].label),
+                size,
+            ),
         });
     }
 
@@ -954,19 +987,13 @@ impl<'a> HierarchyIndex<'a> {
                     anchor: Some(node_index),
                     depth: scopes[scope].depth + 1,
                     seed_scope,
-                    direction: if matches!(mode, ContainerMode::Explicit(_)) {
-                        if algorithm == Algorithm::MrTree {
+                    direction: mode
+                        .direction(node)
+                        .unwrap_or(if algorithm == Algorithm::MrTree {
                             Direction::Down
                         } else {
                             Direction::Right
-                        }
-                    } else if mode.direction(node).is_none()
-                        && scopes[scope].algorithm != Algorithm::Layered
-                    {
-                        Direction::Right
-                    } else {
-                        direction
-                    },
+                        }),
                     handling,
                     nodes: Vec::new(),
                     children: Vec::new(),
@@ -1326,9 +1353,16 @@ impl<'a> HierarchyIndex<'a> {
                     label: if source.kind == NodeKind::Group
                         && !self.children[*node_index].is_empty()
                     {
-                        source
-                            .label
-                            .map(|label| ElkInputLabel::center("", label.width, label.height))
+                        source.label.map(|label| {
+                            ElkInputLabel::center(
+                                source
+                                    .label_text
+                                    .as_deref()
+                                    .unwrap_or(MEASURED_LABEL_PLACEHOLDER),
+                                label.width,
+                                label.height,
+                            )
+                        })
                     } else {
                         None
                     },
@@ -3175,6 +3209,7 @@ mod tests {
                     .collect();
                 Some(ScopeLayout {
                     size_constraints_active: false,
+                    label_margin: source_port::LMargin::default(),
                     content_shifts: HashMap::new(),
                     layout: LayoutResult { nodes, edges },
                     size: source_port::LSize {

@@ -220,6 +220,30 @@ class ReleaseProjectionTests(unittest.TestCase):
         self.assertEqual(exit_code, 0)
         self.assertIn(f"Cargo workspace authority: {authority}", stdout.getvalue())
 
+    def test_fuzz_lock_requires_every_optional_workspace_path_dependency(self) -> None:
+        view = release_projection.RepositoryView(self.ROOT)
+        manifest = view.toml(release_projection.FUZZ_MANIFEST)
+        dependencies = manifest["dependencies"]
+        lock = view.text(release_projection.FUZZ_LOCK)
+        for name in ("merman", "merman-model", "merman-render", "merman-ffi"):
+            with self.subTest(dependency=name):
+                self.assertTrue(dependencies[name].get("optional"))
+                sections = lock.split("\n[[package]]\n")
+                missing = "\n[[package]]\n".join(
+                    section for section in sections
+                    if not section.startswith(f'name = "{name}"\n')
+                )
+                self.assertNotEqual(missing, lock)
+                result = release_projection.verify_repository(
+                    self.ROOT,
+                    overrides={release_projection.FUZZ_LOCK: missing},
+                )
+                self.assertFalse(result.ok)
+                self.assertIn(
+                    f"fuzz/Cargo.lock must contain exactly one local package entry for {name}; found 0",
+                    result.errors,
+                )
+
     def test_playground_lock_accepts_both_native_local_workspace_shapes(self) -> None:
         original = (self.ROOT / release_projection.PLAYGROUND_LOCK).read_text(encoding="utf-8")
         report = (self.ROOT / release_projection.PLAYGROUND_LICENSE_REPORT).read_text(

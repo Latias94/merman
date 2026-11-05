@@ -540,7 +540,7 @@ impl PreparedFlowchartSvgLabel {
 pub(crate) struct FlowchartSvgLabelSidecarBuilder {
     pending: RefCell<PendingFlowchartSvgLabels>,
     base_typography: Option<super::FlowchartBaseTypographyPlan>,
-    label_weights: super::FlowchartLabelWeights,
+    label_typography: super::FlowchartLabelTypography,
     math_backend: Option<ConfiguredMathBackend>,
     work_meter: Option<Arc<OperationWorkMeter>>,
     edge_label_padding: super::FlowchartEdgeLabelPadding,
@@ -791,13 +791,13 @@ impl FlowchartSvgLabelSidecarBuilder {
         resolved_theme: Option<&ResolvedDiagramTheme>,
         work_meter: Arc<OperationWorkMeter>,
     ) -> Self {
-        let weights = super::FlowchartLabelWeights::resolve(resolved_theme, Some(&work_meter));
-        let (label_weights, work_error) = match weights {
+        let weights = super::FlowchartLabelTypography::resolve(resolved_theme, Some(&work_meter));
+        let (label_typography, work_error) = match weights {
             Ok(weights) => (weights, None),
-            Err(error) => (super::FlowchartLabelWeights::default(), Some(error)),
+            Err(error) => (super::FlowchartLabelTypography::default(), Some(error)),
         };
         Self {
-            label_weights,
+            label_typography,
             prepared_work_error: RefCell::new(work_error),
             work_meter: Some(work_meter),
             ..Self::default()
@@ -808,7 +808,7 @@ impl FlowchartSvgLabelSidecarBuilder {
         mut self,
         ownership: crate::flowchart::FlowchartTypographyConfigOwnership,
     ) -> Self {
-        self.label_weights = self.label_weights.with_config(ownership);
+        self.label_typography = self.label_typography.with_config(ownership);
         self
     }
 
@@ -817,8 +817,8 @@ impl FlowchartSvgLabelSidecarBuilder {
         self
     }
 
-    pub(crate) fn label_weights(&self) -> super::FlowchartLabelWeights {
-        self.label_weights
+    pub(crate) fn label_typography(&self) -> super::FlowchartLabelTypography {
+        self.label_typography.clone()
     }
 
     pub(crate) fn layout_settings(
@@ -1077,10 +1077,10 @@ impl FlowchartSvgLabelSidecarBuilder {
             );
         }
         let weighted_wrap = self
-            .label_weights
+            .label_typography
             .apply(owner.typography_target(), request.style);
         let weighted_metrics = self
-            .label_weights
+            .label_typography
             .apply(owner.typography_target(), metrics_style);
         let request = FlowchartLabelMetricsRequest {
             style: &weighted_wrap,
@@ -1512,7 +1512,7 @@ impl FlowchartSvgLabelSidecarBuilder {
             pending.render_ids,
             pending.render_id_reservations,
             self.base_typography,
-            self.label_weights,
+            self.label_typography,
             self.edge_label_padding,
             self.prepared_resource_error.into_inner(),
             self.prepared_work_error.into_inner(),
@@ -1669,7 +1669,7 @@ pub(crate) struct FlowchartSvgLabelSidecar {
     math: FlowchartSvgLabelSlots<PreparedFlowchartMathLabel>,
     html: FlowchartSvgLabelSlots<PreparedFlowchartHtmlLabel>,
     base_typography: Option<super::FlowchartBaseTypographyPlan>,
-    label_weights: super::FlowchartLabelWeights,
+    label_typography: super::FlowchartLabelTypography,
     node_owner_by_id: FxHashMap<String, FlowchartSvgLabelOwner>,
     empty_subgraph_owner_by_id: FxHashMap<String, FlowchartSvgLabelOwner>,
     edge_owner_by_id: FxHashMap<String, FlowchartSvgLabelOwner>,
@@ -1687,8 +1687,8 @@ pub(crate) struct FlowchartSvgLabelSidecar {
 }
 
 impl FlowchartSvgLabelSidecar {
-    pub(crate) fn label_weights(&self) -> super::FlowchartLabelWeights {
-        self.label_weights
+    pub(crate) fn label_typography(&self) -> super::FlowchartLabelTypography {
+        self.label_typography.clone()
     }
 
     #[allow(
@@ -1704,7 +1704,7 @@ impl FlowchartSvgLabelSidecar {
         render_ids: FlowchartSvgLabelSlots<Box<str>>,
         render_id_reservations: FlowchartSvgLabelSlots<PreparedTextRetainedReservation>,
         base_typography: Option<super::FlowchartBaseTypographyPlan>,
-        label_weights: super::FlowchartLabelWeights,
+        label_typography: super::FlowchartLabelTypography,
         edge_label_padding: super::FlowchartEdgeLabelPadding,
         prepared_resource_error: Option<ResourceLimitExceeded>,
         prepared_work_error: Option<OperationWorkError>,
@@ -1718,7 +1718,7 @@ impl FlowchartSvgLabelSidecar {
             math,
             html,
             base_typography,
-            label_weights,
+            label_typography,
             edge_label_padding,
             prepared_resource_error,
             prepared_work_error,
@@ -1811,6 +1811,8 @@ impl FlowchartSvgLabelSidecar {
             self.empty_subgraph_owner_by_id
                 .get(node_id)
                 .or_else(|| self.node_owner_by_id.get(node_id))
+                // Collapsed groups emit a node while retaining their prepared title owner.
+                .or_else(|| self.subgraph_title_owner_by_id.get(node_id))
                 .copied()
         }
     }
@@ -2120,7 +2122,7 @@ impl<'a> FlowchartSvgLabelRenderPlan<'a> {
         _width_mode: FlowchartSvgWidthMode,
     ) -> Self {
         let font_weight = sidecar.zip(owner).and_then(|(sidecar, owner)| {
-            sidecar.label_weights.get(owner.typography_target())?;
+            sidecar.label_typography.get(owner.typography_target())?;
             metrics_style
                 .font_weight
                 .as_deref()?

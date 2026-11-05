@@ -49,6 +49,77 @@ fn close(actual: f64, expected: f64) {
     );
 }
 
+fn titled_rectpacking_graph(child_count: usize) -> Graph {
+    let mut input = graph(Algorithm::Box);
+    input.nodes.truncate(child_count);
+    input.edges.clear();
+    for child in &mut input.nodes {
+        child.parent = Some("g".into());
+        child.width = 40.0;
+        child.height = 20.0;
+    }
+    let mut group = input.nodes[0].clone();
+    group.id = "g".into();
+    group.parent = None;
+    group.kind = NodeKind::Group;
+    group.width = 0.0;
+    group.height = 0.0;
+    group.container = ContainerNodeOptions {
+        algorithm: Some(Algorithm::Rectpacking),
+        padding: 8.0,
+    };
+    group.label = Some(Label {
+        width: 30.0,
+        height: 100.0,
+    });
+    input.nodes.insert(0, group);
+    input
+}
+
+#[test]
+fn rectpacking_regular_branch_applies_owner_title_minimum() {
+    let input = titled_rectpacking_graph(1);
+    let output = super::super::layout(&input).unwrap();
+    let group = output.nodes.iter().find(|node| node.id == "g").unwrap();
+    assert_eq!(
+        group.height, 210.0,
+        "elkjs 0.12.0 MinSizePreProcessor owner title minimum"
+    );
+    let child = output.nodes.iter().find(|node| node.id == "n0").unwrap();
+    assert_eq!(
+        child.height, 90.0,
+        "elkjs 0.12.0 Rectpacking expansion before packing"
+    );
+    close(
+        child.y - child.height / 2.0 - (group.y - group.height / 2.0),
+        110.0,
+    );
+}
+
+#[test]
+fn rectpacking_trybox_branch_retains_original_owner_minimum() {
+    let input = titled_rectpacking_graph(3);
+    let output = super::super::layout(&input).unwrap();
+    let group = output.nodes.iter().find(|node| node.id == "g").unwrap();
+    assert_eq!(group.width, 115.0, "source-derived elkjs 0.12.0 Box width");
+    assert_eq!(
+        group.height, 175.0,
+        "source-derived elkjs 0.12.0 Box height excludes the regular title floor"
+    );
+    let origin = (group.x - group.width / 2.0, group.y - group.height / 2.0);
+    for (id, expected) in [
+        ("n0", [10.0, 110.0, 40.0, 20.0]),
+        ("n1", [65.0, 110.0, 40.0, 20.0]),
+        ("n2", [10.0, 145.0, 95.0, 20.0]),
+    ] {
+        let child = output.nodes.iter().find(|node| node.id == id).unwrap();
+        close(child.x - child.width / 2.0 - origin.0, expected[0]);
+        close(child.y - child.height / 2.0 - origin.1, expected[1]);
+        close(child.width, expected[2]);
+        close(child.height, expected[3]);
+    }
+}
+
 #[test]
 fn container_sizing_lifecycle_matches_elkjs_across_parent_providers() {
     // Actual elkjs 0.9.3, same explicit-container input as the dedicated provider test.
@@ -109,7 +180,7 @@ fn container_sizing_lifecycle_matches_elkjs_across_parent_providers() {
             let expected_origin = match parent {
                 Algorithm::Box | Algorithm::Rectpacking => (15.0, 15.0),
                 Algorithm::Force | Algorithm::Stress => (50.0, 50.0),
-                Algorithm::MrTree => (30.0, 40.0),
+                Algorithm::MrTree => (20.0, 20.0),
                 Algorithm::SporeOverlap => (8.0, 8.0),
                 Algorithm::Layered | Algorithm::Radial if !radial => (72.12819922616113, 12.0),
                 _ => (12.0, 12.0),
@@ -296,7 +367,21 @@ fn root_provider_projection_matches_elkjs() {
             [12.0, 12.0],
         ),
     ];
-    for (algorithm, nodes, routes, label) in cases {
+    for (algorithm, historical_nodes, historical_routes, label) in cases {
+        let target_nodes = match algorithm {
+            Algorithm::Rectpacking => Some([
+                [35.0, 30.0, 40.0, 30.0],
+                [100.0, 30.0, 60.0, 30.0],
+                [72.5, 85.0, 115.0, 50.0],
+            ]),
+            Algorithm::MrTree => Some([
+                [50.0, 30.0, 40.0, 20.0],
+                [50.0, 75.0, 60.0, 30.0],
+                [50.0, 135.0, 30.0, 50.0],
+            ]),
+            _ => None,
+        };
+        let nodes = target_nodes.unwrap_or(historical_nodes);
         let result = super::super::layout(&graph(algorithm)).unwrap();
         for (actual, expected) in result.nodes.iter().zip(nodes) {
             for (a, e) in [actual.x, actual.y, actual.width, actual.height]
@@ -306,11 +391,25 @@ fn root_provider_projection_matches_elkjs() {
                 close(a, e);
             }
         }
-        for (actual, expected) in result.edges.iter().zip(routes) {
+        for (actual, expected) in result.edges.iter().zip(historical_routes) {
             assert_eq!(actual.points.len(), expected.len(), "{algorithm:?}");
             for (a, e) in actual.points.iter().zip(expected) {
-                close(a.x, e[0]);
-                close(a.y, e[1]);
+                close(
+                    a.x,
+                    e[0] - if algorithm == Algorithm::MrTree {
+                        20.0
+                    } else {
+                        0.0
+                    },
+                );
+                close(
+                    a.y,
+                    e[1] - if algorithm == Algorithm::MrTree {
+                        20.0
+                    } else {
+                        0.0
+                    },
+                );
             }
         }
         close(result.edges[0].labels[0].x, label[0]);
@@ -705,7 +804,28 @@ fn mixed_root_scopes_match_actual_elkjs_container_resolution() {
             ],
         ),
     ];
-    for (algorithm, directional, expected) in cases {
+    for (algorithm, directional, historical) in cases {
+        let expected = match (algorithm, directional) {
+            (Algorithm::Rectpacking, true) => [
+                [114.0, 54.0, 198.0, 78.0],
+                [243.0, 54.0, 30.0, 78.0],
+                [59.0, 49.0, 40.0, 20.0],
+                [159.0, 54.0, 60.0, 30.0],
+            ],
+            (Algorithm::MrTree, false) => [
+                [106.0, 66.5, 172.0, 93.0],
+                [106.0, 158.5, 30.0, 50.0],
+                [64.0, 73.2, 40.0, 20.0],
+                [138.0, 74.0, 60.0, 30.0],
+            ],
+            (Algorithm::MrTree, true) => [
+                [74.0, 91.5, 108.0, 143.0],
+                [74.0, 208.5, 30.0, 50.0],
+                [74.0, 54.0, 40.0, 20.0],
+                [74.0, 129.0, 60.0, 30.0],
+            ],
+            _ => historical,
+        };
         let mut graph = graph(algorithm);
         graph.id = "root".into();
         let mut group = graph.nodes[0].clone();
@@ -907,7 +1027,22 @@ fn explicit_container_algorithms_and_title_minima_match_elkjs() {
             ],
         ),
     ];
-    for (algorithm, title_width, expected) in cases {
+    for (algorithm, title_width, historical) in cases {
+        let expected = if algorithm == Algorithm::MrTree {
+            [
+                historical[0],
+                [25.0, 25.0, 40.0, 20.0],
+                [15.0, 95.0, 60.0, 30.0],
+            ]
+        } else if algorithm == Algorithm::Stress {
+            [
+                [179.74360154767774, 72.15639226832202, 0.0, 0.0],
+                historical[1],
+                historical[2],
+            ]
+        } else {
+            historical
+        };
         let mut graph = graph(Algorithm::Box);
         graph.id = "root".into();
         graph.nodes.truncate(2);

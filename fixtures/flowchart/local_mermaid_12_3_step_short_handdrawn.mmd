@@ -1,0 +1,18 @@
+---
+config:
+  htmlLabels: false
+  look: handDrawn
+  handDrawnSeed: 42
+  flowchart:
+    nodeSpacing: 20
+    rankSpacing: 20
+    stepNumbers: true
+---
+%% Derived from flowchart-step-numbers.spec.ts opposing arrows and edgeStepAnimation.ts paint at
+%% https://github.com/mermaid-js/mermaid/tree/2086904e76c692331e34a45d7cc3bc30860d040e
+flowchart LR
+  A[Client] request@-->|send| B[API]
+  B reply@--> A
+  request@{ step: 1 }
+  reply@{ step: 2 }
+  linkStyle default stroke:#236abc

@@ -14,8 +14,8 @@ import {
 import { exportRenderedDiagram, renderSafeRaster, renderSafeSvg } from "./export-workflow.js";
 import { runClipboardCommand } from "./clipboard-command.js";
 import {
-  extractPreviewInput,
-  extractPreviewInputFromDocument,
+  getPreviewSourceSnapshot,
+  selectPreviewInput,
   type PreviewInput,
 } from "./preview-source.js";
 import {
@@ -182,22 +182,19 @@ async function resolveExportSource(
 ): Promise<{ document: vscode.TextDocument; input: PreviewInput } | undefined> {
   const activeEditor = vscode.window.activeTextEditor;
   const resource = mermaidSourceCommandUri(target);
-  const source = mermaidSourceCommandIdentity(target) ?? mermaidSourceCommandSourceId(target);
-  if (resource) {
-    if (activeEditor?.document.uri.toString() === resource.toString()) {
-      const input = extractPreviewInput(activeEditor, source);
-      return input ? { document: activeEditor.document, input } : undefined;
-    }
-    const document = await vscode.workspace.openTextDocument(resource);
-    const input = extractPreviewInputFromDocument(document, undefined, source);
-    return input ? { document, input } : undefined;
-  }
-
-  if (!activeEditor) {
+  const document =
+    resource && activeEditor?.document.uri.toString() !== resource.toString()
+      ? await vscode.workspace.openTextDocument(resource)
+      : activeEditor?.document;
+  if (!document) {
     return undefined;
   }
-  const input = extractPreviewInput(activeEditor);
-  return input ? { document: activeEditor.document, input } : undefined;
+  const input = selectPreviewInput(getPreviewSourceSnapshot(document).inputs, {
+    activeLine: activeEditor?.document === document ? activeEditor.selection.active.line : undefined,
+    sourceId: mermaidSourceCommandSourceId(target),
+    sourceIdentity: mermaidSourceCommandIdentity(target),
+  });
+  return input ? { document, input } : undefined;
 }
 
 export async function pickExportPreset(): Promise<ExportPreset | undefined> {

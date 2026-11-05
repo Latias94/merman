@@ -633,7 +633,7 @@ mod tests {
             )
             .expect("parsing must not be cancelled")
             .expect_err("invalid info header must fail controlled typed parsing");
-            let (model, facts, warnings) =
+            let (model, facts) =
                 parse_info_json_and_editor_facts(source, &meta, &crate::OperationControl::new())
                     .expect("parsing must not be cancelled")
                     .into_parts();
@@ -664,7 +664,6 @@ mod tests {
                 "info parser recovered after parse error: expected info"
             );
             assert!(facts.symbols.is_empty());
-            assert!(warnings.is_empty());
         }
     }
 

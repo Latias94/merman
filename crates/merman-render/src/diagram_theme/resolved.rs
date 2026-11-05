@@ -506,7 +506,7 @@ impl ResolvedThemeStyle {
 
     /// A more specific family role overrides only the properties it actually specifies.
     /// Rule ordering has already been resolved inside each role, including Default and ordinal.
-    pub(super) fn overlay_role(&mut self, other: Self) {
+    pub(crate) fn overlay_role(&mut self, other: Self) {
         self.fill.overlay_role(other.fill);
         self.stroke.overlay_role(other.stroke);
         self.stroke_width.overlay_role(other.stroke_width);

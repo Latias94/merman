@@ -46,6 +46,7 @@ fn edge(label: &str) -> FlowEdge {
         style: Vec::new(),
         animate: None,
         animation: None,
+        step: None,
         length: 1,
     }
 }
@@ -76,6 +77,7 @@ fn model() -> FlowchartModel {
         nodes: vec![node("A"), node("B")],
         edges: vec![edge("first & owner"), edge("second < owner")],
         subgraphs: vec![subgraph("G", &["H"]), subgraph("H", &["A", "B"])],
+        dropped_subgraph_members: Vec::new(),
         subgraph_vertex_styles: Default::default(),
         tooltips: Default::default(),
         warning_facts: Vec::new(),

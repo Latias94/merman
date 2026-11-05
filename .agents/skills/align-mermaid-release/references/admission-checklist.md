@@ -103,6 +103,10 @@ security admission; it must not weaken the canonical inline-SVG policy.
 
 ## Verification Evidence
 
+Use the [upgrade verification schedule](../../../../docs/release/MERMAID_UPGRADE_PLAYBOOK.md#7-refresh-generated-surfaces-and-evidence).
+One successful final strict receipt can close every row it covers; individual rows describe claims,
+not an instruction to rerun the same checks. Keep separate evidence for owners outside strict.
+
 - [ ] Mermaid reference verification rejects stale selected source, lock, receipt, installed bytes,
       and generated output while still passing when candidate/deferred files are absent.
 - [ ] A selected identity change without an exact base-bound receipt fails; an unchanged identity
@@ -119,7 +123,8 @@ security admission; it must not weaken the canonical inline-SVG policy.
       before any family returned to `conformant`.
 - [ ] New or removed registrations cannot disappear from parser/editor/render/Playground inventory.
 - [ ] Focused family, parser, editor, LSP, Web, Playground, CLI, and security tests pass as applicable.
-- [ ] Workspace `nextest`, formatting, clippy, strict verification, and alignment gates pass.
+- [ ] One final integrated strict pass covers workspace `nextest`, doctests, formatting, Clippy,
+      generated contracts, and alignment at the settled source.
 - [ ] Structure, parity, and parity-root comparisons pass; any browser-text-layout residual uses an
       exact receipt bound to the fixture input, upstream SVG, comparison mode, and complete local
       SVG, while new, changed, or stale residuals fail closed.

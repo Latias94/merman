@@ -299,22 +299,10 @@ fn typst_binding_error_payload(
         Some(error.message()),
         None,
     );
-    let mut details = serde_json::Map::new();
-    if let Some(resource) = error.resource_details() {
-        details.insert("resource".to_string(), json!(resource));
-    }
-    if let Some(icon_registry) = error.icon_registry_details() {
-        details.insert("icon_registry".to_string(), json!(icon_registry));
-    }
-    if let Some(cancellation) = error.cancellation_details() {
-        details.insert("cancellation".to_string(), json!(cancellation));
-    }
-    #[cfg(feature = "svg")]
-    if let Some(theme_authoring) = error.theme_authoring_details() {
-        details.insert("theme_authoring".to_string(), json!(theme_authoring));
-    }
-    if !details.is_empty() {
-        payload["details"] = Value::Object(details);
+    if let Some(details) = merman_bindings_core::binding_error_details_json(error)
+        .expect("binding error details are serializable")
+    {
+        payload["details"] = details;
     }
     serde_json::to_vec(&payload).expect("Typst result envelope is serializable")
 }
@@ -858,15 +846,27 @@ mod tests {
 
     #[test]
     fn typst_resource_policy_preserves_stricter_caller_limits() {
-        let options = typst_options_json(br#"{"resources":{"limits":{"max_source_bytes":4096}}}"#)
-            .expect("valid options");
-        let payload: Value = serde_json::from_slice(&options).expect("valid options JSON");
+        for wrapper in [None, Some("analysis"), Some("merman")] {
+            let analysis = json!({ "resources": { "limits": {
+                "max_source_bytes": 4096,
+                "max_model_items": 1
+            } } });
+            let input = wrapper
+                .map(|wrapper| json!({ wrapper: analysis.clone() }))
+                .unwrap_or(analysis);
+            let options =
+                typst_options_json(&serde_json::to_vec(&input).unwrap()).expect("valid options");
+            let payload: Value = serde_json::from_slice(&options).expect("valid options JSON");
+            let resources = wrapper
+                .map(|wrapper| &payload[wrapper]["resources"])
+                .unwrap_or(&payload["resources"]);
 
-        assert_eq!(payload["resources"]["profile"], "constrained");
-        assert_eq!(
-            payload["resources"]["limits"]["max_source_bytes"],
-            Value::from(4096)
-        );
+            assert_eq!(resources["profile"], "constrained");
+            assert_eq!(resources["limits"]["max_source_bytes"], Value::from(4096));
+            assert_eq!(resources["limits"]["max_model_items"], Value::from(1));
+            assert_eq!(payload["runtime_policy"], "deterministic");
+            assert_eq!(payload.get("resources").is_some(), wrapper.is_none());
+        }
     }
 
     #[test]
@@ -925,14 +925,19 @@ mod tests {
     }
 
     #[test]
-    fn explicit_looser_resource_profile_is_rejected() {
-        let error =
-            typst_options_json(br#"{"resources":{"profile":"trusted-native"}}"#).unwrap_err();
-        assert_eq!(
-            error.status(),
-            merman_bindings_core::BindingStatus::OptionsJsonError
-        );
-        assert!(error.message().contains("loosen the transport ceiling"));
+    fn typst_resource_policy_rejects_looser_profiles_and_limits() {
+        for input in [
+            br#"{"resources":{"profile":"trusted-native"}}"#.as_slice(),
+            br#"{"analysis":{"resources":{"limits":{"max_source_bytes":1048577}}}}"#.as_slice(),
+            br#"{"merman":{"resources":{"limits":{"max_model_items":1000000000}}}}"#.as_slice(),
+        ] {
+            let error = typst_options_json(input).unwrap_err();
+            assert_eq!(
+                error.status(),
+                merman_bindings_core::BindingStatus::OptionsJsonError
+            );
+            assert!(error.message().contains("loosen the transport ceiling"));
+        }
     }
 
     #[test]
@@ -983,6 +988,121 @@ mod tests {
 
         assert_error_envelope(&payload, RENDER_OPERATION, "MERMAN_OPTIONS_JSON_ERROR");
         assert_eq!(payload["kind"], "generic");
+    }
+
+    #[cfg(all(feature = "svg", feature = "diagram-flowchart"))]
+    #[test]
+    fn render_svg_json_preserves_original_utf8_parse_diagnostics() {
+        let source = "\u{feff}---\ntitle: 中文\n---\n%% 注释\nflowchart TD\nA --> ]";
+        let payload: Value = serde_json::from_slice(&render_svg_json(source.as_bytes(), b""))
+            .expect("valid parse-error envelope");
+
+        assert_error_envelope(&payload, RENDER_OPERATION, "MERMAN_PARSE_ERROR");
+        assert_eq!(payload["code"], 5);
+        assert_eq!(payload["kind"], "generic");
+        assert!(payload["capability_id"].is_null());
+        assert_eq!(
+            payload["details"],
+            json!({
+                "diagnostic": {
+                    "code": "merman.parse.diagram_parse",
+                    "span": { "start": 54, "end": 55, "kind": "exact" },
+                    "field": null,
+                    "diagram_type": "flowchart-v2",
+                    "requested_max_width": null,
+                    "actual_width": null,
+                    "width_profile": null,
+                    "fallback_reason": null,
+                }
+            }),
+        );
+    }
+
+    #[test]
+    fn typst_error_details_preserve_wide_integer_resource_counts() {
+        let max = merman_bindings_core::RUNTIME_CATALOG_MAX_SAFE_INTEGER + 1;
+        let error = merman_bindings_core::BindingError::resource_limit_with_cause(
+            merman_bindings_core::BindingResourceLimitCause::ArithmeticOverflow,
+            "layout_model",
+            "max_layout_work_units",
+            u64::MAX,
+            max,
+            "constrained",
+            "layout work accounting overflowed",
+        );
+        let payload: Value =
+            serde_json::from_slice(&typst_binding_error_payload(RENDER_OPERATION, &error))
+                .expect("valid resource error envelope");
+
+        assert_error_envelope(&payload, RENDER_OPERATION, "MERMAN_RESOURCE_LIMIT_EXCEEDED");
+        assert_eq!(
+            payload["details"],
+            json!({
+                "resource": {
+                    "cause": "arithmetic_overflow",
+                    "limit_id": "max_layout_work_units",
+                    "phase": "layout_model",
+                    "actual": u64::MAX,
+                    "max": max,
+                    "profile": "constrained",
+                }
+            }),
+        );
+        assert_eq!(
+            payload["details"]["resource"]["actual"].as_u64(),
+            Some(u64::MAX)
+        );
+        assert_eq!(payload["details"]["resource"]["max"].as_u64(), Some(max));
+    }
+
+    #[test]
+    fn typst_error_details_preserve_cancellation_and_omit_absent_details() {
+        let control = merman_bindings_core::OperationControl::new();
+        control.cancel();
+        let cancelled = control
+            .checkpoint_at(merman_bindings_core::OperationPhase::Layout)
+            .expect_err("cancelled operation");
+        let error = merman_bindings_core::BindingError::cancelled(cancelled);
+        let payload: Value =
+            serde_json::from_slice(&typst_binding_error_payload(RENDER_OPERATION, &error))
+                .expect("valid cancellation envelope");
+
+        assert_error_envelope(&payload, RENDER_OPERATION, "MERMAN_CANCELLED");
+        assert_eq!(
+            payload["details"],
+            json!({ "cancellation": { "reason": "requested", "phase": "layout" } }),
+        );
+
+        let plain = merman_bindings_core::BindingError::invalid_argument("invalid request");
+        let payload: Value =
+            serde_json::from_slice(&typst_binding_error_payload(RENDER_OPERATION, &plain))
+                .expect("valid plain error envelope");
+        assert_error_envelope(&payload, RENDER_OPERATION, "MERMAN_INVALID_ARGUMENT");
+        assert!(payload.get("details").is_none());
+    }
+
+    #[cfg(feature = "svg")]
+    #[test]
+    fn typst_error_details_preserve_icon_registry_context() {
+        let error = merman_bindings_core::BindingError::icon_registry_invalid_utf8(
+            3,
+            "icon pack is not UTF-8",
+        );
+        let payload: Value =
+            serde_json::from_slice(&typst_binding_error_payload(RENDER_OPERATION, &error))
+                .expect("valid icon-registry error envelope");
+
+        assert_error_envelope(&payload, RENDER_OPERATION, "MERMAN_UTF8_ERROR");
+        assert_eq!(
+            payload["details"],
+            json!({
+                "icon_registry": {
+                    "kind_id": "invalid_utf8",
+                    "pack_index": 3,
+                    "registration_name": null,
+                }
+            }),
+        );
     }
 
     #[cfg(feature = "analysis")]
@@ -1289,7 +1409,6 @@ mod tests {
         assert!(payload["data"].is_object());
     }
 
-    #[cfg(any(feature = "svg", feature = "analysis"))]
     fn assert_error_envelope(payload: &Value, operation: &str, code_name: &str) {
         assert_eq!(payload["version"], TYPST_RESULT_PAYLOAD_SCHEMA_VERSION);
         assert_eq!(payload["operation"], operation);

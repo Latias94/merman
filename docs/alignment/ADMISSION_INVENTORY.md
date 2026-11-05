@@ -1,12 +1,13 @@
 # Diagram Admission Inventory
 
 Status: Active
-Selected reference: Mermaid `@12.2.0` at `1fb7869866dd619168d840291c9c54b4f129758b`
-Last reviewed: 2026-10-13
+Selected reference: Mermaid `@12.3.0` at `2086904e76c692331e34a45d7cc3bc30860d040e`
+Last reviewed: 2026-11-04
 
-The 37-family primary matrix and its upstream SVG manifests select Mermaid `@12.2.0`. A pinned reference and refreshed evidence do not by themselves certify the strict parity gates on the final release commit; retain their run-specific results separately.
+The 37-family primary matrix and its upstream SVG manifests select Mermaid `@12.3.0`. A pinned reference and refreshed evidence do not by themselves certify the strict parity gates on the final release commit; retain their run-specific results separately.
 
-The admission consistency checks live in `crates/xtask/src/cmd/admission.rs`.
+The admission consistency checks live in
+[`admission.rs`](../../crates/xtask/src/cmd/admission.rs).
 
 Admission is composed from three owner-local structures:
 
@@ -42,11 +43,25 @@ Current consumers:
   rendered config claims: accepted/merged config can be broader than primary SVG support, but
   rendered support should point at an admitted family test, golden, or an explicit residual.
 
-This overview does not move fixtures or weaken evidence by itself. The historical Mermaid 11.17.2
-admission process and the rules for future baseline additions are recorded in
-`docs/alignment/UNSUPPORTED_FAMILY_ADMISSION_RUBRIC.md`. That record does not establish acceptance
-of the current Mermaid 11.17.2 baseline; current admission is verified by the executable inventories
-and checks listed above.
+## Evidence Boundaries
+
+An admitted input needs the evidence required by its family capability and comparison policy:
+canonical semantics, typed layout where available, selected-runtime SVG provenance, and an
+executable compare path. Required layers must agree on the input bytes. A parser-only input,
+explicit manifest exclusion, raw upstream corpus, or controlled family-local experiment does not
+become SVG admission merely by existing in the repository.
+
+The per-family manifests own exact included and excluded inputs; compare facts own exceptional
+parsing, tooling skips, and structure-only cases. Neither historical fixture counts nor file-name
+patterns may broaden those exceptions. The
+[family notes](FAMILY_NOTES.md) explain the remaining human-facing caveats without changing
+acceptance.
+
+For a new family or source transition, use the existing capability owner, compare facts, and
+normal fixture import/baseline machinery. The
+[upgrade playbook](../release/MERMAID_UPGRADE_PLAYBOOK.md) owns source-graph selection and review.
+Add a focused test or input for an uncovered source branch or reported failure; do not create a
+parallel prose registry or treat a prior release's green result as current evidence.
 
 No normal verification command parses this document. See [`README.md`](README.md) for the
 alignment authority map.

@@ -243,12 +243,64 @@ const FLOWCHART_MARKER_SHAPE_SPECS: [FlowchartMarkerShapeSpec; 12] = [
     },
 ];
 
+const BPMN_MARKER_SHAPE_SPECS: [FlowchartMarkerShapeSpec; 4] = [
+    FlowchartMarkerShapeSpec {
+        base: FlowchartMarkerBase::OpenArrowEnd,
+        margin: false,
+        marker_class: "marker openArrow",
+        shape: r#" viewBox="0 0 12 12" refX="11" refY="6" markerUnits="userSpaceOnUse" markerWidth="12" markerHeight="12" orient="auto"><path d="M 1 1 L 11 6 L 1 11" class="arrowMarkerPath" style="stroke-width: 1.4; stroke-linecap: round; stroke-linejoin: round; stroke-dasharray: 1, 0; fill: none;""#,
+        paint: FlowchartMarkerPaint::Stroke,
+        viewport: FlowchartMarkerViewport {
+            view_box: [12.0, 12.0],
+            reference: [11.0, 6.0],
+            size: [12.0, 12.0],
+        },
+    },
+    FlowchartMarkerShapeSpec {
+        base: FlowchartMarkerBase::OpenArrowStart,
+        margin: false,
+        marker_class: "marker openArrow",
+        shape: r#" viewBox="0 0 12 12" refX="1" refY="6" markerUnits="userSpaceOnUse" markerWidth="12" markerHeight="12" orient="auto"><path d="M 11 1 L 1 6 L 11 11" class="arrowMarkerPath" style="stroke-width: 1.4; stroke-linecap: round; stroke-linejoin: round; stroke-dasharray: 1, 0; fill: none;""#,
+        paint: FlowchartMarkerPaint::Stroke,
+        viewport: FlowchartMarkerViewport {
+            view_box: [12.0, 12.0],
+            reference: [1.0, 6.0],
+            size: [12.0, 12.0],
+        },
+    },
+    FlowchartMarkerShapeSpec {
+        base: FlowchartMarkerBase::HollowCircleStart,
+        margin: false,
+        marker_class: "marker hollowCircle",
+        shape: r#" viewBox="0 0 10 10" refX="0" refY="5" markerUnits="userSpaceOnUse" markerWidth="10" markerHeight="10" orient="auto"><circle cx="5" cy="5" r="3.6" class="arrowMarkerPath" style="stroke-width: 1.4; stroke-dasharray: 1, 0; fill: none;""#,
+        paint: FlowchartMarkerPaint::Stroke,
+        viewport: FlowchartMarkerViewport {
+            view_box: [10.0, 10.0],
+            reference: [0.0, 5.0],
+            size: [10.0, 10.0],
+        },
+    },
+    FlowchartMarkerShapeSpec {
+        base: FlowchartMarkerBase::HollowCircleEnd,
+        margin: false,
+        marker_class: "marker hollowCircle",
+        shape: r#" viewBox="0 0 10 10" refX="10" refY="5" markerUnits="userSpaceOnUse" markerWidth="10" markerHeight="10" orient="auto"><circle cx="5" cy="5" r="3.6" class="arrowMarkerPath" style="stroke-width: 1.4; stroke-dasharray: 1, 0; fill: none;""#,
+        paint: FlowchartMarkerPaint::Stroke,
+        viewport: FlowchartMarkerViewport {
+            view_box: [10.0, 10.0],
+            reference: [10.0, 5.0],
+            size: [10.0, 10.0],
+        },
+    },
+];
+
 fn flowchart_marker_shape_spec(
     base: FlowchartMarkerBase,
     margin: bool,
 ) -> &'static FlowchartMarkerShapeSpec {
     FLOWCHART_MARKER_SHAPE_SPECS
         .iter()
+        .chain(BPMN_MARKER_SHAPE_SPECS.iter())
         .find(|spec| spec.base == base && spec.margin == margin)
         .expect("Flowchart marker shape descriptor")
 }
@@ -374,6 +426,7 @@ pub(in crate::svg::parity::flowchart) struct FlowchartMarkerEmissionPlan {
     variants: IndexMap<FlowchartMarkerVariantKey, String>,
     hand_drawn: bool,
     base_marker_bytes: usize,
+    bpmn_markers: bool,
     extra_marker_bytes: usize,
     edge_marker_attribute_bytes: usize,
     serialization_input_work: usize,
@@ -389,6 +442,7 @@ impl FlowchartMarkerEmissionPlan {
             variants: IndexMap::new(),
             hand_drawn,
             base_marker_bytes: 0,
+            bpmn_markers: false,
             extra_marker_bytes: 0,
             edge_marker_attribute_bytes: 0,
             serialization_input_work: 0,
@@ -667,6 +721,8 @@ impl FlowchartMarkerEmissionPlan {
         work_meter: &crate::resources::OperationWorkMeter,
     ) -> crate::Result<FlowchartMarkerReference> {
         work_meter.charge(1)?;
+        self.bpmn_markers |= !base.supports_margin();
+        let margin = margin && base.supports_margin();
         let Some(marker_color) = marker_color else {
             return Ok(FlowchartMarkerReference {
                 base,
@@ -712,6 +768,11 @@ impl FlowchartMarkerEmissionPlan {
         work_meter: &crate::resources::OperationWorkMeter,
     ) -> crate::Result<()> {
         let base_marker_count = FLOWCHART_MARKER_SHAPE_SPECS.len()
+            + if self.bpmn_markers {
+                BPMN_MARKER_SHAPE_SPECS.len()
+            } else {
+                0
+            }
             + if diagram_type == "agentflow" {
                 AGENTFLOW_HIERARCHY_MARKERS.len()
             } else {
@@ -730,6 +791,9 @@ impl FlowchartMarkerEmissionPlan {
         self.preflight_serialization_input(base_marker_input_bytes.div_ceil(64), work_meter)?;
         let mut base_counter = SvgByteCounter::default();
         push_base_markers(&mut base_counter, diagram_id, diagram_type);
+        if self.bpmn_markers {
+            push_bpmn_markers(&mut base_counter, diagram_id, diagram_type);
+        }
         let base_marker_bytes = base_counter.finish(work_meter)?;
 
         let extra_marker_input_bytes = self.variants.iter().try_fold(
@@ -960,6 +1024,9 @@ impl FlowchartDefs<'_> {
             .check_svg_append(out.len(), self.marker_plan.base_marker_bytes)?;
         let before = out.len();
         push_base_markers(out, self.diagram_id, self.diagram_type);
+        if self.marker_plan.bpmn_markers {
+            push_bpmn_markers(out, self.diagram_id, self.diagram_type);
+        }
         debug_assert_eq!(out.len() - before, self.marker_plan.base_marker_bytes);
         out.checkpoint()
     }
@@ -1033,6 +1100,21 @@ fn marker_color_id(color: &str) -> String {
     out
 }
 
+fn push_bpmn_markers(out: &mut impl fmt::Write, diagram_id: &str, diagram_type: &str) {
+    for spec in BPMN_MARKER_SHAPE_SPECS {
+        let _ = write!(
+            out,
+            r#"<marker id="{}_{}-{}" class="{} {}"{}/></marker>"#,
+            escape_xml_display(diagram_id),
+            escape_xml_display(diagram_type),
+            spec.base.id_suffix(),
+            spec.marker_class,
+            escape_xml_display(diagram_type),
+            spec.shape,
+        );
+    }
+}
+
 #[inline]
 fn write_flowchart_marker_id_xml(
     out: &mut impl fmt::Write,
@@ -1067,17 +1149,13 @@ fn push_extra_marker(
     security_level_loose: bool,
 ) {
     let raw_color = raw_color.trim_end_matches(';');
+    let normalized_color;
     let color = if security_level_loose {
         Some(raw_color)
-    } else if raw_color
-        .trim_start()
-        .strip_prefix("stroke:")
-        .is_some_and(|value| !value.trim_start().starts_with('#'))
-    {
-        // Strict/sandbox sanitization drops raw stroke tokens without changing marker identity.
-        None
     } else {
-        Some(raw_color.trim())
+        normalized_color =
+            merman_markup::sanitize::dompurify_normalize_dom_uri_attribute(raw_color);
+        normalized_color.as_deref()
     };
     let spec = flowchart_marker_shape_spec(key.base, key.margin);
 
@@ -1137,6 +1215,120 @@ mod tests {
     use super::*;
     use crate::resources::{RenderResourcePolicy, ResourceLimitId};
 
+    #[test]
+    fn bpmn_markers_keep_their_source_viewports_no_fill_and_no_neo_margin_variant() {
+        for typed_edge in [false, true] {
+            let work = meter();
+            let color =
+                PreparedFlowchartMarkerColor::prepare("#2468ac", typed_edge, &work).unwrap();
+            let mut plan = FlowchartMarkerEmissionPlan::new(false);
+            for spec in BPMN_MARKER_SHAPE_SPECS {
+                let reference = plan
+                    .register_reference(spec.base, Some(&color), true, &work)
+                    .unwrap();
+                assert!(!reference.margin);
+                let (key, raw_color) = plan.variant(reference.variant_index.unwrap());
+                let mut svg = String::from("<svg>");
+                push_extra_marker(&mut svg, "diagram", "flowchart-v2", key, raw_color, false);
+                svg.push_str("</svg>");
+                let document = crate::xml_dom::Document::parse(&svg).unwrap();
+                let marker = document
+                    .descendants()
+                    .find(|node| node.has_tag_name("marker"))
+                    .unwrap();
+                assert_eq!(marker.attribute("markerUnits"), Some("userSpaceOnUse"));
+                assert!(!marker.attribute("id").unwrap().contains("-margin"));
+                let shape = marker.children().find(|node| node.is_element()).unwrap();
+                assert_eq!(shape.attribute("stroke"), Some("#2468ac"));
+                assert_eq!(shape.attribute("fill"), None);
+                assert!(shape.attribute("style").unwrap().contains("fill: none"));
+                if shape.has_tag_name("circle") {
+                    assert_eq!(shape.attribute("r"), Some("3.6"));
+                    assert_eq!(marker.attribute("markerWidth"), Some("10"));
+                } else {
+                    assert_eq!(marker.attribute("markerWidth"), Some("12"));
+                    assert!(
+                        shape
+                            .attribute("style")
+                            .unwrap()
+                            .contains("stroke-linejoin: round")
+                    );
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn bpmn_marker_references_defs_and_budget_share_one_prepared_plan() {
+        let work = meter();
+        let mut plan = FlowchartMarkerEmissionPlan::new(false);
+        for (id, edge_type) in [
+            ("open", "arrow_open_head"),
+            ("hollow", "arrow_hollow_circle"),
+        ] {
+            plan.register_edge(&edge(id, edge_type), Some("#2468ac"), &work)
+                .unwrap();
+        }
+        plan.finalize_svg_budget("diagram", "flowchart-v2", false, &work)
+            .unwrap();
+        let mut output = String::new();
+        let defs = FlowchartDefs {
+            diagram_id: "diagram",
+            diagram_type: "flowchart-v2",
+            marker_plan: &plan,
+            security_level_loose: false,
+            work_meter: &work,
+        };
+        defs.push_base_markers(&mut output).unwrap();
+        defs.push_extra_markers(&mut output).unwrap();
+        assert_eq!(
+            output.len(),
+            plan.base_marker_bytes + plan.extra_marker_bytes
+        );
+        assert!(output.contains("diagram_flowchart-v2-openArrowStart"));
+        assert!(output.contains("diagram_flowchart-v2-hollowCircleEnd"));
+        let mut attributes = String::new();
+        plan.push_edge_marker_attributes(
+            &mut attributes,
+            "diagram",
+            "flowchart-v2",
+            "open",
+            0,
+            &work,
+        )
+        .unwrap();
+        assert!(attributes.contains("openArrowEnd__2468ac"));
+        attributes.clear();
+        plan.push_edge_marker_attributes(
+            &mut attributes,
+            "diagram",
+            "flowchart-v2",
+            "hollow",
+            0,
+            &work,
+        )
+        .unwrap();
+        assert!(attributes.contains("hollowCircleEnd__2468ac"));
+        let limited = meter_with_limits(
+            plan.base_marker_bytes + plan.extra_marker_bytes + plan.edge_marker_attribute_bytes - 1,
+            usize::MAX,
+        );
+        let mut rejected = FlowchartMarkerEmissionPlan::new(false);
+        for (id, edge_type) in [
+            ("open", "arrow_open_head"),
+            ("hollow", "arrow_hollow_circle"),
+        ] {
+            rejected
+                .register_edge(&edge(id, edge_type), Some("#2468ac"), &limited)
+                .unwrap();
+        }
+        assert!(
+            rejected
+                .finalize_svg_budget("diagram", "flowchart-v2", false, &limited)
+                .is_err()
+        );
+    }
+
     fn meter() -> crate::resources::OperationWorkMeter {
         crate::resources::OperationWorkMeter::new(
             RenderResourcePolicy::unbounded_for_trusted_input(),
@@ -1175,6 +1367,7 @@ mod tests {
             style: Vec::new(),
             animate: None,
             animation: None,
+            step: None,
             length: 1,
         }
     }
@@ -2148,8 +2341,14 @@ mod paint_security_tests {
             ("stroke:DarkGray", false, None),
             (" stroke:DarkGray", false, None),
             ("#333", false, Some("#333")),
-            ("stroke:#123456", false, Some("stroke:#123456")),
+            ("  #333  ", false, Some("#333")),
+            ("stroke:#123456", false, None),
+            ("st\nroke:#333", false, None),
+            ("javascript:alert(1)", false, None),
+            ("var(--edge)", false, Some("var(--edge)")),
+            ("rgb(12,34,56)", false, Some("rgb(12,34,56)")),
             ("stroke:DarkGray", true, Some("stroke:DarkGray")),
+            ("stroke:#123456", true, Some("stroke:#123456")),
         ] {
             let work = crate::resources::OperationWorkMeter::new(
                 crate::resources::RenderResourcePolicy::unbounded_for_trusted_input(),

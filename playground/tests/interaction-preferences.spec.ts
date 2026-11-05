@@ -1,6 +1,6 @@
 import { expect, test, type Locator } from "@playwright/test";
 
-import { monitorBrowserErrors, openPlayground } from "./helpers/playground";
+import { monitorBrowserErrors, openPlayground, openWorkbenchTool } from "./helpers/playground";
 
 test("gallery keeps the active category visible when reopened and resized", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 600 });
@@ -32,11 +32,11 @@ test("tooltips share the configured initial delay and adjacent skip delay", asyn
   await openPlayground(page);
   await page.waitForLoadState("networkidle");
   await page.clock.pauseAt(new Date("2026-01-01T01:00:00Z"));
-  const bench = page.getByRole("button", { name: "Bench", exact: true });
+  const tools = page.getByRole("button", { name: "Tools", exact: true });
   const examples = page.getByRole("button", { name: "Examples", exact: true });
   const tooltip = page.locator('[data-slot="tooltip-content"]');
-  const benchBounds = (await bench.boundingBox())!;
-  await page.mouse.move(benchBounds.x + benchBounds.width / 2, benchBounds.y + benchBounds.height / 2);
+  const toolsBounds = (await tools.boundingBox())!;
+  await page.mouse.move(toolsBounds.x + toolsBounds.width / 2, toolsBounds.y + toolsBounds.height / 2);
   await page.clock.runFor(299);
   await expect(tooltip).toHaveCount(0);
   await page.clock.runFor(1);
@@ -44,7 +44,7 @@ test("tooltips share the configured initial delay and adjacent skip delay", asyn
   await page.clock.runFor(300);
   const exampleBounds = (await examples.boundingBox())!;
   // Give the native hover-grace listener a frame between real pointer moves.
-  const fromX = benchBounds.x + benchBounds.width / 2;
+  const fromX = toolsBounds.x + toolsBounds.width / 2;
   const toX = exampleBounds.x + exampleBounds.width / 2;
   for (let step = 1; step <= 8; step += 1) {
     await page.mouse.move(fromX + (toX - fromX) * step / 8, exampleBounds.y + exampleBounds.height / 2);
@@ -69,7 +69,7 @@ test("reduced motion removes movement from shared dialogs, menus, selects, and t
   await page.getByRole("button", { name: "Export", exact: true }).click();
   await expect(page.getByRole("menu")).toHaveCSS("animation-name", "none");
   await page.keyboard.press("Escape");
-  await page.getByRole("button", { name: "Bench", exact: true }).click();
+  await openWorkbenchTool(page, "Benchmark");
   await page.getByRole("combobox", { name: "Measured blocks" }).click();
   await expect(page.getByRole("listbox")).toHaveCSS("animation-name", "none");
   await page.keyboard.press("Escape");

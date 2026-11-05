@@ -89,7 +89,7 @@ text therefore receives no guessed body symbols, navigation, or rename. Tolerant
 syntax highlighting remains independent of that semantic state. Source-start diagram headers and
 templates remain available from the static family catalog.
 
-The LSP consumes typed snapshots directly; it does not serialize and decode `AnalysisFactsPayload` for normal requests. The separately exposed binding facts payload and diagnostics payload are independent wire contracts (facts schema 2, diagnostics schema 1), not LSP document versions or Mermaid grammar IDs.
+The LSP consumes typed snapshots directly; it does not serialize and decode `AnalysisFactsPayload` for normal requests. The separately exposed binding facts payload and diagnostics payload are independent wire contracts (facts schema 3, diagnostics schema 1), not LSP document versions or Mermaid grammar IDs. Facts schema 3 requires per-diagram `appearance` evidence tagged `known` or `unknown`; see the [source appearance migration](../release/UNRELEASED_CONTRACT_VERSIONS.md#source-appearance-and-render-evidence-follow-up).
 
 Family-level maturity is defined only by [CAPABILITIES.md](CAPABILITIES.md). A family may parse or render without being a first-class LSP commitment. Payload-first families can be mature while intentionally exposing few rename or reference targets, and `error` remains an internal fallback family.
 

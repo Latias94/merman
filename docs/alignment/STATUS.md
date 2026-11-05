@@ -1,59 +1,49 @@
 # Alignment Status
 
-This document is the human-readable parity dashboard. It records current support and verification
-boundaries; it is not a progress log. Historical implementation notes belong in workstream,
-planning, or coverage documents. See the [alignment authority map](README.md) for the machine and
-prose ownership boundary.
+This is the human-readable compatibility dashboard. It describes selected sources, admission, and
+verification boundaries; it does not record implementation progress or certify an untested revision.
+The [authority map](README.md#machine-authorities) identifies the structured owners.
 
-## Current Read
+## Selected Baseline
 
-| Item | Current state |
+| Concern | Current boundary |
 | --- | --- |
-| Dashboard | Active |
-| Current transition | Development targets Mermaid `@12.2.0` at `1fb7869866dd619168d840291c9c54b4f129758b`; published Merman 0.9.0 and 0.9.1 retain their historical 12.1.0 target |
-| Selected reference evidence | All 37 primary SVG manifests bind the executed 12.2.0 runtime; final-source three-mode DOM and strict validation passed on 2026-10-13; see ADR-0094 for gate results and platform boundaries |
-| Reference graph | The selected bundle passes materialized and trusted-base verification and binds source, package, lock and provenance identities |
-| Dashboard review | The 12.2 source delta is recorded in ADR-0094; exact strict gate state belongs to the revision that ran it |
-| Admission | 37 families in the primary SVG matrix; `zenuml` has a separate external-renderer comparison lane |
-| Root viewport | Every primary-matrix family has covered root-viewport evidence |
-| Semantic edge labels | C4, Flowchart ELK, Architecture, Requirement, State, Class, and ER use fail-closed identity/geometry/presentation admission |
-| Language catalog | All 37 built-in families are available independently of optional render backends |
-| Editor facts | Strict facts use schema `2`, diagnostics use schema `1`, and all 37 families share one Tree-sitter grammar/query for tolerant syntax highlighting |
-| Verification boundary | Capability projections and exact artifact recipes are checked in normal CI; a strict result belongs to the exact revision that ran it |
+| Development reference | Mermaid `@12.3.0`, source `2086904e76c692331e34a45d7cc3bc30860d040e` |
+| Published artifacts | Retain the source baseline and capabilities of their own release |
+| Primary SVG matrix | 37 families in the executable compare facts, with selected 12.3 upstream manifests |
+| External comparison | ZenUML uses its selected companion graph and a separate browser admission lane |
+| Root viewport | Every primary family participates in root verification; deterministic contracts and browser diagnostics have distinct owners |
+| Semantic edge labels | C4, Flowchart ELK, Architecture, Requirement, State, Class, and ER have fail-closed identity/geometry/presentation admission |
+| Language/editor support | Family capabilities are independent of optional render backends; tolerant Tree-sitter syntax has its own selected baseline |
+| Verification | A successful gate applies to the exact source, artifacts, environment, and revision that ran it |
 
-Admission describes available capability and required evidence. It does not certify that every
-gate passes after the latest uncommitted changes.
+The [12.3 migration](../migrations/mermaid-12-3.md) describes source behavior and dependency
+selection. The source lock, reference bundle, and selection receipt bind that graph. Historical
+12.0/12.2 test counts, capture environments, and release results do not qualify 12.3 or later
+uncommitted changes.
 
-## Authority Map
+## Reading Admission
 
-| Concern | Authority |
-| --- | --- |
-| Pinned Mermaid source | `tools/upstreams/REPOS.lock.json` |
-| Family parser and typed-render capabilities | `crates/merman-core/src/family.rs` |
-| Admission and fixture coverage policy | `crates/xtask/src/cmd/admission.rs` |
-| Human admission overview | `docs/alignment/ADMISSION_INVENTORY.md` |
-| Executable SVG compare facts | `crates/xtask/src/cmd/compare/diagrams.rs` |
-| Parity and residual policy | `docs/workstreams/PARITY_BOUNDARY.md` |
-| Semantic edge-label contract | `docs/alignment/SEMANTIC_LABEL_PARITY.md` |
-| Human family scope and source evidence | `docs/alignment/*_MINIMUM.md` and `*_UPSTREAM_TEST_COVERAGE.md` |
+Primary SVG admission means the family has the required semantic/layout evidence, selected-runtime
+SVG provenance, and an executable comparison policy. It does not imply Chromium pixel identity,
+every upstream syntax combination, or every output surface. Exact family membership, commands,
+default DOM modes, tooling skips, and per-input exceptions live in
+[compare facts](../../crates/xtask/src/cmd/compare/diagrams.rs),
+[family capabilities](../../crates/merman-core/src/family.rs), and the per-family
+[baseline manifests](../../fixtures/upstream-svgs/). The
+[admission guide](ADMISSION_INVENTORY.md) explains how these owners are checked together.
 
-If this dashboard disagrees with executable inventory or capability facts, the executable facts
-win and this file must be corrected. Family prose is review guidance, not a machine input;
-`check-alignment` does not parse its wording or require document pairs.
-
-## Support Vocabulary
-
-| Admission state | Contract |
-| --- | --- |
-| Primary SVG matrix | All required evidence layers and an executable compare fact are present. |
-| External comparison lane | Full local behavior plus exact companion/browser evidence, kept separate from built-in upstream SVG baselines. |
-
-Primary admission does not mean pixel identity with Chromium or support for every upstream branch.
-It means the family has source-backed local behavior and participates in the repository's
-structural/parity verification contract. Browser text measurement, `foreignObject`, RoughJS, and
-other explicitly documented residuals remain bounded by the parity policy.
+Parser-only inputs, raw upstream corpora, deferred fixtures, and controlled family-local experiments
+are evidence with their own scope. They are not automatically part of the primary matrix. In
+particular, Swimlane's retained DDLT corpus exercises layout independently of ordinary snapshot
+admission. Consult manifests and compare policy instead of deriving exclusions from file names.
 
 ## Primary SVG Matrix
+
+The [release-facts collector](../../scripts/collect_release_facts.py) falls back to parsing this
+section when its historical admission-inventory parser cannot find records. Preserve this heading,
+the following `Non-Primary Families` heading, and the first-column family identifiers. The
+[compare facts](../../crates/xtask/src/cmd/compare/diagrams.rs) remain authoritative.
 
 Every row below is semantic-, layout-, and SVG-covered in the admission inventory. `N` means a
 normalized fixture corpus; `N+D` means normalized fixtures plus an explicitly deferred
@@ -102,124 +92,48 @@ not a quality ranking. Callers may select another supported mode explicitly.
 
 ## Non-Primary Families
 
-| Family | State | Current boundary |
+| Family | State | Evidence |
 | --- | --- | --- |
-| `zenuml` | External comparison lane | Full grammar, semantic/editor model, typed layout, and headless SVG are implemented against the admitted ZenUML Core behavior source. The exact external plugin graph is tested in an opaque browser realm and publishes only strict-validated native SVG; it remains outside the built-in upstream-SVG matrix. |
+| `zenuml` | External comparison lane | [Family notes and browser admission owners](FAMILY_NOTES.md#zenuml) |
 
-LSP/editor support is tracked independently in the family capability registry. SVG admission must
-not be used to infer completions, navigation, diagnostics, or source-span support for a family.
+ZenUML has family-owned parsing, semantic/editor facts, typed layout, and native SVG. Its external
+plugin graph is checked in an opaque browser realm; its admission does not create built-in Mermaid
+upstream SVG baselines. See [ZenUML notes](FAMILY_NOTES.md#zenuml).
 
-## Retained Mermaid 11.16 Source Scope
+## Compatibility Guides
 
-The pinned baseline includes families that were absent from older dashboards. All families below
-are in the primary matrix, with these boundaries:
+| Boundary | Maintained guide |
+| --- | --- |
+| Semantic/structural parity and accepted browser differences | [Parity policy](PARITY_POLICY.md) |
+| Family-specific limitations and controlled evidence | [Family notes](FAMILY_NOTES.md) |
+| Exact edge-label identity, presentation, and geometry | [Semantic-label contract](SEMANTIC_LABEL_PARITY.md) |
+| Config acceptance, precedence, security, and rendered evidence | [Config and frontmatter](CONFIG_FRONTMATTER_SUPPORT.md) |
+| `merman-cli mmdc` arguments and export behavior | [CLI compatibility](CLI_COMPATIBILITY.md) |
+| Source provenance, external comparisons, and attribution | [External sources](EXTERNAL_FIXTURES.md) |
+| Consumer SVG, HTML fallback, fonts, and encoded output | [SVG output pipeline](../rendering/SVG_OUTPUT_PIPELINE.md) and [raster output](../rendering/RASTER_OUTPUT.md) |
 
-- `treeView-beta`: browser text metrics remain a family-documented residual.
-- `ishikawa` / `ishikawa-beta`: classic SVG passes parity for 12 fixtures. Hand-drawn output is
-  implemented and all 13 fixtures pass structure; JavaScript RoughJS versus Rust `roughr` path
-  geometry remains a documented residual.
-- `eventmodeling`: `entity`, `note`, and `gwt` remain in the single semantic source and editor
-  facts, then the render projection omits them because Mermaid's DB/renderer does not consume them.
-  Strict browser HTML behavior remains a documented residual.
-- `venn-beta`: classic SVG retains parity comparison. Hand-drawn output is deterministic and three
-  pinned Cypress fixtures cover the exact structure-only boundary; JavaScript RoughJS versus Rust
-  `roughr` path geometry remains a documented residual.
-- `swimlane-beta`: reuses Flowchart semantics but owns source-backed swimlane layout and routing.
-- `railroad-*-beta`: four dialects share a typed model and renderer; browser font-height
-  differences remain measurable residuals.
-- `cynefin-beta`: deterministic headless text and path formatting replace browser-specific
-  measurements.
-- `wardley-beta`: ten source-backed Cypress fixtures cover typed semantics, editor facts, layout,
-  SVG, theme, and root-viewport behavior.
+The command-line compatibility surface remains `mmdc@11.16.0`, independently of the selected
+Mermaid reference runtime and reference CLI. Native rendering uses `render` and `batch`; the
+repository does not install an `mmdc` executable alias.
 
-The raw Mermaid `11.15.0..11.16.0` added-file corpus is preserved under
-`fixtures/_upstream/mermaid-11.16.0/`:
+## Verification Entry Points
 
-- 122 upstream source paths;
-- 121 unique contents;
-- 122 verbatim managed `.mmd` files.
-
-This corpus is evidence, not automatic fixture admission. Its leading underscore keeps raw inputs
-out of ordinary snapshot sweeps. Family-specific fixtures and upstream SVG baselines remain the
-promotion mechanism.
-
-Five exact parser-only fixtures remain: one Flowchart parser case, two Sankey circular-link cases,
-and two XYChart inputs without plot data. The selected Mermaid 12.0.0 runtime fails to render all five, so
-`cargo run -p xtask -- audit-gaps --check-upstream-render` reports zero actionable parser-only
-gaps. Exact family-scoped capability facts own these exclusions; filename patterns do not.
-
-The 30 Mermaid 11.16 Swimlane DDLT inputs follow the same evidence boundary under
-`fixtures/swimlane/_upstream_ddlt/`. A dedicated layout test checks their finite geometry,
-orthogonal routing, and valid SVG output; they are intentionally excluded from ordinary snapshot
-admission.
-
-## Evidence Layers
-
-| Layer | Scope | Evidence owner |
-| --- | --- | --- |
-| Semantic goldens | Parse and semantic JSON | Family fixture inputs and their semantic goldens |
-| Layout goldens | Typed geometry and bounds | Family fixture inputs and their layout goldens |
-| Upstream SVG baselines | Pinned Mermaid reference output | Per-family `_baseline-manifest.json` and SVG files |
-
-`check-alignment` validates the required evidence for each admission record. Use its report and the
-per-family manifests for the checked revision; this dashboard does not maintain a second fixture
-count. Raw upstream inputs, deferred fixtures, and temporary staging directories are not admitted
-corpus merely because they contain matching file extensions.
-
-Refresh semantic and layout goldens with `cargo run -p xtask -- update-snapshots` and
-`cargo run -p xtask -- update-layout-snapshots`. The upstream baseline procedure lives in
-`docs/rendering/UPSTREAM_SVG_BASELINES.md`.
-
-Raster PNG/JPG/PDF output is best-effort integration output, not a pixel-parity layer. Pure-Rust
-rasterizers do not reproduce every browser `foreignObject` behavior; see
-`docs/rendering/RASTER_OUTPUT.md`.
-
-## Current Boundaries
-
-- Parser, semantic model, config precedence, layout, routing, sanitizer, and DOM-order differences
-  require source-backed fixes. Comparator normalization must not hide them.
-- Runtime fixture IDs and complete fixture-label lookup tables are not accepted measurement or
-  viewport mechanisms. Root bounds must come from family geometry or emitted content.
-- General font/DOM-shape facts may be generated from repeatable browser or font evidence, but they
-  must generalize beyond fixture strings.
-- Browser `getBBox()` floats, font fallback, `foreignObject`, HTML serialization, and RoughJS may
-  remain visible residuals when a robust headless derivation is unavailable.
-- Architecture compound layout remains a source-backed approximation of upstream
-  Cytoscape/FCoSE behavior; family coverage documents own its geometry residuals.
-- Mermaid 11.16 has a known upstream Flowchart regression for arrows between subgraphs
-  ([mermaid-js/mermaid#7954](https://github.com/mermaid-js/mermaid/issues/7954)). Do not restore
-  11.15 behavior locally to make affected fixtures look different from the pinned upstream.
-
-CLI compatibility details live in `docs/alignment/CLI_COMPATIBILITY.md`. The CLI supports the
-documented `mmdc@11.16.0` render/export flags through `merman-cli mmdc`; it does not install an
-`mmdc` binary alias. Native rendering uses the separate `render` and `batch` commands.
-
-## Verification
-
-Run the smallest gate that proves the change, then widen according to blast radius:
+Run the smallest check that proves a change, then widen according to its affected owners:
 
 ```sh
-# Family capabilities, fixtures, upstream manifests, and compare facts.
+# Capability, fixture, golden, manifest, and compare-owner consistency.
 cargo run -p xtask -- check-alignment
 
-# One admitted family.
+# A family, using its registered command and comparison policy.
 cargo run -p xtask -- compare-<diagram>-svgs --check-dom --dom-decimals 3
 
-# Standard repository contract: fmt, nextest, structure, and parity.
+# Repository verification; strict adds release-strength checks.
 cargo run -p xtask -- verify
-
-# Release-strength contract, including all features, clippy, feature matrix, and root parity.
 cargo run -p xtask -- verify --strict
-
-# Mermaid 11.16 added-MMD corpus integrity.
-cargo run -p xtask -- sync-upstream-mmd-corpus \
-  --from mermaid@11.15.0 \
-  --to mermaid@11.16.0 \
-  --check
 ```
 
-For a single SVG bounds investigation:
-
-```sh
-cargo run -p xtask -- debug-svg-bbox --svg <path> --padding 8
-```
+Use the [upstream baseline guide](../rendering/UPSTREAM_SVG_BASELINES.md) for regeneration and the
+[upgrade playbook](../release/MERMAID_UPGRADE_PLAYBOOK.md) for source admission. Exact residual
+catalogs reject changed or stale evidence; a documented browser boundary does not waive a failing
+gate. Current gate output, rather than this dashboard, establishes the result for a reviewed
+revision.

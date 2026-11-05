@@ -232,13 +232,10 @@ mod tests {
     use super::*;
     use merman::SourcePresentationConfig;
     use merman::svg::DiagramThemeCompiler;
-    use merman::{
-        MermaidEngine, OperationControl, RenderOutput, RenderRequest, Renderer,
-        TargetAdmissionReason, TargetAdmissionStatus,
-    };
+    use merman::{MermaidEngine, OperationControl, RenderOutput, RenderRequest, Renderer};
 
     #[test]
-    fn neo_sequence_preserves_note_pixels_and_rejects_mixed_filter_evidence() {
+    fn neo_sequence_preserves_note_pixels_beside_independent_look_filters() {
         let renderer =
             Renderer::new().with_presentation_engine(MermaidEngine::new().with_site_config(
                 SourcePresentationConfig::from_value(serde_json::json!({
@@ -275,17 +272,12 @@ mod tests {
                     OperationControl::new(),
                 )
                 .unwrap();
-            if preset == ThemePreset::Spotless {
-                // The fixed note ROI must contain note paint, not the canvas below a lost filter.
-                verify(preset, &document, &png).unwrap();
-            } else {
-                // Neo's loop-label filter is outside the exact typed-only native filter contract.
-                assert_eq!(png.admission().status(), TargetAdmissionStatus::Rejected);
-                assert!(
-                    png.admission()
-                        .reasons()
-                        .contains(&TargetAdmissionReason::NativeFilterReceiptMismatch)
-                );
+            verify(preset, &document, &png).unwrap();
+            if preset == ThemePreset::Brutalist {
+                let expected =
+                    merman::__theme_acceptance::native_filter_receipt(document.evidence())
+                        .expect("Brutalist must retain typed filter evidence");
+                assert_eq!(png.export_report().native_filter_receipt(), Some(expected));
             }
         }
     }

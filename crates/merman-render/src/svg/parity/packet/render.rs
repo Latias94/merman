@@ -140,10 +140,12 @@ pub(crate) fn render_packet_diagram_svg_model(
     out.push_str(r#"<g/>"#);
     out.checkpoint()?;
 
+    let mut emitted_blocks = 0usize;
     for word in &layout.words {
         out.push_str("<g>");
         out.checkpoint()?;
         for b in &word.blocks {
+            emitted_blocks = emitted_blocks.saturating_add(1);
             let _ = write!(
                 &mut out,
                 r#"<rect x="{x}" y="{y}" width="{w}" height="{h}" class="packetBlock"/>"#,
@@ -244,10 +246,11 @@ pub(crate) fn render_packet_diagram_svg_model(
 
     out.push_str("</svg>\n");
     let rooted_svg = root_document.complete(out.finish()?)?;
-    Ok((
-        rooted_svg,
-        text_output.map(crate::packet::PacketTextOutput::finish),
-    ))
+    let mut theme_output = text_output.map(crate::packet::PacketTextOutput::finish);
+    if let Some(output) = theme_output.as_mut() {
+        typography_theme.finish_blocks(output, emitted_blocks, options.work_meter())?;
+    }
+    Ok((rooted_svg, theme_output))
 }
 
 #[cfg(test)]
@@ -256,9 +259,9 @@ mod tests {
     use serde_json::json;
 
     #[test]
-    fn packet_css_honors_mermaid_11_15_packet_style_options() {
+    fn packet_css_honors_mermaid_packet_theme_variables() {
         let config = crate::test_support::presentation_config(json!({
-            "packet": {
+            "themeVariables": { "packet": {
                 "byteFontSize": "11px",
                 "startByteColor": "#111111",
                 "endByteColor": "#222222",
@@ -269,7 +272,7 @@ mod tests {
                 "blockStrokeColor": "#555555",
                 "blockStrokeWidth": 2,
                 "blockFillColor": "#666666"
-            }
+            } }
         }));
         let work_meter = crate::resources::OperationWorkMeter::new(
             crate::resources::RenderResourcePolicy::unbounded_for_trusted_input(),

@@ -1,20 +1,20 @@
 import * as path from "node:path";
-import * as vscode from "vscode";
+import type * as vscode from "vscode";
 
 export interface PreviewInput {
-  sourceId: string;
-  source: string;
-  title: string;
-  subtitle: string;
-  exportBaseName: string;
-  kind: "mermaid-file" | "markdown-fence";
-  sourceRange: {
-    startLine: number;
-    endLine: number;
+  readonly sourceId: string;
+  readonly source: string;
+  readonly title: string;
+  readonly subtitle: string;
+  readonly exportBaseName: string;
+  readonly kind: "mermaid-file" | "markdown-fence";
+  readonly sourceRange: {
+    readonly startLine: number;
+    readonly endLine: number;
   };
-  diagnosticRange: {
-    startLine: number;
-    endLine: number;
+  readonly diagnosticRange: {
+    readonly startLine: number;
+    readonly endLine: number;
   };
 }
 
@@ -44,81 +44,106 @@ interface MermaidFenceDelimiter {
   isMermaid: boolean;
 }
 
-export interface PreviewSourceSummary {
-  sourceId: string;
-  title: string;
-  subtitle: string;
-  kind: PreviewInput["kind"];
+export interface PreviewSourceSnapshot {
+  readonly documentUri: string;
+  readonly documentVersion: number;
+  readonly languageId: string;
+  readonly inputs: readonly PreviewInput[];
 }
 
-export interface PreviewInputTextSource {
-  text?: string;
-  languageId: string;
-  fileName: string;
+interface PreviewInputSelection {
   activeLine?: number;
   sourceId?: string;
   sourceIdentity?: PreviewSourceIdentity;
+}
+
+export interface PreviewInputTextSource extends PreviewInputSelection {
+  text?: string;
+  languageId: string;
+  fileName: string;
   lineCount?: number;
   lineAt?: (lineIndex: number) => string;
 }
 
-export function extractPreviewInput(
-  editor: vscode.TextEditor,
-  sourceId?: string | PreviewSourceIdentity,
-): PreviewInput | null {
-  return extractPreviewInputFromDocument(editor.document, editor.selection.active.line, sourceId);
+const documentSnapshots = new WeakMap<vscode.TextDocument, PreviewSourceSnapshot>();
+
+export function getPreviewSourceSnapshot(
+  document: vscode.TextDocument,
+): PreviewSourceSnapshot {
+  const current = documentSnapshots.get(document);
+  if (
+    !document.isClosed &&
+    current &&
+    current.documentVersion === document.version &&
+    current.languageId === document.languageId
+  ) {
+    return current;
+  }
+
+  const fileName = document.uri.fsPath || document.fileName;
+  const inputs = document.isClosed
+    ? []
+    : listPreviewInputsFromText({
+        languageId: document.languageId,
+        fileName,
+        text: isMermaidSource(document.languageId, fileName) ? document.getText() : undefined,
+        lineCount: document.lineCount,
+        lineAt: (lineIndex) => document.lineAt(lineIndex).text,
+      });
+  for (const input of inputs) {
+    Object.freeze(input.sourceRange);
+    Object.freeze(input.diagnosticRange);
+    Object.freeze(input);
+  }
+  const snapshot: PreviewSourceSnapshot = Object.freeze({
+    documentUri: document.uri.toString(),
+    documentVersion: document.version,
+    languageId: document.languageId,
+    inputs: Object.freeze(inputs),
+  });
+  if (document.isClosed) {
+    documentSnapshots.delete(document);
+  } else {
+    documentSnapshots.set(document, snapshot);
+  }
+  return snapshot;
 }
 
-export function extractPreviewInputFromDocument(
-  document: vscode.TextDocument,
-  activeLine?: number,
-  sourceId?: string | PreviewSourceIdentity,
-): PreviewInput | null {
-  const fileName = document.uri.fsPath || document.fileName;
-  return extractPreviewInputFromText({
-    languageId: document.languageId,
-    fileName,
-    text: isMermaidSource(document.languageId, fileName) ? document.getText() : undefined,
-    lineCount: document.lineCount,
-    lineAt: (lineIndex) => document.lineAt(lineIndex).text,
-    activeLine,
-    ...(typeof sourceId === "string" ? { sourceId } : { sourceIdentity: sourceId }),
-  });
-}
-
-export function listPreviewInputsFromDocument(
-  document: vscode.TextDocument,
-  activeLine?: number,
-): PreviewInput[] {
-  const fileName = document.uri.fsPath || document.fileName;
-  return listPreviewInputsFromText({
-    languageId: document.languageId,
-    fileName,
-    text: isMermaidSource(document.languageId, fileName) ? document.getText() : undefined,
-    lineCount: document.lineCount,
-    lineAt: (lineIndex) => document.lineAt(lineIndex).text,
-    activeLine,
-  });
+export function forgetPreviewSourceSnapshot(document: vscode.TextDocument): void {
+  documentSnapshots.delete(document);
 }
 
 export function extractPreviewInputFromText(sourceDocument: PreviewInputTextSource): PreviewInput | null {
-  const inputs = listPreviewInputsFromText(sourceDocument);
+  return selectPreviewInput(listPreviewInputsFromText(sourceDocument), sourceDocument);
+}
+
+export function selectPreviewInput(
+  inputs: readonly PreviewInput[],
+  selection: PreviewInputSelection = {},
+): PreviewInput | null {
   if (inputs.length === 0) {
     return null;
   }
 
-  if (sourceDocument.sourceIdentity) {
-    return resolvePreviewInputIdentity(inputs, sourceDocument.sourceIdentity);
+  if (selection.sourceIdentity) {
+    return resolvePreviewInputIdentity(inputs, selection.sourceIdentity);
   }
-  if (sourceDocument.sourceId) {
-    return inputs.find((input) => input.sourceId === sourceDocument.sourceId) ?? null;
+  if (selection.sourceId) {
+    return inputs.find((input) => input.sourceId === selection.sourceId) ?? null;
   }
 
   if (inputs.length === 1) {
     return inputs[0] ?? null;
   }
 
-  return selectInputByActiveLine(inputs, sourceDocument.activeLine) ?? inputs[0] ?? null;
+  return (
+    inputs.find(
+      (input) =>
+        selection.activeLine !== undefined &&
+        input.sourceRange.startLine <= selection.activeLine &&
+        input.sourceRange.endLine >= selection.activeLine,
+    ) ?? inputs[0] ?? null
+  );
 }
 
 export function listPreviewInputsFromText(sourceDocument: PreviewInputTextSource): PreviewInput[] {
@@ -175,18 +200,6 @@ export function listPreviewInputsFromText(sourceDocument: PreviewInputTextSource
     }));
 }
 
-export function listPreviewSourceSummaries(
-  document: vscode.TextDocument,
-  activeLine?: number,
-): PreviewSourceSummary[] {
-  return listPreviewInputsFromDocument(document, activeLine).map((input) => ({
-    sourceId: input.sourceId,
-    title: input.title,
-    subtitle: input.subtitle,
-    kind: input.kind,
-  }));
-}
-
 export function previewSourceIdentity(input: PreviewInput): PreviewSourceIdentity {
   return {
     sourceId: input.sourceId,
@@ -232,22 +245,6 @@ export function hashPreviewSource(source: string): string {
   return (hash >>> 0).toString(16).padStart(8, "0");
 }
 
-function selectInputByActiveLine(
-  inputs: PreviewInput[],
-  activeLine: number | undefined,
-): PreviewInput | null {
-  if (activeLine === undefined) {
-    return null;
-  }
-
-  return (
-    inputs.find(
-      (input) =>
-        input.sourceRange.startLine <= activeLine && input.sourceRange.endLine >= activeLine,
-    ) ?? null
-  );
-}
-
 function sameSourceRange(
   first: { startLine: number; endLine: number },
   second: { startLine: number; endLine: number },
@@ -289,11 +286,17 @@ function collectMermaidFences(
 ): MermaidFence[] {
   const fences: MermaidFence[] = [];
   let ordinal = 0;
+  let inComment = false;
 
   for (let lineIndex = 0; lineIndex < lineCount; lineIndex += 1) {
     const line = lineAt(lineIndex);
+    if (inComment) {
+      inComment = commentStateAfterLine(line, inComment);
+      continue;
+    }
     const delimiter = markdownFenceDelimiter(line);
     if (!delimiter) {
+      inComment = commentStateAfterLine(line, inComment);
       continue;
     }
     if (!delimiter.isMermaid) {
@@ -333,6 +336,20 @@ function collectMermaidFences(
   return fences;
 }
 
+function commentStateAfterLine(line: string, inComment: boolean): boolean {
+  let cursor = 0;
+  while (cursor < line.length) {
+    const marker = inComment ? "-->" : "<!--";
+    const next = line.indexOf(marker, cursor);
+    if (next === -1) {
+      break;
+    }
+    inComment = !inComment;
+    cursor = next + marker.length;
+  }
+  return inComment;
+}
+
 function markdownFenceDelimiter(line: string): MermaidFenceDelimiter | null {
   const trimmed = trimFenceIndent(line);
   if (trimmed === null) {
@@ -348,7 +365,7 @@ function markdownFenceDelimiter(line: string): MermaidFenceDelimiter | null {
     return null;
   }
 
-  const rest = trimmed.slice(length).trimStart();
+  const rest = trimmed.slice(length).replace(/^\p{White_Space}+/u, "");
   if (rest.length === 0) {
     return { marker, length, isMermaid: false };
   }
@@ -356,7 +373,7 @@ function markdownFenceDelimiter(line: string): MermaidFenceDelimiter | null {
   const tail = rest.slice("mermaid".length);
   const isMermaid =
     language.toLowerCase() === "mermaid" &&
-    (tail.length === 0 || /\s/.test(tail[0] ?? ""));
+    (tail.length === 0 || /^\p{White_Space}/u.test(tail));
 
   return { marker, length, isMermaid };
 }
@@ -367,7 +384,7 @@ function isMatchingClosingFence(line: string, delimiter: MermaidFenceDelimiter):
     return false;
   }
   const length = repeatedMarkerLength(trimmed, delimiter.marker);
-  return length >= delimiter.length && trimmed.slice(length).trim().length === 0;
+  return length >= delimiter.length && /^\p{White_Space}*$/u.test(trimmed.slice(length));
 }
 
 function skipMarkdownFence(
@@ -435,5 +452,5 @@ function collectDocumentText(lineCount: number, lineAt: (lineIndex: number) => s
 }
 
 function splitLines(text: string): string[] {
-  return text.split(/\r?\n/);
+  return text.split(/\r\n|[\r\n]/);
 }

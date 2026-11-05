@@ -1,0 +1,20 @@
+---
+config:
+  htmlLabels: false
+  flowchart:
+    htmlLabels: false
+---
+%% Source-backed: Mermaid mermaid@12.3.0, commit 2086904e76c692331e34a45d7cc3bc30860d040e.
+%% packages/mermaid/src/rendering-util/rendering-elements/shapes.ts registers these nine shapes.
+%% Geometry and rings: shapes/bpmnShapeRendering.spec.ts and shapes/bpmnIntersect.spec.ts.
+flowchart LR
+  S@{ shape: bpmn-start, label: "Start" }
+  I@{ shape: bpmn-intermediate, label: "Intermediate" }
+  B@{ shape: bpmn-boundary, label: "Boundary" }
+  E@{ shape: bpmn-end, label: "End" }
+  G@{ shape: bpmn-gateway, label: "Gateway" }
+  A@{ shape: bpmn-activity, label: "Activity" }
+  D@{ shape: bpmn-data, label: "Data object" }
+  DS@{ shape: bpmn-data-store, label: "Data store" }
+  T@{ shape: bpmn-annotation, label: "Annotation" }
+  S --> I --> B --> E --> G --> A --> D --> DS --> T

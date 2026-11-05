@@ -80,6 +80,7 @@ pub(crate) struct Edge {
     pub is_user_defined_id: bool,
     pub animate: Option<bool>,
     pub animation: Option<String>,
+    pub step: Option<f64>,
 }
 
 #[derive(Debug, Clone)]

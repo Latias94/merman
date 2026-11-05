@@ -1,0 +1,20 @@
+---
+config:
+  htmlLabels: false
+  flowchart:
+    stepDuration: 0.5
+    stepNumbers: true
+---
+%% Derived from edgeStepAnimation.spec.ts nested-root obstacle cases at
+%% https://github.com/mermaid-js/mermaid/blob/2086904e76c692331e34a45d7cc3bc30860d040e/packages/mermaid/src/rendering-util/rendering-elements/edgeStepAnimation.spec.ts
+flowchart TD
+  subgraph outer[Outer]
+    direction LR
+    subgraph inner[Inner]
+      direction TB
+      A first@-->|short label| B
+      first@{ step: 1 }
+    end
+    B last@--> C
+    last@{ step: 3 }
+  end

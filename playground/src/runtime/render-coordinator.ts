@@ -361,7 +361,10 @@ export function createRenderCoordinator({
       const activeRequestForExecution: ActiveRequest = Object.freeze({
         facade: request.facade,
         snapshot: Object.freeze({
-          operation: freezeOperation(request.operationInput),
+          operation: freezeOperation({
+            ...request.operationInput,
+            themePresets: previewThemePresets(request.facade, request.operationInput.workspace),
+          }),
           publicationId: request.publicationId,
         }),
       });
@@ -663,6 +666,19 @@ export function createRenderCoordinator({
     setInput,
     suspend,
   };
+}
+
+function previewThemePresets(
+  facade: MermanDomainFacade,
+  workspace: Readonly<WorkspaceSnapshot>,
+): FreezeRenderOperationInput["themePresets"] {
+  if (!workspace.themePresetId || workspace.themeRecipeJson !== null) return undefined;
+  try {
+    return facade.themeCatalog().presets;
+  } catch {
+    // Without catalog evidence, retain the strict binding request and its normal error.
+    return undefined;
+  }
 }
 
 function freezeScheduledOperationInput({
@@ -981,7 +997,9 @@ function mermaidFailure(
 function freezeDetection(
   detection: DiagramDetectionFacts,
 ): DiagramDetectionFacts {
-  return Object.freeze({ ...detection });
+  const snapshot = structuredClone(detection);
+  freezeMetadataValue(snapshot);
+  return snapshot;
 }
 
 function freezeRenderMetadata(metadata: SvgRenderMetadata | null): SvgRenderMetadata | null {

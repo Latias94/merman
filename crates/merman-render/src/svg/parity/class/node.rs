@@ -53,6 +53,7 @@ pub(super) struct ClassNodeShellContext<'a> {
 }
 
 pub(super) struct ClassNodeBasicContainerContext<'a> {
+    pub work_meter: &'a crate::resources::OperationWorkMeter,
     pub diagram_id: SvgDiagramId<'a>,
     pub node_fill_style_attr: &'a str,
     pub node_stroke_style_attr: &'a str,
@@ -66,6 +67,7 @@ pub(super) struct ClassNodeBasicContainerContext<'a> {
 }
 
 pub(super) struct ClassNodeDividerContext<'a> {
+    pub work_meter: &'a crate::resources::OperationWorkMeter,
     pub node_stroke_style_attr: &'a str,
     pub node_stroke: &'a str,
     pub node_stroke_width: &'a str,
@@ -133,6 +135,7 @@ pub(super) struct ClassHtmlNodeLabelGroupSpec<'a> {
 }
 
 pub(super) struct ClassHtmlNodeBodyContext<'a> {
+    pub work_meter: &'a crate::resources::OperationWorkMeter,
     pub measurer: &'a dyn TextMeasurer,
     pub text_style: &'a TextStyle,
     pub html_calc_text_style: &'a TextStyle,
@@ -153,6 +156,7 @@ pub(super) struct ClassHtmlNodeBodyContext<'a> {
 }
 
 pub(super) struct ClassSvgNodeBodyContext<'a> {
+    pub work_meter: &'a crate::resources::OperationWorkMeter,
     pub measurer: &'a dyn TextMeasurer,
     pub text_style: &'a TextStyle,
     pub html_calc_text_style: &'a TextStyle,
@@ -314,6 +318,7 @@ pub(super) fn render_class_node_basic_container<O: SvgOutput>(
             ctx.node_stroke,
             ctx.node_stroke_width.parse::<f32>().unwrap_or(1.3),
             ctx.node_stroke_dasharray,
+            ctx.work_meter,
             &rough_seed,
         )
         .unwrap_or_else(|| {
@@ -406,6 +411,7 @@ pub(super) fn render_class_node_dividers<O: SvgOutput>(
                 ctx.node_stroke,
                 ctx.node_stroke_width.parse::<f32>().unwrap_or(1.3),
                 ctx.node_stroke_dasharray,
+                ctx.work_meter,
                 rough_seed,
             )
             .unwrap_or_else(|| {
@@ -741,6 +747,7 @@ pub(super) fn render_class_html_node_body<O: SvgOutput>(
             [divider1_y, divider2_y],
             &geometry.rough_seed,
             &ClassNodeDividerContext {
+                work_meter: ctx.work_meter,
                 node_stroke_style_attr: ctx.node_stroke_style_attr,
                 node_stroke: ctx.node_stroke,
                 node_stroke_width: ctx.node_stroke_width,
@@ -978,6 +985,7 @@ pub(super) fn render_class_svg_node_body<O: SvgOutput>(
             [divider1_y, divider2_y],
             &geometry.rough_seed,
             &ClassNodeDividerContext {
+                work_meter: ctx.work_meter,
                 node_stroke_style_attr: ctx.node_stroke_style_attr,
                 node_stroke: ctx.node_stroke,
                 node_stroke_width: ctx.node_stroke_width,
@@ -1374,8 +1382,10 @@ mod typography_tests {
     fn body_context<'a>(
         measurer: &'a dyn TextMeasurer,
         style: &'a TextStyle,
+        work_meter: &'a crate::resources::OperationWorkMeter,
     ) -> ClassSvgNodeBodyContext<'a> {
         ClassSvgNodeBodyContext {
+            work_meter,
             measurer,
             text_style: style,
             html_calc_text_style: style,
@@ -1417,7 +1427,8 @@ mod typography_tests {
             "font-family:serif;font-size:24px;font-weight:900;font-style:italic".to_owned();
         let measurer = RecordingMeasurer::new(1024.0);
         let base = TextStyle::default();
-        let ctx = body_context(&measurer, &base);
+        let meter = crate::resources::OperationWorkMeter::new(Default::default());
+        let ctx = body_context(&measurer, &base, &meter);
 
         for (rows, font_size) in [(&node.members, 32.0), (&node.methods, 24.0)] {
             let (runs, rect) = measure_class_svg_node_rows(rows, &ctx, 3.0);
@@ -1469,7 +1480,8 @@ mod typography_tests {
         node.members[0].css_style = "font-size:32px".to_owned();
         let measurer = RecordingMeasurer::new(0.0);
         let base = TextStyle::default();
-        let ctx = body_context(&measurer, &base);
+        let meter = crate::resources::OperationWorkMeter::new(Default::default());
+        let ctx = body_context(&measurer, &base, &meter);
         let (runs, _) = measure_class_svg_node_rows(&node.members[..1], &ctx, 3.0);
 
         assert_eq!(runs[0].text, "W\nW\nW\nW\nW\nW");
@@ -1543,7 +1555,8 @@ mod typography_tests {
         node.members[1].css_style = node.members[0].css_style.clone();
         let measurer = RecordingMeasurer::new(4096.0);
         let base = TextStyle::default();
-        let ctx = body_context(&measurer, &base);
+        let meter = crate::resources::OperationWorkMeter::new(Default::default());
+        let ctx = body_context(&measurer, &base, &meter);
         let (runs, _) = measure_class_svg_node_rows(&node.members, &ctx, 3.0);
 
         assert!(runs[0].literal_fallback);

@@ -209,6 +209,8 @@ pub(in crate::svg::parity::flowchart) fn render_flowchart_edge_path(
         ctx.work_meter,
     )?;
 
+    super::super::step::write_edge_marks(out, ctx, key, edge, &geom.d, typed_stroke)?;
+
     let source_residuals =
         emitted_styles.emitted_edge_source_residuals(edge.id.as_str(), hand_drawn);
     if ctx.resolved_theme.is_some() || !source_residuals.is_empty() {
@@ -537,7 +539,8 @@ fn flowchart_neo_edge_path_length(
 
 fn flowchart_neo_marker_mask_offset(arrow_type: Option<&str>) -> f64 {
     match arrow_type {
-        Some("arrow_point") => 4.0,
+        Some("arrow_point" | "arrow_open_head") => 4.0,
+        Some("arrow_hollow_circle") => 8.0,
         Some("arrow_cross" | "arrow_circle") => 12.5,
         _ => 0.0,
     }
@@ -674,6 +677,7 @@ mod tests {
             style: Vec::new(),
             animate: None,
             animation: None,
+            step: None,
             length: 1,
         }
     }
@@ -720,6 +724,26 @@ mod tests {
             style,
             "stroke-dasharray: 0 12.5 25 12.5; stroke-dashoffset: 0;"
         );
+    }
+
+    #[test]
+    fn bpmn_marker_masks_preserve_the_pinned_open_arrow_and_hollow_circle_offsets() {
+        for (edge_type, expected) in [
+            (
+                "arrow_open_head",
+                "stroke-dasharray: 0 0 36 4; stroke-dashoffset: 0;",
+            ),
+            (
+                "arrow_hollow_circle",
+                "stroke-dasharray: 0 0 32 8; stroke-dashoffset: 0;",
+            ),
+        ] {
+            let plan = neo_mask(40.0, &edge(edge_type, "normal"), true);
+            let mut style = String::new();
+            plan.write_to(&mut style).unwrap();
+            assert_eq!(style, expected);
+            assert_eq!(style.len(), plan.serialized_bytes());
+        }
     }
 
     #[test]

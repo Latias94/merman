@@ -22,9 +22,9 @@ does not make an unsupported typed target portable. Mermaid look/layout and outp
 independent owners. The temporary bridge and raw reader allowance in decision 5 below records
 the earlier migration stage, not a current extension point.
 
-Current user interfaces are documented by the [theme guide](../rendering/custom-diagram-themes.md);
-the [retirement record](../knowledge/engineering/verification/2026-10-09-theme-retirement-gate-removal.md)
-preserves the removed authorization's historical evidence. The original decision follows.
+Current user interfaces are documented by the [theme guide](../rendering/custom-diagram-themes.md).
+Historical migration witnesses do not authorize current renderer behavior; support and admission
+remain with the actual family and output consumers. The original decision follows.
 
 ## Context
 
@@ -67,9 +67,11 @@ boundaries or change emitted SVG.
    renderers. A family may not independently derive shared scale, peer, inverse, label, or surface
    colors.
 
-3. `merman-core::theme_color` is the single implementation of the pinned Khroma parse, channel,
-   transform, and serialization semantics used during theme construction. Invalid color inputs are
-   typed errors; theme calculation may not replace them with guessed colors or unchanged strings.
+3. `merman-markup::theme_color` is the single implementation of the pinned Khroma parse, channel,
+   transform, and serialization semantics used during theme construction and SVG output, following
+   the shared-markup ownership amendment in [ADR-0099](0099-model-and-source-boundaries.md).
+   The theme evaluator remains core-owned. Invalid color inputs are typed errors; theme calculation
+   may not replace them with guessed colors or unchanged strings.
 
 4. Browser CSSOM serialization, diagram grammar validation, and RoughJS conversion remain explicit
    adapters with their own contracts. They may reuse the shared parser where their accepted language
@@ -114,6 +116,26 @@ unimplemented derived fields from a completed default palette, use a no-input sn
 or run a second dependency-repair pass. The generated default/dark snapshots remain exact test
 oracles. Sequence, State, Gantt, Pie, nested chart palettes, and intermediate overrides therefore
 share one evaluated theme. Other theme classes retain their own source-specific lifecycles.
+
+## Evaluation and failure ownership
+
+Original Mermaid `theme` and `themeVariables` inputs still execute core's pinned-compatible Rust
+theme program when full presentation processing is requested. Typed authoring materialization in
+[ADR-0095](0095-general-theme-authoring-and-retained-bindings.md) does not replace that program.
+Semantic-only processing omits visual theme evaluation under
+[ADR-0098](0098-semantic-presentation-capabilities.md).
+
+Constructor loops driven by `THEME_COLOR_LIMIT` use the shared bounded numeric contract in
+`merman-model::presentation`; core owns execution and error propagation. The hard ceiling is 64
+generated color slots. A request beyond that ceiling fails with `Error::ThemeEvaluationLimit`
+rather than running unbounded work or silently truncating the requested program. Invalid evaluated
+colors remain `Error::ThemeColor`. Neither failure licenses a fallback palette.
+
+Source and site configuration can contribute to the same evaluated theme. A theme failure alone
+does not prove which authored source span owns it. Unexpected engine failures remain
+`Error::Internal` rather than user-input fallbacks. The diagnostic categories, resource status,
+and location rules belong to
+[ADR-0070](0070-diagnostics-first-analysis-contract.md#resource-admission-and-error-ownership).
 
 ## Consequences
 

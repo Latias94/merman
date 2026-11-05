@@ -57,31 +57,6 @@
           "end_label_left": null,
           "end_label_right": null,
           "end_marker": null,
-          "from": "three",
-          "from_cluster": "three",
-          "id": "L_three_two_0",
-          "label": null,
-          "points": [
-            {
-              "x": 262.0,
-              "y": 94.5
-            },
-            {
-              "x": 212.0,
-              "y": 94.5
-            }
-          ],
-          "start_label_left": null,
-          "start_label_right": null,
-          "start_marker": null,
-          "stroke_dasharray": null,
-          "to": "two",
-          "to_cluster": "two"
-        },
-        {
-          "end_label_left": null,
-          "end_label_right": null,
-          "end_marker": null,
           "from": "two",
           "from_cluster": "two",
           "id": "L_two_c2_0",
@@ -114,6 +89,31 @@
           "stroke_dasharray": null,
           "to": "c2",
           "to_cluster": null
+        },
+        {
+          "end_label_left": null,
+          "end_label_right": null,
+          "end_marker": null,
+          "from": "three",
+          "from_cluster": "three",
+          "id": "L_three_two_0",
+          "label": null,
+          "points": [
+            {
+              "x": 262.0,
+              "y": 94.5
+            },
+            {
+              "x": 212.0,
+              "y": 94.5
+            }
+          ],
+          "start_label_left": null,
+          "start_label_right": null,
+          "start_marker": null,
+          "stroke_dasharray": null,
+          "to": "two",
+          "to_cluster": "two"
         }
       ],
       "nodes": [

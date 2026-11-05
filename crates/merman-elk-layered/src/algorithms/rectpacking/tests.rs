@@ -50,6 +50,18 @@ fn check(sizes: &[(f64, f64)], options: Options, bounds: (f64, f64), expected: &
     }
 }
 
+fn check_updated(
+    sizes: &[(f64, f64)],
+    options: Options,
+    historical_bounds: (f64, f64),
+    historical: &[[f64; 4]],
+    current_bounds: (f64, f64),
+    current: &[[f64; 4]],
+) {
+    assert!(historical_bounds != current_bounds || historical != current);
+    check(sizes, options, current_bounds, current);
+}
+
 // Numeric results from the pinned elkjs 0.9.3 public layout API, with the exact Mermaid 12
 // RECTPACKING_OPTIONS (including the unrecognized SCANLINE string, resolved as GREEDY).
 #[test]
@@ -93,7 +105,7 @@ fn mermaid_compaction_stacks_and_expands_rectangles_like_elkjs() {
 #[test]
 fn source_trybox_branch_is_distinct_from_rectpacking() {
     let sizes = [(40., 30.), (60., 40.), (80., 20.), (40., 30.)];
-    check(
+    check_updated(
         &sizes,
         mermaid_options(),
         (145., 150.),
@@ -102,6 +114,13 @@ fn source_trybox_branch_is_distinct_from_rectpacking() {
             [70., 15., 60., 40.],
             [15., 70., 115., 20.],
             [15., 105., 115., 30.],
+        ],
+        (165., 115.),
+        &[
+            [15., 15., 40., 40.],
+            [70., 15., 80., 40.],
+            [15., 70., 80., 30.],
+            [110., 70., 40., 30.],
         ],
     );
     check(
@@ -117,6 +136,95 @@ fn source_trybox_branch_is_distinct_from_rectpacking() {
             [15., 70., 80., 30.],
             [110., 70., 40., 30.],
         ],
+    );
+}
+
+fn owner_title_options() -> Options {
+    Options {
+        padding: Padding {
+            top: 110.0,
+            right: 10.0,
+            bottom: 10.0,
+            left: 10.0,
+        },
+        minimum_width: 46.0,
+        minimum_height: 120.0,
+        regular_packing_minimum: Some(crate::LSize {
+            width: 46.0,
+            height: 210.0,
+        }),
+        ..mermaid_options()
+    }
+}
+
+#[test]
+fn source_derived_owner_title_minimum_applies_only_to_regular_packing() {
+    check(
+        &[(40.0, 20.0)],
+        owner_title_options(),
+        (60.0, 210.0),
+        &[[10.0, 110.0, 40.0, 90.0]],
+    );
+    check(
+        &[(40.0, 20.0); 3],
+        owner_title_options(),
+        (115.0, 175.0),
+        &[
+            [10.0, 110.0, 40.0, 20.0],
+            [65.0, 110.0, 40.0, 20.0],
+            [10.0, 145.0, 95.0, 20.0],
+        ],
+    );
+    check(&[], owner_title_options(), (0.0, 0.0), &[]);
+}
+
+#[test]
+fn regular_title_minimum_survives_adjacent_trybox_decisions() {
+    for (sizes, try_box) in [
+        (&[(40.0, 20.0), (40.0, 20.0)][..], true),
+        (&[(40.0, 55.0), (40.0, 20.0), (40.0, 20.0)][..], true),
+        (&[(40.0, 20.0), (40.0, 20.0), (40.0, 55.0)][..], true),
+        (&[(40.0, 20.0); 3][..], false),
+    ] {
+        let rectangles: Vec<_> = sizes
+            .iter()
+            .map(|&(width, height)| Rectangle {
+                width,
+                height,
+                ..Default::default()
+            })
+            .collect();
+        let options = Options {
+            try_box,
+            ..owner_title_options()
+        };
+        let expected = layout(
+            &rectangles,
+            &Options {
+                minimum_height: 210.0,
+                regular_packing_minimum: None,
+                ..options
+            },
+            &mut NoopWorkControl,
+        )
+        .unwrap();
+        let actual = layout(&rectangles, &options, &mut NoopWorkControl).unwrap();
+        assert_eq!(actual, expected, "sizes={sizes:?}, try_box={try_box}");
+        assert!(actual.height >= 210.0);
+    }
+}
+
+#[test]
+fn regular_title_minimum_does_not_lower_the_effective_parent_minimum() {
+    check(
+        &[(40.0, 20.0)],
+        Options {
+            minimum_width: 70.0,
+            minimum_height: 230.0,
+            ..owner_title_options()
+        },
+        (70.0, 230.0),
+        &[[10.0, 110.0, 50.0, 110.0]],
     );
 }
 

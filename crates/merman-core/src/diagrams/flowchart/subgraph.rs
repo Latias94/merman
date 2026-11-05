@@ -1,8 +1,9 @@
 use super::{
     FlowSubGraph, FlowchartAst, StatementEvent, Stmt, SubgraphBlock, TitleKind,
-    is_ecmascript_trim_char, strip_wrapping_backticks, trim_flowdb_label_text, unquote,
+    is_ecmascript_trim_char, trim_flowdb_label_text,
 };
 use crate::{OperationControl, OperationControlResult};
+use merman_model::families::flowchart::FlowDroppedSubgraphMember;
 use std::collections::{HashMap, HashSet};
 
 #[derive(Debug, Clone)]
@@ -15,9 +16,9 @@ pub(super) struct SubgraphBuilder {
     sub_count: usize,
     pub(super) subgraphs: Vec<FlowSubGraph>,
     pub(super) declaration_owners: Vec<usize>,
+    pub(super) dropped_subgraph_members: Vec<FlowDroppedSubgraphMember>,
     subgraph_index: HashMap<String, usize>,
-    // Exactly the retained membership union, never candidate members or group IDs.
-    claimed_members: HashSet<String>,
+    claimed_members: HashMap<String, usize>,
     inherit_dir: bool,
     global_dir: Option<String>,
 }
@@ -28,8 +29,9 @@ impl SubgraphBuilder {
             sub_count: 0,
             subgraphs: Vec::new(),
             declaration_owners: Vec::new(),
+            dropped_subgraph_members: Vec::new(),
             subgraph_index: HashMap::new(),
-            claimed_members: HashSet::new(),
+            claimed_members: HashMap::new(),
             inherit_dir,
             global_dir,
         }
@@ -101,21 +103,8 @@ impl SubgraphBuilder {
             }
         });
 
-        let raw_id = sg.header.raw_id.as_str();
-        let (title_raw, title_kind) =
-            parse_subgraph_title(&sg.header.raw_title, sg.header.id_equals_title);
-        let id_raw = if raw_id.starts_with('"') && raw_id.ends_with('"') {
-            // Only a double-quoted header enters Mermaid's string state. Markdown backticks are
-            // meaningful after that quote has been removed; bare backticks stay in the id.
-            let unquoted = unquote(raw_id);
-            let (without_backticks, _) = strip_wrapping_backticks(&unquoted);
-            trim_flowdb_label_text(&without_backticks).to_string()
-        } else {
-            raw_id.to_string()
-        };
-
         let mut id: Option<String> = {
-            let trimmed = trim_flowdb_label_text(&id_raw);
+            let trimmed = trim_flowdb_label_text(&sg.header.raw_id);
             if trimmed.is_empty() {
                 None
             } else {
@@ -133,8 +122,8 @@ impl SubgraphBuilder {
         }
 
         let id = id.unwrap_or_else(|| format!("subGraph{}", self.sub_count));
-        let title = trim_flowdb_label_text(&title_raw).to_string();
-        let label_type = match title_kind {
+        let title = trim_flowdb_label_text(&sg.header.raw_title).to_string();
+        let label_type = match sg.header.title_kind {
             TitleKind::Text => "text",
             TitleKind::String => "string",
             TitleKind::Markdown => "markdown",
@@ -167,15 +156,50 @@ impl SubgraphBuilder {
             if index % 128 == 0 {
                 control.checkpoint()?;
             }
-            if member != id && !self.claimed_members.contains(member.as_str()) {
-                // Update both indexes together, including on an interrupted completion.
-                self.subgraphs[owner].nodes.push(member.clone());
-                self.claimed_members.insert(member);
+            if member == id {
+                continue;
             }
+            if let Some(&previous_owner) = self.claimed_members.get(member.as_str()) {
+                if previous_owner != owner && !self.is_nested_in(previous_owner, &seen, control)? {
+                    self.dropped_subgraph_members
+                        .push(FlowDroppedSubgraphMember {
+                            node: member,
+                            kept_by: self.subgraphs[previous_owner].id.clone(),
+                            dropped_from: id.clone(),
+                        });
+                }
+                continue;
+            }
+            self.subgraphs[owner].nodes.push(member.clone());
+            self.claimed_members.insert(member, owner);
         }
         self.declaration_owners.push(owner);
 
         Ok(id)
+    }
+
+    fn is_nested_in(
+        &self,
+        owner: usize,
+        ancestor_members: &HashSet<String>,
+        control: &OperationControl,
+    ) -> OperationControlResult<bool> {
+        let mut current = Some(owner);
+        let mut visited = HashSet::new();
+        while let Some(index) = current {
+            if visited.len().is_multiple_of(128) {
+                control.checkpoint()?;
+            }
+            if !visited.insert(index) {
+                break;
+            }
+            let id = self.subgraphs[index].id.as_str();
+            if ancestor_members.contains(id) {
+                return Ok(true);
+            }
+            current = self.claimed_members.get(id).copied();
+        }
+        Ok(false)
     }
 }
 
@@ -231,39 +255,6 @@ pub(super) fn subgraphs_exist(subgraphs: &[FlowSubGraph], node_id: &str) -> bool
         .any(|sg| sg.nodes.iter().any(|n| n == node_id))
 }
 
-fn parse_subgraph_title(raw_title: &str, id_equals_title: bool) -> (String, TitleKind) {
-    let quoted = raw_title.starts_with('"') && raw_title.ends_with('"');
-    let unquoted = if quoted {
-        // Keep flowchart subgraph titles raw (strip only surrounding quotes).
-        // This matches upstream and avoids mangling backslash-heavy labels.
-        unquote(raw_title)
-    } else {
-        raw_title.to_string()
-    };
-
-    if quoted {
-        let (no_backticks, is_markdown) = strip_wrapping_backticks(&unquoted);
-        if is_markdown {
-            return (
-                trim_flowdb_label_text(&no_backticks).to_string(),
-                TitleKind::Markdown,
-            );
-        }
-    }
-
-    if !id_equals_title && quoted {
-        return (
-            trim_flowdb_label_text(&unquoted).to_string(),
-            TitleKind::String,
-        );
-    }
-
-    (
-        trim_flowdb_label_text(&unquoted).to_string(),
-        TitleKind::Text,
-    )
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -291,8 +282,11 @@ mod tests {
             let retained = builder
                 .subgraphs
                 .iter()
-                .flat_map(|subgraph| subgraph.nodes.iter().cloned())
-                .collect::<HashSet<_>>();
+                .enumerate()
+                .flat_map(|(index, subgraph)| {
+                    subgraph.nodes.iter().cloned().map(move |id| (id, index))
+                })
+                .collect::<HashMap<_, _>>();
             assert_eq!(builder.claimed_members, retained);
         }
         assert_eq!(builder.subgraphs.len(), 3);
@@ -332,7 +326,8 @@ mod tests {
                 .nodes
                 .iter()
                 .cloned()
-                .collect::<HashSet<_>>()
+                .map(|id| (id, 0))
+                .collect::<HashMap<_, _>>()
         );
     }
 }

@@ -5,6 +5,9 @@
 //! - https://github.com/eclipse-elk/elk/blob/62d5909f96fad541bc101ad52dabaece6b7eab7e/plugins/org.eclipse.elk.core/src/org/eclipse/elk/core/Core.melk
 //! - https://github.com/mermaid-js/mermaid/blob/41646dfd43ac83f001b03c70605feb036afae46d/packages/mermaid-layout-elk/src/render.ts
 
+// `org.eclipse.elk.edge.thickness` defaults to 1 in the selected worker's CoreOptions.
+pub(crate) const ELK_DEFAULT_EDGE_THICKNESS: f64 = 1.0;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum ElkDirection {
     Left,
@@ -602,8 +605,8 @@ impl LayeredOptions {
 impl LongEdgeOrderingStrategy {
     pub fn return_value(self) -> i64 {
         match self {
-            Self::DummyNodeOver => i64::MAX,
-            Self::DummyNodeUnder => -1,
+            Self::DummyNodeOver => i64::from(i32::MAX),
+            Self::DummyNodeUnder => i64::from(i32::MIN),
             Self::Equal => 0,
         }
     }
@@ -677,5 +680,18 @@ mod tests {
         assert_eq!(DirectionDown.transpose(), DirectionUp);
         assert_eq!(SmartUp.transpose(), SmartDown);
         assert_eq!(SmartDown.transpose(), SmartUp);
+    }
+
+    #[test]
+    fn elk_0_12_long_edge_ordering_uses_java_integer_extremes() {
+        assert_eq!(
+            LongEdgeOrderingStrategy::DummyNodeUnder.return_value(),
+            -2_147_483_648
+        );
+        assert_eq!(
+            LongEdgeOrderingStrategy::DummyNodeOver.return_value(),
+            2_147_483_647
+        );
+        assert_eq!(LongEdgeOrderingStrategy::Equal.return_value(), 0);
     }
 }

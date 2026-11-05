@@ -1,4 +1,4 @@
-use super::super::roughjs_common::{ops_to_svg_path_d, parse_hex_color_to_srgba};
+use super::super::roughjs_common::{controlled, ops_to_svg_path_d, parse_hex_color_to_srgba};
 use super::super::*;
 use crate::ishikawa::IshikawaTextThemePlan;
 use crate::model::{
@@ -6,10 +6,13 @@ use crate::model::{
     IshikawaLineLayout, IshikawaSubGroupLayout, IshikawaTextLayout,
 };
 
-struct RoughContext {
+struct RoughContext<'a> {
     randomness: roughr::core::RoughRandomness,
     line_color: String,
     fill_color: String,
+    node_stroke: String,
+    marker_fill: String,
+    work_meter: &'a crate::resources::OperationWorkMeter,
 }
 
 #[derive(Clone, Copy)]
@@ -60,6 +63,9 @@ pub(crate) fn render_ishikawa_diagram_svg_with_theme(
             ),
             line_color: theme.line_color.clone(),
             fill_color: theme.main_bkg.clone(),
+            node_stroke: theme.node_stroke.clone(),
+            marker_fill: theme.marker_fill.clone(),
+            work_meter: options.work_meter(),
         };
         push_hand_drawn_diagram(&mut out, layout, &rough, &mut text_terminals)?;
     } else {
@@ -70,6 +76,7 @@ pub(crate) fn render_ishikawa_diagram_svg_with_theme(
     out.push_str("</g></svg>\n");
     out.checkpoint()?;
     let rooted = root_document.complete(out.finish()?)?;
+    text_theme.record_terminal();
     Ok(rooted)
 }
 
@@ -272,13 +279,20 @@ fn push_rough_line(
         .stroke_width(2.0)
         .build()
         .expect("static Ishikawa rough line options must be valid");
-    let drawable = roughr::generator::Generator::default().line::<f64>(
-        line.x1,
-        line.y1,
-        line.x2,
-        line.y2,
-        &Some(options),
-    );
+    let drawable = controlled::generate(
+        rough.work_meter,
+        merman_model::OperationPhase::Emit,
+        |control| {
+            roughr::generator::Generator::default().line_with_control::<f64>(
+                line.x1,
+                line.y1,
+                line.x2,
+                line.y2,
+                &Some(options),
+                control,
+            )
+        },
+    )?;
     push_rough_group(
         out,
         Some(&line.class_name),
@@ -298,15 +312,24 @@ fn push_rough_hachure_path(
     path_d: &str,
     rough: &RoughContext,
 ) -> Result<()> {
-    let drawable = roughr::generator::Generator::default()
-        .path::<f64>(path_d.to_string(), &Some(rough_hachure_options(rough)));
+    let drawable = controlled::generate(
+        rough.work_meter,
+        merman_model::OperationPhase::Emit,
+        |control| {
+            roughr::generator::Generator::default().path_with_control::<f64>(
+                path_d,
+                &Some(rough_hachure_options(rough)),
+                control,
+            )
+        },
+    )?;
     push_rough_group(
         out,
         Some(class_name),
         drawable.sets,
         RoughPaint {
             fill_color: &rough.fill_color,
-            stroke_color: &rough.line_color,
+            stroke_color: &rough.node_stroke,
             stroke_width: 2.0,
             fill_weight: 2.5,
         },
@@ -319,20 +342,27 @@ fn push_rough_hachure_rect(
     label_box: &IshikawaLabelBoxLayout,
     rough: &RoughContext,
 ) -> Result<()> {
-    let drawable = roughr::generator::Generator::default().rectangle::<f64>(
-        label_box.x,
-        label_box.y,
-        label_box.width,
-        label_box.height,
-        &Some(rough_hachure_options(rough)),
-    );
+    let drawable = controlled::generate(
+        rough.work_meter,
+        merman_model::OperationPhase::Emit,
+        |control| {
+            roughr::generator::Generator::default().rectangle_with_control::<f64>(
+                label_box.x,
+                label_box.y,
+                label_box.width,
+                label_box.height,
+                &Some(rough_hachure_options(rough)),
+                control,
+            )
+        },
+    )?;
     push_rough_group(
         out,
         Some(class_name),
         drawable.sets,
         RoughPaint {
             fill_color: &rough.fill_color,
-            stroke_color: &rough.line_color,
+            stroke_color: &rough.node_stroke,
             stroke_width: 2.0,
             fill_weight: 2.5,
         },
@@ -368,7 +398,7 @@ fn push_rough_arrow_marker(
         line.x1, line.y1, left_x, left_y, right_x, right_y
     );
 
-    let color = rough_color(&rough.line_color);
+    let color = rough_color(&rough.marker_fill);
     let options = roughr::core::OptionsBuilder::default()
         .randomness(rough.randomness.clone())
         .roughness(1.0)
@@ -378,14 +408,24 @@ fn push_rough_arrow_marker(
         .stroke_width(1.0)
         .build()
         .expect("static Ishikawa rough arrow options must be valid");
-    let drawable = roughr::generator::Generator::default().path::<f64>(path_d, &Some(options));
+    let drawable = controlled::generate(
+        rough.work_meter,
+        merman_model::OperationPhase::Emit,
+        |control| {
+            roughr::generator::Generator::default().path_with_control::<f64>(
+                &path_d,
+                &Some(options),
+                control,
+            )
+        },
+    )?;
     push_rough_group(
         out,
         None,
         drawable.sets,
         RoughPaint {
-            fill_color: &rough.line_color,
-            stroke_color: &rough.line_color,
+            fill_color: &rough.marker_fill,
+            stroke_color: &rough.marker_fill,
             stroke_width: 1.0,
             fill_weight: 0.0,
         },
@@ -400,7 +440,7 @@ fn rough_hachure_options(rough: &RoughContext) -> roughr::core::Options {
         .fill_style(roughr::core::FillStyle::Hachure)
         .fill_weight(2.5)
         .hachure_gap(5.0)
-        .stroke(rough_color(&rough.line_color))
+        .stroke(rough_color(&rough.node_stroke))
         .stroke_width(2.0)
         .build()
         .expect("static Ishikawa rough hachure options must be valid")
@@ -560,11 +600,13 @@ fn write_ishikawa_css(
         css,
         "#{diagram_id} .ishikawa .ishikawa-spine,#{diagram_id} .ishikawa .ishikawa-branch,#{diagram_id} .ishikawa .ishikawa-sub-branch {{ stroke: {line_color}; stroke-width: 2; fill: none; }}\
 #{diagram_id} .ishikawa .ishikawa-sub-branch {{ stroke-width: 1; }}\
-#{diagram_id} .ishikawa .ishikawa-arrow {{ fill: {line_color}; }}\
-#{diagram_id} .ishikawa .ishikawa-head {{ fill: {main_bkg}; stroke: {line_color}; stroke-width: 2; }}\
-#{diagram_id} .ishikawa .ishikawa-label-box {{ fill: {main_bkg}; stroke: {line_color}; stroke-width: 2; }}",
+#{diagram_id} .ishikawa .ishikawa-arrow {{ fill: {marker_fill}; }}\
+#{diagram_id} .ishikawa .ishikawa-head {{ fill: {main_bkg}; stroke: {node_stroke}; stroke-width: 2; }}\
+#{diagram_id} .ishikawa .ishikawa-label-box {{ fill: {main_bkg}; stroke: {node_stroke}; stroke-width: 2; }}",
         line_color = theme.line_color,
         main_bkg = theme.main_bkg,
+        node_stroke = theme.node_stroke,
+        marker_fill = theme.marker_fill,
     );
     text_theme.write_text_rules(css, diagram_id, &theme.text_color);
     let _ = write!(

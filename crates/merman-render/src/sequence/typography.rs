@@ -504,8 +504,9 @@ impl SequenceTypographyPlan {
         resolved_theme: Option<&ResolvedDiagramTheme>,
         work_meter: &OperationWorkMeter,
     ) -> Result<Self, OperationWorkError> {
-        let compat = std::sync::Arc::new(super::SequenceCompatBinding::resolve(
-            effective_config.as_value(),
+        let compat = std::sync::Arc::new(super::SequenceCompatBinding::resolve_for_theme(
+            effective_config,
+            resolved_theme,
         ));
         let base_typography =
             SequenceBaseTypography::resolve(effective_config, resolved_theme, &compat);

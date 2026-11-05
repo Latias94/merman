@@ -39,7 +39,7 @@ fn unknown_catalog_ids_remain_visible_and_resolve_to_unverified() {
 
     let support = describe_theme_support(&query);
 
-    assert_eq!(support.claim_revision(), 1);
+    assert_eq!(support.claim_revision(), 2);
     assert_eq!(support.query(), &query);
     assert_eq!(support.state(), ThemeSupportStateV1::Unverified);
     assert_eq!(support.reason_ids(), ["theme-support.unknown-family"]);
@@ -386,8 +386,11 @@ fn family_owned_text_paint_slices_are_reported_as_conditional() {
 }
 
 #[test]
-fn sequence_unused_text_and_title_projection_claims_are_unsupported() {
-    for target in [ThemeTarget::Text, ThemeTarget::Title] {
+fn sequence_text_and_title_discovery_distinguishes_real_title_consumers() {
+    for (target, state) in [
+        (ThemeTarget::Text, ThemeSupportStateV1::Unsupported),
+        (ThemeTarget::Title, ThemeSupportStateV1::Conditional),
+    ] {
         let query = ThemeSupportQueryV1::for_target(
             DiagramFamilyId::SEQUENCE.as_str(),
             ThemeSupportOutputV1::StandaloneSvg,
@@ -395,8 +398,8 @@ fn sequence_unused_text_and_title_projection_claims_are_unsupported() {
             ThemeRuleFacetV1::Fill,
         );
         let support = describe_theme_support(&query);
-        assert_eq!(support.state(), ThemeSupportStateV1::Unsupported);
-        assert_eq!(support.claim_revision(), 1);
+        assert_eq!(support.state(), state);
+        assert_eq!(support.claim_revision(), 2);
     }
 }
 
@@ -416,7 +419,7 @@ fn wardley_text_paint_support_is_limited_to_implemented_consumers() {
         (
             ThemeTarget::Title,
             ThemeRuleFacetV1::Fill,
-            ThemeSupportStateV1::Unsupported,
+            ThemeSupportStateV1::Conditional,
         ),
         (
             ThemeTarget::Text,
@@ -443,7 +446,7 @@ fn wardley_text_paint_support_is_limited_to_implemented_consumers() {
             expected,
             "target={target:?} facet={facet:?}"
         );
-        assert_eq!(support.claim_revision(), 1);
+        assert_eq!(support.claim_revision(), 2);
         let reasons: &[&str] = if expected == ThemeSupportStateV1::Conditional {
             &[
                 "theme-support.family-owned-consumer-present",
@@ -460,13 +463,8 @@ fn wardley_text_paint_support_is_limited_to_implemented_consumers() {
 fn generic_title_paint_routes_are_unsupported_without_a_title_color_consumer() {
     for family in [
         DiagramFamilyId::ARCHITECTURE,
-        DiagramFamilyId::C4,
-        DiagramFamilyId::CYNEFIN,
-        DiagramFamilyId::ER,
-        DiagramFamilyId::JOURNEY,
         DiagramFamilyId::KANBAN,
         DiagramFamilyId::SANKEY,
-        DiagramFamilyId::TIMELINE,
     ] {
         let query = ThemeSupportQueryV1::for_target(
             family.as_str(),
@@ -487,6 +485,40 @@ fn generic_title_paint_routes_are_unsupported_without_a_title_color_consumer() {
             assert_eq!(support.state(), ThemeSupportStateV1::Unsupported);
             assert_eq!(support.reason_ids(), ["theme-support.no-supported-route"]);
         }
+    }
+}
+
+#[test]
+fn diagram_titles_with_real_color_consumers_report_conditional_support() {
+    for family in [
+        DiagramFamilyId::C4,
+        DiagramFamilyId::CLASS,
+        DiagramFamilyId::CYNEFIN,
+        DiagramFamilyId::ER,
+        DiagramFamilyId::GIT_GRAPH,
+        DiagramFamilyId::JOURNEY,
+        DiagramFamilyId::SEQUENCE,
+        DiagramFamilyId::TIMELINE,
+        DiagramFamilyId::WARDLEY,
+    ] {
+        let support = describe_theme_support(&ThemeSupportQueryV1::for_target(
+            family.as_str(),
+            ThemeSupportOutputV1::StandaloneSvg,
+            ThemeTarget::Title.id(),
+            ThemeRuleFacetV1::Fill,
+        ));
+        assert_eq!(
+            support.state(),
+            ThemeSupportStateV1::Conditional,
+            "{family}"
+        );
+        assert_eq!(
+            support.reason_ids(),
+            [
+                "theme-support.family-owned-consumer-present",
+                "theme-support.public-value-domain-partial",
+            ]
+        );
     }
 }
 
@@ -742,8 +774,6 @@ fn compatibility_only_route_is_conditional_without_claiming_direct_support() {
 #[test]
 fn mindmap_terminal_less_paint_claims_are_unsupported() {
     for (target, facet) in [
-        (ThemeTarget::NodeLabel, ThemeRuleFacetV1::Fill),
-        (ThemeTarget::Text, ThemeRuleFacetV1::Fill),
         (ThemeTarget::Title, ThemeRuleFacetV1::Fill),
         (ThemeTarget::Marker, ThemeRuleFacetV1::Fill),
         (ThemeTarget::Marker, ThemeRuleFacetV1::StrokePaint),
@@ -827,8 +857,6 @@ fn tree_view_marker_paint_is_reported_as_a_family_owned_partial_surface() {
 #[test]
 fn tree_view_terminal_less_paint_claims_are_unsupported() {
     for (target, facet) in [
-        (ThemeTarget::Node, ThemeRuleFacetV1::Fill),
-        (ThemeTarget::Node, ThemeRuleFacetV1::StrokePaint),
         (ThemeTarget::Title, ThemeRuleFacetV1::Fill),
         (ThemeTarget::EdgeLabelBackground, ThemeRuleFacetV1::Fill),
         (ThemeTarget::Cluster, ThemeRuleFacetV1::Fill),
@@ -855,6 +883,82 @@ fn tree_view_terminal_less_paint_claims_are_unsupported() {
             ["theme-support.no-supported-route"],
             "target={} facet={facet:?}",
             target.id()
+        );
+    }
+}
+
+#[cfg(feature = "all-diagrams")]
+#[test]
+fn added_family_paint_consumers_are_reported_as_partial_typed_surfaces() {
+    for (family, target, facet) in [
+        (
+            DiagramFamilyId::AGENTFLOW,
+            ThemeTarget::Node,
+            ThemeRuleFacetV1::Fill,
+        ),
+        (
+            DiagramFamilyId::VENN,
+            ThemeTarget::Node,
+            ThemeRuleFacetV1::Fill,
+        ),
+        (
+            DiagramFamilyId::VENN,
+            ThemeTarget::NodeLabel,
+            ThemeRuleFacetV1::Fill,
+        ),
+        (
+            DiagramFamilyId::ISHIKAWA,
+            ThemeTarget::Edge,
+            ThemeRuleFacetV1::StrokePaint,
+        ),
+        (
+            DiagramFamilyId::RAILROAD,
+            ThemeTarget::Node,
+            ThemeRuleFacetV1::StrokePaint,
+        ),
+        (
+            DiagramFamilyId::EVENT_MODELING,
+            ThemeTarget::Cluster,
+            ThemeRuleFacetV1::Fill,
+        ),
+        (
+            DiagramFamilyId::ER,
+            ThemeTarget::Title,
+            ThemeRuleFacetV1::Fill,
+        ),
+        (
+            DiagramFamilyId::TREE_VIEW,
+            ThemeTarget::Node,
+            ThemeRuleFacetV1::Fill,
+        ),
+        (
+            DiagramFamilyId::TREE_VIEW,
+            ThemeTarget::Node,
+            ThemeRuleFacetV1::StrokePaint,
+        ),
+        (
+            DiagramFamilyId::ZENUML,
+            ThemeTarget::Lifeline,
+            ThemeRuleFacetV1::Fill,
+        ),
+    ] {
+        let support = describe_theme_support(&ThemeSupportQueryV1::for_target(
+            family.as_str(),
+            ThemeSupportOutputV1::StandaloneSvg,
+            target.id(),
+            facet,
+        ));
+        assert_eq!(
+            support.state(),
+            ThemeSupportStateV1::Conditional,
+            "{family}/{target:?}/{facet:?}"
+        );
+        assert_eq!(
+            support.reason_ids(),
+            [
+                "theme-support.family-owned-consumer-present",
+                "theme-support.public-value-domain-partial",
+            ]
         );
     }
 }
@@ -913,7 +1017,6 @@ fn gitgraph_edge_label_background_fill_is_a_typed_partial_surface() {
 #[test]
 fn gitgraph_terminal_less_paint_claims_are_unsupported() {
     for (target, facet) in [
-        (ThemeTarget::Title, ThemeRuleFacetV1::Fill),
         (ThemeTarget::Marker, ThemeRuleFacetV1::Fill),
         (ThemeTarget::Marker, ThemeRuleFacetV1::StrokePaint),
         (ThemeTarget::Cluster, ThemeRuleFacetV1::Fill),
@@ -1852,7 +1955,7 @@ fn block_title_discovery_reports_unsupported_after_projection_retirement() {
 }
 
 #[test]
-fn block_cluster_label_discovery_reports_unsupported_after_projection_retirement() {
+fn block_cluster_label_discovery_reports_its_real_typed_consumer() {
     let query = ThemeSupportQueryV1::for_target(
         DiagramFamilyId::BLOCK.as_str(),
         ThemeSupportOutputV1::StandaloneSvg,
@@ -1860,8 +1963,14 @@ fn block_cluster_label_discovery_reports_unsupported_after_projection_retirement
         ThemeRuleFacetV1::Fill,
     );
     let support = describe_theme_support(&query);
-    assert_eq!(support.state(), ThemeSupportStateV1::Unsupported);
-    assert_eq!(support.reason_ids(), ["theme-support.no-supported-route"]);
+    assert_eq!(support.state(), ThemeSupportStateV1::Conditional);
+    assert_eq!(
+        support.reason_ids(),
+        [
+            "theme-support.family-owned-consumer-present",
+            "theme-support.public-value-domain-partial",
+        ]
+    );
 }
 
 #[test]
@@ -1873,7 +1982,7 @@ fn block_background_discovery_reports_a_partial_typed_consumer() {
         ThemeRuleFacetV1::Fill,
     );
     let support = describe_theme_support(&query);
-    assert_eq!(support.claim_revision(), 1);
+    assert_eq!(support.claim_revision(), 2);
     assert_eq!(support.state(), ThemeSupportStateV1::Conditional);
     assert_eq!(
         support.reason_ids(),
@@ -1894,7 +2003,7 @@ fn block_edge_discovery_reports_partial_typed_fill_and_stroke() {
             facet,
         );
         let support = describe_theme_support(&query);
-        assert_eq!(support.claim_revision(), 1);
+        assert_eq!(support.claim_revision(), 2);
         assert_eq!(support.state(), ThemeSupportStateV1::Conditional);
         assert_eq!(
             support.reason_ids(),
@@ -1916,7 +2025,7 @@ fn block_cluster_discovery_reports_partial_typed_fill_and_stroke() {
             facet,
         );
         let support = describe_theme_support(&query);
-        assert_eq!(support.claim_revision(), 1);
+        assert_eq!(support.claim_revision(), 2);
         assert_eq!(support.state(), ThemeSupportStateV1::Conditional);
         assert_eq!(
             support.reason_ids(),
@@ -1938,7 +2047,7 @@ fn block_marker_discovery_reports_partial_typed_fill_and_stroke() {
             facet,
         );
         let support = describe_theme_support(&query);
-        assert_eq!(support.claim_revision(), 1);
+        assert_eq!(support.claim_revision(), 2);
         assert_eq!(support.state(), ThemeSupportStateV1::Conditional);
         assert_eq!(
             support.reason_ids(),
@@ -1958,7 +2067,7 @@ fn block_generic_text_discovery_reports_partial_typed_fill() {
         "text",
         ThemeRuleFacetV1::Fill,
     ));
-    assert_eq!(support.claim_revision(), 1);
+    assert_eq!(support.claim_revision(), 2);
     assert_eq!(support.state(), ThemeSupportStateV1::Conditional);
     assert_eq!(
         support.reason_ids(),

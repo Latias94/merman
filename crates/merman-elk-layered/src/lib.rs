@@ -53,12 +53,13 @@ pub use importer::{
 };
 pub use intermediate::IntermediateError;
 pub use options::{
-    Alignment, ContentAlignment, CycleBreakingStrategy, DirectionCongruency,
-    EdgeLabelSideSelection, EdgeRouting, ElkDirection, ElkPadding, FixedAlignment,
-    GreedySwitchType, HierarchyHandling, LayerConstraint, LayeredOptions, LayeringStrategy,
-    LongEdgeOrderingStrategy, NodeFlexibility, NodeLabelPlacement, NodePlacementStrategy,
-    NodeSizeError, OrderingStrategy, PortAlignment, PortConstraints, PortSortingStrategy,
-    SelfLoopDistributionStrategy, SelfLoopOrderingStrategy, SpacingMargin, SpacingOptions,
+    Alignment, ContentAlignment, CrossingMinimizationStrategy, CycleBreakingStrategy,
+    DirectionCongruency, EdgeLabelSideSelection, EdgeRouting, ElkDirection, ElkPadding,
+    FixedAlignment, GreedySwitchType, HierarchyHandling, LayerConstraint, LayeredOptions,
+    LayeringStrategy, LongEdgeOrderingStrategy, NodeFlexibility, NodeLabelPlacement,
+    NodePlacementStrategy, NodeSizeError, OrderingStrategy, PortAlignment, PortConstraints,
+    PortSortingStrategy, SelfLoopDistributionStrategy, SelfLoopOrderingStrategy, SpacingMargin,
+    SpacingOptions,
 };
 pub use p2layers::LayeringError;
 pub use p3order::sweep::{HierarchySweepDebugTrace, HierarchySweepNodeDebug};

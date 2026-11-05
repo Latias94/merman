@@ -16,6 +16,7 @@ use crate::family::{
 };
 use crate::resources::{OperationWorkError, OperationWorkMeter};
 
+mod blocks;
 mod terminal;
 
 use terminal::{PacketTextColorOwnership, PacketTextWinners};
@@ -64,6 +65,7 @@ pub(crate) struct PacketTypographyThemePlan {
 
 #[derive(Debug)]
 struct PacketThemeSelection {
+    blocks: blocks::PacketBlockThemePlan,
     text_color_ownership: PacketTextColorOwnership,
     typography: PacketTypographyOutcome,
     unsupported_properties: BTreeSet<ThemeTypographyProperty>,
@@ -113,6 +115,8 @@ impl PacketTypographyThemePlan {
             });
         };
         let text_color_ownership = PacketTextColorOwnership::from_config(effective_config);
+        let blocks = blocks::PacketBlockThemePlan::resolve(theme, effective_config, work_meter)?;
+        blocks.apply_css(&mut css_binding);
 
         let config_owns_font_stack = packet_config_owns_font_stack(effective_config);
         let mut typed_font_stack = false;
@@ -167,6 +171,9 @@ impl PacketTypographyThemePlan {
                     selector,
                     facet,
                 } => {
+                    if target == ThemeTarget::Node {
+                        continue;
+                    }
                     let key = theme.family_mechanism_key(route);
                     let observation = rule_observations
                         .entry(key)
@@ -201,6 +208,9 @@ impl PacketTypographyThemePlan {
                     }
                 }
                 FamilyThemeMechanism::OrdinalPalette { target } => {
+                    if target == ThemeTarget::Node {
+                        continue;
+                    }
                     debug_assert_eq!(route.disposition(), FamilyThemeDisposition::Unsupported);
                     unsupported_routes.push(PacketUnsupportedRoute {
                         key: theme.family_mechanism_key(route),
@@ -209,6 +219,9 @@ impl PacketTypographyThemePlan {
                     });
                 }
                 FamilyThemeMechanism::EffectBinding { target, .. } => {
+                    if target == ThemeTarget::Node {
+                        continue;
+                    }
                     debug_assert_eq!(route.disposition(), FamilyThemeDisposition::Unsupported);
                     unsupported_routes.push(PacketUnsupportedRoute {
                         key: theme.family_mechanism_key(route),
@@ -258,6 +271,7 @@ impl PacketTypographyThemePlan {
             css_binding,
             font_family_css: font_family_css.into_boxed_str(),
             selection: Some(PacketThemeSelection {
+                blocks,
                 text_color_ownership,
                 typography: outcome,
                 unsupported_properties,
@@ -280,6 +294,20 @@ impl PacketTypographyThemePlan {
 
     pub(crate) fn begin_text_output(&self) -> Option<PacketTextOutput<'_>> {
         self.selection.as_ref().map(PacketTextOutput::new)
+    }
+
+    pub(crate) fn finish_blocks(
+        &self,
+        output: &mut PacketThemeOutcome,
+        count: usize,
+        work: &OperationWorkMeter,
+    ) -> Result<(), OperationWorkError> {
+        if let Some(selection) = &self.selection {
+            output
+                .evidence
+                .merge_accounted_from(selection.blocks.finish(count, work)?);
+        }
+        Ok(())
     }
 }
 

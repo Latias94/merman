@@ -2020,6 +2020,38 @@ fn state_composite_terminal_owners_follow_shape_look_and_gradient_branch() {
                 "theme": "base",
                 "look": "neo",
                 "htmlLabels": false,
+                "themeVariables": { "compositeBackground": MERMAID_COLOR },
+            }),
+            terminal_fragment: ".statediagram-cluster.statediagram-cluster .inner{fill:#22c55e;}",
+        },
+        Case {
+            name: "neo-alt-body-fill",
+            target: ThemeTarget::Composite,
+            facet: PaintFacet::Fill,
+            source: NESTED_COMPOSITE,
+            cluster_id: "Inner",
+            part: ClusterPart::Body,
+            ordinal: Some(2),
+            config: serde_json::json!({
+                "theme": "base",
+                "look": "neo",
+                "htmlLabels": false,
+                "themeVariables": { "altBackground": MERMAID_COLOR },
+            }),
+            terminal_fragment: ".statediagram-cluster.statediagram-cluster-alt .inner{fill:#22c55e;}",
+        },
+        Case {
+            name: "neo-divider-fill",
+            target: ThemeTarget::Composite,
+            facet: PaintFacet::Fill,
+            source: DIVIDER,
+            cluster_id: "divider-id-1",
+            part: ClusterPart::Divider,
+            ordinal: Some(2),
+            config: serde_json::json!({
+                "theme": "base",
+                "look": "neo",
+                "htmlLabels": false,
                 "themeVariables": { "mainBkg": MERMAID_COLOR },
             }),
             terminal_fragment: "[data-look=\"neo\"].statediagram-cluster rect{fill:#22c55e;stroke:",
@@ -2170,6 +2202,175 @@ fn state_composite_terminal_owners_follow_shape_look_and_gradient_branch() {
                 "{origin} {}",
                 case.name
             );
+        }
+    }
+}
+
+#[test]
+fn state_neo_composite_body_fill_uses_its_winning_background_owner() {
+    const TYPED_BODY: &str = "#ec4899";
+    const TYPED_HEADER: &str = "#a855f7";
+    const MAIN_BACKGROUND: &str = "#22c55e";
+    const BODY_BACKGROUND: &str = "#0ea5e9";
+    const OTHER_BACKGROUND: &str = "#f59e0b";
+
+    for (source, cluster_id, ordinal, body_key, other_key, body_selector) in [
+        (
+            "stateDiagram-v2\nstate Parent {\n  state Child\n}\n",
+            "Parent",
+            1,
+            "compositeBackground",
+            "altBackground",
+            ".statediagram-cluster.statediagram-cluster .inner",
+        ),
+        (
+            "stateDiagram-v2\nstate Outer {\n  state Inner {\n    state Child\n  }\n}\n",
+            "Inner",
+            2,
+            "altBackground",
+            "compositeBackground",
+            ".statediagram-cluster.statediagram-cluster-alt .inner",
+        ),
+    ] {
+        let theme = DiagramThemeCompiler::new()
+            .compile(
+                state_theme_spec_with_theme("base").with_styles(
+                    ThemeRuleSet::default()
+                        .with_rule(
+                            ThemeRule::new(
+                                ThemeTarget::Composite,
+                                ThemeStylePatch::default()
+                                    .with_fill(CanvasPaint::solid(TYPED_BODY).unwrap()),
+                            )
+                            .with_ordinal(OrdinalSelector::exact(ordinal).unwrap()),
+                        )
+                        .with_rule(
+                            ThemeRule::new(
+                                ThemeTarget::CompositeHeader,
+                                ThemeStylePatch::default()
+                                    .with_fill(CanvasPaint::solid(TYPED_HEADER).unwrap()),
+                            )
+                            .with_ordinal(OrdinalSelector::exact(ordinal).unwrap()),
+                        ),
+                ),
+            )
+            .expect("compile independent Neo composite body and header fills");
+
+        for html_labels in [false, true] {
+            for body_owned in [false, true] {
+                let mut config = serde_json::json!({
+                    "look": "neo",
+                    "htmlLabels": html_labels,
+                    "themeVariables": {
+                        "mainBkg": MAIN_BACKGROUND,
+                        (other_key): OTHER_BACKGROUND,
+                    },
+                });
+                if body_owned {
+                    config["themeVariables"][body_key] = serde_json::json!(BODY_BACKGROUND);
+                }
+                for origin in ["site", "source"] {
+                    // Select the baseline at initialization so source fields own only their properties.
+                    let mut baseline_config = if origin == "site" {
+                        config.clone()
+                    } else {
+                        serde_json::json!({"secure": []})
+                    };
+                    baseline_config["theme"] = serde_json::json!("base");
+                    let baseline_source = if origin == "source" {
+                        format!("%%{{init: {config}}}%%\n{source}")
+                    } else {
+                        source.to_string()
+                    };
+                    let baseline = render_state_svg_from_text_with_engine(
+                        classic_typed_engine().with_site_config(
+                            merman_core::presentation::SourcePresentationConfig::from_value(
+                                baseline_config,
+                            ),
+                        ),
+                        &baseline_source,
+                    );
+                    let (svg, evidence) = render_strict_state_svg_with_theme_and_config(
+                        &theme,
+                        source,
+                        config.clone(),
+                        origin,
+                    );
+                    let document = roxmltree::Document::parse(&svg).expect("valid State SVG");
+                    let cluster = document
+                        .descendants()
+                        .find(|node| {
+                            node.has_tag_name("g") && node.attribute("data-id") == Some(cluster_id)
+                        })
+                        .expect("requested composite group");
+                    let classes = cluster.attribute("class").unwrap_or_default();
+                    assert!(
+                        classes
+                            .split_whitespace()
+                            .any(|class| class == "statediagram-cluster")
+                    );
+                    assert_eq!(
+                        classes
+                            .split_whitespace()
+                            .any(|class| class == "statediagram-cluster-alt"),
+                        body_key == "altBackground",
+                        "the fixture must select the actual {body_key} body selector"
+                    );
+                    let body = cluster
+                        .children()
+                        .find(|node| node.attribute("class") == Some("inner"))
+                        .expect("composite body rectangle");
+                    let body_fill = body
+                        .attribute("style")
+                        .unwrap_or_default()
+                        .split(';')
+                        .filter_map(|declaration| declaration.split_once(':'))
+                        .find_map(|(property, value)| {
+                            (property.trim() == "fill").then(|| value.trim())
+                        });
+                    assert_eq!(
+                        body_fill,
+                        (!body_owned).then_some("#ec4899 !important"),
+                        "{origin} {body_key}, owned={body_owned}, htmlLabels={html_labels}: {svg}"
+                    );
+                    let header = cluster
+                        .descendants()
+                        .find(|node| node.attribute("class") == Some("outer"))
+                        .expect("composite header rectangle");
+                    assert!(
+                        !header
+                            .attribute("style")
+                            .unwrap_or_default()
+                            .contains("fill:"),
+                        "mainBkg must continue to own the Neo header: {svg}"
+                    );
+                    let css = state_svg_stylesheet(&svg);
+                    assert_eq!(css, state_svg_stylesheet(&baseline));
+                    assert!(css.contains(
+                        "[data-look=\"neo\"].statediagram-cluster rect{fill:#22c55e;stroke:"
+                    ));
+                    if body_owned {
+                        assert!(
+                            css.contains(&format!("{body_selector}{{fill:{BODY_BACKGROUND};}}"))
+                        );
+                        assert_eq!(
+                            svg, baseline,
+                            "fully overridden fills must preserve unthemed output"
+                        );
+                    }
+                    assert_eq!(
+                        evidence,
+                        StateThemeEvidenceCounts {
+                            required: 2,
+                            accounted: 2,
+                            applied: usize::from(!body_owned),
+                            not_applicable: 1 + usize::from(body_owned),
+                            residual: 0,
+                        },
+                        "{origin} {body_key}, owned={body_owned}, htmlLabels={html_labels}"
+                    );
+                }
+            }
         }
     }
 }

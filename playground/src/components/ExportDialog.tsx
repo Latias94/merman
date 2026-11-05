@@ -26,6 +26,7 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { ExportPreview } from "@/src/components/ExportPreview";
+import { OutputCompatibility } from "./OutputCompatibility";
 import {
   createSvgExportBlob,
   downloadBlob,
@@ -46,7 +47,6 @@ import type {
 } from "@/src/runtime/artifact-actions";
 import type { NavigableInlineSvg } from "@/src/runtime/render-artifact";
 import type { RenderPublicationId } from "@/src/runtime/render-coordinator";
-import { selectThemeDraftChanged, useAppStore } from "@/src/store";
 
 type ExportFormat = "svg" | "png" | "jpeg";
 type RasterSizingMode = RasterSizing["mode"];
@@ -96,11 +96,6 @@ export function ExportWorkbench({ children }: { children: ReactNode }) {
   const { t } = useTranslation();
   const [target, setTarget] = useState<FrozenExportTarget | null>(null);
   const restoreFocusRef = useRef<HTMLElement | null>(null);
-  const themeDraftChanged = useAppStore(selectThemeDraftChanged);
-
-  useEffect(() => {
-    if (themeDraftChanged) setTarget(null);
-  }, [themeDraftChanged]);
 
   const openExport = useCallback(
     (
@@ -412,6 +407,7 @@ function ExportDialog({
         data-testid="export-dialog"
         data-export-engine={target.engine}
         data-export-publication={target.publicationId}
+        data-export-svg-pipeline={target.svgPipeline ?? undefined}
         className="grid h-[min(760px,calc(100dvh-2rem))] w-[min(980px,calc(100vw-2rem))] max-w-none grid-rows-[auto_minmax(0,1fr)_auto] gap-0 overflow-hidden p-0 max-sm:h-[100dvh] max-sm:w-screen max-sm:rounded-none max-sm:border-0"
       >
         <DialogHeader
@@ -425,6 +421,9 @@ function ExportDialog({
               publication: target.publicationId,
             })}
           </DialogDescription>
+          {target.unavailableThemePresetId && <p role="status" className="break-words text-xs text-muted-foreground" data-testid="export-theme-preset-fallback">
+            {t("themePanel.unavailablePresetExport", { id: target.unavailableThemePresetId })}
+          </p>}
           <DialogClose asChild>
             <Button
               type="button"
@@ -632,6 +631,8 @@ function ExportDialog({
                 />
               </>
             )}
+            <OutputCompatibility metadata={target.metadata} svgPipeline={target.svgPipeline}
+              engine={target.engine} raster={usesRaster} />
           </div>
 
           <div className="flex min-h-[260px] flex-col lg:min-h-0">

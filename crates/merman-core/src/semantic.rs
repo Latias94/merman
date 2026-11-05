@@ -114,7 +114,7 @@ impl SemanticParser {
         &self.runtime_policy
     }
 
-    /// Returns the explicit host overrides applied before source-config admission.
+    /// Returns the cumulative host overrides applied before source-config admission.
     pub fn site_config_overrides(&self) -> &MermaidConfig {
         &self.site_config_overrides
     }
@@ -228,7 +228,7 @@ impl SemanticParser {
                 editor_demand,
                 control,
             )?;
-            let source_config = captured.source_config;
+            let mut source_config = captured.source_config;
             let pre = match captured.outcome {
                 PreprocessCaptureResult::Ready(pre) => *pre,
                 PreprocessCaptureResult::Failed(error) => {
@@ -255,7 +255,12 @@ impl SemanticParser {
                         Err(error) => return Ok(Err(error)),
                     },
                 };
-                self.prepare_semantic_source_controlled(diagram_type, pre, control)
+                self.prepare_semantic_source_controlled(
+                    diagram_type,
+                    pre,
+                    Some(&mut source_config),
+                    control,
+                )
             }));
             let (metadata, source) = match prepared {
                 Ok(ready) => match ready? {
@@ -344,8 +349,11 @@ impl SemanticParser {
         result
     }
 
-    /// Applies host-level config before parsing. An explicit `secure` array replaces the
-    /// hardened defaults, matching the full parser's site-policy behavior.
+    /// Accumulates host config using Mermaid merge semantics, including ignored type mismatches.
+    ///
+    /// Effective config is rebuilt from hardened defaults and this cumulative host layer after
+    /// each update. An explicit `secure` array replaces earlier host policies and the hardened
+    /// defaults, matching the full parser's site-policy behavior.
     pub fn with_site_config(mut self, mut overrides: MermaidConfig) -> Self {
         if overrides.is_empty_object() {
             return self;
@@ -359,11 +367,22 @@ impl SemanticParser {
             .map(crate::json_value::clone_value_nonrecursive);
 
         self.site_config_overrides.deep_merge(overrides.as_value());
-        self.site_config.deep_merge(overrides.as_value());
         if let Some(secure) = explicit_secure {
-            self.site_config_overrides
-                .set_value("secure", secure.clone());
-            self.site_config.set_value("secure", secure);
+            self.site_config_overrides.set_value("secure", secure);
+        }
+        self.site_config = crate::generated::default_site_config();
+        self.site_config
+            .deep_merge(self.site_config_overrides.as_value());
+        if let Some(secure) = self
+            .site_config_overrides
+            .as_value()
+            .get("secure")
+            .filter(|value| value.is_array())
+        {
+            self.site_config.set_value(
+                "secure",
+                crate::json_value::clone_value_nonrecursive(secure),
+            );
         }
         self
     }
@@ -501,11 +520,16 @@ impl SemanticParser {
         options: crate::ParseOptions,
         control: &OperationControl,
     ) -> OperationControlResult<Result<ParsedSemanticDiagram>> {
-        let (mut metadata, source) =
-            match self.prepare_semantic_source_controlled(diagram_type, pre, control)? {
-                Ok(prepared) => prepared,
-                Err(error) => return Ok(Err(error)),
-            };
+        let (mut metadata, source) = match self.prepare_semantic_source_controlled(
+            diagram_type,
+            pre,
+            #[cfg(feature = "editor-facts")]
+            None,
+            control,
+        )? {
+            Ok(prepared) => prepared,
+            Err(error) => return Ok(Err(error)),
+        };
         control.checkpoint_at(crate::OperationPhase::Semantic)?;
         let parsed = match crate::family::canonical_parser(diagram_type) {
             Some(parser) => {
@@ -548,6 +572,9 @@ impl SemanticParser {
         &self,
         diagram_type: &str,
         pre: crate::PreprocessResult,
+        #[cfg(feature = "editor-facts")] source_config: Option<
+            &mut crate::preprocess::SourceConfigEvidence,
+        >,
         control: &OperationControl,
     ) -> OperationControlResult<Result<(SemanticMetadata, crate::PreprocessedSource)>> {
         control.checkpoint()?;
@@ -561,6 +588,10 @@ impl SemanticParser {
         } else {
             crate::config::source_filtered_overrides(&self.site_config, &pre.config, control)?
         };
+        #[cfg(feature = "editor-facts")]
+        if let Some(evidence) = source_config {
+            evidence.freeze_appearance(diagram_type, &admitted_source);
+        }
         let mut semantic_config = self.site_config.clone();
         if !admitted_source.is_empty_object() {
             semantic_config.deep_merge(admitted_source.as_value());
@@ -1594,15 +1625,107 @@ mod tests {
             json!(1)
         );
 
-        let host_policy =
-            SemanticParser::new().with_site_config(MermaidConfig::from_value(json!({
+        let host_policy = SemanticParser::new()
+            .with_site_config(MermaidConfig::from_value(json!({
+                "secure": ["maxEdges", "securityLevel"]
+            })))
+            .with_site_config(MermaidConfig::from_value(json!({
                 "secure": [],
-                "maxEdges": 1
-            })));
+                "maxEdges": 2
+            })))
+            .with_site_config(MermaidConfig::from_value(json!({"theme": "dark"})));
+        assert_eq!(
+            host_policy.site_config_overrides.as_value()["secure"],
+            json!([])
+        );
+        assert_eq!(host_policy.site_config.as_value()["secure"], json!([]));
+        let allowed = host_policy
+            .parse_diagram_sync(
+                "%%{init: {securityLevel: 'loose', maxEdges: 2}}%%\nflowchart TD\nA-->B\nB-->C",
+            )
+            .expect("the latest host secure array replaces earlier policies");
+        assert_eq!(
+            allowed.metadata.semantic_config.get_str("securityLevel"),
+            Some("loose")
+        );
+        assert_eq!(
+            allowed.metadata.semantic_config.as_value()["maxEdges"],
+            json!(2)
+        );
         let error = host_policy
             .parse_diagram_with_type_sync("flowchart-v2", source)
             .expect_err("explicit host policy allows the source maxEdges override");
         assert!(error.to_string().contains("maxEdges"));
+
+        let locked = host_policy.with_site_config(MermaidConfig::from_value(json!({
+            "secure": ["maxEdges"],
+            "maxEdges": 1
+        })));
+        assert_eq!(locked.site_config.as_value()["secure"], json!(["maxEdges"]));
+        let one_edge = locked
+            .parse_diagram_sync(
+                "%%{init: {securityLevel: 'loose', maxEdges: 3}}%%\nflowchart TD\nA-->B",
+            )
+            .expect("source securityLevel remains unlocked while maxEdges is host-owned");
+        assert_eq!(
+            one_edge.metadata.semantic_config.as_value()["maxEdges"],
+            json!(1)
+        );
+        assert_eq!(
+            one_edge.metadata.semantic_config.get_str("securityLevel"),
+            Some("loose")
+        );
+        assert!(
+            locked
+                .parse_diagram_sync("%%{init: {maxEdges: 3}}%%\nflowchart TD\nA-->B\nB-->C")
+                .expect_err("the host edge budget cannot be raised by a locked source key")
+                .to_string()
+                .contains("maxEdges")
+        );
+    }
+
+    #[cfg(feature = "diagram-flowchart")]
+    #[test]
+    fn semantic_host_updates_rebuild_from_cumulative_overrides() {
+        let parser = SemanticParser::new()
+            .with_site_config(MermaidConfig::from_value(json!({
+                "maxEdges": {"ignored": true}
+            })))
+            .with_site_config(MermaidConfig::from_value(json!({"maxEdges": 1})));
+        assert_eq!(
+            parser.site_config_overrides().as_value()["maxEdges"],
+            json!({"ignored": true})
+        );
+        assert_eq!(parser.site_config.as_value()["maxEdges"], json!(500));
+        for known_type in [false, true] {
+            for edge_count in [1, 2, 500, 501] {
+                let targets = (0..edge_count)
+                    .map(|index| format!("N{index}"))
+                    .collect::<Vec<_>>()
+                    .join(" & ");
+                let source = format!("flowchart TD\nA --> {targets}");
+                let parsed = if known_type {
+                    parser.parse_diagram_with_type_sync("flowchart-v2", &source)
+                } else {
+                    parser.parse_diagram_sync(&source)
+                };
+                if edge_count > 500 {
+                    let error = parsed.expect_err("the pinned 500-edge default is still enforced");
+                    assert!(error.to_string().contains("maxEdges"));
+                    continue;
+                }
+                let parsed =
+                    parsed.expect("ignored type mismatches retain the default edge budget");
+                assert_eq!(
+                    parsed.metadata.semantic_config.as_value()["maxEdges"],
+                    json!(500)
+                );
+                let SemanticDiagramModel::Flowchart(model) = parsed.model else {
+                    panic!("expected Flowchart model");
+                };
+                assert_eq!(model.edges.len(), edge_count);
+            }
+        }
     }
 
     #[cfg(feature = "diagram-flowchart")]

@@ -369,6 +369,8 @@ pub(super) fn render_state_node_svg(
                     w,
                     h,
                     stroke_width: 1.3,
+                    work_meter: ctx.work_meter,
+                    phase: merman_model::OperationPhase::Emit,
                     randomness: &ctx.hand_drawn_seed,
                 })
                 .unwrap_or_else(|| ("M0,0".to_string(), "M0,0".to_string()))
@@ -526,6 +528,8 @@ pub(super) fn render_state_node_svg(
                         w,
                         h,
                         stroke_width: 1.3,
+                        work_meter: ctx.work_meter,
+                        phase: merman_model::OperationPhase::Emit,
                         randomness: &ctx.hand_drawn_seed,
                     })
                 } else {

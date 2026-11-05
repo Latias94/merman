@@ -1088,7 +1088,9 @@ mod tests {
         assert!(observer.unresolved_glyph_fallback());
         #[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
         {
-            let plan = seed.finish_with_tree(&tree);
+            let plan = seed
+                .finish_with_tree(&tree, &merman_model::OperationControl::new())
+                .unwrap();
             assert!(plan.used_system_fonts());
             assert!(plan.family_fallback_used());
             assert!(plan.glyph_fallback_used());
@@ -1114,7 +1116,7 @@ mod tests {
             "a discovered source failure must remain terminal"
         );
         assert!(observer.unresolved_font_request());
-        assert!(observer.admitted_faces().is_empty());
+        assert!(observer.admitted_faces().unwrap().is_empty());
         assert!(!observer.family_fallback_used());
         assert!(tree.root().children().is_empty());
     }
@@ -1147,13 +1149,16 @@ mod tests {
             .flat_map(|span| span.positioned_glyphs.iter())
             .collect::<Vec<_>>();
         assert!(!glyphs.is_empty(), "fixture must shape visible glyphs");
-        let admitted = observer.admitted_faces();
+        let admitted = observer.admitted_faces().unwrap();
         assert!(glyphs.iter().all(|glyph| {
             admitted.get(&glyph.font) == Some(&super::super::NativeExportFontSource::System)
         }));
+        drop(admitted);
         #[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
         {
-            let plan = seed.finish_with_tree(&tree);
+            let plan = seed
+                .finish_with_tree(&tree, &merman_model::OperationControl::new())
+                .unwrap();
             assert!(plan.used_system_fonts());
             assert_eq!(plan.unclassified_face_count(), 0);
         }
@@ -1189,13 +1194,16 @@ mod tests {
             .flat_map(|span| span.positioned_glyphs.iter())
             .collect::<Vec<_>>();
         assert!(!glyphs.is_empty(), "fixture must shape visible glyphs");
-        let admitted = observer.admitted_faces();
+        let admitted = observer.admitted_faces().unwrap();
         assert!(glyphs.iter().all(|glyph| {
             admitted.get(&glyph.font) == Some(&super::super::NativeExportFontSource::Caller)
         }));
+        drop(admitted);
         #[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
         {
-            let plan = seed.finish_with_tree(&tree);
+            let plan = seed
+                .finish_with_tree(&tree, &merman_model::OperationControl::new())
+                .unwrap();
             assert!(!plan.used_system_fonts());
             assert_eq!(plan.unclassified_face_count(), 0);
         }

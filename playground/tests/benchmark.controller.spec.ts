@@ -7,6 +7,7 @@ import { BENCHMARK_REPORT_SCHEMA_VERSION } from "../src/benchmark/report-schema"
 import {
   monitorBrowserErrors,
   openPlayground,
+  openWorkbenchTool,
   replaceEditorSource,
   waitForPreviewSvg,
 } from "./helpers/playground";
@@ -21,8 +22,8 @@ test("benchmark controller explains runtime reuse and downloads matching evidenc
   await openPlayground(page);
   await waitForPreviewSvg(page);
 
-  const benchButton = page.getByRole("button", { name: "Bench", exact: true });
-  await benchButton.click();
+  const toolsButton = page.getByRole("button", { name: "Tools", exact: true });
+  await openWorkbenchTool(page, "Benchmark");
   const dialog = page.getByRole("dialog", { name: "Browser Benchmark" });
   await expect(dialog).toBeVisible();
   await expect(dialog).toContainText(
@@ -101,10 +102,10 @@ test("benchmark controller explains runtime reuse and downloads matching evidenc
 
   await dialog.getByRole("button", { name: "Close benchmark" }).click();
   await expect(dialog).toBeHidden();
-  await expect(benchButton).toBeFocused();
+  await expect(toolsButton).toBeFocused();
   const rerunSource = "flowchart LR\n  Before --> After";
   await replaceEditorSource(page, rerunSource);
-  await benchButton.click();
+  await openWorkbenchTool(page, "Benchmark");
   await expect(dialog.getByRole("heading", { name: "Complete" })).toBeVisible();
   await expect(dialog.getByText("Source changed", { exact: true })).toBeVisible();
   await dialog.getByRole("button", { name: "Run again" }).click();
@@ -134,7 +135,7 @@ test("closing an active rerun preserves the last completed report and removes ev
   await openPlayground(page);
   await waitForPreviewSvg(page);
 
-  await page.getByRole("button", { name: "Bench", exact: true }).click();
+  await openWorkbenchTool(page, "Benchmark");
   const dialog = page.getByRole("dialog", { name: "Browser Benchmark" });
   await dialog.getByLabel("Measured blocks").click();
   await page.getByRole("option", { name: "2", exact: true }).click();
@@ -154,7 +155,7 @@ test("closing an active rerun preserves the last completed report and removes ev
   await expect(dialog).toBeHidden();
   await expect(page.locator('iframe[data-merman-realm="benchmark"]')).toHaveCount(0);
 
-  await page.getByRole("button", { name: "Bench", exact: true }).click();
+  await openWorkbenchTool(page, "Benchmark");
   await expect(dialog.getByRole("heading", { name: "Complete" })).toBeVisible();
   await expect(dialog).toContainText(
     "The latest run was cancelled. Showing the previous result.",
@@ -185,7 +186,7 @@ test("page lifecycle invalidation suppresses aggregates and allows a clean rerun
   await openPlayground(page);
   await waitForPreviewSvg(page);
 
-  await page.getByRole("button", { name: "Bench", exact: true }).click();
+  await openWorkbenchTool(page, "Benchmark");
   const dialog = page.getByRole("dialog", { name: "Browser Benchmark" });
   await dialog.getByLabel("Measured blocks").click();
   await page.getByRole("option", { name: "20", exact: true }).click();
@@ -215,7 +216,7 @@ test("Bench controls recover when the document returns to the foreground", async
   await openPlayground(page);
   await waitForPreviewSvg(page);
 
-  await page.getByRole("button", { name: "Bench", exact: true }).click();
+  await openWorkbenchTool(page, "Benchmark");
   const dialog = page.getByRole("dialog", { name: "Browser Benchmark" });
   const run = dialog.getByRole("button", { name: "Run", exact: true });
   await expect(run).toBeEnabled();

@@ -1,12 +1,12 @@
 {
   "schema_version": 4,
   "source": {
-    "mermaid_version": "12.2.0",
-    "mermaid_cli_version": "12.0.0",
-    "mermaid_source_tag": "mermaid@12.2.0",
-    "mermaid_source_commit": "1fb7869866dd619168d840291c9c54b4f129758b",
-    "package_json_sha256": "7a5b463202555d13b49d58353ead90dfac8ae7390cbf0020a9cad53a5e44131c",
-    "package_lock_sha256": "399cd8e13fdda8965f048abfcc8a160c66252d660e2eccdf56c2472529845289",
+    "mermaid_version": "12.3.0",
+    "mermaid_cli_version": "12.2.0",
+    "mermaid_source_tag": "mermaid@12.3.0",
+    "mermaid_source_commit": "2086904e76c692331e34a45d7cc3bc30860d040e",
+    "package_json_sha256": "a84a0b50e1d198b67f07292f4122fcba73565044e8699d8ccd6ee7a996450adb",
+    "package_lock_sha256": "24d30b0c2b10586e8a41451352da1217a0dce2ec6172c390ec084597fab8f66b",
     "mermaid_config_sha256": "da34e9d1dae1882d3b32a479e6223bad495f31877e6d0a3f0a3e3a157832eacc",
     "renderer_revision": "xtask-upstream-svg-v5"
   },
@@ -14,10 +14,10 @@
     "mode": "generated",
     "render_environment": {
       "browser": {
-        "product": "HeadlessChrome",
-        "version": "151.0.7922.77",
-        "revision": "@ff37cfca210138f2a40b843b4a8195ab7e4fc7ff",
-        "locale": "en-US",
+        "product": "Chrome",
+        "version": "156.0.8078.47",
+        "revision": "@1d17a2e2ee147bb7d6ae2ab6abdb3a2510c17775",
+        "locale": "zh-CN",
         "timezone": "Asia/Shanghai"
       },
       "puppeteer": {
@@ -29,18 +29,18 @@
         "release": "27.0.0"
       },
       "mermaid_runtime": {
-        "mermaid_version": "12.2.0",
+        "mermaid_version": "12.3.0",
         "dompurify_version": "3.4.17",
         "compiler_version": "0.28.1",
-        "artifact_sha256": "29d255aa0a6d1d69e6d7c56a67b64c6c89318e2acf079587ec85743c70b44a2e",
+        "artifact_sha256": "555d901f1da7635d0727be0a5b95cc1b84a4770e08126fed19e53966515a8911",
         "dompurify_package_sha256": "2a67a4d0cb2f51dbde8e63138391edd707e0d4bef608b1ad19c509d162e75bb6",
         "compiler_package_sha256": "410ea1c459ed1e9424a17e132f4cd84518faf824abe3377081ab54b42687f6f4",
-        "mermaid_package_sha256": "428bc8e4372395ef8c7d3c35c0e9845fe016e7c4cba6f1e442d752251232dd87",
-        "mermaid_cli_package_sha256": "8f204052d8117c099211557288ef4c34597785da3843d1864a46fa12b1c8663d"
+        "mermaid_package_sha256": "8dea6d2895b9a75667443ef8a82fc4b8d30f962de057686c7b6ef860bc69d251",
+        "mermaid_cli_package_sha256": "7d43b6fab89acc14a4d1164d59675ceccbdcfe5d68944229461597031688ac5d"
       },
       "font_probe": {
         "revision": "mermaid-font-probe-v1",
-        "sha256": "f03521bd4356783dc11fec2ed2219380d6ae8fa24313e2008f50b1a8cd70ce14"
+        "sha256": "c6b2b6ad65d9a2e47ff3b8c2b54afabae3c184561c20ae0f5b5bb11a35e890e2"
       }
     }
   },
@@ -48,7 +48,7 @@
   "fixtures": {
     "basic": {
       "input_sha256": "3b1174678581c3b771d619ee0b4e1300c1cd5304f3c2e002ab7aade8c86188b8",
-      "svg_sha256": "c2b444c6acd655ba053a5cfa0952eb13a4268fa607bbb54081a8476512bbd435",
+      "svg_sha256": "82852b755bec23b4928755eaa897e783e24d38d96182fe35235f406fdcc168a1",
       "renderer_profile": "owned-runtime-seeded-puppeteer-seed-1-fixed-date-1704067200000"
     },
     "local_elk_boundary_label_guard": {
@@ -58,7 +58,7 @@
     },
     "shapes-and-notes": {
       "input_sha256": "c3ec9b691c5e1cc418c06c5f84be2d0848851b8772cec3f83cc76c9004c20b17",
-      "svg_sha256": "408fcb09eeef9ecffa75fa83bcaa9072a8b8b3b00207dc3f443114c356fc4eca",
+      "svg_sha256": "71e1dccf76cf079ac354b07f572f8a8b04224b072e92685a644c17706e7eb4a3",
       "renderer_profile": "owned-runtime-seeded-puppeteer-seed-1-fixed-date-1704067200000"
     }
   },

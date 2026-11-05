@@ -2617,9 +2617,13 @@ fn block_stadium_renders_rough_outer_path_and_clips_edge() {
 }
 
 #[test]
-fn block_absent_text_rules_have_no_terminal_even_with_frontmatter_and_composite_labels() {
-    let source = "---\ntitle: Metadata title\n---\nblock\n  columns 1\n  block:group[\"Composite title\"]\n    A[\"Alpha\"]\n  end\n";
+fn block_absent_text_rules_exclude_metadata_and_noncomposite_labels() {
     for target in [ThemeTarget::Title, ThemeTarget::ClusterLabel] {
+        let source = if target == ThemeTarget::Title {
+            "---\ntitle: Metadata title\n---\nblock\n  columns 1\n  block:group[\"Composite title\"]\n    A[\"Alpha\"]\n  end\n"
+        } else {
+            "---\ntitle: Metadata title\n---\nblock\n A[\"Alpha\"]\n"
+        };
         for html_labels in [false, true] {
             for variant in [
                 None,
@@ -3189,6 +3193,263 @@ const BLOCK_CLUSTER_SOURCE: &str =
 
 fn block_cluster_theme(rules: impl IntoIterator<Item = ThemeRule>) -> DiagramTheme {
     block_edge_theme(rules)
+}
+
+#[test]
+fn block_cluster_label_scalar_reaches_only_the_composite_label_writer() {
+    for html in [false, true] {
+        let config = serde_json::json!({"htmlLabels":html});
+        let baseline = render_block_svg_from_text_with_engine(
+            &MermaidEngine::new().with_site_config(
+                merman_core::presentation::SourcePresentationConfig::from_value(config.clone()),
+            ),
+            BLOCK_CLUSTER_SOURCE,
+        );
+        let baseline_document = roxmltree::Document::parse(&baseline).unwrap();
+        let baseline_stylesheet = baseline_document
+            .descendants()
+            .find(|node| node.has_tag_name("style"))
+            .unwrap()
+            .text()
+            .unwrap();
+        for variant in [None, Some(ThemeVariant::Default)] {
+            for (paint, css) in [
+                (CanvasPaint::solid("#b316cd").unwrap(), "#b316cd"),
+                (CanvasPaint::Transparent, "transparent"),
+            ] {
+                let mut rule = ThemeRule::new(
+                    ThemeTarget::ClusterLabel,
+                    ThemeStylePatch::default().with_fill(paint),
+                );
+                if let Some(variant) = variant {
+                    rule = rule.with_variant(variant);
+                }
+                let theme = block_cluster_theme([rule]);
+                let rendered = render_block_with_theme_and_engine(
+                    BLOCK_CLUSTER_SOURCE,
+                    &theme,
+                    MermaidEngine::new().with_site_config(
+                        merman_core::presentation::SourcePresentationConfig::from_value(
+                            config.clone(),
+                        ),
+                    ),
+                );
+                let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+                let group = document
+                    .descendants()
+                    .find(|node| node.attribute("id") == Some("block-theme-group"))
+                    .unwrap();
+                let terminal = group
+                    .descendants()
+                    .find(|node| node.has_tag_name(if html { "p" } else { "text" }))
+                    .unwrap();
+                assert_eq!(
+                    terminal.attribute("style"),
+                    Some(format!("{}:{css};", if html { "color" } else { "fill" }).as_str())
+                );
+                assert_eq!(
+                    terminal
+                        .descendants()
+                        .filter_map(|node| node.text().filter(|_| node.is_text()))
+                        .collect::<String>(),
+                    "Group"
+                );
+                let stylesheet = document
+                    .descendants()
+                    .find(|node| node.has_tag_name("style"))
+                    .unwrap()
+                    .text()
+                    .unwrap();
+                assert_eq!(
+                    stylesheet.replace("block-theme", "merman"),
+                    baseline_stylesheet,
+                    "only the existing label terminal receives typed paint"
+                );
+                let restored = if html {
+                    rendered
+                        .svg()
+                        .replacen(&format!(r#"<p style="color:{css};">"#), "<p>", 1)
+                } else {
+                    rendered.svg().replacen(&format!("fill:{css};"), "", 1)
+                };
+                assert_eq!(
+                    restored.replace("block-theme", "merman"),
+                    baseline,
+                    "unpainted output retains the default SVG bytes"
+                );
+                for id in ["block-theme-A", "block-theme-B"] {
+                    let ordinary = document
+                        .descendants()
+                        .find(|node| node.attribute("id") == Some(id))
+                        .unwrap();
+                    assert!(
+                        !ordinary
+                            .descendants()
+                            .any(|node| node.attribute("style").unwrap_or("").contains(css))
+                    );
+                }
+                let evidence =
+                    merman_render::__private::family_evidence(rendered.into_completion().report());
+                assert_eq!(evidence.applied_count(), 1);
+                assert_eq!(evidence.not_applicable_count(), 0);
+                assert_eq!(evidence.theme_residual_count(), 0);
+            }
+        }
+    }
+}
+
+#[test]
+fn block_cluster_label_keeps_source_color_and_the_original_config_property() {
+    let theme = block_cluster_theme([ThemeRule::new(
+        ThemeTarget::ClusterLabel,
+        ThemeStylePatch::default().with_fill(CanvasPaint::solid("#b316cd").unwrap()),
+    )]);
+    for html in [false, true] {
+        for (suffix, variables, applied) in [
+            ("style group color:#b316cd\n", serde_json::json!({}), false),
+            (
+                "classDef brand color:#b316cd\nclass group brand\n",
+                serde_json::json!({}),
+                false,
+            ),
+            ("", serde_json::json!({"nodeTextColor":"#b316cd"}), false),
+            ("", serde_json::json!({"titleColor":"#123456"}), true),
+        ] {
+            let source = format!("{BLOCK_CLUSTER_SOURCE}{suffix}");
+            let rendered = render_block_with_theme_and_engine(
+                &source,
+                &theme,
+                MermaidEngine::new().with_site_config(
+                    merman_core::presentation::SourcePresentationConfig::from_value(
+                        serde_json::json!({"htmlLabels":html,"themeVariables":variables}),
+                    ),
+                ),
+            );
+            let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+            let group = document
+                .descendants()
+                .find(|node| node.attribute("id") == Some("block-theme-group"))
+                .unwrap();
+            if applied {
+                let terminal = group
+                    .descendants()
+                    .find(|node| node.has_tag_name(if html { "p" } else { "text" }))
+                    .unwrap();
+                assert_eq!(
+                    terminal.attribute("style"),
+                    Some(if html {
+                        "color:#b316cd;"
+                    } else {
+                        "fill:#b316cd;"
+                    })
+                );
+            } else if html {
+                assert!(
+                    group
+                        .descendants()
+                        .filter(|node| node.has_tag_name("p"))
+                        .all(|node| node.attribute("style").is_none())
+                );
+            }
+            let evidence =
+                merman_render::__private::family_evidence(rendered.into_completion().report());
+            assert_eq!(evidence.applied_count(), usize::from(applied));
+            assert_eq!(evidence.not_applicable_count(), usize::from(!applied));
+            assert_eq!(evidence.theme_residual_count(), 0);
+        }
+    }
+}
+
+#[test]
+fn block_cluster_label_role_keeps_generic_text_on_other_nodes() {
+    for role_last in [false, true] {
+        let role = ThemeRule::new(
+            ThemeTarget::ClusterLabel,
+            ThemeStylePatch::default().with_fill(CanvasPaint::solid("#b316cd").unwrap()),
+        );
+        let text = ThemeRule::new(
+            ThemeTarget::Text,
+            ThemeStylePatch::default().with_fill(CanvasPaint::solid("#2468ac").unwrap()),
+        );
+        let theme = block_cluster_theme(if role_last {
+            [text, role]
+        } else {
+            [role, text]
+        });
+        let rendered =
+            render_block_with_theme_and_engine(BLOCK_CLUSTER_SOURCE, &theme, MermaidEngine::new());
+        let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+        for (id, color) in [
+            ("block-theme-group", "#b316cd"),
+            ("block-theme-A", "#2468ac"),
+            ("block-theme-B", "#2468ac"),
+        ] {
+            let node = document
+                .descendants()
+                .find(|node| node.attribute("id") == Some(id))
+                .unwrap();
+            let label = node
+                .descendants()
+                .find(|node| node.has_tag_name("p"))
+                .unwrap();
+            assert_eq!(
+                label.attribute("style"),
+                Some(format!("color:{color};").as_str())
+            );
+        }
+        let evidence =
+            merman_render::__private::family_evidence(rendered.into_completion().report());
+        assert_eq!(evidence.applied_count(), 2);
+        assert_eq!(evidence.theme_residual_count(), 0);
+    }
+}
+
+#[test]
+fn block_cluster_label_reconciles_empty_labels_and_unsupported_selectors() {
+    for (source, variant, ordinal, residual) in [
+        (
+            "block\n block:group[\" \"]\n A[\"Alpha\"]\n end\n",
+            None,
+            None,
+            0,
+        ),
+        (BLOCK_CLUSTER_SOURCE, Some(ThemeVariant::Active), None, 0),
+        (BLOCK_CLUSTER_SOURCE, None, Some(1), 1),
+        (BLOCK_CLUSTER_SOURCE, None, Some(2), 0),
+    ] {
+        let mut rule = ThemeRule::new(
+            ThemeTarget::ClusterLabel,
+            ThemeStylePatch::default().with_fill(CanvasPaint::Transparent),
+        );
+        if let Some(variant) = variant {
+            rule = rule.with_variant(variant);
+        }
+        if let Some(ordinal) = ordinal {
+            rule = rule.with_ordinal(OrdinalSelector::exact(ordinal).unwrap());
+        }
+        let theme = block_cluster_theme([rule]);
+        let rendered = render_block_with_theme_requirement(
+            source,
+            &theme,
+            MermaidEngine::new(),
+            ThemePortabilityRequirement::BestEffort,
+        );
+        let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+        let group = document
+            .descendants()
+            .find(|node| node.attribute("id") == Some("block-theme-group"))
+            .unwrap();
+        assert!(!group.descendants().any(|node| {
+            node.attribute("style")
+                .unwrap_or("")
+                .contains("color:transparent;")
+        }));
+        let evidence =
+            merman_render::__private::family_evidence(rendered.into_completion().report());
+        assert_eq!(evidence.applied_count(), 0);
+        assert_eq!(evidence.not_applicable_count(), usize::from(residual == 0));
+        assert_eq!(evidence.theme_residual_count(), residual);
+    }
 }
 
 #[test]

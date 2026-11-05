@@ -17,8 +17,8 @@ Merman selects DOMPurify's Apache-2.0 option for generated sanitizer defaults; t
 
 Merman independently implements Mermaid-compatible behavior while translating selected algorithms, generating defaults, copying architecture icon data, and retaining upstream fixtures and snapshots.
 
-- Version: `12.2.0`
-- Source: https://github.com/mermaid-js/mermaid.git @ `1fb7869866dd619168d840291c9c54b4f129758b`
+- Version: `12.3.0`
+- Source: https://github.com/mermaid-js/mermaid.git @ `2086904e76c692331e34a45d7cc3bc30860d040e`
 - Relationship: `behavior-reference`, `copied`, `fixtures`, `generated`, `modified`, `translated`
 - License: `MIT`
 - Legal file: `THIRD_PARTY_LICENSES/mermaid/LICENSE`
@@ -27,8 +27,8 @@ Merman independently implements Mermaid-compatible behavior while translating se
 
 Merman's URL sanitization behavior is a source-backed Rust translation of sanitize-url.
 
-- Version: `7.1.1`
-- Source: https://github.com/braintree/sanitize-url.git @ `b1e8d50e4066a9af00fa042176676374747f754b`
+- Version: `7.1.2`
+- Source: https://github.com/braintree/sanitize-url.git @ `206cb8b942b10dad28dd3d31db3bf39e3fcdd7aa`
 - Relationship: `modified`, `translated`
 - License: `MIT`
 - Legal file: `THIRD_PARTY_LICENSES/sanitize-url/LICENSE`

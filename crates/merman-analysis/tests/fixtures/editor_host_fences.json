@@ -1,0 +1,266 @@
+{
+  "contract": [
+    "Editor hosts locate line-oriented fences, not full CommonMark or MDX syntax.",
+    "Markdown and MDX use the same rules; JSX and JavaScript expressions are not parsed.",
+    "Openers allow zero to three ASCII spaces, at least three backticks, tildes or colons, and an ASCII case-insensitive mermaid language followed by whitespace or end of line.",
+    "Closers use the same marker, at least the opening length, zero to three spaces of indentation and only trailing whitespace.",
+    "Whitespace before and after the language and after closing markers uses Unicode White_Space, matching Rust char::is_whitespace: U+0085 is whitespace and U+FEFF is not. Fence indentation still allows only ASCII spaces.",
+    "Non-Mermaid fences, including bare and colon fences, hide nested examples until a matching closer or EOF.",
+    "Outside fences, HTML comments run from literal <!-- through the next -->, without nesting; all transitions on each physical line are observed.",
+    "A line that starts inside a comment cannot open a fence, even when the comment ends on that line. Fence bodies and opening info strings do not change host comment state.",
+    "Unfinished Mermaid fences extend to EOF and count even with empty bodies. Unfinished comments and non-Mermaid fences hide later openers.",
+    "Rust preserves UTF-8 byte ranges and source line endings. Preview bodies normalize line endings and omit the newline immediately before a closing fence; empty previews are filtered after ordinal assignment."
+  ],
+  "cases": [
+    {
+      "name": "multiline_html_comment_does_not_admit_invalid_diagrams",
+      "language": "markdown",
+      "text": "<!-- hidden\n```mermaid\nnot a diagram\n```\n:::mermaid\nalso invalid\n:::\n-->\n```mermaid\nsequenceDiagram\nAlice->>Bob: visible\n```\n",
+      "valid": true,
+      "fences": [
+        { "start_line": 8, "end_line": 11, "opening": "```", "closing": "```", "body": "sequenceDiagram\nAlice->>Bob: visible\n" }
+      ]
+    },
+    {
+      "name": "unfinished_html_comment_hides_fences_to_eof",
+      "language": "mdx",
+      "text": "😀 intro <!--\n~~~mermaid\nnot a diagram\n~~~\n:::mermaid\ninvalid",
+      "valid": true,
+      "fences": []
+    },
+    {
+      "name": "same_line_comment_transitions_do_not_hide_the_next_fence",
+      "language": "markdown",
+      "text": "prefix <!-- first --> text <!-- second --> 😀\n```mermaid\nsequenceDiagram\nAlice->>Bob: visible\n```",
+      "valid": true,
+      "fences": [
+        { "start_line": 1, "end_line": 4, "opening": "```", "closing": "```", "body": "sequenceDiagram\nAlice->>Bob: visible\n" }
+      ]
+    },
+    {
+      "name": "closing_and_reopening_comments_on_the_same_line",
+      "language": "mdx",
+      "text": "<!--\n```mermaid\ninvalid\n```\n--> <!-- again\n~~~mermaid\ninvalid again\n~~~\n--> <!-- closed -->\n:::MERMAID title=Visible\nsequenceDiagram\nAlice->>Bob: visible\n::::",
+      "valid": true,
+      "fences": [
+        { "start_line": 9, "end_line": 12, "opening": ":::", "closing": "::::", "body": "sequenceDiagram\nAlice->>Bob: visible\n" }
+      ]
+    },
+    {
+      "name": "comment_closing_line_cannot_open_a_fence",
+      "language": "markdown",
+      "text": "<!--\n-->```mermaid\nsequenceDiagram\nAlice->>Bob: text",
+      "valid": true,
+      "fences": []
+    },
+    {
+      "name": "literal_comment_in_other_code_fence_does_not_leak",
+      "language": "markdown",
+      "text": "````text\n<!-- literal\n```mermaid\ninvalid example\n```\n````\n~~~mermaid\nsequenceDiagram\nAlice->>Bob: visible\n~~~",
+      "valid": true,
+      "fences": [
+        { "start_line": 6, "end_line": 9, "opening": "~~~", "closing": "~~~", "body": "sequenceDiagram\nAlice->>Bob: visible\n" }
+      ]
+    },
+    {
+      "name": "literal_comments_in_mermaid_body_do_not_hide_later_fences",
+      "language": "mdx",
+      "text": "```mermaid\nsequenceDiagram\n%% <!-- literal\nAlice->>Bob: first\n```\n:::mermaid\nsequenceDiagram\nBob->>Alice: second\n:::",
+      "valid": true,
+      "fences": [
+        { "start_line": 0, "end_line": 4, "opening": "```", "closing": "```", "body": "sequenceDiagram\n%% <!-- literal\nAlice->>Bob: first\n" },
+        { "start_line": 5, "end_line": 8, "opening": ":::", "closing": ":::", "body": "sequenceDiagram\nBob->>Alice: second\n" }
+      ]
+    },
+    {
+      "name": "comment_marker_in_fence_info_is_literal",
+      "language": "markdown",
+      "text": "```mermaid title=<!--\nsequenceDiagram\nAlice->>Bob: first\n```\n~~~mermaid\nsequenceDiagram\nBob->>Alice: second\n~~~",
+      "valid": true,
+      "fences": [
+        { "start_line": 0, "end_line": 3, "opening": "```", "closing": "```", "body": "sequenceDiagram\nAlice->>Bob: first\n" },
+        { "start_line": 4, "end_line": 7, "opening": "~~~", "closing": "~~~", "body": "sequenceDiagram\nBob->>Alice: second\n" }
+      ]
+    },
+    {
+      "name": "unfinished_mermaid_body_is_preserved_to_eof",
+      "language": "mdx",
+      "text": "before\n::: mermaid\nsequenceDiagram\n%% <!-- literal\nAlice->>Bob: unfinished",
+      "valid": true,
+      "fences": [
+        { "start_line": 1, "end_line": 4, "opening": ":::", "closing": null, "body": "sequenceDiagram\n%% <!-- literal\nAlice->>Bob: unfinished" }
+      ]
+    },
+    {
+      "name": "unfinished_other_fence_hides_nested_mermaid",
+      "language": "markdown",
+      "text": "````text\n<!-- literal -->\n```mermaid\ninvalid\n```\n",
+      "valid": true,
+      "fences": []
+    },
+    {
+      "name": "colon_language_boundary_and_other_fence_contract",
+      "language": "mdx",
+      "text": ":::note\n```mermaid\ninvalid\n```\n:::\n:::mermaidx\ninvalid prefix\n:::\n::: MERMAID extra info\nsequenceDiagram\nAlice->>Bob: visible\n:::::  \n",
+      "valid": true,
+      "fences": [
+        { "start_line": 8, "end_line": 11, "opening": ":::", "closing": ":::::", "body": "sequenceDiagram\nAlice->>Bob: visible\n" }
+      ]
+    },
+    {
+      "name": "mdx_keeps_existing_line_oriented_host_rules",
+      "language": "mdx",
+      "text": "<Panel>\n{/* host expressions are not parsed */}\n   ~~~~ Mermaid title=Main\nsequenceDiagram\nAlice->>Bob: visible\n  ~~~~~\n</Panel>",
+      "valid": true,
+      "fences": [
+        { "start_line": 2, "end_line": 5, "opening": "~~~~", "closing": "~~~~~", "body": "sequenceDiagram\nAlice->>Bob: visible\n" }
+      ]
+    },
+    {
+      "name": "crlf_and_unicode_host_coordinates",
+      "language": "mdx",
+      "text": "😀 中 before\r\n<!-- hidden\r\n```mermaid\r\ninvalid\r\n```\r\n-->\r\n  ``` Mermaid title=主图\r\nsequenceDiagram\r\nAlice->>Bob: 😀 中\r\n   ````\r\n",
+      "valid": true,
+      "fences": [
+        { "start_line": 6, "end_line": 9, "opening": "```", "closing": "````", "body": "sequenceDiagram\r\nAlice->>Bob: 😀 中\r\n" }
+      ]
+    },
+    {
+      "name": "bare_cr_line_endings_remain_supported",
+      "language": "markdown",
+      "text": "😀<!-- hidden\r:::mermaid\rinvalid\r:::\r-->\r~~~mermaid\rsequenceDiagram\rAlice->>Bob: visible\r~~~\r",
+      "valid": true,
+      "fences": [
+        { "start_line": 5, "end_line": 8, "opening": "~~~", "closing": "~~~", "body": "sequenceDiagram\rAlice->>Bob: visible\r" }
+      ]
+    },
+    {
+      "name": "four_spaces_and_tabs_are_not_fence_indentation",
+      "language": "markdown",
+      "text": "    ```mermaid\n    invalid\n    ```\n\t~~~mermaid\n\tinvalid\n\t~~~\n   :::mermaid\nsequenceDiagram\nAlice->>Bob: visible\n   :::",
+      "valid": true,
+      "fences": [
+        { "start_line": 6, "end_line": 9, "opening": ":::", "closing": ":::", "body": "sequenceDiagram\nAlice->>Bob: visible\n" }
+      ]
+    },
+    {
+      "name": "unicode_info_string_does_not_match_mermaid",
+      "language": "markdown",
+      "text": "```💡💡\ninvalid\n```\n~~~mermaid\nsequenceDiagram\nAlice->>Bob: visible\n~~~",
+      "valid": true,
+      "fences": [
+        { "start_line": 3, "end_line": 6, "opening": "~~~", "closing": "~~~", "body": "sequenceDiagram\nAlice->>Bob: visible\n" }
+      ]
+    },
+    {
+      "name": "unicode_nel_before_mermaid_language_is_whitespace",
+      "language": "markdown",
+      "text": "```\u0085mermaid\nsequenceDiagram\nAlice->>Bob: visible\n```",
+      "valid": true,
+      "fences": [
+        { "start_line": 0, "end_line": 3, "opening": "```", "closing": "```", "body": "sequenceDiagram\nAlice->>Bob: visible\n" }
+      ]
+    },
+    {
+      "name": "unicode_bom_before_mermaid_language_is_not_whitespace",
+      "language": "mdx",
+      "text": "~~~\ufeffmermaid\nnot a diagram\n~~~\n:::mermaid\nsequenceDiagram\nAlice->>Bob: visible\n:::",
+      "valid": true,
+      "fences": [
+        { "start_line": 3, "end_line": 6, "opening": ":::", "closing": ":::", "body": "sequenceDiagram\nAlice->>Bob: visible\n" }
+      ]
+    },
+    {
+      "name": "unicode_nel_after_mermaid_language_is_whitespace",
+      "language": "mdx",
+      "text": ":::mermaid\u0085title=Visible\nsequenceDiagram\nAlice->>Bob: visible\n:::",
+      "valid": true,
+      "fences": [
+        { "start_line": 0, "end_line": 3, "opening": ":::", "closing": ":::", "body": "sequenceDiagram\nAlice->>Bob: visible\n" }
+      ]
+    },
+    {
+      "name": "unicode_bom_after_mermaid_language_is_not_whitespace",
+      "language": "markdown",
+      "text": "```mermaid\ufeff title=Hidden\nnot a diagram\n```\n~~~mermaid\nsequenceDiagram\nAlice->>Bob: visible\n~~~",
+      "valid": true,
+      "fences": [
+        { "start_line": 3, "end_line": 6, "opening": "~~~", "closing": "~~~", "body": "sequenceDiagram\nAlice->>Bob: visible\n" }
+      ]
+    },
+    {
+      "name": "unicode_nel_after_closing_marker_is_whitespace",
+      "language": "markdown",
+      "text": "~~~mermaid\nsequenceDiagram\nAlice->>Bob: first\n~~~\u0085\n:::mermaid\nsequenceDiagram\nBob->>Alice: second\n:::",
+      "valid": true,
+      "fences": [
+        { "start_line": 0, "end_line": 3, "opening": "~~~", "closing": "~~~", "body": "sequenceDiagram\nAlice->>Bob: first\n" },
+        { "start_line": 4, "end_line": 7, "opening": ":::", "closing": ":::", "body": "sequenceDiagram\nBob->>Alice: second\n" }
+      ]
+    },
+    {
+      "name": "unicode_bom_after_closing_marker_is_body_text",
+      "language": "mdx",
+      "text": ":::mermaid\nsequenceDiagram\nAlice->>Bob: first\n:::\ufeff\nBob->>Alice: continued\n:::\n~~~mermaid\nsequenceDiagram\nAlice->>Bob: second\n~~~",
+      "fences": [
+        { "start_line": 0, "end_line": 5, "opening": ":::", "closing": ":::", "body": "sequenceDiagram\nAlice->>Bob: first\n:::\ufeff\nBob->>Alice: continued\n" },
+        { "start_line": 6, "end_line": 9, "opening": "~~~", "closing": "~~~", "body": "sequenceDiagram\nAlice->>Bob: second\n" }
+      ]
+    },
+    {
+      "name": "unicode_nel_closer_restores_comment_state_before_second_fence",
+      "language": "markdown",
+      "text": "```mermaid\nsequenceDiagram\nAlice->>Bob: first\n```\u0085\n<!--\n:::mermaid\nhidden invalid\n:::\n-->\n:::mermaid\nsequenceDiagram\nBob->>Alice: visible\n:::",
+      "valid": true,
+      "fences": [
+        { "start_line": 0, "end_line": 3, "opening": "```", "closing": "```", "body": "sequenceDiagram\nAlice->>Bob: first\n" },
+        { "start_line": 9, "end_line": 12, "opening": ":::", "closing": ":::", "body": "sequenceDiagram\nBob->>Alice: visible\n" }
+      ]
+    },
+    {
+      "name": "unicode_bom_noncloser_keeps_comment_literal_until_real_closer",
+      "language": "mdx",
+      "text": "```mermaid\nsequenceDiagram\nAlice->>Bob: first\n```\ufeff\n<!-- literal\n```\n:::mermaid\nsequenceDiagram\nBob->>Alice: second\n:::",
+      "fences": [
+        { "start_line": 0, "end_line": 5, "opening": "```", "closing": "```", "body": "sequenceDiagram\nAlice->>Bob: first\n```\ufeff\n<!-- literal\n" },
+        { "start_line": 6, "end_line": 9, "opening": ":::", "closing": ":::", "body": "sequenceDiagram\nBob->>Alice: second\n" }
+      ]
+    },
+    {
+      "name": "empty_fences_count_before_preview_filtering",
+      "language": "markdown",
+      "text": "<!--\n```mermaid\ninvalid\n```\n-->\n```mermaid\n```\n~~~mermaid\nsequenceDiagram\nAlice->>Bob: visible\n~~~\n:::mermaid",
+      "fences": [
+        { "start_line": 5, "end_line": 6, "opening": "```", "closing": "```", "body": "" },
+        { "start_line": 7, "end_line": 10, "opening": "~~~", "closing": "~~~", "body": "sequenceDiagram\nAlice->>Bob: visible\n" },
+        { "start_line": 11, "end_line": 11, "opening": ":::", "closing": null, "body": "" }
+      ]
+    },
+    {
+      "name": "short_and_nonblank_closers_remain_body_text",
+      "language": "markdown",
+      "text": "````mermaid\nsequenceDiagram\n```\n~~~~\n```` trailing\nAlice->>Bob: body\n`````",
+      "fences": [
+        { "start_line": 0, "end_line": 6, "opening": "````", "closing": "`````", "body": "sequenceDiagram\n```\n~~~~\n```` trailing\nAlice->>Bob: body\n" }
+      ]
+    },
+    {
+      "name": "unfinished_invalid_mermaid_preserves_body_and_diagnostic",
+      "language": "mdx",
+      "text": "<!-- hidden -->\r\n:::mermaid\r\nsequenceDiagram\r\nAlice->>",
+      "valid": false,
+      "fences": [
+        { "start_line": 1, "end_line": 3, "opening": ":::", "closing": null, "body": "sequenceDiagram\r\nAlice->>" }
+      ]
+    },
+    {
+      "name": "invalid_visible_diagram_after_hidden_invalid_diagram",
+      "language": "mdx",
+      "text": "😀 intro\r\n<!--\r\n```mermaid\r\nhidden invalid\r\n```\r\n-->\r\n  :::mermaid\r\nvisible invalid\r\n  :::\r\n",
+      "valid": false,
+      "fences": [
+        { "start_line": 6, "end_line": 8, "opening": ":::", "closing": ":::", "body": "visible invalid\r\n" }
+      ]
+    }
+  ]
+}

@@ -2047,6 +2047,41 @@ mod tests {
     }
 
     #[test]
+    fn foreign_object_overlay_uses_logical_inline_font_attributes() {
+        for (encoded, logical) in [
+            ("&quot;Safe Font&quot;,monospace", "\"Safe Font\",monospace"),
+            ("&quot;A&amp;B&quot;,monospace", "\"A&B\",monospace"),
+        ] {
+            for owner in ["svg", "g", "div", "span"] {
+                let style = format!("style=\"font-family:{encoded};fill:#123456;\"");
+                let attributes = |tag| if owner == tag { style.as_str() } else { "" };
+                let svg = format!(
+                    r#"<svg xmlns="http://www.w3.org/2000/svg" {}><g {}><foreignObject width="80" height="24"><div xmlns="http://www.w3.org/1999/xhtml" {}><span {}>Label</span></div></foreignObject></g></svg>"#,
+                    attributes("svg"),
+                    attributes("g"),
+                    attributes("div"),
+                    attributes("span"),
+                );
+                let output = foreign_object_label_fallback_svg_text(&svg);
+                let document = crate::xml_dom::Document::parse(&output).unwrap();
+                let fallback = document
+                    .descendants()
+                    .find(|node| {
+                        node.has_tag_name("text")
+                            && node.attribute("class") == Some("merman-foreignobject-fallback-text")
+                    })
+                    .expect("actual fallback text");
+                let style = fallback.attribute("style").unwrap();
+                assert!(
+                    style.contains(&format!("font-family: {logical};")),
+                    "{owner}/{encoded}: {style}"
+                );
+                assert_eq!(fallback.attribute("fill"), Some("#123456"));
+            }
+        }
+    }
+
+    #[test]
     fn foreign_object_overlay_uses_root_font_context() {
         let svg = r##"<svg id="host-theme-root-font" xmlns="http://www.w3.org/2000/svg"><style>#host-theme-root-font{font-family:Inter,system-ui;font-size:14px;fill:#ddeeff;}</style><g><foreignObject width="80" height="21"><div xmlns="http://www.w3.org/1999/xhtml"><p>Alpha</p></div></foreignObject></g></svg>"##;
         let out = foreign_object_label_fallback_svg_text(svg);

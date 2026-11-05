@@ -5,7 +5,24 @@ release or changing any behavior-owning companion. A release is a pinned behavio
 single npm version. Completion means parser, semantics, editor services, headless output, browser
 reference execution, examples, provenance, and package surfaces all describe the same graph.
 
-## Current Transition: Mermaid 12.2.0
+## Current Transition: Mermaid 12.3.0
+
+Development selects `mermaid@12.3.0` at `2086904e76c692331e34a45d7cc3bc30860d040e`.
+The exact selected graph includes ELK `0.12.0`, Cytoscape `3.34.4`,
+`@braintree/sanitize-url 7.1.2`, reference CLI `12.2.0`, parser `2.0.1`, and DOMPurify `3.4.17`.
+The [reference bundle](../../tools/upstreams/MERMAID_REFERENCE_BUNDLE.json) and its digest-bound
+[selection decision](../../tools/upstreams/MERMAID_SELECTION_DECISION.json) own the complete graph.
+The transition adds Flowchart Step edges and nine BPMN shapes, moves observable ELK behavior,
+updates Swimlane preparation/routing, and removes Mindmap's ambient output identity. It adds no
+registered diagram, layout, Cargo feature, transport schema, or independent Tree-sitter baseline.
+Grid and the unwired anchor pipeline remain upstream groundwork rather than admitted capabilities.
+
+See the [development migration](../migrations/mermaid-12-3.md) for Rust changes, animated/static SVG
+contracts, selected versus investigated companion versions, and bounded reference-collection
+residuals. Published artifacts retain their release identities. Verification and artifact receipts
+must bind the settled source; this scope note is not a gate result or publication statement.
+
+### Historical Transition: Mermaid 12.2.0
 
 As of 2026-10-13, development selects `mermaid@12.2.0` at
 `1fb7869866dd619168d840291c9c54b4f129758b`, `@mermaid-js/parser@2.0.1`, and
@@ -24,13 +41,6 @@ matrix are verified. The full strict release gates passed on the frozen source o
 the verifier was rebuilt and the reference/generated/DOM gates replayed after the final resource fix.
 This note is a scope
 record, not an admission receipt or publication statement; the bundle, selection decision, and completed gate results remain the authorities.
-
-The 2026-10-24 security follow-up selects DOMPurify `3.4.17`, Puppeteer and Puppeteer Core
-`25.16.0`, and `@puppeteer/browsers` `3.2.6`, retaining the core, parser, and reference CLI versions.
-The CLI's Puppeteer peer range admits this update; the resulting Chromium BiDi dependency admits
-patched Zod `4.6.6` without an out-of-range major override. See the
-[security verification](../reviews/2026-10-24-dompurify-security.md) for supply-chain evidence,
-browser results, corpus admission status, and separately unresolved CI gates.
 
 ## 1. Freeze The Delivery Boundary
 
@@ -112,9 +122,9 @@ cargo run -p xtask -- gen-mermaid-reference
 
 This command owns `crates/merman-model/src/baseline.rs`,
 `crates/xtask/src/generated/mermaid_reference.rs`, and
-`playground/src/generated/mermaid-reference.ts`. `crates/merman-core/src/baseline.rs` intentionally
-re-exports the generated constants; verify that its public baseline still resolves to the new tag,
-version, and suffix instead of hand-editing a second version source.
+`playground/src/generated/mermaid-reference.ts`. Core consumes the model-owned constants
+internally; the facade exposes them through `merman::baseline`. Verify that these consumers
+resolve to the selected tag, version, and suffix instead of hand-editing another version source.
 
 Never hand-edit generated Rust, TypeScript, runtime-version, provenance, or package projections.
 Verify the clean-clone graph:
@@ -280,31 +290,46 @@ descriptor, WASM input digest, package locks, runtime labels, and readable statu
 supported family should have source-backed positive and recovery examples; public transport changes
 must switch LSP, WASM, Monaco, and the unpublished VS Code extension atomically.
 
-Run focused parser, semantic, renderer, editor, and browser tests first. Then run the applicable
-repository gates:
+During iteration, run focused parser, semantic, renderer, editor, and browser tests. Use individual
+generated, alignment, or DOM commands to diagnose the affected owner. Once source and generated
+inputs are settled, run one final integrated pass:
 
 ```bash
-cargo run -p xtask -- verify-mermaid-reference --materialized
-cargo run -p xtask -- verify-editor-language-contract
-cargo run -p xtask -- verify-playground-example-catalog
-cargo run -p xtask -- verify-web-diagram-catalog
-cargo run -p xtask -- check-alignment
-cargo run -p xtask -- verify --strict
+cargo run --locked -p xtask -- verify --strict
+```
+
+The [verifier](../../crates/xtask/src/cmd/verify.rs) owns formatting, workspace Clippy with all
+targets/features, the feature matrix, workspace `nextest` and doctests, materialized reference
+verification, generated contracts, alignment, and the `structure`, `parity`, and `parity-root` DOM
+suite. Its [generated checks](../../crates/xtask/src/cmd/snapshots.rs) include LALRPOP, editor
+contracts, and Web/Playground catalogs. Strict also runs Web contracts/build/smoke/prepack,
+Playground unit/lint/build and desktop Chromium plus focused Firefox/WebKit smoke, and VS Code
+package tests. Reuse this result for every covered checklist row; run covered checks again only
+to diagnose a failure or validate subsequent source/artifact changes.
+
+Keep distinct evidence outside strict:
+
+- Reference transition trust: the base-bound receipt, official npm verification, installed
+  `npm ls --all` graphs, reference-runtime tests, and fresh browser/reference provenance from
+  steps 2–3. Materialized verification alone does not supply those observations.
+- Dependency/feature changes: the target build matrix and the Web/Typst artifact owners below.
+- Changed host surfaces: reference CLI, LSP protocol, platform, and extension-host matrices;
+  the independent Tree-sitter package keeps its own gates in step 5.
+- Compact navigation, dialogs, viewport gestures, or visual viewport changes: the focused mobile
+  browser command and its real-device residual checklist.
+
+For dependency or feature ownership changes, run the artifact checks:
+
+```bash
 cargo run -p xtask -- wasm-size-matrix --surface web \
   --web-package-root platforms/web/packages \
   --budget-file docs/release/WASM_SIZE_BUDGETS.json
-cargo run -p xtask -- wasm-size-matrix --surface typst \
+cargo run --locked -p xtask -- build-typst-package --profile publish \
   --budget-file docs/release/WASM_SIZE_BUDGETS.json
-cargo fmt --all -- --check
-cargo clippy --workspace --all-targets --all-features -- -D warnings
 ```
 
-The strict command owns Web contracts/build/smoke/prepack, Playground unit/lint/build and desktop
-Chromium, focused Firefox/WebKit smoke, VS Code package tests, generated contracts, and all release
-DOM modes. Run the focused mobile command when the change affects compact navigation, dialogs,
-viewport gestures, or visual viewport behavior. Also prove package locks with `npm ls --all`, run
-reference CLI and LSP tests, and run any additional platform or extension-host matrices affected by
-the change. A stale generated or WASM artifact must fail before the UI starts.
+A stale generated or WASM artifact must fail before the UI starts. Record any unexecuted owner and
+its reason explicitly; a focused success alone does not close final integrated acceptance.
 
 ## 8. Hand Off Without Hidden Residuals
 

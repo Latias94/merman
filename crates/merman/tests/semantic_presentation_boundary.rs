@@ -97,6 +97,68 @@ fn replacing_semantic_parser_refreshes_inherited_presentation_config() {
 
 #[cfg(feature = "presentation")]
 #[test]
+fn inherited_presentation_uses_the_cumulative_host_edge_budget() {
+    for warm in [false, true] {
+        let renderer =
+            Renderer::new().with_semantic_parser(merman::SemanticParser::new().with_site_config(
+                merman::MermaidConfig::from_value(serde_json::json!({"maxEdges": 1})),
+            ));
+        if warm {
+            renderer.presentation_engine();
+        }
+        let parser = merman::SemanticParser::new()
+            .with_site_config(merman::MermaidConfig::from_value(serde_json::json!({
+                "maxEdges": {"ignored": true}
+            })))
+            .with_site_config(merman::MermaidConfig::from_value(serde_json::json!({
+                "maxEdges": 1
+            })));
+        let renderer = renderer.with_semantic_parser(parser);
+        for edge_count in [1, 2, 500, 501] {
+            let targets = (0..edge_count)
+                .map(|index| format!("N{index}"))
+                .collect::<Vec<_>>()
+                .join(" & ");
+            let source = format!("flowchart TD\nA --> {targets}");
+            let semantic = renderer.parse_semantic(&source, OperationControl::new());
+            let presentation = renderer.prepare_presentation(&source, OperationControl::new());
+            if edge_count > 500 {
+                assert!(
+                    semantic
+                        .expect_err("semantic default budget is bounded")
+                        .to_string()
+                        .contains("maxEdges")
+                );
+                assert!(
+                    presentation
+                        .expect_err("presentation default budget is bounded")
+                        .to_string()
+                        .contains("maxEdges")
+                );
+                continue;
+            }
+            let semantic = semantic
+                .expect("semantic parsing inherits the cumulative host layer")
+                .unwrap();
+            let presentation = presentation
+                .expect("presentation parsing inherits the same host layer")
+                .unwrap();
+            assert_eq!(
+                semantic.metadata().semantic_config.as_value()["maxEdges"],
+                serde_json::json!(500),
+                "semantic edge budget after warm={warm}"
+            );
+            assert_eq!(
+                presentation.metadata().effective_config.as_value()["maxEdges"],
+                serde_json::json!(500),
+                "presentation edge budget after warm={warm}"
+            );
+        }
+    }
+}
+
+#[cfg(feature = "presentation")]
+#[test]
 fn replacing_semantic_parser_refreshes_inherited_presentation_runtime() {
     const UNIX_MILLIS: i64 = 1_771_113_600_000;
     for warm in [false, true] {
@@ -130,15 +192,24 @@ fn replacing_semantic_parser_refreshes_inherited_presentation_runtime() {
 fn replacing_semantic_parser_retains_explicit_presentation_configuration() {
     const UNIX_MILLIS: i64 = 1_771_113_600_000;
     let engine = merman::MermaidEngine::new().with_site_config(
-        merman::SourcePresentationConfig::from_value(serde_json::json!({"theme": "dark"})),
+        merman::SourcePresentationConfig::from_value(serde_json::json!({
+            "theme": "dark", "maxEdges": 1
+        })),
     );
     let renderer = Renderer::new()
         .with_presentation_engine(engine)
         .with_semantic_parser(
-            merman::SemanticParser::new().with_runtime_policy(
-                merman::model::runtime::RuntimePolicy::deterministic()
-                    .with_fixed_unix_millis(UNIX_MILLIS),
-            ),
+            merman::SemanticParser::new()
+                .with_site_config(merman::MermaidConfig::from_value(serde_json::json!({
+                    "maxEdges": {"ignored": true}
+                })))
+                .with_site_config(merman::MermaidConfig::from_value(serde_json::json!({
+                    "maxEdges": 1
+                })))
+                .with_runtime_policy(
+                    merman::model::runtime::RuntimePolicy::deterministic()
+                        .with_fixed_unix_millis(UNIX_MILLIS),
+                ),
         );
     let artifact = renderer
         .prepare_presentation("flowchart TD\nA-->B", OperationControl::new())
@@ -147,6 +218,10 @@ fn replacing_semantic_parser_retains_explicit_presentation_configuration() {
     assert_eq!(
         artifact.metadata().effective_config.get_str("theme"),
         Some("dark")
+    );
+    assert_eq!(
+        artifact.metadata().effective_config.as_value()["maxEdges"],
+        serde_json::json!(1)
     );
     assert_eq!(
         artifact
@@ -162,6 +237,19 @@ fn replacing_semantic_parser_retains_explicit_presentation_configuration() {
             .unwrap()
             .unix_millis(),
         UNIX_MILLIS
+    );
+    assert!(
+        renderer
+            .parse_semantic("flowchart TD\nA-->B\nB-->C", OperationControl::new())
+            .expect("the semantic parser retains its independent cumulative host layer")
+            .is_some()
+    );
+    assert!(
+        renderer
+            .prepare_presentation("flowchart TD\nA-->B\nB-->C", OperationControl::new())
+            .expect_err("the explicit presentation engine retains its own one-edge budget")
+            .to_string()
+            .contains("maxEdges")
     );
 }
 

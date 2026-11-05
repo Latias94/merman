@@ -854,14 +854,23 @@ pub(crate) fn render_timeline_diagram_svg_model(
         options.checkpoint_emit()?;
         let _ = write!(
             &mut out,
-            r#"<text x="{x}" font-size="4ex" font-weight="bold" y="{y}">{text}</text>"#,
+            r#"<text x="{x}" font-size="4ex" font-weight="bold" y="{y}""#,
             x = fmt(layout.title_x),
             y = fmt(layout.title_y),
-            text = escape_xml(title)
         );
+        let fill = event_theme.title_fill_css();
+        if let Some(fill) = fill {
+            let _ = write!(&mut out, r#" fill="{}""#, escape_attr(fill));
+        }
+        let _ = write!(&mut out, ">{}</text>", escape_xml(title));
         out.checkpoint()?;
+        if !event_theme.record_title_fill(title, fill) {
+            return Err(crate::Error::InvalidModel {
+                message: "Timeline title paint did not match the terminal SVG".to_owned(),
+            });
+        }
         if let Some(outcome) = &mut text_emission.outcome {
-            outcome.record_title();
+            outcome.record_title(fill.is_none());
         }
     }
 

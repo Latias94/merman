@@ -178,7 +178,8 @@ terminal. Tests should not snapshot `Auto`; they should force `Ansi16`, `Ansi256
 - Mermaid style/class/linkStyle parity is unlocked but not automatically implemented by this ADR.
 - Background/fill semantics remain a separate follow-on.
 
-## Follow-up
+## Current support
 
-Continue `docs/workstreams/ascii-color-role-api` with the role-aware canvas and encoder slice before
-assigning color roles to individual diagram renderers.
+The [ASCII/Unicode support matrix](../rendering/ASCII_SUPPORT_MATRIX.md) owns current family,
+encoding, and viewport admission. Acceptance of this API decision does not establish full
+Mermaid style mapping or background/fill support.

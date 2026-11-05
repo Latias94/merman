@@ -58,7 +58,7 @@ fn combined_flowchart_variants_construct_one_token_and_accessibility_trace() {
 }
 
 #[test]
-fn warning_producing_flowchart_variants_register_typed_compatibility_sidecars() {
+fn warning_producing_flowchart_variants_preserve_warning_coordinates() {
     let engine = MermaidEngine::new();
     let cases = [
         #[cfg(feature = "diagram-flowchart")]
@@ -72,11 +72,6 @@ fn warning_producing_flowchart_variants_register_typed_compatibility_sidecars() 
     ];
 
     for (diagram_type, source, keyword) in cases {
-        assert!(
-            crate::family::warning_semantic_parser(diagram_type).is_some(),
-            "{diagram_type} must register its typed warning compatibility parser"
-        );
-
         let snapshot = engine
             .parse_diagram_snapshot_with_type_sync(diagram_type, source)
             .unwrap()

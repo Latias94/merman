@@ -373,43 +373,145 @@ fn hand_drawn_circles_keep_the_source_construction_dimensions() {
 }
 
 #[test]
-fn hand_drawn_circle_hachure_rejects_huge_finite_font_or_padding_with_default_resources() {
-    for source in ["flowchart LR\nA((a))\n", "flowchart LR\nA(((a)))\n"] {
+fn hand_drawn_circle_hachure_enforces_actual_work_boundaries() {
+    use merman_model::{OperationControl, OperationLedgerError, OperationPhase};
+    use merman_render::resources::{
+        RenderResourcePolicy, ResourceLimitCause, ResourceLimitId, ResourceLimitPhase,
+    };
+
+    for (source, double_circle) in [
+        ("flowchart LR\nA((a))\n", false),
+        ("flowchart LR\nA(((a)))\n", true),
+    ] {
         for (font_size, padding) in [(1e4, 16.0), (16.0, 1e4)] {
-            let parsed = MermaidEngine::new()
-                .with_site_config(
-                    merman_core::presentation::SourcePresentationConfig::from_value(json!({
-                        "look": "handDrawn",
-                        "handDrawnSeed": 1,
-                        "htmlLabels": false,
-                        "themeVariables": { "fontSize": font_size },
-                        "flowchart": { "padding": padding },
-                    })),
+            let parse = |look| {
+                MermaidEngine::new()
+                    .with_site_config(
+                        merman_core::presentation::SourcePresentationConfig::from_value(json!({
+                            "look": look,
+                            "handDrawnSeed": 1,
+                            "htmlLabels": false,
+                            "themeVariables": { "fontSize": font_size },
+                            "flowchart": { "padding": padding },
+                        })),
+                    )
+                    .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
+                    .unwrap()
+                    .unwrap()
+                    .into_presentation()
+            };
+            let parsed = parse("handDrawn");
+            let prepare = |policy, control| {
+                family::prepare(
+                    &parsed,
+                    &LayoutOptions::headless_svg_defaults(),
+                    RenderEnvironment::deterministic()
+                        .with_resource_policy(policy)
+                        .begin_session_with_control(control)
+                        .unwrap(),
                 )
-                .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
-                .unwrap()
-                .unwrap()
-                .into_presentation();
-            let artifact = family::prepare(
-                &parsed,
-                &LayoutOptions::headless_svg_defaults(),
-                RenderEnvironment::deterministic().begin_session().unwrap(),
-            )
-            .expect("cheap source circle dimensions are prepared without Rough allocation");
-            let error = match artifact
-                .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
-            {
-                Ok(_) => panic!("huge finite circle must reject before Rough generation"),
-                Err(error) => error,
+                .expect("the small model fits before render-time Rough generation")
             };
-            let merman_render::Error::ResourceLimitExceeded(error) = error else {
-                panic!("expected default work rejection, got {error}");
+            let policy = RenderResourcePolicy::default();
+            let svg_options = SvgRenderOptions::default();
+            let debug = SvgDebugOptions::default();
+            let (expected_svg, report) = prepare(policy, OperationControl::new())
+                .render_svg(&svg_options, &debug)
+                .expect("these finite dimensions fit the actual default work budget")
+                .into_completion()
+                .into_output_and_report();
+            let required_work = report.session_report().layout_work_units();
+            let document = roxmltree::Document::parse(&expected_svg).unwrap();
+            let circle = shape(&document, "A");
+            let rings = if double_circle {
+                circle
+                    .children()
+                    .filter(roxmltree::Node::is_element)
+                    .collect::<Vec<_>>()
+            } else {
+                vec![circle]
             };
-            assert_eq!(error.limit, "max_layout_work_units");
+            assert_eq!(rings.len(), if double_circle { 2 } else { 1 });
+            let mut fill_operations = 0;
+            for (index, ring) in rings.into_iter().enumerate() {
+                let stroke_width = if double_circle {
+                    if index == 0 { 2.5 } else { 1.5 }
+                } else {
+                    f64::from(1.3_f32)
+                };
+                assert_rough_ring(ring, stroke_width);
+                let fill = ring.children().find(roxmltree::Node::is_element).unwrap();
+                for segment in roughr::PathParser::from(fill.attribute("d").unwrap()) {
+                    segment.expect("valid generated hachure operation");
+                    fill_operations += 1;
+                }
+            }
+            assert!(fill_operations > 0);
+
+            let exact_policy = policy
+                .with_limit(ResourceLimitId::MaxLayoutWorkUnits, required_work)
+                .unwrap();
+            let exact = prepare(exact_policy, OperationControl::new())
+                .render_svg(&svg_options, &debug)
+                .expect("the measured exact work ceiling admits unchanged Rough output")
+                .into_completion();
+            assert_eq!(exact.output(), &expected_svg);
             assert_eq!(
-                error.cause,
-                merman_render::resources::ResourceLimitCause::Ceiling
+                exact.report().session_report().layout_work_units(),
+                required_work
             );
+
+            let below_policy = policy
+                .with_limit(ResourceLimitId::MaxLayoutWorkUnits, required_work - 1)
+                .unwrap();
+            let classic = parse("classic");
+            let classic = family::prepare(
+                &classic,
+                &LayoutOptions::headless_svg_defaults(),
+                RenderEnvironment::deterministic()
+                    .with_resource_policy(below_policy)
+                    .begin_session()
+                    .unwrap(),
+            )
+            .expect("classic dimensions fit the same bounded model preparation")
+            .render_svg(&svg_options, &debug)
+            .expect("classic circles fit without Rough generation")
+            .into_completion();
+            let classic_work = classic.report().session_report().layout_work_units();
+            assert!(required_work >= classic_work + fill_operations);
+
+            let generation_ceiling = classic_work + fill_operations / 2;
+            for maximum in [generation_ceiling, required_work - 1] {
+                let control = OperationControl::new();
+                let bounded = policy
+                    .with_limit(ResourceLimitId::MaxLayoutWorkUnits, maximum)
+                    .unwrap();
+                let error = prepare(bounded, control.clone())
+                    .render_svg(&svg_options, &debug)
+                    .err()
+                    .expect("Rough generation must retain the actual work ceiling");
+                let merman_render::Error::ResourceLimitExceeded(error) = error else {
+                    panic!("expected geometry work rejection, got {error}");
+                };
+                assert_eq!(error.limit, ResourceLimitId::MaxLayoutWorkUnits.as_str());
+                assert_eq!(error.max, maximum);
+                assert!(error.actual > maximum);
+                assert_eq!(error.cause, ResourceLimitCause::Ceiling);
+                assert_eq!(error.phase, ResourceLimitPhase::LayoutModel);
+                let terminal = control
+                    .terminal_checkpoint_at(OperationPhase::Emit)
+                    .expect_err("the work rejection must remain terminal");
+                let OperationLedgerError::ResourceLimitExceeded(terminal) = terminal else {
+                    panic!("expected the original work ceiling terminal");
+                };
+                assert_eq!(terminal.id, ResourceLimitId::MaxLayoutWorkUnits.as_str());
+                assert_eq!(terminal.limit, maximum as u64);
+                assert!(terminal.consumed <= maximum as u64);
+                assert!(terminal.consumed + terminal.requested > maximum as u64);
+                if maximum == generation_ceiling {
+                    assert_eq!(terminal.phase, OperationPhase::Emit);
+                }
+            }
         }
     }
 }

@@ -599,6 +599,12 @@ pub(crate) fn prepare_sequence_diagram_typed_with_title_and_work_meter(
         work_meter.as_ref(),
     )?;
     let effective_title = sequence_render_title(model.title.as_deref(), diagram_title);
+    let theme_evidence = SequenceThemeEvidenceRecorder::with_title(
+        resolved_theme,
+        effective_config,
+        effective_title,
+        work_meter.as_ref(),
+    )?;
     let base_text_style = typography.base_measurement_style();
     let effective_config_value = effective_config.as_value();
     let settings =
@@ -795,7 +801,7 @@ pub(crate) fn prepare_sequence_diagram_typed_with_title_and_work_meter(
         actor_popup_widths,
         message_metrics,
         math_sidecar,
-        theme_evidence: SequenceThemeEvidenceRecorder::new(resolved_theme.is_some()),
+        theme_evidence,
         effect_evidence: Default::default(),
         expected_effect_applications: Default::default(),
         typography,

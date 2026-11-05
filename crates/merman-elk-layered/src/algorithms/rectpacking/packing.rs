@@ -642,8 +642,7 @@ impl Context<'_> {
             return Ok(true);
         }
         if b.x + rect.width <= target
-            && (b.y + b.height + rect.height + self.options.spacing <= r.height
-                || r.blocks.len() == 1)
+            && b.y + b.height + rect.height + self.options.spacing <= r.y + r.height
         {
             self.add_child(block, node, true)?;
             return Ok(true);

@@ -10,6 +10,8 @@ import {
   normalizeBindingOptions,
 } from "../src/engine.mjs";
 import { BoundedExecutor } from "../src/bounded-executor.mjs";
+import { loadNativeTransport } from "../src/candidates/native.mjs";
+import { loadNodeWasmTransport } from "../src/candidates/wasm.mjs";
 import * as publicApi from "../src/index.mjs";
 import {
   MermanDisposedError,
@@ -30,7 +32,10 @@ import {
   METADATA_SPECS,
   TEXT_MEASUREMENT_PROTOCOL_VERSION,
 } from "../src/generated/binding-contract.mjs";
-import { NODE_BINDING_OPERATIONS } from "../src/generated/capability-surface.mjs";
+import {
+  CAPABILITY_DESCRIPTOR_DIGEST,
+  NODE_BINDING_OPERATIONS,
+} from "../src/generated/capability-surface.mjs";
 
 const nodeRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const repositoryRoot = path.resolve(nodeRoot, "..", "..");
@@ -693,6 +698,157 @@ test("construction preserves an explicit null text measurement selector", async 
 
   assert.deepEqual(factory.createdWith[0].environment, { text_measurement: null });
   await engine.dispose();
+});
+
+test("binding option defaults can exhaust an otherwise admissible byte or member budget", async () => {
+  const limits = NODE_TRANSPORT_LIMITS.binding_options;
+  const normalizedOverhead = Buffer.byteLength(
+    `{"payload":"","version":${BINDING_OPTIONS_SCHEMA_VERSION},"runtime_policy":"deterministic","resources":{"profile":"interactive"}}`,
+  );
+  const exactOptions = { payload: "x".repeat(limits.max_utf8_bytes - normalizedOverhead) };
+  const exactFactory = transportFactory();
+  const exactEngine = await createNodeEngine(
+    { bindingOptions: exactOptions }, { loadTransport: exactFactory.loadTransport },
+  );
+  assert.equal(Buffer.byteLength(JSON.stringify(exactFactory.createdWith[0])), limits.max_utf8_bytes);
+  await exactEngine.dispose();
+  exactOptions.payload += "x";
+  await assert.rejects(
+    createNodeEngine({ bindingOptions: exactOptions }, { loadTransport: exactFactory.loadTransport }),
+    MermanInvalidTransportError,
+  );
+  assert.equal(exactFactory.createdWith.length, 1);
+
+  const options = {
+    payload: "x".repeat(limits.max_utf8_bytes - Buffer.byteLength('{"payload":""}')),
+  };
+  assert.equal(
+    Buffer.byteLength(JSON.stringify(options)),
+    limits.max_utf8_bytes,
+  );
+  assert.doesNotThrow(() => normalizeBindingOptions(options));
+  const byteFactory = transportFactory();
+  await assert.rejects(
+    createNodeEngine({ bindingOptions: options }, { loadTransport: byteFactory.loadTransport }),
+    /wire limit/i,
+  );
+  assert.equal(byteFactory.createdWith.length, 0);
+  assert.deepEqual(Object.keys(options), ["payload"]);
+
+  const members = Object.fromEntries(
+    Array.from({ length: limits.max_members - 4 }, (_, index) => [
+      `k${index.toString(36)}`, null,
+    ]),
+  );
+  const memberFactory = transportFactory();
+  const engine = await createNodeEngine(
+    { bindingOptions: members },
+    { loadTransport: memberFactory.loadTransport },
+  );
+  assert.equal(Object.keys(memberFactory.createdWith[0]).length, limits.max_members - 1);
+  await engine.dispose();
+  members.extra = null;
+  await assert.rejects(
+    createNodeEngine({ bindingOptions: members }, { loadTransport: memberFactory.loadTransport }),
+    /member-work limit/i,
+  );
+  assert.equal(memberFactory.createdWith.length, 1);
+  assert.equal(Object.hasOwn(members, "version"), false);
+});
+
+test("native and WASM constructors use identical bounded snapshots without mutating input", async () => {
+  const limits = NODE_TRANSPORT_LIMITS.binding_options;
+  const shared = Object.freeze([Object.freeze({ escaped: '"\\\u0000é😀' })]);
+  const input = Object.freeze({ first: shared, second: shared });
+  const cycle = {};
+  cycle.self = cycle;
+  let hookCalls = 0;
+  const hook = () => { hookCalls += 1; };
+  const invalidInputs = [
+    [cycle, TypeError, /cyclic references/i],
+    [{ value: new Array(1) }, TypeError, /holes/i],
+    [{ value: new Map() }, TypeError, /plain objects/i],
+    [{ value: "\ud800" }, MermanInvalidTransportError, /surrogate/i],
+    [{ toJSON: hook }, TypeError, /JSON wire value/i],
+    [Object.defineProperty({}, "value", { enumerable: true, get: hook }), TypeError, /data property/i],
+    [{ value: "\u0000".repeat(Math.floor(limits.max_utf8_bytes / 6)) }, MermanInvalidTransportError, /wire limit/i],
+    [{
+      first: "x".repeat(Math.floor(limits.max_utf8_bytes * 0.6)),
+      second: "x".repeat(Math.floor(limits.max_utf8_bytes * 0.6)),
+    }, MermanInvalidTransportError, /wire limit/i],
+  ];
+  const optionsByKind = [];
+  for (const kind of ["napi", "wasm"]) {
+    const createdWith = [];
+    class CandidateEngine {
+      constructor(optionsJson) {
+        createdWith.push(optionsJson);
+      }
+      execute() {
+        return success();
+      }
+      executeSync() {
+        return success();
+      }
+      metadataJson() {
+        return "{}";
+      }
+      runtimeCatalogJson() {
+        return JSON.stringify(runtimeCatalog());
+      }
+      dispose() {}
+    }
+    const binding = {
+      NativeEngine: CandidateEngine,
+      WasmEngine: CandidateEngine,
+      transportIdentityJson: () => JSON.stringify({
+        schema_version: 1,
+        package_id: NODE_WIRE_CONTRACT.package_id,
+        artifact_id: NODE_WIRE_CONTRACT.artifact_id,
+        package_version: PACKAGE_VERSION,
+        transport_kind: kind,
+        transport_api_version: NODE_WIRE_CONTRACT.transport_api_version,
+        binding_result_payload_version: NODE_WIRE_CONTRACT.binding_result_payload_version,
+        capability_descriptor_digest: CAPABILITY_DESCRIPTOR_DIGEST,
+        wire_contract: NODE_WIRE_CONTRACT,
+      }),
+    };
+    const loadTransport = (optionsJson) => kind === "napi"
+      ? loadNativeTransport(optionsJson, {
+        platform: "darwin", arch: "arm64", loadPackage: () => binding,
+      })
+      : loadNodeWasmTransport(optionsJson, {
+        modulePath: "candidate:node-wasm", loadModule: async () => binding,
+      });
+    const engine = await createNodeEngine({ bindingOptions: input }, { loadTransport });
+    optionsByKind.push(createdWith[0]);
+    assert.equal(input.first, input.second);
+    assert.equal(Object.hasOwn(input, "version"), false);
+    await engine.dispose();
+
+    const exact = { values: Array(limits.max_members - 5).fill(null) };
+    const exactEngine = await createNodeEngine({ bindingOptions: exact }, { loadTransport });
+    await exactEngine.dispose();
+    exact.values.push(null);
+    await assert.rejects(
+      createNodeEngine({ bindingOptions: exact }, { loadTransport }),
+      MermanInvalidTransportError,
+    );
+    for (const [bindingOptions, errorType, message] of invalidInputs) {
+      await assert.rejects(
+        createNodeEngine({ bindingOptions }, { loadTransport }),
+        (error) => {
+          assert.ok(error instanceof errorType);
+          assert.match(error.message, message);
+          return true;
+        },
+      );
+    }
+    assert.equal(createdWith.length, 2);
+    assert.equal(Object.hasOwn(exact, "resources"), false);
+  }
+  assert.equal(hookCalls, 0);
+  assert.equal(optionsByKind[0], optionsByKind[1]);
 });
 
 test("generic operations preserve request-local options JSON", async () => {
@@ -1827,11 +1983,14 @@ test("MermanEngine construction is factory-only", async () => {
 });
 
 test("binding options preserve the shared profile vocabulary and reject host measurement", () => {
+  const normalized = normalizeBindingOptions({
+    resources: { profile: "trusted-native" },
+    fixed_today: "2026-07-23",
+  });
+  assert.equal(Object.getPrototypeOf(normalized), null);
+  assert.equal(Object.getPrototypeOf(normalized.resources), null);
   assert.deepEqual(
-    normalizeBindingOptions({
-      resources: { profile: "trusted-native" },
-      fixed_today: "2026-07-23",
-    }),
+    { ...normalized, resources: { ...normalized.resources } },
     {
       version: BINDING_OPTIONS_SCHEMA_VERSION,
       runtime_policy: "deterministic",
@@ -1847,6 +2006,16 @@ test("binding options preserve the shared profile vocabulary and reject host mea
       "i",
     ),
   );
+  for (const value of [{}, [], [{ nested: true }]]) {
+    assert.throws(
+      () => normalizeBindingOptions({ version: value }),
+      { name: "RangeError", message: /unsupported binding options schema version/i },
+    );
+    assert.throws(
+      () => normalizeBindingOptions({ resources: { profile: value } }),
+      { name: "RangeError", message: /unknown resource profile/i },
+    );
+  }
   assert.throws(
     () => normalizeBindingOptions({ runtime_policy: "native" }),
     /runtime_policy.*deterministic/i,

@@ -266,6 +266,20 @@
         "styles": []
       }
     ],
+    "other": {
+      "droppedSubGraphMembers": [
+        {
+          "droppedFrom": "A2",
+          "keptBy": "A1",
+          "node": "b1"
+        },
+        {
+          "droppedFrom": "A2",
+          "keptBy": "A1",
+          "node": "c1"
+        }
+      ]
+    },
     "subgraphs": [
       {
         "classes": [],

@@ -4,14 +4,15 @@ use std::sync::OnceLock;
 use merman_model::families::radar::RadarDiagramModel;
 use merman_model::presentation::PresentationConfig;
 
+use super::paint::{PaintRules, PendingPaintRules, record_pending, static_paint};
 use crate::config::{config_css_number_or_string, config_string, value_at};
 use crate::diagram_theme::{
     FamilyThemeDisposition, FamilyThemeMechanism, FamilyThemeMechanismKey, FamilyThemeRuleFacet,
-    FamilyThemeSelectorShape, ResolvedDiagramTheme, ThemeCapability, ThemeTarget,
-    ThemeTypographyProperty, ThemeVariant,
+    FamilyThemeSelectorShape, ResolvedDiagramTheme, ResolvedStyleProperty, ThemeCapability,
+    ThemeTarget, ThemeTypographyProperty, ThemeVariant,
 };
 use crate::family::{
-    DirectStaticSelectorDomain, FamilyThemeEvidence, TerminalVariantDomain,
+    DirectPaintExpectation, DirectStaticSelectorDomain, FamilyThemeEvidence, TerminalVariantDomain,
     UnsupportedTerminalDomain, reconcile_unsupported_terminal_domains, resolve_direct_static_fill,
     resolved_style_property_for_facet, unsupported_residual_for_facet,
 };
@@ -613,7 +614,15 @@ pub(crate) struct RadarSeriesPaintPlan {
     show_legend: bool,
     evidence: FamilyThemeOutcomes,
     palette_key: Option<FamilyThemeMechanismKey>,
+    paints: Vec<RadarSeriesScalarPaint>,
+    pending_rules: PendingPaintRules,
     terminal_receipt: OnceLock<()>,
+}
+
+#[derive(Debug, Clone, Default)]
+struct RadarSeriesScalarPaint {
+    fill: Option<DirectPaintExpectation>,
+    stroke: Option<DirectPaintExpectation>,
 }
 
 impl RadarSeriesPaintPlan {
@@ -629,13 +638,83 @@ impl RadarSeriesPaintPlan {
         };
 
         plan.evidence = FamilyThemeOutcomes::default();
+        // With no axes and no legend, only empty curve paths reach the writer.
+        let terminal_count = if !model.axes.is_empty() || model.options.show_legend {
+            model.curves.len()
+        } else {
+            0
+        };
+        work_meter.charge(terminal_count)?;
+        plan.paints = vec![RadarSeriesScalarPaint::default(); terminal_count];
+        let mut rules = PaintRules::new(theme, ThemeTarget::ChartSeries);
+        let mut source_owned = Vec::with_capacity(model.curves.len());
+        let mut palette_fallback = Vec::with_capacity(model.curves.len());
+        let baseline_text = config_string(
+            effective_config.as_value(),
+            &["themeVariables", "textColor"],
+        )
+        .unwrap_or_else(|| "#333".to_owned());
+        for (index, paint) in plan.paints.iter_mut().enumerate() {
+            let style = theme.style_with_work_meter(
+                ThemeTarget::ChartSeries,
+                ThemeVariant::Default,
+                Some(index + 1),
+                work_meter,
+            )?;
+            // A cScale slot supplies both curve and swatch fill/stroke. Other source
+            // properties, including opacity and stroke width, do not own these paints.
+            let owned = RADAR_COLOR_SCALE_PATHS
+                .get(index)
+                .is_some_and(|path| effective_config.config_paint_overrides_typed_default(path));
+            source_owned.push(owned);
+            if !owned {
+                let baseline = plan.colors.get(index).map(String::as_str);
+                paint.fill = static_paint(
+                    theme,
+                    style.fill_resolution(),
+                    ThemeTarget::ChartSeries,
+                    ResolvedStyleProperty::Fill,
+                    baseline.unwrap_or(&baseline_text),
+                );
+                paint.stroke = static_paint(
+                    theme,
+                    style.stroke_resolution(),
+                    ThemeTarget::ChartSeries,
+                    ResolvedStyleProperty::Stroke,
+                    baseline.unwrap_or("none"),
+                );
+            }
+            rules.observe(
+                &style,
+                [owned, owned],
+                [paint.fill.as_ref(), paint.stroke.as_ref()],
+                work_meter,
+            )?;
+            palette_fallback.push(
+                !owned
+                    && (style.fill_resolution().specified().is_unspecified()
+                        || style.stroke_resolution().specified().is_unspecified()),
+            );
+        }
+        plan.pending_rules = rules.finish(&mut plan.evidence);
+        reconcile_unsupported_terminal_domains(
+            theme,
+            &mut plan.evidence,
+            &[UnsupportedTerminalDomain::fallbacks_only(
+                ThemeTarget::ChartSeries,
+                TerminalVariantDomain::uniform(terminal_count, ThemeVariant::Default),
+            )
+            .with_source_owned_fill(&source_owned)
+            .with_source_owned_stroke(&source_owned)],
+            work_meter,
+        )?;
         let Some(disposition) = theme.ordinal_palette_disposition(ThemeTarget::ChartSeries) else {
             return Ok(plan);
         };
         let key = FamilyThemeMechanismKey::OrdinalPalette {
             target: ThemeTarget::ChartSeries,
         };
-        if model.curves.is_empty() {
+        if !palette_fallback.iter().any(|fallback| *fallback) {
             plan.evidence.mark_not_applicable(key);
             return Ok(plan);
         }
@@ -650,21 +729,8 @@ impl RadarSeriesPaintPlan {
                     return Ok(plan);
                 }
 
-                for (curve_index, color_scale_path) in RADAR_COLOR_SCALE_PATHS
-                    .iter()
-                    .enumerate()
-                    .take(model.curves.len())
-                {
-                    let style = theme.style_with_work_meter(
-                        ThemeTarget::ChartSeries,
-                        ThemeVariant::Default,
-                        Some(curve_index + 1),
-                        work_meter,
-                    )?;
-                    if style.fill_resolution().winner().is_some()
-                        || style.stroke_resolution().winner().is_some()
-                        || effective_config.config_paint_overrides_typed_default(color_scale_path)
-                    {
+                for (curve_index, fallback) in palette_fallback.iter().copied().enumerate() {
+                    if !fallback {
                         continue;
                     }
 
@@ -701,6 +767,8 @@ impl RadarSeriesPaintPlan {
             show_legend: model.options.show_legend,
             evidence: FamilyThemeOutcomes::default(),
             palette_key: None,
+            paints: Vec::new(),
+            pending_rules: PendingPaintRules::new(),
             terminal_receipt: OnceLock::new(),
         }
     }
@@ -709,22 +777,45 @@ impl RadarSeriesPaintPlan {
         &self.colors
     }
 
+    pub(crate) fn fill_css(&self, index: usize) -> Option<&str> {
+        self.paints
+            .get(index)
+            .and_then(|paint| paint.fill.as_ref())
+            .map(DirectPaintExpectation::css)
+            .or_else(|| self.colors.get(index).map(String::as_str))
+    }
+
+    pub(crate) fn stroke_css(&self, index: usize) -> Option<&str> {
+        self.paints
+            .get(index)
+            .and_then(|paint| paint.stroke.as_ref())
+            .map(DirectPaintExpectation::css)
+            .or_else(|| self.colors.get(index).map(String::as_str))
+    }
+
+    fn needs_receipt(&self) -> bool {
+        self.palette_key.is_some() || !self.pending_rules.is_empty()
+    }
+
     pub(crate) const fn curve_count(&self) -> usize {
         self.curve_count
     }
 
     pub(crate) fn begin_terminal_receipt(&self) -> Option<RadarSeriesPaintReceipt> {
-        self.palette_key
-            .as_ref()
-            .map(|_| RadarSeriesPaintReceipt::new())
+        self.needs_receipt().then(RadarSeriesPaintReceipt::new)
     }
 
     pub(crate) fn record_terminal(&self, receipt: RadarSeriesPaintReceipt) -> bool {
-        self.palette_key.is_some() && receipt.proves(self) && self.terminal_receipt.set(()).is_ok()
+        self.needs_receipt() && receipt.proves(self) && self.terminal_receipt.set(()).is_ok()
     }
 
     pub(crate) fn record_evidence(&self, evidence: &mut FamilyThemeEvidence) {
         evidence.merge_borrowed(&self.evidence);
+        record_pending(
+            &self.pending_rules,
+            self.terminal_receipt.get().is_some(),
+            evidence,
+        );
         let Some(key) = self.palette_key.clone() else {
             return;
         };
@@ -777,21 +868,30 @@ impl RadarSeriesPaintReceipt {
         }
     }
 
+    #[cfg(test)]
     pub(crate) fn record_series_rule(
         &mut self,
         plan: &RadarSeriesPaintPlan,
         rule_index: usize,
         emitted_color: &str,
     ) {
+        self.record_series_paints(plan, rule_index, Some(emitted_color), Some(emitted_color));
+    }
+
+    pub(crate) fn record_series_paints(
+        &mut self,
+        plan: &RadarSeriesPaintPlan,
+        rule_index: usize,
+        fill: Option<&str>,
+        stroke: Option<&str>,
+    ) {
         if rule_index != self.next_rule_index || rule_index >= plan.curve_count {
             self.values_match = false;
             return;
         }
         self.next_rule_index += 1;
-        self.values_match &= plan
-            .colors
-            .get(rule_index)
-            .is_some_and(|color| color == emitted_color);
+        self.values_match &=
+            plan.fill_css(rule_index) == fill && plan.stroke_css(rule_index) == stroke;
     }
 
     pub(crate) fn record_curve(
@@ -905,8 +1005,35 @@ mod tests {
             palette_key: Some(FamilyThemeMechanismKey::OrdinalPalette {
                 target: ThemeTarget::ChartSeries,
             }),
+            paints: Vec::new(),
+            pending_rules: PendingPaintRules::new(),
             terminal_receipt: OnceLock::new(),
         }
+    }
+
+    #[test]
+    fn scalar_series_receipt_checks_fill_and_stroke_independently() {
+        let mut plan = one_curve_plan();
+        plan.paints = vec![RadarSeriesScalarPaint {
+            fill: Some(DirectPaintExpectation::new(
+                0,
+                "#abcdef",
+                ThemeCapability::SolidPaint,
+            )),
+            stroke: None,
+        }];
+        for stroke in [None, Some("#badbad")] {
+            let mut receipt = RadarSeriesPaintReceipt::new();
+            receipt.record_series_paints(&plan, 0, Some("#abcdef"), stroke);
+            receipt.record_curve(&plan, 0, 0);
+            receipt.record_legend(&plan, 0, 0);
+            assert!(!plan.record_terminal(receipt));
+        }
+        let mut receipt = RadarSeriesPaintReceipt::new();
+        receipt.record_series_paints(&plan, 0, Some("#abcdef"), Some("#123456"));
+        receipt.record_curve(&plan, 0, 0);
+        receipt.record_legend(&plan, 0, 0);
+        assert!(plan.record_terminal(receipt));
     }
 
     fn assert_rejected_typography_receipt(

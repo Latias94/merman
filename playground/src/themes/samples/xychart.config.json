@@ -1,0 +1,8 @@
+{
+  "htmlLabels": false,
+  "xyChart": {
+    "width": 660,
+    "height": 420,
+    "showLegend": true
+  }
+}

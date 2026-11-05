@@ -450,20 +450,7 @@ impl BuiltinRenderSemantic for crate::families::mindmap::MindmapDiagramRenderMod
         meta: &PresentationMetadata,
         control: &OperationControl,
     ) -> OperationControlResult<Result<ManagedJson, CompatProjectionError>> {
-        self.compatibility_json_with_context_controlled(
-            meta,
-            &PresentationContext::default(),
-            control,
-        )
-    }
-    fn compatibility_json_with_context_controlled(
-        &self,
-        meta: &PresentationMetadata,
-        context: &PresentationContext,
-        control: &OperationControl,
-    ) -> OperationControlResult<Result<ManagedJson, CompatProjectionError>> {
-        let mut projection = CompatJsonMetadata::from(meta);
-        projection.diagram_id = context.mindmap_diagram_id();
+        let projection = CompatJsonMetadata::from(meta);
         crate::families::mindmap::compat::project_controlled(self, &projection, control)
             .map(|result| result.map(ManagedJson::from))
     }

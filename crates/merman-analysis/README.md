@@ -192,7 +192,12 @@ Direct `serde_json` decoding of `LintOptionsJson`, `LintRuleSeverityOverrideJson
 
 ## Payload Contracts
 
-The diagnostics-only `AnalysisPayload` and richer `AnalysisFactsPayload` are independent, versioned JSON contracts. Their current public versions are diagnostics `1` and facts `2`; consumers must validate the version belonging to the payload they decode. Diagnostic tags are optional additive schema-1 metadata: missing `tags` means no tags, while rule-backed diagnostics inherit tags from the canonical rule descriptor. Facts schema `2` contains generic parser/editor facts only; the removed Flowchart-only rich graph is not available through this wire contract.
+The diagnostics-only `AnalysisPayload` and richer `AnalysisFactsPayload` are independent, versioned JSON contracts. Their current public versions are diagnostics `1` and facts `3`; consumers must validate the version belonging to the payload they decode. Diagnostic tags are optional additive schema-1 metadata: missing `tags` means no tags, while rule-backed diagnostics inherit tags from the canonical rule descriptor. Facts schema `3` contains generic parser/editor facts and required source appearance evidence; the removed Flowchart-only rich graph is not available through this wire contract.
+
+Every diagram has an `appearance` sibling of `syntax`. `{ "state": "unknown" }` means source appearance evidence is unavailable. The `known` state has nullable `theme`, `font`, and `look` declarations. Each declaration carries its string `value`, frontmatter or directive `origin`, and an original diagram-local UTF-8 half-open `construct_span`; it does not certify the rendered palette. See the [source appearance migration](../../docs/release/UNRELEASED_CONTRACT_VERSIONS.md#source-appearance-and-render-evidence-follow-up).
+
+These are current development contracts. Published `0.10.0-alpha.1` retains facts schema `2`;
+use matching source-built packages for schema `3` rather than assuming that release changed.
 
 Facts use `fact_source: "unavailable"` when parser-backed body semantics do not exist. They do not invent body symbols, references, or rename targets. Current writers include `rename_policy` on each semantic item; older additive readers that do not see it must treat the item as non-renamable.
 

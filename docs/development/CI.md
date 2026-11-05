@@ -6,9 +6,7 @@ unless that job produces an independently releasable artifact.
 
 ## Runtime and job dependencies
 
-The October 2026 [runtime audit](../research/2026-10-13-ci-runtime-audit.md) found three main
-Linux jobs taking 64–67 minutes. Native Node builds and SVG/browser parity were sequential
-inside the workspace test job. These now have separate same-run results in `pr-gate`:
+The core, native Node, and SVG/browser owners publish separate same-run results to `pr-gate`:
 
 - `build-test` retains the Linux workspace suite, generated checks with their pinned
   DOMPurify/Node inputs, and the three-host font/platform contracts;
@@ -37,19 +35,13 @@ blocking assertions; it changes their placement and dependencies. Runner queue t
 builds remain part of elapsed feedback time, so measured PR results are required before claiming
 a runtime target has been met.
 
-The [October 31 follow-up](../research/2026-10-31-ci-core-runtime.md) records the 85.6-minute
-Linux job that motivated the feature/theme split. Both jobs use the existing `core` selector and
+The feature and theme jobs use the existing `core` selector and
 contribute required results to the same `pr-gate`. Their Cargo recipes retain separate feature
 sets and subprocess-scoped acceptance flags; no job-wide feature union or acceptance cfg is used.
 The offline all-feature public theme consumer remains in `build-test`, after experimental
 platform-font builds have fetched its dependencies. Rust caches retain registry data with
 `cache-targets: false`; these jobs do not transfer compiled targets or reuse results from a
-different source revision. In the successful #259 PR run, Linux `build-test` took 32.7 minutes,
-feature checks 34.5 minutes and theme checks 22.5 minutes; the complete gate took 52.8 minutes
-including queues, compared with 86.2 minutes in the preceding #258 PR run. Their combined core
-runner time rose from 85.6 to 89.7 minutes in that observation. The subsequent main run also
-passed, with the complete gate waiting on the queued Playground consumer. These are workflow
-observations, not controlled compiler benchmarks; the linked record preserves both costs.
+different source revision.
 
 ## Apple Binding Checks
 
@@ -93,9 +85,7 @@ prefix, including its final separator, under Windows' traditional 260-unit limit
 Cargo Git dependencies check out the repository beneath their cache path, including documentation
 that Cargo packages may exclude. Keep filenames short and put detailed titles in the document.
 
-For engineering memory, retain timestamp and record identity while using a short filename slug;
-see the [memory index](../knowledge/engineering/index.md#portable-filenames). The gate reads the
-Git index, so stage intended renames before checking locally. It does not scan build caches or
+The gate reads the Git index, so stage intended renames before checking locally. It does not scan build caches or
 untracked user files.
 
 An already-published tag retains its original paths. For consumers of such a tag on Windows,
@@ -476,3 +466,25 @@ Local builds show `Local build`, with a modified marker for uncommitted files. S
 without Git metadata omit the commit. Each production bundle includes `build-info.json` with the
 same source identity shown in the footer and Merman comparison pane. Package versions used by the
 runtime and benchmark protocols retain their existing meaning.
+
+## Mobile device acceptance
+
+Playwright mobile emulation covers automated interactions but cannot prove software-keyboard,
+dynamic browser-chrome, safe-area, or native touch behavior. Before making a broad mobile-support
+claim, check current iOS Safari and Android Chrome on real devices:
+
+- Show the software keyboard with the caret near the editor's last visible line. Keep the caret,
+  active line, dialog close controls, and primary actions reachable without horizontal page scroll.
+- Exercise Examples, Benchmark, Share, and Export in portrait and landscape. Check safe areas,
+  the home indicator, keyboard visibility, downloads, and focus returning to each dialog launcher.
+- Rotate and collapse or expand browser chrome while editing and comparing. Keep toolbar and
+  footer actions visible, both Compare panes reachable, and every canvas nonzero and fitted.
+  Preserve the workspace, frozen render, export recipe, and Bounds preference.
+- Exercise pinch and page zoom, text selection, canvas pan, Zoom, and Fit. Switching Infinite
+  Canvas/ViewBox Frame must preserve the rendered artifact and camera behavior in both panes.
+- Restore workspace and issue links. Workspace links restore render settings; issue links also
+  restore the selected page, editor tab, preview/presentation mode, and Bounds preference. Neither
+  serializes host dimensions or camera coordinates.
+
+Record device, OS, browser version, orientation, and unresolved behavior in the PR or release
+evidence. Real-device results remain separate from the automated browser lanes.

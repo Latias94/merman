@@ -16,24 +16,24 @@ the registered question.
 
 ## Rust Pipeline
 
-Use `crates/merman/benches/pipeline.rs` for stable stage boundaries:
+Use `crates/merman/benches/pipeline.rs` for stable stage boundaries. The
+[benchmark contract](../../../../docs/performance/BENCHMARKING.md#native-criterion-benchmarks)
+owns current groups and recipes; the executable's `required-features` in
+`crates/merman/Cargo.toml` apply even to one filtered group:
 
 ```console
-cargo bench --locked -p merman --features svg --bench pipeline -- \
+cargo bench --locked -p merman --features all-diagrams,svg,compat-json,editor-facts --bench pipeline -- \
   --noplot --sample-size 30 --warm-up-time 2 --measurement-time 3 \
   --exact render/mindmap_medium
 ```
 
-Available groups include `parse`, `parse_cold_engine`, `parse_known_type`, `layout`, `render`, and
-`end_to_end`. Fixtures live in `crates/merman/benches/fixtures/`.
+Fixtures live in `crates/merman/benches/fixtures/`. Current compatibility JSON timing uses
+`compatibility_json_parse`; `parse_known_type` is only a registered history alias in
+`tools/bench/corpus.json`. The `editor_snapshot` group measures requested snapshot capture.
 
-Use batched benches when fixed costs are too small for stable single-operation measurements:
-
-- `flowchart_stress`
-- `architecture_layout_stress`
-- `architecture_stress`
-- `mindmap_layout_stress`
-- `text_measure_stress`
+When fixed costs need batching, select a stress bench from the
+[stage diagnostics guide](../../../../docs/performance/BENCHMARKING.md#stage-and-render-diagnostics)
+and check its own manifest requirements.
 
 `python3 tools/bench/perf_runner.py --profile canary` runs the documented local workflow.
 Use `--dry-run` to inspect it and `--profile full` only for broad validation.
@@ -44,24 +44,15 @@ measurement phase finishes.
 
 ## Same-Implementation Revision A/B
 
-Use `compare_self.py` for base/head regressions:
-
-```console
-python3 tools/bench/compare_self.py \
-  --base-dir ../merman-base \
-  --head-dir . \
-  --base-label base \
-  --head-label HEAD \
-  --preset long \
-  --filter 'end_to_end/(mindmap_medium|kanban_medium)' \
-  --out target/bench/self-comparison.md \
-  --json-out target/bench/self-comparison.json
-```
+Use `compare_self.py` for base/head regressions. Follow the
+[per-revision runner recipes](../../../../docs/performance/RUNBOOK.md#2-declare-both-runner-recipes)
+for an executable command; explicitly select each side's features from its own revision.
 
 Run separate parse, layout, render, and end-to-end filters when attributing a regression. Three
 alternating repeats are exploratory evidence; use `BENCHMARKING.md`'s calibrated, power-sized
-confirmation schedule for an acceptance decision. Release ranges with renamed features require
-explicit same-capability lanes; the helper assumes the current `svg` vocabulary.
+confirmation schedule for an acceptance decision. Preserve historical feature vocabularies and
+compare equivalent capabilities. The helper's legacy base default is `svg`; current pipeline bases
+also require compatibility JSON and editor facts.
 
 Use exactly one stage group per invocation. The helper expands `group/(fixture_a|fixture_b)`, but it
 does not expand `(parse|layout|render)/(fixture_a|fixture_b)`. Criterion 0.8 can treat the latter as
@@ -122,14 +113,9 @@ Do not call SVG latency parse latency. Do not claim admission from one host.
 
 ## Browser and WASM
 
-For Web artifact size, use exact artifact profiles:
-
-```console
-cargo run -p xtask -- wasm-size-matrix \
-  --surface web \
-  --artifact-profile web-full \
-  --budget-file docs/release/WASM_SIZE_BUDGETS.json
-```
+For Web artifact size, use the [upgrade playbook's artifact budget
+commands](../../../../docs/release/MERMAID_UPGRADE_PLAYBOOK.md#7-refresh-generated-surfaces-and-evidence)
+against the built package root and its exact artifact profiles.
 
 Record raw, stripped, gzip, and Brotli bytes and the profile capabilities. Compare browser
 renderers with the checked-in family corpus:
@@ -172,9 +158,10 @@ cargo run -p xtask -- verify --strict
 python3 tools/bench/test_perf_contracts.py
 ```
 
-Strict verification includes all release DOM modes. Run `compare-all-svgs` with a focused mode
-separately when diagnosing its failure, rather than repeating `parity-root` after a successful
-strict run.
+Run strict once at the settled source for final integration; the
+[verification schedule](../../../../docs/release/MERMAID_UPGRADE_PLAYBOOK.md#7-refresh-generated-surfaces-and-evidence)
+owns its coverage and additional checks. Rerun covered checks for failures or subsequent changes;
+keep performance harness contracts and measurements as distinct evidence.
 
 Consult `docs/performance/BENCHMARKING.md` for semantics, `docs/performance/RUNBOOK.md` for
 execution order, and `docs/performance/PERF_PLAN.md` for current priorities and thresholds.

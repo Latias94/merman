@@ -128,7 +128,7 @@ serde_json = { workspace = true, features = ["preserve_order", "raw_value"] }
 data-encoding.workspace = true
 criterion = "0.8.2"
 merman-ascii-test-contracts = { path = "../merman-ascii-test-contracts" }
-merman-core = { workspace = true, features = ["presentation", "compat-json", "editor-facts"] }
+merman-core = { workspace = true, features = ["presentation", "compat-json", "editor-facts", "test-support"] }
 merman-render.workspace = true
 merman-theme-authoring-fixtures = { path = "../merman-theme-authoring-fixtures" }
 roxmltree.workspace = true

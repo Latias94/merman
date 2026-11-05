@@ -14,6 +14,10 @@ These version fields describe the first public contract shapes after the 0.8 ref
 numbering does not preserve unreleased implementation iterations. None alters this ADR's realm,
 lifecycle, cache, or benchmark ownership decisions.
 
+Current source contracts are recorded in the [source appearance migration](../release/UNRELEASED_CONTRACT_VERSIONS.md#source-appearance-and-render-evidence-follow-up):
+facts schema 3, theme execution evidence schema 2 and Web transport API 9. The baseline values
+above and in the historical consequences below retain the dates of those decisions.
+
 ## Context
 
 The first Playground implementation mixed package loading, Cache Storage, rendering, text
@@ -100,6 +104,13 @@ and exact package version into a monotonic request snapshot. It debounces intera
 discards stale completions, and atomically publishes only the latest coherent Merman/Compare batch.
 Request parse, render, or SVG-safety failures remain request artifacts and never transition the
 Merman runtime to `error`.
+
+The Mermaid source and Config editor document share one source-configuration boundary: the
+[operation builder](../../playground/src/lib/mermaid-config.ts) inserts the complete Config object
+after frontmatter and before authored directives. Host initialization admits only a known theme
+name and validated font-control choice; authored `secure`, `securityLevel`, `themeCSS`, startup
+controls and resource limits remain untrusted source inputs to each engine's sanitizer and cannot
+replace or weaken host-site policy in Compare or benchmark.
 
 The product path performs no synthetic SVG warmup. Interactive render time is engine execution
 feedback for the actual source. `presentedAt` is recorded only after the corresponding validated SVG
@@ -355,7 +366,7 @@ thread responsive.
 - The editor bundle is larger because Monaco and a Worker WASM are local, but it provides real
   parser-backed language intelligence and makes no runtime CDN dependency.
 - HTTP cache quality remains measurable deployment evidence rather than hidden application policy.
-- Native ABI is `3`; browser transport API is `4`; editor-token and diagnostics schemas use
+- At the coordinated transport refactor, native ABI was `3`; browser transport API was `4`; editor-token and diagnostics schemas used
   version `1`, facts use version `2`;
-  and Mermaid remains pinned to `11.16.0@7c0cafcf`. These values reflect the later coordinated
-  transport refactor and supersede the versions recorded when this ADR was first accepted.
+  and Mermaid was pinned to `11.16.0@7c0cafcf`. These historical values reflect that coordinated
+  transport refactor; current version ownership is linked above.

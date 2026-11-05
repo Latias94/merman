@@ -84,6 +84,19 @@ flowchart LR
 | Dependency vulnerabilities | Parser, XML/HTML, image, and raster dependencies may receive future advisories. | `Security Audit` CI runs `cargo audit` on dependency changes and weekly; triage RustSec and upstream Mermaid advisories against this document. |
 | Accepted large graph still consumes CPU inside a layout engine | Cardinality and byte limits reduce worst cases but do not preempt CPU once a graph is admitted. | Use tighter `resources` profiles for untrusted surfaces; add cooperative deadlines as follow-up if host workloads need hard CPU caps. |
 
+## Failure and lifecycle policy
+
+User-controlled syntax, configuration, graph topology, and nesting must fail through the owning
+typed error contract rather than reachable `unwrap`, `expect`, or panics. Generated/static data
+invariants and tests have different preconditions from untrusted library inputs.
+
+Review depth and resource bounds across construction, projection, cloning, destruction, recovery,
+and early exit. An iterative parser alone does not bound a recursive destructor or serializer.
+Use explicit traversal and the existing operation/resource controls where input can amplify work;
+test representative boundary inputs and cancellation without claiming unlimited-depth support.
+Cancellation and resource exhaustion retain their terminal classification. A malformed model or
+failed backend must not silently become successful partial output.
+
 ## Output Guidance
 
 | Use case | Recommended path | Extra controls |
@@ -154,14 +167,3 @@ without consumer demand and sanitizer validation.
 | PDF budget coverage | Oversized vector page geometry remains supported while filter bitmaps and embedded raster images stay within independent defaults | `cargo nextest run -p merman --all-features --test security_regression` plus PDF planning tests |
 | Render resource budget coverage | Oversized source/model/SVG failures classify as resource limits | `cargo nextest run -p merman --features svg --test security_regression`; `cargo nextest run -p merman-bindings-core --features svg,layout-elk` |
 | Advisory triage | Every relevant RustSec or upstream Mermaid advisory maps to mitigation, non-applicability, or follow-up | `Security Audit` CI plus updates to this document and `CHANGELOG.md` |
-
-## Future Work
-
-- Add a stricter browser-embedding SVG preset if consumers need inline SVG without an external
-  sanitizer.
-- Add a dedicated browser-inline SVG result type if future hosts need a Rust-side DOM insertion
-  contract rather than the existing Web/VS Code policy.
-- Expand layout-model budgets beyond Flowchart and add optional cooperative layout deadlines for
-  hosts that need hard CPU preemption.
-- Add a broader dependency policy gate, such as license and duplicate-version checks, if release
-  review needs more than RustSec advisory scanning.

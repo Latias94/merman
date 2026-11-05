@@ -4,6 +4,10 @@ This document tracks Mermaid config/frontmatter behavior that is intentionally s
 `merman`. It separates input plumbing from rendered behavior so support claims do not imply more
 than the local evidence proves.
 
+The [selected source graph](README.md#machine-authorities) owns the current baseline and generated
+configuration shape. Tests named below own individual claims; earlier source collection dates do
+not expand their scope.
+
 Capability levels:
 
 - **Accepted**: an API, CLI flag, frontmatter block, or directive can receive the value without
@@ -54,13 +58,40 @@ and [migration reference](../migrations/render-reuse-host-integration.md#reuse-p
 | Bindings `options_json.site_config` | Bounded | Yes | `crates/merman-bindings-core/src/common.rs`, `render_svg_accepts_external_site_config`, `explicit_site_config_overrides_compiled_theme_variables` | Non-object values are rejected. Bounded site config overrides compiled-theme compatibility values, but general bindings reject `themeCSS` and `secure` as host-owned trust controls. |
 | CLI `--configFile` / `--config-file` | Yes | Yes | `crates/merman-cli/src/cli.rs`, `crates/merman-cli/src/config.rs`, `config_file_theme_overrides_cli_theme`, `config_file_theme_variables_and_theme_css_affect_svg`, `non_object_config_file_fails_before_rendering` | CLI `--theme` is applied first; JSON object config file values are deep-merged after it. Non-object JSON is rejected like bindings `site_config`. |
 | CLI `--handDrawnSeed` | Yes | Yes | `crates/merman-cli/src/config.rs` | Stored as root `handDrawnSeed` in site config. SVG-family proof is field-specific below. |
-| Frontmatter `config` | Yes | Yes | `parse_merges_frontmatter_and_directive_config`, `site_config_deep_merge_handles_deep_frontmatter_config_with_small_stack`, `parse_rejects_mismatched_indented_frontmatter_like_upstream`, `detector_registry_requires_matching_frontmatter_indentation` | Parsed as Mermaid config overrides. Directives merge after frontmatter. Mermaid 11.16 frontmatter delimiters require the closing `---` to use the same horizontal indentation as the opening delimiter. |
+| Frontmatter `config` | Yes | Yes | `parse_merges_frontmatter_and_directive_config`, `site_config_deep_merge_handles_deep_frontmatter_config_with_small_stack`, `parse_rejects_mismatched_indented_frontmatter_like_upstream`, `detector_registry_requires_matching_frontmatter_indentation` | Parsed as Mermaid config overrides. Directives merge after frontmatter. Frontmatter delimiters require the closing `---` to use the same horizontal indentation as the opening delimiter. |
 | Frontmatter `title` | Yes | Metadata only | `parse_metadata` title tests in `crates/merman-core/src/tests/misc.rs` | Sanitized with the effective config before metadata is returned. It is not a general config field. |
 | Frontmatter `displayMode` | Yes | Yes | `crates/merman-core/src/preprocess/mod.rs`, `parse_maps_top_level_frontmatter_diagram_config` | Mermaid special case mapped to `gantt.displayMode`. |
-| Frontmatter top-level diagram namespaces | Compatibility layer | Yes | `parse_maps_top_level_frontmatter_diagram_config`, `parse_frontmatter_config_takes_priority_over_diagram_compat` | Known Mermaid 11.16 diagram namespaces such as `gantt`, `flowchart`, `class`, `er`, `state`, `xyChart`, `swimlane`, `cynefin`, `railroad`, `treeView`, `eventmodeling`, and `treemap` are mapped into `config.<diagram>`. Explicit `config` values take priority. |
+| Frontmatter top-level diagram namespaces | Compatibility layer | Yes | `parse_maps_top_level_frontmatter_diagram_config`, `parse_frontmatter_config_takes_priority_over_diagram_compat` | Known diagram namespaces such as `gantt`, `flowchart`, `class`, `er`, `state`, `xyChart`, `swimlane`, `cynefin`, `railroad`, `treeView`, `eventmodeling`, and `treemap` are mapped into `config.<diagram>`. Explicit `config` values take priority. |
 | Frontmatter arbitrary top-level YAML fields | No | No | `parse_maps_top_level_frontmatter_diagram_config` | Unknown keys are ignored, matching the narrow upstream frontmatter surface. |
-| `%%{init: ...}%%` directives | Known keys | Yes | `sanitize_directive_uses_generated_config_shape_for_all_value_kinds`, `directive_sanitization_uses_generated_config_shape_end_to_end`, deep directive stack tests | The generated Mermaid 11.16 key shape removes unknown, null, and prototype-pollution keys before directives merge after frontmatter. Function and explicit-`undefined` keys remain legal even though they have no JSON default. |
+| `%%{init: ...}%%` directives | Known keys | Yes | `sanitize_directive_uses_generated_config_shape_for_all_value_kinds`, `directive_sanitization_uses_generated_config_shape_end_to_end`, deep directive stack tests | The generated selected-source key shape removes unknown, null, and prototype-pollution keys before directives merge after frontmatter. Function and explicit-`undefined` keys remain legal even though they have no JSON default. |
 | Directive top-level `config` field | Known keys | Yes | `parse_metadata_with_type_sync_moves_init_config_without_detection`, alias coverage | `config` is a directive transport wrapper, not a Mermaid config key. Its contents are shape-sanitized and then moved into the detected diagram-specific namespace. |
+
+## Style Origins
+
+For ordinary non-secure configuration, precedence is built-in defaults, site configuration,
+frontmatter `config`, then init directives in source order. A source theme may recompute its theme
+variables; source `themeVariables` overlay the selected theme. Secure-key filtering still applies.
+The [source-presentation tests](../../crates/merman-core/tests/source_presentation.rs) and
+[theme-layering tests](../../crates/merman/tests/diagram_theme_layering.rs) own the host/source
+boundary; selecting a typed visual theme does not select a Mermaid look or layout backend.
+
+Source style order remains family-specific:
+
+| Family | Compatibility rule |
+| --- | --- |
+| Flowchart | Node defaults, named/assigned classes, and inline styles have distinct origins; default and edge-specific `linkStyle` must retain their own order. |
+| Class | `classDef` can copy declarations into already assigned nodes, while a later assignment retains a class name. Preserve encounter order instead of imposing one global class/inline rank. |
+| State | Assigned classes precede inline styles; there is no implicit default class for all states, and a repeated `style` replaces the previous style list. |
+| ER | Implicit default class, assigned classes, then inline declarations; typography is a measurement input as well as paint. |
+| Sequence | Actor/message/note font configuration and dedicated `rect`/`box` colors are separate channels; generic `classDef`/`class`/`style` syntax is not added. |
+
+The [source-style representation](../../crates/merman-render/src/diagram_theme/source_styles.rs)
+preserves provenance; family parsers and SVG tests own observable precedence. Raw `themeCSS` uses
+the CSS cascade and host trust policy, not a portable typed origin rank. It is host-controlled by
+default. Layout-affecting typography must be resolved before layout, and consumer styles before
+[fallback measurement](../rendering/SVG_OUTPUT_PIPELINE.md#fallback-typography-boundary).
+Historical [theme reference records](../../fixtures/themes/README.md) do not qualify current
+portable-theme support.
 
 ## Field Capability Matrix
 
@@ -88,7 +119,7 @@ and [migration reference](../migrations/render-reuse-host-integration.md#reuse-p
 | `gantt.useWidth` | Yes | Yes | Yes | Layout golden + SVG focused | `fixtures/gantt/config_frontmatter_layout_fields.layout.golden.json` locks the configured `width: 420.0`; `gantt_svg_frontmatter_config_fields_affect_visible_output` asserts the root SVG `viewBox`/`max-width`. |
 | `gantt.numberSectionStyles` | Yes | Yes | Yes | Layout golden + SVG focused | `fixtures/gantt/config_frontmatter_layout_fields.layout.golden.json` locks `number_section_styles: 2.0` and alternating section classes; `gantt_svg_frontmatter_config_fields_affect_visible_output` asserts the corresponding row/title classes in SVG. |
 
-## Known Gaps
+## Current Boundaries
 
 - Flowchart `layout: elk` is renderable through the source-backed ELK lane and defaults to that
   lane for public render entry points. Class `layout: elk` is
@@ -97,8 +128,8 @@ and [migration reference](../migrations/render-reuse-host-integration.md#reuse-p
   and cardinality terminals. The obsolete `class.defaultRenderer` field has no selection effect. Mermaid's current public Flowchart ELK config surface is
   covered at render level: `mergeEdges`, `nodePlacementStrategy`, `nodePlacementAlignment`,
   `cycleBreakingStrategy`, `forceNodeModelOrder`, `considerModelOrder`, and
-  `keepEntryNodeOnTop`. The dedicated ELK probe gate covers every upstream `flowchart-elk.spec.js`
-  exact render call and all 57 unique layout bodies; broad SVG parity admits the registered ELK
+  `keepEntryNodeOnTop`. The dedicated ELK probe gate checks the upstream `flowchart-elk.spec.js`
+  exact-call inventory; broad SVG parity admits registered ELK
   probes when the source-backed backend is active. Full Eclipse ELK processor parity is still
   tracked separately; unsupported non-public strategies should continue to fail explicitly rather
   than being silently downgraded.
@@ -134,7 +165,7 @@ and [migration reference](../migrations/render-reuse-host-integration.md#reuse-p
 - `securityLevel` has shared sanitizer/model coverage and focused Flowchart/Class/State SVG link
   coverage. Browser-specific `sandbox` iframe isolation is not represented by standalone headless
   SVG output, so remaining family SVG tests should focus on observable link/target/sanitization DOM.
-- Gantt frontmatter/config merge semantics are covered, and layout code consumes the key fields,
-  but several fields still deserve small layout/SVG fixtures that prove observable geometry.
+- Gantt rendered claims are limited to the field-specific layout/SVG evidence above. Acceptance
+  or successful config merging alone does not establish observable geometry for another field.
 - Top-level frontmatter compatibility is intentionally narrow. Global Mermaid config keys such as
   `theme`, `look`, and `layout` should still be written under `config`.

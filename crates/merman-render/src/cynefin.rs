@@ -4,11 +4,25 @@ pub(crate) use theme::{CynefinSurfaceReceipt, CynefinTextRole, CynefinTypography
 
 use crate::Result;
 use crate::config::{config_bool, config_f64, config_string};
+use crate::diagram_theme::ThemeTarget;
 use crate::model::{
     Bounds, CynefinDiagramLayout, CynefinDomainLayout, CynefinItemLayout, CynefinTransitionLayout,
 };
 use crate::text::{TextMeasurer, TextStyle};
 use merman_model::families::cynefin::CynefinDiagramModel;
+
+pub(crate) const PAINT_TARGETS: &[ThemeTarget] = &[
+    ThemeTarget::Node,
+    ThemeTarget::NodeLabel,
+    ThemeTarget::Edge,
+    ThemeTarget::EdgeLabel,
+    ThemeTarget::Marker,
+    ThemeTarget::Title,
+];
+
+fn owns_target(target: ThemeTarget) -> bool {
+    PAINT_TARGETS.contains(&target)
+}
 
 const DOMAIN_COMPLEX: &str = "complex";
 const DOMAIN_COMPLICATED: &str = "complicated";

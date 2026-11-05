@@ -1,11 +1,12 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import type { SvgRenderMetadata, ThemeExecutionEvidenceV1 } from "@mermanjs/web";
+import type { SvgRenderMetadata, ThemeExecutionEvidenceV2 } from "@mermanjs/web";
 import type { CompletedRenderBatch, RenderPublicationId } from "../runtime/render-coordinator.ts";
 import type { NavigableInlineSvg } from "../runtime/render-artifact.ts";
 import {
   boundedThemeReasonCodes,
   currentDiagramDetection,
+  currentAppearanceOverrides,
   currentThemeRender,
   detectedThemeFamily,
   readThemeExecutionEvidence,
@@ -16,13 +17,13 @@ import {
   themeTargetOutcome,
 } from "./theme-discovery.ts";
 import { mergeRecommendedMermaidConfig } from "./mermaid-config.ts";
-import { beginThemeEditSession, beginThemeImport, completeThemeImport, rejectThemeValidation, themeValidationToken } from "./theme-edit-session.ts";
 import { DEFAULT_WORKSPACE_SNAPSHOT } from "./workspace-snapshot.ts";
 
 const workspace = { ...DEFAULT_WORKSPACE_SNAPSHOT, themePresetId: "catalog-preset" };
-const evidence: ThemeExecutionEvidenceV1 = {
-  version: 1, family_id: "flowchart", theme_status: "verified", output_mutated: true,
+const evidence: ThemeExecutionEvidenceV2 = {
+  version: 2, family_id: "flowchart", theme_status: "verified", output_mutated: true,
   target_kind: "inline_svg", target_status: "host_dependent", target_reason_ids: ["host-font"], font_source: "browser",
+  materialized_theme: "dark",
 };
 const metadata: SvgRenderMetadata = {
   version: 1, operation_id: "svg", media_type: "image/svg+xml", runtime_policy: "default", byte_length: 6,
@@ -34,9 +35,11 @@ const batch: CompletedRenderBatch = {
   detection: { status: "available", diagramType: "flowchart", syntaxId: "flowchart-v2", effectiveLayoutId: "dagre", validity: "valid" },
   snapshot: { publicationId, operation: {
     source: workspace.code, configuredSource: workspace.code, configurationError: null,
+    injectedConfigSpan: null,
     bindingOptions: { version: 3 }, bindingOptionsJson: null,
     theme: workspace.diagramTheme, configJson: workspace.mermaidConfig,
     themePresetId: workspace.themePresetId, themeRecipeJson: workspace.themeRecipeJson,
+    unavailableThemePresetId: null,
     textMeasurementMode: workspace.textMeasurementMode, diagramFont: workspace.diagramFont, svgPipeline: workspace.svgPipeline,
     layoutEnvironment: { containerWidth: 800, containerHeight: 600 }, viewport: { width: 800, height: 600 },
     versions: { merman: "test", mermaid: "test" }, asciiEnabled: false, compareEnabled: false, diagnosticsEnabled: false,
@@ -45,6 +48,19 @@ const batch: CompletedRenderBatch = {
     artifact: { svg: "<svg/>", kind: "navigable-inline-svg" } as NavigableInlineSvg },
 };
 const familyCapabilities = [{ diagram_type: "flowchart-v2", family_id: "flowchart", metadata_id: "flowchart" }];
+
+test("appearance evidence is visible only for the matching configured operation", () => {
+  const operation = { ...batch.snapshot.operation, injectedConfigSpan: { start: 8, end: 40 } };
+  const current: CompletedRenderBatch = { ...batch,
+    snapshot: { ...batch.snapshot, operation },
+    detection: { ...batch.detection, appearance: { state: "known", font: null, look: null,
+      theme: { value: "dark", origin: { kind: "directive", directive_index: 0 }, construct_span: { start: 8, end: 40 } } } },
+  };
+  assert.deepEqual(currentAppearanceOverrides(current, workspace)?.theme, { value: "dark", origin: "config" });
+  assert.equal(currentAppearanceOverrides(current, { ...workspace, code: "new source" }), null);
+  assert.equal(currentAppearanceOverrides(current, { ...workspace, mermaidConfig: '{"theme":"light"}' }), null);
+  assert.equal(currentAppearanceOverrides(batch, workspace), null);
+});
 
 test("recommended settings recursively preserve unrelated Mermaid config without mutating the catalog", () => {
   const original = {
@@ -126,12 +142,12 @@ test("Git Graph and Quadrant Chart resolve syntax identity and existing metadata
 test("pending coordinator states hide previous theme evidence while unchanged detection remains visible", () => {
   const pending = { publicationId: 2 as RenderPublicationId };
   for (const state of [{ status: "empty" }, { status: "pending", snapshot: pending }] as const) {
-    const current = currentThemeRender(state, workspace, null);
+    const current = currentThemeRender(state, workspace);
     assert.deepEqual(current, { status: "waiting", reason: "render", batch: null });
     assert.equal(currentDiagramDetection(state, workspace), null);
   }
   const updating = { status: "updating", previous: batch, snapshot: pending } as const;
-  assert.deepEqual(currentThemeRender(updating, workspace, null), { status: "waiting", reason: "render", batch: null });
+  assert.deepEqual(currentThemeRender(updating, workspace), { status: "waiting", reason: "render", batch: null });
   assert.equal(currentDiagramDetection(updating, workspace), batch.detection);
   assert.equal(detectedThemeFamily(currentDiagramDetection(updating, workspace), familyCapabilities), "flowchart");
 });
@@ -145,7 +161,7 @@ test("theme and output changes retain current-family choices but never inherit o
   ]) {
     const changedWorkspace = { ...workspace, ...change };
     for (const state of [batch, updating]) {
-      assert.equal(currentThemeRender(state, changedWorkspace, null).batch, null, JSON.stringify(change));
+      assert.equal(currentThemeRender(state, changedWorkspace).batch, null, JSON.stringify(change));
       const detection = currentDiagramDetection(state, changedWorkspace);
       assert.equal(detection, batch.detection, JSON.stringify(change));
       assert.equal(detectedThemeFamily(detection, familyCapabilities), "flowchart");
@@ -162,7 +178,7 @@ test("source, config, UI theme and font changes hide stale detection until curre
     const changedWorkspace = { ...workspace, ...change };
     for (const state of [batch, updating]) {
       assert.equal(currentDiagramDetection(state, changedWorkspace), null, JSON.stringify(change));
-      assert.equal(currentThemeRender(state, changedWorkspace, null).batch, null, JSON.stringify(change));
+      assert.equal(currentThemeRender(state, changedWorkspace).batch, null, JSON.stringify(change));
     }
     const currentBatch: CompletedRenderBatch = {
       ...batch, snapshot: { ...batch.snapshot, operation: {
@@ -175,34 +191,14 @@ test("source, config, UI theme and font changes hide stale detection until curre
 });
 
 test("a completed render is hidden as soon as any current render input changes, before scheduling", () => {
-  assert.equal(currentThemeRender(batch, workspace, null).batch, batch);
+  assert.equal(currentThemeRender(batch, workspace).batch, batch);
   for (const change of [
     { code: "pie\n\"A\": 1" }, { mermaidConfig: '{"flowchart":{"look":"classic"}}' },
     { diagramTheme: "dark" as const }, { themePresetId: "new-preset" }, { themePresetId: null },
     { themePresetId: null, themeRecipeJson: '{"schema_version":1}' },
     { svgPipeline: "resvg-safe" as const }, { textMeasurementMode: "headless" as const }, { diagramFont: "arial" as const },
   ]) {
-    assert.equal(currentThemeRender(batch, { ...workspace, ...change }, null).status, "waiting", JSON.stringify(change));
-  }
-});
-
-test("reading, validating and invalid imports never report last-valid evidence as the imported draft", () => {
-  const session = beginThemeEditSession(1, { kind: "preset", presetId: workspace.themePresetId });
-  assert.equal(currentThemeRender(batch, workspace, session).status, "ready");
-  const importing = beginThemeImport(session);
-  assert.deepEqual(currentThemeRender(batch, workspace, importing), { status: "waiting", reason: "importing", batch: null });
-  const pending = completeThemeImport(importing, { ...themeValidationToken(importing), generation: importing.importGeneration }, "{");
-  assert.deepEqual(currentThemeRender(batch, workspace, pending), { status: "waiting", reason: "validating", batch: null });
-  const invalid = rejectThemeValidation(pending, themeValidationToken(pending), "Invalid JSON");
-  assert.deepEqual(currentThemeRender(batch, workspace, invalid), { status: "waiting", reason: "invalid", batch: null });
-  const updating = { status: "updating", previous: batch, snapshot: { publicationId: 2 as RenderPublicationId } } as const;
-  for (const draft of [importing, pending, invalid]) {
-    for (const state of [batch, updating]) {
-      assert.equal(currentThemeRender(state, workspace, draft).batch, null);
-      const detection = currentDiagramDetection(state, workspace);
-      assert.equal(detectedThemeFamily(detection, familyCapabilities), "flowchart");
-      assert.equal(themeFamilyTreatment({ family_designs: [{ family_id: "flowchart", treatment: "dedicated" }] }, detectedThemeFamily(detection, familyCapabilities)), "dedicated");
-    }
+    assert.equal(currentThemeRender(batch, { ...workspace, ...change }).status, "waiting", JSON.stringify(change));
   }
 });
 
@@ -211,7 +207,7 @@ test("current render failure is distinct from missing evidence or a missing them
     ...batch, status: "failed", mermaid: null,
     merman: { status: "failure", engine: "merman", stage: "render", message: "Cannot render", detail: null },
   };
-  assert.equal(currentThemeRender(failed, workspace, null).status, "failed");
+  assert.equal(currentThemeRender(failed, workspace).status, "failed");
   assert.equal(readThemeExecutionEvidence(null), null);
   assert.equal(themeEvidenceOutcome(null), "unavailable");
 });

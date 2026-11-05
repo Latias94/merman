@@ -33,6 +33,10 @@ impl FlowchartTextPaintChannel {
     ) -> Result<ResolvedThemeStyle, OperationWorkError> {
         if matches!(self, Self::Cluster) {
             super::text_surface_paint::resolve_cluster_text_style(theme, ordinal, work)
+        } else if matches!(self, Self::DiagramTitle)
+            && theme.family_id() == crate::DiagramFamilyId::AGENTFLOW
+        {
+            super::text_surface_paint::resolve_document_title_style(theme, ordinal, work)
         } else {
             theme.text_style_with_work_meter(self.target(), ThemeVariant::Default, ordinal, work)
         }
@@ -135,7 +139,13 @@ impl FlowchartTextPaintPlan {
                 FlowchartTextPaintChannel::Cluster,
                 FlowchartTextPaintChannel::DiagramTitle,
             ] {
-                let target = channel.target();
+                let target = if matches!(channel, FlowchartTextPaintChannel::DiagramTitle)
+                    && theme.family_id() == crate::DiagramFamilyId::AGENTFLOW
+                {
+                    ThemeTarget::Title
+                } else {
+                    channel.target()
+                };
                 let style = channel.resolve_style(theme, None, work)?;
                 let fill = resolve_direct_static_fill(
                     theme,

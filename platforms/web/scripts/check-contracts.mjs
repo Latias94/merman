@@ -225,7 +225,7 @@ const exactTypeStringLiterals = new Map([
 ]);
 const requiredTypePropertyTypes = [
   ["AnalysisResult", "version", "1"],
-  ["AnalysisFactsResult", "version", "2"],
+  ["AnalysisFactsResult", "version", "3"],
 ];
 const requiredTypePropertyAnnotations = [
   ["MermaidThemeCompatibility", "theme", "ThemeName"],

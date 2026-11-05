@@ -61,6 +61,7 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_process_rectangle(
         common.effect_filter_attr,
         escape_attr(common.style),
     );
+    common.write_effect_style(out);
     common.write_rectangle_corner_style(out);
     let _ = write!(
         out,
@@ -73,6 +74,7 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_process_rectangle(
     common.write_rectangle_radii(out, radius);
     out.push_str(" />");
     super::super::emission::FlowchartNodeShapeEmissionReceipt::classic_process(radius.is_some())
+        .with_effect_reach(common.effect_selected)
 }
 
 pub(super) fn advance_rough_geometry(common: &super::super::FlowchartNodeGeometry<'_>) {

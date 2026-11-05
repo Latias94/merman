@@ -30,6 +30,8 @@ use crate::{
 #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
 use indexmap::IndexMap;
 #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
+use merman_model::families::flowchart::FlowDroppedSubgraphMember;
+#[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
 use serde_json::Value;
 #[cfg(all(test, any(feature = "diagram-flowchart", feature = "diagram-swimlane")))]
 use serde_json::json;
@@ -84,6 +86,8 @@ mod lex;
 mod lexer;
 mod lexer_iter;
 mod link;
+#[cfg(all(test, any(feature = "diagram-flowchart", feature = "diagram-swimlane")))]
+mod mermaid_12_3_tests;
 mod model;
 #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
 mod semantic;
@@ -96,7 +100,7 @@ mod tokens;
 
 use text::{is_ecmascript_trim_char, parse_edge_label_text, parse_label_text};
 #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
-use text::{strip_wrapping_backticks, title_kind_str, trim_flowdb_label_text, unquote};
+use text::{title_kind_str, trim_flowdb_label_text};
 
 #[cfg(feature = "presentation")]
 #[doc(hidden)]
@@ -127,10 +131,7 @@ use model::{Edge, EdgeDefaults, FlowNodeSyntax, FlowSubgraphVertexStyle, Node};
 
 pub(crate) use tokens::{ArrowToken, DirectionStatementToken, LexError, NodeLabelToken, Tok};
 
-#[cfg(all(
-    any(test, feature = "compat-json"),
-    any(feature = "diagram-flowchart", feature = "diagram-swimlane")
-))]
+#[cfg(all(test, any(feature = "diagram-flowchart", feature = "diagram-swimlane")))]
 use accessibility::scan_flowchart_accessibility;
 #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
 use accessibility::{FlowchartAccessibilityScan, scan_flowchart_accessibility_controlled};
@@ -196,6 +197,7 @@ struct FlowchartSemanticSource {
     nodes: Vec<Node>,
     edges: Vec<Edge>,
     subgraphs: Vec<FlowSubGraph>,
+    dropped_subgraph_members: Vec<FlowDroppedSubgraphMember>,
     subgraph_vertex_styles: FlowchartSubgraphStyles,
     #[cfg(feature = "presentation")]
     collapsed_subgraphs: Option<rustc_hash::FxHashSet<String>>,
@@ -235,23 +237,18 @@ impl FlowchartMetadata for crate::SemanticMetadata {
 
 #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
 #[cfg(feature = "compat-json")]
-pub(crate) fn parse_flowchart(code: &str, meta: &SourcePresentationMetadata) -> Result<Value> {
-    parse_flowchart_with_warning_facts(code, meta)
-        .map(crate::family::WarningSemanticParse::into_model)
-}
-
-#[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
-#[cfg(feature = "compat-json")]
-pub(crate) fn parse_flowchart_with_warning_facts(
+pub(crate) fn parse_flowchart_compatibility_model_controlled(
     code: &str,
     meta: &SourcePresentationMetadata,
-) -> Result<crate::family::WarningSemanticParse> {
-    let model = parse_flowchart_semantic_source(code, meta)?.into_model(meta)?;
-    let compatibility = render_model_to_compat_json(&model, meta)?;
-    Ok(crate::family::WarningSemanticParse::new(
-        compatibility,
-        model.warning_facts,
-    ))
+    control: &OperationControl,
+) -> OperationControlResult<Result<crate::family::FamilySemanticModel>> {
+    let source = parse_flowchart_semantic_source_controlled(code, meta, control)?;
+    let model = match source {
+        Ok(source) => source.into_model_controlled(meta, control)?,
+        Err(error) => Err(error),
+    };
+    control.checkpoint()?;
+    Ok(model.map(|model| crate::family::FamilySemanticModel::Flowchart(Box::new(model))))
 }
 
 #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
@@ -268,17 +265,11 @@ pub(crate) fn parse_flowchart_json_and_editor_facts(
         EditorFactsDemand::Capture,
         control,
     )?;
-    let (model, warning_facts) = match construction.model {
-        Ok(model) => (
-            render_model_to_compat_json(&model, meta),
-            model.warning_facts,
-        ),
-        Err(error) => (Err(error), Vec::new()),
-    };
     let parsed = crate::family::CombinedSemanticParse::from_parts(
-        model,
+        construction
+            .model
+            .map(|model| crate::family::FamilySemanticModel::Flowchart(Box::new(model))),
         construction.editor_facts.unwrap_or_default(),
-        warning_facts,
     );
     control.checkpoint()?;
     Ok(parsed)
@@ -423,7 +414,7 @@ pub(crate) fn parse_semantic_model_controlled(
 }
 
 #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
-#[cfg(feature = "compat-json")]
+#[cfg(all(test, feature = "compat-json"))]
 pub(crate) fn render_model_to_compat_json(
     model: &FlowchartModel,
     meta: &SourcePresentationMetadata,
@@ -432,10 +423,7 @@ pub(crate) fn render_model_to_compat_json(
         .map_err(crate::Error::from)
 }
 
-#[cfg(all(
-    any(test, feature = "compat-json"),
-    any(feature = "diagram-flowchart", feature = "diagram-swimlane")
-))]
+#[cfg(all(test, any(feature = "diagram-flowchart", feature = "diagram-swimlane")))]
 fn parse_flowchart_semantic_source<M: FlowchartMetadata>(
     code: &str,
     meta: &M,
@@ -544,7 +532,7 @@ fn parse_flowchart_ast_controlled<M: FlowchartMetadata>(
     let mut statements = StatementArena::default();
     let edge_budget = flowchart_edge_budget(meta);
     let mut emitted = 0usize;
-    let tokens = Lexer::new(code).take_while(|_| {
+    let tokens = Lexer::new(code).with_control(control).take_while(|_| {
         let active = !emitted.is_multiple_of(128) || control.checkpoint().is_ok();
         emitted = emitted.saturating_add(1);
         active
@@ -659,6 +647,7 @@ fn parse_flowchart_semantic_source_from_ast_controlled<M: FlowchartMetadata>(
         nodes,
         edges,
         subgraphs: builder.subgraphs,
+        dropped_subgraph_members: builder.dropped_subgraph_members,
         subgraph_vertex_styles,
         #[cfg(feature = "presentation")]
         collapsed_subgraphs,
@@ -722,7 +711,13 @@ fn prepare_flowchart_shape_data_document(
     if documents.contains_key(source) {
         return control.checkpoint();
     }
-    let document = crate::inline_config::parse_mermaid_inline_object_controlled(source, control)?;
+    let mut document =
+        crate::inline_config::parse_mermaid_inline_object_controlled(source, control)?;
+    if let Ok(Value::Object(map)) = &mut document {
+        for key in ["laneRole", "laneIndex", "drawnExtent"] {
+            map.remove(key);
+        }
+    }
     documents.insert(source.to_string(), document);
     Ok(())
 }
@@ -753,7 +748,7 @@ fn flowchart_edge_limit_error(message: impl Into<String>, span: Option<SourceSpa
 }
 
 #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
-#[cfg(any(test, feature = "compat-json"))]
+#[cfg(test)]
 fn parse_flowchart_ast<M: FlowchartMetadata>(code: &str, meta: &M) -> Result<FlowchartAst> {
     parse_flowchart_ast_controlled(code, meta, &OperationControl::new())?
 }
@@ -831,7 +826,7 @@ fn construct_flowchart_token_trace(
     );
 
     let mut items = Vec::new();
-    for item in Lexer::recovering(code) {
+    for item in Lexer::recovering(code).with_control(control) {
         if items.len() % 128 == 0 {
             control.checkpoint()?;
         }
@@ -923,11 +918,22 @@ fn recover_flowchart_editor_facts_from_tokens(
     let mut facts = EditorSemanticFacts::new();
     facts.mark_recovered();
     let mut collector = FlowchartRecoveryFactCollector::default();
-    for (index, (start, token, end)) in trace.editor_tokens().enumerate() {
+    let mut tokens = trace.editor_tokens().enumerate().peekable();
+    while let Some((index, (start, token, end))) = tokens.next() {
         if index % 128 == 0 {
             control.checkpoint()?;
         }
-        collector.accept(code, token, *start, *end, &mut facts, editor_demand);
+        let shape_data_target = tokens
+            .peek()
+            .is_some_and(|(_, (_, token, _))| matches!(token, Tok::ShapeData(_)));
+        collector.accept(
+            code,
+            token,
+            SourceSpan::new(*start, *end),
+            shape_data_target,
+            &mut facts,
+            editor_demand,
+        );
     }
     let pending = collector.finish(code.len());
     let mut has_eof_expected = pending.is_some_and(|span| span.end == code.len());
@@ -1061,6 +1067,7 @@ fn collect_expected_syntax_from_tokens<'a>(
 struct FlowchartRecoveryFactCollector {
     pending_node_identifier: Option<FlowchartRecoveryTargetState>,
     seen_entities: HashSet<String>,
+    seen_edge_ids: HashSet<String>,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -1078,11 +1085,12 @@ impl FlowchartRecoveryFactCollector {
         &mut self,
         code: &str,
         token: &Tok,
-        start: usize,
-        end: usize,
+        span: SourceSpan,
+        shape_data_target: bool,
         #[cfg(feature = "editor-facts")] facts: &mut EditorSemanticFacts,
         editor_demand: EditorFactsDemand,
     ) {
+        let SourceSpan { start, end } = span;
         enum TokenKind {
             Arrow,
             EdgeLabel,
@@ -1099,7 +1107,21 @@ impl FlowchartRecoveryFactCollector {
             _ => TokenKind::Other,
         };
         if editor_demand.captures_rich() {
-            collect_editor_fact_from_token(code, token, start, end, facts, &mut self.seen_entities);
+            if let Tok::EdgeId(id) = token {
+                self.seen_edge_ids.insert(id.clone());
+            }
+            let edge_metadata = shape_data_target
+                && matches!(token, Tok::Id(id) if self.seen_edge_ids.contains(id));
+            if !edge_metadata {
+                collect_editor_fact_from_token(
+                    code,
+                    token,
+                    start,
+                    end,
+                    facts,
+                    &mut self.seen_entities,
+                );
+            }
         }
         match token_kind {
             TokenKind::Arrow => {
@@ -1832,34 +1854,18 @@ fn flowchart_subgraph_symbol_id(header: &SubgraphHeader) -> Option<(String, Sour
 
     let raw_span = header.raw_id_span?;
     let raw = header.raw_id.as_str();
-    let mut start = 0usize;
-    let mut end = raw.len();
-
-    if raw.starts_with('"') && raw.ends_with('"') && raw.len() >= 2 {
-        start += 1;
-        end -= 1;
-        let unquoted = &raw[start..end];
-        if unquoted.starts_with('`') && unquoted.ends_with('`') && unquoted.len() >= 2 {
-            start += 1;
-            end -= 1;
-        }
-    }
-
-    let candidate = &raw[start..end];
-    let leading = candidate
-        .len()
-        .saturating_sub(candidate.trim_start_matches(is_ecmascript_trim_char).len());
-    start += leading;
-    let trimmed = &raw[start..end];
-    end = start + trimmed.trim_end_matches(is_ecmascript_trim_char).len();
-
-    let name = raw[start..end].to_string();
+    let trimmed = trim_flowdb_label_text(raw);
+    let selection = text::borrowed_span(raw, trimmed);
+    let name = trimmed.to_string();
     if name.is_empty() {
         return None;
     }
     Some((
         name,
-        SourceSpan::new(raw_span.start + start, raw_span.start + end),
+        SourceSpan::new(
+            raw_span.start + selection.start,
+            raw_span.start + selection.end,
+        ),
     ))
 }
 
@@ -1901,7 +1907,7 @@ struct FlowchartModelProjection {
 
 #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
 impl FlowchartSemanticSource {
-    #[cfg(any(test, feature = "compat-json"))]
+    #[cfg(test)]
     fn into_model<M: FlowchartMetadata>(self, meta: &M) -> Result<FlowchartModel> {
         self.into_model_controlled(meta, &OperationControl::new())
             .expect("a private parse control cannot be cancelled")
@@ -1961,6 +1967,7 @@ impl FlowchartSemanticSource {
             mut nodes,
             edges,
             subgraphs,
+            dropped_subgraph_members,
             subgraph_vertex_styles,
             #[cfg(feature = "presentation")]
             collapsed_subgraphs,
@@ -2048,6 +2055,7 @@ impl FlowchartSemanticSource {
             nodes: render_nodes,
             edges: render_edges,
             subgraphs: render_subgraphs,
+            dropped_subgraph_members,
             subgraph_vertex_styles,
             tooltips: render_tooltips,
             warning_facts,
@@ -2212,6 +2220,7 @@ fn flow_edge_to_model<M: FlowchartMetadata>(
         interpolate: e.interpolate,
         animate: e.animate,
         animation: e.animation,
+        step: e.step,
     })
 }
 
@@ -2676,14 +2685,12 @@ mod tests {
     fn duplicate_subgraph_editor_facts_keep_each_declaration_span() {
         let source = "flowchart TB\nsubgraph S[First]\nx\nend\nsubgraph S[Second]\ny\nend\nclass S hot\nS --> z\n";
         let control = OperationControl::new();
-        let (model, facts, _) = parse_flowchart_json_and_editor_facts(
-            source,
-            &flowchart_test_meta("flowchart-v2"),
-            &control,
+        let meta = flowchart_test_meta("flowchart-v2");
+        let (model, facts) = crate::family::test_support::into_projected_result(
+            parse_flowchart_json_and_editor_facts(source, &meta, &control),
+            &meta,
         )
-        .unwrap()
-        .into_parts();
-        let model = model.unwrap();
+        .unwrap();
         let symbols: Vec<_> = facts
             .symbols
             .iter()
@@ -3451,7 +3458,7 @@ A -->|second &lt; owner| B
             &control,
         )
         .expect("the controlled parser should return a combined result");
-        let (model, facts, _) = parsed.into_parts();
+        let (model, facts) = parsed.into_parts();
         let error = model.expect_err("the traced parser should reject the expanded edge group");
         assert!(error.to_string().contains("Flowchart edge limit exceeded"));
         assert!(

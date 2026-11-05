@@ -36,7 +36,7 @@ pub(in crate::svg::parity) fn render_class_diagram_svg_model_with_config(
     let mut detail = ClassRenderDetails::default();
     let diagram_id = options.diagram_id_or("merman");
     let checkpoint_emit = || options.checkpoint_emit();
-    let emit = ClassEmitCheckpoint::new(&checkpoint_emit);
+    let emit = ClassEmitCheckpoint::new(&checkpoint_emit, options.work_meter());
     let aria_roledescription = model.model().diagram_type.as_str();
 
     let build_ctx_guard = timing.section(&mut timings.build_ctx);
@@ -53,6 +53,7 @@ pub(in crate::svg::parity) fn render_class_diagram_svg_model_with_config(
             receipt,
             node_visual_plan.label_paints(),
             relation_theme.namespace_title_terminal(),
+            relation_theme.diagram_title_terminal(),
             model.notes().map(|note| note.id),
         );
     }
@@ -331,10 +332,17 @@ pub(in crate::svg::parity) fn render_class_diagram_svg_model_with_config(
             title.x,
             title.y,
             title.text,
-            typography_theme.title_paint().map(|paint| paint.style()),
+            relation_theme
+                .diagram_title_terminal()
+                .map(|(_, style)| style),
         );
         out.checkpoint()?;
     }
+    relation_theme_receipt.record_diagram_title(
+        view_box.title.is_some(),
+        relation_theme.diagram_title_terminal(),
+        title_emission,
+    );
 
     if let Some(receipt) = typography_receipt.as_mut() {
         let facts = view_box
@@ -343,9 +351,12 @@ pub(in crate::svg::parity) fn render_class_diagram_svg_model_with_config(
             .map_or_else(crate::class::ClassTextTerminalFacts::default, |title| {
                 crate::class::ClassTextTerminalFacts::inherited_text(title.text)
             });
-        let facts = typography_theme
-            .title_paint()
-            .map_or(facts, |paint| paint.observe(facts, title_emission));
+        let facts = facts.with_paint(
+            relation_theme
+                .diagram_title_terminal()
+                .filter(|(_, style)| title_emission == Some(*style)),
+            title_emission.unwrap_or(""),
+        );
         receipt.record_diagram_title(facts);
     }
 

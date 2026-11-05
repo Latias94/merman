@@ -33,6 +33,8 @@ pub(crate) enum StateTerminalSurface {
     CompositeBodyHandDrawnAlt,
     CompositeDividerHandDrawn,
     CompositeBodyNeo,
+    CompositeBodyNeoAlt,
+    CompositeDividerNeo,
     CompositeHeaderClassic,
     CompositeHeaderHandDrawn,
     CompositeHeaderNeo,
@@ -830,7 +832,7 @@ impl StateCompatibilityPlan {
             ) => css(&self.stroke_width_px, Source::StrokeWidth),
             (
                 StateHandDrawn
-                | CompositeBodyNeo
+                | CompositeDividerNeo
                 | CompositeHeaderNeo
                 | SpecialEndOuterClassic
                 | SpecialEndOuterHandDrawn
@@ -897,11 +899,15 @@ impl StateCompatibilityPlan {
                 StrokeWidth,
             ) => css(&self.neo_rough_stroke_width, Source::NeoStrokeWidth),
             (NoteLabel, Fill) => css(&self.note_text, Source::NoteText),
-            (CompositeBodyClassic | CompositeBodyHandDrawn, Fill) => {
+            // The `.inner` rules outrank the generic Neo fill on both ordinary and alt bodies.
+            (CompositeBodyClassic | CompositeBodyHandDrawn | CompositeBodyNeo, Fill) => {
                 css(&self.composite_background, Source::CompositeBackground)
             }
             (
-                CompositeBodyClassicAlt | CompositeDividerClassic | CompositeBodyHandDrawnAlt,
+                CompositeBodyClassicAlt
+                | CompositeDividerClassic
+                | CompositeBodyHandDrawnAlt
+                | CompositeBodyNeoAlt,
                 Fill,
             ) => css(&self.alt_background, Source::AltBackground),
             (CompositeHeaderClassic | CompositeHeaderHandDrawn, Fill) => css(
@@ -919,15 +925,20 @@ impl StateCompatibilityPlan {
                 StrokeWidth,
             ) => StateTerminalPaintRef::Css("1", false),
             (CompositeDividerHandDrawn, Fill) => StateTerminalPaintRef::Css("lightgrey", false),
-            (CompositeBodyNeo | CompositeHeaderNeo, Stroke) if self.use_gradient => {
+            (
+                CompositeBodyNeo | CompositeBodyNeoAlt | CompositeDividerNeo | CompositeHeaderNeo,
+                Stroke,
+            ) if self.use_gradient => {
                 StateTerminalPaintRef::ScopedGradient(owned(Source::Gradient))
             }
-            (CompositeBodyNeo | CompositeHeaderNeo, Stroke) => {
-                css(&self.state_border, Source::StateBorder)
-            }
-            (CompositeBodyNeo | CompositeHeaderNeo, StrokeWidth) => {
-                css(&self.neo_stroke_width, Source::NeoStrokeWidth)
-            }
+            (
+                CompositeBodyNeo | CompositeBodyNeoAlt | CompositeDividerNeo | CompositeHeaderNeo,
+                Stroke,
+            ) => css(&self.state_border, Source::StateBorder),
+            (
+                CompositeBodyNeo | CompositeBodyNeoAlt | CompositeDividerNeo | CompositeHeaderNeo,
+                StrokeWidth,
+            ) => css(&self.neo_stroke_width, Source::NeoStrokeWidth),
             (SpecialStartClassic | SpecialStartNeo, Fill) => {
                 css(&self.special_state_color, Source::SpecialStateColor)
             }
@@ -1035,6 +1046,18 @@ impl StateCompatibilityPlan {
             ThemeTarget::Note if self.is_neo() => Some(StateTerminalSurface::NoteNeo),
             ThemeTarget::Note if self.is_hand_drawn() => Some(StateTerminalSurface::NoteHandDrawn),
             ThemeTarget::Note => Some(StateTerminalSurface::NoteClassic),
+            ThemeTarget::Composite if self.is_neo() && node.shape == "divider" => {
+                Some(StateTerminalSurface::CompositeDividerNeo)
+            }
+            ThemeTarget::Composite
+                if self.is_neo()
+                    && node
+                        .css_classes
+                        .split_whitespace()
+                        .any(|class| class == "statediagram-cluster-alt") =>
+            {
+                Some(StateTerminalSurface::CompositeBodyNeoAlt)
+            }
             ThemeTarget::Composite if self.is_neo() => Some(StateTerminalSurface::CompositeBodyNeo),
             ThemeTarget::Composite if self.is_hand_drawn() && node.shape == "divider" => {
                 Some(StateTerminalSurface::CompositeDividerHandDrawn)

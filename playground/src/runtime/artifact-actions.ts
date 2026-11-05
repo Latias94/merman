@@ -1,4 +1,5 @@
 import type { MermanDomainFacade, MermanRuntimeState } from "./merman-core.ts";
+import type { SvgRenderMetadata } from "@mermanjs/web";
 import { projectError, type ErrorProjection } from "./error-projection.ts";
 import {
   renderOperationWithSvgPipeline,
@@ -28,6 +29,9 @@ export interface FrozenExportTarget {
   readonly filename: string;
   readonly publicationId: RenderPublicationId;
   readonly svgArtifact: NavigableInlineSvg;
+  readonly unavailableThemePresetId: string | null;
+  readonly metadata: SvgRenderMetadata | null;
+  readonly svgPipeline: FrozenRenderOperation["svgPipeline"] | null;
 }
 
 export interface FreezeExportTargetCommand {
@@ -79,34 +83,30 @@ export interface ArtifactActionIo {
 export interface ArtifactActionDependencies {
   readonly getRenderState: () => RenderCoordinatorState;
   readonly getRuntimeState: () => MermanRuntimeState;
-  readonly hasUnappliedThemeDraft?: () => boolean;
-  readonly getAppliedWorkspace?: () => WorkspaceSnapshot;
+  readonly getWorkspace?: () => WorkspaceSnapshot;
   readonly io: ArtifactActionIo;
 }
 
 export interface ExportTargetDependencies {
   readonly getRenderState: () => RenderCoordinatorState;
   readonly getRuntimeState: () => MermanRuntimeState;
-  readonly hasUnappliedThemeDraft?: () => boolean;
-  readonly getAppliedWorkspace?: () => WorkspaceSnapshot;
+  readonly getWorkspace?: () => WorkspaceSnapshot;
 }
 
 export function createExportTargetOwner({
   getRenderState,
   getRuntimeState,
-  hasUnappliedThemeDraft = () => false,
-  getAppliedWorkspace,
+  getWorkspace,
 }: ExportTargetDependencies): ExportTargetOwner {
   const authorities = new WeakMap<object, RasterAuthority>();
 
   return Object.freeze({
     freeze(command: FreezeExportTargetCommand): FrozenExportTarget {
-      assertAppliedTheme(hasUnappliedThemeDraft());
       const publication = currentPublication(
         getRenderState(),
         command.publicationId,
       );
-      assertAppliedPublication(publication, getAppliedWorkspace?.());
+      assertCurrentWorkspacePublication(publication, getWorkspace?.());
       const svgArtifact = currentSvg(publication, command.engine);
       const target = Object.freeze({
         [FROZEN_EXPORT_TARGET]: true as const,
@@ -114,6 +114,9 @@ export function createExportTargetOwner({
         filename: `${command.engine}-diagram`,
         publicationId: command.publicationId,
         svgArtifact,
+        unavailableThemePresetId: command.engine === "merman" ? publication.snapshot.operation.unavailableThemePresetId : null,
+        metadata: command.engine === "merman" ? successfulMermanArtifact(publication).metadata : null,
+        svgPipeline: command.engine === "merman" ? publication.snapshot.operation.svgPipeline : null,
       });
       authorities.set(
         target,
@@ -129,7 +132,6 @@ export function createExportTargetOwner({
     },
 
     rasterArtifact(target: FrozenExportTarget): NavigableInlineSvg {
-      assertAppliedTheme(hasUnappliedThemeDraft());
       const authority = authorities.get(target);
       if (!authority) {
         throw actionError(
@@ -172,8 +174,7 @@ export type ArtifactActionErrorCode =
   | "publication-not-current"
   | "runtime-unavailable"
   | "runtime-version-mismatch"
-  | "svg-render-failed"
-  | "theme-draft-unapplied";
+  | "svg-render-failed";
 
 export class ArtifactActionError extends Error {
   readonly code: ArtifactActionErrorCode;
@@ -207,15 +208,13 @@ type FrozenActionPlan =
 export function createArtifactActionOwner({
   getRenderState,
   getRuntimeState,
-  hasUnappliedThemeDraft = () => false,
-  getAppliedWorkspace,
+  getWorkspace,
   io,
 }: ArtifactActionDependencies): ArtifactActionOwner {
   const renderedAscii = new WeakMap<CompletedRenderBatch, string>();
   return async (command: ArtifactActionCommand): Promise<void> => {
-    if (command.action === "copy-svg") assertAppliedTheme(hasUnappliedThemeDraft());
     const state = getRenderState();
-    if (command.action === "copy-svg") assertAppliedPublication(currentPublication(state, command.publicationId), getAppliedWorkspace?.());
+    if (command.action === "copy-svg") assertCurrentWorkspacePublication(currentPublication(state, command.publicationId), getWorkspace?.());
     const plan = freezeActionPlan(command, state, (publication) =>
       currentAscii(publication, getRuntimeState, renderedAscii),
     );
@@ -398,19 +397,13 @@ function actionError(
   return new ArtifactActionError(code, projectError(message));
 }
 
-function assertAppliedTheme(dirty: boolean): void {
-  if (dirty) {
-    throw actionError("theme-draft-unapplied", "Apply the theme draft before sharing or exporting the preview.");
-  }
-}
-
-function assertAppliedPublication(publication: CompletedRenderBatch, applied: WorkspaceSnapshot | undefined): void {
-  if (!applied) return;
+function assertCurrentWorkspacePublication(publication: CompletedRenderBatch, workspace: WorkspaceSnapshot | undefined): void {
+  if (!workspace) return;
   const operation = publication.snapshot.operation;
-  if (operation.source !== applied.code || operation.configJson !== applied.mermaidConfig ||
-      operation.theme !== applied.diagramTheme || operation.diagramFont !== applied.diagramFont ||
-      operation.themePresetId !== applied.themePresetId || operation.themeRecipeJson !== applied.themeRecipeJson ||
-      operation.svgPipeline !== applied.svgPipeline || operation.textMeasurementMode !== applied.textMeasurementMode) {
-    throw actionError("publication-not-current", "Wait for the applied workspace preview before exporting.");
+  if (operation.source !== workspace.code || operation.configJson !== workspace.mermaidConfig ||
+      operation.theme !== workspace.diagramTheme || operation.diagramFont !== workspace.diagramFont ||
+      operation.themePresetId !== workspace.themePresetId || operation.themeRecipeJson !== workspace.themeRecipeJson ||
+      operation.svgPipeline !== workspace.svgPipeline || operation.textMeasurementMode !== workspace.textMeasurementMode) {
+    throw actionError("publication-not-current", "Wait for the current workspace preview before exporting.");
   }
 }

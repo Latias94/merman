@@ -6,6 +6,109 @@ use {merman_core::ParsedEditorFacts, merman_model::semantic::SemanticDiagramMode
 
 #[cfg(feature = "diagram-class")]
 #[test]
+fn appearance_declarations_keep_same_value_directive_provenance_and_admission() {
+    use merman_core::preprocess::{SourceAppearanceSummary, SourceConfigOrigin};
+    use merman_model::config::MermaidConfig;
+    use serde_json::json;
+
+    let frontmatter =
+        "\u{feff}---\r\nconfig:\r\n  theme: forest\r\n  class:\r\n    look: neo\r\n---\r\n";
+    let directive = "%%{init: {theme: 'forest', /* JSON5 */ fontFamily: 'Fira Code'}}%%";
+    let source = format!("{frontmatter}{directive}\r\nclassDiagram\r\nclass User\r\n");
+    let parser = SemanticParser::new().with_site_config(MermaidConfig::from_value(json!({
+        "secure": ["look"]
+    })));
+    let SemanticSnapshotCapture::Snapshot(snapshot) = parser.capture_diagram_snapshot_sync(&source)
+    else {
+        panic!("valid source must produce a snapshot");
+    };
+    let SourceAppearanceSummary::Known { theme, font, look } =
+        snapshot.source_config().appearance()
+    else {
+        panic!("complete source configuration must be known");
+    };
+    let theme = theme.as_ref().unwrap();
+    assert_eq!(theme.value(), "forest");
+    assert_eq!(
+        theme.origin(),
+        SourceConfigOrigin::Directive { directive_index: 0 }
+    );
+    assert_eq!(
+        &source[theme.construct_span().start..theme.construct_span().end],
+        directive
+    );
+    assert_eq!(font.as_ref().unwrap().value(), "Fira Code");
+    assert!(look.is_none());
+}
+
+#[cfg(feature = "diagram-class")]
+#[test]
+fn appearance_declarations_survive_family_errors_but_not_incomplete_config() {
+    use merman_core::preprocess::SourceAppearanceSummary;
+
+    for (source, known) in [
+        (
+            "%%{init: {theme: 'dark'}}%%\nclassDiagram\nclass User {\n+field\n",
+            true,
+        ),
+        ("%%{init: {theme: 'dark'\nclassDiagram\nclass User\n", false),
+        (
+            "---\nconfig: [\n---\n%%{init: {theme: 'dark'}}%%\nclassDiagram\n",
+            false,
+        ),
+    ] {
+        let capture = SemanticParser::new().capture_diagram_snapshot_sync(source);
+        let evidence = match &capture {
+            SemanticSnapshotCapture::Snapshot(snapshot) => snapshot.source_config(),
+            SemanticSnapshotCapture::Failed { source_config, .. }
+            | SemanticSnapshotCapture::Panicked { source_config, .. } => source_config,
+        };
+        assert_eq!(
+            matches!(evidence.appearance(), SourceAppearanceSummary::Known { .. }),
+            known
+        );
+    }
+}
+
+#[cfg(feature = "diagram-class")]
+#[test]
+fn appearance_uses_decoded_json5_assignments_without_requiring_key_spans() {
+    use merman_core::preprocess::{SourceAppearanceSummary, SourceConfigOrigin};
+
+    let first = r#"%%{init: {theme: 'dark', fontFamily: 'serif', class: {look: 'neo'}}}%%"#;
+    let second = r#"%%{initialize: {"th\u0065me": 'forest', /* retained */ themeVariables: {fontFamily: ''}}}%%"#;
+    let source = format!("{first}\n{second}\nclassDiagram\nclass User\n");
+    let SemanticSnapshotCapture::Snapshot(snapshot) =
+        SemanticParser::new().capture_diagram_snapshot_sync(&source)
+    else {
+        panic!("valid JSON5 declarations must produce a snapshot");
+    };
+    let SourceAppearanceSummary::Known { theme, font, look } =
+        snapshot.source_config().appearance()
+    else {
+        panic!("missing lexical key spans do not make decoded declarations unknown");
+    };
+    let theme = theme.as_ref().unwrap();
+    assert_eq!(theme.value(), "forest");
+    assert_eq!(
+        theme.origin(),
+        SourceConfigOrigin::Directive { directive_index: 1 }
+    );
+    assert_eq!(
+        &source[theme.construct_span().start..theme.construct_span().end],
+        second
+    );
+    let font = font.as_ref().unwrap();
+    assert_eq!(font.value(), "serif");
+    assert_eq!(
+        font.origin(),
+        SourceConfigOrigin::Directive { directive_index: 0 }
+    );
+    assert_eq!(look.as_ref().unwrap().value(), "neo");
+}
+
+#[cfg(feature = "diagram-class")]
+#[test]
 fn class_snapshot_captures_canonical_model_and_editor_facts_in_lean_core() {
     let capture = SemanticParser::new()
         .capture_diagram_snapshot_controlled_sync(

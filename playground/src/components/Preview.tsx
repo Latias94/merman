@@ -1,15 +1,14 @@
 import {
   useCallback,
   useEffect,
-  useMemo,
   useRef,
   useState,
   type KeyboardEvent,
   type ReactNode,
 } from "react";
 import { useTranslation } from "react-i18next";
+import { useShallow } from "zustand/react/shallow";
 import { toast } from "sonner";
-import { diagramFamilyCapabilities } from "@mermanjs/web";
 import {
   selectMermanFailure,
   selectMermanLoadStage,
@@ -19,7 +18,6 @@ import {
 import { retryMermanRuntime } from "@/src/runtime/merman";
 import type { MermanRuntimeFailure } from "@/src/runtime/merman-core";
 import { useAsciiSupport } from "@/src/lib/ascii-capabilities";
-import { resolveMermaidCanvasTone } from "@/src/lib/mermaid-canvas-tone";
 import {
   SVG_PRESENTATION_MODES,
   type SvgPresentationMode,
@@ -29,7 +27,8 @@ import {
   asciiSupportLabelKey,
   type AsciiCapability,
 } from "@/src/lib/ascii-support";
-import { useAppStore, selectThemeDraftChanged, type PreviewBacking } from "@/src/store";
+import { selectWorkspaceSnapshot, useAppStore, type PreviewBacking } from "@/src/store";
+import { currentThemeRender } from "@/src/lib/theme-discovery";
 import { ThemeRenderStatus } from "./ThemeRenderStatus";
 import { MERMAID_JS_VERSION } from "@/src/runtime/mermaid-requirements";
 import {
@@ -42,6 +41,7 @@ import {
   selectCompletedRenderBatch,
   selectCurrentDiagramType,
   selectRenderPending,
+  selectVisibleCanvasTone,
   selectVisibleRenderBatch,
   useRenderCoordinator,
 } from "@/src/runtime/use-render-coordinator";
@@ -112,18 +112,14 @@ const EMPTY_DIAGNOSTICS: Record<DiagnosticKey, DiagnosticArtifact> = {
 
 export function Preview({ active = true, className }: PreviewProps) {
   const { t } = useTranslation();
-  const code = useAppStore((state) => state.code);
-  const diagramTheme = useAppStore((state) => state.diagramTheme);
-  const mermaidConfig = useAppStore((state) => state.mermaidConfig);
+  const workspace = useAppStore(useShallow(selectWorkspaceSnapshot));
+  const { code } = workspace;
   const resolvedTheme = useAppStore((state) => state.resolvedTheme);
   const editorTheme = WORKBENCH_EDITOR_THEMES[resolvedTheme].name;
   const previewMode = useAppStore((state) => state.previewMode);
   const setPreviewMode = useAppStore((state) => state.setPreviewMode);
-  const svgPipeline = useAppStore((state) => state.svgPipeline);
-  const themeDraftChanged = useAppStore(selectThemeDraftChanged);
   const previewBacking = useAppStore((state) => state.previewBacking);
   const setPreviewBacking = useAppStore((state) => state.setPreviewBacking);
-  const setSvgPipeline = useAppStore((state) => state.setSvgPipeline);
   const svgPresentationMode = useAppStore(
     (state) => state.svgPresentationMode,
   );
@@ -161,14 +157,13 @@ export function Preview({ active = true, className }: PreviewProps) {
 
   const currentPublicationId = currentBatch?.snapshot.publicationId ?? null;
   const detectedDiagramType = selectCurrentDiagramType(renderState);
-  const currentMerman = successfulMerman(currentBatch?.merman ?? null);
-  const svgArtifact = currentMerman?.artifact ?? null;
+  const visibleMerman = successfulMerman(visibleBatch?.merman ?? null);
+  const svgArtifact = visibleMerman?.artifact ?? null;
   const svg = svgArtifact?.svg ?? null;
   const asciiResult = currentBatch?.ascii ?? null;
   const error = failedMessage(currentBatch?.merman ?? null);
   const errorDetail = failedDetail(currentBatch?.merman ?? null);
   const errorStage = failedStage(currentBatch?.merman ?? null);
-  const visibleMerman = successfulMerman(visibleBatch?.merman ?? null);
   const visibleMermaid = successfulMermaid(visibleBatch?.mermaid ?? null);
   const mermaidSvgArtifact = visibleMermaid?.artifact ?? null;
   const mermaidError = failedMessage(visibleBatch?.mermaid ?? null);
@@ -176,8 +171,9 @@ export function Preview({ active = true, className }: PreviewProps) {
   const mermaidRenderTime = visibleMermaid?.renderTimeMs ?? null;
   const renderPending = selectRenderPending(renderState);
   const renderingCurrent = Boolean(code.trim() && ready && renderPending);
-  const actionsEnabled = currentBatch !== null;
-  const compareStale = renderState.status === "updating";
+  const currentRender = currentThemeRender(renderState, workspace);
+  const actionsEnabled = currentBatch !== null && currentRender.status !== "waiting";
+  const compareStale = renderState.status === "updating" || currentRender.status === "waiting";
   const diagnostics = currentBatch?.diagnostics ?? EMPTY_DIAGNOSTICS;
   const diagnosticsLoading = previewMode === "diagnostics" && renderPending;
   const isAsciiSupported = asciiSupport.isSupported(detectedDiagramType);
@@ -185,29 +181,9 @@ export function Preview({ active = true, className }: PreviewProps) {
   const asciiSupportLabel = t(asciiSupportLabelKey(asciiCapability));
   const asciiSupportLimit = asciiSupportDescription(asciiCapability);
   const svgViewport = useSvgViewportController();
-  const canvasBatch = previewMode === "compare" ? visibleBatch : currentBatch;
+  const canvasBatch = visibleBatch;
   const canvasOperation = canvasBatch?.snapshot.operation;
-  const canvasSyntaxId = canvasBatch?.detection.status === "available"
-    ? canvasBatch.detection.syntaxId
-    : null;
-  const canvasConfigNamespace = useMemo(
-    () => ready && canvasSyntaxId
-      ? diagramFamilyCapabilities().find(
-          (family) => family.diagram_type === canvasSyntaxId,
-        )?.config_namespace
-      : undefined,
-    [ready, canvasSyntaxId],
-  );
-  const automaticCanvasTone = useMemo(
-    () =>
-      resolveMermaidCanvasTone(
-        canvasOperation?.configJson ?? mermaidConfig,
-        canvasOperation?.theme ?? diagramTheme,
-        canvasOperation?.source ?? code,
-        canvasConfigNamespace,
-      ),
-    [canvasOperation, canvasConfigNamespace, code, diagramTheme, mermaidConfig],
-  );
+  const automaticCanvasTone = selectVisibleCanvasTone(renderState);
   const canvasTone = previewBacking === "dark" ? "dark" : previewBacking === "light" || previewBacking === "transparency" ? "light" : automaticCanvasTone;
   const canvasMode = previewMode === "svg" || previewMode === "compare";
 
@@ -426,7 +402,7 @@ export function Preview({ active = true, className }: PreviewProps) {
                     handleCopySvg("merman", currentPublicationId)
                   }
                   disabled={
-                    themeDraftChanged || !actionsEnabled || Boolean(mermanSvgUnavailableLabel)
+                    !actionsEnabled || Boolean(mermanSvgUnavailableLabel)
                   }
                 >
                   {copiedSvgTarget?.engine === "merman" &&
@@ -466,6 +442,7 @@ export function Preview({ active = true, className }: PreviewProps) {
                       variant="ghost"
                       size="icon-sm"
                       onClick={handleCopyAscii}
+                      disabled={!actionsEnabled}
                       aria-label={
                         copiedAscii
                           ? t("preview.copied")
@@ -524,22 +501,16 @@ export function Preview({ active = true, className }: PreviewProps) {
     <div className={cn("flex flex-col h-full", className)}>
       {renderTabBar(toolbarActions)}
       {canvasMode && <ThemeRenderStatus />}
-      {previewMode === "compare" && Boolean(canvasOperation?.themePresetId || canvasOperation?.themeRecipeJson) && <p className="shrink-0 border-b bg-muted/20 px-3 py-1 text-xs text-muted-foreground">{t("themePanel.compareStyled")}</p>}
-      {canvasMode && svgPipeline === "readable" && (
-        <div className="flex shrink-0 flex-wrap items-center gap-2 border-b bg-muted/50 px-3 py-2">
-          <p role="status" className="min-w-0 flex-1 text-xs text-muted-foreground">
-            {t("svgPipelineGuidance.browserWarning")}
-          </p>
-          <Button variant="outline" size="sm" onClick={() => setSvgPipeline("parity")}>
-            {t("svgPipelineGuidance.useParity")}
-          </Button>
-        </div>
-      )}
+      {previewMode === "compare" && <p data-testid="compare-input-description"
+        className="shrink-0 border-b bg-muted/20 px-3 py-2 text-xs leading-relaxed text-muted-foreground">
+        {t(!canvasOperation?.unavailableThemePresetId && (canvasOperation?.themePresetId || canvasOperation?.themeRecipeJson)
+          ? "workbench.tools.compareStyled" : "workbench.tools.compareInput")}
+      </p>}
 
       <div
         id="preview-mode-panel"
-        role="tabpanel"
-        aria-labelledby={`preview-${previewMode}-tab`}
+        role={previewMode === "compare" || previewMode === "diagnostics" ? "region" : "tabpanel"}
+        aria-labelledby={previewMode === "compare" || previewMode === "diagnostics" ? "preview-active-tool" : `preview-${previewMode}-tab`}
         className={cn(
           "relative min-h-0 flex-1 overflow-hidden",
           canvasMode && "preview-canvas",
@@ -581,7 +552,7 @@ export function Preview({ active = true, className }: PreviewProps) {
                 <SvgViewport
                   artifact={svgArtifact}
                   canvasTone={canvasTone}
-                  presentationKey={currentPublicationId}
+                  presentationKey={visibleBatch?.snapshot.publicationId ?? null}
                   controller={svgViewport}
                   showSvgBounds={showSvgBounds}
                   presentationMode={svgPresentationMode}
@@ -595,9 +566,9 @@ export function Preview({ active = true, className }: PreviewProps) {
                     />
                   )}
                   onPresentationReady={(at) => {
-                    if (currentBatch) {
+                    if (visibleBatch) {
                       markRenderCoordinatorPresented(
-                        currentBatch.snapshot.publicationId,
+                        visibleBatch.snapshot.publicationId,
                         "merman",
                         at,
                       );
@@ -699,60 +670,51 @@ function TabBar({
 
   return (
     <div className="flex shrink-0 flex-col overflow-hidden border-b bg-muted/30">
-      <div
-        ref={tabListRef}
-        role="tablist"
-        aria-label={t("preview.title")}
-        aria-orientation="horizontal"
-        className="scrollbar-thin flex min-h-10 w-full min-w-0 items-center gap-1 overflow-x-auto px-2"
-        onKeyDown={handleTabListKeyDown}
-      >
-        <TabButton
-          value="svg"
-          active={mode === "svg"}
-          onClick={() => onModeChange("svg")}
+      <div className="flex min-w-0 items-center">
+        <div
+          ref={tabListRef}
+          role="tablist"
+          aria-label={t("preview.title")}
+          aria-orientation="horizontal"
+          className="scrollbar-thin flex min-h-10 min-w-0 flex-1 items-center gap-1 overflow-x-auto px-2"
+          onKeyDown={handleTabListKeyDown}
         >
-          SVG
-        </TabButton>
-        <TabButton
-          value="ascii"
-          active={mode === "ascii"}
-          onClick={() => onModeChange("ascii")}
-          tooltip={
-            !runtimeReady
-              ? t("preview.loading")
-              : isAsciiSupported
-                ? asciiSupportTooltip(
-                    asciiCapability,
-                    asciiSupportLabel,
-                    asciiSupportLimit,
-                  )
-                : t("preview.asciiNotSupported")
-          }
-        >
-          ASCII
-        </TabButton>
-        {isAsciiSupported && (
-          <span className="hidden shrink-0 rounded bg-muted px-2 py-1 text-xs text-muted-foreground sm:inline">
-            {asciiSupportLabel}
-          </span>
-        )}
-        <TabButton
-          value="compare"
-          active={mode === "compare"}
-          onClick={() => onModeChange("compare")}
-          disabled={!runtimeReady}
-        >
-          {t("preview.compareMode")}
-        </TabButton>
-        <TabButton
-          value="diagnostics"
-          active={mode === "diagnostics"}
-          onClick={() => onModeChange("diagnostics")}
-          disabled={!runtimeReady}
-        >
-          {t("preview.diagnosticsMode")}
-        </TabButton>
+          <TabButton
+            value="svg"
+            active={mode === "svg"}
+            tabStop={mode === "compare" || mode === "diagnostics"}
+            onClick={() => onModeChange("svg")}
+          >
+            SVG
+          </TabButton>
+          <TabButton
+            value="ascii"
+            active={mode === "ascii"}
+            onClick={() => onModeChange("ascii")}
+            tooltip={
+              !runtimeReady
+                ? t("preview.loading")
+                : isAsciiSupported
+                  ? asciiSupportTooltip(
+                      asciiCapability,
+                      asciiSupportLabel,
+                      asciiSupportLimit,
+                    )
+                  : t("preview.asciiNotSupported")
+            }
+          >
+            ASCII
+          </TabButton>
+          {isAsciiSupported && (
+            <span className="hidden shrink-0 rounded bg-muted px-2 py-1 text-xs text-muted-foreground sm:inline">
+              {asciiSupportLabel}
+            </span>
+          )}
+        </div>
+        {(mode === "compare" || mode === "diagnostics") && <h2 id="preview-active-tool"
+          className="shrink-0 px-3 text-xs font-medium text-muted-foreground">
+          {t(mode === "compare" ? "preview.compareMode" : "preview.diagnosticsMode")}
+        </h2>}
       </div>
 
       {rightContent && (
@@ -908,6 +870,7 @@ function asciiSupportTooltip(
 interface TabButtonProps {
   value: PreviewMode;
   active: boolean;
+  tabStop?: boolean;
   onClick(): void;
   disabled?: boolean;
   tooltip?: ReactNode;
@@ -917,6 +880,7 @@ interface TabButtonProps {
 function TabButton({
   value,
   active,
+  tabStop = false,
   onClick,
   disabled = false,
   tooltip,
@@ -927,7 +891,7 @@ function TabButton({
       id={`preview-${value}-tab`}
       type="button"
       role="tab"
-      tabIndex={active ? 0 : -1}
+      tabIndex={active || tabStop ? 0 : -1}
       aria-selected={active}
       aria-controls="preview-mode-panel"
       onClick={onClick}

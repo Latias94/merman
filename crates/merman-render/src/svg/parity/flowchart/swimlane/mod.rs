@@ -7,8 +7,47 @@ use merman_model::families::flowchart::{FlowEdgeMarker, FlowEdgeStroke, FlowEdge
 use rustc_hash::FxHashMap;
 
 mod cluster;
+mod endpoint_clip;
+
+pub(super) use endpoint_clip::clip_swimlane_endpoints;
 
 pub(super) use cluster::render_swimlane_cluster;
+
+fn is_pool_cluster(ctx: &FlowchartRenderCtx<'_>, id: &str) -> bool {
+    ctx.subgraphs_by_id.get(id).is_some_and(|group| {
+        group
+            .metadata
+            .as_ref()
+            .and_then(|metadata| metadata.get("laneRole"))
+            .and_then(serde_json::Value::as_str)
+            == Some("pool")
+            && ctx
+                .swimlane_lanes_by_id
+                .values()
+                .any(|child| child.parent_id.as_deref() == Some(id))
+    })
+}
+
+fn uses_pool_shell(ctx: &FlowchartRenderCtx<'_>, id: &str) -> bool {
+    is_pool_cluster(ctx, id)
+        && (id != "__swimlane_default__"
+            || ctx
+                .layout
+                .nodes
+                .iter()
+                .all(|node| ctx.parent.contains_key(node.id.as_str())))
+}
+
+pub(super) fn is_lane_or_pool_cluster(ctx: &FlowchartRenderCtx<'_>, id: &str) -> bool {
+    ctx.swimlane_lanes_by_id.get(id).is_some_and(|group| {
+        group.parent_id.is_none()
+            || is_pool_cluster(ctx, id)
+            || group
+                .parent_id
+                .as_deref()
+                .is_some_and(|parent| is_pool_cluster(ctx, parent))
+    })
+}
 
 #[derive(Debug, Clone)]
 pub(super) struct SwimlaneTerminalGeometry {
@@ -444,6 +483,7 @@ mod tests {
             style: Vec::new(),
             animate: None,
             animation: None,
+            step: None,
             length: 1,
         }
     }

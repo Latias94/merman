@@ -16,6 +16,62 @@ const BOUNDED_BLOCK_SOURCE: &str = r#"block
   class A branded
 "#;
 
+#[test]
+fn block_shared_rough_protocol_matches_fixed_head_and_following_prng() {
+    use crate::svg::parity::roughjs_common::{ops_to_svg_path_d, paths::fixed_head_protocol};
+    for seed in [0.0, 1.0, -1.0] {
+        for path in [
+            "M0 0 L40 0 L40 20 L0 20 Z",
+            "M0 0 C0 40 60 40 60 0 Z",
+            "M0 0 C0 40 60 40 60 0 Z M80 0 C80 20 100 20 100 0 Z",
+        ] {
+            let randomness = || {
+                roughr::core::RoughRandomness::new(
+                    roughr::core::RoughJsSeed::new(seed),
+                    roughr::core::RoughMathRandom::new(7),
+                )
+            };
+            let expected_randomness = randomness();
+            let actual_randomness = randomness();
+            let expected =
+                fixed_head_protocol::outline_first_paths(path, &expected_randomness, false);
+            let meter = crate::resources::OperationWorkMeter::new(
+                RenderResourcePolicy::unbounded_for_trusted_input(),
+            );
+            let actual = roughjs_paths_for_svg_path(path, 1.3, "0 0", &meter, &actual_randomness)
+                .expect("Block's shared outline-first protocol must remain renderable");
+            assert_eq!(
+                actual,
+                (
+                    ops_to_svg_path_d(&expected.0),
+                    ops_to_svg_path_d(&expected.1)
+                ),
+                "HEAD={}, seed={seed}, path={path}",
+                fixed_head_protocol::SOURCE_COMMIT
+            );
+            let mut expected_options = roughr::core::OptionsBuilder::default()
+                .randomness(expected_randomness)
+                .roughness(0.0)
+                .build()
+                .unwrap();
+            let mut actual_options = roughr::core::OptionsBuilder::default()
+                .randomness(actual_randomness)
+                .roughness(0.0)
+                .build()
+                .unwrap();
+            assert!(
+                roughr::renderer::line::<f64>(1.0, 2.0, 30.0, 40.0, &mut actual_options)
+                    == fixed_head_protocol::zero_roughness_line(
+                        [1.0, 2.0],
+                        [30.0, 40.0],
+                        &mut expected_options
+                    ),
+                "following HEAD PRNG differs for seed={seed}"
+            );
+        }
+    }
+}
+
 fn layout_edge(id: &str) -> LayoutEdge {
     LayoutEdge {
         id: id.to_string(),

@@ -91,6 +91,7 @@ pub struct LGraph {
     pub edges: Vec<LayeredEdge>,
     pub graph_properties: GraphProperties,
     pub cyclic: bool,
+    pub max_model_order_nodes: usize,
     pub(crate) random: JavaRandom,
     pub parent_node_id: Option<String>,
     pub hidden_nodes: Vec<usize>,
@@ -169,6 +170,7 @@ impl LGraph {
             edges: Vec::new(),
             graph_properties: GraphProperties::default(),
             cyclic: false,
+            max_model_order_nodes: 0,
             // The seed is resolved immediately before processor assembly. The placeholder is
             // never an execution source because every public pipeline entry configures first.
             random: JavaRandom::default(),
@@ -199,6 +201,7 @@ impl LGraph {
         graph.options.node_size_minimum = None;
         graph.padding = self.padding;
         graph.graph_properties = self.graph_properties.clone();
+        graph.max_model_order_nodes = self.max_model_order_nodes;
         graph.parent_node_id = self.parent_node_id.clone();
         graph.random = self.random.clone();
         graph.random_seed_context = self.random_seed_context.clone();

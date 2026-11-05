@@ -220,16 +220,12 @@ export function serveCompareRealmPort(
         try {
           response = validateCompareRenderResponse(
             {
+              ...result,
               type: "render-success",
               protocol: REALM_PROTOCOL_VERSION,
               ...identity,
               sequence,
               requestId: request.requestId,
-              svg: result.svg,
-              prepareTimeMs: result.prepareTimeMs,
-              renderTimeMs: result.renderTimeMs,
-              presentationTimeMs: result.presentationTimeMs,
-              version: result.version,
             },
             identity,
             sequence,

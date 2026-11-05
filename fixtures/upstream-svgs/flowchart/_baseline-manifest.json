@@ -1,12 +1,12 @@
 {
   "schema_version": 4,
   "source": {
-    "mermaid_version": "12.2.0",
-    "mermaid_cli_version": "12.0.0",
-    "mermaid_source_tag": "mermaid@12.2.0",
-    "mermaid_source_commit": "1fb7869866dd619168d840291c9c54b4f129758b",
-    "package_json_sha256": "7a5b463202555d13b49d58353ead90dfac8ae7390cbf0020a9cad53a5e44131c",
-    "package_lock_sha256": "399cd8e13fdda8965f048abfcc8a160c66252d660e2eccdf56c2472529845289",
+    "mermaid_version": "12.3.0",
+    "mermaid_cli_version": "12.2.0",
+    "mermaid_source_tag": "mermaid@12.3.0",
+    "mermaid_source_commit": "2086904e76c692331e34a45d7cc3bc30860d040e",
+    "package_json_sha256": "a84a0b50e1d198b67f07292f4122fcba73565044e8699d8ccd6ee7a996450adb",
+    "package_lock_sha256": "24d30b0c2b10586e8a41451352da1217a0dce2ec6172c390ec084597fab8f66b",
     "mermaid_config_sha256": "da34e9d1dae1882d3b32a479e6223bad495f31877e6d0a3f0a3e3a157832eacc",
     "renderer_revision": "xtask-upstream-svg-v5"
   },
@@ -14,10 +14,10 @@
     "mode": "generated",
     "render_environment": {
       "browser": {
-        "product": "HeadlessChrome",
-        "version": "151.0.7922.77",
-        "revision": "@ff37cfca210138f2a40b843b4a8195ab7e4fc7ff",
-        "locale": "en-US",
+        "product": "Chrome",
+        "version": "156.0.8078.47",
+        "revision": "@1d17a2e2ee147bb7d6ae2ab6abdb3a2510c17775",
+        "locale": "zh-CN",
         "timezone": "Asia/Shanghai"
       },
       "puppeteer": {
@@ -29,18 +29,18 @@
         "release": "27.0.0"
       },
       "mermaid_runtime": {
-        "mermaid_version": "12.2.0",
+        "mermaid_version": "12.3.0",
         "dompurify_version": "3.4.17",
         "compiler_version": "0.28.1",
-        "artifact_sha256": "29d255aa0a6d1d69e6d7c56a67b64c6c89318e2acf079587ec85743c70b44a2e",
+        "artifact_sha256": "555d901f1da7635d0727be0a5b95cc1b84a4770e08126fed19e53966515a8911",
         "dompurify_package_sha256": "2a67a4d0cb2f51dbde8e63138391edd707e0d4bef608b1ad19c509d162e75bb6",
         "compiler_package_sha256": "410ea1c459ed1e9424a17e132f4cd84518faf824abe3377081ab54b42687f6f4",
-        "mermaid_package_sha256": "428bc8e4372395ef8c7d3c35c0e9845fe016e7c4cba6f1e442d752251232dd87",
-        "mermaid_cli_package_sha256": "8f204052d8117c099211557288ef4c34597785da3843d1864a46fa12b1c8663d"
+        "mermaid_package_sha256": "8dea6d2895b9a75667443ef8a82fc4b8d30f962de057686c7b6ef860bc69d251",
+        "mermaid_cli_package_sha256": "7d43b6fab89acc14a4d1164d59675ceccbdcfe5d68944229461597031688ac5d"
       },
       "font_probe": {
         "revision": "mermaid-font-probe-v1",
-        "sha256": "f03521bd4356783dc11fec2ed2219380d6ae8fa24313e2008f50b1a8cd70ce14"
+        "sha256": "c6b2b6ad65d9a2e47ff3b8c2b54afabae3c184561c20ae0f5b5bb11a35e890e2"
       }
     }
   },
@@ -59,6 +59,36 @@
     "local_mermaid_12_2_elk_label_clearance_8368": {
       "input_sha256": "e82ce307a88afea33da54324d9dfdfb674dfc7c35107dd162e71845ea1b8a497",
       "svg_sha256": "26b4dde86ef879321f362a35486a1980d13088ef5d71baa25a449000db7b2fd4",
+      "renderer_profile": "owned-runtime-seeded-puppeteer-seed-1-fixed-date-1704067200000"
+    },
+    "local_mermaid_12_3_bpmn_captions": {
+      "input_sha256": "f23634cc19e7ee1ed9c5e6d6cd71d96849b0e2b93e6ba067c13d6eb4545756dd",
+      "svg_sha256": "0edcc06508416aebcd1c73ace08a5a61b290f3af701017d9d09becedea870848",
+      "renderer_profile": "owned-runtime-seeded-puppeteer-seed-1-fixed-date-1704067200000"
+    },
+    "local_mermaid_12_3_bpmn_shapes": {
+      "input_sha256": "771a87b70649a4f87a2ce7d56b995f1fb992a4d839fb2a24cb00d2547c6904fd",
+      "svg_sha256": "69407d9f8618ebf3977c3095c69171db9b3c86919c0d49141ef6061bd3c7c30d",
+      "renderer_profile": "owned-runtime-seeded-puppeteer-seed-1-fixed-date-1704067200000"
+    },
+    "local_mermaid_12_3_step_duration_numbers": {
+      "input_sha256": "9eb49319ccd09f3022f87b4055d2abfb1381fdde5d56700e8162a0fe2d63ede5",
+      "svg_sha256": "01237fd081d8880fe4e80a663d09d22e7745892065ea7439c592015e3f8db432",
+      "renderer_profile": "owned-runtime-seeded-puppeteer-seed-1-fixed-date-1704067200000"
+    },
+    "local_mermaid_12_3_step_nested": {
+      "input_sha256": "d3e42cbeae74e6b52aad91f7e3d9149012ab672692eac88e0cedd31558f1edf0",
+      "svg_sha256": "35079ba0938d2a924d2cf8be2212ddc34508eda6b708cad641249658f38e7e9d",
+      "renderer_profile": "owned-runtime-seeded-puppeteer-seed-1-fixed-date-1704067200000"
+    },
+    "local_mermaid_12_3_step_parallel_gaps": {
+      "input_sha256": "2b2da8711a660aa8a2cde611add3f39af47bb61aa878cd60f9f4bf9c9820db0d",
+      "svg_sha256": "c9458839bff66f22fd69ac4ee12b8f4f437513c2dc6ddceb1c5e6710c07c25a5",
+      "renderer_profile": "owned-runtime-seeded-puppeteer-seed-1-fixed-date-1704067200000"
+    },
+    "local_mermaid_12_3_step_short_handdrawn": {
+      "input_sha256": "f279d607d8871475a7214a1226b6f3105ba38a69e48a8354c258a3b4a80929f7",
+      "svg_sha256": "bfeabe62a7580c36c277e82d38da11a282825f81b6d78624dcb3527003509da4",
       "renderer_profile": "owned-runtime-seeded-puppeteer-seed-1-fixed-date-1704067200000"
     },
     "probe_flowchart_edge_markdown_html_false_982": {
@@ -163,12 +193,12 @@
     },
     "stress_flowchart_edge_labels_far_from_arrows_066": {
       "input_sha256": "6436bd1c9f897bf4387e3cfa67be332797104ae6fead6faeb271ada6d75af783",
-      "svg_sha256": "c78a3c2d49a71ece2da20b4f2eb468cbcee1c86c027ccd2e13c00083b97b8d5e",
+      "svg_sha256": "2ddc6ce14bdb55223ea3a638fecaccdfa1de0460d9f7114c54d85f9443c2cd9d",
       "renderer_profile": "owned-runtime-seeded-puppeteer-seed-1-fixed-date-1704067200000"
     },
     "stress_flowchart_edges_to_from_subgraphs_017": {
       "input_sha256": "43d0a86a52b9da1191eaba37444afe2a5467e0c221c100be7d732988eb05791b",
-      "svg_sha256": "02e527bbd610332dfd0602fb75e0518cf99fe04df1b0fce4c7120d2f97e344e2",
+      "svg_sha256": "a947b0a93abe885e72dfbe584b6d217690067a5d5a2e4333ae293fb8547c862c",
       "renderer_profile": "owned-runtime-seeded-puppeteer-seed-1-fixed-date-1704067200000"
     },
     "stress_flowchart_escape_sequences_and_quotes_012": {
@@ -1118,12 +1148,12 @@
     },
     "upstream_cypress_flowchart_handdrawn_spec_fhd6_should_render_a_flowchart_full_of_circles_006": {
       "input_sha256": "12ea63c20f4c332b0d713254fae3b9f0b7e0501b26300d67b8f36371fb55220c",
-      "svg_sha256": "342261dc3395f81bc202f647c437fd8d0445eb08f2db1f80aa35985756d18881",
+      "svg_sha256": "0d8ddf4a0ae3cb10efdbfd64781184f1c04ff6937e8419039afaafbdcaa76eb8",
       "renderer_profile": "owned-runtime-seeded-puppeteer-seed-1-fixed-date-1704067200000"
     },
     "upstream_cypress_flowchart_handdrawn_spec_fhd7_should_render_a_flowchart_full_of_icons_007": {
       "input_sha256": "a04fc76b749b71037fd19052bc58a78069b5745f05e335fc0cff332254b7759c",
-      "svg_sha256": "7d6d0ab9d3a1e8e9cfdcad35afb9bcc43e863458e479a51889d6e6fef3e4fb17",
+      "svg_sha256": "6f8ca01b470e02a85fc82a4518c08466ef9a0bdde7c64bceb948e18ce6acb276",
       "renderer_profile": "owned-runtime-seeded-puppeteer-seed-1-fixed-date-1704067200000"
     },
     "upstream_cypress_flowchart_handdrawn_spec_fhd8_should_render_labels_with_numbers_at_the_start_008": {
@@ -1563,7 +1593,7 @@
     },
     "upstream_cypress_flowchart_spec_6_should_render_a_flowchart_full_of_circles_006": {
       "input_sha256": "732173c18b52c7d0252b9ecdf925726e3d043008aa00d2c22d2f6532a6197f8c",
-      "svg_sha256": "696f2a58e02b7cab0d6d29de17c9a911451de96bb0f097f101e930c838a18cf4",
+      "svg_sha256": "14274c49f5129362a5b04e283bfd0c371626ac327c8c3cd14a0484bdcb09a664",
       "renderer_profile": "owned-runtime-seeded-puppeteer-seed-1-fixed-date-1704067200000"
     },
     "upstream_cypress_flowchart_spec_70_should_render_a_subgraph_with_direction_td_050": {
@@ -1573,7 +1603,7 @@
     },
     "upstream_cypress_flowchart_spec_7_should_render_a_flowchart_full_of_icons_007": {
       "input_sha256": "9053bfc16c1509dedf4f603b6bd51680ee744392224cc1602c229ec3bc035650",
-      "svg_sha256": "5fce81a787c5d2b6f2e6201e03cc97dbadca3168168129de33e941334429f33f",
+      "svg_sha256": "0e80a5e6f4f1a47d6e1342ca198b2f62a1fd93e2ca1c62a8412665ec3431a173",
       "renderer_profile": "owned-runtime-seeded-puppeteer-seed-1-fixed-date-1704067200000"
     },
     "upstream_cypress_flowchart_spec_8_should_render_labels_with_numbers_at_the_start_008": {
@@ -3673,7 +3703,7 @@
     },
     "upstream_docs_math_flowcharts_001": {
       "input_sha256": "64c0266be744b4c7464139acc00c1ae83f82a6ba1eedbffba49d41efc86c09f4",
-      "svg_sha256": "2b6a3eeb503c430d90d9c79ca05ba2b6b316cd374664d8db609b8f5a8d95a32f",
+      "svg_sha256": "765a169f64f3bfd011c7aad898064a039f09884d280cdc8409daa76950d124cd",
       "renderer_profile": "owned-runtime-seeded-puppeteer-seed-1-fixed-date-1704067200000"
     },
     "upstream_docs_mermaid_run_003": {
@@ -4373,12 +4403,12 @@
     },
     "upstream_html_demos_flowchart_flowchart_008": {
       "input_sha256": "f3e6d0f86df85611c1a3176374043c66805de9e70ce259601d90e00e51d644d0",
-      "svg_sha256": "d8cb733ccb75f22894a5053c21511ca412ad9e6af9486439e1bd26f21b1d7f6e",
+      "svg_sha256": "2ae6a91807675dc13095e256de621fa6b66a4bae5828d4d57f5f7c5a31e7fc7b",
       "renderer_profile": "owned-runtime-seeded-puppeteer-seed-1-fixed-date-1704067200000"
     },
     "upstream_html_demos_flowchart_flowchart_010": {
       "input_sha256": "a822c5491d295d00701546498a10a1f0d95d605b8513bf6c4dbbef8fe0e28ff0",
-      "svg_sha256": "3aa7c99172560fdf4e2c8b2726a0e1eb05acc7b84eb2627eb3f671def6e614bf",
+      "svg_sha256": "a4a3bde0745eb6b2610117c7ddae7d0015b6b65921a4acc419e1f649422afa49",
       "renderer_profile": "owned-runtime-seeded-puppeteer-seed-1-fixed-date-1704067200000"
     },
     "upstream_html_demos_flowchart_flowchart_012": {
@@ -4448,17 +4478,17 @@
     },
     "upstream_html_demos_flowchart_flowchart_040_katex": {
       "input_sha256": "e064fd390e03e90ab2447f52d6ccb342f7ddb3c13cca636daff61a83f98ce1f2",
-      "svg_sha256": "f148d0ee251e740384285cc7e940742f04fa1804db3e868f22f233c1b147b0e8",
+      "svg_sha256": "9ed8d9ab3603d752cd8db80d09997b2a8e75ee3428c13454c1a609e0c4eaba5b",
       "renderer_profile": "owned-runtime-seeded-puppeteer-seed-1-fixed-date-1704067200000"
     },
     "upstream_html_demos_flowchart_flowchart_042_katex": {
       "input_sha256": "e2096717bc93e47d14fccf30e99cb8663507af0a3dd9cc1e124b0219d929bfc2",
-      "svg_sha256": "0c37fa66d111ba1d95d466752e9dc4e81e73fc98fe94b57798c3173cfab6a58e",
+      "svg_sha256": "cca651d0ea48bb929c2c6cfa2570a565339eaa0f400c85f5e329cfeeda2fddae",
       "renderer_profile": "owned-runtime-seeded-puppeteer-seed-1-fixed-date-1704067200000"
     },
     "upstream_html_demos_flowchart_flowchart_044_katex": {
       "input_sha256": "8c50181ab35261965be2ba59b196b5bddc38540cdae50362c20fd28c07043f1a",
-      "svg_sha256": "69ea730e5f093306d9254aa4cc1f97860f9b75e2ee97e2d06e72dc115a30ab0d",
+      "svg_sha256": "358e527a98967ad12dc069e3c4445528fca86d6817bb627278c46ba778c04b7b",
       "renderer_profile": "owned-runtime-seeded-puppeteer-seed-1-fixed-date-1704067200000"
     },
     "upstream_html_demos_flowchart_flowchart_045": {
@@ -4478,12 +4508,12 @@
     },
     "upstream_html_demos_flowchart_flowchart_048": {
       "input_sha256": "8fc3ac6f51e60dcaa9857187153448556475b420972298456f01b11983dd0048",
-      "svg_sha256": "5d32216aaf15e77c81a2cf7c1e43eab32851600a75dba88b0417e95dad8014f3",
+      "svg_sha256": "4735a7c591906a155e2540d2e219754512a726f1d3a4a05f14c972cd5ca5d090",
       "renderer_profile": "owned-runtime-seeded-puppeteer-seed-1-fixed-date-1704067200000"
     },
     "upstream_html_demos_flowchart_flowchart_049": {
       "input_sha256": "043e6294d46dcd1d49195e7e7eefd36e8b2508445da96dd7222dcd5547f97d8f",
-      "svg_sha256": "f5cc57681ee365f3c7b702211bbaa6f69629b4c3187c6f5e177e205ddb3bae8e",
+      "svg_sha256": "077c894ce67265a61177392b8d7f431f3ef7008fa39ade41c1c0e8103cf97638",
       "renderer_profile": "owned-runtime-seeded-puppeteer-seed-1-fixed-date-1704067200000"
     },
     "upstream_html_demos_flowchart_flowchart_050": {
@@ -4628,7 +4658,7 @@
     },
     "upstream_html_demos_flowchart_graph_039_katex": {
       "input_sha256": "955b395a8f560e60dc1af42b737c9400419d174be2c85280b0645e3a148af09a",
-      "svg_sha256": "a70f73e2d12164051afc91ec81da251cff1d159141e4a3bc4e3d238e67a7c281",
+      "svg_sha256": "9b5706d0088ca309defc5c08897c817acba420c1852c98cc8ce71fe5db0c9d8e",
       "renderer_profile": "owned-runtime-seeded-puppeteer-seed-1-fixed-date-1704067200000"
     },
     "upstream_html_demos_knsv2_example_011": {

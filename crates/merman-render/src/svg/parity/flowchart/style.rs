@@ -6,6 +6,9 @@ use quick_xml::XmlVersion;
 use quick_xml::events::{BytesStart, Event};
 use std::sync::Arc;
 
+mod label_typography;
+pub(super) use label_typography::html_label_typography_receipt;
+
 #[derive(Debug, Clone)]
 pub(in crate::svg::parity) struct FlowchartCompiledStyles {
     edge_class_declarations: Vec<Arc<crate::diagram_theme::PreparedSourceStyleDeclaration>>,
@@ -381,6 +384,13 @@ impl FlowchartCompiledStyles {
         })
     }
 
+    pub(super) fn node_shadow_source_is_bounded(&self) -> bool {
+        !self
+            .shape_sources
+            .iter()
+            .any(|source| node_shadow_geometry_is_overridden(source.prepared.property()))
+    }
+
     pub(super) fn source_filter_status(&self) -> crate::flowchart::FlowchartSourceFacetStatus {
         if self
             .shape_sources
@@ -639,14 +649,15 @@ impl FlowchartCompiledStyles {
         &self,
         receipt: crate::svg::parity::flowchart::render::node::emission::FlowchartNodeLabelEmissionReceipt,
     ) -> crate::flowchart::FlowchartSourceFacetStatus {
-        if receipt
-            .prepared_typography_reach()
+        let source = if receipt
+            .prepared_font_stack_reach()
             .is_some_and(|reach| reach.is_verified())
         {
             self.source_font_stack_status()
         } else {
             crate::flowchart::FlowchartSourceFacetStatus::Absent
-        }
+        };
+        source.merge(receipt.local_font_stack_source())
     }
 
     pub(super) fn source_font_size_status(&self) -> crate::flowchart::FlowchartSourceFacetStatus {
@@ -701,14 +712,15 @@ impl FlowchartCompiledStyles {
         &self,
         receipt: crate::svg::parity::flowchart::render::node::emission::FlowchartNodeLabelEmissionReceipt,
     ) -> crate::flowchart::FlowchartSourceFacetStatus {
-        if receipt
-            .prepared_typography_reach()
+        let source = if receipt
+            .prepared_font_size_reach()
             .is_some_and(|reach| reach.is_verified())
         {
             self.source_font_size_status()
         } else {
             crate::flowchart::FlowchartSourceFacetStatus::Absent
-        }
+        };
+        source.merge(receipt.local_font_size_source())
     }
 
     pub(super) fn shape_source_evidence(
@@ -824,7 +836,8 @@ impl FlowchartCompiledStyles {
         self.emitted_label_source_residuals_with_prepared_typography(
             owner_id,
             receipt.typography_verified(),
-            receipt.prepared_typography_reach(),
+            receipt.prepared_font_stack_reach(),
+            receipt.prepared_font_size_reach(),
         )
     }
 
@@ -933,6 +946,11 @@ impl FlowchartCompiledStyles {
             } else {
                 crate::svg::parity::flowchart::render::node::emission::FlowchartNodeFacetReach::Unverified
             }),
+            Some(if typography_verified {
+                crate::svg::parity::flowchart::render::node::emission::FlowchartNodeFacetReach::Verified
+            } else {
+                crate::svg::parity::flowchart::render::node::emission::FlowchartNodeFacetReach::Unverified
+            }),
         )
     }
 
@@ -940,7 +958,10 @@ impl FlowchartCompiledStyles {
         &self,
         owner_id: &str,
         typography_verified: bool,
-        prepared_typography_reach: Option<
+        prepared_font_stack_reach: Option<
+            crate::svg::parity::flowchart::render::node::emission::FlowchartNodeFacetReach,
+        >,
+        prepared_font_size_reach: Option<
             crate::svg::parity::flowchart::render::node::emission::FlowchartNodeFacetReach,
         >,
     ) -> Vec<crate::diagram_theme::SourceStyleResidual> {
@@ -952,11 +973,10 @@ impl FlowchartCompiledStyles {
                 crate::diagram_theme::SourceStyleChannel::Label,
                 false,
             );
-            let verified = if matches!(declaration.property(), "font-family" | "font-size") {
-                let reach = prepared_typography_reach?;
-                reach.is_verified()
-            } else {
-                typography_verified
+            let verified = match declaration.property() {
+                "font-family" => prepared_font_stack_reach?.is_verified(),
+                "font-size" => prepared_font_size_reach?.is_verified(),
+                _ => typography_verified,
             };
             label_source_residual_reason(&declaration, verified).map(|reason| {
                 crate::diagram_theme::SourceStyleResidual::from_declaration(&declaration, reason)
@@ -1181,13 +1201,14 @@ fn projected_joined_style_bytes(a: &[String], b: &[String]) -> Option<usize> {
         })
 }
 
-fn sanitized_xhtml_source_residuals(
+pub(super) fn sanitized_xhtml_source_residuals(
     owner_id: &str,
     sanitized_xhtml: &str,
 ) -> Vec<crate::diagram_theme::SourceStyleResidual> {
     if sanitized_xhtml.is_empty()
         || (!contains_ascii_case_insensitive(sanitized_xhtml, b"style")
-            && !contains_ascii_case_insensitive(sanitized_xhtml, b"class"))
+            && !contains_ascii_case_insensitive(sanitized_xhtml, b"class")
+            && !contains_ascii_case_insensitive(sanitized_xhtml, b"<font"))
     {
         return Vec::new();
     }
@@ -1419,6 +1440,48 @@ pub(super) fn edge_shadow_structural_styles_are_bounded(
     })
 }
 
+fn node_shadow_geometry_is_overridden(property: &str) -> bool {
+    matches!(
+        property,
+        "r" | "cx"
+            | "cy"
+            | "x"
+            | "y"
+            | "width"
+            | "height"
+            | "d"
+            | "transform"
+            | "transform-origin"
+            | "transform-box"
+            | "translate"
+            | "rotate"
+            | "scale"
+            | "perspective"
+            | "vector-effect"
+            | "all"
+    )
+}
+
+pub(super) fn node_shadow_structural_styles_are_bounded(
+    class_defs: &IndexMap<String, Vec<String>>,
+    classes: &[&str],
+) -> bool {
+    edge_shadow_structural_styles_are_bounded(class_defs, classes)
+        && classes.iter().all(|class| {
+            class_defs.get(*class).is_none_or(|groups| {
+                groups.iter().all(|group| {
+                    crate::flowchart::flowchart_split_mermaid_style_decls(group).all(|raw| {
+                        crate::diagram_theme::PreparedSourceStyleDeclaration::parse(raw).is_none_or(
+                            |declaration| {
+                                !node_shadow_geometry_is_overridden(declaration.property())
+                            },
+                        )
+                    })
+                })
+            })
+        })
+}
+
 /// Generated class selectors can style descendants of the label shell without appearing in
 /// the sanitized fragment. Their inheritance is not represented by the label measurement plan.
 pub(super) fn html_label_structural_font_weight_is_unverified(
@@ -1551,7 +1614,18 @@ fn inspect_sanitized_xhtml_element(
         let name = attribute.key.local_name();
         let is_style = name.as_ref().eq_ignore_ascii_case("style");
         let is_class = name.as_ref().eq_ignore_ascii_case("class");
-        if !is_style && !is_class {
+        let legacy_font_property = if element.local_name().as_ref().eq_ignore_ascii_case("font") {
+            if name.as_ref().eq_ignore_ascii_case("face") {
+                Some("font-family")
+            } else if name.as_ref().eq_ignore_ascii_case("size") {
+                Some("font-size")
+            } else {
+                None
+            }
+        } else {
+            None
+        };
+        if !is_style && !is_class && legacy_font_property.is_none() {
             continue;
         }
         let value = attribute
@@ -1559,6 +1633,26 @@ fn inspect_sanitized_xhtml_element(
             .map_err(|_| ())?;
         let value = value.trim();
         if value.is_empty() {
+            continue;
+        }
+
+        if let Some(property) = legacy_font_property {
+            let provenance = crate::diagram_theme::SourceStyleProvenance::label_style(
+                owner_id,
+                crate::diagram_theme::SourceStyleChannel::Label,
+                *declaration_ordinal,
+            );
+            let raw = format!("{property}:{value}");
+            match crate::diagram_theme::SourceStyleDeclaration::parse(&raw, provenance) {
+                Ok(declaration) => {
+                    residuals.push(crate::diagram_theme::SourceStyleResidual::from_declaration(
+                        &declaration,
+                        crate::diagram_theme::SourceStyleResidualReason::UnsupportedSurface,
+                    ))
+                }
+                Err(residual) => residuals.push(residual),
+            }
+            *declaration_ordinal = declaration_ordinal.saturating_add(1);
             continue;
         }
 

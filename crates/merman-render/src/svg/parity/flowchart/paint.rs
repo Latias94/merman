@@ -84,7 +84,6 @@ pub(super) fn with_flowchart_paint_context<T>(
     let node_stroke_width = render_config.node_stroke_width;
     let node_typography_config_ownership = render_config.node_typography_config_ownership;
     let node_label_fill_config_override = render_config.node_label_fill_config_override;
-    let node_border_config_override = render_config.node_border_config_override;
     let node_fill_config_override = render_config.node_fill_config_override;
     let node_stroke_width_config_override = render_config.node_stroke_width_config_override;
     let edge_stroke_config_override = render_config.edge_stroke_config_override;
@@ -270,6 +269,7 @@ pub(super) fn with_flowchart_paint_context<T>(
         uses_elk_adapter_dom: layout.uses_elk_adapter_dom,
         class_defs: &model.class_defs,
         edge_style_plan,
+        steps: super::step::FlowchartSteps::new(model, effective_config),
         document_ids: std::cell::OnceCell::new(),
         layout,
         swimlane_layout,
@@ -277,7 +277,6 @@ pub(super) fn with_flowchart_paint_context<T>(
         node_stroke_width,
         node_typography_config_ownership,
         node_label_fill_config_override,
-        node_border_config_override,
         node_fill_config_override,
         node_stroke_width_config_override,
         edge_stroke_config_override,
@@ -448,6 +447,7 @@ pub(super) fn prepare_rough_edge_paths(
             render::node::roughjs::roughjs_hand_drawn_stroke_path_for_svg_path(
                 &entry.geom.d,
                 0.3,
+                ctx.work_meter,
                 &ctx.hand_drawn_seed,
             );
     }
@@ -576,7 +576,7 @@ impl FlowchartEdgeLabels {
             })
     }
 
-    fn position(
+    pub(super) fn position(
         &self,
         key: crate::flowchart::FlowchartEdgeKey,
     ) -> Option<crate::model::LayoutPoint> {

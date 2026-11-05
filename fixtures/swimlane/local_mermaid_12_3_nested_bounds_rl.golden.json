@@ -1,0 +1,117 @@
+{
+  "diagramType": "swimlane",
+  "model": {
+    "accDescr": null,
+    "accTitle": null,
+    "classDefs": {},
+    "direction": "RL",
+    "edgeDefaults": {
+      "interpolate": null,
+      "style": []
+    },
+    "edges": [
+      {
+        "animate": null,
+        "animation": null,
+        "arrow": "-->",
+        "classes": [],
+        "from": "A",
+        "id": "L_A_B_0",
+        "interpolate": null,
+        "isUserDefinedId": false,
+        "label": "verified",
+        "labelType": "text",
+        "length": 1,
+        "stroke": "normal",
+        "style": [],
+        "to": "B",
+        "type": "arrow_point"
+      }
+    ],
+    "keyword": "swimlane-beta",
+    "nodes": [
+      {
+        "assetHeight": null,
+        "assetWidth": null,
+        "classes": [],
+        "constraint": null,
+        "form": null,
+        "haveCallback": false,
+        "icon": null,
+        "id": "A",
+        "img": null,
+        "label": "Receive order",
+        "labelType": "text",
+        "layoutShape": "squareRect",
+        "link": null,
+        "linkTarget": null,
+        "pos": null,
+        "shape": "square",
+        "styles": []
+      },
+      {
+        "assetHeight": null,
+        "assetWidth": null,
+        "classes": [],
+        "constraint": null,
+        "form": null,
+        "haveCallback": false,
+        "icon": null,
+        "id": "B",
+        "img": null,
+        "label": "Check stock",
+        "labelType": "text",
+        "layoutShape": "squareRect",
+        "link": null,
+        "linkTarget": null,
+        "pos": null,
+        "shape": "square",
+        "styles": []
+      }
+    ],
+    "subgraphs": [
+      {
+        "classes": [],
+        "dir": null,
+        "id": "checks",
+        "labelType": "text",
+        "nodes": [
+          "A",
+          "B"
+        ],
+        "styles": [],
+        "title": "Checks"
+      },
+      {
+        "classes": [],
+        "dir": null,
+        "id": "intake",
+        "labelType": "text",
+        "nodes": [
+          "checks"
+        ],
+        "styles": [],
+        "title": "Intake"
+      },
+      {
+        "classes": [],
+        "dir": null,
+        "id": "sales",
+        "labelType": "text",
+        "nodes": [
+          "intake"
+        ],
+        "styles": [],
+        "title": "Sales"
+      }
+    ],
+    "tooltips": {},
+    "type": "swimlane",
+    "vertexCalls": [
+      "A",
+      "B",
+      "A",
+      "B"
+    ]
+  }
+}

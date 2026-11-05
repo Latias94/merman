@@ -110,14 +110,16 @@ mod tests {
 
     #[test]
     fn indexes_parser_occurrences_and_unique_legacy_labels_once() {
-        let mut model = TimelineDiagramModel::default();
-        model.sections = vec!["Repeated".into(), "Repeated".into(), "Unique".into()];
-        model.tasks = vec![
-            task(0, "Repeated", Some(0), "First"),
-            task(1, "Repeated", Some(1), "Second"),
-            task(2, "Unique", None, "Legacy A"),
-            task(3, "Unique", None, "Legacy B"),
-        ];
+        let model = TimelineDiagramModel {
+            sections: vec!["Repeated".into(), "Repeated".into(), "Unique".into()],
+            tasks: vec![
+                task(0, "Repeated", Some(0), "First"),
+                task(1, "Repeated", Some(1), "Second"),
+                task(2, "Unique", None, "Legacy A"),
+                task(3, "Unique", None, "Legacy B"),
+            ],
+            ..Default::default()
+        };
 
         let index = TimelineTaskIndex::new(&model).expect("valid occurrence ownership");
 
@@ -129,13 +131,15 @@ mod tests {
 
     #[test]
     fn keeps_unmatched_legacy_tasks_as_orphans_in_model_order() {
-        let mut model = TimelineDiagramModel::default();
-        model.sections = vec!["Known".into()];
-        model.tasks = vec![
-            task(0, "Missing", None, "Unknown"),
-            task(1, "Known", Some(0), "Declared"),
-            task(2, "", None, "Loose"),
-        ];
+        let model = TimelineDiagramModel {
+            sections: vec!["Known".into()],
+            tasks: vec![
+                task(0, "Missing", None, "Unknown"),
+                task(1, "Known", Some(0), "Declared"),
+                task(2, "", None, "Loose"),
+            ],
+            ..Default::default()
+        };
 
         let index = TimelineTaskIndex::new(&model).expect("valid legacy ownership");
 
@@ -145,9 +149,11 @@ mod tests {
 
     #[test]
     fn rejects_ambiguous_legacy_labels() {
-        let mut model = TimelineDiagramModel::default();
-        model.sections = vec!["Repeated".into(), "Repeated".into()];
-        model.tasks = vec![task(0, "Repeated", None, "Ambiguous")];
+        let model = TimelineDiagramModel {
+            sections: vec!["Repeated".into(), "Repeated".into()],
+            tasks: vec![task(0, "Repeated", None, "Ambiguous")],
+            ..Default::default()
+        };
 
         let error = TimelineTaskIndex::new(&model)
             .expect_err("duplicate labels require occurrence ownership");
@@ -165,9 +171,11 @@ mod tests {
             ("Known", 1, "outside 1 declared sections"),
             ("Other", 0, "names `Known` but the task owns `Other`"),
         ] {
-            let mut model = TimelineDiagramModel::default();
-            model.sections = vec!["Known".into()];
-            model.tasks = vec![task(0, section, Some(section_index), "Invalid")];
+            let model = TimelineDiagramModel {
+                sections: vec!["Known".into()],
+                tasks: vec![task(0, section, Some(section_index), "Invalid")],
+                ..Default::default()
+            };
 
             let error = TimelineTaskIndex::new(&model)
                 .expect_err("invalid occurrence ownership must fail closed");

@@ -7,8 +7,8 @@ import {
 import {
   isActiveEditorSelectionChange,
   isTrackedPreviewDiagnosticsChange,
-  isTrackedPreviewDocumentChange,
 } from "./preview-manager-routing.js";
+import { forgetPreviewSourceSnapshot } from "./preview-source.js";
 import type { PreviewUpdateReason } from "./preview-policy.js";
 import type { MermaidSourceCommandArgument } from "./source-actions.js";
 
@@ -71,8 +71,7 @@ class MermanPreviewManager implements vscode.Disposable {
       vscode.workspace.onDidChangeTextDocument((event) => {
         for (const instance of this.instances) {
           instance.trackDocumentChange(event);
-          const trackedEditor = instance.resolvePreviewEditor();
-          if (!isTrackedPreviewDocumentChange(trackedEditor, event.document) && !instance.tracksDocument(event.document.uri)) {
+          if (instance.trackedDocumentUri !== event.document.uri.toString()) {
             continue;
           }
           instance.invalidateRenderedOutput("document-change");
@@ -81,11 +80,12 @@ class MermanPreviewManager implements vscode.Disposable {
       }),
     );
     this.disposables.push(
+      vscode.workspace.onDidCloseTextDocument(forgetPreviewSourceSnapshot),
+    );
+    this.disposables.push(
       vscode.languages.onDidChangeDiagnostics((event) => {
         for (const instance of this.instances) {
-          const trackedEditor = instance.resolvePreviewEditor();
-          const trackedUri = trackedEditor?.document.uri;
-          if (!isTrackedPreviewDiagnosticsChange(trackedUri, event.uris) && !event.uris.some((uri) => instance.tracksDocument(uri))) {
+          if (!isTrackedPreviewDiagnosticsChange(instance.trackedDocumentUri, event.uris)) {
             continue;
           }
           instance.scheduleRefresh("diagnostics");

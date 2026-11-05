@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  REALM_BUDGETS,
   REALM_PROTOCOL_VERSION,
   type RealmBootIdentity,
 } from "./channel-protocol.ts";
@@ -15,6 +16,144 @@ const ENGINE_ARTIFACT = {
   resourceUrl: null,
   source: "export default 1;",
 };
+
+for (const realm of ["compare", "benchmark", "trusted benchmark"] as const) {
+  test(`${realm} waits for initial layout before measuring its ready viewport`, async () => {
+    const harness = installBrowserHarness({ deferInitialLayout: true });
+    try {
+      const channel = await createAuthenticatedBrowserRealmChannel({
+        kind: realm === "compare" ? "compare" : "benchmark",
+        ...(realm === "trusted benchmark"
+          ? { realmUrl: new URL("https://play.test/merman/benchmark.html") }
+          : { createRealmDocument: harness.createRealmDocument }),
+        engineArtifact: ENGINE_ARTIFACT,
+        initialViewport: { width: 800, height: 600 },
+        signal: new AbortController().signal,
+        label: "Test realm",
+        title: "Test Realm",
+        onFailure: () => {},
+      });
+
+      assert.equal(harness.initMessages.length, 1);
+      assert.equal(harness.scheduledAnimationFrames, 2);
+      channel.dispose();
+    } finally {
+      harness.restore();
+    }
+  });
+}
+
+test("repeated hello during initial layout transfers only one INIT port", async () => {
+  const harness = installBrowserHarness({ autoAnimationFrames: false });
+  try {
+    const pending = createAuthenticatedBrowserRealmChannel({
+      kind: "compare",
+      engineArtifact: ENGINE_ARTIFACT,
+      createRealmDocument: harness.createRealmDocument,
+      initialViewport: { width: 800, height: 600 },
+      signal: new AbortController().signal,
+      label: "Test realm",
+      title: "Test Realm",
+      onFailure: () => {},
+    });
+
+    await Promise.resolve();
+    assert.equal(harness.initMessages.length, 0);
+    harness.sendHello();
+    assert.equal(harness.pendingAnimationFrames, 1);
+    harness.runAnimationFrame();
+    await Promise.resolve();
+    assert.equal(harness.initMessages.length, 0);
+    harness.sendHello();
+    harness.runAnimationFrame();
+    const channel = await pending;
+    assert.equal(harness.initMessages.length, 1);
+    assert.equal(harness.transfers.length, 1);
+    channel.dispose();
+  } finally {
+    harness.restore();
+  }
+});
+
+for (const completedFrames of [0, 1]) {
+  test(`aborting initial layout after ${completedFrames} frames releases both ports without late INIT`, async () => {
+    const harness = installBrowserHarness({ autoAnimationFrames: false });
+    try {
+      const controller = new AbortController();
+      const failures: Error[] = [];
+      const pending = assert.rejects(
+        createAuthenticatedBrowserRealmChannel({
+          kind: "benchmark",
+          engineArtifact: ENGINE_ARTIFACT,
+          createRealmDocument: harness.createRealmDocument,
+          initialViewport: { width: 800, height: 600 },
+          signal: controller.signal,
+          label: "Test realm",
+          title: "Test Realm",
+          onFailure: (error) => failures.push(error),
+        }),
+        (error: unknown) =>
+          error instanceof DOMException && error.name === "AbortError"
+      );
+      await Promise.resolve();
+      if (completedFrames > 0) {
+        harness.runAnimationFrame();
+        await Promise.resolve();
+      }
+      assert.equal(harness.pendingAnimationFrames, 1);
+
+      controller.abort();
+      await pending;
+      harness.runAnimationFrame();
+      harness.sendHello();
+      await Promise.resolve();
+      assert.equal(harness.initMessages.length, 0);
+      assert.equal(harness.cancelledAnimationFrames, 1);
+      assert.equal(harness.closedPortCount, 2);
+      assert.equal(harness.frame.removeCount, 1);
+      assert.equal(failures.length, 1);
+    } finally {
+      harness.restore();
+    }
+  });
+}
+
+test("initial layout remains inside the original handshake deadline", async (context) => {
+  context.mock.timers.enable({ apis: ["setTimeout"] });
+  const harness = installBrowserHarness({ autoAnimationFrames: false });
+  try {
+    const failures: Error[] = [];
+    const pending = assert.rejects(
+      createAuthenticatedBrowserRealmChannel({
+        kind: "compare",
+        engineArtifact: ENGINE_ARTIFACT,
+        createRealmDocument: harness.createRealmDocument,
+        initialViewport: { width: 800, height: 600 },
+        signal: new AbortController().signal,
+        label: "Test realm",
+        title: "Test Realm",
+        onFailure: (error) => failures.push(error),
+      }),
+      /handshake timed out/
+    );
+    await Promise.resolve();
+    context.mock.timers.tick(REALM_BUDGETS.stageTimeoutMs - 1);
+    assert.equal(failures.length, 0);
+    assert.equal(harness.pendingAnimationFrames, 1);
+    context.mock.timers.tick(1);
+    await pending;
+    harness.runAnimationFrame();
+    harness.sendHello();
+    await Promise.resolve();
+    assert.equal(harness.initMessages.length, 0);
+    assert.equal(harness.cancelledAnimationFrames, 1);
+    assert.equal(harness.closedPortCount, 2);
+    assert.equal(harness.frame.removeCount, 1);
+    assert.equal(failures.length, 1);
+  } finally {
+    harness.restore();
+  }
+});
 
 test("opaque realm authenticates exact source and transfers one port", async () => {
   const harness = installBrowserHarness();
@@ -158,7 +297,7 @@ test("opaque realm rejects timeout and pre-aborted handshakes", async () => {
 });
 
 test("disposing a realm cancels a stalled viewport frame wait", async () => {
-  const harness = installBrowserHarness({ autoAnimationFrames: false });
+  const harness = installBrowserHarness();
   try {
     const channel = await createAuthenticatedBrowserRealmChannel({
       kind: "compare",
@@ -170,6 +309,7 @@ test("disposing a realm cancels a stalled viewport frame wait", async () => {
       title: "Test Realm",
       onFailure: () => {},
     });
+    harness.pauseAnimationFrames();
 
     const pending = assert.rejects(
       channel.setViewport({ width: 640, height: 480 }),
@@ -198,18 +338,19 @@ test("an unchanged viewport skips style writes and animation frame waits", async
       onFailure: () => {},
     });
     const initialStyleWrites = harness.frame.styleWrites;
+    const initialAnimationFrames = harness.scheduledAnimationFrames;
 
     await channel.setViewport({ width: 800, height: 600 });
 
     assert.equal(harness.frame.styleWrites, initialStyleWrites);
-    assert.equal(harness.scheduledAnimationFrames, 0);
+    assert.equal(harness.scheduledAnimationFrames, initialAnimationFrames);
 
     await channel.setViewport({ width: 640, height: 480 });
     const changedStyleWrites = harness.frame.styleWrites;
-    assert.equal(harness.scheduledAnimationFrames, 2);
+    assert.equal(harness.scheduledAnimationFrames, initialAnimationFrames + 2);
     await channel.setViewport({ width: 640, height: 480 });
     assert.equal(harness.frame.styleWrites, changedStyleWrites);
-    assert.equal(harness.scheduledAnimationFrames, 2);
+    assert.equal(harness.scheduledAnimationFrames, initialAnimationFrames + 2);
     channel.dispose();
   } finally {
     harness.restore();
@@ -272,6 +413,7 @@ test("transport failures preserve structured errors without object coercion", as
 interface HarnessOptions {
   readonly autoAnimationFrames?: boolean;
   readonly autoHandshake?: boolean;
+  readonly deferInitialLayout?: boolean;
   readonly includeForgedMessages?: boolean;
   readonly visibilityState?: "hidden" | "visible" | "prerender";
 }
@@ -279,11 +421,16 @@ interface HarnessOptions {
 function installBrowserHarness({
   autoHandshake = true,
   autoAnimationFrames = true,
+  deferInitialLayout = false,
   includeForgedMessages = false,
   visibilityState = "visible",
 }: HarnessOptions = {}) {
   const previousWindow = Object.getOwnPropertyDescriptor(globalThis, "window");
   const previousDocument = Object.getOwnPropertyDescriptor(globalThis, "document");
+  const previousMessageChannel = Object.getOwnPropertyDescriptor(globalThis, "MessageChannel");
+  const NativeMessageChannel = MessageChannel;
+  const channels: MessageChannel[] = [];
+  const closedPorts = new Set<MessagePort>();
   const previousAnimationFrame = Object.getOwnPropertyDescriptor(
     globalThis,
     "requestAnimationFrame"
@@ -300,8 +447,10 @@ function installBrowserHarness({
   let cancelledAnimationFrames = 0;
   let realmPort: MessagePort | null = null;
   let boot: RealmBootIdentity | null = null;
+  let layoutReady = !deferInitialLayout;
 
   const contentWindow = {
+    location: { pathname: "/merman/benchmark.html" },
     postMessage(data: unknown, targetOrigin: string, ports: MessagePort[]) {
       initMessages.push(data);
       targetOrigins.push(targetOrigin);
@@ -322,7 +471,9 @@ function installBrowserHarness({
           realmId: init.realmId,
           realmToken: init.realmToken,
           sequence: 0,
-          viewport: { width: 800, height: 600 },
+          viewport: layoutReady
+            ? { width: 800, height: 600 }
+            : { width: 0, height: 0 },
         });
       });
     },
@@ -332,6 +483,15 @@ function installBrowserHarness({
     boot = identity;
     return `<!doctype html><title>opaque ${identity.kind}</title>`;
   };
+  const sendHello = () => {
+    assert.ok(boot);
+    dispatchWindowMessage(
+      parentWindow,
+      { type: "realm-hello", protocol: REALM_PROTOCOL_VERSION, ...boot },
+      frame.src ? "https://play.test" : "null",
+      contentWindow
+    );
+  };
   const document = {
     body: {
       appendChild(element: FakeIFrame) {
@@ -339,6 +499,14 @@ function installBrowserHarness({
         frame.isConnected = true;
         frame.dispatchEvent(new Event("load"));
         if (!autoHandshake) return;
+        if (frame.src) {
+          const hash = new URLSearchParams(new URL(frame.src).hash.slice(1));
+          boot = {
+            kind: "benchmark",
+            realmId: hash.get("realm")!,
+            bootNonce: hash.get("boot")!,
+          };
+        }
         queueMicrotask(() => {
           assert.ok(boot);
           const hello = {
@@ -356,7 +524,7 @@ function installBrowserHarness({
               {}
             );
           }
-          dispatchWindowMessage(parentWindow, hello, "null", contentWindow);
+          sendHello();
         });
       },
     },
@@ -377,9 +545,25 @@ function installBrowserHarness({
 
   defineGlobal("window", parentWindow);
   defineGlobal("document", document);
+  defineGlobal("MessageChannel", class extends NativeMessageChannel {
+    constructor() {
+      super();
+      channels.push(this);
+      for (const port of [this.port1, this.port2]) {
+        const close = port.close.bind(port);
+        port.close = () => {
+          closedPorts.add(port);
+          close();
+        };
+      }
+    }
+  });
   defineGlobal("requestAnimationFrame", (callback: (time: number) => void) => {
     const id = ++nextAnimationFrameId;
-    if (autoAnimationFrames) callback(performance.now());
+    if (autoAnimationFrames) {
+      layoutReady = true;
+      callback(performance.now());
+    }
     else animationFrames.set(id, callback);
     return id;
   });
@@ -397,6 +581,19 @@ function installBrowserHarness({
     initMessages,
     targetOrigins,
     transfers,
+    sendHello,
+    pauseAnimationFrames() {
+      autoAnimationFrames = false;
+    },
+    runAnimationFrame() {
+      const callbacks = [...animationFrames.values()];
+      animationFrames.clear();
+      layoutReady = true;
+      for (const callback of callbacks) callback(performance.now());
+    },
+    get closedPortCount() {
+      return closedPorts.size;
+    },
     get cancelledAnimationFrames() {
       return cancelledAnimationFrames;
     },
@@ -411,8 +608,13 @@ function installBrowserHarness({
     },
     restore() {
       realmPort?.close();
+      for (const channel of channels) {
+        channel.port1.close();
+        channel.port2.close();
+      }
       restoreGlobal("window", previousWindow);
       restoreGlobal("document", previousDocument);
+      restoreGlobal("MessageChannel", previousMessageChannel);
       restoreGlobal("requestAnimationFrame", previousAnimationFrame);
       restoreGlobal("cancelAnimationFrame", previousCancelAnimationFrame);
     },

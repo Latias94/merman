@@ -27,7 +27,7 @@ import type {
   ThemeRecipeV1,
   ThemeStylePatch,
   ThemeDiagnostic,
-  ThemeExecutionEvidenceV1,
+  ThemeExecutionEvidenceV2,
   ThemeSupportQueryV1,
   ThemeSupportUnknownSubjectKindV1,
 } from "../src/public-types.js";
@@ -432,8 +432,8 @@ const themeDiagnostic: ThemeDiagnostic = {
   source_paths: ["/styles/2"],
   generated: false,
 };
-const themeOutcome: ThemeExecutionEvidenceV1 = {
-  version: 1,
+const themeOutcome: ThemeExecutionEvidenceV2 = {
+  version: 2,
   family_id: "class",
   theme_status: "residual",
   output_mutated: false,
@@ -441,9 +441,10 @@ const themeOutcome: ThemeExecutionEvidenceV1 = {
   target_status: "rejected",
   target_reason_ids: ["theme_evidence_incomplete"],
   font_source: "embedded",
+  materialized_theme: "dark",
   diagnostics: [themeDiagnostic],
 };
-const legacyThemeOutcome: ThemeExecutionEvidenceV1 = {
+const legacyThemeOutcome: ThemeExecutionEvidenceV2 = {
   ...themeOutcome,
   diagnostics: undefined,
 };

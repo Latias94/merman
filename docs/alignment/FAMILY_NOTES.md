@@ -1,0 +1,232 @@
+# Family Compatibility Notes
+
+These notes describe family-specific limits and interpretation rules that are useful when choosing
+or debugging an output. They complement the [parity policy](PARITY_POLICY.md),
+[configuration contract](CONFIG_FRONTMATTER_SUPPORT.md), and
+[semantic-label contract](SEMANTIC_LABEL_PARITY.md). They do not enumerate supported syntax,
+duplicate fixture inventories, or record successful gate runs.
+
+The [selected source graph](README.md#machine-authorities), family capabilities, compare facts,
+and per-family baseline manifests own current admission. Historical input names and controlled
+experiments retain their original scope; they do not establish support for a later Mermaid
+release. Families without a special note use the shared contracts and their executable evidence.
+
+## Architecture
+
+Compound layout is a source-backed headless approximation of Cytoscape/FCoSE. Service body/label
+unions, group expansion, operation randomness, and host text measurements can all affect geometry;
+a seed makes a reference reproducible without proving pixel identity with an arbitrary browser run.
+Architecture labels lack shared `data-id` attributes, so semantic-label admission uses the direct
+owning edge group and path, rejects ambiguous repeated text, and requires exact label geometry.
+
+`normalized` in an Architecture fixture name records import provenance, not a separate grammar
+mode or a parser-only exemption. Historical Mermaid 11.12.3 CLI rejections do not classify the
+current corpus. The [input sources](../../fixtures/architecture/) and
+[baseline manifest](../../fixtures/upstream-svgs/architecture/_baseline-manifest.json) own current
+input bytes, inclusion, and provenance; do not recreate an exclusion from the suffix.
+
+Owners: [Architecture layout](../../crates/merman-render/src/architecture.rs),
+[layout tests](../../crates/merman-render/tests/architecture_layout_test.rs),
+[SVG tests](../../crates/merman-render/tests/architecture_svg_test.rs), and
+[semantic-label admission](SEMANTIC_LABEL_PARITY.md).
+
+## C4
+
+Mermaid's screen-derived width limit needs an explicit host input in a headless operation.
+`LayoutOptions::screen_available_width` projects browser `screen.availWidth`; when absent, C4 uses
+the operation's container width. Text wrapping can consequently differ between hosts. Relationship
+offsets belong to their ordered relation and named field. Browser text differences do not excuse
+incorrect shape intersections or swapped offsets.
+
+Owners: [C4 layout](../../crates/merman-render/src/c4.rs),
+[relation geometry tests](../../crates/merman-render/tests/c4_relation_geometry_test.rs), and
+[public typed-render tests](../../crates/merman/tests/c4_typed_render.rs).
+
+## Class
+
+Final HTML title bounds use the displayed XHTML font, including the title weight, separately from
+the wrapping-budget probe. Text measurements can change ELK placement and terminal bends. The
+[Class residual contract](SEMANTIC_LABEL_PARITY.md#class-elk-measurement-residuals) explains the
+required identities, node-side attachment, presentation, and exact signed geometry; it provides
+the maintained rationale for the canary's residual entries.
+
+Owners: [HTML typography tests](../../crates/merman-render/tests/class_html_typography_test.rs) and
+[SVG/layout integration](../../crates/merman-render/tests/class_svg_test.rs).
+
+## Error
+
+Suppressed parse failures can produce the typed Error artifact. A State input stored in
+`fixtures/error/` tests that failure path; it does not establish support for the rejected State
+syntax. Version labels follow the selected runtime identity.
+
+Owners: [Error fixtures](../../fixtures/error/),
+[compare policy](../../crates/xtask/src/cmd/compare/diagrams.rs), and
+[Info/Error SVG tests](../../crates/merman-render/tests/info_error_svg_test.rs).
+
+## Event Modeling
+
+`entity`, `note`, and `gwt` remain in canonical semantics, reference validation, and editor facts.
+The render projection omits them because the selected Mermaid DB/renderer consumes frames and data
+entities instead of those AST collections. Do not invent visible boxes for grammar-only constructs.
+Data type names do not select distinct HTML/Markdown renderers. Local data labels emit escaped
+text; browser HTML injection, non-breaking-space serialization, and measured wrapping retain a
+bounded compatibility difference.
+
+Owners: [semantic/editor contract tests](../../crates/merman-core/tests/eventmodeling_contract.rs),
+[SVG emitter](../../crates/merman-render/src/svg/parity/eventmodeling.rs), and
+[SVG tests](../../crates/merman-render/tests/eventmodeling_svg_test.rs).
+
+## Flowchart
+
+Dagre and ELK are separate layout paths selected through the
+[configuration contract](CONFIG_FRONTMATTER_SUPPORT.md). The source-backed ELK probe lane checks
+the Mermaid-reachable adapter surface; it is not a promise to implement every Eclipse ELK option.
+Stable source edge identity must survive import, routing, label projection, and SVG emission.
+
+Controlled measurement evidence distinguishes three boundaries: dimensions supplied to a provider,
+raw provider output, and the final clipped/straightened/painted route. The
+[browser-dimension replay](../../crates/merman-render/src/flowchart/elk/browser_measurements_tests.rs)
+replaces invocation dimensions and executes the Rust provider. The
+[terminal writer tests](../../crates/merman-render/src/svg/parity/flowchart/browser_measurement_tests.rs)
+also consume captured placement/routes and independently collected terminal primitives. Passing
+the writer replay alone does not prove a complete browser-measured Rust layout pipeline.
+
+The retained `local_mermaid_12_2_elk_label_clearance_8368` input illustrates why those boundaries
+matter: controlled measurements traced a different final bend to strict shape-boundary attachment
+after provider routing. Equal raw point counts do not guarantee equal painted paths. That diagnosis
+does not justify a clipping epsilon, a route rewrite, or a production fixture branch. Current
+[provider captures](../../fixtures/_verification/flowchart-elk-browser-measurements.json),
+[terminal measurements](../../fixtures/_verification/flowchart-svg-terminal-measurements.json), and
+[browser-text receipts](../../fixtures/_verification/browser-text-layout-residuals.json) own the
+signed input, artifact, source, and mode identities. Use their selected runtime/provider capture;
+an older instrumented runtime or a different workspace dependency resolution is a separate oracle.
+
+Title bounds depend on the font used by the destination surface. A host title-bbox answer can
+provide actual bounds; a font-agnostic estimate cannot guarantee containment after arbitrary font
+substitution. Root-paint residuals remain independently signed by the browser oracle under the
+[viewport policy](PARITY_POLICY.md#root-viewport-transition).
+
+## Gantt
+
+The date parser implements evidenced Day.js-style tokens and JavaScript date fallback forms;
+arbitrary locale formats and every `Date.parse()` dialect are not a compatibility promise.
+Runtime time and timezone inputs also affect dates. A host-sensitive daylight-saving or
+seconds-only test is not a portable snapshot contract.
+
+Owners: [date parsing/formatting](../../crates/merman-core/src/diagrams/gantt/date.rs),
+[date tests](../../crates/merman-core/src/diagrams/gantt/tests.rs), and
+[comparison runtime policy](../../crates/xtask/src/cmd/compare/diagrams/gantt.rs).
+
+## Ishikawa and Venn
+
+Both have seeded headless hand-drawn rendering. Their exact registered RoughJS cases use the
+structure-only boundary declared in [compare facts](../../crates/xtask/src/cmd/compare/diagrams.rs);
+Rust `roughr` paths are not coordinate-identical to JavaScript RoughJS. This does not downgrade
+classic SVG or grant a family-wide geometry exemption. Venn layout derives from the admitted
+Venn optimization/intersection source, rather than ad hoc circle placement.
+
+Owners: [Ishikawa SVG tests](../../crates/merman-render/tests/ishikawa_svg_test.rs),
+[Venn layout](../../crates/merman-render/src/venn.rs), and
+[Venn SVG tests](../../crates/merman-render/tests/venn_svg_test.rs).
+
+## Railroad
+
+`railroad`, `railroadEbnf`, `railroadAbnf`, and `railroadPeg` share typed layout and rendering.
+Parsed `compactMode`, `showMarkers`, repetition separators, and maximum repetition metadata do
+not gain drawing effects that the selected upstream renderer omits. Browser text-bbox differences
+belong to the shared root diagnostic boundary; fixed width floors and fixture-specific roots are
+not valid substitutes for measurement.
+
+Owners: [Railroad layout](../../crates/merman-render/src/railroad.rs),
+[parser tests](../../crates/merman-core/src/tests/railroad.rs), and
+[SVG/grammar-combination tests](../../crates/merman-render/tests/railroad_svg_test.rs).
+
+## Sequence and Timeline
+
+The 12.3 reference collection retains exact browser-text snapshots where wrapping and derived
+grouping differ from earlier captures. Same-environment replay of the archived 12.2 and selected
+12.3 runtimes produced matching upstream outputs for the reviewed cases, as did the old/current
+Rust outputs. This bounds collector-environment drift; it does not identify fonts, browser, or
+locale individually. The [migration](../migrations/mermaid-12-3.md) and
+[signed browser-text catalog](../../fixtures/_verification/browser-text-layout-residuals.json)
+own the scope. Text, child counts, and line spacing remain observable; unregistered changes fail.
+
+Sequence math comparison requires its managed math backend. An unavailable backend is a reported
+tooling skip, never a comparator allowance. Owners:
+[Sequence SVG tests](../../crates/merman-render/tests/sequence_svg_test.rs),
+[Timeline SVG tests](../../crates/merman-render/tests/timeline_svg_test.rs), and
+[browser-text comparator](../../crates/xtask/src/cmd/compare/browser_text_layout.rs).
+
+## State
+
+Subpixel label dimensions can change legal ELK route topology and terminal-straightening choices.
+Controlled tests distinguish provider/paint behavior from measurement inputs. They do not turn
+browser coordinates into production answers or excuse label identity, presentation, or DOM changes.
+Inspect descendant paths, label boxes, and compound graph inputs before changing root bounds.
+The retained browser-text entries admit only their exact `parity` / `parity-root` signatures;
+they do not waive `structure` or `strict` comparisons. Current entries and hashes live in the
+[browser-text catalog](../../fixtures/_verification/browser-text-layout-residuals.json), rather
+than the old 12.0 investigation's fixture counts or successful commands.
+
+Owners: [controlled State ELK tests](../../crates/merman-render/tests/state_elk_layout_test.rs),
+[semantic-label admission](SEMANTIC_LABEL_PARITY.md), and
+[State SVG diagnostics](../rendering/STATE_DEBUG_SVG.md#parity-root-viewport-debugging).
+
+## Swimlane
+
+Swimlane reuses Flowchart parsing and emission but owns lane preparation, layout, and routing.
+Its deterministic identifier tie-break compares UTF-16 code units. Mermaid paths using
+`localeCompare` may order mixed case, diacritics, or non-Latin identifiers differently according to
+the browser's locale and ICU build. Attribute an observed collation difference narrowly;
+lane membership, DOM ownership, and routing defects still require source-backed fixes.
+
+The retained `_upstream_ddlt/` inputs are layout evidence outside ordinary snapshot admission.
+Their finite geometry and SVG tests do not replace the semantic/layout/baseline evidence required
+to promote an input. Owners: [Swimlane implementation](../../crates/merman-render/src/swimlane/mod.rs),
+[layout tests](../../crates/merman-render/tests/swimlane_layout_test.rs), and
+[public typed-render tests](../../crates/merman/tests/swimlane_typed_render.rs).
+
+## TreeView
+
+Browser text bboxes and fallback fonts, especially for emoji and non-ASCII labels, can move root
+bounds. The render environment exposes `RawBBoxWidth` and `RawBBoxHeight` as separate measurement
+operations. A uniform lattice correction or emoji-specific geometry would not represent those
+inputs. Parser diagnostics are Rust-native rather than exact Langium messages and offsets.
+
+Owners: [TreeView layout](../../crates/merman-render/src/tree_view.rs) and
+[SVG/root tests](../../crates/merman-render/tests/tree_view_svg_test.rs).
+
+## Wardley
+
+Annotation sizing uses distinct text-length and bbox measurements from the operation's measurer.
+Coincident link endpoints are rejected instead of emitting upstream non-finite geometry. Browser
+font differences remain measurement diagnostics, not a fixture-specific layout rule.
+
+Owners: [Wardley layout](../../crates/merman-render/src/wardley.rs) and
+[SVG tests](../../crates/merman-render/tests/wardley_svg_test.rs).
+
+## XYChart
+
+Host measurements must use SVG/layout units. Mermaid reverses the browser CTM's horizontal and
+vertical scales; headless layout has no screen transform to reverse. Applying that conversion
+again would distort layout. Titles require available plot height including padding, and center on
+the final plot area; a title that cannot fit vertically is omitted rather than forcibly wrapped.
+
+Owners: [XYChart layout](../../crates/merman-render/src/xychart.rs),
+[SVG tests](../../crates/merman-render/tests/xychart_svg_test.rs), and
+[literal-text tests](../../crates/merman-render/tests/xychart_literal_text_test.rs).
+
+## ZenUML
+
+ZenUML has its own grammar, canonical semantic/editor model, typed layout, and native SVG. It is a
+separate external comparison lane against the selected ZenUML Core graph, outside the built-in
+Mermaid SVG matrix. Canvas/DOM shaping, icon glyph metrics, and baseline rounding remain browser
+measurement boundaries. Layout formulas must trace to the selected oracle's SVG/positioning
+sources; a Sequence translation or fixture-specific widths are not acceptable replacements.
+
+Companion updates require the manual external-browser admission workflow, including security and
+resource evidence. Parser acceptance alone does not admit a version. Owners:
+[ZenUML parser decision](../adr/0075-zenuml-parser-technology.md),
+[typed-render tests](../../crates/merman/tests/zenuml_typed_render.rs),
+[SVG tests](../../crates/merman-render/tests/zenuml_svg_test.rs), and
+[browser probe contract](../../tools/upstreams/ZENUML_BROWSER_ADMISSION_PROBES.json).

@@ -3382,7 +3382,7 @@ fn er_relation_theme_rejects_unowned_facets_and_non_static_stroke_routes() {
 }
 
 #[test]
-fn er_title_fill_is_unsupported_and_reconciles_title_presence() {
+fn er_title_fill_reaches_the_visible_title_and_reconciles_title_presence() {
     let theme = er_relation_rules_theme([ThemeRule::new(
         ThemeTarget::Title,
         ThemeStylePatch::default()
@@ -3407,13 +3407,24 @@ erDiagram
         .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
         .expect("render ER title fill in best-effort mode");
     assert!(best_effort.svg().contains(r#"class="erDiagramTitleText""#));
+    let document = roxmltree::Document::parse(best_effort.svg()).unwrap();
+    let title = document
+        .descendants()
+        .find(|node| node.attribute("class") == Some("erDiagramTitleText"))
+        .unwrap();
+    assert!(
+        title
+            .attribute("style")
+            .is_some_and(|style| style.contains("fill:#654321"))
+    );
+    drop(document);
     let evidence =
         merman_render::__private::family_evidence(best_effort.into_completion().report());
     assert_eq!(evidence.required_count(), 1);
     assert_eq!(evidence.accounted_count(), 1);
-    assert_eq!(evidence.applied_count(), 0);
+    assert_eq!(evidence.applied_count(), 1);
     assert_eq!(evidence.not_applicable_count(), 0);
-    assert_eq!(evidence.theme_residual_count(), 1);
+    assert_eq!(evidence.theme_residual_count(), 0);
 
     let (fixture_parsed_43, fixture_layout_43, fixture_session_43) =
         try_prepare_er_family_with_theme_and_engine_requirement(
@@ -3426,14 +3437,11 @@ erDiagram
         .and_then(|artifact| {
             artifact.render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
         });
-    let strict_error = match strict_result {
-        Ok(_) => panic!("strict ER title fill must fail closed"),
-        Err(error) => error,
-    };
-    assert_eq!(
-        strict_error.unverified_family_theme(),
-        Some((merman_render::DiagramFamilyId::ER, 1))
-    );
+    let strict = strict_result.expect("the proven ER title fill is portable");
+    let strict_evidence =
+        merman_render::__private::family_evidence(strict.into_completion().report());
+    assert_eq!(strict_evidence.applied_count(), 1);
+    assert_eq!(strict_evidence.theme_residual_count(), 0);
 
     let untitled_source = "erDiagram\n  A ||--o{ B : owns\n";
     let (fixture_parsed_44, fixture_layout_44, fixture_session_44) =
@@ -3454,6 +3462,140 @@ erDiagram
     assert_eq!(untitled_evidence.applied_count(), 0);
     assert_eq!(untitled_evidence.not_applicable_count(), 1);
     assert_eq!(untitled_evidence.theme_residual_count(), 0);
+}
+
+#[test]
+fn er_source_owned_title_fill_masks_only_fill_rules_and_palette_fallback() {
+    for (kind, owner, has_title, residual) in [
+        ("ordinal", "none", true, true),
+        ("ordinal", "source", true, false),
+        ("ordinal", "site", true, false),
+        ("ordinal", "source", false, false),
+        ("mixed", "source", true, true),
+        ("gradient", "source", true, false),
+        ("palette", "none", true, true),
+        ("palette", "source", true, false),
+        ("palette", "source", false, false),
+    ] {
+        let styles = if kind == "palette" {
+            ThemeRuleSet::default().with_ordinal_palette(
+                ThemeTarget::Title,
+                OrdinalPalette::new([ThemeColorValue::parse("#123456").unwrap()]).unwrap(),
+            )
+        } else {
+            let fill = if kind == "gradient" {
+                CanvasPaint::LinearGradient(
+                    LinearGradient::new(
+                        90.0,
+                        [
+                            GradientStop::new(0.0, ThemeColorValue::parse("#123456").unwrap())
+                                .unwrap(),
+                            GradientStop::new(1.0, ThemeColorValue::parse("#654321").unwrap())
+                                .unwrap(),
+                        ],
+                    )
+                    .unwrap(),
+                )
+            } else {
+                CanvasPaint::solid("#123456").unwrap()
+            };
+            let mut patch = ThemeStylePatch::default().with_fill(fill);
+            if kind == "mixed" {
+                patch = patch.with_stroke(CanvasPaint::solid("#987654").unwrap());
+            }
+            let rule = ThemeRule::new(ThemeTarget::Title, patch);
+            ThemeRuleSet::default().with_rule(if kind == "gradient" {
+                rule
+            } else {
+                rule.with_ordinal(OrdinalSelector::exact(1).unwrap())
+            })
+        };
+        let theme = DiagramThemeCompiler::new()
+            .compile(DiagramThemeSpec::new().with_styles(styles))
+            .unwrap();
+        let source = format!(
+            "---\n{}{}---\nerDiagram\n",
+            if has_title {
+                "title: ER overview\n"
+            } else {
+                ""
+            },
+            if owner == "source" {
+                "config:\n  themeVariables:\n    textColor: '#abcdef'\n"
+            } else {
+                ""
+            }
+        );
+        let engine = if owner == "site" {
+            MermaidEngine::new().with_site_config(
+                merman_core::presentation::SourcePresentationConfig::from_value(json!({
+                    "themeVariables": { "textColor": "#abcdef" }
+                })),
+            )
+        } else {
+            MermaidEngine::new()
+        };
+        let render = |requirement| {
+            let (parsed, layout, session) = try_prepare_er_family_with_theme_and_engine_requirement(
+                &source,
+                &theme,
+                engine.clone(),
+                requirement,
+            );
+            family::prepare(&parsed, &layout, session).and_then(|artifact| {
+                artifact.render_svg(
+                    &SvgRenderOptions {
+                        diagram_id: Some("er-title-source-mask".into()),
+                        ..Default::default()
+                    },
+                    &SvgDebugOptions::default(),
+                )
+            })
+        };
+        let rendered = render(ThemePortabilityRequirement::BestEffort).unwrap();
+        let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+        let title = document
+            .descendants()
+            .find(|node| node.attribute("class") == Some("erDiagramTitleText"));
+        assert_eq!(title.is_some(), has_title, "kind={kind} owner={owner}");
+        if let Some(title) = title {
+            assert_eq!(title.text(), Some("ER overview"));
+            assert_eq!(title.attribute("style"), None);
+            if owner != "none" {
+                let css = document
+                    .descendants()
+                    .find(|node| node.has_tag_name("style"))
+                    .unwrap()
+                    .text()
+                    .unwrap();
+                let root_rule = css
+                    .split("#er-title-source-mask{")
+                    .nth(1)
+                    .unwrap()
+                    .split('}')
+                    .next()
+                    .unwrap();
+                assert!(root_rule.contains("fill:#abcdef;"));
+            }
+        }
+        let evidence =
+            merman_render::__private::family_evidence(rendered.into_completion().report());
+        assert_eq!(evidence.required_count(), 1);
+        assert_eq!(evidence.accounted_count(), 1);
+        assert_eq!(evidence.applied_count(), 0);
+        assert_eq!(evidence.not_applicable_count(), usize::from(!residual));
+        assert_eq!(evidence.theme_residual_count(), usize::from(residual));
+        let strict = render(ThemePortabilityRequirement::RequirePortable);
+        if residual {
+            assert_eq!(
+                strict.err().unwrap().unverified_family_theme(),
+                Some((merman_render::DiagramFamilyId::ER, 1)),
+                "kind={kind} owner={owner}"
+            );
+        } else {
+            strict.expect("source-owned or absent title fill has no unsupported consumer");
+        }
+    }
 }
 
 #[test]

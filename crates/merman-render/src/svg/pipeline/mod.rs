@@ -7,6 +7,7 @@ mod preset;
 mod resource_closure;
 mod standalone;
 mod static_validation;
+mod step_animation;
 mod text_tracking;
 
 pub(crate) use builtin::set_root_background_color;
@@ -762,6 +763,9 @@ impl SvgPipeline {
                     execution,
                 )?;
             }
+        }
+        if self.inline_contract == Some(InlineContract::Static) {
+            current = step_animation::project_static(current, execution)?;
         }
         if self.isolate_ids {
             current = embedding::normalize_renderer_ids(current, metadata, execution)?;

@@ -7,6 +7,15 @@ const PINNED_MERMAID_SHAPES: &[&str] = &[
     "bolt",
     "bow-rect",
     "bow-tie-rectangle",
+    "bpmn-activity",
+    "bpmn-annotation",
+    "bpmn-boundary",
+    "bpmn-data",
+    "bpmn-data-store",
+    "bpmn-end",
+    "bpmn-gateway",
+    "bpmn-intermediate",
+    "bpmn-start",
     "brace",
     "brace-l",
     "brace-r",
@@ -197,4 +206,38 @@ pub fn pinned_shape_names() -> impl Iterator<Item = &'static str> {
 
 fn is_public_shape_name(shape: &str) -> bool {
     shape == shape.to_lowercase() && !shape.contains('_')
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn bpmn_shapes_share_the_validated_sorted_editor_registry() {
+        assert!(
+            PINNED_MERMAID_SHAPES
+                .windows(2)
+                .all(|pair| pair[0] < pair[1])
+        );
+        let names: Vec<_> = public_pinned_shape_names()
+            .filter(|name| name.starts_with("bpmn-"))
+            .collect();
+        assert_eq!(
+            names,
+            [
+                "bpmn-activity",
+                "bpmn-annotation",
+                "bpmn-boundary",
+                "bpmn-data",
+                "bpmn-data-store",
+                "bpmn-end",
+                "bpmn-gateway",
+                "bpmn-intermediate",
+                "bpmn-start",
+            ]
+        );
+        assert!(names.iter().all(|name| is_valid_pinned_shape(name)));
+        assert!(!is_valid_pinned_shape("bpmn"));
+        assert!(!is_valid_pinned_shape("bpmn-task"));
+    }
 }

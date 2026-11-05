@@ -3,6 +3,7 @@ import { expect, test } from "@playwright/test";
 import {
   monitorBrowserErrors,
   openPlayground,
+  openWorkbenchTool,
   previewSvgText,
   waitForPreviewSvg,
 } from "./helpers/playground";
@@ -52,7 +53,7 @@ test("startup, render, Compare, focus, system theme, and BFCache cleanup", async
   await expect(examplesDialog).toBeHidden();
   await expect(examplesTrigger).toBeFocused();
 
-  await page.getByRole("tab", { name: "Compare", exact: true }).click();
+  await openWorkbenchTool(page, "Compare");
   await expect(page.locator('iframe[data-merman-realm="compare"]')).toHaveCount(1);
   await expect
     .poll(() => compareSvgTexts(page))

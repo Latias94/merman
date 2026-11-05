@@ -1,0 +1,27 @@
+---
+config:
+  look: classic
+  htmlLabels: false
+  flowchart:
+    htmlLabels: false
+---
+swimlane-beta TB
+%% Adapted from Mermaid 12.3 portSeparation.spec.ts and raykov.router.spec.ts drawnExtent cases.
+subgraph review[Review]
+  Start@{ shape: bpmn-start, label: "Wide start event caption" }
+  B{{Review}}
+  End@{ shape: bpmn-end, label: "Complete" }
+end
+subgraph work[Work]
+  C{{Check}}
+  D{{Confirm}}
+  G@{ shape: notch-pent, label: "Ready" }
+end
+Start --> B
+B -->|accept| C
+C -->|accept| D
+D --> G
+G --> End
+B -->|decline| End
+C -->|decline| End
+D -->|decline| End

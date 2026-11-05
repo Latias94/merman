@@ -314,6 +314,7 @@ impl AgentflowDiagramRenderModel {
                     style: Vec::new(),
                     animate: None,
                     animation: None,
+                    step: None,
                     length: edge.length.max(1),
                 }
             })
@@ -355,6 +356,7 @@ impl AgentflowDiagramRenderModel {
             nodes,
             edges,
             subgraphs,
+            dropped_subgraph_members: Vec::new(),
             subgraph_vertex_styles: Default::default(),
             tooltips: Default::default(),
             warning_facts: Vec::new(),

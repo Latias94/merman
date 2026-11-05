@@ -23,12 +23,17 @@ const DEFAULT_BLOCK_FILL_COLOR: &str = "#efefef";
 
 pub(crate) struct PacketConfigView<'a> {
     packet_config: &'a Value,
+    packet_theme: &'a Value,
 }
 
 impl<'a> PacketConfigView<'a> {
     pub(crate) fn new(effective_config: &'a Value) -> Self {
         Self {
             packet_config: effective_config.get("packet").unwrap_or(&Value::Null),
+            packet_theme: effective_config
+                .get("themeVariables")
+                .and_then(|variables| variables.get("packet"))
+                .unwrap_or(&Value::Null),
         }
     }
 
@@ -101,16 +106,16 @@ impl<'a> PacketConfigView<'a> {
     }
 
     fn packet_style(&self, key: &str, default_value: &'static str) -> Cow<'static, str> {
-        let Some(mut value) = config_css_number_or_string(self.packet_config, &[key]) else {
-            return Cow::Borrowed(default_value);
-        };
+        self.style_value(key)
+            .map(Cow::Owned)
+            .unwrap_or(Cow::Borrowed(default_value))
+    }
+
+    pub(super) fn style_value(&self, key: &str) -> Option<String> {
+        let mut value = config_css_number_or_string(self.packet_theme, &[key])?;
         // Preserve the declaration parser's second delimiter normalization after JSON projection.
         value.truncate(value.trim_end_matches(';').trim_end().len());
-        if merman_markup::style::is_safe_css_declaration_value(&value) {
-            Cow::Owned(value)
-        } else {
-            Cow::Borrowed(default_value)
-        }
+        merman_markup::style::is_safe_css_declaration_value(&value).then_some(value)
     }
 }
 
@@ -224,7 +229,7 @@ mod tests {
     #[test]
     fn packet_style_settings_project_css_values() {
         let cfg = json!({
-            "packet": {
+            "themeVariables": { "packet": {
                 "byteFontSize": "11px",
                 "startByteColor": "#111111",
                 "endByteColor": "#222222",
@@ -235,7 +240,7 @@ mod tests {
                 "blockStrokeColor": "#555555",
                 "blockStrokeWidth": 2,
                 "blockFillColor": "#666666"
-            }
+            } }
         });
         let settings = PacketConfigView::new(&cfg).style_settings();
 
@@ -252,6 +257,35 @@ mod tests {
     }
 
     #[test]
+    fn packet_layout_and_style_settings_keep_separate_config_owners() {
+        let cfg = json!({
+            "packet": {
+                "showBits": false,
+                "bitOrder": "descending",
+                "rowHeight": 40,
+                "labelColor": "#123456",
+                "blockFillColor": "#654321"
+            },
+            "themeVariables": { "packet": {
+                "showBits": true,
+                "bitOrder": "ascending",
+                "rowHeight": 80,
+                "titleColor": "#abcdef"
+            } }
+        });
+        let view = PacketConfigView::new(&cfg);
+        let layout = view.layout_settings().unwrap();
+        let style = view.style_settings();
+
+        assert!(!layout.show_bits);
+        assert_eq!(layout.bit_order, PacketBitOrder::Descending);
+        assert_eq!(layout.row_height, 40.0);
+        assert_eq!(style.label_color, DEFAULT_LABEL_COLOR);
+        assert_eq!(style.block_fill_color, DEFAULT_BLOCK_FILL_COLOR);
+        assert_eq!(style.title_color, "#abcdef");
+    }
+
+    #[test]
     fn packet_style_values_preserve_normalization_and_reject_declaration_injection() {
         for (value, expected) in [
             (json!(" red; ; "), "red"),
@@ -263,8 +297,12 @@ mod tests {
             (json!("ExPrEsSiOn(1)"), "black"),
             (json!("red\u{1}"), "black"),
             (json!(""), "black"),
+            (Value::Null, "black"),
+            (json!(true), "black"),
+            (json!(["red"]), "black"),
+            (json!({"color": "red"}), "black"),
         ] {
-            let config = json!({"packet": {"labelColor": value}});
+            let config = json!({"themeVariables": {"packet": {"labelColor": value}}});
             let settings = PacketConfigView::new(&config).style_settings();
             assert_eq!(settings.label_color, expected, "value={value}");
         }

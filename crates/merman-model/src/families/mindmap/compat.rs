@@ -1,4 +1,4 @@
-//! Pure Mermaid-compatible Mindmap JSON with an explicit output identity.
+//! Pure Mermaid-compatible Mindmap JSON.
 
 use super::{MindmapDiagramRenderEdge, MindmapDiagramRenderModel, MindmapDiagramRenderNode};
 use crate::presentation::compat::{CompatJsonMetadata, CompatProjectionError};
@@ -81,20 +81,7 @@ pub fn project_controlled(
     root.insert("nodeSpacing".to_string(), Number::from(50).into());
     root.insert("rankSpacing".to_string(), Number::from(50).into());
     root.insert("shapes".to_string(), Value::Object(shapes));
-    let mut root = ManagedJson::from_value(Value::Object(root));
-    let Some(diagram_id) = meta.diagram_id.filter(|id| !id.is_empty()) else {
-        return Ok(Err(invalid_mindmap_model(
-            meta,
-            "mindmap diagram id is missing",
-        )));
-    };
-    root.as_value_mut()
-        .as_object_mut()
-        .expect("the Mindmap projection root is an object")
-        .insert(
-            "diagramId".to_string(),
-            Value::String(diagram_id.to_string()),
-        );
+    let root = ManagedJson::from_value(Value::Object(root));
     control.checkpoint()?;
     Ok(Ok(root.into_unmanaged_value()))
 }

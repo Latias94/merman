@@ -145,6 +145,55 @@ The alpha migration intentionally retains no deprecated Rust aliases: `AnalysisR
 document `*_result` functions became `*_generation`. The TypeScript `AnalysisResult` remains the
 name of the independently versioned schema-1 diagnostic wire/API result.
 
+### Resource admission and error ownership
+
+The canonical document-analysis capture owns the document diagram budget. After source-byte
+admission, its bounded Markdown/MDX fence scan counts Mermaid openings once for the document and
+stops at the first opening beyond `max_document_diagrams`, before scanning that fence's body,
+materializing its diagram, or parsing any diagrams. The rejection reports
+`merman.resource.document_diagrams_exceeded` at the excess opening marker in host-document
+coordinates. Standalone `Diagram` input is not subject to this fence-count limit. Editor, LSP,
+CLI, and binding projections consume the canonical result; they do not add independent per-fence
+counters. Diagnostic reprojection does not rerun document admission.
+
+Original Mermaid theme evaluation remains a separate, core-owned full-processing operation under
+[ADR-0068](0068-render-side-presentation-theme-view.md). The semantic-only analysis path omits
+visual-theme evaluation under [ADR-0098](0098-semantic-presentation-capabilities.md); callers request
+full processing to validate it. The pure numeric helper in `merman-model::presentation` bounds
+constructor loops driven by `themeVariables.THEME_COLOR_LIMIT` to 64 generated slots. Positive
+finite counts round upward; values beyond the ceiling, including positive infinity, return
+`Error::ThemeEvaluationLimit`. Core still executes the admitted pinned-compatible theme program;
+the limit neither permits unbounded evaluation nor replaces invalid colors with guessed values.
+Typed theme-design reference admission in
+[ADR-0095](0095-general-theme-authoring-and-retained-bindings.md) has its own resource owner.
+
+Keep these analysis classifications distinct across source and site configuration and across
+standalone and embedded Mermaid inputs:
+
+| Core failure | Diagnostic rule | Category | Analysis status |
+| --- | --- | --- | --- |
+| `Error::ThemeColor` | `merman.config.invalid_theme_color` | `config` | `ParseError` |
+| `Error::ThemeEvaluationLimit` | `merman.resource.theme_evaluation_exceeded` | `resource` | `ResourceLimitExceeded` |
+| `Error::Internal` | `merman.internal.failure` | `internal` | `InternalError` |
+
+These failures carry no invented source span, diagram type, or parse location: evaluation may
+combine source and site values, and an internal failure does not establish source ownership.
+Embedded-document projection may retain related fence context without turning it into a primary
+error span. Broken engine invariants stay internal errors; theme evaluation exhaustion stays a
+resource error. Neither is reclassified as Mermaid syntax rejection or repaired by a fallback
+color. Facade and binding adapters preserve the corresponding parse, resource, or internal terminal
+status through typed classification. Caller-requested cancellation retains the separate outer
+outcome described above.
+
+The implementation owners are the [document capture](../../crates/merman-analysis/src/document.rs),
+[document-limit rejection](../../crates/merman-analysis/src/document_limits.rs),
+[bounded theme count](../../crates/merman-model/src/presentation/theme.rs),
+[core evaluator](../../crates/merman-core/src/theme/staged.rs), and
+[diagnostic projection](../../crates/merman-analysis/src/diagnostic_projection.rs), with
+[terminal classification](../../crates/merman/src/diagnostic.rs) shared by output adapters.
+
+### Diagnostic JSON
+
 The canonical JSON shape starts as:
 
 ```json

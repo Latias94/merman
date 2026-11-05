@@ -11,7 +11,7 @@ use crate::graph::{
     HierarchyEdge, LGraph, LLabel, LNodeKind, LPort, LSize, LayeredEdge, PortRef, PortSide,
     PortType, create_external_port_dummy,
 };
-use crate::options::{ElkDirection, PortConstraints};
+use crate::options::{ELK_DEFAULT_EDGE_THICKNESS, ElkDirection, PortConstraints};
 use crate::work::{WorkError, checked_sum};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -1163,7 +1163,7 @@ fn introduce_hierarchical_edge_segment(
             priority_direction: edge.priority_direction,
             priority_shortness: edge.priority_shortness,
             priority_straightness: edge.priority_straightness,
-            thickness: 0.0,
+            thickness: ELK_DEFAULT_EDGE_THICKNESS,
             original_opposite_port: None,
             compound_segment: Some(pending.segment),
         })

@@ -5,7 +5,8 @@ use crate::block::{
     block_label_is_effectively_empty,
 };
 use crate::model::{LayoutEdge, LayoutPoint};
-use crate::svg::parity::roughjs_common::{closed_path_d_from_points, ops_to_svg_path_d};
+use crate::svg::parity::roughjs_common::closed_path_d_from_points;
+use crate::svg::parity::roughjs_common::paths::roughjs_paths_for_svg_path;
 
 // Block diagram SVG renderer implementation (split from parity.rs).
 
@@ -309,7 +310,7 @@ pub(crate) fn render_block_diagram_svg_model_with_theme(
     layout: &BlockDiagramLayout,
     model: &merman_model::families::block::BlockDiagramRenderModel,
     node_paint_theme: &BlockNodePaintThemePlan,
-    _node_label_paint_theme: &BlockNodeLabelPaintPlan,
+    node_label_paint_theme: &BlockNodeLabelPaintPlan,
     edge_paint_theme: &crate::block::BlockEdgePaintPlan,
     marker_paint_theme: &crate::block::BlockMarkerPaintPlan,
     label_background_theme: &BlockLabelBackgroundPlan,
@@ -321,67 +322,6 @@ pub(crate) fn render_block_diagram_svg_model_with_theme(
         // Mermaid's block diagram labels are rendered via an HTML foreignObject label helper,
         // which decodes HTML entities (notably `&nbsp;`).
         raw.replace("&nbsp;", "\u{00A0}")
-    }
-
-    fn roughjs_block_paths(
-        path_data: &str,
-        stroke_width: f32,
-        randomness: &roughr::core::RoughRandomness,
-    ) -> Option<(String, String)> {
-        let mut stroke_options = roughr::core::OptionsBuilder::default()
-            .randomness(randomness.clone())
-            .roughness(0.0)
-            .bowing(1.0)
-            .fill_style(roughr::core::FillStyle::Solid)
-            .stroke_width(stroke_width)
-            .stroke_line_dash(vec![0.0, 0.0])
-            .stroke_line_dash_offset(0.0)
-            .fill_line_dash(vec![0.0, 0.0])
-            .fill_line_dash_offset(0.0)
-            .disable_multi_stroke(false)
-            .disable_multi_stroke_fill(false)
-            .build()
-            .ok()?;
-
-        // Mermaid's RoughJS path emitter draws the outline first, then reuses the advanced
-        // randomizer for the solid fill pass.  Keep that order even at roughness zero because the
-        // seeded path data is part of the stable SVG contract.
-        let stroke_opset =
-            roughr::renderer::svg_path::<f64>(path_data.to_string(), &mut stroke_options);
-        let distance = 0.5;
-        let sets = roughr::points_on_path::points_on_path::<f64>(
-            path_data.to_string(),
-            Some(1.0),
-            Some(distance),
-        );
-        let mut fill_options = stroke_options.clone();
-        let fill_opset = if sets.len() == 1 {
-            fill_options.disable_multi_stroke = Some(true);
-            fill_options.roughness = Some(0.0);
-            let mut opset =
-                roughr::renderer::svg_path::<f64>(path_data.to_string(), &mut fill_options);
-            opset.ops = opset
-                .ops
-                .iter()
-                .cloned()
-                .enumerate()
-                .filter_map(|(index, op)| {
-                    if index != 0 && op.op == roughr::core::OpType::Move {
-                        None
-                    } else {
-                        Some(op)
-                    }
-                })
-                .collect();
-            opset
-        } else {
-            roughr::renderer::solid_fill_polygon(&sets, &mut fill_options)
-        };
-
-        Some((
-            ops_to_svg_path_d(&fill_opset),
-            ops_to_svg_path_d(&stroke_opset),
-        ))
     }
 
     fn block_stadium_points(width: f64, height: f64) -> Vec<LayoutPoint> {
@@ -454,10 +394,15 @@ pub(crate) fn render_block_diagram_svg_model_with_theme(
         out: &mut impl SvgOutput,
         path_data: &str,
         options: RoughPathRenderOptions<'_>,
+        work_meter: &crate::resources::OperationWorkMeter,
     ) -> bool {
-        if let Some((fill_d, stroke_d)) =
-            roughjs_block_paths(path_data, options.stroke_width, options.randomness)
-        {
+        if let Some((fill_d, stroke_d)) = roughjs_paths_for_svg_path(
+            path_data,
+            options.stroke_width,
+            "0 0",
+            work_meter,
+            options.randomness,
+        ) {
             if let Some((tx, ty)) = options.transform {
                 let _ = write!(
                     out,
@@ -498,6 +443,7 @@ pub(crate) fn render_block_diagram_svg_model_with_theme(
         .collect();
     let layout_edges_by_id = BlockLayoutEdgeIndex::new(&layout.edges);
     let mut typography_visible = typography_theme.observes_visible_labels().then_some(false);
+    let mut label_paint_receipt = node_label_paint_theme.begin_outcomes();
 
     fn marker_id(diagram_id: SvgDiagramId<'_>, marker: &str) -> String {
         format!("{diagram_id}_block-{marker}")
@@ -903,6 +849,7 @@ pub(crate) fn render_block_diagram_svg_model_with_theme(
                         randomness: &hand_drawn_seed,
                         transform: None,
                     },
+                    options.work_meter(),
                 );
                 if rough_emitted {
                     has_rough_path = true;
@@ -968,6 +915,7 @@ pub(crate) fn render_block_diagram_svg_model_with_theme(
                             randomness: &hand_drawn_seed,
                             transform: Some((translation.x, translation.y)),
                         },
+                        options.work_meter(),
                     );
                 if rough_emitted {
                     has_rough_path = true;
@@ -1029,6 +977,7 @@ pub(crate) fn render_block_diagram_svg_model_with_theme(
                 ),
             );
         }
+        let emitted_label_color;
         if html_labels {
             let span_style_attr = if node_text_style.is_empty() {
                 String::new()
@@ -1043,13 +992,17 @@ pub(crate) fn render_block_diagram_svg_model_with_theme(
                     })?;
             let label_markup = match typed_label_color {
                 Some(color) if label_markup.starts_with("<p>") => {
+                    emitted_label_color = Some(color);
                     std::borrow::Cow::Owned(label_markup.replacen(
                         "<p>",
                         &format!(r#"<p style="color:{};">"#, escape_attr(color)),
                         1,
                     ))
                 }
-                _ => std::borrow::Cow::Borrowed(label_markup),
+                _ => {
+                    emitted_label_color = None;
+                    std::borrow::Cow::Borrowed(label_markup)
+                }
             };
             let _ = write!(
                 &mut out,
@@ -1073,15 +1026,21 @@ pub(crate) fn render_block_diagram_svg_model_with_theme(
                 fmt(label_tx + label_w / 2.0),
                 fmt(label_ty),
             );
-            crate::svg::parity::label::write_svg_text_centered_with_style(
+            let emitted_style = crate::svg::parity::label::write_svg_text_centered_with_style(
                 &mut out,
                 &label_text,
                 node_svg_text_style,
             );
+            emitted_label_color = typed_label_color.filter(|color| {
+                emitted_style.is_some_and(|style| style.ends_with(&format!("fill:{color};")))
+            });
             out.push_str("</g>");
         }
 
         out.checkpoint()?;
+        if let Some(receipt) = label_paint_receipt.as_mut() {
+            node_label_paint_theme.record_terminal(receipt, node_index, emitted_label_color);
+        }
         out.push_str("</g>");
         out.checkpoint()?;
     }
@@ -1296,6 +1255,7 @@ pub(crate) fn render_block_diagram_svg_model_with_theme(
             .with_max_width(root_svg::RootMaxWidth::CssSixSignificant(root_bounds.width)),
     )?;
     let rooted = root_document.complete(out.finish()?)?;
+    node_label_paint_theme.record_outcomes(label_paint_receipt);
     if let Some(visible) = typography_visible {
         typography_theme.record_visible_labels(visible);
     }

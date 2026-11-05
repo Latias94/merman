@@ -27,8 +27,8 @@ Manatee contains Rust translations and adaptations of the newer CoSE base behavi
 
 Architecture layout and styling use source-backed Cytoscape behavior and defaults.
 
-- Version: `3.34.0`
-- Source: https://github.com/cytoscape/cytoscape.js.git @ `22716bfb75834b56fa6679648b0abb06f4ae691c`
+- Version: `3.34.4`
+- Source: https://github.com/cytoscape/cytoscape.js.git @ `e394aa858b0699a67be8f9ab426823ae1aae7813`
 - Relationship: `behavior-reference`, `translated`
 - License: `MIT`
 - Legal file: `THIRD_PARTY_LICENSES/cytoscape/LICENSE`

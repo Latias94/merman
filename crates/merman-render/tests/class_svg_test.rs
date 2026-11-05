@@ -1779,6 +1779,94 @@ classDiagram
 }
 
 #[test]
+fn class_svg_dagre_keeps_raw_points_and_shortens_marked_endpoints() {
+    use base64::Engine as _;
+    use merman_render::model::LayoutPoint;
+
+    for (relation, expected_start_offset, expected_end_offset) in [
+        ("A <|-- B", 17.25, 0.0),
+        ("A --* B", 0.0, 17.25),
+        ("A <--> B", 6.0, 6.0),
+    ] {
+        let source = format!(
+            "---\nconfig:\n  layout: dagre\n  look: classic\n---\nclassDiagram\ndirection LR\n{relation}\n"
+        );
+        let svg = render_class_svg_from_text(&source);
+        let document = roxmltree::Document::parse(&svg).expect("valid Class SVG");
+        let path = document
+            .descendants()
+            .find(|node| node.has_tag_name("path") && node.attribute("data-edge") == Some("true"))
+            .expect("Class relation path");
+        assert_eq!(path.attribute("id"), Some("merman-id_A_B_1"));
+        assert_eq!(path.attribute("data-id"), Some("id_A_B_1"));
+        assert_eq!(
+            path.attribute("marker-start").is_some(),
+            expected_start_offset != 0.0
+        );
+        assert_eq!(
+            path.attribute("marker-end").is_some(),
+            expected_end_offset != 0.0
+        );
+
+        let bytes = base64::engine::general_purpose::STANDARD
+            .decode(path.attribute("data-points").expect("raw route points"))
+            .expect("base64 route points");
+        let raw_points: Vec<LayoutPoint> =
+            serde_json::from_slice(&bytes).expect("JSON route points");
+        let raw_start = raw_points.first().expect("raw source endpoint");
+        let raw_end = raw_points.last().expect("raw target endpoint");
+        assert!(raw_start.x < raw_end.x);
+        assert!(
+            raw_points
+                .iter()
+                .all(|point| (point.y - raw_start.y).abs() < 1e-9)
+        );
+
+        let painted_points =
+            svgtypes::PathParser::from(path.attribute("d").expect("painted route"))
+                .map(|segment| match segment.expect("valid path segment") {
+                    svgtypes::PathSegment::MoveTo {
+                        abs: true,
+                        x: point_x,
+                        y: point_y,
+                    }
+                    | svgtypes::PathSegment::LineTo {
+                        abs: true,
+                        x: point_x,
+                        y: point_y,
+                    }
+                    | svgtypes::PathSegment::CurveTo {
+                        abs: true,
+                        x: point_x,
+                        y: point_y,
+                        ..
+                    } => (point_x, point_y),
+                    segment => panic!("unexpected Class path segment: {segment:?}"),
+                })
+                .collect::<Vec<_>>();
+        let painted_start = painted_points.first().expect("painted source endpoint");
+        let painted_end = painted_points.last().expect("painted target endpoint");
+        let path_tolerance = 0.0005 + 1e-9;
+        assert!(
+            (painted_start.0 - raw_start.x - expected_start_offset).abs() <= path_tolerance,
+            "{relation}: {svg}"
+        );
+        assert!(
+            (raw_end.x - painted_end.0 - expected_end_offset).abs() <= path_tolerance,
+            "{relation}: {svg}"
+        );
+        assert!(
+            (painted_start.1 - raw_start.y).abs() <= path_tolerance,
+            "{relation}: {svg}"
+        );
+        assert!(
+            (painted_end.1 - raw_end.y).abs() <= path_tolerance,
+            "{relation}: {svg}"
+        );
+    }
+}
+
+#[test]
 fn class_direct_edge_scalar_reaches_relation_paths_and_only_their_referenced_markers() {
     let source = r#"classDiagram
   A *-- B
@@ -5156,6 +5244,170 @@ fn class_native_namespace_and_interface_paint_reaches_text_terminals() {
 }
 
 #[test]
+fn class_diagram_title_scalar_reaches_the_root_writer_without_namespace_labels() {
+    let source = "---\ntitle: Root title\n---\nclassDiagram\nclass A\n";
+    let baseline = render_class_svg_from_text(source);
+    for variant in [None, Some(ThemeVariant::Default)] {
+        for (paint, css) in [
+            (CanvasPaint::solid("#123456").unwrap(), "#123456"),
+            (CanvasPaint::Transparent, "transparent"),
+        ] {
+            let mut rule = ThemeRule::new(
+                ThemeTarget::Title,
+                ThemeStylePatch::default().with_fill(paint),
+            );
+            if let Some(variant) = variant {
+                rule = rule.with_variant(variant);
+            }
+            let theme = class_edge_rules_theme([rule]);
+            let rendered =
+                try_render_class_svg_with_theme_and_engine(source, &theme, MermaidEngine::new())
+                    .unwrap();
+            let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+            let title = document
+                .descendants()
+                .find(|node| node.attribute("class") == Some("classDiagramTitleText"))
+                .expect("real root diagram title");
+            let style = format!("color:{css} !important;fill:{css} !important;");
+            assert_eq!(title.parent_element(), Some(document.root_element()));
+            assert_eq!(title.text(), Some("Root title"));
+            assert_eq!(title.attribute("style"), Some(style.as_str()));
+            assert_eq!(
+                rendered
+                    .svg()
+                    .replacen(&format!(r#" style="{style}""#), "", 1),
+                baseline,
+                "the root title attribute is the only byte change",
+            );
+            let evidence =
+                merman_render::__private::family_evidence(rendered.into_completion().report());
+            assert_eq!(evidence.applied_count(), 1);
+            assert_eq!(evidence.not_applicable_count(), 0);
+            assert_eq!(evidence.theme_residual_count(), 0);
+        }
+    }
+}
+
+#[test]
+fn class_diagram_title_and_text_keep_author_order_and_separate_receipts() {
+    for title_last in [false, true] {
+        let title = ThemeRule::new(
+            ThemeTarget::Title,
+            ThemeStylePatch::default().with_fill(CanvasPaint::solid("#123456").unwrap()),
+        );
+        let text = ThemeRule::new(
+            ThemeTarget::Text,
+            ThemeStylePatch::default().with_fill(CanvasPaint::solid("#456789").unwrap()),
+        );
+        let theme = class_edge_rules_theme(if title_last {
+            [text, title]
+        } else {
+            [title, text]
+        });
+        let rendered = try_render_class_svg_with_theme_and_engine(
+            "---\ntitle: Root title\n---\nclassDiagram\nnamespace Internal {\nclass A\n}\n",
+            &theme,
+            MermaidEngine::new(),
+        )
+        .unwrap();
+        let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+        let title = document
+            .descendants()
+            .find(|node| node.attribute("class") == Some("classDiagramTitleText"))
+            .unwrap();
+        let css = if title_last { "#123456" } else { "#456789" };
+        assert_eq!(
+            title.attribute("style"),
+            Some(format!("color:{css} !important;fill:{css} !important;").as_str())
+        );
+        let evidence =
+            merman_render::__private::family_evidence(rendered.into_completion().report());
+        assert_eq!(evidence.applied_count(), 1 + usize::from(title_last));
+        assert_eq!(evidence.not_applicable_count(), usize::from(!title_last));
+        assert_eq!(evidence.theme_residual_count(), 0);
+    }
+}
+
+#[test]
+fn class_diagram_title_preserves_its_original_source_property() {
+    let theme = class_edge_rules_theme([ThemeRule::new(
+        ThemeTarget::Title,
+        ThemeStylePatch::default().with_fill(CanvasPaint::solid("#123456").unwrap()),
+    )]);
+    for (property, applied) in [("textColor", false), ("titleColor", true)] {
+        let source = format!(
+            "---\ntitle: Root title\n---\n%%{{init: {{\"themeVariables\":{{\"{property}\":\"#123456\"}}}}}}%%\nclassDiagram\nclass A\n"
+        );
+        let rendered =
+            try_render_class_svg_with_theme_and_engine(&source, &theme, MermaidEngine::new())
+                .unwrap();
+        let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+        let title = document
+            .descendants()
+            .find(|node| node.attribute("class") == Some("classDiagramTitleText"))
+            .unwrap();
+        assert_eq!(title.attribute("style").is_some(), applied, "{property}");
+        let evidence =
+            merman_render::__private::family_evidence(rendered.into_completion().report());
+        assert_eq!(evidence.applied_count(), usize::from(applied), "{property}");
+        assert_eq!(
+            evidence.not_applicable_count(),
+            usize::from(!applied),
+            "{property}"
+        );
+        assert_eq!(evidence.theme_residual_count(), 0);
+    }
+}
+
+#[test]
+fn class_diagram_title_reconciles_absence_and_unsupported_ordinals() {
+    for (source, ordinal, residual, absent) in [
+        ("classDiagram\nclass A\n", None, 0, 1),
+        ("---\ntitle: ' '\n---\nclassDiagram\nclass A\n", None, 0, 1),
+        (
+            "---\ntitle: Root title\n---\nclassDiagram\nclass A\n",
+            Some(1),
+            1,
+            0,
+        ),
+        (
+            "---\ntitle: Root title\n---\nclassDiagram\nclass A\n",
+            Some(2),
+            0,
+            1,
+        ),
+    ] {
+        let mut rule = ThemeRule::new(
+            ThemeTarget::Title,
+            ThemeStylePatch::default().with_fill(CanvasPaint::Transparent),
+        );
+        if let Some(ordinal) = ordinal {
+            rule = rule.with_ordinal(OrdinalSelector::exact(ordinal).unwrap());
+        }
+        let theme = class_edge_rules_theme([rule]);
+        let rendered = try_render_class_svg_with_theme_requirement(
+            source,
+            &theme,
+            MermaidEngine::new(),
+            ThemePortabilityRequirement::BestEffort,
+        )
+        .unwrap();
+        let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+        assert!(
+            document
+                .descendants()
+                .filter(|node| node.attribute("class") == Some("classDiagramTitleText"))
+                .all(|node| node.attribute("style").is_none())
+        );
+        let evidence =
+            merman_render::__private::family_evidence(rendered.into_completion().report());
+        assert_eq!(evidence.applied_count(), 0);
+        assert_eq!(evidence.not_applicable_count(), absent);
+        assert_eq!(evidence.theme_residual_count(), residual);
+    }
+}
+
+#[test]
 fn class_namespace_title_scalar_has_a_direct_terminal() {
     for source in [
         "classDiagram\nnamespace Internal {\nclass A\nclass B\n}\nA --> B\nclass X\nX --> A\n",
@@ -5223,10 +5475,7 @@ fn class_namespace_title_reconciles_absence_ownership_and_unsupported_siblings()
     let source = "classDiagram\nnamespace Internal {\nclass A\n}\n";
     let theme = class_edge_rules_theme([rule()]);
     for (source, engine) in [
-        (
-            "---\ntitle: Diagram title\n---\nclassDiagram\nclass A\n",
-            MermaidEngine::new(),
-        ),
+        ("classDiagram\nclass A\n", MermaidEngine::new()),
         (
             source,
             MermaidEngine::new().with_site_config(

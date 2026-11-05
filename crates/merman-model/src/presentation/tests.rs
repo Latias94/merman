@@ -46,6 +46,23 @@ fn authored(values: Value) -> PresentationConfig {
 }
 
 #[test]
+fn materialized_palette_is_explicit_frozen_data_independent_of_theme_spelling() {
+    use crate::config::MermaidThemeId;
+
+    let values = json!({"theme": "null"});
+    let ordinary = authored(values.clone());
+    assert_eq!(ordinary.materialized_theme(), None);
+    let config = frozen(
+        FrozenPresentationConfigParts::new(MermaidConfig::from_value(values))
+            .with_materialized_theme(Some(MermaidThemeId::Dark)),
+    )
+    .unwrap();
+    assert_eq!(config.materialized_theme(), Some(MermaidThemeId::Dark));
+    assert_ne!(config, ordinary);
+    assert_eq!(frozen(config.frozen_parts()).unwrap(), config);
+}
+
+#[test]
 fn ordinary_authored_config_owns_only_declared_values_without_source_inferences() {
     let empty = authored(json!({}));
     assert!(!empty.explicit_config_owns_path(""));

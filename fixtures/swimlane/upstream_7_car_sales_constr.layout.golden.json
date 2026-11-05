@@ -3,9 +3,9 @@
   "layout": {
     "SwimlaneDiagram": {
       "bounds": {
-        "max_x": 705.0,
-        "max_y": 722.0,
-        "min_x": -555.0,
+        "max_x": 680.0,
+        "max_y": 609.0,
+        "min_x": -580.0,
         "min_y": -36.0
       },
       "direction": "TB",
@@ -17,11 +17,11 @@
           "label_node_id": null,
           "points": [
             {
-              "x": -353.0,
+              "x": -378.0,
               "y": 22.5
             },
             {
-              "x": -253.0,
+              "x": -278.0,
               "y": 22.5
             }
           ],
@@ -35,11 +35,11 @@
           "label_node_id": null,
           "points": [
             {
-              "x": -101.0,
+              "x": -126.0,
               "y": 22.5
             },
             {
-              "x": -1.0,
+              "x": -26.0,
               "y": 22.5
             }
           ],
@@ -53,11 +53,11 @@
           "label_node_id": null,
           "points": [
             {
-              "x": 75.0,
+              "x": 50.0,
               "y": 45.0
             },
             {
-              "x": 75.0,
+              "x": 50.0,
               "y": 95.0
             }
           ],
@@ -71,28 +71,28 @@
           "label_node_id": null,
           "points": [
             {
-              "x": -1.0,
+              "x": -26.0,
               "y": 117.5
             },
             {
-              "x": -1.0,
+              "x": -26.0,
               "y": 117.5
             },
             {
-              "x": -21.0,
+              "x": -46.0,
               "y": 117.5
             },
             {
-              "x": -21.0,
-              "y": 378.5
+              "x": -46.0,
+              "y": 360.5
             },
             {
-              "x": -1.0,
-              "y": 378.5
+              "x": -26.0,
+              "y": 360.5
             },
             {
-              "x": -1.0,
-              "y": 378.5
+              "x": -26.0,
+              "y": 360.5
             }
           ],
           "reversed_for_layout": false,
@@ -105,28 +105,28 @@
           "label_node_id": null,
           "points": [
             {
-              "x": 75.0,
-              "y": 356.0
+              "x": 50.0,
+              "y": 338.0
             },
             {
-              "x": 75.0,
-              "y": 356.0
+              "x": 50.0,
+              "y": 338.0
             },
             {
-              "x": 75.0,
-              "y": 336.0
+              "x": 50.0,
+              "y": 318.0
             },
             {
-              "x": 579.0,
-              "y": 336.0
+              "x": 554.0,
+              "y": 318.0
             },
             {
-              "x": 579.0,
-              "y": 356.0
+              "x": 554.0,
+              "y": 338.0
             },
             {
-              "x": 579.0,
-              "y": 356.0
+              "x": 554.0,
+              "y": 338.0
             }
           ],
           "reversed_for_layout": false,
@@ -139,12 +139,12 @@
           "label_node_id": null,
           "points": [
             {
-              "x": 579.0,
-              "y": 401.0
+              "x": 554.0,
+              "y": 383.0
             },
             {
-              "x": 579.0,
-              "y": 451.0
+              "x": 554.0,
+              "y": 433.0
             }
           ],
           "reversed_for_layout": false,
@@ -157,11 +157,11 @@
           "label_node_id": null,
           "points": [
             {
-              "x": 75.0,
+              "x": 50.0,
               "y": 140.0
             },
             {
-              "x": 75.0,
+              "x": 50.0,
               "y": 190.0
             }
           ],
@@ -175,11 +175,11 @@
           "label_node_id": null,
           "points": [
             {
-              "x": 151.0,
+              "x": 126.0,
               "y": 212.5
             },
             {
-              "x": 251.0,
+              "x": 226.0,
               "y": 212.5
             }
           ],
@@ -193,12 +193,12 @@
           "label_node_id": "edge-label-I-J-L_I_J_0",
           "points": [
             {
-              "x": 327.0,
+              "x": 302.0,
               "y": 235.0
             },
             {
-              "x": 327.0,
-              "y": 356.0
+              "x": 302.0,
+              "y": 338.0
             }
           ],
           "reversed_for_layout": false,
@@ -211,12 +211,12 @@
           "label_node_id": null,
           "points": [
             {
-              "x": 251.0,
-              "y": 378.5
+              "x": 226.0,
+              "y": 360.5
             },
             {
-              "x": 151.0,
-              "y": 378.5
+              "x": 126.0,
+              "y": 360.5
             }
           ],
           "reversed_for_layout": false,
@@ -229,28 +229,32 @@
           "label_node_id": "edge-label-I-K-L_I_K_0",
           "points": [
             {
-              "x": 403.0,
+              "x": 378.0,
               "y": 212.5
             },
             {
-              "x": 403.0,
+              "x": 378.0,
               "y": 212.5
             },
             {
-              "x": 675.0,
+              "x": 650.0,
               "y": 212.5
             },
             {
-              "x": 675.0,
-              "y": 568.5
+              "x": 650.0,
+              "y": 593.0
             },
             {
-              "x": 403.0,
-              "y": 568.5
+              "x": 302.0,
+              "y": 593.0
             },
             {
-              "x": 403.0,
-              "y": 568.5
+              "x": 302.0,
+              "y": 478.0
+            },
+            {
+              "x": 302.0,
+              "y": 478.0
             }
           ],
           "reversed_for_layout": false,
@@ -263,12 +267,12 @@
           "label_node_id": null,
           "points": [
             {
-              "x": 251.0,
-              "y": 568.5
+              "x": 226.0,
+              "y": 455.5
             },
             {
-              "x": 151.0,
-              "y": 568.5
+              "x": 126.0,
+              "y": 455.5
             }
           ],
           "reversed_for_layout": false,
@@ -281,12 +285,12 @@
           "label_node_id": null,
           "points": [
             {
-              "x": -1.0,
-              "y": 568.5
+              "x": -26.0,
+              "y": 455.5
             },
             {
-              "x": -101.0,
-              "y": 568.5
+              "x": -126.0,
+              "y": 455.5
             }
           ],
           "reversed_for_layout": false,
@@ -299,12 +303,12 @@
           "label_node_id": null,
           "points": [
             {
-              "x": 75.0,
-              "y": 591.0
+              "x": 50.0,
+              "y": 478.0
             },
             {
-              "x": 75.0,
-              "y": 641.0
+              "x": 50.0,
+              "y": 528.0
             }
           ],
           "reversed_for_layout": false,
@@ -314,7 +318,7 @@
       "lanes": [
         {
           "content_top": 0.0,
-          "height": 758.0,
+          "height": 645.0,
           "id": "Fun",
           "padding": 8.0,
           "parent_id": null,
@@ -324,17 +328,17 @@
           "title_label_width": 20.438,
           "title_rect": {
             "bottom": -15.0,
-            "left": 453.0,
-            "right": 705.0,
+            "left": 428.0,
+            "right": 680.0,
             "top": -36.0
           },
           "width": 252.0,
-          "x": 579.0,
-          "y": 343.0
+          "x": 554.0,
+          "y": 286.5
         },
         {
           "content_top": 0.0,
-          "height": 758.0,
+          "height": 645.0,
           "id": "Legal",
           "padding": 8.0,
           "parent_id": null,
@@ -344,17 +348,17 @@
           "title_label_width": 30.375,
           "title_rect": {
             "bottom": -15.0,
-            "left": 201.0,
-            "right": 453.0,
+            "left": 176.0,
+            "right": 428.0,
             "top": -36.0
           },
           "width": 252.0,
-          "x": 327.0,
-          "y": 343.0
+          "x": 302.0,
+          "y": 286.5
         },
         {
           "content_top": 0.0,
-          "height": 758.0,
+          "height": 645.0,
           "id": "Constr",
           "padding": 8.0,
           "parent_id": null,
@@ -364,17 +368,17 @@
           "title_label_width": 38.5,
           "title_rect": {
             "bottom": -15.0,
-            "left": -51.0,
-            "right": 201.0,
+            "left": -76.0,
+            "right": 176.0,
             "top": -36.0
           },
           "width": 252.0,
-          "x": 75.0,
-          "y": 343.0
+          "x": 50.0,
+          "y": 286.5
         },
         {
           "content_top": 0.0,
-          "height": 758.0,
+          "height": 645.0,
           "id": "Sales",
           "padding": 8.0,
           "parent_id": null,
@@ -384,17 +388,17 @@
           "title_label_width": 30.375,
           "title_rect": {
             "bottom": -15.0,
-            "left": -303.0,
-            "right": -51.0,
+            "left": -328.0,
+            "right": -76.0,
             "top": -36.0
           },
           "width": 252.0,
-          "x": -177.0,
-          "y": 343.0
+          "x": -202.0,
+          "y": 286.5
         },
         {
           "content_top": 0.0,
-          "height": 758.0,
+          "height": 645.0,
           "id": "Car",
           "padding": 8.0,
           "parent_id": null,
@@ -404,13 +408,13 @@
           "title_label_width": 20.438,
           "title_rect": {
             "bottom": -15.0,
-            "left": -555.0,
-            "right": -303.0,
+            "left": -580.0,
+            "right": -328.0,
             "top": -36.0
           },
           "width": 252.0,
-          "x": -429.0,
-          "y": 343.0
+          "x": -454.0,
+          "y": 286.5
         }
       ],
       "nodes": [
@@ -428,7 +432,7 @@
           "shape": "squareRect",
           "top_lane_id": "Car",
           "width": 152.0,
-          "x": -429.0,
+          "x": -454.0,
           "y": 22.5
         },
         {
@@ -445,7 +449,7 @@
           "shape": "squareRect",
           "top_lane_id": "Sales",
           "width": 152.0,
-          "x": -177.0,
+          "x": -202.0,
           "y": 22.5
         },
         {
@@ -462,7 +466,7 @@
           "shape": "squareRect",
           "top_lane_id": "Constr",
           "width": 152.0,
-          "x": 75.0,
+          "x": 50.0,
           "y": 22.5
         },
         {
@@ -479,7 +483,7 @@
           "shape": "squareRect",
           "top_lane_id": "Constr",
           "width": 152.0,
-          "x": 75.0,
+          "x": 50.0,
           "y": 117.5
         },
         {
@@ -490,14 +494,14 @@
           "label_height": 21.0,
           "label_type": "text",
           "label_width": 120.0,
-          "layer": 4.0,
+          "layer": 3.0,
           "order": 0.0,
           "parent_id": "Constr",
           "shape": "squareRect",
           "top_lane_id": "Constr",
           "width": 152.0,
-          "x": 75.0,
-          "y": 378.5
+          "x": 50.0,
+          "y": 360.5
         },
         {
           "height": 45.0,
@@ -507,14 +511,14 @@
           "label_height": 21.0,
           "label_type": "text",
           "label_width": 120.0,
-          "layer": 4.0,
+          "layer": 3.0,
           "order": 0.0,
           "parent_id": "Fun",
           "shape": "squareRect",
           "top_lane_id": "Fun",
           "width": 152.0,
-          "x": 579.0,
-          "y": 378.5
+          "x": 554.0,
+          "y": 360.5
         },
         {
           "height": 45.0,
@@ -524,14 +528,14 @@
           "label_height": 21.0,
           "label_type": "text",
           "label_width": 120.0,
-          "layer": 5.0,
+          "layer": 4.0,
           "order": 0.0,
           "parent_id": "Fun",
           "shape": "squareRect",
           "top_lane_id": "Fun",
           "width": 152.0,
-          "x": 579.0,
-          "y": 473.5
+          "x": 554.0,
+          "y": 455.5
         },
         {
           "height": 45.0,
@@ -547,7 +551,7 @@
           "shape": "squareRect",
           "top_lane_id": "Constr",
           "width": 152.0,
-          "x": 75.0,
+          "x": 50.0,
           "y": 212.5
         },
         {
@@ -564,7 +568,7 @@
           "shape": "squareRect",
           "top_lane_id": "Legal",
           "width": 152.0,
-          "x": 327.0,
+          "x": 302.0,
           "y": 212.5
         },
         {
@@ -575,14 +579,14 @@
           "label_height": 21.0,
           "label_type": "text",
           "label_width": 120.0,
-          "layer": 4.0,
+          "layer": 3.0,
           "order": 0.0,
           "parent_id": "Legal",
           "shape": "squareRect",
           "top_lane_id": "Legal",
           "width": 152.0,
-          "x": 327.0,
-          "y": 378.5
+          "x": 302.0,
+          "y": 360.5
         },
         {
           "height": 45.0,
@@ -592,14 +596,14 @@
           "label_height": 21.0,
           "label_type": "text",
           "label_width": 120.0,
-          "layer": 6.0,
+          "layer": 4.0,
           "order": 0.0,
           "parent_id": "Legal",
           "shape": "squareRect",
           "top_lane_id": "Legal",
           "width": 152.0,
-          "x": 327.0,
-          "y": 568.5
+          "x": 302.0,
+          "y": 455.5
         },
         {
           "height": 45.0,
@@ -609,14 +613,14 @@
           "label_height": 21.0,
           "label_type": "text",
           "label_width": 120.0,
-          "layer": 6.0,
+          "layer": 4.0,
           "order": 0.0,
           "parent_id": "Constr",
           "shape": "squareRect",
           "top_lane_id": "Constr",
           "width": 152.0,
-          "x": 75.0,
-          "y": 568.5
+          "x": 50.0,
+          "y": 455.5
         },
         {
           "height": 45.0,
@@ -626,14 +630,14 @@
           "label_height": 21.0,
           "label_type": "text",
           "label_width": 120.0,
-          "layer": 6.0,
+          "layer": 4.0,
           "order": 0.0,
           "parent_id": "Sales",
           "shape": "squareRect",
           "top_lane_id": "Sales",
           "width": 152.0,
-          "x": -177.0,
-          "y": 568.5
+          "x": -202.0,
+          "y": 455.5
         },
         {
           "height": 45.0,
@@ -643,14 +647,14 @@
           "label_height": 21.0,
           "label_type": "text",
           "label_width": 120.0,
-          "layer": 7.0,
+          "layer": 5.0,
           "order": 0.0,
           "parent_id": "Constr",
           "shape": "squareRect",
           "top_lane_id": "Constr",
           "width": 152.0,
-          "x": 75.0,
-          "y": 663.5
+          "x": 50.0,
+          "y": 550.5
         },
         {
           "height": 21.0,
@@ -660,14 +664,14 @@
           "label_height": 21.0,
           "label_type": "text",
           "label_width": 20.44,
-          "layer": 3.0,
+          "layer": 0.0,
           "order": 0.0,
           "parent_id": "Legal",
           "shape": "labelRect",
           "top_lane_id": "Legal",
           "width": 20.44,
-          "x": 327.0,
-          "y": 295.5
+          "x": 302.0,
+          "y": 286.5
         },
         {
           "height": 21.0,
@@ -677,14 +681,14 @@
           "label_height": 21.0,
           "label_type": "text",
           "label_width": 8.4,
-          "layer": 5.0,
+          "layer": 0.0,
           "order": 0.0,
           "parent_id": "Fun",
           "shape": "labelRect",
           "top_lane_id": "Fun",
           "width": 8.4,
-          "x": 539.0,
-          "y": 212.5
+          "x": 650.0,
+          "y": 402.75
         }
       ]
     }

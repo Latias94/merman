@@ -527,21 +527,29 @@ mod tests {
                 .iter()
                 .any(|color| color == "#FFE66D")
         );
-        let note = &brutalist.application_notes[0];
-        assert_eq!(note.family_id, "flowchart");
-        assert_eq!(
-            note.recommended_config.as_ref().unwrap()["flowchart"]["look"],
-            "classic"
-        );
-        let theme = compiler.compile_preset(ThemePreset::Brutalist).unwrap();
-        assert_eq!(
-            theme
-                .spec()
-                .mermaid()
-                .to_mermaid_config()
-                .get_str("flowchart.look"),
-            None
-        );
+        for (preset, note_id) in [
+            (ThemePreset::Brutalist, "flowchart-basic-shadows"),
+            (ThemePreset::Cyberpunk, "flowchart-basic-glow"),
+        ] {
+            let descriptor = catalog
+                .iter()
+                .find(|entry| entry.id == preset.id())
+                .unwrap();
+            assert_eq!(descriptor.application_notes.len(), 1);
+            let note = &descriptor.application_notes[0];
+            assert_eq!(note.id, note_id);
+            assert_eq!(note.family_id, "flowchart");
+            assert_eq!(note.recommended_config, None);
+            let theme = compiler.compile_preset(preset).unwrap();
+            assert_eq!(
+                theme
+                    .spec()
+                    .mermaid()
+                    .to_mermaid_config()
+                    .get_str("flowchart.look"),
+                None
+            );
+        }
         let ghibli = catalog.iter().find(|preset| preset.id == "ghibli").unwrap();
         assert_eq!(
             ghibli.family_designs,
@@ -1859,8 +1867,7 @@ mod tests {
     }
 
     #[test]
-    fn built_in_packet_presets_keep_field_labels_readable_on_the_light_block() {
-        const PACKET_BLOCK_BACKGROUND: &str = "#efefef";
+    fn built_in_packet_presets_keep_field_labels_readable_on_the_selected_block() {
         const MINIMUM_TEXT_CONTRAST: f64 = 4.5;
 
         for preset in all_presets() {
@@ -1870,6 +1877,7 @@ mod tests {
                 .expect("built-in theme preset should compile");
             let packet = theme.resolve(DiagramFamilyId::PACKET);
             let field_label = resolved_solid_fill(&packet, ThemeTarget::PacketFieldLabel);
+            let block_background = resolved_solid_fill(&packet, ThemeTarget::Node);
 
             assert_eq!(
                 field_label.as_str(),
@@ -1877,10 +1885,10 @@ mod tests {
                 "{} Packet field-label recipe",
                 preset.id()
             );
-            let ratio = contrast_ratio(&field_label, PACKET_BLOCK_BACKGROUND);
+            let ratio = contrast_ratio(&field_label, &block_background);
             assert!(
                 ratio >= MINIMUM_TEXT_CONTRAST,
-                "{} Packet field-label contrast {ratio:.2}:1 is below {MINIMUM_TEXT_CONTRAST}:1 ({field_label} on {PACKET_BLOCK_BACKGROUND})",
+                "{} Packet field-label contrast {ratio:.2}:1 is below {MINIMUM_TEXT_CONTRAST}:1 ({field_label} on {block_background})",
                 preset.id()
             );
         }

@@ -1,5 +1,7 @@
 //! Coffman-Graham layering translated from Eclipse ELK, EPL-2.0:
 //! https://github.com/eclipse-elk/elk/blob/62d5909f96fad541bc101ad52dabaece6b7eab7e/plugins/org.eclipse.elk.alg.layered/src/org/eclipse/elk/alg/layered/p2layers/CoffmanGrahamLayerer.java
+//! Node-id tie breaking follows ELK 0.12.0:
+//! https://github.com/eclipse-elk/elk/blob/323312916048544e4e594eab3303cdb0d01e2929/plugins/org.eclipse.elk.alg.layered/src/org/eclipse/elk/alg/layered/p2layers/CoffmanGrahamLayerer.java
 //!
 //! Priority-queue ties follow the GWT `java.util.PriorityQueue` emitted in elkjs 0.9.3.
 //! Those ties are observable in node order, so a Rust heap's unspecified tie order is unsuitable.
@@ -69,13 +71,13 @@ pub(super) fn layer(
             .count();
         if incoming[node] == 0 {
             push(&mut sources, node, |a, b| {
-                compare_topology(&predecessors[a], &predecessors[b], work)
+                compare_topology(&predecessors[a], &predecessors[b], a.cmp(&b), work)
             })?;
         }
     }
     let mut count = 0;
     while let Some(node) = pop(&mut sources, |a, b| {
-        compare_topology(&predecessors[a], &predecessors[b], work)
+        compare_topology(&predecessors[a], &predecessors[b], a.cmp(&b), work)
     })? {
         topological[node] = count;
         count += 1;
@@ -89,7 +91,7 @@ pub(super) fn layer(
             predecessors[next].push(topological[node]);
             if incoming[next] == 0 {
                 push(&mut sources, next, |a, b| {
-                    compare_topology(&predecessors[a], &predecessors[b], work)
+                    compare_topology(&predecessors[a], &predecessors[b], a.cmp(&b), work)
                 })?;
             }
         }
@@ -156,6 +158,7 @@ pub(super) fn layer(
 fn compare_topology(
     left: &[usize],
     right: &[usize],
+    node_order: Ordering,
     work: &mut dyn WorkControl,
 ) -> LayeringResult<Ordering> {
     charge(work, 1)?;
@@ -173,7 +176,7 @@ fn compare_topology(
     }
     // Preserve upstream's hasNext(), rather than silently correcting it to hasPrevious().
     Ok(if a == left.len() && b == right.len() {
-        Ordering::Equal
+        node_order
     } else if a == left.len() {
         Ordering::Less
     } else {

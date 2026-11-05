@@ -1300,6 +1300,21 @@ export interface AnalysisDiagramSyntaxFacts {
 
 export type DiagramParseDisposition = "parsed" | "recovered" | "unavailable";
 
+export interface SourceAppearanceDeclaration {
+  readonly value: string;
+  readonly origin: { readonly kind: "frontmatter" } | { readonly kind: "directive"; readonly directive_index: number };
+  readonly construct_span: Readonly<AnalysisByteSpan>;
+}
+
+export type SourceAppearanceSummary =
+  | { readonly state: "unknown" }
+  | {
+      readonly state: "known";
+      readonly theme: SourceAppearanceDeclaration | null;
+      readonly font: SourceAppearanceDeclaration | null;
+      readonly look: SourceAppearanceDeclaration | null;
+    };
+
 export interface AnalysisDiagramFacts {
   source_id: string;
   index: number;
@@ -1311,10 +1326,11 @@ export interface AnalysisDiagramFacts {
   fence_delimiter?: AnalysisFenceDelimiterFacts | null;
   parse_disposition: DiagramParseDisposition;
   syntax: AnalysisDiagramSyntaxFacts;
+  appearance: SourceAppearanceSummary;
 }
 
 export interface AnalysisFactsResult extends AnalysisPayloadFields {
-  version: 2;
+  version: 3;
   diagrams: AnalysisDiagramFacts[];
 }
 
@@ -1335,8 +1351,8 @@ export interface ThemeDiagnostic {
 }
 
 /** Renderer-owned outcome, with open status/reason IDs for forward-compatible consumers. */
-export interface ThemeExecutionEvidenceV1 {
-  version: 1;
+export interface ThemeExecutionEvidenceV2 {
+  version: 2;
   family_id: string;
   theme_status: string;
   output_mutated: boolean;
@@ -1344,13 +1360,14 @@ export interface ThemeExecutionEvidenceV1 {
   target_status: string;
   target_reason_ids: string[];
   font_source: string;
+  materialized_theme: ThemeName | null;
   /** Absent means not supplied. An empty list does not establish portability. */
   diagnostics?: ThemeDiagnostic[];
 }
 
 /** Unknown versions stay opaque. Never treat an unknown status or version as portable. */
 export type ThemeExecutionEvidence =
-  | ThemeExecutionEvidenceV1
+  | ThemeExecutionEvidenceV2
   | { version: number; [key: string]: unknown };
 
 /** Actual family placement width, before SVG viewport scaling. */
@@ -1400,6 +1417,7 @@ export interface AvailableDiagramDetectionFacts {
   readonly diagramType: DiagramType;
   readonly syntaxId: string;
   readonly effectiveLayoutId: string;
+  readonly appearance?: SourceAppearanceSummary;
 }
 
 export interface UnavailableDiagramDetectionFacts {
@@ -1408,6 +1426,7 @@ export interface UnavailableDiagramDetectionFacts {
   readonly diagramType: null;
   readonly syntaxId: null;
   readonly effectiveLayoutId: null;
+  readonly appearance?: SourceAppearanceSummary;
 }
 
 export type DiagramDetectionFacts =

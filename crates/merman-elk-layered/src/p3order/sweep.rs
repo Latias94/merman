@@ -36,6 +36,10 @@ use super::{
     update_bigger_and_smaller_associations,
 };
 
+#[cfg(test)]
+#[path = "scoring_semantics_tests.rs"]
+mod scoring_semantics_tests;
+
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 struct GraphPath(Vec<usize>);
 
@@ -872,7 +876,11 @@ impl HierarchySweep {
             .collect()
     }
 
-    fn minimize(&mut self, root: &mut LGraph) -> bool {
+    fn minimize(
+        &mut self,
+        root: &mut LGraph,
+        control: &mut dyn WorkControl,
+    ) -> Result<bool, WorkError> {
         let graphs_to_sweep_on = self.graphs_to_sweep_on();
         for info_index in graphs_to_sweep_on {
             if self.infos[info_index].current_node_order.is_empty() {
@@ -884,16 +892,14 @@ impl HierarchySweep {
             } else if self.cross_min_type.is_deterministic() {
                 self.minimize_with_counter(root, info_index);
             } else {
-                let mut control = NoopWorkControl;
                 let mut work = BarycenterSweepWork {
-                    control: &mut control,
+                    control: &mut *control,
                     snapshot: 0,
                     count: 0,
                     first_layer: 0,
                     sweep: 0,
                 };
-                self.compare_different_randomized_layouts(root, info_index, &mut work)
-                    .expect("pre-admitted hierarchy sweep must complete");
+                self.compare_different_randomized_layouts(root, info_index, &mut work)?;
             }
 
             if self.infos[info_index].parent_path.is_some() {
@@ -907,7 +913,7 @@ impl HierarchySweep {
         for (index, info) in self.infos.iter().enumerate() {
             graph_mut_at_path(root, &info.path).random = self.barycenter_random(index);
         }
-        self.transfer_node_and_port_orders_to_graph(root)
+        Ok(self.transfer_node_and_port_orders_to_graph(root))
     }
 
     fn minimize_no_counter(&mut self, root: &mut LGraph, info_index: usize) {
@@ -1050,8 +1056,12 @@ impl HierarchySweep {
     ) -> Result<BarycenterRunResult, WorkError> {
         let mut is_forward_sweep = self.next_sweep_direction(info_index);
         work.charge(work.count)?;
-        let initial_crossings =
-            self.count_current_crossing_score(root, info_index, use_node_port_order_counter);
+        let initial_crossings = self.count_current_crossing_score(
+            root,
+            info_index,
+            use_node_port_order_counter,
+            work.control,
+        )?;
         if initial_crossings == 0.0 && first_try_with_initial_order {
             work.charge(work.snapshot)?;
             self.set_currently_best_node_orders(root);
@@ -1086,8 +1096,12 @@ impl HierarchySweep {
         );
 
         work.charge(work.count)?;
-        let mut crossings_in_graph =
-            self.count_current_crossing_score(root, info_index, use_node_port_order_counter);
+        let mut crossings_in_graph = self.count_current_crossing_score(
+            root,
+            info_index,
+            use_node_port_order_counter,
+            work.control,
+        )?;
         loop {
             work.charge(work.snapshot)?;
             self.set_currently_best_node_orders(root);
@@ -1110,8 +1124,12 @@ impl HierarchySweep {
                 false,
             );
             work.charge(work.count)?;
-            crossings_in_graph =
-                self.count_current_crossing_score(root, info_index, use_node_port_order_counter);
+            crossings_in_graph = self.count_current_crossing_score(
+                root,
+                info_index,
+                use_node_port_order_counter,
+                work.control,
+            )?;
             if old_number_of_crossings <= crossings_in_graph {
                 return Ok(BarycenterRunResult {
                     crossings: old_number_of_crossings,
@@ -1545,18 +1563,8 @@ impl HierarchySweep {
         total
     }
 
-    #[allow(clippy::eq_op, clippy::nonminimal_bool)]
     fn use_node_port_order_crossing_counter(&self, root: &LGraph, info_index: usize) -> bool {
-        let graph = graph_at_path(root, &self.infos[info_index].path);
-        // layout-base compatibility: port influence alone must not enable this counter gate.
-        graph
-            .options
-            .consider_model_order_crossing_counter_node_influence
-            != 0.0
-            || graph
-                .options
-                .consider_model_order_crossing_counter_node_influence
-                != 0.0
+        use_node_port_order_crossing_counter(graph_at_path(root, &self.infos[info_index].path))
     }
 
     fn count_current_crossing_score(
@@ -1564,11 +1572,12 @@ impl HierarchySweep {
         root: &LGraph,
         info_index: usize,
         use_node_port_order_counter: bool,
-    ) -> f64 {
+        work: &mut dyn WorkControl,
+    ) -> Result<f64, WorkError> {
         if use_node_port_order_counter {
-            self.count_current_number_of_crossings_node_port_order(root, info_index)
+            self.count_current_number_of_crossings_node_port_order(root, info_index, work)
         } else {
-            self.count_current_number_of_crossings(root, info_index) as f64
+            Ok(self.count_current_number_of_crossings(root, info_index) as f64)
         }
     }
 
@@ -1576,30 +1585,11 @@ impl HierarchySweep {
         &self,
         root: &LGraph,
         info_index: usize,
-    ) -> f64 {
+        work: &mut dyn WorkControl,
+    ) -> Result<f64, WorkError> {
         let info = &self.infos[info_index];
         let graph = graph_at_path(root, &info.path);
-        let mut model_order_influence = 0.0;
-        let model_order_strategy = graph.options.consider_model_order_strategy;
-        if model_order_strategy != OrderingStrategy::None {
-            model_order_influence += graph
-                .options
-                .consider_model_order_crossing_counter_node_influence
-                * count_model_order_node_changes(
-                    graph,
-                    &info.current_node_order,
-                    model_order_strategy,
-                ) as f64;
-            model_order_influence += graph
-                .options
-                .consider_model_order_crossing_counter_port_influence
-                * count_model_order_port_changes(graph, &info.current_node_order) as f64;
-        }
-
-        let mut total = CrossingsCounter::new()
-            .count_all_crossings_in_order(graph, &info.current_node_order)
-            as f64
-            + model_order_influence;
+        let mut total = count_barycenter_crossing_score(graph, &info.current_node_order, work)?;
 
         for child_path in &info.child_paths {
             if let Some(child_index) = self.index_by_path.get(child_path).copied()
@@ -1609,7 +1599,7 @@ impl HierarchySweep {
             }
         }
 
-        total
+        Ok(total)
     }
 
     fn set_currently_best_node_orders(&mut self, root: &LGraph) {
@@ -1896,6 +1886,15 @@ impl BarycenterHeuristic {
         first: usize,
         second: usize,
     ) -> std::cmp::Ordering {
+        if [first, second].into_iter().any(|node| {
+            matches!(
+                graph.layerless_nodes[node].layer_constraint,
+                crate::options::LayerConstraint::FirstSeparate
+                    | crate::options::LayerConstraint::LastSeparate
+            )
+        }) {
+            return std::cmp::Ordering::Equal;
+        }
         if let Some(ordering) = self.transitive_ordering(first, second) {
             return ordering;
         }
@@ -1905,8 +1904,10 @@ impl BarycenterHeuristic {
             graph.layerless_nodes[second].model_order,
         ) {
             let ordering = first_order.cmp(&second_order);
-            self.update_model_order_associations(first, second, ordering);
-            return ordering;
+            if ordering != std::cmp::Ordering::Equal {
+                self.update_model_order_associations(first, second, ordering);
+                return ordering;
+            }
         }
 
         let first_barycenter = self.states.get(&first).and_then(|state| state.barycenter);
@@ -3277,10 +3278,24 @@ pub(crate) fn minimize_crossings_layer_sweep_with_type(
     }
 }
 
+#[cfg(test)]
 pub(crate) fn minimize_crossings_layer_sweep_hierarchical_with_type(
     graph: &mut LGraph,
     cross_min_type: CrossMinType,
 ) -> bool {
+    minimize_crossings_layer_sweep_hierarchical_with_work_control(
+        graph,
+        cross_min_type,
+        &mut NoopWorkControl,
+    )
+    .expect("unrestricted hierarchy sweep must complete")
+}
+
+pub(crate) fn minimize_crossings_layer_sweep_hierarchical_with_work_control(
+    graph: &mut LGraph,
+    cross_min_type: CrossMinType,
+    control: &mut dyn WorkControl,
+) -> Result<bool, WorkError> {
     if graph.layers.is_empty() || graph.layers.iter().all(|layer| layer.nodes.is_empty()) {
         let hierarchical_graphs = graph
             .layerless_nodes
@@ -3291,13 +3306,13 @@ pub(crate) fn minimize_crossings_layer_sweep_hierarchical_with_type(
                     && nested.layers.iter().any(|layer| !layer.nodes.is_empty())
             });
         if !hierarchical_graphs {
-            return false;
+            return Ok(false);
         }
     }
 
     initialize_crossing_minimization_port_ids_hierarchy(graph);
     let mut sweep = HierarchySweep::new(graph, cross_min_type);
-    sweep.minimize(graph)
+    sweep.minimize(graph, control)
 }
 
 /// Preserve the hierarchy sweep's single-node, random-stream and model-order semantics.
@@ -3388,10 +3403,24 @@ pub(crate) fn minimize_single_graph_hierarchical_barycenter_with_work_control(
     Ok(sweep.transfer_node_and_port_orders_to_graph(graph))
 }
 
+#[cfg(test)]
 pub(crate) fn debug_crossings_layer_sweep_hierarchical_with_type(
     graph: &mut LGraph,
     cross_min_type: CrossMinType,
 ) -> Option<HierarchySweepDebugTrace> {
+    debug_crossings_layer_sweep_hierarchical_with_work_control(
+        graph,
+        cross_min_type,
+        &mut NoopWorkControl,
+    )
+    .expect("unrestricted diagnostic hierarchy sweep must complete")
+}
+
+pub(crate) fn debug_crossings_layer_sweep_hierarchical_with_work_control(
+    graph: &mut LGraph,
+    cross_min_type: CrossMinType,
+    control: &mut dyn WorkControl,
+) -> Result<Option<HierarchySweepDebugTrace>, WorkError> {
     if graph.layers.is_empty() || graph.layers.iter().all(|layer| layer.nodes.is_empty()) {
         let hierarchical_graphs = graph
             .layerless_nodes
@@ -3402,7 +3431,7 @@ pub(crate) fn debug_crossings_layer_sweep_hierarchical_with_type(
                     && nested.layers.iter().any(|layer| !layer.nodes.is_empty())
             });
         if !hierarchical_graphs {
-            return None;
+            return Ok(None);
         }
     }
 
@@ -3414,8 +3443,8 @@ pub(crate) fn debug_crossings_layer_sweep_hierarchical_with_type(
         runs: Vec::new(),
         layer_sweeps: Vec::new(),
     });
-    sweep.minimize(graph);
-    sweep.debug_trace
+    sweep.minimize(graph, control)?;
+    Ok(sweep.debug_trace)
 }
 
 fn debug_barycenter_layer(
@@ -3460,6 +3489,42 @@ fn charge_barycenter_work(
 ) -> Result<(), WorkError> {
     work_control.check(units)?;
     work_control.charge(units)
+}
+
+fn use_node_port_order_crossing_counter(graph: &LGraph) -> bool {
+    graph
+        .options
+        .consider_model_order_crossing_counter_node_influence
+        != 0.0
+}
+
+fn count_barycenter_crossing_score(
+    graph: &LGraph,
+    order: &[Vec<usize>],
+    work: &mut dyn WorkControl,
+) -> Result<f64, WorkError> {
+    let mut model_order_influence = 0.0;
+    if use_node_port_order_crossing_counter(graph)
+        && graph.options.consider_model_order_strategy != OrderingStrategy::None
+    {
+        model_order_influence += graph
+            .options
+            .consider_model_order_crossing_counter_node_influence
+            * count_model_order_node_changes(
+                graph,
+                order,
+                graph.options.consider_model_order_strategy,
+                work,
+            )? as f64;
+        model_order_influence += graph
+            .options
+            .consider_model_order_crossing_counter_port_influence
+            * count_model_order_port_changes(graph, order, work)? as f64;
+    }
+    Ok(
+        CrossingsCounter::new().count_all_crossings_in_order(graph, order) as f64
+            + model_order_influence,
+    )
 }
 
 fn barycenter_scan_work(graph: &LGraph) -> Result<usize, WorkError> {
@@ -3543,7 +3608,7 @@ fn minimize_barycenter(
     };
     random.set_seed(random_seed);
 
-    let mut best_crossings = usize::MAX;
+    let mut best_crossings = f64::MAX;
     let thoroughness = graph.options.thoroughness.max(1);
     // Match the shared FIRST_TRY / SECOND_TRY Property ID, as in the hierarchy sweep:
     // only the first run preserves model order before randomized attempts begin.
@@ -3571,7 +3636,7 @@ fn minimize_barycenter(
             if let Some(copy) = graph_info.currently_best_node_and_port_order.clone() {
                 graph_info.set_best_node_and_port_order(copy);
             }
-            if best_crossings == 0 {
+            if best_crossings == 0.0 {
                 break;
             }
         }
@@ -3665,17 +3730,17 @@ fn minimize_crossings_with_counter(
     first_try_with_initial_order: bool,
     work_control: &mut dyn WorkControl,
     reorder_work: &ReorderNodePortsWorkContext,
-) -> Result<usize, WorkError> {
+) -> Result<f64, WorkError> {
     let mut is_forward_sweep = heuristic.random.next_bool();
 
     let count_work = barycenter_crossing_count_work(graph)?;
     charge_barycenter_work(work_control, count_work)?;
     let initial_crossings =
-        CrossingsCounter::new().count_all_crossings_in_order(graph, &graph_info.current_node_order);
-    if initial_crossings == 0 && first_try_with_initial_order {
+        count_barycenter_crossing_score(graph, &graph_info.current_node_order, work_control)?;
+    if initial_crossings == 0.0 && first_try_with_initial_order {
         charge_barycenter_work(work_control, barycenter_scan_work(graph)?)?;
         graph_info.set_currently_best_node_and_port_order(graph);
-        return Ok(0);
+        return Ok(0.0);
     }
 
     if !first_try_with_initial_order
@@ -3710,12 +3775,12 @@ fn minimize_crossings_with_counter(
 
     charge_barycenter_work(work_control, count_work)?;
     let mut crossings_in_graph =
-        CrossingsCounter::new().count_all_crossings_in_order(graph, &graph_info.current_node_order);
+        count_barycenter_crossing_score(graph, &graph_info.current_node_order, work_control)?;
     loop {
         charge_barycenter_work(work_control, barycenter_scan_work(graph)?)?;
         graph_info.set_currently_best_node_and_port_order(graph);
-        if crossings_in_graph == 0 {
-            return Ok(0);
+        if crossings_in_graph == 0.0 {
+            return Ok(0.0);
         }
 
         is_forward_sweep = !is_forward_sweep;
@@ -3730,8 +3795,8 @@ fn minimize_crossings_with_counter(
             reorder_work,
         )?;
         charge_barycenter_work(work_control, count_work)?;
-        crossings_in_graph = CrossingsCounter::new()
-            .count_all_crossings_in_order(graph, &graph_info.current_node_order);
+        crossings_in_graph =
+            count_barycenter_crossing_score(graph, &graph_info.current_node_order, work_control)?;
         if old_number_of_crossings <= crossings_in_graph {
             return Ok(old_number_of_crossings);
         }
@@ -5549,22 +5614,45 @@ mod tests {
 
         crate::compound::preprocess_source_ported_compound_graph(&mut graph);
         crate::configurator::configure_graph_properties(&mut graph).unwrap();
-        crate::pipeline::execute_ported_compound_processors_until(
+        crate::pipeline::execute_ported_compound_processors_until_processor(
             &mut graph,
-            crate::pipeline::LayeredPhase::P3NodeOrdering,
+            crate::pipeline::ProcessorKind::SortByInputModelProcessor,
         )
         .unwrap();
+        let trace = debug_crossings_layer_sweep_hierarchical_with_type(
+            &mut graph,
+            CrossMinType::Barycenter,
+        )
+        .unwrap();
+        let runs = trace
+            .runs
+            .iter()
+            .filter(|run| run.graph_id == "root")
+            .collect::<Vec<_>>();
+        assert_eq!(
+            runs.iter().map(|run| run.crossings).collect::<Vec<_>>(),
+            [2.0, 2.0, 2.0, 1.0, 2.0, 1.0, 2.0]
+        );
+        assert!(runs[0].first_try_with_initial_order);
+        assert!(
+            runs[1..]
+                .iter()
+                .all(|run| !run.first_try_with_initial_order)
+        );
 
         let first_layer_order = node_order_by_id(&graph, &graph.layers[0].nodes);
         let last_layer_order = node_order_by_id(&graph, &graph.layers[2].nodes);
         // Pinned elkjs 0.9.3 puts the inverted L_D_E port dummy before both groups.
-        // Assigning SECOND_TRY a distinct Property ID instead reproduces the old
-        // [bar, B, dummy] / [foo, dummy] order, rather than the source's shared-ID behavior.
-        assert!(first_layer_order[0].starts_with("invertedPort:"));
+        // The 0.12.0 oracle's hierarchical-randomized-tries case observes [B, bar, dummy]
+        // and [foo, dummy] after the two-pass input sort and seven randomized tries.
+        // FIRST/SECOND_TRY still share their Property ID; the first strictly best run wins.
+        assert_eq!(first_layer_order.len(), 3);
+        assert_eq!(first_layer_order[0], "B", "{first_layer_order:?}");
         assert_eq!(first_layer_order[1], "bar");
-        assert_eq!(first_layer_order[2], "B");
-        assert!(last_layer_order[0].starts_with("invertedPort:"));
-        assert_eq!(last_layer_order[1], "foo");
+        assert!(first_layer_order[2].starts_with("invertedPort:"));
+        assert_eq!(last_layer_order.len(), 2);
+        assert_eq!(last_layer_order[0], "foo", "{last_layer_order:?}");
+        assert!(last_layer_order[1].starts_with("invertedPort:"));
     }
 
     #[test]

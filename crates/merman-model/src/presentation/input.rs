@@ -48,8 +48,6 @@ pub enum PresentationDataError {
         paint_family: &'static str,
         model_kind: &'static str,
     },
-    #[error("{family} presentation data requires a nonempty declared output identity")]
-    MissingOutputIdentity { family: &'static str },
 }
 
 /// Immutable full model, metadata, resolved output family, and paired context declarations.
@@ -225,15 +223,6 @@ fn validate_family_context(
 ) -> OperationControlResult<Result<(), PresentationDataError>> {
     control.checkpoint()?;
     match (model, context) {
-        #[cfg(feature = "diagram-mindmap")]
-        (RenderSemanticModel::Mindmap(model), context)
-            if !model.nodes.is_empty()
-                && context.mindmap_diagram_id().is_none_or(str::is_empty) =>
-        {
-            return Ok(Err(PresentationDataError::MissingOutputIdentity {
-                family: "mindmap",
-            }));
-        }
         #[cfg(any(
             feature = "diagram-flowchart",
             feature = "diagram-swimlane",

@@ -6,6 +6,9 @@ Accepted for the development baseline. The reference refresh and strict verifica
 on 2026-10-13. This records local verification of the selected graph, not a publication decision.
 This decision does not authorize publication or modify the published 0.9.0 release history.
 
+The [Mermaid 12.3 development transition](../migrations/mermaid-12-3.md) supersedes this baseline
+selection. This ADR retains its original source identities, observations and verification scope.
+
 ## Date
 
 2026-10-13
@@ -94,11 +97,13 @@ This platform-bound paint residual remains separate from the cross-platform stru
 
 ## Fixture sufficiency
 
-[The coverage review](../alignment/FIXTURE_COVERAGE_12_2.md) maps source deltas to the semantic,
-layout, rendering and browser layers. Four added primary inputs cover Neo depth/palette cycling,
+The 12.2 source and fixture observations above distinguish semantic, layout, rendering and
+browser evidence. Four added primary inputs cover Neo depth/palette cycling,
 the complete ELK #8368 issue, and mixed-order/non-default-width Swimlane cases. Two measured
 family-local inputs preserve narrow SVG Markdown and HandDrawn circle evidence. They found
 source-backed rect-padding and Rough circle branch omissions; neither fix broadens comparators.
+The [current admission guide](../alignment/ADMISSION_INVENTORY.md#evidence-boundaries) defines
+today's evidence layers without transferring a historical successful run to the current source.
 
 Six follow-up primary inputs cover ABNF/EBNF/PEG grammar combinations, nested Agentflow collapse
 and self-loops, a single-boundary Usecase ELK guard rejection, and nested/explicit/synthetic Swimlane

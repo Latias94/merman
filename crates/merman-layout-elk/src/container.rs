@@ -1,4 +1,8 @@
 //! Mermaid 12 container option provenance and cross-hierarchy normalization.
+//!
+//! Separately scheduled owners retain their imported title origin: the provider micro layout
+//! only visits children. SPOrE's margin calculation consumes that existing title rectangle.
+//! Source: https://github.com/eclipse-elk/elk/blob/323312916048544e4e594eab3303cdb0d01e2929/plugins/org.eclipse.elk.alg.spore/src/org/eclipse/elk/alg/spore/ElkGraphImporter.java
 
 use super::*;
 
@@ -57,6 +61,19 @@ impl ContainerMode {
             },
         })
     }
+}
+
+pub(super) fn scope_title_margin(
+    label: Option<Label>,
+    size: source_port::LSize,
+) -> source_port::LMargin {
+    label.map_or_else(source_port::LMargin::default, |label| {
+        source_port::LMargin {
+            right: (label.width - size.width).max(0.0),
+            bottom: (label.height - size.height).max(0.0),
+            ..Default::default()
+        }
+    })
 }
 
 /// Only valid metadata algorithms trigger this additional normalization. Ordinary callers can

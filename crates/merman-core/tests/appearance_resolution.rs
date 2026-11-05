@@ -5,6 +5,32 @@ use merman_core::presentation::SourcePresentationConfig;
 use serde_json::json;
 
 #[test]
+fn materialized_palette_tracks_execution_and_sentinel_inheritance() {
+    use merman_model::config::MermaidThemeId;
+
+    let engine =
+        MermaidEngine::new().with_site_config(SourcePresentationConfig::from_value(json!({
+            "theme": "dark"
+        })));
+    for (config, expected) in [
+        (json!({}), MermaidThemeId::Dark),
+        (json!({"theme": "null"}), MermaidThemeId::Dark),
+        (json!({"theme": "forest"}), MermaidThemeId::Forest),
+        (
+            json!({"flowchart": {"theme": "neutral"}}),
+            MermaidThemeId::Neutral,
+        ),
+    ] {
+        let source = format!("%%{{init: {config}}}%%\nflowchart TD\nA-->B\n");
+        let metadata = engine.parse_metadata_sync(&source).unwrap();
+        assert_eq!(
+            metadata.effective_config.materialized_theme(),
+            Some(expected)
+        );
+    }
+}
+
+#[test]
 fn site_theme_color_limit_uses_ecmascript_whitespace() {
     for value in [
         "\u{0085}65",

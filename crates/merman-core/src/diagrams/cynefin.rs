@@ -26,15 +26,6 @@ use serde_json::Value;
 const HEADER: &str = "cynefin-beta";
 const DOMAINS: &[&str] = &["complex", "complicated", "clear", "chaotic", "confusion"];
 
-pub(crate) fn sanitize_common_db_fields(
-    model: &mut CynefinDiagramModel,
-    config: &crate::MermaidConfig,
-) {
-    crate::common_db::sanitize_optional_title(&mut model.title, config);
-    crate::common_db::sanitize_optional_acc_title(&mut model.acc_title, config);
-    crate::common_db::sanitize_optional_acc_descr(&mut model.acc_descr, config);
-}
-
 #[derive(Debug, Clone)]
 struct SpannedText {
     text: String,
@@ -68,6 +59,15 @@ struct CynefinSemanticSource {
     editor_facts: Option<EditorSemanticFacts>,
 }
 
+impl CynefinSemanticSource {
+    fn into_model(mut self, config: &crate::MermaidConfig) -> CynefinDiagramModel {
+        crate::common_db::sanitize_optional_title(&mut self.model.title, config);
+        crate::common_db::sanitize_optional_acc_title(&mut self.model.acc_title, config);
+        crate::common_db::sanitize_optional_acc_descr(&mut self.model.acc_descr, config);
+        self.model
+    }
+}
+
 struct CynefinParseOutcome {
     source: CynefinSemanticSource,
     first_error: Option<Error>,
@@ -85,9 +85,8 @@ impl CynefinParseOutcome {
 
 #[cfg(feature = "compat-json")]
 pub(crate) fn parse_cynefin(code: &str, meta: &SourcePresentationMetadata) -> Result<Value> {
-    let mut model = parse_cynefin_semantic_source(code, meta)?.model;
-    sanitize_common_db_fields(&mut model, meta.effective_config.as_config());
-
+    let model =
+        parse_cynefin_semantic_source(code, meta)?.into_model(meta.effective_config.as_config());
     render_model_to_compat_json(&model, meta)
 }
 
@@ -99,10 +98,7 @@ pub(crate) fn parse_cynefin_json_and_editor_facts(
     control: &crate::OperationControl,
 ) -> crate::OperationControlResult<crate::family::CombinedSemanticParse> {
     let CynefinParseOutcome {
-        source: CynefinSemanticSource {
-            mut model,
-            editor_facts,
-        },
+        source,
         first_error,
     } = construct_cynefin_parse_outcome_controlled(
         code,
@@ -110,24 +106,19 @@ pub(crate) fn parse_cynefin_json_and_editor_facts(
         EditorFactsDemand::Capture,
         control,
     )?;
-    sanitize_common_db_fields(&mut model, meta.effective_config.as_config());
     let construction = match first_error {
         Some(error) => Err(crate::family::CombinedSemanticFailure::new(
             error,
-            editor_facts,
+            source.editor_facts,
         )),
-        None => Ok(CynefinSemanticSource {
-            model,
-            editor_facts,
-        }),
+        None => Ok(source),
     };
     let parsed = crate::family::CombinedSemanticParse::from_construction(
         construction,
-        |source| {
-            (
-                render_model_to_compat_json(&source.model, meta),
-                source.editor_facts.unwrap_or_default(),
-            )
+        |mut source| {
+            let editor_facts = source.editor_facts.take().unwrap_or_default();
+            let model = source.into_model(meta.effective_config.as_config());
+            (render_model_to_compat_json(&model, meta), editor_facts)
         },
         crate::family::CombinedSemanticFailure::into_parts,
     );
@@ -149,9 +140,7 @@ pub(crate) fn parse_cynefin_model_for_render(
     code: &str,
     meta: &SourcePresentationMetadata,
 ) -> Result<CynefinDiagramModel> {
-    let mut model = parse_cynefin_semantic_source(code, meta)?.model;
-    sanitize_common_db_fields(&mut model, meta.effective_config.as_config());
-    Ok(model)
+    Ok(parse_cynefin_semantic_source(code, meta)?.into_model(meta.effective_config.as_config()))
 }
 
 #[cfg(feature = "presentation")]
@@ -185,14 +174,12 @@ pub(crate) fn parse_cynefin_semantic_model_controlled(
         control,
     )?;
     #[cfg(feature = "editor-facts")]
-    let editor_facts = source.editor_facts;
+    let mut source = source;
+    #[cfg(feature = "editor-facts")]
+    let editor_facts = source.editor_facts.take();
     let model = match first_error {
         Some(error) => Err(error),
-        None => {
-            let mut model = source.model;
-            sanitize_common_db_fields(&mut model, &meta.semantic_config);
-            Ok(model)
-        }
+        None => Ok(source.into_model(&meta.semantic_config)),
     };
     Ok(crate::family::SemanticConstruction {
         model,
@@ -219,9 +206,7 @@ fn parse_cynefin_model_controlled(
         Ok(source) => source,
         Err(error) => return Ok(Err(error)),
     };
-    let mut model = source.model;
-    sanitize_common_db_fields(&mut model, config);
-    Ok(Ok(model))
+    Ok(Ok(source.into_model(config)))
 }
 
 fn trimmed_source_span(source: &str, source_start: usize) -> SourceSpan {
@@ -966,6 +951,51 @@ mod tests {
             .unwrap(),
             compat.model
         );
+    }
+
+    #[test]
+    fn semantic_sanitization_preserves_domain_payloads_and_accessibility_normalization() {
+        let source = concat!(
+            "cynefin-beta\n",
+            "title <script>secret</script><b>Header &amp; &#x3C;</b>\n",
+            "accTitle: <script>secret</script>   Accessible\n",
+            "accDescr {First\n    <b>Second &amp; &#x3C;</b>}\n",
+            "complex\n",
+            "\"<script>raw</script>&amp;\"\n",
+            "complex --> clear : \"<b>raw &amp;</b>\"\n",
+        );
+        for security_level in ["strict", "loose"] {
+            let metadata = crate::SemanticMetadata {
+                diagram_type: "cynefin".to_string(),
+                config: crate::MermaidConfig::empty_object(),
+                semantic_config: crate::MermaidConfig::from_value(serde_json::json!({
+                    "securityLevel": security_level,
+                    "htmlLabels": true
+                })),
+                title: None,
+            };
+            let model = parse_cynefin_semantic_model_controlled(
+                source,
+                &metadata,
+                #[cfg(feature = "editor-facts")]
+                EditorFactsDemand::Omit,
+                &crate::OperationControl::new(),
+            )
+            .unwrap()
+            .model
+            .unwrap();
+            assert_eq!(model.title.as_deref(), Some("<b>Header &amp; &lt;</b>"));
+            assert_eq!(model.acc_title.as_deref(), Some("Accessible"));
+            assert_eq!(
+                model.acc_descr.as_deref(),
+                Some("First\n<b>Second &amp; &lt;</b>")
+            );
+            assert_eq!(model.domains[0].items[0].label, "<script>raw</script>&amp;");
+            assert_eq!(
+                model.transitions[0].label.as_deref(),
+                Some("<b>raw &amp;</b>")
+            );
+        }
     }
 
     #[test]

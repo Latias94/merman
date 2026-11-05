@@ -1,4 +1,4 @@
-use super::super::roughjs_common::{ops_to_svg_path_d, parse_hex_color_to_srgba};
+use super::super::roughjs_common::{controlled, ops_to_svg_path_d, parse_hex_color_to_srgba};
 use super::super::*;
 
 fn class_parse_stroke_dash_pair(stroke_dasharray: &str) -> (f64, f64) {
@@ -35,6 +35,7 @@ pub(super) fn class_rough_hachure_rect_paths(
     stroke: &str,
     stroke_width: f32,
     stroke_dasharray: &str,
+    work_meter: &crate::resources::OperationWorkMeter,
     randomness: &roughr::core::RoughRandomness,
 ) -> Option<(String, String)> {
     let fill =
@@ -61,8 +62,18 @@ pub(super) fn class_rough_hachure_rect_paths(
         .build()
         .ok()?;
 
-    let generator = roughr::generator::Generator::default();
-    let drawable = generator.rectangle::<f64>(left, top, width, height, &Some(options));
+    let drawable =
+        controlled::generate(work_meter, merman_model::OperationPhase::Emit, |control| {
+            roughr::generator::Generator::default().rectangle_with_control::<f64>(
+                left,
+                top,
+                width,
+                height,
+                &Some(options),
+                control,
+            )
+        })
+        .ok()?;
     let mut fill_d = None;
     let mut stroke_d = None;
 
@@ -90,6 +101,7 @@ pub(super) fn class_rough_hand_drawn_line_path(
     stroke: &str,
     stroke_width: f32,
     stroke_dasharray: &str,
+    work_meter: &crate::resources::OperationWorkMeter,
     randomness: &roughr::core::RoughRandomness,
 ) -> Option<String> {
     let stroke =
@@ -106,18 +118,17 @@ pub(super) fn class_rough_hand_drawn_line_path(
         .build()
         .ok()?;
 
-    Some(ops_to_svg_path_d(&roughr::renderer::line::<f64>(
-        x1,
-        y1,
-        x2,
-        y2,
-        &mut options,
-    )))
+    controlled::generate(work_meter, merman_model::OperationPhase::Emit, |control| {
+        roughr::renderer::line_with_control::<f64>(x1, y1, x2, y2, &mut options, control)
+    })
+    .ok()
+    .map(|opset| ops_to_svg_path_d(&opset))
 }
 
 pub(super) fn class_rough_hand_drawn_stroke_path_for_svg_path(
     svg_path_data: &str,
     roughness: f32,
+    work_meter: &crate::resources::OperationWorkMeter,
     randomness: &roughr::core::RoughRandomness,
 ) -> Option<String> {
     let mut options = roughr::core::OptionsBuilder::default()
@@ -127,8 +138,17 @@ pub(super) fn class_rough_hand_drawn_stroke_path_for_svg_path(
         .build()
         .ok()?;
 
-    let opset = roughr::renderer::svg_path::<f64>(svg_path_data.to_string(), &mut options);
-    Some(ops_to_svg_path_d(&opset))
+    controlled::generate(work_meter, merman_model::OperationPhase::Emit, |control| {
+        let segments =
+            roughr::points_on_path::normalized_path_with_control(svg_path_data, control)?;
+        roughr::renderer::svg_normalized_segments_with_control::<f64>(
+            &segments,
+            &mut options,
+            control,
+        )
+    })
+    .ok()
+    .map(|opset| ops_to_svg_path_d(&opset))
 }
 
 pub(super) fn class_rough_line_double_path_and_bounds(
@@ -255,4 +275,104 @@ pub(super) fn class_rough_rect_stroke_path_and_bounds(
             max_y: bottom,
         }),
     )
+}
+
+#[cfg(test)]
+mod control_tests {
+    use super::*;
+    use crate::resources::{
+        OperationWorkError, OperationWorkMeter, RenderResourcePolicy, ResourceLimitCause,
+        ResourceLimitId,
+    };
+    use merman_model::{OperationControl, OperationPhase};
+
+    #[test]
+    fn class_rough_generation_preserves_work_and_cancellation_terminals() {
+        for cancelled in [false, true] {
+            for primitive in 0..3 {
+                let control = OperationControl::new();
+                if cancelled {
+                    control.cancel();
+                }
+                let meter = OperationWorkMeter::new_with_control(
+                    RenderResourcePolicy::unbounded_for_trusted_input()
+                        .with_limit(ResourceLimitId::MaxLayoutWorkUnits, 32)
+                        .unwrap(),
+                    control,
+                );
+                let randomness = roughr::core::RoughRandomness::new(
+                    roughr::core::RoughJsSeed::new(1.0),
+                    roughr::core::RoughMathRandom::new(7),
+                );
+                let result = match primitive {
+                    0 => class_rough_hachure_rect_paths(
+                        0.0,
+                        0.0,
+                        4096.0,
+                        4096.0,
+                        "#fff",
+                        "#000",
+                        1.3,
+                        "0 0",
+                        &meter,
+                        &randomness,
+                    )
+                    .map(|_| ()),
+                    1 => {
+                        for _ in 0..8 {
+                            if class_rough_hand_drawn_line_path(
+                                0.0,
+                                0.0,
+                                40.0,
+                                20.0,
+                                "#000",
+                                1.3,
+                                "0 0",
+                                &meter,
+                                &randomness,
+                            )
+                            .is_none()
+                            {
+                                break;
+                            }
+                        }
+                        class_rough_hand_drawn_line_path(
+                            0.0,
+                            0.0,
+                            40.0,
+                            20.0,
+                            "#000",
+                            1.3,
+                            "0 0",
+                            &meter,
+                            &randomness,
+                        )
+                        .map(|_| ())
+                    }
+                    _ => class_rough_hand_drawn_stroke_path_for_svg_path(
+                        "M0 0 C0 40 60 40 60 0 Z M80 0 L100 0 Z",
+                        0.3,
+                        &meter,
+                        &randomness,
+                    )
+                    .map(|_| ()),
+                };
+                assert!(result.is_none());
+                let error = meter.checkpoint(OperationPhase::Emit).unwrap_err();
+                if cancelled {
+                    assert!(
+                        matches!(error, OperationWorkError::Cancelled(error) if error.phase == OperationPhase::Emit)
+                    );
+                    assert_eq!(meter.used(), 0);
+                } else {
+                    assert!(
+                        matches!(error, OperationWorkError::ResourceLimitExceeded(error)
+                        if error.limit == ResourceLimitId::MaxLayoutWorkUnits.as_str()
+                            && error.cause == ResourceLimitCause::Ceiling)
+                    );
+                    assert!(meter.used() <= 32);
+                }
+            }
+        }
+    }
 }

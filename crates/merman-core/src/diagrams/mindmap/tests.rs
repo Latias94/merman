@@ -668,7 +668,7 @@ fn mindmap_get_data_basic_nodes_edges_and_layout_defaults() {
     assert_eq!(model["nodes"].as_array().unwrap().len(), 3);
     assert_eq!(model["edges"].as_array().unwrap().len(), 2);
     assert_eq!(model["config"]["layout"].as_str().unwrap(), "cose-bilkent");
-    assert!(model["diagramId"].as_str().unwrap().starts_with("mindmap-"));
+    assert!(model.get("diagramId").is_none());
 
     let root = model["nodes"]
         .as_array()
@@ -689,45 +689,36 @@ fn mindmap_get_data_basic_nodes_edges_and_layout_defaults() {
 }
 
 #[test]
-fn mindmap_diagram_id_is_stable_for_the_same_operation_seed() {
+fn mindmap_data_is_stable_for_the_same_operation_seed() {
     let source = "mindmap\nroot\n child\n";
 
     let first = parse(source);
     let repeated = parse(source);
 
-    assert_eq!(first["diagramId"], repeated["diagramId"]);
+    assert_eq!(first, repeated);
+    assert!(first.get("diagramId").is_none());
 }
 
 #[test]
-fn mindmap_diagram_id_is_domain_derived_from_the_operation_seed() {
-    fn diagram_id(seed: u64) -> String {
+fn mindmap_data_does_not_depend_on_the_operation_seed() {
+    fn model(seed: u64) -> Value {
         let engine = MermaidEngine::new().with_runtime_policy(
             merman_model::runtime::RuntimePolicy::deterministic().with_fixed_seed(seed),
         );
         block_on(engine.parse_diagram("mindmap\nroot\n", ParseOptions::default()))
             .unwrap()
             .unwrap()
-            .model["diagramId"]
-            .as_str()
-            .unwrap()
-            .to_string()
+            .model
+            .into_unmanaged_value()
     }
 
-    let first = diagram_id(11);
-    let other = diagram_id(22);
-    let replayed = diagram_id(11);
+    let first = model(11);
+    let other = model(22);
+    let replayed = model(11);
 
     assert_eq!(first, replayed);
-    assert_ne!(first, other);
-
-    let uuid = first.strip_prefix("mindmap-").unwrap();
-    let groups = uuid.split('-').collect::<Vec<_>>();
-    assert_eq!(
-        groups.iter().map(|group| group.len()).collect::<Vec<_>>(),
-        [8, 4, 4, 4, 12]
-    );
-    assert!(groups[2].starts_with('4'));
-    assert!(matches!(groups[3].as_bytes()[0], b'8' | b'9' | b'a' | b'b'));
+    assert_eq!(first, other);
+    assert!(first.get("diagramId").is_none());
 }
 
 #[test]
@@ -748,13 +739,9 @@ fn mindmap_typed_render_model_projects_exact_compatibility_json() {
         &crate::diagrams::source_metadata_for_test(&parsed.meta),
     )
     .unwrap();
-    let mut metadata = CompatJsonMetadata::from(&parsed.meta);
-    metadata.diagram_id = Some("test-mindmap");
-    let mut projected = compat::project(&typed, &metadata).unwrap();
-    let mut expected = parsed.model.into_unmanaged_value();
-
-    projected["diagramId"] = Value::String("<dynamic>".to_string());
-    expected["diagramId"] = Value::String("<dynamic>".to_string());
+    let metadata = CompatJsonMetadata::from(&parsed.meta);
+    let projected = compat::project(&typed, &metadata).unwrap();
+    let expected = parsed.model.into_unmanaged_value();
     assert_eq!(
         projected, expected,
         "Mindmap typed compatibility projection must preserve the exact public JSON"
@@ -823,8 +810,7 @@ fn mindmap_projection_cancels_after_deep_completed_subtree_child() {
                 ),
                 Err(crate::OperationCancelled { .. })
             ));
-            let mut metadata = CompatJsonMetadata::from(parsed.metadata());
-            metadata.diagram_id = Some("test-mindmap");
+            let metadata = CompatJsonMetadata::from(parsed.metadata());
             let projected = compat::project(model, &metadata).unwrap();
             drop(crate::ManagedSemanticJson::from_value(projected));
             drop(parsed);

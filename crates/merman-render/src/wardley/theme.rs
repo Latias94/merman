@@ -107,6 +107,8 @@ pub(crate) enum WardleyTextRole {
 pub(crate) struct WardleySurfaceReceipt {
     requested: bool,
     text_fills: BTreeMap<WardleyTextRole, BTreeSet<Box<str>>>,
+    pub(crate) paint_evidence: FamilyThemeOutcomes,
+    pub(crate) paint_overridden_text_roles: BTreeSet<WardleyTextRole>,
 }
 
 impl WardleySurfaceReceipt {
@@ -131,6 +133,8 @@ impl WardleySurfaceReceipt {
 #[derive(Debug)]
 pub(crate) struct WardleyTypographyThemePlan {
     paint_binding: WardleyPaintBinding,
+    base_paint_binding: WardleyPaintBinding,
+    config: PresentationConfig,
     source_font_family_css: Option<Box<str>>,
     inherited_font_stack: InheritedFontStackPlan,
     evidence: FamilyThemeOutcomes,
@@ -160,6 +164,8 @@ impl WardleyTypographyThemePlan {
     ) -> crate::Result<Self> {
         let mut plan = Self {
             paint_binding: WardleyPaintBinding::from_config(effective_config.as_value()),
+            base_paint_binding: WardleyPaintBinding::from_config(effective_config.as_value()),
+            config: effective_config.clone(),
             source_font_family_css: config_string(
                 effective_config.as_value(),
                 &["themeVariables", "wardley", "fontFamily"],
@@ -277,6 +283,14 @@ impl WardleyTypographyThemePlan {
         &self.paint_binding
     }
 
+    pub(crate) const fn base_paint_binding(&self) -> &WardleyPaintBinding {
+        &self.base_paint_binding
+    }
+
+    pub(crate) fn config(&self) -> &PresentationConfig {
+        &self.config
+    }
+
     pub(crate) fn prepare_root_background(
         &mut self,
         root_theme: Option<&crate::diagram_theme::RootThemePlan>,
@@ -309,6 +323,8 @@ impl WardleyTypographyThemePlan {
                 || !self.unsupported_routes.is_empty()
                 || !self.direct_text_fill_routes.is_empty(),
             text_fills: BTreeMap::new(),
+            paint_evidence: FamilyThemeOutcomes::default(),
+            paint_overridden_text_roles: BTreeSet::new(),
         }
     }
 
@@ -324,6 +340,7 @@ impl WardleyTypographyThemePlan {
         let Some(receipt) = self.terminal_receipt.get() else {
             return;
         };
+        evidence.merge_borrowed(&receipt.paint_evidence);
         self.finish_text_fill_evidence(evidence, receipt);
         self.inherited_font_stack
             .record_unsupported_typography_evidence(evidence, receipt.has_visible_text());
@@ -372,6 +389,9 @@ impl WardleyTypographyThemePlan {
             let mut matches = true;
             let mut capabilities = BTreeSet::new();
             for (role, paint) in &self.typed_text_fills {
+                if receipt.paint_overridden_text_roles.contains(role) {
+                    continue;
+                }
                 if paint.rule_index() != route.rule_index {
                     continue;
                 }
@@ -432,7 +452,7 @@ fn wardley_direct_text_fill_routes(
         .filter_map(|route| match route.mechanism() {
             FamilyThemeMechanism::RuleFacet {
                 rule_index,
-                target: ThemeTarget::Text | ThemeTarget::NodeLabel,
+                target: ThemeTarget::Text,
                 selector:
                     FamilyThemeSelectorShape::Static {
                         variant: None | Some(ThemeVariant::Default),
@@ -461,6 +481,14 @@ fn wardley_unsupported_routes(
         .iter()
         .copied()
         .filter_map(|route| {
+            if matches!(route.mechanism(),
+                FamilyThemeMechanism::RuleFacet { target, .. }
+                | FamilyThemeMechanism::OrdinalPalette { target }
+                | FamilyThemeMechanism::EffectBinding { target, .. }
+                if super::owns_target(target))
+            {
+                return None;
+            }
             if route.disposition() != FamilyThemeDisposition::Unsupported {
                 return None;
             }

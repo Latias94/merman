@@ -46,6 +46,7 @@ pub enum SvgPipelinePreset {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum BuiltinSvgStage {
     PreparedMathProjection,
+    StaticStepProjection,
     ForeignObjectFallback,
     StripForeignObject,
     DropSwitchNativeFallbacks,
@@ -66,6 +67,11 @@ impl BuiltinSvgStage {
     ) -> Result<(Cow<'a, str>, bool)> {
         let mut checkpoint = || execution.checkpoint();
         match self {
+            Self::StaticStepProjection => {
+                let output = super::step_animation::project_static(svg, execution)?;
+                let changed = matches!(output, Cow::Owned(_));
+                Ok((output, changed))
+            }
             Self::PreparedMathProjection => {
                 if !svg.contains("data-merman-prepared-math-")
                     && !svg.contains("data-merman-math-native")
@@ -117,6 +123,7 @@ pub(crate) fn builtin_stages_for_preset(preset: SvgPipelinePreset) -> &'static [
         SvgPipelinePreset::Readable => &[BuiltinSvgStage::ForeignObjectFallback],
         SvgPipelinePreset::ResvgSafe => &[
             BuiltinSvgStage::PreparedMathProjection,
+            BuiltinSvgStage::StaticStepProjection,
             BuiltinSvgStage::ForeignObjectFallback,
             BuiltinSvgStage::StripForeignObject,
             BuiltinSvgStage::DropSwitchNativeFallbacks,
@@ -179,6 +186,7 @@ mod tests {
             builtin_stages_for_preset(SvgPipelinePreset::ResvgSafe),
             &[
                 BuiltinSvgStage::PreparedMathProjection,
+                BuiltinSvgStage::StaticStepProjection,
                 BuiltinSvgStage::ForeignObjectFallback,
                 BuiltinSvgStage::StripForeignObject,
                 BuiltinSvgStage::DropSwitchNativeFallbacks,

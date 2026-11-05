@@ -2,6 +2,7 @@
 
 mod basic_geoms;
 mod bow_tie_rect;
+mod bpmn;
 mod browser;
 mod bucket;
 mod collapsed_group;
@@ -46,6 +47,7 @@ mod window_pane;
 
 pub(super) use basic_geoms::{render_circle, render_diamond, render_double_circle};
 pub(super) use bow_tie_rect::render_bow_tie_rect;
+pub(super) use bpmn::render_bpmn;
 pub(super) use browser::render_browser;
 pub(super) use bucket::render_bucket;
 pub(super) use collapsed_group::{render_collapsed_group_body, render_collapsed_group_indicators};
@@ -203,6 +205,7 @@ pub(super) fn advance_rough_geometry(
             window_pane::advance_window_pane_rough_geometry(ctx, common, label)
         }
         FlowchartShape::Cylinder
+        | FlowchartShape::Bpmn(_)
         | FlowchartShape::HorizontalCylinder
         | FlowchartShape::LinedCylinder
         | FlowchartShape::Icon

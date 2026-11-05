@@ -27,21 +27,19 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_datastore(
                 common.hand_drawn_seed,
             )?;
             let top_d = roughjs_hand_drawn_line_path(
-                -w / 2.0,
-                -h / 2.0,
-                w / 2.0,
-                -h / 2.0,
+                (-w / 2.0, -h / 2.0),
+                (w / 2.0, -h / 2.0),
                 common.stroke_width,
                 common.stroke_dasharray,
+                common.work_meter,
                 common.hand_drawn_seed,
             )?;
             let bottom_d = roughjs_hand_drawn_line_path(
-                -w / 2.0,
-                h / 2.0,
-                w / 2.0,
-                h / 2.0,
+                (-w / 2.0, h / 2.0),
+                (w / 2.0, h / 2.0),
                 common.stroke_width,
                 common.stroke_dasharray,
+                common.work_meter,
                 common.hand_drawn_seed,
             )?;
             Some((fill_d, top_d, bottom_d))
@@ -100,23 +98,23 @@ pub(super) fn advance_rough_geometry(common: &super::super::FlowchartNodeGeometr
         return;
     };
     let Some(_) = super::super::roughjs::roughjs_prepare_hand_drawn_line_path(
-        -w / 2.0,
-        -h / 2.0,
-        w / 2.0,
-        -h / 2.0,
+        super::super::roughjs::RoughGeometryTarget::Query,
+        (-w / 2.0, -h / 2.0),
+        (w / 2.0, -h / 2.0),
         common.stroke_width,
         common.stroke_dasharray,
+        common.work_meter,
         common.hand_drawn_seed,
     ) else {
         return;
     };
     let _ = super::super::roughjs::roughjs_prepare_hand_drawn_line_path(
-        -w / 2.0,
-        h / 2.0,
-        w / 2.0,
-        h / 2.0,
+        super::super::roughjs::RoughGeometryTarget::Query,
+        (-w / 2.0, h / 2.0),
+        (w / 2.0, h / 2.0),
         common.stroke_width,
         common.stroke_dasharray,
+        common.work_meter,
         common.hand_drawn_seed,
     );
 }

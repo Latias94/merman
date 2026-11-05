@@ -1547,6 +1547,153 @@ fn gitgraph_edge_label_background_yields_to_explicit_config_ownership() {
 }
 
 #[test]
+fn gitgraph_title_fill_keeps_source_ownership_and_unsupported_siblings_property_local() {
+    for variant in [None, Some(ThemeVariant::Default)] {
+        for (paint, css) in [
+            (CanvasPaint::solid("#2468ac").unwrap(), "#2468ac"),
+            (CanvasPaint::Transparent, "transparent"),
+        ] {
+            for (title, channel, stroke) in [
+                (true, "none", false),
+                (false, "none", false),
+                (true, "site", false),
+                (true, "source", false),
+                (true, "none", true),
+                (true, "site", true),
+                (true, "source", true),
+            ] {
+                let mut patch = ThemeStylePatch::default().with_fill(paint.clone());
+                if stroke {
+                    patch = patch.with_stroke(CanvasPaint::solid("#987654").unwrap());
+                }
+                let mut rule = ThemeRule::new(ThemeTarget::Title, patch);
+                if let Some(variant) = variant {
+                    rule = rule.with_variant(variant);
+                }
+                let theme = DiagramThemeCompiler::new()
+                    .compile(
+                        DiagramThemeSpec::new()
+                            .with_styles(ThemeRuleSet::default().with_rule(rule)),
+                    )
+                    .unwrap();
+                let mut header = String::new();
+                if title || channel == "source" {
+                    header.push_str("---\n");
+                    if title {
+                        header.push_str("title: Paint title\n");
+                    }
+                    if channel == "source" {
+                        header.push_str("config:\n  themeVariables:\n    textColor: '#abcdef'\n");
+                    }
+                    header.push_str("---\n");
+                }
+                let source = format!("{header}gitGraph\n  commit id: \"1\"\n");
+                let engine = if channel == "site" {
+                    MermaidEngine::new().with_site_config(
+                        merman_core::presentation::SourcePresentationConfig::from_value(
+                            serde_json::json!({"themeVariables": {"textColor": "#abcdef"}}),
+                        ),
+                    )
+                } else {
+                    MermaidEngine::new()
+                };
+                let rendered = try_render_gitgraph_with_theme_engine_and_requirement(
+                    &source,
+                    &theme,
+                    engine,
+                    "git-title",
+                    ThemePortabilityRequirement::BestEffort,
+                )
+                .unwrap();
+                let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+                let title_node = document.descendants().find(|node| {
+                    node.has_tag_name("text") && node.attribute("class") == Some("gitTitleText")
+                });
+                assert_eq!(title_node.is_some(), title);
+                let owned = channel != "none";
+                if let Some(title_node) = title_node {
+                    assert_eq!(
+                        title_node.attribute("style"),
+                        (!owned).then(|| format!("fill:{css};")).as_deref()
+                    );
+                }
+                let completion = rendered.into_completion();
+                let evidence = merman_render::__private::family_evidence(completion.report());
+                assert_eq!(evidence.required_count(), 1);
+                assert_eq!(evidence.accounted_count(), 1);
+                assert_eq!(
+                    evidence.applied_count(),
+                    usize::from(title && !owned && !stroke)
+                );
+                assert_eq!(
+                    evidence.not_applicable_count(),
+                    usize::from(!title || (owned && !stroke))
+                );
+                assert_eq!(
+                    evidence.theme_residual_count(),
+                    usize::from(title && stroke)
+                );
+            }
+        }
+    }
+}
+
+#[test]
+fn gitgraph_all_presets_consume_visible_title_fill_without_title_residuals() {
+    let presets = merman_render::diagram_theme::theme_preset_descriptors();
+    assert_eq!(presets.len(), 11);
+    let source = "---\ntitle: Paint title\n---\ngitGraph\n  commit id: \"1\"\n";
+    for preset in presets {
+        let theme = DiagramThemeCompiler::new()
+            .compile_preset(preset.preset())
+            .unwrap();
+        let rendered = try_render_gitgraph_with_theme_engine_and_requirement(
+            source,
+            &theme,
+            MermaidEngine::new(),
+            "git-title",
+            ThemePortabilityRequirement::BestEffort,
+        )
+        .unwrap();
+        let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+        let title = document
+            .descendants()
+            .find(|node| {
+                node.has_tag_name("text") && node.attribute("class") == Some("gitTitleText")
+            })
+            .unwrap();
+        assert!(
+            title
+                .attribute("style")
+                .is_some_and(|style| style.starts_with("fill:")),
+            "{}",
+            preset.id()
+        );
+        let completion = rendered.into_completion();
+        let evidence = merman_render::__private::family_evidence(completion.report());
+        assert!(evidence.applied_count() > 0, "{}", preset.id());
+        assert_eq!(
+            evidence.accounted_count(),
+            evidence.required_count(),
+            "{}",
+            preset.id()
+        );
+        assert!(
+            completion
+                .report()
+                .theme_diagnostics()
+                .iter()
+                .all(|diagnostic| {
+                    diagnostic.target() != Some(ThemeTarget::Title)
+                        && diagnostic.code() != "evidence-incomplete"
+                }),
+            "{}",
+            preset.id()
+        );
+    }
+}
+
+#[test]
 fn gitgraph_unsupported_routes_follow_real_terminal_occurrences() {
     let source = r#"---
 title: GitGraph unsupported surfaces
@@ -1560,20 +1707,24 @@ gitGraph
         ThemeStylePatch::default().with_fill(solid()),
     )
     .for_family(DiagramFamilyId::GIT_GRAPH)]);
-    let portable_error = match try_render_gitgraph_with_theme_engine_and_requirement(
+    let rendered = try_render_gitgraph_with_theme_engine_and_requirement(
         source,
         &visible_title,
         MermaidEngine::new(),
         "git-unsupported-title-fill",
         ThemePortabilityRequirement::RequirePortable,
-    ) {
-        Ok(_) => panic!("visible unsupported GitGraph Title must fail closed"),
-        Err(error) => error,
-    };
-    assert_eq!(
-        portable_error.unverified_family_theme(),
-        Some((DiagramFamilyId::GIT_GRAPH, 1))
-    );
+    )
+    .expect("visible GitGraph title has a terminal fill consumer");
+    let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+    let title = document
+        .descendants()
+        .find(|node| has_class(node, "gitTitleText"))
+        .unwrap();
+    assert_eq!(title.attribute("style"), Some("fill:#123456;"));
+    let completion = rendered.into_completion();
+    let evidence = merman_render::__private::family_evidence(completion.report());
+    assert_eq!(evidence.applied_count(), 1);
+    assert_eq!(evidence.theme_residual_count(), 0);
 
     let absent_cases = [
         (

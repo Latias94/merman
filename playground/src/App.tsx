@@ -67,7 +67,7 @@ export default function App() {
     shareViewWarning,
     workspacePane,
     setWorkspacePane,
-    themeEditSession,
+    themePanelOpen,
   } = useAppStore(
     useShallow((state) => ({
       editorMode: state.editorMode,
@@ -75,7 +75,7 @@ export default function App() {
       shareViewWarning: state.shareViewWarning,
       setWorkspacePane: state.setWorkspacePane,
       workspacePane: state.workspacePane,
-      themeEditSession: state.themeEditSession,
+      themePanelOpen: state.themePanelOpen,
     }))
   );
   const isNarrowLayout = useNarrowLayout();
@@ -84,7 +84,7 @@ export default function App() {
     id: isWideLayout ? "merman-theme-horizontal" : "merman-theme-vertical",
     onlySaveAfterUserInteractions: true,
     storage: themeLayoutStorage,
-    panelIds: themeEditSession ? ["diagram-workspace", "theme-panel-container"] : ["diagram-workspace"],
+    panelIds: themePanelOpen ? ["diagram-workspace", "theme-panel-container"] : ["diagram-workspace"],
   });
 
   useEffect(() => {
@@ -180,7 +180,7 @@ export default function App() {
                   </ResizablePanelGroup>
                 </div>
               </ResizablePanel>
-              {themeEditSession && <>
+              {themePanelOpen && <>
                 <ResizableHandle withHandle aria-label={t("themePanel.resize")} />
                 <ResizablePanel id="theme-panel-container" defaultSize={isWideLayout ? "32%" : "45%"} minSize={isWideLayout ? 320 : "30%"} maxSize={isWideLayout ? "60%" : "75%"}>
                   <ThemePanel

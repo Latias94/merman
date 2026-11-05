@@ -1274,3 +1274,470 @@ fn radar_non_fill_title_rule_does_not_capture_the_text_fallback() {
     assert_eq!(evidence.applied_count(), 1);
     assert_eq!(evidence.theme_residual_count(), 1);
 }
+
+#[test]
+fn radar_legend_fill_paints_real_labels_and_leaves_swatches_unchanged() {
+    let theme = DiagramThemeCompiler::new()
+        .compile(
+            DiagramThemeSpec::new().with_styles(ThemeRuleSet::default().with_rule(ThemeRule::new(
+                ThemeTarget::Legend,
+                ThemeStylePatch::default().with_fill(CanvasPaint::solid("#123456").unwrap()),
+            ))),
+        )
+        .unwrap();
+    let baseline = DiagramThemeCompiler::new()
+        .compile(DiagramThemeSpec::new())
+        .unwrap();
+    for (source, swatch, visible_label) in [
+        ("radar-beta\naxis A,B,C\ncurve Current{1,2,3}\n", true, true),
+        // A swatch is not a consumer of Legend label paint.
+        (
+            "radar-beta\naxis A,B,C\ncurve Current[\"\"]{1,2,3}\n",
+            true,
+            false,
+        ),
+        (
+            "radar-beta\nshowLegend false\naxis A,B,C\ncurve Current{1,2,3}\n",
+            false,
+            false,
+        ),
+        ("radar-beta\naxis A,B,C\n", false, false),
+    ] {
+        let rendered = render_radar_with_theme_requirement(
+            source,
+            &theme,
+            MermaidEngine::new(),
+            ThemePortabilityRequirement::BestEffort,
+        )
+        .unwrap();
+        let unthemed = render_radar_with_theme_and_engine(source, &baseline, MermaidEngine::new());
+        assert_eq!(
+            radar_stylesheet(rendered.svg()),
+            radar_stylesheet(unthemed.svg())
+        );
+        if visible_label {
+            assert!(
+                rendered
+                    .svg()
+                    .contains(r##"class="radarLegendText" fill="#123456">Current</text>"##)
+            );
+        } else {
+            assert_eq!(rendered.svg(), unthemed.svg());
+        }
+        assert_eq!(
+            rendered.svg().contains(r#"class="radarLegendBox-0""#),
+            swatch
+        );
+        let completion = rendered.into_completion();
+        let evidence = merman_render::__private::family_evidence(completion.report());
+        assert_eq!(evidence.required_count(), 1);
+        assert_eq!(evidence.applied_count(), usize::from(visible_label));
+        assert_eq!(evidence.not_applicable_count(), usize::from(!visible_label));
+        assert_eq!(evidence.theme_residual_count(), 0);
+        assert!(
+            render_radar_with_theme_requirement(
+                source,
+                &theme,
+                MermaidEngine::new(),
+                ThemePortabilityRequirement::RequirePortable,
+            )
+            .is_ok()
+        );
+    }
+}
+
+#[test]
+fn radar_legend_selectors_and_other_paint_owners_keep_dedicated_residuals() {
+    use merman_render::diagram_theme::{OrdinalSelector, ThemeVariant};
+
+    let fill = ThemeStylePatch::default().with_fill(CanvasPaint::solid("#abcdef").unwrap());
+    let styles = ThemeRuleSet::default()
+        .with_rule(ThemeRule::new(ThemeTarget::Legend, fill.clone()))
+        .with_rule(
+            ThemeRule::new(ThemeTarget::Legend, fill.clone())
+                .with_ordinal(OrdinalSelector::Exact(1)),
+        )
+        .with_rule(
+            ThemeRule::new(ThemeTarget::Legend, fill.clone())
+                .with_ordinal(OrdinalSelector::Exact(2)),
+        )
+        .with_rule(ThemeRule::new(ThemeTarget::Legend, fill).with_variant(ThemeVariant::Warning))
+        .with_rule(ThemeRule::new(
+            ThemeTarget::Text,
+            ThemeStylePatch::default().with_fill(CanvasPaint::solid("#13579b").unwrap()),
+        ))
+        .with_ordinal_palette(
+            ThemeTarget::ChartSeries,
+            OrdinalPalette::new([ThemeColorValue::parse("#2468ac").unwrap()]).unwrap(),
+        );
+    let theme = DiagramThemeCompiler::new()
+        .compile(DiagramThemeSpec::new().with_styles(styles))
+        .unwrap();
+    let rendered = render_radar_with_theme_requirement(
+        "---\nconfig:\n  themeVariables:\n    cScale0: '#445566'\n---\nradar-beta\naxis A,B,C\ncurve Current{1,2,3}\n",
+        &theme, MermaidEngine::new(), ThemePortabilityRequirement::BestEffort,
+    ).unwrap();
+    assert!(radar_stylesheet(rendered.svg()).contains(".radarLegendBox-0{fill:#445566;"));
+    let completion = rendered.into_completion();
+    let evidence = merman_render::__private::family_evidence(completion.report());
+    assert_eq!(evidence.required_count(), 6);
+    assert_eq!(evidence.applied_count(), 1);
+    assert_eq!(evidence.not_applicable_count(), 4);
+    assert_eq!(evidence.theme_residual_count(), 1);
+}
+
+#[test]
+fn radar_presets_account_for_legend_consumers_without_incomplete_evidence() {
+    for descriptor in merman_render::diagram_theme::theme_preset_descriptors() {
+        let theme = DiagramThemeCompiler::new()
+            .compile_preset(descriptor.preset())
+            .unwrap();
+        let rendered = render_radar_with_theme_requirement(
+            RADAR_TEXT_SOURCE,
+            &theme,
+            MermaidEngine::new(),
+            ThemePortabilityRequirement::BestEffort,
+        )
+        .unwrap();
+        let completion = rendered.into_completion();
+        let evidence = merman_render::__private::family_evidence(completion.report());
+        assert_eq!(
+            evidence.accounted_count(),
+            evidence.required_count(),
+            "{}",
+            descriptor.id()
+        );
+        assert!(evidence.applied_count() > 0, "{}", descriptor.id());
+    }
+}
+
+#[test]
+fn radar_legend_static_paint_respects_text_source_and_clear_baseline() {
+    use merman_render::diagram_theme::{Specified, ThemeVariant};
+
+    for (fill, expected) in [
+        (
+            Specified::Value(CanvasPaint::solid("#123456").unwrap()),
+            "#123456",
+        ),
+        (Specified::Value(CanvasPaint::Transparent), "transparent"),
+        (Specified::Clear, "#333"),
+    ] {
+        for variant in [None, Some(ThemeVariant::Default)] {
+            let mut patch = ThemeStylePatch::default();
+            patch.paint.fill = fill.clone();
+            let mut legend = ThemeRule::new(ThemeTarget::Legend, patch);
+            if let Some(variant) = variant {
+                legend = legend.with_variant(variant);
+            }
+            let theme = DiagramThemeCompiler::new()
+                .compile(
+                    DiagramThemeSpec::new().with_styles(
+                        ThemeRuleSet::default()
+                            .with_rule(ThemeRule::new(
+                                ThemeTarget::Text,
+                                ThemeStylePatch::default()
+                                    .with_fill(CanvasPaint::solid("#abcdef").unwrap()),
+                            ))
+                            .with_rule(legend),
+                    ),
+                )
+                .unwrap();
+            for source_text in [false, true] {
+                let config = if source_text {
+                    serde_json::json!({"themeVariables":{"textColor":"#445566", "cScale0":"#778899"}})
+                } else {
+                    serde_json::json!({"themeVariables":{"cScale0":"#778899"}})
+                };
+                let rendered = render_radar_with_theme_and_engine(
+                    "radar-beta\naxis A,B,C\ncurve Current{1,2,3}\n",
+                    &theme,
+                    MermaidEngine::new().with_site_config(
+                        merman_core::presentation::SourcePresentationConfig::from_value(config),
+                    ),
+                );
+                let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+                let label = document
+                    .descendants()
+                    .find(|node| node.attribute("class") == Some("radarLegendText"))
+                    .unwrap();
+                assert_eq!(
+                    label.attribute("fill"),
+                    if source_text { None } else { Some(expected) }
+                );
+                assert!(
+                    radar_stylesheet(rendered.svg()).contains(".radarLegendBox-0{fill:#778899;")
+                );
+                let evidence =
+                    merman_render::__private::family_evidence(rendered.into_completion().report());
+                assert_eq!(evidence.required_count(), 2);
+                assert_eq!(evidence.accounted_count(), 2);
+                assert_eq!(evidence.applied_count(), if source_text { 0 } else { 2 });
+                assert_eq!(
+                    evidence.not_applicable_count(),
+                    if source_text { 2 } else { 0 }
+                );
+                assert_eq!(evidence.theme_residual_count(), 0);
+            }
+        }
+    }
+}
+
+#[test]
+fn radar_series_scalar_paints_and_palette_have_independent_property_winners() {
+    use merman_render::diagram_theme::{Specified, ThemeVariant};
+
+    let source = "radar-beta\naxis A,B,C\ncurve Current{1,2,3}\n";
+    let baseline = DiagramThemeCompiler::new()
+        .compile(DiagramThemeSpec::new())
+        .unwrap();
+    let baseline_svg = render_radar_with_theme_and_engine(source, &baseline, MermaidEngine::new());
+    let baseline_color = radar_stylesheet(baseline_svg.svg())
+        .split_once(".radarCurve-0{color:")
+        .unwrap()
+        .1
+        .split(';')
+        .next()
+        .unwrap();
+    for stroke_property in [false, true] {
+        for (specified, expected) in [
+            (
+                Specified::Value(CanvasPaint::solid("#123456").unwrap()),
+                "#123456",
+            ),
+            (Specified::Value(CanvasPaint::Transparent), "transparent"),
+            (Specified::Clear, baseline_color),
+        ] {
+            let mut patch = ThemeStylePatch::default();
+            if stroke_property {
+                patch.stroke.paint = specified;
+            } else {
+                patch.paint.fill = specified;
+            }
+            let theme = DiagramThemeCompiler::new()
+                .compile(
+                    DiagramThemeSpec::new().with_styles(
+                        ThemeRuleSet::default()
+                            .with_rule(
+                                ThemeRule::new(ThemeTarget::ChartSeries, patch)
+                                    .with_variant(ThemeVariant::Default),
+                            )
+                            .with_ordinal_palette(
+                                ThemeTarget::ChartSeries,
+                                OrdinalPalette::new([ThemeColorValue::parse("#2468ac").unwrap()])
+                                    .unwrap(),
+                            ),
+                    ),
+                )
+                .unwrap();
+            for source_owner in [false, true] {
+                let engine = if source_owner {
+                    MermaidEngine::new().with_site_config(
+                        merman_core::presentation::SourcePresentationConfig::from_value(
+                            serde_json::json!({"themeVariables":{"cScale0":"#445566"}}),
+                        ),
+                    )
+                } else {
+                    MermaidEngine::new()
+                };
+                let rendered = render_radar_with_theme_and_engine(source, &theme, engine);
+                let css = radar_stylesheet(rendered.svg());
+                let curve = css
+                    .split_once(".radarCurve-0{")
+                    .unwrap()
+                    .1
+                    .split('}')
+                    .next()
+                    .unwrap();
+                let (fill, stroke) = if source_owner {
+                    ("#445566", "#445566")
+                } else if stroke_property {
+                    ("#2468ac", expected)
+                } else {
+                    (expected, "#2468ac")
+                };
+                assert!(
+                    curve
+                        .split(';')
+                        .any(|property| property == format!("fill:{fill}")),
+                    "{curve}"
+                );
+                assert!(
+                    curve
+                        .split(';')
+                        .any(|property| property == format!("stroke:{stroke}")),
+                    "{curve}"
+                );
+                assert!(css.contains(&format!(".radarLegendBox-0{{fill:{fill};")));
+                let evidence =
+                    merman_render::__private::family_evidence(rendered.into_completion().report());
+                assert_eq!(evidence.required_count(), 2);
+                assert_eq!(evidence.accounted_count(), 2);
+                assert_eq!(evidence.applied_count(), if source_owner { 0 } else { 2 });
+                assert_eq!(
+                    evidence.not_applicable_count(),
+                    if source_owner { 2 } else { 0 }
+                );
+                assert_eq!(evidence.theme_residual_count(), 0);
+            }
+        }
+    }
+}
+
+#[test]
+fn radar_series_scalar_paint_is_not_limited_to_twelve_palette_slots() {
+    let theme = DiagramThemeCompiler::new()
+        .compile(
+            DiagramThemeSpec::new().with_styles(
+                ThemeRuleSet::default().with_rule(ThemeRule::new(
+                    ThemeTarget::ChartSeries,
+                    ThemeStylePatch::default()
+                        .with_fill(CanvasPaint::solid("#123456").unwrap())
+                        .with_stroke(CanvasPaint::solid("#abcdef").unwrap()),
+                )),
+            ),
+        )
+        .unwrap();
+    let mut source = "radar-beta\naxis A,B,C\n".to_owned();
+    for index in 0..13 {
+        source.push_str(&format!("curve Curve{index}{{1,2,3}}\n"));
+    }
+    let rendered = render_radar_with_theme_and_engine(&source, &theme, MermaidEngine::new());
+    assert!(
+        radar_stylesheet(rendered.svg()).contains(".radarCurve-12{fill:#123456;stroke:#abcdef;}")
+    );
+    assert!(
+        radar_stylesheet(rendered.svg())
+            .contains(".radarLegendBox-12{fill:#123456;stroke:#abcdef;}")
+    );
+    let evidence = merman_render::__private::family_evidence(rendered.into_completion().report());
+    assert_eq!(evidence.required_count(), 1);
+    assert_eq!(evidence.applied_count(), 1);
+    assert_eq!(evidence.theme_residual_count(), 0);
+}
+
+#[test]
+fn radar_series_and_legend_unsupported_siblings_retain_residuals() {
+    for target in [ThemeTarget::ChartSeries, ThemeTarget::Legend] {
+        let theme = DiagramThemeCompiler::new()
+            .compile(
+                DiagramThemeSpec::new().with_styles(
+                    ThemeRuleSet::default().with_rule(ThemeRule::new(
+                        target,
+                        ThemeStylePatch::default()
+                            .with_fill(CanvasPaint::solid("#123456").unwrap())
+                            .with_stroke_width(7.0)
+                            .unwrap(),
+                    )),
+                ),
+            )
+            .unwrap();
+        for (source, visible) in [
+            ("radar-beta\naxis A,B,C\ncurve Current{1,2,3}\n", true),
+            ("radar-beta\naxis A,B,C\n", false),
+        ] {
+            let rendered = render_radar_with_theme_requirement(
+                source,
+                &theme,
+                MermaidEngine::new(),
+                ThemePortabilityRequirement::BestEffort,
+            )
+            .unwrap();
+            let evidence =
+                merman_render::__private::family_evidence(rendered.into_completion().report());
+            assert_eq!(evidence.required_count(), 1);
+            assert_eq!(evidence.accounted_count(), 1);
+            assert_eq!(evidence.theme_residual_count(), usize::from(visible));
+            assert_eq!(evidence.not_applicable_count(), usize::from(!visible));
+            assert_eq!(
+                render_radar_with_theme_requirement(
+                    source,
+                    &theme,
+                    MermaidEngine::new(),
+                    ThemePortabilityRequirement::RequirePortable
+                )
+                .is_ok(),
+                !visible
+            );
+        }
+    }
+}
+
+#[test]
+fn radar_unsupported_palettes_and_effects_are_accounted_on_real_domains() {
+    use merman_render::diagram_theme::{
+        DiagramEffectSet, EffectBinding, EffectGraph, EffectInput, EffectPrimitive,
+    };
+    for target in [ThemeTarget::Legend, ThemeTarget::ChartSeries] {
+        let effects = DiagramEffectSet::default()
+            .with_graph(
+                EffectGraph::new(
+                    "blur",
+                    [EffectPrimitive::GaussianBlur {
+                        input: EffectInput::SourceGraphic,
+                        std_deviation: 1.0,
+                    }],
+                )
+                .unwrap(),
+            )
+            .unwrap()
+            .with_binding(EffectBinding::new(target, "blur").unwrap())
+            .unwrap();
+        let mut spec = DiagramThemeSpec::new().with_effects(effects);
+        let required = if target == ThemeTarget::Legend {
+            spec = spec.with_styles(ThemeRuleSet::default().with_ordinal_palette(
+                target,
+                OrdinalPalette::new([ThemeColorValue::parse("#123456").unwrap()]).unwrap(),
+            ));
+            2
+        } else {
+            1
+        };
+        let theme = DiagramThemeCompiler::new().compile(spec).unwrap();
+        for (source, visible) in [
+            ("radar-beta\naxis A,B,C\ncurve Current{1,2,3}\n", true),
+            ("radar-beta\naxis A,B,C\n", false),
+        ] {
+            let rendered = render_radar_with_theme_requirement(
+                source,
+                &theme,
+                MermaidEngine::new(),
+                ThemePortabilityRequirement::BestEffort,
+            )
+            .unwrap();
+            let evidence =
+                merman_render::__private::family_evidence(rendered.into_completion().report());
+            assert_eq!(evidence.required_count(), required);
+            assert_eq!(evidence.accounted_count(), required);
+            assert_eq!(evidence.applied_count(), 0);
+            assert_eq!(
+                evidence.theme_residual_count(),
+                if visible { required } else { 0 }
+            );
+            assert_eq!(
+                evidence.not_applicable_count(),
+                if visible { 0 } else { required }
+            );
+        }
+    }
+}
+
+#[test]
+fn radar_empty_theme_preserves_unthemed_svg_bytes() {
+    let source = "radar-beta\naxis A,B,C\ncurve Current{1,2,3}\n";
+    let theme = DiagramThemeCompiler::new()
+        .compile(DiagramThemeSpec::new())
+        .unwrap();
+    let parsed = MermaidEngine::new()
+        .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
+        .unwrap()
+        .unwrap()
+        .into_presentation();
+    let session = RenderEnvironment::deterministic().begin_session().unwrap();
+    let plain = family::prepare(&parsed, &LayoutOptions::default(), session)
+        .unwrap()
+        .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+        .unwrap();
+    let themed = render_radar_with_theme_and_engine(source, &theme, MermaidEngine::new());
+    assert_eq!(plain.svg(), themed.svg());
+}

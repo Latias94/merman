@@ -61,6 +61,64 @@
           "end_label_left": null,
           "end_label_right": null,
           "end_marker": null,
+          "from": "taskC",
+          "from_cluster": null,
+          "id": "L_taskC_decision_0",
+          "label": {
+            "height": 21.0,
+            "width": 31.78,
+            "x": 467.06,
+            "y": 101.5
+          },
+          "points": [
+            {
+              "x": 947.12,
+              "y": 109.185
+            },
+            {
+              "x": 917.12,
+              "y": 109.185
+            },
+            {
+              "x": 917.12,
+              "y": 117.0
+            },
+            {
+              "x": 525.12,
+              "y": 117.0
+            },
+            {
+              "x": 505.12,
+              "y": 117.0
+            },
+            {
+              "x": 505.12,
+              "y": 102.0
+            },
+            {
+              "x": 429.0,
+              "y": 102.0
+            },
+            {
+              "x": 429.0,
+              "y": 114.042
+            },
+            {
+              "x": 409.0,
+              "y": 114.042
+            }
+          ],
+          "start_label_left": null,
+          "start_label_right": null,
+          "start_marker": null,
+          "stroke_dasharray": null,
+          "to": "decision",
+          "to_cluster": null
+        },
+        {
+          "end_label_left": null,
+          "end_label_right": null,
+          "end_marker": null,
           "from": "decision",
           "from_cluster": null,
           "id": "L_decision_Work_0",
@@ -68,7 +126,7 @@
             "height": 21.0,
             "width": 36.12,
             "x": 467.06,
-            "y": 143.25
+            "y": 143.5
           },
           "points": [
             {
@@ -81,11 +139,11 @@
             },
             {
               "x": 429.0,
-              "y": 143.75
+              "y": 144.0
             },
             {
               "x": 505.12,
-              "y": 143.75
+              "y": 144.0
             },
             {
               "x": 505.12,
@@ -139,64 +197,6 @@
           "start_marker": null,
           "stroke_dasharray": null,
           "to": "output",
-          "to_cluster": null
-        },
-        {
-          "end_label_left": null,
-          "end_label_right": null,
-          "end_marker": null,
-          "from": "taskC",
-          "from_cluster": null,
-          "id": "L_taskC_decision_0",
-          "label": {
-            "height": 21.0,
-            "width": 31.78,
-            "x": 467.06,
-            "y": 102.25
-          },
-          "points": [
-            {
-              "x": 947.12,
-              "y": 109.185
-            },
-            {
-              "x": 917.12,
-              "y": 109.185
-            },
-            {
-              "x": 917.12,
-              "y": 117.0
-            },
-            {
-              "x": 525.12,
-              "y": 117.0
-            },
-            {
-              "x": 505.12,
-              "y": 117.0
-            },
-            {
-              "x": 505.12,
-              "y": 102.25
-            },
-            {
-              "x": 429.0,
-              "y": 102.25
-            },
-            {
-              "x": 429.0,
-              "y": 114.042
-            },
-            {
-              "x": 409.0,
-              "y": 114.042
-            }
-          ],
-          "start_label_left": null,
-          "start_label_right": null,
-          "start_marker": null,
-          "stroke_dasharray": null,
-          "to": "decision",
           "to_cluster": null
         },
         {

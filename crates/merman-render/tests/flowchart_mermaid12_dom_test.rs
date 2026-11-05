@@ -39,6 +39,12 @@ fn flowchart_look_selects_complete_colored_marker_definitions() {
                     .strip_suffix(')')
                     .unwrap();
                 assert_eq!(id.contains("-margin"), look == "neo", "{id}");
+                let color_suffix = if look == "handDrawn" {
+                    "_stroke__123456"
+                } else {
+                    "__123456"
+                };
+                assert!(id.ends_with(color_suffix), "{id}");
                 let marker = document
                     .descendants()
                     .find(|node| node.has_tag_name("marker") && node.attribute("id") == Some(id))
@@ -49,13 +55,13 @@ fn flowchart_look_selects_complete_colored_marker_definitions() {
                         || node.has_tag_name("line")
                 }) {
                     let color = if look == "handDrawn" {
-                        "stroke:#123456"
+                        None
                     } else {
-                        "#123456"
+                        Some("#123456")
                     };
-                    assert_eq!(shape.attribute("stroke"), Some(color));
+                    assert_eq!(shape.attribute("stroke"), color);
                     if id.contains("-point") {
-                        assert_eq!(shape.attribute("fill"), Some(color));
+                        assert_eq!(shape.attribute("fill"), color);
                     }
                 }
                 references += 1;

@@ -1,5 +1,7 @@
 use super::common::*;
 use crate::Result;
+use crate::swimlane::config::ROUTE_TOUCH_TOLERANCE;
+use crate::swimlane::direction::geometry::routes_touch_at_bend;
 use crate::swimlane::direction::{LayoutWorkBudget, unordered_pair_count};
 use indexmap::{IndexMap, IndexSet};
 
@@ -289,10 +291,14 @@ fn path_has_segment_conflict(
     work_budget.charge(edges.len().saturating_sub(1))?;
     Ok((0..edges.len()).any(|other_index| {
         other_index != edge_index
-            && shared_track_conflicts(
+            && (shared_track_conflicts(
                 &candidate_segments,
                 &segments_for(&points_for(edges, other_index, replacements)),
-            )
+            ) || routes_touch_at_bend(
+                path,
+                &points_for(edges, other_index, replacements),
+                ROUTE_TOUCH_TOLERANCE,
+            ))
     }))
 }
 
@@ -596,22 +602,24 @@ fn add_vertical_departure_outer_track_candidates(
             external_y_tracks.clone()
         };
         for &track in &external_x_tracks {
-            push_orthogonal_candidate(
-                candidates,
-                vec![
-                    first.clone(),
-                    departure.clone(),
-                    LayoutPoint {
-                        x: track,
-                        y: departure.y,
-                    },
-                    LayoutPoint {
-                        x: track,
-                        y: destination.y,
-                    },
-                    destination.clone(),
-                ],
-            );
+            if side_is_horizontal(side) {
+                push_orthogonal_candidate(
+                    candidates,
+                    vec![
+                        first.clone(),
+                        departure.clone(),
+                        LayoutPoint {
+                            x: track,
+                            y: departure.y,
+                        },
+                        LayoutPoint {
+                            x: track,
+                            y: destination.y,
+                        },
+                        destination.clone(),
+                    ],
+                );
+            }
             for &target_track in &target_y_tracks {
                 push_orthogonal_candidate(
                     candidates,
@@ -661,22 +669,24 @@ fn add_horizontal_departure_outer_track_candidates(
             external_x_tracks.clone()
         };
         for &track in &external_y_tracks {
-            push_orthogonal_candidate(
-                candidates,
-                vec![
-                    first.clone(),
-                    departure.clone(),
-                    LayoutPoint {
-                        x: departure.x,
-                        y: track,
-                    },
-                    LayoutPoint {
-                        x: destination.x,
-                        y: track,
-                    },
-                    destination.clone(),
-                ],
-            );
+            if !side_is_horizontal(side) {
+                push_orthogonal_candidate(
+                    candidates,
+                    vec![
+                        first.clone(),
+                        departure.clone(),
+                        LayoutPoint {
+                            x: departure.x,
+                            y: track,
+                        },
+                        LayoutPoint {
+                            x: destination.x,
+                            y: track,
+                        },
+                        destination.clone(),
+                    ],
+                );
+            }
             for &target_track in &target_x_tracks {
                 push_orthogonal_candidate(
                     candidates,
@@ -787,6 +797,7 @@ fn current_segments_by_edge(edges: &[WorkingEdge]) -> IndexMap<usize, Vec<Orthog
 fn shared_track_conflicts_for(
     edges: &[WorkingEdge],
     edge_index: usize,
+    candidate_path: &[LayoutPoint],
     candidate_segments: &[OrthogonalSegment],
     base_segments: &IndexMap<usize, Vec<OrthogonalSegment>>,
     work_budget: &mut LayoutWorkBudget,
@@ -804,7 +815,9 @@ fn shared_track_conflicts_for(
             fallback = segments_for(&dedupe_consecutive_points(&other_edge.points, EPSILON));
             &fallback
         };
-        if shared_track_conflicts(candidate_segments, other_segments) {
+        if shared_track_conflicts(candidate_segments, other_segments)
+            || routes_touch_at_bend(candidate_path, &other_edge.points, ROUTE_TOUCH_TOLERANCE)
+        {
             conflicts.insert(other_index);
         }
     }
@@ -885,6 +898,7 @@ fn pair_candidates_for(
             shared_track_conflicts: shared_track_conflicts_for(
                 edges,
                 edge_index,
+                &candidate.path,
                 &candidate.segments,
                 search.base_segments,
                 work_budget,
@@ -947,6 +961,7 @@ fn conflicts_only_with(candidate: &PairCandidate, edge_index: usize) -> bool {
 
 fn candidates_share_track(first: &PairCandidate, second: &PairCandidate) -> bool {
     shared_track_conflicts(&first.segments, &second.segments)
+        || routes_touch_at_bend(&first.path, &second.path, ROUTE_TOUCH_TOLERANCE)
 }
 
 fn pair_candidates_are_compatible(

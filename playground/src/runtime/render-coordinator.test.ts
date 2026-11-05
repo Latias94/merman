@@ -25,6 +25,7 @@ import {
 } from "./render-coordinator.ts";
 import {
   selectCurrentDiagramType,
+  selectVisibleCanvasTone,
   selectVisibleMermanRenderMetadata,
 } from "./use-render-coordinator.ts";
 import type {
@@ -110,6 +111,93 @@ test("latest request publishes Merman and Mermaid as one coherent batch", async 
   assert.equal(state.merman.metadata?.execution_label, "second");
 });
 
+test("partial batches use the successful Mermaid palette rather than the selected input theme", async (t) => {
+  for (const [materializedTheme, tone] of [["dark", "dark"], ["neo-dark", "dark"], ["default", "light"], [null, "light"]] as const) {
+    const compare = fakeCompare([Promise.resolve(mermaidSuccess("partial", materializedTheme))]);
+    const coordinator = createRenderCoordinator({ compare, debounceMs: 0 });
+    t.after(() => coordinator.dispose());
+    coordinator.setFeatures({ asciiEnabled: false, compareEnabled: true, diagnosticsEnabled: false });
+    coordinator.setInput(input("flowchart LR\nA --> B", rawFailureFacade("unknown theme preset `future-preset`"), {
+      diagramTheme: "dark", themePresetId: "future-preset", mermaidConfig: "{}",
+    }));
+    await waitFor(() => coordinator.store.getState().status === "partial");
+    const state = coordinator.store.getState();
+    assert.equal(state.status, "partial");
+    if (state.status !== "partial") continue;
+    assert.equal(state.merman.status, "failure");
+    assert.equal(state.mermaid.status, "success");
+    assert.equal(selectVisibleCanvasTone(state), tone);
+    assert.equal(Object.isFrozen(state.mermaid), true);
+
+    coordinator.markPresented(state.snapshot.publicationId, "mermaid", 42);
+    assert.equal(selectVisibleCanvasTone(coordinator.store.getState()), tone);
+    coordinator.setFeatures({ asciiEnabled: true, compareEnabled: true, diagnosticsEnabled: false });
+    assert.equal(compare.calls.length, 1);
+    assert.equal(selectVisibleCanvasTone(coordinator.store.getState()), tone);
+  }
+});
+
+test("successful Merman evidence remains authoritative when Mermaid reports a different palette", async (t) => {
+  const compare = fakeCompare([Promise.resolve(mermaidSuccess("different-palette", "dark"))]);
+  const coordinator = createRenderCoordinator({ compare, debounceMs: 0 });
+  t.after(() => coordinator.dispose());
+  coordinator.setFeatures({ asciiEnabled: false, compareEnabled: true, diagnosticsEnabled: false });
+  const baseFacade = facade();
+  const metadata = renderMetadata("different-palette");
+  metadata.theme_execution_evidence = {
+    ...metadata.theme_execution_evidence,
+    version: 2,
+    materialized_theme: "forest",
+  };
+  coordinator.setInput(input("different-palette", {
+    ...baseFacade,
+    render(operation) {
+      const result = baseFacade.render(operation);
+      assert.equal(result.status, "success");
+      return { ...result, metadata };
+    },
+  }));
+  await waitFor(() => coordinator.store.getState().status === "success");
+  assert.equal(selectVisibleCanvasTone(coordinator.store.getState()), "light");
+});
+
+test("rapid switches retain the visible partial palette and discard stale Mermaid theme evidence", async (t) => {
+  t.mock.timers.enable({ apis: ["Date", "setTimeout"] });
+  const stale = deferred<MermaidRealmRenderResult>();
+  const latest = deferred<MermaidRealmRenderResult>();
+  const compare = fakeCompare([Promise.resolve(mermaidSuccess("visible", "dark")), stale.promise, latest.promise]);
+  const coordinator = createRenderCoordinator({ compare, now: Date.now });
+  t.after(() => coordinator.dispose());
+  coordinator.setFeatures({ asciiEnabled: false, compareEnabled: true, diagnosticsEnabled: false });
+  const failed = rawFailureFacade("unknown theme preset `future-preset`");
+  coordinator.setInput(input("visible", failed));
+  await advanceClock(t, 300);
+  assert.equal(coordinator.store.getState().status, "partial");
+  assert.equal(selectVisibleCanvasTone(coordinator.store.getState()), "dark");
+
+  coordinator.setInput(input("superseded", failed));
+  await advanceClock(t, 300);
+  coordinator.setInput(input("latest", failed));
+  stale.resolve(mermaidSuccess("superseded", "default"));
+  await advanceClock(t, 299);
+  assert.equal(coordinator.store.getState().status, "updating");
+  assert.equal(selectVisibleCanvasTone(coordinator.store.getState()), "dark");
+  await advanceClock(t, 1);
+  assert.equal(compare.calls.length, 3);
+  latest.resolve(mermaidSuccess("latest", "forest"));
+  await advanceClock(t, 0);
+  const state = coordinator.store.getState();
+  assert.equal(state.status, "partial");
+  if (state.status !== "partial") return;
+  assert.equal(state.snapshot.operation.source, "latest");
+  assert.equal(selectVisibleCanvasTone(state), "light");
+
+  coordinator.setInput(input("failed", failed));
+  await advanceClock(t, 300);
+  assert.equal(coordinator.store.getState().status, "failed");
+  assert.equal(selectVisibleCanvasTone(coordinator.store.getState()), "light");
+});
+
 test("publishes a frozen metadata snapshot with the exact admitted SVG", async () => {
   const metadata = renderMetadata("current");
   const artifact = projectNavigableInlineSvg(
@@ -157,6 +245,7 @@ test("publishes a frozen metadata snapshot with the exact admitted SVG", async (
 test("preserves unavailable and unknown execution evidence without certifying it", async () => {
   const unknownEvidence: ThemeExecutionEvidence = {
     version: 99,
+    materialized_theme: "dark",
     future_outcome: { status: "unverified", reasons: ["future-rule"] },
   };
   for (const metadata of [null, renderMetadata("future", unknownEvidence)]) {
@@ -177,6 +266,7 @@ test("preserves unavailable and unknown execution evidence without certifying it
     assert.equal(state.status, "success");
     if (state.status !== "success") continue;
     assert.deepEqual(state.merman.metadata, metadata);
+    assert.equal(selectVisibleCanvasTone(state), "light");
     if (state.merman.metadata) {
       const evidence = state.merman.metadata.theme_execution_evidence;
       assert.deepEqual(evidence, unknownEvidence);
@@ -537,7 +627,7 @@ test("does not inspect hidden workspace source until rendering resumes", async (
   assert.ok(sourceReads > 0);
 });
 
-test("passes one frozen operation to every Merman projection", async () => {
+test("passes one frozen base-theme preview to every projection while preserving an unknown preset", async () => {
   const operations: FrozenRenderOperation[] = [];
   const capture = (input: ConfiguredMermanOperationInput) => {
     operations.push(input as FrozenRenderOperation);
@@ -597,11 +687,62 @@ test("passes one frozen operation to every Merman projection", async () => {
   assert.ok(
     operations.every((operation) => operation === state.snapshot.operation),
   );
+  assert.equal(state.snapshot.operation.themePresetId, "future-theme");
+  assert.equal(state.snapshot.operation.unavailableThemePresetId, "future-theme");
+  assert.equal(state.snapshot.operation.bindingOptions.theme, undefined);
   assert.equal(Object.isFrozen(state), true);
   assert.equal(Object.isFrozen(state.detection), true);
   assert.equal(Object.isFrozen(state.diagnostics), true);
   assert.equal(Object.isFrozen(state.merman), true);
   assert.equal(Reflect.set(state, "publishedAt", 99), false);
+});
+
+test("unavailable preset previews render once with the base theme without hiding other failures", async (t) => {
+  for (const failSource of [false, true]) {
+    const rendered: ConfiguredMermanOperationInput[] = [];
+    const base = facade();
+    const domain: MermanDomainFacade = {
+      ...base,
+      render(operation) {
+        rendered.push(operation);
+        if (operation.bindingOptions.theme || failSource) {
+          return {
+            artifact: null, metadata: null, error: { summary: "Invalid source or theme", detail: null },
+            renderTime: 0, stage: "render", status: "failure",
+          };
+        }
+        return base.render(operation);
+      },
+    };
+    const coordinator = createRenderCoordinator({ compare: fakeCompare([]), debounceMs: 0 });
+    t.after(() => coordinator.dispose());
+    coordinator.setInput(input("source", domain, { themePresetId: "future-preset" }));
+    await waitFor(() => coordinator.store.getState().status === (failSource ? "failed" : "success"));
+    assert.equal(rendered.length, 1);
+    assert.equal(rendered[0].bindingOptions.theme, undefined);
+  }
+});
+
+test("a failed preview catalog query retains the strict theme request and its error", async (t) => {
+  const rendered: ConfiguredMermanOperationInput[] = [];
+  const domain: MermanDomainFacade = {
+    ...facade(),
+    themeCatalog() { throw new Error("Catalog unavailable"); },
+    render(operation) {
+      rendered.push(operation);
+      return {
+        artifact: null, metadata: null, error: { summary: "Unknown preset", detail: null },
+        renderTime: 0, stage: "render", status: "failure",
+      };
+    },
+  };
+  const coordinator = createRenderCoordinator({ compare: fakeCompare([]), debounceMs: 0 });
+  t.after(() => coordinator.dispose());
+  coordinator.setInput(input("source", domain, { themePresetId: "future-preset" }));
+  await waitFor(() => coordinator.store.getState().status === "failed");
+  assert.equal(rendered.length, 1);
+  assert.deepEqual(rendered[0].bindingOptions.theme, { preset: "future-preset" });
+  assert.equal((rendered[0] as FrozenRenderOperation).unavailableThemePresetId, null);
 });
 
 test("external pane geometry cannot change operation identity or enqueue another render", async () => {
@@ -1660,11 +1801,13 @@ function fakeCompare(
 
 function mermaidSuccess(
   label: string,
+  materializedTheme: string | null = "default",
 ): Extract<MermaidRealmRenderResult, { status: "success" }> {
   const svg = `<svg xmlns="http://www.w3.org/2000/svg"><text>${label}</text></svg>`;
   return {
     status: "success",
     artifact: projectNavigableInlineSvg(svg),
+    materializedTheme,
     prepareTimeMs: 1,
     renderTimeMs: 2,
     presentationTimeMs: 3,

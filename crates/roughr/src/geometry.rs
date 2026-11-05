@@ -3,6 +3,7 @@ use euclid::{Angle, Translation2D, Trig, Vector2D};
 use num_traits::{Float, FromPrimitive};
 
 use crate::core::_c;
+use crate::work::{finite, UnlimitedWork, WorkControl, WorkError};
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct Line<F: Float + Trig> {
@@ -57,16 +58,32 @@ pub fn rotate_points<F: Float + Trig>(
     center: &Point2D<F>,
     degrees: F,
 ) -> Vec<Point2D<F>> {
+    rotate_points_with_control(points, center, degrees, &mut UnlimitedWork)
+        .expect("invalid point rotation")
+}
+
+pub(crate) fn rotate_points_with_control<F: Float + Trig>(
+    points: &[Point2D<F>],
+    center: &Point2D<F>,
+    degrees: F,
+    control: &mut impl WorkControl,
+) -> Result<Vec<Point2D<F>>, WorkError> {
+    finite(&[center.x, center.y, degrees, degrees.to_radians()])?;
     let angle = Angle::radians(degrees.to_radians());
     let translation = Translation2D::new(-center.x, -center.y);
     let transformation = translation
         .to_transform()
         .then_rotate(angle)
         .then_translate(Vector2D::new(center.x, center.y));
-    points
-        .iter()
-        .map(|&p| transformation.transform_point(p))
-        .collect::<Vec<Point2D<F>>>()
+    let mut output = Vec::new();
+    for point in points {
+        control.charge(1)?;
+        finite(&[point.x, point.y])?;
+        let point = transformation.transform_point(*point);
+        finite(&[point.x, point.y])?;
+        output.push(point);
+    }
+    Ok(output)
 }
 
 pub fn rotate_lines<F: Float + Trig>(
@@ -74,14 +91,31 @@ pub fn rotate_lines<F: Float + Trig>(
     center: &Point2D<F>,
     degrees: F,
 ) -> Vec<Line<F>> {
-    lines
-        .iter()
-        .cloned()
-        .map(|mut l| {
-            l.rotate(center, degrees);
-            l
-        })
-        .collect::<Vec<Line<F>>>()
+    rotate_lines_with_control(lines, center, degrees, &mut UnlimitedWork)
+        .expect("invalid line rotation")
+}
+
+pub(crate) fn rotate_lines_with_control<F: Float + Trig>(
+    lines: &[Line<F>],
+    center: &Point2D<F>,
+    degrees: F,
+    control: &mut impl WorkControl,
+) -> Result<Vec<Line<F>>, WorkError> {
+    finite(&[center.x, center.y, degrees, degrees.to_radians()])?;
+    let mut output = Vec::new();
+    for line in lines {
+        control.charge(1)?;
+        let mut line = line.clone();
+        line.rotate(center, degrees);
+        finite(&[
+            line.start_point.x,
+            line.start_point.y,
+            line.end_point.x,
+            line.end_point.y,
+        ])?;
+        output.push(line);
+    }
+    Ok(output)
 }
 
 /// Raises the order from a quadratic bezier to a cubic bezier curve.

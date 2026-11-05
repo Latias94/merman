@@ -220,6 +220,90 @@ test("separately loaded package instances have independent mount ID namespaces",
   expect(result.ids[0]).not.toBe(result.ids[1]); expect(result.ids.every(value => /^[a-z][a-zA-Z0-9_-]+$/.test(value))).toBe(true); expect(result.unique).toBe(true);
 });
 
+for (const look of ["classic", "neo", "handDrawn"] as const) {
+  test(`mounted Step edges preserve browser timing, isolation and reduced motion with ${look}`, async ({ page }) => {
+    const result = await page.evaluate(look => {
+      const fixture = window.mountFixture;
+      const source = `---
+config:
+  htmlLabels: false
+  look: ${look}
+  handDrawnSeed: 42
+  flowchart:
+    stepDuration: 0.25
+    stepNumbers: true
+---
+flowchart LR
+  A e1@--> B
+  A e2@--> C
+  B e3@-->|Later| D
+  e1@{ step: 1, animate: true }
+  e2@{ step: 1 }
+  e3@{ step: 5 }`;
+      const targets = [0, 1].map(() => {
+        const target = document.body.appendChild(document.createElement("div"));
+        target.style.width = "800px";
+        return target;
+      });
+      const mounts = targets.map(target => fixture.api.mountDiagram(target, source));
+      const statuses = mounts.map(mount => mount.status);
+      const sample = (root: SVGSVGElement, time: number) => {
+        root.pauseAnimations();
+        root.setCurrentTime(time);
+        return Array.from(root.querySelectorAll<SVGGraphicsElement>(".edge-step-dot"), dot => {
+          const matrix = dot.getCTM()!;
+          return { step: Number(dot.getAttribute("data-step")), visible: Math.hypot(matrix.a, matrix.b) > 1e-6, x: matrix.e, y: matrix.f };
+        });
+      };
+      const roots = targets.map(target => target.querySelector("svg")!);
+      const samples = roots.map(root => [0.125, 0.175, 0.625, 1.125, 1.375].map(time => sample(root, time)));
+      const identities = Array.from(document.querySelectorAll("[id]"), element => element.id);
+      const styles = roots.map(root => root.querySelectorAll(".edge-step-style").length);
+      const badges = roots.map(root => Array.from(root.querySelectorAll(".edge-step-badge"), badge => badge.textContent));
+      const secondBefore = sample(roots[1], 1.125);
+      const secondTimeBefore = roots[1].getCurrentTime();
+      mounts[0].update("flowchart LR\nA[Plain] --> B");
+      const plainHasNoStep = !targets[0].querySelector("animateMotion, .edge-step-dot, .edge-step-highlight, .edge-step-style");
+      mounts[0].update(source);
+      const reused = sample(targets[0].querySelector("svg")!, 0.125);
+      const secondTimeAfter = roots[1].getCurrentTime();
+      const secondAfter = sample(roots[1], secondTimeAfter);
+      const updatedIdentities = Array.from(document.querySelectorAll("[id]"), element => element.id);
+      const finalStatuses = mounts.map(mount => mount.status);
+      for (const mount of mounts) mount.destroy();
+      return { statuses, samples, styles, badges, plainHasNoStep, reused, secondBefore, secondAfter, secondTimeBefore, secondTimeAfter, finalStatuses, unique: new Set(identities).size === identities.length, uniqueAfterUpdate: new Set(updatedIdentities).size === updatedIdentities.length, prepared: fixture.prepared, freed: fixture.freed };
+    }, look);
+
+    expect(result.statuses).toEqual(["ready", "ready"]);
+    expect(result.finalStatuses).toEqual(["ready", "ready"]);
+    expect(result.styles).toEqual([1, 1]);
+    expect(result.badges).toEqual([["1", "1", "5"], ["1", "1", "5"]]);
+    expect(result.unique).toBe(true);
+    expect(result.uniqueAfterUpdate).toBe(true);
+    expect(result.secondTimeAfter).toBe(result.secondTimeBefore);
+    expect(result.secondAfter).toEqual(result.secondBefore);
+    expect(result.plainHasNoStep).toBe(true);
+    expect(result.freed).toBe(result.prepared);
+    for (const samples of result.samples) {
+      expect(samples.map(dots => dots.filter(dot => dot.visible).map(dot => dot.step))).toEqual([[1, 1], [1, 1], [], [5], [1, 1]]);
+      expect(Math.hypot(samples[1][0].x - samples[0][0].x, samples[1][0].y - samples[0][0].y)).toBeGreaterThan(1e-6);
+    }
+    expect(result.reused.filter(dot => dot.visible).map(dot => dot.step)).toEqual([1, 1]);
+
+    await page.emulateMedia({ reducedMotion: "reduce" });
+    await expect.poll(() => page.locator(".edge-step-dot, .edge-step-highlight").evaluateAll(elements =>
+      elements.length === 12 && elements.every(element => getComputedStyle(element).display === "none"),
+    )).toBe(true);
+    await expect.poll(() => page.locator(".edge-step-badge").evaluateAll(elements =>
+      elements.length === 6 && elements.every(element => getComputedStyle(element).display !== "none"),
+    )).toBe(true);
+    await page.emulateMedia({ reducedMotion: "no-preference" });
+    await expect.poll(() => page.locator(".edge-step-dot, .edge-step-highlight").evaluateAll(elements =>
+      elements.every(element => getComputedStyle(element).display !== "none"),
+    )).toBe(true);
+  });
+}
+
 
 test("explicit Document measurement creates every primitive in that Document", async ({ page }) => {
   const result = await page.evaluate(async () => {

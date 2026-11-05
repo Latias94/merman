@@ -51,7 +51,12 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_lined_wave_documen
 
     let (fill_d, stroke_d) =
         super::super::helpers::timed_node_roughjs(common.timing, details, || {
-            roughjs_paths_for_polygon(&points, common.stroke_width, common.hand_drawn_seed)
+            roughjs_paths_for_polygon(
+                &points,
+                common.stroke_width,
+                common.work_meter,
+                common.hand_drawn_seed,
+            )
         })
         .unwrap_or_else(|| (path_data.clone(), path_data));
     let _ = write!(

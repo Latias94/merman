@@ -4,6 +4,9 @@ use crate::config::{config_f64, config_string};
 use crate::text::TextStyle;
 use serde_json::Value;
 
+mod compiled;
+pub(crate) use compiled::{UsecaseThemePlan, UsecaseThemeReceipt, UsecaseThemeStyle};
+
 #[derive(Debug)]
 pub(crate) struct UsecaseCssBinding {
     pub(crate) generic_font: TextStyle,

@@ -81,7 +81,7 @@ Keep the presentation owner alive while borrowing `FamilyRenderArtifact<'_>`. `P
 
 An application that already owns typed data can use `PresentationDiagram::try_new` with `AuthoredPresentationMetadata`, a full typed model, `PresentationContext`, construction policy, and operation control. The checked frozen route is `try_from_frozen`. These constructors validate declared relationships and observe construction budgets and cancellation. They do not create a core parsed result, authenticate source history, or replace the output owner's admission checks.
 
-Use `PresentationContext` for irrecoverable family facts such as explicit empty output, Flowchart label/style order, and Class style precedence. Manual values default to their ordinary model projection. A nonempty Mindmap requires an explicit output identity; source producers capture it once and repeated outputs reuse it. Mermaid's internal Mindmap node identities form a single-parent tree; repeated authored names and label text remain valid.
+Use `PresentationContext` for irrecoverable family facts such as explicit empty output, Flowchart label/style order, and Class style precedence. Manual values default to their ordinary model projection. Current Mermaid 12.3 source builds construct Mindmap with `PresentationContext::None`; output identity belongs to explicit SVG render options and is absent from compatibility JSON. See the [12.3 migration](mermaid-12-3.md) for the removed development APIs. Mermaid's internal Mindmap node identities form a single-parent tree; repeated authored names and label text remain valid.
 
 Direct producers must also preserve the full model's structural representation. Output admission
 returns typed errors for invalid data, including these family requirements:
@@ -116,10 +116,7 @@ Enable `fixes` on the owning package or facade for that example. `FixGeneration:
 
 The full distributed CLI and editor/native SDK recipes retain fixes. CLI lint/check and LSP diagnostic publication omit replacement generation; the fix command and LSP code actions request it. Diagnostics-only CLI/Web/Typst profiles omit the capability. A host's broad dependency feature union does not grant fixes to an artifact that did not declare them; bindings retain the typed missing-capability response for unavailable operations. Existing capability identities remain stable, with `fixes` appended as bit 21.
 
-The fixed model-to-ASCII consumer's external dependency closure fell from 84 to 28 versions,
-with matching consumed outputs. Full source workflows retain their parser dependencies; removing
-source ingestion from a graph does not promise the same size or compilation benefit for every
-application. See the [measured results](../reviews/2026-10-30-model-source-boundaries-implementation.md#final-independent-consumer-measurements)
-for exact features, executable sizes and the separately scoped cold-compilation observations.
-
-See the [implementation record](../reviews/2026-10-30-model-source-boundaries-implementation.md) for actual validation scope, and the [architecture plan](../plans/2026-10-30-model-and-source-boundaries.md) for the remaining platform gates. Published `0.9.3` artifacts are unchanged.
+Full source workflows retain their parser dependencies. Removing source ingestion from a graph
+does not promise the same size or compilation benefit for every application. The
+[model/source boundary ADR](../adr/0099-model-and-source-boundaries.md) explains the package and
+dependency decisions. Published `0.9.3` artifacts are unchanged.

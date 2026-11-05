@@ -117,7 +117,3 @@ JSON projection traversals are iterative, and owning-model serde applies the 128
 boundary. State document views and legacy Block JSON can repeat descendants; output cost remains
 proportional to that requested representation. Flat canonical ownership does not promise that
 every parsing, layout, or output operation is linear in source length.
-
-See the [lifecycle evidence](../research/2026-10-10-deep-diagram-lifecycle.md) for isolated host-stack
-cases and the [implementation plan](../plans/2026-10-10-2342-refactor-deep-diagram-lifecycle-plan.md)
-for the contract and family scope.

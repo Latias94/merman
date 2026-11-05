@@ -115,25 +115,25 @@ jobs:
           for target in $targets; do
             case "$target" in
               parse_mermaid)
-                entry='{"target":"parse_mermaid","seed":"fuzz/seeds/mermaid","dictionary":"fuzz/dictionaries/mermaid.dict","max_len":262144}'
+                entry='{"target":"parse_mermaid","features":"parse","seed":"fuzz/seeds/mermaid","dictionary":"fuzz/dictionaries/mermaid.dict","max_len":262144}'
                 ;;
               render_mermaid)
-                entry='{"target":"render_mermaid","seed":"fuzz/seeds/mermaid","dictionary":"fuzz/dictionaries/mermaid.dict","max_len":32768}'
+                entry='{"target":"render_mermaid","features":"render","seed":"fuzz/seeds/mermaid","dictionary":"fuzz/dictionaries/mermaid.dict","max_len":32768}'
                 ;;
               svg_pipeline)
-                entry='{"target":"svg_pipeline","seed":"fuzz/seeds/svg","dictionary":"fuzz/dictionaries/svg.dict","max_len":262144}'
+                entry='{"target":"svg_pipeline","features":"svg","seed":"fuzz/seeds/svg","dictionary":"fuzz/dictionaries/svg.dict","max_len":262144}'
                 ;;
               ffi_api)
-                entry='{"target":"ffi_api","seed":"fuzz/seeds/ffi","dictionary":"fuzz/dictionaries/mermaid.dict","max_len":16384}'
+                entry='{"target":"ffi_api","features":"ffi","seed":"fuzz/seeds/ffi","dictionary":"fuzz/dictionaries/mermaid.dict","max_len":16384}'
                 ;;
               tree_sitter_mermaid_parse)
-                entry='{"target":"tree_sitter_mermaid_parse","seed":"distribution/tree-sitter-mermaid/fuzz/corpus/all-families","dictionary":"fuzz/dictionaries/mermaid.dict","max_len":262144}'
+                entry='{"target":"tree_sitter_mermaid_parse","features":"tree-sitter","seed":"distribution/tree-sitter-mermaid/fuzz/corpus/all-families","dictionary":"fuzz/dictionaries/mermaid.dict","max_len":262144}'
                 ;;
               tree_sitter_mermaid_edits)
-                entry='{"target":"tree_sitter_mermaid_edits","seed":"fuzz/seeds/tree-sitter-edits","dictionary":"fuzz/dictionaries/mermaid.dict","max_len":262144}'
+                entry='{"target":"tree_sitter_mermaid_edits","features":"tree-sitter","seed":"fuzz/seeds/tree-sitter-edits","dictionary":"fuzz/dictionaries/mermaid.dict","max_len":262144}'
                 ;;
               tree_sitter_mermaid_scanner)
-                entry='{"target":"tree_sitter_mermaid_scanner","seed":"fuzz/seeds/tree-sitter-scanner","dictionary":"fuzz/dictionaries/mermaid.dict","max_len":16384}'
+                entry='{"target":"tree_sitter_mermaid_scanner","features":"tree-sitter","seed":"fuzz/seeds/tree-sitter-scanner","dictionary":"fuzz/dictionaries/mermaid.dict","max_len":16384}'
                 ;;
               *)
                 echo "unsupported resolved matrix target" >&2
@@ -147,6 +147,28 @@ jobs:
 
           printf 'matrix=%s\n' "$matrix" >> "$GITHUB_OUTPUT"
           printf 'profile=%s\n' "$profile" >> "$GITHUB_OUTPUT"
+
+  fuzz-coverage:
+    name: Complete locked fuzz coverage
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Install coverage toolchain
+        run: rustup toolchain install "$FUZZ_NIGHTLY" --profile minimal
+
+      - uses: Swatinem/rust-cache@v2.9.2
+        with:
+          cache-targets: false
+          workspaces: fuzz -> fuzz/target
+
+      - name: Check all fuzz targets and shared test helpers
+        run: >-
+          cargo +"$FUZZ_NIGHTLY" check --manifest-path fuzz/Cargo.toml
+          --locked --no-default-features --all-features --all-targets
 
   libfuzzer:
     needs: resolve-fuzz-plan
@@ -180,12 +202,15 @@ jobs:
         run: cargo install cargo-fuzz --version "$CARGO_FUZZ_VERSION" --locked
 
       - name: Check fuzz workspace lockfile
-        run: cargo +"$FUZZ_NIGHTLY" check --manifest-path fuzz/Cargo.toml --locked
+        run: >-
+          cargo +"$FUZZ_NIGHTLY" check --manifest-path fuzz/Cargo.toml --locked
+          --no-default-features --features "${{ matrix.features }}" --bin "${{ matrix.target }}"
 
       - name: Build libFuzzer harness
         run: |
           cargo +"$FUZZ_NIGHTLY" fuzz build \
             --fuzz-dir fuzz \
+            --no-default-features --features "${{ matrix.features }}" \
             --sanitizer address \
             "${{ matrix.target }}"
 
@@ -221,6 +246,7 @@ jobs:
 
           cargo +"$FUZZ_NIGHTLY" fuzz run \
             --fuzz-dir fuzz \
+            --no-default-features --features "${{ matrix.features }}" \
             --sanitizer address \
             --jobs 1 \
             "$FUZZ_TARGET" \
@@ -266,6 +292,7 @@ jobs:
           set -o pipefail
           cargo +"$FUZZ_NIGHTLY" fuzz run \
             --fuzz-dir fuzz \
+            --no-default-features --features "${{ matrix.features }}" \
             --sanitizer address \
             --jobs 1 \
             "${{ matrix.target }}" \
@@ -357,14 +384,20 @@ jobs:
           commit = selected["commit"]
           if not re.fullmatch(r"[0-9a-f]{40}", commit):
               raise SystemExit("Invalid selected Mermaid commit")
+          path = selected["path"]
+          if (not isinstance(path, str)
+              or not re.fullmatch(r"repo-ref/[A-Za-z0-9._/-]+", path)
+              or any(part in ("", ".", "..") for part in path.split("/"))):
+              raise SystemExit("Invalid selected Mermaid path")
           with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as output:
               print(f"commit={commit}", file=output)
+              print(f"path={path}", file=output)
       - name: Checkout selected Mermaid parser source
         uses: actions/checkout@v7.0.1
         with:
           repository: mermaid-js/mermaid
           ref: ${{ steps.parser-source.outputs.commit }}
-          path: repo-ref/mermaid
+          path: ${{ steps.parser-source.outputs.path }}
           persist-credentials: false
           sparse-checkout: |
             packages/mermaid/src/Diagram.ts

@@ -147,6 +147,7 @@ pub struct RenderEvidence {
     session: merman_render::environment::RenderSessionReport,
     family_id: merman_model::family::DiagramFamilyId,
     theme_evidence: ThemeEvidenceSummary,
+    materialized_theme: Option<merman_model::config::MermaidThemeId>,
     theme_diagnostics: Box<[ThemeDiagnostic]>,
     required_capabilities: Box<[merman_render::RenderCapability]>,
     #[cfg(feature = "native-fonts")]
@@ -172,6 +173,7 @@ impl RenderEvidence {
         required_capabilities: Vec<merman_render::RenderCapability>,
     ) -> Self {
         let family_id = family.family_id();
+        let materialized_theme = family.materialized_theme();
         let (root, family_scope, family_evidence) = theme_evidence_scopes(&family);
         let source_residual_count = family_evidence.source_residual_count();
         let mermaid_compatibility_residual_count =
@@ -202,6 +204,7 @@ impl RenderEvidence {
             session,
             family_id,
             theme_evidence,
+            materialized_theme,
             theme_diagnostics,
             required_capabilities: required_capabilities.into_boxed_slice(),
             #[cfg(feature = "native-fonts")]
@@ -334,6 +337,11 @@ impl RenderEvidence {
 
     pub const fn theme_evidence(&self) -> ThemeEvidenceSummary {
         self.theme_evidence
+    }
+
+    /// Executed Mermaid palette from the same operation, not a source declaration or certificate.
+    pub const fn materialized_theme(&self) -> Option<merman_model::config::MermaidThemeId> {
+        self.materialized_theme
     }
 
     /// Returns the optional render capabilities selected during family preparation.

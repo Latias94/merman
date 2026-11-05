@@ -4,7 +4,7 @@ import {
   exportASCII,
 } from "../lib/export.ts";
 import { mermanRuntimeStore } from "./merman.ts";
-import { selectThemeDraftChanged, selectWorkspaceSnapshot, useAppStore } from "../store/index.ts";
+import { selectWorkspaceSnapshot, useAppStore } from "../store/index.ts";
 import { renderCoordinatorStore } from "./render-coordinator-browser.ts";
 import {
   createArtifactActionOwner,
@@ -12,8 +12,7 @@ import {
 } from "./artifact-actions.ts";
 
 export const executeArtifactAction = createArtifactActionOwner({
-  getAppliedWorkspace: () => selectWorkspaceSnapshot(useAppStore.getState()),
-  hasUnappliedThemeDraft: () => selectThemeDraftChanged(useAppStore.getState()),
+  getWorkspace: () => selectWorkspaceSnapshot(useAppStore.getState()),
   getRenderState: renderCoordinatorStore.getState,
   getRuntimeState: mermanRuntimeStore.getState,
   io: {
@@ -24,8 +23,7 @@ export const executeArtifactAction = createArtifactActionOwner({
 });
 
 export const exportTargetOwner = createExportTargetOwner({
-  getAppliedWorkspace: () => selectWorkspaceSnapshot(useAppStore.getState()),
-  hasUnappliedThemeDraft: () => selectThemeDraftChanged(useAppStore.getState()),
+  getWorkspace: () => selectWorkspaceSnapshot(useAppStore.getState()),
   getRenderState: renderCoordinatorStore.getState,
   getRuntimeState: mermanRuntimeStore.getState,
 });

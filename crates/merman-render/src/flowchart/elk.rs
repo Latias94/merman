@@ -1179,15 +1179,6 @@ fn build_flowchart_elk_graph_with_render_labels_and_work_control_inner(
     } else {
         &text_style
     };
-    let node_label_base_style = svg_label_sidecar
-        .map_or_else(
-            super::FlowchartLabelWeights::default,
-            FlowchartSvgLabelSidecarBuilder::label_weights,
-        )
-        .parent_style(
-            crate::diagram_theme::ThemeTarget::NodeLabel,
-            node_label_base_style,
-        );
     let cluster_label_base_style = if cluster_wrap_mode == WrapMode::HtmlLike {
         &html_label_text_style
     } else {
@@ -1253,14 +1244,14 @@ fn build_flowchart_elk_graph_with_render_labels_and_work_control_inner(
         cluster_title_wrapping_width: wrapping_width,
         cluster_wrap_mode,
         svg_label_sidecar,
-        node_padding,
+        title_padding: cluster_padding,
     };
     let node_measure_ctx = NodeMeasureContext {
         model: render_model,
         effective_config,
         measurer,
         math_renderer,
-        node_label_base_style: node_label_base_style.as_ref(),
+        node_label_base_style,
         wrapping_width,
         node_direction: diagram_direction,
         node_padding,
@@ -1373,7 +1364,7 @@ struct ElkMeasureContext<'a> {
     cluster_label_base_style: &'a TextStyle,
     cluster_title_wrapping_width: f64,
     cluster_wrap_mode: WrapMode,
-    node_padding: f64,
+    title_padding: f64,
     svg_label_sidecar: Option<&'a FlowchartSvgLabelSidecarBuilder>,
 }
 
@@ -1618,12 +1609,16 @@ fn subgraph_label(
     let base_style = if ctx.model.is_subgraph_collapsed(sg.id.as_str()) {
         ctx.svg_label_sidecar
             .map_or_else(
-                super::FlowchartLabelWeights::default,
-                FlowchartSvgLabelSidecarBuilder::label_weights,
+                super::FlowchartLabelTypography::default,
+                FlowchartSvgLabelSidecarBuilder::label_typography,
             )
-            .parent_style(
+            .source_parent_style(
                 crate::diagram_theme::ThemeTarget::NodeLabel,
                 ctx.cluster_label_base_style,
+                &ctx.model.class_defs,
+                classes,
+                styles,
+                false,
             )
     } else {
         std::borrow::Cow::Borrowed(ctx.cluster_label_base_style)
@@ -1678,9 +1673,23 @@ fn node_dimensions_and_label(
     ctx: NodeMeasureContext<'_>,
 ) -> (f64, f64, elk::Label) {
     let raw_label = ctx.model.node_label_for_render(node).unwrap_or(&node.id);
+    let wrapping_width =
+        super::bpmn::wrapping_width(node.layout_shape.as_deref(), ctx.wrapping_width);
     let label_type = node.label_type.as_deref().unwrap_or("text");
-    let node_text_style = flowchart_effective_text_style_for_node_classes_with_provenance(
+    let typography = ctx.svg_label_sidecar.map_or_else(
+        super::FlowchartLabelTypography::default,
+        FlowchartSvgLabelSidecarBuilder::label_typography,
+    );
+    let node_parent = typography.source_parent_style(
+        crate::diagram_theme::ThemeTarget::NodeLabel,
         ctx.node_label_base_style,
+        &ctx.model.class_defs,
+        &node.classes,
+        &node.styles,
+        true,
+    );
+    let node_text_style = flowchart_effective_text_style_for_node_classes_with_provenance(
+        node_parent.as_ref(),
         &ctx.model.class_defs,
         &node.classes,
         &node.styles,
@@ -1700,7 +1709,7 @@ fn node_dimensions_and_label(
             raw_label,
             label_type,
             style: node_text_style.as_ref(),
-            max_width_px: Some(ctx.wrapping_width),
+            max_width_px: Some(wrapping_width),
             wrap_mode: ctx.node_wrap_mode,
             config: ctx.effective_config,
             math_renderer: ctx.math_renderer,
@@ -1742,7 +1751,7 @@ fn node_dimensions_and_label(
         },
         metrics,
         has_label: !raw_label.is_empty(),
-        wrapping_width: ctx.wrapping_width,
+        wrapping_width,
         node_constraint: node.constraint.as_deref(),
         padding: ctx.node_padding,
         look_is_neo: crate::config::mermaid_config_diagram_look(ctx.effective_config).is_neo(),
@@ -1772,9 +1781,16 @@ fn edge_label(
         return Ok(None);
     }
 
+    let typography = ctx.svg_label_sidecar.map_or_else(
+        super::FlowchartLabelTypography::default,
+        FlowchartSvgLabelSidecarBuilder::label_typography,
+    );
+    let edge_parent =
+        ctx.edge_style_plan
+            .label_parent_style_for(key, ctx.edge_label_base_style, &typography)?;
     let edge_text_style = ctx
         .edge_style_plan
-        .edge_label_text_style_for(key, ctx.edge_label_base_style)?;
+        .edge_label_text_style_for(key, edge_parent.as_ref())?;
     let metrics = if label_type == "markdown" && ctx.edge_wrap_mode != WrapMode::HtmlLike {
         crate::text::measure_wrapped_markdown_with_inline_styles(
             ctx.measurer,
@@ -1793,7 +1809,7 @@ fn edge_label(
                 raw_label: label_text,
                 label_type,
                 // Mermaid wraps the temporary SVG text before applying `labelStyle`.
-                style: ctx.edge_label_base_style,
+                style: edge_parent.as_ref(),
                 max_width_px: Some(ctx.edge_label_wrapping_width),
                 wrap_mode: ctx.edge_wrap_mode,
                 config: ctx.effective_config,
@@ -1897,7 +1913,7 @@ fn subgraph_to_elk_node(
                 .and_then(|metadata| metadata.get("algorithm"))
                 .and_then(serde_json::Value::as_str)
                 .and_then(elk::Algorithm::from_container_name),
-            padding: ctx.node_padding,
+            padding: ctx.title_padding,
         },
         label_text: Some(
             ctx.model
@@ -1958,8 +1974,82 @@ mod tests {
                     .expect("measured graph");
             let group = graph.nodes.iter().find(|node| node.id == "G").unwrap();
             assert_eq!(group.container.algorithm, expected, "{requested}");
-            assert_eq!(group.container.padding, 15.0);
+            assert_eq!(group.container.padding, 8.0);
         }
+    }
+
+    #[test]
+    fn elk_wide_group_titles_keep_fixed_padding_while_leaf_padding_is_configurable() {
+        let measurer = crate::text::DeterministicTextMeasurer::default();
+        for explicit in [false, true] {
+            for direction in ["LR", "TD"] {
+                let mut model = model(vec![node("A", Some("A"), None)], Vec::new());
+                model.direction = Some(direction.to_owned());
+                let mut group = subgraph("G".into(), vec!["A".into()]);
+                group.title = "Wide unwrapped group title ".repeat(20);
+                if explicit {
+                    group.metadata = Some(json!({"algorithm": "elk.layered"}));
+                }
+                model.subgraphs.push(group);
+                let mut previous_leaf_size = None;
+                for padding in [15.0, 40.0] {
+                    let config = crate::test_support::presentation_config(json!({
+                        "htmlLabels": false,
+                        "flowchart": {"htmlLabels": false, "padding": padding}
+                    }));
+                    let graph =
+                        build_flowchart_elk_graph(&model, &config, &measurer, None).unwrap();
+                    let group = graph.nodes.iter().find(|node| node.id == "G").unwrap();
+                    let leaf = graph.nodes.iter().find(|node| node.id == "A").unwrap();
+                    assert_eq!(group.container.padding, 8.0);
+                    if let Some((width, height)) = previous_leaf_size {
+                        assert!(leaf.width > width && leaf.height > height);
+                    }
+                    previous_leaf_size = Some((leaf.width, leaf.height));
+                    let title = group.label.unwrap();
+                    assert!(title.width > leaf.width + 100.0);
+                    let output = elk::layout(&graph).unwrap();
+                    let frame = output.nodes.iter().find(|node| node.id == "G").unwrap();
+                    let source_derived_extra_width = if explicit { 16.0 } else { 10.0 };
+                    let title_extent = if explicit || direction == "LR" {
+                        frame.width
+                    } else {
+                        frame.height
+                    };
+                    assert!(
+                        (title_extent - title.width - source_derived_extra_width).abs() < 1e-7,
+                        "elkjs title floor/grid: explicit={explicit}, direction={direction}, padding={padding}, frame={frame:?}"
+                    );
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn elk_nested_subgraph_without_inherited_direction_uses_layered_default() {
+        let parsed = MermaidEngine::new()
+            .parse_diagram_for_render_model_sync(
+                "---\nconfig:\n  flowchart:\n    inheritDir: false\n---\nflowchart TB\nsubgraph outer\ndirection BT\nsubgraph inner\na --> b\nend\nend\n",
+                ParseOptions::default(),
+            )
+            .expect("parse")
+            .expect("diagram")
+            .into_presentation();
+        let graph = super::build_flowchart_elk_graph(
+            &parsed,
+            &crate::text::DeterministicTextMeasurer::default(),
+            None,
+        )
+        .expect("measured graph");
+        let outer = graph.nodes.iter().find(|node| node.id == "outer").unwrap();
+        let inner = graph.nodes.iter().find(|node| node.id == "inner").unwrap();
+        assert_eq!(outer.direction, Some(elk::Direction::Up));
+        assert_eq!(inner.direction, None);
+        let output = elk::layout(&graph).unwrap();
+        let source = output.nodes.iter().find(|node| node.id == "a").unwrap();
+        let target = output.nodes.iter().find(|node| node.id == "b").unwrap();
+        assert!(source.x < target.x);
+        assert!((source.y - target.y).abs() < 1e-7);
     }
 
     struct NonLatticeComputedLengthMeasurer;
@@ -2291,7 +2381,11 @@ C["$$x$$"] -->|"$$x$$"| D
         assert_eq!(graph.edges.len(), 3);
 
         let sidecar = builder.finish();
-        assert_eq!(sidecar.node_owner("Group", false), None);
+        // Group ids resolve to their prepared title, never the shadowed ordinary node label.
+        assert_eq!(
+            sidecar.node_owner("Group", false),
+            Some(FlowchartSvgLabelOwner::SubgraphTitle(0))
+        );
         assert_eq!(
             sidecar.node_owner("A", false),
             Some(FlowchartSvgLabelOwner::Node(1))
@@ -2471,6 +2565,7 @@ C["$$x$$"] -->|"$$x$$"| D
             style: Vec::new(),
             animate: None,
             animation: None,
+            step: None,
             length: 1,
         }
     }
@@ -2487,6 +2582,7 @@ C["$$x$$"] -->|"$$x$$"| D
             nodes,
             edges,
             subgraphs: Vec::new(),
+            dropped_subgraph_members: Vec::new(),
             subgraph_vertex_styles: Default::default(),
             tooltips: Default::default(),
             warning_facts: Vec::new(),

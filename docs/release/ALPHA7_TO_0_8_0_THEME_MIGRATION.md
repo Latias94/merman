@@ -32,7 +32,7 @@ exact `=0.8.0-alpha.7` requirements for all coupled workspace siblings, preventi
 itself from creating a mixed sibling graph. Pinning an alpha.6 facade cannot repair its already
 published manifest; consumers must keep a coherent alpha.6 lockfile or migrate the facade and
 all coupled siblings together to alpha.7. The compatibility checker retains the failing old
-facade result as known impact. See the [assessment](../knowledge/engineering/verification/2026-09-15-theme-release-line-preparation.md#bounded-compatibility-assessment-at-be2d12d20).
+facade result as known impact.
 This guide does not claim compatibility between mixed package generations.
 
 ## Rust analysis and editor migration

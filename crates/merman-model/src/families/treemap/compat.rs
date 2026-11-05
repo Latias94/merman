@@ -765,7 +765,6 @@ mod tests {
             config: &config,
             authored_config: &config,
             title: None,
-            diagram_id: None,
         };
         let control = OperationControl::new();
         let class_style_bytes = estimate_class_style_arrays(&model.classes, &control).unwrap();

@@ -151,7 +151,6 @@ impl SourcePresentationMetadata {
             config: self.effective_config.as_config(),
             authored_config: &self.config,
             title: self.title.as_deref(),
-            diagram_id: None,
         }
     }
 

@@ -31,6 +31,12 @@ pub struct FlowchartModel {
     pub edges: Vec<FlowEdge>,
     #[serde(default)]
     pub subgraphs: Vec<FlowSubgraph>,
+    #[serde(
+        default,
+        rename = "droppedSubGraphMembers",
+        skip_serializing_if = "Vec::is_empty"
+    )]
+    pub dropped_subgraph_members: Vec<FlowDroppedSubgraphMember>,
     /// Mermaid's effective CSS source for subgraph vertices that share an ID with a group.
     ///
     /// This is a parser-owned semantic fact rather than compatibility JSON. It is kept out of
@@ -174,6 +180,15 @@ struct FlowSubgraphVertexStyleSource {
 }
 
 impl FlowchartModel {
+    /// Returns the largest valid step, including timed gaps and concurrent equal steps.
+    pub fn step_count(&self) -> f64 {
+        self.edges
+            .iter()
+            .filter_map(|edge| edge.step)
+            .filter(|step| FlowEdge::is_valid_step(*step))
+            .fold(0.0, f64::max)
+    }
+
     /// Returns the effective CSS source for one canonical subgraph.
     ///
     /// A vertex declaration replaces the group's CSS source; it is not merged with that source.
@@ -339,7 +354,16 @@ pub struct FlowEdge {
     pub animate: Option<bool>,
     #[serde(default)]
     pub animation: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub step: Option<f64>,
     pub length: usize,
+}
+
+impl FlowEdge {
+    /// Matches JavaScript's `Number.isInteger(step) && step > 0`, without a safe-integer cap.
+    pub fn is_valid_step(step: f64) -> bool {
+        step.is_finite() && step >= 1.0 && step.fract() == 0.0
+    }
 }
 
 #[derive(Deserialize)]
@@ -376,6 +400,8 @@ struct FlowEdgeWire {
     animate: Option<bool>,
     #[serde(default)]
     animation: Option<String>,
+    #[serde(default)]
+    step: Option<serde_json::Value>,
     length: usize,
 }
 
@@ -413,6 +439,11 @@ impl<'de> Deserialize<'de> for FlowEdge {
             style: wire.style,
             animate: wire.animate,
             animation: wire.animation,
+            step: wire
+                .step
+                .as_ref()
+                .and_then(serde_json::Value::as_f64)
+                .filter(|step| Self::is_valid_step(*step)),
             length: wire.length,
         })
     }
@@ -493,6 +524,16 @@ fn visibility_from_compatibility_field(stroke: Option<&str>) -> FlowEdgeVisibili
     }
 }
 
+/// A member retained by an earlier unrelated subgraph instead of a later declaration.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct FlowDroppedSubgraphMember {
+    pub node: String,
+    #[serde(rename = "keptBy")]
+    pub kept_by: String,
+    #[serde(rename = "droppedFrom")]
+    pub dropped_from: String,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct FlowSubgraph {
     pub id: String,
@@ -512,6 +553,61 @@ pub struct FlowSubgraph {
     /// Opaque subgraph metadata forwarded to layout engines, including `algorithm`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub metadata: Option<serde_json::Value>,
+}
+
+#[cfg(test)]
+mod step_tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn valid_step_matches_javascript_integer_checks_including_extreme_values() {
+        for step in [1.0, 2.0, 9007199254740992.0, 1e100, f64::MAX] {
+            assert!(FlowEdge::is_valid_step(step), "{step}");
+        }
+        for step in [
+            0.0,
+            -0.0,
+            -1.0,
+            0.5,
+            1.5,
+            f64::INFINITY,
+            f64::NEG_INFINITY,
+            f64::NAN,
+        ] {
+            assert!(!FlowEdge::is_valid_step(step), "{step}");
+        }
+    }
+
+    #[test]
+    fn legacy_edge_json_keeps_step_optional_and_ignores_invalid_values() {
+        let edge = json!({"id": "e1", "from": "A", "to": "B", "length": 1});
+        let plain: FlowEdge = serde_json::from_value(edge.clone()).unwrap();
+        assert!(plain.step.is_none());
+        assert!(serde_json::to_value(plain).unwrap().get("step").is_none());
+        for value in [
+            json!(0),
+            json!(-1),
+            json!(1.5),
+            json!(true),
+            json!("2"),
+            json!([2]),
+            json!({}),
+            serde_json::Value::Null,
+        ] {
+            let mut wire = edge.clone();
+            wire["step"] = value;
+            let restored: FlowEdge = serde_json::from_value(wire).unwrap();
+            assert!(restored.step.is_none());
+        }
+        let mut wire = edge;
+        wire["step"] = json!(1e100);
+        let restored: FlowEdge = serde_json::from_value(wire).unwrap();
+        assert_eq!(restored.step, Some(1e100));
+        let wire = serde_json::to_value(restored).unwrap();
+        let restored: FlowEdge = serde_json::from_value(wire).unwrap();
+        assert_eq!(restored.step, Some(1e100));
+    }
 }
 
 #[cfg(test)]

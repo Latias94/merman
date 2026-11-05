@@ -1,7 +1,7 @@
-//! Block absent text projections follow actual terminals, not unused CSS selectors.
+//! Block text themes follow actual terminals, not unused CSS selectors.
 //!
 //! The pinned Block renderer emits composite and leaf labels but no diagram-title node.
-//! Native pixel comparisons retain those labels and an active Node fill control.
+//! Native output keeps absent title projections inert and paints composite labels directly.
 
 #![cfg(all(merman_internal_theme_acceptance, feature = "png"))]
 
@@ -65,7 +65,8 @@ fn raster(document: &RenderedDocument) -> (u32, u32, Vec<u8>) {
     (frame.width, frame.height, pixels)
 }
 
-fn assert_no_native_consumer(target: ThemeTarget) {
+#[test]
+fn block_title_projection_has_no_native_consumer() {
     for scheme in ["default", "base", "dark", "forest", "neutral"] {
         for look in ["classic", "neo", "handDrawn"] {
             let renderer = Renderer::new().with_presentation_engine(
@@ -111,19 +112,18 @@ fn assert_no_native_consumer(target: ThemeTarget) {
             );
             for variant in [None, Some(ThemeVariant::Default)] {
                 for transparent in [false, true] {
-                    let document = render(&renderer, theme(target, variant, transparent));
-                    assert_eq!(
-                        raster(&document),
-                        baseline_pixels,
-                        "{look}/{variant:?}/{transparent}"
+                    let document =
+                        render(&renderer, theme(ThemeTarget::Title, variant, transparent));
+                    assert!(
+                        raster(&document) == baseline_pixels,
+                        "{scheme}/{look}/{variant:?}/{transparent}: absent title paint must preserve native pixels"
                     );
                 }
             }
             for control_target in [ThemeTarget::Node, ThemeTarget::NodeLabel] {
                 let control = render(&renderer, theme(control_target, None, false));
-                assert_ne!(
-                    raster(&control),
-                    baseline_pixels,
+                assert!(
+                    raster(&control) != baseline_pixels,
                     "{look}/{control_target:?}: the pixel comparison must detect real paint"
                 );
             }
@@ -132,13 +132,85 @@ fn assert_no_native_consumer(target: ThemeTarget) {
 }
 
 #[test]
-fn block_title_projection_has_no_native_consumer() {
-    assert_no_native_consumer(ThemeTarget::Title);
-}
+fn block_cluster_label_paint_reaches_native_output_without_reviving_legacy_css() {
+    for scheme in ["default", "base", "dark", "forest", "neutral"] {
+        for look in ["classic", "neo", "handDrawn"] {
+            let renderer = Renderer::new().with_presentation_engine(
+                MermaidEngine::new().with_site_config(SourcePresentationConfig::from_value(
+                    serde_json::json!({"theme": scheme, "htmlLabels": false, "look": look}),
+                )),
+            );
+            let baseline = render(
+                &renderer,
+                DiagramThemeCompiler::new()
+                    .compile(DiagramThemeSpec::new())
+                    .unwrap(),
+            );
+            let baseline_pixels = raster(&baseline);
+            for variant in [None, Some(ThemeVariant::Default)] {
+                for transparent in [false, true] {
+                    let document = render(
+                        &renderer,
+                        theme(ThemeTarget::ClusterLabel, variant, transparent),
+                    );
+                    let view = SvgArtifactObservation::observe(document.svg()).unwrap();
+                    assert!(view.has_native_text());
+                    assert!(!view.has_foreign_object());
+                    let labels = view
+                        .elements()
+                        .iter()
+                        .filter(|element| element.tag_name() == "text")
+                        .collect::<Vec<_>>();
+                    assert_eq!(
+                        labels.len(),
+                        3,
+                        "composite and both leaf labels must remain"
+                    );
+                    let composite = labels
+                        .iter()
+                        .find(|element| element.text() == "Composite title")
+                        .expect("composite label terminal");
+                    let expected = if transparent {
+                        "transparent"
+                    } else {
+                        "#b316cd"
+                    };
+                    assert_eq!(composite.style_value("fill"), Some(expected));
+                    assert_eq!(
+                        document
+                            .svg()
+                            .replacen(&format!(r#" style="fill:{expected}""#), "", 1),
+                        baseline.svg(),
+                        "{scheme}/{look}/{variant:?}/{transparent}: only the composite label terminal may change; leaf labels, geometry and legacy CSS must remain identical"
+                    );
+                    let evidence =
+                        merman::__theme_acceptance::theme_acceptance_evidence(document.evidence());
+                    let family = evidence.family();
+                    assert!(family.is_verified());
+                    assert_eq!(family.required_count(), 1);
+                    assert_eq!(family.applied_count(), 1);
+                    assert_eq!(family.not_applicable_count(), 0);
+                    assert_eq!(family.residual_count(), 0);
 
-#[test]
-fn block_cluster_label_projection_has_no_native_consumer() {
-    assert_no_native_consumer(ThemeTarget::ClusterLabel);
+                    let pixels = raster(&document);
+                    assert_eq!((pixels.0, pixels.1), (baseline_pixels.0, baseline_pixels.1));
+                    assert!(
+                        pixels.2 != baseline_pixels.2,
+                        "{scheme}/{look}/{variant:?}/{transparent}: direct composite label paint must change native pixels"
+                    );
+                    if !transparent {
+                        assert!(
+                            pixels
+                                .2
+                                .chunks_exact(4)
+                                .any(|pixel| { pixel[3] != 0 && pixel[..3] == [0xb3, 0x16, 0xcd] }),
+                            "{scheme}/{look}/{variant:?}: composite label must paint the requested color"
+                        );
+                    }
+                }
+            }
+        }
+    }
 }
 
 #[test]

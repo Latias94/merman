@@ -4,14 +4,14 @@ use std::sync::OnceLock;
 use merman_model::presentation::PresentationConfig;
 
 use crate::diagram_theme::{
-    FamilyThemeDisposition, FamilyThemeMechanism, FamilyThemeMechanismKey, FamilyThemeRuleFacet,
-    FamilyThemeSelectorShape, ResolvedDiagramTheme, ResolvedStyleProperty, ThemeCapability,
-    ThemeTarget, ThemeVariant,
+    FamilyThemeDisposition, FamilyThemeMechanism, FamilyThemeMechanismKey, FamilyThemePaintKind,
+    FamilyThemeRuleFacet, FamilyThemeSelectorShape, ResolvedDiagramTheme, ResolvedStyleProperty,
+    Specified, ThemeCapability, ThemeTarget, ThemeVariant,
 };
 use crate::family::{
-    DirectStaticPaint, DirectStaticSelectorDomain, FamilyThemeEvidence, FamilyThemeOutcomes,
-    FamilyThemeResidualReason, TerminalVariantDomain, UnsupportedTerminalDomain,
-    reconcile_unsupported_terminal_domains, resolve_direct_static_fill,
+    DirectPaintExpectation, DirectStaticPaint, DirectStaticSelectorDomain, FamilyThemeEvidence,
+    FamilyThemeOutcomes, FamilyThemeResidualReason, TerminalVariantDomain,
+    UnsupportedTerminalDomain, reconcile_unsupported_terminal_domains, resolve_direct_static_fill,
     resolve_direct_static_stroke, resolved_style_property_for_facet,
     unsupported_residual_for_facet,
 };
@@ -21,6 +21,7 @@ use crate::resources::{OperationWorkError, OperationWorkMeter};
 #[derive(Debug)]
 pub(crate) struct C4TextPaintPlan {
     fill: Option<DirectStaticPaint>,
+    title_fill: Option<DirectPaintExpectation>,
     title: Option<Box<str>>,
     evidence: FamilyThemeOutcomes,
     pending: Vec<C4PendingTextMechanism>,
@@ -72,7 +73,7 @@ struct C4PendingTextMechanism {
 
 #[derive(Debug)]
 struct C4TextPaintTerminalSeal {
-    title_seen: bool,
+    inherited_title_seen: bool,
     text_seen: bool,
     source_colors_static: bool,
     typed_fill_seen: bool,
@@ -82,6 +83,8 @@ struct C4TextPaintTerminalSeal {
 #[derive(Debug)]
 pub(crate) struct C4TextPaintReceipt<'a> {
     expected_fill: Option<&'a str>,
+    expected_title_fill: Option<&'a str>,
+    title_inherits_fill: bool,
     expected_title: Option<&'a str>,
     css_seen: bool,
     title_seen: bool,
@@ -108,6 +111,7 @@ impl C4TextPaintPlan {
             .map(Into::into);
         let mut plan = Self {
             fill: None,
+            title_fill: None,
             title,
             evidence: FamilyThemeOutcomes::default(),
             pending: Vec::new(),
@@ -117,6 +121,84 @@ impl C4TextPaintPlan {
         };
         let Some(theme) = theme else { return Ok(plan) };
         let config_owned = config.config_paint_overrides_typed_default("themeVariables.textColor");
+        reconcile_unsupported_terminal_domains(
+            theme,
+            &mut plan.evidence,
+            &[UnsupportedTerminalDomain::direct(
+                ThemeTarget::Title,
+                TerminalVariantDomain::uniform(
+                    usize::from(plan.title.is_some()),
+                    ThemeVariant::Default,
+                ),
+            )
+            .with_source_owned_fill(&[config_owned])],
+            work,
+        )?;
+        let mut title_fill_winner = None;
+        if plan.title.is_some() && !config_owned {
+            let style = theme.style_with_work_meter(
+                ThemeTarget::Title,
+                ThemeVariant::Default,
+                Some(1),
+                work,
+            )?;
+            title_fill_winner = style
+                .fill_resolution()
+                .winner()
+                .map(|origin| origin.rule_index());
+            plan.title_fill = resolve_direct_static_fill(
+                theme,
+                &style,
+                &[ThemeTarget::Title],
+                DirectStaticSelectorDomain::Default,
+            )
+            .map(DirectPaintExpectation::from_paint);
+            if matches!(style.fill_resolution().specified(), Specified::Clear)
+                && let Some(origin) = style.fill_resolution().winner()
+                && origin.ordinal().is_none()
+                && matches!(origin.variant(), None | Some(ThemeVariant::Default))
+                && theme.rule_facet_disposition(
+                    origin.rule_index(),
+                    FamilyThemeRuleFacet::Fill(FamilyThemePaintKind::Clear),
+                ) == Some(FamilyThemeDisposition::TypedAdapter)
+            {
+                // Clear blocks Text fallback and restores the configured root text paint.
+                let baseline = crate::config::config_string(
+                    config.as_value(),
+                    &["themeVariables", "textColor"],
+                )
+                .unwrap_or_else(|| "#333".to_owned());
+                plan.title_fill = Some(DirectPaintExpectation::new(
+                    origin.rule_index(),
+                    baseline,
+                    ThemeCapability::SemanticRules,
+                ));
+            }
+        }
+        for route in theme.family_mechanism_routes() {
+            if let FamilyThemeMechanism::RuleFacet {
+                target: ThemeTarget::Title,
+                rule_index,
+                facet: FamilyThemeRuleFacet::Fill(_),
+                ..
+            } = route.mechanism()
+                && route.disposition() == FamilyThemeDisposition::TypedAdapter
+            {
+                if title_fill_winner != Some(rule_index) {
+                    plan.evidence
+                        .mark_not_applicable(theme.family_mechanism_key(*route));
+                } else if plan
+                    .title_fill
+                    .as_ref()
+                    .is_none_or(|fill| fill.rule_index() != rule_index)
+                {
+                    plan.evidence.mark_residual(
+                        theme.family_mechanism_key(*route),
+                        FamilyThemeResidualReason::UnsupportedPaint,
+                    );
+                }
+            }
+        }
         let style =
             theme.style_with_work_meter(ThemeTarget::Text, ThemeVariant::Default, None, work)?;
         let winners = style
@@ -217,6 +299,13 @@ impl C4TextPaintPlan {
 
     pub(crate) fn fill_css(&self) -> Option<&str> {
         self.fill.as_ref().map(DirectStaticPaint::css)
+    }
+
+    pub(crate) fn title_fill_css(&self) -> Option<&str> {
+        self.title_fill
+            .as_ref()
+            .map(DirectPaintExpectation::css)
+            .or_else(|| self.fill_css())
     }
 
     pub(crate) fn bind_source_terminal_paint(
@@ -600,11 +689,13 @@ impl C4TextPaintPlan {
                 theme.family_mechanism_routes().iter().any(|route| {
                     matches!(route.mechanism(), FamilyThemeMechanism::RuleFacet { target, .. }
                 | FamilyThemeMechanism::OrdinalPalette { target }
-                | FamilyThemeMechanism::EffectBinding { target, .. } if is_role_target(target))
+                | FamilyThemeMechanism::EffectBinding { target, .. } if is_role_target(target) || target == ThemeTarget::Title)
                 })
             }))
         .then(|| C4TextPaintReceipt {
             expected_fill: self.fill_css(),
+            expected_title_fill: self.title_fill_css(),
+            title_inherits_fill: self.title_fill.is_none(),
             expected_title: self.title.as_deref(),
             css_seen: false,
             title_seen: false,
@@ -626,7 +717,7 @@ impl C4TextPaintPlan {
             && self
                 .terminal
                 .set(C4TextPaintTerminalSeal {
-                    title_seen: receipt.title_seen,
+                    inherited_title_seen: receipt.title_seen && receipt.title_inherits_fill,
                     text_seen: receipt.text_seen,
                     source_colors_static: receipt.source_colors_static,
                     typed_fill_seen: receipt.typed_fill_seen,
@@ -647,6 +738,17 @@ impl C4TextPaintPlan {
 
     pub(crate) fn record_evidence(&self, evidence: &mut FamilyThemeEvidence) {
         evidence.merge_borrowed(&self.evidence);
+        if self.terminal.get().is_some()
+            && let Some(fill) = &self.title_fill
+        {
+            evidence.mark_applied_with_capabilities(
+                FamilyThemeMechanismKey::Rule {
+                    index: fill.rule_index(),
+                    target: ThemeTarget::Title,
+                },
+                [fill.capability()],
+            );
+        }
         for pending in &self.pending {
             let key = &pending.key;
             let residual = pending.residual;
@@ -655,7 +757,7 @@ impl C4TextPaintPlan {
                     if !receipt.text_seen
                         || (pending.inherited_fill_only
                             && receipt.source_colors_static
-                            && !receipt.title_seen
+                            && !receipt.inherited_title_seen
                             && !receipt.typed_fill_seen) =>
                 {
                     evidence.mark_not_applicable(key.clone());
@@ -712,10 +814,12 @@ impl C4TextPaintReceipt<'_> {
     }
 
     pub(crate) fn record_title(&mut self, title: &str, fill: Option<&str>) {
-        self.valid &=
-            !self.title_seen && Some(title) == self.expected_title && fill == self.expected_fill;
+        self.valid &= !self.title_seen
+            && Some(title) == self.expected_title
+            && fill == self.expected_title_fill;
         self.title_seen = true;
         self.text_seen = true;
+        self.typed_fill_seen |= self.title_inherits_fill && self.expected_fill.is_some();
     }
 
     /// Source-directed inheritance and browser-dependent colors need their own terminal proof.
@@ -908,6 +1012,8 @@ mod tests {
     fn title_receipt() -> C4TextPaintReceipt<'static> {
         C4TextPaintReceipt {
             expected_fill: Some("#123456"),
+            expected_title_fill: Some("#123456"),
+            title_inherits_fill: true,
             expected_title: Some("Title"),
             css_seen: false,
             title_seen: false,
@@ -924,6 +1030,15 @@ mod tests {
 
     #[test]
     fn receipt_rejects_wrong_or_duplicate_terminal_facts() {
+        let mut separate_title = C4TextPaintReceipt {
+            expected_title_fill: Some("#987654"),
+            title_inherits_fill: false,
+            ..title_receipt()
+        };
+        separate_title.record_title("Title", Some("#987654"));
+        assert!(separate_title.valid);
+        assert!(!separate_title.typed_fill_seen);
+
         let mut wrong_css = title_receipt();
         wrong_css.record_css(Some("#654321"));
         assert!(!wrong_css.valid);
@@ -951,6 +1066,7 @@ mod tests {
     fn sealing_requires_css_and_the_expected_title_exactly_once() {
         let plan = C4TextPaintPlan {
             fill: None,
+            title_fill: None,
             title: Some("Title".into()),
             evidence: FamilyThemeOutcomes::default(),
             pending: Vec::new(),

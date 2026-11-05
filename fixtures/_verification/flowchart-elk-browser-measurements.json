@@ -1,20 +1,126 @@
 {
   "schema_version": 1,
-  "mermaid_version": "12.2.0",
-  "mermaid_source_commit": "1fb7869866dd619168d840291c9c54b4f129758b",
-  "browser": "HeadlessChrome/151.0.7922.77",
-  "measurement_source": "Actual instrumented Mermaid ELK invocation input and raw provider output; global points translated only by the recorded ELK container origin, before clipping and terminal straightening. The browser field records the original collection; the four fixtures documented in ADR 0024 were recaptured with HeadlessChrome/151.0.7922.77 on 2026-10-25, while other entries retain their original measurements.",
+  "mermaid_version": "12.3.0",
+  "mermaid_source_commit": "2086904e76c692331e34a45d7cc3bc30860d040e",
+  "browser": "Chrome/156.0.8078.47",
+  "measurement_source": "Actual natural-browser Mermaid 12.3.0 invocation dimensions and raw elkjs 0.12.0 output. Read-only hooks copy serializable data immediately before and after the real elk.layout(elkGraph) call; function-valued intersection callbacks are omitted from the copies, never from the graph passed to ELK. Raw section points are translated only by their recorded ELK container origin, before clipping, terminal straightening, and label separation. Node centers used by the SVG writer are captured after the upstream node/frame alignment pass. Native measurements are unchanged; no fonts, dimensions, graph options, placements, or routes are injected. historical_collection is archival metadata only and is not an active oracle.",
+  "capture": {
+    "node_version": "v24.21.0",
+    "browser": {
+      "product": "Chrome",
+      "version": "156.0.8078.47",
+      "revision": "@1d17a2e2ee147bb7d6ae2ab6abdb3a2510c17775",
+      "locale": "zh-CN",
+      "timezone": "Asia/Shanghai"
+    },
+    "mermaid_version": "12.3.0",
+    "mermaid_source_commit": "2086904e76c692331e34a45d7cc3bc30860d040e",
+    "elkjs_version": "0.12.0",
+    "puppeteer_version": "25.16.0",
+    "esbuild_version": "0.28.1",
+    "reference_runtime_sha256": "555d901f1da7635d0727be0a5b95cc1b84a4770e08126fed19e53966515a8911",
+    "instrumented_runtime_sha256": "bc4a5d4e11c0f489c0485a18760c3dea7896fbcb5beca3213c8e9f0dfdc2589a",
+    "harness_sha256": "a6410c16076de07446cbf3aa23bab410f19e41de0b12f01ee8f463965921b89f",
+    "seeded_renderer_sha256": "ce4093ffe0100f9da018dbbcd273ed99d33d801468d1a6c582ef35b7a224101e",
+    "elk_source_path": "repo-ref/mermaid-12.3.0/packages/mermaid/src/rendering-util/layout-algorithms/elk/render.ts",
+    "elk_source_sha256": "034346873f802f348feff0eead48326da40fee71812e0e3f01034370a554fc57",
+    "elk_adapter_path": "tools/mermaid-cli/node_modules/mermaid/dist/chunks/mermaid.core/elk-XV6XMXQE.mjs",
+    "elk_adapter_sha256": "727e080c44d169f9e2212bfc30a77aa2c823c5c9b4406aed23b3c9f6bd354ba0",
+    "elk_adapter_source_map_sha256": "e04bda42a4e2715ac4b202a58e1e53a0d52b8014f750db0e88d9a79606eecbee",
+    "elkjs_bundle_sha256": "1222e44f953ce7746af23801e723708f8e6f436b8b377a6a5fc7552f34a307b3",
+    "viewport": {
+      "width": 800,
+      "height": 600,
+      "deviceScaleFactor": 1
+    },
+    "initialize": {
+      "startOnLoad": false,
+      "handDrawnSeed": 1
+    },
+    "seed": "1",
+    "fixed_wall_clock_ms": 1704067200000,
+    "source_map_matches_selected_source": true,
+    "upstream_svg_match": "43 captured SVGs are byte-identical to the current baselines. Three neo-look fixtures retain class whitespace and label-offset-y metadata differences already reproduced by the uninstrumented selected renderer; all SVG text, geometry, routes, markers, transforms, and other attributes are identical. No baseline or comparator is changed.",
+    "nonidentical_svg_fixtures": [
+      "upstream_cypress_flowchart_v2_spec_60_handle_styling_for_all_node_shapes_v2_021",
+      "upstream_flow_node_data_shape_aliases_spec",
+      "upstream_flowchart_v2_shape_styling_matrix_spec"
+    ]
+  },
+  "historical_collection": {
+    "schema_version": 1,
+    "mermaid_version": "12.2.0",
+    "mermaid_source_commit": "1fb7869866dd619168d840291c9c54b4f129758b",
+    "browser": "HeadlessChrome/151.0.7922.77",
+    "measurement_source": "Actual instrumented Mermaid ELK invocation input and raw provider output; global points translated only by the recorded ELK container origin, before clipping and terminal straightening. The browser field records the original collection; the four fixtures documented in ADR 0024 were recaptured with HeadlessChrome/151.0.7922.77 on 2026-10-25, while other entries retain their original measurements.",
+    "entry_captures": [
+      {
+        "fixture": "local_mermaid_12_2_elk_label_clearance_8368",
+        "capture": {
+          "captured_at": "2026-10-28T14:23:05.753Z",
+          "browser": "Edg/156.0.4314.50",
+          "mermaid_version": "12.2.0",
+          "mermaid_source_commit": "1fb7869866dd619168d840291c9c54b4f129758b",
+          "elkjs_version": "0.9.3",
+          "puppeteer_version": "25.16.0",
+          "esbuild_version": "0.28.1",
+          "mermaid_entrypoint": "tools/mermaid-cli/node_modules/mermaid/dist/mermaid.core.mjs",
+          "mermaid_entrypoint_sha256": "4d085c790146a42c65d51ea21170427b24bc706de970df570331321996cbdbaf",
+          "elk_adapter": "tools/mermaid-cli/node_modules/mermaid/dist/chunks/mermaid.core/elk-QONTBCTQ.mjs",
+          "elk_adapter_sha256": "f2c2d22186c1ad36b9a6d9530e66c5235f0e6a2b1a48631d7f720d96afbbc3b5",
+          "elk_adapter_source_map_sha256": "8bd6343df8b04ac143734ce386a1841c80067fb00519eedb4ff8ed0060886f86",
+          "elkjs_bundle": "tools/mermaid-cli/node_modules/elkjs/lib/elk.bundled.js",
+          "elkjs_bundle_sha256": "b0745abd7f23cd91690a1587e377edbe19fd7233c783300290936720546216d4",
+          "runtime_sha256": "6b0cfa9a8bc36314e9ecc89f40bb6a08efc86ad813bfbfb3ce25b0fcce41ae19",
+          "runtime_description": "esbuild browser IIFE of installed mermaid; capture-only instrumentation around elk.layout and endpoint sanitization; no algorithm changes",
+          "harness_sha256": "e9c2d1053cf728f2d57bf1018a101ae277c69a0b3435b6a845691fdf9193808f",
+          "natural_svg_sha256": "adff4ff2c5bd67c163d96a81489e000cf52bd305531724cb0ec5c68df688f397",
+          "initialize": {
+            "startOnLoad": false,
+            "securityLevel": "strict",
+            "deterministicIds": true,
+            "deterministicIDSeed": "8368",
+            "theme": "redux-color"
+          },
+          "viewport": {
+            "width": 1600,
+            "height": 1000,
+            "deviceScaleFactor": 1
+          },
+          "measurement_source": "Actual natural-browser Mermaid invocation dimensions and raw elkjs output, copied at elk.layout before endpoint clipping, terminal straightening, or label separation. Native getBBox results are returned unchanged; no fonts or dimensions are injected. Per-entry browser identity supersedes the matrix historical collection browser.",
+          "font_css": "14px \"Recursive Variable\", arial, sans-serif",
+          "container_origin": [
+            0,
+            0
+          ],
+          "upstream_match": "All three final edge d strings and decoded data-points, both edge-label centers and global background rectangles match upstream exactly; no full-SVG byte identity is claimed."
+        }
+      }
+    ]
+  },
   "entries": [
     {
       "fixture": "stress_flowchart_edge_labels_far_from_arrows_066",
       "input_sha256": "6436bd1c9f897bf4387e3cfa67be332797104ae6fead6faeb271ada6d75af783",
-      "upstream_svg_sha256": "c78a3c2d49a71ece2da20b4f2eb468cbcee1c86c027ccd2e13c00083b97b8d5e",
+      "upstream_svg_sha256": "2ddc6ce14bdb55223ea3a638fecaccdfa1de0460d9f7114c54d85f9443c2cd9d",
+      "capture": {
+        "captured_at": "2026-11-03T20:06:58.489Z",
+        "provider_input_sha256": "98b1418b3aae939378cbe9d0d5437f85d5f362dc148b2466daa72a0b97738971",
+        "provider_output_sha256": "d541b99ba119afff422f7b18d20833dc3f1097f6e12d91406fe7d8fcada101a0",
+        "captured_svg_sha256": "2ddc6ce14bdb55223ea3a638fecaccdfa1de0460d9f7114c54d85f9443c2cd9d",
+        "upstream_svg_byte_identical": true,
+        "upstream_svg_geometry_identical": true
+      },
       "nodes": [
         {
           "id": "LocalDB",
           "size": [
             144,
             85.14869689941406
+          ],
+          "center": [
+            88,
+            242.8932113647461
           ],
           "label_box": {
             "text": "Database File",
@@ -177,27 +283,27 @@
           "points": [
             [
               444,
-              364.1509755452474
+              331.7841440836589
             ],
             [
               424,
-              364.1509755452474
+              331.7841440836589
             ],
             [
               424,
-              374.2175598144531
+              321.7175598144531
             ],
             [
               184,
-              374.2175598144531
+              321.7175598144531
             ],
             [
               184,
-              352.1342264811198
+              343.80089314778644
             ],
             [
               164,
-              352.1342264811198
+              343.80089314778644
             ]
           ],
           "label_size": [
@@ -274,27 +380,27 @@
           "points": [
             [
               973.6506500244141,
-              245.955783589681
+              221.27664540608725
             ],
             [
               901.1004943847656,
-              245.955783589681
+              221.27664540608725
             ],
             [
               901.1004943847656,
-              286.5048100789388
+              191.61621449788413
             ],
             [
-              641.1004943847656,
-              286.5048100789388
+              601.1004943847656,
+              191.61621449788413
             ],
             [
-              641.1004943847656,
-              338.25751037597655
+              601.1004943847656,
+              318.83741149902346
             ],
             [
               561.1004943847656,
-              338.25751037597655
+              318.83741149902346
             ]
           ],
           "label_size": [
@@ -309,27 +415,27 @@
           "points": [
             [
               164,
-              343.80089314778644
+              352.1342264811198
             ],
             [
               184,
-              343.80089314778644
+              352.1342264811198
             ],
             [
               184,
-              321.7175598144531
+              374.2175598144531
             ],
             [
               424,
-              321.7175598144531
+              374.2175598144531
             ],
             [
               424,
-              331.7841440836589
+              364.1509755452474
             ],
             [
               444,
-              331.7841440836589
+              364.1509755452474
             ]
           ],
           "label_size": [
@@ -406,27 +512,19 @@
           "points": [
             [
               561.1004943847656,
-              318.83741149902346
+              328.5474609375
             ],
             [
-              601.1004943847656,
-              318.83741149902346
+              621.1004943847656,
+              328.5474609375
             ],
             [
-              601.1004943847656,
-              191.61621449788413
-            ],
-            [
-              901.1004943847656,
-              191.61621449788413
-            ],
-            [
-              901.1004943847656,
-              221.27664540608725
+              621.1004943847656,
+              233.61621449788413
             ],
             [
               973.6506500244141,
-              221.27664540608725
+              233.61621449788413
             ]
           ],
           "label_size": [
@@ -511,27 +609,27 @@
           "points": [
             [
               973.6506500244141,
-              258.2953526814779
+              245.955783589681
             ],
             [
-              921.1004943847656,
-              258.2953526814779
+              901.1004943847656,
+              245.955783589681
             ],
             [
-              921.1004943847656,
-              328.5048100789388
+              901.1004943847656,
+              286.5048100789388
             ],
             [
-              661.1004943847656,
-              328.5048100789388
+              641.1004943847656,
+              286.5048100789388
             ],
             [
-              661.1004943847656,
-              347.9675598144531
+              641.1004943847656,
+              338.25751037597655
             ],
             [
               561.1004943847656,
-              347.9675598144531
+              338.25751037597655
             ]
           ],
           "label_size": [
@@ -616,19 +714,27 @@
           "points": [
             [
               561.1004943847656,
-              328.5474609375
+              347.9675598144531
             ],
             [
-              621.1004943847656,
-              328.5474609375
+              661.1004943847656,
+              347.9675598144531
             ],
             [
-              621.1004943847656,
-              233.61621449788413
+              661.1004943847656,
+              328.5048100789388
+            ],
+            [
+              921.1004943847656,
+              328.5048100789388
+            ],
+            [
+              921.1004943847656,
+              258.2953526814779
             ],
             [
               973.6506500244141,
-              233.61621449788413
+              258.2953526814779
             ]
           ],
           "label_size": [
@@ -696,6 +802,14 @@
       "fixture": "stress_flowchart_multi_direction_graph_011",
       "input_sha256": "e9bb97dc1a4ff62fecd0ab34c94e571e20b219aad1fbf9eae8c44f0a2d79ecc6",
       "upstream_svg_sha256": "acfbbf40e779e13a55ba030a1378f473e712f915ec6692bf973b84365ab55867",
+      "capture": {
+        "captured_at": "2026-11-03T20:06:58.468Z",
+        "provider_input_sha256": "815fea69497066b502d5ecc799e16f0664357d4ba0a131977fef261a0a451b38",
+        "provider_output_sha256": "e2e4c0dd868eaefc56f9af252f00c3eef354a5c583717c78b43ae2f696a4b7b2",
+        "captured_svg_sha256": "acfbbf40e779e13a55ba030a1378f473e712f915ec6692bf973b84365ab55867",
+        "upstream_svg_byte_identical": true,
+        "upstream_svg_geometry_identical": true
+      },
       "nodes": [
         {
           "id": "Q",
@@ -848,7 +962,8 @@
               111.99999999999999,
               129
             ]
-          ]
+          ],
+          "label_size": null
         },
         {
           "id": "L_p2_p3_0",
@@ -863,7 +978,8 @@
               111.99999999999999,
               198
             ]
-          ]
+          ],
+          "label_size": null
         },
         {
           "id": "L_q1_q2_0",
@@ -878,7 +994,8 @@
               111.99999999999999,
               484.14869689941406
             ]
-          ]
+          ],
+          "label_size": null
         },
         {
           "id": "L_p3_q1_0",
@@ -901,7 +1018,8 @@
               111.99999999999999,
               375
             ]
-          ]
+          ],
+          "label_size": null
         },
         {
           "id": "L_q2_done_0",
@@ -920,7 +1038,8 @@
               111.99999999999999,
               643.2973937988281
             ]
-          ]
+          ],
+          "label_size": null
         }
       ]
     },
@@ -928,6 +1047,14 @@
       "fixture": "stress_flowchart_nested_subgraphs_titles_001",
       "input_sha256": "9ec03eb59b9bcbbaba1ebf2e5b17fb6386b6f26c590253b438c1d17db4cad6f0",
       "upstream_svg_sha256": "2b791c9b2051fe42878fe3fa3c09016d472f08c34a310e822112b86c644a1086",
+      "capture": {
+        "captured_at": "2026-11-03T20:06:59.255Z",
+        "provider_input_sha256": "f87eec21996fb66fde86acc6b98491c0c1a58a0dfc43ca2c26513d8a9997f7ae",
+        "provider_output_sha256": "583955e0132df79a72285ca9e19abc77c26008862e03c7faf58ed0d067496e16",
+        "captured_svg_sha256": "2b791c9b2051fe42878fe3fa3c09016d472f08c34a310e822112b86c644a1086",
+        "upstream_svg_byte_identical": true,
+        "upstream_svg_geometry_identical": true
+      },
       "nodes": [
         {
           "id": "A",
@@ -1112,7 +1239,8 @@
               262.5,
               177
             ]
-          ]
+          ],
+          "label_size": null
         },
         {
           "id": "L_g_b1_0",
@@ -1197,7 +1325,8 @@
               282.9,
               650
             ]
-          ]
+          ],
+          "label_size": null
         },
         {
           "id": "L_c1_d1_0",
@@ -1228,7 +1357,8 @@
               242.09999999999997,
               650
             ]
-          ]
+          ],
+          "label_size": null
         },
         {
           "id": "L_d1_r1_0",
@@ -1243,7 +1373,8 @@
               262.5,
               759.1486968994141
             ]
-          ]
+          ],
+          "label_size": null
         },
         {
           "id": "L_r1_e_0",
@@ -1266,7 +1397,8 @@
               262.5,
               912.1486968994141
             ]
-          ]
+          ],
+          "label_size": null
         }
       ]
     },
@@ -1274,6 +1406,14 @@
       "fixture": "stress_flowchart_shape_mix_009",
       "input_sha256": "3f850d981f3ba3a11218860bd2bf353a270ba8d4a00427b3f6d4b5b79a34a256",
       "upstream_svg_sha256": "8a5dda23cd58b4a6b35db2db331350aecfccb86986f5642c95caaaf2cfe105c0",
+      "capture": {
+        "captured_at": "2026-11-03T20:06:59.233Z",
+        "provider_input_sha256": "c494ae55414f1573edd70390dce4b12c41d9499f303e7477f64c6ddde6f13d2b",
+        "provider_output_sha256": "1f29ef06b326d070819268f8aeec3905de70829d1291e9fb6f35b7ccc00a7ffa",
+        "captured_svg_sha256": "8a5dda23cd58b4a6b35db2db331350aecfccb86986f5642c95caaaf2cfe105c0",
+        "upstream_svg_byte_identical": true,
+        "upstream_svg_geometry_identical": true
+      },
       "nodes": [
         {
           "id": "start",
@@ -1463,7 +1603,8 @@
               227.80672073364258,
               66
             ]
-          ]
+          ],
+          "label_size": null
         },
         {
           "id": "L_io_decision_0",
@@ -1478,7 +1619,8 @@
               227.80672073364258,
               142
             ]
-          ]
+          ],
+          "label_size": null
         },
         {
           "id": "L_decision_circle_0",
@@ -1547,7 +1689,8 @@
               114,
               539.1486968994141
             ]
-          ]
+          ],
+          "label_size": null
         },
         {
           "id": "L_db_pill_0",
@@ -1562,7 +1705,8 @@
               341.61344146728516,
               562.1486968994141
             ]
-          ]
+          ],
+          "label_size": null
         },
         {
           "id": "L_hex_subr_0",
@@ -1577,7 +1721,8 @@
               114,
               671.6486968994141
             ]
-          ]
+          ],
+          "label_size": null
         },
         {
           "id": "L_pill_trap_0",
@@ -1592,7 +1737,8 @@
               341.61344146728516,
               670.1486968994141
             ]
-          ]
+          ],
+          "label_size": null
         },
         {
           "id": "L_subr_finish_0",
@@ -1615,7 +1761,8 @@
               216.37507502237952,
               746.1486968994141
             ]
-          ]
+          ],
+          "label_size": null
         },
         {
           "id": "L_trap_finish_0",
@@ -1638,7 +1785,8 @@
               239.23836644490558,
               746.1486968994141
             ]
-          ]
+          ],
+          "label_size": null
         }
       ]
     },
@@ -1646,6 +1794,14 @@
       "fixture": "upstream_cypress_flowchart_handdrawn_spec_fdh24_keep_node_label_text_if_already_defined_when_a_style_is_ap_024",
       "input_sha256": "ff4755986501cb58d7e1140127d7b3b7b3276f56c380877e6d6d887b451c6ffa",
       "upstream_svg_sha256": "a052cfc73134979244445399f4f0d025ef8ed2fe2066e6ff3f2d4b5bd5884e56",
+      "capture": {
+        "captured_at": "2026-11-03T20:06:59.984Z",
+        "provider_input_sha256": "733cff3b31dade58feb37c2368d80d9c8397236f5c78fb06092b373706f130cb",
+        "provider_output_sha256": "43cc9702dc204dd8406aa10d63a5fb2d5cceb14865af77c6128b69d2acdc29fa",
+        "captured_svg_sha256": "a052cfc73134979244445399f4f0d025ef8ed2fe2066e6ff3f2d4b5bd5884e56",
+        "upstream_svg_byte_identical": true,
+        "upstream_svg_geometry_identical": true
+      },
       "nodes": [
         {
           "id": "A",
@@ -1784,6 +1940,14 @@
       "fixture": "upstream_cypress_flowchart_handdrawn_spec_fdh27_set_text_color_of_nodes_and_links_according_to_styles_when_027",
       "input_sha256": "e37d2bc5cfa26cefde0177a1c617384e8a8e6bf4de30269c5b35d9e1277ba8d1",
       "upstream_svg_sha256": "c32ca666ce42c23f998ccb1785136674bf423a86b6f4df14c6faaa515b4b7cb0",
+      "capture": {
+        "captured_at": "2026-11-03T20:07:00.007Z",
+        "provider_input_sha256": "998c435701b875252b5fd9f7a8c9479febce0ae837200338902cea214658bdea",
+        "provider_output_sha256": "222e05a835c3531b665434ff64cfc9ca7f412c15c705cb0ba5668c6f3b143efa",
+        "captured_svg_sha256": "c32ca666ce42c23f998ccb1785136674bf423a86b6f4df14c6faaa515b4b7cb0",
+        "upstream_svg_byte_identical": true,
+        "upstream_svg_geometry_identical": true
+      },
       "nodes": [
         {
           "id": "A",
@@ -1957,7 +2121,15 @@
     {
       "fixture": "upstream_cypress_flowchart_handdrawn_spec_fhd6_should_render_a_flowchart_full_of_circles_006",
       "input_sha256": "12ea63c20f4c332b0d713254fae3b9f0b7e0501b26300d67b8f36371fb55220c",
-      "upstream_svg_sha256": "342261dc3395f81bc202f647c437fd8d0445eb08f2db1f80aa35985756d18881",
+      "upstream_svg_sha256": "0d8ddf4a0ae3cb10efdbfd64781184f1c04ff6937e8419039afaafbdcaa76eb8",
+      "capture": {
+        "captured_at": "2026-11-03T20:07:00.778Z",
+        "provider_input_sha256": "cf032dc058ecefd1f62643f76d62be34da76661344b99a5992c4b34746fa0a0f",
+        "provider_output_sha256": "9c976eaa8a5d28bf20dd4dc41ecdd054a47a337ef26e1435765fbdfd7de5c2e9",
+        "captured_svg_sha256": "0d8ddf4a0ae3cb10efdbfd64781184f1c04ff6937e8419039afaafbdcaa76eb8",
+        "upstream_svg_byte_identical": true,
+        "upstream_svg_geometry_identical": true
+      },
       "nodes": [
         {
           "id": "47",
@@ -1966,8 +2138,8 @@
             51
           ],
           "center": [
-            1867.5269097222222,
-            284.2944444444444
+            1847.5269097222222,
+            307.0444444444444
           ],
           "label_box": {
             "text": "SAM.CommonFA.FMESummary",
@@ -1984,8 +2156,8 @@
             51
           ],
           "center": [
-            2264.859375,
-            329.7944444444444
+            2244.859375,
+            352.5444444444444
           ],
           "label_box": {
             "text": "SAM.CommonFA.CommonFAFinanceBudget",
@@ -2002,8 +2174,8 @@
             51
           ],
           "center": [
-            1905.3828125,
-            375.2944444444444
+            1885.3828125,
+            398.0444444444444
           ],
           "label_box": {
             "text": "SAM.CommonFA.BudgetSubserviceLineVolume",
@@ -2039,7 +2211,7 @@
           ],
           "center": [
             724.96875,
-            326.4194444444444
+            396.875
           ],
           "label_box": {
             "text": "SAM.CommonFA.MetricCost",
@@ -2057,7 +2229,7 @@
           ],
           "center": [
             1071.875,
-            378.5
+            424
           ],
           "label_box": {
             "text": "SAM.CommonFA.MetricOutliers",
@@ -2093,7 +2265,7 @@
           ],
           "center": [
             724.96875,
-            442.875
+            488.375
           ],
           "label_box": {
             "text": "SAM.CommonFA.OPVisits",
@@ -2111,7 +2283,7 @@
           ],
           "center": [
             1465.5234375,
-            333
+            240.5
           ],
           "label_box": {
             "text": "SAM.CommonFA.CommonFAFinanceRefund",
@@ -2147,7 +2319,7 @@
           ],
           "center": [
             1447.640625,
-            240.5
+            331.5
           ],
           "label_box": {
             "text": "SAM.CommonFA.CommonFAFinanceNurseryDays",
@@ -2183,7 +2355,7 @@
           ],
           "center": [
             425.125,
-            242.65277777777777
+            333.65277777777777
           ],
           "label_box": {
             "text": "SAM.CommonFA.ChargeDetails",
@@ -2201,7 +2373,7 @@
           ],
           "center": [
             134.390625,
-            247.81944444444443
+            338.81944444444446
           ],
           "label_box": {
             "text": "SAM.CommonFA.PremetricCost",
@@ -2219,22 +2391,23 @@
           "target": "48",
           "points": [
             [
-              1983.2690972222222,
-              284.2944444444444
+              1963.2690972222222,
+              307.0444444444444
+            ],
+            [
+              2069.796875,
+              307.0444444444444
+            ],
+            [
+              2069.796875,
+              347.37777777777774
             ],
             [
               2089.796875,
-              284.2944444444444
-            ],
-            [
-              2089.796875,
-              324.62777777777774
-            ],
-            [
-              2109.796875,
-              324.62777777777774
+              347.37777777777774
             ]
-          ]
+          ],
+          "label_size": null
         },
         {
           "id": "L_37_48_0",
@@ -2242,22 +2415,23 @@
           "target": "48",
           "points": [
             [
+              2049.796875,
+              398.0444444444444
+            ],
+            [
               2069.796875,
-              375.2944444444444
+              398.0444444444444
+            ],
+            [
+              2069.796875,
+              357.7111111111111
             ],
             [
               2089.796875,
-              375.2944444444444
-            ],
-            [
-              2089.796875,
-              334.9611111111111
-            ],
-            [
-              2109.796875,
-              334.9611111111111
+              357.7111111111111
             ]
-          ]
+          ],
+          "label_size": null
         },
         {
           "id": "L_35_47_0",
@@ -2293,18 +2467,19 @@
               12
             ],
             [
-              1720.96875,
+              1700.96875,
               12
             ],
             [
-              1720.96875,
-              272.2388888888889
+              1700.96875,
+              294.9888888888889
             ],
             [
-              1751.7847222222222,
-              272.2388888888889
+              1731.7847222222222,
+              294.9888888888889
             ]
-          ]
+          ],
+          "label_size": null
         },
         {
           "id": "L_41_47_0",
@@ -2313,37 +2488,38 @@
           "points": [
             [
               829.4375,
-              326.4194444444444
+              396.875
             ],
             [
               889.4375,
-              326.4194444444444
+              396.875
             ],
             [
               889.4375,
-              286.5
+              377.5
             ],
             [
               1071.875,
-              286.5
+              377.5
             ],
             [
               1447.640625,
-              286.5
+              377.5
             ],
             [
-              1640.96875,
-              286.5
+              1660.96875,
+              377.5
             ],
             [
-              1640.96875,
-              286.01666666666665
+              1660.96875,
+              312.2111111111111
             ],
             [
-              1751.7847222222222,
-              286.01666666666665
+              1731.7847222222222,
+              312.2111111111111
             ]
-          ]
+          ],
+          "label_size": null
         },
         {
           "id": "L_44_47_0",
@@ -2352,25 +2528,26 @@
           "points": [
             [
               1186.0625,
-              378.5
+              424
             ],
             [
               1447.640625,
-              378.5
+              424
             ],
             [
               1680.96875,
-              378.5
+              424
             ],
             [
               1680.96875,
-              292.9055555555555
+              315.6555555555555
             ],
             [
-              1751.7847222222222,
-              292.9055555555555
+              1731.7847222222222,
+              315.6555555555555
             ]
-          ]
+          ],
+          "label_size": null
         },
         {
           "id": "L_46_47_0",
@@ -2382,18 +2559,19 @@
               149.5
             ],
             [
-              1680.96875,
+              1660.96875,
               149.5
             ],
             [
-              1680.96875,
-              279.12777777777774
+              1660.96875,
+              301.87777777777774
             ],
             [
-              1751.7847222222222,
-              279.12777777777774
+              1731.7847222222222,
+              301.87777777777774
             ]
-          ]
+          ],
+          "label_size": null
         },
         {
           "id": "L_40_47_0",
@@ -2402,29 +2580,30 @@
           "points": [
             [
               822.6953125,
-              442.875
+              488.375
             ],
             [
               1071.875,
-              442.875
+              488.375
             ],
             [
               1447.640625,
-              442.875
+              488.375
             ],
             [
               1700.96875,
-              442.875
+              488.375
             ],
             [
               1700.96875,
-              296.34999999999997
+              319.09999999999997
             ],
             [
-              1751.7847222222222,
-              296.34999999999997
+              1731.7847222222222,
+              319.09999999999997
             ]
-          ]
+          ],
+          "label_size": null
         },
         {
           "id": "L_38_47_0",
@@ -2433,21 +2612,22 @@
           "points": [
             [
               1620.96875,
-              333
+              240.5
             ],
             [
-              1660.96875,
-              333
+              1640.96875,
+              240.5
             ],
             [
-              1660.96875,
-              289.4611111111111
+              1640.96875,
+              305.3222222222222
             ],
             [
-              1751.7847222222222,
-              289.4611111111111
+              1731.7847222222222,
+              305.3222222222222
             ]
-          ]
+          ],
+          "label_size": null
         },
         {
           "id": "L_43_47_0",
@@ -2463,18 +2643,19 @@
               58.5
             ],
             [
-              1700.96875,
+              1680.96875,
               58.5
             ],
             [
-              1700.96875,
-              275.6833333333333
+              1680.96875,
+              298.4333333333333
             ],
             [
-              1751.7847222222222,
-              275.6833333333333
+              1731.7847222222222,
+              298.4333333333333
             ]
-          ]
+          ],
+          "label_size": null
         },
         {
           "id": "L_42_47_0",
@@ -2483,21 +2664,22 @@
           "points": [
             [
               1620.96875,
-              240.5
+              331.5
             ],
             [
-              1660.96875,
-              240.5
+              1640.96875,
+              331.5
             ],
             [
-              1660.96875,
-              282.5722222222222
+              1640.96875,
+              308.76666666666665
             ],
             [
-              1751.7847222222222,
-              282.5722222222222
+              1731.7847222222222,
+              308.76666666666665
             ]
-          ]
+          ],
+          "label_size": null
         },
         {
           "id": "L_45_46_0",
@@ -2512,7 +2694,8 @@
               1321.3828125,
               149.5
             ]
-          ]
+          ],
+          "label_size": null
         },
         {
           "id": "L_35_45_0",
@@ -2551,7 +2734,8 @@
               926.296875,
               144.33333333333331
             ]
-          ]
+          ],
+          "label_size": null
         },
         {
           "id": "L_41_45_0",
@@ -2560,11 +2744,11 @@
           "points": [
             [
               829.4375,
-              318.6694444444444
+              389.125
             ],
             [
               869.4375,
-              318.6694444444444
+              389.125
             ],
             [
               869.4375,
@@ -2574,7 +2758,8 @@
               926.296875,
               154.66666666666666
             ]
-          ]
+          ],
+          "label_size": null
         },
         {
           "id": "L_41_44_0",
@@ -2583,21 +2768,22 @@
           "points": [
             [
               829.4375,
-              334.1694444444444
+              404.625
             ],
             [
               849.4375,
-              334.1694444444444
+              404.625
             ],
             [
               849.4375,
-              378.5
+              424
             ],
             [
               957.6875,
-              378.5
+              424
             ]
-          ]
+          ],
+          "label_size": null
         },
         {
           "id": "L_39_43_0",
@@ -2606,11 +2792,11 @@
           "points": [
             [
               540.5,
-              233.35277777777776
+              324.35277777777776
             ],
             [
               560.5,
-              233.35277777777776
+              324.35277777777776
             ],
             [
               560.5,
@@ -2632,7 +2818,8 @@
               909.4375,
               58.5
             ]
-          ]
+          ],
+          "label_size": null
         },
         {
           "id": "L_39_42_0",
@@ -2641,29 +2828,30 @@
           "points": [
             [
               540.5,
-              239.55277777777778
+              330.55277777777775
             ],
             [
               600.5,
-              239.55277777777778
+              330.55277777777775
             ],
             [
               600.5,
-              240.5
+              331.5
             ],
             [
               724.96875,
-              240.5
+              331.5
             ],
             [
               1071.875,
-              240.5
+              331.5
             ],
             [
               1274.3125,
-              240.5
+              331.5
             ]
-          ]
+          ],
+          "label_size": null
         },
         {
           "id": "L_39_41_0",
@@ -2672,21 +2860,22 @@
           "points": [
             [
               540.5,
-              245.75277777777777
+              336.7527777777778
             ],
             [
               580.5,
-              245.75277777777777
+              336.7527777777778
             ],
             [
               580.5,
-              326.4194444444444
+              396.875
             ],
             [
               620.5,
-              326.4194444444444
+              396.875
             ]
-          ]
+          ],
+          "label_size": null
         },
         {
           "id": "L_39_40_0",
@@ -2695,21 +2884,22 @@
           "points": [
             [
               540.5,
-              251.95277777777778
+              342.9527777777778
             ],
             [
               560.5,
-              251.95277777777778
+              342.9527777777778
             ],
             [
               560.5,
-              442.875
+              488.375
             ],
             [
               627.2421875,
-              442.875
+              488.375
             ]
-          ]
+          ],
+          "label_size": null
         },
         {
           "id": "L_35_39_0",
@@ -2726,13 +2916,14 @@
             ],
             [
               269.75,
-              237.48611111111111
+              328.4861111111111
             ],
             [
               309.75,
-              237.48611111111111
+              328.4861111111111
             ]
-          ]
+          ],
+          "label_size": null
         },
         {
           "id": "L_36_39_0",
@@ -2741,13 +2932,14 @@
           "points": [
             [
               249.75,
-              247.81944444444443
+              338.81944444444446
             ],
             [
               309.75,
-              247.81944444444446
+              338.81944444444446
             ]
-          ]
+          ],
+          "label_size": null
         }
       ]
     },
@@ -2755,6 +2947,14 @@
       "fixture": "upstream_cypress_flowchart_spec_20_multiple_nodes_and_chaining_in_one_statement_020",
       "input_sha256": "89d1f6cdd6662da4eefc4f4023587c64545f50df14d3690946354d7aa58a92e9",
       "upstream_svg_sha256": "f4859bfcf882e02427685ac573845ade8e7a970c792f736165c03cca7a95bc8a",
+      "capture": {
+        "captured_at": "2026-11-03T20:07:00.745Z",
+        "provider_input_sha256": "59abc64a9d72b3463ca1cca812f7b3f76ec713f14a772d7855b16610ed8cb157",
+        "provider_output_sha256": "d7018767212e9d17cddb6b8cdafb0c5d70651416c06ead6dd438da3de4213360",
+        "captured_svg_sha256": "f4859bfcf882e02427685ac573845ade8e7a970c792f736165c03cca7a95bc8a",
+        "upstream_svg_byte_identical": true,
+        "upstream_svg_geometry_identical": true
+      },
       "nodes": [
         {
           "id": "A",
@@ -2905,7 +3105,8 @@
               162,
               241.99999809265137
             ]
-          ]
+          ],
+          "label_size": null
         },
         {
           "id": "L_C_D_0",
@@ -2928,7 +3129,8 @@
               206,
               241.99999809265137
             ]
-          ]
+          ],
+          "label_size": null
         }
       ]
     },
@@ -2936,6 +3138,14 @@
       "fixture": "upstream_cypress_flowchart_spec_24_keep_node_label_text_if_already_defined_when_a_style_is_appli_024",
       "input_sha256": "9d416eaedbeda364326ad0d96ad075d2d12a96eda9278d763eba79cf1c939918",
       "upstream_svg_sha256": "3d296ceab9ed3a364d2e6069c3430ea3ed94e35dfbcba70afd699cb5e302a09d",
+      "capture": {
+        "captured_at": "2026-11-03T20:07:01.397Z",
+        "provider_input_sha256": "5d8210cebd139a6bb6c511ccecd5f453177521ea9ad0ac34b3f6c2ce37358b07",
+        "provider_output_sha256": "19f64955eec3a137af6284a49fbc36459ba66cccaaccdb8133dffd88a1b6b9f2",
+        "captured_svg_sha256": "3d296ceab9ed3a364d2e6069c3430ea3ed94e35dfbcba70afd699cb5e302a09d",
+        "upstream_svg_byte_identical": true,
+        "upstream_svg_geometry_identical": true
+      },
       "nodes": [
         {
           "id": "A",
@@ -3073,7 +3283,15 @@
     {
       "fixture": "upstream_cypress_flowchart_spec_6_should_render_a_flowchart_full_of_circles_006",
       "input_sha256": "732173c18b52c7d0252b9ecdf925726e3d043008aa00d2c22d2f6532a6197f8c",
-      "upstream_svg_sha256": "696f2a58e02b7cab0d6d29de17c9a911451de96bb0f097f101e930c838a18cf4",
+      "upstream_svg_sha256": "14274c49f5129362a5b04e283bfd0c371626ac327c8c3cd14a0484bdcb09a664",
+      "capture": {
+        "captured_at": "2026-11-03T20:07:01.731Z",
+        "provider_input_sha256": "df0964d2bc652757497a6bd367c0a5675d5dd904e3316a96a031613f4f124956",
+        "provider_output_sha256": "46d37137c43b34f5f045b1eb90dced5f7011a4c4b741a27e2d22572bbab6f6c0",
+        "captured_svg_sha256": "14274c49f5129362a5b04e283bfd0c371626ac327c8c3cd14a0484bdcb09a664",
+        "upstream_svg_byte_identical": true,
+        "upstream_svg_geometry_identical": true
+      },
       "nodes": [
         {
           "id": "47",
@@ -3082,8 +3300,8 @@
             51
           ],
           "center": [
-            1928.771701388889,
-            284.2944444444444
+            1908.771701388889,
+            307.0444444444444
           ],
           "label_box": {
             "text": "SAM.CommonFA.FMESummary",
@@ -3100,8 +3318,8 @@
             51
           ],
           "center": [
-            2357.703125,
-            329.7944444444444
+            2337.703125,
+            352.5444444444444
           ],
           "label_box": {
             "text": "SAM.CommonFA.CommonFAFinanceBudget",
@@ -3118,8 +3336,8 @@
             51
           ],
           "center": [
-            1981.046875,
-            375.2944444444444
+            1961.046875,
+            398.0444444444444
           ],
           "label_box": {
             "text": "SAM.CommonFA.BudgetSubserviceLineVolume",
@@ -3155,7 +3373,7 @@
           ],
           "center": [
             760.4921875,
-            326.4194444444444
+            396.875
           ],
           "label_box": {
             "text": "SAM.CommonFA.MetricCost",
@@ -3173,7 +3391,7 @@
           ],
           "center": [
             1118.3359375,
-            378.5
+            424
           ],
           "label_box": {
             "text": "SAM.CommonFA.MetricOutliers",
@@ -3209,7 +3427,7 @@
           ],
           "center": [
             760.4921875,
-            442.875
+            488.375
           ],
           "label_box": {
             "text": "SAM.CommonFA.OPVisits",
@@ -3227,7 +3445,7 @@
           ],
           "center": [
             1524.390625,
-            333
+            240.5
           ],
           "label_box": {
             "text": "SAM.CommonFA.CommonFAFinanceRefund",
@@ -3263,7 +3481,7 @@
           ],
           "center": [
             1503.390625,
-            240.5
+            331.5
           ],
           "label_box": {
             "text": "SAM.CommonFA.CommonFAFinanceNurseryDays",
@@ -3299,7 +3517,7 @@
           ],
           "center": [
             444.65625,
-            242.65277777777777
+            333.65277777777777
           ],
           "label_box": {
             "text": "SAM.CommonFA.ChargeDetails",
@@ -3317,7 +3535,7 @@
           ],
           "center": [
             136.21875,
-            247.81944444444443
+            338.81944444444446
           ],
           "label_box": {
             "text": "SAM.CommonFA.PremetricCost",
@@ -3335,22 +3553,23 @@
           "target": "48",
           "points": [
             [
-              2040.388888888889,
-              284.2944444444444
+              2020.388888888889,
+              307.0444444444444
+            ],
+            [
+              2159.875,
+              307.0444444444444
+            ],
+            [
+              2159.875,
+              347.37777777777774
             ],
             [
               2179.875,
-              284.2944444444444
-            ],
-            [
-              2179.875,
-              324.62777777777774
-            ],
-            [
-              2199.875,
-              324.62777777777774
+              347.37777777777774
             ]
-          ]
+          ],
+          "label_size": null
         },
         {
           "id": "L_37_48_0",
@@ -3358,22 +3577,23 @@
           "target": "48",
           "points": [
             [
+              2139.875,
+              398.0444444444444
+            ],
+            [
               2159.875,
-              375.2944444444444
+              398.0444444444444
+            ],
+            [
+              2159.875,
+              357.7111111111111
             ],
             [
               2179.875,
-              375.2944444444444
-            ],
-            [
-              2179.875,
-              334.9611111111111
-            ],
-            [
-              2199.875,
-              334.9611111111111
+              357.7111111111111
             ]
-          ]
+          ],
+          "label_size": null
         },
         {
           "id": "L_35_47_0",
@@ -3409,18 +3629,19 @@
               12
             ],
             [
-              1782.21875,
+              1762.21875,
               12
             ],
             [
-              1782.21875,
-              272.2388888888889
+              1762.21875,
+              294.9888888888889
             ],
             [
-              1817.154513888889,
-              272.2388888888889
+              1797.154513888889,
+              294.9888888888889
             ]
-          ]
+          ],
+          "label_size": null
         },
         {
           "id": "L_41_47_0",
@@ -3429,37 +3650,38 @@
           "points": [
             [
               872.109375,
-              326.4194444444444
+              396.875
             ],
             [
               932.109375,
-              326.4194444444444
+              396.875
             ],
             [
               932.109375,
-              286.5
+              377.5
             ],
             [
               1118.3359375,
-              286.5
+              377.5
             ],
             [
               1503.390625,
-              286.5
+              377.5
             ],
             [
-              1702.21875,
-              286.5
+              1722.21875,
+              377.5
             ],
             [
-              1702.21875,
-              286.01666666666665
+              1722.21875,
+              312.2111111111111
             ],
             [
-              1817.154513888889,
-              286.01666666666665
+              1797.154513888889,
+              312.2111111111111
             ]
-          ]
+          ],
+          "label_size": null
         },
         {
           "id": "L_44_47_0",
@@ -3468,25 +3690,26 @@
           "points": [
             [
               1246.7578125,
-              378.5
+              424
             ],
             [
               1503.390625,
-              378.5
+              424
             ],
             [
               1742.21875,
-              378.5
+              424
             ],
             [
               1742.21875,
-              292.9055555555555
+              315.6555555555555
             ],
             [
-              1817.154513888889,
-              292.9055555555555
+              1797.154513888889,
+              315.6555555555555
             ]
-          ]
+          ],
+          "label_size": null
         },
         {
           "id": "L_46_47_0",
@@ -3498,18 +3721,19 @@
               149.5
             ],
             [
-              1742.21875,
+              1722.21875,
               149.5
             ],
             [
-              1742.21875,
-              279.12777777777774
+              1722.21875,
+              301.87777777777774
             ],
             [
-              1817.154513888889,
-              279.12777777777774
+              1797.154513888889,
+              301.87777777777774
             ]
-          ]
+          ],
+          "label_size": null
         },
         {
           "id": "L_40_47_0",
@@ -3518,29 +3742,30 @@
           "points": [
             [
               863.7109375,
-              442.875
+              488.375
             ],
             [
               1118.3359375,
-              442.875
+              488.375
             ],
             [
               1503.390625,
-              442.875
+              488.375
             ],
             [
               1762.21875,
-              442.875
+              488.375
             ],
             [
               1762.21875,
-              296.34999999999997
+              319.09999999999997
             ],
             [
-              1817.154513888889,
-              296.34999999999997
+              1797.154513888889,
+              319.09999999999997
             ]
-          ]
+          ],
+          "label_size": null
         },
         {
           "id": "L_38_47_0",
@@ -3549,21 +3774,22 @@
           "points": [
             [
               1682.21875,
-              333
+              240.5
             ],
             [
-              1722.21875,
-              333
+              1702.21875,
+              240.5
             ],
             [
-              1722.21875,
-              289.4611111111111
+              1702.21875,
+              305.3222222222222
             ],
             [
-              1817.154513888889,
-              289.4611111111111
+              1797.154513888889,
+              305.3222222222222
             ]
-          ]
+          ],
+          "label_size": null
         },
         {
           "id": "L_43_47_0",
@@ -3579,18 +3805,19 @@
               58.5
             ],
             [
-              1762.21875,
+              1742.21875,
               58.5
             ],
             [
-              1762.21875,
-              275.6833333333333
+              1742.21875,
+              298.4333333333333
             ],
             [
-              1817.154513888889,
-              275.6833333333333
+              1797.154513888889,
+              298.4333333333333
             ]
-          ]
+          ],
+          "label_size": null
         },
         {
           "id": "L_42_47_0",
@@ -3599,21 +3826,22 @@
           "points": [
             [
               1682.21875,
-              240.5
+              331.5
             ],
             [
-              1722.21875,
-              240.5
+              1702.21875,
+              331.5
             ],
             [
-              1722.21875,
-              282.5722222222222
+              1702.21875,
+              308.76666666666665
             ],
             [
-              1817.154513888889,
-              282.5722222222222
+              1797.154513888889,
+              308.76666666666665
             ]
-          ]
+          ],
+          "label_size": null
         },
         {
           "id": "L_45_46_0",
@@ -3628,7 +3856,8 @@
               1362.3671875,
               149.5
             ]
-          ]
+          ],
+          "label_size": null
         },
         {
           "id": "L_35_45_0",
@@ -3667,7 +3896,8 @@
               960.5104166666666,
               144.33333333333331
             ]
-          ]
+          ],
+          "label_size": null
         },
         {
           "id": "L_41_45_0",
@@ -3676,11 +3906,11 @@
           "points": [
             [
               872.109375,
-              318.6694444444444
+              389.125
             ],
             [
               912.109375,
-              318.6694444444444
+              389.125
             ],
             [
               912.109375,
@@ -3690,7 +3920,8 @@
               960.5104166666666,
               154.66666666666666
             ]
-          ]
+          ],
+          "label_size": null
         },
         {
           "id": "L_41_44_0",
@@ -3699,21 +3930,22 @@
           "points": [
             [
               872.109375,
-              334.1694444444444
+              404.625
             ],
             [
               892.109375,
-              334.1694444444444
+              404.625
             ],
             [
               892.109375,
-              378.5
+              424
             ],
             [
               989.9140625,
-              378.5
+              424
             ]
-          ]
+          ],
+          "label_size": null
         },
         {
           "id": "L_39_43_0",
@@ -3722,11 +3954,11 @@
           "points": [
             [
               568.875,
-              233.35277777777776
+              324.35277777777776
             ],
             [
               588.875,
-              233.35277777777776
+              324.35277777777776
             ],
             [
               588.875,
@@ -3748,7 +3980,8 @@
               952.109375,
               58.5
             ]
-          ]
+          ],
+          "label_size": null
         },
         {
           "id": "L_39_42_0",
@@ -3757,29 +3990,30 @@
           "points": [
             [
               568.875,
-              239.55277777777778
+              330.55277777777775
             ],
             [
               628.875,
-              239.55277777777778
+              330.55277777777775
             ],
             [
               628.875,
-              240.5
+              331.5
             ],
             [
               760.4921875,
-              240.5
+              331.5
             ],
             [
               1118.3359375,
-              240.5
+              331.5
             ],
             [
               1324.5625,
-              240.5
+              331.5
             ]
-          ]
+          ],
+          "label_size": null
         },
         {
           "id": "L_39_41_0",
@@ -3788,21 +4022,22 @@
           "points": [
             [
               568.875,
-              245.75277777777777
+              336.7527777777778
             ],
             [
               608.875,
-              245.75277777777777
+              336.7527777777778
             ],
             [
               608.875,
-              326.4194444444444
+              396.875
             ],
             [
               648.875,
-              326.4194444444444
+              396.875
             ]
-          ]
+          ],
+          "label_size": null
         },
         {
           "id": "L_39_40_0",
@@ -3811,21 +4046,22 @@
           "points": [
             [
               568.875,
-              251.95277777777778
+              342.9527777777778
             ],
             [
               588.875,
-              251.95277777777778
+              342.9527777777778
             ],
             [
               588.875,
-              442.875
+              488.375
             ],
             [
               657.2734375,
-              442.875
+              488.375
             ]
-          ]
+          ],
+          "label_size": null
         },
         {
           "id": "L_35_39_0",
@@ -3842,13 +4078,14 @@
             ],
             [
               280.4375,
-              237.48611111111111
+              328.4861111111111
             ],
             [
               320.4375,
-              237.48611111111111
+              328.4861111111111
             ]
-          ]
+          ],
+          "label_size": null
         },
         {
           "id": "L_36_39_0",
@@ -3857,13 +4094,14 @@
           "points": [
             [
               260.4375,
-              247.81944444444443
+              338.81944444444446
             ],
             [
               320.4375,
-              247.81944444444446
+              338.81944444444446
             ]
-          ]
+          ],
+          "label_size": null
         }
       ]
     },
@@ -3871,6 +4109,14 @@
       "fixture": "upstream_cypress_flowchart_v2_spec_60_handle_styling_for_all_node_shapes_v2_020",
       "input_sha256": "2f54dde38bbcb1c672856d8cee4904b27d714a154de03b268f0b768304138b59",
       "upstream_svg_sha256": "1896c80161791d5d8f39b2eebb0a0cf4601a8808de960ca9bf0144d8f0d6226f",
+      "capture": {
+        "captured_at": "2026-11-03T20:07:02.084Z",
+        "provider_input_sha256": "a0217849261be294bebe43503672c98b33281e868f97557cc045d0aeb127b2d8",
+        "provider_output_sha256": "ce589cf705d7b8435ee45d8b978bb68d915e91e8e2af8730f5f19c35915f3fab",
+        "captured_svg_sha256": "1896c80161791d5d8f39b2eebb0a0cf4601a8808de960ca9bf0144d8f0d6226f",
+        "upstream_svg_byte_identical": true,
+        "upstream_svg_geometry_identical": true
+      },
       "nodes": [
         {
           "id": "A",
@@ -4320,6 +4566,14 @@
       "fixture": "upstream_cypress_flowchart_v2_spec_60_handle_styling_for_all_node_shapes_v2_021",
       "input_sha256": "913ee975becbdabe00aa3792aa0731167041f36d78dfb57e0f8a78f791870d25",
       "upstream_svg_sha256": "3dc87ac87d756a76719974bfccf7e916f659fe1ddabcc5d19a14a56a5821c9b1",
+      "capture": {
+        "captured_at": "2026-11-03T20:07:02.426Z",
+        "provider_input_sha256": "a0217849261be294bebe43503672c98b33281e868f97557cc045d0aeb127b2d8",
+        "provider_output_sha256": "ce589cf705d7b8435ee45d8b978bb68d915e91e8e2af8730f5f19c35915f3fab",
+        "captured_svg_sha256": "7fa0b2794a6f6f47ac46eba5c4ba52b9a04b22002c8ec963604c077f4dbe7f63",
+        "upstream_svg_byte_identical": false,
+        "upstream_svg_geometry_identical": true
+      },
       "nodes": [
         {
           "id": "A",
@@ -4769,6 +5023,14 @@
       "fixture": "upstream_cypress_newshapes_spec_newshapessets_newshapesset2_lr_allpairs_059",
       "input_sha256": "d2853b45a392660b37f13512a916f1200b3bcff87707cfc29b8c31d5ba835dea",
       "upstream_svg_sha256": "36eec772517caf015d8d42e21984b7e1efaca3419205f1df4fea3fb419b7699e",
+      "capture": {
+        "captured_at": "2026-11-03T20:07:02.760Z",
+        "provider_input_sha256": "ec2340bebd4846d622cb1e8b8c6c0cb9a1059bfe90c31eb5721bfe5bde2d87c3",
+        "provider_output_sha256": "699f823fede65f28b44887d1ef0bfb830b4c49749a672fa14c0244425736fd75",
+        "captured_svg_sha256": "36eec772517caf015d8d42e21984b7e1efaca3419205f1df4fea3fb419b7699e",
+        "upstream_svg_byte_identical": true,
+        "upstream_svg_geometry_identical": true
+      },
       "nodes": [
         {
           "id": "n00",
@@ -4869,7 +5131,8 @@
               241.39999389648438,
               75.61807250976562
             ]
-          ]
+          ],
+          "label_size": null
         },
         {
           "id": "L_n00_n22_0",
@@ -4896,7 +5159,8 @@
               453.3999938964844,
               223.56947835286462
             ]
-          ]
+          ],
+          "label_size": null
         },
         {
           "id": "L_n00_n33_0",
@@ -4935,7 +5199,8 @@
               568.3999938964844,
               147.03614501953126
             ]
-          ]
+          ],
+          "label_size": null
         },
         {
           "id": "L_n00_n44_0",
@@ -4978,7 +5243,8 @@
               642.4132871627808,
               216.0028116861979
             ]
-          ]
+          ],
+          "label_size": null
         },
         {
           "id": "L_n11_n22_0",
@@ -5001,7 +5267,8 @@
               453.3999938964844,
               206.90281168619794
             ]
-          ]
+          ],
+          "label_size": null
         },
         {
           "id": "L_n11_n33_0",
@@ -5028,7 +5295,8 @@
               568.3999938964844,
               148.53614501953126
             ]
-          ]
+          ],
+          "label_size": null
         },
         {
           "id": "L_n11_n44_0",
@@ -5067,7 +5335,8 @@
               642.4132871627808,
               169.8028116861979
             ]
-          ]
+          ],
+          "label_size": null
         },
         {
           "id": "L_n22_n33_0",
@@ -5090,7 +5359,8 @@
               568.3999938964844,
               145.53614501953126
             ]
-          ]
+          ],
+          "label_size": null
         },
         {
           "id": "L_n22_n44_0",
@@ -5117,7 +5387,8 @@
               642.4132871627808,
               200.60281168619792
             ]
-          ]
+          ],
+          "label_size": null
         },
         {
           "id": "L_n33_n44_0",
@@ -5140,7 +5411,8 @@
               642.4132871627808,
               185.2028116861979
             ]
-          ]
+          ],
+          "label_size": null
         }
       ]
     },
@@ -5148,6 +5420,14 @@
       "fixture": "upstream_cypress_newshapes_spec_newshapessets_newshapesset3_tb_allpairs_019",
       "input_sha256": "72a5231fc9097a54c4d683d7854f8196135e72d7f3608c5bf7c8baf33371b462",
       "upstream_svg_sha256": "b5ab6e805dd0da0d6075af105eec255cd82df615048e377ba4c6b7c6a54a9db0",
+      "capture": {
+        "captured_at": "2026-11-03T20:07:03.102Z",
+        "provider_input_sha256": "c131fe23342fb91ec441160bbeb1a561610d2dc2e9447ccd02bcc897df9fce0d",
+        "provider_output_sha256": "d19e0e27e0fbcbd2997c0ca7367687fb349e36e9ad4a4f8a9d3ee52079168e68",
+        "captured_svg_sha256": "b5ab6e805dd0da0d6075af105eec255cd82df615048e377ba4c6b7c6a54a9db0",
+        "upstream_svg_byte_identical": true,
+        "upstream_svg_geometry_identical": true
+      },
       "nodes": [
         {
           "id": "n00",
@@ -5255,7 +5535,8 @@
               91.75807189941406,
               159
             ]
-          ]
+          ],
+          "label_size": null
         },
         {
           "id": "L_n00_n22_0",
@@ -5282,7 +5563,8 @@
               319.18281046549475,
               253
             ]
-          ]
+          ],
+          "label_size": null
         },
         {
           "id": "L_n00_n33_0",
@@ -5321,7 +5603,8 @@
               169.46837921142577,
               429.2417526245117
             ]
-          ]
+          ],
+          "label_size": null
         },
         {
           "id": "L_n00_n44_0",
@@ -5364,7 +5647,8 @@
               253.82450154622396,
               584.0417556762695
             ]
-          ]
+          ],
+          "label_size": null
         },
         {
           "id": "L_n11_n22_0",
@@ -5387,7 +5671,8 @@
               270.84947713216144,
               253
             ]
-          ]
+          ],
+          "label_size": null
         },
         {
           "id": "L_n11_n33_0",
@@ -5414,7 +5699,8 @@
               140.46837921142577,
               429.2417526245117
             ]
-          ]
+          ],
+          "label_size": null
         },
         {
           "id": "L_n11_n44_0",
@@ -5453,7 +5739,8 @@
               229.7903180440267,
               584.0417556762695
             ]
-          ]
+          ],
+          "label_size": null
         },
         {
           "id": "L_n22_n33_0",
@@ -5476,7 +5763,8 @@
               198.46837921142577,
               429.2417526245117
             ]
-          ]
+          ],
+          "label_size": null
         },
         {
           "id": "L_n22_n44_0",
@@ -5503,7 +5791,8 @@
               245.81310704549153,
               584.0417556762695
             ]
-          ]
+          ],
+          "label_size": null
         },
         {
           "id": "L_n33_n44_0",
@@ -5526,7 +5815,8 @@
               237.8017125447591,
               584.0417556762695
             ]
-          ]
+          ],
+          "label_size": null
         }
       ]
     },
@@ -5534,6 +5824,14 @@
       "fixture": "upstream_cypress_newshapes_spec_newshapessets_newshapesset5_lr_allpairs_083",
       "input_sha256": "3c08be319b945953c904817d6657828b821cb71107919b5878e2923224fda960",
       "upstream_svg_sha256": "9d48dbb2d6eb2e673b710fa2575585a559c9077a66ba526b27d4e2cc5bcd671a",
+      "capture": {
+        "captured_at": "2026-11-03T20:07:03.442Z",
+        "provider_input_sha256": "86fe3b11358f3b2c172350804bbe5128a95f5fbeccbcf88b9aded636db1ab774",
+        "provider_output_sha256": "13a9987ef29492e2eceea3b30be453435aa87715adfc82f3a12c590d162e5997",
+        "captured_svg_sha256": "9d48dbb2d6eb2e673b710fa2575585a559c9077a66ba526b27d4e2cc5bcd671a",
+        "upstream_svg_byte_identical": true,
+        "upstream_svg_geometry_identical": true
+      },
       "nodes": [
         {
           "id": "n00",
@@ -5666,7 +5964,8 @@
               239.1999969482422,
               112.60000228881836
             ]
-          ]
+          ],
+          "label_size": null
         },
         {
           "id": "L_n00_n22_0",
@@ -5693,7 +5992,8 @@
               464.1999969482422,
               204.70666999816893
             ]
-          ]
+          ],
+          "label_size": null
         },
         {
           "id": "L_n00_n33_0",
@@ -5732,7 +6032,8 @@
               676,
               75.20000076293945
             ]
-          ]
+          ],
+          "label_size": null
         },
         {
           "id": "L_n00_n44_0",
@@ -5775,7 +6076,8 @@
               887.8000030517578,
               181.43371467590333
             ]
-          ]
+          ],
+          "label_size": null
         },
         {
           "id": "L_n00_n55_0",
@@ -5822,7 +6124,8 @@
               1140.3000030517578,
               197.86455586751302
             ]
-          ]
+          ],
+          "label_size": null
         },
         {
           "id": "L_n11_n22_0",
@@ -5845,7 +6148,8 @@
               464.1999969482422,
               189.773335647583
             ]
-          ]
+          ],
+          "label_size": null
         },
         {
           "id": "L_n11_n33_0",
@@ -5872,7 +6176,8 @@
               676,
               86.4000015258789
             ]
-          ]
+          ],
+          "label_size": null
         },
         {
           "id": "L_n11_n44_0",
@@ -5911,7 +6216,8 @@
               887.8000030517578,
               157.75371589660645
             ]
-          ]
+          ],
+          "label_size": null
         },
         {
           "id": "L_n11_n55_0",
@@ -5954,7 +6260,8 @@
               1140.3000030517578,
               158.39789123535155
             ]
-          ]
+          ],
+          "label_size": null
         },
         {
           "id": "L_n22_n33_0",
@@ -5977,7 +6284,8 @@
               676,
               97.60000228881836
             ]
-          ]
+          ],
+          "label_size": null
         },
         {
           "id": "L_n22_n44_0",
@@ -6012,7 +6320,8 @@
               887.8000030517578,
               169.5937152862549
             ]
-          ]
+          ],
+          "label_size": null
         },
         {
           "id": "L_n22_n55_0",
@@ -6051,7 +6360,8 @@
               1140.3000030517578,
               187.99788970947264
             ]
-          ]
+          ],
+          "label_size": null
         },
         {
           "id": "L_n33_n44_0",
@@ -6074,7 +6384,8 @@
               887.8000030517578,
               145.91371650695802
             ]
-          ]
+          ],
+          "label_size": null
         },
         {
           "id": "L_n33_n55_0",
@@ -6101,7 +6412,8 @@
               1140.3000030517578,
               168.26455739339193
             ]
-          ]
+          ],
+          "label_size": null
         },
         {
           "id": "L_n44_n55_0",
@@ -6124,7 +6436,8 @@
               1140.3000030517578,
               178.1312235514323
             ]
-          ]
+          ],
+          "label_size": null
         }
       ]
     },
@@ -6132,6 +6445,14 @@
       "fixture": "upstream_cypress_newshapes_spec_newshapessets_newshapesset5_lr_label_082",
       "input_sha256": "5e6e5fd9e7fd58759bd190f4dde9a7a3bfcf3bc93a89710d1ea1772bcc7685dd",
       "upstream_svg_sha256": "b12f43496138ee41d65cdc5d0c5ed9a0368bac4942dcc747c9720179d85eb4e0",
+      "capture": {
+        "captured_at": "2026-11-03T20:07:03.780Z",
+        "provider_input_sha256": "ed650927d555af067d9ade4ad94da27115f508e86268d8d6ce0f546917de4604",
+        "provider_output_sha256": "71205e08a7966ec4462c84de72f6c93e5a7e7b1af31b175eb1c535f9d828760f",
+        "captured_svg_sha256": "b12f43496138ee41d65cdc5d0c5ed9a0368bac4942dcc747c9720179d85eb4e0",
+        "upstream_svg_byte_identical": true,
+        "upstream_svg_geometry_identical": true
+      },
       "nodes": [
         {
           "id": "n0",
@@ -6364,7 +6685,8 @@
               204,
               77.24227142333984
             ]
-          ]
+          ],
+          "label_size": null
         },
         {
           "id": "L_n1_n11_0",
@@ -6379,7 +6701,8 @@
               204,
               240.60541915893555
             ]
-          ]
+          ],
+          "label_size": null
         },
         {
           "id": "L_n2_n22_0",
@@ -6394,7 +6717,8 @@
               204,
               371.1262969970703
             ]
-          ]
+          ],
+          "label_size": null
         },
         {
           "id": "L_n3_n33_0",
@@ -6409,7 +6733,8 @@
               204,
               475.9263000488281
             ]
-          ]
+          ],
+          "label_size": null
         },
         {
           "id": "L_n4_n44_0",
@@ -6424,7 +6749,8 @@
               204,
               587.9263000488281
             ]
-          ]
+          ],
+          "label_size": null
         },
         {
           "id": "L_n5_n55_0",
@@ -6439,7 +6765,8 @@
               204,
               707.1262969970703
             ]
-          ]
+          ],
+          "label_size": null
         }
       ]
     },
@@ -6447,6 +6774,14 @@
       "fixture": "upstream_cypress_newshapes_spec_newshapessets_newshapesset5_lr_longlabel_084",
       "input_sha256": "7d3e32bf052a4fa1478725315bc54c1c2ad779cf6718ec9023af0b7dee4d611c",
       "upstream_svg_sha256": "04b89ebefbd41cda0b5036471adefeb04d583d699ea5126f8441212822d4e76a",
+      "capture": {
+        "captured_at": "2026-11-03T20:07:04.119Z",
+        "provider_input_sha256": "34a2d815da94bfb03e100563fb2396c89b766d619c1cbb7fae16d7a46f44cdf8",
+        "provider_output_sha256": "e2abc92e1b833c0afd962a13ddf348c9ee32b4514b79212976d287ca7ad10d2d",
+        "captured_svg_sha256": "04b89ebefbd41cda0b5036471adefeb04d583d699ea5126f8441212822d4e76a",
+        "upstream_svg_byte_identical": true,
+        "upstream_svg_geometry_identical": true
+      },
       "nodes": [
         {
           "id": "n0",
@@ -6679,7 +7014,8 @@
               204,
               108.7385482788086
             ]
-          ]
+          ],
+          "label_size": null
         },
         {
           "id": "L_n1_n11_0",
@@ -6694,7 +7030,8 @@
               204,
               329.8460998535156
             ]
-          ]
+          ],
+          "label_size": null
         },
         {
           "id": "L_n2_n22_0",
@@ -6709,7 +7046,8 @@
               204,
               524.4151000976562
             ]
-          ]
+          ],
+          "label_size": null
         },
         {
           "id": "L_n3_n33_0",
@@ -6724,7 +7062,8 @@
               204,
               704.8150939941406
             ]
-          ]
+          ],
+          "label_size": null
         },
         {
           "id": "L_n4_n44_0",
@@ -6739,7 +7078,8 @@
               204,
               892.4150924682617
             ]
-          ]
+          ],
+          "label_size": null
         },
         {
           "id": "L_n5_n55_0",
@@ -6754,7 +7094,8 @@
               204,
               1087.2150955200195
             ]
-          ]
+          ],
+          "label_size": null
         }
       ]
     },
@@ -6762,6 +7103,14 @@
       "fixture": "upstream_cypress_newshapes_spec_newshapessets_newshapesset5_lr_md_html_true_085",
       "input_sha256": "00925432d8904ef7281b77054b732dbdb7a004d3352ed083ddde2cedfbf3baa6",
       "upstream_svg_sha256": "411498a9171461f51e9d1304cf3c61a7dec809822697c9b33fae5427cb88d3b0",
+      "capture": {
+        "captured_at": "2026-11-03T20:07:04.459Z",
+        "provider_input_sha256": "bf7cb40a2da0faa5f442356fa4b86188484ffb391c065713034a581315842db5",
+        "provider_output_sha256": "d8b7d4dfc4717e184f2b0306bc1ccfa53ca0ab62366ce5b1851f108a4bb36100",
+        "captured_svg_sha256": "411498a9171461f51e9d1304cf3c61a7dec809822697c9b33fae5427cb88d3b0",
+        "upstream_svg_byte_identical": true,
+        "upstream_svg_geometry_identical": true
+      },
       "nodes": [
         {
           "id": "n0",
@@ -6994,7 +7343,8 @@
               204,
               92.99040985107422
             ]
-          ]
+          ],
+          "label_size": null
         },
         {
           "id": "L_n1_n11_0",
@@ -7009,7 +7359,8 @@
               204,
               285.2257614135742
             ]
-          ]
+          ],
+          "label_size": null
         },
         {
           "id": "L_n2_n22_0",
@@ -7024,7 +7375,8 @@
               204,
               441.470703125
             ]
-          ]
+          ],
+          "label_size": null
         },
         {
           "id": "L_n3_n33_0",
@@ -7039,7 +7391,8 @@
               204,
               571.470703125
             ]
-          ]
+          ],
+          "label_size": null
         },
         {
           "id": "L_n4_n44_0",
@@ -7054,7 +7407,8 @@
               204,
               708.6707038879395
             ]
-          ]
+          ],
+          "label_size": null
         },
         {
           "id": "L_n5_n55_0",
@@ -7069,7 +7423,8 @@
               204,
               853.0707054138184
             ]
-          ]
+          ],
+          "label_size": null
         }
       ]
     },
@@ -7077,6 +7432,14 @@
       "fixture": "upstream_cypress_newshapes_spec_newshapessets_newshapesset5_tb_allpairs_035",
       "input_sha256": "12146de76d14c39cd522e601b546f5c2f8099d63a8ac6813898d8f2d04e8bfae",
       "upstream_svg_sha256": "eaa984b453d5f31c734f06280700d432cfeeadd6f071d7dbe4160275e44b4057",
+      "capture": {
+        "captured_at": "2026-11-03T20:07:04.796Z",
+        "provider_input_sha256": "58eae1f77eb53bfa49bcab64c7f9903bf473c1f7e072747238aa6ddbc76ff4d9",
+        "provider_output_sha256": "d7f4ed021b83831cc440e9c7ca73b73f100151e224f478a80bd142478f7073ef",
+        "captured_svg_sha256": "eaa984b453d5f31c734f06280700d432cfeeadd6f071d7dbe4160275e44b4057",
+        "upstream_svg_byte_identical": true,
+        "upstream_svg_geometry_identical": true
+      },
       "nodes": [
         {
           "id": "n00",
@@ -7209,7 +7572,8 @@
               171.40000279744464,
               202.4845428466797
             ]
-          ]
+          ],
+          "label_size": null
         },
         {
           "id": "L_n00_n22_0",
@@ -7236,7 +7600,8 @@
               344.6666717529297,
               378.7262954711914
             ]
-          ]
+          ],
+          "label_size": null
         },
         {
           "id": "L_n00_n33_0",
@@ -7275,7 +7640,8 @@
               96.95000076293945,
               483.5262985229492
             ]
-          ]
+          ],
+          "label_size": null
         },
         {
           "id": "L_n00_n44_0",
@@ -7318,7 +7684,8 @@
               313.55000432332355,
               608.326301574707
             ]
-          ]
+          ],
+          "label_size": null
         },
         {
           "id": "L_n00_n55_0",
@@ -7365,7 +7732,8 @@
               324.79166984558105,
               747.5262985229492
             ]
-          ]
+          ],
+          "label_size": null
         },
         {
           "id": "L_n11_n22_0",
@@ -7388,7 +7756,8 @@
               300.73333740234375,
               378.7262954711914
             ]
-          ]
+          ],
+          "label_size": null
         },
         {
           "id": "L_n11_n33_0",
@@ -7415,7 +7784,8 @@
               129.9000015258789,
               483.5262985229492
             ]
-          ]
+          ],
+          "label_size": null
         },
         {
           "id": "L_n11_n44_0",
@@ -7454,7 +7824,8 @@
               252.55000432332355,
               608.326301574707
             ]
-          ]
+          ],
+          "label_size": null
         },
         {
           "id": "L_n11_n55_0",
@@ -7497,7 +7868,8 @@
               225.32500521341962,
               747.5262985229492
             ]
-          ]
+          ],
+          "label_size": null
         },
         {
           "id": "L_n22_n33_0",
@@ -7520,7 +7892,8 @@
               162.85000228881836,
               483.5262985229492
             ]
-          ]
+          ],
+          "label_size": null
         },
         {
           "id": "L_n22_n44_0",
@@ -7555,7 +7928,8 @@
               283.05000432332355,
               608.326301574707
             ]
-          ]
+          ],
+          "label_size": null
         },
         {
           "id": "L_n22_n55_0",
@@ -7594,7 +7968,8 @@
               299.92500368754065,
               747.5262985229492
             ]
-          ]
+          ],
+          "label_size": null
         },
         {
           "id": "L_n33_n44_0",
@@ -7617,7 +7992,8 @@
               222.05000432332355,
               608.326301574707
             ]
-          ]
+          ],
+          "label_size": null
         },
         {
           "id": "L_n33_n55_0",
@@ -7644,7 +8020,8 @@
               250.19167137145996,
               747.5262985229492
             ]
-          ]
+          ],
+          "label_size": null
         },
         {
           "id": "L_n44_n55_0",
@@ -7667,7 +8044,8 @@
               275.0583375295003,
               747.5262985229492
             ]
-          ]
+          ],
+          "label_size": null
         }
       ]
     },
@@ -7675,6 +8053,14 @@
       "fixture": "upstream_cypress_newshapes_spec_newshapessets_newshapesset6_lr_allpairs_091",
       "input_sha256": "ab3890b19e238bb699421b2f61f4a249993b6ad6517f562ad3989825686a7901",
       "upstream_svg_sha256": "55086838947143199edde75b6c52ee971ab72187913b39c5a29b96b61277abc3",
+      "capture": {
+        "captured_at": "2026-11-03T20:07:04.948Z",
+        "provider_input_sha256": "5bcb402690c58e5baa4d2cc495ffd0753f5a2475afd9f691bdf17d956560f91c",
+        "provider_output_sha256": "74d61744e3cd5d313568f26124bc13ebefe14bd5bcd313246b78c8537d3d859a",
+        "captured_svg_sha256": "55086838947143199edde75b6c52ee971ab72187913b39c5a29b96b61277abc3",
+        "upstream_svg_byte_identical": true,
+        "upstream_svg_geometry_identical": true
+      },
       "nodes": [
         {
           "id": "n00",
@@ -7727,7 +8113,8 @@
               221.1999969482422,
               51.599998474121094
             ]
-          ]
+          ],
+          "label_size": null
         }
       ]
     },
@@ -7735,6 +8122,14 @@
       "fixture": "upstream_cypress_newshapes_spec_newshapessets_newshapesset6_lr_label_090",
       "input_sha256": "8c5a55d0eac222e695f6b60b8bd95272d30f8b5f083c40238e452f8cc0e90ff4",
       "upstream_svg_sha256": "a23c6ff6b03d2b9d661179434732ece78ee0fc2580fdf55fcd5ffcee1e09fa88",
+      "capture": {
+        "captured_at": "2026-11-03T20:07:05.477Z",
+        "provider_input_sha256": "53b946fcae488f11999ea0ae8e7329c873e1f031339e5b389f027b2e4298a311",
+        "provider_output_sha256": "279bf549778bab8a47f262f0ef753b81b3b0fbcaa17fe7ab85856c758deb9712",
+        "captured_svg_sha256": "a23c6ff6b03d2b9d661179434732ece78ee0fc2580fdf55fcd5ffcee1e09fa88",
+        "upstream_svg_byte_identical": true,
+        "upstream_svg_geometry_identical": true
+      },
       "nodes": [
         {
           "id": "n0",
@@ -7823,7 +8218,8 @@
               204,
               51.599998474121094
             ]
-          ]
+          ],
+          "label_size": null
         },
         {
           "id": "L_n1_n11_0",
@@ -7838,7 +8234,8 @@
               204,
               170.79999542236328
             ]
-          ]
+          ],
+          "label_size": null
         }
       ]
     },
@@ -7846,6 +8243,14 @@
       "fixture": "upstream_cypress_newshapes_spec_newshapessets_newshapesset6_lr_longlabel_092",
       "input_sha256": "9f26c2787c6aff6b6be7dbdf52cef610ce9aa3275dca4feb202b968454a5e6bf",
       "upstream_svg_sha256": "c520b0fe4715a459c29ff7066a565f1b49d1615a8659ad78c6e5fb7409e3e2b1",
+      "capture": {
+        "captured_at": "2026-11-03T20:07:05.821Z",
+        "provider_input_sha256": "afba2148562a09bcdfb05a3286311c0f1daec59381b6a8c0366235bf910584af",
+        "provider_output_sha256": "5298fe0a3cb245e8b7043e03dcc8faca2f431fd6eb24087c7c36e368d035d9c4",
+        "captured_svg_sha256": "c520b0fe4715a459c29ff7066a565f1b49d1615a8659ad78c6e5fb7409e3e2b1",
+        "upstream_svg_byte_identical": true,
+        "upstream_svg_geometry_identical": true
+      },
       "nodes": [
         {
           "id": "n0",
@@ -7934,7 +8339,8 @@
               204,
               89.4000015258789
             ]
-          ]
+          ],
+          "label_size": null
         },
         {
           "id": "L_n1_n11_0",
@@ -7949,7 +8355,8 @@
               204,
               284.2000045776367
             ]
-          ]
+          ],
+          "label_size": null
         }
       ]
     },
@@ -7957,6 +8364,14 @@
       "fixture": "upstream_cypress_newshapes_spec_newshapessets_newshapesset6_lr_md_html_false_094",
       "input_sha256": "fcc1647a03d968d09a49f5be57be869fa34639476d4c06065e49c686a9b69380",
       "upstream_svg_sha256": "368d2cad76de90802a92dc9970e0b63eb21423ce833e4669e94c81077e76d75b",
+      "capture": {
+        "captured_at": "2026-11-03T20:07:06.161Z",
+        "provider_input_sha256": "6a3a76cf4b966087374eca83402d114f206a821378eefd89e93c5091109f2bde",
+        "provider_output_sha256": "84b4c71a17933070a0426d63d8fe8c3256068b570302173e2315312984c5e28d",
+        "captured_svg_sha256": "368d2cad76de90802a92dc9970e0b63eb21423ce833e4669e94c81077e76d75b",
+        "upstream_svg_byte_identical": true,
+        "upstream_svg_geometry_identical": true
+      },
       "nodes": [
         {
           "id": "n0",
@@ -8045,7 +8460,8 @@
               204,
               63.720001220703125
             ]
-          ]
+          ],
+          "label_size": null
         },
         {
           "id": "L_n1_n11_0",
@@ -8060,7 +8476,8 @@
               204,
               207.16000366210938
             ]
-          ]
+          ],
+          "label_size": null
         }
       ]
     },
@@ -8068,6 +8485,14 @@
       "fixture": "upstream_cypress_newshapes_spec_newshapessets_newshapesset6_lr_md_html_true_093",
       "input_sha256": "863edb5c1987e86570e2cb92961c51cea2e1fac9eba41353b1e406b8f50347be",
       "upstream_svg_sha256": "8f44d8bb99ec230d7e9cb0a0e906230fe17f9cb28dcbf923f3558a04eadfef2a",
+      "capture": {
+        "captured_at": "2026-11-03T20:07:06.505Z",
+        "provider_input_sha256": "a60a34e98b1776127be35fdadfc3cf645ee011939eb14f8025a376fa88acd004",
+        "provider_output_sha256": "b868361223f82faa85e668028417eb04c9dcaf37826ce6b3be4a2da5a44ed652",
+        "captured_svg_sha256": "8f44d8bb99ec230d7e9cb0a0e906230fe17f9cb28dcbf923f3558a04eadfef2a",
+        "upstream_svg_byte_identical": true,
+        "upstream_svg_geometry_identical": true
+      },
       "nodes": [
         {
           "id": "n0",
@@ -8156,7 +8581,8 @@
               204,
               64.20000076293945
             ]
-          ]
+          ],
+          "label_size": null
         },
         {
           "id": "L_n1_n11_0",
@@ -8171,7 +8597,8 @@
               204,
               208.60000228881836
             ]
-          ]
+          ],
+          "label_size": null
         }
       ]
     },
@@ -8179,6 +8606,14 @@
       "fixture": "upstream_cypress_oldshapes_spec_shapessets_shapesset2_lr_allpairs_051",
       "input_sha256": "c866d880081dc3aad1ce9f7c4b3fae895a415260253517ea4b553bfef073b4cc",
       "upstream_svg_sha256": "c12019330a65c705c0caf1581a7288f71de561a85e2b4eac22c4f0dcffd59c1e",
+      "capture": {
+        "captured_at": "2026-11-03T20:07:06.844Z",
+        "provider_input_sha256": "a67309c11a3d1dd9323c60824cfbd1e1e1d0025202e996a3f33e0133b815dce5",
+        "provider_output_sha256": "09f555094cd95155a7527bd0c0e1a8958b576f446cc66fb4731c0ad42df4b73f",
+        "captured_svg_sha256": "c12019330a65c705c0caf1581a7288f71de561a85e2b4eac22c4f0dcffd59c1e",
+        "upstream_svg_byte_identical": true,
+        "upstream_svg_geometry_identical": true
+      },
       "nodes": [
         {
           "id": "n00",
@@ -8261,7 +8696,8 @@
               222,
               45
             ]
-          ]
+          ],
+          "label_size": null
         },
         {
           "id": "L_n00_n22_0",
@@ -8288,7 +8724,8 @@
               414,
               98
             ]
-          ]
+          ],
+          "label_size": null
         },
         {
           "id": "L_n00_n33_0",
@@ -8327,7 +8764,8 @@
               508,
               93.25
             ]
-          ]
+          ],
+          "label_size": null
         },
         {
           "id": "L_n11_n22_0",
@@ -8350,7 +8788,8 @@
               414,
               100
             ]
-          ]
+          ],
+          "label_size": null
         },
         {
           "id": "L_n11_n33_0",
@@ -8377,7 +8816,8 @@
               508,
               96.25
             ]
-          ]
+          ],
+          "label_size": null
         },
         {
           "id": "L_n22_n33_0",
@@ -8400,7 +8840,8 @@
               508,
               94.75
             ]
-          ]
+          ],
+          "label_size": null
         }
       ]
     },
@@ -8408,6 +8849,14 @@
       "fixture": "upstream_cypress_oldshapes_spec_shapessets_shapesset2_tb_allpairs_011",
       "input_sha256": "caab57208157d0ed33b5d6d5f8f9ceae6f50ba6102d403cc23392a5d71b1bb7c",
       "upstream_svg_sha256": "f60bfeeee549a74dbe9803568b9b4dfdf7539061efafcee9efc9f5e269a00edf",
+      "capture": {
+        "captured_at": "2026-11-03T20:07:07.186Z",
+        "provider_input_sha256": "fa070b66b8ad242ea5bb5274bedb83650e34d4b2e53ea66d7fe44d373aa6fa6f",
+        "provider_output_sha256": "a749a82f8326afd95b3a7005907f99033a268ad352c3b1666a73cb66dff7e5dc",
+        "captured_svg_sha256": "f60bfeeee549a74dbe9803568b9b4dfdf7539061efafcee9efc9f5e269a00edf",
+        "upstream_svg_byte_identical": true,
+        "upstream_svg_geometry_identical": true
+      },
       "nodes": [
         {
           "id": "n00",
@@ -8490,7 +8939,8 @@
               88,
               144
             ]
-          ]
+          ],
+          "label_size": null
         },
         {
           "id": "L_n00_n22_0",
@@ -8517,7 +8967,8 @@
               184,
               250
             ]
-          ]
+          ],
+          "label_size": null
         },
         {
           "id": "L_n00_n33_0",
@@ -8556,7 +9007,8 @@
               176.25166165828705,
               344
             ]
-          ]
+          ],
+          "label_size": null
         },
         {
           "id": "L_n11_n22_0",
@@ -8579,7 +9031,8 @@
               186,
               250
             ]
-          ]
+          ],
+          "label_size": null
         },
         {
           "id": "L_n11_n33_0",
@@ -8606,7 +9059,8 @@
               179.24501502513885,
               344
             ]
-          ]
+          ],
+          "label_size": null
         },
         {
           "id": "L_n22_n33_0",
@@ -8629,7 +9083,8 @@
               177.74833834171295,
               344
             ]
-          ]
+          ],
+          "label_size": null
         }
       ]
     },
@@ -8637,6 +9092,14 @@
       "fixture": "upstream_cypress_oldshapes_spec_shapessets_shapesset3_lr_allpairs_059",
       "input_sha256": "1e5ef4f39bc64a1e594171df94d6d47a965c7bb7890660ddfccfa0877f913dee",
       "upstream_svg_sha256": "126d1756268184cd5eadb7d3d368533283d057688b8585289be4bcd34a5cb931",
+      "capture": {
+        "captured_at": "2026-11-03T20:07:07.526Z",
+        "provider_input_sha256": "6824cffb6abea1e4ae9d2c9d81d5489cb617bc76aa6afbddb294f52a2b4b1dd6",
+        "provider_output_sha256": "616a587b722afbf2ed97421a75c2ca7a9ebf945d3f0af5c649c65ef972ea6081",
+        "captured_svg_sha256": "126d1756268184cd5eadb7d3d368533283d057688b8585289be4bcd34a5cb931",
+        "upstream_svg_byte_identical": true,
+        "upstream_svg_geometry_identical": true
+      },
       "nodes": [
         {
           "id": "n00",
@@ -8737,7 +9200,8 @@
               82,
               26
             ]
-          ]
+          ],
+          "label_size": null
         },
         {
           "id": "L_n00_n22_0",
@@ -8764,7 +9228,8 @@
               170,
               134.66666666666666
             ]
-          ]
+          ],
+          "label_size": null
         },
         {
           "id": "L_n00_n33_0",
@@ -8795,7 +9260,8 @@
               360,
               69
             ]
-          ]
+          ],
+          "label_size": null
         },
         {
           "id": "L_n00_n44_0",
@@ -8838,7 +9304,8 @@
               596.4660949707031,
               115.23333333333332
             ]
-          ]
+          ],
+          "label_size": null
         },
         {
           "id": "L_n11_n22_0",
@@ -8861,7 +9328,8 @@
               170,
               117.33333333333334
             ]
-          ]
+          ],
+          "label_size": null
         },
         {
           "id": "L_n11_n33_0",
@@ -8896,7 +9364,8 @@
               360,
               57.5
             ]
-          ]
+          ],
+          "label_size": null
         },
         {
           "id": "L_n11_n44_0",
@@ -8935,7 +9404,8 @@
               596.4660949707031,
               87.63333333333333
             ]
-          ]
+          ],
+          "label_size": null
         },
         {
           "id": "L_n22_n33_0",
@@ -8958,7 +9428,8 @@
               360,
               80.5
             ]
-          ]
+          ],
+          "label_size": null
         },
         {
           "id": "L_n22_n44_0",
@@ -8985,7 +9456,8 @@
               596.4660949707031,
               106.03333333333333
             ]
-          ]
+          ],
+          "label_size": null
         },
         {
           "id": "L_n33_n44_0",
@@ -9008,7 +9480,8 @@
               596.4660949707031,
               96.83333333333331
             ]
-          ]
+          ],
+          "label_size": null
         }
       ]
     },
@@ -9016,6 +9489,14 @@
       "fixture": "upstream_cypress_oldshapes_spec_shapessets_shapesset3_tb_allpairs_019",
       "input_sha256": "f6c971829e851ac561ed2bf1b52980f21e633421419515b3eb0068a14c7c6beb",
       "upstream_svg_sha256": "1d49d941150229d5664f627f61d81e928a190da16b80158098eb4b4fc7bb0da1",
+      "capture": {
+        "captured_at": "2026-11-03T20:07:07.860Z",
+        "provider_input_sha256": "8982e88a254b611ad3dea708b2eba7ad025dc8ce7af77bfc8b20e77a3e058fda",
+        "provider_output_sha256": "168dbed8f441575518381ab4928c1a709a6a04cd7fd6adad65f277ef09a3bc22",
+        "captured_svg_sha256": "1d49d941150229d5664f627f61d81e928a190da16b80158098eb4b4fc7bb0da1",
+        "upstream_svg_byte_identical": true,
+        "upstream_svg_geometry_identical": true
+      },
       "nodes": [
         {
           "id": "n00",
@@ -9116,7 +9597,8 @@
               64.32478561401368,
               82
             ]
-          ]
+          ],
+          "label_size": null
         },
         {
           "id": "L_n00_n22_0",
@@ -9143,7 +9625,8 @@
               238.89971415201822,
               150
             ]
-          ]
+          ],
+          "label_size": null
         },
         {
           "id": "L_n00_n33_0",
@@ -9174,7 +9657,8 @@
               121.23304748535156,
               262
             ]
-          ]
+          ],
+          "label_size": null
         },
         {
           "id": "L_n00_n44_0",
@@ -9217,7 +9701,8 @@
               227.6163808186849,
               388
             ]
-          ]
+          ],
+          "label_size": null
         },
         {
           "id": "L_n11_n22_0",
@@ -9240,7 +9725,8 @@
               195.56638081868488,
               150
             ]
-          ]
+          ],
+          "label_size": null
         },
         {
           "id": "L_n11_n33_0",
@@ -9267,7 +9753,8 @@
               82.11652374267578,
               262
             ]
-          ]
+          ],
+          "label_size": null
         },
         {
           "id": "L_n11_n44_0",
@@ -9306,7 +9793,8 @@
               132.5163808186849,
               388
             ]
-          ]
+          ],
+          "label_size": null
         },
         {
           "id": "L_n22_n33_0",
@@ -9329,7 +9817,8 @@
               160.34957122802734,
               262
             ]
-          ]
+          ],
+          "label_size": null
         },
         {
           "id": "L_n22_n44_0",
@@ -9356,7 +9845,8 @@
               195.9163808186849,
               388
             ]
-          ]
+          ],
+          "label_size": null
         },
         {
           "id": "L_n33_n44_0",
@@ -9379,7 +9869,8 @@
               164.2163808186849,
               388
             ]
-          ]
+          ],
+          "label_size": null
         }
       ]
     },
@@ -9387,6 +9878,14 @@
       "fixture": "upstream_cypress_oldshapes_spec_shapessets_shapesset4_lr_allpairs_067",
       "input_sha256": "32c614ef11f3a1b623388a0b72fa2f1db8766fbeb0859c10ae7100a42af79282",
       "upstream_svg_sha256": "578bc0c7a4bf8d10268611aa18c51bf4c9358e40f07518caaeb8bf4bebd62e09",
+      "capture": {
+        "captured_at": "2026-11-03T20:07:08.191Z",
+        "provider_input_sha256": "49f038a58126465adbe336d24f35ef29ce864c7bd1f5d240df771ca91ef3667a",
+        "provider_output_sha256": "16d691ef6d5907d4381abdd3e9dd467326401b4e61fe6b72d68477e7ed189674",
+        "captured_svg_sha256": "578bc0c7a4bf8d10268611aa18c51bf4c9358e40f07518caaeb8bf4bebd62e09",
+        "upstream_svg_byte_identical": true,
+        "upstream_svg_geometry_identical": true
+      },
       "nodes": [
         {
           "id": "n00",
@@ -9501,7 +10000,8 @@
               236,
               65.07434463500977
             ]
-          ]
+          ],
+          "label_size": null
         },
         {
           "id": "L_n00_n22_0",
@@ -9528,7 +10028,8 @@
               420,
               270.8858461380005
             ]
-          ]
+          ],
+          "label_size": null
         },
         {
           "id": "L_n00_n33_0",
@@ -9567,7 +10068,8 @@
               619.1377258300781,
               140.9587760925293
             ]
-          ]
+          ],
+          "label_size": null
         },
         {
           "id": "L_n00_n44_0",
@@ -9610,7 +10112,8 @@
               862.2754516601562,
               222.80660419464112
             ]
-          ]
+          ],
+          "label_size": null
         },
         {
           "id": "L_n11_n22_0",
@@ -9633,7 +10136,8 @@
               420,
               224.5066041946411
             ]
-          ]
+          ],
+          "label_size": null
         },
         {
           "id": "L_n11_n33_0",
@@ -9660,7 +10164,8 @@
               619.1377258300781,
               100.17434463500976
             ]
-          ]
+          ],
+          "label_size": null
         },
         {
           "id": "L_n11_n44_0",
@@ -9699,7 +10204,8 @@
               862.2754516601562,
               195.2066041946411
             ]
-          ]
+          ],
+          "label_size": null
         },
         {
           "id": "L_n22_n33_0",
@@ -9722,7 +10228,8 @@
               619.1377258300781,
               181.74320755004882
             ]
-          ]
+          ],
+          "label_size": null
         },
         {
           "id": "L_n22_n44_0",
@@ -9749,7 +10256,8 @@
               862.2754516601562,
               213.6066041946411
             ]
-          ]
+          ],
+          "label_size": null
         },
         {
           "id": "L_n33_n44_0",
@@ -9772,7 +10280,8 @@
               862.2754516601562,
               204.40660419464112
             ]
-          ]
+          ],
+          "label_size": null
         }
       ]
     },
@@ -9780,6 +10289,14 @@
       "fixture": "upstream_cypress_oldshapes_spec_shapessets_shapesset4_tb_allpairs_027",
       "input_sha256": "d6a8402898113d76e7e9427bd6cef848c14f7fc7bfac059cd930d0ca8c7025d2",
       "upstream_svg_sha256": "6dcc2f63ad0856d5d9afacc4bde1a4b72f396a3a21a61a5a63647a01fd4d64b2",
+      "capture": {
+        "captured_at": "2026-11-03T20:07:08.525Z",
+        "provider_input_sha256": "14b4927205d44fe60c034ffcad5481895fe6db41ea60a95d5937c9caab40bc76",
+        "provider_output_sha256": "70eace7398e10f723478db42901011e790c1cf2e2ca36543b25b9d8ee5c54369",
+        "captured_svg_sha256": "6dcc2f63ad0856d5d9afacc4bde1a4b72f396a3a21a61a5a63647a01fd4d64b2",
+        "upstream_svg_byte_identical": true,
+        "upstream_svg_geometry_identical": true
+      },
       "nodes": [
         {
           "id": "n00",
@@ -9894,7 +10411,8 @@
               84,
               126
             ]
-          ]
+          ],
+          "label_size": null
         },
         {
           "id": "L_n00_n22_0",
@@ -9921,7 +10439,8 @@
               299.75848388671875,
               272.14868927001953
             ]
-          ]
+          ],
+          "label_size": null
         },
         {
           "id": "L_n00_n33_0",
@@ -9960,7 +10479,8 @@
               171.13443145751953,
               471.28641510009766
             ]
-          ]
+          ],
+          "label_size": null
         },
         {
           "id": "L_n00_n44_0",
@@ -10003,7 +10523,8 @@
               285.42924194335933,
               714.4241409301758
             ]
-          ]
+          ],
+          "label_size": null
         },
         {
           "id": "L_n11_n22_0",
@@ -10026,7 +10547,8 @@
               253.37924194335938,
               272.14868927001953
             ]
-          ]
+          ],
+          "label_size": null
         },
         {
           "id": "L_n11_n33_0",
@@ -10053,7 +10575,8 @@
               130.35,
               471.28641510009766
             ]
-          ]
+          ],
+          "label_size": null
         },
         {
           "id": "L_n11_n44_0",
@@ -10092,7 +10615,8 @@
               190.32924194335936,
               714.4241409301758
             ]
-          ]
+          ],
+          "label_size": null
         },
         {
           "id": "L_n22_n33_0",
@@ -10115,7 +10639,8 @@
               211.91886291503906,
               471.28641510009766
             ]
-          ]
+          ],
+          "label_size": null
         },
         {
           "id": "L_n22_n44_0",
@@ -10142,7 +10667,8 @@
               253.72924194335937,
               714.4241409301758
             ]
-          ]
+          ],
+          "label_size": null
         },
         {
           "id": "L_n33_n44_0",
@@ -10165,7 +10691,8 @@
               222.02924194335938,
               714.4241409301758
             ]
-          ]
+          ],
+          "label_size": null
         }
       ]
     },
@@ -10173,6 +10700,14 @@
       "fixture": "upstream_cypress_oldshapes_spec_shapessets_shapesset5_lr_allpairs_075",
       "input_sha256": "1f4adf9cdc960ef73e4a89671e3e10d5fbef2a22a37c8664df5cd6d7b10043e3",
       "upstream_svg_sha256": "bf94d3748e458d579895aa1fd5bb8a541781195f9749fa86c493f924219920fb",
+      "capture": {
+        "captured_at": "2026-11-03T20:07:08.860Z",
+        "provider_input_sha256": "24e1475d3202ff3957d656209546ae157082b9924264b2b9f38952f188283b85",
+        "provider_output_sha256": "cae94d8795ba43f49d58a59eb64185dfe22ae72c723a167f768f1b612bc303e4",
+        "captured_svg_sha256": "bf94d3748e458d579895aa1fd5bb8a541781195f9749fa86c493f924219920fb",
+        "upstream_svg_byte_identical": true,
+        "upstream_svg_geometry_identical": true
+      },
       "nodes": [
         {
           "id": "n00",
@@ -10280,7 +10815,8 @@
               114.00189900398254,
               40.5
             ]
-          ]
+          ],
+          "label_size": null
         },
         {
           "id": "L_n00_n22_0",
@@ -10307,7 +10843,8 @@
               381.00189900398254,
               145
             ]
-          ]
+          ],
+          "label_size": null
         },
         {
           "id": "L_n00_n33_0",
@@ -10346,7 +10883,8 @@
               628.0018990039825,
               87.7
             ]
-          ]
+          ],
+          "label_size": null
         },
         {
           "id": "L_n00_n44_0",
@@ -10389,7 +10927,8 @@
               940.0018990039825,
               128.10000000000002
             ]
-          ]
+          ],
+          "label_size": null
         },
         {
           "id": "L_n11_n22_0",
@@ -10412,7 +10951,8 @@
               381.00189900398254,
               132.66666666666669
             ]
-          ]
+          ],
+          "label_size": null
         },
         {
           "id": "L_n11_n33_0",
@@ -10447,7 +10987,8 @@
               628.0018990039825,
               74.7
             ]
-          ]
+          ],
+          "label_size": null
         },
         {
           "id": "L_n11_n44_0",
@@ -10486,7 +11027,8 @@
               940.0018990039825,
               105.90000000000002
             ]
-          ]
+          ],
+          "label_size": null
         },
         {
           "id": "L_n22_n33_0",
@@ -10509,7 +11051,8 @@
               628.0018990039825,
               100.7
             ]
-          ]
+          ],
+          "label_size": null
         },
         {
           "id": "L_n22_n44_0",
@@ -10536,7 +11079,8 @@
               940.0018990039825,
               120.7
             ]
-          ]
+          ],
+          "label_size": null
         },
         {
           "id": "L_n33_n44_0",
@@ -10559,7 +11103,8 @@
               940.0018990039825,
               113.30000000000001
             ]
-          ]
+          ],
+          "label_size": null
         }
       ]
     },
@@ -10567,6 +11112,14 @@
       "fixture": "upstream_docs_examples_basic_flowchart_007",
       "input_sha256": "d8c6a25c7cfac0a026c1d7e304a2f7c0b52636878ac64f0de3a797c0cfee5583",
       "upstream_svg_sha256": "e3a4024444a0abea8d1c7be937de7fe1d2f39aaab72fd3de783f02710a3c3ea2",
+      "capture": {
+        "captured_at": "2026-11-03T20:07:09.199Z",
+        "provider_input_sha256": "b9244df292dc40636b9903c760241ca538518a65cbfcdc21f5f4158dd4e0514b",
+        "provider_output_sha256": "7dc04159d1db4c3966e4bfcea9d3c33e2c9587f2ebc044198b1b4053cfa28ee2",
+        "captured_svg_sha256": "e3a4024444a0abea8d1c7be937de7fe1d2f39aaab72fd3de783f02710a3c3ea2",
+        "upstream_svg_byte_identical": true,
+        "upstream_svg_geometry_identical": true
+      },
       "nodes": [
         {
           "id": "A",
@@ -10694,7 +11247,8 @@
               296.140625,
               150.98852539062497
             ]
-          ]
+          ],
+          "label_size": null
         },
         {
           "id": "L_B_D_0",
@@ -10717,7 +11271,8 @@
               486.140625,
               74.69972737630209
             ]
-          ]
+          ],
+          "label_size": null
         },
         {
           "id": "L_C_D_0",
@@ -10740,7 +11295,8 @@
               486.140625,
               125.03306070963541
             ]
-          ]
+          ],
+          "label_size": null
         }
       ]
     },
@@ -10748,6 +11304,14 @@
       "fixture": "upstream_docs_examples_larger_flowchart_with_some_styling_009",
       "input_sha256": "22b7b9e26643b7efeba14a4a6ad048fac3a33832d8a2c7b2a965facd788614ca",
       "upstream_svg_sha256": "8fd4b1ee937a44c6e1504b6de54dc191612f51fe93a727f97389980bf1b8d81e",
+      "capture": {
+        "captured_at": "2026-11-03T20:07:09.534Z",
+        "provider_input_sha256": "a708fcc291bbb27cab1af8c4e9336aa302bd8156b6cd409a1521ee58e5a3a92d",
+        "provider_output_sha256": "35005bae4cb1408d734f60f5b044030169ff708dd2143c2c8fec202343a94f01",
+        "captured_svg_sha256": "8fd4b1ee937a44c6e1504b6de54dc191612f51fe93a727f97389980bf1b8d81e",
+        "upstream_svg_byte_identical": true,
+        "upstream_svg_geometry_identical": true
+      },
       "nodes": [
         {
           "id": "A",
@@ -10918,7 +11482,7 @@
             563.5
           ],
           "label_box": {
-            "text": ",.?!+-*夭",
+            "text": ",.?!+-*ز",
             "size": [
               120,
               21
@@ -10954,7 +11518,7 @@
             617.5688629150391
           ],
           "label_box": {
-            "text": "Circle shape 袧邪褔邪谢芯",
+            "text": "Circle shape Начало",
             "size": [
               120,
               42
@@ -10976,7 +11540,8 @@
               559.0250000000001,
               538
             ]
-          ]
+          ],
+          "label_size": null
         },
         {
           "id": "L_od_ro_0",
@@ -11018,7 +11583,8 @@
               165.42499999999998,
               381
             ]
-          ]
+          ],
+          "label_size": null
         },
         {
           "id": "L_di_ro2_0",
@@ -11033,7 +11599,8 @@
               344.025,
               381
             ]
-          ]
+          ],
+          "label_size": null
         },
         {
           "id": "L_e_od3_0",
@@ -11056,7 +11623,8 @@
               747.2057594299317,
               538
             ]
-          ]
+          ],
+          "label_size": null
         },
         {
           "id": "L_e_f_0",
@@ -11079,7 +11647,8 @@
               954.0807594299317,
               538
             ]
-          ]
+          ],
+          "label_size": null
         },
         {
           "id": "L_cyr_cyr2_0",
@@ -11094,7 +11663,8 @@
               1148.6496223449708,
               538
             ]
-          ]
+          ],
+          "label_size": null
         }
       ]
     },
@@ -11102,6 +11672,14 @@
       "fixture": "upstream_flow_node_data_shape_aliases_spec",
       "input_sha256": "c7d5bf784a891b93d53de5d3c4b6a2103431913bfe96f4edfab058032a84bd08",
       "upstream_svg_sha256": "c188795db516f8d69a4f8a8ad48ffc7ead73d07ea0ad9c1b8014b79416417128",
+      "capture": {
+        "captured_at": "2026-11-03T20:07:09.866Z",
+        "provider_input_sha256": "92885572eaa18ee46ada0b3628cf35568681f0b9a7cb4164183737af4a330691",
+        "provider_output_sha256": "4fd8191ace5d1ac693f647a0735fb0fe8aa96a21515c46ec06e317587c979cb3",
+        "captured_svg_sha256": "96328f7a4c2b135ebd9e9bfb85a9503661b38a3b94a8183973c3b3246961526d",
+        "upstream_svg_byte_identical": false,
+        "upstream_svg_geometry_identical": true
+      },
       "nodes": [
         {
           "id": "A",
@@ -11298,7 +11876,8 @@
               127.5,
               223
             ]
-          ]
+          ],
+          "label_size": null
         },
         {
           "id": "L_B_C_0",
@@ -11313,7 +11892,8 @@
               127.5,
               308
             ]
-          ]
+          ],
+          "label_size": null
         },
         {
           "id": "L_C_D_0",
@@ -11328,7 +11908,8 @@
               127.5,
               384
             ]
-          ]
+          ],
+          "label_size": null
         },
         {
           "id": "L_D_E_0",
@@ -11343,7 +11924,8 @@
               127.5,
               460
             ]
-          ]
+          ],
+          "label_size": null
         },
         {
           "id": "L_E_F_0",
@@ -11358,7 +11940,8 @@
               127.5,
               551
             ]
-          ]
+          ],
+          "label_size": null
         },
         {
           "id": "L_F_G_0",
@@ -11373,7 +11956,8 @@
               127.5,
               627
             ]
-          ]
+          ],
+          "label_size": null
         },
         {
           "id": "L_G_H_0",
@@ -11388,7 +11972,8 @@
               127.5,
               758
             ]
-          ]
+          ],
+          "label_size": null
         },
         {
           "id": "L_H_I_0",
@@ -11403,7 +11988,8 @@
               127.5,
               843
             ]
-          ]
+          ],
+          "label_size": null
         },
         {
           "id": "L_I_J_0",
@@ -11418,7 +12004,8 @@
               127.5,
               968.1486968994141
             ]
-          ]
+          ],
+          "label_size": null
         }
       ]
     },
@@ -11426,6 +12013,14 @@
       "fixture": "upstream_flow_text_vertex_text_variants_spec",
       "input_sha256": "30a7411f99f93570337c6cadc5fdd1ed96d6a1813d244e2fd27000b79c6098d8",
       "upstream_svg_sha256": "f238658cd56ce87ba26d6a9af06ede12e63582f02bbe1de603ce03d6030e120f",
+      "capture": {
+        "captured_at": "2026-11-03T20:07:10.205Z",
+        "provider_input_sha256": "44c047c759364698c1a75ecc919795d1c8909181b734ae9391b074cc891247df",
+        "provider_output_sha256": "2d35a2252dea3ad8eef22a347c7f7126156a0ee32e1fc607673bf9a3dc39fd49",
+        "captured_svg_sha256": "f238658cd56ce87ba26d6a9af06ede12e63582f02bbe1de603ce03d6030e120f",
+        "upstream_svg_byte_identical": true,
+        "upstream_svg_geometry_identical": true
+      },
       "nodes": [
         {
           "id": "A",
@@ -11654,7 +12249,7 @@
             145.63772583007812
           ],
           "label_box": {
-            "text": "茅猫锚脿莽么",
+            "text": "éèêàçô",
             "size": [
               120,
               21
@@ -11838,7 +12433,8 @@
               88,
               211.13772583007812
             ]
-          ]
+          ],
+          "label_size": null
         },
         {
           "id": "L_D_E_0",
@@ -11853,7 +12449,8 @@
               280,
               211.13772583007812
             ]
-          ]
+          ],
+          "label_size": null
         },
         {
           "id": "L_F_G_0",
@@ -11868,7 +12465,8 @@
               475.4375,
               211.13772583007812
             ]
-          ]
+          ],
+          "label_size": null
         },
         {
           "id": "L_H_I_0",
@@ -11883,7 +12481,8 @@
               670.875,
               211.13772583007812
             ]
-          ]
+          ],
+          "label_size": null
         },
         {
           "id": "L_J_K_0",
@@ -11898,7 +12497,8 @@
               866.4438629150391,
               211.13772583007812
             ]
-          ]
+          ],
+          "label_size": null
         },
         {
           "id": "L_N_O_0",
@@ -11970,7 +12570,8 @@
               1635.0127258300781,
               211.13772583007812
             ]
-          ]
+          ],
+          "label_size": null
         },
         {
           "id": "L_V_W_0",
@@ -11985,7 +12586,8 @@
               1827.0127258300781,
               211.13772583007812
             ]
-          ]
+          ],
+          "label_size": null
         },
         {
           "id": "L_X_Y2_0",
@@ -12000,7 +12602,8 @@
               2019.0127258300781,
               211.13772583007812
             ]
-          ]
+          ],
+          "label_size": null
         }
       ]
     },
@@ -12008,6 +12611,14 @@
       "fixture": "upstream_flowchart_v2_shape_styling_matrix_spec",
       "input_sha256": "f6581a7a3081c7b021fdd22d21d837f9ad3c45b99cbd608088c54d70c513926d",
       "upstream_svg_sha256": "cc7089a030d713d5ac0742ae2618d639a6d8dd42bcb6904c96216401a086604f",
+      "capture": {
+        "captured_at": "2026-11-03T20:07:10.548Z",
+        "provider_input_sha256": "3bc601e16329371be2bcc0d92d6883aca90215ad4802082b8002cc72dbe2e52e",
+        "provider_output_sha256": "11e183cf3ee3ebc9a735beac30901f047021ae253655e2dd89d0f94472ee4e1a",
+        "captured_svg_sha256": "e3f5395ada61873cbc7abe7858adb05fce58fa3b3e963d42d7e98dab604c5834",
+        "upstream_svg_byte_identical": false,
+        "upstream_svg_geometry_identical": true
+      },
       "nodes": [
         {
           "id": "A",
@@ -12457,6 +13068,14 @@
       "fixture": "upstream_html_demos_dataflowchart_data_flow_diagram_demos_001",
       "input_sha256": "446cff8f5ea9e8d0512f8f59783d29f8547a9a6514b0826c1442c2e000c1a351",
       "upstream_svg_sha256": "37ec71ea75e2ecb2fd52f0b7a0d88179c1057e3b849a3a7ef04e6ff213446812",
+      "capture": {
+        "captured_at": "2026-11-03T20:07:10.702Z",
+        "provider_input_sha256": "cec33ab8982bf5890e9cf3ec5b0b31db993c2ac059b3f4f4ab3fce24cd36bc2e",
+        "provider_output_sha256": "08b20367f261c0b20d9e77db68cf2be9b65e22b1a222770239a5b315f91a1fd6",
+        "captured_svg_sha256": "37ec71ea75e2ecb2fd52f0b7a0d88179c1057e3b849a3a7ef04e6ff213446812",
+        "upstream_svg_byte_identical": true,
+        "upstream_svg_geometry_identical": true
+      },
       "nodes": [
         {
           "id": "DataStore",
@@ -12557,7 +13176,15 @@
     {
       "fixture": "upstream_html_demos_flowchart_flowchart_008",
       "input_sha256": "f3e6d0f86df85611c1a3176374043c66805de9e70ce259601d90e00e51d644d0",
-      "upstream_svg_sha256": "d8cb733ccb75f22894a5053c21511ca412ad9e6af9486439e1bd26f21b1d7f6e",
+      "upstream_svg_sha256": "2ae6a91807675dc13095e256de621fa6b66a4bae5828d4d57f5f7c5a31e7fc7b",
+      "capture": {
+        "captured_at": "2026-11-03T20:07:11.234Z",
+        "provider_input_sha256": "cf032dc058ecefd1f62643f76d62be34da76661344b99a5992c4b34746fa0a0f",
+        "provider_output_sha256": "9c976eaa8a5d28bf20dd4dc41ecdd054a47a337ef26e1435765fbdfd7de5c2e9",
+        "captured_svg_sha256": "2ae6a91807675dc13095e256de621fa6b66a4bae5828d4d57f5f7c5a31e7fc7b",
+        "upstream_svg_byte_identical": true,
+        "upstream_svg_geometry_identical": true
+      },
       "nodes": [
         {
           "id": "47",
@@ -12566,8 +13193,8 @@
             51
           ],
           "center": [
-            1867.5269097222222,
-            284.2944444444444
+            1847.5269097222222,
+            307.0444444444444
           ],
           "label_box": {
             "text": "SAM.CommonFA.FMESummary",
@@ -12584,8 +13211,8 @@
             51
           ],
           "center": [
-            2264.859375,
-            329.7944444444444
+            2244.859375,
+            352.5444444444444
           ],
           "label_box": {
             "text": "SAM.CommonFA.CommonFAFinanceBudget",
@@ -12602,8 +13229,8 @@
             51
           ],
           "center": [
-            1905.3828125,
-            375.2944444444444
+            1885.3828125,
+            398.0444444444444
           ],
           "label_box": {
             "text": "SAM.CommonFA.BudgetSubserviceLineVolume",
@@ -12639,7 +13266,7 @@
           ],
           "center": [
             724.96875,
-            326.4194444444444
+            396.875
           ],
           "label_box": {
             "text": "SAM.CommonFA.MetricCost",
@@ -12657,7 +13284,7 @@
           ],
           "center": [
             1071.875,
-            378.5
+            424
           ],
           "label_box": {
             "text": "SAM.CommonFA.MetricOutliers",
@@ -12693,7 +13320,7 @@
           ],
           "center": [
             724.96875,
-            442.875
+            488.375
           ],
           "label_box": {
             "text": "SAM.CommonFA.OPVisits",
@@ -12711,7 +13338,7 @@
           ],
           "center": [
             1465.5234375,
-            333
+            240.5
           ],
           "label_box": {
             "text": "SAM.CommonFA.CommonFAFinanceRefund",
@@ -12747,7 +13374,7 @@
           ],
           "center": [
             1447.640625,
-            240.5
+            331.5
           ],
           "label_box": {
             "text": "SAM.CommonFA.CommonFAFinanceNurseryDays",
@@ -12783,7 +13410,7 @@
           ],
           "center": [
             425.125,
-            242.65277777777777
+            333.65277777777777
           ],
           "label_box": {
             "text": "SAM.CommonFA.ChargeDetails",
@@ -12801,7 +13428,7 @@
           ],
           "center": [
             134.390625,
-            247.81944444444443
+            338.81944444444446
           ],
           "label_box": {
             "text": "SAM.CommonFA.PremetricCost",
@@ -12819,22 +13446,23 @@
           "target": "48",
           "points": [
             [
-              1983.2690972222222,
-              284.2944444444444
+              1963.2690972222222,
+              307.0444444444444
+            ],
+            [
+              2069.796875,
+              307.0444444444444
+            ],
+            [
+              2069.796875,
+              347.37777777777774
             ],
             [
               2089.796875,
-              284.2944444444444
-            ],
-            [
-              2089.796875,
-              324.62777777777774
-            ],
-            [
-              2109.796875,
-              324.62777777777774
+              347.37777777777774
             ]
-          ]
+          ],
+          "label_size": null
         },
         {
           "id": "L_37_48_0",
@@ -12842,22 +13470,23 @@
           "target": "48",
           "points": [
             [
+              2049.796875,
+              398.0444444444444
+            ],
+            [
               2069.796875,
-              375.2944444444444
+              398.0444444444444
+            ],
+            [
+              2069.796875,
+              357.7111111111111
             ],
             [
               2089.796875,
-              375.2944444444444
-            ],
-            [
-              2089.796875,
-              334.9611111111111
-            ],
-            [
-              2109.796875,
-              334.9611111111111
+              357.7111111111111
             ]
-          ]
+          ],
+          "label_size": null
         },
         {
           "id": "L_35_47_0",
@@ -12893,18 +13522,19 @@
               12
             ],
             [
-              1720.96875,
+              1700.96875,
               12
             ],
             [
-              1720.96875,
-              272.2388888888889
+              1700.96875,
+              294.9888888888889
             ],
             [
-              1751.7847222222222,
-              272.2388888888889
+              1731.7847222222222,
+              294.9888888888889
             ]
-          ]
+          ],
+          "label_size": null
         },
         {
           "id": "L_41_47_0",
@@ -12913,37 +13543,38 @@
           "points": [
             [
               829.4375,
-              326.4194444444444
+              396.875
             ],
             [
               889.4375,
-              326.4194444444444
+              396.875
             ],
             [
               889.4375,
-              286.5
+              377.5
             ],
             [
               1071.875,
-              286.5
+              377.5
             ],
             [
               1447.640625,
-              286.5
+              377.5
             ],
             [
-              1640.96875,
-              286.5
+              1660.96875,
+              377.5
             ],
             [
-              1640.96875,
-              286.01666666666665
+              1660.96875,
+              312.2111111111111
             ],
             [
-              1751.7847222222222,
-              286.01666666666665
+              1731.7847222222222,
+              312.2111111111111
             ]
-          ]
+          ],
+          "label_size": null
         },
         {
           "id": "L_44_47_0",
@@ -12952,25 +13583,26 @@
           "points": [
             [
               1186.0625,
-              378.5
+              424
             ],
             [
               1447.640625,
-              378.5
+              424
             ],
             [
               1680.96875,
-              378.5
+              424
             ],
             [
               1680.96875,
-              292.9055555555555
+              315.6555555555555
             ],
             [
-              1751.7847222222222,
-              292.9055555555555
+              1731.7847222222222,
+              315.6555555555555
             ]
-          ]
+          ],
+          "label_size": null
         },
         {
           "id": "L_46_47_0",
@@ -12982,18 +13614,19 @@
               149.5
             ],
             [
-              1680.96875,
+              1660.96875,
               149.5
             ],
             [
-              1680.96875,
-              279.12777777777774
+              1660.96875,
+              301.87777777777774
             ],
             [
-              1751.7847222222222,
-              279.12777777777774
+              1731.7847222222222,
+              301.87777777777774
             ]
-          ]
+          ],
+          "label_size": null
         },
         {
           "id": "L_40_47_0",
@@ -13002,29 +13635,30 @@
           "points": [
             [
               822.6953125,
-              442.875
+              488.375
             ],
             [
               1071.875,
-              442.875
+              488.375
             ],
             [
               1447.640625,
-              442.875
+              488.375
             ],
             [
               1700.96875,
-              442.875
+              488.375
             ],
             [
               1700.96875,
-              296.34999999999997
+              319.09999999999997
             ],
             [
-              1751.7847222222222,
-              296.34999999999997
+              1731.7847222222222,
+              319.09999999999997
             ]
-          ]
+          ],
+          "label_size": null
         },
         {
           "id": "L_38_47_0",
@@ -13033,21 +13667,22 @@
           "points": [
             [
               1620.96875,
-              333
+              240.5
             ],
             [
-              1660.96875,
-              333
+              1640.96875,
+              240.5
             ],
             [
-              1660.96875,
-              289.4611111111111
+              1640.96875,
+              305.3222222222222
             ],
             [
-              1751.7847222222222,
-              289.4611111111111
+              1731.7847222222222,
+              305.3222222222222
             ]
-          ]
+          ],
+          "label_size": null
         },
         {
           "id": "L_43_47_0",
@@ -13063,18 +13698,19 @@
               58.5
             ],
             [
-              1700.96875,
+              1680.96875,
               58.5
             ],
             [
-              1700.96875,
-              275.6833333333333
+              1680.96875,
+              298.4333333333333
             ],
             [
-              1751.7847222222222,
-              275.6833333333333
+              1731.7847222222222,
+              298.4333333333333
             ]
-          ]
+          ],
+          "label_size": null
         },
         {
           "id": "L_42_47_0",
@@ -13083,21 +13719,22 @@
           "points": [
             [
               1620.96875,
-              240.5
+              331.5
             ],
             [
-              1660.96875,
-              240.5
+              1640.96875,
+              331.5
             ],
             [
-              1660.96875,
-              282.5722222222222
+              1640.96875,
+              308.76666666666665
             ],
             [
-              1751.7847222222222,
-              282.5722222222222
+              1731.7847222222222,
+              308.76666666666665
             ]
-          ]
+          ],
+          "label_size": null
         },
         {
           "id": "L_45_46_0",
@@ -13112,7 +13749,8 @@
               1321.3828125,
               149.5
             ]
-          ]
+          ],
+          "label_size": null
         },
         {
           "id": "L_35_45_0",
@@ -13151,7 +13789,8 @@
               926.296875,
               144.33333333333331
             ]
-          ]
+          ],
+          "label_size": null
         },
         {
           "id": "L_41_45_0",
@@ -13160,11 +13799,11 @@
           "points": [
             [
               829.4375,
-              318.6694444444444
+              389.125
             ],
             [
               869.4375,
-              318.6694444444444
+              389.125
             ],
             [
               869.4375,
@@ -13174,7 +13813,8 @@
               926.296875,
               154.66666666666666
             ]
-          ]
+          ],
+          "label_size": null
         },
         {
           "id": "L_41_44_0",
@@ -13183,21 +13823,22 @@
           "points": [
             [
               829.4375,
-              334.1694444444444
+              404.625
             ],
             [
               849.4375,
-              334.1694444444444
+              404.625
             ],
             [
               849.4375,
-              378.5
+              424
             ],
             [
               957.6875,
-              378.5
+              424
             ]
-          ]
+          ],
+          "label_size": null
         },
         {
           "id": "L_39_43_0",
@@ -13206,11 +13847,11 @@
           "points": [
             [
               540.5,
-              233.35277777777776
+              324.35277777777776
             ],
             [
               560.5,
-              233.35277777777776
+              324.35277777777776
             ],
             [
               560.5,
@@ -13232,7 +13873,8 @@
               909.4375,
               58.5
             ]
-          ]
+          ],
+          "label_size": null
         },
         {
           "id": "L_39_42_0",
@@ -13241,29 +13883,30 @@
           "points": [
             [
               540.5,
-              239.55277777777778
+              330.55277777777775
             ],
             [
               600.5,
-              239.55277777777778
+              330.55277777777775
             ],
             [
               600.5,
-              240.5
+              331.5
             ],
             [
               724.96875,
-              240.5
+              331.5
             ],
             [
               1071.875,
-              240.5
+              331.5
             ],
             [
               1274.3125,
-              240.5
+              331.5
             ]
-          ]
+          ],
+          "label_size": null
         },
         {
           "id": "L_39_41_0",
@@ -13272,21 +13915,22 @@
           "points": [
             [
               540.5,
-              245.75277777777777
+              336.7527777777778
             ],
             [
               580.5,
-              245.75277777777777
+              336.7527777777778
             ],
             [
               580.5,
-              326.4194444444444
+              396.875
             ],
             [
               620.5,
-              326.4194444444444
+              396.875
             ]
-          ]
+          ],
+          "label_size": null
         },
         {
           "id": "L_39_40_0",
@@ -13295,21 +13939,22 @@
           "points": [
             [
               540.5,
-              251.95277777777778
+              342.9527777777778
             ],
             [
               560.5,
-              251.95277777777778
+              342.9527777777778
             ],
             [
               560.5,
-              442.875
+              488.375
             ],
             [
               627.2421875,
-              442.875
+              488.375
             ]
-          ]
+          ],
+          "label_size": null
         },
         {
           "id": "L_35_39_0",
@@ -13326,13 +13971,14 @@
             ],
             [
               269.75,
-              237.48611111111111
+              328.4861111111111
             ],
             [
               309.75,
-              237.48611111111111
+              328.4861111111111
             ]
-          ]
+          ],
+          "label_size": null
         },
         {
           "id": "L_36_39_0",
@@ -13341,13 +13987,14 @@
           "points": [
             [
               249.75,
-              247.81944444444443
+              338.81944444444446
             ],
             [
               309.75,
-              247.81944444444446
+              338.81944444444446
             ]
-          ]
+          ],
+          "label_size": null
         }
       ]
     },
@@ -13355,6 +14002,14 @@
       "fixture": "upstream_html_demos_flowchart_flowchart_028",
       "input_sha256": "4401c7cee98b1b4d092395efe639cc6d732c4f4920c65fe4bcc368307c23b507",
       "upstream_svg_sha256": "8558d712d2bc20b9dcf23a3fca4ff46c41aa37208e265bc8e97a38cb452c9026",
+      "capture": {
+        "captured_at": "2026-11-03T20:07:11.384Z",
+        "provider_input_sha256": "733cff3b31dade58feb37c2368d80d9c8397236f5c78fb06092b373706f130cb",
+        "provider_output_sha256": "43cc9702dc204dd8406aa10d63a5fb2d5cceb14865af77c6128b69d2acdc29fa",
+        "captured_svg_sha256": "8558d712d2bc20b9dcf23a3fca4ff46c41aa37208e265bc8e97a38cb452c9026",
+        "upstream_svg_byte_identical": true,
+        "upstream_svg_geometry_identical": true
+      },
       "nodes": [
         {
           "id": "A",
@@ -13492,7 +14147,15 @@
     {
       "fixture": "upstream_html_demos_flowchart_flowchart_048",
       "input_sha256": "8fc3ac6f51e60dcaa9857187153448556475b420972298456f01b11983dd0048",
-      "upstream_svg_sha256": "5d32216aaf15e77c81a2cf7c1e43eab32851600a75dba88b0417e95dad8014f3",
+      "upstream_svg_sha256": "4735a7c591906a155e2540d2e219754512a726f1d3a4a05f14c972cd5ca5d090",
+      "capture": {
+        "captured_at": "2026-11-03T20:07:11.912Z",
+        "provider_input_sha256": "cf032dc058ecefd1f62643f76d62be34da76661344b99a5992c4b34746fa0a0f",
+        "provider_output_sha256": "9c976eaa8a5d28bf20dd4dc41ecdd054a47a337ef26e1435765fbdfd7de5c2e9",
+        "captured_svg_sha256": "4735a7c591906a155e2540d2e219754512a726f1d3a4a05f14c972cd5ca5d090",
+        "upstream_svg_byte_identical": true,
+        "upstream_svg_geometry_identical": true
+      },
       "nodes": [
         {
           "id": "47",
@@ -13501,8 +14164,8 @@
             51
           ],
           "center": [
-            1867.5269097222222,
-            284.2944444444444
+            1847.5269097222222,
+            307.0444444444444
           ],
           "label_box": {
             "text": "SAM.CommonFA.FMESummary",
@@ -13519,8 +14182,8 @@
             51
           ],
           "center": [
-            2264.859375,
-            329.7944444444444
+            2244.859375,
+            352.5444444444444
           ],
           "label_box": {
             "text": "SAM.CommonFA.CommonFAFinanceBudget",
@@ -13537,8 +14200,8 @@
             51
           ],
           "center": [
-            1905.3828125,
-            375.2944444444444
+            1885.3828125,
+            398.0444444444444
           ],
           "label_box": {
             "text": "SAM.CommonFA.BudgetSubserviceLineVolume",
@@ -13574,7 +14237,7 @@
           ],
           "center": [
             724.96875,
-            326.4194444444444
+            396.875
           ],
           "label_box": {
             "text": "SAM.CommonFA.MetricCost",
@@ -13592,7 +14255,7 @@
           ],
           "center": [
             1071.875,
-            378.5
+            424
           ],
           "label_box": {
             "text": "SAM.CommonFA.MetricOutliers",
@@ -13628,7 +14291,7 @@
           ],
           "center": [
             724.96875,
-            442.875
+            488.375
           ],
           "label_box": {
             "text": "SAM.CommonFA.OPVisits",
@@ -13646,7 +14309,7 @@
           ],
           "center": [
             1465.5234375,
-            333
+            240.5
           ],
           "label_box": {
             "text": "SAM.CommonFA.CommonFAFinanceRefund",
@@ -13682,7 +14345,7 @@
           ],
           "center": [
             1447.640625,
-            240.5
+            331.5
           ],
           "label_box": {
             "text": "SAM.CommonFA.CommonFAFinanceNurseryDays",
@@ -13718,7 +14381,7 @@
           ],
           "center": [
             425.125,
-            242.65277777777777
+            333.65277777777777
           ],
           "label_box": {
             "text": "SAM.CommonFA.ChargeDetails",
@@ -13736,7 +14399,7 @@
           ],
           "center": [
             134.390625,
-            247.81944444444443
+            338.81944444444446
           ],
           "label_box": {
             "text": "SAM.CommonFA.PremetricCost",
@@ -13754,22 +14417,23 @@
           "target": "48",
           "points": [
             [
-              1983.2690972222222,
-              284.2944444444444
+              1963.2690972222222,
+              307.0444444444444
+            ],
+            [
+              2069.796875,
+              307.0444444444444
+            ],
+            [
+              2069.796875,
+              347.37777777777774
             ],
             [
               2089.796875,
-              284.2944444444444
-            ],
-            [
-              2089.796875,
-              324.62777777777774
-            ],
-            [
-              2109.796875,
-              324.62777777777774
+              347.37777777777774
             ]
-          ]
+          ],
+          "label_size": null
         },
         {
           "id": "L_37_48_0",
@@ -13777,22 +14441,23 @@
           "target": "48",
           "points": [
             [
+              2049.796875,
+              398.0444444444444
+            ],
+            [
               2069.796875,
-              375.2944444444444
+              398.0444444444444
+            ],
+            [
+              2069.796875,
+              357.7111111111111
             ],
             [
               2089.796875,
-              375.2944444444444
-            ],
-            [
-              2089.796875,
-              334.9611111111111
-            ],
-            [
-              2109.796875,
-              334.9611111111111
+              357.7111111111111
             ]
-          ]
+          ],
+          "label_size": null
         },
         {
           "id": "L_35_47_0",
@@ -13828,18 +14493,19 @@
               12
             ],
             [
-              1720.96875,
+              1700.96875,
               12
             ],
             [
-              1720.96875,
-              272.2388888888889
+              1700.96875,
+              294.9888888888889
             ],
             [
-              1751.7847222222222,
-              272.2388888888889
+              1731.7847222222222,
+              294.9888888888889
             ]
-          ]
+          ],
+          "label_size": null
         },
         {
           "id": "L_41_47_0",
@@ -13848,37 +14514,38 @@
           "points": [
             [
               829.4375,
-              326.4194444444444
+              396.875
             ],
             [
               889.4375,
-              326.4194444444444
+              396.875
             ],
             [
               889.4375,
-              286.5
+              377.5
             ],
             [
               1071.875,
-              286.5
+              377.5
             ],
             [
               1447.640625,
-              286.5
+              377.5
             ],
             [
-              1640.96875,
-              286.5
+              1660.96875,
+              377.5
             ],
             [
-              1640.96875,
-              286.01666666666665
+              1660.96875,
+              312.2111111111111
             ],
             [
-              1751.7847222222222,
-              286.01666666666665
+              1731.7847222222222,
+              312.2111111111111
             ]
-          ]
+          ],
+          "label_size": null
         },
         {
           "id": "L_44_47_0",
@@ -13887,25 +14554,26 @@
           "points": [
             [
               1186.0625,
-              378.5
+              424
             ],
             [
               1447.640625,
-              378.5
+              424
             ],
             [
               1680.96875,
-              378.5
+              424
             ],
             [
               1680.96875,
-              292.9055555555555
+              315.6555555555555
             ],
             [
-              1751.7847222222222,
-              292.9055555555555
+              1731.7847222222222,
+              315.6555555555555
             ]
-          ]
+          ],
+          "label_size": null
         },
         {
           "id": "L_46_47_0",
@@ -13917,18 +14585,19 @@
               149.5
             ],
             [
-              1680.96875,
+              1660.96875,
               149.5
             ],
             [
-              1680.96875,
-              279.12777777777774
+              1660.96875,
+              301.87777777777774
             ],
             [
-              1751.7847222222222,
-              279.12777777777774
+              1731.7847222222222,
+              301.87777777777774
             ]
-          ]
+          ],
+          "label_size": null
         },
         {
           "id": "L_40_47_0",
@@ -13937,29 +14606,30 @@
           "points": [
             [
               822.6953125,
-              442.875
+              488.375
             ],
             [
               1071.875,
-              442.875
+              488.375
             ],
             [
               1447.640625,
-              442.875
+              488.375
             ],
             [
               1700.96875,
-              442.875
+              488.375
             ],
             [
               1700.96875,
-              296.34999999999997
+              319.09999999999997
             ],
             [
-              1751.7847222222222,
-              296.34999999999997
+              1731.7847222222222,
+              319.09999999999997
             ]
-          ]
+          ],
+          "label_size": null
         },
         {
           "id": "L_38_47_0",
@@ -13968,21 +14638,22 @@
           "points": [
             [
               1620.96875,
-              333
+              240.5
             ],
             [
-              1660.96875,
-              333
+              1640.96875,
+              240.5
             ],
             [
-              1660.96875,
-              289.4611111111111
+              1640.96875,
+              305.3222222222222
             ],
             [
-              1751.7847222222222,
-              289.4611111111111
+              1731.7847222222222,
+              305.3222222222222
             ]
-          ]
+          ],
+          "label_size": null
         },
         {
           "id": "L_43_47_0",
@@ -13998,18 +14669,19 @@
               58.5
             ],
             [
-              1700.96875,
+              1680.96875,
               58.5
             ],
             [
-              1700.96875,
-              275.6833333333333
+              1680.96875,
+              298.4333333333333
             ],
             [
-              1751.7847222222222,
-              275.6833333333333
+              1731.7847222222222,
+              298.4333333333333
             ]
-          ]
+          ],
+          "label_size": null
         },
         {
           "id": "L_42_47_0",
@@ -14018,21 +14690,22 @@
           "points": [
             [
               1620.96875,
-              240.5
+              331.5
             ],
             [
-              1660.96875,
-              240.5
+              1640.96875,
+              331.5
             ],
             [
-              1660.96875,
-              282.5722222222222
+              1640.96875,
+              308.76666666666665
             ],
             [
-              1751.7847222222222,
-              282.5722222222222
+              1731.7847222222222,
+              308.76666666666665
             ]
-          ]
+          ],
+          "label_size": null
         },
         {
           "id": "L_45_46_0",
@@ -14047,7 +14720,8 @@
               1321.3828125,
               149.5
             ]
-          ]
+          ],
+          "label_size": null
         },
         {
           "id": "L_35_45_0",
@@ -14086,7 +14760,8 @@
               926.296875,
               144.33333333333331
             ]
-          ]
+          ],
+          "label_size": null
         },
         {
           "id": "L_41_45_0",
@@ -14095,11 +14770,11 @@
           "points": [
             [
               829.4375,
-              318.6694444444444
+              389.125
             ],
             [
               869.4375,
-              318.6694444444444
+              389.125
             ],
             [
               869.4375,
@@ -14109,7 +14784,8 @@
               926.296875,
               154.66666666666666
             ]
-          ]
+          ],
+          "label_size": null
         },
         {
           "id": "L_41_44_0",
@@ -14118,21 +14794,22 @@
           "points": [
             [
               829.4375,
-              334.1694444444444
+              404.625
             ],
             [
               849.4375,
-              334.1694444444444
+              404.625
             ],
             [
               849.4375,
-              378.5
+              424
             ],
             [
               957.6875,
-              378.5
+              424
             ]
-          ]
+          ],
+          "label_size": null
         },
         {
           "id": "L_39_43_0",
@@ -14141,11 +14818,11 @@
           "points": [
             [
               540.5,
-              233.35277777777776
+              324.35277777777776
             ],
             [
               560.5,
-              233.35277777777776
+              324.35277777777776
             ],
             [
               560.5,
@@ -14167,7 +14844,8 @@
               909.4375,
               58.5
             ]
-          ]
+          ],
+          "label_size": null
         },
         {
           "id": "L_39_42_0",
@@ -14176,29 +14854,30 @@
           "points": [
             [
               540.5,
-              239.55277777777778
+              330.55277777777775
             ],
             [
               600.5,
-              239.55277777777778
+              330.55277777777775
             ],
             [
               600.5,
-              240.5
+              331.5
             ],
             [
               724.96875,
-              240.5
+              331.5
             ],
             [
               1071.875,
-              240.5
+              331.5
             ],
             [
               1274.3125,
-              240.5
+              331.5
             ]
-          ]
+          ],
+          "label_size": null
         },
         {
           "id": "L_39_41_0",
@@ -14207,21 +14886,22 @@
           "points": [
             [
               540.5,
-              245.75277777777777
+              336.7527777777778
             ],
             [
               580.5,
-              245.75277777777777
+              336.7527777777778
             ],
             [
               580.5,
-              326.4194444444444
+              396.875
             ],
             [
               620.5,
-              326.4194444444444
+              396.875
             ]
-          ]
+          ],
+          "label_size": null
         },
         {
           "id": "L_39_40_0",
@@ -14230,21 +14910,22 @@
           "points": [
             [
               540.5,
-              251.95277777777778
+              342.9527777777778
             ],
             [
               560.5,
-              251.95277777777778
+              342.9527777777778
             ],
             [
               560.5,
-              442.875
+              488.375
             ],
             [
               627.2421875,
-              442.875
+              488.375
             ]
-          ]
+          ],
+          "label_size": null
         },
         {
           "id": "L_35_39_0",
@@ -14261,13 +14942,14 @@
             ],
             [
               269.75,
-              237.48611111111111
+              328.4861111111111
             ],
             [
               309.75,
-              237.48611111111111
+              328.4861111111111
             ]
-          ]
+          ],
+          "label_size": null
         },
         {
           "id": "L_36_39_0",
@@ -14276,13 +14958,14 @@
           "points": [
             [
               249.75,
-              247.81944444444443
+              338.81944444444446
             ],
             [
               309.75,
-              247.81944444444446
+              338.81944444444446
             ]
-          ]
+          ],
+          "label_size": null
         }
       ]
     },
@@ -14290,6 +14973,14 @@
       "fixture": "upstream_html_demos_flowchart_flowchart_058",
       "input_sha256": "2b3ffe4631d4079993d2a2601ca669be672b1e38910fa3f36494fbc41f512863",
       "upstream_svg_sha256": "ed54c4ef8905ae7e06d79bdd7a3868b4d3ba0536b41709318910a26093e70570",
+      "capture": {
+        "captured_at": "2026-11-03T20:07:12.252Z",
+        "provider_input_sha256": "733cff3b31dade58feb37c2368d80d9c8397236f5c78fb06092b373706f130cb",
+        "provider_output_sha256": "43cc9702dc204dd8406aa10d63a5fb2d5cceb14865af77c6128b69d2acdc29fa",
+        "captured_svg_sha256": "ed54c4ef8905ae7e06d79bdd7a3868b4d3ba0536b41709318910a26093e70570",
+        "upstream_svg_byte_identical": true,
+        "upstream_svg_geometry_identical": true
+      },
       "nodes": [
         {
           "id": "A",
@@ -14428,6 +15119,14 @@
       "fixture": "upstream_html_demos_flowchart_graph_035",
       "input_sha256": "a7182f68913f0b52d998336a98101fdd31095effcac586b11176ec81174ac421",
       "upstream_svg_sha256": "2e19208a41e11a4bf983d17b442dd54b58f0b76e38a6170927fa3758a80e1e1c",
+      "capture": {
+        "captured_at": "2026-11-03T20:07:12.595Z",
+        "provider_input_sha256": "775b4bbb8b82bd1a9c1c4a6fc2368fbc02c99c8a38a39e2024276cb1324347e7",
+        "provider_output_sha256": "018f559983dcc188e73149359d413cdeecb97506bb0a259a0d604c1ec4bc7257",
+        "captured_svg_sha256": "2e19208a41e11a4bf983d17b442dd54b58f0b76e38a6170927fa3758a80e1e1c",
+        "upstream_svg_byte_identical": true,
+        "upstream_svg_geometry_identical": true
+      },
       "nodes": [
         {
           "id": "A1",
@@ -15207,6 +15906,14 @@
       "fixture": "upstream_html_demos_flowchart_graph_037",
       "input_sha256": "55ddff2f6a16cf560ae693f87b2a33493622349b40fbf52399ce20276af43edc",
       "upstream_svg_sha256": "a0589ccd2d17e412b024eb66ffb8ea428dd19d8590cb30ec20b70e91e44a0aaf",
+      "capture": {
+        "captured_at": "2026-11-03T20:07:12.936Z",
+        "provider_input_sha256": "8910f89ec687d92bfedd0e8497030316886f07aeb2fe8552b220be6372dcb792",
+        "provider_output_sha256": "b4edaa220863acb39f9a5eb4213d774bdcb3be1260834021c42091ffa4437daf",
+        "captured_svg_sha256": "a0589ccd2d17e412b024eb66ffb8ea428dd19d8590cb30ec20b70e91e44a0aaf",
+        "upstream_svg_byte_identical": true,
+        "upstream_svg_geometry_identical": true
+      },
       "nodes": [
         {
           "id": "A1",
@@ -15986,6 +16693,14 @@
       "fixture": "upstream_pkgtests_flow_text_spec_288",
       "input_sha256": "86d384e1fa8dd4dba3134c72aa93fa2b2165c493b77cbdc7a74b35a2c4f0a82d",
       "upstream_svg_sha256": "48c3dd93449f28a758bf5e5121f09727c19d1f62a69647a88473f7e4c861461d",
+      "capture": {
+        "captured_at": "2026-11-03T20:07:13.054Z",
+        "provider_input_sha256": "e23568f8501c8540f9aea44d47810bcc5dece9ad70a311ab959fb765ac1d1107",
+        "provider_output_sha256": "bad34a2bc520d644a07699bf7f183257aea499411e66abeb7f012f887e8e5561",
+        "captured_svg_sha256": "48c3dd93449f28a758bf5e5121f09727c19d1f62a69647a88473f7e4c861461d",
+        "upstream_svg_byte_identical": true,
+        "upstream_svg_geometry_identical": true
+      },
       "nodes": [
         {
           "id": "A",
@@ -16038,7 +16753,8 @@
               91.56886291503906,
               211.13772583007812
             ]
-          ]
+          ],
+          "label_size": null
         }
       ]
     },
@@ -16046,6 +16762,14 @@
       "fixture": "zed_pr_57644_flowchart",
       "input_sha256": "69a8de26a6293ba50e99b0c06cac2a7f75b0290b62460fccef7f9220f1dd522d",
       "upstream_svg_sha256": "f8bcfdda067b9cab61ad1a34c7d9fa269e0a551280f9374e8f7985b67f0e8c61",
+      "capture": {
+        "captured_at": "2026-11-03T20:07:13.268Z",
+        "provider_input_sha256": "3fa74fe0926d314f02748d53946fa065768a67756f9a267dc3da97644340f6b6",
+        "provider_output_sha256": "9f90411e050dd0d7bfc731a23648857cd44e0efb7fb1fae10bcd2580a6609d8a",
+        "captured_svg_sha256": "f8bcfdda067b9cab61ad1a34c7d9fa269e0a551280f9374e8f7985b67f0e8c61",
+        "upstream_svg_byte_identical": true,
+        "upstream_svg_geometry_identical": true
+      },
       "nodes": [
         {
           "id": "A",
@@ -16242,7 +16966,8 @@
               326.53010813395184,
               97
             ]
-          ]
+          ],
+          "label_size": null
         },
         {
           "id": "L_B_C_0",
@@ -16265,7 +16990,8 @@
               189.61344146728516,
               173
             ]
-          ]
+          ],
+          "label_size": null
         },
         {
           "id": "L_C_D_0",
@@ -16366,7 +17092,8 @@
               326.53010813395184,
               133
             ]
-          ]
+          ],
+          "label_size": null
         },
         {
           "id": "L_D_F_0",
@@ -16381,7 +17108,8 @@
               122.78010813395184,
               530
             ]
-          ]
+          ],
+          "label_size": null
         },
         {
           "id": "L_F_G_0",
@@ -16486,7 +17214,8 @@
               368.03010813395184,
               133
             ]
-          ]
+          ],
+          "label_size": null
         },
         {
           "id": "L_G_I_0",
@@ -16501,7 +17230,8 @@
               97.61344146728516,
               927.1486968994141
             ]
-          ]
+          ],
+          "label_size": null
         },
         {
           "id": "L_I_J_0",
@@ -16516,7 +17246,8 @@
               97.61344146728516,
               1012.1486968994141
             ]
-          ]
+          ],
+          "label_size": null
         }
       ]
     },
@@ -16525,43 +17256,12 @@
       "input_sha256": "e82ce307a88afea33da54324d9dfdfb674dfc7c35107dd162e71845ea1b8a497",
       "upstream_svg_sha256": "26b4dde86ef879321f362a35486a1980d13088ef5d71baa25a449000db7b2fd4",
       "capture": {
-        "captured_at": "2026-10-28T14:23:05.753Z",
-        "browser": "Edg/156.0.4314.50",
-        "mermaid_version": "12.2.0",
-        "mermaid_source_commit": "1fb7869866dd619168d840291c9c54b4f129758b",
-        "elkjs_version": "0.9.3",
-        "puppeteer_version": "25.16.0",
-        "esbuild_version": "0.28.1",
-        "mermaid_entrypoint": "tools/mermaid-cli/node_modules/mermaid/dist/mermaid.core.mjs",
-        "mermaid_entrypoint_sha256": "4d085c790146a42c65d51ea21170427b24bc706de970df570331321996cbdbaf",
-        "elk_adapter": "tools/mermaid-cli/node_modules/mermaid/dist/chunks/mermaid.core/elk-QONTBCTQ.mjs",
-        "elk_adapter_sha256": "f2c2d22186c1ad36b9a6d9530e66c5235f0e6a2b1a48631d7f720d96afbbc3b5",
-        "elk_adapter_source_map_sha256": "8bd6343df8b04ac143734ce386a1841c80067fb00519eedb4ff8ed0060886f86",
-        "elkjs_bundle": "tools/mermaid-cli/node_modules/elkjs/lib/elk.bundled.js",
-        "elkjs_bundle_sha256": "b0745abd7f23cd91690a1587e377edbe19fd7233c783300290936720546216d4",
-        "runtime_sha256": "6b0cfa9a8bc36314e9ecc89f40bb6a08efc86ad813bfbfb3ce25b0fcce41ae19",
-        "runtime_description": "esbuild browser IIFE of installed mermaid; capture-only instrumentation around elk.layout and endpoint sanitization; no algorithm changes",
-        "harness_sha256": "e9c2d1053cf728f2d57bf1018a101ae277c69a0b3435b6a845691fdf9193808f",
-        "natural_svg_sha256": "adff4ff2c5bd67c163d96a81489e000cf52bd305531724cb0ec5c68df688f397",
-        "initialize": {
-          "startOnLoad": false,
-          "securityLevel": "strict",
-          "deterministicIds": true,
-          "deterministicIDSeed": "8368",
-          "theme": "redux-color"
-        },
-        "viewport": {
-          "width": 1600,
-          "height": 1000,
-          "deviceScaleFactor": 1
-        },
-        "measurement_source": "Actual natural-browser Mermaid invocation dimensions and raw elkjs output, copied at elk.layout before endpoint clipping, terminal straightening, or label separation. Native getBBox results are returned unchanged; no fonts or dimensions are injected. Per-entry browser identity supersedes the matrix historical collection browser.",
-        "font_css": "14px \"Recursive Variable\", arial, sans-serif",
-        "container_origin": [
-          0,
-          0
-        ],
-        "upstream_match": "All three final edge d strings and decoded data-points, both edge-label centers and global background rectangles match upstream exactly; no full-SVG byte identity is claimed."
+        "captured_at": "2026-11-03T20:07:13.580Z",
+        "provider_input_sha256": "6b8feb109340ad1ca5f4ab8fd267928739e6ca86ef80db54bd074af357277f0b",
+        "provider_output_sha256": "57fe424a503377afaa71f739797daecdd1093676e20b869a8d1a6cbc95c09627",
+        "captured_svg_sha256": "26b4dde86ef879321f362a35486a1980d13088ef5d71baa25a449000db7b2fd4",
+        "upstream_svg_byte_identical": true,
+        "upstream_svg_geometry_identical": true
       },
       "nodes": [
         {

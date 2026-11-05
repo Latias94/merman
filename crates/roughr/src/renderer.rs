@@ -13,7 +13,175 @@ use crate::filler::FillerType::{
 };
 use crate::geometry::{convert_bezier_quadratic_to_cubic, BezierQuadratic};
 use crate::svg_path::{absolutize, normalize};
+use crate::work::{advance, finite, UnlimitedWork, WorkControl, WorkError};
 use crate::SvgPathSegment;
+
+pub(crate) fn validate_options(options: &Options) -> Result<(), WorkError> {
+    for value in [
+        options.max_randomness_offset,
+        options.roughness,
+        options.bowing,
+        options.stroke_width,
+        options.curve_tightness,
+        options.curve_fitting,
+        options.curve_step_count,
+        options.hachure_angle,
+        options.hachure_gap,
+        options.simplification,
+    ]
+    .into_iter()
+    .flatten()
+    {
+        finite(&[value])?;
+    }
+    Ok(())
+}
+
+pub fn line_with_control<F: Float + Trig + FromPrimitive>(
+    x1: F,
+    y1: F,
+    x2: F,
+    y2: F,
+    options: &mut Options,
+    control: &mut impl WorkControl,
+) -> Result<OpSet<F>, WorkError> {
+    validate_options(options)?;
+    finite(&[x1, y1, x2, y2, (x1 - x2).powi(2) + (y1 - y2).powi(2)])?;
+    control.charge(4)?;
+    let result = line(x1, y1, x2, y2, options);
+    for operation in &result.ops {
+        finite(&operation.data)?;
+    }
+    Ok(result)
+}
+
+pub fn rectangle_with_control<F: Float + Trig + FromPrimitive>(
+    x: F,
+    y: F,
+    width: F,
+    height: F,
+    options: &mut Options,
+    control: &mut impl WorkControl,
+) -> Result<OpSet<F>, WorkError> {
+    linear_path_with_control(
+        &[
+            Point2D::new(x, y),
+            Point2D::new(x + width, y),
+            Point2D::new(x + width, y + height),
+            Point2D::new(x, y + height),
+        ],
+        true,
+        options,
+        control,
+    )
+}
+
+pub fn linear_path_with_control<F: Float + Trig + FromPrimitive>(
+    points: &[Point2D<F>],
+    close: bool,
+    options: &mut Options,
+    control: &mut impl WorkControl,
+) -> Result<OpSet<F>, WorkError> {
+    control.charge(1)?;
+    let mut result = OpSet {
+        op_set_type: OpSetType::Path,
+        ops: Vec::new(),
+        size: None,
+        path: None,
+    };
+    for pair in points.windows(2) {
+        result.ops.append(
+            &mut line_with_control(pair[0].x, pair[0].y, pair[1].x, pair[1].y, options, control)?
+                .ops,
+        );
+    }
+    if close && points.len() > 2 {
+        let last = points[points.len() - 1];
+        result.ops.append(
+            &mut line_with_control(last.x, last.y, points[0].x, points[0].y, options, control)?.ops,
+        );
+    }
+    Ok(result)
+}
+
+pub fn generate_ellipse_params_with_control<F: Float + Trig + FromPrimitive>(
+    width: F,
+    height: F,
+    options: &mut Options,
+    control: &mut impl WorkControl,
+) -> Result<EllipseParams<F>, WorkError> {
+    control.charge(1)?;
+    validate_options(options)?;
+    finite(&[width, height])?;
+    let params = generate_ellipse_params(width, height, options);
+    finite(&[params.rx, params.ry, params.increment])?;
+    if params.increment <= F::zero() {
+        return Err(WorkError::InvalidGeometry);
+    }
+    Ok(params)
+}
+
+pub fn solid_fill_polygon_with_control<F: Float + Trig + FromPrimitive>(
+    polygons: &[Vec<Point2D<F>>],
+    options: &mut Options,
+    control: &mut impl WorkControl,
+) -> Result<OpSet<F>, WorkError> {
+    validate_options(options)?;
+    let mut ops = Vec::new();
+    for polygon in polygons {
+        control.charge(1)?;
+        if polygon.len() > 2 {
+            let offset = _c(options.max_randomness_offset.unwrap_or(2.0));
+            for (index, point) in polygon.iter().enumerate() {
+                control.charge(1)?;
+                finite(&[point.x, point.y])?;
+                let data = vec![
+                    point.x + _offset_opt(offset, options, None),
+                    point.y + _offset_opt(offset, options, None),
+                ];
+                finite(&data)?;
+                ops.push(Op {
+                    op: if index == 0 {
+                        OpType::Move
+                    } else {
+                        OpType::LineTo
+                    },
+                    data,
+                });
+            }
+        }
+    }
+    Ok(OpSet {
+        op_set_type: OpSetType::FillPath,
+        ops,
+        size: None,
+        path: None,
+    })
+}
+
+pub fn hachure_fill_polygons_with_control<F: Float + Trig + FromPrimitive>(
+    polygons: &mut [Vec<Point2D<F>>],
+    options: &mut Options,
+    control: &mut impl WorkControl,
+) -> Result<OpSet<F>, WorkError> {
+    use crate::filler::scan_line_hachure::ScanlineHachureFiller;
+    match options.fill_style {
+        None | Some(FillStyle::Hachure) => {
+            ScanlineHachureFiller::new().fill_polygons_with_control(polygons, options, control)
+        }
+        Some(FillStyle::CrossHatch) => {
+            let mut first = ScanlineHachureFiller::new()
+                .fill_polygons_with_control(polygons, options, control)?;
+            options.set_hachure_angle(options.hachure_angle.map(|angle| angle + 90.0));
+            let mut second = ScanlineHachureFiller::new()
+                .fill_polygons_with_control(polygons, options, control)?;
+            control.charge(second.ops.len())?;
+            first.ops.append(&mut second.ops);
+            Ok(first)
+        }
+        _ => Err(WorkError::UnsupportedFill),
+    }
+}
 
 #[derive(PartialEq, Eq, Debug)]
 pub struct EllipseParams<F: Float> {
@@ -337,6 +505,18 @@ pub fn ellipse_with_params<F: Float + Trig + FromPrimitive>(
     o: &mut Options,
     ellipse_params: &EllipseParams<F>,
 ) -> EllipseResult<F> {
+    ellipse_with_params_with_control(x, y, o, ellipse_params, &mut UnlimitedWork)
+        .expect("invalid ellipse geometry")
+}
+
+pub fn ellipse_with_params_with_control<F: Float + Trig + FromPrimitive>(
+    x: F,
+    y: F,
+    o: &mut Options,
+    ellipse_params: &EllipseParams<F>,
+    control: &mut impl WorkControl,
+) -> Result<EllipseResult<F>, WorkError> {
+    validate_options(o)?;
     let overlap = ellipse_params.increment
         * _offset(
             _c(0.1),
@@ -344,7 +524,7 @@ pub fn ellipse_with_params<F: Float + Trig + FromPrimitive>(
             o,
             None,
         );
-    let ellipse_points = _compute_ellipse_points(
+    let ellipse_points = compute_ellipse_points_with_control(
         EllipsePointsSpec {
             increment: ellipse_params.increment,
             cx: x,
@@ -355,12 +535,14 @@ pub fn ellipse_with_params<F: Float + Trig + FromPrimitive>(
             overlap,
         },
         o,
-    );
-    let ap1 = ellipse_points[0].clone();
-    let cp1 = ellipse_points[1].clone();
-    let mut o1 = _curve(&ap1, None, o);
+        control,
+    )?;
+    let mut ellipse_points = ellipse_points.into_iter();
+    let ap1 = ellipse_points.next().unwrap();
+    let cp1 = ellipse_points.next().unwrap();
+    let mut o1 = curve_with_control(&ap1, None, o, control)?;
     if (!o.disable_multi_stroke.unwrap_or(false)) && (o.roughness.unwrap_or(0.0) != 0.0) {
-        let inner_ellipse_points = _compute_ellipse_points(
+        let inner_ellipse_points = compute_ellipse_points_with_control(
             EllipsePointsSpec {
                 increment: ellipse_params.increment,
                 cx: x,
@@ -371,13 +553,13 @@ pub fn ellipse_with_params<F: Float + Trig + FromPrimitive>(
                 overlap: _c::<F>(0.0),
             },
             o,
-        );
-        let ap2 = inner_ellipse_points[0].clone();
-        let _cp2 = inner_ellipse_points[1].clone();
-        let mut o2 = _curve(&ap2, None, o);
+            control,
+        )?;
+        let mut o2 = curve_with_control(&inner_ellipse_points[0], None, o, control)?;
+        control.charge(o2.len())?;
         o1.append(&mut o2);
     }
-    EllipseResult {
+    Ok(EllipseResult {
         estimated_points: cp1,
         opset: OpSet {
             op_set_type: OpSetType::Path,
@@ -385,7 +567,7 @@ pub fn ellipse_with_params<F: Float + Trig + FromPrimitive>(
             size: None,
             path: None,
         },
-    }
+    })
 }
 
 pub fn arc<F: Float + Trig + FromPrimitive>(
@@ -743,8 +925,18 @@ pub(crate) fn _curve<F: Float + Trig + FromPrimitive>(
     close_point: Option<Point2D<F>>,
     o: &mut Options,
 ) -> Vec<Op<F>> {
+    curve_with_control(points, close_point, o, &mut UnlimitedWork).expect("invalid curve geometry")
+}
+
+fn curve_with_control<F: Float + Trig + FromPrimitive>(
+    points: &[Point2D<F>],
+    close_point: Option<Point2D<F>>,
+    o: &mut Options,
+    control: &mut impl WorkControl,
+) -> Result<Vec<Op<F>>, WorkError> {
     let len = points.len();
     let mut ops: Vec<Op<F>> = vec![];
+    control.charge(1)?;
     if len > 3 {
         let mut b: [[F; 2]; 4] = [[_c(0.0); 2]; 4];
         let s: F = _c::<F>(1.0) - _c(o.curve_tightness.unwrap_or(0.0));
@@ -754,6 +946,7 @@ pub(crate) fn _curve<F: Float + Trig + FromPrimitive>(
         });
         let mut i = 1;
         while (i + 2) < len {
+            control.charge(1)?;
             let cached_vert_array = points[i];
             b[0] = [cached_vert_array.x, cached_vert_array.y];
             b[1] = [
@@ -765,6 +958,7 @@ pub(crate) fn _curve<F: Float + Trig + FromPrimitive>(
                 points[i + 1].y + (s * points[i].y - s * points[i + 2].y) / _c(6.0),
             ];
             b[3] = [points[i + 1].x, points[i + 1].y];
+            finite(&[b[1][0], b[1][1], b[2][0], b[2][1], b[3][0], b[3][1]])?;
             ops.push(Op {
                 op: OpType::BCurveTo,
                 data: vec![b[1][0], b[1][1], b[2][0], b[2][1], b[3][0], b[3][1]],
@@ -772,6 +966,7 @@ pub(crate) fn _curve<F: Float + Trig + FromPrimitive>(
             i += 1;
         }
         if let Some(cp) = close_point {
+            control.charge(1)?;
             let ro = _c(o.max_randomness_offset.unwrap_or(2.0));
             ops.push(Op {
                 op: OpType::LineTo,
@@ -782,6 +977,7 @@ pub(crate) fn _curve<F: Float + Trig + FromPrimitive>(
             });
         }
     } else if len == 3 {
+        control.charge(2)?;
         ops.push(Op {
             op: OpType::Move,
             data: vec![points[1].x, points[1].y],
@@ -798,6 +994,7 @@ pub(crate) fn _curve<F: Float + Trig + FromPrimitive>(
             ],
         });
     } else if len == 2 {
+        control.charge(4)?;
         ops.append(&mut _double_line(
             points[0].x,
             points[0].y,
@@ -807,7 +1004,7 @@ pub(crate) fn _curve<F: Float + Trig + FromPrimitive>(
             false,
         ));
     }
-    ops
+    Ok(ops)
 }
 
 fn _curve_with_offset<F: Float + Trig + FromPrimitive>(
@@ -842,10 +1039,20 @@ fn _curve_with_offset<F: Float + Trig + FromPrimitive>(
     _curve(&ps, None, o)
 }
 
+#[cfg(test)]
 fn _compute_ellipse_points<F: Float + Trig + FromPrimitive>(
     spec: EllipsePointsSpec<F>,
     o: &mut Options,
 ) -> Vec<Vec<Point2D<F>>> {
+    compute_ellipse_points_with_control(spec, o, &mut UnlimitedWork)
+        .expect("invalid ellipse sampling")
+}
+
+fn compute_ellipse_points_with_control<F: Float + Trig + FromPrimitive>(
+    spec: EllipsePointsSpec<F>,
+    o: &mut Options,
+    control: &mut impl WorkControl,
+) -> Result<Vec<Vec<Point2D<F>>>, WorkError> {
     let EllipsePointsSpec {
         increment,
         cx,
@@ -855,6 +1062,11 @@ fn _compute_ellipse_points<F: Float + Trig + FromPrimitive>(
         offset,
         overlap,
     } = spec;
+    control.charge(4)?;
+    finite(&[increment, cx, cy, rx, ry, offset, overlap])?;
+    if increment <= F::zero() {
+        return Err(WorkError::InvalidGeometry);
+    }
     let core_only = o.roughness.unwrap_or(0.0) == 0.0;
     let mut core_points: Vec<Point2D<F>> = Vec::new();
     let mut all_points: Vec<Point2D<F>> = Vec::new();
@@ -868,10 +1080,12 @@ fn _compute_ellipse_points<F: Float + Trig + FromPrimitive>(
 
         let mut angle = _c(0.0);
         while angle <= _cc::<F>(std::f64::consts::PI * 2.0) {
+            control.charge(2)?;
             let p = Point2D::new(cx + rx * Float::cos(angle), cy + ry * Float::sin(angle));
+            finite(&[p.x, p.y])?;
             core_points.push(p);
             all_points.push(p);
-            angle = angle + increment_inner;
+            angle = advance(angle, increment_inner)?;
         }
         all_points.push(Point2D::new(
             cx + rx * Float::cos(_c(0.0)),
@@ -894,13 +1108,15 @@ fn _compute_ellipse_points<F: Float + Trig + FromPrimitive>(
         let end_angle = _cc::<F>(std::f64::consts::PI * 2.0) + rad_offset - _c(0.01);
         let mut angle = rad_offset;
         while angle < end_angle {
+            control.charge(2)?;
             let p = Point2D::new(
                 _offset_opt(offset, o, None) + cx + rx * Float::cos(angle),
                 _offset_opt(offset, o, None) + cy + ry * Float::sin(angle),
             );
+            finite(&[p.x, p.y])?;
             core_points.push(p);
             all_points.push(p);
-            angle = angle + increment;
+            angle = advance(angle, increment)?;
         }
 
         all_points.push(Point2D::new(
@@ -932,7 +1148,11 @@ fn _compute_ellipse_points<F: Float + Trig + FromPrimitive>(
                 + _c::<F>(0.9) * ry * Float::sin(rad_offset + overlap * _c(0.5)),
         ));
     }
-    vec![all_points, core_points]
+    for point in &all_points {
+        control.charge(1)?;
+        finite(&[point.x, point.y])?;
+    }
+    Ok(vec![all_points, core_points])
 }
 
 fn _arc<F: Float + Trig + FromPrimitive>(spec: ArcPointsSpec<F>, o: &mut Options) -> Vec<Op<F>> {
@@ -1201,17 +1421,63 @@ where
     )
 }
 
+pub fn svg_normalized_segments_with_control<F: Float + FromPrimitive + Trig>(
+    normalized_segments: &[impl SvgPathSegment],
+    o: &mut Options,
+    control: &mut impl WorkControl,
+) -> Result<OpSet<F>, WorkError> {
+    validate_options(o)?;
+    opset_from_path_with_control(
+        o,
+        Vec::new(),
+        Point2D::new(_c(0.0), _c(0.0)),
+        Point2D::new(_c(0.0), _c(0.0)),
+        normalized_segments
+            .iter()
+            .copied()
+            .map(SvgPathSegment::into_current),
+        control,
+        true,
+    )
+}
+
 fn opset_from_path<F>(
     o: &mut Options,
-    mut ops: Vec<Op<F>>,
-    mut first: euclid::Point2D<F, euclid::UnknownUnit>,
-    mut current: euclid::Point2D<F, euclid::UnknownUnit>,
+    ops: Vec<Op<F>>,
+    first: euclid::Point2D<F, euclid::UnknownUnit>,
+    current: euclid::Point2D<F, euclid::UnknownUnit>,
     normalized_segments: impl Iterator<Item = PathSegment>,
 ) -> OpSet<F>
 where
     F: Float + FromPrimitive + Trig,
 {
+    opset_from_path_with_control(
+        o,
+        ops,
+        first,
+        current,
+        normalized_segments,
+        &mut UnlimitedWork,
+        false,
+    )
+    .expect("invalid SVG operations")
+}
+
+fn opset_from_path_with_control<F: Float + FromPrimitive + Trig>(
+    o: &mut Options,
+    mut ops: Vec<Op<F>>,
+    mut first: Point2D<F>,
+    mut current: Point2D<F>,
+    normalized_segments: impl Iterator<Item = PathSegment>,
+    control: &mut impl WorkControl,
+    checked_geometry: bool,
+) -> Result<OpSet<F>, WorkError> {
     for segment in normalized_segments {
+        control.charge(4)?;
+        if checked_geometry {
+            crate::svg_path::finite_segment(segment)?;
+        }
+        let output_start = ops.len();
         match segment {
             PathSegment::MoveTo { abs: true, x, y } => {
                 // Rough.js `svgPath(...)` treats `M` as cursor state and does not emit an output op.
@@ -1221,14 +1487,28 @@ where
                 first = Point2D::new(_cc::<F>(x), _cc::<F>(y));
             }
             PathSegment::LineTo { abs: true, x, y } => {
-                ops.extend(_double_line(
-                    current.x,
-                    current.y,
-                    _cc::<F>(x),
-                    _cc::<F>(y),
-                    o,
-                    false,
-                ));
+                if checked_geometry {
+                    ops.extend(
+                        line_with_control(
+                            current.x,
+                            current.y,
+                            _cc::<F>(x),
+                            _cc::<F>(y),
+                            o,
+                            control,
+                        )?
+                        .ops,
+                    );
+                } else {
+                    ops.extend(_double_line(
+                        current.x,
+                        current.y,
+                        _cc::<F>(x),
+                        _cc::<F>(y),
+                        o,
+                        false,
+                    ));
+                }
                 current = Point2D::new(_cc::<F>(x), _cc::<F>(y));
             }
             PathSegment::CurveTo {
@@ -1255,20 +1535,31 @@ where
                 current = Point2D::new(_cc::<F>(x), _cc::<F>(y));
             }
             PathSegment::ClosePath { abs: true } => {
-                ops.extend(_double_line(
-                    current.x, current.y, first.x, first.y, o, false,
-                ));
+                if checked_geometry {
+                    ops.extend(
+                        line_with_control(current.x, current.y, first.x, first.y, o, control)?.ops,
+                    );
+                } else {
+                    ops.extend(_double_line(
+                        current.x, current.y, first.x, first.y, o, false,
+                    ));
+                }
                 current = Point2D::new(first.x, first.y);
             }
-            _ => panic!("Unexpected segment type"),
+            _ => return Err(WorkError::InvalidGeometry),
+        }
+        if checked_geometry {
+            for operation in &ops[output_start..] {
+                finite(&operation.data)?;
+            }
         }
     }
-    OpSet {
+    Ok(OpSet {
         op_set_type: OpSetType::Path,
         ops,
         size: None,
         path: None,
-    }
+    })
 }
 
 #[cfg(test)]

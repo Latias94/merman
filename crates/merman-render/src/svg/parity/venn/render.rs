@@ -1,4 +1,4 @@
-use super::super::roughjs_common::ops_to_svg_path_d;
+use super::super::roughjs_common::{controlled, ops_to_svg_path_d};
 use super::super::*;
 use merman_markup::theme_color::transparentize;
 use merman_model::families::venn::VennDiagramModel;
@@ -54,6 +54,7 @@ fn rough_circle_paths(
     stroke_width: f32,
     hachure_angle: f32,
     randomness: &roughr::core::RoughRandomness,
+    work_meter: &crate::resources::OperationWorkMeter,
 ) -> Result<(String, String)> {
     let options = roughr::core::OptionsBuilder::default()
         .randomness(randomness.clone())
@@ -70,12 +71,16 @@ fn rough_circle_paths(
         .disable_multi_stroke_fill(false)
         .build()
         .map_err(|error| invalid_rough_options("circle", error))?;
-    let drawable = roughr::generator::Generator::default().circle::<f64>(
-        circle.x,
-        circle.y,
-        circle.radius * 2.0,
-        &Some(options),
-    );
+    let drawable =
+        controlled::generate(work_meter, merman_model::OperationPhase::Emit, |control| {
+            roughr::generator::Generator::default().circle_with_control::<f64>(
+                circle.x,
+                circle.y,
+                circle.radius * 2.0,
+                &Some(options),
+                control,
+            )
+        })?;
     let mut fill_path = None;
     let mut stroke_path = None;
     for set in drawable.sets {
@@ -100,6 +105,7 @@ fn rough_intersection_fill_path(
     path: &str,
     fill: &str,
     randomness: &roughr::core::RoughRandomness,
+    work_meter: &crate::resources::OperationWorkMeter,
 ) -> Result<String> {
     let mut options = roughr::core::OptionsBuilder::default()
         .randomness(randomness.clone())
@@ -117,12 +123,25 @@ fn rough_intersection_fill_path(
     options.stroke = None;
 
     let distance = (1.0 + options.roughness.unwrap_or(1.0) as f64) / 2.0;
-    let polygons =
-        roughr::points_on_path::points_on_path::<f64>(path.to_string(), Some(1.0), Some(distance));
     // RoughJS computes the outline even when `stroke: none`, so its PRNG state advances before
     // the cross-hatch fill is generated. The discarded operation is part of seeded parity.
-    let _discarded_outline = roughr::renderer::svg_path::<f64>(path.to_string(), &mut options);
-    let fill_path = roughr::renderer::pattern_fill_polygons(polygons, &mut options);
+    let fill_path =
+        controlled::generate(work_meter, merman_model::OperationPhase::Emit, |control| {
+            let segments = roughr::points_on_path::normalized_path_with_control(path, control)?;
+            let mut polygons = roughr::points_on_path::points_on_normalized_segments_with_control::<
+                f64,
+            >(&segments, Some(1.0), Some(distance), control)?;
+            let _discarded_outline = roughr::renderer::svg_normalized_segments_with_control::<f64>(
+                &segments,
+                &mut options,
+                control,
+            )?;
+            roughr::renderer::hachure_fill_polygons_with_control(
+                &mut polygons,
+                &mut options,
+                control,
+            )
+        })?;
     if fill_path.op_set_type != roughr::core::OpSetType::FillSketch {
         return Err(Error::InvalidModel {
             message: "Venn RoughJS intersection did not produce a sketch fill path".to_string(),
@@ -310,6 +329,7 @@ pub(crate) fn render_venn_diagram_svg_model_with_title_theme(
                     stroke_width_value,
                     -41.0 + circle_index as f32 * 60.0,
                     &hand_drawn_seed,
+                    options.work_meter(),
                 )?;
                 let fill_stroke = transparentize(base_color, 0.7)?;
                 let _ = write!(
@@ -359,8 +379,12 @@ pub(crate) fn render_venn_diagram_svg_model_with_title_theme(
             out.checkpoint()?;
             if is_hand_drawn {
                 if let Some(fill) = custom_fill {
-                    let fill_path =
-                        rough_intersection_fill_path(&area.path, fill, &hand_drawn_seed)?;
+                    let fill_path = rough_intersection_fill_path(
+                        &area.path,
+                        fill,
+                        &hand_drawn_seed,
+                        options.work_meter(),
+                    )?;
                     let fill_stroke = transparentize(fill, 0.3)?;
                     let _ = write!(
                         &mut out,
@@ -500,6 +524,66 @@ mod tests {
     use super::*;
     use std::fmt;
     use std::ops::Range;
+
+    #[test]
+    fn venn_controlled_cross_hatch_keeps_invisible_outline_and_following_prng() {
+        let path = "M0 0 C0 40 60 40 60 0 Z";
+        for seed in [0.0, 1.0, -1.0] {
+            let randomness = || {
+                roughr::core::RoughRandomness::new(
+                    roughr::core::RoughJsSeed::new(seed),
+                    roughr::core::RoughMathRandom::new(7),
+                )
+            };
+            let expected_randomness = randomness();
+            let actual_randomness = randomness();
+            let mut expected_options = roughr::core::OptionsBuilder::default()
+                .randomness(expected_randomness.clone())
+                .roughness(0.7)
+                .bowing(1.0)
+                .fill(rough_color("#123456").unwrap())
+                .fill_style(roughr::core::FillStyle::CrossHatch)
+                .fill_weight(2.0)
+                .hachure_gap(6.0)
+                .hachure_angle(60.0)
+                .disable_multi_stroke(false)
+                .disable_multi_stroke_fill(false)
+                .build()
+                .unwrap();
+            expected_options.stroke = None;
+            let distance = (1.0 + f64::from(expected_options.roughness.unwrap())) / 2.0;
+            let polygons = roughr::points_on_path::points_on_path::<f64>(
+                path.into(),
+                Some(1.0),
+                Some(distance),
+            );
+            let _discarded = roughr::renderer::svg_path::<f64>(path.into(), &mut expected_options);
+            let expected = roughr::renderer::pattern_fill_polygons(polygons, &mut expected_options);
+            let meter = crate::resources::OperationWorkMeter::new(
+                crate::resources::RenderResourcePolicy::unbounded_for_trusted_input(),
+            );
+            let actual =
+                rough_intersection_fill_path(path, "#123456", &actual_randomness, &meter).unwrap();
+            assert!(
+                actual == ops_to_svg_path_d(&expected),
+                "cross-hatch SVG differs for seed={seed}"
+            );
+            assert!(meter.used() > 0);
+            let next = |randomness| {
+                let options = roughr::core::OptionsBuilder::default()
+                    .randomness(randomness)
+                    .build()
+                    .unwrap();
+                roughr::generator::Generator::default()
+                    .line::<f64>(1.0, 2.0, 30.0, 40.0, &Some(options))
+                    .sets
+            };
+            assert!(
+                next(actual_randomness) == next(expected_randomness),
+                "following PRNG differs for seed={seed}"
+            );
+        }
+    }
 
     #[derive(Default)]
     struct RejectAfterFirstWrite {

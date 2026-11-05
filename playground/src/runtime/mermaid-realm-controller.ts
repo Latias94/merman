@@ -8,6 +8,7 @@ import {
   REALM_BUDGETS,
   RealmTimeoutError,
   type CompareFailureStage,
+  type CompareRenderOutput,
   type RealmKind,
   type RealmViewport,
 } from "./realm/channel-protocol.ts";
@@ -24,22 +25,14 @@ export interface MermaidRealmRenderInput {
   readonly viewport: RealmViewport;
 }
 
-export interface MermaidRealmRenderSuccess {
+export interface MermaidRealmRenderSuccess
+  extends Omit<CompareRenderOutput, "svg"> {
   readonly artifact: NavigableInlineSvg;
-  readonly prepareTimeMs: number;
-  readonly presentationTimeMs: number;
-  readonly renderTimeMs: number;
   readonly status: "success";
-  readonly version: string;
 }
 
-export interface MermaidRealmExecutionSuccess {
-  readonly prepareTimeMs: number;
-  readonly presentationTimeMs: number;
-  readonly renderTimeMs: number;
+export interface MermaidRealmExecutionSuccess extends CompareRenderOutput {
   readonly status: "success";
-  readonly svg: string;
-  readonly version: string;
 }
 
 export interface MermaidRealmRenderFailure {

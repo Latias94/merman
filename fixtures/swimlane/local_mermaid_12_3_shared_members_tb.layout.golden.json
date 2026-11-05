@@ -1,0 +1,238 @@
+{
+  "diagramType": "swimlane",
+  "layout": {
+    "SwimlaneDiagram": {
+      "bounds": {
+        "max_x": 278.0,
+        "max_y": 184.0,
+        "min_x": -282.0,
+        "min_y": -40.0
+      },
+      "direction": "TB",
+      "edges": [
+        {
+          "curve": "rounded",
+          "from": "A",
+          "id": "L_A_B_0",
+          "label_node_id": null,
+          "points": [
+            {
+              "x": -140.0,
+              "y": 47.0
+            },
+            {
+              "x": -140.0,
+              "y": 97.0
+            }
+          ],
+          "reversed_for_layout": false,
+          "to": "B"
+        },
+        {
+          "curve": "rounded",
+          "from": "B",
+          "id": "L_B_used_0",
+          "label_node_id": null,
+          "points": [
+            {
+              "x": -130.0,
+              "y": 97.0
+            },
+            {
+              "x": -130.0,
+              "y": 97.0
+            },
+            {
+              "x": -130.0,
+              "y": 180.0
+            },
+            {
+              "x": 0.0,
+              "y": 180.0
+            },
+            {
+              "x": 0.0,
+              "y": 180.0
+            }
+          ],
+          "reversed_for_layout": false,
+          "to": "used"
+        },
+        {
+          "curve": "rounded",
+          "from": "B",
+          "id": "L_B_C_0",
+          "label_node_id": null,
+          "points": [
+            {
+              "x": -140.0,
+              "y": 144.0
+            },
+            {
+              "x": -140.0,
+              "y": 144.0
+            },
+            {
+              "x": -140.0,
+              "y": 184.0
+            },
+            {
+              "x": 140.0,
+              "y": 184.0
+            },
+            {
+              "x": 140.0,
+              "y": 144.0
+            },
+            {
+              "x": 140.0,
+              "y": 144.0
+            }
+          ],
+          "reversed_for_layout": false,
+          "to": "C"
+        }
+      ],
+      "lanes": [
+        {
+          "content_top": -4.0,
+          "height": 220.0,
+          "id": "placeholder",
+          "padding": 8.0,
+          "parent_id": null,
+          "requested_dir": "TB",
+          "title": "Authored empty lane",
+          "title_label_height": 263.4,
+          "title_label_width": 10.922,
+          "title_rect": null,
+          "width": 0.0,
+          "x": 0.0,
+          "y": 70.0
+        },
+        {
+          "content_top": -4.0,
+          "height": 220.0,
+          "id": "partial",
+          "padding": 8.0,
+          "parent_id": null,
+          "requested_dir": "TB",
+          "title": "Kept by another member",
+          "title_label_height": 17.0,
+          "title_label_width": 142.094,
+          "title_rect": {
+            "bottom": -19.0,
+            "left": 2.0,
+            "right": 278.0,
+            "top": -40.0
+          },
+          "width": 276.0,
+          "x": 140.0,
+          "y": 70.0
+        },
+        {
+          "content_top": -4.0,
+          "height": 220.0,
+          "id": "used",
+          "padding": 8.0,
+          "parent_id": null,
+          "requested_dir": "TB",
+          "title": "Kept by incident edge",
+          "title_label_height": 278.8,
+          "title_label_width": 8.406,
+          "title_rect": null,
+          "width": 0.0,
+          "x": 0.0,
+          "y": 70.0
+        },
+        {
+          "content_top": -4.0,
+          "height": 220.0,
+          "id": "retained",
+          "padding": 8.0,
+          "parent_id": null,
+          "requested_dir": "TB",
+          "title": "Retained lane",
+          "title_label_height": 17.0,
+          "title_label_width": 75.047,
+          "title_rect": {
+            "bottom": -19.0,
+            "left": -282.0,
+            "right": 2.0,
+            "top": -40.0
+          },
+          "width": 284.0,
+          "x": -140.0,
+          "y": 70.0
+        },
+        {
+          "content_top": null,
+          "height": 55.0,
+          "id": "inner",
+          "padding": 8.0,
+          "parent_id": "retained",
+          "requested_dir": null,
+          "title": "Nested owner",
+          "title_label_height": 17.0,
+          "title_label_width": 78.125,
+          "title_rect": null,
+          "width": 188.0,
+          "x": -140.0,
+          "y": 23.5
+        }
+      ],
+      "nodes": [
+        {
+          "height": 47.0,
+          "id": "A",
+          "is_edge_label": false,
+          "label": "Shared task",
+          "label_height": 17.0,
+          "label_type": "text",
+          "label_width": 120.0,
+          "layer": 0.0,
+          "order": 0.0,
+          "parent_id": "inner",
+          "shape": "squareRect",
+          "top_lane_id": "retained",
+          "width": 180.0,
+          "x": -140.0,
+          "y": 23.5
+        },
+        {
+          "height": 47.0,
+          "id": "B",
+          "is_edge_label": false,
+          "label": "Next task",
+          "label_height": 17.0,
+          "label_type": "text",
+          "label_width": 120.0,
+          "layer": 1.0,
+          "order": 0.0,
+          "parent_id": "retained",
+          "shape": "squareRect",
+          "top_lane_id": "retained",
+          "width": 180.0,
+          "x": -140.0,
+          "y": 120.5
+        },
+        {
+          "height": 47.0,
+          "id": "C",
+          "is_edge_label": false,
+          "label": "Remaining task",
+          "label_height": 17.0,
+          "label_type": "text",
+          "label_width": 120.0,
+          "layer": 1.0,
+          "order": 0.0,
+          "parent_id": "partial",
+          "shape": "squareRect",
+          "top_lane_id": "partial",
+          "width": 180.0,
+          "x": 140.0,
+          "y": 120.5
+        }
+      ]
+    }
+  }
+}

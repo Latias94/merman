@@ -110,10 +110,15 @@ class FuzzConfigTests(unittest.TestCase):
         cases = (
             ("workflow_call", "", "", "regression", set(fuzz_bins())),
             ("schedule", "", "", "scheduled", set(fuzz_bins())),
-            ("workflow_dispatch", "parse_mermaid", "smoke", "smoke", {"parse_mermaid"}),
+            ("workflow_dispatch", "all", "extended", "extended", set(fuzz_bins())),
+            ("workflow_dispatch", "all", "long", "long", set(fuzz_bins())),
+            *(
+                ("workflow_dispatch", target, "smoke", "smoke", {target})
+                for target in fuzz_bins()
+            ),
         )
         for event, target, preset, profile, targets in cases:
-            with self.subTest(event=event), tempfile.TemporaryDirectory() as temporary:
+            with self.subTest(event=event, target=target, preset=preset), tempfile.TemporaryDirectory() as temporary:
                 output = Path(temporary) / "outputs"
                 env = {**os.environ, "FUZZ_EVENT_NAME": event, "DISPATCH_TARGET": target,
                        "DISPATCH_PRESET": preset, "GITHUB_OUTPUT": str(output)}
@@ -122,7 +127,10 @@ class FuzzConfigTests(unittest.TestCase):
                 self.assertEqual(result.returncode, 0, result.stderr)
                 values = dict(line.split("=", 1) for line in output.read_text().splitlines())
                 self.assertEqual(values["profile"], profile)
-                self.assertEqual({row["target"] for row in json.loads(values["matrix"])["include"]}, targets)
+                rows = json.loads(values["matrix"])["include"]
+                self.assertEqual({row["target"] for row in rows}, targets)
+                for row in rows:
+                    self.assertEqual(row, workflow_fuzz_targets()[row["target"]])
 
     def test_workflow_installs_declared_nightly_with_rustup(self) -> None:
         install_step = workflow_named_step("Install Rust nightly")
@@ -203,7 +211,92 @@ class FuzzConfigTests(unittest.TestCase):
         self.assertNotIn("name: libFuzzer ASan", text)
 
     def test_workflow_matrix_matches_fuzz_bins(self) -> None:
-        self.assertEqual(set(workflow_fuzz_targets()), set(fuzz_bins()))
+        targets = workflow_fuzz_targets()
+        self.assertEqual(set(targets), set(fuzz_bins()))
+        with FUZZ_CARGO.open("rb") as manifest_file:
+            manifest = tomllib.load(manifest_file)
+        expected = {
+            "parse_mermaid": "parse",
+            "render_mermaid": "render",
+            "svg_pipeline": "svg",
+            "ffi_api": "ffi",
+            "tree_sitter_mermaid_parse": "tree-sitter",
+            "tree_sitter_mermaid_edits": "tree-sitter",
+            "tree_sitter_mermaid_scanner": "tree-sitter",
+        }
+        self.assertEqual(set(targets), set(expected))
+        for target in manifest["bin"]:
+            with self.subTest(target=target["name"]):
+                feature = expected[target["name"]]
+                self.assertEqual(target.get("required-features"), [feature])
+                self.assertEqual(targets[target["name"]].get("features"), feature)
+
+    def test_dependency_groups_keep_syntax_and_svg_recipes_independent(self) -> None:
+        with FUZZ_CARGO.open("rb") as manifest_file:
+            manifest = tomllib.load(manifest_file)
+        features = manifest["features"]
+        self.assertEqual(features["default"], [])
+        self.assertEqual(set(features["tree-sitter"]), {
+            "dep:tree-sitter", "dep:tree-sitter-mermaid",
+        })
+        self.assertEqual(set(features["svg"]), {"dep:merman-render", "dep:roxmltree"})
+        self.assertEqual(set(features["parse"]), {
+            "dep:merman", "dep:merman-model", "merman/all-diagrams",
+            "merman/compat-json", "editor-facts",
+        })
+        self.assertEqual(features["editor-facts"], ["merman?/editor-facts"])
+        self.assertEqual(set(features["render"]), {
+            "parse", "svg", "merman/svg", "merman/layout-cytoscape",
+            "merman/layout-elk", "merman/math",
+        })
+        self.assertEqual(features["ffi"], ["dep:merman-ffi"])
+        dependencies = manifest["dependencies"]
+        for name, dependency in dependencies.items():
+            if name != "libfuzzer-sys":
+                with self.subTest(dependency=name):
+                    self.assertTrue(dependency["optional"])
+        for name in ("merman", "merman-render"):
+            self.assertFalse(dependencies[name]["default-features"])
+            self.assertEqual(dependencies[name].get("features", []), [])
+        self.assertEqual(set(dependencies["merman-ffi"]["features"]), {
+            "all-diagrams", "analysis", "fixes", "ascii", "svg", "png", "jpeg",
+            "pdf", "layout-cytoscape", "layout-elk", "math", "native-runtime",
+        })
+
+    def test_matrix_checks_and_sanitizer_runs_use_the_same_recipe(self) -> None:
+        check = workflow_named_step("Check fuzz workspace lockfile")
+        self.assertIn('--manifest-path fuzz/Cargo.toml', check)
+        self.assertIn("--locked", check)
+        self.assertIn('--bin "${{ matrix.target }}"', check)
+        for name in (
+            "Check fuzz workspace lockfile",
+            "Build libFuzzer harness",
+            "Run committed regression inputs",
+            "Run bounded randomized libFuzzer discovery",
+        ):
+            with self.subTest(step=name):
+                step = workflow_named_step(name)
+                self.assertIn("--no-default-features", step)
+                self.assertIn('--features "${{ matrix.features }}"', step)
+                if name != "Check fuzz workspace lockfile":
+                    self.assertIn("--sanitizer address", step)
+
+    def test_complete_locked_coverage_has_one_independent_owner(self) -> None:
+        from scripts.test_release_workflow_security import workflow_job
+
+        workflow = FUZZ_WORKFLOW.read_text(encoding="utf-8")
+        coverage = workflow_job(workflow, "fuzz-coverage")
+        self.assertNotIn("needs:", coverage)
+        self.assertNotIn("matrix:", coverage)
+        self.assertNotIn("if:", coverage)
+        self.assertIn("--manifest-path fuzz/Cargo.toml", coverage)
+        self.assertIn("--locked --no-default-features --all-features --all-targets", coverage)
+        self.assertEqual(workflow.count("--all-features --all-targets"), 1)
+        harness = workflow_job(workflow, "libfuzzer")
+        self.assertIn("needs: resolve-fuzz-plan", harness)
+        self.assertNotIn("fuzz-coverage", harness)
+        self.assertNotIn("max-parallel: 1", harness)
+        self.assertIn("fail-fast: false", harness)
 
     def test_tree_sitter_parse_lane_uses_all_family_seeds(self) -> None:
         targets = workflow_fuzz_targets()

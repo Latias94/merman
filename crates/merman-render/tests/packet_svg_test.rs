@@ -365,15 +365,31 @@ fn try_render_packet_source_with_theme_and_engine(
     engine: MermaidEngine,
     diagram_id: &str,
 ) -> merman_render::Result<family::RenderedFamilySvg> {
+    try_render_packet_source_with_theme_requirement(
+        source,
+        theme,
+        engine,
+        diagram_id,
+        ThemePortabilityRequirement::RequirePortable,
+    )
+}
+
+fn try_render_packet_source_with_theme_requirement(
+    source: &str,
+    theme: &DiagramTheme,
+    engine: MermaidEngine,
+    diagram_id: &str,
+    portability: ThemePortabilityRequirement,
+) -> merman_render::Result<family::RenderedFamilySvg> {
     let parsed = common::install_parse_compatibility(theme, engine)
         .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
         .expect("parse themed Packet")
         .expect("detect themed Packet")
         .into_presentation();
     let session = RenderEnvironment::deterministic()
-        .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
+        .with_theme_portability_requirement(portability)
         .begin_session_with_theme(theme)
-        .expect("begin strict portable Packet session");
+        .expect("begin themed Packet session");
 
     family::prepare(&parsed, &LayoutOptions::default(), session)?.render_svg(
         &SvgRenderOptions {
@@ -390,6 +406,393 @@ fn packet_stylesheet<'input>(document: &'input roxmltree::Document<'input>) -> &
         .find(|node| node.has_tag_name("style"))
         .and_then(|node| node.text())
         .expect("Packet stylesheet")
+}
+
+#[test]
+fn packet_block_paint_uses_real_rectangles_and_property_local_config_ownership() {
+    let theme = DiagramThemeCompiler::new()
+        .compile(
+            DiagramThemeSpec::new().with_styles(
+                ThemeRuleSet::default().with_rule(ThemeRule::new(
+                    ThemeTarget::Node,
+                    ThemeStylePatch::default()
+                        .with_fill(CanvasPaint::solid("#111827").unwrap())
+                        .with_stroke(CanvasPaint::solid("#f97316").unwrap()),
+                )),
+            ),
+        )
+        .unwrap();
+    for (config, expected_fill) in [
+        (serde_json::json!({}), "#111827"),
+        (
+            serde_json::json!({"themeVariables": {"packet": {"blockFillColor": "#fef3c7"}}}),
+            "#fef3c7",
+        ),
+        (
+            serde_json::json!({"themeVariables": {"packet": {"blockFillColor": true}}}),
+            "#111827",
+        ),
+    ] {
+        let engine = MermaidEngine::new().with_site_config(
+            merman_core::presentation::SourcePresentationConfig::from_value(config),
+        );
+        let rendered = render_packet_with_theme_and_engine(&theme, engine, "packet-block-paint");
+        let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+        assert!(
+            document
+                .descendants()
+                .any(|node| node.attribute("class") == Some("packetBlock"))
+        );
+        assert!(packet_stylesheet(&document).contains(&format!(
+            ".packetBlock{{stroke:#f97316;stroke-width:1;fill:{expected_fill};}}",
+        )));
+        drop(document);
+        let evidence =
+            merman_render::__private::family_evidence(rendered.into_completion().report());
+        assert_eq!(evidence.required_count(), 1);
+        assert_eq!(evidence.applied_count(), 1);
+        assert_eq!(evidence.theme_residual_count(), 0);
+    }
+}
+
+#[test]
+fn packet_block_paint_keeps_unsupported_geometry_as_a_residual() {
+    let mut patch = ThemeStylePatch::default().with_fill(CanvasPaint::solid("#111827").unwrap());
+    patch.geometry.radius = Specified::Value(4.0);
+    let styles = ThemeRuleSet::default().with_rule(ThemeRule::new(ThemeTarget::Node, patch));
+    let theme = DiagramThemeCompiler::new()
+        .compile(DiagramThemeSpec::new().with_styles(styles))
+        .unwrap();
+    let error = try_render_packet_source_with_theme_and_engine(
+        packet_source(),
+        &theme,
+        MermaidEngine::new(),
+        "packet-mixed-block",
+    )
+    .err()
+    .expect("a real unsupported block radius must retain its residual");
+    assert!(error.unverified_family_theme().is_some());
+    assert!(error.incomplete_family_theme().is_none());
+}
+
+#[test]
+fn packet_block_static_receipts_require_real_occurrence_winners() {
+    for stroke in [false, true] {
+        let patch = |color| {
+            let paint = CanvasPaint::solid(color).unwrap();
+            if stroke {
+                ThemeStylePatch::default().with_stroke(paint)
+            } else {
+                ThemeStylePatch::default().with_fill(paint)
+            }
+        };
+        for (source, count) in [
+            ("packet\n0-7: \"Header\"\n", 1),
+            ("packet\n0-7: \"Header\"\n8-15: \"Payload\"\n", 2),
+        ] {
+            for (ordinal, static_last) in [(1, false), (1, true), (999, false)] {
+                let mut rules = [
+                    ThemeRule::new(ThemeTarget::Node, patch("#111111")),
+                    ThemeRule::new(ThemeTarget::Node, patch("#222222"))
+                        .with_ordinal(OrdinalSelector::exact(ordinal).unwrap()),
+                ];
+                if static_last {
+                    rules.reverse();
+                }
+                let styles = rules
+                    .into_iter()
+                    .fold(ThemeRuleSet::default(), ThemeRuleSet::with_rule);
+                let theme = DiagramThemeCompiler::new()
+                    .compile(DiagramThemeSpec::new().with_styles(styles))
+                    .unwrap();
+                let rendered = try_render_packet_source_with_theme_requirement(
+                    source,
+                    &theme,
+                    MermaidEngine::new(),
+                    "packet-block-occurrence-winners",
+                    ThemePortabilityRequirement::BestEffort,
+                )
+                .unwrap();
+                let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+                assert_eq!(
+                    document
+                        .descendants()
+                        .filter(|node| node.attribute("class") == Some("packetBlock"))
+                        .count(),
+                    count
+                );
+                let expected = if stroke {
+                    ".packetBlock{stroke:#111111;stroke-width:1;fill:#efefef;}"
+                } else {
+                    ".packetBlock{stroke:black;stroke-width:1;fill:#111111;}"
+                };
+                assert!(packet_stylesheet(&document).contains(expected));
+                drop(document);
+                let evidence =
+                    merman_render::__private::family_evidence(rendered.into_completion().report());
+                let residual = !static_last && ordinal <= count;
+                let applied = !residual || count > 1;
+                assert_eq!(evidence.required_count(), 2);
+                assert_eq!(evidence.accounted_count(), 2);
+                assert_eq!(evidence.applied_count(), usize::from(applied));
+                assert_eq!(
+                    evidence.not_applicable_count(),
+                    usize::from(!residual) + usize::from(!applied)
+                );
+                assert_eq!(evidence.theme_residual_count(), usize::from(residual));
+                let strict = try_render_packet_source_with_theme_and_engine(
+                    source,
+                    &theme,
+                    MermaidEngine::new(),
+                    "packet-block-occurrence-winners",
+                );
+                if residual {
+                    let error = strict
+                        .err()
+                        .expect("a winning ordinal block paint remains unsupported");
+                    assert_eq!(
+                        error.unverified_family_theme(),
+                        Some((DiagramFamilyId::PACKET, 1))
+                    );
+                    assert_eq!(error.incomplete_family_theme(), None);
+                } else {
+                    strict.expect("a shadowed or absent ordinal request is portable");
+                }
+            }
+        }
+    }
+}
+
+#[test]
+fn packet_block_source_ownership_preserves_independent_paint_and_geometry_evidence() {
+    for (source_owns_stroke, radius) in [(false, false), (true, false), (true, true)] {
+        let mut patch = ThemeStylePatch::default()
+            .with_fill(CanvasPaint::solid("#111111").unwrap())
+            .with_stroke(CanvasPaint::solid("#444444").unwrap());
+        if radius {
+            patch.geometry.radius = Specified::Value(4.0);
+        }
+        let theme = DiagramThemeCompiler::new()
+            .compile(
+                DiagramThemeSpec::new().with_styles(
+                    ThemeRuleSet::default()
+                        .with_rule(ThemeRule::new(ThemeTarget::Node, patch))
+                        .with_rule(
+                            ThemeRule::new(
+                                ThemeTarget::Node,
+                                ThemeStylePatch::default()
+                                    .with_fill(CanvasPaint::solid("#222222").unwrap()),
+                            )
+                            .with_ordinal(OrdinalSelector::exact(1).unwrap()),
+                        ),
+                ),
+            )
+            .unwrap();
+        let config = if source_owns_stroke {
+            serde_json::json!({"themeVariables": {"packet": {"blockStrokeColor": "#abcdef"}}})
+        } else {
+            serde_json::json!({})
+        };
+        let engine = MermaidEngine::new().with_site_config(
+            merman_core::presentation::SourcePresentationConfig::from_value(config),
+        );
+        let rendered = try_render_packet_source_with_theme_requirement(
+            "packet\n0-7: \"Header\"\n",
+            &theme,
+            engine,
+            "packet-block-property-evidence",
+            ThemePortabilityRequirement::BestEffort,
+        )
+        .unwrap();
+        let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+        let border = if source_owns_stroke {
+            "#abcdef"
+        } else {
+            "#444444"
+        };
+        assert!(packet_stylesheet(&document).contains(&format!(
+            ".packetBlock{{stroke:{border};stroke-width:1;fill:#111111;}}"
+        )));
+        drop(document);
+        let evidence =
+            merman_render::__private::family_evidence(rendered.into_completion().report());
+        assert_eq!(evidence.required_count(), 2);
+        assert_eq!(evidence.accounted_count(), 2);
+        assert_eq!(evidence.applied_count(), usize::from(!source_owns_stroke));
+        assert_eq!(
+            evidence.not_applicable_count(),
+            usize::from(source_owns_stroke && !radius)
+        );
+        assert_eq!(evidence.theme_residual_count(), 1 + usize::from(radius));
+    }
+}
+
+#[test]
+fn packet_empty_theme_preserves_native_block_svg() {
+    let source = "packet\n0-7: \"Header\"\n";
+    let (_, baseline) = render_packet(source);
+    let theme = DiagramThemeCompiler::new()
+        .compile(DiagramThemeSpec::new())
+        .unwrap();
+    let parsed = common::install_parse_compatibility(&theme, MermaidEngine::new())
+        .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
+        .unwrap()
+        .unwrap()
+        .into_presentation();
+    let session = RenderEnvironment::deterministic()
+        .begin_session_with_theme(&theme)
+        .unwrap();
+    let rendered = family::prepare(&parsed, &LayoutOptions::default(), session)
+        .unwrap()
+        .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+        .unwrap();
+    assert_eq!(rendered.svg().as_bytes(), baseline.as_bytes());
+}
+
+#[test]
+fn packet_default_and_dark_themes_reach_every_visible_css_role() {
+    for (theme, text_color, block_fill) in
+        [("default", "black", "#efefef"), ("dark", "#e0dfdf", "#333")]
+    {
+        for owner in ["source", "site"] {
+            let config = serde_json::json!({"theme": theme});
+            let (source, site_config) = if owner == "source" {
+                (
+                    format!("%%{{init: {config}}}%%\n{}", packet_source()),
+                    serde_json::json!({"secure": []}),
+                )
+            } else {
+                (packet_source().to_owned(), config)
+            };
+            let (_, svg) = render_packet_with_engine(
+                &source,
+                MermaidEngine::new().with_site_config(
+                    merman_core::presentation::SourcePresentationConfig::from_value(site_config),
+                ),
+            );
+            let document = roxmltree::Document::parse(&svg).expect("valid Packet theme SVG");
+            let css = packet_stylesheet(&document);
+
+            for (class, rule) in [
+                (
+                    "packetByte start",
+                    format!(".packetByte.start{{fill:{text_color};}}"),
+                ),
+                (
+                    "packetByte end",
+                    format!(".packetByte.end{{fill:{text_color};}}"),
+                ),
+                (
+                    "packetLabel",
+                    format!(".packetLabel{{fill:{text_color};font-size:12px;}}"),
+                ),
+                (
+                    "packetTitle",
+                    format!(".packetTitle{{fill:{text_color};font-size:14px;}}"),
+                ),
+                (
+                    "packetBlock",
+                    format!(
+                        ".packetBlock{{stroke:{text_color};stroke-width:1;fill:{block_fill};}}"
+                    ),
+                ),
+            ] {
+                assert!(
+                    document
+                        .descendants()
+                        .any(|node| node.attribute("class") == Some(class)),
+                    "{owner}/{theme}: missing visible {class} consumer"
+                );
+                assert!(
+                    css.contains(&rule),
+                    "{owner}/{theme}: expected {rule}: {css}"
+                );
+            }
+            assert!(css.contains(".packetByte{font-size:10px;}"));
+        }
+    }
+}
+
+#[test]
+fn packet_theme_variable_styles_preserve_root_layout_configuration() {
+    for owner in ["source", "site"] {
+        let config = serde_json::json!({
+            "packet": {
+                "showBits": false,
+                "rowHeight": 40,
+                "labelColor": "#010203",
+                "blockFillColor": "#040506"
+            },
+            "themeVariables": { "packet": {
+                "showBits": true,
+                "rowHeight": 80,
+                "byteFontSize": "11px",
+                "startByteColor": "#111111",
+                "endByteColor": "#222222",
+                "labelColor": "#333333",
+                "labelFontSize": "13px",
+                "titleColor": "#444444",
+                "titleFontSize": "15px",
+                "blockStrokeColor": "#555555",
+                "blockStrokeWidth": 2,
+                "blockFillColor": "#666666"
+            } }
+        });
+        let (source, site_config) = if owner == "source" {
+            (
+                format!("%%{{init: {config}}}%%\n{}", packet_source()),
+                serde_json::json!({"secure": []}),
+            )
+        } else {
+            (packet_source().to_owned(), config)
+        };
+        let (layout, svg) = render_packet_with_engine(
+            &source,
+            MermaidEngine::new().with_site_config(
+                merman_core::presentation::SourcePresentationConfig::from_value(site_config),
+            ),
+        );
+        assert!(
+            !layout.show_bits,
+            "{owner}: layout must still read root packet.showBits"
+        );
+        assert_eq!(layout.row_height, 40.0, "{owner}");
+        let document = roxmltree::Document::parse(&svg).expect("valid configured Packet SVG");
+        let css = packet_stylesheet(&document);
+        // Init directives retain Mermaid's key allowlist; site config can supply every role.
+        let (byte_size, start, end, block) = if owner == "source" {
+            (
+                "10px",
+                "black",
+                "black",
+                "stroke:black;stroke-width:1;fill:#efefef;",
+            )
+        } else {
+            (
+                "11px",
+                "#111111",
+                "#222222",
+                "stroke:#555555;stroke-width:2;fill:#666666;",
+            )
+        };
+        for rule in [
+            format!(".packetByte{{font-size:{byte_size};}}"),
+            format!(".packetByte.start{{fill:{start};}}"),
+            format!(".packetByte.end{{fill:{end};}}"),
+            ".packetLabel{fill:#333333;font-size:13px;}".into(),
+            ".packetTitle{fill:#444444;font-size:15px;}".into(),
+            format!(".packetBlock{{{block}}}"),
+        ] {
+            assert!(css.contains(&rule), "{owner}: expected {rule}: {css}");
+        }
+        assert!(
+            !document.descendants().any(|node| {
+                node.attribute("class")
+                    .is_some_and(|class| class.starts_with("packetByte "))
+            }),
+            "{owner}: root showBits=false must hide byte text"
+        );
+    }
 }
 
 #[test]
@@ -427,49 +830,71 @@ fn packet_explicit_role_colors_outrank_only_their_typed_fill_roles() {
         CanvasPaint::solid("#e5e7eb").expect("valid Packet byte-label fill"),
         CanvasPaint::solid("#fef3c7").expect("valid Packet title fill"),
     );
-    let engine = MermaidEngine::new().with_site_config(
-        merman_core::presentation::SourcePresentationConfig::from_value(serde_json::json!({
-            "packet": {
+    for owner in ["source", "site"] {
+        let config = serde_json::json!({
+            "themeVariables": { "packet": {
                 "startByteColor": "#111111",
                 "labelColor": "#222222",
                 "titleColor": "#333333"
-            }
-        })),
-    );
-    let rendered =
-        render_packet_with_theme_and_engine(&theme, engine, "packet-explicit-role-colors");
-    let document = roxmltree::Document::parse(rendered.svg()).expect("valid configured Packet SVG");
-    let css = packet_stylesheet(&document);
+            } }
+        });
+        let (source, site_config) = if owner == "source" {
+            (
+                format!("%%{{init: {config}}}%%\n{}", packet_source()),
+                serde_json::json!({"secure": []}),
+            )
+        } else {
+            (packet_source().to_owned(), config)
+        };
+        let engine = MermaidEngine::new().with_site_config(
+            merman_core::presentation::SourcePresentationConfig::from_value(site_config),
+        );
+        let rendered = try_render_packet_source_with_theme_and_engine(
+            &source,
+            &theme,
+            engine,
+            "packet-explicit-role-colors",
+        )
+        .expect("explicit Packet theme variables must own only their text roles");
+        let document =
+            roxmltree::Document::parse(rendered.svg()).expect("valid configured Packet SVG");
+        let css = packet_stylesheet(&document);
 
-    assert!(css.contains("#packet-explicit-role-colors .packetByte.start{fill:#111111;}"));
-    assert!(css.contains("#packet-explicit-role-colors .packetByte.end{fill:#e5e7eb;}"));
-    assert!(
-        css.contains("#packet-explicit-role-colors .packetLabel{fill:#222222;font-size:12px;}")
-    );
-    assert!(
-        css.contains("#packet-explicit-role-colors .packetTitle{fill:#333333;font-size:14px;}")
-    );
+        let byte_start = if owner == "source" {
+            "#e5e7eb"
+        } else {
+            "#111111"
+        };
+        for rule in [
+            format!(".packetByte.start{{fill:{byte_start};}}"),
+            ".packetByte.end{fill:#e5e7eb;}".into(),
+            ".packetLabel{fill:#222222;font-size:12px;}".into(),
+            ".packetTitle{fill:#333333;font-size:14px;}".into(),
+        ] {
+            assert!(css.contains(&rule), "{owner}: expected {rule}: {css}");
+        }
 
-    drop(document);
-    let completion = rendered.into_completion();
-    let evidence = merman_render::__private::family_evidence(completion.report());
-    assert_eq!(evidence.required_count(), 2);
-    assert_eq!(evidence.accounted_count(), 2);
-    assert_eq!(evidence.applied_count(), 1);
-    assert_eq!(evidence.not_applicable_count(), 1);
-    assert_eq!(evidence.theme_residual_count(), 0);
+        drop(document);
+        let completion = rendered.into_completion();
+        let evidence = merman_render::__private::family_evidence(completion.report());
+        assert_eq!(evidence.required_count(), 2, "{owner}");
+        assert_eq!(evidence.accounted_count(), 2, "{owner}");
+        assert_eq!(evidence.applied_count(), 1, "{owner}");
+        assert_eq!(evidence.not_applicable_count(), 1, "{owner}");
+        assert_eq!(evidence.theme_residual_count(), 0, "{owner}");
+    }
 }
 
 #[test]
 fn packet_dark_presets_pair_each_text_role_with_its_terminal_background() {
     let cases = [
-        (ThemePreset::EditorDark, "#e5e7eb", "#0f172a"),
-        (ThemePreset::OneDark, "#abb2bf", "#282c34"),
-        (ThemePreset::GruvboxDark, "#ebdbb2", "#282828"),
-        (ThemePreset::AyuDark, "#bfbdb6", "#0b0e14"),
+        (ThemePreset::EditorDark, "#e5e7eb", "#111827", "#475569"),
+        (ThemePreset::OneDark, "#abb2bf", "#21252b", "#3e4451"),
+        (ThemePreset::GruvboxDark, "#ebdbb2", "#3c3836", "#665c54"),
+        (ThemePreset::AyuDark, "#bfbdb6", "#11151c", "#343b48"),
     ];
 
-    for (preset, expected_dark_surface_fill, expected_field_label_fill) in cases {
+    for (preset, expected_text_fill, surface, border) in cases {
         let theme = DiagramThemeCompiler::new()
             .compile_preset(preset)
             .expect("compile dark Packet preset");
@@ -494,37 +919,30 @@ fn packet_dark_presets_pair_each_text_role_with_its_terminal_background() {
         let css = packet_stylesheet(&document);
 
         for expected_rule in [
-            format!("#{diagram_id} .packetByte.start{{fill:{expected_dark_surface_fill};}}"),
-            format!("#{diagram_id} .packetByte.end{{fill:{expected_dark_surface_fill};}}"),
-            format!(
-                "#{diagram_id} .packetTitle{{fill:{expected_dark_surface_fill};font-size:14px;}}"
-            ),
+            format!("#{diagram_id} .packetByte.start{{fill:{expected_text_fill};}}"),
+            format!("#{diagram_id} .packetByte.end{{fill:{expected_text_fill};}}"),
+            format!("#{diagram_id} .packetLabel{{fill:{expected_text_fill};font-size:12px;}}"),
+            format!("#{diagram_id} .packetTitle{{fill:{expected_text_fill};font-size:14px;}}"),
         ] {
             assert!(
                 css.contains(&expected_rule),
-                "{preset:?} must brighten Packet text drawn on the dark canvas: {css}"
+                "{preset:?} must brighten Packet text on its dark canvas and blocks: {css}"
             );
         }
         assert!(
             css.contains(&format!(
-                "#{diagram_id} .packetLabel{{fill:{expected_field_label_fill};font-size:12px;}}"
+                "#{diagram_id} .packetBlock{{stroke:{border};stroke-width:1;fill:{surface};}}"
             )),
-            "{preset:?} must use its Packet-specific dark-on-light field label: {css}"
-        );
-        assert!(
-            css.contains(&format!(
-                "#{diagram_id} .packetBlock{{stroke:black;stroke-width:1;fill:#efefef;}}"
-            )),
-            "{preset:?} field-label proof requires the light Packet block baseline: {css}"
+            "{preset:?} must use its typed Packet block surface and border: {css}"
         );
 
         drop(document);
         let completion = rendered.into_completion();
         let evidence = merman_render::__private::family_evidence(completion.report());
-        assert_eq!(evidence.required_count(), 5);
-        assert_eq!(evidence.accounted_count(), 5);
-        assert_eq!(evidence.applied_count(), 4);
-        assert_eq!(evidence.not_applicable_count(), 1);
+        assert_eq!(evidence.required_count(), 8);
+        assert_eq!(evidence.accounted_count(), 8);
+        assert_eq!(evidence.applied_count(), 6);
+        assert_eq!(evidence.not_applicable_count(), 2);
         assert_eq!(evidence.theme_residual_count(), 0);
         assert_eq!(evidence.mermaid_compatibility_residual_count(), 0);
     }
@@ -739,12 +1157,16 @@ fn packet_source_label_color_outranks_generic_text_fill_in_styles_and_report() {
         CanvasPaint::solid("#123456").expect("valid Packet generic text fill"),
     );
     let rendered = try_render_packet_source_with_theme_and_engine(
-        r##"%%{init: {"packet": {"labelColor": "#abcdef"}}}%%
+        r##"%%{init: {"themeVariables": {"packet": {"labelColor": "#abcdef"}}}}%%
 packet
 0-7: "Header"
 "##,
         &theme,
-        MermaidEngine::new(),
+        MermaidEngine::new().with_site_config(
+            merman_core::presentation::SourcePresentationConfig::from_value(serde_json::json!({
+                "secure": []
+            })),
+        ),
         "packet-source-label-color",
     )
     .expect("source-owned Packet labelColor must suppress the typed field-label fill");
@@ -771,9 +1193,9 @@ fn packet_site_label_color_outranks_generic_text_fill_in_styles_and_report() {
     );
     let engine = MermaidEngine::new().with_site_config(
         merman_core::presentation::SourcePresentationConfig::from_value(serde_json::json!({
-            "packet": {
+            "themeVariables": { "packet": {
                 "labelColor": "#abcdef"
-            }
+            } }
         })),
     );
     let rendered = try_render_packet_source_with_theme_and_engine(
@@ -796,6 +1218,71 @@ fn packet_site_label_color_outranks_generic_text_fill_in_styles_and_report() {
     assert_eq!(evidence.applied_count(), 0);
     assert_eq!(evidence.not_applicable_count(), 1);
     assert_eq!(evidence.theme_residual_count(), 0);
+}
+
+#[test]
+fn packet_ignored_role_colors_do_not_claim_typed_fill_ownership() {
+    let theme = packet_text_fill_theme(
+        CanvasPaint::solid("#123456").expect("valid Packet generic text fill"),
+    );
+    for (case, source, site_config) in [
+        (
+            "root-site",
+            "packet\n0-7: \"Header\"\n",
+            serde_json::json!({"packet": {"labelColor": "#abcdef"}}),
+        ),
+        (
+            "root-source",
+            "%%{init: {\"packet\": {\"labelColor\": \"#abcdef\"}}}%%\npacket\n0-7: \"Header\"\n",
+            serde_json::json!({"secure": []}),
+        ),
+        (
+            "secure-source",
+            "%%{init: {\"themeVariables\": {\"packet\": {\"labelColor\": \"#abcdef\"}}}}%%\npacket\n0-7: \"Header\"\n",
+            serde_json::json!({"secure": ["themeVariables"]}),
+        ),
+        (
+            "invalid-site-type",
+            "packet\n0-7: \"Header\"\n",
+            serde_json::json!({"themeVariables": {"packet": {"labelColor": true}}}),
+        ),
+        (
+            "invalid-source-type",
+            "%%{init: {\"themeVariables\": {\"packet\": {\"labelColor\": true}}}}%%\npacket\n0-7: \"Header\"\n",
+            serde_json::json!({"secure": []}),
+        ),
+        (
+            "unsafe-site-value",
+            "packet\n0-7: \"Header\"\n",
+            serde_json::json!({"themeVariables": {"packet": {"labelColor": "red;font-family:serif"}}}),
+        ),
+    ] {
+        let engine = MermaidEngine::new().with_site_config(
+            merman_core::presentation::SourcePresentationConfig::from_value(site_config),
+        );
+        let rendered = try_render_packet_source_with_theme_and_engine(
+            source,
+            &theme,
+            engine,
+            "packet-ignored-role-color",
+        )
+        .expect("ignored Packet colors must leave typed fill active");
+        let document = roxmltree::Document::parse(rendered.svg()).expect("valid Packet SVG");
+        let css = packet_stylesheet(&document);
+        assert!(
+            css.contains(".packetLabel{fill:#123456;font-size:12px;}"),
+            "{case}: ignored colors must not own terminal Packet CSS: {css}"
+        );
+
+        drop(document);
+        let completion = rendered.into_completion();
+        let evidence = merman_render::__private::family_evidence(completion.report());
+        assert_eq!(evidence.required_count(), 1, "{case}");
+        assert_eq!(evidence.accounted_count(), 1, "{case}");
+        assert_eq!(evidence.applied_count(), 1, "{case}");
+        assert_eq!(evidence.not_applicable_count(), 0, "{case}");
+        assert_eq!(evidence.theme_residual_count(), 0, "{case}");
+    }
 }
 
 #[test]
@@ -926,11 +1413,15 @@ fn packet_owned_field_label_fill_makes_unsupported_fill_kinds_not_applicable() {
             let diagram_id = format!("packet-{owner}-owned-{case}");
             let (source, engine) = if owner == "source" {
                 (
-                    r##"%%{init: {"packet": {"labelColor": "#abcdef"}}}%%
+                    r##"%%{init: {"themeVariables": {"packet": {"labelColor": "#abcdef"}}}}%%
 packet
 0-7: "Header"
 "##,
-                    MermaidEngine::new(),
+                    MermaidEngine::new().with_site_config(
+                        merman_core::presentation::SourcePresentationConfig::from_value(
+                            serde_json::json!({"secure": []}),
+                        ),
+                    ),
                 )
             } else {
                 (
@@ -938,7 +1429,7 @@ packet
                     MermaidEngine::new().with_site_config(
                         merman_core::presentation::SourcePresentationConfig::from_value(
                             serde_json::json!({
-                                "packet": { "labelColor": "#abcdef" }
+                                "themeVariables": { "packet": { "labelColor": "#abcdef" } }
                             }),
                         ),
                     ),
@@ -1005,7 +1496,7 @@ fn packet_owned_field_label_fill_does_not_hide_an_unrelated_winning_facet() {
         .expect("compile mixed-facet Packet field-label theme");
     let engine = MermaidEngine::new().with_site_config(
         merman_core::presentation::SourcePresentationConfig::from_value(serde_json::json!({
-            "packet": { "labelColor": "#abcdef" }
+            "themeVariables": { "packet": { "labelColor": "#abcdef" } }
         })),
     );
     let error = try_render_packet_source_with_theme_and_engine(
@@ -1202,28 +1693,72 @@ fn packet_explicit_mermaid_font_paths_outrank_typed_font_stack() {
 }
 
 #[test]
-fn packet_role_style_values_cannot_override_the_typed_font_stack() {
+fn packet_invalid_style_values_fall_back_without_overriding_the_typed_font_stack() {
     let theme = packet_font_theme("monospace");
-    let engine = MermaidEngine::new().with_site_config(
-        merman_core::presentation::SourcePresentationConfig::from_value(serde_json::json!({
-            "packet": {
-                "labelColor": "red;font-family:serif"
-            }
-        })),
-    );
-    let rendered = render_packet_with_theme_and_engine(&theme, engine, "packet-safe-role-style");
-    let document =
-        roxmltree::Document::parse(rendered.svg()).expect("valid safely configured Packet SVG");
-    let css = packet_stylesheet(&document);
+    for owner in ["source", "site"] {
+        let mut config = serde_json::json!({"themeVariables": {"packet": {}}});
+        for property in [
+            "byteFontSize",
+            "startByteColor",
+            "endByteColor",
+            "labelColor",
+            "labelFontSize",
+            "titleColor",
+            "titleFontSize",
+            "blockStrokeColor",
+            "blockStrokeWidth",
+            "blockFillColor",
+        ] {
+            config["themeVariables"]["packet"][property] =
+                serde_json::json!("red;font-family:serif");
+        }
+        let (source, site_config) = if owner == "source" {
+            (
+                format!("%%{{init: {config}}}%%\n{}", packet_source()),
+                serde_json::json!({"secure": []}),
+            )
+        } else {
+            (packet_source().to_owned(), config)
+        };
+        let engine = MermaidEngine::new().with_site_config(
+            merman_core::presentation::SourcePresentationConfig::from_value(site_config),
+        );
+        let rendered = try_render_packet_source_with_theme_and_engine(
+            &source,
+            &theme,
+            engine,
+            "packet-safe-role-style",
+        )
+        .expect("invalid Packet values must preserve defaults and typed typography");
+        let document =
+            roxmltree::Document::parse(rendered.svg()).expect("valid safely configured Packet SVG");
+        let css = packet_stylesheet(&document);
 
-    assert!(css.contains("#packet-safe-role-style .packetLabel{fill:black;font-size:12px;}"));
-    assert!(!css.contains("font-family:serif"));
+        for rule in [
+            "#packet-safe-role-style{font-family:monospace;font-size:16px;fill:#333;}",
+            ".packetByte{font-size:10px;}",
+            ".packetByte.start{fill:black;}",
+            ".packetByte.end{fill:black;}",
+            ".packetLabel{fill:black;font-size:12px;}",
+            ".packetTitle{fill:black;font-size:14px;}",
+            ".packetBlock{stroke:black;stroke-width:1;fill:#efefef;}",
+        ] {
+            assert!(
+                css.contains(rule),
+                "{owner}: expected safe fallback {rule}: {css}"
+            );
+        }
+        assert!(!css.contains("font-family:serif"), "{owner}");
 
-    drop(document);
-    let completion = rendered.into_completion();
-    let evidence = merman_render::__private::family_evidence(completion.report());
-    assert_eq!(evidence.applied_count(), 1);
-    assert_eq!(evidence.theme_residual_count(), 0);
+        drop(document);
+        let completion = rendered.into_completion();
+        let evidence = merman_render::__private::family_evidence(completion.report());
+        assert_eq!(evidence.required_count(), 1, "{owner}");
+        assert_eq!(evidence.accounted_count(), 1, "{owner}");
+        assert_eq!(evidence.applied_count(), 1, "{owner}");
+        assert_eq!(evidence.not_applicable_count(), 0, "{owner}");
+        assert_eq!(evidence.theme_residual_count(), 0, "{owner}");
+    }
 }
 
 #[test]
@@ -1260,7 +1795,11 @@ fn packet_large_direct_font_stack_reaches_styles_and_report() {
 const DESCENDING_PACKET: &str = include_str!("../../../fixtures/packet/bit_order_descending.mmd");
 
 fn render_packet(source: &str) -> (PacketDiagramLayout, String) {
-    let parsed = MermaidEngine::new()
+    render_packet_with_engine(source, MermaidEngine::new())
+}
+
+fn render_packet_with_engine(source: &str, engine: MermaidEngine) -> (PacketDiagramLayout, String) {
+    let parsed = engine
         .parse_diagram_for_render_model_sync(source, ParseOptions::default())
         .expect("parse packet")
         .expect("packet diagram")

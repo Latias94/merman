@@ -10,6 +10,10 @@ pub(in crate::svg::parity::flowchart) enum FlowchartMarkerBase {
     CircleEnd,
     CrossStart,
     CrossEnd,
+    OpenArrowStart,
+    OpenArrowEnd,
+    HollowCircleStart,
+    HollowCircleEnd,
 }
 
 impl FlowchartMarkerBase {
@@ -21,7 +25,21 @@ impl FlowchartMarkerBase {
             Self::CircleEnd => "circleEnd",
             Self::CrossStart => "crossStart",
             Self::CrossEnd => "crossEnd",
+            Self::OpenArrowStart => "openArrowStart",
+            Self::OpenArrowEnd => "openArrowEnd",
+            Self::HollowCircleStart => "hollowCircleStart",
+            Self::HollowCircleEnd => "hollowCircleEnd",
         }
+    }
+
+    pub(in crate::svg::parity::flowchart) const fn supports_margin(self) -> bool {
+        !matches!(
+            self,
+            Self::OpenArrowStart
+                | Self::OpenArrowEnd
+                | Self::HollowCircleStart
+                | Self::HollowCircleEnd
+        )
     }
 }
 
@@ -35,6 +53,8 @@ pub(super) fn flowchart_edge_marker_end_base(
         Some("arrow_point") => Some(FlowchartMarkerBase::PointEnd),
         Some("arrow_cross") => Some(FlowchartMarkerBase::CrossEnd),
         Some("arrow_circle") => Some(FlowchartMarkerBase::CircleEnd),
+        Some("arrow_open_head") => Some(FlowchartMarkerBase::OpenArrowEnd),
+        Some("arrow_hollow_circle") => Some(FlowchartMarkerBase::HollowCircleEnd),
         Some("arrow_open") => None,
         _ => Some(FlowchartMarkerBase::PointEnd),
     }

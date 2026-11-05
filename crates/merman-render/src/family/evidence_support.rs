@@ -620,9 +620,9 @@ mod tests {
     use crate::DiagramFamilyId;
     use crate::diagram_theme::{
         CanvasPaint, DiagramEffectSet, DiagramThemeCompiler, DiagramThemeSpec, EffectBinding,
-        EffectGraph, EffectInput, EffectPrimitive, FamilyThemeMechanismKey, OrdinalPalette,
-        OrdinalSelector, ThemeColorValue, ThemeRule, ThemeRuleSet, ThemeStylePatch, ThemeTarget,
-        ThemeVariant,
+        EffectGraph, EffectInput, EffectPrimitive, FamilyThemeMechanismKey, GradientStop,
+        LinearGradient, OrdinalPalette, OrdinalSelector, ThemeColorValue, ThemeRule, ThemeRuleSet,
+        ThemeStylePatch, ThemeTarget, ThemeVariant,
     };
     use crate::family::FamilyThemeOutcomes;
     use crate::resources::{OperationWorkMeter, RenderResourcePolicy, ResourceLimitId};
@@ -664,12 +664,19 @@ mod tests {
     }
 
     fn fill_rule(target: ThemeTarget, color: &str) -> ThemeRule {
-        ThemeRule::new(
-            target,
-            ThemeStylePatch::default().with_fill(
-                CanvasPaint::solid(color).expect("valid terminal evidence fixture color"),
-            ),
-        )
+        // Solid paint now has real consumers. Keep these unsupported-domain controls complex.
+        let color = ThemeColorValue::parse(color).unwrap();
+        let paint = CanvasPaint::LinearGradient(
+            LinearGradient::new(
+                0.0,
+                [
+                    GradientStop::new(0.0, color.clone()).unwrap(),
+                    GradientStop::new(1.0, color).unwrap(),
+                ],
+            )
+            .unwrap(),
+        );
+        ThemeRule::new(target, ThemeStylePatch::default().with_fill(paint))
     }
 
     fn work_meter() -> OperationWorkMeter {
@@ -975,7 +982,7 @@ mod tests {
             if font_sibling {
                 patch.typography.font_size_px = Specified::Value(40.0);
             } else {
-                patch = patch.with_stroke(CanvasPaint::solid("#654321").unwrap());
+                patch = patch.with_padding(crate::diagram_theme::InsetsPx::all(2.0));
             }
             let theme = resolved_theme(
                 DiagramFamilyId::TREE_VIEW,
@@ -1005,7 +1012,7 @@ mod tests {
                 if font_sibling {
                     FamilyThemeResidualReason::UnsupportedTypography
                 } else {
-                    FamilyThemeResidualReason::UnsupportedPaint
+                    FamilyThemeResidualReason::UnsupportedGeometry
                 },
             );
         }

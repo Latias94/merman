@@ -20,15 +20,19 @@ The repository root stays on stable Rust. Invoke `cargo-fuzz` with the nightly t
 
 ## Targets
 
-| Target | Surface | Seed corpus | Dictionary |
-| --- | --- | --- | --- |
-| `parse_mermaid` | Semantic JSON, typed render models, editor snapshots, and lenient recovery through detected and known-type entrypoints | `fuzz/seeds/mermaid` | `fuzz/dictionaries/mermaid.dict` |
-| `render_mermaid` | Strict parse, layout, SVG render, and `resvg-safe` output | `fuzz/seeds/mermaid` | `fuzz/dictionaries/mermaid.dict` |
-| `svg_pipeline` | Raw XML SVG through `SvgPipeline::resvg_safe()` | `fuzz/seeds/svg` | `fuzz/dictionaries/svg.dict` |
-| `ffi_api` | ABI 3 discovery, generic collect operations, result ownership, engine/request option paths, reusable engine calls, and host text-measure callbacks | `fuzz/seeds/ffi` | `fuzz/dictionaries/mermaid.dict` |
-| `tree_sitter_mermaid_parse` | Arbitrary-byte Tree-sitter fresh parsing, repeat determinism, and bounded CST spans | `distribution/tree-sitter-mermaid/fuzz/corpus/all-families` | `fuzz/dictionaries/mermaid.dict` |
-| `tree_sitter_mermaid_edits` | Bounded byte edits, tree geometry, and restored CST equivalence after inverse edits | `fuzz/seeds/tree-sitter-edits` | `fuzz/dictionaries/mermaid.dict` |
-| `tree_sitter_mermaid_scanner` | External scanner state canonicalization plus arbitrary valid-symbol masks and row scans | `fuzz/seeds/tree-sitter-scanner` | `fuzz/dictionaries/mermaid.dict` |
+| Target | Required feature | Surface | Seed corpus | Dictionary |
+| --- | --- | --- | --- | --- |
+| `parse_mermaid` | `parse` | Semantic JSON, typed render models, editor snapshots, and lenient recovery through detected and known-type entrypoints | `fuzz/seeds/mermaid` | `fuzz/dictionaries/mermaid.dict` |
+| `render_mermaid` | `render` | Strict parse, layout, SVG render, and `resvg-safe` output | `fuzz/seeds/mermaid` | `fuzz/dictionaries/mermaid.dict` |
+| `svg_pipeline` | `svg` | Raw XML SVG through `SvgPipeline::resvg_safe()` | `fuzz/seeds/svg` | `fuzz/dictionaries/svg.dict` |
+| `ffi_api` | `ffi` | ABI 3 discovery, generic collect operations, result ownership, engine/request option paths, reusable engine calls, and host text-measure callbacks | `fuzz/seeds/ffi` | `fuzz/dictionaries/mermaid.dict` |
+| `tree_sitter_mermaid_parse` | `tree-sitter` | Arbitrary-byte Tree-sitter fresh parsing, repeat determinism, and bounded CST spans | `distribution/tree-sitter-mermaid/fuzz/corpus/all-families` | `fuzz/dictionaries/mermaid.dict` |
+| `tree_sitter_mermaid_edits` | `tree-sitter` | Bounded byte edits, tree geometry, and restored CST equivalence after inverse edits | `fuzz/seeds/tree-sitter-edits` | `fuzz/dictionaries/mermaid.dict` |
+| `tree_sitter_mermaid_scanner` | `tree-sitter` | External scanner state canonicalization plus arbitrary valid-symbol masks and row scans | `fuzz/seeds/tree-sitter-scanner` | `fuzz/dictionaries/mermaid.dict` |
+
+The fuzz workspace has no default features. Select the target's feature explicitly, as CI does;
+`cargo-fuzz` does not enable a binary's `required-features` automatically. Use all features and
+all targets for a complete compile check, and the target-local feature for instrumented campaigns.
 
 `ffi_api` keeps the text seeds above readable, but random inputs use a small binary frame so
 options, document URI, and source bytes can evolve independently:
@@ -54,9 +58,9 @@ preprocessing uses the same `RecoverLine` policy as lenient models: parsed snaps
 their complete metadata/model, and retained family failures must match suppressed error metadata
 and messages. Without an incomplete-directive recovery receipt, snapshots also match strict
 parsing. Recovery never bypasses these snapshot checks; parser panics always fail. A semantic
-failure can still carry recovered symbols, diagnostics, and completion context. The fuzz package's
-default `editor-facts` feature forwards `merman/editor-facts` and enables these shared snapshot
-assertions; `--no-default-features` omits them.
+failure can still carry recovered symbols, diagnostics, and completion context. The `parse` feature
+enables `editor-facts`, which forwards `merman/editor-facts` for these shared snapshot assertions;
+`render` includes `parse` and the same assertions.
 Strict and lenient results are not universally equal: strict preprocessing removes an unfinished
 directive through EOF, while `RecoverLine` retains later statements. Explicit policy regressions
 cover both a recovered family error and two accepted models with different semantics, alongside
@@ -83,7 +87,7 @@ Stable regressions for the shared SVG oracle and incremental-edit implementation
 building the instrumented libFuzzer executables:
 
 ```sh
-cargo nextest run --locked --manifest-path fuzz/Cargo.toml --lib
+cargo nextest run --locked --manifest-path fuzz/Cargo.toml --no-default-features --all-features --lib
 ```
 
 Generated layout assertions in `flowchart_layout_test` and `swimlane_layout_test` use fixed seeds
@@ -93,15 +97,15 @@ generic separation assertions; they are not universal geometric invariants for e
 Run a fast smoke before changing fuzz harnesses:
 
 ```sh
-cargo +nightly-2026-07-01 check --manifest-path fuzz/Cargo.toml --locked
+cargo +nightly-2026-07-01 check --manifest-path fuzz/Cargo.toml --locked --no-default-features --all-features --all-targets
 mkdir -p fuzz/corpus/parse_mermaid fuzz/corpus/render_mermaid fuzz/corpus/svg_pipeline fuzz/corpus/ffi_api fuzz/corpus/tree_sitter_mermaid_parse fuzz/corpus/tree_sitter_mermaid_edits fuzz/corpus/tree_sitter_mermaid_scanner
-cargo +nightly-2026-07-01 fuzz run --fuzz-dir fuzz --sanitizer address parse_mermaid fuzz/corpus/parse_mermaid fuzz/seeds/mermaid -- -runs=64 -timeout=10 -max_len=262144 -dict=fuzz/dictionaries/mermaid.dict
-cargo +nightly-2026-07-01 fuzz run --fuzz-dir fuzz --sanitizer address render_mermaid fuzz/corpus/render_mermaid fuzz/seeds/mermaid -- -runs=64 -timeout=10 -max_len=32768 -dict=fuzz/dictionaries/mermaid.dict
-cargo +nightly-2026-07-01 fuzz run --fuzz-dir fuzz --sanitizer address svg_pipeline fuzz/corpus/svg_pipeline fuzz/seeds/svg -- -runs=64 -timeout=10 -max_len=262144 -dict=fuzz/dictionaries/svg.dict
-cargo +nightly-2026-07-01 fuzz run --fuzz-dir fuzz --sanitizer address ffi_api fuzz/corpus/ffi_api fuzz/seeds/ffi -- -runs=64 -timeout=10 -max_len=16384 -dict=fuzz/dictionaries/mermaid.dict
-cargo +nightly-2026-07-01 fuzz run --fuzz-dir fuzz --sanitizer address tree_sitter_mermaid_parse fuzz/corpus/tree_sitter_mermaid_parse distribution/tree-sitter-mermaid/fuzz/corpus/all-families -- -runs=64 -timeout=10 -max_len=262144 -dict=fuzz/dictionaries/mermaid.dict
-cargo +nightly-2026-07-01 fuzz run --fuzz-dir fuzz --sanitizer address tree_sitter_mermaid_edits fuzz/corpus/tree_sitter_mermaid_edits fuzz/seeds/tree-sitter-edits -- -runs=64 -timeout=10 -max_len=262144 -dict=fuzz/dictionaries/mermaid.dict
-cargo +nightly-2026-07-01 fuzz run --fuzz-dir fuzz --sanitizer address tree_sitter_mermaid_scanner fuzz/corpus/tree_sitter_mermaid_scanner fuzz/seeds/tree-sitter-scanner -- -runs=64 -timeout=10 -max_len=16384 -dict=fuzz/dictionaries/mermaid.dict
+cargo +nightly-2026-07-01 fuzz run --fuzz-dir fuzz --no-default-features --features parse --sanitizer address parse_mermaid fuzz/corpus/parse_mermaid fuzz/seeds/mermaid -- -runs=64 -timeout=10 -max_len=262144 -dict=fuzz/dictionaries/mermaid.dict
+cargo +nightly-2026-07-01 fuzz run --fuzz-dir fuzz --no-default-features --features render --sanitizer address render_mermaid fuzz/corpus/render_mermaid fuzz/seeds/mermaid -- -runs=64 -timeout=10 -max_len=32768 -dict=fuzz/dictionaries/mermaid.dict
+cargo +nightly-2026-07-01 fuzz run --fuzz-dir fuzz --no-default-features --features svg --sanitizer address svg_pipeline fuzz/corpus/svg_pipeline fuzz/seeds/svg -- -runs=64 -timeout=10 -max_len=262144 -dict=fuzz/dictionaries/svg.dict
+cargo +nightly-2026-07-01 fuzz run --fuzz-dir fuzz --no-default-features --features ffi --sanitizer address ffi_api fuzz/corpus/ffi_api fuzz/seeds/ffi -- -runs=64 -timeout=10 -max_len=16384 -dict=fuzz/dictionaries/mermaid.dict
+cargo +nightly-2026-07-01 fuzz run --fuzz-dir fuzz --no-default-features --features tree-sitter --sanitizer address tree_sitter_mermaid_parse fuzz/corpus/tree_sitter_mermaid_parse distribution/tree-sitter-mermaid/fuzz/corpus/all-families -- -runs=64 -timeout=10 -max_len=262144 -dict=fuzz/dictionaries/mermaid.dict
+cargo +nightly-2026-07-01 fuzz run --fuzz-dir fuzz --no-default-features --features tree-sitter --sanitizer address tree_sitter_mermaid_edits fuzz/corpus/tree_sitter_mermaid_edits fuzz/seeds/tree-sitter-edits -- -runs=64 -timeout=10 -max_len=262144 -dict=fuzz/dictionaries/mermaid.dict
+cargo +nightly-2026-07-01 fuzz run --fuzz-dir fuzz --no-default-features --features tree-sitter --sanitizer address tree_sitter_mermaid_scanner fuzz/corpus/tree_sitter_mermaid_scanner fuzz/seeds/tree-sitter-scanner -- -runs=64 -timeout=10 -max_len=16384 -dict=fuzz/dictionaries/mermaid.dict
 ```
 
 On macOS, local `cargo-fuzz` installations may default to the wrong host target if the binary was
@@ -149,10 +153,11 @@ Unclosed CSS strings, comments, URLs, and blocks are regression inputs for this 
 contract; safe neighboring CSS must survive removal of malformed content. `resvg-safe` is a raster-compatibility pipeline, not a general sanitizer for
 arbitrary host CSS; browser and webview consumers must follow `docs/security/RENDERING_SECURITY.md`.
 
-When a crash is found, minimize it before promoting it into a regression test:
+When a crash is found, minimize it with the same target feature before promoting it into a
+regression test. For example, for `parse_mermaid`:
 
 ```sh
-cargo +nightly-2026-07-01 fuzz tmin --fuzz-dir fuzz <target> fuzz/artifacts/<target>/<crash-file>
+cargo +nightly-2026-07-01 fuzz tmin --fuzz-dir fuzz --no-default-features --features parse parse_mermaid fuzz/artifacts/parse_mermaid/<crash-file>
 ```
 
 If the minimized input exposes a public API bug, add a focused stable test under the affected crate.

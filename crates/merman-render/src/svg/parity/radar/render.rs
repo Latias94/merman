@@ -16,8 +16,8 @@ fn write_radar_css<'a, I>(
     mut text_receipt: Option<&mut crate::radar::RadarTextPaintReceipt>,
     mut axis_receipt: Option<&mut crate::radar::RadarAxisPaintReceipt>,
     typography: &'a crate::radar::RadarTypographyThemePlan,
-    series_colors: &[String],
-    mut record_series_rule: impl FnMut(usize, &str),
+    series_paint: &crate::radar::RadarSeriesPaintPlan,
+    mut record_series_rule: impl FnMut(usize, Option<&str>, Option<&str>),
 ) -> Result<crate::radar::RadarTypographyCssEmission<'a>>
 where
     I: SvgDiagramIdValue,
@@ -97,25 +97,48 @@ where
     );
     out.checkpoint()?;
 
-    for (i, c) in series_colors.iter().enumerate() {
+    for (i, c) in series_paint.colors().iter().enumerate() {
+        let fill = series_paint.fill_css(i).expect("fixed Radar fill slot");
+        let stroke = series_paint.stroke_css(i).expect("fixed Radar stroke slot");
         let _ = write!(
             out,
             r#"#{} .radarCurve-{}{{color:{};fill:{};fill-opacity:{};stroke:{};stroke-width:{};}}#{} .radarLegendBox-{}{{fill:{};fill-opacity:{};stroke:{};}}"#,
             diagram_id,
             i,
             c,
-            c,
+            fill,
             fmt(theme.curve_opacity),
-            c,
+            stroke,
             fmt(theme.curve_stroke_width),
             diagram_id,
             i,
-            c,
+            fill,
             fmt(theme.curve_opacity),
-            c
+            stroke
         );
         out.checkpoint()?;
-        record_series_rule(i, c);
+        record_series_rule(i, Some(fill), Some(stroke));
+    }
+    // Scalar rules also have real consumers beyond Mermaid's bounded palette slots.
+    for index in series_paint.colors().len()..series_paint.curve_count() {
+        let fill = series_paint.fill_css(index);
+        let stroke = series_paint.stroke_css(index);
+        if fill.is_none() && stroke.is_none() {
+            record_series_rule(index, fill, stroke);
+            continue;
+        }
+        for class in ["radarCurve", "radarLegendBox"] {
+            let _ = write!(out, "#{diagram_id} .{class}-{index}{{");
+            if let Some(fill) = fill {
+                let _ = write!(out, "fill:{fill};");
+            }
+            if let Some(stroke) = stroke {
+                let _ = write!(out, "stroke:{stroke};");
+            }
+            out.push('}');
+            out.checkpoint()?;
+        }
+        record_series_rule(index, fill, stroke);
     }
 
     let root_font_emission =
@@ -302,12 +325,12 @@ pub(crate) fn render_radar_diagram_svg_model_with_theme_plans(
         text_paint_receipt.as_mut(),
         axis_paint_receipt.as_mut(),
         typography,
-        series_paint.colors(),
-        |rule_index, color| {
+        series_paint,
+        |rule_index, fill, stroke| {
             if rule_index < series_paint.curve_count()
                 && let Some(receipt) = series_paint_receipt.as_mut()
             {
-                receipt.record_series_rule(series_paint, rule_index, color);
+                receipt.record_series_paints(series_paint, rule_index, fill, stroke);
             }
         },
     )?;
@@ -409,9 +432,13 @@ pub(crate) fn render_radar_diagram_svg_model_with_theme_plans(
             .get(item.class_index as usize)
             .map(|curve| curve.label.as_str())
             .unwrap_or("");
+        let legend_fill = text_paint.legend_fill(legend_index);
+        let fill_attr = legend_fill
+            .map(|fill| format!(r#" fill="{}""#, escape_attr(fill)))
+            .unwrap_or_default();
         let _ = write!(
             &mut out,
-            r#"<text x="{x}" y="{y}" class="radarLegendText">{text}</text>"#,
+            r#"<text x="{x}" y="{y}" class="radarLegendText"{fill_attr}>{text}</text>"#,
             x = fmt_display(16.0),
             y = fmt_display(0.0),
             text = escape_xml(label)
@@ -423,7 +450,7 @@ pub(crate) fn render_radar_diagram_svg_model_with_theme_plans(
             receipt.record_legend(series_paint, legend_index, item.class_index);
         }
         if let Some(receipt) = text_paint_receipt.as_mut() {
-            receipt.record_legend(legend_index, "radarLegendText", label);
+            receipt.record_legend_paint(legend_index, "radarLegendText", label, legend_fill);
         }
         if let Some(receipt) = typography_receipt.as_mut() {
             receipt.record_legend_label(legend_index, label);
@@ -550,9 +577,8 @@ mod tests {
             None,
             None,
             &typography,
-            crate::radar::RadarSeriesPaintPlan::baseline(config, &RadarDiagramModel::default())
-                .colors(),
-            |_, _| {},
+            &crate::radar::RadarSeriesPaintPlan::baseline(config, &RadarDiagramModel::default()),
+            |_, _, _| {},
         )
         .expect("String-backed Radar CSS writer");
         css

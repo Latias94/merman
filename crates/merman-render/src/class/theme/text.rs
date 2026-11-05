@@ -25,7 +25,6 @@ pub(crate) struct ClassTextThemePlan {
     fully_shadowed_text_rules: BTreeSet<usize>,
     edge_paint: Option<ClassTextPaint>,
     note_paint: Option<ClassTextPaint>,
-    title_paint: Option<ClassTextPaint>,
     layout_font_family_css: Box<str>,
     font_size_px: f64,
     typed_font_size_requested: bool,
@@ -205,9 +204,6 @@ impl ClassTextThemePlan {
         let note_paint = (!owned(&["themeVariables.noteTextColor"]))
             .then(|| selected.clone())
             .flatten();
-        let title_paint = (!owned(&["themeVariables.textColor"]))
-            .then(|| selected.clone())
-            .flatten();
         let inherited_font_stack =
             InheritedFontStackPlan::resolve_property_local(theme, effective_config);
         let typed_font_size_requested = theme.is_some_and(|theme| {
@@ -272,7 +268,6 @@ impl ClassTextThemePlan {
                 .collect(),
             edge_paint,
             note_paint,
-            title_paint,
             inherited_font_stack,
             layout_font_family_css: layout_font_family_css.into_boxed_str(),
             font_size_px,
@@ -312,15 +307,12 @@ impl ClassTextThemePlan {
     pub(crate) fn note_paint(&self) -> Option<&ClassTextPaint> {
         self.note_paint.as_ref()
     }
-    pub(crate) fn title_paint(&self) -> Option<&ClassTextPaint> {
-        self.title_paint.as_ref()
-    }
-
     pub(crate) fn bind_text_paints(
         &self,
         receipt: &mut ClassTextOutcomes,
         nodes: impl IntoIterator<Item = (impl AsRef<str>, Option<usize>)>,
         namespace: Option<(usize, &str)>,
+        diagram_title: Option<(usize, &str)>,
         note_ids: impl IntoIterator<Item = impl AsRef<str>>,
     ) {
         let generic = |rule| self.text_rules.contains_key(&rule).then_some(rule);
@@ -339,7 +331,7 @@ impl ClassTextThemePlan {
         }
         receipt.namespace_paint = namespace.and_then(|(rule, _)| generic(rule));
         receipt.edge_paint = self.edge_paint.as_ref().map(|paint| paint.rule_index);
-        receipt.title_paint = self.title_paint.as_ref().map(|paint| paint.rule_index);
+        receipt.title_paint = diagram_title.and_then(|(rule, _)| generic(rule));
     }
 
     pub(crate) fn layout_font_family_css(&self) -> &str {

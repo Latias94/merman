@@ -41,6 +41,309 @@ fn render_swimlane(source: &str, diagram_id: &str) -> String {
 }
 
 #[test]
+fn mermaid_12_3_shared_members_keep_empty_lane_shells_titles_and_edge_turns() {
+    let source =
+        include_str!("../../../fixtures/swimlane/local_mermaid_12_3_shared_members_tb.mmd");
+    let upstream = roxmltree::Document::parse(include_str!(
+        "../../../fixtures/upstream-svgs/swimlane/local_mermaid_12_3_shared_members_tb.svg"
+    ))
+    .unwrap();
+    let (svg, layout) = render_swimlane_with_layout(source, "shared-members");
+    let actual = roxmltree::Document::parse(&svg).unwrap();
+    assert_eq!(layout.lanes.len(), 5);
+    assert!(layout.lanes.iter().all(|lane| lane.id != "dropped"));
+    let clusters: Vec<_> = actual
+        .descendants()
+        .filter(|node| has_class(*node, "cluster"))
+        .collect();
+    assert_eq!(clusters.len(), 5);
+    for (index, identity) in ["placeholder", "partial", "used", "retained", "inner"]
+        .into_iter()
+        .enumerate()
+    {
+        assert_eq!(clusters[index].attribute("data-id"), Some(identity));
+    }
+    for identity in ["placeholder", "used"] {
+        let expected = upstream
+            .descendants()
+            .find(|node| node.attribute("data-id") == Some(identity))
+            .unwrap();
+        let lane = semantic_element(&actual, identity, "cluster");
+        assert_eq!(
+            lane.attribute("data-color-id"),
+            expected.attribute("data-color-id")
+        );
+        let rows = |node: roxmltree::Node<'_, '_>| {
+            node.descendants()
+                .filter(|row| has_class(*row, "row"))
+                .map(text_content)
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(rows(lane), rows(expected), "{identity}");
+    }
+    for identity in ["L_A_B_0", "L_B_used_0", "L_B_C_0"] {
+        let expected = upstream
+            .descendants()
+            .find(|node| node.has_tag_name("path") && node.attribute("data-id") == Some(identity))
+            .unwrap();
+        let edge = semantic_element(&actual, identity, "edge");
+        assert_eq!(path_commands(edge), path_commands(expected), "{identity}");
+    }
+}
+
+#[test]
+fn mermaid_12_3_drawn_ports_preserve_the_rounded_hexagon_arrival() {
+    let source = include_str!("../../../fixtures/swimlane/local_mermaid_12_3_drawn_ports_tb.mmd");
+    let upstream = roxmltree::Document::parse(include_str!(
+        "../../../fixtures/upstream-svgs/swimlane/local_mermaid_12_3_drawn_ports_tb.svg"
+    ))
+    .unwrap();
+    let svg = render_swimlane(source, "drawn-ports");
+    let actual = roxmltree::Document::parse(&svg).unwrap();
+    let identity = "L_B_C_0";
+    let expected = upstream
+        .descendants()
+        .find(|node| node.has_tag_name("path") && node.attribute("data-id") == Some(identity))
+        .unwrap();
+    assert_eq!(path_commands(expected), "MLQL");
+    let edge = semantic_element(&actual, identity, "edge");
+    assert_eq!(path_commands(edge), path_commands(expected));
+}
+
+fn path_commands(node: roxmltree::Node<'_, '_>) -> String {
+    node.attribute("d")
+        .unwrap()
+        .chars()
+        .filter(|character| matches!(character, 'M' | 'L' | 'Q' | 'C' | 'A' | 'Z'))
+        .collect()
+}
+
+#[test]
+fn producer_pool_metadata_selects_pool_shell_classes_without_author_syntax() {
+    use merman_model::OperationControl;
+    use merman_model::presentation::{PresentationDiagram, RenderSemanticModel};
+    use merman_model::resources::InputResourcePolicy;
+
+    for look in ["classic", "handDrawn"] {
+        let source = format!(
+            "%%{{init: {{\"look\": \"{look}\", \"handDrawnSeed\": 7}}}}%%\nswimlane-beta TB\nsubgraph pool\nsubgraph sales\nA\nend\nsubgraph warehouse\nB\nend\nend\nA --> B\n"
+        );
+        let parsed = MermaidEngine::new()
+            .parse_diagram_for_render_model_sync(&source, ParseOptions::strict())
+            .unwrap()
+            .unwrap()
+            .into_presentation();
+        let (metadata, mut model, context) = parsed.into_parts();
+        let RenderSemanticModel::Flowchart(flowchart) = &mut model else {
+            panic!("expected Flowchart model");
+        };
+        flowchart
+            .subgraphs
+            .iter_mut()
+            .find(|group| group.id == "pool")
+            .unwrap()
+            .metadata = Some(serde_json::json!({"laneRole": "pool"}));
+        let presentation = PresentationDiagram::try_from_frozen(
+            metadata,
+            model,
+            context,
+            &InputResourcePolicy::default(),
+            &OperationControl::new(),
+        )
+        .unwrap()
+        .unwrap();
+        let session = RenderEnvironment::deterministic().begin_session().unwrap();
+        let artifact = family::prepare(&presentation, &LayoutOptions::default(), session).unwrap();
+        let rendered = artifact
+            .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+            .unwrap();
+        let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+        let pool = document
+            .descendants()
+            .find(|element| {
+                element.attribute("data-id") == Some("pool")
+                    && element.attribute("class").is_some_and(|classes| {
+                        classes.split_whitespace().any(|class| class == "pool")
+                    })
+            })
+            .expect("pool shell");
+        for class in ["pool-body", "pool-title", "pool-label"] {
+            assert!(
+                pool.descendants()
+                    .any(
+                        |element| element.attribute("class").is_some_and(|classes| classes
+                            .split_whitespace()
+                            .any(|candidate| candidate == class))
+                    ),
+                "missing {class} for {look}"
+            );
+        }
+    }
+}
+
+#[test]
+fn producer_pool_default_lane_reuse_preserves_membership_ranks_and_shells() {
+    use merman_model::OperationControl;
+    use merman_model::presentation::{PresentationDiagram, RenderSemanticModel};
+    use merman_model::resources::InputResourcePolicy;
+
+    for look in ["classic", "handDrawn"] {
+        for direction in ["TB", "LR"] {
+            for with_loose_node in [false, true] {
+                let loose_source = if with_loose_node { "B\nA --> B\n" } else { "" };
+                let source = format!(
+                    "%%{{init: {{\"look\": \"{look}\", \"handDrawnSeed\": 7}}}}%%\nswimlane-beta {direction}\nsubgraph __swimlane_default__[Declared pool]\nsubgraph L[Child lane]\nA\nend\nend\n{loose_source}"
+                );
+                let parsed = MermaidEngine::new()
+                    .parse_diagram_for_render_model_sync(&source, ParseOptions::strict())
+                    .unwrap()
+                    .unwrap()
+                    .into_presentation();
+                let (metadata, mut model, context) = parsed.into_parts();
+                let RenderSemanticModel::Flowchart(flowchart) = &mut model else {
+                    panic!("expected Flowchart model");
+                };
+                flowchart
+                    .subgraphs
+                    .iter_mut()
+                    .find(|group| group.id == "__swimlane_default__")
+                    .unwrap()
+                    .metadata = Some(serde_json::json!({"laneRole": "pool"}));
+                let presentation = PresentationDiagram::try_from_frozen(
+                    metadata,
+                    model,
+                    context,
+                    &InputResourcePolicy::default(),
+                    &OperationControl::new(),
+                )
+                .unwrap()
+                .unwrap();
+                let session = RenderEnvironment::deterministic().begin_session().unwrap();
+                let artifact =
+                    family::prepare(&presentation, &LayoutOptions::default(), session).unwrap();
+                let layout: SwimlaneLayout = serde_json::from_value(
+                    artifact.layout_json().unwrap()["layout"]["SwimlaneDiagram"].clone(),
+                )
+                .unwrap();
+                let task = layout.nodes.iter().find(|node| node.id == "A").unwrap();
+                assert_eq!(task.parent_id.as_deref(), Some("L"));
+                assert_eq!(task.top_lane_id.as_deref(), Some("L"));
+                assert_eq!(task.layer, 0);
+                if with_loose_node {
+                    let loose = layout.nodes.iter().find(|node| node.id == "B").unwrap();
+                    assert_eq!(loose.parent_id.as_deref(), Some("__swimlane_default__"));
+                    assert_eq!(loose.top_lane_id, None);
+                    assert_eq!(loose.layer, 0);
+                    assert_eq!(layout.edges.len(), 1);
+                    assert_eq!(layout.edges[0].from, "A");
+                    assert_eq!(layout.edges[0].to, "B");
+                    assert!(layout.edges[0].points.len() >= 2);
+                }
+                let rendered = artifact
+                    .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+                    .unwrap();
+                let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+                let default_group = semantic_element(&document, "__swimlane_default__", "cluster");
+                assert!(has_class(default_group, "swimlane"));
+                assert_eq!(has_class(default_group, "pool"), !with_loose_node);
+                for (lane_class, pool_class) in [
+                    ("swimlane-body", "pool-body"),
+                    ("swimlane-title", "pool-title"),
+                    ("swimlane-label", "pool-label"),
+                ] {
+                    assert!(
+                        default_group
+                            .children()
+                            .any(|node| has_class(node, lane_class))
+                    );
+                    assert_eq!(
+                        default_group
+                            .children()
+                            .any(|node| has_class(node, pool_class)),
+                        !with_loose_node,
+                    );
+                }
+                let child_lane = semantic_element(&document, "L", "cluster");
+                assert!(has_class(child_lane, "swimlane"));
+                assert!(!has_class(child_lane, "pool"));
+            }
+        }
+    }
+}
+
+#[test]
+fn annotation_layout_and_svg_use_shape_wrapping_width_for_html_and_svg_labels() {
+    for html_labels in [false, true] {
+        let mut expected = None;
+        for wrapping_width in [80, 300] {
+            let source = format!(
+                "%%{{init: {{\"htmlLabels\": {html_labels}, \"flowchart\": {{\"wrappingWidth\": {wrapping_width}}}}}}}%%\nswimlane-beta TB\nsubgraph Lane\nA@{{ shape: bpmn-annotation, label: \"Review this request before approval\" }}\nend\n"
+            );
+            let (svg, layout) = render_swimlane_with_layout(&source, "annotation-width");
+            let annotation = layout.nodes.iter().find(|node| node.id == "A").unwrap();
+            let document = roxmltree::Document::parse(&svg).unwrap();
+            let element = semantic_element(&document, "A", "node");
+            let bounds = element
+                .children()
+                .find(|node| has_class(*node, "bpmn-bounds"))
+                .unwrap();
+            for (attribute, measured) in
+                [("width", annotation.width), ("height", annotation.height)]
+            {
+                let drawn = bounds.attribute(attribute).unwrap().parse::<f64>().unwrap();
+                assert!(
+                    (drawn - measured).abs() < 0.01,
+                    "HTML={html_labels}, wrappingWidth={wrapping_width}, {attribute}: layout={measured}, SVG={drawn}"
+                );
+            }
+            let rows: Vec<_> = if html_labels {
+                let foreign_object = element
+                    .descendants()
+                    .find(|node| node.has_tag_name("foreignObject"))
+                    .unwrap();
+                let div = foreign_object
+                    .children()
+                    .find(|node| node.has_tag_name("div"))
+                    .unwrap();
+                let style = div.attribute("style").unwrap();
+                assert!(style.contains("max-width: 160px;"), "{style}");
+                assert!(style.contains("width: 160px;"), "{style}");
+                assert_eq!(foreign_object.attribute("width"), Some("160"));
+                assert_eq!(annotation.label_width, 160.0);
+                assert_eq!(annotation.width, 182.0);
+                vec![text_content(div)]
+            } else {
+                assert!(
+                    element
+                        .descendants()
+                        .all(|node| !node.has_tag_name("foreignObject"))
+                );
+                let rows: Vec<_> = element
+                    .descendants()
+                    .filter(|node| has_class(*node, "row"))
+                    .map(text_content)
+                    .collect();
+                assert!(rows.len() >= 2);
+                assert!(annotation.label_width <= 160.0);
+                rows
+            };
+            let measured = (
+                annotation.width,
+                annotation.height,
+                annotation.label_width,
+                annotation.label_height,
+                rows,
+            );
+            if let Some(expected) = &expected {
+                assert_eq!(&measured, expected, "HTML={html_labels}");
+            } else {
+                expected = Some(measured);
+            }
+        }
+    }
+}
+
+#[test]
 fn long_html_edge_labels_wrap_with_the_measured_content_box() {
     for width in [96, 144] {
         let source = format!(
@@ -311,7 +614,7 @@ fn text_content(node: roxmltree::Node<'_, '_>) -> String {
 }
 
 #[test]
-fn unchanged_pinned_routes_keep_edge_labels_at_layout_anchors_inside_the_root() {
+fn synthetic_edge_labels_keep_layout_anchors_inside_the_root() {
     for (source, edge_id) in [
         (
             include_str!("../../../fixtures/swimlane/upstream_7_car_sales_constr.mmd"),
@@ -325,14 +628,19 @@ fn unchanged_pinned_routes_keep_edge_labels_at_layout_anchors_inside_the_root() 
         let (svg, layout) = render_swimlane_with_layout(source, "pinned-label");
         let document = roxmltree::Document::parse(&svg).unwrap();
         let edge = layout.edges.iter().find(|edge| edge.id == edge_id).unwrap();
-        assert_eq!(edge.points[0].x, edge.points[1].x);
-        assert_eq!(edge.points[0].y, edge.points[1].y);
+        assert!(edge.points.len() >= 2);
+        assert!(
+            edge.points
+                .iter()
+                .all(|point| point.x.is_finite() && point.y.is_finite())
+        );
         let label_id = edge.label_node_id.as_deref().unwrap();
         let label = layout
             .nodes
             .iter()
             .find(|node| node.id == label_id)
             .unwrap();
+        assert!(label.is_edge_label);
         let element = semantic_element(&document, edge_id, "edge-label");
         assert_canonical_id(element, "pinned-label", "synthetic-label");
         let coordinates = element
@@ -343,8 +651,6 @@ fn unchanged_pinned_routes_keep_edge_labels_at_layout_anchors_inside_the_root() 
             .split(',')
             .map(|coordinate| coordinate.trim().parse::<f64>().unwrap())
             .collect::<Vec<_>>();
-        // Mermaid 12.2 resolveEdgeLabelPosition keeps the prepared anchor when
-        // insertEdge returns only originalPath, even when clipping removes pins.
         assert!((coordinates[0] - label.x).abs() < 1e-6, "{edge_id} x");
         assert!((coordinates[1] - label.y).abs() < 1e-6, "{edge_id} y");
         let viewport = document

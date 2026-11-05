@@ -51,7 +51,7 @@ Use `analyze_document_context_with_shared_text` when the initial analysis payloa
 
 ## Data Contract
 
-Editor queries operate directly on typed snapshots and shared `AnalysisGeneration` storage; they do not serialize and deserialize an analysis payload internally. Bindings expose the separate `AnalysisFactsPayload` schema 2, and reject other schema versions at their boundary.
+Editor queries operate directly on typed snapshots and shared `AnalysisGeneration` storage; they do not serialize and deserialize an analysis payload internally. Bindings expose the separate `AnalysisFactsPayload` schema 3, including required per-diagram `appearance` evidence tagged `known` or `unknown`, and reject other schema versions at their boundary. See the [source appearance migration](../../docs/release/UNRELEASED_CONTRACT_VERSIONS.md#source-appearance-and-render-evidence-follow-up).
 
 When a host already owns an `Arc<AnalysisGeneration>`, use `DocumentSnapshot::try_from_analysis_generation(version, generation)`. The snapshot derives its URI and `DocumentKind` from the generation's `SourceDescriptor`, so callers cannot pair parser evidence with a different document identity. Generations without a source path return `DocumentSnapshotError::MissingSourcePath` instead of creating an anonymous editor snapshot.
 

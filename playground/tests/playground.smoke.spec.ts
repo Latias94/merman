@@ -4,6 +4,7 @@ import {
   expectNoDocumentOverflow,
   monitorBrowserErrors,
   openPlayground,
+  openWorkbenchTool,
   playgroundResourceCounts,
   previewSvgText,
   replaceEditorSource,
@@ -145,7 +146,7 @@ test("Compare owns one local Mermaid realm and publishes one coherent batch", as
   await waitForPreviewSvg(page);
   expect(opaqueArtifactRequests).toEqual([]);
 
-  await page.getByRole("tab", { name: "Compare", exact: true }).click();
+  await openWorkbenchTool(page, "Compare");
   await expect(page.locator('iframe[data-merman-realm="compare"]')).toHaveCount(
     1,
   );
@@ -185,7 +186,7 @@ test("Compare owns one local Mermaid realm and publishes one coherent batch", as
   await expect(page.locator('iframe[data-merman-realm="compare"]')).toHaveCount(
     0,
   );
-  await page.getByRole("tab", { name: "Compare", exact: true }).click();
+  await openWorkbenchTool(page, "Compare");
   await expect(page.locator('iframe[data-merman-realm="compare"]')).toHaveCount(
     1,
   );
@@ -234,7 +235,7 @@ test("Compare detection and rendering share built-in ELK configuration", async (
     "flowchart LR\n  configured_input[Configured input] --> elk_ready[ELK ready]",
   );
   await waitForPreviewSvg(page);
-  await page.getByRole("tab", { name: "Compare", exact: true }).click();
+  await openWorkbenchTool(page, "Compare");
 
   await expect
     .poll(() => compareSvgTexts(page))
@@ -252,22 +253,20 @@ test("automatic and explicit default themes remain distinct in the presentation 
   await openPlayground(page);
   await waitForPreviewSvg(page);
 
-  await page.getByRole("button", { name: "Theme", exact: true }).click();
-  const panel = page.getByRole("region", { name: "Theme panel", exact: true });
+  await page.getByRole("button", { name: "Appearance", exact: true }).click();
+  const panel = page.locator("#theme-panel");
+  await panel.getByTestId("theme-advanced").locator("summary").first().click();
   const compatibility = panel.getByLabel("Mermaid base theme", { exact: true });
   const status = page.locator("footer");
   await expect(compatibility).toHaveValue("auto");
   await compatibility.selectOption("default");
   await waitForPreviewSvg(page);
   await expect(compatibility).toHaveValue("default");
-  await expect(status).toContainText("Theme: Automatic (diagram default)");
-  await panel.getByRole("button", { name: "Apply", exact: true }).click();
   await expect(status).toContainText("Theme: Default");
+  await expect(panel.getByRole("button", { name: "Apply", exact: true })).toHaveCount(0);
 
   await compatibility.selectOption("auto");
   await expect(compatibility).toHaveValue("auto");
-  await expect(status).toContainText("Theme: Default");
-  await panel.getByRole("button", { name: "Apply", exact: true }).click();
   await expect(status).toContainText("Theme: Automatic (diagram default)");
   errors.assertNone();
 });
@@ -275,7 +274,7 @@ test("automatic and explicit default themes remain distinct in the presentation 
 test("Compare renders Mermaid 12 Agentflow and Usecase through the production WASM", async ({ page }) => {
   const errors = monitorBrowserErrors(page);
   await openPlayground(page);
-  await page.getByRole("tab", { name: "Compare", exact: true }).click();
+  await openWorkbenchTool(page, "Compare");
 
   for (const [source, label] of [
     ['agentflow-beta TB\nflow support["Support"]\n  input["Question"]@{ shape: input }\n  task["Resolve"]@{ shape: task }\n  input --> task\nend', "Question"],
@@ -305,7 +304,7 @@ test("Compare isolates container-sensitive Gantt rendering from pane width", asy
       "  Task1 :a1, 2024-01-01, 1d",
     ].join("\n"),
   );
-  await page.getByRole("tab", { name: "Compare", exact: true }).click();
+  await openWorkbenchTool(page, "Compare");
 
   await expect.poll(() => mermaidCompareViewBoxWidth(page)).toBe(800);
   await expect.poll(() => mermaidGanttTickOverlapCount(page)).toBe(0);

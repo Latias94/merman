@@ -12,6 +12,7 @@ use std::collections::BTreeMap;
 use std::sync::Arc;
 
 mod css_binding;
+mod label_paint;
 mod registered;
 pub(crate) use css_binding::MindmapCssBinding;
 mod theme;
@@ -854,9 +855,7 @@ mod tests {
                 theme_recipe: None,
             },
             RenderSemanticModel::Mindmap(model),
-            PresentationContext::Mindmap {
-                diagram_id: "independent-mindmap".to_string(),
-            },
+            PresentationContext::None,
             &InputResourcePolicy::default(),
             &OperationControl::new(),
         )

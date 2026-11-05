@@ -10,11 +10,11 @@ use crate::diagram_theme::{
 };
 use crate::family::{
     DirectStaticPaint, DirectStaticSelectorDomain, FamilyThemeEvidence, FamilyThemeOutcomes,
-    FamilyThemeResidualReason, resolve_direct_static_fill, resolved_style_property_for_facet,
-    unsupported_residual_for_facet,
+    FamilyThemeResidualReason, SingleTitleFillPlan, resolve_direct_static_fill,
+    resolved_style_property_for_facet, unsupported_residual_for_facet,
 };
 use crate::model::GitGraphDiagramLayout;
-use crate::resources::{OperationWorkError, OperationWorkMeter};
+use crate::resources::OperationWorkMeter;
 
 use super::{GitGraphCommitKind, GitGraphLabelEvent, GitGraphLabelEvents, palette_slot};
 
@@ -56,6 +56,8 @@ pub(crate) struct GitGraphTextPaintPlan {
     observations: BTreeMap<FamilyThemeMechanismKey, TextObservation>,
     evidence: FamilyThemeOutcomes,
     title: Option<Box<str>>,
+    title_fill: SingleTitleFillPlan,
+    title_requested: bool,
     terminal: OnceLock<TextTerminalFacts>,
 }
 
@@ -82,6 +84,8 @@ impl GitGraphTextPaintPlan {
             observations: BTreeMap::new(),
             evidence: FamilyThemeOutcomes::default(),
             title: None,
+            title_fill: SingleTitleFillPlan::default(),
+            title_requested: false,
             terminal: OnceLock::new(),
         }
     }
@@ -91,7 +95,7 @@ impl GitGraphTextPaintPlan {
         config: &PresentationConfig,
         title: Option<&str>,
         work: &OperationWorkMeter,
-    ) -> Result<Self, OperationWorkError> {
+    ) -> crate::Result<Self> {
         let Some(theme) = theme else {
             return Ok(Self::baseline());
         };
@@ -99,6 +103,31 @@ impl GitGraphTextPaintPlan {
             evidence: FamilyThemeOutcomes::default(),
             ..Self::baseline()
         };
+        plan.title = title
+            .map(str::trim)
+            .filter(|title| !title.is_empty())
+            .map(Into::into);
+        plan.title_fill = SingleTitleFillPlan::resolve(
+            theme,
+            plan.title.is_some(),
+            config.config_paint_overrides_typed_default("themeVariables.textColor"),
+            FamilyThemeOutcomes::default(),
+            work,
+        )?;
+        plan.title_requested = theme.family_mechanism_routes().iter().any(|route| {
+            matches!(
+                route.mechanism(),
+                FamilyThemeMechanism::RuleFacet {
+                    target: ThemeTarget::Title,
+                    ..
+                } | FamilyThemeMechanism::OrdinalPalette {
+                    target: ThemeTarget::Title
+                } | FamilyThemeMechanism::EffectBinding {
+                    target: ThemeTarget::Title,
+                    ..
+                }
+            )
+        });
         for route in theme.family_mechanism_routes() {
             work.charge(1)?;
             if matches!(
@@ -121,7 +150,6 @@ impl GitGraphTextPaintPlan {
         if !plan.is_requested() {
             return Ok(plan);
         }
-        plan.title = title.map(Box::from);
         let styles = [
             theme.text_style_with_work_meter(
                 ThemeTarget::Text,
@@ -288,7 +316,11 @@ impl GitGraphTextPaintPlan {
     }
 
     pub(crate) fn is_requested(&self) -> bool {
-        !self.observations.is_empty()
+        !self.observations.is_empty() || self.title_requested
+    }
+
+    pub(crate) fn title_fill_css(&self) -> Option<&str> {
+        self.title_fill.fill_css()
     }
 
     pub(crate) fn css_colors(&self) -> [Option<&str>; 3] {
@@ -331,11 +363,14 @@ impl GitGraphTextPaintPlan {
                 })
             && receipt.next_commit == receipt.layout.commits.len()
             && receipt.labels.next().is_none();
-        complete && self.terminal.set(receipt.facts).is_ok()
+        complete
+            && (self.title_fill_css().is_none() || self.title_fill.record_proven_terminal())
+            && self.terminal.set(receipt.facts).is_ok()
     }
 
     pub(crate) fn record_evidence(&self, evidence: &mut FamilyThemeEvidence) {
         evidence.merge_borrowed(&self.evidence);
+        self.title_fill.record_evidence(evidence);
         for (key, observation) in &self.observations {
             let Some(facts) = self.terminal.get() else {
                 evidence.mark_residual(key.clone(), FamilyThemeResidualReason::UnsupportedPaint);
@@ -480,10 +515,12 @@ impl GitGraphTextPaintReceipt<'_> {
         self.facts.text_visible |= u8::from(!text.trim().is_empty()) << 1;
     }
 
-    pub(crate) fn record_title(&mut self, title: Option<&str>) {
-        self.valid &= !self.title_recorded && self.plan.title.as_deref() == title;
+    pub(crate) fn record_title(&mut self, title: Option<&str>, fill: Option<&str>) {
+        self.valid &= !self.title_recorded
+            && self.plan.title.as_deref() == title
+            && fill == self.plan.title_fill_css();
         self.title_recorded = true;
-        self.facts.sources[0] += usize::from(title.is_some());
+        self.facts.sources[0] += usize::from(title.is_some() && fill.is_none());
         self.facts.text_visible |= u8::from(title.is_some());
     }
 }
@@ -539,6 +576,7 @@ mod tests {
             "missing-tag",
             "wrong-tag",
             "wrong-title",
+            "wrong-title-paint",
         ] {
             let plan = GitGraphTextPaintPlan::resolve(
                 Some(&theme),
@@ -567,11 +605,14 @@ mod tests {
             if case != "missing-tag" {
                 receipt.record_tag(0, 0, if case == "wrong-tag" { "other" } else { "v1" });
             }
-            receipt.record_title(Some(if case == "wrong-title" {
-                "other"
-            } else {
-                "Title"
-            }));
+            receipt.record_title(
+                Some(if case == "wrong-title" {
+                    "other"
+                } else {
+                    "Title"
+                }),
+                (case == "wrong-title-paint").then_some("#987654"),
+            );
             assert_eq!(plan.record_terminal(receipt), case == "valid", "{case}");
             let evidence = collect_evidence(&theme, |evidence| plan.record_evidence(evidence));
             assert_eq!(

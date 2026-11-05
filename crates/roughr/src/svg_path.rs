@@ -1,16 +1,26 @@
 use std::borrow::Borrow;
 use std::f64::consts::PI;
 
+use crate::work::{finite, UnlimitedWork, WorkControl, WorkError};
 use svgtypes::PathSegment;
 
 /// Convert relative SVG path commands to absolute commands.
 pub(crate) fn absolutize(
     path_segments: impl Iterator<Item = impl Borrow<PathSegment>>,
 ) -> impl Iterator<Item = PathSegment> {
+    absolutize_with_control(path_segments, &mut UnlimitedWork).expect("invalid absolute SVG path")
+}
+
+pub(crate) fn absolutize_with_control(
+    path_segments: impl Iterator<Item = impl Borrow<PathSegment>>,
+    control: &mut impl WorkControl,
+) -> Result<std::vec::IntoIter<PathSegment>, WorkError> {
     let mut result = vec![];
     let (mut cx, mut cy, mut subx, mut suby) = (0.0, 0.0, 0.0, 0.0);
 
     for segment in path_segments {
+        control.charge(1)?;
+        finite_segment(*segment.borrow())?;
         match *segment.borrow() {
             PathSegment::MoveTo { abs: true, x, y } => {
                 result.push(*segment.borrow());
@@ -209,13 +219,20 @@ pub(crate) fn absolutize(
         }
     }
 
-    result.into_iter()
+    Ok(result.into_iter())
 }
 
 /// Normalize absolute SVG path commands into `M/L/C/Z`.
 pub(crate) fn normalize(
     path_segments: impl Iterator<Item = impl Borrow<PathSegment>>,
 ) -> impl Iterator<Item = PathSegment> {
+    normalize_with_control(path_segments, &mut UnlimitedWork).expect("invalid normalized SVG path")
+}
+
+pub(crate) fn normalize_with_control(
+    path_segments: impl Iterator<Item = impl Borrow<PathSegment>>,
+    control: &mut impl WorkControl,
+) -> Result<std::vec::IntoIter<PathSegment>, WorkError> {
     let mut out = vec![];
 
     let mut cx = 0.0;
@@ -227,6 +244,9 @@ pub(crate) fn normalize(
     let mut last_type: Option<PathSegment> = None;
 
     for segment in path_segments {
+        control.charge(4)?;
+        finite_segment(*segment.borrow())?;
+        let output_start = out.len();
         match *segment.borrow() {
             PathSegment::MoveTo { abs: true, x, y } => {
                 out.push(*segment.borrow());
@@ -421,9 +441,42 @@ pub(crate) fn normalize(
             _ => panic!("Not expecting none absolute path!"),
         }
         last_type = Some(*segment.borrow());
+        for output in &out[output_start..] {
+            finite_segment(*output)?;
+        }
     }
 
-    out.into_iter()
+    Ok(out.into_iter())
+}
+
+pub(crate) fn finite_segment(segment: PathSegment) -> Result<(), WorkError> {
+    match segment {
+        PathSegment::MoveTo { x, y, .. }
+        | PathSegment::LineTo { x, y, .. }
+        | PathSegment::SmoothQuadratic { x, y, .. } => finite(&[x, y]),
+        PathSegment::HorizontalLineTo { x, .. } => finite(&[x]),
+        PathSegment::VerticalLineTo { y, .. } => finite(&[y]),
+        PathSegment::CurveTo {
+            x1,
+            y1,
+            x2,
+            y2,
+            x,
+            y,
+            ..
+        } => finite(&[x1, y1, x2, y2, x, y]),
+        PathSegment::SmoothCurveTo { x2, y2, x, y, .. } => finite(&[x2, y2, x, y]),
+        PathSegment::Quadratic { x1, y1, x, y, .. } => finite(&[x1, y1, x, y]),
+        PathSegment::EllipticalArc {
+            rx,
+            ry,
+            x_axis_rotation,
+            x,
+            y,
+            ..
+        } => finite(&[rx, ry, x_axis_rotation, x, y]),
+        PathSegment::ClosePath { .. } => Ok(()),
+    }
 }
 
 fn rotate(x: f64, y: f64, angle_rad: f64) -> (f64, f64) {

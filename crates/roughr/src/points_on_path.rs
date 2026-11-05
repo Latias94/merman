@@ -7,9 +7,24 @@ use num_traits::{Float, FromPrimitive};
 use svgtypes::{PathParser, PathSegment};
 
 use crate::core::{_c, _cc};
-use crate::curve_points::{points_on_bezier_curves, simplify};
+use crate::curve_points::{points_on_bezier_curves_with_control, simplify_with_control};
 use crate::svg_path::{absolutize, normalize};
+use crate::work::{finite, UnlimitedWork, WorkControl, WorkError};
 use crate::SvgPathSegment;
+
+pub fn normalized_path_with_control(
+    path: &str,
+    control: &mut impl WorkControl,
+) -> Result<Vec<PathSegment>, WorkError> {
+    control.charge(path.len())?;
+    let mut segments = Vec::new();
+    for segment in PathParser::from(path) {
+        control.charge(1)?;
+        segments.push(segment.map_err(|_| WorkError::InvalidGeometry)?);
+    }
+    let absolute = crate::svg_path::absolutize_with_control(segments.iter(), control)?;
+    Ok(crate::svg_path::normalize_with_control(absolute, control)?.collect())
+}
 
 pub fn points_on_path<F>(
     path: String,
@@ -74,6 +89,26 @@ where
     )
 }
 
+pub fn points_on_normalized_segments_with_control<F>(
+    normalized_segments: &[impl SvgPathSegment],
+    tolerance: Option<F>,
+    distance: Option<F>,
+    control: &mut impl WorkControl,
+) -> Result<Vec<Vec<Point2D<F>>>, WorkError>
+where
+    F: FromPrimitive + Trig + Float + MulAssign + Display,
+{
+    generate_points_with_control(
+        tolerance,
+        distance,
+        normalized_segments
+            .iter()
+            .copied()
+            .map(SvgPathSegment::into_current),
+        control,
+    )
+}
+
 fn generate_points<F>(
     tolerance: Option<F>,
     distance: Option<F>,
@@ -82,43 +117,66 @@ fn generate_points<F>(
 where
     F: FromPrimitive + Trig + Float + MulAssign + Display,
 {
+    generate_points_with_control(tolerance, distance, normalized_segments, &mut UnlimitedWork)
+        .expect("invalid SVG path sampling")
+}
+
+fn generate_points_with_control<F, Control>(
+    tolerance: Option<F>,
+    distance: Option<F>,
+    normalized_segments: impl Iterator<Item = PathSegment>,
+    control: &mut Control,
+) -> Result<Vec<Vec<Point2D<F>>>, WorkError>
+where
+    F: FromPrimitive + Trig + Float + MulAssign + Display,
+    Control: WorkControl,
+{
     let mut sets: Vec<Vec<Point2D<F>>> = vec![];
     let mut current_points: Vec<Point2D<F>> = vec![];
     let mut start = Point2D::new(_c::<F>(0.0), _c::<F>(0.0));
     let mut pending_curve: Vec<Point2D<F>> = vec![];
 
-    let append_pending_curve =
-        |current_points: &mut Vec<Point2D<F>>, pending_curve: &mut Vec<Point2D<F>>| {
-            if pending_curve.len() >= 4 {
-                current_points.append(&mut points_on_bezier_curves(
-                    &pending_curve[..],
-                    tolerance.unwrap_or(_c(0.0)),
-                    None,
-                ));
-            }
-            pending_curve.clear();
-        };
+    let append_pending_curve = |current_points: &mut Vec<Point2D<F>>,
+                                pending_curve: &mut Vec<Point2D<F>>,
+                                control: &mut Control|
+     -> Result<(), WorkError> {
+        if pending_curve.len() >= 4 {
+            current_points.append(&mut points_on_bezier_curves_with_control(
+                &pending_curve[..],
+                tolerance.unwrap_or(_c(0.0)),
+                None,
+                control,
+            )?);
+        }
+        pending_curve.clear();
+        Ok(())
+    };
 
-    let mut append_pending_points =
-        |current_points: &mut Vec<Point2D<F>>, pending_curve: &mut Vec<Point2D<F>>| {
-            {
-                append_pending_curve(current_points, pending_curve);
-            }
-            if !current_points.is_empty() {
-                sets.push(current_points.clone());
-                current_points.clear();
-            }
-        };
+    let mut append_pending_points = |current_points: &mut Vec<Point2D<F>>,
+                                     pending_curve: &mut Vec<Point2D<F>>,
+                                     control: &mut Control|
+     -> Result<(), WorkError> {
+        {
+            append_pending_curve(current_points, pending_curve, control)?;
+        }
+        if !current_points.is_empty() {
+            control.charge(1)?;
+            sets.push(std::mem::take(current_points));
+        }
+        Ok(())
+    };
 
     for segment in normalized_segments {
+        control.charge(4)?;
+        crate::svg_path::finite_segment(segment)?;
         match segment {
             PathSegment::MoveTo { abs: true, x, y } => {
-                append_pending_points(&mut current_points, &mut pending_curve);
+                append_pending_points(&mut current_points, &mut pending_curve, control)?;
                 start = Point2D::new(_cc::<F>(x), _cc::<F>(y));
                 current_points.push(start);
             }
             PathSegment::LineTo { abs: true, x, y } => {
-                append_pending_curve(&mut current_points, &mut pending_curve);
+                append_pending_curve(&mut current_points, &mut pending_curve, control)?;
                 current_points.push(Point2D::new(_cc::<F>(x), _cc::<F>(y)));
             }
             PathSegment::CurveTo {
@@ -143,26 +201,28 @@ where
                 pending_curve.push(Point2D::new(_cc::<F>(x), _cc::<F>(y)));
             }
             PathSegment::ClosePath { abs: true } => {
-                append_pending_curve(&mut current_points, &mut pending_curve);
+                append_pending_curve(&mut current_points, &mut pending_curve, control)?;
                 current_points.push(start);
             }
-            _ => panic!("unexpected  path segment"),
+            _ => return Err(WorkError::InvalidGeometry),
         }
     }
 
-    append_pending_points(&mut current_points, &mut pending_curve);
+    append_pending_points(&mut current_points, &mut pending_curve, control)?;
 
     if let Some(dst) = distance {
+        finite(&[dst])?;
         let mut out = vec![];
         for set in sets.iter() {
-            let simplified_set = simplify(set, dst);
+            control.charge(1)?;
+            let simplified_set = simplify_with_control(set, dst, control)?;
             if !simplified_set.is_empty() {
                 out.push(simplified_set);
             }
         }
-        out
+        Ok(out)
     } else {
-        sets
+        Ok(sets)
     }
 }
 

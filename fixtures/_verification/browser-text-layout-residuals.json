@@ -1,7 +1,7 @@
 {
   "schema_version": 3,
-  "mermaid_version": "12.2.0",
-  "mermaid_source_commit": "1fb7869866dd619168d840291c9c54b4f129758b",
+  "mermaid_version": "12.3.0",
+  "mermaid_source_commit": "2086904e76c692331e34a45d7cc3bc30860d040e",
   "measurement_provider": "deterministic",
   "comparison_revision": "browser-text-layout-residual-v3",
   "dom_decimals": 3,
@@ -136,7 +136,7 @@
       ],
       "local_svg_signature_sha256": "daff3bd928d13c649d747874ed9f265c3d79f15ecaa90c8b41bfd3f8b5a12306",
       "input_sha256": "43a1ed833e8d34ed0a0a1296cc55508913c7f04b8a8c9b3fc951b3a367d06f43",
-      "upstream_svg_sha256": "c92c2249e9aeb96bf124ccf97f5dc3c0e731623e08a6daf78b290169bddd7264"
+      "upstream_svg_sha256": "b7116c1cc55033a0584aab5d7b6fe4db2648f251a17954c37f496ea6488d1a7c"
     },
     {
       "diagram": "flowchart",
@@ -151,14 +151,26 @@
     },
     {
       "diagram": "flowchart",
+      "fixture": "local_mermaid_12_3_step_short_handdrawn",
+      "modes": [
+        "structure",
+        "parity",
+        "parity-root"
+      ],
+      "local_svg_signature_sha256": "aa20a2a5dcf692dad0d8439f6e3df47e0ebfb9697518ee39e15e07e7b8e5ec9f",
+      "input_sha256": "f279d607d8871475a7214a1226b6f3105ba38a69e48a8354c258a3b4a80929f7",
+      "upstream_svg_sha256": "bfeabe62a7580c36c277e82d38da11a282825f81b6d78624dcb3527003509da4"
+    },
+    {
+      "diagram": "flowchart",
       "fixture": "stress_flowchart_edge_labels_far_from_arrows_066",
       "modes": [
         "parity",
         "parity-root"
       ],
       "input_sha256": "6436bd1c9f897bf4387e3cfa67be332797104ae6fead6faeb271ada6d75af783",
-      "upstream_svg_sha256": "c78a3c2d49a71ece2da20b4f2eb468cbcee1c86c027ccd2e13c00083b97b8d5e",
-      "local_svg_signature_sha256": "dafcb57067205aca8a456e0dadf0467dcc1c289cd520f837948144eb2b775057"
+      "upstream_svg_sha256": "2ddc6ce14bdb55223ea3a638fecaccdfa1de0460d9f7114c54d85f9443c2cd9d",
+      "local_svg_signature_sha256": "b52467ac4bdc43767b3b0dce20d94bed917acaba6d3c66791b059be14fb27c78"
     },
     {
       "diagram": "flowchart",
@@ -201,7 +213,7 @@
         "parity",
         "parity-root"
       ],
-      "local_svg_signature_sha256": "5b586c472777c22eec93e4e49a878b93a8b15e2d15fc0e843d6b7ecff0fcda23",
+      "local_svg_signature_sha256": "02478991b8dfe338e3fc783655649de6e435ef84f6504453a183150c24e508dd",
       "input_sha256": "4ba55d5793d9470302ffb39389f8d2f66b52cfbfc0bf81182948f4e9ceb4554d",
       "upstream_svg_sha256": "f7b88cd6cd201ec5767ae8eb5ca30ea5739b6798478ae43c253203b489872fbb"
     },
@@ -224,8 +236,8 @@
         "parity-root"
       ],
       "input_sha256": "12ea63c20f4c332b0d713254fae3b9f0b7e0501b26300d67b8f36371fb55220c",
-      "upstream_svg_sha256": "342261dc3395f81bc202f647c437fd8d0445eb08f2db1f80aa35985756d18881",
-      "local_svg_signature_sha256": "b31618363355408dd83119cdbbb30b025e64afed278ff236c0bf87f540cadac9"
+      "upstream_svg_sha256": "0d8ddf4a0ae3cb10efdbfd64781184f1c04ff6937e8419039afaafbdcaa76eb8",
+      "local_svg_signature_sha256": "a73dbb2e55089e0326e5dd34c3fd73b6423e75a8afce87a54d62a2cdcc530e13"
     },
     {
       "diagram": "flowchart",
@@ -235,8 +247,8 @@
         "parity-root"
       ],
       "input_sha256": "732173c18b52c7d0252b9ecdf925726e3d043008aa00d2c22d2f6532a6197f8c",
-      "upstream_svg_sha256": "696f2a58e02b7cab0d6d29de17c9a911451de96bb0f097f101e930c838a18cf4",
-      "local_svg_signature_sha256": "b967e96f4f0cecc634520a711d7bc7d671d305698780d40a8fa1d269eb8eefd1"
+      "upstream_svg_sha256": "14274c49f5129362a5b04e283bfd0c371626ac327c8c3cd14a0484bdcb09a664",
+      "local_svg_signature_sha256": "47ec220747bd49095af0c75fcb07faede917dd68e9facc48c95d96396327edf2"
     },
     {
       "diagram": "flowchart",
@@ -686,8 +698,8 @@
         "parity-root"
       ],
       "input_sha256": "f3e6d0f86df85611c1a3176374043c66805de9e70ce259601d90e00e51d644d0",
-      "upstream_svg_sha256": "d8cb733ccb75f22894a5053c21511ca412ad9e6af9486439e1bd26f21b1d7f6e",
-      "local_svg_signature_sha256": "0d98b56ee0329dcaaba48ae2695b606185a17d1ae6de6743955a2590724b949b"
+      "upstream_svg_sha256": "2ae6a91807675dc13095e256de621fa6b66a4bae5828d4d57f5f7c5a31e7fc7b",
+      "local_svg_signature_sha256": "97121f61e821d3cc1bd26e1cde05bda864748f152d4ce4fb3ef565c2d76da812"
     },
     {
       "diagram": "flowchart",
@@ -697,8 +709,8 @@
         "parity-root"
       ],
       "input_sha256": "8fc3ac6f51e60dcaa9857187153448556475b420972298456f01b11983dd0048",
-      "upstream_svg_sha256": "5d32216aaf15e77c81a2cf7c1e43eab32851600a75dba88b0417e95dad8014f3",
-      "local_svg_signature_sha256": "ae445e82abbbed328fe55dbc966771a3793ca9892529c16453781bbdaefc57fa"
+      "upstream_svg_sha256": "4735a7c591906a155e2540d2e219754512a726f1d3a4a05f14c972cd5ca5d090",
+      "local_svg_signature_sha256": "7920015d49ff34c351330a56dba831ae55b3245c8ecddfa5ce5455a5c1abb982"
     },
     {
       "diagram": "flowchart",
@@ -819,15 +831,99 @@
     },
     {
       "diagram": "sequence",
-      "fixture": "stress_br_in_messages_notes_011",
+      "fixture": "upstream_critical_without_options_spec",
       "modes": [
         "structure",
         "parity",
         "parity-root"
       ],
-      "local_svg_signature_sha256": "cae2b354a4f8480b3ec793cddea4e133f5745dafe5275d6887fc30526c071f43",
-      "input_sha256": "02d97bafbbd4350a1cb9fb350a583a9ff43f0f72334efadee1cce8364634c236",
-      "upstream_svg_sha256": "7893260dcf869722b33db3d9a73bd72aea0675124af3d37ff3e971dbf465043d"
+      "local_svg_signature_sha256": "44fa327e1b1073c4971bc887367609ab35d728658bb697df01a832bbd5b6c4dc",
+      "input_sha256": "61cbad20fec14f50b7498b51b9cc1085ef8ed49bca5a30f40431aff1c10d3858",
+      "upstream_svg_sha256": "9e8553f2d31c610a8e8f36ab8f47ba450cae4120d65b990002d8ca5bc1f3d35e"
+    },
+    {
+      "diagram": "sequence",
+      "fixture": "upstream_cypress_sequencediagram_spec_should_handle_line_breaks_and_wrap_annotations_006",
+      "modes": [
+        "structure",
+        "parity",
+        "parity-root"
+      ],
+      "local_svg_signature_sha256": "f11c1a73789c70921e74b55c93839b910f783f7a3602a54a5d158f19b1894134",
+      "input_sha256": "80463b7c6e92c620082f5f793d7bafba919980d1037e4b4b631cf6ab15434c46",
+      "upstream_svg_sha256": "7d37da3bf5ef96759d64c12adbbb5eef7402f8a37d86e259e8f7d9a8a4f4a998"
+    },
+    {
+      "diagram": "sequence",
+      "fixture": "upstream_cypress_sequencediagram_spec_should_render_a_sequence_diagram_with_actor_creation_and_destruc_010",
+      "modes": [
+        "structure",
+        "parity",
+        "parity-root"
+      ],
+      "local_svg_signature_sha256": "ce3f49da4aea1e822c7e0d3120e6702f5513632ef49ef2788c7b23174366816b",
+      "input_sha256": "497091b33d552075bae534efc0ecedd43ab2c4b816d0a495cb8b9443dd1714b4",
+      "upstream_svg_sha256": "85819f7490ecd425f0ecd6c9951fe4cf0bc42aa82a097cb41ffef485d7cbba79"
+    },
+    {
+      "diagram": "sequence",
+      "fixture": "upstream_cypress_sequencediagram_spec_should_render_a_single_and_nested_opt_with_long_test_overflowing_037",
+      "modes": [
+        "structure",
+        "parity",
+        "parity-root"
+      ],
+      "local_svg_signature_sha256": "2b1502e4a371b447b8ca889f0a4b214f4913ca00b469b7c5852dc0aefc820f7b",
+      "input_sha256": "8a75a922fcb23a077384fd2f1ae4fa4832e6be7d06fc900d4f6dac3af0ebf4f4",
+      "upstream_svg_sha256": "e30516e2a8cc11dab9e612925995d9fb5b4e126e3129b5158e5a92ae3830bc35"
+    },
+    {
+      "diagram": "sequence",
+      "fixture": "upstream_cypress_sequencediagram_spec_should_render_a_single_and_nested_opt_with_long_test_wrapping_038",
+      "modes": [
+        "structure",
+        "parity",
+        "parity-root"
+      ],
+      "local_svg_signature_sha256": "43479aac92bcbf590a8c3be7fb9380417ea2e79d3563f37b03b30c359c6b48b7",
+      "input_sha256": "a3c91addac8dcb96fea711dcd79f0e24350d3c208f17fc505455b2b78e495988",
+      "upstream_svg_sha256": "a82e5fe424d9a0c7b8abe0e6ec26c12f23fe4c220e8f3f06fd37f7406ad33b70"
+    },
+    {
+      "diagram": "sequence",
+      "fixture": "upstream_cypress_sequencediagram_spec_should_render_long_messages_wrapped_inline_from_an_actor_to_the_033",
+      "modes": [
+        "structure",
+        "parity",
+        "parity-root"
+      ],
+      "local_svg_signature_sha256": "abb83bc69a97a73d56283258143f24695c2862811fe87ecfcc8872ee60976ee9",
+      "input_sha256": "4179ccaa504cf4ce0f7b9e37aca452d2864fc2fea4d52601eeb144d10099f010",
+      "upstream_svg_sha256": "f6a2686fa36e784bb1188659a150de48a2d272673556a9a2f80c41e73576fac5"
+    },
+    {
+      "diagram": "sequence",
+      "fixture": "upstream_cypress_sequencediagram_spec_should_render_long_messages_wrapped_inline_from_an_actor_to_the_035",
+      "modes": [
+        "structure",
+        "parity",
+        "parity-root"
+      ],
+      "local_svg_signature_sha256": "94762c80f16bae70d73e0b32e8d1e207f5a351c774517d9d6df992dc12987dff",
+      "input_sha256": "d0e78dad116bbeec38aa59f8d1285c12c1f85d5337387f8d6b90dc40f7012abd",
+      "upstream_svg_sha256": "03a2890453c888d317e29b913c54ba048f827ef57cfb079d3693edc6e1f3fdf4"
+    },
+    {
+      "diagram": "sequence",
+      "fixture": "upstream_cypress_sequencediagram_spec_should_render_long_notes_wrapped_inline_left_of_actor_026",
+      "modes": [
+        "structure",
+        "parity",
+        "parity-root"
+      ],
+      "local_svg_signature_sha256": "b49dbf6f7883a715d1328b3252969808618d06a0ede6cd76909cc99afb969498",
+      "input_sha256": "fced5e62758e43deb492eafe449dfbe663a7401e0134b918a6b1a9701f6059fa",
+      "upstream_svg_sha256": "4a1bd176432f16c97b7dfc888fe4acf744ab4d80f3706c0707bbe90fb1dcf8b7"
     },
     {
       "diagram": "sequence",
@@ -839,7 +935,31 @@
       ],
       "local_svg_signature_sha256": "eac65b2d9e6005e6ac1672ba8032000c6e673bd59167fdc0c55ed41cbc741bde",
       "input_sha256": "dbfac1e82d5777ba58a4e101d1f71f3f661deec5a3ad99318d754ab3e1d1ccfc",
-      "upstream_svg_sha256": "6f304c713e3082650340ab7898f0f2f91e0cb1f80444e95acdf663ddbdf7a87d"
+      "upstream_svg_sha256": "2da9a241a666af60c9174b412e08c8f43378e513d10f40fb39071ef58f55d4b1"
+    },
+    {
+      "diagram": "sequence",
+      "fixture": "upstream_cypress_sequencediagram_spec_should_render_with_an_init_directive_049",
+      "modes": [
+        "structure",
+        "parity",
+        "parity-root"
+      ],
+      "local_svg_signature_sha256": "b62b50531f7d4ab3d9476c5665e211c92d36ef9fa0faca9acdfa45f38a76e797",
+      "input_sha256": "038c8646b1c26321ba38844d40e9de92fea4b700e3e10e89fc43de6ea878b373",
+      "upstream_svg_sha256": "e08a558c975184e6bf7b40f7f6d78483adeb83796138bf7b7bafe673cfcc2175"
+    },
+    {
+      "diagram": "sequence",
+      "fixture": "upstream_cypress_sequencediagram_spec_should_render_with_wrapping_enabled_048",
+      "modes": [
+        "structure",
+        "parity",
+        "parity-root"
+      ],
+      "local_svg_signature_sha256": "27a4cee988a9c6c21580a244dcc916ab5dcce5799a1158d6a15fac3559c4228d",
+      "input_sha256": "f93593ed1f90823b3a2c7b0d8e1d9a48d07ca7e670528b40fbab1f26ed288a65",
+      "upstream_svg_sha256": "9237a1f0d90a91563ff1882daa6aeb9ee7b6323fd79a377fa9bdc6161cbd40f6"
     },
     {
       "diagram": "sequence",
@@ -851,7 +971,43 @@
       ],
       "local_svg_signature_sha256": "1cb7d4d907bd6a29f3b1909ed35c57ea1db421161d28a2fd4760a2ac3f9f3068",
       "input_sha256": "81a3572b4d5826560cc4dada3f99785c18731cc69c312933d808627ca077fbd5",
-      "upstream_svg_sha256": "8f983d6f25c1a244fea73fffaa67afc48202779093b18bb82ffc8988cc46fa46"
+      "upstream_svg_sha256": "ddbe7958c269b9e614d366ea689363f7c8a3d245b9bda84e7363b0bbf39b51a4"
+    },
+    {
+      "diagram": "sequence",
+      "fixture": "upstream_cypress_sequencediagram_v2_spec_should_render_wrapped_long_messages_from_actor_to_database_028",
+      "modes": [
+        "structure",
+        "parity",
+        "parity-root"
+      ],
+      "local_svg_signature_sha256": "5b5fb40e46c540a37b4f897b727aa71c99dae63acfbd7f9e2009746b98cdecb3",
+      "input_sha256": "1d17f11b01d43af7dde262e4090b4072ab9bc66b485f1a41c0c2580183667719",
+      "upstream_svg_sha256": "88c9a586442612a61800890fb77efa8ea492019a2051033278da5dac9b05f08d"
+    },
+    {
+      "diagram": "sequence",
+      "fixture": "upstream_cypress_sequencediagram_v2_spec_should_render_wrapped_long_messages_from_control_to_entity_026",
+      "modes": [
+        "structure",
+        "parity",
+        "parity-root"
+      ],
+      "local_svg_signature_sha256": "b0ad13a5a97a254022ef0fb07d27bf44512160478ee5afe61c1d58d719a95074",
+      "input_sha256": "83aca2a33b848ec5526133c9ef53ece8e16abbae84896841c9a862fc4e679026",
+      "upstream_svg_sha256": "9be52cfffd9386ded1b9fc5eda053ca47dd106596ef07a0408c30b0234ffafdd"
+    },
+    {
+      "diagram": "sequence",
+      "fixture": "upstream_cypress_sequencediagram_v2_spec_should_render_wrapped_long_notes_left_of_control_019",
+      "modes": [
+        "structure",
+        "parity",
+        "parity-root"
+      ],
+      "local_svg_signature_sha256": "fecb00bd034c45bb87bd90fc8d661162fed9684735d9e3707709f7d9210d8a7c",
+      "input_sha256": "2b3609a9efefe473a7f78932a6346cd2fa4ddba7d1aa0d4a7ce55c77e408d202",
+      "upstream_svg_sha256": "c5f24a209b0402b5660cba3a77895ea1a8cbc671408d7fe13f3338bd9b38f304"
     },
     {
       "diagram": "sequence",
@@ -863,18 +1019,91 @@
       ],
       "local_svg_signature_sha256": "3bdeb83030b9a5d17fd22b605dfef5ff453a4a3b4c983668507841b5e6a17a26",
       "input_sha256": "ae76484070eab54712fbbca877233ed9fbe5a4b7cc2a59018dd00b261f10ebe9",
-      "upstream_svg_sha256": "771a56ed6995aa793561e8b781872c926a585c6c952128cf1d76943d4fc146b8"
+      "upstream_svg_sha256": "81a1a54ad5410d3e462b2f55ced46457f13e6642bdefbb8c3e77783e4fccd8a2"
     },
     {
-      "diagram": "state",
-      "fixture": "stress_state_cross_composite_transitions_007",
+      "diagram": "sequence",
+      "fixture": "upstream_docs_directives_changing_sequence_diagram_config_via_directive_016",
       "modes": [
+        "structure",
         "parity",
         "parity-root"
       ],
-      "input_sha256": "09677ae1afb244aa665cf712ce2a8a2c23350972fb220ff3b70f95b395ab9b4a",
-      "upstream_svg_sha256": "ec6cb8d3413e5e4d5714f93bf3793c14bb0858089e3476ac5f99879ec0d8cb26",
-      "local_svg_signature_sha256": "c32cb18e77d38ee54baa5f0b4e42a64bdf10c473caf9c21cf6b1f1f3f1cfc4d8"
+      "local_svg_signature_sha256": "379b59dd96d95f14400a23a3bf38fd6073693fe77ca767b8fa23ba444b0b8b34",
+      "input_sha256": "a481990f0eeb8f537d6e23f8c69ac6130d7d5c182cf175a028a060732669d3a5",
+      "upstream_svg_sha256": "81db73bf64ceeb3ce457e572dddf1b6026592d0f2ca36122e95ab36484b5093c"
+    },
+    {
+      "diagram": "sequence",
+      "fixture": "upstream_docs_sequencediagram_critical_region_059",
+      "modes": [
+        "structure",
+        "parity",
+        "parity-root"
+      ],
+      "local_svg_signature_sha256": "f73582e4e88ac20f3742ba0b765a7889565e5ed6b975fcdeb7844c0aa797acf3",
+      "input_sha256": "a74c5de6ef55136d555087cde5874e57a2742175012a00e31ff405b59157f9fe",
+      "upstream_svg_sha256": "95824e1f451bbd1edf79866be3f8759223a2c6e5c13a0f383c4e687c5aef4830"
+    },
+    {
+      "diagram": "sequence",
+      "fixture": "upstream_html_demos_sequence_sequence_diagram_demos_001",
+      "modes": [
+        "structure",
+        "parity",
+        "parity-root"
+      ],
+      "local_svg_signature_sha256": "f53fa5961d28ff1ddd209023d3e01f6cfa5290b200a1d0d3eafd1de89b275150",
+      "input_sha256": "52e260a3b23e4d9c3f93b41ffa99eba1a37c8a6ac9cb2934b29028ba97645073",
+      "upstream_svg_sha256": "84480feaa99204ef41c7efffd43f4395f2a814b170208b79f4c30bdd3d1444a3"
+    },
+    {
+      "diagram": "sequence",
+      "fixture": "upstream_pkgtests_sequencediagram_spec_087",
+      "modes": [
+        "structure",
+        "parity",
+        "parity-root"
+      ],
+      "local_svg_signature_sha256": "151eb733de53a8b3528a24889f5c9f4472583c68895d0166265580ac4d1053a3",
+      "input_sha256": "1c0d2c8359e4fcf35227839c8127197dab6c6caaa51747926bd2c9a5e765cfd6",
+      "upstream_svg_sha256": "c98fa804fd8801d195ea0c1347e4cb46bcb3ff6579501691ee2041a081021420"
+    },
+    {
+      "diagram": "sequence",
+      "fixture": "upstream_pkgtests_sequencediagram_spec_098",
+      "modes": [
+        "structure",
+        "parity",
+        "parity-root"
+      ],
+      "local_svg_signature_sha256": "938d7a44581719a20cceca4e17a380318c5318704cffaf335ba0cfd907096403",
+      "input_sha256": "37d773aa813c65f9167b36d2408bff97c17500e931dfec9cccd17e7f6b6e937c",
+      "upstream_svg_sha256": "4fc7e17c5013dd1c2e08b4b64fa23d6db417c0d616a8f59c8492e15f33b2e71d"
+    },
+    {
+      "diagram": "sequence",
+      "fixture": "upstream_pkgtests_sequencediagram_spec_099",
+      "modes": [
+        "structure",
+        "parity",
+        "parity-root"
+      ],
+      "local_svg_signature_sha256": "fb7fc068bc2f86d74b6acc8a2172dbb15d19e5a3bdac502fa3f1f63bbe183fb0",
+      "input_sha256": "fc092ee1a0ecc6fd77470b99ccce5e239999e570b82a82675aa85e3f07e8955b",
+      "upstream_svg_sha256": "f5adee270e6a62e959f85fc1ed573773f44cdf5fa70f363e2940b6b7d16aef11"
+    },
+    {
+      "diagram": "sequence",
+      "fixture": "upstream_pkgtests_sequencediagram_spec_100",
+      "modes": [
+        "structure",
+        "parity",
+        "parity-root"
+      ],
+      "local_svg_signature_sha256": "186045d68e35a901122acb86d44f681328a6722d810c8379d59bce6e79a066b7",
+      "input_sha256": "6cda92ea357ba0a0df257f3db8abb153081c3951adadf4c70b8624710a0d6f98",
+      "upstream_svg_sha256": "c3e97cd4dc24d7b69f7a1315ac9c35cfdd4930d2f5800af5f49a9d75202c5a64"
     },
     {
       "diagram": "state",
@@ -917,8 +1146,8 @@
         "parity-root"
       ],
       "input_sha256": "e7acd9153b05496cb1a0e25148a196abef40251a551c6870130ba64de1613ad5",
-      "upstream_svg_sha256": "77f0824796a0c788dcaa8862daa92689760e037937756bca00bcfef97fa4e309",
-      "local_svg_signature_sha256": "24c39f7f0cf6046640a63e8162d5ac6c1434381e92052985516b98282f5b44ff"
+      "upstream_svg_sha256": "268770468c9a09a01c7801232a63435bcf4988cdbc3b7fb5c7b3b1dcd78ba107",
+      "local_svg_signature_sha256": "e876660fcba7e50f2f980b7488048f15b18f8516d90a2033758844e6c8f76d10"
     },
     {
       "diagram": "state",
@@ -1200,6 +1429,18 @@
       "local_svg_signature_sha256": "25615680315c5ec93211e6a1d6bfa192cfe99cbbb27c00c9cdfcc5ccd039c94f",
       "input_sha256": "ccc5a785262d9396d52ab87d688b51c8a8eebd240d1dbf7f00c7a60428b91860",
       "upstream_svg_sha256": "633630525d4b118d3fce93eef00384ad4390e4bedbe6eeda0006f0b13d8bc032"
+    },
+    {
+      "diagram": "timeline",
+      "fixture": "upstream_cypress_timeline_spec_12_should_render_timeline_with_proper_vertical_line_lengths_for_012",
+      "modes": [
+        "structure",
+        "parity",
+        "parity-root"
+      ],
+      "local_svg_signature_sha256": "b79bfe8406721a2efb6e70b4d444783b54cfc6fca64389a1e2f0a73aaa3bf56c",
+      "input_sha256": "913f05bbfa2bfba5177aeb5b34b64e40720bcd3e03617d0fd9d19aa9f8ed6bb9",
+      "upstream_svg_sha256": "20993908bb1f4032c6d01ece895b9dec5db785f12abd56e8647e8b86be57a708"
     },
     {
       "diagram": "timeline",

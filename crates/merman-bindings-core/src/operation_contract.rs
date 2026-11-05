@@ -197,7 +197,7 @@ const LAYOUT_ADAPTATION_FIELDS: &[BindingJsonFieldContract] = &[
     field("overflowed", "boolean", true, None, false),
 ];
 
-const THEME_EXECUTION_EVIDENCE_V1_FIELDS: &[BindingJsonFieldContract] = &[
+const THEME_EXECUTION_EVIDENCE_V2_FIELDS: &[BindingJsonFieldContract] = &[
     field("version", "unsigned-integer", true, Some(32), false),
     field("family_id", "string", true, None, true),
     field("theme_status", "string", true, None, true),
@@ -206,13 +206,14 @@ const THEME_EXECUTION_EVIDENCE_V1_FIELDS: &[BindingJsonFieldContract] = &[
     field("target_status", "string", true, None, true),
     field("target_reason_ids", "array", true, None, true),
     field("font_source", "string", true, None, true),
+    field("materialized_theme", "string-or-null", true, None, false),
     field("diagnostics", "array", false, None, true),
 ];
 
 const THEME_EXECUTION_EVIDENCE_VERSIONS: &[BindingThemeExecutionEvidenceContract] =
     &[BindingThemeExecutionEvidenceContract {
         version: BINDING_THEME_EXECUTION_EVIDENCE_SCHEMA_VERSION,
-        fields: THEME_EXECUTION_EVIDENCE_V1_FIELDS,
+        fields: THEME_EXECUTION_EVIDENCE_V2_FIELDS,
         max_id_utf8_bytes: BINDING_THEME_EXECUTION_EVIDENCE_MAX_ID_UTF8_BYTES,
         max_target_reason_ids: BINDING_THEME_EXECUTION_EVIDENCE_MAX_TARGET_REASON_IDS,
         target_reason_ids_unique: true,
@@ -519,13 +520,15 @@ mod tests {
         assert_eq!(byte_length.integer_width_bits(), Some(64));
         assert_eq!(contract.output_plans().len(), 3);
         let evidence = &contract.theme_execution_evidence_versions()[0];
-        assert_eq!(evidence.version(), 1);
+        assert_eq!(evidence.version(), 2);
         assert_eq!(evidence.max_id_utf8_bytes(), 128);
         assert_eq!(evidence.max_target_reason_ids(), 32);
         assert!(evidence.target_reason_ids_unique());
-        assert_eq!(evidence.fields().len(), 9);
-        assert_eq!(evidence.fields()[8].name(), "diagnostics");
-        assert!(!evidence.fields()[8].required());
+        assert_eq!(evidence.fields().len(), 10);
+        assert_eq!(evidence.fields()[8].name(), "materialized_theme");
+        assert!(evidence.fields()[8].required());
+        assert_eq!(evidence.fields()[9].name(), "diagnostics");
+        assert!(!evidence.fields()[9].required());
         assert_eq!(evidence.fields()[1].name(), "family_id");
         assert_eq!(evidence.fields()[2].name(), "theme_status");
         let ascii = contract
@@ -598,7 +601,7 @@ mod tests {
         assert_eq!(contract["contract_schema_version"], 1);
         assert_eq!(
             contract["theme_execution_evidence_versions"][0]["version"],
-            1
+            2
         );
         assert_eq!(
             contract["theme_execution_evidence_versions"][0]["max_id_utf8_bytes"],

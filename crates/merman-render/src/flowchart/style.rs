@@ -264,6 +264,30 @@ fn flowchart_text_style_resolver_for_class_names<'a, 'b, 's>(
     resolver
 }
 
+pub(super) fn flowchart_declared_font_facets(
+    class_defs: &IndexMap<String, Vec<String>>,
+    classes: &[String],
+    inline_styles: &[String],
+    node_defaults: bool,
+) -> [bool; 2] {
+    let base = TextStyle::default();
+    let class_names = if node_defaults {
+        flowchart_effective_node_class_names(class_defs, classes)
+    } else {
+        classes.iter().map(String::as_str).collect()
+    };
+    let resolver = flowchart_text_style_resolver_for_class_names(
+        &base,
+        class_defs,
+        class_names,
+        inline_styles,
+    );
+    [
+        resolver.typography[0].is_some(),
+        resolver.typography[1].is_some(),
+    ]
+}
+
 pub(crate) fn flowchart_effective_node_class_names<'a>(
     class_defs: &'a IndexMap<String, Vec<String>>,
     classes: &'a [String],

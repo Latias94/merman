@@ -84,8 +84,15 @@ pub(super) fn detect_init(
     registry: &DetectorRegistry,
 ) -> Result<MermaidConfig> {
     let control = OperationControl::new();
-    detect_init_controlled(directives, input, &registry_detector(registry), &control)
-        .expect("a private parse control cannot be cancelled")
+    detect_init_controlled(
+        directives,
+        input,
+        &registry_detector(registry),
+        #[cfg(feature = "editor-facts")]
+        &mut super::SourceAppearanceCapture::default(),
+        &control,
+    )
+    .expect("a private parse control cannot be cancelled")
 }
 
 #[cfg(test)]

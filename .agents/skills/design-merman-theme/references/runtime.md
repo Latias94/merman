@@ -70,19 +70,21 @@ node .agents/skills/design-merman-theme/scripts/theme-tool.mjs render output/the
   not rewrite them or force a different look. Read the metadata sidecar after every changed render.
 
 Render options use Options JSON 3 and must omit `theme`, which comes from its own file. For a new
-design explicitly intended for Classic Flowchart shadows, an example is:
+Flowchart preview with SVG text and the default Neo look, an example is:
 
 ```json
 {
   "version": 3,
-  "site_config": { "htmlLabels": false, "flowchart": { "look": "classic" } },
+  "site_config": { "htmlLabels": false },
   "svg": { "pipeline": "parity" }
 }
 ```
 
 Leave the original options unchanged for comparisons and user-supplied diagrams. Recipe `mermaid`
 holds only `theme`, `dark_mode`, and scalar `variables`; `flowchart.look` belongs to these separate
-options or source frontmatter. Deliver required options and explain them in the design note.
+options or source frontmatter. Classic and Neo both support basic-shape shadows; use
+[authoring.md](authoring.md) for shape and hand-drawn conditions. Deliver required options and
+explain them in the design note.
 
 The helper writes fresh files by default. Use new revision names or `--force` when overwriting
 outputs is intentional; inputs are protected even with `--force`. It returns structured operation
@@ -91,13 +93,14 @@ target evidence under BestEffort; the sidecar, not the process exit alone, expla
 
 ## Use the result
 
-Import the standalone recipe through Playground's Theme → Import JSON, preview it, then Apply.
+Import the standalone recipe through Playground's Appearance → Import JSON, then choose
+Use imported theme after validation. Use in project provides adoption code and companion files.
 Native CLI can render it with:
 
 ```text
-merman-cli render diagram.mmd --theme-file theme.json -o diagram.svg
+merman-cli render diagram.mmd --theme-file theme.json --theme-report theme-result.json -o diagram.svg
 ```
 
-The CLI currently renders recipes but does not expose the theme export/materialize/support
-subcommands or the same-render metadata sidecar; the helper uses the Node engine for those jobs.
+`--theme-report` writes the theme evidence and target outcome from that same native render.
+Use the Node helper for export/materialize/support operations and full operation metadata.
 Native binary export must be tested separately when PNG/PDF is required.

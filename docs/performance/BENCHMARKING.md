@@ -839,8 +839,7 @@ change against the same Merman base/head public operation before accepting it.
 
 `tools/bench/mermaid_js_bench.cjs` supplies the Mermaid.js side through the pinned
 `tools/mermaid-cli` dependencies for the cross-transport native diagnostic lane above; it is not the
-web-to-web admission lane. Interactive visual comparison is documented in
-`docs/workstreams/web-wasm-playground/MERMAID_COMPARE_MODE.md`.
+web-to-web admission lane.
 
 ## Stage and render diagnostics
 

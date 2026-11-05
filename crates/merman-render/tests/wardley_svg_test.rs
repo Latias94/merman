@@ -4,9 +4,10 @@ use merman_core::{MermaidEngine, ParseOptions};
 use merman_render::DiagramFamilyId;
 use merman_render::LayoutOptions;
 use merman_render::diagram_theme::{
-    CanvasPaint, DiagramTheme, DiagramThemeCompiler, DiagramThemeSpec, FontStack,
-    ThemePortabilityRequirement, ThemePreset, ThemeRule, ThemeRuleSet, ThemeStylePatch,
-    ThemeTarget, ThemeTextStyle, TypographySpec,
+    CanvasPaint, DiagramTheme, DiagramThemeCompiler, DiagramThemeSpec, FontStack, OrdinalPalette,
+    OrdinalSelector, Specified, ThemeColorValue, ThemePortabilityRequirement, ThemePreset,
+    ThemeRule, ThemeRuleSet, ThemeStylePatch, ThemeTarget, ThemeTextStyle, ThemeVariant,
+    TypographySpec,
 };
 use merman_render::environment::{
     MeasurementProfileId, RenderEnvironment, TextMeasurementPolicy, TextMeasurementProfile,
@@ -180,11 +181,21 @@ const WARDLEY_ANCHOR_SOURCE: &str = concat!(
 
 #[test]
 fn wardley_anchor_labels_follow_pure_host_presets() {
-    for (preset, expected, expected_evolution) in [
-        (ThemePreset::EditorLight, "#0f172a", "#dc3545"),
-        (ThemePreset::EditorDark, "#e5e7eb", "#ff6b6b"),
+    for (preset, expected) in [
+        (ThemePreset::EditorLight, "#0f172a"),
+        (ThemePreset::EditorDark, "#e5e7eb"),
     ] {
         let theme = DiagramThemeCompiler::new().compile_preset(preset).unwrap();
+        let recipe =
+            serde_json::to_value(DiagramThemeCompiler::new().export_preset(preset).unwrap())
+                .unwrap();
+        let expected_evolution = ThemeColorValue::parse(
+            recipe["design"]["tokens"]["line"]["value"]
+                .as_str()
+                .unwrap(),
+        )
+        .unwrap()
+        .as_css();
         let (_, rendered) = try_render_wardley_with_theme(
             WARDLEY_ANCHOR_SOURCE,
             &theme,
@@ -214,7 +225,7 @@ fn wardley_anchor_labels_follow_pure_host_presets() {
         }
         assert_eq!(
             element_with_class(&document, "line", "wardley-trend").attribute("stroke"),
-            Some(expected_evolution),
+            Some(expected_evolution.as_str()),
         );
         drop(document);
         let evidence =
@@ -1115,6 +1126,581 @@ fn wardley_host_text_preserves_arrow_foreground_background_pairs() {
             assert_eq!(path.attribute("fill"), Some("white"));
             assert_eq!(label.attribute("fill"), Some("#333"));
         }
+    }
+}
+
+fn wardley_paint_theme(styles: ThemeRuleSet) -> DiagramTheme {
+    DiagramThemeCompiler::new()
+        .compile(DiagramThemeSpec::new().with_styles(styles))
+        .unwrap()
+}
+
+#[test]
+fn wardley_compiled_paints_reach_components_title_axes_links_and_markers() {
+    let mut styles = ThemeRuleSet::default();
+    for (target, fill, stroke) in [
+        (ThemeTarget::Node, Some("#123456"), Some("#654321")),
+        (ThemeTarget::NodeLabel, Some("#112233"), None),
+        (ThemeTarget::Title, Some("#223344"), None),
+        (ThemeTarget::Axis, Some("#334455"), Some("#445566")),
+        (ThemeTarget::Edge, None, Some("#556677")),
+        (ThemeTarget::EdgeLabel, Some("#667788"), None),
+        (ThemeTarget::Marker, Some("#778899"), Some("#8899aa")),
+    ] {
+        let mut patch = ThemeStylePatch::default();
+        if let Some(fill) = fill {
+            patch = patch.with_fill(CanvasPaint::solid(fill).unwrap());
+        }
+        if let Some(stroke) = stroke {
+            patch = patch.with_stroke(CanvasPaint::solid(stroke).unwrap());
+        }
+        styles =
+            styles.with_rule(ThemeRule::new(target, patch).with_variant(ThemeVariant::Default));
+    }
+    let theme = wardley_paint_theme(styles);
+    let (_, rendered) = try_render_wardley_with_theme(
+        WARDLEY_COMPLETE_FEATURE_SOURCE,
+        &theme,
+        MermaidEngine::new(),
+        &portable_wardley_environment(),
+        "wardley-surfaces",
+    )
+    .unwrap();
+    let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+    let components = element_with_class(&document, "g", "wardley-nodes");
+    for shape in components
+        .descendants()
+        .filter(|node| node.has_tag_name("circle") || node.has_tag_name("rect"))
+    {
+        assert_eq!(shape.attribute("fill"), Some("#123456"));
+        assert_eq!(shape.attribute("stroke"), Some("#654321"));
+    }
+    for (class, expected) in [
+        ("wardley-title", "#223344"),
+        ("wardley-axis-label", "#334455"),
+        ("wardley-node-label", "#112233"),
+        ("wardley-link-label", "#667788"),
+    ] {
+        assert_eq!(
+            element_with_class(&document, "text", class).attribute("fill"),
+            Some(expected),
+            "{class}"
+        );
+    }
+    let axes = element_with_class(&document, "g", "wardley-axes");
+    for axis in axes.children().filter(|node| node.has_tag_name("line")) {
+        assert_eq!(axis.attribute("stroke"), Some("#445566"));
+    }
+    for class in [
+        "wardley-link",
+        "wardley-trend",
+        "wardley-pipeline-evolution-link",
+    ] {
+        assert_eq!(
+            element_with_class(&document, "line", class).attribute("stroke"),
+            Some("#556677"),
+            "{class}"
+        );
+    }
+    for marker in document
+        .descendants()
+        .filter(|node| node.has_tag_name("marker"))
+    {
+        let path = marker
+            .children()
+            .find(|node| node.has_tag_name("path"))
+            .unwrap();
+        assert_eq!(path.attribute("fill"), Some("#778899"));
+        assert_eq!(path.attribute("stroke"), Some("#8899aa"));
+    }
+    let evidence = merman_render::__private::family_evidence(rendered.into_completion().report());
+    assert_eq!(evidence.theme_residual_count(), 0);
+    assert_eq!(evidence.accounted_count(), evidence.required_count());
+}
+
+#[test]
+fn wardley_component_palette_follows_semantic_node_order_including_hidden_anchor_bodies() {
+    let theme = wardley_paint_theme(
+        ThemeRuleSet::default().with_ordinal_palette(
+            ThemeTarget::Node,
+            OrdinalPalette::new([
+                ThemeColorValue::parse("#112233").unwrap(),
+                ThemeColorValue::parse("#445566").unwrap(),
+            ])
+            .unwrap(),
+        ),
+    );
+    let source = "wardley-beta\nanchor Customer [0.9, 0.9]\ncomponent API [0.6, 0.4]\ncomponent Database [0.3, 0.7]\n";
+    let (_, rendered) = try_render_wardley_with_theme(
+        source,
+        &theme,
+        MermaidEngine::new(),
+        &portable_wardley_environment(),
+        "wardley-palette",
+    )
+    .unwrap();
+    let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+    let groups = document
+        .descendants()
+        .filter(|node| node.has_tag_name("g") && has_class(*node, "wardley-node"))
+        .collect::<Vec<_>>();
+    assert_eq!(groups.len(), 3);
+    assert!(
+        groups[0]
+            .children()
+            .all(|node| !node.has_tag_name("circle"))
+    );
+    for (group, expected) in groups[1..].iter().zip(["#445566", "#112233"]) {
+        let circle = group
+            .children()
+            .find(|node| node.has_tag_name("circle"))
+            .unwrap();
+        assert_eq!(circle.attribute("fill"), Some(expected));
+    }
+}
+
+#[test]
+fn wardley_transparent_and_clear_restore_independent_family_paint_channels() {
+    let source = "wardley-beta\ntitle Color channels\ncomponent API [0.5, 0.5]\n";
+    let baseline = render_wardley(source, serde_json::json!({}), "wardley-clear");
+    let baseline_document = roxmltree::Document::parse(&baseline).unwrap();
+    let baseline_node = element_with_class(&baseline_document, "g", "wardley-node--component");
+    let baseline_circle = baseline_node
+        .children()
+        .find(|node| node.has_tag_name("circle"))
+        .unwrap();
+    let baseline_title = element_with_class(&baseline_document, "text", "wardley-title");
+    for clear in [false, true] {
+        let mut node_patch = ThemeStylePatch::default();
+        node_patch.paint.fill = if clear {
+            Specified::Clear
+        } else {
+            Specified::Value(CanvasPaint::Transparent)
+        };
+        node_patch.stroke.paint = node_patch.paint.fill.clone();
+        let mut title_patch = ThemeStylePatch::default();
+        title_patch.paint.fill = node_patch.paint.fill.clone();
+        let theme = wardley_paint_theme(
+            ThemeRuleSet::default()
+                .with_rule(ThemeRule::new(
+                    ThemeTarget::Node,
+                    ThemeStylePatch::default().with_fill(CanvasPaint::solid("#aa0000").unwrap()),
+                ))
+                .with_rule(ThemeRule::new(ThemeTarget::Node, node_patch))
+                .with_rule(ThemeRule::new(
+                    ThemeTarget::Text,
+                    ThemeStylePatch::default().with_fill(CanvasPaint::solid("#112233").unwrap()),
+                ))
+                .with_rule(ThemeRule::new(ThemeTarget::Title, title_patch)),
+        );
+        let (_, rendered) = try_render_wardley_with_theme(
+            source,
+            &theme,
+            MermaidEngine::new(),
+            &portable_wardley_environment(),
+            "wardley-clear",
+        )
+        .unwrap();
+        let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+        let group = element_with_class(&document, "g", "wardley-node--component");
+        let circle = group
+            .children()
+            .find(|node| node.has_tag_name("circle"))
+            .unwrap();
+        assert_eq!(
+            circle.attribute("fill"),
+            Some(if clear {
+                baseline_circle.attribute("fill").unwrap()
+            } else {
+                "transparent"
+            })
+        );
+        assert_eq!(
+            circle.attribute("stroke"),
+            Some(if clear {
+                baseline_circle.attribute("stroke").unwrap()
+            } else {
+                "transparent"
+            })
+        );
+        assert_eq!(
+            element_with_class(&document, "text", "wardley-title").attribute("fill"),
+            Some(if clear {
+                baseline_title.attribute("fill").unwrap()
+            } else {
+                "transparent"
+            })
+        );
+        assert_eq!(
+            element_with_class(&document, "text", "wardley-node-label").attribute("fill"),
+            Some("#112233")
+        );
+        assert!(!rendered.svg().contains("#aa0000"));
+    }
+}
+
+#[test]
+fn wardley_source_fill_does_not_claim_the_component_border_or_link_paint() {
+    let theme = wardley_paint_theme(
+        ThemeRuleSet::default()
+            .with_rule(ThemeRule::new(
+                ThemeTarget::Node,
+                ThemeStylePatch::default()
+                    .with_fill(CanvasPaint::solid("#123456").unwrap())
+                    .with_stroke(CanvasPaint::solid("#654321").unwrap()),
+            ))
+            .with_rule(ThemeRule::new(
+                ThemeTarget::Title,
+                ThemeStylePatch::default().with_fill(CanvasPaint::solid("#223344").unwrap()),
+            ))
+            .with_rule(ThemeRule::new(
+                ThemeTarget::Edge,
+                ThemeStylePatch::default().with_stroke(CanvasPaint::solid("#556677").unwrap()),
+            )),
+    );
+    let source = "---\nconfig:\n  themeVariables:\n    wardley:\n      componentFill: '#aabbcc'\n      axisTextColor: '#ddeeff'\n---\nwardley-beta\ntitle Source title\ncomponent API [0.7, 0.4]\ncomponent DB [0.3, 0.6]\nAPI -> DB\n";
+    let (_, rendered) = try_render_wardley_with_theme(
+        source,
+        &theme,
+        MermaidEngine::new(),
+        &portable_wardley_environment(),
+        "wardley-source",
+    )
+    .unwrap();
+    let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+    let group = element_with_class(&document, "g", "wardley-node--component");
+    let circle = group
+        .children()
+        .find(|node| node.has_tag_name("circle"))
+        .unwrap();
+    assert_eq!(circle.attribute("fill"), Some("#aabbcc"));
+    assert_eq!(circle.attribute("stroke"), Some("#654321"));
+    assert_eq!(
+        element_with_class(&document, "text", "wardley-title").attribute("fill"),
+        Some("#ddeeff")
+    );
+    assert_eq!(
+        element_with_class(&document, "line", "wardley-link").attribute("stroke"),
+        Some("#556677")
+    );
+}
+
+#[test]
+fn wardley_absent_title_and_unused_marker_definitions_do_not_apply_paint() {
+    let theme = wardley_paint_theme(
+        ThemeRuleSet::default()
+            .with_rule(ThemeRule::new(
+                ThemeTarget::Title,
+                ThemeStylePatch::default().with_fill(CanvasPaint::solid("#abcdef").unwrap()),
+            ))
+            .with_rule(ThemeRule::new(
+                ThemeTarget::Marker,
+                ThemeStylePatch::default().with_fill(CanvasPaint::solid("#123456").unwrap()),
+            )),
+    );
+    let source = "wardley-beta\ncomponent API [0.5, 0.5]\n";
+    let baseline = render_wardley(source, serde_json::json!({}), "wardley-absent");
+    let (_, rendered) = try_render_wardley_with_theme(
+        source,
+        &theme,
+        MermaidEngine::new(),
+        &portable_wardley_environment(),
+        "wardley-absent",
+    )
+    .unwrap();
+    assert_eq!(rendered.svg().as_bytes(), baseline.as_bytes());
+    let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+    assert!(
+        !document
+            .descendants()
+            .any(|node| has_class(node, "wardley-title"))
+    );
+    assert!(
+        document
+            .descendants()
+            .any(|node| node.has_tag_name("marker"))
+    );
+    let evidence = merman_render::__private::family_evidence(rendered.into_completion().report());
+    assert_eq!(evidence.not_applicable_count(), 2);
+    assert_eq!(evidence.applied_count(), 0);
+}
+
+#[test]
+fn wardley_marker_fallback_keeps_the_actual_edge_ordinal_domain() {
+    for (operator, ordinal, residual) in [
+        ("+>", 2, false),
+        ("+<>", 2, false),
+        ("+<>", 3, false),
+        ("+>", 1, true),
+    ] {
+        let theme = wardley_paint_theme(
+            ThemeRuleSet::default().with_rule(
+                ThemeRule::new(
+                    ThemeTarget::Edge,
+                    ThemeStylePatch::default().with_stroke(CanvasPaint::solid("#123456").unwrap()),
+                )
+                .with_ordinal(OrdinalSelector::exact(ordinal).unwrap()),
+            ),
+        );
+        let source = format!(
+            "wardley-beta\ncomponent API [0.7, 0.4]\ncomponent DB [0.3, 0.6]\nAPI {operator} DB\n"
+        );
+        let (_, baseline) = try_render_wardley_with_theme(
+            &source,
+            &wardley_paint_theme(ThemeRuleSet::default()),
+            MermaidEngine::new(),
+            &RenderEnvironment::deterministic(),
+            "wardley-marker-domain",
+        )
+        .unwrap();
+        let baseline_document = roxmltree::Document::parse(baseline.svg()).unwrap();
+        let (_, rendered) = try_render_wardley_with_theme(
+            &source,
+            &theme,
+            MermaidEngine::new(),
+            &RenderEnvironment::deterministic(),
+            "wardley-marker-domain",
+        )
+        .unwrap();
+        let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+        let links = document
+            .descendants()
+            .filter(|node| node.has_tag_name("line") && has_class(*node, "wardley-link"))
+            .collect::<Vec<_>>();
+        assert_eq!(links.len(), 1);
+        assert_eq!(
+            links[0].attribute("stroke"),
+            element_with_class(&baseline_document, "line", "wardley-link").attribute("stroke"),
+        );
+        assert_eq!(
+            links[0].attribute("marker-end"),
+            Some("url(#link-arrow-end-wardley-marker-domain)")
+        );
+        assert_eq!(
+            links[0].attribute("marker-start"),
+            (operator == "+<>").then_some("url(#link-arrow-start-wardley-marker-domain)")
+        );
+        for suffix in ["end", "start"] {
+            let id = format!("link-arrow-{suffix}-wardley-marker-domain");
+            let marker = document
+                .descendants()
+                .find(|node| node.attribute("id") == Some(id.as_str()))
+                .unwrap();
+            let path = marker
+                .children()
+                .find(|node| node.has_tag_name("path"))
+                .unwrap();
+            let baseline_path = baseline_document
+                .descendants()
+                .find(|node| node.attribute("id") == Some(id.as_str()))
+                .unwrap()
+                .children()
+                .find(|node| node.has_tag_name("path"))
+                .unwrap();
+            assert_eq!(path.attribute("fill"), baseline_path.attribute("fill"));
+        }
+        let evidence =
+            merman_render::__private::family_evidence(rendered.into_completion().report());
+        assert_eq!(evidence.required_count(), 1);
+        assert_eq!(evidence.accounted_count(), 1);
+        assert_eq!(evidence.applied_count(), 0);
+        assert_eq!(evidence.not_applicable_count(), usize::from(!residual));
+        assert_eq!(evidence.theme_residual_count(), usize::from(residual));
+        let strict = try_render_wardley_with_theme(
+            &source,
+            &theme,
+            MermaidEngine::new(),
+            &portable_wardley_environment(),
+            "wardley-marker-domain",
+        );
+        if residual {
+            assert_eq!(
+                strict.err().unwrap().unverified_family_theme(),
+                Some((DiagramFamilyId::WARDLEY, 1))
+            );
+        } else {
+            strict.expect("marker definitions cannot create additional Edge occurrences");
+        }
+    }
+}
+
+#[test]
+fn wardley_trend_marker_fallback_uses_its_edge_after_source_owned_links() {
+    let theme = wardley_paint_theme(
+        ThemeRuleSet::default().with_rule(
+            ThemeRule::new(
+                ThemeTarget::Edge,
+                ThemeStylePatch::default().with_stroke(CanvasPaint::solid("#123456").unwrap()),
+            )
+            .with_ordinal(OrdinalSelector::exact(1).unwrap()),
+        ),
+    );
+    let source = "wardley-beta\ncomponent API [0.7, 0.4]\ncomponent DB [0.3, 0.6]\nAPI -> DB\nevolve API 0.85\n";
+    let engine = MermaidEngine::new().with_site_config(
+        merman_core::presentation::SourcePresentationConfig::from_value(serde_json::json!({
+            "themeVariables": { "wardley": { "linkStroke": "#abcdef" } }
+        })),
+    );
+    let (_, rendered) = try_render_wardley_with_theme(
+        source,
+        &theme,
+        engine,
+        &portable_wardley_environment(),
+        "wardley-trend-domain",
+    )
+    .expect("the trend marker must not replay the source-owned first edge's ordinal");
+    let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+    let link = element_with_class(&document, "line", "wardley-link");
+    assert_eq!(link.attribute("stroke"), Some("#abcdef"));
+    let trend = element_with_class(&document, "line", "wardley-trend");
+    assert_eq!(trend.attribute("stroke"), Some("#dc3545"));
+    assert_eq!(
+        trend.attribute("marker-end"),
+        Some("url(#arrow-wardley-trend-domain)")
+    );
+    let marker = document
+        .descendants()
+        .find(|node| node.attribute("id") == Some("arrow-wardley-trend-domain"))
+        .unwrap();
+    let path = marker
+        .children()
+        .find(|node| node.has_tag_name("path"))
+        .unwrap();
+    assert_eq!(path.attribute("fill"), trend.attribute("stroke"));
+    let evidence = merman_render::__private::family_evidence(rendered.into_completion().report());
+    assert_eq!(evidence.required_count(), 1);
+    assert_eq!(evidence.accounted_count(), 1);
+    assert_eq!(evidence.applied_count(), 0);
+    assert_eq!(evidence.not_applicable_count(), 1);
+    assert_eq!(evidence.theme_residual_count(), 0);
+}
+
+#[test]
+fn wardley_all_presets_consume_title_surface_border_axis_text_and_line() {
+    let presets = merman_render::diagram_theme::theme_preset_descriptors();
+    assert_eq!(presets.len(), 11);
+    for preset in presets {
+        let compiler = DiagramThemeCompiler::new();
+        let theme = compiler.compile_preset(preset.preset()).unwrap();
+        let recipe =
+            serde_json::to_value(compiler.export_preset(preset.preset()).unwrap()).unwrap();
+        let design = serde_json::from_value(recipe["design"].clone()).unwrap();
+        let spec = serde_json::to_value(
+            merman_render::diagram_theme::materialize_theme_design(&design).unwrap(),
+        )
+        .unwrap();
+        let expected = |id: &str| {
+            let (target, facet) = match id {
+                "text" => ("text", "/style/fill"),
+                "surface" => ("node", "/style/fill"),
+                "border" => ("node", "/style/stroke/paint"),
+                "line" => ("edge", "/style/stroke/paint"),
+                _ => unreachable!(),
+            };
+            let paint = spec["styles"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .rev()
+                .find_map(|rule| {
+                    (rule["kind"] == "rule"
+                        && rule["target"] == target
+                        && rule.get("family").is_none_or(|family| family == "wardley")
+                        && rule.get("ordinal").is_none()
+                        && rule.get("variant").is_none())
+                    .then(|| rule.pointer(facet))
+                    .flatten()
+                })
+                .expect("preset has a concrete core paint consumer");
+            ThemeColorValue::parse(paint.as_str().or_else(|| paint["color"].as_str()).unwrap())
+                .unwrap()
+                .as_css()
+        };
+        let source = "wardley-beta\ntitle Preset title\ncomponent API [0.7, 0.4]\ncomponent DB [0.3, 0.6]\nAPI +> DB\n";
+        let (_, rendered) = try_render_wardley_with_theme(
+            source,
+            &theme,
+            MermaidEngine::new(),
+            &RenderEnvironment::deterministic(),
+            "wardley-preset",
+        )
+        .unwrap();
+        let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+        assert_eq!(
+            element_with_class(&document, "text", "wardley-title").attribute("fill"),
+            Some(expected("text").as_str()),
+            "{}",
+            preset.id()
+        );
+        let group = element_with_class(&document, "g", "wardley-node--component");
+        let circle = group
+            .children()
+            .find(|node| node.has_tag_name("circle"))
+            .unwrap();
+        assert_eq!(
+            circle.attribute("fill"),
+            Some(expected("surface").as_str()),
+            "{}",
+            preset.id()
+        );
+        assert_eq!(
+            circle.attribute("stroke"),
+            Some(expected("border").as_str()),
+            "{}",
+            preset.id()
+        );
+        assert_eq!(
+            element_with_class(&document, "text", "wardley-node-label").attribute("fill"),
+            Some(expected("text").as_str()),
+            "{}",
+            preset.id()
+        );
+        let axes = element_with_class(&document, "g", "wardley-axes");
+        assert_eq!(
+            axes.children()
+                .find(|node| node.has_tag_name("line"))
+                .unwrap()
+                .attribute("stroke"),
+            Some(expected("line").as_str()),
+            "{}",
+            preset.id()
+        );
+        assert_eq!(
+            element_with_class(&document, "line", "wardley-link").attribute("stroke"),
+            Some(expected("line").as_str()),
+            "{}",
+            preset.id()
+        );
+        let marker = document
+            .descendants()
+            .find(|node| {
+                node.has_tag_name("marker")
+                    && node
+                        .attribute("id")
+                        .is_some_and(|id| id.starts_with("link-arrow-end-"))
+            })
+            .unwrap();
+        assert_eq!(
+            marker
+                .children()
+                .find(|node| node.has_tag_name("path"))
+                .unwrap()
+                .attribute("fill"),
+            Some(expected("line").as_str()),
+            "{}",
+            preset.id()
+        );
+        let completion = rendered.into_completion();
+        assert!(
+            completion
+                .report()
+                .theme_diagnostics()
+                .iter()
+                .all(|diagnostic| diagnostic.target() != Some(ThemeTarget::Title)
+                    && diagnostic.code() != "evidence-incomplete"),
+            "{}",
+            preset.id()
+        );
     }
 }
 

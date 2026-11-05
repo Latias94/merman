@@ -577,13 +577,14 @@ fn cluster_stroke_width_reaches_rect_and_rough_outline_with_source_precedence() 
 }
 
 #[test]
-fn cluster_zero_width_is_applied_without_claiming_absent_or_agentflow_terminals() {
+fn cluster_zero_width_tracks_visible_terminals_and_family_scope() {
+    let rule = ThemeRule::new(
+        ThemeTarget::Cluster,
+        ThemeStylePatch::default().with_stroke_width(0.0).unwrap(),
+    );
     let theme = DiagramThemeCompiler::new()
         .compile(
-            DiagramThemeSpec::new().with_styles(ThemeRuleSet::default().with_rule(ThemeRule::new(
-                ThemeTarget::Cluster,
-                ThemeStylePatch::default().with_stroke_width(0.0).unwrap(),
-            ))),
+            DiagramThemeSpec::new().with_styles(ThemeRuleSet::default().with_rule(rule.clone())),
         )
         .unwrap();
     for look in ["classic", "neo", "handDrawn"] {
@@ -612,18 +613,81 @@ fn cluster_zero_width_is_applied_without_claiming_absent_or_agentflow_terminals(
     assert_eq!(evidence.not_applicable_count(), 1);
 
     let source = "agentflow-beta LR\nflow group[Group]\na[Alpha] --> b[Beta]\nend\n";
+    for (source, has_cluster) in [
+        (source, true),
+        ("agentflow-beta LR\na[Alpha] --> b[Beta]\n", false),
+    ] {
+        let rendered = try_render(
+            source,
+            &theme,
+            common::presentation_config(json!({"look": "classic"})),
+            ThemePortabilityRequirement::RequirePortable,
+        )
+        .unwrap();
+        let xml = roxmltree::Document::parse(rendered.svg()).unwrap();
+        let cluster = xml
+            .descendants()
+            .find(|node| node.attribute("data-et") == Some("cluster"));
+        assert_eq!(cluster.is_some(), has_cluster);
+        if let Some(cluster) = cluster {
+            assert_eq!(cluster.attribute("data-id"), Some("group"));
+            let body = cluster
+                .children()
+                .find(|node| node.has_tag_name("rect"))
+                .unwrap();
+            assert!(
+                body.attribute("style")
+                    .unwrap()
+                    .contains("stroke-width:0px !important")
+            );
+            assert_eq!(body.attribute("rx"), Some("10"));
+        } else {
+            assert!(!rendered.svg().contains("stroke-width:0px !important"));
+        }
+        let completion = rendered.into_completion();
+        assert_eq!(
+            completion.report().family_id(),
+            merman_render::DiagramFamilyId::AGENTFLOW
+        );
+        let evidence = merman_render::__private::family_evidence(completion.report());
+        assert_eq!(evidence.required_count(), 1);
+        assert_eq!(evidence.accounted_count(), 1);
+        assert_eq!(evidence.applied_count(), usize::from(has_cluster));
+        assert_eq!(evidence.not_applicable_count(), usize::from(!has_cluster));
+        assert_eq!(evidence.theme_residual_count(), 0);
+        assert_eq!(evidence.source_residual_count(), 0);
+    }
+
+    let flowchart_only = DiagramThemeCompiler::new()
+        .compile(
+            DiagramThemeSpec::new().with_styles(
+                ThemeRuleSet::default()
+                    .with_rule(rule.for_family(merman_render::DiagramFamilyId::FLOWCHART)),
+            ),
+        )
+        .unwrap();
+    let empty_theme = DiagramThemeCompiler::new()
+        .compile(DiagramThemeSpec::new())
+        .unwrap();
     let config = common::presentation_config(json!({"look": "classic"}));
+    let baseline = try_render(
+        source,
+        &empty_theme,
+        config.clone(),
+        ThemePortabilityRequirement::RequirePortable,
+    )
+    .unwrap();
     let unrelated = try_render(
         source,
-        &theme,
+        &flowchart_only,
         config,
         ThemePortabilityRequirement::RequirePortable,
     )
     .unwrap();
+    assert_eq!(unrelated.svg(), baseline.svg());
     assert!(!unrelated.svg().contains("stroke-width:0px !important"));
     let evidence = merman_render::__private::family_evidence(unrelated.into_completion().report());
     assert_eq!(evidence.applied_count(), 0);
-    // Agentflow shares a shape writer, but Cluster is outside its theme target domain.
     assert_eq!(evidence.required_count(), 0);
     assert_eq!(evidence.theme_residual_count(), 0);
 }

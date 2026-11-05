@@ -16,7 +16,7 @@ pub use pack::IconPack;
 use ingest::{BuildUsage, ParsedPack, ResolvedIcon};
 use limits::IconRegistryBuildLimits;
 use merman_model::OperationPhase;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::fmt;
 use std::sync::Arc;
 
@@ -216,6 +216,7 @@ impl IconRegistryBuilder {
     pub fn build(mut self) -> Result<IconRegistry, IconRegistryBuildError> {
         let resolved_packs = ingest::resolve_packs(self.packs, &mut self.usage)?;
         let mut icons = HashMap::new();
+        let mut prefixes = HashSet::new();
         icons.try_reserve(self.usage.entries).map_err(|_| {
             build_allocation_error(None, "resolved icon registry allocation failed")
         })?;
@@ -226,6 +227,7 @@ impl IconRegistryBuilder {
                 registration_name,
                 icons: pack_icons,
             } = pack;
+            prefixes.insert(prefix.clone());
             for (name, icon) in pack_icons {
                 let key = lookup::canonical_key(&prefix, &name);
                 if icons.insert(key, icon).is_some() {
@@ -240,7 +242,7 @@ impl IconRegistryBuilder {
         }
 
         Ok(IconRegistry {
-            inner: Arc::new(IconRegistryInner { icons }),
+            inner: Arc::new(IconRegistryInner { icons, prefixes }),
         })
     }
 }
@@ -253,6 +255,7 @@ impl Default for IconRegistryBuilder {
 
 struct IconRegistryInner {
     icons: HashMap<String, ResolvedIcon>,
+    prefixes: HashSet<String>,
 }
 
 /// Immutable, cheaply cloneable registry of fully validated Iconify icons and aliases.
@@ -289,6 +292,10 @@ impl IconRegistry {
         self.inner.icons.is_empty()
     }
 
+    pub fn is_pack_registered(&self, prefix: &str) -> bool {
+        self.inner.prefixes.contains(prefix)
+    }
+
     pub(in crate::svg) fn render_icon(
         &self,
         request: IconRenderRequest<'_>,
@@ -316,6 +323,45 @@ impl IconRegistry {
             .map(|icon| render::render_resolved_icon_with_paint_fact(icon, &request))
             .transpose()
     }
+}
+
+#[cfg(any(
+    feature = "diagram-flowchart",
+    feature = "diagram-swimlane",
+    feature = "diagram-agentflow"
+))]
+pub(in crate::svg) fn bpmn_icon_svg(
+    registry: Option<&IconRegistry>,
+    request: IconRenderRequest<'_>,
+) -> crate::Result<String> {
+    let width = request.width_px;
+    let height = request.height_px;
+    request
+        .work_meter
+        .charge_emit_work(request.icon_name.len())?;
+    let key = lookup::resolve_icon_key(request.icon_name, request.fallback_prefix);
+    let use_builtin = key.as_deref().is_some_and(|key| key.starts_with("bpmn:"))
+        && registry.is_none_or(|registry| !registry.is_pack_registered("bpmn"));
+    let rendered = if use_builtin {
+        static BUILTIN: std::sync::OnceLock<IconRegistry> = std::sync::OnceLock::new();
+        BUILTIN
+            .get_or_init(|| {
+                IconRegistry::from_packs([IconPack::new(include_bytes!("icon_registry/bpmn.json"))])
+                    .expect("source-owned BPMN glyphs are valid IconifyJSON")
+            })
+            .render_icon(request)?
+    } else {
+        registry
+            .map(|registry| registry.render_icon(request))
+            .transpose()?
+            .flatten()
+    };
+    Ok(rendered.unwrap_or_else(|| {
+        mermaid_unknown_icon_svg(
+            crate::number_format::canonical_number(width),
+            crate::number_format::canonical_number(height),
+        )
+    }))
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -406,6 +452,89 @@ fn build_allocation_error(
 mod tests {
     use super::*;
     use crate::resources::{OperationWorkMeter, RenderResourcePolicy, ResourceLimitId};
+
+    #[cfg(any(
+        feature = "diagram-flowchart",
+        feature = "diagram-swimlane",
+        feature = "diagram-agentflow"
+    ))]
+    fn bpmn_icon(
+        registry: Option<&IconRegistry>,
+        name: &str,
+        policy: RenderResourcePolicy,
+    ) -> crate::Result<String> {
+        let config =
+            crate::test_support::presentation_config(serde_json::json!({"securityLevel":"strict"}));
+        let meter = OperationWorkMeter::new(policy);
+        bpmn_icon_svg(
+            registry,
+            IconRenderRequest {
+                icon_name: name,
+                width_px: 18.0,
+                height_px: 18.0,
+                fallback_prefix: Some("bpmn"),
+                extra_class: None,
+                id_scope: icon_id_scope_for_test("bpmn"),
+                effective_config: &config,
+                work_meter: &meter,
+            },
+        )
+    }
+
+    #[cfg(any(
+        feature = "diagram-flowchart",
+        feature = "diagram-swimlane",
+        feature = "diagram-agentflow"
+    ))]
+    #[test]
+    fn bpmn_glyphs_use_the_validated_registry_and_preserve_an_existing_pack() {
+        let policy = RenderResourcePolicy::unbounded_for_trusted_input();
+        let pack: serde_json::Value =
+            serde_json::from_slice(include_bytes!("icon_registry/bpmn.json")).unwrap();
+        assert_eq!(pack["icons"].as_object().unwrap().len(), 29);
+        for name in pack["icons"].as_object().unwrap().keys() {
+            let svg = bpmn_icon(None, &format!("bpmn:{name}"), policy).unwrap();
+            assert!(svg.contains("currentColor"), "{name}: {svg}");
+            assert!(svg.contains(r#"viewBox="0 0 24 24""#));
+            assert!(!svg.contains("ArialMT"));
+        }
+        let custom = br#"{"prefix":"custom","icons":{"message":{"body":"<path d=\"M1 2h3\"/>"}}}"#;
+        let registry =
+            IconRegistry::from_packs([IconPack::new(custom).with_registration_name("bpmn")])
+                .unwrap();
+        assert!(registry.is_pack_registered("bpmn"));
+        let svg = bpmn_icon(Some(&registry), "message", policy).unwrap();
+        assert!(svg.contains("M1 2h3"));
+        assert!(!svg.contains("bpmn-glyph-fold"));
+        let empty =
+            IconRegistry::from_packs([IconPack::new(br#"{"prefix":"bpmn","icons":{}}"#)]).unwrap();
+        assert!(empty.is_pack_registered("bpmn"));
+        let missing = bpmn_icon(Some(&empty), "message", policy).unwrap();
+        assert!(missing.contains("ArialMT"));
+        assert!(missing.contains(r#"width="18" height="18""#));
+        assert!(!missing.contains("bpmn-glyph-fold"));
+    }
+
+    #[cfg(any(
+        feature = "diagram-flowchart",
+        feature = "diagram-swimlane",
+        feature = "diagram-agentflow"
+    ))]
+    #[test]
+    fn bpmn_glyphs_cannot_bypass_svg_or_work_limits() {
+        for limit in [
+            ResourceLimitId::MaxSvgBytes,
+            ResourceLimitId::MaxLayoutWorkUnits,
+        ] {
+            let policy = RenderResourcePolicy::unbounded_for_trusted_input()
+                .with_limit(limit, 1)
+                .unwrap();
+            assert!(matches!(
+                bpmn_icon(None, "bpmn:message", policy),
+                Err(crate::Error::ResourceLimitExceeded(_))
+            ));
+        }
+    }
 
     #[test]
     fn incremental_icon_scope_preserves_the_legacy_concatenated_hash() {

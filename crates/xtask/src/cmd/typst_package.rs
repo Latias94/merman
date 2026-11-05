@@ -1,12 +1,12 @@
 use crate::{
     XtaskError,
     cmd::{
-        artifact_profiles::{WasmArtifactProfile, load_wasm_size_artifact_profiles},
+        artifact_profiles::load_wasm_size_artifact_profiles,
         paths,
-        typst_artifact::{TypstArtifactSpec, install_typst_artifact, verify_typst_artifact},
+        typst_artifact::{TypstArtifactSpec, produce_typst_artifact, verify_typst_artifact},
         typst_plugin_smoke::validate_typst_plugin,
         typst_profiles::{load_typst_profiles, validate_typst_artifact_profiles},
-        wasm_build_lock::WorkspaceWasmBuildLock,
+        wasm_size_matrix::check_typst_artifact_budget,
     },
     util::sha256_hex,
 };
@@ -26,6 +26,7 @@ struct Options {
     profile: Option<String>,
     out_dir: PathBuf,
     skip_wasm_build: bool,
+    budget_file: Option<PathBuf>,
 }
 
 #[derive(Debug)]
@@ -110,6 +111,7 @@ impl Default for Options {
             profile: None,
             out_dir: paths::workspace_root().join("dist").join("typst"),
             skip_wasm_build: false,
+            budget_file: None,
         }
     }
 }
@@ -435,10 +437,11 @@ fn build_typst_package_with_options(options: &Options) -> Result<TypstPackageBui
     let artifact = if options.skip_wasm_build {
         verify_typst_artifact(&artifact_spec)?
     } else {
-        let _build_lock = WorkspaceWasmBuildLock::acquire()?;
-        let raw_wasm = build_wasm(artifact_profile)?;
-        install_typst_artifact(&artifact_spec, &raw_wasm)?
+        produce_typst_artifact(&artifact_spec)?
     };
+    if let Some(budget_file) = options.budget_file.as_deref() {
+        check_typst_artifact_budget(&artifact, budget_file)?;
+    }
     validate_typst_plugin(artifact.wasm_path(), &profile_catalog, profile)?;
 
     let package_dir = stage_and_install_package(
@@ -577,8 +580,8 @@ fn parse_options(args: Vec<String>) -> Result<Options, XtaskError> {
             "--out" => {
                 options.out_dir = PathBuf::from(iter.next().ok_or(XtaskError::Usage)?);
             }
-            "--skip-wasm-build" => {
-                options.skip_wasm_build = true;
+            "--budget-file" => {
+                options.budget_file = Some(PathBuf::from(iter.next().ok_or(XtaskError::Usage)?));
             }
             _ => {
                 print_usage();
@@ -592,7 +595,7 @@ fn parse_options(args: Vec<String>) -> Result<Options, XtaskError> {
 
 fn print_usage() {
     println!(
-        "usage: xtask build-typst-package [--profile <name>] [--out <dir>] [--skip-wasm-build]"
+        "usage: xtask build-typst-package [--profile <name>] [--out <dir>] [--budget-file <path>]"
     );
     print_profile_names();
 }
@@ -852,39 +855,6 @@ fn compile_typst_fixture(
         stdout.trim(),
         stderr.trim()
     )))
-}
-
-fn build_wasm(profile: &WasmArtifactProfile) -> Result<PathBuf, XtaskError> {
-    let target_root = paths::wasm_build_target_root();
-    let mut command = Command::new("cargo");
-    command.args([
-        "build",
-        "--locked",
-        "-p",
-        &profile.package,
-        "--profile",
-        &profile.cargo_profile,
-        "--target",
-        &profile.target_triple,
-    ]);
-    command.arg("--target-dir").arg(&target_root);
-    command.current_dir(paths::workspace_root());
-    profile.configure_cargo_command(&mut command);
-
-    let status = command.status().map_err(|source| XtaskError::ReadFile {
-        path: "cargo".to_string(),
-        source,
-    })?;
-    if !status.success() {
-        return Err(XtaskError::TypstPackageFailed(format!(
-            "cargo build failed with status {status}"
-        )));
-    }
-
-    Ok(target_root
-        .join(&profile.target_triple)
-        .join(&profile.cargo_profile)
-        .join(&profile.artifact_name))
 }
 
 impl PluginArtifactSnapshot {
@@ -1379,7 +1349,7 @@ mod tests {
     use super::{
         PluginArtifactSnapshot, RuntimePackageSourceSnapshot, collect_typst_files,
         collect_typst_fixtures, copy_dir_recursive, create_smoke_run_root, install_staged_package,
-        is_typst_package_version, parse_smoke_options, stage_and_install_package,
+        is_typst_package_version, parse_options, parse_smoke_options, stage_and_install_package,
         stage_and_install_package_with_hook, typst_fixture_output_path, validate_staged_package,
         write_staged_file,
     };
@@ -1423,6 +1393,23 @@ mod tests {
             Some(Path::new("target/typst-local/typst.exe"))
         );
         assert!(options.build.skip_wasm_build);
+    }
+
+    #[test]
+    fn package_build_accepts_a_budget_file_and_rejects_smoke_only_reuse() {
+        let options = parse_options(vec![
+            "--profile".to_string(),
+            "publish".to_string(),
+            "--budget-file".to_string(),
+            "docs/release/WASM_SIZE_BUDGETS.json".to_string(),
+        ])
+        .unwrap();
+
+        assert_eq!(
+            options.budget_file.as_deref(),
+            Some(Path::new("docs/release/WASM_SIZE_BUDGETS.json"))
+        );
+        assert!(parse_options(vec!["--skip-wasm-build".to_string()]).is_err());
     }
 
     #[test]

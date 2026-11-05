@@ -3,10 +3,15 @@
 //! Mermaid uses RoughJS for "hand-drawn" node rendering, and in a few cases even when
 //! roughness is zero. These helpers mirror Mermaid's RoughJS call ordering to keep SVG DOM parity.
 
+use super::controlled;
 use crate::resources::OperationWorkMeter;
 use crate::svg::parity::roughjs_common::ops_to_svg_path_d;
 use merman_model::OperationPhase;
 use roughr::core::RoughRandomness;
+
+#[cfg(test)]
+#[path = "fixed_head_protocol.rs"]
+pub(in crate::svg::parity) mod fixed_head_protocol;
 
 #[derive(Clone, Copy)]
 pub(in crate::svg::parity) enum RoughGeometryTarget {
@@ -20,14 +25,6 @@ impl RoughGeometryTarget {
             Self::Svg => OperationPhase::Emit,
             Self::Query => OperationPhase::Layout,
         }
-    }
-
-    fn charge(self, meter: &OperationWorkMeter, units: usize) -> crate::Result<()> {
-        match self {
-            Self::Svg => meter.charge_emit_work(units)?,
-            Self::Query => meter.charge(units)?,
-        }
-        Ok(())
     }
 }
 
@@ -59,14 +56,6 @@ impl RoughPathPair {
             None => paths,
         }
     }
-
-    pub(in crate::svg::parity) fn into_unmetered_svg_paths(self) -> (String, String) {
-        debug_assert!(self.reservation.is_none());
-        (
-            ops_to_svg_path_d(&self.fill),
-            ops_to_svg_path_d(&self.stroke),
-        )
-    }
 }
 
 fn reserve_for_target(
@@ -90,18 +79,12 @@ const CIRCLE_HACHURE_GAP: f32 = 1.5;
 const CIRCLE_CURVE_STEP_COUNT: f32 = 9.0;
 const CIRCLE_CURVE_FITTING: f32 = 0.95;
 
-// These estimates intentionally describe the allocations that RoughJS performs before the SVG
-// sink can observe the result: points sampled along the path plus hachure scanlines. They are
-// admission bounds, not output-size claims. The final bounded SVG sink remains authoritative.
-const HAND_DRAWN_WORK_UNITS_PER_POINT: usize = 4;
-const HAND_DRAWN_WORK_UNITS_PER_SCANLINE: usize = 8;
 const HAND_DRAWN_SVG_BYTES_PER_POINT: usize = 32;
 const HAND_DRAWN_SVG_BYTES_PER_SCANLINE: usize = 96;
 const HAND_DRAWN_SVG_BYTES_OVERHEAD: usize = 512;
 
 #[derive(Debug, Clone, Copy)]
 struct HandDrawnPathBudget {
-    work_units: usize,
     svg_bytes: usize,
 }
 
@@ -137,18 +120,12 @@ fn hand_drawn_geometry_budget(
     let gap = f64::from(hachure_gap.abs()).max(1.0);
     let scanline_count = ceil_to_usize(diagonal / gap)?.checked_add(2)?;
 
-    let work_units = path_bytes
-        .checked_add(point_count.checked_mul(HAND_DRAWN_WORK_UNITS_PER_POINT)?)?
-        .checked_add(scanline_count.checked_mul(HAND_DRAWN_WORK_UNITS_PER_SCANLINE)?)?;
     let svg_bytes = HAND_DRAWN_SVG_BYTES_OVERHEAD
         .checked_add(path_bytes.checked_mul(4)?)?
         .checked_add(point_count.checked_mul(HAND_DRAWN_SVG_BYTES_PER_POINT)?)?
         .checked_add(scanline_count.checked_mul(HAND_DRAWN_SVG_BYTES_PER_SCANLINE)?)?;
 
-    Some(HandDrawnPathBudget {
-        work_units,
-        svg_bytes,
-    })
+    Some(HandDrawnPathBudget { svg_bytes })
 }
 
 #[allow(
@@ -174,7 +151,6 @@ fn admit_hand_drawn_geometry(
         roughness,
         path_bytes,
     )?;
-    target.charge(work_meter, budget.work_units).ok()?;
 
     reserve_for_target(target, budget.svg_bytes, work_meter)
 }
@@ -239,20 +215,20 @@ fn admit_hand_drawn_circle(
     roughness: f32,
     work_meter: &OperationWorkMeter,
 ) -> Option<Option<crate::resources::SvgByteReservation>> {
-    // Charge the ellipse sampler and hachure scan once, using the shared circle estimate.
-    // Retain the separate SVG reservation before RoughR allocates its generated paths.
-    roughjs_circle_with_work(target, work_meter, diameter, roughness, || {
-        let budget = hand_drawn_geometry_budget(
-            std::f64::consts::PI * diameter.abs(),
-            diameter,
-            diameter,
-            CIRCLE_HACHURE_GAP,
-            roughness,
-            32,
-        )?;
-        reserve_for_target(target, budget.svg_bytes, work_meter)
-    })
-    .ok()?
+    work_meter.checkpoint(target.phase()).ok()?;
+    let budget = hand_drawn_geometry_budget(
+        std::f64::consts::PI * diameter.abs(),
+        diameter,
+        diameter,
+        CIRCLE_HACHURE_GAP,
+        roughness,
+        32,
+    )
+    .or_else(|| {
+        let _ = work_meter.arithmetic_overflow();
+        None
+    })?;
+    reserve_for_target(target, budget.svg_bytes, work_meter)
 }
 
 fn reconcile_hand_drawn_path(
@@ -294,20 +270,50 @@ pub(in crate::svg::parity) fn roughjs_paths_for_svg_path(
     svg_path_data: &str,
     stroke_width: f32,
     stroke_dasharray: &str,
+    work_meter: &OperationWorkMeter,
     randomness: &RoughRandomness,
 ) -> Option<(String, String)> {
-    roughjs_prepare_paths_for_svg_path(svg_path_data, stroke_width, stroke_dasharray, randomness)
-        .map(RoughPathPair::into_unmetered_svg_paths)
+    roughjs_prepare_paths_for_svg_path(
+        RoughGeometryTarget::Svg,
+        svg_path_data,
+        stroke_width,
+        stroke_dasharray,
+        work_meter,
+        randomness,
+    )
+    .and_then(|paths| paths.into_svg_paths(work_meter))
 }
 
 pub(in crate::svg::parity) fn roughjs_prepare_paths_for_svg_path(
+    target: RoughGeometryTarget,
     svg_path_data: &str,
     stroke_width: f32,
     stroke_dasharray: &str,
+    work_meter: &OperationWorkMeter,
     randomness: &RoughRandomness,
 ) -> Option<RoughPathPair> {
+    prepare_solid_svg_path(
+        target,
+        svg_path_data,
+        stroke_width,
+        stroke_dasharray,
+        work_meter,
+        randomness,
+        false,
+    )
+}
+
+fn prepare_solid_svg_path(
+    target: RoughGeometryTarget,
+    svg_path_data: &str,
+    stroke_width: f32,
+    stroke_dasharray: &str,
+    work_meter: &OperationWorkMeter,
+    randomness: &RoughRandomness,
+    force_single_set: bool,
+) -> Option<RoughPathPair> {
     let (dash0, dash1) = parse_stroke_dash_pair(stroke_dasharray);
-    let base_options = roughr::core::OptionsBuilder::default()
+    let mut options = roughr::core::OptionsBuilder::default()
         .randomness(randomness.clone())
         .roughness(0.0)
         .bowing(1.0)
@@ -322,152 +328,111 @@ pub(in crate::svg::parity) fn roughjs_prepare_paths_for_svg_path(
         .build()
         .ok()?;
 
-    // Rough.js `generator.path(...)`:
-    // - `sets = pointsOnPath(d, 1, distance)`
-    // - for solid fill, if `sets.length === 1`: fill path from `svgPath(...)` with
-    //   `disableMultiStroke: true`, then drop subsequent `move` ops (`_mergedShape`).
-    // - otherwise for solid fill: `solidFillPolygon(sets, o)`
-    let distance = (1.0 + base_options.roughness.unwrap_or(1.0) as f64) / 2.0;
-    let sets = roughr::points_on_path::points_on_path::<f64>(
-        svg_path_data.to_string(),
-        Some(1.0),
-        Some(distance),
-    );
-
-    // Rough.js `generator.path(...)` builds the stroke opset first (`shape = svgPath(d, o)`),
-    // which initializes and advances `o.randomizer`. For the solid-fill special-case
-    // (`sets.length === 1`), it then calls `svgPath(d, Object.assign({}, o, ...))`, which
-    // copies the *existing* `randomizer` by reference and therefore continues the PRNG stream.
-    //
-    // In headless Rust we model that by emitting the stroke opset first (advancing the
-    // in-options PRNG state), then cloning the mutated options for the fill pass.
-    let mut stroke_opts = base_options.clone();
-    let stroke_opset =
-        roughr::renderer::svg_path::<f64>(svg_path_data.to_string(), &mut stroke_opts);
-
-    let fill_opset = if sets.len() == 1 {
-        let mut fill_opts = stroke_opts.clone();
-        fill_opts.disable_multi_stroke = Some(true);
-        let base_rough = fill_opts.roughness.unwrap_or(1.0);
-        fill_opts.roughness = Some(if base_rough != 0.0 {
-            base_rough + 0.8
+    controlled::generate(work_meter, target.phase(), |control| {
+        let segments =
+            roughr::points_on_path::normalized_path_with_control(svg_path_data, control)?;
+        let stroke = roughr::renderer::svg_normalized_segments_with_control::<f64>(
+            &segments,
+            &mut options,
+            control,
+        )?;
+        let sets = if force_single_set {
+            Vec::new()
         } else {
-            0.0
-        });
-
-        let mut opset =
-            roughr::renderer::svg_path::<f64>(svg_path_data.to_string(), &mut fill_opts);
-        opset.ops = opset
-            .ops
-            .iter()
-            .cloned()
-            .enumerate()
-            .filter_map(|(idx, op)| {
-                if idx != 0 && op.op == roughr::core::OpType::Move {
-                    return None;
+            roughr::points_on_path::points_on_normalized_segments_with_control::<f64>(
+                &segments,
+                Some(1.0),
+                Some(0.5),
+                control,
+            )?
+        };
+        let mut fill_options = options.clone();
+        let fill = if force_single_set || sets.len() == 1 {
+            fill_options.disable_multi_stroke = Some(true);
+            let mut fill = roughr::renderer::svg_normalized_segments_with_control::<f64>(
+                &segments,
+                &mut fill_options,
+                control,
+            )?;
+            let mut retained = 0;
+            for index in 0..fill.ops.len() {
+                roughr::work::WorkControl::charge(control, 1)?;
+                if index == 0 || fill.ops[index].op != roughr::core::OpType::Move {
+                    fill.ops.swap(retained, index);
+                    retained += 1;
                 }
-                Some(op)
-            })
-            .collect();
-        opset
-    } else {
-        let mut fill_opts = stroke_opts.clone();
-        roughr::renderer::solid_fill_polygon(&sets, &mut fill_opts)
-    };
-
-    Some(RoughPathPair::new(fill_opset, stroke_opset))
+            }
+            fill.ops.truncate(retained);
+            Ok(fill)
+        } else {
+            roughr::renderer::solid_fill_polygon_with_control(&sets, &mut fill_options, control)
+        }?;
+        Ok(RoughPathPair::new(fill, stroke))
+    })
+    .ok()
 }
 
 pub(in crate::svg::parity) fn roughjs_paths_for_svg_path_single_set(
     svg_path_data: &str,
     stroke_width: f32,
     stroke_dasharray: &str,
+    work_meter: &OperationWorkMeter,
     randomness: &RoughRandomness,
 ) -> Option<(String, String)> {
     roughjs_prepare_paths_for_svg_path_single_set(
+        RoughGeometryTarget::Svg,
         svg_path_data,
         stroke_width,
         stroke_dasharray,
+        work_meter,
         randomness,
     )
-    .map(RoughPathPair::into_unmetered_svg_paths)
+    .and_then(|paths| paths.into_svg_paths(work_meter))
 }
 
 pub(in crate::svg::parity) fn roughjs_prepare_paths_for_svg_path_single_set(
+    target: RoughGeometryTarget,
     svg_path_data: &str,
     stroke_width: f32,
     stroke_dasharray: &str,
+    work_meter: &OperationWorkMeter,
     randomness: &RoughRandomness,
 ) -> Option<RoughPathPair> {
-    // Variant of `roughjs_paths_for_svg_path(...)` that always takes RoughJS' `sets.length === 1`
-    // branch (fill path via `svgPath(...)` with `disableMultiStroke=true`), avoiding the
-    // `pointsOnPath(...)` step which can overflow on complex paths.
-    let (dash0, dash1) = parse_stroke_dash_pair(stroke_dasharray);
-    let base_options = roughr::core::OptionsBuilder::default()
-        .randomness(randomness.clone())
-        .roughness(0.0)
-        .bowing(1.0)
-        .fill_style(roughr::core::FillStyle::Solid)
-        .stroke_width(stroke_width)
-        .stroke_line_dash(vec![dash0, dash1])
-        .stroke_line_dash_offset(0.0)
-        .fill_line_dash(vec![0.0, 0.0])
-        .fill_line_dash_offset(0.0)
-        .disable_multi_stroke(false)
-        .disable_multi_stroke_fill(false)
-        .build()
-        .ok()?;
-
-    // Keep call ordering consistent with RoughJS: stroke pass advances the PRNG before fill.
-    let mut stroke_opts = base_options.clone();
-    let stroke_opset =
-        roughr::renderer::svg_path::<f64>(svg_path_data.to_string(), &mut stroke_opts);
-
-    let mut fill_opts = stroke_opts.clone();
-    fill_opts.disable_multi_stroke = Some(true);
-    let base_rough = fill_opts.roughness.unwrap_or(1.0);
-    fill_opts.roughness = Some(if base_rough != 0.0 {
-        base_rough + 0.8
-    } else {
-        0.0
-    });
-    let mut fill_opset =
-        roughr::renderer::svg_path::<f64>(svg_path_data.to_string(), &mut fill_opts);
-    fill_opset.ops = fill_opset
-        .ops
-        .iter()
-        .cloned()
-        .enumerate()
-        .filter_map(|(idx, op)| {
-            if idx != 0 && op.op == roughr::core::OpType::Move {
-                return None;
-            }
-            Some(op)
-        })
-        .collect();
-
-    Some(RoughPathPair::new(fill_opset, stroke_opset))
+    prepare_solid_svg_path(
+        target,
+        svg_path_data,
+        stroke_width,
+        stroke_dasharray,
+        work_meter,
+        randomness,
+        true,
+    )
 }
 
 pub(in crate::svg::parity) fn roughjs_stroke_path_for_svg_path(
     svg_path_data: &str,
     stroke_width: f32,
     stroke_dasharray: &str,
+    work_meter: &OperationWorkMeter,
     randomness: &RoughRandomness,
 ) -> Option<String> {
     roughjs_prepare_stroke_path_for_svg_path(
+        RoughGeometryTarget::Svg,
         svg_path_data,
         stroke_width,
         stroke_dasharray,
+        work_meter,
         randomness,
     )
     .map(|opset| ops_to_svg_path_d(&opset))
 }
 
 pub(in crate::svg::parity) fn roughjs_prepare_stroke_path_for_svg_path(
+    target: RoughGeometryTarget,
     svg_path_data: &str,
     stroke_width: f32,
     stroke_dasharray: &str,
+    work_meter: &OperationWorkMeter,
     randomness: &RoughRandomness,
 ) -> Option<roughr::core::OpSet<f64>> {
     let (dash0, dash1) = parse_stroke_dash_pair(stroke_dasharray);
@@ -482,22 +447,39 @@ pub(in crate::svg::parity) fn roughjs_prepare_stroke_path_for_svg_path(
         .build()
         .ok()?;
 
-    let opset = roughr::renderer::svg_path::<f64>(svg_path_data.to_string(), &mut options);
-    Some(opset)
+    controlled::generate(work_meter, target.phase(), |control| {
+        let segments =
+            roughr::points_on_path::normalized_path_with_control(svg_path_data, control)?;
+        roughr::renderer::svg_normalized_segments_with_control::<f64>(
+            &segments,
+            &mut options,
+            control,
+        )
+    })
+    .ok()
 }
 
 pub(in crate::svg::parity) fn roughjs_hand_drawn_stroke_path_for_svg_path(
     svg_path_data: &str,
     roughness: f32,
+    work_meter: &OperationWorkMeter,
     randomness: &RoughRandomness,
 ) -> Option<String> {
-    roughjs_prepare_hand_drawn_stroke_path_for_svg_path(svg_path_data, roughness, randomness)
-        .map(|opset| ops_to_svg_path_d(&opset))
+    roughjs_prepare_hand_drawn_stroke_path_for_svg_path(
+        RoughGeometryTarget::Svg,
+        svg_path_data,
+        roughness,
+        work_meter,
+        randomness,
+    )
+    .map(|opset| ops_to_svg_path_d(&opset))
 }
 
 pub(in crate::svg::parity) fn roughjs_prepare_hand_drawn_stroke_path_for_svg_path(
+    target: RoughGeometryTarget,
     svg_path_data: &str,
     roughness: f32,
+    work_meter: &OperationWorkMeter,
     randomness: &RoughRandomness,
 ) -> Option<roughr::core::OpSet<f64>> {
     let mut options = roughr::core::OptionsBuilder::default()
@@ -507,8 +489,16 @@ pub(in crate::svg::parity) fn roughjs_prepare_hand_drawn_stroke_path_for_svg_pat
         .build()
         .ok()?;
 
-    let opset = roughr::renderer::svg_path::<f64>(svg_path_data.to_string(), &mut options);
-    Some(opset)
+    controlled::generate(work_meter, target.phase(), |control| {
+        let segments =
+            roughr::points_on_path::normalized_path_with_control(svg_path_data, control)?;
+        roughr::renderer::svg_normalized_segments_with_control::<f64>(
+            &segments,
+            &mut options,
+            control,
+        )
+    })
+    .ok()
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -570,13 +560,33 @@ pub(in crate::svg::parity) fn roughjs_prepare_hachure_paths_for_svg_path(
         .build()
         .ok()?;
 
-    let sets = roughr::points_on_path::points_on_path::<f64>(
-        svg_path_data.to_owned(),
-        Some(1.0),
-        Some((1.0 + roughness as f64) / 2.0),
-    );
-    let fill = roughr::renderer::pattern_fill_polygons(sets, &mut options);
-    let stroke = roughr::renderer::svg_path(svg_path_data.to_owned(), &mut options);
+    let generated = controlled::generate(work_meter, target.phase(), |control| {
+        let segments =
+            roughr::points_on_path::normalized_path_with_control(svg_path_data, control)?;
+        let mut sets = roughr::points_on_path::points_on_normalized_segments_with_control::<f64>(
+            &segments,
+            Some(1.0),
+            Some((1.0 + roughness as f64) / 2.0),
+            control,
+        )?;
+        let fill =
+            roughr::renderer::hachure_fill_polygons_with_control(&mut sets, &mut options, control)?;
+        let stroke = roughr::renderer::svg_normalized_segments_with_control(
+            &segments,
+            &mut options,
+            control,
+        )?;
+        Ok((fill, stroke))
+    });
+    let (fill, stroke) = match generated {
+        Ok(paths) => paths,
+        Err(_) => {
+            if let Some(reservation) = reservation {
+                let _ = work_meter.reconcile_svg_bytes(reservation.additional_bytes, 0);
+            }
+            return None;
+        }
+    };
     Some(RoughPathPair {
         fill,
         stroke,
@@ -682,8 +692,21 @@ pub(in crate::svg::parity) fn roughjs_prepare_paths_for_hand_drawn_solid_svg_pat
         .build()
         .ok()?;
 
-    let generator = roughr::generator::Generator::default();
-    let drawable = generator.path::<f64>(svg_path_data.to_string(), &Some(options));
+    let drawable = match controlled::generate(work_meter, target.phase(), |control| {
+        roughr::generator::Generator::default().path_with_control::<f64>(
+            svg_path_data,
+            &Some(options),
+            control,
+        )
+    }) {
+        Ok(drawable) => drawable,
+        Err(_) => {
+            if let Some(reservation) = reservation {
+                let _ = work_meter.reconcile_svg_bytes(reservation.additional_bytes, 0);
+            }
+            return None;
+        }
+    };
     let mut fill_d = None;
     let mut stroke_d = None;
 
@@ -780,14 +803,31 @@ pub(in crate::svg::parity) fn roughjs_prepare_hachure_paths_for_rect(
         .build()
         .ok()?;
 
-    let stroke = roughr::renderer::rectangle::<f64>(x, y, w, h, &mut options);
-    let points = vec![
-        roughr::Point2D::new(x, y),
-        roughr::Point2D::new(x + w, y),
-        roughr::Point2D::new(x + w, y + h),
-        roughr::Point2D::new(x, y + h),
-    ];
-    let fill = roughr::renderer::pattern_fill_polygons(vec![points], &mut options);
+    let generated = controlled::generate(work_meter, target.phase(), |control| {
+        let stroke =
+            roughr::renderer::rectangle_with_control::<f64>(x, y, w, h, &mut options, control)?;
+        let points = vec![
+            roughr::Point2D::new(x, y),
+            roughr::Point2D::new(x + w, y),
+            roughr::Point2D::new(x + w, y + h),
+            roughr::Point2D::new(x, y + h),
+        ];
+        let fill = roughr::renderer::hachure_fill_polygons_with_control(
+            &mut [points],
+            &mut options,
+            control,
+        )?;
+        Ok((fill, stroke))
+    });
+    let (fill, stroke) = match generated {
+        Ok(paths) => paths,
+        Err(_) => {
+            if let Some(reservation) = reservation {
+                let _ = work_meter.reconcile_svg_bytes(reservation.additional_bytes, 0);
+            }
+            return None;
+        }
+    };
     Some(RoughPathPair {
         fill,
         stroke,
@@ -856,25 +896,32 @@ pub(in crate::svg::parity) fn roughjs_prepare_paths_for_hand_drawn_rect(
 }
 
 pub(in crate::svg::parity) fn roughjs_hand_drawn_line_path(
-    x1: f64,
-    y1: f64,
-    x2: f64,
-    y2: f64,
+    start: (f64, f64),
+    end: (f64, f64),
     stroke_width: f32,
     stroke_dasharray: &str,
+    work_meter: &OperationWorkMeter,
     randomness: &RoughRandomness,
 ) -> Option<String> {
-    roughjs_prepare_hand_drawn_line_path(x1, y1, x2, y2, stroke_width, stroke_dasharray, randomness)
-        .map(|opset| ops_to_svg_path_d(&opset))
+    roughjs_prepare_hand_drawn_line_path(
+        RoughGeometryTarget::Svg,
+        start,
+        end,
+        stroke_width,
+        stroke_dasharray,
+        work_meter,
+        randomness,
+    )
+    .map(|opset| ops_to_svg_path_d(&opset))
 }
 
 pub(in crate::svg::parity) fn roughjs_prepare_hand_drawn_line_path(
-    x1: f64,
-    y1: f64,
-    x2: f64,
-    y2: f64,
+    target: RoughGeometryTarget,
+    start: (f64, f64),
+    end: (f64, f64),
     stroke_width: f32,
     stroke_dasharray: &str,
+    work_meter: &OperationWorkMeter,
     randomness: &RoughRandomness,
 ) -> Option<roughr::core::OpSet<f64>> {
     let (dash0, dash1) = parse_stroke_dash_pair(stroke_dasharray);
@@ -889,21 +936,40 @@ pub(in crate::svg::parity) fn roughjs_prepare_hand_drawn_line_path(
         .build()
         .ok()?;
 
-    Some(roughr::renderer::line::<f64>(x1, y1, x2, y2, &mut options))
+    controlled::generate(work_meter, target.phase(), |control| {
+        roughr::renderer::line_with_control::<f64>(
+            start.0,
+            start.1,
+            end.0,
+            end.1,
+            &mut options,
+            control,
+        )
+    })
+    .ok()
 }
 
 pub(in crate::svg::parity) fn roughjs_paths_for_polygon(
     points: &[(f64, f64)],
     stroke_width: f32,
+    work_meter: &OperationWorkMeter,
     randomness: &RoughRandomness,
 ) -> Option<(String, String)> {
-    roughjs_prepare_paths_for_polygon(points, stroke_width, randomness)
-        .map(RoughPathPair::into_unmetered_svg_paths)
+    roughjs_prepare_paths_for_polygon(
+        RoughGeometryTarget::Svg,
+        points,
+        stroke_width,
+        work_meter,
+        randomness,
+    )
+    .and_then(|paths| paths.into_svg_paths(work_meter))
 }
 
 pub(in crate::svg::parity) fn roughjs_prepare_paths_for_polygon(
+    target: RoughGeometryTarget,
     points: &[(f64, f64)],
     stroke_width: f32,
+    work_meter: &OperationWorkMeter,
     randomness: &RoughRandomness,
 ) -> Option<RoughPathPair> {
     // Mirror RoughJS `generator.polygon(...)` generation order: outline first, then fill, then
@@ -922,15 +988,19 @@ pub(in crate::svg::parity) fn roughjs_prepare_paths_for_polygon(
         .build()
         .ok()?;
 
-    let pts: Vec<_> = points
-        .iter()
-        .copied()
-        .map(|(x, y)| roughr::Point2D::new(x, y))
-        .collect();
-    let outline_opset = roughr::renderer::polygon::<f64>(&pts, &mut opts);
-    let fill_opset = roughr::renderer::solid_fill_polygon(&vec![pts.clone()], &mut opts);
-
-    Some(RoughPathPair::new(fill_opset, outline_opset))
+    controlled::generate(work_meter, target.phase(), |control| {
+        let mut polygon = Vec::new();
+        for &(x, y) in points {
+            roughr::work::WorkControl::charge(control, 1)?;
+            polygon.push(roughr::Point2D::new(x, y));
+        }
+        let stroke =
+            roughr::renderer::linear_path_with_control(&polygon, true, &mut opts, control)?;
+        let fill =
+            roughr::renderer::solid_fill_polygon_with_control(&[polygon], &mut opts, control)?;
+        Ok(RoughPathPair::new(fill, stroke))
+    })
+    .ok()
 }
 
 pub(in crate::svg::parity) fn roughjs_paths_for_circle(
@@ -976,59 +1046,6 @@ pub(in crate::svg::parity) fn roughjs_prepare_paths_for_circle(
         work_meter,
         randomness,
     )
-}
-
-pub(in crate::svg::parity) fn roughjs_circle_with_work<T>(
-    target: RoughGeometryTarget,
-    work_meter: &crate::resources::OperationWorkMeter,
-    diameter: f64,
-    roughness: f32,
-    generate: impl FnOnce() -> T,
-) -> crate::Result<T> {
-    work_meter.checkpoint(target.phase())?;
-    let units = circle_hachure_work_units(diameter, roughness)
-        .ok_or_else(|| work_meter.arithmetic_overflow())?;
-    target.charge(work_meter, units)?;
-    work_meter.checkpoint(target.phase())?;
-    Ok(generate())
-}
-
-fn circle_hachure_work_units(diameter: f64, roughness: f32) -> Option<usize> {
-    fn count(value: f64) -> Option<usize> {
-        let value = value.ceil();
-        (value.is_finite() && (0.0..usize::MAX as f64).contains(&value)).then_some(value as usize)
-    }
-
-    if !diameter.is_finite() || diameter < 0.0 || !roughness.is_finite() || roughness < 0.0 {
-        return None;
-    }
-    let curve_steps = f64::from(CIRCLE_CURVE_STEP_COUNT);
-    // renderer::generate_ellipse_params samples a circle at ceil(steps/sqrt(200) *
-    // sqrt(TAU * radius)). Include closing/overlap points without squaring the diameter.
-    let steps = count(curve_steps.max(
-        f64::from(CIRCLE_CURVE_STEP_COUNT / 200.0_f32.sqrt())
-            * (std::f64::consts::PI * diameter).sqrt(),
-    ))?;
-    // Zero roughness samples each quarter increment instead of one point per step.
-    let points = steps
-        .checked_mul(if roughness == 0.0 { 4 } else { 1 })?
-        .checked_add(4)?;
-    // The radius may grow by curve-fitting randomness, and each core point has at most
-    // roughness pixels of jitter. SQRT_2 bounds any hachure rotation of that enclosing box.
-    let roughness = f64::from(roughness);
-    let fitting = f64::from(1.0_f32 - CIRCLE_CURVE_FITTING);
-    let extent =
-        std::f64::consts::SQRT_2 * (diameter * (1.0 + fitting * roughness) + 2.0 * roughness);
-    let rows = count(extent / f64::from(CIRCLE_HACHURE_GAP))?.checked_add(2)?;
-    // Bound edge-table/active-edge sorting by points^2, plus four fill ops per intersected
-    // segment. This is an admission estimate of the existing scan, not a coordinate limit.
-    let edge_work = points.checked_mul(points)?;
-    let scan_work = edge_work
-        .checked_add(points.checked_mul(4)?)?
-        .checked_add(1)?;
-    edge_work
-        .checked_add(points.checked_mul(16)?)?
-        .checked_add(rows.checked_mul(scan_work)?)
 }
 
 pub(in crate::svg::parity) fn roughjs_paths_for_circle_with_roughness(
@@ -1095,16 +1112,50 @@ pub(in crate::svg::parity) fn roughjs_prepare_paths_for_circle_with_roughness(
         .build()
         .ok()?;
 
-    let params = roughr::renderer::generate_ellipse_params(diameter, diameter, &mut options);
-    let stroke = roughr::renderer::ellipse_with_params(0.0, 0.0, &mut options, &params);
-    let fill = if hand_drawn {
-        roughr::renderer::pattern_fill_polygons(vec![stroke.estimated_points], &mut options)
-    } else {
-        roughr::renderer::ellipse_with_params(0.0, 0.0, &mut options, &params).opset
+    let generated = controlled::generate(work_meter, target.phase(), |control| {
+        let params = roughr::renderer::generate_ellipse_params_with_control(
+            diameter,
+            diameter,
+            &mut options,
+            control,
+        )?;
+        let stroke = roughr::renderer::ellipse_with_params_with_control(
+            0.0,
+            0.0,
+            &mut options,
+            &params,
+            control,
+        )?;
+        let fill = if hand_drawn {
+            roughr::renderer::hachure_fill_polygons_with_control(
+                &mut [stroke.estimated_points],
+                &mut options,
+                control,
+            )?
+        } else {
+            roughr::renderer::ellipse_with_params_with_control(
+                0.0,
+                0.0,
+                &mut options,
+                &params,
+                control,
+            )?
+            .opset
+        };
+        Ok((fill, stroke.opset))
+    });
+    let (fill, stroke) = match generated {
+        Ok(paths) => paths,
+        Err(_) => {
+            if let Some(reservation) = reservation {
+                let _ = work_meter.reconcile_svg_bytes(reservation.additional_bytes, 0);
+            }
+            return None;
+        }
     };
     Some(RoughPathPair {
         fill,
-        stroke: stroke.opset,
+        stroke,
         reservation,
     })
 }
@@ -1156,11 +1207,70 @@ mod tests {
     }
 
     #[test]
-    fn hand_drawn_hachure_rejects_before_roughr_at_work_ceiling() {
-        let budget = hand_drawn_path_budget(path(), HAND_DRAWN_HACHURE_GAP, HAND_DRAWN_ROUGHNESS)
-            .expect("fixture path must have a finite budget");
+    fn circle_budget_overflow_is_terminal_for_svg_and_query() {
+        for target in [RoughGeometryTarget::Svg, RoughGeometryTarget::Query] {
+            for diameter in [1e18, f64::MAX] {
+                let control = OperationControl::new();
+                let meter = OperationWorkMeter::new_with_control(
+                    RenderResourcePolicy::unbounded_for_trusted_input(),
+                    control.clone(),
+                );
+                assert!(
+                    roughjs_prepare_paths_for_circle_with_roughness(
+                        target,
+                        diameter,
+                        1.3,
+                        "0 0",
+                        true,
+                        0.7,
+                        &meter,
+                        &randomness(),
+                    )
+                    .is_none()
+                );
+                for phase in [OperationPhase::Emit, OperationPhase::Layout] {
+                    let OperationWorkError::ResourceLimitExceeded(error) = meter
+                        .checkpoint(phase)
+                        .expect_err("overflow must remain terminal")
+                    else {
+                        panic!("expected arithmetic overflow");
+                    };
+                    assert_eq!(error.limit, ResourceLimitId::MaxLayoutWorkUnits.as_str());
+                    assert_eq!(
+                        error.cause,
+                        crate::resources::ResourceLimitCause::ArithmeticOverflow
+                    );
+                }
+                control.cancel();
+                assert!(matches!(meter.checkpoint(target.phase()),
+                    Err(OperationWorkError::ResourceLimitExceeded(error))
+                        if error.cause == crate::resources::ResourceLimitCause::ArithmeticOverflow));
+                assert!(
+                    roughjs_prepare_paths_for_circle_with_roughness(
+                        target,
+                        80.0,
+                        1.3,
+                        "0 0",
+                        true,
+                        0.7,
+                        &meter,
+                        &randomness(),
+                    )
+                    .is_none()
+                );
+                assert!(matches!(meter.checkpoint(target.phase()),
+                    Err(OperationWorkError::ResourceLimitExceeded(error))
+                        if error.cause == crate::resources::ResourceLimitCause::ArithmeticOverflow));
+                assert_eq!(meter.used(), 0);
+                assert_eq!(meter.projected_svg_bytes(), 0);
+            }
+        }
+    }
+
+    #[test]
+    fn hand_drawn_hachure_stops_inside_roughr_at_work_ceiling() {
         let policy = RenderResourcePolicy::unbounded_for_trusted_input()
-            .with_limit(ResourceLimitId::MaxLayoutWorkUnits, budget.work_units - 1)
+            .with_limit(ResourceLimitId::MaxLayoutWorkUnits, 256)
             .expect("valid work ceiling");
         let meter = OperationWorkMeter::new(policy);
 
@@ -1175,7 +1285,7 @@ mod tests {
             ResourceLimitId::MaxLayoutWorkUnits.as_str(),
             ResourceLimitPhase::LayoutModel,
         );
-        assert_eq!(meter.projected_svg_bytes(), 0);
+        assert!(meter.used() > 0 && meter.used() <= 256);
     }
 
     #[test]
@@ -1288,7 +1398,7 @@ mod tests {
         for (id, max, phase) in [
             (
                 ResourceLimitId::MaxLayoutWorkUnits,
-                circle_hachure_work_units(diameter, HAND_DRAWN_ROUGHNESS).unwrap() - 1,
+                1,
                 ResourceLimitPhase::LayoutModel,
             ),
             (
@@ -1327,10 +1437,23 @@ mod tests {
     }
 
     #[test]
-    fn hand_drawn_circle_charges_once_and_retains_the_selected_roughness() {
+    fn hand_drawn_circle_counts_generated_work_and_retains_the_selected_roughness() {
         let diameter = 108.0;
         for roughness in [0.2, HAND_DRAWN_ROUGHNESS] {
-            let units = circle_hachure_work_units(diameter, roughness).unwrap();
+            let probe =
+                OperationWorkMeter::new(RenderResourcePolicy::unbounded_for_trusted_input());
+            let expected = roughjs_paths_for_circle_with_roughness(
+                diameter,
+                1.3,
+                "0 0",
+                true,
+                roughness,
+                &probe,
+                &randomness(),
+            )
+            .unwrap();
+            let units = probe.used();
+            assert!(units > 0);
             let meter = OperationWorkMeter::new(
                 RenderResourcePolicy::unbounded_for_trusted_input()
                     .with_limit(ResourceLimitId::MaxLayoutWorkUnits, units)
@@ -1347,8 +1470,34 @@ mod tests {
             )
             .expect("one circle must fit its exact geometry-work budget");
             assert_eq!(meter.used(), units);
+            assert_eq!(
+                (fill.as_str(), stroke.as_str()),
+                (expected.0.as_str(), expected.1.as_str())
+            );
             assert_eq!(meter.projected_svg_bytes(), fill.len() + stroke.len());
             meter.checkpoint(OperationPhase::Emit).unwrap();
+            let below = OperationWorkMeter::new(
+                RenderResourcePolicy::unbounded_for_trusted_input()
+                    .with_limit(ResourceLimitId::MaxLayoutWorkUnits, units - 1)
+                    .unwrap(),
+            );
+            assert!(
+                roughjs_paths_for_circle_with_roughness(
+                    diameter,
+                    1.3,
+                    "0 0",
+                    true,
+                    roughness,
+                    &below,
+                    &randomness(),
+                )
+                .is_none()
+            );
+            assert_limit(
+                below.checkpoint(OperationPhase::Emit).unwrap_err(),
+                ResourceLimitId::MaxLayoutWorkUnits.as_str(),
+                ResourceLimitPhase::LayoutModel,
+            );
         }
     }
 
@@ -1383,7 +1532,7 @@ mod tests {
         let budget = hand_drawn_path_budget(path, HAND_DRAWN_HACHURE_GAP, HAND_DRAWN_ROUGHNESS)
             .expect("fixture path must have a finite budget");
         let policy = RenderResourcePolicy::unbounded_for_trusted_input()
-            .with_limit(ResourceLimitId::MaxLayoutWorkUnits, budget.work_units)
+            .with_limit(ResourceLimitId::MaxLayoutWorkUnits, 20_000)
             .unwrap()
             .with_limit(ResourceLimitId::MaxSvgBytes, budget.svg_bytes)
             .unwrap();
@@ -1398,92 +1547,5 @@ mod tests {
         meter
             .checkpoint(OperationPhase::Emit)
             .expect("successful path must not poison the operation");
-    }
-}
-
-#[cfg(test)]
-mod circle_work_tests {
-    use super::*;
-    use crate::resources::{
-        OperationWorkMeter, RenderResourcePolicy, ResourceLimitCause, ResourceLimitId,
-    };
-    use std::cell::Cell;
-
-    #[test]
-    fn circle_hachure_charges_before_generation_at_the_exact_admission_boundary() {
-        let units = circle_hachure_work_units(100.0, 0.7).unwrap();
-        for (limit, admitted) in [(units, true), (units - 1, false)] {
-            let policy = RenderResourcePolicy::unbounded_for_trusted_input()
-                .with_limit(ResourceLimitId::MaxLayoutWorkUnits, limit)
-                .unwrap();
-            let meter = OperationWorkMeter::new(policy);
-            let generated = Cell::new(false);
-            let result =
-                roughjs_circle_with_work(RoughGeometryTarget::Svg, &meter, 100.0, 0.7, || {
-                    assert_eq!(meter.used(), units, "charge precedes any Rough allocation");
-                    generated.set(true);
-                });
-            assert_eq!(result.is_ok(), admitted);
-            assert_eq!(generated.get(), admitted);
-            assert_eq!(meter.used(), if admitted { units } else { 0 });
-            if let Err(crate::Error::ResourceLimitExceeded(error)) = result {
-                assert_eq!(error.cause, ResourceLimitCause::Ceiling);
-                assert_eq!(error.limit, "max_layout_work_units");
-            }
-        }
-    }
-
-    #[test]
-    fn circle_hachure_rejects_huge_or_overflowing_geometry_before_generation() {
-        for (diameter, policy, cause) in [
-            (
-                1e4,
-                RenderResourcePolicy::default(),
-                ResourceLimitCause::Ceiling,
-            ),
-            (
-                f64::MAX,
-                RenderResourcePolicy::unbounded_for_trusted_input(),
-                ResourceLimitCause::ArithmeticOverflow,
-            ),
-        ] {
-            let meter = OperationWorkMeter::new(policy);
-            let generated = Cell::new(false);
-            let error =
-                roughjs_circle_with_work(RoughGeometryTarget::Svg, &meter, diameter, 0.7, || {
-                    generated.set(true);
-                })
-                .expect_err("reject before sampled points or hachure lines are allocated");
-            let crate::Error::ResourceLimitExceeded(error) = error else {
-                panic!("expected geometry work rejection, got {error}");
-            };
-            assert_eq!(error.cause, cause);
-            assert_eq!(error.limit, "max_layout_work_units");
-            assert!(!generated.get());
-            assert_eq!(meter.used(), 0);
-        }
-    }
-
-    #[test]
-    fn circle_hachure_observes_cancellation_before_each_ring() {
-        let control = merman_model::OperationControl::new();
-        let meter =
-            OperationWorkMeter::new_with_control(RenderResourcePolicy::default(), control.clone());
-        roughjs_circle_with_work(RoughGeometryTarget::Svg, &meter, 100.0, 0.2, || {
-            control.cancel()
-        })
-        .unwrap();
-        let used_after_outer = meter.used();
-        let generated_inner = Cell::new(false);
-        let error = roughjs_circle_with_work(RoughGeometryTarget::Svg, &meter, 90.0, 0.2, || {
-            generated_inner.set(true);
-        })
-        .expect_err("cancellation after the outer ring prevents the inner ring");
-        assert!(matches!(
-            error,
-            crate::Error::Cancelled(error) if error.phase == merman_model::OperationPhase::Emit
-        ));
-        assert!(!generated_inner.get());
-        assert_eq!(meter.used(), used_after_outer);
     }
 }

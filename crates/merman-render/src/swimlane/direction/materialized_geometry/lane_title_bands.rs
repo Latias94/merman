@@ -27,9 +27,6 @@ fn top_lane_title_for(
     node: &WorkingNode,
     layout_direction: SwimlaneDirection,
 ) -> Option<LaneTitle> {
-    if node.kind != WorkingNodeKind::Group || node.parent_id.is_some() {
-        return None;
-    }
     let direction = node
         .requested_dir
         .as_deref()
@@ -56,13 +53,11 @@ fn left_lane_title_for(
     node: &WorkingNode,
     layout_direction: SwimlaneDirection,
 ) -> Option<LaneTitle> {
-    if node.kind != WorkingNodeKind::Group
-        || node.parent_id.is_some()
-        || !node
-            .requested_dir
-            .as_deref()
-            .unwrap_or(layout_direction.as_str())
-            .eq_ignore_ascii_case("LR")
+    if !node
+        .requested_dir
+        .as_deref()
+        .unwrap_or(layout_direction.as_str())
+        .eq_ignore_ascii_case("LR")
     {
         return None;
     }
@@ -96,9 +91,11 @@ pub(in crate::swimlane::direction) fn lift_top_lane_title_bands_above_rails(
     layout: &mut WorkingLayout,
     work_budget: &mut LayoutWorkBudget,
 ) -> Result<()> {
+    let lane_model = crate::swimlane::lanes::LaneModel::new(&layout.nodes);
     let lanes: Vec<_> = layout
         .nodes
         .values()
+        .filter(|node| lane_model.is_lane(&node.id))
         .filter_map(|node| top_lane_title_for(node, layout.direction))
         .collect();
     if lanes.is_empty() {
@@ -144,9 +141,11 @@ pub(in crate::swimlane::direction) fn shift_left_lane_title_bands_left_of_rails(
     layout: &mut WorkingLayout,
     work_budget: &mut LayoutWorkBudget,
 ) -> Result<()> {
+    let lane_model = crate::swimlane::lanes::LaneModel::new(&layout.nodes);
     let lanes: Vec<_> = layout
         .nodes
         .values()
+        .filter(|node| lane_model.is_lane(&node.id))
         .filter_map(|node| left_lane_title_for(node, layout.direction))
         .collect();
     if lanes.is_empty() {

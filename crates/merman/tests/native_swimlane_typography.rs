@@ -102,7 +102,7 @@ fn native_swimlane_title_admission_follows_effective_markdown_html() {
         ] {
             for markdown in [false, true] {
                 let title = if markdown {
-                    format!("`{label}`")
+                    format!("`{}`", label.replace('`', "&#96;"))
                 } else {
                     label.to_owned()
                 };

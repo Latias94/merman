@@ -5,6 +5,7 @@ use std::fmt::Write as _;
 use crate::svg::parity::flowchart::{OptionalStyleAttr, escape_attr};
 use crate::svg::parity::fmt_display;
 
+use super::super::emission::FlowchartNodeShapeEmissionReceipt;
 use super::super::geom::path_from_points;
 use super::super::roughjs::roughjs_hachure_paths_for_svg_path;
 
@@ -19,7 +20,7 @@ fn render_polygon_shape(
     pts: &[(f64, f64)],
     tx: f64,
     ty: f64,
-) {
+) -> FlowchartNodeShapeEmissionReceipt {
     if common.look_is_hand_drawn() {
         let path_data = path_from_points(pts);
         if let Some((fill_d, stroke_d)) =
@@ -50,7 +51,7 @@ fn render_polygon_shape(
                 fmt_display(common.stroke_width as f64),
                 escape_attr(common.stroke_dasharray),
             );
-            return;
+            return FlowchartNodeShapeEmissionReceipt::unverified();
         }
     }
 
@@ -69,13 +70,14 @@ fn render_polygon_shape(
         fmt_display(ty),
         OptionalStyleAttr(common.style)
     );
+    FlowchartNodeShapeEmissionReceipt::classic_polygon()
 }
 
 pub(in crate::svg::parity::flowchart::render::node) fn render_lean_right(
     out: &mut impl crate::svg::parity::SvgOutput,
     common: &super::super::FlowchartNodeRenderCommon<'_>,
     details: &mut crate::svg::parity::flowchart::types::FlowchartRenderDetails,
-) {
+) -> FlowchartNodeShapeEmissionReceipt {
     let geometry = crate::flowchart::LeanGeometry::from_bounds(
         crate::flowchart::LeanKind::Right,
         common.layout_node.width,
@@ -88,14 +90,14 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_lean_right(
         &geometry.points,
         geometry.translate_x,
         geometry.translate_y,
-    );
+    )
 }
 
 pub(in crate::svg::parity::flowchart::render::node) fn render_lean_left(
     out: &mut impl crate::svg::parity::SvgOutput,
     common: &super::super::FlowchartNodeRenderCommon<'_>,
     details: &mut crate::svg::parity::flowchart::types::FlowchartRenderDetails,
-) {
+) -> FlowchartNodeShapeEmissionReceipt {
     let geometry = crate::flowchart::LeanGeometry::from_bounds(
         crate::flowchart::LeanKind::Left,
         common.layout_node.width,
@@ -108,14 +110,14 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_lean_left(
         &geometry.points,
         geometry.translate_x,
         geometry.translate_y,
-    );
+    )
 }
 
 pub(in crate::svg::parity::flowchart::render::node) fn render_trapezoid(
     out: &mut impl crate::svg::parity::SvgOutput,
     common: &super::super::FlowchartNodeRenderCommon<'_>,
     details: &mut crate::svg::parity::flowchart::types::FlowchartRenderDetails,
-) {
+) -> FlowchartNodeShapeEmissionReceipt {
     let geometry = crate::flowchart::LeanGeometry::from_bounds(
         crate::flowchart::LeanKind::Trapezoid,
         common.layout_node.width,
@@ -128,14 +130,14 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_trapezoid(
         &geometry.points,
         geometry.translate_x,
         geometry.translate_y,
-    );
+    )
 }
 
 pub(in crate::svg::parity::flowchart::render::node) fn render_inv_trapezoid(
     out: &mut impl crate::svg::parity::SvgOutput,
     common: &super::super::FlowchartNodeRenderCommon<'_>,
     details: &mut crate::svg::parity::flowchart::types::FlowchartRenderDetails,
-) {
+) -> FlowchartNodeShapeEmissionReceipt {
     let geometry = crate::flowchart::LeanGeometry::from_bounds(
         crate::flowchart::LeanKind::InvertedTrapezoid,
         common.layout_node.width,
@@ -148,7 +150,7 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_inv_trapezoid(
         &geometry.points,
         geometry.translate_x,
         geometry.translate_y,
-    );
+    )
 }
 
 pub(super) fn advance_rough_geometry(

@@ -1,6 +1,9 @@
 //! Phase 1 cycle breaking processors.
 //!
 //! Source references:
+//! - https://github.com/eclipse-elk/elk/blob/323312916048544e4e594eab3303cdb0d01e2929/plugins/org.eclipse.elk.alg.layered/src/org/eclipse/elk/alg/layered/p1cycles/GroupModelOrderCalculator.java
+//! - https://github.com/eclipse-elk/elk/blob/323312916048544e4e594eab3303cdb0d01e2929/plugins/org.eclipse.elk.alg.layered/src/org/eclipse/elk/alg/layered/p1cycles/ModelOrderCycleBreaker.java
+//! - https://github.com/eclipse-elk/elk/blob/323312916048544e4e594eab3303cdb0d01e2929/plugins/org.eclipse.elk.alg.layered/src/org/eclipse/elk/alg/layered/p1cycles/GreedyModelOrderCycleBreaker.java
 //! - https://github.com/eclipse-elk/elk/blob/62d5909f96fad541bc101ad52dabaece6b7eab7e/plugins/org.eclipse.elk.alg.layered/src/org/eclipse/elk/alg/layered/p1cycles/DepthFirstCycleBreaker.java
 //! - https://github.com/eclipse-elk/elk/blob/62d5909f96fad541bc101ad52dabaece6b7eab7e/plugins/org.eclipse.elk.alg.layered/src/org/eclipse/elk/alg/layered/p1cycles/GreedyCycleBreaker.java
 //! - https://github.com/eclipse-elk/elk/blob/62d5909f96fad541bc101ad52dabaece6b7eab7e/plugins/org.eclipse.elk.alg.layered/src/org/eclipse/elk/alg/layered/p1cycles/GreedyModelOrderCycleBreaker.java
@@ -137,19 +140,9 @@ pub(crate) fn visit_model_order_feedback_edges(
     graph: &LGraph,
     mut visit: impl FnMut(usize) -> bool,
 ) -> bool {
-    // Keep this aligned with Mermaid's pinned elkjs 0.9.3 worker: the runtime seeds the offset
-    // from the node count, raises it for explicit model order, and consumes FIRST_SEPARATE and
-    // LAST_SEPARATE counters in edge traversal order. Caching one score per node changes behavior.
-    let offset = graph
-        .layerless_nodes
-        .iter()
-        .filter_map(|node| node.model_order.map(|order| order + 1))
-        .max()
-        .unwrap_or(graph.layerless_nodes.len())
-        .max(graph.layerless_nodes.len()) as i64;
-    let mut context = ModelOrderContext::default();
-
+    let offset = graph.max_model_order_nodes.max(graph.layerless_nodes.len()) as i64;
     for source in 0..graph.layerless_nodes.len() {
+        let mut context = ModelOrderContext::default();
         let model_order_source = context.compute_constraint_model_order(graph, source, offset);
         for port in &graph.layerless_nodes[source].ports {
             for &edge_index in &port.outgoing_edges {
@@ -423,18 +416,23 @@ fn choose_node_with_max_outflow(
     nodes: &[usize],
     choice: GreedyNodeChoice,
 ) -> Option<usize> {
-    if choice == GreedyNodeChoice::MinimumModelOrder
-        && let Some(node) = nodes
-            .iter()
-            .copied()
-            .filter(|node| graph.layerless_nodes[*node].model_order.is_some())
-            .min_by_key(|node| {
-                graph.layerless_nodes[*node]
-                    .model_order
-                    .unwrap_or(usize::MAX)
-            })
-    {
-        return Some(node);
+    if choice == GreedyNodeChoice::MinimumModelOrder {
+        let offset = graph.max_model_order_nodes.max(graph.layerless_nodes.len()) as i64;
+        let mut context = ModelOrderContext::default();
+        let mut best = None;
+        let mut minimum = i64::MAX;
+        for &node in nodes {
+            if graph.layerless_nodes[node].model_order.is_some() {
+                let order = context.compute_constraint_model_order(graph, node, offset);
+                if order < minimum {
+                    minimum = order;
+                    best = Some(node);
+                }
+            }
+        }
+        if best.is_some() {
+            return best;
+        }
     }
 
     let random_index = graph.random.next_int(nodes.len())?;
@@ -744,6 +742,32 @@ mod tests {
 
         assert!(!graph.cyclic);
         assert!(!graph.edges[0].reversed);
+    }
+
+    #[test]
+    fn elk_0_12_model_order_separate_counters_restart_for_each_source() {
+        let mut edges = (0..8)
+            .map(|index| edge(&format!("ab-{index}"), "A", "B"))
+            .collect::<Vec<_>>();
+        edges.push(edge("bc", "B", "C"));
+        let mut graph = graph(vec![node("A"), node("B"), node("C")], edges);
+        graph.layerless_nodes[0].layer_constraint = LayerConstraint::FirstSeparate;
+        graph.layerless_nodes[1].layer_constraint = LayerConstraint::FirstSeparate;
+        break_cycles_model_order(&mut graph);
+        assert!(!graph.edges.last().unwrap().reversed);
+    }
+
+    #[test]
+    fn elk_0_12_greedy_model_order_ties_consider_layer_constraints() {
+        let mut graph = graph(vec![node("A"), node("B"), node("C")], vec![]);
+        graph.layerless_nodes[0].layer_constraint = LayerConstraint::Last;
+        graph.layerless_nodes[1].layer_constraint = LayerConstraint::First;
+        let chosen = choose_node_with_max_outflow(
+            &mut graph,
+            &[0, 1, 2],
+            GreedyNodeChoice::MinimumModelOrder,
+        );
+        assert_eq!(chosen, Some(1));
     }
 
     #[test]

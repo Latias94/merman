@@ -16,6 +16,8 @@ import type {
   AnalysisResult,
   DiagramDetectionFacts,
   SvgBindingOptions,
+  SourceAppearanceDeclaration,
+  SourceAppearanceSummary,
   ValidationResult,
 } from "./public-types.js";
 import type { MermanRuntimeState } from "./runtime-state.js";
@@ -67,7 +69,7 @@ export function detectDiagramFacts(
     const facts: unknown = analysisFacts(source, options);
     if (
       !isRecord(facts) ||
-      facts.version !== 2 ||
+      facts.version !== 3 ||
       typeof facts.valid !== "boolean"
     ) {
       return UNAVAILABLE_DIAGRAM_DETECTION;
@@ -78,17 +80,22 @@ export function detectDiagramFacts(
       return UNAVAILABLE_DIAGRAM_DETECTION;
     }
 
+    const appearance = sourceAppearance(diagrams[0].appearance);
+    const unavailable = appearance.state === "known"
+      ? Object.freeze({ ...UNAVAILABLE_DIAGRAM_DETECTION, appearance })
+      : UNAVAILABLE_DIAGRAM_DETECTION;
+
     const parseDisposition = diagrams[0].parse_disposition;
     if (parseDisposition === "unavailable") {
-      return UNAVAILABLE_DIAGRAM_DETECTION;
+      return unavailable;
     }
     if (parseDisposition !== "parsed" && parseDisposition !== "recovered") {
-      return UNAVAILABLE_DIAGRAM_DETECTION;
+      return unavailable;
     }
 
     const syntax = diagrams[0].syntax;
     if (!isRecord(syntax)) {
-      return UNAVAILABLE_DIAGRAM_DETECTION;
+      return unavailable;
     }
 
     const syntaxId = syntax.diagram_type;
@@ -99,12 +106,12 @@ export function detectDiagramFacts(
       typeof effectiveLayoutId !== "string" ||
       effectiveLayoutId.trim().length === 0
     ) {
-      return UNAVAILABLE_DIAGRAM_DETECTION;
+      return unavailable;
     }
 
     const diagramType = diagramMetadataBySyntaxId().get(syntaxId);
     if (diagramType == null) {
-      return UNAVAILABLE_DIAGRAM_DETECTION;
+      return unavailable;
     }
 
     return Object.freeze({
@@ -113,10 +120,40 @@ export function detectDiagramFacts(
       diagramType,
       syntaxId,
       effectiveLayoutId,
+      ...(appearance.state === "known" ? { appearance } : {}),
     });
   } catch {
     return UNAVAILABLE_DIAGRAM_DETECTION;
   }
+}
+
+function sourceAppearance(value: unknown): SourceAppearanceSummary {
+  if (!isRecord(value) || value.state !== "known") return Object.freeze({ state: "unknown" });
+  const declarations: (SourceAppearanceDeclaration | null)[] = [];
+  for (const key of ["theme", "font", "look"]) {
+    const declaration = value[key];
+    if (declaration === null) {
+      declarations.push(null);
+      continue;
+    }
+    if (!isRecord(declaration) || typeof declaration.value !== "string" ||
+      !isRecord(declaration.construct_span) || !isRecord(declaration.origin)) return Object.freeze({ state: "unknown" });
+    const span = declaration.construct_span;
+    const origin = declaration.origin;
+    if (!Number.isSafeInteger(span.start) || !Number.isSafeInteger(span.end) ||
+      (span.start as number) < 0 || (span.end as number) < (span.start as number) ||
+      (origin.kind !== "frontmatter" && (origin.kind !== "directive" ||
+        !Number.isSafeInteger(origin.directive_index) || (origin.directive_index as number) < 0))) {
+      return Object.freeze({ state: "unknown" });
+    }
+    declarations.push(Object.freeze({
+      value: declaration.value,
+      origin: origin.kind === "frontmatter" ? Object.freeze({ kind: "frontmatter" as const })
+        : Object.freeze({ kind: "directive" as const, directive_index: origin.directive_index as number }),
+      construct_span: Object.freeze({ start: span.start as number, end: span.end as number }),
+    }));
+  }
+  return Object.freeze({ state: "known", theme: declarations[0], font: declarations[1], look: declarations[2] });
 }
 
 export function analyzeDocument(

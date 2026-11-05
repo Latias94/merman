@@ -4,6 +4,8 @@ use crate::config::config_string;
 pub(crate) struct IshikawaCssBinding {
     pub(crate) line_color: String,
     pub(crate) main_bkg: String,
+    pub(crate) node_stroke: String,
+    pub(crate) marker_fill: String,
     pub(crate) text_color: String,
     pub(crate) look: String,
     pub(crate) hand_drawn_seed: Option<f64>,
@@ -23,6 +25,8 @@ impl IshikawaCssBinding {
                 .and_then(serde_json::Value::as_f64),
             line_color: color("lineColor", "#333"),
             main_bkg: color("mainBkg", "#fff"),
+            node_stroke: color("lineColor", "#333"),
+            marker_fill: color("lineColor", "#333"),
             text_color: color("textColor", "#333"),
         }
     }

@@ -22,8 +22,8 @@ Excalifont and Xiaolai WOFF2 assets, their hashes, and declared ranges remain re
 they do not establish production embedding support. Preserve asset and license bytes and
 attribution when updating the pinned corpus.
 
-See [the capability corpus](../../docs/alignment/MODERN_MERMAID_THEME_CAPABILITY_CORPUS.md)
-for the reviewed provenance and architectural boundaries.
+See the [design-reference and font policy](../../docs/alignment/EXTERNAL_FIXTURES.md#design-references-and-fonts)
+for provenance, licensing and production font boundaries.
 
 ## Live representative scenes
 

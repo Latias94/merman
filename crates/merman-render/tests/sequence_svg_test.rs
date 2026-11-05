@@ -6787,7 +6787,141 @@ fn try_render_sequence_theme_request(
 }
 
 #[test]
-fn sequence_text_and_title_fill_have_no_legacy_writer_consumer() {
+fn sequence_title_fill_keeps_source_ownership_and_unsupported_siblings_property_local() {
+    for variant in [None, Some(ThemeVariant::Default)] {
+        for (paint, css) in [
+            (CanvasPaint::solid("#2468ac").unwrap(), "#2468ac"),
+            (CanvasPaint::Transparent, "transparent"),
+        ] {
+            for (title, channel, stroke) in [
+                (true, "none", false),
+                (false, "none", false),
+                (true, "site", false),
+                (true, "source", false),
+                (true, "none", true),
+                (true, "site", true),
+                (true, "source", true),
+            ] {
+                let mut patch = ThemeStylePatch::default().with_fill(paint.clone());
+                if stroke {
+                    patch = patch.with_stroke(CanvasPaint::solid("#987654").unwrap());
+                }
+                let mut rule = ThemeRule::new(ThemeTarget::Title, patch);
+                if let Some(variant) = variant {
+                    rule = rule.with_variant(variant);
+                }
+                let theme = DiagramThemeCompiler::new()
+                    .compile(
+                        DiagramThemeSpec::new()
+                            .with_styles(ThemeRuleSet::default().with_rule(rule)),
+                    )
+                    .unwrap();
+                let mut header = String::new();
+                if title || channel == "source" {
+                    header.push_str("---\n");
+                    if title {
+                        header.push_str("title: Paint title\n");
+                    }
+                    if channel == "source" {
+                        header.push_str("config:\n  themeVariables:\n    textColor: '#abcdef'\n");
+                    }
+                    header.push_str("---\n");
+                }
+                let source = format!("{header}sequenceDiagram\nA->>B: Message\n");
+                let engine = if channel == "site" {
+                    MermaidEngine::new().with_site_config(
+                        merman_core::presentation::SourcePresentationConfig::from_value(
+                            serde_json::json!({"themeVariables": {"textColor": "#abcdef"}}),
+                        ),
+                    )
+                } else {
+                    MermaidEngine::new()
+                };
+                let rendered = try_render_sequence_theme_request(
+                    &source,
+                    &theme,
+                    engine,
+                    ThemePortabilityRequirement::BestEffort,
+                )
+                .unwrap();
+                let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+                let title_node = document
+                    .descendants()
+                    .find(|node| node.has_tag_name("text") && node.text() == Some("Paint title"));
+                assert_eq!(title_node.is_some(), title);
+                let owned = channel != "none";
+                if let Some(title_node) = title_node {
+                    assert_eq!(title_node.attribute("fill"), (!owned).then_some(css));
+                }
+                let completion = rendered.into_completion();
+                let evidence = merman_render::__private::family_evidence(completion.report());
+                assert_eq!(evidence.required_count(), 1);
+                assert_eq!(evidence.accounted_count(), 1);
+                assert_eq!(
+                    evidence.applied_count(),
+                    usize::from(title && !owned && !stroke)
+                );
+                assert_eq!(
+                    evidence.not_applicable_count(),
+                    usize::from(!title || (owned && !stroke))
+                );
+                assert_eq!(
+                    evidence.theme_residual_count(),
+                    usize::from(title && stroke)
+                );
+            }
+        }
+    }
+}
+
+#[test]
+fn sequence_all_presets_consume_visible_title_fill_without_title_residuals() {
+    let presets = merman_render::diagram_theme::theme_preset_descriptors();
+    assert_eq!(presets.len(), 11);
+    let source = "---\ntitle: Paint title\n---\nsequenceDiagram\nA->>B: Message\n";
+    for preset in presets {
+        let theme = DiagramThemeCompiler::new()
+            .compile_preset(preset.preset())
+            .unwrap();
+        let rendered = try_render_sequence_theme_request(
+            source,
+            &theme,
+            MermaidEngine::new(),
+            ThemePortabilityRequirement::BestEffort,
+        )
+        .unwrap();
+        let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+        let title = document
+            .descendants()
+            .find(|node| node.has_tag_name("text") && node.text() == Some("Paint title"))
+            .unwrap();
+        assert!(title.attribute("fill").is_some(), "{}", preset.id());
+        let completion = rendered.into_completion();
+        let evidence = merman_render::__private::family_evidence(completion.report());
+        assert!(evidence.applied_count() > 0, "{}", preset.id());
+        assert_eq!(
+            evidence.accounted_count(),
+            evidence.required_count(),
+            "{}",
+            preset.id()
+        );
+        assert!(
+            completion
+                .report()
+                .theme_diagnostics()
+                .iter()
+                .all(|diagnostic| {
+                    diagnostic.target() != Some(ThemeTarget::Title)
+                        && diagnostic.code() != "evidence-incomplete"
+                }),
+            "{}",
+            preset.id()
+        );
+    }
+}
+
+#[test]
+fn sequence_title_fill_and_text_fallback_reach_the_real_terminal() {
     let source = "sequenceDiagram\ntitle Diagram title\nbox Group\nparticipant A\nend\nparticipant B\nA->>B: Message\nloop Repeat\nNote over A,B: Note\nB-->>A: Reply\nend\n";
     for look in ["classic", "neo", "handDrawn"] {
         for variables in [
@@ -6808,9 +6942,9 @@ fn sequence_text_and_title_fill_have_no_legacy_writer_consumer() {
             assert!(baseline.svg().contains("Diagram title"));
             for target in [ThemeTarget::Text, ThemeTarget::Title] {
                 for variant in [None, Some(ThemeVariant::Default)] {
-                    for paint in [
-                        CanvasPaint::solid("#d12345").unwrap(),
-                        CanvasPaint::Transparent,
+                    for (paint, css) in [
+                        (CanvasPaint::solid("#d12345").unwrap(), "#d12345"),
+                        (CanvasPaint::Transparent, "transparent"),
                     ] {
                         let mut rule =
                             ThemeRule::new(target, ThemeStylePatch::default().with_fill(paint));
@@ -6825,18 +6959,34 @@ fn sequence_text_and_title_fill_have_no_legacy_writer_consumer() {
                             .unwrap();
                         let rendered =
                             render(&theme, ThemePortabilityRequirement::BestEffort).unwrap();
-                        assert_eq!(
-                            rendered.svg(),
-                            baseline.svg(),
-                            "{look}/{target:?}/{variant:?}/{variables}"
-                        );
+                        let source_owned = variables.get("textColor").is_some();
+                        assert_eq!(rendered.svg() == baseline.svg(), source_owned);
+                        let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+                        let title = document
+                            .descendants()
+                            .find(|node| {
+                                node.has_tag_name("text") && node.text() == Some("Diagram title")
+                            })
+                            .unwrap();
+                        assert_eq!(title.attribute("fill"), (!source_owned).then_some(css));
                         let completion = rendered.into_completion();
                         let evidence =
                             merman_render::__private::family_evidence(completion.report());
-                        assert_eq!(evidence.applied_count(), 0);
-                        assert_eq!(evidence.theme_residual_count(), 1);
-                        assert!(
-                            render(&theme, ThemePortabilityRequirement::RequirePortable).is_err()
+                        let title_rule = target == ThemeTarget::Title;
+                        assert_eq!(evidence.required_count(), 1);
+                        assert_eq!(evidence.accounted_count(), 1);
+                        assert_eq!(
+                            evidence.applied_count(),
+                            usize::from(title_rule && !source_owned)
+                        );
+                        assert_eq!(
+                            evidence.not_applicable_count(),
+                            usize::from(title_rule && source_owned)
+                        );
+                        assert_eq!(evidence.theme_residual_count(), usize::from(!title_rule));
+                        assert_eq!(
+                            render(&theme, ThemePortabilityRequirement::RequirePortable).is_ok(),
+                            title_rule,
                         );
                     }
                 }
@@ -6860,17 +7010,19 @@ fn sequence_unsupported_text_domains_follow_occurrences_and_winners() {
         )
     };
     let source = "sequenceDiagram\ntitle Diagram title\nA->>B: Message\n";
-    for (source, rules, not_applicable, residuals) in [
-        ("sequenceDiagram\nA->>B: Message\n", vec![title()], 1, 0),
+    for (source, rules, applied, not_applicable, residuals) in [
+        ("sequenceDiagram\nA->>B: Message\n", vec![title()], 0, 1, 0),
         (
             "sequenceDiagram\ntitle Diagram title\nparticipant A\n",
             vec![text(), title()],
+            1,
             0,
-            2,
+            1,
         ),
         (
             source,
             vec![title().with_ordinal(OrdinalSelector::exact(2).unwrap())],
+            0,
             1,
             0,
         ),
@@ -6878,17 +7030,20 @@ fn sequence_unsupported_text_domains_follow_occurrences_and_winners() {
             source,
             vec![text().with_ordinal(OrdinalSelector::exact(2).unwrap())],
             0,
+            0,
             1,
         ),
         (
             source,
             vec![text().with_ordinal(OrdinalSelector::exact(1000).unwrap())],
+            0,
             1,
             0,
         ),
         (
             source,
             vec![text().with_variant(ThemeVariant::Default), text()],
+            0,
             1,
             1,
         ),
@@ -6900,6 +7055,7 @@ fn sequence_unsupported_text_domains_follow_occurrences_and_winners() {
             ],
             1,
             1,
+            0,
         ),
     ] {
         let theme = DiagramThemeCompiler::new()
@@ -6920,10 +7076,13 @@ fn sequence_unsupported_text_domains_follow_occurrences_and_winners() {
         .unwrap();
         let completion = rendered.into_completion();
         let evidence = merman_render::__private::family_evidence(completion.report());
-        assert_eq!(evidence.applied_count(), 0);
+        assert_eq!(evidence.applied_count(), applied);
         assert_eq!(evidence.not_applicable_count(), not_applicable, "{source}");
         assert_eq!(evidence.theme_residual_count(), residuals, "{source}");
-        assert_eq!(evidence.accounted_count(), not_applicable + residuals);
+        assert_eq!(
+            evidence.accounted_count(),
+            applied + not_applicable + residuals
+        );
         assert_eq!(
             try_render_sequence_theme_request(
                 source,
@@ -9603,6 +9762,10 @@ fn sequence_neo_shadow_and_participant_paints_are_scoped_and_look_specific() {
 
 #[test]
 fn sequence_neo_participant_type_glyphs_share_band_and_shadow() {
+    use merman_render::diagram_theme::{
+        DiagramEffectSet, EffectBinding, EffectGraph, EffectInput, EffectPrimitive, ThemeColorValue,
+    };
+
     let source = std::fs::read_to_string(
         workspace_root()
             .join("fixtures")
@@ -9661,6 +9824,102 @@ fn sequence_neo_participant_type_glyphs_share_band_and_shadow() {
         .filter_map(|node| node.attribute("name"))
         .collect();
     assert_eq!(footer_names, ["boundary", "C", "E"]);
+
+    let theme = DiagramThemeCompiler::new()
+        .compile(
+            DiagramThemeSpec::new().with_effects(
+                DiagramEffectSet::default()
+                    .with_graph(
+                        EffectGraph::new(
+                            "right-shadow",
+                            [EffectPrimitive::DropShadow {
+                                input: EffectInput::SourceGraphic,
+                                offset_x: 128.0,
+                                offset_y: 0.0,
+                                blur_radius: 0.0,
+                                spread: 0.0,
+                                color: ThemeColorValue::parse("#ff0000").unwrap(),
+                            }],
+                        )
+                        .unwrap(),
+                    )
+                    .unwrap()
+                    .with_binding(
+                        EffectBinding::new(ThemeTarget::ActorLabel, "right-shadow").unwrap(),
+                    )
+                    .unwrap(),
+            ),
+        )
+        .unwrap();
+    let rendered = try_render_sequence_theme_request(
+        &source,
+        &theme,
+        MermaidEngine::new().with_site_config(
+            merman_core::presentation::SourcePresentationConfig::from_value(
+                serde_json::json!({"look": "neo"}),
+            ),
+        ),
+        ThemePortabilityRequirement::RequirePortable,
+    )
+    .unwrap();
+    let doc = roxmltree::Document::parse(rendered.svg()).unwrap();
+    let labels: Vec<_> = doc
+        .descendants()
+        .filter(|node| {
+            node.has_tag_name("text")
+                && node
+                    .attribute("class")
+                    .is_some_and(|class| class.split_ascii_whitespace().any(|part| part == "actor"))
+        })
+        .collect();
+    assert_eq!(labels.len(), 12, "six glyphs with mirrored labels");
+    for label in labels {
+        assert!(label.attribute("filter").is_some(), "{label:?}");
+        assert!(
+            label
+                .ancestors()
+                .skip(1)
+                .all(|parent| parent.attribute("filter").is_none()),
+            "the independently filtered label must not be clipped by a glyph filter: {label:?}"
+        );
+        let filter_id = label
+            .attribute("filter")
+            .unwrap()
+            .strip_prefix("url(#")
+            .unwrap()
+            .strip_suffix(')')
+            .unwrap();
+        let filter = doc
+            .descendants()
+            .find(|node| node.attribute("id") == Some(filter_id))
+            .unwrap();
+        let [x, y, w, h] = ["x", "y", "width", "height"]
+            .map(|key| filter.attribute(key).unwrap().parse::<f64>().unwrap());
+        let (view, _) = root_view_box_and_max_width(rendered.svg());
+        assert!(x >= view[0] - 0.001 && x + w <= view[0] + view[2] + 0.001);
+        assert!(y >= view[1] - 0.001 && y + h <= view[1] + view[3] + 0.001);
+    }
+    let bodies: Vec<_> = doc
+        .descendants()
+        .filter(|node| node.attribute("filter") == Some("url(#merman-drop-shadow)"))
+        .collect();
+    assert_eq!(
+        bodies.len(),
+        12,
+        "each mirrored body keeps its Neo decoration"
+    );
+    assert!(
+        bodies
+            .iter()
+            .all(|body| !body.descendants().any(|node| node.has_tag_name("text")))
+    );
+    drop(doc);
+    let completion = rendered.into_completion();
+    let evidence = merman_render::__private::family_evidence(completion.report());
+    assert_eq!(evidence.required_count(), 1);
+    assert_eq!(evidence.applied_count(), 1);
+    assert_eq!(evidence.not_applicable_count(), 0);
+    assert_eq!(evidence.theme_residual_count(), 0);
 }
 
 #[test]
@@ -9792,6 +10051,235 @@ fn sequence_activation_palettes_follow_actor_order_across_creation_and_nesting()
                         "{theme}/{look}/actor={actor_index}"
                     );
                 }
+            }
+        }
+    }
+}
+
+#[test]
+fn sequence_redux_palette_paint_matches_scalar_and_array_ownership_evidence() {
+    const SOURCE: &str = "sequenceDiagram\nparticipant A\nactivate A\ndeactivate A";
+    for (theme, target, property, scalar, array, default_inline) in [
+        (
+            "redux-color",
+            ThemeTarget::Actor,
+            "fill",
+            "actorBkg",
+            "bkgColorArray",
+            "rgb(253, 244, 255)",
+        ),
+        (
+            "redux-color",
+            ThemeTarget::Actor,
+            "stroke",
+            "actorBorder",
+            "borderColorArray",
+            "rgb(232, 121, 249)",
+        ),
+        (
+            "redux-color",
+            ThemeTarget::Activation,
+            "fill",
+            "activationBkgColor",
+            "bkgColorArray",
+            "rgb(253, 244, 255)",
+        ),
+        (
+            "redux-color",
+            ThemeTarget::Activation,
+            "stroke",
+            "activationBorderColor",
+            "borderColorArray",
+            "rgb(232, 121, 249)",
+        ),
+        (
+            "redux-dark-color",
+            ThemeTarget::Activation,
+            "fill",
+            "activationBkgColor",
+            "bkgColorArray",
+            "rgb(17, 17, 19)",
+        ),
+        (
+            "redux-dark-color",
+            ThemeTarget::Activation,
+            "stroke",
+            "activationBorderColor",
+            "borderColorArray",
+            "rgb(232, 121, 249)",
+        ),
+    ] {
+        let class = if target == ThemeTarget::Actor {
+            "actor actor-top"
+        } else {
+            "activation0"
+        };
+        let selector_suffix = if target == ThemeTarget::Actor {
+            ".actor"
+        } else {
+            ".activation0"
+        };
+        let raw_config = serde_json::json!({
+            "look": "neo", "theme": theme, "themeVariables": {(scalar): "#fedcba"}
+        });
+        let raw = render_sequence_svg_from_text_with_engine(
+            MermaidEngine::new().with_site_config(
+                merman_core::presentation::SourcePresentationConfig::from_value(raw_config.clone()),
+            ),
+            SOURCE,
+        );
+        let doc = roxmltree::Document::parse(&raw).unwrap();
+        let terminal = doc
+            .descendants()
+            .find(|node| node.has_tag_name("rect") && node.attribute("class") == Some(class))
+            .unwrap();
+        assert_eq!(
+            inline_style_value(terminal.attribute("style").unwrap(), property),
+            Some(default_inline),
+            "raw {theme} {target:?} {property} retains Mermaid's inline palette precedence"
+        );
+
+        for owner in ["scalar", "typed", "array"] {
+            let mut config = raw_config.clone();
+            if owner != "scalar" {
+                config["themeVariables"]
+                    .as_object_mut()
+                    .unwrap()
+                    .remove(scalar);
+            }
+            if owner == "array" {
+                config["themeVariables"][array] = serde_json::json!(["#aabbcc"]);
+            }
+            let case = format!("{theme}-{target:?}-{owner}");
+            let rendered =
+                render_sequence_paint_owner_case(SOURCE, target, property, config, "site", &case);
+            let doc = roxmltree::Document::parse(rendered.svg()).unwrap();
+            let terminal = doc
+                .descendants()
+                .find(|node| node.has_tag_name("rect") && node.attribute("class") == Some(class))
+                .unwrap();
+            let inline = terminal
+                .attribute("style")
+                .and_then(|style| inline_style_value(style, property));
+            if owner == "array" {
+                assert_eq!(inline, Some("rgb(170, 187, 204)"), "{case} {property}");
+            } else {
+                assert_eq!(
+                    inline, None,
+                    "{case} {property}: constructor defaults must yield"
+                );
+                let css = doc
+                    .descendants()
+                    .find(|node| node.has_tag_name("style"))
+                    .unwrap()
+                    .text()
+                    .unwrap();
+                let selector = format!("#sequence-site-{case} {selector_suffix}");
+                assert_eq!(
+                    css_property_values_for_exact_selector(css, &selector, property)
+                        .last()
+                        .copied(),
+                    Some(if owner == "scalar" {
+                        "#fedcba"
+                    } else {
+                        "#123456"
+                    }),
+                    "{case} {property}: the winning scalar or typed paint must reach the terminal"
+                );
+            }
+            drop(doc);
+            assert_sequence_paint_owner_evidence(
+                rendered,
+                owner == "typed",
+                "site",
+                &case,
+                property,
+            );
+        }
+    }
+}
+
+#[test]
+fn sequence_redux_glyph_scalar_stroke_reaches_the_visible_body() {
+    for theme in ["redux-color", "redux-dark-color"] {
+        for (kind, source) in [
+            ("actor", "sequenceDiagram\nactor A"),
+            (
+                "boundary",
+                "sequenceDiagram\nparticipant A@{ \"type\": \"boundary\" }",
+            ),
+            (
+                "control",
+                "sequenceDiagram\nparticipant A@{ \"type\": \"control\" }",
+            ),
+        ] {
+            let config = serde_json::json!({
+                "look": "neo", "theme": theme,
+                "themeVariables": {"actorBorder": "#fedcba"}
+            });
+            let raw = render_sequence_svg_from_text_with_engine(
+                MermaidEngine::new().with_site_config(
+                    merman_core::presentation::SourcePresentationConfig::from_value(config.clone()),
+                ),
+                source,
+            );
+            let raw_doc = roxmltree::Document::parse(&raw).unwrap();
+            for wrapper in raw_doc.descendants().filter(|node| {
+                node.has_tag_name("g")
+                    && node.attribute("name") == Some("A")
+                    && node
+                        .attribute("class")
+                        .is_some_and(|class| class.starts_with("actor-man "))
+            }) {
+                assert_eq!(
+                    inline_style_value(wrapper.attribute("style").unwrap(), "stroke"),
+                    Some("rgb(232, 121, 249)")
+                );
+            }
+            for array in [false, true] {
+                let mut config = config.clone();
+                if array {
+                    config["themeVariables"]["borderColorArray"] = serde_json::json!(["#aabbcc"]);
+                }
+                let case = format!("{theme}-{kind}-{array}");
+                let rendered = render_sequence_paint_owner_case(
+                    source,
+                    ThemeTarget::Actor,
+                    "stroke",
+                    config,
+                    "site",
+                    &case,
+                );
+                let doc = roxmltree::Document::parse(rendered.svg()).unwrap();
+                let wrappers: Vec<_> = doc
+                    .descendants()
+                    .filter(|node| {
+                        node.has_tag_name("g")
+                            && node.attribute("name") == Some("A")
+                            && node
+                                .attribute("class")
+                                .is_some_and(|class| class.starts_with("actor-man "))
+                    })
+                    .collect();
+                assert_eq!(wrappers.len(), 2, "{case}");
+                for wrapper in wrappers {
+                    assert_eq!(
+                        inline_style_value(wrapper.attribute("style").unwrap(), "stroke"),
+                        Some(if array {
+                            "rgb(170, 187, 204)"
+                        } else {
+                            "rgb(254, 220, 186)"
+                        }),
+                        "{case}"
+                    );
+                    assert!(
+                        wrapper
+                            .descendants()
+                            .any(|node| node.has_tag_name("line") || node.has_tag_name("circle"))
+                    );
+                }
+                drop(doc);
+                assert_sequence_paint_owner_evidence(rendered, false, "site", &case, "stroke");
             }
         }
     }

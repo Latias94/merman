@@ -44,7 +44,10 @@ test("browser Class bounds and scoped icon services use the actual WASM renderer
       const { createBrowserTextMeasurementSession } = await import("/dist/runtime-render.js");
       const { createRenderSession } = await import("/dist/runtime-render-session.js");
       const { BINDING_OPTIONS_SCHEMA_VERSION: version } = await import("/dist/generated/resource-contract.js");
-      await core.initMerman(() => import("/pkg/full/merman_wasm.js"));
+      await core.initMerman({
+        loader: () => import("/pkg/full/merman_wasm.js"),
+        wasm: new URL("/pkg/full/merman_wasm_bg.wasm", location.href),
+      });
       await document.fonts.ready;
       const measurements = createBrowserTextMeasurementSession();
       const pack = path => JSON.stringify({

@@ -80,6 +80,7 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_rounded_rect(
             common.effect_filter_attr,
             escape_attr(common.style),
         );
+        common.write_effect_style(out);
         common.write_rectangle_corner_style(out);
         let _ = write!(
             out,
@@ -104,6 +105,7 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_rounded_rect(
         }
         out.push_str("/>");
         super::super::emission::FlowchartNodeShapeEmissionReceipt::classic_process(true)
+            .with_effect_reach(common.effect_selected)
     }
 }
 

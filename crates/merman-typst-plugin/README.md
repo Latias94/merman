@@ -65,10 +65,11 @@ The Typst wrapper version in `distribution/typst/merman/typst.toml` is independe
 
 ## Verification
 
-Build and install the provenance-bound publish artifact with:
+Build, budget, and install the provenance-bound publish artifact in one production pass:
 
 ```bash
-cargo run --locked -p xtask -- build-typst-package --profile publish
+cargo run --locked -p xtask -- build-typst-package --profile publish \
+  --budget-file docs/release/WASM_SIZE_BUDGETS.json
 ```
 
 Check the dependency closure using the package, target, default-feature policy, and features owned by the exact `typst-wasm` artifact recipe:
@@ -77,11 +78,13 @@ Check the dependency closure using the package, target, default-feature policy, 
 python3 scripts/verify_artifact_dependency_closures.py --profile typst-wasm
 ```
 
-Check the canonical artifact's compressed size budget without referring to its private output directory:
-
-```bash
-cargo run --locked -p xtask -- wasm-size-matrix --surface typst --budget-file docs/release/WASM_SIZE_BUDGETS.json
-```
+The producer builds raw WASM, runs Binaryen 133 `wasm-opt -Oz`, and strips the optimized result
+once. Its private schema-4 manifest binds raw, optimized, and final stripped bytes by SHA-256 and
+length. The budget consumer verifies those files, measures raw bytes before optimization, and
+compresses the final stripped WASM with the unchanged gzip and Brotli recipes. Omitting
+`--budget-file` skips only the optional size gate, not fresh production or identity checks.
+The retired `wasm-size-matrix --surface typst` and `--artifact-profile typst-wasm` selections
+report the replacement package-build command instead of producing another artifact.
 
 `build-typst-package` verifies the artifact manifest, closed import/export and function-signature surface, runtime capability catalog, and all seven ABI operations through a Typst-compatible `wasmi` host before staging the package. Raw Cargo output and `target/typst-wasm-artifacts/` are private implementation details and must not be referenced by CI, release automation, or package users.
 
@@ -90,6 +93,11 @@ Compile the wrapper examples and tests against the exact staged bundle with:
 ```bash
 cargo run --locked -p xtask -- typst-package-smoke --profile publish --skip-wasm-build
 ```
+
+`--skip-wasm-build` is smoke-only. It still validates current source, features, tools, flags,
+versions, and all three artifact digests before packaging the frozen final WASM. A schema-3
+artifact must be rebuilt once; its manifest has no raw/optimized evidence for the size gate.
+The private raw and optimized files are never installed into the runtime package.
 
 The build consumes a private artifact provenance manifest to prove the canonical artifact recipe,
 `default_features` policy, exact Cargo feature set, exact `typst-wasm` artifact profile, production

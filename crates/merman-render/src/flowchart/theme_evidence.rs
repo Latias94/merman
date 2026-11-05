@@ -585,6 +585,10 @@ pub(crate) struct FlowchartClusterThemeStyle {
 }
 
 impl FlowchartClusterThemeStyle {
+    pub(crate) fn requests_shape_style(&self) -> bool {
+        self.fill.is_some() || self.stroke.is_some() || self.stroke_width.is_some()
+    }
+
     pub(crate) fn resolve(
         theme: Option<&ResolvedDiagramTheme>,
         ordinal: Option<usize>,
@@ -850,6 +854,10 @@ impl FlowchartNodeThemeStyle {
         }
 
         Ok(resolved)
+    }
+
+    pub(crate) fn effect_is_cleared(&self) -> bool {
+        matches!(self.effect, Some(FlowchartEffectOutcome::Cleared { .. }))
     }
 
     pub(crate) fn effect(&self) -> Option<&SvgShadowEffect> {

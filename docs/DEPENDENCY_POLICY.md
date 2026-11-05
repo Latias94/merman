@@ -23,7 +23,7 @@ Stable coupled workspace crates use ordinary compatible requirements such as `0.
 
 The [published krilla-svg 0.8.1 manifest](https://docs.rs/crate/krilla-svg/0.8.1/source/Cargo.toml) requires resvg/usvg 0.47 and fontdb 0.23. The current [`NativeFontContext` implementation](../crates/merman-export/src/fonts.rs) carries that database and exposes `apply_to_usvg_options`. The compatible resvg/usvg line is not an exact equality requirement. The 2026-10-26 audit observed resvg/usvg 0.49.0, but krilla-svg 0.8.1 is still the latest stable PDF adapter. Freshness alone is insufficient evidence to replace the shared font/export contract. The release audit must retain the upstream versions, manifests, public type boundary, and owner results behind this exception.
 
-The [2026-10-30 embedding review](research/2026-10-30-dependency-review.md) rechecked that upstream group and reproduced the incompatible `usvg::Tree` handoff in a standalone 0.49/0.47 consumer. It also records actual consumer dependency graphs and bounded feature reductions. Keep CSS color acceleration local to the ZenUML renderer and TOML writing local to test tooling; parser-only and production read-only consumers should not inherit unused features.
+An incompatible `usvg::Tree` handoff prevents mixing the 0.49 renderer with the 0.47 PDF adapter. Keep CSS color acceleration local to the ZenUML renderer and TOML writing local to test tooling; parser-only and production read-only consumers should not inherit unused features.
 
 The [upstream language adapter](https://github.com/tree-sitter/tree-sitter/blob/v0.27.1/crates/language/src/lib.rs) wraps the generated entry point with `#[repr(transparent)]`. The [upstream runtime manifest](https://github.com/tree-sitter/tree-sitter/blob/v0.27.1/lib/Cargo.toml) uses a compatible language requirement. Keep generator identity, generated ABI, and public adapter compatibility as separate checks.
 
@@ -31,7 +31,15 @@ Wasmi 2 tooling explicitly enables `validate`, `stable`, `simd`, and `auto-dispa
 
 ## Reference tools and JavaScript compatibility
 
-The 0.9.0 preparation audit selected Mermaid 12.1.0. Development now selects 12.2.0 through [ADR-0094](adr/0094-mermaid-12-2-upstream-transition.md); published releases retain their original baseline. Its reference host graph is frozen and independently admitted: updating a reference dependency changes the oracle and requires the Mermaid alignment workflow. The 2026-10-26 audit observed ZenUML 4.11.0, which falls outside the selected plugin's `^3.47.9` contract and is not substituted without coordinated admission.
+The 0.9.0 preparation audit selected Mermaid 12.1.0. Development selects 12.3.0 through the
+[selected reference graph](../tools/upstreams/MERMAID_REFERENCE_BUNDLE.json) and
+[development migration](migrations/mermaid-12-3.md); [ADR-0094](adr/0094-mermaid-12-2-upstream-transition.md)
+retains the historical 12.2 transition. Published releases retain their original baseline.
+The reference host graph is frozen and independently admitted: updating a reference dependency
+changes the oracle and requires the Mermaid alignment workflow. ELK follows the exact target
+workspace oracle `0.12.0`; the investigated `0.12.1` candidate has not completed admission.
+The 2026-10-26 audit observed ZenUML 4.11.0, which falls outside the selected plugin's `^3.47.9`
+contract and is not substituted without coordinated admission.
 
 Application TypeScript remains on the compatible 6.0.3 line. The 2026-10-26 audit observed TypeScript 7.0.2; typescript-eslint 8.72.0 still requires TypeScript `>=4.8.4 <6.1.0`, and application scripts use the old compiler API. VS Code independently admits TypeScript 7. Retain this as a documented compatibility exception; do not treat a tool's major version as an unconditional application upgrade.
 

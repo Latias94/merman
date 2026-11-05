@@ -1,4 +1,4 @@
-# CLI Font Runtime Policy Checkpoint
+# CLI SVG Font Runtime Policy Measurements
 
 Date: 2026-10-12, Asia/Shanghai. Windows 11, Intel i7-11700 (8 cores / 16
 logical processors), Rust 1.95.0, x86_64-pc-windows-msvc. Both executables use
@@ -10,7 +10,7 @@ Ordinary Mermaid graphical output now uses deterministic measurement. Explicit
 font files/directories enable native measurement with a closed set. Without such
 sources, `--font-measurement native` or `--font-system on` explicitly selects
 system discovery. PNG/JPEG/PDF painting retains its own legacy font acquisition;
-this checkpoint measures SVG output only.
+this report measures SVG output only.
 
 ## Exploratory Complete-Process Observations
 
@@ -34,10 +34,7 @@ Every observation succeeded and each input/policy has a stable SVG hash.
 
 The result supports removing whole-system discovery from the ordinary SVG path.
 It does not establish a universal font overhead, a cold-I/O result, a formal
-cross-host speedup, a binary-export cost or a final-head benchmark. The earlier
-[90-observation explicit-font report](cli_explicit_font_current_2026-10-10.md)
-and [system-discovery report](native_system_discovery_2026-10-10.md) retain their
-own sources, profiles and limitations.
+cross-host speedup, a binary-export cost or a final-head benchmark.
 
 ## Source Identity And Reproduction
 

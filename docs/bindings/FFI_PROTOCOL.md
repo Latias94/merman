@@ -510,7 +510,7 @@ renderer checkpoint.
 - Treat `MERMAN_NATIVE_RESULT_SCHEMA_VERSION`, error kind strings, and `capability_id` as one
   machine-readable failure contract.
 - Treat diagnostics and analysis-facts payload schema versions as independent contracts: diagnostics
-  use schema `1`, while parser/editor facts use schema `2` after the prerelease Flowchart-rich break.
+  use schema `1`, while parser/editor facts use schema `3` with source appearance declarations and provenance.
 - Ignore unknown JSON fields where a payload schema permits it, but never invent unknown native
   status codes, output IDs, capabilities, or record fields.
 - Select an artifact's direct output features deliberately (`svg`, `analysis`, `ascii`, `png`,

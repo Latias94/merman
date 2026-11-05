@@ -111,6 +111,29 @@ test("compare progress must visit every declared stage in order", () => {
   assert.equal(stageIndex, 7);
 });
 
+test("compare success carries bounded materialized theme evidence with its request", () => {
+  for (const materializedTheme of ["dark", "neo-dark", "default", null]) {
+    const response = { ...renderResponse(), materializedTheme };
+    assert.deepEqual(
+      validateCompareRenderResponse(response, IDENTITY, 1, "request-1"),
+      response,
+    );
+  }
+  for (const materializedTheme of [undefined, 42, {}, "x".repeat(129)]) {
+    assert.throws(
+      () => validateCompareRenderResponse(
+        { ...renderResponse(), materializedTheme }, IDENTITY, 1, "request-1",
+      ),
+      RealmProtocolError,
+    );
+  }
+  const { materializedTheme: _theme, ...missingTheme } = renderResponse();
+  assert.throws(
+    () => validateCompareRenderResponse(missingTheme, IDENTITY, 1, "request-1"),
+    RealmProtocolError,
+  );
+});
+
 test("handshake validation rejects foreign identity and schema drift", () => {
   const hello = {
     type: "realm-hello",
@@ -415,6 +438,7 @@ function renderResponse(overrides: Partial<{ svg: string }> = {}) {
     sequence: 1,
     requestId: "request-1",
     svg: overrides.svg ?? '<svg xmlns="http://www.w3.org/2000/svg" />',
+    materializedTheme: "default",
     prepareTimeMs: 1,
     renderTimeMs: 2,
     presentationTimeMs: 3,

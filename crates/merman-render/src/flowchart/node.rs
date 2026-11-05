@@ -429,8 +429,12 @@ fn node_render_dimensions(
     let p = padding.max(0.0);
 
     let shape = layout_shape.unwrap_or("squareRect");
-    crate::flowchart::FlowchartShape::resolve(shape)
+    let resolved_shape = crate::flowchart::FlowchartShape::resolve(shape)
         .unwrap_or_else(|error| panic!("unvalidated Flowchart shape reached layout: {error}"));
+    if let crate::flowchart::FlowchartShape::Bpmn(shape) = resolved_shape {
+        let geometry = shape.geometry(metrics, text_h > 0.0, false, false);
+        return (geometry.width, geometry.height);
+    }
 
     fn circle_points(
         center_x: f64,
@@ -1450,6 +1454,16 @@ pub(crate) fn node_layout_dimensions(req: NodeLayoutDimensionsRequest<'_>) -> (f
     let shape = layout_shape.unwrap_or("squareRect");
     let resolved_shape = crate::flowchart::FlowchartShape::resolve(shape)
         .unwrap_or_else(|error| panic!("unvalidated Flowchart shape reached layout: {error}"));
+
+    if let crate::flowchart::FlowchartShape::Bpmn(shape) = resolved_shape {
+        let geometry = shape.geometry(
+            metrics,
+            has_label,
+            node_icon.is_some_and(|icon| !icon.is_empty()),
+            false,
+        );
+        return (geometry.width, geometry.height);
+    }
 
     if resolved_shape == crate::flowchart::FlowchartShape::ImageSquare
         && node_img.is_some_and(|s| !s.trim().is_empty())

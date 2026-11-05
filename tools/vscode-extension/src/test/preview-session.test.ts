@@ -47,6 +47,7 @@ describe("preview session", () => {
 
   it("clears an explicit source selection so preview can follow the cursor again", () => {
     const session = new PreviewSession();
+    const reads = { lineAt: 0 };
     const editor = textEditor(
       "file:///workspace/notes.md",
       "notes.md",
@@ -65,6 +66,8 @@ describe("preview session", () => {
       ].join("\n"),
       "markdown",
       3,
+      1,
+      reads,
     );
 
     session.rememberResource(editor.document.uri);
@@ -79,6 +82,83 @@ describe("preview session", () => {
 
     assert.equal(snapshot?.input.sourceId, "fence-1");
     assert.equal(snapshot?.selected, false);
+    assert.equal(reads.lineAt, editor.document.lineCount);
+  });
+
+  it("resolves editor, source facts, and cursor selection together without rescanning", () => {
+    const session = new PreviewSession();
+    const reads = { lineAt: 0 };
+    const editor = textEditor(
+      "file:///workspace/notes.md",
+      "notes.md",
+      markdownWithTwoFences(),
+      "markdown",
+      1,
+      1,
+      reads,
+    );
+    session.rememberResource(editor.document.uri);
+
+    const source = session.resolveSource(editor, [editor]);
+    assert.equal(source?.editor, editor);
+    assert.equal(source?.input.sourceId, "fence-1");
+    assert.equal(source?.selected, false);
+    assert.equal(source?.inputs.length, 2);
+
+    const movedCursor = {
+      ...editor,
+      selection: { active: { line: 7 } },
+    } as unknown as vscode.TextEditor;
+    const snapshot = session.createSnapshot(movedCursor, [movedCursor], emptyDiagnostics);
+
+    assert.equal(snapshot?.input.sourceId, "fence-2");
+    assert.equal(snapshot?.selectionLine, 7);
+    assert.equal(snapshot?.selected, false);
+    assert.equal(snapshot?.sources, source?.inputs);
+    assert.equal(reads.lineAt, editor.document.lineCount);
+  });
+
+  it("shares document facts across sessions without sharing panel state", () => {
+    const lockedSession = new PreviewSession();
+    const followSession = new PreviewSession();
+    const reads = { lineAt: 0 };
+    const editor = textEditor(
+      "file:///workspace/notes.md",
+      "notes.md",
+      markdownWithTwoFences(),
+      "markdown",
+      1,
+      1,
+      reads,
+    );
+    lockedSession.rememberResource(editor.document.uri);
+    const original = assertDefined(lockedSession.createSnapshot(editor, [editor], emptyDiagnostics));
+    lockedSession.rememberSnapshot(original);
+    lockedSession.setLocked(true);
+    lockedSession.setBackground("dark");
+    lockedSession.setDiagramTheme("forest");
+
+    const movedCursor = {
+      ...editor,
+      selection: { active: { line: 7 } },
+    } as unknown as vscode.TextEditor;
+    const followed = assertDefined(followSession.createSnapshot(movedCursor, [movedCursor], emptyDiagnostics));
+    const locked = assertDefined(lockedSession.createSnapshot(movedCursor, [movedCursor], emptyDiagnostics));
+
+    assert.equal(locked.sources, followed.sources);
+    assert.equal(locked.input.sourceId, "fence-1");
+    assert.equal(locked.locked, true);
+    assert.equal(locked.selected, true);
+    assert.equal(locked.background, "dark");
+    assert.equal(locked.diagramTheme, "forest");
+    assert.equal(followed.input.sourceId, "fence-2");
+    assert.equal(followed.locked, false);
+    assert.equal(followed.selected, false);
+    assert.equal(followed.background, "paper");
+    assert.equal(followed.diagramTheme, "source");
+    assert.equal(original.locked, false);
+    assert.equal(original.background, "paper");
+    assert.equal(reads.lineAt, editor.document.lineCount);
   });
 
   it("prefers an explicitly opened resource once without disabling follow mode", () => {
@@ -252,9 +332,11 @@ describe("preview session", () => {
 
   it("keeps the locked snapshot when a tracked Markdown edit skips a document version", () => {
     const session = new PreviewSession();
+    const followSession = new PreviewSession();
+    const reads = { lineAt: 0 };
     const uri = "file:///workspace/notes.md";
     const original = textEditor(uri, "notes.md", markdownWithTwoFences(), "markdown", 7, 1);
-    const edited = textEditor(uri, "notes.md", markdownWithEditedSecondFence(), "markdown", 7, 3);
+    const edited = textEditor(uri, "notes.md", markdownWithEditedSecondFence(), "markdown", 7, 3, reads);
 
     session.rememberResource(original.document.uri);
     assert.equal(session.selectSource(original, [original], "fence-2"), true);
@@ -262,6 +344,10 @@ describe("preview session", () => {
     assert.equal(initial?.input.sourceId, "fence-2");
     session.rememberSnapshot(assertDefined(initial));
     assert.equal(session.setLocked(true), true);
+
+    const followed = followSession.createSnapshot(edited, [edited], emptyDiagnostics);
+    assert.equal(followed?.documentVersion, 3);
+    assert.equal(followed?.input.source, "sequenceDiagram\nAlice->>Bob: hello");
 
     session.trackDocumentChange(documentChange(edited.document, 7, 7, "Alice->>Bob: hello"));
     const snapshot = session.createSnapshot(edited, [edited], emptyDiagnostics);
@@ -271,6 +357,8 @@ describe("preview session", () => {
     assert.equal(snapshot?.input.source, "sequenceDiagram\nA->>B: hi");
     assert.equal(snapshot?.documentVersion, 1);
     assert.equal(snapshot?.locked, true);
+    assert.notEqual(snapshot?.sources, followed?.sources);
+    assert.equal(reads.lineAt, edited.document.lineCount);
   });
 
   it("updates a locked Markdown fence range after a tracked body line insertion", () => {
@@ -403,6 +491,7 @@ function textEditor(
   languageId = "mermaid",
   activeLine = 0,
   version = 1,
+  reads?: { lineAt: number },
 ): vscode.TextEditor {
   const lines = text.split(/\r?\n/);
   return {
@@ -415,10 +504,16 @@ function textEditor(
       fileName,
       version,
       lineCount: lines.length,
-      getText: () => text,
-      lineAt: (lineIndex: number) => ({
-        text: lines[lineIndex] ?? "",
-      }),
+      getText: () => {
+        assert.notEqual(languageId, "markdown", "Markdown extraction must use lineAt");
+        return text;
+      },
+      lineAt: (lineIndex: number) => {
+        if (reads) {
+          reads.lineAt += 1;
+        }
+        return { text: lines[lineIndex] ?? "" };
+      },
     },
     selection: {
       active: {

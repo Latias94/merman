@@ -2644,7 +2644,7 @@ fn parse_diagram_flowchart_flow_text_error_cases_from_upstream_spec() {
     .unwrap_err();
     assert!(
         err.to_string()
-            .contains("Invalid string label: contains nested quotes")
+            .contains("Invalid string token sequence in flowchart label")
     );
 
     let err = block_on(engine.parse_diagram(

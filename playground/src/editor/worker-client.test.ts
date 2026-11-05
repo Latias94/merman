@@ -6,6 +6,7 @@ import {
   StaleLanguageSnapshotError,
   startMermanLanguageWorkerClient,
   type EditorCancellationToken,
+  type EditorWorkerClientOptions,
   type EditorWorkerPort,
 } from "./worker-client.ts";
 import {
@@ -363,20 +364,73 @@ test("message decode failure and unknown IDs poison the transport", async (t) =>
   });
 });
 
-test("stale query identities reject locally without poisoning the transport", async () => {
+test("valid results from a superseded document reject locally without poisoning", async () => {
   const worker = new PendingWorkerPort();
   const client = await openedClient(worker);
   const query = client.query(identity(1), { kind: "diagnostics" });
   const request = await worker.takeEventually("query");
-  const response = queryResponse(request, diagnosticsResult());
-  worker.emitMessage({ ...response, version: response.version + 1 });
+  const change = client.changeDocument(snapshot(2, "flowchart LR"));
+  worker.respond(worker.take("didChange"), null);
+  await change;
+  worker.respond(request, diagnosticsResult());
 
   await assert.rejects(query, StaleLanguageSnapshotError);
-  const retry = client.query(identity(1), { kind: "diagnostics" });
+  const retry = client.query(identity(2), { kind: "diagnostics" });
   worker.respond(await worker.takeEventually("query"), diagnosticsResult());
   await retry;
   assert.equal(worker.terminateCalls, 0);
   client.dispose();
+});
+
+test("query provenance and payload validation precede cancellation and local staleness", async (t) => {
+  for (const state of ["pending", "cancelled", "superseded"] as const) {
+    for (const violation of ["URI", "version", "payload"] as const) {
+      await t.test(`${state}: invalid ${violation}`, async (t) => {
+        const worker = new PendingWorkerPort();
+        const client = await openedClient(worker);
+        t.after(() => client.dispose());
+        const cancellation = new TestCancellationSource();
+        const query = client.query(
+          identity(1),
+          { kind: "diagnostics" },
+          cancellation.token,
+        );
+        void query.catch(() => {});
+        const request = await worker.takeEventually("query");
+
+        if (state === "cancelled") {
+          cancellation.cancel();
+          await assert.rejects(query, { name: "AbortError" });
+        } else if (state === "superseded") {
+          const change = client.changeDocument(snapshot(2, "flowchart LR"));
+          worker.respond(worker.take("didChange"), null);
+          await change;
+        }
+
+        const response = queryResponse(request, diagnosticsResult());
+        worker.emitMessage({
+          ...response,
+          ...(violation === "URI" ? { uri: "file:///foreign.mmd" } : {}),
+          ...(violation === "version" ? { version: 99 } : {}),
+          ...(violation === "payload" ? { result: { diagnostics: "invalid" } } : {}),
+        });
+
+        if (state !== "cancelled") {
+          await assert.rejects(query, {
+            name: "EditorWorkerProtocolError",
+            code: "PROTOCOL_MISMATCH",
+          });
+        }
+        assert.equal(worker.terminateCalls, 1);
+        await assert.rejects(
+          client.query(identity(state === "superseded" ? 2 : 1), {
+            kind: "diagnostics",
+          }),
+          { name: "EditorWorkerProtocolError", code: "PROTOCOL_MISMATCH" },
+        );
+      });
+    }
+  }
 });
 
 test("a duplicate response is a protocol failure", async () => {
@@ -454,6 +508,312 @@ test("cancelled requests allow one valid late response and reject a duplicate", 
   assert.equal(worker.terminateCalls, 1);
 });
 
+test("cancelled transports retain ownership beyond the completed replay limit", async (t) => {
+  const worker = new PendingWorkerPort();
+  const client = await openedClient(worker, { tombstoneLimit: 2 });
+  t.after(() => client.dispose());
+  const requests = [];
+
+  for (let index = 0; index < 3; index += 1) {
+    const cancellation = new TestCancellationSource();
+    const query = client.query(
+      identity(1),
+      { kind: "diagnostics" },
+      cancellation.token,
+    );
+    requests.push(await worker.takeEventually("query"));
+    cancellation.cancel();
+    await assert.rejects(query, { name: "AbortError" });
+  }
+
+  for (const request of requests) {
+    worker.respond(request, diagnosticsResult());
+    assert.equal(worker.terminateCalls, 0);
+  }
+
+  const continued = client.query(identity(1), { kind: "diagnostics" });
+  worker.respond(await worker.takeEventually("query"), diagnosticsResult());
+  assert.deepEqual((await continued).diagnostics, []);
+});
+
+test("pending and draining queries consume capacity without poisoning on overload", async (t) => {
+  const worker = new PendingWorkerPort();
+  const client = await openedClient(worker, {
+    queryCapacity: 2,
+    tombstoneLimit: 1,
+  });
+  t.after(() => client.dispose());
+  const failures: Error[] = [];
+  client.onDidFail((error) => failures.push(error));
+  const cancellations = [
+    new TestCancellationSource(),
+    new TestCancellationSource(),
+  ];
+  const queries = cancellations.map((cancellation) =>
+    client.query(identity(1), { kind: "diagnostics" }, cancellation.token),
+  );
+  for (const query of queries) void query.catch(() => {});
+  const first = await worker.takeEventually("query");
+  const second = await worker.takeEventually("query");
+  const rejectedCancellation = new TestCancellationSource();
+  const overloaded = client.query(
+    identity(1),
+    { kind: "diagnostics" },
+    rejectedCancellation.token,
+  );
+  void overloaded.catch(() => {});
+
+  assert.equal(worker.messages.some((message) => message.type === "query"), false);
+  await assert.rejects(overloaded, (error: unknown) => {
+    assert(error instanceof EditorWorkerProtocolError);
+    assert.equal(error.code, "OPERATION_REJECTED");
+    assert.match(error.message, /query capacity of 2 is exhausted/);
+    return true;
+  });
+  assert.equal(rejectedCancellation.listenerCount(), 0);
+
+  for (const cancellation of cancellations) cancellation.cancel();
+  for (const query of queries) {
+    await assert.rejects(query, { name: "AbortError" });
+  }
+  await assert.rejects(client.query(identity(1), { kind: "diagnostics" }), {
+    name: "EditorWorkerProtocolError",
+    code: "OPERATION_REJECTED",
+  });
+  assert.equal(worker.messages.some((message) => message.type === "query"), false);
+  assert.equal(worker.terminateCalls, 0);
+  assert.deepEqual(failures, []);
+
+  worker.respond(first, diagnosticsResult());
+  const replacement = client.query(identity(1), { kind: "diagnostics" });
+  const replacementRequest = await worker.takeEventually("query");
+  await assert.rejects(client.query(identity(1), { kind: "diagnostics" }), {
+    name: "EditorWorkerProtocolError",
+    code: "OPERATION_REJECTED",
+  });
+  worker.respond(replacementRequest, diagnosticsResult());
+  await replacement;
+  worker.respond(second, diagnosticsResult());
+
+  const continued = client.query(identity(1), { kind: "diagnostics" });
+  worker.respond(await worker.takeEventually("query"), diagnosticsResult());
+  await continued;
+  assert.deepEqual(failures, []);
+});
+
+test("default capacity bounds cancelled transports independently of replay history", async (t) => {
+  const worker = new PendingWorkerPort();
+  const client = await openedClient(worker, { tombstoneLimit: 1 });
+  t.after(() => client.dispose());
+
+  for (let index = 0; index < 256; index += 1) {
+    const cancellation = new TestCancellationSource();
+    const query = client.query(
+      identity(1),
+      { kind: "diagnostics" },
+      cancellation.token,
+    );
+    worker.take("query");
+    cancellation.cancel();
+    await assert.rejects(query, { name: "AbortError" });
+  }
+
+  await assert.rejects(client.query(identity(1), { kind: "diagnostics" }), {
+    name: "EditorWorkerProtocolError",
+    code: "OPERATION_REJECTED",
+  });
+  assert.equal(worker.messages.some((message) => message.type === "query"), false);
+  assert.equal(worker.terminateCalls, 0);
+});
+
+test("query capacity must be a positive safe integer before attaching transport", () => {
+  for (const queryCapacity of [0, -1, 1.5, Number.NaN, Infinity, 2 ** 53]) {
+    const worker = new PendingWorkerPort();
+    assert.throws(
+      () => createMermanLanguageWorkerClient(worker, { queryCapacity }),
+      /positive editor worker query capacity/,
+    );
+    assert.equal(worker.listenerCount(), 0);
+    assert.deepEqual(worker.messages, []);
+  }
+});
+
+test("full query capacity preserves the independent synchronization mailbox", async (t) => {
+  const worker = new PendingWorkerPort();
+  const client = await openedClient(worker, { queryCapacity: 1 });
+  t.after(() => client.dispose());
+  const cancellation = new TestCancellationSource();
+  const query = client.query(
+    identity(1),
+    { kind: "diagnostics" },
+    cancellation.token,
+  );
+  const request = await worker.takeEventually("query");
+  cancellation.cancel();
+  await assert.rejects(query, { name: "AbortError" });
+
+  const firstChange = assert.rejects(
+    client.changeDocument(snapshot(2, "source-2")),
+    StaleLanguageSnapshotError,
+  );
+  const firstSynchronization = worker.take("didChange");
+  const supersededChange = assert.rejects(
+    client.changeDocument(snapshot(3, "source-3")),
+    StaleLanguageSnapshotError,
+  );
+  const latestChange = client.changeDocument(snapshot(4, "source-4"));
+  assert.equal(worker.messages.some((message) => message.type === "didChange"), false);
+
+  worker.respond(firstSynchronization, null);
+  const latestSynchronization = await worker.takeEventually("didChange");
+  assert.equal(latestSynchronization.document.version, 4);
+  assert.equal(latestSynchronization.document.source, "source-4");
+  worker.respond(latestSynchronization, null);
+  await Promise.all([firstChange, supersededChange, latestChange]);
+  await assert.rejects(client.query(identity(4), { kind: "diagnostics" }), {
+    name: "EditorWorkerProtocolError",
+    code: "OPERATION_REJECTED",
+  });
+
+  worker.respond(request, diagnosticsResult());
+  assert.equal(worker.terminateCalls, 0);
+  const continued = client.query(identity(4), { kind: "diagnostics" });
+  worker.respond(await worker.takeEventually("query"), diagnosticsResult());
+  await continued;
+});
+
+test("cancelled requests retain their original transport deadline", async (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  const worker = new PendingWorkerPort();
+  const client = await openedClient(worker, {
+    queryCapacity: 2,
+    requestTimeoutMs: 100,
+  });
+  t.after(() => client.dispose());
+  const failures: Error[] = [];
+  client.onDidFail((error) => failures.push(error));
+  const cancellation = new TestCancellationSource();
+  const query = client.query(
+    identity(1),
+    { kind: "diagnostics" },
+    cancellation.token,
+  );
+  await worker.takeEventually("query");
+  t.mock.timers.tick(60);
+  cancellation.cancel();
+  await assert.rejects(query, { name: "AbortError" });
+  assert.equal(cancellation.listenerCount(), 0);
+
+  const continuedCancellation = new TestCancellationSource();
+  const continued = assert.rejects(
+    client.query(identity(1), { kind: "diagnostics" }, continuedCancellation.token),
+    /diagnostics query timed out after 100 ms/,
+  );
+  await worker.takeEventually("query");
+  t.mock.timers.tick(39);
+  assert.equal(failures.length, 0);
+  assert.equal(worker.terminateCalls, 0);
+
+  t.mock.timers.tick(1);
+  await continued;
+  assert.equal(failures.length, 1);
+  assert.match(failures[0]?.message ?? "", /diagnostics query timed out after 100 ms/);
+  assert.equal(continuedCancellation.listenerCount(), 0);
+  assert.equal(worker.terminateCalls, 1);
+  assert.equal(worker.listenerCount(), 0);
+  t.mock.timers.tick(1_000);
+  assert.equal(failures.length, 1);
+  assert.equal(worker.terminateCalls, 1);
+});
+
+test("validated late responses release capacity and clear the draining deadline", async (t) => {
+  for (const responseType of ["queryResult", "error"] as const) {
+    await t.test(responseType, async (t) => {
+      t.mock.timers.enable({ apis: ["setTimeout"] });
+      const worker = new PendingWorkerPort();
+      const client = await openedClient(worker, {
+        queryCapacity: 1,
+        requestTimeoutMs: 100,
+      });
+      t.after(() => client.dispose());
+      const cancellation = new TestCancellationSource();
+      const query = client.query(
+        identity(1),
+        { kind: "diagnostics" },
+        cancellation.token,
+      );
+      const request = await worker.takeEventually("query");
+      t.mock.timers.tick(60);
+      cancellation.cancel();
+      await assert.rejects(query, { name: "AbortError" });
+      t.mock.timers.tick(10);
+
+      if (responseType === "queryResult") {
+        worker.respond(request, diagnosticsResult());
+      } else {
+        worker.fail(request, "QUERY_FAILED", "The cancelled query failed.");
+      }
+      const continued = client.query(identity(1), { kind: "diagnostics" });
+      const continuedRequest = await worker.takeEventually("query");
+      t.mock.timers.tick(30);
+      assert.equal(worker.terminateCalls, 0);
+      worker.respond(continuedRequest, diagnosticsResult());
+      await continued;
+      t.mock.timers.tick(100);
+      assert.equal(worker.terminateCalls, 0);
+    });
+  }
+});
+
+test("disposal closes draining queries and both synchronization slots once", async (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  const worker = new PendingWorkerPort();
+  const client = await openedClient(worker, {
+    queryCapacity: 2,
+    requestTimeoutMs: 100,
+  });
+  t.after(() => client.dispose());
+  const failures: Error[] = [];
+  client.onDidFail((error) => failures.push(error));
+  const cancelled = new TestCancellationSource();
+  const draining = client.query(identity(1), { kind: "diagnostics" }, cancelled.token);
+  const drainingRequest = await worker.takeEventually("query");
+  cancelled.cancel();
+  await assert.rejects(draining, { name: "AbortError" });
+  const cancellation = new TestCancellationSource();
+  const pending = assert.rejects(
+    client.query(identity(1), { kind: "diagnostics" }, cancellation.token),
+    /worker was disposed/,
+  );
+  await worker.takeEventually("query");
+  const changing = assert.rejects(
+    client.changeDocument(snapshot(2, "source-2")),
+    /worker was disposed/,
+  );
+  const synchronization = worker.take("didChange");
+  const queued = assert.rejects(
+    client.changeDocument(snapshot(3, "source-3")),
+    /worker was disposed/,
+  );
+
+  client.dispose();
+  client.dispose();
+  await Promise.all([pending, changing, queued]);
+  worker.respond(drainingRequest, diagnosticsResult());
+  worker.respond(synchronization, null);
+  t.mock.timers.tick(1_000);
+  assert.equal(worker.terminateCalls, 1);
+  assert.equal(worker.listenerCount(), 0);
+  assert.equal(cancellation.listenerCount(), 0);
+  assert.equal(cancelled.listenerCount(), 0);
+  assert.deepEqual(worker.messages.map((message) => message.type), ["dispose"]);
+  assert.deepEqual(failures, []);
+  await assert.rejects(
+    client.query(identity(3), { kind: "diagnostics" }),
+    /worker was disposed/,
+  );
+});
+
 test("a malformed late result still fails the closed protocol boundary", async () => {
   const worker = new PendingWorkerPort();
   const client = await openedClient(worker);
@@ -474,6 +834,66 @@ test("a malformed late result still fails the closed protocol boundary", async (
     /diagnostics/,
   );
   assert.equal(worker.terminateCalls, 1);
+});
+
+test("draining ownership still rejects invalid envelopes, response types and unknown IDs", async (t) => {
+  for (const violation of ["protocol", "extra field", "type", "error", "ID"] as const) {
+    await t.test(violation, async (t) => {
+      const worker = new PendingWorkerPort();
+      const client = await openedClient(worker, { queryCapacity: 2 });
+      t.after(() => client.dispose());
+      const cancellation = new TestCancellationSource();
+      const query = client.query(
+        identity(1),
+        { kind: "diagnostics" },
+        cancellation.token,
+      );
+      const request = await worker.takeEventually("query");
+      cancellation.cancel();
+      await assert.rejects(query, { name: "AbortError" });
+      const pending = assert.rejects(
+        client.query(identity(1), { kind: "diagnostics" }),
+        { name: "EditorWorkerProtocolError", code: "PROTOCOL_MISMATCH" },
+      );
+      await worker.takeEventually("query");
+      const response = queryResponse(request, diagnosticsResult());
+
+      switch (violation) {
+        case "protocol":
+          worker.emitMessage({ ...response, protocol: "foreign protocol" });
+          break;
+        case "extra field":
+          worker.emitMessage({ ...response, unexpected: true });
+          break;
+        case "type":
+          worker.emitMessage({
+            protocol: EDITOR_WORKER_PROTOCOL,
+            requestId: request.requestId,
+            type: "result",
+            result: null,
+          });
+          break;
+        case "error":
+          worker.emitMessage({
+            protocol: EDITOR_WORKER_PROTOCOL,
+            requestId: request.requestId,
+            type: "error",
+            code: "QUERY_FAILED",
+            message: "The cancelled query failed.",
+            detail: 42,
+            nativeCode: null,
+          });
+          break;
+        case "ID":
+          worker.emitMessage({ ...response, requestId: 999 });
+          break;
+      }
+
+      await pending;
+      assert.equal(worker.terminateCalls, 1);
+      assert.equal(worker.listenerCount(), 0);
+    });
+  }
 });
 
 test("a fatal late error from a cancelled request poisons the transport", async () => {
@@ -554,9 +974,9 @@ test("cancellation while waiting for synchronization sends no query and cleans u
   client.dispose();
 });
 
-test("synchronous cancellation subscription is disposed without sending", async () => {
+test("synchronous cancellation releases unsent capacity and its subscription", async () => {
   const worker = new PendingWorkerPort();
-  const client = await openedClient(worker);
+  const client = await openedClient(worker, { queryCapacity: 1 });
   let disposeCalls = 0;
   const token: EditorCancellationToken = {
     isCancellationRequested: false,
@@ -576,10 +996,35 @@ test("synchronous cancellation subscription is disposed without sending", async 
     false,
   );
   assert.equal(worker.terminateCalls, 0);
+  const continued = client.query(identity(1), { kind: "diagnostics" });
+  worker.respond(await worker.takeEventually("query"), diagnosticsResult());
+  await continued;
   client.dispose();
 });
 
-test("the tombstone ledger remains bounded", async () => {
+test("subscription errors release unsent capacity without poisoning", async (t) => {
+  const worker = new PendingWorkerPort();
+  const client = await openedClient(worker, { queryCapacity: 1 });
+  t.after(() => client.dispose());
+  const token: EditorCancellationToken = {
+    isCancellationRequested: false,
+    onCancellationRequested() {
+      throw new Error("subscription failed");
+    },
+  };
+
+  await assert.rejects(
+    client.query(identity(1), { kind: "diagnostics" }, token),
+    /subscription failed/,
+  );
+  assert.equal(worker.messages.some((message) => message.type === "query"), false);
+  const continued = client.query(identity(1), { kind: "diagnostics" });
+  worker.respond(await worker.takeEventually("query"), diagnosticsResult());
+  await continued;
+  assert.equal(worker.terminateCalls, 0);
+});
+
+test("the completed replay history remains bounded", async () => {
   const worker = new PendingWorkerPort();
   const client = await openedClient(worker, { tombstoneLimit: 2 });
   const responses = [];
@@ -706,6 +1151,33 @@ test("a synchronous postMessage failure removes pending state and poisons once",
   assert.equal(worker.terminateCalls, 1);
 });
 
+for (const trigger of ["timeout", "postMessage"] as const) {
+  test(`a reentrant cancellation disposer preserves the ${trigger} failure`, async (t) => {
+    t.mock.timers.enable({ apis: ["setTimeout"] });
+    const worker = new PendingWorkerPort();
+    const client = await openedClient(worker, { requestTimeoutMs: 100 });
+    t.after(() => client.dispose());
+    if (trigger === "postMessage") worker.throwOnType = "query";
+    const cancellation: EditorCancellationToken = {
+      isCancellationRequested: false,
+      onCancellationRequested(listener) {
+        return { dispose: listener };
+      },
+    };
+    const query = assert.rejects(
+      client.query(identity(1), { kind: "diagnostics" }, cancellation),
+      trigger === "timeout" ? /timed out after 100 ms/ : /postMessage rejected/,
+    );
+    if (trigger === "timeout") {
+      await worker.takeEventually("query");
+      t.mock.timers.tick(100);
+    }
+    await query;
+    assert.equal(worker.terminateCalls, 1);
+    assert.equal(worker.listenerCount(), 0);
+  });
+}
+
 class TestCancellationSource {
   private cancelled = false;
   private readonly listeners = new Set<() => void>();
@@ -738,11 +1210,12 @@ class TestCancellationSource {
 
 async function initializedClient(
   worker: PendingWorkerPort,
-  options: { requestTimeoutMs?: number; tombstoneLimit?: number } | number = {},
+  options: EditorWorkerClientOptions | number = {},
 ) {
   const normalizedOptions =
     typeof options === "number" ? { requestTimeoutMs: options } : options;
   const client = createMermanLanguageWorkerClient(worker, {
+    ...normalizedOptions,
     requestTimeoutMs: normalizedOptions.requestTimeoutMs ?? 30_000,
     tombstoneLimit: normalizedOptions.tombstoneLimit ?? 8,
   });
@@ -754,7 +1227,7 @@ async function initializedClient(
 
 async function openedClient(
   worker: PendingWorkerPort,
-  options: { requestTimeoutMs?: number; tombstoneLimit?: number } = {},
+  options: EditorWorkerClientOptions = {},
 ) {
   const client = await initializedClient(worker, options);
   const opening = client.openDocument(snapshot(1, "flowchart TD\n  A --> B"));

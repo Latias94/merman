@@ -1105,9 +1105,11 @@ fn rule_descriptors_expose_stable_rule_metadata() {
             .evidence
             .contains(&"docs/adr/0070-diagnostics-first-analysis-contract.md")
     );
-    assert!(theme_evaluation_limit.evidence.contains(
-        &"docs/plans/2026-08-09-001-portable-theme-architecture-convergence-addendum.md"
-    ));
+    assert!(
+        theme_evaluation_limit
+            .evidence
+            .contains(&"docs/adr/0068-render-side-presentation-theme-view.md")
+    );
     assert!(
         descriptors
             .iter()

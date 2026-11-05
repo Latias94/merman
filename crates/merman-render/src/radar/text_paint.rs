@@ -4,15 +4,16 @@ use std::sync::OnceLock;
 use merman_model::families::radar::RadarDiagramModel;
 use merman_model::presentation::PresentationConfig;
 
+use super::paint::{PaintRules, PendingPaintRules, record_pending, static_paint};
 use crate::diagram_theme::{
     FamilyThemeDisposition, FamilyThemeMechanism, FamilyThemeMechanismKey,
     FamilyThemeSelectorShape, ResolvedDiagramTheme, ResolvedStyleProperty, ThemeTarget,
     ThemeVariant,
 };
 use crate::family::{
-    DirectStaticPaint, DirectStaticSelectorDomain, FamilyThemeEvidence, FamilyThemeOutcomes,
-    FamilyThemeResidualReason, TerminalVariantDomain, UnsupportedTerminalDomain,
-    reconcile_unsupported_terminal_domains, resolve_direct_static_fill,
+    DirectPaintExpectation, DirectStaticPaint, DirectStaticSelectorDomain, FamilyThemeEvidence,
+    FamilyThemeOutcomes, FamilyThemeResidualReason, TerminalVariantDomain,
+    UnsupportedTerminalDomain, reconcile_unsupported_terminal_domains, resolve_direct_static_fill,
     resolved_style_property_for_facet, unsupported_residual_for_facet,
 };
 use crate::model::RadarDiagramLayout;
@@ -29,6 +30,8 @@ pub(crate) struct RadarTextPaintPlan {
     paint: Option<DirectStaticPaint>,
     pending_rule: Option<usize>,
     title_fallback_rule: Option<usize>,
+    legend_paints: Vec<Option<DirectPaintExpectation>>,
+    legend_rules: PendingPaintRules,
     evidence: FamilyThemeOutcomes,
     terminal_receipt: OnceLock<()>,
 }
@@ -69,6 +72,8 @@ impl RadarTextPaintPlan {
             paint: None,
             pending_rule: None,
             title_fallback_rule: None,
+            legend_paints: vec![None; layout.legend_items.len()],
+            legend_rules: PendingPaintRules::new(),
             evidence: FamilyThemeOutcomes::default(),
             terminal_receipt: OnceLock::new(),
         }
@@ -124,13 +129,53 @@ impl RadarTextPaintPlan {
         if let Some(fill) = title_plan.fill_css() {
             plan.title_color = fill.into();
         }
-        let base_count = plan
+        let mut legend_rules = PaintRules::new(theme, ThemeTarget::Legend);
+        let mut legend_occurrences = Vec::new();
+        let mut legend_fill_owned = vec![owns_text; layout.legend_items.len()];
+        let mut text_owners = plan
             .axis_visible
             .iter()
-            .chain(plan.legend_visible.iter())
             .filter(|visible| **visible)
-            .count();
+            .map(|_| owns_text)
+            .collect::<Vec<_>>();
+        for (index, visible) in plan.legend_visible.iter().copied().enumerate() {
+            if !visible {
+                continue;
+            }
+            legend_occurrences.push((index + 1, ThemeVariant::Default));
+            let style = theme.style_with_work_meter(
+                ThemeTarget::Legend,
+                ThemeVariant::Default,
+                Some(index + 1),
+                work_meter,
+            )?;
+            if !owns_text {
+                plan.legend_paints[index] = static_paint(
+                    theme,
+                    style.fill_resolution(),
+                    ThemeTarget::Legend,
+                    ResolvedStyleProperty::Fill,
+                    &binding.text_color,
+                );
+            }
+            legend_rules.observe(
+                &style,
+                [owns_text, false],
+                [plan.legend_paints[index].as_ref(), None],
+                work_meter,
+            )?;
+            let role_owns_fill = style.fill_resolution().winner().is_some();
+            text_owners.push(owns_text || role_owns_fill);
+            // A winning Text fill already paints unclaimed legend labels. It does not
+            // consume a dedicated Legend palette or an independent effect request.
+            legend_fill_owned[index] |= !role_owns_fill && plan.paint.is_some();
+        }
+        plan.legend_rules = legend_rules.finish(&mut plan.evidence);
+        let base_count = text_owners.len();
         let visible_count = base_count.saturating_add(usize::from(plan.title_visible));
+        if plan.title_visible {
+            text_owners.push(owns_title);
+        }
         let routes = theme
             .family_mechanism_routes()
             .iter()
@@ -160,15 +205,8 @@ impl RadarTextPaintPlan {
                 }
             )
         });
-        // Static rules need at most two observations: inherited text and the title channel.
-        let observation_count = if has_ordinal {
-            visible_count
-        } else {
-            usize::from(base_count != 0) + usize::from(plan.title_visible)
-        };
-        for index in 0..observation_count {
-            let is_title = plan.title_visible && index + 1 == observation_count;
-            let source_owns_fill = if is_title { owns_title } else { owns_text };
+        for (index, source_owns_fill) in text_owners.iter().copied().enumerate() {
+            let is_title = plan.title_visible && index == base_count;
             let ordinal_style;
             let style = if has_ordinal {
                 ordinal_style = theme.style_with_work_meter(
@@ -223,24 +261,25 @@ impl RadarTextPaintPlan {
                 }
             }
         }
-        let fill_owned = if owns_text || (owns_title && plan.title_visible) {
-            work_meter.charge(visible_count)?;
-            let mut owned = vec![owns_text; visible_count];
-            if plan.title_visible {
-                owned[base_count] = owns_title;
-            }
-            Some(owned)
-        } else {
-            None
-        };
-        let mut domain = UnsupportedTerminalDomain::fallbacks_only(
+        let domain = UnsupportedTerminalDomain::fallbacks_only(
             ThemeTarget::Text,
             TerminalVariantDomain::uniform(visible_count, ThemeVariant::Default),
-        );
-        if let Some(owned) = fill_owned.as_deref() {
-            domain = domain.with_source_owned_fill(owned);
-        }
-        reconcile_unsupported_terminal_domains(theme, &mut plan.evidence, &[domain], work_meter)?;
+        )
+        .with_source_owned_fill(&text_owners);
+        reconcile_unsupported_terminal_domains(
+            theme,
+            &mut plan.evidence,
+            &[
+                domain,
+                // Legend paint targets actual non-empty labels, independently of swatches.
+                UnsupportedTerminalDomain::fallbacks_only(
+                    ThemeTarget::Legend,
+                    TerminalVariantDomain::indexed(&legend_occurrences),
+                )
+                .with_source_owned_fill(&legend_fill_owned),
+            ],
+            work_meter,
+        )?;
         for (index, observation) in observations {
             let key = FamilyThemeMechanismKey::Rule {
                 index,
@@ -264,14 +303,23 @@ impl RadarTextPaintPlan {
     pub(crate) fn title_color(&self) -> &str {
         &self.title_color
     }
+    pub(crate) fn legend_fill(&self, index: usize) -> Option<&str> {
+        self.legend_paints
+            .get(index)
+            .and_then(Option::as_ref)
+            .map(DirectPaintExpectation::css)
+    }
+    fn needs_receipt(&self) -> bool {
+        self.pending_rule.is_some()
+            || self.title_fallback_rule.is_some()
+            || !self.legend_rules.is_empty()
+    }
     pub(crate) fn begin_terminal_receipt(&self) -> Option<RadarTextPaintReceipt> {
-        (self.pending_rule.is_some() || self.title_fallback_rule.is_some())
+        self.needs_receipt()
             .then(|| RadarTextPaintReceipt::new(self))
     }
     pub(crate) fn record_terminal(&self, receipt: RadarTextPaintReceipt) -> bool {
-        (self.pending_rule.is_some() || self.title_fallback_rule.is_some())
-            && receipt.proves(self)
-            && self.terminal_receipt.set(()).is_ok()
+        self.needs_receipt() && receipt.proves(self) && self.terminal_receipt.set(()).is_ok()
     }
     /// True only after a visible title consumed the winning Text fill in finalized SVG.
     pub(crate) fn has_verified_title_fallback(&self) -> bool {
@@ -282,6 +330,11 @@ impl RadarTextPaintPlan {
 
     pub(crate) fn record_evidence(&self, evidence: &mut FamilyThemeEvidence) {
         evidence.merge_borrowed(&self.evidence);
+        record_pending(
+            &self.legend_rules,
+            self.terminal_receipt.get().is_some(),
+            evidence,
+        );
         if let Some(index) = self.pending_rule
             && self.terminal_receipt.get().is_some()
             && let Some(paint) = &self.paint
@@ -305,6 +358,7 @@ pub(crate) struct RadarTextPaintReceipt {
     title_css: bool,
     axes: Vec<bool>,
     legends: Vec<bool>,
+    legend_fills: Vec<Option<Box<str>>>,
     title: Option<bool>,
     valid: bool,
 }
@@ -318,6 +372,7 @@ impl RadarTextPaintReceipt {
             title_css: false,
             axes: Vec::with_capacity(plan.axis_visible.len()),
             legends: Vec::with_capacity(plan.legend_visible.len()),
+            legend_fills: Vec::with_capacity(plan.legend_visible.len()),
             title: None,
             valid: true,
         }
@@ -350,13 +405,24 @@ impl RadarTextPaintReceipt {
             && class == "radarAxisLabel";
         self.axes.push(!label.trim().is_empty());
     }
+    #[cfg(test)]
     pub(crate) fn record_legend(&mut self, index: usize, class: &str, label: &str) {
+        self.record_legend_paint(index, class, label, None);
+    }
+    pub(crate) fn record_legend_paint(
+        &mut self,
+        index: usize,
+        class: &str,
+        label: &str,
+        fill: Option<&str>,
+    ) {
         self.valid &= self.base_css
             && self.title_css
             && self.title.is_none()
             && index == self.legends.len()
             && class == "radarLegendText";
         self.legends.push(!label.trim().is_empty());
+        self.legend_fills.push(fill.map(Into::into));
     }
     pub(crate) fn record_title(&mut self, class: &str, visible: bool) {
         self.valid &=
@@ -369,6 +435,11 @@ impl RadarTextPaintReceipt {
             && self.title_css
             && self.axes.as_slice() == plan.axis_visible.as_ref()
             && self.legends.as_slice() == plan.legend_visible.as_ref()
+            && self
+                .legend_fills
+                .iter()
+                .enumerate()
+                .all(|(index, fill)| fill.as_deref() == plan.legend_fill(index))
             && self.title == Some(plan.title_visible)
             && (plan.title_visible
                 || self
@@ -394,6 +465,8 @@ mod tests {
             paint: None,
             pending_rule: None,
             title_fallback_rule: None,
+            legend_paints: vec![None],
+            legend_rules: PendingPaintRules::new(),
             evidence: FamilyThemeOutcomes::default(),
             terminal_receipt: OnceLock::new(),
         }
@@ -408,6 +481,23 @@ mod tests {
         receipt.record_axis(0, "radarAxisLabel", "Axis");
         receipt.record_legend(0, "radarLegendText", "Legend");
         receipt.record_title("radarTitle", true);
+    }
+
+    #[test]
+    fn legend_paint_receipt_requires_the_emitted_label_fill() {
+        let mut plan = plan();
+        plan.legend_paints[0] = Some(DirectPaintExpectation::new(
+            0,
+            "#112233",
+            crate::diagram_theme::ThemeCapability::SolidPaint,
+        ));
+        for fill in [None, Some("#badbad"), Some("#112233")] {
+            let mut receipt = css(&plan);
+            receipt.record_axis(0, "radarAxisLabel", "Axis");
+            receipt.record_legend_paint(0, "radarLegendText", "Legend", fill);
+            receipt.record_title("radarTitle", true);
+            assert_eq!(receipt.proves(&plan), fill == Some("#112233"));
+        }
     }
     #[test]
     fn title_fallback_is_proven_only_by_a_completed_visible_title_receipt() {

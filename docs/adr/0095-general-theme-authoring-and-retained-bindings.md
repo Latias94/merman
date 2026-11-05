@@ -4,7 +4,6 @@
 - Date: 2026-10-19
 - Supersedes: ADR 0082's compact-only authoring vocabulary, prohibition of authoring references,
   and direction toward preset-specific creation parameters
-- Implementation design: [General theme authoring interface](../research/2026-10-19-general-theme-authoring-interface.md)
 
 ## Context
 
@@ -27,6 +26,13 @@ snapshots. Do not infer references from literal equality or look up preset inher
 One coordinated migration updates first-party bindings and exchange owners; a permanent legacy
 interpreter is not required for this unreleased contract.
 
+The design document is the sole editable owner; a resolved specification is an explicit output,
+not a synchronized second editable copy. Named resource IDs are exact keys, including any dots,
+and references retain those identities through exchange. Consumer field descriptors own accepted
+types, units, finite choices, and numeric bounds. Optional labels and display groups cannot weaken
+those domains or create a new drawing operation. Inspection describes declared bindings, not
+winning rendered properties or qualified output support.
+
 Rust owns bounded admission, typed reference resolution, consumer domains, inspection, and
 materialization. Materialization lowers to concrete compiler inputs. Keep the existing compiler,
 prepared theme reuse, family-owned painting, actual execution evidence, and resource admission.
@@ -39,8 +45,12 @@ active resolution calls, while memoized aliases reuse resolved values; it is not
 logical alias-chain length contract. Token and reference-use ceilings bound the document graph.
 
 Default styles lower before ordered exceptions. Existing semantic targets, family/variant/
-ordinal selectors, per-facet clear semantics, and palette behavior remain explicit. Whole-value
-references can be detached into direct values; no generic recursive merge language is added.
+ordinal selectors and per-facet clear semantics remain explicit. Ordinal palettes lower after
+ordered rules. Omission leaves a field unspecified; explicit clear removes the earlier authored
+field, and supplied lists replace rather than implicitly append. Whole-value references can be
+detached into direct values; no generic recursive merge language is added. Materialize on an
+authored change and reuse the prepared/compiled theme rather than traversing references for each
+node or export. Mermaid compatibility variables remain literal inputs to their existing evaluator.
 
 The new shadow convenience uses pixel offsets and Gaussian standard deviation, with explicit
 independent or cascade composition. Independent shadows read one original alpha and merge once;
@@ -62,7 +72,27 @@ preserve existing supported preset output or document an intentional reviewed ch
 
 ## Acceptance
 
-The research design's author-facing acceptance scenarios govern implementation: shared edits and
-detachment survive JSON, custom named values use generic controls, preset copies retain appearance,
-independent and cascade shadows differ correctly, source/config editing remains isolated, and
-reference processing is bounded and absent from reused prepared-render work.
+Acceptance requires the following behavior at the owning public interfaces:
+
+- Simple themes, grids, hard/soft shadows, and cascade glow use the same supported types and
+  headless materialization operation without preset-name branches. Custom named values use generic
+  controls constrained by their consumer descriptors.
+- Preset copies are self-contained designs that preserve supported appearance or have an explicitly
+  reviewed semantic change. JSON, theme files, and share exchange retain resource IDs and bindings.
+- Shared edits update only explicit consumers; unrelated equal literals stay independent. Detachment
+  survives exchange and later edits. ID rename rewrites references atomically and preserves
+  appearance; relabeling does not change render identity.
+- Independent shadows read the same original alpha and remain distinct from cascade/reset behavior
+  in SVG and enabled native outputs. Body and label targets stay separate, paint bounds contain
+  shadows without moving layout, and unsupported spread/inset/backdrop inputs have explicit results.
+- Missing references, cycles, incompatible types/units, non-finite values, and expansion-limit
+  violations report bounded authoring-path errors. Shared aliases cannot allocate an amplified
+  concrete specification before admission rejects it.
+- Invalid imports do not replace the current valid workspace. Valid appearance selections apply
+  immediately; undo preserves independent source/config edits. Import and authoring proposals may
+  retain an explicit confirmation boundary. Prepared rendering adds no authoring traversal;
+  performance claims require representative measured workloads rather than acceptance of this decision.
+
+The [theme guide](../rendering/custom-diagram-themes.md) owns current public vocabulary and authoring
+workflows. These acceptance requirements do not themselves qualify any preset, family/look/output
+combination, installed binding, or release artifact.

@@ -39,10 +39,11 @@ test.beforeAll(async () => {
   await initMermanWasm({ module_or_path: wasmBytes });
 });
 
-test("observes State dark native Note text after the production Playground mount", async ({
+test("observes State dark native Note text after an immediate Appearance choice and close", async ({
   page,
 }) => {
   const errors = monitorBrowserErrors(page);
+  await page.addInitScript(() => localStorage.setItem("merman-language", "en"));
   const source = [
     "stateDiagram-v2",
     "  A",
@@ -52,7 +53,7 @@ test("observes State dark native Note text after the production Playground mount
     code: source,
     mermaidConfig: '{"htmlLabels":false}',
     diagramTheme: "default",
-    themePresetId: "editor-dark",
+    themePresetId: null,
     themeRecipeJson: null,
     svgPipeline: "parity",
     textMeasurementMode: "browser",
@@ -64,12 +65,25 @@ test("observes State dark native Note text after the production Playground mount
   await page.goto(`./${hash}`, { waitUntil: "domcontentloaded" });
   await wasmResponse;
   await waitForPreviewSvg(page);
+  await page.getByRole("button", { name: "Appearance", exact: true }).click();
+  const appearance = page.getByRole("region", { name: "Appearance", exact: true });
+  const editorDark = appearance.locator('[data-theme-choice="preset:editor-dark"]');
+  await editorDark.click();
+  await expect(editorDark).toHaveAttribute("aria-pressed", "true");
 
   const mountedSvg = page
     .locator(".preview-container > div")
     .first()
     .locator("svg");
   await expect(mountedSvg).toHaveCount(1);
+  await expect(mountedSvg.locator(".statediagram-note .noteLabel text")).toHaveCSS(
+    "fill", "rgb(254, 243, 199)",
+  );
+  await appearance.getByRole("button", { name: "Close appearance panel", exact: true }).click();
+  await expect(appearance).toHaveCount(0);
+  await expect(mountedSvg.locator(".statediagram-note .noteLabel text")).toHaveCSS(
+    "fill", "rgb(254, 243, 199)",
+  );
   await expect(mountedSvg.locator(".statediagram-note foreignObject")).toHaveCount(
     0,
   );

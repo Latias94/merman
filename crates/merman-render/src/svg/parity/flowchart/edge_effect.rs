@@ -23,7 +23,11 @@ impl FlowchartEdgeEffects {
             return Ok(plan);
         }
 
-        if ctx.compatibility.look.as_str() != "classic" {
+        // Flowchart Neo uses this same final path and marker envelope. Its compatibility
+        // selectors do not filter the edge path, so they do not compete on this terminal.
+        // Agentflow uses these same terminals through its Flowchart projection.
+        let look = ctx.compatibility.look;
+        if look.as_str() != "classic" && !super::supports_neo_effects(ctx) {
             return Ok(plan);
         }
         let Some(effect) = ctx.edge_theme.effect() else {

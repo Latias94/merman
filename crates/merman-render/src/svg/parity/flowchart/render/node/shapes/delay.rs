@@ -49,6 +49,7 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_delay(
                 &path_data,
                 common.stroke_width,
                 common.stroke_dasharray,
+                common.work_meter,
                 common.hand_drawn_seed,
             )
         })

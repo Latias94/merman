@@ -69,6 +69,7 @@ pub(in crate::svg::parity) struct FlowchartRenderCtx<'a> {
     pub(in crate::svg::parity::flowchart) uses_elk_adapter_dom: bool,
     pub(in crate::svg::parity::flowchart) class_defs: &'a IndexMap<String, Vec<String>>,
     pub(in crate::svg::parity::flowchart) edge_style_plan: &'a FlowchartEdgeStylePlan,
+    pub(in crate::svg::parity::flowchart) steps: super::step::FlowchartSteps,
     pub(in crate::svg::parity::flowchart) document_ids:
         std::cell::OnceCell<super::document_ids::FlowchartDocumentIds>,
     pub(in crate::svg::parity::flowchart) layout: &'a FlowchartLayout,
@@ -78,7 +79,6 @@ pub(in crate::svg::parity) struct FlowchartRenderCtx<'a> {
     pub(in crate::svg::parity::flowchart) node_typography_config_ownership:
         crate::flowchart::FlowchartTypographyConfigOwnership,
     pub(in crate::svg::parity::flowchart) node_label_fill_config_override: bool,
-    pub(in crate::svg::parity::flowchart) node_border_config_override: bool,
     pub(in crate::svg::parity::flowchart) node_fill_config_override: bool,
     pub(in crate::svg::parity::flowchart) node_stroke_width_config_override: bool,
     pub(in crate::svg::parity::flowchart) edge_stroke_config_override: bool,

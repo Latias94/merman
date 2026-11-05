@@ -33,9 +33,9 @@ import {
 import { PreviewRenderQueue } from "./preview-render.js";
 import { PreviewSession } from "./preview-session.js";
 import {
-  extractPreviewInput,
-  extractPreviewInputFromDocument,
+  getPreviewSourceSnapshot,
   previewSourceIdentity,
+  resolvePreviewInputIdentity,
 } from "./preview-source.js";
 import { assertSelfContainedPreviewSvg } from "./preview-svg-safety.js";
 import { PreviewWebviewClient } from "./preview-webview-client.js";
@@ -157,11 +157,12 @@ export class PreviewInstance implements vscode.Disposable {
     this.scheduleRefresh("manual-refresh", true);
   }
 
-  resolvePreviewEditor(): vscode.TextEditor | undefined {
-    return this.session.resolvePreviewEditor(
+  get trackedDocumentUri(): string | undefined {
+    const source = this.session.resolveSource(
       vscode.window.activeTextEditor,
       vscode.window.visibleTextEditors,
     );
+    return source?.editor.document.uri.toString() ?? this.session.snapshot?.documentUri;
   }
 
   setLocked(locked: boolean, notify: boolean): boolean {
@@ -186,11 +187,6 @@ export class PreviewInstance implements vscode.Disposable {
     return true;
   }
 
-  tracksDocument(uri: vscode.Uri): boolean {
-    const trackedUri = this.resolvePreviewEditor()?.document.uri.toString() ?? this.session.snapshot?.documentUri;
-    return trackedUri === uri.toString();
-  }
-
   trackDocumentChange(event: vscode.TextDocumentChangeEvent): void {
     this.session.trackDocumentChange(event);
   }
@@ -202,9 +198,8 @@ export class PreviewInstance implements vscode.Disposable {
     }
 
     const document = await vscode.workspace.openTextDocument(vscode.Uri.parse(snapshot.documentUri));
-    const currentInput = extractPreviewInputFromDocument(
-      document,
-      undefined,
+    const currentInput = resolvePreviewInputIdentity(
+      getPreviewSourceSnapshot(document).inputs,
       previewSourceIdentity(snapshot.input),
     );
     if (!currentInput) {
@@ -296,7 +291,7 @@ export class PreviewInstance implements vscode.Disposable {
         return;
       }
       const activeEditor = vscode.window.activeTextEditor;
-      if (activeEditor && extractPreviewInput(activeEditor)) {
+      if (activeEditor && getPreviewSourceSnapshot(activeEditor.document).inputs.length > 0) {
         this.session.clearSelectedSource();
         this.session.rememberResource(activeEditor.document.uri, { preferOnce: true });
       }

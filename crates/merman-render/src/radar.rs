@@ -14,6 +14,7 @@ use serde_json::Value;
 mod axis_paint;
 mod config;
 mod css_binding;
+mod paint;
 mod text_paint;
 mod theme;
 
@@ -370,40 +371,42 @@ mod tests {
 
     #[test]
     fn radar_legend_layout_uses_mermaid_step_y() {
-        let mut model = RadarDiagramModel::default();
-        model.title = Some("Radar".to_string());
-        model.axes = vec![
-            RadarAxis {
-                name: "a".to_string(),
-                label: "A".to_string(),
+        let model = RadarDiagramModel {
+            title: Some("Radar".to_string()),
+            axes: vec![
+                RadarAxis {
+                    name: "a".to_string(),
+                    label: "A".to_string(),
+                },
+                RadarAxis {
+                    name: "b".to_string(),
+                    label: "B".to_string(),
+                },
+                RadarAxis {
+                    name: "c".to_string(),
+                    label: "C".to_string(),
+                },
+            ],
+            curves: vec![
+                RadarCurve {
+                    name: "one".to_string(),
+                    label: "One".to_string(),
+                    entries: vec![json!(1.0), json!(2.0), json!(3.0)],
+                },
+                RadarCurve {
+                    name: "two".to_string(),
+                    label: "Two".to_string(),
+                    entries: vec![json!(3.0), json!(2.0), json!(1.0)],
+                },
+            ],
+            options: RadarOptions {
+                show_legend: true,
+                ticks: json!(3),
+                min: json!(0.0),
+                max: Some(json!(3.0)),
+                graticule: "circle".to_string(),
             },
-            RadarAxis {
-                name: "b".to_string(),
-                label: "B".to_string(),
-            },
-            RadarAxis {
-                name: "c".to_string(),
-                label: "C".to_string(),
-            },
-        ];
-        model.curves = vec![
-            RadarCurve {
-                name: "one".to_string(),
-                label: "One".to_string(),
-                entries: vec![json!(1.0), json!(2.0), json!(3.0)],
-            },
-            RadarCurve {
-                name: "two".to_string(),
-                label: "Two".to_string(),
-                entries: vec![json!(3.0), json!(2.0), json!(1.0)],
-            },
-        ];
-        model.options = RadarOptions {
-            show_legend: true,
-            ticks: json!(3),
-            min: json!(0.0),
-            max: Some(json!(3.0)),
-            graticule: "circle".to_string(),
+            ..Default::default()
         };
         let measurer = DeterministicTextMeasurer {
             char_width_factor: 8.0,
@@ -441,17 +444,19 @@ mod tests {
 
     #[test]
     fn radar_polygon_work_is_aggregated_before_allocating_points() {
-        let mut model = RadarDiagramModel::default();
-        model.axes = vec![
-            RadarAxis {
-                name: "a".to_string(),
-                label: "A".to_string(),
-            },
-            RadarAxis {
-                name: "b".to_string(),
-                label: "B".to_string(),
-            },
-        ];
+        let mut model = RadarDiagramModel {
+            axes: vec![
+                RadarAxis {
+                    name: "a".to_string(),
+                    label: "A".to_string(),
+                },
+                RadarAxis {
+                    name: "b".to_string(),
+                    label: "B".to_string(),
+                },
+            ],
+            ..Default::default()
+        };
         model.options.ticks = json!(3);
         model.options.graticule = "polygon".to_string();
         let measurer = DeterministicTextMeasurer {

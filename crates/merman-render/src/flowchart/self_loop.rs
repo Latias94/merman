@@ -104,6 +104,7 @@ fn flowchart_self_loop_edge_from_base(
         style: base.style.clone(),
         animate: base.animate,
         animation: base.animation.clone(),
+        step: base.step,
         length: base.length,
     }
 }
@@ -133,7 +134,20 @@ mod tests {
             style: Vec::new(),
             animate: None,
             animation: None,
+            step: None,
             length: 1,
+        }
+    }
+
+    #[test]
+    fn self_loop_helpers_preserve_step_metadata() {
+        for step in [None, Some(3.0)] {
+            let mut base = self_loop(FlowEdgeMarker::Circle, FlowEdgeMarker::Cross);
+            base.step = step;
+            let helpers = flowchart_self_loop_helper_edges(&base);
+            for edge in [&helpers.edge1, &helpers.edge_mid, &helpers.edge2] {
+                assert_eq!(edge.step, step);
+            }
         }
     }
 

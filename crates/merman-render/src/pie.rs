@@ -385,12 +385,14 @@ mod tests {
         }
 
         let title = "TitleTitleTitleTitle";
-        let mut model = PieDiagramModel::default();
-        model.title = Some(title.to_owned());
-        model.sections = vec![PieSection {
-            label: "Legend".to_owned(),
-            value: 1.0,
-        }];
+        let model = PieDiagramModel {
+            title: Some(title.to_owned()),
+            sections: vec![PieSection {
+                label: "Legend".to_owned(),
+                value: 1.0,
+            }],
+            ..Default::default()
+        };
         for (title_css, legend_css, title_size, legend_size) in [
             ("60px", "40px", 60.0, 40.0),
             ("2em", "150%", 40.0, 30.0),
@@ -432,19 +434,23 @@ mod tests {
     #[test]
     fn pie_legend_and_title_use_exact_bounding_client_rect_results() {
         let measurer = RecordingBoundingClientRectMeasurer::default();
-        let mut legend_model = PieDiagramModel::default();
-        legend_model.sections = vec![PieSection {
-            label: "Legend".to_string(),
-            value: 1.0,
-        }];
+        let legend_model = PieDiagramModel {
+            sections: vec![PieSection {
+                label: "Legend".to_string(),
+                value: 1.0,
+            }],
+            ..Default::default()
+        };
         let legend_layout =
             super::layout_pie_diagram_typed(&legend_model, None, &serde_json::json!({}), &measurer)
                 .expect("legend layout");
         let legend_max_x = legend_layout.bounds.expect("legend bounds").max_x;
         assert!((legend_max_x - (512.0 + 123.456_789)).abs() < 1e-12);
 
-        let mut title_model = PieDiagramModel::default();
-        title_model.title = Some("Title".to_string());
+        let title_model = PieDiagramModel {
+            title: Some("Title".to_string()),
+            ..Default::default()
+        };
         let title_layout = super::layout_pie_diagram_typed(
             &title_model,
             None,
@@ -515,15 +521,17 @@ mod tests {
         use merman_model::families::pie::PieSection;
         use merman_model::presentation::PresentationConfig;
 
-        let mut model = PieDiagramModel::default();
-        model.title = Some("Title".to_string());
-        model.sections = ["Legend"]
-            .into_iter()
-            .map(|label| PieSection {
-                label: label.to_string(),
-                value: 1.0,
-            })
-            .collect();
+        let model = PieDiagramModel {
+            title: Some("Title".to_string()),
+            sections: ["Legend"]
+                .into_iter()
+                .map(|label| PieSection {
+                    label: label.to_string(),
+                    value: 1.0,
+                })
+                .collect(),
+            ..Default::default()
+        };
         let font_stack =
             FontStack::new(["Pie Layout", "sans-serif"]).expect("valid Pie layout font stack");
         let theme = DiagramThemeCompiler::new()
@@ -576,12 +584,14 @@ mod tests {
         };
         use crate::resources::{OperationWorkMeter, RenderResourcePolicy};
 
-        let mut model = PieDiagramModel::default();
-        model.title = Some("Title".to_owned());
-        model.sections = vec![PieSection {
-            label: "Legend".to_owned(),
-            value: 1.0,
-        }];
+        let model = PieDiagramModel {
+            title: Some("Title".to_owned()),
+            sections: vec![PieSection {
+                label: "Legend".to_owned(),
+                value: 1.0,
+            }],
+            ..Default::default()
+        };
         let mut rules = ThemeRuleSet::default();
         for (target, size, weight, style) in [
             (ThemeTarget::Title, 30.0, 650, FontStyle::Italic),

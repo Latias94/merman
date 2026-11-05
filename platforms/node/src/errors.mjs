@@ -207,7 +207,7 @@ export function encodeTransportJson(value, label, limits) {
   }
   let boundedValue;
   try {
-    boundedValue = cloneJsonWireValueWithinLimit(value, label, limits);
+    boundedValue = snapshotTransportJsonValue(value, label, limits);
   } catch (cause) {
     if (cause instanceof MermanInvalidTransportError) throw cause;
     throw new MermanInvalidTransportError(
@@ -224,18 +224,21 @@ export function encodeTransportJson(value, label, limits) {
       cause,
     );
   }
-  // JSON.stringify guarantees syntax for the controlled clone; retain all wire-limit checks.
   assertTransportJsonTextLimits(text, label, limits);
   return text;
 }
 
-function cloneJsonWireValueWithinLimit(value, label, limits) {
-  const budget = { label, max: limits.max_utf8_bytes, used: 0 };
+export function snapshotTransportJsonValue(value, label, limits) {
+  if (!limits || typeof limits !== "object") {
+    throw new TypeError(`Missing Node wire limits for ${label}.`);
+  }
+  const budget = { label, max: limits.max_utf8_bytes, used: 0, members: 0, tokens: 0 };
   const active = new WeakSet();
   return cloneJsonWireValue(value, label, limits, budget, active, 1);
 }
 
 function cloneJsonWireValue(value, label, limits, budget, active, depth) {
+  addJsonWireToken(budget, limits);
   if (value === null) {
     addJsonWireBytes(budget, 4);
     return null;
@@ -245,7 +248,7 @@ function cloneJsonWireValue(value, label, limits, budget, active, depth) {
     return value;
   }
   if (typeof value === "string") {
-    addJsonStringWireBytes(value, label, budget);
+    addJsonStringWireBytes(value, label, limits, budget);
     return value;
   }
   if (typeof value === "number") {
@@ -283,16 +286,19 @@ function cloneJsonWireValue(value, label, limits, budget, active, depth) {
 }
 
 function cloneJsonWireArray(value, label, limits, budget, active, depth) {
+  addJsonWireMembers(budget, limits, value.length);
   const keys = Reflect.ownKeys(value);
   if (keys.some((key) => typeof key === "symbol")) {
     throw new TypeError(`${label} must not contain symbol keys.`);
+  }
+  if (keys.length < value.length + 1) {
+    throw new TypeError(`${label} arrays must not contain holes.`);
   }
   if (keys.length !== value.length + 1) {
     throw new TypeError(`${label} arrays must not contain custom properties.`);
   }
 
-  const clone = [];
-  Object.defineProperty(clone, "toJSON", { value: undefined });
+  const clone = Object.setPrototypeOf([], null);
   addJsonWireBytes(budget, 1);
   for (let index = 0; index < value.length; index += 1) {
     if (!Object.hasOwn(value, index)) {
@@ -317,10 +323,12 @@ function cloneJsonWireArray(value, label, limits, budget, active, depth) {
 }
 
 function cloneJsonWireObject(value, label, limits, budget, active, depth) {
+  const keys = Reflect.ownKeys(value);
+  addJsonWireMembers(budget, limits, keys.length);
   const clone = Object.create(null);
   addJsonWireBytes(budget, 1);
   let member = 0;
-  for (const key of Reflect.ownKeys(value)) {
+  for (const key of keys) {
     if (typeof key === "symbol") {
       throw new TypeError(`${label} must not contain symbol keys.`);
     }
@@ -329,7 +337,8 @@ function cloneJsonWireObject(value, label, limits, budget, active, depth) {
       throw new TypeError(`${label}.${key} must be an enumerable data property.`);
     }
     if (member > 0) addJsonWireBytes(budget, 1);
-    addJsonStringWireBytes(key, `${label} object key`, budget);
+    addJsonWireToken(budget, limits);
+    addJsonStringWireBytes(key, `${label} object key`, limits, budget);
     addJsonWireBytes(budget, 1);
     const child = cloneJsonWireValue(
       descriptor.value,
@@ -351,12 +360,33 @@ function cloneJsonWireObject(value, label, limits, budget, active, depth) {
   return clone;
 }
 
-function addJsonStringWireBytes(value, label, budget) {
+function addJsonWireMembers(budget, limits, count) {
+  if (count > limits.max_members - budget.members) {
+    throw new MermanInvalidTransportError(
+      `Merman transport ${budget.label} exceeds the member-work limit ${limits.max_members}.`,
+    );
+  }
+  budget.members += count;
+}
+
+function addJsonWireToken(budget, limits) {
+  budget.tokens += 1;
+  if (budget.tokens > limits.max_tokens) {
+    throw new MermanInvalidTransportError(
+      `Merman transport ${budget.label} exceeds the token-work limit ${limits.max_tokens}.`,
+    );
+  }
+}
+
+function addJsonStringWireBytes(value, label, limits, budget) {
+  let utf8Bytes = 0;
   addJsonWireBytes(budget, 1);
   for (let index = 0; index < value.length; index += 1) {
     const codeUnit = value.charCodeAt(index);
+    let characterBytes = utf8LengthOfCodeUnit(codeUnit);
+    let wireBytes = characterBytes;
     if (codeUnit === 0x22 || codeUnit === 0x5c) {
-      addJsonWireBytes(budget, 2);
+      wireBytes = 2;
     } else if (
       codeUnit === 0x08 ||
       codeUnit === 0x09 ||
@@ -364,13 +394,9 @@ function addJsonStringWireBytes(value, label, budget) {
       codeUnit === 0x0c ||
       codeUnit === 0x0d
     ) {
-      addJsonWireBytes(budget, 2);
+      wireBytes = 2;
     } else if (codeUnit <= 0x1f) {
-      addJsonWireBytes(budget, 6);
-    } else if (codeUnit <= 0x7f) {
-      addJsonWireBytes(budget, 1);
-    } else if (codeUnit <= 0x7ff) {
-      addJsonWireBytes(budget, 2);
+      wireBytes = 6;
     } else if (codeUnit >= 0xd800 && codeUnit <= 0xdbff) {
       const low = value.charCodeAt(index + 1);
       if (!(low >= 0xdc00 && low <= 0xdfff)) {
@@ -378,15 +404,21 @@ function addJsonStringWireBytes(value, label, budget) {
           `Merman transport ${label} contains an isolated UTF-16 surrogate.`,
         );
       }
-      addJsonWireBytes(budget, 4);
+      characterBytes = 4;
+      wireBytes = 4;
       index += 1;
     } else if (codeUnit >= 0xdc00 && codeUnit <= 0xdfff) {
       throw new MermanInvalidTransportError(
         `Merman transport ${label} contains an isolated UTF-16 surrogate.`,
       );
-    } else {
-      addJsonWireBytes(budget, 3);
     }
+    utf8Bytes += characterBytes;
+    if (utf8Bytes > limits.max_string_utf8_bytes) {
+      throw new MermanInvalidTransportError(
+        `Merman transport ${label} contains a string exceeding the ${limits.max_string_utf8_bytes}-byte field limit.`,
+      );
+    }
+    addJsonWireBytes(budget, wireBytes);
   }
   addJsonWireBytes(budget, 1);
 }

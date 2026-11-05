@@ -3,9 +3,12 @@
 
 import contextlib
 import io
+import json
+import subprocess
 import sys
 import unittest
 from pathlib import Path
+from unittest import mock
 
 from tools import publish as publish_tool
 
@@ -112,6 +115,65 @@ class PublishMetadataTests(unittest.TestCase):
             "independent packages are not workspace members.*missing",
         ):
             publish_tool.crates_io_publish_batches(metadata)
+
+
+class WorkspacePublishPolicyTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self.sources = (
+            "merman-bindings-core", "merman-ffi", "merman-uniffi", "merman-wasm",
+        )
+        self.metadata = workspace_metadata(
+            *(package(name) for name in self.sources),
+            package("merman-android-jni", publish=[]),
+        )
+
+    def load_metadata(self) -> dict:
+        result = subprocess.CompletedProcess(
+            ["cargo", "metadata"], 0, json.dumps(self.metadata), "",
+        )
+        with mock.patch.object(publish_tool, "run_command", return_value=result):
+            return publish_tool.cargo_metadata(ROOT, quiet=True)
+
+    def test_metadata_admits_public_sources_but_not_the_jni_implementation(self) -> None:
+        metadata = self.load_metadata()
+
+        self.assertEqual(metadata, self.metadata)
+        self.assertEqual(set(publish_tool.crates_io_publish_order(metadata)), set(self.sources))
+
+    def test_jni_manifest_must_explicitly_disable_publication(self) -> None:
+        for declaration in ("", "publish = true\n", "publish = []\n", 'publish = ["internal"]\n'):
+            manifest = '[package]\nname = "merman-android-jni"\n' + declaration
+            with (
+                self.subTest(declaration=declaration),
+                mock.patch.object(Path, "read_text", return_value=manifest),
+                self.assertRaisesRegex(publish_tool.PublishGraphError, "merman-android-jni.*publish = false"),
+            ):
+                self.load_metadata()
+
+    def test_jni_cannot_enter_the_crates_io_graph(self) -> None:
+        self.metadata["packages"][-1]["publish"] = None
+
+        with self.assertRaisesRegex(publish_tool.PublishGraphError, "merman-android-jni"):
+            self.load_metadata()
+
+    def test_required_source_packages_cannot_leave_the_coupled_graph(self) -> None:
+        for name in self.sources:
+            for mutation in ("missing", "private", "independent"):
+                metadata = json.loads(json.dumps(self.metadata))
+                selected = next(item for item in metadata["packages"] if item["name"] == name)
+                if mutation == "missing":
+                    metadata["workspace_members"].remove(selected["id"])
+                elif mutation == "private":
+                    selected["publish"] = []
+                else:
+                    metadata["metadata"] = {"merman-release": {"independent-packages": [name]}}
+                result = subprocess.CompletedProcess(["cargo", "metadata"], 0, json.dumps(metadata), "")
+                with (
+                    self.subTest(package=name, mutation=mutation),
+                    mock.patch.object(publish_tool, "run_command", return_value=result),
+                    self.assertRaisesRegex(publish_tool.PublishGraphError, name),
+                ):
+                    publish_tool.cargo_metadata(ROOT, quiet=True)
 
 
 class PublishGraphTests(unittest.TestCase):

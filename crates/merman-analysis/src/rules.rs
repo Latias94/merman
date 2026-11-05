@@ -345,7 +345,7 @@ const DOCUMENT_DIAGRAM_LIMIT_RULE: RuleDescriptor = RuleDescriptor {
     description: "Report host documents that exceed the configured embedded Mermaid diagram budget.",
     evidence: &[
         "docs/adr/0070-diagnostics-first-analysis-contract.md",
-        "docs/plans/2026-07-29-002-refactor-analysis-lsp-generation-session-plan.md",
+        "docs/bindings/OPTIONS_JSON.md",
     ],
     default_severity: DiagnosticSeverity::Error,
     category: DiagnosticCategory::Resource,
@@ -361,7 +361,7 @@ pub(crate) const THEME_EVALUATION_LIMIT_RULE: RuleDescriptor = RuleDescriptor {
     description: "Report Mermaid theme configuration that exceeds the bounded evaluation budget.",
     evidence: &[
         "docs/adr/0070-diagnostics-first-analysis-contract.md",
-        "docs/plans/2026-08-09-001-portable-theme-architecture-convergence-addendum.md",
+        "docs/adr/0068-render-side-presentation-theme-view.md",
     ],
     default_severity: DiagnosticSeverity::Error,
     category: DiagnosticCategory::Resource,
@@ -470,7 +470,7 @@ pub(crate) const INTERNAL_FAILURE_RULE: RuleDescriptor = RuleDescriptor {
     description: "Report a low-frequency internal engine failure without assigning source ownership.",
     evidence: &[
         "docs/adr/0068-render-side-presentation-theme-view.md",
-        "docs/plans/2026-08-06-001-refactor-portable-diagram-theme-architecture-plan.md",
+        "docs/adr/0070-diagnostics-first-analysis-contract.md",
     ],
     default_severity: DiagnosticSeverity::Error,
     category: DiagnosticCategory::Internal,

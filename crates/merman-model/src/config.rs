@@ -5,16 +5,19 @@ pub use theme_id::{MermaidThemeId, MermaidThemeIdParseError};
 
 use crate::json::estimated_value_owned_heap_bytes;
 use crate::json::{
-    clone_value_nonrecursive, clone_value_nonrecursive_controlled, drop_value_nonrecursive,
+    ManagedJson, clone_value_nonrecursive, clone_value_nonrecursive_controlled,
+    drop_value_nonrecursive,
 };
 use crate::{OperationControl, OperationControlResult};
 use serde_json::{Map, Value};
 use std::fmt;
 use std::sync::Arc;
 
-#[derive(Clone, Eq)]
+#[derive(Clone)]
 pub struct MermaidConfig {
-    value: Arc<Value>,
+    #[cfg(test)]
+    before_value_release: Option<tests::BeforeValueRelease>,
+    value: Arc<ManagedJson>,
 }
 
 impl fmt::Debug for MermaidConfig {
@@ -32,6 +35,8 @@ impl PartialEq for MermaidConfig {
     }
 }
 
+impl Eq for MermaidConfig {}
+
 impl Default for MermaidConfig {
     fn default() -> Self {
         Self::empty_object()
@@ -45,12 +50,14 @@ impl MermaidConfig {
 
     pub fn from_value(value: Value) -> Self {
         Self {
-            value: Arc::new(value),
+            #[cfg(test)]
+            before_value_release: None,
+            value: Arc::new(ManagedJson::from_value(value)),
         }
     }
 
     pub fn as_value(&self) -> &Value {
-        self.value.as_ref()
+        self.value.as_value()
     }
 
     /// Clones this config without recursion while enforcing a retained-size and nesting budget.
@@ -85,7 +92,7 @@ impl MermaidConfig {
     }
 
     pub fn get_str(&self, dotted_path: &str) -> Option<&str> {
-        let mut cur: &Value = self.value.as_ref();
+        let mut cur = self.as_value();
         for segment in dotted_path.split('.') {
             cur = cur.as_object()?.get(segment)?;
         }
@@ -93,7 +100,7 @@ impl MermaidConfig {
     }
 
     pub fn get_bool(&self, dotted_path: &str) -> Option<bool> {
-        let mut cur: &Value = self.value.as_ref();
+        let mut cur = self.as_value();
         for segment in dotted_path.split('.') {
             cur = cur.as_object()?.get(segment)?;
         }
@@ -107,7 +114,7 @@ impl MermaidConfig {
     fn set_value_raw(&mut self, dotted_path: &str, value: Value) {
         let current = dotted_path
             .split('.')
-            .try_fold(self.value.as_ref(), |parent, segment| {
+            .try_fold(self.as_value(), |parent, segment| {
                 parent.as_object()?.get(segment)
             });
         if current.is_some_and(|current| {
@@ -175,18 +182,9 @@ impl MermaidConfig {
         if Arc::strong_count(&self.value) != 1 || Arc::weak_count(&self.value) != 0 {
             #[cfg(any(test, feature = "test-support"))]
             test_support::record_cow_copy();
-            self.value = Arc::new(clone_value_nonrecursive(self.value.as_ref()));
+            self.value = Arc::new(self.value.as_ref().clone());
         }
-        Arc::make_mut(&mut self.value)
-    }
-}
-
-impl Drop for MermaidConfig {
-    fn drop(&mut self) {
-        if let Some(value) = Arc::get_mut(&mut self.value) {
-            let old = std::mem::replace(value, Value::Null);
-            drop_value_nonrecursive(old);
-        }
+        Arc::make_mut(&mut self.value).as_value_mut()
     }
 }
 
@@ -459,6 +457,22 @@ pub mod test_support {
 mod tests {
     use super::*;
     use serde_json::json;
+    use std::process::{Command, Stdio};
+    use std::sync::{Barrier, mpsc};
+    use std::time::{Duration, Instant};
+
+    #[derive(Clone)]
+    pub(super) struct BeforeValueRelease {
+        ready: Arc<Barrier>,
+        release: Arc<Barrier>,
+    }
+
+    impl Drop for BeforeValueRelease {
+        fn drop(&mut self) {
+            self.ready.wait();
+            self.release.wait();
+        }
+    }
 
     #[test]
     fn deep_merge_ignores_null_source_values() {
@@ -661,23 +675,207 @@ mod tests {
         value
     }
 
+    fn isolated_config_lifecycle(test_name: &str, operation: fn()) {
+        const CHILD_ENV: &str = "MERMAN_CONFIG_LIFECYCLE_CHILD";
+        if std::env::var(CHILD_ENV).ok().as_deref() == Some(test_name) {
+            std::thread::Builder::new()
+                .name(test_name.to_string())
+                .stack_size(64 * 1024)
+                .spawn(operation)
+                .expect("spawn small-stack config lifecycle test")
+                .join()
+                .expect("config lifecycle should complete without stack overflow");
+            println!("config-lifecycle-completed={test_name}");
+            return;
+        }
+
+        let mut child = Command::new(std::env::current_exe().expect("current test executable"))
+            .args(["--exact", test_name, "--nocapture"])
+            .env(CHILD_ENV, test_name)
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+            .expect("spawn isolated config lifecycle test");
+        let started = Instant::now();
+        loop {
+            if child
+                .try_wait()
+                .expect("poll config lifecycle child")
+                .is_some()
+            {
+                break;
+            }
+            if started.elapsed() >= Duration::from_secs(30) {
+                let _ = child.kill();
+                let _ = child.wait();
+                panic!("config lifecycle child timed out: {test_name}");
+            }
+            std::thread::sleep(Duration::from_millis(10));
+        }
+        let output = child
+            .wait_with_output()
+            .expect("collect config lifecycle child");
+        assert!(
+            output.status.success(),
+            "{test_name}: {}; stderr={}",
+            output.status,
+            String::from_utf8_lossy(&output.stderr)
+        );
+        assert!(
+            String::from_utf8_lossy(&output.stdout)
+                .contains(&format!("config-lifecycle-completed={test_name}")),
+            "the isolated lifecycle test must actually execute"
+        );
+    }
+
     #[test]
     fn clone_on_write_handles_deep_config_with_small_stack() {
-        const DEPTH: usize = 2_048;
-        let value = deep_config_value(DEPTH);
-        let handle = std::thread::Builder::new()
-            .name("mermaid-config-deep-clone-on-write".to_string())
-            .stack_size(64 * 1024)
-            .spawn(move || {
-                let original = MermaidConfig::from_value(value);
+        isolated_config_lifecycle(
+            "config::tests::clone_on_write_handles_deep_config_with_small_stack",
+            || {
+                let original = MermaidConfig::from_value(deep_config_value(2_048));
                 let mut cloned = original.clone();
-                cloned.set_value("theme", Value::String("default".to_string()));
+                assert!(Arc::ptr_eq(&original.value, &cloned.value));
+                let (_, copies) = test_support::measure_cow_copies(|| {
+                    cloned.set_value("theme", Value::String("default".to_string()));
+                    cloned.set_value("look", Value::String("classic".to_string()));
+                });
+                assert_eq!(copies, 1);
+                assert!(!Arc::ptr_eq(&original.value, &cloned.value));
+                assert_eq!(original.get_str("theme"), None);
                 assert_eq!(cloned.get_str("theme"), Some("default"));
-            })
-            .expect("spawn deep config clone-on-write test");
-        handle
-            .join()
-            .expect("deep config clone-on-write should finish without stack overflow");
+            },
+        );
+    }
+
+    #[test]
+    fn independent_deep_configs_compare_by_value_on_a_small_stack() {
+        isolated_config_lifecycle(
+            "config::tests::independent_deep_configs_compare_by_value_on_a_small_stack",
+            || {
+                const DEPTH: usize = 2_048;
+                let left = MermaidConfig::from_value(deep_config_value(DEPTH));
+                let mut right = MermaidConfig::from_value(deep_config_value(DEPTH));
+                assert!(!Arc::ptr_eq(&left.value, &right.value));
+                assert_eq!(left, right);
+                let leaf_path = (0..DEPTH)
+                    .map(|index| format!("k{index}"))
+                    .collect::<Vec<_>>()
+                    .join(".");
+                right.set_value(&leaf_path, json!("changed"));
+                assert_ne!(left, right);
+            },
+        );
+    }
+
+    #[test]
+    fn deep_config_debug_is_iterative_on_a_small_stack() {
+        isolated_config_lifecycle(
+            "config::tests::deep_config_debug_is_iterative_on_a_small_stack",
+            || {
+                const DEPTH: usize = 2_048;
+                let config = MermaidConfig::from_value(deep_config_value(DEPTH));
+                let mut expected = String::from("MermaidConfig(");
+                for index in 0..DEPTH {
+                    expected.push_str(&format!("{{\"k{index}\":"));
+                }
+                expected.push_str("\"leaf\"");
+                expected.extend(std::iter::repeat_n('}', DEPTH));
+                expected.push(')');
+                assert_eq!(format!("{config:?}"), expected);
+            },
+        );
+    }
+
+    #[test]
+    fn shared_deep_config_final_release_is_safe_in_both_thread_orders() {
+        isolated_config_lifecycle(
+            "config::tests::shared_deep_config_final_release_is_safe_in_both_thread_orders",
+            || {
+                for last_index in 0..2 {
+                    let config = MermaidConfig::from_value(deep_config_value(2_048));
+                    let ready = Arc::new(Barrier::new(3));
+                    let (released_tx, released_rx) = mpsc::channel();
+                    let mut releases = Vec::new();
+                    let mut workers = Vec::new();
+                    let configs = [config.clone(), config];
+                    assert_eq!(Arc::strong_count(&configs[0].value), 2);
+                    for (index, mut config) in configs.into_iter().enumerate() {
+                        let release = Arc::new(Barrier::new(2));
+                        releases.push(release.clone());
+                        config.before_value_release = Some(BeforeValueRelease {
+                            ready: ready.clone(),
+                            release,
+                        });
+                        let released_tx = released_tx.clone();
+                        workers.push(
+                            std::thread::Builder::new()
+                                .stack_size(64 * 1024)
+                                .spawn(move || {
+                                    drop(config);
+                                    released_tx.send(index).expect("report completed release");
+                                })
+                                .expect("spawn config release worker"),
+                        );
+                    }
+                    ready.wait();
+                    let first_index = 1 - last_index;
+                    releases[first_index].wait();
+                    assert_eq!(
+                        released_rx.recv_timeout(Duration::from_secs(5)).unwrap(),
+                        first_index
+                    );
+                    releases[last_index].wait();
+                    assert_eq!(
+                        released_rx.recv_timeout(Duration::from_secs(5)).unwrap(),
+                        last_index
+                    );
+                    for worker in workers {
+                        worker.join().expect("config release should complete");
+                    }
+                }
+            },
+        );
+    }
+
+    #[test]
+    fn shared_clone_preserves_cow_counts_mutation_observation_and_value_equality() {
+        let original = MermaidConfig::from_value(json!({
+            "flowchart": { "htmlLabels": true },
+            "theme": "default",
+            "values": [1]
+        }));
+        let (mut cloned, copies) = test_support::measure_cow_copies(|| {
+            let mut cloned = original.clone();
+            cloned.set_value("theme", json!("default"));
+            cloned.deep_merge(&json!({}));
+            cloned
+        });
+        assert_eq!(copies, 0);
+        assert!(Arc::ptr_eq(&original.value, &cloned.value));
+        let mut observed = Vec::new();
+        let (_, copies) = test_support::measure_cow_copies(|| {
+            cloned.merge_with_mutation_observer(
+                &json!({
+                    "flowchart": { "htmlLabels": false },
+                    "theme": "dark",
+                    "values": [1, 2]
+                }),
+                &mut |path| observed.push(path.join(".")),
+            );
+            cloned.set_value("theme", json!("forest"));
+        });
+        assert_eq!(copies, 1);
+        assert_eq!(observed, ["flowchart.htmlLabels", "theme", "values"]);
+        assert_eq!(original.get_str("theme"), Some("default"));
+        assert_eq!(original.get_bool("flowchart.htmlLabels"), Some(true));
+        assert_eq!(original.as_value()["values"], json!([1]));
+        let independent = MermaidConfig::from_value(json!({
+            "values": [1, 2],
+            "flowchart": { "htmlLabels": false },
+            "theme": "forest"
+        }));
+        assert_eq!(cloned, independent);
     }
 
     #[test]

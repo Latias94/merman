@@ -1,0 +1,18 @@
+---
+config:
+  look: classic
+  htmlLabels: false
+  flowchart:
+    htmlLabels: false
+---
+swimlane-beta RL
+%% Adapted from Mermaid 12.3 swimlanes/__tests__/nestedGroupSizing.spec.ts.
+subgraph sales[Sales]
+  subgraph intake[Intake]
+    subgraph checks[Checks]
+      A[Receive order]
+      B[Check stock]
+    end
+  end
+end
+A -->|verified| B

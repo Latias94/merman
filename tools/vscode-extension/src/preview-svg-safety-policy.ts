@@ -195,6 +195,161 @@ interface SvgAttribute {
   value: string;
 }
 
+interface StepElement {
+  readonly tag: SvgTag;
+  readonly parent: StepElement | undefined;
+  readonly root: StepElement | undefined;
+  readonly forbiddenStepContainer: boolean;
+  readonly children: StepElement[];
+  namespace: string;
+  previous?: StepElement;
+  lastChild?: StepElement;
+}
+
+function assertStepAnimations(
+  elements: readonly StepElement[],
+  ids: ReadonlyMap<string, number>,
+  error: (message: string) => Error,
+): void {
+  const allowed = new Set<StepElement>();
+  const fail = () => error("SVG with an invalid Step animation contract.");
+  const require = (condition: boolean): void => { if (!condition) throw fail(); };
+  const attrs = (node: StepElement, names: readonly string[]): Map<string, string> => {
+    require(node.namespace === "http://www.w3.org/2000/svg" && !node.tag.name.includes(":"));
+    const values = new Map<string, string>();
+    for (const attribute of node.tag.attributes) {
+      if (attribute.name === "xmlns" && attribute.value === "http://www.w3.org/2000/svg") continue;
+      require(names.includes(attribute.name) && !values.has(attribute.name));
+      values.set(attribute.name, decodeXmlEntities(attribute.value));
+    }
+    return values;
+  };
+  const get = (values: ReadonlyMap<string, string>, name: string): string => {
+    const value = values.get(name);
+    if (value === undefined) throw fail();
+    return value;
+  };
+  const number = (value: string): number => {
+    require(/^(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?$/.test(value));
+    const result = Number(value);
+    require(Number.isFinite(result) && result >= 0);
+    return result;
+  };
+  const seconds = (value: string): number => {
+    require(value.endsWith("s"));
+    return number(value.slice(0, -1));
+  };
+  const transform = (node: StepElement, motion: string, duration: string): void => {
+    const values = attrs(node, ["attributeName", "type", "values", "dur", "begin", "fill"]);
+    require(node.tag.name === "animateTransform" && node.children.length === 0 &&
+      get(values, "attributeName") === "transform" && get(values, "type") === "scale" &&
+      get(values, "values") === "1;1" && get(values, "dur") === duration &&
+      get(values, "begin") === `${motion}.begin` && get(values, "fill") === "remove");
+  };
+  let commonTiming: readonly [number, number] | undefined;
+  for (const dot of elements) {
+    if (!dot.tag.attributes.some((attribute) => attribute.name === "class" && decodeXmlEntities(attribute.value) === "edge-step-dot")) continue;
+    const dotAttrs = attrs(dot, ["class", "r", "aria-hidden", "transform", "data-step", "fill", "stroke"]);
+    require(dot.tag.name === "circle" && get(dotAttrs, "r") === "4" && get(dotAttrs, "aria-hidden") === "true");
+    const parent = dot.parent;
+    require(parent?.tag.name === "g" && parent.namespace === "http://www.w3.org/2000/svg" &&
+      (parent.tag.attributes.find((attribute) => attribute.name === "class")?.value.split(/\s+/).includes("edgePaths") ?? false));
+    require(!dot.forbiddenStepContainer);
+    const highlight = dot.previous;
+    if (!highlight) throw fail();
+    const highlightAttrs = attrs(highlight, ["class", "aria-hidden", "d", "fill", "stroke", "stroke-width", "stroke-linecap", "stroke-opacity", "pointer-events", "transform", "data-step"]);
+    require(highlight.tag.name === "path" && get(highlightAttrs, "class") === "edge-step-highlight" &&
+      get(highlightAttrs, "aria-hidden") === "true" && get(highlightAttrs, "fill") === "none" &&
+      get(highlightAttrs, "stroke-width") === "4" && get(highlightAttrs, "stroke-linecap") === "round" &&
+      get(highlightAttrs, "stroke-opacity") === "0.6" && get(highlightAttrs, "pointer-events") === "none");
+    const edge = highlight.previous;
+    require(edge?.tag.name === "path" && edge.namespace === "http://www.w3.org/2000/svg" &&
+      edge.tag.attributes.some((attribute) => attribute.name === "data-edge" && attribute.value === "true") &&
+      edge.tag.attributes.some((attribute) => attribute.name === "id" && attribute.value !== ""));
+    const step = number(get(dotAttrs, "data-step"));
+    require(step > 0 && Number.isInteger(step) && get(highlightAttrs, "data-step") === get(dotAttrs, "data-step"));
+    require(dot.children.length === 2 && highlight.children.length === 1);
+    const motion = dot.children[0];
+    const dotTransform = dot.children[1];
+    const highlightTransform = highlight.children[0];
+    if (!motion || !dotTransform || !highlightTransform) throw fail();
+    const motionAttrs = attrs(motion, ["id", "path", "dur", "begin", "fill"]);
+    const motionId = get(motionAttrs, "id");
+    require(motion.tag.name === "animateMotion" && motion.children.length === 0 &&
+      /^[a-z][a-z0-9_-]*$/i.test(motionId) && ids.get(motionId) === 1 && get(motionAttrs, "fill") === "remove");
+    const idStart = motionId.lastIndexOf("-") + 1;
+    const prefix = motionId.slice(0, idStart);
+    const edgeId = decodeXmlEntities(edge?.tag.attributes.find((attribute) => attribute.name === "id")?.value ?? "");
+    require(edgeId.startsWith(prefix));
+    const originalEdgeId = edgeId.slice(prefix.length);
+    const encoded = Array.from(`${originalEdgeId}-step`, (character) => /^[a-z0-9]$/i.test(character) ? character : `_${character.codePointAt(0)?.toString(16)}_`).join("");
+    require(motionId === `${prefix}step_${encoded}`);
+    const rootId = dot.root?.tag.attributes.find((attribute) => attribute.name === "id")?.value;
+    require(rootId !== undefined && edgeId.startsWith(`${decodeXmlEntities(rootId ?? "")}-`));
+    require(ids.get(edgeId) === 1 && ids.get(decodeXmlEntities(rootId ?? "")) === 1);
+    const durationText = get(motionAttrs, "dur");
+    const duration = seconds(durationText);
+    require(duration > 0);
+    const timing = get(motionAttrs, "begin").split(`;${motionId}.end+`);
+    require(timing.length === 2);
+    const begin = seconds(timing[0] ?? "");
+    const gap = seconds(timing[1] ?? "");
+    const count = gap / duration + 1;
+    const countTolerance = 4 * Number.EPSILON * count;
+    require(begin === (step - 1) * duration && Number.isFinite(count) && Number.isFinite(gap + duration) &&
+      gap >= begin && Math.abs(count - Math.round(count)) <= countTolerance);
+    if (commonTiming) require(commonTiming[0] === duration && commonTiming[1] === gap);
+    commonTiming = [duration, gap];
+    const path = get(motionAttrs, "path");
+    const parked = get(dotAttrs, "transform");
+    require(get(highlightAttrs, "d") === path && get(highlightAttrs, "transform") === parked);
+    require(isFiniteStepPath(path, parked));
+    if (dotAttrs.has("fill")) require(get(dotAttrs, "stroke") === "none" && get(dotAttrs, "fill") === get(highlightAttrs, "stroke"));
+    else require(!dotAttrs.has("stroke") && get(highlightAttrs, "stroke") === "currentColor");
+    transform(dotTransform, motionId, durationText);
+    transform(highlightTransform, motionId, durationText);
+    for (const node of [dot, highlight, motion, dotTransform, highlightTransform]) allowed.add(node);
+  }
+  for (const node of elements) require(allowed.has(node));
+}
+
+function isFiniteStepPath(path: string, parked: string): boolean {
+  const token = /[MmLlHhVvCcSsQqTtAaZz]|[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?/g;
+  const arities: Readonly<Record<string, number>> = { m: 2, l: 2, h: 1, v: 1, c: 6, s: 4, q: 4, t: 2, a: 7, z: 0 };
+  let cursor = 0;
+  let command = "";
+  let count = 0;
+  let start: number[] = [];
+  for (const match of path.matchAll(token)) {
+    const separator = path.slice(cursor, match.index);
+    if (!/^\s*(?:,\s*)?$/.test(separator)) return false;
+    const value = match[0];
+    cursor = match.index + value.length;
+    if (/^[a-z]$/i.test(value)) {
+      if (separator.includes(",")) return false;
+      const arity = arities[command];
+      if (command && (arity === undefined || (arity > 0 && (count === 0 || count % arity !== 0)))) return false;
+      if (!command && value.toLowerCase() !== "m") return false;
+      command = value.toLowerCase();
+      count = 0;
+    } else {
+      if (count === 0 && separator.includes(",")) return false;
+      const arity = arities[command];
+      const numeric = Number(value);
+      if (!arity || !Number.isFinite(numeric)) return false;
+      if (start.length < 2) start.push(numeric);
+      if (command === "a" && ((count % 7 < 2 && numeric < 0) || ((count % 7 === 3 || count % 7 === 4) && numeric !== 0 && numeric !== 1))) return false;
+      count += 1;
+    }
+  }
+  const arity = arities[command];
+  if (start.length !== 2 || !/^\s*$/.test(path.slice(cursor)) || arity === undefined || (arity > 0 && (count === 0 || count % arity !== 0))) return false;
+  if (parked === "scale(0)") return true;
+  const translation = /^translate\(([^,]+),([^,)]+)\) scale\(0\)$/.exec(parked);
+  const numeric = /^[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?$/;
+  return translation !== null && numeric.test(translation[1] ?? "") && numeric.test(translation[2] ?? "") && Number(translation[1]) === start[0] && Number(translation[2]) === start[1];
+}
+
 interface SvgSafetyPolicy {
   readonly anchorNavigation: "fragment-only" | "mermaid-compatible";
 }
@@ -238,12 +393,18 @@ class SvgSafetyScanner {
   private embeddedImagePixels = 0;
   private hasFragmentReferences = false;
   private readonly elementStack: string[] = [];
+  private readonly stepElements: StepElement[] = [];
+  private readonly stepStack: StepElement[] = [];
+  private readonly svgIds = new Map<string, number>();
+  private readonly inspectSteps: boolean;
 
   constructor(
     private readonly source: string,
     private readonly messagePrefix: string,
     private readonly policy: SvgSafetyPolicy,
-  ) {}
+  ) {
+    this.inspectSteps = source.includes("edge-step-");
+  }
 
   assertSafe(): SvgSafetyInspection {
     if (
@@ -269,6 +430,7 @@ class SvgSafetyScanner {
         if (openElementName !== elementName) {
           throw this.error("malformed SVG output.");
         }
+        this.stepStack.pop();
         if (elementName === "foreignobject" && this.foreignObjectDepth > 0) {
           this.foreignObjectDepth -= 1;
         }
@@ -302,6 +464,34 @@ class SvgSafetyScanner {
         tag.attributes,
         inForeignObject || elementName === "foreignobject",
       );
+      if (this.inspectSteps) {
+        const parent = this.stepStack[this.stepStack.length - 1];
+        const fact: StepElement = {
+          tag,
+          parent,
+          root: parent?.root ?? parent,
+          forbiddenStepContainer: (parent?.forbiddenStepContainer ?? false) ||
+            (parent !== undefined && (elementName === "svg" || elementName === "foreignobject")),
+          children: [],
+          namespace: parent?.namespace ?? "http://www.w3.org/2000/svg",
+        };
+        for (const attribute of tag.attributes) {
+          if (attribute.name === "xmlns") fact.namespace = decodeXmlEntities(attribute.value);
+          if (attribute.name === "id") {
+            const id = decodeXmlEntities(attribute.value);
+            this.svgIds.set(id, (this.svgIds.get(id) ?? 0) + 1);
+          }
+        }
+        const stepClass = tag.attributes.find((attribute) => attribute.name === "class")?.value;
+        if (parent) {
+          if (stepClass === "edge-step-dot" || stepClass === "edge-step-highlight") fact.previous = parent.lastChild;
+          const parentClass = parent.tag.attributes.find((attribute) => attribute.name === "class")?.value;
+          if (parentClass === "edge-step-dot" || parentClass === "edge-step-highlight" || parent.tag.name === "animateMotion" || parent.tag.name === "animateTransform") parent.children.push(fact);
+          parent.lastChild = fact;
+        }
+        if (stepClass === "edge-step-dot" || stepClass === "edge-step-highlight" || elementName === "animatemotion" || elementName === "animatetransform") this.stepElements.push(fact);
+        if (!tag.selfClosing) this.stepStack.push(fact);
+      }
 
       if (elementName === "foreignobject" && !tag.selfClosing) {
         this.foreignObjectDepth += 1;
@@ -328,12 +518,20 @@ class SvgSafetyScanner {
     if (this.foreignObjectDepth !== 0) {
       throw this.error("malformed SVG output.");
     }
+    assertStepAnimations(this.stepElements, this.svgIds, (message) => this.error(message));
     return Object.freeze({ hasFragmentReferences: this.hasFragmentReferences });
   }
 
   private nextTag(): SvgTag | null {
     while (true) {
       const start = this.source.indexOf("<", this.cursor);
+      const container = this.stepStack[this.stepStack.length - 1];
+      const containerClass = container?.tag.attributes.find((attribute) => attribute.name === "class")?.value;
+      const inStep = container && (container.tag.name === "animateMotion" || container.tag.name === "animateTransform" || containerClass === "edge-step-dot" || containerClass === "edge-step-highlight");
+      if (inStep &&
+        !isOnlyWhitespace(this.source.slice(this.cursor, start < 0 ? this.source.length : start))) {
+        throw this.error("SVG with an invalid Step animation contract.");
+      }
       if (start < 0) {
         this.cursor = this.source.length;
         return null;
@@ -351,6 +549,7 @@ class SvgSafetyScanner {
         continue;
       }
       if (this.source.startsWith("<![CDATA[", start)) {
+        if (inStep) throw this.error("SVG with an invalid Step animation contract.");
         this.cursor = this.consumeUntil(start + 9, "]]>");
         continue;
       }
@@ -440,7 +639,7 @@ class SvgSafetyScanner {
   }
 
   private assertSafeElementName(name: string, inForeignObject: boolean): void {
-    if (ACTIVE_SVG_ELEMENTS.has(name)) {
+    if (ACTIVE_SVG_ELEMENTS.has(name) && !(this.inspectSteps && !inForeignObject && (name === "animatemotion" || name === "animatetransform"))) {
       throw this.error("SVG with active embedded content.");
     }
     if (inForeignObject) {
@@ -449,7 +648,7 @@ class SvgSafetyScanner {
       }
       return;
     }
-    if (!SVG_ELEMENTS.has(name)) {
+    if (!SVG_ELEMENTS.has(name) && name !== "animatemotion" && name !== "animatetransform") {
       throw this.error("SVG with unsupported element content.");
     }
   }

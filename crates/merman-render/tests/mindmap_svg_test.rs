@@ -502,6 +502,462 @@ fn mindmap_font_size_theme(font_size_px: f32) -> DiagramTheme {
         .expect("compile Mindmap font size theme")
 }
 
+fn mindmap_label_paint_theme(
+    rules: impl IntoIterator<Item = ThemeRule>,
+    baseline: &str,
+) -> DiagramTheme {
+    DiagramThemeCompiler::new()
+        .compile(
+            mindmap_paint_theme_spec(baseline).with_styles(
+                rules
+                    .into_iter()
+                    .fold(ThemeRuleSet::default(), |rules, rule| rules.with_rule(rule)),
+            ),
+        )
+        .unwrap()
+}
+
+fn mindmap_scoped_label_fill(css: &str, diagram_id: &str, node_index: usize) -> Option<String> {
+    let selector = format!("#{diagram_id} g#{diagram_id}-node_{node_index} > .label text,");
+    let body = css
+        .split_once(&selector)?
+        .1
+        .split_once('{')?
+        .1
+        .split_once('}')?
+        .0;
+    let fill = body.strip_prefix("fill:")?.split_once(';')?.0;
+    assert!(
+        body.contains(&format!("color:{fill};")),
+        "HTML label color must share its SVG fill: {body}"
+    );
+    Some(fill.to_string())
+}
+
+fn mindmap_label_paint_engine(
+    look: &str,
+    html: bool,
+    variables: serde_json::Value,
+) -> MermaidEngine {
+    let mut config = json!({ "layout": "tidy-tree", "look": look, "htmlLabels": html });
+    if variables
+        .as_object()
+        .is_some_and(|variables| !variables.is_empty())
+    {
+        config["themeVariables"] = variables;
+    }
+    MermaidEngine::new()
+        .with_site_config(merman_core::presentation::SourcePresentationConfig::from_value(config))
+}
+
+#[test]
+fn mindmap_static_label_fill_reaches_real_root_and_branch_labels_in_both_looks_and_text_modes() {
+    let source = "mindmap\n  root[\"**Root**\"]\n    first[\"**First**\"]\n    second((Second))\n";
+    for target in [ThemeTarget::Text, ThemeTarget::NodeLabel] {
+        for variant in [None, Some(ThemeVariant::Default)] {
+            for (paint, expected) in [
+                (CanvasPaint::solid("#b316cd").unwrap(), "#b316cd"),
+                (CanvasPaint::Transparent, "transparent"),
+            ] {
+                let rule = ThemeRule::new(target, ThemeStylePatch::default().with_fill(paint));
+                let theme = mindmap_label_paint_theme(
+                    [variant.map_or(rule.clone(), |variant| rule.with_variant(variant))],
+                    "default",
+                );
+                for look in ["classic", "neo"] {
+                    for html in [false, true] {
+                        let diagram_id = "mindmap-label-paint";
+                        let rendered = render_mindmap_with_theme_and_engine(
+                            source,
+                            &theme,
+                            mindmap_label_paint_engine(look, html, json!({})),
+                            diagram_id,
+                            ThemePortabilityRequirement::RequirePortable,
+                        );
+                        let css = mindmap_stylesheet(rendered.svg());
+                        let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+                        for index in 0..3 {
+                            let dom_id = format!("{diagram_id}-node_{index}");
+                            let node = document
+                                .descendants()
+                                .find(|node| {
+                                    node.has_tag_name("g")
+                                        && node.attribute("id") == Some(dom_id.as_str())
+                                })
+                                .unwrap();
+                            let label = node
+                                .children()
+                                .find(|node| node.attribute("class") == Some("label"))
+                                .unwrap();
+                            assert!(label.descendants().any(|node| node.has_tag_name(if html {
+                                "span"
+                            } else {
+                                "text"
+                            })));
+                            assert_eq!(
+                                mindmap_scoped_label_fill(&css, diagram_id, index).as_deref(),
+                                Some(expected),
+                                "target={target:?} look={look} html={html}"
+                            );
+                        }
+                        let evidence = merman_render::__private::family_evidence(
+                            rendered.into_completion().report(),
+                        );
+                        assert_eq!(evidence.required_count(), 1);
+                        assert_eq!(evidence.applied_count(), 1);
+                        assert_eq!(evidence.theme_residual_count(), 0);
+                    }
+                }
+            }
+        }
+    }
+}
+
+#[test]
+fn mindmap_text_and_node_label_fill_keep_existing_author_order() {
+    for reverse in [false, true] {
+        let mut rules = [
+            ThemeRule::new(
+                ThemeTarget::Text,
+                ThemeStylePatch::default().with_fill(CanvasPaint::solid("#b316cd").unwrap()),
+            ),
+            ThemeRule::new(
+                ThemeTarget::NodeLabel,
+                ThemeStylePatch::default().with_fill(CanvasPaint::solid("#2468ac").unwrap()),
+            ),
+        ];
+        if reverse {
+            rules.reverse();
+        }
+        let theme = mindmap_label_paint_theme(rules, "default");
+        let rendered = render_mindmap_with_theme_and_engine(
+            "mindmap\n  Root\n    Child\n",
+            &theme,
+            mindmap_label_paint_engine("classic", false, json!({})),
+            "mindmap-label-order",
+            ThemePortabilityRequirement::RequirePortable,
+        );
+        let css = mindmap_stylesheet(rendered.svg());
+        let expected = if reverse { "#b316cd" } else { "#2468ac" };
+        for index in 0..2 {
+            assert_eq!(
+                mindmap_scoped_label_fill(&css, "mindmap-label-order", index).as_deref(),
+                Some(expected)
+            );
+        }
+        let evidence =
+            merman_render::__private::family_evidence(rendered.into_completion().report());
+        assert_eq!(evidence.applied_count(), 1);
+        assert_eq!(evidence.not_applicable_count(), 1);
+        assert_eq!(evidence.theme_residual_count(), 0);
+    }
+}
+
+#[test]
+fn mindmap_label_fill_respects_the_actual_classic_and_neo_config_roles() {
+    let source = "mindmap\n  Root\n    First\n    Second\n";
+    let cases = [
+        (
+            "default",
+            "classic",
+            false,
+            "gitBranchLabel0",
+            [false, true, true],
+        ),
+        (
+            "default",
+            "classic",
+            true,
+            "gitBranchLabel0",
+            [false, true, true],
+        ),
+        ("redux", "classic", true, "nodeBorder", [false, true, true]),
+        ("redux", "classic", false, "nodeBorder", [true, true, true]),
+        ("redux", "neo", false, "nodeBorder", [false, false, false]),
+        ("redux", "neo", true, "nodeBorder", [false, false, false]),
+        (
+            "neutral",
+            "neo",
+            false,
+            "cScaleLabel1",
+            [false, false, false],
+        ),
+        (
+            "neutral",
+            "neo",
+            true,
+            "cScaleLabel1",
+            [false, false, false],
+        ),
+        ("default", "neo", false, "cScaleLabel0", [false, true, true]),
+        ("default", "neo", true, "cScaleLabel1", [true, false, true]),
+        (
+            "default",
+            "classic",
+            false,
+            "cScaleLabel1",
+            [true, false, true],
+        ),
+        (
+            "default",
+            "classic",
+            true,
+            "cScaleLabel2",
+            [true, true, false],
+        ),
+    ];
+    for (baseline, look, html, role, typed) in cases {
+        let theme = mindmap_label_paint_theme(
+            [ThemeRule::new(
+                ThemeTarget::Text,
+                ThemeStylePatch::default().with_fill(CanvasPaint::solid("#b316cd").unwrap()),
+            )],
+            baseline,
+        );
+        let rendered = render_mindmap_with_theme_and_engine(
+            source,
+            &theme,
+            mindmap_label_paint_engine(look, html, json!({(role): "#2468ac"})),
+            "mindmap-label-owner",
+            ThemePortabilityRequirement::BestEffort,
+        );
+        let css = mindmap_stylesheet(rendered.svg());
+        assert!(css.contains("#2468ac"));
+        for (index, typed) in typed.into_iter().enumerate() {
+            assert_eq!(
+                mindmap_scoped_label_fill(&css, "mindmap-label-owner", index).as_deref(),
+                typed.then_some("#b316cd"),
+                "baseline={baseline} look={look} html={html} role={role} index={index}"
+            );
+        }
+        let evidence =
+            merman_render::__private::family_evidence(rendered.into_completion().report());
+        let applies = typed.into_iter().any(|typed| typed);
+        assert_eq!(evidence.applied_count(), usize::from(applies));
+        assert_eq!(evidence.not_applicable_count(), usize::from(!applies));
+        assert_eq!(evidence.theme_residual_count(), 0);
+    }
+}
+
+#[test]
+fn mindmap_source_label_background_color_and_disabled_svg_text_keep_their_real_scope() {
+    let theme = mindmap_label_paint_theme(
+        [ThemeRule::new(
+            ThemeTarget::Text,
+            ThemeStylePatch::default().with_fill(CanvasPaint::solid("#b316cd").unwrap()),
+        )],
+        "default",
+    );
+    for look in ["classic", "neo"] {
+        for html in [false, true] {
+            let source = "---\nconfig:\n  themeVariables:\n    mindmap:\n      labelTextColor: '#2468ac'\n---\nmindmap\n  Root\n    Icon((Icon))\n      ::icon(mdi mdi-fire)\n    Disabled[Disabled]\n      :::disabled\n";
+            let rendered = render_mindmap_with_theme_and_engine(
+                source,
+                &theme,
+                mindmap_label_paint_engine(look, html, json!({})),
+                "mindmap-label-special-owner",
+                ThemePortabilityRequirement::RequirePortable,
+            );
+            let css = mindmap_stylesheet(rendered.svg());
+            assert_eq!(
+                mindmap_scoped_label_fill(&css, "mindmap-label-special-owner", 0).as_deref(),
+                Some("#b316cd")
+            );
+            assert_eq!(
+                mindmap_scoped_label_fill(&css, "mindmap-label-special-owner", 1).as_deref(),
+                (!(look == "classic" && html)).then_some("#b316cd")
+            );
+            assert_eq!(
+                mindmap_scoped_label_fill(&css, "mindmap-label-special-owner", 2).as_deref(),
+                (!(look == "classic" && !html)).then_some("#b316cd")
+            );
+            if html {
+                assert!(rendered.svg().contains("class=\"labelBkg\""));
+            }
+            let evidence =
+                merman_render::__private::family_evidence(rendered.into_completion().report());
+            assert_eq!(evidence.applied_count(), 1);
+            assert_eq!(evidence.theme_residual_count(), 0);
+        }
+    }
+}
+
+#[test]
+fn mindmap_empty_compiled_theme_preserves_both_label_modes_and_looks_byte_for_byte() {
+    let theme = DiagramThemeCompiler::new()
+        .compile(DiagramThemeSpec::new())
+        .unwrap();
+    let environment = RenderEnvironment::deterministic();
+    for look in ["classic", "neo"] {
+        for html in [false, true] {
+            let render = |theme: Option<&DiagramTheme>| {
+                let engine = mindmap_label_paint_engine(look, html, json!({}));
+                let engine = match theme {
+                    Some(theme) => common::install_parse_compatibility(theme, engine),
+                    None => engine,
+                };
+                let parsed = engine
+                    .parse_diagram_for_render_model_sync(
+                        "mindmap\n  Root\n    Child\n",
+                        ParseOptions::strict(),
+                    )
+                    .unwrap()
+                    .unwrap()
+                    .into_presentation();
+                let session = match theme {
+                    Some(theme) => environment.begin_session_with_theme(theme).unwrap(),
+                    None => environment.begin_session().unwrap(),
+                };
+                family::prepare(&parsed, &LayoutOptions::headless_svg_defaults(), session)
+                    .unwrap()
+                    .render_svg(
+                        &SvgRenderOptions {
+                            diagram_id: Some("mindmap-label-baseline".into()),
+                            ..Default::default()
+                        },
+                        &SvgDebugOptions::default(),
+                    )
+                    .unwrap()
+                    .svg()
+                    .to_owned()
+            };
+            assert_eq!(
+                render(None).as_bytes(),
+                render(Some(&theme)).as_bytes(),
+                "look={look} html={html}"
+            );
+        }
+    }
+}
+
+#[test]
+fn mindmap_label_fill_keeps_mixed_geometry_and_ordinal_paint_residuals() {
+    use merman_render::diagram_theme::{GradientStop, InsetsPx, LinearGradient};
+    for case in ["padding", "padding-overridden", "ordinal", "gradient"] {
+        let mut rules = vec![ThemeRule::new(
+            ThemeTarget::Text,
+            ThemeStylePatch::default()
+                .with_fill(CanvasPaint::solid("#b316cd").unwrap())
+                .with_padding(InsetsPx::all(4.0)),
+        )];
+        if case == "padding-overridden" {
+            rules.push(ThemeRule::new(
+                ThemeTarget::Text,
+                ThemeStylePatch::default().with_padding(InsetsPx::all(8.0)),
+            ));
+        }
+        if case == "ordinal" {
+            rules[0] = ThemeRule::new(
+                ThemeTarget::Text,
+                ThemeStylePatch::default().with_fill(CanvasPaint::solid("#b316cd").unwrap()),
+            );
+            rules.push(
+                ThemeRule::new(
+                    ThemeTarget::NodeLabel,
+                    ThemeStylePatch::default().with_fill(CanvasPaint::solid("#2468ac").unwrap()),
+                )
+                .with_ordinal(OrdinalSelector::exact(2).unwrap()),
+            );
+        }
+        if case == "gradient" {
+            rules[0] = ThemeRule::new(
+                ThemeTarget::Text,
+                ThemeStylePatch::default().with_fill(CanvasPaint::solid("#b316cd").unwrap()),
+            );
+            rules.push(ThemeRule::new(
+                ThemeTarget::NodeLabel,
+                ThemeStylePatch::default().with_fill(CanvasPaint::LinearGradient(
+                    LinearGradient::new(
+                        90.0,
+                        [
+                            GradientStop::new(0.0, ThemeColorValue::parse("#123456").unwrap())
+                                .unwrap(),
+                            GradientStop::new(1.0, ThemeColorValue::parse("#abcdef").unwrap())
+                                .unwrap(),
+                        ],
+                    )
+                    .unwrap(),
+                )),
+            ));
+        }
+        let theme = mindmap_label_paint_theme(rules, "default");
+        let rendered = render_mindmap_with_theme_and_engine(
+            "mindmap\n  Root\n    First\n    Second\n",
+            &theme,
+            mindmap_label_paint_engine("classic", false, json!({})),
+            "mindmap-label-residual",
+            ThemePortabilityRequirement::BestEffort,
+        );
+        let css = mindmap_stylesheet(rendered.svg());
+        assert_eq!(
+            mindmap_scoped_label_fill(&css, "mindmap-label-residual", 0).as_deref(),
+            (case != "gradient").then_some("#b316cd")
+        );
+        if case == "ordinal" {
+            assert_eq!(
+                mindmap_scoped_label_fill(&css, "mindmap-label-residual", 1),
+                None
+            );
+        }
+        let evidence =
+            merman_render::__private::family_evidence(rendered.into_completion().report());
+        assert_eq!(
+            evidence.applied_count(),
+            usize::from(matches!(case, "padding-overridden" | "ordinal")),
+            "case={case}"
+        );
+        assert_eq!(evidence.theme_residual_count(), 1, "case={case}");
+        assert_eq!(
+            evidence.not_applicable_count(),
+            usize::from(case == "gradient"),
+            "case={case}"
+        );
+    }
+}
+
+#[test]
+fn mindmap_all_presets_apply_their_real_label_colors_without_text_paint_residuals() {
+    for descriptor in merman_render::diagram_theme::theme_preset_descriptors() {
+        let theme = DiagramThemeCompiler::new()
+            .compile_preset(descriptor.preset())
+            .unwrap();
+        let rendered = render_mindmap_with_theme_and_engine(
+            "mindmap\n  Root\n    First\n    Second\n",
+            &theme,
+            mindmap_label_paint_engine("classic", true, json!({})),
+            "mindmap-preset-label",
+            ThemePortabilityRequirement::BestEffort,
+        );
+        let css = mindmap_stylesheet(rendered.svg());
+        for index in 0..3 {
+            assert!(
+                mindmap_scoped_label_fill(&css, "mindmap-preset-label", index).is_some(),
+                "preset={} node={index}",
+                descriptor.preset().id()
+            );
+        }
+        let completion = rendered.into_completion();
+        assert!(
+            completion
+                .report()
+                .theme_diagnostics()
+                .iter()
+                .all(|diagnostic| {
+                    !matches!(
+                        diagnostic.target(),
+                        Some(ThemeTarget::Text | ThemeTarget::NodeLabel)
+                    ) || diagnostic.code() != "unsupported-paint"
+                }),
+            "preset={} diagnostics={:?}",
+            descriptor.preset().id(),
+            completion.report().theme_diagnostics()
+        );
+        let evidence = merman_render::__private::family_evidence(completion.report());
+        assert!(evidence.applied_count() > 0);
+        assert_eq!(evidence.required_count(), evidence.accounted_count());
+    }
+}
+
 fn prepare_mindmap_with_theme_and_engine(
     source: &str,
     theme: &DiagramTheme,

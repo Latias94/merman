@@ -7,6 +7,7 @@ import {
   expectNoDocumentOverflow,
   monitorBrowserErrors,
   openPlayground,
+  openWorkbenchTool,
   previewSvgText,
   replaceEditorSource,
   waitForPreviewSvg,
@@ -41,7 +42,7 @@ test("320px portrait keeps toolbar, workspace tabs, and preview controls reachab
   expect(
     await previewModes.evaluate((element) => element.clientWidth),
   ).toBeGreaterThan(240);
-  for (const name of ["SVG", "Compare", "Diagnostics"]) {
+  for (const name of ["SVG", "ASCII"]) {
     const tab = previewModes.getByRole("tab", { name, exact: true });
     await tab.scrollIntoViewIfNeeded();
     await expectInsideViewport(page, tab);
@@ -132,6 +133,9 @@ test("hidden editor workspace defers Preview rendering and resumes the latest so
         performance.getEntriesByName("merman:initial-preview-presented").length,
     ),
   ).toBe(1);
+  const presentedSvg = await host.evaluate(
+    (element) => element.shadowRoot?.querySelector("svg")?.outerHTML,
+  );
 
   await editorTab.tap();
   await replaceEditorSource(
@@ -139,7 +143,10 @@ test("hidden editor workspace defers Preview rendering and resumes the latest so
     "flowchart LR\n  hidden[Hidden] --> newest[Newest source]",
   );
   await page.waitForTimeout(450);
-  await expect(host).toHaveCount(0);
+  await expect(host).toBeHidden();
+  expect(await host.evaluate(
+    (element) => element.shadowRoot?.querySelector("svg")?.outerHTML,
+  )).toBe(presentedSvg);
 
   await page.getByRole("button", { name: "Export", exact: true }).tap();
   await expect(
@@ -264,8 +271,8 @@ test("Pixel portrait and a shortened viewport keep dialogs scrollable and dismis
   await expect
     .poll(() => visualViewportHeight(page))
     .toBeLessThan(initialVisualViewportHeight);
-  const benchTrigger = page.getByRole("button", { name: "Bench", exact: true });
-  await benchTrigger.tap();
+  const toolsTrigger = page.getByRole("button", { name: "Tools", exact: true });
+  await openWorkbenchTool(page, "Benchmark");
   const benchDialog = page.getByRole("dialog", { name: "Browser Benchmark" });
   await expect(benchDialog).toBeVisible();
   await page.locator("html").evaluate((element) => {
@@ -290,7 +297,7 @@ test("Pixel portrait and a shortened viewport keep dialogs scrollable and dismis
   await expectInsideViewport(page, closeBench);
   await expectNoDocumentOverflow(page);
   await closeBench.tap();
-  await expect(benchTrigger).toBeFocused();
+  await expect(toolsTrigger).toBeFocused();
   errors.assertNone();
 });
 
@@ -691,35 +698,35 @@ async function expectInsideViewport(page: Page, locator: Locator): Promise<void>
 async function expectHeaderControlsInsideViewport(page: Page): Promise<void> {
   for (const name of [
     "Examples",
-    "Bench",
-    "Theme",
-    "Render settings",
+    "Appearance",
     "Export",
     "Share",
+    "Tools",
+    "App settings",
   ]) {
     await expectInsideViewport(
       page,
       page.getByRole("button", { name, exact: true }),
     );
   }
-  if ((page.viewportSize()?.width ?? 0) >= 640) {
-    await expectInsideViewport(
-      page,
-      page.getByRole("link", { name: "View source on GitHub", exact: true }),
-    );
-  }
+  await expectInsideViewport(page, page.getByTestId("project-use-launcher"));
 }
 
 async function exerciseCompactToolbarMenus(page: Page): Promise<void> {
-  const theme = page.getByRole("button", { name: "Theme", exact: true });
+  const theme = page.getByRole("button", { name: "Appearance", exact: true });
   await theme.tap();
-  await expect(page.getByRole("region", { name: "Theme panel" })).toBeVisible();
+  await expect(page.locator("#theme-panel")).toBeVisible();
   await page.keyboard.press("Escape");
   await expect(theme).toBeFocused();
-  for (const name of ["Render settings", "Export"]) {
+  for (const name of ["Tools", "App settings", "Export"]) {
     const trigger = page.getByRole("button", { name, exact: true });
     await trigger.tap();
     await expect(page.getByRole("menu")).toBeVisible();
+    if (name === "Tools") {
+      for (const tool of ["Compare", "Diagnostics", "Benchmark"]) {
+        await expectInsideViewport(page, page.getByRole("menuitem", { name: tool, exact: true }));
+      }
+    }
     await page.keyboard.press("Escape");
     await expect(trigger).toBeFocused();
   }

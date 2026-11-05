@@ -77,7 +77,7 @@ path/style rewrite even when there is no room for a visible arc.
 These changes affect SVG structure, identifiers, geometry and styles. Preserve semantic assertions
 and inspect the output change before refreshing SVG or layout goldens. Browser font measurement,
 `foreignObject`, and RoughJS residuals remain subject to the documented
-[parity boundary](../workstreams/PARITY_BOUNDARY.md).
+[parity policy](../alignment/PARITY_POLICY.md).
 
 ## Review Packet and XYChart presentation changes
 

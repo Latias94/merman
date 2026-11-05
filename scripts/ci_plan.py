@@ -149,6 +149,10 @@ _CRATE_OWNER_RULES = (
     ("crates/xtask/src/cmd/native_abi.rs", {"core", "hygiene", "platform"}),
     ("crates/xtask/", _CORE_OWNERS),
 )
+_CRATE_EXACT_OWNER_RULES = {
+    "crates/xtask/src/cmd/wasm_size_matrix.rs": frozenset({"core", "hygiene", "typst", "web"}),
+    "crates/xtask/src/cmd/wasm_module_surface.rs": frozenset({"core", "hygiene", "typst"}),
+}
 _SCRIPT_EXACT_OWNER_RULES = {
     "platforms/node/scripts/install-root-package.py": frozenset({"hygiene", "node", "npm"}),
     "scripts/test_build_python_uniffi_wheel.py": frozenset({"hygiene", "python"}),
@@ -177,16 +181,10 @@ _SCRIPT_EXACT_OWNER_RULES = {
     "scripts/generate-rust-license-report.py": frozenset(
         {"hygiene", "security"}
     ),
-    "scripts/release_surface_contract.py": frozenset(
-        {"core", "hygiene", "platform", "python"}
-    ),
     "scripts/strict_json.py": frozenset({"hygiene", "security"}),
     "scripts/test_audit_plan.py": frozenset({"hygiene", "npm", "security"}),
     "scripts/test_build_android.py": frozenset({"hygiene", "platform"}),
     "scripts/test_publish.py": frozenset({"hygiene"}),
-    "scripts/test_release_surface_contract.py": frozenset(
-        {"core", "hygiene", "platform", "python"}
-    ),
     "scripts/test_verify_prerelease_compatibility.py": frozenset(
         {"core", "hygiene"}
     ),
@@ -695,6 +693,8 @@ def _classify_path(path: str) -> tuple[frozenset[str], str, bool]:
             False,
         )
     if path.startswith("crates/"):
+        if selected := _CRATE_EXACT_OWNER_RULES.get(path):
+            return selected, f"Rust tool consumer changed: {path}", False
         for prefix, selected in _CRATE_OWNER_RULES:
             if path.startswith(prefix):
                 owners = set(selected)

@@ -1,0 +1,76 @@
+{
+  "schema_version": 1,
+  "kind": "design",
+  "design": {
+    "tokens": {
+      "canvas": { "type": "paint", "value": "#F7F2E8" },
+      "surface": { "type": "paint", "value": "#FFFCF6" },
+      "surface-alt": { "type": "paint", "value": "#EEE5D8" },
+      "ink": { "type": "paint", "value": "#312C2A" },
+      "muted-ink": { "type": "paint", "value": "#75685D" },
+      "outline": { "type": "paint", "value": "#87786A" },
+      "connector": { "type": "paint", "value": "#665A50" },
+      "accent": { "type": "color", "value": "#9A3D2C" },
+      "accent-paint": { "type": "paint", "value": { "kind": "solid", "color": { "ref": "accent" } } },
+      "note-surface": { "type": "paint", "value": "#F1E7D8" },
+      "note-ink": { "type": "paint", "value": "#594333" },
+      "number-ink": { "type": "paint", "value": { "ref": "surface" } },
+      "body-font": { "type": "font-stack", "value": ["Georgia", "Times New Roman", "Noto Serif CJK SC", "serif"] },
+      "message-font": { "type": "font-stack", "value": ["system-ui", "-apple-system", "BlinkMacSystemFont", "Segoe UI", "Noto Sans CJK SC", "sans-serif"] },
+      "code-font": { "type": "font-stack", "value": ["SFMono-Regular", "Consolas", "Liberation Mono", "monospace"] },
+      "series": { "type": "palette", "value": [{ "ref": "accent" }, "#335A67", "#6A6240", "#746184", "#A16D31", "#7B4B57"] },
+      "pie-series": { "type": "palette", "value": ["#E7C5B8", "#CBDCE0", "#DCD8BD", "#DDD0E3", "#E8D5B5", "#DFC6CE"] }
+    },
+    "canvas": { "base": { "ref": "canvas" } },
+    "typography": {
+      "default": { "font_stack": { "ref": "body-font" } },
+      "families": {
+        "flowchart": { "font_size_px": 15 },
+        "sequence": { "font_stack": { "ref": "message-font" }, "font_size_px": 14 },
+        "class": { "font_stack": { "ref": "code-font" }, "font_size_px": 14 }
+      }
+    },
+    "styles": {
+      "text": { "fill": { "ref": "ink" } }
+    },
+    "rules": [
+      { "family": "flowchart", "target": "node", "style": { "fill": { "ref": "surface" }, "stroke": { "paint": { "ref": "outline" }, "width": 1.5 }, "radius": 0 } },
+      { "family": "flowchart", "target": "node-label", "style": { "fill": { "ref": "ink" }, "typography": { "font_weight": 600 } } },
+      { "family": "flowchart", "target": "edge", "style": { "stroke": { "paint": { "ref": "connector" }, "width": 1.5 } } },
+      { "family": "flowchart", "target": "edge-label-background", "style": { "fill": { "ref": "canvas" } } },
+      { "family": "flowchart", "target": "cluster", "style": { "fill": { "ref": "surface-alt" }, "stroke": { "paint": { "ref": "outline" }, "width": 1 } } },
+      { "family": "flowchart", "target": "cluster-label", "style": { "fill": { "ref": "muted-ink" } } },
+      { "family": "sequence", "target": "actor", "style": { "fill": { "ref": "surface" }, "stroke": { "paint": { "ref": "outline" } } } },
+      { "family": "sequence", "target": "actor-label", "style": { "fill": { "ref": "ink" }, "typography": { "font_stack": { "ref": "body-font" }, "font_size_px": 16, "font_weight": 600 } } },
+      { "family": "sequence", "target": "lifeline", "style": { "stroke": { "paint": { "ref": "outline" } } } },
+      { "family": "sequence", "target": "message", "style": { "stroke": { "paint": { "ref": "connector" } } } },
+      { "family": "sequence", "target": "message-label", "style": { "fill": { "ref": "ink" }, "typography": { "font_size_px": 14 } } },
+      { "family": "sequence", "target": "note", "style": { "fill": { "ref": "note-surface" }, "stroke": { "paint": { "ref": "outline" } } } },
+      { "family": "sequence", "target": "note-label", "style": { "fill": { "ref": "note-ink" }, "typography": { "font_size_px": 14 } } },
+      { "family": "sequence", "target": "activation", "style": { "fill": { "ref": "surface-alt" }, "stroke": { "paint": { "ref": "accent-paint" } } } },
+      { "family": "sequence", "target": "loop", "style": { "stroke": { "paint": { "ref": "outline" } } } },
+      { "family": "sequence", "target": "loop-label-background", "style": { "fill": { "ref": "surface-alt" }, "stroke": { "paint": { "ref": "outline" } } } },
+      { "family": "sequence", "target": "loop-label", "style": { "fill": { "ref": "muted-ink" }, "typography": { "font_size_px": 13 } } },
+      { "family": "sequence", "target": "sequence-number", "style": { "fill": { "ref": "number-ink" } } },
+      { "family": "class", "target": "node", "style": { "fill": { "ref": "surface" }, "stroke": { "paint": { "ref": "outline" } } } },
+      { "family": "class", "target": "node-label", "style": { "fill": { "ref": "ink" } } },
+      { "family": "class", "target": "edge", "style": { "stroke": { "paint": { "ref": "connector" }, "width": 1.5 } } },
+      { "family": "class", "target": "edge-label-background", "style": { "fill": { "ref": "canvas" } } },
+      { "family": "class", "target": "cluster", "style": { "fill": { "ref": "surface-alt" }, "stroke": { "paint": { "ref": "outline" } } } },
+      { "family": "xychart", "target": "axis", "style": { "fill": { "ref": "muted-ink" }, "stroke": { "paint": { "ref": "connector" } } } },
+      { "family": "xychart", "target": "axis-tick", "style": { "stroke": { "paint": { "ref": "outline" } } } },
+      { "family": "xychart", "target": "title", "style": { "fill": { "ref": "accent-paint" }, "typography": { "font_size_px": 24, "font_weight": 600 } } },
+      { "family": "xychart", "target": "axis-title", "style": { "fill": { "ref": "muted-ink" }, "typography": { "font_size_px": 13, "font_weight": 600 } } },
+      { "family": "xychart", "target": "axis-label", "style": { "fill": { "ref": "muted-ink" }, "typography": { "font_size_px": 12 } } },
+      { "family": "xychart", "target": "legend", "style": { "fill": { "ref": "muted-ink" }, "typography": { "font_size_px": 13 } } },
+      { "family": "pie", "target": "pie-slice", "style": { "stroke": { "paint": { "ref": "outline" } } } },
+      { "family": "pie", "target": "text", "style": { "fill": { "ref": "ink" }, "typography": { "font_size_px": 16, "font_weight": 600 } } },
+      { "family": "pie", "target": "title", "style": { "fill": { "ref": "accent-paint" }, "typography": { "font_size_px": 24, "font_weight": 600 } } },
+      { "family": "pie", "target": "legend", "style": { "fill": { "ref": "muted-ink" }, "typography": { "font_size_px": 14 } } }
+    ],
+    "palettes": {
+      "chart-series": { "ref": "series" },
+      "pie-slice": { "ref": "pie-series" }
+    }
+  }
+}

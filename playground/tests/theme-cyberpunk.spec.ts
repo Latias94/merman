@@ -112,8 +112,13 @@ async function expectPaintedEffects(page: Page, svg: Locator, count: number): Pr
   const original = await captureScene(page, svg);
   for (let index = 0; index < count; index += 1) {
     const terminal = terminals.nth(index);
-    const filter = await terminal.evaluate((element) => element.getAttribute("filter") ?? (element as SVGElement | HTMLElement).style.filter);
-    expect(filter).toMatch(/^url\(["']?#[^)"']+["']?\)$/u);
+    const filter = await terminal.evaluate((element) => {
+      const binding = element.getAttribute("filter") ?? (element as SVGElement | HTMLElement).style.filter;
+      const id = /^url\(["']?#([^)"']+)["']?\)$/u.exec(binding)?.[1];
+      return { binding, wins: Boolean(id && getComputedStyle(element).filter.includes(`#${id}`)) };
+    });
+    expect(filter.binding).toMatch(/^url\(["']?#[^)"']+["']?\)$/u);
+    expect(filter.wins, `effect ${index} must win the computed filter`).toBe(true);
     const originalStyle = await terminal.getAttribute("style");
     await terminal.evaluate((element) => (element as SVGElement).style.setProperty("filter", "none", "important"));
     await expect(terminal).toHaveCSS("filter", "none");
@@ -219,13 +224,16 @@ async function expectCyberpunkCanvas(svg: Locator): Promise<void> {
   expect(canvas.layers[0].fill).toBe(`url(#${radial.id})`);
 }
 
-// Theme glow terminals currently target the classic look; exercise both supported layout providers.
-for (const layout of ["elk", "dagre"] as const) {
-  test(`public Cyberpunk classic ${layout} paints its layered canvas and separate shape, edge and text glows`, async ({ page }) => {
+// Cover both looks and layouts across the existing SVG-text and HTML-label scenes.
+for (const { layout, look, htmlLook } of [
+  { layout: "elk", look: "neo", htmlLook: "classic" },
+  { layout: "dagre", look: "classic", htmlLook: "neo" },
+] as const) {
+  test(`public Cyberpunk ${look} ${layout} paints its layered canvas and separate shape, edge and text glows`, async ({ page }) => {
     const errors = monitorBrowserErrors(page);
     const hash = encodeShareHash({
       code: sceneSource("flowchart"),
-      mermaidConfig: JSON.stringify({ htmlLabels: false, flowchart: { look: "classic", layout } }),
+      mermaidConfig: JSON.stringify({ htmlLabels: false, flowchart: { look, layout } }),
       diagramTheme: "default",
       themePresetId: "cyberpunk",
       themeRecipeJson: null,
@@ -265,11 +273,11 @@ for (const layout of ["elk", "dagre"] as const) {
     errors.assertNone();
   });
 
-  test(`public Cyberpunk classic ${layout} keeps HTML glyph glow separate from the label background`, async ({ page }) => {
+  test(`public Cyberpunk ${htmlLook} ${layout} keeps HTML glyph glow separate from the label background`, async ({ page }) => {
     const errors = monitorBrowserErrors(page);
     const hash = encodeShareHash({
       code: sceneSource("flowchart"),
-      mermaidConfig: JSON.stringify({ htmlLabels: true, flowchart: { look: "classic", layout } }),
+      mermaidConfig: JSON.stringify({ htmlLabels: true, flowchart: { look: htmlLook, layout } }),
       diagramTheme: "default",
       themePresetId: "cyberpunk",
       themeRecipeJson: null,

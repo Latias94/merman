@@ -155,8 +155,11 @@ For an accepted candidate:
 - for structural claims, rerun the registered counter/curve and independently review the bound
   derivation;
 - run affected crate tests with `cargo nextest`, then expand coverage with blast radius;
-- run `cargo fmt --all -- --check` and Clippy with the production feature set;
-- run strict verification and SVG DOM parity for shared parse/layout/render behavior;
+- for shared parse/layout/render behavior, run one final integrated `xtask verify --strict` pass
+  after focused diagnosis and reuse its covered results according to the
+  [verification schedule](../../../docs/release/MERMAID_UPGRADE_PLAYBOOK.md#7-refresh-generated-surfaces-and-evidence);
+- for narrower changes, select formatting, Clippy with the production feature set, and the affected
+  owner gates; keep independent artifact/platform checks and the registered measurements separate;
 - test hostile, malformed, Unicode, entity, Markdown/HTML, math/icon, custom configuration,
   custom measurer, resource-limit, and cancellation cases when those paths are relevant;
 - run a cross-family control for shared code and the matching stress bench when timing is claimed;

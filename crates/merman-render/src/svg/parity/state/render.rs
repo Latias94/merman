@@ -135,6 +135,7 @@ fn render_state_diagram_svg_with_plan(
     let node_order: Vec<&str> = model.nodes.iter().map(|n| n.id.as_str()).collect();
 
     let mut ctx = StateRenderCtx {
+        work_meter: options.work_meter(),
         diagram_id,
         uses_elk_adapter_dom: layout.uses_elk_adapter_dom,
         elk_edge_paths: &layout.elk_edge_paths,

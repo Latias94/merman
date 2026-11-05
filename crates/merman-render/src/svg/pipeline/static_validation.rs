@@ -4,7 +4,7 @@ use cssparser::{
     AtRuleParser, BasicParseErrorKind, CowRcStr, ParseError, ParseErrorKind, Parser, ParserState,
     QualifiedRuleParser, StyleSheetParser, Token,
 };
-use std::collections::{BTreeSet, HashMap};
+use std::collections::{BTreeSet, HashMap, HashSet};
 use svgtypes::{Length, LengthUnit, NumberListParser};
 
 use super::builtin::attr_sanitize::{is_safe_data_image_url, matches_active_svg_element};
@@ -92,14 +92,29 @@ fn validate(
     }
     let root_id = unnamespaced_attribute(root, "id");
     let root_dimension_limit = root_dimension_limit(limits);
+    let step_elements = if css_stage == CssStage::Admission && svg.contains("edge-step-") {
+        super::step_animation::validate(&document, execution)?
+    } else {
+        HashSet::new()
+    };
 
     let mut ids = BTreeSet::new();
+    let mut inside_foreign_objects = vec![false; document.descendants().len()];
     for (iteration, node) in document
         .descendants()
         .filter(crate::xml_dom::Node::is_element)
         .enumerate()
     {
         checkpoint_loop(iteration, &mut checkpoint)?;
+        let inherited = node
+            .parent()
+            .is_some_and(|parent| inside_foreign_objects[parent.id().get_usize()]);
+        inside_foreign_objects[node.id().get_usize()] = inherited
+            || (node.tag_name().name().eq_ignore_ascii_case("foreignObject")
+                && node
+                    .tag_name()
+                    .namespace()
+                    .is_none_or(|namespace| namespace == SVG_NAMESPACE));
         if let Some(id) = unnamespaced_attribute(node, "id") {
             if id.is_empty() {
                 return Err(static_validation_error("rendered SVG contains an empty id"));
@@ -121,7 +136,7 @@ fn validate(
         checkpoint_loop(node_iteration, &mut checkpoint)?;
         let element = node.tag_name().name();
         let namespace = node.tag_name().namespace();
-        let inside_foreign_object = is_inside_svg_foreign_object(node, execution)?;
+        let inside_foreign_object = inside_foreign_objects[node.id().get_usize()];
         let safe_xhtml = foreign_objects == ForeignObjectPolicy::AllowSafeXhtml
             && namespace == Some(XHTML_NAMESPACE)
             && inside_foreign_object;
@@ -140,7 +155,9 @@ fn validate(
                 .namespace()
                 .is_none_or(|namespace| namespace == SVG_NAMESPACE);
         if element.eq_ignore_ascii_case("base")
-            || (matches_active_svg_element(element) && !allowed_foreign_object)
+            || (matches_active_svg_element(element)
+                && !allowed_foreign_object
+                && !step_elements.contains(&node.id()))
             || (inside_foreign_object && is_forbidden_xhtml_element(element))
         {
             return Err(static_validation_error(format!(
@@ -153,7 +170,7 @@ fn validate(
                     "rendered SVG contains forbidden XHTML element <{element}>"
                 )));
             }
-        } else if !is_allowed_static_svg_element(element) {
+        } else if !is_allowed_static_svg_element(element) && !step_elements.contains(&node.id()) {
             return Err(static_validation_error(format!(
                 "rendered SVG contains unsupported SVG element <{element}>"
             )));
@@ -352,29 +369,6 @@ fn unnamespaced_attribute<'a, 'input>(
     node.attributes()
         .find(|attribute| attribute.namespace().is_none() && attribute.name() == name)
         .map(|attribute| attribute.value())
-}
-
-fn is_inside_svg_foreign_object(
-    node: crate::xml_dom::Node<'_, '_>,
-    execution: SvgPostprocessExecution<'_>,
-) -> Result<bool> {
-    let mut checkpoint = || execution.checkpoint();
-    for (iteration, ancestor) in node.ancestors().enumerate() {
-        checkpoint_loop(iteration, &mut checkpoint)?;
-        if ancestor.is_element()
-            && ancestor
-                .tag_name()
-                .name()
-                .eq_ignore_ascii_case("foreignObject")
-            && ancestor
-                .tag_name()
-                .namespace()
-                .is_none_or(|namespace| namespace == SVG_NAMESPACE)
-        {
-            return Ok(true);
-        }
-    }
-    Ok(false)
 }
 
 fn is_event_attribute(name: &str) -> bool {

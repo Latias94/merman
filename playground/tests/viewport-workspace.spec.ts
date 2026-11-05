@@ -7,6 +7,7 @@ import { CANONICAL_RENDER_VIEWPORT } from "../src/runtime/render-viewport.ts";
 import {
   monitorBrowserErrors,
   openPlayground,
+  openWorkbenchTool,
   previewSvgText,
   replaceEditorSource,
   waitForPreviewSvg,
@@ -231,13 +232,15 @@ test("tap intent preserves auto-fit and promoted anchor drags suppress navigatio
   );
 
   const viewport = primaryViewport(page);
+  const anchor = viewport.locator("a.kanban-ticket-link");
+  await expect(anchor).toHaveCount(1);
+  // Mount schedules its initial fit on the next frame; gestures target that fitted diagram.
+  await waitForTwoFrames(page);
   await expect(viewport).toHaveAttribute("data-auto-fit", "true");
   await dispatchPointer(viewport, "pointerdown", 81, 40, 40);
   await dispatchPointer(viewport, "pointerup", 81, 40, 40);
   await expect(viewport).toHaveAttribute("data-auto-fit", "true");
 
-  const anchor = viewport.locator("a.kanban-ticket-link");
-  await expect(anchor).toHaveCount(1);
   await anchor.evaluate((element) => {
     element.setAttribute("data-test-click-count", "0");
     element.addEventListener("click", (event) => {
@@ -332,7 +335,7 @@ test("Compare panes retain independent viewport transforms", async ({
 }) => {
   const errors = monitorBrowserErrors(page);
   await openPlayground(page);
-  await page.getByRole("tab", { name: "Compare", exact: true }).click();
+  await openWorkbenchTool(page, "Compare");
   const viewports = page.locator('[data-merman-svg-viewport="true"]');
   await expect(viewports).toHaveCount(2);
   await expect
@@ -499,10 +502,7 @@ test("a current issue link restores workspace, view, and SVG Bounds", async ({
     "aria-selected",
     "true",
   );
-  await expect(page.getByRole("tab", { name: "Compare", exact: true })).toHaveAttribute(
-    "aria-selected",
-    "true",
-  );
+  await expect(page.getByRole("heading", { name: "Compare", exact: true })).toBeVisible();
   const boundsToggle = page.getByTestId("svg-bounds-toggle");
   await expect(boundsToggle).toHaveAttribute("aria-pressed", "true");
   await expect(
@@ -556,10 +556,7 @@ test("a legacy host-size issue URL restores supported fields canonically without
     "aria-selected",
     "true",
   );
-  await expect(page.getByRole("tab", { name: "Compare", exact: true })).toHaveAttribute(
-    "aria-selected",
-    "true",
-  );
+  await expect(page.getByRole("heading", { name: "Compare", exact: true })).toBeVisible();
   await expect(page.getByTestId("svg-bounds-toggle")).toHaveAttribute(
     "aria-pressed",
     "false",
@@ -589,10 +586,7 @@ test("a retired viewport field in a workspace fragment rejects hydration atomica
     "aria-selected",
     "true",
   );
-  await expect(page.getByRole("tab", { name: "Compare", exact: true })).toHaveAttribute(
-    "aria-selected",
-    "false",
-  );
+  await expect(page.getByRole("heading", { name: "Compare", exact: true })).toHaveCount(0);
   await expect(page.getByTestId("share-view-warning")).toHaveCount(0);
   expect(await previewSvgText(page)).toContain("Condition?");
   expect(await previewSvgText(page)).not.toContain("RetiredWorkspace");
@@ -619,10 +613,7 @@ test("a retired viewport query defaults only the view of a valid workspace", asy
     "aria-selected",
     "true",
   );
-  await expect(page.getByRole("tab", { name: "Compare", exact: true })).toHaveAttribute(
-    "aria-selected",
-    "false",
-  );
+  await expect(page.getByRole("heading", { name: "Compare", exact: true })).toHaveCount(0);
   expect(await previewSvgText(page)).toContain("ValidWorkspace");
   expect(new URL(page.url()).search).toBe(search);
   expect(new URL(page.url()).hash).toBe(hash);

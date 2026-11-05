@@ -499,9 +499,10 @@ pub(super) fn anchor_labels_to_polyline(
 
     let mut foreign_node_rects = Vec::new();
     let mut lane_groups = Vec::new();
+    let lane_model = crate::swimlane::lanes::LaneModel::new(&layout.nodes);
     work_budget.charge(layout.nodes.len())?;
     for node in layout.nodes.values() {
-        if node.kind == WorkingNodeKind::Group && node.parent_id.is_none() {
+        if lane_model.is_lane(&node.id) {
             if let Some(rect) = rect_of_node_bounds(node) {
                 lane_groups.push(RectEntry {
                     id: node.id.clone(),
@@ -626,6 +627,7 @@ mod tests {
             label_type: "text".to_string(),
             shape: "rect".to_string(),
             kind,
+            producer_lane_role: None,
             parent_id: None,
             top_lane_id: None,
             requested_dir: None,

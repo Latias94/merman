@@ -1,4 +1,5 @@
 use std::collections::{BTreeMap, BTreeSet};
+use std::sync::OnceLock;
 
 use merman_model::presentation::PresentationConfig;
 
@@ -9,7 +10,7 @@ use crate::diagram_theme::{
 };
 use crate::family::{
     DirectStaticSelectorDomain, FamilyThemeEvidence, FamilyThemeOutcomes,
-    FamilyThemeResidualReason, InheritedFontStackPlan, TerminalVariantDomain,
+    FamilyThemeResidualReason, InheritedFontStackPlan, StaticSurfacePaint, TerminalVariantDomain,
     UnsupportedTerminalDomain, reconcile_unsupported_terminal_domains, resolve_direct_static_fill,
     resolved_style_property_for_facet, unsupported_residual_for_facet,
 };
@@ -36,6 +37,8 @@ pub(crate) struct IshikawaTextThemePlan {
     typed_font_size_active: bool,
     evidence: FamilyThemeOutcomes,
     pending: BTreeMap<FamilyThemeMechanismKey, BTreeSet<ThemeCapability>>,
+    core_paints: Vec<StaticSurfacePaint>,
+    terminal_emitted: OnceLock<()>,
 }
 
 impl IshikawaTextThemePlan {
@@ -70,7 +73,7 @@ impl IshikawaTextThemePlan {
             (0, 0)
         };
         let mut resolved_fill = None;
-        let css_binding = IshikawaCssBinding::resolve(effective_config.as_value());
+        let mut css_binding = IshikawaCssBinding::resolve(effective_config.as_value());
         let typed_font_size_requested = theme.is_some_and(|theme| {
             theme.family_mechanism_routes().iter().any(|route| {
                 route.mechanism()
@@ -98,14 +101,71 @@ impl IshikawaTextThemePlan {
             ));
         };
 
+        let mut body_count = usize::from(layout.head.is_some());
+        let mut line_count = usize::from(layout.spine.is_some());
+        let mut marker_count = 0usize;
+        for pair in &layout.pairs {
+            for branch in std::iter::once(&pair.upper).chain(pair.lower.as_ref()) {
+                body_count += 1;
+                line_count += 1 + branch.sub_groups.len();
+                marker_count += usize::from(branch.line.marker_start);
+                marker_count += branch
+                    .sub_groups
+                    .iter()
+                    .filter(|group| group.line.marker_start)
+                    .count();
+            }
+        }
+        if css_binding.look != "handDrawn" {
+            marker_count +=
+                usize::from(layout.spine.as_ref().is_some_and(|line| line.marker_start));
+        }
+        let line_owned =
+            effective_config.config_paint_overrides_typed_default("themeVariables.lineColor");
+        let body_owned =
+            effective_config.config_paint_overrides_typed_default("themeVariables.mainBkg");
+        let node = StaticSurfacePaint::resolve(
+            Some(theme),
+            ThemeTarget::Node,
+            &vec![body_owned; body_count],
+            &vec![line_owned; body_count],
+            work_meter,
+        )?;
+        let edge = StaticSurfacePaint::resolve(
+            Some(theme),
+            ThemeTarget::Edge,
+            &vec![true; line_count],
+            &vec![line_owned; line_count],
+            work_meter,
+        )?;
+        let marker = StaticSurfacePaint::resolve(
+            Some(theme),
+            ThemeTarget::Marker,
+            &vec![line_owned; marker_count],
+            &vec![line_owned && css_binding.look == "handDrawn"; marker_count],
+            work_meter,
+        )?;
+        if let Some(fill) = &node.fill {
+            css_binding.main_bkg = fill.css().to_owned();
+        }
+        if let Some(stroke) = &node.stroke {
+            css_binding.node_stroke = stroke.css().to_owned();
+        }
+        if let Some(stroke) = &edge.stroke {
+            css_binding.line_color = stroke.css().to_owned();
+        }
+        if let Some(fill) = &marker.fill {
+            css_binding.marker_fill = fill.css().to_owned();
+        }
+
         let mermaid_owns_fill = mermaid_owns_text_fill(effective_config);
         let mut winner_properties = BTreeSet::<(usize, ResolvedStyleProperty)>::new();
         let mut expected_capabilities =
             BTreeMap::<(usize, ResolvedStyleProperty), ThemeCapability>::new();
 
         if text_count != 0 {
-            let style = theme.style_with_work_meter(
-                ThemeTarget::Text,
+            let style = theme.text_style_with_work_meter(
+                ThemeTarget::NodeLabel,
                 ThemeVariant::Default,
                 None,
                 work_meter,
@@ -119,8 +179,8 @@ impl IshikawaTextThemePlan {
                 && let Some(fill) = resolve_direct_static_fill(
                     theme,
                     &style,
-                    &[ThemeTarget::Text],
-                    DirectStaticSelectorDomain::Unqualified,
+                    &[ThemeTarget::Text, ThemeTarget::NodeLabel],
+                    DirectStaticSelectorDomain::Default,
                 )
             {
                 let (css, rule_index, capability) = fill.into_parts();
@@ -130,16 +190,16 @@ impl IshikawaTextThemePlan {
         }
 
         let mut evidence = FamilyThemeOutcomes::default();
-        let mut observations = BTreeMap::<usize, TextRuleObservation>::new();
+        let mut observations = BTreeMap::<(usize, ThemeTarget), TextRuleObservation>::new();
         for route in theme.family_mechanism_routes().iter().copied() {
             match route.mechanism() {
                 FamilyThemeMechanism::RuleFacet {
                     rule_index,
-                    target: ThemeTarget::Text,
+                    target: target @ (ThemeTarget::Text | ThemeTarget::NodeLabel),
                     selector,
                     facet,
                 } => {
-                    let observation = observations.entry(rule_index).or_default();
+                    let observation = observations.entry((rule_index, target)).or_default();
                     if !selector_matches_text_domain(selector, text_count) {
                         continue;
                     }
@@ -164,7 +224,9 @@ impl IshikawaTextThemePlan {
                     match (route.disposition(), selector, facet) {
                         (
                             FamilyThemeDisposition::TypedAdapter,
-                            FamilyThemeSelectorShape::Static { variant: None },
+                            FamilyThemeSelectorShape::Static {
+                                variant: None | Some(ThemeVariant::Default),
+                            },
                             FamilyThemeRuleFacet::Fill(
                                 FamilyThemePaintKind::Transparent | FamilyThemePaintKind::Solid,
                             ),
@@ -223,8 +285,9 @@ impl IshikawaTextThemePlan {
         reconcile_unsupported_terminal_domains(
             theme,
             &mut evidence,
-            &[UnsupportedTerminalDomain::fallbacks_only(
-                ThemeTarget::Text,
+            &[UnsupportedTerminalDomain::textual(
+                ThemeTarget::NodeLabel,
+                &[ThemeTarget::Text, ThemeTarget::NodeLabel],
                 TerminalVariantDomain::uniform(text_count, ThemeVariant::Default),
             )
             .with_source_owned_fill(&source_owned_fill)],
@@ -232,10 +295,10 @@ impl IshikawaTextThemePlan {
         )?;
 
         let mut pending = BTreeMap::new();
-        for (rule_index, observation) in observations {
+        for ((rule_index, target), observation) in observations {
             let key = FamilyThemeMechanismKey::Rule {
                 index: rule_index,
-                target: ThemeTarget::Text,
+                target,
             };
             if !observation.applicable {
                 evidence.mark_not_applicable(key);
@@ -261,6 +324,8 @@ impl IshikawaTextThemePlan {
             typed_font_size_active,
             evidence,
             pending,
+            core_paints: vec![node, edge, marker],
+            terminal_emitted: OnceLock::new(),
         })
     }
 
@@ -280,6 +345,8 @@ impl IshikawaTextThemePlan {
             typed_font_size_active: false,
             evidence: FamilyThemeOutcomes::default(),
             pending: BTreeMap::new(),
+            core_paints: Vec::new(),
+            terminal_emitted: OnceLock::new(),
         }
     }
 
@@ -308,11 +375,20 @@ impl IshikawaTextThemePlan {
     }
 
     pub(crate) fn record_evidence(&self, evidence: &mut FamilyThemeEvidence) {
+        if self.terminal_emitted.get().is_some() {
+            for paint in &self.core_paints {
+                paint.record_evidence(evidence);
+            }
+        }
         evidence.merge_borrowed(&self.evidence);
         for (key, capabilities) in &self.pending {
             evidence.mark_applied_with_capabilities(key.clone(), capabilities.iter().copied());
         }
         self.record_typography_evidence(evidence);
+    }
+
+    pub(crate) fn record_terminal(&self) {
+        let _ = self.terminal_emitted.set(());
     }
 
     fn typography_requested(&self) -> bool {

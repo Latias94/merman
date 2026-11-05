@@ -7,12 +7,19 @@ import type {
   MermanTextMeasurementMode,
 } from "../runtime/merman-core.ts";
 
+/** Display provenance only; availability and support always come from the runtime. */
+export interface ThemeRecipeLabel {
+  readonly name: string;
+  readonly source: "exploration" | "imported";
+}
+
 export interface WorkspaceSnapshot {
   readonly code: string;
   readonly mermaidConfig: string;
   readonly diagramTheme: MermaidThemeSelection;
   readonly themePresetId: string | null;
   readonly themeRecipeJson: string | null;
+  readonly themeRecipeLabel?: ThemeRecipeLabel | null;
   readonly svgPipeline: MermanSvgPipeline;
   readonly textMeasurementMode: MermanTextMeasurementMode;
   readonly diagramFont: DiagramFont;

@@ -15,11 +15,13 @@ mod label;
 mod label_effect;
 mod node_effect;
 mod node_inventory;
+mod node_style;
 mod paint;
 pub(crate) use node_inventory::{FlowchartNodeLayoutView, FlowchartPreparedNodes};
 mod render;
 mod render_config;
 mod render_input;
+mod step;
 mod style;
 mod swimlane;
 mod types;
@@ -86,4 +88,14 @@ fn title_css_class(diagram_type: &str) -> &'static str {
     } else {
         "flowchartTitleText"
     }
+}
+
+/// Agentflow projects into the same body, edge, and glyph terminals as Flowchart.
+fn supports_neo_effects(ctx: &FlowchartRenderCtx<'_>) -> bool {
+    ctx.compatibility.look.is_neo()
+        && ctx.swimlane_direction.is_none()
+        && matches!(
+            merman_model::family::diagram_type_family_id(ctx.diagram_type),
+            Some(crate::DiagramFamilyId::FLOWCHART | crate::DiagramFamilyId::AGENTFLOW)
+        )
 }

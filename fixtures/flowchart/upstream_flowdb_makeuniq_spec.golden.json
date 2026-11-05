@@ -105,6 +105,15 @@
         "styles": []
       }
     ],
+    "other": {
+      "droppedSubGraphMembers": [
+        {
+          "droppedFrom": "SG2",
+          "keptBy": "SG1",
+          "node": "b"
+        }
+      ]
+    },
     "subgraphs": [
       {
         "classes": [],

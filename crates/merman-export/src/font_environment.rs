@@ -1,6 +1,6 @@
 #[cfg(any(all(feature = "system-fonts", not(target_family = "wasm")), test))]
 use super::font_selection::FontSelectionPolicy;
-use super::{ExportError, Result};
+use super::{ExportError, OperationControl, Result, export_checkpoint};
 #[cfg(any(all(feature = "system-fonts", not(target_family = "wasm")), test))]
 use merman_render::diagram_theme::{FontCatalog, FontSource};
 use merman_render::svg::ResvgCompatibleSvg;
@@ -122,14 +122,19 @@ impl ExportFontPlanSeed {
         }
     }
 
-    pub(crate) fn finish_with_tree(&self, tree: &usvg::Tree) -> ExportFontPlan {
+    pub(crate) fn finish_with_tree(
+        &self,
+        tree: &usvg::Tree,
+        control: &OperationControl,
+    ) -> Result<ExportFontPlan> {
+        export_checkpoint(control)?;
         #[cfg(feature = "native-fonts")]
         let evidence = self.native_export.as_ref().map_or_else(
-            || FinalTreeFontEvidence::collect(tree, &self.system_fonts),
-            |observer| FinalTreeFontEvidence::collect_native(tree, observer),
-        );
+            || FinalTreeFontEvidence::collect(tree, &self.system_fonts, control),
+            |observer| FinalTreeFontEvidence::collect_native(tree, observer, control),
+        )?;
         #[cfg(not(feature = "native-fonts"))]
-        let evidence = FinalTreeFontEvidence::collect(tree, &self.system_fonts);
+        let evidence = FinalTreeFontEvidence::collect(tree, &self.system_fonts, control)?;
         let unresolved_glyph_fallback = self
             .recorder
             .unresolved_glyph_fallback
@@ -147,7 +152,8 @@ impl ExportFontPlanSeed {
         #[cfg(not(feature = "native-fonts"))]
         let native_facts: Option<(bool, bool, bool, bool)> = None;
 
-        ExportFontPlan {
+        export_checkpoint(control)?;
+        Ok(ExportFontPlan {
             source_mode: self.source_mode,
             // Native contexts derive this from visible final glyphs and the exact resolver's
             // operation-local admission record, not from an initial fontdb snapshot.
@@ -165,7 +171,7 @@ impl ExportFontPlanSeed {
                 || native_facts.is_some_and(|facts| facts.3),
             unclassified_face_count: evidence.unclassified_face_count,
             notdef_glyph_count: evidence.notdef_glyph_count,
-        }
+        })
     }
 }
 
@@ -177,39 +183,50 @@ struct FinalTreeFontEvidence {
 }
 
 impl FinalTreeFontEvidence {
-    fn collect(tree: &usvg::Tree, system_fonts: &usvg::fontdb::Database) -> Self {
-        Self::collect_admitted(
-            tree,
-            system_fonts.faces().map(|face| face.id).collect(),
-            BTreeSet::new(),
-        )
+    fn collect(
+        tree: &usvg::Tree,
+        system_fonts: &usvg::fontdb::Database,
+        control: &OperationControl,
+    ) -> Result<Self> {
+        let mut system_faces = BTreeSet::new();
+        for face in system_fonts.faces() {
+            export_checkpoint(control)?;
+            system_faces.insert(face.id);
+        }
+        Self::collect_admitted(tree, system_faces, BTreeSet::new(), control)
     }
 
     #[cfg(feature = "native-fonts")]
     fn collect_native(
         tree: &usvg::Tree,
         observer: &crate::fonts::NativeExportFontObserver,
-    ) -> Self {
+        control: &OperationControl,
+    ) -> Result<Self> {
+        export_checkpoint(control)?;
         let mut system_faces = BTreeSet::new();
         let mut caller_faces = BTreeSet::new();
-        for (id, source) in observer.admitted_faces() {
-            match source {
-                crate::fonts::NativeExportFontSource::System => {
-                    system_faces.insert(id);
-                }
-                crate::fonts::NativeExportFontSource::Caller => {
-                    caller_faces.insert(id);
+        if let Some(faces) = observer.admitted_faces() {
+            for (&id, source) in faces.iter() {
+                export_checkpoint(control)?;
+                match source {
+                    crate::fonts::NativeExportFontSource::System => {
+                        system_faces.insert(id);
+                    }
+                    crate::fonts::NativeExportFontSource::Caller => {
+                        caller_faces.insert(id);
+                    }
                 }
             }
         }
-        Self::collect_admitted(tree, system_faces, caller_faces)
+        Self::collect_admitted(tree, system_faces, caller_faces, control)
     }
 
     fn collect_admitted(
         tree: &usvg::Tree,
         system_faces: BTreeSet<usvg::fontdb::ID>,
         caller_faces: BTreeSet<usvg::fontdb::ID>,
-    ) -> Self {
+        control: &OperationControl,
+    ) -> Result<Self> {
         let mut evidence = Self::default();
         let mut unclassified_faces = HashSet::new();
         let mut visited_groups = HashSet::new();
@@ -219,9 +236,10 @@ impl FinalTreeFontEvidence {
             &caller_faces,
             &mut unclassified_faces,
             &mut visited_groups,
-        );
+            control,
+        )?;
         evidence.unclassified_face_count = unclassified_faces.len();
-        evidence
+        Ok(evidence)
     }
 
     fn visit_group(
@@ -231,11 +249,14 @@ impl FinalTreeFontEvidence {
         caller_faces: &BTreeSet<usvg::fontdb::ID>,
         unclassified_faces: &mut HashSet<usvg::fontdb::ID>,
         visited_groups: &mut HashSet<*const usvg::Group>,
-    ) {
+        control: &OperationControl,
+    ) -> Result<()> {
+        export_checkpoint(control)?;
         if !visited_groups.insert(std::ptr::from_ref(group)) {
-            return;
+            return Ok(());
         }
         for node in group.children() {
+            export_checkpoint(control)?;
             match node {
                 usvg::Node::Group(group) => self.visit_group(
                     group,
@@ -243,22 +264,35 @@ impl FinalTreeFontEvidence {
                     caller_faces,
                     unclassified_faces,
                     visited_groups,
-                ),
+                    control,
+                )?,
                 usvg::Node::Text(text) => {
-                    self.visit_text(text, system_faces, caller_faces, unclassified_faces)
+                    self.visit_text(
+                        text,
+                        system_faces,
+                        caller_faces,
+                        unclassified_faces,
+                        control,
+                    )?;
                 }
                 usvg::Node::Path(_) | usvg::Node::Image(_) => {}
             }
+            let mut subroot_result = Ok(());
             node.subroots(|subroot| {
-                self.visit_group(
-                    subroot,
-                    system_faces,
-                    caller_faces,
-                    unclassified_faces,
-                    visited_groups,
-                );
+                if subroot_result.is_ok() {
+                    subroot_result = self.visit_group(
+                        subroot,
+                        system_faces,
+                        caller_faces,
+                        unclassified_faces,
+                        visited_groups,
+                        control,
+                    );
+                }
             });
+            subroot_result?;
         }
+        Ok(())
     }
 
     fn visit_text(
@@ -267,9 +301,15 @@ impl FinalTreeFontEvidence {
         system_faces: &BTreeSet<usvg::fontdb::ID>,
         caller_faces: &BTreeSet<usvg::fontdb::ID>,
         unclassified_faces: &mut HashSet<usvg::fontdb::ID>,
-    ) {
-        for span in text.layouted().iter().filter(|span| span.visible) {
+        control: &OperationControl,
+    ) -> Result<()> {
+        for span in text.layouted() {
+            export_checkpoint(control)?;
+            if !span.visible {
+                continue;
+            }
             for glyph in &span.positioned_glyphs {
+                export_checkpoint(control)?;
                 if glyph.id.0 == 0 {
                     self.notdef_glyph_count = self.notdef_glyph_count.saturating_add(1);
                 }
@@ -280,6 +320,7 @@ impl FinalTreeFontEvidence {
                 }
             }
         }
+        Ok(())
     }
 }
 
@@ -740,7 +781,8 @@ mod tests {
             assert!(
                 !environment
                     .plan
-                    .finish_with_tree(&tree)
+                    .finish_with_tree(&tree, &OperationControl::new())
+                    .unwrap()
                     .family_fallback_used()
             );
         }
@@ -764,22 +806,105 @@ mod tests {
             <text x="0" y="80" font-family="DejaVu Sans" font-weight="700">Browse Products</text>
         </svg>"#;
         let tree = usvg::Tree::from_str(source, &options).unwrap();
-        let plan = environment.plan.finish_with_tree(&tree);
+        let plan = environment
+            .plan
+            .finish_with_tree(&tree, &OperationControl::new())
+            .unwrap();
         assert!(plan.used_system_fonts());
         assert!(plan.is_host_dependent());
         assert_eq!(plan.unclassified_face_count(), 0);
         assert_eq!(plan.notdef_glyph_count(), 0);
         assert!(!plan.unresolved_glyph_fallback());
 
-        let unadmitted = FinalTreeFontEvidence::collect(&tree, &usvg::fontdb::Database::new());
+        let unadmitted = FinalTreeFontEvidence::collect(
+            &tree,
+            &usvg::fontdb::Database::new(),
+            &OperationControl::new(),
+        )
+        .unwrap();
         assert!(!unadmitted.used_system_fonts);
         assert_eq!(unadmitted.unclassified_face_count, 2);
 
         let missing_source = source.replace("Request Volume", "Request Volume&#x10ffff;");
         let missing_tree = usvg::Tree::from_str(&missing_source, &options).unwrap();
-        let missing = environment.plan.finish_with_tree(&missing_tree);
+        let missing = environment
+            .plan
+            .finish_with_tree(&missing_tree, &OperationControl::new())
+            .unwrap();
         assert!(missing.notdef_glyph_count() > 0);
         assert!(missing.unresolved_glyph_fallback());
+    }
+
+    #[test]
+    fn final_glyph_evidence_observes_cancellation_inside_a_text_run() {
+        let environment = fixture_font_environment();
+        let options = usvg::Options {
+            fontdb: Arc::clone(&environment.fontdb),
+            font_resolver: environment.resolver,
+            ..usvg::Options::default()
+        };
+        let source = format!(
+            r#"<svg xmlns="http://www.w3.org/2000/svg" width="5000" height="100"><text x="0" y="30" font-family="DejaVu Serif">{}</text></svg>"#,
+            "Visible glyphs ".repeat(20),
+        );
+        let tree = usvg::Tree::from_str(&source, &options).unwrap();
+        let glyphs = tree
+            .root()
+            .children()
+            .iter()
+            .filter_map(|node| match node {
+                usvg::Node::Text(text) => Some(text),
+                _ => None,
+            })
+            .flat_map(|text| text.layouted())
+            .flat_map(|span| &span.positioned_glyphs)
+            .count();
+        assert!(glyphs > 200);
+        let control = OperationControl::new();
+        control.cancel_after_checkpoints(32);
+        let error = environment
+            .plan
+            .finish_with_tree(&tree, &control)
+            .unwrap_err();
+        assert!(matches!(error, ExportError::Cancelled(cancelled)
+            if cancelled.phase == merman_model::OperationPhase::Export));
+        assert!(
+            environment
+                .plan
+                .finish_with_tree(&tree, &OperationControl::new())
+                .is_ok()
+        );
+    }
+
+    #[test]
+    fn final_glyph_evidence_replays_an_existing_resource_terminal() {
+        let environment = fixture_font_environment();
+        let tree = usvg::Tree::from_str(
+            r#"<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10"/>"#,
+            &usvg::Options::default(),
+        )
+        .unwrap();
+        let control = OperationControl::new();
+        let terminal = control.terminate_resource_overflow(
+            "max_svg_bytes",
+            merman_model::OperationPhase::Postprocess,
+            "svg_postprocess",
+            u64::MAX,
+            17,
+            merman_model::OperationResourceProvenance::new(
+                merman_model::OperationResourceDomain::Render,
+                None,
+                [],
+            ),
+        );
+        control.cancel();
+        let error = environment
+            .plan
+            .finish_with_tree(&tree, &control)
+            .unwrap_err();
+        assert!(
+            matches!(error, ExportError::OperationResourceTerminal(actual) if actual == terminal)
+        );
     }
 
     #[test]
@@ -795,7 +920,10 @@ mod tests {
                 r#"<svg xmlns="http://www.w3.org/2000/svg" width="500" height="100"><text id="{id}" x="0" y="20" font-family="DejaVu Serif">Request Volume</text></svg>"#,
             );
             let tree = usvg::Tree::from_str(&source, &options).unwrap();
-            environment.plan.finish_with_tree(&tree)
+            environment
+                .plan
+                .finish_with_tree(&tree, &OperationControl::new())
+                .unwrap()
         };
         let ordinary = plan("ordinary-label");
         assert!(ordinary.used_system_fonts());
@@ -842,7 +970,9 @@ mod tests {
             glyph_count > 0,
             "fixture must exercise an actual native glyph"
         );
-        let plan = seed.finish_with_tree(&tree);
+        let plan = seed
+            .finish_with_tree(&tree, &OperationControl::new())
+            .unwrap();
 
         assert_eq!(plan.source_mode(), ExportFontMode::NativeContext);
         assert!(!plan.used_system_fonts());

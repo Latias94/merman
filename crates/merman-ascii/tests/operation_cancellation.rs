@@ -96,21 +96,23 @@ fn structured_text_models() -> Vec<(&'static str, RenderSemanticModel)> {
         edges: Vec::new(),
     };
 
-    let mut packet = PacketDiagramModel::default();
-    packet.packet = vec![vec![
-        PacketBlock {
-            start: 0,
-            end: 0,
-            bits: 1,
-            label: "first".to_string(),
-        },
-        PacketBlock {
-            start: 1,
-            end: 1,
-            bits: 1,
-            label: "second".to_string(),
-        },
-    ]];
+    let packet = PacketDiagramModel {
+        packet: vec![vec![
+            PacketBlock {
+                start: 0,
+                end: 0,
+                bits: 1,
+                label: "first".to_string(),
+            },
+            PacketBlock {
+                start: 1,
+                end: 1,
+                bits: 1,
+                label: "second".to_string(),
+            },
+        ]],
+        ..Default::default()
+    };
 
     let mut timeline = TimelineDiagramModel::default();
     timeline.sections.push("Planning".to_string());

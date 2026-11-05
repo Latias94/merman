@@ -25,6 +25,7 @@ pub(in crate::svg::parity::flowchart) struct FlowchartRootRenderSession<
     pub(in crate::svg::parity::flowchart) marker_plan: &'marker FlowchartMarkerEmissionPlan,
     pub(in crate::svg::parity::flowchart) edge_labels:
         &'cache mut super::super::paint::FlowchartEdgeLabels,
+    pub(in crate::svg::parity::flowchart) step_badges: &'marker super::super::step::StepBadges,
 }
 
 struct FlowchartRootFrame<'data, 'plan> {
@@ -170,7 +171,9 @@ pub(in crate::svg::parity::flowchart) fn render_flowchart_root<'data, 'plan>(
         }
 
         if let Some(frame) = frame.take() {
-            out.push_str("</g></g>");
+            out.push_str("</g>");
+            session.step_badges.write_root(out, ctx, frame.cluster_id)?;
+            out.push_str("</g>");
             out.checkpoint()?;
             if let Some(start) = frame.nested_start {
                 session.details.nested_roots += start.elapsed();
@@ -214,6 +217,7 @@ pub(in crate::svg::parity::flowchart) fn render_flowchart_elk_root_groups(
     render_flowchart_elk_edge_paths(out, ctx, session, edges)?;
     render_flowchart_elk_edge_labels(out, ctx, session, edges)?;
     render_flowchart_elk_nodes(out, ctx, session)?;
+    session.step_badges.write_root(out, ctx, None)?;
     out.push_str("</g>");
     out.checkpoint()?;
     Ok(())

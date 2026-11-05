@@ -98,6 +98,7 @@ fn render_icon_rect_frame(
                 &rounded_rect,
                 1.3,
                 "0 0",
+                common.work_meter,
                 common.hand_drawn_seed,
             )
         })
@@ -300,9 +301,11 @@ pub(super) fn advance_rough_geometry(
         );
     } else {
         let _ = super::super::roughjs::roughjs_prepare_paths_for_svg_path_single_set(
+            super::super::roughjs::RoughGeometryTarget::Query,
             &path,
             1.3,
             "0 0",
+            common.work_meter,
             common.hand_drawn_seed,
         );
     }

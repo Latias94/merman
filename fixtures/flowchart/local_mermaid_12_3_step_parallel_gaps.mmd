@@ -1,0 +1,9 @@
+%% Derived from edgeStepAnimation.spec.ts timing cases and flowDb.ts stepCount at
+%% https://github.com/mermaid-js/mermaid/tree/2086904e76c692331e34a45d7cc3bc30860d040e/packages/mermaid/src
+flowchart LR
+  A[Start] first@--> B[Left]
+  A second@--> C[Right]
+  B last@--> D[Finish]
+  first@{ step: 1 }
+  second@{ step: 1 }
+  last@{ step: 5 }

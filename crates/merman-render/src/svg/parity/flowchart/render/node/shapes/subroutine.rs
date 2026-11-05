@@ -2,13 +2,14 @@
 
 use std::fmt::Write as _;
 
+use super::super::emission::FlowchartNodeShapeEmissionReceipt;
 use crate::svg::parity::flowchart::OptionalStyleAttr;
 use crate::svg::parity::fmt_display;
 
 pub(in crate::svg::parity::flowchart::render::node) fn render_subroutine(
     out: &mut impl crate::svg::parity::SvgOutput,
     common: &super::super::FlowchartNodeRenderCommon<'_>,
-) {
+) -> FlowchartNodeShapeEmissionReceipt {
     // Mermaid `subroutine.ts` (non-handDrawn): polygon via `insertPolygonShape(...)`.
     let total_w = common.layout_node.width.max(1.0);
     let h = common.layout_node.height.max(1.0);
@@ -41,4 +42,5 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_subroutine(
         fmt_display(h / 2.0),
         OptionalStyleAttr(common.style)
     );
+    FlowchartNodeShapeEmissionReceipt::classic_polygon()
 }

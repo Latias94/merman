@@ -18,8 +18,8 @@ mod source_edit_map;
 pub(crate) use source_config::SourceConfigPath;
 #[cfg(feature = "editor-facts")]
 pub use source_config::{
-    FrontmatterSourceEvidence, SourceConfigEvidence, SourceConfigKeyEvidence, SourceConfigOrigin,
-    SourceDirectiveEvidence,
+    FrontmatterSourceEvidence, SourceAppearanceDeclaration, SourceAppearanceSummary,
+    SourceConfigEvidence, SourceConfigKeyEvidence, SourceConfigOrigin, SourceDirectiveEvidence,
 };
 pub use source_edit_map::PreprocessedSource;
 
@@ -33,6 +33,8 @@ use crate::{
     Error, MermaidConfig, OperationControl, OperationControlResult, Result, diagram::CapturedPanic,
 };
 use serde_json::{Map, Value};
+#[cfg(feature = "editor-facts")]
+use source_config::{SourceAppearanceCapture, SourceAppearanceOwner};
 use source_edit_map::{ReplacementMapping, SourceEdit};
 use std::borrow::Cow;
 #[cfg(test)]
@@ -260,6 +262,10 @@ fn preprocess_source_capture_controlled(
     let mut source_config = SourceConfigEvidence::empty();
     #[cfg(feature = "editor-facts")]
     if capture_mode.collects() {
+        source_config.appearance_complete = true;
+    }
+    #[cfg(feature = "editor-facts")]
+    if capture_mode.collects() {
         if let Some(config_insert_span) = source.try_map_span(SourceSpan::new(0, 0)) {
             source_config.set_config_insert_span(config_insert_span);
         } else {
@@ -275,6 +281,20 @@ fn preprocess_source_capture_controlled(
     #[cfg(feature = "editor-facts")]
     if capture_mode.collects() {
         append_frontmatter_evidence(&source, &frontmatter, &mut source_config, control)?;
+        if let (Some(full), Ok(_)) = (frontmatter.full, &frontmatter.result) {
+            if let Some(construct_span) = source.try_map_span(SourceSpan::new(full.start, full.end))
+            {
+                source_config.appearance_capture.record(
+                    &[],
+                    SourceAppearanceOwner {
+                        origin: SourceConfigOrigin::Frontmatter,
+                        construct_span,
+                    },
+                );
+            } else {
+                source_config.appearance_complete = false;
+            }
+        }
     }
     let frontmatter_len = frontmatter.full.map_or(0, |full| full.end);
     let mut first_error = None;
@@ -325,8 +345,13 @@ fn preprocess_source_capture_controlled(
         control,
     )?;
     #[cfg(feature = "editor-facts")]
+    let mut processed_directives = processed_directives;
+    #[cfg(feature = "editor-facts")]
     if capture_mode.collects() {
         append_directive_evidence(&source, &processed_directives, &mut source_config, control)?;
+        source_config.appearance_complete &= processed_directives.appearance_complete
+            && !processed_directives.recovered_incomplete_directive
+            && processed_directives.appearance_capture.map_spans(&source);
     }
     if let Some(panic) = processed_directives.panic {
         control.checkpoint()?;
@@ -376,6 +401,20 @@ fn preprocess_source_capture_controlled(
         control,
     )?;
 
+    #[cfg(feature = "editor-facts")]
+    if capture_mode.collects() {
+        source_config.appearance_capture.merge(
+            &mut frontmatter_config,
+            &processed_directives.config,
+            &processed_directives.appearance_capture,
+        );
+        source_config
+            .appearance_capture
+            .normalize_font_alias(&frontmatter_config);
+    } else {
+        frontmatter_config.deep_merge(processed_directives.config.as_value());
+    }
+    #[cfg(not(feature = "editor-facts"))]
     frontmatter_config.deep_merge(processed_directives.config.as_value());
 
     control.checkpoint()?;
@@ -590,31 +629,57 @@ fn remove_mermaid_comments_controlled(
     let mut edits = Vec::new();
     #[cfg(feature = "editor-facts")]
     let mut comments = Vec::new();
+    #[cfg(feature = "editor-facts")]
     let mut line_start = 0usize;
-    while line_start < text.len() {
-        let newline = find_newline_controlled(text, line_start, &mut checkpoints)?;
-        let line_end = newline.map_or(text.len(), |newline| newline + 1);
-        let line = &text[line_start..line_end];
-        let trimmed_start = trim_start_whitespace_controlled(line, &mut checkpoints)?;
-        let trimmed = &line[trimmed_start..];
-        if let Some(after_marker) = trimmed.strip_prefix("%%") {
+    let mut whitespace_start = 0usize;
+    let mut cursor = 0usize;
+    let mut at_line_start = true;
+    while cursor < text.len() {
+        let ch = text[cursor..]
+            .chars()
+            .next()
+            .expect("comment scan position must contain a character");
+        checkpoints.scanned(ch.len_utf8())?;
+        if at_line_start && is_js_regex_whitespace(ch) {
+            cursor += ch.len_utf8();
+            #[cfg(feature = "editor-facts")]
+            if matches!(ch, '\n' | '\r' | '\u{2028}' | '\u{2029}') {
+                line_start = cursor;
+            }
+            continue;
+        }
+        if at_line_start && let Some(after_marker) = text[cursor..].strip_prefix("%%") {
             let has_comment_body = after_marker.chars().next().is_some_and(|ch| ch != '\n');
             if !after_marker.starts_with('{') && has_comment_body {
-                let range = line_start..line_end;
+                let newline = find_newline_controlled(text, cursor + 2, &mut checkpoints)?;
+                let line_end = newline.map_or(text.len(), |newline| newline + 1);
                 #[cfg(feature = "editor-facts")]
                 if capture_editor_evidence {
                     comments.push(SourceSpan::new(
-                        range.start,
-                        editor_evidence_line_end(text, range.end),
+                        line_start,
+                        editor_evidence_line_end(text, line_end),
                     ));
                 }
-                edits.push(SourceEdit::delete(range));
+                edits.push(SourceEdit::delete(whitespace_start..line_end));
+                cursor = line_end;
+                #[cfg(feature = "editor-facts")]
+                {
+                    line_start = cursor;
+                }
+                whitespace_start = cursor;
+                continue;
             }
         }
-        let Some(newline) = newline else {
-            break;
-        };
-        line_start = newline + 1;
+        at_line_start = false;
+        cursor += ch.len_utf8();
+        if matches!(ch, '\n' | '\r' | '\u{2028}' | '\u{2029}') {
+            #[cfg(feature = "editor-facts")]
+            {
+                line_start = cursor;
+            }
+            whitespace_start = cursor;
+            at_line_start = true;
+        }
     }
     checkpoints.finish()?;
     #[cfg(feature = "editor-facts")]
@@ -628,7 +693,14 @@ fn remove_mermaid_comments_controlled(
     source.set_first_line_column_offset(0);
 
     let mut checkpoints = ControlledScanCheckpoints::new(control)?;
-    let leading_whitespace = trim_start_whitespace_controlled(source.text(), &mut checkpoints)?;
+    let mut leading_whitespace = 0usize;
+    for ch in source.text().chars() {
+        checkpoints.scanned(ch.len_utf8())?;
+        if !is_js_regex_whitespace(ch) {
+            break;
+        }
+        leading_whitespace += ch.len_utf8();
+    }
     checkpoints.finish()?;
     if leading_whitespace > 0 {
         source.apply_edits(vec![SourceEdit::delete(0..leading_whitespace)], control)?;
@@ -1669,6 +1741,10 @@ struct ProcessedDirectives {
     evidence: Vec<LocalDirectiveEvidence>,
     error: Option<Error>,
     panic: Option<CapturedPanic>,
+    #[cfg(feature = "editor-facts")]
+    appearance_capture: SourceAppearanceCapture,
+    #[cfg(feature = "editor-facts")]
+    appearance_complete: bool,
 }
 
 #[cfg(feature = "editor-facts")]
@@ -1690,6 +1766,10 @@ fn process_directives_controlled(
     control: &OperationControl,
 ) -> OperationControlResult<ProcessedDirectives> {
     control.checkpoint()?;
+    #[cfg(feature = "editor-facts")]
+    let mut appearance_capture = SourceAppearanceCapture::default();
+    #[cfg(feature = "editor-facts")]
+    let mut appearance_complete = true;
     let blocks = directive_blocks_controlled(input, directive_recovery, control)?;
     if blocks.is_empty() {
         return Ok(ProcessedDirectives {
@@ -1703,6 +1783,10 @@ fn process_directives_controlled(
             evidence: Vec::new(),
             error: None,
             panic: None,
+            #[cfg(feature = "editor-facts")]
+            appearance_capture,
+            #[cfg(feature = "editor-facts")]
+            appearance_complete,
         });
     }
     #[cfg(feature = "editor-facts")]
@@ -1733,7 +1817,19 @@ fn process_directives_controlled(
         )?;
         if let Some(directive) = parsed.directive {
             #[cfg(feature = "editor-facts")]
+            let mut directive = directive;
+            #[cfg(feature = "editor-facts")]
+            if matches!(directive.ty.as_str(), "init" | "initialize") {
+                appearance_complete &= directive.arguments_complete;
+            }
+            #[cfg(feature = "editor-facts")]
             if capture_mode.collects() {
+                directive.appearance_owner = Some(SourceAppearanceOwner {
+                    origin: SourceConfigOrigin::Directive {
+                        directive_index: evidence.len(),
+                    },
+                    construct_span: SourceSpan::new(block.range.start, block.range.end),
+                });
                 let keyword_span = SourceSpan::new(
                     block.raw_start.saturating_add(directive.keyword_span.start),
                     block.raw_start.saturating_add(directive.keyword_span.end),
@@ -1784,6 +1880,10 @@ fn process_directives_controlled(
                 evidence,
                 error: first_error,
                 panic: None,
+                #[cfg(feature = "editor-facts")]
+                appearance_capture,
+                #[cfg(feature = "editor-facts")]
+                appearance_complete: false,
             });
         }
     }
@@ -1814,9 +1914,13 @@ fn process_directives_controlled(
                 &directives,
                 input_without_directives.as_ref(),
                 detector,
+                #[cfg(feature = "editor-facts")]
+                &mut appearance_capture,
                 control,
             )
         };
+        #[cfg(feature = "editor-facts")]
+        let mut detect_init = detect_init;
         #[cfg(feature = "editor-facts")]
         {
             if capture_mode.collects() {
@@ -1834,6 +1938,10 @@ fn process_directives_controlled(
                             evidence,
                             error: first_error,
                             panic: Some(CapturedPanic::from_payload(payload)),
+                            #[cfg(feature = "editor-facts")]
+                            appearance_capture,
+                            #[cfg(feature = "editor-facts")]
+                            appearance_complete: false,
                         });
                     }
                 }
@@ -1872,6 +1980,10 @@ fn process_directives_controlled(
         evidence,
         error: first_error,
         panic: None,
+        #[cfg(feature = "editor-facts")]
+        appearance_capture,
+        #[cfg(feature = "editor-facts")]
+        appearance_complete,
     })
 }
 
@@ -1879,6 +1991,7 @@ fn detect_init_controlled(
     directives: &[Directive],
     input: &str,
     detector: &DiagramTypeDetector<'_>,
+    #[cfg(feature = "editor-facts")] appearance_capture: &mut SourceAppearanceCapture,
     control: &OperationControl,
 ) -> OperationControlResult<Result<MermaidConfig>> {
     control.checkpoint()?;
@@ -1929,6 +2042,13 @@ fn detect_init_controlled(
         sanitize_directive_controlled(&mut args, control)?;
         crate::config::mirror_legacy_font_family_into_theme_variables_value(&mut args);
 
+        #[cfg(feature = "editor-facts")]
+        merged.merge_with_mutation_observer(&args, &mut |path| {
+            if let Some(owner) = d.appearance_owner {
+                appearance_capture.record(path, owner);
+            }
+        });
+        #[cfg(not(feature = "editor-facts"))]
         merged.deep_merge(&args);
     }
 
@@ -1946,6 +2066,10 @@ struct Directive {
     config_keys: Vec<source_config::Json5ConfigKeyEvidence>,
     #[cfg(feature = "editor-facts")]
     rewrite_safe: bool,
+    #[cfg(feature = "editor-facts")]
+    appearance_owner: Option<SourceAppearanceOwner>,
+    #[cfg(feature = "editor-facts")]
+    arguments_complete: bool,
 }
 
 #[derive(Debug)]
@@ -2550,6 +2674,10 @@ fn parse_directive_capture_controlled(
                 config_keys: Vec::new(),
                 #[cfg(feature = "editor-facts")]
                 rewrite_safe: false,
+                #[cfg(feature = "editor-facts")]
+                appearance_owner: None,
+                #[cfg(feature = "editor-facts")]
+                arguments_complete: false,
             }),
             error: None,
         });
@@ -2561,6 +2689,8 @@ fn parse_directive_capture_controlled(
     let mut config_keys = Vec::new();
     #[cfg(feature = "editor-facts")]
     let mut rewrite_safe = true;
+    #[cfg(feature = "editor-facts")]
+    let mut arguments_complete = true;
 
     let args = if raw.as_bytes().get(position) == Some(&b':') {
         checkpoints.scanned(1)?;
@@ -2588,6 +2718,10 @@ fn parse_directive_capture_controlled(
                         config_keys,
                         #[cfg(feature = "editor-facts")]
                         rewrite_safe: false,
+                        #[cfg(feature = "editor-facts")]
+                        appearance_owner: None,
+                        #[cfg(feature = "editor-facts")]
+                        arguments_complete: false,
                     }),
                     error: Some(Error::InvalidDirectiveJson {
                         message: format!(
@@ -2607,6 +2741,10 @@ fn parse_directive_capture_controlled(
                         config_keys,
                         #[cfg(feature = "editor-facts")]
                         rewrite_safe: false,
+                        #[cfg(feature = "editor-facts")]
+                        appearance_owner: None,
+                        #[cfg(feature = "editor-facts")]
+                        arguments_complete: false,
                     }),
                     error: Some(Error::InvalidDirectiveJson {
                         message: format!(
@@ -2622,6 +2760,10 @@ fn parse_directive_capture_controlled(
                 capture_mode,
                 control,
             )?;
+            #[cfg(feature = "editor-facts")]
+            {
+                arguments_complete = captured.value.is_some();
+            }
             #[cfg(feature = "editor-facts")]
             {
                 rewrite_safe &= captured.rewrite_safe;
@@ -2665,6 +2807,10 @@ fn parse_directive_capture_controlled(
             config_keys,
             #[cfg(feature = "editor-facts")]
             rewrite_safe,
+            #[cfg(feature = "editor-facts")]
+            appearance_owner: None,
+            #[cfg(feature = "editor-facts")]
+            arguments_complete,
         }),
         error: None,
     })
@@ -2913,6 +3059,118 @@ fn yaml_inline_sequence_indicator_count_controlled(
 mod tests {
     use super::*;
     use serde_json::{Map, json};
+
+    #[test]
+    fn comments_consume_preceding_blank_lines_but_preserve_following_blank_lines() {
+        for (input, expected) in [
+            ("first\n%% one\n\n%% two\nlast", "first\nlast"),
+            ("first\n\n \t\n%% one\nlast", "first\nlast"),
+            ("first\n%% one\n\nlast", "first\n\nlast"),
+            ("first\n\nlast", "first\n\nlast"),
+            ("first\n%% one\n \t\n%% two\n\nlast", "first\n\nlast"),
+            ("first\n\n%% one", "first\n"),
+            ("first %% inline\n\nlast", "first %% inline\n\nlast"),
+            ("first\n\n%%\nlast", "first\n\n%%\nlast"),
+            ("first\n\n%%", "first\n\n%%"),
+            ("first\n\n%% \nlast", "first\nlast"),
+            (
+                "first\n\n%%{init: {}}%%\nlast",
+                "first\n\n%%{init: {}}%%\nlast",
+            ),
+        ] {
+            let mut source = PreprocessedSource::new(input);
+            remove_mermaid_comments_controlled(
+                &mut source,
+                #[cfg(feature = "editor-facts")]
+                false,
+                &OperationControl::new(),
+            )
+            .expect("active operation");
+            assert_eq!(source.text(), expected, "{input:?}");
+        }
+    }
+
+    #[test]
+    fn comments_follow_ecmascript_whitespace_and_multiline_anchors() {
+        for (input, expected) in [
+            ("\u{feff}\n \t%% comment\nfirst", "first"),
+            ("\u{feff}first", "first"),
+            ("\u{0085}first", "\u{0085}first"),
+            (
+                "first\n\u{0085}%% comment\nlast",
+                "first\n\u{0085}%% comment\nlast",
+            ),
+            ("first\n\u{feff} \n\u{3000}%% comment\nlast", "first\nlast"),
+            ("first\u{2028}%% comment\nlast", "first\u{2028}last"),
+            ("first\u{2029}%% comment\nlast", "first\u{2029}last"),
+            ("first\n%% comment\u{2028}last\nend", "first\nend"),
+        ] {
+            let mut source = PreprocessedSource::new(input);
+            remove_mermaid_comments_controlled(
+                &mut source,
+                #[cfg(feature = "editor-facts")]
+                false,
+                &OperationControl::new(),
+            )
+            .expect("active operation");
+            assert_eq!(source.text(), expected, "{input:?}");
+        }
+    }
+
+    #[test]
+    fn comment_runs_preserve_original_utf8_spans_after_source_cleanup() {
+        let input = concat!(
+            "\u{feff}---\r\ntitle: Comments\r\n---\r\n",
+            "%%{init: {flowchart: {htmlLabels: false}}}%%\r\n",
+            "flowchart TD\r\nA[\"`first\r\n%% comment\r\n\r\n%% comment\r\nlast 雪`\"]\r\n",
+        );
+        for known_type in [None, Some("flowchart-v2")] {
+            let result =
+                preprocess_builtin_semantic_controlled(input, known_type, &OperationControl::new())
+                    .expect("active operation")
+                    .expect("source preprocessing");
+            assert_eq!(result.title.as_deref(), Some("Comments"));
+            assert_eq!(result.config.as_value()["flowchart"]["htmlLabels"], false);
+            assert_eq!(result.code(), "flowchart TD\nA[\"`first\nlast 雪`\"]\n");
+            for value in ["first", "last 雪"] {
+                let start = result.code().find(value).expect("retained label text");
+                let original_start = input.find(value).expect("original label text");
+                assert_eq!(
+                    result
+                        .source
+                        .try_map_span(crate::SourceSpan::new(start, start + value.len())),
+                    Some(crate::SourceSpan::new(
+                        original_start,
+                        original_start + value.len(),
+                    )),
+                );
+            }
+            let first = result.code().find("first").unwrap();
+            let last = result.code().find("last 雪").unwrap() + "last 雪".len();
+            assert_eq!(
+                result
+                    .source
+                    .try_map_span(crate::SourceSpan::new(first, last)),
+                None,
+            );
+        }
+    }
+
+    #[cfg(feature = "editor-facts")]
+    #[test]
+    fn comment_evidence_excludes_consumed_blank_lines() {
+        let input = "first\n \t\n  %% 雪\n\n\u{feff}%% last\nlast";
+        let mut source = PreprocessedSource::new(input);
+        remove_mermaid_comments_controlled(&mut source, true, &OperationControl::new())
+            .expect("active operation");
+        assert_eq!(source.text(), "first\nlast");
+        let comments = source
+            .global_expected_syntax()
+            .iter()
+            .map(|expected| &input[expected.span.start..expected.span.end])
+            .collect::<Vec<_>>();
+        assert_eq!(comments, ["  %% 雪", "\u{feff}%% last"]);
+    }
 
     #[test]
     fn preprocess_keeps_entity_encoding_and_source_maps_on_both_parser_buffers() {

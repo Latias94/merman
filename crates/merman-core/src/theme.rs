@@ -940,7 +940,7 @@ fn theme_variables_map(config: &MermaidConfig) -> Map<String, Value> {
 fn generated_theme_runtime() -> &'static GeneratedThemeRuntimeArtifact {
     GENERATED_THEME_RUNTIME.get_or_init(|| {
         let storage: GeneratedThemeRuntimeStorage =
-            serde_json::from_str(include_str!("generated/theme_variables_12_2_0.json"))
+            serde_json::from_str(include_str!("generated/theme_variables.json"))
                 .expect("generated Mermaid theme runtime JSON is valid");
         assert_eq!(storage.schema_version, THEME_RUNTIME_SCHEMA_VERSION);
         assert_generated_theme_provenance(&storage.provenance);
@@ -1040,7 +1040,7 @@ fn assert_generated_theme_provenance(provenance: &GeneratedThemeProvenance) {
 fn generated_theme_oracles() -> &'static GeneratedThemeOracles {
     GENERATED_THEME_ORACLES.get_or_init(|| {
         let artifact: GeneratedThemeOracles = serde_json::from_str(include_str!(
-            "../../../fixtures/_verification/theme_variables_oracle_12_2_0.json"
+            "../../../fixtures/_verification/theme_variables_oracle.json"
         ))
         .expect("generated Mermaid theme oracle JSON is valid");
         assert_eq!(artifact.schema_version, THEME_AUDIT_SCHEMA_VERSION);
@@ -1836,6 +1836,7 @@ pub(crate) fn apply_theme_defaults(
                 "themeVariables",
                 Value::Object(variables),
             );
+            config.set_materialized_theme(theme);
             return Ok(());
         }
         let resolution = staged::Resolution::execute_with_owners(
@@ -1848,6 +1849,7 @@ pub(crate) fn apply_theme_defaults(
         // so defer that side effect until every evaluated assignment has succeeded.
         config.retain_normalized_theme_compatibility_variables(&explicit);
         resolution.materialize_into(config);
+        config.set_materialized_theme(theme);
         return Ok(());
     }
 
@@ -1870,6 +1872,7 @@ pub(crate) fn apply_theme_defaults(
             .collect::<Vec<_>>();
         program.propagate_derived_ownership(&explicit_dependency_variables, config);
     }
+    config.set_materialized_theme(theme);
     Ok(())
 }
 

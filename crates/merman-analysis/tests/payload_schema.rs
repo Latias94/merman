@@ -95,7 +95,7 @@ fn analysis_payload_v1_carries_optional_typed_diagnostic_tags() {
 }
 
 #[test]
-fn analysis_facts_payload_matches_v2_schema_shape() {
+fn analysis_facts_payload_matches_v3_schema_shape() {
     let value = serde_json::to_value(Analyzer::new().analyze_facts("flowchart TD\nA\n")).unwrap();
     let root = value
         .as_object()
@@ -111,7 +111,7 @@ fn analysis_facts_payload_matches_v2_schema_shape() {
             "version",
         ])
     );
-    assert_eq!(value["version"], json!(2));
+    assert_eq!(value["version"], json!(3));
     assert_eq!(value["valid"], json!(true));
 
     let diagram = value["diagrams"][0]
@@ -120,6 +120,7 @@ fn analysis_facts_payload_matches_v2_schema_shape() {
     assert_eq!(
         diagram.keys().map(String::as_str).collect::<BTreeSet<_>>(),
         BTreeSet::from([
+            "appearance",
             "body_span",
             "fence_delimiter",
             "index",
@@ -133,6 +134,12 @@ fn analysis_facts_payload_matches_v2_schema_shape() {
         ])
     );
     assert_eq!(diagram["parse_disposition"], json!("parsed"));
+    assert_eq!(
+        diagram["appearance"],
+        json!({
+            "state": "known", "theme": null, "font": null, "look": null
+        })
+    );
 
     let syntax = diagram["syntax"]
         .as_object()
@@ -160,7 +167,7 @@ fn analysis_facts_payload_matches_v2_schema_shape() {
 }
 
 #[test]
-fn analysis_facts_v2_rejects_legacy_text_scan_provenance() {
+fn analysis_facts_v3_rejects_legacy_text_scan_provenance() {
     let mut value = parser_backed_facts_json();
     value["diagrams"][0]["syntax"]["fact_source"] = json!("text_scan");
 
@@ -169,15 +176,15 @@ fn analysis_facts_v2_rejects_legacy_text_scan_provenance() {
 }
 
 #[test]
-fn analysis_facts_v2_rejects_other_wire_versions() {
-    for version in [0, 1, 3] {
+fn analysis_facts_v3_rejects_other_wire_versions() {
+    for version in [0, 1, 2, 4] {
         let mut value = parser_backed_facts_json();
         value["version"] = json!(version);
 
         let error = serde_json::from_value::<AnalysisFactsPayload>(value).unwrap_err();
         assert_eq!(
             error.to_string(),
-            format!("unsupported analysis facts payload version {version}; expected 2")
+            format!("unsupported analysis facts payload version {version}; expected 3")
         );
     }
 }
@@ -193,12 +200,12 @@ fn analysis_facts_v1_is_rejected_before_deep_payload_deserialization() {
         .expect_err("schema-1 facts must be rejected at the version boundary");
     assert_eq!(
         error.to_string(),
-        "unsupported analysis facts payload version 1; expected 2"
+        "unsupported analysis facts payload version 1; expected 3"
     );
 }
 
 #[test]
-fn analysis_facts_v2_accepts_payload_without_additive_effective_layout() {
+fn analysis_facts_v3_accepts_payload_without_additive_effective_layout() {
     let mut value = parser_backed_facts_json();
     let syntax = value["diagrams"][0]["syntax"]
         .as_object_mut()
@@ -206,13 +213,13 @@ fn analysis_facts_v2_accepts_payload_without_additive_effective_layout() {
     assert_eq!(syntax.remove("effective_layout"), Some(json!("elk")));
 
     let payload = serde_json::from_value::<AnalysisFactsPayload>(value)
-        .expect("a compatible facts v2 payload should remain readable");
-    assert_eq!(payload.version, 2);
+        .expect("a compatible facts v3 payload should remain readable");
+    assert_eq!(payload.version, 3);
     assert_eq!(payload.diagrams[0].syntax.effective_layout, None);
 }
 
 #[test]
-fn analysis_facts_v2_defaults_missing_additive_parse_disposition_to_unavailable() {
+fn analysis_facts_v3_defaults_missing_additive_parse_disposition_to_unavailable() {
     let mut value = parser_backed_facts_json();
     let diagram = value["diagrams"][0]
         .as_object_mut()
@@ -220,7 +227,7 @@ fn analysis_facts_v2_defaults_missing_additive_parse_disposition_to_unavailable(
     assert_eq!(diagram.remove("parse_disposition"), Some(json!("parsed")));
 
     let payload = serde_json::from_value::<AnalysisFactsPayload>(value)
-        .expect("a compatible facts v2 payload should remain readable");
+        .expect("a compatible facts v3 payload should remain readable");
     assert_eq!(
         payload.diagrams[0].parse_disposition,
         merman_analysis::DiagramParseDisposition::Unavailable
@@ -228,7 +235,72 @@ fn analysis_facts_v2_defaults_missing_additive_parse_disposition_to_unavailable(
 }
 
 #[test]
-fn analysis_facts_v2_disables_rename_when_compatible_payload_omits_policy() {
+fn analysis_facts_v3_carries_bounded_source_declarations_with_construct_spans() {
+    let directive = "%%{init: {theme: 'dark', flowchart: {look: 'neo'}, fontFamily: 'serif'}}%%";
+    let source = format!("{directive}\nflowchart TD\nA-->B\n");
+    let value = serde_json::to_value(Analyzer::new().analyze_facts(&source)).unwrap();
+    let appearance = &value["diagrams"][0]["appearance"];
+    assert_eq!(appearance["state"], "known");
+    assert_eq!(
+        appearance["theme"],
+        json!({
+            "value": "dark",
+            "origin": {"kind": "directive", "directive_index": 0},
+            "construct_span": {"start": 0, "end": directive.len()}
+        })
+    );
+    assert_eq!(appearance["look"]["value"], "neo");
+    assert_eq!(appearance["font"]["value"], "serif");
+    let decoded: AnalysisFactsPayload = serde_json::from_value(value).unwrap();
+    assert_eq!(decoded.version, 3);
+}
+
+#[test]
+fn analysis_facts_v3_requires_appearance_instead_of_silently_accepting_v2_shape() {
+    let mut value = parser_backed_facts_json();
+    value["diagrams"][0]
+        .as_object_mut()
+        .unwrap()
+        .remove("appearance");
+    assert!(
+        serde_json::from_value::<AnalysisFactsPayload>(value)
+            .unwrap_err()
+            .to_string()
+            .contains("appearance")
+    );
+}
+
+#[test]
+fn appearance_projection_reuses_a_generation_without_visual_theme_evaluation() {
+    use merman_analysis::{AnalysisCancellationToken, AnalysisOptions};
+    use merman_core::preprocess::SourceAppearanceSummary;
+    use merman_model::config::MermaidConfig;
+
+    let analyzer = Analyzer::with_options(AnalysisOptions::default().with_site_config(
+        MermaidConfig::from_value(json!({"themeVariables": {"primaryColor": "not-a-color"}})),
+    ));
+    let source = "%%{init: {theme: 'forest'}}%%\nflowchart TD\nA-->B\n";
+    let generation = analyzer.analyze_generation(source).into_ready().unwrap();
+    for _ in 0..2 {
+        let payload = generation
+            .to_facts_payload_cancellable(
+                analyzer.options().diagnostic_policy(),
+                &AnalysisCancellationToken::new(),
+            )
+            .unwrap();
+        assert!(payload.valid);
+        let SourceAppearanceSummary::Known {
+            theme: Some(theme), ..
+        } = &payload.diagrams[0].appearance
+        else {
+            panic!("source declaration must survive projection");
+        };
+        assert_eq!(theme.value(), "forest");
+    }
+}
+
+#[test]
+fn analysis_facts_v3_disables_rename_when_compatible_payload_omits_policy() {
     let mut value = parser_backed_facts_json();
     let semantic_item = value["diagrams"][0]["syntax"]["semantic_items"]
         .as_array_mut()
@@ -240,7 +312,7 @@ fn analysis_facts_v2_disables_rename_when_compatible_payload_omits_policy() {
         .remove("rename_policy");
 
     let payload = serde_json::from_value::<AnalysisFactsPayload>(value)
-        .expect("a compatible facts v2 payload should remain readable");
+        .expect("a compatible facts v3 payload should remain readable");
     assert_eq!(
         payload.diagrams[0].syntax.semantic_items[0].rename_policy,
         EditorRenamePolicy::None
@@ -248,7 +320,7 @@ fn analysis_facts_v2_disables_rename_when_compatible_payload_omits_policy() {
 }
 
 #[test]
-fn analysis_facts_v2_writers_always_emit_rename_policy() {
+fn analysis_facts_v3_writers_always_emit_rename_policy() {
     let value = parser_backed_facts_json();
     assert!(
         value["diagrams"][0]["syntax"]["semantic_items"][0]

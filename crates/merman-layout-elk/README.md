@@ -22,6 +22,12 @@ An operation owner that intentionally accepts the sentinel must call `layout_wit
 
 The workspace license is MIT OR Apache-2.0; the translated ELK implementation remains EPL-2.0 in its own crate.
 
+The [Mermaid 12.3 engine handoff](../merman-elk-layered/MERMAID_12_3_DELTA.md) records the
+elkjs 0.12.0 source delta, provider/phase observations and their verification boundaries.
+It preserves the historical 0.9.3 derivation and measurement identities. Mr. Tree
+now normalizes against graph-level padding after recomputing merged component bounds; the
+adapter no longer supplies a first-child padding workaround.
+
 ## Additional provider integration
 
 `LayoutOptions::algorithm` selects Box, Rectpacking, Force, Stress, Mr. Tree, Radial, or SPOrE
@@ -31,11 +37,11 @@ content shifts. The adapter preserves provider errors and caller work interrupti
 it does not substitute Layered when a selected provider fails. Radial's availability in this
 internal API does not imply a Mermaid root loader named `elk.radial`.
 
-This is an intermediate integration boundary: cross-provider boundary edges return
-`UnsupportedCrossProviderEdge` until their source handling is integrated. Explicit metadata algorithms
-and their cross-boundary downgrade are still pending. The renderer still selects Layered and
-does not advertise these additional names yet. Packing results retain empty edge routes so the
-renderer can distinguish absent sections from routed two-point sections.
+The renderer exposes Mermaid's registered root loaders and explicit container metadata algorithms.
+Cross-boundary metadata downgrades follow Mermaid's adapter. Supported packing, Force, Mr. Tree
+and SPOrE routes preserve their source handling; remaining unsupported boundary combinations return
+`UnsupportedCrossProviderEdge`. Packing results retain empty edge routes so the renderer can
+distinguish absent sections from routed two-point sections.
 
 SPOrE's source uses ambient `Math.random` only to separate coincident centers. The adapter uses
 a separate operation-owned deterministic stream when an operation seed is supplied, or the

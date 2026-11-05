@@ -737,7 +737,8 @@ def render_notice(
         "Merman is an independent, headless Rust implementation of Mermaid-compatible behavior. It",
         "is not affiliated with or endorsed by Mermaid or the projects listed below.",
         "",
-        f"The machine-readable source of truth is [`{contract_path.as_posix()}`]({contract_path.as_posix()}).",
+        f"The machine-readable source of truth is [`{contract_path.as_posix()}`]"
+        f"(https://github.com/Latias94/merman/blob/main/{contract_path.as_posix()}).",
         "It records exact source revisions, local relationships, artifact scopes, and SHA-256-bound",
         "license or notice files. This inventory is engineering evidence, not legal advice.",
         "",

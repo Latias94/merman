@@ -11,9 +11,112 @@ use crate::diagram_theme::{
 };
 use crate::family::{
     DirectStaticPaint, DirectStaticSelectorDomain, FamilyThemeEvidence, FamilyThemeOutcomes,
-    FamilyThemeResidualReason, TerminalVariantDomain, UnsupportedTerminalDomain,
-    reconcile_unsupported_terminal_domains, resolve_direct_static_fill,
+    FamilyThemeResidualReason, StaticSurfacePaint, TerminalVariantDomain,
+    UnsupportedTerminalDomain, reconcile_unsupported_terminal_domains, resolve_direct_static_fill,
 };
+
+#[derive(Debug, Default)]
+struct RailroadPaintOwnership {
+    fill: [bool; 3],
+    stroke: [bool; 3],
+    label: [bool; 3],
+    edge: bool,
+    marker: bool,
+}
+
+impl RailroadPaintOwnership {
+    fn resolve(config: &PresentationConfig) -> Self {
+        Self {
+            fill: [
+                railroad_paint_role_owned(
+                    config,
+                    "terminalFill",
+                    "secondBkg",
+                    Some("secondaryColor"),
+                ),
+                railroad_paint_role_owned(config, "nonTerminalFill", "mainBkg", Some("background")),
+                railroad_paint_role_owned(
+                    config,
+                    "specialFill",
+                    "tertiaryColor",
+                    Some("secondaryColor"),
+                ),
+            ],
+            stroke: [
+                railroad_paint_role_owned(
+                    config,
+                    "terminalStroke",
+                    "secondaryBorderColor",
+                    Some("lineColor"),
+                ),
+                railroad_paint_role_owned(
+                    config,
+                    "nonTerminalStroke",
+                    "primaryBorderColor",
+                    Some("lineColor"),
+                ),
+                railroad_paint_role_owned(
+                    config,
+                    "specialStroke",
+                    "tertiaryBorderColor",
+                    Some("secondaryBorderColor"),
+                ),
+            ],
+            label: [
+                railroad_paint_role_owned(
+                    config,
+                    "terminalTextColor",
+                    "secondaryTextColor",
+                    Some("textColor"),
+                ),
+                railroad_paint_role_owned(
+                    config,
+                    "nonTerminalTextColor",
+                    "primaryTextColor",
+                    Some("textColor"),
+                ),
+                railroad_paint_role_owned(
+                    config,
+                    "nonTerminalTextColor",
+                    "primaryTextColor",
+                    Some("textColor"),
+                ),
+            ],
+            edge: railroad_paint_role_owned(config, "lineColor", "lineColor", None),
+            marker: railroad_paint_role_owned(config, "markerFill", "lineColor", None),
+        }
+    }
+}
+
+fn railroad_paint_role_owned(
+    config: &PresentationConfig,
+    local_key: &str,
+    theme_key: &str,
+    theme_fallback: Option<&str>,
+) -> bool {
+    let valid = |value: Option<&serde_json::Value>| {
+        value
+            .and_then(serde_json::Value::as_str)
+            .map(super::trim_ecmascript_whitespace)
+            .is_some_and(super::is_valid_color_value)
+    };
+    if valid(super::railroad_config_value(config.as_value(), local_key)) {
+        return config.config_paint_overrides_typed_default(&format!("railroad.{local_key}"));
+    }
+    // Follow the same primary/alias selection as `railroad_style`, including Default snapshots.
+    let key = match config
+        .as_value()
+        .get("themeVariables")
+        .and_then(|variables| variables.get(theme_key))
+    {
+        Some(value) if !value.is_null() => Some(theme_key),
+        _ => theme_fallback,
+    };
+    key.is_some_and(|key| {
+        valid(super::theme_config_value(config.as_value(), key, None))
+            && config.config_paint_overrides_typed_default(&format!("themeVariables.{key}"))
+    })
+}
 
 #[derive(Debug)]
 struct RailroadUnsupportedRoute {
@@ -132,6 +235,8 @@ pub(crate) struct RailroadTypographyThemePlan {
     text_fill_routes: Box<[FamilyThemeMechanismKey]>,
     unsupported_routes: Box<[RailroadUnsupportedRoute]>,
     terminal_receipt: OnceLock<RailroadSurfaceReceipt>,
+    core_ownership: RailroadPaintOwnership,
+    core_paints: Vec<StaticSurfacePaint>,
 }
 
 impl RailroadTypographyThemePlan {
@@ -161,6 +266,8 @@ impl RailroadTypographyThemePlan {
                 text_fill_routes: Box::new([]),
                 unsupported_routes: Box::new([]),
                 terminal_receipt: OnceLock::new(),
+                core_ownership: RailroadPaintOwnership::default(),
+                core_paints: Vec::new(),
             });
         };
 
@@ -354,6 +461,8 @@ impl RailroadTypographyThemePlan {
             text_fill_routes: text_fill_routes.into_iter().collect(),
             unsupported_routes: unsupported_routes.into_boxed_slice(),
             terminal_receipt: OnceLock::new(),
+            core_ownership: RailroadPaintOwnership::resolve(effective_config),
+            core_paints: Vec::new(),
         })
     }
 
@@ -366,6 +475,99 @@ impl RailroadTypographyThemePlan {
         let Some(theme) = theme else {
             return Ok(());
         };
+        let mut source_fill = Vec::new();
+        let mut source_stroke = Vec::new();
+        let mut source_label = Vec::new();
+        let mut edge_count = 0usize;
+        for rule in &layout.rules {
+            work_meter.charge(1)?;
+            edge_count += rule.paths.len();
+            for element in &rule.elements {
+                work_meter.charge(1)?;
+                let role = match element.kind.as_str() {
+                    "terminal" => 0,
+                    "nonterminal" => 1,
+                    "special" => 2,
+                    _ => continue,
+                };
+                source_fill.push(self.core_ownership.fill[role]);
+                source_stroke.push(self.core_ownership.stroke[role]);
+                if !element.label.trim().is_empty() {
+                    source_label.push(self.core_ownership.label[role]);
+                }
+            }
+        }
+        let node = StaticSurfacePaint::resolve(
+            Some(theme),
+            ThemeTarget::Node,
+            &source_fill,
+            &source_stroke,
+            work_meter,
+        )?;
+        let label = StaticSurfacePaint::resolve(
+            Some(theme),
+            ThemeTarget::NodeLabel,
+            &source_label,
+            &vec![false; source_label.len()],
+            work_meter,
+        )?;
+        let edge = StaticSurfacePaint::resolve(
+            Some(theme),
+            ThemeTarget::Edge,
+            &vec![true; edge_count],
+            &vec![self.core_ownership.edge; edge_count],
+            work_meter,
+        )?;
+        let marker_count = layout.rules.len().saturating_mul(2);
+        let marker = StaticSurfacePaint::resolve(
+            Some(theme),
+            ThemeTarget::Marker,
+            &vec![self.core_ownership.marker; marker_count],
+            &vec![false; marker_count],
+            work_meter,
+        )?;
+        for (role, (fill, stroke)) in [
+            (
+                &mut self.style.terminal_fill,
+                &mut self.style.terminal_stroke,
+            ),
+            (
+                &mut self.style.non_terminal_fill,
+                &mut self.style.non_terminal_stroke,
+            ),
+            (&mut self.style.special_fill, &mut self.style.special_stroke),
+        ]
+        .into_iter()
+        .enumerate()
+        {
+            if !self.core_ownership.fill[role]
+                && let Some(paint) = &node.fill
+            {
+                *fill = paint.css().to_owned();
+            }
+            if !self.core_ownership.stroke[role]
+                && let Some(paint) = &node.stroke
+            {
+                *stroke = paint.css().to_owned();
+            }
+        }
+        if let Some(paint) = &label.fill {
+            if !self.core_ownership.label[0] {
+                self.style.terminal_text_color = paint.css().to_owned();
+            }
+            if !self.core_ownership.label[1] {
+                self.style.non_terminal_text_color = paint.css().to_owned();
+            }
+            self.text_fill_roles.terminal &= self.core_ownership.label[0];
+            self.text_fill_roles.nonterminal &= self.core_ownership.label[1];
+        }
+        if let Some(paint) = &edge.stroke {
+            self.style.line_color = paint.css().to_owned();
+        }
+        if let Some(paint) = &marker.fill {
+            self.style.marker_fill = paint.css().to_owned();
+        }
+        self.core_paints = vec![node, label, edge, marker];
         if !self
             .unsupported_routes
             .iter()
@@ -444,6 +646,9 @@ impl RailroadTypographyThemePlan {
         let Some(receipt) = self.terminal_receipt.get() else {
             return;
         };
+        for paint in &self.core_paints {
+            paint.record_evidence(evidence);
+        }
         if !receipt.has_styled_text() {
             for (property, requested) in [
                 (

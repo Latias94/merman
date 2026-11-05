@@ -9,13 +9,13 @@ use merman_model::families::block::BlockClassDef;
 
 use crate::diagram_theme::{
     FamilyThemeDisposition, FamilyThemeMechanism, FamilyThemeMechanismKey, FamilyThemeRuleFacet,
-    ResolvedDiagramTheme, ResolvedStyleProperty, ResolvedThemeStyle, ThemeCapability, ThemeTarget,
-    ThemeTypographyProperty, ThemeVariant,
+    ResolvedDiagramTheme, ResolvedStyleProperty, ResolvedThemeStyle, Specified, ThemeCapability,
+    ThemeTarget, ThemeTypographyProperty, ThemeVariant,
 };
 use crate::family::{
-    DirectPaintExpectation, DirectStaticSelectorDomain, FamilyThemeEvidence, FamilyThemeOutcomes,
-    FamilyThemeResidualReason, TerminalVariantDomain, UnsupportedTerminalDomain,
-    reconcile_unsupported_terminal_domains, resolve_direct_static_fill,
+    DirectPaintExpectation, DirectPaintTerminalLedger, DirectStaticSelectorDomain,
+    FamilyThemeEvidence, FamilyThemeOutcomes, FamilyThemeResidualReason, TerminalVariantDomain,
+    UnsupportedTerminalDomain, reconcile_unsupported_terminal_domains, resolve_direct_static_fill,
     resolve_direct_static_stroke, resolved_style_property_for_facet,
     unsupported_residual_for_facet,
 };
@@ -68,7 +68,16 @@ impl BlockLabelBackgroundPlan {
 #[derive(Debug)]
 pub(crate) struct BlockNodeLabelPaintPlan {
     paints: Box<[Option<Box<str>>]>,
+    cluster_paints: Box<[Option<DirectPaintExpectation>]>,
+    cluster_rules: BTreeMap<usize, ThemeCapability>,
+    cluster_outcomes: OnceLock<BlockClusterLabelOutcomes>,
     evidence: FamilyThemeOutcomes,
+}
+
+#[derive(Debug, Default)]
+pub(crate) struct BlockClusterLabelOutcomes {
+    ledger: DirectPaintTerminalLedger,
+    recorded: usize,
 }
 
 impl BlockNodeLabelPaintPlan {
@@ -82,6 +91,9 @@ impl BlockNodeLabelPaintPlan {
         let html_labels = crate::config::config_effective_html_labels(config.as_value());
         let mut plan = Self {
             paints: Box::new([]),
+            cluster_paints: Box::new([]),
+            cluster_rules: BTreeMap::new(),
+            cluster_outcomes: OnceLock::new(),
             evidence: FamilyThemeOutcomes::default(),
         };
         let Some(theme) = theme else { return Ok(plan) };
@@ -91,7 +103,7 @@ impl BlockNodeLabelPaintPlan {
                 FamilyThemeMechanism::RuleFacet { target, .. }
                 | FamilyThemeMechanism::OrdinalPalette { target }
                 | FamilyThemeMechanism::EffectBinding { target, .. }
-                    if matches!(target, ThemeTarget::NodeLabel | ThemeTarget::Text)
+                    if matches!(target, ThemeTarget::NodeLabel | ThemeTarget::Text | ThemeTarget::ClusterLabel)
             )
         }) {
             return Ok(plan);
@@ -113,6 +125,29 @@ impl BlockNodeLabelPaintPlan {
             None,
             work,
         )?;
+        let cluster_style = theme.style_with_work_meter(
+            ThemeTarget::ClusterLabel,
+            ThemeVariant::Default,
+            None,
+            work,
+        )?;
+        let cluster_ordinals = theme.family_rules().any(|(_, rule)| {
+            rule.target() == ThemeTarget::ClusterLabel && rule.ordinal().is_some()
+        });
+        let composites = layout
+            .shape_geometries
+            .iter()
+            .filter_map(|geometry| {
+                matches!(
+                    geometry.boundary,
+                    super::BlockShapeBoundary::Rectangle {
+                        kind: super::BlockRectangleKind::Composite,
+                        ..
+                    }
+                )
+                .then_some(geometry.id.as_str())
+            })
+            .collect::<BTreeSet<_>>();
         let sources = super::resolve_block_node_sources(model);
         let color_classes = model
             .class_defs
@@ -134,6 +169,10 @@ impl BlockNodeLabelPaintPlan {
         let mut capabilities = BTreeMap::new();
         let mut source_owned = Vec::with_capacity(layout.nodes.len());
         let mut paints = Vec::with_capacity(layout.nodes.len());
+        let mut cluster_paints = Vec::with_capacity(layout.nodes.len());
+        let mut cluster_index = 0;
+        let mut cluster_occurrences = Vec::new();
+        let mut cluster_owned_fill = Vec::new();
         for (index, node) in layout.nodes.iter().enumerate() {
             work.charge(1)?;
             let source = sources.get(node.id.as_str());
@@ -163,7 +202,31 @@ impl BlockNodeLabelPaintPlan {
             let visible = !text.trim().is_empty()
                 && node.label_width.unwrap_or(0.0) > 0.0
                 && node.label_height.unwrap_or(0.0) > 0.0;
-            source_owned.push(owned || !visible);
+            let ordinal_cluster_style;
+            let cluster = if composites.contains(node.id.as_str()) {
+                cluster_index += 1;
+                cluster_owned_fill.push(owned || !visible);
+                if visible {
+                    cluster_occurrences.push((cluster_index, ThemeVariant::Default));
+                }
+                Some(if cluster_ordinals {
+                    ordinal_cluster_style = theme.style_with_work_meter(
+                        ThemeTarget::ClusterLabel,
+                        ThemeVariant::Default,
+                        Some(cluster_index),
+                        work,
+                    )?;
+                    &ordinal_cluster_style
+                } else {
+                    &cluster_style
+                })
+            } else {
+                None
+            };
+            let cluster_owns_fill = cluster.is_some_and(|style| {
+                !matches!(style.fill_resolution().specified(), Specified::Unspecified)
+            });
+            source_owned.push(owned || !visible || cluster_owns_fill);
             let dynamic_style;
             let style = if has_ordinal {
                 dynamic_style = theme.text_style_with_work_meter(
@@ -181,22 +244,47 @@ impl BlockNodeLabelPaintPlan {
                     style
                         .winner_rule_properties()
                         .filter_map(|(property, origin)| {
-                            (!(owned && property == ResolvedStyleProperty::Fill))
+                            (!((owned || cluster_owns_fill)
+                                && property == ResolvedStyleProperty::Fill))
                                 .then_some((origin.rule_index(), property))
                         }),
                 );
+                if let Some(cluster) = cluster {
+                    winners.extend(cluster.winner_rule_properties().filter_map(
+                        |(property, origin)| {
+                            (!(owned && property == ResolvedStyleProperty::Fill))
+                                .then_some((origin.rule_index(), property))
+                        },
+                    ));
+                }
             }
+            // A composite's explicit label role overrides its generic node/text fill.
+            let style = cluster.filter(|_| cluster_owns_fill).unwrap_or(style);
             let paint = if visible && !owned {
                 resolve_direct_static_fill(
                     theme,
                     style,
-                    &[ThemeTarget::Text, ThemeTarget::NodeLabel],
+                    &[
+                        ThemeTarget::Text,
+                        ThemeTarget::NodeLabel,
+                        ThemeTarget::ClusterLabel,
+                    ],
                     DirectStaticSelectorDomain::Default,
                 )
                 .map(DirectPaintExpectation::from_paint)
             } else {
                 None
             };
+            let cluster_paint = paint
+                .as_ref()
+                .filter(|paint| {
+                    style.fill_resolution().winner().is_some_and(|origin| {
+                        origin.rule_index() == paint.rule_index()
+                            && origin.target() == ThemeTarget::ClusterLabel
+                    })
+                })
+                .cloned();
+            cluster_paints.push(cluster_paint);
             if let Some(paint) = paint.as_ref()
                 && let Some((_, origin)) =
                     style.winner_rule_properties().find(|(property, origin)| {
@@ -219,7 +307,10 @@ impl BlockNodeLabelPaintPlan {
             else {
                 continue;
             };
-            if !matches!(target, ThemeTarget::NodeLabel | ThemeTarget::Text) {
+            if !matches!(
+                target,
+                ThemeTarget::NodeLabel | ThemeTarget::Text | ThemeTarget::ClusterLabel
+            ) {
                 continue;
             }
             let observation = observations.entry((rule_index, target)).or_default();
@@ -257,8 +348,12 @@ impl BlockNodeLabelPaintPlan {
             } else if !observation.incomplete
                 && let Some(capability) = observation.capabilities.get(&ResolvedStyleProperty::Fill)
             {
-                plan.evidence
-                    .mark_applied_with_capabilities(key, [*capability]);
+                if target == ThemeTarget::ClusterLabel {
+                    plan.cluster_rules.insert(index, *capability);
+                } else {
+                    plan.evidence
+                        .mark_applied_with_capabilities(key, [*capability]);
+                }
             }
         }
         reconcile_unsupported_terminal_domains(
@@ -271,6 +366,11 @@ impl BlockNodeLabelPaintPlan {
                 )
                 .with_source_owned_fill(&source_owned),
                 UnsupportedTerminalDomain::fallbacks_only(
+                    ThemeTarget::ClusterLabel,
+                    TerminalVariantDomain::indexed(&cluster_occurrences),
+                )
+                .with_source_owned_fill(&cluster_owned_fill),
+                UnsupportedTerminalDomain::fallbacks_only(
                     ThemeTarget::Text,
                     TerminalVariantDomain::uniform(layout.nodes.len(), ThemeVariant::Default),
                 )
@@ -279,6 +379,7 @@ impl BlockNodeLabelPaintPlan {
             work,
         )?;
         plan.paints = paints.into();
+        plan.cluster_paints = cluster_paints.into();
         Ok(plan)
     }
 
@@ -288,6 +389,51 @@ impl BlockNodeLabelPaintPlan {
 
     pub(crate) fn record_evidence(&self, evidence: &mut FamilyThemeEvidence) {
         evidence.merge_borrowed(&self.evidence);
+        if let Some(receipt) = self.cluster_outcomes.get() {
+            let complete = receipt.recorded == self.cluster_paints.iter().flatten().count();
+            for (&index, &capability) in &self.cluster_rules {
+                if receipt
+                    .ledger
+                    .proves_property(complete, index, ResolvedStyleProperty::Fill)
+                {
+                    evidence.mark_applied_with_capabilities(
+                        FamilyThemeMechanismKey::Rule {
+                            index,
+                            target: ThemeTarget::ClusterLabel,
+                        },
+                        [capability],
+                    );
+                }
+            }
+        }
+    }
+
+    pub(crate) fn begin_outcomes(&self) -> Option<BlockClusterLabelOutcomes> {
+        (!self.cluster_rules.is_empty()).then(BlockClusterLabelOutcomes::default)
+    }
+
+    pub(crate) fn record_terminal(
+        &self,
+        receipt: &mut BlockClusterLabelOutcomes,
+        node_index: usize,
+        emitted: Option<&str>,
+    ) {
+        let Some(expected) = self.cluster_paints.get(node_index).and_then(Option::as_ref) else {
+            return;
+        };
+        receipt.recorded += 1;
+        receipt.ledger.record(
+            Some(expected),
+            false,
+            emitted.map(|css| (expected.rule_index(), css)),
+            ResolvedStyleProperty::Fill,
+        );
+    }
+
+    pub(crate) fn record_outcomes(&self, receipt: Option<BlockClusterLabelOutcomes>) {
+        if let Some(receipt) = receipt {
+            let _ = self.cluster_outcomes.set(receipt);
+        }
     }
 }
 
@@ -711,13 +857,9 @@ impl BlockNodePaintThemePlan {
                 )
                 .with_source_owned_fill(&cluster_owned_fill)
                 .with_source_owned_stroke(&cluster_owned_stroke),
-                // Composite labels remain node labels, and frontmatter has no title terminal.
+                // Frontmatter has no independent Block title terminal.
                 UnsupportedTerminalDomain::direct(
                     ThemeTarget::Title,
-                    TerminalVariantDomain::uniform(0, ThemeVariant::Default),
-                ),
-                UnsupportedTerminalDomain::direct(
-                    ThemeTarget::ClusterLabel,
                     TerminalVariantDomain::uniform(0, ThemeVariant::Default),
                 ),
             ],

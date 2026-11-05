@@ -57,6 +57,7 @@ pub(in crate::svg::parity::flowchart::render::node) fn try_render_image_square(
                     &rect_stroke_path,
                     common.stroke_width,
                     common.stroke_dasharray,
+                    common.work_meter,
                     common.hand_drawn_seed,
                 )
             })
@@ -224,9 +225,11 @@ pub(super) fn advance_rough_geometry(
     if common.node_img.is_some_and(|s| !s.trim().is_empty()) {
         let (_, _, _, _, _, _, _, _, path, _) = prepare_image_geometry(ctx, common, label);
         let _ = super::super::roughjs::roughjs_prepare_stroke_path_for_svg_path(
+            super::super::roughjs::RoughGeometryTarget::Query,
             &path,
             common.stroke_width,
             common.stroke_dasharray,
+            common.work_meter,
             common.hand_drawn_seed,
         );
     }

@@ -282,6 +282,15 @@ const GRAPH_NODE_SHAPE_DEFINITIONS: &[GraphNodeShapeDefinition] = &[
             "comment",
             "console",
             "cross-circ",
+            "bpmn-activity",
+            "bpmn-annotation",
+            "bpmn-boundary",
+            "bpmn-data",
+            "bpmn-data-store",
+            "bpmn-end",
+            "bpmn-gateway",
+            "bpmn-intermediate",
+            "bpmn-start",
             "crossed-circle",
             "curv-trap",
             "curved-trapezoid",
@@ -686,6 +695,25 @@ mod tests {
             assert!(
                 registered.contains(name),
                 "pinned Mermaid shape {name:?} is missing a terminal disposition"
+            );
+        }
+    }
+
+    #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
+    #[test]
+    fn bpmn_shapes_have_an_explicit_unsupported_terminal_disposition() {
+        for name in merman_model::families::flowchart::shapes::pinned_shape_names()
+            .filter(|name| name.starts_with("bpmn-"))
+        {
+            assert!(
+                matches!(
+                    resolve_flowchart_node_shape(Some(name), GraphDirection::TopDown),
+                    Err(crate::AsciiError::UnsupportedFeature {
+                        diagram_type: "flowchart",
+                        feature: "unsupported flowchart node shape projections",
+                    })
+                ),
+                "{name}"
             );
         }
     }

@@ -143,6 +143,34 @@ pub(super) fn count_orthogonal_bends(points: &[LayoutPoint], epsilon: f64) -> us
         .count()
 }
 
+pub(in crate::swimlane) fn routes_touch_at_bend(
+    first: &[LayoutPoint],
+    second: &[LayoutPoint],
+    tolerance: f64,
+) -> bool {
+    let first = orthogonal_segments_for_points(&dedupe_consecutive_points(first, EPSILON), EPSILON);
+    let second =
+        orthogonal_segments_for_points(&dedupe_consecutive_points(second, EPSILON), EPSILON);
+    let touches = |bends: &[OrthogonalSegment], segments: &[OrthogonalSegment]| {
+        bends
+            .windows(2)
+            .filter(|pair| pair[0].horizontal != pair[1].horizontal)
+            .any(|pair| {
+                let bend = &pair[1].a;
+                segments.iter().any(|segment| {
+                    let dx = (segment.a.x.min(segment.b.x) - bend.x)
+                        .max(0.0)
+                        .max(bend.x - segment.a.x.max(segment.b.x));
+                    let dy = (segment.a.y.min(segment.b.y) - bend.y)
+                        .max(0.0)
+                        .max(bend.y - segment.a.y.max(segment.b.y));
+                    dx.hypot(dy) < tolerance
+                })
+            })
+    };
+    touches(&first, &second) || touches(&second, &first)
+}
+
 pub(super) fn dedupe_consecutive_points(points: &[LayoutPoint], epsilon: f64) -> Vec<LayoutPoint> {
     let mut result = Vec::with_capacity(points.len());
     for point in points {
@@ -770,6 +798,7 @@ mod tests {
             label_type: "text".to_string(),
             shape: "rect".to_string(),
             kind,
+            producer_lane_role: None,
             parent_id: None,
             top_lane_id: None,
             requested_dir: None,

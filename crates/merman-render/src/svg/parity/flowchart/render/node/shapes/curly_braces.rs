@@ -431,6 +431,7 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_curly_brace_commen
                 d,
                 common.stroke_width,
                 common.stroke_dasharray,
+                common.work_meter,
                 common.hand_drawn_seed,
             )
         })
@@ -486,9 +487,11 @@ pub(super) fn advance_rough_geometry(
     );
     for path in geometry.paths {
         let _ = super::super::roughjs::roughjs_prepare_stroke_path_for_svg_path(
+            super::super::roughjs::RoughGeometryTarget::Query,
             &path.d,
             common.stroke_width,
             common.stroke_dasharray,
+            common.work_meter,
             common.hand_drawn_seed,
         );
     }

@@ -5,6 +5,7 @@ pub(crate) use theme::{
 };
 
 use crate::config::{config_bool, config_f64_or};
+use crate::diagram_theme::ThemeTarget;
 use crate::text::{TextMeasurer, TextStyle};
 use crate::{Error, Result};
 use merman_model::families::wardley::{
@@ -13,6 +14,20 @@ use merman_model::families::wardley::{
 use serde::Serialize;
 use serde_json::Value;
 use std::collections::{HashMap, HashSet};
+
+pub(crate) const PAINT_TARGETS: &[ThemeTarget] = &[
+    ThemeTarget::Node,
+    ThemeTarget::NodeLabel,
+    ThemeTarget::Edge,
+    ThemeTarget::EdgeLabel,
+    ThemeTarget::Marker,
+    ThemeTarget::Title,
+    ThemeTarget::Axis,
+];
+
+fn owns_target(target: ThemeTarget) -> bool {
+    PAINT_TARGETS.contains(&target)
+}
 
 const DEFAULT_WIDTH: f64 = 900.0;
 const DEFAULT_HEIGHT: f64 = 600.0;

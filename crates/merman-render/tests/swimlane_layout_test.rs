@@ -763,7 +763,7 @@ A --> B
 }
 
 #[test]
-fn edge_labels_are_layout_waypoints_and_anchor_to_the_original_edge() {
+fn edge_labels_reserve_space_without_creating_a_rank_and_anchor_to_the_original_edge() {
     let layout = layout_swimlane(
         r#"swimlane-beta TB
 subgraph Team
@@ -789,13 +789,127 @@ A -->|approval| B
     );
     assert!((label.height - 20.0).abs() <= EPSILON);
     assert!((label.label_width - 64.0).abs() <= EPSILON);
-    assert!(a.layer < label.layer && label.layer < b.layer);
+    assert_eq!(b.layer, a.layer + 1);
+    assert!(label.x.is_finite() && label.y.is_finite());
 
     assert_eq!(layout.edges.len(), 1, "virtual edges must not render");
     let edge = &layout.edges[0];
     assert_eq!(edge.label_node_id.as_deref(), Some(label.id.as_str()));
     assert!(point_on_polyline((label.x, label.y), &edge.points));
     assert_orthogonal(&edge.points);
+}
+
+#[test]
+fn mermaid_12_3_labels_preserve_content_ranks_in_all_directions() {
+    for direction in ["TB", "BT", "LR", "RL"] {
+        for edges in [
+            "A -->|yes| B",
+            "A -->|yes| B\nA -->|cross| C\nB --> C",
+            "A -->|yes| B\nB -->|back| A",
+        ] {
+            let source = format!(
+                "swimlane-beta {direction}\nsubgraph first\nA\nB\nend\nsubgraph second\nC\nend\n{edges}\n"
+            );
+            let plain_source = source
+                .replace("|yes|", "")
+                .replace("|cross|", "")
+                .replace("|back|", "");
+            let labelled = layout_swimlane(&source);
+            let plain = layout_swimlane(&plain_source);
+            for id in ["A", "B", "C"] {
+                assert_eq!(
+                    node_by_id(&labelled, id).layer,
+                    node_by_id(&plain, id).layer,
+                    "{direction}: {source}"
+                );
+            }
+            for label in labelled.nodes.iter().filter(|node| node.is_edge_label) {
+                assert!(
+                    label.x.is_finite() && label.y.is_finite(),
+                    "{direction}: {label:?}"
+                );
+            }
+        }
+    }
+}
+
+#[test]
+fn mermaid_12_3_same_rank_cross_lane_label_keeps_content_flow_positions() {
+    for direction in ["TB", "BT", "LR", "RL"] {
+        let source = format!(
+            "swimlane-beta {direction}\nsubgraph first\nA\nend\nsubgraph second\nB\nend\nA -->|e| B\n"
+        );
+        let labelled = layout_swimlane(&source);
+        let plain = layout_swimlane(&source.replace("|e|", ""));
+        for id in ["A", "B"] {
+            let node = node_by_id(&labelled, id);
+            let baseline = node_by_id(&plain, id);
+            assert_eq!(node.layer, baseline.layer, "{direction}: {id}");
+            let (flow, plain_flow) = if matches!(direction, "LR" | "RL") {
+                (node.x, baseline.x)
+            } else {
+                (node.y, baseline.y)
+            };
+            assert!(
+                (flow - plain_flow).abs() < EPSILON,
+                "{direction}: {id}: {flow} != {plain_flow}"
+            );
+        }
+    }
+}
+
+#[test]
+fn mermaid_12_3_shared_member_prunes_only_the_lane_it_emptied() {
+    for direction in ["TB", "BT", "LR", "RL"] {
+        let source = format!(
+            "swimlane-beta {direction}\nsubgraph first\nsubgraph inner\nA\nend\nend\nsubgraph lost\nA\nend\nsubgraph authoredEmpty\nend\n"
+        );
+        let layout = layout_swimlane(&source);
+        assert!(
+            layout.lanes.iter().all(|lane| lane.id != "lost"),
+            "{direction}: {layout:?}"
+        );
+        assert!(layout.lanes.iter().any(|lane| lane.id == "authoredEmpty"));
+        assert_eq!(
+            node_by_id(&layout, "A").top_lane_id.as_deref(),
+            Some("first")
+        );
+        let with_edge = layout_swimlane(&format!("{source}\nA --> lost\n"));
+        assert!(with_edge.lanes.iter().any(|lane| lane.id == "lost"));
+        let with_member =
+            layout_swimlane(&source.replace("subgraph lost\nA\n", "subgraph lost\nA\nB\n"));
+        assert!(with_member.lanes.iter().any(|lane| lane.id == "lost"));
+    }
+}
+
+#[test]
+fn mermaid_12_3_nested_groups_are_sized_deepest_first_in_all_directions() {
+    for direction in ["TB", "BT", "LR", "RL"] {
+        let source = format!(
+            "swimlane-beta {direction}\nsubgraph lane\nsubgraph middle\nsubgraph inner\nA[Start]\nB[Finish]\nend\nend\nend\nA --> B\n"
+        );
+        let layout = layout_swimlane(&source);
+        let bounds = |id: &str| {
+            let lane = layout.lanes.iter().find(|lane| lane.id == id).unwrap();
+            (
+                lane.x - lane.width / 2.0,
+                lane.y - lane.height / 2.0,
+                lane.x + lane.width / 2.0,
+                lane.y + lane.height / 2.0,
+            )
+        };
+        for (parent, child) in [("lane", "middle"), ("middle", "inner")] {
+            let outer = bounds(parent);
+            let inner = bounds(child);
+            assert!(
+                outer.0 <= inner.0 + EPSILON
+                    && outer.1 <= inner.1 + EPSILON
+                    && outer.2 + EPSILON >= inner.2
+                    && outer.3 + EPSILON >= inner.3,
+                "{direction}: {parent} does not contain {child}: {layout:?}"
+            );
+        }
+    }
 }
 
 #[test]

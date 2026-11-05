@@ -2,8 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
-  selectRenderInputSnapshot,
-  selectThemeDraftChanged,
+  DEFAULT_WORKSPACE_SNAPSHOT,
   selectWorkspaceSnapshot,
   useAppStore,
   type WorkspaceSnapshot,
@@ -17,7 +16,7 @@ test("diagram rendering setters update only their own axis", () => {
     svgPipeline: "parity",
   });
 
-  useAppStore.getState().setThemePresetId("future-theme");
+  useAppStore.getState().selectTheme({ kind: "preset", presetId: "future-theme" });
   assert.deepEqual(renderingState(), {
     diagramTheme: "forest",
     themePresetId: "future-theme",
@@ -145,32 +144,19 @@ function renderingState() {
   };
 }
 
-test("preset and custom recipe setters replace one another atomically", () => {
-  useAppStore.getState().setThemePresetId("brutalist");
+test("preset and recipe choices replace one another atomically and preserve names", () => {
   const recipe = '{"schema_version":1,"kind":"design","design":{}}';
+  useAppStore.getState().applyWorkspaceSnapshot({ ...DEFAULT_WORKSPACE_SNAPSHOT });
   const notifications: Array<[string | null, string | null]> = [];
-  const unsubscribe = useAppStore.subscribe((state) => {
-    notifications.push([state.themePresetId, state.themeRecipeJson]);
-  });
-
-  useAppStore.getState().setThemeRecipeJson(recipe);
-  assert.equal(
-    selectWorkspaceSnapshot(useAppStore.getState()).themeRecipeJson,
-    recipe,
-  );
-  useAppStore.getState().setThemePresetId("spotless");
-  useAppStore.getState().setThemeRecipeJson(null);
-  useAppStore.getState().setThemeRecipeJson(recipe);
-  useAppStore.getState().setThemePresetId(null);
+  const unsubscribe = useAppStore.subscribe((state) => notifications.push([state.themePresetId, state.themeRecipeJson]));
+  useAppStore.getState().selectTheme({ kind: "recipe", recipeJson: recipe, label: { name: "Nightfall", source: "exploration" } });
+  assert.equal(selectWorkspaceSnapshot(useAppStore.getState()).themeRecipeLabel?.name, "Nightfall");
+  useAppStore.getState().selectTheme({ kind: "preset", presetId: "spotless" });
+  assert.equal(useAppStore.getState().themeRecipeLabel, null);
+  useAppStore.getState().selectTheme({ kind: "mermaid", theme: "forest" });
   unsubscribe();
-
-  assert.deepEqual(notifications, [
-    [null, recipe],
-    ["spotless", null],
-    ["spotless", null],
-    [null, recipe],
-    [null, null],
-  ]);
+  assert.deepEqual(notifications, [[null, recipe], ["spotless", null], [null, null]]);
+  assert.equal(useAppStore.getState().diagramTheme, "forest");
 });
 
 test("applying and selecting a custom workspace retains its recipe", () => {
@@ -183,160 +169,55 @@ test("applying and selecting a custom workspace retains its recipe", () => {
   assert.deepEqual(selectWorkspaceSnapshot(useAppStore.getState()), snapshot);
 });
 
-const validRecipe = '{"schema_version":1,"kind":"design","design":{"tokens":{"accent":{"type":"color","value":"#abcdef"}}}}';
-
-function beginValidThemeDraft() {
-  useAppStore.getState().cancelThemeEdit();
-  useAppStore.getState().beginThemeEdit();
-  const importing = useAppStore.getState().beginThemeImport()!;
-  const token = useAppStore.getState().completeThemeImport(importing, validRecipe)!;
-  useAppStore.getState().acceptThemeValidation(token, validRecipe);
-}
-
-test("valid draft previews overlay only theme fields and leave sharing applied", () => {
-  useAppStore.getState().applyWorkspaceSnapshot({
-    ...selectWorkspaceSnapshot(useAppStore.getState()),
-    themePresetId: "cyberpunk", themeRecipeJson: null,
-  });
-  const baseline = selectWorkspaceSnapshot(useAppStore.getState());
-  beginValidThemeDraft();
-  assert.deepEqual(selectWorkspaceSnapshot(useAppStore.getState()), baseline);
-  assert.deepEqual(selectRenderInputSnapshot(useAppStore.getState()), {
-    ...baseline, themePresetId: null, themeRecipeJson: validRecipe,
-  });
-  assert.equal(selectThemeDraftChanged(useAppStore.getState()), true);
-});
-
-test("invalid theme text retains the valid candidate with current source, config and font", () => {
-  beginValidThemeDraft();
-  const importing = useAppStore.getState().beginThemeImport()!;
-  const invalid = useAppStore.getState().completeThemeImport(importing, "{")!;
-  useAppStore.getState().rejectThemeValidation(invalid, "Invalid JSON");
-  useAppStore.getState().setCode("classDiagram\nclass Latest");
-  useAppStore.getState().setMermaidConfig('{"theme":"forest"}');
-  useAppStore.getState().setDiagramFont("arial");
-  const snapshot = selectRenderInputSnapshot(useAppStore.getState());
-  assert.equal(snapshot.code, "classDiagram\nclass Latest");
-  assert.equal(snapshot.mermaidConfig, '{"theme":"forest"}');
-  assert.equal(snapshot.diagramFont, "arial");
-  assert.equal(snapshot.themeRecipeJson, validRecipe);
-  assert.equal(useAppStore.getState().themeEditSession!.rawJson, "{");
-  assert.equal(selectThemeDraftChanged(useAppStore.getState()), true);
-  assert.equal(useAppStore.getState().applyThemeEdit(), false);
-});
-
-test("Cancel preserves unrelated workspace edits and rejects closed-session work", () => {
-  beginValidThemeDraft();
+test("closing appearance keeps the selected theme and subsequent source edits", () => {
+  useAppStore.getState().applyWorkspaceSnapshot({ ...DEFAULT_WORKSPACE_SNAPSHOT });
+  useAppStore.getState().openThemePanel();
+  useAppStore.getState().selectTheme({ kind: "preset", presetId: "cyberpunk" });
   useAppStore.getState().setCode("sequenceDiagram\nAlice->>Bob: Keep this edit");
-  const pendingImport = useAppStore.getState().beginThemeImport()!;
-  const invalidToken = {
-    sessionId: useAppStore.getState().themeEditSession!.id,
-    revision: useAppStore.getState().themeEditSession!.revision,
-  };
-  const latest = selectWorkspaceSnapshot(useAppStore.getState());
-  useAppStore.getState().cancelThemeEdit();
-  assert.deepEqual(selectWorkspaceSnapshot(useAppStore.getState()), latest);
-  assert.deepEqual(selectRenderInputSnapshot(useAppStore.getState()), latest);
-  assert.equal(useAppStore.getState().completeThemeImport(pendingImport, validRecipe), null);
-  assert.equal(useAppStore.getState().acceptThemeValidation(invalidToken, validRecipe), false);
-  useAppStore.getState().beginThemeEdit();
-  assert.equal(useAppStore.getState().completeThemeImport(pendingImport, validRecipe), null);
-  assert.equal(useAppStore.getState().acceptThemeValidation(invalidToken, validRecipe), false);
-  useAppStore.getState().cancelThemeEdit();
+  useAppStore.getState().closeThemePanel();
+  assert.equal(useAppStore.getState().themePanelOpen, false);
+  assert.equal(useAppStore.getState().themePresetId, "cyberpunk");
+  assert.equal(selectWorkspaceSnapshot(useAppStore.getState()).code, "sequenceDiagram\nAlice->>Bob: Keep this edit");
+  assert.equal(useAppStore.getState().undoAppearance(), true);
+  assert.equal(useAppStore.getState().themePresetId, null);
+  assert.equal(useAppStore.getState().code, "sequenceDiagram\nAlice->>Bob: Keep this edit");
 });
 
-test("Apply commits only theme fields, stays open and advances the cancellation baseline", () => {
-  beginValidThemeDraft();
-  const before = selectWorkspaceSnapshot(useAppStore.getState());
-  const expected = { ...before, themePresetId: null, themeRecipeJson: validRecipe };
-  const notifications: WorkspaceSnapshot[] = [];
-  const unsubscribe = useAppStore.subscribe((state) => notifications.push(selectWorkspaceSnapshot(state)));
-  assert.equal(useAppStore.getState().applyThemeEdit(), true);
-  unsubscribe();
-  assert.deepEqual(notifications, [expected]);
-  assert.ok(useAppStore.getState().themeEditSession);
-  assert.equal(selectThemeDraftChanged(useAppStore.getState()), false);
-  useAppStore.getState().selectThemeCandidate({ kind: "none" });
-  assert.equal(selectRenderInputSnapshot(useAppStore.getState()).themeRecipeJson, null);
-  useAppStore.getState().cancelThemeEdit();
-  assert.deepEqual(selectWorkspaceSnapshot(useAppStore.getState()), expected);
+test("recommendations merge current config and undo never overwrites later authored config", () => {
+  const initial = { ...DEFAULT_WORKSPACE_SNAPSHOT, mermaidConfig: '{"flowchart":{"look":"handDrawn","nodeSpacing":42}}' };
+  useAppStore.getState().applyWorkspaceSnapshot(initial);
+  useAppStore.getState().applyThemeConfig({ flowchart: { look: "classic" } });
+  assert.deepEqual(JSON.parse(useAppStore.getState().mermaidConfig), { flowchart: { look: "classic", nodeSpacing: 42 } });
+  assert.equal(useAppStore.getState().undoAppearance(), true);
+  assert.equal(useAppStore.getState().mermaidConfig, initial.mermaidConfig);
+  useAppStore.getState().selectTheme({ kind: "preset", presetId: "spotless" });
+  useAppStore.getState().applyThemeConfig({ flowchart: { look: "classic" } });
+  useAppStore.getState().setMermaidConfig('{"flowchart":{"look":"neo","nodeSpacing":99}}');
+  assert.equal(useAppStore.getState().undoAppearance(), true);
+  assert.equal(useAppStore.getState().themePresetId, null);
+  assert.equal(useAppStore.getState().mermaidConfig, '{"flowchart":{"look":"neo","nodeSpacing":99}}');
 });
 
-test("workspace replacement invalidates a pending theme session", () => {
-  useAppStore.getState().beginThemeEdit();
-  const importing = useAppStore.getState().beginThemeImport()!;
-  const token = useAppStore.getState().completeThemeImport(importing, validRecipe)!;
-  const replacement = { ...selectWorkspaceSnapshot(useAppStore.getState()), themeRecipeJson: null, themePresetId: "spotless" };
-  useAppStore.getState().applyWorkspaceSnapshot(replacement);
-  assert.equal(useAppStore.getState().themeEditSession, null);
-  assert.equal(useAppStore.getState().acceptThemeValidation(token, validRecipe), false);
-  assert.deepEqual(selectRenderInputSnapshot(useAppStore.getState()), replacement);
-});
-
-test("appearance previews cancel together without changing the applied workspace", () => {
-  const baseline = {
-    ...selectWorkspaceSnapshot(useAppStore.getState()), diagramFont: "inherit" as const,
-    diagramTheme: "auto" as const, mermaidConfig: '{"flowchart":{"look":"handDrawn","nodeSpacing":42}}',
-  };
-  useAppStore.getState().applyWorkspaceSnapshot(baseline);
-  useAppStore.getState().beginThemeEdit();
-  useAppStore.getState().previewThemeSettings({ diagramTheme: "dark", diagramFont: "georgia" });
-  useAppStore.getState().previewThemeConfig({ flowchart: { look: "classic" } });
-  const preview = selectRenderInputSnapshot(useAppStore.getState());
-  assert.equal(preview.diagramTheme, "dark");
-  assert.equal(preview.diagramFont, "georgia");
-  assert.deepEqual(JSON.parse(preview.mermaidConfig), { flowchart: { look: "classic", nodeSpacing: 42 } });
-  assert.deepEqual(selectWorkspaceSnapshot(useAppStore.getState()), baseline);
-  useAppStore.getState().setCode("flowchart LR\nA[Keep independent edit]");
-  useAppStore.getState().cancelThemeEdit();
-  assert.deepEqual(selectWorkspaceSnapshot(useAppStore.getState()), { ...baseline, code: "flowchart LR\nA[Keep independent edit]" });
-});
-
-test("Apply merges panel-owned keys with the latest config and advances all appearance choices", () => {
-  useAppStore.getState().applyWorkspaceSnapshot({
-    ...selectWorkspaceSnapshot(useAppStore.getState()), diagramFont: "inherit", diagramTheme: "auto",
-    mermaidConfig: '{"flowchart":{"look":"handDrawn","nodeSpacing":42}}',
-  });
-  useAppStore.getState().beginThemeEdit();
-  useAppStore.getState().previewThemeSettings({ diagramTheme: "dark", diagramFont: "arial" });
-  useAppStore.getState().previewThemeConfig({ flowchart: { look: "classic" } });
-  useAppStore.getState().setMermaidConfig('{"flowchart":{"look":"handDrawn","nodeSpacing":99},"sequence":{"actorMargin":70}}');
-  const preview = selectRenderInputSnapshot(useAppStore.getState());
-  const notifications: WorkspaceSnapshot[] = [];
-  const unsubscribe = useAppStore.subscribe((state) => notifications.push(selectWorkspaceSnapshot(state)));
-  assert.equal(useAppStore.getState().applyThemeEdit(), true);
-  unsubscribe();
-  assert.deepEqual(notifications, [preview]);
-  assert.deepEqual(JSON.parse(preview.mermaidConfig), { flowchart: { look: "classic", nodeSpacing: 99 }, sequence: { actorMargin: 70 } });
-  assert.equal(selectThemeDraftChanged(useAppStore.getState()), false);
-  useAppStore.getState().previewThemeSettings({ diagramTheme: "forest" });
-  useAppStore.getState().cancelThemeEdit();
-  assert.deepEqual(selectWorkspaceSnapshot(useAppStore.getState()), preview);
-});
-
-test("invalid live config is neither overwritten nor masked by a recommendation draft", () => {
-  useAppStore.getState().applyWorkspaceSnapshot({ ...selectWorkspaceSnapshot(useAppStore.getState()), mermaidConfig: "{}" });
-  useAppStore.getState().beginThemeEdit();
-  useAppStore.getState().previewThemeConfig({ flowchart: { look: "classic" } });
-  useAppStore.getState().setMermaidConfig("{");
-  assert.equal(selectRenderInputSnapshot(useAppStore.getState()).mermaidConfig, "{");
-  assert.equal(useAppStore.getState().applyThemeEdit(), false);
+test("invalid live configuration remains visible and cannot be replaced by a recommendation", () => {
+  useAppStore.getState().applyWorkspaceSnapshot({ ...DEFAULT_WORKSPACE_SNAPSHOT, mermaidConfig: "{" });
+  assert.throws(() => useAppStore.getState().applyThemeConfig({ flowchart: { look: "classic" } }));
   assert.equal(useAppStore.getState().mermaidConfig, "{");
-  assert.ok(useAppStore.getState().themeEditSession?.applyError);
-  assert.equal(useAppStore.getState().themeEditSession?.error, null);
-  assert.throws(() => useAppStore.getState().previewThemeConfig({ flowchart: { look: "classic" } }));
-  useAppStore.getState().setMermaidConfig('{"sequence":{"actorMargin":70}}');
-  assert.equal(useAppStore.getState().themeEditSession?.applyError, null);
-  assert.equal(useAppStore.getState().applyThemeEdit(), true);
-  assert.deepEqual(JSON.parse(useAppStore.getState().mermaidConfig), { sequence: { actorMargin: 70 }, flowchart: { look: "classic" } });
-  useAppStore.getState().cancelThemeEdit();
+  assert.equal(useAppStore.getState().appearanceHistory.length, 0);
 });
 
-test("returning a panel setting to the applied value removes its draft", () => {
-  useAppStore.getState().beginThemeEdit();
-  const applied = selectWorkspaceSnapshot(useAppStore.getState());
-  useAppStore.getState().previewThemeSettings({ diagramTheme: "dark", diagramFont: "georgia" });
-  useAppStore.getState().previewThemeSettings({ diagramTheme: applied.diagramTheme, diagramFont: applied.diagramFont });
-  assert.equal(selectThemeDraftChanged(useAppStore.getState()), false);
-  useAppStore.getState().cancelThemeEdit();
+test("workspace replacement clears stale appearance identity, history and panel state", () => {
+  useAppStore.getState().selectTheme({ kind: "recipe", recipeJson: "{}", label: { name: "My theme", source: "imported" } });
+  useAppStore.getState().openThemePanel();
+  useAppStore.getState().applyWorkspaceSnapshot({ ...DEFAULT_WORKSPACE_SNAPSHOT });
+  assert.equal(useAppStore.getState().themeRecipeLabel, null);
+  assert.equal(useAppStore.getState().appearanceHistory.length, 0);
+  assert.equal(useAppStore.getState().themePanelOpen, false);
+});
+
+test("no-op choices create no history and appearance history is bounded", () => {
+  useAppStore.getState().applyWorkspaceSnapshot({ ...DEFAULT_WORKSPACE_SNAPSHOT });
+  useAppStore.getState().setDiagramFont(DEFAULT_WORKSPACE_SNAPSHOT.diagramFont);
+  assert.equal(useAppStore.getState().appearanceHistory.length, 0);
+  for (let i = 0; i < 40; i++) useAppStore.getState().selectTheme({ kind: "preset", presetId: `theme-${i}` });
+  assert.equal(useAppStore.getState().appearanceHistory.length, 32);
 });

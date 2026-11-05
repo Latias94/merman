@@ -133,6 +133,8 @@ pub(in crate::svg::parity::flowchart::render::node) fn try_render_flowchart_no_l
                         w,
                         h,
                         stroke_width: common.stroke_width,
+                        work_meter: common.work_meter,
+                        phase: merman_model::OperationPhase::Emit,
                         randomness: common.hand_drawn_seed,
                     })
                 })
@@ -191,6 +193,7 @@ pub(in crate::svg::parity::flowchart::render::node) fn try_render_flowchart_no_l
                         &path_data,
                         common.stroke_width,
                         common.stroke_dasharray,
+                        common.work_meter,
                         common.hand_drawn_seed,
                     )
                 })
@@ -259,6 +262,7 @@ pub(in crate::svg::parity::flowchart::render::node) fn try_render_flowchart_no_l
                         &line_path,
                         common.stroke_width,
                         common.stroke_dasharray,
+                        common.work_meter,
                         common.hand_drawn_seed,
                     )
                 })
@@ -367,15 +371,19 @@ pub(super) fn advance_rough_geometry(common: &super::super::FlowchartNodeGeometr
                 w,
                 h,
                 stroke_width: common.stroke_width,
+                work_meter: common.work_meter,
+                phase: merman_model::OperationPhase::Layout,
                 randomness: common.hand_drawn_seed,
             });
         }
         Ok(FlowchartShape::LightningBolt) => {
             let (_, _, path) = bolt_geometry(common);
             let _ = roughjs_prepare_paths_for_svg_path(
+                super::super::roughjs::RoughGeometryTarget::Query,
                 &path,
                 common.stroke_width,
                 common.stroke_dasharray,
+                common.work_meter,
                 common.hand_drawn_seed,
             );
         }
@@ -386,9 +394,11 @@ pub(super) fn advance_rough_geometry(common: &super::super::FlowchartNodeGeometr
             let r = crate::flowchart::CROSSED_CIRCLE_RADIUS;
             let _ = roughjs_circle_operations(r * 2.0, common.hand_drawn_seed);
             let _ = roughjs_prepare_paths_for_svg_path(
+                super::super::roughjs::RoughGeometryTarget::Query,
                 &crossed_circle_line_path(r),
                 common.stroke_width,
                 common.stroke_dasharray,
+                common.work_meter,
                 common.hand_drawn_seed,
             );
         }

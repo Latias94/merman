@@ -97,6 +97,7 @@ pub(super) fn try_render_self_loop_label_placeholder(
 pub(in crate::svg::parity::flowchart) struct NodeWrapperClasses<'a> {
     base: &'a str,
     assigned: &'a [String],
+    extra: Option<&'a str>,
 }
 
 impl<'a> NodeWrapperClasses<'a> {
@@ -104,13 +105,23 @@ impl<'a> NodeWrapperClasses<'a> {
         base: &'a str,
         assigned: &'a [String],
     ) -> Self {
-        Self { base, assigned }
+        Self {
+            base,
+            assigned,
+            extra: None,
+        }
+    }
+
+    pub(super) const fn with_extra(mut self, extra: Option<&'a str>) -> Self {
+        self.extra = extra;
+        self
     }
 
     pub(in crate::svg::parity::flowchart) fn contains(self, expected: &str) -> bool {
         self.base
             .split_ascii_whitespace()
             .chain(self.assigned.iter().map(String::as_str))
+            .chain(self.extra.into_iter().flat_map(str::split_ascii_whitespace))
             .any(|class| class.trim() == expected)
     }
 
@@ -123,6 +134,10 @@ impl<'a> NodeWrapperClasses<'a> {
             }
             out.push(' ');
             escape_xml_into(out, t);
+        }
+        if let Some(extra) = self.extra {
+            out.push(' ');
+            escape_xml_into(out, extra);
         }
     }
 }
@@ -260,9 +275,11 @@ pub(super) fn prepare_node_path(
         )
     } else {
         super::roughjs::roughjs_prepare_paths_for_svg_path(
+            target,
             path,
             common.stroke_width,
             common.stroke_dasharray,
+            common.work_meter,
             common.hand_drawn_seed,
         )
     }
@@ -278,8 +295,10 @@ pub(super) fn prepare_node_polygon(
         prepare_node_path(common, path, target)
     } else {
         super::roughjs::roughjs_prepare_paths_for_polygon(
+            target,
             points,
             common.stroke_width,
+            common.work_meter,
             common.hand_drawn_seed,
         )
     }
@@ -583,12 +602,16 @@ pub(in crate::svg::parity::flowchart) fn node_source_text_style<'a>(
     let label_base_style = ctx
         .svg_label_sidecar
         .map_or_else(
-            crate::flowchart::FlowchartLabelWeights::default,
-            |sidecar| sidecar.label_weights(),
+            crate::flowchart::FlowchartLabelTypography::default,
+            |sidecar| sidecar.label_typography(),
         )
-        .parent_style(
+        .source_parent_style(
             crate::diagram_theme::ThemeTarget::NodeLabel,
             label_base_style,
+            ctx.class_defs,
+            node_classes,
+            node_styles,
+            true,
         );
     std::borrow::Cow::Owned(
         crate::flowchart::flowchart_effective_text_style_for_node_classes(
@@ -609,6 +632,7 @@ pub(in crate::svg::parity::flowchart::render::node) fn compute_node_label_metric
     node_text_style: &crate::text::TextStyle,
 ) -> crate::text::TextMetrics {
     let layout_node = layout_node.filter(|_| !label_text.is_empty());
+    let wrapping_width = node_wrapping_width(ctx, layout_node.map(|node| node.id.as_str()));
     let prepared_metrics =
         || prepared_node_label_metrics(ctx, layout_node?.id.as_str(), label_text, node_text_style);
     let metrics = if let Some(layout_node) = layout_node {
@@ -627,7 +651,7 @@ pub(in crate::svg::parity::flowchart::render::node) fn compute_node_label_metric
                     raw_label: label_text,
                     label_type,
                     style: node_text_style,
-                    max_width_px: Some(ctx.wrapping_width),
+                    max_width_px: Some(wrapping_width),
                     wrap_mode: ctx.node_wrap_mode,
                     config: ctx.config,
                     math_renderer: ctx.math_renderer,
@@ -643,7 +667,7 @@ pub(in crate::svg::parity::flowchart::render::node) fn compute_node_label_metric
                 raw_label: label_text,
                 label_type,
                 style: node_text_style,
-                max_width_px: Some(ctx.wrapping_width),
+                max_width_px: Some(wrapping_width),
                 wrap_mode: ctx.node_wrap_mode,
                 config: ctx.config,
                 math_renderer: ctx.math_renderer,
@@ -680,7 +704,7 @@ fn prepared_node_label_metrics(
         label_text,
         ctx.measurer,
         style,
-        Some(ctx.wrapping_width),
+        Some(node_wrapping_width(ctx, Some(node_id))),
         true,
         crate::flowchart::FlowchartSvgWidthMode::Bbox,
     )?;
@@ -696,6 +720,15 @@ fn prepared_node_label_metrics(
             )
         });
     Some(metrics.with_label_min_width(label_text, min_width, None))
+}
+
+fn node_wrapping_width(ctx: &FlowchartRenderCtx<'_>, node_id: Option<&str>) -> f64 {
+    crate::flowchart::bpmn::wrapping_width(
+        node_id
+            .and_then(|id| ctx.nodes_by_id.get(id))
+            .and_then(|node| node.layout_shape.as_deref()),
+        ctx.wrapping_width,
+    )
 }
 
 /// Match createText's wrapping decision for labels with an icon/image background.

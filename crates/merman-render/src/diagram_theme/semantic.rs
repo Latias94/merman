@@ -203,9 +203,11 @@ impl ThemeTarget {
             | Self::SpecialStateInner => {
                 matches!(family, DiagramFamilyId::STATE)
             }
-            Self::Actor
-            | Self::ActorLabel
-            | Self::Lifeline
+            Self::Actor | Self::ActorLabel => matches!(
+                family,
+                DiagramFamilyId::SEQUENCE | DiagramFamilyId::ZENUML | DiagramFamilyId::USECASE
+            ),
+            Self::Lifeline
             | Self::Message
             | Self::MessageLabel
             | Self::SequenceNumberLabel
@@ -229,6 +231,7 @@ impl ThemeTarget {
                     | DiagramFamilyId::RADAR
                     | DiagramFamilyId::PIE
             ),
+            Self::Axis if family == DiagramFamilyId::WARDLEY => true,
             Self::ChartSeries | Self::Axis => matches!(
                 family,
                 DiagramFamilyId::XY_CHART
@@ -252,6 +255,8 @@ impl ThemeTarget {
             Self::Node => matches!(
                 family,
                 DiagramFamilyId::FLOWCHART
+                    | DiagramFamilyId::AGENTFLOW
+                    | DiagramFamilyId::USECASE
                     | DiagramFamilyId::C4
                     | DiagramFamilyId::SWIMLANE
                     | DiagramFamilyId::CLASS
@@ -261,10 +266,20 @@ impl ThemeTarget {
                     | DiagramFamilyId::GIT_GRAPH
                     | DiagramFamilyId::ARCHITECTURE
                     | DiagramFamilyId::SANKEY
+                    | DiagramFamilyId::PACKET
+                    | DiagramFamilyId::VENN
+                    | DiagramFamilyId::ISHIKAWA
+                    | DiagramFamilyId::RAILROAD
+                    | DiagramFamilyId::EVENT_MODELING
+                    | DiagramFamilyId::CYNEFIN
+                    | DiagramFamilyId::WARDLEY
+                    | DiagramFamilyId::TREEMAP
             ),
             Self::Edge => matches!(
                 family,
                 DiagramFamilyId::FLOWCHART
+                    | DiagramFamilyId::AGENTFLOW
+                    | DiagramFamilyId::USECASE
                     | DiagramFamilyId::C4
                     | DiagramFamilyId::SWIMLANE
                     | DiagramFamilyId::CLASS
@@ -273,11 +288,18 @@ impl ThemeTarget {
                     | DiagramFamilyId::BLOCK
                     | DiagramFamilyId::GIT_GRAPH
                     | DiagramFamilyId::ARCHITECTURE
+                    | DiagramFamilyId::ISHIKAWA
+                    | DiagramFamilyId::RAILROAD
+                    | DiagramFamilyId::EVENT_MODELING
+                    | DiagramFamilyId::CYNEFIN
+                    | DiagramFamilyId::WARDLEY
             ),
             Self::NodeLabel | Self::EdgeLabel | Self::EdgeLabelBackground | Self::ClusterLabel => {
                 matches!(
                     family,
                     DiagramFamilyId::FLOWCHART
+                        | DiagramFamilyId::AGENTFLOW
+                        | DiagramFamilyId::USECASE
                         | DiagramFamilyId::SWIMLANE
                         | DiagramFamilyId::CLASS
                         | DiagramFamilyId::MINDMAP
@@ -288,10 +310,23 @@ impl ThemeTarget {
                     && matches!(self, Self::NodeLabel | Self::EdgeLabel | Self::ClusterLabel))
                     || (family == DiagramFamilyId::ZENUML && self == Self::ClusterLabel)
                     || (family == DiagramFamilyId::WARDLEY && self == Self::NodeLabel)
+                    || (matches!(
+                        family,
+                        DiagramFamilyId::VENN
+                            | DiagramFamilyId::ISHIKAWA
+                            | DiagramFamilyId::RAILROAD
+                    ) && self == Self::NodeLabel)
+                    || (family == DiagramFamilyId::EVENT_MODELING
+                        && matches!(self, Self::NodeLabel | Self::ClusterLabel))
+                    || (matches!(family, DiagramFamilyId::CYNEFIN | DiagramFamilyId::WARDLEY)
+                        && matches!(self, Self::NodeLabel | Self::EdgeLabel))
+                    || (family == DiagramFamilyId::TREEMAP && self == Self::NodeLabel)
             }
             Self::Marker => matches!(
                 family,
                 DiagramFamilyId::FLOWCHART
+                    | DiagramFamilyId::AGENTFLOW
+                    | DiagramFamilyId::USECASE
                     | DiagramFamilyId::C4
                     | DiagramFamilyId::SWIMLANE
                     | DiagramFamilyId::CLASS
@@ -300,10 +335,17 @@ impl ThemeTarget {
                     | DiagramFamilyId::BLOCK
                     | DiagramFamilyId::GIT_GRAPH
                     | DiagramFamilyId::ARCHITECTURE
+                    | DiagramFamilyId::ISHIKAWA
+                    | DiagramFamilyId::RAILROAD
+                    | DiagramFamilyId::EVENT_MODELING
+                    | DiagramFamilyId::CYNEFIN
+                    | DiagramFamilyId::WARDLEY
             ),
             Self::Cluster => matches!(
                 family,
                 DiagramFamilyId::FLOWCHART
+                    | DiagramFamilyId::AGENTFLOW
+                    | DiagramFamilyId::USECASE
                     | DiagramFamilyId::ZENUML
                     | DiagramFamilyId::SWIMLANE
                     | DiagramFamilyId::ARCHITECTURE
@@ -313,12 +355,16 @@ impl ThemeTarget {
                     | DiagramFamilyId::TREE_VIEW
                     | DiagramFamilyId::BLOCK
                     | DiagramFamilyId::GIT_GRAPH
+                    | DiagramFamilyId::EVENT_MODELING
             ),
             Self::Canvas | Self::Title | Self::Text => true,
             Self::Note | Self::NoteLabel => {
                 matches!(
                     family,
-                    DiagramFamilyId::SEQUENCE | DiagramFamilyId::STATE | DiagramFamilyId::ZENUML
+                    DiagramFamilyId::SEQUENCE
+                        | DiagramFamilyId::STATE
+                        | DiagramFamilyId::ZENUML
+                        | DiagramFamilyId::USECASE
                 )
             }
         }

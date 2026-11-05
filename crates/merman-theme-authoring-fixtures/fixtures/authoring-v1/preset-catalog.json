@@ -323,14 +323,10 @@
     ],
     "application_notes": [
       {
-        "id": "flowchart-classic-shadows",
+        "id": "flowchart-basic-shadows",
         "family_id": "flowchart",
-        "message": "Hard node shadows need Classic look and supported basic shapes (rectangles, diamonds and circles). Selecting this preset does not change the diagram's look.",
-        "recommended_config": {
-          "flowchart": {
-            "look": "classic"
-          }
-        }
+        "message": "Hard node shadows work with supported basic shapes (rectangles, rounded rectangles, diamonds, circles and double circles) in Classic and Neo. Hand-drawn and other shapes may leave effects unapplied. Source styles take precedence.",
+        "recommended_config": null
       }
     ],
     "qualified_cells": [],
@@ -415,14 +411,10 @@
     ],
     "application_notes": [
       {
-        "id": "flowchart-classic-glow",
+        "id": "flowchart-basic-glow",
         "family_id": "flowchart",
-        "message": "Node glow needs Classic look and supported basic shapes. Selecting this preset does not change the diagram's look.",
-        "recommended_config": {
-          "flowchart": {
-            "look": "classic"
-          }
-        }
+        "message": "Node glow works with supported basic shapes (rectangles, rounded rectangles, diamonds, circles and double circles) in Classic and Neo. Hand-drawn and other shapes may leave effects unapplied. Source styles take precedence.",
+        "recommended_config": null
       }
     ],
     "qualified_cells": [],

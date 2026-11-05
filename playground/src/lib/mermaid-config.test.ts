@@ -4,13 +4,10 @@ import test from "node:test";
 import { load as parseYaml } from "js-yaml";
 
 import { SUPPORTED_THEMES } from "@mermanjs/web";
-import { resolveMermaidCanvasTone } from "./mermaid-canvas-tone.ts";
-import { readMermaidAppearanceOverrides } from "./mermaid-appearance.ts";
 import { locateMermaidFrontmatter } from "./mermaid-frontmatter.ts";
 import {
   buildMermaidConfig,
   buildMermaidOperationInput,
-  sourceWithConfig,
 } from "./mermaid-config.ts";
 
 test("Mermaid config accepts every canonical target theme", () => {
@@ -24,7 +21,7 @@ test("automatic appearance omits theme while explicit default is preserved", () 
   assert.deepEqual(buildMermaidConfig("{}", "auto"), {});
   assert.deepEqual(buildMermaidConfig("{}", "default"), { theme: "default" });
   assert.deepEqual(buildMermaidConfig('{"theme":"forest"}', "auto"), { theme: "forest" });
-  assert.equal(sourceWithConfig("flowchart TD\nA-->B", "auto", "{}"), "flowchart TD\nA-->B");
+  assert.equal(buildMermaidOperationInput("flowchart TD\nA-->B", "auto", "{}").configuredSource, "flowchart TD\nA-->B");
 });
 
 test("explicit config theme takes precedence over the selected theme", () => {
@@ -32,13 +29,18 @@ test("explicit config theme takes precedence over the selected theme", () => {
     buildMermaidConfig('{"theme":"dark"}', "redux-color").theme,
     "dark"
   );
+  for (const selection of ["dark", "auto"]) {
+    const operation = buildMermaidOperationInput('pie\n"Tea": 4', selection, '{"theme":"forest"}');
+    assert.deepEqual(operation.initializationConfig, { theme: "forest" });
+    assert.equal(operation.configuredSource, '%%{init: {"theme":"forest"}}%%\npie\n"Tea": 4');
+  }
 });
 
 test("inherited fonts add no host or source override and preserve authored fonts", () => {
   const source = "pie\n\"Tea\": 4";
   assert.deepEqual(buildMermaidConfig("{}", "auto", { diagramFont: "inherit" }), {});
   assert.deepEqual(buildMermaidOperationInput(source, "auto", "{}", { diagramFont: "inherit" }), {
-    initializationConfig: {}, configuredSource: source,
+    initializationConfig: {}, configuredSource: source, injectedConfigSpan: null,
   });
   const config = { fontFamily: "Authored Font", themeVariables: { fontFamily: "Authored Variable Font" } };
   const operation = buildMermaidOperationInput(source, "auto", JSON.stringify(config), { diagramFont: "inherit" });
@@ -46,210 +48,48 @@ test("inherited fonts add no host or source override and preserve authored fonts
   assert.equal(operation.configuredSource, `%%{init: ${JSON.stringify(config)}}%%\n${source}`);
 });
 
-test("appearance guidance identifies authored declarations without rewriting them", () => {
-  const source = '---\nconfig:\n  theme: forest\n---\nflowchart LR\nA --> B\n%%{init: {"flowchart":{"look":"handDrawn"},"fontFamily":"Source Font"}}%%';
-  assert.deepEqual(readMermaidAppearanceOverrides(source, '{"theme":"dark","flowchart":{"look":"classic"}}', "flowchart"), {
-    theme: { origin: "config", value: "dark" }, font: { origin: "source", value: "Source Font" },
-    look: { origin: "source", value: "handDrawn" },
-  });
-  assert.deepEqual(readMermaidAppearanceOverrides(source, "{"), {});
-  assert.deepEqual(readMermaidAppearanceOverrides("pie\n\"Tea\": 4", "{}"), { theme: undefined, look: undefined, font: undefined });
-});
-
-test("later empty or invalid declarations do not retain an earlier Classic claim", () => {
-  const source = '---\nconfig:\n  flowchart:\n    look: classic\n---\nflowchart LR\nA --> B';
-  const empty = readMermaidAppearanceOverrides(source, '{"look":"handDrawn","flowchart":{"look":""}}', "flowchart");
-  assert.deepEqual(empty.look, { origin: "config", value: "" });
-  const invalid = readMermaidAppearanceOverrides(source, '{"look":"handDrawn","flowchart":{"look":false}}', "flowchart");
-  assert.deepEqual(invalid.look, { origin: "config", value: "handDrawn" });
-});
-
-test("maps every supported effective theme to a canvas tone", () => {
-  const expected = {
-    default: "light",
-    base: "light",
-    dark: "dark",
-    forest: "light",
-    neutral: "light",
-    neo: "light",
-    "neo-dark": "dark",
-    redux: "light",
-    "redux-dark": "dark",
-    "redux-color": "light",
-    "redux-dark-color": "dark",
-  } as const;
-
-  assert.deepEqual(
-    Object.fromEntries(
-      SUPPORTED_THEMES.map((theme) => [
-        theme,
-        resolveMermaidCanvasTone("{}", theme),
-      ]),
-    ),
-    expected,
-  );
-});
-
-test("uses buildMermaidConfig precedence for the effective canvas tone", () => {
-  assert.equal(resolveMermaidCanvasTone('{"theme":"dark"}', "default"), "dark");
-  assert.equal(resolveMermaidCanvasTone('{"theme":"neo"}', "dark"), "light");
-  assert.equal(resolveMermaidCanvasTone("{", "dark"), "dark");
-});
-
-test("follows source theme precedence when the injected config has no theme", () => {
-  const source = `---
-config:
-  theme: dark
----
-flowchart TD
-  A --> B`;
-
-  assert.equal(resolveMermaidCanvasTone("{}", "auto", source), "dark");
-  assert.equal(resolveMermaidCanvasTone("{}", "forest", source), "dark");
-  assert.equal(resolveMermaidCanvasTone('{"theme":"neutral"}', "default", source), "light");
-  assert.equal(
-    resolveMermaidCanvasTone(
-      '{"theme":"neutral"}',
-      "default",
-      `${source}\n%%{init: { 'theme': 'neo-dark' }}%%`,
-    ),
-    "dark",
-  );
-});
-
-test("frontmatter-only canvas tones override UI initialization in both directions", () => {
-  for (const [sourceTheme, selectedTheme, expectedTone] of [
-    ["dark", "default", "dark"],
-    ["dark", "forest", "dark"],
-    ["neo-dark", "default", "dark"],
-    ["default", "dark", "light"],
-    ["forest", "dark", "light"],
-  ] as const) {
-    const source = `---\nconfig: {theme: ${sourceTheme}}\n---\nflowchart TD\nA-->B`;
-    for (const configJson of ["{}", '{"htmlLabels":false}']) {
-      assert.equal(
-        resolveMermaidCanvasTone(configJson, selectedTheme, source, "flowchart"),
-        expectedTone,
-      );
-    }
-    assert.equal(
-      buildMermaidOperationInput(source, selectedTheme, "{}").configuredSource,
-      source,
-    );
-  }
-});
-
-test("reads block and flow-style Mermaid frontmatter themes", () => {
-  for (const source of [
-    "---\nconfig: { theme: dark }\n---\nflowchart TD\n  A --> B",
-    "---\nconfig: {\n  theme: neo-dark\n}\n---\nflowchart TD\n  A --> B",
-    "---\nconfig:\n  theme: 'redux-dark'\n---\nflowchart TD\n  A --> B",
-  ]) {
-    assert.equal(resolveMermaidCanvasTone("{}", "auto", source), "dark");
-  }
-});
-
-test("scans unmatched Mermaid init directives in linear time", () => {
-  const source = "%%{initialize:".repeat(16_384);
-  const startedAt = performance.now();
-
-  assert.equal(resolveMermaidCanvasTone("{}", "auto", source), "light");
-  assert.ok(
-    performance.now() - startedAt < 500,
-    "unmatched directives should not rescan the remaining source",
-  );
-});
-
 test("config directives preserve frontmatter and newline style", () => {
   assert.equal(
-    sourceWithConfig("flowchart TD\nA-->B", "dark", "{}"),
+    buildMermaidOperationInput("flowchart TD\nA-->B", "auto", '{"theme":"dark"}').configuredSource,
     '%%{init: {"theme":"dark"}}%%\nflowchart TD\nA-->B'
   );
   assert.equal(
-    sourceWithConfig("---\r\ntitle: Sample\r\n---\r\nflowchart TD", "dark", "{}"),
+    buildMermaidOperationInput("---\r\ntitle: Sample\r\n---\r\nflowchart TD", "auto", '{"theme":"dark"}').configuredSource,
     '---\r\ntitle: Sample\r\n---\r\n%%{init: {"theme":"dark"}}%%\r\nflowchart TD'
   );
 });
 
 test("config directives ignore frontmatter-like block scalar content", () => {
   assert.equal(
-    sourceWithConfig(
+    buildMermaidOperationInput(
       "---\r\ntitle: |\r\n  A YAML block scalar\r\n  ---\r\n---\r\nflowchart TD",
-      "dark",
-      "{}"
-    ),
+      "auto",
+      '{"theme":"dark"}'
+    ).configuredSource,
     '---\r\ntitle: |\r\n  A YAML block scalar\r\n  ---\r\n---\r\n%%{init: {"theme":"dark"}}%%\r\nflowchart TD'
   );
 });
 
 test("config directives preserve Mermaid frontmatter indentation", () => {
   assert.equal(
-    sourceWithConfig(
+    buildMermaidOperationInput(
       "   ---\n   title: Sample\n   ---\n   flowchart TD",
-      "dark",
-      "{}"
-    ),
+      "auto",
+      '{"theme":"dark"}'
+    ).configuredSource,
     '   ---\n   title: Sample\n   ---\n%%{init: {"theme":"dark"}}%%\n   flowchart TD'
   );
 });
 
 test("indented frontmatter does not close on a differently indented scalar line", () => {
   assert.equal(
-    sourceWithConfig(
+    buildMermaidOperationInput(
       "   ---\n   title: |\n     A scalar\n     ---\n   ---\n   flowchart TD",
-      "dark",
-      "{}"
-    ),
+      "auto",
+      '{"theme":"dark"}'
+    ).configuredSource,
     '   ---\n   title: |\n     A scalar\n     ---\n   ---\n%%{init: {"theme":"dark"}}%%\n   flowchart TD'
   );
-});
-
-
-test("canvas tone follows scoped Mermaid 12 themes without parsing diagram headers", () => {
-  const source = "flowchart TD\nA-->B";
-  assert.equal(resolveMermaidCanvasTone('{"flowchart":{"theme":"dark"}}', "auto", source, "flowchart"), "dark");
-  assert.equal(resolveMermaidCanvasTone('{"flowchart":{"theme":"dark"}}', "default", source, "flowchart"), "dark");
-  assert.equal(resolveMermaidCanvasTone('{"theme":"dark","flowchart":{"theme":"default"}}', "auto", source, "flowchart"), "light");
-  assert.equal(resolveMermaidCanvasTone('{"theme":"dark","flowchart":{"theme":"unknown"}}', "auto", source, "flowchart"), "dark");
-  assert.equal(resolveMermaidCanvasTone('{"flowchart":{"theme":"unknown"}}', "dark", source, "flowchart"), "dark");
-  assert.equal(resolveMermaidCanvasTone('{"sequence":{"theme":"dark"}}', "auto", source, "flowchart"), "light");
-  assert.equal(resolveMermaidCanvasTone('{"xyChart":{"theme":"dark"}}', "auto", "xychart-beta", "xyChart"), "dark");
-});
-
-test("canvas tone merges scoped source themes with the injected configuration", () => {
-  const source = "---\nconfig:\n  flowchart:\n    theme: dark\n---\nflowchart TD\nA-->B";
-  assert.equal(resolveMermaidCanvasTone("{}", "default", source, "flowchart"), "dark");
-  assert.equal(resolveMermaidCanvasTone('{"flowchart":{"theme":"default"}}', "auto", source, "flowchart"), "light");
-  assert.equal(resolveMermaidCanvasTone("{}", "default", `${source}\n%%{init: {'flowchart': {'theme': 'forest'}}}%%`, "flowchart"), "light");
-  assert.equal(resolveMermaidCanvasTone("{}", "default", "flowchart TD\nA-->B\n%%{init: {'flowchart': {'theme': 'dark'}}}%%", "flowchart"), "dark");
-});
-
-
-test("canvas validates themes after merging replacements and ignoring JSON null", () => {
-  assert.equal(resolveMermaidCanvasTone('{"theme":"unknown"}', "dark", "flowchart TD\nA-->B", "flowchart"), "light");
-  const source = "---\nconfig:\n  flowchart:\n    theme: dark\n---\nflowchart TD\nA-->B";
-  assert.equal(
-    resolveMermaidCanvasTone('{"theme":"default","flowchart":{"theme":"unknown"}}', "auto", source, "flowchart"),
-    "light",
-  );
-  assert.equal(
-    resolveMermaidCanvasTone('{"theme":"default","flowchart":{"theme":null}}', "auto", source, "flowchart"),
-    "dark",
-  );
-  assert.equal(
-    resolveMermaidCanvasTone("{}", "auto", `${source}\n%%{init: {"theme":"default","flowchart":{"theme":"unknown"}}}%%`, "flowchart"),
-    "light",
-  );
-  assert.equal(
-    resolveMermaidCanvasTone("{}", "auto", '---\nconfig: {theme: dark}\n---\nflowchart TD\nA-->B\n%%{init: {"theme":"unknown"}}%%', "flowchart"),
-    "light",
-  );
-});
-
-test("the string null sentinel retains the initialized theme palette", () => {
-  const source = 'flowchart TD\nA-->B\n%%{init: {"flowchart":{"theme":"null"}}}%%';
-  assert.equal(resolveMermaidCanvasTone('{"theme":"dark"}', "auto", source, "flowchart"), "dark");
-  assert.equal(resolveMermaidCanvasTone('{"theme":"default","flowchart":{"theme":"dark"}}', "auto", source, "flowchart"), "light");
 });
 
 
@@ -294,10 +134,6 @@ test("operation keeps UI theme and font defaults out of authored source", () => 
       configJson === "{}" ? source : `%%{init: ${configJson}}%%\n${source}`,
     );
   }
-  assert.equal(
-    sourceWithConfig(source, "default", "{}", { diagramFont: "arial" }),
-    `%%{init: ${JSON.stringify({ theme: "default", fontFamily, themeVariables: { fontFamily } })}}%%\n${source}`,
-  );
 });
 
 test("operation preserves explicit user theme and fonts as authored source", () => {
@@ -329,7 +165,6 @@ test("operation retains native source appearance after injected user settings", 
   });
   assert.equal(operation.initializationConfig.theme, "neutral");
   assert.equal(operation.configuredSource, `${frontmatter}%%{init: ${configJson}}%%\n${body}`);
-  assert.equal(resolveMermaidCanvasTone(configJson, "default", source, "flowchart"), "dark");
   assert.equal(
     buildMermaidOperationInput(source, "default", "{}", { diagramFont: "arial" }).configuredSource,
     source,
@@ -337,20 +172,28 @@ test("operation retains native source appearance after injected user settings", 
 });
 
 
-test("canvas resolves invalid themes without granting authored secure host authority", () => {
-  const invalid = 'flowchart TD\nA-->B\n%%{init: {"theme":"unknown"}}%%';
-  assert.equal(resolveMermaidCanvasTone("{}", "dark", invalid, "flowchart"), "dark");
-  const override = '---\nconfig: {theme: forest}\n---\nflowchart TD\nA-->B\n%%{init: {"theme":"neutral","flowchart":{"theme":"forest"}}}%%';
-  assert.equal(resolveMermaidCanvasTone('{"secure":["theme"]}', "dark", override, "flowchart"), "light");
-  assert.equal(resolveMermaidCanvasTone('{"theme":"default","flowchart":{"theme":"dark"},"secure":["flowchart"]}', "auto", override, "flowchart"), "light");
+test("null theme sentinel retains the host selection in both config and source", () => {
+  const source = 'pie\n"Tea": 4';
+  const configuredSource = '%%{init: {"theme":"null"}}%%\n' + source;
+  for (const selection of ["dark", "auto"]) {
+    const configForm = buildMermaidOperationInput(source, selection, '{"theme":"null"}');
+    const sourceForm = buildMermaidOperationInput(configuredSource, selection, "{}");
+    assert.deepEqual(configForm.initializationConfig, selection === "auto" ? {} : { theme: "dark" });
+    assert.deepEqual(configForm.initializationConfig, sourceForm.initializationConfig);
+    assert.equal(configForm.configuredSource, configuredSource);
+    assert.equal(sourceForm.configuredSource, configuredSource);
+  }
 });
 
-
-test("invalid authored themes initialize the default palette without inheriting the selection", () => {
-  for (const theme of ["unknown", "null", null, false, "constructor"]) {
-    const operation = buildMermaidOperationInput("flowchart TD\nA-->B", "dark", JSON.stringify({ theme }));
-    assert.deepEqual(operation.initializationConfig, {});
-    assert.equal(resolveMermaidCanvasTone(JSON.stringify({ theme }), "dark", "flowchart TD\nA-->B", "flowchart"), "light");
+test("invalid authored themes preserve the host selection and remain in source", () => {
+  const source = 'pie\n"Tea": 4';
+  for (const theme of ["unknown", null, false, 0, "constructor", "auto"]) {
+    const configJson = JSON.stringify({ theme });
+    for (const selection of ["dark", "auto"]) {
+      const operation = buildMermaidOperationInput(source, selection, configJson);
+      assert.deepEqual(operation.initializationConfig, selection === "auto" ? {} : { theme: "dark" });
+      assert.equal(operation.configuredSource, `%%{init: ${configJson}}%%\n${source}`);
+    }
   }
 });
 
@@ -418,7 +261,7 @@ test("injected configuration stays outside greedy frontmatter without changing s
     const original = locateMermaidFrontmatter(source);
     assert.ok(original);
     const newline = /\r\n|[\r\n]/.exec(source)?.[0] ?? "\n";
-    const rendered = sourceWithConfig(source, "dark", "{}");
+    const rendered = buildMermaidOperationInput(source, "auto", '{"theme":"dark"}').configuredSource;
     assert.equal(rendered, `${source.slice(0, original.end)}${directive}${newline}${source.slice(original.end)}`);
     assert.equal(rendered.slice(0, original.end) + rendered.slice(original.end + directive.length + newline.length), source);
     const after = locateMermaidFrontmatter(rendered);
@@ -428,6 +271,44 @@ test("injected configuration stays outside greedy frontmatter without changing s
       parseYaml(rendered.slice(after.bodyStart, after.bodyEnd)),
       parseYaml(source.slice(original.bodyStart, original.bodyEnd)),
     );
+  }
+});
+
+test("config injection preserves a leading BOM before frontmatter and UTF-8 spans", () => {
+  const configJson = '{"themeVariables":{"textColor":"#123456"},"fontFamily":"字體 Ω"}';
+  const directive = `%%{init: ${configJson}}%%`;
+  const encoder = new TextEncoder();
+  for (const newline of ["\n", "\r\n"]) {
+    const frontmatter = `\uFEFF---${newline}title: 雪😀${newline}config: {theme: forest}${newline}---${newline}`;
+    const source = `${frontmatter}pie${newline}"Tea": 4`;
+    const operation = buildMermaidOperationInput(source, "auto", configJson);
+    assert.equal(operation.configuredSource, `${frontmatter}${directive}${newline}pie${newline}"Tea": 4`);
+    const start = encoder.encode(frontmatter).byteLength;
+    const span = operation.injectedConfigSpan;
+    assert.deepEqual(span, { start, end: start + encoder.encode(directive).byteLength });
+    assert.ok(span);
+    assert.deepEqual(encoder.encode(operation.configuredSource).slice(span.start, span.end), encoder.encode(directive));
+    assert.deepEqual(buildMermaidOperationInput(source, "auto", "{}"), {
+      initializationConfig: {}, configuredSource: source, injectedConfigSpan: null,
+    });
+  }
+});
+
+test("config injection stays after a leading BOM without frontmatter and records UTF-8 spans", () => {
+  const configJson = '{"themeVariables":{"textColor":"#123456"},"fontFamily":"字體 Ω"}';
+  const directive = `%%{init: ${configJson}}%%`;
+  const encoder = new TextEncoder();
+  for (const newline of ["\n", "\r\n"]) {
+    const source = `\uFEFFpie${newline}"雪😀": 4`;
+    const operation = buildMermaidOperationInput(source, "auto", configJson);
+    assert.equal(operation.configuredSource, `\uFEFF${directive}${newline}pie${newline}"雪😀": 4`);
+    const span = operation.injectedConfigSpan;
+    assert.deepEqual(span, { start: 3, end: 3 + encoder.encode(directive).byteLength });
+    assert.ok(span);
+    assert.deepEqual(encoder.encode(operation.configuredSource).slice(span.start, span.end), encoder.encode(directive));
+    assert.deepEqual(buildMermaidOperationInput(source, "auto", "{}"), {
+      initializationConfig: {}, configuredSource: source, injectedConfigSpan: null,
+    });
   }
 });
 
@@ -441,28 +322,29 @@ test("configuration injection preserves malformed and unclosed source verbatim",
     "---\n", "---",
   ]) {
     const newline = /\r\n|[\r\n]/.exec(source)?.[0] ?? "\n";
-    assert.equal(sourceWithConfig(source, "dark", "{}"), `%%{init: {"theme":"dark"}}%%${newline}${source}`);
-    assert.equal(sourceWithConfig(source, "auto", "{}"), source);
+    assert.equal(buildMermaidOperationInput(source, "auto", '{"theme":"dark"}').configuredSource, `%%{init: {"theme":"dark"}}%%${newline}${source}`);
+    assert.equal(buildMermaidOperationInput(source, "auto", "{}").configuredSource, source);
   }
 });
 
-test("canvas tone shares greedy and Unicode frontmatter boundaries with injection", () => {
+test("configuration injection records exact UTF-8 directive spans after frontmatter", () => {
   for (const source of [
     "---\n\n---\nconfig: {theme: dark}\n---\nflowchart TD",
     "---\rconfig: {theme: dark}\r---\rflowchart TD",
     "\t---\r\tconfig: {theme: dark}\r\t---\rflowchart TD",
     "\u00a0---\n\u00a0config: {theme: dark}\n\u00a0---\nflowchart TD",
   ]) {
-    assert.equal(resolveMermaidCanvasTone("{}", "auto", source), "dark", JSON.stringify(source));
+    const operation = buildMermaidOperationInput(source, "auto", '{"theme":"dark"}');
+    const span = operation.injectedConfigSpan;
+    assert.ok(span);
+    assert.equal(new TextDecoder().decode(new TextEncoder().encode(operation.configuredSource).slice(span.start, span.end)), '%%{init: {"theme":"dark"}}%%');
   }
-  assert.equal(resolveMermaidCanvasTone("{}", "auto", "---\nconfig: {theme: dark}\n---"), "light");
 });
 
 test("frontmatter consumers scan a whitespace-heavy unterminated block without backtracking", () => {
   const source = "---\n" + " \n".repeat(16_000);
   const startedAt = performance.now();
   assert.equal(locateMermaidFrontmatter(source), undefined);
-  assert.equal(resolveMermaidCanvasTone("{}", "auto", source), "light");
-  assert.equal(sourceWithConfig(source, "dark", "{}"), `%%{init: {"theme":"dark"}}%%\n${source}`);
+  assert.equal(buildMermaidOperationInput(source, "auto", '{"theme":"dark"}').configuredSource, `%%{init: {"theme":"dark"}}%%\n${source}`);
   assert.ok(performance.now() - startedAt < 500, "frontmatter consumers must not rescan unmatched suffixes");
 });

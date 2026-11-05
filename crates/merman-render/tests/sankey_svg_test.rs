@@ -892,5 +892,626 @@ fn sankey_explicit_node_color_does_not_consume_the_default_palette_domain() {
     }
 }
 
+#[test]
+fn sankey_title_requests_are_not_applicable_even_with_frontmatter_title() {
+    let theme = DiagramThemeCompiler::new()
+        .compile(
+            DiagramThemeSpec::new().with_styles(ThemeRuleSet::default().with_rule(ThemeRule::new(
+                ThemeTarget::Title,
+                ThemeStylePatch::default().with_fill(CanvasPaint::solid("#123456").unwrap()),
+            ))),
+        )
+        .unwrap();
+    let baseline = DiagramThemeCompiler::new()
+        .compile(DiagramThemeSpec::new())
+        .unwrap();
+    for source in [
+        "sankey-beta\nA,B,10\n",
+        "---\ntitle: Metadata title\n---\nsankey-beta\nA,B,10\n",
+    ] {
+        let rendered = render_sankey_with_theme_and_engine(source, &theme, MermaidEngine::new());
+        let unthemed = render_sankey_with_theme_and_engine(source, &baseline, MermaidEngine::new());
+        assert_eq!(rendered.svg(), unthemed.svg());
+        let completion = rendered.into_completion();
+        let evidence = merman_render::__private::family_evidence(completion.report());
+        assert_eq!(evidence.required_count(), 1);
+        assert_eq!(evidence.not_applicable_count(), 1);
+        assert_eq!(evidence.applied_count(), 0);
+        assert_eq!(evidence.theme_residual_count(), 0);
+    }
+}
+
+#[test]
+fn sankey_scalar_node_rules_respect_selectors_and_fill_only_source_ownership() {
+    use merman_render::diagram_theme::{OrdinalSelector, ThemeVariant};
+
+    let stroke = ThemeStylePatch::default().with_stroke(CanvasPaint::solid("#654321").unwrap());
+    let styles = ThemeRuleSet::default()
+        .with_rule(ThemeRule::new(
+            ThemeTarget::Node,
+            ThemeStylePatch::default().with_fill(CanvasPaint::solid("#123456").unwrap()),
+        ))
+        .with_rule(ThemeRule::new(ThemeTarget::Node, stroke.clone()))
+        .with_rule(ThemeRule::new(ThemeTarget::Node, stroke.clone()))
+        .with_rule(
+            ThemeRule::new(ThemeTarget::Node, stroke.clone())
+                .with_ordinal(OrdinalSelector::Exact(3)),
+        )
+        .with_rule(ThemeRule::new(ThemeTarget::Node, stroke).with_variant(ThemeVariant::Warning));
+    let theme = DiagramThemeCompiler::new()
+        .compile(DiagramThemeSpec::new().with_styles(styles))
+        .unwrap();
+    let baseline = DiagramThemeCompiler::new()
+        .compile(DiagramThemeSpec::new())
+        .unwrap();
+    for (source, owns_fill) in [
+        ("sankey-beta\nA,B,10\n", false),
+        (
+            "---\nconfig:\n  sankey:\n    nodeColors:\n      A: '#112233'\n---\nsankey-beta\nA,B,10\n",
+            false,
+        ),
+        (
+            "---\nconfig:\n  sankey:\n    nodeColors:\n      A: '#112233'\n      B: '#445566'\n---\nsankey-beta\nA,B,10\n",
+            true,
+        ),
+    ] {
+        let rendered = render_sankey_with_theme_requirement(
+            source,
+            &theme,
+            MermaidEngine::new(),
+            ThemePortabilityRequirement::BestEffort,
+        )
+        .unwrap();
+        let unthemed = render_sankey_with_theme_and_engine(source, &baseline, MermaidEngine::new());
+        let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+        for rect in document
+            .descendants()
+            .filter(|node| node.has_tag_name("rect"))
+        {
+            assert_eq!(rect.attribute("stroke"), Some("#654321"));
+        }
+        assert_eq!(
+            sankey_node_fills(rendered.svg()),
+            sankey_node_fills(unthemed.svg())
+                .into_iter()
+                .map(|fill| if matches!(fill.as_str(), "#112233" | "#445566") {
+                    fill
+                } else {
+                    "#123456".to_owned()
+                })
+                .collect::<Vec<_>>()
+        );
+        let completion = rendered.into_completion();
+        let evidence = merman_render::__private::family_evidence(completion.report());
+        assert_eq!(evidence.required_count(), 5);
+        assert_eq!(evidence.applied_count(), if owns_fill { 1 } else { 2 });
+        assert_eq!(
+            evidence.not_applicable_count(),
+            if owns_fill { 4 } else { 3 }
+        );
+        assert_eq!(evidence.theme_residual_count(), 0);
+        assert!(
+            render_sankey_with_theme_requirement(
+                source,
+                &theme,
+                MermaidEngine::new(),
+                ThemePortabilityRequirement::RequirePortable,
+            )
+            .is_ok()
+        );
+    }
+}
+
+#[test]
+fn sankey_presets_account_for_absent_title_and_real_node_stroke() {
+    for descriptor in merman_render::diagram_theme::theme_preset_descriptors() {
+        let theme = DiagramThemeCompiler::new()
+            .compile_preset(descriptor.preset())
+            .unwrap();
+        let rendered = render_sankey_with_theme_requirement(
+            "sankey-beta\nA,B,10\n",
+            &theme,
+            MermaidEngine::new(),
+            ThemePortabilityRequirement::BestEffort,
+        )
+        .unwrap();
+        let completion = rendered.into_completion();
+        let evidence = merman_render::__private::family_evidence(completion.report());
+        assert_eq!(
+            evidence.accounted_count(),
+            evidence.required_count(),
+            "{}",
+            descriptor.id()
+        );
+        assert!(evidence.applied_count() > 0, "{}", descriptor.id());
+    }
+}
+
+#[test]
+fn sankey_static_node_stroke_supports_default_solid_transparent_and_clear() {
+    use merman_render::diagram_theme::{Specified, ThemeVariant};
+    for (paint, expected) in [
+        (
+            Specified::Value(CanvasPaint::solid("#123456").unwrap()),
+            "#123456",
+        ),
+        (Specified::Value(CanvasPaint::Transparent), "transparent"),
+        (Specified::Clear, "none"),
+    ] {
+        for variant in [None, Some(ThemeVariant::Default)] {
+            let mut patch = ThemeStylePatch::default();
+            patch.stroke.paint = paint.clone();
+            let mut rule = ThemeRule::new(ThemeTarget::Node, patch);
+            if let Some(variant) = variant {
+                rule = rule.with_variant(variant);
+            }
+            let theme = DiagramThemeCompiler::new()
+                .compile(
+                    DiagramThemeSpec::new().with_styles(ThemeRuleSet::default().with_rule(rule)),
+                )
+                .unwrap();
+            let source = "---\nconfig:\n  sankey:\n    nodeColors:\n      A: '#445566'\n---\nsankey-beta\nA,B,10\n";
+            let rendered =
+                render_sankey_with_theme_and_engine(source, &theme, MermaidEngine::new());
+            let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+            let strokes = document
+                .descendants()
+                .filter(|node| node.has_tag_name("rect"))
+                .map(|node| node.attribute("stroke").unwrap())
+                .collect::<Vec<_>>();
+            assert_eq!(strokes, [expected, expected]);
+            if expected == "#123456" {
+                let view_box = document
+                    .root_element()
+                    .attribute("viewBox")
+                    .unwrap()
+                    .split_whitespace()
+                    .map(|value| value.parse::<f64>().unwrap())
+                    .collect::<Vec<_>>();
+                assert!(
+                    view_box[1] <= -0.5,
+                    "visible node strokes need their full top outset"
+                );
+                assert!(
+                    view_box[3] >= 401.0,
+                    "visible node strokes need their full bottom outset"
+                );
+            }
+            assert_eq!(sankey_node_fills(rendered.svg()), ["#445566", "#4e79a7"]);
+            let evidence =
+                merman_render::__private::family_evidence(rendered.into_completion().report());
+            assert_eq!(evidence.required_count(), 1);
+            assert_eq!(evidence.applied_count(), 1);
+            assert_eq!(evidence.not_applicable_count(), 0);
+            assert_eq!(evidence.theme_residual_count(), 0);
+        }
+    }
+}
+
+#[test]
+fn sankey_node_stroke_does_not_certify_unsupported_geometry_in_the_same_rule() {
+    let theme = DiagramThemeCompiler::new()
+        .compile(
+            DiagramThemeSpec::new().with_styles(
+                ThemeRuleSet::default().with_rule(ThemeRule::new(
+                    ThemeTarget::Node,
+                    ThemeStylePatch::default()
+                        .with_stroke(CanvasPaint::solid("#123456").unwrap())
+                        .with_stroke_width(9.0)
+                        .unwrap(),
+                )),
+            ),
+        )
+        .unwrap();
+    let source = "sankey-beta\nA,B,10\n";
+    let rendered = render_sankey_with_theme_requirement(
+        source,
+        &theme,
+        MermaidEngine::new(),
+        ThemePortabilityRequirement::BestEffort,
+    )
+    .unwrap();
+    assert!(rendered.svg().contains(r##"stroke="#123456""##));
+    assert!(!rendered.svg().contains(r#"stroke-width="9""#));
+    let evidence = merman_render::__private::family_evidence(rendered.into_completion().report());
+    assert_eq!(evidence.required_count(), 1);
+    assert_eq!(evidence.accounted_count(), 1);
+    assert_eq!(evidence.applied_count(), 0);
+    assert_eq!(evidence.theme_residual_count(), 1);
+    assert!(
+        render_sankey_with_theme_requirement(
+            source,
+            &theme,
+            MermaidEngine::new(),
+            ThemePortabilityRequirement::RequirePortable
+        )
+        .is_err()
+    );
+}
+
+#[test]
+fn sankey_mixed_node_rule_retains_stroke_under_source_owned_fill() {
+    let theme = DiagramThemeCompiler::new()
+        .compile(
+            DiagramThemeSpec::new().with_styles(
+                ThemeRuleSet::default().with_rule(ThemeRule::new(
+                    ThemeTarget::Node,
+                    ThemeStylePatch::default()
+                        .with_fill(CanvasPaint::solid("#123456").unwrap())
+                        .with_stroke(CanvasPaint::solid("#abcdef").unwrap()),
+                )),
+            ),
+        )
+        .unwrap();
+    for colors in [
+        serde_json::json!({}),
+        serde_json::json!({"A":"#445566"}),
+        serde_json::json!({"A":"#445566", "B":"#778899"}),
+    ] {
+        let expected_fill =
+            ["A", "B"].map(|id| colors[id].as_str().unwrap_or("#123456").to_owned());
+        let engine = MermaidEngine::new().with_site_config(
+            merman_core::presentation::SourcePresentationConfig::from_value(
+                serde_json::json!({"sankey":{"nodeColors":colors}}),
+            ),
+        );
+        let rendered = render_sankey_with_theme_requirement(
+            "sankey-beta\nA,B,10\n",
+            &theme,
+            engine,
+            ThemePortabilityRequirement::BestEffort,
+        )
+        .unwrap();
+        let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+        assert_eq!(
+            document
+                .descendants()
+                .filter(
+                    |node| node.has_tag_name("rect") && node.attribute("stroke") == Some("#abcdef")
+                )
+                .count(),
+            2
+        );
+        assert_eq!(sankey_node_fills(rendered.svg()), expected_fill);
+        let evidence =
+            merman_render::__private::family_evidence(rendered.into_completion().report());
+        assert_eq!(evidence.required_count(), 1);
+        assert_eq!(evidence.accounted_count(), 1);
+        assert_eq!(evidence.applied_count(), 1);
+        assert_eq!(evidence.theme_residual_count(), 0);
+        assert_eq!(evidence.not_applicable_count(), 0);
+    }
+}
+
+#[test]
+fn sankey_static_node_fill_preserves_source_and_drives_final_link_colors() {
+    use merman_render::diagram_theme::{Specified, ThemeVariant};
+    for variant in [None, Some(ThemeVariant::Default)] {
+        for (fill, expected) in [
+            (
+                Specified::Value(CanvasPaint::solid("#123456").unwrap()),
+                "#123456",
+            ),
+            (Specified::Value(CanvasPaint::Transparent), "transparent"),
+            (Specified::Clear, "#4e79a7"),
+        ] {
+            let mut patch = ThemeStylePatch::default();
+            patch.paint.fill = fill;
+            let mut rule = ThemeRule::new(ThemeTarget::Node, patch);
+            if let Some(variant) = variant {
+                rule = rule.with_variant(variant);
+            }
+            let theme = DiagramThemeCompiler::new()
+                .compile(
+                    DiagramThemeSpec::new().with_styles(
+                        ThemeRuleSet::default()
+                            .with_rule(rule)
+                            .with_ordinal_palette(
+                                ThemeTarget::Node,
+                                sankey_node_palette(&["#abcdef"]),
+                            ),
+                    ),
+                )
+                .unwrap();
+            for mode in ["gradient", "source", "target"] {
+                let source = format!(
+                    "---\nconfig:\n  sankey:\n    nodeColors:\n      A: '#112233'\n    linkColor: {mode}\n---\nsankey-beta\nA,B,10\n"
+                );
+                let rendered =
+                    render_sankey_with_theme_and_engine(&source, &theme, MermaidEngine::new());
+                assert_eq!(sankey_node_fills(rendered.svg()), ["#112233", expected]);
+                let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+                if mode == "gradient" {
+                    let stops = document
+                        .descendants()
+                        .filter(|node| node.has_tag_name("stop"))
+                        .map(|node| node.attribute("stop-color").unwrap())
+                        .collect::<Vec<_>>();
+                    assert_eq!(stops, ["#112233", expected]);
+                } else {
+                    let stroke = if mode == "source" {
+                        "#112233"
+                    } else {
+                        expected
+                    };
+                    assert!(document.descendants().any(|node| node.has_tag_name("path")
+                        && node.attribute("stroke") == Some(stroke)));
+                }
+                let evidence =
+                    merman_render::__private::family_evidence(rendered.into_completion().report());
+                assert_eq!(evidence.required_count(), 2);
+                assert_eq!(evidence.applied_count(), 1);
+                assert_eq!(evidence.not_applicable_count(), 1);
+                assert_eq!(evidence.theme_residual_count(), 0);
+            }
+        }
+    }
+}
+
+#[test]
+fn sankey_text_palette_accounts_for_real_labels_and_fill_owners() {
+    for typed_fill in [false, true] {
+        let mut styles = ThemeRuleSet::default().with_ordinal_palette(
+            ThemeTarget::Text,
+            OrdinalPalette::new([ThemeColorValue::parse("#123456").unwrap()]).unwrap(),
+        );
+        if typed_fill {
+            styles = styles.with_rule(ThemeRule::new(
+                ThemeTarget::Text,
+                ThemeStylePatch::default().with_fill(CanvasPaint::solid("#abcdef").unwrap()),
+            ));
+        }
+        let theme = DiagramThemeCompiler::new()
+            .compile(DiagramThemeSpec::new().with_styles(styles))
+            .unwrap();
+        for source_fill in [false, true] {
+            let engine = if source_fill {
+                MermaidEngine::new().with_site_config(
+                    merman_core::presentation::SourcePresentationConfig::from_value(
+                        serde_json::json!({"themeVariables":{"textColor":"#445566"}}),
+                    ),
+                )
+            } else {
+                MermaidEngine::new()
+            };
+            let rendered = render_sankey_with_theme_requirement(
+                "sankey-beta\nA,B,10\n",
+                &theme,
+                engine,
+                ThemePortabilityRequirement::BestEffort,
+            )
+            .unwrap();
+            let evidence =
+                merman_render::__private::family_evidence(rendered.into_completion().report());
+            assert_eq!(evidence.required_count(), 1 + usize::from(typed_fill));
+            assert_eq!(evidence.accounted_count(), evidence.required_count());
+            assert_eq!(
+                evidence.applied_count(),
+                usize::from(typed_fill && !source_fill)
+            );
+            assert_eq!(
+                evidence.theme_residual_count(),
+                usize::from(!typed_fill && !source_fill)
+            );
+            assert_eq!(
+                evidence.not_applicable_count(),
+                if source_fill {
+                    evidence.required_count()
+                } else {
+                    usize::from(typed_fill)
+                }
+            );
+        }
+    }
+}
+
+#[test]
+fn sankey_effect_bindings_keep_their_domains_independent_of_source_fill() {
+    use merman_render::diagram_theme::{
+        DiagramEffectSet, EffectBinding, EffectGraph, EffectInput, EffectPrimitive,
+    };
+    for target in [ThemeTarget::Node, ThemeTarget::Text, ThemeTarget::Title] {
+        let effects = DiagramEffectSet::default()
+            .with_graph(
+                EffectGraph::new(
+                    "blur",
+                    [EffectPrimitive::GaussianBlur {
+                        input: EffectInput::SourceGraphic,
+                        std_deviation: 1.0,
+                    }],
+                )
+                .unwrap(),
+            )
+            .unwrap()
+            .with_binding(EffectBinding::new(target, "blur").unwrap())
+            .unwrap();
+        let theme = DiagramThemeCompiler::new()
+            .compile(DiagramThemeSpec::new().with_effects(effects))
+            .unwrap();
+        let rendered = render_sankey_with_theme_requirement(
+            "---\nconfig:\n  themeVariables:\n    textColor: '#445566'\n  sankey:\n    nodeColors:\n      A: '#112233'\n      B: '#778899'\n---\nsankey-beta\nA,B,10\n",
+            &theme, MermaidEngine::new(), ThemePortabilityRequirement::BestEffort,
+        ).unwrap();
+        let evidence =
+            merman_render::__private::family_evidence(rendered.into_completion().report());
+        assert_eq!(evidence.required_count(), 1);
+        assert_eq!(evidence.accounted_count(), 1);
+        assert_eq!(evidence.applied_count(), 0);
+        assert_eq!(
+            evidence.theme_residual_count(),
+            usize::from(target != ThemeTarget::Title)
+        );
+        assert_eq!(
+            evidence.not_applicable_count(),
+            usize::from(target == ThemeTarget::Title)
+        );
+    }
+}
+
 #[allow(dead_code)]
 mod common;
+
+#[test]
+fn sankey_text_ordinals_use_visible_labels_without_renumbering_nodes() {
+    use merman_render::diagram_theme::OrdinalSelector;
+
+    for label_style in ["legacy", "outlined"] {
+        for (first_id, show_values, ordinal, applicable) in [
+            ("", false, 1, false),
+            ("", false, 2, true),
+            ("", true, 1, true),
+            ("A", false, 1, true),
+            ("", false, 3, false),
+        ] {
+            let theme = DiagramThemeCompiler::new()
+                .compile(
+                    DiagramThemeSpec::new().with_styles(
+                        ThemeRuleSet::default().with_rule(
+                            ThemeRule::new(
+                                ThemeTarget::Text,
+                                ThemeStylePatch::default()
+                                    .with_fill(CanvasPaint::solid("#123456").unwrap()),
+                            )
+                            .with_ordinal(OrdinalSelector::Exact(ordinal)),
+                        ),
+                    ),
+                )
+                .unwrap();
+            let source = format!(
+                "---\nconfig:\n  sankey:\n    showValues: {show_values}\n    labelStyle: {label_style}\n---\nsankey-beta\n\"{first_id}\",B,10\n"
+            );
+            let portability = if applicable {
+                ThemePortabilityRequirement::BestEffort
+            } else {
+                ThemePortabilityRequirement::RequirePortable
+            };
+            let rendered = render_sankey_with_theme_requirement(
+                &source,
+                &theme,
+                MermaidEngine::new(),
+                portability,
+            )
+            .unwrap();
+            let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+            let visible = document
+                .descendants()
+                .filter(|node| node.has_tag_name("text"))
+                .map(|node| node.text().is_some_and(|text| !text.trim().is_empty()))
+                .collect::<Vec<_>>();
+            assert_eq!(
+                visible,
+                [show_values || !first_id.is_empty(), true].repeat(if label_style == "outlined" {
+                    2
+                } else {
+                    1
+                }),
+                "{source}"
+            );
+            let evidence =
+                merman_render::__private::family_evidence(rendered.into_completion().report());
+            assert_eq!(evidence.required_count(), 1);
+            assert_eq!(evidence.applied_count(), 0);
+            assert_eq!(
+                evidence.not_applicable_count(),
+                usize::from(!applicable),
+                "{source}, ordinal={ordinal}"
+            );
+            assert_eq!(
+                evidence.theme_residual_count(),
+                usize::from(applicable),
+                "{source}, ordinal={ordinal}"
+            );
+        }
+    }
+}
+
+#[test]
+fn sankey_visible_text_ordinals_keep_fill_and_stroke_ownership_independent() {
+    use merman_render::diagram_theme::OrdinalSelector;
+
+    for source_owns_fill in [false, true] {
+        for ordinal in [1, 2] {
+            let theme = DiagramThemeCompiler::new()
+                .compile(
+                    DiagramThemeSpec::new().with_styles(
+                        ThemeRuleSet::default()
+                            .with_rule(ThemeRule::new(
+                                ThemeTarget::Text,
+                                ThemeStylePatch::default()
+                                    .with_fill(CanvasPaint::solid("#123456").unwrap()),
+                            ))
+                            .with_rule(
+                                ThemeRule::new(
+                                    ThemeTarget::Text,
+                                    ThemeStylePatch::default()
+                                        .with_stroke(CanvasPaint::solid("#654321").unwrap()),
+                                )
+                                .with_ordinal(OrdinalSelector::Exact(ordinal)),
+                            ),
+                    ),
+                )
+                .unwrap();
+            let engine = if source_owns_fill {
+                MermaidEngine::new().with_site_config(
+                    merman_core::presentation::SourcePresentationConfig::from_value(
+                        serde_json::json!({"themeVariables":{"textColor":"#445566"}}),
+                    ),
+                )
+            } else {
+                MermaidEngine::new()
+            };
+            let rendered = render_sankey_with_theme_requirement(
+                "---\nconfig:\n  sankey:\n    showValues: false\n---\nsankey-beta\n\"\",B,10\n",
+                &theme,
+                engine,
+                ThemePortabilityRequirement::BestEffort,
+            )
+            .unwrap();
+            let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+            let label = document
+                .descendants()
+                .find(|node| node.has_tag_name("text") && node.text() == Some("B"))
+                .unwrap();
+            assert_eq!(
+                label.attribute("fill"),
+                (!source_owns_fill).then_some("#123456")
+            );
+            assert!(label.attribute("stroke").is_none());
+            let evidence =
+                merman_render::__private::family_evidence(rendered.into_completion().report());
+            assert_eq!(evidence.required_count(), 2);
+            assert_eq!(evidence.applied_count(), usize::from(!source_owns_fill));
+            assert_eq!(
+                evidence.not_applicable_count(),
+                usize::from(source_owns_fill) + usize::from(ordinal == 1)
+            );
+            assert_eq!(evidence.theme_residual_count(), usize::from(ordinal == 2));
+        }
+    }
+}
+
+#[test]
+fn sankey_empty_theme_preserves_unthemed_svg_bytes() {
+    let source = "sankey-beta\nA,B,10\n";
+    let theme = DiagramThemeCompiler::new()
+        .compile(DiagramThemeSpec::new())
+        .unwrap();
+    let parsed = MermaidEngine::new()
+        .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
+        .unwrap()
+        .unwrap()
+        .into_presentation();
+    let session = RenderEnvironment::deterministic().begin_session().unwrap();
+    let plain = family::prepare(&parsed, &LayoutOptions::default(), session)
+        .unwrap()
+        .render_svg(
+            &SvgRenderOptions {
+                diagram_id: Some("sankey-theme".to_owned()),
+                ..SvgRenderOptions::default()
+            },
+            &SvgDebugOptions::default(),
+        )
+        .unwrap();
+    let themed = render_sankey_with_theme_and_engine(source, &theme, MermaidEngine::new());
+    assert_eq!(plain.svg(), themed.svg());
+}

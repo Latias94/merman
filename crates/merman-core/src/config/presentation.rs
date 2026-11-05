@@ -29,6 +29,7 @@ pub struct SourcePresentationConfig {
     inputs: MermaidConfig,
     theme_compatibility: Option<ThemeCompatibilityState>,
     source_theme_palette: bool,
+    materialized_theme: Option<crate::MermaidThemeId>,
     explicit_config_paths: Arc<BTreeSet<Arc<str>>>,
     mutation_paths: Arc<BTreeMap<Arc<str>, MutationStamp>>,
     mutation_revision: u64,
@@ -81,6 +82,7 @@ impl SourcePresentationConfig {
             inputs,
             theme_compatibility: None,
             source_theme_palette: false,
+            materialized_theme: None,
             explicit_config_paths: Arc::new(BTreeSet::new()),
             mutation_paths: Arc::new(BTreeMap::new()),
             mutation_revision: 0,
@@ -101,6 +103,15 @@ impl SourcePresentationConfig {
 
     pub fn get_bool(&self, dotted_path: &str) -> Option<bool> {
         self.inputs.get_bool(dotted_path)
+    }
+
+    /// Palette identity retained from a successful theme evaluation, including inherited palettes.
+    pub const fn materialized_theme(&self) -> Option<crate::MermaidThemeId> {
+        self.materialized_theme
+    }
+
+    pub(crate) fn set_materialized_theme(&mut self, theme: crate::MermaidThemeId) {
+        self.materialized_theme = Some(theme);
     }
 
     pub fn clone_value_bounded_controlled(
@@ -200,6 +211,7 @@ impl SourcePresentationConfig {
             inputs: binding.compatibility_config().clone(),
             theme_compatibility: Some(ThemeCompatibilityState::Tracking(Arc::new(ownership))),
             source_theme_palette: false,
+            materialized_theme: None,
             explicit_config_paths: Arc::new(BTreeSet::new()),
             mutation_paths: Arc::new(BTreeMap::new()),
             mutation_revision: 0,
@@ -249,6 +261,7 @@ impl SourcePresentationConfig {
             theme_compatibility,
             source_theme_palette: config.palette_paint_authority()
                 == PalettePaintAuthority::SelectedPalette,
+            materialized_theme: config.materialized_theme(),
             explicit_config_paths: Arc::clone(config.shared_explicit_config_paths()),
             mutation_paths: Arc::new(BTreeMap::new()),
             mutation_revision: 0,
@@ -287,6 +300,7 @@ impl SourcePresentationConfig {
             .with_explicit_config_paths(self.explicit_config_paths)
             .with_theme_compatibility(recipe, fields)
             .with_palette_paint_authority(palette)
+            .with_materialized_theme(self.materialized_theme)
             .with_family_paint_inputs(family_paint_inputs);
         PresentationConfig::try_from_frozen_parts_controlled(parts, policy, control)
     }
@@ -1160,6 +1174,29 @@ mod tests {
             )
             .unwrap()
             .unwrap()
+    }
+
+    #[test]
+    fn materialized_theme_survives_freezing_and_import_without_evaluation() {
+        let mut source = SourcePresentationConfig::from_value(json!({"theme": "null"}));
+        assert_eq!(source.materialized_theme(), None);
+        source.set_materialized_theme(crate::MermaidThemeId::Dark);
+        let frozen = freeze(source);
+        assert_eq!(
+            frozen.materialized_theme(),
+            Some(crate::MermaidThemeId::Dark)
+        );
+        let imported = SourcePresentationConfig::from_frozen_controlled(
+            frozen.clone(),
+            &OperationControl::new(),
+        )
+        .unwrap();
+        assert_eq!(imported.get_str("theme"), Some("null"));
+        assert_eq!(
+            imported.materialized_theme(),
+            Some(crate::MermaidThemeId::Dark)
+        );
+        assert_eq!(freeze(imported), frozen);
     }
 
     #[test]

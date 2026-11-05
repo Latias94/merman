@@ -2,20 +2,13 @@
 
 ## Decision and status
 
-The maintainer accepts justified code-size growth and asks for reasonable
-thresholds. The existing catalog combines limits from two historical products;
-its notes explicitly require remeasuring the merged product. Replace that mixed
-baseline only after all six canonical artifact recipes pass their package checks
-at one committed source.
+This historical reassessment replaced limits inherited from two different
+products after measuring all six canonical artifact recipes at one committed
+source and passing their package checks. All 24 replacement limits passed locally;
+remote CI confirmed the catalog and recipes at `3a2a2de46` in run `38023696805`.
+The measurements below apply to that source and toolchain, not current `main`.
 
-The six-artifact local reassessment is complete. The replacement catalog records
-one measured product and all 24 official checks pass. Remote CI confirms the
-catalog and package recipes at `3a2a2de46` in successful run `38023696805`.
-The wider U8 delivery result is recorded separately in the final measurement report.
-
-The decision rule follows the
-[September 14 reassessment](theme_artifact_budget_reassessment_2026-09-14.md):
-each raw, stripped, gzip and Brotli limit is the corresponding measured value
+Each raw, stripped, gzip and Brotli limit is the corresponding measured value
 plus 3%, rounded upward to 1,000 bytes. Integer arithmetic implements it as
 `((bytes * 103 + 99999) / 100000) * 1000`. All 24 metrics use this rule; smaller
 calculated limits replace larger historical limits too. No extra host margin
@@ -39,14 +32,12 @@ and passing any byte limit does not establish latency or memory acceptance.
   freshness, package and runtime-smoke commands.
 - Typst uses the canonical publish feature set, artifact import validation,
   package assembly and example/positive/compile-fail fixture smoke.
-- All six exact dependency closures are checked. Artifact hashes and source/tool
-  fingerprints are retained with measurements.
+- All six exact dependency closures were checked; final artifact hashes are listed below.
 - The official owner measures final assembled Web WASM and canonical Typst
   post-link WASM. Rust gzip and Brotli compression remain unchanged.
 - Typst retains Binaryen `-Oz` and its existing seven feature flags. Convergence
   and alternative optimization-level experiments did not change the recipe.
-- Cargo and CPU measurement run serially. Shared compilation caches are allowed;
-  they do not substitute earlier package artifacts for the fixed source.
+- Cargo and CPU measurement ran serially, using artifacts from the fixed source.
 
 ## Why the former Typst ceiling failed
 
@@ -59,31 +50,18 @@ while retaining diagnostics, winner provenance, resource policy and supported
 diagram families. The same feature list does not mean the implementation has
 the same responsibilities or code size as a historical release.
 
-The lockfile changes remove one obsolete optional exporter dependency edge.
-No package version changed and no new dependency explains this growth. Symbol
-comparisons also show that increased preparation-function bytes accompany
-decreased render-function bytes; their sizes cannot simply be summed as new code.
+No package version changed and no new dependency explained this growth. Before
+accepting it, the follow-up shared Class indexing, Sequence preparation, CSS
+emission, Flowchart parsing and XML validation bodies. Its preliminary Typst
+measurement reduced raw, stripped and gzip bytes by 62,067, 50,828 and 12,677,
+respectively, relative to the initial reproduction, but still exceeded the old
+gzip limit by 16,500 bytes. The final packaged measurements appear below.
 
-Before accepting growth, the follow-up shares the Class node/interface index,
-Sequence effect preparation, common CSS emission and Flowchart class parsing.
-It shares XML validation bodies across callback types while preserving all
-checks, reference-collection modes, checkpoint counts and error order. The
-local canonical Typst result is 19,660,850 raw, 11,933,832 stripped, 4,598,500
-gzip and 3,412,774 Brotli bytes. This removes 62,067 raw, 50,828 stripped and
-12,677 gzip bytes relative to the initial reproduction. The old gzip limit
-still fails by 16,500 bytes. This observation is separate from the forthcoming
-clean packaged-product baseline.
-
-All 4,864 renderer tests passed (six skipped), and the strict CLI clippy owner
-passed at the fixed source. Source review found no validation-order or callback
-state change. Native timing confirmation remains independent of size acceptance;
-sharing code does not by itself establish a speedup or latency non-regression.
-The subsequent long native confirmation at this source confirms non-regression
-for eight of nine rows under the joint 10% and 50-microsecond gate. Label reuse
-remains A/A-unstable, so the full-suite result is inconclusive (exit 3). No
-confirmed material regression or speedup was observed. The complete raw report
-is `latency-shared-head.json` in the registered experiment, independently of
-this artifact-size decision.
+Native latency acceptance remains separate. The long native confirmation at
+the fixed source confirmed non-regression for eight of nine rows under the joint
+10% and 50-microsecond gate. Label reuse remained A/A-unstable, leaving the suite
+inconclusive (exit 3). No confirmed material regression or speedup was observed;
+accepting size growth did not close that timing uncertainty.
 
 ## Accepted measurements and ceilings
 
@@ -135,22 +113,17 @@ The source clone stayed clean throughout measurement. Different checkout paths
 or hosts may produce slightly different bytes; this is not a reproducible-build
 claim, and the registered margin remains unchanged.
 
-## Evidence and remaining delivery checks
+## Evidence availability and current authority
 
-The ignored registration and receipts are under
-`target/bench/experiments/theme-retirement-20261010-3a11f46ba/size`.
-Final receipts are in `size/final-artifacts`: `execution.json`, `identities.json`,
-`measurements.json`, package identity and both owner budget rechecks. Web input
-and artifact provenance and the Typst artifact manifest record source/tool
-fingerprints. Durable copies are archived under
-`evidence/theme-path-retirement-2026-10-10/shared-final`.
-The shared implementation additionally passes 303 public-facade tests (two
-skipped), 98 native-export tests, full SVG structure/parity/parity-root
-comparison, Playground production build/typecheck and 77 fresh Chromium theme
-and viewport tests. The first Playground attempt reused dependency symlinks
-and failed npm's dependency-tree check; a locked install in the owned source
-clone resolved it without changing source or lockfiles. Both receipts remain
-archived. This follow-up does not claim to have repeated the earlier whole
-workspace or 45-build feature matrix at the shared implementation commit.
-Remote CI verifies the pushed source and limits. None of the functional,
-runtime or platform delivery gates is waived by accepting justified growth.
+The tables and hashes above preserve the dated measurement summary. Detailed
+package receipts and the complete local latency report are no longer retained in
+this repository; this page is not an independently replayable raw dataset.
+The recorded functional checks included public-facade and native-export tests,
+SVG structure/parity/parity-root comparison, Playground build/typecheck and
+Chromium theme/viewport tests. The earlier whole-workspace and 45-build feature
+matrix was not repeated at the shared implementation commit.
+
+Current ceilings belong to [WASM_SIZE_BUDGETS.json](../release/WASM_SIZE_BUDGETS.json).
+The [October 25 reassessment](semantic_wasm_budget_2026-10-25.md) records a later
+product baseline under the same 3% rule. Neither size acceptance substitutes for
+functional, latency, memory or platform evidence.

@@ -1,0 +1,20 @@
+---
+config:
+  look: classic
+  htmlLabels: false
+  flowchart:
+    htmlLabels: false
+---
+swimlane-beta TB
+%% Adapted from Mermaid 12.3 swimlanes/__tests__/edgeLabelRanks.spec.ts (#8327).
+subgraph first[First lane]
+  A[Receive]
+  B[Approve]
+end
+subgraph second[Second lane]
+  C[Notify]
+end
+A -->|review| B
+A -->|record| B
+A -->|same rank| C
+B --> C

@@ -11,7 +11,7 @@ use crate::diagram_theme::{
 use crate::family::{
     DirectStaticSelectorDomain, FamilyThemeEvidence, FamilyThemeOutcomes,
     FamilyThemeResidualReason, InheritedFontStackOutcome, InheritedFontStackPlan,
-    SingleTitleFillPlan, resolve_direct_static_fill,
+    SingleTitleFillPlan, StaticSurfacePaint, resolve_direct_static_fill,
 };
 use crate::model::VennDiagramLayout;
 use crate::resources::OperationWorkMeter;
@@ -28,6 +28,7 @@ pub(crate) struct VennTypographyThemePlan {
     text_fill: Option<crate::family::DirectStaticPaint>,
     text_fill_routes: Box<[(FamilyThemeMechanismKey, usize)]>,
     config_owns_text_fill: bool,
+    core_paints: [StaticSurfacePaint; 2],
     terminal_receipt: OnceLock<VennTypographyThemeReceipt>,
 }
 
@@ -81,7 +82,7 @@ impl VennTypographyThemePlan {
         let config_owns_text_fill = theme.is_some()
             && effective_config
                 .config_paint_overrides_typed_default("themeVariables.vennSetTextColor");
-        let css_binding = VennCssBinding::resolve(
+        let mut css_binding = VennCssBinding::resolve(
             effective_config.as_value(),
             model,
             layout,
@@ -92,6 +93,94 @@ impl VennTypographyThemePlan {
                 .map(crate::family::DirectStaticPaint::css),
             work_meter,
         )?;
+        let core_paints = if theme.is_some() {
+            let circles = css_binding
+                .areas
+                .iter()
+                .filter_map(|area| match area {
+                    VennAreaPaintBinding::Circle(circle) => Some(circle),
+                    VennAreaPaintBinding::Intersection { .. } => None,
+                })
+                .collect::<Vec<_>>();
+            let config_owned = circles
+                .iter()
+                .map(|circle| {
+                    let path = circle
+                        .fill_config_role
+                        .map(|role| format!("themeVariables.venn{role}"))
+                        .unwrap_or_else(|| "themeVariables.primaryColor".into());
+                    effective_config.config_paint_overrides_typed_default(&path)
+                })
+                .collect::<Vec<_>>();
+            let source_fill = circles
+                .iter()
+                .zip(&config_owned)
+                .map(|(circle, &owned)| circle.source_fill_owned || owned)
+                .collect::<Vec<_>>();
+            let source_stroke = circles
+                .iter()
+                .zip(&config_owned)
+                .map(|(circle, &owned)| {
+                    circle.source_stroke_owned || (!circle.source_fill_owned && owned)
+                })
+                .collect::<Vec<_>>();
+            let source_label = circles
+                .iter()
+                .zip(layout.areas.iter().filter(|area| area.sets.len() == 1))
+                .map(|(circle, area)| {
+                    circle.source_text_owned || super::rendered_area_label(area).trim().is_empty()
+                })
+                .collect::<Vec<_>>();
+            let visible_label_sources = source_label
+                .iter()
+                .copied()
+                .zip(layout.areas.iter().filter(|area| area.sets.len() == 1))
+                .filter(|(_, area)| !super::rendered_area_label(area).trim().is_empty())
+                .map(|(owned, _)| owned)
+                .collect::<Vec<_>>();
+            let node = StaticSurfacePaint::resolve(
+                theme,
+                ThemeTarget::Node,
+                &source_fill,
+                &source_stroke,
+                work_meter,
+            )?;
+            let label = StaticSurfacePaint::resolve(
+                theme,
+                ThemeTarget::NodeLabel,
+                &visible_label_sources,
+                &vec![false; visible_label_sources.len()],
+                work_meter,
+            )?;
+            for (index, circle) in css_binding
+                .areas
+                .iter_mut()
+                .filter_map(|area| match area {
+                    VennAreaPaintBinding::Circle(circle) => Some(circle),
+                    VennAreaPaintBinding::Intersection { .. } => None,
+                })
+                .enumerate()
+            {
+                if !source_fill[index]
+                    && let Some(fill) = &node.fill
+                {
+                    circle.fill = fill.css().to_owned();
+                }
+                if !source_stroke[index]
+                    && let Some(stroke) = &node.stroke
+                {
+                    circle.stroke = stroke.css().to_owned();
+                }
+                if !source_label[index]
+                    && let Some(fill) = &label.fill
+                {
+                    circle.text = fill.css().to_owned();
+                }
+            }
+            [node, label]
+        } else {
+            Default::default()
+        };
         Ok(Self {
             css_binding,
             inherited_font_stack: InheritedFontStackPlan::resolve_property_local(
@@ -102,6 +191,7 @@ impl VennTypographyThemePlan {
             text_fill,
             text_fill_routes,
             config_owns_text_fill,
+            core_paints,
             terminal_receipt: OnceLock::new(),
         })
     }
@@ -168,6 +258,9 @@ impl VennTypographyThemePlan {
             }
             return;
         };
+        for paint in &self.core_paints {
+            paint.record_evidence(evidence);
+        }
         self.inherited_font_stack
             .record_unsupported_typography_evidence(evidence, receipt.visible_text);
         if !receipt.visible_text {

@@ -41,6 +41,7 @@ class FakeExportHost {
     "C:\\workspace\\diagram.mmd",
     "flowchart TD\nA --> B\n",
   );
+  readonly markdownReads = { lineAt: 0 };
   readonly markdownDocument = textDocument(
     "file:///workspace/notes.md",
     "C:\\workspace\\notes.md",
@@ -57,6 +58,7 @@ class FakeExportHost {
       "```",
     ].join("\n"),
     "markdown",
+    this.markdownReads,
   );
   readonly plainDocument = textDocument(
     "file:///workspace/plain.txt",
@@ -273,6 +275,16 @@ describe("export commands", () => {
     assert.deepEqual(host.writtenFiles, []);
     assert.equal(host.saveDialogs[0]?.saveLabel, "Export PNG");
     assert.deepEqual(host.saveDialogs[0]?.filters, { "PNG image": ["png"] });
+    assert.equal(host.markdownReads.lineAt, host.markdownDocument.lineCount);
+
+    await host.commands.get("merman.copySvg")?.({
+      uri: host.markdownDocument.uri,
+      sourceId: "fence-1",
+    });
+
+    assert.equal(host.renderCalls.at(-1)?.source, "flowchart TD\nA --> B");
+    assert.deepEqual(host.clipboardWrites, [host.renderStdout]);
+    assert.equal(host.markdownReads.lineAt, host.markdownDocument.lineCount);
   });
 
   it("rejects unsafe SVG before rasterizing PNG exports", async () => {
@@ -513,6 +525,7 @@ function textDocument(
   fsPath: string,
   text: string,
   languageId = "mermaid",
+  reads?: { lineAt: number },
 ): vscode.TextDocument {
   const lines = text.split(/\r?\n/);
   return {
@@ -522,9 +535,12 @@ function textDocument(
     version: 1,
     lineCount: lines.length,
     getText: () => text,
-    lineAt: (lineIndex: number) => ({
-      text: lines[lineIndex] ?? "",
-    }),
+    lineAt: (lineIndex: number) => {
+      if (reads) {
+        reads.lineAt += 1;
+      }
+      return { text: lines[lineIndex] ?? "" };
+    },
   } as unknown as vscode.TextDocument;
 }
 

@@ -12,8 +12,6 @@ pub struct CompatJsonMetadata<'a> {
     pub config: &'a MermaidConfig,
     pub authored_config: &'a MermaidConfig,
     pub title: Option<&'a str>,
-    /// Explicit output identity where the family JSON shape contains one.
-    pub diagram_id: Option<&'a str>,
 }
 
 impl<'a> From<&'a super::PresentationMetadata> for CompatJsonMetadata<'a> {
@@ -23,7 +21,6 @@ impl<'a> From<&'a super::PresentationMetadata> for CompatJsonMetadata<'a> {
             config: metadata.effective_config.as_config(),
             authored_config: &metadata.config,
             title: metadata.title.as_deref(),
-            diagram_id: None,
         }
     }
 }

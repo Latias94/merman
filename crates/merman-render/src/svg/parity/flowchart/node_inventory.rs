@@ -216,7 +216,7 @@ pub(crate) struct FlowchartNodeRootSchedule {
 #[derive(Debug)]
 pub(crate) struct FlowchartPreparedNodes {
     schedule: FlowchartNodeRootSchedule,
-    terminals: FxHashMap<String, super::node_effect::PreparedNodeTerminal>,
+    terminals: FxHashMap<String, super::node_style::PreparedNodeTerminal>,
     cluster_ids: Vec<String>,
     clusters: FxHashMap<String, FlowchartPreparedCluster>,
     _cluster_retained_reservation: crate::resources::PreparedTextRetainedReservation,
@@ -269,9 +269,7 @@ impl FlowchartPreparedNodes {
         } else {
             &typography.text_style
         };
-        let source_base = svg_labels
-            .label_weights()
-            .parent_style(crate::diagram_theme::ThemeTarget::NodeLabel, source_base);
+        let label_typography = svg_labels.label_typography();
         let (owners, uses_elk) = match layout {
             FlowchartNodeLayoutView::Flowchart(layout) => {
                 (&layout.edge_owners, layout.uses_elk_adapter_dom)
@@ -286,10 +284,11 @@ impl FlowchartPreparedNodes {
         let ordinals = super::svg_emit::flowchart_node_theme_ordinals(
             &model.nodes,
             &model.subgraphs,
+            render_context,
             uses_elk,
         );
         let render_model = crate::flowchart::FlowchartRenderModelRef::new(model, render_context);
-        let selection_inputs = super::node_effect::NodeSelectionInputs::new(
+        let selection_inputs = super::node_style::NodeSelectionInputs::new(
             &prepared_theme.compatibility,
             render_config,
         );
@@ -325,8 +324,16 @@ impl FlowchartPreparedNodes {
             {
                 Some(style) => style,
                 None => {
+                    let parent = label_typography.source_parent_style(
+                        crate::diagram_theme::ThemeTarget::NodeLabel,
+                        source_base,
+                        &model.class_defs,
+                        source_styles.0,
+                        source_styles.1,
+                        true,
+                    );
                     let style = crate::flowchart::flowchart_effective_text_style_for_node_classes(
-                        source_base.as_ref(),
+                        parent.as_ref(),
                         &model.class_defs,
                         source_styles.0,
                         source_styles.1,
@@ -337,13 +344,19 @@ impl FlowchartPreparedNodes {
                     )
                 }
             };
-            let terminal = super::node_effect::PreparedNodeTerminal::prepare(
+            let occurrence_inputs =
+                if model.keyword == "agentflow-beta" && render_context.is_subgraph_collapsed(id) {
+                    selection_inputs.for_collapsed_agentflow()
+                } else {
+                    selection_inputs
+                };
+            let terminal = super::node_style::PreparedNodeTerminal::prepare(
                 &model.class_defs,
                 source_styles,
                 source_text_style,
                 ordinals.get(id.as_str()).copied(),
                 theme,
-                &selection_inputs,
+                &occurrence_inputs,
                 work,
             )?;
             if terminals.insert(id.clone(), terminal).is_some() {
@@ -440,8 +453,10 @@ impl FlowchartPreparedNodes {
                 false,
             );
             let typed_fill = theme.fill_value(fill_precedence, true).map(str::to_owned);
-            let fill = typed_fill
-                .as_deref()
+            let fill = (model.keyword == "agentflow-beta")
+                .then_some(compiled.fill.as_deref())
+                .flatten()
+                .or(typed_fill.as_deref())
                 .unwrap_or(&render_config.cluster_fill_color)
                 .to_owned();
             let stroke = theme
@@ -525,7 +540,7 @@ impl FlowchartPreparedNodes {
     pub(super) fn schedule(&self) -> &FlowchartNodeRootSchedule {
         &self.schedule
     }
-    pub(super) fn node(&self, id: &str) -> Option<&super::node_effect::PreparedNodeTerminal> {
+    pub(super) fn node(&self, id: &str) -> Option<&super::node_style::PreparedNodeTerminal> {
         self.terminals.get(id)
     }
     pub(super) fn cluster_ids(&self) -> impl Iterator<Item = &str> {
@@ -580,6 +595,8 @@ fn prepared_cluster_ids(
                     .map(|subgraph| subgraph.id.clone()),
             );
         }
+    } else if let FlowchartNodeLayoutView::Swimlane(layout) = layout {
+        ids.extend(layout.lanes.iter().map(|lane| lane.id.clone()));
     } else {
         for id in input.subgraphs_by_id.keys().copied() {
             if !input.subgraph_has_children(id) || !input.layout_clusters_by_id.contains_key(id) {
@@ -593,22 +610,6 @@ fn prepared_cluster_ids(
             if root.is_none_or(|root| scheduled_roots.contains(root)) {
                 ids.push(id.to_owned());
             }
-        }
-        if let FlowchartNodeLayoutView::Swimlane(layout) = layout {
-            ids.extend(
-                layout
-                    .lanes
-                    .iter()
-                    .filter(|lane| {
-                        !input.subgraphs_by_id.contains_key(lane.id.as_str())
-                            && input.layout_clusters_by_id.contains_key(lane.id.as_str())
-                            && lane
-                                .parent_id
-                                .as_deref()
-                                .is_none_or(|root| scheduled_roots.contains(root))
-                    })
-                    .map(|lane| lane.id.clone()),
-            );
         }
     }
     let mut seen = FxHashSet::default();

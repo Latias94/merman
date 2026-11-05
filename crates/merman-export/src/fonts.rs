@@ -251,11 +251,10 @@ impl NativeExportFontObserver {
         }
     }
 
-    pub(crate) fn admitted_faces(&self) -> BTreeMap<usvg::fontdb::ID, NativeExportFontSource> {
-        self.admitted_faces
-            .lock()
-            .map(|faces| faces.clone())
-            .unwrap_or_default()
+    pub(crate) fn admitted_faces(
+        &self,
+    ) -> Option<std::sync::MutexGuard<'_, BTreeMap<usvg::fontdb::ID, NativeExportFontSource>>> {
+        self.admitted_faces.lock().ok()
     }
 
     pub(crate) fn mark_family_fallback(&self) {

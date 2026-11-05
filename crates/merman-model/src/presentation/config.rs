@@ -3,6 +3,7 @@ use std::sync::Arc;
 
 use serde_json::Value;
 
+use crate::config::MermaidThemeId;
 use crate::config::values_equal_controlled;
 use crate::resources::InputResourcePolicy;
 use crate::{MermaidConfig, OperationControl, OperationControlResult};
@@ -33,6 +34,7 @@ pub struct FrozenPresentationConfigParts {
     residual_fields: Arc<[ThemeCompatibilityField]>,
     palette_paint_authority: PalettePaintAuthority,
     family_paint_inputs: Option<FamilyPaintInputs>,
+    materialized_theme: Option<MermaidThemeId>,
 }
 
 impl FrozenPresentationConfigParts {
@@ -44,6 +46,7 @@ impl FrozenPresentationConfigParts {
             residual_fields: Arc::from([]),
             palette_paint_authority: PalettePaintAuthority::PropertyInputs,
             family_paint_inputs: None,
+            materialized_theme: None,
         }
     }
 
@@ -76,6 +79,12 @@ impl FrozenPresentationConfigParts {
         self.family_paint_inputs = inputs;
         self
     }
+
+    /// Declares the palette identity separately from the public `theme` configuration spelling.
+    pub fn with_materialized_theme(mut self, theme: Option<MermaidThemeId>) -> Self {
+        self.materialized_theme = theme;
+        self
+    }
 }
 
 /// Immutable resolved configuration with explicit output ownership declarations.
@@ -89,6 +98,7 @@ pub struct PresentationConfig {
     theme_compatibility: ThemeCompatibilityEvidence,
     palette_paint_authority: PalettePaintAuthority,
     family_paint_inputs: Option<FamilyPaintInputs>,
+    materialized_theme: Option<MermaidThemeId>,
 }
 
 impl PartialEq for PresentationConfig {
@@ -97,6 +107,7 @@ impl PartialEq for PresentationConfig {
             && self.theme_compatibility == other.theme_compatibility
             && self.palette_paint_authority == other.palette_paint_authority
             && self.family_paint_inputs == other.family_paint_inputs
+            && self.materialized_theme == other.materialized_theme
             && matches!(
                 values_equal_controlled(self.as_value(), other.as_value(), None),
                 Ok(true)
@@ -120,6 +131,7 @@ impl PresentationConfig {
             theme_compatibility: ThemeCompatibilityEvidence::default(),
             palette_paint_authority: PalettePaintAuthority::PropertyInputs,
             family_paint_inputs: None,
+            materialized_theme: None,
         }
     }
 
@@ -148,6 +160,7 @@ impl PresentationConfig {
             theme_compatibility: ThemeCompatibilityEvidence::default(),
             palette_paint_authority: PalettePaintAuthority::PropertyInputs,
             family_paint_inputs: None,
+            materialized_theme: None,
         }))
     }
 
@@ -222,6 +235,7 @@ impl PresentationConfig {
             ),
             palette_paint_authority: parts.palette_paint_authority,
             family_paint_inputs: parts.family_paint_inputs,
+            materialized_theme: parts.materialized_theme,
         }))
     }
 
@@ -271,6 +285,11 @@ impl PresentationConfig {
         self.palette_paint_authority
     }
 
+    /// Frozen producer declaration; ordinary authored configuration does not infer this value.
+    pub const fn materialized_theme(&self) -> Option<MermaidThemeId> {
+        self.materialized_theme
+    }
+
     pub const fn family_paint_inputs(&self) -> Option<FamilyPaintInputs> {
         self.family_paint_inputs
     }
@@ -298,6 +317,7 @@ impl PresentationConfig {
             residual_fields: Arc::clone(self.theme_compatibility.shared_fields()),
             palette_paint_authority: self.palette_paint_authority,
             family_paint_inputs: self.family_paint_inputs,
+            materialized_theme: self.materialized_theme,
         }
     }
 

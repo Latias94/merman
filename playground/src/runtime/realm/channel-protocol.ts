@@ -186,16 +186,20 @@ export interface CompareRenderProgress extends RealmIdentity {
   readonly type: "render-progress";
 }
 
-export interface CompareRenderSuccess extends RealmIdentity {
+export interface CompareRenderOutput {
+  readonly materializedTheme: string | null;
   readonly prepareTimeMs: number;
   readonly presentationTimeMs: number;
-  readonly protocol: typeof REALM_PROTOCOL_VERSION;
   readonly renderTimeMs: number;
+  readonly svg: string;
+  readonly version: string;
+}
+
+export interface CompareRenderSuccess extends RealmIdentity, CompareRenderOutput {
+  readonly protocol: typeof REALM_PROTOCOL_VERSION;
   readonly requestId: string;
   readonly sequence: number;
-  readonly svg: string;
   readonly type: "render-success";
-  readonly version: string;
 }
 
 export type CompareFailureStage =
@@ -609,6 +613,7 @@ export function validateCompareRenderResponse(
       "sequence",
       "requestId",
       "svg",
+      "materializedTheme",
       "prepareTimeMs",
       "renderTimeMs",
       "presentationTimeMs",
@@ -625,6 +630,10 @@ export function validateCompareRenderResponse(
       sequence: expectedSequence,
       requestId: expectedRequestId,
       svg,
+      materializedTheme:
+        message.materializedTheme === null
+          ? null
+          : expectBoundedString(message.materializedTheme, "materializedTheme", 128),
       prepareTimeMs: expectDuration(message.prepareTimeMs, "prepareTimeMs"),
       renderTimeMs: expectDuration(message.renderTimeMs, "renderTimeMs"),
       presentationTimeMs: expectDuration(

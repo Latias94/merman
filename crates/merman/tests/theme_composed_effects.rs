@@ -1013,6 +1013,76 @@ fn composed_sequence_actor_text_shadows_reach_translated_glyphs_and_visible_link
         ThemeTarget::ActorLabel,
         3,
     );
+
+    // A distant label shadow must survive the Neo glyph's independent body decoration.
+    for kind in ["boundary", "entity"] {
+        let theme = DiagramThemeCompiler::new()
+            .compile(
+                DiagramThemeSpec::new()
+                    .with_canvas(
+                        CanvasSpec::default().with_base(CanvasPaint::solid("#000000").unwrap()),
+                    )
+                    .with_effects(
+                        DiagramEffectSet::default()
+                            .with_graph(
+                                EffectGraph::new(
+                                    "right-shadow",
+                                    [EffectPrimitive::DropShadow {
+                                        input: EffectInput::SourceGraphic,
+                                        offset_x: 128.0,
+                                        offset_y: 0.0,
+                                        blur_radius: 0.0,
+                                        spread: 0.0,
+                                        color: ThemeColorValue::parse("#ff0000").unwrap(),
+                                    }],
+                                )
+                                .unwrap(),
+                            )
+                            .unwrap()
+                            .with_binding(
+                                EffectBinding::new(ThemeTarget::ActorLabel, "right-shadow")
+                                    .unwrap(),
+                            )
+                            .unwrap(),
+                    ),
+            )
+            .unwrap();
+        let source = format!("sequenceDiagram\nparticipant A@{{\"type\":\"{kind}\"}}");
+        let RenderOutput::Document(Some(document)) = Renderer::new()
+            .with_presentation_engine(merman::MermaidEngine::new().with_site_config(
+                merman::SourcePresentationConfig::from_value(serde_json::json!({
+                    "look": "neo",
+                    "themeVariables": {"actorTextColor": "#ffffff"}
+                })),
+            ))
+            .render(
+                RenderRequest::document(&source, OperationControl::new(), Default::default())
+                    .with_theme(theme),
+            )
+            .unwrap()
+        else {
+            panic!("Neo Sequence document required")
+        };
+        assert_eq!(
+            document.evidence().theme_evidence().status(),
+            merman::ThemeEvidenceStatus::Verified
+        );
+        let png = document
+            .export_png(&Default::default(), OperationControl::new())
+            .unwrap();
+        assert!(
+            !png.admission()
+                .reasons()
+                .contains(&TargetAdmissionReason::ThemeEvidenceIncomplete),
+            "{kind}: {:?}",
+            png.admission()
+        );
+        let (red, _) = color_counts(png.bytes());
+        assert!(
+            red > 20,
+            "{kind}: the 128px label shadow must remain visible, found {red} red pixels"
+        );
+    }
 }
 
 #[test]
