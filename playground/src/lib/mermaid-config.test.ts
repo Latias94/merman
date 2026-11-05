@@ -29,6 +29,11 @@ test("explicit config theme takes precedence over the selected theme", () => {
     buildMermaidConfig('{"theme":"dark"}', "redux-color").theme,
     "dark"
   );
+  for (const selection of ["dark", "auto"]) {
+    const operation = buildMermaidOperationInput('pie\n"Tea": 4', selection, '{"theme":"forest"}');
+    assert.deepEqual(operation.initializationConfig, { theme: "forest" });
+    assert.equal(operation.configuredSource, '%%{init: {"theme":"forest"}}%%\npie\n"Tea": 4');
+  }
 });
 
 test("inherited fonts add no host or source override and preserve authored fonts", () => {
@@ -167,10 +172,28 @@ test("operation retains native source appearance after injected user settings", 
 });
 
 
-test("invalid authored themes initialize the default palette without inheriting the selection", () => {
-  for (const theme of ["unknown", "null", null, false, "constructor"]) {
-    const operation = buildMermaidOperationInput("flowchart TD\nA-->B", "dark", JSON.stringify({ theme }));
-    assert.deepEqual(operation.initializationConfig, {});
+test("null theme sentinel retains the host selection in both config and source", () => {
+  const source = 'pie\n"Tea": 4';
+  const configuredSource = '%%{init: {"theme":"null"}}%%\n' + source;
+  for (const selection of ["dark", "auto"]) {
+    const configForm = buildMermaidOperationInput(source, selection, '{"theme":"null"}');
+    const sourceForm = buildMermaidOperationInput(configuredSource, selection, "{}");
+    assert.deepEqual(configForm.initializationConfig, selection === "auto" ? {} : { theme: "dark" });
+    assert.deepEqual(configForm.initializationConfig, sourceForm.initializationConfig);
+    assert.equal(configForm.configuredSource, configuredSource);
+    assert.equal(sourceForm.configuredSource, configuredSource);
+  }
+});
+
+test("invalid authored themes preserve the host selection and remain in source", () => {
+  const source = 'pie\n"Tea": 4';
+  for (const theme of ["unknown", null, false, 0, "constructor", "auto"]) {
+    const configJson = JSON.stringify({ theme });
+    for (const selection of ["dark", "auto"]) {
+      const operation = buildMermaidOperationInput(source, selection, configJson);
+      assert.deepEqual(operation.initializationConfig, selection === "auto" ? {} : { theme: "dark" });
+      assert.equal(operation.configuredSource, `%%{init: ${configJson}}%%\n${source}`);
+    }
   }
 });
 
@@ -248,6 +271,44 @@ test("injected configuration stays outside greedy frontmatter without changing s
       parseYaml(rendered.slice(after.bodyStart, after.bodyEnd)),
       parseYaml(source.slice(original.bodyStart, original.bodyEnd)),
     );
+  }
+});
+
+test("config injection preserves a leading BOM before frontmatter and UTF-8 spans", () => {
+  const configJson = '{"themeVariables":{"textColor":"#123456"},"fontFamily":"字體 Ω"}';
+  const directive = `%%{init: ${configJson}}%%`;
+  const encoder = new TextEncoder();
+  for (const newline of ["\n", "\r\n"]) {
+    const frontmatter = `\uFEFF---${newline}title: 雪😀${newline}config: {theme: forest}${newline}---${newline}`;
+    const source = `${frontmatter}pie${newline}"Tea": 4`;
+    const operation = buildMermaidOperationInput(source, "auto", configJson);
+    assert.equal(operation.configuredSource, `${frontmatter}${directive}${newline}pie${newline}"Tea": 4`);
+    const start = encoder.encode(frontmatter).byteLength;
+    const span = operation.injectedConfigSpan;
+    assert.deepEqual(span, { start, end: start + encoder.encode(directive).byteLength });
+    assert.ok(span);
+    assert.deepEqual(encoder.encode(operation.configuredSource).slice(span.start, span.end), encoder.encode(directive));
+    assert.deepEqual(buildMermaidOperationInput(source, "auto", "{}"), {
+      initializationConfig: {}, configuredSource: source, injectedConfigSpan: null,
+    });
+  }
+});
+
+test("config injection stays after a leading BOM without frontmatter and records UTF-8 spans", () => {
+  const configJson = '{"themeVariables":{"textColor":"#123456"},"fontFamily":"字體 Ω"}';
+  const directive = `%%{init: ${configJson}}%%`;
+  const encoder = new TextEncoder();
+  for (const newline of ["\n", "\r\n"]) {
+    const source = `\uFEFFpie${newline}"雪😀": 4`;
+    const operation = buildMermaidOperationInput(source, "auto", configJson);
+    assert.equal(operation.configuredSource, `\uFEFF${directive}${newline}pie${newline}"雪😀": 4`);
+    const span = operation.injectedConfigSpan;
+    assert.deepEqual(span, { start: 3, end: 3 + encoder.encode(directive).byteLength });
+    assert.ok(span);
+    assert.deepEqual(encoder.encode(operation.configuredSource).slice(span.start, span.end), encoder.encode(directive));
+    assert.deepEqual(buildMermaidOperationInput(source, "auto", "{}"), {
+      initializationConfig: {}, configuredSource: source, injectedConfigSpan: null,
+    });
   }
 });
 

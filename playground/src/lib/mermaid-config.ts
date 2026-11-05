@@ -93,7 +93,8 @@ export function buildMermaidOperationInput(
 }> {
   const authoredConfig = parseMermaidConfigJson(configJson);
   const initializationConfig = safeInitializationConfig(
-    buildMermaidConfig(configJson, theme, options),
+    authoredConfig,
+    theme,
     options,
   );
   return Object.freeze({ initializationConfig, ...insertMermaidConfig(source, authoredConfig) });
@@ -101,12 +102,14 @@ export function buildMermaidOperationInput(
 
 function safeInitializationConfig(
   authoredConfig: MermaidConfigObject,
+  theme: string,
   options: MermaidConfigBuildOptions,
 ): Readonly<MermaidConfigObject> {
   const safe: MermaidConfigObject = {};
   const authoredTheme = authoredConfig.theme;
-  if (isKnownThemeName(authoredTheme)) {
-    safe.theme = authoredTheme;
+  const initializationTheme = isKnownThemeName(authoredTheme) ? authoredTheme : theme;
+  if (isKnownThemeName(initializationTheme)) {
+    safe.theme = initializationTheme;
   }
   // Font values come only from the validated UI enum. User config font/CSS fields
   // remain source directives and therefore pass through Mermaid/Core sanitization.
@@ -132,7 +135,9 @@ function insertMermaidConfig(
 
   const directive = `%%{init: ${JSON.stringify(config)}}%%`;
   const newline = /\r\n|[\r\n]/.exec(source)?.[0] ?? "\n";
-  const insertion = locateMermaidFrontmatter(source)?.end ?? 0;
+  // Core strips a file-leading BOM before locating frontmatter; keep it at byte zero.
+  const bomOffset = source.startsWith("\uFEFF") ? 1 : 0;
+  const insertion = bomOffset + (locateMermaidFrontmatter(source.slice(bomOffset))?.end ?? 0);
   const encoder = new TextEncoder();
   const start = encoder.encode(source.slice(0, insertion)).byteLength;
   return {
