@@ -133,7 +133,7 @@ jobs:
 
       - name: Rust cache
         if: ${{ inputs.native_run_id == '' }}
-        uses: Swatinem/rust-cache@v2.9.2
+        uses: Swatinem/rust-cache@v2.9.3
 
       - name: Install desktop cross tools
         if: ${{ inputs.native_run_id == '' }}
