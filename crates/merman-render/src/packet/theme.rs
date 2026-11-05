@@ -293,7 +293,9 @@ impl PacketTypographyThemePlan {
     }
 
     pub(crate) fn begin_text_output(&self) -> Option<PacketTextOutput<'_>> {
-        self.selection.as_ref().map(PacketTextOutput::new)
+        self.selection
+            .as_ref()
+            .map(|selection| PacketTextOutput::new(selection, &self.css_binding))
     }
 
     pub(crate) fn finish_blocks(

@@ -141,21 +141,31 @@ const fn target_index(target: ThemeTarget) -> Option<usize> {
     }
 }
 
-/// Actual visible text decisions accumulated by the requested-theme SVG writer.
+/// Actual text decisions accumulated by the requested-theme SVG writer.
 /// Ordinal rules resolve immediately in writer order; no terminal inventory is retained.
 pub(crate) struct PacketTextOutput<'a> {
     selection: &'a PacketThemeSelection,
     occurrences: [usize; 3],
-    visible_roles: u8,
+    emitted_roles: u8,
+    visible_font_sizes: [bool; 3],
     winners: BTreeSet<(usize, ResolvedStyleProperty)>,
 }
 
 impl<'a> PacketTextOutput<'a> {
-    pub(super) fn new(selection: &'a PacketThemeSelection) -> Self {
+    pub(super) fn new(
+        selection: &'a PacketThemeSelection,
+        css: &crate::packet::config::PacketStyleSettings,
+    ) -> Self {
         Self {
             selection,
             occurrences: [0; 3],
-            visible_roles: 0,
+            emitted_roles: 0,
+            visible_font_sizes: [
+                css.byte_font_size.as_ref(),
+                css.label_font_size.as_ref(),
+                css.title_font_size.as_ref(),
+            ]
+            .map(|size| !crate::mermaid_style::css_font_size_is_zero(size)),
             winners: BTreeSet::new(),
         }
     }
@@ -180,9 +190,13 @@ impl<'a> PacketTextOutput<'a> {
         let target = role.target();
         let index = target_index(target).expect("Packet text role has a text target");
         self.occurrences[index] = self.occurrences[index].saturating_add(1);
-        let first_role = self.visible_roles & (1 << role as u8) == 0;
-        self.visible_roles |= 1 << role as u8;
+        let first_role = self.emitted_roles & (1 << role as u8) == 0;
+        self.emitted_roles |= 1 << role as u8;
+        let visible = self.visible_font_sizes[index];
         let fill_owned = self.selection.text_color_ownership.owns(role);
+        // Zero-sized text retains its ordinal and geometry winners, but cannot prove paint/fonts.
+        let property_applicable =
+            |property| property != ResolvedStyleProperty::Fill || (visible && !fill_owned);
         let plan = &self.selection.text_winners.targets[index];
         if plan.has_ordinal_rules {
             let theme = &self.selection.text_winners.theme;
@@ -205,15 +219,15 @@ impl<'a> PacketTextOutput<'a> {
                 style
                     .winner_rule_properties()
                     .filter_map(|(property, origin)| {
-                        (property != ResolvedStyleProperty::Fill || !fill_owned)
-                            .then_some((origin.rule_index(), property))
+                        property_applicable(property).then_some((origin.rule_index(), property))
                     }),
             );
         } else if first_role {
             self.winners.extend(
-                plan.static_winners.iter().copied().filter(|(_, property)| {
-                    *property != ResolvedStyleProperty::Fill || !fill_owned
-                }),
+                plan.static_winners
+                    .iter()
+                    .copied()
+                    .filter(|(_, property)| property_applicable(*property)),
             );
         }
         Ok(())
@@ -224,13 +238,19 @@ impl<'a> PacketTextOutput<'a> {
     }
 
     pub(super) fn has_visible_text(&self) -> bool {
-        self.visible_roles != 0
+        self.occurrences
+            .iter()
+            .zip(self.visible_font_sizes)
+            .any(|(count, visible)| *count != 0 && visible)
     }
 
     pub(super) fn has_typed_fill(&self, target: ThemeTarget) -> bool {
-        PacketTextRole::for_target(target).iter().any(|role| {
-            self.visible_roles & (1 << *role as u8) != 0
-                && !self.selection.text_color_ownership.owns(*role)
+        target_index(target).is_some_and(|index| {
+            self.visible_font_sizes[index]
+                && PacketTextRole::for_target(target).iter().any(|role| {
+                    self.emitted_roles & (1 << *role as u8) != 0
+                        && !self.selection.text_color_ownership.owns(*role)
+                })
         })
     }
 

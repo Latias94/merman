@@ -1152,6 +1152,190 @@ fn packet_generic_text_fill_reaches_visible_field_labels() {
 }
 
 #[test]
+fn packet_zero_sized_field_labels_do_not_certify_text_fill_or_font_stack() {
+    let theme = DiagramThemeCompiler::new()
+        .compile(
+            DiagramThemeSpec::new()
+                .with_typography(
+                    TypographySpec::default().with_family_style(
+                        DiagramFamilyId::PACKET,
+                        ThemeTextStyle::default()
+                            .with_font_stack(FontStack::single("monospace").unwrap()),
+                    ),
+                )
+                .with_styles(ThemeRuleSet::default().with_rule(ThemeRule::new(
+                    ThemeTarget::Text,
+                    ThemeStylePatch::default().with_fill(CanvasPaint::solid("#123456").unwrap()),
+                ))),
+        )
+        .unwrap();
+    // Source presentation accepts CSS values; declaration priority is a host capability.
+    for (owner, size, expected_css) in [
+        ("site", serde_json::json!(0), "0"),
+        ("source", serde_json::json!(0), "0"),
+        ("site", serde_json::json!("0px"), "0px"),
+        ("source", serde_json::json!("0px"), "0px"),
+        ("source", serde_json::json!("0em"), "0em"),
+        ("source", serde_json::json!("0rem"), "0rem"),
+        ("source", serde_json::json!("0%"), "0%"),
+        ("source", serde_json::json!("0pt"), "0pt"),
+        (
+            "site",
+            serde_json::json!("0.0px !important"),
+            "0.0px !important",
+        ),
+    ] {
+        let config = serde_json::json!({
+            "packet": {"showBits": false},
+            "themeVariables": {"packet": {"labelFontSize": size}}
+        });
+        let body = "packet\n0-7: \"Header\"\n";
+        let (source, engine) = if owner == "source" {
+            (
+                format!("---\nconfig: {config}\n---\n{body}"),
+                MermaidEngine::new(),
+            )
+        } else {
+            (
+                body.to_owned(),
+                MermaidEngine::new().with_site_config(
+                    merman_core::presentation::SourcePresentationConfig::from_value(config),
+                ),
+            )
+        };
+        let rendered = try_render_packet_source_with_theme_and_engine(
+            &source,
+            &theme,
+            engine,
+            "packet-zero-sized-text",
+        )
+        .expect("zero-sized Packet labels are not applicable to text fill or font evidence");
+        let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+        assert!(
+            packet_stylesheet(&document).contains(&format!(
+                ".packetLabel{{fill:#123456;font-size:{expected_css};}}"
+            )),
+            "{owner}/{size}: {}",
+            packet_stylesheet(&document)
+        );
+        assert!(document.descendants().any(|node| {
+            node.has_tag_name("text")
+                && node.attribute("class") == Some("packetLabel")
+                && node.text() == Some("Header")
+        }));
+        assert!(document.descendants().any(|node| {
+            node.has_tag_name("rect") && node.attribute("class") == Some("packetBlock")
+        }));
+        drop(document);
+        let evidence =
+            merman_render::__private::family_evidence(rendered.into_completion().report());
+        assert_eq!(evidence.required_count(), 2, "{owner}/{size}");
+        assert_eq!(evidence.accounted_count(), 2, "{owner}/{size}");
+        assert_eq!(evidence.applied_count(), 0, "{owner}/{size}");
+        assert_eq!(evidence.not_applicable_count(), 2, "{owner}/{size}");
+        assert_eq!(evidence.theme_residual_count(), 0, "{owner}/{size}");
+    }
+}
+
+#[test]
+fn packet_text_evidence_tracks_each_final_role_font_size() {
+    let theme = packet_direct_text_theme_with_mermaid(MermaidThemeCompatibility::default());
+    for visible_role in [None, Some("byte"), Some("label"), Some("title")] {
+        let engine = MermaidEngine::new().with_site_config(
+            merman_core::presentation::SourcePresentationConfig::from_value(serde_json::json!({
+                "themeVariables": {"packet": {
+                    "byteFontSize": if visible_role == Some("byte") {"10px"} else {"0px"},
+                    "labelFontSize": if visible_role == Some("label") {"12px"} else {"0px"},
+                    "titleFontSize": if visible_role == Some("title") {"14px"} else {"0px"}
+                }}
+            })),
+        );
+        let rendered =
+            try_render_packet_with_theme_and_engine(&theme, engine, "packet-role-font-size")
+                .expect(
+                    "only the visible Packet role consumes its fill and the inherited font stack",
+                );
+        let evidence =
+            merman_render::__private::family_evidence(rendered.into_completion().report());
+        let applied = if visible_role.is_some() { 2 } else { 0 };
+        assert_eq!(evidence.required_count(), 4, "{visible_role:?}");
+        assert_eq!(evidence.accounted_count(), 4, "{visible_role:?}");
+        assert_eq!(evidence.applied_count(), applied, "{visible_role:?}");
+        assert_eq!(
+            evidence.not_applicable_count(),
+            4 - applied,
+            "{visible_role:?}"
+        );
+        assert_eq!(evidence.theme_residual_count(), 0, "{visible_role:?}");
+    }
+}
+
+#[test]
+fn packet_zero_sized_text_keeps_geometry_residuals_but_retires_fill_winners() {
+    for target in [ThemeTarget::Text, ThemeTarget::PacketFieldLabel] {
+        for (ordinal, clear) in [(false, false), (true, false), (false, true)] {
+            for geometry in [false, true] {
+                let mut patch =
+                    ThemeStylePatch::default().with_fill(CanvasPaint::solid("#123456").unwrap());
+                if clear {
+                    patch.paint.fill = Specified::Clear;
+                }
+                if geometry {
+                    patch.geometry.radius = Specified::Value(8.0);
+                }
+                let mut rule = ThemeRule::new(target, patch);
+                if ordinal {
+                    rule = rule.with_ordinal(OrdinalSelector::exact(1).unwrap());
+                }
+                let theme = DiagramThemeCompiler::new()
+                    .compile(
+                        DiagramThemeSpec::new()
+                            .with_styles(ThemeRuleSet::default().with_rule(rule)),
+                    )
+                    .unwrap();
+                let engine = MermaidEngine::new().with_site_config(
+                    merman_core::presentation::SourcePresentationConfig::from_value(
+                        serde_json::json!({
+                            "packet": {"showBits": false},
+                            "themeVariables": {"packet": {"labelFontSize": "0px"}}
+                        }),
+                    ),
+                );
+                let rendered = try_render_packet_source_with_theme_requirement(
+                    "packet\n0-7: \"Header\"\n",
+                    &theme,
+                    engine,
+                    "packet-zero-sized-text-geometry",
+                    if geometry {
+                        ThemePortabilityRequirement::BestEffort
+                    } else {
+                        ThemePortabilityRequirement::RequirePortable
+                    },
+                )
+                .expect("zero-sized text retains its geometry occurrence domain");
+                let evidence =
+                    merman_render::__private::family_evidence(rendered.into_completion().report());
+                let case =
+                    format!("{target:?}/ordinal={ordinal}/clear={clear}/geometry={geometry}");
+                assert_eq!(evidence.required_count(), 1, "{case}");
+                assert_eq!(evidence.accounted_count(), 1, "{case}");
+                assert_eq!(evidence.applied_count(), 0, "{case}");
+                assert_eq!(
+                    evidence.not_applicable_count(),
+                    usize::from(!geometry),
+                    "{case}"
+                );
+                assert_eq!(
+                    evidence.theme_residual_count(),
+                    usize::from(geometry),
+                    "{case}"
+                );
+            }
+        }
+    }
+}
+
+#[test]
 fn packet_source_label_color_outranks_generic_text_fill_in_styles_and_report() {
     let theme = packet_text_fill_theme(
         CanvasPaint::solid("#123456").expect("valid Packet generic text fill"),
