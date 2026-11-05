@@ -169,6 +169,24 @@ impl FlowchartLabelTypography {
         self.parent_style_with_source(target, parent, stack, size)
     }
 
+    pub(crate) fn node_source_parent_style<'a>(
+        &self,
+        parent: &'a TextStyle,
+        class_defs: &indexmap::IndexMap<String, Vec<String>>,
+        source: (&[String], &[String], bool),
+        structural: &super::FlowchartStructuralLabelTypography,
+    ) -> Cow<'a, TextStyle> {
+        let [stack, size] =
+            super::style::flowchart_declared_font_facets(class_defs, source.0, source.1, source.2);
+        let parent = self.parent_style_with_source(
+            ThemeTarget::NodeLabel,
+            parent,
+            stack || !structural.font_stack_status().is_absent(),
+            size || !structural.font_size_status().is_absent(),
+        );
+        structural.apply_to_parent(parent)
+    }
+
     pub(crate) fn parent_style_with_source<'a>(
         &self,
         target: ThemeTarget,

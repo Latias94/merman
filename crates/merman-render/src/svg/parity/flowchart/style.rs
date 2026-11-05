@@ -599,6 +599,26 @@ impl FlowchartCompiledStyles {
             .and_then(admitted_flowchart_source_stroke_width)
     }
 
+    /// The path writer emits assigned-class declarations before inline declarations.
+    /// Its last important width outranks generated structural class CSS. Hand-drawn edge
+    /// artifacts already omit assigned-class transport from edge_class_shape_sources.
+    pub(super) fn edge_important_stroke_width(
+        &self,
+    ) -> Option<&crate::diagram_theme::PreparedSourceStyleDeclaration> {
+        self.edge_class_shape_sources
+            .iter()
+            .chain(
+                self.inline_shape_sources
+                    .iter()
+                    .filter(|source| source.provenance.is_inline()),
+            )
+            .rev()
+            .find(|source| {
+                source.prepared.property() == "stroke-width" && source.prepared.important()
+            })
+            .map(|source| source.prepared.as_ref())
+    }
+
     pub(super) fn source_stroke_dasharray_status(
         &self,
     ) -> crate::flowchart::FlowchartSourceFacetStatus {
@@ -2071,7 +2091,7 @@ pub(super) fn emitted_shape_source_residual_reason(
     }
 }
 
-fn label_source_residual_reason(
+pub(super) fn label_source_residual_reason(
     declaration: &crate::diagram_theme::SourceStyleDeclaration,
     typography_verified: bool,
 ) -> Option<crate::diagram_theme::SourceStyleResidualReason> {
@@ -2680,7 +2700,7 @@ fn admitted_flowchart_source_paint(value: &str) -> bool {
         || merman_markup::theme_color::ThemeColor::parse(value.trim()).is_ok()
 }
 
-fn admitted_flowchart_source_stroke_width(value: &str) -> Option<f32> {
+pub(super) fn admitted_flowchart_source_stroke_width(value: &str) -> Option<f32> {
     let value = crate::mermaid_style::parse_svg_number_or_px(value)?;
     (value <= f32::MAX as f64).then_some(value as f32)
 }

@@ -463,9 +463,17 @@ impl FlowchartMarkerEmissionPlan {
             plan.terminal = Some(Mutex::new(FlowchartMarkerTerminalReceipt::default()));
         }
         for &edge in hierarchy_plan.ordered_edges() {
+            ctx.edge_style_plan.bind_path_sources_for(
+                edge.key,
+                ctx.compatibility.html_labels,
+                ctx.uses_elk_adapter_dom || ctx.swimlane_direction.is_some(),
+                hierarchy_plan.edge_root(edge.key)?.is_some(),
+                ctx.work_meter,
+            )?;
             let edge_styles = ctx.edge_style_plan.edge_for(edge.key)?;
             let stroke_precedence = crate::flowchart::FlowchartFacetPrecedence::new(
-                edge_styles.emitted_edge_source_stroke_status(hand_drawn),
+                ctx.edge_style_plan
+                    .emitted_source_stroke_status_for(edge.key, hand_drawn)?,
                 ctx.edge_stroke_config_override,
             );
             let typed_stroke = ctx.edge_theme.stroke_value(stroke_precedence, true);

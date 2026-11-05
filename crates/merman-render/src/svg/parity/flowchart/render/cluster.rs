@@ -528,7 +528,8 @@ pub(in crate::svg::parity) fn render_flowchart_cluster(
                     ctx.class_defs,
                     classes,
                     ctx.work_meter,
-                )?,
+                )?
+                .merge(terminal.structural_sources.label_foreground),
                 ctx.work_meter,
             )?;
         }
@@ -620,7 +621,9 @@ pub(in crate::svg::parity) fn render_flowchart_cluster(
         ctx.text_surface_paint.record_label(
             cluster.id.as_str(),
             &crate::text::VisibleTextStyleFacts::from_xhtml_fragment(title_html.as_ref()),
-            compiled_styles.source_label_foreground_status(),
+            compiled_styles
+                .source_label_foreground_status()
+                .merge(terminal.structural_sources.label_foreground),
             ctx.work_meter,
         )?;
     }

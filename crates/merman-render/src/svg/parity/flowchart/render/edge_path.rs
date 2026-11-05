@@ -42,7 +42,8 @@ pub(in crate::svg::parity::flowchart) fn render_flowchart_edge_path(
     let emitted_styles = ctx.edge_style_plan.edge_for(key)?;
     let animation = ctx.edge_style_plan.animation_for(key)?;
     let stroke_precedence = crate::flowchart::FlowchartFacetPrecedence::new(
-        emitted_styles.emitted_edge_source_stroke_status(hand_drawn),
+        ctx.edge_style_plan
+            .emitted_source_stroke_status_for(key, hand_drawn)?,
         ctx.edge_stroke_config_override,
     );
     let typed_stroke = ctx.edge_theme.stroke_value(stroke_precedence, true);
@@ -54,7 +55,8 @@ pub(in crate::svg::parity::flowchart) fn render_flowchart_edge_path(
     let stroke_width_precedence = stroke_width.precedence();
     let typed_stroke_width = stroke_width.typed_value();
     let stroke_dasharray_precedence = crate::flowchart::FlowchartFacetPrecedence::new(
-        emitted_styles.emitted_edge_source_stroke_dasharray_status(hand_drawn),
+        ctx.edge_style_plan
+            .emitted_source_stroke_dasharray_status_for(key, hand_drawn)?,
         false,
     );
     let edge_writer_supports_typed_dasharray = !hand_drawn;
@@ -202,7 +204,8 @@ pub(in crate::svg::parity::flowchart) fn render_flowchart_edge_path(
             has_geometry: !d.is_empty(),
             attributes: edge_receipt.marker_attributes(out.as_str()),
         },
-        emitted_styles.emitted_edge_source_stroke_status(hand_drawn),
+        ctx.edge_style_plan
+            .emitted_source_stroke_status_for(key, hand_drawn)?,
         ctx.edge_stroke_config_override,
         ctx.document_ids().marker_scope(),
         ctx.diagram_type,

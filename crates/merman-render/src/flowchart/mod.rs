@@ -1,5 +1,6 @@
 mod base_typography;
 pub(crate) mod bpmn;
+mod class_style;
 mod compatibility;
 mod config;
 mod edge_label_padding;
@@ -21,6 +22,9 @@ pub(crate) use merman_model::families::flowchart::{
 };
 use std::ops::Deref;
 
+pub(crate) use class_style::{
+    FlowchartClassDefStyles, FlowchartLabelDom, FlowchartStructuralLabelTypography,
+};
 pub(crate) use compatibility::{
     FlowchartCompatibilityBinding, FlowchartEffectEligibility, FlowchartPreparedTheme,
 };

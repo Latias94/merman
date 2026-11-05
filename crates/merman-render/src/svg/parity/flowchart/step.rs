@@ -439,9 +439,11 @@ impl StepBadges {
                 continue;
             };
             let point = point + kurbo::Vec2::new(entry.origin_x, entry.abs_top_transform);
-            let styles = ctx.edge_style_plan.edge_for(edge.key)?;
             let precedence = crate::flowchart::FlowchartFacetPrecedence::new(
-                styles.emitted_edge_source_stroke_status(ctx.compatibility.look.is_hand_drawn()),
+                ctx.edge_style_plan.emitted_source_stroke_status_for(
+                    edge.key,
+                    ctx.compatibility.look.is_hand_drawn(),
+                )?,
                 ctx.edge_stroke_config_override,
             );
             let color = step_color(ctx, edge.key, ctx.edge_theme.stroke_value(precedence, true))?

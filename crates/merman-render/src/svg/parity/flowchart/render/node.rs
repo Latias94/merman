@@ -267,6 +267,7 @@ pub(in crate::svg::parity::flowchart) fn render_flowchart_node(
         node_classes,
         prepared.source_text_style.as_ref(),
         compiled_styles,
+        &prepared.terminal_sources,
         typed_label_fill,
     );
 
@@ -395,7 +396,9 @@ pub(in crate::svg::parity::flowchart) fn render_flowchart_node(
             label_receipt
                 .text_paint_facts()
                 .unwrap_or_else(crate::flowchart::FlowchartTextPaintFacts::unknown),
-            compiled_styles.source_label_foreground_status(),
+            compiled_styles
+                .source_label_foreground_status()
+                .merge(prepared.terminal_sources.label_foreground),
             ctx.work_meter,
         )?;
         ctx.record_base_typography_label_emission(
@@ -409,9 +412,11 @@ pub(in crate::svg::parity::flowchart) fn render_flowchart_node(
             .with_source_facets(
                 compiled_styles
                     .source_font_stack_status()
+                    .merge(prepared.terminal_sources.font_stack)
                     .merge(label_receipt.html_font_stack_status()),
                 compiled_styles
                     .source_font_size_status()
+                    .merge(prepared.terminal_sources.font_size)
                     .merge(label_receipt.html_font_size_status()),
             )
             .with_target_selection(typed_font_stack_selected, typed_font_size_selected),
@@ -422,6 +427,9 @@ pub(in crate::svg::parity::flowchart) fn render_flowchart_node(
         compiled_styles.shape_source_evidence(node_id, shape_outcome.emission(), |class_id| {
             wrapper_classes.contains(class_id)
         });
+    prepared
+        .terminal_sources
+        .merge_into_evidence(&mut source_evidence);
     let (font_stack_emission, font_size_emission, label_fill_emission) =
         label_receipt.map_or((None, None, None), |label_receipt| {
             source_evidence
@@ -431,7 +439,9 @@ pub(in crate::svg::parity::flowchart) fn render_flowchart_node(
                 label_receipt.prepared_font_stack_reach().map(|reach| {
                     crate::flowchart::FlowchartThemeFacetEmission::new(
                         crate::flowchart::FlowchartFacetPrecedence::new(
-                            compiled_styles.emitted_source_font_stack_status(label_receipt),
+                            compiled_styles
+                                .emitted_source_font_stack_status(label_receipt)
+                                .merge(prepared.terminal_sources.font_stack),
                             ctx.node_typography_config_ownership.font_stack,
                         ),
                         typed_font_stack_selected && reach.is_verified(),
@@ -440,7 +450,9 @@ pub(in crate::svg::parity::flowchart) fn render_flowchart_node(
                 label_receipt.prepared_font_size_reach().map(|reach| {
                     crate::flowchart::FlowchartThemeFacetEmission::new(
                         crate::flowchart::FlowchartFacetPrecedence::new(
-                            compiled_styles.emitted_source_font_size_status(label_receipt),
+                            compiled_styles
+                                .emitted_source_font_size_status(label_receipt)
+                                .merge(prepared.terminal_sources.font_size),
                             ctx.node_typography_config_ownership.font_size,
                         ),
                         typed_font_size_selected && reach.is_verified(),
@@ -451,7 +463,8 @@ pub(in crate::svg::parity::flowchart) fn render_flowchart_node(
                         crate::flowchart::FlowchartThemeFacetEmission::new(
                             crate::flowchart::FlowchartFacetPrecedence::new(
                                 compiled_styles
-                                    .emitted_source_label_foreground_status(label_receipt),
+                                    .emitted_source_label_foreground_status(label_receipt)
+                                    .merge(prepared.terminal_sources.label_foreground),
                                 ctx.node_label_fill_config_override,
                             ),
                             typed_label_fill.is_some() && reach.is_verified(),
