@@ -2882,25 +2882,42 @@ fn pdf_native_filter_fully_localized(
         return Ok(false);
     };
     if filter_plan.limited
+        || !page_scale.is_finite()
+        || page_scale <= 0.0
+        || !requested_scale.is_finite()
+        || requested_scale <= 0.0
+        || filter_plan.requested_scale != requested_scale
         || filter_plan.effective_scale != requested_scale
-        || filter_plan.filtered_groups != reference_count
     {
         return Ok(false);
     }
 
+    // The receipt certifies typed applications, while krilla also localizes independent
+    // default-look filters. Match the plan against every actual PDF group, not only typed ones.
     let bounds = pdf_filtered_group_bounds(tree, page_scale, control)?;
-    if bounds.len() != reference_count {
+    if bounds.len() != filter_plan.filtered_groups || bounds.len() < reference_count {
         return Ok(false);
     }
-    Ok(bounds.into_iter().all(|geometry| {
+    if !bounds.iter().all(|geometry| {
         let scale = f64::from(geometry.scale) * f64::from(requested_scale);
         let width = f64::from(geometry.width) * scale;
         let height = f64::from(geometry.height) * scale;
         width.is_finite()
             && height.is_finite()
+            && width > 0.0
+            && height > 0.0
             && width <= KRILLA_MAX_FILTER_SIDE_PX
             && height <= KRILLA_MAX_FILTER_SIDE_PX
-    }))
+    }) {
+        return Ok(false);
+    }
+    let Some(pixels) = pdf_filter_pixels(&bounds, requested_scale, control)? else {
+        return Ok(false);
+    };
+    Ok(
+        filter_plan.requested_image_pixels == pixels
+            && filter_plan.effective_image_pixels == pixels,
+    )
 }
 
 #[cfg(feature = "pdf")]

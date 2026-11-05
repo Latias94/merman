@@ -1,4 +1,4 @@
-use std::collections::{BTreeMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet};
 
 use merman_model::OperationControl;
 use merman_render::__private::{
@@ -11,6 +11,8 @@ use quick_xml::name::ResolveResult;
 use quick_xml::reader::NsReader;
 
 const SVG_NAMESPACE: &str = "http://www.w3.org/2000/svg";
+const XLINK_NAMESPACE: &str = "http://www.w3.org/1999/xlink";
+const XML_NAMESPACE: &str = "http://www.w3.org/XML/1998/namespace";
 const TYPED_FILTER_ID_MARKER: &str = "-theme-effect-";
 
 #[derive(Debug)]
@@ -52,6 +54,180 @@ struct DefinitionSlot {
     definition: Option<FilterDefinition>,
 }
 
+#[derive(Default)]
+struct RawReferenceProof {
+    open_sources: Vec<RawSource>,
+    sources: HashMap<String, bool>,
+    targets: HashSet<String>,
+}
+
+struct RawSource {
+    ids: Vec<String>,
+    plain: bool,
+    reusable: bool,
+    has_typed_reference: bool,
+}
+
+impl RawReferenceProof {
+    fn start(
+        &mut self,
+        reader: &NsReader<&[u8]>,
+        element: &BytesStart<'_>,
+        has_typed_reference: bool,
+    ) -> Result<(), ()> {
+        let local_name = element.local_name();
+        // Admit literal geometry/text sources, including HTML fallback's nested SVG.
+        // References inside a source need a separate expansion proof and fail closed.
+        let mut source = RawSource {
+            ids: Vec::new(),
+            plain: is_svg_namespace(reader, element)
+                && matches!(
+                    local_name.as_ref(),
+                    "g" | "svg"
+                        | "rect"
+                        | "path"
+                        | "circle"
+                        | "ellipse"
+                        | "line"
+                        | "polyline"
+                        | "polygon"
+                        | "text"
+                        | "tspan"
+                        | "title"
+                        | "desc"
+                ),
+            reusable: matches!(
+                local_name.as_ref(),
+                "marker" | "pattern" | "clipPath" | "mask" | "symbol"
+            ),
+            has_typed_reference,
+        };
+        let instantiates_source = matches!(local_name.as_ref(), "use" | "feImage");
+        let mut href = None;
+        for attribute in element.attributes() {
+            let attribute = attribute.map_err(|_| ())?;
+            if attribute.key.as_namespace_binding().is_some() {
+                continue;
+            }
+            let (namespace, name) = reader.resolver().resolve_attribute(attribute.key);
+            // XML use expansion reads local-name identity before presentation filtering.
+            // Keep a finite literal identity surface rather than guessing a different target.
+            match name.as_ref() {
+                "id" if !matches!(namespace, ResolveResult::Unbound) => return Err(()),
+                "href"
+                    if !matches!(namespace, ResolveResult::Unbound)
+                        && !matches!(&namespace, ResolveResult::Bound(uri)
+                            if uri.as_ref() == XLINK_NAMESPACE) =>
+                {
+                    return Err(());
+                }
+                _ => {}
+            }
+            if !is_usvg_attribute_namespace(&namespace) {
+                continue;
+            }
+            let value = attribute
+                .normalized_value(XmlVersion::Implicit1_0)
+                .map_err(|_| ())?;
+            match name.as_ref() {
+                "id" => {
+                    // usvg's XML use lookup and converted resource lookup project IDs
+                    // differently. Namespaced or duplicate source IDs are not certified.
+                    source.plain &= matches!(namespace, ResolveResult::Unbound);
+                    source.ids.push(value.into_owned());
+                }
+                "href" => {
+                    source.plain = false;
+                    if instantiates_source {
+                        if href
+                            .as_deref()
+                            .is_some_and(|previous| previous != value.as_ref())
+                        {
+                            return Err(());
+                        }
+                        href = Some(value.into_owned());
+                    }
+                }
+                "filter" | "clip-path" | "mask" | "marker" | "marker-start" | "marker-mid"
+                | "marker-end" => source.plain &= value.trim() == "none",
+                "fill" | "stroke" => {
+                    source.plain &= !value.to_ascii_lowercase().contains("url");
+                }
+                "style" => source.plain &= plain_reference_style(&value),
+                _ => {}
+            }
+        }
+        source.plain &= !has_typed_reference && source.ids.len() <= 1;
+        if instantiates_source {
+            let target = href
+                .as_deref()
+                .and_then(|href| href.strip_prefix('#'))
+                .ok_or(())?;
+            if target.is_empty()
+                || !target.bytes().all(|byte| {
+                    byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_' | b':' | b'.')
+                })
+            {
+                return Err(());
+            }
+            self.targets.insert(target.to_string());
+        }
+        self.open_sources.push(source);
+        Ok(())
+    }
+
+    fn end(&mut self) -> Option<()> {
+        let source = self.open_sources.pop()?;
+        if source.reusable && source.has_typed_reference {
+            return None;
+        }
+        for id in source.ids {
+            self.sources
+                .entry(id)
+                .and_modify(|plain| *plain = false)
+                .or_insert(source.plain);
+        }
+        if let Some(parent) = self.open_sources.last_mut() {
+            parent.plain &= source.plain;
+            parent.has_typed_reference |= source.has_typed_reference;
+        }
+        Some(())
+    }
+
+    fn matches(&self) -> bool {
+        self.open_sources.is_empty()
+            && self
+                .targets
+                .iter()
+                .all(|target| self.sources.get(target) == Some(&true))
+    }
+}
+
+fn plain_reference_style(style: &str) -> bool {
+    // Only literal writer declarations are admitted; this is not a CSS resolver.
+    !style.to_ascii_lowercase().contains("url")
+        && style
+            .split(';')
+            .filter(|part| !part.trim().is_empty())
+            .all(|part| {
+                let Some((property, value)) = part.split_once(':') else {
+                    return false;
+                };
+                let property = property.trim();
+                !property.is_empty()
+                    && property
+                        .bytes()
+                        .all(|byte| byte.is_ascii_alphabetic() || byte == b'-')
+                    && (!property.eq_ignore_ascii_case("filter")
+                        || value
+                            .trim()
+                            .strip_suffix("!important")
+                            .unwrap_or(value.trim())
+                            .trim()
+                            == "none")
+            })
+}
+
 pub(super) fn preflight_native_filter_receipt(
     svg: &str,
     tree: &usvg::Tree,
@@ -78,14 +254,24 @@ fn parse_raw_drop_shadows(
     reader.config_mut().enable_all_checks(true);
     let mut depth = 0usize;
     let mut open_filters = Vec::<OpenFilter>::new();
+    let mut open_style: Option<(usize, String)> = None;
     let mut definitions = BTreeMap::<String, DefinitionSlot>::new();
     let mut references = BTreeMap::<String, usize>::new();
+    let mut reference_proof = RawReferenceProof::default();
 
     loop {
         crate::export_checkpoint(control).ok()?;
         match reader.read_event().ok()? {
             Event::Start(element) => {
-                record_typed_reference(&reader, &element, &mut references).ok()?;
+                if open_style.is_some() {
+                    return None;
+                }
+                // usvg discovers stylesheets by local name, in every namespace.
+                if element.local_name().as_ref() == "style" {
+                    open_style = Some((depth, String::new()));
+                }
+                let typed = record_typed_reference(&reader, &element, &mut references).ok()?;
+                reference_proof.start(&reader, &element, typed).ok()?;
                 observe_filter_child(&reader, &element, depth, &mut open_filters).ok()?;
                 if is_svg_element(&reader, &element, "filter") {
                     open_filters.push(parse_filter(&reader, &element, depth).ok()?);
@@ -93,7 +279,12 @@ fn parse_raw_drop_shadows(
                 depth = depth.checked_add(1)?;
             }
             Event::Empty(element) => {
-                record_typed_reference(&reader, &element, &mut references).ok()?;
+                if open_style.is_some() {
+                    return None;
+                }
+                let typed = record_typed_reference(&reader, &element, &mut references).ok()?;
+                reference_proof.start(&reader, &element, typed).ok()?;
+                reference_proof.end()?;
                 observe_filter_child(&reader, &element, depth, &mut open_filters).ok()?;
                 if is_svg_element(&reader, &element, "filter") {
                     let filter = parse_filter(&reader, &element, depth).ok()?;
@@ -102,6 +293,18 @@ fn parse_raw_drop_shadows(
             }
             Event::End(element) => {
                 depth = depth.checked_sub(1)?;
+                reference_proof.end()?;
+                if open_style
+                    .as_ref()
+                    .is_some_and(|(style_depth, _)| *style_depth == depth)
+                {
+                    let (_, style) = open_style.take()?;
+                    // This is finite writer-syntax admission, not partial CSS interpretation.
+                    // Escapes can hide typed IDs; reject them without depending on CSS decoding.
+                    if style.contains('\\') || style.contains(TYPED_FILTER_ID_MARKER) {
+                        return None;
+                    }
+                }
                 for filter in &mut open_filters {
                     if filter.composition == EffectComposition::Independent
                         && depth == filter.depth + 1
@@ -133,13 +336,34 @@ fn parse_raw_drop_shadows(
                     record_definition(filter, &mut definitions)?;
                 }
             }
-            Event::Text(text) if !text.as_ref().as_bytes().iter().all(u8::is_ascii_whitespace) => {
+            Event::Text(text) => {
+                if let Some((_, style)) = &mut open_style {
+                    style.push_str(text.as_ref());
+                }
+                if !text.as_ref().as_bytes().iter().all(u8::is_ascii_whitespace) {
+                    invalidate_containing_filters(depth, &mut open_filters);
+                }
+            }
+            Event::CData(text) => {
+                if let Some((_, style)) = &mut open_style {
+                    style.push_str(text.as_ref());
+                }
+                if !text.as_ref().as_bytes().iter().all(u8::is_ascii_whitespace) {
+                    invalidate_containing_filters(depth, &mut open_filters);
+                }
+            }
+            Event::GeneralRef(reference) => {
+                if let Some((_, style)) = &mut open_style {
+                    if let Some(character) = reference.resolve_char_ref().ok()? {
+                        style.push(character);
+                    } else {
+                        style.push_str(quick_xml::escape::resolve_predefined_entity(
+                            reference.as_ref(),
+                        )?);
+                    }
+                }
                 invalidate_containing_filters(depth, &mut open_filters);
             }
-            Event::CData(text) if !text.as_ref().as_bytes().iter().all(u8::is_ascii_whitespace) => {
-                invalidate_containing_filters(depth, &mut open_filters);
-            }
-            Event::GeneralRef(_) => invalidate_containing_filters(depth, &mut open_filters),
             Event::Eof => break,
             _ => {}
         }
@@ -147,6 +371,8 @@ fn parse_raw_drop_shadows(
 
     if depth != 0
         || !open_filters.is_empty()
+        || open_style.is_some()
+        || !reference_proof.matches()
         || references.is_empty()
         || definitions.len() != references.len()
     {
@@ -195,33 +421,98 @@ fn record_typed_reference(
     reader: &NsReader<&[u8]>,
     element: &BytesStart<'_>,
     references: &mut BTreeMap<String, usize>,
-) -> Result<(), ()> {
+) -> Result<bool, ()> {
     if !is_svg_namespace(reader, element) {
-        return Ok(());
+        return Ok(false);
     }
 
+    let mut typed_filter = None;
+    let mut style = None;
     for attribute in element.attributes() {
         let attribute = attribute.map_err(|_| ())?;
         if attribute.key.as_namespace_binding().is_some() {
             continue;
         }
         let (namespace, local_name) = reader.resolver().resolve_attribute(attribute.key);
-        if !matches!(namespace, ResolveResult::Unbound) || local_name.as_ref() != "filter" {
+        if !is_usvg_attribute_namespace(&namespace)
+            || !matches!(local_name.as_ref(), "filter" | "style")
+        {
             continue;
+        }
+        // usvg projects these accepted namespaces to presentation-attribute local names.
+        // The finite writer proof admits only the unqualified form, without precedence inference.
+        if !matches!(namespace, ResolveResult::Unbound) {
+            return Err(());
         }
         let value = attribute
             .normalized_value(XmlVersion::Implicit1_0)
             .map_err(|_| ())?;
+        if local_name.as_ref() == "style" {
+            // Admit the writer's literal CSS surface only, after XML entity normalization.
+            // Even an unrelated escape prevents proving that no typed application is hidden.
+            if value.contains('\\') {
+                return Err(());
+            }
+            if style.replace(value.into_owned()).is_some() {
+                return Err(());
+            }
+            continue;
+        }
         let Some(filter_id) = exact_filter_reference(value.as_ref()) else {
+            if value.contains(TYPED_FILTER_ID_MARKER) {
+                return Err(());
+            }
             continue;
         };
         if !filter_id.contains(TYPED_FILTER_ID_MARKER) {
             continue;
         }
-        let count = references.entry(filter_id.to_string()).or_default();
-        *count = count.checked_add(1).ok_or(())?;
+        if typed_filter.replace(filter_id.to_string()).is_some() {
+            return Err(());
+        }
     }
-    Ok(())
+    if let Some(style) = style
+        && style.contains(TYPED_FILTER_ID_MARKER)
+        && !inline_style_matches_typed_reference(&style, typed_filter.as_deref().ok_or(())?)
+    {
+        return Err(());
+    }
+    if let Some(filter_id) = typed_filter {
+        let count = references.entry(filter_id).or_default();
+        *count = count.checked_add(1).ok_or(())?;
+        return Ok(true);
+    }
+    Ok(false)
+}
+
+fn inline_style_matches_typed_reference(style: &str, filter_id: &str) -> bool {
+    // Admit only the writer's single mirrored filter declaration, without CSS cascade
+    // inference. Multiple declarations, conflicting values, and style-only paint fail closed.
+    if style.matches(TYPED_FILTER_ID_MARKER).count() != 1 {
+        return false;
+    }
+    let mut matched = false;
+    for declaration in style.split(';') {
+        let Some((property, value)) = declaration.split_once(':') else {
+            if declaration.contains(TYPED_FILTER_ID_MARKER) {
+                return false;
+            }
+            continue;
+        };
+        if !property.trim().eq_ignore_ascii_case("filter") {
+            if declaration.contains(TYPED_FILTER_ID_MARKER) {
+                return false;
+            }
+            continue;
+        }
+        let value = value.trim();
+        let value = value.strip_suffix("!important").unwrap_or(value).trim_end();
+        if matched || exact_filter_reference(value) != Some(filter_id) {
+            return false;
+        }
+        matched = true;
+    }
+    matched
 }
 
 fn exact_filter_reference(value: &str) -> Option<&str> {
@@ -798,37 +1089,45 @@ fn is_svg_namespace(reader: &NsReader<&[u8]>, element: &BytesStart<'_>) -> bool 
         || matches!(namespace, ResolveResult::Bound(namespace) if namespace.as_ref() == SVG_NAMESPACE)
 }
 
+fn is_usvg_attribute_namespace(namespace: &ResolveResult<'_>) -> bool {
+    matches!(namespace, ResolveResult::Unbound)
+        || matches!(namespace, ResolveResult::Bound(namespace) if matches!(namespace.as_ref(), SVG_NAMESPACE | XLINK_NAMESPACE | XML_NAMESPACE))
+}
+
 fn resolved_tree_matches(
     tree: &usvg::Tree,
     shadows: &[NativeSvgFilterApplication],
     viewport: usvg::Rect,
     control: &OperationControl,
 ) -> bool {
-    if tree.filters().len() != shadows.len() {
-        return false;
-    }
     let expected = shadows
         .iter()
         .map(|shadow| (shadow.filter_id(), shadow))
         .collect::<BTreeMap<_, _>>();
-    let mut resolved_ids = HashSet::with_capacity(tree.filters().len());
+    let mut resolved_ids = HashSet::with_capacity(expected.len());
     for filter in tree.filters() {
         if crate::export_checkpoint(control).is_err() {
             return false;
         }
         let Some(shadow) = expected.get(filter.id()) else {
-            return false;
+            if filter.id().contains(TYPED_FILTER_ID_MARKER) {
+                return false;
+            }
+            continue;
         };
         if !resolved_ids.insert(filter.id()) || !resolved_filter_matches(filter, shadow) {
             return false;
         }
+    }
+    if resolved_ids.len() != expected.len() {
+        return false;
     }
 
     let mut group_references = shadows
         .iter()
         .map(|shadow| (shadow.filter_id().to_string(), 0usize))
         .collect::<BTreeMap<_, _>>();
-    let mut visited = HashSet::<*const usvg::Group>::new();
+    let mut visited = HashMap::<*const usvg::Group, Option<TextPaint>>::new();
     if visit_group(
         tree.root(),
         &expected,
@@ -1095,15 +1394,22 @@ fn same_f32(left: f32, right: f32) -> bool {
     normalized_bits(left) == normalized_bits(right)
 }
 
-/// Text-only paint summary in the current group's local coordinates. Each subtree is visited
-/// once; ancestor effects cannot accidentally certify a previously filtered or clipped label.
-#[derive(Default)]
+/// Text paint bounds in local coordinates plus filter restrictions for every paint kind.
+/// Each subtree is visited once; independent siblings do not become one another's source.
+#[derive(Clone, Copy, Default)]
 struct TextPaint {
     bounds: Option<usvg::Rect>,
     restricted: bool,
+    filter_restricted: bool,
+    has_typed_application: bool,
 }
 
 impl TextPaint {
+    fn include_filters(&mut self, other: &Self) {
+        self.filter_restricted |= other.filter_restricted;
+        self.has_typed_application |= other.has_typed_application;
+    }
+
     fn include(&mut self, bounds: usvg::Rect) -> Option<()> {
         self.bounds = Some(match self.bounds {
             Some(current) => current.join(&bounds)?,
@@ -1117,16 +1423,26 @@ fn visit_group(
     group: &usvg::Group,
     expected: &BTreeMap<&str, &NativeSvgFilterApplication>,
     references: &mut BTreeMap<String, usize>,
-    visited: &mut HashSet<*const usvg::Group>,
+    visited: &mut HashMap<*const usvg::Group, Option<TextPaint>>,
     viewport: usvg::Rect,
     ancestor_clipped: bool,
     control: &OperationControl,
 ) -> Option<TextPaint> {
     crate::export_checkpoint(control).ok()?;
-    if !visited.insert(std::ptr::from_ref(group)) {
-        return Some(TextPaint::default());
-    }
     let clipped = ancestor_clipped || group.clip_path().is_some() || group.mask().is_some();
+    let group_ptr = std::ptr::from_ref(group);
+    if let Some(paint) = visited.get(&group_ptr) {
+        let mut paint = (*paint)?;
+        // Cached typed paint cannot certify a restricted embedding without rechecking its
+        // source. Preserve all application flags and fail closed rather than reuse that proof.
+        if clipped && paint.has_typed_application {
+            return None;
+        }
+        paint.restricted |= clipped;
+        return Some(paint);
+    }
+    // Reuse restrictions on shared subroots; an in-progress entry cannot prove a cycle safe.
+    visited.insert(group_ptr, None);
     let mut text_paint = TextPaint {
         restricted: clipped,
         ..TextPaint::default()
@@ -1138,6 +1454,7 @@ fn visit_group(
                 let child_paint = visit_group(
                     child, expected, references, visited, viewport, clipped, control,
                 )?;
+                text_paint.include_filters(&child_paint);
                 if let Some(bounds) = child_paint.bounds {
                     text_paint.include(bounds.transform(child.transform())?)?;
                     text_paint.restricted |= child_paint.restricted;
@@ -1155,10 +1472,13 @@ fn visit_group(
             let mut subroots_match = true;
             node.subroots(|subroot| {
                 if subroots_match {
-                    subroots_match = visit_group(
+                    if let Some(paint) = visit_group(
                         subroot, expected, references, visited, viewport, true, control,
-                    )
-                    .is_some();
+                    ) {
+                        text_paint.include_filters(&paint);
+                    } else {
+                        subroots_match = false;
+                    }
                 }
             });
             if !subroots_match {
@@ -1167,15 +1487,31 @@ fn visit_group(
         }
     }
 
-    if !group.filters().is_empty() {
+    if let Some(clip_path) = group.clip_path() {
+        text_paint.include_filters(&visit_clip_path(
+            clip_path, expected, references, visited, viewport, control,
+        )?);
+    }
+    if let Some(mask) = group.mask() {
+        text_paint.include_filters(&visit_mask(
+            mask, expected, references, visited, viewport, control,
+        )?);
+    }
+
+    let typed_filter = group
+        .filters()
+        .iter()
+        .find(|filter| expected.contains_key(filter.id()));
+    if let Some(filter) = typed_filter {
+        // Typed groups keep their single exact filter and exclude untyped source effects.
+        if group.filters().len() != 1 || clipped || text_paint.filter_restricted {
+            return None;
+        }
         // usvg can retain a filter group after discarding empty text or a missing font.
         // Such a definition is not an observed paint terminal.
         if group.children().is_empty() {
             return None;
         }
-        let [filter] = group.filters() else {
-            return None;
-        };
         let shadow = expected.get(filter.id())?;
         if !resolved_filter_region_matches(group, filter, shadow) {
             return None;
@@ -1204,18 +1540,36 @@ fn visit_group(
         if *count != 1 {
             return None;
         }
+        text_paint.has_typed_application = true;
+    } else if !group.filters().is_empty() {
+        // Unknown filters may alter or clip typed descendant paint. Carry the restriction
+        // upward even without text bounds so a typed ancestor cannot consume their output.
+        if text_paint.has_typed_application {
+            return None;
+        }
+        text_paint.filter_restricted = true;
+        for filter in group.filters() {
+            for primitive in filter.primitives() {
+                crate::export_checkpoint(control).ok()?;
+                if let usvg::filter::Kind::Image(image) = primitive.kind()
+                    && visit_group(
+                        image.root(),
+                        expected,
+                        references,
+                        visited,
+                        viewport,
+                        true,
+                        control,
+                    )?
+                    .has_typed_application
+                {
+                    return None;
+                }
+            }
+        }
     }
 
-    if let Some(clip_path) = group.clip_path()
-        && !visit_clip_path(clip_path, expected, references, visited, viewport, control)
-    {
-        return None;
-    }
-    if let Some(mask) = group.mask()
-        && !visit_mask(mask, expected, references, visited, viewport, control)
-    {
-        return None;
-    }
+    visited.insert(group_ptr, Some(text_paint));
     Some(text_paint)
 }
 
@@ -1277,11 +1631,11 @@ fn visit_clip_path(
     clip_path: &usvg::ClipPath,
     expected: &BTreeMap<&str, &NativeSvgFilterApplication>,
     references: &mut BTreeMap<String, usize>,
-    visited: &mut HashSet<*const usvg::Group>,
+    visited: &mut HashMap<*const usvg::Group, Option<TextPaint>>,
     viewport: usvg::Rect,
     control: &OperationControl,
-) -> bool {
-    visit_group(
+) -> Option<TextPaint> {
+    let mut paint = visit_group(
         clip_path.root(),
         expected,
         references,
@@ -1289,22 +1643,24 @@ fn visit_clip_path(
         viewport,
         true,
         control,
-    )
-    .is_some()
-        && clip_path.clip_path().is_none_or(|nested| {
-            visit_clip_path(nested, expected, references, visited, viewport, control)
-        })
+    )?;
+    if let Some(nested) = clip_path.clip_path() {
+        paint.include_filters(&visit_clip_path(
+            nested, expected, references, visited, viewport, control,
+        )?);
+    }
+    Some(paint)
 }
 
 fn visit_mask(
     mask: &usvg::Mask,
     expected: &BTreeMap<&str, &NativeSvgFilterApplication>,
     references: &mut BTreeMap<String, usize>,
-    visited: &mut HashSet<*const usvg::Group>,
+    visited: &mut HashMap<*const usvg::Group, Option<TextPaint>>,
     viewport: usvg::Rect,
     control: &OperationControl,
-) -> bool {
-    visit_group(
+) -> Option<TextPaint> {
+    let mut paint = visit_group(
         mask.root(),
         expected,
         references,
@@ -1312,11 +1668,13 @@ fn visit_mask(
         viewport,
         true,
         control,
-    )
-    .is_some()
-        && mask.mask().is_none_or(|nested| {
-            visit_mask(nested, expected, references, visited, viewport, control)
-        })
+    )?;
+    if let Some(nested) = mask.mask() {
+        paint.include_filters(&visit_mask(
+            nested, expected, references, visited, viewport, control,
+        )?);
+    }
+    Some(paint)
 }
 
 #[cfg(test)]
@@ -1484,6 +1842,686 @@ mod tests {
         format!(
             r##"<svg xmlns="http://www.w3.org/2000/svg" width="{size}" height="{size}" viewBox="0 0 {size} {size}"><defs><filter id="{FIRST_ID}" filterUnits="{units}" {region} color-interpolation-filters="linearRGB"><feDropShadow in="SourceGraphic" dx="0" dy="0" stdDeviation="8" flood-color="#00f2ff"/></filter></defs><g transform="{transform}"><text x="80" y="80" font-family="FontAwesome" font-size="40" filter="url(#{FIRST_ID})">&#xf000;</text></g></svg>"##
         )
+    }
+
+    fn with_untyped_siblings(svg: &str) -> String {
+        svg.replace(
+            "</defs>",
+            r##"<filter id="default-shadow"><feDropShadow dx="2" dy="2" stdDeviation="0" flood-opacity="0.06"/></filter></defs>"##,
+        )
+        .replace(
+            "</svg>",
+            r##"<g filter="url(#default-shadow)"><rect x="155" y="65" width="20" height="10"/></g><g filter="url(#default-shadow)"><rect x="180" y="80" width="10" height="15"/></g></svg>"##,
+        )
+    }
+
+    #[test]
+    fn independent_untyped_siblings_preserve_the_exact_typed_receipt() {
+        for source in [
+            exact_svg(),
+            text_shadow_svg(
+                "userSpaceOnUse",
+                r#"x="0" y="0" width="200" height="200""#,
+                512,
+                "translate(40 60) rotate(15)",
+            ),
+        ] {
+            let expected = preflight_native_filter_receipt(&source, &parse_text_tree(&source))
+                .expect("the typed-only fixture must certify observed paint");
+            let svg = with_untyped_siblings(&source);
+            let tree = parse_text_tree(&svg);
+            assert!(tree.filters().len() > expected.filter_count() as usize);
+            assert_eq!(preflight_native_filter_receipt(&svg, &tree), Some(expected));
+            assert_eq!(
+                preflight_native_filter_receipt(&source, &tree),
+                Some(expected),
+                "independent non-typed paint does not participate in typed receipt identity"
+            );
+        }
+    }
+
+    fn assert_reinstantiated_typed_source_is_rejected(svg: &str, filter_count: usize) {
+        let tree = parse_tree(svg);
+        assert_eq!(tree.filters().len(), filter_count);
+        assert!(
+            tree.filters()
+                .iter()
+                .any(|filter| filter.id() == "node-theme-effect-shadow")
+        );
+        assert!(tree.filters().iter().any(|filter| {
+            filter.id() != "ordinary" && !filter.id().contains(TYPED_FILTER_ID_MARKER)
+        }));
+        assert!(parse_raw_drop_shadows(svg).is_none());
+        assert!(preflight_native_filter_receipt(svg, &tree).is_none());
+    }
+
+    #[test]
+    fn use_cannot_repeat_a_visible_typed_source_under_an_ordinary_alias() {
+        let svg = r##"<svg xmlns="http://www.w3.org/2000/svg" width="200" height="100">
+  <defs>
+    <filter id="node-theme-effect-shadow" filterUnits="objectBoundingBox"
+            x="-0.5" y="-0.5" width="2" height="2"
+            color-interpolation-filters="linearRGB">
+      <feDropShadow in="SourceGraphic" dx="2" dy="2"
+                    stdDeviation="0" flood-color="#112233"/>
+    </filter>
+  </defs>
+  <g id="source" filter="url(#node-theme-effect-shadow)">
+    <rect x="10" y="10" width="20" height="20"/>
+  </g>
+  <use href="#source" x="80"/>
+</svg>"##;
+        assert_reinstantiated_typed_source_is_rejected(svg, 2);
+    }
+
+    #[test]
+    fn fe_image_cannot_repeat_an_already_visible_typed_source() {
+        let svg = r##"<svg xmlns="http://www.w3.org/2000/svg" width="200" height="100">
+  <defs>
+    <filter id="node-theme-effect-shadow" filterUnits="objectBoundingBox"
+            x="-0.5" y="-0.5" width="2" height="2"
+            color-interpolation-filters="linearRGB">
+      <feDropShadow in="SourceGraphic" dx="2" dy="2"
+                    stdDeviation="0" flood-color="#112233"/>
+    </filter>
+    <filter id="ordinary" filterUnits="userSpaceOnUse"
+            x="0" y="0" width="200" height="100">
+      <feImage href="#source"/>
+    </filter>
+  </defs>
+  <g id="source" filter="url(#node-theme-effect-shadow)">
+    <rect x="10" y="10" width="20" height="20"/>
+  </g>
+  <rect width="200" height="100" filter="url(#ordinary)"/>
+</svg>"##;
+        assert_reinstantiated_typed_source_is_rejected(svg, 3);
+    }
+
+    #[test]
+    fn namespaced_filter_cannot_hide_a_second_typed_application() {
+        let svg = r##"<svg xmlns="http://www.w3.org/2000/svg"
+     xmlns:s="http://www.w3.org/2000/svg" width="200" height="100">
+  <defs>
+    <filter id="node-theme-effect-shadow" filterUnits="objectBoundingBox"
+            x="-0.5" y="-0.5" width="2" height="2"
+            color-interpolation-filters="linearRGB">
+      <feDropShadow in="SourceGraphic" dx="2" dy="2"
+                    stdDeviation="0" flood-color="#112233"/>
+    </filter>
+  </defs>
+  <rect x="10" y="10" width="20" height="20"
+        filter="url(#node-theme-effect-shadow)"/>
+  <rect x="70" y="10" width="20" height="20"
+        s:filter="url(#node-theme-effect-shadow)"/>
+</svg>"##;
+        assert_reinstantiated_typed_source_is_rejected(svg, 2);
+    }
+
+    #[test]
+    fn raw_href_namespace_cannot_select_a_different_source_than_the_proof() {
+        let svg = r##"<svg xmlns="http://www.w3.org/2000/svg"
+     xmlns:q="urn:receipt-review" width="200" height="100">
+  <defs>
+    <filter id="node-theme-effect-shadow" filterUnits="objectBoundingBox"
+            x="-0.5" y="-0.5" width="2" height="2"
+            color-interpolation-filters="linearRGB">
+      <feDropShadow in="SourceGraphic" dx="2" dy="2"
+                    stdDeviation="0" flood-color="#112233"/>
+    </filter>
+    <g id="plain"><rect width="20" height="20"/></g>
+  </defs>
+  <g id="source" filter="url(#node-theme-effect-shadow)">
+    <rect x="10" y="10" width="20" height="20"/>
+  </g>
+  <use q:href="#source" href="#plain" x="80"/>
+</svg>"##;
+        assert_reinstantiated_typed_source_is_rejected(svg, 2);
+    }
+
+    #[test]
+    fn raw_id_namespace_cannot_hide_a_filtered_reference_source() {
+        let svg = r##"<svg xmlns="http://www.w3.org/2000/svg"
+     xmlns:q="urn:receipt-review" width="200" height="100">
+  <defs>
+    <filter id="node-theme-effect-shadow" filterUnits="objectBoundingBox"
+            x="-0.5" y="-0.5" width="2" height="2"
+            color-interpolation-filters="linearRGB">
+      <feDropShadow in="SourceGraphic" dx="2" dy="2"
+                    stdDeviation="0" flood-color="#112233"/>
+    </filter>
+  </defs>
+  <g q:id="source" filter="url(#node-theme-effect-shadow)">
+    <rect x="10" y="10" width="20" height="20"/>
+  </g>
+  <g id="source"><rect x="70" y="10" width="20" height="20"/></g>
+  <use href="#source" x="80"/>
+</svg>"##;
+        assert_reinstantiated_typed_source_is_rejected(svg, 2);
+    }
+
+    #[test]
+    fn geometry_shadow_rejects_own_and_ancestor_clip_or_mask() {
+        let source = r##"<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64">
+  <defs>
+    <filter id="node-theme-effect-shadow" filterUnits="userSpaceOnUse"
+            x="0" y="0" width="64" height="64"
+            color-interpolation-filters="linearRGB">
+      <feDropShadow in="SourceGraphic" dx="4" dy="0"
+                    stdDeviation="0" flood-color="#000000"/>
+    </filter>
+    <clipPath id="crop"><rect x="20" y="20" width="5" height="20"/></clipPath>
+    <mask id="fade" x="0" y="0" width="64" height="64" maskUnits="userSpaceOnUse">
+      <rect x="20" y="20" width="5" height="20" fill="white"/>
+    </mask>
+  </defs>
+  <g transform="translate(1 1)">
+    <g filter="url(#node-theme-effect-shadow)">
+      <rect x="20" y="20" width="20" height="20"/>
+    </g>
+  </g>
+</svg>"##;
+        let expected = preflight_native_filter_receipt(source, &parse_tree(source)).unwrap();
+        for restriction in [r#"clip-path="url(#crop)""#, r#"mask="url(#fade)""#] {
+            for (name, original, replacement) in [
+                (
+                    "ancestor",
+                    r#"<g transform="translate(1 1)">"#,
+                    format!(r#"<g transform="translate(1 1)" {restriction}>"#),
+                ),
+                (
+                    "own",
+                    r#"<g filter="url(#node-theme-effect-shadow)">"#,
+                    format!(r#"<g filter="url(#node-theme-effect-shadow)" {restriction}>"#),
+                ),
+            ] {
+                let svg = source.replace(original, &replacement);
+                let tree = parse_tree(&svg);
+                assert_eq!(tree.filters().len(), 1, "{name}: {restriction}");
+                assert!(
+                    preflight_native_filter_receipt(&svg, &tree).is_none(),
+                    "{name}: {restriction}"
+                );
+            }
+            let sibling = source.replace(
+                "</svg>",
+                &format!(
+                    r#"<g {restriction}><rect x="20" y="20" width="20" height="20"/></g></svg>"#
+                ),
+            );
+            assert_eq!(
+                preflight_native_filter_receipt(&sibling, &parse_tree(&sibling)),
+                Some(expected),
+                "independent sibling: {restriction}"
+            );
+        }
+    }
+
+    #[test]
+    fn foreign_namespace_stylesheet_cannot_hide_a_second_typed_application() {
+        let svg = r##"<svg xmlns="http://www.w3.org/2000/svg"
+     xmlns:x="urn:receipt-review" width="200" height="100">
+  <defs>
+    <filter id="node-theme-effect-shadow" filterUnits="objectBoundingBox"
+            x="-0.5" y="-0.5" width="2" height="2"
+            color-interpolation-filters="linearRGB">
+      <feDropShadow in="SourceGraphic" dx="2" dy="2"
+                    stdDeviation="0" flood-color="#112233"/>
+    </filter>
+    <x:style>.repeat{filter:url(#node-theme-effect-shadow)}</x:style>
+  </defs>
+  <rect x="10" y="10" width="20" height="20"
+        filter="url(#node-theme-effect-shadow)"/>
+  <rect class="repeat" x="70" y="10" width="20" height="20"/>
+</svg>"##;
+        assert_reinstantiated_typed_source_is_rejected(svg, 2);
+    }
+
+    #[test]
+    fn html_fallback_use_keeps_the_typed_filter_on_its_ancestor() {
+        let source = text_shadow_svg(
+            "userSpaceOnUse",
+            r#"x="0" y="0" width="200" height="200""#,
+            512,
+            "translate(40 60)",
+        );
+        let expected = preflight_native_filter_receipt(&source, &parse_text_tree(&source)).unwrap();
+        let start = source.find("<text ").unwrap();
+        let end = source.find("</text>").unwrap() + "</text>".len();
+        let filtered_text = &source[start..end];
+        let text = filtered_text.replace(&format!(r#" filter="url(#{FIRST_ID})""#), "");
+        let definition = format!(
+            r##"<g id="fixture-foreignobject-label-0"><svg xmlns="http://www.w3.org/2000/svg" width="200" height="200" viewBox="0 0 200 200" style="overflow: visible; opacity: 1; filter: none; transform: none;"><rect width="200" height="200" fill="none" stroke="none" opacity="0"/>{text}</svg></g>"##
+        );
+        for href in [
+            r##"href="#fixture-foreignobject-label-0""##,
+            r##"xlink:href="#fixture-foreignobject-label-0""##,
+            r##"href="#fixture-foreignobject-label-0" xlink:href="#fixture-foreignobject-label-0""##,
+            r##"href="#fixture-foreignobject-label-&#48;""##,
+        ] {
+            let svg = with_untyped_siblings(&source)
+                .replace(
+                    "<svg xmlns=",
+                    r#"<svg xmlns:xlink="http://www.w3.org/1999/xlink" xmlns="#,
+                )
+                .replace("</defs>", &format!("{definition}</defs>"))
+                .replace(
+                    filtered_text,
+                    &format!(
+                        r##"<g filter="url(#{FIRST_ID})" style="filter:url(#{FIRST_ID}) !important"><use x="0" y="0" {href} style="opacity: 1; display: inline; visibility: inherit; clip-path: none; mask: none; filter: none; transform: none;"/></g>"##
+                    ),
+                );
+            assert_eq!(
+                parse_raw_drop_shadows(&svg)
+                    .expect("the fallback definition contains no filtered sibling")
+                    .len(),
+                1
+            );
+            assert_eq!(
+                preflight_native_filter_receipt(&svg, &parse_text_tree(&svg)),
+                Some(expected),
+                "the nested SVG, invisible rect, and real text contain no typed filter: {href}"
+            );
+        }
+    }
+
+    #[test]
+    fn references_to_nested_or_ambiguous_sources_fail_closed() {
+        let source = exact_svg().replacen("<g filter=", r#"<g id="source" filter="#, 1);
+        for definitions in [
+            r##"<g id="forward"><use href="#source"/></g>"##,
+            r##"<g id="forward"><rect width="20" height="20"/></g><g id="forward"><rect width="20" height="20"/></g>"##,
+            r##"<g id="forward"><rect width="20" height="20"/></g><g s:id="forward"><rect width="20" height="20"/></g>"##,
+        ] {
+            let svg = source
+                .replace(
+                    "<svg xmlns=",
+                    r#"<svg xmlns:s="http://www.w3.org/2000/svg" xmlns="#,
+                )
+                .replace("</defs>", &format!("{definitions}</defs>"))
+                .replace("</svg>", r##"<use href="#forward"/></svg>"##);
+            assert!(parse_raw_drop_shadows(&svg).is_none());
+            assert!(preflight_native_filter_receipt(&svg, &parse_tree(&svg)).is_none());
+        }
+    }
+
+    #[test]
+    fn repeated_resources_do_not_admit_typed_descendants() {
+        let source = exact_svg();
+        for resource in ["marker", "pattern", "clipPath", "mask", "symbol"] {
+            let svg = source
+                .replacen("<g filter=", &format!("<{resource}><g filter="), 1)
+                .replacen("</g>", &format!("</g></{resource}>"), 1);
+            assert!(parse_raw_drop_shadows(&svg).is_none(), "{resource}");
+            assert!(preflight_native_filter_receipt(&svg, &parse_tree(&svg)).is_none());
+        }
+    }
+
+    #[test]
+    fn backend_attribute_namespaces_and_all_stylesheet_fragments_fail_closed() {
+        let source = exact_svg();
+        for (prefix, namespace) in [
+            ("s", SVG_NAMESPACE),
+            ("xlink", XLINK_NAMESPACE),
+            ("xml", XML_NAMESPACE),
+        ] {
+            let binding = if prefix == "xml" {
+                String::new()
+            } else {
+                format!(r#" xmlns:{prefix}="{namespace}""#)
+            };
+            for attribute in [
+                format!(r#"{prefix}:filter="url(#{FIRST_ID})""#),
+                format!(r#"{prefix}:style="filter:url(#{FIRST_ID})""#),
+            ] {
+                let svg = source
+                    .replace("<svg xmlns=", &format!("<svg{binding} xmlns="))
+                    .replace(
+                        "</svg>",
+                        &format!(r#"<rect width="20" height="20" {attribute}/></svg>"#),
+                    );
+                assert!(parse_raw_drop_shadows(&svg).is_none(), "{attribute}");
+                assert!(preflight_native_filter_receipt(&svg, &parse_tree(&svg)).is_none());
+            }
+        }
+        for style in [
+            r#"<q:style>.repeat{filter:url(#hidden-theme&#45;effect-shadow)}</q:style>"#,
+            r#"<q:style><![CDATA[.repeat{filter:url(#hidden-theme-effect-shadow)}]]></q:style>"#,
+            r#"<q:style>.repeat{filter:url(#hidden-th&#92;65me-effect-shadow)}</q:style>"#,
+        ] {
+            let svg = source
+                .replace("<svg xmlns=", r#"<svg xmlns:q="urn:receipt-review" xmlns="#)
+                .replace("</defs>", &format!("{style}</defs>"));
+            assert!(parse_raw_drop_shadows(&svg).is_none(), "{style}");
+            assert!(preflight_native_filter_receipt(&svg, &parse_tree(&svg)).is_none());
+        }
+    }
+
+    #[test]
+    fn typed_reuse_via_inline_style_or_stylesheet_rejects_its_actual_resolved_tree() {
+        let source = exact_svg();
+        for (style, extra) in [
+            (
+                String::new(),
+                format!(
+                    r#"<rect x="60" y="65" width="30" height="15" style='filter:url(#{FIRST_ID})'/>"#
+                ),
+            ),
+            (
+                String::new(),
+                format!(
+                    r#"<rect x="60" y="65" width="30" height="15" transform="translate(5 3)" style='filter:url(#{FIRST_ID}) !important'/>"#
+                ),
+            ),
+            (
+                format!(r#"<style>.repeat{{filter:url(#{FIRST_ID})}}</style>"#),
+                r#"<rect class="repeat" x="60" y="65" width="30" height="15"/>"#.to_string(),
+            ),
+            (
+                format!(r#"<style><![CDATA[.repeat{{filter:url(#{FIRST_ID})}}]]></style>"#),
+                r#"<rect class="repeat" x="60" y="65" width="30" height="15"/>"#.to_string(),
+            ),
+            (
+                format!(r#"<style>.repeat{{filter:url(#{FIRST_ID})}}</style>"#)
+                    .replace("-theme-effect-", "-theme&#45;effect-"),
+                r#"<rect class="repeat" x="60" y="65" width="30" height="15"/>"#.to_string(),
+            ),
+        ] {
+            let svg = source
+                .replace("</defs>", &format!("{style}</defs>"))
+                .replace("</svg>", &format!("{extra}</svg>"));
+            let tree = parse_tree(&svg);
+            assert_eq!(
+                tree.filters().len(),
+                3,
+                "the extra real application must survive as a native bbox-specific alias"
+            );
+            assert!(
+                tree.filters()
+                    .iter()
+                    .any(|filter| !filter.id().contains(TYPED_FILTER_ID_MARKER))
+            );
+            assert!(parse_raw_drop_shadows(&svg).is_none());
+            assert!(preflight_native_filter_receipt(&svg, &tree).is_none());
+        }
+    }
+
+    #[test]
+    fn escaped_typed_ids_in_inline_style_and_stylesheets_reject_their_actual_tree() {
+        let source = exact_svg();
+        for escaped_marker in [r"-th\65me-effect-", r"-th&#92;65me-effect-"] {
+            let escaped_id = FIRST_ID.replace(TYPED_FILTER_ID_MARKER, escaped_marker);
+            assert!(!escaped_id.contains(TYPED_FILTER_ID_MARKER));
+            for (style, extra) in [
+                (
+                    String::new(),
+                    format!(
+                        r#"<rect x="60" y="65" width="30" height="15" style='filter:url(#{escaped_id})'/>"#
+                    ),
+                ),
+                (
+                    format!(r#"<style>.repeat{{filter:url(#{escaped_id})}}</style>"#),
+                    r#"<rect class="repeat" x="60" y="65" width="30" height="15"/>"#.to_string(),
+                ),
+            ] {
+                let svg = source
+                    .replace("</defs>", &format!("{style}</defs>"))
+                    .replace("</svg>", &format!("{extra}</svg>"));
+                let tree = parse_tree(&svg);
+                assert!(tree.filters().iter().any(|filter| filter.id() == FIRST_ID));
+                assert!(
+                    parse_raw_drop_shadows(&svg).is_none(),
+                    "writer admission must reject CSS escapes independently of backend decoding"
+                );
+                assert!(preflight_native_filter_receipt(&svg, &tree).is_none());
+            }
+        }
+        let cdata = source.replace(
+            "</defs>",
+            r#"<style><![CDATA[.repeat{filter:url(#diagram-state-ready-th\65me-effect-hard-shadow)}]]></style></defs>"#,
+        );
+        assert!(parse_raw_drop_shadows(&cdata).is_none());
+        assert!(preflight_native_filter_receipt(&cdata, &parse_tree(&cdata)).is_none());
+    }
+
+    #[test]
+    fn neo_inline_typed_style_must_repeat_only_its_own_single_filter_attribute() {
+        let source = exact_svg();
+        let tree = parse_tree(&source);
+        let expected = preflight_native_filter_receipt(&source, &tree).unwrap();
+        let attribute = format!(r#"filter="url(#{FIRST_ID})""#);
+        for style in [
+            format!("filter:url(#{FIRST_ID})"),
+            format!("fill:#fff;filter:url(#{FIRST_ID}) !important"),
+            format!("filter: url(#{FIRST_ID}) !important; stroke: #000"),
+        ] {
+            for replacement in [
+                format!(r#"{attribute} style='{style}'"#),
+                format!(r#"style='{style}' {attribute}"#),
+            ] {
+                let svg = source.replacen(&attribute, &replacement, 1);
+                assert_eq!(
+                    preflight_native_filter_receipt(&svg, &parse_tree(&svg)),
+                    Some(expected),
+                    "Neo's same-element attr plus style is one application"
+                );
+            }
+        }
+        for style in [
+            format!("filter:url(#{SECOND_ID}) !important"),
+            format!("filter:url(#{FIRST_ID});filter:url(#{FIRST_ID})"),
+            format!("filter:url(#{FIRST_ID});filter:none"),
+            format!("filter:none !important;filter:url(#{FIRST_ID})"),
+            format!("filter:url(#{FIRST_ID}) url(#{SECOND_ID})"),
+            format!("filter:url(#{FIRST_ID});fill:url(#{FIRST_ID})"),
+        ] {
+            let svg = source.replacen(&attribute, &format!(r#"{attribute} style='{style}'"#), 1);
+            assert!(parse_raw_drop_shadows(&svg).is_none(), "{style}");
+            assert!(preflight_native_filter_receipt(&svg, &parse_tree(&svg)).is_none());
+        }
+    }
+
+    #[test]
+    fn untyped_ancestor_descendant_and_same_group_filters_reject_typed_geometry() {
+        let source = with_untyped_siblings(&exact_svg());
+        assert!(preflight_native_filter_receipt(&source, &parse_tree(&source)).is_some());
+        let typed_group = format!(r#"<g filter="url(#{FIRST_ID})">"#);
+        for opening in [
+            format!(r#"<g filter="url(#default-shadow)">{typed_group}"#),
+            format!(r#"{typed_group}<g filter="url(#default-shadow)">"#),
+        ] {
+            let svg = source
+                .replacen(&typed_group, &opening, 1)
+                .replacen("</g>", "</g></g>", 1);
+            let tree = parse_tree(&svg);
+            assert!(preflight_native_filter_receipt(&source, &tree).is_none());
+            assert!(preflight_native_filter_receipt(&svg, &tree).is_none());
+        }
+        for filters in [
+            format!("url(#{FIRST_ID}) url(#default-shadow)"),
+            format!("url(#default-shadow) url(#{FIRST_ID})"),
+        ] {
+            let svg = source.replacen(&typed_group, &format!(r#"<g filter="{filters}">"#), 1);
+            assert!(preflight_native_filter_receipt(&source, &parse_tree(&svg)).is_none());
+        }
+    }
+
+    #[test]
+    fn untyped_ancestor_and_descendant_filters_cannot_certify_typed_label_paint() {
+        let source = with_untyped_siblings(&text_shadow_svg(
+            "userSpaceOnUse",
+            r#"x="0" y="0" width="200" height="200""#,
+            512,
+            "translate(40 60)",
+        ));
+        assert!(preflight_native_filter_receipt(&source, &parse_text_tree(&source)).is_some());
+        let clipped_parent = source.replace(
+            "<g transform=",
+            r##"<g filter="url(#default-shadow)" transform="##,
+        );
+        let filtered_child = source
+            .replacen(&format!(r#" filter="url(#{FIRST_ID})""#), "", 1)
+            .replace(
+                "<text ",
+                &format!(r##"<g filter="url(#{FIRST_ID})"><text filter="url(#default-shadow)" "##),
+            )
+            .replace("</text>", "</text></g>");
+        for svg in [clipped_parent, filtered_child] {
+            let tree = parse_text_tree(&svg);
+            assert!(preflight_native_filter_receipt(&source, &tree).is_none());
+            assert!(preflight_native_filter_receipt(&svg, &tree).is_none());
+        }
+    }
+
+    #[test]
+    fn untyped_siblings_cannot_hide_missing_changed_or_unexpected_typed_ids() {
+        let source = with_untyped_siblings(&exact_svg());
+        let tree = parse_tree(&source);
+        assert!(preflight_native_filter_receipt(&source, &tree).is_some());
+        let missing = source.replace(&format!(r#" filter="url(#{SECOND_ID})""#), "");
+        let changed = source.replacen("dx=\"4\"", "dx=\"6\"", 1);
+        let aliased = source.replace(
+            &format!(r#"filter="url(#{SECOND_ID})""#),
+            &format!(r#"filter="url(#{FIRST_ID})""#),
+        );
+        let extra_id = "diagram-extra-theme-effect-shadow";
+        let extra = source
+            .replace(
+                "</defs>",
+                &format!("{}</defs>", filter(extra_id, 2, "0", "#112233")),
+            )
+            .replace(
+                "</svg>",
+                &format!(
+                    r##"<g filter="url(#{extra_id})"><rect x="60" y="70" width="30" height="15"/></g></svg>"##
+                ),
+            );
+        for svg in [missing, changed, aliased, extra] {
+            assert!(preflight_native_filter_receipt(&source, &parse_tree(&svg)).is_none());
+            assert!(preflight_native_filter_receipt(&svg, &tree).is_none());
+        }
+        let duplicate_definition = source.replace(
+            "</defs>",
+            &format!("{}</defs>", filter(FIRST_ID, 4, "0", "#112233")),
+        );
+        let duplicate_reference = source.replace(
+            "</svg>",
+            &format!(
+                r##"<g filter="url(#{FIRST_ID})"><rect x="60" y="70" width="30" height="15"/></g></svg>"##
+            ),
+        );
+        for svg in [duplicate_definition, duplicate_reference] {
+            assert!(preflight_native_filter_receipt(&svg, &parse_tree(&svg)).is_none());
+        }
+    }
+
+    #[test]
+    fn untyped_filter_image_subroot_cannot_import_typed_paint() {
+        let svg = format!(
+            r##"<svg xmlns="http://www.w3.org/2000/svg" width="200" height="100"><defs>{}<g id="source" filter="url(#{FIRST_ID})"><rect x="10" y="10" width="50" height="30"/></g><filter id="default-shadow" filterUnits="userSpaceOnUse" x="0" y="0" width="200" height="100"><feImage href="#source"/></filter></defs><rect width="200" height="100" filter="url(#default-shadow)"/></svg>"##,
+            filter(FIRST_ID, 4, "0", "#112233"),
+        );
+        let tree = parse_tree(&svg);
+        assert!(tree.filters().iter().any(|filter| filter.id() == FIRST_ID));
+        assert!(preflight_native_filter_receipt(&svg, &tree).is_none());
+    }
+
+    #[test]
+    fn shared_pattern_filter_restrictions_survive_an_earlier_sibling_visit() {
+        for (pattern_filter, consumer_filter) in
+            [("default-shadow", FIRST_ID), (FIRST_ID, "default-shadow")]
+        {
+            let svg = format!(
+                r##"<svg xmlns="http://www.w3.org/2000/svg" width="200" height="100"><defs>{}<filter id="default-shadow"><feGaussianBlur stdDeviation="1"/></filter><pattern id="pattern" patternUnits="userSpaceOnUse" width="20" height="10"><g filter="url(#{pattern_filter})"><rect width="20" height="10"/></g></pattern></defs><rect x="100" y="60" width="20" height="10" fill="url(#pattern)"/><g filter="url(#{consumer_filter})"><rect x="10" y="10" width="50" height="30" fill="url(#pattern)"/></g></svg>"##,
+                filter(FIRST_ID, 4, "0", "#112233"),
+            );
+            let tree = parse_tree(&svg);
+            if pattern_filter == FIRST_ID {
+                assert!(parse_raw_drop_shadows(&svg).is_none());
+            } else {
+                assert_eq!(parse_raw_drop_shadows(&svg).unwrap().len(), 1);
+            }
+            assert!(
+                preflight_native_filter_receipt(&svg, &tree).is_none(),
+                "a shared pattern remains interacting source paint: {pattern_filter} -> {consumer_filter}"
+            );
+        }
+    }
+
+    #[test]
+    fn cached_typed_paint_cannot_reuse_an_unclipped_proof_in_a_restricted_context() {
+        for source in [
+            exact_svg(),
+            text_shadow_svg(
+                "userSpaceOnUse",
+                r#"x="0" y="0" width="200" height="200""#,
+                512,
+                "translate(40 60)",
+            ),
+        ] {
+            let tree = parse_text_tree(&source);
+            let shadows = parse_raw_drop_shadows(&source).unwrap();
+            let expected = shadows
+                .iter()
+                .map(|shadow| (shadow.filter_id(), shadow))
+                .collect();
+            let mut references = shadows
+                .iter()
+                .map(|shadow| (shadow.filter_id().to_string(), 0))
+                .collect();
+            let mut visited = HashMap::new();
+            let viewport = tree.size().to_rect(0.0, 0.0).unwrap();
+            let control = OperationControl::new();
+            let paint = visit_group(
+                tree.root(),
+                &expected,
+                &mut references,
+                &mut visited,
+                viewport,
+                false,
+                &control,
+            )
+            .expect("ordinary paint is certified before sharing its subroot");
+            assert!(paint.has_typed_application);
+            assert!(references.values().all(|count| *count == 1));
+            assert!(
+                visit_group(
+                    tree.root(),
+                    &expected,
+                    &mut references,
+                    &mut visited,
+                    viewport,
+                    true,
+                    &control,
+                )
+                .is_none(),
+                "clip, mask, and filter-image embeddings cannot reuse an unclipped typed proof"
+            );
+        }
+    }
+
+    #[test]
+    fn cached_untyped_paint_preserves_current_clipping_and_filter_restrictions() {
+        let svg = with_untyped_siblings(
+            r#"<svg xmlns="http://www.w3.org/2000/svg" width="200" height="100"><defs></defs></svg>"#,
+        );
+        let tree = parse_tree(&svg);
+        let mut references = BTreeMap::new();
+        let mut visited = HashMap::new();
+        for clipped in [false, true] {
+            let paint = visit_group(
+                tree.root(),
+                &BTreeMap::new(),
+                &mut references,
+                &mut visited,
+                tree.size().to_rect(0.0, 0.0).unwrap(),
+                clipped,
+                &OperationControl::new(),
+            )
+            .expect("untyped cached paint still returns a restricted source summary");
+            assert_eq!(paint.restricted, clipped);
+            assert!(paint.filter_restricted);
+            assert!(!paint.has_typed_application);
+        }
     }
 
     #[test]
@@ -2229,72 +3267,199 @@ mod tests {
     #[cfg(feature = "pdf")]
     #[test]
     fn pdf_localization_proof_requires_cap_budget_and_outer_group_equality() {
-        let svg = composed_svg();
-        let tree = parse_tree(&svg);
-        let receipt = preflight_native_filter_receipt(&svg, &tree).expect("exact receipt");
-        let exact_plan = crate::PdfFilterImagePlan {
-            filtered_groups: 2,
-            requested_scale: 1.0,
-            effective_scale: 1.0,
-            requested_image_pixels: 1,
-            effective_image_pixels: 1,
-            limited: false,
-        };
         let control = merman_model::OperationControl::new();
-
-        assert!(
-            crate::pdf_native_filter_fully_localized(
+        for svg in [composed_svg(), with_untyped_siblings(&composed_svg())] {
+            let tree = parse_tree(&svg);
+            let receipt = preflight_native_filter_receipt(&svg, &tree).expect("exact receipt");
+            let (exact_plan, _) = crate::plan_pdf_filter_images(
                 &tree,
                 1.0,
                 1.0,
-                exact_plan,
-                Some(receipt),
+                crate::PdfFilterImageLimit::unbounded(),
                 &control,
             )
-            .expect("exact localization proof")
-        );
-        assert!(
-            !crate::pdf_native_filter_fully_localized(
-                &tree,
-                1.0,
-                1.0,
+            .expect("actual PDF group and pixel inventory");
+            assert_eq!(receipt.reference_count(), 2);
+            assert_eq!(
+                exact_plan.filtered_groups,
+                if svg.contains("default-shadow") { 4 } else { 2 }
+            );
+            assert!(
+                crate::pdf_native_filter_fully_localized(
+                    &tree,
+                    1.0,
+                    1.0,
+                    exact_plan,
+                    Some(receipt),
+                    &control,
+                )
+                .expect("all typed and independent default groups are fully localized")
+            );
+            for changed_plan in [
                 crate::PdfFilterImagePlan {
                     limited: true,
                     ..exact_plan
                 },
-                Some(receipt),
+                crate::PdfFilterImagePlan {
+                    filtered_groups: exact_plan.filtered_groups - 1,
+                    ..exact_plan
+                },
+                crate::PdfFilterImagePlan {
+                    filtered_groups: exact_plan.filtered_groups + 1,
+                    ..exact_plan
+                },
+                crate::PdfFilterImagePlan {
+                    requested_scale: 2.0,
+                    ..exact_plan
+                },
+                crate::PdfFilterImagePlan {
+                    effective_scale: 0.5,
+                    ..exact_plan
+                },
+                crate::PdfFilterImagePlan {
+                    requested_image_pixels: exact_plan.requested_image_pixels - 1,
+                    ..exact_plan
+                },
+                crate::PdfFilterImagePlan {
+                    effective_image_pixels: exact_plan.effective_image_pixels - 1,
+                    ..exact_plan
+                },
+            ] {
+                assert!(
+                    !crate::pdf_native_filter_fully_localized(
+                        &tree,
+                        1.0,
+                        1.0,
+                        changed_plan,
+                        Some(receipt),
+                        &control,
+                    )
+                    .expect("a mismatched PDF inventory cannot certify localization"),
+                    "{changed_plan:?}"
+                );
+            }
+            assert!(
+                !crate::pdf_native_filter_fully_localized(
+                    &tree,
+                    1.0,
+                    100.0,
+                    crate::PdfFilterImagePlan {
+                        requested_scale: 100.0,
+                        effective_scale: 100.0,
+                        ..exact_plan
+                    },
+                    Some(receipt),
+                    &control,
+                )
+                .expect("per-group side caps still prevent full localization")
+            );
+            assert!(
+                !crate::pdf_native_filter_fully_localized(
+                    &tree, 1.0, 1.0, exact_plan, None, &control,
+                )
+                .expect("a missing typed receipt cannot prove localization")
+            );
+            let (limited_plan, _) = crate::plan_pdf_filter_images(
+                &tree,
+                1.0,
+                1.0,
+                crate::PdfFilterImageLimit::new(Some(exact_plan.requested_image_pixels / 2)),
                 &control,
             )
-            .expect("limited plan should be evaluated")
+            .expect("a smaller aggregate budget can retain every group at lower sampling");
+            assert!(limited_plan.limited);
+            assert!(
+                !crate::pdf_native_filter_fully_localized(
+                    &tree,
+                    1.0,
+                    1.0,
+                    limited_plan,
+                    Some(receipt),
+                    &control,
+                )
+                .expect("an actual budget reduction cannot prove full localization")
+            );
+        }
+    }
+
+    #[cfg(feature = "pdf")]
+    #[test]
+    fn pdf_localization_rejects_an_untyped_ancestor_and_capped_independent_sibling() {
+        let control = OperationControl::new();
+        let source = with_untyped_siblings(&composed_svg());
+        let source_tree = parse_tree(&source);
+        let (source_plan, _) = crate::plan_pdf_filter_images(
+            &source_tree,
+            1.0,
+            1.0,
+            crate::PdfFilterImageLimit::unbounded(),
+            &control,
+        )
+        .expect("original sibling regions");
+        let changed_region = source.replace(
+            r#"<filter id="default-shadow">"#,
+            r#"<filter id="default-shadow" filterUnits="userSpaceOnUse" x="0" y="0" width="500" height="10">"#,
+        );
+        let tree = parse_tree(&changed_region);
+        let receipt = preflight_native_filter_receipt(&changed_region, &tree);
+        assert_eq!(
+            receipt,
+            preflight_native_filter_receipt(&source, &source_tree),
+            "changing an independent sibling region preserves typed receipt identity"
         );
         assert!(
             !crate::pdf_native_filter_fully_localized(
                 &tree,
                 1.0,
                 1.0,
-                crate::PdfFilterImagePlan {
-                    filtered_groups: 1,
-                    ..exact_plan
-                },
-                Some(receipt),
+                source_plan,
+                receipt,
                 &control,
             )
-            .expect("group mismatch should be evaluated")
+            .expect("a frozen plan must account for the new sibling region's actual pixels")
         );
-        assert!(
-            !crate::pdf_native_filter_fully_localized(
-                &tree,
-                1.0,
-                100.0,
-                crate::PdfFilterImagePlan {
-                    requested_scale: 100.0,
-                    effective_scale: 100.0,
-                    ..exact_plan
-                },
-                Some(receipt),
-                &control,
+        let ancestor = source
+            .replacen(
+                &format!(r#"<g filter="url(#{FIRST_ID})">"#),
+                &format!(r#"<g filter="url(#default-shadow)"><g filter="url(#{FIRST_ID})">"#),
+                1,
             )
-            .expect("scale mismatch should be evaluated")
+            .replacen("</g>", "</g></g>", 1);
+        let tree = parse_tree(&ancestor);
+        let receipt = preflight_native_filter_receipt(&ancestor, &tree);
+        assert!(receipt.is_none());
+        let (plan, _) = crate::plan_pdf_filter_images(
+            &tree,
+            1.0,
+            1.0,
+            crate::PdfFilterImageLimit::unbounded(),
+            &control,
+        )
+        .expect("an ancestor can still have a finite PDF image plan");
+        assert!(
+            !crate::pdf_native_filter_fully_localized(&tree, 1.0, 1.0, plan, receipt, &control)
+                .expect("a finite plan cannot bypass typed ancestor rejection")
+        );
+
+        let capped_sibling = source.replace(
+            r#"<filter id="default-shadow">"#,
+            r#"<filter id="default-shadow" filterUnits="userSpaceOnUse" x="0" y="0" width="6000" height="10">"#,
+        );
+        let tree = parse_tree(&capped_sibling);
+        let receipt = preflight_native_filter_receipt(&capped_sibling, &tree);
+        assert!(receipt.is_some(), "the typed paint remains independent");
+        let (plan, _) = crate::plan_pdf_filter_images(
+            &tree,
+            1.0,
+            1.0,
+            crate::PdfFilterImageLimit::unbounded(),
+            &control,
+        )
+        .expect("the backend side cap produces a finite pixel plan");
+        assert!(!plan.limited);
+        assert!(
+            !crate::pdf_native_filter_fully_localized(&tree, 1.0, 1.0, plan, receipt, &control,)
+                .expect("an independent non-typed region must also retain its requested sampling")
         );
     }
 }
