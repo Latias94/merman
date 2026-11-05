@@ -204,6 +204,9 @@ fn push_tree_view_node(
             fmt(rect_width),
             fmt((node.height - 2.0).max(0.0))
         );
+        if let Some(receipt) = tree_view_receipt.as_deref_mut() {
+            receipt.record_highlight(&theme.css().highlight_bg, &theme.css().highlight_stroke);
+        }
         *width_before_highlight += TREE_VIEW_HIGHLIGHT_WIDTH_GROWTH;
     }
     if let Some(icon) = node.resolved_icon.as_deref() {
@@ -283,6 +286,8 @@ fn push_tree_view_css(
         theme.highlight_stroke
     );
     if let Some(receipt) = receipt {
+        receipt.record_font_size(&theme.label_font_size_css);
+        receipt.record_highlight_css(&theme.highlight_bg, &theme.highlight_stroke);
         receipt.record_css(font_family, label_color, line_color, icon_color);
     }
     out.checkpoint()

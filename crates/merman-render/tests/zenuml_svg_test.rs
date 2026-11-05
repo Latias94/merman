@@ -551,6 +551,100 @@ fn themed_zenuml_css_rule<'a>(svg: &'a str, class: &str) -> &'a str {
 }
 
 #[test]
+fn zenuml_lifeline_fill_supplies_the_line_fallback_and_stroke_keeps_priority() {
+    for (stroke, expected) in [(None, "#123456"), (Some("#654321"), "#654321")] {
+        let mut patch =
+            ThemeStylePatch::default().with_fill(CanvasPaint::solid("#123456").unwrap());
+        if let Some(color) = stroke {
+            patch = patch.with_stroke(CanvasPaint::solid(color).unwrap());
+        }
+        let theme = DiagramThemeCompiler::new()
+            .compile(DiagramThemeSpec::new().with_styles(
+                ThemeRuleSet::default().with_rule(ThemeRule::new(ThemeTarget::Lifeline, patch)),
+            ))
+            .unwrap();
+        let rendered = render_zenuml_with_theme(ZENUML_PAINT, &theme, true);
+        assert!(
+            themed_zenuml_css_rule(rendered.svg(), "lifeline")
+                .contains(&format!("stroke:{expected}"))
+        );
+        let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+        assert!(
+            document
+                .descendants()
+                .any(|node| node.attribute("class") == Some("lifeline"))
+        );
+        drop(document);
+        let evidence =
+            merman_render::__private::family_evidence(rendered.into_completion().report());
+        assert_eq!(evidence.required_count(), 1);
+        assert_eq!(evidence.applied_count(), 1);
+        assert_eq!(evidence.theme_residual_count(), 0);
+    }
+}
+
+#[test]
+fn zenuml_lifeline_primary_line_color_suppresses_only_the_fill_fallback() {
+    for owner in ["typed-stroke", "source-local", "source-global"] {
+        let mut styles = ThemeRuleSet::default().with_rule(
+            ThemeRule::new(
+                ThemeTarget::Lifeline,
+                ThemeStylePatch::default().with_fill(CanvasPaint::solid("#123456").unwrap()),
+            )
+            .with_ordinal(OrdinalSelector::exact(1).unwrap()),
+        );
+        if owner == "typed-stroke" {
+            styles = styles.with_rule(ThemeRule::new(
+                ThemeTarget::Lifeline,
+                ThemeStylePatch::default().with_stroke(CanvasPaint::solid("#654321").unwrap()),
+            ));
+        }
+        let theme = DiagramThemeCompiler::new()
+            .compile(DiagramThemeSpec::new().with_styles(styles))
+            .unwrap();
+        let source = match owner {
+            "source-local" => {
+                "---\nconfig:\n  themeVariables:\n    zenuml:\n      lifelineColor: '#654321'\n---\nzenuml\nA->B: request\n"
+            }
+            "source-global" => {
+                "---\nconfig:\n  themeVariables:\n    actorLineColor: '#654321'\n---\nzenuml\nA->B: request\n"
+            }
+            _ => "zenuml\nA->B: request\n",
+        };
+        let rendered = render_zenuml_with_theme(source, &theme, true);
+        assert!(themed_zenuml_css_rule(rendered.svg(), "lifeline").contains("stroke:#654321"));
+        let evidence =
+            merman_render::__private::family_evidence(rendered.into_completion().report());
+        assert_eq!(
+            evidence.required_count(),
+            if owner == "typed-stroke" { 2 } else { 1 }
+        );
+        assert_eq!(
+            evidence.applied_count(),
+            usize::from(owner == "typed-stroke")
+        );
+        assert_eq!(evidence.not_applicable_count(), 1);
+        assert_eq!(evidence.theme_residual_count(), 0);
+    }
+    let mut patch = ThemeStylePatch::default().with_fill(CanvasPaint::solid("#123456").unwrap());
+    patch.paint.opacity = Specified::Value(0.5);
+    let theme = DiagramThemeCompiler::new()
+        .compile(DiagramThemeSpec::new().with_styles(
+            ThemeRuleSet::default().with_rule(ThemeRule::new(ThemeTarget::Lifeline, patch)),
+        ))
+        .unwrap();
+    let source = "---\nconfig:\n  themeVariables:\n    zenuml:\n      lifelineColor: '#654321'\n---\nzenuml\nA->B: request\n";
+    let error = try_render_zenuml_with_theme(source, &theme, true)
+        .err()
+        .expect("source line color does not own unsupported opacity");
+    assert_eq!(
+        error.unverified_family_theme(),
+        Some((DiagramFamilyId::ZENUML, 1))
+    );
+    assert!(error.incomplete_family_theme().is_none());
+}
+
+#[test]
 fn zenuml_pure_dark_preset_styles_all_visible_family_surfaces() {
     let theme = DiagramThemeCompiler::new()
         .compile_preset(merman_render::diagram_theme::ThemePreset::EditorDark)

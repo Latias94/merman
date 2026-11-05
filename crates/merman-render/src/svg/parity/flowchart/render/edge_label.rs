@@ -54,6 +54,16 @@ fn record_edge_label_emission(
     receipt: FlowchartEdgeLabelEmissionReceipt,
     sanitized_xhtml: Option<&str>,
 ) -> crate::Result<()> {
+    let local_fonts = ctx
+        .svg_label_sidecar
+        .is_some_and(|sidecar| sidecar.label_typography().has_fonts(ThemeTarget::EdgeLabel));
+    let receipt = if let Some((styles, html)) =
+        compiled_styles.zip(sanitized_xhtml).filter(|_| local_fonts)
+    {
+        super::super::style::html_label_typography_receipt(receipt, styles, html)
+    } else {
+        receipt
+    };
     if ctx.text_surface_paint.generic_text.requested() {
         ctx.work_meter.charge(visible_text.len())?;
         ctx.work_meter.charge(sanitized_xhtml.map_or(0, str::len))?;
@@ -113,16 +123,24 @@ fn record_edge_label_emission(
         sanitized_xhtml.map_or_else(
             || compiled_styles.label_source_residuals(edge_id, receipt),
             |sanitized_xhtml| {
-                compiled_styles.emitted_html_label_source_residuals(
-                    edge_id,
-                    receipt.typography_verified(),
-                    sanitized_xhtml,
-                )
+                if local_fonts {
+                    let mut residuals = compiled_styles.label_source_residuals(edge_id, receipt);
+                    residuals.extend(super::super::style::sanitized_xhtml_source_residuals(
+                        edge_id,
+                        sanitized_xhtml,
+                    ));
+                    residuals
+                } else {
+                    compiled_styles.emitted_html_label_source_residuals(
+                        edge_id,
+                        receipt.typography_verified(),
+                        sanitized_xhtml,
+                    )
+                }
             },
         )
     });
-    let prepared_reach = receipt.prepared_typography_reach();
-    let font_stack = prepared_reach.map(|reach| {
+    let font_stack = receipt.prepared_font_stack_reach().map(|reach| {
         crate::flowchart::FlowchartThemeFacetEmission::new(
             crate::flowchart::FlowchartFacetPrecedence::new(
                 compiled_styles.map_or(
@@ -134,7 +152,7 @@ fn record_edge_label_emission(
             typed_font_stack_selected && reach.is_verified(),
         )
     });
-    let font_size = prepared_reach.map(|reach| {
+    let font_size = receipt.prepared_font_size_reach().map(|reach| {
         crate::flowchart::FlowchartThemeFacetEmission::new(
             crate::flowchart::FlowchartFacetPrecedence::new(
                 compiled_styles.map_or(
@@ -393,10 +411,12 @@ pub(in crate::svg::parity) fn render_flowchart_edge_label(
     let typed_font_stack_selected = ctx.edge_theme.font_stack_selected(font_stack_precedence);
     let typed_font_size_selected = ctx.edge_theme.font_size_selected(font_size_precedence);
     let weights = ctx.svg_label_sidecar.map_or(
-        crate::flowchart::FlowchartLabelWeights::default(),
-        |sidecar| sidecar.label_weights(),
+        crate::flowchart::FlowchartLabelTypography::default(),
+        |sidecar| sidecar.label_typography(),
     );
-    let edge_wrap_style = weights.apply(ThemeTarget::EdgeLabel, ctx.text_style);
+    let edge_wrap_style =
+        ctx.edge_style_plan
+            .label_parent_style_for(key, ctx.text_style, &weights)?;
     let edge_metrics_style = weights.apply(
         ThemeTarget::EdgeLabel,
         if crate::flowchart::flowchart_label_is_empty_for_render(label_text) {
@@ -406,11 +426,23 @@ pub(in crate::svg::parity) fn render_flowchart_edge_label(
         },
     );
     let mut effective_label_style = Cow::Borrowed(compiled_label_styles.label_style.as_str());
-    if weights.get(ThemeTarget::EdgeLabel).is_some() {
+    if weights.requested(ThemeTarget::EdgeLabel) {
         weights.append_style(
             ThemeTarget::EdgeLabel,
             &edge_metrics_style,
+            compiled_label_styles.source_font_stack_status(),
+            compiled_label_styles.source_font_size_status(),
             effective_label_style.to_mut(),
+        );
+    }
+    let mut inherited_font_style = String::new();
+    if weights.has_fonts(ThemeTarget::EdgeLabel) {
+        weights.append_style(
+            ThemeTarget::EdgeLabel,
+            &edge_metrics_style,
+            compiled_label_styles.source_font_stack_status(),
+            compiled_label_styles.source_font_size_status(),
+            &mut inherited_font_style,
         );
     }
     let svg_edge_label_text_style: Cow<'_, str> = if effective_label_style.contains("color:") {
@@ -472,6 +504,10 @@ pub(in crate::svg::parity) fn render_flowchart_edge_label(
                                  background_area: bool| {
         let receipt =
             edge_label_emission_receipt(source_typography_verified, typography_applicable)
+                .with_prepared_typography_reach(
+                    typography_applicable,
+                    visible && weights.has_fonts(ThemeTarget::EdgeLabel),
+                )
                 .with_effect_reach(
                     typography_applicable,
                     label_effect_emitted.get()
@@ -486,7 +522,7 @@ pub(in crate::svg::parity) fn render_flowchart_edge_label(
                     visible
                         && weight_terminal_verified(
                             ctx,
-                            weights,
+                            &weights,
                             label_text,
                             label_type,
                             sanitized_xhtml,
@@ -541,10 +577,11 @@ pub(in crate::svg::parity) fn render_flowchart_edge_label(
                         );
                         let _ = write!(
                             out,
-                            r#"<g class="edgeLabel" transform="translate({},{})"><g class="label" data-id="{}" transform="translate({},{})"><g><rect class="background" style="" x="{}" y="{}" width="{}" height="{}"/>"#,
+                            r#"<g class="edgeLabel" transform="translate({},{})"><g class="label" data-id="{}"{} transform="translate({},{})"><g><rect class="background" style="" x="{}" y="{}" width="{}" height="{}"/>"#,
                             fmt_display(x),
                             fmt_display(y),
                             escape_xml_display(&edge.id),
+                            OptionalStyleXmlAttr(&inherited_font_style),
                             fmt_display(label_box.translate_x),
                             fmt_display(label_box.translate_y),
                             fmt_display(label_box.background_x),
@@ -606,10 +643,11 @@ pub(in crate::svg::parity) fn render_flowchart_edge_label(
                     );
                     let _ = write!(
                         out,
-                        r#"<g class="edgeLabel" transform="translate({},{})"><g class="label" data-id="{}" transform="translate({},{})"><g><rect class="background" style="" x="{}" y="{}" width="{}" height="{}"/>"#,
+                        r#"<g class="edgeLabel" transform="translate({},{})"><g class="label" data-id="{}"{} transform="translate({},{})"><g><rect class="background" style="" x="{}" y="{}" width="{}" height="{}"/>"#,
                         fmt_display(x),
                         fmt_display(y),
                         escape_xml_display(&edge.id),
+                        OptionalStyleXmlAttr(&inherited_font_style),
                         fmt_display(label_box.translate_x),
                         fmt_display(label_box.translate_y),
                         fmt_display(label_box.background_x),
@@ -683,10 +721,11 @@ pub(in crate::svg::parity) fn render_flowchart_edge_label(
                 );
                 let _ = write!(
                     out,
-                    r#"<g class="edgeLabel" transform="translate({},{})"><g class="label" data-id="{}" transform="translate({},{})"><g><rect class="background" style="" x="{}" y="{}" width="{}" height="{}"/>"#,
+                    r#"<g class="edgeLabel" transform="translate({},{})"><g class="label" data-id="{}"{} transform="translate({},{})"><g><rect class="background" style="" x="{}" y="{}" width="{}" height="{}"/>"#,
                     fmt_display(x),
                     fmt_display(y),
                     escape_xml_display(&edge.id),
+                    OptionalStyleXmlAttr(&inherited_font_style),
                     fmt_display(label_box.translate_x),
                     fmt_display(label_box.translate_y),
                     fmt_display(label_box.background_x),
@@ -992,8 +1031,8 @@ pub(in crate::svg::parity::flowchart) fn render_swimlane_edge_label_node(
     let compiled_label_styles = ctx.edge_style_plan.swimlane_label_for(key)?;
     let first_label_style = first_label_style.map_or("", String::as_str);
     let weights = ctx.svg_label_sidecar.map_or(
-        crate::flowchart::FlowchartLabelWeights::default(),
-        |sidecar| sidecar.label_weights(),
+        crate::flowchart::FlowchartLabelTypography::default(),
+        |sidecar| sidecar.label_typography(),
     );
     let label_text_style = weights.apply(
         ThemeTarget::EdgeLabel,
@@ -1004,10 +1043,18 @@ pub(in crate::svg::parity::flowchart) fn render_swimlane_edge_label_node(
         },
     );
     let mut weighted_label_style = Cow::Borrowed(first_label_style);
-    if weights.get(ThemeTarget::EdgeLabel).is_some() {
+    if weights.requested(ThemeTarget::EdgeLabel) {
         weights.append_style(
             ThemeTarget::EdgeLabel,
             &label_text_style,
+            compiled_label_styles.map_or(
+                crate::flowchart::FlowchartSourceFacetStatus::Absent,
+                FlowchartCompiledStyles::source_font_stack_status,
+            ),
+            compiled_label_styles.map_or(
+                crate::flowchart::FlowchartSourceFacetStatus::Absent,
+                FlowchartCompiledStyles::source_font_size_status,
+            ),
             weighted_label_style.to_mut(),
         );
     }
@@ -1044,7 +1091,7 @@ pub(in crate::svg::parity::flowchart) fn render_swimlane_edge_label_node(
                         (prepared.is_some() || sanitized_xhtml.is_some())
                             && weight_terminal_verified(
                                 ctx,
-                                weights,
+                                &weights,
                                 label_text,
                                 label_type,
                                 sanitized_xhtml,
@@ -1217,7 +1264,7 @@ pub(in crate::svg::parity::flowchart) fn render_swimlane_edge_label_node(
 
 fn weight_terminal_verified(
     ctx: &FlowchartRenderCtx<'_>,
-    weights: crate::flowchart::FlowchartLabelWeights,
+    weights: &crate::flowchart::FlowchartLabelTypography,
     text: &str,
     label_type: &str,
     html: Option<&str>,

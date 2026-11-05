@@ -8,12 +8,13 @@ use super::{
     resolved_style_property_for_facet, unsupported_residual_for_facet,
 };
 use crate::diagram_theme::{
-    FamilyThemeDisposition, FamilyThemeMechanism, FamilyThemeMechanismKey, FamilyThemeRuleFacet,
-    FamilyThemeSelectorShape, ResolvedDiagramTheme, ThemeCapability, ThemeTarget, ThemeVariant,
+    FamilyThemeDisposition, FamilyThemeMechanism, FamilyThemeMechanismKey, FamilyThemePaintKind,
+    FamilyThemeRuleFacet, FamilyThemeSelectorShape, ResolvedDiagramTheme, ThemeCapability,
+    ThemeTarget, ThemeVariant,
 };
 use crate::resources::OperationWorkMeter;
 
-/// Resolution and accounting for one default-variant title with an unqualified static fill.
+/// Resolution and accounting for one default-variant title with a static fill.
 /// Each family retains its own source ownership and concrete writer receipt checks.
 #[derive(Debug, Default)]
 pub(crate) struct SingleTitleFillPlan {
@@ -56,7 +57,7 @@ impl SingleTitleFillPlan {
                         theme,
                         style,
                         &[ThemeTarget::Title],
-                        DirectStaticSelectorDomain::Unqualified,
+                        DirectStaticSelectorDomain::Default,
                     )
                 })
             })
@@ -83,15 +84,7 @@ impl SingleTitleFillPlan {
                     }
                     let route_won = winner_properties
                         .contains(&(rule_index, resolved_style_property_for_facet(facet)));
-                    let qualified_variant = matches!(
-                        selector,
-                        FamilyThemeSelectorShape::Static { variant: Some(_) }
-                            | FamilyThemeSelectorShape::Ordinal {
-                                variant: Some(_),
-                                ..
-                            }
-                    );
-                    if !route_won && !qualified_variant {
+                    if !route_won {
                         continue;
                     }
 
@@ -102,10 +95,18 @@ impl SingleTitleFillPlan {
                     match (route.disposition(), selector, facet) {
                         (
                             FamilyThemeDisposition::TypedAdapter,
-                            FamilyThemeSelectorShape::Static { variant: None },
+                            FamilyThemeSelectorShape::Static {
+                                variant: None | Some(ThemeVariant::Default),
+                            },
                             FamilyThemeRuleFacet::Fill(_),
                         ) if typed_fill_rule == Some(rule_index) => {
                             observation.fill_pending = true;
+                        }
+                        (_, _, FamilyThemeRuleFacet::Fill(FamilyThemePaintKind::Clear)) => {
+                            // Clear needs a family-owned baseline and a matching writer receipt.
+                            observation
+                                .residual
+                                .get_or_insert(FamilyThemeResidualReason::UnsupportedPaint);
                         }
                         (FamilyThemeDisposition::Unsupported, _, facet) => {
                             observation
@@ -201,4 +202,113 @@ struct TitleRuleObservation {
     incomplete: bool,
     residual: Option<FamilyThemeResidualReason>,
     fill_pending: bool,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::diagram_theme::{
+        CanvasPaint, DiagramThemeCompiler, DiagramThemeSpec, OrdinalSelector, Specified, ThemeRule,
+        ThemeRuleSet, ThemeStylePatch,
+    };
+    use crate::resources::RenderResourcePolicy;
+
+    fn resolve(
+        styles: ThemeRuleSet,
+        present: bool,
+        owned: bool,
+    ) -> (ResolvedDiagramTheme, SingleTitleFillPlan) {
+        let theme = DiagramThemeCompiler::new()
+            .compile(DiagramThemeSpec::new().with_styles(styles))
+            .unwrap()
+            .resolve(crate::DiagramFamilyId::TREEMAP);
+        let work = OperationWorkMeter::new(RenderResourcePolicy::unbounded_for_trusted_input());
+        let plan = SingleTitleFillPlan::resolve(
+            &theme,
+            present,
+            owned,
+            FamilyThemeOutcomes::default(),
+            &work,
+        )
+        .unwrap();
+        (theme, plan)
+    }
+
+    #[test]
+    fn variants_without_a_default_title_winner_are_not_applicable() {
+        for variant in [ThemeVariant::Primary, ThemeVariant::Error] {
+            for ordinal in [None, Some(OrdinalSelector::Exact(1))] {
+                let mut rule = ThemeRule::new(
+                    ThemeTarget::Title,
+                    ThemeStylePatch::default().with_fill(CanvasPaint::solid("#123456").unwrap()),
+                )
+                .with_variant(variant);
+                if let Some(ordinal) = ordinal {
+                    rule = rule.with_ordinal(ordinal);
+                }
+                let (theme, plan) = resolve(ThemeRuleSet::default().with_rule(rule), true, false);
+                assert_eq!(plan.fill_css(), None);
+                let mut evidence = FamilyThemeEvidence::from_theme(Some(&theme));
+                plan.record_evidence(&mut evidence);
+                assert_eq!(evidence.not_applicable_mechanisms().len(), 1);
+                assert!(evidence.applied().is_empty());
+                assert!(evidence.residuals().is_empty());
+            }
+        }
+    }
+
+    #[test]
+    fn static_default_selectors_require_the_family_terminal_proof() {
+        for variant in [None, Some(ThemeVariant::Default)] {
+            for (paint, css) in [
+                (CanvasPaint::solid("#123456").unwrap(), "#123456"),
+                (CanvasPaint::Transparent, "transparent"),
+            ] {
+                let mut rule = ThemeRule::new(
+                    ThemeTarget::Title,
+                    ThemeStylePatch::default().with_fill(paint),
+                );
+                if let Some(variant) = variant {
+                    rule = rule.with_variant(variant);
+                }
+                let (theme, plan) = resolve(ThemeRuleSet::default().with_rule(rule), true, false);
+                assert_eq!(plan.fill_css(), Some(css));
+                let mut evidence = FamilyThemeEvidence::from_theme(Some(&theme));
+                plan.record_evidence(&mut evidence);
+                assert!(evidence.applied().is_empty());
+                assert!(plan.record_proven_terminal());
+                assert!(!plan.record_proven_terminal());
+                plan.record_evidence(&mut evidence);
+                assert_eq!(evidence.applied().len(), 1);
+                assert!(evidence.residuals().is_empty());
+            }
+        }
+    }
+
+    #[test]
+    fn clear_is_residual_only_for_a_visible_unowned_title() {
+        for (present, owned, residual) in [
+            (false, false, false),
+            (true, true, false),
+            (true, false, true),
+        ] {
+            let mut patch = ThemeStylePatch::default();
+            patch.paint.fill = Specified::Clear;
+            let (theme, plan) = resolve(
+                ThemeRuleSet::default().with_rule(ThemeRule::new(ThemeTarget::Title, patch)),
+                present,
+                owned,
+            );
+            assert_eq!(plan.fill_css(), None);
+            assert!(plan.record_proven_terminal());
+            let mut evidence = FamilyThemeEvidence::from_theme(Some(&theme));
+            plan.record_evidence(&mut evidence);
+            assert!(evidence.applied().is_empty());
+            assert_eq!(evidence.residuals().len(), usize::from(residual));
+            assert_eq!(
+                evidence.not_applicable_mechanisms().len(),
+                usize::from(!residual)
+            );
+        }
+    }
 }

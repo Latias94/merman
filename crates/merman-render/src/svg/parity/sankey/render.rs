@@ -74,9 +74,13 @@ fn write_sankey_nodes(
                         node_index + 1
                     ),
                 })?;
+        let stroke = node_palette.stroke_for(node_index, &node.id);
+        let stroke_attr = stroke
+            .map(|stroke| format!(r#" stroke="{}""#, escape_attr(stroke)))
+            .unwrap_or_default();
         let _ = write!(
             out,
-            r#"<g class="node" id="{id}" transform="translate({x},{y})" x="{x}" y="{y}"><rect height="{h}" width="{w}" fill="{fill}"/></g>"#,
+            r#"<g class="node" id="{id}" transform="translate({x},{y})" x="{x}" y="{y}"><rect height="{h}" width="{w}" fill="{fill}"{stroke_attr}/></g>"#,
             id = escape_attr_display(node_uid),
             x = fmt(x),
             y = fmt(y),
@@ -86,12 +90,12 @@ fn write_sankey_nodes(
         );
         out.checkpoint()?;
         if let Some(receipt) = receipt.as_deref_mut() {
-            receipt.record_node(
+            receipt.record_node_paints(
                 node_palette,
                 node_index,
                 &node.id,
                 node_index + 1,
-                Some(fill),
+                (Some(fill), stroke),
             );
         }
     }
@@ -222,12 +226,13 @@ pub(crate) fn render_sankey_diagram_svg(
     let mut max_x = layout_width;
     let mut max_y = layout_height;
 
-    for (n, text) in layout.nodes.iter().zip(&label_texts) {
+    for (node_index, (n, text)) in layout.nodes.iter().zip(&label_texts).enumerate() {
         options.checkpoint_emit()?;
-        min_x = min_x.min(n.x0);
-        min_y = min_y.min(n.y0);
-        max_x = max_x.max(n.x1);
-        max_y = max_y.max(n.y1);
+        let stroke_outset = node_palette.stroke_outset(node_index);
+        min_x = min_x.min(n.x0 - stroke_outset);
+        min_y = min_y.min(n.y0 - stroke_outset);
+        max_x = max_x.max(n.x1 + stroke_outset);
+        max_y = max_y.max(n.y1 + stroke_outset);
 
         let dy_em = if show_values {
             0.0

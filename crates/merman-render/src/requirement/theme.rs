@@ -8,7 +8,7 @@ use super::source_typography::RequirementNodeTypography;
 use crate::diagram_theme::{
     FamilyThemeDisposition, FamilyThemeMechanism, FamilyThemeMechanismKey, FamilyThemePaintKind,
     FamilyThemeRuleFacet, ResolvedDiagramTheme, ResolvedStyleProperty, ResolvedThemeStyle,
-    ThemeCapability, ThemeTarget, ThemeTypographyProperty, ThemeVariant,
+    Specified, ThemeCapability, ThemeTarget, ThemeTypographyProperty, ThemeVariant,
 };
 use crate::family::{
     DirectPaintExpectation, DirectPaintTerminalLedger, DirectStaticSelectorDomain,
@@ -69,6 +69,10 @@ pub(crate) struct RequirementPaintThemePlan {
     css: super::RequirementCssBinding,
     relation_paint: Option<super::RequirementRelationPaintPlan>,
     text_paint: super::RequirementTextPaintPlan,
+    title: Option<Box<str>>,
+    title_fill: Option<DirectPaintExpectation>,
+    title_fill_owned: bool,
+    title_terminal: OnceLock<()>,
     node_indices: BTreeMap<String, usize>,
     expectations: Option<Arc<[NodeExpectation]>>,
     inherited_font_stack: InheritedFontStackPlan,
@@ -94,7 +98,10 @@ impl RequirementPaintThemePlan {
         let text_paint =
             super::RequirementTextPaintPlan::resolve(theme, effective_config, work_meter)?;
         let configured_font_size_css = configured_font_size_css(effective_config);
-        let title_present = title.is_some_and(|title| !title.trim().is_empty());
+        let title = title.map(str::trim).filter(|title| !title.is_empty());
+        let title_present = title.is_some();
+        let title_fill_owned =
+            effective_config.config_paint_overrides_typed_default("themeVariables.textColor");
         let Some(theme) = theme else {
             return Self {
                 node_visuals: BTreeMap::new(),
@@ -107,6 +114,10 @@ impl RequirementPaintThemePlan {
                 ),
                 relation_paint: None,
                 text_paint,
+                title: title.map(Into::into),
+                title_fill: None,
+                title_fill_owned,
+                title_terminal: OnceLock::new(),
                 node_indices: BTreeMap::new(),
                 expectations: None,
                 inherited_font_stack,
@@ -176,6 +187,42 @@ impl RequirementPaintThemePlan {
             typed_font_size_active.then_some(font_size_px),
             relation_paint.as_ref().and_then(|plan| plan.typed_color()),
         );
+        let mut title_fill = None;
+        let mut title_fill_winner = None;
+        if title_present && !title_fill_owned {
+            let style = theme.style_with_work_meter(
+                ThemeTarget::Title,
+                ThemeVariant::Default,
+                Some(1),
+                work_meter,
+            )?;
+            title_fill_winner = style
+                .fill_resolution()
+                .winner()
+                .map(|origin| origin.rule_index());
+            title_fill = resolve_direct_static_fill(
+                theme,
+                &style,
+                &[ThemeTarget::Title],
+                DirectStaticSelectorDomain::Default,
+            )
+            .map(DirectPaintExpectation::from_paint);
+            if matches!(style.fill_resolution().specified(), Specified::Clear)
+                && let Some(origin) = style.fill_resolution().winner()
+                && origin.ordinal().is_none()
+                && matches!(origin.variant(), None | Some(ThemeVariant::Default))
+                && theme.rule_facet_disposition(
+                    origin.rule_index(),
+                    FamilyThemeRuleFacet::Fill(FamilyThemePaintKind::Clear),
+                ) == Some(FamilyThemeDisposition::TypedAdapter)
+            {
+                title_fill = Some(DirectPaintExpectation::new(
+                    origin.rule_index(),
+                    css.common.text_color(),
+                    ThemeCapability::SemanticRules,
+                ));
+            }
+        }
         let paint_owners = requirement_paint_owners(effective_config, &css, model, &node_indices);
         let source_owned_fill =
             requirement_source_owned_fill_mask(model, &node_indices, &paint_owners);
@@ -275,13 +322,46 @@ impl RequirementPaintThemePlan {
         reconcile_unsupported_terminal_domains(
             theme,
             &mut evidence,
-            &[UnsupportedTerminalDomain::fallbacks_only(
-                ThemeTarget::Requirement,
-                TerminalVariantDomain::uniform(node_count, ThemeVariant::Default),
-            )
-            .with_source_owned_fill(&source_owned_fill)],
+            &[
+                UnsupportedTerminalDomain::fallbacks_only(
+                    ThemeTarget::Requirement,
+                    TerminalVariantDomain::uniform(node_count, ThemeVariant::Default),
+                )
+                .with_source_owned_fill(&source_owned_fill),
+                UnsupportedTerminalDomain::direct(
+                    ThemeTarget::Title,
+                    TerminalVariantDomain::uniform(
+                        usize::from(title_present),
+                        ThemeVariant::Default,
+                    ),
+                )
+                .with_source_owned_fill(&[effective_config
+                    .config_paint_overrides_typed_default("themeVariables.textColor")]),
+            ],
             work_meter,
         )?;
+        for route in theme.family_mechanism_routes() {
+            if let FamilyThemeMechanism::RuleFacet {
+                target: ThemeTarget::Title,
+                rule_index,
+                facet: FamilyThemeRuleFacet::Fill(_),
+                ..
+            } = route.mechanism()
+                && route.disposition() == FamilyThemeDisposition::TypedAdapter
+            {
+                if title_fill_winner != Some(rule_index) {
+                    evidence.mark_not_applicable(theme.family_mechanism_key(*route));
+                } else if !title_fill
+                    .as_ref()
+                    .is_some_and(|fill| fill.rule_index() == rule_index)
+                {
+                    evidence.mark_residual(
+                        theme.family_mechanism_key(*route),
+                        FamilyThemeResidualReason::UnsupportedPaint,
+                    );
+                }
+            }
+        }
 
         let mut pending = BTreeMap::new();
         for (rule_index, observation) in observations {
@@ -307,6 +387,10 @@ impl RequirementPaintThemePlan {
             css,
             relation_paint,
             text_paint,
+            title: title.map(Into::into),
+            title_fill,
+            title_fill_owned,
+            title_terminal: OnceLock::new(),
             node_indices,
             expectations: Some(expectations.into()),
             inherited_font_stack,
@@ -339,6 +423,26 @@ impl RequirementPaintThemePlan {
 
     pub(crate) fn text_paint(&self) -> &super::RequirementTextPaintPlan {
         &self.text_paint
+    }
+
+    pub(crate) fn title_fill_css(&self) -> Option<&str> {
+        if self.title_fill_owned {
+            return None;
+        }
+        self.title_fill
+            .as_ref()
+            .map(DirectPaintExpectation::css)
+            .or_else(|| self.text_paint.fill_css())
+    }
+
+    pub(crate) fn title_inherits_text_fill(&self) -> bool {
+        !self.title_fill_owned && self.title_fill.is_none()
+    }
+
+    pub(crate) fn record_title_fill(&self, title: &str, fill: Option<&str>) -> bool {
+        Some(title) == self.title.as_deref()
+            && fill == self.title_fill_css()
+            && self.title_terminal.set(()).is_ok()
     }
 
     pub(crate) fn typed_fill(
@@ -396,6 +500,17 @@ impl RequirementPaintThemePlan {
 
     pub(crate) fn record_evidence(&self, evidence: &mut FamilyThemeEvidence) {
         evidence.merge_borrowed(&self.evidence);
+        if self.title_terminal.get().is_some()
+            && let Some(fill) = &self.title_fill
+        {
+            evidence.mark_applied_with_capabilities(
+                FamilyThemeMechanismKey::Rule {
+                    index: fill.rule_index(),
+                    target: ThemeTarget::Title,
+                },
+                [fill.capability()],
+            );
+        }
         if let Some(plan) = self.relation_paint.as_ref() {
             plan.record_evidence(evidence);
         }

@@ -1,5 +1,6 @@
 use std::cell::RefCell;
 use std::collections::BTreeMap;
+use std::sync::OnceLock;
 
 use super::observation::{
     SequenceRuleObservation, observe_control_rule, observe_lifeline_rule, observe_message_rule,
@@ -11,13 +12,13 @@ use super::receipts::{
     SequenceStaticRectThemeEmission, SequenceThemeEvidenceState, SequenceTypographyThemeReceipt,
 };
 use crate::diagram_theme::{
-    FamilyThemeDisposition, FamilyThemeMechanism, FamilyThemePaintKind, FamilyThemeRuleFacet,
-    FamilyThemeSelectorShape, ResolvedDiagramTheme, ThemeCapability, ThemeTarget,
-    ThemeTypographyProperty, ThemeVariant,
+    CanvasPaint, FamilyThemeDisposition, FamilyThemeMechanism, FamilyThemePaintKind,
+    FamilyThemeRuleFacet, FamilyThemeSelectorShape, ResolvedDiagramTheme, ThemeCapability,
+    ThemeTarget, ThemeTypographyProperty, ThemeVariant,
 };
 use crate::family::{
-    FamilyThemeEvidence, FamilyThemeOutcomes, FamilyThemeResidualReason, TerminalVariantDomain,
-    UnsupportedTerminalDomain, reconcile_unsupported_terminal_domains,
+    FamilyThemeEvidence, FamilyThemeOutcomes, FamilyThemeResidualReason, SingleTitleFillPlan,
+    TerminalVariantDomain, UnsupportedTerminalDomain, reconcile_unsupported_terminal_domains,
     unsupported_residual_for_facet as unsupported_reason_for_facet,
 };
 use crate::resources::{OperationWorkError, OperationWorkMeter};
@@ -26,13 +27,75 @@ use crate::resources::{OperationWorkError, OperationWorkMeter};
 #[derive(Debug, Default)]
 pub(crate) struct SequenceThemeEvidenceRecorder {
     state: Option<RefCell<SequenceThemeEvidenceState>>,
+    title_fill: Option<SingleTitleFillPlan>,
+    title_fallback: Option<Box<str>>,
+    expected_title: Option<Box<str>>,
+    title_fill_owned: bool,
+    title_terminal: OnceLock<()>,
 }
 
 impl SequenceThemeEvidenceRecorder {
     pub(crate) fn new(enabled: bool) -> Self {
         Self {
             state: enabled.then(|| RefCell::new(SequenceThemeEvidenceState::default())),
+            ..Self::default()
         }
+    }
+
+    pub(crate) fn with_title(
+        theme: Option<&ResolvedDiagramTheme>,
+        config: &merman_model::presentation::PresentationConfig,
+        title: Option<&str>,
+        work: &OperationWorkMeter,
+    ) -> crate::Result<Self> {
+        let mut recorder = Self::new(theme.is_some());
+        recorder.expected_title = title.map(Into::into);
+        let Some(theme) = theme else {
+            return Ok(recorder);
+        };
+        let source_owned = config.config_paint_overrides_typed_default("themeVariables.textColor");
+        let title_fill = SingleTitleFillPlan::resolve(
+            theme,
+            title.is_some_and(|title| !title.trim().is_empty()),
+            source_owned,
+            FamilyThemeOutcomes::default(),
+            work,
+        )?;
+        recorder.title_fill_owned = source_owned || title_fill.fill_css().is_some();
+        if title.is_some_and(|title| !title.trim().is_empty()) && !recorder.title_fill_owned {
+            let style = theme.style_with_work_meter(
+                ThemeTarget::Text,
+                ThemeVariant::Default,
+                None,
+                work,
+            )?;
+            // Sequence's generic Text domain remains residual. Its scalar title fallback
+            // does not certify the other role labels, effects, or ordinal requests.
+            recorder.title_fallback = match style.fill() {
+                Some(CanvasPaint::Solid(color)) => Some(color.as_css().into_boxed_str()),
+                Some(CanvasPaint::Transparent) => Some("transparent".into()),
+                _ => None,
+            };
+        }
+        recorder.title_fill = Some(title_fill);
+        Ok(recorder)
+    }
+
+    pub(crate) fn title_fill_css(&self) -> Option<&str> {
+        self.title_fill
+            .as_ref()
+            .and_then(SingleTitleFillPlan::fill_css)
+            .or(self.title_fallback.as_deref())
+    }
+
+    pub(crate) fn record_title_emission(&self, title: &str, fill: Option<&str>) -> bool {
+        Some(title) == self.expected_title.as_deref()
+            && fill == self.title_fill_css()
+            && self.title_terminal.set(()).is_ok()
+            && self
+                .title_fill
+                .as_ref()
+                .is_none_or(SingleTitleFillPlan::record_proven_terminal)
     }
 
     #[allow(
@@ -179,25 +242,27 @@ impl SequenceThemeEvidenceRecorder {
             || (number.fill_emitted
                 && !number.fill_overridden
                 && number.receipt.typed_fill_applied());
-        let text_fill_covered =
-            title_count == 0 && typography.role_fills_cover_all_labels() && number_fill_covered;
+        let text_fill_covered = (title_count == 0 || self.title_fill_owned)
+            && typography.role_fills_cover_all_labels()
+            && number_fill_covered;
         let mut evidence = FamilyThemeOutcomes::default();
-        reconcile_unsupported_terminal_domains(
-            theme,
-            &mut evidence,
-            &[
-                UnsupportedTerminalDomain::direct(
-                    ThemeTarget::Text,
-                    TerminalVariantDomain::uniform(text_count, ThemeVariant::Default),
-                )
-                .with_fill_fully_overridden(text_fill_covered),
-                UnsupportedTerminalDomain::direct(
-                    ThemeTarget::Title,
-                    TerminalVariantDomain::uniform(title_count, ThemeVariant::Default),
-                ),
-            ],
-            work,
-        )?;
+        let domains = [
+            UnsupportedTerminalDomain::direct(
+                ThemeTarget::Text,
+                TerminalVariantDomain::uniform(text_count, ThemeVariant::Default),
+            )
+            .with_fill_fully_overridden(text_fill_covered),
+            UnsupportedTerminalDomain::direct(
+                ThemeTarget::Title,
+                TerminalVariantDomain::uniform(title_count, ThemeVariant::Default),
+            ),
+        ];
+        let domains = if self.title_fill.is_some() {
+            &domains[..1]
+        } else {
+            &domains[..]
+        };
+        reconcile_unsupported_terminal_domains(theme, &mut evidence, domains, work)?;
         state.unsupported_text = Some(evidence);
         Ok(())
     }
@@ -208,6 +273,9 @@ impl SequenceThemeEvidenceRecorder {
         canonical: &mut FamilyThemeEvidence,
     ) {
         let evidence = canonical;
+        if let Some(title_fill) = &self.title_fill {
+            title_fill.record_evidence(evidence);
+        }
         let Some(theme) = theme else {
             return;
         };
@@ -1062,9 +1130,14 @@ mod tests {
     fn record_into_preserves_canonical_outcomes_and_reuses_terminal_text_receipts() {
         let mut rules = ThemeRuleSet::default();
         for target in [ThemeTarget::Actor, ThemeTarget::Title] {
+            let paint = CanvasPaint::solid("#123456").unwrap();
             rules = rules.with_rule(ThemeRule::new(
                 target,
-                ThemeStylePatch::default().with_fill(CanvasPaint::solid("#123456").unwrap()),
+                if target == ThemeTarget::Title {
+                    ThemeStylePatch::default().with_stroke(paint)
+                } else {
+                    ThemeStylePatch::default().with_fill(paint)
+                },
             ));
         }
         let theme = DiagramThemeCompiler::new()
@@ -1111,5 +1184,38 @@ mod tests {
         assert_eq!(second.applied(), &[title]);
         assert_eq!(second.not_applicable_mechanisms(), &[actor]);
         assert!(second.residuals().is_empty());
+    }
+
+    #[test]
+    fn title_evidence_requires_matching_text_and_paint_from_one_terminal() {
+        let theme = DiagramThemeCompiler::new()
+            .compile(
+                DiagramThemeSpec::new().with_styles(
+                    ThemeRuleSet::default().with_rule(ThemeRule::new(
+                        ThemeTarget::Title,
+                        ThemeStylePatch::default()
+                            .with_fill(CanvasPaint::solid("#123456").unwrap()),
+                    )),
+                ),
+            )
+            .unwrap()
+            .resolve(DiagramFamilyId::SEQUENCE);
+        let work = OperationWorkMeter::new(RenderResourcePolicy::unbounded_for_trusted_input());
+        let recorder = SequenceThemeEvidenceRecorder::with_title(
+            Some(&theme),
+            &merman_model::presentation::PresentationConfig::empty_object(),
+            Some("Title"),
+            &work,
+        )
+        .unwrap();
+        assert!(!recorder.record_title_emission("Other", Some("#123456")));
+        assert!(!recorder.record_title_emission("Title", Some("#987654")));
+        let mut evidence = FamilyThemeEvidence::from_theme(Some(&theme));
+        recorder.record_into(Some(&theme), &mut evidence);
+        assert!(evidence.applied().is_empty());
+        assert!(recorder.record_title_emission("Title", Some("#123456")));
+        assert!(!recorder.record_title_emission("Title", Some("#123456")));
+        recorder.record_into(Some(&theme), &mut evidence);
+        assert_eq!(evidence.applied().len(), 1);
     }
 }

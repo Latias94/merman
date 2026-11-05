@@ -14,6 +14,7 @@ use serde_json::Value;
 mod axis_paint;
 mod config;
 mod css_binding;
+mod paint;
 mod text_paint;
 mod theme;
 

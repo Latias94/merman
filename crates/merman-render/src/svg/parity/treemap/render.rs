@@ -655,6 +655,7 @@ pub(crate) fn render_treemap_diagram_svg(
                     .as_ref()
                     .expect("a visible Treemap title has a resolved text style"),
                 true,
+                &theme.title_color,
             );
         }
     }
@@ -734,6 +735,9 @@ pub(crate) fn render_treemap_diagram_svg(
             style = escape_attr(section_style)
         );
         out.checkpoint()?;
+        if let Some(receipt) = typography_theme_receipt.as_mut() {
+            receipt.record_node(true, i, fill, stroke, section_style);
+        }
 
         let mut label_text = if section.depth == 0 {
             String::new()
@@ -764,6 +768,7 @@ pub(crate) fn render_treemap_diagram_svg(
                     visual.text_fill_ownership,
                     &section_label_text_style,
                     true,
+                    "",
                 );
             }
         } else {
@@ -856,6 +861,7 @@ pub(crate) fn render_treemap_diagram_svg(
                     visual.text_fill_ownership,
                     &section_label_text_style,
                     true,
+                    label_fill,
                 );
             }
         }
@@ -908,6 +914,7 @@ pub(crate) fn render_treemap_diagram_svg(
                     visual.text_fill_ownership,
                     &section_value_text_style,
                     true,
+                    value_fill,
                 );
             }
         }
@@ -960,13 +967,17 @@ pub(crate) fn render_treemap_diagram_svg(
 
         let _ = write!(
             &mut out,
-            r#"<rect width="{w}" height="{h}" class="treemapLeaf" fill="{fill}" style="{style}" fill-opacity="0.3" stroke="{fill}" stroke-width="3"/>"#,
+            r#"<rect width="{w}" height="{h}" class="treemapLeaf" fill="{fill}" style="{style}" fill-opacity="0.3" stroke="{stroke}" stroke-width="3"/>"#,
             w = fmt(w),
             h = fmt(h),
             fill = escape_attr(fill),
+            stroke = escape_attr(&visual.stroke),
             style = escape_attr(leaf_rect_style)
         );
         out.checkpoint()?;
+        if let Some(receipt) = typography_theme_receipt.as_mut() {
+            receipt.record_node(false, i, fill, &visual.stroke, leaf_rect_style);
+        }
 
         let _ = write!(
             &mut out,
@@ -1091,6 +1102,11 @@ pub(crate) fn render_treemap_diagram_svg(
                 },
                 &final_label_text_style,
                 label_measurement_matches,
+                if label_font_size_mutated {
+                    &visual.fitted_label_fill
+                } else {
+                    &visual.label_fill
+                },
             );
         }
 
@@ -1193,6 +1209,11 @@ pub(crate) fn render_treemap_diagram_svg(
                     },
                     &final_value_text_style,
                     true,
+                    if label_hidden {
+                        &visual.value_fill
+                    } else {
+                        &visual.fitted_value_fill
+                    },
                 );
             }
         }

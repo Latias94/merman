@@ -483,10 +483,35 @@ impl FlowchartEdgeStylePlan {
         Ok(())
     }
 
+    #[cfg(test)]
     pub(crate) fn bind_terminal_typography(
         &self,
         base: &crate::text::TextStyle,
         swimlane: bool,
+    ) -> crate::Result<()> {
+        self.bind_terminal_typography_with_theme(base, swimlane, &Default::default())
+    }
+
+    pub(crate) fn label_parent_style_for<'a>(
+        &self,
+        key: crate::flowchart::FlowchartEdgeKey,
+        base: &'a crate::text::TextStyle,
+        typography: &crate::flowchart::FlowchartLabelTypography,
+    ) -> crate::Result<std::borrow::Cow<'a, crate::text::TextStyle>> {
+        let source = &self.occurrence(key)?.artifact.emission;
+        Ok(typography.parent_style_with_source(
+            crate::diagram_theme::ThemeTarget::EdgeLabel,
+            base,
+            !source.source_font_stack_status().is_absent(),
+            !source.source_font_size_status().is_absent(),
+        ))
+    }
+
+    pub(crate) fn bind_terminal_typography_with_theme(
+        &self,
+        base: &crate::text::TextStyle,
+        swimlane: bool,
+        typography: &crate::flowchart::FlowchartLabelTypography,
     ) -> crate::Result<()> {
         for occurrence in &self.edge_occurrences {
             if !occurrence.has_label && occurrence.layout_typography.get().is_none() {
@@ -496,6 +521,14 @@ impl FlowchartEdgeStylePlan {
                 occurrence.typography_purpose == EdgeLabelTypographyPurpose::SwimlaneLabelRect,
                 swimlane
             );
+            let source = &occurrence.artifact.emission;
+            let parent = typography.parent_style_with_source(
+                crate::diagram_theme::ThemeTarget::EdgeLabel,
+                base,
+                !source.source_font_stack_status().is_absent(),
+                !source.source_font_size_status().is_absent(),
+            );
+            let base = parent.as_ref();
             if let Some(terminal) = occurrence.terminal_typography.get() {
                 debug_assert!(terminal.matches_base(base));
                 continue;

@@ -236,6 +236,9 @@ where
             theme.node_text_color.as_str(),
         )
     });
+    let document_title_color = text_surface_paint.map_or(text_color, |plan| {
+        plan.document_title_color(theme.text_color.as_str())
+    });
     let title_color = theme.title_color.as_str();
     let stroke_width = theme.stroke_width.as_str();
     let error_bkg = theme.error_bkg.as_str();
@@ -371,7 +374,7 @@ where
         &mut *out,
         r#"#{id} .node .collapsed-indicator{{fill:{cluster_border};stroke:none;opacity:0.6;}}#{id} .node .collapsed-separator{{stroke:{cluster_border};stroke-width:0.75px;}}"#,
     );
-    let _ = write!(
+    let title_css = write!(
         &mut *out,
         "#{} div.mermaidTooltip{{position:absolute;text-align:center;max-width:200px;padding:2px;font-family:{};font-size:12px;background:{};border:1px solid {};border-radius:2px;pointer-events:none;z-index:100;}}#{} .{}{{text-anchor:middle;font-size:18px;fill:{};}}#{} rect.text{{fill:none;stroke-width:0;}}",
         id,
@@ -380,9 +383,14 @@ where
         tooltip_border,
         id,
         title_css_class(diagram_type),
-        text_color,
+        document_title_color,
         id
     );
+    if title_css.is_ok()
+        && let Some(plan) = text_surface_paint
+    {
+        plan.record_document_title_css(document_title_color);
+    }
     let _ = write!(
         &mut *out,
         r#"#{} .icon-shape,#{} .image-shape{{background-color:{};text-align:center;}}#{} .icon-shape p,#{} .image-shape p{{background-color:{};padding:2px;}}#{} .icon-shape .label rect,#{} .image-shape .label rect{{opacity:{background_opacity};background-color:{};fill:{};}}#{} .label-icon{{display:inline-block;height:1em;overflow:visible;vertical-align:-0.125em;}}#{} .node .label-icon path{{fill:currentColor;stroke:revert;stroke-width:revert;}}"#,

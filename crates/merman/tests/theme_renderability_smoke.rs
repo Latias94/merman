@@ -402,7 +402,7 @@ quadrantChart
         ),
         (
             "theme-packet",
-            r##"%%{init: {"packet": {"labelColor": "#f8fafc", "titleColor": "#fde68a"}}}%%
+            r##"%%{init: {"themeVariables": {"packet": {"labelColor": "#f8fafc", "titleColor": "#fde68a"}}}}%%
 packet
 title Theme Packet
 +8: "Byte"
@@ -669,7 +669,7 @@ title Packet Visible Audit
 +16: "Word"
 "#,
         SourcePresentationConfig::from_value(serde_json::json!({
-            "packet": {
+            "themeVariables": { "packet": {
                 "startByteColor": "#22c55e",
                 "endByteColor": "#f97316",
                 "labelColor": "#f8fafc",
@@ -677,7 +677,7 @@ title Packet Visible Audit
                 "blockStrokeColor": "#38bdf8",
                 "blockStrokeWidth": 3,
                 "blockFillColor": "#111827"
-            }
+            } }
         })),
     );
 

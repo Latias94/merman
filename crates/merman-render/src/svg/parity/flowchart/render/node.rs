@@ -69,8 +69,8 @@ impl FlowchartNodeGeometry<'_> {
         let style = ctx
             .svg_label_sidecar
             .map_or(
-                crate::flowchart::FlowchartLabelWeights::default(),
-                |sidecar| sidecar.label_weights(),
+                crate::flowchart::FlowchartLabelTypography::default(),
+                |sidecar| sidecar.label_typography(),
             )
             .apply(
                 crate::diagram_theme::ThemeTarget::NodeLabel,
@@ -347,7 +347,11 @@ pub(in crate::svg::parity::flowchart) fn render_flowchart_node(
         (
             crate::svg::parity::flowchart::render::node::emission::FlowchartNodeShapeRenderOutcome::new(
                 true,
-                crate::svg::parity::flowchart::render::node::emission::FlowchartNodeShapeEmissionReceipt::unverified(),
+                if common.look_is_hand_drawn() {
+                    emission::FlowchartNodeShapeEmissionReceipt::unverified()
+                } else {
+                    emission::FlowchartNodeShapeEmissionReceipt::classic_process(false)
+                },
             )
             .with_label(label_receipt),
             false,
@@ -423,9 +427,8 @@ pub(in crate::svg::parity::flowchart) fn render_flowchart_node(
             source_evidence
                 .residuals
                 .extend(compiled_styles.label_source_residuals(node_id, label_receipt));
-            let reach = label_receipt.prepared_typography_reach();
             (
-                reach.map(|reach| {
+                label_receipt.prepared_font_stack_reach().map(|reach| {
                     crate::flowchart::FlowchartThemeFacetEmission::new(
                         crate::flowchart::FlowchartFacetPrecedence::new(
                             compiled_styles.emitted_source_font_stack_status(label_receipt),
@@ -434,7 +437,7 @@ pub(in crate::svg::parity::flowchart) fn render_flowchart_node(
                         typed_font_stack_selected && reach.is_verified(),
                     )
                 }),
-                reach.map(|reach| {
+                label_receipt.prepared_font_size_reach().map(|reach| {
                     crate::flowchart::FlowchartThemeFacetEmission::new(
                         crate::flowchart::FlowchartFacetPrecedence::new(
                             compiled_styles.emitted_source_font_size_status(label_receipt),
@@ -497,7 +500,7 @@ pub(in crate::svg::parity::flowchart) fn render_flowchart_node(
                 stroke: crate::flowchart::FlowchartThemeFacetEmission::new(
                     crate::flowchart::FlowchartFacetPrecedence::new(
                         source_evidence.stroke,
-                        ctx.node_border_config_override,
+                        selection.stroke_config_override,
                     ),
                     typed_stroke_selected && shape_outcome.emission().typed_stroke_verified(),
                 ),

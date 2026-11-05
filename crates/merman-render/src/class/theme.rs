@@ -12,17 +12,16 @@ use crate::resources::{OperationWorkError, OperationWorkMeter};
 mod cluster;
 mod css_binding;
 mod evidence;
-mod namespace_title;
 mod node;
 mod outcomes;
 mod paint;
 mod relation_width;
 mod text;
+mod title;
 
 use cluster::ClassClusterThemePlan;
 pub(crate) use css_binding::ClassCssThemeBinding;
 pub(crate) use evidence::ClassThemeEvidenceRecorder;
-use namespace_title::ClassNamespaceTitleThemePlan;
 pub(crate) use node::ClassNodePaintBinding;
 use node::ClassNodeThemePlan;
 pub(crate) use outcomes::ClassThemeOutcomeSummary;
@@ -34,6 +33,7 @@ pub(crate) use text::{
     ClassNodeLabelStyleFacts, ClassTextOutcomes, ClassTextPaint, ClassTextTerminalFacts,
     ClassTextThemePlan,
 };
+use title::ClassTitleThemePlan;
 
 /// Prepared final Class relation paint winner shared by bounds, SVG emission, and evidence.
 /// Node resolution stays behind the same crate-private handle for existing renderer callers.
@@ -46,7 +46,8 @@ pub(crate) struct ClassRelationThemePlan {
     ordinal_winner_rules: BTreeSet<(usize, ResolvedStyleProperty)>,
     node_plan: ClassNodeThemePlan,
     cluster_plan: ClassClusterThemePlan,
-    namespace_title_plan: ClassNamespaceTitleThemePlan,
+    namespace_title_plan: ClassTitleThemePlan,
+    diagram_title_plan: ClassTitleThemePlan,
     track_edge_label_backgrounds: bool,
     mermaid_owns_edge_label_background: bool,
     edge_label_background: Option<outcomes::ClassSelectedPaint>,
@@ -73,11 +74,14 @@ impl ClassRelationThemePlan {
         );
         let mermaid_owns_stroke = stroke_binding.config_owned();
         let mut node_plan = ClassNodeThemePlan::from_config(effective_config);
+        let diagram_title_plan =
+            ClassTitleThemePlan::resolve_diagram_title(theme, effective_config, work_meter)?;
         let Some(theme) = theme else {
             return Ok(Self {
                 stroke_binding,
                 stroke_width,
                 node_plan,
+                diagram_title_plan,
                 ..Self::default()
             });
         };
@@ -228,7 +232,8 @@ impl ClassRelationThemePlan {
             ordinal_winner_rules,
             node_plan,
             cluster_plan: ClassClusterThemePlan::default(),
-            namespace_title_plan: ClassNamespaceTitleThemePlan::default(),
+            namespace_title_plan: ClassTitleThemePlan::default(),
+            diagram_title_plan,
             track_edge_label_backgrounds,
             mermaid_owns_edge_label_background,
             edge_label_background,
@@ -251,7 +256,7 @@ impl ClassRelationThemePlan {
         self.cluster_plan =
             ClassClusterThemePlan::resolve(theme, config, cluster_count, work_meter)?;
         self.namespace_title_plan =
-            ClassNamespaceTitleThemePlan::resolve(theme, config, cluster_count, work_meter)?;
+            ClassTitleThemePlan::resolve(theme, config, cluster_count, work_meter)?;
         Ok(self)
     }
 
@@ -267,6 +272,13 @@ impl ClassRelationThemePlan {
             .fill
             .typed()
             .map(|paint| (paint.rule_index, self.namespace_title_plan.terminal_style()))
+    }
+
+    pub(crate) fn diagram_title_terminal(&self) -> Option<(usize, &str)> {
+        self.diagram_title_plan
+            .fill
+            .typed()
+            .map(|paint| (paint.rule_index, self.diagram_title_plan.terminal_style()))
     }
 
     pub(crate) fn cluster_terminal_style(&self) -> &str {

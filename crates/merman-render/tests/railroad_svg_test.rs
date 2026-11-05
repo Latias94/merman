@@ -32,6 +32,294 @@ railroad-beta
 expr = sequence(nonterminal("term"), terminal("+"), special("guard")) ;
 "#;
 
+fn railroad_core_paint_theme(transparent: bool, variant: Option<ThemeVariant>) -> DiagramTheme {
+    let paint = |color| {
+        if transparent {
+            CanvasPaint::Transparent
+        } else {
+            CanvasPaint::solid(color).unwrap()
+        }
+    };
+    let rules = [
+        ThemeRule::new(
+            ThemeTarget::Node,
+            ThemeStylePatch::default()
+                .with_fill(paint("#123456"))
+                .with_stroke(paint("#345678")),
+        ),
+        ThemeRule::new(
+            ThemeTarget::NodeLabel,
+            ThemeStylePatch::default().with_fill(paint("#56789a")),
+        ),
+        ThemeRule::new(
+            ThemeTarget::Edge,
+            ThemeStylePatch::default().with_stroke(paint("#789abc")),
+        ),
+        ThemeRule::new(
+            ThemeTarget::Marker,
+            ThemeStylePatch::default().with_fill(paint("#9abcde")),
+        ),
+    ];
+    DiagramThemeCompiler::new()
+        .compile(
+            DiagramThemeSpec::new().with_styles(rules.into_iter().fold(
+                ThemeRuleSet::default(),
+                |rules, rule| {
+                    rules.with_rule(
+                        variant.map_or(rule.clone(), |variant| rule.with_variant(variant)),
+                    )
+                },
+            )),
+        )
+        .unwrap()
+}
+
+fn railroad_core_dialect_sources() -> [&'static str; 4] {
+    [
+        RAILROAD_SOURCE,
+        include_str!("../../../fixtures/railroadAbnf/local_numeric_groups_bounds.mmd"),
+        include_str!("../../../fixtures/railroadEbnf/local_exception_group_postfix.mmd"),
+        include_str!("../../../fixtures/railroadPeg/local_predicate_group_suffix.mmd"),
+    ]
+}
+
+#[test]
+fn railroad_core_paints_reach_real_items_and_tracks_in_all_four_dialects() {
+    for source in railroad_core_dialect_sources() {
+        for transparent in [false, true] {
+            for variant in [None, Some(ThemeVariant::Default)] {
+                let theme = railroad_core_paint_theme(transparent, variant);
+                let (_, rendered) = try_render_railroad_source_with_theme(
+                    source,
+                    &theme,
+                    MermaidEngine::new(),
+                    &portable_railroad_environment(),
+                    "railroad-core",
+                )
+                .unwrap();
+                let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+                let css = railroad_style(rendered.svg());
+                let mut bodies = 0;
+                for node in document.descendants().filter(|node| {
+                    matches!(
+                        node.attribute("class"),
+                        Some("railroad-terminal" | "railroad-nonterminal" | "railroad-special")
+                    )
+                }) {
+                    bodies += 1;
+                    assert!(node.children().any(|child| child.has_tag_name("rect")));
+                    assert!(node.children().any(|child| child.has_tag_name("text")));
+                    let selector = format!(".{}", node.attribute("class").unwrap());
+                    let body_selector = format!("{selector} rect");
+                    let body = railroad_rule_body(&css, "railroad-core", &body_selector);
+                    let fill = if transparent {
+                        "transparent"
+                    } else {
+                        "#123456"
+                    };
+                    let stroke = if transparent {
+                        "transparent"
+                    } else {
+                        "#345678"
+                    };
+                    assert!(body.contains(&format!("fill:{fill};")));
+                    assert!(body.contains(&format!("stroke:{stroke};")));
+                    let text_selector = format!("{selector} text");
+                    let text = railroad_rule_body(&css, "railroad-core", &text_selector);
+                    let fill = if transparent {
+                        "transparent"
+                    } else {
+                        "#56789a"
+                    };
+                    assert!(text.contains(&format!("fill:{fill};")));
+                }
+                assert!(bodies > 0);
+                assert!(document.descendants().any(|node| node.has_tag_name("path")
+                    && node.attribute("class") == Some("railroad-line")));
+                let edge = if transparent {
+                    "transparent"
+                } else {
+                    "#789abc"
+                };
+                assert!(
+                    railroad_rule_body(&css, "railroad-core", ".railroad-line")
+                        .contains(&format!("stroke:{edge};"))
+                );
+                assert!(
+                    document
+                        .descendants()
+                        .any(|node| node.has_tag_name("circle"))
+                );
+                let marker = if transparent {
+                    "transparent"
+                } else {
+                    "#9abcde"
+                };
+                assert!(
+                    railroad_rule_body(&css, "railroad-core", ".railroad-end circle")
+                        .contains(&format!("fill:{marker};"))
+                );
+                let evidence =
+                    merman_render::__private::family_evidence(rendered.into_completion().report());
+                assert_eq!(evidence.required_count(), 4);
+                assert_eq!(evidence.applied_count(), 4);
+                assert_eq!(evidence.theme_residual_count(), 0);
+            }
+        }
+    }
+}
+
+#[test]
+fn railroad_config_owns_each_item_property_and_track_independently() {
+    let theme = railroad_core_paint_theme(false, None);
+    let engine = MermaidEngine::new().with_site_config(
+        merman_core::presentation::SourcePresentationConfig::from_value(json!({ "railroad": {
+            "terminalFill": "#de3163", "nonTerminalStroke": "#fedcba", "terminalTextColor": "#abcdef",
+            "lineColor": "#bada55", "markerFill": "#ff00ff"
+        }})),
+    );
+    let (_, rendered) = try_render_railroad_source_with_theme(
+        RAILROAD_SOURCE,
+        &theme,
+        engine,
+        &portable_railroad_environment(),
+        "railroad-core",
+    )
+    .unwrap();
+    let css = railroad_style(rendered.svg());
+    assert!(
+        railroad_rule_body(&css, "railroad-core", ".railroad-terminal rect")
+            .contains("fill:#de3163;stroke:#345678;")
+    );
+    assert!(
+        railroad_rule_body(&css, "railroad-core", ".railroad-nonterminal rect")
+            .contains("fill:#123456;stroke:#fedcba;")
+    );
+    assert!(
+        railroad_rule_body(&css, "railroad-core", ".railroad-terminal text")
+            .contains("fill:#abcdef;")
+    );
+    assert!(
+        railroad_rule_body(&css, "railroad-core", ".railroad-special text")
+            .contains("fill:#56789a;")
+    );
+    assert!(
+        railroad_rule_body(&css, "railroad-core", ".railroad-line").contains("stroke:#bada55;")
+    );
+    assert!(
+        railroad_rule_body(&css, "railroad-core", ".railroad-end circle").contains("fill:#ff00ff;")
+    );
+    let evidence = merman_render::__private::family_evidence(rendered.into_completion().report());
+    assert_eq!(evidence.applied_count(), 2);
+    assert_eq!(evidence.not_applicable_count(), 2);
+    assert_eq!(evidence.theme_residual_count(), 0);
+}
+
+#[test]
+fn railroad_empty_compiled_theme_preserves_all_four_unthemed_dialects_byte_for_byte() {
+    let theme = DiagramThemeCompiler::new()
+        .compile(DiagramThemeSpec::new())
+        .unwrap();
+    let environment = RenderEnvironment::deterministic();
+    for source in railroad_core_dialect_sources() {
+        let render = |theme: Option<&DiagramTheme>| {
+            let engine = match theme {
+                Some(theme) => common::install_parse_compatibility(theme, MermaidEngine::new()),
+                None => MermaidEngine::new(),
+            };
+            let parsed = engine
+                .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
+                .unwrap()
+                .unwrap()
+                .into_presentation();
+            let session = match theme {
+                Some(theme) => environment.begin_session_with_theme(theme).unwrap(),
+                None => environment.begin_session().unwrap(),
+            };
+            family::prepare(&parsed, &LayoutOptions::headless_svg_defaults(), session)
+                .unwrap()
+                .render_svg(
+                    &SvgRenderOptions {
+                        diagram_id: Some("railroad-core".into()),
+                        ..Default::default()
+                    },
+                    &SvgDebugOptions::default(),
+                )
+                .unwrap()
+                .svg()
+                .to_owned()
+        };
+        assert_eq!(render(None).as_bytes(), render(Some(&theme)).as_bytes());
+    }
+}
+
+#[test]
+fn railroad_label_and_marker_strokes_are_not_fabricated_source_ownership() {
+    for target in [ThemeTarget::NodeLabel, ThemeTarget::Marker] {
+        for mixed in [false, true] {
+            let mut style =
+                ThemeStylePatch::default().with_stroke(CanvasPaint::solid("#ff00ff").unwrap());
+            if mixed {
+                style = style.with_fill(CanvasPaint::solid("#123456").unwrap());
+            }
+            let theme = DiagramThemeCompiler::new()
+                .compile(DiagramThemeSpec::new().with_styles(
+                    ThemeRuleSet::default().with_rule(
+                        ThemeRule::new(target, style).with_variant(ThemeVariant::Default),
+                    ),
+                ))
+                .unwrap();
+            let (_, rendered) = try_render_railroad_source_with_theme(
+                RAILROAD_SOURCE,
+                &theme,
+                MermaidEngine::new(),
+                &RenderEnvironment::deterministic(),
+                "railroad-stroke-residual",
+            )
+            .unwrap();
+            let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+            assert!(document.descendants().any(|node| node.has_tag_name(
+                if target == ThemeTarget::NodeLabel {
+                    "text"
+                } else {
+                    "circle"
+                }
+            )));
+            if mixed {
+                let css = railroad_style(rendered.svg());
+                let selector = if target == ThemeTarget::NodeLabel {
+                    ".railroad-terminal text"
+                } else {
+                    ".railroad-end circle"
+                };
+                assert!(
+                    railroad_rule_body(&css, "railroad-stroke-residual", selector)
+                        .contains("fill:#123456;")
+                );
+            }
+            let evidence =
+                merman_render::__private::family_evidence(rendered.into_completion().report());
+            assert_eq!(evidence.required_count(), 1);
+            assert_eq!(evidence.applied_count(), 0);
+            assert_eq!(evidence.not_applicable_count(), 0);
+            assert_eq!(evidence.theme_residual_count(), 1);
+            let error = try_render_railroad_source_with_theme(
+                RAILROAD_SOURCE,
+                &theme,
+                MermaidEngine::new(),
+                &portable_railroad_environment(),
+                "railroad-stroke-residual",
+            )
+            .err()
+            .unwrap();
+            assert_eq!(
+                error.unverified_family_theme(),
+                Some((DiagramFamilyId::RAILROAD, 1))
+            );
+        }
+    }
+}
+
 fn render_railroad(site_config: Value) -> (String, Value) {
     render_railroad_with_id(site_config, "railroad-theme")
 }
@@ -1146,8 +1434,8 @@ fn railroad_ordinal_evidence_preparation_obeys_the_operation_work_budget() {
 }
 
 #[test]
-fn railroad_unsupported_nontext_targets_have_no_terminal_domain() {
-    for target in [ThemeTarget::Node, ThemeTarget::Edge] {
+fn railroad_unrelated_targets_have_no_terminal_domain() {
+    for target in [ThemeTarget::Axis, ThemeTarget::ChartSeries] {
         let theme = DiagramThemeCompiler::new()
             .compile(
                 DiagramThemeSpec::new().with_styles(

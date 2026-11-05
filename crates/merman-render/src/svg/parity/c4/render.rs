@@ -1404,13 +1404,13 @@ pub(crate) fn render_c4_diagram_svg_typed(
             fmt(title_x),
             fmt(title_y),
         );
-        if let Some(fill) = text_paint.fill_css() {
+        if let Some(fill) = text_paint.title_fill_css() {
             let _ = write!(&mut out, r#" fill="{}""#, escape_attr(fill));
         }
         let _ = write!(&mut out, ">{}</text>", escape_xml(&title));
         out.checkpoint()?;
         if let Some(receipt) = text_paint_receipt.as_mut() {
-            receipt.record_title(&title, text_paint.fill_css());
+            receipt.record_title(&title, text_paint.title_fill_css());
         }
         if let Some(receipt) = typography_receipt.as_mut() {
             receipt.record_title_text(&title);

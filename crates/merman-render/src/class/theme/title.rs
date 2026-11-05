@@ -12,30 +12,62 @@ use crate::resources::{OperationWorkError, OperationWorkMeter};
 use super::outcomes::ClassSelectedPaint;
 use super::paint::ClassPaintBinding;
 
-/// Class's historical Title channel belongs to visible namespace labels.
+/// Namespace and root titles retain their distinct Mermaid paint owners.
 /// Generic Text participates in author order and retains its own evidence key.
 #[derive(Debug, Clone, Default)]
-pub(super) struct ClassNamespaceTitleThemePlan {
+pub(super) struct ClassTitleThemePlan {
     pub(super) fill: ClassPaintBinding,
     terminal_style: String,
     static_winners: BTreeMap<ResolvedStyleProperty, usize>,
     ordinal_winners: BTreeSet<(usize, ResolvedStyleProperty)>,
 }
 
-impl ClassNamespaceTitleThemePlan {
+impl ClassTitleThemePlan {
     pub(super) fn resolve(
         theme: Option<&ResolvedDiagramTheme>,
         config: &merman_model::presentation::PresentationConfig,
         count: usize,
         work_meter: &OperationWorkMeter,
     ) -> Result<Self, OperationWorkError> {
-        let mut plan = Self {
-            fill: ClassPaintBinding::compatibility(
+        Self::resolve_with_fill(
+            theme,
+            ClassPaintBinding::compatibility(
                 config,
                 &["themeVariables.titleColor"],
                 crate::config::config_string(config.as_value(), &["themeVariables", "titleColor"])
                     .unwrap_or_else(|| "#333".into()),
             ),
+            count,
+            work_meter,
+        )
+    }
+
+    pub(super) fn resolve_diagram_title(
+        theme: Option<&ResolvedDiagramTheme>,
+        config: &merman_model::presentation::PresentationConfig,
+        work_meter: &OperationWorkMeter,
+    ) -> Result<Self, OperationWorkError> {
+        Self::resolve_with_fill(
+            theme,
+            ClassPaintBinding::compatibility(
+                config,
+                &["themeVariables.textColor"],
+                crate::config::config_string(config.as_value(), &["themeVariables", "textColor"])
+                    .unwrap_or_else(|| "#333".into()),
+            ),
+            1,
+            work_meter,
+        )
+    }
+
+    fn resolve_with_fill(
+        theme: Option<&ResolvedDiagramTheme>,
+        fill: ClassPaintBinding,
+        count: usize,
+        work_meter: &OperationWorkMeter,
+    ) -> Result<Self, OperationWorkError> {
+        let mut plan = Self {
+            fill,
             ..Self::default()
         };
         let Some(theme) = theme else { return Ok(plan) };

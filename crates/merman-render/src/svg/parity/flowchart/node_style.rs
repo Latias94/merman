@@ -28,6 +28,7 @@ pub(super) struct PreparedNodeSelection {
     pub(super) typed_label_fill: Option<String>,
     pub(super) typed_fill_selected: bool,
     pub(super) typed_stroke_selected: bool,
+    pub(super) stroke_config_override: bool,
     pub(super) typed_stroke_width_selected: bool,
     pub(super) typed_stroke_dasharray_selected: bool,
     pub(super) typed_font_stack_selected: bool,
@@ -153,6 +154,7 @@ impl PreparedNodeSelection {
             typed_label_fill: typed_label_fill.map(str::to_owned),
             typed_fill_selected: fill.is_some(),
             typed_stroke_selected: stroke.is_some(),
+            stroke_config_override: ctx.node_border_config_override,
             typed_stroke_width_selected: stroke_width.is_some(),
             typed_stroke_dasharray_selected: stroke_dasharray.is_some(),
             typed_font_stack_selected: style.font_stack_selected(FlowchartFacetPrecedence::new(
@@ -167,6 +169,7 @@ impl PreparedNodeSelection {
     }
 }
 
+#[derive(Clone, Copy)]
 pub(super) struct NodeSelectionInputs<'a> {
     node_fill_config_override: bool,
     node_border_config_override: bool,
@@ -176,6 +179,8 @@ pub(super) struct NodeSelectionInputs<'a> {
     node_typography_config_ownership: crate::flowchart::FlowchartTypographyConfigOwnership,
     node_fill_color: &'a str,
     node_border_color: &'a str,
+    agentflow_container_stroke: &'a str,
+    agentflow_container_stroke_config_override: bool,
     node_stroke_width: f32,
     node_corner_radius: f64,
     look: crate::config::DiagramLook<'static>,
@@ -194,10 +199,19 @@ impl<'a> NodeSelectionInputs<'a> {
             node_typography_config_ownership: render_config.node_typography_config_ownership,
             node_fill_color: &compatibility.main_bkg,
             node_border_color: &compatibility.node_border,
+            agentflow_container_stroke: &compatibility.collapsed_agentflow_stroke,
+            agentflow_container_stroke_config_override: render_config
+                .cluster_stroke_config_override,
             node_stroke_width: compatibility.node_stroke_width,
             node_corner_radius: compatibility.node_corner_radius,
             look: compatibility.look,
         }
+    }
+
+    pub(super) fn for_collapsed_agentflow(mut self) -> Self {
+        self.node_border_config_override = self.agentflow_container_stroke_config_override;
+        self.node_border_color = self.agentflow_container_stroke;
+        self
     }
 }
 

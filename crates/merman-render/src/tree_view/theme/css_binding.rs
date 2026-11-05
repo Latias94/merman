@@ -18,10 +18,17 @@ pub(crate) struct TreeViewCssBinding {
 }
 
 impl TreeViewCssBinding {
+    pub(super) fn configured_color(config: &Value, key: &str) -> Option<String> {
+        config_string(config, &["themeVariables", "treeView", key])
+    }
+
+    pub(super) fn configured_font_size_css(config: &Value) -> Option<String> {
+        config_css_number_or_string(config, &["themeVariables", "treeView", "labelFontSize"])
+    }
+
     pub(super) fn with_font_family(config: &Value, font_family: &str) -> Self {
         let color = |key, fallback: &str| {
-            config_string(config, &["themeVariables", "treeView", key])
-                .unwrap_or_else(|| fallback.to_string())
+            Self::configured_color(config, key).unwrap_or_else(|| fallback.to_string())
         };
         Self {
             font_family: font_family.to_owned(),
@@ -31,11 +38,8 @@ impl TreeViewCssBinding {
             )
             .unwrap_or(16.0)
             .max(1.0),
-            label_font_size_css: config_css_number_or_string(
-                config,
-                &["themeVariables", "treeView", "labelFontSize"],
-            )
-            .unwrap_or_else(|| "16px".to_string()),
+            label_font_size_css: Self::configured_font_size_css(config)
+                .unwrap_or_else(|| "16px".to_string()),
             line_thickness: config_f64(config, &["treeView", "lineThickness"])
                 .unwrap_or(super::DEFAULT_LINE_THICKNESS)
                 .max(0.0),

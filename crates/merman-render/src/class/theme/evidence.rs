@@ -69,6 +69,7 @@ impl ClassThemeEvidenceRecorder {
         let visible_node_count = receipt
             .map(ClassThemeOutcomeSummary::node_count)
             .unwrap_or(self.node_count);
+        let has_diagram_title = receipt.is_some_and(ClassThemeOutcomeSummary::has_diagram_title);
         let mut rules = BTreeMap::<(usize, ThemeTarget), ClassRuleObservation>::new();
         let background_count =
             receipt.and_then(ClassThemeOutcomeSummary::edge_label_background_count);
@@ -132,14 +133,19 @@ impl ClassThemeEvidenceRecorder {
                             (has_relations || has_static_note_paint)
                                 && plan.route_won(rule_index, target, selector, facet)
                         }
-                        ThemeTarget::Cluster | ThemeTarget::Title => {
+                        ThemeTarget::Title => {
+                            (self.cluster_label_count != 0
+                                && plan
+                                    .namespace_title_plan
+                                    .route_won(rule_index, selector, facet))
+                                || (has_diagram_title
+                                    && plan
+                                        .diagram_title_plan
+                                        .route_won(rule_index, selector, facet))
+                        }
+                        ThemeTarget::Cluster => {
                             self.cluster_label_count != 0
-                                && if target == ThemeTarget::Title {
-                                    plan.namespace_title_plan
-                                        .route_won(rule_index, selector, facet)
-                                } else {
-                                    plan.cluster_plan.route_won(rule_index, selector, facet)
-                                }
+                                && plan.cluster_plan.route_won(rule_index, selector, facet)
                         }
                         ThemeTarget::Node | ThemeTarget::NodeLabel => {
                             visible_node_count != 0
@@ -185,7 +191,16 @@ impl ClassThemeEvidenceRecorder {
                                             && receipt.applied_edge_label_background(rule_index)
                                     } else if target == ThemeTarget::Title {
                                         property == ResolvedStyleProperty::Fill
-                                            && receipt.applied_namespace_title(rule_index)
+                                            && (self.cluster_label_count == 0
+                                                || !plan
+                                                    .namespace_title_plan
+                                                    .route_won(rule_index, selector, facet)
+                                                || receipt.applied_namespace_title(rule_index))
+                                            && (!has_diagram_title
+                                                || !plan
+                                                    .diagram_title_plan
+                                                    .route_won(rule_index, selector, facet)
+                                                || receipt.applied_diagram_title(rule_index))
                                     } else {
                                         receipt.applied_cluster_paint(rule_index, property)
                                     }
@@ -378,12 +393,20 @@ impl ClassThemeEvidenceRecorder {
                 TerminalVariantDomain::uniform(marker_count, ThemeVariant::Default),
             ));
         }
+        // Root and namespace title ordinals each start at one. Their fallback domain is
+        // the union; a property is suppressed only when every matching terminal owns it.
+        let title_count = self.cluster_label_count.max(usize::from(has_diagram_title));
+        let mut title_owned_fill = vec![plan.namespace_title_plan.fill.config_owned(); title_count];
+        if has_diagram_title {
+            title_owned_fill[0] = plan.diagram_title_plan.fill.config_owned()
+                && (self.cluster_label_count == 0 || title_owned_fill[0]);
+        }
         unsupported_domains.push(
             UnsupportedTerminalDomain::fallbacks_only(
                 ThemeTarget::Title,
-                TerminalVariantDomain::uniform(self.cluster_label_count, ThemeVariant::Default),
+                TerminalVariantDomain::uniform(title_count, ThemeVariant::Default),
             )
-            .with_fill_fully_overridden(plan.namespace_title_plan.fill.config_owned()),
+            .with_source_owned_fill(&title_owned_fill),
         );
         unsupported_domains.push(UnsupportedTerminalDomain::direct(
             ThemeTarget::ClusterLabel,

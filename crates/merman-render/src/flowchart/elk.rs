@@ -1179,15 +1179,6 @@ fn build_flowchart_elk_graph_with_render_labels_and_work_control_inner(
     } else {
         &text_style
     };
-    let node_label_base_style = svg_label_sidecar
-        .map_or_else(
-            super::FlowchartLabelWeights::default,
-            FlowchartSvgLabelSidecarBuilder::label_weights,
-        )
-        .parent_style(
-            crate::diagram_theme::ThemeTarget::NodeLabel,
-            node_label_base_style,
-        );
     let cluster_label_base_style = if cluster_wrap_mode == WrapMode::HtmlLike {
         &html_label_text_style
     } else {
@@ -1260,7 +1251,7 @@ fn build_flowchart_elk_graph_with_render_labels_and_work_control_inner(
         effective_config,
         measurer,
         math_renderer,
-        node_label_base_style: node_label_base_style.as_ref(),
+        node_label_base_style,
         wrapping_width,
         node_direction: diagram_direction,
         node_padding,
@@ -1618,12 +1609,16 @@ fn subgraph_label(
     let base_style = if ctx.model.is_subgraph_collapsed(sg.id.as_str()) {
         ctx.svg_label_sidecar
             .map_or_else(
-                super::FlowchartLabelWeights::default,
-                FlowchartSvgLabelSidecarBuilder::label_weights,
+                super::FlowchartLabelTypography::default,
+                FlowchartSvgLabelSidecarBuilder::label_typography,
             )
-            .parent_style(
+            .source_parent_style(
                 crate::diagram_theme::ThemeTarget::NodeLabel,
                 ctx.cluster_label_base_style,
+                &ctx.model.class_defs,
+                classes,
+                styles,
+                false,
             )
     } else {
         std::borrow::Cow::Borrowed(ctx.cluster_label_base_style)
@@ -1681,8 +1676,20 @@ fn node_dimensions_and_label(
     let wrapping_width =
         super::bpmn::wrapping_width(node.layout_shape.as_deref(), ctx.wrapping_width);
     let label_type = node.label_type.as_deref().unwrap_or("text");
-    let node_text_style = flowchart_effective_text_style_for_node_classes_with_provenance(
+    let typography = ctx.svg_label_sidecar.map_or_else(
+        super::FlowchartLabelTypography::default,
+        FlowchartSvgLabelSidecarBuilder::label_typography,
+    );
+    let node_parent = typography.source_parent_style(
+        crate::diagram_theme::ThemeTarget::NodeLabel,
         ctx.node_label_base_style,
+        &ctx.model.class_defs,
+        &node.classes,
+        &node.styles,
+        true,
+    );
+    let node_text_style = flowchart_effective_text_style_for_node_classes_with_provenance(
+        node_parent.as_ref(),
         &ctx.model.class_defs,
         &node.classes,
         &node.styles,
@@ -1774,9 +1781,16 @@ fn edge_label(
         return Ok(None);
     }
 
+    let typography = ctx.svg_label_sidecar.map_or_else(
+        super::FlowchartLabelTypography::default,
+        FlowchartSvgLabelSidecarBuilder::label_typography,
+    );
+    let edge_parent =
+        ctx.edge_style_plan
+            .label_parent_style_for(key, ctx.edge_label_base_style, &typography)?;
     let edge_text_style = ctx
         .edge_style_plan
-        .edge_label_text_style_for(key, ctx.edge_label_base_style)?;
+        .edge_label_text_style_for(key, edge_parent.as_ref())?;
     let metrics = if label_type == "markdown" && ctx.edge_wrap_mode != WrapMode::HtmlLike {
         crate::text::measure_wrapped_markdown_with_inline_styles(
             ctx.measurer,
@@ -1795,7 +1809,7 @@ fn edge_label(
                 raw_label: label_text,
                 label_type,
                 // Mermaid wraps the temporary SVG text before applying `labelStyle`.
-                style: ctx.edge_label_base_style,
+                style: edge_parent.as_ref(),
                 max_width_px: Some(ctx.edge_label_wrapping_width),
                 wrap_mode: ctx.edge_wrap_mode,
                 config: ctx.effective_config,
@@ -2367,7 +2381,11 @@ C["$$x$$"] -->|"$$x$$"| D
         assert_eq!(graph.edges.len(), 3);
 
         let sidecar = builder.finish();
-        assert_eq!(sidecar.node_owner("Group", false), None);
+        // Group ids resolve to their prepared title, never the shadowed ordinary node label.
+        assert_eq!(
+            sidecar.node_owner("Group", false),
+            Some(FlowchartSvgLabelOwner::SubgraphTitle(0))
+        );
         assert_eq!(
             sidecar.node_owner("A", false),
             Some(FlowchartSvgLabelOwner::Node(1))

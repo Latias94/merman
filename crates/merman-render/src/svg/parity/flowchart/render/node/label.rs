@@ -54,8 +54,8 @@ impl<'a> FlowchartNodeLabelEmissionPlan<'a> {
     ) -> std::borrow::Cow<'b, crate::text::TextStyle> {
         ctx.svg_label_sidecar
             .map_or(
-                crate::flowchart::FlowchartLabelWeights::default(),
-                |sidecar| sidecar.label_weights(),
+                crate::flowchart::FlowchartLabelTypography::default(),
+                |sidecar| sidecar.label_typography(),
             )
             .apply(ThemeTarget::NodeLabel, self.source_text_style)
     }
@@ -91,11 +91,17 @@ impl<'a> FlowchartNodeLabelEmissionPlan<'a> {
             append_typed_label_fill(&mut style, fill);
         }
         let weights = ctx.svg_label_sidecar.map_or(
-            crate::flowchart::FlowchartLabelWeights::default(),
-            |sidecar| sidecar.label_weights(),
+            crate::flowchart::FlowchartLabelTypography::default(),
+            |sidecar| sidecar.label_typography(),
         );
-        if weights.get(ThemeTarget::NodeLabel).is_some() {
-            weights.append_style(ThemeTarget::NodeLabel, text_style, &mut style);
+        if weights.requested(ThemeTarget::NodeLabel) {
+            weights.append_style(
+                ThemeTarget::NodeLabel,
+                text_style,
+                self.compiled_styles.source_font_stack_status(),
+                self.compiled_styles.source_font_size_status(),
+                &mut style,
+            );
         }
         style
     }
@@ -188,17 +194,47 @@ impl<'a> FlowchartNodeLabelEmissionPlan<'a> {
             &["label", "nodeLabel", "labelBkg"],
             self.node_classes,
         );
-        super::emission::FlowchartNodeLabelEmissionReceipt::verified()
+        let receipt = super::emission::FlowchartNodeLabelEmissionReceipt::verified()
             .with_font_weight_reach(typography_applicable, weight_verified)
             .with_background_area(width > 0.0 && height > 0.0)
-            .with_prepared_typography_reach(typography_applicable, false)
+            .with_prepared_typography_reach(
+                typography_applicable,
+                owner.is_some()
+                    && ctx.svg_label_sidecar.is_some_and(|sidecar| {
+                        sidecar.label_typography().has_fonts(ThemeTarget::NodeLabel)
+                    }),
+            )
             .with_label_fill_reach(typography_applicable, true)
             .with_html_typography_statuses(html_font_stack, html_font_size)
             .with_text_paint_facts(ctx.text_surface_paint.generic_text.requested().then(|| {
                 crate::flowchart::FlowchartTextPaintFacts::from_visible(
                     &crate::text::VisibleTextStyleFacts::from_xhtml_fragment(label_html.as_ref()),
                 )
-            }))
+            }));
+        self.html_typography_receipt(ctx, common.node_id, label_html.as_ref(), receipt)
+    }
+
+    fn html_typography_receipt(
+        &self,
+        ctx: &FlowchartRenderCtx<'_>,
+        node_id: &str,
+        html: &str,
+        receipt: super::emission::FlowchartNodeLabelEmissionReceipt,
+    ) -> super::emission::FlowchartNodeLabelEmissionReceipt {
+        if !ctx
+            .svg_label_sidecar
+            .is_some_and(|sidecar| sidecar.label_typography().has_fonts(ThemeTarget::NodeLabel))
+        {
+            return receipt;
+        }
+        ctx.theme_evidence.record_source_residuals(
+            &crate::svg::parity::flowchart::style::sanitized_xhtml_source_residuals(node_id, html),
+        );
+        crate::svg::parity::flowchart::style::html_label_typography_receipt(
+            receipt,
+            self.compiled_styles,
+            html,
+        )
     }
 }
 
@@ -257,6 +293,14 @@ fn render_flowchart_node_label_with_wrapper(
         || flowchart_label_plain_text(label.text, label.label_type, ctx.node_html_labels),
         |prepared| prepared.plain_text().to_string(),
     );
+    let mut receipt = super::emission::FlowchartNodeLabelEmissionReceipt::verified()
+        .with_prepared_typography_reach(
+            flowchart_node_label_typography_is_applicable(&label_text_plain, ctx.node_html_labels),
+            owner.is_some()
+                && ctx.svg_label_sidecar.is_some_and(|sidecar| {
+                    sidecar.label_typography().has_fonts(ThemeTarget::NodeLabel)
+                }),
+        );
     let mut label_dy = label.dy;
     if !ctx.node_html_labels && crate::flowchart::bpmn::BpmnShape::resolve(common.shape).is_some() {
         label_dy -= ctx
@@ -452,6 +496,12 @@ fn render_flowchart_node_label_with_wrapper(
             crate::svg::parity::flowchart::style::sanitized_xhtml_typography_statuses(
                 label_html.as_ref(),
             );
+        receipt = common.label_emission.html_typography_receipt(
+            ctx,
+            common.node_id,
+            label_html.as_ref(),
+            receipt,
+        );
         let final_style = common
             .label_emission
             .final_style(ctx, &node_text_style, None);
@@ -572,7 +622,7 @@ fn render_flowchart_node_label_with_wrapper(
     }
     let typography_applicable =
         flowchart_node_label_typography_is_applicable(&label_text_plain, ctx.node_html_labels);
-    super::emission::FlowchartNodeLabelEmissionReceipt::verified()
+    receipt
         .with_effect_reach(
             typography_applicable,
             label_effect_emitted
@@ -585,7 +635,6 @@ fn render_flowchart_node_label_with_wrapper(
             typography_applicable,
             html_weight_verified && label_weight_is_verified(ctx, label, None, &[], &[]),
         )
-        .with_prepared_typography_reach(typography_applicable, false)
         .with_label_fill_reach(typography_applicable, true)
         .with_html_typography_statuses(html_typography_statuses.0, html_typography_statuses.1)
         .with_text_paint_facts(text_paint_facts)
@@ -619,7 +668,7 @@ fn label_weight_is_verified(
     node_classes: &[String],
 ) -> bool {
     ctx.svg_label_sidecar.is_some_and(|sidecar| {
-        let weights = sidecar.label_weights();
+        let weights = sidecar.label_typography();
         weights.config_is_verified() && weights.get(ThemeTarget::NodeLabel).is_some()
     }) && label.label_type != "markdown"
         && !label.text.contains("$$")

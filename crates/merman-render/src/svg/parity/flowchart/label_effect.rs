@@ -94,16 +94,15 @@ impl FlowchartLabelEffects {
         // Neo's node-body defaults do not target the glyph-only wrapper. Keep using
         // its measured translation and leave background siblings outside the filter.
         let look = ctx.compatibility.look;
-        let neo_flowchart = look.is_neo()
-            && merman_model::family::diagram_type_family_id(ctx.diagram_type)
-                == Some(crate::DiagramFamilyId::FLOWCHART);
-        if ctx.swimlane_direction.is_some() || (look.as_str() != "classic" && !neo_flowchart) {
+        if ctx.swimlane_direction.is_some()
+            || (look.as_str() != "classic" && !super::supports_neo_effects(ctx))
+        {
             return Ok(plan);
         }
         if !ctx.effect_eligibility.label {
             return Ok(plan);
         }
-        let weights = sidecar.label_weights();
+        let weights = sidecar.label_typography();
         if super::style::label_shadow_structural_styles_are_bounded(
             ctx.class_defs,
             &[

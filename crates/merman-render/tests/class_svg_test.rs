@@ -5244,6 +5244,170 @@ fn class_native_namespace_and_interface_paint_reaches_text_terminals() {
 }
 
 #[test]
+fn class_diagram_title_scalar_reaches_the_root_writer_without_namespace_labels() {
+    let source = "---\ntitle: Root title\n---\nclassDiagram\nclass A\n";
+    let baseline = render_class_svg_from_text(source);
+    for variant in [None, Some(ThemeVariant::Default)] {
+        for (paint, css) in [
+            (CanvasPaint::solid("#123456").unwrap(), "#123456"),
+            (CanvasPaint::Transparent, "transparent"),
+        ] {
+            let mut rule = ThemeRule::new(
+                ThemeTarget::Title,
+                ThemeStylePatch::default().with_fill(paint),
+            );
+            if let Some(variant) = variant {
+                rule = rule.with_variant(variant);
+            }
+            let theme = class_edge_rules_theme([rule]);
+            let rendered =
+                try_render_class_svg_with_theme_and_engine(source, &theme, MermaidEngine::new())
+                    .unwrap();
+            let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+            let title = document
+                .descendants()
+                .find(|node| node.attribute("class") == Some("classDiagramTitleText"))
+                .expect("real root diagram title");
+            let style = format!("color:{css} !important;fill:{css} !important;");
+            assert_eq!(title.parent_element(), Some(document.root_element()));
+            assert_eq!(title.text(), Some("Root title"));
+            assert_eq!(title.attribute("style"), Some(style.as_str()));
+            assert_eq!(
+                rendered
+                    .svg()
+                    .replacen(&format!(r#" style="{style}""#), "", 1),
+                baseline,
+                "the root title attribute is the only byte change",
+            );
+            let evidence =
+                merman_render::__private::family_evidence(rendered.into_completion().report());
+            assert_eq!(evidence.applied_count(), 1);
+            assert_eq!(evidence.not_applicable_count(), 0);
+            assert_eq!(evidence.theme_residual_count(), 0);
+        }
+    }
+}
+
+#[test]
+fn class_diagram_title_and_text_keep_author_order_and_separate_receipts() {
+    for title_last in [false, true] {
+        let title = ThemeRule::new(
+            ThemeTarget::Title,
+            ThemeStylePatch::default().with_fill(CanvasPaint::solid("#123456").unwrap()),
+        );
+        let text = ThemeRule::new(
+            ThemeTarget::Text,
+            ThemeStylePatch::default().with_fill(CanvasPaint::solid("#456789").unwrap()),
+        );
+        let theme = class_edge_rules_theme(if title_last {
+            [text, title]
+        } else {
+            [title, text]
+        });
+        let rendered = try_render_class_svg_with_theme_and_engine(
+            "---\ntitle: Root title\n---\nclassDiagram\nnamespace Internal {\nclass A\n}\n",
+            &theme,
+            MermaidEngine::new(),
+        )
+        .unwrap();
+        let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+        let title = document
+            .descendants()
+            .find(|node| node.attribute("class") == Some("classDiagramTitleText"))
+            .unwrap();
+        let css = if title_last { "#123456" } else { "#456789" };
+        assert_eq!(
+            title.attribute("style"),
+            Some(format!("color:{css} !important;fill:{css} !important;").as_str())
+        );
+        let evidence =
+            merman_render::__private::family_evidence(rendered.into_completion().report());
+        assert_eq!(evidence.applied_count(), 1 + usize::from(title_last));
+        assert_eq!(evidence.not_applicable_count(), usize::from(!title_last));
+        assert_eq!(evidence.theme_residual_count(), 0);
+    }
+}
+
+#[test]
+fn class_diagram_title_preserves_its_original_source_property() {
+    let theme = class_edge_rules_theme([ThemeRule::new(
+        ThemeTarget::Title,
+        ThemeStylePatch::default().with_fill(CanvasPaint::solid("#123456").unwrap()),
+    )]);
+    for (property, applied) in [("textColor", false), ("titleColor", true)] {
+        let source = format!(
+            "---\ntitle: Root title\n---\n%%{{init: {{\"themeVariables\":{{\"{property}\":\"#123456\"}}}}}}%%\nclassDiagram\nclass A\n"
+        );
+        let rendered =
+            try_render_class_svg_with_theme_and_engine(&source, &theme, MermaidEngine::new())
+                .unwrap();
+        let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+        let title = document
+            .descendants()
+            .find(|node| node.attribute("class") == Some("classDiagramTitleText"))
+            .unwrap();
+        assert_eq!(title.attribute("style").is_some(), applied, "{property}");
+        let evidence =
+            merman_render::__private::family_evidence(rendered.into_completion().report());
+        assert_eq!(evidence.applied_count(), usize::from(applied), "{property}");
+        assert_eq!(
+            evidence.not_applicable_count(),
+            usize::from(!applied),
+            "{property}"
+        );
+        assert_eq!(evidence.theme_residual_count(), 0);
+    }
+}
+
+#[test]
+fn class_diagram_title_reconciles_absence_and_unsupported_ordinals() {
+    for (source, ordinal, residual, absent) in [
+        ("classDiagram\nclass A\n", None, 0, 1),
+        ("---\ntitle: ' '\n---\nclassDiagram\nclass A\n", None, 0, 1),
+        (
+            "---\ntitle: Root title\n---\nclassDiagram\nclass A\n",
+            Some(1),
+            1,
+            0,
+        ),
+        (
+            "---\ntitle: Root title\n---\nclassDiagram\nclass A\n",
+            Some(2),
+            0,
+            1,
+        ),
+    ] {
+        let mut rule = ThemeRule::new(
+            ThemeTarget::Title,
+            ThemeStylePatch::default().with_fill(CanvasPaint::Transparent),
+        );
+        if let Some(ordinal) = ordinal {
+            rule = rule.with_ordinal(OrdinalSelector::exact(ordinal).unwrap());
+        }
+        let theme = class_edge_rules_theme([rule]);
+        let rendered = try_render_class_svg_with_theme_requirement(
+            source,
+            &theme,
+            MermaidEngine::new(),
+            ThemePortabilityRequirement::BestEffort,
+        )
+        .unwrap();
+        let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+        assert!(
+            document
+                .descendants()
+                .filter(|node| node.attribute("class") == Some("classDiagramTitleText"))
+                .all(|node| node.attribute("style").is_none())
+        );
+        let evidence =
+            merman_render::__private::family_evidence(rendered.into_completion().report());
+        assert_eq!(evidence.applied_count(), 0);
+        assert_eq!(evidence.not_applicable_count(), absent);
+        assert_eq!(evidence.theme_residual_count(), residual);
+    }
+}
+
+#[test]
 fn class_namespace_title_scalar_has_a_direct_terminal() {
     for source in [
         "classDiagram\nnamespace Internal {\nclass A\nclass B\n}\nA --> B\nclass X\nX --> A\n",
@@ -5311,10 +5475,7 @@ fn class_namespace_title_reconciles_absence_ownership_and_unsupported_siblings()
     let source = "classDiagram\nnamespace Internal {\nclass A\n}\n";
     let theme = class_edge_rules_theme([rule()]);
     for (source, engine) in [
-        (
-            "---\ntitle: Diagram title\n---\nclassDiagram\nclass A\n",
-            MermaidEngine::new(),
-        ),
+        ("classDiagram\nclass A\n", MermaidEngine::new()),
         (
             source,
             MermaidEngine::new().with_site_config(

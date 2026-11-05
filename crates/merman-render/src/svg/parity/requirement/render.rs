@@ -1229,11 +1229,24 @@ pub(crate) fn render_requirement_diagram_svg_model(
     if let Some((title, title_x, title_y)) = title_position {
         let _ = write!(
             &mut out,
-            r#"<text text-anchor="middle" x="{x}" y="{y}" class="requirementDiagramTitleText">{txt}</text>"#,
+            r#"<text text-anchor="middle" x="{x}" y="{y}" class="requirementDiagramTitleText""#,
             x = fmt(title_x),
             y = fmt(title_y),
-            txt = escape_xml(title),
         );
+        let fill = paint_theme.title_fill_css();
+        if let Some(fill) = fill {
+            let _ = write!(&mut out, r#" fill="{}""#, escape_attr(fill));
+        }
+        let _ = write!(&mut out, ">{}</text>", escape_xml(title));
+        out.checkpoint()?;
+        if !paint_theme.record_title_fill(title, fill) {
+            return Err(Error::InvalidModel {
+                message: "Requirement title paint did not match the terminal SVG".to_owned(),
+            });
+        }
+        if let Some(receipt) = text_paint_receipt.as_mut() {
+            receipt.record_title(paint_theme.title_inherits_text_fill(), options.work_meter())?;
+        }
         if let Some(receipt) = paint_theme_receipt.as_mut() {
             receipt.record_title_text("requirementDiagramTitleText", title);
         }

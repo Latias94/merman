@@ -4,13 +4,16 @@ use std::sync::OnceLock;
 use merman_model::presentation::PresentationConfig;
 
 use crate::diagram_theme::{
-    FamilyThemeDisposition, FamilyThemeMechanism, FamilyThemeMechanismKey, ResolvedDiagramTheme,
-    ResolvedStyleProperty, ThemeCapability, ThemeTarget, ThemeTypographyProperty, ThemeVariant,
+    CanvasPaint, FamilyThemeDisposition, FamilyThemeMechanism, FamilyThemeMechanismKey,
+    FamilyThemeRuleFacet, ResolvedDiagramTheme, ResolvedStyleProperty, Specified, ThemeCapability,
+    ThemeTarget, ThemeTypographyProperty, ThemeVariant,
 };
 use crate::family::{
-    DirectStaticPaint, DirectStaticSelectorDomain, FamilyThemeEvidence, FamilyThemeOutcomes,
-    FamilyThemeResidualReason, InheritedFontStackOutcome, InheritedFontStackPlan,
-    resolve_direct_static_fill, resolved_style_property_for_facet, unsupported_residual_for_facet,
+    DirectPaintExpectation, DirectStaticPaint, DirectStaticSelectorDomain, FamilyThemeEvidence,
+    FamilyThemeOutcomes, FamilyThemeResidualReason, InheritedFontStackOutcome,
+    InheritedFontStackPlan, TerminalVariantDomain, UnsupportedTerminalDomain,
+    reconcile_unsupported_terminal_domains, resolve_direct_static_fill,
+    resolved_style_property_for_facet, unsupported_residual_for_facet,
 };
 use crate::model::SankeyDiagramLayout;
 use crate::resources::{OperationWorkError, OperationWorkMeter};
@@ -49,7 +52,8 @@ pub(crate) struct SankeyTypographyThemePlan {
     inherited_font_stack: InheritedFontStackPlan,
     evidence: FamilyThemeOutcomes,
     text_fill: Option<DirectStaticPaint>,
-    text_rules: BTreeMap<usize, SankeyTextRuleObservation>,
+    text_rules: BTreeMap<usize, Vec<SankeyTextRuleObservation>>,
+    text_rules_have_ordinals: bool,
     config_owns_text_fill: bool,
     terminal_receipt: OnceLock<SankeyTypographyTerminalSeal>,
 }
@@ -64,7 +68,8 @@ impl SankeyTypographyThemePlan {
         let config_owns_text_fill =
             effective_config.config_paint_overrides_typed_default("themeVariables.textColor");
         let mut text_fill = None;
-        let mut text_rules = BTreeMap::<usize, SankeyTextRuleObservation>::new();
+        let mut text_rules = BTreeMap::<usize, Vec<SankeyTextRuleObservation>>::new();
+        let mut has_ordinals = false;
         if let Some(theme) = theme {
             let static_style = theme.style_with_work_meter(
                 ThemeTarget::Text,
@@ -80,7 +85,6 @@ impl SankeyTypographyThemePlan {
             );
             work_meter.charge(theme.family_mechanism_routes().len())?;
             let mut facets = BTreeMap::new();
-            let mut has_ordinals = false;
             for route in theme.family_mechanism_routes() {
                 if let FamilyThemeMechanism::RuleFacet {
                     rule_index,
@@ -126,9 +130,20 @@ impl SankeyTypographyThemePlan {
                     let Some(facet) = facets.get(&(origin.rule_index(), property)) else {
                         continue;
                     };
-                    let observation = text_rules
+                    let observations = text_rules
                         .get_mut(&origin.rule_index())
                         .expect("registered text rule");
+                    let ordinal = has_ordinals.then_some(ordinal);
+                    if observations
+                        .last()
+                        .is_none_or(|observation| observation.ordinal != ordinal)
+                    {
+                        observations.push(SankeyTextRuleObservation {
+                            ordinal,
+                            ..Default::default()
+                        });
+                    }
+                    let observation = observations.last_mut().expect("observed text rule");
                     if property == ResolvedStyleProperty::Fill
                         && text_fill
                             .as_ref()
@@ -172,6 +187,7 @@ impl SankeyTypographyThemePlan {
             evidence: FamilyThemeOutcomes::default(),
             text_fill,
             text_rules,
+            text_rules_have_ordinals: has_ordinals,
             config_owns_text_fill,
             terminal_receipt: OnceLock::new(),
         })
@@ -227,14 +243,20 @@ impl SankeyTypographyThemePlan {
                     FamilyThemeResidualReason::UnsupportedTypography,
                 );
             }
-            for (index, observation) in &self.text_rules {
+            for (index, observations) in &self.text_rules {
                 let key = FamilyThemeMechanismKey::Rule {
                     index: *index,
                     target: ThemeTarget::Text,
                 };
-                if let Some(reason) = observation.residual {
+                if let Some(reason) = observations
+                    .iter()
+                    .find_map(|observation| observation.residual)
+                {
                     evidence.mark_residual(key, reason);
-                } else if observation.fill_pending {
+                } else if observations
+                    .iter()
+                    .any(|observation| observation.fill_pending)
+                {
                     evidence.mark_residual(key, FamilyThemeResidualReason::UnsupportedPaint);
                 }
             }
@@ -259,7 +281,20 @@ impl SankeyTypographyThemePlan {
                 }
             }
         }
-        for (index, observation) in &self.text_rules {
+        for (index, observations) in &self.text_rules {
+            let mut observation = SankeyTextRuleObservation::default();
+            for occurrence in observations {
+                if occurrence.ordinal.is_some_and(|ordinal| {
+                    !receipt
+                        .visible_labels
+                        .as_ref()
+                        .is_some_and(|visible| visible.get(ordinal - 1).copied() == Some(true))
+                }) {
+                    continue;
+                }
+                observation.fill_pending |= occurrence.fill_pending;
+                observation.residual = observation.residual.or(occurrence.residual);
+            }
             let key = FamilyThemeMechanismKey::Rule {
                 index: *index,
                 target: ThemeTarget::Text,
@@ -285,6 +320,7 @@ impl SankeyTypographyThemePlan {
 
 #[derive(Debug, Default)]
 struct SankeyTextRuleObservation {
+    ordinal: Option<usize>,
     fill_pending: bool,
     residual: Option<FamilyThemeResidualReason>,
 }
@@ -325,12 +361,14 @@ pub(crate) struct SankeyTypographyThemeReceipt<'a> {
     next_pass: usize,
     labels_in_pass: usize,
     has_visible_label: bool,
+    visible_labels: Option<Vec<bool>>,
     valid: bool,
 }
 
 #[derive(Debug)]
 struct SankeyTypographyTerminalSeal {
     has_visible_label: bool,
+    visible_labels: Option<Vec<bool>>,
     text_fill_css: Option<String>,
 }
 
@@ -354,6 +392,9 @@ impl<'a> SankeyTypographyThemeReceipt<'a> {
             },
             labels_in_pass: 0,
             has_visible_label: false,
+            visible_labels: plan
+                .text_rules_have_ordinals
+                .then(|| Vec::with_capacity(expected_labels_per_pass)),
             valid: true,
         }
     }
@@ -377,6 +418,13 @@ impl<'a> SankeyTypographyThemeReceipt<'a> {
             return;
         }
         self.valid &= surface == self.expected_surface();
+        if let Some(visible_labels) = &mut self.visible_labels {
+            if self.next_pass == 0 {
+                visible_labels.push(visible);
+            } else {
+                self.valid &= visible_labels.get(self.labels_in_pass).copied() == Some(visible);
+            }
+        }
         self.has_visible_label |= visible;
         self.labels_in_pass = self.labels_in_pass.saturating_add(1);
         if self.labels_in_pass == self.expected_labels_per_pass {
@@ -406,11 +454,16 @@ impl<'a> SankeyTypographyThemeReceipt<'a> {
         (self.css_emitted
             && self.valid
             && self.next_pass == self.expected_pass_count()
-            && self.labels_in_pass == 0)
-            .then_some(SankeyTypographyTerminalSeal {
-                has_visible_label: self.has_visible_label,
-                text_fill_css: self.expected_text_fill_css.map(str::to_owned),
-            })
+            && self.labels_in_pass == 0
+            && self
+                .visible_labels
+                .as_ref()
+                .is_none_or(|visible| visible.len() == self.expected_labels_per_pass))
+        .then_some(SankeyTypographyTerminalSeal {
+            has_visible_label: self.has_visible_label,
+            visible_labels: self.visible_labels,
+            text_fill_css: self.expected_text_fill_css.map(str::to_owned),
+        })
     }
 
     fn expected_text_fill_css(&self) -> Option<&str> {
@@ -425,6 +478,7 @@ struct SankeyNodePaint {
     fill_css: String,
     source_owned: bool,
     typed_capability: Option<ThemeCapability>,
+    stroke: Option<DirectPaintExpectation>,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -474,6 +528,7 @@ pub(crate) struct SankeyNodePalettePlan {
     paints: Vec<SankeyNodePaint>,
     evidence: FamilyThemeOutcomes,
     palette_key: Option<FamilyThemeMechanismKey>,
+    pending_rules: BTreeMap<usize, BTreeSet<ThemeCapability>>,
     terminal_capabilities: OnceLock<BTreeSet<ThemeCapability>>,
 }
 
@@ -490,6 +545,131 @@ impl SankeyNodePalettePlan {
         };
 
         plan.evidence = FamilyThemeOutcomes::default();
+        work_meter.charge(plan.paints.len())?;
+        let source_owned_fill = plan
+            .paints
+            .iter()
+            .map(|paint| paint.source_owned)
+            .collect::<Vec<_>>();
+        let mut observations = BTreeMap::<usize, SankeyNodeRuleObservation>::new();
+        let mut facets = BTreeMap::new();
+        for route in theme.family_mechanism_routes() {
+            if let FamilyThemeMechanism::RuleFacet {
+                target: ThemeTarget::Node,
+                rule_index,
+                facet,
+                ..
+            } = route.mechanism()
+            {
+                facets.insert(
+                    (rule_index, resolved_style_property_for_facet(facet)),
+                    facet,
+                );
+                observations.entry(rule_index).or_default();
+            }
+        }
+        for paint in &mut plan.paints {
+            let style = theme.style_with_work_meter(
+                ThemeTarget::Node,
+                ThemeVariant::Default,
+                Some(paint.ordinal),
+                work_meter,
+            )?;
+            let fill = (!paint.source_owned)
+                .then(|| {
+                    sankey_node_paint(
+                        theme,
+                        style.fill_resolution(),
+                        FamilyThemeRuleFacet::fill,
+                        &paint.fill_css,
+                    )
+                })
+                .flatten();
+            if let Some(fill) = &fill {
+                paint.fill_css = fill.css().to_owned();
+            }
+            paint.stroke = sankey_node_paint(
+                theme,
+                style.stroke_resolution(),
+                FamilyThemeRuleFacet::stroke,
+                "none",
+            );
+            work_meter.charge(facets.len())?;
+            for (property, origin) in style.winner_rule_properties() {
+                if property == ResolvedStyleProperty::Fill && paint.source_owned {
+                    continue;
+                }
+                let Some(facet) = facets.get(&(origin.rule_index(), property)) else {
+                    continue;
+                };
+                let observation = observations
+                    .get_mut(&origin.rule_index())
+                    .expect("registered Sankey node rule");
+                let direct = match property {
+                    ResolvedStyleProperty::Fill => fill.as_ref(),
+                    ResolvedStyleProperty::Stroke => paint.stroke.as_ref(),
+                    _ => None,
+                };
+                if let Some(direct) = direct
+                    && direct.rule_index() == origin.rule_index()
+                {
+                    observation.capabilities.insert(direct.capability());
+                } else {
+                    observation
+                        .residual
+                        .get_or_insert(unsupported_residual_for_facet(*facet));
+                }
+            }
+        }
+        for (index, observation) in observations {
+            let key = FamilyThemeMechanismKey::Rule {
+                index,
+                target: ThemeTarget::Node,
+            };
+            if let Some(reason) = observation.residual {
+                plan.evidence.mark_residual(key, reason);
+            } else if observation.capabilities.is_empty() {
+                plan.evidence.mark_not_applicable(key);
+            } else {
+                plan.pending_rules.insert(index, observation.capabilities);
+            }
+        }
+        let render_settings = SankeyConfigView::new(effective_config.as_value()).render_settings();
+        let label_occurrences = layout
+            .nodes
+            .iter()
+            .enumerate()
+            .filter(|(_, node)| render_settings.show_values || !node.id.trim().is_empty())
+            .map(|(index, _)| (index + 1, ThemeVariant::Default))
+            .collect::<Vec<_>>();
+        let source_owned_text_fill =
+            vec![
+                effective_config.config_paint_overrides_typed_default("themeVariables.textColor");
+                layout.nodes.len()
+            ];
+        reconcile_unsupported_terminal_domains(
+            theme,
+            &mut plan.evidence,
+            &[
+                // Sankey emits node labels, but no visual title, including frontmatter titles.
+                UnsupportedTerminalDomain::direct(
+                    ThemeTarget::Title,
+                    TerminalVariantDomain::uniform(0, ThemeVariant::Default),
+                ),
+                UnsupportedTerminalDomain::fallbacks_only(
+                    ThemeTarget::Node,
+                    TerminalVariantDomain::uniform(plan.paints.len(), ThemeVariant::Default),
+                )
+                // Authored nodeColors owns fill only, independently of node stroke.
+                .with_source_owned_fill(&source_owned_fill),
+                UnsupportedTerminalDomain::fallbacks_only(
+                    ThemeTarget::Text,
+                    TerminalVariantDomain::indexed(&label_occurrences),
+                )
+                .with_source_owned_fill(&source_owned_text_fill),
+            ],
+            work_meter,
+        )?;
         let Some(disposition) = theme.ordinal_palette_disposition(ThemeTarget::Node) else {
             return Ok(plan);
         };
@@ -570,6 +750,7 @@ impl SankeyNodePalettePlan {
                 fill_css: fill.to_string(),
                 source_owned: explicit_fill.is_some(),
                 typed_capability: None,
+                stroke: None,
             });
         }
 
@@ -582,6 +763,7 @@ impl SankeyNodePalettePlan {
             paints,
             evidence: FamilyThemeOutcomes::default(),
             palette_key: None,
+            pending_rules: BTreeMap::new(),
             terminal_capabilities: OnceLock::new(),
         }
     }
@@ -591,6 +773,29 @@ impl SankeyNodePalettePlan {
             .get(node_index)
             .filter(|paint| paint.id == node_id)
             .map(|paint| paint.fill_css.as_str())
+    }
+
+    pub(crate) fn stroke_for(&self, node_index: usize, node_id: &str) -> Option<&str> {
+        self.paints
+            .get(node_index)
+            .filter(|paint| paint.id == node_id)
+            .and_then(|paint| paint.stroke.as_ref())
+            .map(DirectPaintExpectation::css)
+    }
+
+    pub(crate) fn stroke_outset(&self, node_index: usize) -> f64 {
+        // The rectangle writer retains SVG's default 1px stroke width. Clear and
+        // fully transparent paint do not expand the painted-content bounds.
+        if self
+            .paints
+            .get(node_index)
+            .and_then(|paint| paint.stroke.as_ref())
+            .is_some_and(|stroke| stroke.capability() == ThemeCapability::SolidPaint)
+        {
+            0.5
+        } else {
+            0.0
+        }
     }
 
     /// Selects each link once from final node paints without allocating terminal SVG IDs.
@@ -691,13 +896,14 @@ impl SankeyNodePalettePlan {
     }
 
     pub(crate) fn begin_terminal_receipt(&self) -> Option<SankeyNodePaletteReceipt> {
-        self.palette_key
-            .as_ref()
-            .map(|_| SankeyNodePaletteReceipt::new(self.paints.len()))
+        (self.palette_key.is_some() || !self.pending_rules.is_empty())
+            .then(|| SankeyNodePaletteReceipt::new(self.paints.len()))
     }
 
     pub(crate) fn record_terminal(&self, receipt: SankeyNodePaletteReceipt) -> bool {
-        if self.palette_key.is_none() || !receipt.proves_complete(&self.paints) {
+        if (self.palette_key.is_none() && self.pending_rules.is_empty())
+            || !receipt.proves_complete(&self.paints)
+        {
             return false;
         }
         self.terminal_capabilities
@@ -707,6 +913,17 @@ impl SankeyNodePalettePlan {
 
     pub(crate) fn record_evidence(&self, evidence: &mut FamilyThemeEvidence) {
         evidence.merge_borrowed(&self.evidence);
+        for (index, capabilities) in &self.pending_rules {
+            let key = FamilyThemeMechanismKey::Rule {
+                index: *index,
+                target: ThemeTarget::Node,
+            };
+            if self.terminal_capabilities.get().is_some() {
+                evidence.mark_applied_with_capabilities(key, capabilities.iter().copied());
+            } else {
+                evidence.mark_residual(key, FamilyThemeResidualReason::UnsupportedPaint);
+            }
+        }
         let Some(key) = self.palette_key.clone() else {
             return;
         };
@@ -722,7 +939,51 @@ impl SankeyNodePalettePlan {
     }
 }
 
-/// Writer-owned proof that every semantic Sankey node emitted its planned terminal rectangle fill.
+#[derive(Default)]
+struct SankeyNodeRuleObservation {
+    capabilities: BTreeSet<ThemeCapability>,
+    residual: Option<FamilyThemeResidualReason>,
+}
+
+fn sankey_node_paint(
+    theme: &ResolvedDiagramTheme,
+    resolution: &crate::diagram_theme::ResolvedProperty<CanvasPaint>,
+    facet: fn(&Specified<CanvasPaint>) -> Option<FamilyThemeRuleFacet>,
+    baseline: &str,
+) -> Option<DirectPaintExpectation> {
+    let origin = resolution.winner()?;
+    if origin.target() != ThemeTarget::Node
+        || origin.ordinal().is_some()
+        || !matches!(origin.variant(), None | Some(ThemeVariant::Default))
+        || theme.rule_facet_disposition(origin.rule_index(), facet(resolution.specified())?)
+            != Some(FamilyThemeDisposition::TypedAdapter)
+    {
+        return None;
+    }
+    let (css, capability) = match resolution.specified() {
+        // Clear restores the original categorical fill or the rectangle's absent stroke.
+        Specified::Clear => (baseline.to_owned(), ThemeCapability::SemanticRules),
+        Specified::Value(CanvasPaint::Transparent) => {
+            ("transparent".to_owned(), ThemeCapability::TransparentPaint)
+        }
+        Specified::Value(CanvasPaint::Solid(color)) => (
+            color.as_css(),
+            if color.is_transparent() {
+                ThemeCapability::TransparentPaint
+            } else {
+                ThemeCapability::SolidPaint
+            },
+        ),
+        _ => return None,
+    };
+    Some(DirectPaintExpectation::new(
+        origin.rule_index(),
+        css,
+        capability,
+    ))
+}
+
+/// Writer-owned proof that every Sankey node emitted its planned rectangle fill and stroke.
 #[derive(Debug)]
 pub(crate) struct SankeyNodePaletteReceipt {
     expected_count: usize,
@@ -741,6 +1002,7 @@ impl SankeyNodePaletteReceipt {
         }
     }
 
+    #[cfg(test)]
     pub(crate) fn record_node(
         &mut self,
         plan: &SankeyNodePalettePlan,
@@ -748,6 +1010,23 @@ impl SankeyNodePaletteReceipt {
         emitted_id: &str,
         emitted_ordinal: usize,
         emitted_fill: Option<&str>,
+    ) {
+        self.record_node_paints(
+            plan,
+            emitted_index,
+            emitted_id,
+            emitted_ordinal,
+            (emitted_fill, None),
+        );
+    }
+
+    pub(crate) fn record_node_paints(
+        &mut self,
+        plan: &SankeyNodePalettePlan,
+        emitted_index: usize,
+        emitted_id: &str,
+        emitted_ordinal: usize,
+        emitted_paints: (Option<&str>, Option<&str>),
     ) {
         if emitted_index != self.next_index {
             self.values_match = false;
@@ -760,7 +1039,8 @@ impl SankeyNodePaletteReceipt {
         };
         let matches = paint.id == emitted_id
             && paint.ordinal == emitted_ordinal
-            && emitted_fill.is_some_and(|fill| fill == paint.fill_css);
+            && emitted_paints.0.is_some_and(|fill| fill == paint.fill_css)
+            && emitted_paints.1 == paint.stroke.as_ref().map(DirectPaintExpectation::css);
         self.values_match &= matches;
         if matches {
             self.applied_capabilities.extend(paint.typed_capability);
@@ -867,6 +1147,78 @@ mod tests {
             ))
             .expect("compile Sankey test typography")
             .resolve(DiagramFamilyId::SANKEY)
+    }
+
+    #[test]
+    fn scalar_node_requests_are_not_applicable_without_terminal_nodes() {
+        use crate::diagram_theme::{CanvasPaint, ThemeRule, ThemeStylePatch};
+
+        let theme = DiagramThemeCompiler::new()
+            .compile(
+                DiagramThemeSpec::new().with_styles(
+                    ThemeRuleSet::default().with_rule(ThemeRule::new(
+                        ThemeTarget::Node,
+                        ThemeStylePatch::default()
+                            .with_fill(CanvasPaint::solid("#123456").unwrap())
+                            .with_stroke(CanvasPaint::solid("#654321").unwrap()),
+                    )),
+                ),
+            )
+            .unwrap()
+            .resolve(DiagramFamilyId::SANKEY);
+        let config = crate::test_support::presentation_config(json!({}));
+        let meter = OperationWorkMeter::new(RenderResourcePolicy::unbounded_for_trusted_input());
+        let plan =
+            SankeyNodePalettePlan::resolve(Some(&theme), &config, &layout(&[]), &meter).unwrap();
+        let evidence = collect_evidence(&theme, |evidence| plan.record_evidence(evidence));
+        assert_eq!(evidence.not_applicable_mechanisms().len(), 1);
+        assert!(evidence.applied().is_empty());
+        assert!(evidence.residuals().is_empty());
+    }
+
+    #[test]
+    fn scalar_node_stroke_receipt_rejects_missing_or_wrong_terminal_stroke() {
+        let mut plan = SankeyNodePalettePlan::baseline(&json!({}), &layout(&["A"]));
+        plan.paints[0].stroke = Some(DirectPaintExpectation::new(
+            0,
+            "#123456",
+            ThemeCapability::SolidPaint,
+        ));
+        plan.pending_rules
+            .insert(0, BTreeSet::from([ThemeCapability::SolidPaint]));
+        let fill = plan.paints[0].fill_css.clone();
+        for stroke in [None, Some("#badbad")] {
+            let mut receipt = plan.begin_terminal_receipt().unwrap();
+            receipt.record_node_paints(&plan, 0, "A", 1, (Some(&fill), stroke));
+            assert!(!plan.record_terminal(receipt));
+        }
+        let mut receipt = plan.begin_terminal_receipt().unwrap();
+        receipt.record_node_paints(&plan, 0, "A", 1, (Some(&fill), Some("#123456")));
+        assert!(plan.record_terminal(receipt));
+    }
+
+    #[test]
+    fn unsupported_text_palette_is_not_applicable_without_visible_label_terminals() {
+        let theme = DiagramThemeCompiler::new()
+            .compile(DiagramThemeSpec::new().with_styles(
+                ThemeRuleSet::default().with_ordinal_palette(
+                    ThemeTarget::Text,
+                    OrdinalPalette::new([ThemeColorValue::parse("#123456").unwrap()]).unwrap(),
+                ),
+            ))
+            .unwrap()
+            .resolve(DiagramFamilyId::SANKEY);
+        let config =
+            crate::test_support::presentation_config(json!({"sankey":{"showValues":false}}));
+        let meter = OperationWorkMeter::new(RenderResourcePolicy::unbounded_for_trusted_input());
+        for ids in [&[][..], &[""][..]] {
+            let plan = SankeyNodePalettePlan::resolve(Some(&theme), &config, &layout(ids), &meter)
+                .unwrap();
+            let evidence = collect_evidence(&theme, |evidence| plan.record_evidence(evidence));
+            assert_eq!(evidence.not_applicable_mechanisms().len(), 1);
+            assert!(evidence.applied().is_empty());
+            assert!(evidence.residuals().is_empty());
+        }
     }
 
     fn complete_typography_receipt(
@@ -995,6 +1347,47 @@ mod tests {
             assert_eq!(evidence.applied().len(), 1);
             assert!(evidence.not_applicable_mechanisms().is_empty());
             assert!(evidence.residuals().is_empty());
+        }
+    }
+
+    #[test]
+    fn typography_receipt_requires_matching_visible_ordinals_between_label_passes() {
+        use crate::diagram_theme::{OrdinalSelector, ThemeRule, ThemeStylePatch};
+
+        let theme = DiagramThemeCompiler::new()
+            .compile(
+                DiagramThemeSpec::new().with_styles(
+                    ThemeRuleSet::default().with_rule(
+                        ThemeRule::new(
+                            ThemeTarget::Text,
+                            ThemeStylePatch::default()
+                                .with_fill(CanvasPaint::solid("#123456").unwrap()),
+                        )
+                        .with_ordinal(OrdinalSelector::Exact(1)),
+                    ),
+                ),
+            )
+            .unwrap()
+            .resolve(DiagramFamilyId::SANKEY);
+        for foreground in [[false, true], [true, false]] {
+            let meter =
+                OperationWorkMeter::new(RenderResourcePolicy::unbounded_for_trusted_input());
+            let plan = SankeyTypographyThemePlan::resolve(
+                Some(&theme),
+                &crate::test_support::presentation_config(json!({})),
+                2,
+                &meter,
+            )
+            .unwrap();
+            let mut receipt = plan.begin_terminal_receipt(2, true).unwrap();
+            receipt.record_css_emission(expected_typography_css_emission(&plan));
+            for visible in [false, true] {
+                receipt.record_label(SankeyLabelSurface::OutlineBackground, visible);
+            }
+            for visible in foreground {
+                receipt.record_label(SankeyLabelSurface::OutlineForeground, visible);
+            }
+            assert_eq!(plan.record_terminal(receipt), foreground == [false, true]);
         }
     }
 

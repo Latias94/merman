@@ -35,7 +35,8 @@ pub(in crate::svg::parity::flowchart) fn advance_rough_geometry(
     let top = cluster.y - cluster.height / 2.0 + ctx.ty - origin_y;
     let width = cluster.width.max(1.0);
     let height = cluster.height.max(1.0);
-    if ctx.diagram_type == "agentflow" {
+    let agentflow = ctx.diagram_type == "agentflow";
+    if agentflow && (!terminal.theme.requests_shape_style() || terminal.fill == "none") {
         let path = rounded_rect_path_d(left, top, width, height, 10.0);
         let _ = super::node::roughjs::roughjs_prepare_hand_drawn_stroke_path_for_svg_path(
             super::node::roughjs::RoughGeometryTarget::Query,
@@ -45,10 +46,13 @@ pub(in crate::svg::parity::flowchart) fn advance_rough_geometry(
             &ctx.hand_drawn_seed,
         );
     } else {
-        let path = rounded_rect_path_d(left, top, width, height, 0.0);
+        let path =
+            rounded_rect_path_d(left, top, width, height, if agentflow { 10.0 } else { 0.0 });
         let stroke_width = parse_css_px_f32(
             terminal.compiled.stroke_width.as_ref(),
-            terminal.typed_stroke_width.unwrap_or(1.3),
+            terminal
+                .typed_stroke_width
+                .unwrap_or(if agentflow { 0.75 } else { 1.3 }),
         );
         let dash = terminal
             .compiled
@@ -135,21 +139,24 @@ fn parse_css_px_f32(v: Option<&String>, fallback: f32) -> f32 {
         .unwrap_or(fallback)
 }
 
-#[allow(clippy::too_many_arguments)]
 fn write_flowchart_cluster_shape(
     out: &mut impl crate::svg::parity::SvgOutput,
     ctx: &FlowchartRenderCtx<'_>,
-    compiled_styles: &FlowchartCompiledStyles,
-    rect_style: &str,
-    typed_stroke_width: Option<f32>,
-    fill: &str,
-    stroke: &str,
+    terminal: &super::super::node_inventory::FlowchartPreparedCluster,
     left: f64,
     top: f64,
     rect_w: f64,
     rect_h: f64,
 ) -> FlowchartShapeFacetEmissionReceipt {
-    if ctx.diagram_type == "agentflow" {
+    let compiled_styles = &terminal.compiled;
+    let rect_style = terminal.rect_style.as_str();
+    let typed_stroke_width = terminal.typed_stroke_width;
+    let fill = terminal.fill.as_str();
+    let stroke = terminal.stroke.as_str();
+    let agentflow = ctx.diagram_type == "agentflow";
+    // Keep Mermaid's source-only serialization intact. A requested typed shape uses the
+    // prepared source/theme winners and the same terminal receipts as Flowchart.
+    if agentflow && !terminal.theme.requests_shape_style() {
         let stroke = &ctx.compatibility.agentflow_container_stroke;
         if ctx.compatibility.look.as_str() == "handDrawn" {
             let path = rounded_rect_path_d(left, top, rect_w, rect_h, 10.0);
@@ -190,25 +197,60 @@ fn write_flowchart_cluster_shape(
     if ctx.compatibility.look.as_str() == "handDrawn" {
         let stroke_width = parse_css_px_f32(
             compiled_styles.stroke_width.as_ref(),
-            typed_stroke_width.unwrap_or(1.3),
+            typed_stroke_width.unwrap_or(if agentflow { 0.75 } else { 1.3 }),
         );
         let stroke_dasharray = compiled_styles
             .stroke_dasharray
             .as_deref()
             .unwrap_or("0 0")
             .trim();
-        let path = rounded_rect_path_d(left, top, rect_w, rect_h, 0.0);
+        let path = rounded_rect_path_d(
+            left,
+            top,
+            rect_w,
+            rect_h,
+            if agentflow { 10.0 } else { 0.0 },
+        );
 
-        if let Some((fill_d, stroke_d)) = super::node::roughjs::roughjs_hachure_paths_for_svg_path(
-            &path,
-            stroke_width,
-            stroke_dasharray,
-            FLOWCHART_CLUSTER_HAND_DRAWN_FILL_WEIGHT,
-            FLOWCHART_CLUSTER_HAND_DRAWN_HACHURE_GAP,
-            FLOWCHART_CLUSTER_HAND_DRAWN_ROUGHNESS,
-            ctx.work_meter,
-            &ctx.hand_drawn_seed,
-        ) {
+        if agentflow && fill == "none" {
+            if let Some(stroke_d) =
+                super::node::roughjs::roughjs_hand_drawn_stroke_path_for_svg_path(
+                    &path,
+                    FLOWCHART_CLUSTER_HAND_DRAWN_ROUGHNESS,
+                    ctx.work_meter,
+                    &ctx.hand_drawn_seed,
+                )
+            {
+                let border_style = cluster_rough_border_style(rect_style);
+                let _ = write!(
+                    out,
+                    r#"<g><path d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="{}"{} /></g>"#,
+                    escape_xml_display(&stroke_d),
+                    escape_xml_display(stroke),
+                    fmt_display(stroke_width as f64),
+                    escape_xml_display(stroke_dasharray),
+                    OptionalStyleXmlAttr(&border_style),
+                );
+                return FlowchartShapeFacetEmissionReceipt {
+                    fill: true,
+                    stroke: true,
+                    stroke_width: true,
+                    stroke_dasharray: true,
+                    remaining_shape_style: false,
+                };
+            }
+        } else if let Some((fill_d, stroke_d)) =
+            super::node::roughjs::roughjs_hachure_paths_for_svg_path(
+                &path,
+                stroke_width,
+                stroke_dasharray,
+                FLOWCHART_CLUSTER_HAND_DRAWN_FILL_WEIGHT,
+                FLOWCHART_CLUSTER_HAND_DRAWN_HACHURE_GAP,
+                FLOWCHART_CLUSTER_HAND_DRAWN_ROUGHNESS,
+                ctx.work_meter,
+                &ctx.hand_drawn_seed,
+            )
+        {
             let background_style = cluster_rough_background_style(rect_style);
             let border_style = cluster_rough_border_style(rect_style);
             let _ = write!(
@@ -234,9 +276,17 @@ fn write_flowchart_cluster_shape(
         }
     }
 
+    let agentflow_attributes = if agentflow {
+        format!(
+            r#" rx="10" ry="10" fill="none" stroke="{}" stroke-width="0.75px""#,
+            escape_xml_display(stroke),
+        )
+    } else {
+        String::new()
+    };
     let _ = write!(
         out,
-        r#"<rect style="{}" x="{}" y="{}" width="{}" height="{}"/>"#,
+        r#"<rect style="{}"{agentflow_attributes} x="{}" y="{}" width="{}" height="{}"/>"#,
         escape_xml_display(rect_style),
         fmt_display(left),
         fmt_display(top),
@@ -322,10 +372,6 @@ pub(in crate::svg::parity) fn render_flowchart_cluster(
     let fill_precedence = terminal.fill_precedence;
     let stroke_precedence = terminal.stroke_precedence;
     let stroke_width_precedence = terminal.stroke_width_precedence;
-    let typed_stroke_width = terminal.typed_stroke_width;
-    let rect_style = terminal.rect_style.as_str();
-    let fill = terminal.fill.as_str();
-    let stroke = terminal.stroke.as_str();
     let label_style = compiled_styles.label_style.trim();
     let classes = ctx.model.effective_subgraph_css(subgraph_index, sg).0;
 
@@ -417,19 +463,8 @@ pub(in crate::svg::parity) fn render_flowchart_cluster(
             escape_xml_display(&cluster.id),
             escape_xml_display(data_look),
         );
-        let shape_source_receipt = write_flowchart_cluster_shape(
-            out,
-            ctx,
-            compiled_styles,
-            rect_style,
-            typed_stroke_width,
-            fill,
-            stroke,
-            left,
-            top,
-            rect_w,
-            rect_h,
-        );
+        let shape_source_receipt =
+            write_flowchart_cluster_shape(out, ctx, terminal, left, top, rect_w, rect_h);
         record_cluster_shape_emission(
             ctx,
             cluster_theme,
@@ -557,19 +592,8 @@ pub(in crate::svg::parity) fn render_flowchart_cluster(
         escape_xml_display(&cluster.id),
         escape_xml_display(data_look),
     );
-    let shape_source_receipt = write_flowchart_cluster_shape(
-        out,
-        ctx,
-        compiled_styles,
-        rect_style,
-        typed_stroke_width,
-        fill,
-        stroke,
-        left,
-        top,
-        rect_w,
-        rect_h,
-    );
+    let shape_source_receipt =
+        write_flowchart_cluster_shape(out, ctx, terminal, left, top, rect_w, rect_h);
     record_cluster_shape_emission(
         ctx,
         cluster_theme,

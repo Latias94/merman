@@ -7,21 +7,21 @@
       "output": "standalone-svg",
       "subject": {
         "kind": "rule",
-        "target": "title",
-        "facet": "fill"
+        "target": "text",
+        "facet": "stroke-paint"
       }
     },
     "expected": {
       "schema_version": 1,
-      "claim_revision": 1,
+      "claim_revision": 2,
       "query": {
         "schema_version": 1,
         "family": "er",
         "output": "standalone-svg",
         "subject": {
           "kind": "rule",
-          "target": "title",
-          "facet": "fill"
+          "target": "text",
+          "facet": "stroke-paint"
         }
       },
       "state": "unsupported",
@@ -38,21 +38,21 @@
       "output": "standalone-svg",
       "subject": {
         "kind": "rule",
-        "target": "title",
-        "facet": "fill"
+        "target": "text",
+        "facet": "stroke-paint"
       }
     },
     "expected": {
       "schema_version": 1,
-      "claim_revision": 1,
+      "claim_revision": 2,
       "query": {
         "schema_version": 1,
         "family": "er",
         "output": "standalone-svg",
         "subject": {
           "kind": "rule",
-          "target": "title",
-          "facet": "fill"
+          "target": "text",
+          "facet": "stroke-paint"
         }
       },
       "state": "unsupported",
@@ -74,7 +74,7 @@
     },
     "expected": {
       "schema_version": 1,
-      "claim_revision": 1,
+      "claim_revision": 2,
       "query": {
         "schema_version": 1,
         "family": "flowchart",
@@ -104,7 +104,7 @@
     },
     "expected": {
       "schema_version": 1,
-      "claim_revision": 1,
+      "claim_revision": 2,
       "query": {
         "schema_version": 1,
         "family": "flowchart",
@@ -135,7 +135,7 @@
     },
     "expected": {
       "schema_version": 1,
-      "claim_revision": 1,
+      "claim_revision": 2,
       "query": {
         "schema_version": 1,
         "family": "er",
@@ -166,7 +166,7 @@
     },
     "expected": {
       "schema_version": 1,
-      "claim_revision": 1,
+      "claim_revision": 2,
       "query": {
         "schema_version": 1,
         "family": "er",
@@ -197,7 +197,7 @@
     },
     "expected": {
       "schema_version": 1,
-      "claim_revision": 1,
+      "claim_revision": 2,
       "query": {
         "schema_version": 1,
         "family": "er",
@@ -228,7 +228,7 @@
     },
     "expected": {
       "schema_version": 1,
-      "claim_revision": 1,
+      "claim_revision": 2,
       "query": {
         "schema_version": 1,
         "family": "future-family",
@@ -258,7 +258,7 @@
     },
     "expected": {
       "schema_version": 1,
-      "claim_revision": 1,
+      "claim_revision": 2,
       "query": {
         "schema_version": 1,
         "family": "flowchart",
@@ -288,7 +288,7 @@
     },
     "expected": {
       "schema_version": 1,
-      "claim_revision": 1,
+      "claim_revision": 2,
       "query": {
         "schema_version": 1,
         "family": "class",
@@ -320,7 +320,7 @@
     },
     "expected": {
       "schema_version": 1,
-      "claim_revision": 1,
+      "claim_revision": 2,
       "query": {
         "schema_version": 1,
         "family": "block",
@@ -352,7 +352,7 @@
     },
     "expected": {
       "schema_version": 1,
-      "claim_revision": 1,
+      "claim_revision": 2,
       "query": {
         "schema_version": 1,
         "family": "class",
@@ -384,7 +384,7 @@
     },
     "expected": {
       "schema_version": 1,
-      "claim_revision": 1,
+      "claim_revision": 2,
       "query": {
         "schema_version": 1,
         "family": "class",
@@ -416,7 +416,7 @@
     },
     "expected": {
       "schema_version": 1,
-      "claim_revision": 1,
+      "claim_revision": 2,
       "query": {
         "schema_version": 1,
         "family": "class",
@@ -448,7 +448,7 @@
     },
     "expected": {
       "schema_version": 1,
-      "claim_revision": 1,
+      "claim_revision": 2,
       "query": {
         "schema_version": 1,
         "family": "class",
@@ -480,7 +480,7 @@
     },
     "expected": {
       "schema_version": 1,
-      "claim_revision": 1,
+      "claim_revision": 2,
       "query": {
         "schema_version": 1,
         "family": "block",
@@ -512,7 +512,7 @@
     },
     "expected": {
       "schema_version": 1,
-      "claim_revision": 1,
+      "claim_revision": 2,
       "query": {
         "schema_version": 1,
         "family": "block",
@@ -544,7 +544,7 @@
     },
     "expected": {
       "schema_version": 1,
-      "claim_revision": 1,
+      "claim_revision": 2,
       "query": {
         "schema_version": 1,
         "family": "block",
@@ -576,7 +576,7 @@
     },
     "expected": {
       "schema_version": 1,
-      "claim_revision": 1,
+      "claim_revision": 2,
       "query": {
         "schema_version": 1,
         "family": "block",
@@ -608,7 +608,7 @@
     },
     "expected": {
       "schema_version": 1,
-      "claim_revision": 1,
+      "claim_revision": 2,
       "query": {
         "schema_version": 1,
         "family": "block",
@@ -640,7 +640,7 @@
     },
     "expected": {
       "schema_version": 1,
-      "claim_revision": 1,
+      "claim_revision": 2,
       "query": {
         "schema_version": 1,
         "family": "block",
@@ -672,7 +672,7 @@
     },
     "expected": {
       "schema_version": 1,
-      "claim_revision": 1,
+      "claim_revision": 2,
       "query": {
         "schema_version": 1,
         "family": "block",
@@ -703,7 +703,7 @@
     },
     "expected": {
       "schema_version": 1,
-      "claim_revision": 1,
+      "claim_revision": 2,
       "query": {
         "schema_version": 1,
         "family": "pie",
@@ -734,7 +734,7 @@
     },
     "expected": {
       "schema_version": 1,
-      "claim_revision": 1,
+      "claim_revision": 2,
       "query": {
         "schema_version": 1,
         "family": "pie",
@@ -766,7 +766,7 @@
     },
     "expected": {
       "schema_version": 1,
-      "claim_revision": 1,
+      "claim_revision": 2,
       "query": {
         "schema_version": 1,
         "family": "pie",
@@ -798,7 +798,7 @@
     },
     "expected": {
       "schema_version": 1,
-      "claim_revision": 1,
+      "claim_revision": 2,
       "query": {
         "schema_version": 1,
         "family": "pie",
@@ -830,7 +830,7 @@
     },
     "expected": {
       "schema_version": 1,
-      "claim_revision": 1,
+      "claim_revision": 2,
       "query": {
         "schema_version": 1,
         "family": "pie",
@@ -839,6 +839,38 @@
           "kind": "rule",
           "target": "legend",
           "facet": "font-size"
+        }
+      },
+      "state": "conditional",
+      "reason_ids": [
+        "theme-support.family-owned-consumer-present",
+        "theme-support.public-value-domain-partial"
+      ]
+    }
+  },
+  {
+    "id": "er-typed-title-fill",
+    "query": {
+      "schema_version": 1,
+      "family": "er",
+      "output": "standalone-svg",
+      "subject": {
+        "kind": "rule",
+        "target": "title",
+        "facet": "fill"
+      }
+    },
+    "expected": {
+      "schema_version": 1,
+      "claim_revision": 2,
+      "query": {
+        "schema_version": 1,
+        "family": "er",
+        "output": "standalone-svg",
+        "subject": {
+          "kind": "rule",
+          "target": "title",
+          "facet": "fill"
         }
       },
       "state": "conditional",

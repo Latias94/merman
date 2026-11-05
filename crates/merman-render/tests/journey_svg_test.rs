@@ -1,9 +1,9 @@
 use merman_core::{MermaidEngine, ParseOptions};
 use merman_render::LayoutOptions;
 use merman_render::diagram_theme::{
-    CanvasPaint, DiagramThemeCompiler, DiagramThemeSpec, OrdinalPalette, OrdinalSelector,
-    Specified, ThemeGeometryPatch, ThemePortabilityRequirement, ThemeRule, ThemeRuleSet,
-    ThemeStylePatch, ThemeTarget, ThemeTextStyle, ThemeVariant, TypographySpec,
+    CanvasPaint, DiagramTheme, DiagramThemeCompiler, DiagramThemeSpec, OrdinalPalette,
+    OrdinalSelector, Specified, ThemeGeometryPatch, ThemePortabilityRequirement, ThemeRule,
+    ThemeRuleSet, ThemeStylePatch, ThemeTarget, ThemeTextStyle, ThemeVariant, TypographySpec,
 };
 use merman_render::environment::RenderEnvironment;
 use merman_render::family;
@@ -99,7 +99,16 @@ fn journey_text_fill_has_portable_terminal_evidence() {
             let rendered = artifact
                 .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
                 .expect("Journey Text.fill has direct portable evidence");
-            roxmltree::Document::parse(rendered.svg()).expect("valid Journey SVG");
+            let document = roxmltree::Document::parse(rendered.svg()).expect("valid Journey SVG");
+            let title = document
+                .descendants()
+                .find(|node| node.has_tag_name("text") && node.text() == Some("Release"))
+                .unwrap();
+            assert_eq!(
+                title.attribute("fill"),
+                Some(""),
+                "Text paint remains inherited"
+            );
             let completion = rendered.into_completion();
             let evidence = merman_render::__private::family_evidence(completion.report());
             assert_eq!(evidence.required_count(), 1);
@@ -132,8 +141,17 @@ fn render_journey_rules_with_requirement(
     let theme = DiagramThemeCompiler::new()
         .compile(DiagramThemeSpec::new().with_styles(styles))
         .expect("compile Journey rules");
+    render_journey_with_theme_requirement(source, &theme, config, requirement)
+}
+
+fn render_journey_with_theme_requirement(
+    source: &str,
+    theme: &DiagramTheme,
+    config: serde_json::Value,
+    requirement: ThemePortabilityRequirement,
+) -> merman_render::Result<family::RenderedFamilySvg> {
     let parsed = common::install_parse_compatibility(
-        &theme,
+        theme,
         MermaidEngine::new().with_site_config(
             merman_core::presentation::SourcePresentationConfig::from_value(config),
         ),
@@ -144,18 +162,18 @@ fn render_journey_rules_with_requirement(
     .into_presentation();
     let session = RenderEnvironment::deterministic()
         .with_theme_portability_requirement(requirement)
-        .begin_session_with_theme(&theme)
+        .begin_session_with_theme(theme)
         .expect("begin Journey session");
     family::prepare(&parsed, &LayoutOptions::headless_svg_defaults(), session)?
         .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
 }
 
 #[test]
-fn journey_retired_title_fill_preserves_output_and_accounts_real_applicability() {
+fn journey_title_fill_consumes_real_titles_and_accounts_source_ownership() {
     for variant in [None, Some(ThemeVariant::Default)] {
-        for paint in [
-            CanvasPaint::solid("#987654").unwrap(),
-            CanvasPaint::Transparent,
+        for (paint, expected_fill) in [
+            (CanvasPaint::solid("#987654").unwrap(), "#987654"),
+            (CanvasPaint::Transparent, "transparent"),
         ] {
             let mut rule = ThemeRule::new(
                 ThemeTarget::Title,
@@ -199,8 +217,9 @@ fn journey_retired_title_fill_preserves_output_and_accounts_real_applicability()
                         config.clone(),
                         ThemePortabilityRequirement::BestEffort,
                     )
-                    .expect("retired Title projection must not break permissive rendering");
-                    assert_eq!(rendered.svg(), baseline.svg());
+                    .expect("Title fill has a real terminal consumer");
+                    let active = has_title && !explicit_title;
+                    assert_eq!(rendered.svg() == baseline.svg(), !active);
                     let document = roxmltree::Document::parse(rendered.svg()).unwrap();
                     assert!(!document.descendants().any(|node| {
                         node.attribute("class").is_some_and(|classes| {
@@ -214,16 +233,19 @@ fn journey_retired_title_fill_preserves_output_and_accounts_real_applicability()
                     if let Some(title) = title {
                         assert_eq!(
                             title.attribute("fill"),
-                            Some(if explicit_title { "#fedcba" } else { "" })
+                            Some(if explicit_title {
+                                "#fedcba"
+                            } else {
+                                expected_fill
+                            })
                         );
                     }
                     let completion = rendered.into_completion();
                     let evidence = merman_render::__private::family_evidence(completion.report());
-                    let active = has_title && !explicit_title;
                     assert_eq!(evidence.required_count(), 1);
                     assert_eq!(evidence.accounted_count(), 1);
-                    assert_eq!(evidence.applied_count(), 0);
-                    assert_eq!(evidence.theme_residual_count(), usize::from(active));
+                    assert_eq!(evidence.applied_count(), usize::from(active));
+                    assert_eq!(evidence.theme_residual_count(), 0);
                     assert_eq!(evidence.not_applicable_count(), usize::from(!active));
                     let strict = render_journey_rules_with_requirement(
                         source,
@@ -231,14 +253,7 @@ fn journey_retired_title_fill_preserves_output_and_accounts_real_applicability()
                         config,
                         ThemePortabilityRequirement::RequirePortable,
                     );
-                    if active {
-                        assert!(matches!(
-                            strict,
-                            Err(merman_render::Error::UnverifiedFamilyTheme { .. })
-                        ));
-                    } else {
-                        strict.expect("absent or source-owned Title is not applicable");
-                    }
+                    strict.expect("Title fill is applied or not applicable");
                 }
             }
         }
@@ -283,6 +298,167 @@ fn journey_historical_title_color_has_no_visible_terminal_consumer() {
             .collect::<Vec<_>>()
     };
     assert_eq!(visible_dom("#123456"), visible_dom("#987654"));
+}
+
+#[test]
+fn journey_title_fill_preserves_unsupported_stroke_under_source_and_site_ownership() {
+    for channel in ["none", "site", "source"] {
+        let source = format!(
+            "{}journey\n  title Release\n  section Delivery\n  Ship: 5: Actor\n",
+            if channel == "source" {
+                "---\nconfig:\n  journey:\n    titleColor: '#fedcba'\n---\n"
+            } else {
+                ""
+            }
+        );
+        let config = if channel == "site" {
+            serde_json::json!({"journey": {"titleColor": "#fedcba"}})
+        } else {
+            serde_json::json!({})
+        };
+        let styles = ThemeRuleSet::default().with_rule(ThemeRule::new(
+            ThemeTarget::Title,
+            ThemeStylePatch::default()
+                .with_fill(CanvasPaint::solid("#987654").unwrap())
+                .with_stroke(CanvasPaint::solid("#123456").unwrap()),
+        ));
+        let rendered = render_journey_rules_with_requirement(
+            &source,
+            styles.clone(),
+            config.clone(),
+            ThemePortabilityRequirement::BestEffort,
+        )
+        .unwrap();
+        let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+        let title = document
+            .descendants()
+            .find(|node| node.has_tag_name("text") && node.text() == Some("Release"))
+            .unwrap();
+        assert_eq!(
+            title.attribute("fill"),
+            Some(if channel == "none" {
+                "#987654"
+            } else {
+                "#fedcba"
+            })
+        );
+        let completion = rendered.into_completion();
+        let evidence = merman_render::__private::family_evidence(completion.report());
+        assert_eq!(evidence.required_count(), 1);
+        assert_eq!(evidence.accounted_count(), 1);
+        assert_eq!(evidence.applied_count(), 0);
+        assert_eq!(evidence.theme_residual_count(), 1);
+        let strict = render_journey_rules_with_requirement(
+            &source,
+            styles,
+            config,
+            ThemePortabilityRequirement::RequirePortable,
+        );
+        assert!(matches!(
+            strict,
+            Err(merman_render::Error::UnverifiedFamilyTheme { .. })
+        ));
+    }
+}
+
+#[test]
+fn journey_title_selectors_account_visibility_and_property_winners() {
+    for (variant, ordinal, shadowed, residual) in [
+        (None, Some(OrdinalSelector::Exact(1)), false, true),
+        (None, Some(OrdinalSelector::Exact(2)), false, false),
+        (Some(ThemeVariant::Error), None, false, false),
+        (None, Some(OrdinalSelector::Exact(1)), true, false),
+    ] {
+        let mut rule = ThemeRule::new(
+            ThemeTarget::Title,
+            ThemeStylePatch::default().with_fill(CanvasPaint::solid("#123456").unwrap()),
+        );
+        if let Some(variant) = variant {
+            rule = rule.with_variant(variant);
+        }
+        if let Some(ordinal) = ordinal {
+            rule = rule.with_ordinal(ordinal);
+        }
+        let mut styles = ThemeRuleSet::default().with_rule(rule);
+        if shadowed {
+            styles = styles.with_rule(ThemeRule::new(
+                ThemeTarget::Title,
+                ThemeStylePatch::default().with_fill(CanvasPaint::solid("#987654").unwrap()),
+            ));
+        }
+        let rendered = render_journey_rules_with_requirement(
+            "journey\n  title Release\n  section Delivery\n  Ship: 5: Actor\n",
+            styles,
+            serde_json::json!({}),
+            ThemePortabilityRequirement::BestEffort,
+        )
+        .unwrap();
+        let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+        let title = document
+            .descendants()
+            .find(|node| node.has_tag_name("text") && node.text() == Some("Release"))
+            .unwrap();
+        assert_eq!(
+            title.attribute("fill"),
+            Some(if shadowed { "#987654" } else { "" })
+        );
+        let completion = rendered.into_completion();
+        let evidence = merman_render::__private::family_evidence(completion.report());
+        assert_eq!(evidence.required_count(), 1 + usize::from(shadowed));
+        assert_eq!(evidence.accounted_count(), evidence.required_count());
+        assert_eq!(evidence.applied_count(), usize::from(shadowed));
+        assert_eq!(evidence.not_applicable_count(), usize::from(!residual));
+        assert_eq!(evidence.theme_residual_count(), usize::from(residual));
+    }
+}
+
+#[test]
+fn journey_all_presets_consume_title_fill_without_unsupported_title_diagnostics() {
+    let presets = merman_render::diagram_theme::theme_preset_descriptors();
+    assert_eq!(presets.len(), 11);
+    for preset in presets {
+        let theme = DiagramThemeCompiler::new()
+            .compile_preset(preset.preset())
+            .unwrap();
+        let rendered = render_journey_with_theme_requirement(
+            "journey\n  title Release\n  section Delivery\n  Ship: 5: Actor\n",
+            &theme,
+            serde_json::json!({}),
+            ThemePortabilityRequirement::BestEffort,
+        )
+        .unwrap();
+        let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+        let title = document
+            .descendants()
+            .find(|node| node.has_tag_name("text") && node.text() == Some("Release"))
+            .unwrap();
+        assert!(
+            !title.attribute("fill").unwrap().is_empty(),
+            "{}",
+            preset.id()
+        );
+        let completion = rendered.into_completion();
+        let evidence = merman_render::__private::family_evidence(completion.report());
+        assert!(evidence.applied_count() > 0, "{}", preset.id());
+        assert_eq!(
+            evidence.accounted_count(),
+            evidence.required_count(),
+            "{}",
+            preset.id()
+        );
+        assert!(
+            completion
+                .report()
+                .theme_diagnostics()
+                .iter()
+                .all(|diagnostic| {
+                    diagnostic.target() != Some(ThemeTarget::Title)
+                        && diagnostic.code() != "evidence-incomplete"
+                }),
+            "{}",
+            preset.id()
+        );
+    }
 }
 
 #[test]
@@ -420,11 +596,11 @@ fn journey_text_paint_preserves_labels_lines_and_title_local_ownership() {
                 ))
                 .expect("compile Journey text paint");
             for (config, expected_text, expected_title) in [
-                (serde_json::json!({}), expected_paint, ""),
+                (serde_json::json!({}), expected_paint, "#987654"),
                 (
                     serde_json::json!({"themeVariables": {"textColor": "#abcdef"}}),
                     "#abcdef",
-                    "",
+                    "#987654",
                 ),
                 (
                     serde_json::json!({"journey": {"titleColor": "#fedcba"}}),
@@ -479,8 +655,7 @@ fn journey_text_paint_preserves_labels_lines_and_title_local_ownership() {
                 assert!(css.contains(&format!(
                     "#journey-text-paint .label{{color:{expected_text};}}"
                 )));
-                // Retiring the unused cluster projection does not give Title ownership of
-                // the diagram title; that still inherits Text unless journey.titleColor wins.
+                // Title paint belongs to its visible text terminal, not the legacy cluster rule.
                 assert!(!css.contains("#987654"));
                 assert!(!document.descendants().any(|node| {
                     node.attribute("class").is_some_and(|classes| {

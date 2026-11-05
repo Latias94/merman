@@ -3,6 +3,171 @@
 use super::*;
 use crate::usecase::UsecaseCssBinding;
 
+pub(super) struct UsecaseBodyShadow<'a> {
+    effect: &'a crate::diagram_theme::SvgShadowEffect,
+    materialized: crate::diagram_theme::MaterializedShadowEffect,
+    filter_id: String,
+}
+
+pub(super) fn prepare_body_shadows<'a>(
+    prepared: &'a UsecasePreparedArtifact,
+    geometry: &HashMap<&str, &LayoutNode>,
+    bounds: &mut Bounds,
+    diagram_id: SvgDiagramId<'_>,
+    options: &SvgExecution<'_>,
+) -> Result<HashMap<&'a str, UsecaseBodyShadow<'a>>> {
+    let mut shadows = HashMap::new();
+    for (index, plan) in prepared.nodes.iter().enumerate() {
+        let Some(style) = prepared.theme_plan.shell(&plan.id) else {
+            continue;
+        };
+        let Some(effect) = style.shadow.as_ref() else {
+            continue;
+        };
+        options.checkpoint_emit()?;
+        let source_width = plan
+            .source_style
+            .split(';')
+            .filter_map(crate::mermaid_style::parse_style_declaration)
+            .filter(|declaration| declaration.property() == "stroke-width")
+            .last();
+        let width = if let Some(declaration) = source_width {
+            // A source width must have a finite SVG length before bounding the filter.
+            declaration.svg_number_or_px()
+        } else {
+            style.stroke_width.or(Some(2.0))
+        };
+        let Some(width) = width else { continue };
+        let node = geometry[plan.id.as_str()];
+        options
+            .work_meter()
+            .charge(effect.stages().len().saturating_mul(3))?;
+        let Some(materialized) = effect.materialize_rect(
+            &options.theme_resource_policy(),
+            node.width,
+            node.height,
+            width,
+        )?
+        else {
+            continue;
+        };
+        let outsets = materialized.outsets();
+        bounds.min_x = bounds.min_x.min(node.x - node.width / 2.0 - outsets.left);
+        bounds.min_y = bounds.min_y.min(node.y - node.height / 2.0 - outsets.top);
+        bounds.max_x = bounds.max_x.max(node.x + node.width / 2.0 + outsets.right);
+        bounds.max_y = bounds
+            .max_y
+            .max(node.y + node.height / 2.0 + outsets.bottom);
+        shadows.insert(
+            plan.id.as_str(),
+            UsecaseBodyShadow {
+                effect,
+                materialized,
+                filter_id: format!(
+                    "{}-usecase-body-{index}-theme-effect-{}",
+                    diagram_id.semantic_str(),
+                    effect.id()
+                ),
+            },
+        );
+    }
+    Ok(shadows)
+}
+
+pub(super) fn write_body_shadow_open(out: &mut String, shadow: &UsecaseBodyShadow<'_>) {
+    let reference = super::super::shadow::write_theme_shadow_application(
+        out,
+        &shadow.filter_id,
+        shadow.effect,
+        shadow.materialized.region(),
+    );
+    let _ = write!(
+        out,
+        r#"<g class="usecase-theme-body-effect" filter="{}">"#,
+        escape_attr(&reference)
+    );
+}
+
+pub(super) fn record_body_shadow(
+    shadow: &UsecaseBodyShadow<'_>,
+    evidence: &crate::diagram_theme::SvgShadowEvidenceRecorder,
+) {
+    evidence.record_application(
+        shadow.effect,
+        &shadow.filter_id,
+        shadow.materialized.region(),
+    );
+}
+
+#[allow(
+    clippy::too_many_arguments,
+    reason = "Marker instances preserve upstream geometry while sharing the edge's theme receipt."
+)]
+pub(super) fn write_marker(
+    out: &mut String,
+    diagram_id: SvgDiagramId<'_>,
+    marker: &str,
+    start: bool,
+    margin: &str,
+    edge_index: usize,
+    style: Option<&UsecaseThemeStyle>,
+    receipt: &UsecaseThemeReceipt,
+) -> String {
+    let name = marker.strip_prefix("arrow_").unwrap_or(marker);
+    let end = if start { "Start" } else { "End" };
+    let base = format!("{name}{end}{margin}");
+    let css = style.map(|style| style.css(false)).unwrap_or_default();
+    if css.is_empty() {
+        if let Some(style) = style {
+            style.record_emitted(receipt);
+        }
+        return format!("url(#{diagram_id}_usecase-{base})");
+    }
+    let suffix = format!("theme-{edge_index}-{base}");
+    out.push_str("<defs>");
+    if marker == "extension" {
+        let _ = write!(
+            out,
+            r#"<marker id="{diagram_id}_usecase-{suffix}" class="marker extension usecase""#
+        );
+        if margin.is_empty() {
+            let _ = write!(
+                out,
+                r#" refX="{}" refY="7" markerWidth="20" markerHeight="28" markerUnits="userSpaceOnUse" orient="auto"><path d="{}" style="{}"/></marker>"#,
+                if start { "18" } else { "1" },
+                if start {
+                    "M 1,7 L18,13 V 1 Z"
+                } else {
+                    "M 1,1 V 13 L18,7 Z"
+                },
+                escape_attr(&css)
+            );
+        } else {
+            let _ = write!(
+                out,
+                r#" refX="{}" refY="7" markerWidth="20" markerHeight="28" markerUnits="userSpaceOnUse" orient="auto" viewBox="0 0 20 14"><polygon points="{}" style="stroke-width:2;stroke-dasharray:0;{}"/></marker>"#,
+                if start { "18" } else { "9" },
+                if start {
+                    "10,7 18,13 18,1"
+                } else {
+                    "10,1 10,13 18,7"
+                },
+                escape_attr(&css)
+            );
+        }
+    } else if let Some(kind) = markers::BaseEdgeMarkerKind::ALL
+        .into_iter()
+        .find(|kind| kind.suffix() == base)
+    {
+        markers::push_base_edge_marker(out, diagram_id, "usecase", kind, &suffix, &css);
+    }
+    out.push_str("</defs>");
+    if let Some(style) = style {
+        style.record_emitted(receipt);
+    }
+    format!("url(#{diagram_id}_usecase-{suffix})")
+}
+
 pub(super) fn appearance_attributes(
     binding: &UsecaseCssBinding,
     color_index: Option<usize>,
@@ -22,6 +187,7 @@ pub(super) fn write_css(
     out: &mut String,
     id: SvgDiagramId<'_>,
     binding: &UsecaseCssBinding,
+    themed_background: bool,
 ) -> Result<()> {
     let UsecaseCssBinding {
         main,
@@ -123,6 +289,12 @@ pub(super) fn write_css(
         );
     }
     binding.neo.write(&mut css, id)?;
+    if themed_background {
+        let _ = write!(
+            css,
+            "#{id} .usecase-themed-edge-background,#{id} .usecase-themed-edge-background .edgeLabel,#{id} .usecase-themed-edge-background p{{background-color:transparent !important;}}"
+        );
+    }
     // CSS is XML character data. Preserve declarations while preventing a token from closing style.
     out.push_str("<style>");
     super::super::output::XmlTextOutput::new(out).push_str(&css);

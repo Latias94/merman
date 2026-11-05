@@ -28,7 +28,9 @@ pub(crate) enum CynefinTextRole {
 pub(crate) struct CynefinSurfaceReceipt {
     requested: bool,
     visible_text: bool,
-    visible_text_fill: bool,
+    visible_text_fill: usize,
+    overridden_text_fill: usize,
+    pub(crate) paint_evidence: FamilyThemeOutcomes,
 }
 
 impl CynefinSurfaceReceipt {
@@ -37,10 +39,14 @@ impl CynefinSurfaceReceipt {
             return;
         }
         self.visible_text = true;
-        self.visible_text_fill |= matches!(
+        self.visible_text_fill += usize::from(matches!(
             role,
             CynefinTextRole::Subtitle | CynefinTextRole::Item | CynefinTextRole::TransitionLabel
-        );
+        ));
+    }
+
+    pub(crate) fn record_text_fill_override(&mut self) {
+        self.overridden_text_fill += 1;
     }
 
     fn has_visible_text(&self) -> bool {
@@ -48,7 +54,7 @@ impl CynefinSurfaceReceipt {
     }
 
     fn has_visible_text_fill_surface(&self) -> bool {
-        self.visible_text_fill
+        self.visible_text_fill > self.overridden_text_fill
     }
 }
 
@@ -57,6 +63,8 @@ impl CynefinSurfaceReceipt {
 pub(crate) struct CynefinTypographyThemePlan {
     common_css: crate::svg::PreparedCommonCss,
     colors: super::CynefinTheme,
+    base_colors: super::CynefinTheme,
+    config: PresentationConfig,
     inherited_font_stack: InheritedFontStackPlan,
     evidence: FamilyThemeOutcomes,
     unsupported_routes: Box<[CynefinUnsupportedRoute]>,
@@ -159,6 +167,7 @@ impl CynefinTypographyThemePlan {
         let inherited_font_stack =
             InheritedFontStackPlan::resolve_property_local(theme, effective_config);
         let mut colors = super::cynefin_theme(effective_config.as_value());
+        let base_colors = colors.clone();
         if !config_owns_text_fill && let Some(fill) = &text_fill {
             colors.text_color = fill.css().to_owned();
         }
@@ -169,6 +178,8 @@ impl CynefinTypographyThemePlan {
         Ok(Self {
             common_css,
             colors,
+            base_colors,
+            config: effective_config.clone(),
             inherited_font_stack,
             evidence,
             unsupported_routes: unsupported_routes.into_boxed_slice(),
@@ -191,6 +202,14 @@ impl CynefinTypographyThemePlan {
         &self.colors
     }
 
+    pub(crate) fn base_colors(&self) -> &super::CynefinTheme {
+        &self.base_colors
+    }
+
+    pub(crate) fn config(&self) -> &PresentationConfig {
+        &self.config
+    }
+
     pub(crate) fn begin_terminal_receipt(&self) -> CynefinSurfaceReceipt {
         CynefinSurfaceReceipt {
             requested: self.inherited_font_stack.typography_requested()
@@ -206,6 +225,9 @@ impl CynefinTypographyThemePlan {
 
     pub(crate) fn record_evidence(&self, evidence: &mut FamilyThemeEvidence) {
         evidence.merge_borrowed(&self.evidence);
+        if let Some(receipt) = self.terminal_receipt.get() {
+            evidence.merge_borrowed(&receipt.paint_evidence);
+        }
         for route in &self.unsupported_routes {
             let absent_text_fallback = matches!(
                 route.key,
@@ -286,6 +308,14 @@ fn cynefin_unsupported_routes(
         .iter()
         .copied()
         .filter_map(|route| {
+            if matches!(route.mechanism(),
+                FamilyThemeMechanism::RuleFacet { target, .. }
+                | FamilyThemeMechanism::OrdinalPalette { target }
+                | FamilyThemeMechanism::EffectBinding { target, .. }
+                if super::owns_target(target))
+            {
+                return None;
+            }
             if route.disposition() != FamilyThemeDisposition::Unsupported {
                 return None;
             }

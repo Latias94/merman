@@ -112,12 +112,25 @@ pub(crate) fn prepare_flowchart_render_config(
         effective_config.config_path_overrides_typed_default("themeVariables.strokeWidth");
     let edge_stroke_config_override =
         effective_config.config_paint_overrides_typed_default("themeVariables.lineColor");
-    let cluster_fill_color = compatibility.cluster_bkg.clone();
-    let cluster_stroke_color = compatibility.cluster_border.clone();
-    let cluster_fill_config_override =
-        effective_config.config_paint_overrides_typed_default("themeVariables.clusterBkg");
+    let agentflow = model.keyword == "agentflow-beta";
+    let cluster_fill_color = if agentflow {
+        "none".to_owned()
+    } else {
+        compatibility.cluster_bkg.clone()
+    };
+    let cluster_stroke_color = if agentflow {
+        compatibility.agentflow_container_stroke.clone()
+    } else {
+        compatibility.cluster_border.clone()
+    };
+    let cluster_fill_config_override = !agentflow
+        && effective_config.config_paint_overrides_typed_default("themeVariables.clusterBkg");
     let cluster_stroke_config_override =
-        effective_config.config_paint_overrides_typed_default("themeVariables.clusterBorder");
+        effective_config.config_paint_overrides_typed_default(if agentflow {
+            "themeVariables.flowContainerStroke"
+        } else {
+            "themeVariables.clusterBorder"
+        });
     let node_corner_radius_config_override =
         effective_config.config_path_overrides_typed_default("themeVariables.radius");
     let edge_corner_radius = 5.0;

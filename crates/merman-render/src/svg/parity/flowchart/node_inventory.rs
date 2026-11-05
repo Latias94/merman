@@ -269,9 +269,7 @@ impl FlowchartPreparedNodes {
         } else {
             &typography.text_style
         };
-        let source_base = svg_labels
-            .label_weights()
-            .parent_style(crate::diagram_theme::ThemeTarget::NodeLabel, source_base);
+        let label_typography = svg_labels.label_typography();
         let (owners, uses_elk) = match layout {
             FlowchartNodeLayoutView::Flowchart(layout) => {
                 (&layout.edge_owners, layout.uses_elk_adapter_dom)
@@ -286,6 +284,7 @@ impl FlowchartPreparedNodes {
         let ordinals = super::svg_emit::flowchart_node_theme_ordinals(
             &model.nodes,
             &model.subgraphs,
+            render_context,
             uses_elk,
         );
         let render_model = crate::flowchart::FlowchartRenderModelRef::new(model, render_context);
@@ -325,8 +324,16 @@ impl FlowchartPreparedNodes {
             {
                 Some(style) => style,
                 None => {
+                    let parent = label_typography.source_parent_style(
+                        crate::diagram_theme::ThemeTarget::NodeLabel,
+                        source_base,
+                        &model.class_defs,
+                        source_styles.0,
+                        source_styles.1,
+                        true,
+                    );
                     let style = crate::flowchart::flowchart_effective_text_style_for_node_classes(
-                        source_base.as_ref(),
+                        parent.as_ref(),
                         &model.class_defs,
                         source_styles.0,
                         source_styles.1,
@@ -337,13 +344,19 @@ impl FlowchartPreparedNodes {
                     )
                 }
             };
+            let occurrence_inputs =
+                if model.keyword == "agentflow-beta" && render_context.is_subgraph_collapsed(id) {
+                    selection_inputs.for_collapsed_agentflow()
+                } else {
+                    selection_inputs
+                };
             let terminal = super::node_style::PreparedNodeTerminal::prepare(
                 &model.class_defs,
                 source_styles,
                 source_text_style,
                 ordinals.get(id.as_str()).copied(),
                 theme,
-                &selection_inputs,
+                &occurrence_inputs,
                 work,
             )?;
             if terminals.insert(id.clone(), terminal).is_some() {
@@ -440,8 +453,10 @@ impl FlowchartPreparedNodes {
                 false,
             );
             let typed_fill = theme.fill_value(fill_precedence, true).map(str::to_owned);
-            let fill = typed_fill
-                .as_deref()
+            let fill = (model.keyword == "agentflow-beta")
+                .then_some(compiled.fill.as_deref())
+                .flatten()
+                .or(typed_fill.as_deref())
                 .unwrap_or(&render_config.cluster_fill_color)
                 .to_owned();
             let stroke = theme

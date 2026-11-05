@@ -84,7 +84,6 @@ pub(super) fn with_flowchart_paint_context<T>(
     let node_stroke_width = render_config.node_stroke_width;
     let node_typography_config_ownership = render_config.node_typography_config_ownership;
     let node_label_fill_config_override = render_config.node_label_fill_config_override;
-    let node_border_config_override = render_config.node_border_config_override;
     let node_fill_config_override = render_config.node_fill_config_override;
     let node_stroke_width_config_override = render_config.node_stroke_width_config_override;
     let edge_stroke_config_override = render_config.edge_stroke_config_override;
@@ -278,7 +277,6 @@ pub(super) fn with_flowchart_paint_context<T>(
         node_stroke_width,
         node_typography_config_ownership,
         node_label_fill_config_override,
-        node_border_config_override,
         node_fill_config_override,
         node_stroke_width_config_override,
         edge_stroke_config_override,

@@ -109,6 +109,8 @@ impl ArchitectureSurfaceThemePlan {
         evidence: &mut FamilyThemeOutcomes,
         emission: Option<&ArchitectureSurfaceRenderState>,
     ) {
+        // The Cytoscape SVG writer emits service/group labels, but never model.title or a
+        // frontmatter diagram title. Those labels retain their own semantic paint targets.
         for key in &self.title_keys {
             evidence.mark_not_applicable(key.clone());
         }

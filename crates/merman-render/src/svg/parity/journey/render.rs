@@ -449,7 +449,9 @@ pub(crate) fn render_journey_diagram_svg_model(
         .unwrap_or("\"Open Sans\", sans-serif");
     let title_font_size = render_settings.title_font_size.as_str();
     let title_font_family = render_settings.title_font_family.as_str();
-    let title_color = render_settings.title_color.as_str();
+    let title_color = text_paint
+        .title_fill_css()
+        .unwrap_or(&render_settings.title_color);
 
     let mut out = BoundedSvgOutput::new(options.work_meter());
     let aria_labelledby = model
@@ -778,8 +780,7 @@ pub(crate) fn render_journey_diagram_svg_model(
         );
         out.checkpoint()?;
         if let Some(receipt) = text_receipt.as_mut() {
-            // A nonempty journey.titleColor is an independent owner; otherwise inherit root fill.
-            receipt.record_label(crate::journey::JourneyTextPaintRole::Title, None);
+            receipt.record_title(title, title_color);
         }
     }
 

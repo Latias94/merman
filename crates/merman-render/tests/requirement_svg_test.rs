@@ -409,6 +409,348 @@ fn assert_requirement_has_no_typed_paint_override(
     }
 }
 
+#[test]
+fn requirement_title_fill_accounts_visibility_and_property_local_source_ownership() {
+    let text_color = r##"{"textColor":"#abcdef"}"##;
+    let title_color = r##"{"titleColor":"#abcdef"}"##;
+    for (title, variables, site, stroke, applied, residual) in [
+        (false, "{}", false, false, false, false),
+        (true, "{}", false, false, true, false),
+        (true, text_color, false, false, false, false),
+        (true, text_color, false, true, false, true),
+        (true, title_color, false, false, true, false),
+        (true, "{}", false, true, false, true),
+        (true, text_color, true, false, false, false),
+        (true, text_color, true, true, false, true),
+    ] {
+        let source_variables = if site { "{}" } else { variables };
+        let source = format!(
+            "---\ntitle: \"{}\"\nconfig:\n  themeVariables: {source_variables}\n---\n{}",
+            if title { "Coverage title" } else { "" },
+            requirement_source(),
+        );
+        let mut patch =
+            ThemeStylePatch::default().with_fill(CanvasPaint::solid("#123456").unwrap());
+        if stroke {
+            patch = patch.with_stroke(CanvasPaint::solid("#654321").unwrap());
+        }
+        let theme = DiagramThemeCompiler::new()
+            .compile(DiagramThemeSpec::new().with_styles(
+                ThemeRuleSet::default().with_rule(ThemeRule::new(ThemeTarget::Title, patch)),
+            ))
+            .unwrap();
+        let baseline = DiagramThemeCompiler::new()
+            .compile(DiagramThemeSpec::new())
+            .unwrap();
+        let render = |theme, portability| {
+            let engine = if site {
+                let variables: serde_json::Value = serde_json::from_str(variables).unwrap();
+                MermaidEngine::new().with_site_config(
+                    merman_core::presentation::SourcePresentationConfig::from_value(
+                        serde_json::json!({
+                            "look": "classic", "layout": "dagre", "themeVariables": variables,
+                        }),
+                    ),
+                )
+            } else {
+                classic_engine()
+            };
+            try_render_requirement_with_theme_requirement_and_environment(
+                &source,
+                theme,
+                engine,
+                portability,
+                RenderEnvironment::deterministic(),
+            )
+        };
+        let rendered = render(&theme, ThemePortabilityRequirement::BestEffort).unwrap();
+        let baseline = render(&baseline, ThemePortabilityRequirement::BestEffort).unwrap();
+        let paints_title = title && !variables.contains("textColor");
+        assert_eq!(rendered.svg() == baseline.svg(), !paints_title);
+        let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+        let title_node = document
+            .descendants()
+            .find(|node| node.has_tag_name("text") && node.text() == Some("Coverage title"));
+        assert_eq!(title_node.is_some(), title);
+        if let Some(title_node) = title_node {
+            assert_eq!(
+                title_node.attribute("fill"),
+                paints_title.then_some("#123456")
+            );
+        }
+        let completion = rendered.into_completion();
+        let evidence = merman_render::__private::family_evidence(completion.report());
+        assert_eq!(evidence.required_count(), 1);
+        assert_eq!(evidence.accounted_count(), 1);
+        assert_eq!(evidence.applied_count(), usize::from(applied));
+        assert_eq!(
+            evidence.not_applicable_count(),
+            usize::from(!applied && !residual)
+        );
+        assert_eq!(evidence.theme_residual_count(), usize::from(residual));
+        assert_eq!(
+            completion
+                .report()
+                .theme_diagnostics()
+                .iter()
+                .any(|diagnostic| {
+                    diagnostic.target() == Some(ThemeTarget::Title)
+                        && diagnostic.code() == "unsupported-paint"
+                }),
+            residual,
+        );
+        match render(&theme, ThemePortabilityRequirement::RequirePortable) {
+            Ok(_) => assert!(
+                !residual,
+                "winning unsupported Title stroke must fail strict admission"
+            ),
+            Err(error) => {
+                assert!(residual);
+                assert_eq!(
+                    error.unverified_family_theme(),
+                    Some((DiagramFamilyId::REQUIREMENT, 1))
+                );
+            }
+        }
+    }
+}
+
+#[test]
+fn requirement_title_accounting_resolves_shadowed_rules_and_absent_ordinals() {
+    use merman_render::diagram_theme::OrdinalSelector;
+    let fill = |color| {
+        ThemeRule::new(
+            ThemeTarget::Title,
+            ThemeStylePatch::default().with_fill(CanvasPaint::solid(color).unwrap()),
+        )
+    };
+    let theme = DiagramThemeCompiler::new()
+        .compile(
+            DiagramThemeSpec::new().with_styles(
+                ThemeRuleSet::default()
+                    .with_rule(fill("#112233"))
+                    .with_rule(fill("#223344").with_ordinal(OrdinalSelector::Exact(1)))
+                    .with_rule(fill("#334455").with_ordinal(OrdinalSelector::Exact(2)))
+                    .with_rule(fill("#445566")),
+            ),
+        )
+        .unwrap();
+    let rendered = render_requirement_with_theme_requirement(
+        &format!("---\ntitle: Coverage title\n---\n{}", requirement_source()),
+        &theme,
+        classic_engine(),
+        ThemePortabilityRequirement::BestEffort,
+    );
+    let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+    let title = document
+        .descendants()
+        .find(|node| node.has_tag_name("text") && node.text() == Some("Coverage title"))
+        .unwrap();
+    assert_eq!(title.attribute("fill"), Some("#445566"));
+    let evidence = merman_render::__private::family_evidence(rendered.into_completion().report());
+    assert_eq!(evidence.required_count(), 4);
+    assert_eq!(evidence.accounted_count(), 4);
+    assert_eq!(evidence.applied_count(), 1);
+    assert_eq!(evidence.not_applicable_count(), 3);
+    assert_eq!(evidence.theme_residual_count(), 0);
+}
+
+#[test]
+fn requirement_title_static_fill_and_clear_override_text_fallback() {
+    use merman_render::diagram_theme::Specified;
+    let source = "---\ntitle: Coverage title\n---\nrequirementDiagram\n";
+    let baseline_theme = DiagramThemeCompiler::new()
+        .compile(DiagramThemeSpec::new())
+        .unwrap();
+    let baseline = render_requirement_with_theme_requirement(
+        source,
+        &baseline_theme,
+        classic_engine(),
+        ThemePortabilityRequirement::RequirePortable,
+    );
+    let baseline_document = roxmltree::Document::parse(baseline.svg()).unwrap();
+    let baseline_title = baseline_document
+        .descendants()
+        .find(|node| node.has_tag_name("text") && node.text() == Some("Coverage title"))
+        .unwrap();
+    let baseline_root = baseline_document.root_element();
+    assert_eq!(baseline_title.parent(), Some(baseline_root));
+    assert_eq!(baseline_title.attribute("fill"), None);
+    assert_eq!(baseline_title.attribute("style"), None);
+    let baseline_root_selector = format!("#{}", baseline_root.attribute("id").unwrap());
+    let baseline_css = baseline_document
+        .descendants()
+        .find(|node| node.has_tag_name("style"))
+        .and_then(|node| node.text())
+        .unwrap();
+    let baseline_title_fill = baseline_css
+        .split('}')
+        .filter_map(|rule| rule.split_once('{'))
+        .find(|(selector, _)| selector.trim() == baseline_root_selector)
+        .and_then(|(_, declarations)| {
+            declarations
+                .split(';')
+                .filter_map(|declaration| declaration.split_once(':'))
+                .find(|(property, _)| property.trim() == "fill")
+                .map(|(_, value)| value.trim())
+        })
+        .expect("baseline title inherits the SVG root fill");
+    for variant in [None, Some(ThemeVariant::Default)] {
+        for fill in [
+            None,
+            Some(Specified::Value(CanvasPaint::solid("#123456").unwrap())),
+            Some(Specified::Value(CanvasPaint::Transparent)),
+            Some(Specified::Clear),
+        ] {
+            let title_has_own_fill = fill.is_some();
+            let expected = match &fill {
+                None => Some("#224466"),
+                Some(Specified::Value(CanvasPaint::Solid(_))) => Some("#123456"),
+                Some(Specified::Value(CanvasPaint::Transparent)) => Some("transparent"),
+                Some(Specified::Clear) => Some(baseline_title_fill),
+                _ => unreachable!(),
+            };
+            let mut styles = ThemeRuleSet::default();
+            if let Some(fill) = fill {
+                let mut patch = ThemeStylePatch::default();
+                patch.paint.fill = fill;
+                let mut rule = ThemeRule::new(ThemeTarget::Title, patch);
+                if let Some(variant) = variant {
+                    rule = rule.with_variant(variant);
+                }
+                styles = styles.with_rule(rule);
+            }
+            // A later Text fallback must not take ownership from an explicit title role.
+            styles = styles.with_rule(ThemeRule::new(
+                ThemeTarget::Text,
+                ThemeStylePatch::default().with_fill(CanvasPaint::solid("#224466").unwrap()),
+            ));
+            let theme = DiagramThemeCompiler::new()
+                .compile(DiagramThemeSpec::new().with_styles(styles))
+                .unwrap();
+            let rendered = render_requirement_with_theme_requirement(
+                source,
+                &theme,
+                classic_engine(),
+                ThemePortabilityRequirement::RequirePortable,
+            );
+            let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+            let title = document
+                .descendants()
+                .find(|node| node.has_tag_name("text") && node.text() == Some("Coverage title"))
+                .unwrap();
+            assert_eq!(title.attribute("fill"), expected);
+            let css = document
+                .descendants()
+                .find(|node| node.has_tag_name("style"))
+                .and_then(|node| node.text())
+                .unwrap();
+            assert!(css.contains("fill:#224466;"));
+            let completion = rendered.into_completion();
+            let evidence = merman_render::__private::family_evidence(completion.report());
+            assert_eq!(evidence.accounted_count(), evidence.required_count());
+            assert_eq!(evidence.applied_count(), 1);
+            assert_eq!(
+                evidence.not_applicable_count(),
+                usize::from(title_has_own_fill)
+            );
+            assert_eq!(evidence.theme_residual_count(), 0);
+        }
+    }
+}
+
+#[test]
+fn requirement_title_selectors_keep_only_real_unsupported_winners_residual() {
+    use merman_render::diagram_theme::OrdinalSelector;
+    for (variant, ordinal, residual) in [
+        (None, Some(OrdinalSelector::Exact(1)), true),
+        (None, Some(OrdinalSelector::Exact(2)), false),
+        (Some(ThemeVariant::Error), None, false),
+        (
+            Some(ThemeVariant::Error),
+            Some(OrdinalSelector::Exact(1)),
+            false,
+        ),
+    ] {
+        let mut rule = ThemeRule::new(
+            ThemeTarget::Title,
+            ThemeStylePatch::default().with_fill(CanvasPaint::solid("#123456").unwrap()),
+        );
+        if let Some(variant) = variant {
+            rule = rule.with_variant(variant);
+        }
+        if let Some(ordinal) = ordinal {
+            rule = rule.with_ordinal(ordinal);
+        }
+        let theme = DiagramThemeCompiler::new()
+            .compile(DiagramThemeSpec::new().with_styles(ThemeRuleSet::default().with_rule(rule)))
+            .unwrap();
+        let rendered = render_requirement_with_theme_requirement(
+            &format!("---\ntitle: Coverage title\n---\n{}", requirement_source()),
+            &theme,
+            classic_engine(),
+            ThemePortabilityRequirement::BestEffort,
+        );
+        let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+        let title = document
+            .descendants()
+            .find(|node| node.has_tag_name("text") && node.text() == Some("Coverage title"))
+            .unwrap();
+        assert_eq!(title.attribute("fill"), None);
+        let completion = rendered.into_completion();
+        let evidence = merman_render::__private::family_evidence(completion.report());
+        assert_eq!(evidence.required_count(), 1);
+        assert_eq!(evidence.accounted_count(), 1);
+        assert_eq!(evidence.applied_count(), 0);
+        assert_eq!(evidence.not_applicable_count(), usize::from(!residual));
+        assert_eq!(evidence.theme_residual_count(), usize::from(residual));
+    }
+}
+
+#[test]
+fn requirement_all_presets_consume_title_fill_without_unsupported_title_diagnostics() {
+    let presets = merman_render::diagram_theme::theme_preset_descriptors();
+    assert_eq!(presets.len(), 11);
+    for preset in presets {
+        let theme = DiagramThemeCompiler::new()
+            .compile_preset(preset.preset())
+            .unwrap();
+        let rendered = render_requirement_with_theme_requirement(
+            &format!("---\ntitle: Coverage title\n---\n{}", requirement_source()),
+            &theme,
+            classic_engine(),
+            ThemePortabilityRequirement::BestEffort,
+        );
+        let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+        let title = document
+            .descendants()
+            .find(|node| node.has_tag_name("text") && node.text() == Some("Coverage title"))
+            .unwrap();
+        assert!(title.attribute("fill").is_some(), "{}", preset.id());
+        let completion = rendered.into_completion();
+        let evidence = merman_render::__private::family_evidence(completion.report());
+        assert!(evidence.applied_count() > 0, "{}", preset.id());
+        assert_eq!(
+            evidence.accounted_count(),
+            evidence.required_count(),
+            "{}",
+            preset.id()
+        );
+        assert!(
+            completion
+                .report()
+                .theme_diagnostics()
+                .iter()
+                .all(|diagnostic| {
+                    diagnostic.target() != Some(ThemeTarget::Title)
+                        && diagnostic.code() != "evidence-incomplete"
+                }),
+            "{}",
+            preset.id()
+        );
+    }
+}
+
 fn requirement_source() -> &'static str {
     r#"requirementDiagram
   requirement req1 {
@@ -3147,19 +3489,28 @@ fn requirement_text_owners_are_independent_for_html_and_svg_labels() {
 }
 
 #[test]
-fn requirement_text_source_color_and_absent_consumers_do_not_prove_application() {
+fn requirement_text_title_fallback_and_source_owned_nodes_have_exact_evidence() {
     let theme = requirement_text_theme(ThemeRuleSet::default().with_rule(requirement_text_rule(
         CanvasPaint::solid("#2468ac").unwrap(),
     )));
     for html in [false, true] {
-        for source in [
-            "requirementDiagram\n".to_owned(),
-            "---\ntitle: Only a title\n---\nrequirementDiagram\n".to_owned(),
-            format!(
-                "{}\nclassDef owned color:#112233\nclass req1 owned\n",
-                requirement_source()
+        for (source, title_present) in [
+            ("requirementDiagram\n".to_owned(), false),
+            (
+                "---\ntitle: Only a title\n---\nrequirementDiagram\n".to_owned(),
+                true,
             ),
-            format!("{}\nstyle req1 color:#112233\n", requirement_source()),
+            (
+                format!(
+                    "{}\nclassDef owned color:#112233\nclass req1 owned\n",
+                    requirement_source()
+                ),
+                false,
+            ),
+            (
+                format!("{}\nstyle req1 color:#112233\n", requirement_source()),
+                false,
+            ),
         ] {
             let rendered = render_requirement_with_theme_and_engine(
                 &source,
@@ -3170,10 +3521,22 @@ fn requirement_text_source_color_and_absent_consumers_do_not_prove_application()
                     ),
                 ),
             );
+            let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+            let title = document
+                .descendants()
+                .find(|node| node.has_tag_name("text") && node.text() == Some("Only a title"));
+            assert_eq!(title.is_some(), title_present);
+            if let Some(title) = title {
+                assert_eq!(title.attribute("fill"), Some("#2468ac"));
+            }
             let completion = rendered.into_completion();
             let evidence = merman_render::__private::family_evidence(completion.report());
-            assert_eq!(evidence.applied_count(), 0, "{source}");
-            assert_eq!(evidence.not_applicable_count(), 1);
+            assert_eq!(
+                evidence.applied_count(),
+                usize::from(title_present),
+                "{source}"
+            );
+            assert_eq!(evidence.not_applicable_count(), usize::from(!title_present));
         }
     }
 }

@@ -1,16 +1,17 @@
 use std::collections::{BTreeMap, BTreeSet};
+use std::sync::OnceLock;
 
 use merman_model::presentation::PresentationConfig;
 
 use crate::config::config_css_number_or_string;
 use crate::diagram_theme::{
     FamilyThemeDisposition, FamilyThemeMechanism, FamilyThemeMechanismKey, FamilyThemeRuleFacet,
-    FamilyThemeSelectorShape, ResolvedDiagramTheme, ThemeCapability, ThemeTarget,
+    ResolvedDiagramTheme, ResolvedStyleProperty, ThemeCapability, ThemeTarget,
     ThemeTypographyProperty, ThemeVariant,
 };
 use crate::family::{
     DirectStaticPaint, DirectStaticSelectorDomain, FamilyThemeEvidence, FamilyThemeOutcomes,
-    FamilyThemeResidualReason, InheritedFontStackPlan, TerminalVariantDomain,
+    FamilyThemeResidualReason, InheritedFontStackPlan, StaticSurfacePaint, TerminalVariantDomain,
     UnsupportedTerminalDomain, reconcile_unsupported_terminal_domains, resolve_direct_static_fill,
     resolved_style_property_for_facet, unsupported_residual_for_facet,
 };
@@ -52,6 +53,16 @@ struct EventModelingTextRuleObservation {
     residual: Option<FamilyThemeResidualReason>,
 }
 
+#[derive(Debug, Default)]
+struct EventModelingCorePaints {
+    node: StaticSurfacePaint,
+    cluster: StaticSurfacePaint,
+    edge: StaticSurfacePaint,
+    marker: StaticSurfacePaint,
+    node_label: StaticSurfacePaint,
+    cluster_label: StaticSurfacePaint,
+}
+
 /// Final Event Modeling text styling shared by terminal emission and family evidence.
 #[derive(Debug)]
 pub(crate) struct EventModelingTextThemePlan {
@@ -63,6 +74,9 @@ pub(crate) struct EventModelingTextThemePlan {
     occurrences: EventModelingTextOccurrences,
     evidence: FamilyThemeOutcomes,
     pending: BTreeMap<FamilyThemeMechanismKey, ThemeCapability>,
+    core_paints: EventModelingCorePaints,
+    box_ownership: Vec<(bool, bool)>,
+    terminal_emitted: OnceLock<()>,
 }
 
 impl EventModelingTextThemePlan {
@@ -96,6 +110,97 @@ impl EventModelingTextThemePlan {
 
         let config_owns_fill =
             effective_config.config_paint_overrides_typed_default("themeVariables.textColor");
+        let owns = |path: &str| effective_config.config_paint_overrides_typed_default(path);
+        let owns_role = |primary: &str, fallback: &str| {
+            let key = if crate::config::config_string(
+                effective_config.as_value(),
+                &["themeVariables", primary],
+            )
+            .is_some()
+            {
+                primary
+            } else {
+                fallback
+            };
+            owns(&format!("themeVariables.{key}"))
+        };
+        let mut source_fill = Vec::new();
+        let mut source_stroke = Vec::new();
+        for box_layout in &layout.boxes {
+            let role = match box_layout.model_entity_type.as_str() {
+                "ui" => Some("Ui"),
+                "pcr" | "processor" => Some("Processor"),
+                "rmo" | "readmodel" => Some("ReadModel"),
+                "cmd" | "command" => Some("Command"),
+                "evt" | "event" => Some("Event"),
+                _ => None,
+            };
+            source_fill
+                .push(role.is_some_and(|role| owns(&format!("themeVariables.em{role}Fill"))));
+            source_stroke
+                .push(role.is_some_and(|role| owns(&format!("themeVariables.em{role}Stroke"))));
+        }
+        let node = StaticSurfacePaint::resolve(
+            Some(theme),
+            ThemeTarget::Node,
+            &source_fill,
+            &source_stroke,
+            work_meter,
+        )?;
+        let box_ownership = source_fill
+            .iter()
+            .zip(&source_stroke)
+            .map(|(&fill_owned, &stroke_owned)| (fill_owned, stroke_owned))
+            .collect();
+        let lane_count = layout.swimlanes.len();
+        let cluster = StaticSurfacePaint::resolve(
+            Some(theme),
+            ThemeTarget::Cluster,
+            &vec![owns_role("emSwimlaneBackgroundOdd", "emSwimlaneBackground"); lane_count],
+            &vec![owns_role("emSwimlaneBackgroundStroke", "emSwimlaneBorder"); lane_count],
+            work_meter,
+        )?;
+        let edge_count = layout.relations.len();
+        let edge = StaticSurfacePaint::resolve(
+            Some(theme),
+            ThemeTarget::Edge,
+            &vec![true; edge_count],
+            &vec![owns("themeVariables.emRelationStroke"); edge_count],
+            work_meter,
+        )?;
+        let marker = StaticSurfacePaint::resolve(
+            Some(theme),
+            ThemeTarget::Marker,
+            &vec![owns("themeVariables.emArrowhead"); usize::from(edge_count != 0)],
+            &vec![false; usize::from(edge_count != 0)],
+            work_meter,
+        )?;
+        let node_label = StaticSurfacePaint::resolve(
+            Some(theme),
+            ThemeTarget::NodeLabel,
+            &vec![config_owns_fill; occurrences.boxes],
+            &vec![false; occurrences.boxes],
+            work_meter,
+        )?;
+        let cluster_label = StaticSurfacePaint::resolve(
+            Some(theme),
+            ThemeTarget::ClusterLabel,
+            &vec![config_owns_fill; occurrences.swimlanes],
+            &vec![false; occurrences.swimlanes],
+            work_meter,
+        )?;
+        if let Some(fill) = &cluster.fill {
+            css_binding.swimlane_background_fill = fill.css().to_owned();
+        }
+        if let Some(stroke) = &cluster.stroke {
+            css_binding.swimlane_background_stroke = stroke.css().to_owned();
+        }
+        if let Some(stroke) = &edge.stroke {
+            css_binding.relation_stroke = stroke.css().to_owned();
+        }
+        if let Some(fill) = &marker.fill {
+            css_binding.arrowhead_fill = fill.css().to_owned();
+        }
         let style = (occurrences.total() != 0)
             .then(|| {
                 theme.text_style_with_work_meter(
@@ -106,13 +211,35 @@ impl EventModelingTextThemePlan {
                 )
             })
             .transpose()?;
-        let winner_properties = style
-            .as_ref()
-            .into_iter()
-            .flat_map(|style| style.winner_rule_properties())
-            .map(|(property, origin)| (origin.rule_index(), property))
-            .collect::<BTreeSet<_>>();
-        let typed_fill = (!config_owns_fill)
+        // Text ordinals follow actual SVG emission: visible swimlane labels, then box labels.
+        // Role paint overrides only fill, leaving unsupported sibling properties observable.
+        let source_owned_fill = std::iter::repeat_n(
+            config_owns_fill || cluster_label.fill.is_some(),
+            occurrences.swimlanes,
+        )
+        .chain(std::iter::repeat_n(
+            config_owns_fill || node_label.fill.is_some(),
+            occurrences.boxes,
+        ))
+        .collect::<Vec<_>>();
+        let mut winner_properties = BTreeSet::new();
+        for (index, fill_owned) in source_owned_fill.iter().copied().enumerate() {
+            let occurrence_style = theme.style_with_work_meter(
+                ThemeTarget::Text,
+                ThemeVariant::Default,
+                Some(index + 1),
+                work_meter,
+            )?;
+            winner_properties.extend(
+                occurrence_style
+                    .winner_rule_properties()
+                    .filter(|(property, _)| *property != ResolvedStyleProperty::Fill || !fill_owned)
+                    .map(|(property, origin)| (origin.rule_index(), property)),
+            );
+        }
+        let role_fill_covers_text = (occurrences.boxes == 0 || node_label.fill.is_some())
+            && (occurrences.swimlanes == 0 || cluster_label.fill.is_some());
+        let typed_fill = (!config_owns_fill && !role_fill_covers_text)
             .then(|| {
                 style.as_ref().and_then(|style| {
                     resolve_direct_static_fill(
@@ -133,38 +260,10 @@ impl EventModelingTextThemePlan {
                 FamilyThemeMechanism::RuleFacet {
                     rule_index,
                     target: ThemeTarget::Text,
-                    selector,
+                    selector: _,
                     facet,
                 } => {
                     let observation = observations.entry(rule_index).or_default();
-                    if !selector.ordinal_domain_intersects_occurrence_count(occurrences.total())
-                        || matches!(selector,
-                            FamilyThemeSelectorShape::Static { variant: Some(variant) }
-                            | FamilyThemeSelectorShape::Ordinal { variant: Some(variant), .. }
-                            if variant != ThemeVariant::Default)
-                    {
-                        continue;
-                    }
-                    if config_owns_fill && matches!(facet, FamilyThemeRuleFacet::Fill(_)) {
-                        observation.applicable = true;
-                        continue;
-                    }
-
-                    if selector != (FamilyThemeSelectorShape::Static { variant: None }) {
-                        observation.applicable = true;
-                        match route.disposition() {
-                            FamilyThemeDisposition::Unsupported => {
-                                observation
-                                    .residual
-                                    .get_or_insert(unsupported_residual_for_facet(facet));
-                            }
-                            FamilyThemeDisposition::TypedAdapter => {
-                                observation.incomplete = true;
-                            }
-                        }
-                        continue;
-                    }
-
                     let property = resolved_style_property_for_facet(facet);
                     if !winner_properties.contains(&(rule_index, property)) {
                         continue;
@@ -233,7 +332,6 @@ impl EventModelingTextThemePlan {
             }
         }
 
-        let source_owned_fill = config_owns_fill.then(|| vec![true; occurrences.total()]);
         reconcile_unsupported_terminal_domains(
             theme,
             &mut evidence,
@@ -241,7 +339,7 @@ impl EventModelingTextThemePlan {
                 ThemeTarget::Text,
                 TerminalVariantDomain::uniform(occurrences.total(), ThemeVariant::Default),
             )
-            .with_source_owned_fill(source_owned_fill.as_deref().unwrap_or_default())],
+            .with_source_owned_fill(&source_owned_fill)],
             work_meter,
         )?;
 
@@ -289,6 +387,16 @@ impl EventModelingTextThemePlan {
             occurrences,
             evidence,
             pending,
+            core_paints: EventModelingCorePaints {
+                node,
+                cluster,
+                edge,
+                marker,
+                node_label,
+                cluster_label,
+            },
+            box_ownership,
+            terminal_emitted: OnceLock::new(),
         })
     }
 
@@ -309,11 +417,44 @@ impl EventModelingTextThemePlan {
             occurrences,
             evidence: FamilyThemeOutcomes::default(),
             pending: BTreeMap::new(),
+            core_paints: EventModelingCorePaints::default(),
+            box_ownership: Vec::new(),
+            terminal_emitted: OnceLock::new(),
         }
     }
 
     pub(crate) fn css_binding(&self) -> &super::EventModelingCssBinding {
         &self.css_binding
+    }
+
+    pub(crate) fn box_fill<'a>(&'a self, ordinal: usize, baseline: &'a str) -> &'a str {
+        self.box_ownership
+            .get(ordinal)
+            .filter(|(fill_owned, _)| !*fill_owned)
+            .and(self.core_paints.node.fill.as_ref())
+            .map(DirectStaticPaint::css)
+            .unwrap_or(baseline)
+    }
+
+    pub(crate) fn box_stroke<'a>(&'a self, ordinal: usize, baseline: &'a str) -> &'a str {
+        self.box_ownership
+            .get(ordinal)
+            .filter(|(_, stroke_owned)| !*stroke_owned)
+            .and(self.core_paints.node.stroke.as_ref())
+            .map(DirectStaticPaint::css)
+            .unwrap_or(baseline)
+    }
+
+    pub(crate) fn relation_stroke<'a>(&'a self, baseline: &'a str) -> &'a str {
+        self.core_paints
+            .edge
+            .stroke
+            .as_ref()
+            .map_or(baseline, DirectStaticPaint::css)
+    }
+
+    pub(crate) fn record_terminal(&self) {
+        let _ = self.terminal_emitted.set(());
     }
 
     pub(crate) fn write_stylesheet(
@@ -331,9 +472,34 @@ impl EventModelingTextThemePlan {
             let _ = write!(out, " font-size: {font_size};");
         }
         let _ = write!(out, " }}#{diagram_id} .em-relation {{ fill: none; }}");
+        for (paint, selector) in [
+            (&self.core_paints.node_label, ".em-box span"),
+            (&self.core_paints.cluster_label, ".em-swimlane text"),
+        ] {
+            if let Some(fill) = paint.fill.as_ref() {
+                let _ = write!(
+                    out,
+                    "#{diagram_id} {selector} {{ fill: {}; color: {}; }}",
+                    fill.css(),
+                    fill.css()
+                );
+            }
+        }
     }
 
     pub(crate) fn record_evidence(&self, evidence: &mut FamilyThemeEvidence) {
+        if self.terminal_emitted.get().is_some() {
+            for paint in [
+                &self.core_paints.node,
+                &self.core_paints.cluster,
+                &self.core_paints.edge,
+                &self.core_paints.marker,
+                &self.core_paints.node_label,
+                &self.core_paints.cluster_label,
+            ] {
+                paint.record_evidence(evidence);
+            }
+        }
         evidence.merge_borrowed(&self.evidence);
         for (key, capability) in &self.pending {
             evidence.mark_applied_with_capabilities(key.clone(), [*capability]);

@@ -155,4 +155,66 @@ impl MindmapCssBinding {
             model_look
         }
     }
+
+    pub(super) fn label_fill_owned(
+        &self,
+        config: &PresentationConfig,
+        node: &merman_model::families::mindmap::MindmapDiagramRenderNode,
+    ) -> bool {
+        let html = crate::config::config_effective_html_labels(config.as_value());
+        let has_class = |class: &str| {
+            node.css_classes
+                .split_whitespace()
+                .any(|value| value == class)
+        };
+        let root = has_class("section-root");
+        let neo = self.model_look(&node.look) == "neo" && has_class("mindmap-node");
+        // The Classic disabled text rule wins over section text, but root/Neo overrides win
+        // after it. HTML span color has its own explicit section rule.
+        if !html && !neo && !root && has_class("disabled") {
+            return true;
+        }
+        if html && !neo && node.icon.is_some() && self.label_text.is_some() {
+            return config
+                .config_paint_overrides_typed_default("themeVariables.mindmap.labelTextColor");
+        }
+        let node_border_role = || {
+            if config.get_str("themeVariables.nodeBorder").is_some() {
+                "themeVariables.nodeBorder"
+            } else {
+                "themeVariables.gitBranchLabel0"
+            }
+        };
+        let role = if (neo && matches!(self.theme.as_ref(), "redux" | "redux-dark"))
+            || (root && html && self.theme.contains("redux"))
+        {
+            node_border_role().to_string()
+        } else if root && !neo {
+            "themeVariables.gitBranchLabel0".into()
+        } else if neo && self.theme.as_ref() == "neutral" {
+            "themeVariables.cScaleLabel1".into()
+        } else {
+            let slot = if root && neo {
+                Some(0)
+            } else {
+                node.css_classes
+                    .split_whitespace()
+                    .filter_map(|class| {
+                        let section = class.strip_prefix("section-")?.parse::<i32>().ok()?;
+                        let section = if section >= super::theme::MINDMAP_SECTION_COUNT as i32 {
+                            section % super::theme::MINDMAP_SECTION_COUNT as i32
+                        } else {
+                            section
+                        };
+                        usize::try_from(section + 1)
+                            .ok()
+                            .filter(|slot| *slot < self.sections.len())
+                    })
+                    .max()
+            };
+            slot.map(|slot| format!("themeVariables.cScaleLabel{slot}"))
+                .unwrap_or_else(|| "themeVariables.textColor".into())
+        };
+        config.config_paint_overrides_typed_default(&role)
+    }
 }

@@ -275,6 +275,303 @@ fn try_render_timeline_svg_with_resource_policy(
 }
 
 #[test]
+fn timeline_title_fill_accounts_visibility_and_property_local_source_ownership() {
+    let text_color = r##"{"textColor":"#abcdef"}"##;
+    let title_color = r##"{"titleColor":"#abcdef"}"##;
+    for direction in ["", " TD"] {
+        for (title, variables, site, stroke, applied, residual) in [
+            (false, "{}", false, false, false, false),
+            (true, "{}", false, false, true, false),
+            (true, text_color, false, false, false, false),
+            (true, text_color, false, true, false, true),
+            (true, title_color, false, false, true, false),
+            (true, "{}", false, true, false, true),
+            (true, text_color, true, false, false, false),
+            (true, text_color, true, true, false, true),
+        ] {
+            let source_variables = if site { "{}" } else { variables };
+            let source = format!(
+                "---\nconfig:\n  themeVariables: {source_variables}\n---\ntimeline{direction}\n{}    Plan : Ship\n",
+                if title {
+                    "    title Coverage title\n"
+                } else {
+                    ""
+                },
+            );
+            let mut patch =
+                ThemeStylePatch::default().with_fill(CanvasPaint::solid("#123456").unwrap());
+            if stroke {
+                patch = patch.with_stroke(CanvasPaint::solid("#654321").unwrap());
+            }
+            let theme = timeline_event_rules_theme([ThemeRule::new(ThemeTarget::Title, patch)]);
+            let baseline = timeline_event_rules_theme([]);
+            let render = |theme, portability| {
+                let engine = if site {
+                    let variables: serde_json::Value = serde_json::from_str(variables).unwrap();
+                    MermaidEngine::new().with_site_config(
+                        merman_core::presentation::SourcePresentationConfig::from_value(
+                            serde_json::json!({
+                                "look": "classic", "layout": "dagre", "themeVariables": variables,
+                            }),
+                        ),
+                    )
+                } else {
+                    MermaidEngine::new()
+                };
+                try_render_timeline_with_theme_engine_requirement(
+                    &source,
+                    theme,
+                    engine,
+                    portability,
+                )
+            };
+            let rendered = render(&theme, ThemePortabilityRequirement::BestEffort).unwrap();
+            let baseline = render(&baseline, ThemePortabilityRequirement::BestEffort).unwrap();
+            let paints_title = title && !variables.contains("textColor");
+            assert_eq!(rendered.svg() == baseline.svg(), !paints_title);
+            let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+            let title_node = document
+                .descendants()
+                .find(|node| node.has_tag_name("text") && node.text() == Some("Coverage title"));
+            assert_eq!(title_node.is_some(), title);
+            if let Some(title_node) = title_node {
+                assert_eq!(
+                    title_node.attribute("fill"),
+                    paints_title.then_some("#123456")
+                );
+            }
+            let completion = rendered.into_completion();
+            let evidence = merman_render::__private::family_evidence(completion.report());
+            assert_eq!(evidence.required_count(), 1);
+            assert_eq!(evidence.accounted_count(), 1);
+            assert_eq!(evidence.applied_count(), usize::from(applied));
+            assert_eq!(
+                evidence.not_applicable_count(),
+                usize::from(!applied && !residual)
+            );
+            assert_eq!(evidence.theme_residual_count(), usize::from(residual));
+            assert_eq!(
+                completion
+                    .report()
+                    .theme_diagnostics()
+                    .iter()
+                    .any(|diagnostic| {
+                        diagnostic.target() == Some(ThemeTarget::Title)
+                            && diagnostic.code() == "unsupported-paint"
+                    }),
+                residual,
+            );
+            match render(&theme, ThemePortabilityRequirement::RequirePortable) {
+                Ok(_) => assert!(
+                    !residual,
+                    "winning unsupported Title stroke must fail strict admission"
+                ),
+                Err(error) => {
+                    assert!(residual);
+                    assert_eq!(
+                        error.unverified_family_theme(),
+                        Some((merman_render::DiagramFamilyId::TIMELINE, 1)),
+                    );
+                }
+            }
+        }
+    }
+}
+
+#[test]
+fn timeline_title_accounting_resolves_shadowed_rules_and_absent_ordinals() {
+    let fill = |color| {
+        ThemeRule::new(
+            ThemeTarget::Title,
+            ThemeStylePatch::default().with_fill(CanvasPaint::solid(color).unwrap()),
+        )
+    };
+    let theme = timeline_event_rules_theme([
+        fill("#112233"),
+        fill("#223344").with_ordinal(OrdinalSelector::Exact(1)),
+        fill("#334455").with_ordinal(OrdinalSelector::Exact(2)),
+        fill("#445566"),
+    ]);
+    let rendered = try_render_timeline_with_theme_requirement(
+        "timeline\n    title Coverage title\n    Plan : Ship\n",
+        &theme,
+        ThemePortabilityRequirement::BestEffort,
+    )
+    .unwrap();
+    let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+    let title = document
+        .descendants()
+        .find(|node| node.has_tag_name("text") && node.text() == Some("Coverage title"))
+        .unwrap();
+    assert_eq!(title.attribute("fill"), Some("#445566"));
+    let evidence = merman_render::__private::family_evidence(rendered.into_completion().report());
+    assert_eq!(evidence.required_count(), 4);
+    assert_eq!(evidence.accounted_count(), 4);
+    assert_eq!(evidence.applied_count(), 1);
+    assert_eq!(evidence.not_applicable_count(), 3);
+    assert_eq!(evidence.theme_residual_count(), 0);
+}
+
+#[test]
+fn timeline_title_static_fill_and_clear_override_text_fallback() {
+    use merman_render::diagram_theme::Specified;
+    for variant in [None, Some(ThemeVariant::Default)] {
+        for fill in [
+            None,
+            Some(Specified::Value(CanvasPaint::solid("#123456").unwrap())),
+            Some(Specified::Value(CanvasPaint::Transparent)),
+            Some(Specified::Clear),
+        ] {
+            let title_has_own_fill = fill.is_some();
+            let expected = match &fill {
+                None => None,
+                Some(Specified::Value(CanvasPaint::Solid(_))) => Some("#123456"),
+                Some(Specified::Value(CanvasPaint::Transparent)) => Some("transparent"),
+                Some(Specified::Clear) => Some("#333"),
+                _ => unreachable!(),
+            };
+            let mut styles = ThemeRuleSet::default();
+            if let Some(fill) = fill {
+                let mut patch = ThemeStylePatch::default();
+                patch.paint.fill = fill;
+                let mut rule = ThemeRule::new(ThemeTarget::Title, patch);
+                if let Some(variant) = variant {
+                    rule = rule.with_variant(variant);
+                }
+                styles = styles.with_rule(rule);
+            }
+            // A later Text fallback must not take ownership from an explicit title role.
+            styles = styles.with_rule(ThemeRule::new(
+                ThemeTarget::Text,
+                ThemeStylePatch::default().with_fill(CanvasPaint::solid("#224466").unwrap()),
+            ));
+            let theme = DiagramThemeCompiler::new()
+                .compile(DiagramThemeSpec::new().with_styles(styles))
+                .unwrap();
+            let rendered = try_render_timeline_with_theme_requirement(
+                "timeline TD\n    title Coverage title\n",
+                &theme,
+                ThemePortabilityRequirement::RequirePortable,
+            )
+            .unwrap();
+            let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+            let title = document
+                .descendants()
+                .find(|node| node.has_tag_name("text") && node.text() == Some("Coverage title"))
+                .unwrap();
+            assert_eq!(title.attribute("fill"), expected);
+            let css = document
+                .descendants()
+                .find(|node| node.has_tag_name("style"))
+                .and_then(|node| node.text())
+                .unwrap();
+            assert!(css.contains("fill:#224466;"));
+            let completion = rendered.into_completion();
+            let evidence = merman_render::__private::family_evidence(completion.report());
+            assert_eq!(evidence.accounted_count(), evidence.required_count());
+            assert_eq!(evidence.applied_count(), 1);
+            assert_eq!(
+                evidence.not_applicable_count(),
+                usize::from(title_has_own_fill)
+            );
+            assert_eq!(evidence.theme_residual_count(), 0);
+        }
+    }
+}
+
+#[test]
+fn timeline_title_selectors_keep_only_real_unsupported_winners_residual() {
+    use merman_render::diagram_theme::OrdinalSelector;
+    for (variant, ordinal, residual) in [
+        (None, Some(OrdinalSelector::Exact(1)), true),
+        (None, Some(OrdinalSelector::Exact(2)), false),
+        (Some(ThemeVariant::Error), None, false),
+        (
+            Some(ThemeVariant::Error),
+            Some(OrdinalSelector::Exact(1)),
+            false,
+        ),
+    ] {
+        let mut rule = ThemeRule::new(
+            ThemeTarget::Title,
+            ThemeStylePatch::default().with_fill(CanvasPaint::solid("#123456").unwrap()),
+        );
+        if let Some(variant) = variant {
+            rule = rule.with_variant(variant);
+        }
+        if let Some(ordinal) = ordinal {
+            rule = rule.with_ordinal(ordinal);
+        }
+        let theme = DiagramThemeCompiler::new()
+            .compile(DiagramThemeSpec::new().with_styles(ThemeRuleSet::default().with_rule(rule)))
+            .unwrap();
+        let rendered = try_render_timeline_with_theme_requirement(
+            "timeline\n    title Coverage title\n    Plan : Ship\n",
+            &theme,
+            ThemePortabilityRequirement::BestEffort,
+        )
+        .unwrap();
+        let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+        let title = document
+            .descendants()
+            .find(|node| node.has_tag_name("text") && node.text() == Some("Coverage title"))
+            .unwrap();
+        assert_eq!(title.attribute("fill"), None);
+        let completion = rendered.into_completion();
+        let evidence = merman_render::__private::family_evidence(completion.report());
+        assert_eq!(evidence.required_count(), 1);
+        assert_eq!(evidence.accounted_count(), 1);
+        assert_eq!(evidence.applied_count(), 0);
+        assert_eq!(evidence.not_applicable_count(), usize::from(!residual));
+        assert_eq!(evidence.theme_residual_count(), usize::from(residual));
+    }
+}
+
+#[test]
+fn timeline_all_presets_consume_title_fill_without_unsupported_title_diagnostics() {
+    let presets = merman_render::diagram_theme::theme_preset_descriptors();
+    assert_eq!(presets.len(), 11);
+    for preset in presets {
+        let theme = DiagramThemeCompiler::new()
+            .compile_preset(preset.preset())
+            .unwrap();
+        let rendered = try_render_timeline_with_theme_requirement(
+            "timeline\n    title Coverage title\n    section Release\n    Plan : Ship\n",
+            &theme,
+            ThemePortabilityRequirement::BestEffort,
+        )
+        .unwrap();
+        let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+        let title = document
+            .descendants()
+            .find(|node| node.has_tag_name("text") && node.text() == Some("Coverage title"))
+            .unwrap();
+        assert!(title.attribute("fill").is_some(), "{}", preset.id());
+        let completion = rendered.into_completion();
+        let evidence = merman_render::__private::family_evidence(completion.report());
+        assert!(evidence.applied_count() > 0, "{}", preset.id());
+        assert_eq!(
+            evidence.accounted_count(),
+            evidence.required_count(),
+            "{}",
+            preset.id()
+        );
+        assert!(
+            completion
+                .report()
+                .theme_diagnostics()
+                .iter()
+                .all(|diagnostic| {
+                    diagnostic.target() != Some(ThemeTarget::Title)
+                        && diagnostic.code() != "evidence-incomplete"
+                }),
+            "{}",
+            preset.id()
+        );
+    }
+}
+
+#[test]
 fn timeline_text_fill_uses_typed_root_paint_across_looks_and_directions() {
     for theme_name in ["default", "redux", "redux-color"] {
         for look in ["classic", "neo", "handDrawn"] {

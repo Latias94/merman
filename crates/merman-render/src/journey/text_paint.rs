@@ -21,6 +21,9 @@ use crate::resources::{OperationWorkError, OperationWorkMeter};
 #[derive(Debug)]
 pub(crate) struct JourneyTextPaintPlan {
     fill: Option<DirectStaticPaint>,
+    title_fill: Option<DirectStaticPaint>,
+    title: Option<Box<str>>,
+    source_title_color: Box<str>,
     evidence: FamilyThemeOutcomes,
     pending: Vec<(FamilyThemeMechanismKey, Option<FamilyThemeResidualReason>)>,
     terminal: OnceLock<()>,
@@ -40,6 +43,8 @@ pub(crate) enum JourneyTextPaintRole {
 #[derive(Debug)]
 pub(crate) struct JourneyTextPaintReceipt<'a> {
     expected_fill: Option<&'a str>,
+    expected_title: Option<&'a str>,
+    expected_title_fill: &'a str,
     expected_labels: [usize; 6],
     labels: [usize; 6],
     expected_lines: usize,
@@ -57,11 +62,40 @@ impl JourneyTextPaintPlan {
     ) -> Result<Self, OperationWorkError> {
         let mut plan = Self {
             fill: None,
+            title_fill: None,
+            title: diagram_title
+                .map(str::trim)
+                .filter(|title| !title.is_empty())
+                .map(Into::into),
+            source_title_color: super::config::JourneyConfigView::new(config.as_value())
+                .render_settings()
+                .title_color
+                .into_boxed_str(),
             evidence: FamilyThemeOutcomes::default(),
             pending: Vec::new(),
             terminal: OnceLock::new(),
         };
         let Some(theme) = theme else { return Ok(plan) };
+        let title_owned = !plan.source_title_color.is_empty();
+        let mut title_fill_winner = None;
+        if plan.title.is_some() && !title_owned {
+            let style = theme.style_with_work_meter(
+                ThemeTarget::Title,
+                ThemeVariant::Default,
+                Some(1),
+                work,
+            )?;
+            title_fill_winner = style
+                .fill_resolution()
+                .winner()
+                .map(|origin| origin.rule_index());
+            plan.title_fill = resolve_direct_static_fill(
+                theme,
+                &style,
+                &[ThemeTarget::Title],
+                DirectStaticSelectorDomain::Default,
+            );
+        }
         let config_owned = config.config_paint_overrides_typed_default("themeVariables.textColor");
         let style =
             theme.style_with_work_meter(ThemeTarget::Text, ThemeVariant::Default, None, work)?;
@@ -137,26 +171,50 @@ impl JourneyTextPaintPlan {
                     ThemeVariant::Default,
                 )
                 .with_source_owned_fill(&[config_owned]),
-                // The former titleColor projection only styled nonexistent clusters.
-                // A real diagram title remains unsupported unless its own config owns fill.
                 UnsupportedTerminalDomain::direct(
                     ThemeTarget::Title,
                     TerminalVariantDomain::uniform(
-                        usize::from(diagram_title.is_some_and(|title| !title.trim().is_empty())),
+                        usize::from(plan.title.is_some()),
                         ThemeVariant::Default,
                     ),
                 )
-                .with_source_owned_fill(&[config
-                    .get_str("journey.titleColor")
-                    .is_some_and(|color| !color.is_empty())]),
+                .with_source_owned_fill(&[title_owned]),
             ],
             work,
         )?;
+        for route in theme.family_mechanism_routes() {
+            if let FamilyThemeMechanism::RuleFacet {
+                target: ThemeTarget::Title,
+                rule_index,
+                facet: FamilyThemeRuleFacet::Fill(_),
+                ..
+            } = route.mechanism()
+                && route.disposition() == FamilyThemeDisposition::TypedAdapter
+            {
+                if title_fill_winner != Some(rule_index) {
+                    plan.evidence
+                        .mark_not_applicable(theme.family_mechanism_key(*route));
+                } else if !plan
+                    .title_fill
+                    .as_ref()
+                    .is_some_and(|fill| fill.rule_index() == rule_index)
+                {
+                    plan.evidence.mark_residual(
+                        theme.family_mechanism_key(*route),
+                        FamilyThemeResidualReason::UnsupportedPaint,
+                    );
+                }
+            }
+        }
         Ok(plan)
     }
 
     pub(crate) fn fill_css(&self) -> Option<&str> {
         self.fill.as_ref().map(DirectStaticPaint::css)
+    }
+
+    pub(crate) fn title_fill_css(&self) -> Option<&str> {
+        self.title_fill.as_ref().map(DirectStaticPaint::css)
     }
 
     pub(crate) fn begin_terminal_receipt<'a>(
@@ -165,7 +223,7 @@ impl JourneyTextPaintPlan {
         has_title: bool,
         work: &OperationWorkMeter,
     ) -> Result<Option<JourneyTextPaintReceipt<'a>>, OperationWorkError> {
-        if self.pending.is_empty() {
+        if self.pending.is_empty() && self.title_fill.is_none() {
             return Ok(None);
         }
         let mut legend_count = 0;
@@ -183,6 +241,8 @@ impl JourneyTextPaintPlan {
         }
         Ok(Some(JourneyTextPaintReceipt {
             expected_fill: self.fill_css(),
+            expected_title: self.title.as_deref(),
+            expected_title_fill: self.title_fill_css().unwrap_or(&self.source_title_color),
             expected_labels: [
                 legend_count,
                 layout.sections.len(),
@@ -196,7 +256,7 @@ impl JourneyTextPaintPlan {
             expected_lines: layout.tasks.len() + 1,
             lines: 0,
             css_declarations: 0,
-            valid: true,
+            valid: has_title == self.title.is_some(),
         }))
     }
 
@@ -206,6 +266,17 @@ impl JourneyTextPaintPlan {
 
     pub(crate) fn record_evidence(&self, evidence: &mut FamilyThemeEvidence) {
         evidence.merge_borrowed(&self.evidence);
+        if self.terminal.get().is_some()
+            && let Some(fill) = &self.title_fill
+        {
+            evidence.mark_applied_with_capabilities(
+                FamilyThemeMechanismKey::Rule {
+                    index: fill.rule_index(),
+                    target: ThemeTarget::Title,
+                },
+                [fill.capability()],
+            );
+        }
         for (key, residual) in &self.pending {
             if let Some(reason) = residual {
                 evidence.mark_residual(key.clone(), *reason);
@@ -233,9 +304,15 @@ impl JourneyTextPaintReceipt<'_> {
     }
 
     pub(crate) fn record_label(&mut self, role: JourneyTextPaintRole, inline_fill: Option<&str>) {
+        self.valid &= !matches!(role, JourneyTextPaintRole::Title);
         self.valid &=
             inline_fill.is_none_or(|emitted| self.expected_fill.is_none_or(|fill| fill == emitted));
         self.labels[role as usize] += 1;
+    }
+
+    pub(crate) fn record_title(&mut self, title: &str, fill: &str) {
+        self.valid &= Some(title) == self.expected_title && fill == self.expected_title_fill;
+        self.labels[JourneyTextPaintRole::Title as usize] += 1;
     }
 
     pub(crate) fn record_line(&mut self) {
@@ -250,6 +327,8 @@ mod tests {
     fn complete_receipt() -> JourneyTextPaintReceipt<'static> {
         JourneyTextPaintReceipt {
             expected_fill: Some("#123456"),
+            expected_title: Some("Title"),
+            expected_title_fill: "#987654",
             expected_labels: [1; 6],
             labels: [1; 6],
             expected_lines: 2,
@@ -292,5 +371,21 @@ mod tests {
         label.labels[JourneyTextPaintRole::Task as usize] = 0;
         label.record_label(JourneyTextPaintRole::Task, Some("#654321"));
         assert!(!label.is_complete());
+    }
+
+    #[test]
+    fn title_receipt_proves_its_own_color_and_text_independently_of_root_paint() {
+        for (title, fill, success) in [
+            ("Title", "#987654", true),
+            ("Title", "#123456", false),
+            ("Other", "#987654", false),
+        ] {
+            let mut receipt = complete_receipt();
+            receipt.labels[JourneyTextPaintRole::Title as usize] = 0;
+            receipt.record_title(title, fill);
+            assert_eq!(receipt.is_complete(), success);
+            receipt.record_title(title, fill);
+            assert!(!receipt.is_complete());
+        }
     }
 }

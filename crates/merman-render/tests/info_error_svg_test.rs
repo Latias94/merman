@@ -823,13 +823,30 @@ fn info_and_error_explicit_site_and_source_font_paths_outrank_typed_font_stack()
 }
 
 #[test]
+fn info_title_requests_are_not_applicable_without_a_visual_title_terminal() {
+    let family = InheritedTextFamily::Info;
+    let theme = inherited_paint_theme(family, &[ThemeTarget::Title]);
+    for source in ["info", "---\ntitle: Metadata only\n---\ninfo"] {
+        let rendered = try_render_family(
+            family,
+            source,
+            &theme,
+            MermaidEngine::new(),
+            "info-no-title",
+        )
+        .expect("an absent title does not prevent portable theme application");
+        assert_eq!(non_empty_text_count_with_class(rendered.svg(), "title"), 0);
+        let evidence =
+            merman_render::__private::family_evidence(rendered.into_completion().report());
+        assert_eq!(evidence.required_count(), 1);
+        assert_eq!(evidence.not_applicable_count(), 1);
+        assert_eq!(evidence.theme_residual_count(), 0);
+    }
+}
+
+#[test]
 fn info_and_error_unsupported_paint_is_explicit_best_effort_evidence() {
     for (case, family, targets) in [
-        (
-            "info-title",
-            InheritedTextFamily::Info,
-            &[ThemeTarget::Title][..],
-        ),
         (
             "error-text",
             InheritedTextFamily::Error,
@@ -898,12 +915,6 @@ fn info_and_error_unsupported_paint_is_explicit_best_effort_evidence() {
 #[test]
 fn info_and_error_unsupported_paint_fails_require_portable_as_residual_not_incomplete() {
     for (case, family, targets, residual_count) in [
-        (
-            "info-title-strict",
-            InheritedTextFamily::Info,
-            &[ThemeTarget::Title][..],
-            1,
-        ),
         (
             "error-text-strict",
             InheritedTextFamily::Error,

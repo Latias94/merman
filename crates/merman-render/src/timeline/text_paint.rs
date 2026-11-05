@@ -205,9 +205,9 @@ impl TimelineTextPaintPlan {
 }
 
 impl TimelineTextPaintOutcome {
-    pub(crate) fn record_title(&mut self) {
+    pub(crate) fn record_title(&mut self, inherits_fill: bool) {
         self.text_seen = true;
-        self.inherited_fill_seen = true;
+        self.inherited_fill_seen |= inherits_fill;
     }
 
     pub(crate) fn record_marker_reference(&mut self) {

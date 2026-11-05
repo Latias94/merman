@@ -14,17 +14,39 @@ mod preparation;
 #[cfg(any(
     feature = "diagram-treemap",
     feature = "diagram-venn",
-    feature = "diagram-zenuml"
+    feature = "diagram-zenuml",
+    feature = "diagram-sequence",
+    feature = "diagram-git-graph"
 ))]
 mod single_title_fill;
+#[cfg(any(
+    feature = "diagram-venn",
+    feature = "diagram-ishikawa",
+    feature = "diagram-railroad",
+    feature = "diagram-event-modeling"
+))]
+mod static_surface_paint;
+#[cfg(any(feature = "diagram-cynefin", feature = "diagram-wardley"))]
+mod terminal_paint;
 mod theme_diagnostics;
 
 #[cfg(any(
     feature = "diagram-treemap",
     feature = "diagram-venn",
-    feature = "diagram-zenuml"
+    feature = "diagram-zenuml",
+    feature = "diagram-sequence",
+    feature = "diagram-git-graph"
 ))]
 pub(crate) use single_title_fill::SingleTitleFillPlan;
+#[cfg(any(
+    feature = "diagram-venn",
+    feature = "diagram-ishikawa",
+    feature = "diagram-railroad",
+    feature = "diagram-event-modeling"
+))]
+pub(crate) use static_surface_paint::StaticSurfacePaint;
+#[cfg(any(feature = "diagram-cynefin", feature = "diagram-wardley"))]
+pub(crate) use terminal_paint::{TerminalPaint, TerminalPaintPlan};
 pub use theme_diagnostics::ThemeDiagnostic;
 
 pub use capability::{RenderCapabilityPlan, plan_render, supports_diagram_type};
@@ -1453,6 +1475,8 @@ impl ResolvedFamilyStylePlan {
         let waits_for_svg_evidence = matches!(
             self.family_id,
             DiagramFamilyId::STATE
+                | DiagramFamilyId::AGENTFLOW
+                | DiagramFamilyId::USECASE
                 | DiagramFamilyId::FLOWCHART
                 | DiagramFamilyId::SWIMLANE
                 | DiagramFamilyId::MINDMAP
@@ -2903,9 +2927,21 @@ impl BuiltinFamilyArtifact<'_> {
         let evidence = &mut style_plan.theme_evidence;
         match self {
             #[cfg(feature = "diagram-agentflow")]
-            Self::Agentflow { .. } => return Ok(()),
+            Self::Agentflow { flow, .. } => {
+                evidence.clear_outcomes();
+                style_plan.source_style_residuals =
+                    flowchart_artifact_theme_evidence(flow, theme, evidence);
+                style_plan.payload = if FamilyThemeEvidence::not_applicable(theme)
+                    && style_plan.source_style_residuals.is_empty()
+                {
+                    FamilyStylePayload::NotApplicable
+                } else {
+                    FamilyStylePayload::Evaluated
+                };
+                return Ok(());
+            }
             #[cfg(feature = "diagram-usecase")]
-            Self::Usecase(_) => return Ok(()),
+            Self::Usecase(pair) => pair.layout().record_theme_evidence(evidence),
             #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
             Self::Flowchart(artifact) => {
                 evidence.clear_outcomes();
@@ -4064,6 +4100,16 @@ impl<'parsed> FamilyRenderArtifact<'parsed> {
         admit_rendered_svg_output(self.context.session(), rendered.as_str())?;
         self.context.session().checkpoint(OperationPhase::Emit)?;
         let filter_receipt = match &self.family {
+            #[cfg(feature = "diagram-usecase")]
+            BuiltinFamilyArtifact::Usecase(pair) => Some((
+                pair.layout().effect_evidence().finish(),
+                pair.layout().expected_effect_applications(),
+            )),
+            #[cfg(feature = "diagram-agentflow")]
+            BuiltinFamilyArtifact::Agentflow { flow, .. } => Some((
+                flow.effect_evidence().finish(),
+                flow.expected_effect_applications().get(),
+            )),
             #[cfg(feature = "diagram-sequence")]
             BuiltinFamilyArtifact::Sequence(artifact) => Some((
                 artifact.layout.effect_evidence().finish(),

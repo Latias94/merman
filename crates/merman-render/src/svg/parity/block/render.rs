@@ -310,7 +310,7 @@ pub(crate) fn render_block_diagram_svg_model_with_theme(
     layout: &BlockDiagramLayout,
     model: &merman_model::families::block::BlockDiagramRenderModel,
     node_paint_theme: &BlockNodePaintThemePlan,
-    _node_label_paint_theme: &BlockNodeLabelPaintPlan,
+    node_label_paint_theme: &BlockNodeLabelPaintPlan,
     edge_paint_theme: &crate::block::BlockEdgePaintPlan,
     marker_paint_theme: &crate::block::BlockMarkerPaintPlan,
     label_background_theme: &BlockLabelBackgroundPlan,
@@ -443,6 +443,7 @@ pub(crate) fn render_block_diagram_svg_model_with_theme(
         .collect();
     let layout_edges_by_id = BlockLayoutEdgeIndex::new(&layout.edges);
     let mut typography_visible = typography_theme.observes_visible_labels().then_some(false);
+    let mut label_paint_receipt = node_label_paint_theme.begin_outcomes();
 
     fn marker_id(diagram_id: SvgDiagramId<'_>, marker: &str) -> String {
         format!("{diagram_id}_block-{marker}")
@@ -976,6 +977,7 @@ pub(crate) fn render_block_diagram_svg_model_with_theme(
                 ),
             );
         }
+        let emitted_label_color;
         if html_labels {
             let span_style_attr = if node_text_style.is_empty() {
                 String::new()
@@ -990,13 +992,17 @@ pub(crate) fn render_block_diagram_svg_model_with_theme(
                     })?;
             let label_markup = match typed_label_color {
                 Some(color) if label_markup.starts_with("<p>") => {
+                    emitted_label_color = Some(color);
                     std::borrow::Cow::Owned(label_markup.replacen(
                         "<p>",
                         &format!(r#"<p style="color:{};">"#, escape_attr(color)),
                         1,
                     ))
                 }
-                _ => std::borrow::Cow::Borrowed(label_markup),
+                _ => {
+                    emitted_label_color = None;
+                    std::borrow::Cow::Borrowed(label_markup)
+                }
             };
             let _ = write!(
                 &mut out,
@@ -1020,15 +1026,21 @@ pub(crate) fn render_block_diagram_svg_model_with_theme(
                 fmt(label_tx + label_w / 2.0),
                 fmt(label_ty),
             );
-            crate::svg::parity::label::write_svg_text_centered_with_style(
+            let emitted_style = crate::svg::parity::label::write_svg_text_centered_with_style(
                 &mut out,
                 &label_text,
                 node_svg_text_style,
             );
+            emitted_label_color = typed_label_color.filter(|color| {
+                emitted_style.is_some_and(|style| style.ends_with(&format!("fill:{color};")))
+            });
             out.push_str("</g>");
         }
 
         out.checkpoint()?;
+        if let Some(receipt) = label_paint_receipt.as_mut() {
+            node_label_paint_theme.record_terminal(receipt, node_index, emitted_label_color);
+        }
         out.push_str("</g>");
         out.checkpoint()?;
     }
@@ -1243,6 +1255,7 @@ pub(crate) fn render_block_diagram_svg_model_with_theme(
             .with_max_width(root_svg::RootMaxWidth::CssSixSignificant(root_bounds.width)),
     )?;
     let rooted = root_document.complete(out.finish()?)?;
+    node_label_paint_theme.record_outcomes(label_paint_receipt);
     if let Some(visible) = typography_visible {
         typography_theme.record_visible_labels(visible);
     }

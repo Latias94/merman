@@ -1523,11 +1523,18 @@ fn render_gitgraph_diagram_svg_with_accessibility(
         let mut title_element = String::new();
         let _ = write!(
             &mut title_element,
-            r#"<text text-anchor="middle" x="{x}" y="{y}" class="gitTitleText" xmlns="http://www.w3.org/2000/svg">{text}</text>"#,
+            r#"<text text-anchor="middle" x="{x}" y="{y}" class="gitTitleText" xmlns="http://www.w3.org/2000/svg""#,
             x = fmt_string(title_anchor_x),
             y = fmt(title_y),
-            text = escape_xml(title),
         );
+        if let Some(fill) = text_paint.title_fill_css() {
+            let _ = write!(
+                &mut title_element,
+                r#" style="fill:{};""#,
+                escape_attr(fill)
+            );
+        }
+        let _ = write!(&mut title_element, ">{}</text>", escape_xml(title));
         let close_start =
             out.as_str()
                 .rfind("</svg>")
@@ -1542,7 +1549,7 @@ fn render_gitgraph_diagram_svg_with_accessibility(
         plan.record_terminal(receipt);
     }
     if let Some(receipt) = text_receipt.as_mut() {
-        receipt.record_title(title);
+        receipt.record_title(title, text_paint.title_fill_css());
     }
     if text_receipt.is_some_and(|receipt| !text_paint.record_terminal(receipt)) {
         return Err(crate::Error::InvalidModel {

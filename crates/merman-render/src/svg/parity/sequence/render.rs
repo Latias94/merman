@@ -580,12 +580,24 @@ pub(in crate::svg::parity) fn render_sequence_diagram_svg_model_with_config(
     if let Some(title) = prepared.diagram_title() {
         let _ = write!(
             &mut out,
-            r#"<text x="{x}" y="{y}">{text}</text>"#,
+            r#"<text x="{x}" y="{y}""#,
             x = fmt(title.x()),
             y = fmt(title.y()),
-            text = escape_xml_display(title.text())
         );
+        let fill = prepared.theme_evidence().title_fill_css();
+        if let Some(fill) = fill {
+            let _ = write!(&mut out, r#" fill="{}""#, escape_attr(fill));
+        }
+        let _ = write!(&mut out, ">{}</text>", escape_xml_display(title.text()));
         out.checkpoint()?;
+        if !prepared
+            .theme_evidence()
+            .record_title_emission(title.text(), fill)
+        {
+            return Err(crate::Error::InvalidModel {
+                message: "Sequence title paint did not match the terminal SVG".to_owned(),
+            });
+        }
         if !title.text().trim().is_empty() {
             typography_receipt.record_inherited_text();
         }

@@ -60,6 +60,426 @@ fn tree_view_typography_theme(typography: ThemeTextStyle) -> DiagramTheme {
         .expect("compile Tree View typography theme")
 }
 
+#[test]
+fn tree_view_highlight_paint_and_font_size_share_their_visible_and_measured_consumers() {
+    let source = "treeView-beta\nroot/\n    highlighted.rs :::highlight\n    plain.rs\n";
+    let theme = DiagramThemeCompiler::new()
+        .compile(
+            DiagramThemeSpec::new()
+                .with_typography(
+                    TypographySpec::default()
+                        .with_default(ThemeTextStyle::default().with_font_size_px(24.0).unwrap()),
+                )
+                .with_styles(
+                    ThemeRuleSet::default().with_rule(ThemeRule::new(
+                        ThemeTarget::Node,
+                        ThemeStylePatch::default()
+                            .with_fill(CanvasPaint::solid("#dbeafe").unwrap())
+                            .with_stroke(CanvasPaint::solid("#1d4ed8").unwrap()),
+                    )),
+                ),
+        )
+        .unwrap();
+    let (layout, rendered) = try_render_tree_view_with_theme_and_environment(
+        source,
+        &theme,
+        MermaidEngine::new(),
+        ThemePortabilityRequirement::RequirePortable,
+        &RenderEnvironment::deterministic(),
+        "tree-highlight-theme",
+    )
+    .unwrap();
+    assert_eq!(layout.label_font_size, 24.0);
+    let css = tree_view_stylesheet(rendered.svg());
+    let body = tree_view_css_rule(&css, ".treeView-highlight-bg");
+    assert!(body.contains("fill: #dbeafe;"));
+    assert!(body.contains("stroke: #1d4ed8;"));
+    assert!(tree_view_css_rule(&css, ".treeView-node-label").contains("font-size: 24px;"));
+    let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+    assert_eq!(
+        document
+            .descendants()
+            .filter(|node| node.attribute("class") == Some("treeView-highlight-bg"))
+            .count(),
+        1
+    );
+    drop(document);
+    let evidence = merman_render::__private::family_evidence(rendered.into_completion().report());
+    assert_eq!(evidence.required_count(), 2);
+    assert_eq!(evidence.applied_count(), 2);
+    assert_eq!(evidence.theme_residual_count(), 0);
+}
+
+#[test]
+fn tree_view_highlight_config_owns_fill_without_owning_theme_stroke_or_font_size() {
+    let source = "treeView-beta\nroot/\n    highlighted.rs :::highlight\n";
+    let theme = tree_view_rules_theme([ThemeRule::new(
+        ThemeTarget::Node,
+        ThemeStylePatch::default()
+            .with_fill(CanvasPaint::solid("#dbeafe").unwrap())
+            .with_stroke(CanvasPaint::solid("#1d4ed8").unwrap()),
+    )]);
+    let engine = MermaidEngine::new().with_site_config(
+        merman_core::presentation::SourcePresentationConfig::from_value(serde_json::json!({
+            "themeVariables": {"treeView": {"highlightBg": "#fff7ed"}}
+        })),
+    );
+    let (_, svg) = try_render_tree_view_svg_with_theme_requirement_and_engine(
+        source,
+        &theme,
+        engine,
+        ThemePortabilityRequirement::RequirePortable,
+    )
+    .unwrap();
+    let css = tree_view_stylesheet(&svg);
+    let body = tree_view_css_rule(&css, ".treeView-highlight-bg");
+    assert!(body.contains("fill: #fff7ed;"));
+    assert!(body.contains("stroke: #1d4ed8;"));
+}
+
+#[test]
+fn tree_view_owned_highlight_paint_cannot_hide_a_mixed_rule_geometry_residual() {
+    let source = "treeView-beta\nroot/ :::highlight\n";
+    for stroke in [false, true] {
+        let paint = CanvasPaint::solid("#dbeafe").unwrap();
+        let mut patch = if stroke {
+            ThemeStylePatch::default().with_stroke(paint)
+        } else {
+            ThemeStylePatch::default().with_fill(paint)
+        };
+        patch.geometry.radius = Specified::Value(4.0);
+        let theme = tree_view_rules_theme([ThemeRule::new(ThemeTarget::Node, patch)]);
+        let key = if stroke {
+            "highlightStroke"
+        } else {
+            "highlightBg"
+        };
+        let engine = MermaidEngine::new().with_site_config(
+            merman_core::presentation::SourcePresentationConfig::from_value(serde_json::json!({
+                "themeVariables": {"treeView": {key: "#fff7ed"}}
+            })),
+        );
+        let (_, rendered) = try_render_tree_view_with_theme_and_environment(
+            source,
+            &theme,
+            engine.clone(),
+            ThemePortabilityRequirement::BestEffort,
+            &RenderEnvironment::deterministic(),
+            "tree-highlight-mixed-owner",
+        )
+        .unwrap();
+        let css = tree_view_stylesheet(rendered.svg());
+        assert!(
+            tree_view_css_rule(&css, ".treeView-highlight-bg").contains(&format!(
+                "{}: #fff7ed;",
+                if stroke { "stroke" } else { "fill" }
+            ))
+        );
+        let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+        let highlight = document
+            .descendants()
+            .find(|node| node.attribute("class") == Some("treeView-highlight-bg"))
+            .unwrap();
+        assert_eq!(highlight.attribute("rx"), Some("3"));
+        drop(document);
+        let evidence =
+            merman_render::__private::family_evidence(rendered.into_completion().report());
+        assert_eq!(evidence.required_count(), 1);
+        assert_eq!(evidence.accounted_count(), 1);
+        assert_eq!(evidence.applied_count(), 0);
+        assert_eq!(evidence.not_applicable_count(), 0);
+        assert_eq!(evidence.theme_residual_count(), 1);
+
+        let error = try_render_tree_view_with_theme_and_environment(
+            source,
+            &theme,
+            engine,
+            ThemePortabilityRequirement::RequirePortable,
+            &RenderEnvironment::deterministic(),
+            "tree-highlight-mixed-owner",
+        )
+        .err()
+        .expect("source paint must not consume the unsupported radius");
+        assert_eq!(
+            error.unverified_family_theme(),
+            Some((DiagramFamilyId::TREE_VIEW, 1))
+        );
+        assert_eq!(error.incomplete_family_theme(), None);
+    }
+}
+
+#[test]
+fn tree_view_invalid_highlight_config_leaves_typed_paint_and_measured_font_size_active() {
+    let body = "treeView-beta\nroot/\n    highlighted.rs :::highlight ## description\n";
+    let theme = DiagramThemeCompiler::new()
+        .compile(
+            DiagramThemeSpec::new()
+                .with_typography(
+                    TypographySpec::default()
+                        .with_default(ThemeTextStyle::default().with_font_size_px(24.0).unwrap()),
+                )
+                .with_styles(
+                    ThemeRuleSet::default().with_rule(ThemeRule::new(
+                        ThemeTarget::Node,
+                        ThemeStylePatch::default()
+                            .with_fill(CanvasPaint::solid("#dbeafe").unwrap())
+                            .with_stroke(CanvasPaint::solid("#1d4ed8").unwrap()),
+                    )),
+                ),
+        )
+        .unwrap();
+    for invalid in [
+        serde_json::json!(true),
+        serde_json::json!([]),
+        serde_json::json!({}),
+        serde_json::Value::Null,
+    ] {
+        for owner in ["site", "source"] {
+            let config = serde_json::json!({"themeVariables": {"treeView": {
+                "highlightBg": invalid,
+                "highlightStroke": invalid,
+                "labelFontSize": invalid
+            }}});
+            let (source, engine) = if owner == "source" {
+                (
+                    format!("---\nconfig: {config}\n---\n{body}"),
+                    MermaidEngine::new(),
+                )
+            } else {
+                (
+                    body.to_owned(),
+                    MermaidEngine::new().with_site_config(
+                        merman_core::presentation::SourcePresentationConfig::from_value(config),
+                    ),
+                )
+            };
+            let host = Arc::new(TreeViewFontSizeHost::default());
+            let identity = TextMeasurementProfileIdentity::new(
+                MeasurementProfileId::new("test.tree-view-invalid-theme-font-size").unwrap(),
+                "1",
+            )
+            .unwrap();
+            let environment = RenderEnvironment::deterministic().with_text_measurement_policy(
+                TextMeasurementPolicy::host_display(
+                    identity,
+                    host.clone(),
+                    [TextMeasurementPhase::SvgBBox],
+                ),
+            );
+            let (layout, rendered) = try_render_tree_view_with_theme_and_environment(
+                &source,
+                &theme,
+                engine,
+                ThemePortabilityRequirement::RequirePortable,
+                &environment,
+                "tree-highlight-invalid-config",
+            )
+            .unwrap();
+            assert_eq!(layout.label_font_size, 24.0, "{owner}/{invalid}");
+            let requests = host.requests.lock().unwrap();
+            assert!(
+                requests.iter().any(|(text, _)| text == "highlighted.rs"),
+                "{owner}/{invalid}: missing actual label measurement"
+            );
+            assert!(
+                requests.iter().any(|(text, _)| text == "description"),
+                "{owner}/{invalid}: missing actual description measurement"
+            );
+            assert!(requests.iter().all(|(_, size)| *size == 24.0));
+            drop(requests);
+            let css = tree_view_stylesheet(rendered.svg());
+            let highlight = tree_view_css_rule(&css, ".treeView-highlight-bg");
+            assert!(highlight.contains("fill: #dbeafe;"));
+            assert!(highlight.contains("stroke: #1d4ed8;"));
+            for selector in [".treeView-node-label", ".treeView-node-description"] {
+                assert!(tree_view_css_rule(&css, selector).contains("font-size: 24px;"));
+            }
+            let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+            assert!(
+                document
+                    .descendants()
+                    .any(|node| node.attribute("class") == Some("treeView-highlight-bg"))
+            );
+            drop(document);
+            let evidence =
+                merman_render::__private::family_evidence(rendered.into_completion().report());
+            assert_eq!(evidence.required_count(), 2);
+            assert_eq!(evidence.accounted_count(), 2);
+            assert_eq!(evidence.applied_count(), 2);
+            assert_eq!(evidence.not_applicable_count(), 0);
+            assert_eq!(evidence.theme_residual_count(), 0);
+        }
+    }
+}
+
+#[test]
+fn tree_view_valid_highlight_and_font_config_keep_property_local_ownership() {
+    let body = "treeView-beta\nroot/ :::highlight\n";
+    let theme = DiagramThemeCompiler::new()
+        .compile(
+            DiagramThemeSpec::new()
+                .with_typography(
+                    TypographySpec::default()
+                        .with_default(ThemeTextStyle::default().with_font_size_px(24.0).unwrap()),
+                )
+                .with_styles(
+                    ThemeRuleSet::default().with_rule(ThemeRule::new(
+                        ThemeTarget::Node,
+                        ThemeStylePatch::default()
+                            .with_fill(CanvasPaint::solid("#dbeafe").unwrap())
+                            .with_stroke(CanvasPaint::solid("#1d4ed8").unwrap()),
+                    )),
+                ),
+        )
+        .unwrap();
+    for owner in ["site", "source"] {
+        for (size, css_size) in [
+            (serde_json::json!(20), "20"),
+            (serde_json::json!("20px"), "20px"),
+        ] {
+            let config = serde_json::json!({"themeVariables": {"treeView": {
+                "highlightBg": "#fff7ed",
+                "labelFontSize": size
+            }}});
+            let (source, engine) = if owner == "source" {
+                (
+                    format!("---\nconfig: {config}\n---\n{body}"),
+                    MermaidEngine::new(),
+                )
+            } else {
+                (
+                    body.to_owned(),
+                    MermaidEngine::new().with_site_config(
+                        merman_core::presentation::SourcePresentationConfig::from_value(config),
+                    ),
+                )
+            };
+            let (layout, rendered) = try_render_tree_view_with_theme_and_environment(
+                &source,
+                &theme,
+                engine,
+                ThemePortabilityRequirement::RequirePortable,
+                &RenderEnvironment::deterministic(),
+                "tree-highlight-valid-config",
+            )
+            .unwrap();
+            assert_eq!(layout.label_font_size, 20.0);
+            let css = tree_view_stylesheet(rendered.svg());
+            let highlight = tree_view_css_rule(&css, ".treeView-highlight-bg");
+            assert!(highlight.contains("fill: #fff7ed;"));
+            assert!(highlight.contains("stroke: #1d4ed8;"));
+            assert!(
+                tree_view_css_rule(&css, ".treeView-node-label")
+                    .contains(&format!("font-size: {css_size};"))
+            );
+            let evidence =
+                merman_render::__private::family_evidence(rendered.into_completion().report());
+            assert_eq!(evidence.required_count(), 2);
+            assert_eq!(evidence.accounted_count(), 2);
+            assert_eq!(evidence.applied_count(), 1);
+            assert_eq!(evidence.not_applicable_count(), 1);
+            assert_eq!(evidence.theme_residual_count(), 0);
+        }
+    }
+}
+
+#[test]
+fn tree_view_highlight_static_receipts_require_real_occurrence_winners() {
+    for stroke in [false, true] {
+        let patch = |color| {
+            let paint = CanvasPaint::solid(color).unwrap();
+            if stroke {
+                ThemeStylePatch::default().with_stroke(paint)
+            } else {
+                ThemeStylePatch::default().with_fill(paint)
+            }
+        };
+        for (source, count) in [
+            ("treeView-beta\nroot/ :::highlight\n", 1),
+            (
+                "treeView-beta\nroot/ :::highlight\n    child :::highlight\n",
+                2,
+            ),
+        ] {
+            for (ordinal, static_last) in [(1, false), (1, true), (999, false)] {
+                let mut rules = [
+                    ThemeRule::new(ThemeTarget::Node, patch("#111111")),
+                    ThemeRule::new(ThemeTarget::Node, patch("#222222"))
+                        .with_ordinal(OrdinalSelector::exact(ordinal).unwrap()),
+                ];
+                if static_last {
+                    rules.reverse();
+                }
+                let theme = tree_view_rules_theme(rules);
+                let (_, rendered) = try_render_tree_view_with_theme_and_environment(
+                    source,
+                    &theme,
+                    MermaidEngine::new(),
+                    ThemePortabilityRequirement::BestEffort,
+                    &RenderEnvironment::deterministic(),
+                    "tree-highlight-occurrence-winners",
+                )
+                .unwrap();
+                let css = tree_view_stylesheet(rendered.svg());
+                assert!(
+                    tree_view_css_rule(&css, ".treeView-highlight-bg").contains(&format!(
+                        "{}: #111111;",
+                        if stroke { "stroke" } else { "fill" }
+                    ))
+                );
+                let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+                assert_eq!(
+                    document
+                        .descendants()
+                        .filter(|node| node.attribute("class") == Some("treeView-highlight-bg"))
+                        .count(),
+                    count
+                );
+                drop(document);
+                let evidence =
+                    merman_render::__private::family_evidence(rendered.into_completion().report());
+                let residual = !static_last && ordinal <= count;
+                let applied = !residual || count > 1;
+                assert_eq!(evidence.required_count(), 2);
+                assert_eq!(evidence.accounted_count(), 2);
+                assert_eq!(evidence.applied_count(), usize::from(applied));
+                assert_eq!(
+                    evidence.not_applicable_count(),
+                    usize::from(!residual) + usize::from(!applied)
+                );
+                assert_eq!(evidence.theme_residual_count(), usize::from(residual));
+                if residual {
+                    let error = try_render_tree_view_svg_with_theme(source, &theme)
+                        .expect_err("a winning ordinal paint remains unsupported");
+                    assert_eq!(
+                        error.unverified_family_theme(),
+                        Some((DiagramFamilyId::TREE_VIEW, 1))
+                    );
+                    assert_eq!(error.incomplete_family_theme(), None);
+                } else {
+                    try_render_tree_view_svg_with_theme(source, &theme)
+                        .expect("a shadowed or absent ordinal request is portable");
+                }
+            }
+        }
+    }
+}
+
+#[test]
+fn tree_view_body_theme_without_highlights_preserves_the_unstyled_svg() {
+    let source = "treeView-beta\nroot/\n    plain.rs\n";
+    let theme = tree_view_rules_theme([ThemeRule::new(
+        ThemeTarget::Node,
+        ThemeStylePatch::default().with_fill(CanvasPaint::solid("#dbeafe").unwrap()),
+    )]);
+    let empty = DiagramThemeCompiler::new()
+        .compile(DiagramThemeSpec::new())
+        .unwrap();
+    let (_, themed) = render_tree_view_svg_with_theme(source, &theme);
+    let (_, baseline) = render_tree_view_svg_with_theme(source, &empty);
+    assert_eq!(themed, baseline);
+}
+
 fn tree_view_stylesheet(svg: &str) -> String {
     let document = roxmltree::Document::parse(svg).expect("valid Tree View SVG XML");
     document
@@ -176,6 +596,21 @@ impl HostTextMeasurer for TreeViewBBoxHost {
             TextMeasurementOperation::RawBBoxHeight => Some(HostTextMeasurement::Length(31.0)),
             _ => None,
         })
+    }
+}
+
+#[derive(Default)]
+struct TreeViewFontSizeHost {
+    requests: Mutex<Vec<(String, f64)>>,
+}
+
+impl HostTextMeasurer for TreeViewFontSizeHost {
+    fn measure(&self, request: HostTextMeasurementRequest<'_>) -> HostMeasurementResult {
+        self.requests
+            .lock()
+            .unwrap()
+            .push((request.text.to_owned(), request.style.font_size));
+        Ok(None)
     }
 }
 

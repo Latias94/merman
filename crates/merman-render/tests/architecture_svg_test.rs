@@ -154,6 +154,132 @@ fn architecture_typography_theme(typography: ThemeTextStyle) -> DiagramTheme {
         .expect("compile Architecture typography theme")
 }
 
+#[test]
+fn architecture_cytoscape_title_requests_are_not_applicable_without_a_diagram_title_dom() {
+    for source in [
+        "architecture-beta\ntitle Nonvisual diagram title\nservice api(server)[API]\n",
+        "---\ntitle: Nonvisual diagram title\n---\narchitecture-beta\nservice api(server)[API]\n",
+    ] {
+        let render = |theme: &DiagramTheme| {
+            let (parsed, options, session) = prepare_architecture_with_theme_and_environment(
+                source,
+                theme,
+                MermaidEngine::new(),
+                RenderEnvironment::deterministic(),
+            );
+            family::prepare(&parsed, &options, session)
+                .unwrap()
+                .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+                .unwrap()
+        };
+        let baseline = DiagramThemeCompiler::new()
+            .compile(DiagramThemeSpec::new())
+            .unwrap();
+        let baseline = render(&baseline);
+        for variant in [
+            None,
+            Some(ThemeVariant::Default),
+            Some(ThemeVariant::Primary),
+        ] {
+            let mut rule = ThemeRule::new(
+                ThemeTarget::Title,
+                ThemeStylePatch::default()
+                    .with_fill(CanvasPaint::solid("#2468ac").unwrap())
+                    .with_stroke(CanvasPaint::solid("#987654").unwrap()),
+            );
+            if let Some(variant) = variant {
+                rule = rule.with_variant(variant);
+            }
+            let theme = DiagramThemeCompiler::new()
+                .compile(
+                    DiagramThemeSpec::new().with_styles(ThemeRuleSet::default().with_rule(rule)),
+                )
+                .unwrap();
+            let rendered = render(&theme);
+            assert_eq!(rendered.svg(), baseline.svg());
+            let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+            assert!(
+                document
+                    .descendants()
+                    .any(|node| node.is_text() && node.text() == Some("API"))
+            );
+            assert!(
+                !document.descendants().any(|node| {
+                    node.is_text() && node.text() == Some("Nonvisual diagram title")
+                })
+            );
+            let completion = rendered.into_completion();
+            let evidence = merman_render::__private::family_evidence(completion.report());
+            assert_eq!(evidence.required_count(), 1);
+            assert_eq!(evidence.accounted_count(), 1);
+            assert_eq!(evidence.applied_count(), 0);
+            assert_eq!(evidence.not_applicable_count(), 1);
+            assert_eq!(evidence.theme_residual_count(), 0);
+        }
+    }
+}
+
+#[test]
+fn architecture_all_presets_keep_nonvisual_diagram_titles_not_applicable() {
+    let presets = merman_render::diagram_theme::theme_preset_descriptors();
+    assert_eq!(presets.len(), 11);
+    let source = "---\ntitle: Nonvisual metadata title\n---\narchitecture-beta\ntitle Nonvisual diagram title\ngroup backend(cloud)[Backend]\nservice api(server)[API] in backend\n";
+    for preset in presets {
+        let theme = DiagramThemeCompiler::new()
+            .compile_preset(preset.preset())
+            .unwrap();
+        let parsed = common::install_parse_compatibility(&theme, MermaidEngine::new())
+            .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
+            .unwrap()
+            .unwrap()
+            .into_presentation();
+        let session = RenderEnvironment::deterministic()
+            .with_theme_portability_requirement(ThemePortabilityRequirement::BestEffort)
+            .begin_session_with_theme(&theme)
+            .unwrap();
+        let rendered = family::prepare(&parsed, &LayoutOptions::headless_svg_defaults(), session)
+            .unwrap()
+            .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+            .unwrap();
+        let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+        for label in ["API", "Backend"] {
+            assert!(
+                document
+                    .descendants()
+                    .any(|node| node.is_text() && node.text() == Some(label))
+            );
+        }
+        assert!(!document.descendants().any(|node| {
+            node.is_text()
+                && matches!(
+                    node.text(),
+                    Some("Nonvisual metadata title" | "Nonvisual diagram title")
+                )
+        }));
+        let completion = rendered.into_completion();
+        let evidence = merman_render::__private::family_evidence(completion.report());
+        assert!(evidence.not_applicable_count() > 0, "{}", preset.id());
+        assert_eq!(
+            evidence.accounted_count(),
+            evidence.required_count(),
+            "{}",
+            preset.id()
+        );
+        assert!(
+            completion
+                .report()
+                .theme_diagnostics()
+                .iter()
+                .all(|diagnostic| {
+                    diagnostic.target() != Some(ThemeTarget::Title)
+                        && diagnostic.code() != "evidence-incomplete"
+                }),
+            "{}",
+            preset.id()
+        );
+    }
+}
+
 fn architecture_text_fill_theme(fill: CanvasPaint, variant: Option<ThemeVariant>) -> DiagramTheme {
     let rule = ThemeRule::new(
         ThemeTarget::Text,

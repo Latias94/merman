@@ -585,6 +585,10 @@ pub(crate) struct FlowchartClusterThemeStyle {
 }
 
 impl FlowchartClusterThemeStyle {
+    pub(crate) fn requests_shape_style(&self) -> bool {
+        self.fill.is_some() || self.stroke.is_some() || self.stroke_width.is_some()
+    }
+
     pub(crate) fn resolve(
         theme: Option<&ResolvedDiagramTheme>,
         ordinal: Option<usize>,

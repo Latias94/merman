@@ -92,12 +92,13 @@ fn prepare_flowchart_artifact<'parsed, L>(
         svg_label_sidecar.base_typography(),
         svg_label_sidecar.edge_label_padding(),
     );
-    edge_style_plan.bind_terminal_typography(
+    edge_style_plan.bind_terminal_typography_with_theme(
         &render_config.text_style,
         matches!(
             layout_view(&layout),
             crate::svg::FlowchartNodeLayoutView::Swimlane(_)
         ),
+        &svg_label_sidecar.label_typography(),
     )?;
     let prepared_nodes = crate::svg::FlowchartPreparedNodes::prepare(
         &semantic,
@@ -1521,6 +1522,8 @@ pub(super) fn prepare_non_class_render<'parsed>(
                 crate::usecase::prepare_usecase_diagram(
                     model,
                     &meta.effective_config,
+                    execution.resolved_theme(),
+                    meta.title.as_deref(),
                     execution.text_measurer(),
                     execution.math_renderer(),
                     execution.work_meter(),

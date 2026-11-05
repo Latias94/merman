@@ -1,5 +1,6 @@
 //! Flowchart node shape dispatch.
 
+use super::super::emission::FlowchartNodeShapeRenderOutcome;
 use crate::flowchart::FlowchartShape;
 use crate::svg::parity::flowchart::escape_attr;
 use crate::svg::parity::fmt;
@@ -170,13 +171,16 @@ pub(in super::super) fn render_flowchart_shape(
             return missing_asset_error(common.shape, "image");
         }
         FlowchartShape::InvertedTrapezoid => {
-            super::render_inv_trapezoid(out, common, details);
+            let receipt = super::render_inv_trapezoid(out, common, details);
+            return Ok(FlowchartNodeShapeRenderOutcome::new(false, receipt));
         }
         FlowchartShape::LeanLeft => {
-            super::render_lean_left(out, common, details);
+            let receipt = super::render_lean_left(out, common, details);
+            return Ok(FlowchartNodeShapeRenderOutcome::new(false, receipt));
         }
         FlowchartShape::LeanRight => {
-            super::render_lean_right(out, common, details);
+            let receipt = super::render_lean_right(out, common, details);
+            return Ok(FlowchartNodeShapeRenderOutcome::new(false, receipt));
         }
         FlowchartShape::LinedCylinder => {
             super::render_lined_cylinder(out, ctx, common, label);
@@ -231,7 +235,8 @@ pub(in super::super) fn render_flowchart_shape(
             super::render_stadium(out, ctx, common, label, details);
         }
         FlowchartShape::Subroutine => {
-            super::render_subroutine(out, common);
+            let receipt = super::render_subroutine(out, common);
+            return Ok(FlowchartNodeShapeRenderOutcome::new(false, receipt));
         }
         FlowchartShape::TaggedDocument => {
             super::render_tagged_wave_document(out, ctx, common, label, details);
@@ -253,7 +258,8 @@ pub(in super::super) fn render_flowchart_shape(
             );
         }
         FlowchartShape::Trapezoid => {
-            super::render_trapezoid(out, common, details);
+            let receipt = super::render_trapezoid(out, common, details);
+            return Ok(FlowchartNodeShapeRenderOutcome::new(false, receipt));
         }
         FlowchartShape::Triangle => {
             super::render_triangle_extract(out, ctx, common, label, details);

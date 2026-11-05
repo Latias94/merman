@@ -6787,7 +6787,141 @@ fn try_render_sequence_theme_request(
 }
 
 #[test]
-fn sequence_text_and_title_fill_have_no_legacy_writer_consumer() {
+fn sequence_title_fill_keeps_source_ownership_and_unsupported_siblings_property_local() {
+    for variant in [None, Some(ThemeVariant::Default)] {
+        for (paint, css) in [
+            (CanvasPaint::solid("#2468ac").unwrap(), "#2468ac"),
+            (CanvasPaint::Transparent, "transparent"),
+        ] {
+            for (title, channel, stroke) in [
+                (true, "none", false),
+                (false, "none", false),
+                (true, "site", false),
+                (true, "source", false),
+                (true, "none", true),
+                (true, "site", true),
+                (true, "source", true),
+            ] {
+                let mut patch = ThemeStylePatch::default().with_fill(paint.clone());
+                if stroke {
+                    patch = patch.with_stroke(CanvasPaint::solid("#987654").unwrap());
+                }
+                let mut rule = ThemeRule::new(ThemeTarget::Title, patch);
+                if let Some(variant) = variant {
+                    rule = rule.with_variant(variant);
+                }
+                let theme = DiagramThemeCompiler::new()
+                    .compile(
+                        DiagramThemeSpec::new()
+                            .with_styles(ThemeRuleSet::default().with_rule(rule)),
+                    )
+                    .unwrap();
+                let mut header = String::new();
+                if title || channel == "source" {
+                    header.push_str("---\n");
+                    if title {
+                        header.push_str("title: Paint title\n");
+                    }
+                    if channel == "source" {
+                        header.push_str("config:\n  themeVariables:\n    textColor: '#abcdef'\n");
+                    }
+                    header.push_str("---\n");
+                }
+                let source = format!("{header}sequenceDiagram\nA->>B: Message\n");
+                let engine = if channel == "site" {
+                    MermaidEngine::new().with_site_config(
+                        merman_core::presentation::SourcePresentationConfig::from_value(
+                            serde_json::json!({"themeVariables": {"textColor": "#abcdef"}}),
+                        ),
+                    )
+                } else {
+                    MermaidEngine::new()
+                };
+                let rendered = try_render_sequence_theme_request(
+                    &source,
+                    &theme,
+                    engine,
+                    ThemePortabilityRequirement::BestEffort,
+                )
+                .unwrap();
+                let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+                let title_node = document
+                    .descendants()
+                    .find(|node| node.has_tag_name("text") && node.text() == Some("Paint title"));
+                assert_eq!(title_node.is_some(), title);
+                let owned = channel != "none";
+                if let Some(title_node) = title_node {
+                    assert_eq!(title_node.attribute("fill"), (!owned).then_some(css));
+                }
+                let completion = rendered.into_completion();
+                let evidence = merman_render::__private::family_evidence(completion.report());
+                assert_eq!(evidence.required_count(), 1);
+                assert_eq!(evidence.accounted_count(), 1);
+                assert_eq!(
+                    evidence.applied_count(),
+                    usize::from(title && !owned && !stroke)
+                );
+                assert_eq!(
+                    evidence.not_applicable_count(),
+                    usize::from(!title || (owned && !stroke))
+                );
+                assert_eq!(
+                    evidence.theme_residual_count(),
+                    usize::from(title && stroke)
+                );
+            }
+        }
+    }
+}
+
+#[test]
+fn sequence_all_presets_consume_visible_title_fill_without_title_residuals() {
+    let presets = merman_render::diagram_theme::theme_preset_descriptors();
+    assert_eq!(presets.len(), 11);
+    let source = "---\ntitle: Paint title\n---\nsequenceDiagram\nA->>B: Message\n";
+    for preset in presets {
+        let theme = DiagramThemeCompiler::new()
+            .compile_preset(preset.preset())
+            .unwrap();
+        let rendered = try_render_sequence_theme_request(
+            source,
+            &theme,
+            MermaidEngine::new(),
+            ThemePortabilityRequirement::BestEffort,
+        )
+        .unwrap();
+        let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+        let title = document
+            .descendants()
+            .find(|node| node.has_tag_name("text") && node.text() == Some("Paint title"))
+            .unwrap();
+        assert!(title.attribute("fill").is_some(), "{}", preset.id());
+        let completion = rendered.into_completion();
+        let evidence = merman_render::__private::family_evidence(completion.report());
+        assert!(evidence.applied_count() > 0, "{}", preset.id());
+        assert_eq!(
+            evidence.accounted_count(),
+            evidence.required_count(),
+            "{}",
+            preset.id()
+        );
+        assert!(
+            completion
+                .report()
+                .theme_diagnostics()
+                .iter()
+                .all(|diagnostic| {
+                    diagnostic.target() != Some(ThemeTarget::Title)
+                        && diagnostic.code() != "evidence-incomplete"
+                }),
+            "{}",
+            preset.id()
+        );
+    }
+}
+
+#[test]
+fn sequence_title_fill_and_text_fallback_reach_the_real_terminal() {
     let source = "sequenceDiagram\ntitle Diagram title\nbox Group\nparticipant A\nend\nparticipant B\nA->>B: Message\nloop Repeat\nNote over A,B: Note\nB-->>A: Reply\nend\n";
     for look in ["classic", "neo", "handDrawn"] {
         for variables in [
@@ -6808,9 +6942,9 @@ fn sequence_text_and_title_fill_have_no_legacy_writer_consumer() {
             assert!(baseline.svg().contains("Diagram title"));
             for target in [ThemeTarget::Text, ThemeTarget::Title] {
                 for variant in [None, Some(ThemeVariant::Default)] {
-                    for paint in [
-                        CanvasPaint::solid("#d12345").unwrap(),
-                        CanvasPaint::Transparent,
+                    for (paint, css) in [
+                        (CanvasPaint::solid("#d12345").unwrap(), "#d12345"),
+                        (CanvasPaint::Transparent, "transparent"),
                     ] {
                         let mut rule =
                             ThemeRule::new(target, ThemeStylePatch::default().with_fill(paint));
@@ -6825,18 +6959,34 @@ fn sequence_text_and_title_fill_have_no_legacy_writer_consumer() {
                             .unwrap();
                         let rendered =
                             render(&theme, ThemePortabilityRequirement::BestEffort).unwrap();
-                        assert_eq!(
-                            rendered.svg(),
-                            baseline.svg(),
-                            "{look}/{target:?}/{variant:?}/{variables}"
-                        );
+                        let source_owned = variables.get("textColor").is_some();
+                        assert_eq!(rendered.svg() == baseline.svg(), source_owned);
+                        let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+                        let title = document
+                            .descendants()
+                            .find(|node| {
+                                node.has_tag_name("text") && node.text() == Some("Diagram title")
+                            })
+                            .unwrap();
+                        assert_eq!(title.attribute("fill"), (!source_owned).then_some(css));
                         let completion = rendered.into_completion();
                         let evidence =
                             merman_render::__private::family_evidence(completion.report());
-                        assert_eq!(evidence.applied_count(), 0);
-                        assert_eq!(evidence.theme_residual_count(), 1);
-                        assert!(
-                            render(&theme, ThemePortabilityRequirement::RequirePortable).is_err()
+                        let title_rule = target == ThemeTarget::Title;
+                        assert_eq!(evidence.required_count(), 1);
+                        assert_eq!(evidence.accounted_count(), 1);
+                        assert_eq!(
+                            evidence.applied_count(),
+                            usize::from(title_rule && !source_owned)
+                        );
+                        assert_eq!(
+                            evidence.not_applicable_count(),
+                            usize::from(title_rule && source_owned)
+                        );
+                        assert_eq!(evidence.theme_residual_count(), usize::from(!title_rule));
+                        assert_eq!(
+                            render(&theme, ThemePortabilityRequirement::RequirePortable).is_ok(),
+                            title_rule,
                         );
                     }
                 }
@@ -6860,17 +7010,19 @@ fn sequence_unsupported_text_domains_follow_occurrences_and_winners() {
         )
     };
     let source = "sequenceDiagram\ntitle Diagram title\nA->>B: Message\n";
-    for (source, rules, not_applicable, residuals) in [
-        ("sequenceDiagram\nA->>B: Message\n", vec![title()], 1, 0),
+    for (source, rules, applied, not_applicable, residuals) in [
+        ("sequenceDiagram\nA->>B: Message\n", vec![title()], 0, 1, 0),
         (
             "sequenceDiagram\ntitle Diagram title\nparticipant A\n",
             vec![text(), title()],
+            1,
             0,
-            2,
+            1,
         ),
         (
             source,
             vec![title().with_ordinal(OrdinalSelector::exact(2).unwrap())],
+            0,
             1,
             0,
         ),
@@ -6878,17 +7030,20 @@ fn sequence_unsupported_text_domains_follow_occurrences_and_winners() {
             source,
             vec![text().with_ordinal(OrdinalSelector::exact(2).unwrap())],
             0,
+            0,
             1,
         ),
         (
             source,
             vec![text().with_ordinal(OrdinalSelector::exact(1000).unwrap())],
+            0,
             1,
             0,
         ),
         (
             source,
             vec![text().with_variant(ThemeVariant::Default), text()],
+            0,
             1,
             1,
         ),
@@ -6900,6 +7055,7 @@ fn sequence_unsupported_text_domains_follow_occurrences_and_winners() {
             ],
             1,
             1,
+            0,
         ),
     ] {
         let theme = DiagramThemeCompiler::new()
@@ -6920,10 +7076,13 @@ fn sequence_unsupported_text_domains_follow_occurrences_and_winners() {
         .unwrap();
         let completion = rendered.into_completion();
         let evidence = merman_render::__private::family_evidence(completion.report());
-        assert_eq!(evidence.applied_count(), 0);
+        assert_eq!(evidence.applied_count(), applied);
         assert_eq!(evidence.not_applicable_count(), not_applicable, "{source}");
         assert_eq!(evidence.theme_residual_count(), residuals, "{source}");
-        assert_eq!(evidence.accounted_count(), not_applicable + residuals);
+        assert_eq!(
+            evidence.accounted_count(),
+            applied + not_applicable + residuals
+        );
         assert_eq!(
             try_render_sequence_theme_request(
                 source,

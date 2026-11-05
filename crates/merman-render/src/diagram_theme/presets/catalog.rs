@@ -293,7 +293,7 @@ const PRESET_CATALOG: [PresetCatalogEntry; 11] = [
             activation_background: "#334155",
             activation_border: "#64748b",
             sequence_number_text: "#0f172a",
-            packet_field_label_text: "#0f172a",
+            packet_field_label_text: "#e5e7eb",
             gantt_active_text: "#0f172a",
             gantt_critical: "#fb7185",
             gantt_critical_text: "#0f172a",
@@ -331,7 +331,7 @@ const PRESET_CATALOG: [PresetCatalogEntry; 11] = [
             activation_background: "#3e4451",
             activation_border: "#5c6370",
             sequence_number_text: "#282c34",
-            packet_field_label_text: "#282c34",
+            packet_field_label_text: "#abb2bf",
             gantt_active_text: "#21252b",
             gantt_critical: "#e06c75",
             gantt_critical_text: "#21252b",
@@ -410,7 +410,7 @@ const PRESET_CATALOG: [PresetCatalogEntry; 11] = [
             activation_background: "#504945",
             activation_border: "#7c6f64",
             sequence_number_text: "#282828",
-            packet_field_label_text: "#282828",
+            packet_field_label_text: "#ebdbb2",
             gantt_active_text: "#282828",
             gantt_critical: "#fb4934",
             gantt_critical_text: "#282828",
@@ -489,7 +489,7 @@ const PRESET_CATALOG: [PresetCatalogEntry; 11] = [
             activation_background: "#343b48",
             activation_border: "#4f5866",
             sequence_number_text: "#0b0e14",
-            packet_field_label_text: "#0b0e14",
+            packet_field_label_text: "#bfbdb6",
             gantt_active_text: "#0b0e14",
             gantt_critical: "#f07178",
             gantt_critical_text: "#0b0e14",
@@ -606,7 +606,7 @@ const PRESET_CATALOG: [PresetCatalogEntry; 11] = [
             activation_background: "rgba(0, 242, 255, 0.1)",
             activation_border: "#00f2ff",
             sequence_number_text: "#051423",
-            packet_field_label_text: "#051423",
+            packet_field_label_text: "#00f2ff",
             gantt_active_text: "#051423",
             gantt_critical: "#fb7185",
             gantt_critical_text: "#051423",
@@ -1033,12 +1033,66 @@ pub(super) fn build_cross_family_recipe(palette: PresetPalette) -> ThemeDesignV1
         DiagramFamilyId::CLASS,
         DiagramFamilyId::TREE_VIEW,
         DiagramFamilyId::BLOCK,
+        DiagramFamilyId::AGENTFLOW,
+        DiagramFamilyId::USECASE,
+        DiagramFamilyId::VENN,
+        DiagramFamilyId::ISHIKAWA,
+        DiagramFamilyId::RAILROAD,
+        DiagramFamilyId::EVENT_MODELING,
+        DiagramFamilyId::PACKET,
+        DiagramFamilyId::CYNEFIN,
+        DiagramFamilyId::WARDLEY,
+        DiagramFamilyId::TREEMAP,
     ] {
         design.rules.push(rule(
             Some(family),
             ThemeTarget::Node,
             None,
             style(Some("surface"), None),
+        ));
+    }
+    for family in [
+        DiagramFamilyId::ISHIKAWA,
+        DiagramFamilyId::RAILROAD,
+        DiagramFamilyId::EVENT_MODELING,
+        DiagramFamilyId::CYNEFIN,
+        DiagramFamilyId::WARDLEY,
+    ] {
+        design.rules.push(rule(
+            Some(family),
+            ThemeTarget::Marker,
+            None,
+            style(Some("line"), None),
+        ));
+    }
+    for family in [
+        DiagramFamilyId::VENN,
+        DiagramFamilyId::ISHIKAWA,
+        DiagramFamilyId::RAILROAD,
+        DiagramFamilyId::EVENT_MODELING,
+        DiagramFamilyId::CYNEFIN,
+        DiagramFamilyId::WARDLEY,
+        DiagramFamilyId::TREEMAP,
+    ] {
+        design.rules.push(rule(
+            Some(family),
+            ThemeTarget::NodeLabel,
+            None,
+            style(Some("text"), None),
+        ));
+    }
+    design.rules.push(rule(
+        Some(DiagramFamilyId::EVENT_MODELING),
+        ThemeTarget::ClusterLabel,
+        None,
+        style(Some("text"), None),
+    ));
+    for family in [DiagramFamilyId::CYNEFIN, DiagramFamilyId::WARDLEY] {
+        design.rules.push(rule(
+            Some(family),
+            ThemeTarget::EdgeLabel,
+            None,
+            style(Some("text"), None),
         ));
     }
     for (family, target, fill, stroke) in [

@@ -88,7 +88,7 @@ pub(crate) fn render_eventmodeling_diagram_svg_with_text_theme(
         out.checkpoint()?;
     }
 
-    for box_layout in &layout.boxes {
+    for (ordinal, box_layout) in layout.boxes.iter().enumerate() {
         let _ = write!(
             &mut out,
             r#"<g class="em-box"><rect x="{}" y="{}" rx="3" width="{}" height="{}" stroke="{}" fill="{}"></rect><foreignObject x="{}" y="{}" width="{}" height="{}">"#,
@@ -96,8 +96,8 @@ pub(crate) fn render_eventmodeling_diagram_svg_with_text_theme(
             fmt(box_layout.y),
             fmt(box_layout.width),
             fmt(box_layout.height),
-            escape_attr_display(&box_layout.stroke),
-            escape_attr_display(&box_layout.fill),
+            escape_attr_display(text_theme.box_stroke(ordinal, &box_layout.stroke)),
+            escape_attr_display(text_theme.box_fill(ordinal, &box_layout.fill)),
             fmt(box_layout.x + BOX_TEXT_PADDING),
             fmt(box_layout.y + BOX_TEXT_PADDING),
             fmt((box_layout.width - 2.0 * BOX_TEXT_PADDING).max(1.0)),
@@ -114,7 +114,7 @@ pub(crate) fn render_eventmodeling_diagram_svg_with_text_theme(
         let _ = write!(
             &mut out,
             r#"<path class="em-relation" fill="none" stroke="{}" stroke-width="1" marker-end="url(#em-arrowhead-{diagram_id})" d="M{} {} L{} {}"></path>"#,
-            escape_attr_display(&relation.stroke),
+            escape_attr_display(text_theme.relation_stroke(&relation.stroke)),
             fmt(relation.x1),
             fmt(relation.y1),
             fmt(relation.x2),
@@ -132,6 +132,7 @@ pub(crate) fn render_eventmodeling_diagram_svg_with_text_theme(
     out.push_str(r#""></polygon></marker></defs></svg>"#);
     out.push('\n');
     let rooted_svg = root_document.complete(out.finish()?)?;
+    text_theme.record_terminal();
     Ok(rooted_svg)
 }
 

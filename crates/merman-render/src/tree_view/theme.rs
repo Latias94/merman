@@ -31,11 +31,18 @@ pub(crate) struct TreeViewThemePlan {
     expected_line_count: Option<NonZeroUsize>,
     has_visible_typography: bool,
     label_color: Option<TreeViewPaintAssignment>,
+    highlight_fill: Option<TreeViewPaintAssignment>,
+    highlight_stroke: Option<TreeViewPaintAssignment>,
+    highlight_paint_winners: BTreeSet<(usize, ResolvedStyleProperty)>,
+    expected_highlight_count: usize,
     line_color: Option<TreeViewPaintAssignment>,
     icon_color: Option<TreeViewPaintAssignment>,
     icon_fallback_color: Option<Box<str>>,
     inherited_font_stack: InheritedFontStackPlan,
+    typed_font_size_requested: bool,
+    config_owns_font_size: bool,
     evidence: FamilyThemeOutcomes,
+    highlight_fallbacks: FamilyThemeOutcomes,
     pending_stroke_width_key: Option<FamilyThemeMechanismKey>,
     terminal_receipt: OnceLock<TreeViewThemeReceipt>,
 }
@@ -200,7 +207,20 @@ impl TreeViewThemePlan {
                 false,
             ));
         };
-        let (node_count, expected_line_count) = tree_view_terminal_counts(&model.root);
+        let typed_font_size_requested = theme.family_mechanism_routes().iter().any(|route| {
+            route.mechanism()
+                == FamilyThemeMechanism::BaseTypography(ThemeTypographyProperty::FontSize)
+                && route.disposition() == FamilyThemeDisposition::TypedAdapter
+        });
+        let config_owns_font_size = effective_config
+            .config_path_overrides_typed_default("themeVariables.treeView.labelFontSize")
+            && TreeViewCssBinding::configured_font_size_css(effective_config.as_value()).is_some();
+        if typed_font_size_requested && !config_owns_font_size {
+            css.label_font_size = f64::from(theme.typography().font_size_px());
+            css.label_font_size_css = format!("{}px", theme.typography().font_size_px());
+        }
+        let (node_count, expected_line_count, expected_highlight_count) =
+            tree_view_terminal_counts(&model.root);
         let mut paint_residuals =
             BTreeMap::<FamilyThemeMechanismKey, FamilyThemeResidualReason>::new();
 
@@ -271,6 +291,81 @@ impl TreeViewThemePlan {
             .config_paint_overrides_typed_default("themeVariables.treeView.lineColor");
         let icon_config_owned = effective_config
             .config_paint_overrides_typed_default("themeVariables.treeView.iconColor");
+        let highlight_config_owns_fill = effective_config
+            .config_paint_overrides_typed_default("themeVariables.treeView.highlightBg")
+            && TreeViewCssBinding::configured_color(effective_config.as_value(), "highlightBg")
+                .is_some();
+        let highlight_config_owns_stroke = effective_config
+            .config_paint_overrides_typed_default("themeVariables.treeView.highlightStroke")
+            && TreeViewCssBinding::configured_color(effective_config.as_value(), "highlightStroke")
+                .is_some();
+        let highlight_style = theme.style_with_work_meter(
+            ThemeTarget::Node,
+            ThemeVariant::Default,
+            None,
+            work_meter,
+        )?;
+        let assignment = |paint: DirectStaticPaint| TreeViewPaintAssignment {
+            key: FamilyThemeMechanismKey::Rule {
+                index: paint.rule_index(),
+                target: ThemeTarget::Node,
+            },
+            paint,
+        };
+        let highlight_fill = (expected_highlight_count != 0 && !highlight_config_owns_fill)
+            .then(|| {
+                resolve_direct_static_fill(
+                    theme,
+                    &highlight_style,
+                    &[ThemeTarget::Node],
+                    DirectStaticSelectorDomain::Default,
+                )
+            })
+            .flatten()
+            .map(assignment);
+        let highlight_stroke = (expected_highlight_count != 0 && !highlight_config_owns_stroke)
+            .then(|| {
+                resolve_direct_static_stroke(
+                    theme,
+                    &highlight_style,
+                    &[ThemeTarget::Node],
+                    DirectStaticSelectorDomain::Default,
+                )
+            })
+            .flatten()
+            .map(assignment);
+        let mut highlight_paint_winners = BTreeSet::new();
+        if expected_highlight_count != 0 {
+            let has_ordinal_rules = theme.family_rules().any(|(_, rule)| {
+                rule.target() == ThemeTarget::Node
+                    && rule.ordinal().is_some()
+                    && matches!(rule.variant(), None | Some(ThemeVariant::Default))
+            });
+            for ordinal in 1..=if has_ordinal_rules {
+                expected_highlight_count
+            } else {
+                1
+            } {
+                work_meter.charge(1)?;
+                let style = theme.style_with_work_meter(
+                    ThemeTarget::Node,
+                    ThemeVariant::Default,
+                    Some(ordinal),
+                    work_meter,
+                )?;
+                highlight_paint_winners.extend(
+                    style
+                        .winner_rule_properties()
+                        .filter(|(property, _)| {
+                            matches!(
+                                property,
+                                ResolvedStyleProperty::Fill | ResolvedStyleProperty::Stroke
+                            )
+                        })
+                        .map(|(property, origin)| (origin.rule_index(), property)),
+                );
+            }
+        }
         // The resolved text style already includes the generic Text cascade.
         let label_style = theme.text_style_with_work_meter(
             ThemeTarget::NodeLabel,
@@ -401,15 +496,27 @@ impl TreeViewThemePlan {
             None => label_domain,
         };
         let absent = TerminalVariantDomain::uniform(0, ThemeVariant::Default);
+        work_meter.charge(expected_highlight_count.saturating_mul(2))?;
+        let highlight_fill_ownership = vec![highlight_config_owns_fill; expected_highlight_count];
+        let highlight_stroke_ownership =
+            vec![highlight_config_owns_stroke; expected_highlight_count];
+        let mut highlight_fallbacks = FamilyThemeOutcomes::default();
+        reconcile_unsupported_terminal_domains(
+            theme,
+            &mut highlight_fallbacks,
+            &[UnsupportedTerminalDomain::direct(
+                ThemeTarget::Node,
+                TerminalVariantDomain::uniform(expected_highlight_count, ThemeVariant::Default),
+            )
+            .with_source_owned_fill(&highlight_fill_ownership)
+            .with_source_owned_stroke(&highlight_stroke_ownership)],
+            work_meter,
+        )?;
         reconcile_unsupported_terminal_domains(
             theme,
             &mut evidence,
             &[
                 label_domain,
-                UnsupportedTerminalDomain::direct(
-                    ThemeTarget::Node,
-                    TerminalVariantDomain::uniform(node_count, ThemeVariant::Default),
-                ),
                 UnsupportedTerminalDomain::direct(ThemeTarget::Title, absent),
                 UnsupportedTerminalDomain::direct(ThemeTarget::EdgeLabelBackground, absent),
                 UnsupportedTerminalDomain::direct(ThemeTarget::Cluster, absent),
@@ -422,7 +529,7 @@ impl TreeViewThemePlan {
             work_meter,
         )?;
 
-        let selected_paint_keys = [
+        let mut selected_paint_keys = [
             label_color.as_ref(),
             line_color.as_ref(),
             icon_color.as_ref(),
@@ -431,6 +538,16 @@ impl TreeViewThemePlan {
         .flatten()
         .map(|assignment| assignment.key.clone())
         .collect::<BTreeSet<_>>();
+        for (property, assignment) in [
+            (ResolvedStyleProperty::Fill, highlight_fill.as_ref()),
+            (ResolvedStyleProperty::Stroke, highlight_stroke.as_ref()),
+        ] {
+            if let Some(assignment) = assignment
+                && highlight_paint_winners.contains(&(assignment.paint.rule_index(), property))
+            {
+                selected_paint_keys.insert(assignment.key.clone());
+            }
+        }
         let pending_stroke_width_key = pending_stroke_width_key.clone();
         for route in theme.family_mechanism_routes().iter().copied() {
             let key = theme.family_mechanism_key(route);
@@ -439,6 +556,7 @@ impl TreeViewThemePlan {
                 FamilyThemeMechanism::RuleFacet {
                     target:
                         ThemeTarget::NodeLabel
+                        | ThemeTarget::Node
                         | ThemeTarget::Text
                         | ThemeTarget::Edge
                         | ThemeTarget::Marker,
@@ -479,17 +597,30 @@ impl TreeViewThemePlan {
         if let Some(width) = &line_thickness_override {
             css.line_thickness = width.value_px;
         }
+        if let Some(assignment) = &highlight_fill {
+            css.highlight_bg = assignment.paint.css().to_owned();
+        }
+        if let Some(assignment) = &highlight_stroke {
+            css.highlight_stroke = assignment.paint.css().to_owned();
+        }
         Ok(Self {
             css,
             line_thickness_override,
             expected_line_count: NonZeroUsize::new(expected_line_count),
             has_visible_typography: node_count != 0,
             label_color,
+            highlight_fill,
+            highlight_stroke,
+            highlight_paint_winners,
+            expected_highlight_count,
             line_color,
             icon_color,
             icon_fallback_color,
             inherited_font_stack,
+            typed_font_size_requested,
+            config_owns_font_size,
             evidence,
+            highlight_fallbacks,
             pending_stroke_width_key,
             terminal_receipt: OnceLock::new(),
         })
@@ -520,11 +651,18 @@ impl TreeViewThemePlan {
             expected_line_count,
             has_visible_typography,
             label_color: None,
+            highlight_fill: None,
+            highlight_stroke: None,
+            highlight_paint_winners: BTreeSet::new(),
+            expected_highlight_count: 0,
             line_color: None,
             icon_color: None,
             icon_fallback_color: None,
             inherited_font_stack,
+            typed_font_size_requested: false,
+            config_owns_font_size: false,
             evidence: FamilyThemeOutcomes::default(),
+            highlight_fallbacks: FamilyThemeOutcomes::default(),
             pending_stroke_width_key: None,
             terminal_receipt: OnceLock::new(),
         }
@@ -552,10 +690,42 @@ impl TreeViewThemePlan {
     }
 
     pub(crate) fn record_evidence(&self, evidence: &mut FamilyThemeEvidence) {
+        for residual in self.highlight_fallbacks.residuals() {
+            evidence.mark_residual(residual.key().clone(), residual.reason());
+        }
         evidence.merge_borrowed(&self.evidence);
+        if self.typed_font_size_requested {
+            let key = FamilyThemeMechanismKey::Typography(ThemeTypographyProperty::FontSize);
+            if self.config_owns_font_size || !self.has_visible_typography {
+                evidence.mark_not_applicable(key);
+            } else if self.terminal_receipt.get().is_some() {
+                evidence.mark_applied_with_capabilities(key, [ThemeCapability::Typography]);
+            } else {
+                evidence.mark_residual(key, FamilyThemeResidualReason::UnsupportedTypography);
+            }
+        }
         self.inherited_font_stack
             .record_unsupported_typography_evidence(evidence, self.has_visible_typography);
         if let Some(receipt) = self.terminal_receipt.get() {
+            for (property, assignment) in [
+                (ResolvedStyleProperty::Fill, self.highlight_fill.as_ref()),
+                (
+                    ResolvedStyleProperty::Stroke,
+                    self.highlight_stroke.as_ref(),
+                ),
+            ] {
+                if let Some(assignment) = assignment
+                    && receipt.highlights_seen != 0
+                    && self
+                        .highlight_paint_winners
+                        .contains(&(assignment.paint.rule_index(), property))
+                {
+                    evidence.mark_applied_with_capabilities(
+                        assignment.key.clone(),
+                        [assignment.paint.capability()],
+                    );
+                }
+            }
             if let Some(key) = self.pending_stroke_width_key.clone() {
                 evidence.mark_applied_with_capabilities(key, [ThemeCapability::BorderStyling]);
             }
@@ -613,6 +783,7 @@ impl TreeViewThemePlan {
                 InheritedFontStackOutcome::Inactive => {}
             }
         }
+        evidence.merge_borrowed(&self.highlight_fallbacks);
     }
 
     pub(crate) fn label_color_css(&self) -> &str {
@@ -640,22 +811,37 @@ impl TreeViewThemePlan {
         count_icons: impl FnOnce() -> usize,
     ) -> Option<TreeViewThemeReceipt> {
         let expected_line_count = self.expected_line_count?;
-        Some(TreeViewThemeReceipt::new(
-            self.label_color
-                .as_ref()
-                .map(|assignment| assignment.paint.css()),
-            self.line_color
-                .as_ref()
-                .map(|assignment| assignment.paint.css()),
-            self.typed_icon_color_css(),
-            self.inherited_font_stack.font_family_css(),
-            label_count,
-            count_icons(),
-            expected_line_count.get(),
-            self.line_thickness_override
-                .as_ref()
-                .map(|width| width.token.as_ref()),
-        ))
+        Some(
+            TreeViewThemeReceipt::new(
+                self.label_color
+                    .as_ref()
+                    .map(|assignment| assignment.paint.css()),
+                self.line_color
+                    .as_ref()
+                    .map(|assignment| assignment.paint.css()),
+                self.typed_icon_color_css(),
+                self.inherited_font_stack.font_family_css(),
+                label_count,
+                count_icons(),
+                expected_line_count.get(),
+                self.line_thickness_override
+                    .as_ref()
+                    .map(|width| width.token.as_ref()),
+            )
+            .with_highlights(
+                self.highlight_fill
+                    .as_ref()
+                    .map(|assignment| assignment.paint.css()),
+                self.highlight_stroke
+                    .as_ref()
+                    .map(|assignment| assignment.paint.css()),
+                self.expected_highlight_count,
+            )
+            .with_font_size(
+                self.typed_font_size_requested
+                    .then_some(self.css.label_font_size_css.as_str()),
+            ),
+        )
     }
 }
 
@@ -704,24 +890,35 @@ fn has_direct_static_stroke_width_route(
         })
 }
 
-fn tree_view_terminal_counts(root: &TreeViewNode) -> (usize, usize) {
+fn tree_view_terminal_counts(root: &TreeViewNode) -> (usize, usize, usize) {
     let mut node_count = 0usize;
     let mut line_count = 0usize;
+    let mut highlight_count = 0usize;
     let mut stack = vec![root];
     while let Some(node) = stack.pop() {
         node_count = node_count.saturating_add(1);
         line_count = line_count.saturating_add(1);
+        if super::is_tree_view_highlight_class(node.css_class.as_deref()) {
+            highlight_count = highlight_count.saturating_add(1);
+        }
         if !node.children.is_empty() {
             line_count = line_count.saturating_add(1);
         }
         stack.extend(node.children.iter());
     }
-    (node_count, line_count)
+    (node_count, line_count, highlight_count)
 }
 
 /// Renderer-owned proof for Tree View's final CSS and terminal occurrence streams.
 #[derive(Debug)]
 pub(crate) struct TreeViewThemeReceipt {
+    expected_highlight_fill: Option<Box<str>>,
+    expected_highlight_stroke: Option<Box<str>>,
+    expected_highlight_count: usize,
+    highlights_seen: usize,
+    highlight_css_seen: bool,
+    expected_font_size: Option<Box<str>>,
+    font_size_seen: bool,
     expected_label_color: Option<Box<str>>,
     expected_line_color: Option<Box<str>>,
     expected_icon_color: Option<Box<str>>,
@@ -756,6 +953,13 @@ impl TreeViewThemeReceipt {
         expected_stroke_width: Option<&str>,
     ) -> Self {
         Self {
+            expected_highlight_fill: None,
+            expected_highlight_stroke: None,
+            expected_highlight_count: 0,
+            highlights_seen: 0,
+            highlight_css_seen: false,
+            expected_font_size: None,
+            font_size_seen: false,
             expected_label_color: expected_label_color.map(Into::into),
             expected_line_color: expected_line_color.map(Into::into),
             expected_icon_color: expected_icon_color.map(Into::into),
@@ -773,6 +977,52 @@ impl TreeViewThemeReceipt {
             lines_seen: 0,
             terminal_matches: true,
         }
+    }
+
+    fn with_highlights(mut self, fill: Option<&str>, stroke: Option<&str>, count: usize) -> Self {
+        self.expected_highlight_fill = fill.map(Into::into);
+        self.expected_highlight_stroke = stroke.map(Into::into);
+        self.expected_highlight_count = count;
+        self
+    }
+
+    fn with_font_size(mut self, size: Option<&str>) -> Self {
+        self.expected_font_size = size.map(Into::into);
+        self
+    }
+
+    pub(crate) fn record_font_size(&mut self, size: &str) {
+        self.css_matches &= !self.font_size_seen;
+        self.font_size_seen = true;
+        self.css_matches &= self
+            .expected_font_size
+            .as_deref()
+            .is_none_or(|expected| expected == size);
+    }
+
+    pub(crate) fn record_highlight_css(&mut self, fill: &str, stroke: &str) {
+        self.css_matches &= !self.highlight_css_seen;
+        self.highlight_css_seen = true;
+        self.css_matches &= self
+            .expected_highlight_fill
+            .as_deref()
+            .is_none_or(|expected| expected == fill);
+        self.css_matches &= self
+            .expected_highlight_stroke
+            .as_deref()
+            .is_none_or(|expected| expected == stroke);
+    }
+
+    pub(crate) fn record_highlight(&mut self, fill: &str, stroke: &str) {
+        self.highlights_seen = self.highlights_seen.saturating_add(1);
+        self.terminal_matches &= self
+            .expected_highlight_fill
+            .as_deref()
+            .is_none_or(|expected| expected == fill);
+        self.terminal_matches &= self
+            .expected_highlight_stroke
+            .as_deref()
+            .is_none_or(|expected| expected == stroke);
     }
 
     pub(crate) fn record_css(
@@ -841,6 +1091,9 @@ impl TreeViewThemeReceipt {
         // icon_color_matches alone proves the requested currentColor channel.
         self.css_seen
             && self.css_matches
+            && self.highlights_seen == self.expected_highlight_count
+            && (self.expected_highlight_count == 0 || self.highlight_css_seen)
+            && (self.expected_font_size.is_none() || self.font_size_seen)
             && self.labels_seen == self.expected_label_count
             && self.icons_seen == self.expected_icon_count
             && self.lines_seen == self.expected_line_count
@@ -1039,7 +1292,7 @@ mod tests {
     }
 
     #[test]
-    fn visible_tree_node_keeps_unsupported_fill_as_a_residual() {
+    fn node_body_paint_is_not_applicable_without_highlight_surfaces() {
         let theme = resolved_fill(ThemeTarget::Node);
         let model = TreeViewDiagramModel::default();
 
@@ -1054,15 +1307,14 @@ mod tests {
             .record_evidence(evidence);
         });
 
-        assert_eq!(evidence.residuals().len(), 1);
+        assert!(evidence.residuals().is_empty());
         assert_eq!(
-            evidence.residuals()[0].key(),
-            &FamilyThemeMechanismKey::Rule {
+            evidence.not_applicable_mechanisms(),
+            &[FamilyThemeMechanismKey::Rule {
                 index: 0,
                 target: ThemeTarget::Node,
-            }
+            }]
         );
-        assert!(evidence.not_applicable_mechanisms().is_empty());
     }
 
     #[test]

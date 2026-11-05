@@ -439,7 +439,7 @@ impl ErEntityThemePlan {
             matches!(
                 route.mechanism(),
                 FamilyThemeMechanism::RuleFacet {
-                    target: ThemeTarget::Text,
+                    target: ThemeTarget::Text | ThemeTarget::Title,
                     ..
                 } | FamilyThemeMechanism::BaseTypography(_)
             )
@@ -471,6 +471,10 @@ impl ErEntityThemePlan {
         let mermaid_owns_entity_text = mermaid_owns_text_fill(effective_config, entity_html_labels);
         let mermaid_owns_relation_text =
             mermaid_owns_text_fill(effective_config, relationship_html_labels);
+        let title_fill_source_owned = mermaid_owns_paint_input(
+            effective_config,
+            merman_model::presentation::ErPaintInput::Text,
+        );
         let relation_stroke_source_owned = mermaid_owns_relation_stroke(effective_config);
         let visible_subgraph_styles = if svg_subgraph_labels && needs_text_terminal_evidence {
             &subgraph_source_styles
@@ -610,14 +614,34 @@ impl ErEntityThemePlan {
             if !visible_text_terminal(terminal_id) {
                 continue;
             }
-            let text_style = theme.text_style_with_work_meter(
+            let target = if matches!(terminal_id, ErTextTerminalId::DiagramTitle) {
+                ThemeTarget::Title
+            } else {
+                ThemeTarget::Text
+            };
+            let mut text_style = theme.style_with_work_meter(
                 ThemeTarget::Text,
                 ThemeVariant::Default,
                 Some(text_index + 1),
                 work_meter,
             )?;
+            if target == ThemeTarget::Title {
+                // Text retains its established global occurrence order; Title has one terminal.
+                text_style.merge_from(&theme.style_with_work_meter(
+                    ThemeTarget::Title,
+                    ThemeVariant::Default,
+                    Some(1),
+                    work_meter,
+                )?);
+            }
             for (property, origin) in text_style.winner_rule_properties() {
-                winner_properties.insert((origin.rule_index(), ThemeTarget::Text, property));
+                if target == ThemeTarget::Title
+                    && property == ResolvedStyleProperty::Fill
+                    && title_fill_source_owned
+                {
+                    continue;
+                }
+                winner_properties.insert((origin.rule_index(), origin.target(), property));
             }
             if terminal.inherited_color_run_count == 0
                 || text_terminal_source_owned(terminal_id, &entity_indices, &entity_source_styles)
@@ -625,10 +649,7 @@ impl ErEntityThemePlan {
                 continue;
             }
             let mermaid_owns_text = match terminal_id {
-                ErTextTerminalId::DiagramTitle => mermaid_owns_paint_input(
-                    effective_config,
-                    merman_model::presentation::ErPaintInput::Text,
-                ),
+                ErTextTerminalId::DiagramTitle => title_fill_source_owned,
                 ErTextTerminalId::SubgraphLabel(id) => {
                     visible_subgraph_styles
                         .get(id.as_ref())
@@ -649,12 +670,13 @@ impl ErEntityThemePlan {
                 }
             };
             if let Some(expected) = typed_fill_expectation(theme, &text_style, mermaid_owns_text) {
+                let target = text_style
+                    .fill_resolution()
+                    .winner()
+                    .expect("resolved ER text fill")
+                    .target();
                 expected_capabilities.insert(
-                    (
-                        expected.rule_index,
-                        ThemeTarget::Text,
-                        ResolvedStyleProperty::Fill,
-                    ),
+                    (expected.rule_index, target, ResolvedStyleProperty::Fill),
                     paint_capability_from_css(&expected.css),
                 );
                 terminal.paint = Some(expected);
@@ -764,6 +786,7 @@ impl ErEntityThemePlan {
                         target @ (ThemeTarget::Entity
                         | ThemeTarget::Relation
                         | ThemeTarget::Text
+                        | ThemeTarget::Title
                         | ThemeTarget::Table),
                     selector,
                     facet,
@@ -772,6 +795,7 @@ impl ErEntityThemePlan {
                         ThemeTarget::Entity => entity_count,
                         ThemeTarget::Relation => model.relationships.len(),
                         ThemeTarget::Text => text_terminals.len(),
+                        ThemeTarget::Title => usize::from(diagram_title.is_some()),
                         ThemeTarget::Table => table_occurrence_count(&table_rows, selector),
                         _ => unreachable!("guarded ER theme target"),
                     };
@@ -846,13 +870,14 @@ impl ErEntityThemePlan {
                         ThemeVariant::Default,
                     ),
                 ),
-                UnsupportedTerminalDomain::direct(
+                UnsupportedTerminalDomain::fallbacks_only(
                     ThemeTarget::Title,
                     TerminalVariantDomain::uniform(
                         usize::from(diagram_title.is_some()),
                         ThemeVariant::Default,
                     ),
-                ),
+                )
+                .with_source_owned_fill(&[title_fill_source_owned]),
             ],
             work_meter,
         )?;

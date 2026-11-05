@@ -446,6 +446,9 @@ fn classify_ordinal_palette(
     family: DiagramFamilyId,
     target: ThemeTarget,
 ) -> FamilyThemeDisposition {
+    if family == DiagramFamilyId::AGENTFLOW {
+        return classify_ordinal_palette(DiagramFamilyId::FLOWCHART, target);
+    }
     if family == DiagramFamilyId::STATE {
         return if matches!(
             target,
@@ -471,6 +474,9 @@ fn classify_ordinal_palette(
             | DiagramFamilyId::MINDMAP
             | DiagramFamilyId::GIT_GRAPH
             | DiagramFamilyId::SANKEY
+            | DiagramFamilyId::CYNEFIN
+            | DiagramFamilyId::WARDLEY
+            | DiagramFamilyId::TREEMAP
     ) && target == ThemeTarget::Node)
         || (family == DiagramFamilyId::PIE && target == ThemeTarget::PieSlice)
         || (family == DiagramFamilyId::KANBAN && target == ThemeTarget::Task)
@@ -634,6 +640,12 @@ pub(super) fn compile_effect_binding_route(
 }
 
 fn classify_effect_binding(family: DiagramFamilyId, target: ThemeTarget) -> FamilyThemeDisposition {
+    if family == DiagramFamilyId::AGENTFLOW {
+        return classify_effect_binding(DiagramFamilyId::FLOWCHART, target);
+    }
+    if family == DiagramFamilyId::USECASE && target == ThemeTarget::Node {
+        return FamilyThemeDisposition::TypedAdapter;
+    }
     if (family == DiagramFamilyId::STATE && target == ThemeTarget::State)
         || (family == DiagramFamilyId::SEQUENCE
             && matches!(
@@ -675,6 +687,17 @@ fn classify_base_typography(
     family: DiagramFamilyId,
     property: ThemeTypographyProperty,
 ) -> FamilyThemeDisposition {
+    if family == DiagramFamilyId::AGENTFLOW {
+        return classify_base_typography(DiagramFamilyId::FLOWCHART, property);
+    }
+    if family == DiagramFamilyId::USECASE
+        && matches!(
+            property,
+            ThemeTypographyProperty::FontStack | ThemeTypographyProperty::FontSize
+        )
+    {
+        return FamilyThemeDisposition::TypedAdapter;
+    }
     if family == DiagramFamilyId::STATE {
         return match property {
             ThemeTypographyProperty::FontStack
@@ -752,6 +775,7 @@ fn classify_font_size(family: DiagramFamilyId) -> FamilyThemeDisposition {
     if matches!(
         family,
         DiagramFamilyId::FLOWCHART
+            | DiagramFamilyId::TREE_VIEW
             | DiagramFamilyId::SWIMLANE
             | DiagramFamilyId::SEQUENCE
             | DiagramFamilyId::ZENUML
@@ -849,6 +873,195 @@ pub(super) fn classify_rule_facet(
     selector: FamilyThemeSelectorShape,
     facet: FamilyThemeRuleFacet,
 ) -> FamilyThemeDisposition {
+    if family == DiagramFamilyId::AGENTFLOW {
+        // Agentflow prepares and emits the shared Flowchart artifact without changing identity.
+        return classify_rule_facet(DiagramFamilyId::FLOWCHART, target, selector, facet);
+    }
+    let static_default = matches!(
+        selector,
+        FamilyThemeSelectorShape::Static {
+            variant: None | Some(ThemeVariant::Default)
+        }
+    );
+    let solid_fill = matches!(
+        facet,
+        FamilyThemeRuleFacet::Fill(FamilyThemePaintKind::Solid | FamilyThemePaintKind::Transparent)
+    );
+    let solid_stroke = matches!(
+        facet,
+        FamilyThemeRuleFacet::Stroke(
+            FamilyThemePaintKind::Solid | FamilyThemePaintKind::Transparent
+        )
+    );
+    if family == DiagramFamilyId::USECASE && static_default {
+        let body = matches!(
+            target,
+            ThemeTarget::Node
+                | ThemeTarget::Actor
+                | ThemeTarget::Note
+                | ThemeTarget::Cluster
+                | ThemeTarget::Edge
+                | ThemeTarget::Marker
+                | ThemeTarget::EdgeLabelBackground
+        );
+        let text = matches!(
+            target,
+            ThemeTarget::Text
+                | ThemeTarget::NodeLabel
+                | ThemeTarget::ActorLabel
+                | ThemeTarget::NoteLabel
+                | ThemeTarget::ClusterLabel
+                | ThemeTarget::EdgeLabel
+                | ThemeTarget::Title
+        );
+        let supported = match facet {
+            FamilyThemeRuleFacet::Fill(
+                FamilyThemePaintKind::Clear
+                | FamilyThemePaintKind::Transparent
+                | FamilyThemePaintKind::Solid,
+            ) => body || text,
+            FamilyThemeRuleFacet::Stroke(
+                FamilyThemePaintKind::Clear
+                | FamilyThemePaintKind::Transparent
+                | FamilyThemePaintKind::Solid,
+            )
+            | FamilyThemeRuleFacet::StrokeWidth
+            | FamilyThemeRuleFacet::StrokeDasharray
+            | FamilyThemeRuleFacet::StrokeLinecap
+            | FamilyThemeRuleFacet::StrokeLinejoin => body,
+            FamilyThemeRuleFacet::Typography(
+                ThemeTypographyProperty::FontStack | ThemeTypographyProperty::FontSize,
+            ) => text,
+            FamilyThemeRuleFacet::Effect => target == ThemeTarget::Node,
+            _ => false,
+        };
+        if supported {
+            return FamilyThemeDisposition::TypedAdapter;
+        }
+    }
+    if static_default {
+        let scalar_fill =
+            solid_fill || facet == FamilyThemeRuleFacet::Fill(FamilyThemePaintKind::Clear);
+        let scalar_stroke =
+            solid_stroke || facet == FamilyThemeRuleFacet::Stroke(FamilyThemePaintKind::Clear);
+        if (family == DiagramFamilyId::RADAR
+            && ((target == ThemeTarget::Legend && scalar_fill)
+                || (target == ThemeTarget::ChartSeries && (scalar_fill || scalar_stroke))))
+            || (family == DiagramFamilyId::SANKEY
+                && target == ThemeTarget::Node
+                && (scalar_fill || scalar_stroke))
+            || (family == DiagramFamilyId::TREEMAP
+                && ((target == ThemeTarget::Node && (solid_fill || solid_stroke))
+                    || (target == ThemeTarget::NodeLabel && solid_fill)))
+        {
+            return FamilyThemeDisposition::TypedAdapter;
+        }
+    }
+    if matches!(family, DiagramFamilyId::CYNEFIN | DiagramFamilyId::WARDLEY) && static_default {
+        let fill = matches!(
+            facet,
+            FamilyThemeRuleFacet::Fill(
+                FamilyThemePaintKind::Solid
+                    | FamilyThemePaintKind::Transparent
+                    | FamilyThemePaintKind::Clear
+            )
+        );
+        let stroke = matches!(
+            facet,
+            FamilyThemeRuleFacet::Stroke(
+                FamilyThemePaintKind::Solid
+                    | FamilyThemePaintKind::Transparent
+                    | FamilyThemePaintKind::Clear
+            )
+        );
+        if (matches!(target, ThemeTarget::Node | ThemeTarget::Marker) && (fill || stroke))
+            || (matches!(
+                target,
+                ThemeTarget::NodeLabel | ThemeTarget::Title | ThemeTarget::EdgeLabel
+            ) && fill)
+            || (target == ThemeTarget::Edge && stroke)
+            || (family == DiagramFamilyId::WARDLEY
+                && target == ThemeTarget::Axis
+                && (fill || stroke))
+        {
+            return FamilyThemeDisposition::TypedAdapter;
+        }
+    }
+    if static_default
+        && ((matches!(
+            family,
+            DiagramFamilyId::VENN
+                | DiagramFamilyId::ISHIKAWA
+                | DiagramFamilyId::RAILROAD
+                | DiagramFamilyId::EVENT_MODELING
+        ) && ((target == ThemeTarget::Node && (solid_fill || solid_stroke))
+            || (target == ThemeTarget::NodeLabel && solid_fill)))
+            || (matches!(
+                family,
+                DiagramFamilyId::ISHIKAWA
+                    | DiagramFamilyId::RAILROAD
+                    | DiagramFamilyId::EVENT_MODELING
+            ) && ((target == ThemeTarget::Edge && solid_stroke)
+                || (target == ThemeTarget::Marker && solid_fill)))
+            || (family == DiagramFamilyId::EVENT_MODELING
+                && ((target == ThemeTarget::Cluster && (solid_fill || solid_stroke))
+                    || (target == ThemeTarget::ClusterLabel && solid_fill)))
+            || (matches!(
+                family,
+                DiagramFamilyId::C4 | DiagramFamilyId::REQUIREMENT | DiagramFamilyId::TIMELINE
+            ) && target == ThemeTarget::Title
+                && (solid_fill
+                    || facet == FamilyThemeRuleFacet::Fill(FamilyThemePaintKind::Clear)))
+            || (matches!(
+                family,
+                DiagramFamilyId::JOURNEY | DiagramFamilyId::SEQUENCE | DiagramFamilyId::GIT_GRAPH
+            ) && target == ThemeTarget::Title
+                && solid_fill)
+            || (family == DiagramFamilyId::MINDMAP
+                && matches!(target, ThemeTarget::NodeLabel | ThemeTarget::Text)
+                && solid_fill)
+            || (family == DiagramFamilyId::BLOCK
+                && target == ThemeTarget::ClusterLabel
+                && solid_fill))
+    {
+        return FamilyThemeDisposition::TypedAdapter;
+    }
+    if family == DiagramFamilyId::ER
+        && target == ThemeTarget::Title
+        && matches!(
+            selector,
+            FamilyThemeSelectorShape::Static {
+                variant: None | Some(ThemeVariant::Default)
+            }
+        )
+        && matches!(
+            facet,
+            FamilyThemeRuleFacet::Fill(
+                FamilyThemePaintKind::Solid | FamilyThemePaintKind::Transparent
+            )
+        )
+    {
+        return FamilyThemeDisposition::TypedAdapter;
+    }
+    if matches!(family, DiagramFamilyId::TREE_VIEW | DiagramFamilyId::PACKET)
+        && target == ThemeTarget::Node
+        && matches!(
+            selector,
+            FamilyThemeSelectorShape::Static {
+                variant: None | Some(ThemeVariant::Default)
+            }
+        )
+        && matches!(
+            facet,
+            FamilyThemeRuleFacet::Fill(
+                FamilyThemePaintKind::Solid | FamilyThemePaintKind::Transparent
+            ) | FamilyThemeRuleFacet::Stroke(
+                FamilyThemePaintKind::Solid | FamilyThemePaintKind::Transparent
+            )
+        )
+    {
+        return FamilyThemeDisposition::TypedAdapter;
+    }
     if ((family == DiagramFamilyId::WARDLEY
         && matches!(target, ThemeTarget::Text | ThemeTarget::NodeLabel)
         && matches!(
@@ -1897,7 +2110,7 @@ pub(super) fn classify_rule_facet(
         return FamilyThemeDisposition::TypedAdapter;
     }
     if family == DiagramFamilyId::TREEMAP && target == ThemeTarget::Title {
-        return if matches!(selector, FamilyThemeSelectorShape::Static { variant: None })
+        return if static_default
             && matches!(
                 facet,
                 FamilyThemeRuleFacet::Fill(
@@ -1927,7 +2140,7 @@ pub(super) fn classify_rule_facet(
         return FamilyThemeDisposition::TypedAdapter;
     }
     if family == DiagramFamilyId::VENN && target == ThemeTarget::Title {
-        return if matches!(selector, FamilyThemeSelectorShape::Static { variant: None })
+        return if static_default
             && matches!(
                 facet,
                 FamilyThemeRuleFacet::Fill(
@@ -1972,6 +2185,7 @@ pub(super) fn classify_rule_facet(
                     | ThemeTarget::Title
                     | ThemeTarget::Actor
                     | ThemeTarget::ActorLabel
+                    | ThemeTarget::Lifeline
                     | ThemeTarget::MessageLabel
                     | ThemeTarget::SequenceNumberLabel
                     | ThemeTarget::LoopLabelBackground

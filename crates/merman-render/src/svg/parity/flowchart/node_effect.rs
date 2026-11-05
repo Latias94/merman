@@ -46,11 +46,7 @@ impl FlowchartNodeEffects {
     ) -> crate::Result<Self> {
         let mut plan = Self::default();
         let look = ctx.compatibility.look.as_str();
-        let supported_look = look == "classic"
-            || look == "neo"
-                && ctx.swimlane_direction.is_none()
-                && merman_model::family::diagram_type_family_id(ctx.diagram_type)
-                    == Some(crate::DiagramFamilyId::FLOWCHART);
+        let supported_look = look == "classic" || super::supports_neo_effects(ctx);
         let structural_source_bounded = super::style::node_shadow_structural_styles_are_bounded(
             ctx.class_defs,
             &["root", "nodes", "node"],

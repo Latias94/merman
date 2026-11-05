@@ -1683,13 +1683,9 @@ fn layout_flowchart_with_model(
     } else {
         &text_style
     };
-    let label_weights = svg_label_sidecar.map_or_else(
-        super::FlowchartLabelWeights::default,
-        FlowchartSvgLabelSidecarBuilder::label_weights,
-    );
-    let node_label_base_style = label_weights.parent_style(
-        crate::diagram_theme::ThemeTarget::NodeLabel,
-        node_label_base_style,
+    let label_typography = svg_label_sidecar.map_or_else(
+        super::FlowchartLabelTypography::default,
+        FlowchartSvgLabelSidecarBuilder::label_typography,
     );
     let cluster_label_base_style = if cluster_wrap_mode == WrapMode::HtmlLike {
         &html_label_text_style
@@ -1813,8 +1809,16 @@ fn layout_flowchart_with_model(
         let raw_label = model.node_label_for_render(n).unwrap_or(&n.id);
         let wrapping_width = super::bpmn::wrapping_width(n.layout_shape.as_deref(), wrapping_width);
         let label_type = n.label_type.as_deref().unwrap_or("text");
+        let node_parent = label_typography.source_parent_style(
+            crate::diagram_theme::ThemeTarget::NodeLabel,
+            node_label_base_style,
+            &model.class_defs,
+            &n.classes,
+            &n.styles,
+            true,
+        );
         let node_text_style = flowchart_effective_text_style_for_node_classes_with_provenance(
-            node_label_base_style.as_ref(),
+            node_parent.as_ref(),
             &model.class_defs,
             &n.classes,
             &n.styles,
@@ -1897,9 +1901,13 @@ fn layout_flowchart_with_model(
         }
         let label_type = sg.label_type.as_deref().unwrap_or("text");
         let (classes, styles) = model.effective_subgraph_css(subgraph_index, sg);
-        let parent_style = label_weights.parent_style(
+        let parent_style = label_typography.source_parent_style(
             crate::diagram_theme::ThemeTarget::NodeLabel,
             cluster_label_base_style,
+            &model.class_defs,
+            classes,
+            styles,
+            false,
         );
         let sg_text_style = flowchart_effective_text_style_for_classes_with_provenance(
             parent_style.as_ref(),
@@ -1981,8 +1989,14 @@ fn layout_flowchart_with_model(
         } else {
             &text_style
         };
-        let base_style =
-            label_weights.parent_style(crate::diagram_theme::ThemeTarget::NodeLabel, base_style);
+        let base_style = label_typography.source_parent_style(
+            crate::diagram_theme::ThemeTarget::NodeLabel,
+            base_style,
+            &model.class_defs,
+            classes,
+            styles,
+            false,
+        );
         let text_style_for_label = flowchart_effective_text_style_for_classes(
             base_style.as_ref(),
             &model.class_defs,
@@ -2251,6 +2265,12 @@ fn layout_flowchart_with_model(
                     .unwrap_or_default();
             let label_type = e.label_type.as_deref().unwrap_or("text");
             let edge_key_identity = crate::flowchart::FlowchartEdgeKey::new(*edge_owner_index);
+            let edge_parent = edge_style_plan.label_parent_style_for(
+                edge_key_identity,
+                edge_label_base_style,
+                &label_typography,
+            )?;
+            let edge_label_base_style = edge_parent.as_ref();
             let edge_text_style = edge_style_plan
                 .edge_label_text_style_for(edge_key_identity, edge_label_base_style)?;
             let metrics = if label_type == "markdown" && edge_wrap_mode != WrapMode::HtmlLike {

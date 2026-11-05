@@ -4,14 +4,16 @@ use std::sync::OnceLock;
 use merman_model::presentation::PresentationConfig;
 
 use crate::diagram_theme::{
-    FamilyThemeDisposition, FamilyThemeMechanism, FamilyThemeMechanismKey, FamilyThemeRuleFacet,
-    FamilyThemeSelectorShape, ResolvedDiagramTheme, Specified, ThemeCapability, ThemeTarget,
-    ThemeVariant,
+    FamilyThemeDisposition, FamilyThemeMechanism, FamilyThemeMechanismKey, FamilyThemePaintKind,
+    FamilyThemeRuleFacet, FamilyThemeSelectorShape, ResolvedDiagramTheme, Specified,
+    ThemeCapability, ThemeTarget, ThemeVariant,
 };
 use crate::family::{
-    DirectStaticSelectorDomain, FamilyThemeEvidence, FamilyThemeOutcomes,
-    FamilyThemeResidualReason, resolve_direct_static_fill, resolve_direct_static_stroke,
-    resolved_style_property_for_facet, unsupported_residual_for_facet,
+    DirectPaintExpectation, DirectStaticSelectorDomain, FamilyThemeEvidence, FamilyThemeOutcomes,
+    FamilyThemeResidualReason, TerminalVariantDomain, UnsupportedTerminalDomain,
+    reconcile_unsupported_terminal_domains, resolve_direct_static_fill,
+    resolve_direct_static_stroke, resolved_style_property_for_facet,
+    unsupported_residual_for_facet,
 };
 use crate::model::TimelineDiagramLayout;
 use crate::resources::{OperationWorkError, OperationWorkMeter};
@@ -104,6 +106,9 @@ impl TimelineEventDecision {
 /// Timeline event paint/geometry and evidence resolved in the exact terminal draw order.
 #[derive(Debug)]
 pub(crate) struct TimelineEventTheme {
+    title: Option<Box<str>>,
+    title_fill: Option<DirectPaintExpectation>,
+    title_terminal: OnceLock<()>,
     events: Box<[TimelineEventDecision]>,
     stroke: Option<TimelineStrokePlan>,
     palette_slots: [Option<TimelinePalettePaint>; TIMELINE_PALETTE_SLOT_COUNT],
@@ -125,6 +130,96 @@ impl TimelineEventTheme {
         let Some(theme) = theme else {
             return Ok(Self::baseline());
         };
+        let mut evidence = FamilyThemeOutcomes::default();
+        reconcile_unsupported_terminal_domains(
+            theme,
+            &mut evidence,
+            &[UnsupportedTerminalDomain::direct(
+                ThemeTarget::Title,
+                TerminalVariantDomain::uniform(
+                    usize::from(
+                        layout
+                            .title
+                            .as_deref()
+                            .is_some_and(|title| !title.trim().is_empty()),
+                    ),
+                    ThemeVariant::Default,
+                ),
+            )
+            .with_source_owned_fill(&[
+                effective_config.config_paint_overrides_typed_default("themeVariables.textColor")
+            ])],
+            work_meter,
+        )?;
+        let title = layout
+            .title
+            .as_deref()
+            .filter(|title| !title.trim().is_empty());
+        let title_owned =
+            effective_config.config_paint_overrides_typed_default("themeVariables.textColor");
+        let mut title_fill = None;
+        let mut title_fill_winner = None;
+        if title.is_some() && !title_owned {
+            let style = theme.style_with_work_meter(
+                ThemeTarget::Title,
+                ThemeVariant::Default,
+                Some(1),
+                work_meter,
+            )?;
+            title_fill_winner = style
+                .fill_resolution()
+                .winner()
+                .map(|origin| origin.rule_index());
+            title_fill = resolve_direct_static_fill(
+                theme,
+                &style,
+                &[ThemeTarget::Title],
+                DirectStaticSelectorDomain::Default,
+            )
+            .map(DirectPaintExpectation::from_paint);
+            if matches!(style.fill_resolution().specified(), Specified::Clear)
+                && let Some(origin) = style.fill_resolution().winner()
+                && origin.ordinal().is_none()
+                && matches!(origin.variant(), None | Some(ThemeVariant::Default))
+                && theme.rule_facet_disposition(
+                    origin.rule_index(),
+                    FamilyThemeRuleFacet::Fill(FamilyThemePaintKind::Clear),
+                ) == Some(FamilyThemeDisposition::TypedAdapter)
+            {
+                let baseline = crate::config::config_string(
+                    effective_config.as_value(),
+                    &["themeVariables", "textColor"],
+                )
+                .unwrap_or_else(|| "#333".to_owned());
+                title_fill = Some(DirectPaintExpectation::new(
+                    origin.rule_index(),
+                    baseline,
+                    ThemeCapability::SemanticRules,
+                ));
+            }
+        }
+        for route in theme.family_mechanism_routes() {
+            if let FamilyThemeMechanism::RuleFacet {
+                target: ThemeTarget::Title,
+                rule_index,
+                facet: FamilyThemeRuleFacet::Fill(_),
+                ..
+            } = route.mechanism()
+                && route.disposition() == FamilyThemeDisposition::TypedAdapter
+            {
+                if title_fill_winner != Some(rule_index) {
+                    evidence.mark_not_applicable(theme.family_mechanism_key(*route));
+                } else if !title_fill
+                    .as_ref()
+                    .is_some_and(|fill| fill.rule_index() == rule_index)
+                {
+                    evidence.mark_residual(
+                        theme.family_mechanism_key(*route),
+                        FamilyThemeResidualReason::UnsupportedPaint,
+                    );
+                }
+            }
+        }
         if !theme.family_mechanism_routes().iter().any(|route| {
             matches!(
                 route.mechanism(),
@@ -139,7 +234,12 @@ impl TimelineEventTheme {
                 }
             )
         }) {
-            return Ok(Self::baseline());
+            return Ok(Self {
+                title: title.map(Into::into),
+                title_fill,
+                evidence,
+                ..Self::baseline()
+            });
         }
         let event_nodes = timeline_event_nodes(layout);
         let event_count = event_nodes.clone().count();
@@ -289,7 +389,6 @@ impl TimelineEventTheme {
             }
         }
 
-        let mut evidence = FamilyThemeOutcomes::default();
         let mut observations = BTreeMap::<usize, TimelineEventRuleObservation>::new();
         for route in theme.family_mechanism_routes().iter().copied() {
             match route.mechanism() {
@@ -491,6 +590,9 @@ impl TimelineEventTheme {
         }
 
         Ok(Self {
+            title: title.map(Into::into),
+            title_fill,
+            title_terminal: OnceLock::new(),
             events: events.into_boxed_slice(),
             stroke,
             palette_slots,
@@ -505,6 +607,9 @@ impl TimelineEventTheme {
 
     pub(crate) fn baseline() -> Self {
         Self {
+            title: None,
+            title_fill: None,
+            title_terminal: OnceLock::new(),
             events: Box::new([]),
             stroke: None,
             palette_slots: std::array::from_fn(|_| None),
@@ -514,6 +619,19 @@ impl TimelineEventTheme {
             pending: BTreeMap::new(),
             terminal_outcome: OnceLock::new(),
         }
+    }
+
+    pub(crate) fn title_fill_css(&self) -> Option<&str> {
+        self.title_fill.as_ref().map(DirectPaintExpectation::css)
+    }
+
+    pub(crate) fn record_title_fill(&self, title: &str, fill: Option<&str>) -> bool {
+        if self.title_fill.is_none() {
+            return fill.is_none();
+        }
+        Some(title) == self.title.as_deref()
+            && fill == self.title_fill_css()
+            && self.title_terminal.set(()).is_ok()
     }
 
     pub(crate) fn opacity_token_for_event(&self, event_index: usize) -> Option<&str> {
@@ -575,6 +693,17 @@ impl TimelineEventTheme {
 
     pub(crate) fn record_evidence(&self, evidence: &mut FamilyThemeEvidence) {
         evidence.merge_borrowed(&self.evidence);
+        if self.title_terminal.get().is_some()
+            && let Some(fill) = &self.title_fill
+        {
+            evidence.mark_applied_with_capabilities(
+                FamilyThemeMechanismKey::Rule {
+                    index: fill.rule_index(),
+                    target: ThemeTarget::Title,
+                },
+                [fill.capability()],
+            );
+        }
         let Some(outcome) = self.terminal_outcome.get() else {
             return;
         };

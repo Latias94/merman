@@ -10,7 +10,7 @@ use merman_theme_contract::{
 };
 
 /// Revision of the published support projection, independent of private route representation.
-pub(super) const SUPPORT_CLAIM_MANIFEST_REVISION: u32 = 1;
+pub(super) const SUPPORT_CLAIM_MANIFEST_REVISION: u32 = 2;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(super) enum SupportClaimKind {

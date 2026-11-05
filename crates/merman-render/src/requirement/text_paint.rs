@@ -123,6 +123,10 @@ impl RequirementTextPaintPlan {
         self.theme.is_some()
     }
 
+    pub(crate) fn fill_css(&self) -> Option<&str> {
+        self.fill.as_ref().map(DirectStaticPaint::css)
+    }
+
     pub(crate) fn begin_terminal_receipt(
         &self,
         expected: impl IntoIterator<Item = RequirementTextTerminalId>,
@@ -155,6 +159,7 @@ impl RequirementTextPaintPlan {
             typed_fill_consumed: false,
             palette_applies: false,
             bindings: BTreeSet::new(),
+            title_seen: false,
         }))
     }
 
@@ -188,9 +193,52 @@ pub(crate) struct RequirementTextPaintReceipt<'a> {
     typed_fill_consumed: bool,
     palette_applies: bool,
     bindings: BTreeSet<String>,
+    title_seen: bool,
 }
 
 impl RequirementTextPaintReceipt<'_> {
+    pub(crate) fn record_title(
+        &mut self,
+        inherits_fill: bool,
+        work: &OperationWorkMeter,
+    ) -> Result<(), OperationWorkError> {
+        self.valid &= !self.title_seen;
+        self.title_seen = true;
+        work.charge(1)?;
+        self.ordinal += 1;
+        let theme = self.plan.theme.as_ref().expect("requested text theme");
+        let ordinal_style;
+        let style = if self.plan.ordinal_rules {
+            ordinal_style = theme.style_with_work_meter(
+                ThemeTarget::Text,
+                ThemeVariant::Default,
+                Some(self.ordinal),
+                work,
+            )?;
+            &ordinal_style
+        } else {
+            self.plan.style.as_ref().expect("requested text style")
+        };
+        for (property, origin) in style.winner_rule_properties() {
+            work.charge(1)?;
+            if property != ResolvedStyleProperty::Fill || inherits_fill {
+                self.winners.insert((origin.rule_index(), property));
+            }
+        }
+        self.typed_fill_consumed |= inherits_fill && self.plan.fill.is_some();
+        self.palette_applies |= inherits_fill
+            && matches!(style.fill_resolution().specified(), Specified::Unspecified)
+            && theme
+                .series_color(ThemeTarget::Text, self.ordinal)
+                .is_some();
+        if let Some(ResolvedThemeEffect::Binding { binding, .. }) =
+            theme.resolve_effect(ThemeTarget::Text, style.effect_resolution())
+        {
+            self.bindings.insert(binding.effect_id().to_owned());
+        }
+        Ok(())
+    }
+
     /// Own the exact declarations inside the original .label and .label text,span rules.
     pub(crate) fn write_node_css(
         &mut self,

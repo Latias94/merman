@@ -246,5 +246,5 @@ pub(crate) use text_paint::{
 mod text_surface_paint;
 pub(crate) use text_surface_paint::FlowchartTextSurfacePaintPlan;
 
-mod label_weight;
-pub(crate) use label_weight::FlowchartLabelWeights;
+mod label_typography;
+pub(crate) use label_typography::FlowchartLabelTypography;

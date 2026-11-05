@@ -115,6 +115,21 @@ impl ClassThemeOutcomes {
         }
     }
 
+    pub(crate) fn record_diagram_title(
+        &mut self,
+        visible: bool,
+        selected: Option<(usize, &str)>,
+        emitted_style: Option<&str>,
+    ) {
+        if !self.enabled {
+            return;
+        }
+        self.summary.diagram_title_visible = visible;
+        self.summary.diagram_title_paint = selected
+            .filter(|_| visible)
+            .map(|(rule, style)| (rule, emitted_style == Some(style)));
+    }
+
     pub(crate) fn record_node(&mut self, event: ClassNodePaintOutcomes) {
         if !self.enabled {
             return;
@@ -206,6 +221,8 @@ pub(crate) struct ClassThemeOutcomeSummary {
     background_rules: BTreeSet<usize>,
     namespace_title_rules: BTreeSet<usize>,
     unverified_namespace_titles: BTreeSet<usize>,
+    diagram_title_visible: bool,
+    diagram_title_paint: Option<(usize, bool)>,
     cluster_rules: BTreeSet<(usize, ResolvedStyleProperty)>,
     typed_stroke: Option<(usize, ResolvedStyleProperty)>,
     typed_width: bool,
@@ -230,6 +247,12 @@ impl ClassThemeOutcomeSummary {
     pub(super) fn applied_namespace_title(&self, rule: usize) -> bool {
         self.namespace_title_rules.contains(&rule)
             && !self.unverified_namespace_titles.contains(&rule)
+    }
+    pub(super) fn has_diagram_title(&self) -> bool {
+        self.diagram_title_visible
+    }
+    pub(super) fn applied_diagram_title(&self, rule: usize) -> bool {
+        self.diagram_title_paint == Some((rule, true))
     }
     pub(super) fn applied_cluster_paint(
         &self,

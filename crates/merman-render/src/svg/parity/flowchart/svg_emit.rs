@@ -341,14 +341,7 @@ pub(super) fn render_flowchart_svg_model(
                     title_css_class(diagram_type),
                     escape_xml(title)
                 );
-                text_surface_paint.generic_text.record_label(
-                    crate::flowchart::FlowchartTextPaintChannel::DiagramTitle,
-                    crate::flowchart::FlowchartTextPaintFacts::from_visible(
-                        &crate::text::VisibleTextStyleFacts::plain_text(title),
-                    ),
-                    crate::flowchart::FlowchartSourceFacetStatus::Absent,
-                    ctx.work_meter,
-                )?;
+                text_surface_paint.record_document_title(title, ctx.work_meter)?;
                 if !title.trim().is_empty() {
                     ctx.record_base_typography_label_emission(
                         crate::flowchart::FlowchartBaseTypographyLabelEmission::diagram_title(),
@@ -408,6 +401,7 @@ pub(super) fn render_flowchart_svg_model(
 pub(super) fn flowchart_node_theme_ordinals<'a>(
     nodes: &'a [crate::flowchart::FlowNode],
     subgraphs: &'a [crate::flowchart::FlowSubgraph],
+    render_context: &crate::flowchart::FlowchartRenderContext,
     uses_elk_adapter_dom: bool,
 ) -> FxHashMap<&'a str, usize> {
     let subgraph_ids: FxHashSet<&str> = subgraphs
@@ -419,9 +413,13 @@ pub(super) fn flowchart_node_theme_ordinals<'a>(
 
     // Theme ordinals describe surfaces that reach the Node emitter, not Graphlib/ELK vertices.
     // ELK materializes every subgraph as a node in the semantic model, but renders it as a
-    // cluster. Dagre renders only empty subgraphs through the ordinary Node surface.
+    // cluster. Collapsed groups are nodes in either backend; hidden descendants own no slot.
     for node in nodes {
-        if subgraph_ids.contains(node.id.as_str()) {
+        if subgraph_ids.contains(node.id.as_str())
+            || render_context
+                .collapsed_replacement(node.id.as_str())
+                .is_some()
+        {
             continue;
         }
         if let std::collections::hash_map::Entry::Vacant(entry) = ordinals.entry(node.id.as_str()) {
@@ -430,17 +428,16 @@ pub(super) fn flowchart_node_theme_ordinals<'a>(
         }
     }
 
-    if !uses_elk_adapter_dom {
-        for subgraph in subgraphs
-            .iter()
-            .filter(|subgraph| subgraph.nodes.is_empty())
+    for subgraph in subgraphs.iter().filter(|subgraph| {
+        render_context.collapsed_replacement(&subgraph.id).is_none()
+            && (render_context.is_subgraph_collapsed(&subgraph.id)
+                || !uses_elk_adapter_dom && subgraph.nodes.is_empty())
+    }) {
+        if let std::collections::hash_map::Entry::Vacant(entry) =
+            ordinals.entry(subgraph.id.as_str())
         {
-            if let std::collections::hash_map::Entry::Vacant(entry) =
-                ordinals.entry(subgraph.id.as_str())
-            {
-                entry.insert(next_ordinal);
-                next_ordinal += 1;
-            }
+            entry.insert(next_ordinal);
+            next_ordinal += 1;
         }
     }
 
@@ -493,13 +490,14 @@ mod tests {
         let nodes = vec![node("A"), node("group"), node("A"), node("empty")];
         let subgraphs = vec![subgraph("group", &["A"]), subgraph("empty", &[])];
 
-        let dagre = flowchart_node_theme_ordinals(&nodes, &subgraphs, false);
+        let context = crate::flowchart::FlowchartRenderContext::default();
+        let dagre = flowchart_node_theme_ordinals(&nodes, &subgraphs, &context, false);
         assert_eq!(dagre.len(), 2);
         assert_eq!(dagre.get("A"), Some(&1));
         assert_eq!(dagre.get("empty"), Some(&2));
         assert!(!dagre.contains_key("group"));
 
-        let elk = flowchart_node_theme_ordinals(&nodes, &subgraphs, true);
+        let elk = flowchart_node_theme_ordinals(&nodes, &subgraphs, &context, true);
         assert_eq!(elk.len(), 1);
         assert_eq!(elk.get("A"), Some(&1));
         assert!(!elk.contains_key("group"));

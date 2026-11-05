@@ -3,7 +3,7 @@ use merman_model::families::zenuml::ZenumlDiagramModel;
 use super::{ZenumlDiagramLayout, resolve_zenuml_title};
 use crate::diagram_theme::{
     FamilyThemeDisposition, FamilyThemeMechanism, FamilyThemeMechanismKey, ResolvedDiagramTheme,
-    ThemeCapability, ThemeTarget, ThemeTypographyProperty, ThemeVariant,
+    Specified, ThemeCapability, ThemeTarget, ThemeTypographyProperty, ThemeVariant,
 };
 use crate::family::{
     DirectStaticPaint, DirectStaticSelectorDomain, FamilyThemeEvidence, FamilyThemeOutcomes,
@@ -163,6 +163,24 @@ impl ZenumlSourceStyle {
                     &accepted,
                     DirectStaticSelectorDomain::Default,
                 )
+                .or_else(|| {
+                    // A line has one paint channel. Fill supplies its fallback only when no
+                    // stroke was authored; it must not bypass an unsupported stroke winner.
+                    (slot.target == ThemeTarget::Lifeline
+                        && matches!(
+                            resolved.stroke_resolution().specified(),
+                            Specified::Unspecified
+                        ))
+                    .then(|| {
+                        resolve_direct_static_fill(
+                            theme,
+                            &resolved,
+                            &accepted,
+                            DirectStaticSelectorDomain::Default,
+                        )
+                    })
+                    .flatten()
+                })
             } else {
                 resolve_direct_static_fill(
                     theme,
@@ -441,6 +459,16 @@ impl ZenumlThemePlan {
             for target in targets {
                 let (fill, stroke) =
                     terminal_source_owners(target, model, layout, diagram_title, &source_style);
+                let line_fill_overridden = if target == ThemeTarget::Lifeline {
+                    source_style.source_owns_color("lifelineColor")
+                        || !theme
+                            .style_with_work_meter(target, ThemeVariant::Default, None, work_meter)?
+                            .stroke_resolution()
+                            .specified()
+                            .is_unspecified()
+                } else {
+                    false
+                };
                 let variants = TerminalVariantDomain::uniform(fill.len(), ThemeVariant::Default);
                 let owned_targets = [ThemeTarget::Text, target];
                 let domain = if target != ThemeTarget::Text
@@ -453,7 +481,9 @@ impl ZenumlThemePlan {
                     UnsupportedTerminalDomain::direct(target, variants)
                 }
                 .with_source_owned_fill(&fill)
-                .with_source_owned_stroke(&stroke);
+                .with_source_owned_stroke(&stroke)
+                // Lifelines have one final line-color channel, with stroke before fill.
+                .with_fill_fully_overridden(line_fill_overridden);
                 // Text is a fallback for several independent roles. Reconcile each role
                 // separately, and retain any residual before applying absence receipts.
                 let mut fallbacks = FamilyThemeOutcomes::default();

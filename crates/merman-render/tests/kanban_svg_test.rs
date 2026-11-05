@@ -1663,7 +1663,7 @@ fn kanban_text_effect_binding_requires_visible_text_before_reporting_a_residual(
 }
 
 #[test]
-fn kanban_retired_title_fill_is_not_applicable_and_preserves_final_svg() {
+fn kanban_title_fill_is_not_applicable_without_a_diagram_title_terminal() {
     let baseline_theme = kanban_task_rules_theme([]);
     for source in [
         "kanban\n",
@@ -1679,7 +1679,7 @@ fn kanban_retired_title_fill_is_not_applicable_and_preserves_final_svg() {
         );
         for variant in [None, Some(ThemeVariant::Default)] {
             for paint in [
-                CanvasPaint::solid("#987654").expect("valid retired title fill"),
+                CanvasPaint::solid("#987654").expect("valid title fill"),
                 CanvasPaint::Transparent,
             ] {
                 let mut rule = ThemeRule::new(
@@ -1723,6 +1723,59 @@ fn kanban_retired_title_fill_is_not_applicable_and_preserves_final_svg() {
                 assert_eq!(evidence.theme_residual_count(), 0);
             }
         }
+    }
+}
+
+#[test]
+fn kanban_all_presets_keep_metadata_titles_nonvisual_and_fully_accounted() {
+    let presets = merman_render::diagram_theme::theme_preset_descriptors();
+    assert_eq!(presets.len(), 11);
+    let source =
+        "---\ntitle: Nonvisual metadata title\n---\nkanban\n  todo[Todo]\n    task[Task]\n";
+    for preset in presets {
+        let theme = DiagramThemeCompiler::new()
+            .compile_preset(preset.preset())
+            .unwrap();
+        let rendered = render_kanban_with_theme_and_engine(
+            source,
+            &theme,
+            MermaidEngine::new(),
+            ThemePortabilityRequirement::BestEffort,
+        );
+        let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+        for label in ["Todo", "Task"] {
+            assert!(
+                document
+                    .descendants()
+                    .any(|node| node.is_text() && node.text() == Some(label))
+            );
+        }
+        assert!(
+            !document
+                .descendants()
+                .any(|node| { node.is_text() && node.text() == Some("Nonvisual metadata title") })
+        );
+        let completion = rendered.into_completion();
+        let evidence = merman_render::__private::family_evidence(completion.report());
+        assert!(evidence.not_applicable_count() > 0, "{}", preset.id());
+        assert_eq!(
+            evidence.accounted_count(),
+            evidence.required_count(),
+            "{}",
+            preset.id()
+        );
+        assert!(
+            completion
+                .report()
+                .theme_diagnostics()
+                .iter()
+                .all(|diagnostic| {
+                    diagnostic.target() != Some(ThemeTarget::Title)
+                        && diagnostic.code() != "evidence-incomplete"
+                }),
+            "{}",
+            preset.id()
+        );
     }
 }
 

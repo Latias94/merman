@@ -12,6 +12,7 @@ use std::collections::BTreeMap;
 use std::sync::Arc;
 
 mod css_binding;
+mod label_paint;
 mod registered;
 pub(crate) use css_binding::MindmapCssBinding;
 mod theme;

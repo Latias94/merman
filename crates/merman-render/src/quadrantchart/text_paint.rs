@@ -62,9 +62,9 @@ impl QuadrantChartPaintPlan {
                         target: ThemeTarget::Text | ThemeTarget::Title | ThemeTarget::Axis,
                         ..
                     } | FamilyThemeMechanism::OrdinalPalette {
-                        target: ThemeTarget::Text | ThemeTarget::Axis
+                        target: ThemeTarget::Text | ThemeTarget::Axis | ThemeTarget::Title
                     } | FamilyThemeMechanism::EffectBinding {
-                        target: ThemeTarget::Text | ThemeTarget::Axis,
+                        target: ThemeTarget::Text | ThemeTarget::Axis | ThemeTarget::Title,
                         ..
                     }
                 )
@@ -200,7 +200,7 @@ impl QuadrantChartPaintPlan {
                     && matches!(style.fill_resolution().specified(), Specified::Unspecified)
                 {
                     palette_targets.insert(ThemeTarget::Text);
-                    if target == ThemeTarget::Axis {
+                    if target != ThemeTarget::Text {
                         palette_targets.insert(target);
                     }
                 }
@@ -209,7 +209,7 @@ impl QuadrantChartPaintPlan {
                     Specified::Unspecified
                 ) {
                     effect_targets.insert(ThemeTarget::Text);
-                    if target == ThemeTarget::Axis {
+                    if target != ThemeTarget::Text {
                         effect_targets.insert(target);
                     }
                 }

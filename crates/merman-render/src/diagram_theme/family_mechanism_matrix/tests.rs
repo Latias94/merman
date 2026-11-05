@@ -280,8 +280,6 @@ fn mindmap_node_palette_uses_the_direct_adapter() {
 #[test]
 fn mindmap_terminal_less_paint_routes_are_unsupported() {
     for (target, channel) in [
-        (ThemeTarget::NodeLabel, PaintChannel::Fill),
-        (ThemeTarget::Text, PaintChannel::Fill),
         (ThemeTarget::Title, PaintChannel::Fill),
         (ThemeTarget::Marker, PaintChannel::Fill),
         (ThemeTarget::Marker, PaintChannel::Stroke),
@@ -341,8 +339,6 @@ fn mindmap_terminal_less_paint_routes_are_unsupported() {
 #[test]
 fn tree_view_terminal_less_paint_routes_are_unsupported() {
     for (target, channel) in [
-        (ThemeTarget::Node, PaintChannel::Fill),
-        (ThemeTarget::Node, PaintChannel::Stroke),
         (ThemeTarget::Title, PaintChannel::Fill),
         (ThemeTarget::EdgeLabelBackground, PaintChannel::Fill),
         (ThemeTarget::Cluster, PaintChannel::Fill),
@@ -375,7 +371,6 @@ fn tree_view_terminal_less_paint_routes_are_unsupported() {
 #[test]
 fn gitgraph_terminal_less_paint_routes_are_unsupported() {
     for (target, channel) in [
-        (ThemeTarget::Title, PaintChannel::Fill),
         (ThemeTarget::Marker, PaintChannel::Fill),
         (ThemeTarget::Marker, PaintChannel::Stroke),
         (ThemeTarget::Cluster, PaintChannel::Fill),
@@ -1437,7 +1432,7 @@ fn kanban_owns_the_task_ordinal_palette() {
 
 #[test]
 fn terminal_less_title_fill_is_unsupported_for_static_and_dynamic_selectors() {
-    for family in [DiagramFamilyId::JOURNEY, DiagramFamilyId::KANBAN] {
+    for family in [DiagramFamilyId::KANBAN] {
         for paint in [
             CanvasPaint::Transparent,
             CanvasPaint::solid("#9333ea").expect("valid title paint"),
@@ -2646,7 +2641,7 @@ fn flowchart_and_swimlane_clusters_own_unqualified_scalar_paints() {
 }
 
 #[test]
-fn treemap_title_only_owns_unqualified_scalar_fill() {
+fn treemap_title_owns_static_default_scalar_fill() {
     for paint_kind in [
         FamilyThemePaintKind::Transparent,
         FamilyThemePaintKind::Solid,
@@ -2669,7 +2664,7 @@ fn treemap_title_only_owns_unqualified_scalar_fill() {
                 },
                 FamilyThemeRuleFacet::Fill(paint_kind),
             ),
-            FamilyThemeDisposition::Unsupported
+            FamilyThemeDisposition::TypedAdapter
         );
     }
 
@@ -2709,7 +2704,7 @@ fn final_direct_family_slices_own_only_their_supported_static_scalar_fill() {
     for (family, target, supports_default) in [
         (DiagramFamilyId::EVENT_MODELING, ThemeTarget::Text, false),
         (DiagramFamilyId::ISHIKAWA, ThemeTarget::Text, false),
-        (DiagramFamilyId::VENN, ThemeTarget::Title, false),
+        (DiagramFamilyId::VENN, ThemeTarget::Title, true),
         (DiagramFamilyId::VENN, ThemeTarget::Text, true),
         (DiagramFamilyId::ZENUML, ThemeTarget::Title, true),
     ] {
@@ -3180,11 +3175,7 @@ fn wardley_text_paint_routes_match_the_consumed_label_targets() {
                         FamilyThemeSelectorShape::Static { variant },
                         FamilyThemeRuleFacet::Fill(paint_kind),
                     ),
-                    if target == ThemeTarget::Title {
-                        FamilyThemeDisposition::Unsupported
-                    } else {
-                        FamilyThemeDisposition::TypedAdapter
-                    },
+                    FamilyThemeDisposition::TypedAdapter,
                     "target={target:?} facet=Fill({paint_kind:?}) variant={variant:?}"
                 );
             }
@@ -3196,12 +3187,8 @@ fn wardley_text_paint_routes_match_the_consumed_label_targets() {
 fn generic_title_paint_routes_are_unsupported_without_a_title_color_consumer() {
     for family in [
         DiagramFamilyId::ARCHITECTURE,
-        DiagramFamilyId::C4,
-        DiagramFamilyId::CYNEFIN,
-        DiagramFamilyId::ER,
         DiagramFamilyId::KANBAN,
         DiagramFamilyId::SANKEY,
-        DiagramFamilyId::TIMELINE,
     ] {
         for paint_kind in [
             FamilyThemePaintKind::Transparent,

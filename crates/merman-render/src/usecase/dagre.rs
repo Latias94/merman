@@ -66,6 +66,7 @@ pub(super) fn expand_self_loops(
                         style: generic_font.clone(),
                         max_width: Some(10.0),
                         styles: indexmap::IndexMap::new(),
+                        theme_style: UsecaseThemeStyle::default(),
                     },
                     stereotype: None,
                     folded_stereotype: false,

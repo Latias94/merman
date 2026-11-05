@@ -2802,7 +2802,7 @@ fn sequence_oversized_base_font_stack_is_proved_by_terminal_svg() {
 }
 
 #[test]
-fn flowchart_node_label_font_size_without_prepared_text_is_residual() {
+fn flowchart_node_label_font_size_uses_prepared_text_without_a_font_catalog() {
     let theme = flowchart_node_label_font_size_theme_without_catalog(DiagramFamilyId::FLOWCHART);
     let source = r#"---
 config:
@@ -2836,19 +2836,16 @@ A[Alpha]
 
     assert_eq!(
         rendered.style_report().verification(),
-        FamilyStyleVerification::Unverified
+        FamilyStyleVerification::Verified
     );
-    assert_eq!(rendered.style_report().theme_residuals().len(), 1);
+    assert!(rendered.style_report().theme_residuals().is_empty());
+    assert!(rendered.svg().contains("font-size:26px !important;"));
     assert_eq!(
-        rendered.style_report().theme_residuals()[0].key(),
-        &FamilyThemeMechanismKey::Rule {
+        rendered.style_report().theme_applied_mechanisms(),
+        &[FamilyThemeMechanismKey::Rule {
             index: 0,
             target: ThemeTarget::NodeLabel,
-        }
-    );
-    assert_eq!(
-        rendered.style_report().theme_residuals()[0].reason(),
-        FamilyThemeResidualReason::UnsupportedTypography
+        }]
     );
 
     let canonical_11 = parse();
@@ -2862,17 +2859,8 @@ A[Alpha]
     )
     .expect("prepare strict NodeLabel font-size Flowchart")
     .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default());
-    let strict_error = match strict_result {
-        Ok(_) => panic!("strict output must reject unproven NodeLabel font size"),
-        Err(error) => error,
-    };
-    assert!(matches!(
-        strict_error,
-        Error::UnverifiedFamilyTheme {
-            family_id: DiagramFamilyId::FLOWCHART,
-            residual_count: 1,
-        }
-    ));
+    let strict = strict_result.expect("prepared NodeLabel font size has a real terminal proof");
+    assert_eq!(strict.svg(), rendered.svg());
 }
 
 #[test]

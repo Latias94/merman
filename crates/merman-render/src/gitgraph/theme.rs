@@ -361,7 +361,7 @@ impl GitGraphNodePalettePlan {
         theme: Option<&ResolvedDiagramTheme>,
         effective_config: &PresentationConfig,
         layout: &GitGraphDiagramLayout,
-        has_title: bool,
+        _has_title: bool,
         work_meter: &OperationWorkMeter,
     ) -> Result<Self, OperationWorkError> {
         let mut plan = Self::baseline(layout);
@@ -375,10 +375,6 @@ impl GitGraphNodePalettePlan {
             theme,
             &mut plan.evidence,
             &[
-                UnsupportedTerminalDomain::direct(
-                    ThemeTarget::Title,
-                    TerminalVariantDomain::uniform(usize::from(has_title), ThemeVariant::Default),
-                ),
                 UnsupportedTerminalDomain::direct(ThemeTarget::Marker, absent),
                 UnsupportedTerminalDomain::direct(ThemeTarget::Cluster, absent),
                 UnsupportedTerminalDomain::direct(ThemeTarget::ClusterLabel, absent),
@@ -695,7 +691,7 @@ impl GitGraphNodePalettePlan {
         config: &PresentationConfig,
         title: Option<&str>,
         work: &OperationWorkMeter,
-    ) -> Result<(), OperationWorkError> {
+    ) -> crate::Result<()> {
         self.text_paint = GitGraphTextPaintPlan::resolve(theme, config, title, work)?;
         Ok(())
     }
@@ -1293,7 +1289,7 @@ mod tests {
     }
 
     #[test]
-    fn visible_gitgraph_title_keeps_unsupported_fill_as_a_residual() {
+    fn gitgraph_palette_leaves_title_to_its_terminal_text_plan() {
         let theme = unsupported_fill_theme(ThemeTarget::Title);
         let evidence = collect_evidence(&theme, |evidence| {
             GitGraphNodePalettePlan::resolve(
@@ -1307,14 +1303,8 @@ mod tests {
             .record_evidence(evidence);
         });
 
-        assert_eq!(evidence.residuals().len(), 1);
-        assert_eq!(
-            evidence.residuals()[0].key(),
-            &FamilyThemeMechanismKey::Rule {
-                index: 0,
-                target: ThemeTarget::Title,
-            }
-        );
+        assert!(evidence.residuals().is_empty());
+        assert!(evidence.applied().is_empty());
         assert!(evidence.not_applicable_mechanisms().is_empty());
     }
 

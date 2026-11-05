@@ -89,3 +89,13 @@ fn title_css_class(diagram_type: &str) -> &'static str {
         "flowchartTitleText"
     }
 }
+
+/// Agentflow projects into the same body, edge, and glyph terminals as Flowchart.
+fn supports_neo_effects(ctx: &FlowchartRenderCtx<'_>) -> bool {
+    ctx.compatibility.look.is_neo()
+        && ctx.swimlane_direction.is_none()
+        && matches!(
+            merman_model::family::diagram_type_family_id(ctx.diagram_type),
+            Some(crate::DiagramFamilyId::FLOWCHART | crate::DiagramFamilyId::AGENTFLOW)
+        )
+}

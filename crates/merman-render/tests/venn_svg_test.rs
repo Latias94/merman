@@ -43,6 +43,428 @@ fn venn_paint_theme(rules: impl IntoIterator<Item = ThemeRule>) -> DiagramTheme 
         .expect("compile Venn paint theme")
 }
 
+fn venn_core_paint_theme(transparent: bool, variant: Option<ThemeVariant>) -> DiagramTheme {
+    let paint = |color| {
+        if transparent {
+            CanvasPaint::Transparent
+        } else {
+            solid(color)
+        }
+    };
+    venn_paint_theme(
+        [
+            ThemeRule::new(
+                ThemeTarget::Node,
+                ThemeStylePatch::default()
+                    .with_fill(paint("#123456"))
+                    .with_stroke(paint("#345678")),
+            ),
+            ThemeRule::new(
+                ThemeTarget::NodeLabel,
+                ThemeStylePatch::default().with_fill(paint("#56789a")),
+            ),
+        ]
+        .map(|rule| variant.map_or(rule.clone(), |variant| rule.with_variant(variant))),
+    )
+}
+
+#[test]
+fn venn_core_paints_reach_real_set_paths_and_labels_with_same_render_evidence() {
+    for transparent in [false, true] {
+        for variant in [None, Some(ThemeVariant::Default)] {
+            let theme = venn_core_paint_theme(transparent, variant);
+            let rendered = render_venn_with_theme_requirement(
+                THEME_TYPOGRAPHY_SOURCE,
+                &theme,
+                MermaidEngine::new(),
+                ThemePortabilityRequirement::RequirePortable,
+            )
+            .unwrap();
+            let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+            let circles = document
+                .descendants()
+                .filter(|node| {
+                    node.attribute("class").is_some_and(|class| {
+                        class.split_whitespace().any(|class| class == "venn-circle")
+                    })
+                })
+                .collect::<Vec<_>>();
+            assert_eq!(circles.len(), 2);
+            for circle in circles {
+                let path = circle
+                    .children()
+                    .find(|node| node.has_tag_name("path"))
+                    .unwrap();
+                let style = path.attribute("style").unwrap();
+                let fill = if transparent {
+                    "transparent"
+                } else {
+                    "#123456"
+                };
+                let stroke = if transparent {
+                    "transparent"
+                } else {
+                    "#345678"
+                };
+                assert!(style.contains(&format!("fill: {fill};")));
+                assert!(style.contains(&format!("stroke: {stroke};")));
+                let text = circle
+                    .children()
+                    .find(|node| node.has_tag_name("text"))
+                    .unwrap();
+                let color = if transparent {
+                    "transparent"
+                } else {
+                    "#56789a"
+                };
+                assert!(
+                    text.attribute("style")
+                        .unwrap()
+                        .contains(&format!("fill: {color};"))
+                );
+            }
+            let evidence =
+                merman_render::__private::family_evidence(rendered.into_completion().report());
+            assert_eq!(evidence.required_count(), 2);
+            assert_eq!(evidence.applied_count(), 2);
+            assert_eq!(evidence.theme_residual_count(), 0);
+        }
+    }
+}
+
+#[test]
+fn venn_static_paint_evidence_follows_real_occurrence_winners() {
+    use merman_render::diagram_theme::OrdinalSelector;
+
+    let source = "venn-beta\nset A[\"Alpha\"]:20\n";
+    for (reverse, ordinal, mixed, applied, not_applicable, residual) in [
+        (false, 1, false, 0, 1, 1),
+        (true, 1, false, 1, 1, 0),
+        (false, 2, false, 1, 1, 0),
+        (false, 1, true, 1, 0, 1),
+    ] {
+        let mut patch = ThemeStylePatch::default().with_fill(solid("#111111"));
+        if mixed {
+            patch = patch.with_stroke(solid("#334455"));
+        }
+        let mut rules = vec![
+            ThemeRule::new(ThemeTarget::Node, patch),
+            ThemeRule::new(
+                ThemeTarget::Node,
+                ThemeStylePatch::default().with_fill(solid("#222222")),
+            )
+            .with_ordinal(OrdinalSelector::exact(ordinal).unwrap()),
+        ];
+        if reverse {
+            rules.reverse();
+        }
+        let rendered = render_venn_with_theme_requirement(
+            source,
+            &venn_paint_theme(rules),
+            MermaidEngine::new(),
+            ThemePortabilityRequirement::BestEffort,
+        )
+        .unwrap();
+        let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+        let path = document
+            .descendants()
+            .find(|node| node.attribute("data-venn-sets") == Some("A"))
+            .unwrap()
+            .children()
+            .find(|node| node.has_tag_name("path"))
+            .unwrap();
+        assert!(path.attribute("style").unwrap().contains("fill: #111111;"));
+        if mixed {
+            assert!(
+                path.attribute("style")
+                    .unwrap()
+                    .contains("stroke: #334455;")
+            );
+        }
+        let evidence =
+            merman_render::__private::family_evidence(rendered.into_completion().report());
+        assert_eq!(evidence.required_count(), 2);
+        assert_eq!(evidence.applied_count(), applied);
+        assert_eq!(evidence.not_applicable_count(), not_applicable);
+        assert_eq!(evidence.theme_residual_count(), residual);
+    }
+}
+
+#[test]
+fn venn_explicit_default_title_fill_reaches_the_real_title() {
+    let rendered = render_venn_with_theme_requirement(
+        "venn-beta\ntitle T\nset A[\"Alpha\"]:20\n",
+        &venn_paint_theme([ThemeRule::new(
+            ThemeTarget::Title,
+            ThemeStylePatch::default().with_fill(solid("#123456")),
+        )
+        .with_variant(ThemeVariant::Default)]),
+        MermaidEngine::new(),
+        ThemePortabilityRequirement::RequirePortable,
+    )
+    .unwrap();
+    let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+    let title = document
+        .descendants()
+        .find(|node| node.has_tag_name("text") && node.text() == Some("T"))
+        .unwrap();
+    assert!(title.attribute("style").unwrap().contains("fill: #123456;"));
+    let evidence = merman_render::__private::family_evidence(rendered.into_completion().report());
+    assert_eq!(evidence.required_count(), 1);
+    assert_eq!(evidence.applied_count(), 1);
+    assert_eq!(evidence.theme_residual_count(), 0);
+}
+
+#[test]
+fn venn_source_and_config_paints_own_only_their_actual_properties() {
+    let theme = venn_core_paint_theme(false, None);
+    let engine = MermaidEngine::new().with_site_config(
+        merman_core::presentation::SourcePresentationConfig::from_value(serde_json::json!({
+            "themeVariables": { "venn2": "#abcdef" }
+        })),
+    );
+    let rendered = render_venn_with_theme_requirement(
+        "venn-beta\nset A[\"Alpha\"]:20\nset B[\"Beta\"]:12\nunion A,B:3\nstyle A fill:#de3163, color:#654321\n",
+        &theme, engine, ThemePortabilityRequirement::RequirePortable,
+    ).unwrap();
+    let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+    let a = document
+        .descendants()
+        .find(|node| node.attribute("data-venn-sets") == Some("A"))
+        .unwrap();
+    let style = a
+        .children()
+        .find(|node| node.has_tag_name("path"))
+        .unwrap()
+        .attribute("style")
+        .unwrap();
+    assert!(style.contains("fill: #de3163;"));
+    assert!(style.contains("stroke: #345678;"));
+    assert!(
+        a.children()
+            .find(|node| node.has_tag_name("text"))
+            .unwrap()
+            .attribute("style")
+            .unwrap()
+            .contains("fill: #654321;")
+    );
+    let b = document
+        .descendants()
+        .find(|node| node.attribute("data-venn-sets") == Some("B"))
+        .unwrap();
+    let style = b
+        .children()
+        .find(|node| node.has_tag_name("path"))
+        .unwrap()
+        .attribute("style")
+        .unwrap();
+    assert!(style.contains("fill: #abcdef;"));
+    assert!(style.contains("stroke: #abcdef;"));
+    let evidence = merman_render::__private::family_evidence(rendered.into_completion().report());
+    assert_eq!(evidence.applied_count(), 2);
+    assert_eq!(evidence.theme_residual_count(), 0);
+}
+
+#[test]
+fn venn_core_paints_reach_hand_drawn_hachure_and_outline_terminals() {
+    let theme = venn_core_paint_theme(false, None);
+    let source = format!(
+        "---\nconfig:\n  look: handDrawn\n  handDrawnSeed: 7\n---\n{THEME_TYPOGRAPHY_SOURCE}"
+    );
+    let rendered = render_venn_with_theme_requirement(
+        &source,
+        &theme,
+        MermaidEngine::new(),
+        ThemePortabilityRequirement::RequirePortable,
+    )
+    .unwrap();
+    let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+    for circle in document.descendants().filter(|node| {
+        node.attribute("class")
+            .is_some_and(|class| class.split_whitespace().any(|class| class == "venn-circle"))
+    }) {
+        let paths = circle
+            .children()
+            .find(|node| node.has_tag_name("g"))
+            .unwrap()
+            .children()
+            .filter(|node| node.has_tag_name("path"))
+            .collect::<Vec<_>>();
+        assert_eq!(paths.len(), 2);
+        let fill = merman_markup::theme_color::transparentize("#123456", 0.7).unwrap();
+        assert_eq!(paths[0].attribute("stroke"), Some(fill.as_str()));
+        assert_eq!(paths[1].attribute("stroke"), Some("#345678"));
+    }
+    let evidence = merman_render::__private::family_evidence(rendered.into_completion().report());
+    assert_eq!(evidence.applied_count(), 2);
+    assert_eq!(evidence.theme_residual_count(), 0);
+}
+
+#[test]
+fn venn_empty_compiled_theme_preserves_unthemed_svg_bytes() {
+    let theme = venn_paint_theme([]);
+    let environment = RenderEnvironment::deterministic();
+    let render = |theme: Option<&DiagramTheme>| {
+        let engine = match theme {
+            Some(theme) => common::install_parse_compatibility(theme, MermaidEngine::new()),
+            None => MermaidEngine::new(),
+        };
+        let parsed = engine
+            .parse_diagram_for_render_model_sync(THEME_TYPOGRAPHY_SOURCE, ParseOptions::strict())
+            .unwrap()
+            .unwrap()
+            .into_presentation();
+        let session = match theme {
+            Some(theme) => environment.begin_session_with_theme(theme).unwrap(),
+            None => environment.begin_session().unwrap(),
+        };
+        family::prepare(&parsed, &LayoutOptions::headless_svg_defaults(), session)
+            .unwrap()
+            .render_svg(
+                &SvgRenderOptions {
+                    diagram_id: Some("venn-theme".into()),
+                    ..Default::default()
+                },
+                &SvgDebugOptions::default(),
+            )
+            .unwrap()
+            .svg()
+            .to_owned()
+    };
+    assert_eq!(render(None).as_bytes(), render(Some(&theme)).as_bytes());
+}
+
+#[test]
+fn venn_mixed_node_rule_accounts_supported_fill_and_the_actual_padding_winner() {
+    use merman_render::diagram_theme::InsetsPx;
+    for override_padding in [false, true] {
+        let mut rules = vec![ThemeRule::new(
+            ThemeTarget::Node,
+            ThemeStylePatch::default()
+                .with_fill(solid("#b316cd"))
+                .with_padding(InsetsPx::all(4.0)),
+        )];
+        if override_padding {
+            rules.push(ThemeRule::new(
+                ThemeTarget::Node,
+                ThemeStylePatch::default().with_padding(InsetsPx::all(8.0)),
+            ));
+        }
+        let rendered = render_venn_with_theme_requirement(
+            THEME_TYPOGRAPHY_SOURCE,
+            &venn_paint_theme(rules),
+            MermaidEngine::new(),
+            ThemePortabilityRequirement::BestEffort,
+        )
+        .unwrap();
+        let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+        assert!(
+            document
+                .descendants()
+                .filter(|node| node.attribute("class").is_some_and(|class| class
+                    .split_whitespace()
+                    .any(|class| class == "venn-circle")))
+                .all(|node| node
+                    .children()
+                    .find(|node| node.has_tag_name("path"))
+                    .unwrap()
+                    .attribute("style")
+                    .unwrap()
+                    .contains("fill: #b316cd;"))
+        );
+        let evidence =
+            merman_render::__private::family_evidence(rendered.into_completion().report());
+        assert_eq!(evidence.applied_count(), usize::from(override_padding));
+        assert_eq!(evidence.theme_residual_count(), 1);
+        assert_eq!(evidence.not_applicable_count(), 0);
+    }
+}
+
+#[test]
+fn venn_label_stroke_is_residual_even_when_its_fill_is_consumed() {
+    let source = "venn-beta\nset A[\"Alpha\"]:20\n";
+    for mixed in [false, true] {
+        for variant in [None, Some(ThemeVariant::Default)] {
+            let mut style = ThemeStylePatch::default().with_stroke(solid("#ff00ff"));
+            if mixed {
+                style = style.with_fill(solid("#123456"));
+            }
+            let rule = ThemeRule::new(ThemeTarget::NodeLabel, style);
+            let theme = venn_paint_theme([
+                variant.map_or(rule.clone(), |variant| rule.with_variant(variant))
+            ]);
+            let rendered = render_venn_with_theme_requirement(
+                source,
+                &theme,
+                MermaidEngine::new(),
+                ThemePortabilityRequirement::BestEffort,
+            )
+            .unwrap();
+            let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+            let text = document
+                .descendants()
+                .find(|node| node.has_tag_name("text"))
+                .unwrap();
+            assert!(!text.attribute("style").unwrap().contains("stroke:"));
+            if mixed {
+                assert!(text.attribute("style").unwrap().contains("fill: #123456;"));
+            }
+            let evidence =
+                merman_render::__private::family_evidence(rendered.into_completion().report());
+            assert_eq!(evidence.required_count(), 1);
+            assert_eq!(evidence.applied_count(), 0);
+            assert_eq!(evidence.not_applicable_count(), 0);
+            assert_eq!(evidence.theme_residual_count(), 1);
+            let error = render_venn_with_theme_requirement(
+                source,
+                &theme,
+                MermaidEngine::new(),
+                ThemePortabilityRequirement::RequirePortable,
+            )
+            .err()
+            .unwrap();
+            assert_eq!(
+                error.unverified_family_theme(),
+                Some((DiagramFamilyId::VENN, 1))
+            );
+        }
+    }
+    for (ordinal, variant, residual) in [
+        (1, ThemeVariant::Default, true),
+        (2, ThemeVariant::Default, false),
+        (1, ThemeVariant::Warning, false),
+    ] {
+        let theme = venn_paint_theme([ThemeRule::new(
+            ThemeTarget::NodeLabel,
+            ThemeStylePatch::default().with_stroke(solid("#ff00ff")),
+        )
+        .with_variant(variant)
+        .with_ordinal(merman_render::diagram_theme::OrdinalSelector::exact(ordinal).unwrap())]);
+        let rendered = render_venn_with_theme_requirement(
+            source,
+            &theme,
+            MermaidEngine::new(),
+            ThemePortabilityRequirement::BestEffort,
+        )
+        .unwrap();
+        let evidence =
+            merman_render::__private::family_evidence(rendered.into_completion().report());
+        assert_eq!(evidence.applied_count(), 0);
+        assert_eq!(evidence.theme_residual_count(), usize::from(residual));
+        assert_eq!(evidence.not_applicable_count(), usize::from(!residual));
+        assert_eq!(
+            render_venn_with_theme_requirement(
+                source,
+                &theme,
+                MermaidEngine::new(),
+                ThemePortabilityRequirement::RequirePortable
+            )
+            .is_err(),
+            residual
+        );
+    }
+}
+
 fn solid(color: &str) -> CanvasPaint {
     CanvasPaint::solid(color).expect("valid Venn paint")
 }

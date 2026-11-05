@@ -843,6 +843,20 @@ pub(crate) fn render_mindmap_diagram_svg_model_with_config(
         diagram_id,
         node_palette,
     )?;
+    for (index, node) in model.nodes.iter().enumerate() {
+        let Some(fill) = node_palette.label_fill_for_node(index) else {
+            continue;
+        };
+        let root_id = crate::svg::escape_css_identifier(diagram_id.semantic_str());
+        let dom_id = mindmap_dom_id(diagram_id, &node.dom_id);
+        let node_id = crate::svg::escape_css_identifier(&dom_id);
+        let _ = write!(
+            &mut super::super::output::XmlTextOutput::new(&mut out),
+            "#{root_id} g#{node_id} > .label text,#{root_id} g#{node_id} > .label tspan,#{root_id} g#{node_id} > .label span{{fill:{fill};color:{fill};}}"
+        );
+        out.checkpoint()?;
+        node_palette.record_label_css(&mut node_palette_receipt, index, fill);
+    }
     out.push_str("</style>");
     out.checkpoint()?;
     let mindmap_theme = binding.theme.as_ref();
@@ -1074,7 +1088,7 @@ pub(crate) fn render_mindmap_diagram_svg_model_with_config(
     out.push_str(r#"<g class="nodes">"#);
     out.checkpoint()?;
     let node_fill_ownership = &binding.node_fill_ownership;
-    for n in &model.nodes {
+    for (node_index, n) in model.nodes.iter().enumerate() {
         let (x, y, w, h, label_w, label_h) = node_by_id
             .get(&n.id)
             .map(|ln| {
@@ -1437,9 +1451,12 @@ pub(crate) fn render_mindmap_diagram_svg_model_with_config(
 
         out.push_str("</g>");
         out.checkpoint()?;
+        node_palette.record_label_node(&mut node_palette_receipt, node_index);
         let root_uses_node_border = is_root
             && (mindmap_theme.contains("redux")
-                || (look == "neo" && !use_gradient && writer_tokens.has_direct_node_stroke()));
+                || (look == "neo" && !use_gradient && writer_tokens.has_direct_node_stroke()))
+            && (node_palette.label_fill_for_node(node_index).is_none()
+                || (look == "neo" && !use_gradient));
         if root_uses_node_border {
             // Redux carries `nodeBorder` into the root XHTML label in every look. This is the
             // only Classic consumer of the historical Node.stroke bridge token. The explicit

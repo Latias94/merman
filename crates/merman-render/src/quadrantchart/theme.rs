@@ -369,11 +369,18 @@ impl QuadrantChartPointThemePlan {
         reconcile_unsupported_terminal_domains(
             theme,
             &mut evidence,
-            &[UnsupportedTerminalDomain::fallbacks_only(
-                ThemeTarget::ChartSeries,
-                TerminalVariantDomain::uniform(point_count, ThemeVariant::Default),
-            )
-            .with_source_owned_fill(&source_owned_fill)],
+            &[
+                UnsupportedTerminalDomain::fallbacks_only(
+                    ThemeTarget::ChartSeries,
+                    TerminalVariantDomain::uniform(point_count, ThemeVariant::Default),
+                )
+                .with_source_owned_fill(&source_owned_fill),
+                // Quadrant captions and point labels are not legend terminals.
+                UnsupportedTerminalDomain::direct(
+                    ThemeTarget::Legend,
+                    TerminalVariantDomain::uniform(0, ThemeVariant::Default),
+                ),
+            ],
             work_meter,
         )?;
 

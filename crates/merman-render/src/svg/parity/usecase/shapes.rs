@@ -70,6 +70,10 @@ pub(super) struct UsecaseNodeRenderContext<'a> {
     pub(super) source: Option<&'a UsecaseNode>,
     pub(super) note: bool,
     pub(super) style: &'a str,
+    pub(super) typed_style: Option<&'a UsecaseThemeStyle>,
+    pub(super) receipt: &'a UsecaseThemeReceipt,
+    pub(super) shadow: Option<&'a theme::UsecaseBodyShadow<'a>>,
+    pub(super) effect_evidence: &'a crate::diagram_theme::SvgShadowEvidenceRecorder,
     pub(super) css_binding: &'a crate::usecase::UsecaseCssBinding,
     pub(super) config: &'a merman_model::presentation::PresentationConfig,
     pub(super) measurer: &'a dyn TextMeasurer,
@@ -108,6 +112,8 @@ pub(super) fn write_node(
                 UsecaseLabelRenderContext {
                     config: context.config,
                     measurer: context.measurer,
+                    receipt: context.receipt,
+                    background: None,
                 },
             );
             y += stereotype.metrics.height + 2.0;
@@ -121,6 +127,8 @@ pub(super) fn write_node(
             UsecaseLabelRenderContext {
                 config: context.config,
                 measurer: context.measurer,
+                receipt: context.receipt,
+                background: None,
             },
         );
         let variant = match actor.actor_type {
@@ -135,23 +143,66 @@ pub(super) fn write_node(
             fmt(glyph_y),
             escape_attr(context.style)
         );
+        let paint_attr = context
+            .typed_style
+            .filter(|style| !style.css(false).is_empty())
+            .map(|_| format!(r#" style="{}""#, escape_attr(context.style)))
+            .unwrap_or_default();
         match actor.actor_type {
-            UsecaseActorType::Normal => out.push_str(r#"<path class="usecase-actor-stick" d="M 0 -12 C 6.627 -12 12 -17.373 12 -24 C 12 -30.627 6.627 -36 0 -36 C -6.627 -36 -12 -30.627 -12 -24 C -12 -17.373 -6.627 -12 0 -12 Z M 0 -12 V 8 M -17 -5 H 17 M 0 8 L -15 28 M 0 8 L 15 28"/>"#),
-            UsecaseActorType::Hollow => out.push_str(r#"<circle class="usecase-actor-hollow-head" cx="0" cy="-23" r="9" fill="none"/><path class="usecase-actor-hollow-body" d="M -22 -10 H 22 V 0 H 6 L 22 17 L 13 28 L 0 13 L -13 28 L -22 17 L -6 0 H -22 Z" fill="none"/>"#),
-            UsecaseActorType::Awesome => out.push_str(r#"<path class="usecase-actor-awesome-silhouette" d="M 0 -34 C 7.18 -34 13 -28.18 13 -21 C 13 -13.82 7.18 -8 0 -8 C -7.18 -8 -13 -13.82 -13 -21 C -13 -28.18 -7.18 -34 0 -34 Z M -24 25 C -24 7 -14 -3 0 -3 C 14 -3 24 7 24 25 C 24 28 21 30 18 30 H -18 C -21 30 -24 28 -24 25 Z"/>"#),
+            UsecaseActorType::Normal => {
+                let _ = write!(
+                    out,
+                    r#"<path class="usecase-actor-stick" d="M 0 -12 C 6.627 -12 12 -17.373 12 -24 C 12 -30.627 6.627 -36 0 -36 C -6.627 -36 -12 -30.627 -12 -24 C -12 -17.373 -6.627 -12 0 -12 Z M 0 -12 V 8 M -17 -5 H 17 M 0 8 L -15 28 M 0 8 L 15 28"{paint_attr}/>"#
+                );
+            }
+            UsecaseActorType::Hollow => {
+                let _ = write!(
+                    out,
+                    r#"<circle class="usecase-actor-hollow-head" cx="0" cy="-23" r="9" fill="none"{paint_attr}/><path class="usecase-actor-hollow-body" d="M -22 -10 H 22 V 0 H 6 L 22 17 L 13 28 L 0 13 L -13 28 L -22 17 L -6 0 H -22 Z" fill="none"{paint_attr}/>"#
+                );
+            }
+            UsecaseActorType::Awesome => {
+                let _ = write!(
+                    out,
+                    r#"<path class="usecase-actor-awesome-silhouette" d="M 0 -34 C 7.18 -34 13 -28.18 13 -21 C 13 -13.82 7.18 -8 0 -8 C -7.18 -8 -13 -13.82 -13 -21 C -13 -28.18 -7.18 -34 0 -34 Z M -24 25 C -24 7 -14 -3 0 -3 C 14 -3 24 7 24 25 C 24 28 21 30 18 30 H -18 C -21 30 -24 28 -24 25 Z"{paint_attr}/>"#
+                );
+            }
             UsecaseActorType::Icon => {
-                out.push_str(r#"<rect class="usecase-actor-icon-frame" x="-26" y="-28" width="52" height="52" rx="4" ry="4"/>"#);
+                let _ = write!(
+                    out,
+                    r#"<rect class="usecase-actor-icon-frame" x="-26" y="-28" width="52" height="52" rx="4" ry="4"{paint_attr}/>"#
+                );
                 let icon = if let Some(registry) = context.options.icon_registry() {
                     let work = context.options.work_meter();
-                    let prefix = crate::svg::icon_registry::IconIdScopePrefix::from_parts(&["usecase-", context.diagram_id.semantic_str(), "-"], work)?;
+                    let prefix = crate::svg::icon_registry::IconIdScopePrefix::from_parts(
+                        &["usecase-", context.diagram_id.semantic_str(), "-"],
+                        work,
+                    )?;
                     registry.render_icon(crate::svg::icon_registry::IconRenderRequest {
-                        icon_name: actor.icon.as_deref().unwrap_or(""), width_px: 42.0, height_px: 42.0,
-                        fallback_prefix: Some("fa"), extra_class: None, id_scope: prefix.scope_parts(&[&actor.id], work)?, effective_config: context.config, work_meter: work,
+                        icon_name: actor.icon.as_deref().unwrap_or(""),
+                        width_px: 42.0,
+                        height_px: 42.0,
+                        fallback_prefix: Some("fa"),
+                        extra_class: None,
+                        id_scope: prefix.scope_parts(&[&actor.id], work)?,
+                        effective_config: context.config,
+                        work_meter: work,
                     })?
-                } else { None };
+                } else {
+                    None
+                };
                 let fallback = icon.is_none();
-                let icon = icon.unwrap_or_else(|| crate::svg::icon_registry::mermaid_unknown_icon_svg(42, 42));
-                let _ = write!(out, r#"<g class="usecase-actor-icon-symbol{}" aria-hidden="true" transform="translate(-21,-23)"><g>{icon}</g></g>"#, if fallback { " usecase-actor-icon-fallback" } else { "" });
+                let icon = icon
+                    .unwrap_or_else(|| crate::svg::icon_registry::mermaid_unknown_icon_svg(42, 42));
+                let _ = write!(
+                    out,
+                    r#"<g class="usecase-actor-icon-symbol{}" aria-hidden="true" transform="translate(-21,-23)"><g>{icon}</g></g>"#,
+                    if fallback {
+                        " usecase-actor-icon-fallback"
+                    } else {
+                        ""
+                    }
+                );
             }
         }
         if actor.business {
@@ -214,6 +265,8 @@ pub(super) fn write_node(
             UsecaseLabelRenderContext {
                 config: context.config,
                 measurer: context.measurer,
+                receipt: context.receipt,
+                background: None,
             },
         );
         let mut row_top = top + table.title_height;
@@ -251,6 +304,8 @@ pub(super) fn write_node(
                 UsecaseLabelRenderContext {
                     config: context.config,
                     measurer: context.measurer,
+                    receipt: context.receipt,
+                    background: None,
                 },
             );
             write_label(
@@ -262,6 +317,8 @@ pub(super) fn write_node(
                 UsecaseLabelRenderContext {
                     config: context.config,
                     measurer: context.measurer,
+                    receipt: context.receipt,
+                    background: None,
                 },
             );
             out.push_str("</g>");
@@ -269,6 +326,9 @@ pub(super) fn write_node(
         }
         out.push_str("</g>");
     } else {
+        if let Some(shadow) = context.shadow {
+            theme::write_body_shadow_open(out, shadow);
+        }
         if plan.ellipse {
             let business = context.source.is_some_and(|node| node.business);
             let _ = write!(
@@ -309,8 +369,24 @@ pub(super) fn write_node(
             let randomness = context
                 .options
                 .rough_randomness(context.css_binding.hand_drawn_seed, "usecase-note");
-            let note_fill = &context.css_binding.note;
-            let note_stroke = &context.css_binding.note_border;
+            let note_fill = context
+                .typed_style
+                .and_then(|style| style.fill.as_deref())
+                .unwrap_or(&context.css_binding.note);
+            let note_stroke = context
+                .typed_style
+                .and_then(|style| style.stroke.as_deref())
+                .unwrap_or(&context.css_binding.note_border);
+            let mut fill_style = context
+                .typed_style
+                .map(|style| style.note_path_css(false))
+                .unwrap_or_default();
+            let mut stroke_style = context
+                .typed_style
+                .map(|style| style.note_path_css(true))
+                .unwrap_or_default();
+            fill_style.push_str(&plan.source_style);
+            stroke_style.push_str(&plan.source_style);
             let paths = roughjs_common::roughjs_paths_for_rect(roughjs_common::RoughRectSpec {
                 x: -node.width / 2.0,
                 y: -node.height / 2.0,
@@ -329,9 +405,9 @@ pub(super) fn write_node(
                 out,
                 r#"<g class="basic label-container outer-path"><path d="{fill}" stroke="none" stroke-width="0" fill="{}" style="{}"/><path d="{stroke}" stroke="{}" stroke-width="1.3" fill="none" stroke-dasharray="0 0" style="{}"/></g>"#,
                 escape_attr(note_fill),
-                escape_attr(context.style),
+                escape_attr(&fill_style),
                 escape_attr(note_stroke),
-                escape_attr(context.style)
+                escape_attr(&stroke_style)
             );
         } else {
             rect(
@@ -343,6 +419,14 @@ pub(super) fn write_node(
                 node.height,
                 context.style,
             );
+        }
+        if let Some(shadow) = context.shadow {
+            out.push_str("</g>");
+            context.options.checkpoint_emit()?;
+            theme::record_body_shadow(shadow, context.effect_evidence);
+            if let Some(style) = context.typed_style {
+                style.record_shadow_emitted(context.receipt);
+            }
         }
         let stereo_height = plan
             .stereotype
@@ -364,6 +448,8 @@ pub(super) fn write_node(
                 UsecaseLabelRenderContext {
                     config: context.config,
                     measurer: context.measurer,
+                    receipt: context.receipt,
+                    background: None,
                 },
             );
         }
@@ -386,6 +472,8 @@ pub(super) fn write_node(
             UsecaseLabelRenderContext {
                 config: context.config,
                 measurer: context.measurer,
+                receipt: context.receipt,
+                background: None,
             },
         );
         if plan.folded_stereotype {

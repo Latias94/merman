@@ -6,6 +6,66 @@ use merman::svg::{
 };
 use merman::{OperationControl, RenderOutput, RenderRequest, Renderer, SvgRequest};
 
+#[cfg(all(feature = "all-diagrams", feature = "layout-cytoscape"))]
+#[path = "support/theme_family_corpus.rs"]
+mod theme_family_corpus;
+
+#[cfg(all(feature = "all-diagrams", feature = "layout-cytoscape"))]
+#[test]
+fn every_builtin_preset_accounts_for_core_paint_in_every_selectable_family() {
+    let compiler = DiagramThemeCompiler::new();
+    let renderer = Renderer::new();
+    let mut failures = Vec::new();
+    for descriptor in merman::diagram_theme::theme_preset_descriptors() {
+        let theme = compiler.compile_preset(descriptor.preset()).unwrap();
+        for &(name, source) in theme_family_corpus::FIXTURES {
+            if name == "error_basic" {
+                continue;
+            }
+            // Use a bounded theme scene rather than the 45-node font/benchmark workload.
+            // Effect filter-region ceilings are verified by their resource-policy tests.
+            let (name, source) = if name == "flowchart_medium" {
+                (
+                    "flowchart_theme_scene",
+                    include_str!("../../../fixtures/themes/public-cyberpunk/flowchart.mmd"),
+                )
+            } else {
+                (name, source)
+            };
+            let result = renderer.render(
+                RenderRequest::svg(
+                    source,
+                    OperationControl::new(),
+                    SvgRequest {
+                        environment: merman::SvgEnvironment::deterministic(),
+                        ..Default::default()
+                    },
+                )
+                .with_theme(theme.clone()),
+            );
+            let output = match result {
+                Ok(RenderOutput::Svg(Some(output))) => output,
+                other => {
+                    failures.push(format!("{}/{name}: {other:?}", descriptor.id()));
+                    continue;
+                }
+            };
+            for diagnostic in output.evidence().theme_diagnostics() {
+                if matches!(
+                    diagnostic.code(),
+                    "family-unadapted" | "evidence-incomplete" | "unsupported-paint"
+                ) {
+                    failures.push(format!("{}/{name}: {diagnostic:?}", descriptor.id()));
+                }
+            }
+            assert!(!output.evidence().theme_evidence().output_mutated());
+        }
+    }
+    // Look/shape-specific effects and host-dependent compatibility have separate contracts.
+    // This gate requires complete family accounting and real consumers for preset core paint.
+    assert!(failures.is_empty(), "{}", failures.join("\n"));
+}
+
 const USER_GITGRAPH_THEME_REGRESSION: &str = r#"gitGraph
     commit
     commit

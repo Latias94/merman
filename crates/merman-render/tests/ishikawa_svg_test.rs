@@ -18,6 +18,295 @@ use merman_render::{DiagramFamilyId, LayoutOptions};
 
 const DEEP_ISHIKAWA_RENDER_DEPTH: usize = 1_200;
 
+fn ishikawa_core_paint_theme(transparent: bool, explicit_default: bool) -> DiagramTheme {
+    let paint = |color| {
+        if transparent {
+            CanvasPaint::Transparent
+        } else {
+            CanvasPaint::solid(color).unwrap()
+        }
+    };
+    let rules = [
+        ThemeRule::new(
+            ThemeTarget::Node,
+            ThemeStylePatch::default()
+                .with_fill(paint("#123456"))
+                .with_stroke(paint("#345678")),
+        ),
+        ThemeRule::new(
+            ThemeTarget::NodeLabel,
+            ThemeStylePatch::default().with_fill(paint("#56789a")),
+        ),
+        ThemeRule::new(
+            ThemeTarget::Edge,
+            ThemeStylePatch::default().with_stroke(paint("#789abc")),
+        ),
+        ThemeRule::new(
+            ThemeTarget::Marker,
+            ThemeStylePatch::default().with_fill(paint("#9abcde")),
+        ),
+    ];
+    DiagramThemeCompiler::new()
+        .compile(
+            DiagramThemeSpec::new().with_styles(rules.into_iter().fold(
+                ThemeRuleSet::default(),
+                |rules, rule| {
+                    rules.with_rule(if explicit_default {
+                        rule.with_variant(merman_render::diagram_theme::ThemeVariant::Default)
+                    } else {
+                        rule
+                    })
+                },
+            )),
+        )
+        .unwrap()
+}
+
+#[test]
+fn ishikawa_core_paints_reach_real_bodies_skeleton_and_marker_with_evidence() {
+    for transparent in [false, true] {
+        for explicit_default in [false, true] {
+            let theme = ishikawa_core_paint_theme(transparent, explicit_default);
+            let rendered = render_ishikawa_with_theme(
+                &ishikawa_theme_source("classic"),
+                &theme,
+                MermaidEngine::new(),
+            );
+            let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+            let css = document
+                .descendants()
+                .find(|node| node.has_tag_name("style"))
+                .unwrap()
+                .text()
+                .unwrap();
+            for (class, property, solid) in [
+                ("ishikawa-head", "fill", "#123456"),
+                ("ishikawa-label-box", "stroke", "#345678"),
+                ("ishikawa-arrow", "fill", "#9abcde"),
+            ] {
+                assert!(
+                    document
+                        .descendants()
+                        .any(|node| node.attribute("class") == Some(class))
+                );
+                let body = css
+                    .split_once(&format!(" .{class} {{"))
+                    .unwrap()
+                    .1
+                    .split('}')
+                    .next()
+                    .unwrap();
+                let value = if transparent { "transparent" } else { solid };
+                assert!(body.contains(&format!("{property}: {value};")));
+            }
+            assert!(document.descendants().any(|node| node.has_tag_name("line")));
+            let edge = if transparent {
+                "transparent"
+            } else {
+                "#789abc"
+            };
+            assert!(css.contains(&format!(
+                "{{ stroke: {edge}; stroke-width: 2; fill: none; }}"
+            )));
+            for text in ishikawa_visible_text_nodes(&document) {
+                let value = if transparent {
+                    "transparent"
+                } else {
+                    "#56789a"
+                };
+                assert_eq!(
+                    text.attribute("style"),
+                    Some(format!("fill:{value} !important;").as_str())
+                );
+            }
+            let evidence =
+                merman_render::__private::family_evidence(rendered.into_completion().report());
+            assert_eq!(evidence.required_count(), 4);
+            assert_eq!(evidence.applied_count(), 4);
+            assert_eq!(evidence.theme_residual_count(), 0);
+        }
+    }
+}
+
+#[test]
+fn ishikawa_config_fill_leaves_typed_border_and_skeleton_independent() {
+    let theme = ishikawa_core_paint_theme(false, false);
+    let engine = MermaidEngine::new().with_site_config(
+        merman_core::presentation::SourcePresentationConfig::from_value(serde_json::json!({
+            "themeVariables": { "mainBkg": "#de3163", "textColor": "#fedcba" }
+        })),
+    );
+    let rendered = render_ishikawa_with_theme(&ishikawa_theme_source("classic"), &theme, engine);
+    let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+    let css = document
+        .descendants()
+        .find(|node| node.has_tag_name("style"))
+        .unwrap()
+        .text()
+        .unwrap();
+    assert!(css.contains(".ishikawa-head { fill: #de3163; stroke: #345678;"));
+    assert!(css.contains("{ stroke: #789abc; stroke-width: 2; fill: none; }"));
+    assert!(css.contains(".ishikawa-arrow { fill: #9abcde; }"));
+    assert!(
+        ishikawa_visible_text_nodes(&document)
+            .iter()
+            .all(|node| node.attribute("style").is_none())
+    );
+    let evidence = merman_render::__private::family_evidence(rendered.into_completion().report());
+    assert_eq!(evidence.applied_count(), 3);
+    assert_eq!(evidence.not_applicable_count(), 1);
+    assert_eq!(evidence.theme_residual_count(), 0);
+}
+
+#[test]
+fn ishikawa_core_paints_reach_hand_drawn_body_and_skeleton_paths() {
+    let theme = ishikawa_core_paint_theme(false, false);
+    let rendered = render_ishikawa_with_theme(
+        &ishikawa_theme_source("handDrawn"),
+        &theme,
+        MermaidEngine::new(),
+    );
+    let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+    for body in document.descendants().filter(|node| {
+        matches!(
+            node.attribute("class"),
+            Some("ishikawa-head" | "ishikawa-label-box")
+        )
+    }) {
+        assert!(
+            body.children().any(
+                |node| node.has_tag_name("path") && node.attribute("stroke") == Some("#123456")
+            )
+        );
+        assert!(
+            body.children().any(
+                |node| node.has_tag_name("path") && node.attribute("stroke") == Some("#345678")
+            )
+        );
+    }
+    for spine in document
+        .descendants()
+        .filter(|node| node.attribute("class") == Some("ishikawa-spine"))
+    {
+        assert!(
+            spine
+                .children()
+                .filter(|node| node.has_tag_name("path"))
+                .all(|node| node.attribute("stroke") == Some("#789abc"))
+        );
+    }
+    assert!(
+        document
+            .descendants()
+            .any(|node| node.has_tag_name("path") && node.attribute("fill") == Some("#9abcde"))
+    );
+    let evidence = merman_render::__private::family_evidence(rendered.into_completion().report());
+    assert_eq!(evidence.applied_count(), 4);
+    assert_eq!(evidence.theme_residual_count(), 0);
+}
+
+#[test]
+fn ishikawa_hand_drawn_marker_stroke_remains_residual_with_consumed_fill() {
+    for mixed in [false, true] {
+        let mut style =
+            ThemeStylePatch::default().with_stroke(CanvasPaint::solid("#ff00ff").unwrap());
+        if mixed {
+            style = style.with_fill(CanvasPaint::solid("#123456").unwrap());
+        }
+        let theme = DiagramThemeCompiler::new()
+            .compile(DiagramThemeSpec::new().with_styles(
+                ThemeRuleSet::default().with_rule(ThemeRule::new(ThemeTarget::Marker, style)),
+            ))
+            .unwrap();
+        let source = ishikawa_theme_source("handDrawn");
+        let rendered = try_render_ishikawa_with_theme_requirement(
+            &source,
+            &theme,
+            MermaidEngine::new(),
+            ThemePortabilityRequirement::BestEffort,
+        )
+        .unwrap();
+        let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+        if mixed {
+            assert!(
+                document
+                    .descendants()
+                    .any(|node| node.has_tag_name("path")
+                        && node.attribute("fill") == Some("#123456"))
+            );
+        }
+        assert!(
+            document
+                .descendants()
+                .filter(|node| node.has_tag_name("path"))
+                .all(|node| node.attribute("stroke") != Some("#ff00ff"))
+        );
+        let evidence =
+            merman_render::__private::family_evidence(rendered.into_completion().report());
+        assert_eq!(evidence.required_count(), 1);
+        assert_eq!(evidence.applied_count(), 0);
+        assert_eq!(evidence.not_applicable_count(), 0);
+        assert_eq!(evidence.theme_residual_count(), 1);
+        let error = try_render_ishikawa_with_theme_requirement(
+            &source,
+            &theme,
+            MermaidEngine::new(),
+            ThemePortabilityRequirement::RequirePortable,
+        )
+        .err()
+        .unwrap();
+        assert_eq!(
+            error.unverified_family_theme(),
+            Some((DiagramFamilyId::ISHIKAWA, 1))
+        );
+    }
+}
+
+#[test]
+fn ishikawa_empty_compiled_theme_preserves_unthemed_svg_bytes() {
+    let theme = DiagramThemeCompiler::new()
+        .compile(DiagramThemeSpec::new())
+        .unwrap();
+    let environment = RenderEnvironment::deterministic();
+    for look in ["classic", "handDrawn"] {
+        let render = |theme: Option<&DiagramTheme>| {
+            let engine = match theme {
+                Some(theme) => common::install_parse_compatibility(theme, MermaidEngine::new()),
+                None => MermaidEngine::new(),
+            };
+            let parsed = engine
+                .parse_diagram_for_render_model_sync(
+                    &ishikawa_theme_source(look),
+                    ParseOptions::strict(),
+                )
+                .unwrap()
+                .unwrap()
+                .into_presentation();
+            let session = match theme {
+                Some(theme) => environment.begin_session_with_theme(theme).unwrap(),
+                None => environment.begin_session().unwrap(),
+            };
+            family::prepare(&parsed, &LayoutOptions::default(), session)
+                .unwrap()
+                .render_svg(
+                    &SvgRenderOptions {
+                        diagram_id: Some("ishikawa-theme".into()),
+                        ..Default::default()
+                    },
+                    &SvgDebugOptions::default(),
+                )
+                .unwrap()
+                .svg()
+                .to_owned()
+        };
+        assert_eq!(
+            render(None).as_bytes(),
+            render(Some(&theme)).as_bytes(),
+            "look={look}"
+        );
+    }
+}
+
 fn ishikawa_text_fill_theme(fill: CanvasPaint) -> DiagramTheme {
     DiagramThemeCompiler::new()
         .compile(

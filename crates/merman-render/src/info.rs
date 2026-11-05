@@ -390,6 +390,18 @@ fn info_theme_routes(
                     FamilyThemeMechanism::BaseTypography(_) => continue,
                 };
                 let applicable = match mechanism {
+                    // Info writes its version label, never a separate visual diagram title.
+                    FamilyThemeMechanism::RuleFacet {
+                        target: ThemeTarget::Title,
+                        ..
+                    }
+                    | FamilyThemeMechanism::OrdinalPalette {
+                        target: ThemeTarget::Title,
+                    }
+                    | FamilyThemeMechanism::EffectBinding {
+                        target: ThemeTarget::Title,
+                        ..
+                    } => false,
                     FamilyThemeMechanism::RuleFacet {
                         rule_index,
                         target: ThemeTarget::Text,
