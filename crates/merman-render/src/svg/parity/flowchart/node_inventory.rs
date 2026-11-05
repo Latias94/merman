@@ -216,7 +216,7 @@ pub(crate) struct FlowchartNodeRootSchedule {
 #[derive(Debug)]
 pub(crate) struct FlowchartPreparedNodes {
     schedule: FlowchartNodeRootSchedule,
-    terminals: FxHashMap<String, super::node_effect::PreparedNodeTerminal>,
+    terminals: FxHashMap<String, super::node_style::PreparedNodeTerminal>,
     cluster_ids: Vec<String>,
     clusters: FxHashMap<String, FlowchartPreparedCluster>,
     _cluster_retained_reservation: crate::resources::PreparedTextRetainedReservation,
@@ -289,7 +289,7 @@ impl FlowchartPreparedNodes {
             uses_elk,
         );
         let render_model = crate::flowchart::FlowchartRenderModelRef::new(model, render_context);
-        let selection_inputs = super::node_effect::NodeSelectionInputs::new(
+        let selection_inputs = super::node_style::NodeSelectionInputs::new(
             &prepared_theme.compatibility,
             render_config,
         );
@@ -337,7 +337,7 @@ impl FlowchartPreparedNodes {
                     )
                 }
             };
-            let terminal = super::node_effect::PreparedNodeTerminal::prepare(
+            let terminal = super::node_style::PreparedNodeTerminal::prepare(
                 &model.class_defs,
                 source_styles,
                 source_text_style,
@@ -525,7 +525,7 @@ impl FlowchartPreparedNodes {
     pub(super) fn schedule(&self) -> &FlowchartNodeRootSchedule {
         &self.schedule
     }
-    pub(super) fn node(&self, id: &str) -> Option<&super::node_effect::PreparedNodeTerminal> {
+    pub(super) fn node(&self, id: &str) -> Option<&super::node_style::PreparedNodeTerminal> {
         self.terminals.get(id)
     }
     pub(super) fn cluster_ids(&self) -> impl Iterator<Item = &str> {

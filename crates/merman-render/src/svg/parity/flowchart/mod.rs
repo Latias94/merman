@@ -15,6 +15,7 @@ mod label;
 mod label_effect;
 mod node_effect;
 mod node_inventory;
+mod node_style;
 mod paint;
 pub(crate) use node_inventory::{FlowchartNodeLayoutView, FlowchartPreparedNodes};
 mod render;

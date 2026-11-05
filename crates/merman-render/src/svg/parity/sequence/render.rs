@@ -148,8 +148,9 @@ pub(in crate::svg::parity) fn render_sequence_diagram_svg_model_with_config(
     let sequence_number_fill_overridden = sequence_number_theme.fill_overridden();
     let mut sequence_number_receipt = sequence_number_theme.fresh_receipt();
     let activation_theme = prepared.activation_theme();
-    let activation_fill_overridden = activation_theme.fill_overridden;
-    let activation_stroke_overridden = activation_theme.stroke_overridden;
+    let activation_paint = activation_theme.activation_paint(compat);
+    let activation_fill_overridden = activation_paint.fill_overridden;
+    let activation_stroke_overridden = activation_paint.stroke_overridden;
     let mut lifeline_paint =
         super::actor_effect::SequenceLifelinePaint::new(lifeline_theme.effect.clone());
     let mut defer_paint_bounds = defer_text_bounds
@@ -208,8 +209,8 @@ pub(in crate::svg::parity) fn render_sequence_diagram_svg_model_with_config(
     let mut activation_receipt = activation_theme.fresh_receipt();
 
     activation_plan.prepare_paint(
-        activation_theme.typed_fill.is_some(),
-        activation_theme.typed_stroke.is_some(),
+        activation_paint.typed_fill.is_some(),
+        activation_paint.typed_stroke.is_some(),
         activation_theme.stroke_width,
         activation_theme.radius,
         activation_theme.effect.clone(),
@@ -461,9 +462,9 @@ pub(in crate::svg::parity) fn render_sequence_diagram_svg_model_with_config(
     prepared.theme_evidence().record_activation_emission(
         crate::sequence::SequenceStaticRectThemeEmission::from_terminal_writer(
             activation_count,
-            activation_theme.typed_fill.as_deref(),
+            activation_paint.typed_fill,
             activation_fill_overridden,
-            activation_theme.typed_stroke.as_deref(),
+            activation_paint.typed_stroke,
             activation_stroke_overridden,
             activation_receipt,
         ),

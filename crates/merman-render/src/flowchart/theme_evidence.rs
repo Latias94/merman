@@ -852,6 +852,10 @@ impl FlowchartNodeThemeStyle {
         Ok(resolved)
     }
 
+    pub(crate) fn effect_is_cleared(&self) -> bool {
+        matches!(self.effect, Some(FlowchartEffectOutcome::Cleared { .. }))
+    }
+
     pub(crate) fn effect(&self) -> Option<&SvgShadowEffect> {
         self.effect
             .as_ref()

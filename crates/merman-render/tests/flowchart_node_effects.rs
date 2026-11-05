@@ -152,12 +152,93 @@ fn classic_shapes_receive_ordered_shadows_without_filtering_their_labels() {
 }
 
 #[test]
-fn mixed_shapes_and_nonclassic_looks_keep_unconsumed_effects_residual() {
+fn neo_body_effects_replace_look_filters_without_filtering_labels_or_double_circle_children() {
+    let theme = theme(ThemeRuleSet::default());
+    let rendered = render(
+        "flowchart LR\nA[Rect] --> B(Round) --> C{Diamond} --> D((Circle)) --> E(((Double)))",
+        &theme,
+        "neo",
+        true,
+    )
+    .unwrap();
+    let svg = rendered.svg();
+    assert_eq!(applications(svg), 5);
+    let xml = roxmltree::Document::parse(svg).unwrap();
+    for body in xml.descendants().filter(|node| {
+        filter_reference(*node).is_some_and(|value| value.contains("-theme-effect-"))
+    }) {
+        assert!(body.attribute("style").unwrap().contains("!important"));
+        assert!(
+            !body
+                .descendants()
+                .any(|child| { child.has_tag_name("text") || child.has_tag_name("foreignObject") })
+        );
+        if body.has_tag_name("g") {
+            let circles: Vec<_> = body
+                .children()
+                .filter(|node| node.has_tag_name("circle"))
+                .collect();
+            assert_eq!(circles.len(), 2);
+            assert!(circles.iter().all(|circle| {
+                circle
+                    .attribute("style")
+                    .unwrap()
+                    .contains("filter:none !important")
+            }));
+        }
+    }
+}
+
+#[test]
+fn neo_body_clear_removes_look_shadow_and_keeps_sibling_effects() {
+    let mut patch = ThemeStylePatch::default();
+    patch.effects.effect = Specified::Clear;
+    let theme = theme(ThemeRuleSet::default().with_rule(
+        ThemeRule::new(ThemeTarget::Node, patch).with_ordinal(OrdinalSelector::Exact(2)),
+    ));
+    let rendered = render(
+        "flowchart LR\nA[Shadow] --> B(((Clear))) --> C[Shadow]",
+        &theme,
+        "neo",
+        true,
+    )
+    .unwrap();
+    assert_eq!(applications(rendered.svg()), 2);
+    let xml = roxmltree::Document::parse(rendered.svg()).unwrap();
+    let body = xml
+        .descendants()
+        .find(|node| {
+            node.has_tag_name("g") && node.attribute("class") == Some("basic label-container")
+        })
+        .unwrap();
+    assert!(
+        body.attribute("style")
+            .unwrap()
+            .contains("filter:none !important")
+    );
+    assert!(
+        body.children()
+            .filter(|node| node.has_tag_name("circle"))
+            .all(|node| {
+                node.attribute("style")
+                    .unwrap()
+                    .contains("filter:none !important")
+            })
+    );
+    let completion = rendered.into_completion();
+    assert_eq!(
+        merman_render::__private::family_evidence(completion.report()).theme_residual_count(),
+        0
+    );
+}
+
+#[test]
+fn unsupported_shapes_and_hand_drawn_keep_unconsumed_effects_residual() {
     let theme = theme(ThemeRuleSet::default());
     for (source, look, expected) in [
         ("flowchart LR\nA[Rect] --> B[/Lean/]", "classic", 1),
         ("flowchart LR\nA[Rect] --> B[Rect]", "handDrawn", 0),
-        ("flowchart LR\nA[Rect] --> B[Rect]", "neo", 0),
+        ("flowchart LR\nA[Rect] --> B[/Lean/]", "neo", 1),
     ] {
         let rendered = render(source, &theme, look, false).unwrap();
         assert_eq!(applications(rendered.svg()), expected);
@@ -165,6 +246,80 @@ fn mixed_shapes_and_nonclassic_looks_keep_unconsumed_effects_residual() {
         let evidence = merman_render::__private::family_evidence(completion.report());
         assert_eq!(evidence.theme_residual_count(), 1);
         assert!(render(source, &theme, look, true).is_err());
+    }
+}
+
+#[test]
+fn self_loop_label_placeholders_do_not_receive_body_effects_or_application_counts() {
+    let theme = theme(ThemeRuleSet::default());
+    for (look, layout) in [("classic", "dagre"), ("neo", "dagre"), ("neo", "elk")] {
+        let source =
+            format!("---\nconfig:\n  layout: {layout}\n---\nflowchart LR\nA[Loop] -->|Again| A");
+        let rendered = render(&source, &theme, look, true).unwrap();
+        assert_eq!(applications(rendered.svg()), 1, "{look}, {layout}");
+        assert_eq!(
+            rendered.svg().contains("synthetic-label-"),
+            layout == "dagre"
+        );
+        let completion = rendered.into_completion();
+        assert_eq!(
+            merman_render::__private::family_evidence(completion.report()).theme_residual_count(),
+            0
+        );
+    }
+}
+
+#[test]
+fn structural_source_filters_keep_ownership_over_body_shadow_and_clear() {
+    let shadow = theme(ThemeRuleSet::default());
+    let mut clear = ThemeStylePatch::default();
+    clear.effects.effect = Specified::Clear;
+    let cleared =
+        theme(ThemeRuleSet::default().with_rule(ThemeRule::new(ThemeTarget::Node, clear)));
+    for class in ["root", "nodes", "basic", "label-container"] {
+        let source = format!("flowchart LR\nA(((Double)))\nclassDef {class} filter:blur(2px)");
+        for theme in [&shadow, &cleared] {
+            let rendered = render(&source, theme, "neo", false).unwrap();
+            assert_eq!(applications(rendered.svg()), 0, "{class}");
+            assert!(!rendered.svg().contains("filter:none !important"));
+            assert!(rendered.svg().contains("filter:blur(2px)"));
+            let completion = rendered.into_completion();
+            assert_eq!(
+                merman_render::__private::family_evidence(completion.report())
+                    .theme_residual_count(),
+                1,
+                "{class}"
+            );
+            assert!(render(&source, theme, "neo", true).is_err(), "{class}");
+        }
+    }
+}
+
+#[test]
+fn source_css_geometry_cannot_certify_layout_based_shadow_regions() {
+    let themed = theme(ThemeRuleSet::default());
+    for declaration in [
+        "classDef basic r:1px",
+        "classDef label-container cx:1000px",
+        "classDef nodes r:1000px",
+        "style A r:1px",
+        "style A transform:scale(4)",
+    ] {
+        let source = format!("flowchart LR\nA(((Double)))\n{declaration}");
+        for look in ["classic", "neo"] {
+            let rendered = render(&source, &themed, look, false).unwrap();
+            assert_eq!(applications(rendered.svg()), 0, "{look}, {declaration}");
+            let completion = rendered.into_completion();
+            assert_eq!(
+                merman_render::__private::family_evidence(completion.report())
+                    .theme_residual_count(),
+                1
+            );
+            assert!(
+                render(&source, &themed, look, true).is_err(),
+                "{look}, {declaration}"
+            );
+        }
     }
 }
 
@@ -223,35 +378,37 @@ fn glow_expands_viewport_without_moving_layout_nodes_and_survives_nested_roots()
         .compile(DiagramThemeSpec::new())
         .unwrap();
     let themed = theme(ThemeRuleSet::default());
-    let base = render(source, &plain, "classic", true).unwrap();
-    let glow = render(source, &themed, "classic", true).unwrap();
-    assert_eq!(applications(glow.svg()), 3);
-    let base_xml = roxmltree::Document::parse(base.svg()).unwrap();
-    let glow_xml = roxmltree::Document::parse(glow.svg()).unwrap();
-    let viewport = |xml: &roxmltree::Document<'_>| {
-        xml.root_element()
-            .attribute("viewBox")
-            .unwrap()
-            .split_whitespace()
-            .map(|part| part.parse::<f64>().unwrap())
-            .collect::<Vec<_>>()
-    };
-    let before = viewport(&base_xml);
-    let after = viewport(&glow_xml);
-    assert!(after[2] > before[2] + 20.0, "{before:?} -> {after:?}");
-    assert!(after[3] >= before[3]);
-    let positions = |xml: &roxmltree::Document<'_>| {
-        xml.descendants()
-            .filter(|node| node.has_tag_name("g") && node.attribute("data-id").is_some())
-            .map(|node| {
-                (
-                    node.attribute("data-id").unwrap().to_owned(),
-                    node.attribute("transform").unwrap_or_default().to_owned(),
-                )
-            })
-            .collect::<Vec<_>>()
-    };
-    assert_eq!(positions(&base_xml), positions(&glow_xml));
+    for look in ["classic", "neo"] {
+        let base = render(source, &plain, look, true).unwrap();
+        let glow = render(source, &themed, look, true).unwrap();
+        assert_eq!(applications(glow.svg()), 3);
+        let base_xml = roxmltree::Document::parse(base.svg()).unwrap();
+        let glow_xml = roxmltree::Document::parse(glow.svg()).unwrap();
+        let viewport = |xml: &roxmltree::Document<'_>| {
+            xml.root_element()
+                .attribute("viewBox")
+                .unwrap()
+                .split_whitespace()
+                .map(|part| part.parse::<f64>().unwrap())
+                .collect::<Vec<_>>()
+        };
+        let before = viewport(&base_xml);
+        let after = viewport(&glow_xml);
+        assert!(after[2] > before[2] + 20.0, "{before:?} -> {after:?}");
+        assert!(after[3] >= before[3]);
+        let positions = |xml: &roxmltree::Document<'_>| {
+            xml.descendants()
+                .filter(|node| node.has_tag_name("g") && node.attribute("data-id").is_some())
+                .map(|node| {
+                    (
+                        node.attribute("data-id").unwrap().to_owned(),
+                        node.attribute("transform").unwrap_or_default().to_owned(),
+                    )
+                })
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(positions(&base_xml), positions(&glow_xml));
+    }
 }
 
 #[test]
@@ -1090,8 +1247,9 @@ fn edge_glow_failure_is_not_hidden_by_stroke_from_the_same_rule() {
     );
     assert!(render(source, &theme, "classic", true).is_ok());
 
-    // Neo consumes the stroke but cannot certify this rule's sibling effect facet.
-    let rendered = render(source, &theme, "neo", false).unwrap();
+    // A source-relative width leaves the effect unbounded even when the stroke paint wins.
+    let unbounded = "flowchart LR\nA --> B\nlinkStyle 0 stroke-width:2em";
+    let rendered = render(unbounded, &theme, "neo", false).unwrap();
     let xml = roxmltree::Document::parse(rendered.svg()).unwrap();
     let edge = xml
         .descendants()
@@ -1103,7 +1261,7 @@ fn edge_glow_failure_is_not_hidden_by_stroke_from_the_same_rule() {
     let evidence = merman_render::__private::family_evidence(completion.report());
     assert_eq!(evidence.theme_residual_count(), 1);
     assert_eq!(evidence.applied_count(), 0);
-    assert!(render(source, &theme, "neo", true).is_err());
+    assert!(render(unbounded, &theme, "neo", true).is_err());
 }
 
 #[test]
@@ -1131,7 +1289,6 @@ fn edge_glow_rejects_unbounded_source_geometry_and_nonclassic_looks() {
     let theme = edge_glow_theme();
     for (source, look) in [
         ("flowchart LR\nA --> B", "handDrawn"),
-        ("flowchart LR\nA --> B", "neo"),
         (
             "flowchart LR\nA --> B\nlinkStyle 0 stroke-width:2em",
             "classic",

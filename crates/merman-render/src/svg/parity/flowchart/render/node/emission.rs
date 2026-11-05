@@ -97,6 +97,7 @@ pub(in crate::svg::parity::flowchart) struct FlowchartNodeShapeEmissionReceipt {
     stroke_width: FlowchartNodeFacetEmission,
     stroke_dasharray: FlowchartNodeFacetEmission,
     radius: FlowchartNodeFacetEmission,
+    effect: bool,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -268,6 +269,18 @@ impl FlowchartNodeLabelEmissionReceipt {
 }
 
 impl FlowchartNodeShapeEmissionReceipt {
+    pub(in crate::svg::parity::flowchart) const fn with_effect_reach(
+        mut self,
+        verified: bool,
+    ) -> Self {
+        self.effect = verified;
+        self
+    }
+
+    pub(in crate::svg::parity::flowchart) const fn typed_effect_verified(self) -> bool {
+        self.effect
+    }
+
     pub(in crate::svg::parity::flowchart) const fn classic_process(radius_emitted: bool) -> Self {
         let facet = FlowchartNodeFacetEmission::new(
             FlowchartNodeFacetReach::Verified,
@@ -277,6 +290,7 @@ impl FlowchartNodeShapeEmissionReceipt {
             FlowchartNodeFacetReach::Verified,
         );
         Self {
+            effect: false,
             fill: facet,
             stroke: facet,
             stroke_width: facet,
@@ -314,6 +328,7 @@ impl FlowchartNodeShapeEmissionReceipt {
             FlowchartNodeFacetReach::Unverified,
         );
         Self {
+            effect: false,
             fill: facet,
             stroke: facet,
             stroke_width: FlowchartNodeFacetEmission::new(
@@ -349,6 +364,7 @@ impl FlowchartNodeShapeEmissionReceipt {
             FlowchartNodeFacetReach::Verified,
         );
         Self {
+            effect: false,
             fill: facet,
             stroke: facet,
             stroke_width: FlowchartNodeFacetEmission::new(
@@ -384,6 +400,7 @@ impl FlowchartNodeShapeEmissionReceipt {
             FlowchartNodeFacetReach::Unverified,
         );
         Self {
+            effect: false,
             fill: facet,
             stroke: facet,
             stroke_width: FlowchartNodeFacetEmission::new(
@@ -419,6 +436,7 @@ impl FlowchartNodeShapeEmissionReceipt {
             FlowchartNodeFacetReach::Unverified,
         );
         Self {
+            effect: false,
             fill: facet,
             stroke: facet,
             stroke_width: facet,

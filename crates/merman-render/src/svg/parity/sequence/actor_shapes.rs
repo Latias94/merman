@@ -136,6 +136,10 @@ impl<'a> ActorLabelContext<'a> {
         }
     }
 
+    pub(super) fn separate_label_shadow(&self) -> bool {
+        self.is_neo() && self.shadow.needs_bounds()
+    }
+
     pub(super) fn write_style_attr(
         &self,
         out: &mut impl SvgOutput,
@@ -167,6 +171,11 @@ impl<'a> ActorLabelContext<'a> {
         };
         if self.compat.actor_palette_mode() {
             let (stroke, fill) = self.compat.actor_palette(actor_index);
+            let stroke = stroke.or_else(|| {
+                matches!(actor_type, "actor" | "boundary" | "control" | "database")
+                    .then(|| self.compat.actor_palette_stroke_fallback())
+                    .flatten()
+            });
             for (property, color) in [("stroke", stroke), ("fill", fill)] {
                 if let Some(color) = color {
                     declaration(property, color);
@@ -313,7 +322,7 @@ impl ActorLabelContext<'_> {
                 ""
             },
         );
-        if actor_type == "collections" {
+        if actor_type == "collections" && !self.separate_label_shadow() {
             self.write_shadow_attr(out);
         }
         out.push('>');
@@ -332,6 +341,12 @@ pub(super) fn write_collection_actor_shape(
     const OFFSET: f64 = 6.0;
     let (x, y) = node_left_top(n);
     let height = n.height - if label_ctx.is_neo() { OFFSET } else { 0.0 };
+    let separate_shadow = label_ctx.separate_label_shadow();
+    if separate_shadow {
+        out.push_str("<g");
+        label_ctx.write_shadow_attr(out);
+        out.push('>');
+    }
     for (rect_x, rect_y, class) in [
         (x, y, format!("actor {placement_class}")),
         (x - OFFSET, y + OFFSET, "actor".to_string()),
@@ -350,6 +365,9 @@ pub(super) fn write_collection_actor_shape(
         }
         label_ctx.write_style_attr(out, "collections", actor_index);
         out.push_str("/>");
+    }
+    if separate_shadow {
+        out.push_str("</g>");
     }
     label_ctx.write_actor(out, n.x - OFFSET, y + OFFSET + height / 2.0, actor)
 }

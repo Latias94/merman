@@ -19,6 +19,9 @@ pub(in crate::svg::parity::flowchart::render) struct FlowchartNodeRenderCommon<'
     pub style: &'a str,
     pub junction_style: &'a str,
     pub effect_filter_attr: &'a str,
+    pub effect_filter_style: &'a str,
+    pub effect_selected: bool,
+    pub suppress_child_filters: bool,
     /// Theme-only declarations for no-label surfaces that do not consume the complete source
     /// style string (notably flowchart-v2 start nodes).
     pub theme_style: &'a str,
@@ -91,6 +94,16 @@ impl<'a> std::ops::Deref for FlowchartNodeRenderCommon<'a> {
 }
 
 impl FlowchartNodeRenderCommon<'_> {
+    pub(super) fn write_effect_style(&self, out: &mut impl crate::svg::parity::SvgOutput) {
+        out.push_str(self.effect_filter_style);
+    }
+
+    pub(super) fn write_child_filter_style(&self, out: &mut impl crate::svg::parity::SvgOutput) {
+        if self.suppress_child_filters {
+            out.push_str(";filter:none !important");
+        }
+    }
+
     pub(super) fn write_rectangle_radii(
         &self,
         out: &mut impl crate::svg::parity::SvgOutput,
@@ -258,7 +271,7 @@ pub(in crate::svg::parity::flowchart) fn render_flowchart_node(
     );
 
     let effect_application = prepared_effect
-        .and_then(|geometry| geometry.shadow.zip(prepared.style.effect()))
+        .and_then(|geometry| geometry.shadow().zip(prepared.style.effect()))
         .map(|(materialized, effect)| {
             let id = format!("{}-theme-effect-{}", node_dom_id, effect.id());
             let reference = crate::svg::parity::shadow::write_theme_shadow_application(
@@ -268,8 +281,24 @@ pub(in crate::svg::parity::flowchart) fn render_flowchart_node(
                 materialized.region(),
             );
             let attribute = format!(r#" filter="{}""#, escape_attr(&reference));
-            (id, effect, materialized.region(), attribute)
+            let style = if look == "neo" {
+                format!(";filter:{} !important", escape_attr(&reference))
+            } else {
+                String::new()
+            };
+            (id, effect, materialized.region(), attribute, style)
         });
+    let effect_selected = prepared_effect.is_some_and(|effect| effect.replaces_look_filter());
+    let effect_filter_style = effect_application.as_ref().map_or_else(
+        || {
+            if look == "neo" && effect_selected {
+                ";filter:none !important"
+            } else {
+                ""
+            }
+        },
+        |(_, _, _, _, style)| style.as_str(),
+    );
     let common = FlowchartNodeRenderCommon {
         geometry: prepare_node_geometry(ctx, node_id, &resolved)?,
 
@@ -278,7 +307,10 @@ pub(in crate::svg::parity::flowchart) fn render_flowchart_node(
         junction_style: selection.junction_style.as_deref().unwrap_or(style),
         effect_filter_attr: effect_application
             .as_ref()
-            .map_or("", |(_, _, _, attr)| attr.as_str()),
+            .map_or("", |(_, _, _, attr, _)| attr.as_str()),
+        effect_filter_style,
+        effect_selected,
+        suppress_child_filters: effect_selected && look == "neo",
         theme_style: &selection.theme_style,
         rough_group_style: &prepared.rough_group_style,
         fill_color,
@@ -329,7 +361,9 @@ pub(in crate::svg::parity::flowchart) fn render_flowchart_node(
             false,
         )
     };
-    if let Some((id, effect, region, _)) = &effect_application {
+    if shape_outcome.emission().typed_effect_verified()
+        && let Some((id, effect, region, _, _)) = &effect_application
+    {
         ctx.effect_evidence.record_application(effect, id, *region);
     }
     let label_receipt = if no_label {
@@ -450,7 +484,8 @@ pub(in crate::svg::parity::flowchart) fn render_flowchart_node(
                 }),
                 effect: crate::flowchart::FlowchartThemeFacetEmission::new(
                     crate::flowchart::FlowchartFacetPrecedence::new(source_filter, false),
-                    node_theme.effect().is_none() || effect_application.is_some(),
+                    shape_outcome.emission().typed_effect_verified()
+                        || (node_theme.effect_is_cleared() && look == "classic" && effect_selected),
                 ),
                 fill: crate::flowchart::FlowchartThemeFacetEmission::new(
                     crate::flowchart::FlowchartFacetPrecedence::new(

@@ -381,6 +381,13 @@ impl FlowchartCompiledStyles {
         })
     }
 
+    pub(super) fn node_shadow_source_is_bounded(&self) -> bool {
+        !self
+            .shape_sources
+            .iter()
+            .any(|source| node_shadow_geometry_is_overridden(source.prepared.property()))
+    }
+
     pub(super) fn source_filter_status(&self) -> crate::flowchart::FlowchartSourceFacetStatus {
         if self
             .shape_sources
@@ -1417,6 +1424,48 @@ pub(super) fn edge_shadow_structural_styles_are_bounded(
             })
         })
     })
+}
+
+fn node_shadow_geometry_is_overridden(property: &str) -> bool {
+    matches!(
+        property,
+        "r" | "cx"
+            | "cy"
+            | "x"
+            | "y"
+            | "width"
+            | "height"
+            | "d"
+            | "transform"
+            | "transform-origin"
+            | "transform-box"
+            | "translate"
+            | "rotate"
+            | "scale"
+            | "perspective"
+            | "vector-effect"
+            | "all"
+    )
+}
+
+pub(super) fn node_shadow_structural_styles_are_bounded(
+    class_defs: &IndexMap<String, Vec<String>>,
+    classes: &[&str],
+) -> bool {
+    edge_shadow_structural_styles_are_bounded(class_defs, classes)
+        && classes.iter().all(|class| {
+            class_defs.get(*class).is_none_or(|groups| {
+                groups.iter().all(|group| {
+                    crate::flowchart::flowchart_split_mermaid_style_decls(group).all(|raw| {
+                        crate::diagram_theme::PreparedSourceStyleDeclaration::parse(raw).is_none_or(
+                            |declaration| {
+                                !node_shadow_geometry_is_overridden(declaration.property())
+                            },
+                        )
+                    })
+                })
+            })
+        })
 }
 
 /// Generated class selectors can style descendants of the label shell without appearing in

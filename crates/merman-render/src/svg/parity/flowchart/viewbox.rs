@@ -428,7 +428,7 @@ fn builtin_neo_paint_bounds(
             .node_effects
             .get()
             .and_then(|effects| effects.node(id))
-            .is_some_and(|effect| effect.shadow.is_some())
+            .is_some_and(|effect| effect.replaces_look_filter())
         {
             continue;
         }

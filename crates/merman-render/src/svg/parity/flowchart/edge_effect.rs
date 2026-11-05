@@ -23,7 +23,15 @@ impl FlowchartEdgeEffects {
             return Ok(plan);
         }
 
-        if ctx.compatibility.look.as_str() != "classic" {
+        // Flowchart Neo uses this same final path and marker envelope. Its compatibility
+        // selectors do not filter the edge path, so they do not compete on this terminal.
+        // Nearby families share this planner without inheriting Neo admission.
+        let look = ctx.compatibility.look;
+        let neo_flowchart = look.is_neo()
+            && ctx.swimlane_direction.is_none()
+            && merman_model::family::diagram_type_family_id(ctx.diagram_type)
+                == Some(crate::DiagramFamilyId::FLOWCHART);
+        if look.as_str() != "classic" && !neo_flowchart {
             return Ok(plan);
         }
         let Some(effect) = ctx.edge_theme.effect() else {

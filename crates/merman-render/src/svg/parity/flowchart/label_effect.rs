@@ -91,7 +91,13 @@ impl FlowchartLabelEffects {
         let Some(sidecar) = ctx.svg_label_sidecar else {
             return Ok(plan);
         };
-        if ctx.swimlane_direction.is_some() || ctx.compatibility.look.as_str() != "classic" {
+        // Neo's node-body defaults do not target the glyph-only wrapper. Keep using
+        // its measured translation and leave background siblings outside the filter.
+        let look = ctx.compatibility.look;
+        let neo_flowchart = look.is_neo()
+            && merman_model::family::diagram_type_family_id(ctx.diagram_type)
+                == Some(crate::DiagramFamilyId::FLOWCHART);
+        if ctx.swimlane_direction.is_some() || (look.as_str() != "classic" && !neo_flowchart) {
             return Ok(plan);
         }
         if !ctx.effect_eligibility.label {

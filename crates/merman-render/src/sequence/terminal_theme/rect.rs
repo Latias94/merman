@@ -16,7 +16,28 @@ pub(crate) struct SequencePreparedStaticRectTheme {
     selected_style: Option<ResolvedThemeStyle>,
 }
 
+pub(crate) struct SequenceActivationPaint<'a> {
+    pub(crate) typed_fill: Option<&'a str>,
+    pub(crate) typed_stroke: Option<&'a str>,
+    pub(crate) fill_overridden: bool,
+    pub(crate) stroke_overridden: bool,
+}
+
 impl SequencePreparedStaticRectTheme {
+    pub(crate) fn activation_paint(
+        &self,
+        compat: &super::super::SequenceCompatBinding,
+    ) -> SequenceActivationPaint<'_> {
+        let fill_overridden = self.fill_overridden || compat.palette_fill_overridden;
+        let stroke_overridden = self.stroke_overridden || compat.palette_stroke_overridden;
+        SequenceActivationPaint {
+            typed_fill: self.typed_fill.as_deref().filter(|_| !fill_overridden),
+            typed_stroke: self.typed_stroke.as_deref().filter(|_| !stroke_overridden),
+            fill_overridden,
+            stroke_overridden,
+        }
+    }
+
     pub(crate) fn resolve(
         theme: Option<&ResolvedDiagramTheme>,
         target: crate::diagram_theme::ThemeTarget,

@@ -12,7 +12,7 @@ pub(super) fn write_sequence_css(
     let typography = prepared.typography();
     let theme = typography.compat_binding();
     let terminal = prepared.terminal_theme();
-    let activation = prepared.activation_theme();
+    let activation = prepared.activation_theme().activation_paint(theme);
     let css = prepared.css();
     let font = if css.typed_font {
         typography.base_font_family_css()

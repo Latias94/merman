@@ -94,7 +94,9 @@ pub(super) fn render_sequence_bottom_actors(
             }
             "collections" => {
                 out.push_str("<g");
-                label_ctx.write_shadow_attr(out);
+                if !label_ctx.separate_label_shadow() {
+                    label_ctx.write_shadow_attr(out);
+                }
                 out.push('>');
                 write_collection_actor_shape(
                     out,
