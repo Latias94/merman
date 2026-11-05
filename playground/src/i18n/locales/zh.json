@@ -364,6 +364,12 @@
     "forest": "森林",
     "neutral": "中性",
     "base": "基础",
+    "neo": "Neo",
+    "neo-dark": "Neo 深色",
+    "redux": "Redux",
+    "redux-dark": "Redux 深色",
+    "redux-color": "Redux 彩色",
+    "redux-dark-color": "Redux 深色彩色",
     "system": "跟随系统"
   },
   "themePresets": {
@@ -565,10 +571,33 @@
     "catalogHint": "色块仅供参考，请查看当前图表的实际效果。预设和配方会为 Merman 渲染添加样式。",
     "catalogPending": "正在等待运行时主题目录…",
     "sources": {
-      "mermaid": "Mermaid",
-      "builtin": "Merman 内置",
-      "exploration": "探索主题",
+      "automatic": "自动选择",
+      "mermaid": "Mermaid.js 官方",
+      "builtin": "Merman 预设",
+      "exploration": "Merman 示例 · JSON",
       "imported": "已导入"
+    },
+    "groups": {
+      "automatic": {
+        "title": "自动",
+        "description": "使用图表默认主题，源码和配置中指定的主题仍然优先。"
+      },
+      "mermaid": {
+        "title": "Mermaid.js 官方主题",
+        "description": "Mermaid.js 和 Merman 均支持的官方主题。在 Mermaid 配置中设置 theme；对比模式下作用于两个引擎。"
+      },
+      "builtin": {
+        "title": "Merman 内置预设",
+        "description": "运行时内置的 Merman 专属设计。Web 使用 theme: { preset: \"…\" }，CLI 使用 --theme-preset；“在项目中使用”提供各语言采用代码。"
+      },
+      "exploration": {
+        "title": "Merman 主题示例",
+        "description": "可编辑的 JSON 设计，不属于内置预设。下载 JSON 后在 Merman 中使用，无需也不能指定预设 ID。"
+      },
+      "imported": {
+        "title": "你导入的主题",
+        "description": "当前工作区导入的 JSON 配方，保留文件即可在 Merman 中复用。"
+      }
     },
     "unavailableChoice": "当前运行时不可用",
     "unavailablePresetChoice": "已保留选择；预览使用 Mermaid 基础主题和源码样式。",

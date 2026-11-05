@@ -31,7 +31,7 @@ type ThemeImport =
   | { readonly status: "invalid"; readonly name: string; readonly error: string };
 
 export function ThemePanel({ className, onClose }: { className?: string; onClose(): void }) {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const headingId = useId();
   const heading = useRef<HTMLHeadingElement>(null);
   const fileInput = useRef<HTMLInputElement>(null);
@@ -71,8 +71,10 @@ export function ThemePanel({ className, onClose }: { className?: string; onClose
 
   const { catalog, error: catalogError } = catalogState;
   const mermaidThemes = useMemo(() => {
-    try { return [...new Set((facade?.getThemes() ?? SUPPORTED_THEMES).map(normalizeThemeName))]; }
-    catch { return [...SUPPORTED_THEMES].map(normalizeThemeName); }
+    try {
+      const available = new Set((facade?.getThemes() ?? SUPPORTED_THEMES).map(normalizeThemeName));
+      return SUPPORTED_THEMES.filter((theme) => available.has(theme));
+    } catch { return [...SUPPORTED_THEMES]; }
   }, [facade]);
   const families = useMemo(() => {
     try { return facade?.diagramFamilyCapabilities() ?? []; }
@@ -81,7 +83,10 @@ export function ThemePanel({ className, onClose }: { className?: string; onClose
   const familyId = detectedThemeFamily(detection, families);
   const familyLabel = (id: string) => t(`diagramTypes.${themeFamilyMetadataId(id, families) ?? id}`, { defaultValue: id });
   const appearanceOverrides = currentAppearanceOverrides(coordinator, workspace);
-  const presets = catalog?.presets ?? [];
+  const presets = [...(catalog?.presets ?? [])].sort((left, right) =>
+    t(`themePresets.${left.id}`, { defaultValue: left.display_name }).localeCompare(
+      t(`themePresets.${right.id}`, { defaultValue: right.display_name }), i18n.resolvedLanguage,
+      { numeric: true, sensitivity: "base" }));
   const selectedPreset = catalog?.presets.find((preset) => preset.id === workspace.themePresetId);
   const unavailablePresetId = workspace.themePresetId !== null && catalog !== null && !selectedPreset?.available ? workspace.themePresetId : null;
   const selectionName = workspace.themePresetId !== null
@@ -89,7 +94,8 @@ export function ThemePanel({ className, onClose }: { className?: string; onClose
     : workspace.themeRecipeJson !== null ? workspace.themeRecipeLabel?.name ?? t("appearance.importedTheme")
     : t(`themes.${workspace.diagramTheme}`, { defaultValue: workspace.diagramTheme });
   const selectionSource = workspace.themePresetId !== null ? "builtin"
-    : workspace.themeRecipeJson !== null ? workspace.themeRecipeLabel?.source ?? "imported" : "mermaid";
+    : workspace.themeRecipeJson !== null ? workspace.themeRecipeLabel?.source ?? "imported"
+    : workspace.diagramTheme === "auto" ? "automatic" : "mermaid";
   const reviewedFamilies = selectedPreset ? reviewedThemeFamilies(selectedPreset) : [];
   const applicationNotes = selectedPreset?.application_notes.filter((note) => note.family_id === familyId) ?? [];
   const canExchange = Boolean(facade && (workspace.themeRecipeJson !== null || selectedPreset?.available));

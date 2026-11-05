@@ -51,18 +51,96 @@ test("one theme catalog loads with the appearance panel and searches every sourc
   expect(requests.some((url) => url.endsWith(galleryOutput))).toBe(true);
   await expect(panel.getByRole("button", { name: "Browse themes", exact: true })).toHaveCount(0);
   await expect(page.getByRole("dialog")).toHaveCount(0);
+  const choices = page.getByTestId("theme-catalog-choices");
+  await expect(choices).toHaveCount(1);
+  const groups = choices.locator("[data-theme-group]");
+  await expect(choices.locator('[data-theme-choice="preset:brutalist"]')).toBeEnabled();
+  const presetCount = await choices.locator('[data-theme-group="builtin"] [data-theme-choice]').count();
   const search = catalog.getByRole("searchbox", { name: "Search themes", exact: true });
-  for (const [query, key] of [["forest", "mermaid:forest"], ["brutalist", "preset:brutalist"], ["nightfall", "exploration:nightfall"]]) {
+  for (const [query, key, group] of [
+    ["forest", "mermaid:forest", "mermaid"],
+    ["brutalist", "preset:brutalist", "builtin"],
+    ["nightfall", "exploration:nightfall", "exploration"],
+    ["mermaid:redux-dark-color", "mermaid:redux-dark-color", "mermaid"],
+    ["preset:one-dark", "preset:one-dark", "builtin"],
+    ["exploration:atlas", "exploration:atlas", "exploration"],
+  ]) {
     await search.fill(query);
     await expect(catalog.locator("[data-theme-choice]")).toHaveCount(1);
-    await expect(catalog.locator(`[data-theme-choice="${key}"]`)).toBeVisible();
+    await expect(groups).toHaveCount(1);
+    await expect(choices.locator(`[data-theme-group="${group}"] [data-theme-choice="${key}"]`)).toBeVisible();
+  }
+  for (const [query, group, count] of [
+    ["Mermaid.js official", "mermaid", 11],
+    ["Merman built-in presets", "builtin", presetCount],
+    ["--theme-preset", "builtin", presetCount],
+    ["Merman theme examples", "exploration", 4],
+    ["Merman example · JSON", "exploration", 4],
+  ] as const) {
+    await search.fill(query);
+    await expect(groups).toHaveCount(1);
+    await expect(groups).toHaveAttribute("data-theme-group", group);
+    await expect(choices.locator("[data-theme-choice]")).toHaveCount(count);
   }
   await search.fill("missing-theme");
   await expect(catalog).toContainText("No themes match");
+  await expect(groups).toHaveCount(0);
   await search.press("Escape");
   await expect(search).toHaveValue("");
+  await expect(groups).toHaveCount(4);
+  await expect(choices).toHaveCount(1);
+  await expect(catalog.locator("[data-theme-exploration]")).toHaveCount(4);
   await expect(panel).toBeVisible();
   await expect(panel.getByTestId("theme-current-name")).toHaveText("Brutalist");
+  errors.assertNone();
+});
+
+test("catalog groups separate automatic selection from the eleven official themes and sort Merman choices by name", async ({ page }) => {
+  const errors = monitorBrowserErrors(page);
+  const panel = await start(page);
+  const choices = page.getByTestId("theme-catalog-choices");
+  await expect(choices).toHaveCount(1);
+  await expect(choices.locator('[data-theme-choice="preset:brutalist"]')).toBeEnabled();
+  await expect.poll(() => choices.locator("[data-theme-group]").evaluateAll((groups) =>
+    groups.map((group) => group.getAttribute("data-theme-group"))))
+    .toEqual(["automatic", "mermaid", "builtin", "exploration"]);
+  for (const [group, title] of [
+    ["automatic", "Automatic"],
+    ["mermaid", "Mermaid.js official"],
+    ["builtin", "Merman built-in presets"],
+    ["exploration", "Merman theme examples"],
+  ]) {
+    await expect(choices.locator(`[data-theme-group="${group}"]`).getByRole("heading").getByText(title, { exact: true })).toBeVisible();
+    await expect(choices.locator(`[data-theme-group="${group}"] [data-theme-choice]:not([data-theme-source="${group}"])`)).toHaveCount(0);
+  }
+  const automatic = choices.locator('[data-theme-group="automatic"]');
+  const auto = automatic.locator("[data-theme-choice]");
+  await expect(auto).toHaveCount(1);
+  await expect(auto).toHaveAttribute("data-theme-choice", "mermaid:auto");
+  await expect(auto).toHaveAttribute("data-theme-source", "automatic");
+  await expect(auto.locator("[data-theme-source-label]")).toHaveText("Automatic selection");
+  const official = choices.locator('[data-theme-group="mermaid"]');
+  await expect.poll(() => official.locator("[data-theme-choice]").evaluateAll((entries) =>
+    entries.map((entry) => entry.getAttribute("data-theme-choice"))))
+    .toEqual([
+      "mermaid:default", "mermaid:base", "mermaid:dark", "mermaid:forest", "mermaid:neutral",
+      "mermaid:neo", "mermaid:neo-dark", "mermaid:redux", "mermaid:redux-dark",
+      "mermaid:redux-color", "mermaid:redux-dark-color",
+    ]);
+  await expect(official.locator("[data-theme-source-label]")).toHaveText(Array(11).fill("Mermaid.js official"));
+  await expect(official).toContainText("Compare");
+  await expect(choices.locator('[data-theme-group="builtin"]')).toContainText('theme: { preset: "…" }');
+  await expect(choices.locator('[data-theme-group="exploration"] [data-theme-choice]')).toHaveCount(4);
+  for (const [group, source] of [["builtin", "Merman preset"], ["exploration", "Merman example · JSON"]]) {
+    const entries = choices.locator(`[data-theme-group="${group}"] [data-theme-choice]`);
+    const names = await entries.locator("[data-theme-choice-name]").allTextContents();
+    expect(names.length).toBeGreaterThan(1);
+    expect(names).toEqual([...names].sort((left, right) => left.localeCompare(right, "en", { numeric: true, sensitivity: "base" })));
+    await expect(entries.locator("[data-theme-source-label]")).toHaveText(Array(names.length).fill(source));
+  }
+  await auto.click();
+  await expect(auto).toHaveAttribute("aria-pressed", "true");
+  await expect(panel.getByTestId("theme-current-source")).toHaveText("Automatic selection");
   errors.assertNone();
 });
 
@@ -72,7 +150,7 @@ test("selecting an exploration updates the current diagram immediately and share
   const panel = await start(page);
   await panel.locator('[data-theme-choice="exploration:atlas"]').click();
   await expect(panel.getByTestId("theme-current-name")).toHaveText("Atlas");
-  await expect(panel.getByTestId("theme-current-source")).toHaveText("Exploration");
+  await expect(panel.getByTestId("theme-current-source")).toHaveText("Merman example · JSON");
   await expect(panel.getByTestId("theme-render-evidence")).toHaveAttribute("data-theme-evidence-state", "applied");
   await expect(panel.getByRole("button", { name: "Apply", exact: true })).toHaveCount(0);
   await expect(panel.getByRole("button", { name: "Cancel", exact: true })).toHaveCount(0);

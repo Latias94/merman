@@ -8,7 +8,7 @@ import type { ThemeFamilyTreatment } from "@/src/lib/theme-discovery";
 export interface ThemeCatalogChoice {
   readonly key: string;
   readonly name: string;
-  readonly source: "mermaid" | "builtin" | "exploration" | "imported";
+  readonly source: "automatic" | "mermaid" | "builtin" | "exploration" | "imported";
   readonly choice: DiagramThemeChoice;
   readonly description?: string;
   readonly colors?: readonly string[];
@@ -25,7 +25,7 @@ export function ThemeChoiceCards({ entries, selectedKey, onSelect }: {
   onSelect(choice: DiagramThemeChoice): void;
 }) {
   const { t } = useTranslation();
-  return <div className="grid grid-cols-2 gap-2" data-testid="theme-catalog-choices">
+  return <div className={cn("grid gap-2", entries.length === 1 ? "grid-cols-1" : "grid-cols-2")}>
     {entries.map((entry) => {
       const selected = entry.key === selectedKey;
       return <button key={entry.key} type="button" aria-pressed={selected} disabled={!entry.available}

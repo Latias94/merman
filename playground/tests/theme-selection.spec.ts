@@ -96,16 +96,28 @@ test("advanced base and extension combinations and the single font control updat
 test("an imported recipe keeps its own name and source in the same catalog even when it matches an exploration", async ({ page }) => {
   const errors = monitorBrowserErrors(page);
   const panel = await start(page);
+  const choices = page.getByTestId("theme-catalog-choices");
+  const importedGroup = choices.locator('[data-theme-group="imported"]');
+  await expect(choices).toHaveCount(1);
+  await expect(importedGroup).toHaveCount(0);
   const raw = await readFile(new URL("../src/themes/recipes/atlas.theme.json", import.meta.url), "utf8");
   await importRecipe(panel, raw, "Team review.theme.json");
   await expect(panel.getByTestId("theme-import-candidate")).toHaveAttribute("data-theme-import-state", "ready");
+  await expect(importedGroup).toHaveCount(0);
   await expect(panel.getByTestId("theme-current-name")).toHaveText("Brutalist");
   expect(await sharedWorkspace(page)).toEqual(workspace);
   await panel.getByRole("button", { name: "Use imported theme", exact: true }).click();
-  const imported = panel.locator('[data-theme-choice="recipe:current"]');
+  await expect(choices).toHaveCount(1);
+  await expect.poll(() => choices.locator("[data-theme-group]").evaluateAll((groups) =>
+    groups.map((group) => group.getAttribute("data-theme-group"))))
+    .toEqual(["automatic", "mermaid", "builtin", "exploration", "imported"]);
+  await expect(importedGroup.getByText("Your imported theme", { exact: true })).toBeVisible();
+  await expect(importedGroup.locator("[data-theme-choice]")).toHaveCount(1);
+  const imported = importedGroup.locator('[data-theme-choice="recipe:current"]');
   await expect(imported).toHaveAttribute("aria-pressed", "true");
   await expect(imported).toHaveAttribute("data-theme-source", "imported");
   await expect(imported.locator("[data-theme-choice-name]")).toHaveText("Team review");
+  await expect(imported.locator("[data-theme-source-label]")).toHaveText("Imported");
   await expect(panel.locator('[data-theme-choice="exploration:atlas"]')).toHaveAttribute("aria-pressed", "false");
   await expect(panel.getByTestId("theme-current-name")).toHaveText("Team review");
   await expect(panel.getByTestId("theme-current-source")).toHaveText("Imported");
@@ -114,9 +126,13 @@ test("an imported recipe keeps its own name and source in the same catalog even 
   expect(snapshot.themeRecipeLabel).toEqual({ name: "Team review", source: "imported" });
   await panel.locator('[data-theme-choice="preset:brutalist"]').click();
   await expect(imported).toHaveCount(0);
+  await expect(importedGroup).toHaveCount(0);
   await panel.getByRole("button", { name: "Undo appearance change", exact: true }).click();
+  await expect(importedGroup).toBeVisible();
   await expect(imported).toHaveAttribute("aria-pressed", "true");
+  await expect(imported).toHaveAttribute("data-theme-source", "imported");
   await expect(panel.getByTestId("theme-current-name")).toHaveText("Team review");
+  await expect(panel.getByTestId("theme-current-source")).toHaveText("Imported");
   await panel.getByTestId("theme-advanced").locator("summary").first().click();
   await expect(panel.getByRole("textbox", { name: "Theme JSON", exact: true })).toHaveValue(raw);
   errors.assertNone();

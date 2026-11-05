@@ -364,6 +364,12 @@
     "forest": "Forest",
     "neutral": "Neutral",
     "base": "Base",
+    "neo": "Neo",
+    "neo-dark": "Neo Dark",
+    "redux": "Redux",
+    "redux-dark": "Redux Dark",
+    "redux-color": "Redux Color",
+    "redux-dark-color": "Redux Dark Color",
     "system": "System"
   },
   "themePresets": {
@@ -566,10 +572,33 @@
     "catalogHint": "Theme colors are a guide. Check your current diagram for the result. Presets and recipes style the Merman rendering.",
     "catalogPending": "Waiting for the runtime theme catalog…",
     "sources": {
-      "mermaid": "Mermaid",
-      "builtin": "Merman built-in",
-      "exploration": "Exploration",
+      "automatic": "Automatic selection",
+      "mermaid": "Mermaid.js official",
+      "builtin": "Merman preset",
+      "exploration": "Merman example · JSON",
       "imported": "Imported"
+    },
+    "groups": {
+      "automatic": {
+        "title": "Automatic",
+        "description": "Use the diagram's default theme. Source and configuration settings still take precedence."
+      },
+      "mermaid": {
+        "title": "Mermaid.js official",
+        "description": "Official themes supported by both Mermaid.js and Merman. Use theme in Mermaid config; these affect both engines in Compare."
+      },
+      "builtin": {
+        "title": "Merman built-in presets",
+        "description": "Merman-only designs included in the runtime. Use Web theme: { preset: \"…\" } or CLI --theme-preset. Use in project provides integration code."
+      },
+      "exploration": {
+        "title": "Merman theme examples",
+        "description": "Editable JSON designs, separate from the built-in presets. Download their JSON to use in Merman; they have no preset ID."
+      },
+      "imported": {
+        "title": "Your imported theme",
+        "description": "The JSON recipe imported into this workspace. Keep its file to reuse it in Merman."
+      }
     },
     "unavailableChoice": "Unavailable in this runtime",
     "unavailablePresetChoice": "Selection preserved; the preview uses the Mermaid base theme and source styles.",

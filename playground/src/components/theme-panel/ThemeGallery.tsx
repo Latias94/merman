@@ -24,7 +24,7 @@ export default function ThemeGallery({ workspace, mermaidThemes, presets, catalo
   readonly canSelectRecipes: boolean;
   onSelect(choice: DiagramThemeChoice): void;
 }) {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const searchId = useId();
   const [query, setQuery] = useState("");
   const [sampleId, setSampleId] = useState<ThemeSampleId>("flowchart");
@@ -36,7 +36,7 @@ export default function ThemeGallery({ workspace, mermaidThemes, presets, catalo
     ...mermaidThemes.map((theme): ThemeCatalogChoice => ({
       key: `mermaid:${theme}`,
       name: t(`themes.${theme}`, { defaultValue: theme }),
-      source: "mermaid",
+      source: theme === "auto" ? "automatic" : "mermaid",
       choice: { kind: "mermaid", theme },
       available: true,
     })),
@@ -75,10 +75,18 @@ export default function ThemeGallery({ workspace, mermaidThemes, presets, catalo
     choice: { kind: "preset", presetId: workspace.themePresetId }, available: false, loading: !catalogReady,
     description: t(catalogReady ? "appearance.unavailablePresetChoice" : "appearance.catalogPending"),
   });
-  const search = query.trim().toLocaleLowerCase();
-  const visible = entries.filter((entry) =>
-    `${entry.name} ${entry.description ?? ""} ${t(`appearance.sources.${entry.source}`)}`.toLocaleLowerCase().includes(search))
-    .sort((left, right) => left.name.localeCompare(right.name));
+  const locale = i18n.resolvedLanguage;
+  const search = query.trim().toLocaleLowerCase(locale);
+  const groups = (["automatic", "mermaid", "builtin", "exploration", "imported"] as const).map((source) => {
+    const title = t(`appearance.groups.${source}.title`);
+    const description = t(`appearance.groups.${source}.description`);
+    const choices = entries.filter((entry) => entry.source === source &&
+      `${entry.key} ${entry.name} ${entry.description ?? ""} ${t(`appearance.sources.${source}`)} ${title} ${description}`
+        .toLocaleLowerCase(locale).includes(search));
+    if (source !== "mermaid") choices.sort((left, right) =>
+      left.name.localeCompare(right.name, locale, { numeric: true, sensitivity: "base" }));
+    return { source, title, description, choices };
+  }).filter((group) => group.choices.length > 0);
 
   return <div className="min-w-0 space-y-3" data-testid="theme-catalog">
     <div className="relative min-w-0">
@@ -94,8 +102,20 @@ export default function ThemeGallery({ workspace, mermaidThemes, presets, catalo
           }
         }} />
     </div>
-    <ThemeChoiceCards entries={visible} selectedKey={selectedKey} onSelect={onSelect} />
-    {visible.length === 0 && <p role="status" className="rounded-md border border-dashed px-3 py-5 text-center text-xs text-muted-foreground">{t("appearance.noThemes")}</p>}
+    <div className="space-y-4" data-testid="theme-catalog-choices">
+      {groups.map((group) => <section key={group.source} aria-labelledby={`${searchId}-${group.source}`}
+        data-theme-group={group.source} className="min-w-0 space-y-2 border-t pt-3 first:border-t-0 first:pt-0">
+        <div className="space-y-1">
+          <h4 id={`${searchId}-${group.source}`} className="flex items-center justify-between gap-2 text-xs font-semibold">
+            <span>{group.title}</span>
+            <span className="shrink-0 text-[10px] font-normal tabular-nums text-muted-foreground" data-theme-group-count>{group.choices.length}</span>
+          </h4>
+          <p className="text-[11px] leading-relaxed text-muted-foreground">{group.description}</p>
+        </div>
+        <ThemeChoiceCards entries={group.choices} selectedKey={selectedKey} onSelect={onSelect} />
+      </section>)}
+    </div>
+    {groups.length === 0 && <p role="status" className="rounded-md border border-dashed px-3 py-5 text-center text-xs text-muted-foreground">{t("appearance.noThemes")}</p>}
     <p className="text-[11px] leading-relaxed text-muted-foreground">{t("appearance.catalogHint")}</p>
     {selectedExploration && <details key={selectedExploration.id} className="min-w-0 rounded-md border text-xs" data-testid="theme-examples">
       <summary className="cursor-pointer px-3 py-2 font-medium">{t("appearance.exampleDiagrams", { name: recipe?.name ?? selectedExploration.name })}</summary>

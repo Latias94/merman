@@ -139,9 +139,13 @@ the recipe with the skill or an external JSON editor, then import it to inspect 
 
 ## Select, preview, and share in the Playground
 
-Open **Appearance** to keep the panel beside the current diagram. One collection offers Mermaid
-native themes, runtime-discovered Merman presets, standalone explorations, and the current imported
-recipe. Search by name or source. Choosing a valid theme updates the workspace immediately;
+Open **Appearance** to keep the panel beside the current diagram. The catalog groups choices in
+this order: **Automatic**, **Mermaid.js official**, **Merman built-in presets**, **Merman theme
+examples**, and **Your imported theme** when present. Automatic is a Playground selection mode,
+not an official theme. Official themes follow the Mermaid catalog order, keeping Neo and Redux
+variants together; presets and JSON examples sort by their displayed names in the current language.
+Search spans all groups by name, ID, source, or group description and hides empty groups.
+Choosing a valid theme updates the workspace immediately;
 closing the panel keeps that choice. **Undo appearance** reverses selections and font changes
 without discarding source edits. Selecting a Mermaid native theme removes the Merman extension;
 Advanced retains explicit composition of a base theme and an extension.
