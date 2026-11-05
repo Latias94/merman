@@ -67,17 +67,72 @@ impl BlockLabelBackgroundPlan {
 /// Per-node label paint, resolved against source ownership for the SVG writer.
 #[derive(Debug)]
 pub(crate) struct BlockNodeLabelPaintPlan {
-    paints: Box<[Option<Box<str>>]>,
-    cluster_paints: Box<[Option<DirectPaintExpectation>]>,
-    cluster_rules: BTreeMap<usize, ThemeCapability>,
-    cluster_outcomes: OnceLock<BlockClusterLabelOutcomes>,
+    paints: Box<[Option<DirectPaintExpectation>]>,
+    rules: BTreeMap<(usize, ThemeTarget), ThemeCapability>,
+    outcomes: OnceLock<BlockLabelPaintOutcomes>,
     evidence: FamilyThemeOutcomes,
 }
 
 #[derive(Debug, Default)]
-pub(crate) struct BlockClusterLabelOutcomes {
+pub(crate) struct BlockLabelPaintOutcomes {
     ledger: DirectPaintTerminalLedger,
     recorded: usize,
+}
+
+#[derive(Default)]
+struct BlockHtmlLabelPaintFacts {
+    visible: bool,
+    source_owned: bool,
+    inherits_ancestor_color: bool,
+    first_paragraph_consumes_color: bool,
+}
+
+impl BlockHtmlLabelPaintFacts {
+    fn prepare(xhtml: &str, work: &OperationWorkMeter) -> Result<Self, OperationWorkError> {
+        use crate::text::VisibleTextStyleFacts;
+
+        work.charge(xhtml.len())?;
+        let facts = VisibleTextStyleFacts::from_xhtml_fragment(xhtml);
+        let unknown = || Self {
+            visible: true,
+            ..Self::default()
+        };
+        if !facts.parse_valid() {
+            return Ok(unknown());
+        }
+        work.charge(xhtml.len())?;
+        let wrapped = format!("<block-label>{xhtml}</block-label>");
+        let Ok(document) = crate::xml_dom::Document::parse(&wrapped) else {
+            return Ok(unknown());
+        };
+        let first = document.root_element().first_element_child();
+        let mut visible_paragraph = false;
+        let mut first_paragraph_inherited = 0;
+        // Read the retained XHTML rather than authored HTML: HTML5 recovery may place the
+        // visible block outside the first p. Charge every inspected subtree before parsing it.
+        for paragraph in document.descendants().filter(|node| node.has_tag_name("p")) {
+            let fragment = &wrapped[paragraph.range()];
+            work.charge(fragment.len())?;
+            let paragraph_facts = VisibleTextStyleFacts::from_xhtml_fragment(fragment);
+            visible_paragraph |= paragraph_facts.has_visible_runs();
+            if Some(paragraph) == first && xhtml.starts_with("<p>") {
+                first_paragraph_inherited = paragraph_facts.inherited_color_run_count();
+            }
+        }
+        let known_colors = facts.unverified_portable_color_run_count() == 0;
+        Ok(Self {
+            visible: facts.has_visible_runs(),
+            source_owned: facts.has_visible_runs()
+                && facts.inherited_color_run_count() == 0
+                && known_colors,
+            inherits_ancestor_color: !visible_paragraph && facts.inherited_color_run_count() != 0,
+            // The current writer styles exactly this paragraph. Other known source colors
+            // remain independent; every inherited visible run must reach the styled p.
+            first_paragraph_consumes_color: first_paragraph_inherited != 0
+                && first_paragraph_inherited == facts.inherited_color_run_count()
+                && known_colors,
+        })
+    }
 }
 
 impl BlockNodeLabelPaintPlan {
@@ -86,14 +141,14 @@ impl BlockNodeLabelPaintPlan {
         config: &merman_model::presentation::PresentationConfig,
         model: &merman_model::families::block::BlockDiagramRenderModel,
         layout: &BlockDiagramLayout,
+        prepared_labels: &super::BlockPreparedLabels,
         work: &OperationWorkMeter,
     ) -> Result<Self, OperationWorkError> {
         let html_labels = crate::config::config_effective_html_labels(config.as_value());
         let mut plan = Self {
             paints: Box::new([]),
-            cluster_paints: Box::new([]),
-            cluster_rules: BTreeMap::new(),
-            cluster_outcomes: OnceLock::new(),
+            rules: BTreeMap::new(),
+            outcomes: OnceLock::new(),
             evidence: FamilyThemeOutcomes::default(),
         };
         let Some(theme) = theme else { return Ok(plan) };
@@ -163,34 +218,74 @@ impl BlockNodeLabelPaintPlan {
                             .iter()
                             .any(|raw| owns_label_color(raw, "fill")))
             })
-            .map(|class| class.id.as_str())
+            .map(|class| class.id.clone())
             .collect::<BTreeSet<_>>();
+        let native_label_structural_classes = [
+            "block",
+            "node",
+            "flowchart-label",
+            "label",
+            "row",
+            "text-outer-tspan",
+        ];
+        // Only these native wrappers put `.class > * { fill: ... }` directly on
+        // text or its inner tspans. Shell fill remains an independent body property.
+        let structural_fill_owned = !html_labels
+            && model.class_defs.values().any(|class| {
+                matches!(class.id.as_str(), "label" | "row" | "text-outer-tspan")
+                    && class.styles.iter().any(|raw| owns_label_color(raw, "fill"))
+            });
         let mut winners = BTreeSet::new();
         let mut capabilities = BTreeMap::new();
+        let mut unconsumed_fills = BTreeSet::new();
         let mut source_owned = Vec::with_capacity(layout.nodes.len());
         let mut paints = Vec::with_capacity(layout.nodes.len());
-        let mut cluster_paints = Vec::with_capacity(layout.nodes.len());
         let mut cluster_index = 0;
         let mut cluster_occurrences = Vec::new();
         let mut cluster_owned_fill = Vec::new();
         for (index, node) in layout.nodes.iter().enumerate() {
             work.charge(1)?;
             let source = sources.get(node.id.as_str());
+            let html_paint = if html_labels {
+                Some(BlockHtmlLabelPaintFacts::prepare(
+                    prepared_labels.node_xhtml(&node.id).unwrap_or_default(),
+                    work,
+                )?)
+            } else {
+                None
+            };
             let owned = config_owned
-                || source.is_some_and(|source| {
-                    source
-                        .styles
-                        .iter()
-                        .any(|raw| owns_label_color(raw, "color"))
-                        || if source.classes.is_empty() {
-                            color_classes.contains("default")
-                        } else {
-                            source
-                                .classes
-                                .iter()
-                                .any(|class| color_classes.contains(class.as_str()))
-                        }
-                });
+                || if let Some(html) = &html_paint {
+                    // Baseline CSS sets color directly on p. Inline source color and
+                    // node-class selectors still own visible HTML outside those paragraphs.
+                    color_classes.contains("nodeLabel")
+                        || html.source_owned
+                        || (html.inherits_ancestor_color
+                            && source.is_some_and(|source| {
+                                source_owns_property(
+                                    source
+                                        .styles
+                                        .iter()
+                                        .any(|raw| owns_label_color(raw, "color")),
+                                    source.classes,
+                                    &color_classes,
+                                    &["block", "node", "flowchart-label", "label"],
+                                )
+                            }))
+                } else {
+                    structural_fill_owned
+                        || source.is_some_and(|source| {
+                            source_owns_property(
+                                source
+                                    .styles
+                                    .iter()
+                                    .any(|raw| owns_label_color(raw, "color")),
+                                source.classes,
+                                &color_classes,
+                                &native_label_structural_classes,
+                            )
+                        })
+                };
             let label = source
                 .map(|source| super::decode_block_label_html(source.label))
                 .unwrap_or_default();
@@ -200,6 +295,7 @@ impl BlockNodeLabelPaintPlan {
                 crate::graph_label::flowchart_label_plain_text_for_layout(&label, "text", false)
             };
             let visible = !text.trim().is_empty()
+                && html_paint.as_ref().is_none_or(|html| html.visible)
                 && node.label_width.unwrap_or(0.0) > 0.0
                 && node.label_height.unwrap_or(0.0) > 0.0;
             let ordinal_cluster_style;
@@ -260,7 +356,17 @@ impl BlockNodeLabelPaintPlan {
             }
             // A composite's explicit label role overrides its generic node/text fill.
             let style = cluster.filter(|_| cluster_owns_fill).unwrap_or(style);
-            let paint = if visible && !owned {
+            let paint_reachable = html_paint
+                .as_ref()
+                .is_none_or(|html| html.first_paragraph_consumes_color);
+            if visible
+                && !owned
+                && !paint_reachable
+                && let Some(origin) = style.fill_resolution().winner()
+            {
+                unconsumed_fills.insert((origin.rule_index(), origin.target()));
+            }
+            let paint = if visible && !owned && paint_reachable {
                 resolve_direct_static_fill(
                     theme,
                     style,
@@ -275,16 +381,6 @@ impl BlockNodeLabelPaintPlan {
             } else {
                 None
             };
-            let cluster_paint = paint
-                .as_ref()
-                .filter(|paint| {
-                    style.fill_resolution().winner().is_some_and(|origin| {
-                        origin.rule_index() == paint.rule_index()
-                            && origin.target() == ThemeTarget::ClusterLabel
-                    })
-                })
-                .cloned();
-            cluster_paints.push(cluster_paint);
             if let Some(paint) = paint.as_ref()
                 && let Some((_, origin)) =
                     style.winner_rule_properties().find(|(property, origin)| {
@@ -294,7 +390,7 @@ impl BlockNodeLabelPaintPlan {
             {
                 capabilities.insert((paint.rule_index(), origin.target()), paint.capability());
             }
-            paints.push(paint.map(|paint| paint.css().into()));
+            paints.push(paint);
         }
         let mut observations = BTreeMap::<(usize, ThemeTarget), NodeRuleObservation>::new();
         for route in theme.family_mechanism_routes().iter().copied() {
@@ -321,7 +417,9 @@ impl BlockNodeLabelPaintPlan {
             match route.disposition() {
                 FamilyThemeDisposition::TypedAdapter => {
                     if matches!(facet, FamilyThemeRuleFacet::Fill(_)) {
-                        if let Some(capability) = capabilities.get(&(rule_index, target)) {
+                        if unconsumed_fills.contains(&(rule_index, target)) {
+                            observation.incomplete = true;
+                        } else if let Some(capability) = capabilities.get(&(rule_index, target)) {
                             observation
                                 .capabilities
                                 .insert(ResolvedStyleProperty::Fill, *capability);
@@ -348,12 +446,10 @@ impl BlockNodeLabelPaintPlan {
             } else if !observation.incomplete
                 && let Some(capability) = observation.capabilities.get(&ResolvedStyleProperty::Fill)
             {
-                if target == ThemeTarget::ClusterLabel {
-                    plan.cluster_rules.insert(index, *capability);
-                } else {
-                    plan.evidence
-                        .mark_applied_with_capabilities(key, [*capability]);
-                }
+                plan.rules.insert((index, target), *capability);
+            } else if unconsumed_fills.contains(&(index, target)) {
+                plan.evidence
+                    .mark_residual(key, FamilyThemeResidualReason::UnsupportedPaint);
             }
         }
         reconcile_unsupported_terminal_domains(
@@ -379,28 +475,27 @@ impl BlockNodeLabelPaintPlan {
             work,
         )?;
         plan.paints = paints.into();
-        plan.cluster_paints = cluster_paints.into();
         Ok(plan)
     }
 
     pub(crate) fn color(&self, node_index: usize) -> Option<&str> {
-        self.paints.get(node_index)?.as_deref()
+        self.paints
+            .get(node_index)?
+            .as_ref()
+            .map(DirectPaintExpectation::css)
     }
 
     pub(crate) fn record_evidence(&self, evidence: &mut FamilyThemeEvidence) {
         evidence.merge_borrowed(&self.evidence);
-        if let Some(receipt) = self.cluster_outcomes.get() {
-            let complete = receipt.recorded == self.cluster_paints.iter().flatten().count();
-            for (&index, &capability) in &self.cluster_rules {
+        if let Some(receipt) = self.outcomes.get() {
+            let complete = receipt.recorded == self.paints.iter().flatten().count();
+            for (&(index, target), &capability) in &self.rules {
                 if receipt
                     .ledger
                     .proves_property(complete, index, ResolvedStyleProperty::Fill)
                 {
                     evidence.mark_applied_with_capabilities(
-                        FamilyThemeMechanismKey::Rule {
-                            index,
-                            target: ThemeTarget::ClusterLabel,
-                        },
+                        FamilyThemeMechanismKey::Rule { index, target },
                         [capability],
                     );
                 }
@@ -408,17 +503,17 @@ impl BlockNodeLabelPaintPlan {
         }
     }
 
-    pub(crate) fn begin_outcomes(&self) -> Option<BlockClusterLabelOutcomes> {
-        (!self.cluster_rules.is_empty()).then(BlockClusterLabelOutcomes::default)
+    pub(crate) fn begin_outcomes(&self) -> Option<BlockLabelPaintOutcomes> {
+        (!self.rules.is_empty()).then(BlockLabelPaintOutcomes::default)
     }
 
     pub(crate) fn record_terminal(
         &self,
-        receipt: &mut BlockClusterLabelOutcomes,
+        receipt: &mut BlockLabelPaintOutcomes,
         node_index: usize,
         emitted: Option<&str>,
     ) {
-        let Some(expected) = self.cluster_paints.get(node_index).and_then(Option::as_ref) else {
+        let Some(expected) = self.paints.get(node_index).and_then(Option::as_ref) else {
             return;
         };
         receipt.recorded += 1;
@@ -430,9 +525,9 @@ impl BlockNodeLabelPaintPlan {
         );
     }
 
-    pub(crate) fn record_outcomes(&self, receipt: Option<BlockClusterLabelOutcomes>) {
+    pub(crate) fn record_outcomes(&self, receipt: Option<BlockLabelPaintOutcomes>) {
         if let Some(receipt) = receipt {
-            let _ = self.cluster_outcomes.set(receipt);
+            let _ = self.outcomes.set(receipt);
         }
     }
 }
@@ -1047,7 +1142,12 @@ impl BlockNodePaintSourceOwnership {
     }
 
     pub(crate) fn owns_fill(&self, inline_owns_fill: bool, assigned_classes: &[String]) -> bool {
-        source_owns_property(inline_owns_fill, assigned_classes, &self.fill_classes)
+        source_owns_property(
+            inline_owns_fill,
+            assigned_classes,
+            &self.fill_classes,
+            &["node", "flowchart-label"],
+        )
     }
 
     pub(crate) fn owns_stroke(
@@ -1055,7 +1155,12 @@ impl BlockNodePaintSourceOwnership {
         inline_owns_stroke: bool,
         assigned_classes: &[String],
     ) -> bool {
-        source_owns_property(inline_owns_stroke, assigned_classes, &self.stroke_classes)
+        source_owns_property(
+            inline_owns_stroke,
+            assigned_classes,
+            &self.stroke_classes,
+            &["node", "flowchart-label"],
+        )
     }
 }
 
@@ -1091,10 +1196,12 @@ fn source_owns_property(
     inline_owns_property: bool,
     assigned_classes: &[String],
     owning_classes: &BTreeSet<String>,
+    structural_classes: &[&str],
 ) -> bool {
     inline_owns_property
-        || owning_classes.contains("node")
-        || owning_classes.contains("flowchart-label")
+        || structural_classes
+            .iter()
+            .any(|class| owning_classes.contains(*class))
         || (assigned_classes.is_empty() && owning_classes.contains("default"))
         || assigned_classes
             .iter()
@@ -1119,7 +1226,14 @@ mod tests {
         layout: &BlockDiagramLayout,
         work: &OperationWorkMeter,
     ) -> Result<BlockNodePaintThemePlan, OperationWorkError> {
-        let labels = BlockNodeLabelPaintPlan::resolve(theme, config, model, layout, work)?;
+        let labels = BlockNodeLabelPaintPlan::resolve(
+            theme,
+            config,
+            model,
+            layout,
+            &crate::block::BlockPreparedLabels::default(),
+            work,
+        )?;
         BlockNodePaintThemePlan::resolve(theme, config, model, layout, &labels, work)
     }
 
