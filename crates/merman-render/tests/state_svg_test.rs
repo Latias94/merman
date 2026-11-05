@@ -11,10 +11,11 @@ use merman_core::{MermaidEngine, ParseOptions};
 use merman_render::LayoutOptions;
 use merman_render::diagram_theme::{
     CanvasPaint, DiagramEffectSet, DiagramTheme, DiagramThemeCompiler, DiagramThemeSpec,
-    EffectBinding, EffectGraph, EffectInput, EffectPrimitive, MermaidThemeCompatibility,
-    OrdinalSelector, Specified, TextStylePatch, ThemeColorValue, ThemeEffectPatch,
-    ThemeGeometryPatch, ThemePortabilityRequirement, ThemeResourceLimitId, ThemeResourcePolicy,
-    ThemeRule, ThemeRuleSet, ThemeStylePatch, ThemeTarget, ThemeVariant,
+    EffectBinding, EffectGraph, EffectInput, EffectPrimitive, FontStack, FontStyle, InsetsPx,
+    LineHeight, MermaidThemeCompatibility, OrdinalPalette, OrdinalSelector, Specified,
+    TextStylePatch, ThemeColorValue, ThemeEffectPatch, ThemeGeometryPatch,
+    ThemePortabilityRequirement, ThemeResourceLimitId, ThemeResourcePolicy, ThemeRule,
+    ThemeRuleSet, ThemeStylePatch, ThemeTarget, ThemeTextStyle, ThemeVariant, TypographySpec,
 };
 
 use merman_render::environment::{
@@ -640,6 +641,1020 @@ fn render_strict_state_svg_with_theme_and_config(
         residual: evidence.theme_residual_count(),
     };
     (svg, counts)
+}
+
+#[test]
+fn state_empty_html_labels_do_not_consume_text_theme_rules() {
+    for label in ["<br/>", "<span></span>", "<span> </span>"] {
+        for (target, source) in [
+            (
+                ThemeTarget::StateLabel,
+                format!("stateDiagram-v2\nstate \"{label}\" as Empty\n"),
+            ),
+            (
+                ThemeTarget::TransitionLabel,
+                format!("stateDiagram-v2\nA --> B: {label}\n"),
+            ),
+        ] {
+            for ordinal in [None, Some(1)] {
+                let mut rule = ThemeRule::new(
+                    target,
+                    ThemeStylePatch::default().with_fill(CanvasPaint::solid("#b316cd").unwrap()),
+                );
+                if let Some(ordinal) = ordinal {
+                    rule = rule.with_ordinal(OrdinalSelector::exact(ordinal).unwrap());
+                }
+                let theme = DiagramThemeCompiler::new()
+                    .compile(
+                        DiagramThemeSpec::new()
+                            .with_styles(ThemeRuleSet::default().with_rule(rule)),
+                    )
+                    .unwrap();
+                let (_, evidence) = render_strict_state_svg_with_theme_and_config(
+                    &theme,
+                    &source,
+                    serde_json::json!({"htmlLabels": true, "look": "classic"}),
+                    "site",
+                );
+                assert_eq!(
+                    evidence,
+                    StateThemeEvidenceCounts {
+                        required: 1,
+                        accounted: 1,
+                        applied: 0,
+                        not_applicable: 1,
+                        residual: 0,
+                    },
+                    "{target:?}/{label}/{ordinal:?}"
+                );
+            }
+        }
+    }
+}
+
+#[test]
+fn state_text_theme_ordinals_skip_empty_html_labels() {
+    for (target, source) in [
+        (
+            ThemeTarget::StateLabel,
+            "stateDiagram-v2\nstate \"<br/>\" as Empty\nstate \"Visible\" as Full\n",
+        ),
+        (
+            ThemeTarget::TransitionLabel,
+            "stateDiagram-v2\nA --> B: <br/>\nB --> C: Visible\n",
+        ),
+    ] {
+        let theme = DiagramThemeCompiler::new()
+            .compile(
+                DiagramThemeSpec::new().with_styles(
+                    ThemeRuleSet::default().with_rule(
+                        ThemeRule::new(
+                            target,
+                            ThemeStylePatch::default()
+                                .with_fill(CanvasPaint::solid("#b316cd").unwrap()),
+                        )
+                        .with_ordinal(OrdinalSelector::exact(1).unwrap()),
+                    ),
+                ),
+            )
+            .unwrap();
+        let (svg, evidence) = render_strict_state_svg_with_theme_and_config(
+            &theme,
+            source,
+            serde_json::json!({"htmlLabels": true, "look": "classic"}),
+            "site",
+        );
+        let document = roxmltree::Document::parse(&svg).expect("valid State HTML-label SVG");
+        let visible = document
+            .descendants()
+            .find(|node| node.has_tag_name("p") && node.text() == Some("Visible"))
+            .expect("visible HTML label");
+        assert!(
+            visible.ancestors().any(|node| {
+                node.attribute("style").is_some_and(|style| {
+                    style.split(';').any(|declaration| {
+                        declaration
+                            .split_once(':')
+                            .is_some_and(|(property, value)| {
+                                property.trim() == "color"
+                                    && value.trim().trim_end_matches("!important").trim()
+                                        == "#b316cd"
+                            })
+                    })
+                })
+            }),
+            "{target:?}: first text ordinal must style the visible label"
+        );
+        assert_eq!(evidence.applied, 1);
+        assert_eq!(evidence.residual, 0);
+    }
+}
+
+#[test]
+fn state_empty_html_labels_do_not_consume_palettes_or_base_font_stack() {
+    for label in ["<br/>", "<span></span>", "<span> </span>"] {
+        for (target, source) in [
+            (
+                ThemeTarget::StateLabel,
+                format!("stateDiagram-v2\nstate \"{label}\" as Empty\n"),
+            ),
+            (
+                ThemeTarget::TransitionLabel,
+                format!("stateDiagram-v2\nA --> B: {label}\n"),
+            ),
+        ] {
+            let mut specs = vec![DiagramThemeSpec::new().with_styles(
+                ThemeRuleSet::default().with_ordinal_palette(
+                    target,
+                    OrdinalPalette::new([ThemeColorValue::parse("#b316cd").unwrap()]).unwrap(),
+                ),
+            )];
+            if target == ThemeTarget::StateLabel {
+                specs.push(
+                    DiagramThemeSpec::new().with_typography(
+                        TypographySpec::default().with_family_style(
+                            merman_render::DiagramFamilyId::STATE,
+                            ThemeTextStyle::default()
+                                .with_font_stack(FontStack::single("monospace").unwrap()),
+                        ),
+                    ),
+                );
+            }
+            for spec in specs {
+                let theme = DiagramThemeCompiler::new().compile(spec).unwrap();
+                let (svg, evidence) = render_strict_state_svg_with_theme_and_config(
+                    &theme,
+                    &source,
+                    serde_json::json!({"htmlLabels": true, "look": "classic"}),
+                    "site",
+                );
+                roxmltree::Document::parse(&svg).expect("valid empty-label State SVG");
+                assert_eq!(
+                    evidence,
+                    StateThemeEvidenceCounts {
+                        required: 1,
+                        accounted: 1,
+                        applied: 0,
+                        not_applicable: 1,
+                        residual: 0,
+                    },
+                    "{target:?}/{label}"
+                );
+            }
+        }
+    }
+}
+
+#[test]
+fn state_empty_html_composite_headers_keep_their_geometry_ordinals() {
+    let source =
+        "stateDiagram-v2\nstate \"<br/>\" as Empty {\nA\n}\nstate \"Visible\" as Full {\nB\n}\n";
+    for ordinal in [None, Some(1), Some(2)] {
+        let mut header = ThemeRule::new(
+            ThemeTarget::CompositeHeader,
+            ThemeStylePatch::default().with_fill(CanvasPaint::solid("#b316cd").unwrap()),
+        );
+        if let Some(ordinal) = ordinal {
+            header = header.with_ordinal(OrdinalSelector::exact(ordinal).unwrap());
+        }
+        let theme = DiagramThemeCompiler::new()
+            .compile(
+                DiagramThemeSpec::new().with_styles(
+                    ThemeRuleSet::default().with_rule(header).with_rule(
+                        ThemeRule::new(
+                            ThemeTarget::CompositeLabel,
+                            ThemeStylePatch::default()
+                                .with_fill(CanvasPaint::solid("#12ab34").unwrap()),
+                        )
+                        .with_ordinal(OrdinalSelector::exact(1).unwrap()),
+                    ),
+                ),
+            )
+            .unwrap();
+        let (svg, evidence) = render_strict_state_svg_with_theme_and_config(
+            &theme,
+            source,
+            serde_json::json!({"htmlLabels": true, "look": "classic"}),
+            "site",
+        );
+        let document = roxmltree::Document::parse(&svg).expect("valid State composite SVG");
+        for (id, position) in [("Empty", 1), ("Full", 2)] {
+            let cluster = document
+                .descendants()
+                .find(|node| node.has_tag_name("g") && node.attribute("data-id") == Some(id))
+                .expect("State cluster");
+            let header = cluster
+                .descendants()
+                .find(|node| node.has_tag_name("rect") && node.attribute("class") == Some("outer"))
+                .expect("header rectangle exists even without visible text");
+            assert_eq!(
+                header
+                    .attribute("style")
+                    .unwrap_or_default()
+                    .contains("#b316cd"),
+                ordinal.is_none_or(|ordinal| ordinal == position),
+                "{id}/{ordinal:?}"
+            );
+            let label = cluster
+                .children()
+                .find(|node| node.attribute("class") == Some("cluster-label"))
+                .expect("composite label terminal");
+            assert_eq!(
+                label
+                    .attribute("style")
+                    .unwrap_or_default()
+                    .contains("#12ab34"),
+                id == "Full",
+                "text ordinal skips the empty header: {id}/{ordinal:?}"
+            );
+        }
+        assert_eq!(evidence.required, 2);
+        assert_eq!(evidence.applied, 2);
+        assert_eq!(evidence.residual, 0);
+    }
+}
+
+#[test]
+fn state_empty_html_geometry_consumes_base_font_size_without_text_properties() {
+    let theme = DiagramThemeCompiler::new()
+        .compile(
+            DiagramThemeSpec::new()
+                .with_typography(
+                    TypographySpec::default().with_family_style(
+                        merman_render::DiagramFamilyId::STATE,
+                        ThemeTextStyle::default()
+                            .with_font_stack(FontStack::single("monospace").unwrap())
+                            .with_font_size_px(30.0)
+                            .unwrap(),
+                    ),
+                )
+                .with_styles(
+                    ThemeRuleSet::default()
+                        .with_rule(ThemeRule::new(
+                            ThemeTarget::StateLabel,
+                            ThemeStylePatch::default()
+                                .with_fill(CanvasPaint::solid("#b316cd").unwrap()),
+                        ))
+                        .with_ordinal_palette(
+                            ThemeTarget::StateLabel,
+                            OrdinalPalette::new([ThemeColorValue::parse("#b316cd").unwrap()])
+                                .unwrap(),
+                        ),
+                ),
+        )
+        .unwrap();
+    for (label, line_count) in [
+        ("<img src=x>", 1.0),
+        ("<br/>", 1.0),
+        ("<br/><br/>", 2.0),
+        ("<span></span>", 1.0),
+        ("<span> </span>", 1.0),
+    ] {
+        let source = format!("stateDiagram-v2\nstate \"{label}\" as Empty\n");
+        let (svg, evidence) = render_strict_state_svg_with_theme_and_config(
+            &theme,
+            &source,
+            serde_json::json!({"htmlLabels": true, "look": "classic"}),
+            "site",
+        );
+        let document = roxmltree::Document::parse(&svg).expect("valid empty HTML State SVG");
+        let geometry = document
+            .descendants()
+            .find(|node| node.has_tag_name("foreignObject"))
+            .expect("HTML geometry terminal");
+        let height: f64 = geometry.attribute("height").unwrap().parse().unwrap();
+        assert_eq!(height, 30.0 * 1.5 * line_count, "{label}");
+        if let Some(image) = geometry.descendants().find(|node| node.has_tag_name("img")) {
+            let style = image.attribute("style").expect("normalized image size");
+            assert!(style.contains("min-width: 150px;"), "{style}");
+            assert!(style.contains("max-width: 150px;"), "{style}");
+        }
+        assert_eq!(
+            evidence,
+            StateThemeEvidenceCounts {
+                required: 4,
+                accounted: 4,
+                applied: 1,
+                not_applicable: 3,
+                residual: 0,
+            },
+            "{label}: only numeric size has a consumer"
+        );
+    }
+}
+
+#[test]
+fn state_empty_html_geometry_keeps_base_line_height_residual_with_applied_font_size() {
+    let theme = DiagramThemeCompiler::new()
+        .compile(
+            DiagramThemeSpec::new().with_typography(
+                TypographySpec::default().with_family_style(
+                    merman_render::DiagramFamilyId::STATE,
+                    ThemeTextStyle::default()
+                        .with_font_size_px(30.0)
+                        .unwrap()
+                        .with_line_height(LineHeight::Multiplier(4.0))
+                        .unwrap(),
+                ),
+            ),
+        )
+        .unwrap();
+    let (svg, evidence) = render_strict_state_svg_with_theme_and_config(
+        &theme,
+        "stateDiagram-v2\nstate \"<br/>\" as Empty\n",
+        serde_json::json!({"htmlLabels": true, "look": "classic"}),
+        "site",
+    );
+    let document = roxmltree::Document::parse(&svg).expect("valid empty HTML State SVG");
+    let geometry = document
+        .descendants()
+        .find(|node| node.has_tag_name("foreignObject"))
+        .expect("retained empty HTML line box");
+    let height: f64 = geometry.attribute("height").unwrap().parse().unwrap();
+    assert_eq!(
+        height, 45.0,
+        "the writer still uses its fixed 1.5 line height"
+    );
+    assert_eq!(
+        evidence,
+        StateThemeEvidenceCounts {
+            required: 2,
+            accounted: 2,
+            applied: 1,
+            not_applicable: 0,
+            residual: 1,
+        },
+        "applied base font size must not retire the unsupported base line height"
+    );
+}
+
+#[test]
+fn state_empty_html_transition_geometry_consumes_only_font_size() {
+    let mut rules = ThemeRuleSet::default()
+        .with_ordinal_palette(
+            ThemeTarget::TransitionLabel,
+            OrdinalPalette::new([ThemeColorValue::parse("#b316cd").unwrap()]).unwrap(),
+        )
+        .with_rule(ThemeRule::new(
+            ThemeTarget::TransitionLabel,
+            ThemeStylePatch::default().with_fill(CanvasPaint::solid("#b316cd").unwrap()),
+        ));
+    for typography in [
+        TextStylePatch {
+            font_size_px: Specified::Value(30.0),
+            ..TextStylePatch::default()
+        },
+        TextStylePatch {
+            font_stack: Specified::Value(FontStack::single("monospace").unwrap()),
+            ..TextStylePatch::default()
+        },
+    ] {
+        rules = rules.with_rule(ThemeRule::new(
+            ThemeTarget::TransitionLabel,
+            ThemeStylePatch {
+                typography,
+                ..ThemeStylePatch::default()
+            },
+        ));
+    }
+    let theme = DiagramThemeCompiler::new()
+        .compile(DiagramThemeSpec::new().with_styles(rules))
+        .unwrap();
+    for (label, lines) in [
+        ("<br/><br/>", 2.0),
+        ("<span></span>", 1.0),
+        ("<img src=x>", 1.0),
+    ] {
+        let source = format!("stateDiagram-v2\nA --> B: {label}\n");
+        let (svg, evidence) = render_strict_state_svg_with_theme_and_config(
+            &theme,
+            &source,
+            serde_json::json!({"htmlLabels": true, "look": "classic"}),
+            "site",
+        );
+        assert_eq!(
+            state_edge_label_foreign_object_height(&svg, "edge0"),
+            45.0 * lines
+        );
+        assert_eq!(evidence.required, 4);
+        assert_eq!(evidence.applied, 1);
+        assert_eq!(evidence.not_applicable, 3);
+        assert_eq!(evidence.residual, 0, "{label}");
+    }
+}
+
+#[test]
+fn state_html_geometry_consumes_static_font_size_and_clear_falls_back_to_base() {
+    for label in ["<img src=x>", "<br/><br/>", "Visible"] {
+        for (target, specified, preceding_value) in [
+            (ThemeTarget::Text, Specified::Value(30.0), false),
+            (ThemeTarget::StateLabel, Specified::Value(30.0), false),
+            (ThemeTarget::StateLabel, Specified::Clear, false),
+            (ThemeTarget::StateLabel, Specified::Clear, true),
+        ] {
+            let mut rules = ThemeRuleSet::default();
+            if preceding_value {
+                rules = rules.with_rule(ThemeRule::new(
+                    ThemeTarget::Text,
+                    ThemeStylePatch {
+                        typography: TextStylePatch {
+                            font_size_px: Specified::Value(30.0),
+                            ..TextStylePatch::default()
+                        },
+                        ..ThemeStylePatch::default()
+                    },
+                ));
+            }
+            let clear = matches!(specified, Specified::Clear);
+            rules = rules.with_rule(ThemeRule::new(
+                target,
+                ThemeStylePatch {
+                    typography: TextStylePatch {
+                        font_size_px: specified,
+                        ..TextStylePatch::default()
+                    },
+                    ..ThemeStylePatch::default()
+                },
+            ));
+            let theme = DiagramThemeCompiler::new()
+                .compile(
+                    DiagramThemeSpec::new()
+                        .with_typography(TypographySpec::default().with_family_style(
+                            merman_render::DiagramFamilyId::STATE,
+                            ThemeTextStyle::default().with_font_size_px(22.0).unwrap(),
+                        ))
+                        .with_styles(rules),
+                )
+                .unwrap();
+            let source = format!("stateDiagram-v2\nstate \"{label}\" as Sample\n");
+            let (svg, evidence) = render_strict_state_svg_with_theme_and_config(
+                &theme,
+                &source,
+                serde_json::json!({"htmlLabels": true, "look": "classic"}),
+                "site",
+            );
+            let document = roxmltree::Document::parse(&svg).expect("valid State font-size SVG");
+            let geometry = document
+                .descendants()
+                .find(|node| node.has_tag_name("foreignObject"))
+                .unwrap();
+            let expected_size = if clear { 22.0 } else { 30.0 };
+            let lines = if label == "<br/><br/>" { 2.0 } else { 1.0 };
+            let height: f64 = geometry.attribute("height").unwrap().parse().unwrap();
+            assert_eq!(height, expected_size * 1.5 * lines, "{label}/{target:?}");
+            if let Some(image) = geometry.descendants().find(|node| node.has_tag_name("img")) {
+                assert!(
+                    image
+                        .attribute("style")
+                        .unwrap()
+                        .contains(&format!("min-width: {}px;", expected_size * 5.0))
+                );
+            }
+            assert_eq!(evidence.required, 2 + usize::from(preceding_value));
+            assert_eq!(evidence.accounted, evidence.required);
+            assert_eq!(evidence.applied, if clear { 2 } else { 1 });
+            assert_eq!(
+                evidence.not_applicable,
+                usize::from(!clear || preceding_value)
+            );
+            assert_eq!(evidence.residual, 0, "{label}/{target:?}/{clear}");
+        }
+    }
+}
+
+#[test]
+fn state_html_geometry_font_size_yields_to_config_and_source_owners() {
+    let theme = DiagramThemeCompiler::new()
+        .compile(
+            DiagramThemeSpec::new()
+                .with_typography(TypographySpec::default().with_family_style(
+                    merman_render::DiagramFamilyId::STATE,
+                    ThemeTextStyle::default().with_font_size_px(22.0).unwrap(),
+                ))
+                .with_styles(ThemeRuleSet::default().with_rule(ThemeRule::new(
+                    ThemeTarget::StateLabel,
+                    ThemeStylePatch {
+                        typography: TextStylePatch {
+                            font_size_px: Specified::Value(30.0),
+                            ..TextStylePatch::default()
+                        },
+                        ..ThemeStylePatch::default()
+                    },
+                ))),
+        )
+        .unwrap();
+    for (origin, config_size, source_style) in [
+        ("site", true, ""),
+        ("source", true, ""),
+        ("site", false, "style Image font-size:18px\n"),
+        (
+            "site",
+            false,
+            "classDef sized font-size:18px\nclass Image sized\n",
+        ),
+    ] {
+        let source = format!("stateDiagram-v2\nstate \"<img src=x>\" as Image\n{source_style}");
+        let mut config = serde_json::json!({"htmlLabels": true, "look": "classic"});
+        if config_size {
+            config["fontSize"] = serde_json::json!(18);
+        }
+        let (svg, evidence) =
+            render_strict_state_svg_with_theme_and_config(&theme, &source, config, origin);
+        let document = roxmltree::Document::parse(&svg).expect("valid owned State font-size SVG");
+        let image = document
+            .descendants()
+            .find(|node| node.has_tag_name("img"))
+            .unwrap();
+        let style = image.attribute("style").unwrap();
+        assert!(
+            style.contains("min-width: 90px;"),
+            "{origin}/{source_style}: {style}"
+        );
+        assert_eq!(
+            evidence,
+            StateThemeEvidenceCounts {
+                required: 2,
+                accounted: 2,
+                applied: 0,
+                not_applicable: 2,
+                residual: 0,
+            },
+            "{origin}/{source_style}"
+        );
+    }
+}
+
+#[test]
+fn state_empty_html_geometry_keeps_unsupported_siblings_without_text_consumers() {
+    let shadow = EffectGraph::new(
+        "shadow",
+        [EffectPrimitive::DropShadow {
+            input: EffectInput::SourceGraphic,
+            offset_x: 2.0,
+            offset_y: 2.0,
+            blur_radius: 0.0,
+            spread: 0.0,
+            color: ThemeColorValue::parse("#111827").unwrap(),
+        }],
+    )
+    .unwrap();
+    let effects = DiagramEffectSet::default().with_graph(shadow).unwrap();
+    for label in ["<img src=x>", "<br/>", "<span></span>"] {
+        for font_size in [
+            Specified::Unspecified,
+            Specified::Value(30.0),
+            Specified::Clear,
+        ] {
+            for sibling in [
+                "radius",
+                "padding",
+                "effect",
+                "clear-effect",
+                "line-height",
+                "clear-line-height",
+            ] {
+                let mut patch =
+                    ThemeStylePatch::default().with_fill(CanvasPaint::solid("#b316cd").unwrap());
+                patch.typography = TextStylePatch {
+                    font_size_px: font_size.clone(),
+                    font_stack: Specified::Value(FontStack::single("monospace").unwrap()),
+                    ..TextStylePatch::default()
+                };
+                match sibling {
+                    "radius" => patch.geometry.radius = Specified::Value(8.0),
+                    "padding" => patch = patch.with_padding(InsetsPx::all(8.0)),
+                    "effect" => patch = patch.with_effect("shadow").unwrap(),
+                    "clear-effect" => patch.effects.effect = Specified::Clear,
+                    "line-height" => {
+                        patch.typography.line_height =
+                            Specified::Value(LineHeight::Multiplier(4.0));
+                    }
+                    "clear-line-height" => patch.typography.line_height = Specified::Clear,
+                    _ => unreachable!(),
+                }
+                let theme = DiagramThemeCompiler::new()
+                    .compile(
+                        DiagramThemeSpec::new()
+                            .with_effects(effects.clone())
+                            .with_styles(
+                                ThemeRuleSet::default()
+                                    .with_rule(ThemeRule::new(ThemeTarget::StateLabel, patch)),
+                            ),
+                    )
+                    .unwrap();
+                let source = format!("stateDiagram-v2\nstate \"{label}\" as Empty\n");
+                let (svg, evidence) = render_strict_state_svg_with_theme_and_config(
+                    &theme,
+                    &source,
+                    serde_json::json!({"htmlLabels": true, "look": "classic"}),
+                    "site",
+                );
+                let document = roxmltree::Document::parse(&svg).expect("valid State HTML SVG");
+                if matches!(font_size, Specified::Value(_)) {
+                    let geometry = document
+                        .descendants()
+                        .find(|node| node.has_tag_name("foreignObject"))
+                        .expect("retained HTML geometry");
+                    let height: f64 = geometry.attribute("height").unwrap().parse().unwrap();
+                    assert_eq!(height, 45.0, "{label}/{sibling}");
+                    if let Some(image) =
+                        geometry.descendants().find(|node| node.has_tag_name("img"))
+                    {
+                        assert!(
+                            image
+                                .attribute("style")
+                                .unwrap()
+                                .contains("min-width: 150px;")
+                        );
+                    }
+                }
+                assert_eq!(
+                    evidence,
+                    StateThemeEvidenceCounts {
+                        required: 1,
+                        accounted: 1,
+                        applied: 0,
+                        not_applicable: 0,
+                        residual: 1,
+                    },
+                    "{label}/{font_size:?}/{sibling}: geometry cannot retire unsupported siblings"
+                );
+            }
+        }
+    }
+
+    let theme = DiagramThemeCompiler::new()
+        .compile(
+            DiagramThemeSpec::new().with_styles(
+                ThemeRuleSet::default()
+                    .with_rule(ThemeRule::new(
+                        ThemeTarget::StateLabel,
+                        ThemeStylePatch {
+                            typography: TextStylePatch {
+                                font_size_px: Specified::Value(30.0),
+                                ..TextStylePatch::default()
+                            },
+                            ..ThemeStylePatch::default()
+                        },
+                    ))
+                    .with_rule(ThemeRule::new(
+                        ThemeTarget::StateLabel,
+                        ThemeStylePatch::default().with_padding(InsetsPx::all(8.0)),
+                    )),
+            ),
+        )
+        .unwrap();
+    let (_, evidence) = render_strict_state_svg_with_theme_and_config(
+        &theme,
+        "stateDiagram-v2\nstate \"<img src=x>\" as Empty\n",
+        serde_json::json!({"htmlLabels": true, "look": "classic"}),
+        "site",
+    );
+    assert_eq!(
+        evidence,
+        StateThemeEvidenceCounts {
+            required: 2,
+            accounted: 2,
+            applied: 1,
+            not_applicable: 0,
+            residual: 1,
+        },
+        "each winner retains its own rule origin"
+    );
+}
+
+#[test]
+fn state_structural_node_class_owns_direct_shape_paints() {
+    let theme = DiagramThemeCompiler::new()
+        .compile(
+            DiagramThemeSpec::new().with_styles(
+                ThemeRuleSet::default()
+                    .with_rule(ThemeRule::new(
+                        ThemeTarget::State,
+                        ThemeStylePatch::default()
+                            .with_fill(CanvasPaint::solid("#b316cd").unwrap())
+                            .with_stroke(CanvasPaint::solid("#be123c").unwrap())
+                            .with_stroke_width(3.0)
+                            .unwrap(),
+                    ))
+                    .with_rule(ThemeRule::new(
+                        ThemeTarget::StateLabel,
+                        ThemeStylePatch::default()
+                            .with_fill(CanvasPaint::solid("#12ab34").unwrap()),
+                    )),
+            ),
+        )
+        .unwrap();
+    for html_labels in [false, true] {
+        for look in ["classic", "neo"] {
+            let (svg, evidence) = render_strict_state_svg_with_theme_and_config(
+                &theme,
+                "stateDiagram-v2\nstate \"Ready\" as Ready\nclassDef node fill:#aabbcc,stroke:#2255dd,stroke-width:5px\n",
+                serde_json::json!({"htmlLabels": html_labels, "look": look}),
+                "site",
+            );
+            let document = roxmltree::Document::parse(&svg).expect("valid State SVG");
+            let shape = document
+                .descendants()
+                .find(|node| node.attribute("class") == Some("basic label-container"))
+                .expect("ordinary State body");
+            let style = shape.attribute("style").unwrap();
+            for declaration in [
+                "fill:#aabbcc !important",
+                "stroke:#2255dd !important",
+                "stroke-width:5px !important",
+            ] {
+                assert!(style.contains(declaration), "{html_labels}/{look}: {style}");
+            }
+            assert!(!style.contains("#b316cd"), "{style}");
+            assert_eq!(
+                evidence,
+                StateThemeEvidenceCounts {
+                    required: 2,
+                    accounted: 2,
+                    applied: 1,
+                    not_applicable: 1,
+                    residual: 0,
+                },
+                "{html_labels}/{look}: shape ownership must not retire label paint"
+            );
+        }
+    }
+}
+
+#[test]
+fn state_structural_node_color_owns_native_tspans_only() {
+    let theme = DiagramThemeCompiler::new()
+        .compile(
+            DiagramThemeSpec::new().with_styles(ThemeRuleSet::default().with_rule(ThemeRule::new(
+                ThemeTarget::StateLabel,
+                ThemeStylePatch::default().with_fill(CanvasPaint::solid("#b316cd").unwrap()),
+            ))),
+        )
+        .unwrap();
+    for html_labels in [false, true] {
+        for inline_source in [false, true] {
+            let source = format!(
+                "stateDiagram-v2\nstate \"Ready\" as Ready\nclassDef node color:#223344,color:#aabbcc,COLOR:#445566\n{}",
+                if inline_source {
+                    "style Ready color:#2255dd\n"
+                } else {
+                    ""
+                }
+            );
+            let (svg, evidence) = render_strict_state_svg_with_theme_and_config(
+                &theme,
+                &source,
+                serde_json::json!({"htmlLabels": html_labels, "look": "classic"}),
+                "site",
+            );
+            let document = roxmltree::Document::parse(&svg).expect("valid State SVG");
+            let text = document
+                .descendants()
+                .find(|node| {
+                    node.attribute("class")
+                        == Some(if html_labels {
+                            "nodeLabel markdown-node-label"
+                        } else {
+                            "text-inner-tspan"
+                        })
+                })
+                .expect("State text terminal");
+            let style = text.attribute("style").unwrap();
+            let expected = match (html_labels, inline_source) {
+                (true, false) => "color:#b316cd !important",
+                (false, false) => "fill:#aabbcc !important",
+                (true, true) => "color:#2255dd !important",
+                (false, true) => "fill:#2255dd !important",
+            };
+            assert!(
+                style.contains(expected),
+                "{html_labels}/{inline_source}: {style}"
+            );
+            let applied = html_labels && !inline_source;
+            if !applied {
+                assert!(!style.contains("#b316cd"), "{style}");
+            }
+            assert!(state_svg_stylesheet(&svg).contains(" .node tspan{fill:"));
+            assert_eq!(evidence.required, 1);
+            assert_eq!(evidence.accounted, 1);
+            assert_eq!(evidence.applied, usize::from(applied));
+            assert_eq!(evidence.not_applicable, usize::from(!applied));
+            assert_eq!(evidence.residual, 0);
+        }
+    }
+}
+
+#[test]
+fn state_structural_node_html_fonts_share_measurement_and_source_ownership() {
+    let theme = DiagramThemeCompiler::new()
+        .compile(
+            DiagramThemeSpec::new().with_styles(ThemeRuleSet::default().with_rule(ThemeRule::new(
+                ThemeTarget::StateLabel,
+                ThemeStylePatch {
+                    typography: TextStylePatch {
+                        font_stack: Specified::Value(FontStack::single("serif").unwrap()),
+                        font_size_px: Specified::Value(30.0),
+                        font_weight: Specified::Value(400),
+                        font_style: Specified::Value(FontStyle::Normal),
+                        ..TextStylePatch::default()
+                    },
+                    ..ThemeStylePatch::default()
+                },
+            ))),
+        )
+        .unwrap();
+    let fonts = "font-family:monospace,font-size:18px,font-weight:700,font-style:italic";
+    for label in ["AVAV", "<img src=x>"] {
+        let config = serde_json::json!({"htmlLabels": true, "look": "classic", "state": {"minNodeWidth": 0}});
+        let source =
+            format!("stateDiagram-v2\nstate \"{label}\" as Ready\nclassDef node {fonts}\n");
+        let (svg, evidence) =
+            render_strict_state_svg_with_theme_and_config(&theme, &source, config.clone(), "site");
+        let (reference, _) = render_strict_state_svg_with_theme_and_config(
+            &theme,
+            &format!("stateDiagram-v2\nstate \"{label}\" as Ready\nstyle Ready {fonts}\n"),
+            config,
+            "site",
+        );
+        let document = roxmltree::Document::parse(&svg).expect("valid State SVG");
+        let reference =
+            roxmltree::Document::parse(&reference).expect("valid source-style reference");
+        let geometry = document
+            .descendants()
+            .find(|node| node.has_tag_name("foreignObject"))
+            .unwrap();
+        let expected_geometry = reference
+            .descendants()
+            .find(|node| node.has_tag_name("foreignObject"))
+            .unwrap();
+        assert_eq!(
+            geometry.attribute("width"),
+            expected_geometry.attribute("width"),
+            "{label}"
+        );
+        assert_eq!(
+            geometry.attribute("height"),
+            expected_geometry.attribute("height"),
+            "{label}"
+        );
+        assert_eq!(geometry.attribute("height"), Some("27"), "{label}");
+        let span = geometry
+            .descendants()
+            .find(|node| node.has_tag_name("span"))
+            .unwrap();
+        let style = span.attribute("style").unwrap();
+        for declaration in [
+            "font-family:monospace !important",
+            "font-size:18px !important",
+            "font-weight:700 !important",
+            "font-style:italic !important",
+        ] {
+            assert!(style.contains(declaration), "{label}: {style}");
+        }
+        if let Some(image) = geometry.descendants().find(|node| node.has_tag_name("img")) {
+            assert!(
+                image
+                    .attribute("style")
+                    .unwrap()
+                    .contains("min-width: 90px;")
+            );
+        }
+        assert_eq!(
+            evidence,
+            StateThemeEvidenceCounts {
+                required: 1,
+                accounted: 1,
+                applied: 0,
+                not_applicable: 1,
+                residual: 0
+            },
+            "{label}"
+        );
+    }
+    let (svg, evidence) = render_strict_state_svg_with_theme_and_config(
+        &theme,
+        &format!("stateDiagram-v2\nstate \"AVAV\" as Ready\nclassDef node {fonts}\n"),
+        serde_json::json!({"htmlLabels": false, "look": "classic"}),
+        "site",
+    );
+    let document = roxmltree::Document::parse(&svg).expect("valid native State SVG");
+    let word = document
+        .descendants()
+        .find(|node| node.attribute("class") == Some("text-inner-tspan"))
+        .unwrap();
+    let style = word.attribute("style").unwrap();
+    assert!(style.contains("font-size:30px !important"), "{style}");
+    assert!(!style.contains("font-size:18px"), "{style}");
+    assert_eq!(
+        evidence,
+        StateThemeEvidenceCounts {
+            required: 1,
+            accounted: 1,
+            applied: 1,
+            not_applicable: 0,
+            residual: 0
+        }
+    );
+}
+
+#[test]
+fn state_structural_node_class_respects_stylesheet_order_and_inline_source() {
+    let theme = DiagramThemeCompiler::new()
+        .compile(
+            DiagramThemeSpec::new().with_styles(ThemeRuleSet::default().with_rule(ThemeRule::new(
+                ThemeTarget::State,
+                ThemeStylePatch::default().with_fill(CanvasPaint::solid("#b316cd").unwrap()),
+            ))),
+        )
+        .unwrap();
+    for html_labels in [false, true] {
+        for classes in [
+            "classDef node fill:#aabbcc\nclassDef explicit fill:#2255dd\n",
+            "classDef explicit fill:#aabbcc\nclassDef node fill:#2255dd\n",
+        ] {
+            for inline_source in [false, true] {
+                let source = format!(
+                    "stateDiagram-v2\nstate \"Ready\" as Ready\n{classes}class Ready explicit\n{}",
+                    if inline_source {
+                        "style Ready fill:#112233\n"
+                    } else {
+                        ""
+                    }
+                );
+                let (svg, evidence) = render_strict_state_svg_with_theme_and_config(
+                    &theme,
+                    &source,
+                    serde_json::json!({"htmlLabels": html_labels, "look": "classic"}),
+                    "site",
+                );
+                let document = roxmltree::Document::parse(&svg).expect("valid State SVG");
+                let shape = document
+                    .descendants()
+                    .find(|node| node.attribute("class") == Some("basic label-container"))
+                    .unwrap();
+                let style = shape.attribute("style").unwrap();
+                let expected = if inline_source {
+                    "fill:#112233 !important"
+                } else {
+                    "fill:#2255dd !important"
+                };
+                assert!(style.contains(expected), "{source}: {style}");
+                assert_eq!(
+                    evidence,
+                    StateThemeEvidenceCounts {
+                        required: 1,
+                        accounted: 1,
+                        applied: 0,
+                        not_applicable: 1,
+                        residual: 0
+                    }
+                );
+            }
+        }
+    }
+}
+
+#[test]
+fn state_structural_node_class_does_not_own_composite_body() {
+    let theme = DiagramThemeCompiler::new()
+        .compile(
+            DiagramThemeSpec::new().with_styles(ThemeRuleSet::default().with_rule(ThemeRule::new(
+                ThemeTarget::Composite,
+                ThemeStylePatch::default().with_fill(CanvasPaint::solid("#b316cd").unwrap()),
+            ))),
+        )
+        .unwrap();
+    let (svg, evidence) = render_strict_state_svg_with_theme_and_config(
+        &theme,
+        "stateDiagram-v2\nstate Group {\nReady\n}\nclassDef node fill:#aabbcc\n",
+        serde_json::json!({"htmlLabels": true, "look": "classic"}),
+        "site",
+    );
+    let document = roxmltree::Document::parse(&svg).expect("valid composite State SVG");
+    let cluster = document
+        .descendants()
+        .find(|node| node.attribute("data-id") == Some("Group"))
+        .unwrap();
+    let body = cluster
+        .children()
+        .find(|node| node.has_tag_name("rect") && node.attribute("class") == Some("inner"))
+        .expect("composite body");
+    assert!(
+        body.attribute("style")
+            .unwrap()
+            .contains("fill:#b316cd !important")
+    );
+    assert_eq!(
+        evidence,
+        StateThemeEvidenceCounts {
+            required: 1,
+            accounted: 1,
+            applied: 1,
+            not_applicable: 0,
+            residual: 0
+        }
+    );
 }
 
 #[test]
