@@ -514,6 +514,8 @@
     "diagnosticReasonsTitle": "样式观察结果",
     "diagnosticReasonsUnknown": "渲染器诊断：{{code}}。可在“高级”中查看原始详情。",
     "diagnosticReasons": {
+      "family-unadapted": "此图表类型尚未接入 Merman 的图形与文字主题样式。画布样式和 Mermaid 基础主题仍可能生效。",
+      "evidence-incomplete": "渲染器未能完整核对所有请求的主题样式，请检查当前预览后再使用结果。",
       "unsupported-effect": "请求的阴影或发光等效果未能应用于此次图表、外观或形状。请查看“应用说明”中列出的条件。",
       "unsupported-typography": "此次渲染未能应用部分请求的字体或文字样式。",
       "unsupported-paint": "部分请求的颜色或绘制样式未能应用于当前图表的外观或形状。",

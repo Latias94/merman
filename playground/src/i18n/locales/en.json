@@ -510,6 +510,8 @@
     "diagnosticReasonsTitle": "Styling observations",
     "diagnosticReasonsUnknown": "Renderer diagnostic: {{code}}. See Advanced for the original details.",
     "diagnosticReasons": {
+      "family-unadapted": "This diagram type does not yet support Merman's diagram and text styling. Canvas styling and Mermaid theme settings may still apply.",
+      "evidence-incomplete": "The renderer could not fully account for the requested theme styles. Check the current preview before relying on the result.",
       "unsupported-effect": "A requested effect, such as a shadow or glow, could not be applied to this diagram, look or shape. Review Application notes for any listed requirements.",
       "unsupported-typography": "Some requested font or text styling could not be applied in this render.",
       "unsupported-paint": "Some requested colors or paint styles could not be applied to this diagram's current look or shape.",

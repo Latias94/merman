@@ -5,6 +5,49 @@ The [authoring guide](custom-diagram-themes.md) explains recipes and source prec
 [preset qualification](preset-qualification.md) defines the bounded visual checks. This page
 explains those evidence boundaries. Machine contracts and runtime source own the capability inventory.
 
+## Coverage across diagram families
+
+The complete runtime has 34 selectable logical diagram families. Railroad's four syntaxes bring
+the selectable diagram-type count to 37. A preset or imported recipe can be selected for every
+family, but this does not mean every family consumes the same styles. New diagram registration
+does not automatically create a Merman theme adapter.
+
+| Families | Current compiled-theme scope |
+| --- | --- |
+| Flowchart, Agentflow, Swimlane | Node, label, connector and container paint; inherited fonts and family-specific label typography. Agentflow keeps its own kind palette and source precedence. Effects retain the shared shape/look restrictions below. |
+| Usecase | Usecase/JSON bodies, actors, notes, system boundaries, connectors, labels, markers and titles; inherited and role fonts. Bounded body shadows have their own Classic-look admission. |
+| Venn, Ishikawa, Railroad (including EBNF/ABNF/PEG), Event Modeling | Paint for actual diagram bodies and their labels. Ishikawa/Railroad/Event Modeling also consume connector and marker paint; Event Modeling consumes lane paint. Static solid/transparent paint is distinct from unsupported gradients or ordinal rules. |
+| Cynefin, Wardley | Domain/component bodies, labels, titles, connectors and markers. Both have Node ordinal palettes; explicit body fill takes precedence. Wardley additionally consumes axis paint. Diagram-owned notes and specialized decorations keep their own configuration channels. |
+| Tree View | Text/node-label, edge/marker and existing highlight-body paint, inherited fonts and measured base font size. A Node body rule styles existing `:::highlight` rectangles; it does not add rectangles to ordinary file labels. |
+| Packet | Block-body fill/stroke, byte-label, field-label and title paint, plus font-stack support. Mermaid's Packet variables remain independent property owners; semantic body effects are not implemented. |
+| Class, ER, Architecture, Block, C4, Gantt, GitGraph, Journey, Kanban, Mindmap, Pie, Quadrant Chart, Radar, Requirement, Sequence, State, Timeline, XY Chart, ZenUML | Family-owned semantic paint and typography consumers. Targets differ: a Radar axis, a Gantt task and a Sequence actor do not share one universal Node rule. Existing labels/titles and source-owned roles retain their own terminal domains. |
+| Sankey, Treemap | Node/section paint, text and inherited fonts, with family-specific palette and source-style ownership. A diagram without a visual title does not gain a title merely because a recipe requests it. |
+| Info | Version-label paint and inherited font stack. There is no separate visual title or node-body surface. |
+
+Packet layout settings such as `showBits` and `rowHeight` belong under `packet`; colors and role
+font sizes belong under `themeVariables.packet`. Root `packet.labelColor` and other root style
+keys are ignored. Source theme variables remain subject to the site's secure-key policy.
+
+All families can receive root canvas styling. A diagram-owned background is a separate surface and
+can cover the canvas according to source/configuration precedence. A canvas-only verified result
+does not establish node, label, line or effect support.
+
+Typed shadows/glows currently have consumers in Flowchart, Agentflow, Usecase, Sequence, State, Swimlane and XY Chart,
+with target and geometry restrictions. Flowchart supports its documented basic shapes in Classic
+and Neo. Agentflow shares those bounds; Usecase admits bounded Classic body shadows. State's supported body-shadow Value path is Classic; Swimlane's effect path is also
+Classic. A coarse conditional support query does not promise the effect under the current look.
+Other families can have Mermaid look decorations without consuming compiled theme effects.
+
+The 11 built-in presets share paint and typography defaults, with selected family-specific rules.
+Their catalog design scope is narrower than runtime theme availability. The four Playground
+explorations (Atlas, Nightfall, Letterpress and Grove) have dedicated examples and scoped rules for
+Flowchart, Sequence, Class, XY Chart and Pie. Other families can receive shared text, font, palette
+or canvas values; those changes do not establish a dedicated design for that family.
+
+Use discovery and the same render's execution evidence below to inspect an actual document. In
+particular, distinguish an SVG that renders successfully, styling that visibly applies, completed
+theme accounting and an admitted output target. These are separate observations.
+
 ## Discover support in the artifact being used
 
 Read the runtime catalog before selecting a family, preset or output. `available` means the artifact
@@ -91,6 +134,12 @@ Native fonts, HTML labels, filter composition, clipping and resource
 ceilings still require the concrete target's evidence. Keep residuals visible when a sibling facet
 applies; do not silently substitute a preset, drop effects or relax budgets.
 
+Flowchart and Agentflow HTML labels can retain source-owned relative font sizes such as `2em`
+on several nested ancestors. Their measured and inherited browser sizes can differ. These
+occurrences retain a source residual and fail strict portability; an independently applied
+theme font family does not certify that source size. Absolute typed role sizes use the prepared
+label measurement and its matching writer evidence.
+
 ## Qualification covers named scenarios
 
 The built-in production catalog currently leaves all `qualified_cells` empty. Availability,
@@ -118,6 +167,10 @@ that scope or populates the production catalog automatically.
   request scopes; family writers and [terminal accounting](../../crates/merman-render/src/family/evidence_support.rs)
   own actual application. [Facade coverage tests](../../crates/merman/tests/diagram_theme_coverage.rs)
   check visible consumers and source precedence.
+- The [font exchange corpus](../../crates/merman/tests/theme_font_capability.rs) compares its logical
+  family set with the runtime parser catalog, so registering a new family also requires a fixture.
+  The facade also runs all built-in presets over that corpus and rejects missing family accounting
+  or unsupported core paint. These gates do not establish arbitrary selector, effect or output support.
 - [Render evidence](../../crates/merman/src/render/evidence.rs) combines root/family outcomes;
   [target admission](../../crates/merman/src/render/target_admission/mod.rs) classifies concrete
   artifacts. [Bindings](../../crates/merman-bindings-core/src/theme_execution_evidence.rs) project

@@ -235,6 +235,29 @@ test("Pie keeps application notes scoped to its diagram family", async ({ page }
   await expect(panel.getByRole("button", { name: /^Brutalist/ })).toBeEnabled();
 });
 
+for (const scene of [
+  { family: "agentflow", source: 'agentflow-beta TB\nflow support["Support"]\n  task["Resolve"]@{ shape: task }\nend' },
+  { family: "usecase", source: 'usecase-beta\nactor Customer("Customer")\nsystemBoundary "Order system"\n  Checkout("Place order")\nend\nCustomer --> Checkout' },
+]) {
+  test(`${scene.family} applies the selected theme and preserves it in shared code`, async ({ page }) => {
+    const original = await start(page, "{}", "brutalist", scene.source);
+    const panel = await openPanel(page);
+    await expect(panel.getByTestId("theme-render-evidence")).toHaveAttribute("data-theme-evidence-state", "applied");
+    await expect(panel.locator('[data-theme-reason-code="family-unadapted"]')).toHaveCount(0);
+    await expect(panel.locator('[data-theme-reason-code="evidence-incomplete"]')).toHaveCount(0);
+    await expect(panel.locator('[data-theme-reason-code="unsupported-paint"]')).toHaveCount(0);
+    await openAdvanced(panel);
+    const metadata = JSON.parse((await panel.getByTestId("theme-execution-metadata").textContent())!);
+    expect(metadata.theme_execution_evidence.family_id).toBe(scene.family);
+    expect(metadata.theme_execution_evidence.theme_status).toBe("verified");
+    expect(metadata.theme_execution_evidence.diagnostics).toEqual([]);
+    const saved = await workspaceFromLink(page);
+    expect(saved.themePresetId).toBe("brutalist");
+    expect(saved.code).toBe(original.code);
+    expect(saved.mermaidConfig).toBe(original.mermaidConfig);
+  });
+}
+
 test("invalid authored config remains repairable after an immediate theme choice and closing", async ({ page }) => {
   await start(page, '{"flowchart":{"nodeSpacing":42}}', null, "flowchart LR\nA --> B");
   const panel = await openPanel(page);
