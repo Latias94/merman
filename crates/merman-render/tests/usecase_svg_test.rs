@@ -2763,6 +2763,27 @@ Data -- Login
                     .descendants()
                     .any(|node| node.attribute("data-usecase-kind") == Some("actor"))
             );
+            let edge = document
+                .descendants()
+                .find(|node| {
+                    node.has_tag_name("path") && node.attribute("data-id") == Some("access")
+                })
+                .unwrap();
+            let line = property(edge, "stroke").expect("preset connector paint");
+            let marker = end_marker(&document, "access");
+            let shape = marker.children().find(roxmltree::Node::is_element).unwrap();
+            assert_eq!(
+                property(shape, "fill").as_deref(),
+                Some(line.as_str()),
+                "{} marker fill",
+                descriptor.id()
+            );
+            assert_eq!(
+                property(shape, "stroke").as_deref(),
+                Some(line.as_str()),
+                "{} marker stroke",
+                descriptor.id()
+            );
             let evidence =
                 merman_render::__private::family_evidence(rendered.into_completion().report());
             assert_eq!(

@@ -1065,6 +1065,12 @@ pub(super) fn build_cross_family_recipe(palette: PresetPalette) -> ThemeDesignV1
             style(Some("line"), None),
         ));
     }
+    design.rules.push(rule(
+        Some(DiagramFamilyId::USECASE),
+        ThemeTarget::Marker,
+        None,
+        style(Some("line"), Some("line")),
+    ));
     for family in [
         DiagramFamilyId::VENN,
         DiagramFamilyId::ISHIKAWA,
