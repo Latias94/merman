@@ -27,6 +27,50 @@ async function shareWorkspace(page: Page) {
   return decodeShareHash(new URL(await page.evaluate(() => navigator.clipboard.readText())).hash)!;
 }
 
+test("changelog design links open every theme directly without changing the workspace", async ({ page }) => {
+  test.setTimeout(90_000);
+  const errors = monitorBrowserErrors(page);
+  await page.context().grantPermissions(["clipboard-read", "clipboard-write"]);
+  await page.addInitScript(() => {
+    if (window === window.top && (location.protocol === "http:" || location.protocol === "https:")) localStorage.setItem("merman-language", "en");
+  });
+  const changelog = await readFile(new URL("../../CHANGELOG.md", import.meta.url), "utf8");
+  const links = [...changelog.matchAll(/\[\*\*([^*]+)\*\*\]\((https:\/\/frankorz\.com\/merman\/\?theme-design=([a-z-]+))\)/gu)];
+  expect(links.map((match) => match[3])).toEqual(designIds);
+  for (const [, name, href, id] of links) {
+    const url = new URL(href);
+    await page.goto(`./${url.search}${encodeShareHash(workspace)}`, { waitUntil: "domcontentloaded" });
+    const gallery = page.getByTestId("theme-showcase");
+    await expect(gallery.getByTestId("theme-showcase-detail")).toHaveAttribute("data-theme-design", id);
+    await expect(gallery.getByRole("heading", { name, exact: true })).toBeVisible();
+    await expect(gallery.locator("[data-theme-sample]")).toHaveCount(5);
+    await gallery.getByRole("button", { name: "Close theme designs", exact: true }).click();
+    await expect(page.locator("[data-theme-showcase-launcher]:visible")).toBeFocused();
+  }
+  const saved = await shareWorkspace(page);
+  for (const key of Object.keys(workspace) as (keyof typeof workspace)[]) expect(saved[key]).toEqual(workspace[key]);
+  errors.assertNone();
+});
+
+test("invalid design links retain lazy loading and unknown designs open the collection", async ({ page }) => {
+  const errors = monitorBrowserErrors(page);
+  const output = optionalFeatureOutput("themeShowcase");
+  const requests: string[] = [];
+  page.on("request", (request) => requests.push(request.url()));
+  for (const search of ["?theme-design=", "?theme-design=riso&theme-design=metro", "?theme-design=%3Cscript%3E"]) {
+    requests.length = 0;
+    await page.goto(`./${search}${encodeShareHash(workspace)}`, { waitUntil: "domcontentloaded" });
+    await waitForPreviewSvg(page);
+    await expect(page.getByTestId("theme-showcase")).toHaveCount(0);
+    expect(requests.some((url) => url.endsWith(output))).toBe(false);
+  }
+  await page.goto(`./?theme-design=unknown-design${encodeShareHash(workspace)}`, { waitUntil: "domcontentloaded" });
+  const gallery = page.getByTestId("theme-showcase");
+  await expect(gallery.getByTestId("theme-showcase-detail")).toHaveCount(0);
+  await expect(gallery.locator("[data-theme-design-card]")).toHaveCount(designIds.length);
+  errors.assertNone();
+});
+
 test("theme designs load on demand and browsing five families preserves the workspace", async ({ page }) => {
   const errors = monitorBrowserErrors(page);
   await page.context().grantPermissions(["clipboard-read", "clipboard-write"]);

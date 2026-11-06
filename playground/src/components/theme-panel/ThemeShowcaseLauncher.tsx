@@ -14,8 +14,14 @@ export function ThemeShowcaseLauncher({ panel = false, themeId }: {
 }) {
   const { t } = useTranslation();
   const trigger = useRef<HTMLButtonElement>(null);
-  const [activated, setActivated] = useState(false);
-  const [open, setOpen] = useState(false);
+  const [linkedThemeId] = useState(() => {
+    if (panel) return undefined;
+    const values = new URLSearchParams(window.location.search).getAll("theme-design");
+    return values.length === 1 && /^[a-z][a-z0-9-]{0,63}$/.test(values[0]) ? values[0] : undefined;
+  });
+  const initialThemeId = themeId ?? linkedThemeId;
+  const [activated, setActivated] = useState(linkedThemeId !== undefined);
+  const [open, setOpen] = useState(linkedThemeId !== undefined);
   const restoreFocus = () => {
     if (trigger.current?.isConnected) trigger.current.focus();
     else document.querySelector<HTMLButtonElement>("[data-theme-showcase-launcher]")?.focus();
@@ -32,7 +38,7 @@ export function ThemeShowcaseLauncher({ panel = false, themeId }: {
     {panel ? button : <Tooltip><TooltipTrigger asChild>{button}</TooltipTrigger><TooltipContent>{t("themeShowcase.title")}</TooltipContent></Tooltip>}
     {activated && <LazyFeatureBoundary feature={t("themeShowcase.title")}
       presentation={{ kind: "dialog", open, onOpenChange: setOpen, restoreFocus }}>
-      <ThemeShowcase key={themeId ?? "collection"} open={open} onOpenChange={setOpen} restoreFocus={restoreFocus} initialThemeId={themeId} />
+      <ThemeShowcase key={initialThemeId ?? "collection"} open={open} onOpenChange={setOpen} restoreFocus={restoreFocus} initialThemeId={initialThemeId} />
     </LazyFeatureBoundary>}
   </>;
 }
