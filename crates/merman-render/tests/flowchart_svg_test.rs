@@ -8566,7 +8566,7 @@ fn flowchart_handdrawn_rounded_rect_honors_radius_and_square_fallback() {
             merman_core::presentation::SourcePresentationConfig::from_value(serde_json::json!({
                 "look": "handDrawn", "theme": "default", "handDrawnSeed": 42,
                 // Equal padding isolates the drawRect primitive from each shape's sizing policy.
-                "flowchart": {"padding": 0},
+                "flowchart": {"padding": "0"},
                 "themeVariables": {"radius": radius}
             })),
         );
