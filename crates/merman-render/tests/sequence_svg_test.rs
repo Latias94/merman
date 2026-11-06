@@ -438,7 +438,12 @@ fn assert_sequence_probe_message_trace(requests: &[RecordedSequenceMeasurement])
     );
     let configured_family = message_requests[1].font_family.as_deref();
     assert_ne!(configured_family, Some("sans-serif"));
-    for (pair, expected_text) in message_requests.chunks_exact(2).zip(expected_probe_pairs) {
+    for (pair, expected_text) in message_requests
+        .as_chunks::<2>()
+        .0
+        .iter()
+        .zip(expected_probe_pairs)
+    {
         assert_eq!(pair[0].text, expected_text);
         assert_eq!(pair[1].text, expected_text);
         assert_eq!(
@@ -1362,7 +1367,7 @@ fn sequence_host_route_preserves_message_measurement_callback_sequence() {
     }));
     let configured_family = message_requests[1].font_family.as_deref();
     assert_ne!(configured_family, Some("sans-serif"));
-    for pair in message_requests.chunks_exact(2) {
+    for pair in message_requests.as_chunks::<2>().0.iter() {
         assert_eq!(pair[0].font_family.as_deref(), Some("sans-serif"));
         assert_eq!(pair[1].font_family.as_deref(), configured_family);
         assert_eq!(pair[0].font_size_bits, pair[1].font_size_bits);

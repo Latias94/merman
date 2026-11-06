@@ -753,7 +753,7 @@ pub(crate) struct DetectorConfigChanges {
 impl DetectorConfigCheckpoint {
     pub(crate) fn new(config: &SourcePresentationConfig) -> Self {
         let epoch = DETECTOR_EPOCH
-            .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |epoch| {
+            .try_update(Ordering::Relaxed, Ordering::Relaxed, |epoch| {
                 epoch.checked_add(1)
             })
             .expect("detector mutation epoch exhausted")

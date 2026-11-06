@@ -24,6 +24,23 @@ finite fixture evidence does not establish equivalence for every Eclipse ELK opt
   These are historical identities at the initial ELK work-unit boundary. The current selected
   reference graph is owned by the repository bundle and decision receipt, not this record.
 
+## Alpha.2 patch selection: elkjs 0.12.1
+
+The alpha.2 reference graph selects published `elkjs@0.12.1`, wrapper tag `0.12.1` at
+`624ae90aa37110033a8af59c5ccbb292708b4317`. The Java comparison from `v0.12.0` to
+`v0.12.1` (`3aa3b9fb98d8f9a41285b3061cff5efe79ed2ba4`) changes one production algorithm:
+`RoutingDirector.determineTwoSideOpposingLoopRoutes` sorts the two opposing port sides before
+choosing a route. The other production Java difference is documentation whitespace. Rust already
+sorts through `loop_sides()`; the east/west and north/south equal-penalty regressions verify that
+reversing input port order preserves the route. No numeric tuning or algorithm rewrite is needed.
+
+Replaying the 83 existing public oracle cases plus opposing-loop variations gives 227 identical
+results between the published 0.12.0 and 0.12.1 workers, including reused instances. This covers
+those inputs, not every ELK option. Generated GWT worker and wrapper changes are admitted through
+the selected package, actual reference rendering, and the existing full SVG comparison. Historical
+0.12.0 instrumented phase observations retain their original identity and private aliases.
+The Java tag remains a source comparison point rather than a proven unique npm build input.
+
 ## Source delta classification
 
 Paths in this table are relative to the Java comparison checkout's `plugins/` directory.
@@ -83,11 +100,11 @@ default ceiling nor its historical calibration is changed; this is not a latency
 - The exact npm-to-Java-build mapping is not proven by the release tag. A complete upgrade
   admission still needs the coordinator's installed-byte/provenance graph, the full Rust suites,
   renderer family matrix and target checks.
-- Latest-compatible elkjs 0.12.1 is separately scoped and **not fully admitted**. Its fetched
-  tag is `624ae90aa37110033a8af59c5ccbb292708b4317`; `build.gradle` selects
-  `melk=0.13.0-SNAPSHOT`, GWT 2.13 and DisCo sources. These are real build/behavior deltas, not
-  a fabricated rejection or evidence that 0.12.1 equals 0.12.0. Outside-range 0.13 remains a
-  separate evaluation. The materialized 0.12.0 checkout was not moved.
+- The initial 12.3 transition did not admit elkjs 0.12.1. Its
+  `melk=0.13.0-SNAPSHOT`, GWT 2.13 and DisCo build changes required separate evidence.
+  The [alpha.2 patch selection](#alpha2-patch-selection-elkjs-0121) records that follow-up;
+  the historical 0.12.0 checkout and instrumented observations keep their original identities.
+  The registry's 0.13.0 is deprecated and is not selected.
 
 ## Executed runtime evidence
 

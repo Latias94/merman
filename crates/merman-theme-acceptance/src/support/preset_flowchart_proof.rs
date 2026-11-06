@@ -785,7 +785,12 @@ mod tests {
         for replacement in [cluster_rgb, faded_rgb] {
             let mut changed = raster.clone();
             let mut changed_pixels = 0;
-            for (index, pixel) in pixels[..frame.buffer_size()].chunks_exact(4).enumerate() {
+            for (index, pixel) in pixels[..frame.buffer_size()]
+                .as_chunks::<4>()
+                .0
+                .iter()
+                .enumerate()
+            {
                 let column = index as u32 % frame.width;
                 let row = index as u32 / frame.width;
                 let svg_x = geometry.view[0]

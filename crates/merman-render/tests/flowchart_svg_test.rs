@@ -3965,7 +3965,7 @@ fn flowchart_stadium_path_uses_html_label_font_size_for_fractional_theme_size() 
             .filter(|token| !token.is_empty())
             .map(|token| token.parse().expect("path number"))
             .collect();
-        let ys = numbers.chunks_exact(2).map(|pair| pair[1]);
+        let ys = numbers.as_chunks::<2>().0.iter().map(|pair| pair[1]);
         let painted_height = ys.clone().fold(f64::MIN, f64::max) - ys.fold(f64::MAX, f64::min);
 
         assert!(
@@ -8787,7 +8787,7 @@ fn flowchart_stadium_preserves_measured_nontext_html_label_height() {
                 .filter(|token| !token.is_empty())
                 .map(|token| token.parse().expect("path number"))
                 .collect();
-            let ys = numbers.chunks_exact(2).map(|pair| pair[1]);
+            let ys = numbers.as_chunks::<2>().0.iter().map(|pair| pair[1]);
             let height = ys.clone().fold(f64::MIN, f64::max) - ys.fold(f64::MAX, f64::min);
             assert!(
                 (height - node.height).abs() < 1e-6,

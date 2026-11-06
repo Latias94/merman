@@ -8,7 +8,7 @@ The wrapper and Merman-authored code remain under the project license; each comp
 
 - ID: `typst-publish`
 - Description: The Typst WASM publish profile, including ELK and wasm-minimal-protocol but excluding RaTeX.
-- Components: `cose-base-v1`, `cose-base-v2`, `cytoscape`, `cytoscape-cose-bilkent`, `cytoscape-fcose`, `d3-shape`, `dagre`, `dompurify`, `fmin`, `graphlib`, `layout-base-v1`, `layout-base-v2`, `mermaid`, `non-layered-tidy-tree-layout`, `rough-rs`, `roughjs`, `roxmltree-dom`, `sanitize-url`, `unicode-linebreak`, `venn-js`, `zenuml-core`, `eclipse-elk`, `elkjs`, `wasm-minimal-protocol`
+- Components: `cose-base-v1`, `cose-base-v2`, `cytoscape`, `cytoscape-cose-bilkent`, `cytoscape-fcose`, `d3-path`, `d3-shape`, `dagre`, `dompurify`, `fmin`, `graphlib`, `layout-base-v1`, `layout-base-v2`, `mermaid`, `non-layered-tidy-tree-layout`, `rough-rs`, `roughjs`, `roxmltree-dom`, `sanitize-url`, `unicode-linebreak`, `venn-js`, `zenuml-core`, `eclipse-elk`, `elkjs`, `wasm-minimal-protocol`
 
 ## Components
 
@@ -72,9 +72,21 @@ The headless Architecture layout is a modified Rust implementation of FCoSE beha
 - Local evidence: `crates/manatee`, `crates/merman-render/src/architecture.rs`
 - Legal file: `THIRD_PARTY_LICENSES/cytoscape-fcose/LICENSE`
 
+### d3-path
+
+The Pie SVG renderer translates D3 path rounding and arc serialization, including the 3.1.1 correction for rounded coincident endpoints of large arcs.
+
+- Version: `3.1.1`
+- Source: https://github.com/d3/d3-path.git @ `b9ab34592535861e44ce9db03de4db2c2c9c866a`
+- Source path: `src/path.js`
+- Relationship: `modified`, `translated`
+- License: `ISC`
+- Local evidence: `crates/merman-render/src/svg/parity/pie/render.rs`
+- Legal file: `THIRD_PARTY_LICENSES/d3-path/LICENSE`
+
 ### d3-shape
 
-The SVG parity layer translates D3 curve algorithms, including basis, natural, step, cardinal, bump, and Catmull-Rom variants.
+The SVG parity layer translates D3 curve algorithms, including basis, natural, step, cardinal, bump, and Catmull-Rom variants. The current reference graph uses d3-shape 3.2.1, whose curve source is unchanged from this translation baseline.
 
 - Version: `3.2.0`
 - Source: https://github.com/d3/d3-shape.git @ `8ec82658454750cfa29efb1e0ea514e3dd9b2297`
@@ -280,10 +292,10 @@ The merman-elk-layered crate contains modified Rust source translations of Eclip
 
 ### elkjs
 
-Mermaid's ELK adapter behavior is compared against the published elkjs@0.12.0 JavaScript distribution. Its source tag and npm publish gitHead identify the elkjs wrapper; the tag's CI checks out Eclipse ELK master and does not prove a unique Java source commit for the npm build. The separate Eclipse ELK v0.12.0 source comparison and historical v0.9.1 port derivation are recorded in crates/merman-elk-layered/MERMAID_12_3_DELTA.md. Merman selects EPL-2.0 from the declared EPL-2.0 OR GPL-3.0-or-later options and preserves the exact license with its conditional secondary-license notice.
+Mermaid's ELK adapter behavior is compared against the published elkjs@0.12.1 JavaScript distribution. Its source tag and npm publish gitHead identify the elkjs wrapper; the tag's CI checks out Eclipse ELK master and does not prove a unique Java source commit for the npm build. The separate Eclipse ELK v0.12.0 and v0.12.1 source comparisons and historical v0.9.1 port derivation are recorded in crates/merman-elk-layered/MERMAID_12_3_DELTA.md. Merman selects EPL-2.0 from the declared EPL-2.0 OR GPL-3.0-or-later options and preserves the exact license with its conditional secondary-license notice.
 
-- Version: `0.12.0`
-- Source: https://github.com/kieler/elkjs.git @ `ff5771d7165445c42c408bb8a090c8035272218c`
+- Version: `0.12.1`
+- Source: https://github.com/kieler/elkjs.git @ `624ae90aa37110033a8af59c5ccbb292708b4317`
 - Source path: `.`
 - Relationship: `behavior-reference`
 - License: `(EPL-2.0 OR GPL-3.0-or-later)`

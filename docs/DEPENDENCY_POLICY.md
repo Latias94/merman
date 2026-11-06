@@ -14,14 +14,14 @@ Stable coupled workspace crates use ordinary compatible requirements such as `0.
 | --- | --- | --- |
 | `libm` | Exact 0.2.16 | Iterative layout uses reproducible math instead of host-dependent transcendental results. [The introducing change](https://github.com/Latias94/merman/commit/f5e557f85cfa03992ba367cd970605258e060ea6) ties this choice to deterministic geometry. A change requires source-backed layout and parity evidence. |
 | `pulldown-cmark` | Compatible 0.13.6 minimum | Includes the [RUSTSEC-2026-0433 repair](https://rustsec.org/advisories/RUSTSEC-2026-0433.html). Merman selects explicit Markdown options without Wikilinks; keep the patched minimum for fresh source consumers and update each governed lockfile. |
-| NAPI runtime / derive / build | Exact 3.15.0 / 3.6.13 / 2.6.0 group | Generated native Node binding code, build integration, and runtime must be admitted together; review package loading and platform artifacts as one group. |
-| Tree-sitter CLI / Rust and Web runtime | Exact 0.27.1 group | Parser generation and the selected runtimes are admitted together. Grammar candidate 0.3.2 remains independent; generated language ABI stays 15. Native Node's separate 0.25.x runtime contract remains explicit. |
+| NAPI runtime / derive / build | Exact 3.16.1 / 3.7.0 / 2.6.0 group | Generated native Node binding code, build integration, and runtime must be admitted together; review package loading and platform artifacts as one group. |
+| Tree-sitter CLI / Rust and Web runtime | Exact 0.27.1 group | Parser generation and the selected runtimes are admitted together. Grammar candidate 0.3.3 remains independent; generated language ABI stays 15. Native Node's separate 0.25.x runtime contract remains explicit. |
 | `tree-sitter-language` | Compatible 0.1.9 requirement | `LanguageFn` is a public function-pointer adapter, not the generated language ABI. Its API and representation are unchanged from 0.1.8; upstream Tree-sitter uses the compatible requirement too. `Cargo.lock` fixes the audited build at 0.1.9 without forcing other grammars to accept an exact shared adapter version. |
-| `ctrlc`, `fontique`, `granit-parser`, `serde-saphyr`, current `svgtypes` | Ordinary compatible requirements | Remove unexplained exact equality. YAML/parser crates select 2.0.0; `merman-core/editor-facts` enables `granit-parser/comments` and individual requests select capture so source-config rewrites retain comment evidence. Upgrades require their owning semantic and artifact checks. |
+| `ctrlc`, `fontique`, `granit-parser`, `serde-saphyr`, current `svgtypes` | Ordinary compatible requirements | Remove unexplained exact equality. YAML/parser crates select granit-parser 2.1.0 and serde-saphyr 2.1.1; `merman-core/editor-facts` enables `granit-parser/comments` and individual requests select capture so source-config rewrites retain comment evidence. Upgrades require their owning semantic and artifact checks. |
 | `roughr-merman` legacy `svgtypes` | Retain 0.11 public compatibility line | Public path types used by already-published Merman consumers must remain compatible. The 0.12.5 arc-rounding fix preserves the legacy API and default features retained by 0.12.4. Current Merman disables legacy defaults and retains explicit randomness. |
 | `resvg` / `usvg` | Retain compatible 0.47.0 line | `krilla-svg` 0.8.1 consumes usvg 0.47, and public fontdb 0.23 types cross the shared native font context. Advancing only one renderer would split font types and font/budget ownership. Upgrade the export chain together with a proven adapter or a common admitted dependency line. |
 
-The [published krilla-svg 0.8.1 manifest](https://docs.rs/crate/krilla-svg/0.8.1/source/Cargo.toml) requires resvg/usvg 0.47 and fontdb 0.23. The current [`NativeFontContext` implementation](../crates/merman-export/src/fonts.rs) carries that database and exposes `apply_to_usvg_options`. The compatible resvg/usvg line is not an exact equality requirement. The 2026-10-26 audit observed resvg/usvg 0.49.0, but krilla-svg 0.8.1 is still the latest stable PDF adapter. Freshness alone is insufficient evidence to replace the shared font/export contract. The release audit must retain the upstream versions, manifests, public type boundary, and owner results behind this exception.
+The [published krilla-svg 0.8.1 manifest](https://docs.rs/crate/krilla-svg/0.8.1/source/Cargo.toml) requires resvg/usvg 0.47 and fontdb 0.23. The current [`NativeFontContext` implementation](../crates/merman-export/src/fonts.rs) carries that database and exposes `apply_to_usvg_options`. The compatible resvg/usvg line is not an exact equality requirement. The 2026-11-06 audit observed resvg/usvg 0.49.0, but krilla-svg 0.8.1 is still the latest stable PDF adapter. Freshness alone is insufficient evidence to replace the shared font/export contract. The release audit must retain the upstream versions, manifests, public type boundary, and owner results behind this exception.
 
 An incompatible `usvg::Tree` handoff prevents mixing the 0.49 renderer with the 0.47 PDF adapter. Keep CSS color acceleration local to the ZenUML renderer and TOML writing local to test tooling; parser-only and production read-only consumers should not inherit unused features.
 
@@ -37,13 +37,16 @@ The 0.9.0 preparation audit selected Mermaid 12.1.0. Development selects 12.3.0 
 retains the historical 12.2 transition. Published releases retain their original baseline.
 The reference host graph is frozen and independently admitted: updating a reference dependency
 changes the oracle and requires the Mermaid alignment workflow. ELK follows the exact target
-workspace oracle `0.12.0`; the investigated `0.12.1` candidate has not completed admission.
-The 2026-10-26 audit observed ZenUML 4.11.0, which falls outside the selected plugin's `^3.47.9`
+workspace oracle `0.12.1`; the source-backed opposing-loop regression and public worker replay
+are recorded in [the engine delta](../crates/merman-elk-layered/MERMAID_12_3_DELTA.md#alpha2-patch-selection-elkjs-0121).
+The 2026-11-06 audit observed ZenUML 4.13.0, which falls outside the selected plugin's `^3.47.9`
 contract and is not substituted without coordinated admission.
 
-Application TypeScript remains on the compatible 6.0.3 line. The 2026-10-26 audit observed TypeScript 7.0.2; typescript-eslint 8.72.0 still requires TypeScript `>=4.8.4 <6.1.0`, and application scripts use the old compiler API. VS Code independently admits TypeScript 7. Retain this as a documented compatibility exception; do not treat a tool's major version as an unconditional application upgrade.
+Application TypeScript remains on the compatible 6.0.3 line. The 2026-11-06 audit observed TypeScript 7.0.2; typescript-eslint 8.72.1 still requires TypeScript `>=4.8.4 <6.1.0`, and application scripts use the old compiler API. VS Code and the browser-test workspace independently admit TypeScript 7. Retain this as a documented compatibility exception; do not treat a tool's major version as an unconditional application upgrade.
 
-Playground selects js-yaml 4.3.2, the current `v4-legacy` release. The 2026-10-26 audit confirmed that version 5.5.0 still rejects multi-line flow mappings already accepted by the selected Mermaid configuration contract, such as `config: {\n  theme: neo-dark\n}`. Retain the existing configuration fixture and revisit the major upgrade when the source contract has a compatible parser path; a parser upgrade must not silently reject accepted diagrams.
+Playground selects js-yaml 4.3.2, the current `v4-legacy` release. The 2026-11-06 audit confirmed that version 5.5.0 still rejects multi-line flow mappings already accepted by the selected Mermaid configuration contract, such as `config: {\n  theme: neo-dark\n}`. Retain the existing configuration fixture and revisit the major upgrade when the source contract has a compatible parser path; a parser upgrade must not silently reject accepted diagrams.
+
+Mermaid's released hosts also retain their KaTeX, Marked and legacy D3 dependency ranges. The reference lock admits compatible patches, including D3's rounded coincident-arc correction, without flattening distinct parent contracts. Dagre and Graphlib are embedded source baselines in `dagre-d3-es`; installing newer standalone packages does not upgrade that code. A newer major needs a source-backed port and the same parser, render and host admission as a Mermaid change.
 
 Version observations describe the dated preparation or dependency audit, not an evergreen claim about registry latest. Store the complete Cargo/npm candidate audit and compatibility evidence in release artifacts or the release record. Revisit each exception when its blocking public API or companion dependency changes. The policy records selection reasons; it does not assert that a new `cargo deny`, package build, or publication has passed.
 
@@ -53,17 +56,11 @@ the patched major, retain the supported graph and document the affected path and
 removal condition. An advisory alone does not justify forcing an incompatible override. Keep
 the unresolved audit result visible; this compatibility policy does not waive an audit gate.
 
-The 2026-10-26 dependency update retains the pre-existing VS Code packaging-tool override to
-`@azure/msal-node` 7.1.1. Its parent `@azure/identity` 4.14.0 still declares `^6.0.0`;
-this remains an explicit compatibility risk, not an upstream-supported dependency graph.
-The supported 6.0.1 probe still reports a high-severity advisory chain, while the retained
-override graph passes npm audit. Revisit when the parent admits a patched supported version;
-a clean advisory report alone does not prove authentication compatibility. This tooling
-path is not part of the bundled extension runtime.
+The 2026-11-06 VS Code packaging-tool update removes the old `@azure/msal-node` override. The current parent admits the patched 7.x line directly, so this tooling path again follows the released parent's supported dependency range. It is not part of the bundled extension runtime.
 
 ## Node build compatibility
 
-The native GNU builder retains Node 24.13.1 on Bullseye because that container defines the selected Linux compatibility baseline; a newer host tool does not by itself admit a newer glibc requirement. The musl candidate uses Node 24.21.0 on Alpine 3.23. Keep each container identity and its package-tool provenance with the owner artifact evidence, and verify native loading/package smoke after a builder change. These are distinct preparation choices, not proof that the final package has passed its native owner gates.
+Host and musl builders select Node 26.13.0 and npm 12.2.2. The native GNU builder retains Node 24.13.1 on Bullseye because that container defines the selected glibc 2.31 compatibility baseline; the newer official Node images do not provide that distribution. It copies the Rust 1.99.1 toolchain from the official Bookworm image while retaining the Bullseye target linker and sysroot. The musl candidate uses Alpine 3.24. Keep each container identity and its package-tool provenance with the owner artifact evidence, and verify native loading/package smoke after a builder change. These are distinct preparation choices, not proof that the final package has passed its native owner gates.
 
 ## GitHub Actions
 

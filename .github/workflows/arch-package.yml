@@ -18,7 +18,7 @@ jobs:
       - name: Build and test the AUR source package in Arch
         run: |
           docker run --rm --volume "$GITHUB_WORKSPACE:/workspace:ro" \
-            archlinux:base@sha256:3c64b538588416593f69a1aebd2f2ec0f2541b29159f32556fa7def2167147a0 \
+            archlinux:base@sha256:b1c2fe6e717bfd5673af8fc217e1e1c3ce0dcbb1d53c3414c8425e7ce79fc6d9 \
             bash -euc '
               pacman -Syu --noconfirm --needed base-devel rust cmake ninja python fontconfig ttf-dejavu git
               useradd --create-home builder

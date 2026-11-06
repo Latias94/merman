@@ -1,4 +1,4 @@
-ARG RUST_IMAGE=rust:1.95-bullseye
+ARG RUST_IMAGE=rust:1.99.1-bookworm
 ARG NODE_IMAGE=node:24.13.1-bullseye
 
 FROM ${RUST_IMAGE} AS rust-toolchain
@@ -13,6 +13,8 @@ RUN set -eu; \
     done; \
     test -s /etc/ssl/certs/ca-certificates.crt
 
+# Rust no longer publishes Bullseye images. Copy only its portable toolchain;
+# native linking continues to use this stage's Bullseye compiler and libc.
 COPY --from=rust-toolchain /usr/local/cargo /usr/local/cargo
 COPY --from=rust-toolchain /usr/local/rustup /usr/local/rustup
 

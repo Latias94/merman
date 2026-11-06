@@ -126,14 +126,14 @@ jobs:
 
       - name: Install Rust toolchain
         if: ${{ inputs.native_run_id == '' }}
-        uses: dtolnay/rust-toolchain@1.95.0
+        uses: dtolnay/rust-toolchain@1.99.1
         with:
           components: llvm-tools-preview
           targets: aarch64-linux-android,armv7-linux-androideabi,x86_64-linux-android,aarch64-apple-ios,aarch64-apple-ios-sim,x86_64-apple-ios,aarch64-apple-darwin,x86_64-apple-darwin,x86_64-unknown-linux-gnu,aarch64-unknown-linux-gnu,x86_64-pc-windows-gnu
 
       - name: Rust cache
         if: ${{ inputs.native_run_id == '' }}
-        uses: Swatinem/rust-cache@v2.9.2
+        uses: Swatinem/rust-cache@v2.9.3
 
       - name: Install desktop cross tools
         if: ${{ inputs.native_run_id == '' }}
@@ -141,7 +141,7 @@ jobs:
           if ! command -v zig >/dev/null 2>&1; then
             brew install zig
           fi
-          cargo install cargo-zigbuild --version 0.23.4 --locked
+          cargo install cargo-zigbuild --version 0.24.1 --locked
 
       - name: Setup Android SDK
         if: ${{ inputs.native_run_id == '' }}
@@ -211,7 +211,7 @@ jobs:
       - name: Setup Flutter
         uses: subosito/flutter-action@v2.23.0
         with:
-          flutter-version: "3.47.7"
+          flutter-version: "3.47.9"
           channel: stable
           cache: true
 

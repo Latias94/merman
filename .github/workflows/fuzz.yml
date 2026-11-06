@@ -46,7 +46,7 @@ concurrency:
 
 env:
   CARGO_FUZZ_VERSION: "0.13.2"
-  FUZZ_NIGHTLY: nightly-2026-07-01
+  FUZZ_NIGHTLY: nightly-2026-11-06
   RUST_BACKTRACE: "1"
   CARGO_INCREMENTAL: "0"
 
@@ -160,7 +160,7 @@ jobs:
       - name: Install coverage toolchain
         run: rustup toolchain install "$FUZZ_NIGHTLY" --profile minimal
 
-      - uses: Swatinem/rust-cache@v2.9.2
+      - uses: Swatinem/rust-cache@v2.9.3
         with:
           cache-targets: false
           workspaces: fuzz -> fuzz/target
@@ -185,13 +185,13 @@ jobs:
           persist-credentials: false
 
       - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@1.95.0
+        uses: dtolnay/rust-toolchain@1.99.1
 
       - name: Install Rust nightly
         run: rustup toolchain install "$FUZZ_NIGHTLY" --profile minimal --component rust-src
 
       - name: Rust cache
-        uses: Swatinem/rust-cache@v2.9.2
+        uses: Swatinem/rust-cache@v2.9.3
         with:
           cache-targets: false
           workspaces: |
@@ -351,8 +351,8 @@ jobs:
       - uses: actions/checkout@v7.0.1
         with:
           persist-credentials: false
-      - uses: dtolnay/rust-toolchain@1.95.0
-      - uses: Swatinem/rust-cache@v2.9.2
+      - uses: dtolnay/rust-toolchain@1.99.1
+      - uses: Swatinem/rust-cache@v2.9.3
         with:
           key: parser-differential
           cache-targets: false
@@ -362,11 +362,11 @@ jobs:
           sudo apt-get install --no-install-recommends --yes libfontconfig1-dev pkg-config
       - uses: actions/setup-node@v7.1.0
         with:
-          node-version: "24.21.0"
+          node-version: "26.13.0"
           cache: npm
           cache-dependency-path: tools/mermaid-cli/package-lock.json
       - name: Install pinned npm
-        run: npm install --global --ignore-scripts --registry=https://registry.npmjs.org/ npm@12.2.1
+        run: npm install --global --ignore-scripts --registry=https://registry.npmjs.org/ npm@12.2.2
       - name: Verify selected reference before runtime install
         run: cargo run --locked --release -p xtask -- verify-mermaid-reference
       - name: Install selected Mermaid runtime

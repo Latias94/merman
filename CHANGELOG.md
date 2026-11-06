@@ -4,7 +4,7 @@ All notable changes to this project will be documented in this file.
 
 The format is based on *Keep a Changelog*, and this project adheres to *Semantic Versioning*.
 
-## Unreleased
+## [0.10.0-alpha.2] - Unreleased
 
 **Planned for `0.10.0-alpha.2`; not yet released.** These changes are relative to [0.10.0-alpha.1](#0100-alpha1---2026-11-02). Current source development selects Mermaid `12.3.0`; published alpha.1 packages retain their Mermaid `12.2.0` baseline. See the [release index](docs/release/README.md#merman-0100-alpha2-planned) for upgrade paths and the [host installation guide](docs/release/PREBUILT_PRODUCTS.md) for delivered packages.
 
@@ -19,11 +19,12 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
 
 - **Rust source changes:** update direct `FlowEdge`, `FlowchartModel` and Rectpacking `Options` literals for the new fields. Mindmap compatibility JSON no longer includes `diagramId`; use `PresentationContext::None` and set SVG identity through render options. The [Rust migration](docs/migrations/mermaid-12-3.md#rust-source-changes) lists the replacements.
 - **Custom binding integrations:** analysis facts use schema `3`, theme execution evidence uses schema `2`, and Web transport API advances to `9`. Deploy matching wrappers, generated glue and WASM together; Rust/TypeScript evidence consumers use `ThemeExecutionEvidenceV2`. See the [binding migration](docs/release/UNRELEASED_CONTRACT_VERSIONS.md#source-appearance-and-render-evidence-follow-up).
+- **Source builders:** the repository selects Rust `1.99.1` while retaining library MSRV `1.95`. Android source builds use JDK `27` and Gradle `9.8.2`, retaining Java `17` bytecode and Android API `23`. The Go/WASI example and qualification modules now require Go `1.27` or later. See the [dependency policy](docs/DEPENDENCY_POLICY.md) for compatibility exceptions.
 
 ### Mermaid 12.3 and layouts
 
 - Flowchart Step edges support timed groups and numbered badges. Browser SVG supports the admitted animation and reduced-motion behavior; static SVG, PNG, JPEG and PDF retain ordinary edges and badges without animation. Nine `bpmn-*` shapes extend Flowchart's existing shape syntax. Agentflow accepts its updated shape alias, Usecase renders Include/Extend labels as `«include»` and `«extend»`, and Swimlane follows the selected preparation, nesting and endpoint rules. See the [Mermaid 12.3 guide](docs/migrations/mermaid-12-3.md). [#277](https://github.com/Latias94/merman/pull/277)
-- ELK layouts follow the selected `0.12.0` behavior for outside-label clearance, compound containers, titles, self-loops and component packing. Review layout and image snapshots after upgrading; the [ELK guide](crates/merman-elk-layered/MERMAID_12_3_DELTA.md) describes the supported scope.
+- ELK layouts follow the selected `0.12.1` behavior for outside-label clearance, compound containers, titles, self-loops and component packing. Review layout and image snapshots after upgrading; the [ELK guide](crates/merman-elk-layered/MERMAID_12_3_DELTA.md) describes the supported scope.
 
 ### Themes and Playground
 
@@ -63,6 +64,7 @@ The designs combine real canvas patterns, gradients, typography, series palettes
 
 ### Fixes
 
+- Pie and donut paths follow D3's default three-decimal precision and corrected near-full-circle arcs. Review SVG snapshots that compare path bytes.
 - Brutalist hard shadows appear on supported Classic and Neo Flowchart shapes. Usecase preset arrowheads follow their connector colors.
 - HTML-to-SVG text conversion preserves supported inline font sizes, weights and code fonts. Railroad, Cynefin and Wardley labels retain text that previously changed during sanitization.
 - State labels containing HTML line breaks produce valid SVG. Theme reports distinguish empty or zero-sized text from label geometry that still consumes a font size. Resetting supported Pie text styles or Architecture group colors to their defaults no longer fails strict theme validation.

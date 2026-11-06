@@ -768,14 +768,13 @@ fn _line<F: Float + Trig + FromPrimitive>(
 ) -> Vec<Op<F>> {
     let length_sq = (x1 - x2).powi(2) + (y1 - y2).powi(2);
     let length = length_sq.sqrt();
-    let roughness_gain;
-    if length < _c(200.0_f32) {
-        roughness_gain = _c(1.0);
+    let roughness_gain = if length < _c(200.0_f32) {
+        _c(1.0)
     } else if length > _c(500.0) {
-        roughness_gain = _c(0.4);
+        _c(0.4)
     } else {
-        roughness_gain = _c::<F>(-0.0016668) * length + _c(1.233334);
-    }
+        _c::<F>(-0.0016668) * length + _c(1.233334)
+    };
 
     let mut offset = _c(o.max_randomness_offset.unwrap_or(2.0));
     if (offset * offset * _c(100.0)) > length_sq {

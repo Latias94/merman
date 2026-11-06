@@ -3,7 +3,7 @@
   "projectionSchemaVersion": 3,
   "selectionDecision": {
     "path": "tools/upstreams/MERMAID_SELECTION_DECISION.json",
-    "sha256": "90a6e204f3a6877b8dea85a2bf2c183d536a85fb509e7e54ab0a8a44634f08f5"
+    "sha256": "3664c1d2945540ff4d3129ae48f820fb7bf5437ee6b216dc8d7c62ca61a38377"
   },
   "release": {
     "id": "mermaid",
@@ -255,8 +255,8 @@
       ]
     },
     "workspace": "tools/mermaid-cli",
-    "packageJsonSha256": "a84a0b50e1d198b67f07292f4122fcba73565044e8699d8ccd6ee7a996450adb",
-    "packageLockSha256": "24d30b0c2b10586e8a41451352da1217a0dce2ec6172c390ec084597fab8f66b",
+    "packageJsonSha256": "5b969bc88be5bd1503f89118a90fdcf2c241683d5c40fa6f64651d90ef0608d8",
+    "packageLockSha256": "6be7b7ca2156f048e1cfe8560fee60f179ecb325877ced3d13e2dd69e75e5fcc",
     "configSha256": "da34e9d1dae1882d3b32a479e6223bad495f31877e6d0a3f0a3e3a157832eacc"
   },
   "rendererTools": [
@@ -285,15 +285,15 @@
       "id": "esbuild",
       "role": "renderer-tool",
       "package": "esbuild",
-      "version": "0.28.1",
-      "declaredRange": "0.28.1",
-      "integrity": "sha512-HrJrvZv5ayxBzPfwphOoNzkzOIIlifzk0KJrGK2c8R4+LKpMtpYLQeUdjnwjWv/LZlkH2laZk+4w78pi99D4Vw==",
-      "tarballUrl": "https://registry.npmjs.org/esbuild/-/esbuild-0.28.1.tgz",
-      "installedContentSha256": "410ea1c459ed1e9424a17e132f4cd84518faf824abe3377081ab54b42687f6f4",
+      "version": "0.28.2",
+      "declaredRange": "0.28.2",
+      "integrity": "sha512-HKVLS8dvII+xoKW9kmqxbRKrnWEXfJJr/FZhhJmiqIB0e053QNYFqOBouTMO/k5sID4MvCiUCvv8b9M4h32wIA==",
+      "tarballUrl": "https://registry.npmjs.org/esbuild/-/esbuild-0.28.2.tgz",
+      "installedContentSha256": "0e4a34c8580ead6721d606c22db93fe468cec72ca21824be4dfe4c770e23100e",
       "source": {
         "repository": "https://github.com/evanw/esbuild.git",
-        "reference": "v0.28.1",
-        "commit": "bb9db84c02433fbe37b3509f53f9f3e3cc48725e",
+        "reference": "v0.28.2",
+        "commit": "609683d892977362a0f99026cb74b96263d728a9",
         "checkoutPath": null,
         "packagePath": "npm/esbuild"
       },
@@ -351,19 +351,23 @@
       "id": "elkjs",
       "role": "behavior",
       "package": "elkjs",
-      "version": "0.12.0",
+      "version": "0.12.1",
       "declaredRange": "^0.12.0",
-      "integrity": "sha512-YZcKynxVxYoKIOEpywEPwCFdg+BTbxQRNf3pbwdDCvc8O3kQD8bmIwSxKU1eOTVc4Xo+VG9Te+575mlfvOrhEQ==",
-      "tarballUrl": "https://registry.npmjs.org/elkjs/-/elkjs-0.12.0.tgz",
-      "installedContentSha256": "1db4aa1a396126b7f12581f795954620362171811b2305b644631e3f5a63a313",
+      "integrity": "sha512-IhMYKHE4S2vtx0QrhBP3lYOIKDeIiJXBrdq9MGYkuB8ZHqhrBnHNfSUndjXFewrX1CPK8chwq+2NA0K0hliYuw==",
+      "tarballUrl": "https://registry.npmjs.org/elkjs/-/elkjs-0.12.1.tgz",
+      "installedContentSha256": "ae1b0b0ab2a0697072a2a752a272acc0b9c881706da853e837185f4b1fb0f7f1",
       "source": {
         "repository": "https://github.com/kieler/elkjs.git",
-        "reference": "0.12.0",
-        "commit": "ff5771d7165445c42c408bb8a090c8035272218c",
-        "checkoutPath": "repo-ref/elkjs-0.12.0",
+        "reference": "0.12.1",
+        "commit": "624ae90aa37110033a8af59c5ccbb292708b4317",
+        "checkoutPath": "repo-ref/elkjs-0.12.1",
         "packagePath": "."
       },
-      "requiredSurfaces": ["layout-elk", "playground", "reference-cli"]
+      "requiredSurfaces": [
+        "layout-elk",
+        "playground",
+        "reference-cli"
+      ]
     },
     {
       "id": "cytoscape",
@@ -381,7 +385,11 @@
         "checkoutPath": "repo-ref/cytoscape-3.34.4",
         "packagePath": "."
       },
-      "requiredSurfaces": ["layout-cytoscape", "playground", "reference-cli"]
+      "requiredSurfaces": [
+        "layout-cytoscape",
+        "playground",
+        "reference-cli"
+      ]
     },
     {
       "id": "sanitize-url",
@@ -399,7 +407,11 @@
         "checkoutPath": "repo-ref/sanitize-url-7.1.2",
         "packagePath": "."
       },
-      "requiredSurfaces": ["rust-sanitizer", "playground", "reference-cli"]
+      "requiredSurfaces": [
+        "rust-sanitizer",
+        "playground",
+        "reference-cli"
+      ]
     }
   ],
   "installPolicy": {
@@ -421,7 +433,7 @@
       },
       {
         "workspace": "tools/mermaid-cli",
-        "package": "esbuild@0.28.1",
+        "package": "esbuild@0.28.2",
         "action": "ignored",
         "reason": "The locked platform binary package supplies the compiler; no installation hook or network download is required."
       }

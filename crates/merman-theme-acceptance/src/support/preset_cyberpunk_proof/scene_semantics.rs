@@ -184,7 +184,9 @@ fn glow(
                 == results.len(),
         "ambiguous filter result bindings"
     );
-    for (index, (block, &(sigma, color))) in nodes.chunks_exact(6).zip(shadows).enumerate() {
+    for (index, (block, &(sigma, color))) in
+        nodes.as_chunks::<6>().0.iter().zip(shadows).enumerate()
+    {
         c6_ensure!(
             "cyberpunk-filter",
             block.iter().map(|node| node.tag_name()).eq([

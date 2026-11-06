@@ -75,7 +75,7 @@ fn shape_path_bbox(shape_chunk: &str) -> (f64, f64, f64, f64) {
         rest = &rest[idx + r#"<path d=""#.len()..];
         let end = rest.find('"').expect("path d end");
         let nums = path_numbers(&rest[..end]);
-        for pair in nums.chunks_exact(2) {
+        for pair in nums.as_chunks::<2>().0.iter() {
             let point = (pair[0], pair[1], pair[0], pair[1]);
             bbox = Some(match bbox {
                 Some((min_x, min_y, max_x, max_y)) => (

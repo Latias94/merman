@@ -858,7 +858,8 @@ mod tests {
         assert!(!document.descendants().any(|node| node.has_tag_name("span")));
         let text = document
             .descendants()
-            .filter_map(|node| node.is_text().then(|| node.text().unwrap_or_default()))
+            .filter(|node| node.is_text())
+            .map(|node| node.text().unwrap_or_default())
             .collect::<String>();
         assert!(text.contains("`<img src=x>`"), "{fragment}");
         assert!(text.contains("<span>literal</span>"), "{fragment}");

@@ -22,7 +22,7 @@ The `0.10.0-alpha.1` baseline selects Mermaid `12.2.0`, retaining parser `2.0.1`
 `12.0.0`. Its source and artifact admission are recorded in [ADR-0094](../adr/0094-mermaid-12-2-upstream-transition.md).
 This transition does not change package versions, feature ownership, or transport schemas.
 
-Current source development selects Mermaid `12.3.0` with the exact ELK `0.12.0` behavior oracle
+Current source development selects Mermaid `12.3.0` with the exact ELK `0.12.1` behavior oracle
 and Cytoscape `3.34.4`. Published alpha.1 identities remain unchanged. See the
 [development migration](../migrations/mermaid-12-3.md) for source and output changes, including
 the explicit static projection for animated Step edges.
@@ -36,7 +36,7 @@ publication. The [host guide](PREBUILT_PRODUCTS.md#published-versions) records v
 versions; use immutable `v0.9.3` and its matching documentation for the published maintenance APIs.
 See the [alpha changelog](../../CHANGELOG.md#0100-alpha1---2026-11-02) for required migrations.
 
-This alpha requires the independently published `roughr-merman 0.12.5` and Tree-sitter `0.3.2`. Typst wrapper `0.5.0` bundles Merman `0.9.0`; wrapper `0.4.0` bundles `0.8.0`. See the [dependency policy](../DEPENDENCY_POLICY.md) for compatible version requirements and intentional upgrade exceptions.
+The alpha.2 candidate requires the independent `roughr-merman 0.12.6` and Tree-sitter `0.3.3` candidates. Publish those patches before their workspace dependents; published alpha.1 retains `0.12.5` and `0.3.2`. Typst wrapper `0.5.0` bundles Merman `0.9.0`; wrapper `0.4.0` bundles `0.8.0`. See the [dependency policy](../DEPENDENCY_POLICY.md) for compatible version requirements and intentional upgrade exceptions.
 
 ## Choose A Surface
 

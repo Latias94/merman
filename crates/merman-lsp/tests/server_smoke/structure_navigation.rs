@@ -689,7 +689,7 @@ async fn mermaid12_families_keep_navigation_and_tokens_after_partial_edits() {
                         let mut line = 0;
                         let mut character = 0;
                         assert!(
-                            data.chunks_exact(5).any(|token| {
+                            data.as_chunks::<5>().0.iter().any(|token| {
                                 let delta = token[0].as_u64().unwrap();
                                 line += delta;
                                 character = if delta == 0 { character } else { 0 }

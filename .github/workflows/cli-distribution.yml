@@ -28,15 +28,15 @@ jobs:
           persist-credentials: false
 
       - name: Install Python for GNU baseline checks
-        uses: actions/setup-python@v7.0.0
+        uses: actions/setup-python@v7.1.0
         with:
-          python-version: "3.12"
+          python-version: "3.15.2"
 
       - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@1.95.0
+        uses: dtolnay/rust-toolchain@1.99.1
 
       - name: Rust cache
-        uses: Swatinem/rust-cache@v2.9.2
+        uses: Swatinem/rust-cache@v2.9.3
         with:
           cache-targets: false
 
@@ -46,11 +46,11 @@ jobs:
       - name: Install pinned cargo-dist on the GNU baseline
         shell: bash
         env:
-          DIST_INSTALLER_SHA256: b657cf8c04a8b7bc28f39d220f7e6dd11bbd2bdb072c552262bd9ccf597261b5
+          DIST_INSTALLER_SHA256: abb014a8486f08a3c2d9dd8bbf2c646c62fab61b1f1c9ff5bf2811ab305d17b1
         run: |
           installer="$RUNNER_TEMP/cargo-dist-installer.sh"
           curl --proto '=https' --tlsv1.2 -LsSf -o "$installer" \
-            https://github.com/axodotdev/cargo-dist/releases/download/v0.32.0/cargo-dist-installer.sh
+            https://github.com/axodotdev/cargo-dist/releases/download/v0.34.0/cargo-dist-installer.sh
           printf '%s  %s\n' "$DIST_INSTALLER_SHA256" "$installer" | sha256sum --check
           sh "$installer"
 
@@ -94,7 +94,7 @@ jobs:
           persist-credentials: false
       - uses: actions/setup-node@v7.1.0
         with:
-          node-version: "24.21.0"
+          node-version: "26.13.0"
       - name: Test setup action
         run: node --test distribution/github-action/*.test.mjs
       - uses: ./distribution/github-action

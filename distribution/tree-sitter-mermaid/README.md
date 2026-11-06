@@ -29,12 +29,19 @@ The grammar has its own version line, independent of Merman. Its npm and Cargo a
 grammar version, but their registry names differ: the npm package is scoped under `@mermanjs`, while
 the Rust crate and C library retain the standard `tree-sitter-mermaid` name.
 
-This guide targets the `0.3.2` candidate. Relative to published `0.3.1`, this patch raises the Rust `cc` build-dependency minimum from `1.8.0` to `1.10.0` and maintains workspace conformance tests. Accepted syntax, queries, Mermaid/ZenUML baselines, language ABI 15, and runtime versions remain unchanged. Candidate packages become available only after the [release preparation record](../../docs/release/PUBLISH_ORDER.md#0100-alpha1-preparation) confirms their release. Match the examples to the version installed in your project; earlier versions have their own tagged documentation. Custom query consumers should review the [migration guide](https://github.com/Latias94/merman/blob/main/distribution/tree-sitter-mermaid/docs/query-migration.md).
+This guide targets the **unreleased `0.3.3` candidate**. The latest published version is `0.3.2`;
+the `0.3.3` installation examples below apply after its independent publication. This patch refreshes
+the npm development-tool lockfile (`semver` 7.8.5 to 7.8.6 and `undici` 8.12.3 to 8.12.4).
+Accepted syntax, queries, Mermaid/ZenUML baselines, language ABI 15, runtime versions, and the Rust
+`cc` minimum of `1.10.0` remain unchanged. See [CHANGELOG.md](CHANGELOG.md) for package changes.
+Match the examples to the version installed in your project; earlier versions have their own tagged
+documentation. Custom query consumers should review the
+[migration guide](https://github.com/Latias94/merman/blob/main/distribution/tree-sitter-mermaid/docs/query-migration.md).
 
 ## Node.js
 
 ```console
-npm install tree-sitter@0.25.1 @mermanjs/tree-sitter-mermaid@0.3.2
+npm install tree-sitter@0.25.1 @mermanjs/tree-sitter-mermaid@0.3.3
 ```
 
 With npm 12 or later, review and approve the native install scripts, then rebuild:
@@ -71,7 +78,7 @@ import Mermaid from '@mermanjs/tree-sitter-mermaid';
 ## Browser and Workers
 
 ```console
-npm install web-tree-sitter@0.27.1 @mermanjs/tree-sitter-mermaid@0.3.2
+npm install web-tree-sitter@0.27.1 @mermanjs/tree-sitter-mermaid@0.3.3
 ```
 
 The package exports `@mermanjs/tree-sitter-mermaid/tree-sitter-mermaid.wasm`. Copy that asset to a
@@ -92,7 +99,7 @@ A no-build browser prototype can pin the exact grammar version on jsDelivr:
 
 ```js
 const language = await Language.load(
-  'https://cdn.jsdelivr.net/npm/@mermanjs/tree-sitter-mermaid@0.3.2/tree-sitter-mermaid.wasm',
+  'https://cdn.jsdelivr.net/npm/@mermanjs/tree-sitter-mermaid@0.3.3/tree-sitter-mermaid.wasm',
 );
 ```
 
@@ -104,7 +111,7 @@ diagnostics, completion, navigation, and rename.
 ## Rust
 
 ```console
-cargo add tree-sitter@=0.27.1 tree-sitter-mermaid@=0.3.2
+cargo add tree-sitter@=0.27.1 tree-sitter-mermaid@=0.3.3
 ```
 
 ```rust
@@ -146,7 +153,7 @@ int main(void) {
 }
 ```
 
-Version 0.3.2 pairs with Tree-sitter CLI, Rust, and Web runtime 0.27.1; the Rust language adapter uses compatible `^0.1.9`, and the generated language ABI remains 15. See [query migration](docs/query-migration.md) when upgrading queries and the [grammar release guide](../../docs/release/TREE_SITTER_MERMAID.md) when maintaining the package.
+The 0.3.3 candidate pairs with Tree-sitter CLI, Rust, and Web runtime 0.27.1; the Rust language adapter uses compatible `^0.1.9`, and the generated language ABI remains 15. See [query migration](docs/query-migration.md) when upgrading queries and the [grammar release guide](../../docs/release/TREE_SITTER_MERMAID.md) when maintaining the package.
 
 ## Compatibility
 

@@ -56,7 +56,7 @@ class PagesWorkflowTests(unittest.TestCase):
         self.assertIn("--surface web", budgets)
         self.assertIn("--web-package-root platforms/web/packages", budgets)
         self.assertIn("--budget-file docs/release/WASM_SIZE_BUDGETS.json", budgets)
-        self.assertIn("tool: wasm-tools@1.261.0", budgets)
+        self.assertIn("tool: wasm-tools@1.263.0", budgets)
 
     def test_browser_consumer_installs_the_web_checker_dependencies(self) -> None:
         text = PAGES.read_text(encoding="utf-8")
@@ -94,7 +94,7 @@ class PagesWorkflowTests(unittest.TestCase):
         ):
             self.assertIn(command, browser)
         self.assertIn("targets: wasm32-unknown-unknown", browser)
-        self.assertIn("cargo install wasm-pack --version 0.15.0 --locked", browser)
+        self.assertIn("cargo install wasm-pack --version 0.15.1 --locked", browser)
         self.assertIn("if: failure()", browser)
         self.assertIn("playground/playwright-report", browser)
         self.assertIn("playground/test-results", browser)
@@ -111,7 +111,7 @@ class PagesWorkflowTests(unittest.TestCase):
             "verify-playground-example-catalog",
         ):
             self.assertIn(f"target/release/xtask {command}", tools)
-        self.assertIn('node-version: "24.21.0"', tools)
+        self.assertIn('node-version: "26.13.0"', tools)
         self.assertIn("if: github.event_name != 'pull_request' && inputs.ci_only != true", tools)
         deployment = (PAGES.parent / "pages-deploy.yml").read_text(encoding="utf-8")
         self.assertIn("uses: ./.github/workflows/pages.yml", workflow_job(deployment, "build"))

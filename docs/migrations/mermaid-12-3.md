@@ -10,15 +10,17 @@ artifacts from the same source revision when using these development changes.
 The [reference bundle](../../tools/upstreams/MERMAID_REFERENCE_BUNDLE.json),
 [selection receipt](../../tools/upstreams/MERMAID_SELECTION_DECISION.json) and
 [source lock](../../tools/upstreams/REPOS.lock.json) own the exact identities.
-Both reference workspaces select `elkjs 0.12.0`, Cytoscape `3.34.4`,
+Both reference workspaces select `elkjs 0.12.1`, Cytoscape `3.34.4`,
 `@braintree/sanitize-url 7.1.2`, DOMPurify `3.4.17`, and reference CLI `12.2.0`.
 Parser `2.0.1`, Tidy Tree `1.0.1`, and ZenUML plugin `1.0.1` keep their
 independent source identities. Selected ZenUML Core remains `3.50.1`; the
 Mermaid source workspace's older Core resolution does not replace it.
 
-ELK uses the exact target workspace oracle, `0.12.0`. The investigated
-latest-compatible `0.12.1` has separate build and behavior changes and has not
-completed admission. It is not substituted implicitly. The
+The alpha.2 dependency refresh advances ELK from the target workspace's `0.12.0`
+oracle to the compatible `0.12.1` patch. Source comparison identifies the opposing
+self-loop port-order correction; Rust already sorts those sides and now has
+explicit order-independence regressions. Public worker replays cover both versions,
+while historical instrumented phase observations retain their `0.12.0` identity. The
 [ELK delta record](../../crates/merman-elk-layered/MERMAID_12_3_DELTA.md)
 distinguishes supported source changes, actual npm observations, and unexposed
 options. Existing feature and license boundaries remain: defaults-off consumers

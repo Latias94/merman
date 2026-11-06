@@ -19,7 +19,7 @@
       "artifact_scope": "web-analysis",
       "path": "platforms/web/legal/rust-cargo-dependencies/web-analysis.json",
       "projection_path": "THIRD_PARTY_LICENSES/rust-cargo-dependencies.json",
-      "owner": "cargo-about 0.9.2 exact web-analysis dependency closure",
+      "owner": "cargo-about 0.9.3 exact web-analysis dependency closure",
       "required": true,
       "format": "json"
     },
@@ -27,7 +27,7 @@
       "artifact_scope": "web-ascii",
       "path": "platforms/web/legal/rust-cargo-dependencies/web-ascii.json",
       "projection_path": "THIRD_PARTY_LICENSES/rust-cargo-dependencies.json",
-      "owner": "cargo-about 0.9.2 exact web-ascii dependency closure",
+      "owner": "cargo-about 0.9.3 exact web-ascii dependency closure",
       "required": true,
       "format": "json"
     },
@@ -35,7 +35,7 @@
       "artifact_scope": "web-editor",
       "path": "platforms/web/legal/rust-cargo-dependencies/web-editor.json",
       "projection_path": "THIRD_PARTY_LICENSES/rust-cargo-dependencies.json",
-      "owner": "cargo-about 0.9.2 exact web-editor dependency closure",
+      "owner": "cargo-about 0.9.3 exact web-editor dependency closure",
       "required": true,
       "format": "json"
     },
@@ -43,7 +43,7 @@
       "artifact_scope": "web-full",
       "path": "platforms/web/legal/rust-cargo-dependencies/web-full.json",
       "projection_path": "THIRD_PARTY_LICENSES/rust-cargo-dependencies.json",
-      "owner": "cargo-about 0.9.2 exact web-full dependency closure",
+      "owner": "cargo-about 0.9.3 exact web-full dependency closure",
       "required": true,
       "format": "json"
     },
@@ -51,7 +51,7 @@
       "artifact_scope": "web-render",
       "path": "platforms/web/legal/rust-cargo-dependencies/web-render.json",
       "projection_path": "THIRD_PARTY_LICENSES/rust-cargo-dependencies.json",
-      "owner": "cargo-about 0.9.2 exact web-render dependency closure",
+      "owner": "cargo-about 0.9.3 exact web-render dependency closure",
       "required": true,
       "format": "json"
     }
@@ -116,6 +116,7 @@
         "cytoscape",
         "cytoscape-cose-bilkent",
         "cytoscape-fcose",
+        "d3-path",
         "d3-shape",
         "dagre",
         "dompurify",
@@ -205,6 +206,7 @@
       "description": "Third-party projects loaded by or used as behavioral evidence for the deployed Playground.",
       "extends": [],
       "components": [
+        "d3-path",
         "d3-shape",
         "dompurify",
         "elkjs",
@@ -390,6 +392,39 @@
       "notice": "The headless Architecture layout is a modified Rust implementation of FCoSE behavior."
     },
     {
+      "id": "d3-path",
+      "name": "d3-path",
+      "version": "3.1.1",
+      "source": {
+        "repository": "https://github.com/d3/d3-path.git",
+        "ref": "v3.1.1",
+        "commit": "b9ab34592535861e44ce9db03de4db2c2c9c866a",
+        "path": "src/path.js"
+      },
+      "relationships": ["modified", "translated"],
+      "local_paths": ["crates/merman-render/src/svg/parity/pie/render.rs"],
+      "license_expression": "ISC",
+      "license_files": [
+        {
+          "path": "THIRD_PARTY_LICENSES/d3-path/LICENSE",
+          "sha256": "f5dff44740d51a1849b4d16b657eccf60577fb5d28d8ee46d33dcc780a11f94a",
+          "source_url": "https://raw.githubusercontent.com/d3/d3-path/b9ab34592535861e44ce9db03de4db2c2c9c866a/LICENSE",
+          "source_path": "LICENSE",
+          "role": "license"
+        }
+      ],
+      "locks": [
+        {
+          "type": "npm",
+          "path": "playground/package-lock.json",
+          "package_path": "node_modules/d3-path",
+          "version": "3.1.1",
+          "integrity": "sha512-jsbgV8zIT38ReB9O7X7gcLndTQRONSqNNd+oGIaTBdUug4r5jFmp0N6RY9R5GWbdUDucn0qoTGyfjapT4tDhcg=="
+        }
+      ],
+      "notice": "The Pie SVG renderer translates D3 path rounding and arc serialization, including the 3.1.1 correction for rounded coincident endpoints of large arcs."
+    },
+    {
       "id": "d3-shape",
       "name": "d3-shape",
       "version": "3.2.0",
@@ -416,11 +451,11 @@
           "type": "npm",
           "path": "playground/package-lock.json",
           "package_path": "node_modules/d3-shape",
-          "version": "3.2.0",
-          "integrity": "sha512-SaLBuwGm3MOViRq2ABk3eLoxwZELpH6zhl3FbAoJ7Vm1gofKx6El1Ib5z23NUEhF9AsGl7y+dzLe5Cw2AArGTA=="
+          "version": "3.2.1",
+          "integrity": "sha512-dm2o+lbKdzg9tY7GEag/dB9hcbodLfwkE/DkvqbELJXaMz0yKzWWhZqhbI7CKubukA7HnRyz0avdtvi7EPxPvw=="
         }
       ],
-      "notice": "The SVG parity layer translates D3 curve algorithms, including basis, natural, step, cardinal, bump, and Catmull-Rom variants."
+      "notice": "The SVG parity layer translates D3 curve algorithms, including basis, natural, step, cardinal, bump, and Catmull-Rom variants. The current reference graph uses d3-shape 3.2.1, whose curve source is unchanged from this translation baseline."
     },
     {
       "id": "dagre",
@@ -507,11 +542,11 @@
     {
       "id": "elkjs",
       "name": "elkjs",
-      "version": "0.12.0",
+      "version": "0.12.1",
       "source": {
         "repository": "https://github.com/kieler/elkjs.git",
-        "ref": "0.12.0",
-        "commit": "ff5771d7165445c42c408bb8a090c8035272218c",
+        "ref": "0.12.1",
+        "commit": "624ae90aa37110033a8af59c5ccbb292708b4317",
         "path": "."
       },
       "relationships": ["behavior-reference"],
@@ -522,7 +557,7 @@
         {
           "path": "THIRD_PARTY_LICENSES/elkjs/LICENSE.md",
           "sha256": "637e81f4a1b6b4079535c499fca05e238cf7605c1ff5b76d60d7da7ce96700c9",
-          "source_url": "https://raw.githubusercontent.com/kieler/elkjs/ff5771d7165445c42c408bb8a090c8035272218c/LICENSE.md",
+          "source_url": "https://raw.githubusercontent.com/kieler/elkjs/624ae90aa37110033a8af59c5ccbb292708b4317/LICENSE.md",
           "source_path": "LICENSE.md",
           "role": "license"
         }
@@ -536,11 +571,11 @@
           "type": "npm",
           "path": "playground/package-lock.json",
           "package_path": "node_modules/elkjs",
-          "version": "0.12.0",
-          "integrity": "sha512-YZcKynxVxYoKIOEpywEPwCFdg+BTbxQRNf3pbwdDCvc8O3kQD8bmIwSxKU1eOTVc4Xo+VG9Te+575mlfvOrhEQ=="
+          "version": "0.12.1",
+          "integrity": "sha512-IhMYKHE4S2vtx0QrhBP3lYOIKDeIiJXBrdq9MGYkuB8ZHqhrBnHNfSUndjXFewrX1CPK8chwq+2NA0K0hliYuw=="
         }
       ],
-      "notice": "Mermaid's ELK adapter behavior is compared against the published elkjs@0.12.0 JavaScript distribution. Its source tag and npm publish gitHead identify the elkjs wrapper; the tag's CI checks out Eclipse ELK master and does not prove a unique Java source commit for the npm build. The separate Eclipse ELK v0.12.0 source comparison and historical v0.9.1 port derivation are recorded in crates/merman-elk-layered/MERMAID_12_3_DELTA.md. Merman selects EPL-2.0 from the declared EPL-2.0 OR GPL-3.0-or-later options and preserves the exact license with its conditional secondary-license notice."
+      "notice": "Mermaid's ELK adapter behavior is compared against the published elkjs@0.12.1 JavaScript distribution. Its source tag and npm publish gitHead identify the elkjs wrapper; the tag's CI checks out Eclipse ELK master and does not prove a unique Java source commit for the npm build. The separate Eclipse ELK v0.12.0 and v0.12.1 source comparisons and historical v0.9.1 port derivation are recorded in crates/merman-elk-layered/MERMAID_12_3_DELTA.md. Merman selects EPL-2.0 from the declared EPL-2.0 OR GPL-3.0-or-later options and preserves the exact license with its conditional secondary-license notice."
     },
     {
       "id": "fmin",
@@ -1163,7 +1198,7 @@
         {
           "type": "pinned-file",
           "path": "distribution/tree-sitter-mermaid/metadata/provenance.json",
-          "sha256": "e4adabae06e3fa34f6e8483dc6d2d7a8877615f282bfde1eab88839aeae79d25"
+          "sha256": "a9165f8203401878c2156316287fdf5a141db6d5e0e19b8319d722e220fafb26"
         },
         {
           "type": "pinned-file",
@@ -1214,7 +1249,7 @@
         {
           "type": "pinned-file",
           "path": "distribution/tree-sitter-mermaid/metadata/provenance.json",
-          "sha256": "e4adabae06e3fa34f6e8483dc6d2d7a8877615f282bfde1eab88839aeae79d25"
+          "sha256": "a9165f8203401878c2156316287fdf5a141db6d5e0e19b8319d722e220fafb26"
         },
         {
           "type": "pinned-file",
@@ -1255,7 +1290,7 @@
         {
           "type": "pinned-file",
           "path": "distribution/tree-sitter-mermaid/metadata/provenance.json",
-          "sha256": "e4adabae06e3fa34f6e8483dc6d2d7a8877615f282bfde1eab88839aeae79d25"
+          "sha256": "a9165f8203401878c2156316287fdf5a141db6d5e0e19b8319d722e220fafb26"
         },
         {
           "type": "pinned-file",

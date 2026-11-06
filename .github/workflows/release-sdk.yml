@@ -124,10 +124,18 @@ jobs:
           ref: ${{ needs.validate-inputs.outputs.source_sha }}
           persist-credentials: false
       - name: Set up Python
-        # Official v7.0.0 ref resolved from actions/setup-python.
-        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        # Official v7.1.0 ref resolved from actions/setup-python.
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
-          python-version: "3.14"
+          python-version: "3.15.2"
+      - name: Set up Go for WASI qualification
+        if: matrix.platform.kind == 'wasi'
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: "1.27.3"
+          cache-dependency-path: |
+            platforms/wasi/wazero/go.sum
+            distribution/sdk/examples/go-wasi/go.sum
       - name: Verify pinned source
         shell: bash
         run: |
@@ -135,19 +143,19 @@ jobs:
           test "$(git rev-parse 'HEAD^{commit}')" = "$SOURCE_SHA"
           test "$(git rev-parse 'HEAD^{tree}')" = "$SOURCE_TREE"
       - name: Install the pinned Rust toolchain
-        uses: dtolnay/rust-toolchain@a5f673d0ba8626c3977bb416a1612774bc82181b # 1.95.0
+        uses: dtolnay/rust-toolchain@d124f86f28ff42855784ff3319f48ac182c248f8 # 1.99.1
         with:
           # Install rust-toolchain.toml components up front, before Cargo activates the override.
           components: ${{ matrix.platform.kind == 'native' && !contains(matrix.platform.target, 'windows') && 'rustfmt, clippy, llvm-tools-preview' || 'rustfmt, clippy' }}
           targets: ${{ matrix.platform.target }}
       - name: Install the existing license report tool
         if: matrix.platform.target != 'x86_64-apple-darwin'
-        uses: taiki-e/install-action@8cca0918f8471c33515202b73f56ab27f2bed283 # v2.87.29
+        uses: taiki-e/install-action@c509219cf42fba86913069efd0ade2458c59337b # v2.90.1
         with:
-          tool: cargo-about@0.9.2
+          tool: cargo-about@0.9.3
       - name: Build the license CLI where no matching binary is available
         if: matrix.platform.target == 'x86_64-apple-darwin'
-        run: cargo install --locked cargo-about --version 0.9.2 --features cli
+        run: cargo install --locked cargo-about --version 0.9.3 --features cli
       - name: Verify license tool installation before building the SDK
         run: cargo about --version
       - name: Install pinned host qualification dependencies
@@ -193,11 +201,11 @@ jobs:
           ref: ${{ needs.validate-inputs.outputs.source_sha }}
           persist-credentials: false
       - name: Set up Python
-        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
-          python-version: "3.14"
+          python-version: "3.15.2"
       - name: Install the pinned Rust toolchain
-        uses: dtolnay/rust-toolchain@a5f673d0ba8626c3977bb416a1612774bc82181b # 1.95.0
+        uses: dtolnay/rust-toolchain@d124f86f28ff42855784ff3319f48ac182c248f8 # 1.99.1
         with:
           components: rustfmt, clippy
       - name: Build the descriptor-owned CLI release recipe once
@@ -235,9 +243,9 @@ jobs:
           ref: ${{ needs.validate-inputs.outputs.source_sha }}
           persist-credentials: false
       - name: Set up Python
-        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
-          python-version: "3.14"
+          python-version: "3.15.2"
       - name: Install the pinned shared qualification dependencies
         run: python -m pip install --requirement platforms/wasi/requirements.txt
       - name: Download native host evidence

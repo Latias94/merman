@@ -253,17 +253,17 @@ The release owner builds exactly these targets:
 | `x86_64-unknown-linux-gnu` | `manylinux_2_28_x86_64` | `ubuntu-24.04` plus pinned container |
 | `x86_64-pc-windows-msvc` | `win_amd64` | `windows-2025-vs2026` |
 
-The two Linux members use official PyPA AlmaLinux 8 images tagged `2026.05.07-2`, pinned by
+The two Linux members use official PyPA AlmaLinux 8 images tagged `2026.11.01-2`, pinned by
 architecture-specific manifest digest in the workflow. The digests were obtained from the
-official [x86-64 tag metadata](https://quay.io/api/v1/repository/pypa/manylinux_2_28_x86_64/tag/?onlyActiveTags=true&specificTag=2026.05.07-2)
-and [ARM64 tag metadata](https://quay.io/api/v1/repository/pypa/manylinux_2_28_aarch64/tag/?onlyActiveTags=true&specificTag=2026.05.07-2).
+official [x86-64 tag metadata](https://quay.io/api/v1/repository/pypa/manylinux_2_28_x86_64/tag/?onlyActiveTags=true&specificTag=2026.11.01-2)
+and [ARM64 tag metadata](https://quay.io/api/v1/repository/pypa/manylinux_2_28_aarch64/tag/?onlyActiveTags=true&specificTag=2026.11.01-2).
 The job asserts the actual libc is `glibc 2.28` and the CPU matches the matrix member, then builds
 the production cdylib and metadata rlib there. `auditwheel==6.8.2` audits the binary before and
 after repair, explicitly repairs with `--plat manylinux_2_28_<arch> --only-plat`, and the same
 baseline environment installs and executes the repaired wheel. Relabeling a wheel built on a
 newer Ubuntu host is not a baseline qualification.
 
-Every target uses separate installed consumers for Python `3.14` and the declared minimum `3.9`.
+Every target uses separate installed consumers for Python `3.15.2` and the declared minimum `3.9`.
 The `python-qualification-<rust-triple>` workflow artifacts retain consumer JSON; Linux also
 retains the image/source identity and audit/repair output. The exact final wheels are retained as
 `python-wheel-<rust-triple>`. These declarations describe the owner recipe; actual qualification

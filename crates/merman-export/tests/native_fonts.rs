@@ -257,7 +257,9 @@ fn malformed_empty_and_over_limit_memory_fonts_return_structured_errors() {
     let mut missing_metrics = include_bytes!("fonts/Cousine-Regular.ttf").to_vec();
     let table_count = u16::from_be_bytes([missing_metrics[4], missing_metrics[5]]) as usize;
     let metrics_entry = missing_metrics[12..12 + table_count * 16]
-        .chunks_exact_mut(16)
+        .as_chunks_mut::<16>()
+        .0
+        .iter_mut()
         .find(|entry| &entry[..4] == b"hhea")
         .expect("fixture has horizontal metrics");
     metrics_entry[..4].copy_from_slice(b"bad!");
@@ -774,7 +776,12 @@ fn bytes_and_files_paint_identical_nonempty_png_pixels() {
     assert_eq!(file_pixels, memory_pixels);
     assert_eq!((memory_pixels.0, memory_pixels.1), (400, 80));
     assert!(
-        memory_pixels.2.chunks_exact(4).any(|pixel| pixel[3] != 0),
+        memory_pixels
+            .2
+            .as_chunks::<4>()
+            .0
+            .iter()
+            .any(|pixel| pixel[3] != 0),
         "the PNG must paint actual font glyphs, not an empty canvas"
     );
 }
@@ -816,7 +823,7 @@ fn no_system_png_requires_context_and_recovers_after_normal_errors() {
     ));
     source.check().unwrap();
     let (_, _, pixels) = png_pixels(svg_to_png(&svg, &export_options()).unwrap());
-    assert!(pixels.chunks_exact(4).any(|pixel| pixel[3] != 0));
+    assert!(pixels.as_chunks::<4>().0.iter().any(|pixel| pixel[3] != 0));
     let permissive = RasterOptions::default()
         .with_font_context(source.clone().with_strict_glyph_coverage(false));
     assert!(

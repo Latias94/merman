@@ -233,7 +233,7 @@ Icon bodies are treated as untrusted input and are bounded, XML-validated, deter
 
 ## Add The Repository Module
 
-Building the repository module requires Python 3, Rust 1.95 with `rustup`, Java 17, Android SDK 35, and the NDK revision pinned in `gradle/libs.versions.toml`. Use the matching `0.10.0-alpha.1` source revision and build both native slices:
+Building the current repository module requires Python 3, the Rust toolchain selected in `rust-toolchain.toml`, JDK 27, Android SDK 35, and the NDK revision pinned in `gradle/libs.versions.toml`. The output retains Java 17 bytecode compatibility. To reproduce a published AAR, use its matching source revision and that revision's build requirements. Build both native slices:
 
 ```sh
 python3 platforms/android/build-android.py --targets aarch64-linux-android x86_64-linux-android
@@ -256,7 +256,7 @@ Then add `implementation(project(":merman-android"))`.
 python3 platforms/android/build-android.py --install-missing-ndk --assemble-aar
 ```
 
-The helper uses the checked-in Gradle Wrapper, pinned JDK 17/NDK toolchain, and exact default native artifact profile. Before packaging, NDK `llvm-nm` verifies that the JNI library exports `JNI_OnLoad` and does not export `merman_get_native_api`. A connected-device JNI smoke is available through `--only-android-instrumentation-smoke`.
+The helper uses the checked-in Gradle Wrapper, pinned JDK 27/NDK toolchain, and exact default native artifact profile. Before packaging, NDK `llvm-nm` verifies that the JNI library exports `JNI_OnLoad` and does not export `merman_get_native_api`. A connected-device JNI smoke is available through `--only-android-instrumentation-smoke`.
 
 <a id="add-a-release-aar"></a>
 

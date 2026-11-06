@@ -669,7 +669,7 @@ impl TextMeasurementRecorder {
         outcome: TextMeasurementRouteOutcome,
     ) {
         let counter = &self.counts[Self::slot(phase, operation, outcome)];
-        let _ = counter.fetch_update(Ordering::Relaxed, Ordering::Relaxed, |count| {
+        let _ = counter.try_update(Ordering::Relaxed, Ordering::Relaxed, |count| {
             Some(count.saturating_add(1))
         });
     }

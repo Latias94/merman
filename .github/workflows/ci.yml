@@ -120,8 +120,8 @@ jobs:
         env:
           ACTIONLINT_VERSION: 1.7.12
           ACTIONLINT_SHA256: 8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8
-          ZIZMOR_VERSION: 1.30.1
-          ZIZMOR_SHA256: eee12266b793cb87ad4a7e3af2e72404f8a63e3de5eb099b80bf7b1cfd232a8e
+          ZIZMOR_VERSION: 1.32.0
+          ZIZMOR_SHA256: 84a6acb975accc13408786a2bd274b572537ca19c933ebbc13e78f3988562071
         run: |
           set -euo pipefail
           tools_dir="$RUNNER_TEMP/workflow-tools"
@@ -174,7 +174,7 @@ jobs:
           fetch-depth: 0
 
       - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@1.95.0
+        uses: dtolnay/rust-toolchain@1.99.1
         with:
           components: rustfmt
 
@@ -239,17 +239,17 @@ jobs:
           persist-credentials: false
 
       - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@1.95.0
+        uses: dtolnay/rust-toolchain@1.99.1
         with:
           components: clippy
 
       - name: Install cargo-nextest
-        uses: taiki-e/install-action@v2.87.29
+        uses: taiki-e/install-action@v2.90.1
         with:
-          tool: nextest@0.9.148
+          tool: nextest@0.9.151
 
       - name: Rust cache
-        uses: Swatinem/rust-cache@v2.9.2
+        uses: Swatinem/rust-cache@v2.9.3
         with:
           cache-targets: false
 
@@ -284,7 +284,7 @@ jobs:
           persist-credentials: false
 
       - name: Install Nix
-        uses: DeterminateSystems/determinate-nix-action@v3.23.2
+        uses: DeterminateSystems/determinate-nix-action@v3.24.2
 
       - name: Build reusable Nix derivation
         run: |
@@ -382,16 +382,16 @@ jobs:
           test "$actual" = "$DOMPURIFY_SOURCE_COMMIT"
 
       - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@1.95.0
+        uses: dtolnay/rust-toolchain@1.99.1
 
       - name: Install parity Rust targets
         if: matrix.parity
         run: rustup target add aarch64-linux-android wasm32-unknown-unknown
 
       - name: Install cargo-nextest
-        uses: taiki-e/install-action@v2.87.29
+        uses: taiki-e/install-action@v2.90.1
         with:
-          tool: nextest@0.9.148
+          tool: nextest@0.9.151
 
       - name: Free disk space (Ubuntu)
         if: runner.os == 'Linux'
@@ -408,7 +408,7 @@ jobs:
           df -h
 
       - name: Rust cache
-        uses: Swatinem/rust-cache@v2.9.2
+        uses: Swatinem/rust-cache@v2.9.3
         with:
           cache-targets: false
 
@@ -429,7 +429,7 @@ jobs:
         if: matrix.parity
         uses: actions/setup-node@v7.1.0
         with:
-          node-version: "24.21.0"
+          node-version: "26.13.0"
           cache: npm
           cache-dependency-path: |
             platforms/node/package-lock.json
@@ -438,7 +438,7 @@ jobs:
 
       - name: Install pinned npm
         if: matrix.parity
-        run: npm install --global --ignore-scripts --registry=https://registry.npmjs.org/ npm@12.2.1
+        run: npm install --global --ignore-scripts --registry=https://registry.npmjs.org/ npm@12.2.2
 
       - name: Install pinned Mermaid runtime
         if: matrix.parity
@@ -548,15 +548,15 @@ jobs:
           persist-credentials: false
 
       - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@1.95.0
+        uses: dtolnay/rust-toolchain@1.99.1
 
       - name: Install feature contract Rust targets
         run: rustup target add aarch64-linux-android wasm32-unknown-unknown
 
       - name: Install cargo-nextest
-        uses: taiki-e/install-action@v2.87.29
+        uses: taiki-e/install-action@v2.90.1
         with:
-          tool: nextest@0.9.148
+          tool: nextest@0.9.151
 
       - name: Free disk space (Ubuntu)
         shell: bash
@@ -572,7 +572,7 @@ jobs:
           df -h
 
       - name: Rust cache
-        uses: Swatinem/rust-cache@v2.9.2
+        uses: Swatinem/rust-cache@v2.9.3
         with:
           cache-targets: false
 
@@ -700,12 +700,12 @@ jobs:
           persist-credentials: false
 
       - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@1.95.0
+        uses: dtolnay/rust-toolchain@1.99.1
 
       - name: Install cargo-nextest
-        uses: taiki-e/install-action@v2.87.29
+        uses: taiki-e/install-action@v2.90.1
         with:
-          tool: nextest@0.9.148
+          tool: nextest@0.9.151
 
       - name: Free disk space (Ubuntu)
         shell: bash
@@ -721,7 +721,7 @@ jobs:
           df -h
 
       - name: Rust cache
-        uses: Swatinem/rust-cache@v2.9.2
+        uses: Swatinem/rust-cache@v2.9.3
         with:
           cache-targets: false
 
@@ -774,8 +774,8 @@ jobs:
       - uses: actions/checkout@v7.0.1
         with:
           persist-credentials: false
-      - uses: dtolnay/rust-toolchain@1.95.0
-      - uses: Swatinem/rust-cache@v2.9.2
+      - uses: dtolnay/rust-toolchain@1.99.1
+      - uses: Swatinem/rust-cache@v2.9.3
         with:
           key: svg-parity
           cache-targets: false
@@ -785,13 +785,13 @@ jobs:
           sudo apt-get install --no-install-recommends --yes libfontconfig1-dev pkg-config
       - uses: actions/setup-node@v7.1.0
         with:
-          node-version: "24.21.0"
+          node-version: "26.13.0"
           cache: npm
           cache-dependency-path: |
             playground/tests/package-lock.json
             tools/mermaid-cli/package-lock.json
       - name: Install pinned npm
-        run: npm install --global --ignore-scripts --registry=https://registry.npmjs.org/ npm@12.2.1
+        run: npm install --global --ignore-scripts --registry=https://registry.npmjs.org/ npm@12.2.2
       - name: Verify pinned Mermaid reference before runtime install
         run: cargo run --locked --release -p xtask -- verify-mermaid-reference
       - name: Install pinned Mermaid runtime for math fixtures
@@ -886,12 +886,12 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@v7.1.0
         with:
-          node-version: "24.21.0"
+          node-version: "26.13.0"
           cache: npm
           cache-dependency-path: platforms/node/package-lock.json
 
       - name: Install npm toolchain
-        run: npm install --global --ignore-scripts --registry=https://registry.npmjs.org/ npm@12.2.1
+        run: npm install --global --ignore-scripts --registry=https://registry.npmjs.org/ npm@12.2.2
 
       - name: Install Node candidate dependencies
         run: npm ci --prefix platforms/node
@@ -901,19 +901,19 @@ jobs:
 
       - name: Install Rust toolchain for real Node candidates
         if: matrix.candidate == 'node-wasm'
-        uses: dtolnay/rust-toolchain@1.95.0
+        uses: dtolnay/rust-toolchain@1.99.1
         with:
           targets: wasm32-unknown-unknown
 
       - name: Rust cache for real Node candidates
         if: matrix.candidate == 'node-wasm'
-        uses: Swatinem/rust-cache@v2.9.2
+        uses: Swatinem/rust-cache@v2.9.3
         with:
           cache-targets: false
 
       - name: Install pinned wasm-pack for real Node candidates
         if: matrix.candidate == 'node-wasm'
-        run: cargo install wasm-pack --version 0.15.0 --locked
+        run: cargo install wasm-pack --version 0.15.1 --locked
 
       - name: Install pinned wasm-opt for Node WASM
         if: matrix.candidate == 'node-wasm'
@@ -955,8 +955,6 @@ jobs:
           docker build \
             --platform linux/amd64 \
             --file platforms/node/Dockerfile.gnu \
-            --build-arg NODE_IMAGE=node:24.13.1-bullseye \
-            --build-arg RUST_IMAGE=rust:1.95-bullseye \
             --tag merman-node-gnu:ci \
             platforms/node
           docker run --rm \
@@ -999,19 +997,19 @@ jobs:
           persist-credentials: false
 
       - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@1.95.0
+        uses: dtolnay/rust-toolchain@1.99.1
         with:
           targets: wasm32-unknown-unknown
 
       - name: Rust cache
-        uses: Swatinem/rust-cache@v2.9.2
+        uses: Swatinem/rust-cache@v2.9.3
         with:
           cache-targets: false
 
       - name: Install wasm-tools
-        uses: taiki-e/install-action@v2.87.29
+        uses: taiki-e/install-action@v2.90.1
         with:
-          tool: wasm-tools@1.261.0
+          tool: wasm-tools@1.263.0
 
       - name: Install wasm-opt
         uses: sigoden/install-binary@v1.3.0
@@ -1036,15 +1034,18 @@ jobs:
           "${typst_root}/typst" --version
 
       - name: Install cargo-nextest
-        uses: taiki-e/install-action@v2.87.29
+        uses: taiki-e/install-action@v2.90.1
         with:
-          tool: nextest
+          tool: nextest@0.9.151
 
       - name: Test Typst plugin crate
         run: |
           cargo nextest run --locked -p merman-typst-plugin --no-default-features
           cargo nextest run --locked -p merman-typst-plugin --no-default-features \
             --features all-diagrams,analysis,layout-cytoscape,layout-elk,svg
+
+      - name: Prefetch locked Typst dependencies for offline checks
+        run: cargo fetch --locked --target wasm32-unknown-unknown
 
       - name: Check exact Typst dependency closure
         run: python3 scripts/verify_artifact_dependency_closures.py --profile typst-wasm
@@ -1082,19 +1083,19 @@ jobs:
           persist-credentials: false
 
       - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@1.95.0
+        uses: dtolnay/rust-toolchain@1.99.1
         with:
           targets: wasm32-unknown-unknown
 
       - name: Rust cache
-        uses: Swatinem/rust-cache@v2.9.2
+        uses: Swatinem/rust-cache@v2.9.3
         with:
           cache-targets: false
 
       - name: Install wasm-tools
-        uses: taiki-e/install-action@v2.87.29
+        uses: taiki-e/install-action@v2.90.1
         with:
-          tool: wasm-tools@1.261.0
+          tool: wasm-tools@1.263.0
 
       - name: Install wasm-opt
         uses: sigoden/install-binary@v1.3.0
@@ -1102,6 +1103,9 @@ jobs:
           repo: WebAssembly/binaryen
           name: wasm-opt
           tag: version_133
+
+      - name: Prefetch locked Typst dependencies for offline checks
+        run: cargo fetch --locked --target wasm32-unknown-unknown
 
       - name: Check exact Typst dependency closure
         run: python3 scripts/verify_artifact_dependency_closures.py --profile typst-wasm
@@ -1192,20 +1196,20 @@ jobs:
           persist-credentials: false
 
       - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@1.95.0
+        uses: dtolnay/rust-toolchain@1.99.1
         with:
           components: llvm-tools-preview
           targets: aarch64-linux-android
 
       - name: Rust cache
-        uses: Swatinem/rust-cache@v2.9.2
+        uses: Swatinem/rust-cache@v2.9.3
         with:
           cache-targets: false
 
       - name: Setup Flutter
         uses: subosito/flutter-action@v2.23.0
         with:
-          flutter-version: "3.47.7"
+          flutter-version: "3.47.9"
           channel: stable
           cache: true
 
@@ -1237,23 +1241,23 @@ jobs:
           echo "ndk=$(python3 platforms/android/build-android.py --print-version ndk)" >> "$GITHUB_OUTPUT"
 
       - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@1.95.0
+        uses: dtolnay/rust-toolchain@1.99.1
         with:
           targets: aarch64-linux-android,x86_64-linux-android
 
       - name: Rust cache
-        uses: Swatinem/rust-cache@v2.9.2
+        uses: Swatinem/rust-cache@v2.9.3
         with:
           cache-targets: false
 
       - name: Setup JDK
-        uses: actions/setup-java@v6.1.0
+        uses: actions/setup-java@v6.2.0
         with:
           distribution: temurin
           java-version: ${{ steps.android-toolchain.outputs.java }}
 
       - name: Setup Gradle
-        uses: gradle/actions/setup-gradle@v6.4.0
+        uses: gradle/actions/setup-gradle@v6.4.1
 
       - name: Setup Android SDK
         uses: android-actions/setup-android@v4.0.4
@@ -1308,9 +1312,9 @@ jobs:
           persist-credentials: false
 
       - name: Setup Python
-        uses: actions/setup-python@v7.0.0
+        uses: actions/setup-python@v7.1.0
         with:
-          python-version: "3.12"
+          python-version: "3.15.2"
 
       - name: Test Python wheel delivery helpers
         run: |
@@ -1318,10 +1322,10 @@ jobs:
           python -m unittest discover -s platforms/python/merman/tests -p 'test_wheel_smoke.py'
 
       - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@1.95.0
+        uses: dtolnay/rust-toolchain@1.99.1
 
       - name: Rust cache
-        uses: Swatinem/rust-cache@v2.9.2
+        uses: Swatinem/rust-cache@v2.9.3
 
       - name: Build and smoke Python UniFFI wheel
         run: python scripts/build-python-uniffi-wheel.py --run-smoke
@@ -1337,10 +1341,10 @@ jobs:
           persist-credentials: false
 
       - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@1.95.0
+        uses: dtolnay/rust-toolchain@1.99.1
 
       - name: Rust cache
-        uses: Swatinem/rust-cache@v2.9.2
+        uses: Swatinem/rust-cache@v2.9.3
 
       - name: Build merman C ABI library
         run: python3 scripts/artifact_profile_recipe.py c-abi-native --build --locked
@@ -1400,13 +1404,13 @@ jobs:
           persist-credentials: false
 
       - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@1.95.0
+        uses: dtolnay/rust-toolchain@1.99.1
         with:
           components: llvm-tools-preview
           targets: aarch64-apple-ios,aarch64-apple-ios-sim,x86_64-apple-ios,aarch64-apple-darwin,x86_64-apple-darwin
 
       - name: Rust cache
-        uses: Swatinem/rust-cache@v2.9.2
+        uses: Swatinem/rust-cache@v2.9.3
 
       - name: Build Apple XCFramework
         env:

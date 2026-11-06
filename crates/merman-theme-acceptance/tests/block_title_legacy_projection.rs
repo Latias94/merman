@@ -107,7 +107,9 @@ fn block_title_projection_has_no_native_consumer() {
             assert!(
                 baseline_pixels
                     .2
-                    .chunks_exact(4)
+                    .as_chunks::<4>()
+                    .0
+                    .iter()
                     .any(|pixel| { pixel[3] != 0 && pixel[..3] != [255; 3] })
             );
             for variant in [None, Some(ThemeVariant::Default)] {
@@ -202,7 +204,9 @@ fn block_cluster_label_paint_reaches_native_output_without_reviving_legacy_css()
                         assert!(
                             pixels
                                 .2
-                                .chunks_exact(4)
+                                .as_chunks::<4>()
+                                .0
+                                .iter()
                                 .any(|pixel| { pixel[3] != 0 && pixel[..3] == [0xb3, 0x16, 0xcd] }),
                             "{scheme}/{look}/{variant:?}: composite label must paint the requested color"
                         );

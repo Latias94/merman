@@ -1,7 +1,7 @@
 [versions]
-android-gradle-plugin = "9.4.1"
-dokka = "2.2.0"
-java = "17"
+android-gradle-plugin = "9.5.1"
+dokka = "2.3.0"
+java = "27"
 ndk = "30.0.16248370"
 
 [plugins]

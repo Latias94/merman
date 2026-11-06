@@ -73,7 +73,9 @@ fn rounded_rectangle_width_and_radius_change_native_pixels() {
             assert_eq!((width, height), (square_width, square_height));
             let cyan = |pixels: &[u8]| {
                 pixels
-                    .chunks_exact(4)
+                    .as_chunks::<4>()
+                    .0
+                    .iter()
                     .filter(|p| p[0] < 60 && p[1] > 200 && p[2] > 200 && p[3] > 200)
                     .count()
             };
@@ -83,7 +85,9 @@ fn rounded_rectangle_width_and_radius_change_native_pixels() {
             );
             let white = |pixels: &[u8]| {
                 pixels
-                    .chunks_exact(4)
+                    .as_chunks::<4>()
+                    .0
+                    .iter()
                     .filter(|p| p[0] > 240 && p[1] > 240 && p[2] > 240 && p[3] > 200)
                     .count()
             };
@@ -93,8 +97,10 @@ fn rounded_rectangle_width_and_radius_change_native_pixels() {
                 white(&square),
                 white(&rounded),
                 square
-                    .chunks_exact(4)
-                    .zip(rounded.chunks_exact(4))
+                    .as_chunks::<4>()
+                    .0
+                    .iter()
+                    .zip(rounded.as_chunks::<4>().0.iter())
                     .filter(|(a, b)| a != b)
                     .count()
             );
@@ -186,8 +192,10 @@ fn exported_cyberpunk_corners_change_rectangle_pixels_and_preserve_diamonds() {
         if has_corners {
             let changed_pixels = rounded
                 .2
-                .chunks_exact(4)
-                .zip(square.2.chunks_exact(4))
+                .as_chunks::<4>()
+                .0
+                .iter()
+                .zip(square.2.as_chunks::<4>().0.iter())
                 .filter(|(a, b)| a != b)
                 .count();
             assert!(

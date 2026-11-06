@@ -73,7 +73,7 @@ class NativeSdkRecipeTests(unittest.TestCase):
         for workflow in workflows:
             with self.subTest(workflow=workflow.name):
                 self.assertIn(
-                    'flutter-version: "3.47.7"',
+                    'flutter-version: "3.47.9"',
                     workflow.read_text(encoding="utf-8"),
                 )
 

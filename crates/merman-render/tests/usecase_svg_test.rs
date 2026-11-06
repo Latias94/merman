@@ -1972,7 +1972,7 @@ Data -- Login
             .filter_map(|declaration| declaration.split_once(':'))
             .filter(|(name, _)| name.trim() == key)
             .map(|(_, value)| value.trim().to_owned())
-            .last()
+            .next_back()
     }
 
     fn owner<'a>(document: &'a roxmltree::Document<'a>, id: &str) -> roxmltree::Node<'a, 'a> {

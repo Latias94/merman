@@ -121,5 +121,5 @@ serde_json.workspace = true
 sha2.workspace = true
 
 [dev-dependencies]
-cc = "1.10.0"
+cc = "1.11.0"
 libloading = "0.9.0"

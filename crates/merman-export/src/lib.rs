@@ -1707,7 +1707,12 @@ impl PreparedRaster {
             let (w, h) = (pixmap.width(), pixmap.height());
             let rgba = pixmap.data();
             let mut rgb = vec![0u8; (w as usize) * (h as usize) * 3];
-            for (src, dst) in rgba.chunks_exact(4).zip(rgb.chunks_exact_mut(3)) {
+            for (src, dst) in rgba
+                .as_chunks::<4>()
+                .0
+                .iter()
+                .zip(rgb.as_chunks_mut::<3>().0.iter_mut())
+            {
                 export_checkpoint(control)?;
                 dst[0] = src[0];
                 dst[1] = src[1];
@@ -6016,11 +6021,13 @@ mod tests {
         );
 
         let pixels = &buf[..info.buffer_size()];
-        let Some(background) = pixels.chunks_exact(4).next() else {
+        let Some(background) = pixels.as_chunks::<4>().0.iter().next() else {
             panic!("expected at least one PNG pixel");
         };
         let differing_pixels = pixels
-            .chunks_exact(4)
+            .as_chunks::<4>()
+            .0
+            .iter()
             .filter(|px| {
                 let alpha_delta = px[3].abs_diff(background[3]) as u16;
                 let rgb_delta = px[0].abs_diff(background[0]) as u16

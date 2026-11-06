@@ -492,7 +492,9 @@ fn class_native_label_paint_reaches_usvg_and_png() {
             let info = reader.next_frame(&mut pixels).unwrap();
             assert_eq!(info.color_type, png::ColorType::Rgba);
             let has_red = pixels[..info.buffer_size()]
-                .chunks_exact(4)
+                .as_chunks::<4>()
+                .0
+                .iter()
                 .any(|pixel| pixel[3] > 0 && pixel[0] > 128 && pixel[1] < 64 && pixel[2] < 64);
             assert_eq!(has_red, expected_fill.is_some(), "native {label} pixels");
         }
@@ -552,7 +554,9 @@ fn filtered_html_fallback_reaches_native_glow_pixels_and_receipts() {
         assert_eq!(info.color_type, png::ColorType::Rgba);
         assert!(
             pixels[..info.buffer_size()]
-                .chunks_exact(4)
+                .as_chunks::<4>()
+                .0
+                .iter()
                 .any(|pixel| pixel[3] > 0 && pixel[0] > pixel[1] && pixel[2] > pixel[1]),
             "overflow={overflow}: pink glow must reach native pixels"
         );

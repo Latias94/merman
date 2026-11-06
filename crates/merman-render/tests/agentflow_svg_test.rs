@@ -1756,7 +1756,7 @@ fn agentflow_test_html_font_size(node: roxmltree::Node<'_, '_>, base_px: f64) ->
                 .filter_map(|declaration| declaration.split_once(':'))
                 .filter(|(property, _)| property.trim() == "font-size")
                 .map(|(_, value)| value.trim().trim_end_matches("!important").trim())
-                .last()
+                .next_back()
         }) else {
             continue;
         };

@@ -388,7 +388,7 @@ class WorkflowSecurityBoundaries(unittest.TestCase):
         self.assertIn("if: matrix.platform.target != 'x86_64-apple-darwin'", package)
         self.assertIn(
             "if: matrix.platform.target == 'x86_64-apple-darwin'\n"
-            "        run: cargo install --locked cargo-about --version 0.9.2 --features cli",
+            "        run: cargo install --locked cargo-about --version 0.9.3 --features cli",
             package,
         )
         self.assertLess(package.index("run: cargo about --version"), package.index("python scripts/sdk_qualify.py"))
@@ -403,6 +403,20 @@ class WorkflowSecurityBoundaries(unittest.TestCase):
         consumers = read(ROOT / "distribution/sdk/CMakeLists.txt")
         self.assertIn("target_link_libraries(merman-render-static PRIVATE Merman::Static)", consumers)
         self.assertIn("add_test(NAME sdk-render-static COMMAND merman-render-static)", consumers)
+
+    def test_sdk_wasi_qualification_provisions_go_for_both_module_inputs(self) -> None:
+        package = workflow_job(read(WORKFLOW_ROOT / "release-sdk.yml"), "package")
+        setup = package.split("      - name: Set up Go for WASI qualification\n", 1)[1]
+        setup = setup.split("\n      - name: ", 1)[0]
+        self.assertIn("if: matrix.platform.kind == 'wasi'", setup)
+        self.assertIn("uses: actions/setup-go@", setup)
+        self.assertIn('go-version: "1.27.3"', setup)
+        for module in ("platforms/wasi/wazero", "distribution/sdk/examples/go-wasi"):
+            self.assertIn(f"{module}/go.sum", setup)
+        self.assertLess(
+            package.index("Set up Go for WASI qualification"),
+            package.index("python scripts/sdk_qualify.py"),
+        )
 
     def test_pull_request_orchestrator_and_reusable_owners_are_read_only(self) -> None:
         for path in [*PR_REACHABLE_WORKFLOWS, WORKFLOW_ROOT / "performance.yml"]:
@@ -424,7 +438,7 @@ class WorkflowSecurityBoundaries(unittest.TestCase):
         self.assertIn("verify-editor-language-contract", workflow_job(read(WORKFLOW_ROOT / "vscode-extension.yml"), "editor-language-contract"))
         for job in (package, workflow_job(read(WORKFLOW_ROOT / "release-preflight.yml"), "vscode-extension-dry-run")):
             self.assertIn("os: ubuntu-22.04\n            target: linux-x64", job)
-            self.assertIn('python-version: "3.12"', job)
+            self.assertIn('python-version: "3.15.2"', job)
             self.assertIn("ref: ${{ github.workflow_sha }}", job)
             self.assertIn("sparse-checkout: scripts/linux_binary_compatibility.py", job)
             check = "python3 .workflow-tools/scripts/linux_binary_compatibility.py target/dist/merman-cli target/dist/merman-lsp"
@@ -1135,8 +1149,8 @@ jobs:
             read(WORKFLOW_ROOT / "release-preflight.yml"), "cli-and-lsp-archives"
         )
         for job in (local, native, preflight):
-            self.assertIn("uses: actions/setup-python@v7.0.0", job)
-            self.assertIn("python-version: '3.12'", job)
+            self.assertIn("uses: actions/setup-python@v7.1.0", job)
+            self.assertIn("python-version: '3.15.2'", job)
         for job in (local, preflight):
             self.assertIn("scripts/linux_binary_compatibility.py", job)
             self.assertLess(job.index("dist build"), job.index("linux_binary_compatibility.py"))
@@ -1216,14 +1230,14 @@ jobs:
                 install = steps[setup + 1]
                 self.assertTrue(install.startswith("Install npm toolchain\n"))
                 self.assertIn(
-                    "npm install --global --ignore-scripts --registry=https://registry.npmjs.org/ npm@12.2.1",
+                    "npm install --global --ignore-scripts --registry=https://registry.npmjs.org/ npm@12.2.2",
                     install,
                 )
                 setup_if = re.findall(r"(?m)^        if: (.+)$", steps[setup])
                 self.assertEqual(re.findall(r"(?m)^        if: (.+)$", install), setup_if)
 
     def test_release_package_workflows_pin_node_toolchain(self) -> None:
-        expected = 'node-version: "24.21.0"'
+        expected = 'node-version: "26.13.0"'
         for path in (
             WORKFLOW_ROOT / "release-web.yml",
             WORKFLOW_ROOT / "release-node.yml",
@@ -1232,16 +1246,26 @@ jobs:
             text = read(path)
             with self.subTest(path=path.name):
                 self.assertIn(expected, text)
-                self.assertNotIn('node-version: "24"', text)
+                self.assertNotIn('node-version: "26"', text)
         for path in (
             WORKFLOW_ROOT / "release-node.yml",
             WORKFLOW_ROOT / "release-preflight.yml",
         ):
             text = read(path)
-            with self.subTest(path=path.name, image="alpine"):
-                self.assertIn("NODE_IMAGE=node:24.13.1-alpine3.22", text)
-            with self.subTest(path=path.name, image="bullseye"):
-                self.assertIn("NODE_IMAGE=node:24.13.1-bullseye", text)
+            with self.subTest(path=path.name, image="docker-defaults"):
+                self.assertIn("--file platforms/node/Dockerfile.musl", text)
+                self.assertIn("--file platforms/node/Dockerfile.gnu", text)
+                self.assertNotIn("--build-arg NODE_IMAGE=", text)
+                self.assertNotIn("--build-arg RUST_IMAGE=", text)
+
+        gnu = read(ROOT / "platforms/node/Dockerfile.gnu")
+        self.assertIn("ARG NODE_IMAGE=node:24.13.1-bullseye", gnu)
+        self.assertIn("FROM ${NODE_IMAGE}", gnu)
+        musl = read(ROOT / "platforms/node/Dockerfile.musl")
+        self.assertIn("ARG NODE_IMAGE=node:26.13.0-alpine3.24", musl)
+        ci = workflow_job(read(CI_WORKFLOW), "node-contracts")
+        self.assertNotIn("--build-arg NODE_IMAGE=", ci)
+        self.assertNotIn("--build-arg RUST_IMAGE=", ci)
 
         for package_json in [
             ROOT / "platforms" / "web" / "package.json",
@@ -1719,6 +1743,9 @@ jobs:
         self.assertIn("ref: ${{ needs.validate-inputs.outputs.source_sha }}\n          path: selected-source", signing)
         self.assertIn("git -C selected-source rev-parse", signing)
         self.assertIn("python3 trusted/platforms/android/build-android.py", signing)
+        self.assertIn("trusted/platforms/android/build-android.py --print-version java", signing)
+        self.assertIn("java-version: ${{ steps.android-toolchain.outputs.java }}", signing)
+        self.assertLess(signing.index("--print-version java"), signing.index("uses: actions/setup-java@"))
         self.assertIn("python3 trusted/scripts/android_package.py sign", signing)
         self.assertIn("python3 trusted/scripts/android_package.py package", signing)
         self.assertEqual(signing.count("--android-root selected-source/platforms/android"), 2)

@@ -359,10 +359,11 @@ impl OperationControl {
                     phase,
                     reason: CancelReason::Requested,
                 };
-                match Self::resolve_latched_cancellation(current, inherited, cancellation) {
-                    Some(error) => Some(error),
-                    None => return None,
-                }
+                Some(Self::resolve_latched_cancellation(
+                    current,
+                    inherited,
+                    cancellation,
+                )?)
             } else if current
                 .deadline
                 .get()
@@ -372,10 +373,11 @@ impl OperationControl {
                     phase,
                     reason: CancelReason::DeadlineExceeded,
                 };
-                match Self::resolve_latched_cancellation(current, inherited, cancellation) {
-                    Some(error) => Some(error),
-                    None => return None,
-                }
+                Some(Self::resolve_latched_cancellation(
+                    current,
+                    inherited,
+                    cancellation,
+                )?)
             } else {
                 None
             };
@@ -454,7 +456,7 @@ impl OperationControl {
     fn consume_scheduled_checkpoint(&self) -> bool {
         self.state
             .successful_checkpoints_before_cancellation
-            .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |remaining| {
+            .try_update(Ordering::Relaxed, Ordering::Relaxed, |remaining| {
                 (remaining != u64::MAX).then(|| remaining.saturating_sub(1))
             })
             .is_ok_and(|remaining| remaining == 0)

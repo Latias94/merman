@@ -104,7 +104,12 @@ fn pink_pixel_halves(bytes: &[u8]) -> [usize; 2] {
     let info = reader.next_frame(&mut pixels).unwrap();
     assert_eq!(info.color_type, png::ColorType::Rgba);
     let mut counts = [0; 2];
-    for (index, pixel) in pixels[..info.buffer_size()].chunks_exact(4).enumerate() {
+    for (index, pixel) in pixels[..info.buffer_size()]
+        .as_chunks::<4>()
+        .0
+        .iter()
+        .enumerate()
+    {
         if pixel[3] > 0 && pixel[0] > 200 && pixel[1] < 80 && (80..180).contains(&pixel[2]) {
             let x = index % info.width as usize;
             counts[usize::from(x >= info.width as usize / 2)] += 1;
@@ -668,7 +673,9 @@ fn edge_glow_survives_native_export_for_line_paths_and_nested_roots() {
         // an arbitrary contrast from a thin blurred path composited over white.
         assert!(
             pixels[..info.buffer_size()]
-                .chunks_exact(4)
+                .as_chunks::<4>()
+                .0
+                .iter()
                 .any(|pixel| pixel[3] > 0 && pixel[1] > pixel[0] && pixel[2] > pixel[0]),
             "cyan glow must reach native pixels: {source}"
         );
@@ -822,7 +829,9 @@ fn text_only_glow_survives_native_png_and_pdf() {
             // Only the text shadow has chromatic paint; definitions alone cannot satisfy this.
             assert!(
                 pixels[..info.buffer_size()]
-                    .chunks_exact(4)
+                    .as_chunks::<4>()
+                    .0
+                    .iter()
                     .any(|p| p[3] > 0 && p[0] > p[2] && p[2] > p[1]),
                 "look={look}, html_labels={html_labels}: text glow must reach PNG pixels"
             );
@@ -1022,7 +1031,7 @@ fn typed_edge_background_preserves_alpha_in_native_pixels() {
                 // Only the requested background is red. Its interior must retain the
                 // requested alpha, independent of HTML projection or a padding rectangle.
                 let max_alpha = pixels[..info.buffer_size()]
-                    .chunks_exact(4)
+                    .as_chunks::<4>().0.iter()
                     .filter(|pixel| pixel[0] >= 250 && pixel[1] <= 2 && pixel[2] <= 2)
                     .map(|pixel| pixel[3])
                     .max()

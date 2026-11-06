@@ -219,7 +219,7 @@ fn straight_hachure_lines_with_control<F: Float + FromPrimitive + Trig>(
             if !active_edges.len().is_multiple_of(2) {
                 return Err(WorkError::InvalidGeometry);
             }
-            for ae in active_edges.chunks_exact(2) {
+            for ae in active_edges.as_chunks::<2>().0 {
                 control.charge(1)?;
                 let ce = &ae[0];
                 let ne = &ae[1];

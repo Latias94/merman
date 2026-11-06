@@ -29,9 +29,9 @@ fn fields(runtime: &Runtime, handle: u32) -> [u32; 10] {
     let mut values = [0; 10];
     for (value, bytes) in values
         .iter_mut()
-        .zip(result.bytes[..RESULT_DESCRIPTOR_SIZE].chunks_exact(4))
+        .zip(result.bytes[..RESULT_DESCRIPTOR_SIZE].as_chunks::<4>().0)
     {
-        *value = u32::from_le_bytes(bytes.try_into().unwrap());
+        *value = u32::from_le_bytes(*bytes);
     }
     assert_eq!(values[0], ABI_VERSION);
     assert_eq!(values[1], 40);

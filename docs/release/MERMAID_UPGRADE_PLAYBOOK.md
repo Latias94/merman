@@ -8,7 +8,7 @@ reference execution, examples, provenance, and package surfaces all describe the
 ## Current Transition: Mermaid 12.3.0
 
 Development selects `mermaid@12.3.0` at `2086904e76c692331e34a45d7cc3bc30860d040e`.
-The exact selected graph includes ELK `0.12.0`, Cytoscape `3.34.4`,
+The exact selected graph includes ELK `0.12.1`, Cytoscape `3.34.4`,
 `@braintree/sanitize-url 7.1.2`, reference CLI `12.2.0`, parser `2.0.1`, and DOMPurify `3.4.17`.
 The [reference bundle](../../tools/upstreams/MERMAID_REFERENCE_BUNDLE.json) and its digest-bound
 [selection decision](../../tools/upstreams/MERMAID_SELECTION_DECISION.json) own the complete graph.

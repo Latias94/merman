@@ -131,7 +131,9 @@ fn native_xy_series_fill_alpha_does_not_dim_the_border_or_other_series() {
     assert_eq!((width, height), (borderless_width, borderless_height));
     let count = |pixels: &[u8], rgb: [u8; 3]| {
         pixels
-            .chunks_exact(4)
+            .as_chunks::<4>()
+            .0
+            .iter()
             .filter(|p| p[..3] == rgb && p[3] == 255)
             .count()
     };
@@ -422,7 +424,9 @@ fn public_cyberpunk_series_recipe_preserves_native_receipts_after_exchange() {
         buffer.truncate(info.buffer_size());
         assert!(
             buffer
-                .chunks_exact(4)
+                .as_chunks::<4>()
+                .0
+                .iter()
                 .any(|pixel| pixel[..3] == [108, 198, 203])
         );
         pixels.push((info.width, info.height, buffer));

@@ -323,10 +323,12 @@ class PythonWheelWorkflowTests(unittest.TestCase):
         self.assertEqual(sorted(targets), sorted(recipe.build_targets))
         self.assertEqual(len(targets), len(set(targets)))
         images = re.findall(
-            r"image: quay\.io/pypa/manylinux_2_28_(x86_64|aarch64):2026\.05\.07-2@sha256:([0-9a-f]{64})",
+            r"image: quay\.io/pypa/manylinux_2_28_(x86_64|aarch64):2026\.11\.01-2@sha256:([0-9a-f]{64})",
             linux,
         )
         self.assertEqual(sorted(arch for arch, _ in images), ["aarch64", "x86_64"])
+        self.assertIn('python-version: "3.15.2"', desktop)
+        self.assertIn('/opt/python/cp315-cp315/bin >> "$GITHUB_PATH"', linux)
         self.assertIn('test "$(getconf GNU_LIBC_VERSION)" = \'glibc 2.28\'', linux)
         self.assertIn('--plat "manylinux_2_28_$WHEEL_ARCH" --only-plat', linux)
         self.assertLess(linux.index("auditwheel repair"), linux.index("id: smoke-final-wheel"))

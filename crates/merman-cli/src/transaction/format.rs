@@ -1415,7 +1415,9 @@ fn decode_component(encoded: &str, evidence: &Path) -> Result<OsString, Transact
         }
         let units = encoded
             .as_bytes()
-            .chunks_exact(4)
+            .as_chunks::<4>()
+            .0
+            .iter()
             .map(|chunk| {
                 let value = std::str::from_utf8(chunk).expect("ASCII hex is valid UTF-8");
                 u16::from_str_radix(value, 16).expect("validated hexadecimal")
@@ -1463,7 +1465,9 @@ fn hex_decode(encoded: &str, evidence: &Path) -> Result<Vec<u8>, TransactionErro
     }
     encoded
         .as_bytes()
-        .chunks_exact(2)
+        .as_chunks::<2>()
+        .0
+        .iter()
         .map(|chunk| {
             let value = std::str::from_utf8(chunk).expect("ASCII hex is valid UTF-8");
             u8::from_str_radix(value, 16).map_err(|_| {

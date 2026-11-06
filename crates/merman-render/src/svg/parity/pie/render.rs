@@ -12,9 +12,69 @@ fn pie_legend_rect_style(fill: &str) -> String {
 }
 
 fn pie_polar_xy(radius: f64, angle: f64) -> (f64, f64) {
-    let x = radius * angle.sin();
-    let y = -radius * angle.cos();
+    let x = radius * angle.cos();
+    let y = radius * angle.sin();
     (x, y)
+}
+
+fn pie_path_round(value: f64) -> f64 {
+    // d3-shape's default pathRound(3) uses Math.round, including negative half ties.
+    let scaled = value * 1000.0;
+    let lower = scaled.floor();
+    let rounded = if scaled - lower >= 0.5 {
+        lower + 1.0
+    } else {
+        lower
+    };
+    rounded / 1000.0
+}
+
+fn pie_path_number(value: f64) -> crate::number_format::CanonicalNumber {
+    fmt(pie_path_round(value))
+}
+
+fn append_pie_arc(out: &mut String, radius: f64, start_angle: f64, end_angle: f64) {
+    let (x0, y0) = pie_polar_xy(radius, start_angle);
+    let (x1, y1) = pie_polar_xy(radius, end_angle);
+    let mut delta = (end_angle - start_angle).abs();
+    let sweep = u8::from(end_angle > start_angle);
+    let r = pie_path_number(radius);
+
+    // d3-path's circle threshold is independent of d3-shape's full-circle branch.
+    if delta > std::f64::consts::TAU - 1e-6 {
+        let _ = write!(
+            out,
+            "A{r},{r},0,1,{sweep},{mx},{my}A{r},{r},0,1,{sweep},{x0},{y0}",
+            mx = pie_path_number(-x0),
+            my = pie_path_number(-y0),
+            x0 = pie_path_number(x0),
+            y0 = pie_path_number(y0),
+        );
+    } else if delta > 1e-6 {
+        // d3-path 3.1.1 splits a large arc whose endpoints coincide after rounding.
+        // Each donut ring must make this decision using its own radius.
+        if delta >= std::f64::consts::PI
+            && pie_path_round(x0) == pie_path_round(x1)
+            && pie_path_round(y0) == pie_path_round(y1)
+        {
+            delta /= 2.0;
+            let (mx, my) = pie_polar_xy(radius, start_angle + delta);
+            let _ = write!(
+                out,
+                "A{r},{r},0,{large},{sweep},{mx},{my}",
+                large = u8::from(delta >= std::f64::consts::PI),
+                mx = pie_path_number(mx),
+                my = pie_path_number(my),
+            );
+        }
+        let _ = write!(
+            out,
+            "A{r},{r},0,{large},{sweep},{x1},{y1}",
+            large = u8::from(delta >= std::f64::consts::PI),
+            x1 = pie_path_number(x1),
+            y1 = pie_path_number(y1),
+        );
+    }
 }
 
 fn pie_slice_class(effective_config: &serde_json::Value, label: &str) -> String {
@@ -101,64 +161,54 @@ fn render_pie_slices(
         if slice.is_full_circle {
             let d = if inner_radius > 0.0 {
                 format!(
-                    "M0,-{r}A{r},{r},0,1,1,0,{r}A{r},{r},0,1,1,0,-{r}M0,-{ir}A{ir},{ir},0,1,0,0,{ir}A{ir},{ir},0,1,0,0,-{ir}Z",
-                    r = fmt(radius),
-                    ir = fmt(inner_radius)
+                    "M0,{nr}A{r},{r},0,1,1,0,{r}A{r},{r},0,1,1,0,{nr}M0,{nir}A{ir},{ir},0,1,0,0,{ir}A{ir},{ir},0,1,0,0,{nir}Z",
+                    r = pie_path_number(radius),
+                    nr = pie_path_number(-radius),
+                    ir = pie_path_number(inner_radius),
+                    nir = pie_path_number(-inner_radius),
                 )
             } else {
                 format!(
-                    "M0,-{r}A{r},{r},0,1,1,0,{r}A{r},{r},0,1,1,0,-{r}Z",
-                    r = fmt(radius)
+                    "M0,{nr}A{r},{r},0,1,1,0,{r}A{r},{r},0,1,1,0,{nr}Z",
+                    r = pie_path_number(radius),
+                    nr = pie_path_number(-radius),
                 )
             };
             let _ = write!(
                 out,
                 r#"<path d="{d}" fill="{fill}" class="{class}"/>"#,
                 d = d,
-                fill = &escaped_fill,
+                fill = escaped_fill,
                 class = escape_xml(&slice_class)
             );
         } else {
-            let (x0, y0) = pie_polar_xy(radius, slice.start_angle);
-            let (x1, y1) = pie_polar_xy(radius, slice.end_angle);
-            let large = if (slice.end_angle - slice.start_angle) > std::f64::consts::PI {
-                1
+            let start_angle = slice.start_angle - std::f64::consts::FRAC_PI_2;
+            let end_angle = slice.end_angle - std::f64::consts::FRAC_PI_2;
+            let (x0, y0) = pie_polar_xy(radius, start_angle);
+            let mut d = format!(
+                "M{x0},{y0}",
+                x0 = pie_path_number(x0),
+                y0 = pie_path_number(y0),
+            );
+            append_pie_arc(&mut d, radius, start_angle, end_angle);
+            if inner_radius > 0.0 {
+                let (ix1, iy1) = pie_polar_xy(inner_radius, end_angle);
+                let _ = write!(
+                    d,
+                    "L{ix1},{iy1}",
+                    ix1 = pie_path_number(ix1),
+                    iy1 = pie_path_number(iy1),
+                );
+                append_pie_arc(&mut d, inner_radius, end_angle, start_angle);
             } else {
-                0
-            };
-            let d = if inner_radius > 0.0 {
-                let (ix0, iy0) = pie_polar_xy(inner_radius, slice.start_angle);
-                let (ix1, iy1) = pie_polar_xy(inner_radius, slice.end_angle);
-                format!(
-                    "M{x0},{y0}A{r},{r},0,{large},1,{x1},{y1}L{ix1},{iy1}A{ir},{ir},0,{large},0,{ix0},{iy0}Z",
-                    x0 = fmt(x0),
-                    y0 = fmt(y0),
-                    r = fmt(radius),
-                    large = large,
-                    x1 = fmt(x1),
-                    y1 = fmt(y1),
-                    ix1 = fmt(ix1),
-                    iy1 = fmt(iy1),
-                    ir = fmt(inner_radius),
-                    ix0 = fmt(ix0),
-                    iy0 = fmt(iy0)
-                )
-            } else {
-                format!(
-                    "M{x0},{y0}A{r},{r},0,{large},1,{x1},{y1}L0,0Z",
-                    x0 = fmt(x0),
-                    y0 = fmt(y0),
-                    r = fmt(radius),
-                    large = large,
-                    x1 = fmt(x1),
-                    y1 = fmt(y1)
-                )
-            };
+                d.push_str("L0,0");
+            }
+            d.push('Z');
             let _ = write!(
                 out,
                 r#"<path d="{d}" fill="{fill}" class="{class}"/>"#,
                 d = d,
-                fill = &escaped_fill,
+                fill = escaped_fill,
                 class = escape_xml(&slice_class)
             );
         }
@@ -474,7 +524,7 @@ pub(crate) fn render_pie_diagram_svg_model_with_paint_plan(
             &mut out,
             r#"<rect width="{size}" height="{size}" style="{style}"/>"#,
             size = fmt(legend_rect_size),
-            style = &escaped_style
+            style = escaped_style
         );
         out.checkpoint()?;
         let terminal_fill =
@@ -524,6 +574,163 @@ mod tests {
     use merman_model::families::pie::PieDiagramModel;
     use std::fmt;
     use std::ops::Range;
+
+    fn rendered_sector_path(start_angle: f64, end_angle: f64, inner_radius: f64) -> String {
+        let slice = crate::model::PieSliceLayout {
+            label: "Sector".to_string(),
+            value: 1.0,
+            start_angle,
+            end_angle,
+            is_full_circle: false,
+            percent: 100,
+            text_x: 0.0,
+            text_y: 0.0,
+            fill: "#ECECFF".to_string(),
+        };
+        let model = PieDiagramModel {
+            sections: vec![merman_model::families::pie::PieSection {
+                label: slice.label.clone(),
+                value: slice.value,
+            }],
+            ..Default::default()
+        };
+        let effective_config = serde_json::json!({});
+        let paint_plan = crate::pie::PieThemePlan::baseline(&model, &effective_config);
+        let mut out = String::new();
+        render_pie_slices(
+            &mut out,
+            &[slice],
+            185.0,
+            inner_radius,
+            &effective_config,
+            &paint_plan,
+            None,
+        )
+        .expect("render sector");
+        let document = roxmltree::Document::parse(&out).expect("one valid sector path");
+        document
+            .root_element()
+            .attribute("d")
+            .expect("sector path data")
+            .to_owned()
+    }
+
+    #[test]
+    fn pie_near_full_arcs_split_coincident_rounded_endpoints() {
+        // d3-shape 3.2.1 with d3-path 3.1.1, using its default three-digit precision.
+        // Synthetic geometry reaches the arc boundary independently of Pie's 1% filter.
+        for (start, inner, expected) in [
+            (
+                0.0,
+                0.0,
+                "M0,-185A185,185,0,0,1,0,185A185,185,0,0,1,0,-185L0,0Z",
+            ),
+            (
+                0.0,
+                74.0,
+                "M0,-185A185,185,0,0,1,0,185A185,185,0,0,1,0,-185L0,-74A74,74,0,0,0,0,74A74,74,0,0,0,0,-74Z",
+            ),
+            (
+                0.3,
+                0.0,
+                "M54.671,-176.737A185,185,0,0,1,-54.671,176.737A185,185,0,0,1,54.671,-176.737L0,0Z",
+            ),
+            (
+                0.3,
+                74.0,
+                "M54.671,-176.737A185,185,0,0,1,-54.671,176.737A185,185,0,0,1,54.671,-176.737L21.868,-70.695A74,74,0,0,0,-21.868,70.695A74,74,0,0,0,21.868,-70.695Z",
+            ),
+        ] {
+            assert_eq!(
+                rendered_sector_path(start, start + std::f64::consts::TAU - 0.000002, inner),
+                expected,
+                "start={start}, inner={inner}"
+            );
+        }
+    }
+
+    #[test]
+    fn pie_donut_rounding_can_split_only_the_inner_ring() {
+        let end = std::f64::consts::TAU - 0.000004;
+        assert_eq!(
+            rendered_sector_path(0.0, end, 0.0),
+            "M0,-185A185,185,0,1,1,-0.001,-185L0,0Z"
+        );
+        assert_eq!(
+            rendered_sector_path(0.0, end, 74.0),
+            "M0,-185A185,185,0,1,1,-0.001,-185L0,-74A74,74,0,0,0,0,74A74,74,0,0,0,0,-74Z"
+        );
+    }
+
+    #[test]
+    fn pie_distinct_and_narrow_arcs_keep_single_arc_segments() {
+        for (end, inner, expected) in [
+            (
+                std::f64::consts::TAU - 0.00001,
+                0.0,
+                "M0,-185A185,185,0,1,1,-0.002,-185L0,0Z",
+            ),
+            (
+                std::f64::consts::TAU - 0.00001,
+                74.0,
+                "M0,-185A185,185,0,1,1,-0.002,-185L-0.001,-74A74,74,0,1,0,0,-74Z",
+            ),
+            (0.000002, 0.0, "M0,-185A185,185,0,0,1,0,-185L0,0Z"),
+            (
+                0.000002,
+                74.0,
+                "M0,-185A185,185,0,0,1,0,-185L0,-74A74,74,0,0,0,0,-74Z",
+            ),
+            (
+                0.00001,
+                74.0,
+                "M0,-185A185,185,0,0,1,0.002,-185L0.001,-74A74,74,0,0,0,0,-74Z",
+            ),
+            (
+                std::f64::consts::PI,
+                74.0,
+                "M0,-185A185,185,0,1,1,0,185L0,74A74,74,0,1,0,0,-74Z",
+            ),
+            (
+                1.5 * std::f64::consts::PI,
+                74.0,
+                "M0,-185A185,185,0,1,1,-185,0L-74,0A74,74,0,1,0,0,-74Z",
+            ),
+        ] {
+            assert_eq!(
+                rendered_sector_path(0.0, end, inner),
+                expected,
+                "end={end}, inner={inner}"
+            );
+        }
+    }
+
+    #[test]
+    fn pie_path_circle_threshold_precedes_rounded_endpoint_splitting() {
+        let end = std::f64::consts::TAU - 0.0000005;
+        assert_eq!(
+            rendered_sector_path(0.0, end, 0.0),
+            "M0,-185A185,185,0,1,1,0,185A185,185,0,1,1,0,-185L0,0Z"
+        );
+        assert_eq!(
+            rendered_sector_path(0.0, end, 74.0),
+            "M0,-185A185,185,0,1,1,0,185A185,185,0,1,1,0,-185L0,-74A74,74,0,1,0,0,74A74,74,0,1,0,0,-74Z"
+        );
+    }
+
+    #[test]
+    fn pie_path_rounding_uses_javascript_negative_half_ties() {
+        for (value, expected) in [
+            (0.0005, "0.001"),
+            (-0.0005, "0"),
+            (0.0015, "0.002"),
+            (-0.0015, "-0.001"),
+            (1.2345, "1.235"),
+            (-1.2345, "-1.234"),
+        ] {
+            assert_eq!(pie_path_number(value).to_string(), expected, "{value}");
+        }
+    }
 
     #[derive(Default)]
     struct RejectAfterFirstWrite {

@@ -47,8 +47,9 @@ an upstream font-loading split; this host policy preserves the pinned dependency
 
 ## Workflow interface
 
-Requirements: Python 3.11+ and Go 1.25+. Python dependencies are pinned in
-`requirements.txt`; Go dependencies and checksums are pinned in
+Requirements: Python 3.11+ and Go 1.27.0+. The Go host selects toolchain
+`go1.27.3`, matching the SDK qualification workflow. Python dependencies are
+pinned in `requirements.txt`; Go dependencies and checksums are pinned in
 `wazero/go.mod` and `wazero/go.sum`. Prepare both runtimes without Cargo:
 
 ```console
@@ -211,8 +212,14 @@ They are never passed off as production-reactor qualification.
 
 - wazero `v1.12.0`: the published
   [upstream Go module](https://proxy.golang.org/github.com/tetratelabs/wazero/@v/v1.12.0.mod)
-  declares Go 1.25 and `golang.org/x/sys v0.44.0`. `go mod tidy` verifies
-  downloads against the Go checksum database; no sum verification is disabled.
+  supplies the Go runtime. The local host selects `golang.org/x/sys v0.49.0`,
+  whose [upstream module](https://proxy.golang.org/golang.org/x/sys/@v/v0.49.0.mod)
+  requires Go 1.26.0. The alpha.2 dependency refresh intentionally raises the
+  local host's minimum to Go 1.27.0 and selects toolchain `go1.27.3`; the
+  [SDK consumer example](../../distribution/sdk/examples/go-wasi/go.mod) uses
+  the same versions. This host upgrade retains the reactor's ABI 1 contract.
+  Module downloads use the Go checksum database, and `go mod verify` checks
+  cached modules against their recorded hashes. Sum verification remains enabled.
 - wasmtime `50.0.1`: the official
   [PyPI release metadata](https://pypi.org/pypi/wasmtime/50.0.1/json)
   supplies the platform runtime wheel. The smoke records the installed version.

@@ -1366,6 +1366,55 @@ pie
 }
 
 #[test]
+fn pie_full_circles_keep_closed_outer_and_reversed_inner_rings() {
+    for (hole, expected) in [
+        (0.0, "M0,-185A185,185,0,1,1,0,185A185,185,0,1,1,0,-185Z"),
+        (
+            0.4,
+            "M0,-185A185,185,0,1,1,0,185A185,185,0,1,1,0,-185M0,-74A74,74,0,1,0,0,74A74,74,0,1,0,0,-74Z",
+        ),
+    ] {
+        for sections in ["  \"A\" : 1\n", "  \"A\" : 1000\n  \"Filtered\" : 1\n"] {
+            let source =
+                format!("%%{{init: {{\"pie\": {{\"donutHole\": {hole}}}}}}}%%\npie\n{sections}");
+            let svg = render_pie_from_text(&source);
+            let document = roxmltree::Document::parse(&svg).expect("valid Pie SVG");
+            let paths: Vec<_> = document
+                .descendants()
+                .filter(|node| node.attribute("class") == Some("pieCircle"))
+                .map(|node| node.attribute("d").expect("slice path data"))
+                .collect();
+            assert_eq!(paths, [expected], "hole={hole}, sections={sections}");
+        }
+    }
+}
+
+#[test]
+fn pie_donut_sector_paths_match_d3_rounding_and_winding() {
+    // d3-shape 3.2.1 / d3-path 3.1.1: non-full 2:1 sectors retain opposite ring winding.
+    let svg = render_pie_from_text(
+        r#"%%{init: {"pie": {"donutHole": 0.4}}}%%
+pie
+  "A" : 2
+  "B" : 1
+"#,
+    );
+    let document = roxmltree::Document::parse(&svg).expect("valid Pie SVG");
+    let paths: Vec<_> = document
+        .descendants()
+        .filter(|node| node.attribute("class") == Some("pieCircle"))
+        .map(|node| node.attribute("d").expect("slice path data"))
+        .collect();
+    assert_eq!(
+        paths,
+        [
+            "M0,-185A185,185,0,1,1,-160.215,92.5L-64.086,37A74,74,0,1,0,0,-74Z",
+            "M-160.215,92.5A185,185,0,0,1,0,-185L0,-74A74,74,0,0,0,-64.086,37Z",
+        ]
+    );
+}
+
+#[test]
 fn pie_donut_hole_config_renders_annular_slice_paths() {
     let svg = render_pie_from_text(
         r#"%%{init: {"pie": {"donutHole": 0.4}}}%%
