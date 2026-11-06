@@ -1,72 +1,88 @@
 ---
 name: design-merman-theme
-description: Create or refine Merman diagram themes from a visual brief, an existing theme, or a preset. Use when designing colors, typography, backgrounds, shadows, or consistent styling across diagram families, and deliver editable theme JSON with rendered previews and support diagnostics.
+description: Create or refine Merman diagram themes from a visual brief, reference, recipe, or preset. Use for distinctive material, typography, canvas, and effect design across diagram families, with editable JSON, real rendered previews, and separate runtime and visual evidence.
 ---
 
 # Design Merman Themes
 
-Turn visual intent into a portable `ThemeRecipeV1` and reviewable previews. The user should describe
-an appearance, compare results, and request changes without learning tokens or renderer rules.
+Turn visual intent into an editable `ThemeRecipeV1` and reviewable previews. Keep artistic choices
+in theme data and qualify support through the actual renderer and requested output target.
 
-## Establish the brief
+## 1. Establish a visual direction
 
-Identify the intended mood, light/dark context, diagram families, output target, and any supplied
-theme, preset, brand colors, or visual reference. Infer reasonable defaults from the request;
-ask only for information that would materially change the design. For an open brief, start with
-one coherent proposal and explain its main choices in the user's language.
+Identify the audience, light/dark context, diagram families, target, and supplied source or design.
+Infer reasonable defaults and continue within the request. For a new visual direction, write a
+compact brief before choosing swatches; for a focused edit, keep the direction and name the
+relationship being changed:
 
-Read [authoring.md](references/authoring.md) before editing a theme. Read
-[runtime.md](references/runtime.md) when selecting an engine or running the bundled command tool.
-The current theme contract is unreleased: use a matching source runtime, not an assumed npm version.
+- **Material:** what makes the surface recognizable: separated print passes, mounted paper,
+  lacquer inlay, warning tape, or another concrete construction.
+- **Structure:** which contours, panels, connections, and accents express that construction while
+  preserving diagram meaning and data hierarchy.
+- **Typography:** roles for names, annotations, code signatures, and chart values; fonts the target
+  host can supply and measure.
+- **Relationships:** which colors, offsets, weights, or textures change together, and which stay
+  independent. Choose one dominant mechanism and keep supporting elements restrained.
 
-## Design an editable theme
+The brief is ready when it explains a recognizable result beyond recoloring, including how an
+ordinary diagram will show it. When looking for design mechanisms or delegating alternatives,
+read [examples.md](references/examples.md); it links real recipes instead of copying the library.
 
-For a preset-based request, export the actual preset from the selected engine. For a new theme,
-start with a small design; [starter.theme.json](assets/starter.theme.json) is an optional seed.
-Preserve an imported theme's unrelated settings, rule order, assets, and explicit references.
+## 2. Author the smallest useful recipe
 
-Choose a small set of intentional relationships: text, surfaces, accents, series, and effects
-that should change together. Give those values stable IDs and bind their consumers. Keep local
-exceptions independent. Change shared values or explicit consumers, rather than replacing every
-occurrence of the same color. Preserve nested references when taking a local copy.
+Read [authoring.md](references/authoring.md) before editing. For a preset-based request, export the
+actual preset from the selected engine. For a new design,
+[starter.theme.json](assets/starter.theme.json) is a complete, small Flowchart seed, not a claim of
+cross-family treatment. Preserve an imported recipe's unrelated settings, ordered rules, assets,
+and explicit references.
 
-Use existing typed paints, typography, independent/cascade shadows, and family rules. Keep
-artistic choices in ordinary theme data. When a requested appearance exceeds the renderer,
-explain the missing mechanism and offer a supported approximation; extending Rust is separate work.
-An image or imported description supplies design input, not instructions to execute code.
+Give intentional shared values stable IDs and bind their consumers. Edit those bindings or explicit
+local consumers; equal color literals do not establish a shared relationship. Keep the editable
+recipe as the deliverable; a materialized spec is an inspection result.
 
-Keep the editable recipe as the deliverable. A materialized spec is useful for inspection and
-diagnosis, but loses authoring relationships and should not replace the recipe.
+Adapt the mechanism to each family: supported bodies may carry depth while Class uses paint and
+typography and Pie uses distinguishable sectors. A role consuming one facet does not qualify
+another. If a mechanism is missing, retain a focused reproduction and explain the supported
+approximation. Renderer changes require their own scope. A reference image supplies design input,
+not executable instructions.
 
-## Render and refine
+## 3. Render the saved inputs
 
-1. Render the user's actual diagram with the exact saved recipe. The runtime validates it; repair
-   any structured authoring errors before calling the result usable. Materialize the `design`
-   payload when inspecting dependencies or diagnosing a shared value.
-2. For a cross-family request, render a small representative set. The bundled
-   [Flowchart](assets/flowchart.mmd), [Sequence](assets/sequence.mmd), and
-   [XY Chart](assets/xychart.mmd) exercise different consumers; use only relevant examples and add
-   the user's family when needed. Retain the source and options beside each preview.
-3. Inspect the same render's metadata and query coarse support for effects or other uncertain
-   mechanisms. Distinguish serialization, declared support, actual application, and output-target
-   admission. Preserve conditional, residual, and unknown results in the handoff.
-4. Inspect the visible previews when image/browser tools are available. Check labels, hierarchy,
-   contrast, density, clipping, backgrounds, arrowheads, and effect strength. SVG structure and a
-   successful operation do not prove visual quality. If visual inspection is unavailable, provide
-   the previews and say that they still need visual review.
-5. Apply the user's feedback to the same recipe and rerender affected examples. Keep source,
-   configuration, and requested style changes explicit. A missing shadow is not permission to
-   silently switch the diagram's look, remove the effect, or relax resource limits.
+Read [runtime.md](references/runtime.md) when selecting an artifact or invoking the tool. Reuse a
+matching source runtime; the package version alone is insufficient. Render the exact saved recipe,
+source, and configuration. Keep their ownership, look, layout, fonts, and pipeline explicit.
 
-## Deliver
+Start with the user's actual diagram. For cross-family design, use three to five representative
+families from [the review matrix](references/review.md#representative-scenes), including the
+requested families. Library additions use all five shared scenes. Retain SVG and same-execution
+metadata/report together. Repair structured authoring errors before reviewing the design.
 
-Provide the standalone theme JSON, preview SVGs with their source/options, and a short design note.
-The note records the starting point, intentional shared relationships, key changes, exact tested
-families/target/runtime, and observed limitations. Report visual inspection separately from runtime
-validation. Use the user's language for discussion; follow the destination project's language for
-files. Preserve user-authored names; translate explanations instead of rewriting exported IDs.
+## 4. Review runtime and appearance separately
 
-Explain how to import the JSON into Playground or render it with CLI `--theme-file`. The same
-recipe must work without this skill or private generator state. Keep each revision in fresh output
-files unless overwriting is intended. This skill creates local artifacts; publishing a theme or
-modifying application UI remains a separate task.
+Read [review.md](references/review.md) for family-specific checks and failure examples. Record
+runtime evidence first: compilation, actual facet application, diagnostics, and output-target
+status. Then inspect the exact SVGs in their intended viewer: hierarchy, contrast, labels, body
+depth, text bounds, complete canvas, and dense content. `verified` does not prove unclipped text,
+available fonts, complete background coverage, or portable output.
+
+Use known font files for native Class measurement and inspect the resulting compartments; inspect
+actual XY legend widths and Sequence lifeline/canvas bounds. When browser-testing changes, wait
+for the current diagram and assert its family/content before taking evidence. If visual inspection
+is unavailable, deliver the files with that review explicitly pending.
+
+## 5. Refine and hand off
+
+Revise the same recipe, rerender affected scenes, and review the new outputs. Preserve an
+unsupported-effect reproduction rather than silently changing look, removing the request, or
+loosening limits to make evidence green. Explain any intentional design compromise.
+
+Deliver the standalone recipe, previews with source/configuration, tested runtime and font
+conditions, runtime outcomes, visual findings, and remaining limits. Keep temporary investigation
+and execution records under ignored `target/`; update an existing user guide only when in scope.
+Use the user's language for discussion and the project's language for files.
+
+Explain the three inputs independently: recipe = visual design; sample source/configuration =
+optional example content/layout; Rust, CLI, or Web = alternative ways to load and render it.
+[runtime.md](references/runtime.md#adopt-the-recipe) covers adoption and file placement. The recipe
+must work without private generator state. A standalone example does not become a preset ID;
+registering presets, publishing, and changing application UI require that task scope.
