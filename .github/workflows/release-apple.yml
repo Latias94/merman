@@ -184,6 +184,7 @@ jobs:
           git diff --exit-code -- platforms/apple/Sources/Merman/Generated
 
       - name: Package matching SwiftPM and XCFramework distributions
+        id: package-distributions
         env:
           RELEASE_TAG: ${{ steps.version.outputs.tag }}
           VERSION: ${{ steps.version.outputs.version }}
@@ -194,6 +195,34 @@ jobs:
             --source-commit "$SOURCE_SHA" \
             --artifact-url "https://github.com/$GH_REPO/releases/download/$RELEASE_TAG/Merman.xcframework-${RELEASE_TAG}.zip"
 
+      - name: Boot workflow-owned simulator for both qualification paths
+        id: simulator
+        timeout-minutes: 8
+        run: |
+          python3 - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+          import subprocess
+
+          devices = json.loads(subprocess.run(
+              ["xcrun", "simctl", "list", "devices", "available", "--json"],
+              check=True, capture_output=True, text=True, timeout=60).stdout)
+          available = [device for runtime, entries in devices["devices"].items() if ".iOS-" in runtime
+                       for device in entries if device.get("isAvailable")]
+          if not available:
+              raise RuntimeError("Apple qualification requires an installed iOS simulator runtime")
+          selected = next((device for device in available if device["state"] == "Booted"), available[0])
+          udid = selected["udid"]
+          owned = selected["state"] != "Booted"
+          with Path(os.environ["GITHUB_OUTPUT"]).open("a") as output:
+              print(f"udid={udid}", file=output)
+              print(f"owned={str(owned).lower()}", file=output)
+          if owned:
+              subprocess.run(["xcrun", "simctl", "boot", udid], check=True, timeout=60)
+          subprocess.run(["xcrun", "simctl", "bootstatus", udid, "-b"], check=True, timeout=300)
+          PY
+
       - name: Qualify extracted package, simulator runtime and matched archive sizes
         env:
           VERSION: ${{ steps.version.outputs.version }}
@@ -203,6 +232,7 @@ jobs:
             --work-dir target/apple-qualification --version "$VERSION" --simulator --compare-original
 
       - name: Qualify controlled HTTPS SwiftPM handoff and checksum rejection
+        id: qualify-https
         timeout-minutes: 45
         env:
           VERSION: ${{ steps.version.outputs.version }}
@@ -212,8 +242,31 @@ jobs:
             --work-dir target/apple-https-qualification --version "$VERSION" --source-commit "$SOURCE_SHA" \
             --xcframework platforms/apple/Merman.xcframework
 
+      - name: Shut down workflow-owned simulator without replacing qualification failures
+        if: ${{ !cancelled() && steps.simulator.outputs.owned == 'true' }}
+        continue-on-error: true
+        timeout-minutes: 2
+        env:
+          SIMULATOR_UDID: ${{ steps.simulator.outputs.udid }}
+        run: |
+          python3 - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+          import subprocess
+
+          udid = os.environ["SIMULATOR_UDID"]
+          report = {"udid": udid, "status": "stopped"}
+          try:
+              subprocess.run(["xcrun", "simctl", "shutdown", udid], check=True, timeout=60)
+          except (OSError, subprocess.SubprocessError) as error:
+              report.update(status="cleanup-warning", error=str(error))
+              print(f"::warning::Simulator cleanup failed after qualification: {error}")
+          Path("target/apple-simulator-cleanup.json").write_text(json.dumps(report, indent=2) + "\n")
+          PY
+
       - name: Retain controlled HTTPS resolution and consumer evidence
-        if: ${{ always() }}
+        if: ${{ !cancelled() && (steps.qualify-https.outcome == 'success' || steps.qualify-https.outcome == 'failure') }}
         uses: actions/upload-artifact@v7.0.2
         with:
           name: merman-apple-https-qualification
@@ -248,6 +301,22 @@ jobs:
             target/apple-qualification/qualification.json
             target/apple-qualification/installed/*.json
             target/apple-qualification/comparison/original.json
+            target/apple-simulator-cleanup.json
+
+      - name: Retain failed Apple candidate and qualification diagnostics
+        if: ${{ failure() && steps.package-distributions.outcome == 'success' }}
+        uses: actions/upload-artifact@v7.0.2
+        with:
+          name: merman-apple-failed-candidate-attempt-${{ github.run_attempt }}
+          if-no-files-found: error
+          path: |
+            target/apple-package/*.zip
+            target/apple-package/*.checksum
+            target/apple-package/*.Package.swift
+            target/apple-qualification/**/*.json
+            target/apple-https-qualification/**/*.json
+            target/apple-https-qualification/*.log
+            target/apple-simulator-cleanup.json
 
   qualify-remote:
     if: ${{ !cancelled() && needs.build.result == 'success' && (!inputs.publish || needs.upload-release.result == 'success') && (inputs.remote_package_url != '' || inputs.remote_package_revision != '') }}

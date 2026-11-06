@@ -1,8 +1,9 @@
 """Behavior checks for installed Apple consumer evidence."""
 
-from contextlib import redirect_stderr, redirect_stdout
+from contextlib import chdir, redirect_stderr, redirect_stdout
 import io
 import json
+import os
 from pathlib import Path
 import plistlib
 import random
@@ -10,6 +11,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import textwrap
 from types import SimpleNamespace
 import unittest
 from unittest import mock
@@ -94,6 +96,53 @@ class AppleQualificationTests(unittest.TestCase):
                         outputs=profile.outputs, diagram_families=profile.diagram_families, version="0.9.3")
 
 
+class WorkflowSimulatorLifecycleTests(unittest.TestCase):
+    def workflow_step(self, name):
+        workflow = (apple_qualify.REPO_ROOT / ".github/workflows/release-apple.yml").read_text()
+        step = workflow.split(f"      - name: {name}\n", 1)[1].split("\n      - name:", 1)[0]
+        command = textwrap.dedent(step.split("        run: |\n", 1)[1])
+        return command.split("python3 - <<'PY'\n", 1)[1].rsplit("\nPY", 1)[0]
+
+    def test_workflow_boots_selected_simulator_and_waits_for_runtime_readiness(self):
+        script = self.workflow_step("Boot workflow-owned simulator for both qualification paths")
+        for state in ("Shutdown", "Booted", "unavailable"):
+            devices = [] if state == "unavailable" else [
+                {"udid": "workflow-simulator", "state": state, "isAvailable": True}]
+            response = SimpleNamespace(stdout=json.dumps({"devices": {
+                "com.apple.CoreSimulator.SimRuntime.iOS-26-0": devices}}))
+            with self.subTest(state=state), tempfile.TemporaryDirectory() as directory:
+                output = Path(directory) / "output"
+                with (mock.patch.dict(os.environ, GITHUB_OUTPUT=str(output)),
+                      mock.patch.object(subprocess, "run", return_value=response) as run):
+                    if state == "unavailable":
+                        with self.assertRaisesRegex(RuntimeError, "installed iOS simulator"):
+                            exec(compile(script, "release-apple.yml:simulator", "exec"), {})
+                        self.assertFalse(output.exists())
+                        continue
+                    exec(compile(script, "release-apple.yml:simulator", "exec"), {})
+                    self.assertIn("udid=workflow-simulator", output.read_text())
+                    self.assertIn(f"owned={str(state == 'Shutdown').lower()}", output.read_text())
+                    run.assert_any_call(["xcrun", "simctl", "bootstatus", "workflow-simulator", "-b"],
+                                        check=True, timeout=300)
+                    boot_calls = [call for call in run.call_args_list if call.args[0][2] == "boot"]
+                    self.assertEqual(len(boot_calls), int(state == "Shutdown"))
+
+    def test_workflow_cleanup_timeout_is_diagnostic_after_qualification(self):
+        script = self.workflow_step(
+            "Shut down workflow-owned simulator without replacing qualification failures")
+        failure = subprocess.TimeoutExpired(["xcrun", "simctl", "shutdown", "workflow-simulator"], 60)
+        with tempfile.TemporaryDirectory() as directory, chdir(directory):
+            Path("target").mkdir()
+            with (mock.patch.dict(os.environ, SIMULATOR_UDID="workflow-simulator"),
+                  mock.patch.object(subprocess, "run", side_effect=failure),
+                  redirect_stdout(io.StringIO()) as diagnostic):
+                exec(compile(script, "release-apple.yml:simulator-cleanup", "exec"), {})
+            report = json.loads(Path("target/apple-simulator-cleanup.json").read_text())
+            self.assertEqual(report["status"], "cleanup-warning")
+            self.assertEqual(report["error"], str(failure))
+            self.assertIn("::warning::", diagnostic.getvalue())
+
+
 class InstalledPackageFlowTests(unittest.TestCase):
     def setUp(self):
         temporary = tempfile.TemporaryDirectory()
@@ -107,6 +156,8 @@ class InstalledPackageFlowTests(unittest.TestCase):
         self.source = source
         self.calls = []
         self.failure = None
+        self.cleanup_failure = None
+        self.simulator_state = "Shutdown"
         self.different_original = False
         self.remote_url = None
         self.remote_revision = "b" * 40
@@ -172,9 +223,11 @@ class InstalledPackageFlowTests(unittest.TestCase):
             return SimpleNamespace(stdout="/SDK/" + command[2])
         if command[0] == "xcrun" and command[2:4] == ["list", "devices"]:
             return SimpleNamespace(stdout=json.dumps({"devices": {"com.apple.CoreSimulator.SimRuntime.iOS-26-0": [
-                {"udid": "task-simulator", "isAvailable": True, "state": "Shutdown"}]}}))
+                {"udid": "task-simulator", "isAvailable": True, "state": self.simulator_state}]}}))
         if command[0] == "xcrun" and command[2] in {"boot", "bootstatus", "shutdown"}:
             self.assertGreater(options.get("timeout", 0), 0)
+            if command[2] == "shutdown" and self.cleanup_failure is not None:
+                raise self.cleanup_failure
             if command[2] == self.failure:
                 raise subprocess.TimeoutExpired(command, options["timeout"])
             return SimpleNamespace(stdout="")
@@ -215,6 +268,60 @@ class InstalledPackageFlowTests(unittest.TestCase):
                         package_dir=self.package, work_dir=self.root / failure, version="0.9.3", simulator=True)
                 self.assertTrue(any(command[2:4] == ["shutdown", "task-simulator"]
                                     for command, _ in self.calls))
+
+    def test_workflow_booted_simulator_still_runs_consumer_without_owning_cleanup(self):
+        self.simulator_state = "Booted"
+        report, _ = apple_qualify.qualify_package(repo_root=apple_qualify.REPO_ROOT,
+            package_dir=self.package, work_dir=self.root / "workflow-booted", version="0.9.3",
+            simulator=True)
+        self.assertEqual(report["simulator_runtime"], "passed")
+        self.assertTrue(any(command[2:4] == ["spawn", "task-simulator"]
+                            for command, _ in self.calls))
+        self.assertFalse(any(command[:2] == ["xcrun", "simctl"]
+                             and command[2] in {"boot", "bootstatus", "shutdown"}
+                             for command, _ in self.calls))
+
+    def test_simulator_cleanup_failure_preserves_verified_consumer_result(self):
+        command = ["xcrun", "simctl", "shutdown", "task-simulator"]
+        failures = (subprocess.TimeoutExpired(command, 30),
+                    subprocess.CalledProcessError(1, command))
+        for index, failure in enumerate(failures):
+            self.cleanup_failure = failure
+            work = self.root / f"cleanup-{index}"
+            diagnostic = io.StringIO()
+            with self.subTest(failure=type(failure).__name__), redirect_stderr(diagnostic):
+                report, result = apple_qualify.qualify_package(repo_root=apple_qualify.REPO_ROOT,
+                    package_dir=self.package, work_dir=work, version="0.9.3", simulator=True)
+                self.assertEqual(report["simulator_runtime"], "passed")
+                self.assertEqual(result, consumer_payload())
+                self.assertIn(str(failure), report["simulator_cleanup_warning"])
+                self.assertIn(str(failure), diagnostic.getvalue())
+                cleanup = json.loads((work / "simulator-cleanup.json").read_text())
+                self.assertEqual(cleanup["command"], command)
+                self.assertEqual(cleanup["error"], str(failure))
+
+    def test_simulator_cleanup_failure_does_not_mask_consumer_timeout(self):
+        self.failure = "spawn"
+        self.cleanup_failure = subprocess.TimeoutExpired(
+            ["xcrun", "simctl", "shutdown", "task-simulator"], 30)
+        work = self.root / "consumer-and-cleanup-failure"
+        with redirect_stderr(io.StringIO()), self.assertRaises(subprocess.TimeoutExpired) as raised:
+            apple_qualify.qualify_package(repo_root=apple_qualify.REPO_ROOT,
+                package_dir=self.package, work_dir=work, version="0.9.3", simulator=True)
+        self.assertEqual(raised.exception.cmd[2], "spawn")
+        self.assertEqual(raised.exception.timeout, 120)
+        self.assertTrue((work / "simulator-cleanup.json").is_file())
+
+    def test_simulator_cleanup_failure_does_not_mask_invalid_runtime_output(self):
+        self.cleanup_failure = subprocess.TimeoutExpired(
+            ["xcrun", "simctl", "shutdown", "task-simulator"], 30)
+        results = [consumer_payload(), ValueError("invalid simulator runtime output")]
+        with (mock.patch.object(apple_qualify, "validate_consumer", side_effect=results),
+              redirect_stderr(io.StringIO()),
+              self.assertRaisesRegex(ValueError, "invalid simulator runtime output")):
+            apple_qualify.qualify_package(repo_root=apple_qualify.REPO_ROOT,
+                package_dir=self.package, work_dir=self.root / "invalid-runtime", version="0.9.3",
+                simulator=True)
 
     def remote_archive(self):
         archive = self.root / "remote.zip"

@@ -197,7 +197,18 @@ def qualify_package(*, repo_root: Path, package_dir: Path, work_dir: Path,
             report["simulator_runtime"] = "passed"
         finally:
             if started:
-                run(["xcrun", "simctl", "shutdown", udid], cwd=work_dir, timeout=30)
+                command = ["xcrun", "simctl", "shutdown", udid]
+                try:
+                    run(command, cwd=work_dir, timeout=30)
+                except (OSError, subprocess.SubprocessError) as error:
+                    report["simulator_cleanup_warning"] = str(error)
+                    print(f"WARNING: simulator cleanup failed: {error}", file=sys.stderr, flush=True)
+                    try:
+                        (work_dir / "simulator-cleanup.json").write_text(
+                            json.dumps({"command": command, "error": str(error)}, indent=2) + "\n")
+                    except OSError as diagnostic_error:
+                        print(f"WARNING: cannot retain simulator cleanup diagnostic: {diagnostic_error}",
+                              file=sys.stderr, flush=True)
     else:
         report["simulator_runtime"] = "not-requested"
     if remote_package_url is not None:
