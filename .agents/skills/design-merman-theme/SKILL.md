@@ -1,6 +1,6 @@
 ---
 name: design-merman-theme
-description: Create or refine Merman diagram themes from a visual brief, reference, recipe, or preset. Use for distinctive material, typography, canvas, and effect design across diagram families, with editable JSON, real rendered previews, and separate runtime and visual evidence.
+description: Create or refine Merman diagram themes from a visual brief, reference, recipe, or preset, including reading/editor themes and paired light/dark appearances. Use for role colors, typography, optional materials and effects, editable JSON, and previews with separate runtime and visual evidence.
 ---
 
 # Design Merman Themes
@@ -15,18 +15,22 @@ Infer reasonable defaults and continue within the request. For a new visual dire
 compact brief before choosing swatches; for a focused edit, keep the direction and name the
 relationship being changed:
 
-- **Material:** what makes the surface recognizable: separated print passes, mounted paper,
-  lacquer inlay, warning tape, or another concrete construction.
-- **Structure:** which contours, panels, connections, and accents express that construction while
-  preserving diagram meaning and data hierarchy.
+- **Purpose:** for reading/editor themes, comfortable density, semantic color distinctions, and
+  hierarchy. For a light/dark pair, name shared intentions and appearance-specific exceptions;
+  retain multiple meaningful hues where categories or statuses need them.
+- **Optional material:** what makes the surface recognizable: separated print passes,
+  mounted paper, lacquer inlay, warning tape, or another concrete construction.
+- **Structure:** which surfaces, contours, connections, and accents express diagram meaning and
+  data hierarchy, including the construction of a material design.
 - **Typography:** roles for names, annotations, code signatures, and chart values; fonts the target
   host can supply and measure.
 - **Relationships:** which colors, offsets, weights, or textures change together, and which stay
-  independent. Choose one dominant mechanism and keep supporting elements restrained.
+  independent. For material designs, choose one dominant mechanism and restrain supporting effects.
 
-The brief is ready when it explains a recognizable result beyond recoloring, including how an
-ordinary diagram will show it. When looking for design mechanisms or delegating alternatives,
-read [examples.md](references/examples.md); it links real recipes instead of copying the library.
+The brief is ready when an ordinary diagram can demonstrate its intended hierarchy and identity.
+Deliberate tonal and multi-hue relationships can satisfy a reading brief without decoration.
+For real recipes, borrowed mechanisms, parallel design, or a bounded family-audit prompt,
+read [examples.md](references/examples.md).
 
 ## 2. Author the smallest useful recipe
 
@@ -76,9 +80,10 @@ Revise the same recipe, rerender affected scenes, and review the new outputs. Pr
 unsupported-effect reproduction rather than silently changing look, removing the request, or
 loosening limits to make evidence green. Explain any intentional design compromise.
 
-Deliver the standalone recipe, previews with source/configuration, tested runtime and font
-conditions, runtime outcomes, visual findings, and remaining limits. Keep temporary investigation
-and execution records under ignored `target/`; update an existing user guide only when in scope.
+Deliver the standalone recipe or pair, previews with source/configuration, selected appearance and
+viewer backing, tested runtime and font conditions, runtime outcomes, visual findings, and remaining
+limits. Keep temporary investigation and execution records under ignored `target/`; update an
+existing user guide only when in scope.
 Use the user's language for discussion and the project's language for files.
 
 Explain the three inputs independently: recipe = visual design; sample source/configuration =

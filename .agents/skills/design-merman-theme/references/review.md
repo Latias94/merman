@@ -33,11 +33,20 @@ across competing designs. Add a targeted dense or long scene only when its mecha
 
 | Family | Representative content | Inspect before calling it visually reviewed |
 | --- | --- | --- |
-| Flowchart | Branches, a cluster, mixed basic shapes, edge labels | Body vs label effects; marker tips; cluster hierarchy; source style precedence; recognizable material at ordinary density. |
+| Flowchart | Branches, a cluster, mixed basic shapes, edge labels | Body vs label effects; label backings; marker tips; cluster hierarchy; source style precedence; material at ordinary density when requested. |
 | Sequence | Actors, activations, notes, a loop, bottom lifelines | The entire scene lies within viewBox and authored canvas, including lifeline strokes when `mirrorActors: false`; note/actor effects keep labels legible. |
 | Class | Namespaces, methods, long signatures, multiplicities | Fonts match measured roles, including signature monospace; text boxes fit their own compartments as well as the root viewport. |
-| XY Chart | Bar and line series, titles, axes, visible legend | Actual legend text and swatches fit their reserved regions; ticks and endpoints remain clear; effects distinguish rather than obscure series. |
-| Pie | Several unequal sectors, title, percentages, legend | Neighboring sectors remain distinct; labels contrast against every actual sector and canvas; small sectors and legends remain readable. |
+| XY Chart | Bar and line series, titles, axes, visible legend | Actual legend text and swatches fit their reserved regions; series order and legend associations survive appearance changes; ticks and endpoints remain clear; effects preserve series distinctions. |
+| Pie | Several unequal sectors, title, percentages, legend | Neighboring sectors remain distinct; sector order and category/legend associations survive appearance changes; labels contrast against every actual sector and canvas; small sectors and legends remain readable. |
+
+For a light/dark pair, compare the same diagram with source/configuration, look, layout, and
+category order held fixed. Reuse the scenes above; add a dense case only for a concrete concern.
+Review at the intended reading scale: preserve semantic roles and multiple useful hues while
+adapting luminance and chroma. Compare text with its actual composited background, including
+group panels, notes, activations, and label backings. Check connectors and arrowheads against
+adjacent surfaces in both modes. Muted text still needs readable contrast; a coordinated accent
+ramp alone does not establish a categorical palette. A pair of swatches or a viewer backing
+switch does not establish a pair of rendered appearances.
 
 Keep the actual family and expected labels in browser checks. Wait for the changed render to
 finish before inspecting it. A family loop or hash change is not proof that the viewer replaced
@@ -64,6 +73,9 @@ padding or a smaller font does not establish a general renderer fix.
 Review the exact exported SVG independently of viewer backing. For an explicit theme canvas,
 check all painted bounds, especially Sequence's lower lifelines and notes. An unthemed renderer
 viewport or a page background is not evidence that exported canvas paint covers the scene.
+For transparent or translucent output, record the receiving background and inspect that composite
+in each intended appearance. Keep exported canvas, family-owned backdrops, root/output background
+policy, and viewer backing distinct; a light/dark catalog label does not establish actual output.
 
 ## Worked failures: Signal
 
@@ -80,7 +92,8 @@ gradient stops at `0.008` and `0.992` reveal rails at 0.8% of viewport height. T
 is fixed in pixels; the revealed rail thickness scales with diagram height. Check a tall scene
 before reuse. This composition is not a fixed-thickness, region-anchored border feature.
 
-When evidence and visible output disagree, retain both. For example, a local Flowchart
-`edge-label.fill` can report verified while the observed ink remains unchanged; the existing
-examples use shared Text. That is a supported design alternative, not proof the local facet was
-repaired. Report such cases at their current owner instead of filtering them out of diagnostics.
+When evidence and visible output disagree, retain both. In a prior Flowchart run, local
+`edge-label.fill` reported verified while the observed ink remained unchanged. Using shared Text
+was a design alternative, not proof the local facet was repaired. Recheck the current runtime
+before carrying that finding forward, and report mismatches at their owner rather than filtering
+them out of diagnostics.

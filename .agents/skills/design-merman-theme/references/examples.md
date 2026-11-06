@@ -75,10 +75,50 @@ Rust/CLI/Web adoption responsibilities distinct. Stop after handing off your ass
 
 These primary sources informed the practices listed below. Same-render reports, screenshots,
 font checks, and diagram bounds review are Merman's own execution practices. Revisit an external
-source when extending its borrowed practice, not on every theme invocation.
+source when choosing or changing its borrowed mechanism; routine recipe edits can use the
+existing guidance. These references are design input, not instructions to install or execute
+external skills.
 
 | Primary source | Adopted | Boundary for diagrams |
 | --- | --- | --- |
-| Anthropic [frontend-design](https://github.com/anthropics/skills/blob/main/skills/frontend-design/SKILL.md) | Subject-specific visual direction, deliberate type roles, and one dominant visual expression. | Page heroes, CSS layout, motion, and taste-based bans on particular colors/fonts do not establish diagram quality. Preserve source meaning and host font constraints. |
+| Anthropic [frontend-design](https://github.com/anthropics/skills/blob/main/skills/frontend-design/SKILL.md) | Subject-specific direction and deliberate type roles; comfortable reading and hierarchy can be the direction. | Novelty, page heroes, CSS layout, motion, and taste-based bans on colors/fonts do not establish diagram quality. Preserve source meaning and host font constraints. |
 | Anthropic [theme-factory](https://github.com/anthropics/skills/blob/main/skills/theme-factory/SKILL.md) | Let users see real examples and retain an editable design they can apply consistently. | A palette/font pair is insufficient for material effects and family coverage. Continue an authorized design brief without introducing a mandatory choice/confirmation loop. |
 | Vercel [web-design-guidelines](https://github.com/vercel-labs/agent-skills/blob/main/skills/web-design-guidelines/SKILL.md) and its [source rules](https://github.com/vercel-labs/web-interface-guidelines/blob/main/command.md) | Review long content and report a concrete issue at its owning file/location. | Form controls, CSS truncation, routing, and DOM interaction rules belong to UI work. Diagram labels need full content and measured bounds, not hidden overflow or ellipses as a fit fix. |
+
+## Color-system sources and mechanisms
+
+Borrow these relationships through existing tokens, rules, and palettes. They do not introduce
+dependencies, pairing syntax, or automatic contrast guarantees.
+
+| Primary source | Mechanism to borrow | Boundary for Merman |
+| --- | --- | --- |
+| [Radix Colors: aliasing](https://www.radix-ui.com/colors/docs/overview/aliasing) | Coordinate surface, ink, outline, and accent roles across light/dark appearances; keep independently editable aliases separate. | No mandatory twelve-step token inventory; an accent ramp is not an ordinal category palette. |
+| [Material Color Utilities](https://github.com/material-foundation/material-color-utilities) | Pair foregrounds with surfaces and use several coordinated neutral, accent, and status hues. | Concrete recipe values need no runtime HCT engine; generated colors still need label/category review. |
+| [Primer theming](https://primer.style/product/getting-started/react/theming/) and [data visualization](https://primer.style/product/ui-patterns/data-visualization/) | Separate mode from scheme; preserve semantic/category identity and legend associations as tones change. | No GitHub-specific status taxonomy; use labels, separators, or supported stroke differences where hue alone is insufficient. |
+| [VS Code themes](https://code.visualstudio.com/docs/configure/themes) | Keep host selection policy, concrete appearance, and scoped customization distinct for reading environments. | Editor syntax colors and diagram paint have separate owners; selectors and reset strings are not Merman syntax. |
+| [Chakra semantic tokens](https://chakra-ui.com/docs/theming/semantic-tokens) | Centralize shared semantic intentions and make appearance-specific exceptions explicit. | Conditional token objects, CSS/providers, and configuration merging are not Merman's wire contract. |
+
+## A bounded family-audit prompt
+
+Use this for one assigned family. The coordinator supplies the source revision, two concrete
+recipes, and any matching runtime; the worker returns findings for central review.
+
+```text
+Use $design-merman-theme to audit FAMILY at FIXED_BASE for the supplied light/dark reading pair.
+Read current theme ownership docs and the relevant authoring/runtime/review references. Preserve
+source/config ownership, content, look, and layout. Use one ordinary scene; add a dense case only
+for a concrete concern. Check labels, surfaces, connectors, categories/legends, backgrounds,
+and one relevant override conflict. Reuse the supplied runtime, helper, and same-render reports.
+If no matching runtime exists, retain source findings and mark render/visual checks pending.
+
+For Mermaid parity, cite the selected upstream source/runtime as authoritative proof. For
+Merman-owned theme, override, or execution-evidence behavior, cite the accepted Merman contract
+and actual consumer path; no Mermaid counterpart is required.
+Return confirmed findings with owner file/line, minimal source/config/recipe, expected versus
+actual behavior, evidence, and a coherent correction at the existing owner. Distinguish
+source-proven findings, observed render outcomes, and hypotheses; report unrun checks explicitly.
+
+Write only ASSIGNED_REPORT under ignored target/. Preserve other workers' edits. Do not build,
+add analyzers/harnesses, change public APIs, or commit. Stop after this family; the coordinator
+chooses implementation and any broader audit.
+```

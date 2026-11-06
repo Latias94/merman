@@ -38,10 +38,39 @@ offset and an activation, while equal plate and connector colors can remain sepa
 independent editing. A small graph of these relationships is more useful than a token for every
 literal. Keep geometry and data meaning in their existing source/layout owners.
 
+## Ownership and overrides
+
+Request `theme` is a whole-value selection: omission inherits the engine's compiled theme,
+`null` clears it, and a supplied recipe/selection replaces it completely. It is excluded from
+the generic options deep merge; a partial recipe is not a request patch. See the
+[binding contract](../../../../docs/bindings/OPTIONS_JSON.md#diagram-theme).
+
+Within a recipe, editing a token changes only its explicitly bound consumers. To detach one
+consumer, replace its reference with a local copy of the authored value, retaining nested
+references that should still follow other tokens. Matching literals do not create bindings.
+
 Defaults lower first, then ordered rules, then palettes. Later matching facets can override
-earlier ones; a family selector adds scope, not CSS specificity. Source styles and Mermaid
-configuration retain their ownership and may supersede theme values. Preserve rule order during
-unrelated edits, and compare the authored JSON rather than recoloring a resolved snapshot.
+earlier ones; a family selector adds scope, not CSS specificity. Omitted patch fields leave the
+property unspecified. On clearable facets, `null` means Clear: restore family baseline behavior,
+rather than reveal the preceding matching rule. Check the actual terminal's Clear support.
+Supplied lists replace rather than implicitly append. Preserve rule order during unrelated
+edits, and compare authored JSON rather than recoloring a resolved snapshot.
+
+Source styles and explicit Mermaid variables retain property-specific ownership. An authored
+source theme owns its materialized paint palette for present roles; a site/base theme supplies
+fallback paint. Typography, geometry, effects, and canvas keep their own owners. Preserve source
+init/frontmatter and site configuration separately, along with look and layout; moving values
+between owners can change semantics. The [guide's ownership table](../../../../docs/rendering/custom-diagram-themes.md#family-configuration-and-compiled-rules)
+owns these distinctions.
+
+## Paired appearances
+
+Compare two ordinary concrete recipes using current fields. Record shared intentions and
+exceptions for each appearance in the brief, then express them through each recipe's tokens, rules, and
+palettes. Matching token IDs do not create a live relationship between recipes. The current
+envelope defines no paired or conditional-value fields. Catalog `appearance` classifies an entry;
+`design.mermaid.dark_mode` is a compatibility input, not a resolver for paired designs. Keep
+selection and export conditions explicit as described in [runtime.md](runtime.md#appearance-and-viewer-backing).
 
 ## Backgrounds and shadows
 
@@ -49,6 +78,7 @@ Canvas paint belongs to the exported image. Preview backing belongs to the viewe
 of the recipe. Omission retains base renderer behavior; `"transparent"` explicitly requests no
 base paint but retains decorative layers. Clearing all background paint requires removing the
 layers as an intentional change. Node surfaces and diagram-owned background shapes are separate.
+The canvas base is paint, not a patch field: use `"transparent"`, not `null`.
 
 A `shadow-stack` uses `composition: "independent"` for shadows from the original shape, or
 `"cascade"` for successive effects on the preceding result. `offset_x`, `offset_y`, and
