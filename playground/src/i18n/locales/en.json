@@ -465,7 +465,10 @@
       "pop-art": "A printed poster with bright color blocks, bold outlines, and hard offset shadows.",
       "lacquer": "Deep lacquer panels, fine gold edges, and quiet serif titles on a warm black ground.",
       "paper-cut": "Layered mint cards, coral and teal paper edges, and soft contact shadows on warm cotton stock.",
-      "aurora": "Mint and violet light ribbons over an indigo night, with suspended panels and clear starlight text."
+      "aurora": "Mint and violet light ribbons over an indigo night, with suspended panels and clear starlight text.",
+      "metro": "Station-yellow signs, cyan routes, and flat information panels on a midnight concourse.",
+      "carbon-copy": "Typewritten records on warm paper, with violet carbon edges and vermilion review marks.",
+      "signal": "Charcoal equipment plates, safety-yellow edges, and restrained perimeter warning tape."
     }
   },
   "themePanel": {
@@ -765,7 +768,10 @@
       "pop-art": "Poster colors · bold contours · hard ink offsets",
       "lacquer": "Lacquer panels · fine gold edges · serif titles",
       "paper-cut": "Layered paper · coral and teal cut edges · soft depth",
-      "aurora": "Gradient night · curved light ribbons · suspended panels"
+      "aurora": "Gradient night · curved light ribbons · suspended panels",
+      "metro": "Station signs · flat panels · clear route colors",
+      "carbon-copy": "Violet carbon edges · typewritten records · review marks",
+      "signal": "Equipment plates · hard mounted edges · warning stripes"
     },
     "back": "All designs",
     "apply": "Apply to my diagram",

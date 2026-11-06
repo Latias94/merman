@@ -156,9 +156,9 @@ These two local display preferences are remembered separately.
 
 ### Standalone explorations and example scenes
 
-Open **Theme designs** from the toolbar or the Appearance panel to browse twelve standalone
-recipes. Riso, Pop Art, Field Notes, Lacquer, Paper Cut and Aurora lead the collection, followed by
-Phosphor, Letterpress, Grove, Atlas, Nightfall and Blueprint. Each card combines several diagram
+Open **Theme designs** from the toolbar or the Appearance panel to browse fifteen standalone
+recipes. Riso, Pop Art, Metro, Carbon Copy and Signal lead the collection, followed by Field Notes,
+Lacquer, Paper Cut, Aurora, Phosphor, Letterpress, Grove, Atlas, Nightfall and Blueprint. Each card combines several diagram
 previews; opening a design shows Flowchart, Sequence,
 Class, XY Chart, and Pie together. Browsing does not change the workspace. **Apply to my diagram**
 uses the recipe on the current source, base theme, font, and configuration. These are not core preset IDs: use their downloaded recipe
@@ -216,6 +216,8 @@ measurement for Class as well. Lacquer Class explicitly loads Georgia, Avenir an
 mixed serif, supporting text and signature roles.
 Paper Cut Class uses Avenir; Aurora Class uses Menlo and Avenir. The named font files must match
 the recipe when regenerating these assets.
+Metro Class uses Helvetica Neue, Carbon Copy uses Menlo and Avenir, and Signal uses Menlo and
+Avenir Next Condensed. These previews use bounded native measurement for their class compartments.
 
 Riso's small opposing shadows suggest ink registration offsets on supported bodies; they do not
 simulate physical ink mixing or paper noise. Phosphor scopes glow to connections, activations,
@@ -227,6 +229,10 @@ poster colors, bold contours and offset ink. Lacquer pairs deep panels with asym
 and a restrained canvas sheen. Their dedicated treatments also cover the same five families.
 Paper Cut uses independent hard paper edges plus soft contact depth. Aurora combines a gradient
 night canvas, radial light ribbons and supported panel halos; text remains unfiltered.
+Metro uses flat station signs and distinct route colors on a dark concourse. Carbon Copy uses
+violet side impressions, typewritten records and red review marks. Signal uses charcoal equipment
+plates, hard mounting edges and warning stripes confined to the canvas perimeter. Their Class
+treatments rely on paint and typography rather than unsupported body effects.
 
 These designs also illustrate current authoring limits:
 
@@ -237,6 +243,7 @@ These designs also illustrate current authoring limits:
 | Flowchart cluster-label weight or a local XY legend font stack | These role paths report `unsupported-typography`. Shared or family typography can still apply; support is property-specific. |
 | Blur the scene behind a panel | Effects take the source graphic or previous effect result, not a backdrop input. Transparency and halos cannot reproduce backdrop blur. |
 | Unlimited radial-gradient positioning | Percentage centers and radii have a validated range. Out-of-range values are rejected rather than silently clipped. |
+| Add export margins with `canvas.bleed` | The field parses but currently reports `canvas / no-consumer` in the five example families. Use diagram layout options for spacing and inspect the rendered bounds. Signal's warning tape is a canvas layer whose thickness scales with viewport height; review it on unusually tall diagrams. |
 
 Theme verification accounts for requested styling, not browser text bounds. During design,
 deterministic XY legend reservations differed from actual Avenir and Menlo widths by roughly

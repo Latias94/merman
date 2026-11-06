@@ -46,6 +46,24 @@ import auroraSequence from "./previews/aurora-sequence.svg?url";
 import auroraClass from "./previews/aurora-class.svg?url";
 import auroraXychart from "./previews/aurora-xychart.svg?url";
 import auroraPie from "./previews/aurora-pie.svg?url";
+import metroRecipe from "./recipes/metro.theme.json?raw";
+import metroFlowchart from "./previews/metro-flowchart.svg?url";
+import metroSequence from "./previews/metro-sequence.svg?url";
+import metroClass from "./previews/metro-class.svg?url";
+import metroXychart from "./previews/metro-xychart.svg?url";
+import metroPie from "./previews/metro-pie.svg?url";
+import carbonCopyRecipe from "./recipes/carbon-copy.theme.json?raw";
+import carbonCopyFlowchart from "./previews/carbon-copy-flowchart.svg?url";
+import carbonCopySequence from "./previews/carbon-copy-sequence.svg?url";
+import carbonCopyClass from "./previews/carbon-copy-class.svg?url";
+import carbonCopyXychart from "./previews/carbon-copy-xychart.svg?url";
+import carbonCopyPie from "./previews/carbon-copy-pie.svg?url";
+import signalRecipe from "./recipes/signal.theme.json?raw";
+import signalFlowchart from "./previews/signal-flowchart.svg?url";
+import signalSequence from "./previews/signal-sequence.svg?url";
+import signalClass from "./previews/signal-class.svg?url";
+import signalXychart from "./previews/signal-xychart.svg?url";
+import signalPie from "./previews/signal-pie.svg?url";
 import type { ThemeSampleId } from "./samples";
 import atlasRecipe from "./recipes/atlas.theme.json?raw";
 import nightfallRecipe from "./recipes/nightfall.theme.json?raw";
@@ -93,6 +111,24 @@ export const EXPLORATION_THEMES: readonly ExplorationTheme[] = [
     colors: ["#FFF9E8", "#FFE500", "#F32888", "#31D5E8"],
     recipeJson: popArtRecipe,
     previews: { flowchart: popArtFlowchart, sequence: popArtSequence, class: popArtClass, xychart: popArtXychart, pie: popArtPie },
+  },
+  {
+    id: "metro", name: "Metro", appearance: "dark",
+    colors: ["#071B2C", "#FFE347", "#63DCE5", "#F4F3E9"],
+    recipeJson: metroRecipe,
+    previews: { flowchart: metroFlowchart, sequence: metroSequence, class: metroClass, xychart: metroXychart, pie: metroPie },
+  },
+  {
+    id: "carbon-copy", name: "Carbon Copy", appearance: "light",
+    colors: ["#F2EDDF", "#4B2C63", "#76508E", "#A53B32"],
+    recipeJson: carbonCopyRecipe,
+    previews: { flowchart: carbonCopyFlowchart, sequence: carbonCopySequence, class: carbonCopyClass, xychart: carbonCopyXychart, pie: carbonCopyPie },
+  },
+  {
+    id: "signal", name: "Signal", appearance: "light",
+    colors: ["#F3F0E5", "#22251F", "#F7D938", "#E66B2D"],
+    recipeJson: signalRecipe,
+    previews: { flowchart: signalFlowchart, sequence: signalSequence, class: signalClass, xychart: signalXychart, pie: signalPie },
   },
   {
     id: "field-notes", name: "Field Notes", appearance: "light",

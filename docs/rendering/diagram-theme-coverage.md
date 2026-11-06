@@ -53,8 +53,8 @@ Classic. A coarse conditional support query does not promise the effect under th
 Other families can have Mermaid look decorations without consuming compiled theme effects.
 
 The 11 built-in presets share paint and typography defaults, with selected family-specific rules.
-Their catalog design scope is narrower than runtime theme availability. The twelve Playground
-explorations (Riso, Pop Art, Field Notes, Lacquer, Paper Cut, Aurora, Phosphor, Letterpress, Grove,
+Their catalog design scope is narrower than runtime theme availability. The fifteen Playground
+explorations (Riso, Pop Art, Metro, Carbon Copy, Signal, Field Notes, Lacquer, Paper Cut, Aurora, Phosphor, Letterpress, Grove,
 Atlas, Nightfall and Blueprint) have dedicated examples and scoped rules for
 Flowchart, Sequence, Class, XY Chart and Pie. Other families can receive shared text, font, palette
 or canvas values; those changes do not establish a dedicated design for that family.

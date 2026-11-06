@@ -7,7 +7,7 @@ import { DEFAULT_WORKSPACE_SNAPSHOT } from "../src/lib/workspace-snapshot";
 import { optionalFeatureOutput } from "./helpers/build-manifest";
 import { expectNoDocumentOverflow, monitorBrowserErrors, waitForPreviewSvg } from "./helpers/playground";
 
-const designIds = ["riso", "phosphor", "field-notes", "atlas", "nightfall", "letterpress", "grove", "blueprint", "pop-art", "lacquer", "paper-cut", "aurora"];
+const designIds = ["riso", "pop-art", "metro", "carbon-copy", "signal", "field-notes", "lacquer", "paper-cut", "aurora", "phosphor", "letterpress", "grove", "atlas", "nightfall", "blueprint"];
 const workspace = { ...DEFAULT_WORKSPACE_SNAPSHOT, code: "flowchart LR\nA[Keep this diagram] --> B[Keep this source]",
   mermaidConfig: '{"flowchart":{"htmlLabels":false,"curve":"linear"}}', diagramTheme: "neutral" as const,
   diagramFont: "trebuchet" as const, themePresetId: "brutalist" };
@@ -64,7 +64,7 @@ test("design search and canvas filters reveal independent recipes across the col
   await page.getByRole("button", { name: "Theme designs", exact: true }).click();
   const gallery = page.getByTestId("theme-showcase");
   await gallery.getByRole("button", { name: "Dark", exact: true }).click();
-  await expect(gallery.locator("[data-theme-design-card]")).toHaveCount(5);
+  await expect(gallery.locator("[data-theme-design-card]")).toHaveCount(6);
   await expect(gallery.locator('[data-theme-design-card="phosphor"]')).toBeVisible();
   await gallery.getByRole("button", { name: "All designs", exact: true }).click();
   const search = gallery.getByRole("searchbox", { name: "Search designs", exact: true });

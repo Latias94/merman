@@ -47,7 +47,7 @@ test("one theme catalog loads with the appearance panel and searches every sourc
   await expect(page.locator("[data-theme-launcher]:visible")).toBeFocused();
   await page.locator("[data-theme-launcher]:visible").click();
   const catalog = panel.getByTestId("theme-catalog");
-  await expect(catalog.locator("[data-theme-exploration]")).toHaveCount(12);
+  await expect(catalog.locator("[data-theme-exploration]")).toHaveCount(15);
   await expect(catalog.locator('[data-theme-choice="mermaid:forest"]')).toBeVisible();
   await expect(catalog.locator('[data-theme-choice="preset:brutalist"]')).toHaveAttribute("aria-pressed", "true");
   expect(requests.some((url) => url.endsWith(galleryOutput))).toBe(true);
@@ -76,8 +76,8 @@ test("one theme catalog loads with the appearance panel and searches every sourc
     ["Mermaid.js official", "mermaid", 11],
     ["Merman built-in presets", "builtin", presetCount],
     ["--theme-preset", "builtin", presetCount],
-    ["Merman theme examples", "exploration", 12],
-    ["Merman example · JSON", "exploration", 12],
+    ["Merman theme examples", "exploration", 15],
+    ["Merman example · JSON", "exploration", 15],
   ] as const) {
     await search.fill(query);
     await expect(groups).toHaveCount(1);
@@ -91,7 +91,7 @@ test("one theme catalog loads with the appearance panel and searches every sourc
   await expect(search).toHaveValue("");
   await expect(groups).toHaveCount(4);
   await expect(choices).toHaveCount(1);
-  await expect(catalog.locator("[data-theme-exploration]")).toHaveCount(12);
+  await expect(catalog.locator("[data-theme-exploration]")).toHaveCount(15);
   await expect(panel).toBeVisible();
   await expect(panel.getByTestId("theme-current-name")).toHaveText("Brutalist");
   errors.assertNone();
@@ -132,7 +132,7 @@ test("catalog groups separate automatic selection from the eleven official theme
   await expect(official.locator("[data-theme-source-label]")).toHaveText(Array(11).fill("Mermaid.js official"));
   await expect(official).toContainText("Compare");
   await expect(choices.locator('[data-theme-group="builtin"]')).toContainText('theme: { preset: "…" }');
-  await expect(choices.locator('[data-theme-group="exploration"] [data-theme-choice]')).toHaveCount(12);
+  await expect(choices.locator('[data-theme-group="exploration"] [data-theme-choice]')).toHaveCount(15);
   for (const [group, source] of [["builtin", "Merman preset"], ["exploration", "Merman example · JSON"]]) {
     const entries = choices.locator(`[data-theme-group="${group}"] [data-theme-choice]`);
     const names = await entries.locator("[data-theme-choice-name]").allTextContents();
@@ -200,7 +200,7 @@ test("the unified catalog fits a narrow viewport and closing retains the selecte
   errors.assertNone();
 });
 
-for (const id of ["atlas", "nightfall", "letterpress", "grove", "riso", "phosphor", "field-notes", "blueprint", "pop-art", "lacquer", "paper-cut", "aurora"]) {
+for (const id of ["atlas", "nightfall", "letterpress", "grove", "riso", "phosphor", "field-notes", "blueprint", "pop-art", "lacquer", "paper-cut", "aurora", "metro", "carbon-copy", "signal"]) {
   test(`${id} renders all five samples with the browser runtime`, async ({ page }) => {
     const errors = monitorBrowserErrors(page);
     await page.addInitScript(() => {
@@ -240,6 +240,7 @@ for (const id of ["atlas", "nightfall", "letterpress", "grove", "riso", "phospho
           riso: "rgb(35, 63, 120)", phosphor: "rgb(226, 239, 215)", "field-notes": "rgb(44, 75, 57)",
           blueprint: "rgb(227, 243, 250)", "pop-art": "rgb(25, 22, 32)", lacquer: "rgb(242, 233, 214)",
           "paper-cut": "rgb(36, 62, 74)", aurora: "rgb(235, 245, 255)",
+          metro: "rgb(244, 243, 233)", "carbon-copy": "rgb(75, 44, 99)", signal: "rgb(34, 37, 31)",
         };
         const labels = await page.locator(".preview-container > div").first().evaluate((host) =>
           Array.from(host.shadowRoot!.querySelectorAll<SVGTextElement>(".edgeLabel text"))
