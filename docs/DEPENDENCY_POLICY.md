@@ -29,6 +29,8 @@ The [upstream language adapter](https://github.com/tree-sitter/tree-sitter/blob/
 
 Wasmi 2 tooling explicitly enables `validate`, `stable`, `simd`, and `auto-dispatch` while disabling defaults. `auto-dispatch` selects loop dispatch for unoptimized host builds, where native tail-call optimization is unavailable; omitting it can overflow the host stack during ordinary plugin execution. The long-loop interpreter regression and actual Typst package smoke cover this migration.
 
+The 2026-11-06 audit selected JNI 0.22.4, the latest stable release. Its [native-method macro](https://docs.rs/crate/jni-macros/0.22.4/source/src/native_method.rs) emits `AtomicBool::fetch_update`, deprecated on the selected Rust 1.99 toolchain in favor of `try_update`. Keep the dependency's ABI checks enabled and limit the deprecation allowance to the three generated JNI method tables. Android-target Clippy still denies warnings for the transport; remove these allowances when an admitted JNI release updates the generated call.
+
 ## Reference tools and JavaScript compatibility
 
 The 0.9.0 preparation audit selected Mermaid 12.1.0. Development selects 12.3.0 through the
