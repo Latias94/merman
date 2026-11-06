@@ -29,13 +29,13 @@ Try the [Playground] for more examples; its hosted build follows its deployed pa
 
 ## Quick start
 
-This guide targets `0.10.0-alpha.1`. For a prebuilt renderer, [choose by host and required output](docs/release/PREBUILT_PRODUCTS.md); that guide records the independently published channel versions. See the [changelog](CHANGELOG.md#0100-alpha1---2026-11-02) for the alpha's features and required migrations from `0.9.3`.
+This guide targets the `0.10.0-alpha.2` candidate, which has not yet been published. For a prebuilt renderer, [choose by host and required output](docs/release/PREBUILT_PRODUCTS.md); that guide records the independently published channel versions. See the [changelog](CHANGELOG.md#0100-alpha2---unreleased) for the candidate's features and upgrade notes.
 
 With Rust 1.95 or later, add Merman to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-merman = "=0.10.0-alpha.1"
+merman = "=0.10.0-alpha.2"
 ```
 
 Render a source string to SVG:

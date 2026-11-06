@@ -26,7 +26,7 @@ export type ExampleEvidence =
       readonly claim: string;
     };
 
-export const PLAYGROUND_MERMAN_VERSION = "0.10.0-alpha.1" as const;
+export const PLAYGROUND_MERMAN_VERSION = "0.10.0-alpha.2" as const;
 
 export const PLAYGROUND_EXAMPLE_BASELINE = "mermaid@12.3.0" as const;
 

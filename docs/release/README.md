@@ -4,7 +4,7 @@ Use this index to choose an upgrade path by the version you have installed. Stab
 
 ## Merman 0.10.0-alpha.2 (planned)
 
-**Planned for `0.10.0-alpha.2`; not yet released.** The [alpha.2 changelog](../../CHANGELOG.md#0100-alpha2---unreleased) records the development changes since alpha.1. Workspace metadata remains `0.10.0-alpha.1` during this preparation; it does not identify a published alpha.2 package.
+**Planned for `0.10.0-alpha.2`; not yet released.** The [alpha.2 changelog](../../CHANGELOG.md#0100-alpha2---unreleased) records the development changes since alpha.1. Workspace metadata is projected to the alpha.2 candidate; it does not identify a published package.
 
 Current source selects Mermaid `12.3.0` and the selected ELK `0.12.1` behavior. Start with the [Mermaid 12.3 migration](../migrations/mermaid-12-3.md) for Rust model changes, layout dependencies, Step animation and static output. Custom hosts also need the [binding contract migration](UNRELEASED_CONTRACT_VERSIONS.md#source-appearance-and-render-evidence-follow-up): Web transport API `9`, analysis facts schema `3` and theme execution evidence schema `2` replace alpha.1's `8`, `2` and `1`. Build wrappers and native/WASM artifacts together from the same source revision.
 
