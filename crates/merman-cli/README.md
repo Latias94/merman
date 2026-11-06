@@ -4,7 +4,7 @@
 
 Render, inspect, and lint Mermaid without Node.js, Puppeteer, Chromium, or another JavaScript runtime. The source-default binary includes SVG, PNG, JPEG, vector PDF, ASCII/Unicode, analysis, Markdown batch rendering, Cytoscape layout, icons, completions, and native runtime adapters. Official release archives additionally select math explicitly. Current development source defaults omit math; select the `math` feature to include it. The current source default includes the Rustdoc fragment command and ELK, with its EPL-2.0 notices and source provenance; explicit lean builds can omit it.
 
-This guide targets the unpublished `0.10.0-alpha.2` release candidate, including compiled themes. Build the candidate from a matching reviewed source checkout; registry install examples for alpha.2 apply after publication. Check `merman-cli --version` and `merman-cli capabilities --json` for your installed binary; see the [changelog](../../CHANGELOG.md#0100-alpha2---unreleased) for upgrade actions and the [host guide](../../docs/release/PREBUILT_PRODUCTS.md) for channel availability. Native font defaults for PNG/JPEG/PDF already shipped in `0.9.3`.
+This guide covers `0.10.0-alpha.2`, including compiled themes. Check `merman-cli --version` and `merman-cli capabilities --json` for your installed binary; see the [changelog](../../CHANGELOG.md#0100-alpha2---2026-11-06) for upgrade actions and the [host guide](../../docs/release/PREBUILT_PRODUCTS.md) for available versions and installation channels. Native font defaults for PNG/JPEG/PDF already shipped in `0.9.3`.
 
 The command line has four explicit workflows:
 
@@ -17,7 +17,7 @@ The command line has four explicit workflows:
 
 ## Install
 
-To install the published `0.10.0-alpha.1` binary, pin that version with cargo-binstall. This does not install the alpha.2 candidate:
+To install the verified `0.10.0-alpha.1` binary, pin that version with cargo-binstall:
 
 ```sh
 cargo binstall merman-cli@0.10.0-alpha.1
@@ -39,7 +39,7 @@ Windows users can install from Scoop's main bucket:
 scoop install merman-cli
 ```
 
-External package managers update on their own schedule. Check the installed version against the [dated release record](../../docs/release/PUBLISH_ORDER.md#091-publication-snapshot).
+External package managers update on their own schedule. Check the installed version against the [host guide](../../docs/release/PREBUILT_PRODUCTS.md).
 
 Starting with `0.8.0-alpha.5`, version-specific [GitHub Releases](https://github.com/Latias94/merman/releases) also provide `merman-cli-installer.sh` and `merman-cli-installer.ps1`. Download an installer from the chosen release rather than a moving URL; it installs only the binary and fails closed if the archive SHA-256 cannot be verified.
 
@@ -59,7 +59,7 @@ The source default includes ELK; alpha.6 source defaults omitted it. Project rel
 | Homebrew formula | Formula source build or Homebrew bottle | Controlled by the selected formula; inspect its support-asset installation | External stable channel; selected formula version governs |
 | Repository Nix package | Built from locked repository source | Bash, Zsh, Fish, PowerShell, Elvish, and man pages installed | First-party source interface, not a registry package |
 | `cargo install` | Built from crates.io, Git, or a checkout | Not installed | Registry or source revision selected by the user |
-| Scoop and WinGet | Verified Windows x86_64 release archive | Not installed | Upstream manifests govern availability; see the dated [release record](../../docs/release/PUBLISH_ORDER.md) |
+| Scoop and WinGet | Verified Windows x86_64 release archive | Not installed | Upstream manifests govern availability; see the [host guide](../../docs/release/PREBUILT_PRODUCTS.md) |
 
 Nix users can run `nix run . -- --version` or `nix profile install .` from a checkout at the exact accepted preflight commit. This source package is separate from the precompiled Linux archive compatibility claim.
 
@@ -559,11 +559,7 @@ Use repeatable `--rule RULE_ID` or `--fix STABLE_FIX_ID` selectors when automati
 
 ## Choose A Build
 
-The `0.10.0-alpha.2` candidate source defaults to the standard diagram CLI with `all-diagrams`.
-The Rustdoc authoring command remains available in the default and release builds.
-For a slim current-source binary, disable defaults and select the required `diagram-*` families
-plus operation leaves. Use `all-diagrams` to retain the prior language surface. The recipes below select families
-explicitly:
+The `0.10.0-alpha.2` source defaults to the standard diagram CLI with `all-diagrams`. The Rustdoc authoring command remains available in the default and release builds. For a slim binary, disable defaults and select the required `diagram-*` families plus operation leaves. Use `all-diagrams` to retain the prior language surface. The recipes below select families explicitly:
 
 | Build | Capabilities |
 | --- | --- |
@@ -579,8 +575,7 @@ explicitly:
 | `--no-default-features --features all-diagrams,png` | SVG plus PNG only |
 | `--no-default-features --features all-diagrams,pdf` | SVG plus vector PDF only |
 
-Install a lint-only candidate binary after registry publication (before then, use
-`--path crates/merman-cli` instead of the package name and `--version`):
+Install a lint-only binary:
 
 ```sh
 cargo install merman-cli --version 0.10.0-alpha.2 --locked \
@@ -746,7 +741,7 @@ merman-cli completion fish > merman-cli.fish
 merman-cli completion powershell > merman-cli.ps1
 ```
 
-Release archives beginning with `0.8.0-alpha.5` also carry deterministic completion snapshots and manual pages so downstream package definitions can install shell integration without executing a foreign-target binary during packaging. These assets are generated from the same Clap command tree and checked for drift in CI. Homebrew stable integration is monitored by this repository. Scoop's main bucket provides `merman-cli`; the [release record](../../docs/release/PUBLISH_ORDER.md) records independently verified package-manager versions and pending submissions. Stable package-manager channels do not select this alpha.
+Release archives beginning with `0.8.0-alpha.5` also carry deterministic completion snapshots and manual pages so downstream package definitions can install shell integration without executing a foreign-target binary during packaging. These assets are generated from the same Clap command tree and checked for drift in CI. Homebrew stable integration is monitored by this repository. Scoop's main bucket provides `merman-cli`; see the [host guide](../../docs/release/PREBUILT_PRODUCTS.md) for available package-manager versions. Stable package-manager channels do not select this alpha.
 
 The checked-in completion and manual assets represent the canonical `cli-release` complete profile.
 For a custom slim build with `shell-completions`, generate completion from that binary at runtime so

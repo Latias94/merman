@@ -1,8 +1,8 @@
 # Changelog
 
-## [0.10.0-alpha.2] - Unreleased
+## [0.10.0-alpha.2] - 2026-11-06
 
-Planned changes since `0.10.0-alpha.1`; this Dart/Flutter package has not yet been released. See the [host installation guide](../../docs/release/PREBUILT_PRODUCTS.md) for published versions.
+Changes since `0.10.0-alpha.1`. See the [host installation guide](../../docs/release/PREBUILT_PRODUCTS.md) for independently verified package availability.
 
 ### Breaking changes
 

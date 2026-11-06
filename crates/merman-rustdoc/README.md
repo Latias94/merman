@@ -6,7 +6,7 @@ Render Mermaid diagrams as inline SVG while `cargo doc` runs. Generated rustdoc 
 
 `merman-rustdoc` rewrites Mermaid fences and `include_mmd!` lines in item documentation. Diagram failures can fail CI before documentation is published, and the resulting SVG remains part of the generated HTML.
 
-> This guide and its dependency examples target the unpublished `merman-rustdoc 0.10.0-alpha.2` release candidate. Registry examples apply after publication; use a matching source checkout before then.
+> This guide and its dependency examples cover `merman-rustdoc 0.10.0-alpha.2`. See the [host guide](../../docs/release/PREBUILT_PRODUCTS.md) for available versions and installation channels.
 
 > The offline resource defaults and resource-budget options documented below are new in `0.8.0`. Published `0.8.0-alpha.7` uses the interactive 800,000-unit budget and does not expose these options.
 
@@ -131,11 +131,7 @@ inclusion, Git rollback, and migration from this attribute form.
 
 ## Choose The Renderer Closure
 
-The `0.10.0-alpha.2` candidate defaults to `all-diagrams`, `svg`, `layout-cytoscape`, and
-`layout-elk`: all built-in families and deterministic SVG rendering with both layout engines.
-Math is opt-in; add `math` when diagrams contain mathematical labels. The retained `complete-svg` (SVG and Cytoscape) and `complete-svg-elk` (also ELK), but neither
-aggregate enables math or selects diagram families. Users of the previously math-enabled
-aggregates or alpha.6's math-enabled default must enable `math` explicitly when upgrading.
+The `0.10.0-alpha.2` defaults are `all-diagrams`, `svg`, `layout-cytoscape`, and `layout-elk`: all built-in families and deterministic SVG rendering with both layout engines. Math is opt-in; add `math` when diagrams contain mathematical labels. The retained `complete-svg` aggregate enables SVG and Cytoscape; `complete-svg-elk` also enables ELK. Neither aggregate enables math or selects diagram families. Users of the previously math-enabled aggregates or alpha.6's math-enabled default must enable `math` explicitly when upgrading.
 
 The default includes the EPL-2.0 ELK implementation; distributed artifacts must retain the
 corresponding notices and source provenance. It does not enable host clock, time-zone, random,

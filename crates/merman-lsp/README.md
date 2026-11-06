@@ -11,7 +11,7 @@ code actions, symbols, and folding. Syntax highlighting uses the canonical
 [Merman VS Code extension](https://github.com/Latias94/merman/tree/main/tools/vscode-extension#readme)
 for an integrated editor experience.
 
-This guide targets the unpublished `merman-lsp 0.10.0-alpha.2` release candidate. Registry install and dependency examples target that candidate after publication; build from a matching source checkout before then. Match the documentation and generated artifacts to the version installed in your project.
+This guide covers `merman-lsp 0.10.0-alpha.2`. Match the documentation and generated artifacts to the version installed in your project. See the [host guide](../../docs/release/PREBUILT_PRODUCTS.md) for available versions and installation channels.
 
 ## Install The Stdio Server
 

@@ -2,13 +2,7 @@
 
 Use Merman's Rust parser, renderers, analysis, and editor APIs in a browser through WebAssembly.
 
-This guide and its installation and import examples target the unpublished `0.10.0-alpha.2`
-release candidate. Before publication, use matching source-built packages as described in
-[Develop from source](#develop-from-source); the registry command below applies after publication.
-Check the
-[prebuilt product status](../../docs/release/PREBUILT_PRODUCTS.md) and
-[publish order](../../docs/release/PUBLISH_ORDER.md) for verified public availability. See the
-[current changelog](../../CHANGELOG.md) for changes and upgrade actions.
+This guide documents `0.10.0-alpha.2`. Check the [host installation guide](../../docs/release/PREBUILT_PRODUCTS.md#published-versions) for verified versions and channel availability. See the [current changelog](../../CHANGELOG.md) for changes and upgrade actions.
 
 Start with `@mermanjs/web` when evaluating Merman or when one browser realm needs several
 workflows. Choose a focused package when the application has one isolated workflow and the smaller
@@ -25,18 +19,12 @@ static-site builds, use [`@mermanjs/node`](../node/packages/node/README.md).
 | Editor intelligence in a Worker | [`@mermanjs/web-editor`](packages/editor/README.md) | Analysis and parser-backed editor sessions |
 | ASCII or Unicode output | [`@mermanjs/web-ascii`](packages/ascii/README.md) | Supported terminal-oriented diagram output |
 
-All browser packages in the `0.10.0-alpha.2` candidate use one lockstep version, Web transport API `9`,
-and [Options JSON schema `3`](../../docs/bindings/OPTIONS_JSON.md). They target Mermaid `12.3.0`;
-analysis-capable packages use facts schema `3`, SVG-capable packages use theme execution evidence
-schema `2`, and ASCII-capable packages use schema-3 ASCII output. Keep the package facade,
-generated glue, and WASM binary at the same exact version and source revision.
+All browser packages in `0.10.0-alpha.2` use one lockstep version, Web transport API `9`, and [Options JSON schema `3`](../../docs/bindings/OPTIONS_JSON.md). They target Mermaid `12.3.0`; analysis-capable packages use facts schema `3`, SVG-capable packages use theme execution evidence schema `2`, and ASCII-capable packages use schema-3 ASCII output. Keep the package facade, generated glue, and WASM binary at the same exact version and source revision.
 
 The [Mermaid 12.3 migration](../../docs/migrations/mermaid-12-3.md) describes Step animations,
 their closed browser admission, and the static SVG projection used for native export.
 
-Published `0.10.0-alpha.1` retains Mermaid `12.2.0`, Web transport API `8`, facts schema `2` and theme execution
-evidence schema `1`. Those published artifacts do not implement the candidate contracts. Use matching
-source-built packages for the [candidate contracts](../../docs/release/UNRELEASED_CONTRACT_VERSIONS.md#source-appearance-and-render-evidence-follow-up).
+Version `0.10.0-alpha.1` retains Mermaid `12.2.0`, Web transport API `8`, facts schema `2`, theme execution evidence schema `1`, and Options JSON schema `3`. Upgrade the facade, generated glue, and WASM together when adopting alpha.2, and update JSON consumers for the [source appearance and render-evidence changes](../../docs/release/UNRELEASED_CONTRACT_VERSIONS.md#source-appearance-and-render-evidence-follow-up).
 
 Full/render products include mathematical labels, Cytoscape and ELK layouts, compiled themes,
 prepared-source reuse, and mounted-diagram updates with explicit Kanban width adaptation.

@@ -29,9 +29,7 @@ The grammar has its own version line, independent of Merman. Its npm and Cargo a
 grammar version, but their registry names differ: the npm package is scoped under `@mermanjs`, while
 the Rust crate and C library retain the standard `tree-sitter-mermaid` name.
 
-This guide targets the **unreleased `0.3.3` candidate**. The latest published version is `0.3.2`;
-the `0.3.3` installation examples below apply after its independent publication. This patch refreshes
-the npm development-tool lockfile (`semver` 7.8.5 to 7.8.6 and `undici` 8.12.3 to 8.12.4).
+This guide targets `0.3.3`. The patch refreshes the npm development-tool lockfile (`semver` 7.8.5 to 7.8.6 and `undici` 8.12.3 to 8.12.4). Check the [independent publication record](https://github.com/Latias94/merman/blob/main/docs/release/PUBLISH_ORDER.md#0100-alpha2-preparation) for verified registry availability.
 Accepted syntax, queries, Mermaid/ZenUML baselines, language ABI 15, runtime versions, and the Rust
 `cc` minimum of `1.10.0` remain unchanged. See [CHANGELOG.md](CHANGELOG.md) for package changes.
 Match the examples to the version installed in your project; earlier versions have their own tagged

@@ -4,15 +4,9 @@ The complete browser SDK for SVG rendering, analysis, ASCII output, and parser-b
 intelligence. Start here when evaluating Merman or when one browser realm needs more than one
 workflow.
 
-This guide targets the unpublished `0.10.0-alpha.2` release candidate with Web transport API `9`,
-facts schema `3`, theme execution evidence schema `2` and Options JSON schema `3`. Build matching
-facade, glue and WASM from one reviewed source revision before publication; the registry command
-below applies after publication. Published `0.10.0-alpha.1` retains Web transport API `8`, facts
-schema `2`, theme execution evidence schema `1` and Options JSON schema `3`. See the
-[development migration](https://github.com/Latias94/merman/blob/main/docs/release/UNRELEASED_CONTRACT_VERSIONS.md#source-appearance-and-render-evidence-follow-up). Check the
-[prebuilt product status](https://github.com/Latias94/merman/blob/main/docs/release/PREBUILT_PRODUCTS.md)
-and [publish order](https://github.com/Latias94/merman/blob/main/docs/release/PUBLISH_ORDER.md)
-for verified public availability.
+Version `0.10.0-alpha.2` uses Web transport API `9`, facts schema `3`, theme execution evidence schema `2`, and Options JSON schema `3`. Keep the facade, generated glue, and WASM at the same exact version and source revision. Check the [host installation guide](https://github.com/Latias94/merman/blob/main/docs/release/PREBUILT_PRODUCTS.md#published-versions) for verified versions and channel availability.
+
+Version `0.10.0-alpha.1` retains Web transport API `8`, facts schema `2`, theme execution evidence schema `1`, and Options JSON schema `3`. Upgrade all package assets together and update JSON consumers for the [source appearance and render-evidence changes](https://github.com/Latias94/merman/blob/main/docs/release/UNRELEASED_CONTRACT_VERSIONS.md#source-appearance-and-render-evidence-follow-up).
 
 The package includes math, Cytoscape and ELK for SVG rendering. Its analysis, editor and ASCII
 operations share one initialized runtime.

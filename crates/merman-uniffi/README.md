@@ -4,7 +4,7 @@
 
 Generate high-level native bindings for Merman's headless Mermaid parser, analyzer, layout engine, and renderers with [UniFFI](https://mozilla.github.io/uniffi-rs/). This crate is the source of the published Python package and the Apple SwiftPM package; native hosts that need a stable language-neutral C boundary should use [`merman-ffi`](https://crates.io/crates/merman-ffi).
 
-> The unpublished Merman `0.10.0-alpha.2` release candidate uses direct UniFFI binding API `7` and Options JSON schema `3`. The unchanged UniFFI number does not make wrappers from other releases interchangeable. The C ABI and text-measurement protocol have independent versions. Regenerate bindings and ship them with the exact native library used to generate them.
+> Merman `0.10.0-alpha.2` uses direct UniFFI binding API `7` and Options JSON schema `3`. The unchanged UniFFI number does not make wrappers from other releases interchangeable. The C ABI and text-measurement protocol have independent versions. Regenerate bindings and ship them with the exact native library used to generate them.
 
 ## Use A Language Wrapper
 
@@ -14,7 +14,7 @@ Most applications should not generate UniFFI bindings themselves:
 - Swift users consume the [Merman Apple package](https://github.com/Latias94/merman/tree/main/platforms/apple#readme).
 - Hosts that need a language-neutral ABI use [`merman-ffi`](https://crates.io/crates/merman-ffi).
 
-Use this crate directly when maintaining one of those projections or building a new UniFFI host.
+See the [host guide](../../docs/release/PREBUILT_PRODUCTS.md) for available wrapper versions and installation channels. Use this crate directly when maintaining one of those projections or building a new UniFFI host.
 
 ## Build A Binding Library
 
@@ -55,8 +55,7 @@ The generated API shape remains stable for smaller feature profiles. Lint catalo
 
 Facts schema `3` requires per-diagram `appearance` evidence with `known` or `unknown` state. Known declarations carry exact source spans and provenance; they are distinct from render metadata. See the [source appearance migration](../../docs/release/UNRELEASED_CONTRACT_VERSIONS.md#source-appearance-and-render-evidence-follow-up).
 
-The facts-schema-3 description applies to the unpublished `0.10.0-alpha.2` candidate. Published `0.10.0-alpha.1`
-retains facts schema `2`; regenerate wrappers with the exact source-built native library for schema `3`.
+Merman `0.10.0-alpha.2` uses facts schema `3`; published `0.10.0-alpha.1` retains facts schema `2`. Regenerate wrappers from the exact native library for the selected release and ship them together.
 
 API 7 preserves theme-authoring diagnostics and exposes `requested_layout_profile` and `compact_attempted` in `MermanAsciiOutputPlan`,
 which uses ASCII output schema `3`. `layout_profile` reports the effective Canonical or Compact

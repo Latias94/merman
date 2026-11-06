@@ -10,15 +10,13 @@ It is browser-only. It is not a Node.js/SSR transport and is not the import-free
 
 ## Use The Public Packages
 
-See the [browser package guide](https://github.com/Latias94/merman/tree/main/platforms/web#readme) for version-matched installation, initialization, and package selection. Use the same release version for the transport contract and npm package artifacts.
+See the [host guide](../../docs/release/PREBUILT_PRODUCTS.md) for available versions and the [browser package guide](https://github.com/Latias94/merman/tree/main/platforms/web#readme) for version-matched installation, initialization, and package selection. Use the same release version for the transport contract and npm package artifacts.
 
 ## Transport Contract
 
 The generated transport exposes generic operation dispatch plus stable convenience functions for the capabilities compiled into its artifact profile. It can project SVG, semantic JSON, layout JSON, ASCII/Unicode, validation, diagnostics, document facts, metadata, and editor operations.
 
-The unpublished `0.10.0-alpha.2` release candidate reports the following contracts. Published `0.10.0-alpha.1`
-artifacts retain transport API `8`, facts schema `2` and theme execution evidence schema `1`; rebuild
-matching facade, glue and WASM from one revision to use the candidate contracts below.
+Merman `0.10.0-alpha.2` reports the following contracts. Published `0.10.0-alpha.1` artifacts retain transport API `8`, facts schema `2`, and theme execution evidence schema `1`. Upgrade the facade, glue, and WASM together; source builds must use one revision.
 
 - transport API version `9` (`0.10.0-alpha.1` used `8`; `0.9.3` used `5`);
 - runtime catalog schema `1`;

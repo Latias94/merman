@@ -165,6 +165,8 @@ uses the recipe on the current source, base theme, font, and configuration. Thes
 with CLI `--theme-file`, Rust `compile_recipe`, or Web `theme: recipe`. Their names and source
 labels are display metadata, not claims of runtime availability or family support.
 
+Use a direct link such as [Riso](https://frankorz.com/merman/?theme-design=riso) to open a design's five-family preview and integration examples without changing the current workspace.
+
 The inputs have separate purposes:
 
 | Material | Purpose | When to use it |

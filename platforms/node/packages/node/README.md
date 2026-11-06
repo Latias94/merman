@@ -3,13 +3,9 @@
 Native Mermaid-compatible SVG rendering for Node.js 22+ and static-site build pipelines, without
 Chromium, a browser-WASM fallback, or a postinstall binary download.
 
-This guide targets the unpublished `0.10.0-alpha.2` release candidate with Node binding API `1`,
-Options JSON schema `3`, and theme execution evidence schema `2`. Build the loader and native
-platform package from the same reviewed source revision before publication; the registry command
-below applies after candidate publication. Check the
-[prebuilt product status](https://github.com/Latias94/merman/blob/main/docs/release/PREBUILT_PRODUCTS.md)
-and [publish order](https://github.com/Latias94/merman/blob/main/docs/release/PUBLISH_ORDER.md)
-for verified public availability. The package remains experimental.
+Version `0.10.0-alpha.2` targets Mermaid `12.3.0` and uses Node binding API `1`, Options JSON schema `3`, and theme execution evidence schema `2`. Keep the loader and native platform package at the same exact version and source revision. Check the [host installation guide](https://github.com/Latias94/merman/blob/main/docs/release/PREBUILT_PRODUCTS.md#published-versions) for verified versions and channel availability. The package remains experimental.
+
+Version `0.10.0-alpha.1` retains Mermaid `12.2.0` and theme execution evidence schema `1`; Node binding API `1` and Options JSON schema `3` are unchanged. Upgrade the loader and platform package together and update evidence consumers for the [render-evidence changes](https://github.com/Latias94/merman/blob/main/docs/release/UNRELEASED_CONTRACT_VERSIONS.md#source-appearance-and-render-evidence-follow-up).
 
 ## Quick start
 

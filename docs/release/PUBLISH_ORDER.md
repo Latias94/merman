@@ -13,30 +13,46 @@ The main-line `0.10.0-alpha.1` is published for all 26 Rust crates, CLI/LSP, nat
 
 ## 0.10.0-alpha.2 preparation
 
-Selected for preparation on 2026-11-06 after [#279](https://github.com/Latias94/merman/pull/279),
-starting from main `1fc62283668c6c909b224aa499d8b98a418c1786`. This candidate includes the
-Mermaid 12.3 migration, expanded theme coverage and editable theme gallery, followed by a
-dependency and build-tool refresh. Publication, tags and registry writes have not been performed.
-The [alpha.2 changelog](../../CHANGELOG.md#0100-alpha2---unreleased) remains undated until the
-immutable release-preflight source is selected.
+Selected for preparation on 2026-11-06 after [#279](https://github.com/Latias94/merman/pull/279), starting from main `1fc62283668c6c909b224aa499d8b98a418c1786`. [#280](https://github.com/Latias94/merman/pull/280) merged at `e6733d6ae4daba7ff6d48782eaf0ab63a65b5041`, tree `0fcdd53438a708d79e11726059cda40a1a8c05b5`. The candidate includes the Mermaid 12.3 migration, expanded theme coverage and editable theme gallery, followed by a dependency and build-tool refresh. Its [PR CI](https://github.com/Latias94/merman/actions/runs/42186457151) passed 68 jobs and four conditional skips at tested merge `653339e24d419a588c18678466629e49fc13416b`; the merged main tree is identical. Main's own CI and the final source's immutable release preflight remain distinct evidence.
 
-The reference graph advances ELK to `0.12.1` and esbuild to `0.28.2`, with compatible D3 patches
-and Pie path behavior updated together. The [dependency policy](../DEPENDENCY_POLICY.md)
-records retained renderer, TypeScript and Mermaid companion contracts. Root Rust tooling is
-`1.99.1` with library MSRV `1.95`; host JavaScript tooling selects Node `26.13.0` and npm `12.2.2`.
-Independent `roughr-merman 0.12.6` and Tree-sitter Mermaid `0.3.3` are unpublished prerequisites;
-their owners must qualify and publish them before workspace dependents.
+The [alpha.2 changelog](../../CHANGELOG.md#0100-alpha2---2026-11-06) and five coupled platform projections use the intended tag date `2026-11-06`. Package READMEs describe target-version use; the host guide retains independently verified available downloads until each publishing owner succeeds. Date preparation does not establish publication. No alpha.2 release tag, registry upload or GitHub Release has been created by this readiness review.
 
-Qualification covers the workspace, CLI/LSP, Web and Node groups, C/WASI SDKs and the existing
-Python, Flutter, Android and Apple build owners. This preparation does not select new registry
-channels or public SwiftPM/Maven repositories. The alpha.1 publication and platform-backfill
-sections below retain the previously verified delivered versions. Record the final immutable
-source, successful preflight and explicitly selected publication channels before tagging.
+The reference graph advances ELK to `0.12.1` and esbuild to `0.28.2`, with compatible D3 patches and Pie path behavior updated together. The [dependency policy](../DEPENDENCY_POLICY.md) records retained renderer, TypeScript and Mermaid companion contracts. Root Rust tooling is `1.99.1` with library MSRV `1.95`; host JavaScript tooling selects Node `26.13.0` and npm `12.2.2`. Independent `roughr-merman 0.12.6` and Tree-sitter Mermaid `0.3.3` remain prerequisites whose owners must publish and verify registry visibility before coupled workspace dependents.
 
-The main CI failure in [42166940890](https://github.com/Latias94/merman/actions/runs/42166940890)
-occurred before Typst compilation: its offline metadata check had no prefetched
-`wasm-minimal-protocol` entry on a fresh runner. The candidate adds locked dependency prefetching
-to the Typst and other offline-check owners while preserving offline closure verification.
+The fresh-resolution admission owner passes the alpha.2 SVG/ASCII typed-family consumer and the previous alpha.1 facade. Alpha.1's exact sibling requirements select published alpha.1 packages, with no alpha.2 sibling patch used in that previous lane; mixed old/new compatibility is explicitly **not verified**. The independent-version guard reports Roughr `0.12.5 → 0.12.6` and grammar `0.3.2 → 0.3.3` against `v0.10.0-alpha.1`. Cargo metadata projects 26 coupled publishable crates. Prior PR verification and these local checks do not replace source-matched `scope=release` preflight.
+
+### Alpha.2 publication scope review
+
+The maintainer requested release readiness after merging #280. All existing product owners are selected for nonpublishing qualification. Publication remains deferred pending selection; the recommended scope is the complete alpha.1 product set plus its two independent prerequisites. A version projection, dated changelog or successful candidate build does not select an upload.
+
+| Delivery surface | Publication state for this readiness review | Public version observed on 2026-11-06 |
+| --- | --- | --- |
+| Rust workspace, 26 crates | deferred pending release selection | `0.10.0-alpha.1`; ordinary OIDC owners retain the three names bootstrapped for alpha.1 |
+| CLI/LSP | deferred pending release selection | `v0.10.0-alpha.1` prerelease archives; stable Latest remains `v0.9.3` |
+| Native C/WASI SDK | deferred pending release selection | alpha.1's 18 archives and 18 checksum sidecars |
+| Web npm, five members | deferred pending release selection | exact `0.10.0-alpha.1` under `alpha`; stable `latest=0.9.3` |
+| Node npm, nine members | deferred pending release selection | exact `0.10.0-alpha.1` under `alpha`; existing seven names retain stable `latest=0.9.3`, and both ARM64 names have `latest=alpha=0.10.0-alpha.1` |
+| Python / PyPI | deferred pending release selection | five `0.10.0a1` wheels; stable `0.9.3` |
+| Flutter / pub.dev and native assets | deferred pending release selection | `0.10.0-alpha.1` and its original native asset URLs; stable `0.9.3` |
+| Apple local SwiftPM / XCFramework | deferred pending release selection | seven alpha.1 assets on the primary workspace Release |
+| Android AAR / local Maven ZIP | deferred pending release selection | `io.merman:merman-android:0.10.0-alpha.1` as GitHub-hosted local-repository assets |
+| Roughr and Tree-sitter independent releases | deferred pending release selection | Roughr `0.12.5`; grammar Cargo/npm/GitHub `0.3.2` |
+| VS Code Marketplace, Typst wrapper, stable package managers, remote SwiftPM and Maven Central | deferred | Not selected by this readiness request; no new availability claim is made for these independent channels |
+
+Read-only observations at `2026-11-06T09:23–09:30Z` query all 26 Cargo names through the [API](https://crates.io/api/v1/crates/merman) and sparse index, all 14 [Web/Node npm members](https://registry.npmjs.org/@mermanjs%2fweb), [PyPI](https://pypi.org/pypi/merman/json), [pub.dev](https://pub.dev/api/packages/merman), and GitHub tags and Releases. No exact alpha.2 package, workspace/Flutter tag or Release is visible. The current alpha.1 Cargo API/index checksums agree for every member; GitHub metadata lists its 27 CLI/LSP assets, 36 SDK files, five wheels, seven Apple files and four Android files. This readiness observation does not re-download or re-attest historical asset bytes. All npm names already exist, so no new-name bootstrap is indicated. Existing GitHub release environments are present, but live Trusted Publisher exchange remains untested until each publishing owner runs.
+
+Both independent target-version API requests return 404, while their complete official sparse-index entries return 200 without the target version: [Roughr](https://index.crates.io/ro/ug/roughr-merman) remains at non-yanked `0.12.5`, and [Tree-sitter Mermaid](https://index.crates.io/tr/ee/tree-sitter-mermaid) at non-yanked `0.3.2`. Grammar npm, tag and Release are also `0.3.2`. Their existing API/index checksums agree with the alpha.1 independent receipts below. Stable package-manager, Marketplace, Typst Universe, Maven Central and remote SwiftPM availability was not reverified by this readiness review; those independently versioned or external channels remain deferred.
+
+### Alpha.2 owner sequence
+
+1. Freeze the final dated/documented candidate and dispatch `release-preflight.yml` with `scope=release`, its full source SHA and a workflow ref pointing to that same SHA. A successful run is mandatory before the workspace tag; the identical run HEAD also makes its 18 SDK archives eligible for later publication.
+2. After publication selection, run the independent Roughr owner and the tagged Tree-sitter owner. Verify exact Cargo API and sparse-index checksums, grammar npm integrity/provenance and any selected standalone grammar assets before coupled workspace uploads.
+3. Push immutable `v0.10.0-alpha.2` only after successful preflight and independent prerequisites. Its tag triggers Cargo and CLI/LSP. Web and Node publish their complete frozen groups under `alpha`; preserve existing stable tags.
+4. Wait for the public, non-draft primary Release before the selected SDK, Apple, Android and Python upload owners. The SDK publisher consumes the successful source-matched producer run without rebuilding. Android uses explicit group `io.merman` with `prepare_central_bundle=false`; Central signing and submission remain separately deferred.
+5. For selected Flutter publication, push `flutter-v0.10.0-alpha.2` at the same immutable workspace source only after the primary Release exists. This tag provides pub.dev authentication; all eleven native assets attach to `v0.10.0-alpha.2`, with no separate Flutter Release. Keep the existing publisher pattern and original alpha.1 URLs. The normal tag trigger does not require enabling manual-dispatch recovery.
+6. Reconcile every selected registry or public download against its retained producer bytes and provenance. Recover only through the original artifact and accepted-attempt history; do not move tags, overwrite assets, or rebuild a partially accepted npm/Flutter group.
+
+The original main CI failure in [42166940890](https://github.com/Latias94/merman/actions/runs/42166940890) was a missing dependency prefetch before Typst offline metadata. #280 adds the locked fetch, preserves offline verification, normalizes native color channels at full precision, explicitly exports the closed Typst linker metadata and narrowly admits JNI macro deprecation on Rust 1.99. The final PR's Typst package owner passes its unchanged final budgets and closed ABI, with 23 consumer fixtures and nine expected failures.
 
 ## 0.10.0-alpha.1 publication
 

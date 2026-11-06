@@ -7,7 +7,7 @@ typed PNG, JPEG, or PDF target. Use this crate directly only when the applicatio
 validated SVG artifact, inspect complete export evidence and allocation plans, or schedule encoding
 separately from Mermaid rendering.
 
-This guide targets the unpublished `merman-export 0.10.0-alpha.2` release candidate. Registry dependency examples target that candidate after publication; use a matching source checkout before then. Select font discovery explicitly or provide a font context. See the [model/source migration](../../docs/migrations/model-source-boundaries.md) for imports and output handoffs when upgrading from `0.9.x`.
+This guide covers `merman-export 0.10.0-alpha.2`. Select font discovery explicitly or provide a font context. See the [model/source migration](../../docs/migrations/model-source-boundaries.md) for imports and output handoffs when upgrading from `0.9.x`, and the [host guide](../../docs/release/PREBUILT_PRODUCTS.md) for available versions and installation channels.
 
 ## Choose A Feature
 

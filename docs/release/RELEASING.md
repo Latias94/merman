@@ -582,7 +582,7 @@ Keep the target Changelog entry marked `Unreleased` during ordinary preparation.
 
 `python3 scripts/verify_release_changelog.py --version <workspace-version>` accepts an unversioned `[Unreleased]` entry during development and still checks every versioned projection against the supplied workspace version. Immutable preflight adds `--require-date`, which requires every first entry to name that version and a valid date; it never skips pending changes to validate an older release underneath them.
 
-Treat the root `CHANGELOG.md` as the canonical project-wide release narrative and package changelogs as audience-specific projections of the same release delta. Update only the package changelogs for surfaces included in the release; do not copy the complete root entry or create one changelog per Rust crate.
+Treat the root `CHANGELOG.md` as the canonical project-wide release narrative and package changelogs as audience-specific projections of the same release delta. Full workspace release preflight qualifies all coupled platform candidates and requires the root and all five governed platform changelogs to name the same version and intended date. Preparing those projections does not select their publication channels; record publication scope separately in Publish Order. A channel-only release updates only its package projection. Do not copy the complete root entry or create one changelog per Rust crate.
 
 For a stable release following several prereleases, make the pending stable entry cumulative from the previous stable version and label that comparison explicitly. Lead with an upgrade-path table and final breaking contracts, then group new capabilities, changes/fixes, security, measurement evidence and adoption-relevant limitations by user impact. Keep published alpha entries unchanged except for factual or editorial corrections; use the versioned upgrade guides for incremental alpha-to-alpha actions. Do not carry superseded intermediate API names or alpha-only benchmark claims into the final contract. The stable upgrade guide owns detailed old-to-new instructions and examples; the embedding guide owns runnable Rust recipes. Package projections must use their own publication boundary (for example, Node has no 0.7.0 package), final schema/API versions, and actual capability recipe.
 
@@ -596,7 +596,7 @@ For a stable release following several prereleases, make the pending stable entr
 | Apple | The Apple package README links consumers to its Swift/XCFramework-specific history | `platforms/apple/CHANGELOG.md` |
 | VS Code | The unpublished extension has an independent version and release boundary | `tools/vscode-extension/CHANGELOG.md` |
 
-For workspace-coupled packages, keep the target package entry at `Unreleased` during preparation and stamp it with the same intended tag date as the root entry immediately before immutable preflight. For an authorized channel-only publication, keep the root entry at `Unreleased` but stamp the channel's package-local entry before building its immutable package artifact. Each projection should contain only user-visible behavior, migrations, compatibility notes, and performance claims verified for that surface. Independently versioned surfaces keep their own version and publication date.
+For workspace-coupled packages, keep the target package entry at `Unreleased` during ordinary preparation and stamp all governed projections with the root's intended tag date immediately before full immutable release preflight, including candidates whose publication is deferred. For an authorized channel-only publication, keep the root entry at `Unreleased` but stamp the channel's package-local entry before building its immutable package artifact. Each projection should contain only user-visible behavior, migrations, compatibility notes, and performance claims verified for that surface. Independently versioned surfaces keep their own version and publication date.
 
 README files are ordinary source documentation and `release-version.py` never rewrites them.
 Before immutable preflight, finish the root README, each shipped package README, and the closest
@@ -925,8 +925,8 @@ package's matching TypeScript, wasm-bindgen glue, single WASM, provenance, gener
 editor schema,
 and the complete descriptor-defined language catalog; it is not valid to publish only a wrapper declaration.
 Typst package builds additionally require Binaryen `wasm-opt version 133` and `wasm-tools`
-(CI pins 1.261.0); the post-link optimizer and stripper versions are recorded in the artifact
-manifest. CI uses Rust 1.95.0 with `wasm32-unknown-unknown`, Typst 0.15.1 for the current consumer,
+(CI pins 1.263.0); the post-link optimizer and stripper versions are recorded in the artifact
+manifest. CI uses Rust 1.99.1 with `wasm32-unknown-unknown`, Typst 0.15.1 for the current consumer,
 and Typst 0.15.0 for the compatibility consumer.
 `merman-typst-plugin` is the Typst-compatible transport and must remain separate from
 browser/wasm-bindgen artifacts. Cargo defaults are intentionally empty. The sole public package

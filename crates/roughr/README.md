@@ -29,7 +29,7 @@ Version `0.12.4`, used by Merman `0.9.0`, upgrades private host-random dependenc
 
 Version `0.12.5` normalizes SVG arc angles with JavaScript-compatible decimal rounding before converting arcs to cubic curves. This keeps tiny rounded paths finite and aligns their geometry with Rough.js. Public APIs and default features remain compatible with `0.12.4`.
 
-The `0.12.6` candidate adds bounded work accounting and cancellation to curve/path processing while preserving the existing public entry points and legacy defaults. It also follows Rust 1.99 static-analysis guidance without changing drawing arithmetic or randomness.
+Version `0.12.6` adds bounded work accounting and cancellation to curve/path processing while preserving the existing public entry points and legacy defaults. It also follows Rust 1.99 static-analysis guidance without changing drawing arithmetic or randomness.
 
 ## Scope
 

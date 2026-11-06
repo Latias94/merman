@@ -2,14 +2,9 @@
 
 Render supported Mermaid diagram families as ASCII or Unicode text in a browser.
 
-This guide targets the unpublished `0.10.0-alpha.2` release candidate with Web transport API `9`
-and Options JSON schema `3`. Build matching facade, glue and WASM from one reviewed source revision
-before publication; the registry command below applies after publication.
-Published `0.10.0-alpha.1` retains Web transport API `8` and Options JSON schema `3`. See the
-[development migration](https://github.com/Latias94/merman/blob/main/docs/release/UNRELEASED_CONTRACT_VERSIONS.md#source-appearance-and-render-evidence-follow-up). Check the
-[prebuilt product status](https://github.com/Latias94/merman/blob/main/docs/release/PREBUILT_PRODUCTS.md)
-and [publish order](https://github.com/Latias94/merman/blob/main/docs/release/PUBLISH_ORDER.md)
-for verified public availability.
+Version `0.10.0-alpha.2` uses Web transport API `9` and Options JSON schema `3`. Keep the facade, generated glue, and WASM at the same exact version and source revision. Check the [host installation guide](https://github.com/Latias94/merman/blob/main/docs/release/PREBUILT_PRODUCTS.md#published-versions) for verified versions and channel availability.
+
+Version `0.10.0-alpha.1` retains Web transport API `8` and Options JSON schema `3`. Upgrade all package assets together; see the [contract migration](https://github.com/Latias94/merman/blob/main/docs/release/UNRELEASED_CONTRACT_VERSIONS.md#source-appearance-and-render-evidence-follow-up) for the transport change.
 
 ## Quick start
 

@@ -6,7 +6,7 @@
 
 Most applications that want rendered output should use the `merman` facade instead.
 
-This guide targets the unpublished `0.10.0-alpha.2` release candidate. Match source, generated bindings and dependencies to the same candidate revision; see the [0.10 migration](../../docs/migrations/model-source-boundaries.md) when upgrading from `0.9.x`.
+This guide covers `0.10.0-alpha.2`. Match source, generated bindings, and dependencies to the same release or source revision; see the [0.10 migration](../../docs/migrations/model-source-boundaries.md) when upgrading from `0.9.x`. The [host guide](../../docs/release/PREBUILT_PRODUCTS.md) lists available versions and installation channels.
 
 ## Source Feature Migration
 
@@ -187,7 +187,8 @@ operations. Full custom detectors and compatibility adapters remain full-only. S
 
 Semantic JSON uses `merman_model::ManagedJson`; keep its managed owner for deep clone, equality, destruction, and output. Direct State, Block, Treemap, and Ishikawa model users must migrate to canonical document/child indices. See the [0.8.0 to 0.9.0 migration](../../docs/release/V080_TO_V090_UPGRADE_GUIDE.md#rust-models-and-json) for the original lifecycle change and the [model/source migration](../../docs/migrations/model-source-boundaries.md) for current development imports and output handoffs.
 
-The `0.10.0-alpha.2` candidate targets Mermaid `12.3.0`. Published Merman `0.10.0-alpha.1` targets Mermaid `12.2.0`; the `0.9.x` maintenance line retains Mermaid `12.1.0`. Use the matching source revision or published release tag for parser behavior. The selected pinned upstream behavior graph is the compatibility authority.
+Merman `0.10.0-alpha.2` targets Mermaid `12.3.0`. Published Merman `0.10.0-alpha.1` targets Mermaid `12.2.0`; the `0.9.x` maintenance line retains Mermaid `12.1.0`. Use the matching source revision or published release tag for parser behavior. The selected pinned upstream behavior graph is the compatibility authority.
+
 Compatibility semantic JSON is the public serialized parser projection. It is not a second
 successful grammar or the master built-in render input. Typed render models and editor facts
 project the same family semantic construction into purpose-specific shapes.

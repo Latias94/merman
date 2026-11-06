@@ -19,7 +19,7 @@ Use the C ABI directly when the host needs a language-neutral function table or 
 
 ## Build From Source
 
-`merman-ffi` is published as a source crate. Merman does not currently publish a generic prebuilt C SDK; the canonical native artifact profile defines a reproducible host build.
+`merman-ffi` is published as a source crate. See the [host guide](../../docs/release/PREBUILT_PRODUCTS.md) for verified prebuilt C SDK versions and supported targets. For custom source builds, the canonical native artifact profile defines a reproducible host build.
 
 From a repository checkout, build the complete native SDK recipe with:
 

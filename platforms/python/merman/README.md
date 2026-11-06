@@ -4,13 +4,13 @@
 
 Parse, analyze, lay out, and render Mermaid diagrams from Python without a browser or JavaScript runtime. The package ships Merman's Rust engine and exposes it through UniFFI.
 
-This guide targets the unpublished `0.10.0-alpha.2` candidate, mapped to Python `0.10.0a2`. Use matching source-built wheels before publication; see the [host guide](../../../docs/release/PREBUILT_PRODUCTS.md) for currently published installation choices.
+This guide documents Merman `0.10.0-alpha.2`, packaged as Python `0.10.0a2`. Check the [host installation guide](https://github.com/Latias94/merman/blob/main/docs/release/PREBUILT_PRODUCTS.md#published-versions) for verified versions and channel availability.
 
-> The candidate Python package version is `0.10.0a2` (PEP 440), corresponding to native Merman `0.10.0-alpha.2`. It uses direct UniFFI binding API `7` and Options JSON schema `3`, independently of the C ABI and text-measurement protocol. Install the Python wrapper and native library as one wheel rather than mixing releases.
+> The Python package version is `0.10.0a2` (PEP 440), corresponding to native Merman `0.10.0-alpha.2`. It uses direct UniFFI binding API `7` and Options JSON schema `3`, independently of the C ABI and text-measurement protocol. Install the Python wrapper and native library as one wheel rather than mixing releases.
 
 ## Install
 
-After publication, install the exact version documented here:
+Install the exact version documented here:
 
 ```sh
 python -m pip install --only-binary=:all: 'merman==0.10.0a2'
@@ -26,12 +26,7 @@ The package supports Python `>=3.9` through the UniFFI/ctypes transport with fiv
 | `x86_64-unknown-linux-gnu` | `manylinux_2_28_x86_64` |
 | `x86_64-pc-windows-msvc` | `win_amd64` |
 
-Linux wheels build, undergo `auditwheel` repair, and run installed consumers in pinned
-official manylinux_2_28 images on their native CPU. They require glibc `2.28+`; musl Linux and
-Windows ARM64 are outside this matrix. Normal wheel installation needs no Rust compiler.
-There is no qualified source distribution; use the repository's explicit source helper when
-building from the matching `0.10.0-alpha.2` candidate revision. Build the wrapper and native library
-together to preserve the binding contract.
+Linux wheels build, undergo `auditwheel` repair, and run installed consumers in pinned official manylinux_2_28 images on their native CPU. They require glibc `2.28+`; musl Linux and Windows ARM64 are outside this matrix. Normal wheel installation needs no Rust compiler. There is no qualified source distribution; use the repository's explicit source helper when building from the matching `0.10.0-alpha.2` source revision. Build the wrapper and native library together to preserve the binding contract.
 
 For a stable `0.9.3` installation, use the [tagged guide](https://github.com/Latias94/merman/blob/v0.9.3/platforms/python/merman/README.md).
 That release uses Options JSON schema `2`, omits math, and has three wheels, including a
@@ -103,15 +98,11 @@ Use `CONSTRAINED` for untrusted, public, or multi-tenant input; `INTERACTIVE` is
 
 Call `client.runtime_catalog_json()` to inspect the loaded runtime catalog and exact resource profile values instead of duplicating limits in application code. Decode `client.theme_catalog_json()` for the open-ended versioned theme preset and artifact-availability catalog. `merman.get_runtime_catalog(client)` strictly validates its flat schema `1` artifact facts, package identity, transport API, supported options/payload schema IDs, named metadata IDs, sorted stable IDs, and local output/operation relations as one atomic response. New stable IDs remain forward compatible. This direct binding API version is `7` and is independent from native C ABI and the text-measurement protocol version.
 
-API 7 preserves theme-authoring diagnostics and exposes `requested_layout_profile` and `compact_attempted` in the schema-3 ASCII output plan.
-The effective `layout_profile` remains Canonical or Compact. Replace `binding_api_version_v6()`
-with `binding_api_version_v7()` and regenerate the package and native library together; published
-alpha.6 wheels retain API 6.
+API 7 preserves theme-authoring diagnostics and exposes `requested_layout_profile` and `compact_attempted` in the schema-3 ASCII output plan. The effective `layout_profile` remains Canonical or Compact. When upgrading from API 6, replace `binding_api_version_v6()` with `binding_api_version_v7()` and regenerate the package and native library together; historical `0.8.0a6` wheels retain API 6.
 
-Diagnostics use schema `1` and parser facts use schema `3`, independently of UniFFI binding API `7`. Other facts versions are rejected at the boundary; consumers of the removed TextScan shape and Flowchart-only rich graph must migrate to generic parser-backed items and explicit unavailable bodies. Every diagram now requires `appearance` with `known` or `unknown` state; known declarations carry source provenance and byte spans. See the [source appearance migration](../../../docs/release/UNRELEASED_CONTRACT_VERSIONS.md#source-appearance-and-render-evidence-follow-up).
+Diagnostics use schema `1` and parser facts use schema `3`, independently of UniFFI binding API `7`. Other facts versions are rejected at the boundary; consumers of the removed TextScan shape and Flowchart-only rich graph must migrate to generic parser-backed items and explicit unavailable bodies. Every diagram now requires `appearance` with `known` or `unknown` state; known declarations carry source provenance and byte spans. See the [source appearance migration](https://github.com/Latias94/merman/blob/main/docs/release/UNRELEASED_CONTRACT_VERSIONS.md#source-appearance-and-render-evidence-follow-up).
 
-Facts schema `3` describes current development builds, not the published `0.10.0a1` wheel, which
-retains facts schema `2`. Build and install a matching wrapper/native wheel to use the new contract.
+Version `0.10.0a2` uses facts schema `3` and theme execution evidence schema `2`; `0.10.0a1` retains facts schema `2` and theme execution evidence schema `1`. UniFFI binding API `7` and Options JSON schema `3` are unchanged between these alphas, so upgrade the complete wheel and update JSON consumers together even though the transport version is unchanged.
 
 For generic operations, construct `MermanOperationControl(timeout_ms=...)`, retain it in the host,
 and put it in `MermanOperationRequestV4.control`. Calling `cancel()` from another thread requests
@@ -194,12 +185,7 @@ installed-wheel consumer on Python `3.9` and `3.14` for each target.
 - [Issue tracker](https://github.com/Latias94/merman/issues)
 - [Source repository](https://github.com/Latias94/merman)
 
-PyPI is the supported registry channel for the Python package. Release wheels are also attached to the corresponding GitHub release; this README does not imply support for platforms without a listed wheel.
-
-The manual workflow defaults to nonpublishing qualification (`publish=false`,
-`publish_to_pypi=false`). It retains wheels and qualification evidence as workflow artifacts.
-Uploading GitHub Release assets requires `publish=true` and the matching immutable source tag;
-PyPI additionally requires `publish_to_pypi=true`. Public rollout remains a separate operation.
+PyPI is the supported registry channel for the Python package. Use the [host installation guide](https://github.com/Latias94/merman/blob/main/docs/release/PREBUILT_PRODUCTS.md#published-versions) to select a verified PyPI version or GitHub Release wheel; this README does not imply support for platforms without a listed wheel.
 
 ## License And Notices
 

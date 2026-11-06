@@ -29,7 +29,7 @@ Try the [Playground] for more examples; its hosted build follows its deployed pa
 
 ## Quick start
 
-This guide targets the `0.10.0-alpha.2` candidate, which has not yet been published. For a prebuilt renderer, [choose by host and required output](docs/release/PREBUILT_PRODUCTS.md); that guide records the independently published channel versions. See the [changelog](CHANGELOG.md#0100-alpha2---unreleased) for the candidate's features and upgrade notes.
+This guide targets `0.10.0-alpha.2`. For a prebuilt renderer, [choose by host and required output](docs/release/PREBUILT_PRODUCTS.md); that guide records independently verified package availability. See the [changelog](CHANGELOG.md#0100-alpha2---2026-11-06) for features and upgrade notes.
 
 With Rust 1.95 or later, add Merman to your `Cargo.toml`:
 

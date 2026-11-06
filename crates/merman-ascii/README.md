@@ -37,7 +37,7 @@ host runtime policy, and pass that context together with the caller-owned `Opera
 `AsciiResourcePolicy` to `AsciiRenderer::render_model`. Deterministic and sandboxed applications
 should provide explicit operation values instead of enabling system adapters.
 
-This guide targets the unpublished `merman-ascii 0.10.0-alpha.2` release candidate. Registry dependency examples target that candidate after publication; use the source-checkout example below before then. When upgrading from `0.9.x`, migrate core model imports to `merman-model` using the [model/source guide](../../docs/migrations/model-source-boundaries.md).
+This guide covers `merman-ascii 0.10.0-alpha.2`. When upgrading from `0.9.x`, migrate core model imports to `merman-model` using the [model/source guide](../../docs/migrations/model-source-boundaries.md). See the [host guide](../../docs/release/PREBUILT_PRODUCTS.md) for available versions and installation channels.
 
 ## Quick Start
 
