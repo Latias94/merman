@@ -60,6 +60,11 @@ export interface ProjectHandoffBundle {
   readonly notices: readonly ProjectHandoffNotice[];
 }
 
+export interface ProjectHandoffThemeExample {
+  readonly source: string;
+  readonly configJson: string;
+}
+
 /** Capture materials once. A visible previous render is never current render evidence. */
 export function captureProjectHandoff(input: ProjectHandoffInput): ProjectHandoffSnapshot {
   const { renderState: state, workspace, versions } = input;
@@ -115,11 +120,13 @@ export function projectHandoffMatchesWorkspace(snapshot: ProjectHandoffSnapshot,
 
 export function generateProjectHandoff(
   snapshot: ProjectHandoffSnapshot,
-  { target, scope, repositoryPath = "../merman" }: {
+  { target, scope, repositoryPath = "../merman", themeExample }: {
     readonly target: ProjectUseTarget;
     readonly scope: ProjectUseScope;
     /** Source checkout relative to the extracted consumer, or an absolute local path. */
     readonly repositoryPath?: string;
+    /** Independent theme adoption inputs; never current-diagram render evidence. */
+    readonly themeExample?: ProjectHandoffThemeExample;
   },
 ): ProjectHandoffBundle {
   const workspace = snapshot.workspace;
@@ -133,7 +140,7 @@ export function generateProjectHandoff(
   if (scope === "theme" && workspace.themePresetId === null && workspace.themeRecipeJson === null && workspace.diagramTheme === "auto") {
     throw new ProjectHandoffError("no-theme");
   }
-  const operation = scope === "diagram" ? snapshot.operation : themeExampleOperation(snapshot);
+  const operation = scope === "diagram" ? snapshot.operation : themeExampleOperation(snapshot, themeExample);
   if (!operation) throw new ProjectHandoffError("render-not-current");
   if (operation.configurationError) throw new ProjectHandoffError("invalid-configuration", operation.configurationError.summary);
   const optionsJson = operation.bindingOptionsJson ?? json(operation.bindingOptions);
@@ -216,12 +223,12 @@ export function generateProjectHandoff(
   return Object.freeze({ target, scope, code, codeFilename, files: Object.freeze(files), notices: Object.freeze(notices) });
 }
 
-function themeExampleOperation(snapshot: ProjectHandoffSnapshot): FrozenRenderOperation {
+function themeExampleOperation(snapshot: ProjectHandoffSnapshot, example?: ProjectHandoffThemeExample): FrozenRenderOperation {
   return freezeRenderOperation({
     workspace: {
       ...DEFAULT_WORKSPACE_SNAPSHOT,
-      code: "flowchart LR\nA[Theme] --> B[Your project]",
-      mermaidConfig: "{}",
+      code: example?.source ?? "flowchart LR\nA[Theme] --> B[Your project]",
+      mermaidConfig: example?.configJson ?? "{}",
       diagramTheme: snapshot.workspace.diagramTheme,
       themePresetId: snapshot.workspace.themePresetId,
       themeRecipeJson: snapshot.workspace.themeRecipeJson,

@@ -1,3 +1,21 @@
+import risoRecipe from "./recipes/riso.theme.json?raw";
+import riso_flowchart from "./previews/riso-flowchart.svg?url";
+import riso_sequence from "./previews/riso-sequence.svg?url";
+import riso_class from "./previews/riso-class.svg?url";
+import riso_xychart from "./previews/riso-xychart.svg?url";
+import riso_pie from "./previews/riso-pie.svg?url";
+import phosphorRecipe from "./recipes/phosphor.theme.json?raw";
+import phosphor_flowchart from "./previews/phosphor-flowchart.svg?url";
+import phosphor_sequence from "./previews/phosphor-sequence.svg?url";
+import phosphor_class from "./previews/phosphor-class.svg?url";
+import phosphor_xychart from "./previews/phosphor-xychart.svg?url";
+import phosphor_pie from "./previews/phosphor-pie.svg?url";
+import field_notesRecipe from "./recipes/field-notes.theme.json?raw";
+import field_notes_flowchart from "./previews/field-notes-flowchart.svg?url";
+import field_notes_sequence from "./previews/field-notes-sequence.svg?url";
+import field_notes_class from "./previews/field-notes-class.svg?url";
+import field_notes_xychart from "./previews/field-notes-xychart.svg?url";
+import field_notes_pie from "./previews/field-notes-pie.svg?url";
 import type { ThemeSampleId } from "./samples";
 import atlasRecipe from "./recipes/atlas.theme.json?raw";
 import nightfallRecipe from "./recipes/nightfall.theme.json?raw";
@@ -34,6 +52,24 @@ export interface ExplorationTheme {
 }
 
 export const EXPLORATION_THEMES: readonly ExplorationTheme[] = [
+  {
+    id: "riso", name: "Riso", appearance: "light",
+    colors: ["#F6F0E4", "#233F78", "#C64037"],
+    recipeJson: risoRecipe,
+    previews: { flowchart: riso_flowchart, sequence: riso_sequence, class: riso_class, xychart: riso_xychart, pie: riso_pie },
+  },
+  {
+    id: "phosphor", name: "Phosphor", appearance: "dark",
+    colors: ["#0C1210", "#17211C", "#D8FB8A", "#F1C577"],
+    recipeJson: phosphorRecipe,
+    previews: { flowchart: phosphor_flowchart, sequence: phosphor_sequence, class: phosphor_class, xychart: phosphor_xychart, pie: phosphor_pie },
+  },
+  {
+    id: "field-notes", name: "Field Notes", appearance: "light",
+    colors: ["#F8F3E5", "#244B39", "#FFF4D7", "#A13F32"],
+    recipeJson: field_notesRecipe,
+    previews: { flowchart: field_notes_flowchart, sequence: field_notes_sequence, class: field_notes_class, xychart: field_notes_xychart, pie: field_notes_pie },
+  },
   {
     id: "atlas",
     name: "Atlas",

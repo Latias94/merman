@@ -169,6 +169,12 @@ function validManifest() {
       isDynamicEntry: true,
       imports: ["shared"],
     },
+    [OPTIONAL_FEATURE_SOURCES.themeShowcase]: {
+      file: "assets/theme-showcase.js",
+      src: OPTIONAL_FEATURE_SOURCES.themeShowcase,
+      isDynamicEntry: true,
+      imports: ["shared"],
+    },
     [OPTIONAL_FEATURE_SOURCES.viewer]: {
       file: "assets/viewer.js",
       src: OPTIONAL_FEATURE_SOURCES.viewer,

@@ -179,18 +179,103 @@ test("a handoff stays frozen when the workspace changes and labels do not invali
 
 test("theme-only uses a separate example without the current diagram config, font, pipeline or layout", () => {
   const snapshot = capture(workspace, { status: "empty" });
-  const bundle = generateProjectHandoff(snapshot, { scope: "theme", target: "web" });
-  const options = JSON.parse(bundle.files["options.json"]);
-  assert.equal(bundle.files["theme.json"], recipe);
-  assert.equal(options.site_config.theme, "default");
-  assert.equal(options.site_config.fontFamily, undefined);
-  assert.deepEqual(options.layout, { container_width: 800, container_height: 600 });
-  assert.equal(options.svg, undefined);
-  assert.equal(bundle.files["playground-config.json"], undefined);
-  assert.doesNotMatch(bundle.files["diagram.mmd"], /forest|neutral|Authored font/);
-  assert.match(bundle.code, /renderSvgResult\(source, optionsJson\)/);
+  for (const target of ["rust", "cli", "web"] as const) {
+    const bundle = generateProjectHandoff(snapshot, { scope: "theme", target });
+    const options = JSON.parse(bundle.files["options.json"]);
+    assert.equal(bundle.files["diagram.mmd"], "flowchart LR\nA[Theme] --> B[Your project]");
+    assert.equal(bundle.files["theme.json"], recipe);
+    assert.equal(options.site_config.theme, "default");
+    assert.equal(options.site_config.fontFamily, undefined);
+    assert.deepEqual(options.layout, { container_width: 800, container_height: 600 });
+    assert.equal(options.svg, undefined);
+    assert.equal(bundle.files["playground-config.json"], undefined);
+    assert.doesNotMatch(bundle.files["diagram.mmd"], /forest|neutral|Authored font/);
+    if (target === "web") assert.match(bundle.code, /renderSvgResult\(source, optionsJson\)/);
+  }
   assert.throws(() => generateProjectHandoff(capture({ ...DEFAULT_WORKSPACE_SNAPSHOT }), { scope: "theme", target: "web" }),
     (error) => error instanceof ProjectHandoffError && error.code === "no-theme");
+});
+
+for (const themeExample of [
+  {
+    source: "sequenceDiagram\nClient->>Server: Request\nServer-->>Client: Response",
+    configJson: '{ "theme":"dark", "sequence":{"mirrorActors":false,"actorMargin":72}, "fontFamily":"Example font" }',
+  },
+  {
+    source: "classDiagram\nclass Project {\n  +String name\n}\nProject --> Theme",
+    configJson: '{ "theme":"neutral", "class":{"hideEmptyMembersBox":true,"padding":24}, "fontFamily":"Example font" }',
+  },
+] as const) {
+  test(`theme adoption preserves a custom ${themeExample.source.split("\n")[0]} source and config for every target without render proof`, () => {
+    const value = { ...DEFAULT_WORKSPACE_SNAPSHOT, themeRecipeJson: recipe };
+    let validatedRecipe: string | null = null;
+    const snapshot = captureProjectHandoff({
+      workspace: value, renderState: { status: "empty" }, versions, capturedAt: "2026-11-05T00:00:00.000Z",
+      validateThemeRecipe: (raw) => { validatedRecipe = raw; },
+    });
+    assert.equal(validatedRecipe, recipe);
+    assert.equal(snapshot.operation, null);
+    assert.equal(snapshot.publicationId, null);
+    const config = JSON.parse(themeExample.configJson);
+    for (const target of ["rust", "cli", "web"] as const) {
+      const bundle = generateProjectHandoff(snapshot, { scope: "theme", target, themeExample });
+      const options = JSON.parse(bundle.files["options.json"]);
+      const metadata = JSON.parse(bundle.files["handoff.json"]);
+      const directive = `%%{init: ${JSON.stringify(config)}}%%`;
+      assert.equal(bundle.files["diagram.mmd"], `${directive}\n${themeExample.source}`);
+      assert.equal(bundle.files["theme.json"], recipe);
+      assert.deepEqual(options.theme, JSON.parse(recipe));
+      assert.deepEqual(options.site_config, { theme: config.theme });
+      assert.deepEqual(JSON.parse(bundle.files["site-config.json"]), options.site_config);
+      assert.deepEqual(options.layout, { container_width: 800, container_height: 600 });
+      assert.equal(bundle.files["source.mmd"], undefined);
+      assert.equal(bundle.files["playground-config.json"], undefined);
+      assert.equal(metadata.scope, "theme");
+      assert.equal(metadata.publication_id, null);
+      assert.deepEqual(metadata.versions, versions);
+      assert.equal(metadata.configuration.original_source_file, null);
+      assert.equal(metadata.configuration.authored_config_file, null);
+      assert.equal(metadata.configuration.authored_config_location, null);
+      assert.deepEqual(metadata.configuration.injected_config_span, { start: 0, end: new TextEncoder().encode(directive).byteLength });
+      assert.equal(metadata.environment.layout, null);
+      assert.equal(metadata.environment.text_measurement, "headless");
+      assert.equal(metadata.environment.consumer_text_measurement, "deterministic");
+      assert.match(bundle.files["README.txt"], /Theme adoption with a separate example diagram/);
+      assert.match(bundle.files["README.txt"], /Render publication: not applicable/);
+      assert.throws(() => generateProjectHandoff(snapshot, { scope: "diagram", target, themeExample }),
+        (error) => error instanceof ProjectHandoffError && error.code === "render-not-current");
+    }
+    assert.equal(snapshot.operation, null);
+    assert.equal(snapshot.publicationId, null);
+    assert.deepEqual(snapshot.workspace, value);
+  });
+}
+
+test("diagram scope ignores theme examples and keeps the captured operation and publication", () => {
+  const snapshot = capture();
+  const operation = snapshot.operation;
+  const themeExample = { source: "sequenceDiagram\nA->>B: Theme example", configJson: "not JSON" };
+  for (const target of ["rust", "cli", "web"] as const) {
+    const before = generateProjectHandoff(snapshot, { scope: "diagram", target });
+    assert.deepEqual(generateProjectHandoff(snapshot, { scope: "diagram", target, themeExample }), before);
+    assert.equal(JSON.parse(before.files["handoff.json"]).publication_id, 7);
+    const theme = generateProjectHandoff(snapshot, { scope: "theme", target, themeExample: { ...themeExample, configJson: "{}" } });
+    assert.equal(theme.files["diagram.mmd"], themeExample.source);
+    assert.equal(JSON.parse(theme.files["handoff.json"]).publication_id, null);
+    assert.equal(JSON.parse(theme.files["handoff.json"]).environment.layout, null);
+    assert.deepEqual(generateProjectHandoff(snapshot, { scope: "diagram", target }), before);
+  }
+  assert.equal(snapshot.operation, operation);
+  assert.equal(snapshot.publicationId, 7);
+});
+
+test("invalid theme example configuration is rejected through the frozen operation", () => {
+  const snapshot = capture({ ...DEFAULT_WORKSPACE_SNAPSHOT, themeRecipeJson: recipe }, { status: "empty" });
+  const themeExample = { source: "classDiagram\nProject --> Theme", configJson: "not JSON" };
+  for (const target of ["rust", "cli", "web"] as const) {
+    assert.throws(() => generateProjectHandoff(snapshot, { scope: "theme", target, themeExample }),
+      (error) => error instanceof ProjectHandoffError && error.code === "invalid-configuration");
+  }
 });
 
 test("headless and browser host differences are explicit, including CLI's screen-width fallback", () => {

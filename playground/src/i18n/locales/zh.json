@@ -458,13 +458,14 @@
       "xychart": "XY 图表",
       "pie": "饼图"
     },
-    "sampleSource": "查看示例源码",
-    "sampleConfig": "示例配置",
     "themes": {
       "atlas": "克制的蓝灰配色，适合技术笔记与系统图。",
       "nightfall": "安静的深灰蓝底色，搭配柔和配色与清晰标签。",
       "letterpress": "暖纸底色、衬线标题与锈红点缀，适合编辑式图表。",
-      "grove": "象牙白、苔绿与矿物配色，带来温暖自然的观感。"
+      "grove": "象牙白、苔绿与矿物配色，带来温暖自然的观感。",
+      "riso": "蓝红双色的小批量印刷感：轻微套印错位、清晰文字和编辑式标题。",
+      "phosphor": "暗色设备面板、等宽读数和发光信号组成的工业控制室。",
+      "field-notes": "森林墨色记录卡、横线纸面与暖色观察便笺组成的野外登记册。"
     }
   },
   "themePanel": {
@@ -622,10 +623,7 @@
     "recommendedConfigHint": "将这些键合并到当前 JSON 配置，保留无关设置。更改立即生效且可撤销；源码设置仍可能优先。",
     "recommendedConfigError": "无法更新 Mermaid 配置，请修正其 JSON 对象后重试。{{error}}",
     "recommendationInConfig": "当前配置已包含此设置",
-    "exampleDiagrams": "示例图表 · {{name}}",
-    "exampleHint": "这些是固定示例，与当前图表无关。请通过上方工作区预览判断自己的图表效果。",
-    "exampleAlt": "使用 {{name}} 渲染的{{sample}}示例",
-    "downloadExampleRecipe": "下载 {{name}} JSON"
+    "exampleAlt": "使用 {{name}} 渲染的{{sample}}示例"
   },
   "projectUse": {
     "title": "在项目中使用",
@@ -733,5 +731,61 @@
         "system_or_host_font_dependency": "产物依赖系统或宿主提供的字体。"
       }
     }
+  },
+  "themeShowcase": {
+    "title": "主题设计库",
+    "recipeBadge": "自定义主题示例",
+    "description": "在多种图表中浏览完整的视觉设计，复制可编辑主题或取得项目使用代码。",
+    "close": "关闭主题设计库",
+    "search": "搜索主题设计",
+    "appearance": "画布明暗",
+    "filters": {
+      "all": "全部设计",
+      "light": "浅色",
+      "dark": "深色"
+    },
+    "count": "{{count}} 套设计",
+    "collectionTitle": "寻找适合你的视觉语言",
+    "collectionHint": "每套设计使用相同示例。打开设计可同时比较五种图表的效果。",
+    "mechanisms": {
+      "riso": "双色油墨 · 错位色边 · 紧缩标题",
+      "phosphor": "设备面板 · 扫描线 · 局部信号辉光",
+      "field-notes": "森林墨色卡片 · 横线纸 · 轻盈便笺",
+      "atlas": "冷色表面 · 精确轮廓 · 清晰层级",
+      "nightfall": "板岩面板 · 柔和对比 · 克制点缀",
+      "letterpress": "暖色纸面 · 衬线排版 · 编辑式层级",
+      "grove": "象牙白表面 · 柔和圆角 · 矿物色彩"
+    },
+    "back": "全部设计",
+    "apply": "应用到我的图",
+    "applyHint": "仅应用这套主题。保留当前源码、配置、字体覆盖和图表外观设置。",
+    "downloadJson": "下载主题 JSON",
+    "acrossDiagrams": "同一设计，多种图表",
+    "fixedExamples": "这里展示固定示例，不是你的当前图表。可以在新标签页打开任一样例进行编辑，不会替换当前作品。",
+    "openSample": "打开样例",
+    "openSampleNamed": "在新标签页打开 {{name}} 的{{sample}}样例",
+    "explore": "查看设计",
+    "exploreNamed": "查看 {{name}} 设计",
+    "fiveDiagrams": "5 种图表示例",
+    "current": "当前主题",
+    "useTitle": "把设计带到你的项目",
+    "useHint": "复制完整主题 JSON、使用样例配置，或下载 Rust、CLI、Web 项目示例。修改命名参数即可创作自己的版本。",
+    "codeTarget": "主题与使用代码",
+    "tabs": {
+      "theme": "主题 JSON",
+      "config": "样例配置",
+      "rust": "Rust",
+      "cli": "CLI",
+      "web": "Web"
+    },
+    "copy": "复制",
+    "code": "主题使用代码",
+    "companionFiles": "下载项目示例即可取得这段代码，以及配套主题、Mermaid 源码、配置和运行说明。",
+    "customRecipeHint": "这是独立的自定义主题，不是内置预设 ID。",
+    "downloadProject": "下载项目示例",
+    "downloadFile": "下载文件",
+    "sampleAndFonts": "样例源码与渲染说明",
+    "coverageHint": "这五种示例有专门的样式设计。其他图表可以继承共享画布和字体；效果与角色样式的支持取决于图表类型和外观。",
+    "runtimeFailed": "代码示例需要渲染运行时。你仍可复制主题 JSON 和样例配置。"
   }
 }

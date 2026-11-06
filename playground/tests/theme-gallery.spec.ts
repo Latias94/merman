@@ -45,7 +45,7 @@ test("one theme catalog loads with the appearance panel and searches every sourc
   await expect(page.locator("[data-theme-launcher]:visible")).toBeFocused();
   await page.locator("[data-theme-launcher]:visible").click();
   const catalog = panel.getByTestId("theme-catalog");
-  await expect(catalog.locator("[data-theme-exploration]")).toHaveCount(4);
+  await expect(catalog.locator("[data-theme-exploration]")).toHaveCount(7);
   await expect(catalog.locator('[data-theme-choice="mermaid:forest"]')).toBeVisible();
   await expect(catalog.locator('[data-theme-choice="preset:brutalist"]')).toHaveAttribute("aria-pressed", "true");
   expect(requests.some((url) => url.endsWith(galleryOutput))).toBe(true);
@@ -58,7 +58,7 @@ test("one theme catalog loads with the appearance panel and searches every sourc
   const presetCount = await choices.locator('[data-theme-group="builtin"] [data-theme-choice]').count();
   const search = catalog.getByRole("searchbox", { name: "Search themes", exact: true });
   for (const [query, key, group] of [
-    ["forest", "mermaid:forest", "mermaid"],
+    ["mermaid:forest", "mermaid:forest", "mermaid"],
     ["brutalist", "preset:brutalist", "builtin"],
     ["nightfall", "exploration:nightfall", "exploration"],
     ["mermaid:redux-dark-color", "mermaid:redux-dark-color", "mermaid"],
@@ -74,8 +74,8 @@ test("one theme catalog loads with the appearance panel and searches every sourc
     ["Mermaid.js official", "mermaid", 11],
     ["Merman built-in presets", "builtin", presetCount],
     ["--theme-preset", "builtin", presetCount],
-    ["Merman theme examples", "exploration", 4],
-    ["Merman example · JSON", "exploration", 4],
+    ["Merman theme examples", "exploration", 7],
+    ["Merman example · JSON", "exploration", 7],
   ] as const) {
     await search.fill(query);
     await expect(groups).toHaveCount(1);
@@ -89,7 +89,7 @@ test("one theme catalog loads with the appearance panel and searches every sourc
   await expect(search).toHaveValue("");
   await expect(groups).toHaveCount(4);
   await expect(choices).toHaveCount(1);
-  await expect(catalog.locator("[data-theme-exploration]")).toHaveCount(4);
+  await expect(catalog.locator("[data-theme-exploration]")).toHaveCount(7);
   await expect(panel).toBeVisible();
   await expect(panel.getByTestId("theme-current-name")).toHaveText("Brutalist");
   errors.assertNone();
@@ -130,7 +130,7 @@ test("catalog groups separate automatic selection from the eleven official theme
   await expect(official.locator("[data-theme-source-label]")).toHaveText(Array(11).fill("Mermaid.js official"));
   await expect(official).toContainText("Compare");
   await expect(choices.locator('[data-theme-group="builtin"]')).toContainText('theme: { preset: "…" }');
-  await expect(choices.locator('[data-theme-group="exploration"] [data-theme-choice]')).toHaveCount(4);
+  await expect(choices.locator('[data-theme-group="exploration"] [data-theme-choice]')).toHaveCount(7);
   for (const [group, source] of [["builtin", "Merman preset"], ["exploration", "Merman example · JSON"]]) {
     const entries = choices.locator(`[data-theme-group="${group}"] [data-theme-choice]`);
     const names = await entries.locator("[data-theme-choice-name]").allTextContents();
@@ -176,46 +176,17 @@ test("selecting an exploration updates the current diagram immediately and share
   errors.assertNone();
 });
 
-test("the four explorations label their five fixed samples as examples and download original recipes", async ({ page }) => {
-  const errors = monitorBrowserErrors(page);
-  await page.setViewportSize({ width: 1440, height: 1000 });
-  const panel = await start(page);
-  for (const id of ["atlas", "nightfall", "letterpress", "grove"]) {
-    await panel.locator(`[data-theme-choice="exploration:${id}"]`).click();
-    const examples = panel.getByTestId("theme-examples");
-    await examples.locator("summary").first().click();
-    await expect(examples).toContainText("These are fixed examples");
-    for (const sample of ["Flowchart", "Sequence", "Class", "XY Chart", "Pie"]) {
-      await examples.getByRole("button", { name: sample, exact: true }).click();
-      const preview = examples.getByTestId("theme-gallery-preview");
-      await expect(preview).toHaveAttribute("alt", /^Example /);
-      await expect.poll(() => preview.evaluate((image) => (image as HTMLImageElement).complete && (image as HTMLImageElement).naturalWidth > 0)).toBe(true);
-    }
-    const download = page.waitForEvent("download");
-    await examples.getByRole("button", { name: /^Download .+ JSON$/ }).click();
-    const artifact = await download;
-    expect(artifact.suggestedFilename()).toBe(`${id}.theme.json`);
-    expect(await readFile((await artifact.path())!, "utf8"))
-      .toBe(await readFile(new URL(`../src/themes/recipes/${id}.theme.json`, import.meta.url), "utf8"));
-  }
-  const examples = panel.getByTestId("theme-examples");
-  await examples.locator("summary").filter({ hasText: /^View sample source$/ }).click();
-  await expect(examples.locator("pre").first()).toContainText("pie");
-  await expect(examples.locator("pre").last()).toContainText("htmlLabels");
-  await expectNoDocumentOverflow(page);
-  errors.assertNone();
-});
-
 test("the unified catalog fits a narrow viewport and closing retains the selected theme", async ({ page }) => {
   const errors = monitorBrowserErrors(page);
   await page.setViewportSize({ width: 390, height: 844 });
   const panel = await start(page);
   await expectNoDocumentOverflow(page);
   await panel.locator('[data-theme-choice="exploration:letterpress"]').click();
-  const examples = panel.getByTestId("theme-examples");
-  await examples.locator("summary").first().click();
-  await examples.getByRole("button", { name: "XY Chart", exact: true }).click();
-  await expect(examples.getByTestId("theme-gallery-preview")).toBeVisible();
+  await panel.getByRole("button", { name: "Theme designs", exact: true }).click();
+  const showcase = page.getByTestId("theme-showcase");
+  await expect(showcase.getByRole("heading", { name: "Letterpress", exact: true })).toBeVisible();
+  await expect(showcase.locator("[data-theme-sample]")).toHaveCount(5);
+  await showcase.getByRole("button", { name: "Close theme designs", exact: true }).click();
   await expectNoDocumentOverflow(page);
   await page.screenshot({ path: test.info().outputPath("appearance-catalog-mobile.png") });
   await page.keyboard.press("Escape");
@@ -227,7 +198,7 @@ test("the unified catalog fits a narrow viewport and closing retains the selecte
   errors.assertNone();
 });
 
-for (const id of ["atlas", "nightfall", "letterpress", "grove"]) {
+for (const id of ["atlas", "nightfall", "letterpress", "grove", "riso", "phosphor", "field-notes"]) {
   test(`${id} renders all five samples with the browser runtime`, async ({ page }) => {
     const errors = monitorBrowserErrors(page);
     await page.addInitScript(() => localStorage.setItem("merman-language", "en"));
@@ -248,6 +219,7 @@ for (const id of ["atlas", "nightfall", "letterpress", "grove"]) {
         const expectedInk: Record<string, string> = {
           atlas: "rgb(31, 42, 61)", nightfall: "rgb(231, 236, 244)",
           letterpress: "rgb(49, 44, 42)", grove: "rgb(38, 57, 47)",
+          riso: "rgb(35, 63, 120)", phosphor: "rgb(226, 239, 215)", "field-notes": "rgb(44, 75, 57)",
         };
         const labels = await page.locator(".preview-container > div").first().evaluate((host) =>
           Array.from(host.shadowRoot!.querySelectorAll<SVGTextElement>(".edgeLabel text"))

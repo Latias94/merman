@@ -156,14 +156,22 @@ These two local display preferences are remembered separately.
 
 ### Standalone explorations and example scenes
 
+Open **Theme designs** from the toolbar or the Appearance panel to browse seven standalone
+recipes: Riso (two-ink print), Phosphor (industrial display), Field Notes (forest-ink ledger),
 Atlas (technical light), Nightfall (quiet dark), Letterpress (warm editorial), and Grove (natural
-green) are standalone exploration recipes. Selecting one uses that recipe on the current source,
-base theme, font, and configuration. They are not core preset IDs: use their downloaded recipe
+green). Each card combines several diagram previews; opening a design shows Flowchart, Sequence,
+Class, XY Chart, and Pie together. Browsing does not change the workspace. **Apply to my diagram**
+uses the recipe on the current source, base theme, font, and configuration. These are not core preset IDs: use their downloaded recipe
 with CLI `--theme-file`, Rust `compile_recipe`, or Web `theme: recipe`. Their names and source
 labels are display metadata, not claims of runtime availability or family support.
 
-The example viewer contains Flowchart, Sequence, Class, XY Chart, and Pie scenes with their source
-and configuration. Its saved SVGs are fixed examples, not live previews of the current document.
+Each design includes the complete editable theme JSON, sample configuration, and Rust, CLI, and
+Web adoption code. Select a sample family before downloading its example project to include the
+matching Mermaid source, theme, configuration, and setup instructions. These materials describe
+an independent example, not a captured rendering of the current workspace. **Open sample** starts
+a separate tab with the source and configuration, leaving the current work intact.
+
+The saved SVGs are fixed examples, not live previews of the current document.
 The recipes, shared samples, configurations, and SVGs live in
 [`playground/src/themes`](../../playground/src/themes/). The five example families have been
 rendered with each recipe; other families and targets need their own review. Source styles and
@@ -179,6 +187,15 @@ The Letterpress Class preview uses native measurement with Menlo to size its mon
 (`--font-file /System/Library/Fonts/Menlo.ttc --font-system off` on macOS, replacing the deterministic
 measurement flag). Fonts are not embedded. With another host font, review label bounds before
 replacing the asset. Native SVG text does not imply native font measurement.
+The Riso, Phosphor, and Field Notes Class previews also use bounded native fonts: Menlo for
+Phosphor, and Avenir plus Menlo for Riso and Field Notes. Their method signatures need measured
+monospace widths to stay inside the class compartments.
+
+Riso's small opposing shadows suggest ink registration offsets on supported bodies; they do not
+simulate physical ink mixing or paper noise. Phosphor scopes glow to connections, activations,
+and data traces. Field Notes uses dark record cards, faint paper ruling, and lifted annotation
+slips. Class and Pie use their own paint and typography treatments rather than unsupported body
+effects. Their recipes remain editable without adding new preset IDs.
 
 ### Effective appearance and imports
 

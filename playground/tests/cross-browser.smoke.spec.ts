@@ -72,6 +72,32 @@ test("startup, render, Compare, focus, system theme, and BFCache cleanup", async
   errors.assertNone();
 });
 
+test("theme designs display five families and expose integration code with keyboard focus", async ({ page }) => {
+  const errors = monitorBrowserErrors(page);
+  await openPlayground(page);
+  await waitForPreviewSvg(page);
+  const trigger = page.getByRole("button", { name: "Theme designs", exact: true });
+  await trigger.click();
+  const gallery = page.getByTestId("theme-showcase");
+  await expect(gallery.locator("[data-theme-design-card]")).toHaveCount(7);
+  await gallery.getByRole("button", { name: "Explore Riso", exact: true }).click();
+  const images = gallery.locator("[data-theme-sample] img");
+  await expect(images).toHaveCount(5);
+  for (const image of await images.all()) {
+    await image.scrollIntoViewIfNeeded();
+    await expect.poll(() => image.evaluate((node) =>
+      (node as HTMLImageElement).complete && (node as HTMLImageElement).naturalWidth > 0,
+    )).toBe(true);
+  }
+  const usage = gallery.getByTestId("theme-showcase-use");
+  await usage.getByRole("tab", { name: "Web", exact: true }).click();
+  await expect(usage.getByTestId("theme-showcase-code")).toContainText("renderSvgResult");
+  await page.keyboard.press("Escape");
+  await expect(gallery).toBeHidden();
+  await expect(trigger).toBeFocused();
+  errors.assertNone();
+});
+
 async function compareSvgTexts(page: import("@playwright/test").Page): Promise<string[]> {
   return page
     .locator(".preview-container > div")
