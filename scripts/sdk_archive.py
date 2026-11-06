@@ -532,7 +532,7 @@ def package_sdk(*, repo_root: Path, profile: str, target: str, artifact_dir: Pat
         digest = sha256_file(staged)
         with archive_path.open("xb") as destination, staged.open("rb") as source:
             shutil.copyfileobj(source, destination)
-        with checksum_path.open("x", encoding="ascii") as stream:
+        with checksum_path.open("x", encoding="ascii", newline="\n") as stream:
             stream.write(f"{digest}  {archive_name}\n")
     return archive_path
 
@@ -584,7 +584,7 @@ def verify_sdk_archive(*, repo_root: Path, profile: str, target: str, archive: P
         if verified_output_dir is not None:
             destination = persist_verified_archive(
                 extracted, Path(verified_output_dir) / extracted.archive.name, limits=SDK_LIMITS)
-            with Path(str(destination) + ".sha256").open("x", encoding="ascii") as stream:
+            with Path(str(destination) + ".sha256").open("x", encoding="ascii", newline="\n") as stream:
                 stream.write(f"{extracted.digest}  {destination.name}\n")
             return destination
         return Path(archive).resolve()
