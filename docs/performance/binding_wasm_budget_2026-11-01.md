@@ -78,3 +78,57 @@ node platforms/web/scripts/installed-browser-consumer.mjs
 The consumer prints tarball digests, browser requests, operations, timing and linear-memory
 observations. Pages and immutable release preflight own the same installed-consumer command.
 New published versions still require their normal package-group and registry reconciliation.
+
+## Render Brotli reassessment, 2026-11-06
+
+The theme-correctness follow-up in [PR 278](https://github.com/Latias94/merman/pull/278)
+uses the same Web artifact recipes, Cargo profile, dependency lockfile and compression settings.
+Only `web-render.max_brotli_bytes` is reassessed; the other 23 Web and Typst ceilings remain
+unchanged.
+
+The Linux final-package measurement is from [Pages run 42136213837](https://github.com/Latias94/merman/actions/runs/42136213837/job/127632281976)
+at merge source `d6afd25d9d0ff1afaf45c8f7e784240b74110f23`. Its adjacent-main control is
+[Pages run 42020850645](https://github.com/Latias94/merman/actions/runs/42020850645/job/127233620511)
+at `a4498a22e7e4112402014dcb3e36213ddf1ed6b2`. Both use Rust 1.95.0, wasm-pack 0.15.0
+and wasm-tools 1.261.0. These are Linux CI measurements, separate from the November 1 macOS
+measurements above.
+
+| `web-render` metric | Adjacent main | After PR 278 | Previous ceiling | Accepted ceiling |
+| --- | ---: | ---: | ---: | ---: |
+| Raw bytes | 15,541,160 | 15,600,460 | 15,629,000 | 15,629,000 |
+| Stripped bytes | 15,540,925 | 15,600,225 | 15,629,000 | 15,629,000 |
+| Gzip bytes | 5,806,856 | 5,824,925 | 5,834,000 | 5,834,000 |
+| Brotli bytes | 4,287,641 | 4,301,347 | 4,298,000 | 4,431,000 |
+
+The downloaded `pages-web-package-1` archive (artifact ID `13465344293`) matches its GitHub
+SHA-256 digest. All five final npm WASM files match the lengths and SHA-256 values in their
+package provenance; the render WASM SHA-256 is
+`3e24b39c17fa0b252ebc08b7760aeb4bb4599c25ebee4c1fb4b491f1e7963ec7`.
+
+The Brotli increase across the merge is 13,706 bytes (0.32%); adjacent main already has only
+10,359 bytes of allowance left. The 3,347-byte excess is therefore not the implementation's
+total size cost. The source repairs Flowchart source-style ownership and font measurement,
+State XHTML labels and style resolution, and visible theme-paint evidence across several
+families. `web-full`, which includes the same renderer, also grows by 59,272 raw bytes and
+13,052 Brotli bytes; `web-render` grows by 59,300 raw bytes. The lockfile, artifact descriptor,
+Web producer and size owner do not change across the merge. This is consistent with added
+reachable renderer behavior, without attributing exact machine-code bytes to individual fixes.
+
+The replacement applies the existing rule to this one insufficient metric:
+
+```text
+((4301347 * 103 + 99999) // 100000) * 1000 = 4431000
+```
+
+It leaves 129,653 bytes (3.014%, including rounding) above the measured artifact. No additional
+platform margin, cross-metric offset, capability removal or automatic future rebaseline is
+introduced. All other 19 Web measurements fit their existing ceilings. Both runs pass Web
+package smoke; the follow-up run also passes installed Chromium/Worker consumers and the
+Playground Chromium, Firefox and WebKit owner tests.
+
+The existing native size owner on macOS ARM64, with wasm-tools 1.253.0, remeasures those same
+downloaded packages and passes all 20 Web limits without rebuilding WASM. Nineteen metrics
+match Linux exactly; render Brotli is 4,301,346 bytes, one byte below the Linux result. The new
+ceiling uses the Linux measurement, without adding a margin for that local difference. This
+decision accepts artifact size only, without making latency or memory claims. The historical
+failed run remains failed; the updated branch still requires its own CI result.
