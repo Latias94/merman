@@ -33,7 +33,7 @@ test("tooltips share the configured initial delay and adjacent skip delay", asyn
   await page.waitForLoadState("networkidle");
   await page.clock.pauseAt(new Date("2026-01-01T01:00:00Z"));
   const tools = page.getByRole("button", { name: "Tools", exact: true });
-  const examples = page.getByRole("button", { name: "Examples", exact: true });
+  const settings = page.getByRole("button", { name: "App settings", exact: true });
   const tooltip = page.locator('[data-slot="tooltip-content"]');
   const toolsBounds = (await tools.boundingBox())!;
   await page.mouse.move(toolsBounds.x + toolsBounds.width / 2, toolsBounds.y + toolsBounds.height / 2);
@@ -42,16 +42,21 @@ test("tooltips share the configured initial delay and adjacent skip delay", asyn
   await page.clock.runFor(1);
   await expect(tooltip).toHaveAttribute("data-state", "delayed-open");
   await page.clock.runFor(300);
-  const exampleBounds = (await examples.boundingBox())!;
-  // Give the native hover-grace listener a frame between real pointer moves.
-  const fromX = toolsBounds.x + toolsBounds.width / 2;
-  const toX = exampleBounds.x + exampleBounds.width / 2;
-  for (let step = 1; step <= 8; step += 1) {
-    await page.mouse.move(fromX + (toX - fromX) * step / 8, exampleBounds.y + exampleBounds.height / 2);
-    await page.clock.runFor(16);
-  }
-  await expect(tooltip.filter({ hasText: "Examples" })).toHaveAttribute("data-state", "instant-open");
-  await expect(tooltip.filter({ hasText: "Examples" })).toHaveCSS("animation-name", "none");
+  const settingsBounds = (await settings.boundingBox())!;
+  const gapStart = toolsBounds.x + toolsBounds.width;
+  const gapWidth = settingsBounds.x - gapStart;
+  const pointerY = toolsBounds.y + toolsBounds.height / 2;
+  expect(gapWidth).toBeGreaterThan(0);
+  // Use actual neighbors. Crossing the toolbar can open an intermediate tooltip.
+  // Leave into the gap, then let Radix's native listener clear hover grace there
+  // before entering the next trigger; that trigger must open without advancing time.
+  await page.mouse.move(gapStart + gapWidth / 3, pointerY);
+  await page.clock.runFor(16);
+  await page.mouse.move(gapStart + gapWidth * 2 / 3, pointerY);
+  await expect(tools).toHaveAttribute("data-state", "closed");
+  await page.mouse.move(settingsBounds.x + settingsBounds.width / 2, settingsBounds.y + settingsBounds.height / 2);
+  await expect(tooltip.filter({ hasText: "App settings" })).toHaveAttribute("data-state", "instant-open");
+  await expect(tooltip.filter({ hasText: "App settings" })).toHaveCSS("animation-name", "none");
 });
 
 test("reduced motion removes movement from shared dialogs, menus, selects, and tooltips", async ({ page }) => {
