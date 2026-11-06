@@ -2,7 +2,7 @@
 
 Parse, analyze, lay out, and render Mermaid diagrams in Android apps without a WebView or a JavaScript runtime. The Kotlin API uses a direct JNI transport over Merman's shared binding engine.
 
-This guide targets the `0.10.0-alpha.1` AAR and local Maven repository; see the [host guide](../../docs/release/PREBUILT_PRODUCTS.md) for stable and alpha installation choices.
+Current source examples target the unpublished `0.10.0-alpha.2` candidate. The installation section retains the available `0.10.0-alpha.1` AAR and local Maven repository; see the [host guide](../../docs/release/PREBUILT_PRODUCTS.md) for published choices. Use a matching source-built AAR for the candidate's facts schema `3` and theme execution evidence schema `2`.
 
 > **Binding contract:** The `0.10.0-alpha.1` AAR uses Options JSON schema `3`. Kotlin classes
 > and `libmerman_android_jni.so` must come from the same publication. The downloadable Maven

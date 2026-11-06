@@ -2,7 +2,7 @@
 
 Parse, analyze, lay out, and render Mermaid diagrams from Swift on iOS and macOS without a WebView or JavaScript runtime. The `Merman` SwiftPM product is a direct UniFFI binding packaged as a binary XCFramework plus generated Swift source.
 
-This guide targets the `0.10.0-alpha.1` local SwiftPM package and XCFramework; see the [host guide](../../docs/release/PREBUILT_PRODUCTS.md) for stable and alpha installation choices.
+Current source examples target the unpublished `0.10.0-alpha.2` candidate. The installation section retains the available `0.10.0-alpha.1` local SwiftPM package and XCFramework; see the [host guide](../../docs/release/PREBUILT_PRODUCTS.md) for published choices. Use a matching source-built package for the candidate's facts schema `3` and theme execution evidence schema `2`.
 
 > **Binding contract:** Merman `0.10.0-alpha.1` uses direct UniFFI binding API `7` and Options JSON schema `3`. Use the Swift source and XCFramework produced by the same Merman build. UniFFI rejects incompatible contract or API checksum pairs, but it does not compare Merman release versions when the generated interface is unchanged.
 
