@@ -642,6 +642,17 @@ impl<'input> Lexer<'input> {
             if b == b'*' || (b == b'(' && bytes.get(end + 1) == Some(&b')')) {
                 break;
             }
+            // Jison recognizes aggregation when `o` starts a new ALPHA token,
+            // including after punctuation, Unicode text or a generic suffix.
+            if b == b'o' && end > self.pos {
+                let previous = bytes[end - 1];
+                if !previous.is_ascii_alphanumeric()
+                    && previous != b'_'
+                    && (bytes[end + 1..].starts_with(b"--") || bytes[end + 1..].starts_with(b".."))
+                {
+                    break;
+                }
+            }
             if b == b'.' && end + 1 < bytes.len() && bytes[end + 1] == b'.' {
                 break;
             }

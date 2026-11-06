@@ -209,6 +209,100 @@ class classC
           (identifier))))))
 
 ==================
+quoted generic suffixes stay within declarations and compact relationship endpoints
+==================
+
+classDiagram
+class `Box Item`~T~ { +T value }
+class `Repository`~K,V~:::storage
+`Box Item`~T~-->`Repository`~K,V~ : stores
+Plain-->`Box Item`~T~
+`Box Item`~T~-->Plain
+
+---
+
+(source_file
+  (class_diagram
+    (class_header
+      (diagram_keyword))
+    (class_body
+      (class_declaration
+        (class_statement_keyword)
+        (class_name)
+        (class_member_block
+          (class_member)))
+      (class_declaration
+        (class_statement_keyword)
+        (class_name)
+        (class_style_annotation
+          (class_style_name)))
+      (class_relationship
+        (class_reference)
+        (class_relationship_operator)
+        (class_reference)
+        (class_relationship_label))
+      (class_relationship
+        (class_reference
+          (identifier))
+        (class_relationship_operator)
+        (class_reference))
+      (class_relationship
+        (class_reference)
+        (class_relationship_operator)
+        (class_reference
+          (identifier))))))
+
+==================
+compact relation boundaries preserve hyphens dotted names and numeric names
+==================
+
+classDiagram
+class User-Service
+class Trailing-
+User-Service-->Plain
+Trailing- -->Plain
+Model.Item..>`Box`~T~
+123--List~T~
+
+---
+
+(source_file
+  (class_diagram
+    (class_header
+      (diagram_keyword))
+    (class_body
+      (class_declaration
+        (class_statement_keyword)
+        (class_name
+          (identifier)))
+      (class_declaration
+        (class_statement_keyword)
+        (class_name
+          (identifier)))
+      (class_relationship
+        (class_reference
+          (identifier))
+        (class_relationship_operator)
+        (class_reference
+          (identifier)))
+      (class_relationship
+        (class_reference
+          (identifier))
+        (class_relationship_operator)
+        (class_reference
+          (identifier)))
+      (class_relationship
+        (class_reference
+          (identifier))
+        (class_relationship_operator)
+        (class_reference))
+      (class_relationship
+        (class_reference
+          (identifier))
+        (class_relationship_operator)
+        (class_reference)))))
+
+==================
 header-only input is rejected without a class body
 ==================
 

@@ -665,6 +665,13 @@ fn parse_diagram_class_adjacent_operators_preserve_relationship_types() {
         ("A<|..B", "A", 1, -1, 1),
         ("A..|>B", "A", -1, 1, 1),
         ("`A*`*--B", "A*", 2, -1, 0),
+        ("A-o--B", "A-", 0, -1, 0),
+        ("A-o..B", "A-", 0, -1, 1),
+        ("A.o--B", "A.", 0, -1, 0),
+        ("A~T~o--B", "A", 0, -1, 0),
+        ("类o--B", "类", 0, -1, 0),
+        ("Afoo--B", "Afoo", -1, -1, 0),
+        ("`A-o`--B", "A-o", -1, -1, 0),
     ] {
         let text = format!("classDiagram\n{relation}\n");
         let parsed = engine

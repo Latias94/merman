@@ -464,6 +464,25 @@
     {
       "localPaths": [
         "src/scanner.c",
+        "grammar/families/class.js"
+      ],
+      "localSymbols": [
+        "scan_class_compact_identifier",
+        "_class_compact_identifier"
+      ],
+      "sources": [
+        {
+          "sourceId": "mermaid",
+          "relationship": "translated",
+          "sourcePaths": [
+            "packages/mermaid/src/diagrams/class/parser/classDiagram.jison:1-440"
+          ]
+        }
+      ]
+    },
+    {
+      "localPaths": [
+        "src/scanner.c",
         "grammar/shared/indentation.js"
       ],
       "localSymbols": [

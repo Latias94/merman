@@ -119,6 +119,26 @@ fn ordinary_and_scanner_edits_match_fresh_parses() {
 }
 
 #[test]
+fn compact_class_relation_and_generic_edits_match_fresh_parses() {
+    let source = b"classDiagram\nUser-Service-->`Box`~T~\nTrailing- -->User-Service\n";
+    let tree = new_parser().parse(source, None).unwrap();
+    assert!(!tree.root_node().has_error());
+
+    let operator = source
+        .windows(3)
+        .position(|window| window == b"-->")
+        .unwrap();
+    replace_and_compare(source, operator, operator + 3, b"..>");
+    replace_and_compare(source, operator, operator + 3, b" -- ");
+
+    let generic = source
+        .windows(3)
+        .position(|window| window == b"~T~")
+        .unwrap();
+    replace_and_compare(source, generic, generic + 3, b"~K,V~");
+}
+
+#[test]
 fn cancellation_after_scanner_state_keeps_the_parser_reusable() {
     let mut source = b"mindmap\nRoot\n".to_vec();
     for index in 0..2_048 {
