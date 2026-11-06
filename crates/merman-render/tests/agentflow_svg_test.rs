@@ -1037,6 +1037,8 @@ const AGENTFLOW_THEME_SOURCE: &str = "---\ntitle: Workflow\n---\nagentflow-beta 
 #[test]
 fn agentflow_compiled_paints_reach_flowchart_terminals_without_losing_kind_or_identity() {
     let theme = compile_agentflow_theme([
+        // Place shared text first so later role-local fills win in authored order.
+        agentflow_fill(ThemeTarget::Text, "#313f53"),
         agentflow_rule(
             ThemeTarget::Node,
             ThemeStylePatch::default()
@@ -1059,7 +1061,6 @@ fn agentflow_compiled_paints_reach_flowchart_terminals_without_losing_kind_or_id
         ),
         agentflow_fill(ThemeTarget::ClusterLabel, "#a35b17"),
         agentflow_fill(ThemeTarget::Title, "#b1724e"),
-        agentflow_fill(ThemeTarget::Text, "#313f53"),
     ]);
     for backend in ["dagre", "elk"] {
         for look in ["classic", "neo"] {
@@ -1091,12 +1092,15 @@ fn agentflow_compiled_paints_reach_flowchart_terminals_without_losing_kind_or_id
                                     && style.contains("stroke:#1976a2 !important")
                             })
                     }));
-                    assert!(node.descendants().any(|label| {
-                        label.attribute("style").is_some_and(|style| {
-                            style.contains("fill:#351f71 !important")
-                                || style.contains("color:#351f71 !important")
-                        })
-                    }));
+                    assert!(
+                        node.descendants().any(|label| {
+                            label.attribute("style").is_some_and(|style| {
+                                style.contains("fill:#351f71 !important")
+                                    || style.contains("color:#351f71 !important")
+                            })
+                        }),
+                        "{backend}, {look}, htmlLabels={html}, node={id}"
+                    );
                 }
                 let cluster = agentflow_element(&document, "Worker", "cluster");
                 let rect = cluster
