@@ -39,7 +39,7 @@ nonpublishing candidate has no upload history report; cross-run observation-only
 must not be used to publish the rest of a partially bootstrapped group.
 
 Node and Web use the same report selector in `scripts/release_attempt_history.py`. It may select
-the nearest valid older report only when every intervening upload was explicitly skipped;
+the nearest valid older report only when every intervening upload is proven not to have run;
 preserve the selected report's actual run/attempt and manifest identity. Missing, malformed or
 ambiguous history remains observation-only. The shared `scripts/npm_package_group.py` reconciler
 atomically persists upload intent and recovery state before subprocesses can lose them. A dated

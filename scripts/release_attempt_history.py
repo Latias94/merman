@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Read GitHub job history to distinguish a skipped upload from an unknown attempt."""
+"""Read GitHub job history to distinguish an unattempted upload from an unknown attempt."""
 
 from __future__ import annotations
 
@@ -53,7 +53,7 @@ def paginated_records(path: str, field: str) -> list[dict]:
 
 
 def upload_was_skipped(repository: str, run_id: int, attempt: int, owner: str) -> bool:
-    """A completed skipped job or explicit skipped upload step proves no send."""
+    """A completed skip or cancellation before runner assignment proves no send."""
 
     _, job_name, step_name = OWNERS[owner]
     jobs = paginated_records(
@@ -66,6 +66,10 @@ def upload_was_skipped(repository: str, run_id: int, attempt: int, owner: str) -
     job = matches[0]
     if job.get("conclusion") == "skipped":
         return True
+    if job.get("conclusion") == "cancelled":
+        return ("runner_id" in job and job["runner_id"] is None
+                and "runner_name" in job and job["runner_name"] is None
+                and job.get("steps") == [])
     if job.get("conclusion") not in {"success", "failure"}:
         return False
     steps = job.get("steps")
@@ -77,7 +81,7 @@ def upload_was_skipped(repository: str, run_id: int, attempt: int, owner: str) -
 
 
 def prior_publish_state(repository: str, run_id: int, before_attempt: int, owner: str) -> str:
-    """Return never-attempted only when every prior upload step was explicitly skipped."""
+    """Return never-attempted only when every prior upload is proven not to have run."""
 
     if before_attempt == 1:
         return "never-attempted"
@@ -121,7 +125,7 @@ def npm_run(repository: str, run_id: int, owner: str) -> dict:
 
 
 def report_before(repository: str, run_id: int, last_attempt: int, owner: str) -> NpmRecovery:
-    """Stop at the nearest report, or at any attempt whose upload is not skipped."""
+    """Stop at the nearest report, or at any upload not proven to have been unattempted."""
 
     artifacts = paginated_records(
         f"repos/{repository}/actions/runs/{run_id}/artifacts?per_page=100", "artifacts",
@@ -146,7 +150,7 @@ def select_npm_recovery(
     repository: str, run_id: int, before_attempt: int, owner: str,
     *, ancestor_run_id: int | None = None,
 ) -> NpmRecovery:
-    """Select an exact report only across explicitly skipped later uploads.
+    """Select an exact report only across later uploads proven not to have run.
 
     Report contents remain untrusted data. The package-group reconciler must bind
     their publication identity and manifest before allowing any missing upload.

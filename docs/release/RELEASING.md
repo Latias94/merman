@@ -475,7 +475,9 @@ An accepted upload can remain absent from a registry replica or its consumer ind
 Recovery reports bind their producing run and attempt. Cargo requires the preceding attempt's
 receipts or the explicitly selected source run's current attempt. Node and Web share the report
 selector in `scripts/release_attempt_history.py`: select the nearest valid report only when every
-intervening upload was explicitly skipped. Preserve that report's actual run/attempt and its
+intervening upload is proven not to have run. A completed skipped job or skipped upload step
+qualifies, as does a completed cancelled job with explicitly null runner identity and no steps.
+Assigned runners, missing fields and incomplete job listings retain uncertainty. Preserve the report's actual run/attempt and its
 manifest binding. Missing, malformed or ambiguous history remains observation-only; a successful
 prefix does not prove that a later package was never uploaded. The shared npm reconciler in
 `scripts/npm_package_group.py` atomically persists upload intent before sending and retains the
@@ -483,7 +485,7 @@ report across failures and interruption.
 
 Keep the original run, artifact, and receipts when retrying. If observation still cannot establish
 the registry state, continue observation before taking further publishing action. Keep the
-uncertainty flag and immutable tag; an older report is usable only through the verified skipped
+uncertainty flag and immutable tag; an older report is usable only through the verified unattempted
 history above. A 404 alone is not evidence that an upload never happened. Conflicting hashes stop
 immediately.
 

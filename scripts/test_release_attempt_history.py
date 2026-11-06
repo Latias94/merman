@@ -24,6 +24,11 @@ class PublishHistoryTests(unittest.TestCase):
             ],
         }]}]
 
+    def cancelled_page(self) -> list[dict]:
+        page = self.page(job_conclusion="cancelled")
+        page[0]["jobs"][0].update(runner_id=None, runner_name=None, steps=[])
+        return page
+
     def state(self, *attempts) -> str:
         with mock.patch.object(history, "read_api", side_effect=[
             {"path": ".github/workflows/release-web.yml"}, *attempts,
@@ -44,6 +49,49 @@ class PublishHistoryTests(unittest.TestCase):
         page = self.page(job_conclusion="skipped")
         page[0]["jobs"][0].pop("steps")
         self.assertEqual(self.state(page), "never-attempted")
+
+    def test_cancelled_job_without_runner_or_steps_allows_first_upload(self) -> None:
+        self.assertEqual(self.state(self.cancelled_page()), "never-attempted")
+
+    def test_cancelled_job_requires_explicit_runner_and_steps_fields(self) -> None:
+        for field in ("runner_id", "runner_name", "steps"):
+            with self.subTest(field=field):
+                page = self.cancelled_page()
+                page[0]["jobs"][0].pop(field)
+                self.assertEqual(self.state(page), "unknown")
+
+    def test_cancelled_job_rejects_assigned_or_malformed_runner_fields(self) -> None:
+        for field, value in (
+            ("runner_id", 11), ("runner_name", "GitHub Actions 11"),
+            ("runner_id", 0), ("runner_id", False), ("runner_id", True),
+            ("runner_name", ""), ("runner_name", False), ("runner_name", 0),
+        ):
+            with self.subTest(field=field, value=value):
+                page = self.cancelled_page()
+                page[0]["jobs"][0][field] = value
+                self.assertEqual(self.state(page), "unknown")
+
+    def test_cancelled_job_rejects_nonempty_or_malformed_steps(self) -> None:
+        for steps in (self.page()[0]["jobs"][0]["steps"], None, {}, False):
+            with self.subTest(steps=steps):
+                page = self.cancelled_page()
+                page[0]["jobs"][0]["steps"] = steps
+                self.assertEqual(self.state(page), "unknown")
+
+    def test_cancelled_job_must_be_completed(self) -> None:
+        for status in ("queued", "in_progress", "waiting", None):
+            with self.subTest(status=status):
+                page = self.cancelled_page()
+                page[0]["jobs"][0]["status"] = status
+                self.assertEqual(self.state(page), "unknown")
+
+    def test_cancelled_job_cannot_hide_incomplete_or_unknown_history(self) -> None:
+        page = self.cancelled_page()
+        page[0]["total_count"] = 2
+        self.assertEqual(self.state(page), "unknown")
+        self.assertEqual(self.state(
+            self.cancelled_page(), self.page(step_conclusion="failure"),
+        ), "unknown")
 
     def test_started_failed_cancelled_or_successful_upload_is_unknown(self) -> None:
         for conclusion in ["success", "failure", "cancelled", None]:
@@ -360,6 +408,14 @@ class FlutterPublicationHistoryTests(unittest.TestCase):
     def test_only_explicit_skips_allow_facade_repair_in_a_new_run(self) -> None:
         runs = [self.run_record(), self.run_record(41, attempt=2, status="completed")]
         self.assertEqual(self.state(runs, [self.jobs(), self.jobs()]), "never-attempted")
+
+    def test_cancelled_job_without_runner_allows_facade_repair_in_a_new_run(self) -> None:
+        jobs = self.jobs()
+        jobs[0]["jobs"][0].update(
+            conclusion="cancelled", runner_id=None, runner_name=None, steps=[],
+        )
+        runs = [self.run_record(), self.run_record(41, attempt=2, status="completed")]
+        self.assertEqual(self.state(runs, [self.jobs(), jobs]), "never-attempted")
 
     def test_same_run_upload_and_incomplete_other_run_remain_unknown(self) -> None:
         self.assertEqual(self.state([self.run_record(attempt=2)], [self.jobs("failure")], attempt=2), "unknown")
