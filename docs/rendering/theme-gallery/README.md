@@ -1,7 +1,7 @@
 # Theme gallery
 
 Six examples from the current 11-preset catalog show different visual designs, light and dark
-palettes, and five diagram families. Use the built-in recipes in a matching `0.10.0-alpha.1` runtime.
+palettes, and five diagram families. Use the built-in recipes in a matching `0.10.0-alpha.2` runtime.
 These are actual Merman exports; design scope, runtime availability, and portable output are
 separate facts reported by the installed catalog and each render's metadata.
 
@@ -31,6 +31,10 @@ for example, Spotless's semibold note needs native measurement to fit this host'
 The commands below reproduce the workflow with a matching runtime, while pixel identity
 across hosts is not guaranteed. The shared Flowchart source and settings let you compare
 Brutalist and Cyberpunk without changing the diagram.
+
+One Dark includes the Class label geometry fix from the next alpha's source tree. It uses the
+explicit macOS fonts shown below, with system discovery disabled. The other gallery images
+retain their earlier exports.
 
 All presets remain alpha, and the catalog has no qualified output cells. Dedicated design
 scope records family-specific styling, while base styling records a shared appearance.
@@ -91,7 +95,7 @@ merman-cli render brutalist.mmd --theme-preset brutalist --config-file brutalist
 merman-cli render ghibli.mmd --theme-preset ghibli --font-measurement native -f png -o ghibli.png
 merman-cli render spotless.mmd --theme-preset spotless --font-measurement native -f png -o spotless.png
 merman-cli render brutalist.mmd --theme-preset cyberpunk --config-file brutalist.config.json --font-measurement native -f png -o cyberpunk.png
-merman-cli render one-dark.mmd --theme-preset one-dark --config-file one-dark.config.json --font-measurement native -f png -o one-dark.png --theme-report one-dark.report.json
+merman-cli render one-dark.mmd --theme-preset one-dark --config-file one-dark.config.json --font-measurement native --font-file /System/Library/Fonts/SFNS.ttf --font-file /System/Library/Fonts/Menlo.ttc --font-system off --svg-id theme-gallery-one-dark -f png -o one-dark.png --theme-report one-dark.report.json
 merman-cli render gruvbox-light.mmd --theme-preset gruvbox-light --font-measurement native -f png -o gruvbox-light.png
 ```
 
