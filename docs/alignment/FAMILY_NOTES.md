@@ -151,6 +151,13 @@ locale individually. The [migration](../migrations/mermaid-12-3.md) and
 [signed browser-text catalog](../../fixtures/_verification/browser-text-layout-residuals.json)
 own the scope. Text, child counts, and line spacing remain observable; unregistered changes fail.
 
+Activations follow the live layout cursor, including notes and actor creation, rather than the
+previous message's arrow position. The creation/destruction canary retains its browser-measurement
+residual; its exact local signature was renewed after this correction changed only the activation
+rectangle's vertical position and height. Input, upstream SVG, admitted modes and normalization
+remain unchanged. Its differing actor measurements and overall canvas are still bounded residuals,
+not evidence of pixel-identical output.
+
 Sequence math comparison requires its managed math backend. An unavailable backend is a reported
 tooling skip, never a comparator allowance. Owners:
 [Sequence SVG tests](../../crates/merman-render/tests/sequence_svg_test.rs),

@@ -1,5 +1,15 @@
 use super::super::*;
 
+const BASELINE_LINE_STROKE_WIDTH_PX: f64 = 2.0;
+
+pub(super) fn lifeline_effective_stroke_width(typed_width: Option<f32>) -> f64 {
+    // Mermaid's broad line rule overrides the 0.5px presentation attribute. Clear omits the
+    // typed class declaration and therefore restores this CSS baseline as well.
+    typed_width
+        .map(|width| crate::number_format::canonicalize_number(f64::from(width)))
+        .unwrap_or(BASELINE_LINE_STROKE_WIDTH_PX)
+}
+
 pub(super) fn write_sequence_css(
     mut out: &mut impl SvgOutput,
     diagram_id: impl Copy + std::fmt::Display,
@@ -258,8 +268,11 @@ pub(super) fn write_sequence_css(
     // Glyph strokes inherit their actor group's palette color in Mermaid 12.
     let _ = write!(
         &mut out,
-        r#"#{} .actor-man circle,#{} line{{fill:{};stroke-width:2px;}}"#,
-        id, id, actor_fill
+        r#"#{} .actor-man circle,#{} line{{fill:{};stroke-width:{}px;}}"#,
+        id,
+        id,
+        actor_fill,
+        fmt(BASELINE_LINE_STROKE_WIDTH_PX)
     );
     if let Some(typed_actor_fill) = &terminal.actor.typed_fill {
         let _ = write!(

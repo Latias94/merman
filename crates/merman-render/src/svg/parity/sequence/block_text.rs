@@ -25,6 +25,7 @@ pub(super) struct LoopTextRenderContext<'a> {
 
 pub(super) struct LoopTextPlacement {
     pub(super) x: f64,
+    pub(super) math_center_x: f64,
     pub(super) y0: f64,
     pub(super) block_start_y: f64,
     pub(super) max_width: Option<f64>,
@@ -98,7 +99,8 @@ pub(super) fn write_loop_text_lines(
 ) -> Result<()> {
     ctx.checkpoints.checkpoint()?;
     if let Some(katex) = ctx.katex_label(occurrence_id) {
-        let x = (placement.x - katex.width / 2.0).round();
+        // Mermaid's drawKatex centers on the complete frame, independently of prose placement.
+        let x = (placement.math_center_x - katex.width / 2.0).round();
         write_sequence_katex_foreign_object(out, &katex, x, placement.block_start_y.round());
         record_sequence_katex_terminal_emission(
             ctx.typography_receipt,
@@ -393,6 +395,7 @@ mod tests {
                                 &ctx,
                                 LoopTextPlacement {
                                     x: 20.0,
+                                    math_center_x: 20.0,
                                     y0: 10.25,
                                     block_start_y: 0.0,
                                     max_width: None,

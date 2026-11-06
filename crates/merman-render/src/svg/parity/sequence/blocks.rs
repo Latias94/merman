@@ -261,6 +261,7 @@ pub(super) fn render_simple_sequence_block(
         &loop_text_ctx,
         LoopTextPlacement {
             x: text_x,
+            math_center_x: (frame_x1 + frame_x2) / 2.0,
             y0: text_y,
             block_start_y: frame_y1,
             max_width: max_w,
@@ -369,6 +370,7 @@ pub(super) fn render_sectioned_sequence_block(
                 &loop_text_ctx,
                 LoopTextPlacement {
                     x: main_text_x,
+                    math_center_x: center_text_x,
                     y0: y,
                     block_start_y: frame_y1,
                     max_width: max_w,
@@ -475,6 +477,7 @@ pub(super) fn render_critical_sequence_block(
                 &loop_text_ctx,
                 LoopTextPlacement {
                     x: main_text_x,
+                    math_center_x: center_text_x,
                     y0: y,
                     block_start_y: frame_y1,
                     max_width: max_w,

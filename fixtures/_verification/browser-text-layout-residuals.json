@@ -861,7 +861,7 @@
         "parity",
         "parity-root"
       ],
-      "local_svg_signature_sha256": "ce3f49da4aea1e822c7e0d3120e6702f5513632ef49ef2788c7b23174366816b",
+      "local_svg_signature_sha256": "2276d6f5fc1ffa0920b724fc22c7712dae8c998d7686afa8cd40b2bbc2ff6681",
       "input_sha256": "497091b33d552075bae534efc0ecedd43ab2c4b816d0a495cb8b9443dd1714b4",
       "upstream_svg_sha256": "85819f7490ecd425f0ecd6c9951fe4cf0bc42aa82a097cb41ffef485d7cbba79"
     },

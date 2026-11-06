@@ -104,9 +104,7 @@ pub(super) fn plan_sequence_actors<'a>(
         max_actor_layout_height(&ctx, &actor_base_heights)?
     };
     // addActorRenderingData applies the full-source conf.height to every retained actor.
-    if ctx.is_neo || hidden {
-        actor_base_heights.fill(max_actor_layout_height);
-    }
+    actor_base_heights.fill(max_actor_layout_height);
     if hidden {
         let mut retained = 0;
         for (source_slot, id) in ctx.source_actor_order.iter().enumerate() {

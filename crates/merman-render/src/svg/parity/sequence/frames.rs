@@ -47,14 +47,8 @@ pub(super) fn builtin_box_paint_bounds(
             continue;
         };
         // Box frames use SVG's default one-pixel stroke and the emitted zero-blur Neo filter.
-        let half_stroke = 0.5;
-        let offset = super::super::look_defs::NEO_SHADOW_OFFSET_PX;
-        let paint = Bounds {
-            min_x: x - half_stroke,
-            min_y: y - half_stroke,
-            max_x: x + width + half_stroke + offset,
-            max_y: y + height + half_stroke + offset,
-        };
+        let paint =
+            super::actor_effect::builtin_neo_rect_paint_bounds([x, y, width, height], 1.0, true);
         if let Some(bounds) = &mut bounds {
             bounds.min_x = bounds.min_x.min(paint.min_x);
             bounds.min_y = bounds.min_y.min(paint.min_y);
