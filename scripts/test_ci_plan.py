@@ -1020,13 +1020,15 @@ class WorkflowFontDependenciesTests(unittest.TestCase):
 
         root = Path(__file__).resolve().parents[1]
         cases = (
-            ("ci.yml", "typst-package", "cargo fetch --locked --target wasm32-unknown-unknown"),
-            ("ci.yml", "typst-package-compat", "cargo fetch --locked --target wasm32-unknown-unknown"),
-            ("release-crates.yml", "typst-owner-preflight", "cargo fetch --locked --target wasm32-unknown-unknown"),
-            ("release-preflight.yml", "versions-and-packages", "cargo fetch --locked"),
-            ("security-audit.yml", "cargo-dependency-policy", "cargo fetch --locked"),
+            ("ci.yml", "typst-package"),
+            ("ci.yml", "typst-package-compat"),
+            ("release-crates.yml", "typst-owner-preflight"),
+            ("release-preflight.yml", "versions-and-packages"),
+            ("security-audit.yml", "cargo-dependency-policy"),
         )
-        for filename, job_name, fetch in cases:
+        # Metadata also loads packages outside its filtered platform's selected tree.
+        fetch = "run: cargo fetch --locked\n"
+        for filename, job_name in cases:
             with self.subTest(workflow=filename, job=job_name):
                 workflow = (root / ".github/workflows" / filename).read_text(encoding="utf-8")
                 job = workflow_job(workflow, job_name)

@@ -1044,8 +1044,9 @@ jobs:
           cargo nextest run --locked -p merman-typst-plugin --no-default-features \
             --features all-diagrams,analysis,layout-cytoscape,layout-elk,svg
 
-      - name: Prefetch locked Typst dependencies for offline checks
-        run: cargo fetch --locked --target wasm32-unknown-unknown
+      - name: Prefetch locked dependencies for offline metadata
+        # Metadata loads cross-platform packages even with --filter-platform.
+        run: cargo fetch --locked
 
       - name: Check exact Typst dependency closure
         run: python3 scripts/verify_artifact_dependency_closures.py --profile typst-wasm
@@ -1104,8 +1105,9 @@ jobs:
           name: wasm-opt
           tag: version_133
 
-      - name: Prefetch locked Typst dependencies for offline checks
-        run: cargo fetch --locked --target wasm32-unknown-unknown
+      - name: Prefetch locked dependencies for offline metadata
+        # Metadata loads cross-platform packages even with --filter-platform.
+        run: cargo fetch --locked
 
       - name: Check exact Typst dependency closure
         run: python3 scripts/verify_artifact_dependency_closures.py --profile typst-wasm

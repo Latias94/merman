@@ -317,8 +317,9 @@ jobs:
           cargo run --locked -p xtask -- verify-artifact-profiles
           cargo run --locked -p xtask -- verify-typst-profile-constants
 
-      - name: Prefetch locked Typst dependencies for offline checks
-        run: cargo fetch --locked --target wasm32-unknown-unknown
+      - name: Prefetch locked dependencies for offline metadata
+        # Metadata loads cross-platform packages even with --filter-platform.
+        run: cargo fetch --locked
 
       - name: Build and smoke exact Typst artifact
         shell: bash
