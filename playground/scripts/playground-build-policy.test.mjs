@@ -187,6 +187,12 @@ function validManifest() {
       isDynamicEntry: true,
       imports: ["shared", OPTIONAL_FEATURE_SOURCES.viewer],
     },
+    [OPTIONAL_FEATURE_SOURCES.viewerMermaid]: {
+      file: "assets/viewer-mermaid.js",
+      src: OPTIONAL_FEATURE_SOURCES.viewerMermaid,
+      isDynamicEntry: true,
+      imports: ["shared"],
+    },
     compare: {
       file: "assets/compare.js",
       src: PLAYGROUND_BUILD_SOURCES.compareArtifact,

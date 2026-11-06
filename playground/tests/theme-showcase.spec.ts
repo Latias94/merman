@@ -7,13 +7,15 @@ import { DEFAULT_WORKSPACE_SNAPSHOT } from "../src/lib/workspace-snapshot";
 import { optionalFeatureOutput } from "./helpers/build-manifest";
 import { expectNoDocumentOverflow, monitorBrowserErrors, waitForPreviewSvg } from "./helpers/playground";
 
-const designIds = ["riso", "phosphor", "field-notes", "atlas", "nightfall", "letterpress", "grove"];
+const designIds = ["riso", "phosphor", "field-notes", "atlas", "nightfall", "letterpress", "grove", "blueprint", "pop-art", "lacquer", "paper-cut", "aurora"];
 const workspace = { ...DEFAULT_WORKSPACE_SNAPSHOT, code: "flowchart LR\nA[Keep this diagram] --> B[Keep this source]",
   mermaidConfig: '{"flowchart":{"htmlLabels":false,"curve":"linear"}}', diagramTheme: "neutral" as const,
   diagramFont: "trebuchet" as const, themePresetId: "brutalist" };
 
 async function start(page: Page) {
-  await page.addInitScript(() => localStorage.setItem("merman-language", "en"));
+  await page.addInitScript(() => {
+    if (window === window.top && (location.protocol === "http:" || location.protocol === "https:")) localStorage.setItem("merman-language", "en");
+  });
   await page.goto(`./${encodeShareHash(workspace)}`, { waitUntil: "domcontentloaded" });
   if ((page.viewportSize()?.width ?? 1280) < 768) await page.getByRole("tab", { name: "Preview", exact: true }).click();
   await waitForPreviewSvg(page);
@@ -36,7 +38,9 @@ test("theme designs load on demand and browsing five families preserves the work
   const launcher = page.locator("[data-theme-showcase-launcher]:visible");
   await launcher.click();
   const gallery = page.getByTestId("theme-showcase");
-  await expect(gallery.locator("[data-theme-design-card]")).toHaveCount(7);
+  await expect(gallery.locator("[data-theme-design-card]")).toHaveCount(designIds.length);
+  await expect(gallery.locator("[data-theme-design-card]").first()).toHaveAttribute("data-theme-design-card", "riso");
+  await expect(gallery.locator("[data-theme-design-card]").last()).toHaveAttribute("data-theme-design-card", "blueprint");
   expect(requests.some((url) => url.endsWith(output))).toBe(true);
   await gallery.getByRole("button", { name: "Explore Riso", exact: true }).click();
   await expect(gallery.getByTestId("theme-showcase-detail")).toHaveAttribute("data-theme-design", "riso");
@@ -60,18 +64,18 @@ test("design search and canvas filters reveal independent recipes across the col
   await page.getByRole("button", { name: "Theme designs", exact: true }).click();
   const gallery = page.getByTestId("theme-showcase");
   await gallery.getByRole("button", { name: "Dark", exact: true }).click();
-  await expect(gallery.locator("[data-theme-design-card]")).toHaveCount(2);
+  await expect(gallery.locator("[data-theme-design-card]")).toHaveCount(5);
   await expect(gallery.locator('[data-theme-design-card="phosphor"]')).toBeVisible();
   await gallery.getByRole("button", { name: "All designs", exact: true }).click();
   const search = gallery.getByRole("searchbox", { name: "Search designs", exact: true });
-  await search.fill("offset");
+  await search.fill("two inks");
   await expect(gallery.locator("[data-theme-design-card]")).toHaveCount(1);
   await expect(gallery.locator('[data-theme-design-card="riso"]')).toBeVisible();
   await search.fill("no-such-design");
   await expect(gallery).toContainText("No themes match");
   await search.press("Escape");
   await expect(gallery).toBeVisible();
-  await expect(gallery.locator("[data-theme-design-card]")).toHaveCount(7);
+  await expect(gallery.locator("[data-theme-design-card]")).toHaveCount(designIds.length);
   errors.assertNone();
 });
 
@@ -98,6 +102,7 @@ test("every design downloads its original JSON and sample links carry the actual
       expect(shared.diagramFont).toBe("inherit");
       const family = await link.locator("..").locator("..").getAttribute("data-theme-sample");
       expect(shared.code).toBe(await readFile(new URL(`../src/themes/samples/${family}.mmd`, import.meta.url), "utf8"));
+      expect(shared.code).not.toMatch(/\p{Script=Han}/u);
       expect(shared.mermaidConfig).toBe(await readFile(new URL(`../src/themes/samples/${family}.config.json`, import.meta.url), "utf8"));
     }
     await gallery.getByRole("button", { name: "All designs", exact: true }).click();
@@ -115,14 +120,19 @@ test("theme adoption copies JSON and configuration and bundles all three consume
   await gallery.getByRole("button", { name: "Explore Riso", exact: true }).click();
   const adoption = gallery.getByTestId("theme-showcase-use");
   const recipe = await readFile(new URL("../src/themes/recipes/riso.theme.json", import.meta.url), "utf8");
+  await expect(adoption.getByRole("tab", { name: "Sample config", exact: true })).toHaveCount(0);
+  await expect(adoption.getByTestId("theme-adoption-guide")).toContainText("already include them");
   await adoption.getByRole("button", { name: "Copy", exact: true }).click();
   expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(recipe);
-  await adoption.getByRole("combobox", { name: "Example diagram", exact: true }).selectOption("sequence");
-  await adoption.getByRole("tab", { name: "Sample config", exact: true }).click();
-  await adoption.getByRole("button", { name: "Copy", exact: true }).click();
+  await adoption.getByRole("tab", { name: "Rust", exact: true }).click();
+  await adoption.getByRole("combobox", { name: "Example diagram for this code", exact: true }).selectOption("sequence");
+  await adoption.locator("summary").click();
+  await adoption.getByRole("button", { name: "Copy sequence.config.json", exact: true }).click();
   expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(await readFile(new URL("../src/themes/samples/sequence.config.json", import.meta.url), "utf8"));
+  await adoption.locator("summary").click();
   for (const [target, label, filename] of [["rust", "Rust", "src/main.rs"], ["cli", "CLI", "render-command.txt"], ["web", "Web", "main.js"]]) {
     await adoption.getByRole("tab", { name: label, exact: true }).click();
+    if (target === "rust") await adoption.getByRole("radio", { name: "Project files · include_str!", exact: true }).check();
     await expect(adoption.getByTestId("theme-showcase-code")).not.toBeEmpty();
     const download = page.waitForEvent("download");
     await adoption.getByRole("button", { name: "Download example project", exact: true }).click();
@@ -140,6 +150,63 @@ test("theme adoption copies JSON and configuration and bundles all three consume
   }
   errors.assertNone();
 });
+
+test("Rust offers a highlighted single-file example and explains the include_str project layout", async ({ page }) => {
+  const errors = monitorBrowserErrors(page);
+  await page.context().grantPermissions(["clipboard-read", "clipboard-write"]);
+  await start(page);
+  await page.getByRole("button", { name: "Theme designs", exact: true }).click();
+  const gallery = page.getByTestId("theme-showcase");
+  await gallery.getByRole("button", { name: "Explore Riso", exact: true }).click();
+  const adoption = gallery.getByTestId("theme-showcase-use");
+  await expectHighlighted(adoption.getByTestId("theme-showcase-code"), "json");
+  await adoption.getByRole("tab", { name: "Rust", exact: true }).click();
+  await expect(adoption.getByRole("radio", { name: "Single file · copy into main.rs", exact: true })).toBeChecked();
+  const code = adoption.getByTestId("theme-showcase-code");
+  await expectHighlighted(code, "rust");
+  await adoption.getByRole("button", { name: "Copy", exact: true }).click();
+  const inline = await page.evaluate(() => navigator.clipboard.readText());
+  expect(inline).toContain("compile_recipe");
+  expect(inline).toContain("fn main()");
+  expect(inline).not.toContain("include_str!");
+  expect(inline).toContain('"schema_version": 1');
+  await expect(adoption.getByRole("navigation", { name: "Project files", exact: true })).toHaveCount(0);
+  await expect(adoption.getByRole("combobox", { name: "File", exact: true })).toHaveCount(0);
+  const singleDownload = page.waitForEvent("download");
+  await adoption.getByRole("button", { name: "Download main.rs", exact: true }).click();
+  const main = await singleDownload;
+  expect(main.suggestedFilename()).toBe("main.rs");
+  expect(await readFile((await main.path())!, "utf8")).toBe(inline);
+  await adoption.getByRole("radio", { name: "Project files · include_str!", exact: true }).check();
+  await expect(adoption).toContainText("paths are relative to src/main.rs");
+  const tree = adoption.getByRole("navigation", { name: "Project files", exact: true });
+  await tree.getByRole("button", { name: "Cargo.toml", exact: true }).click();
+  await expect(adoption.getByTestId("theme-showcase-code")).toHaveAttribute("data-code-language", "ini");
+  await adoption.getByRole("button", { name: "Copy", exact: true }).click();
+  expect(await page.evaluate(() => navigator.clipboard.readText())).toContain("[dependencies]");
+  await tree.getByRole("button", { name: "src/main.rs", exact: true }).click();
+  await expect(tree.getByRole("button", { name: "src/main.rs", exact: true })).toHaveAttribute("aria-current", "true");
+  await adoption.getByRole("button", { name: "Copy", exact: true }).click();
+  const files = await page.evaluate(() => navigator.clipboard.readText());
+  expect(files).toContain('include_str!("../theme.json")');
+  expect(files).toContain('include_str!("../diagram.mmd")');
+  await tree.getByRole("button", { name: "diagram.mmd", exact: true }).click();
+  await expectHighlighted(adoption.getByTestId("theme-showcase-code"), "mermaid");
+  await adoption.getByRole("radio", { name: "Single file · copy into main.rs", exact: true }).check();
+  await expect(tree).toHaveCount(0);
+  await expect(adoption.getByTestId("theme-showcase-code")).toHaveAttribute("data-code-language", "rust");
+  errors.assertNone();
+});
+
+async function expectHighlighted(code: import("@playwright/test").Locator, language: string) {
+  await expect(code).toHaveAttribute("data-code-language", language);
+  await expect.poll(() => code.locator(".view-lines span").evaluateAll((spans, currentLanguage) => {
+    const tokens = spans.map((span) => ({ text: span.textContent?.replaceAll("\u00a0", " ").trim() ?? "", color: getComputedStyle(span).color }));
+    const first = tokens.find((token) => currentLanguage === "json" ? token.text.includes('"schema_version"') : currentLanguage === "rust" ? token.text === "use" : token.text === "flowchart");
+    const second = tokens.find((token) => currentLanguage === "json" ? token.text === "1" : currentLanguage === "rust" ? token.text.includes("merman") : token.text.includes("Review workflow"));
+    return Boolean(first && second && first.color !== second.color);
+  }, language)).toBe(true);
+}
 
 test("applying a design changes only the theme and remains undoable", async ({ page }) => {
   const errors = monitorBrowserErrors(page);
@@ -174,6 +241,7 @@ test("theme designs keep all controls reachable on a narrow screen", async ({ pa
   await expect(gallery.locator("[data-theme-sample]")).toHaveCount(5);
   await gallery.getByTestId("theme-showcase-use").scrollIntoViewIfNeeded();
   await gallery.getByRole("tab", { name: "CLI", exact: true }).click();
+  await gallery.getByRole("button", { name: "Download example project", exact: true }).scrollIntoViewIfNeeded();
   await expect(gallery.getByRole("button", { name: "Download example project", exact: true })).toBeInViewport();
   await expectNoDocumentOverflow(page);
   await page.screenshot({ path: test.info().outputPath("theme-designs-mobile.png") });
@@ -199,7 +267,9 @@ test("the appearance-panel entry follows the selected design when reopened", asy
 });
 
 test("a failed runtime keeps JSON usable and offers recovery for integration code", async ({ page }) => {
-  await page.addInitScript(() => localStorage.setItem("merman-language", "en"));
+  await page.addInitScript(() => {
+    if (window === window.top && (location.protocol === "http:" || location.protocol === "https:")) localStorage.setItem("merman-language", "en");
+  });
   let failWasm = true;
   await page.route(/merman_wasm_bg-[\w-]+\.wasm(?:\?|$)/, async (route) => {
     if (failWasm) await route.abort("failed");

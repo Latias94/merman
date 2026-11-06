@@ -16,7 +16,9 @@ const workspace = {
 };
 
 async function start(page: Page, openPanel = true) {
-  await page.addInitScript(() => localStorage.setItem("merman-language", "en"));
+  await page.addInitScript(() => {
+    if (window === window.top && (location.protocol === "http:" || location.protocol === "https:")) localStorage.setItem("merman-language", "en");
+  });
   await page.goto(`./${encodeShareHash(workspace)}`, { waitUntil: "domcontentloaded" });
   if ((page.viewportSize()?.width ?? 1280) < 768) {
     await page.getByRole("tab", { name: "Preview", exact: true }).click();
@@ -45,7 +47,7 @@ test("one theme catalog loads with the appearance panel and searches every sourc
   await expect(page.locator("[data-theme-launcher]:visible")).toBeFocused();
   await page.locator("[data-theme-launcher]:visible").click();
   const catalog = panel.getByTestId("theme-catalog");
-  await expect(catalog.locator("[data-theme-exploration]")).toHaveCount(7);
+  await expect(catalog.locator("[data-theme-exploration]")).toHaveCount(12);
   await expect(catalog.locator('[data-theme-choice="mermaid:forest"]')).toBeVisible();
   await expect(catalog.locator('[data-theme-choice="preset:brutalist"]')).toHaveAttribute("aria-pressed", "true");
   expect(requests.some((url) => url.endsWith(galleryOutput))).toBe(true);
@@ -74,8 +76,8 @@ test("one theme catalog loads with the appearance panel and searches every sourc
     ["Mermaid.js official", "mermaid", 11],
     ["Merman built-in presets", "builtin", presetCount],
     ["--theme-preset", "builtin", presetCount],
-    ["Merman theme examples", "exploration", 7],
-    ["Merman example · JSON", "exploration", 7],
+    ["Merman theme examples", "exploration", 12],
+    ["Merman example · JSON", "exploration", 12],
   ] as const) {
     await search.fill(query);
     await expect(groups).toHaveCount(1);
@@ -89,7 +91,7 @@ test("one theme catalog loads with the appearance panel and searches every sourc
   await expect(search).toHaveValue("");
   await expect(groups).toHaveCount(4);
   await expect(choices).toHaveCount(1);
-  await expect(catalog.locator("[data-theme-exploration]")).toHaveCount(7);
+  await expect(catalog.locator("[data-theme-exploration]")).toHaveCount(12);
   await expect(panel).toBeVisible();
   await expect(panel.getByTestId("theme-current-name")).toHaveText("Brutalist");
   errors.assertNone();
@@ -130,7 +132,7 @@ test("catalog groups separate automatic selection from the eleven official theme
   await expect(official.locator("[data-theme-source-label]")).toHaveText(Array(11).fill("Mermaid.js official"));
   await expect(official).toContainText("Compare");
   await expect(choices.locator('[data-theme-group="builtin"]')).toContainText('theme: { preset: "…" }');
-  await expect(choices.locator('[data-theme-group="exploration"] [data-theme-choice]')).toHaveCount(7);
+  await expect(choices.locator('[data-theme-group="exploration"] [data-theme-choice]')).toHaveCount(12);
   for (const [group, source] of [["builtin", "Merman preset"], ["exploration", "Merman example · JSON"]]) {
     const entries = choices.locator(`[data-theme-group="${group}"] [data-theme-choice]`);
     const names = await entries.locator("[data-theme-choice-name]").allTextContents();
@@ -198,14 +200,18 @@ test("the unified catalog fits a narrow viewport and closing retains the selecte
   errors.assertNone();
 });
 
-for (const id of ["atlas", "nightfall", "letterpress", "grove", "riso", "phosphor", "field-notes"]) {
+for (const id of ["atlas", "nightfall", "letterpress", "grove", "riso", "phosphor", "field-notes", "blueprint", "pop-art", "lacquer", "paper-cut", "aurora"]) {
   test(`${id} renders all five samples with the browser runtime`, async ({ page }) => {
     const errors = monitorBrowserErrors(page);
-    await page.addInitScript(() => localStorage.setItem("merman-language", "en"));
+    await page.addInitScript(() => {
+      if (window === window.top && (location.protocol === "http:" || location.protocol === "https:")) localStorage.setItem("merman-language", "en");
+    });
     const recipe = await readFile(new URL(`../src/themes/recipes/${id}.theme.json`, import.meta.url), "utf8");
     for (const sample of ["flowchart", "sequence", "class", "xychart", "pie"]) {
       const source = await readFile(new URL(`../src/themes/samples/${sample}.mmd`, import.meta.url), "utf8");
       const config = await readFile(new URL(`../src/themes/samples/${sample}.config.json`, import.meta.url), "utf8");
+      // Share hydration runs at startup; a fragment-only navigation keeps the previous document.
+      await page.goto("about:blank");
       await page.goto(`./${encodeShareHash({
         ...DEFAULT_WORKSPACE_SNAPSHOT, code: source, mermaidConfig: config,
         diagramTheme: "default", themeRecipeJson: recipe,
@@ -215,11 +221,25 @@ for (const id of ["atlas", "nightfall", "letterpress", "grove", "riso", "phospho
       const panel = page.locator("#theme-panel");
       await expect(panel.getByTestId("theme-render-evidence")).toHaveAttribute("data-theme-evidence-state", "applied");
       await expect(panel.getByTestId("theme-diagnostic-reasons")).toHaveCount(0);
+      if (sample === "sequence") {
+        const containment = await page.locator(".preview-container > div").first().evaluate((host) => {
+          const svg = host.shadowRoot!.querySelector("svg")!;
+          const background = svg.querySelector<SVGRectElement>(".merman-theme-canvas-base")!.getBBox();
+          return [...svg.querySelectorAll<SVGLineElement>(".actor-line")].map((line) => {
+            const bounds = line.getBBox();
+            return { endpoint: bounds.y + bounds.height, canvasBottom: background.y + background.height };
+          });
+        });
+        expect(containment).toHaveLength(3);
+        for (const line of containment) expect(line.endpoint).toBeLessThanOrEqual(line.canvasBottom);
+      }
       if (sample === "flowchart") {
         const expectedInk: Record<string, string> = {
           atlas: "rgb(31, 42, 61)", nightfall: "rgb(231, 236, 244)",
           letterpress: "rgb(49, 44, 42)", grove: "rgb(38, 57, 47)",
           riso: "rgb(35, 63, 120)", phosphor: "rgb(226, 239, 215)", "field-notes": "rgb(44, 75, 57)",
+          blueprint: "rgb(227, 243, 250)", "pop-art": "rgb(25, 22, 32)", lacquer: "rgb(242, 233, 214)",
+          "paper-cut": "rgb(36, 62, 74)", aurora: "rgb(235, 245, 255)",
         };
         const labels = await page.locator(".preview-container > div").first().evaluate((host) =>
           Array.from(host.shadowRoot!.querySelectorAll<SVGTextElement>(".edgeLabel text"))

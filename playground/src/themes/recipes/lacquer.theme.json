@@ -1,0 +1,127 @@
+{
+  "schema_version": 1,
+  "kind": "design",
+  "design": {
+    "tokens": {
+      "canvas": { "type": "color", "label": "Black lacquer ground", "group": "Lacquer and gold", "value": "#110E12" },
+      "surface": { "type": "color", "label": "Oxblood lacquer", "group": "Lacquer and gold", "description": "Shared by ordinary Flowchart nodes, Sequence actor plaques, and Class bodies.", "value": "#3D1824" },
+      "recess": { "type": "color", "label": "Recessed black panel", "group": "Lacquer and gold", "value": "#1A131A" },
+      "ink": { "type": "color", "label": "Ivory lettering", "group": "Lacquer and gold", "description": "Shared text stays unfiltered, including Flowchart edge labels.", "value": "#F2E9D6" },
+      "muted": { "type": "color", "label": "Warm secondary lettering", "group": "Lacquer and gold", "value": "#BEAB93" },
+      "gold": { "type": "color", "label": "Pale gold inlay", "group": "Lacquer and gold", "description": "Shared by the asymmetric hard rim, connectors, activation edges, and chart highlights.", "value": "#D8BC82" },
+      "outline": { "type": "color", "label": "Antique gold structure", "group": "Lacquer and gold", "value": "#947C57" },
+      "wine-reflection": { "type": "color", "label": "Wine gloss reflection", "group": "Lacquer and gold", "description": "A restrained diagonal canvas reflection; this is a vector sheen, not a physical lighting simulation.", "value": "#946272" },
+      "note": { "type": "color", "label": "Inset annotation plaque", "group": "Lacquer and gold", "value": "#291B23" },
+      "vermilion": { "type": "color", "label": "Lacquer chart mark", "group": "Lacquer and gold", "value": "#A45B69" },
+      "active-surface": { "type": "color", "label": "Gold activation interior", "group": "Lacquer and gold", "description": "An independent translucent swatch; edit alongside Pale gold inlay when recoloring.", "value": "#D8BC823D" },
+      "body-font": { "type": "font-stack", "label": "Clear supporting text", "group": "Typography", "value": ["Avenir", "Segoe UI", "Arial", "Noto Sans CJK SC", "sans-serif"] },
+      "display-font": { "type": "font-stack", "label": "Editorial serif lettering", "group": "Typography", "value": ["Georgia", "Times New Roman", "Noto Serif CJK SC", "serif"] },
+      "code-font": { "type": "font-stack", "label": "Class signatures", "group": "Typography", "value": ["Menlo", "Consolas", "Liberation Mono", "Noto Sans Mono CJK SC", "monospace"] },
+      "series": { "type": "palette", "label": "Lacquer chart accents", "group": "Palettes", "value": [{ "ref": "vermilion" }, { "ref": "gold" }, "#9CA99C", "#B19CB9", "#A0B5BC", "#C19C71"] },
+      "pie-series": { "type": "palette", "label": "Lacquer compartments", "group": "Palettes", "description": "Independent dark swatches retain ivory percentage contrast; pale gold separators distinguish adjacent compartments.", "value": ["#6E2E40", "#3E4442", "#654F31", "#473649", "#2E4A4C", "#48402D"] },
+      "gold-rim": {
+        "type": "effect",
+        "label": "Asymmetric inlaid rim",
+        "group": "Effects",
+        "description": "A narrow unblurred gold offset to the left and below supported Flowchart bodies and Sequence actor plaques. Labels, Class, and Pie remain unfiltered.",
+        "value": {
+          "kind": "shadow-stack",
+          "composition": "independent",
+          "color_space": "srgb",
+          "shadows": [
+            { "offset_x": 1, "offset_y": 3, "std_deviation": 0.7, "color": { "ref": "canvas" }, "opacity": 0.65 },
+            { "offset_x": -2.4, "offset_y": 1.6, "std_deviation": 0, "color": { "ref": "gold" }, "opacity": 0.85 }
+          ]
+        }
+      },
+      "chart-rim": {
+        "type": "effect",
+        "label": "Fine chart inlay",
+        "group": "Effects",
+        "description": "A subpixel-width gold registration edge on XY bars; chart lines and all text remain unfiltered.",
+        "value": {
+          "kind": "shadow-stack",
+          "composition": "independent",
+          "color_space": "srgb",
+          "shadows": [
+            { "offset_x": -0.8, "offset_y": 0.8, "std_deviation": 0, "color": { "ref": "gold" }, "opacity": 0.8 }
+          ]
+        }
+      }
+    },
+    "canvas": {
+      "base": { "kind": "solid", "color": { "ref": "canvas" } },
+      "layers": [
+        {
+          "paint": {
+            "kind": "linear-gradient",
+            "angle_degrees": 135,
+            "stops": [
+              { "offset": 0, "color": { "ref": "wine-reflection" }, "opacity": 0.16 },
+              { "offset": 0.19, "color": { "ref": "wine-reflection" }, "opacity": 0.16 },
+              { "offset": 0.22, "color": { "ref": "wine-reflection" }, "opacity": 0.035 },
+              { "offset": 0.6, "color": { "ref": "wine-reflection" }, "opacity": 0 },
+              { "offset": 1, "color": { "ref": "wine-reflection" }, "opacity": 0 }
+            ]
+          }
+        }
+      ]
+    },
+    "typography": {
+      "default": { "font_stack": { "ref": "body-font" } },
+      "families": {
+        "flowchart": { "font_stack": { "ref": "display-font" }, "font_size_px": 16 },
+        "sequence": { "font_stack": { "ref": "body-font" }, "font_size_px": 14 },
+        "class": { "font_stack": { "ref": "code-font" }, "font_size_px": 13 },
+        "xychart": { "font_stack": { "ref": "display-font" } },
+        "pie": { "font_stack": { "ref": "display-font" } }
+      }
+    },
+    "styles": {
+      "text": { "fill": { "kind": "solid", "color": { "ref": "ink" } } }
+    },
+    "rules": [
+      { "family": "flowchart", "target": "node", "style": { "fill": { "kind": "solid", "color": { "ref": "surface" } }, "stroke": { "paint": { "kind": "solid", "color": { "ref": "outline" } }, "width": 0.9 }, "radius": 1, "effect": { "ref": "gold-rim" } } },
+      { "family": "flowchart", "target": "node-label", "style": { "fill": { "kind": "solid", "color": { "ref": "ink" } }, "typography": { "font_weight": 400 }, "effect": null } },
+      { "family": "flowchart", "target": "edge", "style": { "stroke": { "paint": { "kind": "solid", "color": { "ref": "gold" } }, "width": 1.1 }, "effect": null } },
+      { "family": "flowchart", "target": "edge-label", "style": { "typography": { "font_stack": { "ref": "body-font" }, "font_size_px": 12 }, "effect": null } },
+      { "family": "flowchart", "target": "edge-label-background", "style": { "fill": { "kind": "solid", "color": { "ref": "recess" } } } },
+      { "family": "flowchart", "target": "cluster", "style": { "fill": { "kind": "solid", "color": { "ref": "recess" } }, "stroke": { "paint": { "kind": "solid", "color": { "ref": "outline" } }, "width": 0.75 } } },
+      { "family": "flowchart", "target": "cluster-label", "style": { "fill": { "kind": "solid", "color": { "ref": "gold" } } } },
+      { "family": "sequence", "target": "actor", "style": { "fill": { "kind": "solid", "color": { "ref": "surface" } }, "stroke": { "paint": { "kind": "solid", "color": { "ref": "outline" } }, "width": 0.9 }, "radius": 1, "effect": { "ref": "gold-rim" } } },
+      { "family": "sequence", "target": "actor-label", "style": { "fill": { "kind": "solid", "color": { "ref": "ink" } }, "typography": { "font_stack": { "ref": "display-font" }, "font_size_px": 17, "font_weight": 400 }, "effect": null } },
+      { "family": "sequence", "target": "lifeline", "style": { "stroke": { "paint": { "kind": "solid", "color": { "ref": "outline" } }, "width": 0.8 }, "effect": null } },
+      { "family": "sequence", "target": "message", "style": { "stroke": { "paint": { "kind": "solid", "color": { "ref": "gold" } }, "width": 1.1 }, "effect": null } },
+      { "family": "sequence", "target": "message-label", "style": { "fill": { "kind": "solid", "color": { "ref": "ink" } }, "typography": { "font_size_px": 13 } } },
+      { "family": "sequence", "target": "note", "style": { "fill": { "kind": "solid", "color": { "ref": "note" } }, "stroke": { "paint": { "kind": "solid", "color": { "ref": "gold" } }, "width": 0.8 }, "radius": 0, "effect": null } },
+      { "family": "sequence", "target": "note-label", "style": { "fill": { "kind": "solid", "color": { "ref": "gold" } }, "typography": { "font_stack": { "ref": "display-font" }, "font_size_px": 15, "font_style": "italic" }, "effect": null } },
+      { "family": "sequence", "target": "activation", "style": { "fill": { "kind": "solid", "color": { "ref": "active-surface" } }, "stroke": { "paint": { "kind": "solid", "color": { "ref": "gold" } }, "width": 1 }, "effect": null } },
+      { "family": "sequence", "target": "loop", "style": { "stroke": { "paint": { "kind": "solid", "color": { "ref": "outline" } }, "width": 0.8 }, "effect": null } },
+      { "family": "sequence", "target": "loop-label-background", "style": { "fill": { "kind": "solid", "color": { "ref": "recess" } }, "stroke": { "paint": { "kind": "solid", "color": { "ref": "outline" } }, "width": 0.8 } } },
+      { "family": "sequence", "target": "loop-label", "style": { "fill": { "kind": "solid", "color": { "ref": "muted" } }, "typography": { "font_size_px": 12 }, "effect": null } },
+      { "family": "sequence", "target": "sequence-number", "style": { "fill": { "kind": "solid", "color": { "ref": "canvas" } } } },
+      { "family": "class", "target": "node", "style": { "fill": { "kind": "solid", "color": { "ref": "surface" } }, "stroke": { "paint": { "kind": "solid", "color": { "ref": "outline" } } } } },
+      { "family": "class", "target": "node-label", "style": { "fill": { "kind": "solid", "color": { "ref": "ink" } } } },
+      { "family": "class", "target": "title", "style": { "fill": { "kind": "solid", "color": { "ref": "gold" } } } },
+      { "family": "class", "target": "edge", "style": { "stroke": { "paint": { "kind": "solid", "color": { "ref": "gold" } }, "width": 1.1 } } },
+      { "family": "class", "target": "edge-label-background", "style": { "fill": { "kind": "solid", "color": { "ref": "recess" } } } },
+      { "family": "class", "target": "cluster", "style": { "fill": { "kind": "solid", "color": { "ref": "recess" } }, "stroke": { "paint": { "kind": "solid", "color": { "ref": "outline" } } } } },
+      { "family": "xychart", "target": "axis", "style": { "fill": { "kind": "solid", "color": { "ref": "muted" } }, "stroke": { "paint": { "kind": "solid", "color": { "ref": "outline" } } } } },
+      { "family": "xychart", "target": "axis-tick", "style": { "stroke": { "paint": { "kind": "solid", "color": { "ref": "outline" } } } } },
+      { "family": "xychart", "target": "title", "style": { "fill": { "kind": "solid", "color": { "ref": "gold" } }, "typography": { "font_size_px": 23, "font_weight": 400 }, "effect": null } },
+      { "family": "xychart", "target": "axis-title", "style": { "fill": { "kind": "solid", "color": { "ref": "muted" } }, "typography": { "font_size_px": 14 }, "effect": null } },
+      { "family": "xychart", "target": "axis-label", "style": { "fill": { "kind": "solid", "color": { "ref": "muted" } }, "typography": { "font_size_px": 12 }, "effect": null } },
+      { "family": "xychart", "target": "legend", "style": { "fill": { "kind": "solid", "color": { "ref": "ink" } }, "typography": { "font_size_px": 13 }, "effect": null } },
+      { "family": "xychart", "target": "chart-series", "variant": "bar", "style": { "stroke": { "width": 0.8 }, "effect": { "ref": "chart-rim" } } },
+      { "family": "xychart", "target": "chart-series", "variant": "line", "style": { "stroke": { "width": 2.2 }, "effect": null } },
+      { "family": "pie", "target": "pie-slice", "style": { "stroke": { "paint": { "kind": "solid", "color": { "ref": "gold" } } } } },
+      { "family": "pie", "target": "text", "style": { "fill": { "kind": "solid", "color": { "ref": "ink" } }, "typography": { "font_size_px": 16, "font_weight": 400 } } },
+      { "family": "pie", "target": "title", "style": { "fill": { "kind": "solid", "color": { "ref": "gold" } }, "typography": { "font_size_px": 23, "font_weight": 400 } } },
+      { "family": "pie", "target": "legend", "style": { "fill": { "kind": "solid", "color": { "ref": "ink" } }, "typography": { "font_size_px": 14 } } }
+    ],
+    "palettes": {
+      "chart-series": { "ref": "series" },
+      "pie-slice": { "ref": "pie-series" }
+    }
+  }
+}

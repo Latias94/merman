@@ -156,17 +156,37 @@ These two local display preferences are remembered separately.
 
 ### Standalone explorations and example scenes
 
-Open **Theme designs** from the toolbar or the Appearance panel to browse seven standalone
-recipes: Riso (two-ink print), Phosphor (industrial display), Field Notes (forest-ink ledger),
-Atlas (technical light), Nightfall (quiet dark), Letterpress (warm editorial), and Grove (natural
-green). Each card combines several diagram previews; opening a design shows Flowchart, Sequence,
+Open **Theme designs** from the toolbar or the Appearance panel to browse twelve standalone
+recipes. Riso, Pop Art, Field Notes, Lacquer, Paper Cut and Aurora lead the collection, followed by
+Phosphor, Letterpress, Grove, Atlas, Nightfall and Blueprint. Each card combines several diagram
+previews; opening a design shows Flowchart, Sequence,
 Class, XY Chart, and Pie together. Browsing does not change the workspace. **Apply to my diagram**
 uses the recipe on the current source, base theme, font, and configuration. These are not core preset IDs: use their downloaded recipe
 with CLI `--theme-file`, Rust `compile_recipe`, or Web `theme: recipe`. Their names and source
 labels are display metadata, not claims of runtime availability or family support.
 
-Each design includes the complete editable theme JSON, sample configuration, and Rust, CLI, and
-Web adoption code. Select a sample family before downloading its example project to include the
+The inputs have separate purposes:
+
+| Material | Purpose | When to use it |
+| --- | --- | --- |
+| `theme.json` | Colors, typography, canvas and effects | Import it into Playground, or load it through one application integration. |
+| Example Mermaid source and layout options | The content and arrangement of a gallery sample | Optional when adopting a theme for your own diagram. Generated example projects already apply these options. |
+| Rust, CLI or Web code | Loads the theme and renders a diagram | Choose the integration for your application; these are alternatives. |
+
+The gallery's layout options are ordinary Mermaid diagram configuration, not a second theme.
+You do not need them to reuse the visual design. Generated `diagram.mmd` already contains those
+options in an init directive; do not inject them again. Web `options.json` already contains the
+theme. Inspect the generated files to see where each input is consumed.
+
+Rust offers **Single file** and **Project files**. Single file shows and downloads only `main.rs`,
+which embeds the raw recipe, diagram and initialization settings. Add `merman` (with `math`) and
+`serde_json` to your Cargo dependencies and run the code without companion JSON or Mermaid files.
+Project files shows a navigable file tree with the complete `Cargo.toml` and uses `include_str!` paths relative to
+`src/main.rs`, with `theme.json`, `diagram.mmd` and `site-config.json` at the Cargo project root.
+Downloading the example supplies the complete directory structure and setup instructions.
+
+Each design includes syntax-highlighted theme JSON and Rust, CLI, and Web adoption code.
+Select a sample family before downloading its example project to include the
 matching Mermaid source, theme, configuration, and setup instructions. These materials describe
 an independent example, not a captured rendering of the current workspace. **Open sample** starts
 a separate tab with the source and configuration, leaving the current work intact.
@@ -176,6 +196,8 @@ The recipes, shared samples, configurations, and SVGs live in
 [`playground/src/themes`](../../playground/src/themes/). The five example families have been
 rendered with each recipe; other families and targets need their own review. Source styles and
 explicit font/configuration choices can change the result.
+The shared diagram text is English in both interface languages; controls and explanations retain
+English and Chinese localization.
 
 To refresh a library SVG, render its saved source, configuration, and recipe together, for example:
 
@@ -189,13 +211,37 @@ measurement flag). Fonts are not embedded. With another host font, review label 
 replacing the asset. Native SVG text does not imply native font measurement.
 The Riso, Phosphor, and Field Notes Class previews also use bounded native fonts: Menlo for
 Phosphor, and Avenir plus Menlo for Riso and Field Notes. Their method signatures need measured
-monospace widths to stay inside the class compartments.
+monospace widths to stay inside the class compartments. Blueprint and Pop Art use bounded native
+measurement for Class as well. Lacquer Class explicitly loads Georgia, Avenir and Menlo for its
+mixed serif, supporting text and signature roles.
+Paper Cut Class uses Avenir; Aurora Class uses Menlo and Avenir. The named font files must match
+the recipe when regenerating these assets.
 
 Riso's small opposing shadows suggest ink registration offsets on supported bodies; they do not
 simulate physical ink mixing or paper noise. Phosphor scopes glow to connections, activations,
 and data traces. Field Notes uses dark record cards, faint paper ruling, and lifted annotation
 slips. Class and Pie use their own paint and typography treatments rather than unsupported body
 effects. Their recipes remain editable without adding new preset IDs.
+Blueprint combines a drafting grid, technical annotations and crisp outlines. Pop Art uses
+poster colors, bold contours and offset ink. Lacquer pairs deep panels with asymmetric gold rims
+and a restrained canvas sheen. Their dedicated treatments also cover the same five families.
+Paper Cut uses independent hard paper edges plus soft contact depth. Aurora combines a gradient
+night canvas, radial light ribbons and supported panel halos; text remains unfiltered.
+
+These designs also illustrate current authoring limits:
+
+| Design request | Current behavior and supported alternative |
+| --- | --- |
+| Gradient Flowchart node bodies or Pie sectors | These role paths report `unsupported-paint`. The examples keep solid surfaces and place gradients in the canvas. |
+| Class body glow or the same layered shadows as Flowchart | Class reports `unsupported-effect`. Its treatment uses paint and typography. |
+| Flowchart cluster-label weight or a local XY legend font stack | These role paths report `unsupported-typography`. Shared or family typography can still apply; support is property-specific. |
+| Blur the scene behind a panel | Effects take the source graphic or previous effect result, not a backdrop input. Transparency and halos cannot reproduce backdrop blur. |
+| Unlimited radial-gradient positioning | Percentage centers and radii have a validated range. Out-of-range values are rejected rather than silently clipped. |
+
+Theme verification accounts for requested styling, not browser text bounds. During design,
+deterministic XY legend reservations differed from actual Avenir and Menlo widths by roughly
+0.6–4.2px. The shipped examples use typography checked in the browser, but receiving hosts and
+font fallbacks still need layout review. Do not treat a verified theme as a pixel-fit guarantee.
 
 ### Effective appearance and imports
 

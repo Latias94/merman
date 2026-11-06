@@ -1,0 +1,162 @@
+{
+  "schema_version": 1,
+  "kind": "design",
+  "design": {
+    "tokens": {
+      "night": { "type": "color", "label": "Deep indigo night", "group": "Atmosphere", "value": "#0B1028" },
+      "horizon": { "type": "color", "label": "Distant blue horizon", "group": "Atmosphere", "value": "#14223E" },
+      "violet-night": { "type": "color", "label": "Violet nightfall", "group": "Atmosphere", "value": "#191331" },
+      "mint": { "type": "color", "label": "Mint aurora ribbon", "group": "Atmosphere", "description": "Shared by the upper light ribbon, panel highlights, connectors and the first chart series.", "value": "#78E8CA" },
+      "violet": { "type": "color", "label": "Violet aurora ribbon", "group": "Atmosphere", "description": "Shared by the distant light ribbon, lower panel halo and the second chart series.", "value": "#BB9CFF" },
+      "cyan": { "type": "color", "label": "Ice blue light", "group": "Atmosphere", "value": "#82DCEC" },
+      "surface": { "type": "color", "label": "Suspended blue green panel", "group": "Panels and lettering", "value": "#163442" },
+      "class-surface": { "type": "color", "label": "Indigo class card", "group": "Panels and lettering", "description": "Class uses its own solid card paint and typography, without requesting body effects.", "value": "#242543" },
+      "recess": { "type": "color", "label": "Translucent night enclosure", "group": "Panels and lettering", "value": "#10182E94" },
+      "ink": { "type": "color", "label": "Unfiltered starlight text", "group": "Panels and lettering", "description": "Shared foreground stays clear; only panel bodies and selected signal geometry receive halos.", "value": "#EBF5FF" },
+      "muted": { "type": "color", "label": "Secondary blue grey text", "group": "Panels and lettering", "value": "#B4C8DE" },
+      "outline": { "type": "color", "label": "Quiet structural line", "group": "Panels and lettering", "value": "#6884A4" },
+      "panel-edge": { "type": "color", "label": "Luminous panel rim", "group": "Panels and lettering", "value": "#83CCDA" },
+      "label-ground": { "type": "color", "label": "Readable label ground", "group": "Panels and lettering", "value": "#111A34F2" },
+      "note": { "type": "color", "label": "Violet annotation glass", "group": "Panels and lettering", "value": "#302849" },
+      "activation": { "type": "color", "label": "Mint activation interior", "group": "Panels and lettering", "description": "An independent translucent swatch; edit alongside Mint aurora ribbon when recoloring.", "value": "#78E8CA38" },
+      "body-font": { "type": "font-stack", "label": "Soft geometric lettering", "group": "Typography", "value": ["Avenir", "Segoe UI", "Arial", "Noto Sans CJK SC", "sans-serif"] },
+      "code-font": { "type": "font-stack", "label": "Clear class signatures", "group": "Typography", "value": ["Menlo", "Consolas", "Liberation Mono", "Noto Sans Mono CJK SC", "monospace"] },
+      "chart-font": { "type": "font-stack", "label": "Compact chart lettering", "group": "Typography", "description": "A narrow geometric face gives compact chart legends breathing room without changing the shared diagram configuration.", "value": ["Avenir Next Condensed", "Arial Narrow", "Helvetica Neue", "Arial", "Noto Sans CJK SC", "sans-serif"] },
+      "series": { "type": "palette", "label": "Aurora chart signals", "group": "Palettes", "value": [{ "ref": "mint" }, { "ref": "violet" }, { "ref": "cyan" }, "#F0ACCF", "#A8D9B4", "#AAB7F3"] },
+      "pie-series": { "type": "palette", "label": "Deep aurora sectors", "group": "Palettes", "description": "Independent dark colors preserve light percentage contrast; mint separators distinguish neighboring sectors.", "value": ["#215760", "#4B3C79", "#215C4C", "#563D6B", "#30486B", "#5B405B"] },
+      "panel-halo": {
+        "type": "effect",
+        "label": "Two tone atmospheric panel lift",
+        "group": "Effects",
+        "description": "Soft mint light above and violet light below supported Flowchart bodies and Sequence actors. These are exterior shadows, not backdrop blur or inset lighting.",
+        "value": {
+          "kind": "shadow-stack",
+          "composition": "independent",
+          "color_space": "srgb",
+          "shadows": [
+            { "offset_x": 0, "offset_y": 5, "std_deviation": 5, "color": { "ref": "night" }, "opacity": 0.7 },
+            { "offset_x": -1.5, "offset_y": -1, "std_deviation": 3, "color": { "ref": "mint" }, "opacity": 0.2 },
+            { "offset_x": 2, "offset_y": 4, "std_deviation": 5, "color": { "ref": "violet" }, "opacity": 0.32 }
+          ]
+        }
+      },
+      "signal-halo": {
+        "type": "effect",
+        "label": "Local aurora signal",
+        "group": "Effects",
+        "description": "A narrow halo on Flowchart connectors, Sequence activations and the XY line. Text and structural lines remain unfiltered.",
+        "value": {
+          "kind": "shadow-stack",
+          "composition": "independent",
+          "color_space": "srgb",
+          "shadows": [
+            { "offset_x": 0, "offset_y": 0, "std_deviation": 2.2, "color": { "ref": "cyan" }, "opacity": 0.4 }
+          ]
+        }
+      }
+    },
+    "canvas": {
+      "base": {
+        "kind": "linear-gradient",
+        "angle_degrees": 128,
+        "stops": [
+          { "offset": 0, "color": { "ref": "night" } },
+          { "offset": 0.5, "color": { "ref": "horizon" } },
+          { "offset": 1, "color": { "ref": "violet-night" } }
+        ]
+      },
+      "layers": [
+        {
+          "paint": {
+            "kind": "radial-gradient",
+            "center_x": { "percent": 8 },
+            "center_y": { "percent": 0 },
+            "radius": { "percent": 100 },
+            "stops": [
+              { "offset": 0, "color": { "ref": "mint" }, "opacity": 0 },
+              { "offset": 0.35, "color": { "ref": "mint" }, "opacity": 0 },
+              { "offset": 0.53, "color": { "ref": "mint" }, "opacity": 0.08 },
+              { "offset": 0.6, "color": { "ref": "mint" }, "opacity": 0.3 },
+              { "offset": 0.69, "color": { "ref": "cyan" }, "opacity": 0.07 },
+              { "offset": 0.87, "color": { "ref": "cyan" }, "opacity": 0 },
+              { "offset": 1, "color": { "ref": "cyan" }, "opacity": 0 }
+            ]
+          }
+        },
+        {
+          "paint": {
+            "kind": "radial-gradient",
+            "center_x": { "percent": 98 },
+            "center_y": { "percent": 4 },
+            "radius": { "percent": 96 },
+            "stops": [
+              { "offset": 0, "color": { "ref": "violet" }, "opacity": 0 },
+              { "offset": 0.24, "color": { "ref": "violet" }, "opacity": 0 },
+              { "offset": 0.39, "color": { "ref": "violet" }, "opacity": 0.07 },
+              { "offset": 0.49, "color": { "ref": "violet" }, "opacity": 0.28 },
+              { "offset": 0.62, "color": { "ref": "violet" }, "opacity": 0.05 },
+              { "offset": 0.84, "color": { "ref": "violet" }, "opacity": 0 },
+              { "offset": 1, "color": { "ref": "violet" }, "opacity": 0 }
+            ]
+          }
+        }
+      ]
+    },
+    "typography": {
+      "default": { "font_stack": { "ref": "body-font" } },
+      "families": {
+        "flowchart": { "font_stack": { "ref": "body-font" }, "font_size_px": 16 },
+        "sequence": { "font_stack": { "ref": "body-font" }, "font_size_px": 14 },
+        "class": { "font_stack": { "ref": "code-font" }, "font_size_px": 13 },
+        "xychart": { "font_stack": { "ref": "chart-font" } },
+        "pie": { "font_stack": { "ref": "body-font" } }
+      }
+    },
+    "styles": {
+      "text": { "fill": { "kind": "solid", "color": { "ref": "ink" } } }
+    },
+    "rules": [
+      { "family": "flowchart", "target": "node", "style": { "fill": { "kind": "solid", "color": { "ref": "surface" } }, "stroke": { "paint": { "kind": "solid", "color": { "ref": "panel-edge" } }, "width": 1.1 }, "radius": 12, "effect": { "ref": "panel-halo" } } },
+      { "family": "flowchart", "target": "node-label", "style": { "fill": { "kind": "solid", "color": { "ref": "ink" } }, "typography": { "font_weight": 500 }, "effect": null } },
+      { "family": "flowchart", "target": "edge", "style": { "stroke": { "paint": { "kind": "solid", "color": { "ref": "mint" } }, "width": 1.6 }, "effect": { "ref": "signal-halo" } } },
+      { "family": "flowchart", "target": "edge-label", "style": { "typography": { "font_size_px": 12 }, "effect": null } },
+      { "family": "flowchart", "target": "edge-label-background", "style": { "fill": { "kind": "solid", "color": { "ref": "label-ground" } } } },
+      { "family": "flowchart", "target": "cluster", "style": { "fill": { "kind": "solid", "color": { "ref": "recess" } }, "stroke": { "paint": { "kind": "solid", "color": { "ref": "outline" } }, "width": 0.75 } } },
+      { "family": "flowchart", "target": "cluster-label", "style": { "fill": { "kind": "solid", "color": { "ref": "muted" } } } },
+      { "family": "sequence", "target": "actor", "style": { "fill": { "kind": "solid", "color": { "ref": "surface" } }, "stroke": { "paint": { "kind": "solid", "color": { "ref": "panel-edge" } }, "width": 1.1 }, "radius": 12, "effect": { "ref": "panel-halo" } } },
+      { "family": "sequence", "target": "actor-label", "style": { "fill": { "kind": "solid", "color": { "ref": "ink" } }, "typography": { "font_size_px": 16, "font_weight": 500 }, "effect": null } },
+      { "family": "sequence", "target": "lifeline", "style": { "stroke": { "paint": { "kind": "solid", "color": { "ref": "outline" } }, "width": 0.8 }, "effect": null } },
+      { "family": "sequence", "target": "message", "style": { "stroke": { "paint": { "kind": "solid", "color": { "ref": "mint" } }, "width": 1.2 }, "effect": null } },
+      { "family": "sequence", "target": "message-label", "style": { "fill": { "kind": "solid", "color": { "ref": "ink" } }, "typography": { "font_size_px": 14 } } },
+      { "family": "sequence", "target": "note", "style": { "fill": { "kind": "solid", "color": { "ref": "note" } }, "stroke": { "paint": { "kind": "solid", "color": { "ref": "violet" } }, "width": 0.9 }, "radius": 7, "effect": null } },
+      { "family": "sequence", "target": "note-label", "style": { "fill": { "kind": "solid", "color": { "ref": "ink" } }, "typography": { "font_size_px": 13 }, "effect": null } },
+      { "family": "sequence", "target": "activation", "style": { "fill": { "kind": "solid", "color": { "ref": "activation" } }, "stroke": { "paint": { "kind": "solid", "color": { "ref": "mint" } }, "width": 1 }, "effect": { "ref": "signal-halo" } } },
+      { "family": "sequence", "target": "loop", "style": { "stroke": { "paint": { "kind": "solid", "color": { "ref": "outline" } }, "width": 0.8 }, "effect": null } },
+      { "family": "sequence", "target": "loop-label-background", "style": { "fill": { "kind": "solid", "color": { "ref": "surface" } }, "stroke": { "paint": { "kind": "solid", "color": { "ref": "outline" } }, "width": 0.8 } } },
+      { "family": "sequence", "target": "loop-label", "style": { "fill": { "kind": "solid", "color": { "ref": "muted" } }, "typography": { "font_size_px": 12 }, "effect": null } },
+      { "family": "sequence", "target": "sequence-number", "style": { "fill": { "kind": "solid", "color": { "ref": "night" } } } },
+      { "family": "class", "target": "node", "style": { "fill": { "kind": "solid", "color": { "ref": "class-surface" } }, "stroke": { "paint": { "kind": "solid", "color": { "ref": "panel-edge" } } } } },
+      { "family": "class", "target": "node-label", "style": { "fill": { "kind": "solid", "color": { "ref": "ink" } } } },
+      { "family": "class", "target": "title", "style": { "fill": { "kind": "solid", "color": { "ref": "violet" } } } },
+      { "family": "class", "target": "edge", "style": { "stroke": { "paint": { "kind": "solid", "color": { "ref": "mint" } }, "width": 1.3 } } },
+      { "family": "class", "target": "edge-label-background", "style": { "fill": { "kind": "solid", "color": { "ref": "label-ground" } } } },
+      { "family": "class", "target": "cluster", "style": { "fill": { "kind": "solid", "color": { "ref": "recess" } }, "stroke": { "paint": { "kind": "solid", "color": { "ref": "outline" } } } } },
+      { "family": "xychart", "target": "axis", "style": { "fill": { "kind": "solid", "color": { "ref": "muted" } }, "stroke": { "paint": { "kind": "solid", "color": { "ref": "outline" } } } } },
+      { "family": "xychart", "target": "axis-tick", "style": { "stroke": { "paint": { "kind": "solid", "color": { "ref": "outline" } } } } },
+      { "family": "xychart", "target": "title", "style": { "fill": { "kind": "solid", "color": { "ref": "ink" } }, "typography": { "font_size_px": 23, "font_weight": 500 }, "effect": null } },
+      { "family": "xychart", "target": "axis-title", "style": { "fill": { "kind": "solid", "color": { "ref": "muted" } }, "typography": { "font_size_px": 14 }, "effect": null } },
+      { "family": "xychart", "target": "axis-label", "style": { "fill": { "kind": "solid", "color": { "ref": "muted" } }, "typography": { "font_size_px": 12 }, "effect": null } },
+      { "family": "xychart", "target": "legend", "style": { "fill": { "kind": "solid", "color": { "ref": "ink" } }, "typography": { "font_size_px": 13 }, "effect": null } },
+      { "family": "xychart", "target": "chart-series", "variant": "bar", "style": { "fill_opacity": 0.58, "stroke": { "width": 1 }, "effect": null } },
+      { "family": "xychart", "target": "chart-series", "variant": "line", "style": { "stroke": { "width": 2.8 }, "effect": { "ref": "signal-halo" } } },
+      { "family": "pie", "target": "pie-slice", "style": { "stroke": { "paint": { "kind": "solid", "color": { "ref": "panel-edge" } } } } },
+      { "family": "pie", "target": "text", "style": { "fill": { "kind": "solid", "color": { "ref": "ink" } }, "typography": { "font_size_px": 16, "font_weight": 500 } } },
+      { "family": "pie", "target": "title", "style": { "fill": { "kind": "solid", "color": { "ref": "ink" } }, "typography": { "font_size_px": 23, "font_weight": 500 } } },
+      { "family": "pie", "target": "legend", "style": { "fill": { "kind": "solid", "color": { "ref": "muted" } }, "typography": { "font_size_px": 14 } } }
+    ],
+    "palettes": {
+      "chart-series": { "ref": "series" },
+      "pie-slice": { "ref": "pie-series" }
+    }
+  }
+}

@@ -79,7 +79,7 @@ test("theme designs display five families and expose integration code with keybo
   const trigger = page.getByRole("button", { name: "Theme designs", exact: true });
   await trigger.click();
   const gallery = page.getByTestId("theme-showcase");
-  await expect(gallery.locator("[data-theme-design-card]")).toHaveCount(7);
+  await expect(gallery.locator("[data-theme-design-card]")).toHaveCount(12);
   await gallery.getByRole("button", { name: "Explore Riso", exact: true }).click();
   const images = gallery.locator("[data-theme-sample] img");
   await expect(images).toHaveCount(5);
@@ -92,6 +92,15 @@ test("theme designs display five families and expose integration code with keybo
   const usage = gallery.getByTestId("theme-showcase-use");
   await usage.getByRole("tab", { name: "Web", exact: true }).click();
   await expect(usage.getByTestId("theme-showcase-code")).toContainText("renderSvgResult");
+  await usage.getByRole("navigation", { name: "Project files", exact: true }).getByRole("button", { name: "diagram.mmd", exact: true }).click();
+  const source = usage.getByTestId("theme-showcase-code");
+  await expect(source).toHaveAttribute("data-code-language", "mermaid");
+  await expect.poll(() => source.locator(".view-lines span").evaluateAll((spans) => {
+    const tokens = spans.map((span) => ({ text: span.textContent?.replaceAll("\u00a0", " ") ?? "", color: getComputedStyle(span).color }));
+    const keyword = tokens.find((token) => token.text === "flowchart");
+    const label = tokens.find((token) => token.text.includes("Review workflow"));
+    return Boolean(keyword && label && keyword.color !== label.color);
+  })).toBe(true);
   await page.keyboard.press("Escape");
   await expect(gallery).toBeHidden();
   await expect(trigger).toBeFocused();

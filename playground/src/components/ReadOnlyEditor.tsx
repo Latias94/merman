@@ -13,6 +13,11 @@ const LocalReadOnlyJsonEditor = lazy(() =>
     default: module.LocalReadOnlyJsonEditor,
   })),
 );
+const LocalReadOnlyMermaidEditor = lazy(() =>
+  import("./ReadOnlyMermaidEditorFeature").then((module) => ({
+    default: module.LocalReadOnlyMermaidEditor,
+  })),
+);
 
 interface ReadOnlyEditorProps
   extends Omit<
@@ -29,8 +34,11 @@ export function ReadOnlyEditor({
   options,
   ...props
 }: ReadOnlyEditorProps) {
-  const Editor =
-    language === "json" ? LocalReadOnlyJsonEditor : LocalReadOnlyEditor;
+  const Editor = language === "mermaid"
+    ? LocalReadOnlyMermaidEditor
+    : language === "json"
+      ? LocalReadOnlyJsonEditor
+      : LocalReadOnlyEditor;
   return (
     <LazyFeatureBoundary
       feature={feature}

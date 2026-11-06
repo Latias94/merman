@@ -7,4 +7,5 @@ export const OPTIONAL_FEATURE_SOURCES: Readonly<{
   themeShowcase: "src/components/theme-panel/ThemeShowcase.tsx";
   viewer: "src/components/ReadOnlyEditorFeature.tsx";
   viewerJson: "src/components/ReadOnlyJsonEditorFeature.tsx";
+  viewerMermaid: "src/components/ReadOnlyMermaidEditorFeature.tsx";
 }>;

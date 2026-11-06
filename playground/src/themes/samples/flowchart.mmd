@@ -1,6 +1,6 @@
 flowchart TB
     subgraph workflow["Review workflow"]
-        collect["Collect input / 收集输入"] --> ready{"Ready?"}
+        collect["Collect input"] --> ready{"Ready?"}
         ready -->|Yes| review["Review draft"]
         ready -->|Revise| edit["Update notes"]
         edit --> review
