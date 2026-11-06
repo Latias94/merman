@@ -1,0 +1,124 @@
+{
+  "schema_version": 1,
+  "kind": "design",
+  "design": {
+    "tokens": {
+      "paper": { "type": "color", "label": "Notebook paper", "group": "Cards and paper", "value": "#F8F3E5" },
+      "surface": { "type": "color", "label": "Forest record card", "group": "Cards and paper", "description": "Dark record cards distinguish nodes, actors, and class bodies from the paper and annotation slips.", "value": "#244B39" },
+      "card-ink": { "type": "color", "label": "Record card lettering", "group": "Cards and paper", "value": "#FFF4D7" },
+      "ink": { "type": "color", "label": "Forest writing ink", "group": "Cards and paper", "description": "Shared by paper text, card borders, connectors, chart marks, and note shadows.", "value": "#2C4B39" },
+      "muted": { "type": "color", "label": "Secondary writing", "group": "Cards and paper", "value": "#53624E" },
+      "outline": { "type": "color", "label": "Notebook ruling", "group": "Cards and paper", "value": "#7C8B70" },
+      "cluster": { "type": "color", "label": "Translucent filing sheet", "group": "Cards and paper", "value": "#E6E9D7B8" },
+      "note": { "type": "color", "label": "Ochre annotation slip", "group": "Cards and paper", "value": "#E9CF89" },
+      "accent": { "type": "color", "label": "Red annotation ink", "group": "Cards and paper", "description": "Shared by annotations, activation borders, and the second chart series.", "value": "#A13F32" },
+      "active-surface": { "type": "color", "label": "Translucent red bookmark", "group": "Cards and paper", "description": "Independent alpha swatch for activation interiors; edit alongside Red annotation ink when recoloring.", "value": "#A13F3273" },
+      "body-font": { "type": "font-stack", "label": "Notebook body text", "group": "Typography", "value": ["Avenir", "Segoe UI", "Arial", "Noto Sans CJK SC", "sans-serif"] },
+      "record-font": { "type": "font-stack", "label": "Record and reference text", "group": "Typography", "description": "Monospaced card labels and reference labels suggest catalogued records without adding content to the diagram.", "value": ["Menlo", "Consolas", "Liberation Mono", "Noto Sans Mono CJK SC", "monospace"] },
+      "journal-font": { "type": "font-stack", "label": "Field journal charts", "group": "Typography", "value": ["Georgia", "Times New Roman", "Noto Serif CJK SC", "serif"] },
+      "series": { "type": "palette", "label": "Observation inks", "group": "Palettes", "value": [{ "ref": "ink" }, { "ref": "accent" }, "#9A7428", "#536D88", "#6B7040", "#87647A"] },
+      "pie-series": { "type": "palette", "label": "Paper specimen tabs", "group": "Palettes", "description": "Independent light swatches keep forest-ink percentage labels readable.", "value": ["#BFCDAE", "#E4B6A4", { "ref": "note" }, "#BED0D5", "#D6D3A8", "#D6BED1"] },
+      "card-lift": {
+        "type": "effect",
+        "label": "Mounted record card",
+        "group": "Effects",
+        "description": "A small hard shadow lifts supported Flowchart bodies and Sequence actor cards. Class and Pie use paint only.",
+        "value": {
+          "kind": "shadow-stack",
+          "composition": "independent",
+          "color_space": "srgb",
+          "shadows": [
+            { "offset_x": 2, "offset_y": 2, "std_deviation": 0, "color": { "ref": "ink" }, "opacity": 0.2 }
+          ]
+        }
+      },
+      "note-lift": {
+        "type": "effect",
+        "label": "Lifted annotation slip",
+        "group": "Effects",
+        "description": "A soft, restrained shadow separates Sequence notes from the notebook sheet.",
+        "value": {
+          "kind": "shadow-stack",
+          "composition": "independent",
+          "color_space": "srgb",
+          "shadows": [
+            { "offset_x": 1, "offset_y": 2, "std_deviation": 1.2, "color": { "ref": "ink" }, "opacity": 0.16 }
+          ]
+        }
+      }
+    },
+    "canvas": {
+      "base": { "kind": "solid", "color": { "ref": "paper" } },
+      "layers": [
+        {
+          "paint": {
+            "kind": "linear-gradient",
+            "angle_degrees": 0,
+            "stops": [
+              { "offset": 0, "color": { "ref": "outline" }, "opacity": 0.14 },
+              { "offset": 0.027083333333333334, "color": { "ref": "outline" }, "opacity": 0.14 },
+              { "offset": 0.027083333333333334, "color": { "ref": "outline" }, "opacity": 0 },
+              { "offset": 1, "color": { "ref": "outline" }, "opacity": 0 }
+            ],
+            "repetition": { "kind": "tiled", "width_px": 24, "height_px": 24 }
+          }
+        }
+      ]
+    },
+    "typography": {
+      "default": { "font_stack": { "ref": "body-font" } },
+      "families": {
+        "flowchart": { "font_stack": { "ref": "record-font" }, "font_size_px": 14 },
+        "sequence": { "font_stack": { "ref": "body-font" }, "font_size_px": 14 },
+        "class": { "font_stack": { "ref": "record-font" }, "font_size_px": 13 },
+        "xychart": { "font_stack": { "ref": "journal-font" } },
+        "pie": { "font_stack": { "ref": "journal-font" } }
+      }
+    },
+    "styles": {
+      "text": { "fill": { "kind": "solid", "color": { "ref": "ink" } } }
+    },
+    "rules": [
+      { "family": "flowchart", "target": "node", "style": { "fill": { "kind": "solid", "color": { "ref": "surface" } }, "stroke": { "paint": { "kind": "solid", "color": { "ref": "ink" } }, "width": 1.25 }, "radius": 1, "effect": { "ref": "card-lift" } } },
+      { "family": "flowchart", "target": "node-label", "style": { "fill": { "kind": "solid", "color": { "ref": "card-ink" } }, "typography": { "font_weight": 500 }, "effect": null } },
+      { "family": "flowchart", "target": "edge", "style": { "stroke": { "paint": { "kind": "solid", "color": { "ref": "ink" } }, "width": 1.25 }, "effect": null } },
+      { "family": "flowchart", "target": "edge-label", "style": { "typography": { "font_size_px": 12, "font_stack": { "ref": "record-font" } }, "effect": null } },
+      { "family": "flowchart", "target": "edge-label-background", "style": { "fill": { "kind": "solid", "color": { "ref": "paper" } } } },
+      { "family": "flowchart", "target": "cluster", "style": { "fill": { "kind": "solid", "color": { "ref": "cluster" } }, "stroke": { "paint": { "kind": "solid", "color": { "ref": "outline" } }, "width": 0.8 } } },
+      { "family": "flowchart", "target": "cluster-label", "style": { "fill": { "kind": "solid", "color": { "ref": "accent" } } } },
+      { "family": "sequence", "target": "actor", "style": { "fill": { "kind": "solid", "color": { "ref": "surface" } }, "stroke": { "paint": { "kind": "solid", "color": { "ref": "ink" } }, "width": 1.25 }, "radius": 1, "effect": { "ref": "card-lift" } } },
+      { "family": "sequence", "target": "actor-label", "style": { "fill": { "kind": "solid", "color": { "ref": "card-ink" } }, "typography": { "font_stack": { "ref": "record-font" }, "font_size_px": 14, "font_weight": 600 }, "effect": null } },
+      { "family": "sequence", "target": "lifeline", "style": { "stroke": { "paint": { "kind": "solid", "color": { "ref": "outline" } }, "width": 0.9 }, "effect": null } },
+      { "family": "sequence", "target": "message", "style": { "stroke": { "paint": { "kind": "solid", "color": { "ref": "ink" } }, "width": 1.2 }, "effect": null } },
+      { "family": "sequence", "target": "message-label", "style": { "fill": { "kind": "solid", "color": { "ref": "ink" } }, "typography": { "font_size_px": 13 } } },
+      { "family": "sequence", "target": "note", "style": { "fill": { "kind": "solid", "color": { "ref": "note" } }, "stroke": { "paint": { "kind": "solid", "color": { "ref": "outline" } }, "width": 1 }, "effect": { "ref": "note-lift" } } },
+      { "family": "sequence", "target": "note-label", "style": { "fill": { "kind": "solid", "color": { "ref": "ink" } }, "typography": { "font_size_px": 13, "font_style": "italic" }, "effect": null } },
+      { "family": "sequence", "target": "activation", "style": { "fill": { "kind": "solid", "color": { "ref": "active-surface" } }, "stroke": { "paint": { "kind": "solid", "color": { "ref": "accent" } }, "width": 1 } } },
+      { "family": "sequence", "target": "loop", "style": { "stroke": { "paint": { "kind": "solid", "color": { "ref": "outline" } }, "width": 0.9 }, "effect": null } },
+      { "family": "sequence", "target": "loop-label-background", "style": { "fill": { "kind": "solid", "color": { "ref": "note" } }, "stroke": { "paint": { "kind": "solid", "color": { "ref": "outline" } }, "width": 0.9 } } },
+      { "family": "sequence", "target": "loop-label", "style": { "fill": { "kind": "solid", "color": { "ref": "muted" } }, "typography": { "font_size_px": 12 }, "effect": null } },
+      { "family": "sequence", "target": "sequence-number", "style": { "fill": { "kind": "solid", "color": { "ref": "card-ink" } } } },
+      { "family": "class", "target": "node", "style": { "fill": { "kind": "solid", "color": { "ref": "surface" } }, "stroke": { "paint": { "kind": "solid", "color": { "ref": "outline" } } } } },
+      { "family": "class", "target": "node-label", "style": { "fill": { "kind": "solid", "color": { "ref": "card-ink" } } } },
+      { "family": "class", "target": "edge", "style": { "stroke": { "paint": { "kind": "solid", "color": { "ref": "ink" } }, "width": 1.5 } } },
+      { "family": "class", "target": "edge-label-background", "style": { "fill": { "kind": "solid", "color": { "ref": "paper" } } } },
+      { "family": "class", "target": "cluster", "style": { "fill": { "kind": "solid", "color": { "ref": "cluster" } }, "stroke": { "paint": { "kind": "solid", "color": { "ref": "outline" } } } } },
+      { "family": "xychart", "target": "axis", "style": { "fill": { "kind": "solid", "color": { "ref": "muted" } }, "stroke": { "paint": { "kind": "solid", "color": { "ref": "ink" } } } } },
+      { "family": "xychart", "target": "axis-tick", "style": { "stroke": { "paint": { "kind": "solid", "color": { "ref": "outline" } } } } },
+      { "family": "xychart", "target": "title", "style": { "fill": { "kind": "solid", "color": { "ref": "ink" } }, "typography": { "font_size_px": 23, "font_weight": 700 }, "effect": null } },
+      { "family": "xychart", "target": "axis-title", "style": { "fill": { "kind": "solid", "color": { "ref": "muted" } }, "typography": { "font_size_px": 13 }, "effect": null } },
+      { "family": "xychart", "target": "axis-label", "style": { "fill": { "kind": "solid", "color": { "ref": "muted" } }, "typography": { "font_size_px": 12 }, "effect": null } },
+      { "family": "xychart", "target": "legend", "style": { "fill": { "kind": "solid", "color": { "ref": "muted" } }, "typography": { "font_size_px": 13 }, "effect": null } },
+      { "family": "xychart", "target": "chart-series", "variant": "bar", "style": { "stroke": { "width": 1 }, "effect": null } },
+      { "family": "xychart", "target": "chart-series", "variant": "line", "style": { "stroke": { "width": 2.6 }, "effect": null } },
+      { "family": "pie", "target": "pie-slice", "style": { "stroke": { "paint": { "kind": "solid", "color": { "ref": "ink" } } } } },
+      { "family": "pie", "target": "text", "style": { "fill": { "kind": "solid", "color": { "ref": "ink" } }, "typography": { "font_size_px": 16, "font_weight": 600 } } },
+      { "family": "pie", "target": "title", "style": { "fill": { "kind": "solid", "color": { "ref": "ink" } }, "typography": { "font_size_px": 23, "font_weight": 700 } } },
+      { "family": "pie", "target": "legend", "style": { "fill": { "kind": "solid", "color": { "ref": "muted" } }, "typography": { "font_size_px": 14 } } }
+    ],
+    "palettes": {
+      "chart-series": { "ref": "series" },
+      "pie-slice": { "ref": "pie-series" }
+    }
+  }
+}

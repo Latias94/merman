@@ -1,18 +1,16 @@
 import { useId, useState } from "react";
-import { Download, Search } from "lucide-react";
+import { Search } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import type { ThemePresetCatalogEntry } from "@mermanjs/web";
 
-import { Button } from "@/components/ui/button";
 import type { DiagramThemeChoice } from "@/src/lib/diagram-appearance";
-import { downloadBlob } from "@/src/lib/export";
 import type { MermaidThemeSelection } from "@/src/lib/mermaid-theme-name";
 import { themeFamilyTreatment } from "@/src/lib/theme-discovery";
 import type { WorkspaceSnapshot } from "@/src/lib/workspace-snapshot";
 import { EXPLORATION_THEMES } from "@/src/themes/catalog";
-import { THEME_SAMPLES, type ThemeSampleId } from "@/src/themes/samples";
 import { ThemeChoiceCards, type ThemeCatalogChoice } from "./ThemeChoiceCards";
 import { currentRecipeIdentity, selectedThemeKey } from "./theme-selection";
+import { ThemeShowcaseLauncher } from "./ThemeShowcaseLauncher";
 
 export default function ThemeGallery({ workspace, mermaidThemes, presets, catalogReady, familyId, pending, canSelectRecipes, onSelect }: {
   readonly workspace: Readonly<WorkspaceSnapshot>;
@@ -27,11 +25,9 @@ export default function ThemeGallery({ workspace, mermaidThemes, presets, catalo
   const { t, i18n } = useTranslation();
   const searchId = useId();
   const [query, setQuery] = useState("");
-  const [sampleId, setSampleId] = useState<ThemeSampleId>("flowchart");
   const recipe = currentRecipeIdentity(workspace, EXPLORATION_THEMES, t("appearance.importedTheme"));
   const selectedKey = selectedThemeKey(workspace, EXPLORATION_THEMES);
   const selectedExploration = EXPLORATION_THEMES.find((theme) => theme.id === recipe?.explorationId);
-  const sample = THEME_SAMPLES.find((entry) => entry.id === sampleId)!;
   const entries: ThemeCatalogChoice[] = [
     ...mermaidThemes.map((theme): ThemeCatalogChoice => ({
       key: `mermaid:${theme}`,
@@ -89,6 +85,7 @@ export default function ThemeGallery({ workspace, mermaidThemes, presets, catalo
   }).filter((group) => group.choices.length > 0);
 
   return <div className="min-w-0 space-y-3" data-testid="theme-catalog">
+    <ThemeShowcaseLauncher panel themeId={selectedExploration?.id} />
     <div className="relative min-w-0">
       <label htmlFor={searchId} className="sr-only">{t("appearance.searchThemes")}</label>
       <Search className="pointer-events-none absolute left-2.5 top-2.5 size-3.5 text-muted-foreground" aria-hidden="true" />
@@ -117,35 +114,5 @@ export default function ThemeGallery({ workspace, mermaidThemes, presets, catalo
     </div>
     {groups.length === 0 && <p role="status" className="rounded-md border border-dashed px-3 py-5 text-center text-xs text-muted-foreground">{t("appearance.noThemes")}</p>}
     <p className="text-[11px] leading-relaxed text-muted-foreground">{t("appearance.catalogHint")}</p>
-    {selectedExploration && <details key={selectedExploration.id} className="min-w-0 rounded-md border text-xs" data-testid="theme-examples">
-      <summary className="cursor-pointer px-3 py-2 font-medium">{t("appearance.exampleDiagrams", { name: recipe?.name ?? selectedExploration.name })}</summary>
-      <div className="min-w-0 space-y-3 border-t p-3" data-testid="theme-gallery-detail">
-        <p className="text-[11px] leading-relaxed text-muted-foreground">{t("appearance.exampleHint")}</p>
-        <fieldset className="flex flex-wrap gap-1">
-          <legend className="sr-only">{t("themeGallery.sample")}</legend>
-          {THEME_SAMPLES.map((entry) => <Button key={entry.id} type="button" size="sm" variant={sampleId === entry.id ? "secondary" : "ghost"}
-            aria-pressed={sampleId === entry.id} className="h-7 px-2 text-[11px]" onClick={() => setSampleId(entry.id)}>
-            {t(`themeGallery.samples.${entry.id}`)}
-          </Button>)}
-        </fieldset>
-        <div className="flex min-h-40 min-w-0 items-center justify-center overflow-hidden rounded border p-2" style={{ backgroundColor: selectedExploration.colors[0] }}>
-          <img key={`${selectedExploration.id}-${sampleId}`} src={selectedExploration.previews[sampleId]}
-            alt={t("appearance.exampleAlt", { name: selectedExploration.name, sample: t(`themeGallery.samples.${sampleId}`) })}
-            loading="lazy" className="max-h-64 w-full min-w-0 object-contain" data-testid="theme-gallery-preview" />
-        </div>
-        <details className="min-w-0 rounded border" key={sampleId}>
-          <summary className="cursor-pointer px-2 py-1.5 font-medium">{t("themeGallery.sampleSource")}</summary>
-          <div className="min-w-0 space-y-2 border-t p-2">
-            <pre className="max-h-48 overflow-auto whitespace-pre-wrap break-words font-mono text-[11px] [overflow-wrap:anywhere]">{sample.source}</pre>
-            <p className="font-medium">{t("themeGallery.sampleConfig")}</p>
-            <pre className="overflow-auto whitespace-pre-wrap break-words font-mono text-[11px] [overflow-wrap:anywhere]">{sample.configJson}</pre>
-          </div>
-        </details>
-        <Button type="button" variant="outline" size="sm" className="h-auto max-w-full whitespace-normal py-1.5" onClick={() =>
-          downloadBlob(new Blob([selectedExploration.recipeJson], { type: "application/json;charset=utf-8" }), `${selectedExploration.id}.theme.json`)}>
-          <Download className="size-3.5 shrink-0" aria-hidden="true" />{t("appearance.downloadExampleRecipe", { name: selectedExploration.name })}
-        </Button>
-      </div>
-    </details>}
   </div>;
 }

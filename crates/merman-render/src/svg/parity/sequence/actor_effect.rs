@@ -144,20 +144,22 @@ impl SequenceActorShadow<'_> {
 #[derive(Default)]
 pub(super) struct SequenceLifelinePaint {
     effect: Option<SvgShadowEffect>,
+    include_plain_bounds: bool,
     emitted: usize,
     pub(super) bounds: Option<Bounds>,
 }
 
 impl SequenceLifelinePaint {
-    pub(super) fn new(effect: Option<SvgShadowEffect>) -> Self {
+    pub(super) fn new(effect: Option<SvgShadowEffect>, include_plain_bounds: bool) -> Self {
         Self {
             effect,
+            include_plain_bounds,
             ..Self::default()
         }
     }
 
-    pub(super) fn has_effect(&self) -> bool {
-        self.effect.is_some()
+    pub(super) fn needs_bounds(&self) -> bool {
+        self.include_plain_bounds || self.effect.is_some()
     }
     pub(super) fn emitted_count(&self) -> usize {
         self.emitted
@@ -175,7 +177,7 @@ impl SequenceLifelinePaint {
         options: &SvgExecution<'_>,
         receipt: &mut crate::sequence::SequenceLifelineThemeReceipt,
     ) -> Result<Option<(String, SvgFilterRegion)>> {
-        if self.effect.is_none() && width == super::actor_shapes::LIFELINE_STROKE_WIDTH_PX {
+        if !self.needs_bounds() && width == super::actor_shapes::LIFELINE_STROKE_WIDTH_PX {
             return Ok(None);
         }
         // Use the serialized coordinates, including descending or zero-length lines.

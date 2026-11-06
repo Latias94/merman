@@ -6,10 +6,12 @@ conversion; equal literal values do not establish shared authoring intent.
 
 ## Authoritative sources
 
-In a Merman checkout, consult `docs/rendering/custom-diagram-themes.md` for runtime behavior and
-`crates/merman-theme-contract/src/design.rs` for exact fields. `docs/adr/0095-general-theme-authoring-and-retained-bindings.md`
-explains document ownership. The loaded engine's catalog and diagnostics determine its actual
-capabilities; a field in the schema does not establish renderer support.
+In a Merman checkout, consult the [theme guide](../../../../docs/rendering/custom-diagram-themes.md)
+for current behavior and [design.rs](../../../../crates/merman-theme-contract/src/design.rs) for
+exact fields. [ADR 0095](../../../../docs/adr/0095-general-theme-authoring-and-retained-bindings.md)
+explains document ownership. The loaded engine's catalog and same-render evidence determine its
+actual capabilities; a schema field is not proof of an active consumer. Consult the guide's
+capability limitations before designing around an uncertain mechanism.
 
 ## Compose the design
 
@@ -30,6 +32,11 @@ stop; a `paint` token fits an entire fill. Use Rust diagnostics to resolve consu
 Separate body and label paint, and body and label effects. A dark surface with a light label needs
 both targets addressed. Shared roles should have intentional consumers; naming a value `text`
 does not automatically connect every family label to it.
+
+Use token descriptions to explain useful relationships: a registration color may connect a body
+offset and an activation, while equal plate and connector colors can remain separate tokens for
+independent editing. A small graph of these relationships is more useful than a token for every
+literal. Keep geometry and data meaning in their existing source/layout owners.
 
 Defaults lower first, then ordered rules, then palettes. Later matching facets can override
 earlier ones; a family selector adds scope, not CSS specificity. Source styles and Mermaid
@@ -84,4 +91,6 @@ For an uncertain mechanism, make a focused support query, for example:
 
 Use the rendered labels and sources to assess readability. Include long labels, branches, notes,
 and multiple series when they matter to the brief. Font names require fonts on the receiving
-host; portable JSON does not embed them. Deliver font requirements and asset licensing when used.
+host; naming a font in JSON does not embed it. Deliver font requirements and asset licensing when
+used. Follow [review.md](review.md) to distinguish requested facets, actual paint, visual bounds,
+and output-target admission, including the `canvas.bleed` no-consumer example.

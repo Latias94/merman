@@ -450,7 +450,6 @@
     "tooLarge": "主题 JSON 不能超过 {{limit}} KiB。"
   },
   "themeGallery": {
-    "sample": "示例图表",
     "samples": {
       "flowchart": "流程图",
       "sequence": "时序图",
@@ -458,13 +457,22 @@
       "xychart": "XY 图表",
       "pie": "饼图"
     },
-    "sampleSource": "查看示例源码",
-    "sampleConfig": "示例配置",
     "themes": {
       "atlas": "克制的蓝灰配色，适合技术笔记与系统图。",
       "nightfall": "安静的深灰蓝底色，搭配柔和配色与清晰标签。",
       "letterpress": "暖纸底色、衬线标题与锈红点缀，适合编辑式图表。",
-      "grove": "象牙白、苔绿与矿物配色，带来温暖自然的观感。"
+      "grove": "象牙白、苔绿与矿物配色，带来温暖自然的观感。",
+      "riso": "蓝红双色的小批量印刷感：轻微套印错位、清晰文字和编辑式标题。",
+      "phosphor": "暗色设备面板、等宽读数和发光信号组成的工业控制室。",
+      "field-notes": "森林墨色记录卡、横线纸面与暖色观察便笺组成的野外登记册。",
+      "blueprint": "蓝色网格纸、精确青色线条与等宽制图注释组成的工程图纸。",
+      "pop-art": "明亮色块、粗轮廓与硬质错位阴影组成的印刷海报。",
+      "lacquer": "暖黑底色上的深漆色面板、纤细金边与克制的衬线标题。",
+      "paper-cut": "暖白棉纸上的薄荷卡片、珊瑚与青绿纸边，以及柔和的接触投影。",
+      "aurora": "深靛夜幕中的青绿与紫色光带，搭配悬浮面板和清晰的星光文字。",
+      "metro": "深蓝站厅中的亮黄导视牌、青色路线与平面信息面板。",
+      "carbon-copy": "暖色纸张上的打字档案，搭配紫色复写侧边与朱红审阅标记。",
+      "signal": "炭黑设备铭牌、安全黄边缘，以及克制的外围警示条纹。"
     }
   },
   "themePanel": {
@@ -622,14 +630,12 @@
     "recommendedConfigHint": "将这些键合并到当前 JSON 配置，保留无关设置。更改立即生效且可撤销；源码设置仍可能优先。",
     "recommendedConfigError": "无法更新 Mermaid 配置，请修正其 JSON 对象后重试。{{error}}",
     "recommendationInConfig": "当前配置已包含此设置",
-    "exampleDiagrams": "示例图表 · {{name}}",
-    "exampleHint": "这些是固定示例，与当前图表无关。请通过上方工作区预览判断自己的图表效果。",
-    "exampleAlt": "使用 {{name}} 渲染的{{sample}}示例",
-    "downloadExampleRecipe": "下载 {{name}} JSON"
+    "exampleAlt": "使用 {{name}} 渲染的{{sample}}示例"
   },
   "projectUse": {
+    "projectFiles": "项目文件",
     "title": "在项目中使用",
-    "description": "复制采用代码，并下载这份材料快照所需的全部文件。",
+    "description": "复制接入代码，并下载使用这张图表或主题所需的文件。",
     "close": "关闭项目采用方式",
     "scope": "采用范围",
     "scope_theme": "仅主题",
@@ -733,5 +739,87 @@
         "system_or_host_font_dependency": "产物依赖系统或宿主提供的字体。"
       }
     }
+  },
+  "themeShowcase": {
+    "title": "主题设计库",
+    "recipeBadge": "自定义主题示例",
+    "description": "在多种图表中浏览完整的视觉设计，复制可编辑主题或取得项目使用代码。",
+    "close": "关闭主题设计库",
+    "search": "搜索主题设计",
+    "appearance": "画布明暗",
+    "filters": {
+      "all": "全部设计",
+      "light": "浅色",
+      "dark": "深色"
+    },
+    "count": "{{count}} 套设计",
+    "collectionTitle": "寻找适合你的视觉语言",
+    "collectionHint": "视觉特征鲜明的设计优先展示。每套都使用相同的五种图表示例，方便比较效果。",
+    "mechanisms": {
+      "riso": "双色油墨 · 错位色边 · 紧缩标题",
+      "phosphor": "设备面板 · 扫描线 · 局部信号辉光",
+      "field-notes": "森林墨色卡片 · 横线纸 · 轻盈便笺",
+      "atlas": "冷色表面 · 精确轮廓 · 清晰层级",
+      "nightfall": "板岩面板 · 柔和对比 · 克制点缀",
+      "letterpress": "暖色纸面 · 衬线排版 · 编辑式层级",
+      "grove": "象牙白表面 · 柔和圆角 · 矿物色彩",
+      "blueprint": "制图网格 · 技术注释 · 精确青色轮廓",
+      "pop-art": "海报色块 · 粗轮廓 · 硬质油墨偏移",
+      "lacquer": "深漆色面板 · 纤细金边 · 衬线标题",
+      "paper-cut": "叠纸层次 · 珊瑚青绿露边 · 柔和厚度",
+      "aurora": "渐变夜幕 · 弧形光带 · 悬浮面板",
+      "metro": "站点导视 · 平面标牌 · 清晰路线色",
+      "carbon-copy": "紫色复写边 · 打字档案 · 审阅标记",
+      "signal": "设备铭牌 · 硬质安装边 · 警示条纹"
+    },
+    "back": "全部设计",
+    "apply": "应用到我的图",
+    "applyHint": "仅应用这套主题。保留当前源码、配置、字体覆盖和图表外观设置。",
+    "downloadJson": "下载主题 JSON",
+    "acrossDiagrams": "同一设计，多种图表",
+    "fixedExamples": "这里展示固定示例，不是你的当前图表。可以在新标签页打开任一样例进行编辑，不会替换当前作品。",
+    "openSample": "打开样例",
+    "openSampleNamed": "在新标签页打开 {{name}} 的{{sample}}样例",
+    "explore": "查看设计",
+    "exploreNamed": "查看 {{name}} 设计",
+    "fiveDiagrams": "5 种图表示例",
+    "current": "当前主题",
+    "useTitle": "把设计带到你的项目",
+    "useHint": "把主题 JSON 用到自己的图表，或选择下方一种接入方式。Rust、CLI、Web 是加载同一主题的三种选择，无需全部使用。",
+    "themePurposeTitle": "主题 JSON · 定义视觉设计",
+    "themePurpose": "包含颜色、字体、画布和效果。在 Playground 导入这一份主题，或在应用中加载即可；可搭配你自己的图表源码和布局参数。",
+    "optionsPurposeTitle": "样例布局参数 · 可选",
+    "optionsPurpose": "这些 Mermaid 设置用于排列设计库的样例，例如外观、标签模式和图表尺寸，与主题文件分开。生成的示例项目已经包含这些参数，无需再次配置。",
+    "themeFileHint": "使用文件接入方式时，将这份 JSON 保存为 theme.json。下载的示例项目已包含此文件。复用主题不需要照搬设计库的布局参数。",
+    "integrationExample": "代码使用的示例图表",
+    "rustFormat": "Rust 示例形式",
+    "rust_inline": "单文件 · 复制到 main.rs",
+    "rust_files": "项目文件 · include_str!",
+    "rustHint_inline": "主题、图表和样例参数均已内嵌在这一份源码中，不需要额外的 JSON 或 Mermaid 文件。",
+    "rustDependencies": "在 Cargo 依赖中添加启用 math 功能的 merman 和 serde_json，并使用匹配的 Merman 源码仓库。将代码粘贴到 src/main.rs，运行 cargo run 即可。若需要完整 Cargo.toml，可选择“项目文件”。",
+    "rustHint_files": "将 Cargo.toml、theme.json、diagram.mmd 和 site-config.json 放在项目根目录，与 src/ 同级。include_str! 路径相对于 src/main.rs；diagram.mmd 已带上样例参数。下载项目即可取得完整目录结构。",
+    "codeTarget": "主题与使用代码",
+    "tabs": {
+      "theme": "主题 JSON",
+      "rust": "Rust",
+      "cli": "CLI",
+      "web": "Web"
+    },
+    "copy": "复制",
+    "code": "主题使用代码",
+    "companionFiles": "可在项目文件树中选择文件，查看依赖和输入。下载项目可取得完整目录结构与运行说明，文件之间的配置已连接好。",
+    "customRecipeHint": "这是独立的自定义主题，不是内置预设 ID。",
+    "downloadProject": "下载项目示例",
+    "downloadRust": "下载 main.rs",
+    "action_copied": "已复制。",
+    "action_downloaded": "已下载。",
+    "action_failed": "复制或下载失败，请重试。",
+    "downloadFile": "下载文件",
+    "sampleAndFonts": "样例源码、可选布局参数与字体",
+    "exampleSource": "示例 Mermaid 源码",
+    "exampleOptions": "样例布局参数 · 可选",
+    "exampleOptionsHint": "这些输入用于复现选中的设计库样例。此处 JSON 是 Mermaid 图表配置，不是主题配方。生成代码已通过样例源码中的指令应用这些参数；仅采用主题时，可保留自己的源码和布局设置。",
+    "coverageHint": "这五种示例有专门的样式设计。其他图表可以继承共享画布和字体；效果与角色样式的支持取决于图表类型和外观。",
+    "runtimeFailed": "代码示例需要渲染运行时。你仍可复制主题 JSON 和可选的样例参数。"
   }
 }

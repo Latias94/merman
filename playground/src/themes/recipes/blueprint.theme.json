@@ -1,0 +1,134 @@
+{
+  "schema_version": 1,
+  "kind": "design",
+  "design": {
+    "tokens": {
+      "paper": { "type": "color", "label": "Cyanotype sheet", "group": "Drafting sheet", "value": "#12365B" },
+      "surface": { "type": "color", "label": "Opaque drawing plate", "group": "Drafting sheet", "value": "#173E66" },
+      "group-sheet": { "type": "color", "label": "Translucent tracing area", "group": "Drafting sheet", "value": "#173E6670" },
+      "ink": { "type": "color", "label": "White drafting ink", "group": "Drafting sheet", "description": "Shared by unfiltered lettering, precise outlines, dimension lines, and chart axes.", "value": "#E3F3FA" },
+      "secondary": { "type": "color", "label": "Secondary dimensions", "group": "Drafting sheet", "value": "#AECEDD" },
+      "grid": { "type": "color", "label": "Ruling ink", "group": "Drafting sheet", "description": "Two perpendicular 12px rulings and two 60px index rulings form the exported engineering grid.", "value": "#98CDE4" },
+      "accent": { "type": "color", "label": "Cyan reference line", "group": "Drafting sheet", "value": "#7AE6EC" },
+      "note": { "type": "color", "label": "Pale reference slip", "group": "Drafting sheet", "value": "#CBE6EE" },
+      "note-ink": { "type": "color", "label": "Reference slip lettering", "group": "Drafting sheet", "value": "#173C5C" },
+      "active-surface": { "type": "color", "label": "Translucent inspection interval", "group": "Drafting sheet", "value": "#7AE6EC30" },
+      "drafting-font": { "type": "font-stack", "label": "Monospaced drafting labels", "group": "Typography", "description": "A restrained monospaced face keeps labels and measurements distinct from decorative effects.", "value": ["Menlo", "Consolas", "Liberation Mono", "Noto Sans Mono CJK SC", "monospace"] },
+      "plot-font": { "type": "font-stack", "label": "Condensed technical chart lettering", "group": "Typography", "description": "Narrow technical lettering keeps titles, scale labels, and compact legends readable beside the fine drawing lines.", "value": ["Avenir Next Condensed", "Arial Narrow", "Helvetica Neue", "Arial", "Noto Sans CJK SC", "sans-serif"] },
+      "series": { "type": "palette", "label": "Survey and reference inks", "group": "Palettes", "value": [{ "ref": "ink" }, { "ref": "accent" }, "#A6C5F2", "#D6D5FB", "#CBE7D8", "#E8DEBA"] },
+      "pie-series": { "type": "palette", "label": "Cyanotype exposure steps", "group": "Palettes", "description": "Dark blue exposures retain contrast with the white percentage lettering; the crisp pale borders separate adjacent sectors.", "value": ["#214C77", "#225B71", "#354A80", "#1D3C63", "#32566A", "#454C76"] }
+    },
+    "canvas": {
+      "base": { "kind": "solid", "color": { "ref": "paper" } },
+      "layers": [
+        {
+          "paint": {
+            "kind": "linear-gradient",
+            "angle_degrees": 0,
+            "stops": [
+              { "offset": 0, "color": { "ref": "grid" }, "opacity": 0.14 },
+              { "offset": 0.08333333333333333, "color": { "ref": "grid" }, "opacity": 0.14 },
+              { "offset": 0.08333333333333333, "color": { "ref": "grid" }, "opacity": 0 },
+              { "offset": 1, "color": { "ref": "grid" }, "opacity": 0 }
+            ],
+            "repetition": { "kind": "tiled", "width_px": 12, "height_px": 12 }
+          }
+        },
+        {
+          "paint": {
+            "kind": "linear-gradient",
+            "angle_degrees": 90,
+            "stops": [
+              { "offset": 0, "color": { "ref": "grid" }, "opacity": 0.14 },
+              { "offset": 0.08333333333333333, "color": { "ref": "grid" }, "opacity": 0.14 },
+              { "offset": 0.08333333333333333, "color": { "ref": "grid" }, "opacity": 0 },
+              { "offset": 1, "color": { "ref": "grid" }, "opacity": 0 }
+            ],
+            "repetition": { "kind": "tiled", "width_px": 12, "height_px": 12 }
+          }
+        },
+        {
+          "paint": {
+            "kind": "linear-gradient",
+            "angle_degrees": 0,
+            "stops": [
+              { "offset": 0, "color": { "ref": "grid" }, "opacity": 0.22 },
+              { "offset": 0.01, "color": { "ref": "grid" }, "opacity": 0.22 },
+              { "offset": 0.01, "color": { "ref": "grid" }, "opacity": 0 },
+              { "offset": 1, "color": { "ref": "grid" }, "opacity": 0 }
+            ],
+            "repetition": { "kind": "tiled", "width_px": 60, "height_px": 60 }
+          }
+        },
+        {
+          "paint": {
+            "kind": "linear-gradient",
+            "angle_degrees": 90,
+            "stops": [
+              { "offset": 0, "color": { "ref": "grid" }, "opacity": 0.22 },
+              { "offset": 0.01, "color": { "ref": "grid" }, "opacity": 0.22 },
+              { "offset": 0.01, "color": { "ref": "grid" }, "opacity": 0 },
+              { "offset": 1, "color": { "ref": "grid" }, "opacity": 0 }
+            ],
+            "repetition": { "kind": "tiled", "width_px": 60, "height_px": 60 }
+          }
+        }
+      ]
+    },
+    "typography": {
+      "default": { "font_stack": { "ref": "drafting-font" } },
+      "families": {
+        "flowchart": { "font_stack": { "ref": "drafting-font" }, "font_size_px": 14 },
+        "sequence": { "font_stack": { "ref": "drafting-font" }, "font_size_px": 13 },
+        "class": { "font_stack": { "ref": "drafting-font" }, "font_size_px": 13 },
+        "xychart": { "font_stack": { "ref": "plot-font" } },
+        "pie": { "font_stack": { "ref": "plot-font" } }
+      }
+    },
+    "styles": {
+      "text": { "fill": { "kind": "solid", "color": { "ref": "ink" } } }
+    },
+    "rules": [
+      { "family": "flowchart", "target": "node", "style": { "fill": { "kind": "solid", "color": { "ref": "surface" } }, "stroke": { "paint": { "kind": "solid", "color": { "ref": "ink" } }, "width": 1 }, "radius": 0, "effect": null } },
+      { "family": "flowchart", "target": "node-label", "style": { "fill": { "kind": "solid", "color": { "ref": "ink" } }, "typography": { "font_weight": 500 }, "effect": null } },
+      { "family": "flowchart", "target": "edge", "style": { "stroke": { "paint": { "kind": "solid", "color": { "ref": "ink" } }, "width": 1 }, "effect": null } },
+      { "family": "flowchart", "target": "edge-label", "style": { "typography": { "font_size_px": 12 }, "effect": null } },
+      { "family": "flowchart", "target": "edge-label-background", "style": { "fill": { "kind": "solid", "color": { "ref": "paper" } } } },
+      { "family": "flowchart", "target": "cluster", "style": { "fill": { "kind": "solid", "color": { "ref": "group-sheet" } }, "stroke": { "paint": { "kind": "solid", "color": { "ref": "grid" } }, "width": 0.7 } } },
+      { "family": "flowchart", "target": "cluster-label", "style": { "fill": { "kind": "solid", "color": { "ref": "accent" } } } },
+      { "family": "sequence", "target": "actor", "style": { "fill": { "kind": "solid", "color": { "ref": "surface" } }, "stroke": { "paint": { "kind": "solid", "color": { "ref": "ink" } }, "width": 1 }, "radius": 0, "effect": null } },
+      { "family": "sequence", "target": "actor-label", "style": { "fill": { "kind": "solid", "color": { "ref": "ink" } }, "typography": { "font_size_px": 13, "font_weight": 500 }, "effect": null } },
+      { "family": "sequence", "target": "lifeline", "style": { "stroke": { "paint": { "kind": "solid", "color": { "ref": "secondary" } }, "width": 0.8 }, "effect": null } },
+      { "family": "sequence", "target": "message", "style": { "stroke": { "paint": { "kind": "solid", "color": { "ref": "ink" } }, "width": 1 }, "effect": null } },
+      { "family": "sequence", "target": "message-label", "style": { "fill": { "kind": "solid", "color": { "ref": "ink" } }, "typography": { "font_size_px": 12 } } },
+      { "family": "sequence", "target": "note", "style": { "fill": { "kind": "solid", "color": { "ref": "note" } }, "stroke": { "paint": { "kind": "solid", "color": { "ref": "ink" } }, "width": 0.8 }, "effect": null } },
+      { "family": "sequence", "target": "note-label", "style": { "fill": { "kind": "solid", "color": { "ref": "note-ink" } }, "typography": { "font_size_px": 12, "font_style": "normal" }, "effect": null } },
+      { "family": "sequence", "target": "activation", "style": { "fill": { "kind": "solid", "color": { "ref": "active-surface" } }, "stroke": { "paint": { "kind": "solid", "color": { "ref": "accent" } }, "width": 1 } } },
+      { "family": "sequence", "target": "loop", "style": { "stroke": { "paint": { "kind": "solid", "color": { "ref": "grid" } }, "width": 0.8 }, "effect": null } },
+      { "family": "sequence", "target": "loop-label-background", "style": { "fill": { "kind": "solid", "color": { "ref": "surface" } }, "stroke": { "paint": { "kind": "solid", "color": { "ref": "grid" } }, "width": 0.8 } } },
+      { "family": "sequence", "target": "loop-label", "style": { "fill": { "kind": "solid", "color": { "ref": "secondary" } }, "typography": { "font_size_px": 12 }, "effect": null } },
+      { "family": "sequence", "target": "sequence-number", "style": { "fill": { "kind": "solid", "color": { "ref": "paper" } } } },
+      { "family": "class", "target": "node", "style": { "fill": { "kind": "solid", "color": { "ref": "surface" } }, "stroke": { "paint": { "kind": "solid", "color": { "ref": "ink" } } } } },
+      { "family": "class", "target": "node-label", "style": { "fill": { "kind": "solid", "color": { "ref": "ink" } } } },
+      { "family": "class", "target": "edge", "style": { "stroke": { "paint": { "kind": "solid", "color": { "ref": "ink" } }, "width": 1 } } },
+      { "family": "class", "target": "edge-label-background", "style": { "fill": { "kind": "solid", "color": { "ref": "paper" } } } },
+      { "family": "class", "target": "cluster", "style": { "fill": { "kind": "solid", "color": { "ref": "group-sheet" } }, "stroke": { "paint": { "kind": "solid", "color": { "ref": "grid" } } } } },
+      { "family": "xychart", "target": "axis", "style": { "fill": { "kind": "solid", "color": { "ref": "secondary" } }, "stroke": { "paint": { "kind": "solid", "color": { "ref": "ink" } } } } },
+      { "family": "xychart", "target": "axis-tick", "style": { "stroke": { "paint": { "kind": "solid", "color": { "ref": "grid" } } } } },
+      { "family": "xychart", "target": "title", "style": { "fill": { "kind": "solid", "color": { "ref": "ink" } }, "typography": { "font_size_px": 19, "font_weight": 600 }, "effect": null } },
+      { "family": "xychart", "target": "axis-title", "style": { "fill": { "kind": "solid", "color": { "ref": "secondary" } }, "typography": { "font_size_px": 12 }, "effect": null } },
+      { "family": "xychart", "target": "axis-label", "style": { "fill": { "kind": "solid", "color": { "ref": "secondary" } }, "typography": { "font_size_px": 11 }, "effect": null } },
+      { "family": "xychart", "target": "legend", "style": { "fill": { "kind": "solid", "color": { "ref": "ink" } }, "typography": { "font_size_px": 12 }, "effect": null } },
+      { "family": "xychart", "target": "chart-series", "variant": "bar", "style": { "fill": "transparent", "stroke": { "paint": { "kind": "solid", "color": { "ref": "ink" } }, "width": 1.2 }, "effect": null } },
+      { "family": "xychart", "target": "chart-series", "variant": "line", "style": { "stroke": { "width": 1.7 }, "effect": null } },
+      { "family": "pie", "target": "pie-slice", "style": { "stroke": { "paint": { "kind": "solid", "color": { "ref": "ink" } } } } },
+      { "family": "pie", "target": "text", "style": { "fill": { "kind": "solid", "color": { "ref": "ink" } }, "typography": { "font_size_px": 14, "font_weight": 500 } } },
+      { "family": "pie", "target": "title", "style": { "fill": { "kind": "solid", "color": { "ref": "accent" } }, "typography": { "font_size_px": 19, "font_weight": 600 } } },
+      { "family": "pie", "target": "legend", "style": { "fill": { "kind": "solid", "color": { "ref": "ink" } }, "typography": { "font_size_px": 12 } } }
+    ],
+    "palettes": {
+      "chart-series": { "ref": "series" },
+      "pie-slice": { "ref": "pie-series" }
+    }
+  }
+}

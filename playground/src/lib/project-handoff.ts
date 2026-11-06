@@ -60,6 +60,11 @@ export interface ProjectHandoffBundle {
   readonly notices: readonly ProjectHandoffNotice[];
 }
 
+export interface ProjectHandoffThemeExample {
+  readonly source: string;
+  readonly configJson: string;
+}
+
 /** Capture materials once. A visible previous render is never current render evidence. */
 export function captureProjectHandoff(input: ProjectHandoffInput): ProjectHandoffSnapshot {
   const { renderState: state, workspace, versions } = input;
@@ -115,11 +120,15 @@ export function projectHandoffMatchesWorkspace(snapshot: ProjectHandoffSnapshot,
 
 export function generateProjectHandoff(
   snapshot: ProjectHandoffSnapshot,
-  { target, scope, repositoryPath = "../merman" }: {
+  { target, scope, repositoryPath = "../merman", themeExample, rustAssets = "files" }: {
     readonly target: ProjectUseTarget;
     readonly scope: ProjectUseScope;
     /** Source checkout relative to the extracted consumer, or an absolute local path. */
     readonly repositoryPath?: string;
+    /** Independent theme adoption inputs; never current-diagram render evidence. */
+    readonly themeExample?: ProjectHandoffThemeExample;
+    /** Rust rendering inputs are separate files by default, or embedded in src/main.rs. */
+    readonly rustAssets?: "files" | "inline";
   },
 ): ProjectHandoffBundle {
   const workspace = snapshot.workspace;
@@ -133,7 +142,7 @@ export function generateProjectHandoff(
   if (scope === "theme" && workspace.themePresetId === null && workspace.themeRecipeJson === null && workspace.diagramTheme === "auto") {
     throw new ProjectHandoffError("no-theme");
   }
-  const operation = scope === "diagram" ? snapshot.operation : themeExampleOperation(snapshot);
+  const operation = scope === "diagram" ? snapshot.operation : themeExampleOperation(snapshot, themeExample);
   if (!operation) throw new ProjectHandoffError("render-not-current");
   if (operation.configurationError) throw new ProjectHandoffError("invalid-configuration", operation.configurationError.summary);
   const optionsJson = operation.bindingOptionsJson ?? json(operation.bindingOptions);
@@ -160,7 +169,7 @@ export function generateProjectHandoff(
   let code: string;
   let codeFilename: string;
   if (target === "rust") {
-    code = rustConsumer(operation, files);
+    code = rustConsumer(operation, files, rustAssets);
     codeFilename = "src/main.rs";
     files["Cargo.toml"] = `[package]\nname = "merman-project-use"\nversion = "0.1.0"\nedition = "2024"\n\n[workspace]\n\n[dependencies]\nmerman = { path = ${JSON.stringify(`${repo}/crates/merman`)}, features = ["math"] }\nserde_json = "1"\n`;
     files[codeFilename] = code;
@@ -212,16 +221,16 @@ export function generateProjectHandoff(
       cli_screen_width: target === "cli" ? "container width fallback; no screen width flag" : null,
     },
   });
-  files["README.txt"] = consumerReadme(snapshot, target, scope, notices);
+  files["README.txt"] = consumerReadme(snapshot, target, scope, notices, files, rustAssets);
   return Object.freeze({ target, scope, code, codeFilename, files: Object.freeze(files), notices: Object.freeze(notices) });
 }
 
-function themeExampleOperation(snapshot: ProjectHandoffSnapshot): FrozenRenderOperation {
+function themeExampleOperation(snapshot: ProjectHandoffSnapshot, example?: ProjectHandoffThemeExample): FrozenRenderOperation {
   return freezeRenderOperation({
     workspace: {
       ...DEFAULT_WORKSPACE_SNAPSHOT,
-      code: "flowchart LR\nA[Theme] --> B[Your project]",
-      mermaidConfig: "{}",
+      code: example?.source ?? "flowchart LR\nA[Theme] --> B[Your project]",
+      mermaidConfig: example?.configJson ?? "{}",
       diagramTheme: snapshot.workspace.diagramTheme,
       themePresetId: snapshot.workspace.themePresetId,
       themeRecipeJson: snapshot.workspace.themeRecipeJson,
@@ -234,20 +243,26 @@ function themeExampleOperation(snapshot: ProjectHandoffSnapshot): FrozenRenderOp
   });
 }
 
-function rustConsumer(operation: FrozenRenderOperation, files: Readonly<Record<string, string>>): string {
+function rustConsumer(operation: FrozenRenderOperation, files: Readonly<Record<string, string>>, assets: "files" | "inline"): string {
   const recipe = files["theme.json"] !== undefined;
   const preset = operation.themePresetId?.trim();
+  const inputNames = { "theme.json": "THEME_JSON", "diagram.mmd": "DIAGRAM_SOURCE", "site-config.json": "SITE_CONFIG_JSON" } as const;
+  const input = (filename: keyof typeof inputNames) => assets === "inline"
+    ? inputNames[filename] : `include_str!("../${filename}")`;
+  const embedded = assets === "inline" ? Object.entries(inputNames)
+    .filter(([filename]) => files[filename] !== undefined)
+    .map(([filename, name]) => `\nconst ${name}: &str = ${rustRawString(files[filename])};\n`).join("") : "";
   const imports = recipe ? "use merman::diagram_theme::{DiagramThemeCompiler, ThemeRecipeV1};\n"
     : preset ? "use merman::diagram_theme::{DiagramThemeCompiler, ThemePreset};\n" : "";
   const theme = recipe
-    ? '    let recipe: ThemeRecipeV1 = serde_json::from_str(include_str!("../theme.json"))?;\n    let theme = DiagramThemeCompiler::new().compile_recipe(recipe)?;\n'
+    ? `    let recipe: ThemeRecipeV1 = serde_json::from_str(${input("theme.json")})?;\n    let theme = DiagramThemeCompiler::new().compile_recipe(recipe)?;\n`
     : preset ? `    let theme = DiagramThemeCompiler::new().compile_preset(ThemePreset::from_id(${JSON.stringify(preset)})?)?;\n` : "";
   const site = files["site-config.json"]
-    ? 'MermaidEngine::new().with_site_config(SourcePresentationConfig::from_value(serde_json::from_str(include_str!("../site-config.json"))?))'
+    ? `MermaidEngine::new().with_site_config(SourcePresentationConfig::from_value(serde_json::from_str(${input("site-config.json")})?))`
     : "MermaidEngine::new()";
   const pipeline = { parity: "parity", readable: "readable", "resvg-safe": "resvg_safe" }[operation.svgPipeline];
   const layout = operation.bindingOptions.layout;
-  return `${imports}use merman::svg::SvgPipeline;\nuse merman::{MermaidEngine, OperationControl, RenderOutput, RenderRequest, Renderer, SvgRequest${files["site-config.json"] ? ", SourcePresentationConfig" : ""}};\n\nfn main() -> Result<(), Box<dyn std::error::Error>> {\n${theme}    let source = include_str!("../diagram.mmd");\n    let engine = ${site};\n    let mut svg_request = SvgRequest::default();\n    svg_request.pipeline = Some(SvgPipeline::${pipeline}());\n${layout ? `    svg_request.layout.container_width = ${rustFloat(layout.container_width ?? 800)};\n    svg_request.layout.container_height = ${rustFloat(layout.container_height ?? 600)};\n` : ""}${layout?.screen_available_width === undefined ? "" : `    svg_request.layout.screen_available_width = Some(${rustFloat(layout.screen_available_width)});\n`}    // Native consumers use deterministic measurement; browser fonts are external host resources.\n    let request = RenderRequest::svg(source, OperationControl::new(), svg_request)${recipe || preset ? ".with_theme(theme)" : ""};\n    let output = Renderer::new().with_presentation_engine(engine).render(request)?;\n    let RenderOutput::Svg(Some(svg)) = output else {\n        return Err("No Mermaid diagram detected".into());\n    };\n    std::fs::write(std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("diagram.svg"), svg.svg())?;\n    Ok(())\n}\n`;
+  return `${imports}use merman::svg::SvgPipeline;\nuse merman::{MermaidEngine, OperationControl, RenderOutput, RenderRequest, Renderer, SvgRequest${files["site-config.json"] ? ", SourcePresentationConfig" : ""}};\n\nfn main() -> Result<(), Box<dyn std::error::Error>> {\n${theme}    let source = ${input("diagram.mmd")};\n    let engine = ${site};\n    let mut svg_request = SvgRequest::default();\n    svg_request.pipeline = Some(SvgPipeline::${pipeline}());\n${layout ? `    svg_request.layout.container_width = ${rustFloat(layout.container_width ?? 800)};\n    svg_request.layout.container_height = ${rustFloat(layout.container_height ?? 600)};\n` : ""}${layout?.screen_available_width === undefined ? "" : `    svg_request.layout.screen_available_width = Some(${rustFloat(layout.screen_available_width)});\n`}    // Native consumers use deterministic measurement; browser fonts are external host resources.\n    let request = RenderRequest::svg(source, OperationControl::new(), svg_request)${recipe || preset ? ".with_theme(theme)" : ""};\n    let output = Renderer::new().with_presentation_engine(engine).render(request)?;\n    let RenderOutput::Svg(Some(svg)) = output else {\n        return Err("No Mermaid diagram detected".into());\n    };\n    std::fs::write(std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("diagram.svg"), svg.svg())?;\n    Ok(())\n}\n${embedded}`;
 }
 
 function cliArguments(operation: FrozenRenderOperation, files: Readonly<Record<string, string>>): string[] {
@@ -310,12 +325,17 @@ ${render}  // Preserve the SDK's admission and mount-time navigation/resource ch
 `;
 }
 
-function consumerReadme(snapshot: ProjectHandoffSnapshot, target: ProjectUseTarget, scope: ProjectUseScope, notices: readonly ProjectHandoffNotice[]): string {
+function consumerReadme(snapshot: ProjectHandoffSnapshot, target: ProjectUseTarget, scope: ProjectUseScope, notices: readonly ProjectHandoffNotice[], files: Readonly<Record<string, string>>, rustAssets: "files" | "inline"): string {
   const setup = {
-    rust: "Use the matching Merman source checkout. Cargo.toml points to ../merman/crates/merman; adjust the path to your checkout. Run cargo run from this directory.",
+    rust: "Use the matching Merman source checkout. Cargo.toml contains the local path to crates/merman; adjust the merman dependency path to your checkout. Run cargo run from this directory.",
     cli: "Use merman-cli built from the matching source checkout with native-fonts (included by default). Mathematical labels also require math: build with cargo build --locked -p merman-cli --features math and inspect merman-cli capabilities. Run python render.py, or python render.py --cli /absolute/path/to/merman-cli. The render-command.txt file contains the equivalent direct command. Measurement is explicitly deterministic with system fonts off.",
     web: "Use the matching Merman source checkout, including its prepared Web dist, glue and WASM. package.json links ../merman/platforms/web/packages/full; adjust that local file dependency as needed. Follow that checkout's Web build instructions first. Then run npm install and npm run dev in this directory. Serve over HTTP; do not open index.html as file://.",
   }[target];
+  const directory = [...Object.keys(files), "README.txt"].sort()
+    .map((filename) => filename === "src/main.rs" ? "  src/\n    main.rs" : `  ${filename}`).join("\n");
+  const rustInputs = target !== "rust" ? "" : rustAssets === "inline"
+    ? "\nRust input placement\nAll rendering inputs are embedded in src/main.rs. The separate diagram, theme and site-config files are reference copies, when present; this program does not read them. Copy main.rs and the Cargo.toml dependencies into your Cargo project, or run this directory as generated. The matching merman checkout and serde_json Cargo dependencies are still required.\n"
+    : `\nRust input placement\ninclude_str! paths are relative to src/main.rs, not the working directory. Keep these files at the project root beside Cargo.toml:\n- ../diagram.mmd loads the configured diagram.\n${files["theme.json"] !== undefined ? "- ../theme.json loads the authored theme recipe.\n" : ""}${files["site-config.json"] !== undefined ? "- ../site-config.json loads the host initialization config.\n" : ""}`;
   const checkout = snapshot.buildIdentity;
   return `Merman project materials
 
@@ -334,12 +354,17 @@ This identifies the Playground checkout, not a WASM or binary hash. A dirty chec
 
 ${setup}
 
+Generated directory
+project/
+${directory}
+${rustInputs}
 Configuration provenance
-- diagram.mmd is the render-ready configured source. Do not inject playground-config.json again.
+- diagram.mmd is the render-ready configured source, including the sample or authored diagram configuration. No extra sample-config step is needed. Do not inject playground-config.json again.
 - For current-diagram materials, source.mmd and playground-config.json retain the original editor inputs.
 - Authored Playground config stays in a source init directive after frontmatter. It is never moved into site_config or CLI --config-file.
-- site-config.json, when present, contains only the frozen operation's host initialization config.
-- options.json retains the complete Web binding request; theme.json is the authored standalone recipe, when selected. Do not wrap it in {recipe: ...}.
+- site-config.json, when present, contains only the frozen operation's host initialization config. The generated consumer already applies it.
+- theme.json, when selected, is the authored standalone visual style recipe. It supplies styling, while diagram.mmd supplies the diagram and its configuration. Do not wrap the recipe in {recipe: ...}.
+- options.json retains the complete Web binding request, including the selected theme and host initialization config. The Web consumer already loads them through options.json; no second manual theme.json load or configuration merge is needed.
 - handoff.json records versions, layout, measurement and file provenance. Builtin preset IDs require a matching runtime catalog; a package version alone does not pin a source revision.
 
 Host dependencies
@@ -349,5 +374,15 @@ ${notices.includes("native-measurement") ? "This captured diagram used browser m
 }
 
 function json(value: unknown): string { return `${JSON.stringify(value, null, 2)}\n`; }
+function rustRawString(value: string): string {
+  // Rust normalizes source CRLF and limits raw delimiters to 255 hashes.
+  const parts = value.split(/(\r|"(?=#{255}))/).map((part, index) => {
+    if (index % 2 === 1) return part === "\r" ? '"\\r"' : '"\\\""';
+    let hashes = "#";
+    while (part.includes(`"${hashes}`)) hashes += "#";
+    return `r${hashes}"${part}"${hashes}`;
+  });
+  return parts.length === 1 ? parts[0] : `concat!(${parts.join(", ")})`;
+}
 function rustFloat(value: number): string { return Number.isInteger(value) && !String(value).includes("e") ? `${value}.0` : String(value); }
 function shellArgument(value: string): string { return /^[a-zA-Z0-9_./-]+$/.test(value) ? value : `'${value.replaceAll("'", "'\\''")}'`; }

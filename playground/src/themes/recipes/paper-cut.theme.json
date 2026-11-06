@@ -1,0 +1,158 @@
+{
+  "schema_version": 1,
+  "kind": "design",
+  "design": {
+    "tokens": {
+      "paper": { "type": "color", "label": "Warm cotton paper", "group": "Paper stock", "value": "#FBF8F0" },
+      "surface": { "type": "color", "label": "Mint face sheet", "group": "Paper stock", "description": "Shared by the upper face of Flowchart cards, Sequence actor tabs, and Class cards.", "value": "#E9F2E9" },
+      "backing": { "type": "color", "label": "Pale mint backing sheet", "group": "Paper stock", "value": "#E3EBE0" },
+      "ink": { "type": "color", "label": "Navy lettering", "group": "Paper colors", "description": "Shared by clear, unfiltered labels, fine connectors, chart lines, and the soft contact shadow.", "value": "#243E4A" },
+      "muted": { "type": "color", "label": "Slate annotation ink", "group": "Paper colors", "value": "#536B6F" },
+      "outline": { "type": "color", "label": "Fine cut edge", "group": "Paper colors", "value": "#739A92" },
+      "coral": { "type": "color", "label": "Coral middle sheet", "group": "Paper colors", "description": "Shared by the near paper offset, activation slips, and the first chart series.", "value": "#EB9C88" },
+      "teal": { "type": "color", "label": "Teal backing sheet", "group": "Paper colors", "description": "Shared by the deeper paper offset and the note edge.", "value": "#7EB4AA" },
+      "note": { "type": "color", "label": "Apricot annotation slip", "group": "Paper stock", "value": "#F8DFC3" },
+      "fiber": { "type": "color", "label": "Warm paper fibers", "group": "Paper stock", "description": "Very faint crossing vector strokes suggest handmade stock without adding noise to labels.", "value": "#B2A790" },
+      "body-font": { "type": "font-stack", "label": "Humanist paper lettering", "group": "Typography", "value": ["Avenir", "Segoe UI", "Calibri", "Arial", "Noto Sans CJK SC", "sans-serif"] },
+      "series": { "type": "palette", "label": "Cut-paper chart strips", "group": "Palettes", "value": [{ "ref": "coral" }, { "ref": "ink" }, { "ref": "teal" }, "#D6B86D", "#AEA6C6", "#9BB4CB"] },
+      "pie-series": { "type": "palette", "label": "Pastel paper sectors", "group": "Palettes", "description": "Independent light paper swatches keep navy percentage labels legible. Pie uses paint and typography, without body filters.", "value": ["#B7D8CD", "#F1BAA7", "#E7D49E", "#D1C7E0", "#B9CEDD", "#CDD7AD"] },
+      "paper-stack": {
+        "type": "effect",
+        "label": "Three-layer mounted paper",
+        "group": "Paper thickness",
+        "description": "Independent offsets start from each supported body: a soft navy contact shadow, a hard teal backing sheet, then a hard coral middle sheet. Flowchart node and Sequence actor labels stay unfiltered. Class and Pie do not request this effect.",
+        "value": {
+          "kind": "shadow-stack",
+          "composition": "independent",
+          "color_space": "srgb",
+          "shadows": [
+            { "offset_x": 3, "offset_y": 8, "std_deviation": 2.2, "color": { "ref": "ink" }, "opacity": 0.17 },
+            { "offset_x": 5, "offset_y": 6, "std_deviation": 0, "color": { "ref": "teal" }, "opacity": 1 },
+            { "offset_x": 2, "offset_y": 3, "std_deviation": 0, "color": { "ref": "coral" }, "opacity": 1 }
+          ]
+        }
+      },
+      "note-stack": {
+        "type": "effect",
+        "label": "Lifted annotation slip",
+        "group": "Paper thickness",
+        "description": "A small teal edge and soft navy shadow lift the apricot Sequence note without filtering its text.",
+        "value": {
+          "kind": "shadow-stack",
+          "composition": "independent",
+          "color_space": "srgb",
+          "shadows": [
+            { "offset_x": 1, "offset_y": 4, "std_deviation": 1.5, "color": { "ref": "ink" }, "opacity": 0.14 },
+            { "offset_x": -1.5, "offset_y": 2, "std_deviation": 0, "color": { "ref": "teal" }, "opacity": 0.9 }
+          ]
+        }
+      },
+      "chart-stack": {
+        "type": "effect",
+        "label": "Layered chart strips",
+        "group": "Paper thickness",
+        "description": "Smaller independent offsets keep XY bars and their legend markers dimensional without covering adjacent chart marks. Lines and labels stay unfiltered.",
+        "value": {
+          "kind": "shadow-stack",
+          "composition": "independent",
+          "color_space": "srgb",
+          "shadows": [
+            { "offset_x": 2, "offset_y": 4, "std_deviation": 1, "color": { "ref": "ink" }, "opacity": 0.14 },
+            { "offset_x": 3, "offset_y": 3, "std_deviation": 0, "color": { "ref": "teal" }, "opacity": 1 },
+            { "offset_x": 1, "offset_y": 1.5, "std_deviation": 0, "color": { "ref": "paper" }, "opacity": 1 }
+          ]
+        }
+      }
+    },
+    "canvas": {
+      "base": { "kind": "solid", "color": { "ref": "paper" } },
+      "layers": [
+        {
+          "paint": {
+            "kind": "linear-gradient",
+            "angle_degrees": 125,
+            "stops": [
+              { "offset": 0, "color": { "ref": "fiber" }, "opacity": 0 },
+              { "offset": 0.44, "color": { "ref": "fiber" }, "opacity": 0 },
+              { "offset": 0.44, "color": { "ref": "fiber" }, "opacity": 0.09 },
+              { "offset": 0.46, "color": { "ref": "fiber" }, "opacity": 0.09 },
+              { "offset": 0.46, "color": { "ref": "fiber" }, "opacity": 0 },
+              { "offset": 1, "color": { "ref": "fiber" }, "opacity": 0 }
+            ],
+            "repetition": { "kind": "tiled", "width_px": 21, "height_px": 34 }
+          }
+        },
+        {
+          "paint": {
+            "kind": "linear-gradient",
+            "angle_degrees": 32,
+            "stops": [
+              { "offset": 0, "color": { "ref": "fiber" }, "opacity": 0 },
+              { "offset": 0.68, "color": { "ref": "fiber" }, "opacity": 0 },
+              { "offset": 0.68, "color": { "ref": "fiber" }, "opacity": 0.06 },
+              { "offset": 0.7, "color": { "ref": "fiber" }, "opacity": 0.06 },
+              { "offset": 0.7, "color": { "ref": "fiber" }, "opacity": 0 },
+              { "offset": 1, "color": { "ref": "fiber" }, "opacity": 0 }
+            ],
+            "repetition": { "kind": "tiled", "width_px": 37, "height_px": 19 }
+          }
+        }
+      ]
+    },
+    "typography": {
+      "default": { "font_stack": { "ref": "body-font" } },
+      "families": {
+        "flowchart": { "font_stack": { "ref": "body-font" }, "font_size_px": 15 },
+        "sequence": { "font_stack": { "ref": "body-font" }, "font_size_px": 14 },
+        "class": { "font_stack": { "ref": "body-font" }, "font_size_px": 14 },
+        "xychart": { "font_stack": { "ref": "body-font" } },
+        "pie": { "font_stack": { "ref": "body-font" } }
+      }
+    },
+    "styles": {
+      "text": { "fill": { "kind": "solid", "color": { "ref": "ink" } } }
+    },
+    "rules": [
+      { "family": "flowchart", "target": "node", "style": { "fill": { "kind": "solid", "color": { "ref": "surface" } }, "stroke": { "paint": { "kind": "solid", "color": { "ref": "outline" } }, "width": 0.8 }, "radius": 8, "effect": { "ref": "paper-stack" } } },
+      { "family": "flowchart", "target": "node-label", "style": { "fill": { "kind": "solid", "color": { "ref": "ink" } }, "typography": { "font_weight": 600 }, "effect": null } },
+      { "family": "flowchart", "target": "edge", "style": { "stroke": { "paint": { "kind": "solid", "color": { "ref": "ink" } }, "width": 1.3 }, "effect": null } },
+      { "family": "flowchart", "target": "edge-label", "style": { "typography": { "font_size_px": 12 }, "effect": null } },
+      { "family": "flowchart", "target": "edge-label-background", "style": { "fill": { "kind": "solid", "color": { "ref": "paper" } } } },
+      { "family": "flowchart", "target": "cluster", "style": { "fill": { "kind": "solid", "color": { "ref": "backing" } }, "stroke": { "paint": { "kind": "solid", "color": { "ref": "teal" } }, "width": 0.7 } } },
+      { "family": "flowchart", "target": "cluster-label", "style": { "fill": { "kind": "solid", "color": { "ref": "muted" } } } },
+      { "family": "sequence", "target": "actor", "style": { "fill": { "kind": "solid", "color": { "ref": "surface" } }, "stroke": { "paint": { "kind": "solid", "color": { "ref": "outline" } }, "width": 0.8 }, "radius": 6, "effect": { "ref": "paper-stack" } } },
+      { "family": "sequence", "target": "actor-label", "style": { "fill": { "kind": "solid", "color": { "ref": "ink" } }, "typography": { "font_size_px": 15, "font_weight": 600 }, "effect": null } },
+      { "family": "sequence", "target": "lifeline", "style": { "stroke": { "paint": { "kind": "solid", "color": { "ref": "outline" } }, "width": 0.8 }, "effect": null } },
+      { "family": "sequence", "target": "message", "style": { "stroke": { "paint": { "kind": "solid", "color": { "ref": "ink" } }, "width": 1.2 }, "effect": null } },
+      { "family": "sequence", "target": "message-label", "style": { "fill": { "kind": "solid", "color": { "ref": "ink" } }, "typography": { "font_size_px": 13 } } },
+      { "family": "sequence", "target": "note", "style": { "fill": { "kind": "solid", "color": { "ref": "note" } }, "stroke": { "paint": { "kind": "solid", "color": { "ref": "coral" } }, "width": 0.8 }, "effect": { "ref": "note-stack" } } },
+      { "family": "sequence", "target": "note-label", "style": { "fill": { "kind": "solid", "color": { "ref": "ink" } }, "typography": { "font_size_px": 13, "font_style": "italic" }, "effect": null } },
+      { "family": "sequence", "target": "activation", "style": { "fill": { "kind": "solid", "color": { "ref": "coral" } }, "stroke": { "paint": { "kind": "solid", "color": { "ref": "paper" } }, "width": 1.2 } } },
+      { "family": "sequence", "target": "loop", "style": { "stroke": { "paint": { "kind": "solid", "color": { "ref": "teal" } }, "width": 1 }, "effect": null } },
+      { "family": "sequence", "target": "loop-label-background", "style": { "fill": { "kind": "solid", "color": { "ref": "backing" } }, "stroke": { "paint": { "kind": "solid", "color": { "ref": "teal" } }, "width": 1 } } },
+      { "family": "sequence", "target": "loop-label", "style": { "fill": { "kind": "solid", "color": { "ref": "muted" } }, "typography": { "font_size_px": 12 }, "effect": null } },
+      { "family": "sequence", "target": "sequence-number", "style": { "fill": { "kind": "solid", "color": { "ref": "paper" } } } },
+      { "family": "class", "target": "node", "style": { "fill": { "kind": "solid", "color": { "ref": "surface" } }, "stroke": { "paint": { "kind": "solid", "color": { "ref": "outline" } } } } },
+      { "family": "class", "target": "node-label", "style": { "fill": { "kind": "solid", "color": { "ref": "ink" } } } },
+      { "family": "class", "target": "edge", "style": { "stroke": { "paint": { "kind": "solid", "color": { "ref": "ink" } }, "width": 1.3 } } },
+      { "family": "class", "target": "edge-label-background", "style": { "fill": { "kind": "solid", "color": { "ref": "paper" } } } },
+      { "family": "class", "target": "cluster", "style": { "fill": { "kind": "solid", "color": { "ref": "backing" } }, "stroke": { "paint": { "kind": "solid", "color": { "ref": "teal" } } } } },
+      { "family": "xychart", "target": "axis", "style": { "fill": { "kind": "solid", "color": { "ref": "muted" } }, "stroke": { "paint": { "kind": "solid", "color": { "ref": "outline" } } } } },
+      { "family": "xychart", "target": "axis-tick", "style": { "stroke": { "paint": { "kind": "solid", "color": { "ref": "outline" } } } } },
+      { "family": "xychart", "target": "title", "style": { "fill": { "kind": "solid", "color": { "ref": "ink" } }, "typography": { "font_size_px": 23, "font_weight": 600 }, "effect": null } },
+      { "family": "xychart", "target": "axis-title", "style": { "fill": { "kind": "solid", "color": { "ref": "muted" } }, "typography": { "font_size_px": 13 }, "effect": null } },
+      { "family": "xychart", "target": "axis-label", "style": { "fill": { "kind": "solid", "color": { "ref": "muted" } }, "typography": { "font_size_px": 12 }, "effect": null } },
+      { "family": "xychart", "target": "legend", "style": { "fill": { "kind": "solid", "color": { "ref": "ink" } }, "typography": { "font_size_px": 12, "font_weight": 400 }, "effect": null } },
+      { "family": "xychart", "target": "chart-series", "variant": "bar", "style": { "stroke": { "paint": { "kind": "solid", "color": { "ref": "coral" } }, "width": 0.6 }, "effect": { "ref": "chart-stack" } } },
+      { "family": "xychart", "target": "chart-series", "variant": "line", "style": { "stroke": { "width": 2.4 }, "effect": null } },
+      { "family": "pie", "target": "pie-slice", "style": { "stroke": { "paint": { "kind": "solid", "color": { "ref": "paper" } } } } },
+      { "family": "pie", "target": "text", "style": { "fill": { "kind": "solid", "color": { "ref": "ink" } }, "typography": { "font_size_px": 16, "font_weight": 600 } } },
+      { "family": "pie", "target": "title", "style": { "fill": { "kind": "solid", "color": { "ref": "ink" } }, "typography": { "font_size_px": 23, "font_weight": 600 } } },
+      { "family": "pie", "target": "legend", "style": { "fill": { "kind": "solid", "color": { "ref": "muted" } }, "typography": { "font_size_px": 14 } } }
+    ],
+    "palettes": {
+      "chart-series": { "ref": "series" },
+      "pie-slice": { "ref": "pie-series" }
+    }
+  }
+}

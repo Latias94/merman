@@ -2,26 +2,21 @@
 
 Use this index to choose an upgrade path by the version you have installed. Stable `0.9.3` retains Mermaid `12.1.0`, the Presentation API, and Options JSON schema `2`. Published prerelease `0.10.0-alpha.1` retains Mermaid `12.2.0` and Options JSON schema `3`. Use the [host installation guide](PREBUILT_PRODUCTS.md) for independently delivered package versions and channels. Typst, Tree-sitter, Roughr, and the VS Code extension use independent version numbers.
 
-The `0.10.0-alpha.1` release targets Mermaid `12.2.0`; see [ADR-0094](../adr/0094-mermaid-12-2-upstream-transition.md)
-for the selected graph and behavior changes. Published release histories retain their original baselines.
+## Merman 0.10.0-alpha.2 (planned)
 
-Current source development selects Mermaid `12.3.0`. See its
-[development migration](../migrations/mermaid-12-3.md) for layout dependencies, Rust changes,
-Step animation admission and static output. Build source wrappers and artifacts together;
-this transition does not change an already published package's baseline.
+**Planned for `0.10.0-alpha.2`; not yet released.** The [Unreleased changelog](../../CHANGELOG.md#unreleased) records the development changes since alpha.1. Workspace metadata remains `0.10.0-alpha.1` during this preparation; it does not identify a published alpha.2 package.
 
-The alpha's
-[prepared rendering and host integration migration](../migrations/render-reuse-host-integration.md)
-covering Rust borrowing/snapshots, geometry budgets, Web mounts and explicit Kanban width adaptation.
-The [model/source migration](../migrations/model-source-boundaries.md) covers independent model and output packages, canonical Rust imports, immutable presentation input, and requested fixes.
-Current Rust source keeps math opt-in, including for the retained complete SVG feature aggregates;
-see [ADR-0097](../adr/0097-explicit-math-capability.md). Ordinary prebuilt SVG products, including
-Web full/render and CLI release archives, select math explicitly. Source-default CLI omits it.
-The [host guide](PREBUILT_PRODUCTS.md) distinguishes stable, alpha and source-built products.
+Current source selects Mermaid `12.3.0` and the selected ELK `0.12.0` behavior. Start with the [Mermaid 12.3 migration](../migrations/mermaid-12-3.md) for Rust model changes, layout dependencies, Step animation and static output. Custom hosts also need the [binding contract migration](UNRELEASED_CONTRACT_VERSIONS.md#source-appearance-and-render-evidence-follow-up): Web transport API `9`, analysis facts schema `3` and theme execution evidence schema `2` replace alpha.1's `8`, `2` and `1`. Build wrappers and native/WASM artifacts together from the same source revision.
+
+Preview the [15-design theme gallery](../../CHANGELOG.md#theme-design-gallery) for 30 SVG examples drawn from Flowchart, Sequence, Class, XY Chart and Pie. Each design has an editable JSON recipe and all five examples in the Playground's **Theme designs** library. These are custom recipes, separate from the 11 built-in presets. The gallery explains how to open a sample, apply its theme and copy JSON or integration code; the [theme guide](../rendering/custom-diagram-themes.md#standalone-explorations-and-example-scenes) covers file placement and optional layout settings. Hosted Playground availability follows its deployed build.
+
+Current Rust source keeps math opt-in, including for the retained complete SVG feature aggregates; see [ADR-0097](../adr/0097-explicit-math-capability.md). Ordinary prebuilt SVG products, including Web full/render and CLI release archives, select math explicitly. Source-default CLI omits it. The [host guide](PREBUILT_PRODUCTS.md) distinguishes stable, alpha and source-built products.
 
 ## Merman 0.10.0-alpha.1
 
 The [alpha changelog](../../CHANGELOG.md#0100-alpha1---2026-11-02) introduces reusable diagram themes, prepared rendering, lighter Rust model/output packages and updated binding delivery. It consolidates the changes from `0.9.3` and names required Options, Rust, text-measurement and resource-policy migrations. The [public prerelease](https://github.com/Latias94/merman/releases/tag/v0.10.0-alpha.1) and [publication record](PUBLISH_ORDER.md#0100-alpha1-publication) identify the frozen source; each platform's delivery remains independently qualified. Later development migrations do not change those published bytes.
+
+The published alpha.1 targets Mermaid `12.2.0`; see [ADR-0094](../adr/0094-mermaid-12-2-upstream-transition.md) for its selected graph and behavior changes. Its [prepared rendering and host integration migration](https://github.com/Latias94/merman/blob/v0.10.0-alpha.1/docs/migrations/render-reuse-host-integration.md) covers Rust borrowing/snapshots, geometry budgets, Web mounts and explicit Kanban width adaptation. Its [model/source migration](https://github.com/Latias94/merman/blob/v0.10.0-alpha.1/docs/migrations/model-source-boundaries.md) covers independent model and output packages, canonical Rust imports, immutable presentation input and requested fixes. Use those versioned guides when integrating published alpha.1 artifacts.
 
 ## 0.9 maintenance line
 
@@ -47,9 +42,7 @@ HTML label transforms and IDs, and the locked rustls dependency. See the
 [0.9.1 changelog](../../CHANGELOG.md#091---2026-10-18) for the complete delta and the
 [publication snapshot](PUBLISH_ORDER.md#091-publication-snapshot) for channel evidence.
 
-The theme refactor, Options JSON schema `3`, and Mermaid `12.2.0` alignment belong to the `0.10` line and are absent from published `0.9.1` artifacts. Current development source additionally uses Web transport API `9`, analysis facts schema `3`, and theme execution evidence schema `2`; published `0.10.0-alpha.1` retains their earlier versions `8`, `2`, and `1`. See the [development contract migration](UNRELEASED_CONTRACT_VERSIONS.md#source-appearance-and-render-evidence-follow-up). For source builds of the
-published patch, use `v0.9.1`; match generated wrappers and artifacts to that same tag. Typst wrapper
-`0.5.0` continues to bundle Merman `0.9.0`.
+The theme refactor, Options JSON schema `3`, and Mermaid `12.2.0` alignment belong to the `0.10` line and are absent from published `0.9.1` artifacts. For source builds of the published patch, use `v0.9.1`; match generated wrappers and artifacts to that same tag. Typst wrapper `0.5.0` continues to bundle Merman `0.9.0`.
 
 ## Merman 0.9.0
 
@@ -67,6 +60,7 @@ Package-local changelogs project the release delta onto each SDK's actual APIs, 
 
 | Installed version | Target version | Migration reference |
 | --- | --- | --- |
+| `0.10.0-alpha.1` | `0.10.0-alpha.2` (planned; not released) | [Unreleased upgrade notes](../../CHANGELOG.md#upgrade-notes), [Mermaid 12.3 migration](../migrations/mermaid-12-3.md) and [binding contract migration](UNRELEASED_CONTRACT_VERSIONS.md#source-appearance-and-render-evidence-follow-up); review layout snapshots and build matching wrappers/artifacts from one source revision |
 | `0.9.x` | `0.10.0-alpha.1` | [Alpha changelog](../../CHANGELOG.md#0100-alpha1---2026-11-02), [model/source migration](../migrations/model-source-boundaries.md) and [prepared-rendering migration](../migrations/render-reuse-host-integration.md); match wrappers and artifacts, and verify channel availability separately |
 | `0.9.2` | `0.9.3` | [Patch changelog](../../CHANGELOG.md#093---2026-10-30): native C/WASI SDKs, text and formula fixes, and CLI native font/CSS migration; retains Mermaid 12.1 and the published binding contracts |
 | `0.9.1` | `0.9.2` | [Patch changelog](../../CHANGELOG.md#092---2026-10-22): font, host-theme, parser, CSS, and packaging fixes; retains Mermaid 12.1 and the published binding contracts |

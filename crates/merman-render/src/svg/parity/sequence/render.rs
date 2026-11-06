@@ -151,10 +151,17 @@ pub(in crate::svg::parity) fn render_sequence_diagram_svg_model_with_config(
     let activation_paint = activation_theme.activation_paint(compat);
     let activation_fill_overridden = activation_paint.fill_overridden;
     let activation_stroke_overridden = activation_paint.stroke_overridden;
-    let mut lifeline_paint =
-        super::actor_effect::SequenceLifelinePaint::new(lifeline_theme.effect.clone());
+    // Mermaid's non-mirrored viewport does not include the lifeline tail. An explicit canvas
+    // needs the terminal painted frame; keep the unthemed viewport and line geometry unchanged.
+    let has_root_canvas = options.family.root_theme_plan().is_some_and(|plan| {
+        plan.canvas().has_explicit_base() || !plan.canvas().layers().is_empty()
+    });
+    let mut lifeline_paint = super::actor_effect::SequenceLifelinePaint::new(
+        lifeline_theme.effect.clone(),
+        has_root_canvas,
+    );
     let mut defer_paint_bounds = defer_text_bounds
-        || lifeline_paint.has_effect()
+        || lifeline_paint.needs_bounds()
         || lifeline_theme.typed_stroke_width.is_some();
 
     let mut nodes_by_id: FxHashMap<&str, &LayoutNode> =

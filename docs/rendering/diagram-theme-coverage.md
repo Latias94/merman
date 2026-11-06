@@ -33,6 +33,11 @@ their notation-specific ring widths. Annotation brackets accept stroke, stroke w
 patterns. A fill request on an annotation or a ring-width request remains a residual even when
 another property of the same rule applies.
 
+**Known Flowchart gap:** a local `edge-label` fill can fall back to the compatibility theme's
+default color, even when shared Text fill works. Execution evidence can incorrectly report this
+case as `verified` without diagnostics. Use shared Text fill for these examples and inspect the
+visible edge labels; local edge-label fill and its missing residual accounting need a renderer fix.
+
 Block label colors target the ordinary paragraph in its prepared HTML label. Source colors still
 own visible HTML blocks that inherit them; custom HTML outside that paragraph remains an unsupported
 paint request when the writer cannot prove that the visible text consumed the theme color.
@@ -48,8 +53,9 @@ Classic. A coarse conditional support query does not promise the effect under th
 Other families can have Mermaid look decorations without consuming compiled theme effects.
 
 The 11 built-in presets share paint and typography defaults, with selected family-specific rules.
-Their catalog design scope is narrower than runtime theme availability. The four Playground
-explorations (Atlas, Nightfall, Letterpress and Grove) have dedicated examples and scoped rules for
+Their catalog design scope is narrower than runtime theme availability. The fifteen Playground
+explorations (Riso, Pop Art, Metro, Carbon Copy, Signal, Field Notes, Lacquer, Paper Cut, Aurora, Phosphor, Letterpress, Grove,
+Atlas, Nightfall and Blueprint) have dedicated examples and scoped rules for
 Flowchart, Sequence, Class, XY Chart and Pie. Other families can receive shared text, font, palette
 or canvas values; those changes do not establish a dedicated design for that family.
 

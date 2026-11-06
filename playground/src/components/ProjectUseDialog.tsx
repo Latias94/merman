@@ -4,6 +4,8 @@ import { useTranslation } from "react-i18next";
 import { useShallow } from "zustand/react/shallow";
 import { strToU8, zipSync } from "fflate";
 
+import { CodePreview } from "@/src/components/CodePreview";
+import { ProjectFileBrowser } from "@/src/components/ProjectFileBrowser";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogClose, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -121,16 +123,15 @@ export default function ProjectUseDialog({ input, onClose, onRefresh, restoreFoc
             </div>}
             {bundle && <>
               <p className="text-xs text-muted-foreground">{t(`projectUse.setup_${target}`)}</p>
-              <div className="min-w-0 overflow-hidden rounded-md border">
+              <div className="grid min-w-0 grid-cols-1 overflow-hidden rounded-md border sm:grid-cols-[11rem_minmax(0,1fr)]">
+                <ProjectFileBrowser files={bundle.files} selected={filename!} onSelect={(name) => { setSelectedFile(name); setActionStatus(null); }} />
+                <div className="min-w-0">
                 <div className="flex flex-wrap items-center justify-between gap-2 border-b bg-muted/30 px-3 py-2">
-                  <label className="flex min-w-0 items-center gap-2 text-xs"><span>{t("projectUse.file")}</span>
-                    <select aria-label={t("projectUse.file")} value={filename} onChange={(event) => { setSelectedFile(event.target.value); setActionStatus(null); }} className="min-w-0 max-w-56 rounded border bg-background p-1 font-mono">
-                      {Object.keys(bundle.files).map((name) => <option key={name} value={name}>{name}</option>)}
-                    </select>
-                  </label>
+                  <span className="min-w-0 break-all font-mono text-[11px]">{filename}</span>
                   <Button type="button" variant="ghost" size="sm" onClick={() => { void copy(); }} aria-label={t("projectUse.copyFile", { file: filename })}><Copy className="size-3.5" aria-hidden="true" />{t("projectUse.copy")}</Button>
                 </div>
-                <pre tabIndex={0} aria-label={t("projectUse.generatedCode")} className="max-h-80 overflow-auto p-3 font-mono text-xs leading-relaxed" data-testid="project-use-code"><code>{content}</code></pre>
+                <CodePreview value={content} filename={filename!} label={t("projectUse.generatedCode")} testId="project-use-code" />
+                </div>
               </div>
               <p className="text-xs text-muted-foreground" data-testid="project-use-config-provenance">{t("projectUse.configProvenance")}</p>
               <ul className="space-y-1 text-xs text-muted-foreground" data-testid="project-use-host-notices">

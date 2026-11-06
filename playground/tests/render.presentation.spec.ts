@@ -661,6 +661,16 @@ test("C4 uses the same browser layout environment in both compare panes", async 
   await renderSource(page, C4_CONTAINER_EXAMPLE.source);
   await openWorkbenchTool(page, "Compare");
 
+  for (const engine of ["merman", "mermaid"] as const) {
+    const svg = page.locator(
+      `[data-merman-compare-engine="${engine}"] .preview-container svg`,
+    );
+    await expect(svg).toHaveAttribute("aria-roledescription", "c4");
+    await expect(svg.locator("text")).toContainText([
+      "Container diagram for Internet Banking System",
+    ]);
+  }
+
   await expect
     .poll(() => compareViewBoxesMatch(page), {
       message: "Merman and Mermaid JS C4 viewBoxes",

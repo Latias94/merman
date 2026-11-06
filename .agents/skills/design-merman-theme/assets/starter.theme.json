@@ -3,16 +3,32 @@
   "kind": "design",
   "design": {
     "tokens": {
-      "paper": { "type": "color", "label": "Paper", "value": "#fffaf0" },
-      "ink": { "type": "color", "label": "Ink", "value": "#292524" },
-      "accent": { "type": "color", "label": "Accent", "value": "#c2410c" }
+      "paper": { "type": "color", "label": "Card stock", "value": "#FFF8EB" },
+      "ink": { "type": "color", "label": "Lettering and contours", "value": "#24333D" },
+      "accent": { "type": "color", "label": "Exposed backing card", "value": "#B34A2D" },
+      "card-edge": {
+        "type": "effect",
+        "label": "Hard backing edge",
+        "description": "One shared accent colors the backing edge; text stays unfiltered.",
+        "value": {
+          "kind": "shadow-stack",
+          "composition": "independent",
+          "shadows": [
+            { "offset_x": 3, "offset_y": 3, "std_deviation": 0, "color": { "ref": "accent" }, "opacity": 1 }
+          ]
+        }
+      }
     },
     "canvas": { "base": { "kind": "solid", "color": { "ref": "paper" } } },
     "styles": {
-      "node": { "fill": "#ffffff", "stroke": { "paint": { "kind": "solid", "color": { "ref": "accent" } }, "width": 2 } },
-      "node-label": { "fill": { "kind": "solid", "color": { "ref": "ink" } } },
-      "edge": { "stroke": { "paint": { "kind": "solid", "color": { "ref": "accent" } } } },
-      "edge-label": { "fill": { "kind": "solid", "color": { "ref": "ink" } } }
-    }
+      "text": { "fill": { "kind": "solid", "color": { "ref": "ink" } } }
+    },
+    "rules": [
+      { "family": "flowchart", "target": "node", "style": { "fill": { "kind": "solid", "color": { "ref": "paper" } }, "stroke": { "paint": { "kind": "solid", "color": { "ref": "ink" } }, "width": 1.5 }, "effect": { "ref": "card-edge" } } },
+      { "family": "flowchart", "target": "node-label", "style": { "fill": { "kind": "solid", "color": { "ref": "ink" } }, "effect": null } },
+      { "family": "flowchart", "target": "edge", "style": { "stroke": { "paint": { "kind": "solid", "color": { "ref": "ink" } }, "width": 1.3 }, "effect": null } },
+      { "family": "flowchart", "target": "edge-label", "style": { "effect": null } },
+      { "family": "flowchart", "target": "edge-label-background", "style": { "fill": { "kind": "solid", "color": { "ref": "paper" } } } }
+    ]
   }
 }

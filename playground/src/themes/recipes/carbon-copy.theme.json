@@ -1,0 +1,136 @@
+{
+  "schema_version": 1,
+  "kind": "design",
+  "design": {
+    "tokens": {
+      "paper": { "type": "color", "label": "Aged record paper", "group": "Archive stock", "value": "#F2EDDF" },
+      "surface": { "type": "color", "label": "Original form sheet", "group": "Archive stock", "value": "#FFFCF1" },
+      "copy-sheet": { "type": "color", "label": "Violet duplicate sheet", "group": "Archive stock", "value": "#E6DAEE" },
+      "folder": { "type": "color", "label": "Translucent file sleeve", "group": "Archive stock", "description": "The translucent sleeve preserves the long horizontal ledger rules beneath grouped records.", "value": "#E6DAEE80" },
+      "ink": { "type": "color", "label": "Deep violet carbon ink", "group": "Record inks", "description": "Shared by unfiltered typed records, paper outlines, connectors, and chart annotations. Body thickness is an independent effect.", "value": "#4B2C63" },
+      "carbon": { "type": "color", "label": "Exposed purple carbon edge", "group": "Record inks", "description": "A broad left-hand backing edge rather than a second colored registration pass.", "value": "#76508E" },
+      "ruling": { "type": "color", "label": "Faded violet form ruling", "group": "Record inks", "value": "#A68CB4" },
+      "stamp": { "type": "color", "label": "Vermilion review stamp", "group": "Record inks", "description": "Reserved for notes, review intervals, chart headings, and the planned series; ordinary text retains the carbon ink.", "value": "#A53B32" },
+      "stamp-paper": { "type": "color", "label": "Pink review slip", "group": "Archive stock", "value": "#F3DED2" },
+      "record-font": { "type": "font-stack", "label": "Monospaced record lettering", "group": "Typography", "description": "Menlo produces the typewritten form character. Install a matching fallback when sharing the recipe; fonts are not embedded.", "value": ["Menlo", "Consolas", "Liberation Mono", "Noto Sans Mono CJK SC", "monospace"] },
+      "chart-font": { "type": "font-stack", "label": "Compact ledger captions", "group": "Typography", "description": "Narrow ledger captions keep the fixed-width chart legend inside its reserved area; diagram records and class signatures remain monospaced.", "value": ["Avenir Next Condensed", "Arial Narrow", "Helvetica Neue", "Arial", "Noto Sans CJK SC", "sans-serif"] },
+      "series": { "type": "palette", "label": "Duplicate and review series", "group": "Palettes", "value": ["#B49BC9", { "ref": "stamp" }, "#8F79AD", "#B99A68", "#817B9D", "#BE897C"] },
+      "pie-series": { "type": "palette", "label": "Filed copy swatches", "group": "Palettes", "description": "Light archival swatches keep the deep violet percentage labels legible. Pie requests paint and typography only.", "value": ["#D8C6E5", "#E9C8B9", "#C8C0DA", "#DDD7B7", "#C0CED1", "#D4BAC8"] },
+      "carbon-edge": {
+        "type": "effect",
+        "label": "One-sided carbon backing",
+        "group": "Paper construction",
+        "description": "A single unblurred purple backing projects seven pixels to the left and two down from supported card bodies. Fine face outlines and a heavy exposed side create an asymmetric form frame; labels have no filter.",
+        "value": {
+          "kind": "shadow-stack",
+          "composition": "independent",
+          "color_space": "srgb",
+          "shadows": [
+            { "offset_x": -7, "offset_y": 2, "std_deviation": 0, "color": { "ref": "carbon" }, "opacity": 1 }
+          ]
+        }
+      },
+      "chart-edge": {
+        "type": "effect",
+        "label": "Narrow duplicate column edge",
+        "group": "Paper construction",
+        "description": "A smaller left-hand carbon edge separates chart columns from the ledger ruling. The review line, all letters, Class cards, and Pie sectors stay unfiltered.",
+        "value": {
+          "kind": "shadow-stack",
+          "composition": "independent",
+          "color_space": "srgb",
+          "shadows": [
+            { "offset_x": -3, "offset_y": 1, "std_deviation": 0, "color": { "ref": "carbon" }, "opacity": 1 }
+          ]
+        }
+      }
+    },
+    "canvas": {
+      "base": { "kind": "solid", "color": { "ref": "paper" } },
+      "layers": [
+        {
+          "paint": {
+            "kind": "linear-gradient",
+            "angle_degrees": 0,
+            "stops": [
+              { "offset": 0, "color": { "ref": "ruling" }, "opacity": 0.24 },
+              { "offset": 0.041666666666666664, "color": { "ref": "ruling" }, "opacity": 0.24 },
+              { "offset": 0.041666666666666664, "color": { "ref": "ruling" }, "opacity": 0 },
+              { "offset": 1, "color": { "ref": "ruling" }, "opacity": 0 }
+            ],
+            "repetition": { "kind": "tiled", "width_px": 160, "height_px": 24 }
+          }
+        },
+        {
+          "paint": {
+            "kind": "linear-gradient",
+            "angle_degrees": 90,
+            "stops": [
+              { "offset": 0, "color": { "ref": "ruling" }, "opacity": 0.22 },
+              { "offset": 0.00625, "color": { "ref": "ruling" }, "opacity": 0.22 },
+              { "offset": 0.00625, "color": { "ref": "ruling" }, "opacity": 0 },
+              { "offset": 1, "color": { "ref": "ruling" }, "opacity": 0 }
+            ],
+            "repetition": { "kind": "tiled", "width_px": 160, "height_px": 24 }
+          }
+        }
+      ]
+    },
+    "typography": {
+      "default": { "font_stack": { "ref": "record-font" } },
+      "families": {
+        "flowchart": { "font_stack": { "ref": "record-font" }, "font_size_px": 14 },
+        "sequence": { "font_stack": { "ref": "record-font" }, "font_size_px": 13 },
+        "class": { "font_stack": { "ref": "record-font" }, "font_size_px": 13 },
+        "xychart": { "font_stack": { "ref": "chart-font" } },
+        "pie": { "font_stack": { "ref": "record-font" } }
+      }
+    },
+    "styles": {
+      "text": { "fill": { "kind": "solid", "color": { "ref": "ink" } } }
+    },
+    "rules": [
+      { "family": "flowchart", "target": "node", "style": { "fill": { "kind": "solid", "color": { "ref": "surface" } }, "stroke": { "paint": { "kind": "solid", "color": { "ref": "ink" } }, "width": 1.3 }, "radius": 0, "effect": { "ref": "carbon-edge" } } },
+      { "family": "flowchart", "target": "node", "ordinal": { "cycle": { "period": 3, "offset": 2 } }, "style": { "fill": { "kind": "solid", "color": { "ref": "copy-sheet" } } } },
+      { "family": "flowchart", "target": "node-label", "style": { "fill": { "kind": "solid", "color": { "ref": "ink" } }, "typography": { "font_weight": 600 }, "effect": null } },
+      { "family": "flowchart", "target": "edge", "style": { "stroke": { "paint": { "kind": "solid", "color": { "ref": "ink" } }, "width": 1.3 }, "effect": null } },
+      { "family": "flowchart", "target": "edge-label", "style": { "typography": { "font_size_px": 12 }, "effect": null } },
+      { "family": "flowchart", "target": "edge-label-background", "style": { "fill": { "kind": "solid", "color": { "ref": "paper" } } } },
+      { "family": "flowchart", "target": "cluster", "style": { "fill": { "kind": "solid", "color": { "ref": "folder" } }, "stroke": { "paint": { "kind": "solid", "color": { "ref": "ruling" } }, "width": 1 } } },
+      { "family": "flowchart", "target": "cluster-label", "style": { "fill": { "kind": "solid", "color": { "ref": "stamp" } } } },
+      { "family": "sequence", "target": "actor", "style": { "fill": { "kind": "solid", "color": { "ref": "surface" } }, "stroke": { "paint": { "kind": "solid", "color": { "ref": "ink" } }, "width": 1.3 }, "radius": 0, "effect": { "ref": "carbon-edge" } } },
+      { "family": "sequence", "target": "actor-label", "style": { "fill": { "kind": "solid", "color": { "ref": "ink" } }, "typography": { "font_size_px": 14, "font_weight": 600 }, "effect": null } },
+      { "family": "sequence", "target": "lifeline", "style": { "stroke": { "paint": { "kind": "solid", "color": { "ref": "ruling" } }, "width": 0.8 }, "effect": null } },
+      { "family": "sequence", "target": "message", "style": { "stroke": { "paint": { "kind": "solid", "color": { "ref": "ink" } }, "width": 1.2 }, "effect": null } },
+      { "family": "sequence", "target": "message-label", "style": { "fill": { "kind": "solid", "color": { "ref": "ink" } }, "typography": { "font_size_px": 12 } } },
+      { "family": "sequence", "target": "note", "style": { "fill": { "kind": "solid", "color": { "ref": "stamp-paper" } }, "stroke": { "paint": { "kind": "solid", "color": { "ref": "stamp" } }, "width": 1.8 }, "effect": null } },
+      { "family": "sequence", "target": "note-label", "style": { "fill": { "kind": "solid", "color": { "ref": "stamp" } }, "typography": { "font_size_px": 12, "font_weight": 600, "font_style": "normal" }, "effect": null } },
+      { "family": "sequence", "target": "activation", "style": { "fill": { "kind": "solid", "color": { "ref": "stamp-paper" } }, "stroke": { "paint": { "kind": "solid", "color": { "ref": "stamp" } }, "width": 1.5 } } },
+      { "family": "sequence", "target": "loop", "style": { "stroke": { "paint": { "kind": "solid", "color": { "ref": "carbon" } }, "width": 1.1 }, "effect": null } },
+      { "family": "sequence", "target": "loop-label-background", "style": { "fill": { "kind": "solid", "color": { "ref": "copy-sheet" } }, "stroke": { "paint": { "kind": "solid", "color": { "ref": "carbon" } }, "width": 1.1 } } },
+      { "family": "sequence", "target": "loop-label", "style": { "fill": { "kind": "solid", "color": { "ref": "ink" } }, "typography": { "font_size_px": 12 }, "effect": null } },
+      { "family": "sequence", "target": "sequence-number", "style": { "fill": { "kind": "solid", "color": { "ref": "surface" } } } },
+      { "family": "class", "target": "node", "style": { "fill": { "kind": "solid", "color": { "ref": "surface" } }, "stroke": { "paint": { "kind": "solid", "color": { "ref": "carbon" } } } } },
+      { "family": "class", "target": "node-label", "style": { "fill": { "kind": "solid", "color": { "ref": "ink" } } } },
+      { "family": "class", "target": "edge", "style": { "stroke": { "paint": { "kind": "solid", "color": { "ref": "ink" } }, "width": 1.3 } } },
+      { "family": "class", "target": "edge-label-background", "style": { "fill": { "kind": "solid", "color": { "ref": "paper" } } } },
+      { "family": "class", "target": "cluster", "style": { "fill": { "kind": "solid", "color": { "ref": "folder" } }, "stroke": { "paint": { "kind": "solid", "color": { "ref": "ruling" } } } } },
+      { "family": "xychart", "target": "axis", "style": { "fill": { "kind": "solid", "color": { "ref": "ink" } }, "stroke": { "paint": { "kind": "solid", "color": { "ref": "ink" } } } } },
+      { "family": "xychart", "target": "axis-tick", "style": { "stroke": { "paint": { "kind": "solid", "color": { "ref": "ruling" } } } } },
+      { "family": "xychart", "target": "title", "style": { "fill": { "kind": "solid", "color": { "ref": "stamp" } }, "typography": { "font_size_px": 23, "font_weight": 600 }, "effect": null } },
+      { "family": "xychart", "target": "axis-title", "style": { "fill": { "kind": "solid", "color": { "ref": "ink" } }, "typography": { "font_size_px": 13, "font_weight": 500 }, "effect": null } },
+      { "family": "xychart", "target": "axis-label", "style": { "fill": { "kind": "solid", "color": { "ref": "ink" } }, "typography": { "font_size_px": 12 }, "effect": null } },
+      { "family": "xychart", "target": "legend", "style": { "fill": { "kind": "solid", "color": { "ref": "ink" } }, "typography": { "font_size_px": 12, "font_weight": 400 }, "effect": null } },
+      { "family": "xychart", "target": "chart-series", "variant": "bar", "style": { "stroke": { "paint": { "kind": "solid", "color": { "ref": "ink" } }, "width": 1 }, "effect": { "ref": "chart-edge" } } },
+      { "family": "xychart", "target": "chart-series", "variant": "line", "style": { "stroke": { "width": 2.2 }, "effect": null } },
+      { "family": "pie", "target": "pie-slice", "style": { "stroke": { "paint": { "kind": "solid", "color": { "ref": "carbon" } } } } },
+      { "family": "pie", "target": "text", "style": { "fill": { "kind": "solid", "color": { "ref": "ink" } }, "typography": { "font_size_px": 15, "font_weight": 600 } } },
+      { "family": "pie", "target": "title", "style": { "fill": { "kind": "solid", "color": { "ref": "stamp" } }, "typography": { "font_size_px": 22, "font_weight": 600 } } },
+      { "family": "pie", "target": "legend", "style": { "fill": { "kind": "solid", "color": { "ref": "ink" } }, "typography": { "font_size_px": 13 } } }
+    ],
+    "palettes": {
+      "chart-series": { "ref": "series" },
+      "pie-slice": { "ref": "pie-series" }
+    }
+  }
+}

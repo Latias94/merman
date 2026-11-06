@@ -15,7 +15,9 @@ const workspace = {
 };
 
 async function start(page: Page) {
-  await page.addInitScript(() => localStorage.setItem("merman-language", "en"));
+  await page.addInitScript(() => {
+    if (window === window.top && (location.protocol === "http:" || location.protocol === "https:")) localStorage.setItem("merman-language", "en");
+  });
   await page.context().grantPermissions(["clipboard-read", "clipboard-write"]);
   await page.goto(`./${encodeShareHash(workspace)}`, { waitUntil: "domcontentloaded" });
   await waitForPreviewSvg(page);

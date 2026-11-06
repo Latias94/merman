@@ -6787,6 +6787,165 @@ fn try_render_sequence_theme_request(
 }
 
 #[test]
+fn sequence_root_canvas_contains_terminal_lifelines_without_moving_content() {
+    use merman_render::diagram_theme::{CanvasLayer, CanvasSpec};
+
+    let sources = [
+        ("sequenceDiagram\nparticipant A\n", 0),
+        ("sequenceDiagram\nA->>B: Hello\n", 30),
+        (
+            "sequenceDiagram\nparticipant Author\nparticipant Editor\nparticipant Archive\nAuthor->>Editor: Submit draft\nactivate Editor\nNote over Author,Editor: Keep the original source\nloop Review each section\nEditor->>Archive: Read reference\nArchive-->>Editor: Return context\nend\nEditor-->>Author: Share review\ndeactivate Editor\n",
+            10,
+        ),
+    ];
+    let canvases = [
+        CanvasSpec::solid("#f5f4ea").unwrap(),
+        CanvasSpec::default()
+            .with_layer(CanvasLayer::new(CanvasPaint::solid("#f5f4ea").unwrap()))
+            .unwrap()
+            .with_layer(CanvasLayer::new(CanvasPaint::solid("#ffffff33").unwrap()))
+            .unwrap(),
+    ];
+    let empty_theme = DiagramThemeCompiler::new()
+        .compile(DiagramThemeSpec::new())
+        .unwrap();
+
+    for host_measurement in [false, true] {
+        let environment = if host_measurement {
+            let identity = TextMeasurementProfileIdentity::new(
+                MeasurementProfileId::new("sequence-canvas-host").unwrap(),
+                "1",
+            )
+            .unwrap();
+            RenderEnvironment::deterministic().with_text_measurement_policy(
+                TextMeasurementPolicy::host_display(
+                    identity,
+                    Arc::new(RecordingSequenceHost::new(
+                        SequenceHostResponse::EntitySensitiveMetrics,
+                    )),
+                    TextMeasurementPhase::ALL,
+                ),
+            )
+        } else {
+            RenderEnvironment::deterministic()
+        };
+        for mirror in [false, true] {
+            for (source, margin_y) in sources {
+                let engine = classic_sequence_engine().with_site_config(
+                    merman_core::presentation::SourcePresentationConfig::from_value(
+                        serde_json::json!({"sequence":{"mirrorActors":mirror,"diagramMarginY":margin_y}}),
+                    ),
+                );
+                let render = |theme: Option<&DiagramTheme>| {
+                    let parse_engine = match theme {
+                        Some(theme) => common::install_parse_compatibility(theme, engine.clone()),
+                        None => engine.clone(),
+                    };
+                    let parsed = parse_sequence_for_render(&parse_engine, source);
+                    let session = match theme {
+                        Some(theme) => environment.begin_session_with_theme(theme),
+                        None => environment.begin_session(),
+                    }
+                    .expect("begin Sequence canvas session");
+                    family::prepare(&parsed, &LayoutOptions::default(), session)
+                        .unwrap()
+                        .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+                        .unwrap()
+                        .svg()
+                        .to_owned()
+                };
+                let baseline = render(None);
+                assert_eq!(
+                    render(Some(&empty_theme)),
+                    baseline,
+                    "a theme without canvas work must preserve the Mermaid viewport"
+                );
+                let baseline_document = roxmltree::Document::parse(&baseline).unwrap();
+                let content_geometry = |document: &roxmltree::Document<'_>| {
+                    document
+                        .descendants()
+                        .filter(|node| {
+                            node.attribute("data-et") == Some("life-line")
+                                || (node.has_tag_name("rect") && node.attribute("name").is_some())
+                        })
+                        .map(|node| {
+                            ["x", "y", "width", "height", "x1", "y1", "x2", "y2"]
+                                .map(|attribute| node.attribute(attribute).map(str::to_owned))
+                        })
+                        .collect::<Vec<_>>()
+                };
+                let baseline_geometry = content_geometry(&baseline_document);
+                let baseline_view_box = root_view_box_and_max_width(&baseline).0;
+                for canvas in &canvases {
+                    let theme = DiagramThemeCompiler::new()
+                        .compile(DiagramThemeSpec::new().with_canvas(canvas.clone()))
+                        .unwrap();
+                    let svg = render(Some(&theme));
+                    let document = roxmltree::Document::parse(&svg).unwrap();
+                    assert_eq!(content_geometry(&document), baseline_geometry);
+                    let [root_x, root_y, root_width, root_height] =
+                        root_view_box_and_max_width(&svg).0;
+                    assert_eq!(
+                        [root_x, root_y, root_width],
+                        [
+                            baseline_view_box[0],
+                            baseline_view_box[1],
+                            baseline_view_box[2]
+                        ]
+                    );
+                    assert!(root_height >= baseline_view_box[3]);
+                    if mirror {
+                        assert_eq!(root_height, baseline_view_box[3]);
+                    }
+                    let canvas_rects = document
+                        .descendants()
+                        .filter(|node| {
+                            node.has_tag_name("rect")
+                                && (node.attribute("data-merman-theme-canvas").is_some()
+                                    || node.ancestors().any(|ancestor| {
+                                        ancestor
+                                            .attribute("data-merman-theme-canvas-layer")
+                                            .is_some()
+                                    }))
+                        })
+                        .collect::<Vec<_>>();
+                    assert_eq!(
+                        canvas_rects.len(),
+                        if canvas.layers().is_empty() { 1 } else { 2 }
+                    );
+                    for rect in canvas_rects {
+                        let value = |name| rect.attribute(name).unwrap().parse::<f64>().unwrap();
+                        assert_eq!(
+                            [value("x"), value("y"), value("width"), value("height")],
+                            [root_x, root_y, root_width, root_height],
+                            "all canvas planes must use the finalized root frame"
+                        );
+                        for line in document
+                            .descendants()
+                            .filter(|node| node.attribute("data-et") == Some("life-line"))
+                        {
+                            let y2 = line.attribute("y2").unwrap().parse::<f64>().unwrap();
+                            let stroke_radius = line
+                                .attribute("stroke-width")
+                                .unwrap()
+                                .trim_end_matches("px")
+                                .parse::<f64>()
+                                .unwrap()
+                                / 2.0;
+                            assert!(
+                                y2 + stroke_radius <= root_y + root_height,
+                                "lifeline exceeds canvas: mirror={mirror}, host={host_measurement}, endpoint={y2}, bottom={}, source={source:?}",
+                                root_y + root_height
+                            );
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+#[test]
 fn sequence_title_fill_keeps_source_ownership_and_unsupported_siblings_property_local() {
     for variant in [None, Some(ThemeVariant::Default)] {
         for (paint, css) in [

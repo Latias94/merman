@@ -9,6 +9,7 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { LazyFeatureBoundary } from "@/src/components/LazyFeatureBoundary";
+import { ThemeShowcaseLauncher } from "./theme-panel/ThemeShowcaseLauncher";
 
 const ExampleGallery = lazy(() =>
   import("@/src/components/ExampleGallery").then((module) => ({
@@ -17,7 +18,7 @@ const ExampleGallery = lazy(() =>
 );
 
 export function ToolbarFeatureLaunchers() {
-  return <ExamplesLauncher />;
+  return <><ExamplesLauncher /><ThemeShowcaseLauncher /></>;
 }
 
 function ExamplesLauncher() {

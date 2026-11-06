@@ -446,7 +446,6 @@
     "tooLarge": "Theme JSON must be {{limit}} KiB or smaller."
   },
   "themeGallery": {
-    "sample": "Example diagram",
     "samples": {
       "flowchart": "Flowchart",
       "sequence": "Sequence",
@@ -454,13 +453,22 @@
       "xychart": "XY Chart",
       "pie": "Pie"
     },
-    "sampleSource": "View sample source",
-    "sampleConfig": "Sample configuration",
     "themes": {
       "atlas": "Blue-gray precision for technical notes and system diagrams.",
       "nightfall": "Quiet slate, soft color and clear labels for dark canvases.",
       "letterpress": "Warm paper, serif titles and rust accents for editorial diagrams.",
-      "grove": "Ivory, moss green and mineral colors for a warmer view."
+      "grove": "Ivory, moss green and mineral colors for a warmer view.",
+      "riso": "A small-run print in blue and red: slight registration offsets, crisp single-pass text, and editorial titles.",
+      "phosphor": "A control-room display with solid dark panels, monospaced readouts, and luminous signals.",
+      "field-notes": "A field ledger with forest-ink record cards, ruled paper, and warm observation slips.",
+      "blueprint": "A drafting sheet with blue grid paper, precise cyan lines, and measured monospaced annotations.",
+      "pop-art": "A printed poster with bright color blocks, bold outlines, and hard offset shadows.",
+      "lacquer": "Deep lacquer panels, fine gold edges, and quiet serif titles on a warm black ground.",
+      "paper-cut": "Layered mint cards, coral and teal paper edges, and soft contact shadows on warm cotton stock.",
+      "aurora": "Mint and violet light ribbons over an indigo night, with suspended panels and clear starlight text.",
+      "metro": "Station-yellow signs, cyan routes, and flat information panels on a midnight concourse.",
+      "carbon-copy": "Typewritten records on warm paper, with violet carbon edges and vermilion review marks.",
+      "signal": "Charcoal equipment plates, safety-yellow edges, and restrained perimeter warning tape."
     }
   },
   "themePanel": {
@@ -623,14 +631,12 @@
     "recommendedConfigHint": "Merge these keys into the current JSON config, keeping unrelated settings. This change takes effect immediately and can be undone. Source settings can still take precedence.",
     "recommendedConfigError": "Could not update Mermaid config. Fix its JSON object and try again. {{error}}",
     "recommendationInConfig": "Already in the current config",
-    "exampleDiagrams": "Example diagrams · {{name}}",
-    "exampleHint": "These are fixed examples, separate from your current diagram. Use the workspace preview above to judge your own diagram.",
-    "exampleAlt": "Example {{sample}} rendered with {{name}}",
-    "downloadExampleRecipe": "Download {{name}} JSON"
+    "exampleAlt": "Example {{sample}} rendered with {{name}}"
   },
   "projectUse": {
+    "projectFiles": "Project files",
     "title": "Use in project",
-    "description": "Copy working integration code and download the files for this material snapshot.",
+    "description": "Copy integration code and download the files needed to use this diagram or theme.",
     "close": "Close project use",
     "scope": "What to take",
     "scope_theme": "Theme only",
@@ -734,5 +740,87 @@
         "system_or_host_font_dependency": "The output depends on fonts supplied by the system or host."
       }
     }
+  },
+  "themeShowcase": {
+    "title": "Theme designs",
+    "recipeBadge": "CUSTOM THEME EXAMPLES",
+    "description": "Explore complete visual designs across diagrams. Copy an editable theme or take the code to your project.",
+    "close": "Close theme designs",
+    "search": "Search designs",
+    "appearance": "Canvas appearance",
+    "filters": {
+      "all": "All designs",
+      "light": "Light",
+      "dark": "Dark"
+    },
+    "count": "{{count}} designs",
+    "collectionTitle": "Find a visual language.",
+    "collectionHint": "Expressive designs come first. Each uses the same five diagram examples, so you can compare their visual treatment.",
+    "mechanisms": {
+      "riso": "Two inks · offset color edges · condensed titles",
+      "phosphor": "Equipment panels · scanlines · focused signal glow",
+      "field-notes": "Forest-ink cards · ruled paper · lifted note slips",
+      "atlas": "Cool surfaces · precise outlines · clear hierarchy",
+      "nightfall": "Slate panels · soft contrast · quiet accents",
+      "letterpress": "Warm paper · serif typography · editorial contrast",
+      "grove": "Ivory surfaces · soft corners · mineral colors",
+      "blueprint": "Drafting grid · technical annotations · precise cyan outlines",
+      "pop-art": "Poster colors · bold contours · hard ink offsets",
+      "lacquer": "Lacquer panels · fine gold edges · serif titles",
+      "paper-cut": "Layered paper · coral and teal cut edges · soft depth",
+      "aurora": "Gradient night · curved light ribbons · suspended panels",
+      "metro": "Station signs · flat panels · clear route colors",
+      "carbon-copy": "Violet carbon edges · typewritten records · review marks",
+      "signal": "Equipment plates · hard mounted edges · warning stripes"
+    },
+    "back": "All designs",
+    "apply": "Apply to my diagram",
+    "applyHint": "Applies only this theme. Your source, configuration, font override, and diagram look stay as you set them.",
+    "downloadJson": "Download theme JSON",
+    "acrossDiagrams": "One design, across diagrams",
+    "fixedExamples": "These are fixed examples, not your current diagram. Open any sample in a new tab to edit it without replacing your work.",
+    "openSample": "Open sample",
+    "openSampleNamed": "Open {{name}} {{sample}} sample in a new tab",
+    "explore": "Explore design",
+    "exploreNamed": "Explore {{name}}",
+    "fiveDiagrams": "5 diagram examples",
+    "current": "Current theme",
+    "useTitle": "Make it yours.",
+    "useHint": "Take the theme JSON to your own diagram, or choose one integration below. Rust, CLI, and Web are alternative ways to load the same theme.",
+    "themePurposeTitle": "Theme JSON · the visual design",
+    "themePurpose": "Colors, typography, canvas, and effects. Import this one theme into Playground, or load it from your application. It works with your own diagram source and options.",
+    "optionsPurposeTitle": "Example layout options · optional",
+    "optionsPurpose": "These Mermaid settings arrange the gallery samples, such as the look, label mode, and chart size. They are separate from the theme. Generated example projects already include them; you do not need to add them again.",
+    "themeFileHint": "For a file-based integration, save this JSON as theme.json. Downloaded example projects already contain it. You do not need the gallery's layout options to reuse the theme.",
+    "integrationExample": "Example diagram for this code",
+    "rustFormat": "Rust example format",
+    "rust_inline": "Single file · copy into main.rs",
+    "rust_files": "Project files · include_str!",
+    "rustHint_inline": "The theme, diagram, and example options are embedded in this one source file. No companion JSON or Mermaid files are needed by this code.",
+    "rustDependencies": "Add merman with the math feature and serde_json to your Cargo dependencies, using a matching Merman source checkout. Paste this code into src/main.rs, then run cargo run. Project files provides the complete Cargo.toml if you need a ready-made project.",
+    "rustHint_files": "Keep Cargo.toml, theme.json, diagram.mmd, and site-config.json at the project root, beside src/. include_str! paths are relative to src/main.rs. The diagram already includes the example options. Download the project to get this structure.",
+    "codeTarget": "Theme and integration code",
+    "tabs": {
+      "theme": "Theme JSON",
+      "rust": "Rust",
+      "cli": "CLI",
+      "web": "Web"
+    },
+    "copy": "Copy",
+    "code": "Theme adoption code",
+    "companionFiles": "Choose a file in the project tree to inspect the dependencies and inputs. Download the example project for the full file structure and run instructions; its configuration is already wired together.",
+    "customRecipeHint": "This is a standalone custom theme, not a preset ID.",
+    "downloadProject": "Download example project",
+    "downloadRust": "Download main.rs",
+    "action_copied": "Copied.",
+    "action_downloaded": "Downloaded.",
+    "action_failed": "Could not copy or download. Try again.",
+    "downloadFile": "Download file",
+    "sampleAndFonts": "Example source, optional layout settings, and fonts",
+    "exampleSource": "Example Mermaid source",
+    "exampleOptions": "Example layout options · optional",
+    "exampleOptionsHint": "These inputs reproduce the selected gallery example. The JSON here is Mermaid diagram configuration, not the theme recipe. Generated code already applies it through the example's source directive. Keep your own source and layout settings when adopting only the theme.",
+    "coverageHint": "These five examples have dedicated styling. Other diagrams can inherit the shared canvas and fonts; effects and role styling vary by diagram and look.",
+    "runtimeFailed": "Code examples need the rendering runtime. You can still copy the theme JSON and optional example settings."
   }
 }

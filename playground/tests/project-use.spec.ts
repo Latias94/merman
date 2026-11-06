@@ -16,7 +16,9 @@ const workspace: WorkspaceSnapshot = {
 };
 
 async function open(page: Page, value = workspace): Promise<Locator> {
-  await page.addInitScript(() => localStorage.setItem("merman-language", "en"));
+  await page.addInitScript(() => {
+    if (window === window.top && (location.protocol === "http:" || location.protocol === "https:")) localStorage.setItem("merman-language", "en");
+  });
   await page.goto(`./${encodeShareHash(value)}`, { waitUntil: "domcontentloaded" });
   if ((page.viewportSize()?.width ?? 1280) < 768) {
     await page.getByRole("tab", { name: "Preview", exact: true }).click();
@@ -59,7 +61,7 @@ test("project use offers Rust, CLI and local Web consumers with complete config 
   expect(cliFiles["README.txt"]).toContain("--features math");
   await dialog.getByRole("tab", { name: "Web", exact: true }).click();
   await expect(dialog.getByTestId("project-use-code")).toContainText("createBrowserTextMeasurementSession");
-  await dialog.getByRole("combobox", { name: "File", exact: true }).selectOption("options.json");
+  await dialog.getByRole("navigation", { name: "Project files", exact: true }).getByRole("button", { name: "options.json", exact: true }).click();
   await dialog.getByRole("button", { name: "Copy options.json", exact: true }).click();
   const copied = await page.evaluate(() => navigator.clipboard.readText());
   const options = JSON.parse(copied);
@@ -116,7 +118,10 @@ test("unknown preset fallback blocks code and download in both scopes", async ({
 });
 
 test("invalid recipes cannot be adopted in theme-only code while valid recipes survive diagram errors", async ({ page }) => {
-  await page.addInitScript(() => localStorage.setItem("merman-language", "en"));
+  const errors = monitorBrowserErrors(page);
+  await page.addInitScript(() => {
+    if (window === window.top && (location.protocol === "http:" || location.protocol === "https:")) localStorage.setItem("merman-language", "en");
+  });
   const invalid = '{"schema_version":1,"kind":"complete_spec","complete_spec":{"not_a_theme_field":true}}';
   await page.goto(`./${encodeShareHash({ ...workspace, themePresetId: null, themeRecipeJson: invalid })}`, { waitUntil: "domcontentloaded" });
   await expect(page.locator("footer")).toContainText("Ready");
@@ -138,6 +143,7 @@ test("invalid recipes cannot be adopted in theme-only code while valid recipes s
   await dialog.getByRole("radio", { name: /^Theme only/ }).check();
   await expect(dialog.getByRole("button", { name: "Download all files (.zip)", exact: true })).toBeEnabled();
   expect((await downloadFiles(page, dialog))["theme.json"]).toBe(recipe);
+  errors.assertNone();
 });
 
 test("capturing again uses new source and the dialog fits a narrow viewport", async ({ page }) => {
