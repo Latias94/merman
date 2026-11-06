@@ -32,6 +32,8 @@ Core colors and typography now reach all 34 diagram families through their own n
 
 **Appearance** groups Mermaid.js official themes, Merman built-in presets, theme examples and imports by origin. Valid selections update the current diagram immediately; closing the panel keeps them, and **Undo appearance** reverses appearance changes without discarding later source edits. **Use in project** supplies the theme and diagram inputs together with highlighted integration code.
 
+**Compare** is directly accessible beside **SVG** and **ASCII** in the preview tabs. It renders the current source with Merman and Mermaid.js side by side; the Tools menu retains the same shortcut.
+
 The code examples distinguish three inputs: **theme JSON** defines the visual design, **example layout options** arrange the sample, and **integration code** loads them. Layout options are optional when reusing a theme on your own diagram, and generated example projects already include them. Rust's **Single file** view shows, copies and downloads only `main.rs`, with the recipe and sample embedded; **Project files** uses a browsable file tree and documents the `include_str!` paths. CLI and Web projects include their configuration and run instructions. Sample diagram text is English in both interface languages; controls and explanations remain available in English and Chinese.
 
 ### Theme design gallery

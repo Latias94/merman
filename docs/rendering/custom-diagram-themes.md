@@ -340,8 +340,9 @@ It is a display preference, shared by both Compare panes. It does not change the
 a render, or add image paint. Authored backgrounds remain visible. Automatic uses Mermaid
 appearance, so a dark recipe can differ from its backing.
 
-**Tools** contains engine comparison, diagnostics, and benchmarking. Compare applies the Merman
-extension only to Merman; Mermaid.js receives Mermaid source, configuration, and the shared base.
+**Compare** is available beside **SVG** and **ASCII** in the preview tabs and from **Tools**.
+**Tools** also contains diagnostics and benchmarking. Compare applies the Merman extension only
+to Merman; Mermaid.js receives Mermaid source, configuration, and the shared base.
 Inspect that difference separately from theme A/B comparisons. Advanced settings can remove only
 Merman styling for a common-input comparison; undo restores the prior selection.
 

@@ -8,8 +8,11 @@ import type { MermaidThemeSelection } from "../src/lib/mermaid-theme-name";
 import { monitorBrowserErrors, replaceEditorSource, waitForPreviewSvg } from "./helpers/playground";
 
 async function openCompare(page: Page) {
-  await page.getByRole("button", { name: "Tools", exact: true }).click();
-  await page.getByRole("menuitem", { name: "Compare", exact: true }).click();
+  const tab = page.getByRole("tab", { name: "Compare", exact: true });
+  await expect(tab).toBeVisible();
+  await tab.click();
+  await expect(tab).toHaveAttribute("aria-selected", "true");
+  await expect(page.getByRole("tabpanel", { name: "Compare", exact: true })).toBeVisible();
 }
 
 const cases: {
@@ -88,7 +91,7 @@ for (const scenario of cases) {
     await expect.poll(() => nodeFills(page)).toEqual([expectedFill, expectedFill]);
     const fills = await nodeFills(page);
     expect(fills).toEqual([expectedFill, expectedFill]);
-    await expect(page.getByRole("region", { name: "Compare", exact: true }).locator("[data-preview-canvas-tone]").first()).toHaveAttribute(
+    await expect(page.getByRole("tabpanel", { name: "Compare", exact: true }).locator("[data-preview-canvas-tone]").first()).toHaveAttribute(
       "data-preview-canvas-tone", scenario.tone,
     );
 

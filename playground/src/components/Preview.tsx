@@ -509,8 +509,8 @@ export function Preview({ active = true, className }: PreviewProps) {
 
       <div
         id="preview-mode-panel"
-        role={previewMode === "compare" || previewMode === "diagnostics" ? "region" : "tabpanel"}
-        aria-labelledby={previewMode === "compare" || previewMode === "diagnostics" ? "preview-active-tool" : `preview-${previewMode}-tab`}
+        role={previewMode === "diagnostics" ? "region" : "tabpanel"}
+        aria-labelledby={previewMode === "diagnostics" ? "preview-active-tool" : `preview-${previewMode}-tab`}
         className={cn(
           "relative min-h-0 flex-1 overflow-hidden",
           canvasMode && "preview-canvas",
@@ -682,7 +682,7 @@ function TabBar({
           <TabButton
             value="svg"
             active={mode === "svg"}
-            tabStop={mode === "compare" || mode === "diagnostics"}
+            tabStop={mode === "diagnostics"}
             onClick={() => onModeChange("svg")}
           >
             SVG
@@ -705,15 +705,22 @@ function TabBar({
           >
             ASCII
           </TabButton>
+          <TabButton
+            value="compare"
+            active={mode === "compare"}
+            onClick={() => onModeChange("compare")}
+          >
+            {t("preview.compareMode")}
+          </TabButton>
           {isAsciiSupported && (
             <span className="hidden shrink-0 rounded bg-muted px-2 py-1 text-xs text-muted-foreground sm:inline">
               {asciiSupportLabel}
             </span>
           )}
         </div>
-        {(mode === "compare" || mode === "diagnostics") && <h2 id="preview-active-tool"
+        {mode === "diagnostics" && <h2 id="preview-active-tool"
           className="shrink-0 px-3 text-xs font-medium text-muted-foreground">
-          {t(mode === "compare" ? "preview.compareMode" : "preview.diagnosticsMode")}
+          {t("preview.diagnosticsMode")}
         </h2>}
       </div>
 
