@@ -90,12 +90,17 @@ Future<void> main() async {
           targetOS: os,
           linkModePreference: LinkModePreference.dynamic,
           iOS: os == OS.iOS
-              ? IOSCodeConfig(targetSdk: sdk!, targetVersion: 13)
+              ? IOSCodeConfig(
+                  targetSdk: sdk!,
+                  deploymentVersion: AppleVersion(13),
+                )
               : null,
           android: os == OS.android
               ? AndroidCodeConfig(targetNdkApi: androidApi)
               : null,
-          macOS: os == OS.macOS ? MacOSCodeConfig(targetVersion: 11) : null,
+          macOS: os == OS.macOS
+              ? MacOSCodeConfig(deploymentVersion: AppleVersion(11))
+              : null,
         ),
       );
     }
