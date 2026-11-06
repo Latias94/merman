@@ -94,7 +94,7 @@ fn css_property<'a>(css: &'a str, selector: &str, property: &str) -> Option<&'a 
         .filter_map(|declaration| declaration.split_once(':'))
         .filter(|(name, _)| name.trim() == property)
         .map(|(_, value)| value.trim())
-        .last()
+        .next_back()
 }
 
 #[test]
