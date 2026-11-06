@@ -41,7 +41,7 @@ export function ToolbarControls() {
   }
 
   return (
-    <div className="ml-auto flex shrink-0 items-center gap-1 xl:gap-2">
+    <div className="ml-auto flex shrink-0 items-center gap-0.5 sm:gap-1 xl:gap-2">
       <Tooltip>
         <TooltipTrigger asChild>
           <Button

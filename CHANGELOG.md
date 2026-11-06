@@ -73,7 +73,7 @@ The designs combine real canvas patterns, gradients, typography, series palettes
 - Sequence theme backgrounds include the full lifeline when bottom participants are hidden, keeping visible lines inside the exported canvas.
 - Flowchart source classes retain their priority over custom theme colors and fonts on matching nodes, containers and connectors. Supported source font sizes participate in label measurement as well as drawing.
 - Markdown batch conversion uses `accDescr` as image alt text and preserves the diagram's accessibility title and description, including entities and CDATA, without substituting nested node descriptions. Thanks [@malte-laukoetter](https://github.com/malte-laukoetter) for the report. Related: [#276](https://github.com/Latias94/merman/issues/276).
-- Playground keeps the previous preview and its matching canvas background visible during updates. Source-declared themes initialize correctly, and unavailable saved preset IDs show a notice while the diagram renders with its Mermaid base theme.
+- Playground keeps the previous preview and its matching canvas background visible during updates. Source-declared themes initialize correctly, and unavailable saved preset IDs show a notice while the diagram renders with its Mermaid base theme. All toolbar actions remain reachable on 320px-wide screens.
 - VS Code previews stay synchronized after rapid configuration changes, with improved cleanup after cancellation or timeouts. Editor integrations ignore Mermaid fences inside HTML comments; hand-drawn rendering and native export respond to cancellation during more of their work.
 - Typst errors retain structured parse diagnostics and original source locations, including diagrams with frontmatter or non-ASCII text.
 
