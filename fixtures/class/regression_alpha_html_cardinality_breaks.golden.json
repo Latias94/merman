@@ -1,0 +1,82 @@
+{
+  "diagramType": "classDiagram",
+  "model": {
+    "accDescr": null,
+    "accTitle": null,
+    "classes": {
+      "Account": {
+        "annotations": [],
+        "callback": null,
+        "callbackEffective": false,
+        "cssClasses": "default",
+        "domId": "classId-Account-0",
+        "haveCallback": false,
+        "id": "Account",
+        "label": "Account",
+        "link": null,
+        "linkTarget": null,
+        "members": [],
+        "methods": [],
+        "parent": null,
+        "styles": [],
+        "text": "Account",
+        "tooltip": null,
+        "type": ""
+      },
+      "Entry": {
+        "annotations": [],
+        "callback": null,
+        "callbackEffective": false,
+        "cssClasses": "default",
+        "domId": "classId-Entry-1",
+        "haveCallback": false,
+        "id": "Entry",
+        "label": "Entry",
+        "link": null,
+        "linkTarget": null,
+        "members": [],
+        "methods": [],
+        "parent": null,
+        "styles": [],
+        "text": "Entry",
+        "tooltip": null,
+        "type": ""
+      }
+    },
+    "constants": {
+      "lineType": {
+        "dottedLine": 1,
+        "line": 0
+      },
+      "relationType": {
+        "aggregation": 0,
+        "composition": 2,
+        "dependency": 3,
+        "extension": 1,
+        "lollipop": 4,
+        "none": -1
+      }
+    },
+    "direction": "TB",
+    "interfaces": [],
+    "namespaces": {},
+    "notes": [],
+    "relations": [
+      {
+        "id": "0",
+        "id1": "Account",
+        "id2": "Entry",
+        "relation": {
+          "lineType": 0,
+          "type1": -1,
+          "type2": 3
+        },
+        "relationTitle1": "1<br>owner",
+        "relationTitle2": "many<br>entries",
+        "title": "contains"
+      }
+    ],
+    "styleClasses": {},
+    "type": "classDiagram"
+  }
+}

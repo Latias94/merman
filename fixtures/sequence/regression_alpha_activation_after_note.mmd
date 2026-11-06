@@ -1,0 +1,14 @@
+---
+config:
+  look: classic
+---
+sequenceDiagram
+  participant A as Author<br/>Client
+  participant B as Service
+  A->>+B: Begin
+  Note over B: Work continues<br/>before completion
+  deactivate B
+  Note over A: Prepare another request
+  activate B
+  B-->>A: Complete
+  deactivate B

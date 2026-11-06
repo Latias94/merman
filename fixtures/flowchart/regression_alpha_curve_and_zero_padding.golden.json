@@ -1,0 +1,118 @@
+{
+  "diagramType": "flowchart-v2",
+  "model": {
+    "accDescr": null,
+    "accTitle": null,
+    "classDefs": {},
+    "direction": "TB",
+    "edgeDefaults": {
+      "interpolate": "linear",
+      "style": []
+    },
+    "edges": [
+      {
+        "animate": null,
+        "animation": null,
+        "arrow": "-->",
+        "classes": [],
+        "from": "A",
+        "id": "L_A_B_0",
+        "interpolate": "stepAfter",
+        "isUserDefinedId": false,
+        "label": null,
+        "labelType": "text",
+        "length": 1,
+        "stroke": "normal",
+        "style": [],
+        "to": "B",
+        "type": "arrow_point"
+      },
+      {
+        "animate": null,
+        "animation": null,
+        "arrow": "-->",
+        "classes": [],
+        "from": "A",
+        "id": "L_A_C_0",
+        "interpolate": "linear",
+        "isUserDefinedId": false,
+        "label": null,
+        "labelType": "text",
+        "length": 1,
+        "stroke": "normal",
+        "style": [],
+        "to": "C",
+        "type": "arrow_point"
+      }
+    ],
+    "keyword": "flowchart",
+    "nodes": [
+      {
+        "assetHeight": null,
+        "assetWidth": null,
+        "classes": [],
+        "constraint": null,
+        "form": null,
+        "haveCallback": false,
+        "icon": null,
+        "id": "A",
+        "img": null,
+        "label": "x",
+        "labelType": "text",
+        "layoutShape": "squareRect",
+        "link": null,
+        "linkTarget": null,
+        "pos": null,
+        "shape": "square",
+        "styles": []
+      },
+      {
+        "assetHeight": null,
+        "assetWidth": null,
+        "classes": [],
+        "constraint": null,
+        "form": null,
+        "haveCallback": false,
+        "icon": null,
+        "id": "B",
+        "img": null,
+        "label": "y",
+        "labelType": "text",
+        "layoutShape": "squareRect",
+        "link": null,
+        "linkTarget": null,
+        "pos": null,
+        "shape": "square",
+        "styles": []
+      },
+      {
+        "assetHeight": null,
+        "assetWidth": null,
+        "classes": [],
+        "constraint": null,
+        "form": null,
+        "haveCallback": false,
+        "icon": null,
+        "id": "C",
+        "img": null,
+        "label": "z",
+        "labelType": "text",
+        "layoutShape": "squareRect",
+        "link": null,
+        "linkTarget": null,
+        "pos": null,
+        "shape": "square",
+        "styles": []
+      }
+    ],
+    "subgraphs": [],
+    "tooltips": {},
+    "type": "flowchart-v2",
+    "vertexCalls": [
+      "A",
+      "B",
+      "A",
+      "C"
+    ]
+  }
+}

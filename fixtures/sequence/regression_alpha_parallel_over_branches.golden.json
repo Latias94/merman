@@ -1,0 +1,89 @@
+{
+  "diagramType": "sequence",
+  "model": {
+    "accDescr": null,
+    "accTitle": null,
+    "actorOrder": [
+      "Client",
+      "Store"
+    ],
+    "actors": {
+      "Client": {
+        "description": "Client",
+        "links": {},
+        "name": "Client",
+        "properties": {},
+        "type": "participant",
+        "wrap": false
+      },
+      "Store": {
+        "description": "Store",
+        "links": {},
+        "name": "Store",
+        "properties": {},
+        "type": "participant",
+        "wrap": false
+      }
+    },
+    "boxes": [],
+    "constants": {
+      "placement": {
+        "leftOf": 0,
+        "over": 2,
+        "rightOf": 1
+      }
+    },
+    "createdActors": {},
+    "destroyedActors": {},
+    "messages": [
+      {
+        "activate": false,
+        "from": null,
+        "id": "0",
+        "message": "Read",
+        "to": null,
+        "type": 32,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": "Client",
+        "id": "1",
+        "message": "Load",
+        "to": "Store",
+        "type": 0,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": null,
+        "id": "2",
+        "message": "Observe",
+        "to": null,
+        "type": 20,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": "Store",
+        "id": "3",
+        "message": "Notify",
+        "to": "Client",
+        "type": 1,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": null,
+        "id": "4",
+        "message": "",
+        "to": null,
+        "type": 21,
+        "wrap": false
+      }
+    ],
+    "notes": [],
+    "title": null,
+    "type": "sequence"
+  }
+}

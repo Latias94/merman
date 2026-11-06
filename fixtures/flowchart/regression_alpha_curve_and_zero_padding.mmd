@@ -1,0 +1,14 @@
+---
+config:
+  layout: dagre
+  htmlLabels: false
+  look: classic
+  flowchart:
+    padding: 0
+    minNodeWidth: 0
+---
+flowchart TB
+  linkStyle default interpolate stepAfter
+  A[x] --> B[y]
+  linkStyle default interpolate linear
+  A --> C[z]
