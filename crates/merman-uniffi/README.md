@@ -4,7 +4,7 @@
 
 Generate high-level native bindings for Merman's headless Mermaid parser, analyzer, layout engine, and renderers with [UniFFI](https://mozilla.github.io/uniffi-rs/). This crate is the source of the published Python package and the Apple SwiftPM package; native hosts that need a stable language-neutral C boundary should use [`merman-ffi`](https://crates.io/crates/merman-ffi).
 
-> Merman `0.10.0-alpha.1` uses direct UniFFI binding API `7` and Options JSON schema `3`. The unchanged UniFFI number does not make wrappers from other releases interchangeable. The C ABI and text-measurement protocol have independent versions. Regenerate bindings and ship them with the exact native library used to generate them.
+> The unpublished Merman `0.10.0-alpha.2` release candidate uses direct UniFFI binding API `7` and Options JSON schema `3`. The unchanged UniFFI number does not make wrappers from other releases interchangeable. The C ABI and text-measurement protocol have independent versions. Regenerate bindings and ship them with the exact native library used to generate them.
 
 ## Use A Language Wrapper
 
@@ -55,7 +55,7 @@ The generated API shape remains stable for smaller feature profiles. Lint catalo
 
 Facts schema `3` requires per-diagram `appearance` evidence with `known` or `unknown` state. Known declarations carry exact source spans and provenance; they are distinct from render metadata. See the [source appearance migration](../../docs/release/UNRELEASED_CONTRACT_VERSIONS.md#source-appearance-and-render-evidence-follow-up).
 
-The facts-schema-3 description applies to current development builds. Published `0.10.0-alpha.1`
+The facts-schema-3 description applies to the unpublished `0.10.0-alpha.2` candidate. Published `0.10.0-alpha.1`
 retains facts schema `2`; regenerate wrappers with the exact source-built native library for schema `3`.
 
 API 7 preserves theme-authoring diagnostics and exposes `requested_layout_profile` and `compact_attempted` in `MermanAsciiOutputPlan`,

@@ -2,8 +2,10 @@
 
 Use Merman's Rust parser, renderers, analysis, and editor APIs in a browser through WebAssembly.
 
-The installation examples use published `0.10.0-alpha.1`. Current development source has later
-contracts described below; it does not change those published artifacts. Check the
+This guide and its installation and import examples target the unpublished `0.10.0-alpha.2`
+release candidate. Before publication, use matching source-built packages as described in
+[Develop from source](#develop-from-source); the registry command below applies after publication.
+Check the
 [prebuilt product status](../../docs/release/PREBUILT_PRODUCTS.md) and
 [publish order](../../docs/release/PUBLISH_ORDER.md) for verified public availability. See the
 [current changelog](../../CHANGELOG.md) for changes and upgrade actions.
@@ -23,17 +25,18 @@ static-site builds, use [`@mermanjs/node`](../node/packages/node/README.md).
 | Editor intelligence in a Worker | [`@mermanjs/web-editor`](packages/editor/README.md) | Analysis and parser-backed editor sessions |
 | ASCII or Unicode output | [`@mermanjs/web-ascii`](packages/ascii/README.md) | Supported terminal-oriented diagram output |
 
-All browser packages built from current development source use one lockstep version, Web transport API `9`, and
-[Options JSON schema `3`](../../docs/bindings/OPTIONS_JSON.md). They target Mermaid `12.3.0`;
-ASCII-capable packages use schema-3 ASCII output. Keep the package facade, generated glue, and
-WASM binary at the same exact version.
+All browser packages in the `0.10.0-alpha.2` candidate use one lockstep version, Web transport API `9`,
+and [Options JSON schema `3`](../../docs/bindings/OPTIONS_JSON.md). They target Mermaid `12.3.0`;
+analysis-capable packages use facts schema `3`, SVG-capable packages use theme execution evidence
+schema `2`, and ASCII-capable packages use schema-3 ASCII output. Keep the package facade,
+generated glue, and WASM binary at the same exact version and source revision.
 
 The [Mermaid 12.3 migration](../../docs/migrations/mermaid-12-3.md) describes Step animations,
 their closed browser admission, and the static SVG projection used for native export.
 
 Published `0.10.0-alpha.1` retains Mermaid `12.2.0`, Web transport API `8`, facts schema `2` and theme execution
-evidence schema `1`. The installation commands below use that published version. Use matching
-source-built packages for the [development contracts](../../docs/release/UNRELEASED_CONTRACT_VERSIONS.md#source-appearance-and-render-evidence-follow-up).
+evidence schema `1`. Those published artifacts do not implement the candidate contracts. Use matching
+source-built packages for the [candidate contracts](../../docs/release/UNRELEASED_CONTRACT_VERSIONS.md#source-appearance-and-render-evidence-follow-up).
 
 Full/render products include mathematical labels, Cytoscape and ELK layouts, compiled themes,
 prepared-source reuse, and mounted-diagram updates with explicit Kanban width adaptation.
@@ -54,7 +57,7 @@ See the [Astro host integration guide](../../docs/integrations/astro.md) for bro
 ## Quick start
 
 ```sh
-npm install --save-exact @mermanjs/web@0.10.0-alpha.1
+npm install --save-exact @mermanjs/web@0.10.0-alpha.2
 ```
 
 ```ts
@@ -284,12 +287,13 @@ const svg = result.svg;
 ```
 
 `metadata.byte_length` is the SVG's UTF-8 byte length, not JavaScript string length.
-For evidence version 1, `theme_status` is currently `verified`, `not_applicable`, `residual`, or
+For evidence version `2`, `theme_status` is currently `verified`, `not_applicable`, `residual`, or
 `incomplete`. Theme verification and `target_status` are separate: a verified theme does not imply
 portable output. BestEffort may return SVG together with a `rejected` target status; strict policy
 is what turns failed admission into an operation error. IDs are open strings; unknown versions, missing evidence, and unknown statuses
 must not be interpreted as portable. The metadata is descriptive, not an independent certificate.
-It contains coarse status and target reasons, not per-rule or per-property explanations.
+`materialized_theme` records the actual materialized Mermaid palette or null. Optional
+`diagnostics` can include rule or property details; an absent or empty list does not establish portability.
 Use `renderSvgResultWithTextMeasurer()` for the corresponding host-measured workflow.
 
 Set `environment: { theme_portability: "require-portable" }` to require the renderer's

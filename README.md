@@ -125,7 +125,7 @@ To keep SVG, Cytoscape, and math but **exclude the compiled ELK implementation**
 
 ```toml
 [dependencies]
-merman = { version = "=0.10.0-alpha.1", default-features = false, features = ["all-diagrams", "svg", "layout-cytoscape", "math"] }
+merman = { version = "=0.10.0-alpha.2", default-features = false, features = ["all-diagrams", "svg", "layout-cytoscape", "math"] }
 ```
 
 For command-line use, follow the [CLI installation guide][CLI install], then render a Mermaid file:

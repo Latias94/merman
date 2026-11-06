@@ -11,7 +11,7 @@ This guide targets the `0.10.0-alpha.1` local SwiftPM package and XCFramework; s
 - Swift 5.9 or newer
 - iOS 14 or newer, or macOS 12 or newer
 - Xcode on macOS for local package use
-- Python 3, Rust 1.95 with `rustup`, Cargo, and `lipo` only when building the XCFramework from source
+- Python 3, the Rust toolchain in `rust-toolchain.toml` with `rustup`, Cargo, and `lipo` only when building the current XCFramework from source
 
 For Swift 5.9 iOS integration, use Xcode 15.2 or newer. The SwiftPM 5.9 command-line client cannot select iOS slices from an XCFramework for `swift build --triple`; that command-line cross-build path requires SwiftPM 5.10 or newer.
 
@@ -59,6 +59,8 @@ examples; the schema-3 theme examples in this README require the alpha's matchin
 
 ## Build The Local Package
 
+The current source prepares `0.10.0-alpha.2`, which is not yet published. Build, package and qualify the same candidate version; the installation links above retain the available alpha.1 artifacts.
+
 ```sh
 bash scripts/build-apple-xcframework.sh
 ```
@@ -69,7 +71,7 @@ the source-development manifest. After a complete build, produce a self-containe
 distribution from a clean source tree:
 
 ```text
-python3 scripts/apple_package.py --output-dir target/apple-package --version 0.10.0-alpha.1
+python3 scripts/apple_package.py --output-dir target/apple-package --version 0.10.0-alpha.2
 ```
 
 Partial `--ios` or `--macos` builds remain useful locally but cannot be packaged as
@@ -82,19 +84,19 @@ From the clean, matching source revision and its complete staged XCFramework, se
 intended HTTPS upload destination for the binary ZIP:
 
 ```text
-python3 scripts/apple_package.py --output-dir target/apple-package --version 0.10.0-alpha.1 \
+python3 scripts/apple_package.py --output-dir target/apple-package --version 0.10.0-alpha.2 \
   --source-commit <source-commit> \
-  --artifact-url https://github.com/Latias94/merman/releases/download/v0.10.0-alpha.1/Merman.xcframework-v0.10.0-alpha.1.zip
+  --artifact-url https://github.com/Latias94/merman/releases/download/v0.10.0-alpha.2/Merman.xcframework-v0.10.0-alpha.2.zip
 ```
 
 The producer freezes these seven release assets:
 
 | Asset | Use |
 | --- | --- |
-| `Merman.xcframework-v0.10.0-alpha.1.zip` and `.zip.checksum` | Binary-target input and its SHA-256 |
-| `Merman-swiftpm-v0.10.0-alpha.1.zip` and `.zip.checksum` | Complete local Swift package and its SHA-256 |
-| `Merman-swiftpm-remote-v0.10.0-alpha.1.zip` and `.zip.checksum` | Complete thin delivery repository tree and its SHA-256 |
-| `Merman-swiftpm-v0.10.0-alpha.1.Package.swift` | Identical copy of the thin tree's remote manifest |
+| `Merman.xcframework-v0.10.0-alpha.2.zip` and `.zip.checksum` | Binary-target input and its SHA-256 |
+| `Merman-swiftpm-v0.10.0-alpha.2.zip` and `.zip.checksum` | Complete local Swift package and its SHA-256 |
+| `Merman-swiftpm-remote-v0.10.0-alpha.2.zip` and `.zip.checksum` | Complete thin delivery repository tree and its SHA-256 |
+| `Merman-swiftpm-v0.10.0-alpha.2.Package.swift` | Identical copy of the thin tree's remote manifest |
 
 The extracted remote directory contains `Package.swift`, `Sources/Merman`, `README.md`,
 `SOURCE_AVAILABILITY.txt`, `LICENSE`, `THIRD_PARTY_NOTICES.md` and `THIRD_PARTY_LICENSES`.
@@ -118,8 +120,8 @@ repository containing its unmodified contents, and an exact delivery commit:
 
 ```text
 python3 scripts/apple_qualify.py \
-  --package-archive target/apple-package/Merman-swiftpm-remote-v0.10.0-alpha.1.zip \
-  --work-dir /absolute/fresh/apple-remote-proof --version 0.10.0-alpha.1 --simulator \
+  --package-archive target/apple-package/Merman-swiftpm-remote-v0.10.0-alpha.2.zip \
+  --work-dir /absolute/fresh/apple-remote-proof --version 0.10.0-alpha.2 --simulator \
   --remote-package-url https://your-controlled-host/Merman.git \
   --remote-package-revision <40-character-delivery-commit>
 ```
@@ -155,7 +157,7 @@ use the candidate version, exact source commit and a fresh work directory:
 
 ```text
 python3 platforms/apple/tests/qualify_remote.py \
-  --work-dir target/apple-https-qualification --version 0.10.0-alpha.1 \
+  --work-dir target/apple-https-qualification --version 0.10.0-alpha.2 \
   --source-commit <40-character-source-commit> \
   --xcframework platforms/apple/Merman.xcframework
 ```

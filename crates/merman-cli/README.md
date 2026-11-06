@@ -4,7 +4,7 @@
 
 Render, inspect, and lint Mermaid without Node.js, Puppeteer, Chromium, or another JavaScript runtime. The source-default binary includes SVG, PNG, JPEG, vector PDF, ASCII/Unicode, analysis, Markdown batch rendering, Cytoscape layout, icons, completions, and native runtime adapters. Official release archives additionally select math explicitly. Current development source defaults omit math; select the `math` feature to include it. The current source default includes the Rustdoc fragment command and ELK, with its EPL-2.0 notices and source provenance; explicit lean builds can omit it.
 
-This guide targets `0.10.0-alpha.1`, including compiled themes. Check `merman-cli --version` and `merman-cli capabilities --json` for your installed binary; see the [changelog](../../CHANGELOG.md#0100-alpha1---2026-11-02) for upgrade actions and the [host guide](../../docs/release/PREBUILT_PRODUCTS.md) for channel availability. Native font defaults for PNG/JPEG/PDF already shipped in `0.9.3`.
+This guide targets the unpublished `0.10.0-alpha.2` release candidate, including compiled themes. Build the candidate from a matching reviewed source checkout; registry install examples for alpha.2 apply after publication. Check `merman-cli --version` and `merman-cli capabilities --json` for your installed binary; see the [changelog](../../CHANGELOG.md#0100-alpha2---unreleased) for upgrade actions and the [host guide](../../docs/release/PREBUILT_PRODUCTS.md) for channel availability. Native font defaults for PNG/JPEG/PDF already shipped in `0.9.3`.
 
 The command line has four explicit workflows:
 
@@ -17,7 +17,7 @@ The command line has four explicit workflows:
 
 ## Install
 
-Pin the alpha version with cargo-binstall:
+To install the published `0.10.0-alpha.1` binary, pin that version with cargo-binstall. This does not install the alpha.2 candidate:
 
 ```sh
 cargo binstall merman-cli@0.10.0-alpha.1
@@ -559,7 +559,7 @@ Use repeatable `--rule RULE_ID` or `--fix STABLE_FIX_ID` selectors when automati
 
 ## Choose A Build
 
-The `0.10.0-alpha.1` source defaults to the standard diagram CLI with `all-diagrams`.
+The `0.10.0-alpha.2` candidate source defaults to the standard diagram CLI with `all-diagrams`.
 The Rustdoc authoring command remains available in the default and release builds.
 For a slim current-source binary, disable defaults and select the required `diagram-*` families
 plus operation leaves. Use `all-diagrams` to retain the prior language surface. The recipes below select families
@@ -579,10 +579,11 @@ explicitly:
 | `--no-default-features --features all-diagrams,png` | SVG plus PNG only |
 | `--no-default-features --features all-diagrams,pdf` | SVG plus vector PDF only |
 
-Install a lint-only binary:
+Install a lint-only candidate binary after registry publication (before then, use
+`--path crates/merman-cli` instead of the package name and `--version`):
 
 ```sh
-cargo install merman-cli --version 0.10.0-alpha.1 --locked \
+cargo install merman-cli --version 0.10.0-alpha.2 --locked \
   --no-default-features --features all-diagrams,analysis
 ```
 
