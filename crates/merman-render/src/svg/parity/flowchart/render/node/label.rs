@@ -22,6 +22,8 @@ pub(super) struct FlowchartNodeLabelEmissionPlan<'a> {
     node_classes: &'a [String],
     source_text_style: &'a crate::text::TextStyle,
     compiled_styles: &'a FlowchartCompiledStyles,
+    terminal_sources:
+        &'a crate::svg::parity::flowchart::node_style::FlowchartNodeTerminalSourceOwnership,
     typed_label_fill: Option<&'a str>,
 }
 
@@ -30,12 +32,14 @@ impl<'a> FlowchartNodeLabelEmissionPlan<'a> {
         node_classes: &'a [String],
         source_text_style: &'a crate::text::TextStyle,
         compiled_styles: &'a FlowchartCompiledStyles,
+        terminal_sources: &'a crate::svg::parity::flowchart::node_style::FlowchartNodeTerminalSourceOwnership,
         typed_label_fill: Option<&'a str>,
     ) -> Self {
         Self {
             node_classes,
             source_text_style,
             compiled_styles,
+            terminal_sources,
             typed_label_fill,
         }
     }
@@ -98,8 +102,12 @@ impl<'a> FlowchartNodeLabelEmissionPlan<'a> {
             weights.append_style(
                 ThemeTarget::NodeLabel,
                 text_style,
-                self.compiled_styles.source_font_stack_status(),
-                self.compiled_styles.source_font_size_status(),
+                self.compiled_styles
+                    .source_font_stack_status()
+                    .merge(self.terminal_sources.font_stack),
+                self.compiled_styles
+                    .source_font_size_status()
+                    .merge(self.terminal_sources.font_size),
                 &mut style,
             );
         }

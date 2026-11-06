@@ -244,6 +244,7 @@ fn prepare_block_family<'parsed>(
         &meta.effective_config,
         model,
         &layout,
+        &prepared_labels,
         execution.work_meter_ref(),
     )?;
     let node_paint_theme = crate::block::BlockNodePaintThemePlan::resolve(

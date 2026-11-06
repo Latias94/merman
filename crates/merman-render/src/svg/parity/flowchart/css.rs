@@ -37,36 +37,16 @@ where
     }
 }
 
-#[derive(Debug)]
-struct FlowchartClassDefCssDeclaration {
-    property_css: String,
-    value: String,
-}
-
-fn flowchart_classdef_css_declarations(declarations: &[String]) -> (String, String) {
-    let mut shape_cssom = IndexMap::<String, FlowchartClassDefCssDeclaration>::new();
-    let mut text_cssom = IndexMap::<String, FlowchartClassDefCssDeclaration>::new();
-
-    for raw in declarations {
-        flowchart_classdef_cssom_set(&mut shape_cssom, raw);
-
-        // FlowDB builds `textStyles` before CSSOM by selecting source declarations that contain
-        // the exact lowercase substring `color`, first replacing the first source `fill` with
-        // `bgFill`. `createCssStyles()` later replaces the first `color` with `fill`. Keep both
-        // source-sensitive steps separate from the canonical CSSOM declaration map.
-        if raw.contains("color") {
-            let text_raw = raw
-                .replacen("fill", "bgFill", 1)
-                .replacen("color", "fill", 1);
-            flowchart_classdef_cssom_set(&mut text_cssom, &text_raw);
-        }
-    }
+pub(in crate::svg::parity::flowchart) fn flowchart_classdef_css_declarations(
+    declarations: &[String],
+) -> (String, String) {
+    let styles = crate::flowchart::FlowchartClassDefStyles::prepare(declarations);
 
     // This is deliberately a safe headless projection, not a complete browser CSS engine:
     // `PreparedSourceStyleDeclaration` rejects resource-bearing values that CSSOM would retain.
     (
-        flowchart_classdef_cssom_string(shape_cssom),
-        flowchart_classdef_cssom_string(text_cssom),
+        flowchart_classdef_cssom_string(styles.shape),
+        flowchart_classdef_cssom_string(styles.text),
     )
 }
 
@@ -86,63 +66,31 @@ pub(in crate::svg::parity::flowchart) fn cluster_title_class_foreground(
         for declaration in declarations {
             work.charge(declaration.len())?;
         }
-        let (_, text_style) = flowchart_classdef_css_declarations(declarations);
-        for raw in crate::flowchart::flowchart_split_mermaid_style_decls(&text_style) {
-            if let Some(declaration) =
-                crate::diagram_theme::PreparedSourceStyleDeclaration::parse(raw)
-                && declaration.property() == "fill"
-            {
-                status = status.merge(FlowchartSourceFacetStatus::from_parts(
-                    true,
-                    crate::mermaid_style::is_supported_css_color_value(declaration.value()),
-                ));
-            }
+        let styles = crate::flowchart::FlowchartClassDefStyles::prepare(declarations);
+        if let Some(declaration) = styles.text.get("fill") {
+            status = status.merge(FlowchartSourceFacetStatus::from_parts(
+                true,
+                crate::mermaid_style::is_supported_css_color_value(declaration.value()),
+            ));
         }
     }
     Ok(status)
 }
 
-fn flowchart_classdef_cssom_set(
-    cssom: &mut IndexMap<String, FlowchartClassDefCssDeclaration>,
-    raw: &str,
-) {
-    let Some(declaration) = crate::diagram_theme::PreparedSourceStyleDeclaration::parse(raw) else {
-        return;
-    };
-    let property = declaration.property().to_string();
-    let value = if !property.starts_with("--")
-        && (matches!(property.as_str(), "fill" | "stroke" | "color")
-            || property.ends_with("-color"))
-    {
-        super::super::util::cssom_color_value(declaration.value())
-    } else {
-        declaration.value().to_string()
-    };
-
-    // `createCssStyles()` crosses a browser CSSStyleSheet boundary. Ordinary CSS property names
-    // therefore share decoded, lowercase identity; custom properties retain decoded case-sensitive
-    // identity. Replacing either kind moves the surviving property to its final declaration
-    // position, and CSSOM serializes the decoded property spelling.
-    cssom.shift_remove(&property);
-    cssom.insert(
-        property.clone(),
-        FlowchartClassDefCssDeclaration {
-            property_css: property,
-            value,
-        },
-    );
-}
-
 fn flowchart_classdef_cssom_string(
-    cssom: IndexMap<String, FlowchartClassDefCssDeclaration>,
+    cssom: IndexMap<String, std::sync::Arc<crate::diagram_theme::PreparedSourceStyleDeclaration>>,
 ) -> String {
     let mut style = String::new();
-    for declaration in cssom.values() {
-        let _ = write!(
-            &mut style,
-            "{}:{}!important;",
-            declaration.property_css, declaration.value
-        );
+    for (property, declaration) in &cssom {
+        let value = if !property.starts_with("--")
+            && (matches!(property.as_str(), "fill" | "stroke" | "color")
+                || property.ends_with("-color"))
+        {
+            super::super::util::cssom_color_value(declaration.value())
+        } else {
+            declaration.value().to_owned()
+        };
+        let _ = write!(&mut style, "{}:{}!important;", property, value);
     }
     style
 }

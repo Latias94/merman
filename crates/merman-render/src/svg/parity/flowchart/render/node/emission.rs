@@ -318,6 +318,24 @@ impl FlowchartNodeLabelEmissionReceipt {
 }
 
 impl FlowchartNodeShapeEmissionReceipt {
+    /// A terminal-local typed declaration does not prove the independent source transports.
+    pub(in crate::svg::parity::flowchart::render::node) fn with_typed_paint_reach(
+        mut self,
+        property: crate::diagram_theme::ResolvedStyleProperty,
+    ) -> Self {
+        use crate::diagram_theme::ResolvedStyleProperty;
+
+        let facet = match property {
+            ResolvedStyleProperty::Fill => &mut self.fill,
+            ResolvedStyleProperty::Stroke => &mut self.stroke,
+            ResolvedStyleProperty::StrokeWidth => &mut self.stroke_width,
+            ResolvedStyleProperty::StrokeDasharray => &mut self.stroke_dasharray,
+            _ => return self,
+        };
+        facet.typed_theme = FlowchartNodeFacetReach::Verified;
+        self
+    }
+
     pub(in crate::svg::parity::flowchart) const fn with_effect_reach(
         mut self,
         verified: bool,

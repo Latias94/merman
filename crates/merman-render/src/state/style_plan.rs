@@ -475,7 +475,6 @@ struct StateThemeEvidenceBuilder<'a> {
     applied_effect_bindings: BTreeSet<StateEffectBindingKey>,
     residual_effect_bindings: BTreeSet<StateEffectBindingKey>,
     suppressed_effect_bindings: BTreeSet<StateEffectBindingKey>,
-    has_visible_text: bool,
     base_typography_properties: BTreeSet<ThemeTypographyProperty>,
     config_typography_owned: BTreeSet<ThemeTypographyProperty>,
     base_typography_applied: BTreeSet<ThemeTypographyProperty>,
@@ -553,7 +552,6 @@ impl<'a> StateThemeEvidenceBuilder<'a> {
             applied_effect_bindings: BTreeSet::new(),
             residual_effect_bindings: BTreeSet::new(),
             suppressed_effect_bindings: BTreeSet::new(),
-            has_visible_text: false,
             base_typography_properties,
             config_typography_owned,
             base_typography_applied: BTreeSet::new(),
@@ -572,7 +570,6 @@ impl<'a> StateThemeEvidenceBuilder<'a> {
         if self.theme.is_none() {
             return;
         }
-        self.has_visible_text = true;
         self.observe_target(ThemeTarget::Text);
         self.observe_target(target);
     }
@@ -583,12 +580,23 @@ impl<'a> StateThemeEvidenceBuilder<'a> {
         shadowed_source_properties: &BTreeSet<ResolvedStyleProperty>,
         occurrence: StateThemeSurface,
         source: Option<&crate::text::VisibleTextStyleFacts>,
+        has_visible_text: bool,
     ) {
         if self.base_typography_properties.is_empty() {
             return;
         }
         let patch = semantic.map(|style| style.typography_resolution().patch());
         for property in &self.base_typography_properties {
+            // Empty/image line boxes consume size and retain unsupported line-height requests
+            // even without text runs.
+            if !has_visible_text
+                && !matches!(
+                    property,
+                    ThemeTypographyProperty::FontSize | ThemeTypographyProperty::LineHeight
+                )
+            {
+                continue;
+            }
             let resolved_property = ResolvedStyleProperty::Typography(*property);
             if self.config_typography_owned.contains(property)
                 || shadowed_source_properties.contains(&resolved_property)
@@ -598,7 +606,9 @@ impl<'a> StateThemeEvidenceBuilder<'a> {
             {
                 continue;
             }
-            if source.is_some_and(|source| source_typography_is_unverified(source, *property)) {
+            if has_visible_text
+                && source.is_some_and(|source| source_typography_is_unverified(source, *property))
+            {
                 self.base_typography_residual.insert(*property);
                 continue;
             }
@@ -720,7 +730,7 @@ fn semantic_typography_property_overridden(
     };
     match property {
         ThemeTypographyProperty::FontStack => !patch.font_stack.is_unspecified(),
-        ThemeTypographyProperty::FontSize => !patch.font_size_px.is_unspecified(),
+        ThemeTypographyProperty::FontSize => matches!(patch.font_size_px, Specified::Value(_)),
         ThemeTypographyProperty::FontWeight => !patch.font_weight.is_unspecified(),
         ThemeTypographyProperty::FontStyle => !patch.font_style.is_unspecified(),
         ThemeTypographyProperty::LineHeight => !patch.line_height.is_unspecified(),
@@ -902,6 +912,7 @@ impl StateStylePlan {
                 &BTreeSet::new(),
                 StateThemeSurface::Title,
                 None,
+                true,
             );
         }
         let title_fill_owned = compatibility.owns(
@@ -994,14 +1005,22 @@ impl StateStylePlan {
             let (target, label_target, variant) = semantic_binding(node);
             let visible = !state_is_hidden_id(&hidden_prefixes, node.id.as_str());
             let participates = visible && participates_in_ordinal(node);
+            let label_source = (resolved_theme.is_some() && html_labels && participates)
+                .then(|| node_label_source_style_facts(node))
+                .flatten();
+            let label_visible = has_visible_label(node)
+                && label_source
+                    .as_ref()
+                    .is_none_or(|source| !source.parse_valid() || source.has_visible_runs());
             let one_based_ordinal =
                 participates.then(|| next_target_ordinal(&mut target_ordinals, target));
-            let label_ordinal = (participates && has_visible_label(node))
+            let label_ordinal = (participates && label_visible)
                 .then(|| next_target_ordinal(&mut target_ordinals, label_target));
             let composite_header_ordinal = (participates
                 && matches!(target, ThemeTarget::Composite)
-                && has_visible_label(node))
-            .then(|| next_target_ordinal(&mut target_ordinals, ThemeTarget::CompositeHeader));
+                && super::config::state_node_is_effective_group(node)
+                && node.shape != "divider")
+                .then(|| next_target_ordinal(&mut target_ordinals, ThemeTarget::CompositeHeader));
             let special_state_inner_ordinal = (participates
                 && matches!(target, ThemeTarget::SpecialState)
                 && node.shape == "stateEnd")
@@ -1029,6 +1048,7 @@ impl StateStylePlan {
                 variant,
                 one_based_ordinal,
                 label_ordinal,
+                label_source.as_ref(),
                 composite_header_ordinal,
                 special_state_inner_ordinal,
                 &mut residuals,
@@ -1048,8 +1068,24 @@ impl StateStylePlan {
                 transition_ordinal += 1;
                 transition_ordinal
             });
-            let label_ordinal = (ordinal.is_some() && !edge.label.trim().is_empty())
+            let label_source = (resolved_theme.is_some() && html_labels && ordinal.is_some())
+                .then(|| super::state_label_source_style_facts(&edge.label))
+                .flatten();
+            let label_visible = !edge.label.trim().is_empty()
+                && label_source
+                    .as_ref()
+                    .is_none_or(|source| !source.parse_valid() || source.has_visible_runs());
+            let label_ordinal = (ordinal.is_some() && label_visible)
                 .then(|| next_target_ordinal(&mut target_ordinals, ThemeTarget::TransitionLabel));
+            let label_font_size_geometry = html_labels
+                && ordinal.is_some()
+                && if backend == crate::layout_backend::GraphLayoutBackend::Elk {
+                    !crate::text::mermaid_html_breaks_to_newlines(&edge.label)
+                        .trim()
+                        .is_empty()
+                } else {
+                    !edge.label.trim().is_empty()
+                };
             let marker_ordinal = (ordinal.is_some() && !edge.arrow_type_end.trim().is_empty())
                 .then(|| next_target_ordinal(&mut target_ordinals, ThemeTarget::TransitionMarker));
             if ordinal.is_some() {
@@ -1063,11 +1099,12 @@ impl StateStylePlan {
                 }
             }
             let edge_plan = prepare_edge(
-                &edge.label,
+                label_source.as_ref(),
                 &base_text_style,
                 resolved_theme,
                 ordinal,
                 label_ordinal,
+                label_font_size_geometry,
                 marker_ordinal,
                 html_labels,
                 &compatibility,
@@ -1378,6 +1415,74 @@ impl StateThemeEvidenceBuilder<'_> {
         use_id
     }
 
+    fn consume_font_size_style(
+        &mut self,
+        style: &ResolvedThemeStyle,
+        occurrence: StateThemeSurface,
+    ) -> Option<StateThemeUseId> {
+        // HTML geometry uses the prepared numeric size, including a Clear's base fallback.
+        // Text-only properties have no consumer, but the retained label geometry must still
+        // account for unsupported siblings, even when no font-size rule was requested.
+        // Line height also owns empty/image line boxes; their fixed 1.5 factor cannot
+        // consume a requested typed line height.
+        let properties = style
+            .winner_rule_properties()
+            .filter_map(|(property, origin)| {
+                let outcome = match property {
+                    ResolvedStyleProperty::Typography(ThemeTypographyProperty::FontSize) => {
+                        if self
+                            .config_typography_owned
+                            .contains(&ThemeTypographyProperty::FontSize)
+                        {
+                            StateThemePropertyOutcome::SupersededBySource
+                        } else {
+                            StateThemePropertyOutcome::Selected
+                        }
+                    }
+                    ResolvedStyleProperty::Typography(ThemeTypographyProperty::LineHeight) => {
+                        StateThemePropertyOutcome::Residual(
+                            FamilyThemeResidualReason::UnsupportedTypography,
+                        )
+                    }
+                    ResolvedStyleProperty::Fill | ResolvedStyleProperty::Typography(_) => {
+                        return None;
+                    }
+                    ResolvedStyleProperty::Stroke => StateThemePropertyOutcome::Residual(
+                        FamilyThemeResidualReason::UnsupportedPaint,
+                    ),
+                    ResolvedStyleProperty::Effect => StateThemePropertyOutcome::Residual(
+                        FamilyThemeResidualReason::UnsupportedEffect,
+                    ),
+                    ResolvedStyleProperty::StrokeWidth
+                    | ResolvedStyleProperty::StrokeDasharray
+                    | ResolvedStyleProperty::StrokeLinecap
+                    | ResolvedStyleProperty::StrokeLinejoin
+                    | ResolvedStyleProperty::Opacity
+                    | ResolvedStyleProperty::FillOpacity
+                    | ResolvedStyleProperty::StrokeOpacity
+                    | ResolvedStyleProperty::Radius
+                    | ResolvedStyleProperty::Padding => StateThemePropertyOutcome::Residual(
+                        FamilyThemeResidualReason::UnsupportedGeometry,
+                    ),
+                };
+                Some(StateThemePropertyUse {
+                    rule_index: origin.rule_index(),
+                    property,
+                    outcome,
+                })
+            })
+            .collect::<Vec<_>>();
+        if properties.is_empty() {
+            return None;
+        }
+        let use_id = StateThemeUseId(self.uses.len());
+        self.uses.push(StateThemeUse {
+            occurrence,
+            properties,
+        });
+        Some(use_id)
+    }
+
     fn consume_html_background_style(
         &mut self,
         style: &ResolvedThemeStyle,
@@ -1569,9 +1674,7 @@ impl StateThemeEvidenceBuilder<'_> {
         if theme.typography() != &ThemeTextStyle::default() {
             for property in &self.base_typography_properties {
                 let key = FamilyThemeMechanismKey::Typography(*property);
-                if !self.has_visible_text {
-                    evidence.mark_not_applicable(key);
-                } else if self.base_typography_residual.contains(property) {
+                if self.base_typography_residual.contains(property) {
                     evidence.mark_residual(key, FamilyThemeResidualReason::UnsupportedTypography);
                 } else if self.base_typography_applied.contains(property) {
                     let occurrences = self
@@ -1827,11 +1930,8 @@ impl StateThemeEvidenceBuilder<'_> {
         }
         match &patch.font_size_px {
             Specified::Unspecified => {}
-            Specified::Value(_) => {
+            Specified::Value(_) | Specified::Clear => {
                 self.pending_typography(use_id, style, ThemeTypographyProperty::FontSize);
-            }
-            Specified::Clear => {
-                self.reject_typography(use_id, style, ThemeTypographyProperty::FontSize);
             }
         }
         match &patch.font_weight {
@@ -2222,6 +2322,52 @@ fn prepare_class_declarations(
         .collect()
 }
 
+fn push_structural_node_class_declarations(
+    class: &StateClassStylePlan,
+    compatibility: &StateCompatibilityPlan,
+    shape_declarations: &mut Vec<SourceStyleDeclaration>,
+    label_declarations: &mut Vec<SourceStyleDeclaration>,
+) {
+    let html_labels = compatibility.html_labels();
+    for (declaration_ordinal, prepared) in &class.styles {
+        let channel = match prepared.property() {
+            // The classic/Neo rect is a direct child of .node. Native SVG also has
+            // direct .node path selectors for a hand-drawn ordinary State body.
+            "fill" | "stroke" | "stroke-width" | "stroke-dasharray" | "stroke-linecap"
+            | "stroke-linejoin" | "opacity" | "fill-opacity" | "stroke-opacity"
+                if !html_labels || !compatibility.is_hand_drawn() =>
+            {
+                SourceStyleChannel::Shape
+            }
+            // HTML .node span matches the label itself. Native class styles target
+            // shapes, so their font properties do not directly style a tspan.
+            "font-family" | "font-size" | "font-weight" | "font-style" if html_labels => {
+                SourceStyleChannel::Label
+            }
+            _ => continue,
+        };
+        let declaration = prepared.bind(SourceStyleProvenance::generated_class_css(
+            class.id.clone(),
+            channel,
+            *declaration_ordinal,
+        ));
+        push_declaration(declaration, shape_declarations, label_declarations);
+    }
+    // Read the producer's tspan rules in their own declaration order. HTML ancestor
+    // color does not own the paragraph's specified color or create a tspan terminal.
+    if !html_labels {
+        for (declaration_ordinal, prepared) in &class.text_styles {
+            if prepared.property() == "fill" {
+                label_declarations.push(prepared.bind(SourceStyleProvenance::generated_class_css(
+                    class.id.clone(),
+                    SourceStyleChannel::Label,
+                    *declaration_ordinal,
+                )));
+            }
+        }
+    }
+}
+
 #[allow(clippy::too_many_arguments)]
 fn prepare_node(
     node: &StateDiagramRenderNode,
@@ -2234,6 +2380,7 @@ fn prepare_node(
     variant: ThemeVariant,
     ordinal: Option<usize>,
     label_ordinal: Option<usize>,
+    label_source: Option<&crate::text::VisibleTextStyleFacts>,
     composite_header_ordinal: Option<usize>,
     special_state_inner_ordinal: Option<usize>,
     residuals: &mut Vec<SourceStyleResidual>,
@@ -2303,12 +2450,19 @@ fn prepare_node(
             effects,
         )
     });
-    let label_use = label_ordinal
-        .zip(semantic_label.as_ref())
-        .map(|(_, style)| {
-            let occurrence = StateThemeSurface::Node;
-            theme_evidence.consume_text_style(style, occurrence)
-        });
+    let label_font_size_geometry = ordinal.is_some()
+        && compatibility.html_labels()
+        && (matches!(node.shape.as_str(), "rect" | "note" | "rectWithTitle")
+            || composite_header_ordinal.is_some());
+    let label_use = semantic_label.as_ref().and_then(|style| {
+        if label_ordinal.is_some() {
+            Some(theme_evidence.consume_text_style(style, StateThemeSurface::Node))
+        } else if label_font_size_geometry {
+            theme_evidence.consume_font_size_style(style, StateThemeSurface::Node)
+        } else {
+            None
+        }
+    });
     if shape_fill_owned {
         theme_evidence.shadow_source_property(shape_use, ResolvedStyleProperty::Fill);
     }
@@ -2384,9 +2538,41 @@ fn prepare_node(
     }
     let mut shape_declarations = Vec::new();
     let mut label_declarations = Vec::new();
-
-    for (assignment_ordinal, class_id) in node.css_classes.split_whitespace().enumerate() {
-        let Some(class) = classes.get(class_id) else {
+    // Ordinary leaves gain .node in the writer, independently of model class assignments.
+    // Only project its confirmed direct terminals; groups use a different DOM contract.
+    let structural_node_class = (node.shape == "rect"
+        && !super::config::state_node_is_effective_group(node))
+    .then(|| classes.get_full("node"))
+    .flatten();
+    let mut matching_classes = node
+        .css_classes
+        .split_whitespace()
+        .enumerate()
+        .filter_map(|(assignment_ordinal, class_id)| {
+            let (source_ordinal, _, class) = classes.get_full(class_id)?;
+            let assignment_ordinal = (!(class_id == "node" && structural_node_class.is_some()))
+                .then_some(assignment_ordinal);
+            Some((source_ordinal, assignment_ordinal, class_id, class))
+        })
+        .collect::<Vec<_>>();
+    if let Some((source_ordinal, class_id, class)) = structural_node_class {
+        if !matching_classes
+            .iter()
+            .any(|(_, _, matched_id, _)| *matched_id == class_id.as_str())
+        {
+            matching_classes.push((source_ordinal, None, class_id.as_str(), class));
+        }
+        // Equal-specificity class rules follow producer order, not assignment order.
+        matching_classes.sort_by_key(|(source_ordinal, _, _, _)| *source_ordinal);
+    }
+    for (_, assignment_ordinal, class_id, class) in matching_classes {
+        let Some(assignment_ordinal) = assignment_ordinal else {
+            push_structural_node_class_declarations(
+                class,
+                compatibility,
+                &mut shape_declarations,
+                &mut label_declarations,
+            );
             continue;
         };
         for (declaration_ordinal, prepared) in &class.styles {
@@ -2695,8 +2881,15 @@ fn prepare_node(
             {
                 theme_evidence.shadow_source_property(label_use, kind);
             }
-            if declaration.property() == "color" {
+            if matches!(declaration.property(), "color" | "fill") {
                 label_uses_series_color = false;
+                // Native class fill and semantic color share the final tspan fill slot.
+                // Keep one winner so a stale alias cannot survive later source overrides.
+                label_emission.shift_remove(if declaration.property() == "fill" {
+                    "color"
+                } else {
+                    "fill"
+                });
             }
             label_emission.insert(
                 declaration.property().to_string(),
@@ -2707,37 +2900,21 @@ fn prepare_node(
     label_typography.canonicalize_emission(&mut label_emission);
     label_typography.canonicalize_emission(&mut composite_header_text_emission);
 
-    let label_source =
-        (resolved_theme.is_some() && compatibility.html_labels() && label_ordinal.is_some())
-            .then(|| {
-                let mut text = node
-                    .label
-                    .as_ref()
-                    .map(super::state_value_to_label_text)
-                    .unwrap_or_else(|| node.id.clone());
-                if node.shape == "rectWithTitle"
-                    && let Some(description) = &node.description
-                {
-                    text.push_str("<br/>");
-                    text.push_str(&description.join("<br/>"));
-                }
-                super::state_label_source_style_facts(&text)
-            })
-            .flatten();
-    if let Some(source) = &label_source {
+    if let Some(source) = label_source {
         theme_evidence.observe_html_text_source(label_use, source);
         if label_uses_series_color {
             label_uses_series_color =
                 theme_evidence.observe_html_palette_source(label_target, source);
         }
     }
-    if label_ordinal.is_some() {
+    if label_ordinal.is_some() || label_font_size_geometry {
         let occurrence = StateThemeSurface::Node;
         theme_evidence.observe_base_typography_use(
             semantic_label.as_ref(),
             &shadowed_label_properties,
             occurrence,
-            label_source.as_ref(),
+            label_source,
+            label_ordinal.is_some(),
         );
     }
 
@@ -2858,11 +3035,12 @@ fn css_opacity_is_valid_zero(value: &str) -> bool {
     reason = "Edge preparation receives distinct source, theme, text, and work inputs"
 )]
 fn prepare_edge(
-    label_source: &str,
+    source: Option<&crate::text::VisibleTextStyleFacts>,
     base_text_style: &TextStyle,
     resolved_theme: Option<&ResolvedDiagramTheme>,
     ordinal: Option<usize>,
     label_ordinal: Option<usize>,
+    label_font_size_geometry: bool,
     marker_ordinal: Option<usize>,
     html_labels: bool,
     compatibility: &StateCompatibilityPlan,
@@ -3004,17 +3182,19 @@ fn prepare_edge(
         label_ordinal,
         work_meter,
     )?;
-    let source = (resolved_theme.is_some() && html_labels && label_ordinal.is_some())
-        .then(|| super::state_label_source_style_facts(label_source))
-        .flatten();
     let mut label_emission = IndexMap::<String, EmittedDeclaration>::new();
     if let Some((theme, style)) = resolved_theme.zip(semantic_label.as_ref()) {
-        let use_id = label_ordinal
-            .map(|_| theme_evidence.consume_text_style(style, StateThemeSurface::Edge));
+        let use_id = if label_ordinal.is_some() {
+            Some(theme_evidence.consume_text_style(style, StateThemeSurface::Edge))
+        } else if label_font_size_geometry {
+            theme_evidence.consume_font_size_style(style, StateThemeSurface::Edge)
+        } else {
+            None
+        };
         if label_fill_owned {
             theme_evidence.shadow_source_property(use_id, ResolvedStyleProperty::Fill);
         }
-        if let Some(source) = &source {
+        if let Some(source) = source {
             theme_evidence.observe_html_text_source(use_id, source);
         }
         append_theme_base_text_emission(theme, &mut label_emission);
@@ -3033,7 +3213,7 @@ fn prepare_edge(
             insert_emitted(&mut label_emission, "color", color);
         }
         if color_uses_series
-            && source.as_ref().is_none_or(|source| {
+            && source.is_none_or(|source| {
                 theme_evidence.observe_html_palette_source(ThemeTarget::TransitionLabel, source)
             })
         {
@@ -3043,12 +3223,13 @@ fn prepare_edge(
             );
         }
     }
-    if label_ordinal.is_some() {
+    if label_ordinal.is_some() || label_font_size_geometry {
         theme_evidence.observe_base_typography_use(
             semantic_label.as_ref(),
             &BTreeSet::new(),
             StateThemeSurface::Edge,
-            source.as_ref(),
+            source,
+            label_ordinal.is_some(),
         );
     }
     let mut label_typography = ResolvedLabelTypography::new(resolve_semantic_text_style(
@@ -3261,6 +3442,23 @@ fn state_is_hidden_id(prefixes: &[String], id: &str) -> bool {
     })
 }
 
+fn node_label_source_style_facts(
+    node: &StateDiagramRenderNode,
+) -> Option<crate::text::VisibleTextStyleFacts> {
+    let mut text = node
+        .label
+        .as_ref()
+        .map(super::state_value_to_label_text)
+        .unwrap_or_else(|| node.id.clone());
+    if node.shape == "rectWithTitle"
+        && let Some(description) = &node.description
+    {
+        text.push_str("<br/>");
+        text.push_str(&description.join("<br/>"));
+    }
+    super::state_label_source_style_facts(&text)
+}
+
 fn has_visible_label(node: &StateDiagramRenderNode) -> bool {
     if matches!(
         node.shape.as_str(),
@@ -3268,17 +3466,17 @@ fn has_visible_label(node: &StateDiagramRenderNode) -> bool {
     ) {
         return false;
     }
-    if node
+    let text = node
         .label
         .as_ref()
-        .is_some_and(|label| !label.to_string().trim_matches('"').trim().is_empty())
-    {
-        return true;
-    }
-    node.description
-        .as_ref()
-        .is_some_and(|lines| lines.iter().any(|line| !line.trim().is_empty()))
-        || !node.id.trim().is_empty()
+        .map(super::state_value_to_label_text)
+        .unwrap_or_else(|| node.id.clone());
+    !text.trim().is_empty()
+        || (node.shape == "rectWithTitle"
+            && node
+                .description
+                .as_ref()
+                .is_some_and(|lines| lines.iter().any(|line| !line.trim().is_empty())))
 }
 
 fn resolve_semantic_text_style(
@@ -3379,6 +3577,9 @@ fn apply_source_text_property(
     residuals: &mut Vec<SourceStyleResidual>,
 ) -> bool {
     let value = declaration.value().trim();
+    let native_class_fill = declaration.property() == "fill"
+        && declaration.provenance().origin() == SourceStyleOrigin::GeneratedClassCss
+        && declaration.provenance().channel() == SourceStyleChannel::Label;
     match declaration.property() {
         "font-family" if is_safe_css_font_family_value(value) && !value.is_empty() => {
             if let Some(stack) = crate::text::parse_css_font_stack(value) {
@@ -3423,12 +3624,21 @@ fn apply_source_text_property(
             typography.apply_font_style(style);
             true
         }
-        "color"
-            if declaration.is_single_component_value()
+        "color" | "fill"
+            if (declaration.property() == "color" || native_class_fill)
+                && declaration.is_single_component_value()
                 && (merman_markup::theme_color::ThemeColor::parse(value).is_ok()
-                    || value.eq_ignore_ascii_case("currentcolor")) =>
+                    || value.eq_ignore_ascii_case("currentcolor")
+                    || (native_class_fill && value.eq_ignore_ascii_case("none"))) =>
         {
             true
+        }
+        "fill" if native_class_fill => {
+            residuals.push(SourceStyleResidual::from_declaration(
+                declaration,
+                SourceStyleResidualReason::InvalidValue,
+            ));
+            false
         }
         "font-family" | "font-weight" | "font-style" | "color" => {
             residuals.push(SourceStyleResidual::from_declaration(
@@ -4115,6 +4325,116 @@ mod tests {
         assert_eq!(plan.node("NG").unwrap().ordinal(), None);
         assert_eq!(plan.node("B").unwrap().ordinal(), Some(2));
         assert_eq!(plan.node("N").unwrap().target(), ThemeTarget::Note);
+    }
+
+    #[test]
+    fn composite_header_ordinals_require_real_geometry_not_visible_text() {
+        let resolved = DiagramThemeCompiler::new()
+            .compile(DiagramThemeSpec::new())
+            .unwrap()
+            .resolve(crate::DiagramFamilyId::STATE);
+        let mut model = StateDiagramRenderModel::default();
+        let mut divider = semantic_node("Divider", "divider");
+        divider.is_group = true;
+        let mut empty = semantic_node("Empty", "roundedWithTitle");
+        empty.is_group = true;
+        empty.label = Some(json!("<br/>"));
+        let leaf = semantic_node("NotACluster", "roundedWithTitle");
+        let mut visible = semantic_node("Full", "roundedWithTitle");
+        visible.is_group = true;
+        model.nodes.extend([divider, empty, leaf, visible]);
+        let plan = resolve_theme_plan(&model, &json!({"htmlLabels": true}), &resolved);
+        assert_eq!(
+            plan.node("Divider").unwrap().composite_header_ordinal(),
+            None
+        );
+        assert_eq!(
+            plan.node("Empty").unwrap().composite_header_ordinal(),
+            Some(1)
+        );
+        assert_eq!(plan.node("Empty").unwrap().label_ordinal(), None);
+        assert_eq!(
+            plan.node("NotACluster").unwrap().composite_header_ordinal(),
+            None
+        );
+        assert_eq!(
+            plan.node("Full").unwrap().composite_header_ordinal(),
+            Some(2)
+        );
+    }
+
+    #[test]
+    fn html_geometry_selects_only_font_size_and_waits_for_output_visibility() {
+        let theme = DiagramThemeCompiler::new()
+            .compile(
+                DiagramThemeSpec::new().with_styles(
+                    ThemeRuleSet::default()
+                        .with_rule(ThemeRule::new(
+                            ThemeTarget::Text,
+                            ThemeStylePatch {
+                                typography: TextStylePatch {
+                                    font_stack: Specified::Value(
+                                        crate::diagram_theme::FontStack::single("monospace")
+                                            .unwrap(),
+                                    ),
+                                    font_size_px: Specified::Value(30.0),
+                                    ..TextStylePatch::default()
+                                },
+                                ..ThemeStylePatch::default()
+                                    .with_fill(CanvasPaint::solid("#b316cd").unwrap())
+                            },
+                        ))
+                        .with_rule(
+                            ThemeRule::new(
+                                ThemeTarget::StateLabel,
+                                ThemeStylePatch {
+                                    typography: TextStylePatch {
+                                        font_size_px: Specified::Value(40.0),
+                                        ..TextStylePatch::default()
+                                    },
+                                    ..ThemeStylePatch::default()
+                                },
+                            )
+                            .with_ordinal(OrdinalSelector::exact(1).unwrap()),
+                        ),
+                ),
+            )
+            .unwrap();
+        let resolved = theme.resolve(crate::DiagramFamilyId::STATE);
+        let mut model = StateDiagramRenderModel::default();
+        for (id, label) in [("Image", "<img src=x>"), ("Blank", "<span></span>")] {
+            let mut node = semantic_node(id, "rect");
+            node.label = Some(json!(label));
+            model.nodes.push(node);
+        }
+        let plan = StateStylePlan::resolve_for_test(
+            &model,
+            &json!({"htmlLabels": true}),
+            Some(&resolved),
+            Arc::new(ThemeResourcePolicy::interactive()),
+            None,
+            &test_work_meter(),
+        )
+        .unwrap();
+        let mut pending = FamilyThemeEvidence::from_theme(Some(&resolved));
+        plan.record_theme_evidence(&mut pending);
+        assert!(pending.applied().is_empty());
+        let evidence = emitted_theme_evidence(&plan, &resolved);
+        assert_eq!(
+            evidence.applied_capabilities(),
+            BTreeSet::from([ThemeCapability::Typography])
+        );
+        assert_eq!(evidence.applied().len(), 1);
+        assert_eq!(evidence.not_applicable_mechanisms().len(), 1);
+        for id in ["Image", "Blank"] {
+            let node = plan.node(id).unwrap();
+            assert_eq!(node.label_ordinal(), None);
+            assert_eq!(node.text_style().font_size, 30.0);
+        }
+        model.nodes.push(semantic_node("Visible", "rect"));
+        let plan = resolve_theme_plan(&model, &json!({"htmlLabels": true}), &resolved);
+        assert_eq!(plan.node("Visible").unwrap().label_ordinal(), Some(1));
+        assert_eq!(plan.node("Visible").unwrap().text_style().font_size, 40.0);
     }
 
     #[test]

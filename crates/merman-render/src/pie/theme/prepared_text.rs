@@ -267,34 +267,36 @@ impl PiePreparedText {
                 {
                     continue;
                 }
-                let applied = match property {
-                    ThemeTypographyProperty::FontSize => {
-                        if let Specified::Value(size) = typography.patch().font_size_px {
+                // Only the final winner is bound to the prepared role. Clear therefore keeps
+                // its original CSS and measurement baseline, with evidence deferred to the writer.
+                let prepared = match property {
+                    ThemeTypographyProperty::FontSize => match typography.patch().font_size_px {
+                        Specified::Value(size) => {
                             css.bind_text_size(role, &format!("{size}px"));
                             true
-                        } else {
-                            false
                         }
-                    }
-                    ThemeTypographyProperty::FontWeight => {
-                        if let Specified::Value(weight) = typography.patch().font_weight {
+                        Specified::Clear => true,
+                        Specified::Unspecified => false,
+                    },
+                    ThemeTypographyProperty::FontWeight => match typography.patch().font_weight {
+                        Specified::Value(weight) => {
                             css.bind_text_weight(role, weight.to_string());
                             true
-                        } else {
-                            false
                         }
-                    }
-                    ThemeTypographyProperty::FontStyle => {
-                        if let Specified::Value(style) = typography.patch().font_style {
+                        Specified::Clear => true,
+                        Specified::Unspecified => false,
+                    },
+                    ThemeTypographyProperty::FontStyle => match typography.patch().font_style {
+                        Specified::Value(style) => {
                             css.bind_text_style(role, style.id().to_owned());
                             true
-                        } else {
-                            false
                         }
-                    }
+                        Specified::Clear => true,
+                        Specified::Unspecified => false,
+                    },
                     _ => unreachable!("bounded Pie role typography"),
                 };
-                if applied {
+                if prepared {
                     owners.insert(
                         ResolvedStyleProperty::Typography(property),
                         (origin.rule_index(), ThemeCapability::Typography),
@@ -529,6 +531,90 @@ mod tests {
         }
         for text in ["Oak", "#32;Oak\u{1}", "#65;", " [0]"] {
             assert!(has_visible_pie_text(text), "{text:?}");
+        }
+    }
+
+    #[test]
+    fn typography_clear_preserves_measurement_baselines_and_defers_application() {
+        use crate::diagram_theme::{FontStyle, ThemeRule, ThemeRuleSet, ThemeStylePatch};
+
+        let mut value = ThemeStylePatch::default();
+        value.typography.font_size_px = Specified::Value(31.0);
+        value.typography.font_weight = Specified::Value(650);
+        value.typography.font_style = Specified::Value(FontStyle::Italic);
+        let mut clear = ThemeStylePatch::default();
+        clear.typography.font_size_px = Specified::Clear;
+        clear.typography.font_weight = Specified::Clear;
+        clear.typography.font_style = Specified::Clear;
+        let styles = PieTextRole::ALL
+            .into_iter()
+            .fold(ThemeRuleSet::default(), |styles, role| {
+                styles
+                    .with_rule(ThemeRule::new(role.target(), value.clone()))
+                    .with_rule(ThemeRule::new(role.target(), clear.clone()))
+            });
+        let theme = DiagramThemeCompiler::new()
+            .compile(DiagramThemeSpec::new().with_styles(styles))
+            .unwrap()
+            .resolve(DiagramFamilyId::PIE);
+        let model = PieDiagramModel {
+            title: Some("Title".to_owned()),
+            sections: vec![PieSection {
+                label: "Alpha".to_owned(),
+                value: 1.0,
+            }],
+            ..Default::default()
+        };
+        for config in [
+            serde_json::json!({}),
+            serde_json::json!({"themeVariables": {
+                "fontSize": "20px", "pieTitleTextSize": "150%",
+                "pieSectionTextSize": "1.25em", "pieLegendTextSize": "inherit"
+            }}),
+        ] {
+            let config = crate::test_support::presentation_config(config);
+            let (_, baseline) = PiePreparedText::new(&model, model.title.as_deref(), &config, None);
+            let (mut plan, mut css) =
+                PiePreparedText::new(&model, model.title.as_deref(), &config, Some(&theme));
+            plan.resolve_rules(
+                &mut css,
+                &config,
+                &theme,
+                &OperationWorkMeter::new(
+                    crate::resources::RenderResourcePolicy::unbounded_for_trusted_input(),
+                ),
+            )
+            .unwrap();
+            for role in PieTextRole::ALL {
+                assert_eq!(css.text_size(role), baseline.text_size(role));
+                assert_eq!(
+                    css.text_size_resolution(role),
+                    baseline.text_size_resolution(role)
+                );
+                assert_eq!(css.text_weight(role), baseline.text_weight(role));
+                assert_eq!(css.text_style(role), baseline.text_style(role));
+            }
+            for (actual, expected) in [
+                (
+                    css.title_measurement_style(),
+                    baseline.title_measurement_style(),
+                ),
+                (
+                    css.legend_measurement_style(),
+                    baseline.legend_measurement_style(),
+                ),
+            ] {
+                assert_eq!(actual.font_size, expected.font_size);
+                assert_eq!(actual.font_weight, expected.font_weight);
+                assert_eq!(actual.font_style, expected.font_style);
+                assert_eq!(actual.font_family, expected.font_family);
+            }
+            let mut evidence = FamilyThemeEvidence::from_theme(Some(&theme));
+            plan.record_evidence(&css, None, &mut evidence);
+            assert!(evidence.applied().is_empty());
+            assert_eq!(evidence.not_applicable_mechanisms().len(), 3);
+            assert!(evidence.residuals().is_empty());
+            assert!(plan.pending.iter().all(|rules| rules.len() == 1));
         }
     }
 

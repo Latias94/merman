@@ -115,17 +115,11 @@ impl ArchitectureEdgeStrokePlan {
                     if !selector.ordinal_domain_intersects_occurrence_count(edge_count) {
                         continue;
                     }
-                    let route_won = winner_properties
-                        .contains(&(rule_index, resolved_style_property_for_facet(facet)));
-                    let qualified_variant = matches!(
-                        selector,
-                        FamilyThemeSelectorShape::Static { variant: Some(_) }
-                            | FamilyThemeSelectorShape::Ordinal {
-                                variant: Some(_),
-                                ..
-                            }
-                    );
-                    if !route_won && !qualified_variant {
+                    // Winners come only from actual Default edge terminals. A qualified
+                    // selector still needs to match and win before it can be unsupported.
+                    if !winner_properties
+                        .contains(&(rule_index, resolved_style_property_for_facet(facet)))
+                    {
                         continue;
                     }
 

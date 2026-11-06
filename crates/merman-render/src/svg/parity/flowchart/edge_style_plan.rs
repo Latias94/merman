@@ -59,6 +59,100 @@ struct FlowchartEdgeStyleArtifact {
     source_stroke_width_value: Option<f32>,
 }
 
+#[derive(Debug, Clone, Copy)]
+struct FlowchartEdgePathSourceFacets {
+    stroke: crate::flowchart::FlowchartSourceFacetStatus,
+    stroke_width: crate::flowchart::FlowchartSourceFacetStatus,
+    stroke_width_value: Option<f32>,
+    stroke_dasharray: crate::flowchart::FlowchartSourceFacetStatus,
+}
+
+impl Default for FlowchartEdgePathSourceFacets {
+    fn default() -> Self {
+        Self {
+            stroke: crate::flowchart::FlowchartSourceFacetStatus::Absent,
+            stroke_width: crate::flowchart::FlowchartSourceFacetStatus::Absent,
+            stroke_width_value: None,
+            stroke_dasharray: crate::flowchart::FlowchartSourceFacetStatus::Absent,
+        }
+    }
+}
+
+#[derive(Debug)]
+struct FlowchartStructuralEdgePathStyle {
+    class: &'static str,
+    facets: FlowchartEdgePathSourceFacets,
+}
+
+impl FlowchartStructuralEdgePathStyle {
+    fn prepare(
+        class_defs: &IndexMap<String, Vec<String>>,
+        work: &crate::resources::OperationWorkMeter,
+    ) -> crate::Result<Vec<Self>> {
+        let mut definitions = ["root", "nodes", "edgePaths", "edges"]
+            .into_iter()
+            .filter_map(|class| {
+                class_defs
+                    .get_full(class)
+                    .map(|(index, _, declarations)| (index, class, declarations))
+            })
+            .collect::<Vec<_>>();
+        definitions.sort_unstable_by_key(|(index, _, _)| *index);
+        let mut styles = Vec::with_capacity(definitions.len());
+        for (_, class, declarations) in definitions {
+            for declaration in declarations {
+                work.charge(declaration.len())?;
+            }
+            // Inspect the same safe CSSOM projection emitted by the stylesheet. In particular,
+            // invalid and resource-bearing raw class declarations must not become source owners.
+            let (shape, _) = css::flowchart_classdef_css_declarations(declarations);
+            if shape.is_empty() {
+                continue;
+            }
+            // The CSSOM projection is a semicolon-delimited CSS declaration list, whereas the
+            // compatibility compiler accepts individual declarations or Mermaid comma groups.
+            let mut emitted_declarations = Vec::new();
+            crate::mermaid_style::visit_style_declaration_boundaries_with_checkpoints(
+                &shape,
+                &mut || work.charge(1),
+                |boundary| {
+                    emitted_declarations.push(boundary.raw().to_owned());
+                    Ok(true)
+                },
+            )?;
+            let compiled = flowchart_compile_prepared_styles(
+                &FlowchartPreparedClassStyles::default(),
+                &[],
+                &emitted_declarations,
+                &[],
+                Some(work),
+            )?;
+            styles.push(Self {
+                class,
+                facets: FlowchartEdgePathSourceFacets {
+                    stroke: compiled.source_stroke_status(),
+                    stroke_width: compiled.source_stroke_width_status(),
+                    stroke_width_value: compiled.admitted_stroke_width_value(),
+                    stroke_dasharray: compiled.source_stroke_dasharray_status(),
+                },
+            });
+        }
+        Ok(styles)
+    }
+
+    fn matches_path(&self, html_labels: bool, edges_group: bool, nested_root: bool) -> bool {
+        // Native `.CLASS path` reaches descendants; HTML `.CLASS > *` reaches only the edge
+        // group's direct path children. Recursive Dagre roots are nested beneath `.nodes`.
+        match self.class {
+            "edgePaths" => true,
+            "edges" => edges_group,
+            "root" => !html_labels,
+            "nodes" => !html_labels && nested_root,
+            _ => unreachable!("only fixed edge ancestor classes are prepared"),
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 struct PreparedEdgeStyles {
     has_label: bool,
@@ -66,6 +160,7 @@ struct PreparedEdgeStyles {
     layout_typography: OnceCell<Arc<PreparedEdgeLabelTypography>>,
     terminal_typography: OnceCell<Arc<PreparedEdgeLabelTypography>>,
     artifact: Arc<FlowchartEdgeStyleArtifact>,
+    path_sources: OnceCell<FlowchartEdgePathSourceFacets>,
     animation: FlowchartEdgeAnimationResolution,
     swimlane_label: Option<Arc<FlowchartCompiledStyles>>,
     stroke_width: Option<FlowchartEdgeStrokeWidthResolution>,
@@ -77,6 +172,7 @@ pub(crate) struct FlowchartEdgeStylePlan {
     #[cfg(test)]
     edges: FxHashMap<String, PreparedEdgeStyles>,
     edge_occurrences: Vec<PreparedEdgeStyles>,
+    structural_path_styles: Vec<FlowchartStructuralEdgePathStyle>,
     edge_stroke_width_config_override: bool,
     #[cfg(test)]
     parsed_class_declaration_count: usize,
@@ -126,6 +222,10 @@ impl FlowchartEdgeStylePlan {
         )?;
         plan.edge_stroke_width_config_override =
             effective_config.config_path_overrides_typed_default("themeVariables.strokeWidth");
+        if !model.edges.is_empty() {
+            plan.structural_path_styles =
+                FlowchartStructuralEdgePathStyle::prepare(&model.class_defs, work_meter)?;
+        }
         Ok(plan)
     }
 
@@ -246,6 +346,7 @@ impl FlowchartEdgeStylePlan {
                 stroke_width: None,
                 animation: FlowchartEdgeAnimationResolution::resolve(edge, &artifact.emission),
                 artifact,
+                path_sources: OnceCell::new(),
                 swimlane_label,
             };
             #[cfg(test)]
@@ -258,6 +359,7 @@ impl FlowchartEdgeStylePlan {
             #[cfg(test)]
             edges: prepared_edges,
             edge_occurrences: prepared_edge_occurrences,
+            structural_path_styles: Vec::new(),
             edge_stroke_width_config_override: false,
             #[cfg(test)]
             parsed_class_declaration_count,
@@ -298,6 +400,69 @@ impl FlowchartEdgeStylePlan {
         Ok(&self.occurrence(key)?.artifact.emission)
     }
 
+    pub(in crate::svg::parity::flowchart) fn bind_path_sources_for(
+        &self,
+        key: crate::flowchart::FlowchartEdgeKey,
+        html_labels: bool,
+        edges_group: bool,
+        nested_root: bool,
+        work: &crate::resources::OperationWorkMeter,
+    ) -> crate::Result<()> {
+        let occurrence = self.occurrence(key)?;
+        if occurrence.path_sources.get().is_some() {
+            return Ok(());
+        }
+        let mut sources = FlowchartEdgePathSourceFacets::default();
+        for style in &self.structural_path_styles {
+            work.charge(1)?;
+            if !style.matches_path(html_labels, edges_group, nested_root) {
+                continue;
+            }
+            // Every generated class declaration is important and has the same specificity.
+            // Catalog order therefore chooses each property independently.
+            if !style.facets.stroke.is_absent() {
+                sources.stroke = style.facets.stroke;
+            }
+            if !style.facets.stroke_width.is_absent() {
+                sources.stroke_width = style.facets.stroke_width;
+                sources.stroke_width_value = style.facets.stroke_width_value;
+            }
+            if !style.facets.stroke_dasharray.is_absent() {
+                sources.stroke_dasharray = style.facets.stroke_dasharray;
+            }
+        }
+        let _ = occurrence.path_sources.set(sources);
+        Ok(())
+    }
+
+    pub(in crate::svg::parity::flowchart) fn emitted_source_stroke_status_for(
+        &self,
+        key: crate::flowchart::FlowchartEdgeKey,
+        hand_drawn: bool,
+    ) -> crate::Result<crate::flowchart::FlowchartSourceFacetStatus> {
+        let occurrence = self.occurrence(key)?;
+        let structural = occurrence.path_sources.get().copied().unwrap_or_default();
+        Ok(occurrence
+            .artifact
+            .emission
+            .emitted_edge_source_stroke_status(hand_drawn)
+            .merge(structural.stroke))
+    }
+
+    pub(in crate::svg::parity::flowchart) fn emitted_source_stroke_dasharray_status_for(
+        &self,
+        key: crate::flowchart::FlowchartEdgeKey,
+        hand_drawn: bool,
+    ) -> crate::Result<crate::flowchart::FlowchartSourceFacetStatus> {
+        let occurrence = self.occurrence(key)?;
+        let structural = occurrence.path_sources.get().copied().unwrap_or_default();
+        Ok(occurrence
+            .artifact
+            .emission
+            .emitted_edge_source_stroke_dasharray_status(hand_drawn)
+            .merge(structural.stroke_dasharray))
+    }
+
     #[cfg(test)]
     pub(in crate::svg::parity::flowchart) fn edge_source_stroke_width_status_for(
         &self,
@@ -334,14 +499,37 @@ impl FlowchartEdgeStylePlan {
         &self,
         key: crate::flowchart::FlowchartEdgeKey,
     ) -> crate::Result<FlowchartEdgeStrokeWidthResolution> {
-        self.occurrence(key)?
+        let occurrence = self.occurrence(key)?;
+        let mut resolved = occurrence
             .stroke_width
             .ok_or_else(|| crate::Error::InvalidModel {
                 message: format!(
                     "missing prepared Flowchart stroke width for edge occurrence {}",
                     key.semantic_index()
                 ),
-            })
+            })?;
+        if let Some(source) = occurrence
+            .path_sources
+            .get()
+            .filter(|source| !source.stroke_width.is_absent())
+        {
+            resolved.precedence = crate::flowchart::FlowchartFacetPrecedence::new(
+                occurrence
+                    .artifact
+                    .source_stroke_width_status
+                    .merge(source.stroke_width),
+                self.edge_stroke_width_config_override,
+            );
+            resolved.typed_value = None;
+            // Generated class rules are important, but important declarations emitted directly
+            // on the path retain inline specificity. Unknown winners must stay unbounded.
+            resolved.paint_value = match occurrence.artifact.emission.edge_important_stroke_width()
+            {
+                Some(declaration) => admitted_flowchart_source_stroke_width(declaration.value()),
+                None => source.stroke_width_value,
+            };
+        }
+        Ok(resolved)
     }
 
     fn resolve_edge_stroke_width(
@@ -639,6 +827,333 @@ mod tests {
             animation: None,
             step: None,
             length: 1,
+        }
+    }
+
+    #[test]
+    fn structural_path_sources_follow_safe_css_catalog_order_and_real_ancestry() {
+        use crate::flowchart::FlowchartSourceFacetStatus::{Absent, Admitted, Unverified};
+        let meter = crate::resources::OperationWorkMeter::new(
+            crate::resources::RenderResourcePolicy::unbounded_for_trusted_input(),
+        );
+        let key = crate::flowchart::FlowchartEdgeKey::new(0);
+        for (definitions, html, edges_group, nested, expected) in [
+            (
+                vec![("root", "stroke:#aabbcc")],
+                false,
+                false,
+                false,
+                Admitted,
+            ),
+            (vec![("root", "stroke:#aabbcc")], true, false, false, Absent),
+            (
+                vec![("edgePaths", "stroke:#aabbcc")],
+                true,
+                false,
+                false,
+                Admitted,
+            ),
+            (
+                vec![("edges", "stroke:#aabbcc")],
+                false,
+                false,
+                false,
+                Absent,
+            ),
+            (
+                vec![("edges", "stroke:#aabbcc")],
+                true,
+                true,
+                false,
+                Admitted,
+            ),
+            (
+                vec![("nodes", "stroke:#aabbcc")],
+                false,
+                false,
+                false,
+                Absent,
+            ),
+            (
+                vec![("nodes", "stroke:#aabbcc")],
+                false,
+                false,
+                true,
+                Admitted,
+            ),
+            (vec![("nodes", "stroke:#aabbcc")], true, false, true, Absent),
+            (
+                vec![("root", "stroke:url(https://example.com/paint)")],
+                false,
+                false,
+                false,
+                Absent,
+            ),
+            (
+                vec![
+                    ("root", "stroke:var(--color)"),
+                    ("edgePaths", "stroke:#aabbcc"),
+                ],
+                false,
+                false,
+                false,
+                Admitted,
+            ),
+            (
+                vec![
+                    ("edgePaths", "stroke:#aabbcc"),
+                    ("root", "stroke:var(--color)"),
+                ],
+                false,
+                false,
+                false,
+                Unverified,
+            ),
+        ] {
+            let class_defs = definitions
+                .into_iter()
+                .map(|(class, declaration)| (class.to_owned(), vec![declaration.to_owned()]))
+                .collect::<IndexMap<_, _>>();
+            let mut plan = FlowchartEdgeStylePlan::prepare(
+                &class_defs,
+                &[edge("edge", &[], &[])],
+                &[],
+                false,
+                false,
+                &meter,
+            )
+            .unwrap();
+            plan.structural_path_styles =
+                FlowchartStructuralEdgePathStyle::prepare(&class_defs, &meter).unwrap();
+            plan.bind_path_sources_for(key, html, edges_group, nested, &meter)
+                .unwrap();
+            assert_eq!(
+                plan.emitted_source_stroke_status_for(key, false).unwrap(),
+                expected
+            );
+        }
+    }
+
+    #[test]
+    fn structural_path_sources_keep_all_normalized_css_declarations() {
+        use crate::flowchart::FlowchartSourceFacetStatus::Admitted;
+        let class_defs = IndexMap::from([(
+            "root".to_owned(),
+            vec![
+                "stroke:rgb(170, 187, 204)".to_owned(),
+                "stroke-width:3px".to_owned(),
+                "stroke-dasharray:2 4".to_owned(),
+                "font-family:'A;B', serif".to_owned(),
+            ],
+        )]);
+        let meter = crate::resources::OperationWorkMeter::new(
+            crate::resources::RenderResourcePolicy::unbounded_for_trusted_input(),
+        );
+        let mut plan = FlowchartEdgeStylePlan::prepare(
+            &class_defs,
+            &[edge("edge", &[], &[])],
+            &[],
+            false,
+            false,
+            &meter,
+        )
+        .unwrap();
+        plan.structural_path_styles =
+            FlowchartStructuralEdgePathStyle::prepare(&class_defs, &meter).unwrap();
+        let key = crate::flowchart::FlowchartEdgeKey::new(0);
+        plan.bind_path_sources_for(key, false, false, false, &meter)
+            .unwrap();
+        assert_eq!(
+            plan.emitted_source_stroke_status_for(key, false).unwrap(),
+            Admitted
+        );
+        assert_eq!(
+            plan.emitted_source_stroke_dasharray_status_for(key, false)
+                .unwrap(),
+            Admitted
+        );
+        let sources = plan.occurrence(key).unwrap().path_sources.get().unwrap();
+        assert_eq!(sources.stroke_width, Admitted);
+        assert_eq!(sources.stroke_width_value, Some(3.0));
+    }
+
+    #[test]
+    fn structural_path_width_preserves_emitted_inline_important_winners() {
+        use crate::diagram_theme::{
+            DiagramThemeCompiler, DiagramThemeSpec, ThemeRule, ThemeRuleSet, ThemeStylePatch,
+            ThemeTarget,
+        };
+        use crate::flowchart::FlowchartSourceFacetStatus::{Admitted, Unverified};
+
+        let meter = crate::resources::OperationWorkMeter::new(
+            crate::resources::RenderResourcePolicy::unbounded_for_trusted_input(),
+        );
+        let theme = DiagramThemeCompiler::new()
+            .compile(
+                DiagramThemeSpec::new().with_styles(ThemeRuleSet::default().with_rule(
+                    ThemeRule::new(
+                        ThemeTarget::Edge,
+                        ThemeStylePatch::default().with_stroke_width(8.0).unwrap(),
+                    ),
+                )),
+            )
+            .unwrap()
+            .resolve(crate::DiagramFamilyId::FLOWCHART);
+        let edge_theme =
+            crate::flowchart::FlowchartEdgeThemeStyle::resolve(Some(&theme), &meter).unwrap();
+        let key = crate::flowchart::FlowchartEdgeKey::new(0);
+        for (
+            structural_width,
+            hand_drawn,
+            classes,
+            defaults,
+            inline,
+            expected_width,
+            expected_status,
+        ) in [
+            (
+                "3px",
+                false,
+                vec![],
+                vec![],
+                vec!["stroke-width:100px !important"],
+                Some(100.0),
+                Admitted,
+            ),
+            (
+                "3px",
+                false,
+                vec![],
+                vec![],
+                vec!["stroke-width:100px"],
+                Some(3.0),
+                Admitted,
+            ),
+            (
+                "3px",
+                false,
+                vec![],
+                vec!["stroke-width:100px !important"],
+                vec!["stroke-width:200px"],
+                Some(100.0),
+                Admitted,
+            ),
+            (
+                "3px",
+                false,
+                vec![],
+                vec![],
+                vec![
+                    "stroke-width:100px !important",
+                    "stroke-width:200px !important",
+                ],
+                Some(200.0),
+                Admitted,
+            ),
+            (
+                "3px",
+                false,
+                vec![],
+                vec![],
+                vec!["stroke-width:var(--width) !important"],
+                None,
+                Unverified,
+            ),
+            (
+                "3px",
+                false,
+                vec!["wide"],
+                vec![],
+                vec!["stroke-width:200px"],
+                Some(100.0),
+                Admitted,
+            ),
+            (
+                "3px",
+                true,
+                vec!["wide"],
+                vec![],
+                vec![],
+                Some(3.0),
+                Admitted,
+            ),
+            (
+                "3px",
+                true,
+                vec![],
+                vec![],
+                vec!["stroke-width:100px !important"],
+                Some(100.0),
+                Admitted,
+            ),
+            (
+                "var(--width)",
+                false,
+                vec![],
+                vec![],
+                vec!["stroke-width:100px !important"],
+                Some(100.0),
+                Unverified,
+            ),
+        ] {
+            let class_defs = IndexMap::from([
+                (
+                    "nodes".to_owned(),
+                    vec![format!("stroke-width:{structural_width}")],
+                ),
+                (
+                    "wide".to_owned(),
+                    vec!["stroke-width:100px !important".to_owned()],
+                ),
+            ]);
+            let edge = edge("nested", &classes, &inline);
+            let defaults = defaults.into_iter().map(str::to_owned).collect::<Vec<_>>();
+            let mut plan = FlowchartEdgeStylePlan::prepare(
+                &class_defs,
+                std::slice::from_ref(&edge),
+                &defaults,
+                hand_drawn,
+                false,
+                &meter,
+            )
+            .unwrap();
+            plan.structural_path_styles =
+                FlowchartStructuralEdgePathStyle::prepare(&class_defs, &meter).unwrap();
+            let original = plan
+                .resolve_edge_stroke_width(key, &edge, &edge_theme, 1.3, hand_drawn)
+                .unwrap();
+            plan.edge_occurrences[0].stroke_width = Some(original);
+            // Native .nodes path reaches an edge below a recursive Dagre root.
+            plan.bind_path_sources_for(key, false, false, true, &meter)
+                .unwrap();
+            let resolved = plan.stroke_width_for(key).unwrap();
+            assert_eq!(
+                resolved.typed_value(),
+                None,
+                "structural source still blocks typed width"
+            );
+            assert_eq!(
+                resolved.paint_value, expected_width,
+                "structural_width={structural_width}, hand_drawn={hand_drawn}, classes={classes:?}, defaults={defaults:?}, inline={inline:?}"
+            );
+            assert_eq!(
+                resolved.paint_outset(),
+                expected_width.map(|width| f64::from(width) / 2.0)
+            );
+            assert_eq!(
+                resolved.precedence,
+                crate::flowchart::FlowchartFacetPrecedence::new(expected_status, false)
+            );
+            if expected_width.is_none() {
+                assert!(
+                    plan.edge_for(key)
+                        .unwrap()
+                        .emitted_edge_source_residuals("nested", hand_drawn)
+                        .iter()
+                        .any(|residual| residual.property() == Some("stroke-width")),
+                    "unknown inline width must retain its existing source residual"
+                );
+            }
         }
     }
 

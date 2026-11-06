@@ -172,6 +172,7 @@ fn render_block_direct_with_edge_theme(
         &parsed.metadata().effective_config,
         model,
         &layout,
+        &prepared_labels,
         execution.work_meter(),
     )
     .unwrap();
@@ -426,9 +427,15 @@ fn diagram_id_terminal_precedes_later_block_model_validation() {
 
     let config = &parsed.metadata().effective_config;
     let typography = BlockTypographyThemePlan::resolve(None, config).unwrap();
-    let labels =
-        BlockNodeLabelPaintPlan::resolve(None, config, model, &layout, options.work_meter())
-            .unwrap();
+    let labels = BlockNodeLabelPaintPlan::resolve(
+        None,
+        config,
+        model,
+        &layout,
+        &crate::block::BlockPreparedLabels::default(),
+        options.work_meter(),
+    )
+    .unwrap();
     let edges = crate::block::BlockEdgePaintPlan::resolve(
         None,
         config,

@@ -113,7 +113,9 @@ fn assert_theme_markup_and_labels(
         .replace(r#"class="cluster undefined "#, r#"class="cluster "#)
         .replace(r#"class="node undefined"#, r#"class="node"#)
         .replace(r#"class="node-bkg node-undefined""#, r#"class="node-bkg""#)
-        .replace(r#"style="undefined;;;undefined""#, r#"style="""#);
+        .replace(r#"style="undefined;;;undefined""#, r#"style="""#)
+        // Neo prepends its edge mask to the same upstream Dagre style placeholder.
+        .replace(r#";undefined;;;undefined""#, r#";""#);
     assert!(
         !svg_without_known_upstream_placeholders.contains("undefined"),
         "{name}: SVG leaked undefined tokens"

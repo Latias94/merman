@@ -221,6 +221,8 @@ impl TreeViewThemePlan {
         }
         let (node_count, expected_line_count, expected_highlight_count) =
             tree_view_terminal_counts(&model.root);
+        let has_visible_typography = node_count != 0
+            && !crate::mermaid_style::css_font_size_is_zero(&css.label_font_size_css);
         let mut paint_residuals =
             BTreeMap::<FamilyThemeMechanismKey, FamilyThemeResidualReason>::new();
 
@@ -373,14 +375,18 @@ impl TreeViewThemePlan {
             None,
             work_meter,
         )?;
+        let mut label_paint_residuals = BTreeMap::new();
         let label_color = resolve_tree_view_paint(
             theme,
             &label_style,
             &[ThemeTarget::NodeLabel, ThemeTarget::Text],
             TreeViewPaintProperty::Fill,
             label_config_owned,
-            &mut paint_residuals,
+            &mut label_paint_residuals,
         );
+        if has_visible_typography {
+            paint_residuals.extend(label_paint_residuals);
+        }
         // Mermaid's line terminal is stroke-first. A fill-only Edge rule is the documented
         // fallback for themes that do not provide a stroke assignment.
         let line_color = resolve_tree_view_paint(
@@ -485,7 +491,9 @@ impl TreeViewThemePlan {
             }
         }
 
-        let label_source_ownership = label_config_owned.then(|| vec![true; node_count]);
+        // Zero-sized labels retain geometry occurrences while their fill is not applicable.
+        let label_source_ownership =
+            (label_config_owned || !has_visible_typography).then(|| vec![true; node_count]);
         let label_domain = UnsupportedTerminalDomain::textual(
             ThemeTarget::NodeLabel,
             &[ThemeTarget::NodeLabel, ThemeTarget::Text],
@@ -607,7 +615,7 @@ impl TreeViewThemePlan {
             css,
             line_thickness_override,
             expected_line_count: NonZeroUsize::new(expected_line_count),
-            has_visible_typography: node_count != 0,
+            has_visible_typography,
             label_color,
             highlight_fill,
             highlight_stroke,
@@ -706,6 +714,11 @@ impl TreeViewThemePlan {
         }
         self.inherited_font_stack
             .record_unsupported_typography_evidence(evidence, self.has_visible_typography);
+        if !self.has_visible_typography
+            && let Some(assignment) = &self.label_color
+        {
+            evidence.mark_not_applicable(assignment.key.clone());
+        }
         if let Some(receipt) = self.terminal_receipt.get() {
             for (property, assignment) in [
                 (ResolvedStyleProperty::Fill, self.highlight_fill.as_ref()),
@@ -730,6 +743,7 @@ impl TreeViewThemePlan {
                 evidence.mark_applied_with_capabilities(key, [ThemeCapability::BorderStyling]);
             }
             if let Some(assignment) = &self.label_color
+                && self.has_visible_typography
                 && receipt.label_color_matches(assignment.paint.css())
             {
                 evidence.mark_applied_with_capabilities(

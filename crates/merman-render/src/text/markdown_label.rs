@@ -481,6 +481,7 @@ fn mermaid_markdown_to_label_fragment(
     }
 
     let mut out = String::new();
+    let mut has_raw_html_block = false;
     for block in mermaid_markdown_top_level_blocks(&markdown) {
         let raw = &markdown[block.range];
         match block.kind {
@@ -491,7 +492,10 @@ fn mermaid_markdown_to_label_fragment(
                     xhtml,
                 ));
             }
-            MermaidMarkdownBlockKind::Html => out.push_str(raw.trim_end_matches(['\r', '\n'])),
+            MermaidMarkdownBlockKind::Html => {
+                has_raw_html_block = true;
+                out.push_str(raw.trim_end_matches(['\r', '\n']));
+            }
             MermaidMarkdownBlockKind::IndentedCode => {
                 let raw = raw.trim_end_matches(['\r', '\n']);
                 if xhtml {
@@ -511,6 +515,20 @@ fn mermaid_markdown_to_label_fragment(
         }
     }
 
+    if xhtml && has_raw_html_block {
+        // Raw blocks bypass inline Markdown's void-element normalization. Preserve valid
+        // XHTML byte-for-byte, and recover HTML only after the complete projection so tags
+        // spanning blocks remain connected. Code and escaped HTML are already literal text.
+        let wrapped = format!(r#"<div xmlns="http://www.w3.org/1999/xhtml">{out}</div>"#);
+        if crate::xml_dom::Document::parse(&wrapped).is_err() {
+            return merman_markup::sanitize::html_fragment_to_xhtml(&out).unwrap_or_else(|| {
+                // A rejected conversion remains visible as literal projection text.
+                let mut literal = String::with_capacity(out.len());
+                escape_xml_segment(&mut literal, &out);
+                literal
+            });
+        }
+    }
     out
 }
 
@@ -525,21 +543,21 @@ pub(crate) fn mermaid_markdown_to_html_label_fragment(
 ) -> String {
     mermaid_markdown_to_label_fragment(markdown, markdown_auto_wrap, false)
 }
-fn escape_xml_text_preserving_entities(raw: &str) -> String {
-    fn escape_xml_segment(out: &mut String, raw: &str) {
-        for ch in raw.chars() {
-            if !crate::xml::is_xml_1_0_char(ch) {
-                continue;
-            }
-            match ch {
-                '&' => out.push_str("&amp;"),
-                '<' => out.push_str("&lt;"),
-                '>' => out.push_str("&gt;"),
-                _ => out.push(ch),
-            }
+fn escape_xml_segment(out: &mut String, raw: &str) {
+    for ch in raw.chars() {
+        if !crate::xml::is_xml_1_0_char(ch) {
+            continue;
+        }
+        match ch {
+            '&' => out.push_str("&amp;"),
+            '<' => out.push_str("&lt;"),
+            '>' => out.push_str("&gt;"),
+            _ => out.push(ch),
         }
     }
+}
 
+fn escape_xml_text_preserving_entities(raw: &str) -> String {
     let raw = crate::xml::normalize_html_entities_for_xml(raw);
     let raw = raw.as_ref();
     let mut out = String::with_capacity(raw.len());
@@ -789,6 +807,76 @@ mod tests {
         assert_eq!(
             mermaid_markdown_to_xhtml_label_fragment(input, true),
             "<p>Hello<br/>world</p>"
+        );
+    }
+
+    #[test]
+    fn xhtml_raw_html_blocks_recover_void_elements_without_resanitizing() {
+        for (input, html) in [
+            ("<br>", "<br>"),
+            (
+                "<div data-theme='custom'><br><img src='icon.png' alt='A &amp; B'></div>",
+                "<div data-theme='custom'><br><img src='icon.png' alt='A &amp; B'></div>",
+            ),
+            (
+                "<div><br>\n\nA &amp; B\n\n</div>",
+                "<div><br><p>A &amp; B</p></div>",
+            ),
+        ] {
+            let fragment = mermaid_markdown_to_xhtml_label_fragment(input, true);
+            let wrapped = format!(r#"<div xmlns="http://www.w3.org/1999/xhtml">{fragment}</div>"#);
+            let document = crate::xml_dom::Document::parse(&wrapped)
+                .expect("raw HTML block must produce well-formed XHTML");
+            assert!(document.descendants().any(|node| node.has_tag_name("br")));
+            if input.contains("data-theme") {
+                assert!(
+                    document
+                        .descendants()
+                        .any(|node| { node.attribute("data-theme") == Some("custom") })
+                );
+                assert!(document.descendants().any(|node| {
+                    node.has_tag_name("img")
+                        && node.attribute("src") == Some("icon.png")
+                        && node.attribute("alt") == Some("A & B")
+                }));
+            }
+            assert_eq!(mermaid_markdown_to_html_label_fragment(input, true), html);
+        }
+
+        let valid = "<div data-theme='custom'><br/><span>A &amp; B</span></div>";
+        assert_eq!(mermaid_markdown_to_xhtml_label_fragment(valid, true), valid);
+    }
+
+    #[test]
+    fn xhtml_raw_block_recovery_keeps_markdown_code_and_escaped_html_literal() {
+        let input = "<br>\n\n`<img src=x>` and \\<span>literal\\</span>";
+        let fragment = mermaid_markdown_to_xhtml_label_fragment(input, true);
+        let wrapped = format!(r#"<div xmlns="http://www.w3.org/1999/xhtml">{fragment}</div>"#);
+        let document = crate::xml_dom::Document::parse(&wrapped).unwrap();
+        assert!(document.descendants().any(|node| node.has_tag_name("br")));
+        assert!(!document.descendants().any(|node| node.has_tag_name("img")));
+        assert!(!document.descendants().any(|node| node.has_tag_name("span")));
+        let text = document
+            .descendants()
+            .filter_map(|node| node.is_text().then(|| node.text().unwrap_or_default()))
+            .collect::<String>();
+        assert!(text.contains("`<img src=x>`"), "{fragment}");
+        assert!(text.contains("<span>literal</span>"), "{fragment}");
+    }
+
+    #[test]
+    fn rejected_xhtml_recovery_displays_the_projection_as_literal_text() {
+        let input = "<div><x!>&lt;code&gt; &amp; `<br>`</x!></div>";
+        assert!(merman_markup::sanitize::html_fragment_to_xhtml(input).is_none());
+        let fragment = mermaid_markdown_to_xhtml_label_fragment(input, true);
+        let wrapped = format!("<root>{fragment}</root>");
+        let document = crate::xml_dom::Document::parse(&wrapped).unwrap();
+        assert_eq!(document.root_element().text(), Some(input));
+        assert!(
+            !document
+                .root_element()
+                .children()
+                .any(|node| node.is_element())
         );
     }
 

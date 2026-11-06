@@ -595,7 +595,7 @@ pub(super) fn xhtml_from_sanitized_svg_fragment<S: SanitizeOutputSink>(
     parse_and_serialize(text, None, sink, Output::Xhtml, ns!(svg))
 }
 
-fn parse_and_serialize<S: SanitizeOutputSink>(
+pub(super) fn parse_and_serialize<S: SanitizeOutputSink>(
     text: &str,
     cfg: Option<&DompurifyEffectiveConfig>,
     sink: &S,
@@ -625,7 +625,8 @@ fn parse_and_serialize<S: SanitizeOutputSink>(
         options.tree_builder.scripting_enabled = false;
         TreeBuilder::new(builder, options.tree_builder)
     } else {
-        let context_name = QualName::new(None, context.clone(), LocalName::from("svg"));
+        let local_name = if context == ns!(html) { "div" } else { "svg" };
+        let context_name = QualName::new(None, context.clone(), LocalName::from(local_name));
         let context_element =
             html5ever::tree_builder::create_element(&builder, context_name, Vec::new());
         let tree_builder =

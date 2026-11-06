@@ -1809,20 +1809,35 @@ fn layout_flowchart_with_model(
         let raw_label = model.node_label_for_render(n).unwrap_or(&n.id);
         let wrapping_width = super::bpmn::wrapping_width(n.layout_shape.as_deref(), wrapping_width);
         let label_type = n.label_type.as_deref().unwrap_or("text");
-        let node_parent = label_typography.source_parent_style(
-            crate::diagram_theme::ThemeTarget::NodeLabel,
+        let label_dom = (
+            edge_html_labels,
+            super::FlowchartLabelDom::node(
+                n.layout_shape.as_deref().unwrap_or("squareRect"),
+                raw_label,
+                label_type,
+                node_wrap_mode == WrapMode::HtmlLike,
+                crate::config::config_diagram_look(effective_config_value).is_hand_drawn(),
+            ),
+        );
+        let structural = super::FlowchartStructuralLabelTypography::prepare(
+            &model.class_defs,
+            label_dom.0,
+            label_dom.1,
+            |units| work_control.charge_adapter(units),
+        )?;
+        let node_parent = label_typography.node_source_parent_style(
             node_label_base_style,
             &model.class_defs,
-            &n.classes,
-            &n.styles,
-            true,
+            (&n.classes, &n.styles, true),
+            &structural,
         );
-        let node_text_style = flowchart_effective_text_style_for_node_classes_with_provenance(
+        let mut node_text_style = flowchart_effective_text_style_for_node_classes_with_provenance(
             node_parent.as_ref(),
             &model.class_defs,
             &n.classes,
             &n.styles,
         );
+        structural.apply_to_content(&mut node_text_style.style);
         let svg_width_mode = flowchart_node_svg_width_mode(
             raw_label,
             label_type,
@@ -1901,21 +1916,36 @@ fn layout_flowchart_with_model(
         }
         let label_type = sg.label_type.as_deref().unwrap_or("text");
         let (classes, styles) = model.effective_subgraph_css(subgraph_index, sg);
-        let parent_style = label_typography.source_parent_style(
-            crate::diagram_theme::ThemeTarget::NodeLabel,
+        let title = model.subgraph_title_for_render(subgraph_index, sg);
+        let label_dom = (
+            edge_html_labels,
+            super::FlowchartLabelDom::node(
+                "squareRect",
+                title,
+                label_type,
+                node_wrap_mode == WrapMode::HtmlLike,
+                crate::config::config_diagram_look(effective_config_value).is_hand_drawn(),
+            ),
+        );
+        let structural = super::FlowchartStructuralLabelTypography::prepare(
+            &model.class_defs,
+            label_dom.0,
+            label_dom.1,
+            |units| work_control.charge_adapter(units),
+        )?;
+        let parent_style = label_typography.node_source_parent_style(
             cluster_label_base_style,
             &model.class_defs,
-            classes,
-            styles,
-            false,
+            (classes, styles, false),
+            &structural,
         );
-        let sg_text_style = flowchart_effective_text_style_for_classes_with_provenance(
+        let mut sg_text_style = flowchart_effective_text_style_for_classes_with_provenance(
             parent_style.as_ref(),
             &model.class_defs,
             classes,
             styles,
         );
-        let title = model.subgraph_title_for_render(subgraph_index, sg);
+        structural.apply_to_content(&mut sg_text_style.style);
         // Mermaid renders an empty subgraph through the ordinary node `labelHelper`: wrapping
         // probes use `flowchart.wrappingWidth` and `getComputedTextLength()`, while the final label
         // dimensions come from `getBBox()`. Selecting `ComputedLength` here would add a post-wrap
@@ -1984,26 +2014,41 @@ fn layout_flowchart_with_model(
         }
         let label_type = sg.label_type.as_deref().unwrap_or("text");
         let (classes, styles) = model.effective_subgraph_css(subgraph_index, sg);
+        let title = model.subgraph_title_for_render(subgraph_index, sg);
+        let label_dom = (
+            edge_html_labels,
+            super::FlowchartLabelDom::node(
+                "collapsedGroup",
+                title,
+                label_type,
+                node_wrap_mode == WrapMode::HtmlLike,
+                crate::config::config_diagram_look(effective_config_value).is_hand_drawn(),
+            ),
+        );
+        let structural = super::FlowchartStructuralLabelTypography::prepare(
+            &model.class_defs,
+            label_dom.0,
+            label_dom.1,
+            |units| work_control.charge_adapter(units),
+        )?;
         let base_style = if node_wrap_mode == WrapMode::HtmlLike {
             &html_label_text_style
         } else {
             &text_style
         };
-        let base_style = label_typography.source_parent_style(
-            crate::diagram_theme::ThemeTarget::NodeLabel,
+        let base_style = label_typography.node_source_parent_style(
             base_style,
             &model.class_defs,
-            classes,
-            styles,
-            false,
+            (classes, styles, false),
+            &structural,
         );
-        let text_style_for_label = flowchart_effective_text_style_for_classes(
+        let mut text_style_for_label = flowchart_effective_text_style_for_classes(
             base_style.as_ref(),
             &model.class_defs,
             classes,
             styles,
         );
-        let title = model.subgraph_title_for_render(subgraph_index, sg);
+        structural.apply_to_content(&mut text_style_for_label);
         let mut metrics = measure_flowchart_svg_label_for_layout_with_terminal_foreground(
             svg_label_sidecar,
             Some(FlowchartSvgLabelOwner::SubgraphTitle(subgraph_index)),

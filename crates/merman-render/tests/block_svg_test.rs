@@ -20,20 +20,32 @@ use regex::Regex;
 fn independent_block_presentation(
     model: merman_model::families::block::BlockDiagramModel,
 ) -> merman_model::presentation::PresentationDiagram {
+    independent_block_presentation_with_config(
+        model,
+        merman_model::MermaidConfig::empty_object(),
+        None,
+    )
+}
+
+fn independent_block_presentation_with_config(
+    model: merman_model::families::block::BlockDiagramModel,
+    config: merman_model::MermaidConfig,
+    theme: Option<&DiagramTheme>,
+) -> merman_model::presentation::PresentationDiagram {
+    use merman_model::OperationControl;
     use merman_model::families::block::BlockDiagramRenderModel;
     use merman_model::presentation::{
         AuthoredPresentationMetadata, PresentationContext, PresentationDiagram, RenderSemanticModel,
     };
     use merman_model::resources::InputResourcePolicy;
-    use merman_model::{MermaidConfig, OperationControl};
 
     PresentationDiagram::try_new(
         AuthoredPresentationMetadata {
             diagram_type: "block".to_string(),
-            config: MermaidConfig::empty_object(),
-            effective_config: MermaidConfig::empty_object(),
+            config: config.clone(),
+            effective_config: config,
             title: None,
-            theme_recipe: None,
+            theme_recipe: theme.map(|theme| theme.compatibility_recipe().clone()),
         },
         RenderSemanticModel::Block(BlockDiagramRenderModel::from_semantic_model(model)),
         PresentationContext::None,
@@ -316,6 +328,52 @@ fn block_stylesheet_text(svg: &str) -> String {
         .to_owned()
 }
 
+// Check only Block's generated class selectors against the actual label DOM. These fixtures
+// have one source color, so no general stylesheet parser or inferred ancestor cascade is needed.
+fn assert_block_source_class_reaches_label_terminal(
+    document: &roxmltree::Document<'_>,
+    terminal: roxmltree::Node<'_, '_>,
+    class: &str,
+    property: &str,
+    color: &str,
+) {
+    let css = document
+        .descendants()
+        .find(|node| node.has_tag_name("style"))
+        .and_then(|node| node.text())
+        .unwrap();
+    let diagram_id = document.root_element().attribute("id").unwrap();
+    let has_class = |node: roxmltree::Node<'_, '_>| {
+        node.attribute("class")
+            .is_some_and(|classes| classes.split_ascii_whitespace().any(|value| value == class))
+    };
+    if terminal.has_tag_name("p") {
+        assert_eq!(property, "color");
+        assert!(terminal.parent_element().is_some_and(has_class));
+        assert!(css.contains(&format!(
+            "#{diagram_id} .{class}>*{{color:{color}!important;}}"
+        )));
+    } else if property == "color" {
+        let word = terminal
+            .descendants()
+            .find(|node| node.has_tag_name("tspan") && node.children().any(|node| node.is_text()))
+            .expect("visible native label word");
+        assert!(word.ancestors().skip(1).any(has_class));
+        assert!(css.contains(&format!(
+            "#{diagram_id} .{class} tspan{{fill:{color}!important;}}"
+        )));
+    } else {
+        assert_eq!(property, "fill");
+        assert!(terminal.descendants().any(|node| {
+            node.parent_element().is_some_and(has_class)
+                && (node.has_tag_name("text") || node.has_tag_name("tspan"))
+        }));
+        assert!(css.contains(&format!(
+            "#{diagram_id} .{class}>*{{fill:{color}!important;}}"
+        )));
+    }
+}
+
 fn numeric_attribute(node: roxmltree::Node<'_, '_>, name: &str) -> f64 {
     node.attribute(name)
         .unwrap_or_else(|| panic!("missing {name} attribute"))
@@ -555,12 +613,20 @@ fn render_block_with_theme_requirement(
         .expect("parse themed Block")
         .expect("detect themed Block")
         .into_presentation();
+    render_block_presentation_with_theme(&parsed, theme, requirement)
+}
+
+fn render_block_presentation_with_theme(
+    parsed: &merman_model::presentation::PresentationDiagram,
+    theme: &DiagramTheme,
+    requirement: ThemePortabilityRequirement,
+) -> family::RenderedFamilySvg {
     let session = RenderEnvironment::deterministic()
         .with_theme_portability_requirement(requirement)
         .begin_session_with_theme(theme)
         .expect("begin themed Block session");
 
-    family::prepare(&parsed, &LayoutOptions::headless_svg_defaults(), session)
+    family::prepare(parsed, &LayoutOptions::headless_svg_defaults(), session)
         .expect("prepare themed Block")
         .render_svg(
             &SvgRenderOptions {
@@ -737,38 +803,210 @@ fn block_empty_node_label_paint_is_not_applicable() {
 }
 
 #[test]
-fn block_node_label_source_color_suppresses_theme_evidence() {
+fn block_html_block_label_colors_do_not_certify_an_empty_paragraph() {
+    let color = "#b316cd";
+    for target in [ThemeTarget::NodeLabel, ThemeTarget::ClusterLabel] {
+        let theme = block_cluster_theme([ThemeRule::new(
+            target,
+            ThemeStylePatch::default().with_fill(CanvasPaint::solid(color).unwrap()),
+        )]);
+        for mixed in [false, true] {
+            for source_color in [false, true] {
+                let label = if mixed {
+                    "Before<div>Alpha</div>"
+                } else {
+                    "<div>Alpha</div>"
+                };
+                let (mut source, id) = if target == ThemeTarget::ClusterLabel {
+                    (
+                        format!("block\nblock:G[\"{label}\"]\nC[\"Child\"]\nend\n"),
+                        "G",
+                    )
+                } else {
+                    (format!("block\nA[\"{label}\"]\n"), "A")
+                };
+                if source_color {
+                    source.push_str(&format!("style {id} color:#123456\n"));
+                }
+                let engine = || {
+                    MermaidEngine::new().with_site_config(
+                        merman_core::presentation::SourcePresentationConfig::from_value(
+                            serde_json::json!({"htmlLabels": true, "securityLevel": "strict"}),
+                        ),
+                    )
+                };
+                let rendered = render_block_with_theme_requirement(
+                    &source,
+                    &theme,
+                    engine(),
+                    ThemePortabilityRequirement::BestEffort,
+                );
+                let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+                let node = document
+                    .descendants()
+                    .find(|node| node.attribute("id") == Some(format!("block-theme-{id}").as_str()))
+                    .unwrap();
+                let visible = node
+                    .descendants()
+                    .find(|node| node.has_tag_name("div") && node.text() == Some("Alpha"))
+                    .expect("the real visible HTML block must remain in the label");
+                assert!(
+                    !visible.ancestors().any(|node| node.has_tag_name("p")),
+                    "HTML5 recovery places the visible block outside p"
+                );
+                assert!(
+                    !node.descendants().any(|node| node
+                        .attribute("style")
+                        .is_some_and(|style| style.contains(color))),
+                    "an unconsumed paint must not color an empty p"
+                );
+                if source_color {
+                    assert!(
+                        visible.ancestors().any(|node| node
+                            .attribute("style")
+                            .is_some_and(|style| style.contains("color:#123456"))),
+                        "the visible div retains its actual inherited source color"
+                    );
+                }
+                let evidence =
+                    merman_render::__private::family_evidence(rendered.into_completion().report());
+                let source_owned = source_color && !mixed;
+                assert_eq!(evidence.applied_count(), 0);
+                assert_eq!(evidence.not_applicable_count(), usize::from(source_owned));
+                assert_eq!(evidence.theme_residual_count(), usize::from(!source_owned));
+
+                let parsed = common::install_parse_compatibility(&theme, engine())
+                    .parse_diagram_for_render_model_sync(&source, ParseOptions::strict())
+                    .unwrap()
+                    .unwrap()
+                    .into_presentation();
+                let session = RenderEnvironment::deterministic()
+                    .with_theme_portability_requirement(
+                        ThemePortabilityRequirement::RequirePortable,
+                    )
+                    .begin_session_with_theme(&theme)
+                    .unwrap();
+                let result =
+                    family::prepare(&parsed, &LayoutOptions::headless_svg_defaults(), session)
+                        .unwrap()
+                        .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default());
+                if source_owned {
+                    assert!(
+                        result.is_ok(),
+                        "fully source-owned block text remains not applicable"
+                    );
+                } else {
+                    assert!(
+                        matches!(
+                            result,
+                            Err(merman_render::Error::UnverifiedFamilyTheme {
+                                family_id: DiagramFamilyId::BLOCK,
+                                residual_count: 1,
+                            })
+                        ),
+                        "unconsumed visible HTML must fail strict theme validation"
+                    );
+                }
+            }
+        }
+    }
+}
+
+#[test]
+fn block_label_color_requires_all_effective_terminals_to_consume_the_rule() {
+    let theme = block_node_label_theme(
+        ThemeStylePatch::default().with_fill(CanvasPaint::solid("#b316cd").unwrap()),
+    );
+    let rendered = render_block_with_theme_requirement(
+        "block\nA[\"Alpha\"]\nB[\"<div>Beta</div>\"]\n",
+        &theme,
+        MermaidEngine::new().with_site_config(
+            merman_core::presentation::SourcePresentationConfig::from_value(
+                serde_json::json!({"htmlLabels": true, "securityLevel": "strict"}),
+            ),
+        ),
+        ThemePortabilityRequirement::BestEffort,
+    );
+    let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+    let paragraph = document
+        .descendants()
+        .find(|node| node.has_tag_name("p") && node.text() == Some("Alpha"))
+        .unwrap();
+    assert_eq!(paragraph.attribute("style"), Some("color:#b316cd;"));
+    let block = document
+        .descendants()
+        .find(|node| node.has_tag_name("div") && node.text() == Some("Beta"))
+        .unwrap();
+    assert!(!block.ancestors().any(|node| {
+        node.attribute("style")
+            .is_some_and(|style| style.contains("#b316cd"))
+    }));
+    let evidence = merman_render::__private::family_evidence(rendered.into_completion().report());
+    assert_eq!(
+        evidence.applied_count(),
+        0,
+        "one successful paragraph cannot certify the sibling block"
+    );
+    assert_eq!(evidence.theme_residual_count(), 1);
+}
+
+#[test]
+fn block_node_label_inline_source_color_follows_the_terminal_cascade() {
     let theme = block_node_label_theme(
         ThemeStylePatch::default().with_fill(CanvasPaint::solid("#b316cd").unwrap()),
     );
     for html in [false, true] {
-        let rendered = render_block_with_theme_and_engine(
-            "block\n A[\"Alpha\"]\n style A color:#123456\n",
-            &theme,
-            MermaidEngine::new().with_site_config(
-                merman_core::presentation::SourcePresentationConfig::from_value(
-                    serde_json::json!({"htmlLabels": html}),
+        for important in [false, true] {
+            let source_value = if important {
+                "#123456 !important"
+            } else {
+                "#123456"
+            };
+            let source = format!("block\n A[\"Alpha\"]\n style A color:{source_value}\n");
+            let rendered = render_block_with_theme_and_engine(
+                &source,
+                &theme,
+                MermaidEngine::new().with_site_config(
+                    merman_core::presentation::SourcePresentationConfig::from_value(
+                        serde_json::json!({"htmlLabels": html}),
+                    ),
                 ),
-            ),
-        );
-        let document = roxmltree::Document::parse(rendered.svg()).unwrap();
-        let node = document
-            .descendants()
-            .find(|n| n.attribute("id") == Some("block-theme-A"))
-            .unwrap();
-        assert!(
-            node.descendants()
-                .any(|n| n.attribute("style").unwrap_or("").contains("#123456"))
-        );
-        assert!(
-            !node
+            );
+            let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+            let node = document
                 .descendants()
-                .any(|n| n.attribute("style").unwrap_or("").contains("#b316cd"))
-        );
-        let evidence =
-            merman_render::__private::family_evidence(rendered.into_completion().report());
-        assert_eq!(evidence.applied_count(), 0);
-        assert_eq!(evidence.not_applicable_count(), 1);
+                .find(|node| node.attribute("id") == Some("block-theme-A"))
+                .unwrap();
+            let terminal = node
+                .descendants()
+                .find(|node| node.has_tag_name(if html { "p" } else { "text" }))
+                .unwrap();
+            assert_eq!(
+                terminal.attribute("style"),
+                Some(
+                    if html {
+                        "color:#b316cd;".to_owned()
+                    } else {
+                        format!("fill:{source_value};")
+                    }
+                    .as_str()
+                ),
+            );
+            if html {
+                let span = terminal.parent_element().unwrap();
+                assert!(span.has_tag_name("span"));
+                assert_eq!(
+                    span.attribute("style"),
+                    Some(format!("color:{source_value};").as_str())
+                );
+                assert!(block_stylesheet_text(rendered.svg()).contains("#block-theme p{fill:"));
+            }
+            let evidence =
+                merman_render::__private::family_evidence(rendered.into_completion().report());
+            assert_eq!(evidence.applied_count(), usize::from(html));
+            assert_eq!(evidence.not_applicable_count(), usize::from(!html));
+            assert_eq!(evidence.theme_residual_count(), 0);
+        }
     }
 }
 
@@ -853,7 +1091,7 @@ fn block_node_label_mixed_rule_is_rejected_in_strict_mode() {
 }
 
 #[test]
-fn block_node_label_mixed_source_ownership_proves_only_theme_nodes() {
+fn block_node_label_mixed_source_ownership_tracks_the_terminal_mode() {
     let theme = block_node_label_theme(
         ThemeStylePatch::default().with_fill(CanvasPaint::solid("#b316cd").unwrap()),
     );
@@ -868,14 +1106,21 @@ fn block_node_label_mixed_source_ownership_proves_only_theme_nodes() {
             ),
         );
         let document = roxmltree::Document::parse(rendered.svg()).unwrap();
-        for (id, color) in [("block-theme-A", "#123456"), ("block-theme-B", "#b316cd")] {
+        for (id, color) in [
+            ("block-theme-A", if html { "#b316cd" } else { "#123456" }),
+            ("block-theme-B", "#b316cd"),
+        ] {
             let node = document
                 .descendants()
                 .find(|n| n.attribute("id") == Some(id))
                 .unwrap();
-            assert!(
-                node.descendants()
-                    .any(|n| n.attribute("style").unwrap_or("").contains(color))
+            let terminal = node
+                .descendants()
+                .find(|node| node.has_tag_name(if html { "p" } else { "text" }))
+                .unwrap();
+            assert_eq!(
+                terminal.attribute("style"),
+                Some(format!("{}:{color};", if html { "color" } else { "fill" }).as_str()),
             );
         }
         let evidence =
@@ -957,7 +1202,7 @@ fn block_node_label_preserves_generic_text_author_order() {
 }
 
 #[test]
-fn block_node_label_class_color_owns_only_assigned_classes() {
+fn block_node_label_class_color_owns_only_matching_text_terminals() {
     let theme = block_node_label_theme(
         ThemeStylePatch::default().with_fill(CanvasPaint::solid("#b316cd").unwrap()),
     );
@@ -976,6 +1221,7 @@ fn block_node_label_class_color_owns_only_assigned_classes() {
                 false,
             ),
         ] {
+            let owned = owned && !html;
             let rendered = render_block_with_theme_and_engine(
                 source,
                 &theme,
@@ -990,15 +1236,348 @@ fn block_node_label_class_color_owns_only_assigned_classes() {
                 .descendants()
                 .find(|n| n.attribute("id") == Some("block-theme-A"))
                 .unwrap();
+            let terminal = node
+                .descendants()
+                .find(|node| node.has_tag_name(if html { "p" } else { "text" }))
+                .unwrap();
             assert_eq!(
-                node.descendants()
-                    .any(|n| n.attribute("style").unwrap_or("").contains("#b316cd")),
+                terminal
+                    .attribute("style")
+                    .unwrap_or("")
+                    .contains("#b316cd"),
                 !owned
             );
+            if owned {
+                let class = if node
+                    .attribute("class")
+                    .unwrap()
+                    .split_ascii_whitespace()
+                    .any(|class| class == "paint")
+                {
+                    "paint"
+                } else {
+                    "default"
+                };
+                assert_block_source_class_reaches_label_terminal(
+                    &document, terminal, class, "color", "#123456",
+                );
+            } else {
+                assert_eq!(
+                    terminal.attribute("style"),
+                    Some(if html {
+                        "color:#b316cd;"
+                    } else {
+                        "fill:#b316cd;"
+                    })
+                );
+            }
             let evidence =
                 merman_render::__private::family_evidence(rendered.into_completion().report());
             assert_eq!(evidence.applied_count(), usize::from(!owned));
             assert_eq!(evidence.not_applicable_count(), usize::from(owned));
+        }
+    }
+}
+
+#[test]
+fn block_label_source_ownership_matches_structural_class_and_paint_domains() {
+    use merman_model::families::block::BlockClassDef;
+
+    let baseline_theme = DiagramThemeCompiler::new()
+        .compile(DiagramThemeSpec::new())
+        .unwrap();
+    let theme = block_cluster_theme([
+        ThemeRule::new(
+            ThemeTarget::NodeLabel,
+            ThemeStylePatch::default().with_fill(CanvasPaint::solid("#b316cd").unwrap()),
+        ),
+        ThemeRule::new(
+            ThemeTarget::ClusterLabel,
+            ThemeStylePatch::default().with_fill(CanvasPaint::solid("#2468ac").unwrap()),
+        ),
+    ]);
+    for html in [false, true] {
+        for assigned in [false, true] {
+            for (class, property, svg_owned, html_owned) in [
+                ("block", "color", true, false),
+                ("node", "color", true, false),
+                ("flowchart-label", "color", true, false),
+                ("label", "color", true, false),
+                ("nodeLabel", "color", false, true),
+                ("row", "color", true, false),
+                ("text-outer-tspan", "color", true, false),
+                ("text-inner-tspan", "color", false, false),
+                ("block", "fill", false, false),
+                ("node", "fill", false, false),
+                ("flowchart-label", "fill", false, false),
+                ("label", "fill", true, false),
+                ("row", "fill", true, false),
+                ("text-outer-tspan", "fill", true, false),
+                ("nodeLabel", "fill", false, false),
+                ("text-inner-tspan", "fill", false, false),
+                ("node", "stroke", false, false),
+                ("cluster", "color", false, false),
+            ] {
+                let assignment = if assigned {
+                    "classDef plain stroke:#654321\nclass group,A,B plain\n"
+                } else {
+                    ""
+                };
+                let config = serde_json::json!({"htmlLabels":html});
+                let render = |theme: &DiagramTheme| {
+                    if class.contains('-') {
+                        // Block source classDef IDs are alphanumeric/underscore only.
+                        // These valid CSS classes belong to the independent model API.
+                        let mut model = independent_block_tree(&[&[1, 3], &[2], &[], &[]]);
+                        for (node, (id, label)) in model.blocks_flat.iter_mut().zip([
+                            ("root", ""),
+                            ("group", "Group"),
+                            ("A", "Alpha"),
+                            ("B", "Beta"),
+                        ]) {
+                            node.id = id.to_string();
+                            node.label = label.to_string();
+                            node.columns = Some(1);
+                            if assigned && id != "root" {
+                                node.classes.push("plain".into());
+                            }
+                        }
+                        let mut definition = BlockClassDef::new(class);
+                        definition.styles.push(format!("{property}:#123456"));
+                        if property == "color" {
+                            definition.text_styles.push("fill:#123456".into());
+                        }
+                        model.class_defs.insert(class.into(), definition);
+                        if assigned {
+                            let mut plain = BlockClassDef::new("plain");
+                            plain.styles.push("stroke:#654321".into());
+                            model.class_defs.insert("plain".into(), plain);
+                        }
+                        let presentation = independent_block_presentation_with_config(
+                            model,
+                            merman_model::MermaidConfig::from_value(config.clone()),
+                            Some(theme),
+                        );
+                        assert!(
+                            presentation
+                                .metadata()
+                                .effective_config
+                                .theme_compatibility()
+                                .matches_recipe(Some(theme.compatibility_recipe())),
+                            "independent input must declare the same recipe as its render session"
+                        );
+                        render_block_presentation_with_theme(
+                            &presentation,
+                            theme,
+                            ThemePortabilityRequirement::RequirePortable,
+                        )
+                    } else {
+                        let source = format!(
+                            "{BLOCK_CLUSTER_SOURCE}classDef {class} {property}:#123456\n{assignment}"
+                        );
+                        render_block_with_theme_and_engine(
+                            &source,
+                            theme,
+                            MermaidEngine::new().with_site_config(
+                                merman_core::presentation::SourcePresentationConfig::from_value(
+                                    config.clone(),
+                                ),
+                            ),
+                        )
+                    }
+                };
+                let rendered = render(&theme);
+                let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+                let owned = if html { html_owned } else { svg_owned };
+                assert!(
+                    block_stylesheet_text(rendered.svg())
+                        .contains(&format!(".{class}>*{{{property}:#123456!important;}}"))
+                );
+                for (id, label, color) in [
+                    ("block-theme-group", "Group", "#2468ac"),
+                    ("block-theme-A", "Alpha", "#b316cd"),
+                    ("block-theme-B", "Beta", "#b316cd"),
+                ] {
+                    let node = document
+                        .descendants()
+                        .find(|node| node.attribute("id") == Some(id))
+                        .unwrap();
+                    let classes = node.attribute("class").unwrap();
+                    for expected in [
+                        "node",
+                        "flowchart-label",
+                        if assigned { "plain" } else { "default" },
+                    ] {
+                        assert!(
+                            classes
+                                .split_ascii_whitespace()
+                                .any(|class| class == expected)
+                        );
+                    }
+                    let terminal = node
+                        .descendants()
+                        .find(|node| node.has_tag_name(if html { "p" } else { "text" }))
+                        .unwrap();
+                    assert_eq!(
+                        terminal
+                            .descendants()
+                            .filter(|node| node.is_text())
+                            .filter_map(|node| node.text())
+                            .collect::<String>(),
+                        label,
+                    );
+                    assert_eq!(
+                        terminal.attribute("style").unwrap_or("").contains(color),
+                        !owned,
+                        "{id}: class={class}, property={property}, html={html}, assigned={assigned}",
+                    );
+                    if owned {
+                        assert_block_source_class_reaches_label_terminal(
+                            &document, terminal, class, property, "#123456",
+                        );
+                    } else {
+                        assert_eq!(
+                            terminal.attribute("style"),
+                            Some(
+                                format!("{}:{color};", if html { "color" } else { "fill" })
+                                    .as_str()
+                            ),
+                        );
+                    }
+                }
+                if owned {
+                    let baseline = render(&baseline_theme);
+                    assert_eq!(
+                        rendered.svg(),
+                        baseline.svg(),
+                        "source-owned labels must retain the complete source-only output",
+                    );
+                }
+                let evidence =
+                    merman_render::__private::family_evidence(rendered.into_completion().report());
+                assert_eq!(evidence.required_count(), 2);
+                assert_eq!(evidence.applied_count(), if owned { 0 } else { 2 });
+                assert_eq!(evidence.not_applicable_count(), if owned { 2 } else { 0 });
+                assert_eq!(evidence.theme_residual_count(), 0);
+            }
+        }
+    }
+}
+
+#[test]
+fn block_label_assigned_color_is_local_and_default_is_conditional() {
+    let theme = block_cluster_theme([
+        ThemeRule::new(
+            ThemeTarget::Text,
+            ThemeStylePatch::default().with_fill(CanvasPaint::solid("#b316cd").unwrap()),
+        ),
+        ThemeRule::new(
+            ThemeTarget::ClusterLabel,
+            ThemeStylePatch::default().with_fill(CanvasPaint::solid("#2468ac").unwrap()),
+        ),
+    ]);
+    for html in [false, true] {
+        for (suffix, class, native_owned, html_owned) in [
+            (
+                "classDef brand color:#123456\nclass group brand\n",
+                "brand",
+                [true, false, false],
+                [false, false, false],
+            ),
+            (
+                "classDef brand color:#123456\nclass A brand\n",
+                "brand",
+                [false, true, false],
+                [false, false, false],
+            ),
+            (
+                "classDef unused color:#123456\n",
+                "unused",
+                [false, false, false],
+                [false, false, false],
+            ),
+            (
+                "classDef default color:#123456\n",
+                "default",
+                [true, true, true],
+                [false, false, false],
+            ),
+            (
+                "classDef default color:#123456\nclassDef plain stroke:#654321\nclass group,A,B plain\n",
+                "default",
+                [false, false, false],
+                [false, false, false],
+            ),
+            (
+                "classDef brand fill:#123456\nclass group,A,B brand\n",
+                "brand",
+                [false, false, false],
+                [false, false, false],
+            ),
+            (
+                "classDef nodeLabel color:#123456\nclass group,A,B nodeLabel\n",
+                "nodeLabel",
+                [true, true, true],
+                [true, true, true],
+            ),
+            (
+                "classDef row color:#123456\nclass group,A,B row\n",
+                "row",
+                [true, true, true],
+                [false, false, false],
+            ),
+        ] {
+            let owned = if html { html_owned } else { native_owned };
+            let source = format!("{BLOCK_CLUSTER_SOURCE}{suffix}");
+            let rendered = render_block_with_theme_and_engine(
+                &source,
+                &theme,
+                MermaidEngine::new().with_site_config(
+                    merman_core::presentation::SourcePresentationConfig::from_value(
+                        serde_json::json!({"htmlLabels":html}),
+                    ),
+                ),
+            );
+            let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+            for ((id, color), owned) in [
+                ("block-theme-group", "#2468ac"),
+                ("block-theme-A", "#b316cd"),
+                ("block-theme-B", "#b316cd"),
+            ]
+            .into_iter()
+            .zip(owned)
+            {
+                let node = document
+                    .descendants()
+                    .find(|node| node.attribute("id") == Some(id))
+                    .unwrap();
+                let terminal = node
+                    .descendants()
+                    .find(|node| node.has_tag_name(if html { "p" } else { "text" }))
+                    .unwrap();
+                assert_eq!(
+                    terminal.attribute("style").unwrap_or("").contains(color),
+                    !owned,
+                    "{id}: html={html}, source={suffix}",
+                );
+                if owned {
+                    assert_block_source_class_reaches_label_terminal(
+                        &document, terminal, class, "color", "#123456",
+                    );
+                } else {
+                    assert_eq!(
+                        terminal.attribute("style"),
+                        Some(format!("{}:{color};", if html { "color" } else { "fill" }).as_str()),
+                    );
+                }
+            }
+            let evidence =
+                merman_render::__private::family_evidence(rendered.into_completion().report());
+            let applied = usize::from(!owned[0]) + usize::from(!owned[1] || !owned[2]);
+            assert_eq!(evidence.required_count(), 2);
+            assert_eq!(evidence.applied_count(), applied);
+            assert_eq!(evidence.not_applicable_count(), 2 - applied);
+            assert_eq!(evidence.theme_residual_count(), 0);
         }
     }
 }
@@ -3299,22 +3878,50 @@ fn block_cluster_label_scalar_reaches_only_the_composite_label_writer() {
 }
 
 #[test]
-fn block_cluster_label_keeps_source_color_and_the_original_config_property() {
+fn block_cluster_label_source_color_follows_the_terminal_and_config_property() {
     let theme = block_cluster_theme([ThemeRule::new(
         ThemeTarget::ClusterLabel,
         ThemeStylePatch::default().with_fill(CanvasPaint::solid("#b316cd").unwrap()),
     )]);
     for html in [false, true] {
-        for (suffix, variables, applied) in [
-            ("style group color:#b316cd\n", serde_json::json!({}), false),
+        for (suffix, variables, native_applied, html_applied, source_class) in [
             (
-                "classDef brand color:#b316cd\nclass group brand\n",
+                "style group color:#123456\n",
                 serde_json::json!({}),
                 false,
+                true,
+                None,
             ),
-            ("", serde_json::json!({"nodeTextColor":"#b316cd"}), false),
-            ("", serde_json::json!({"titleColor":"#123456"}), true),
+            (
+                "classDef brand color:#123456\nclass group brand\n",
+                serde_json::json!({}),
+                false,
+                true,
+                Some("brand"),
+            ),
+            (
+                "classDef nodeLabel color:#123456\n",
+                serde_json::json!({}),
+                true,
+                false,
+                Some("nodeLabel"),
+            ),
+            (
+                "",
+                serde_json::json!({"nodeTextColor":"#123456"}),
+                false,
+                false,
+                None,
+            ),
+            (
+                "",
+                serde_json::json!({"titleColor":"#123456"}),
+                true,
+                true,
+                None,
+            ),
         ] {
+            let applied = if html { html_applied } else { native_applied };
             let source = format!("{BLOCK_CLUSTER_SOURCE}{suffix}");
             let rendered = render_block_with_theme_and_engine(
                 &source,
@@ -3330,11 +3937,11 @@ fn block_cluster_label_keeps_source_color_and_the_original_config_property() {
                 .descendants()
                 .find(|node| node.attribute("id") == Some("block-theme-group"))
                 .unwrap();
+            let terminal = group
+                .descendants()
+                .find(|node| node.has_tag_name(if html { "p" } else { "text" }))
+                .unwrap();
             if applied {
-                let terminal = group
-                    .descendants()
-                    .find(|node| node.has_tag_name(if html { "p" } else { "text" }))
-                    .unwrap();
                 assert_eq!(
                     terminal.attribute("style"),
                     Some(if html {
@@ -3343,13 +3950,25 @@ fn block_cluster_label_keeps_source_color_and_the_original_config_property() {
                         "fill:#b316cd;"
                     })
                 );
-            } else if html {
-                assert!(
-                    group
-                        .descendants()
-                        .filter(|node| node.has_tag_name("p"))
-                        .all(|node| node.attribute("style").is_none())
+            } else if let Some(class) = source_class {
+                assert_block_source_class_reaches_label_terminal(
+                    &document, terminal, class, "color", "#123456",
                 );
+            } else if suffix.starts_with("style ") {
+                assert_eq!(terminal.attribute("style"), Some("fill:#123456;"));
+            } else {
+                // This existing baseline selector directly owns the native text and HTML p.
+                assert!(
+                    block_stylesheet_text(rendered.svg()).contains(
+                        "#block-theme .label text,#block-theme span,#block-theme p{fill:#123456;color:#123456;}"
+                    )
+                );
+                if !html {
+                    assert_eq!(
+                        terminal.parent_element().unwrap().attribute("class"),
+                        Some("label")
+                    );
+                }
             }
             let evidence =
                 merman_render::__private::family_evidence(rendered.into_completion().report());

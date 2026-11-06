@@ -978,6 +978,182 @@ fn tree_view_node_label_fill_overrides_the_generic_text_fallback() {
 }
 
 #[test]
+fn tree_view_zero_sized_labels_do_not_certify_text_fill_or_font_stack() {
+    for target in [ThemeTarget::Text, ThemeTarget::NodeLabel] {
+        let theme = DiagramThemeCompiler::new()
+            .compile(
+                DiagramThemeSpec::new()
+                    .with_typography(
+                        TypographySpec::default().with_family_style(
+                            DiagramFamilyId::TREE_VIEW,
+                            ThemeTextStyle::default()
+                                .with_font_stack(FontStack::single("monospace").unwrap())
+                                .with_font_size_px(24.0)
+                                .unwrap(),
+                        ),
+                    )
+                    .with_styles(
+                        ThemeRuleSet::default().with_rule(ThemeRule::new(
+                            target,
+                            ThemeStylePatch::default()
+                                .with_fill(CanvasPaint::solid("#123456").unwrap()),
+                        )),
+                    ),
+            )
+            .unwrap();
+        // Source presentation accepts CSS values; declaration priority is a host capability.
+        for (owner, size, expected_css) in [
+            ("site", serde_json::json!(0), "0"),
+            ("source", serde_json::json!(0), "0"),
+            ("site", serde_json::json!("0px"), "0px"),
+            ("source", serde_json::json!("0px"), "0px"),
+            ("source", serde_json::json!("0em"), "0em"),
+            ("source", serde_json::json!("0rem"), "0rem"),
+            ("source", serde_json::json!("0%"), "0%"),
+            ("source", serde_json::json!("0pt"), "0pt"),
+            (
+                "site",
+                serde_json::json!("0.0px !important"),
+                "0.0px !important",
+            ),
+        ] {
+            let config = serde_json::json!({
+                "themeVariables": {"treeView": {"labelFontSize": size}}
+            });
+            let body = "treeView-beta\nRoot/\n";
+            let (source, engine) = if owner == "source" {
+                (
+                    format!("---\nconfig: {config}\n---\n{body}"),
+                    MermaidEngine::new(),
+                )
+            } else {
+                (
+                    body.to_owned(),
+                    MermaidEngine::new().with_site_config(
+                        merman_core::presentation::SourcePresentationConfig::from_value(config),
+                    ),
+                )
+            };
+            let (layout, rendered) = try_render_tree_view_with_theme_and_environment(
+                &source,
+                &theme,
+                engine,
+                ThemePortabilityRequirement::RequirePortable,
+                &RenderEnvironment::deterministic(),
+                "tree-view-zero-sized-text",
+            )
+            .expect("zero-sized Tree View labels cannot certify text fill or font evidence");
+            assert_eq!(
+                layout.label_font_size,
+                if matches!(expected_css, "0" | "0px" | "0.0px !important") {
+                    1.0
+                } else {
+                    16.0
+                },
+                "{owner}/{size}: retain the measurement fallback"
+            );
+            let stylesheet = tree_view_stylesheet(rendered.svg());
+            assert!(
+                tree_view_css_rule(&stylesheet, ".treeView-node-label").contains("fill: #123456;")
+            );
+            for selector in [".treeView-node-label", ".treeView-node-description"] {
+                assert!(
+                    tree_view_css_rule(&stylesheet, selector)
+                        .contains(&format!("font-size: {expected_css};"))
+                );
+            }
+            let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+            assert!(
+                document
+                    .descendants()
+                    .any(|node| { node.has_tag_name("text") && node.text() == Some("Root") })
+            );
+            assert!(
+                document
+                    .descendants()
+                    .any(|node| { node.attribute("class") == Some("treeView-node-line") })
+            );
+            drop(document);
+            let evidence =
+                merman_render::__private::family_evidence(rendered.into_completion().report());
+            assert_eq!(evidence.required_count(), 3, "{target:?}/{owner}/{size}");
+            assert_eq!(evidence.accounted_count(), 3, "{target:?}/{owner}/{size}");
+            assert_eq!(evidence.applied_count(), 0, "{target:?}/{owner}/{size}");
+            assert_eq!(
+                evidence.not_applicable_count(),
+                3,
+                "{target:?}/{owner}/{size}"
+            );
+            assert_eq!(
+                evidence.theme_residual_count(),
+                0,
+                "{target:?}/{owner}/{size}"
+            );
+        }
+    }
+}
+
+#[test]
+fn tree_view_zero_sized_text_keeps_geometry_residuals_but_retires_fill_winners() {
+    for target in [ThemeTarget::Text, ThemeTarget::NodeLabel] {
+        for (ordinal, clear) in [(false, false), (true, false), (false, true)] {
+            for geometry in [false, true] {
+                let mut patch =
+                    ThemeStylePatch::default().with_fill(CanvasPaint::solid("#123456").unwrap());
+                if clear {
+                    patch.paint.fill = Specified::Clear;
+                }
+                if geometry {
+                    patch = patch.with_padding(InsetsPx::all(2.0));
+                }
+                let mut rule = ThemeRule::new(target, patch);
+                if ordinal {
+                    rule = rule.with_ordinal(OrdinalSelector::exact(1).unwrap());
+                }
+                let theme = tree_view_rules_theme([rule]);
+                let engine = MermaidEngine::new().with_site_config(
+                    merman_core::presentation::SourcePresentationConfig::from_value(
+                        serde_json::json!({
+                            "themeVariables": {"treeView": {"labelFontSize": 0}}
+                        }),
+                    ),
+                );
+                let (_, rendered) = try_render_tree_view_with_theme_and_environment(
+                    "treeView-beta\nRoot/\n",
+                    &theme,
+                    engine,
+                    if geometry {
+                        ThemePortabilityRequirement::BestEffort
+                    } else {
+                        ThemePortabilityRequirement::RequirePortable
+                    },
+                    &RenderEnvironment::deterministic(),
+                    "tree-view-zero-sized-text-geometry",
+                )
+                .expect("zero-sized text retains its geometry occurrence domain");
+                let evidence =
+                    merman_render::__private::family_evidence(rendered.into_completion().report());
+                let case =
+                    format!("{target:?}/ordinal={ordinal}/clear={clear}/geometry={geometry}");
+                assert_eq!(evidence.required_count(), 1, "{case}");
+                assert_eq!(evidence.accounted_count(), 1, "{case}");
+                assert_eq!(evidence.applied_count(), 0, "{case}");
+                assert_eq!(
+                    evidence.not_applicable_count(),
+                    usize::from(!geometry),
+                    "{case}"
+                );
+                assert_eq!(
+                    evidence.theme_residual_count(),
+                    usize::from(geometry),
+                    "{case}"
+                );
+            }
+        }
+    }
+}
+
+#[test]
 fn tree_view_explicit_default_scalar_paints_reach_typed_css_and_portable_evidence() {
     let source = "treeView-beta\nRoot/\n    Child\n";
     let cases = [

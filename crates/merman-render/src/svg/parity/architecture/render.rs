@@ -310,7 +310,7 @@ pub(crate) fn render_architecture_diagram_svg_typed_with_config(
         options.work_meter(),
     )?;
     let mut edge_style_emitted = false;
-    let mut group_style_emitted = false;
+    let mut group_emitted = false;
     // Edge bounds and DOM emission live in `architecture/edges.rs`.
     {
         let mut edge_render_ctx = ArchitectureEdgeRenderContext {
@@ -358,7 +358,7 @@ pub(crate) fn render_architecture_diagram_svg_typed_with_config(
             &mut node_render_ctx,
             &group_rects,
             group_theme.inline_style(),
-            &mut group_style_emitted,
+            &mut group_emitted,
         )?;
     }
 
@@ -382,7 +382,7 @@ pub(crate) fn render_architecture_diagram_svg_typed_with_config(
     let theme_outcome = crate::architecture::ArchitectureThemeOutcome {
         evidence: group_theme.finish_evidence(
             typography_emission,
-            group_style_emitted,
+            group_emitted,
             edge_style_emitted,
             surface_styles.as_ref(),
         ),

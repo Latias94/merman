@@ -258,13 +258,13 @@ impl ArchitectureGroupThemePlan {
     pub(crate) fn finish_evidence(
         &self,
         typography: Option<ArchitectureTypographyEmission>,
-        group_style_emitted: bool,
+        group_emitted: bool,
         edge_style_emitted: bool,
         surfaces: Option<&ArchitectureSurfaceRenderState>,
     ) -> FamilyThemeOutcomes {
         let mut evidence = self.evidence.clone();
         evidence.merge_accounted_from(self.typography.finish_evidence(typography));
-        if group_style_emitted {
+        if group_emitted {
             for (key, capabilities) in &self.pending {
                 evidence.mark_applied_with_capabilities(key.clone(), capabilities.iter().copied());
             }

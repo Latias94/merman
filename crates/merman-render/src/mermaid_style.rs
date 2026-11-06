@@ -700,6 +700,37 @@ pub(crate) fn parse_svg_number_or_px(raw: &str) -> Option<f64> {
         .svg_number_or_px()
 }
 
+/// Recognizes literal zero font sizes without applying the positive measurement fallback.
+/// Functions and unknown units remain unresolved rather than being evaluated here.
+pub(crate) fn css_font_size_is_zero(raw: &str) -> bool {
+    let Some(parsed) = parse_css_value(raw, CssValuePolicy::MermaidSourceStyle) else {
+        return false;
+    };
+    // Inspect the admitted numeric mantissa so tiny nonzero values cannot underflow to zero.
+    if !parsed.analysis.is_single_component()
+        || parsed
+            .value
+            .bytes()
+            .take_while(|byte| byte.is_ascii_digit() || matches!(byte, b'+' | b'-' | b'.'))
+            .any(|byte| byte.is_ascii_digit() && byte != b'0')
+    {
+        return false;
+    }
+    let mut parser = Parser::new(parsed.value);
+    match parser.next() {
+        Ok(Token::Number { .. } | Token::Percentage { .. }) => true,
+        Ok(Token::Dimension { unit, .. }) => [
+            "px", "cm", "mm", "q", "in", "pt", "pc", "em", "rem", "ex", "rex", "cap", "rcap", "ch",
+            "rch", "ic", "ric", "lh", "rlh", "vw", "vh", "vi", "vb", "vmin", "vmax", "svw", "svh",
+            "svi", "svb", "svmin", "svmax", "lvw", "lvh", "lvi", "lvb", "lvmin", "lvmax", "dvw",
+            "dvh", "dvi", "dvb", "dvmin", "dvmax", "cqw", "cqh", "cqi", "cqb", "cqmin", "cqmax",
+        ]
+        .iter()
+        .any(|length_unit| unit.eq_ignore_ascii_case(length_unit)),
+        _ => false,
+    }
+}
+
 pub(crate) fn strip_css_important(raw: &str) -> &str {
     let raw = raw.trim();
     let raw = raw.strip_suffix(';').unwrap_or(raw).trim();
@@ -1711,6 +1742,44 @@ mod tests {
         assert_eq!(strip_css_important("\"important!\""), "\"important!\"");
         assert_eq!(strip_css_important("red !foo"), "red !foo");
         assert_eq!(strip_css_important("!"), "!");
+    }
+
+    #[test]
+    fn zero_font_sizes_keep_css_units_and_value_boundaries() {
+        for value in [
+            "0",
+            "-0.0",
+            "0px",
+            "0PX !important",
+            "0%",
+            "0em",
+            "0rem",
+            "0pt",
+            "0cap",
+            "0rcap",
+            "0dvh",
+            "0cqmin",
+            "0e9999px",
+            r"0p\78",
+        ] {
+            assert!(css_font_size_is_zero(value), "{value}");
+        }
+        for value in [
+            "1e-100px",
+            "1e-1000px",
+            "1px",
+            "-1px",
+            "0deg",
+            "0fr",
+            "0futureunit",
+            "0px trailing",
+            "0px; fill:red",
+            "calc(0px)",
+            "var(--size)",
+            "inherit",
+        ] {
+            assert!(!css_font_size_is_zero(value), "{value}");
+        }
     }
 
     #[test]

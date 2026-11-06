@@ -873,6 +873,22 @@ pub fn sanitize_text(text: &str, config: &MermaidConfig) -> String {
     sanitize_text_with_sink(text, config, &StringOutputSink).unwrap_or_default()
 }
 
+/// Serializes an HTML fragment as XHTML without applying a second sanitization policy.
+///
+/// Callers retain responsibility for admitting the input. Parsing uses the ordinary string
+/// sink's work ceiling; rejection is distinct from an empty fragment.
+#[doc(hidden)]
+pub fn html_fragment_to_xhtml(text: &str) -> Option<String> {
+    fragment::parse_and_serialize(
+        text,
+        None,
+        &StringOutputSink,
+        fragment::Output::Xhtml,
+        html5ever::ns!(html),
+    )
+    .ok()
+}
+
 /// Prepares sanitized HTML for direct embedding beneath an XHTML parent in SVG.
 #[doc(hidden)]
 pub fn sanitize_xhtml(text: &str, config: &MermaidConfig) -> String {

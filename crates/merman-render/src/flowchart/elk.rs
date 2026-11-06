@@ -1243,6 +1243,7 @@ fn build_flowchart_elk_graph_with_render_labels_and_work_control_inner(
         cluster_label_base_style,
         cluster_title_wrapping_width: wrapping_width,
         cluster_wrap_mode,
+        class_html_labels: edge_html_labels,
         svg_label_sidecar,
         title_padding: cluster_padding,
     };
@@ -1280,7 +1281,8 @@ fn build_flowchart_elk_graph_with_render_labels_and_work_control_inner(
             parent_by_id.get(&sg.id).cloned(),
             &include_children_groups,
             &cluster_measure_ctx,
-        ));
+            &mut work_control,
+        )?);
     }
 
     for (node_index, node) in model.nodes.iter().enumerate() {
@@ -1302,7 +1304,8 @@ fn build_flowchart_elk_graph_with_render_labels_and_work_control_inner(
                     .unwrap_or(diagram_direction),
                 ..node_measure_ctx
             },
-        ));
+            &mut work_control,
+        )?);
     }
 
     if config_bool(effective_config_value, &["elk", "keepEntryNodeOnTop"]).unwrap_or(false) {
@@ -1364,6 +1367,7 @@ struct ElkMeasureContext<'a> {
     cluster_label_base_style: &'a TextStyle,
     cluster_title_wrapping_width: f64,
     cluster_wrap_mode: WrapMode,
+    class_html_labels: bool,
     title_padding: f64,
     svg_label_sidecar: Option<&'a FlowchartSvgLabelSidecarBuilder>,
 }
@@ -1601,39 +1605,59 @@ fn subgraph_label(
     declaration_ordinal: usize,
     sg: &FlowSubgraph,
     ctx: &ElkMeasureContext<'_>,
-) -> Option<elk::Label> {
+    work_control: &mut Option<&mut ElkOperationWorkControl>,
+) -> Result<Option<elk::Label>> {
     let label_type = sg.label_type.as_deref().unwrap_or("text");
     let title = ctx.model.subgraph_title_for_render(declaration_ordinal, sg);
     let owner = FlowchartSvgLabelOwner::SubgraphTitle(declaration_ordinal);
     let (classes, styles) = ctx.model.effective_subgraph_css(declaration_ordinal, sg);
-    let base_style = if ctx.model.is_subgraph_collapsed(sg.id.as_str()) {
+    let collapsed = ctx.model.is_subgraph_collapsed(sg.id.as_str());
+    let structural = if collapsed {
+        Some(super::FlowchartStructuralLabelTypography::prepare(
+            &ctx.model.class_defs,
+            ctx.class_html_labels,
+            super::FlowchartLabelDom::node(
+                "collapsedGroup",
+                title,
+                label_type,
+                ctx.cluster_wrap_mode == WrapMode::HtmlLike,
+                crate::config::config_diagram_look(ctx.effective_config.as_value()).is_hand_drawn(),
+            ),
+            |units| charge_adapter_work(work_control, units),
+        )?)
+    } else {
+        None
+    };
+    let base_style = if let Some(structural) = &structural {
         ctx.svg_label_sidecar
             .map_or_else(
                 super::FlowchartLabelTypography::default,
                 FlowchartSvgLabelSidecarBuilder::label_typography,
             )
-            .source_parent_style(
-                crate::diagram_theme::ThemeTarget::NodeLabel,
+            .node_source_parent_style(
                 ctx.cluster_label_base_style,
                 &ctx.model.class_defs,
-                classes,
-                styles,
-                false,
+                (classes, styles, false),
+                structural,
             )
     } else {
         std::borrow::Cow::Borrowed(ctx.cluster_label_base_style)
     };
-    let text_style = flowchart_effective_text_style_for_classes_with_provenance(
+    let mut text_style = flowchart_effective_text_style_for_classes_with_provenance(
         base_style.as_ref(),
         &ctx.model.class_defs,
         classes,
         styles,
     );
+    // Collapsed groups become node terminals. Prepare their actual source font before the
+    // occurrence sidecar seals the shared measurement and writer artifact.
+    if let Some(structural) = &structural {
+        structural.apply_to_content(&mut text_style.style);
+    }
     // createGraph's unwrapGroupLabels measures ordinary groups at the same unbounded width
     // used by the cluster painter. Markdown and collapsed leaf labels retain their wrapping.
-    let max_width_px = (label_type == "markdown"
-        || ctx.model.is_subgraph_collapsed(sg.id.as_str()))
-    .then_some(ctx.cluster_title_wrapping_width);
+    let max_width_px =
+        (label_type == "markdown" || collapsed).then_some(ctx.cluster_title_wrapping_width);
     // The layout and writer share this occurrence-scoped artifact. Re-entering a width-sensitive
     // backend for emission would allow the terminal XHTML to diverge from the measured geometry.
     let metrics = measure_flowchart_svg_label_for_layout_with_terminal_foreground(
@@ -1661,17 +1685,18 @@ fn subgraph_label(
     } else {
         (metrics.height - 2.0).max(1.0)
     };
-    Some(elk::Label {
+    Ok(Some(elk::Label {
         width: metrics.width.max(1.0),
         height,
-    })
+    }))
 }
 
 fn node_dimensions_and_label(
     node: &FlowNode,
     owner: FlowchartSvgLabelOwner,
     ctx: NodeMeasureContext<'_>,
-) -> (f64, f64, elk::Label) {
+    work_control: &mut Option<&mut ElkOperationWorkControl>,
+) -> Result<(f64, f64, elk::Label)> {
     let raw_label = ctx.model.node_label_for_render(node).unwrap_or(&node.id);
     let wrapping_width =
         super::bpmn::wrapping_width(node.layout_shape.as_deref(), ctx.wrapping_width);
@@ -1680,20 +1705,35 @@ fn node_dimensions_and_label(
         super::FlowchartLabelTypography::default,
         FlowchartSvgLabelSidecarBuilder::label_typography,
     );
-    let node_parent = typography.source_parent_style(
-        crate::diagram_theme::ThemeTarget::NodeLabel,
+    let label_dom = (
+        ctx.class_html_labels,
+        super::FlowchartLabelDom::node(
+            node.layout_shape.as_deref().unwrap_or("squareRect"),
+            raw_label,
+            label_type,
+            ctx.node_wrap_mode == WrapMode::HtmlLike,
+            crate::config::config_diagram_look(ctx.effective_config.as_value()).is_hand_drawn(),
+        ),
+    );
+    let structural = super::FlowchartStructuralLabelTypography::prepare(
+        &ctx.model.class_defs,
+        label_dom.0,
+        label_dom.1,
+        |units| charge_adapter_work(work_control, units),
+    )?;
+    let node_parent = typography.node_source_parent_style(
         ctx.node_label_base_style,
         &ctx.model.class_defs,
-        &node.classes,
-        &node.styles,
-        true,
+        (&node.classes, &node.styles, true),
+        &structural,
     );
-    let node_text_style = flowchart_effective_text_style_for_node_classes_with_provenance(
+    let mut node_text_style = flowchart_effective_text_style_for_node_classes_with_provenance(
         node_parent.as_ref(),
         &ctx.model.class_defs,
         &node.classes,
         &node.styles,
     );
+    structural.apply_to_content(&mut node_text_style.style);
     let svg_width_mode = flowchart_node_svg_width_mode(
         raw_label,
         label_type,
@@ -1763,7 +1803,7 @@ fn node_dimensions_and_label(
         node_asset_height: node.asset_height,
     });
 
-    (width, height, label)
+    Ok((width, height, label))
 }
 
 fn edge_label(
@@ -1857,9 +1897,10 @@ fn flow_node_to_elk_node(
     parent: Option<String>,
     owner: FlowchartSvgLabelOwner,
     ctx: NodeMeasureContext<'_>,
-) -> elk::Node {
-    let (width, height, label) = node_dimensions_and_label(node, owner, ctx);
-    elk::Node {
+    work_control: &mut Option<&mut ElkOperationWorkControl>,
+) -> Result<elk::Node> {
+    let (width, height, label) = node_dimensions_and_label(node, owner, ctx, work_control)?;
+    Ok(elk::Node {
         id: node.id.clone(),
         kind: elk::NodeKind::Leaf,
         container: Default::default(),
@@ -1872,7 +1913,7 @@ fn flow_node_to_elk_node(
         layer_constraint: None,
         port_alignment: None,
         label: Some(label),
-    }
+    })
 }
 
 fn subgraph_to_elk_node(
@@ -1881,13 +1922,14 @@ fn subgraph_to_elk_node(
     parent: Option<String>,
     include_children_groups: &HashSet<&str>,
     ctx: &ElkMeasureContext<'_>,
-) -> elk::Node {
+    work_control: &mut Option<&mut ElkOperationWorkControl>,
+) -> Result<elk::Node> {
+    let label = subgraph_label(declaration_ordinal, sg, ctx, work_control)?;
     if ctx.model.is_subgraph_collapsed(sg.id.as_str()) {
-        let label = subgraph_label(declaration_ordinal, sg, ctx);
         let (width, height) = label
             .map(|label| ((label.width + 16.0).max(80.0), label.height + 46.0))
             .unwrap_or((80.0, 44.0));
-        return elk::Node {
+        return Ok(elk::Node {
             id: sg.id.clone(),
             kind: elk::NodeKind::Leaf,
             container: Default::default(),
@@ -1900,10 +1942,10 @@ fn subgraph_to_elk_node(
             layer_constraint: None,
             port_alignment: None,
             label,
-        };
+        });
     }
 
-    elk::Node {
+    Ok(elk::Node {
         id: sg.id.clone(),
         kind: elk::NodeKind::Group,
         container: elk::ContainerNodeOptions {
@@ -1935,8 +1977,8 @@ fn subgraph_to_elk_node(
         },
         layer_constraint: None,
         port_alignment: None,
-        label: subgraph_label(declaration_ordinal, sg, ctx),
-    }
+        label,
+    })
 }
 
 #[cfg(test)]
