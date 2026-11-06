@@ -3,32 +3,34 @@
 Choose the host where Merman will run, then the output your application needs. Cargo features
 are for source builds; installing a prebuilt renderer does not require choosing them.
 
-Choose stable **0.9.3** or **0.10.0-alpha.1**, then follow your host's guide. Keep the wrapper
+Choose stable **0.9.3** or **0.10.0-alpha.2**, then follow your host's guide. Keep the wrapper
 and native/WASM library on the same release. Supported prebuilt installs need no Rust compiler.
 The alpha adds SVG math to the ordinary native bindings and changes Options JSON to schema 3;
 review the [upgrade actions](../../CHANGELOG.md#breaking-changes-and-upgrade-actions) when migrating.
+Alpha.2 selects Mermaid 12.3.0 and expands themes; see its
+[migration guide](../migrations/mermaid-12-3.md) for the additional source and binding changes.
 
 ## Published Versions
 
-Registry metadata checked on 2026-11-03 shows these versions. Channels release separately;
+Registry metadata checked on 2026-11-07 shows these versions. Channels release separately;
 main's workspace version does not establish a download on every registry.
 
 | Channel | Stable version | Alpha version | Alpha installation |
 | --- | --- | --- | --- |
-| Rust | `0.9.3` | `0.10.0-alpha.1` | `cargo add merman@0.10.0-alpha.1`; [alpha source feature choices](https://github.com/Latias94/merman/blob/v0.10.0-alpha.1/README.md) |
-| CLI / standalone LSP | `0.9.3` | `0.10.0-alpha.1` | [Alpha release installers and archives](https://github.com/Latias94/merman/releases/tag/v0.10.0-alpha.1) |
-| Browser / Worker | `0.9.3` | `0.10.0-alpha.1` | `npm install --save-exact @mermanjs/web@0.10.0-alpha.1` |
-| Native Node / Node-WASM | [`0.9.3`](https://github.com/Latias94/merman/blob/v0.9.3/platforms/node/README.md) | `0.10.0-alpha.1` | `npm install --save-exact @mermanjs/node@0.10.0-alpha.1` |
-| Python | [`0.9.3`](https://github.com/Latias94/merman/blob/v0.9.3/platforms/python/merman/README.md) | `0.10.0a1` | `python -m pip install --only-binary=:all: merman==0.10.0a1` |
-| Flutter / native Dart | [`0.9.3`](https://github.com/Latias94/merman/blob/v0.9.3/platforms/flutter/README.md) | `0.10.0-alpha.1` | `flutter pub add 'merman:0.10.0-alpha.1'` |
-| Android | [`0.9.3` AAR](https://github.com/Latias94/merman/blob/v0.9.3/platforms/android/README.md) | `0.10.0-alpha.1` AAR / local Maven ZIP | [Android installation](../../platforms/android/README.md) |
-| Apple | `0.9.3` legacy XCFramework | `0.10.0-alpha.1` complete local SwiftPM / XCFramework | [Swift installation](#swift-installation) |
-| Native C / WASI SDK | `0.9.3` | `0.10.0-alpha.1` | [Alpha SDK downloads and flavor choices](https://github.com/Latias94/merman/releases/tag/v0.10.0-alpha.1) |
+| Rust | `0.9.3` | `0.10.0-alpha.2` | `cargo add merman@0.10.0-alpha.2`; [alpha source feature choices](https://github.com/Latias94/merman/blob/v0.10.0-alpha.2/README.md) |
+| CLI / standalone LSP | `0.9.3` | `0.10.0-alpha.2` | [Alpha release installers and archives](https://github.com/Latias94/merman/releases/tag/v0.10.0-alpha.2) |
+| Browser / Worker | `0.9.3` | `0.10.0-alpha.2` | `npm install --save-exact @mermanjs/web@0.10.0-alpha.2` |
+| Native Node / Node-WASM | [`0.9.3`](https://github.com/Latias94/merman/blob/v0.9.3/platforms/node/README.md) | `0.10.0-alpha.2` | `npm install --save-exact @mermanjs/node@0.10.0-alpha.2` |
+| Python | [`0.9.3`](https://github.com/Latias94/merman/blob/v0.9.3/platforms/python/merman/README.md) | `0.10.0a2` | `python -m pip install --only-binary=:all: merman==0.10.0a2` |
+| Flutter / native Dart | [`0.9.3`](https://github.com/Latias94/merman/blob/v0.9.3/platforms/flutter/README.md) | `0.10.0-alpha.2` | `flutter pub add 'merman:0.10.0-alpha.2'` |
+| Android | [`0.9.3` AAR](https://github.com/Latias94/merman/blob/v0.9.3/platforms/android/README.md) | `0.10.0-alpha.2` AAR / local Maven ZIP | [Android installation](../../platforms/android/README.md) |
+| Apple | `0.9.3` legacy XCFramework | `0.10.0-alpha.2` complete local SwiftPM / XCFramework | [Swift installation](#swift-installation) |
+| Native C / WASI SDK | `0.9.3` | `0.10.0-alpha.2` | [Alpha SDK downloads and flavor choices](https://github.com/Latias94/merman/releases/tag/v0.10.0-alpha.2) |
 
 Web and Node alpha packages use the `alpha` dist-tag; stable `latest` remains `0.9.3` for
 existing package names. The two new Node Linux ARM64 native packages have only an alpha release.
 Select an exact version when reproducible installs matter. Python uses PEP 440 spelling
-`0.10.0a1` for the same native release.
+`0.10.0a2` for the same native release.
 
 The GitHub alpha Release is a prerelease; stable Latest remains `v0.9.3`. Public SwiftPM Git-URL
 installation and Maven Central are separate from the downloadable local SwiftPM and Maven
@@ -38,7 +40,7 @@ packages below. No public delivery repository or Central coordinate is advertise
 
 | Your application | Start here | Outputs and boundaries |
 | --- | --- | --- |
-| Browser or browser Worker | `@mermanjs/web`: [stable guide](https://github.com/Latias94/merman/blob/v0.9.3/platforms/web/README.md), [alpha guide](https://github.com/Latias94/merman/blob/v0.10.0-alpha.1/platforms/web/README.md) | Complete browser SDK; use `web-render` for SVG alone, or analysis/editor/ASCII task packages |
+| Browser or browser Worker | `@mermanjs/web`: [stable guide](https://github.com/Latias94/merman/blob/v0.9.3/platforms/web/README.md), [alpha guide](https://github.com/Latias94/merman/blob/v0.10.0-alpha.2/platforms/web/README.md) | Complete browser SDK; use `web-render` for SVG alone, or analysis/editor/ASCII task packages |
 | Node, static-site generation or server rendering | [`@mermanjs/node`](../../platforms/node/README.md) | Platform package selected automatically; `node-wasm` is an explicit portable alternative |
 | Python | [`merman` wheel](../../platforms/python/merman/README.md) | pip/uv selects a matching native wheel; no Rust for ordinary supported installs |
 | Flutter or native Dart | [`merman` on pub.dev](../../platforms/flutter/README.md) | Alpha downloads and verifies only the build target's library; prepare assets or a warm cache for offline builds |
@@ -68,19 +70,19 @@ operation IDs, text-measurement providers and constructor services.
 ## Swift Installation
 
 Download the complete
-[`Merman-swiftpm-v0.10.0-alpha.1.zip`](https://github.com/Latias94/merman/releases/download/v0.10.0-alpha.1/Merman-swiftpm-v0.10.0-alpha.1.zip)
+[`Merman-swiftpm-v0.10.0-alpha.2.zip`](https://github.com/Latias94/merman/releases/download/v0.10.0-alpha.2/Merman-swiftpm-v0.10.0-alpha.2.zip)
 and its
-[SHA-256 checksum](https://github.com/Latias94/merman/releases/download/v0.10.0-alpha.1/Merman-swiftpm-v0.10.0-alpha.1.zip.checksum).
+[SHA-256 checksum](https://github.com/Latias94/merman/releases/download/v0.10.0-alpha.2/Merman-swiftpm-v0.10.0-alpha.2.zip.checksum).
 Verify the checksum, extract the archive and add the resulting directory as a local package in
 Xcode. Link the `Merman` product. A Swift package can use:
 
 ```swift
-.package(path: "../Merman-swiftpm-v0.10.0-alpha.1")
+.package(path: "../Merman-swiftpm-v0.10.0-alpha.2")
 ```
 
 The archive includes matching Swift sources, resources, manifest, XCFramework and legal material.
 No source checkout or Rust compiler is needed. Do not substitute the separately named
-`Merman.xcframework-v0.10.0-alpha.1.zip`: that smaller archive supplies only the binary target.
+`Merman.xcframework-v0.10.0-alpha.2.zip`: that smaller archive supplies only the binary target.
 
 ```swift
 import Merman
@@ -101,16 +103,16 @@ math. Keep all inputs at `v0.9.3`.
 ## Android Installation
 
 Download the complete
-[`merman-android-0.10.0-alpha.1-maven.zip`](https://github.com/Latias94/merman/releases/download/v0.10.0-alpha.1/merman-android-0.10.0-alpha.1-maven.zip)
+[`merman-android-0.10.0-alpha.2-maven.zip`](https://github.com/Latias94/merman/releases/download/v0.10.0-alpha.2/merman-android-0.10.0-alpha.2-maven.zip)
 and its
-[SHA-256 sidecar](https://github.com/Latias94/merman/releases/download/v0.10.0-alpha.1/merman-android-0.10.0-alpha.1-maven.zip.sha256).
+[SHA-256 sidecar](https://github.com/Latias94/merman/releases/download/v0.10.0-alpha.2/merman-android-0.10.0-alpha.2-maven.zip.sha256).
 Verify the checksum and extract it to a local directory. The [Gradle example](../../platforms/android/README.md#resolve-a-candidate-maven-publication)
-resolves `io.merman:merman-android:0.10.0-alpha.1` with these properties:
+resolves `io.merman:merman-android:0.10.0-alpha.2` with these properties:
 
 ```text
 -PmermanRepository=/absolute/path/to/extracted/repository
 -PmermanGroup=io.merman
--PmermanVersion=0.10.0-alpha.1
+-PmermanVersion=0.10.0-alpha.2
 ```
 
 The repository path is the extraction root containing `io/merman/merman-android/`. Gradle then
@@ -127,12 +129,12 @@ Python/wasmtime examples with pinned host dependencies.
 
 Native C applications requesting math should construct their engine with
 `{"resources":{"profile":"interactive"}}`. WASI selects interactive for omitted constructor
-options. Alpha `0.10.0-alpha.1` rejects explicitly constrained math and uses Options JSON schema 3.
+options. Alpha `0.10.0-alpha.2` rejects explicitly constrained math and uses Options JSON schema 3.
 Stable `0.9.3` retains its schema-2 resource behavior, including qualified small formulas under
 constrained requests. Native C ABI 3 and WASI ABI 1 are independent. Do not mix native headers,
 wrappers or modules from different source lines or releases.
 
-See the [alpha SDK guide](https://github.com/Latias94/merman/blob/v0.10.0-alpha.1/distribution/sdk/README.md)
+See the [alpha SDK guide](https://github.com/Latias94/merman/blob/v0.10.0-alpha.2/distribution/sdk/README.md)
 or [stable SDK guide](https://github.com/Latias94/merman/blob/v0.9.3/distribution/sdk/README.md)
 for the selected version's commands, platform requirements, installed examples and qualification.
 
@@ -160,7 +162,7 @@ Node requires Node.js `22+`; GNU Linux native packages require glibc `2.31+`. Na
 distinguish glibc from musl. Keep optional dependencies enabled and install on the deployment
 target; copying macOS `node_modules` to Linux does not select a Linux binary. Alpha adds GNU and
 musl Linux ARM64 coverage; it is not present in published `0.9.3` native packages. For a portable
-alternative, explicitly install `@mermanjs/node-wasm@0.10.0-alpha.1`
+alternative, explicitly install `@mermanjs/node-wasm@0.10.0-alpha.2`
 and follow its [Node-WASM guide](../../platforms/node/packages/node-wasm/README.md). The native
 loader does not switch transports on failure; Node-WASM is separate from the browser package.
 

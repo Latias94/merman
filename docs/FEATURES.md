@@ -1,11 +1,15 @@
 # Choosing Merman capabilities
 
-This page targets `0.10.0-alpha.1`, including experimental compiled themes and Mermaid `12.2.0`. Use the [host guide](release/PREBUILT_PRODUCTS.md) for independently published channel versions and the [alpha changelog](../CHANGELOG.md#0100-alpha1---2026-11-02) for upgrade actions. Workspace path snippets are for source development. See the [Rust embedding guide](rendering/RUST_EMBEDDING.md) for host integration.
+This page targets `0.10.0-alpha.2`, including experimental compiled themes and Mermaid `12.3.0`.
+Use the [host guide](release/PREBUILT_PRODUCTS.md) for independently published channel versions and
+the [alpha.2 changelog](../CHANGELOG.md#0100-alpha2---2026-11-06) for upgrade actions. Workspace
+path snippets are for source development. See the [Rust embedding guide](rendering/RUST_EMBEDDING.md)
+for host integration.
 
-Current source development selects Mermaid `12.3.0`, with the exact `elkjs 0.12.0` behavior oracle,
+The alpha.2 source baseline selects Mermaid `12.3.0`, with the exact `elkjs 0.12.1` behavior oracle,
 Cytoscape `3.34.4`, and reference CLI `12.2.0`. The selected
 [reference graph](../tools/upstreams/MERMAID_REFERENCE_BUNDLE.json) and its generated constants
-own these development identities; published artifacts retain their release baseline. See the
+own these reference identities; older artifacts retain their release baseline. See the
 [Mermaid 12.3 migration](migrations/mermaid-12-3.md) for its Rust and SVG changes.
 
 Choose the diagram families your application accepts and the operations it performs. Positive
@@ -449,7 +453,7 @@ EPL-2.0 ELK implementation and its notices. Alpha.6 source defaults excluded ELK
 Compiled native adapters never change the default runtime policy:
 
 ```sh
-cargo install merman-cli --version 0.10.0-alpha.1 --locked
+cargo install merman-cli --version 0.10.0-alpha.2 --locked
 printf 'flowchart TD\n  A --> B\n' | merman-cli render - --output diagram.svg
 
 merman-cli render --runtime deterministic diagram.mmd
@@ -566,12 +570,12 @@ the artifact contract. Generated APIs keep optional operation names for custom c
 libraries; inspect the runtime catalog and handle typed missing-capability errors before exposing
 optional output choices.
 
-These expanded recipes target `0.10.0-alpha.1`. Published Android, Python, and Flutter `0.9.2` and
-legacy Apple `0.9.3` remain math-free; published Web full/render `0.9.2` already includes math.
+These expanded recipes target `0.10.0-alpha.2`. Published Android, Python, Flutter, and
+legacy Apple `0.9.3` artifacts remain math-free; published Web full/render `0.9.3` includes math.
 Current Rust source defaults and convenience aggregates still require explicit `math`. See
 [prebuilt products](release/PREBUILT_PRODUCTS.md) for the per-channel installation boundaries.
 
-Flutter uses `flutter pub add 'merman:0.10.0-alpha.1'` and `Merman.open()`; see the [Flutter guide](../platforms/flutter/README.md). Android resolves the matching Maven repository handoff or uses its AAR directly; its Kotlin surface is direct JNI
+Flutter uses `flutter pub add 'merman:0.10.0-alpha.2'` and `Merman.open()`; see the [Flutter guide](../platforms/flutter/README.md). Android resolves the matching Maven repository handoff or uses its AAR directly; its Kotlin surface is direct JNI
 transport API 2 rather than C ABI 3. The Maven publication bundle does not
 establish public Central availability. Apple delivery includes a complete local SwiftPM
 package with matching sources, resources, and XCFramework; public remote SwiftPM installation
