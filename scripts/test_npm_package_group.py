@@ -238,6 +238,155 @@ class NpmRecoveryTests(unittest.TestCase):
             self.run_group(recovery_report=self.saved())
         self.assertEqual(self.client.calls, ["@test/dependency"])
 
+    def rejected_diagnostic(
+        self, *, status: int = 404, endpoint: str | None = None, legacy: bool = False,
+    ) -> str:
+        target = endpoint or "https://registry.npmjs.org/@test%2fdependency"
+        retry_option = "" if legacy else " --fetch-retries=0"
+        return (
+            f"npm publish {self.root / 'dependency.tgz'} --ignore-scripts --access public "
+            f"--tag latest{retry_option} failed: npm notice Publishing to https://registry.npmjs.org/\n"
+            f"npm error code E{status}\n"
+            f"npm error {status} Not Found - PUT {target} - Not found\n"
+            "npm error The requested resource could not be found or you do not have permission."
+        )
+
+    def test_explicit_permission_rejection_can_retry_after_configuration_repair(self) -> None:
+        with mock.patch.object(
+            self.client, "publish", side_effect=npm.PackageGroupError(self.rejected_diagnostic()),
+        ) as publish:
+            with self.assertRaises(npm.ReconciliationError):
+                self.run_group()
+        self.assertEqual(publish.call_count, 1)
+        rejected = self.saved()
+        self.assertEqual(rejected["status"], "publish-rejected")
+        self.assertEqual(rejected["package_states"]["@test/dependency"], "upload_rejected")
+        self.assertEqual(rejected["package_states"]["@test/root"], "not_attempted")
+        self.assertEqual(self.clock.delays, [])
+        result = self.run_group(recovery_report=rejected, publication_attempt=2)
+        self.assertEqual(result["status"], "released")
+        self.assertEqual(self.client.calls, ["@test/dependency", "@test/root"])
+
+    def test_legacy_unknown_report_retains_evidence_of_explicit_package_put_rejection(self) -> None:
+        self.client.response_loss = True
+        self.client.delay = 3600
+        with self.assertRaises(npm.ReconciliationError):
+            self.run_group()
+        prior = self.saved()
+        prior["error"] = self.rejected_diagnostic(legacy=True) + "; registry observation could not confirm acceptance"
+        frozen_prior = copy.deepcopy(prior)
+        self.client.accepted.clear()
+        self.client.calls.clear()
+        self.client.response_loss = False
+        self.client.delay = 0
+        result = self.run_group(recovery_report=prior, publication_run_id="43", publication_attempt=1,
+                                retry_rejected_package="@test/dependency")
+        self.assertEqual(result["status"], "released")
+        self.assertEqual(self.client.calls, ["@test/dependency", "@test/root"])
+        self.assertEqual(result["recovered_rejections"], [{
+            "name": "@test/dependency", "http_status": 404,
+            "publication": {"run_id": "42", "attempt": 1},
+            "explicit_retry": True,
+        }])
+        self.assertEqual(prior, frozen_prior)
+
+    def test_only_explicit_permission_rejections_of_the_exact_package_put_qualify(self) -> None:
+        record = self.manifest["packages"][0]
+        for status in (401, 403, 404):
+            with self.subTest(status=status):
+                self.assertEqual(npm.publish_rejection_status(
+                    self.rejected_diagnostic(status=status), record, self.root, "latest",
+                ), status)
+        diagnostic = self.rejected_diagnostic()
+        for rejected in (
+            diagnostic.replace(" - PUT ", " - GET "),
+            diagnostic.replace(" - PUT ", " - POST "),
+            diagnostic.replace("E404", "ECONNRESET"),
+            diagnostic.replace("dependency.tgz", "root.tgz"),
+            diagnostic.replace("--tag latest", "--tag alpha"),
+            self.rejected_diagnostic(legacy=True),
+            self.rejected_diagnostic(status=500),
+            self.rejected_diagnostic(status=408),
+            self.rejected_diagnostic(status=429),
+            self.rejected_diagnostic(endpoint="https://registry.npmjs.org/@test%2froot"),
+            self.rejected_diagnostic(endpoint="https://registry.npmjs.org/-/npm/v1/oidc/token"),
+            self.rejected_diagnostic(endpoint="https://registry.npmjs.org/-/npm/v1/attestations"),
+            self.rejected_diagnostic(endpoint="https://other.example/@test%2fdependency"),
+            self.rejected_diagnostic(endpoint="https://registry.npmjs.org/@test%2fdependency?write=1"),
+            diagnostic + "\nnpm error 404 Not Found - PUT https://registry.npmjs.org/@test%2fdependency - Not found",
+            "connection closed after upload; npm view returned E404",
+        ):
+            with self.subTest(diagnostic=rejected):
+                self.assertIsNone(npm.publish_rejection_status(rejected, record, self.root, "latest"))
+
+    def test_final_404_after_possible_internal_retry_remains_unknown_without_explicit_decision(self) -> None:
+        diagnostic = self.rejected_diagnostic(legacy=True)
+        with mock.patch.object(self.client, "publish", side_effect=npm.PackageGroupError(diagnostic)):
+            with self.assertRaises(npm.ReconciliationError):
+                self.run_group()
+        unknown = self.saved()
+        self.assertEqual(unknown["package_states"]["@test/dependency"], "upload_outcome_unknown")
+        with self.assertRaises(npm.ReconciliationError):
+            self.run_group(recovery_report=unknown, publication_attempt=2)
+        self.assertEqual(self.client.calls, [])
+        self.assertNotIn("recovered_rejections", self.saved())
+
+    def test_publish_command_disables_transport_retries(self) -> None:
+        with mock.patch.object(npm.subprocess, "run") as run:
+            run.return_value.returncode = 0
+            npm.NpmCli().publish(self.root / "dependency.tgz", "latest")
+        self.assertIn("--fetch-retries=0", run.call_args.args[0])
+
+    def test_explicit_retry_input_does_not_block_later_pending_member_recovery(self) -> None:
+        with mock.patch.object(
+            self.client, "publish",
+            side_effect=npm.PackageGroupError(self.rejected_diagnostic(legacy=True)),
+        ):
+            with self.assertRaises(npm.ReconciliationError):
+                self.run_group()
+        original = self.saved()
+        lookup = self.client.version_integrity
+
+        def delayed_root(package: str, version: str) -> str | None:
+            return None if package == "@test/root" else lookup(package, version)
+
+        with mock.patch.object(self.client, "version_integrity", side_effect=delayed_root):
+            with self.assertRaises(npm.ReconciliationError):
+                self.run_group(recovery_report=original, publication_attempt=2,
+                               retry_rejected_package="@test/dependency")
+        pending = self.saved()
+        self.assertEqual(pending["status"], "pending-registry-visibility")
+        self.assertEqual(pending["package_states"]["@test/dependency"], "verified")
+        self.assertEqual(pending["package_states"]["@test/root"], "accepted_pending_visibility")
+        result = self.run_group(recovery_report=pending, publication_attempt=3,
+                                retry_rejected_package="@test/dependency")
+        self.assertEqual(result["status"], "released")
+        self.assertEqual(self.client.calls, ["@test/dependency", "@test/root"])
+
+    def test_explicit_retry_cannot_select_an_unrelated_or_ambiguous_upload(self) -> None:
+        self.client.response_loss = True
+        self.client.delay = 3600
+        with self.assertRaises(npm.ReconciliationError):
+            self.run_group()
+        unknown = self.saved()
+        for name in ("@test/root", "@test/dependency", "@other/package"):
+            with self.subTest(name=name), self.assertRaises(npm.PackageGroupError):
+                self.run_group(recovery_report=unknown, retry_rejected_package=name)
+        self.assertEqual(self.client.calls, ["@test/dependency"])
+
+    def test_permission_rejection_cannot_bypass_missing_attempt_history(self) -> None:
+        with mock.patch.object(
+            self.client, "publish", side_effect=npm.PackageGroupError(self.rejected_diagnostic()),
+        ):
+            with self.assertRaises(npm.ReconciliationError):
+                self.run_group()
+        with self.assertRaises(npm.ReconciliationError):
+            self.run_group(recovery_report=self.saved(), publication_attempt=3,
+                           recovery_run_id="42", recovery_attempt=2)
+        self.assertEqual(self.client.calls, [])
+        self.assertTrue(self.saved()["observe_only"])
+        self.assertEqual(self.saved()["package_states"]["@test/dependency"], "upload_outcome_unknown")
+
     def test_interruption_retains_attempt_before_publish_returns(self) -> None:
         self.client.interrupt = True
         self.client.delay = 3600

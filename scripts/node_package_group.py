@@ -478,6 +478,7 @@ def cli() -> argparse.ArgumentParser:
     reconcile.add_argument("--publication-attempt", type=int)
     reconcile.add_argument("--recovery-run-id")
     reconcile.add_argument("--recovery-attempt", type=int)
+    reconcile.add_argument("--retry-rejected-package", help="Reviewed retry of one legacy package PUT rejection")
     return parser
 
 
@@ -520,6 +521,7 @@ def main(argv: list[str] | None = None) -> int:
             observe_only=args.observe_only,
             publication_run_id=args.publication_run_id, publication_attempt=args.publication_attempt,
             recovery_run_id=args.recovery_run_id, recovery_attempt=args.recovery_attempt,
+            retry_rejected_package=args.retry_rejected_package,
         )
         if isinstance(client, DryRunNpmClient):
             report["dry_run_operations"] = client.operations

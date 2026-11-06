@@ -29,7 +29,8 @@ For Web/Node npm groups, retain the original package-group tarballs and verified
 Use the workflow's `recovery_run_id` and exact source SHA for a new recovery run; a failed-job retry
 stays in its original run. Independently rebuilt tarballs can differ despite the same source.
 Reconcile every exact version, integrity and dist-tag before writes. Publish proven-unattempted
-members directly under the final tag. The current package-group operator does not repair
+members, or explicit package-PUT permission rejections qualified by Registry Propagation And
+Recovery, directly under the final tag. The current package-group operator does not repair
 dist-tags; resolve a tag conflict through a separately authorized operation after checking the
 current registry permissions. Verify registry
 provenance rather than treating an embedded provenance file as an attestation.
@@ -82,5 +83,5 @@ owners use the official authentication action immediately before upload. Follow 
 implementations and their focused protocol/security tests. Authentication failure before upload
 is distinct from uncertain upload acceptance; preserve that distinction without automatic fallback.
 
-Done: accepted versions match the frozen evidence, remaining sends are proven unattempted, and
+Done: accepted versions match the frozen evidence, remaining sends qualify through their recovery owner, and
 every unresolved acceptance or mismatch retains its original report and next observation condition.

@@ -208,7 +208,8 @@ and documentation reflects those observations.
 
 For a failed or partial publisher, read
 [recovery](references/recovery.md) before retrying. Reuse the original frozen artifact and producing
-attempt evidence; only proven-unattempted members may upload. Preserve uncertain acceptance
+attempt evidence; upload only proven-unattempted members or explicit npm package-PUT rejections
+qualified by the recovery owner. Preserve uncertain acceptance
 across retries and later batches. Observe accepted matching versions, stop on mismatches, and retain
 immutable release tags.
 

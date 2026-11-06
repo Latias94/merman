@@ -21,6 +21,10 @@ on:
         description: "Prior release-node workflow run containing the exact package-group artifact"
         required: false
         type: string
+      retry_rejected_package:
+        description: "Reviewed retry of one legacy rejected package PUT; leave empty for normal recovery"
+        required: false
+        type: string
 
 permissions:
   contents: read
@@ -54,6 +58,7 @@ jobs:
           DISPATCH_SOURCE_REF: ${{ inputs.source_ref }}
           DISPATCH_PUBLISH_TO_NPM: ${{ inputs.publish_to_npm }}
           DISPATCH_RECOVERY_RUN_ID: ${{ inputs.recovery_run_id }}
+          DISPATCH_RETRY_REJECTED_PACKAGE: ${{ inputs.retry_rejected_package }}
         run: |
           set -euo pipefail
           RELEASE_TAG="$DISPATCH_RELEASE_TAG"
@@ -82,6 +87,10 @@ jobs:
             exit 1
           fi
           RECOVERY_RUN_ID="$DISPATCH_RECOVERY_RUN_ID"
+          if [ -n "$DISPATCH_RETRY_REJECTED_PACKAGE" ] && [ -z "$RECOVERY_RUN_ID" ]; then
+            echo "::error::retry_rejected_package requires recovery_run_id." >&2
+            exit 1
+          fi
           if [ -n "$RECOVERY_RUN_ID" ]; then
             [[ "$DISPATCH_PUBLISH_TO_NPM" == "true" ]] || {
               echo "::error::recovery_run_id requires publish_to_npm=true." >&2
@@ -769,6 +778,7 @@ jobs:
           PRIOR_RUN_ID: ${{ steps.npm-recovery.outputs.run_id }}
           PRIOR_ATTEMPT: ${{ steps.npm-recovery.outputs.attempt }}
           OBSERVE_ONLY: ${{ steps.npm-recovery.outputs.observe_only }}
+          RETRY_REJECTED_PACKAGE: ${{ inputs.retry_rejected_package }}
         run: |
           set -euo pipefail
           recovery_args=(--observe-only)
@@ -778,6 +788,9 @@ jobs:
           if [ -n "$PRIOR_REPORT_ID" ]; then
             recovery_args+=(--recovery-report target/npm-recovery/reconciliation-report.json
               --recovery-run-id "$PRIOR_RUN_ID" --recovery-attempt "$PRIOR_ATTEMPT")
+          fi
+          if [ -n "$RETRY_REJECTED_PACKAGE" ]; then
+            recovery_args+=(--retry-rejected-package "$RETRY_REJECTED_PACKAGE")
           fi
           python3 trusted/scripts/node_package_group.py reconcile \
             --manifest target/node-npm-package-group/node-package-group.json \

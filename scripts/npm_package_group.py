@@ -15,6 +15,7 @@ import time
 from dataclasses import dataclass, field
 from pathlib import Path, PurePosixPath
 from typing import Any, Protocol
+from urllib.parse import unquote, urlsplit
 
 
 INTEGRITY_RE = re.compile(r"sha512-[A-Za-z0-9+/]+={0,2}\Z")
@@ -148,6 +149,7 @@ class NpmCli:
             "public",
             "--tag",
             tag,
+            "--fetch-retries=0",
         )
 
 
@@ -277,6 +279,45 @@ def write_reconciliation_report(path: Path, report: dict[str, Any]) -> None:
     os.replace(temporary, path)
 
 
+def publish_rejection_status(
+    diagnostic: str, record: dict[str, Any], artifact_dir: Path, target_tag: str,
+    *, allow_legacy_retries: bool = False,
+) -> int | None:
+    """Recognize an explicit npmjs permission rejection of this package's PUT.
+
+    Metadata 404s, token exchanges, response loss and server errors cannot prove
+    that the registry rejected an upload. Match the publishing command and its
+    exact package endpoint before allowing recovery from a retained diagnostic.
+    """
+
+    command = (
+        f"npm publish {artifact_dir / record['tarball']} --ignore-scripts "
+        f"--access public --tag {target_tag}"
+    )
+    commands = [command + " --fetch-retries=0 failed: "]
+    if allow_legacy_retries:
+        commands.append(command + " failed: ")
+    if not diagnostic.startswith(tuple(commands)):
+        return None
+    responses = re.findall(
+        r"^npm error (401|403|404) [^\n]*? - PUT (https://\S+) - [^\n]+$",
+        diagnostic, re.MULTILINE,
+    )
+    if len(responses) != 1:
+        return None
+    status, endpoint = responses[0]
+    if not re.search(rf"^npm error code E{status}$", diagnostic, re.MULTILINE):
+        return None
+    try:
+        url = urlsplit(endpoint)
+    except ValueError:
+        return None
+    if (url.scheme != "https" or url.netloc != "registry.npmjs.org"
+            or unquote(url.path) != "/" + record["name"] or url.query or url.fragment):
+        return None
+    return int(status)
+
+
 def reconcile_group(
     manifest: dict[str, Any],
     artifact_dir: Path,
@@ -291,11 +332,13 @@ def reconcile_group(
     publication_attempt: int | None = None,
     recovery_run_id: str | None = None,
     recovery_attempt: int | None = None,
+    retry_rejected_package: str | None = None,
 ) -> dict[str, Any]:
     """Publish missing versions once, preserving ambiguous outcomes across recovery.
 
-    Recovery uses the original manifest and tarballs. A recorded upload attempt is
-    observation-only, including when registry replicas still return 404. Existing
+    Recovery uses the original manifest and tarballs. An uncertain upload attempt
+    is observation-only, including when registry replicas still return 404. An
+    explicit permission rejection of the package PUT may retry after repair. Existing
     exact versions must still match both integrity and the requested final tag.
     Owners may supply an older report's actual run/attempt only after proving that
     every later upload was skipped; the report and manifest remain bound below.
@@ -337,7 +380,7 @@ def reconcile_group(
         prior_states = recovery_report.get("package_states") if isinstance(recovery_report, dict) else None
         allowed_states = {
             "not_attempted", "upload_started", "accepted_pending_visibility",
-            "upload_outcome_unknown", "verified", "already_published",
+            "upload_outcome_unknown", "upload_rejected", "verified", "already_published",
         }
         if (
             not isinstance(recovery_report, dict)
@@ -358,10 +401,37 @@ def reconcile_group(
     if observe_only:
         # Persist the whole uncertain history before the first registry lookup can fail.
         states = {
-            name: "upload_outcome_unknown" if state == "not_attempted" else state
+            name: "upload_outcome_unknown" if state in {"not_attempted", "upload_rejected"} else state
             for name, state in states.items()
         }
-    attempted = {name for name, state in states.items() if state != "not_attempted"}
+    recovered_rejections = []
+    if retry_rejected_package and (
+        observe_only or recovery_report is None
+        or states.get(retry_rejected_package) in {None, "not_attempted"}
+    ):
+        raise PackageGroupError("explicit rejection recovery requires complete history for an attempted package")
+    if (not observe_only and recovery_report is not None
+            and recovery_report.get("status") == "publish-outcome-unknown"):
+        for record in manifest["packages"]:
+            name = record["name"]
+            diagnostic = recovery_report.get("error")
+            if states[name] != "upload_outcome_unknown" or not isinstance(diagnostic, str):
+                continue
+            status = publish_rejection_status(
+                diagnostic, record, artifact_dir, target_tag,
+                allow_legacy_retries=name == retry_rejected_package,
+            )
+            if status is not None:
+                states[name] = "upload_rejected"
+                recovered_rejections.append({
+                    "name": name, "http_status": status,
+                    "publication": recovery_report["publication"],
+                    "explicit_retry": name == retry_rejected_package,
+                })
+    attempted = {
+        name for name, state in states.items()
+        if state not in {"not_attempted", "upload_rejected"}
+    }
     report: dict[str, Any] = {
         "schema_version": 3,
         **({"publication": {"run_id": publication_run_id, "attempt": publication_attempt}}
@@ -375,6 +445,7 @@ def reconcile_group(
         "package_states": states,
         "observe_only": observe_only,
         "status": "running",
+        **({"recovered_rejections": recovered_rejections} if recovered_rejections else {}),
     }
 
     def persist() -> None:
@@ -442,6 +513,9 @@ def reconcile_group(
             states[name] = "accepted_pending_visibility"
             report["published"].append(name)
         except PackageGroupError as exc:
+            if publish_rejection_status(str(exc), record, artifact_dir, target_tag) is not None:
+                states[name] = "upload_rejected"
+                raise failed(exc, "publish-rejected") from exc
             publish_error = exc
             states[name] = "upload_outcome_unknown"
         persist()

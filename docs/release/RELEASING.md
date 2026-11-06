@@ -312,6 +312,11 @@ need `--provenance`. A new package name needs a maintainer's 2FA-protected first
 before its trusted publisher can be configured. Use the frozen-group procedure below; a new
 workflow run can rebuild different native bytes. Do not add the bootstrap credential to GitHub Actions.
 
+A new trusted-publisher configuration must complete its first successful trusted publish within
+two days. Otherwise npm marks it expired; delete and recreate that connection with the same
+repository, workflow, environment and direct-publish permission before recovering publication.
+See [npm's trusted-publisher expiry rules](https://docs.npmjs.com/trusted-publishers/#trusted-publisher-configuration-expiry).
+
 The independent syntax package is `@mermanjs/tree-sitter-mermaid`, owned by
 `release-tree-sitter-mermaid.yml`. Its first `0.1.0` npm publication used a verified workflow
 artifact and a maintainer's 2FA-protected bootstrap credential before Trusted Publishing could be
@@ -481,6 +486,20 @@ the registry state, continue observation before taking further publishing action
 uncertainty flag and immutable tag; an older report is usable only through the verified skipped
 history above. A 404 alone is not evidence that an upload never happened. Conflicting hashes stop
 immediately.
+
+An explicit npmjs permission rejection of the package upload is different from a missing metadata
+version. Publishing disables npm's internal transport retries with `--fetch-retries=0`. The
+reconciler records `upload_rejected` only for an `E401`, `E403` or `E404` diagnostic bound to that
+single-attempt command and the same package's registry `PUT`. After repairing its publisher
+configuration, recover the original frozen group. Token/attestation errors, metadata 404s, server
+failures, lost responses and incomplete attempt history remain observation-only.
+
+Older commands allowed internal retries, so their final 4xx alone cannot exclude an earlier lost
+response. Retain the original report and review that upload before deciding to retry it. An
+explicitly reviewed Node retry passes `retry_rejected_package` with the exact package name and
+`recovery_run_id`; the new receipt records that decision and the original run/attempt. This input
+requires the same exact package-PUT rejection and complete history. It cannot authorize retries
+of transport failures, accepted uploads, unrelated packages or incomplete history.
 
 ## Version Checklist
 
