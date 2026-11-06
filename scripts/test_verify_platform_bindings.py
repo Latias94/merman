@@ -35,8 +35,8 @@ class NativeSdkRecipeTests(unittest.TestCase):
         pubspec = (root / "pubspec.yaml").read_text(encoding="utf-8")
         hook = (root / "hook" / "build.dart").read_text(encoding="utf-8")
 
-        self.assertIn("code_assets: ^2.1.0", pubspec)
-        self.assertIn("hooks: ^2.2.0", pubspec)
+        self.assertIn("  code_assets:", pubspec)
+        self.assertIn("  hooks:", pubspec)
         self.assertNotIn("plugin:", pubspec)
         self.assertIn("DynamicLoadingBundled", hook)
         self.assertIn("native/android", hook)

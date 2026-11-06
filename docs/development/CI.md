@@ -282,11 +282,9 @@ Pull requests build and test the site but do not deploy it. Main-branch runs upl
 WebKit retain focused smoke coverage because browser-specific loading and worker failures are a
 user-visible contract rather than a duplicate source-level test.
 
-Host Node.js jobs use npm 12.2.1, with Node.js 24.21.0 for the Node 24 lanes. The external
-Mermaid performance comparison retains its Node 22 lane. Native Linux package builds retain the
-Node.js 24.13.1 Alpine 3.22 and Bullseye containers and their bundled npm 11 to preserve the
-existing musl and glibc compatibility baselines. Node.js 24.21.0 has no matching official container
-variants; upgrading those operating-system baselines requires separate native artifact evidence.
+JavaScript toolchains are pinned in their owning workflows. Linux Node native packages use
+separate GNU and musl container baselines; update them only with native compatibility
+qualification. A newer host Node.js or npm version does not itself change those runtime baselines.
 
 ## Scheduled Maintenance
 
