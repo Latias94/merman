@@ -3019,6 +3019,77 @@ mod tests {
     }
 
     #[test]
+    fn routing_director_east_west_tie_is_independent_of_loop_port_order() {
+        // Eclipse ELK v0.12.1 RoutingDirectorTest.java fixes the route when the
+        // side map iterates WEST before EAST. Keep physical ports clockwise and
+        // invoke the route owner directly so the outer port sort cannot mask it.
+        // https://github.com/eclipse-elk/elk/blob/3aa3b9fb98d8f9a41285b3061cff5efe79ed2ba4/test/org.eclipse.elk.alg.layered.test/src/org/eclipse/elk/alg/layered/intermediate/loops/routing/RoutingDirectorTest.java
+        let mut graph = LGraph::new(
+            "root",
+            LayeredOptions::mermaid_flowchart_defaults(ElkDirection::Down),
+        );
+        let node = add_node(&mut graph, "A");
+        add_port(&mut graph, node, PortSide::North);
+        let east = add_port(&mut graph, node, PortSide::East);
+        add_port(&mut graph, node, PortSide::South);
+        let west = add_port(&mut graph, node, PortSide::West);
+        graph.add_edge(self_loop_edge("loop", "A", east, west));
+
+        let penalties = compute_port_penalties(&graph, node);
+        assert_eq!(
+            compute_edge_penalty(&graph, node, east.port, west.port, &penalties),
+            compute_edge_penalty(&graph, node, west.port, east.port, &penalties)
+        );
+
+        for ports in [[east, west], [west, east]] {
+            let mut hyper_loop = hyper_loop_with_ports(&ports, SelfLoopType::TwoSidesOpposing);
+            determine_two_side_opposing_loop_route(&graph, node, &mut hyper_loop, &penalties);
+            compute_occupied_sides(&graph, node, &mut hyper_loop);
+
+            assert_eq!(hyper_loop.leftmost_port, Some(east.port));
+            assert_eq!(hyper_loop.rightmost_port, Some(west.port));
+            assert_eq!(
+                hyper_loop.occupied_sides,
+                vec![PortSide::East, PortSide::South, PortSide::West]
+            );
+        }
+    }
+
+    #[test]
+    fn routing_director_north_south_tie_is_independent_of_loop_port_order() {
+        // The same v0.12.1 sortedTwoSideLoopPortSides rule applies to NORTH/SOUTH.
+        let mut graph = LGraph::new(
+            "root",
+            LayeredOptions::mermaid_flowchart_defaults(ElkDirection::Down),
+        );
+        let node = add_node(&mut graph, "A");
+        let north = add_port(&mut graph, node, PortSide::North);
+        add_port(&mut graph, node, PortSide::East);
+        let south = add_port(&mut graph, node, PortSide::South);
+        add_port(&mut graph, node, PortSide::West);
+        graph.add_edge(self_loop_edge("loop", "A", north, south));
+
+        let penalties = compute_port_penalties(&graph, node);
+        assert_eq!(
+            compute_edge_penalty(&graph, node, north.port, south.port, &penalties),
+            compute_edge_penalty(&graph, node, south.port, north.port, &penalties)
+        );
+
+        for ports in [[north, south], [south, north]] {
+            let mut hyper_loop = hyper_loop_with_ports(&ports, SelfLoopType::TwoSidesOpposing);
+            determine_two_side_opposing_loop_route(&graph, node, &mut hyper_loop, &penalties);
+            compute_occupied_sides(&graph, node, &mut hyper_loop);
+
+            assert_eq!(hyper_loop.leftmost_port, Some(north.port));
+            assert_eq!(hyper_loop.rightmost_port, Some(south.port));
+            assert_eq!(
+                hyper_loop.occupied_sides,
+                vec![PortSide::North, PortSide::East, PortSide::South]
+            );
+        }
+    }
+
+    #[test]
     fn routing_director_splits_four_side_loops_at_highest_penalty_gap() {
         let mut graph = LGraph::new(
             "root",

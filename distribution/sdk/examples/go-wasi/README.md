@@ -1,8 +1,12 @@
 # Serial Go / wazero consumer example
 
 This is a small usable example, not a published SDK. It consumes the committed
-merman-wasi ABI 1 contract, not the native C ABI. Requires Go 1.25+ and wazero
-1.12.0. Obtain an actual packaged `wasm32-wasip1` reactor with native-fonts, SVG,
+merman-wasi ABI 1 contract, not the native C ABI. Requires Go 1.27.0+ and wazero
+1.12.0; the checked-in module selects toolchain `go1.27.3`. The alpha.2 dependency
+refresh raises this example's Go minimum from 1.25 to 1.27.0. Its selected
+`golang.org/x/sys v0.49.0` independently requires Go 1.26.0 in the
+[official module](https://proxy.golang.org/golang.org/x/sys/@v/v0.49.0.mod).
+Obtain an actual packaged `wasm32-wasip1` reactor with native-fonts, SVG,
 PNG and bundled fonts (standard, math or full); this example does not build one.
 Keep the artifact's notices and bundled font licenses with your application.
 

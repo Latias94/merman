@@ -1239,11 +1239,12 @@ mod tests {
             panic!("expected railroad choice render group");
         };
         assert_eq!(class, "railroad-choice");
-        let mut branches = children.chunks_exact(3);
+        let (branches, remainder) = children.as_chunks::<3>();
         assert!(
-            branches.remainder().is_empty(),
+            remainder.is_empty(),
             "choice render children must be branch/left-path/right-path triples"
         );
+        let mut branches = branches.iter();
         let mut matching_branches = branches.by_ref().filter_map(|branch| {
             let [
                 branch,

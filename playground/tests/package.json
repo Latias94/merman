@@ -3,10 +3,10 @@
   "version": "0.0.0",
   "private": true,
   "type": "module",
-  "packageManager": "npm@12.2.1",
+  "packageManager": "npm@12.2.2",
   "engines": {
     "node": "^22.22.2 || ^24.15.0 || >=26.0.0",
-    "npm": ">=12.2.1"
+    "npm": ">=12.2.2"
   },
   "scripts": {
     "benchmark:corpus": "node --experimental-strip-types run-benchmark-corpus.mjs",
@@ -21,9 +21,9 @@
   },
   "devDependencies": {
     "@axe-core/playwright": "4.14.0",
-    "@playwright/test": "1.64.1",
-    "@types/node": "^26.6.5",
-    "playwright": "1.64.1",
-    "typescript": "6.0.3"
+    "@playwright/test": "1.65.0",
+    "@types/node": "^26.6.6",
+    "playwright": "1.65.0",
+    "typescript": "7.0.2"
   }
 }

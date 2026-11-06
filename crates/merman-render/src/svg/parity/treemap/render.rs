@@ -557,21 +557,21 @@ pub(crate) fn render_treemap_diagram_svg(
         }
     }
 
-    let vb_x;
-    let vb_y;
-    let vb_w;
-    let vb_h;
-    if viewbox_bounds.has_rects() {
-        vb_x = viewbox_bounds.min_x - layout.diagram_padding;
-        vb_y = viewbox_bounds.min_y - layout.diagram_padding;
-        vb_w = (viewbox_bounds.max_x - viewbox_bounds.min_x) + layout.diagram_padding * 2.0;
-        vb_h = (viewbox_bounds.max_y - viewbox_bounds.min_y) + layout.diagram_padding * 2.0;
+    let (vb_x, vb_y, vb_w, vb_h) = if viewbox_bounds.has_rects() {
+        (
+            viewbox_bounds.min_x - layout.diagram_padding,
+            viewbox_bounds.min_y - layout.diagram_padding,
+            (viewbox_bounds.max_x - viewbox_bounds.min_x) + layout.diagram_padding * 2.0,
+            (viewbox_bounds.max_y - viewbox_bounds.min_y) + layout.diagram_padding * 2.0,
+        )
     } else {
-        vb_x = -layout.diagram_padding;
-        vb_y = -layout.diagram_padding;
-        vb_w = layout.diagram_padding * 2.0;
-        vb_h = layout.diagram_padding * 2.0;
-    }
+        (
+            -layout.diagram_padding,
+            -layout.diagram_padding,
+            layout.diagram_padding * 2.0,
+            layout.diagram_padding * 2.0,
+        )
+    };
 
     let mut out = BoundedSvgOutput::new(options.work_meter());
     let aria_labelledby = has_acc_title.then(|| format!("chart-title-{diagram_id}"));

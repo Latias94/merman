@@ -4,7 +4,7 @@ All notable changes to this project will be documented in this file.
 
 The format is based on *Keep a Changelog*, and this project adheres to *Semantic Versioning*.
 
-## Unreleased
+## [0.10.0-alpha.2] - Unreleased
 
 **Planned for `0.10.0-alpha.2`; not yet released.** These changes are relative to [0.10.0-alpha.1](#0100-alpha1---2026-11-02). Current source development selects Mermaid `12.3.0`; published alpha.1 packages retain their Mermaid `12.2.0` baseline. See the [release index](docs/release/README.md#merman-0100-alpha2-planned) for upgrade paths and the [host installation guide](docs/release/PREBUILT_PRODUCTS.md) for delivered packages.
 
@@ -19,17 +19,20 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
 
 - **Rust source changes:** update direct `FlowEdge`, `FlowchartModel` and Rectpacking `Options` literals for the new fields. Mindmap compatibility JSON no longer includes `diagramId`; use `PresentationContext::None` and set SVG identity through render options. The [Rust migration](docs/migrations/mermaid-12-3.md#rust-source-changes) lists the replacements.
 - **Custom binding integrations:** analysis facts use schema `3`, theme execution evidence uses schema `2`, and Web transport API advances to `9`. Deploy matching wrappers, generated glue and WASM together; Rust/TypeScript evidence consumers use `ThemeExecutionEvidenceV2`. See the [binding migration](docs/release/UNRELEASED_CONTRACT_VERSIONS.md#source-appearance-and-render-evidence-follow-up).
+- **Source builders:** the repository selects Rust `1.99.1` while retaining library MSRV `1.95`. Android source builds use JDK `27` and Gradle `9.8.2`, retaining Java `17` bytecode and Android API `23`. The Go/WASI example and qualification modules now require Go `1.27` or later. See the [dependency policy](docs/DEPENDENCY_POLICY.md) for compatibility exceptions.
 
 ### Mermaid 12.3 and layouts
 
 - Flowchart Step edges support timed groups and numbered badges. Browser SVG supports the admitted animation and reduced-motion behavior; static SVG, PNG, JPEG and PDF retain ordinary edges and badges without animation. Nine `bpmn-*` shapes extend Flowchart's existing shape syntax. Agentflow accepts its updated shape alias, Usecase renders Include/Extend labels as `«include»` and `«extend»`, and Swimlane follows the selected preparation, nesting and endpoint rules. See the [Mermaid 12.3 guide](docs/migrations/mermaid-12-3.md). [#277](https://github.com/Latias94/merman/pull/277)
-- ELK layouts follow the selected `0.12.0` behavior for outside-label clearance, compound containers, titles, self-loops and component packing. Review layout and image snapshots after upgrading; the [ELK guide](crates/merman-elk-layered/MERMAID_12_3_DELTA.md) describes the supported scope.
+- ELK layouts follow the selected `0.12.1` behavior for outside-label clearance, compound containers, titles, self-loops and component packing. Review layout and image snapshots after upgrading; the [ELK guide](crates/merman-elk-layered/MERMAID_12_3_DELTA.md) describes the supported scope.
 
 ### Themes and Playground
 
 Core colors and typography now reach all 34 diagram families through their own nodes, labels, connectors and other supported surfaces. Flowchart's new BPMN event rings and annotation brackets also consume their supported paint properties. Canvas backgrounds, fonts, series palettes and supported shadows or glows can be combined in one editable recipe. Effects remain specific to the diagram, target, shape, look and output; the [coverage guide](docs/rendering/diagram-theme-coverage.md) explains those boundaries. The built-in catalog remains at 11 presets; the designs below are independent JSON recipes. [#277](https://github.com/Latias94/merman/pull/277), [#278](https://github.com/Latias94/merman/pull/278)
 
 **Appearance** groups Mermaid.js official themes, Merman built-in presets, theme examples and imports by origin. Valid selections update the current diagram immediately; closing the panel keeps them, and **Undo appearance** reverses appearance changes without discarding later source edits. **Use in project** supplies the theme and diagram inputs together with highlighted integration code.
+
+**Compare** is directly accessible beside **SVG** and **ASCII** in the preview tabs. It renders the current source with Merman and Mermaid.js side by side; the Tools menu retains the same shortcut.
 
 The code examples distinguish three inputs: **theme JSON** defines the visual design, **example layout options** arrange the sample, and **integration code** loads them. Layout options are optional when reusing a theme on your own diagram, and generated example projects already include them. Rust's **Single file** view shows, copies and downloads only `main.rs`, with the recipe and sample embedded; **Project files** uses a browsable file tree and documents the `include_str!` paths. CLI and Web projects include their configuration and run instructions. Sample diagram text is English in both interface languages; controls and explanations remain available in English and Chinese.
 
@@ -63,13 +66,14 @@ The designs combine real canvas patterns, gradients, typography, series palettes
 
 ### Fixes
 
+- Pie and donut paths follow D3's default three-decimal precision and corrected near-full-circle arcs. Review SVG snapshots that compare path bytes.
 - Brutalist hard shadows appear on supported Classic and Neo Flowchart shapes. Usecase preset arrowheads follow their connector colors.
 - HTML-to-SVG text conversion preserves supported inline font sizes, weights and code fonts. Railroad, Cynefin and Wardley labels retain text that previously changed during sanitization.
 - State labels containing HTML line breaks produce valid SVG. Theme reports distinguish empty or zero-sized text from label geometry that still consumes a font size. Resetting supported Pie text styles or Architecture group colors to their defaults no longer fails strict theme validation.
 - Sequence theme backgrounds include the full lifeline when bottom participants are hidden, keeping visible lines inside the exported canvas.
 - Flowchart source classes retain their priority over custom theme colors and fonts on matching nodes, containers and connectors. Supported source font sizes participate in label measurement as well as drawing.
 - Markdown batch conversion uses `accDescr` as image alt text and preserves the diagram's accessibility title and description, including entities and CDATA, without substituting nested node descriptions. Thanks [@malte-laukoetter](https://github.com/malte-laukoetter) for the report. Related: [#276](https://github.com/Latias94/merman/issues/276).
-- Playground keeps the previous preview and its matching canvas background visible during updates. Source-declared themes initialize correctly, and unavailable saved preset IDs show a notice while the diagram renders with its Mermaid base theme.
+- Playground keeps the previous preview and its matching canvas background visible during updates. Source-declared themes initialize correctly, and unavailable saved preset IDs show a notice while the diagram renders with its Mermaid base theme. All toolbar actions remain reachable on 320px-wide screens.
 - VS Code previews stay synchronized after rapid configuration changes, with improved cleanup after cancellation or timeouts. Editor integrations ignore Mermaid fences inside HTML comments; hand-drawn rendering and native export respond to cancellation during more of their work.
 - Typst errors retain structured parse diagnostics and original source locations, including diagrams with frontmatter or non-ASCII text.
 

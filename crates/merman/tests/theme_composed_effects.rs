@@ -129,7 +129,7 @@ fn color_counts(bytes: &[u8]) -> (usize, usize) {
     assert_eq!(info.color_type, png::ColorType::Rgba);
     let mut red = 0;
     let mut blue = 0;
-    for pixel in bytes[..info.buffer_size()].chunks_exact(4) {
+    for pixel in bytes[..info.buffer_size()].as_chunks::<4>().0.iter() {
         let [r, g, b] = [
             u16::from(pixel[0]),
             u16::from(pixel[1]),
@@ -251,7 +251,12 @@ fn assert_red_left_of_blue(bytes: &[u8]) {
     let info = reader.next_frame(&mut pixels).unwrap();
     let mut red = (0usize, 0usize);
     let mut blue = (0usize, 0usize);
-    for (index, pixel) in pixels[..info.buffer_size()].chunks_exact(4).enumerate() {
+    for (index, pixel) in pixels[..info.buffer_size()]
+        .as_chunks::<4>()
+        .0
+        .iter()
+        .enumerate()
+    {
         let [r, g, b] = [
             u16::from(pixel[0]),
             u16::from(pixel[1]),
@@ -804,8 +809,10 @@ fn assert_sequence_marker_pixels(document: &merman::RenderedDocument, visible: b
         }
         assert!(
             original
-                .chunks_exact(4)
-                .zip(control.chunks_exact(4))
+                .as_chunks::<4>()
+                .0
+                .iter()
+                .zip(control.as_chunks::<4>().0.iter())
                 .filter(|(a, b)| a != b)
                 .count()
                 > 5,
@@ -820,7 +827,12 @@ fn assert_sequence_marker_pixels(document: &merman::RenderedDocument, visible: b
         let mut cyan = 0;
         let mut painted_alpha = 0usize;
         let mut cyan_alpha = 0usize;
-        for (pixel, control) in original.chunks_exact(4).zip(control.chunks_exact(4)) {
+        for (pixel, control) in original
+            .as_chunks::<4>()
+            .0
+            .iter()
+            .zip(control.as_chunks::<4>().0.iter())
+        {
             if pixel == control {
                 continue;
             }

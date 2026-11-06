@@ -508,7 +508,9 @@ impl<'a> SourceIndex<'a> {
 pub(crate) fn semantic_tokens_from_packed(packed: &[u32]) -> Vec<SemanticToken> {
     debug_assert_eq!(packed.len() % SEMANTIC_TOKEN_PACKED_WORDS_PER_TOKEN, 0);
     packed
-        .chunks_exact(SEMANTIC_TOKEN_PACKED_WORDS_PER_TOKEN)
+        .as_chunks::<SEMANTIC_TOKEN_PACKED_WORDS_PER_TOKEN>()
+        .0
+        .iter()
         .map(|words| SemanticToken {
             delta_line: words[0],
             delta_start: words[1],
@@ -531,8 +533,14 @@ fn semantic_tokens_delta_edit(
         current_packed.len() % SEMANTIC_TOKEN_PACKED_WORDS_PER_TOKEN,
         0
     );
-    let previous_tokens = previous_packed.chunks_exact(SEMANTIC_TOKEN_PACKED_WORDS_PER_TOKEN);
-    let current_tokens = current_packed.chunks_exact(SEMANTIC_TOKEN_PACKED_WORDS_PER_TOKEN);
+    let previous_tokens = previous_packed
+        .as_chunks::<SEMANTIC_TOKEN_PACKED_WORDS_PER_TOKEN>()
+        .0
+        .iter();
+    let current_tokens = current_packed
+        .as_chunks::<SEMANTIC_TOKEN_PACKED_WORDS_PER_TOKEN>()
+        .0
+        .iter();
     let previous_token_count = previous_tokens.len();
     let current_token_count = current_tokens.len();
     let prefix_tokens = previous_tokens

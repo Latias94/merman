@@ -168,7 +168,9 @@ fn assert_sequence_message_lifelines(
             "every actor must retain a box"
         );
         corners
-            .chunks_exact(2)
+            .as_chunks::<2>()
+            .0
+            .iter()
             .map(|bounds| bounds[0] + (bounds[1] - bounds[0]).div_ceil(2))
             .collect::<Vec<_>>()
     };

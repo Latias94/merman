@@ -40,7 +40,13 @@ fn exact_catalog_recipes_keep_native_admission_failures_visible() {
                 DiagramFamilyId::SEQUENCE,
             ]
         };
-        for (pair, family) in report.observations().chunks_exact(2).zip(families) {
+        for (pair, family) in report
+            .observations()
+            .as_chunks::<2>()
+            .0
+            .iter()
+            .zip(families)
+        {
             assert_eq!(pair[0].artifact_kind(), RenderArtifactKind::Svg);
             assert_eq!(pair[1].artifact_kind(), RenderArtifactKind::Png);
             assert_eq!(pair[0].source_digest(), pair[1].source_digest());
@@ -93,20 +99,22 @@ fn exact_catalog_recipes_keep_native_admission_failures_visible() {
             "admission observations must not grant preset qualification"
         );
         if preset == merman::svg::ThemePreset::Cyberpunk {
-            for (pair, (source_id, source)) in report.observations().chunks_exact(2).zip([
-                (
-                    "public-cyberpunk-flowchart-v1",
-                    include_str!("../../../fixtures/themes/public-cyberpunk/flowchart.mmd"),
-                ),
-                (
-                    "public-cyberpunk-sequence-v1",
-                    include_str!("../../../fixtures/themes/public-cyberpunk/sequence.mmd"),
-                ),
-                (
-                    "public-cyberpunk-xychart-v1",
-                    include_str!("../../../fixtures/themes/public-cyberpunk/xychart.mmd"),
-                ),
-            ]) {
+            for (pair, (source_id, source)) in
+                report.observations().as_chunks::<2>().0.iter().zip([
+                    (
+                        "public-cyberpunk-flowchart-v1",
+                        include_str!("../../../fixtures/themes/public-cyberpunk/flowchart.mmd"),
+                    ),
+                    (
+                        "public-cyberpunk-sequence-v1",
+                        include_str!("../../../fixtures/themes/public-cyberpunk/sequence.mmd"),
+                    ),
+                    (
+                        "public-cyberpunk-xychart-v1",
+                        include_str!("../../../fixtures/themes/public-cyberpunk/xychart.mmd"),
+                    ),
+                ])
+            {
                 for observation in pair {
                     assert_eq!(observation.spec().source_id(), source_id);
                     assert_eq!(observation.spec().source(), source);

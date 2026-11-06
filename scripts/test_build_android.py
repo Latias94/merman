@@ -23,13 +23,17 @@ class AndroidToolchainTests(unittest.TestCase):
     def test_catalog_defines_exact_ndk_version(self) -> None:
         self.assertRegex(build_android.PINNED_NDK_VERSION, r"^\d+\.\d+\.\d+$")
 
-    def test_catalog_pins_android_builds_to_java_17(self) -> None:
-        self.assertEqual(build_android.PINNED_JAVA_MAJOR, 17)
+    def test_catalog_pins_android_builds_to_java_27(self) -> None:
+        self.assertEqual(build_android.PINNED_JAVA_MAJOR, 27)
 
     def test_java_major_parser_accepts_modern_and_legacy_output(self) -> None:
         self.assertEqual(
             build_android.parse_java_major('openjdk version "17.0.19" 2026-04-21'),
             17,
+        )
+        self.assertEqual(
+            build_android.parse_java_major('openjdk version "27.0.1" 2026-10-20'),
+            27,
         )
         self.assertEqual(build_android.parse_java_major('java version "1.8.0_412"'), 8)
 
@@ -41,7 +45,7 @@ class AndroidToolchainTests(unittest.TestCase):
         with (
             tempfile.TemporaryDirectory() as temp_dir,
             mock.patch.object(build_android, "java_major", return_value=26),
-            self.assertRaisesRegex(RuntimeError, "does not point to a JDK 17"),
+            self.assertRaisesRegex(RuntimeError, "does not point to a JDK 27"),
         ):
             build_android.resolve_pinned_java_home(temp_dir)
 
@@ -49,14 +53,14 @@ class AndroidToolchainTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
             wrong = root / "jdk-26"
-            pinned = root / "jdk-17"
+            pinned = root / "jdk-27"
             with (
                 mock.patch.object(
                     build_android,
                     "java_home_candidates",
                     return_value=[wrong, pinned],
                 ),
-                mock.patch.object(build_android, "java_major", side_effect=[26, 17]),
+                mock.patch.object(build_android, "java_major", side_effect=[26, 27]),
             ):
                 self.assertEqual(build_android.resolve_pinned_java_home(), pinned)
 

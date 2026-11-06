@@ -330,13 +330,15 @@ mod rendering {
                         assert!(
                             reference
                                 .2
-                                .chunks_exact(4)
+                                .as_chunks::<4>()
+                                .0
+                                .iter()
                                 .any(|pixel| { pixel[3] == 255 && pixel[..3] != [255, 255, 255] }),
                             "{case}, SVG {index}, {part}: reference has no ink"
                         );
                         if formula.contains(r"\color{red}") {
                             assert!(
-                                reference.2.chunks_exact(4).any(|pixel| {
+                                reference.2.as_chunks::<4>().0.iter().any(|pixel| {
                                     pixel[0] > 200 && pixel[1] < 80 && pixel[2] < 80
                                 }),
                                 "{case}, SVG {index}, {part}: explicit red lost"
@@ -344,8 +346,10 @@ mod rendering {
                         }
                         let different = reference
                             .2
-                            .chunks_exact(4)
-                            .zip(actual.2.chunks_exact(4))
+                            .as_chunks::<4>()
+                            .0
+                            .iter()
+                            .zip(actual.2.as_chunks::<4>().0.iter())
                             .filter(|(expected, actual)| expected != actual)
                             .count();
                         assert_eq!(

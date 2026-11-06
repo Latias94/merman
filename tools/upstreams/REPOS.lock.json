@@ -134,10 +134,10 @@
       "commit": "a5372aa93ff4effdc7fe9d91c3371f980c15346e"
     },
     "elkjs": {
-      "path": "repo-ref/elkjs-0.12.0",
+      "path": "repo-ref/elkjs-0.12.1",
       "url": "https://github.com/kieler/elkjs.git",
-      "ref": "0.12.0",
-      "commit": "ff5771d7165445c42c408bb8a090c8035272218c"
+      "ref": "0.12.1",
+      "commit": "624ae90aa37110033a8af59c5ccbb292708b4317"
     },
     "zenuml-core": {
       "path": "repo-ref/zenuml-core",

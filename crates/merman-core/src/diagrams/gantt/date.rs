@@ -213,10 +213,8 @@ pub(super) fn parse_dayjs_like_strict(date_format: &str, s: &str) -> Option<Offs
         }
         let (sign, rest) = if let Some(tail) = s.strip_prefix('+') {
             (1i32, tail)
-        } else if let Some(tail) = s.strip_prefix('-') {
-            (-1i32, tail)
         } else {
-            return None;
+            (-1i32, s.strip_prefix('-')?)
         };
 
         let (hh, rest) = parse_int_exact(rest, 2)?;
@@ -673,10 +671,8 @@ fn parse_js_like_ymd_datetime(s: &str) -> Option<OffsetDateTime> {
         }
         let (sign, rest) = if let Some(rest) = s.strip_prefix('+') {
             (1i32, rest)
-        } else if let Some(rest) = s.strip_prefix('-') {
-            (-1i32, rest)
         } else {
-            return None;
+            (-1i32, s.strip_prefix('-')?)
         };
 
         let (hh_str, rest) = split_at_char_boundary(rest, 2);

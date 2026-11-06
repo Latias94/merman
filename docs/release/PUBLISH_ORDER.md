@@ -1,7 +1,7 @@
 # Publish Order
 
 Status: maintained workspace publish order, with explicitly dated historical channel snapshots.
-Last updated: 2026-11-03 (Asia/Shanghai)
+Last updated: 2026-11-06 (Asia/Shanghai)
 
 Use the [versioned upgrade index](README.md#workspace-upgrades) for consumer migrations and [Releasing](RELEASING.md) for current publication and recovery procedures. Snapshot sections below preserve the versions and observations from their stated dates; they are not instructions to repeat those uploads.
 
@@ -10,6 +10,33 @@ Use the [versioned upgrade index](README.md#workspace-upgrades) for consumer mig
 Latest verified maintenance release: `0.9.3` from `release/0.9.x`, covering the workspace Rust crates, CLI/LSP, native C/WASI SDK archives and the Apple XCFramework. After alpha publication, all selected stable Web, Node, Python, Flutter and Android backfills are delivered and independently reconciled below. The Node loader, both transports and all five native members are available at `0.9.3` under `latest`.
 
 The main-line `0.10.0-alpha.1` is published for all 26 Rust crates, CLI/LSP, native C/WASI SDKs, Web and Node npm groups, Python wheels, Flutter, Android local Maven/AAR and Apple local SwiftPM/XCFramework. All selected alpha platform deliveries are reconciled below. The `0.9.x` maintenance source and tags are unchanged.
+
+## 0.10.0-alpha.2 preparation
+
+Selected for preparation on 2026-11-06 after [#279](https://github.com/Latias94/merman/pull/279),
+starting from main `1fc62283668c6c909b224aa499d8b98a418c1786`. This candidate includes the
+Mermaid 12.3 migration, expanded theme coverage and editable theme gallery, followed by a
+dependency and build-tool refresh. Publication, tags and registry writes have not been performed.
+The [alpha.2 changelog](../../CHANGELOG.md#0100-alpha2---unreleased) remains undated until the
+immutable release-preflight source is selected.
+
+The reference graph advances ELK to `0.12.1` and esbuild to `0.28.2`, with compatible D3 patches
+and Pie path behavior updated together. The [dependency policy](../DEPENDENCY_POLICY.md)
+records retained renderer, TypeScript and Mermaid companion contracts. Root Rust tooling is
+`1.99.1` with library MSRV `1.95`; host JavaScript tooling selects Node `26.13.0` and npm `12.2.2`.
+Independent `roughr-merman 0.12.6` and Tree-sitter Mermaid `0.3.3` are unpublished prerequisites;
+their owners must qualify and publish them before workspace dependents.
+
+Qualification covers the workspace, CLI/LSP, Web and Node groups, C/WASI SDKs and the existing
+Python, Flutter, Android and Apple build owners. This preparation does not select new registry
+channels or public SwiftPM/Maven repositories. The alpha.1 publication and platform-backfill
+sections below retain the previously verified delivered versions. Record the final immutable
+source, successful preflight and explicitly selected publication channels before tagging.
+
+The main CI failure in [42166940890](https://github.com/Latias94/merman/actions/runs/42166940890)
+occurred before Typst compilation: its offline metadata check had no prefetched
+`wasm-minimal-protocol` entry on a fresh runner. The candidate adds locked dependency prefetching
+to the Typst and other offline-check owners while preserving offline closure verification.
 
 ## 0.10.0-alpha.1 publication
 

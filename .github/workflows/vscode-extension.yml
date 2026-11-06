@@ -110,10 +110,10 @@ jobs:
         run: python3 scripts/verify_cli_assets.py --require powershell
 
       - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@1.95.0
+        uses: dtolnay/rust-toolchain@1.99.1
 
       - name: Rust cache
-        uses: Swatinem/rust-cache@v2.9.2
+        uses: Swatinem/rust-cache@v2.9.3
         with:
           cache-targets: false
 
@@ -136,13 +136,13 @@ jobs:
           persist-credentials: false
 
       - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@1.95.0
+        uses: dtolnay/rust-toolchain@1.99.1
 
       - name: Verify legal material projections
         run: python3 scripts/sync-release-legal-materials.py --check
 
       - name: Rust cache
-        uses: Swatinem/rust-cache@v2.9.2
+        uses: Swatinem/rust-cache@v2.9.3
         with:
           cache-targets: false
 
@@ -196,27 +196,27 @@ jobs:
           persist-credentials: false
 
       - name: Setup Python
-        uses: actions/setup-python@v7.0.0
+        uses: actions/setup-python@v7.1.0
         with:
-          python-version: "3.12"
+          python-version: "3.15.2"
 
       - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@1.95.0
+        uses: dtolnay/rust-toolchain@1.99.1
 
       - name: Rust cache
-        uses: Swatinem/rust-cache@v2.9.2
+        uses: Swatinem/rust-cache@v2.9.3
         with:
           cache-targets: false
 
       - name: Setup Node
         uses: actions/setup-node@v7.1.0
         with:
-          node-version: "24.21.0"
+          node-version: "26.13.0"
           cache: npm
           cache-dependency-path: tools/vscode-extension/package-lock.json
 
       - name: Install pinned npm
-        run: npm install --global --ignore-scripts --registry=https://registry.npmjs.org/ npm@12.2.1
+        run: npm install --global --ignore-scripts --registry=https://registry.npmjs.org/ npm@12.2.2
 
       - name: Install extension dependencies
         working-directory: tools/vscode-extension

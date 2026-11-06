@@ -1,6 +1,6 @@
 # This file is derived from dist: https://axodotdev.github.io/cargo-dist
 # Merman maintains the permission split and shell-safety hardening in this file. The matching
-# allow-dirty = ["ci"] setting prevents cargo-dist 0.32.0 from replacing those security controls.
+# allow-dirty = ["ci"] setting prevents cargo-dist 0.34.0 from replacing those security controls.
 #
 # Copyright 2022-2024, axodotdev
 # SPDX-License-Identifier: MIT or Apache-2.0
@@ -171,13 +171,13 @@ jobs:
       - name: Install dist
         shell: bash
         env:
-          DIST_INSTALLER_SHA256: b657cf8c04a8b7bc28f39d220f7e6dd11bbd2bdb072c552262bd9ccf597261b5
+          DIST_INSTALLER_SHA256: abb014a8486f08a3c2d9dd8bbf2c646c62fab61b1f1c9ff5bf2811ab305d17b1
         run: |
           set -euo pipefail
           installer="$RUNNER_TEMP/cargo-dist-installer.sh"
           curl --proto '=https' --tlsv1.2 -LsSf \
             -o "$installer" \
-            https://github.com/axodotdev/cargo-dist/releases/download/v0.32.0/cargo-dist-installer.sh
+            https://github.com/axodotdev/cargo-dist/releases/download/v0.34.0/cargo-dist-installer.sh
           printf '%s  %s\n' "$DIST_INSTALLER_SHA256" "$installer" | sha256sum --check
           sh "$installer"
       - id: plan
@@ -233,9 +233,9 @@ jobs:
           submodules: recursive
       - name: Install Python for GNU baseline checks
         if: runner.os == 'Linux'
-        uses: actions/setup-python@v7.0.0
+        uses: actions/setup-python@v7.1.0
         with:
-          python-version: '3.12'
+          python-version: '3.15.2'
       - name: Install Rust non-interactively if not already installed
         if: ${{ matrix.container }}
         run: |
@@ -247,13 +247,13 @@ jobs:
         if: ${{ runner.os != 'Windows' }}
         shell: bash
         env:
-          DIST_INSTALLER_SHA256: b657cf8c04a8b7bc28f39d220f7e6dd11bbd2bdb072c552262bd9ccf597261b5
+          DIST_INSTALLER_SHA256: abb014a8486f08a3c2d9dd8bbf2c646c62fab61b1f1c9ff5bf2811ab305d17b1
         run: |
           set -euo pipefail
           installer="$RUNNER_TEMP/cargo-dist-installer.sh"
           curl --proto '=https' --tlsv1.2 -LsSf \
             -o "$installer" \
-            https://github.com/axodotdev/cargo-dist/releases/download/v0.32.0/cargo-dist-installer.sh
+            https://github.com/axodotdev/cargo-dist/releases/download/v0.34.0/cargo-dist-installer.sh
           observed="$(shasum -a 256 "$installer" | awk '{print $1}')"
           if [[ "$observed" != "$DIST_INSTALLER_SHA256" ]]; then
             echo "::error::cargo-dist installer checksum mismatch." >&2
@@ -264,12 +264,12 @@ jobs:
         if: ${{ runner.os == 'Windows' }}
         shell: pwsh
         env:
-          DIST_INSTALLER_SHA256: a3435e9944f1a1297add11c6a8ac1f543c14a5ea88879ee05b24ff8218d46d87
+          DIST_INSTALLER_SHA256: 71ba4767a6fc2c0a553bb098cfab3c233e23558d2a21b598e2feb56427b113d3
         run: |
           $ErrorActionPreference = "Stop"
           $installer = Join-Path $env:RUNNER_TEMP "cargo-dist-installer.ps1"
           Invoke-WebRequest `
-            -Uri "https://github.com/axodotdev/cargo-dist/releases/download/v0.32.0/cargo-dist-installer.ps1" `
+            -Uri "https://github.com/axodotdev/cargo-dist/releases/download/v0.34.0/cargo-dist-installer.ps1" `
             -OutFile $installer
           $observed = (Get-FileHash -Algorithm SHA256 $installer).Hash.ToLowerInvariant()
           if ($observed -ne $env:DIST_INSTALLER_SHA256) {
@@ -403,13 +403,13 @@ jobs:
       - name: Install independently pinned dist
         shell: bash
         env:
-          DIST_INSTALLER_SHA256: b657cf8c04a8b7bc28f39d220f7e6dd11bbd2bdb072c552262bd9ccf597261b5
+          DIST_INSTALLER_SHA256: abb014a8486f08a3c2d9dd8bbf2c646c62fab61b1f1c9ff5bf2811ab305d17b1
         run: |
           set -euo pipefail
           installer="$RUNNER_TEMP/cargo-dist-installer.sh"
           curl --proto '=https' --tlsv1.2 -LsSf \
             -o "$installer" \
-            https://github.com/axodotdev/cargo-dist/releases/download/v0.32.0/cargo-dist-installer.sh
+            https://github.com/axodotdev/cargo-dist/releases/download/v0.34.0/cargo-dist-installer.sh
           printf '%s  %s\n' "$DIST_INSTALLER_SHA256" "$installer" | sha256sum --check
           sh "$installer"
       - name: Generate final installers and checksum index
@@ -509,9 +509,9 @@ jobs:
           submodules: recursive
       - name: Install Python for GNU baseline checks
         if: runner.os == 'Linux'
-        uses: actions/setup-python@v7.0.0
+        uses: actions/setup-python@v7.1.0
         with:
-          python-version: '3.12'
+          python-version: '3.15.2'
       - name: Download verified release bundle
         uses: actions/download-artifact@v8.0.2
         with:
@@ -519,7 +519,7 @@ jobs:
           path: target/verified-release-assets
       - name: Install Rust for native preset qualification
         if: env.QUALIFY_PRESETS == 'true'
-        uses: dtolnay/rust-toolchain@a5f673d0ba8626c3977bb416a1612774bc82181b # 1.95.0
+        uses: dtolnay/rust-toolchain@d124f86f28ff42855784ff3319f48ac182c248f8 # 1.99.1
       - name: Install native qualification fonts
         if: env.QUALIFY_PRESETS == 'true'
         run: |

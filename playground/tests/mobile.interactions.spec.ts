@@ -42,11 +42,19 @@ test("320px portrait keeps toolbar, workspace tabs, and preview controls reachab
   expect(
     await previewModes.evaluate((element) => element.clientWidth),
   ).toBeGreaterThan(240);
-  for (const name of ["SVG", "ASCII"]) {
+  for (const name of ["SVG", "ASCII", "Compare"]) {
     const tab = previewModes.getByRole("tab", { name, exact: true });
     await tab.scrollIntoViewIfNeeded();
     await expectInsideViewport(page, tab);
   }
+  const compareTab = previewModes.getByRole("tab", { name: "Compare", exact: true });
+  await compareTab.tap();
+  await expect(compareTab).toHaveAttribute("aria-selected", "true");
+  const comparePanel = page.getByRole("tabpanel", { name: "Compare", exact: true });
+  await expect(comparePanel.locator('[data-merman-compare-engine="merman"] .preview-container svg')).toBeVisible();
+  await expect(comparePanel.locator('[data-merman-compare-engine="mermaid"] .preview-container svg')).toBeVisible();
+  await previewModes.getByRole("tab", { name: "SVG", exact: true }).tap();
+  await waitForPreviewSvg(page);
   await expect
     .poll(() =>
       host.evaluate(

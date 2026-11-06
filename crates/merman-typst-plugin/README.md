@@ -31,7 +31,9 @@ The module also exports exactly three non-callable support values:
 - `__data_end`, an immutable `i32` global emitted by Rust's WebAssembly linker
 - `__heap_base`, an immutable `i32` global emitted by Rust's WebAssembly linker
 
-The linker globals are transport metadata, not plugin operations. No other function, memory, table, or global export is allowed.
+The linker globals are transport metadata, not plugin operations. The crate's build script
+exports them explicitly for the WebAssembly cdylib so the surface does not depend on the
+compiler's default linker exports. No other function, memory, table, or global export is allowed.
 
 `wasm-profiles.json` owns the ABI number. Run `cargo run -p xtask -- gen-typst-profile-constants` after changing it; the generated Rust projection contains both the numeric `TYPST_PLUGIN_ABI_VERSION` constant and the ASCII bytes returned by `abi_version`. `verify-typst-profile-constants` and the aggregate `verify-generated` gate reject drift. `package_version` returns the Rust workspace package version.
 

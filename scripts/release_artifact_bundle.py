@@ -64,6 +64,8 @@ _SHA256_RE = re.compile(r"[0-9a-f]{64}\Z")
 _SOURCE_SHA_RE = re.compile(r"[0-9a-fA-F]{40}\Z")
 _VERSION_RE = re.compile(r"[0-9A-Za-z][0-9A-Za-z.+-]{0,127}\Z")
 
+# Exact anchors reviewed against cargo-dist v0.34.0 (294c1b25d372d86e74cafead8469b9f36d02da29),
+# cargo-dist/templates/installer/installer.{sh,ps1}.j2. Template drift must stop generation.
 _SHELL_SHA256_FAIL_OPEN = """        sha256)
             if ! check_cmd sha256sum; then
                 say "skipping sha256 checksum verification (it requires the 'sha256sum' command)"
@@ -465,7 +467,7 @@ def _require_shell_archive_digest_pairs(
 
 
 def harden_installers(root: Path, *, version: str) -> None:
-    """Make cargo-dist 0.32.0 script installers fail closed on SHA-256 verification."""
+    """Require SHA-256 verification in generated shell and PowerShell installers."""
     root = Path(root)
     version = _require_version(version)
     names = _staged_plan_asset_names(root, version=version)

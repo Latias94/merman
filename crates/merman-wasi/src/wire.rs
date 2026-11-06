@@ -187,7 +187,9 @@ impl Payload {
             json[1],
         ];
         for (chunk, value) in bytes[..RESULT_DESCRIPTOR_SIZE]
-            .chunks_exact_mut(4)
+            .as_chunks_mut::<4>()
+            .0
+            .iter_mut()
             .zip(fields)
         {
             chunk.copy_from_slice(&value.to_le_bytes());

@@ -4,19 +4,19 @@
 
 Parse, analyze, lay out, and render Mermaid diagrams in Flutter or standalone Dart without a browser or JavaScript runtime. The package is a Dart-friendly facade over Merman's native ABI 3 table and uses Native Assets to bundle size-oriented native libraries for supported targets.
 
-This guide targets the `0.10.0-alpha.1` prerelease; see the [host guide](../../docs/release/PREBUILT_PRODUCTS.md) for stable and alpha installation choices.
+This guide targets the unpublished `0.10.0-alpha.2` candidate; see the [host guide](../../docs/release/PREBUILT_PRODUCTS.md) for currently published installation choices. Before publication, source development requires matching locally built native libraries.
 
-> `Merman.open()` accepts only the exact native package version `0.10.0-alpha.1` paired with this Dart release. `Merman.openPath(...)` may load another package version, but both entry points require the current complete ABI 3 table, runtime catalog fields, Options JSON schema `3`, metadata and payload schemas, and service constructor. Historical partial ABI 3 producers and ABI 2 are not fallback paths.
+> `Merman.open()` accepts only the exact native package version `0.10.0-alpha.2` paired with this Dart candidate. `Merman.openPath(...)` may load another package version, but both entry points require the current complete ABI 3 table, runtime catalog fields, Options JSON schema `3`, metadata and payload schemas, and service constructor. Historical partial ABI 3 producers and ABI 2 are not fallback paths.
 
 ## Install
 
-Pin the exact package version when pairing the Dart facade with its Native Assets libraries:
+After publication, pin the exact package version when pairing the Dart facade with its Native Assets libraries:
 
 ```sh
-flutter pub add 'merman:0.10.0-alpha.1'
+flutter pub add 'merman:0.10.0-alpha.2'
 ```
 
-For source development, use the matching `0.10.0-alpha.1` source revision and a local path dependency:
+For source development, use the matching `0.10.0-alpha.2` candidate revision and a local path dependency:
 
 ```yaml
 dependencies:
@@ -52,14 +52,11 @@ and included in that facade; it pins the package version, source commit/tree, co
 and library SHA-256 digests. Downloads and existing cache files are verified before bundling.
 There is no runtime download or automatic Cargo build.
 
-For this version, the manifest's native asset URLs use the release path
-`https://github.com/Latias94/merman/releases/download/flutter-v0.10.0-alpha.1/` and filenames
-such as `merman-flutter-native-0.10.0-alpha.1-macos-arm64.gz`. Keep the facade, manifest and
-target assets from the same release together.
-
-Future workspace releases attach these assets to the main `v<version>` Merman Release rather
-than creating another Flutter Release. Existing versions retain their original download URLs;
-the hook always follows the manifest packaged with the installed version.
+The alpha.2 publisher will attach native assets to the matching `v0.10.0-alpha.2` Merman Release,
+with filenames such as `merman-flutter-native-0.10.0-alpha.2-macos-arm64.gz`; those candidate
+downloads are not available yet. Keep the facade, manifest and target assets from the same
+release together. Existing versions retain their original download URLs; the hook always
+follows the manifest packaged with the installed version.
 
 The cache lives in the hooks runner's `outputDirectoryShared` under `.dart_tool`. Preserve that
 directory between online and offline builds of the same app and package version. Configure
@@ -95,7 +92,7 @@ An HTTPS mirror can host the same versioned asset filenames:
 hooks:
   user_defines:
     merman:
-      mirror: https://artifacts.example.org/merman/flutter-v0.10.0-alpha.1/
+      mirror: https://artifacts.example.org/merman/v0.10.0-alpha.2/
 ```
 
 The mirror changes the download location only; package-pinned digests remain mandatory.

@@ -1043,7 +1043,7 @@ fn calibrate_fixture_corpus(
         member_hasher.update(input.source_path.as_bytes());
         member_hasher.update([0]);
         member_hasher.update(source_sha256.as_bytes());
-        member_hasher.update([b'\n']);
+        member_hasher.update(*b"\n");
         let unbounded_render = unbounded
             .render_svg(&source)?
             .ok_or_else(|| format!("{}: unsupported fixture", input.name))?;

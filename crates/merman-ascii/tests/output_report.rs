@@ -184,11 +184,7 @@ fn error_policy_returns_independent_width_error() {
     .expect_err("Error must reject an over-wide primary projection");
     assert!(matches!(
         error,
-        AsciiError::WidthOverflow {
-            max_width: 5,
-            actual_width: _,
-            ..
-        }
+        AsciiError::WidthOverflow { max_width: 5, .. }
     ));
 }
 

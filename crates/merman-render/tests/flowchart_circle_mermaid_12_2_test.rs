@@ -541,7 +541,7 @@ fn hand_drawn_circles_with_no_stroke_omit_outline_without_changing_fill_seed_ord
             .filter(|node| node.has_tag_name("path"))
             .collect();
         assert_eq!(visible_paths.len(), hidden_paths.len() * 2);
-        for (ring, hidden_fill) in visible_paths.chunks_exact(2).zip(hidden_paths) {
+        for (ring, hidden_fill) in visible_paths.as_chunks::<2>().0.iter().zip(hidden_paths) {
             assert_eq!(hidden_fill.attribute("d"), ring[0].attribute("d"));
             assert_eq!(hidden_fill.attribute("stroke-width"), Some("1.5"));
             assert_ne!(hidden_fill.attribute("stroke"), Some("none"));

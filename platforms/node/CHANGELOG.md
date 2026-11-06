@@ -2,6 +2,29 @@
 
 All notable changes to the `@mermanjs/node` package group will be documented in this file.
 
+## [0.10.0-alpha.2] - Unreleased
+
+Planned changes since `0.10.0-alpha.1`; this package group has not yet been released. See the [host installation guide](../../docs/release/PREBUILT_PRODUCTS.md) for published versions.
+
+### Breaking changes
+
+- Upgrade the loader and selected native or Node-targeted WASM package together to the same exact version. Custom builds must pair their JavaScript facade and native/WASM artifact from the same source revision; browser `@mermanjs/web` packages are not Node transport substitutes.
+- Custom render-metadata decoders must handle `theme_execution_evidence.version: 2` and its required nullable `materialized_theme`, which records the Mermaid palette actually used by the render. Keep unknown evidence versions opaque and inspect target admission separately from successful theme application. Options JSON remains schema `3`; see the [contract migration](../../docs/release/UNRELEASED_CONTRACT_VERSIONS.md#source-appearance-and-render-evidence-follow-up). [#277](https://github.com/Latias94/merman/pull/277)
+
+### Changed
+
+- Advance Mermaid compatibility from `12.2.0` to `12.3.0`, adding timed Flowchart Step edges and numbered badges, nine `bpmn-*` Flowchart shapes, updated Swimlane behavior and Usecase Include/Extend labels. Step animation is browser-only; static output keeps ordinary edges and badges. ELK follows the selected `0.12.1` behavior for label clearance, compound containers, self-loops and packing, so review SVG/layout snapshots after upgrading. See the [Mermaid migration guide](../../docs/migrations/mermaid-12-3.md). [#277](https://github.com/Latias94/merman/pull/277)
+- Core theme colors and typography reach all 34 diagram families in the complete SVG product, including supported paint on BPMN event rings and annotation brackets. Shadows, glows and other effects retain their family, shape and look restrictions; successful rendering does not certify output portability. See the [theme coverage guide](../../docs/rendering/diagram-theme-coverage.md). [#277](https://github.com/Latias94/merman/pull/277), [#278](https://github.com/Latias94/merman/pull/278)
+- Reuse 15 editable designs from the [theme design gallery](../../CHANGELOG.md#theme-design-gallery), with dedicated Flowchart, Sequence, Class, XY Chart and Pie examples. These are independent JSON recipes, not additions to the 11 built-in presets. Pass a downloaded recipe as the `theme` value in [Options JSON](../../docs/bindings/OPTIONS_JSON.md#diagram-theme); fonts and other diagram/output combinations need their own review. [#279](https://github.com/Latias94/merman/pull/279)
+
+### Fixed
+
+- Apply JSON byte, member, token and string limits consistently when constructing native and Node WASM engines, including inserted defaults and repeated shared values, without mutating caller input or executing getters and `toJSON` hooks. [#277](https://github.com/Latias94/merman/pull/277)
+- Preserve Flowchart source-class precedence over theme colors and fonts, and use supported source font sizes during label measurement. [#278](https://github.com/Latias94/merman/pull/278)
+- Avoid false strict-theme rejections when resetting supported Pie text styles or Architecture group colors to their defaults. [#278](https://github.com/Latias94/merman/pull/278)
+- Preserve supported inline font sizes, weights and code fonts during HTML-to-SVG conversion; retain Railroad, Cynefin and Wardley label text, and emit valid SVG for State labels with HTML line breaks. [#277](https://github.com/Latias94/merman/pull/277), [#278](https://github.com/Latias94/merman/pull/278)
+- Render Brutalist shadows on supported Classic and Neo Flowchart shapes and match Usecase arrowheads to connector colors. Explicit Sequence theme backgrounds now contain the full lifeline when bottom participants are hidden. [#278](https://github.com/Latias94/merman/pull/278), [#279](https://github.com/Latias94/merman/pull/279)
+
 ## [0.10.0-alpha.1] - 2026-11-02
 
 Changes below are relative to `0.9.3`. Install the exact prerelease with `npm install --save-exact @mermanjs/node@0.10.0-alpha.1`, or explicitly select `@mermanjs/node-wasm@0.10.0-alpha.1`; see the [host installation guide](../../docs/release/PREBUILT_PRODUCTS.md).

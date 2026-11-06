@@ -415,7 +415,9 @@ mod tests {
         let mut bytes = include_bytes!("../../tests/fonts/Cousine-Regular.ttf").to_vec();
         let table_count = usize::from(u16::from_be_bytes(bytes[4..6].try_into().unwrap()));
         let name_entry = bytes[12..]
-            .chunks_exact(16)
+            .as_chunks::<16>()
+            .0
+            .iter()
             .take(table_count)
             .position(|entry| &entry[..4] == b"name")
             .map(|index| 12 + index * 16)

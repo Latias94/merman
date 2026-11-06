@@ -154,12 +154,12 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@v7.1.0
         with:
-          node-version: "24.21.0"
+          node-version: "26.13.0"
           cache: npm
           cache-dependency-path: platforms/node/package-lock.json
 
       - name: Install pinned npm
-        run: npm install --global --ignore-scripts --registry=https://registry.npmjs.org/ npm@12.2.1
+        run: npm install --global --ignore-scripts --registry=https://registry.npmjs.org/ npm@12.2.2
 
       - name: Verify Node package contracts
         run: |
@@ -215,30 +215,30 @@ jobs:
           python3 scripts/release-version.py check --version "$VERSION"
 
       - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@1.95.0
+        uses: dtolnay/rust-toolchain@1.99.1
         with:
           targets: wasm32-unknown-unknown
 
       - name: Rust cache
-        uses: Swatinem/rust-cache@v2.9.2
+        uses: Swatinem/rust-cache@v2.9.3
         with:
           workspaces: crates/merman-node
 
       - name: Setup Node
         uses: actions/setup-node@v7.1.0
         with:
-          node-version: "24.21.0"
+          node-version: "26.13.0"
           cache: npm
           cache-dependency-path: platforms/node/package-lock.json
 
       - name: Install pinned npm
-        run: npm install --global --ignore-scripts --registry=https://registry.npmjs.org/ npm@12.2.1
+        run: npm install --global --ignore-scripts --registry=https://registry.npmjs.org/ npm@12.2.2
 
       - name: Install pinned Node build dependencies
         run: npm ci --prefix platforms/node
 
       - name: Install wasm-pack
-        run: cargo install wasm-pack --version 0.15.0 --locked
+        run: cargo install wasm-pack --version 0.15.1 --locked
 
       - name: Install pinned wasm-opt for Node WASM
         uses: sigoden/install-binary@v1.3.0
@@ -354,13 +354,13 @@ jobs:
 
       - name: Install Rust toolchain
         if: ${{ !startsWith(matrix.target, 'linux-') }}
-        uses: dtolnay/rust-toolchain@1.95.0
+        uses: dtolnay/rust-toolchain@1.99.1
         with:
           targets: ${{ matrix.rust_target }}
 
       - name: Rust cache
         if: ${{ !startsWith(matrix.target, 'linux-') }}
-        uses: Swatinem/rust-cache@v2.9.2
+        uses: Swatinem/rust-cache@v2.9.3
         with:
           workspaces: crates/merman-node
 
@@ -374,8 +374,6 @@ jobs:
           docker build \
             --platform "$DOCKER_PLATFORM" \
             --file platforms/node/Dockerfile.musl \
-            --build-arg NODE_IMAGE=node:24.13.1-alpine3.22 \
-            --build-arg RUST_IMAGE=rust:1.95-alpine3.22 \
             --tag merman-node-musl:ci \
             platforms/node
           docker run --rm \
@@ -413,8 +411,6 @@ jobs:
           docker build \
             --platform "$DOCKER_PLATFORM" \
             --file platforms/node/Dockerfile.gnu \
-            --build-arg NODE_IMAGE=node:24.13.1-bullseye \
-            --build-arg RUST_IMAGE=rust:1.95-bullseye \
             --tag merman-node-gnu:ci \
             platforms/node
           docker run --rm \
@@ -478,13 +474,13 @@ jobs:
         if: ${{ !startsWith(matrix.target, 'linux-') }}
         uses: actions/setup-node@v7.1.0
         with:
-          node-version: "24.21.0"
+          node-version: "26.13.0"
           cache: npm
           cache-dependency-path: platforms/node/package-lock.json
 
       - name: Install pinned npm
         if: ${{ !startsWith(matrix.target, 'linux-') }}
-        run: npm install --global --ignore-scripts --registry=https://registry.npmjs.org/ npm@12.2.1
+        run: npm install --global --ignore-scripts --registry=https://registry.npmjs.org/ npm@12.2.2
 
       - name: Install pinned Node build dependencies
         if: ${{ !startsWith(matrix.target, 'linux-') }}
@@ -633,12 +629,12 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@v7.1.0
         with:
-          node-version: "24.21.0"
+          node-version: "26.13.0"
           registry-url: "https://registry.npmjs.org"
           package-manager-cache: false
 
       - name: Install pinned npm
-        run: npm install --global --ignore-scripts --registry=https://registry.npmjs.org/ npm@12.2.1
+        run: npm install --global --ignore-scripts --registry=https://registry.npmjs.org/ npm@12.2.2
 
       - name: Verify recovery run identity
         if: ${{ needs.validate-inputs.outputs.recovery_run_id != '' }}

@@ -101,7 +101,9 @@ fn class_direct_background_reaches_native_output_without_reviving_the_retired_cs
                 assert!(
                     pixels
                         .2
-                        .chunks_exact(4)
+                        .as_chunks::<4>()
+                        .0
+                        .iter()
                         .any(|pixel| pixel[3] != 0 && pixel[..3] != [255; 3])
                 );
                 for variant in [None, Some(ThemeVariant::Default)] {
@@ -209,7 +211,7 @@ fn class_direct_background_reaches_native_output_without_reviving_the_retired_cs
                         );
                         if !transparent {
                             assert!(
-                                themed_pixels.2.chunks_exact(4).any(|pixel| {
+                                themed_pixels.2.as_chunks::<4>().0.iter().any(|pixel| {
                                     pixel[3] != 0 && pixel[..3] == [0xb3, 0x16, 0xcd]
                                 }),
                                 "{scheme}/{look}/html={html_labels}/{variant:?}: themed background must paint native pixels"

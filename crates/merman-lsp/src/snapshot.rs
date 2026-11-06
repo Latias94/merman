@@ -33,7 +33,7 @@ pub(crate) struct AnalysisResultIdentity(u64);
 impl AnalysisResultIdentity {
     fn issue() -> Self {
         let identity = NEXT_ANALYSIS_RESULT_IDENTITY
-            .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |current| {
+            .try_update(Ordering::Relaxed, Ordering::Relaxed, |current| {
                 current.checked_add(1)
             })
             .expect("analysis result identity exhausted");

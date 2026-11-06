@@ -8,11 +8,11 @@ Use [`merman-lsp`](https://crates.io/crates/merman-lsp) when an editor can speak
 
 ## Quick Start
 
-This guide targets `merman-editor-core 0.10.0-alpha.1`. Choose `all-diagrams` to retain all parsers or the specific `diagram-*` families your editor accepts:
+This guide targets the unpublished `merman-editor-core 0.10.0-alpha.2` release candidate. The registry dependency example targets that candidate after publication; use a matching source checkout before then. Choose `all-diagrams` to retain all parsers or the specific `diagram-*` families your editor accepts:
 
 ```toml
 [dependencies]
-merman = { version = "=0.10.0-alpha.1", default-features = false, features = ["all-diagrams", "analysis", "editor"] }
+merman = { version = "=0.10.0-alpha.2", default-features = false, features = ["all-diagrams", "analysis", "editor"] }
 ```
 
 ```rust

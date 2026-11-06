@@ -174,7 +174,7 @@ Root((Centered))
         .filter(roxmltree::Node::is_element)
         .collect::<Vec<_>>();
     assert_eq!(edge_children.len(), 12);
-    for pair in edge_children.chunks_exact(2) {
+    for pair in edge_children.as_chunks::<2>().0.iter() {
         assert_eq!(pair[0].attribute("class"), Some("edgeLabel"));
         let label = pair[0]
             .children()

@@ -1,6 +1,6 @@
 {
   "name": "@mermanjs/tree-sitter-mermaid",
-  "version": "0.3.2",
+  "version": "0.3.3",
   "description": "Tolerant Tree-sitter grammar and editor queries for Mermaid",
   "license": "MIT",
   "repository": {
@@ -34,6 +34,7 @@
     "./src/*": "./src/*"
   },
   "files": [
+    "CHANGELOG.md",
     "binding.gyp",
     "bindings/c",
     "bindings/node/binding.cc",

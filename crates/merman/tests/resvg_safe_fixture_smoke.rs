@@ -671,13 +671,15 @@ fn assert_png_has_visible_non_background_ink(name: &str, png_bytes: &[u8]) {
     );
 
     let pixels = &buf[..info.buffer_size()];
-    let Some(background) = pixels.chunks_exact(4).next() else {
+    let Some(background) = pixels.as_chunks::<4>().0.iter().next() else {
         panic!("{name}: expected at least one PNG pixel");
     };
 
     let differing_pixels = pixels
-        .chunks_exact(4)
-        .filter(|px| rgba_pixel_visibly_differs_from_background(px, background))
+        .as_chunks::<4>()
+        .0
+        .iter()
+        .filter(|px| rgba_pixel_visibly_differs_from_background(*px, background))
         .take(16)
         .count();
     assert!(

@@ -31,8 +31,12 @@ impl ThemeColorValue {
             let css =
                 native_functional_color_css(value, color.source_format()).ok_or_else(invalid)?;
             let native = css.parse::<svgtypes::Color>().map_err(|_| invalid())?;
-            if value.parse::<svgtypes::Color>() != Ok(native) {
-                color = ThemeColor::parse(&css).map_err(|_| invalid())?;
+            let normalized = ThemeColor::parse(&css).map_err(|_| invalid())?;
+            if value.parse::<svgtypes::Color>() != Ok(native)
+                || color.rgba_channels() != normalized.rgba_channels()
+                || color.hsla_channels() != normalized.hsla_channels()
+            {
+                color = normalized;
             }
         }
         Ok(Self(color))
@@ -872,6 +876,57 @@ mod tests {
     }
 
     #[test]
+    fn native_color_quantization_does_not_hide_hsl_normalization() {
+        for (input, reference) in [
+            ("hsl(-300deg 50% 50%)", "hsl(60, 50%, 50%)"),
+            ("hsl(-300, 50%, 50%)", "hsl(60, 50%, 50%)"),
+            ("hsla(-660deg 50% 50% / .125)", "hsla(60, 50%, 50%, 0.125)"),
+            ("hsl(-240deg 50% 50%)", "hsl(120, 50%, 50%)"),
+            ("hsl(-700grad 50% 50%)", "hsl(90, 50%, 50%)"),
+            ("hsl(-1.5turn 50% 50%)", "hsl(180, 50%, 50%)"),
+            ("hsl(-3.141592653589793rad 50% 50%)", "hsl(180, 50%, 50%)"),
+            ("hsl(1e308turn 0% 50%)", "hsl(0, 0%, 50%)"),
+            ("hsl(-1e308turn 0% 50%)", "hsl(-0, 0%, 50%)"),
+        ] {
+            assert_eq!(
+                input.parse::<svgtypes::Color>().unwrap(),
+                reference.parse::<svgtypes::Color>().unwrap(),
+                "native quantization must not distinguish this case: {input}"
+            );
+
+            let actual = color(input);
+            let expected = ThemeColor::parse(reference).unwrap();
+            assert_eq!(actual.as_css(), reference, "{input}");
+            assert_eq!(
+                actual.0.rgba_channels(),
+                expected.rgba_channels(),
+                "{input}"
+            );
+            assert_eq!(
+                actual.0.hsla_channels(),
+                expected.hsla_channels(),
+                "{input}"
+            );
+            assert_eq!(
+                actual,
+                actual.clone(),
+                "non-finite internal channels: {input}"
+            );
+            let roundtrip = ThemeColor::parse(&actual.as_css()).unwrap();
+            assert_eq!(
+                roundtrip.rgba_channels(),
+                expected.rgba_channels(),
+                "{input}"
+            );
+            assert_eq!(
+                roundtrip.hsla_channels(),
+                expected.hsla_channels(),
+                "{input}"
+            );
+        }
+    }
+
+    #[test]
     fn non_finite_functional_color_components_are_rejected_before_native_serialization() {
         for input in [
             "hsl(1e999deg 100% 50%)",
@@ -897,6 +952,12 @@ mod tests {
             "RGB(10% 20% 30%)",
             "rgba(1, 2, 3, .123456789012345)",
             "hsl(120, 100%, 50%)",
+            "hsl(-0deg 50% 50%)",
+            "hsl(-360deg 50% 50%)",
+            "hsl(360deg 50% 50%)",
+            "hsl(-400grad 50% 50%)",
+            "hsl(-1turn 50% 50%)",
+            "hsl(1turn 50% 50%)",
         ] {
             let actual = color(input);
             assert_eq!(actual.as_css(), input);

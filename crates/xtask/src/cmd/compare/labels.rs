@@ -3525,7 +3525,7 @@ fn bbox_size_from_points(points: &str) -> Option<(f64, f64)> {
     let mut max_x = f64::NEG_INFINITY;
     let mut min_y = f64::INFINITY;
     let mut max_y = f64::NEG_INFINITY;
-    for pair in nums.chunks_exact(2) {
+    for pair in nums.as_chunks::<2>().0 {
         min_x = min_x.min(pair[0]);
         max_x = max_x.max(pair[0]);
         min_y = min_y.min(pair[1]);
@@ -5445,7 +5445,7 @@ mod tests {
             for local in [missing_label, unknown_edge, extra_edge, missing_edge] {
                 assert!(matches!(
                     pair_data_id_edge_labels(config, upstream, &local),
-                    Err(SemanticLabelError::StableIdentitySetMismatch { diagram: _, .. })
+                    Err(SemanticLabelError::StableIdentitySetMismatch { .. })
                 ));
             }
             let orphan_label = upstream.replace(
@@ -5457,7 +5457,7 @@ mod tests {
             );
             assert!(matches!(
                 pair_data_id_edge_labels(config, upstream, &orphan_label),
-                Err(SemanticLabelError::OrphanEdgeLabel { diagram: _, .. })
+                Err(SemanticLabelError::OrphanEdgeLabel { .. })
             ));
         }
     }

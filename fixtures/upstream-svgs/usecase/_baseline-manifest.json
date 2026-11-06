@@ -5,8 +5,8 @@
     "mermaid_cli_version": "12.2.0",
     "mermaid_source_tag": "mermaid@12.3.0",
     "mermaid_source_commit": "2086904e76c692331e34a45d7cc3bc30860d040e",
-    "package_json_sha256": "a84a0b50e1d198b67f07292f4122fcba73565044e8699d8ccd6ee7a996450adb",
-    "package_lock_sha256": "24d30b0c2b10586e8a41451352da1217a0dce2ec6172c390ec084597fab8f66b",
+    "package_json_sha256": "5b969bc88be5bd1503f89118a90fdcf2c241683d5c40fa6f64651d90ef0608d8",
+    "package_lock_sha256": "6be7b7ca2156f048e1cfe8560fee60f179ecb325877ced3d13e2dd69e75e5fcc",
     "mermaid_config_sha256": "da34e9d1dae1882d3b32a479e6223bad495f31877e6d0a3f0a3e3a157832eacc",
     "renderer_revision": "xtask-upstream-svg-v5"
   },
@@ -31,10 +31,10 @@
       "mermaid_runtime": {
         "mermaid_version": "12.3.0",
         "dompurify_version": "3.4.17",
-        "compiler_version": "0.28.1",
-        "artifact_sha256": "555d901f1da7635d0727be0a5b95cc1b84a4770e08126fed19e53966515a8911",
+        "compiler_version": "0.28.2",
+        "artifact_sha256": "98084069d6691fe6e3ca8570d57c6c78dc24af3297d4849a33bfc74f76937968",
         "dompurify_package_sha256": "2a67a4d0cb2f51dbde8e63138391edd707e0d4bef608b1ad19c509d162e75bb6",
-        "compiler_package_sha256": "410ea1c459ed1e9424a17e132f4cd84518faf824abe3377081ab54b42687f6f4",
+        "compiler_package_sha256": "0e4a34c8580ead6721d606c22db93fe468cec72ca21824be4dfe4c770e23100e",
         "mermaid_package_sha256": "8dea6d2895b9a75667443ef8a82fc4b8d30f962de057686c7b6ef860bc69d251",
         "mermaid_cli_package_sha256": "7d43b6fab89acc14a4d1164d59675ceccbdcfe5d68944229461597031688ac5d"
       },

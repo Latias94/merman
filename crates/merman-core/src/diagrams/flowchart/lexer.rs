@@ -1026,10 +1026,8 @@ impl<'input> Lexer<'input> {
         // so remaining markers belong to identifiers and must reach the grammar unchanged.
         if first.is_ascii_alphanumeric() || matches!(first, b'_' | b'%') {
             self.pos += 1;
-        } else if let Some(len) = non_ascii_id_char_len(self.input, start) {
-            self.pos += len;
         } else {
-            return None;
+            self.pos += non_ascii_id_char_len(self.input, start)?;
         }
 
         while self.pos < bytes.len() {

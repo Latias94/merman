@@ -13,7 +13,12 @@ pub(crate) fn decode_bounded_png_artifact(
     let raster = RasterImage::decode_png(bytes, raster_plan)?;
     c6_ensure!(
         "png-artifact",
-        raster.pixels.chunks_exact(4).any(|pixel| pixel[3] != 0),
+        raster
+            .pixels
+            .as_chunks::<4>()
+            .0
+            .iter()
+            .any(|pixel| pixel[3] != 0),
         "decoded PNG artifact is fully transparent"
     );
     Ok(raster)
@@ -257,7 +262,9 @@ impl RasterImage {
 
     pub(crate) fn count_opaque_pixels_near(&self, expected: [u8; 3], tolerance: u8) -> usize {
         self.pixels
-            .chunks_exact(4)
+            .as_chunks::<4>()
+            .0
+            .iter()
             .filter(|pixel| {
                 pixel[3] != 0
                     && pixel[0].abs_diff(expected[0]) <= tolerance
@@ -292,7 +299,7 @@ impl RasterImage {
         let width = f64::from(self.width);
         let height = f64::from(self.height);
         let mut count = 0usize;
-        for (index, pixel) in self.pixels.chunks_exact(4).enumerate() {
+        for (index, pixel) in self.pixels.as_chunks::<4>().0.iter().enumerate() {
             if pixel[3] == 0
                 || pixel[0].abs_diff(expected[0]) > tolerance
                 || pixel[1].abs_diff(expected[1]) > tolerance

@@ -263,7 +263,7 @@ The failure reached HTTP 200 for the headers, checksums, and `node.lib`, then en
 [Python selection](https://github.com/nodejs/node-gyp#configuring-python-dependency).
 Local workflow contracts and actionlint validate the setup/build boundary. Remote
 `grammar-owner / generation-windows` evidence must additionally show successful development-file
-preparation, Python 3.14 selection, and the original native build succeeding without another download.
+preparation, the workflow-selected Python version, and the original native build succeeding without another download.
 
 The pull-request feature matrix validates the complete declared feature graph but compiles a curated
 set of representative products and transports. It deliberately does not compile every bounded
@@ -394,7 +394,7 @@ For local workflow checks, make ShellCheck available on `PATH` or pass its execu
 that the Linux CI runner enforces.
 
 Workflow syntax and expression semantics are checked with actionlint 1.7.12. High-severity workflow
-security findings are checked with zizmor 1.30.1. CI verifies the downloaded actionlint archive and
+security findings are checked with zizmor 1.32.0. CI verifies the downloaded actionlint archive and
 the selected zizmor wheel by SHA-256 before execution, and prints both tool versions. Repository
 tests cover only Merman-specific boundaries: the same-run fail-closed gate, read-only PR owner
 closure, trusted deployment separation, maintained action release tags, checkout credential

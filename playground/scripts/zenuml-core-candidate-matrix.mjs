@@ -20,7 +20,7 @@ const bundlePath = path.join(
   "MERMAID_REFERENCE_BUNDLE.json"
 );
 const officialNpmRegistry = "https://registry.npmjs.org/";
-const requiredNpmVersion = "12.2.1";
+const requiredNpmVersion = "12.2.2";
 const packageName = "@zenuml/core";
 
 const requireBrowserTestTool = createRequire(

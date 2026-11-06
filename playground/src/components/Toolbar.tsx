@@ -10,8 +10,8 @@ export function Toolbar() {
   return (
     <>
       <Toaster position="bottom-right" richColors />
-      <header className="flex h-14 shrink-0 items-center gap-1 border-b bg-card px-2 sm:gap-2 sm:px-4">
-        <div className="flex min-w-0 shrink-0 items-center gap-1 xl:gap-4">
+      <header className="flex h-14 shrink-0 items-center gap-0.5 border-b bg-card px-2 sm:gap-2 sm:px-4">
+        <div className="flex min-w-0 shrink-0 items-center gap-0.5 sm:gap-1 xl:gap-4">
           <div className="flex items-center gap-2">
             <img
               src={`${import.meta.env.BASE_URL}icon.svg`}

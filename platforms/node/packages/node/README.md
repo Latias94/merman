@@ -3,7 +3,10 @@
 Native Mermaid-compatible SVG rendering for Node.js 22+ and static-site build pipelines, without
 Chromium, a browser-WASM fallback, or a postinstall binary download.
 
-This guide targets the `0.10.0-alpha.1` prerelease with Options JSON schema `3`. Check the
+This guide targets the unpublished `0.10.0-alpha.2` release candidate with Node binding API `1`,
+Options JSON schema `3`, and theme execution evidence schema `2`. Build the loader and native
+platform package from the same reviewed source revision before publication; the registry command
+below applies after candidate publication. Check the
 [prebuilt product status](https://github.com/Latias94/merman/blob/main/docs/release/PREBUILT_PRODUCTS.md)
 and [publish order](https://github.com/Latias94/merman/blob/main/docs/release/PUBLISH_ORDER.md)
 for verified public availability. The package remains experimental.
@@ -13,7 +16,7 @@ for verified public availability. The package remains experimental.
 Install the loader package, not a platform package:
 
 ```sh
-npm install --save-exact @mermanjs/node@0.10.0-alpha.1
+npm install --save-exact @mermanjs/node@0.10.0-alpha.2
 ```
 
 ```js

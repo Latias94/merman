@@ -341,7 +341,7 @@ end
                 "{context}: incomplete row bounds"
             );
             let mut rows = Vec::new();
-            for row in row_requests.chunks_exact(3) {
+            for row in row_requests.as_chunks::<3>().0.iter() {
                 assert_eq!(
                     row.iter()
                         .map(|request| request.operation)

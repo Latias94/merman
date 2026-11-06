@@ -289,7 +289,7 @@ fn snapshot_debug_output_does_not_expand_the_shared_generation() {
     let snapshot = analyzed.snapshot();
 
     let document_debug = format!("{snapshot:?}");
-    let fence_debug = format!("{:?}", &snapshot.fences()[0]);
+    let fence_debug = format!("{:?}", snapshot.fences()[0]);
 
     assert!(document_debug.contains("fence_count: 1"));
     assert!(fence_debug.contains("diagram_ordinal: 0"));

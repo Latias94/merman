@@ -417,7 +417,9 @@ fn cli_renders_png_for_negative_viewbox_diagrams() {
     );
 
     let has_any_ink = buf[..info.buffer_size()]
-        .chunks_exact(4)
+        .as_chunks::<4>()
+        .0
+        .iter()
         .any(|px| px[3] != 0);
     assert!(has_any_ink, "rendered PNG is fully transparent");
 }

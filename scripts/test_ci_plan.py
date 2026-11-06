@@ -932,7 +932,7 @@ class TreeSitterWindowsWorkflowTests(unittest.TestCase):
         windows = workflow_job(workflow, "generation-windows")
         python = windows.split("- name: Install Python\n", 1)[1].split("\n      - ", 1)[0]
         self.assertIn("id: python", python)
-        self.assertIn('python-version: "3.14"', python)
+        self.assertIn('python-version: "3.15.2"', python)
         build = windows.split("- name: Verify Windows native binding\n", 1)[1]
         self.assertIn("NODE_GYP_FORCE_PYTHON: ${{ steps.python.outputs.python-path }}", build)
         command = "npm run build:node --prefix distribution/tree-sitter-mermaid"
@@ -1015,6 +1015,26 @@ class ParserSourceWorkflowTests(unittest.TestCase):
 
 
 class WorkflowFontDependenciesTests(unittest.TestCase):
+    def test_offline_artifact_closure_owners_prefetch_locked_dependencies(self) -> None:
+        from scripts.test_release_workflow_security import workflow_job
+
+        root = Path(__file__).resolve().parents[1]
+        cases = (
+            ("ci.yml", "typst-package", "cargo fetch --locked --target wasm32-unknown-unknown"),
+            ("ci.yml", "typst-package-compat", "cargo fetch --locked --target wasm32-unknown-unknown"),
+            ("release-crates.yml", "typst-owner-preflight", "cargo fetch --locked --target wasm32-unknown-unknown"),
+            ("release-preflight.yml", "versions-and-packages", "cargo fetch --locked"),
+            ("security-audit.yml", "cargo-dependency-policy", "cargo fetch --locked"),
+        )
+        for filename, job_name, fetch in cases:
+            with self.subTest(workflow=filename, job=job_name):
+                workflow = (root / ".github/workflows" / filename).read_text(encoding="utf-8")
+                job = workflow_job(workflow, job_name)
+                self.assertIn(fetch, job)
+                self.assertLess(
+                    job.index(fetch), job.index("scripts/verify_artifact_dependency_closures.py")
+                )
+
     def test_performance_paths_include_shared_model_and_markup_sources(self) -> None:
         workflow = (
             Path(__file__).resolve().parents[1] / ".github/workflows/performance.yml"

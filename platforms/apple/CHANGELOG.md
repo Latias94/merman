@@ -4,6 +4,29 @@ All notable changes to the Apple Swift package will be documented in this file.
 
 The format is based on Keep a Changelog, and this package follows the merman workspace version.
 
+## [0.10.0-alpha.2] - Unreleased
+
+Planned changes since `0.10.0-alpha.1`; this Apple package has not yet been released. See the [host installation guide](../../docs/release/PREBUILT_PRODUCTS.md) for published versions.
+
+### Breaking changes
+
+- Upgrade the generated Swift sources and XCFramework together; regenerate both from the same source revision for custom builds. Direct UniFFI API `7` and Options JSON schema `3` are unchanged, but the JSON contracts below require matching wrapper/runtime artifacts.
+- Update analysis-facts decoders from schema `2` to `3`. Every diagram requires an `appearance` sibling of `syntax`, tagged `known` or `unknown`; known theme, font and look declarations include frontmatter/directive provenance and original diagram-local UTF-8 byte spans. Source declarations describe configuration, not the executed render. See the [contract migration](../../docs/release/UNRELEASED_CONTRACT_VERSIONS.md#source-appearance-and-render-evidence-follow-up). [#277](https://github.com/Latias94/merman/pull/277)
+- Update custom render-metadata decoders for `theme_execution_evidence.version: 2` and required nullable `materialized_theme`, which records the Mermaid palette actually used. Preserve unknown evidence versions as opaque data; theme application and output-target admission remain separate checks. [#277](https://github.com/Latias94/merman/pull/277)
+
+### Changed
+
+- Advance Mermaid compatibility from `12.2.0` to `12.3.0`, adding timed Flowchart Step edges and numbered badges, nine `bpmn-*` Flowchart shapes, updated Swimlane behavior and Usecase Include/Extend labels. Animation is browser-only; static output keeps edges and badges. Review SVG/layout snapshots for the selected ELK `0.12.1` label clearance, compound-container, self-loop and packing behavior. See the [Mermaid migration guide](../../docs/migrations/mermaid-12-3.md). [#277](https://github.com/Latias94/merman/pull/277)
+- Core theme colors and typography reach all 34 diagram families in the complete SVG product, including supported paint on BPMN event rings and annotation brackets. Effects remain specific to the family, shape, look and output; see the [theme coverage guide](../../docs/rendering/diagram-theme-coverage.md). [#277](https://github.com/Latias94/merman/pull/277), [#278](https://github.com/Latias94/merman/pull/278)
+- Adapt 15 editable designs from the [theme design gallery](../../CHANGELOG.md#theme-design-gallery) by passing the downloaded JSON as the `theme` value in [Options JSON](../../docs/bindings/OPTIONS_JSON.md#diagram-theme). These five-family examples are independent recipes; the built-in catalog remains at 11 presets. Fonts resolve on the host, and examples do not qualify every diagram or output. [#279](https://github.com/Latias94/merman/pull/279)
+
+### Fixed
+
+- Preserve Flowchart source-class precedence over theme colors and fonts, and use supported source font sizes during label measurement. [#278](https://github.com/Latias94/merman/pull/278)
+- Avoid false strict-theme rejections when resetting supported Pie text styles or Architecture group colors to their defaults. [#278](https://github.com/Latias94/merman/pull/278)
+- Preserve supported inline font sizes, weights and code fonts during HTML-to-SVG conversion; retain Railroad, Cynefin and Wardley label text, and emit valid SVG for State labels with HTML line breaks. [#277](https://github.com/Latias94/merman/pull/277), [#278](https://github.com/Latias94/merman/pull/278)
+- Render Brutalist shadows on supported Classic and Neo Flowchart shapes and match Usecase arrowheads to connector colors. Explicit Sequence theme backgrounds now contain the full lifeline when bottom participants are hidden. [#278](https://github.com/Latias94/merman/pull/278), [#279](https://github.com/Latias94/merman/pull/279)
+
 ## [0.10.0-alpha.1] - 2026-11-02
 
 Changes below are relative to `0.9.3`. Download the complete local SwiftPM package using the [host installation guide](../../docs/release/PREBUILT_PRODUCTS.md); public Git-URL installation requires a separately hosted package repository.

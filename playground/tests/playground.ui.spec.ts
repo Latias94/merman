@@ -409,15 +409,31 @@ test("preview tabs use manual keyboard activation", async ({ page }) => {
   expect(wasRequested(requests, viewerJsonOutput)).toBe(false);
   expect(workers.some((url) => /json\.worker/i.test(url))).toBe(false);
   await expect(page.getByRole("tab", { name: "Diagnostics", exact: true })).toHaveCount(0);
-  await expect(page.getByRole("tab", { name: "Compare", exact: true })).toHaveCount(0);
   const svgTab = page.getByRole("tab", { name: "SVG", exact: true });
   const asciiTab = page.getByRole("tab", { name: "ASCII", exact: true });
+  const compareTab = page.getByRole("tab", { name: "Compare", exact: true });
+  await expect(compareTab).toBeVisible();
+  await expect(compareTab).toHaveAttribute("aria-selected", "false");
   await svgTab.focus();
   await page.keyboard.press("End");
-  await expect(asciiTab).toBeFocused();
+  await expect(compareTab).toBeFocused();
   await expect(svgTab).toHaveAttribute("aria-selected", "true");
+  await expect(page.locator('iframe[data-merman-realm="compare"]')).toHaveCount(0);
+  await page.keyboard.press("ArrowLeft");
+  await expect(asciiTab).toBeFocused();
   await page.keyboard.press("Enter");
   await expect(asciiTab).toHaveAttribute("aria-selected", "true");
+  await page.keyboard.press("ArrowRight");
+  await expect(compareTab).toBeFocused();
+  await expect(asciiTab).toHaveAttribute("aria-selected", "true");
+  await page.keyboard.press("Space");
+  await expect(compareTab).toHaveAttribute("aria-selected", "true");
+  await expect(compareTab).toHaveAttribute("tabindex", "0");
+  await expect(svgTab).toHaveAttribute("tabindex", "-1");
+  const comparePanel = page.getByRole("tabpanel", { name: "Compare", exact: true });
+  await expect(comparePanel).toHaveAttribute("aria-labelledby", "preview-compare-tab");
+  await expect(comparePanel.locator('[data-merman-compare-engine="merman"] .preview-container svg')).toBeVisible();
+  await expect(comparePanel.locator('[data-merman-compare-engine="mermaid"] .preview-container svg')).toBeVisible();
   await openWorkbenchTool(page, "Diagnostics");
   await expect(page.getByRole("region", { name: "Diagnostics", exact: true })).toBeVisible();
   await expect(page.getByRole("tab", { name: "Parse JSON" })).toBeVisible();
@@ -430,6 +446,23 @@ test("preview tabs use manual keyboard activation", async ({ page }) => {
   await svgTab.click();
   await expect(svgTab).toHaveAttribute("aria-selected", "true");
   await expect(page.getByRole("heading", { name: "Diagnostics", exact: true })).toHaveCount(0);
+  errors.assertNone();
+});
+
+test("Chinese preview keeps a direct localized Compare tab", async ({ page }) => {
+  const errors = monitorBrowserErrors(page);
+  await openPlayground(page);
+  await page.getByRole("button", { name: "App settings", exact: true }).click();
+  await page.getByRole("menuitemradio", { name: "中文" }).click();
+  const compareTab = page.getByRole("tab", { name: "对比", exact: true });
+  await expect(compareTab).toBeVisible();
+  await compareTab.click();
+  await expect(compareTab).toHaveAttribute("aria-selected", "true");
+  const comparePanel = page.getByRole("tabpanel", { name: "对比", exact: true });
+  await expect(comparePanel.locator('[data-merman-compare-engine="merman"] .preview-container svg')).toBeVisible();
+  await expect(comparePanel.locator('[data-merman-compare-engine="mermaid"] .preview-container svg')).toBeVisible();
+  await page.getByRole("tab", { name: "SVG", exact: true }).click();
+  await expect(compareTab).toHaveAttribute("aria-selected", "false");
   errors.assertNone();
 });
 

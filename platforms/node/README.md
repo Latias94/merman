@@ -4,7 +4,9 @@
 Node.js 22+ and static-site builds. A small loader selects one exact-version native package for the
 current host; it has no browser-WASM fallback or postinstall downloader.
 
-This guide targets the `0.10.0-alpha.1` prerelease. Check the
+This guide targets the unpublished `0.10.0-alpha.2` release candidate. Build matching wrappers and
+native/WASM artifacts from one reviewed source revision; the registry command below applies after
+candidate publication. Check the
 [prebuilt product status](../../docs/release/PREBUILT_PRODUCTS.md) and
 [publish order](../../docs/release/PUBLISH_ORDER.md) for verified public availability. See the
 [current Node changelog](CHANGELOG.md) for changes and upgrade actions.
@@ -14,16 +16,17 @@ Application developers should start with the [`@mermanjs/node` package guide](pa
 ## Quick start
 
 The loader, selected native platform package, and explicit `@mermanjs/node-wasm` transport use one
-exact package-group version. The packages target Mermaid `12.2.0` and use
-[Options JSON schema `3`](../../docs/bindings/OPTIONS_JSON.md).
+exact package-group version. The alpha.2 candidate targets Mermaid `12.3.0` and uses Node binding
+API `1`, [Options JSON schema `3`](../../docs/bindings/OPTIONS_JSON.md), and theme execution evidence
+schema `2`.
 
-Current source builds select Mermaid `12.3.0`; published alpha.1 packages keep their original
-baseline. Build matching wrappers and native/WASM artifacts from one source revision. See the
+Published `0.10.0-alpha.1` packages retain Mermaid `12.2.0` and theme execution evidence schema `1`.
+See the
 [development migration](../../docs/migrations/mermaid-12-3.md) for Step animation and static
 output policy, shared shapes, and layout changes.
 
 ```sh
-npm install --save-exact @mermanjs/node@0.10.0-alpha.1
+npm install --save-exact @mermanjs/node@0.10.0-alpha.2
 ```
 
 ```js

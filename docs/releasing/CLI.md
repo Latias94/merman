@@ -106,7 +106,7 @@ payload contains the executable, package README, repository changelog and licens
 `completions/` and `man/`. The `0.9.0` standard profile ships 15 manual pages, including
 Rustdoc build/check; its checked completions and manual pages match the compiled command tree.
 
-The script installers start from the pinned cargo-dist `0.32.0` output, then pass through one
+The script installers start from the pinned cargo-dist `0.34.0` output, then pass through one
 repository-owned deterministic hardening step. PowerShell binds the downloaded Windows ZIP with
 `Get-FileHash`; the shell installer tries `sha256sum`, `shasum`, then OpenSSL. A checksum mismatch
 or the absence of every supported SHA-256 tool stops installation. Template drift stops the release

@@ -58,10 +58,9 @@ fn parse_hex_digit(digit: u8) -> Option<u8> {
 fn parse_rgb_function(value: &str) -> Option<CssColor> {
     let (inner, min_components) = if let Some(inner) = strip_ascii_case_prefix(value, "rgb(") {
         (inner.strip_suffix(')')?, 3)
-    } else if let Some(inner) = strip_ascii_case_prefix(value, "rgba(") {
-        (inner.strip_suffix(')')?, 4)
     } else {
-        return None;
+        let inner = strip_ascii_case_prefix(value, "rgba(")?;
+        (inner.strip_suffix(')')?, 4)
     };
 
     let mut components = inner
@@ -90,10 +89,9 @@ fn parse_rgb_function(value: &str) -> Option<CssColor> {
 fn parse_hsl_function(value: &str) -> Option<CssColor> {
     let (inner, min_components) = if let Some(inner) = strip_ascii_case_prefix(value, "hsl(") {
         (inner.strip_suffix(')')?, 3)
-    } else if let Some(inner) = strip_ascii_case_prefix(value, "hsla(") {
-        (inner.strip_suffix(')')?, 4)
     } else {
-        return None;
+        let inner = strip_ascii_case_prefix(value, "hsla(")?;
+        (inner.strip_suffix(')')?, 4)
     };
 
     let mut components = inner

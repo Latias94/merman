@@ -23,7 +23,7 @@ An operation owner that intentionally accepts the sentinel must call `layout_wit
 The workspace license is MIT OR Apache-2.0; the translated ELK implementation remains EPL-2.0 in its own crate.
 
 The [Mermaid 12.3 engine handoff](../merman-elk-layered/MERMAID_12_3_DELTA.md) records the
-elkjs 0.12.0 source delta, provider/phase observations and their verification boundaries.
+elkjs 0.12.1 source delta, provider/phase observations and their verification boundaries.
 It preserves the historical 0.9.3 derivation and measurement identities. Mr. Tree
 now normalizes against graph-level padding after recomputing merged component bounds; the
 adapter no longer supplies a first-child padding workaround.

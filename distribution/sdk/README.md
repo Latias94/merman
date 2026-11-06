@@ -145,7 +145,7 @@ finishes qualification and packaging before returning. The optional native
 The independent CI parity job performs that comparison across matrix jobs.
 
 The command needs Python 3.11+, the repository Rust toolchain with the selected
-target installed, cargo-about 0.9.2 on `PATH`, and the pinned host dependencies in
+target installed, cargo-about 0.9.3 on `PATH`, and the pinned host dependencies in
 `platforms/wasi/requirements.txt`. WASI additionally needs the Go version in
 `platforms/wasi/README.md`; native qualification needs CMake and the platform's C
 toolchain. macOS uses its `install_name_tool`, `codesign` and `otool`. The command

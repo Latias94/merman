@@ -105,6 +105,7 @@ CRATE_COMPONENTS = {
     "crates/merman-markup": ("dompurify", "mermaid", "sanitize-url"),
     "crates/merman-export": ("sdk-cousine",),
     "crates/merman-render": (
+        "d3-path",
         "d3-shape",
         "fmin",
         "mermaid",

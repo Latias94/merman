@@ -28,14 +28,14 @@ jobs:
           persist-credentials: false
 
       - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@1.95.0
+        uses: dtolnay/rust-toolchain@1.99.1
         with:
           targets: wasm32-unknown-unknown
 
       - name: Setup exact Node
         uses: actions/setup-node@v7.1.0
         with:
-          node-version: "24.21.0"
+          node-version: "26.13.0"
           cache: npm
           cache-dependency-path: |
             platforms/web/package-lock.json
@@ -43,15 +43,15 @@ jobs:
             playground/tests/package-lock.json
 
       - name: Install exact npm
-        run: npm install --global --ignore-scripts --registry=https://registry.npmjs.org/ npm@12.2.1
+        run: npm install --global --ignore-scripts --registry=https://registry.npmjs.org/ npm@12.2.2
 
       - name: Install wasm-tools
-        uses: taiki-e/install-action@v2.87.29
+        uses: taiki-e/install-action@v2.90.1
         with:
-          tool: wasm-tools@1.261.0
+          tool: wasm-tools@1.263.0
 
       - name: Install wasm-pack
-        run: cargo install wasm-pack --version 0.15.0 --locked
+        run: cargo install wasm-pack --version 0.15.1 --locked
 
       - name: Install admission dependencies without lifecycle scripts
         run: |

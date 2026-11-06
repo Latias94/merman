@@ -16,15 +16,16 @@ See the [browser package guide](https://github.com/Latias94/merman/tree/main/pla
 
 The generated transport exposes generic operation dispatch plus stable convenience functions for the capabilities compiled into its artifact profile. It can project SVG, semantic JSON, layout JSON, ASCII/Unicode, validation, diagnostics, document facts, metadata, and editor operations.
 
-The current development source reports the following contracts. Published `0.10.0-alpha.1`
-artifacts retain transport API `8` and facts schema `2`; rebuild matching facade, glue and WASM
-from one revision to use the development contracts below.
+The unpublished `0.10.0-alpha.2` release candidate reports the following contracts. Published `0.10.0-alpha.1`
+artifacts retain transport API `8`, facts schema `2` and theme execution evidence schema `1`; rebuild
+matching facade, glue and WASM from one revision to use the candidate contracts below.
 
 - transport API version `9` (`0.10.0-alpha.1` used `8`; `0.9.3` used `5`);
 - runtime catalog schema `1`;
 - text-measurement protocol version `1`;
 - diagnostics payload schema `1`;
 - analysis-facts payload schema `3` (generic semantic facts and required per-diagram `appearance`, tagged `known` or `unknown`; the Flowchart-only rich graph remains removed). See the [source appearance migration](../../docs/release/UNRELEASED_CONTRACT_VERSIONS.md#source-appearance-and-render-evidence-follow-up).
+- theme execution evidence schema `2` (including the actual materialized Mermaid palette or null).
 
 These contracts are independently versioned. Native ABI numbers, Typst plugin ABI numbers, Mermaid diagram IDs, and JSON payload versions are not interchangeable.
 

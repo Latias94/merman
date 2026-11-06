@@ -289,10 +289,10 @@
   },
   "generator": {
     "name": "cargo-about",
-    "version": "0.9.2",
+    "version": "0.9.3",
     "command_profile": "artifact-profile-target-union",
     "offline": true,
-    "cargo_lock_sha256": "b6041d532377878de67040cf3d183747be6de5b951ca358bcc5bc198ebce098d",
+    "cargo_lock_sha256": "fea9469fc52b00b62f0552d73b7268a120fbe122f74855d72ae619f38150eb00",
     "configuration_sha256": "50ee414d81334fe54e34465a8441d8ee5ec237518b06b3759c794056aa3e26a4",
     "artifact_bundle_sha256": "b3030c431abb12f44bedd1589f9919df88fe1b34aec9aabf9794a6ae5a16a2fb"
   },
@@ -300,73 +300,73 @@
     {
       "artifact_profile_id": "flutter-android-native",
       "target": "aarch64-linux-android",
-      "package_count": 158,
-      "packages_sha256": "3298933a62bf906d44f35db0687fa318b95c3c41c6d90df5d7c8a9e940ce2d2e"
+      "package_count": 159,
+      "packages_sha256": "85bcae2dd0a96e8b07c2398df6d7c7faf4cd4c8862c0a61612e45f32dab9145b"
     },
     {
       "artifact_profile_id": "flutter-android-native",
       "target": "armv7-linux-androideabi",
-      "package_count": 157,
-      "packages_sha256": "2cec8af4edc9862ab86281d72835ccb949390b9fbc84e31659312cb0b95eb354"
+      "package_count": 158,
+      "packages_sha256": "e66eec0297a9ca0aad24e18494701194e19e3d7b97f48e2d72d27581cc4ff7c8"
     },
     {
       "artifact_profile_id": "flutter-android-native",
       "target": "x86_64-linux-android",
-      "package_count": 158,
-      "packages_sha256": "3298933a62bf906d44f35db0687fa318b95c3c41c6d90df5d7c8a9e940ce2d2e"
+      "package_count": 159,
+      "packages_sha256": "85bcae2dd0a96e8b07c2398df6d7c7faf4cd4c8862c0a61612e45f32dab9145b"
     },
     {
       "artifact_profile_id": "flutter-desktop-native",
       "target": "aarch64-apple-darwin",
-      "package_count": 158,
-      "packages_sha256": "3298933a62bf906d44f35db0687fa318b95c3c41c6d90df5d7c8a9e940ce2d2e"
+      "package_count": 159,
+      "packages_sha256": "85bcae2dd0a96e8b07c2398df6d7c7faf4cd4c8862c0a61612e45f32dab9145b"
     },
     {
       "artifact_profile_id": "flutter-desktop-native",
       "target": "aarch64-unknown-linux-gnu",
-      "package_count": 160,
-      "packages_sha256": "0e5694bd9698b5ef53a51dfb2e3d0a3105a4362523551be3ded563a655cb17d7"
+      "package_count": 161,
+      "packages_sha256": "99a8f229f4e59cb82a63630787bce96b1fa625d8a717d5967dd2cb75040494b9"
     },
     {
       "artifact_profile_id": "flutter-desktop-native",
       "target": "x86_64-apple-darwin",
-      "package_count": 158,
-      "packages_sha256": "3298933a62bf906d44f35db0687fa318b95c3c41c6d90df5d7c8a9e940ce2d2e"
+      "package_count": 159,
+      "packages_sha256": "85bcae2dd0a96e8b07c2398df6d7c7faf4cd4c8862c0a61612e45f32dab9145b"
     },
     {
       "artifact_profile_id": "flutter-desktop-native",
       "target": "x86_64-pc-windows-gnu",
-      "package_count": 162,
-      "packages_sha256": "a51c07846d150936a2d0dbe30780d041d927553fc93cb199131f65531967238b"
+      "package_count": 161,
+      "packages_sha256": "964500bf90775b8f03fd65cf73846f75eea504f0d88f9570ed3e36f808c7de44"
     },
     {
       "artifact_profile_id": "flutter-desktop-native",
       "target": "x86_64-unknown-linux-gnu",
-      "package_count": 160,
-      "packages_sha256": "0e5694bd9698b5ef53a51dfb2e3d0a3105a4362523551be3ded563a655cb17d7"
+      "package_count": 161,
+      "packages_sha256": "99a8f229f4e59cb82a63630787bce96b1fa625d8a717d5967dd2cb75040494b9"
     },
     {
       "artifact_profile_id": "flutter-ios-native",
       "target": "aarch64-apple-ios",
-      "package_count": 160,
-      "packages_sha256": "0e5694bd9698b5ef53a51dfb2e3d0a3105a4362523551be3ded563a655cb17d7"
+      "package_count": 161,
+      "packages_sha256": "99a8f229f4e59cb82a63630787bce96b1fa625d8a717d5967dd2cb75040494b9"
     },
     {
       "artifact_profile_id": "flutter-ios-native",
       "target": "aarch64-apple-ios-sim",
-      "package_count": 160,
-      "packages_sha256": "0e5694bd9698b5ef53a51dfb2e3d0a3105a4362523551be3ded563a655cb17d7"
+      "package_count": 161,
+      "packages_sha256": "99a8f229f4e59cb82a63630787bce96b1fa625d8a717d5967dd2cb75040494b9"
     },
     {
       "artifact_profile_id": "flutter-ios-native",
       "target": "x86_64-apple-ios",
-      "package_count": 160,
-      "packages_sha256": "0e5694bd9698b5ef53a51dfb2e3d0a3105a4362523551be3ded563a655cb17d7"
+      "package_count": 161,
+      "packages_sha256": "99a8f229f4e59cb82a63630787bce96b1fa625d8a717d5967dd2cb75040494b9"
     }
   ],
   "dependency_closure": {
-    "package_count": 165,
-    "packages_sha256": "0009a5ce49916f82bbdefb82dfcad3888e74ae4acd31fe6b83f5cf2bdb21c6b4"
+    "package_count": 164,
+    "packages_sha256": "18276c28399ee51a680596c7c26c86d26b3e6f13d8df6a69ce5c44ff65661750"
   },
   "licenses": [
     {
@@ -437,7 +437,7 @@
         },
         {
           "name": "granit-parser",
-          "version": "2.0.0",
+          "version": "2.1.0",
           "source": "registry+https://github.com/rust-lang/crates.io-index",
           "license_expression": "MIT OR Apache-2.0",
           "authors": [
@@ -553,7 +553,7 @@
         },
         {
           "name": "serde-saphyr",
-          "version": "2.0.0",
+          "version": "2.1.1",
           "source": "registry+https://github.com/rust-lang/crates.io-index",
           "license_expression": "MIT OR Apache-2.0",
           "authors": [],
@@ -932,7 +932,7 @@
         },
         {
           "name": "log",
-          "version": "0.4.34",
+          "version": "0.4.35",
           "source": "registry+https://github.com/rust-lang/crates.io-index",
           "license_expression": "MIT OR Apache-2.0",
           "authors": [
@@ -952,7 +952,7 @@
         },
         {
           "name": "mime",
-          "version": "0.3.17",
+          "version": "0.3.18",
           "source": "registry+https://github.com/rust-lang/crates.io-index",
           "license_expression": "MIT OR Apache-2.0",
           "authors": [
@@ -1126,7 +1126,7 @@
         },
         {
           "name": "svgtypes",
-          "version": "0.16.1",
+          "version": "0.16.2",
           "source": "registry+https://github.com/rust-lang/crates.io-index",
           "license_expression": "Apache-2.0 OR MIT",
           "authors": [],
@@ -1201,7 +1201,7 @@
         },
         {
           "name": "unicode-width",
-          "version": "0.2.2",
+          "version": "0.2.3",
           "source": "registry+https://github.com/rust-lang/crates.io-index",
           "license_expression": "MIT OR Apache-2.0",
           "authors": [
@@ -1344,32 +1344,10 @@
         },
         {
           "name": "windows-sys",
-          "version": "0.52.0",
+          "version": "0.61.2",
           "source": "registry+https://github.com/rust-lang/crates.io-index",
           "license_expression": "MIT OR Apache-2.0",
-          "authors": [
-            "Microsoft"
-          ],
-          "repository": "https://github.com/microsoft/windows-rs"
-        },
-        {
-          "name": "windows-targets",
-          "version": "0.52.6",
-          "source": "registry+https://github.com/rust-lang/crates.io-index",
-          "license_expression": "MIT OR Apache-2.0",
-          "authors": [
-            "Microsoft"
-          ],
-          "repository": "https://github.com/microsoft/windows-rs"
-        },
-        {
-          "name": "windows_x86_64_gnu",
-          "version": "0.52.6",
-          "source": "registry+https://github.com/rust-lang/crates.io-index",
-          "license_expression": "MIT OR Apache-2.0",
-          "authors": [
-            "Microsoft"
-          ],
+          "authors": [],
           "repository": "https://github.com/microsoft/windows-rs"
         }
       ]
@@ -1456,13 +1434,23 @@
         },
         {
           "name": "utf8_iter",
-          "version": "1.0.4",
+          "version": "1.1.0",
           "source": "registry+https://github.com/rust-lang/crates.io-index",
           "license_expression": "Apache-2.0 OR MIT",
           "authors": [
             "Henri Sivonen <hsivonen@hsivonen.fi>"
           ],
           "repository": "https://github.com/hsivonen/utf8_iter"
+        },
+        {
+          "name": "utf_types",
+          "version": "1.0.0",
+          "source": "registry+https://github.com/rust-lang/crates.io-index",
+          "license_expression": "Apache-2.0 OR MIT",
+          "authors": [
+            "Henri Sivonen <hsivonen@hsivonen.fi>"
+          ],
+          "repository": "https://github.com/hsivonen/utf_types"
         }
       ]
     },
@@ -1908,7 +1896,7 @@
       "packages": [
         {
           "name": "json5",
-          "version": "1.3.6",
+          "version": "1.3.7",
           "source": "registry+https://github.com/rust-lang/crates.io-index",
           "license_expression": "MIT",
           "authors": [

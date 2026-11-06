@@ -57,7 +57,7 @@ fn xy_text_role_recipe_survives_exchange_and_public_rendering() {
             let (width, height, buffer) = native_role_pixels(&renderer, source, &theme);
             for channel in 0..3 {
                 assert!(
-                    buffer.chunks_exact(4).any(|pixel| {
+                    buffer.as_chunks::<4>().0.iter().any(|pixel| {
                         pixel[channel] > 128
                             && pixel[(channel + 1) % 3] < 64
                             && pixel[(channel + 2) % 3] < 64
@@ -67,7 +67,7 @@ fn xy_text_role_recipe_survives_exchange_and_public_rendering() {
                 );
             }
             assert!(
-                buffer.chunks_exact(4).any(|pixel| pixel[0] > 128
+                buffer.as_chunks::<4>().0.iter().any(|pixel| pixel[0] > 128
                     && pixel[1] < 64
                     && pixel[2] > 128
                     && pixel[3] > 128),
@@ -215,7 +215,9 @@ fn public_cyberpunk_xy_roles_survive_preset_exchange() {
                     let (width, height, buffer) = native_role_pixels(&renderer, &source, theme);
                     assert!(
                         buffer
-                            .chunks_exact(4)
+                            .as_chunks::<4>()
+                            .0
+                            .iter()
                             .any(|pixel| pixel[..3] == [0, 242, 255])
                     );
                     pixels.push((width, height, buffer));
@@ -347,7 +349,9 @@ fn xy_role_glow_reaches_native_pixels_and_complete_filter_receipts() {
         assert_eq!(info.color_type, png::ColorType::Rgba);
         assert!(
             buffer[..info.buffer_size()]
-                .chunks_exact(4)
+                .as_chunks::<4>()
+                .0
+                .iter()
                 .any(|p| p[1] > p[0].saturating_add(10) && p[2] > p[0].saturating_add(10)),
             "text shadow must paint cyan pixels"
         );

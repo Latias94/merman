@@ -156,7 +156,7 @@ jobs:
         run: python3 scripts/release-version.py check --version "$VERSION"
 
       - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@1.95.0
+        uses: dtolnay/rust-toolchain@1.99.1
         with:
           targets: aarch64-linux-android,wasm32-unknown-unknown,wasm32-wasip1
 
@@ -223,7 +223,7 @@ jobs:
           python3 scripts/release-version.py check --version "$VERSION"
 
       - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@1.95.0
+        uses: dtolnay/rust-toolchain@1.99.1
         with:
           targets: wasm32-unknown-unknown
 
@@ -231,16 +231,16 @@ jobs:
         if: ${{ needs.preflight.outputs.reused_evidence != 'true' }}
         uses: actions/setup-node@v7.1.0
         with:
-          node-version: "24.21.0"
+          node-version: "26.13.0"
           package-manager-cache: false
 
       - name: Install pinned npm
         if: ${{ needs.preflight.outputs.reused_evidence != 'true' }}
-        run: npm install --global --ignore-scripts --registry=https://registry.npmjs.org/ npm@12.2.1
+        run: npm install --global --ignore-scripts --registry=https://registry.npmjs.org/ npm@12.2.2
 
       - name: Install wasm-pack
         if: ${{ needs.preflight.outputs.reused_evidence != 'true' }}
-        run: cargo install wasm-pack --version 0.15.0 --locked
+        run: cargo install wasm-pack --version 0.15.1 --locked
 
       - name: Verify generated Web contracts
         run: |
@@ -280,14 +280,14 @@ jobs:
           test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
 
       - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@1.95.0
+        uses: dtolnay/rust-toolchain@1.99.1
         with:
           targets: wasm32-unknown-unknown
 
       - name: Install wasm-tools
-        uses: taiki-e/install-action@v2.87.29
+        uses: taiki-e/install-action@v2.90.1
         with:
-          tool: wasm-tools@1.261.0
+          tool: wasm-tools@1.263.0
 
       - name: Install wasm-opt
         uses: sigoden/install-binary@v1.3.0
@@ -316,6 +316,9 @@ jobs:
           cargo run --locked -p xtask -- verify-capability-surface
           cargo run --locked -p xtask -- verify-artifact-profiles
           cargo run --locked -p xtask -- verify-typst-profile-constants
+
+      - name: Prefetch locked Typst dependencies for offline checks
+        run: cargo fetch --locked --target wasm32-unknown-unknown
 
       - name: Build and smoke exact Typst artifact
         shell: bash
@@ -377,7 +380,7 @@ jobs:
           echo "Publishing verified source commit and tree: $current_sha $current_tree"
 
       - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@1.95.0
+        uses: dtolnay/rust-toolchain@1.99.1
 
       - name: Select prior crates.io publication attempt
         id: recovery

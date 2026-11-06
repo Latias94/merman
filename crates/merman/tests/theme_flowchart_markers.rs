@@ -110,7 +110,12 @@ fn native_marker_pixels_follow_the_public_edge_paint() {
         }
         let mut marker_pixels = 0;
         let mut cyan_marker_pixels = 0;
-        for (original, control) in pixels.chunks_exact(4).zip(control_pixels.chunks_exact(4)) {
+        for (original, control) in pixels
+            .as_chunks::<4>()
+            .0
+            .iter()
+            .zip(control_pixels.as_chunks::<4>().0.iter())
+        {
             if original == control {
                 continue;
             }

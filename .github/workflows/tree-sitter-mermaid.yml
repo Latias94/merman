@@ -17,20 +17,20 @@ jobs:
       - name: Install Node.js
         uses: actions/setup-node@v7.1.0
         with:
-          node-version: "24.21.0"
+          node-version: "26.13.0"
           cache: npm
           cache-dependency-path: distribution/tree-sitter-mermaid/package-lock.json
 
       - name: Install pinned npm
-        run: npm install --global --ignore-scripts --registry=https://registry.npmjs.org/ npm@12.2.1
+        run: npm install --global --ignore-scripts --registry=https://registry.npmjs.org/ npm@12.2.2
 
       - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@1.95.0
+        uses: dtolnay/rust-toolchain@1.99.1
 
       - name: Install cargo-nextest
-        uses: taiki-e/install-action@v2.87.29
+        uses: taiki-e/install-action@v2.90.1
         with:
-          tool: nextest@0.9.148
+          tool: nextest@0.9.151
 
       - name: Install grammar toolchain
         run: |
@@ -55,18 +55,18 @@ jobs:
       - name: Install Node.js
         uses: actions/setup-node@v7.1.0
         with:
-          node-version: "24.21.0"
+          node-version: "26.13.0"
           cache: npm
           cache-dependency-path: distribution/tree-sitter-mermaid/package-lock.json
 
       - name: Install pinned npm
-        run: npm install --global --ignore-scripts --registry=https://registry.npmjs.org/ npm@12.2.1
+        run: npm install --global --ignore-scripts --registry=https://registry.npmjs.org/ npm@12.2.2
 
       - name: Install Python
         id: python
-        uses: actions/setup-python@v7.0.0
+        uses: actions/setup-python@v7.1.0
         with:
-          python-version: "3.14"
+          python-version: "3.15.2"
 
       - name: Install grammar toolchain
         run: |
@@ -114,12 +114,12 @@ jobs:
       - name: Install Node.js
         uses: actions/setup-node@v7.1.0
         with:
-          node-version: "24.21.0"
+          node-version: "26.13.0"
           cache: npm
           cache-dependency-path: distribution/tree-sitter-mermaid/package-lock.json
 
       - name: Install pinned npm
-        run: npm install --global --ignore-scripts --registry=https://registry.npmjs.org/ npm@12.2.1
+        run: npm install --global --ignore-scripts --registry=https://registry.npmjs.org/ npm@12.2.2
 
       - name: Install grammar toolchain
         run: |
@@ -165,15 +165,15 @@ jobs:
       - name: Install Node.js
         uses: actions/setup-node@v7.1.0
         with:
-          node-version: "24.21.0"
+          node-version: "26.13.0"
           cache: npm
           cache-dependency-path: distribution/tree-sitter-mermaid/package-lock.json
 
       - name: Install pinned npm
-        run: npm install --global --ignore-scripts --registry=https://registry.npmjs.org/ npm@12.2.1
+        run: npm install --global --ignore-scripts --registry=https://registry.npmjs.org/ npm@12.2.2
 
       - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@1.95.0
+        uses: dtolnay/rust-toolchain@1.99.1
 
       - name: Build local release shape
         run: |

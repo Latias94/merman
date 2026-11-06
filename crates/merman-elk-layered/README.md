@@ -103,7 +103,7 @@ The same source boundary now contains the remaining Mermaid 12 algorithm kernels
 - `algorithms::rectpacking`: greedy width approximation, block/stack compaction, repeated
   compaction and equal whitespace expansion. It preserves the provider's explicit `trybox`
   branch. Mermaid's `SCANLINE` option is not a selected ELK enum value and resolves to GREEDY in
-  the selected elkjs 0.12.0 runtime. Container dimensions and content translations are returned.
+  the selected elkjs 0.12.1 runtime. Container dimensions and content translations are returned.
 - `algorithms::spore_overlap`: scanline detection, source Bowyer-Watson triangulation,
   minimum spanning tree growth and straight-edge clipping. Source hash-bucket traversal is
   preserved for equal-cost edge choices. Duplicate centers use an explicitly supplied random

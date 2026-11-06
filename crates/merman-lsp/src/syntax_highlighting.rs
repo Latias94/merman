@@ -644,7 +644,7 @@ mod tests {
             .unwrap();
             let mut line = 0;
             let mut column = 0;
-            for words in plan.packed().chunks_exact(5) {
+            for words in plan.packed().as_chunks::<5>().0 {
                 line += words[0] as usize;
                 column = if words[0] == 0 {
                     column + words[1] as usize
@@ -721,7 +721,7 @@ mod tests {
         let mut line = 0;
         let mut column = 0;
         let mut tokens = Vec::new();
-        for words in plan.packed().chunks_exact(5) {
+        for words in plan.packed().as_chunks::<5>().0 {
             line += words[0];
             column = if words[0] == 0 {
                 column + words[1]

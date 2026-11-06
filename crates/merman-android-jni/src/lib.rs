@@ -352,6 +352,10 @@ pub unsafe extern "system" fn JNI_OnLoad(
     }
 }
 
+#[allow(
+    deprecated,
+    reason = "jni-macros 0.22.4 uses AtomicBool::fetch_update in its generated ABI checks"
+)]
 const MERMAN_METHODS: &[NativeMethod] = &[
     jni::native_method! {
         static fn native_runtime_catalog_json() -> java.lang.String,
@@ -379,6 +383,10 @@ const MERMAN_METHODS: &[NativeMethod] = &[
     },
 ];
 
+#[allow(
+    deprecated,
+    reason = "jni-macros 0.22.4 uses AtomicBool::fetch_update in its generated ABI checks"
+)]
 const OPERATION_CONTROL_METHODS: &[NativeMethod] = &[
     jni::native_method! {
         static fn native_operation_control_new(
@@ -401,6 +409,10 @@ const OPERATION_CONTROL_METHODS: &[NativeMethod] = &[
     },
 ];
 
+#[allow(
+    deprecated,
+    reason = "jni-macros 0.22.4 uses AtomicBool::fetch_update in its generated ABI checks"
+)]
 const ENGINE_METHODS: &[NativeMethod] = &[
     jni::native_method! {
         static fn native_engine_new(
