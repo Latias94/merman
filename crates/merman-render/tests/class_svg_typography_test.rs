@@ -115,6 +115,102 @@ fn render_and_layout_class_with_edge_label_measurer(
     (svg, layout)
 }
 
+#[test]
+fn class_html_cardinalities_preserve_breaks_and_entity_depth_in_measured_content() {
+    let source = "classDiagram\nA \"1<br/>many\" --> \"&amp;lt;owner&amp;gt;\\n**literal**\" B\n";
+    for layout in ["dagre", "elk"]
+        .into_iter()
+        .filter(|layout| *layout != "elk" || cfg!(feature = "layout-elk"))
+    {
+        let parsed = MermaidEngine::new()
+            .with_site_config(
+                merman_core::presentation::SourcePresentationConfig::from_value(json!({
+                    "layout": layout,
+                    "htmlLabels": true
+                })),
+            )
+            .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
+            .unwrap()
+            .unwrap()
+            .into_presentation();
+        let profile = TextMeasurementProfile::new(
+            TextMeasurementProfileIdentity::new(
+                MeasurementProfileId::new("class-cardinality-visible-text").unwrap(),
+                "test",
+            )
+            .unwrap(),
+            Arc::new(merman_render::text::DeterministicTextMeasurer {
+                char_width_factor: 1.0,
+                line_height_factor: 0.0,
+            }),
+        );
+        let artifact = family::prepare(
+            &parsed,
+            &LayoutOptions::headless_svg_defaults(),
+            RenderEnvironment::deterministic()
+                .with_text_measurement_policy(TextMeasurementPolicy::uniform(profile))
+                .begin_session()
+                .unwrap(),
+        )
+        .unwrap();
+        let projection = artifact.layout_json().unwrap();
+        let projection: merman_render::model::ClassDiagramLayout =
+            serde_json::from_value(projection["layout"]["ClassDiagramV2"].clone()).unwrap();
+        let edge = &projection.edges[0];
+        let rendered = artifact
+            .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+            .unwrap();
+        let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+        let terminals: Vec<_> = document
+            .descendants()
+            .filter(|node| node.attribute("class") == Some("edgeTerminals"))
+            .collect();
+        assert_eq!(terminals.len(), 2);
+        for (((terminal, label), expected_text), expected_width) in terminals
+            .into_iter()
+            .zip([
+                edge.start_label_right.as_ref().unwrap(),
+                edge.end_label_left.as_ref().unwrap(),
+            ])
+            .zip(["1many", "&lt;owner&gt;**literal**"])
+            .zip([44.0, 143.0])
+        {
+            let object = terminal
+                .descendants()
+                .find(|node| node.has_tag_name("foreignObject"))
+                .unwrap();
+            assert_eq!(
+                object
+                    .descendants()
+                    .filter(|node| node.has_tag_name("br"))
+                    .count(),
+                1
+            );
+            let text: String = object
+                .descendants()
+                .filter(|node| node.is_text())
+                .filter_map(|node| node.text())
+                .collect();
+            assert_eq!(text, expected_text);
+            assert!(
+                !object
+                    .descendants()
+                    .any(|node| { ["owner", "strong", "em"].contains(&node.tag_name().name()) })
+            );
+            assert_eq!(
+                object.attribute("height").unwrap().parse::<f64>().unwrap(),
+                label.height
+            );
+            assert_eq!(label.height, 33.0);
+            assert_eq!(label.width, expected_width);
+            assert_eq!(
+                object.attribute("width").unwrap().parse::<f64>().unwrap(),
+                expected_width
+            );
+        }
+    }
+}
+
 #[cfg(feature = "math")]
 #[test]
 fn class_svg_math_cardinalities_measure_the_emitted_literal_text() {

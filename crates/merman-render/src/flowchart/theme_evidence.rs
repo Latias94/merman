@@ -310,6 +310,7 @@ pub(crate) struct FlowchartEdgeThemeEmission {
 
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct FlowchartEdgeLabelThemeEmission {
+    pub(crate) fill: Option<FlowchartThemeFacetEmission>,
     pub(crate) effect: Option<FlowchartThemeFacetEmission>,
     pub(crate) font_stack: Option<FlowchartThemeFacetEmission>,
     pub(crate) font_size: Option<FlowchartThemeFacetEmission>,
@@ -358,6 +359,7 @@ struct FlowchartLabelThemeStyle {
 #[derive(Debug, Default)]
 pub(crate) struct FlowchartEdgeThemeStyle {
     ordinal_theme: Option<ResolvedDiagramTheme>,
+    label_ordinal_theme: Option<ResolvedDiagramTheme>,
     stroke: Option<FlowchartPaintOutcome>,
     stroke_width: Option<FlowchartScalarOutcome>,
     stroke_dasharray: Option<FlowchartDasharrayOutcome>,
@@ -368,6 +370,25 @@ pub(crate) struct FlowchartEdgeThemeStyle {
 }
 
 impl FlowchartEdgeThemeStyle {
+    pub(crate) fn label_fill_value(
+        &self,
+        precedence: FlowchartFacetPrecedence,
+        channel_emitted: bool,
+    ) -> Option<&str> {
+        (!precedence.overrides_theme() && channel_emitted)
+            .then(|| {
+                self.label
+                    .fill
+                    .as_ref()
+                    .and_then(FlowchartPaintOutcome::value)
+            })
+            .flatten()
+    }
+
+    pub(crate) fn has_label_fill_route(&self) -> bool {
+        self.label.fill.is_some() || self.label_ordinal_theme.is_some()
+    }
+
     pub(crate) fn label_effect(&self) -> Option<&SvgShadowEffect> {
         self.label
             .effect
@@ -409,6 +430,12 @@ impl FlowchartEdgeThemeStyle {
         }
         resolved.label =
             resolve_label_theme_style(theme, ThemeTarget::EdgeLabel, None, work_meter)?;
+        if theme.family_rules().any(|(_, rule)| {
+            matches!(rule.target(), ThemeTarget::EdgeLabel | ThemeTarget::Text)
+                && rule.ordinal().is_some()
+        }) {
+            resolved.label_ordinal_theme = Some(theme.clone());
+        }
         Ok(resolved)
     }
 
@@ -984,6 +1011,13 @@ fn resolve_label_theme_style(
     work_meter: &OperationWorkMeter,
 ) -> Result<FlowchartLabelThemeStyle, OperationWorkError> {
     let style = theme.style_with_work_meter(target, ThemeVariant::Default, ordinal, work_meter)?;
+    let text_style = style
+        .fill_resolution()
+        .winner()
+        .map(|_| {
+            theme.text_style_with_work_meter(target, ThemeVariant::Default, ordinal, work_meter)
+        })
+        .transpose()?;
     let mut resolved = FlowchartLabelThemeStyle {
         ..FlowchartLabelThemeStyle::default()
     };
@@ -1025,6 +1059,14 @@ fn resolve_label_theme_style(
                 FamilyThemeRuleFacet::Typography(property),
             ),
             ResolvedStyleProperty::Fill => {
+                // Shared Text and role-local fills follow authored order, without specificity.
+                if text_style.as_ref().is_some_and(|style| {
+                    style.fill_resolution().winner().is_none_or(|winner| {
+                        winner.target() != target || winner.rule_index() != rule_index
+                    })
+                }) {
+                    continue;
+                }
                 if let Some(facet) = FamilyThemeRuleFacet::fill(style.fill_resolution().specified())
                 {
                     resolved.fill = resolve_paint(
@@ -1737,15 +1779,25 @@ impl FlowchartThemeEvidenceRecorder {
     pub(crate) fn record_edge_label_emission(
         &self,
         style: &FlowchartEdgeThemeStyle,
+        ordinal: usize,
         emission: FlowchartEdgeLabelThemeEmission,
         source_residuals: &[SourceStyleResidual],
         work_meter: &OperationWorkMeter,
     ) -> Result<(), OperationWorkError> {
+        let ordinal_style = style
+            .label_ordinal_theme
+            .as_ref()
+            .map(|theme| {
+                resolve_label_theme_style(theme, ThemeTarget::EdgeLabel, Some(ordinal), work_meter)
+            })
+            .transpose()?;
+        let fill = ordinal_style.as_ref().unwrap_or(&style.label).fill.as_ref();
         let mut state = self
             .state
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
-        let label_emitted = emission.effect.is_some()
+        let label_emitted = emission.fill.is_some()
+            || emission.effect.is_some()
             || emission.font_stack.is_some()
             || emission.font_size.is_some()
             || emission.font_weight.is_some()
@@ -1759,6 +1811,14 @@ impl FlowchartThemeEvidenceRecorder {
                     .residual_rules
                     .entry(*rule_index)
                     .or_insert(*reason);
+            }
+            if let Some(fill_emission) = emission.fill {
+                record_paint_outcome(
+                    &mut state.edge_label,
+                    fill,
+                    fill_emission.precedence,
+                    fill_emission.verified && fill == style.label.fill.as_ref(),
+                );
             }
             if let Some(font_stack_emission) = emission.font_stack {
                 record_typography_outcome(
@@ -2656,7 +2716,7 @@ mod tests {
                 observed.effect = facet;
                 observed.font_stack = label_emitted.then(FlowchartThemeFacetEmission::absent);
                 recorder
-                    .record_edge_label_emission(&style, observed, &[], meter)
+                    .record_edge_label_emission(&style, ordinal, observed, &[], meter)
                     .unwrap();
             }
             _ => unreachable!("label target required"),
@@ -3382,6 +3442,7 @@ mod tests {
         font_size: Option<(FlowchartFacetPrecedence, bool)>,
     ) -> FlowchartEdgeLabelThemeEmission {
         FlowchartEdgeLabelThemeEmission {
+            fill: None,
             effect: None,
             font_stack: font_stack.map(|(precedence, verified)| {
                 FlowchartThemeFacetEmission::new(precedence, verified)
@@ -3411,6 +3472,7 @@ mod tests {
         recorder
             .record_edge_label_emission(
                 &style,
+                1,
                 edge_label_emission(Some((precedence, true)), Some((precedence, true))),
                 &[],
                 &meter,
@@ -3459,7 +3521,9 @@ mod tests {
         recorder
             .record_edge_label_emission(
                 &style,
+                1,
                 FlowchartEdgeLabelThemeEmission {
+                    fill: None,
                     effect: None,
                     font_stack: None,
                     font_size: None,
@@ -3522,6 +3586,7 @@ mod tests {
             recorder
                 .record_edge_label_emission(
                     &style,
+                    1,
                     edge_label_emission(Some(font_stack), Some(font_size)),
                     &[],
                     &meter,
@@ -3564,6 +3629,7 @@ mod tests {
         recorder
             .record_edge_label_emission(
                 &style,
+                1,
                 edge_label_emission(Some((no_override(), true)), Some((font_size_shadow, false))),
                 &[],
                 &meter,
@@ -3572,6 +3638,7 @@ mod tests {
         recorder
             .record_edge_label_emission(
                 &style,
+                2,
                 edge_label_emission(
                     Some((no_override(), false)),
                     Some((font_size_shadow, false)),
@@ -3617,7 +3684,7 @@ mod tests {
         let recorder = FlowchartThemeEvidenceRecorder::default();
 
         recorder
-            .record_edge_label_emission(&style, edge_label_emission(None, None), &[], &meter)
+            .record_edge_label_emission(&style, 1, edge_label_emission(None, None), &[], &meter)
             .expect("record metered theme emission");
         let mut evidence = FamilyThemeEvidence::from_theme(Some(&theme));
         let source_residuals = recorder.record_into(Some(&theme), &mut evidence);
@@ -3706,7 +3773,7 @@ mod tests {
                                 emission.font_weight =
                                     Some(FlowchartThemeFacetEmission::new(precedence, verified));
                                 recorder
-                                    .record_edge_label_emission(&style, emission, &[], &meter)
+                                    .record_edge_label_emission(&style, 1, emission, &[], &meter)
                                     .expect("record edge weight");
                             }
                         }

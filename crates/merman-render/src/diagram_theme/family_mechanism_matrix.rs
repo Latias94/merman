@@ -1336,7 +1336,12 @@ pub(super) fn classify_rule_facet(
             DiagramFamilyId::FLOWCHART | DiagramFamilyId::SWIMLANE
         ) && target == ThemeTarget::EdgeLabel
             && facet == FamilyThemeRuleFacet::Padding)
-            || (target == ThemeTarget::NodeLabel
+            || ((target == ThemeTarget::NodeLabel
+                || (target == ThemeTarget::EdgeLabel
+                    && matches!(
+                        family,
+                        DiagramFamilyId::FLOWCHART | DiagramFamilyId::SWIMLANE
+                    )))
                 && matches!(
                     facet,
                     FamilyThemeRuleFacet::Fill(
@@ -1659,6 +1664,7 @@ pub(super) fn classify_rule_facet(
                 ThemeTarget::NodeLabel
                     | ThemeTarget::Title
                     | ThemeTarget::Text
+                    | ThemeTarget::EdgeLabel
                     | ThemeTarget::EdgeLabelBackground,
                 FamilyThemeRuleFacet::Fill(
                     FamilyThemePaintKind::Transparent | FamilyThemePaintKind::Solid

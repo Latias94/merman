@@ -26,6 +26,51 @@ fn shared_support_vectors_match_renderer_projection() {
 }
 
 #[test]
+fn flowchart_edge_label_fill_discovery_reports_the_solid_terminal_consumer() {
+    for family in [
+        DiagramFamilyId::FLOWCHART,
+        DiagramFamilyId::SWIMLANE,
+        DiagramFamilyId::AGENTFLOW,
+    ] {
+        let query = ThemeSupportQueryV1::for_target(
+            family.as_str(),
+            ThemeSupportOutputV1::StandaloneSvg,
+            ThemeTarget::EdgeLabel.id(),
+            ThemeRuleFacetV1::Fill,
+        );
+        let support = describe_theme_support(&query);
+        assert_eq!(support.state(), ThemeSupportStateV1::Conditional);
+        assert_eq!(
+            support.reason_ids(),
+            [
+                "theme-support.family-owned-consumer-present",
+                "theme-support.public-value-domain-partial",
+            ]
+        );
+    }
+}
+
+#[test]
+fn class_edge_label_fill_discovery_reports_a_partial_terminal_consumer() {
+    let query = ThemeSupportQueryV1::for_target(
+        DiagramFamilyId::CLASS.as_str(),
+        ThemeSupportOutputV1::StandaloneSvg,
+        ThemeTarget::EdgeLabel.id(),
+        ThemeRuleFacetV1::Fill,
+    );
+    let support = describe_theme_support(&query);
+    assert_eq!(support.claim_revision(), 3);
+    assert_eq!(support.state(), ThemeSupportStateV1::Conditional);
+    assert_eq!(
+        support.reason_ids(),
+        [
+            "theme-support.family-owned-consumer-present",
+            "theme-support.public-value-domain-partial",
+        ]
+    );
+}
+
+#[test]
 fn unknown_catalog_ids_remain_visible_and_resolve_to_unverified() {
     let query: ThemeSupportQueryV1 = serde_json::from_str(
         r#"{
@@ -39,7 +84,7 @@ fn unknown_catalog_ids_remain_visible_and_resolve_to_unverified() {
 
     let support = describe_theme_support(&query);
 
-    assert_eq!(support.claim_revision(), 2);
+    assert_eq!(support.claim_revision(), 3);
     assert_eq!(support.query(), &query);
     assert_eq!(support.state(), ThemeSupportStateV1::Unverified);
     assert_eq!(support.reason_ids(), ["theme-support.unknown-family"]);
@@ -399,7 +444,7 @@ fn sequence_text_and_title_discovery_distinguishes_real_title_consumers() {
         );
         let support = describe_theme_support(&query);
         assert_eq!(support.state(), state);
-        assert_eq!(support.claim_revision(), 2);
+        assert_eq!(support.claim_revision(), 3);
     }
 }
 
@@ -446,7 +491,7 @@ fn wardley_text_paint_support_is_limited_to_implemented_consumers() {
             expected,
             "target={target:?} facet={facet:?}"
         );
-        assert_eq!(support.claim_revision(), 2);
+        assert_eq!(support.claim_revision(), 3);
         let reasons: &[&str] = if expected == ThemeSupportStateV1::Conditional {
             &[
                 "theme-support.family-owned-consumer-present",
@@ -1982,7 +2027,7 @@ fn block_background_discovery_reports_a_partial_typed_consumer() {
         ThemeRuleFacetV1::Fill,
     );
     let support = describe_theme_support(&query);
-    assert_eq!(support.claim_revision(), 2);
+    assert_eq!(support.claim_revision(), 3);
     assert_eq!(support.state(), ThemeSupportStateV1::Conditional);
     assert_eq!(
         support.reason_ids(),
@@ -2003,7 +2048,7 @@ fn block_edge_discovery_reports_partial_typed_fill_and_stroke() {
             facet,
         );
         let support = describe_theme_support(&query);
-        assert_eq!(support.claim_revision(), 2);
+        assert_eq!(support.claim_revision(), 3);
         assert_eq!(support.state(), ThemeSupportStateV1::Conditional);
         assert_eq!(
             support.reason_ids(),
@@ -2025,7 +2070,7 @@ fn block_cluster_discovery_reports_partial_typed_fill_and_stroke() {
             facet,
         );
         let support = describe_theme_support(&query);
-        assert_eq!(support.claim_revision(), 2);
+        assert_eq!(support.claim_revision(), 3);
         assert_eq!(support.state(), ThemeSupportStateV1::Conditional);
         assert_eq!(
             support.reason_ids(),
@@ -2047,7 +2092,7 @@ fn block_marker_discovery_reports_partial_typed_fill_and_stroke() {
             facet,
         );
         let support = describe_theme_support(&query);
-        assert_eq!(support.claim_revision(), 2);
+        assert_eq!(support.claim_revision(), 3);
         assert_eq!(support.state(), ThemeSupportStateV1::Conditional);
         assert_eq!(
             support.reason_ids(),
@@ -2067,7 +2112,7 @@ fn block_generic_text_discovery_reports_partial_typed_fill() {
         "text",
         ThemeRuleFacetV1::Fill,
     ));
-    assert_eq!(support.claim_revision(), 2);
+    assert_eq!(support.claim_revision(), 3);
     assert_eq!(support.state(), ThemeSupportStateV1::Conditional);
     assert_eq!(
         support.reason_ids(),

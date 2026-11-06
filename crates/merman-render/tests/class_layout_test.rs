@@ -20,6 +20,42 @@ fn parse_class(text: &str) -> PresentationDiagram {
         .into_presentation()
 }
 
+#[test]
+fn class_viewport_ignores_flowchart_diagram_padding() {
+    use merman_render::svg::{SvgDebugOptions, SvgRenderOptions};
+
+    for layout in ["dagre", "elk"] {
+        if layout == "elk" && !cfg!(feature = "layout-elk") {
+            continue;
+        }
+        let mut baseline: Option<String> = None;
+        for padding in [8, 0, 64] {
+            let source = format!(
+                "---\nconfig:\n  layout: {layout}\n  flowchart:\n    diagramPadding: {padding}\n---\nclassDiagram\nclass A\n"
+            );
+            let parsed = parse_class(&source);
+            let session = RenderEnvironment::deterministic().begin_session().unwrap();
+            let prepared =
+                family::prepare(&parsed, &LayoutOptions::headless_svg_defaults(), session)
+                    .expect("prepare Class viewport regression");
+            let artifact = prepared
+                .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+                .expect("Class SVG");
+            let document = roxmltree::Document::parse(artifact.svg()).unwrap();
+            let viewbox = document.root_element().attribute("viewBox").unwrap();
+            if let Some(expected) = &baseline {
+                assert_eq!(
+                    viewbox,
+                    expected.as_str(),
+                    "{layout}: flowchart.diagramPadding={padding}"
+                );
+            } else {
+                baseline = Some(viewbox.to_string());
+            }
+        }
+    }
+}
+
 fn class_model(parsed: &PresentationDiagram) -> &merman_model::families::class::ClassDiagram {
     let RenderSemanticModel::Class(model) = parsed.model() else {
         panic!("expected Class render model");

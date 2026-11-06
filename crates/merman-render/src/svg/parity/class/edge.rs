@@ -450,6 +450,16 @@ pub(super) fn render_class_edge_labels<O: SvgOutput>(
         ctx.emit.checkpoint()?;
         class_edge_dom_id_into(&mut edge_dom_id_buf, e, ctx.relation_index_by_id);
         let relation = ctx.relations_by_id.get(e.id.as_str()).copied();
+        let relation_ordinal = relation
+            .map(|_| {
+                ctx.relation_index_by_id
+                    .get(e.id.as_str())
+                    .copied()
+                    .ok_or_else(|| crate::Error::InvalidModel {
+                        message: format!("missing Class relation ordinal for `{}`", e.id),
+                    })
+            })
+            .transpose()?;
         let label_text = relation
             .map(|relation| relation.source.title.as_str())
             .unwrap_or("");
@@ -466,14 +476,18 @@ pub(super) fn render_class_edge_labels<O: SvgOutput>(
             if ctx.relation_index_by_id.contains_key(e.id.as_str()) {
                 theme_receipt.record_edge_label_background(false);
             }
-            if relation.is_some()
-                && let Some(receipt) = typography_receipt.as_mut()
+            if let (Some(ordinal), Some(receipt)) = (relation_ordinal, typography_receipt.as_mut())
             {
                 // ELK omits every label DOM terminal on this route. Record that observed
                 // absence so the receipt can distinguish it from an unvisited writer.
-                receipt.record_edge_label(e.id.as_str(), Default::default());
+                receipt.record_edge_label(ordinal, Default::default(), ctx.work_meter)?;
                 for slot in 0..4 {
-                    receipt.record_cardinality(e.id.as_str(), slot, Default::default());
+                    receipt.record_cardinality(
+                        ordinal,
+                        slot,
+                        Default::default(),
+                        ctx.work_meter,
+                    )?;
                 }
             }
             continue;
@@ -519,10 +533,8 @@ pub(super) fn render_class_edge_labels<O: SvgOutput>(
         if ctx.relation_index_by_id.contains_key(e.id.as_str()) {
             theme_receipt.record_edge_label_background(background_visible);
         }
-        if relation.is_some()
-            && let Some(receipt) = typography_receipt.as_mut()
-        {
-            receipt.record_edge_label(e.id.as_str(), typography);
+        if let (Some(ordinal), Some(receipt)) = (relation_ordinal, typography_receipt.as_mut()) {
+            receipt.record_edge_label(ordinal, typography, ctx.work_meter)?;
         }
         if ctx.uses_elk_adapter_dom {
             render_class_edge_terminals(out, e, true, content_bounds, ctx, typography_receipt)?;
@@ -793,6 +805,13 @@ fn render_class_edge_terminals(
     let Some(relation) = ctx.relations_by_id.get(edge.id.as_str()).copied() else {
         return Ok(());
     };
+    let ordinal = ctx
+        .relation_index_by_id
+        .get(edge.id.as_str())
+        .copied()
+        .ok_or_else(|| crate::Error::InvalidModel {
+            message: format!("missing Class relation ordinal for `{}`", edge.id),
+        })?;
     let (text, labels) = if is_start {
         (
             relation.relation_title_1.as_deref().unwrap_or_default(),
@@ -804,8 +823,12 @@ fn render_class_edge_terminals(
             [&edge.end_label_left, &edge.end_label_right],
         )
     };
-    let decoded = decode_entities_minimal_cow(text);
-    let text = decoded.trim();
+    let text = if ctx.edge_use_html_labels {
+        std::borrow::Cow::Borrowed(text)
+    } else {
+        decode_entities_minimal_cow(text)
+    };
+    let text = text.trim();
     for (slot, label) in labels.into_iter().enumerate() {
         let mut typography = crate::class::ClassTextTerminalFacts::default();
         if let Some(label) = label
@@ -830,7 +853,12 @@ fn render_class_edge_terminals(
             out.checkpoint()?;
         }
         if let Some(receipt) = typography_receipt.as_mut() {
-            receipt.record_cardinality(&edge.id, slot + if is_start { 0 } else { 2 }, typography);
+            receipt.record_cardinality(
+                ordinal,
+                slot + if is_start { 0 } else { 2 },
+                typography,
+                ctx.work_meter,
+            )?;
         }
     }
     Ok(())
@@ -850,6 +878,7 @@ fn render_class_edge_terminal_group<O: SvgOutput>(
     let x = label.x + ctx.content_tx;
     let y = label.y + ctx.content_ty;
     let emitted_style;
+    let facts;
     if ctx.edge_use_html_labels {
         let _ = write!(
             out,
@@ -867,7 +896,7 @@ fn render_class_edge_terminal_group<O: SvgOutput>(
             out,
             ctx.text_paint.map(|paint| paint.style()),
         );
-        render_class_terminal_label(out, trimmed, ctx.mermaid_config, ctx.math_renderer);
+        facts = render_class_terminal_label(out, trimmed, ctx.mermaid_config, ctx.math_renderer);
         out.push_str("</span></div></foreignObject></g></g>");
     } else {
         let bbox_y = ctx
@@ -892,12 +921,8 @@ fn render_class_edge_terminal_group<O: SvgOutput>(
             out.push_str("</g>");
         }
         out.push_str("</g></g></g>");
+        facts = crate::class::ClassTextTerminalFacts::fixed_font_size_text(trimmed);
     }
-    let facts = if ctx.edge_use_html_labels && crate::math::contains_delimited_math(trimmed) {
-        crate::class::ClassTextTerminalFacts::unverified_text(trimmed)
-    } else {
-        crate::class::ClassTextTerminalFacts::fixed_font_size_text(trimmed)
-    };
     ctx.text_paint
         .map_or(facts, |paint| paint.observe(facts, emitted_style))
 }
@@ -907,13 +932,24 @@ fn render_class_terminal_label(
     text: &str,
     mermaid_config: Option<&merman_model::presentation::PresentationConfig>,
     math_renderer: Option<&(dyn crate::math::MathRenderer + Send + Sync)>,
-) {
-    if let Some(math_html) = class_math_html_label(text, mermaid_config, math_renderer) {
+) -> crate::class::ClassTextTerminalFacts {
+    let decoded = decode_entities_minimal_cow(text);
+    if let Some(math_html) = class_math_html_label(&decoded, mermaid_config, math_renderer) {
         out.push_str(&math_html);
+        crate::class::ClassTextTerminalFacts::unverified_text(text)
+    } else if let Some(config) = mermaid_config {
+        let xhtml = crate::class::class_cardinality_html_fragment(text, config);
+        out.push_str(&xhtml);
+        if crate::math::contains_delimited_math(&decoded) {
+            crate::class::ClassTextTerminalFacts::unverified_text(text)
+        } else {
+            crate::class::ClassTextTerminalFacts::fixed_font_size_html(&xhtml)
+        }
     } else {
         out.push_str("<p>");
         escape_xml_into(out, text);
         out.push_str("</p>");
+        crate::class::ClassTextTerminalFacts::fixed_font_size_text(text)
     }
 }
 

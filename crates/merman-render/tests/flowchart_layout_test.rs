@@ -298,6 +298,59 @@ fn rects_overlap(a: (f64, f64, f64, f64), b: (f64, f64, f64, f64), eps: f64) -> 
 }
 
 #[test]
+fn flowchart_leaf_padding_zero_matches_eight_and_positive_padding_changes_geometry() {
+    for backend in ["dagre", "elk"] {
+        if backend == "elk" && !cfg!(feature = "layout-elk") {
+            continue;
+        }
+        let layout = |padding| {
+            layout_flowchart_with_engine(
+                "flowchart TB\nA[x]\nR(x)\n",
+                MermaidEngine::new().with_site_config(
+                    merman_core::presentation::SourcePresentationConfig::from_value(
+                        serde_json::json!({
+                            "layout": backend,
+                            "theme": "default",
+                            "look": "classic",
+                            "htmlLabels": false,
+                            "flowchart": {"padding": padding, "minNodeWidth": 0}
+                        }),
+                    ),
+                ),
+            )
+        };
+        let zero = layout(0);
+        let eight = layout(8);
+        let positive = layout(20);
+        let dimensions = |layout: &FlowchartLayout, id: &str| {
+            let node = layout.nodes.iter().find(|node| node.id == id).unwrap();
+            (node.width, node.height)
+        };
+
+        // FlowDB's numeric-zero fallback is applied before either provider sees the nodes.
+        // Compare padding contributions with identical labels, independent of font metrics.
+        for (id, horizontal_factor) in [("A", 4.0), ("R", 2.0)] {
+            let (zero_width, zero_height) = dimensions(&zero, id);
+            let (eight_width, eight_height) = dimensions(&eight, id);
+            let (positive_width, positive_height) = dimensions(&positive, id);
+            assert!(approx_eq(zero_width, eight_width), "{backend}: {id}");
+            assert!(approx_eq(zero_height, eight_height), "{backend}: {id}");
+            assert!(
+                approx_eq(
+                    positive_width - eight_width,
+                    horizontal_factor * (20.0 - 8.0)
+                ),
+                "{backend}: {id}"
+            );
+            assert!(
+                approx_eq(positive_height - eight_height, 2.0 * (20.0 - 8.0)),
+                "{backend}: {id}"
+            );
+        }
+    }
+}
+
+#[test]
 fn flowchart_node_spacing_zero_falls_back_to_mermaid_default() {
     let default = layout_dagre_flowchart(
         r#"flowchart TB

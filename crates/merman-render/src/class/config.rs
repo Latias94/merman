@@ -29,13 +29,6 @@ impl<'a> ClassConfigView<'a> {
         }
     }
 
-    fn diagram_config(&self) -> &'a Value {
-        self.effective_config
-            .get("flowchart")
-            .or_else(|| self.effective_config.get("class"))
-            .unwrap_or(self.effective_config)
-    }
-
     fn root_bool(&self, key: &str) -> Option<bool> {
         config_bool(self.effective_config, &[key])
     }
@@ -46,6 +39,10 @@ impl<'a> ClassConfigView<'a> {
 
     fn class_bool(&self, key: &str) -> Option<bool> {
         config_bool(self.class_config, &[key])
+    }
+
+    fn render_use_max_width(&self) -> bool {
+        config_bool(self.state_config, &["useMaxWidth"]).unwrap_or(true)
     }
 
     fn root_compat_f64(&self, key: &str) -> Option<f64> {
@@ -177,12 +174,6 @@ impl<'a> ClassConfigView<'a> {
         }
     }
 
-    fn render_viewport_padding(&self) -> f64 {
-        config_f64(self.diagram_config(), &["diagramPadding"])
-            .unwrap_or(8.0)
-            .max(0.0)
-    }
-
     fn diagram_look(&self) -> String {
         config_diagram_look(self.effective_config)
             .as_str()
@@ -216,6 +207,7 @@ pub(crate) struct ClassRenderConfig {
     pub(crate) line_height: f64,
     pub(crate) class_padding: f64,
     pub(crate) viewport_padding: f64,
+    pub(crate) use_max_width: bool,
     pub(crate) security_level_loose: bool,
     pub(crate) look: String,
     pub(crate) interface_wrapping_width: f64,
@@ -241,7 +233,9 @@ impl ClassRenderConfig {
             edge_use_html_labels,
             line_height,
             class_padding: config.render_class_padding(),
-            viewport_padding: config.render_viewport_padding(),
+            // The unified Class renderer passes a fixed padding to setupViewPortForSVG.
+            viewport_padding: 8.0,
+            use_max_width: config.render_use_max_width(),
             security_level_loose: effective_config
                 .get("securityLevel")
                 .and_then(Value::as_str)
@@ -340,7 +334,8 @@ mod tests {
         assert_eq!(config.layout_settings().class_padding, 30.0);
         assert_eq!(config.layout_settings().namespace_padding, 30.0);
         assert_eq!(config.class_padding, 12.0);
-        assert_eq!(config.viewport_padding, 20.0);
+        assert_eq!(config.viewport_padding, 8.0);
+        assert!(config.use_max_width);
         assert!(!config.diagram_use_html_labels);
         assert!(!config.edge_use_html_labels);
         assert_eq!(config.interface_wrapping_width, 210.0);
@@ -616,7 +611,6 @@ mod tests {
         assert_eq!(config.render_font_size(), 24.0);
         assert_eq!(config.wrap_probe_font_size(), 18.0);
         assert_eq!(config.render_class_padding(), 12.0);
-        assert_eq!(config.render_viewport_padding(), 20.0);
         assert_eq!(
             config.render_text_style(24.0).font_family.as_deref(),
             Some("Theme Sans")
@@ -624,26 +618,44 @@ mod tests {
     }
 
     #[test]
-    fn class_viewport_padding_preserves_flowchart_nullish_precedence() {
-        let flowchart_present = json!({
-            "flowchart": {},
-            "class": {
-                "diagramPadding": "31"
-            }
-        });
-        let flowchart_absent = json!({
-            "class": {
-                "diagramPadding": "31"
-            }
-        });
+    fn class_viewport_padding_is_fixed_independently_of_diagram_config() {
+        for source in [
+            json!({}),
+            json!({"flowchart": {"diagramPadding": 64}}),
+            json!({"flowchart": {"diagramPadding": "20"}}),
+            json!({"class": {"diagramPadding": 31, "padding": 23}}),
+            json!({"diagramPadding": 99, "flowchart": {"diagramPadding": 0}}),
+        ] {
+            let source = crate::test_support::presentation_config(source);
+            let typography = super::super::ClassTextThemePlan::resolve(None, &source);
+            let config = ClassRenderConfig::resolve(&source, &typography);
+            assert_eq!(config.viewport_padding, 8.0, "{source:?}");
+        }
+    }
 
-        assert_eq!(
-            ClassConfigView::new(&flowchart_present).render_viewport_padding(),
-            8.0
-        );
-        assert_eq!(
-            ClassConfigView::new(&flowchart_absent).render_viewport_padding(),
-            31.0
-        );
+    #[test]
+    fn class_use_max_width_follows_the_unified_renderer_state_config() {
+        for (source, expected) in [
+            (json!({}), true),
+            (json!({"state": {"useMaxWidth": null}}), true),
+            (json!({"state": {"useMaxWidth": true}}), true),
+            (json!({"state": {"useMaxWidth": false}}), false),
+            (json!({"useMaxWidth": false}), true),
+            (json!({"class": {"useMaxWidth": false}}), true),
+            (json!({"flowchart": {"useMaxWidth": false}}), true),
+            (
+                json!({
+                    "state": {"useMaxWidth": false},
+                    "class": {"useMaxWidth": true},
+                    "flowchart": {"useMaxWidth": true}
+                }),
+                false,
+            ),
+        ] {
+            let source = crate::test_support::presentation_config(source);
+            let typography = super::super::ClassTextThemePlan::resolve(None, &source);
+            let config = ClassRenderConfig::resolve(&source, &typography);
+            assert_eq!(config.use_max_width, expected, "{source:?}");
+        }
     }
 }

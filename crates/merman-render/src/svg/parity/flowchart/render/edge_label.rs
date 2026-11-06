@@ -50,6 +50,7 @@ fn record_edge_label_emission(
     compiled_styles: Option<&FlowchartCompiledStyles>,
     typed_font_stack_selected: bool,
     typed_font_size_selected: bool,
+    typed_label_fill_selected: bool,
     padding_verified: bool,
     receipt: FlowchartEdgeLabelEmissionReceipt,
     sanitized_xhtml: Option<&str>,
@@ -64,17 +65,27 @@ fn record_edge_label_emission(
     } else {
         receipt
     };
-    if ctx.text_surface_paint.generic_text.requested() {
+    let visible_paint_facts = if ctx.text_surface_paint.generic_text.requested()
+        || ctx.edge_theme.has_label_fill_route()
+    {
         ctx.work_meter.charge(visible_text.len())?;
         ctx.work_meter.charge(sanitized_xhtml.map_or(0, str::len))?;
-        let facts = if let Some(html) = sanitized_xhtml {
+        Some(if let Some(html) = sanitized_xhtml {
             crate::text::VisibleTextStyleFacts::from_xhtml_fragment(html)
         } else {
             crate::text::VisibleTextStyleFacts::plain_text(visible_text)
-        };
+        })
+    } else {
+        None
+    };
+    if ctx.text_surface_paint.generic_text.requested() {
         ctx.text_surface_paint.generic_text.record_label(
             crate::flowchart::FlowchartTextPaintChannel::Edge,
-            crate::flowchart::FlowchartTextPaintFacts::from_visible(&facts),
+            crate::flowchart::FlowchartTextPaintFacts::from_visible(
+                visible_paint_facts
+                    .as_ref()
+                    .expect("requested text paint facts"),
+            ),
             compiled_styles.map_or(
                 crate::flowchart::FlowchartSourceFacetStatus::Absent,
                 |styles| styles.emitted_source_label_foreground_status(receipt),
@@ -188,9 +199,45 @@ fn record_edge_label_emission(
             padding_precedence,
             padding_verified,
         ));
+    let (html_fill_source, html_fill_verified) = sanitized_xhtml
+        .filter(|_| ctx.edge_theme.has_label_fill_route())
+        .and(visible_paint_facts.as_ref())
+        .map_or(
+            (crate::flowchart::FlowchartSourceFacetStatus::Absent, true),
+            |facts| {
+                let verified =
+                    facts.parse_valid() && facts.unverified_portable_color_run_count() == 0;
+                let source = if verified
+                    && facts.has_visible_runs()
+                    && facts.inherited_color_run_count() == 0
+                {
+                    crate::flowchart::FlowchartSourceFacetStatus::Admitted
+                } else {
+                    crate::flowchart::FlowchartSourceFacetStatus::Absent
+                };
+                (source, verified)
+            },
+        );
     ctx.theme_evidence.record_edge_label_emission(
         ctx.edge_theme,
+        key.semantic_index() + 1,
         crate::flowchart::FlowchartEdgeLabelThemeEmission {
+            fill: (receipt.typography_applicable() && ctx.edge_theme.has_label_fill_route()).then(
+                || {
+                    crate::flowchart::FlowchartThemeFacetEmission::new(
+                        crate::flowchart::FlowchartFacetPrecedence::new(
+                            compiled_styles
+                                .map_or(
+                                    crate::flowchart::FlowchartSourceFacetStatus::Absent,
+                                    |styles| styles.emitted_source_label_foreground_status(receipt),
+                                )
+                                .merge(html_fill_source),
+                            ctx.node_label_fill_config_override,
+                        ),
+                        typed_label_fill_selected && !visible_text.is_empty() && html_fill_verified,
+                    )
+                },
+            ),
             effect: receipt.effect_reach().map(|reach| {
                 crate::flowchart::FlowchartThemeFacetEmission::new(
                     crate::flowchart::FlowchartFacetPrecedence::new(
@@ -410,6 +457,23 @@ pub(in crate::svg::parity) fn render_flowchart_edge_label(
     );
     let typed_font_stack_selected = ctx.edge_theme.font_stack_selected(font_stack_precedence);
     let typed_font_size_selected = ctx.edge_theme.font_size_selected(font_size_precedence);
+    let fill_source = if !ctx.edge_html_labels && label_type == "markdown" {
+        crate::flowchart::FlowchartSourceFacetStatus::Absent
+    } else {
+        compiled_label_styles.source_label_foreground_status()
+    };
+    let typed_label_fill = ctx.edge_theme.label_fill_value(
+        crate::flowchart::FlowchartFacetPrecedence::new(
+            fill_source,
+            ctx.node_label_fill_config_override,
+        ),
+        true,
+    );
+    let markdown_fill_style = typed_label_fill.map(|fill| {
+        let mut style = String::new();
+        append_typed_label_fill(&mut style, fill);
+        style
+    });
     let weights = ctx.svg_label_sidecar.map_or(
         crate::flowchart::FlowchartLabelTypography::default(),
         |sidecar| sidecar.label_typography(),
@@ -426,6 +490,9 @@ pub(in crate::svg::parity) fn render_flowchart_edge_label(
         },
     );
     let mut effective_label_style = Cow::Borrowed(compiled_label_styles.label_style.as_str());
+    if let Some(fill) = typed_label_fill {
+        append_typed_label_fill(effective_label_style.to_mut(), fill);
+    }
     if weights.requested(ThemeTarget::EdgeLabel) {
         weights.append_style(
             ThemeTarget::EdgeLabel,
@@ -542,6 +609,7 @@ pub(in crate::svg::parity) fn render_flowchart_edge_label(
             Some(compiled_label_styles),
             typed_font_stack_selected,
             typed_font_size_selected,
+            typed_label_fill.is_some(),
             typography_applicable,
             receipt,
             sanitized_xhtml,
@@ -605,6 +673,7 @@ pub(in crate::svg::parity) fn render_flowchart_edge_label(
                                 ctx.measurer,
                                 edge_metrics_style.as_ref(),
                                 Some(FLOWCHART_EDGE_LABEL_WRAP_WIDTH),
+                                markdown_fill_style.as_deref(),
                             );
                         } else {
                             write_flowchart_svg_label_plan_centered_with_style(
@@ -670,6 +739,7 @@ pub(in crate::svg::parity) fn render_flowchart_edge_label(
                             ctx.measurer,
                             edge_metrics_style.as_ref(),
                             Some(FLOWCHART_EDGE_LABEL_WRAP_WIDTH),
+                            markdown_fill_style.as_deref(),
                         );
                     } else {
                         write_flowchart_svg_label_plan_centered_with_style(
@@ -748,6 +818,7 @@ pub(in crate::svg::parity) fn render_flowchart_edge_label(
                         ctx.measurer,
                         edge_metrics_style.as_ref(),
                         Some(FLOWCHART_EDGE_LABEL_WRAP_WIDTH),
+                        markdown_fill_style.as_deref(),
                     );
                 } else {
                     write_flowchart_svg_label_plan_centered_with_style(
@@ -1058,7 +1129,6 @@ pub(in crate::svg::parity::flowchart) fn render_swimlane_edge_label_node(
             weighted_label_style.to_mut(),
         );
     }
-    let first_label_style = weighted_label_style.as_ref();
     let font_stack_precedence = crate::flowchart::FlowchartFacetPrecedence::new(
         compiled_label_styles.map_or(
             crate::flowchart::FlowchartSourceFacetStatus::Absent,
@@ -1075,6 +1145,20 @@ pub(in crate::svg::parity::flowchart) fn render_swimlane_edge_label_node(
     );
     let typed_font_stack_selected = ctx.edge_theme.font_stack_selected(font_stack_precedence);
     let typed_font_size_selected = ctx.edge_theme.font_size_selected(font_size_precedence);
+    let typed_label_fill = ctx.edge_theme.label_fill_value(
+        crate::flowchart::FlowchartFacetPrecedence::new(
+            compiled_label_styles.map_or(
+                crate::flowchart::FlowchartSourceFacetStatus::Absent,
+                FlowchartCompiledStyles::source_label_foreground_status,
+            ),
+            ctx.node_label_fill_config_override,
+        ),
+        true,
+    );
+    if let Some(fill) = typed_label_fill {
+        append_typed_label_fill(weighted_label_style.to_mut(), fill);
+    }
+    let first_label_style = weighted_label_style.as_ref();
     let label_text_plain = flowchart_label_plain_text(label_text, label_type, ctx.node_html_labels);
     let typography_applicable = !crate::flowchart::flowchart_label_text_is_empty_for_mode(
         &label_text_plain,
@@ -1110,6 +1194,7 @@ pub(in crate::svg::parity::flowchart) fn render_swimlane_edge_label_node(
                 compiled_label_styles,
                 typed_font_stack_selected,
                 typed_font_size_selected,
+                typed_label_fill.is_some(),
                 typography_applicable,
                 receipt,
                 sanitized_xhtml,
@@ -1256,7 +1341,12 @@ pub(in crate::svg::parity::flowchart) fn render_swimlane_edge_label_node(
         true,
         crate::flowchart::FlowchartSvgWidthMode::Bbox,
     );
-    write_flowchart_svg_label_plan(out, &prepared, true);
+    write_flowchart_svg_label_plan_with_style(
+        out,
+        &prepared,
+        true,
+        typed_label_fill.map(|_| first_label_style),
+    );
     out.push_str("</g></g></g>");
     record_label_emission(true, Some(&prepared), None)?;
     Ok(())
@@ -1427,6 +1517,7 @@ mod tests {
             &crate::text::DeterministicTextMeasurer::default(),
             &crate::text::TextStyle::default(),
             Some(200.0),
+            None,
         );
         assert!(svg.contains("Advance"));
         assert!(!svg.contains("#ac6824"));

@@ -2,17 +2,14 @@ use super::*;
 
 pub(super) const CLASS_GRAPH_MARGIN_PX: f64 = 8.0;
 
-pub(super) struct ClassSvgDocument {
-    pub(super) root: root_svg::RootDocument,
-}
-
-pub(super) fn begin_class_svg_document(
+pub(super) fn write_class_svg_document(
     out: &mut impl SvgOutput,
     model: &ClassSvgModel,
     diagram_id: SvgDiagramId<'_>,
     aria_roledescription: &str,
     root_context: &root_svg::RootViewportContext<'_>,
-) -> crate::Result<ClassSvgDocument> {
+    viewport: root_svg::RootViewportSpec,
+) -> crate::Result<root_svg::RootDocument> {
     let has_acc_title = model
         .model()
         .acc_title
@@ -32,8 +29,7 @@ pub(super) fn begin_class_svg_document(
     root_chrome.aria_describedby = aria_describedby.as_deref();
     root_chrome.dom.trailing_newline = false;
     root_chrome.dom.aria_attr_order = root_svg::SvgRootAriaAttrOrder::LabelledbyThenDescribedby;
-    let document =
-        root_context.begin_document(out, root_svg::DeferredRootSpec::responsive(), root_chrome)?;
+    let document = root_context.write_open(out, viewport, root_chrome)?;
 
     if has_acc_title {
         let _ = write!(
@@ -56,5 +52,5 @@ pub(super) fn begin_class_svg_document(
         out.checkpoint()?;
     }
 
-    Ok(ClassSvgDocument { root: document })
+    Ok(document)
 }
