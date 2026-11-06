@@ -220,6 +220,7 @@ fn measure_inline_runs_width_px<M: TextMeasurer + ?Sized>(
 ) -> f64 {
     runs.iter()
         .filter(|run| !run.text.is_empty())
+        .take_while(|_| !measurer.cancellation_requested())
         .map(|run| {
             let run_style = if let Some(terminal) = &run.terminal_style {
                 std::borrow::Cow::Borrowed(terminal.as_ref())
@@ -3678,10 +3679,16 @@ fn markdown_word_line_plain_text_and_width_px(
     wrap_mode: WrapMode,
     entity_mode: super::SvgTextEntityMode,
 ) -> (String, f64) {
+    if measurer.cancellation_requested() {
+        return (String::new(), 0.0);
+    }
     let mut plain = String::new();
     let mut runs = Vec::new();
 
     for (word_idx, (word, ty)) in words.iter().enumerate() {
+        if measurer.cancellation_requested() {
+            return (String::new(), 0.0);
+        }
         let visible_word = match wrap_mode {
             WrapMode::HtmlLike => merman_model::text::decode_html_entities_to_unicode(word),
             WrapMode::SvgLike | WrapMode::SvgLikeSingleRun => entity_mode.visible_word(word),
@@ -3710,15 +3717,9 @@ fn measure_markdown_word_line_width_px(
     words: &[(String, MermaidMarkdownWordType)],
     style: &TextStyle,
     wrap_mode: WrapMode,
+    entity_mode: super::SvgTextEntityMode,
 ) -> f64 {
-    markdown_word_line_plain_text_and_width_px(
-        measurer,
-        words,
-        style,
-        wrap_mode,
-        super::SvgTextEntityMode::CreateTextSource,
-    )
-    .1
+    markdown_word_line_plain_text_and_width_px(measurer, words, style, wrap_mode, entity_mode).1
 }
 
 fn split_markdown_word_to_width_px(
@@ -3728,7 +3729,11 @@ fn split_markdown_word_to_width_px(
     ty: MermaidMarkdownWordType,
     max_width_px: f64,
     wrap_mode: WrapMode,
+    entity_mode: super::SvgTextEntityMode,
 ) -> (String, String) {
+    if measurer.cancellation_requested() {
+        return (String::new(), String::new());
+    }
     if max_width_px <= 0.0 {
         return (word.to_string(), String::new());
     }
@@ -3742,9 +3747,21 @@ fn split_markdown_word_to_width_px(
     // still make progress without separating its combining marks or emoji joiners.
     let mut split_at = first.len();
     for (index, grapheme) in word.grapheme_indices(true) {
+        if measurer.cancellation_requested() {
+            return (String::new(), String::new());
+        }
         let end = index + grapheme.len();
         let head = word[..end].to_string();
-        let width = measure_markdown_word_line_width_px(measurer, &[(head, ty)], style, wrap_mode);
+        let width = measure_markdown_word_line_width_px(
+            measurer,
+            &[(head, ty)],
+            style,
+            wrap_mode,
+            entity_mode,
+        );
+        if measurer.cancellation_requested() {
+            return (String::new(), String::new());
+        }
         if width.is_finite() && width <= max_width_px {
             split_at = end;
         } else {
@@ -3752,38 +3769,64 @@ fn split_markdown_word_to_width_px(
         }
     }
 
+    if measurer.cancellation_requested() {
+        return (String::new(), String::new());
+    }
     let (head, tail) = word.split_at(split_at);
     (head.to_string(), tail.to_string())
 }
 
-fn wrap_markdown_word_lines(
+pub(crate) fn wrap_markdown_word_lines(
     measurer: &dyn TextMeasurer,
     parsed: &[Vec<(String, MermaidMarkdownWordType)>],
     style: &TextStyle,
     max_width_px: Option<f64>,
     wrap_mode: WrapMode,
     break_long_words: bool,
+    entity_mode: super::SvgTextEntityMode,
 ) -> Vec<Vec<(String, MermaidMarkdownWordType)>> {
+    // The next fallible family boundary replays cancellation; do not retain partial rows.
+    if measurer.cancellation_requested() {
+        return Vec::new();
+    }
     let Some(max_width_px) = max_width_px.filter(|w| w.is_finite() && *w > 0.0) else {
         return parsed.to_vec();
     };
 
     let mut out: Vec<Vec<(String, MermaidMarkdownWordType)>> = Vec::new();
     for line in parsed {
+        if measurer.cancellation_requested() {
+            return Vec::new();
+        }
         if line.is_empty() {
             out.push(Vec::new());
             continue;
         }
 
-        let mut tokens = std::collections::VecDeque::from(line.clone());
+        // Only split tails need owned storage; unvisited source words remain borrowed.
+        let mut tokens = line
+            .iter()
+            .map(|(word, ty)| (std::borrow::Cow::Borrowed(word.as_str()), *ty));
+        let mut pending = None;
         let mut cur: Vec<(String, MermaidMarkdownWordType)> = Vec::new();
 
-        while let Some((word, ty)) = tokens.pop_front() {
+        while let Some((word, ty)) = pending.take().or_else(|| tokens.next()) {
+            if measurer.cancellation_requested() {
+                return Vec::new();
+            }
             let mut candidate = cur.clone();
-            candidate.push((word.clone(), ty));
-            if measure_markdown_word_line_width_px(measurer, &candidate, style, wrap_mode)
-                <= max_width_px
-            {
+            candidate.push((word.to_string(), ty));
+            let candidate_width = measure_markdown_word_line_width_px(
+                measurer,
+                &candidate,
+                style,
+                wrap_mode,
+                entity_mode,
+            );
+            if measurer.cancellation_requested() {
+                return Vec::new();
+            }
+            if candidate_width <= max_width_px {
                 cur = candidate;
                 continue;
             }
@@ -3791,32 +3834,40 @@ fn wrap_markdown_word_lines(
             if !cur.is_empty() {
                 out.push(cur);
                 cur = Vec::new();
-                tokens.push_front((word, ty));
+                pending = Some((word, ty));
                 continue;
             }
 
             let single_word_width = measure_markdown_word_line_width_px(
                 measurer,
-                &[(word.clone(), ty)],
+                &[(word.to_string(), ty)],
                 style,
                 wrap_mode,
+                entity_mode,
             );
+            if measurer.cancellation_requested() {
+                return Vec::new();
+            }
             if single_word_width <= max_width_px || !break_long_words {
-                out.push(vec![(word, ty)]);
+                out.push(vec![(word.into_owned(), ty)]);
                 continue;
             }
 
             let (head, tail) = split_markdown_word_to_width_px(
                 measurer,
                 style,
-                &word,
+                word.as_ref(),
                 ty,
                 max_width_px,
                 wrap_mode,
+                entity_mode,
             );
+            if measurer.cancellation_requested() {
+                return Vec::new();
+            }
             out.push(vec![(head, ty)]);
             if !tail.is_empty() {
-                tokens.push_front((tail, ty));
+                pending = Some((std::borrow::Cow::Owned(tail), ty));
             }
         }
 
@@ -3840,7 +3891,15 @@ pub(crate) fn mermaid_markdown_to_wrapped_word_lines(
     wrap_mode: WrapMode,
 ) -> Vec<Vec<(String, MermaidMarkdownWordType)>> {
     let parsed = mermaid_markdown_to_lines(markdown, true);
-    wrap_markdown_word_lines(measurer, &parsed, style, max_width_px, wrap_mode, true)
+    wrap_markdown_word_lines(
+        measurer,
+        &parsed,
+        style,
+        max_width_px,
+        wrap_mode,
+        true,
+        super::SvgTextEntityMode::CreateTextSource,
+    )
 }
 
 /// Measures the SVG word rows emitted by `createText`, without HTML-only image sizing.
@@ -4092,7 +4151,15 @@ fn measure_markdown_with_inline_styles_impl(
         0
     };
     let parsed = if manually_wrap_words || wrap_mode != WrapMode::HtmlLike {
-        wrap_markdown_word_lines(measurer, &raw_parsed, style, max_width, wrap_mode, true)
+        wrap_markdown_word_lines(
+            measurer,
+            &raw_parsed,
+            style,
+            max_width,
+            wrap_mode,
+            true,
+            super::SvgTextEntityMode::CreateTextSource,
+        )
     } else {
         raw_parsed.clone()
     };

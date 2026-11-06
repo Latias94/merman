@@ -708,24 +708,27 @@ fn render_class_edge_label_group(
         emitted_style = super::label::write_class_svg_edge_text_with_style(out, "", None);
         out.push_str("</g></g>");
     } else if let Some(lbl) = label {
+        let prepared = prepared_svg_label.expect("nonempty prepared Class edge label");
+        let bounds = &prepared.text_bounds;
+        let padding = crate::class::CLASS_SVG_EDGE_LABEL_PADDING_PX;
         let background_style = background
             .map(|(_, css)| format!("fill:{css} !important;"))
             .unwrap_or_default();
         let _ = write!(
             out,
-            r#"<g class="edgeLabel" transform="translate({}, {})"><g class="label" data-id="{}" transform="translate({}, {})"><g><rect class="background" style="{}" x="-2" y="-1" width="{}" height="{}"/>"#,
+            r#"<g class="edgeLabel" transform="translate({}, {})"><g class="label" data-id="{}" transform="translate({}, {})"><g><rect class="background" style="{}" x="{}" y="{}" width="{}" height="{}"/>"#,
             fmt(center_x),
             fmt(center_y),
             escape_attr_display(dom_id),
-            fmt(-lbl.width / 2.0),
-            fmt(-lbl.height / 2.0),
+            fmt(-(bounds.min_x + bounds.max_x) / 2.0),
+            fmt(-(bounds.min_y + bounds.max_y) / 2.0),
             escape_attr_display(&background_style),
+            fmt(bounds.min_x - padding),
+            fmt(bounds.min_y - padding),
             fmt(lbl.width.max(0.0)),
             fmt(lbl.height.max(0.0)),
         );
-        let prepared = &prepared_svg_label
-            .expect("nonempty prepared Class edge label")
-            .label;
+        let prepared = &prepared.label;
         out.push_str(r#"<text y="-10.1""#);
         emitted_style = super::super::util::write_style_attribute(
             out,

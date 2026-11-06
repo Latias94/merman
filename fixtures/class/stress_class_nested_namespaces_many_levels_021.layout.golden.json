@@ -10,12 +10,12 @@
       },
       "clusters": [
         {
-          "diff": -12.0,
+          "diff": -16.0,
           "effective_dir": "TB",
           "height": 303.0,
           "id": "Root",
-          "offset_y": 15.0,
-          "padding": 12.0,
+          "offset_y": 13.0,
+          "padding": 16.0,
           "requested_dir": null,
           "title": "Root",
           "title_label": {
@@ -31,12 +31,12 @@
           "y": 163.5
         },
         {
-          "diff": -12.0,
+          "diff": -16.0,
           "effective_dir": "TB",
           "height": 155.0,
           "id": "Root.A",
-          "offset_y": 15.0,
-          "padding": 12.0,
+          "offset_y": 13.0,
+          "padding": 16.0,
           "requested_dir": null,
           "title": "A",
           "title_label": {
@@ -52,12 +52,12 @@
           "y": 176.5
         },
         {
-          "diff": -12.0,
+          "diff": -16.0,
           "effective_dir": "TB",
           "height": 229.0,
           "id": "Root.B",
-          "offset_y": 15.0,
-          "padding": 12.0,
+          "offset_y": 13.0,
+          "padding": 16.0,
           "requested_dir": null,
           "title": "B",
           "title_label": {
@@ -73,12 +73,12 @@
           "y": 176.5
         },
         {
-          "diff": -12.0,
+          "diff": -16.0,
           "effective_dir": "TB",
           "height": 155.0,
           "id": "Root.B.B1",
-          "offset_y": 15.0,
-          "padding": 12.0,
+          "offset_y": 13.0,
+          "padding": 16.0,
           "requested_dir": null,
           "title": "B1",
           "title_label": {

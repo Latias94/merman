@@ -1,0 +1,194 @@
+{
+  "diagramType": "classDiagram",
+  "model": {
+    "accDescr": null,
+    "accTitle": null,
+    "classes": {
+      "Document": {
+        "annotations": [],
+        "callback": null,
+        "callbackEffective": false,
+        "cssClasses": "default",
+        "domId": "classId-Document-1",
+        "haveCallback": false,
+        "id": "Document",
+        "label": "Document",
+        "link": null,
+        "linkTarget": null,
+        "members": [
+          {
+            "classifier": "",
+            "cssStyle": "",
+            "displayText": "+String title",
+            "id": "String title",
+            "memberType": "attribute",
+            "parameters": "",
+            "returnType": "",
+            "visibility": "+"
+          }
+        ],
+        "methods": [
+          {
+            "classifier": "",
+            "cssStyle": "",
+            "displayText": "+addSection(title: String) : void",
+            "id": "addSection",
+            "memberType": "method",
+            "parameters": "title: String",
+            "returnType": "void",
+            "visibility": "+"
+          },
+          {
+            "classifier": "",
+            "cssStyle": "",
+            "displayText": "+renderSummary() : String",
+            "id": "renderSummary",
+            "memberType": "method",
+            "parameters": "",
+            "returnType": "String",
+            "visibility": "+"
+          }
+        ],
+        "parent": "Publishing",
+        "styles": [],
+        "text": "Document",
+        "tooltip": null,
+        "type": ""
+      },
+      "Resource": {
+        "annotations": [
+          "abstract"
+        ],
+        "callback": null,
+        "callbackEffective": false,
+        "cssClasses": "default",
+        "domId": "classId-Resource-0",
+        "haveCallback": false,
+        "id": "Resource",
+        "label": "Resource",
+        "link": null,
+        "linkTarget": null,
+        "members": [
+          {
+            "classifier": "",
+            "cssStyle": "",
+            "displayText": "+String id",
+            "id": "String id",
+            "memberType": "attribute",
+            "parameters": "",
+            "returnType": "",
+            "visibility": "+"
+          }
+        ],
+        "methods": [],
+        "parent": null,
+        "styles": [],
+        "text": "Resource",
+        "tooltip": null,
+        "type": ""
+      },
+      "Section": {
+        "annotations": [],
+        "callback": null,
+        "callbackEffective": false,
+        "cssClasses": "default",
+        "domId": "classId-Section-2",
+        "haveCallback": false,
+        "id": "Section",
+        "label": "Section",
+        "link": null,
+        "linkTarget": null,
+        "members": [
+          {
+            "classifier": "",
+            "cssStyle": "",
+            "displayText": "+String heading",
+            "id": "String heading",
+            "memberType": "attribute",
+            "parameters": "",
+            "returnType": "",
+            "visibility": "+"
+          }
+        ],
+        "methods": [
+          {
+            "classifier": "",
+            "cssStyle": "",
+            "displayText": "+wordCount() : int",
+            "id": "wordCount",
+            "memberType": "method",
+            "parameters": "",
+            "returnType": "int",
+            "visibility": "+"
+          }
+        ],
+        "parent": "Publishing",
+        "styles": [],
+        "text": "Section",
+        "tooltip": null,
+        "type": ""
+      }
+    },
+    "constants": {
+      "lineType": {
+        "dottedLine": 1,
+        "line": 0
+      },
+      "relationType": {
+        "aggregation": 0,
+        "composition": 2,
+        "dependency": 3,
+        "extension": 1,
+        "lollipop": 4,
+        "none": -1
+      }
+    },
+    "direction": "TB",
+    "interfaces": [],
+    "namespaces": {
+      "Publishing": {
+        "classIds": [
+          "Document",
+          "Section"
+        ],
+        "domId": "classId-Publishing-0",
+        "explicit": true,
+        "id": "Publishing",
+        "label": "Publishing",
+        "noteIds": [],
+        "parent": null
+      }
+    },
+    "notes": [],
+    "relations": [
+      {
+        "id": "0",
+        "id1": "Resource",
+        "id2": "Document",
+        "relation": {
+          "lineType": 0,
+          "type1": 1,
+          "type2": -1
+        },
+        "relationTitle1": "none",
+        "relationTitle2": "none",
+        "title": ""
+      },
+      {
+        "id": "1",
+        "id1": "Document",
+        "id2": "Section",
+        "relation": {
+          "lineType": 0,
+          "type1": 2,
+          "type2": -1
+        },
+        "relationTitle1": "1",
+        "relationTitle2": "1..*",
+        "title": "contains"
+      }
+    ],
+    "styleClasses": {},
+    "type": "classDiagram"
+  }
+}

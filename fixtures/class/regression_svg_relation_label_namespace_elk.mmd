@@ -1,0 +1,25 @@
+---
+config:
+  layout: elk
+  look: classic
+  htmlLabels: false
+---
+classDiagram
+    direction TB
+    class Resource {
+        <<abstract>>
+        +String id
+    }
+    namespace Publishing {
+        class Document {
+            +String title
+            +addSection(title: String) void
+            +renderSummary() String
+        }
+        class Section {
+            +String heading
+            +wordCount() int
+        }
+    }
+    Resource <|-- Document
+    Document "1" *-- "1..*" Section : contains

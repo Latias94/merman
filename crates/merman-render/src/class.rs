@@ -49,6 +49,7 @@ type ClassLayoutGraph = Graph<NodeLabel, EdgeLabel, GraphLabel>;
 type ExtractedClusterGraph = (Box<ClassLayoutGraph>, HashSet<String>);
 
 pub(crate) const CLASS_CARDINALITY_FONT_SIZE_PX: f64 = 11.0;
+pub(crate) const CLASS_SVG_EDGE_LABEL_PADDING_PX: f64 = 2.0;
 
 /// Returns the fixed Mermaid text style used by class-relation cardinalities.
 ///
@@ -2155,6 +2156,7 @@ pub(crate) struct ClassPreparedLabels {
 #[derive(Debug)]
 pub(crate) struct ClassPreparedSvgEdgeLabel {
     pub(crate) label: ClassSvgLabel,
+    pub(crate) text_bounds: Bounds,
     _retained_reservation: Option<crate::resources::PreparedTextRetainedReservation>,
 }
 
@@ -2410,12 +2412,23 @@ impl ClassSvgLabel {
             .join("\n")
     }
 
-    pub(crate) fn edge(decoded_text: &str) -> Self {
+    fn edge(decoded_text: &str, measurer: &dyn TextMeasurer, style: &TextStyle) -> Self {
         let text = decoded_text
             .strip_prefix('`')
             .and_then(|text| text.strip_suffix('`'))
             .unwrap_or(decoded_text);
-        Self::new(text)
+        let mut label = Self::new(text);
+        label.analysis.lines = crate::text::wrap_markdown_word_lines(
+            measurer,
+            label.lines(),
+            style,
+            Some(MERMAID_CREATE_TEXT_DEFAULT_WIDTH_PX),
+            WrapMode::SvgLike,
+            true,
+            crate::text::SvgTextEntityMode::DecodedModel,
+        );
+        label.analysis.line_count = label.analysis.lines.len();
+        label
     }
 
     pub(crate) fn new(decoded_text: &str) -> Self {
@@ -2478,6 +2491,82 @@ impl ClassSvgLabel {
             .reduce(f64::min)
             .unwrap_or(0.0)
     }
+
+    fn centered_bounds(&self, measurer: &dyn TextMeasurer, style: &TextStyle) -> Bounds {
+        let mut horizontal: Option<(f64, f64)> = None;
+        let mut vertical: Option<(f64, f64)> = None;
+        for (row_index, row) in self.lines().iter().enumerate() {
+            if measurer.cancellation_requested() {
+                break;
+            }
+            let mut advance = 0.0;
+            let mut row_bounds: Option<(f64, f64)> = None;
+            for (word_index, (word, kind)) in row.iter().enumerate() {
+                if measurer.cancellation_requested() {
+                    break;
+                }
+                let text = if word_index == 0 {
+                    std::borrow::Cow::Borrowed(word.as_str())
+                } else {
+                    std::borrow::Cow::Owned(format!(" {word}"))
+                };
+                let face = crate::text::svg_markdown_word_style(style, *kind);
+                let word_advance = measurer.measure_svg_text_computed_length_px(&text, &face);
+                if !crate::text::trim_html_collapsible_ascii_whitespace(word).is_empty() {
+                    let (left, right) = measurer.measure_svg_text_bbox_x(&text, &face);
+                    let center = advance + word_advance / 2.0;
+                    let min = center - left;
+                    let max = center + right;
+                    row_bounds =
+                        Some(row_bounds.map_or((min, max), |(x0, x1)| (x0.min(min), x1.max(max))));
+                    let top = measurer.measure_svg_create_text_bbox_y_offset_px(&text, &face)
+                        + row_index as f64 * style.font_size * 1.1;
+                    let height = measurer.measure_svg_tspan_text_bbox_height_px(&text, &face);
+                    if height > 0.0 {
+                        let bottom = top + height;
+                        vertical = Some(
+                            vertical
+                                .map_or((top, bottom), |(y0, y1)| (y0.min(top), y1.max(bottom))),
+                        );
+                    }
+                }
+                advance += word_advance;
+            }
+            if measurer.cancellation_requested() {
+                break;
+            }
+            if let Some((mut min, mut max)) = row_bounds {
+                min -= advance / 2.0;
+                max -= advance / 2.0;
+                // A uniform row can use the host's complete centered-text bbox directly.
+                if let Some((_, kind)) = row.first()
+                    && row.iter().all(|(_, next)| next == kind)
+                {
+                    let text = row
+                        .iter()
+                        .map(|(word, _)| word.as_str())
+                        .collect::<Vec<_>>()
+                        .join(" ");
+                    let face = crate::text::svg_markdown_word_style(style, *kind);
+                    let (left, right) = measurer.measure_svg_text_bbox_x(&text, &face);
+                    if left.is_finite() && right.is_finite() && left + right > 0.0 {
+                        min = -left;
+                        max = right;
+                    }
+                }
+                horizontal =
+                    Some(horizontal.map_or((min, max), |(x0, x1)| (x0.min(min), x1.max(max))));
+            }
+        }
+        let (min_x, max_x) = horizontal.unwrap_or_default();
+        let (min_y, max_y) = vertical.unwrap_or_default();
+        Bounds {
+            min_x,
+            max_x,
+            min_y,
+            max_y,
+        }
+    }
 }
 
 fn note_dimensions(
@@ -2537,7 +2626,7 @@ fn prepare_edge_title(
     wrap_mode: WrapMode,
     mermaid_config: &merman_model::presentation::PresentationConfig,
     math_renderer: Option<&(dyn MathRenderer + Send + Sync)>,
-) -> (f64, f64, Option<ClassSvgLabel>) {
+) -> (f64, f64, Option<ClassPreparedSvgEdgeLabel>) {
     let trimmed = text.trim();
     if trimmed.is_empty() {
         return (0.0, 0.0, None);
@@ -2554,7 +2643,8 @@ fn prepare_edge_title(
     ) {
         return (metrics.width.max(0.0), metrics.height.max(0.0), None);
     }
-    if matches!(wrap_mode, WrapMode::HtmlLike) {
+    if matches!(wrap_mode, WrapMode::HtmlLike) || crate::math::contains_delimited_math(label.trim())
+    {
         let metrics = class_html_measure_label_metrics(
             measurer,
             text_style,
@@ -2565,12 +2655,16 @@ fn prepare_edge_title(
         return (metrics.width.max(0.0), metrics.height.max(0.0), None);
     }
 
-    let prepared = ClassSvgLabel::edge(label.trim());
-    let metrics = prepared.metrics(measurer, text_style);
+    let prepared = ClassSvgLabel::edge(label.trim(), measurer, text_style);
+    let text_bounds = prepared.centered_bounds(measurer, text_style);
     (
-        metrics.width.max(0.0) + 4.0,
-        metrics.height.max(0.0) + 4.0,
-        (!crate::math::contains_delimited_math(label.trim())).then_some(prepared),
+        (text_bounds.max_x - text_bounds.min_x).max(0.0) + 2.0 * CLASS_SVG_EDGE_LABEL_PADDING_PX,
+        (text_bounds.max_y - text_bounds.min_y).max(0.0) + 2.0 * CLASS_SVG_EDGE_LABEL_PADDING_PX,
+        Some(ClassPreparedSvgEdgeLabel {
+            label: prepared,
+            text_bounds,
+            _retained_reservation: None,
+        }),
     )
 }
 
@@ -2646,9 +2740,9 @@ pub(crate) fn layout_class_diagram_elk_typed_with_config_and_operation_seed(
         model,
         measured,
         ClassElkLayoutSettings {
-            // ClassDB.getData assigns class.padding to namespaces, independently of ELK's
-            // fixed content inset and the legacy Dagre cluster settings.
-            namespace_padding: settings.class_padding,
+            // ClassDB.getData assigns class.padding ?? 16 to every namespace, independently
+            // of class-node padding and ELK's fixed content inset.
+            namespace_padding: settings.namespace_padding,
             title_margin_top: settings.title_margin_top,
             title_margin_bottom: settings.title_margin_bottom,
             effective_config: effective_config.as_value(),
@@ -2922,24 +3016,24 @@ fn measure_class_diagram(
             mermaid_config,
             math_renderer,
         );
-        if let Some(label) = prepared {
+        if let Some(mut label) = prepared {
             let bytes = std::mem::size_of::<(String, ClassPreparedSvgEdgeLabel)>()
                 .saturating_add(std::mem::size_of::<usize>())
                 .saturating_add(rel.id.len())
-                .saturating_add(label.retained_heap_bytes());
+                .saturating_add(label.label.retained_heap_bytes());
             let retained_reservation = work_control
                 .map(|work_control| work_control.reserve_prepared_text_retained_bytes(bytes))
                 .transpose()?;
-            prepared_labels.edges_by_id.insert(
-                rel.id.clone(),
-                ClassPreparedSvgEdgeLabel {
-                    label,
-                    _retained_reservation: retained_reservation,
-                },
-            );
+            label._retained_reservation = retained_reservation;
+            prepared_labels.edges_by_id.insert(rel.id.clone(), label);
         }
         let start_text = rel.relation_title_1.clone().unwrap_or_default();
         let end_text = rel.relation_title_2.clone().unwrap_or_default();
+        // SVG terminals emit literal text; only HTML terminals render delimited math.
+        let terminal_math_renderer = render_config
+            .edge_use_html_labels
+            .then_some(math_renderer)
+            .flatten();
 
         let (srw, srh) = label_metrics(
             &start_text,
@@ -2947,7 +3041,7 @@ fn measure_class_diagram(
             &cardinality_text_style,
             wrap_mode_label,
             mermaid_config,
-            math_renderer,
+            terminal_math_renderer,
         );
         let (elw, elh) = label_metrics(
             &end_text,
@@ -2955,7 +3049,7 @@ fn measure_class_diagram(
             &cardinality_text_style,
             wrap_mode_label,
             mermaid_config,
-            math_renderer,
+            terminal_math_renderer,
         );
 
         // Mermaid passes `edge.arrowTypeStart ? 10 : 0` / `edge.arrowTypeEnd ? 10 : 0`
@@ -4671,7 +4765,7 @@ mod tests {
         super::class_measured_to_elk_graph(
             &measured,
             &super::ClassElkLayoutSettings {
-                namespace_padding: settings.class_padding,
+                namespace_padding: settings.namespace_padding,
                 title_margin_top: settings.title_margin_top,
                 title_margin_bottom: settings.title_margin_bottom,
                 effective_config: config.as_value(),
@@ -4696,6 +4790,29 @@ mod tests {
                 (edge.source == "A" && edge.target == "interface0")
                     || (edge.source == "interface0" && edge.target == "A")
             }));
+        }
+    }
+
+    #[cfg(feature = "layout-elk")]
+    #[test]
+    fn class_elk_namespace_padding_reaches_every_container_without_flowchart_fallback() {
+        for (config, expected) in [
+            ("flowchart:\n    padding: 83", 16.0),
+            (
+                "class:\n    padding: 23\n  flowchart:\n    padding: 83",
+                23.0,
+            ),
+            ("class:\n    padding: 0\n  flowchart:\n    padding: 83", 0.0),
+        ] {
+            let graph = class_elk_graph_for_test(&format!(
+                "---\nconfig:\n  {config}\n---\nclassDiagram\nnamespace Outer {{\nnamespace Inner {{\nclass A\n}}\n}}\n"
+            ));
+            for id in ["Outer", "Outer.Inner"] {
+                let container = graph.nodes.iter().find(|node| node.id == id).unwrap();
+                assert_eq!(container.container.padding, expected, "{config}: {id}");
+            }
+            assert_eq!(graph.spacing.group_padding_x, expected, "{config}");
+            assert_eq!(graph.spacing.group_padding_y, expected, "{config}");
         }
     }
 
@@ -4761,7 +4878,7 @@ mod tests {
                         (0.0, 0.0)
                     };
                     let settings = super::ClassElkLayoutSettings {
-                        namespace_padding: layout_settings.class_padding,
+                        namespace_padding: layout_settings.namespace_padding,
                         title_margin_top: layout_settings.title_margin_top,
                         title_margin_bottom: layout_settings.title_margin_bottom,
                         effective_config: config.as_value(),
@@ -4856,7 +4973,7 @@ mod tests {
                 .unwrap()
                 .0 = title_width;
             let settings = super::ClassElkLayoutSettings {
-                namespace_padding: layout_settings.class_padding,
+                namespace_padding: layout_settings.namespace_padding,
                 title_margin_top: layout_settings.title_margin_top,
                 title_margin_bottom: layout_settings.title_margin_bottom,
                 effective_config: config.as_value(),
