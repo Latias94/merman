@@ -510,6 +510,83 @@ fn mindmap_node_ids_are_renameable_and_payloads_are_not_navigation_targets() {
 }
 
 #[test]
+fn class_generic_navigation_and_rename_preserve_quotes_and_type_suffixes() {
+    let harness = SnapshotHarness::new();
+    for (declaration, reference, spelling) in [
+        ("`Car`~T~", "Car", "Car"),
+        ("Car~T~", "`Car`", "Car"),
+        ("`Car` \t~T~", "Car~U~", "Car"),
+        ("`123`~类型~", "123", "123"),
+        ("123~类型~", "`123`", "123"),
+        ("`名𠀀`~类型~", "`名𠀀`", "名𠀀"),
+        ("`classId-Car`~T~", "classId-Car", "classId-Car"),
+    ] {
+        let source = format!("classDiagram\nclass {declaration}\n{reference} --> Wheel\n");
+        let snapshot = harness
+            .analyze(
+                "file:///tmp/class-generics.mmd",
+                1,
+                source.clone(),
+                DocumentKind::Diagram,
+            )
+            .expect("generic Class document should be accepted");
+        assert_eq!(
+            snapshot.fences()[0].text_index().source(),
+            FenceTextIndexSource::ParserComplete
+        );
+        let declaration_start = 6 + usize::from(declaration.starts_with('`'));
+        let reference_start = usize::from(reference.starts_with('`'));
+        let name_len = spelling.encode_utf16().count();
+        let declaration_range = Range::new(
+            Position::new(1, declaration_start),
+            Position::new(1, declaration_start + name_len),
+        );
+        let reference_range = Range::new(
+            Position::new(2, reference_start),
+            Position::new(2, reference_start + name_len),
+        );
+        let definition = goto_definition(&snapshot, reference_range.start)
+            .expect("plain and generic occurrences must resolve to the declaration");
+        assert_eq!(definition.range, declaration_range, "{declaration}");
+
+        for range in [declaration_range, reference_range] {
+            let locations = references(&snapshot, range.start, true).unwrap();
+            assert_eq!(
+                locations
+                    .iter()
+                    .map(|location| location.range)
+                    .collect::<Vec<_>>(),
+                [declaration_range, reference_range],
+                "{declaration}: {reference}"
+            );
+            let prepared = prepare_rename(&snapshot, range.start).unwrap();
+            assert_eq!(prepared.placeholder, spelling);
+            assert_eq!(prepared.range, range);
+            let edit = rename(&snapshot, range.start, "Truck").unwrap().unwrap();
+            let changes = &edit.changes[snapshot.uri()];
+            assert_eq!(changes.len(), 2);
+            let mut changed = source.clone();
+            for change in changes.iter().rev() {
+                let start = snapshot
+                    .byte_offset_for_position(change.range.start)
+                    .unwrap();
+                let end = snapshot.byte_offset_for_position(change.range.end).unwrap();
+                changed.replace_range(start..end, &change.new_text);
+            }
+            assert_eq!(
+                changed,
+                format!(
+                    "classDiagram\nclass {}\n{} --> Wheel\n",
+                    declaration.replacen(spelling, "Truck", 1),
+                    reference.replacen(spelling, "Truck", 1),
+                ),
+                "rename must preserve authored quotes, whitespace and generic types"
+            );
+        }
+    }
+}
+
+#[test]
 fn typed_reference_groups_keep_same_name_different_kinds_separate() {
     let harness = SnapshotHarness::new();
     let snapshot = harness

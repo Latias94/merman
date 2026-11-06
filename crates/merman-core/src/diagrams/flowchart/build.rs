@@ -1,7 +1,7 @@
 use super::{
     Edge, FlowNodeProvenance, FlowNodeSyntax, FlowchartAst, Node, StatementEvent, Stmt, TitleKind,
 };
-use crate::{OperationControl, OperationControlResult};
+use crate::{OperationControl, OperationControlResult, SourceSpan};
 use std::collections::{HashMap, HashSet};
 
 pub(super) struct FlowchartBuildState {
@@ -45,11 +45,11 @@ impl FlowchartBuildState {
                 } => {
                     let has_edges = !edge_groups.is_empty();
                     if let Some(first_group) = node_groups.first() {
-                        self.upsert_group(first_group, has_edges, control)?;
+                        self.reserve_group(first_group, has_edges, control)?;
                     }
                     for (segment_index, edges) in edge_groups.iter().enumerate() {
                         if let Some(next_group) = node_groups.get(segment_index + 1) {
-                            self.upsert_group(next_group, true, control)?;
+                            self.reserve_group(next_group, true, control)?;
                         }
                         for (edge_index, edge) in edges.iter().cloned().enumerate() {
                             if edge_index % 128 == 0 {
@@ -60,45 +60,23 @@ impl FlowchartBuildState {
                     }
                 }
                 Stmt::Node(n) => {
-                    let mut n = n.as_ref().clone();
                     if self.used_edge_ids.contains(&n.id) {
                         continue;
                     }
-                    n.provenance = FlowNodeProvenance::Authored;
-                    self.upsert_node(n);
+                    self.reserve_node(&n.id, FlowNodeProvenance::Authored, n.syntax, n.id_span);
                 }
                 Stmt::ShapeData {
                     target,
                     target_span,
                     ..
                 } => {
-                    // Reserve the structural node slot in source order. The semantic replay is
-                    // the sole owner of parsing and applying shapeData values.
                     if !self.used_edge_ids.contains(target) {
-                        self.upsert_node(Node {
-                            id: target.clone(),
-                            provenance: FlowNodeProvenance::Authored,
-                            syntax: FlowNodeSyntax::ExplicitDefinition,
-                            id_span: *target_span,
-                            label: None,
-                            label_type: TitleKind::Text,
-                            label_span: None,
-                            label_selection: None,
-                            shape: None,
-                            shape_data: None,
-                            icon: None,
-                            form: None,
-                            pos: None,
-                            img: None,
-                            constraint: None,
-                            asset_width: None,
-                            asset_height: None,
-                            styles: Vec::new(),
-                            classes: Vec::new(),
-                            link: None,
-                            link_target: None,
-                            have_callback: false,
-                        });
+                        self.reserve_node(
+                            target,
+                            FlowNodeProvenance::Authored,
+                            FlowNodeSyntax::ExplicitDefinition,
+                            *target_span,
+                        );
                     }
                 }
                 Stmt::Style(_) => {}
@@ -114,73 +92,73 @@ impl FlowchartBuildState {
         Ok(())
     }
 
-    fn upsert_group(
+    fn reserve_group(
         &mut self,
         nodes: &[Node],
         has_edges: bool,
         control: &OperationControl,
     ) -> OperationControlResult<()> {
-        for (index, node) in nodes.iter().cloned().enumerate() {
+        for (index, node) in nodes.iter().enumerate() {
             if index % 128 == 0 {
                 control.checkpoint()?;
             }
             if self.used_edge_ids.contains(&node.id) {
                 continue;
             }
-            let mut node = node;
-            if has_edges
+            let provenance = if has_edges
                 && node.syntax == FlowNodeSyntax::BareReference
                 && self.subgraph_ids.contains(&node.id)
             {
-                node.provenance = FlowNodeProvenance::SubgraphAnchor;
-            }
-            self.upsert_node(node);
+                FlowNodeProvenance::SubgraphAnchor
+            } else {
+                node.provenance
+            };
+            self.reserve_node(&node.id, provenance, node.syntax, node.id_span);
         }
         Ok(())
     }
 
-    fn upsert_node(&mut self, n: Node) {
-        if let Some(&idx) = self.node_index.get(&n.id) {
-            if matches!(n.provenance, FlowNodeProvenance::Authored) {
+    fn reserve_node(
+        &mut self,
+        id: &str,
+        provenance: FlowNodeProvenance,
+        syntax: FlowNodeSyntax,
+        id_span: Option<SourceSpan>,
+    ) {
+        if let Some(&idx) = self.node_index.get(id) {
+            if matches!(provenance, FlowNodeProvenance::Authored) {
                 self.nodes[idx].provenance = FlowNodeProvenance::Authored;
             }
-            if n.label.is_some() {
-                self.nodes[idx].label = n.label;
-                self.nodes[idx].label_type = n.label_type;
-                self.nodes[idx].label_span = n.label_span;
-                self.nodes[idx].label_selection = n.label_selection;
-            }
-            if n.shape.is_some() {
-                self.nodes[idx].shape = n.shape;
-            }
-            if n.icon.is_some() {
-                self.nodes[idx].icon = n.icon;
-            }
-            if n.form.is_some() {
-                self.nodes[idx].form = n.form;
-            }
-            if n.pos.is_some() {
-                self.nodes[idx].pos = n.pos;
-            }
-            if n.img.is_some() {
-                self.nodes[idx].img = n.img;
-            }
-            if n.constraint.is_some() {
-                self.nodes[idx].constraint = n.constraint;
-            }
-            if n.asset_width.is_some() {
-                self.nodes[idx].asset_width = n.asset_width;
-            }
-            if n.asset_height.is_some() {
-                self.nodes[idx].asset_height = n.asset_height;
-            }
-            self.nodes[idx].styles.extend(n.styles);
-            self.nodes[idx].classes.extend(n.classes);
             return;
         }
+        // Reserve identity and provenance only. The existing semantic traversal owns every
+        // mutable definition, so an early metadata call cannot see a later label or shape.
         let idx = self.nodes.len();
-        self.node_index.insert(n.id.clone(), idx);
-        self.nodes.push(n);
+        self.node_index.insert(id.to_string(), idx);
+        self.nodes.push(Node {
+            id: id.to_string(),
+            provenance,
+            syntax,
+            id_span,
+            label: None,
+            label_type: TitleKind::Text,
+            label_span: None,
+            label_selection: None,
+            shape: None,
+            shape_data: None,
+            icon: None,
+            form: None,
+            pos: None,
+            img: None,
+            constraint: None,
+            asset_width: None,
+            asset_height: None,
+            styles: Vec::new(),
+            classes: Vec::new(),
+            link: None,
+            link_target: None,
+            have_callback: false,
+        });
     }
 
     fn push_edge(&mut self, mut e: Edge) {

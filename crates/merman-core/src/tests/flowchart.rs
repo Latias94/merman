@@ -1469,6 +1469,104 @@ fn parse_diagram_flowchart_edges_spec_keywords_as_edge_labels_in_double_ended_ed
 }
 
 #[test]
+fn parse_diagram_flowchart_node_definitions_and_metadata_follow_source_order() {
+    let engine = MermaidEngine::new();
+    for (statements, label, label_type, shape, layout_shape) in [
+        (
+            "A@{shape: circle, label: Old}\nA[New]\n",
+            "New",
+            "text",
+            "square",
+            "squareRect",
+        ),
+        (
+            "A[Old]\nA@{shape: circle, label: New}\n",
+            "New",
+            "markdown",
+            "circle",
+            "circle",
+        ),
+        (
+            "A@{shape: circle, label: Old}\nA\nA --> B\n",
+            "Old",
+            "markdown",
+            "circle",
+            "circle",
+        ),
+        (
+            "A[First]@{shape: circle, label: Old} --> B --> A[New]\n",
+            "New",
+            "text",
+            "square",
+            "squareRect",
+        ),
+        (
+            "A[Old] --> B --> A@{shape: circle, label: New}\n",
+            "New",
+            "markdown",
+            "circle",
+            "circle",
+        ),
+        (
+            "A@{shape: circle, label: Old} & A[New] --> B\n",
+            "Old",
+            "markdown",
+            "circle",
+            "circle",
+        ),
+    ] {
+        let source = format!("flowchart TB\n{statements}");
+        let parsed = engine
+            .parse_diagram_sync(&source, ParseOptions::strict())
+            .unwrap()
+            .unwrap();
+        let node = parsed.model["nodes"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|node| node["id"] == "A")
+            .unwrap();
+        assert_eq!(node["label"], label, "{source}");
+        assert_eq!(node["labelType"], label_type, "{source}");
+        assert_eq!(node["shape"], shape, "{source}");
+        assert_eq!(node["layoutShape"], layout_shape, "{source}");
+    }
+}
+
+#[test]
+fn parse_diagram_flowchart_chained_metadata_preserves_vertex_call_order() {
+    let parsed = MermaidEngine::new()
+        .parse_diagram_sync(
+            "flowchart TB\nA@{label: First} & B@{label: Second} & C@{label: Third} --> D\n",
+            ParseOptions::strict(),
+        )
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        parsed.model["vertexCalls"],
+        json!(["A", "B", "A", "C", "B", "C", "D"])
+    );
+    for (index, label) in ["First", "Second", "Third"].into_iter().enumerate() {
+        assert_eq!(parsed.model["nodes"][index]["label"], label);
+    }
+}
+
+#[test]
+fn parse_diagram_flowchart_inline_classes_follow_source_order() {
+    let parsed = MermaidEngine::new()
+        .parse_diagram_sync(
+            "flowchart TB\nA:::first\nclass A middle\nA:::last\n",
+            ParseOptions::strict(),
+        )
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        parsed.model["nodes"][0]["classes"],
+        json!(["first", "middle", "last"])
+    );
+}
+
+#[test]
 fn parse_diagram_flowchart_node_data_basic_shape_data_statements() {
     let engine = MermaidEngine::new();
 
@@ -3396,6 +3494,51 @@ fn parse_diagram_flowchart_linkstyle_applies_edge_style_and_validates_bounds() {
         err.to_string(),
         "Diagram parse error (flowchart-v2): The index 1 for linkStyle is out of bounds. Valid indices for linkStyle are between 0 and 0. (Help: Ensure that the index is within the range of existing edges.)"
     );
+}
+
+#[test]
+fn parse_diagram_flowchart_default_interpolate_is_captured_at_edge_declaration() {
+    let source = concat!(
+        "flowchart TB\n",
+        "A --> B\n",
+        "linkStyle default interpolate stepAfter\n",
+        "B --> C\n",
+        "linkStyle default interpolate linear\n",
+        "C --> D\n",
+    );
+    let parsed = MermaidEngine::new()
+        .parse_diagram_sync(source, ParseOptions::strict())
+        .unwrap()
+        .unwrap();
+    assert!(parsed.model["edges"][0]["interpolate"].is_null());
+    assert_eq!(parsed.model["edges"][1]["interpolate"], "stepAfter");
+    assert_eq!(parsed.model["edges"][2]["interpolate"], "linear");
+    assert_eq!(parsed.model["edgeDefaults"]["interpolate"], "linear");
+}
+
+#[test]
+fn parse_diagram_flowchart_captured_interpolate_allows_later_explicit_overrides() {
+    let source = concat!(
+        "flowchart TB\n",
+        "linkStyle default interpolate step\n",
+        "A e1@--> B\n",
+        "linkStyle default interpolate linear\n",
+        "A e2@--> C\n",
+        "linkStyle 0 interpolate basis\n",
+        "e1@{curve: stepAfter}\n",
+        "e2@{curve: cardinal}\n",
+        "linkStyle 1 interpolate monotoneX\n",
+        "linkStyle default interpolate natural\n",
+    );
+    let parsed = MermaidEngine::new()
+        .parse_diagram_sync(source, ParseOptions::strict())
+        .unwrap()
+        .unwrap();
+    assert_eq!(parsed.model["edges"][0]["id"], "e1");
+    assert_eq!(parsed.model["edges"][0]["interpolate"], "stepAfter");
+    assert_eq!(parsed.model["edges"][1]["id"], "e2");
+    assert_eq!(parsed.model["edges"][1]["interpolate"], "monotoneX");
+    assert_eq!(parsed.model["edgeDefaults"]["interpolate"], "natural");
 }
 
 #[test]

@@ -234,9 +234,9 @@ ParBlock: ActionList = {
 };
 
 ParOverBlock: ActionList = {
-  "par_over" <h:RestOfLine> <body:Doc> "end" =>? arena.wrap(
+  "par_over" <h:RestOfLine> <body:Doc> <branches:ParAndBranch*> "end" =>? arena.branch_block(
     Action::ControlSignal { signal_type: LINETYPE_PAR_OVER_START, text: Some(h) },
-    body,
+    body, branches, LINETYPE_PAR_AND,
     Action::ControlSignal { signal_type: LINETYPE_PAR_END, text: None },
     control,
   ),

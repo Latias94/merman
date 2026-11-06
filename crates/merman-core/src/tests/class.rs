@@ -654,6 +654,154 @@ Admin --> Report : generates
 }
 
 #[test]
+fn parse_diagram_class_adjacent_operators_preserve_relationship_types() {
+    let engine = MermaidEngine::new();
+    for (relation, source_id, type1, type2, line_type) in [
+        ("A*--B", "A", 2, -1, 0),
+        ("A*..B", "A", 2, -1, 1),
+        ("A--*B", "A", -1, 2, 0),
+        ("A<|--B", "A", 1, -1, 0),
+        ("A--|>B", "A", -1, 1, 0),
+        ("A<|..B", "A", 1, -1, 1),
+        ("A..|>B", "A", -1, 1, 1),
+        ("`A*`*--B", "A*", 2, -1, 0),
+    ] {
+        let text = format!("classDiagram\n{relation}\n");
+        let parsed = engine
+            .parse_diagram_sync(&text, ParseOptions::strict())
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            parsed.model["classes"].as_object().unwrap().len(),
+            2,
+            "{relation}"
+        );
+        assert!(parsed.model["classes"][source_id].is_object(), "{relation}");
+        assert!(parsed.model["classes"]["B"].is_object(), "{relation}");
+        let edge = &parsed.model["relations"][0];
+        assert_eq!(edge["id1"], source_id, "{relation}");
+        assert_eq!(edge["id2"], "B", "{relation}");
+        assert_eq!(
+            edge["relation"],
+            json!({"type1": type1, "type2": type2, "lineType": line_type}),
+            "{relation}"
+        );
+    }
+}
+
+#[test]
+fn parse_diagram_class_adjacent_lollipops_create_interfaces() {
+    let engine = MermaidEngine::new();
+    for (relation, id1, id2, type1, type2) in [
+        ("I()--A", "interface0", "A", 4, -1),
+        ("A--()I", "A", "interface0", -1, 4),
+    ] {
+        let text = format!("classDiagram\n{relation}\n");
+        let parsed = engine
+            .parse_diagram_sync(&text, ParseOptions::strict())
+            .unwrap()
+            .unwrap();
+        assert_eq!(parsed.model["classes"].as_object().unwrap().len(), 1);
+        assert!(parsed.model["classes"]["A"].is_object());
+        assert_eq!(parsed.model["interfaces"].as_array().unwrap().len(), 1);
+        assert_eq!(parsed.model["interfaces"][0]["id"], "interface0");
+        assert_eq!(parsed.model["interfaces"][0]["label"], "I");
+        let edge = &parsed.model["relations"][0];
+        assert_eq!(edge["id1"], id1, "{relation}");
+        assert_eq!(edge["id2"], id2, "{relation}");
+        assert_eq!(edge["relation"]["type1"], type1, "{relation}");
+        assert_eq!(edge["relation"]["type2"], type2, "{relation}");
+    }
+}
+
+#[test]
+fn parse_diagram_class_compact_bodies_preserve_members_and_namespace() {
+    let engine = MermaidEngine::new();
+    for body in [
+        "class A { +run() }",
+        "class A {\n+run() }",
+        "class A { +field\n+run() }",
+    ] {
+        let text = format!("classDiagram\nnamespace N {{\n{body}\n}}\n");
+        let parsed = engine
+            .parse_diagram_sync(&text, ParseOptions::strict())
+            .unwrap()
+            .unwrap();
+        let class = &parsed.model["classes"]["A"];
+        assert_eq!(class["parent"], "N");
+        assert_eq!(class["methods"].as_array().unwrap().len(), 1);
+        assert_eq!(class["methods"][0]["displayText"], "+run()");
+        assert_eq!(
+            class["members"].as_array().unwrap().len(),
+            usize::from(body.contains("+field"))
+        );
+        assert_eq!(parsed.model["namespaces"]["N"]["classIds"], json!(["A"]));
+    }
+}
+
+#[test]
+fn parse_diagram_class_rejects_unexpected_braces_after_member_text() {
+    let engine = MermaidEngine::new();
+    for newline in ["\n", "\r", "\r\n"] {
+        for member in ["{", "+field{value", "+run() {"] {
+            let text = format!("classDiagram{newline}class A {{ {member} }}{newline}");
+            let opening = text.rfind('{').unwrap();
+            let error = engine
+                .parse_diagram_sync(&text, ParseOptions::strict())
+                .expect_err("an opening brace inside a class member is invalid");
+            let Error::DiagramParse { diagnostic, .. } = error else {
+                panic!("unexpected brace must remain a Class parse error");
+            };
+            assert_eq!(
+                diagnostic.span(),
+                Some(SourceSpan::new(opening, opening + 1))
+            );
+            assert_eq!(diagnostic.span_kind(), ParseDiagnosticSpanKind::Exact);
+        }
+    }
+}
+
+#[test]
+fn parse_diagram_class_quoted_generic_names_keep_types_and_bodies() {
+    let engine = MermaidEngine::new();
+    for declaration in [
+        "class `Car`~T~",
+        "class `Car` \t~T~",
+        "class `Car`~T~ {\n+drive()\n}",
+    ] {
+        let text = format!("classDiagram\n{declaration}\n");
+        let parsed = engine
+            .parse_diagram_sync(&text, ParseOptions::strict())
+            .unwrap()
+            .unwrap();
+        let class = &parsed.model["classes"]["Car"];
+        assert_eq!(class["type"], "T");
+        assert_eq!(class["text"], "Car&lt;T&gt;");
+        if declaration.contains("drive") {
+            assert_eq!(class["methods"][0]["displayText"], "+drive()");
+        }
+    }
+}
+
+#[test]
+fn parse_diagram_class_relabelling_uses_the_stored_generic_type() {
+    let engine = MermaidEngine::new();
+    for first in ["class Box~T~", "Box~T~ --> Item"] {
+        for label in ["class Box[\"Container\"]", "class Box~U~[\"Container\"]"] {
+            let text = format!("classDiagram\n{first}\n{label}\n");
+            let parsed = engine
+                .parse_diagram_sync(&text, ParseOptions::strict())
+                .unwrap()
+                .unwrap();
+            let class = &parsed.model["classes"]["Box"];
+            assert_eq!(class["type"], "T");
+            assert_eq!(class["label"], "Container");
+            assert_eq!(class["text"], "Container<T>");
+        }
+    }
+}
+
+#[test]
 fn parse_diagram_class_style_statement_sets_node_styles() {
     let engine = MermaidEngine::new();
     let text = r#"classDiagram
@@ -707,6 +855,57 @@ classDef bold stroke:#333,stroke-width:6px
         c["styles"],
         json!(["fill:#f9f", "stroke:#333", "stroke-width:6px"])
     );
+}
+
+#[test]
+fn parse_diagram_class_classdef_target_lists_preserve_order_and_precedence() {
+    let engine = MermaidEngine::new();
+    let assignments = "class A:::first\nclass B:::second\n";
+    for names in ["first,second", "first, second"] {
+        let definition = format!("classDef {names} fill:#ff0000,stroke:#333\n");
+        for definition_first in [false, true] {
+            let text = if definition_first {
+                format!("classDiagram\n{definition}{assignments}")
+            } else {
+                format!("classDiagram\n{assignments}{definition}")
+            };
+            let parsed = engine
+                .parse_diagram_sync(&text, ParseOptions::strict())
+                .unwrap()
+                .unwrap();
+            let styles = json!(["fill:#ff0000", "stroke:#333"]);
+            let definitions = parsed.model["styleClasses"].as_object().unwrap();
+            assert_eq!(
+                definitions.keys().map(String::as_str).collect::<Vec<_>>(),
+                ["first", "second"]
+            );
+            for name in ["first", "second"] {
+                assert_eq!(definitions[name]["styles"], styles);
+            }
+            let expected = if definition_first { json!([]) } else { styles };
+            for id in ["A", "B"] {
+                assert_eq!(parsed.model["classes"][id]["styles"], expected);
+            }
+        }
+    }
+}
+
+#[test]
+fn parse_diagram_class_classdef_target_lists_reject_missing_names() {
+    let engine = MermaidEngine::new();
+    for definition in [
+        "classDef ,first fill:red",
+        "classDef first,,second fill:red",
+        "classDef first,",
+    ] {
+        let text = format!("classDiagram\n{definition}\n");
+        assert!(
+            engine
+                .parse_diagram_sync(&text, ParseOptions::strict())
+                .is_err(),
+            "{definition}"
+        );
+    }
 }
 
 #[test]
@@ -1117,6 +1316,143 @@ fn parse_class_editor_facts_preserve_quoted_numeric_class_selection_spans() {
 }
 
 #[test]
+fn parse_class_editor_facts_keep_compact_members_generics_and_classdef_target_spans() {
+    let text = concat!(
+        "classDiagram\n",
+        "class `Car`~T~ { +drive() }\n",
+        "class `123`~类型~\n",
+        "A*--B\n",
+        "classDef first,second fill:red\n",
+    );
+    let facts = MermaidEngine::new()
+        .parse_editor_semantic_facts_with_type_sync("classDiagram", text)
+        .unwrap()
+        .unwrap();
+    assert_eq!(facts.completeness, EditorSemanticCompleteness::Complete);
+    for (name, detail, source) in [
+        ("Car", "class", "Car"),
+        ("+drive()", "class member", "+drive()"),
+        ("A", "class relation target", "A"),
+        ("B", "class relation target", "B"),
+        ("first", "class definition", "first"),
+        ("second", "class definition", "second"),
+    ] {
+        let symbol = facts
+            .symbols
+            .iter()
+            .find(|symbol| symbol.name == name && symbol.detail.as_deref() == Some(detail))
+            .unwrap_or_else(|| panic!("missing Class symbol {name}: {detail}"));
+        let start = text.find(source).unwrap();
+        assert_eq!(
+            symbol.selection,
+            SourceSpan::new(start, start + source.len())
+        );
+        if detail == "class definition" {
+            assert_eq!(symbol.role, EditorSemanticRole::ClassDefinition);
+        }
+    }
+    let numeric = facts
+        .symbols
+        .iter()
+        .find(|symbol| symbol.name == "classId-123")
+        .expect("numeric quoted generic class");
+    let start = text.find("123").unwrap();
+    assert_eq!(numeric.selection, SourceSpan::new(start, start + 3));
+    assert_eq!(&text[numeric.span.start..numeric.span.end], "`123`~类型~");
+}
+
+#[test]
+fn parse_class_editor_facts_canonicalize_generic_class_identity_and_selections() {
+    let engine = MermaidEngine::new();
+    for (declaration, reference, id, spelling) in [
+        ("`Car`~T~", "Car", "Car", "Car"),
+        ("Car~T~", "`Car`", "Car", "Car"),
+        ("`Car` \t~T~", "Car~U~", "Car", "Car"),
+        ("`123`~类型~", "123", "classId-123", "123"),
+        ("123~类型~", "`123`", "classId-123", "123"),
+        ("`名𠀀`~类型~", "`名𠀀`", "名𠀀", "名𠀀"),
+        (
+            "`classId-Car`~T~",
+            "classId-Car",
+            "classId-Car",
+            "classId-Car",
+        ),
+    ] {
+        let text = format!("classDiagram\nclass {declaration}\n{reference} --> Wheel\n");
+        let snapshot = engine
+            .parse_diagram_snapshot_with_type_sync("classDiagram", &text)
+            .unwrap()
+            .unwrap();
+        let model = snapshot.outcome().parsed_model().unwrap();
+        assert!(model["classes"][id].is_object(), "{declaration}");
+        let ParsedEditorFacts::Available(facts) = snapshot.editor_facts() else {
+            panic!("generic Class snapshot must retain editor facts");
+        };
+        assert_eq!(facts.completeness, EditorSemanticCompleteness::Complete);
+        let occurrences = facts
+            .symbols
+            .iter()
+            .filter(|symbol| symbol.kind == EditorSemanticKind::Class && symbol.name == id)
+            .collect::<Vec<_>>();
+        assert_eq!(occurrences.len(), 2, "{declaration}: {reference}");
+        assert_eq!(occurrences[0].role, EditorSemanticRole::Entity);
+        assert_eq!(occurrences[1].role, EditorSemanticRole::Reference);
+        assert_eq!(
+            &text[occurrences[0].span.start..occurrences[0].span.end],
+            declaration
+        );
+        assert_eq!(
+            &text[occurrences[1].span.start..occurrences[1].span.end],
+            reference
+        );
+        for symbol in occurrences {
+            assert_eq!(
+                &text[symbol.selection.start..symbol.selection.end],
+                spelling
+            );
+            assert!(symbol.span.start <= symbol.selection.start);
+            assert!(symbol.selection.end <= symbol.span.end);
+        }
+    }
+}
+
+#[test]
+fn parse_class_editor_facts_canonicalize_generic_class_targets() {
+    let text = concat!(
+        "classDiagram\n",
+        "class Car~T~\n",
+        "Car~U~: +drive()\n",
+        "<<interface>> Car~U~\n",
+        "note for Car \"note\"\n",
+        "style Car fill:red\n",
+        "click Car~U~ href \"https://example.com\"\n",
+        "cssClass \"Car~U~, Other\" hot\n",
+    );
+    let facts = MermaidEngine::new()
+        .parse_editor_semantic_facts_with_type_sync("classDiagram", text)
+        .unwrap()
+        .unwrap();
+    assert_eq!(facts.completeness, EditorSemanticCompleteness::Complete);
+    for (detail, authored) in [
+        ("class member owner", "Car~U~"),
+        ("class annotation target", "Car~U~"),
+        ("class note target", "Car"),
+        ("class style target", "Car"),
+        ("class interaction target", "Car~U~"),
+        ("class css target", "Car~U~"),
+    ] {
+        let symbol = facts
+            .symbols
+            .iter()
+            .find(|symbol| symbol.name == "Car" && symbol.detail.as_deref() == Some(detail))
+            .unwrap_or_else(|| panic!("missing generic Class reference: {detail}"));
+        assert_eq!(symbol.role, EditorSemanticRole::Reference);
+        assert_eq!(&text[symbol.span.start..symbol.span.end], authored);
+        assert_eq!(&text[symbol.selection.start..symbol.selection.end], "Car");
+    }
+}
+
+#[test]
 fn class_relations_create_only_the_first_implicit_entity_occurrence() {
     let engine = MermaidEngine::new();
     let text = concat!(
@@ -1278,18 +1614,20 @@ fn parse_class_editor_facts_do_not_consume_classdef_names_across_line_endings() 
     let engine = MermaidEngine::new();
 
     for line_ending in ["\n", "\r", "\r\n"] {
-        let text = ["classDiagram", "classDef", "User <|-- Admin", ""].join(line_ending);
-        let facts = engine
-            .parse_editor_semantic_facts_with_type_sync("classDiagram", &text)
-            .unwrap()
-            .expect("class editor facts");
+        for definition in ["classDef", "classDef first,"] {
+            let text = ["classDiagram", definition, "User <|-- Admin", ""].join(line_ending);
+            let facts = engine
+                .parse_editor_semantic_facts_with_type_sync("classDiagram", &text)
+                .unwrap()
+                .expect("class editor facts");
 
-        assert!(
-            !facts.symbols.iter().any(|symbol| {
-                symbol.name == "User" && symbol.role == EditorSemanticRole::ClassDefinition
-            }),
-            "classDef consumed the next physical line for {line_ending:?}"
-        );
+            assert!(
+                !facts.symbols.iter().any(|symbol| {
+                    symbol.name == "User" && symbol.role == EditorSemanticRole::ClassDefinition
+                }),
+                "{definition} consumed the next physical line for {line_ending:?}"
+            );
+        }
     }
 }
 

@@ -1838,6 +1838,27 @@ API-->BillingService: Start billing process"#;
 }
 
 #[test]
+fn parse_diagram_sequence_par_over_preserves_and_branches() {
+    let source = "sequenceDiagram\npar_over first\nA->>B: one\nand second\nB-->>A: two\nend\n";
+    let parsed = MermaidEngine::new()
+        .parse_diagram_sync(source, ParseOptions::strict())
+        .unwrap()
+        .unwrap();
+    let messages = parsed.model["messages"].as_array().unwrap();
+    let types: Vec<_> = messages
+        .iter()
+        .map(|message| message["type"].as_i64().unwrap())
+        .collect();
+    assert_eq!(types, [32, 0, 20, 1, 21]);
+    let labels: Vec<_> = messages
+        .iter()
+        .map(|message| message["message"].as_str().unwrap())
+        .collect();
+    assert_eq!(labels, ["first", "one", "second", "two", ""]);
+    assert_eq!(parsed.model["actorOrder"], json!(["A", "B"]));
+}
+
+#[test]
 fn parse_diagram_sequence_par_over_block() {
     let engine = MermaidEngine::new();
     let text = r#"sequenceDiagram

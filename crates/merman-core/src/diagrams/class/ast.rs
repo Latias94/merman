@@ -122,7 +122,7 @@ type GrammarResult<T> =
     std::result::Result<T, lalrpop_util::ParseError<usize, super::Tok, super::LexError>>;
 
 impl ActionArena {
-    fn checkpoint(&mut self, control: &crate::OperationControl) -> GrammarResult<()> {
+    pub(super) fn checkpoint(&mut self, control: &crate::OperationControl) -> GrammarResult<()> {
         if self.construction_steps.is_multiple_of(128) {
             control
                 .checkpoint()
