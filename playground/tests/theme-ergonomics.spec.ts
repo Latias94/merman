@@ -13,7 +13,9 @@ async function openPanel(page: Page) {
 async function start(page: Page, mermaidConfig = "{}", themePresetId: string | null = null,
   code = 'flowchart LR\nA[Authored source] --> B\n%%{init: {"flowchart":{"look":"handDrawn"}}}%%') {
   await page.context().grantPermissions(["clipboard-read", "clipboard-write"]);
-  await page.addInitScript(() => localStorage.setItem("merman-language", "en"));
+  await page.addInitScript(() => {
+    if (window === window.top && (location.protocol === "http:" || location.protocol === "https:")) localStorage.setItem("merman-language", "en");
+  });
   const workspace = {
     ...DEFAULT_WORKSPACE_SNAPSHOT,
     code,
@@ -259,6 +261,7 @@ for (const scene of [
 }
 
 test("invalid authored config remains repairable after an immediate theme choice and closing", async ({ page }) => {
+  const errors = monitorBrowserErrors(page);
   await start(page, '{"flowchart":{"nodeSpacing":42}}', null, "flowchart LR\nA --> B");
   const panel = await openPanel(page);
   await panel.getByRole("button", { name: /^Brutalist/ }).click();
@@ -280,7 +283,8 @@ test("invalid authored config remains repairable after an immediate theme choice
   await replaceMermaidConfig(page, "{}");
   const reopened = await openPanel(page);
   await expect(reopened.getByRole("button", { name: /^Brutalist/ })).toHaveAttribute("aria-pressed", "true");
-  await expect(reopened.getByTestId("theme-render-evidence")).not.toHaveAttribute("data-theme-evidence-state", "failed");
+  await expect(reopened.getByTestId("theme-render-evidence")).toHaveAttribute("data-theme-evidence-state", "applied");
+  errors.assertNone();
 });
 
 test("hand-drawn Brutalist shows styling diagnostics in Appearance and compatibility evidence in Export", async ({ page }) => {
@@ -312,6 +316,7 @@ test("hand-drawn Brutalist shows styling diagnostics in Appearance and compatibi
 });
 
 test("an immediate theme choice hides previous evidence and gates artifact actions until its current render", async ({ page }) => {
+  const errors = monitorBrowserErrors(page);
   await start(page, "{}", "cyberpunk");
   await page.getByRole("button", { name: "Tools", exact: true }).click();
   await page.getByRole("menuitem", { name: "Compare", exact: true }).click();
@@ -345,6 +350,7 @@ test("an immediate theme choice hides previous evidence and gates artifact actio
   expect(raw.theme_execution_evidence.family_id).toBe("flowchart");
   await expect(merman.getByRole("button", { name: "Copy SVG", exact: true })).toBeEnabled();
   await expect(merman.getByRole("button", { name: "Export image", exact: true })).toBeEnabled();
+  errors.assertNone();
 });
 
 test("an invalid import leaves the current-family choices and current runtime evidence intact", async ({ page }) => {

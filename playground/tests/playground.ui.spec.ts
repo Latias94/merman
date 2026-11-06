@@ -6,7 +6,6 @@ import {
   openAdvancedRendering,
   openPlayground,
   openWorkbenchTool,
-  previewSvgText,
   replaceEditorSource,
   waitForPreviewSvg,
 } from "./helpers/playground";
@@ -18,6 +17,8 @@ test("manual tabs preserve the editor model, selection, and undo history", async
 
   const source = "flowchart LR\n  A --> B";
   await replaceEditorSource(page, source);
+  const nodeLabels = page.locator(".preview-container svg g.node .nodeLabel");
+  await expect(nodeLabels).toHaveText(["A", "B"]);
   const editor = page.getByRole("textbox", { name: "Mermaid source" });
   await editor.focus();
   await page.keyboard.press("Shift+ArrowLeft");
@@ -54,12 +55,11 @@ test("manual tabs preserve the editor model, selection, and undo history", async
   await page.keyboard.insertText("C");
   await expect(page.locator("footer")).toContainText(`${source.length} Chars`);
 
-  await waitForPreviewSvg(page);
-  await expect.poll(() => previewSvgText(page)).toContain("C");
+  await expect(nodeLabels).toHaveText(["A", "C"]);
 
   await editor.focus();
   await page.keyboard.press("Control+Z");
-  await expect.poll(() => previewSvgText(page)).toContain("B");
+  await expect(nodeLabels).toHaveText(["A", "B"]);
 
   errors.assertNone();
 });
@@ -444,15 +444,18 @@ test("ASCII mode remains selected while an edited diagram is updating", async ({
   const asciiTab = page.getByRole("tab", { name: "ASCII", exact: true });
   await asciiTab.click();
   await expect(asciiTab).toHaveAttribute("aria-selected", "true");
+  const asciiEditor = page.getByTestId("ascii-artifact-editor");
+  await expect
+    .poll(() => asciiEditor.locator(".view-line").allTextContents())
+    .toEqual(expect.arrayContaining([expect.stringContaining("Beta")]));
 
   await replaceEditorSource(page, "flowchart LR\n  Alpha --> Gamma");
   await expect(asciiTab).toHaveAttribute("aria-selected", "true");
   await expect(page.getByText("ASCII not supported for this diagram type")).toBeHidden();
-  const asciiEditor = page.getByTestId("ascii-artifact-editor");
   await expect(asciiEditor).toBeVisible();
   await expect
     .poll(() => asciiEditor.locator(".view-line").allTextContents())
-    .toEqual(expect.arrayContaining([expect.stringContaining("Alpha")]));
+    .toEqual(expect.arrayContaining([expect.stringContaining("Gamma")]));
   const copyAscii = page.getByRole("button", { name: "Copy ASCII", exact: true });
   await expect(copyAscii).toBeEnabled();
   await copyAscii.click();
