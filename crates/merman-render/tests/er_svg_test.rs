@@ -3936,7 +3936,7 @@ fn er_text_fill_ownership_follows_each_html_or_svg_consumer() {
 }
 
 #[test]
-fn er_svg_distinguishes_empty_and_whitespace_relationship_labels() {
+fn er_svg_emits_empty_and_whitespace_relationship_label_wrappers() {
     let svg = render_er_svg_from_text(
         r#"erDiagram
 BOOK }|..|{ AUTHOR : ""
@@ -3946,10 +3946,10 @@ AUTHOR }|..|{ GENRE : "  "
         &SvgRenderOptions::default(),
     );
     let labels = edge_labels_group(&svg);
-    assert_eq!(labels.matches(r#"<g class="edgeLabel""#).count(), 2);
+    assert_eq!(labels.matches(r#"<g class="edgeLabel""#).count(), 3);
     assert!(!labels.contains("undefined"));
     assert!(!labels.contains("NaN"));
-    assert_eq!(labels.matches(r#"width="0" height="0""#).count(), 2);
+    assert_eq!(labels.matches(r#"width="0" height="0""#).count(), 3);
 }
 
 #[test]

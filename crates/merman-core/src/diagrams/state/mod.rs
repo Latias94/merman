@@ -457,50 +457,53 @@ impl<'input> Lexer<'input> {
     fn lex_stmt_line(&mut self) -> Option<std::result::Result<(usize, Tok, usize), LexError>> {
         let start = self.pos;
 
-        if self.starts_with_ci("hide empty description") {
-            self.pos += "hide empty description".len();
-            let _ = self.read_to_newline();
-            return Some(Ok((start, Tok::HideEmptyDescription, self.pos)));
-        }
+        // Unqualified Jison rules apply only in INITIAL, not exclusive struct mode.
+        if self.mode() == Mode::Default {
+            if self.starts_with_ci("hide empty description") {
+                self.pos += "hide empty description".len();
+                let _ = self.read_to_newline();
+                return Some(Ok((start, Tok::HideEmptyDescription, self.pos)));
+            }
 
-        if self.starts_with_word_ci("scale") {
-            self.pos += "scale".len();
-            self.skip_ws();
+            if self.starts_with_word_ci("scale") {
+                self.pos += "scale".len();
+                self.skip_ws();
 
-            let width_start = self.pos;
-            while let Some(b) = self.peek() {
-                if b.is_ascii_digit() {
-                    self.pos += 1;
-                    continue;
+                let width_start = self.pos;
+                while let Some(b) = self.peek() {
+                    if b.is_ascii_digit() {
+                        self.pos += 1;
+                        continue;
+                    }
+                    break;
                 }
-                break;
-            }
-            if self.pos == width_start {
-                return Some(Err(LexError::new("Expected a width number after 'scale'")));
-            }
-            let width: usize = match self.input[width_start..self.pos].parse() {
-                Ok(v) => v,
-                Err(_) => {
-                    return Some(Err(LexError::new("Invalid width number after 'scale'")));
+                if self.pos == width_start {
+                    return Some(Err(LexError::new("Expected a width number after 'scale'")));
                 }
-            };
+                let width: usize = match self.input[width_start..self.pos].parse() {
+                    Ok(v) => v,
+                    Err(_) => {
+                        return Some(Err(LexError::new("Invalid width number after 'scale'")));
+                    }
+                };
 
-            self.skip_ws();
-            if !self.starts_with_word_ci("width") {
-                return Some(Err(LexError::new("Expected 'width' after `scale <n>`")));
+                self.skip_ws();
+                if !self.starts_with_word_ci("width") {
+                    return Some(Err(LexError::new("Expected 'width' after `scale <n>`")));
+                }
+                self.pos += "width".len();
+                let _ = self.read_to_newline();
+                return Some(Ok((start, Tok::ScaleWidth(width), self.pos)));
             }
-            self.pos += "width".len();
-            let _ = self.read_to_newline();
-            return Some(Ok((start, Tok::ScaleWidth(width), self.pos)));
-        }
 
-        if self.starts_with_word_ci("click") {
-            self.pos += "click".len();
-            return Some(Ok((start, Tok::Click, self.pos)));
-        }
-        if self.starts_with_word_ci("href") {
-            self.pos += "href".len();
-            return Some(Ok((start, Tok::Href, self.pos)));
+            if self.starts_with_word_ci("click") {
+                self.pos += "click".len();
+                return Some(Ok((start, Tok::Click, self.pos)));
+            }
+            if self.starts_with_word_ci("href") {
+                self.pos += "href".len();
+                return Some(Ok((start, Tok::Href, self.pos)));
+            }
         }
 
         if self.starts_with_word_ci("note") {

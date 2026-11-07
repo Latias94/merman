@@ -1731,9 +1731,11 @@ fn parse_diagram_er_nested_relationships_preserve_completion_and_declaration_ord
         entities
             .keys()
             .map(String::as_str)
-            .eq(["PRE", "A", "B", "C", "D"])
+            .eq(["PRE", "A", "B", "C", "Inner", "D"])
     );
     assert_eq!(entities["PRE"]["id"], "entity-PRE-0");
+    assert_eq!(entities["Inner"]["id"], "entity-Inner-4");
+    assert_eq!(entities["D"]["id"], "entity-D-5");
     let relationships = model["relationships"].as_array().unwrap();
     assert!(
         relationships
@@ -1748,6 +1750,7 @@ fn parse_diagram_er_nested_relationships_preserve_completion_and_declaration_ord
     );
     assert_eq!(relationships[2]["entityA"], "Inner");
     assert_eq!(relationships[3]["entityA"], "entity-B-2");
+    assert_eq!(relationships[3]["entityB"], "entity-D-5");
 }
 
 #[test]

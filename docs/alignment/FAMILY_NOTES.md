@@ -65,6 +65,20 @@ Owners: [HTML typography tests](../../crates/merman-render/tests/class_html_typo
 
 ## ER
 
+Relationship statements create both endpoint entities before resolving completed subgraph IDs.
+The same-name entity remains in the semantic DB, preserving later entity IDs, aliases and source
+styles; the render projection filters it when the subgraph owns that ID. Style targets and
+`classDef` names use their exclusive lexical context, so keyword spellings remain valid there.
+
+Ordinary Dagre and ELK relationship labels use `createText`'s source-owned 200px default width,
+independent of `flowchart.wrappingWidth`. Prepared label rows and dimensions are shared by layout
+and SVG. HTML follows the selected Markdown wrapping policy and can overflow for unbreakable words;
+SVG word rows still wrap. SVG reserves the selected two-pixel background padding separately from
+the centered text bounds. Dagre retains zero-size relationship label wrappers for empty roles;
+ELK and Swimlane omit those empty-role terminals through their shared painter. Ordinary
+whitespace-only SVG roles retain background padding without visible text. Browser fonts can change
+the selected row boundaries.
+
 An explicit `layout: swimlane` selects the bundled provider directly from ER's measured entities,
 relationships and compound memberships. Its generated relationship-label nodes use non-Markdown text,
 the Flowchart wrapping width and root `htmlLabels`; lane titles separately follow
@@ -86,6 +100,9 @@ primitives retain the shared artifact limits; this backend does not establish pi
 Owners: [ER provider adapter](../../crates/merman-render/src/er/swimlane.rs),
 [shared measured graph](../../crates/merman-render/src/swimlane/flat.rs), and
 [ER Swimlane tests](../../crates/merman-render/tests/er_swimlane_test.rs).
+The [endpoint and lexical-scope regressions](../../crates/merman-core/tests/er_keyword_endpoint_parity_test.rs)
+and [ordinary relationship wrapping tests](../../crates/merman-render/tests/er_relationship_wrapping_test.rs)
+own the corresponding semantic and terminal contracts.
 
 ## Error
 
@@ -308,6 +325,15 @@ tooling skip, never a comparator allowance. Owners:
 
 ## State
 
+Root-only interaction, scale, hide and accessibility directives do not reserve ordinary state
+names inside an exclusive composite body. Canonical parsing and editor facts share this lexical
+scope and retain original authored ranges. `state.useMaxWidth: false` emits intrinsic root
+dimensions, and choice, fork and join nodes retain safe static links and tooltip titles.
+
+An empty final concurrent region is accepted by the selected parser, but its renderer fails on a
+leaf `divider` shape. Merman retains its existing region partitioning for that input; no successful
+upstream SVG contract is established by this parser-only case.
+
 Subpixel label dimensions can change legal ELK route topology and terminal-straightening choices.
 Controlled tests distinguish provider/paint behavior from measurement inputs. They do not turn
 browser coordinates into production answers or excuse label identity, presentation, or DOM changes.
@@ -317,7 +343,9 @@ they do not waive `structure` or `strict` comparisons. Current entries and hashe
 [browser-text catalog](../../fixtures/_verification/browser-text-layout-residuals.json), rather
 than the old 12.0 investigation's fixture counts or successful commands.
 
-Owners: [controlled State ELK tests](../../crates/merman-render/tests/state_elk_layout_test.rs),
+Owners: [keyword scope tests](../../crates/merman-core/tests/state_keyword_scope_test.rs),
+[viewport and interaction tests](../../crates/merman-render/tests/state_viewport_interaction_test.rs),
+[controlled State ELK tests](../../crates/merman-render/tests/state_elk_layout_test.rs),
 [semantic-label admission](SEMANTIC_LABEL_PARITY.md), and
 [State SVG diagnostics](../rendering/STATE_DEBUG_SVG.md#parity-root-viewport-debugging).
 

@@ -3,7 +3,8 @@ use crate::elk_options::layout_options as er_elk_layout_options;
 use crate::layout_work::OperationLayoutWorkControl;
 use crate::model::{Bounds, ErDiagramLayout, LayoutEdge, LayoutLabel, LayoutNode, LayoutPoint};
 use crate::text::{
-    TextMeasurer, TextMetrics, TextStyle, WrapMode, measure_mermaid_text_dimensions,
+    MERMAID_CREATE_TEXT_DEFAULT_WIDTH_PX, MermaidMarkdownWordType, TextMeasurer, TextMetrics,
+    TextStyle, WrapMode, measure_mermaid_text_dimensions,
 };
 use crate::{Error, Result};
 use dugong::graphlib::{Graph, GraphOptions};
@@ -121,43 +122,181 @@ pub(crate) struct ErPreparedRelationshipLabel {
 }
 
 #[derive(Debug, Clone)]
+pub(crate) struct ErPreparedSvgRelationshipLabel {
+    pub(crate) word_lines: Vec<Vec<(String, MermaidMarkdownWordType)>>,
+    pub(crate) ink_bounds: Bounds,
+    pub(crate) background_bounds: Option<Bounds>,
+}
+
+const ER_SVG_RELATIONSHIP_LABEL_PADDING_PX: f64 = 2.0;
+
+impl ErPreparedSvgRelationshipLabel {
+    fn new(
+        source: &str,
+        has_background: bool,
+        measurer: &dyn TextMeasurer,
+        style: &TextStyle,
+    ) -> Self {
+        let word_lines = if source.is_empty() {
+            vec![Vec::new()]
+        } else {
+            // Pinned SVG preprocessing still wraps when markdownAutoWrap is false.
+            crate::text::mermaid_markdown_to_wrapped_word_lines(
+                measurer,
+                source,
+                style,
+                Some(MERMAID_CREATE_TEXT_DEFAULT_WIDTH_PX),
+                WrapMode::SvgLike,
+            )
+        };
+        // Use the same centered word-terminal bounds as Class relationships. Advance
+        // determines row centering; glyph extents determine ink and background geometry.
+        let mut horizontal: Option<(f64, f64)> = None;
+        let mut vertical: Option<(f64, f64)> = None;
+        for (row_index, row) in word_lines.iter().enumerate() {
+            if measurer.cancellation_requested() {
+                break;
+            }
+            let mut advance = 0.0;
+            let mut row_bounds: Option<(f64, f64)> = None;
+            for (word_index, (word, kind)) in row.iter().enumerate() {
+                if measurer.cancellation_requested() {
+                    break;
+                }
+                let visible = crate::text::SvgTextEntityMode::CreateTextSource.visible_word(word);
+                let text = if word_index == 0 {
+                    visible
+                } else {
+                    std::borrow::Cow::Owned(format!(" {visible}"))
+                };
+                let face = crate::text::svg_markdown_word_style(style, *kind);
+                let word_advance = measurer.measure_svg_text_computed_length_px(&text, &face);
+                if !crate::text::trim_html_collapsible_ascii_whitespace(&text).is_empty() {
+                    let (left, right) = measurer.measure_svg_text_bbox_x(&text, &face);
+                    let center = advance + word_advance / 2.0;
+                    let min = center - left;
+                    let max = center + right;
+                    row_bounds =
+                        Some(row_bounds.map_or((min, max), |(x0, x1)| (x0.min(min), x1.max(max))));
+                    let top = measurer.measure_svg_create_text_bbox_y_offset_px(&text, &face)
+                        + row_index as f64 * style.font_size * 1.1;
+                    let height = measurer.measure_svg_tspan_text_bbox_height_px(&text, &face);
+                    if height > 0.0 {
+                        let bottom = top + height;
+                        vertical = Some(
+                            vertical
+                                .map_or((top, bottom), |(y0, y1)| (y0.min(top), y1.max(bottom))),
+                        );
+                    }
+                }
+                advance += word_advance;
+            }
+            if measurer.cancellation_requested() {
+                break;
+            }
+            if let Some((mut min, mut max)) = row_bounds {
+                min -= advance / 2.0;
+                max -= advance / 2.0;
+                if let Some((_, kind)) = row.first()
+                    && row.iter().all(|(_, next)| next == kind)
+                {
+                    // A uniform row can use the complete centered-text bbox directly.
+                    // Decode each retained word once, without parsing terminal text as HTML.
+                    let text = row
+                        .iter()
+                        .map(|(word, _)| {
+                            crate::text::SvgTextEntityMode::CreateTextSource.visible_word(word)
+                        })
+                        .collect::<Vec<_>>()
+                        .join(" ");
+                    let face = crate::text::svg_markdown_word_style(style, *kind);
+                    let (left, right) = measurer.measure_svg_text_bbox_x(&text, &face);
+                    if left.is_finite() && right.is_finite() && left + right > 0.0 {
+                        min = -left;
+                        max = right;
+                    }
+                }
+                horizontal =
+                    Some(horizontal.map_or((min, max), |(x0, x1)| (x0.min(min), x1.max(max))));
+            }
+        }
+        let (min_x, max_x) = horizontal.unwrap_or_default();
+        let (min_y, max_y) = vertical.unwrap_or_default();
+        let ink_bounds = Bounds {
+            min_x,
+            max_x,
+            min_y,
+            max_y,
+        };
+        // createFormattedText expands text.getBBox() by 2px on each side, but only
+        // when the raw relationship source is truthy. Whitespace has a 4x4 background.
+        let background_bounds = has_background.then_some(Bounds {
+            min_x: min_x - ER_SVG_RELATIONSHIP_LABEL_PADDING_PX,
+            max_x: max_x + ER_SVG_RELATIONSHIP_LABEL_PADDING_PX,
+            min_y: min_y - ER_SVG_RELATIONSHIP_LABEL_PADDING_PX,
+            max_y: max_y + ER_SVG_RELATIONSHIP_LABEL_PADDING_PX,
+        });
+        Self {
+            word_lines,
+            ink_bounds,
+            background_bounds,
+        }
+    }
+
+    fn metrics(&self) -> TextMetrics {
+        let bounds = self.background_bounds.as_ref().unwrap_or(&self.ink_bounds);
+        TextMetrics {
+            width: (bounds.max_x - bounds.min_x).max(0.0),
+            height: (bounds.max_y - bounds.min_y).max(0.0),
+            line_count: self.word_lines.len(),
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
 enum ErRelationshipLabelTerminal {
     Markdown {
         source: String,
         xhtml_fragment: String,
-        html_labels: bool,
+        svg: Option<ErPreparedSvgRelationshipLabel>,
         visible_style_facts: OnceLock<crate::text::VisibleTextStyleFacts>,
     },
     Swimlane(swimlane::ErSwimlaneRelationshipLabel),
 }
 
 impl ErPreparedRelationshipLabel {
-    fn new(text: &str, measurer: &dyn TextMeasurer, style: &TextStyle, html_labels: bool) -> Self {
+    fn new(
+        text: &str,
+        measurer: &dyn TextMeasurer,
+        style: &TextStyle,
+        html_labels: bool,
+        markdown_auto_wrap: bool,
+    ) -> Self {
+        let has_background = !text.is_empty();
         let source = text.trim().to_string();
-        let xhtml_fragment = crate::text::mermaid_markdown_to_xhtml_label_fragment(&source, true);
-        let metrics = if source.is_empty() {
+        let xhtml_fragment =
+            crate::text::mermaid_markdown_to_xhtml_label_fragment(&source, markdown_auto_wrap);
+        // insertEdgeLabel leaves createText's width at its default, independently of
+        // flowchart.wrappingWidth. Only HTML substitutes nonbreaking spaces when
+        // markdownAutoWrap is false.
+        let max_width = Some(MERMAID_CREATE_TEXT_DEFAULT_WIDTH_PX);
+        let svg = (!html_labels)
+            .then(|| ErPreparedSvgRelationshipLabel::new(&source, has_background, measurer, style));
+        let metrics = if let Some(svg) = &svg {
+            svg.metrics()
+        } else if source.is_empty() {
             TextMetrics {
                 width: 0.0,
                 height: 0.0,
                 line_count: 0,
             }
-        } else if html_labels {
+        } else {
             crate::text::measure_xhtml_label_fragment(
                 measurer,
                 &xhtml_fragment,
                 style,
-                None,
+                max_width,
                 WrapMode::HtmlLike,
-            )
-        } else {
-            // The shared SVG path measures retained word rows after createText entity decoding.
-            // A literal `<br>` in a terminal word must not become another source line break.
-            crate::text::measure_markdown_with_inline_styles(
-                measurer,
-                &source,
-                style,
-                None,
-                WrapMode::SvgLike,
             )
         };
         Self {
@@ -165,7 +304,7 @@ impl ErPreparedRelationshipLabel {
             terminal: ErRelationshipLabelTerminal::Markdown {
                 source,
                 xhtml_fragment,
-                html_labels,
+                svg,
                 visible_style_facts: OnceLock::new(),
             },
         }
@@ -176,6 +315,19 @@ impl ErPreparedRelationshipLabel {
             ErRelationshipLabelTerminal::Markdown { xhtml_fragment, .. } => xhtml_fragment,
             ErRelationshipLabelTerminal::Swimlane(label) => label.xhtml_fragment().unwrap_or(""),
         }
+    }
+
+    pub(crate) fn svg(&self) -> Option<&ErPreparedSvgRelationshipLabel> {
+        match &self.terminal {
+            ErRelationshipLabelTerminal::Markdown { svg, .. } => svg.as_ref(),
+            ErRelationshipLabelTerminal::Swimlane(_) => None,
+        }
+    }
+
+    pub(crate) fn html_is_constrained(&self) -> bool {
+        // Min-content can exceed the budget for long words or NBSP-connected text.
+        // Those labels still use createText's table/break-spaces wrapper.
+        self.metrics.width >= MERMAID_CREATE_TEXT_DEFAULT_WIDTH_PX
     }
 
     pub(crate) fn swimlane(&self) -> Option<&swimlane::ErSwimlaneRelationshipLabel> {
@@ -194,10 +346,11 @@ impl ErPreparedRelationshipLabel {
             ErRelationshipLabelTerminal::Markdown {
                 source,
                 xhtml_fragment,
-                html_labels,
+                svg,
                 visible_style_facts,
+                ..
             } => visible_style_facts.get_or_init(|| {
-                if *html_labels {
+                if svg.is_none() {
                     crate::text::VisibleTextStyleFacts::from_xhtml_fragment(xhtml_fragment)
                 } else {
                     crate::text::VisibleTextStyleFacts::plain_text(source)
@@ -244,7 +397,13 @@ impl ErPreparedLabels {
                 config,
             ))
         });
-        Self::prepare_with_provider(model, measurer, settings, sanitize_config.as_ref())
+        Self::prepare_with_provider(
+            model,
+            measurer,
+            settings,
+            crate::config::config_bool(config, &["markdownAutoWrap"]).unwrap_or(true),
+            sanitize_config.as_ref(),
+        )
     }
 
     #[cfg(test)]
@@ -253,13 +412,14 @@ impl ErPreparedLabels {
         measurer: &dyn TextMeasurer,
         settings: &ErLayoutSettings,
     ) -> Self {
-        Self::prepare_with_provider(model, measurer, settings, None)
+        Self::prepare_with_provider(model, measurer, settings, true, None)
     }
 
     fn prepare_with_provider(
         model: &merman_model::families::er::ErDiagramModel,
         measurer: &dyn TextMeasurer,
         settings: &ErLayoutSettings,
+        markdown_auto_wrap: bool,
         swimlane_config: Option<&merman_model::MermaidConfig>,
     ) -> Self {
         let entity_measures = model
@@ -295,6 +455,7 @@ impl ErPreparedLabels {
                         measurer,
                         &settings.relationship_label_style,
                         settings.relationship_html_labels,
+                        markdown_auto_wrap,
                     )
                 }
             })
@@ -1456,14 +1617,10 @@ fn layout_er_diagram_dagre_typed(
                 }
             }
 
-            let (label_w, label_h) = if r.role_a.trim().is_empty() {
-                (0.0, 0.0)
-            } else {
-                prepared_labels
-                    .relationship(idx)
-                    .map(ErPreparedRelationshipLabel::dimensions)
-                    .unwrap_or_default()
-            };
+            let (label_w, label_h) = prepared_labels
+                .relationship(idx)
+                .map(ErPreparedRelationshipLabel::dimensions)
+                .unwrap_or_default();
 
             // First segment: keep start marker, no label.
             g.set_edge_named(
@@ -1517,14 +1674,10 @@ fn layout_er_diagram_dagre_typed(
         }
 
         let name = format!("er-rel-{idx}");
-        let (label_w, label_h) = if r.role_a.trim().is_empty() {
-            (0.0, 0.0)
-        } else {
-            prepared_labels
-                .relationship(idx)
-                .map(ErPreparedRelationshipLabel::dimensions)
-                .unwrap_or_default()
-        };
+        let (label_w, label_h) = prepared_labels
+            .relationship(idx)
+            .map(ErPreparedRelationshipLabel::dimensions)
+            .unwrap_or_default();
         g.set_edge_named(
             r.entity_a.clone(),
             r.entity_b.clone(),
@@ -1661,8 +1814,6 @@ fn layout_er_diagram_dagre_typed(
             .and_then(|idx| model.relationships.get(idx).map(|_| idx));
 
         let rel = rel_idx.and_then(|idx| model.relationships.get(idx));
-        let role = rel.map(|r| r.role_a.clone()).unwrap_or_default();
-
         let (base_start_marker, base_end_marker, stroke_dasharray) = if let Some(rel) = rel {
             let card_a = rel.rel_spec.card_a.as_str();
             let card_b = rel.rel_spec.card_b.as_str();
@@ -1700,27 +1851,30 @@ fn layout_er_diagram_dagre_typed(
                 (base_start_marker, base_end_marker)
             };
 
-        let label =
-            if role.trim().is_empty() || id.ends_with("-cyclic-0") || id.ends_with("-cyclic-2") {
-                None
-            } else {
-                let (w, h) = rel_idx
-                    .and_then(|index| prepared_labels.relationship(index))
-                    .map(ErPreparedRelationshipLabel::dimensions)
-                    .unwrap_or_default();
-                // Mermaid uses Dagre's computed edge label center (`edge.x/edge.y`) rather than a
-                // polyline midpoint. Prefer those coordinates when present.
-                let (x, y) =
-                    e.x.zip(e.y)
-                        .or_else(|| calc_label_position(&points))
-                        .unwrap_or((0.0, 0.0));
-                Some(LayoutLabel {
-                    x,
-                    y,
-                    width: w.max(1.0),
-                    height: h.max(1.0),
-                })
-            };
+        let (label_width, label_height) = rel_idx
+            .and_then(|index| prepared_labels.relationship(index))
+            .map(ErPreparedRelationshipLabel::dimensions)
+            .unwrap_or_default();
+        let label = if label_width <= 0.0
+            || label_height <= 0.0
+            || id.ends_with("-cyclic-0")
+            || id.ends_with("-cyclic-2")
+        {
+            None
+        } else {
+            // Mermaid uses Dagre's computed edge label center (`edge.x/edge.y`) rather than a
+            // polyline midpoint. Prefer those coordinates when present.
+            let (x, y) =
+                e.x.zip(e.y)
+                    .or_else(|| calc_label_position(&points))
+                    .unwrap_or((0.0, 0.0));
+            Some(LayoutLabel {
+                x,
+                y,
+                width: label_width,
+                height: label_height,
+            })
+        };
 
         edges_by_id.insert(
             id,
@@ -2653,6 +2807,11 @@ mod tests {
                 text.chars().count() as f64 * 5.0
             }
 
+            fn measure_svg_text_bbox_x(&self, text: &str, style: &TextStyle) -> (f64, f64) {
+                let half = self.measure_svg_text_computed_length_px(text, style) / 2.0;
+                (half, half)
+            }
+
             fn measure_svg_tspan_text_bbox_height_px(&self, text: &str, _style: &TextStyle) -> f64 {
                 self.0.borrow_mut().push(text.to_owned());
                 18.0
@@ -2674,13 +2833,93 @@ mod tests {
             ("A<br/>B", vec!["A", "B"], 5.0, 18.0 + 16.0 * 1.1),
         ] {
             let measurer = TerminalMeasurer::default();
-            let prepared =
-                super::ErPreparedRelationshipLabel::new(source, &measurer, &default_style(), false);
-            assert_eq!(prepared.metrics.width, width, "{source}");
-            assert!((prepared.metrics.height - height).abs() < 1e-9, "{source}");
+            let prepared = super::ErPreparedRelationshipLabel::new(
+                source,
+                &measurer,
+                &default_style(),
+                false,
+                true,
+            );
+            let svg = prepared.svg().expect("prepared SVG label");
+            assert_eq!(
+                svg.ink_bounds.max_x - svg.ink_bounds.min_x,
+                width,
+                "{source}"
+            );
+            assert!((svg.ink_bounds.max_y - svg.ink_bounds.min_y - height).abs() < 1e-9);
+            assert_eq!(prepared.metrics.width, width + 4.0, "{source}");
+            assert!(
+                (prepared.metrics.height - height - 4.0).abs() < 1e-9,
+                "{source}"
+            );
             assert_eq!(prepared.metrics.line_count, words.len(), "{source}");
+            assert_eq!(svg.ink_bounds.min_y, -4.0, "{source}");
             assert_eq!(*measurer.0.borrow(), words, "{source}");
         }
+    }
+
+    #[test]
+    fn er_svg_relationship_reserves_padded_ink_bounds_separately_from_advance() {
+        struct InkMeasurer;
+
+        impl TextMeasurer for InkMeasurer {
+            fn measure(&self, _text: &str, _style: &TextStyle) -> TextMetrics {
+                panic!("SVG relationship bounds must use literal terminal primitives")
+            }
+
+            fn measure_svg_text_computed_length_px(&self, text: &str, _style: &TextStyle) -> f64 {
+                text.chars().count() as f64 * 10.0
+            }
+
+            fn measure_svg_text_bbox_x(&self, text: &str, style: &TextStyle) -> (f64, f64) {
+                let half = self.measure_svg_text_computed_length_px(text, style) / 2.0;
+                (half + 1.0, half + 3.0)
+            }
+
+            fn measure_svg_tspan_text_bbox_height_px(
+                &self,
+                _text: &str,
+                _style: &TextStyle,
+            ) -> f64 {
+                18.0
+            }
+
+            fn measure_svg_create_text_bbox_y_offset_px(
+                &self,
+                _text: &str,
+                _style: &TextStyle,
+            ) -> f64 {
+                -4.0
+            }
+        }
+
+        let prepared = super::ErPreparedRelationshipLabel::new(
+            "owns",
+            &InkMeasurer,
+            &default_style(),
+            false,
+            true,
+        );
+        let svg = prepared.svg().expect("prepared SVG label");
+        assert_eq!(
+            svg.ink_bounds,
+            crate::model::Bounds {
+                min_x: -21.0,
+                max_x: 23.0,
+                min_y: -4.0,
+                max_y: 14.0
+            }
+        );
+        assert_eq!(
+            svg.background_bounds,
+            Some(crate::model::Bounds {
+                min_x: -23.0,
+                max_x: 25.0,
+                min_y: -6.0,
+                max_y: 16.0
+            })
+        );
+        assert_eq!(prepared.dimensions(), (48.0, 22.0));
     }
 
     #[test]
@@ -2745,6 +2984,7 @@ mod tests {
             "driver_license",
             &ErPrecisionMeasurer,
             &default_style(),
+            true,
             true,
         );
         assert_eq!(prepared.dimensions(), (73.123_456_789, 17.25));

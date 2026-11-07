@@ -403,6 +403,15 @@ pub(in crate::svg::parity) fn write_svg_markdown_word_lines_with_style<'a>(
     write_svg_text_markdown_lines_with_style(out, lines, style, false, true, entity_mode, None)
 }
 
+pub(in crate::svg::parity) fn write_svg_markdown_word_lines_centered_with_style<'a>(
+    out: &mut impl crate::svg::parity::SvgOutput,
+    lines: &[Vec<(String, MermaidMarkdownWordType)>],
+    style: Option<&'a str>,
+    entity_mode: SvgTextEntityMode,
+) -> Option<&'a str> {
+    write_svg_text_markdown_lines_with_style(out, lines, style, true, true, entity_mode, None)
+}
+
 pub(in crate::svg::parity) fn write_svg_text_markdown_from_create_text_source(
     out: &mut impl crate::svg::parity::SvgOutput,
     markdown: &str,

@@ -439,6 +439,9 @@ impl ErDb {
                         subgraph.members.push(a.clone());
                         subgraph.members.push(b.clone());
                     }
+                    // Jison creates both entities before routing completed subgraph endpoints.
+                    self.add_entity(&a, None);
+                    self.add_entity(&b, None);
                     self.add_relationship(&a, &role, &b, spec);
                 }
                 Action::SetClass { entities, classes } => self.set_class(&entities, &classes),
@@ -2292,12 +2295,18 @@ impl Iterator for Lexer<'_> {
                 return Some(self.emit_token(tok));
             }
 
-            if let Some(tok) = self.lex_keyword() {
-                return Some(self.emit_token(tok));
-            }
-
-            if let Some(tok) = self.lex_id_list() {
-                return Some(self.emit_token(tok));
+            if self.mode == Mode::NeedIdListThenLineRest {
+                // Mermaid's exclusive style mode treats keyword-spelled IDs as text.
+                if let Some(tok) = self.lex_id_list() {
+                    return Some(self.emit_token(tok));
+                }
+            } else {
+                if let Some(tok) = self.lex_keyword() {
+                    return Some(self.emit_token(tok));
+                }
+                if let Some(tok) = self.lex_id_list() {
+                    return Some(self.emit_token(tok));
+                }
             }
 
             if let Some(tok) = self.lex_punct() {
@@ -2541,7 +2550,8 @@ mod tests {
         assert_eq!(subgraph.title, "Order Domain");
         assert_eq!(subgraph.dir.as_deref(), Some("TB"));
         assert_eq!(subgraph.nodes, ["CUSTOMER", "ORDER"]);
-        assert_eq!(model.entities.len(), 3);
+        assert_eq!(model.entities.len(), 4);
+        assert_eq!(model.entities["Orders"].id, "entity-Orders-3");
         assert_eq!(model.relationships.len(), 2);
         assert_eq!(model.relationships[1].entity_b, "Orders");
     }
