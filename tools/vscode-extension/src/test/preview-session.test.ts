@@ -3,8 +3,129 @@ import type * as vscode from "vscode";
 import { describe, it } from "node:test";
 
 import { PreviewSession } from "../preview-session.js";
+import { pairedThemeDiscovery } from "./theme-fixtures.js";
 
 describe("preview session", () => {
+  it("keeps configured and panel-owned theme files distinct across selection changes and reset", () => {
+    const session = new PreviewSession({ diagramTheme: "file" });
+    const editor = textEditor("file:///workspace/example.mmd", "example.mmd", "flowchart TD\nA --> B\n");
+    const configured = {
+      content: "configured-recipe", label: "configured.theme.json",
+      supportedAppearances: ["light", "dark"] as Array<"light" | "dark">,
+      defaultAppearance: "light" as const,
+    };
+    const imported = { ...configured, content: "panel-recipe", label: "panel.theme.json" };
+    session.configureThemes(pairedThemeDiscovery(), "light");
+    assert.equal(session.usesConfiguredThemeFile, true);
+    assert.equal(session.setConfiguredThemeFile("workspace-key", configured), true);
+    assert.equal(session.configuredThemeFileKey, "workspace-key");
+    session.setDiagramTheme("source");
+    assert.equal(session.usesConfiguredThemeFile, false);
+    assert.equal(session.setConfiguredThemeFile("obsolete-key", imported), false);
+    session.setDiagramTheme("file");
+    assert.equal(session.usesConfiguredThemeFile, true);
+    session.importTheme(imported);
+    assert.equal(session.usesConfiguredThemeFile, false);
+    assert.equal(session.configuredThemeFileKey, undefined);
+    assert.equal(session.setConfiguredThemeFile("later-key", configured), false);
+    session.setDiagramTheme("source");
+    session.setDiagramTheme("file");
+    assert.equal(session.createSnapshot(editor, [editor], emptyDiagnostics)?.resolvedTheme?.themeFileContent, "panel-recipe");
+    session.reset();
+    assert.equal(session.usesConfiguredThemeFile, true);
+    assert.equal(session.configuredThemeFileKey, undefined);
+  });
+
+  it("peeks at configuration sources without consuming the explicit target before snapshot creation", () => {
+    const session = new PreviewSession();
+    const active = textEditor("file:///workspace-one/active.mmd", "active.mmd", "flowchart TD\nA --> B\n");
+    const opening = textEditor("file:///workspace-two/opening.mmd", "opening.mmd", "sequenceDiagram\nA->>B: hi\n");
+    session.rememberResource(opening.document.uri, { preferOnce: true });
+    assert.equal(session.resolveConfigurationResource(active, [active]), active.document.uri.toString());
+    assert.equal(session.resolveConfigurationResource(active, [active, opening]), opening.document.uri.toString());
+    assert.equal(session.createSnapshot(active, [active, opening], emptyDiagnostics)?.documentUri, opening.document.uri.toString());
+    assert.equal(session.resolveConfigurationResource(active, [active, opening]), active.document.uri.toString());
+  });
+
+  it("consumes an unavailable preferred source when a fallback snapshot is created", () => {
+    for (const hidden of [false, true]) {
+      const session = new PreviewSession();
+      const fallback = textEditor("file:///workspace/active.mmd", "active.mmd", "flowchart TD\nA --> B\n");
+      const invalid = textEditor("file:///workspace/target.mmd", "target.mmd", "", "mermaid", 0, 1);
+      const valid = textEditor("file:///workspace/target.mmd", "target.mmd", "sequenceDiagram\nA->>B: hi\n", "mermaid", 0, 2);
+      const visible = hidden ? [fallback] : [fallback, invalid];
+      session.rememberResource(invalid.document.uri, { preferOnce: true });
+      assert.equal(session.resolveConfigurationResource(fallback, visible), fallback.document.uri.toString());
+      const snapshot = assertDefined(session.createSnapshot(fallback, visible, emptyDiagnostics));
+      assert.equal(snapshot.documentUri, fallback.document.uri.toString());
+      session.rememberSnapshot(snapshot);
+      assert.equal(session.resolveConfigurationResource(fallback, [fallback, valid]), fallback.document.uri.toString());
+      assert.equal(session.createSnapshot(fallback, [fallback, valid], emptyDiagnostics)?.documentUri, fallback.document.uri.toString());
+    }
+  });
+
+  it("remembers editor appearance changes before a configured file has completed admission", () => {
+    const session = new PreviewSession({ diagramTheme: "file" });
+    const editor = textEditor("file:///workspace/example.mmd", "example.mmd", "flowchart TD\nA --> B\n");
+    session.configureThemes(pairedThemeDiscovery(), "light");
+    assert.equal(session.setHostAppearance("dark"), false);
+    session.setConfiguredThemeFile("workspace-key", {
+      content: "configured-recipe",
+      label: "configured.theme.json",
+      supportedAppearances: ["light", "dark"],
+      defaultAppearance: "light",
+    });
+    assert.equal(session.createSnapshot(editor, [editor], emptyDiagnostics)?.resolvedTheme?.effectiveAppearance, "dark");
+  });
+
+  it("retains a pinned appearance while Source/default temporarily owns the diagram appearance", () => {
+    const session = new PreviewSession();
+    const editor = textEditor("file:///workspace/example.mmd", "example.mmd", "flowchart TD\nA --> B\n");
+    session.configureThemes(pairedThemeDiscovery(), "light");
+    session.setDiagramTheme("preset:editor");
+    session.setAppearance("dark");
+
+    session.setDiagramTheme("source");
+    let snapshot = assertDefined(session.createSnapshot(editor, [editor], emptyDiagnostics));
+    assert.equal(snapshot.appearancePreference, "dark");
+    assert.equal(snapshot.resolvedTheme?.effectiveAppearance, undefined);
+    assert.equal(snapshot.resolvedTheme?.theme, undefined);
+    assert.equal(session.setHostAppearance("dark"), false);
+    assert.equal(session.setHostAppearance("light"), false);
+
+    session.setDiagramTheme("preset:editor");
+    snapshot = assertDefined(session.createSnapshot(editor, [editor], emptyDiagnostics));
+    assert.equal(snapshot.appearancePreference, "dark");
+    assert.equal(snapshot.resolvedTheme?.effectiveAppearance, "dark");
+  });
+
+  it("retains a pinned appearance across an imported unclassified recipe and source changes", () => {
+    const session = new PreviewSession();
+    const first = textEditor("file:///workspace/one.mmd", "one.mmd", "flowchart TD\nA --> B\n");
+    const second = textEditor("file:///other-workspace/two.mmd", "two.mmd", "sequenceDiagram\nA->>B: hi\n");
+    const content = '{"schema_version":1,"kind":"design","design":{"canvas":{"base":"#fff"}}}';
+    session.configureThemes(pairedThemeDiscovery(), "dark");
+    session.setDiagramTheme("preset:editor");
+    session.setAppearance("light");
+    session.importTheme({ content, label: "unclassified.theme.json", supportedAppearances: [] });
+
+    let snapshot = assertDefined(session.createSnapshot(first, [first], emptyDiagnostics));
+    assert.equal(snapshot.appearancePreference, "light");
+    assert.equal(snapshot.resolvedTheme?.effectiveAppearance, undefined);
+    assert.equal(snapshot.resolvedTheme?.themeFileContent, content);
+    session.rememberSnapshot(snapshot);
+    snapshot = assertDefined(session.createSnapshot(second, [first, second], emptyDiagnostics));
+    assert.equal(snapshot.documentUri, second.document.uri.toString());
+    assert.equal(snapshot.resolvedTheme?.themeFileContent, content);
+    assert.equal(session.setHostAppearance("light"), false);
+    assert.equal(session.setHostAppearance("dark"), false);
+
+    session.setDiagramTheme("preset:editor");
+    snapshot = assertDefined(session.createSnapshot(second, [second], emptyDiagnostics));
+    assert.equal(snapshot.appearancePreference, "light");
+    assert.equal(snapshot.resolvedTheme?.effectiveAppearance, "light");
+  });
+
   it("uses the latest open-document body for hidden locked sources during an appearance refresh", () => {
     const session = new PreviewSession();
     const original = textEditor("file:///workspace/notes.md", "notes.md", markdownWithTwoFences(), "markdown", 7, 1);

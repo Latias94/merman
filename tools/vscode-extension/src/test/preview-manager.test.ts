@@ -93,8 +93,11 @@ class FakePreviewHost {
   private readonly disposables: FakeDisposable[] = [];
   private readonly activeTextEditorListeners: Array<() => void> = [];
   private readonly colorThemeListeners: Array<(theme: { kind: number }) => void> = [];
+  private readonly configurationListeners = new Set<(event: vscode.ConfigurationChangeEvent) => void>();
+  readonly previewSettings = new Map<string, unknown>();
   activeColorThemeKind = 1;
   themeDiscovery: ThemeDiscovery = legacyThemeDiscovery();
+  themeDiscoveryCalls = 0;
   saveDialogDelay: Promise<void> | undefined;
   importDelay: Promise<void> | undefined;
   importError: Error | undefined;
@@ -105,6 +108,7 @@ class FakePreviewHost {
     defaultAppearance: "light",
   };
   readonly themeFiles: string[] = [];
+  readonly themeRecipes = new Map<string, ImportedTheme>();
   private readonly textDocumentChangeListeners: Array<(event: { document: vscode.TextDocument }) => void> = [];
   private readonly textDocumentCloseListeners: Array<(document: vscode.TextDocument) => void> = [];
   private readonly documents = new Map<string, vscode.TextDocument>();
@@ -245,6 +249,9 @@ class FakePreviewHost {
         }),
         getConfiguration: () => ({
           get: (key: string, fallback: unknown) => {
+            if (host.previewSettings.has(key)) {
+              return host.previewSettings.get(key);
+            }
             switch (key) {
               case "preview.diagramTheme":
                 return "source";
@@ -286,7 +293,10 @@ class FakePreviewHost {
           host.textDocumentCloseListeners.push(listener);
           return host.disposable();
         },
-        onDidChangeConfiguration: () => host.disposable(),
+        onDidChangeConfiguration: (listener: (event: vscode.ConfigurationChangeEvent) => void) => {
+          host.configurationListeners.add(listener);
+          return host.disposable(() => { host.configurationListeners.delete(listener); });
+        },
       },
       languages: {
         getDiagnostics: () => [],
@@ -351,6 +361,16 @@ class FakePreviewHost {
     this.activeColorThemeKind = kind;
     for (const listener of this.colorThemeListeners) {
       listener({ kind });
+    }
+  }
+
+  changePreviewSetting(key: string, value: unknown): void {
+    this.previewSettings.set(key, value);
+    const event = {
+      affectsConfiguration: (section: string) => section === `merman.${key}` || `merman.${key}`.startsWith(`${section}.`),
+    };
+    for (const listener of this.configurationListeners) {
+      listener(event);
     }
   }
 
@@ -458,6 +478,535 @@ class FakePreviewHost {
 }
 
 describe("preview manager", () => {
+  it("reloads configured themes for the followed workspace without rediscovering themes on appearance changes", async () => {
+    const host = new FakePreviewHost();
+    host.themeDiscovery = pairedThemeDiscovery();
+    host.previewSettings.set("preview.diagramTheme", "file");
+    host.previewSettings.set("preview.themeFile", "themes/reading.theme.json");
+    const first = textDocument("file:///workspace-one/one.mmd", "/workspace-one/one.mmd", "flowchart TD\nOne-->Two");
+    const second = textDocument("file:///workspace-two/two.mmd", "/workspace-two/two.mmd", "sequenceDiagram\nThree->>Four: hi");
+    host.setActiveDocument(first);
+    host.imported = { ...host.imported, content: "workspace-one-recipe" };
+    const panel = await openPreviewPanel(host, first.uri);
+    try {
+      host.imported = { ...host.imported, content: "workspace-two-recipe" };
+      host.setActiveDocument(second);
+      await host.commands.get("merman.openPreview")?.(second.uri);
+      await flushPreviewWork();
+      assert.equal(lastRenderedSnapshot(panel).documentUri, second.uri.toString());
+      assert.equal(host.renderCalls.at(-1)?.themeFileContent, "workspace-two-recipe");
+      assert.deepEqual(host.themeFiles, [
+        "file:///workspace-one/themes/reading.theme.json",
+        "file:///workspace-two/themes/reading.theme.json",
+      ]);
+
+      host.changeColorTheme(2);
+      await flushPreviewWork();
+      assert.equal(host.renderCalls.at(-1)?.themeAppearance, "dark");
+      assert.equal(host.themeFiles.length, 2);
+      assert.equal(host.themeDiscoveryCalls, 1);
+      assert.deepEqual(host.errors, []);
+    } finally {
+      for (const subscription of host.subscriptions) subscription.dispose();
+    }
+  });
+
+  it("reads modified configured theme files again on manual refresh", async () => {
+    const host = new FakePreviewHost();
+    host.themeDiscovery = pairedThemeDiscovery();
+    host.previewSettings.set("preview.diagramTheme", "file");
+    host.previewSettings.set("preview.themeFile", "themes/reading.theme.json");
+    const panel = await openPreviewPanel(host);
+    try {
+      const previousKey = lastRenderedSourceKey(panel);
+      host.imported = { ...host.imported, content: "updated-configured-recipe" };
+      await panel.receive({ type: "refresh" });
+      await flushPreviewWork();
+      assert.equal(host.renderCalls.at(-1)?.themeFileContent, "updated-configured-recipe");
+      assert.equal(host.themeFiles.length, 2);
+      assert.notDeepEqual(lastRenderedSourceKey(panel), previousKey);
+      assert.equal(host.themeDiscoveryCalls, 1);
+    } finally {
+      for (const subscription of host.subscriptions) subscription.dispose();
+    }
+  });
+
+  it("readmits changed configured theme paths while keeping the current explicit appearance", async () => {
+    const host = new FakePreviewHost();
+    host.themeDiscovery = pairedThemeDiscovery();
+    host.previewSettings.set("preview.diagramTheme", "file");
+    host.previewSettings.set("preview.themeFile", "themes/reading.theme.json");
+    const panel = await openPreviewPanel(host);
+    try {
+      await panel.receive({ type: "setAppearance", appearance: "dark" });
+      await flushPreviewWork();
+      host.imported = { ...host.imported, content: "replacement-configured-recipe", label: "replacement.theme.json" };
+      host.changePreviewSetting("preview.themeFile", "themes/replacement.theme.json");
+      await flushPreviewWork();
+      assert.equal(host.themeFiles.at(-1), "file:///workspace/themes/replacement.theme.json");
+      assert.equal(host.renderCalls.at(-1)?.themeFileContent, "replacement-configured-recipe");
+      assert.equal(host.renderCalls.at(-1)?.themeAppearance, "dark");
+      assert.equal(lastRenderedSnapshot(panel).themeLabel, "replacement.theme.json");
+      assert.equal(host.themeDiscoveryCalls, 1);
+      assert.deepEqual(host.errors, []);
+    } finally {
+      for (const subscription of host.subscriptions) subscription.dispose();
+    }
+  });
+
+  it("keeps a panel import snapshot across workspace switches, configured path changes, and manual refresh", async () => {
+    const host = new FakePreviewHost();
+    host.themeDiscovery = pairedThemeDiscovery();
+    host.previewSettings.set("preview.diagramTheme", "file");
+    host.previewSettings.set("preview.themeFile", "themes/reading.theme.json");
+    const panel = await openPreviewPanel(host);
+    try {
+      host.imported = { ...host.imported, content: "panel-imported-recipe", label: "panel.theme.json" };
+      await panel.receive({ type: "importTheme" });
+      await flushPreviewWork();
+      const inspections = host.themeFiles.length;
+      host.imported = { ...host.imported, content: "unrequested-configured-recipe" };
+      host.changePreviewSetting("preview.themeFile", "themes/other.theme.json");
+      host.setActiveDocument(host.secondDocument);
+      await host.commands.get("merman.openPreview")?.(host.secondDocument.uri);
+      await panel.receive({ type: "refresh" });
+      host.changeColorTheme(2);
+      await flushPreviewWork();
+      assert.equal(host.renderCalls.at(-1)?.themeFileContent, "panel-imported-recipe");
+      assert.equal(host.renderCalls.at(-1)?.themeAppearance, "dark");
+      assert.equal(lastRenderedSnapshot(panel).themeLabel, "panel.theme.json");
+      assert.equal(host.themeFiles.length, inspections);
+
+      await panel.receive({ type: "setDiagramTheme", theme: "source" });
+      await panel.receive({ type: "setDiagramTheme", theme: "file" });
+      await flushPreviewWork();
+      assert.equal(host.renderCalls.at(-1)?.themeFileContent, "panel-imported-recipe");
+      assert.equal(host.themeFiles.length, inspections);
+      assert.deepEqual(host.errors, []);
+    } finally {
+      for (const subscription of host.subscriptions) subscription.dispose();
+    }
+  });
+
+  it("does not adopt an older configured file revision after a newer manual reload completes", async () => {
+    const host = new FakePreviewHost();
+    host.themeDiscovery = pairedThemeDiscovery();
+    host.previewSettings.set("preview.diagramTheme", "file");
+    host.previewSettings.set("preview.themeFile", "themes/reading.theme.json");
+    const panel = await openPreviewPanel(host);
+    let releaseOlder: () => void = () => {};
+    try {
+      host.imported = { ...host.imported, content: "older-pending-recipe" };
+      host.importDelay = new Promise<void>((resolve) => { releaseOlder = resolve; });
+      await panel.receive({ type: "refresh" });
+      await flushPreviewWork();
+      assert.equal(host.themeFiles.length, 2);
+      host.importDelay = undefined;
+      host.imported = { ...host.imported, content: "latest-recipe" };
+      await panel.receive({ type: "refresh" });
+      await flushPreviewWork();
+      assert.equal(host.renderCalls.at(-1)?.themeFileContent, "latest-recipe");
+      releaseOlder();
+      await flushPreviewWork();
+      assert.equal(host.renderCalls.at(-1)?.themeFileContent, "latest-recipe");
+      assert.equal(host.renderCalls.some((call) => call.themeFileContent === "older-pending-recipe"), false);
+      assert.deepEqual(host.errors, []);
+    } finally {
+      releaseOlder();
+      for (const subscription of host.subscriptions) subscription.dispose();
+    }
+  });
+
+  it("follows an active source into another workspace and keeps hidden locked file themes on their own workspace", async () => {
+    const host = new FakePreviewHost();
+    host.themeDiscovery = pairedThemeDiscovery();
+    host.previewSettings.set("preview.diagramTheme", "file");
+    host.previewSettings.set("preview.themeFile", "themes/reading.theme.json");
+    const first = textDocument("file:///workspace-one/one.mmd", "/workspace-one/one.mmd", "flowchart TD\nOne-->Two");
+    const second = textDocument("file:///workspace-two/two.mmd", "/workspace-two/two.mmd", "sequenceDiagram\nThree->>Four: hi");
+    host.themeRecipes.set("file:///workspace-one/themes/reading.theme.json", { ...host.imported, content: "workspace-one-recipe" });
+    host.themeRecipes.set("file:///workspace-two/themes/reading.theme.json", { ...host.imported, content: "workspace-two-recipe" });
+    host.setActiveDocument(first);
+    const followPanel = await openPreviewPanel(host, first.uri);
+    try {
+      host.setActiveDocument(second);
+      await new Promise((resolve) => setTimeout(resolve, 220));
+      await flushPreviewWork();
+      assert.equal(lastRenderedSnapshot(followPanel).documentUri, second.uri.toString());
+      assert.equal(host.renderCalls.at(-1)?.themeFileContent, "workspace-two-recipe");
+      await host.commands.get("merman.togglePreviewLock")?.();
+      followPanel.setActive(false);
+      host.setActiveDocument(first);
+      await host.commands.get("merman.openPreview")?.(first.uri);
+      await host.panels[1]?.receive({ type: "ready" });
+      await flushPreviewWork();
+      host.themeRecipes.set("file:///workspace-two/themes/replacement.theme.json", { ...host.imported, content: "locked-workspace-two-replacement" });
+      host.themeRecipes.set("file:///workspace-one/themes/replacement.theme.json", { ...host.imported, content: "follow-workspace-one-replacement" });
+      const inspections = host.themeFiles.length;
+      host.changePreviewSetting("preview.themeFile", "themes/replacement.theme.json");
+      await flushPreviewWork();
+      assert.deepEqual(host.themeFiles.slice(inspections).sort(), [
+        "file:///workspace-one/themes/replacement.theme.json",
+        "file:///workspace-two/themes/replacement.theme.json",
+      ]);
+      assert.equal(lastRenderedSnapshot(followPanel).documentUri, second.uri.toString());
+      assert.equal(lastRenderedSnapshot(followPanel).locked, true);
+      assert.deepEqual(host.renderCalls.slice(-2).map((call) => call.themeFileContent).sort(), [
+        "follow-workspace-one-replacement", "locked-workspace-two-replacement",
+      ]);
+      assert.deepEqual(host.errors, []);
+    } finally {
+      for (const subscription of host.subscriptions) subscription.dispose();
+    }
+  });
+
+  it("rejects a superseded workspace reload after a later workspace has rendered", async () => {
+    const host = new FakePreviewHost();
+    host.themeDiscovery = pairedThemeDiscovery();
+    host.previewSettings.set("preview.diagramTheme", "file");
+    host.previewSettings.set("preview.themeFile", "themes/reading.theme.json");
+    const panel = await openPreviewPanel(host);
+    let releaseOlder: () => void = () => {};
+    try {
+      const older = textDocument("file:///workspace-two/two.mmd", "/workspace-two/two.mmd", "flowchart TD\nOlder-->Source");
+      const latest = textDocument("file:///workspace-three/three.mmd", "/workspace-three/three.mmd", "flowchart TD\nLatest-->Source");
+      host.setActiveDocument(older);
+      host.imported = { ...host.imported, content: "obsolete-workspace-recipe" };
+      host.importDelay = new Promise<void>((resolve) => { releaseOlder = resolve; });
+      await host.commands.get("merman.openPreview")?.(older.uri);
+      await flushPreviewWork();
+      assert.equal(host.themeFiles.length, 2);
+      host.importDelay = undefined;
+      host.imported = { ...host.imported, content: "latest-workspace-recipe" };
+      host.setActiveDocument(latest);
+      await host.commands.get("merman.openPreview")?.(latest.uri);
+      await flushPreviewWork();
+      assert.equal(host.renderCalls.at(-1)?.themeFileContent, "latest-workspace-recipe");
+      releaseOlder();
+      await flushPreviewWork();
+      assert.equal(lastRenderedSnapshot(panel).documentUri, latest.uri.toString());
+      assert.equal(host.renderCalls.some((call) => call.themeFileContent === "obsolete-workspace-recipe"), false);
+      assert.deepEqual(host.errors, []);
+    } finally {
+      releaseOlder();
+      for (const subscription of host.subscriptions) subscription.dispose();
+    }
+  });
+
+  for (const outcome of ["success", "rejection"] as const) {
+    it(`ignores an obsolete configured ${outcome} after leaving and returning to the same workspace`, async () => {
+      const host = new FakePreviewHost();
+      host.themeDiscovery = pairedThemeDiscovery();
+      host.previewSettings.set("preview.diagramTheme", "file");
+      host.previewSettings.set("preview.themeFile", "themes/reading.theme.json");
+      const panel = await openPreviewPanel(host);
+      let releaseOlder: () => void = () => {};
+      try {
+        const first = textDocument("file:///workspace-one/one.mmd", "/workspace-one/one.mmd", "flowchart TD\nFirst-->Source");
+        const second = textDocument("file:///workspace-two/two.mmd", "/workspace-two/two.mmd", "flowchart TD\nSecond-->Source");
+        const firstFile = "file:///workspace-one/themes/reading.theme.json";
+        host.importError = outcome === "rejection" ? new Error("obsolete first workspace rejection") : undefined;
+        host.importDelay = new Promise<void>((resolve) => { releaseOlder = resolve; });
+        host.themeRecipes.set(firstFile, { ...host.imported, content: "obsolete-first-workspace-recipe" });
+        host.setActiveDocument(first);
+        await host.commands.get("merman.openPreview")?.(first.uri);
+        await flushPreviewWork();
+        assert.equal(host.themeFiles.length, 2);
+
+        host.importError = undefined;
+        host.importDelay = undefined;
+        host.imported = { ...host.imported, content: "second-workspace-recipe" };
+        host.setActiveDocument(second);
+        await host.commands.get("merman.openPreview")?.(second.uri);
+        await flushPreviewWork();
+        assert.equal(host.renderCalls.at(-1)?.themeFileContent, "second-workspace-recipe");
+
+        host.themeRecipes.set(firstFile, { ...host.imported, content: "latest-first-workspace-recipe" });
+        host.setActiveDocument(first);
+        await host.commands.get("merman.openPreview")?.(first.uri);
+        await flushPreviewWork();
+        assert.equal(host.renderCalls.at(-1)?.themeFileContent, "latest-first-workspace-recipe");
+        assert.equal(host.themeFiles.length, 4);
+        releaseOlder();
+        await flushPreviewWork();
+        assert.equal(lastRenderedSnapshot(panel).documentUri, first.uri.toString());
+        assert.equal(host.renderCalls.at(-1)?.themeFileContent, "latest-first-workspace-recipe");
+        assert.equal(host.renderCalls.some((call) => call.themeFileContent === "obsolete-first-workspace-recipe"), false);
+        assert.deepEqual(host.errors, []);
+      } finally {
+        releaseOlder();
+        for (const subscription of host.subscriptions) subscription.dispose();
+      }
+    });
+  }
+
+  it("adopts the latest configured path without surfacing a rejected older path", async () => {
+    const host = new FakePreviewHost();
+    host.themeDiscovery = pairedThemeDiscovery();
+    host.previewSettings.set("preview.diagramTheme", "file");
+    host.previewSettings.set("preview.themeFile", "themes/reading.theme.json");
+    const panel = await openPreviewPanel(host);
+    let releaseOlder: () => void = () => {};
+    try {
+      host.importError = new Error("obsolete invalid theme file");
+      host.importDelay = new Promise<void>((resolve) => { releaseOlder = resolve; });
+      host.changePreviewSetting("preview.themeFile", "themes/obsolete.theme.json");
+      await flushPreviewWork();
+      assert.equal(host.themeFiles.length, 2);
+      host.importError = undefined;
+      host.importDelay = undefined;
+      host.imported = { ...host.imported, content: "latest-path-recipe", label: "latest.theme.json" };
+      host.changePreviewSetting("preview.themeFile", "themes/latest.theme.json");
+      await flushPreviewWork();
+      assert.equal(host.renderCalls.at(-1)?.themeFileContent, "latest-path-recipe");
+      releaseOlder();
+      await flushPreviewWork();
+      assert.equal(lastRenderedSnapshot(panel).themeLabel, "latest.theme.json");
+      assert.equal(host.themeFiles.at(-1), "file:///workspace/themes/latest.theme.json");
+      assert.deepEqual(host.errors, []);
+    } finally {
+      releaseOlder();
+      for (const subscription of host.subscriptions) subscription.dispose();
+    }
+  });
+
+  it("does not start an obsolete configured-theme render after a delayed settings update finishes", async () => {
+    const host = new FakePreviewHost();
+    host.themeDiscovery = pairedThemeDiscovery();
+    host.previewSettings.set("preview.diagramTheme", "file");
+    host.previewSettings.set("preview.themeFile", "themes/reading.theme.json");
+    const panel = await openPreviewPanel(host);
+    const renderCount = host.renderCalls.length;
+    let releaseSettings: () => void = () => {};
+    const settingsDelay = new Promise<void>((resolve) => { releaseSettings = resolve; });
+    const postMessage = panel.webview.postMessage;
+    let settingsPending = false;
+    panel.webview.postMessage = async (message) => {
+      const update = message as { type: string; snapshot?: PreviewSnapshotMessagePayload };
+      if (update.type === "settingsUpdated" && update.snapshot?.themeLabel === "obsolete.theme.json") {
+        settingsPending = true;
+        await settingsDelay;
+      }
+      return postMessage(message);
+    };
+    try {
+      host.imported = { ...host.imported, content: "obsolete-file-recipe", label: "obsolete.theme.json" };
+      host.changePreviewSetting("preview.themeFile", "themes/obsolete.theme.json");
+      await waitUntil(() => settingsPending);
+      assert.equal(host.renderCalls.length, renderCount);
+      host.imported = { ...host.imported, content: "latest-file-recipe", label: "latest.theme.json" };
+      host.changePreviewSetting("preview.themeFile", "themes/latest.theme.json");
+      await flushPreviewWork();
+      assert.equal(lastRenderedSnapshot(panel).themeLabel, "latest.theme.json");
+      releaseSettings();
+      await flushPreviewWork();
+      assert.deepEqual(host.renderCalls.slice(renderCount).map((call) => call.themeFileContent), ["latest-file-recipe"]);
+      assert.deepEqual(host.errors, []);
+    } finally {
+      releaseSettings();
+      for (const subscription of host.subscriptions) subscription.dispose();
+    }
+  });
+
+  it("keeps a later panel import when a configured reload completes or rejects afterwards", async () => {
+    for (const failure of [undefined, new Error("obsolete configured recipe rejection")]) {
+      const host = new FakePreviewHost();
+      host.themeDiscovery = pairedThemeDiscovery();
+      host.previewSettings.set("preview.diagramTheme", "file");
+      host.previewSettings.set("preview.themeFile", "themes/reading.theme.json");
+      const panel = await openPreviewPanel(host);
+      let releaseOlder: () => void = () => {};
+      try {
+        host.imported = { ...host.imported, content: "obsolete-configured-recipe" };
+        host.importError = failure;
+        host.importDelay = new Promise<void>((resolve) => { releaseOlder = resolve; });
+        host.changePreviewSetting("preview.themeFile", "themes/other.theme.json");
+        await flushPreviewWork();
+        assert.equal(host.themeFiles.length, 2);
+        host.importDelay = undefined;
+        host.importError = undefined;
+        host.imported = { ...host.imported, content: "latest-panel-import", label: "panel.theme.json" };
+        await panel.receive({ type: "importTheme" });
+        await flushPreviewWork();
+        releaseOlder();
+        await flushPreviewWork();
+        assert.equal(host.renderCalls.at(-1)?.themeFileContent, "latest-panel-import");
+        assert.equal(lastRenderedSnapshot(panel).themeLabel, "panel.theme.json");
+        assert.equal(host.renderCalls.some((call) => call.themeFileContent === "obsolete-configured-recipe"), false);
+        assert.deepEqual(host.errors, []);
+      } finally {
+        releaseOlder();
+        for (const subscription of host.subscriptions) subscription.dispose();
+      }
+    }
+  });
+
+  it("keeps a later preset selection when a configured reload completes or rejects afterwards", async () => {
+    for (const failure of [undefined, new Error("obsolete configured recipe rejection")]) {
+      const host = new FakePreviewHost();
+      host.themeDiscovery = pairedThemeDiscovery();
+      host.previewSettings.set("preview.diagramTheme", "file");
+      host.previewSettings.set("preview.themeFile", "themes/reading.theme.json");
+      const panel = await openPreviewPanel(host);
+      let releaseOlder: () => void = () => {};
+      try {
+        host.imported = { ...host.imported, content: "obsolete-configured-recipe" };
+        host.importError = failure;
+        host.importDelay = new Promise<void>((resolve) => { releaseOlder = resolve; });
+        await panel.receive({ type: "refresh" });
+        await flushPreviewWork();
+        assert.equal(host.themeFiles.length, 2);
+        await panel.receive({ type: "setDiagramTheme", theme: "preset:editor" });
+        await flushPreviewWork();
+        releaseOlder();
+        await flushPreviewWork();
+        assert.equal(lastRenderedSnapshot(panel).diagramTheme, "preset:editor");
+        assert.equal(host.renderCalls.at(-1)?.themePreset, "editor");
+        assert.equal(host.renderCalls.at(-1)?.themeFileContent, undefined);
+        assert.equal(host.renderCalls.some((call) => call.themeFileContent === "obsolete-configured-recipe"), false);
+        assert.deepEqual(host.errors, []);
+        if (failure) {
+          host.importError = undefined;
+          host.importDelay = undefined;
+          host.imported = { ...host.imported, content: "repaired-configured-recipe" };
+          await panel.receive({ type: "setDiagramTheme", theme: "file" });
+          await flushPreviewWork();
+          assert.equal(host.renderCalls.at(-1)?.themeFileContent, "repaired-configured-recipe");
+          assert.deepEqual(host.errors, []);
+        }
+      } finally {
+        releaseOlder();
+        for (const subscription of host.subscriptions) subscription.dispose();
+      }
+    }
+  });
+
+  it("shares a configured reload while applying later appearance and viewer choices", async () => {
+    const host = new FakePreviewHost();
+    host.themeDiscovery = pairedThemeDiscovery();
+    host.previewSettings.set("preview.diagramTheme", "file");
+    host.previewSettings.set("preview.themeFile", "themes/reading.theme.json");
+    const panel = await openPreviewPanel(host);
+    let releaseReload: () => void = () => {};
+    try {
+      host.imported = { ...host.imported, content: "updated-recipe" };
+      host.importDelay = new Promise<void>((resolve) => { releaseReload = resolve; });
+      await panel.receive({ type: "refresh" });
+      await flushPreviewWork();
+      await panel.receive({ type: "setAppearance", appearance: "dark" });
+      await panel.receive({ type: "setViewerBackground", background: "paper" });
+      host.changeColorTheme(2);
+      await flushPreviewWork();
+      assert.equal(host.themeFiles.length, 2);
+      releaseReload();
+      await flushPreviewWork();
+      assert.equal(host.renderCalls.at(-1)?.themeFileContent, "updated-recipe");
+      assert.equal(host.renderCalls.at(-1)?.themeAppearance, "dark");
+      assert.equal(lastRenderedSnapshot(panel).appearancePreference, "dark");
+      assert.equal(lastRenderedSnapshot(panel).viewerBackground, "paper");
+      assert.equal(host.themeFiles.length, 2);
+      assert.deepEqual(host.errors, []);
+    } finally {
+      releaseReload();
+      for (const subscription of host.subscriptions) subscription.dispose();
+    }
+  });
+
+  it("reports a shared configured failure once for the later appearance selection and retries it", async () => {
+    const host = new FakePreviewHost();
+    host.themeDiscovery = pairedThemeDiscovery();
+    host.previewSettings.set("preview.diagramTheme", "file");
+    host.previewSettings.set("preview.themeFile", "themes/reading.theme.json");
+    const panel = await openPreviewPanel(host);
+    let releaseReload: () => void = () => {};
+    try {
+      host.importError = new Error("current shared configured rejection");
+      host.importDelay = new Promise<void>((resolve) => { releaseReload = resolve; });
+      await panel.receive({ type: "refresh" });
+      await flushPreviewWork();
+      await panel.receive({ type: "setAppearance", appearance: "dark" });
+      await panel.receive({ type: "setViewerBackground", background: "paper" });
+      await flushPreviewWork();
+      assert.equal(host.themeFiles.length, 2);
+      releaseReload();
+      await flushPreviewWork();
+      assert.deepEqual(host.errors, ["Merman preview refresh failed: current shared configured rejection"]);
+
+      host.importError = undefined;
+      host.importDelay = undefined;
+      host.imported = { ...host.imported, content: "repaired-shared-recipe" };
+      await panel.receive({ type: "setViewerBackground", background: "dark" });
+      await flushPreviewWork();
+      assert.equal(host.themeFiles.length, 3);
+      assert.equal(host.renderCalls.at(-1)?.themeFileContent, "repaired-shared-recipe");
+      assert.equal(host.renderCalls.at(-1)?.themeAppearance, "dark");
+      assert.equal(lastRenderedSnapshot(panel).viewerBackground, "dark");
+      assert.equal(host.errors.length, 1);
+    } finally {
+      releaseReload();
+      for (const subscription of host.subscriptions) subscription.dispose();
+    }
+  });
+
+  it("blocks stale configured exports after a rejected reload and recovers when the file is repaired", async () => {
+    const host = new FakePreviewHost();
+    host.themeDiscovery = pairedThemeDiscovery();
+    host.previewSettings.set("preview.diagramTheme", "file");
+    host.previewSettings.set("preview.themeFile", "themes/reading.theme.json");
+    const panel = await openPreviewPanel(host);
+    try {
+      const priorContent = host.imported.content;
+      const priorKey = lastRenderedSourceKey(panel);
+      host.importError = new Error("invalid configured recipe appearance");
+      await panel.receive({ type: "refresh" });
+      await flushPreviewWork();
+      assert.match(host.errors.at(-1)!, /invalid configured recipe appearance/);
+      await panel.receive({ type: "copySvg", svg: "<svg></svg>", sourceKey: priorKey });
+      assert.equal(host.clipboardWrites.length, 0);
+      assert.match(host.warnings.at(-1)!, /Wait for the latest/);
+      assert.equal(lastRenderedSourceKey(panel), priorKey);
+
+      host.importError = undefined;
+      await panel.receive({ type: "refresh" });
+      await flushPreviewWork();
+      assert.equal(host.renderCalls.at(-1)?.themeFileContent, priorContent);
+      const repairedKey = lastRenderedSourceKey(panel);
+      await panel.receive({ type: "copySvg", svg: "<svg></svg>", sourceKey: repairedKey });
+      assert.deepEqual(host.clipboardWrites, ["<svg></svg>"]);
+      assert.equal(host.themeDiscoveryCalls, 1);
+    } finally {
+      for (const subscription of host.subscriptions) subscription.dispose();
+    }
+  });
+
+  it("does not let an unavailable explicit target reclaim a panel after an appearance refresh renders the fallback", async () => {
+    const host = new FakePreviewHost();
+    host.themeDiscovery = pairedThemeDiscovery();
+    host.previewSettings.set("preview.diagramTheme", "file");
+    host.previewSettings.set("preview.themeFile", "themes/reading.theme.json");
+    const panel = await openPreviewPanel(host);
+    const releaseOpen = host.deferOpenTextDocument(host.secondDocument.uri);
+    const opening = host.commands.get("merman.openPreview")?.(host.secondDocument.uri);
+    try {
+      await flushPreviewWork();
+      host.changeColorTheme(2);
+      await flushPreviewWork();
+      assert.equal(lastRenderedSnapshot(panel).documentUri, host.targetDocument.uri.toString());
+      assert.equal(host.themeFiles.length, 1);
+      releaseOpen();
+      await opening;
+      await flushPreviewWork();
+      assert.equal(lastRenderedSnapshot(panel).documentUri, host.targetDocument.uri.toString());
+      assert.equal(host.themeFiles.length, 1);
+      assert.equal(host.renderCalls.at(-1)?.themeAppearance, "dark");
+      assert.deepEqual(host.errors, []);
+    } finally {
+      releaseOpen();
+      await opening;
+      for (const subscription of host.subscriptions) subscription.dispose();
+    }
+  });
+
   it("keeps a user-imported recipe when slower configured-file initialization finishes later", async () => {
     const host = new FakePreviewHost();
     host.themeDiscovery = pairedThemeDiscovery();
@@ -1705,10 +2254,10 @@ function loadPreviewModule(
     }
     if (request === "./theme-runtime.js") {
       return {
-        discoverThemes: async () => host.themeDiscovery,
+        discoverThemes: async () => { host.themeDiscoveryCalls += 1; return host.themeDiscovery; },
         inspectThemeFile: async (_context: unknown, resource: { toString(): string }) => {
           host.themeFiles.push(resource.toString());
-          const candidate = host.imported;
+          const candidate = host.themeRecipes.get(resource.toString()) ?? host.imported;
           const failure = host.importError;
           await host.importDelay;
           if (failure) throw failure;
@@ -1787,6 +2336,19 @@ function textEditor(document: ReturnType<typeof textDocument>): vscode.TextEdito
       },
     },
   } as unknown as vscode.TextEditor;
+}
+
+async function openPreviewPanel(
+  host: FakePreviewHost,
+  resource = host.targetDocument.uri,
+): Promise<FakePanel> {
+  const { registerPreview } = loadPreviewModule(host);
+  registerPreview({ extensionUri: uri("file:///extension"), subscriptions: host.subscriptions } as unknown as vscode.ExtensionContext);
+  await host.commands.get("merman.openPreview")?.(resource);
+  const panel = host.panels[0]!;
+  await panel.receive({ type: "ready" });
+  await flushPreviewWork();
+  return panel;
 }
 
 function textDocument(

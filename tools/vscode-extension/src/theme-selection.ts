@@ -125,8 +125,8 @@ export function preferenceForTheme(
   choice: ThemeChoice | undefined,
   preference: ThemeAppearancePreference,
 ): ThemeAppearancePreference {
-  if (!choice || choice.supportedAppearances.length < 2) {
-    return preference === "follow-editor" ? preference : choice?.defaultAppearance ?? "follow-editor";
+  if (choice?.supportedAppearances.length === 1) {
+    return preference === "follow-editor" ? preference : choice.defaultAppearance ?? "follow-editor";
   }
   return preference;
 }
