@@ -275,6 +275,38 @@ fn try_render_timeline_svg_with_resource_policy(
 }
 
 #[test]
+fn timeline_svg_skips_boundary_comments_and_keeps_literal_event_percent_pairs() {
+    for direction in ["LR", "TD"] {
+        let source = format!(
+            "timeline {direction}\nsection A\nP : Seed\nx%% hidden\nsection B:%% hidden\n: literal%%kept\nNext : Ready\n"
+        );
+        let svg = render_timeline_svg_from_text(&source);
+        let document = roxmltree::Document::parse(&svg).expect("valid Timeline SVG");
+        let tasks = document
+            .descendants()
+            .filter(|node| node.has_tag_name("g") && node.attribute("class") == Some("taskWrapper"))
+            .count();
+        let events = document
+            .descendants()
+            .filter(|node| {
+                node.has_tag_name("g") && node.attribute("class") == Some("eventWrapper")
+            })
+            .map(|event| {
+                event
+                    .descendants()
+                    .filter(|node| node.is_text())
+                    .filter_map(|node| node.text())
+                    .collect::<String>()
+            })
+            .collect::<Vec<_>>();
+
+        assert_eq!(tasks, 2, "{source}");
+        assert_eq!(events, ["Seed", "literal%%kept", "Ready"], "{source}");
+        assert!(!svg.contains("hidden"));
+    }
+}
+
+#[test]
 fn timeline_svg_renders_section_suffix_events_like_following_lines() {
     for direction in ["LR", "TD"] {
         for (section_separator, event_separator) in [("", " "), ("\n", " "), ("", "\n")] {

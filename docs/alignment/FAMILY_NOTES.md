@@ -55,6 +55,11 @@ the wrapping-budget probe. Text measurements can change ELK placement and termin
 required identities, node-side attachment, presentation, and exact signed geometry; it provides
 the maintained rationale for the canary's residual entries.
 
+Generic parameters are authored type text, including the value `group`; they do not select
+namespace sizing. Quoted `cssClass` target lists retain each comma-separated fragment's whitespace
+for lookup, as the selected DB does. Use `"A,B"` to target both declared classes A and B;
+`"A, B"` does not match B through its space-prefixed second fragment.
+
 Owners: [HTML typography tests](../../crates/merman-render/tests/class_html_typography_test.rs) and
 [SVG/layout integration](../../crates/merman-render/tests/class_svg_test.rs).
 
@@ -111,6 +116,11 @@ Dagre and ELK are separate layout paths selected through the
 [configuration contract](CONFIG_FRONTMATTER_SUPPORT.md). The source-backed ELK probe lane checks
 the Mermaid-reachable adapter surface; it is not a promise to implement every Eclipse ELK option.
 Stable source edge identity must survive import, routing, label projection, and SVG emission.
+
+Accessibility directives are recognized at the authoritative lexer's plain cursor. The same text
+inside quoted, Markdown or other label payloads remains label content and cannot replace the
+diagram's accessible name. Asset width and height updates follow the selected DB's truthiness
+before numeric conversion: numeric zero preserves an earlier size, while string `"0"` is explicit.
 
 Controlled measurement evidence distinguishes three boundaries: dimensions supplied to a provider,
 raw provider output, and the final clipped/straightened/painted route. The
@@ -224,9 +234,15 @@ previous task when the section changes. Accessibility punctuation is retained in
 The selected upstream family exposes those fields through its common DB without direct SVG
 accessibility getters, so model parity does not imply matching upstream SVG metadata.
 
-The selected lexer also skips a single character immediately before `%%` at certain fresh
-statement boundaries, such as `x%% hidden`. Merman currently retains that text as a task. This
-explicit compatibility difference does not authorize stripping percent sequences inside events.
+At fresh token boundaries, comment recognition follows the selected lexer's single-character
+prefix rule, including `x%% hidden` and `:%% hidden` after a section. The prefix is one UTF-16
+code unit other than `}`; an astral character or a longer prefix remains task text. Percent pairs
+inside event, title, section and accessibility payloads remain literal. Skipped comments create
+neither tasks nor editor payload facts, and later events still attach to the preceding task.
+Header recognition retains the JavaScript word boundary, and whitespace follows ECMAScript;
+U+0085 is payload text rather than ignorable indentation. Direction headers require ASCII spaces
+or tabs before `LR`/`TD`; other remaining tokens resume normal parsing. A repeated header token
+is rejected instead of becoming a period task.
 
 Owners: [Timeline parser](../../crates/merman-core/src/diagrams/timeline.rs) and
 [SVG tests](../../crates/merman-render/tests/timeline_svg_test.rs).
@@ -279,6 +295,10 @@ Strict-like SVG omits the icon nodes that Mermaid's final sanitizer removes; loo
 retains the source fragment reference. Retaining a `use` node does not prove that its symbol ID
 resolves, and this contract does not establish external image loading. Special participant
 `properties.class` values remain observable on their drawn bodies in either mode.
+
+Bare Sequence participant redeclarations retain an existing display alias. Single-line accessibility
+values retain hashes and semicolons through the physical line boundary; those values do not change
+ordinary message or control-statement comment rules.
 
 Sequence math comparison requires its managed math backend. An unavailable backend is a reported
 tooling skip, never a comparator allowance. Owners:

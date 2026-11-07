@@ -65,6 +65,201 @@ fn parse_diagram_flowchart_rejects_non_grammar_acc_description_alias() {
 }
 
 #[test]
+fn parse_diagram_flowchart_accessibility_respects_label_and_metadata_scopes() {
+    let engine = MermaidEngine::new();
+    let payload = "First 雪\naccTitle: Visible\naccDescr: Visible description\nLast";
+    for (definition, expected_label, label_type) in [
+        (format!("A[\"{payload}\"]"), payload.to_owned(), "string"),
+        (
+            format!("A[\"`{payload}`\"]"),
+            payload.to_owned(),
+            "markdown",
+        ),
+        (format!("A[{payload}]"), payload.to_owned(), "text"),
+        (
+            format!("A@{{\n  label: \"{payload}\"\n}}"),
+            payload.replace('\n', "<br>"),
+            "markdown",
+        ),
+        (
+            "A@{\n  accTitle: Metadata title\n  accDescr: Metadata description\n}".to_owned(),
+            "A".to_owned(),
+            "text",
+        ),
+    ] {
+        let prefix = concat!(
+            "flowchart LR\n",
+            "%% accTitle: Comment title\n",
+            "%% accDescr: Comment description\n",
+            "accTitle: Root title\n",
+            "accDescr {Root description}\n",
+        );
+        let source = format!("{prefix}{definition}\nA --> B\n");
+        let parsed = engine
+            .parse_diagram_sync(&source, ParseOptions::strict())
+            .unwrap()
+            .unwrap();
+        let snapshot = engine
+            .parse_diagram_snapshot_with_type_sync("flowchart-v2", &source)
+            .unwrap()
+            .unwrap();
+        for model in [&parsed.model, snapshot.outcome().parsed_model().unwrap()] {
+            assert_eq!(model["accTitle"], json!("Root title"), "{source}");
+            assert_eq!(model["accDescr"], json!("Root description"), "{source}");
+            let node = model["nodes"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .find(|node| node["id"] == "A")
+                .unwrap();
+            assert_eq!(node["label"], json!(expected_label), "{source}");
+            assert_eq!(node["labelType"], json!(label_type), "{source}");
+        }
+
+        let ParsedEditorFacts::Available(facts) = snapshot.editor_facts() else {
+            panic!("Flowchart must retain editor facts");
+        };
+        assert_eq!(facts.completeness, EditorSemanticCompleteness::Complete);
+        for (name, start) in [("A", prefix.len()), ("B", source.rfind('B').unwrap())] {
+            assert!(
+                facts.symbols.iter().any(|symbol| {
+                    symbol.name == name
+                        && symbol.selection == SourceSpan::new(start, start + name.len())
+                }),
+                "{source}: missing source selection for {name}"
+            );
+        }
+        if definition.starts_with("A[") {
+            let label = facts
+                .symbols
+                .iter()
+                .find(|symbol| symbol.detail.as_deref() == Some("flowchart node label"))
+                .expect("multiline node label payload");
+            let start = source.find(payload).unwrap();
+            assert_eq!(label.name, payload);
+            assert_eq!(
+                label.selection,
+                SourceSpan::new(start, start + payload.len())
+            );
+            assert_eq!(&source[label.selection.start..label.selection.end], payload);
+        }
+        for directive in ["accTitle: Root title", "accDescr {Root description}"] {
+            let start = source.find(directive).unwrap();
+            assert!(
+                facts.expected_syntax.iter().any(|expected| {
+                    expected.kind == EditorExpectedSyntaxKind::Directive
+                        && expected.span == SourceSpan::new(start, start + directive.len())
+                }),
+                "{source}: missing directive source span"
+            );
+        }
+        assert!(
+            !facts.expected_syntax.iter().any(|expected| {
+                expected.kind == EditorExpectedSyntaxKind::Directive
+                    && expected.span.start >= prefix.len()
+            }),
+            "label and metadata interiors must not become directive facts: {source}"
+        );
+    }
+}
+
+#[test]
+fn parse_diagram_flowchart_label_keywords_do_not_invent_accessibility_facts() {
+    let source = concat!(
+        "flowchart LR\n",
+        "%% accTitle: Comment\n",
+        "A[\"`First 雪\naccTitle: Visible\naccDescr: Visible description\nLast`\"]\n",
+        "B@{\naccTitle: Metadata title\naccDescr: Metadata description\n}\n",
+        "A --> B\n",
+    );
+    let snapshot = MermaidEngine::new()
+        .parse_diagram_snapshot_with_type_sync("flowchart-v2", source)
+        .unwrap()
+        .unwrap();
+    let model = snapshot.outcome().parsed_model().expect("valid Flowchart");
+    assert_eq!(model["accTitle"], json!(null));
+    assert_eq!(model["accDescr"], json!(null));
+    let ParsedEditorFacts::Available(facts) = snapshot.editor_facts() else {
+        panic!("Flowchart must retain editor facts");
+    };
+    assert!(
+        !facts
+            .directive_prefixes
+            .iter()
+            .any(|prefix| { matches!(prefix.as_str(), "accTitle" | "accDescr") })
+    );
+    assert!(
+        !facts
+            .symbols
+            .iter()
+            .any(|symbol| { matches!(symbol.name.as_str(), "accTitle" | "accDescr") })
+    );
+}
+
+#[test]
+fn parse_diagram_flowchart_accessibility_preserves_block_and_statement_boundaries() {
+    let engine = MermaidEngine::new();
+    let source = concat!(
+        "flowchart LR;accTitle : Root 雪\n",
+        "accDescr {\n  First line\n  second line\n} A --> B\n",
+    );
+    let parsed = engine
+        .parse_diagram_sync(source, ParseOptions::strict())
+        .unwrap()
+        .unwrap();
+    assert_eq!(parsed.model["accTitle"], json!("Root 雪"));
+    assert_eq!(parsed.model["accDescr"], json!("First line\nsecond line"));
+    assert_eq!(parsed.model["edges"].as_array().unwrap().len(), 1);
+
+    let unfinished = engine
+        .parse_diagram_sync(
+            "flowchart LR\naccTitle: Root title\naccDescr {\n  unfinished 雪",
+            ParseOptions::strict(),
+        )
+        .unwrap()
+        .unwrap();
+    assert_eq!(unfinished.model["accTitle"], json!("Root title"));
+    assert_eq!(unfinished.model["accDescr"], json!(null));
+    assert!(
+        engine
+            .parse_diagram_sync(
+                "flowchart LR\nA accTitle: Invalid adjacency\n",
+                ParseOptions::strict()
+            )
+            .is_err()
+    );
+}
+
+#[test]
+fn parse_flowchart_multiline_label_recovery_keeps_original_source_coordinates() {
+    let source = "flowchart LR\nA[\"First 雪\naccTitle: Visible\nLast\"]\nB -->\n";
+    let snapshot = MermaidEngine::new()
+        .parse_diagram_snapshot_with_type_sync("flowchart-v2", source)
+        .unwrap()
+        .unwrap();
+    let DiagramParseOutcome::Failed(Error::DiagramParse { diagnostic, .. }) = snapshot.outcome()
+    else {
+        panic!("the unfinished edge must fail strict parsing");
+    };
+    let eof = source.len() - 1;
+    assert_eq!(diagnostic.span(), Some(SourceSpan::new(eof, eof)));
+    let ParsedEditorFacts::Available(facts) = snapshot.editor_facts() else {
+        panic!("failed Flowchart must retain recovery facts");
+    };
+    assert_eq!(facts.completeness, EditorSemanticCompleteness::Recovered);
+    let start = source.find("B -->").unwrap();
+    assert!(facts.symbols.iter().any(|symbol| {
+        symbol.name == "B" && symbol.selection == SourceSpan::new(start, start + 1)
+    }));
+    assert!(
+        !facts
+            .directive_prefixes
+            .iter()
+            .any(|prefix| prefix == "accTitle")
+    );
+}
+
+#[test]
 fn parse_diagram_flowchart_tolerates_edge_labels() {
     let engine = MermaidEngine::new();
     let text = "graph TD;A--x|text including URL space|B;";
@@ -1865,6 +2060,47 @@ fn parse_diagram_flowchart_node_data_label_type_defaults_to_markdown_but_can_be_
     let find = |id: &str| nodes.iter().find(|n| n["id"] == json!(id)).unwrap();
     assert_eq!(find("A")["labelType"], json!("markdown"));
     assert_eq!(find("B")["labelType"], json!("text"));
+}
+
+#[test]
+fn parse_diagram_flowchart_asset_dimensions_follow_authored_value_truthiness() {
+    let engine = MermaidEngine::new();
+    // FlowDB checks the authored scalar before Number(...), rather than testing the
+    // converted number or clamping the final dimension.
+    for (value, expected) in [
+        ("0", 96.0),
+        ("-0", 96.0),
+        ("false", 96.0),
+        ("null", 96.0),
+        (r#""""#, 96.0),
+        (r#""0""#, 0.0),
+        (r#"" ""#, 0.0),
+        ("true", 1.0),
+        ("48", 48.0),
+        ("0.5", 0.5),
+        ("-4", -4.0),
+    ] {
+        let source = format!(
+            "flowchart LR\nA@{{ shape: icon, w: 96, h: 96 }}\nA@{{ w: {value}, h: {value} }}\nA --> B\n"
+        );
+        let parsed = engine
+            .parse_diagram_sync(&source, ParseOptions::strict())
+            .unwrap()
+            .unwrap();
+        let node = &parsed.model["nodes"][0];
+        assert_eq!(node["assetWidth"].as_f64(), Some(expected), "{source}");
+        assert_eq!(node["assetHeight"].as_f64(), Some(expected), "{source}");
+        assert_eq!(node["layoutShape"], json!("icon"));
+    }
+    let parsed = engine
+        .parse_diagram_sync(
+            "flowchart LR\nA@{ shape: icon, w: 0, h: 0 }\n",
+            ParseOptions::strict(),
+        )
+        .unwrap()
+        .unwrap();
+    assert_eq!(parsed.model["nodes"][0]["assetWidth"], json!(null));
+    assert_eq!(parsed.model["nodes"][0]["assetHeight"], json!(null));
 }
 
 #[test]

@@ -131,10 +131,8 @@ use model::{Edge, EdgeDefaults, FlowNodeSyntax, FlowSubgraphVertexStyle, Node};
 
 pub(crate) use tokens::{ArrowToken, DirectionStatementToken, LexError, NodeLabelToken, Tok};
 
-#[cfg(all(test, any(feature = "diagram-flowchart", feature = "diagram-swimlane")))]
-use accessibility::scan_flowchart_accessibility;
 #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
-use accessibility::{FlowchartAccessibilityScan, scan_flowchart_accessibility_controlled};
+use accessibility::FlowchartAccessibility;
 #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
 use build::FlowchartBuildState;
 use lexer::Lexer;
@@ -284,14 +282,13 @@ fn construct_flowchart_captured_semantic_model_controlled<M: FlowchartMetadata>(
     control: &OperationControl,
 ) -> OperationControlResult<crate::family::SemanticConstruction<FlowchartModel>> {
     control.checkpoint()?;
-    let FlowchartAccessibilityScan {
-        parser_input: code,
+    let mut trace = construct_flowchart_token_trace(code, control)?;
+    let FlowchartAccessibility {
         title: acc_title,
         description: acc_descr,
         statements: accessibility_statements,
-    } = scan_flowchart_accessibility_controlled(code, editor_demand, control)?;
-    control.checkpoint()?;
-    let trace = construct_flowchart_token_trace(&code, control)?;
+        ..
+    } = std::mem::take(&mut trace.accessibility);
     let (model, facts) = match parse_flowchart_ast_from_trace(&trace, meta, control)? {
         Ok(ast) => {
             let mut facts = EditorSemanticFacts::new();
@@ -304,7 +301,7 @@ fn construct_flowchart_captured_semantic_model_controlled<M: FlowchartMetadata>(
                     control,
                 )?;
                 collect_expected_syntax_from_tokens(
-                    &code,
+                    code,
                     trace.editor_tokens(),
                     &mut facts,
                     control,
@@ -321,7 +318,7 @@ fn construct_flowchart_captured_semantic_model_controlled<M: FlowchartMetadata>(
         }
         Err(error) => {
             let (facts, eof_insertion) = flowchart_recovery_facts(
-                &code,
+                code,
                 trace,
                 &accessibility_statements,
                 error.as_ref(),
@@ -330,7 +327,7 @@ fn construct_flowchart_captured_semantic_model_controlled<M: FlowchartMetadata>(
             )?;
             let error = Error::diagram_parse_diagnostic(
                 meta.diagram_type().to_string(),
-                flowchart_parse_diagnostic(error.as_ref(), &code, eof_insertion),
+                flowchart_parse_diagnostic(error.as_ref(), code, eof_insertion),
             );
             (Err(error), facts)
         }
@@ -428,22 +425,9 @@ fn parse_flowchart_semantic_source<M: FlowchartMetadata>(
     code: &str,
     meta: &M,
 ) -> Result<FlowchartSemanticSource> {
-    let FlowchartAccessibilityScan {
-        parser_input: code,
-        title: acc_title,
-        description: acc_descr,
-        ..
-    } = scan_flowchart_accessibility(
-        code,
-        #[cfg(feature = "editor-facts")]
-        EditorFactsDemand::Omit,
-    );
-    let ast = parse_flowchart_ast(&code, meta)?;
     let control = OperationControl::new();
-    parse_flowchart_semantic_source_from_ast_controlled(
-        ast, acc_title, acc_descr, meta, false, &control,
-    )
-    .expect("a private parse control cannot be cancelled")
+    parse_flowchart_semantic_source_controlled_with_render_context(code, meta, false, &control)
+        .expect("a private parse control cannot be cancelled")
 }
 
 #[cfg(all(test, any(feature = "diagram-flowchart", feature = "diagram-swimlane")))]
@@ -452,22 +436,9 @@ fn parse_flowchart_semantic_source_with_context<M: FlowchartMetadata>(
     code: &str,
     meta: &M,
 ) -> Result<FlowchartSemanticSource> {
-    let FlowchartAccessibilityScan {
-        parser_input: code,
-        title: acc_title,
-        description: acc_descr,
-        ..
-    } = scan_flowchart_accessibility(
-        code,
-        #[cfg(feature = "editor-facts")]
-        EditorFactsDemand::Omit,
-    );
-    let ast = parse_flowchart_ast(&code, meta)?;
     let control = OperationControl::new();
-    parse_flowchart_semantic_source_from_ast_controlled(
-        ast, acc_title, acc_descr, meta, true, &control,
-    )
-    .expect("a private parse control cannot be cancelled")
+    parse_flowchart_semantic_source_controlled_with_render_context(code, meta, true, &control)
+        .expect("a private parse control cannot be cancelled")
 }
 
 #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
@@ -497,19 +468,15 @@ fn parse_flowchart_semantic_source_controlled_with_render_context<M: FlowchartMe
     control: &OperationControl,
 ) -> OperationControlResult<Result<FlowchartSemanticSource>> {
     control.checkpoint()?;
-    let FlowchartAccessibilityScan {
-        parser_input: code,
-        title: acc_title,
-        description: acc_descr,
-        ..
-    } = scan_flowchart_accessibility_controlled(
-        code,
-        #[cfg(feature = "editor-facts")]
-        EditorFactsDemand::Omit,
-        control,
-    )?;
-    let ast = match parse_flowchart_ast_controlled(&code, meta, control)? {
-        Ok(ast) => ast,
+    let (
+        ast,
+        FlowchartAccessibility {
+            title: acc_title,
+            description: acc_descr,
+            ..
+        },
+    ) = match parse_flowchart_ast_controlled(code, meta, control)? {
+        Ok(parsed) => parsed,
         Err(error) => return Ok(Err(error)),
     };
     parse_flowchart_semantic_source_from_ast_controlled(
@@ -527,12 +494,13 @@ fn parse_flowchart_ast_controlled<M: FlowchartMetadata>(
     code: &str,
     meta: &M,
     control: &OperationControl,
-) -> OperationControlResult<Result<FlowchartAst>> {
+) -> OperationControlResult<Result<(FlowchartAst, FlowchartAccessibility)>> {
     control.checkpoint()?;
     let mut statements = StatementArena::default();
     let edge_budget = flowchart_edge_budget(meta);
     let mut emitted = 0usize;
-    let tokens = Lexer::new(code).with_control(control).take_while(|_| {
+    let mut lexer = Lexer::new(code).with_control(control);
+    let tokens = lexer.by_ref().take_while(|_| {
         let active = !emitted.is_multiple_of(128) || control.checkpoint().is_ok();
         emitted = emitted.saturating_add(1);
         active
@@ -545,12 +513,14 @@ fn parse_flowchart_ast_controlled<M: FlowchartMetadata>(
     );
     // Parser EOF and user errors are subordinate to the sticky operation outcome.
     control.checkpoint()?;
-    Ok(parsed.map_err(|error| {
-        Error::diagram_parse_diagnostic(
-            meta.diagram_type().to_string(),
-            lalrpop_parse_diagnostic(&error, code.len()),
-        )
-    }))
+    Ok(parsed
+        .map(|ast| (ast, lexer.accessibility))
+        .map_err(|error| {
+            Error::diagram_parse_diagnostic(
+                meta.diagram_type().to_string(),
+                lalrpop_parse_diagnostic(&error, code.len()),
+            )
+        }))
 }
 
 #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
@@ -750,7 +720,7 @@ fn flowchart_edge_limit_error(message: impl Into<String>, span: Option<SourceSpa
 #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
 #[cfg(test)]
 fn parse_flowchart_ast<M: FlowchartMetadata>(code: &str, meta: &M) -> Result<FlowchartAst> {
-    parse_flowchart_ast_controlled(code, meta, &OperationControl::new())?
+    parse_flowchart_ast_controlled(code, meta, &OperationControl::new())?.map(|(ast, _)| ast)
 }
 
 #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
@@ -778,6 +748,7 @@ enum FlowchartTracedItem {
 #[cfg(feature = "editor-facts")]
 struct FlowchartTokenTrace {
     items: Vec<FlowchartTracedItem>,
+    accessibility: FlowchartAccessibility,
 }
 
 #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
@@ -826,7 +797,8 @@ fn construct_flowchart_token_trace(
     );
 
     let mut items = Vec::new();
-    for item in Lexer::recovering(code).with_control(control) {
+    let mut lexer = Lexer::recovering(code).with_control(control);
+    for item in lexer.by_ref() {
         if items.len() % 128 == 0 {
             control.checkpoint()?;
         }
@@ -852,7 +824,10 @@ fn construct_flowchart_token_trace(
     }
 
     control.checkpoint()?;
-    Ok(FlowchartTokenTrace { items })
+    Ok(FlowchartTokenTrace {
+        items,
+        accessibility: lexer.accessibility,
+    })
 }
 
 #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
@@ -1746,6 +1721,10 @@ fn collect_accessibility_directive_prefixes(
         }
         if statement.complete {
             facts.push_directive_prefix(statement.directive.prefix());
+            facts.push_expected_syntax(EditorExpectedSyntax::new(
+                EditorExpectedSyntaxKind::Directive,
+                statement.span,
+            ));
         }
     }
     control.checkpoint()

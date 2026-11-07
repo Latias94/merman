@@ -14,7 +14,7 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
 ### Fixed
 
 - C4 trims quoted argument values while preserving source ranges, accepts physical newlines inside quoted tokens, and retains explicit label and description line breaks.
-- Journey preserves fractional satisfaction scores and accessibility punctuation, and honors `journey.textPlacement` for SVG text, legacy text and HTML labels. Timeline preserves accessibility punctuation and parses events after section names without discarding invalid suffixes.
+- Journey preserves fractional satisfaction scores and accessibility punctuation, and honors `journey.textPlacement` for SVG text, legacy text and HTML labels. Timeline preserves accessibility punctuation, parses events after section names without discarding invalid suffixes, and matches Mermaid's header and comment token boundaries while retaining literal percent pairs inside payloads.
 - Kanban accepts multiline quoted labels, retains literal `%%` inside card labels, and omits numeric zero tickets while preserving string tickets.
 - Requirement preserves quoted delimiters and multiline values, follows `state.useMaxWidth`, and emits CSS for every active palette slot within the SVG byte budget. Block preserves both arrow markers, thick and dotted lines, compact thick arrows and spaced class-target behavior.
 - Sankey formats visible large values with Mermaid's scientific notation.
@@ -27,11 +27,11 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
 - ER honors `layout: swimlane` with compound lanes, routed relationships and prepared non-Markdown labels. Relationship wrapping and supported inline HTML font sizes participate in layout. Self-loop relationships report an explicit unsupported-provider error instead of disappearing from a successful diagram; Dagre and ELK remain available for those inputs.
 - State preserves aliases and choice/fork/join types before inline comments, accepts comments after block-note terminators, and keeps literal composite alias IDs and nested states named `accTitle` or `accDescr`.
 - Class accepts whitespace before generic suffixes and redundant bare-name statements, rejects invalid empty generic identities, and avoids offering another class target after a completed inline annotation. Namespace HTML titles preserve supported markup and measure its inline font sizes.
-- Sequence accepts participant destruction inside boxes and follows Mermaid's alias, wrapping-prefix and zero-autonumber rules. Special participant bodies retain custom CSS classes; loose SVG retains supported fragment icon references.
-- Flowchart clears edge animation and curve metadata on explicit null, preserves existing captions on empty metadata labels, and applies metadata and classes to the first matching raw edge ID.
+- Sequence accepts participant destruction inside boxes and follows Mermaid's alias, wrapping-prefix and zero-autonumber rules. Bare participant redeclarations preserve existing aliases, and accessibility values retain hash and semicolon text. Special participant bodies retain custom CSS classes; loose SVG retains supported fragment icon references.
+- Flowchart clears edge animation and curve metadata on explicit null, preserves existing captions on empty metadata labels, and applies metadata and classes to the first matching raw edge ID. Multiline labels retain text that resembles accessibility directives instead of changing the diagram's accessible name.
 - ASCII and Unicode Flowchart rendering can route branching review/retry feedback edges around reserved geometry when ordinary candidates collide, preserving labels and independent endpoint markers under the existing resource and cancellation limits. Sequence text output accepts `and` sections inside `par_over` blocks.
 - Flowchart and Class relationship labels apply local solid and transparent theme colors, with matching execution evidence and source/configuration precedence. Class includes cardinalities; Agentflow and Swimlane share Flowchart's SVG, Markdown and HTML label fix.
-- Flowchart preserves node definitions and metadata in source order, captures default curves when each edge is declared, and applies Mermaid's node-padding fallback for numeric zero.
+- Flowchart preserves node definitions and metadata in source order, captures default curves when each edge is declared, and applies Mermaid's node-padding fallback for numeric zero. Numeric-zero asset dimensions preserve previous sizes while string zero remains explicit.
 - Class accepts compact relationships and bodies, quoted generic names and shared `classDef` targets. Relabelled generics retain their type, and editor navigation and renaming preserve generic suffixes.
 - Class preserves aggregation after punctuation or generic suffixes, including `A-o--B`. Renaming keeps the operator boundary intact; Tree-sitter recognizes the corresponding compact relationships and quoted generic names.
 - Class HTML cardinalities preserve line breaks and entity text. Note colors follow the effective HTML/SVG configuration owner, and intrinsic sizing honors `state.useMaxWidth: false` without inheriting Flowchart viewport padding.
@@ -39,6 +39,7 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
 - Class relationship labels center their SVG text within padded backgrounds, including multiline and styled labels. Long SVG labels wrap at Mermaid's default 200-pixel width while preserving formatting and graphemes.
 - Class labels use measurements for their actual SVG or HTML output, including literal SVG cardinalities containing math delimiters and relationship labels with rejected formulas.
 - Class namespaces use `class.padding` consistently in Dagre and ELK, with Mermaid's default of 16 pixels. Namespace geometry no longer inherits Flowchart padding; review affected layout snapshots after upgrading.
+- Class generic parameters no longer trigger namespace width rules, and quoted `cssClass` target lists follow Mermaid's exact whitespace semantics.
 - Label wrapping stops promptly when an operation is cancelled, including during long-word splitting.
 
 ## [0.10.0-alpha.2] - 2026-11-06

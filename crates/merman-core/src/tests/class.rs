@@ -984,6 +984,31 @@ fn parse_diagram_class_relabelling_uses_the_stored_generic_type() {
 }
 
 #[test]
+fn parse_diagram_class_group_generic_preserves_the_authored_type_and_text() {
+    let engine = MermaidEngine::new();
+    let probe = engine
+        .parse_diagram_sync("classDiagram\nclass A~group~\n", ParseOptions::strict())
+        .unwrap()
+        .unwrap();
+    let control = engine
+        .parse_diagram_sync(
+            "classDiagram\nclass A[\"A&lt;group&gt;\"]\n",
+            ParseOptions::strict(),
+        )
+        .unwrap()
+        .unwrap();
+
+    assert_eq!(probe.model["classes"].as_object().unwrap().len(), 1);
+    let probe_class = &probe.model["classes"]["A"];
+    let control_class = &control.model["classes"]["A"];
+    assert_eq!(probe_class["type"], json!("group"));
+    assert_eq!(control_class["type"], json!(""));
+    assert_eq!(probe_class["text"], json!("A&lt;group&gt;"));
+    assert_eq!(probe_class["text"], control_class["text"]);
+    assert!(probe.model["namespaces"].as_object().unwrap().is_empty());
+}
+
+#[test]
 fn parse_diagram_class_style_statement_sets_node_styles() {
     let engine = MermaidEngine::new();
     let text = r#"classDiagram
@@ -1016,6 +1041,74 @@ classDef pink fill:#f9f
     let c = &res.model["classes"]["Class01"];
     assert_eq!(c["cssClasses"], json!("default pink"));
     assert_eq!(c["styles"], json!(["fill:#f9f"]));
+}
+
+#[test]
+fn parse_diagram_class_cssclass_targets_preserve_whitespace_and_generic_identity() {
+    let engine = MermaidEngine::new();
+    for (targets, styled_a, styled_b) in [
+        ("A,B", true, true),
+        ("A, B", true, false),
+        (" A,B", false, true),
+        ("A,B ", true, false),
+        ("A~U~,B~V~", true, true),
+        ("A~U~, B~V~", true, false),
+    ] {
+        let source = format!(
+            "classDiagram\nclass A~T~\nclass B~T~\ncssClass \"{targets}\" accent\nclassDef accent fill:#ff0000\n"
+        );
+        let parsed = engine
+            .parse_diagram_sync(&source, ParseOptions::strict())
+            .unwrap()
+            .unwrap();
+        let classes = parsed.model["classes"].as_object().unwrap();
+        assert_eq!(classes.len(), 2, "{targets}");
+        for (id, styled) in [("A", styled_a), ("B", styled_b)] {
+            let class = &classes[id];
+            assert_eq!(class["type"], json!("T"), "{targets}: {id}");
+            assert_eq!(
+                class["cssClasses"],
+                json!(if styled { "default accent" } else { "default" }),
+                "{targets}: {id}"
+            );
+            assert_eq!(
+                class["styles"],
+                if styled {
+                    json!(["fill:#ff0000"])
+                } else {
+                    json!([])
+                },
+                "{targets}: {id}"
+            );
+        }
+    }
+}
+
+#[test]
+fn parse_diagram_class_cssclass_can_target_an_authored_leading_space() {
+    let parsed = MermaidEngine::new()
+        .parse_diagram_sync(
+            concat!(
+                "classDiagram\n",
+                "class A\n",
+                "class B\n",
+                "class ` B`\n",
+                "cssClass \"A, B\" accent\n",
+                "classDef accent fill:#ff0000\n",
+            ),
+            ParseOptions::strict(),
+        )
+        .unwrap()
+        .unwrap();
+
+    let classes = parsed.model["classes"].as_object().unwrap();
+    assert_eq!(classes.len(), 3);
+    for id in ["A", " B"] {
+        assert_eq!(classes[id]["cssClasses"], json!("default accent"));
+        assert_eq!(classes[id]["styles"], json!(["fill:#ff0000"]));
+    }
+    assert_eq!(classes["B"]["cssClasses"], json!("default"));
+    assert_eq!(classes["B"]["styles"], json!([]));
 }
 
 #[test]

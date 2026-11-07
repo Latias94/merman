@@ -17,8 +17,22 @@ pub(super) fn value_to_bool(v: &Value) -> Option<bool> {
     crate::inline_config::value_to_bool(v)
 }
 
-fn value_to_f64(v: &Value) -> Option<f64> {
-    crate::inline_config::value_to_f64(v)
+fn asset_dimension(v: &Value) -> Option<f64> {
+    // FlowDB gates the authored value with `if (doc.w/h)` before `Number(...)`.
+    // Numeric zero is absent, while a nonempty string such as "0" is an update.
+    match v {
+        Value::Number(value) => value.as_f64().filter(|value| *value != 0.0),
+        Value::Bool(true) => Some(1.0),
+        Value::String(value) if value.is_empty() => None,
+        Value::String(value)
+            if value
+                .trim_matches(super::is_ecmascript_trim_char)
+                .is_empty() =>
+        {
+            Some(0.0)
+        }
+        _ => crate::inline_config::value_to_f64(v),
+    }
 }
 
 fn sanitize_shape_label_type(label_type: Option<&str>) -> TitleKind {
@@ -94,12 +108,12 @@ fn apply_shape_data_document_to_node(
                 }
             }
             "w" => {
-                if let Some(w) = value_to_f64(v) {
+                if let Some(w) = asset_dimension(v) {
                     node.asset_width = Some(w);
                 }
             }
             "h" => {
-                if let Some(h) = value_to_f64(v) {
+                if let Some(h) = asset_dimension(v) {
                     node.asset_height = Some(h);
                 }
             }

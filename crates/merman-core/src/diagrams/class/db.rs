@@ -541,8 +541,8 @@ impl<'a> ClassDb<'a> {
         let prior_definition = style_event_ordinal
             .and_then(|_| self.paint_class_definitions.get(css_class))
             .cloned();
-        for raw in ids.split(',') {
-            let id = raw.trim();
+        // Mermaid preserves whitespace inside each quoted cssClass target.
+        for id in ids.split(',') {
             if id.is_empty() {
                 continue;
             }

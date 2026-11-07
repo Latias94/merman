@@ -274,7 +274,7 @@ impl<'input> SequenceScanner<'input> {
             let colon = after + colon_pos;
             self.pos = colon + 1;
             self.skip_ws();
-            let s = self.read_to_line_end();
+            let s = self.read_accessibility_line();
             return Some((
                 start,
                 Tok::AccTitle(trim_ecmascript(&s).to_string()),
@@ -291,7 +291,7 @@ impl<'input> SequenceScanner<'input> {
                     let colon = after + non_ws;
                     self.pos = colon + 1;
                     self.skip_ws();
-                    let s = self.read_to_line_end();
+                    let s = self.read_accessibility_line();
                     return Some((
                         start,
                         Tok::AccDescr(trim_ecmascript(&s).to_string()),
@@ -309,6 +309,16 @@ impl<'input> SequenceScanner<'input> {
         }
 
         None
+    }
+
+    fn read_accessibility_line(&mut self) -> String {
+        // The exclusive accessibility states keep hashes and semicolons through physical LF.
+        let start = self.pos;
+        let end = self.input[start..]
+            .find('\n')
+            .map_or(self.input.len(), |offset| start + offset);
+        self.pos = end;
+        self.input[start..end].to_string()
     }
 
     fn read_to_line_end(&mut self) -> String {

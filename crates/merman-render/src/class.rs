@@ -1933,16 +1933,12 @@ fn class_box_dimensions(
         node.members.is_empty() && node.methods.is_empty() && !hide_empty_members_box;
 
     // The Dagre node bounds come from the rectangle passed to `updateNodeBounds`.
-    let mut rect_w = w + 2.0 * padding;
+    let rect_w = w + 2.0 * padding;
     let mut rect_h = h + 2.0 * padding;
     if render_extra_box {
         rect_h += padding * 2.0;
     } else if node.members.is_empty() && node.methods.is_empty() {
         rect_h -= padding;
-    }
-
-    if node.type_param == "group" {
-        rect_w = rect_w.max(500.0);
     }
 
     let mut style_facts = title_style_facts;
