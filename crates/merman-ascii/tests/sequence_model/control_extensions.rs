@@ -63,6 +63,28 @@ fn sequence_rect_par_over_blocks_are_core_control_signals() {
 }
 
 #[test]
+fn sequence_par_over_and_sections_preserve_parallel_branches() {
+    let source = "sequenceDiagram\n\
+par_over Read
+    Client->>Store: Load
+and Observe
+    Store-->>Client: Notify
+end
+";
+    for options in [AsciiRenderOptions::ascii(), AsciiRenderOptions::unicode()] {
+        let rendered = render_sequence(source, &options)
+            .expect("par_over must admit and sections from the parallel control protocol");
+        for label in ["par_over Read", "and Observe", "Load", "Notify"] {
+            assert_eq!(rendered.matches(label).count(), 1, "{label:?}:\n{rendered}");
+        }
+        assert!(
+            rendered.find("Load").unwrap() < rendered.find("Notify").unwrap(),
+            "parallel branches retain source order:\n{rendered}"
+        );
+    }
+}
+
+#[test]
 fn sequence_rect_control_blocks_render_unicode_frames() {
     let rendered = render_sequence(
         "sequenceDiagram\nparticipant A\nparticipant B\nrect rgba(0,0,0,0.1)\nA->>B: Shaded\nend",
@@ -346,6 +368,29 @@ fn sequence_rect_par_over_malformed_ordering_is_explicitly_unsupported() {
     cases.push(model);
 
     for model in cases {
+        assert_unsupported_sequence_model(model, "control block ordering");
+    }
+}
+
+#[test]
+fn sequence_control_separators_require_matching_block_kinds() {
+    for (start, separator, end) in [
+        (LINETYPE_PAR_OVER_START, LINETYPE_ALT_ELSE, LINETYPE_PAR_END),
+        (
+            LINETYPE_PAR_OVER_START,
+            LINETYPE_CRITICAL_OPTION,
+            LINETYPE_PAR_END,
+        ),
+        (LINETYPE_LOOP_START, LINETYPE_PAR_AND, LINETYPE_LOOP_END),
+    ] {
+        let mut model = basic_sequence_model();
+        add_sequence_participant(&mut model, "B");
+        model.messages.push(message(None, None, start));
+        model.messages.push(message(Some("A"), Some("B"), 0));
+        model.messages.push(message(None, None, separator));
+        model.messages.push(message(Some("B"), Some("A"), 0));
+        model.messages.push(empty_message(end));
+
         assert_unsupported_sequence_model(model, "control block ordering");
     }
 }

@@ -268,10 +268,15 @@ impl SequenceControlKind {
     pub fn separator_keyword(self) -> Option<&'static str> {
         match self {
             Self::Alt => Some("else"),
-            Self::Par => Some("and"),
+            Self::Par | Self::ParOver => Some("and"),
             Self::Critical => Some("option"),
-            Self::Loop | Self::Opt | Self::Break | Self::Rect | Self::ParOver => None,
+            Self::Loop | Self::Opt | Self::Break | Self::Rect => None,
         }
+    }
+
+    pub fn accepts_separator(self, separator: Self) -> bool {
+        self.separator_keyword().is_some()
+            && (self == separator || matches!((self, separator), (Self::ParOver, Self::Par)))
     }
 
     pub fn accepts_end(self, end: Self) -> bool {

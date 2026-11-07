@@ -8,6 +8,7 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
 
 ### Fixed
 
+- ASCII and Unicode Flowchart rendering can route branching review/retry feedback edges around reserved geometry when ordinary candidates collide, preserving labels and independent endpoint markers under the existing resource and cancellation limits. Sequence text output accepts `and` sections inside `par_over` blocks.
 - Flowchart and Class relationship labels apply local solid and transparent theme colors, with matching execution evidence and source/configuration precedence. Class includes cardinalities; Agentflow and Swimlane share Flowchart's SVG, Markdown and HTML label fix.
 - Flowchart preserves node definitions and metadata in source order, captures default curves when each edge is declared, and applies Mermaid's node-padding fallback for numeric zero.
 - Class accepts compact relationships and bodies, quoted generic names and shared `classDef` targets. Relabelled generics retain their type, and editor navigation and renaming preserve generic suffixes.

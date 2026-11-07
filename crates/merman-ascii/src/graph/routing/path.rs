@@ -2,6 +2,10 @@ use super::super::layout::{
     CanvasCoord, GraphLayout, GridCoord, GroupLayout, NodeLayout, ROUTING_GRID_MARGIN,
 };
 use super::super::model::GraphGroupKind;
+use super::cell::{DIR_DOWN, DIR_LEFT, DIR_RIGHT, DIR_UP};
+use super::occupancy::SceneOccupancy;
+use super::plan::{NodeAttachment, NodeAttachments};
+use super::{PreparedRoute, RouteOwner};
 use crate::error::{AsciiError, Result};
 use crate::operation::AsciiExecution;
 use crate::resource::AsciiResourceLimitPhase;
@@ -22,6 +26,13 @@ pub(super) enum GridPathPortPolicy {
 pub(super) struct GridPathRoute {
     pub(super) path: Vec<GridCoord>,
     pub(super) ports: PortPair,
+}
+
+#[derive(Clone, Copy)]
+pub(super) struct RouteObstacles<'a> {
+    pub(super) scene: &'a SceneOccupancy<'a>,
+    pub(super) routes: &'a [PreparedRoute],
+    pub(super) owner: &'a RouteOwner,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -98,13 +109,68 @@ pub(super) fn route_grid_path_for_layout_with_resources_and_execution(
     resources: &mut ResourceContext,
     execution: AsciiExecution<'_>,
 ) -> Result<Option<GridPathRoute>> {
-    let geometry = (!layout.groups.is_empty()).then_some(GroupRouteGeometry { layout, from, to });
+    let geometry = (!layout.groups.is_empty()).then_some(GroupRouteGeometry {
+        layout,
+        from,
+        to,
+        scene: None,
+    });
     route_grid_path_with_geometry(
         &layout.nodes,
         from,
         to,
         port_policy,
         geometry,
+        resources,
+        execution,
+    )
+}
+
+// The fallback uses the same finite coarse grid and work ledger as ordinary routing. Its
+// additional geometry is borrowed from the scene; it does not allocate a character-cell grid.
+#[allow(clippy::too_many_arguments)]
+pub(super) fn route_grid_path_avoiding_obstacles(
+    layout: &GraphLayout,
+    from: &NodeLayout,
+    to: &NodeLayout,
+    ports: PortPair,
+    charset: &super::super::charset::GraphCharset,
+    obstacles: RouteObstacles<'_>,
+    resources: &mut ResourceContext,
+    execution: AsciiExecution<'_>,
+) -> Result<Option<GridPathRoute>> {
+    let start = layout.grid_to_canvas(from.grid_for_port(ports.start, resources)?);
+    let target = layout.grid_to_canvas(to.grid_for_port(ports.end, resources)?);
+    let Some(start) = NodeAttachment::resolve(
+        from,
+        start,
+        ports.start.terminal_direction().opposite(),
+        charset,
+    ) else {
+        return Ok(None);
+    };
+    let Some(end) = NodeAttachment::resolve(
+        to,
+        target,
+        ports.end.terminal_direction().opposite(),
+        charset,
+    ) else {
+        return Ok(None);
+    };
+    plan_grid_path_for_ports(
+        &layout.nodes,
+        from,
+        to,
+        ports,
+        Some(GroupRouteGeometry {
+            layout,
+            from,
+            to,
+            scene: Some(SceneRouteGeometry {
+                obstacles,
+                attachments: NodeAttachments { start, end },
+            }),
+        }),
         resources,
         execution,
     )
@@ -460,6 +526,13 @@ struct GroupRouteGeometry<'a> {
     layout: &'a GraphLayout,
     from: &'a NodeLayout,
     to: &'a NodeLayout,
+    scene: Option<SceneRouteGeometry<'a>>,
+}
+
+#[derive(Clone, Copy)]
+struct SceneRouteGeometry<'a> {
+    obstacles: RouteObstacles<'a>,
+    attachments: NodeAttachments,
 }
 
 impl GroupRouteGeometry<'_> {
@@ -470,7 +543,7 @@ impl GroupRouteGeometry<'_> {
         from: GridCoord,
         to: GridCoord,
         direction: StepDirection,
-        resources: &ResourceContext,
+        resources: &mut ResourceContext,
         execution: AsciiExecution<'_>,
     ) -> Result<Option<SearchPosition>> {
         let next_grid = to;
@@ -490,6 +563,37 @@ impl GroupRouteGeometry<'_> {
             }
             if group_perimeter_contains(group, to) {
                 crossing_direction = Some(direction);
+            }
+        }
+        if let Some(scene) = self.scene {
+            let directions = match direction {
+                StepDirection::Left | StepDirection::Right => DIR_LEFT | DIR_RIGHT,
+                StepDirection::Up | StepDirection::Down => DIR_UP | DIR_DOWN,
+            };
+            // Projected coarse steps can span wide nodes and labels. Inspect every actual
+            // cell instead of treating a clear coarse waypoint as proof of a clear segment.
+            let span = from.x.abs_diff(to.x).max(from.y.abs_diff(to.y));
+            for offset in 0..=span {
+                let coord = match direction {
+                    StepDirection::Left | StepDirection::Right => CanvasCoord {
+                        x: from.x.min(to.x) + offset,
+                        y: from.y,
+                    },
+                    StepDirection::Up | StepDirection::Down => CanvasCoord {
+                        x: from.x,
+                        y: from.y.min(to.y) + offset,
+                    },
+                };
+                if !scene.obstacles.scene.route_cell_is_clear(
+                    scene.obstacles.routes,
+                    scene.obstacles.owner,
+                    Some(scene.attachments),
+                    coord,
+                    directions,
+                    resources,
+                )? {
+                    return Ok(None);
+                }
             }
         }
         Ok(Some(SearchPosition {

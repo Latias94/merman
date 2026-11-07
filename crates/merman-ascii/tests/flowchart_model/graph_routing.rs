@@ -1,6 +1,115 @@
 use super::*;
 
 #[test]
+fn flowchart_parser_review_feedback_routes_around_both_branches() {
+    let input = concat!(
+        "flowchart LR\n",
+        "  A[Start] --> B{Review?}\n",
+        "  B -->|ok| C[Merge]\n",
+        "  B -->|ng| D[Fix]\n",
+        "  D --> B\n",
+    );
+    for options in [AsciiRenderOptions::ascii(), AsciiRenderOptions::unicode()] {
+        let rendered = render_flowchart(input, &options)
+            .expect("a review feedback edge must avoid the decision and its sibling branch");
+        for label in ["Start", "Review?", "Merge", "Fix", "ok", "ng"] {
+            assert_eq!(rendered.matches(label).count(), 1, "{label:?}:\n{rendered}");
+        }
+        assert_rectangular_terminal_grid(&rendered);
+        if options == AsciiRenderOptions::unicode() {
+            assert_eq!(
+                rendered
+                    .chars()
+                    .filter(|ch| matches!(ch, '▼' | '▲' | '►' | '◄'))
+                    .count(),
+                4,
+                "all four directed edges must keep independent target heads:\n{rendered}"
+            );
+        }
+    }
+}
+
+#[test]
+fn flowchart_parser_japanese_review_feedback_preserves_wide_labels_and_exit() {
+    let input = concat!(
+        "flowchart LR\n",
+        "  A[開始] --> B{レビュー待ち？}\n",
+        "  B -->|承認| C[マージ]\n",
+        "  B -->|差し戻し| D[修正する]\n",
+        "  D --> B\n",
+        "  C --> E[完了 Done]\n",
+    );
+    for options in [AsciiRenderOptions::ascii(), AsciiRenderOptions::unicode()] {
+        let rendered = render_flowchart(input, &options)
+            .expect("wide review labels must not prevent routing the feedback edge");
+        for label in [
+            "開始",
+            "レビュー待ち？",
+            "マージ",
+            "修正する",
+            "完了 Done",
+            "承認",
+            "差し戻し",
+        ] {
+            assert_eq!(rendered.matches(label).count(), 1, "{label:?}:\n{rendered}");
+        }
+        assert_rectangular_terminal_grid(&rendered);
+        if options == AsciiRenderOptions::unicode() {
+            assert_eq!(
+                rendered
+                    .chars()
+                    .filter(|ch| matches!(ch, '▼' | '▲' | '►' | '◄'))
+                    .count(),
+                5,
+                "the feedback and completed branch must retain all five target heads:\n{rendered}"
+            );
+        }
+    }
+}
+
+#[test]
+fn flowchart_parser_labeled_review_feedback_preserves_direction_after_mirroring() {
+    for direction in ["LR", "RL"] {
+        let input = format!(
+            "flowchart {direction}\n A[Start] --> B{{Review?}}\n B -->|ok| C[Merge]\n B -->|ng| D[Fix]\n D -->|retry| B\n"
+        );
+        let rendered = render_flowchart(&input, &AsciiRenderOptions::unicode())
+            .expect("a labeled review feedback edge must survive the root direction transform");
+        for label in ["Start", "Review?", "Merge", "Fix", "ok", "ng", "retry"] {
+            assert_eq!(
+                rendered.matches(label).count(),
+                1,
+                "{direction}: {label:?}:\n{rendered}"
+            );
+        }
+        assert_eq!(
+            rendered
+                .chars()
+                .filter(|ch| matches!(ch, '▼' | '▲' | '►' | '◄'))
+                .count(),
+            4,
+            "mirroring must retain all four target heads:\n{rendered}"
+        );
+        let start = rendered
+            .lines()
+            .find(|line| line.contains("Start"))
+            .unwrap();
+        let review = rendered
+            .lines()
+            .find(|line| line.contains("Review?"))
+            .unwrap();
+        let start_x = terminal_test_width(start.split_once("Start").unwrap().0);
+        let review_x = terminal_test_width(review.split_once("Review?").unwrap().0);
+        assert_eq!(
+            start_x < review_x,
+            direction == "LR",
+            "{direction}:\n{rendered}"
+        );
+        assert_rectangular_terminal_grid(&rendered);
+    }
+}
+
+#[test]
 fn flowchart_parser_top_down_branch_merge_preserves_dagre_rank_and_connectivity() {
     let rendered = render_flowchart(
         concat!(
