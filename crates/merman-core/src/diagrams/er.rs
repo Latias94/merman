@@ -2095,25 +2095,24 @@ impl<'input> Lexer<'input> {
             self.pos = body_end + 1;
             return Some(Ok((body_start, Tok::AttrWord(s), body_end)));
         }
-        if let Some(two) = self.input[self.pos..].get(..2) {
-            if ["PK", "FK", "UK"]
+        if let Some(two) = self.input[self.pos..].get(..2)
+            && ["PK", "FK", "UK"]
                 .iter()
                 .any(|key| two.eq_ignore_ascii_case(key))
-            {
-                let is_word_byte = |b: u8| b.is_ascii_alphanumeric() || b == b'_';
-                let prev_ok = self.pos == 0 || !is_word_byte(self.input.as_bytes()[self.pos - 1]);
-                let next_ok = self
-                    .input
-                    .as_bytes()
-                    .get(self.pos + 2)
-                    .copied()
-                    .map(|b| !is_word_byte(b))
-                    .unwrap_or(true);
-                if prev_ok && next_ok {
-                    let key = two.to_owned();
-                    self.pos += 2;
-                    return Some(Ok((start, Tok::AttrKey(key), self.pos)));
-                }
+        {
+            let is_word_byte = |b: u8| b.is_ascii_alphanumeric() || b == b'_';
+            let prev_ok = self.pos == 0 || !is_word_byte(self.input.as_bytes()[self.pos - 1]);
+            let next_ok = self
+                .input
+                .as_bytes()
+                .get(self.pos + 2)
+                .copied()
+                .map(|b| !is_word_byte(b))
+                .unwrap_or(true);
+            if prev_ok && next_ok {
+                let key = two.to_owned();
+                self.pos += 2;
+                return Some(Ok((start, Tok::AttrKey(key), self.pos)));
             }
         }
 
