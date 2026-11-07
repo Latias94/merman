@@ -4,8 +4,7 @@ use super::activation::SequenceActivationPlan;
 use super::actor_man::{render_sequence_actor_man_bottoms, render_sequence_actor_man_tops};
 use super::actor_popup::{SequenceActorPopupOptions, render_sequence_actor_popup_menus};
 use super::actor_shapes::{
-    ActorFillCoverage, ActorStrokeCoverage, LIFELINE_STROKE_WIDTH_PX, actor_fill_coverage,
-    actor_stroke_coverage,
+    ActorFillCoverage, ActorStrokeCoverage, actor_fill_coverage, actor_stroke_coverage,
 };
 use super::actors::{
     SequenceActorRenderContext, render_sequence_bottom_actors,
@@ -158,11 +157,11 @@ pub(in crate::svg::parity) fn render_sequence_diagram_svg_model_with_config(
     });
     let mut lifeline_paint = super::actor_effect::SequenceLifelinePaint::new(
         lifeline_theme.effect.clone(),
-        has_root_canvas,
+        has_root_canvas || lifeline_theme.typed_stroke_width.is_some(),
     );
-    let mut defer_paint_bounds = defer_text_bounds
-        || lifeline_paint.needs_bounds()
-        || lifeline_theme.typed_stroke_width.is_some();
+    let lifeline_effective_stroke_width =
+        super::css::lifeline_effective_stroke_width(lifeline_theme.typed_stroke_width);
+    let mut defer_paint_bounds = defer_text_bounds || lifeline_paint.needs_bounds();
 
     let mut nodes_by_id: FxHashMap<&str, &LayoutNode> =
         FxHashMap::with_capacity_and_hasher(layout.nodes.len(), Default::default());
@@ -194,6 +193,7 @@ pub(in crate::svg::parity) fn render_sequence_diagram_svg_model_with_config(
         &nodes_by_id,
         model,
         settings.mirror_actors,
+        has_root_canvas,
         actor_rect_style,
         compat,
         &mut actor_receipt,
@@ -276,10 +276,7 @@ pub(in crate::svg::parity) fn render_sequence_diagram_svg_model_with_config(
             actor_text_style: &settings.actor_text_style,
             actor_typography: prepared.typography().actor(),
             typography_receipt: &typography_receipt,
-            lifeline_effective_stroke_width: lifeline_theme
-                .typed_stroke_width
-                .map(f64::from)
-                .unwrap_or(LIFELINE_STROKE_WIDTH_PX),
+            lifeline_effective_stroke_width,
             checkpoints,
         };
 
@@ -498,10 +495,7 @@ pub(in crate::svg::parity) fn render_sequence_diagram_svg_model_with_config(
         actor_text_style: &settings.actor_text_style,
         actor_typography: prepared.typography().actor(),
         typography_receipt: &typography_receipt,
-        lifeline_effective_stroke_width: lifeline_theme
-            .typed_stroke_width
-            .map(f64::from)
-            .unwrap_or(LIFELINE_STROKE_WIDTH_PX),
+        lifeline_effective_stroke_width,
         checkpoints,
     };
 

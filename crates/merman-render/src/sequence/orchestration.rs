@@ -1,4 +1,7 @@
 use super::activation::SequenceActivationState;
+use super::activation_geometry::{
+    SequenceActivationGeometryBuilder, SequencePreparedActivationGeometry,
+};
 use super::actors::{
     SequenceActorLifecycle, SequenceActorLifecycleContext, SequenceFooterActorContext,
     SequenceTopActorContext, append_sequence_footer_actors, append_sequence_top_actors,
@@ -64,6 +67,7 @@ pub(super) struct SequenceLayoutGraph {
     pub(super) nodes: Vec<LayoutNode>,
     pub(super) edges: Vec<LayoutEdge>,
     pub(super) block_layouts_by_id: rustc_hash::FxHashMap<String, SequenceBlockLayout>,
+    pub(super) activation_geometry: SequencePreparedActivationGeometry,
     pub(super) bottom_box_top_y: f64,
     pub(super) box_height: f64,
     pub(super) bounds_start_x: f64,
@@ -87,6 +91,7 @@ struct SequenceLayoutLoopState<'a> {
     block_layouts_by_id: rustc_hash::FxHashMap<String, SequenceBlockLayout>,
     rect_stack: Vec<SequenceRectOpen>,
     activation_state: SequenceActivationState,
+    activation_geometry: SequenceActivationGeometryBuilder,
     actor_lifecycle: SequenceActorLifecycle<'a>,
     actor_center_bounds: (f64, f64),
     bounds_start_x: f64,
@@ -134,6 +139,9 @@ impl<'a> SequenceLayoutLoopState<'a> {
             block_layouts_by_id: rustc_hash::FxHashMap::default(),
             rect_stack: Vec::new(),
             activation_state,
+            activation_geometry: SequenceActivationGeometryBuilder::new(
+                ctx.typography.compat_binding().svg_activation_width,
+            ),
             actor_lifecycle,
             actor_center_bounds,
             bounds_start_x,
@@ -249,12 +257,48 @@ fn handle_sequence_directive<'a>(
     directive_steps: &HashMap<String, f64>,
     state: &mut SequenceLayoutLoopState<'a>,
     ctx: &SequenceLayoutGraphContext<'a>,
-) -> bool {
+) -> Result<bool> {
     if state
         .activation_state
         .handle_directive(msg, ctx.actor_index, ctx.actor_centers_x)
     {
-        return true;
+        let Some((actor_index, center_x)) = msg.from.as_deref().and_then(|actor_id| {
+            let actor_index = *ctx.actor_index.get(actor_id)?;
+            Some((actor_index, *ctx.actor_centers_x.get(actor_index)?))
+        }) else {
+            return Ok(true);
+        };
+        match msg.semantic_kind() {
+            SequenceMessageKind::ActivationStart => {
+                state
+                    .activation_geometry
+                    .start(&msg.id, actor_index, center_x, state.cursor_y);
+            }
+            SequenceMessageKind::ActivationEnd => {
+                let bounds = state
+                    .activation_geometry
+                    .end(actor_index, state.cursor_y)
+                    .map(|rect| {
+                        (
+                            rect.startx,
+                            rect.startx + rect.width,
+                            rect.starty + rect.height,
+                        )
+                    });
+                if let Some((start_x, stop_x, stop_y)) = bounds {
+                    state.activation_geometry.include_inserted_top(
+                        stop_y - 10.0,
+                        ctx.box_margin,
+                        ctx.checkpoints,
+                    )?;
+                    include_rect_stack_bounds(&mut state.rect_stack, start_x, stop_x, stop_y);
+                    state.include_inserted_horizontal(start_x, stop_x, ctx.box_margin);
+                    state.include_inserted_bottom(stop_y, ctx.box_margin);
+                }
+            }
+            _ => {}
+        }
+        return Ok(true);
     }
 
     if is_block_start(msg) {
@@ -264,11 +308,11 @@ fn handle_sequence_directive<'a>(
             .get(msg.id.as_str())
             .copied()
             .unwrap_or_default();
-        return true;
+        return Ok(true);
     }
     if is_block_end(msg) {
         state.close_sequence_block(ctx.box_margin);
-        return true;
+        return Ok(true);
     }
     if is_block_section(msg) {
         let section_y = state.cursor_y + ctx.box_margin + ctx.box_text_margin;
@@ -277,9 +321,9 @@ fn handle_sequence_directive<'a>(
             .get(msg.id.as_str())
             .copied()
             .unwrap_or_default();
-        return true;
+        return Ok(true);
     }
-    false
+    Ok(false)
 }
 
 fn handle_sequence_rect(
@@ -376,6 +420,11 @@ fn handle_sequence_note(
         ctx.box_margin,
     );
     state.include_inserted_bottom(note.rect_max_y, ctx.box_margin);
+    state.activation_geometry.include_inserted_top(
+        note.node.y - note.node.height / 2.0,
+        ctx.box_margin,
+        ctx.checkpoints,
+    )?;
 
     nodes.push(note.node);
     state.cursor_y += note.cursor_step;
@@ -442,6 +491,7 @@ fn handle_sequence_message(
         inserted_min_x,
         inserted_max_x,
         line_y,
+        inserted_top_y,
         inserted_bottom_y,
         cursor_step,
     } = message;
@@ -453,6 +503,11 @@ fn handle_sequence_message(
         inserted_bottom_y,
     );
     state.include_inserted_horizontal(inserted_min_x, inserted_max_x, ctx.box_margin);
+    state.activation_geometry.include_inserted_top(
+        inserted_top_y,
+        ctx.box_margin,
+        ctx.checkpoints,
+    )?;
     state.cursor_y += cursor_step;
     let lifecycle_adjustment = state
         .actor_lifecycle
@@ -525,7 +580,7 @@ pub(super) fn build_sequence_layout_graph(
 
     for (msg_idx, msg) in ctx.model.messages.iter().enumerate() {
         ctx.checkpoints.checkpoint_loop(msg_idx)?;
-        if handle_sequence_directive(msg, &directive_steps, &mut state, &ctx) {
+        if handle_sequence_directive(msg, &directive_steps, &mut state, &ctx)? {
             continue;
         }
 
@@ -596,6 +651,7 @@ pub(super) fn build_sequence_layout_graph(
         nodes,
         edges,
         block_layouts_by_id: state.block_layouts_by_id,
+        activation_geometry: state.activation_geometry.finish(),
         bottom_box_top_y,
         box_height,
         bounds_start_x: state.bounds_start_x,

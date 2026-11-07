@@ -1,0 +1,137 @@
+{
+  "diagramType": "sequence",
+  "model": {
+    "accDescr": null,
+    "accTitle": null,
+    "actorOrder": [
+      "A",
+      "B"
+    ],
+    "actors": {
+      "A": {
+        "description": "Author<br/>Client",
+        "links": {},
+        "name": "A",
+        "properties": {},
+        "type": "participant",
+        "wrap": false
+      },
+      "B": {
+        "description": "Service",
+        "links": {},
+        "name": "B",
+        "properties": {},
+        "type": "participant",
+        "wrap": false
+      }
+    },
+    "boxes": [],
+    "constants": {
+      "placement": {
+        "leftOf": 0,
+        "over": 2,
+        "rightOf": 1
+      }
+    },
+    "createdActors": {},
+    "destroyedActors": {},
+    "messages": [
+      {
+        "activate": true,
+        "from": "A",
+        "id": "0",
+        "message": "Begin",
+        "to": "B",
+        "type": 0,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": "B",
+        "id": "1",
+        "message": "",
+        "to": null,
+        "type": 17,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": "B",
+        "id": "2",
+        "message": "Work continues<br/>before completion",
+        "placement": 2,
+        "to": "B",
+        "type": 2,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": "B",
+        "id": "3",
+        "message": "",
+        "to": null,
+        "type": 18,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": "A",
+        "id": "4",
+        "message": "Prepare another request",
+        "placement": 2,
+        "to": "A",
+        "type": 2,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": "B",
+        "id": "5",
+        "message": "",
+        "to": null,
+        "type": 17,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": "B",
+        "id": "6",
+        "message": "Complete",
+        "to": "A",
+        "type": 1,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": "B",
+        "id": "7",
+        "message": "",
+        "to": null,
+        "type": 18,
+        "wrap": false
+      }
+    ],
+    "notes": [
+      {
+        "actor": [
+          "B",
+          "B"
+        ],
+        "message": "Work continues<br/>before completion",
+        "placement": 2,
+        "wrap": false
+      },
+      {
+        "actor": [
+          "A",
+          "A"
+        ],
+        "message": "Prepare another request",
+        "placement": 2,
+        "wrap": false
+      }
+    ],
+    "title": null,
+    "type": "sequence"
+  }
+}

@@ -10786,6 +10786,15 @@
           "name": "identifier"
         },
         {
+          "type": "ALIAS",
+          "content": {
+            "type": "SYMBOL",
+            "name": "_class_compact_identifier"
+          },
+          "named": true,
+          "value": "identifier"
+        },
+        {
           "type": "TOKEN",
           "content": {
             "type": "PREC",
@@ -10807,6 +10816,18 @@
                     {
                       "type": "STRING",
                       "value": "`"
+                    },
+                    {
+                      "type": "CHOICE",
+                      "members": [
+                        {
+                          "type": "PATTERN",
+                          "value": "~[^~\\r\\n]+~"
+                        },
+                        {
+                          "type": "BLANK"
+                        }
+                      ]
                     }
                   ]
                 },
@@ -10844,6 +10865,15 @@
           "value": "identifier"
         },
         {
+          "type": "ALIAS",
+          "content": {
+            "type": "SYMBOL",
+            "name": "_class_compact_identifier"
+          },
+          "named": true,
+          "value": "identifier"
+        },
+        {
           "type": "IMMEDIATE_TOKEN",
           "content": {
             "type": "PREC",
@@ -10865,6 +10895,18 @@
                     {
                       "type": "STRING",
                       "value": "`"
+                    },
+                    {
+                      "type": "CHOICE",
+                      "members": [
+                        {
+                          "type": "PATTERN",
+                          "value": "~[^~\\r\\n]+~"
+                        },
+                        {
+                          "type": "BLANK"
+                        }
+                      ]
                     }
                   ]
                 },
@@ -77819,6 +77861,10 @@
     {
       "type": "SYMBOL",
       "name": "_directive_body"
+    },
+    {
+      "type": "SYMBOL",
+      "name": "_class_compact_identifier"
     }
   ],
   "inline": [],

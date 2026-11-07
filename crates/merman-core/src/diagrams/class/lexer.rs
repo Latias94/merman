@@ -42,6 +42,7 @@ pub(crate) enum Tok {
     AnnotationStop,
 
     StyleSeparator,
+    Comma,
 
     Ext,
     Dep,
@@ -103,6 +104,8 @@ enum Mode {
     AfterClass,
     ClassBody,
     LineNeedId,
+    ClassDefNeedId,
+    ClassDefAfterId,
     LineRest,
     ClickNeedId,
     ClickAfterId,
@@ -181,7 +184,7 @@ impl<'input> Lexer<'input> {
         while let Some(end) = consume_line_ending(self.input, self.pos) {
             self.pos = end;
         }
-        if self.mode == Mode::AfterClass {
+        if matches!(self.mode, Mode::AfterClass | Mode::ClassDefNeedId) {
             self.mode = Mode::Default;
         }
         Some((start, Tok::Newline, self.pos))
@@ -289,7 +292,7 @@ impl<'input> Lexer<'input> {
         }
         if self.starts_with_word("classDef") {
             self.pos += "classDef".len();
-            self.mode = Mode::LineNeedId;
+            self.mode = Mode::ClassDefNeedId;
             return Some((start, Tok::ClassDefKw, self.pos));
         }
         if self.starts_with_word("click") {
@@ -578,10 +581,24 @@ impl<'input> Lexer<'input> {
                 self.pos = self.input.len();
                 return Some((start, Tok::Name(s), self.pos));
             };
-            let s = self.input[self.pos..self.pos + rel_end].to_string();
+            let mut s = self.input[self.pos..self.pos + rel_end].to_string();
             self.pos = self.pos + rel_end + 1;
+            let after_name = self.pos;
+            self.skip_ws();
+            if self.peek() == Some(b'~')
+                && let Some(close) = self.input[self.pos + 1..].find('~')
+            {
+                let end = self.pos + close + 2;
+                s.push_str(&self.input[self.pos..end]);
+                self.pos = end;
+            } else {
+                self.pos = after_name;
+            }
             if self.mode == Mode::LineNeedId {
                 self.mode = Mode::LineRest;
+            }
+            if self.mode == Mode::ClassDefNeedId {
+                self.mode = Mode::ClassDefAfterId;
             }
             if self.mode == Mode::ClickNeedId {
                 self.mode = Mode::ClickAfterId;
@@ -622,6 +639,20 @@ impl<'input> Lexer<'input> {
             if b == b'<' || b == b'>' {
                 break;
             }
+            if b == b'*' || (b == b'(' && bytes.get(end + 1) == Some(&b')')) {
+                break;
+            }
+            // Jison recognizes aggregation when `o` starts a new ALPHA token,
+            // including after punctuation, Unicode text or a generic suffix.
+            if b == b'o' && end > self.pos {
+                let previous = bytes[end - 1];
+                if !previous.is_ascii_alphanumeric()
+                    && previous != b'_'
+                    && (bytes[end + 1..].starts_with(b"--") || bytes[end + 1..].starts_with(b".."))
+                {
+                    break;
+                }
+            }
             if b == b'.' && end + 1 < bytes.len() && bytes[end + 1] == b'.' {
                 break;
             }
@@ -649,6 +680,9 @@ impl<'input> Lexer<'input> {
         if self.mode == Mode::LineNeedId {
             self.mode = Mode::LineRest;
         }
+        if self.mode == Mode::ClassDefNeedId {
+            self.mode = Mode::ClassDefAfterId;
+        }
         if self.mode == Mode::ClickNeedId {
             self.mode = Mode::ClickAfterId;
         }
@@ -671,7 +705,13 @@ impl<'input> Lexer<'input> {
             )));
         }
         let start = self.pos;
-        let s = self.read_to_newline();
+        while let Some(b) = self.peek() {
+            if matches!(b, b'{' | b'}' | b'\r' | b'\n') {
+                break;
+            }
+            self.pos += 1;
+        }
+        let s = &self.input[start..self.pos];
         Some(Ok((start, Tok::Member(s.trim_end().to_string()), self.pos)))
     }
 
@@ -708,6 +748,16 @@ impl TokenScanner for Lexer<'_> {
                 )));
             }
             return ScanStep::End;
+        }
+
+        if self.mode == Mode::ClassDefAfterId {
+            if self.peek() == Some(b',') {
+                let start = self.pos;
+                self.pos += 1;
+                self.mode = Mode::ClassDefNeedId;
+                return self.emit((start, Tok::Comma, self.pos));
+            }
+            self.mode = Mode::LineRest;
         }
 
         if self.lex_comment() {

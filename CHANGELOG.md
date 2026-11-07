@@ -8,6 +8,12 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
 
 ### Fixed
 
+- Flowchart and Class relationship labels apply local solid and transparent theme colors, with matching execution evidence and source/configuration precedence. Class includes cardinalities; Agentflow and Swimlane share Flowchart's SVG, Markdown and HTML label fix.
+- Flowchart preserves node definitions and metadata in source order, captures default curves when each edge is declared, and applies Mermaid's node-padding fallback for numeric zero.
+- Class accepts compact relationships and bodies, quoted generic names and shared `classDef` targets. Relabelled generics retain their type, and editor navigation and renaming preserve generic suffixes.
+- Class preserves aggregation after punctuation or generic suffixes, including `A-o--B`. Renaming keeps the operator boundary intact; Tree-sitter recognizes the corresponding compact relationships and quoted generic names.
+- Class HTML cardinalities preserve line breaks and entity text. Note colors follow the effective HTML/SVG configuration owner, and intrinsic sizing honors `state.useMaxWidth: false` without inheriting Flowchart viewport padding.
+- Sequence activations follow notes and actor creation, multiline participants share their row height, and `par_over` accepts `and` branches. Lifeline filters, retained Neo shadows and mathematical frame titles use their actual painted geometry.
 - Class relationship labels center their SVG text within padded backgrounds, including multiline and styled labels. Long SVG labels wrap at Mermaid's default 200-pixel width while preserving formatting and graphemes.
 - Class labels use measurements for their actual SVG or HTML output, including literal SVG cardinalities containing math delimiters and relationship labels with rejected formulas.
 - Class namespaces use `class.padding` consistently in Dagre and ELK, with Mermaid's default of 16 pixels. Namespace geometry no longer inherits Flowchart padding; review affected layout snapshots after upgrading.

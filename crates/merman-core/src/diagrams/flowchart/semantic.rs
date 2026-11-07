@@ -238,56 +238,18 @@ impl<'a> FlowchartSemanticContext<'a> {
                     }
                 }
                 Stmt::ShapeData { target, yaml, .. } => {
-                    let value = match Self::shape_data_value(
-                        self.shape_data_documents,
-                        self.diagram_type,
-                        yaml,
-                    ) {
-                        Ok(value) => value,
-                        Err(error) => return Ok(Err(error)),
-                    };
-                    // Mermaid checks subgraph metadata before edge metadata. This matters when
-                    // an id is shared by a subgraph and a user-defined edge.
-                    let routed_to_subgraph =
-                        active_subgraphs.get(target).is_some_and(|&subgraph_index| {
-                            self.apply_shape_data_to_subgraph(subgraph_index, target, value)
-                        });
-                    if routed_to_subgraph {
-                        // The parser first calls addVertex for the bare reference and then
-                        // calls it again with shapeData. A subgraph metadata call returns from
-                        // the second call, so retain only the preceding vertex call unless the
-                        // id already names an edge (where addVertex returns immediately).
-                        if !seen_edge_indices.contains_key(target) {
-                            self.vertex_calls.push(target.clone());
-                            seen_vertex_ids.insert(target.clone());
-                            if let Some(style) = vertex_css.get_mut(target) {
-                                style.get_or_insert_default();
-                            }
+                    // The grammar first adds the bare vertex, then applies its metadata.
+                    if !seen_edge_indices.contains_key(target) {
+                        self.vertex_calls.push(target.clone());
+                        seen_vertex_ids.insert(target.clone());
+                        if let Some(style) = vertex_css.get_mut(target) {
+                            style.get_or_insert_default();
                         }
-                        continue;
                     }
-
-                    if let Some(indices) = seen_edge_indices.get(target) {
-                        Self::apply_shape_data_to_edges(self.edges, self.control, indices, value)?;
-                        continue;
-                    }
-
-                    // The Jison grammar calls addVertex once for the node and once for its
-                    // shapeData. Preserve both calls because Mermaid derives DOM ids from this
-                    // sequence even though they update the same typed node.
-                    self.vertex_calls.push(target.clone());
-                    self.vertex_calls.push(target.clone());
-                    seen_vertex_ids.insert(target.clone());
-                    if let Some(style) = vertex_css.get_mut(target) {
-                        style.get_or_insert_default();
-                    }
-                    let idx = self.ensure_authored_node(target);
-                    if let Err(error) = apply_shape_data_value_to_node(&mut self.nodes[idx], value)
+                    if let Err(error) =
+                        self.apply_shape_data(target, yaml, &active_subgraphs, &seen_edge_indices)?
                     {
-                        return Ok(Err(Error::diagram_parse_fallback(
-                            self.diagram_type.to_string(),
-                            error,
-                        )));
+                        return Ok(Err(error));
                     }
                 }
                 Stmt::Chain {
@@ -374,87 +336,83 @@ impl<'a> FlowchartSemanticContext<'a> {
         vertex_css: &mut HashMap<String, Option<FlowSubgraphVertexStyle>>,
         seen_edge_indices: &HashMap<String, Vec<usize>>,
     ) -> OperationControlResult<Result<()>> {
-        let mut deferred_shape_data_calls = Vec::new();
+        let mut pending_shape_data: Option<(&str, &str)> = None;
         for (index, node) in nodes.iter().enumerate() {
             if index % 128 == 0 {
                 self.control.checkpoint()?;
             }
-            if let Some(yaml) = node.shape_data.as_deref()
-                && let Some(&subgraph_index) = active_subgraphs.get(&node.id)
+            if !seen_edge_indices.contains_key(&node.id) {
+                self.vertex_calls.push(node.id.clone());
+                seen_vertex_ids.insert(node.id.clone());
+                if let Some(style) = vertex_css.get_mut(&node.id) {
+                    let style = style.get_or_insert_default();
+                    style.classes.extend(node.classes.iter().cloned());
+                    style.styles.extend(node.styles.iter().cloned());
+                }
+
+                let target = &mut self.nodes[self.node_index[&node.id]];
+                if node.label.is_some() {
+                    target.label.clone_from(&node.label);
+                    target.label_type = node.label_type.clone();
+                    target.label_span = node.label_span;
+                    target.label_selection = node.label_selection;
+                }
+                if node.shape.is_some() {
+                    target.shape.clone_from(&node.shape);
+                }
+                target.styles.extend(node.styles.iter().cloned());
+                target.classes.extend(node.classes.iter().cloned());
+            }
+
+            // Jison reduces `node shapeData & styledVertex` after adding styledVertex.
+            // Keep only that pending metadata call, including when both IDs are the same.
+            if let Some((target, yaml)) = pending_shape_data
+                && let Err(error) =
+                    self.apply_shape_data(target, yaml, active_subgraphs, seen_edge_indices)?
             {
-                let value = match Self::shape_data_value(
-                    self.shape_data_documents,
-                    self.diagram_type,
-                    yaml,
-                ) {
-                    Ok(value) => value,
-                    Err(error) => return Ok(Err(error)),
-                };
-                if self.apply_shape_data_to_subgraph(subgraph_index, &node.id, value) {
-                    // The node production has already emitted one bare addVertex call before
-                    // its shapeData action. Preserve that call for DOM-id sequencing, while
-                    // avoiding it when an existing edge makes addVertex return early.
-                    if !seen_edge_indices.contains_key(&node.id) {
-                        self.vertex_calls.push(node.id.clone());
-                        seen_vertex_ids.insert(node.id.clone());
-                        if let Some(style) = vertex_css.get_mut(&node.id) {
-                            let style = style.get_or_insert_default();
-                            style.classes.extend(node.classes.iter().cloned());
-                            style.styles.extend(node.styles.iter().cloned());
-                        }
-                    }
-                    continue;
-                }
+                return Ok(Err(error));
             }
-
-            if let Some(indices) = seen_edge_indices.get(&node.id) {
-                if let Some(yaml) = node.shape_data.as_deref() {
-                    let value = match Self::shape_data_value(
-                        self.shape_data_documents,
-                        self.diagram_type,
-                        yaml,
-                    ) {
-                        Ok(value) => value,
-                        Err(error) => return Ok(Err(error)),
-                    };
-                    Self::apply_shape_data_to_edges(self.edges, self.control, indices, value)?;
-                }
-                continue;
-            }
-
-            self.vertex_calls.push(node.id.clone());
-            seen_vertex_ids.insert(node.id.clone());
-            if let Some(style) = vertex_css.get_mut(&node.id) {
-                let style = style.get_or_insert_default();
-                style.classes.extend(node.classes.iter().cloned());
-                style.styles.extend(node.styles.iter().cloned());
-            }
-            if let Some(yaml) = node.shape_data.as_deref() {
-                deferred_shape_data_calls.push(node.id.clone());
-                let value = match Self::shape_data_value(
-                    self.shape_data_documents,
-                    self.diagram_type,
-                    yaml,
-                ) {
-                    Ok(value) => value,
-                    Err(error) => return Ok(Err(error)),
-                };
-                let idx = self.ensure_authored_node(&node.id);
-                if let Err(error) = apply_shape_data_value_to_node(&mut self.nodes[idx], value) {
-                    return Ok(Err(Error::diagram_parse_fallback(
-                        self.diagram_type.to_string(),
-                        error,
-                    )));
-                }
-            }
+            pending_shape_data = node
+                .shape_data
+                .as_deref()
+                .map(|yaml| (node.id.as_str(), yaml));
         }
-        for (index, id) in deferred_shape_data_calls.into_iter().enumerate() {
-            if index % 128 == 0 {
-                self.control.checkpoint()?;
-            }
-            self.vertex_calls.push(id);
+        if let Some((target, yaml)) = pending_shape_data
+            && let Err(error) =
+                self.apply_shape_data(target, yaml, active_subgraphs, seen_edge_indices)?
+        {
+            return Ok(Err(error));
         }
         Ok(Ok(()))
+    }
+
+    fn apply_shape_data(
+        &mut self,
+        target: &str,
+        yaml: &str,
+        active_subgraphs: &HashMap<String, usize>,
+        seen_edge_indices: &HashMap<String, Vec<usize>>,
+    ) -> OperationControlResult<Result<()>> {
+        let value = match Self::shape_data_value(self.shape_data_documents, self.diagram_type, yaml)
+        {
+            Ok(value) => value,
+            Err(error) => return Ok(Err(error)),
+        };
+        // FlowDB routes metadata to an already declared subgraph before checking edge IDs.
+        if active_subgraphs.get(target).is_some_and(|&subgraph_index| {
+            self.apply_shape_data_to_subgraph(subgraph_index, target, value)
+        }) {
+            return Ok(Ok(()));
+        }
+        if let Some(indices) = seen_edge_indices.get(target) {
+            Self::apply_shape_data_to_edges(self.edges, self.control, indices, value)?;
+            return Ok(Ok(()));
+        }
+
+        self.vertex_calls.push(target.to_string());
+        let idx = self.ensure_authored_node(target);
+        Ok(apply_shape_data_value_to_node(&mut self.nodes[idx], value)
+            .map_err(|error| Error::diagram_parse_fallback(self.diagram_type.to_string(), error)))
     }
 
     fn add_class_to_target(
@@ -495,7 +453,7 @@ impl<'a> FlowchartSemanticContext<'a> {
     }
 
     fn activate_edges(
-        &self,
+        &mut self,
         count: usize,
         next_edge_index: &mut usize,
         seen_edge_indices: &mut HashMap<String, Vec<usize>>,
@@ -516,6 +474,10 @@ impl<'a> FlowchartSemanticContext<'a> {
             if index % 128 == 0 {
                 self.control.checkpoint()?;
             }
+            // FlowDB captures the default at addSingleLink; later explicit overrides still win.
+            self.edges[edge_index]
+                .interpolate
+                .clone_from(&self.edge_defaults.interpolate);
             if let Some(id) = self.edges[edge_index].id.as_deref() {
                 seen_edge_indices
                     .entry(id.to_string())

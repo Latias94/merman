@@ -116,6 +116,16 @@
       "svg_sha256": "bb12eb0500feb9109dfb322ae68eedf212b04a1e0207a60a91b4e8ba214db76d",
       "renderer_profile": "owned-runtime-seeded-puppeteer-seed-1-fixed-date-1704067200000"
     },
+    "regression_alpha_curve_and_zero_padding": {
+      "input_sha256": "b91370a7bd639eae6385928b2add3af3c69428d0d126ce6d452f61440791022c",
+      "svg_sha256": "aaf624fb0a5abf4c76241d666c7f449482d380884ce7ae47b249f2bd7e1f2420",
+      "renderer_profile": "owned-runtime-seeded-puppeteer-seed-1-fixed-date-1704067200000"
+    },
+    "regression_alpha_definition_order": {
+      "input_sha256": "cacd288cc261fc53b566df4c1e0dcfe6efe70be2b10cbd5795c5b7149f298b64",
+      "svg_sha256": "3362ae55c5f29d17f89483bf51612ec556f326f83a0ad57eda032648ea259474",
+      "renderer_profile": "owned-runtime-seeded-puppeteer-seed-1-fixed-date-1704067200000"
+    },
     "stress_flowchart_amp_groups_edge_ids_034": {
       "input_sha256": "55cf668e4ffdcb79215e5168083563be1152b3d78992ceb0abe8da643d1abb47",
       "svg_sha256": "46e0d78f669c2f37d4e196cc9a93f5b0178b6b0e904e7ab82bc86255a1d66f12",

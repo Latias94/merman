@@ -272,6 +272,47 @@ fn every_strict_valid_merman_fixture_has_a_clean_tree_sitter_tree() {
 }
 
 #[test]
+fn compact_class_names_preserve_exact_relationship_boundaries() {
+    let language: Language = LANGUAGE.into();
+    let mut parser = Parser::new();
+    parser.set_language(&language).unwrap();
+    for (relation, from, operator) in [
+        ("Foo--B", "Foo", "--"),
+        ("Foo..>B", "Foo", "..>"),
+        ("A-o--B", "A-", "o--"),
+        ("A-o..B", "A-", "o.."),
+        ("A.o--B", "A.", "o--"),
+        ("类o--B", "类", "o--"),
+        ("A~T~o--B", "A~T~", "o--"),
+        ("`A-o`--B", "`A-o`", "--"),
+    ] {
+        let source = format!("classDiagram\n{relation}\n");
+        let tree = parser.parse(&source, None).unwrap();
+        assert_eq!(first_invalid_node(tree.root_node()), None, "{source}");
+        let statement = tree
+            .root_node()
+            .named_child(0)
+            .unwrap()
+            .child_by_field_name("body")
+            .unwrap()
+            .named_child(0)
+            .unwrap();
+        assert_eq!(statement.kind(), "class_relationship", "{source}");
+        for (field, expected) in [("source", from), ("operator", operator), ("target", "B")] {
+            assert_eq!(
+                statement
+                    .child_by_field_name(field)
+                    .unwrap()
+                    .utf8_text(source.as_bytes())
+                    .unwrap(),
+                expected,
+                "{field}: {source}"
+            );
+        }
+    }
+}
+
+#[test]
 fn sequence_actor_menu_names_are_endpoints_and_keep_metadata_statements() {
     let language: Language = LANGUAGE.into();
     let mut parser = Parser::new();

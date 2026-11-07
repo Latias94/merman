@@ -1,0 +1,10 @@
+---
+config:
+  look: classic
+---
+sequenceDiagram
+  par_over Read
+    Client->>Store: Load
+  and Observe
+    Store-->>Client: Notify
+  end

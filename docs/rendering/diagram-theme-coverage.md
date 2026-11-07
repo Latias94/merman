@@ -33,10 +33,17 @@ their notation-specific ring widths. Annotation brackets accept stroke, stroke w
 patterns. A fill request on an annotation or a ring-width request remains a residual even when
 another property of the same rule applies.
 
-**Known Flowchart gap:** a local `edge-label` fill can fall back to the compatibility theme's
-default color, even when shared Text fill works. Execution evidence can incorrectly report this
-case as `verified` without diagnostics. Use shared Text fill for these examples and inspect the
-visible edge labels; local edge-label fill and its missing residual accounting need a renderer fix.
+Flowchart's local `edge-label` fill consumes static solid or transparent paint in SVG and HTML
+labels, including Markdown. Agentflow and Swimlane reuse those terminal consumers. Shared Text
+and local label fills retain authored order; explicit source/configuration colors keep their
+property ownership. Unsupported paint and unknown HTML inheritance remain residuals, while
+labels absent from the scene do not count as consumers. Inspect actual output alongside the
+same-render evidence; supporting one fill domain does not establish all paint or selector domains.
+
+Class's local `edge-label` fill applies static solid or transparent paint to central relationship
+labels and cardinalities in SVG and HTML output. It leaves node and note labels unchanged. Shared
+Text and local fills follow authored order; explicit configuration and visible HTML colors retain
+their ownership. Unsupported selectors, paints and label effects remain residuals when applicable.
 
 Block label colors target the ordinary paragraph in its prepared HTML label. Source colors still
 own visible HTML blocks that inherit them; custom HTML outside that paragraph remains an unsupported

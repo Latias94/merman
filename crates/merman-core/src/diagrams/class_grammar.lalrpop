@@ -45,6 +45,7 @@ extern {
     AnnotationStop => Tok::AnnotationStop,
 
     StyleSeparator => Tok::StyleSeparator,
+    Comma => Tok::Comma,
 
     Ext => Tok::Ext,
     Dep => Tok::Dep,
@@ -106,7 +107,7 @@ Statement: ActionList = {
   <n:NoteStatement> =>? arena.push_actions(vec![n], control),
   <c:CssClassStatement> =>? arena.push_actions(vec![c], control),
   <s:StyleStatement> =>? arena.push_actions(vec![s], control),
-  <d:ClassDefStatement> =>? arena.push_actions(vec![d], control),
+  <d:ClassDefStatement> => d,
   <c:ClickStatement> =>? arena.push_actions(c, control),
   <ns:NamespaceStatement> => ns,
 };
@@ -199,8 +200,23 @@ StyleStatement: Action = {
   "style" <id:Name> <raw:RestOfLine> => Action::SetCssStyle { id, raw },
 };
 
-ClassDefStatement: Action = {
-  "classDef" <id:Name> <raw:RestOfLine> => Action::DefineClass { id, raw },
+ClassDefStatement: ActionList = {
+  "classDef" <ids:ClassDefNames> <raw:RestOfLine> =>? arena.push_actions(
+    ids.into_iter().map(|id| Action::DefineClass { id, raw: raw.clone() }),
+    control,
+  ),
+};
+
+ClassDefNames: Vec<String> = {
+  <id:Name> =>? {
+    arena.checkpoint(control)?;
+    Ok(vec![id])
+  },
+  <mut ids:ClassDefNames> Comma <id:Name> =>? {
+    arena.checkpoint(control)?;
+    ids.push(id);
+    Ok(ids)
+  },
 };
 
 ClickStatement: Vec<Action> = {

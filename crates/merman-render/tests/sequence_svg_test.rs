@@ -1197,6 +1197,73 @@ fn layout_sequence_from_text(text: &str) -> SequenceDiagramLayout {
 }
 
 #[test]
+fn sequence_activation_spans_intervening_note_cursor() {
+    for note in ["work", "work<br/>more work<br/>finish"] {
+        let source = format!("sequenceDiagram\nA->>+B: begin\nNote over B: {note}\ndeactivate B\n");
+        let svg = render_sequence_svg_from_text(&source);
+        let document = roxmltree::Document::parse(&svg).unwrap();
+        let rect = |class| {
+            document
+                .descendants()
+                .find(|node| node.has_tag_name("rect") && node.attribute("class") == Some(class))
+                .unwrap()
+        };
+        let number = |node: roxmltree::Node<'_, '_>, attribute| {
+            node.attribute(attribute).unwrap().parse::<f64>().unwrap()
+        };
+        let activation = rect("activation0");
+        let note = rect("note");
+        let message = document
+            .descendants()
+            .find(|node| {
+                node.has_tag_name("line") && node.attribute("class") == Some("messageLine0")
+            })
+            .unwrap();
+        let start_y = number(activation, "y");
+        assert_eq!(start_y, number(message, "y1") + 2.0);
+        assert_eq!(
+            start_y + number(activation, "height"),
+            number(note, "y") + number(note, "height"),
+            "deactivate must follow the complete note interval"
+        );
+    }
+}
+
+#[test]
+fn sequence_classic_wrapped_participants_share_row_height() {
+    let source = concat!(
+        "---\nconfig: {look: classic, sequence: {wrap: true}}\n---\n",
+        "sequenceDiagram\n",
+        "participant A as one<br/>two<br/>three<br/>four<br/>five<br/>six\n",
+        "participant B\nA->>B: hi\n",
+    );
+    let layout = layout_sequence_from_text(source);
+    let tall_actor = layout
+        .nodes
+        .iter()
+        .find(|node| node.id == "actor-top-A")
+        .unwrap();
+    assert!(tall_actor.height > 65.0);
+    for node in &layout.nodes {
+        if node.id.starts_with("actor-top-") || node.id.starts_with("actor-bottom-") {
+            assert_eq!(node.height, tall_actor.height, "{}", node.id);
+        }
+    }
+    for lifeline in layout
+        .edges
+        .iter()
+        .filter(|edge| edge.id.starts_with("lifeline-"))
+    {
+        assert_eq!(
+            lifeline.points[0].y,
+            tall_actor.y + tall_actor.height / 2.0,
+            "{} must start at the shared row bottom",
+            lifeline.id
+        );
+    }
+}
+
+#[test]
 fn sequence_builtin_route_reuses_message_bound_metrics_within_one_operation() {
     for message_count in [0usize, 1, 16, 64] {
         for repeated_text in [false, true] {

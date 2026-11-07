@@ -463,17 +463,17 @@ impl<'a> ClassDb<'a> {
     }
 
     pub(super) fn set_class_label(&mut self, id: &str, label: &str) {
-        let (class_name, type_param) = self.split_class_name_and_type(id);
+        let (class_name, _) = self.split_class_name_and_type(id);
         self.add_class(&class_name);
         let Some(c) = self.classes.get_mut(&class_name) else {
             return;
         };
         let label = sanitize_text(label, self.config);
         c.label = label.clone();
-        c.text = if type_param.is_empty() {
+        c.text = if c.type_param.is_empty() {
             label
         } else {
-            format!("{label}<{type_param}>")
+            format!("{label}<{}>", c.type_param)
         };
     }
 

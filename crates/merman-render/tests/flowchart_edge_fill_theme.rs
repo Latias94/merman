@@ -106,6 +106,351 @@ fn assert_evidence(
     assert_eq!(evidence.theme_residual_count(), residual);
 }
 
+#[test]
+fn edge_label_fill_reaches_plain_and_markdown_terminals_and_execution_evidence() {
+    let theme = compile([ThemeRule::new(
+        ThemeTarget::EdgeLabel,
+        ThemeStylePatch::default().with_fill(CanvasPaint::solid("#c026d3").unwrap()),
+    )]);
+    for layout in ["dagre", "elk"] {
+        if layout == "elk" && !cfg!(feature = "layout-elk") {
+            continue;
+        }
+        for html in [false, true] {
+            for label in ["contains", "\"`**contains** items`\""] {
+                let source = format!("flowchart LR\nA -->|{label}| B\n");
+                let rendered = render(
+                    &source,
+                    &theme,
+                    common::presentation_config(json!({
+                        "layout": layout,
+                        "look": "classic",
+                        "htmlLabels": html,
+                    })),
+                    ThemePortabilityRequirement::BestEffort,
+                )
+                .unwrap();
+                let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+                let terminal = document
+                    .descendants()
+                    .find(|node| {
+                        node.has_tag_name(if html { "span" } else { "text" })
+                            && node
+                                .ancestors()
+                                .any(|ancestor| ancestor.attribute("class") == Some("edgeLabel"))
+                    })
+                    .unwrap();
+                let style = terminal.attribute("style").unwrap_or("");
+                assert!(
+                    style.contains(if html {
+                        "color:#c026d3 !important"
+                    } else {
+                        "fill:#c026d3 !important"
+                    }),
+                    "{layout}, htmlLabels={html}, {label}: {style}"
+                );
+                assert_evidence(rendered, 1, 0, 0);
+            }
+        }
+    }
+}
+
+#[test]
+fn edge_label_fill_reports_unsupported_paint_without_hiding_applied_typography() {
+    let mut patch = ThemeStylePatch::default().with_fill(gradient());
+    patch.typography.font_weight = Specified::Value(600);
+    let theme = compile([ThemeRule::new(ThemeTarget::EdgeLabel, patch)]);
+    for html in [false, true] {
+        let rendered = render(
+            "flowchart LR\nA -->|contains| B\n",
+            &theme,
+            common::presentation_config(json!({"htmlLabels": html})),
+            ThemePortabilityRequirement::BestEffort,
+        )
+        .unwrap();
+        assert_evidence(rendered, 0, 0, 1);
+    }
+}
+
+#[test]
+fn edge_label_fill_without_a_visible_label_is_not_applicable() {
+    let theme = compile([ThemeRule::new(
+        ThemeTarget::EdgeLabel,
+        ThemeStylePatch::default().with_fill(CanvasPaint::solid("#c026d3").unwrap()),
+    )]);
+    for source in ["flowchart LR\nA --> B\n", "flowchart LR\nA -->| | B\n"] {
+        assert_evidence(
+            render(
+                source,
+                &theme,
+                config(false, "classic"),
+                ThemePortabilityRequirement::BestEffort,
+            )
+            .unwrap(),
+            0,
+            1,
+            0,
+        );
+    }
+}
+
+#[test]
+fn edge_label_fill_respects_explicit_source_and_config_foregrounds() {
+    let theme = compile([ThemeRule::new(
+        ThemeTarget::EdgeLabel,
+        ThemeStylePatch::default().with_fill(CanvasPaint::solid("#c026d3").unwrap()),
+    )]);
+    for html in [false, true] {
+        for (source, config) in [
+            (
+                "flowchart LR\nA -->|contains| B\nlinkStyle default color:#246801\n",
+                json!({"htmlLabels": html}),
+            ),
+            (
+                "flowchart LR\nA -->|contains| B\n",
+                json!({"htmlLabels": html, "themeVariables": {"nodeTextColor": "#246801"}}),
+            ),
+        ] {
+            let rendered = render(
+                source,
+                &theme,
+                common::presentation_config(config),
+                ThemePortabilityRequirement::BestEffort,
+            )
+            .unwrap();
+            assert!(!rendered.svg().contains("#c026d3"), "{}", rendered.svg());
+            assert_evidence(rendered, 0, 1, 0);
+        }
+    }
+}
+
+#[test]
+fn edge_label_fill_preserves_html_owned_color_and_flags_unknown_inheritance() {
+    let theme = compile([ThemeRule::new(
+        ThemeTarget::EdgeLabel,
+        ThemeStylePatch::default().with_fill(CanvasPaint::solid("#c026d3").unwrap()),
+    )]);
+    for (content, applied, absent, residual) in [
+        ("<span style='color:#246801'>owned</span>", 0, 1, 0),
+        (
+            "inherited <span style='color:#246801'>owned</span>",
+            1,
+            0,
+            0,
+        ),
+        ("<span style='color:var(--unknown)'>unknown</span>", 0, 0, 1),
+    ] {
+        let rendered = render(
+            &format!("flowchart LR\nA -->|\"{content}\"| B\n"),
+            &theme,
+            common::presentation_config(json!({"htmlLabels": true})),
+            ThemePortabilityRequirement::BestEffort,
+        )
+        .unwrap();
+        assert_evidence(rendered, applied, absent, residual);
+    }
+}
+
+#[test]
+fn edge_label_fill_keeps_authored_order_with_shared_text_and_source_role_scope() {
+    let local = || {
+        ThemeRule::new(
+            ThemeTarget::EdgeLabel,
+            ThemeStylePatch::default().with_fill(CanvasPaint::solid("#c026d3").unwrap()),
+        )
+    };
+    let shared = || {
+        ThemeRule::new(
+            ThemeTarget::Text,
+            ThemeStylePatch::default().with_fill(CanvasPaint::solid("#246801").unwrap()),
+        )
+    };
+    for local_wins in [false, true] {
+        let theme = compile(if local_wins {
+            [shared(), local()]
+        } else {
+            [local(), shared()]
+        });
+        for html in [false, true] {
+            let rendered = render(
+                "flowchart LR\nA -->|contains| B\n",
+                &theme,
+                common::presentation_config(json!({"htmlLabels": html})),
+                ThemePortabilityRequirement::BestEffort,
+            )
+            .unwrap();
+            let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+            let terminal = document
+                .descendants()
+                .find(|node| {
+                    node.has_tag_name(if html { "span" } else { "text" })
+                        && node
+                            .ancestors()
+                            .any(|node| node.attribute("class") == Some("edgeLabel"))
+                })
+                .unwrap();
+            assert_eq!(
+                terminal
+                    .attribute("style")
+                    .unwrap_or("")
+                    .contains("#c026d3"),
+                local_wins,
+                "{}",
+                rendered.svg(),
+            );
+            assert_evidence(
+                rendered,
+                if local_wins { 2 } else { 1 },
+                usize::from(!local_wins),
+                0,
+            );
+        }
+    }
+}
+
+#[test]
+fn edge_label_transparent_fill_reaches_shared_adapters_without_recoloring_nodes() {
+    let theme = compile([ThemeRule::new(
+        ThemeTarget::EdgeLabel,
+        ThemeStylePatch::default().with_fill(CanvasPaint::Transparent),
+    )]);
+    for (source, config) in [
+        (Some("flowchart LR\nA -->|contains| B\n"), json!({})),
+        (
+            cfg!(feature = "diagram-swimlane").then_some("swimlane-beta LR\nA -->|contains| B\n"),
+            json!({"layout": "swimlane"}),
+        ),
+        (
+            cfg!(feature = "diagram-agentflow").then_some(
+                "agentflow-beta TB\nflow support[\"Support\"]\nA -->|contains| B\nend\n",
+            ),
+            json!({}),
+        ),
+    ] {
+        let Some(source) = source else {
+            continue;
+        };
+        for html in [false, true] {
+            let mut config = config.clone();
+            config["htmlLabels"] = json!(html);
+            let rendered = render(
+                source,
+                &theme,
+                common::presentation_config(config),
+                ThemePortabilityRequirement::BestEffort,
+            )
+            .unwrap();
+            let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+            let terminal = document
+                .descendants()
+                .find(|node| {
+                    node.has_tag_name(if html { "span" } else { "text" })
+                        && node.ancestors().any(|node| {
+                            node.attribute("class").is_some_and(|class| {
+                                class
+                                    .split_ascii_whitespace()
+                                    .any(|class| class == "edgeLabel")
+                            })
+                        })
+                })
+                .unwrap();
+            assert!(
+                terminal.attribute("style").unwrap_or("").contains(if html {
+                    "color:transparent !important"
+                } else {
+                    "fill:none !important"
+                }),
+                "{}",
+                rendered.svg()
+            );
+            assert!(
+                document
+                    .descendants()
+                    .filter(|node| node
+                        .ancestors()
+                        .any(|ancestor| ancestor.attribute("class") == Some("node")))
+                    .all(|node| !node
+                        .attribute("style")
+                        .unwrap_or("")
+                        .contains("color:transparent !important"))
+            );
+            assert_evidence(rendered, 1, 0, 0);
+        }
+    }
+}
+
+#[test]
+fn matching_edge_label_ordinal_fill_remains_residual_in_shared_adapters() {
+    for (family, header, layout) in [
+        ("flowchart", "flowchart LR", "dagre"),
+        ("swimlane", "swimlane-beta LR", "swimlane"),
+        (
+            "agentflow",
+            "agentflow-beta TB\nflow support[\"Support\"]",
+            "dagre",
+        ),
+    ] {
+        if (family == "swimlane" && !cfg!(feature = "diagram-swimlane"))
+            || (family == "agentflow" && !cfg!(feature = "diagram-agentflow"))
+        {
+            continue;
+        }
+        let source = format!(
+            "{header}\nA -->|contains| B\n{}",
+            if family == "agentflow" { "end\n" } else { "" }
+        );
+        for ordinal in [1, 2] {
+            for static_fallback in [false, true] {
+                let mut rules = Vec::new();
+                if static_fallback {
+                    rules.push(ThemeRule::new(
+                        ThemeTarget::EdgeLabel,
+                        ThemeStylePatch::default()
+                            .with_fill(CanvasPaint::solid("#246801").unwrap()),
+                    ));
+                }
+                rules.push(
+                    ThemeRule::new(
+                        ThemeTarget::EdgeLabel,
+                        ThemeStylePatch::default().with_fill(CanvasPaint::Transparent),
+                    )
+                    .with_ordinal(OrdinalSelector::exact(ordinal).unwrap()),
+                );
+                let theme = compile(rules);
+                for html in [false, true] {
+                    let config = common::presentation_config(
+                        json!({"layout":layout,"htmlLabels":html,"look":"classic"}),
+                    );
+                    let rendered = render(
+                        &source,
+                        &theme,
+                        config.clone(),
+                        ThemePortabilityRequirement::BestEffort,
+                    )
+                    .unwrap();
+                    assert_evidence(
+                        rendered,
+                        usize::from(static_fallback && ordinal == 2),
+                        usize::from(ordinal == 2) + usize::from(static_fallback && ordinal == 1),
+                        usize::from(ordinal == 1),
+                    );
+                    if ordinal == 1 {
+                        assert!(
+                            render(
+                                &source,
+                                &theme,
+                                config,
+                                ThemePortabilityRequirement::RequirePortable
+                            )
+                            .is_err()
+                        );
+                    }
+                }
+            }
+        }
+    }
+}
+
 fn gradient() -> CanvasPaint {
     CanvasPaint::LinearGradient(
         LinearGradient::new(

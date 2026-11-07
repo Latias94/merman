@@ -7,6 +7,26 @@ use crate::diagram_theme::{SvgFilterRegion, SvgShadowEffect, SvgShadowEvidenceRe
 use crate::sequence::SequenceActorThemeReceipt;
 use std::collections::BTreeMap;
 
+pub(super) fn builtin_neo_rect_paint_bounds(
+    rect: [f64; 4],
+    stroke_width: f64,
+    has_shadow: bool,
+) -> Bounds {
+    let [x, y, width, height] = rect;
+    let half_stroke = stroke_width / 2.0;
+    let offset = if has_shadow {
+        super::super::look_defs::NEO_SHADOW_OFFSET_PX
+    } else {
+        0.0
+    };
+    Bounds {
+        min_x: x - half_stroke,
+        min_y: y - half_stroke,
+        max_x: x + width + half_stroke + offset,
+        max_y: y + height + half_stroke + offset,
+    }
+}
+
 #[derive(Default)]
 pub(super) struct SequenceActorShadowPlan {
     effect: Option<SvgShadowEffect>,
@@ -22,6 +42,7 @@ impl SequenceActorShadowPlan {
         nodes: &rustc_hash::FxHashMap<&str, &LayoutNode>,
         model: &SequenceSvgModel,
         mirror: bool,
+        has_root_canvas: bool,
         style: SequenceActorRectStyle,
         compat: &crate::sequence::SequenceCompatBinding,
         receipt: &mut SequenceActorThemeReceipt,
@@ -31,9 +52,10 @@ impl SequenceActorShadowPlan {
             effect,
             ..Self::default()
         };
-        let Some(effect) = plan.effect.as_ref() else {
+        let include_neo_paint = has_root_canvas && compat.is_neo;
+        if plan.effect.is_none() && !include_neo_paint {
             return Ok(plan);
-        };
+        }
         // Read the same generated CSS value as the actor writer. Relative lengths cannot supply
         // a reliable filter envelope; retain a residual instead of guessing a pixel width.
         let width = style
@@ -41,7 +63,7 @@ impl SequenceActorShadowPlan {
             .map(f64::from)
             .or(compat.native_stroke_width);
         let Some(width) = width else {
-            receipt.effect_unhandled = true;
+            receipt.effect_unhandled |= plan.effect.is_some();
             return Ok(plan);
         };
         for (index, actor_id) in model.actor_order.iter().enumerate() {
@@ -60,29 +82,49 @@ impl SequenceActorShadowPlan {
                 let Some(node) = nodes.get(node_id.as_str()) else {
                     continue;
                 };
-                options
-                    .work_meter()
-                    .charge(effect.stages().len().saturating_mul(3))?;
-                let Some(materialized) = effect.materialize_rect(
-                    &options.theme_resource_policy(),
-                    node.width,
-                    node.height,
-                    width,
-                )?
-                else {
-                    receipt.effect_unhandled = true;
-                    continue;
-                };
-                let region = materialized.region();
-                // Include the outward-rounded region actually written to SVG, not just the
-                // unrounded sigma envelope, so native receipt containment uses the same bounds.
-                let [x, y, w, h] = region.as_array().map(f64::from);
                 let (left, top) = super::geometry::node_left_top(node);
-                let bounds = Bounds {
-                    min_x: left + x * node.width,
-                    min_y: top + y * node.height,
-                    max_x: left + (x + w) * node.width,
-                    max_y: top + (y + h) * node.height,
+                let materialized = if let Some(effect) = plan.effect.as_ref() {
+                    options
+                        .work_meter()
+                        .charge(effect.stages().len().saturating_mul(3))?;
+                    let materialized = effect.materialize_rect(
+                        &options.theme_resource_policy(),
+                        node.width,
+                        node.height,
+                        width,
+                    )?;
+                    receipt.effect_unhandled |= materialized.is_none();
+                    materialized
+                } else {
+                    None
+                };
+                let bounds = if let Some(materialized) = materialized {
+                    let region = materialized.region();
+                    // Use the outward-rounded region actually written to SVG.
+                    let [x, y, w, h] = region.as_array().map(f64::from);
+                    let effect = plan.effect.as_ref().expect("materialized actor effect");
+                    let id = format!(
+                        "{}-actor-{index}-{placement}-theme-effect-{}",
+                        options.diagram_id_or("merman"),
+                        effect.id()
+                    );
+                    plan.terminals.insert(node_id, (id, region));
+                    Bounds {
+                        min_x: left + x * node.width,
+                        min_y: top + y * node.height,
+                        max_x: left + (x + w) * node.width,
+                        max_y: top + (y + h) * node.height,
+                    }
+                } else if include_neo_paint {
+                    // The rect writer retains Neo's filter unless Clear suppresses it. These
+                    // canvas-only bounds do not add typed effect applications or move layout.
+                    builtin_neo_rect_paint_bounds(
+                        [left, top, node.width, node.height],
+                        width,
+                        !receipt.effect_cleared,
+                    )
+                } else {
+                    continue;
                 };
                 if let Some(total) = &mut plan.bounds {
                     total.min_x = total.min_x.min(bounds.min_x);
@@ -92,12 +134,6 @@ impl SequenceActorShadowPlan {
                 } else {
                     plan.bounds = Some(bounds);
                 }
-                let id = format!(
-                    "{}-actor-{index}-{placement}-theme-effect-{}",
-                    options.diagram_id_or("merman"),
-                    effect.id()
-                );
-                plan.terminals.insert(node_id, (id, region));
             }
         }
         Ok(plan)
@@ -177,7 +213,7 @@ impl SequenceLifelinePaint {
         options: &SvgExecution<'_>,
         receipt: &mut crate::sequence::SequenceLifelineThemeReceipt,
     ) -> Result<Option<(String, SvgFilterRegion)>> {
-        if !self.needs_bounds() && width == super::actor_shapes::LIFELINE_STROKE_WIDTH_PX {
+        if !self.needs_bounds() {
             return Ok(None);
         }
         // Use the serialized coordinates, including descending or zero-length lines.

@@ -91,6 +91,16 @@
       "svg_sha256": "2db53c874b110b20ea690607f86ada3422d6294ca98671e4789b025701e01c5f",
       "renderer_profile": "owned-runtime-seeded-puppeteer-seed-1-fixed-date-1704067200000"
     },
+    "regression_alpha_compact_definitions": {
+      "input_sha256": "0a4001bfc17bfb8d807e407f52ee4857bd4698a43ad0c3d98a6b7621891c6cb7",
+      "svg_sha256": "2dc04c1a623e75328dcc847d9222373d4b2f546bb33e0299e97f2bbdd60b1769",
+      "renderer_profile": "owned-runtime-seeded-puppeteer-seed-1-fixed-date-1704067200000"
+    },
+    "regression_alpha_html_cardinality_breaks": {
+      "input_sha256": "60268e2f304e2ffaf37f7fccf0d9e11a586e995c0e30f8a29f1d9161f3961627",
+      "svg_sha256": "2fdca82fd22c42ef5a79121c508d27deb73eaf7d2b2035e7fae4ff990ca26594",
+      "renderer_profile": "owned-runtime-seeded-puppeteer-seed-1-fixed-date-1704067200000"
+    },
     "regression_svg_relation_label_namespace_dagre": {
       "input_sha256": "f447b0ee559cc5d2e579d9a7447b410ae995c5ca2124f233b593328cd02035fe",
       "svg_sha256": "7b29239a29b0c9b5e08359627f9a0159dfdd10087ea5bb2778605f258a468828",

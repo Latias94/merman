@@ -3,13 +3,15 @@ use std::sync::OnceLock;
 
 use crate::diagram_theme::{
     FamilyThemeDisposition, FamilyThemeMechanism, FamilyThemeMechanismKey, FamilyThemePaintKind,
-    FamilyThemeRuleFacet, FamilyThemeSelectorShape, ResolvedDiagramTheme, ThemeCapability,
-    ThemeTarget, ThemeTypographyProperty, ThemeVariant,
+    FamilyThemeRuleFacet, FamilyThemeSelectorShape, ResolvedDiagramTheme, ResolvedStyleProperty,
+    ResolvedThemeEffect, Specified, ThemeCapability, ThemeTarget, ThemeTypographyProperty,
+    ThemeVariant,
 };
 use crate::family::{
     FamilyThemeEvidence, FamilyThemeOutcomes, FamilyThemeResidualReason, InheritedFontStackOutcome,
-    InheritedFontStackPlan, resolved_style_property_for_facet,
+    InheritedFontStackPlan, resolved_style_property_for_facet, unsupported_residual_for_facet,
 };
+use crate::resources::{OperationWorkError, OperationWorkMeter};
 use crate::text::TextStyle;
 
 /// Class separates Mermaid's wrapping probe from the font inherited by displayed labels.
@@ -24,7 +26,10 @@ pub(crate) struct ClassTextThemePlan {
     text_rules: BTreeMap<usize, Option<ThemeCapability>>,
     fully_shadowed_text_rules: BTreeSet<usize>,
     edge_paint: Option<ClassTextPaint>,
-    note_paint: Option<ClassTextPaint>,
+    edge_label_theme: Option<ResolvedDiagramTheme>,
+    edge_fill_config_owned: bool,
+    html_note_paint: Option<ClassTextPaint>,
+    svg_note_paint: Option<ClassTextPaint>,
     layout_font_family_css: Box<str>,
     font_size_px: f64,
     typed_font_size_requested: bool,
@@ -74,9 +79,18 @@ pub(crate) struct ClassTextOutcomes {
     title_paint: Option<usize>,
     facts: ClassTextTerminalFacts,
     paint_outcomes: BTreeMap<usize, (bool, bool)>,
+    edge_label_theme: Option<ResolvedDiagramTheme>,
+    edge_fill_config_owned: bool,
+    edge_label_outcomes: BTreeMap<FamilyThemeMechanismKey, ClassEdgeLabelOutcome>,
 }
 
-/// A selected generic Text fill shared by a writer and its existing text checkpoint.
+#[derive(Debug, Clone, Default)]
+struct ClassEdgeLabelOutcome {
+    capabilities: BTreeSet<ThemeCapability>,
+    residual: Option<FamilyThemeResidualReason>,
+}
+
+/// A selected text fill shared by a writer and its existing text checkpoint.
 #[derive(Debug, Clone)]
 pub(crate) struct ClassTextPaint {
     rule_index: usize,
@@ -173,35 +187,80 @@ impl ClassTextThemePlan {
         for &rule_index in shadowed.keys() {
             text_rules.entry(rule_index).or_insert(None);
         }
+        let select_paint =
+            |theme, style: &crate::diagram_theme::ResolvedThemeStyle, targets: &[ThemeTarget]| {
+                crate::family::resolve_direct_static_fill(
+                    theme,
+                    style,
+                    targets,
+                    crate::family::DirectStaticSelectorDomain::Default,
+                )
+                .map(|paint| {
+                    let (css, rule_index, _) = paint.into_parts();
+                    ClassTextPaint {
+                        rule_index,
+                        style: format!("color:{css} !important;fill:{css} !important;"),
+                        css: css.into_string(),
+                    }
+                })
+            };
         let selected = theme.and_then(|theme| {
-            crate::family::resolve_direct_static_fill(
+            select_paint(
                 theme,
                 static_style.as_ref().expect("theme has a static style"),
                 &[ThemeTarget::Text],
-                crate::family::DirectStaticSelectorDomain::Default,
             )
-            .map(|paint| {
-                let (css, rule_index, _) = paint.into_parts();
-                ClassTextPaint {
-                    rule_index,
-                    style: format!("color:{css} !important;fill:{css} !important;"),
-                    css: css.into_string(),
-                }
-            })
         });
         let owned = |paths: &[&str]| {
             paths
                 .iter()
                 .any(|path| effective_config.config_paint_overrides_typed_default(path))
         };
-        let edge_paint = (!owned(&[
+        let edge_fill_config_owned = owned(&[
             "themeVariables.classText",
             "themeVariables.primaryTextColor",
             "themeVariables.textColor",
-        ]))
-        .then(|| selected.clone())
-        .flatten();
-        let note_paint = (!owned(&["themeVariables.noteTextColor"]))
+        ]);
+        let svg_note_paint = (!edge_fill_config_owned)
+            .then(|| selected.clone())
+            .flatten();
+        let edge_paint = (!edge_fill_config_owned)
+            .then(|| {
+                theme.and_then(|theme| {
+                    let mut style = static_style
+                        .as_ref()
+                        .expect("theme has a static style")
+                        .clone();
+                    // ResolvedProperty::merge_from preserves rule-index order, as does
+                    // text_style_with_work_meter; this is not a role-specific overlay.
+                    style.merge_from(&theme.style(
+                        ThemeTarget::EdgeLabel,
+                        ThemeVariant::Default,
+                        None,
+                    ));
+                    select_paint(theme, &style, &[ThemeTarget::Text, ThemeTarget::EdgeLabel])
+                })
+            })
+            .flatten();
+        let edge_label_theme = theme
+            .filter(|theme| {
+                theme.family_mechanism_routes().iter().any(|route| {
+                    matches!(
+                        route.mechanism(),
+                        FamilyThemeMechanism::RuleFacet {
+                            target: ThemeTarget::EdgeLabel,
+                            ..
+                        } | FamilyThemeMechanism::OrdinalPalette {
+                            target: ThemeTarget::EdgeLabel
+                        } | FamilyThemeMechanism::EffectBinding {
+                            target: ThemeTarget::EdgeLabel,
+                            ..
+                        }
+                    )
+                })
+            })
+            .cloned();
+        let html_note_paint = (!owned(&["themeVariables.noteTextColor"]))
             .then(|| selected.clone())
             .flatten();
         let inherited_font_stack =
@@ -267,7 +326,10 @@ impl ClassTextThemePlan {
                 .filter_map(|(index, shadowed)| shadowed.then_some(index))
                 .collect(),
             edge_paint,
-            note_paint,
+            edge_label_theme,
+            edge_fill_config_owned,
+            html_note_paint,
+            svg_note_paint,
             inherited_font_stack,
             layout_font_family_css: layout_font_family_css.into_boxed_str(),
             font_size_px,
@@ -304,8 +366,12 @@ impl ClassTextThemePlan {
     pub(crate) fn common_css(&self) -> &crate::svg::PreparedCommonCss {
         &self.common_css
     }
-    pub(crate) fn note_paint(&self) -> Option<&ClassTextPaint> {
-        self.note_paint.as_ref()
+    pub(crate) fn note_paint(&self, use_html_labels: bool) -> Option<&ClassTextPaint> {
+        if use_html_labels {
+            self.html_note_paint.as_ref()
+        } else {
+            self.svg_note_paint.as_ref()
+        }
     }
     pub(crate) fn bind_text_paints(
         &self,
@@ -313,7 +379,7 @@ impl ClassTextThemePlan {
         nodes: impl IntoIterator<Item = (impl AsRef<str>, Option<usize>)>,
         namespace: Option<(usize, &str)>,
         diagram_title: Option<(usize, &str)>,
-        note_ids: impl IntoIterator<Item = impl AsRef<str>>,
+        notes: impl IntoIterator<Item = (impl AsRef<str>, bool)>,
     ) {
         let generic = |rule| self.text_rules.contains_key(&rule).then_some(rule);
         receipt
@@ -322,15 +388,16 @@ impl ClassTextThemePlan {
                 rule.and_then(generic)
                     .map(|rule| (id.as_ref().into(), rule))
             }));
-        if let Some(paint) = &self.note_paint {
-            receipt.node_paints.extend(
-                note_ids
-                    .into_iter()
-                    .map(|id| (id.as_ref().into(), paint.rule_index)),
-            );
-        }
+        receipt
+            .node_paints
+            .extend(notes.into_iter().filter_map(|(id, use_html_labels)| {
+                self.note_paint(use_html_labels)
+                    .map(|paint| (id.as_ref().into(), paint.rule_index))
+            }));
         receipt.namespace_paint = namespace.and_then(|(rule, _)| generic(rule));
         receipt.edge_paint = self.edge_paint.as_ref().map(|paint| paint.rule_index);
+        receipt.edge_label_theme.clone_from(&self.edge_label_theme);
+        receipt.edge_fill_config_owned = self.edge_fill_config_owned;
         receipt.title_paint = diagram_title.and_then(|(rule, _)| generic(rule));
     }
 
@@ -348,6 +415,7 @@ impl ClassTextThemePlan {
 
     pub(crate) fn requires_text_outcomes(&self) -> bool {
         !self.text_rules.is_empty()
+            || self.edge_label_theme.is_some()
             || self.inherited_font_stack.typed_font_stack_active()
             || self.typed_font_size_active
             || self
@@ -530,6 +598,38 @@ impl ClassTextThemePlan {
                     evidence.mark_applied_with_capabilities(key, [capability]);
                 } else {
                     evidence.mark_not_applicable(key);
+                }
+            }
+            if let Some(theme) = &self.edge_label_theme {
+                for route in theme.family_mechanism_routes() {
+                    if !matches!(
+                        route.mechanism(),
+                        FamilyThemeMechanism::RuleFacet {
+                            target: ThemeTarget::EdgeLabel,
+                            ..
+                        } | FamilyThemeMechanism::OrdinalPalette {
+                            target: ThemeTarget::EdgeLabel
+                        } | FamilyThemeMechanism::EffectBinding {
+                            target: ThemeTarget::EdgeLabel,
+                            ..
+                        }
+                    ) {
+                        continue;
+                    }
+                    let key = theme.family_mechanism_key(*route);
+                    match receipt.edge_label_outcomes.get(&key) {
+                        Some(outcome) if outcome.residual.is_some() => {
+                            evidence
+                                .mark_residual(key, outcome.residual.expect("guarded residual"));
+                        }
+                        Some(outcome) if !outcome.capabilities.is_empty() => {
+                            evidence.mark_applied_with_capabilities(
+                                key,
+                                outcome.capabilities.iter().copied(),
+                            );
+                        }
+                        _ => evidence.mark_not_applicable(key),
+                    }
                 }
             }
         }
@@ -780,6 +880,15 @@ impl ClassTextTerminalFacts {
         }
     }
 
+    pub(crate) fn fixed_font_size_html(fragment: &str) -> Self {
+        let visible = crate::text::VisibleTextStyleFacts::from_xhtml_fragment(fragment);
+        let mut facts = Self::from_visible_style_facts(&visible);
+        facts.layout_inherited_size_runs = 0;
+        facts.writer_inherited_size_runs = 0;
+        facts.fully_inherited_size_runs = 0;
+        facts
+    }
+
     pub(crate) fn from_visible_style_facts(facts: &crate::text::VisibleTextStyleFacts) -> Self {
         if !facts.parse_valid() {
             return Self {
@@ -868,16 +977,129 @@ impl ClassTextOutcomes {
     pub(crate) fn record_namespace(&mut self, _id: &str, facts: ClassTextTerminalFacts) {
         self.record(self.namespace_paint, facts);
     }
-    pub(crate) fn record_edge_label(&mut self, _id: &str, facts: ClassTextTerminalFacts) {
-        self.record(self.edge_paint, facts);
+    pub(crate) fn record_edge_label(
+        &mut self,
+        ordinal: usize,
+        facts: ClassTextTerminalFacts,
+        work_meter: &OperationWorkMeter,
+    ) -> Result<(), OperationWorkError> {
+        self.record_relation_label(ordinal, facts, work_meter)
     }
     pub(crate) fn record_cardinality(
         &mut self,
-        _id: &str,
+        ordinal: usize,
         _slot: usize,
         facts: ClassTextTerminalFacts,
-    ) {
-        self.record(self.edge_paint, facts);
+        work_meter: &OperationWorkMeter,
+    ) -> Result<(), OperationWorkError> {
+        self.record_relation_label(ordinal, facts, work_meter)
+    }
+
+    /// Central text and cardinalities share the semantic relation's source ordinal.
+    fn record_relation_label(
+        &mut self,
+        ordinal: usize,
+        facts: ClassTextTerminalFacts,
+        work_meter: &OperationWorkMeter,
+    ) -> Result<(), OperationWorkError> {
+        let Some(theme) = &self.edge_label_theme else {
+            self.record(self.edge_paint, facts);
+            return Ok(());
+        };
+        if facts.visible_runs == 0 {
+            self.facts.merge(facts);
+            return Ok(());
+        }
+        let style = theme.text_style_with_work_meter(
+            ThemeTarget::EdgeLabel,
+            ThemeVariant::Default,
+            Some(ordinal),
+            work_meter,
+        )?;
+        let winners = style.winner_rule_properties().collect::<BTreeMap<_, _>>();
+        let fill_owned = self.edge_fill_config_owned || facts.source_owns_every_visible_run();
+        let generic_fill = style
+            .fill_resolution()
+            .winner()
+            .filter(|winner| winner.target() == ThemeTarget::Text && !fill_owned)
+            .map(|winner| winner.rule_index());
+        work_meter.charge(theme.family_mechanism_routes().len())?;
+        for route in theme.family_mechanism_routes() {
+            let reason = match route.mechanism() {
+                FamilyThemeMechanism::RuleFacet {
+                    rule_index,
+                    target: ThemeTarget::EdgeLabel,
+                    facet,
+                    ..
+                } => {
+                    let property = resolved_style_property_for_facet(facet);
+                    if winners.get(&property).is_none_or(|winner| {
+                        winner.target() != ThemeTarget::EdgeLabel
+                            || winner.rule_index() != rule_index
+                    }) || (property == ResolvedStyleProperty::Fill && fill_owned)
+                    {
+                        continue;
+                    }
+                    if route.disposition() == FamilyThemeDisposition::TypedAdapter
+                        && let FamilyThemeRuleFacet::Fill(
+                            kind
+                            @ (FamilyThemePaintKind::Solid | FamilyThemePaintKind::Transparent),
+                        ) = facet
+                        && facts.has_verified_inherited_paint()
+                        && facts.paint_observation == Some((rule_index, true))
+                    {
+                        self.edge_label_outcomes
+                            .entry(theme.family_mechanism_key(*route))
+                            .or_default()
+                            .capabilities
+                            .insert(if kind == FamilyThemePaintKind::Transparent {
+                                ThemeCapability::TransparentPaint
+                            } else {
+                                ThemeCapability::SolidPaint
+                            });
+                        continue;
+                    }
+                    unsupported_residual_for_facet(facet)
+                }
+                FamilyThemeMechanism::OrdinalPalette {
+                    target: ThemeTarget::EdgeLabel,
+                } if !fill_owned
+                    && matches!(style.fill_resolution().specified(), Specified::Unspecified)
+                    && theme
+                        .series_color(ThemeTarget::EdgeLabel, ordinal)
+                        .is_some() =>
+                {
+                    FamilyThemeResidualReason::UnsupportedOrdinalPalette
+                }
+                FamilyThemeMechanism::EffectBinding {
+                    target: ThemeTarget::EdgeLabel,
+                    ..
+                } => {
+                    let Some(ResolvedThemeEffect::Binding { binding, .. }) =
+                        theme.resolve_effect(ThemeTarget::EdgeLabel, style.effect_resolution())
+                    else {
+                        continue;
+                    };
+                    if theme.family_mechanism_key(*route)
+                        != (FamilyThemeMechanismKey::EffectBinding {
+                            target: binding.target(),
+                            effect_id: binding.effect_id().to_owned(),
+                        })
+                    {
+                        continue;
+                    }
+                    FamilyThemeResidualReason::UnsupportedEffect
+                }
+                _ => continue,
+            };
+            self.edge_label_outcomes
+                .entry(theme.family_mechanism_key(*route))
+                .or_default()
+                .residual
+                .get_or_insert(reason);
+        }
+        self.record(generic_fill, facts);
+        Ok(())
     }
     pub(crate) fn record_diagram_title(&mut self, facts: ClassTextTerminalFacts) {
         self.record(self.title_paint, facts);
@@ -912,6 +1134,53 @@ impl ClassTextOutcomes {
 mod tests {
     use super::*;
     use serde_json::json;
+
+    #[test]
+    fn edge_label_static_paint_uses_the_shared_text_resolver_author_order() {
+        use crate::diagram_theme::{
+            CanvasPaint, DiagramThemeCompiler, DiagramThemeSpec, ThemeRule, ThemeRuleSet,
+            ThemeStylePatch,
+        };
+
+        for local_last in [false, true] {
+            let local = ThemeRule::new(
+                ThemeTarget::EdgeLabel,
+                ThemeStylePatch::default().with_fill(CanvasPaint::solid("#b4236b").unwrap()),
+            );
+            let shared = ThemeRule::new(
+                ThemeTarget::Text,
+                ThemeStylePatch::default().with_fill(CanvasPaint::solid("#246801").unwrap()),
+            );
+            let [first, second] = if local_last {
+                [shared, local]
+            } else {
+                [local, shared]
+            };
+            let theme = DiagramThemeCompiler::new()
+                .compile(
+                    DiagramThemeSpec::new()
+                        .with_styles(ThemeRuleSet::default().with_rule(first).with_rule(second)),
+                )
+                .unwrap()
+                .resolve(crate::DiagramFamilyId::CLASS);
+            let config = merman_model::presentation::PresentationConfig::empty_object();
+            let plan = ClassTextThemePlan::resolve(Some(&theme), &config);
+            let style = theme.text_style(ThemeTarget::EdgeLabel, ThemeVariant::Default, None);
+            let expected = crate::family::resolve_direct_static_fill(
+                &theme,
+                &style,
+                &[ThemeTarget::Text, ThemeTarget::EdgeLabel],
+                crate::family::DirectStaticSelectorDomain::Default,
+            )
+            .unwrap();
+            let paint = plan.edge_paint().unwrap();
+            assert_eq!(paint.rule_index, expected.rule_index());
+            assert_eq!(paint.css, expected.css());
+            assert_eq!(paint.css, if local_last { "#b4236b" } else { "#246801" });
+            assert_eq!(plan.note_paint(false).unwrap().css, "#246801");
+            assert_eq!(plan.note_paint(true).unwrap().css, "#246801");
+        }
+    }
 
     #[test]
     fn root_size_residuals_follow_the_actual_class_label_transport() {

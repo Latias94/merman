@@ -669,6 +669,7 @@ pub(crate) fn prepare_sequence_diagram_typed_with_title_and_work_meter(
         mut nodes,
         edges,
         block_layouts_by_id,
+        activation_geometry,
         bottom_box_top_y,
         box_height,
         bounds_start_x,
@@ -771,13 +772,6 @@ pub(crate) fn prepare_sequence_diagram_typed_with_title_and_work_meter(
 
     let math_sidecar = math_sidecar_builder.finish()?;
     checkpoints.checkpoint()?;
-    let activation_geometry = SequencePreparedActivationGeometry::prepare(
-        model,
-        &nodes,
-        &edges,
-        typography.compat_binding().svg_activation_width,
-        checkpoints,
-    )?;
     let activation_theme = SequencePreparedStaticRectTheme::resolve(
         resolved_theme,
         crate::diagram_theme::ThemeTarget::Activation,

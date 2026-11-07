@@ -403,8 +403,9 @@ const classRules = {
 
   _class_identifier: ($) => choice(
     $.identifier,
+    alias($._class_compact_identifier, $.identifier),
     token(prec(5, choice(
-      seq('`', /[^`]+/, '`'),
+      seq('`', /[^`]+/, '`', optional(/~[^~\r\n]+~/)),
       /[0-9][A-Za-z0-9_.\-\u00c0-\uffff]*(?:~[^~\r\n]+~)?/,
       /[A-Za-z_\u00c0-\uffff][A-Za-z0-9_\-\u00c0-\uffff]*\.[A-Za-z0-9_.\-\u00c0-\uffff]+(?:~[^~\r\n]+~)?/,
       /[A-Za-z_\u00c0-\uffff][A-Za-z0-9_.\-\u00c0-\uffff]*~[^~\r\n]+~/,
@@ -416,8 +417,9 @@ const classRules = {
       token.immediate(/[A-Za-z_\u00c0-\uffff][A-Za-z0-9_\-\u00c0-\uffff]*/),
       $.identifier,
     ),
+    alias($._class_compact_identifier, $.identifier),
     token.immediate(prec(5, choice(
-      seq('`', /[^`]+/, '`'),
+      seq('`', /[^`]+/, '`', optional(/~[^~\r\n]+~/)),
       /[0-9][A-Za-z0-9_.\-\u00c0-\uffff]*(?:~[^~\r\n]+~)?/,
       /[A-Za-z_\u00c0-\uffff][A-Za-z0-9_\-\u00c0-\uffff]*\.[A-Za-z0-9_.\-\u00c0-\uffff]+(?:~[^~\r\n]+~)?/,
       /[A-Za-z_\u00c0-\uffff][A-Za-z0-9_.\-\u00c0-\uffff]*~[^~\r\n]+~/,

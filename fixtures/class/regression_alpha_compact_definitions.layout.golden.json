@@ -1,0 +1,145 @@
+{
+  "diagramType": "classDiagram",
+  "layout": {
+    "ClassDiagramV2": {
+      "bounds": {
+        "max_x": 186.547,
+        "max_y": 366.0,
+        "min_x": 0.0,
+        "min_y": 0.0
+      },
+      "clusters": [],
+      "edges": [
+        {
+          "end_label_left": null,
+          "end_label_right": null,
+          "end_marker": null,
+          "from": "A",
+          "from_cluster": null,
+          "id": "0",
+          "label": null,
+          "points": [
+            {
+              "x": 39.23,
+              "y": 239.0
+            },
+            {
+              "x": 39.23,
+              "y": 264.0
+            },
+            {
+              "x": 39.23,
+              "y": 289.0
+            }
+          ],
+          "start_label_left": null,
+          "start_label_right": null,
+          "start_marker": null,
+          "stroke_dasharray": null,
+          "to": "B",
+          "to_cluster": null
+        },
+        {
+          "end_label_left": null,
+          "end_label_right": null,
+          "end_marker": null,
+          "from": "interface0",
+          "from_cluster": null,
+          "id": "1",
+          "label": null,
+          "points": [
+            {
+              "x": 153.337,
+              "y": 47.0
+            },
+            {
+              "x": 153.337,
+              "y": 102.0
+            },
+            {
+              "x": 153.337,
+              "y": 144.5
+            }
+          ],
+          "start_label_left": null,
+          "start_label_right": null,
+          "start_marker": null,
+          "stroke_dasharray": null,
+          "to": "Service",
+          "to_cluster": null
+        },
+        {
+          "end_label_left": null,
+          "end_label_right": null,
+          "end_marker": null,
+          "from": "Box",
+          "from_cluster": null,
+          "id": "2",
+          "label": null,
+          "points": [
+            {
+              "x": 39.23,
+              "y": 77.0
+            },
+            {
+              "x": 39.23,
+              "y": 102.0
+            },
+            {
+              "x": 39.23,
+              "y": 127.0
+            }
+          ],
+          "start_label_left": null,
+          "start_label_right": null,
+          "start_marker": null,
+          "stroke_dasharray": null,
+          "to": "A",
+          "to_cluster": null
+        }
+      ],
+      "nodes": [
+        {
+          "height": 112.0,
+          "id": "A",
+          "is_cluster": false,
+          "width": 61.794,
+          "x": 39.23,
+          "y": 183.0
+        },
+        {
+          "height": 77.0,
+          "id": "B",
+          "is_cluster": false,
+          "width": 32.4,
+          "x": 39.23,
+          "y": 327.5
+        },
+        {
+          "height": 77.0,
+          "id": "Service",
+          "is_cluster": false,
+          "width": 66.42,
+          "x": 153.337,
+          "y": 183.0
+        },
+        {
+          "height": 77.0,
+          "id": "Box",
+          "is_cluster": false,
+          "width": 78.46,
+          "x": 39.23,
+          "y": 38.5
+        },
+        {
+          "height": 17.0,
+          "id": "interface0",
+          "is_cluster": false,
+          "width": 46.62,
+          "x": 153.337,
+          "y": 38.5
+        }
+      ]
+    }
+  }
+}

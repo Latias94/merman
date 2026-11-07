@@ -710,6 +710,8 @@ fn render_class_node_id<O: SvgOutput>(
     };
 
     if let Some(note) = ctx.note_by_id.get(n.id.as_str()).copied() {
+        let use_html_labels =
+            settings.diagram_use_html_labels || crate::math::contains_delimited_math(&note.text);
         let stats = render_class_note_node(
             ClassNoteRenderState {
                 out,
@@ -724,10 +726,9 @@ fn render_class_node_id<O: SvgOutput>(
                 measurer: ctx.measurer,
                 text_style: settings.text_style(),
                 line_height: settings.line_height,
-                use_html_labels: settings.diagram_use_html_labels
-                    || crate::math::contains_delimited_math(&note.text),
+                use_html_labels,
                 mermaid_config: ctx.mermaid_config,
-                text_paint: ctx.typography_theme.note_paint(),
+                text_paint: ctx.typography_theme.note_paint(use_html_labels),
                 css_binding: ctx.typography_theme.css_binding(),
                 math_renderer: ctx.math_renderer,
                 look: settings.look.as_str(),

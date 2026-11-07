@@ -1493,6 +1493,7 @@ fn class_box_dimensions(
 
     fn wrap_class_svg_text_like_mermaid(
         text: &str,
+        probe_text: &str,
         measurer: &dyn TextMeasurer,
         style: &TextStyle,
         probe_style: &TextStyle,
@@ -1501,7 +1502,7 @@ fn class_box_dimensions(
     ) -> String {
         let Some(wrap_width_px) = mermaid_class_svg_create_text_width_px(
             measurer,
-            text,
+            probe_text,
             probe_style,
             wrap_probe_font_size,
         ) else {
@@ -1654,6 +1655,7 @@ fn class_box_dimensions(
             let wrapped = if matches!(wrap_mode, WrapMode::SvgLike | WrapMode::SvgLikeSingleRun) {
                 wrap_class_svg_text_like_mermaid(
                     text,
+                    text,
                     measurer,
                     style,
                     html_calc_text_style,
@@ -1711,12 +1713,18 @@ fn class_box_dimensions(
         }
     }
 
-    // Title parsing precedes the bolder role and the conditional literal fallback.
-    let title_text = if use_html_labels {
+    // shapeUtil sanitizes the createText input but retains the source for its width probe
+    // and conditional literal fallback. Keep entities encoded until textContent emission.
+    let title_source = if use_html_labels {
         node.text.trim().to_string()
     } else {
         let source = node.text.trim();
         source.strip_prefix('\\').unwrap_or(source).to_string()
+    };
+    let title_text = if use_html_labels {
+        title_source.clone()
+    } else {
+        merman_markup::sanitize::sanitize_text(&title_source, mermaid_config.as_config())
     };
     // Both pinned shapeUtil implementations apply bolder after createText wrapping.
     let title_markdown_analysis =
@@ -1728,6 +1736,7 @@ fn class_box_dimensions(
     {
         wrap_class_svg_text_like_mermaid(
             &title_text,
+            &title_source,
             measurer,
             text_style,
             html_calc_text_style,
@@ -1738,7 +1747,7 @@ fn class_box_dimensions(
         title_text.clone()
     };
     let svg_title =
-        (!use_html_labels).then(|| ClassSvgTitleLabel::new(&title_text, &wrapped_title_text));
+        (!use_html_labels).then(|| ClassSvgTitleLabel::new(&title_source, &wrapped_title_text));
     let title_max_width_px = use_html_labels.then(|| {
         class_html_create_text_width_px(title_text.as_str(), measurer, html_calc_text_style).max(1)
     });
@@ -2619,6 +2628,49 @@ fn label_metrics(
     (m.width.max(0.0), m.height.max(0.0))
 }
 
+pub(crate) fn class_cardinality_html_fragment(
+    text: &str,
+    mermaid_config: &merman_model::presentation::PresentationConfig,
+) -> String {
+    // Reuse createText's non-Markdown HTML projection. The sanitized model still contains
+    // serialized entities; the XHTML parser owns their single decoding step.
+    let html = crate::graph_label::flowchart_label_html_source(text, "text", mermaid_config);
+    merman_markup::sanitize::sanitize_xhtml(&html, mermaid_config.as_config())
+}
+
+fn class_cardinality_label_metrics(
+    text: &str,
+    measurer: &dyn TextMeasurer,
+    text_style: &TextStyle,
+    wrap_mode: WrapMode,
+    mermaid_config: &merman_model::presentation::PresentationConfig,
+    math_renderer: Option<&(dyn MathRenderer + Send + Sync)>,
+) -> (f64, f64) {
+    if !matches!(wrap_mode, WrapMode::HtmlLike) || text.trim().is_empty() {
+        return label_metrics(text, measurer, text_style, wrap_mode, mermaid_config, None);
+    }
+    let decoded = decode_entities_minimal(text);
+    let metrics = class_math_label_metrics(
+        &decoded,
+        measurer,
+        text_style,
+        None,
+        mermaid_config,
+        math_renderer,
+    )
+    .unwrap_or_else(|| {
+        let xhtml = class_cardinality_html_fragment(text, mermaid_config);
+        crate::text::measure_xhtml_label_fragment(
+            measurer,
+            &xhtml,
+            text_style,
+            None,
+            WrapMode::HtmlLike,
+        )
+    });
+    (metrics.width.max(0.0), metrics.height.max(0.0))
+}
+
 fn prepare_edge_title(
     text: &str,
     measurer: &dyn TextMeasurer,
@@ -3035,7 +3087,7 @@ fn measure_class_diagram(
             .then_some(math_renderer)
             .flatten();
 
-        let (srw, srh) = label_metrics(
+        let (srw, srh) = class_cardinality_label_metrics(
             &start_text,
             measurer,
             &cardinality_text_style,
@@ -3043,7 +3095,7 @@ fn measure_class_diagram(
             mermaid_config,
             terminal_math_renderer,
         );
-        let (elw, elh) = label_metrics(
+        let (elw, elh) = class_cardinality_label_metrics(
             &end_text,
             measurer,
             &cardinality_text_style,

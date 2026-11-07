@@ -5,7 +5,7 @@ use super::nodes::{
     ClassNodesRenderContext, ClassNodesRenderState, render_class_elk_adapter_dom,
     render_class_render_tree,
 };
-use super::root::{CLASS_GRAPH_MARGIN_PX, begin_class_svg_document};
+use super::root::{CLASS_GRAPH_MARGIN_PX, write_class_svg_document};
 use super::viewbox::{ClassViewBoxContext, class_viewbox};
 use super::*;
 
@@ -54,7 +54,13 @@ pub(in crate::svg::parity) fn render_class_diagram_svg_model_with_config(
             node_visual_plan.label_paints(),
             relation_theme.namespace_title_terminal(),
             relation_theme.diagram_title_terminal(),
-            model.notes().map(|note| note.id),
+            model.notes().map(|note| {
+                (
+                    note.id,
+                    settings.diagram_use_html_labels
+                        || crate::math::contains_delimited_math(&note.text),
+                )
+            }),
         );
     }
     let marker_expectations = if relation_theme.typed_stroke().is_some() {
@@ -82,13 +88,6 @@ pub(in crate::svg::parity) fn render_class_diagram_svg_model_with_config(
     let mut out = BoundedSvgOutput::new(options.work_meter());
     let root_context =
         root_svg::RootViewportContext::new(crate::DiagramFamilyId::CLASS, diagram_id);
-    let document = begin_class_svg_document(
-        &mut out,
-        model,
-        diagram_id,
-        aria_roledescription,
-        &root_context,
-    )?;
     emit.checkpoint()?;
 
     // Mermaid emits a single `<style>` element with diagram-scoped CSS.
@@ -363,15 +362,28 @@ pub(in crate::svg::parity) fn render_class_diagram_svg_model_with_config(
     drop(viewbox_guard);
     let finalize_guard = timing.section(&mut timings.finalize_svg);
 
-    let final_root_spec =
-        root_svg::RootViewportSpec::responsive(root_svg::DiagramBounds::from_view_box(
+    let final_root_spec = root_svg::RootViewportSpec::mermaid(
+        root_svg::DiagramBounds::from_view_box(
             view_box.min_x,
             view_box.min_y,
             view_box.width,
             view_box.height,
-        ))
-        .with_max_width(root_svg::RootMaxWidth::CssSixSignificant(view_box.width));
-    let root_document = root_context.finish_document(&mut out, document.root, final_root_spec)?;
+        ),
+        settings.use_max_width,
+    )
+    .with_max_width(root_svg::RootMaxWidth::CssSixSignificant(view_box.width));
+    // Fixed sizing needs the final dimensions when the root is opened. Build its small
+    // prefix after measuring content rather than changing a deferred document's sizing mode.
+    let mut prefix = BoundedSvgOutput::new(options.work_meter());
+    let root_document = write_class_svg_document(
+        &mut prefix,
+        model,
+        diagram_id,
+        aria_roledescription,
+        &root_context,
+        final_root_spec,
+    )?;
+    out.replace_range(0..0, &prefix.finish()?)?;
 
     out.push_str("</svg>");
     let out = out.finish()?;

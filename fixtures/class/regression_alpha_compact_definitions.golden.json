@@ -1,0 +1,186 @@
+{
+  "diagramType": "classDiagram",
+  "model": {
+    "accDescr": null,
+    "accTitle": null,
+    "classes": {
+      "A": {
+        "annotations": [],
+        "callback": null,
+        "callbackEffective": false,
+        "cssClasses": "default first",
+        "domId": "classId-A-0",
+        "haveCallback": false,
+        "id": "A",
+        "label": "A",
+        "link": null,
+        "linkTarget": null,
+        "members": [],
+        "methods": [
+          {
+            "classifier": "",
+            "cssStyle": "",
+            "displayText": "+run()",
+            "id": "run",
+            "memberType": "method",
+            "parameters": "",
+            "returnType": "",
+            "visibility": "+"
+          }
+        ],
+        "parent": null,
+        "styles": [
+          "fill:#edf4ff",
+          "stroke:#315b8a"
+        ],
+        "text": "A",
+        "tooltip": null,
+        "type": ""
+      },
+      "B": {
+        "annotations": [],
+        "callback": null,
+        "callbackEffective": false,
+        "cssClasses": "default second",
+        "domId": "classId-B-1",
+        "haveCallback": false,
+        "id": "B",
+        "label": "B",
+        "link": null,
+        "linkTarget": null,
+        "members": [],
+        "methods": [],
+        "parent": null,
+        "styles": [
+          "fill:#edf4ff",
+          "stroke:#315b8a"
+        ],
+        "text": "B",
+        "tooltip": null,
+        "type": ""
+      },
+      "Box": {
+        "annotations": [],
+        "callback": null,
+        "callbackEffective": false,
+        "cssClasses": "default",
+        "domId": "classId-Box-3",
+        "haveCallback": false,
+        "id": "Box",
+        "label": "Container",
+        "link": null,
+        "linkTarget": null,
+        "members": [],
+        "methods": [],
+        "parent": null,
+        "styles": [],
+        "text": "Container<T>",
+        "tooltip": null,
+        "type": "T"
+      },
+      "Service": {
+        "annotations": [],
+        "callback": null,
+        "callbackEffective": false,
+        "cssClasses": "default",
+        "domId": "classId-Service-2",
+        "haveCallback": false,
+        "id": "Service",
+        "label": "Service",
+        "link": null,
+        "linkTarget": null,
+        "members": [],
+        "methods": [],
+        "parent": null,
+        "styles": [],
+        "text": "Service",
+        "tooltip": null,
+        "type": ""
+      }
+    },
+    "constants": {
+      "lineType": {
+        "dottedLine": 1,
+        "line": 0
+      },
+      "relationType": {
+        "aggregation": 0,
+        "composition": 2,
+        "dependency": 3,
+        "extension": 1,
+        "lollipop": 4,
+        "none": -1
+      }
+    },
+    "direction": "TB",
+    "interfaces": [
+      {
+        "classId": "Service",
+        "id": "interface0",
+        "label": "IService"
+      }
+    ],
+    "namespaces": {},
+    "notes": [],
+    "relations": [
+      {
+        "id": "0",
+        "id1": "A",
+        "id2": "B",
+        "relation": {
+          "lineType": 0,
+          "type1": 2,
+          "type2": -1
+        },
+        "relationTitle1": "none",
+        "relationTitle2": "none",
+        "title": ""
+      },
+      {
+        "id": "1",
+        "id1": "interface0",
+        "id2": "Service",
+        "relation": {
+          "lineType": 0,
+          "type1": 4,
+          "type2": -1
+        },
+        "relationTitle1": "none",
+        "relationTitle2": "none",
+        "title": ""
+      },
+      {
+        "id": "2",
+        "id1": "Box",
+        "id2": "A",
+        "relation": {
+          "lineType": 0,
+          "type1": -1,
+          "type2": 3
+        },
+        "relationTitle1": "none",
+        "relationTitle2": "none",
+        "title": ""
+      }
+    ],
+    "styleClasses": {
+      "first": {
+        "id": "first",
+        "styles": [
+          "fill:#edf4ff",
+          "stroke:#315b8a"
+        ],
+        "textStyles": []
+      },
+      "second": {
+        "id": "second",
+        "styles": [
+          "fill:#edf4ff",
+          "stroke:#315b8a"
+        ],
+        "textStyles": []
+      }
+    },
+    "type": "classDiagram"
+  }
+}

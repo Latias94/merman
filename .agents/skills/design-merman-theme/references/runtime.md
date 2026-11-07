@@ -24,6 +24,19 @@ reuse the repository target directory, and coordinate with other workers before 
 Use the build owner's optimizer/toolchain requirements rather than a private engine adapter or a
 weaker release build. These commands prepare artifacts; they do not publish packages.
 
+## Appearance and viewer backing
+
+The current theme input selects one concrete theme. For a pair, the host selects the light or
+dark recipe/preset before headless export; automatic system-preference resolution belongs to
+the host. Record the selection and concrete export appearance separately from viewer backing
+and any root/output background policy in the existing render conditions or local note.
+
+Render each saved recipe through the same helper with the same source/configuration and distinct
+output names and sidecars. Inspect the actual exports: changing viewer backing neither rerenders
+nor changes image paint. For intentional transparency, record the receiving background and review
+the composite, including any remaining family-owned backdrops. Follow the paired checks in
+[review.md](review.md#representative-scenes); no additional harness or report format is needed.
+
 ## Invoke the existing helper
 
 Paths below start at the Merman root. Replace `ENGINE` with the selected entry and create the

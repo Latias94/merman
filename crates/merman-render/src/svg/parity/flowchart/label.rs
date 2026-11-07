@@ -1,5 +1,18 @@
 //! Flowchart label rendering helpers (HTML/SVG text).
 
+use std::fmt::Write as _;
+
+pub(in crate::svg::parity::flowchart) fn append_typed_label_fill(style: &mut String, fill: &str) {
+    if !style.is_empty() {
+        style.push(';');
+    }
+    let _ = write!(
+        style,
+        "fill:{fill} !important;color:{} !important",
+        if fill == "none" { "transparent" } else { fill }
+    );
+}
+
 #[cfg(test)]
 use crate::graph_label::{
     is_single_img_label, normalize_flowchart_img_tags, starts_with_ascii_case_insensitive,
@@ -173,15 +186,28 @@ pub(in crate::svg::parity) fn write_flowchart_svg_text_markdown_wrapped_centered
     measurer: &dyn crate::text::TextMeasurer,
     style: &crate::text::TextStyle,
     max_width_px: Option<f64>,
+    extra_style: Option<&str>,
 ) {
-    crate::svg::parity::label::write_svg_text_markdown_wrapped_centered_from_create_text_source(
-        out,
-        markdown,
-        include_style,
-        measurer,
-        style,
-        max_width_px,
-    );
+    if let Some(extra_style) = extra_style {
+        crate::svg::parity::label::write_svg_text_markdown_wrapped_from_create_text_source_with_style(
+            out,
+            markdown,
+            extra_style,
+            measurer,
+            style,
+            max_width_px,
+            true,
+        );
+    } else {
+        crate::svg::parity::label::write_svg_text_markdown_wrapped_centered_from_create_text_source(
+            out,
+            markdown,
+            include_style,
+            measurer,
+            style,
+            max_width_px,
+        );
+    }
 }
 
 pub(in crate::svg::parity) fn write_flowchart_svg_text_markdown_wrapped(

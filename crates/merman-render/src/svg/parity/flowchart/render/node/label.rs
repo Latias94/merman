@@ -4,7 +4,7 @@ use crate::diagram_theme::ThemeTarget;
 use std::fmt::Write as _;
 
 use crate::svg::parity::flowchart::label::{
-    flowchart_label_html_with_prepared_label, flowchart_label_plain_text,
+    append_typed_label_fill, flowchart_label_html_with_prepared_label, flowchart_label_plain_text,
 };
 use crate::svg::parity::flowchart::style::{
     FlowchartCompiledStyles, flowchart_label_div_style_prefix,
@@ -646,17 +646,6 @@ fn render_flowchart_node_label_with_wrapper(
         .with_label_fill_reach(typography_applicable, true)
         .with_html_typography_statuses(html_typography_statuses.0, html_typography_statuses.1)
         .with_text_paint_facts(text_paint_facts)
-}
-
-fn append_typed_label_fill(style: &mut String, fill: &str) {
-    if !style.is_empty() {
-        style.push(';');
-    }
-    let _ = write!(
-        style,
-        "fill:{fill} !important;color:{} !important",
-        if fill == "none" { "transparent" } else { fill }
-    );
 }
 
 fn flowchart_node_label_typography_is_applicable(text: &str, html_labels: bool) -> bool {

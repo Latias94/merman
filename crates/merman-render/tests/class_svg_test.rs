@@ -1358,6 +1358,77 @@ fn class_svg_root_role_comes_from_the_detected_mermaid_diagram_id() {
 }
 
 #[test]
+fn class_svg_root_honors_state_use_max_width_without_changing_view_box() {
+    let diagram =
+        "classDiagram\naccTitle: Account access\naccDescr: Account metadata\nclass Account\n";
+    for layout in ["dagre", "elk"]
+        .into_iter()
+        .filter(|layout| *layout != "elk" || cfg!(feature = "layout-elk"))
+    {
+        let mut view_box: Option<String> = None;
+        for source_owned in [false, true] {
+            for use_max_width in [None, Some(true), Some(false)] {
+                let mut config = json!({"layout": layout});
+                if let Some(value) = use_max_width {
+                    config["state"] = json!({"useMaxWidth": value});
+                }
+                let source = if source_owned {
+                    format!("---\nconfig: {config}\n---\n{diagram}")
+                } else {
+                    diagram.to_owned()
+                };
+                let engine = if source_owned {
+                    MermaidEngine::new()
+                } else {
+                    MermaidEngine::new().with_site_config(
+                        merman_core::presentation::SourcePresentationConfig::from_value(config),
+                    )
+                };
+                let svg = render_class_svg_from_text_with_engine(engine, &source);
+                let document = roxmltree::Document::parse(&svg).unwrap();
+                let root = document.root_element();
+                for (attribute, tag, text) in [
+                    ("aria-labelledby", "title", "Account access"),
+                    ("aria-describedby", "desc", "Account metadata"),
+                ] {
+                    let id = root.attribute(attribute).unwrap();
+                    assert!(root.children().any(|node| {
+                        node.has_tag_name(tag)
+                            && node.attribute("id") == Some(id)
+                            && node.text() == Some(text)
+                    }));
+                }
+                let actual_view_box = root.attribute("viewBox").unwrap();
+                if let Some(expected) = &view_box {
+                    assert_eq!(actual_view_box, expected.as_str());
+                } else {
+                    view_box = Some(actual_view_box.to_owned());
+                }
+                if use_max_width == Some(false) {
+                    let dimensions: Vec<f64> = actual_view_box
+                        .split_whitespace()
+                        .map(|value| value.parse().unwrap())
+                        .collect();
+                    assert_eq!(
+                        root.attribute("width").unwrap().parse::<f64>().unwrap(),
+                        dimensions[2]
+                    );
+                    assert_eq!(
+                        root.attribute("height").unwrap().parse::<f64>().unwrap(),
+                        dimensions[3]
+                    );
+                    assert!(!root.attribute("style").unwrap_or("").contains("max-width"));
+                } else {
+                    assert_eq!(root.attribute("width"), Some("100%"));
+                    assert!(root.attribute("height").is_none());
+                    assert!(root.attribute("style").unwrap().contains("max-width:"));
+                }
+            }
+        }
+    }
+}
+
+#[test]
 fn class_svg_unified_titles_inherit_root_font_size_for_both_detector_aliases() {
     for diagram_keyword in ["classDiagram", "classDiagram-v2"] {
         let source = format!(
@@ -5949,6 +6020,162 @@ fn class_node_label_generic_text_precedence_preserves_source_paint() {
 }
 
 #[test]
+fn class_note_text_paint_uses_the_actual_html_or_svg_color_owner() {
+    let theme = class_edge_rules_theme([ThemeRule::new(
+        ThemeTarget::Text,
+        ThemeStylePatch::default().with_fill(CanvasPaint::solid("#2255aa").unwrap()),
+    )]);
+    for html_labels in [false, true] {
+        for source_owned in [false, true] {
+            for variable in [None, Some("classText"), Some("noteTextColor")] {
+                let variables = variable.map_or_else(
+                    || json!({}),
+                    |key| {
+                        let mut variables = json!({});
+                        variables[key] = json!("#aa1122");
+                        variables
+                    },
+                );
+                let source = if source_owned && variable.is_some() {
+                    format!(
+                        "%%{{init: {{\"themeVariables\": {variables}}}}}%%\nclassDiagram\nnote \"Memo\"\n"
+                    )
+                } else {
+                    "classDiagram\nnote \"Memo\"\n".to_owned()
+                };
+                let mut config = json!({"htmlLabels": html_labels});
+                if !source_owned && variable.is_some() {
+                    config["themeVariables"] = variables;
+                }
+                let rendered = try_render_class_svg_with_theme_and_engine(
+                    &source,
+                    &theme,
+                    legacy_init_theme_compat_engine().with_site_config(
+                        merman_core::presentation::SourcePresentationConfig::from_value(config),
+                    ),
+                )
+                .unwrap();
+                let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+                let label = document
+                    .descendants()
+                    .find(|node| node.attribute("class") == Some("label noteLabel"))
+                    .unwrap();
+                let text = label
+                    .descendants()
+                    .find(|node| node.is_text() && node.text() == Some("Memo"))
+                    .unwrap();
+                let terminal = text
+                    .ancestors()
+                    .find(|node| node.has_tag_name(if html_labels { "span" } else { "text" }))
+                    .unwrap();
+                assert_eq!(
+                    terminal.attribute("class"),
+                    html_labels.then_some("nodeLabel markdown-node-label")
+                );
+                let config_owns_paint = variable
+                    == Some(if html_labels {
+                        "noteTextColor"
+                    } else {
+                        "classText"
+                    });
+                if config_owns_paint {
+                    assert!(
+                        !terminal
+                            .attribute("style")
+                            .unwrap_or("")
+                            .contains("#2255aa")
+                    );
+                    assert!(!label.ancestors().chain(terminal.ancestors()).any(|node| {
+                        node.attribute("style")
+                            .is_some_and(|style| style.contains("#2255aa"))
+                    }));
+                    let css = embedded_stylesheet(rendered.svg());
+                    let selector = if html_labels {
+                        "#merman .noteLabel .nodeLabel,#merman .noteLabel .edgeLabel{color:#aa1122;}"
+                    } else {
+                        "#merman .label text{fill:#aa1122;}"
+                    };
+                    assert!(
+                        css.contains(selector),
+                        "the actual terminal matches its owner"
+                    );
+                } else {
+                    let style = terminal.attribute("style").unwrap();
+                    assert!(style.contains("color:#2255aa !important"));
+                    assert!(style.contains("fill:#2255aa !important"));
+                }
+                let evidence =
+                    merman_render::__private::family_evidence(rendered.into_completion().report());
+                assert_eq!(evidence.applied_count(), usize::from(!config_owns_paint));
+                assert_eq!(
+                    evidence.not_applicable_count(),
+                    usize::from(config_owns_paint)
+                );
+                assert_eq!(evidence.theme_residual_count(), 0);
+            }
+        }
+    }
+}
+
+#[cfg(feature = "math")]
+#[test]
+fn class_math_note_keeps_html_color_ownership_beside_an_svg_note() {
+    let theme = class_edge_rules_theme([ThemeRule::new(
+        ThemeTarget::Text,
+        ThemeStylePatch::default().with_fill(CanvasPaint::solid("#2255aa").unwrap()),
+    )]);
+    let rendered = try_render_class_svg_with_theme_and_engine(
+        "classDiagram\nnote \"Memo\"\nnote \"$$x$$\"\n",
+        &theme,
+        MermaidEngine::new().with_site_config(
+            merman_core::presentation::SourcePresentationConfig::from_value(json!({
+                "htmlLabels": false,
+                "themeVariables": {"noteTextColor": "#aa1122"}
+            })),
+        ),
+    )
+    .unwrap();
+    let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+    let notes: Vec<_> = document
+        .descendants()
+        .filter(|node| node.attribute("class") == Some("label noteLabel"))
+        .collect();
+    assert_eq!(notes.len(), 2);
+    let ordinary_text = notes[0]
+        .descendants()
+        .find(|node| node.has_tag_name("text"))
+        .unwrap();
+    assert!(
+        ordinary_text
+            .attribute("style")
+            .unwrap()
+            .contains("fill:#2255aa !important")
+    );
+    assert!(
+        !notes[0]
+            .descendants()
+            .any(|node| node.has_tag_name("foreignObject"))
+    );
+    assert!(
+        notes[1]
+            .descendants()
+            .any(|node| node.has_tag_name("foreignObject"))
+    );
+    assert!(!notes[1].descendants().any(|node| {
+        node.attribute("style")
+            .is_some_and(|style| style.contains("#2255aa"))
+    }));
+    assert!(
+        embedded_stylesheet(rendered.svg()).contains(
+            "#merman .noteLabel .nodeLabel,#merman .noteLabel .edgeLabel{color:#aa1122;}"
+        )
+    );
+    let evidence = merman_render::__private::family_evidence(rendered.into_completion().report());
+    assert_eq!(evidence.applied_count(), 1);
+    assert_eq!(evidence.theme_residual_count(), 0);
+}
+
+#[test]
 fn class_generic_text_fill_has_a_terminal_in_every_text_channel() {
     let source = r#"---
 title: Account registry
@@ -7290,6 +7517,132 @@ mod class_svg_terminal_contracts {
             .filter(|node| node.is_text())
             .filter_map(|node| node.text())
             .collect()
+    }
+
+    #[test]
+    fn class_svg_generic_title_shares_sanitized_words_without_mutating_model() {
+        let profile = TextMeasurementProfile::new(
+            TextMeasurementProfileIdentity::new(
+                MeasurementProfileId::new("class-svg-generic-title-projection").unwrap(),
+                "test",
+            )
+            .unwrap(),
+            std::sync::Arc::new(RoleMeasurer),
+        );
+        let environment = RenderEnvironment::deterministic()
+            .with_text_measurement_policy(TextMeasurementPolicy::uniform(profile));
+        let cases: [(&str, &str, &str, &[&str], bool); 6] = [
+            (
+                "class Box~T~\nclass Box[\"Container\"]",
+                "Container",
+                "Container<T>",
+                &["Container"],
+                false,
+            ),
+            ("class Box~T~", "Box", "Box&lt;T&gt;", &["Box<T>"], false),
+            (
+                "class Box~T~\nclass Box[\"Container&lt;T&gt;\"]",
+                "Container&lt;T&gt;",
+                "Container&lt;T&gt;<T>",
+                &["Container<T>"],
+                false,
+            ),
+            (
+                "class Box~T~\nclass Box[\"Container&lt;br&gt;Body\"]",
+                "Container&lt;br&gt;Body",
+                "Container&lt;br&gt;Body<T>",
+                &["Container<br>Body"],
+                false,
+            ),
+            (
+                "class Box~T~\nclass Box[\"Container &amp;amp; value\"]",
+                "Container &amp;amp; value",
+                "Container &amp;amp; value<T>",
+                &["Container", " &amp;", " value"],
+                false,
+            ),
+            (
+                "class Box~T~\nclass Box[\"Container\"]",
+                "Container",
+                "Container<T>",
+                &["Container", " <t>", " </t>"],
+                true,
+            ),
+        ];
+        for layout_engine in ["dagre"]
+            .into_iter()
+            .chain(cfg!(feature = "layout-elk").then_some("elk"))
+        {
+            for (body, label, model_text, expected_words, allow_t) in cases {
+                let mut config = json!({"htmlLabels":false,"layout":layout_engine});
+                if allow_t {
+                    config["dompurifyConfig"] = json!({"ADD_TAGS":["t"]});
+                }
+                let parsed = MermaidEngine::new()
+                    .with_site_config(
+                        merman_core::presentation::SourcePresentationConfig::from_value(config),
+                    )
+                    .parse_diagram_for_render_model_sync(
+                        &format!("classDiagram\n{body}\n"),
+                        ParseOptions::strict(),
+                    )
+                    .unwrap()
+                    .unwrap()
+                    .into_presentation();
+                let before = class_model(&parsed).class("Box").unwrap().node.clone();
+                assert_eq!(before.label, label);
+                assert_eq!(before.text, model_text);
+                assert_eq!(before.type_param, "T");
+                let artifact = family::prepare(
+                    &parsed,
+                    &LayoutOptions::default(),
+                    environment.begin_session().unwrap(),
+                )
+                .unwrap();
+                let projection = artifact.layout_json().unwrap();
+                let width = projection["layout"]["ClassDiagramV2"]["nodes"]
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .find(|node| node["id"] == "Box")
+                    .unwrap()["width"]
+                    .as_f64()
+                    .unwrap();
+                let rendered = artifact
+                    .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+                    .unwrap();
+                let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+                let title = document
+                    .descendants()
+                    .find(|node| node.attribute("class") == Some("label-group text"))
+                    .unwrap();
+                let words = title
+                    .descendants()
+                    .filter(|node| node.attribute("class") == Some("text-inner-tspan"))
+                    .map(text)
+                    .collect::<Vec<_>>();
+                assert_eq!(
+                    words, expected_words,
+                    "{layout_engine}: {body}, allow_t={allow_t}"
+                );
+                let visible = expected_words.concat();
+                assert_eq!(text(title), visible);
+                assert_eq!(
+                    width,
+                    visible.chars().count() as f64 * 2.0 + 24.0,
+                    "layout must measure the final bolder title: {body}, allow_t={allow_t}"
+                );
+                assert_eq!(
+                    title
+                        .descendants()
+                        .filter(|node| node.attribute("class") == Some("row text-outer-tspan"))
+                        .count(),
+                    1,
+                    "entity-authored breaks must remain literal"
+                );
+                assert_eq!(class_model(&parsed).class("Box").unwrap().node, &before);
+            }
+        }
     }
 
     #[test]

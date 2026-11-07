@@ -237,6 +237,7 @@ pub(super) struct SequenceMessageLayout {
     pub(super) inserted_min_x: f64,
     pub(super) inserted_max_x: f64,
     pub(super) line_y: f64,
+    pub(super) inserted_top_y: f64,
     pub(super) inserted_bottom_y: f64,
     pub(super) cursor_step: f64,
 }
@@ -401,6 +402,7 @@ pub(super) fn layout_sequence_message(
         inserted_min_x,
         inserted_max_x,
         line_y: vertical.line_y,
+        inserted_top_y: vertical.inserted_top_y,
         inserted_bottom_y: vertical.inserted_bottom_y,
         cursor_step: vertical.cursor_step,
     }))
@@ -539,6 +541,7 @@ struct SequenceMessageVerticalGeometry {
     line_y: f64,
     label_y: f64,
     cursor_step: f64,
+    inserted_top_y: f64,
     inserted_bottom_y: f64,
 }
 
@@ -607,13 +610,20 @@ fn message_vertical_geometry_from_measurement(
     let box_margin = if self_margin { 0.0 } else { req.box_margin };
     let line_y = req.cursor_y + text_height + line_height + box_margin;
     let self_advance = if req.is_self { 30.0 } else { 0.0 };
+    let stop_y = line_y + self_advance;
+    // boundMessage's stored message height omits its initial 10px cursor advance.
+    let inserted_top_y = req
+        .cursor_y
+        .min(stop_y - 10.0)
+        .min(line_y + if req.is_self { 20.0 } else { -10.0 });
 
     SequenceMessageVerticalGeometry {
         text_width: 0.0,
         line_y,
         // drawMessage sets y=starty+10; drawText then centers the first line within wrapPadding.
         label_y: super::sequence_drawn_text_first_y(req.cursor_y + 10.0, req.wrap_padding),
-        cursor_step: line_y + self_advance - req.cursor_y,
+        cursor_step: stop_y - req.cursor_y,
+        inserted_top_y,
         inserted_bottom_y: line_y + if req.is_self { 60.0 } else { 0.0 },
     }
 }

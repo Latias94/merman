@@ -28,6 +28,7 @@ enum TokenType {
   KANBAN_INDENTATION_OVERFLOW,
   END_OF_INPUT,
   DIRECTIVE_BODY,
+  CLASS_COMPACT_IDENTIFIER,
 };
 
 enum ScannerMode {
@@ -189,6 +190,51 @@ static bool consume_literal(TSLexer *lexer, const char *literal) {
 static bool is_horizontal_space(int32_t lookahead) {
   return lookahead == ' ' || lookahead == '\t' || lookahead == '\f' ||
          lookahead == 0xa0;
+}
+
+static bool is_ascii_word_character(int32_t value) {
+  return (value >= 'A' && value <= 'Z') ||
+         (value >= 'a' && value <= 'z') ||
+         (value >= '0' && value <= '9') || value == '_';
+}
+
+static bool is_class_identifier_character(int32_t value) {
+  return is_ascii_word_character(value) ||
+         (value >= 0xc0 && value <= 0xffff);
+}
+
+// Jison recognizes LINE and DOTTED_LINE before the single MINUS and DOT
+// tokens in class names. Preserve that boundary without changing identifier
+// leaves or rejecting names containing an ordinary or trailing hyphen.
+static bool scan_class_compact_identifier(TSLexer *lexer) {
+  while (is_horizontal_space(lexer->lookahead)) {
+    lexer->advance(lexer, true);
+  }
+  if (!is_class_identifier_character(lexer->lookahead)) {
+    return false;
+  }
+
+  bool have_name = false;
+  bool previous_is_word = false;
+  bool aggregation_prefix = false;
+  while (is_class_identifier_character(lexer->lookahead) ||
+         lexer->lookahead == '-' || lexer->lookahead == '.') {
+    int32_t current = lexer->lookahead;
+    if (!aggregation_prefix) {
+      lexer->mark_end(lexer);
+    }
+    lexer->advance(lexer, false);
+    if ((current == '-' || current == '.') && lexer->lookahead == current) {
+      lexer->result_symbol = CLASS_COMPACT_IDENTIFIER;
+      return true;
+    }
+    // An o starting a new Jison word can own the following line operator.
+    // Retain the end before it until the next character resolves that choice.
+    aggregation_prefix = have_name && !previous_is_word && current == 'o';
+    previous_is_word = is_ascii_word_character(current);
+    have_name = true;
+  }
+  return false;
 }
 
 static bool scan_directive_body(TSLexer *lexer) {
@@ -430,6 +476,10 @@ bool tree_sitter_mermaid_external_scanner_scan(void *payload, TSLexer *lexer,
   }
 
   const TokenGroup *group = requested_group(valid_symbols);
+  if (valid_symbols[CLASS_COMPACT_IDENTIFIER] &&
+      !valid_symbols[DIRECTIVE_BODY] && group == NULL) {
+    return scan_class_compact_identifier(lexer);
+  }
   if (group == NULL) {
     return false;
   }

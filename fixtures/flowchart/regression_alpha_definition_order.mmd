@@ -1,0 +1,13 @@
+---
+config:
+  layout: dagre
+  htmlLabels: false
+  look: classic
+---
+flowchart LR
+  A@{shape: circle, label: Old}
+  A[New]
+  B[Original]
+  B@{shape: diamond, label: Decision}
+  A -->|contains| B
+  A --> C[Result]

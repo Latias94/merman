@@ -7,7 +7,7 @@ use libfuzzer_sys::fuzz_target;
 const MAX_INPUT_BYTES: usize = 1031;
 const SERIALIZATION_BUFFER_SIZE: usize = 1024;
 const MAX_SERIALIZED_SIZE: usize = 526;
-const TOKEN_COUNT: usize = 22;
+const TOKEN_COUNT: usize = 23;
 const DIRECTIVE_BODY: usize = 21;
 const REGRESSION_SEED_PREFIX: &[u8] = b"seed\n";
 const DIRECTIVE_SEED_PREFIX: &[u8] = b"directive\n";

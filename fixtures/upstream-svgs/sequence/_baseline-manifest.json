@@ -136,6 +136,16 @@
       "svg_sha256": "80b0182cd51f27d376c4da4ee3d6e7380cf5986ea9327fc39d322b6bdcf1588a",
       "renderer_profile": "seeded-puppeteer-seed-1-fixed-date-1704067200000-sequence-math-settled-v1"
     },
+    "regression_alpha_activation_after_note": {
+      "input_sha256": "e6e56467da2585c71e91a4049836f6a8b546f38cb6e164374e2bf01dcf1687dc",
+      "svg_sha256": "b43eb3dfeca80444ecca11d131cb900edfff8e7fff5972881e548b2136779a77",
+      "renderer_profile": "seeded-puppeteer-seed-1-fixed-date-1704067200000-sequence-math-settled-v1"
+    },
+    "regression_alpha_parallel_over_branches": {
+      "input_sha256": "1e655b4b74eac03a463c35187fb3f6fcaaa45818a6eabe9756207932f402fa62",
+      "svg_sha256": "880e329ed5edb465a55cea640ca43e8b59ad9c8f25f593630fb7f8928c552484",
+      "renderer_profile": "seeded-puppeteer-seed-1-fixed-date-1704067200000-sequence-math-settled-v1"
+    },
     "semicolons_and_comments": {
       "input_sha256": "1d77affc9f55e1a3e1e60d2706ad094a93533c647910ae2ca623ff70bdc1440c",
       "svg_sha256": "43f5739b5991d29f7d682a99c1f51b9baee0527607caef0f24c013c3a47b8d76",

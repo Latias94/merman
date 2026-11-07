@@ -6,6 +6,7 @@ const DEFAULT_FLOWCHART_FONT_FAMILY: &str = r#""trebuchet ms",verdana,arial,sans
 const DEFAULT_NODE_SPACING: f64 = 50.0;
 const DEFAULT_RANK_SPACING: f64 = 50.0;
 const DEFAULT_NODE_PADDING: f64 = 15.0;
+const FLOWDB_LEAF_PADDING_FALLBACK: f64 = 8.0;
 const DEFAULT_STATE_PADDING: f64 = 8.0;
 const DEFAULT_WRAPPING_WIDTH: f64 = 200.0;
 const DEFAULT_DIAGRAM_PADDING: f64 = 8.0;
@@ -76,9 +77,7 @@ impl<'a> FlowchartConfigView<'a> {
         FlowchartLayoutSettings {
             nodesep: self.dagre_spacing_or_default("nodeSpacing", DEFAULT_NODE_SPACING),
             ranksep: self.dagre_spacing_or_default("rankSpacing", DEFAULT_RANK_SPACING),
-            node_padding: self
-                .flowchart_compat_f64("padding")
-                .unwrap_or(DEFAULT_NODE_PADDING),
+            node_padding: self.leaf_node_padding(),
             state_padding: self
                 .state_compat_f64("padding")
                 .unwrap_or(DEFAULT_STATE_PADDING),
@@ -145,9 +144,20 @@ impl<'a> FlowchartConfigView<'a> {
     }
 
     pub(crate) fn render_node_padding(&self) -> f64 {
-        self.flowchart_compat_f64("padding")
-            .unwrap_or(DEFAULT_NODE_PADDING)
-            .max(0.0)
+        self.leaf_node_padding().max(0.0)
+    }
+
+    fn leaf_node_padding(&self) -> f64 {
+        // FlowDB projects `config.flowchart?.padding || 8` onto ordinary nodes.
+        // Numeric zero is falsy; the compatibility string "0" remains truthy.
+        match self.flowchart_config.get("padding") {
+            Some(Value::Number(value)) if value.as_f64() == Some(0.0) => {
+                FLOWDB_LEAF_PADDING_FALLBACK
+            }
+            _ => self
+                .flowchart_compat_f64("padding")
+                .unwrap_or(DEFAULT_NODE_PADDING),
+        }
     }
 
     pub(crate) fn render_subgraph_title_y_shift(&self) -> f64 {
@@ -355,6 +365,23 @@ fn parse_font_size_px(v: &Value) -> Option<f64> {
 mod tests {
     use super::*;
     use serde_json::json;
+
+    #[test]
+    fn flowchart_leaf_padding_preserves_flowdb_zero_fallback() {
+        for (padding, expected) in [
+            (json!(0), 8.0),
+            (json!(8), 8.0),
+            (json!(20), 20.0),
+            (json!("0"), 0.0),
+        ] {
+            let cfg = json!({"flowchart": {"padding": padding}});
+            let config = FlowchartConfigView::new(&cfg);
+            let layout = config.layout_settings();
+            assert_eq!(layout.node_padding, expected, "{cfg}");
+            assert_eq!(config.render_node_padding(), expected, "{cfg}");
+            assert_eq!(layout.cluster_padding, FIXED_CLUSTER_PADDING, "{cfg}");
+        }
+    }
 
     #[test]
     fn flowchart_layout_settings_preserve_dagre_spacing_compatibility() {

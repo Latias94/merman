@@ -510,6 +510,223 @@ fn mindmap_node_ids_are_renameable_and_payloads_are_not_navigation_targets() {
 }
 
 #[test]
+fn class_generic_navigation_and_rename_preserve_quotes_and_type_suffixes() {
+    let harness = SnapshotHarness::new();
+    for (declaration, reference, spelling) in [
+        ("`Car`~T~", "Car", "Car"),
+        ("Car~T~", "`Car`", "Car"),
+        ("`Car` \t~T~", "Car~U~", "Car"),
+        ("`123`~类型~", "123", "123"),
+        ("123~类型~", "`123`", "123"),
+        ("`名𠀀`~类型~", "`名𠀀`", "名𠀀"),
+        ("`classId-Car`~T~", "classId-Car", "classId-Car"),
+    ] {
+        let source = format!("classDiagram\nclass {declaration}\n{reference} --> Wheel\n");
+        let snapshot = harness
+            .analyze(
+                "file:///tmp/class-generics.mmd",
+                1,
+                source.clone(),
+                DocumentKind::Diagram,
+            )
+            .expect("generic Class document should be accepted");
+        assert_eq!(
+            snapshot.fences()[0].text_index().source(),
+            FenceTextIndexSource::ParserComplete
+        );
+        let declaration_start = 6 + usize::from(declaration.starts_with('`'));
+        let reference_start = usize::from(reference.starts_with('`'));
+        let name_len = spelling.encode_utf16().count();
+        let declaration_range = Range::new(
+            Position::new(1, declaration_start),
+            Position::new(1, declaration_start + name_len),
+        );
+        let reference_range = Range::new(
+            Position::new(2, reference_start),
+            Position::new(2, reference_start + name_len),
+        );
+        let definition = goto_definition(&snapshot, reference_range.start)
+            .expect("plain and generic occurrences must resolve to the declaration");
+        assert_eq!(definition.range, declaration_range, "{declaration}");
+
+        for range in [declaration_range, reference_range] {
+            let locations = references(&snapshot, range.start, true).unwrap();
+            assert_eq!(
+                locations
+                    .iter()
+                    .map(|location| location.range)
+                    .collect::<Vec<_>>(),
+                [declaration_range, reference_range],
+                "{declaration}: {reference}"
+            );
+            let prepared = prepare_rename(&snapshot, range.start).unwrap();
+            assert_eq!(prepared.placeholder, spelling);
+            assert_eq!(prepared.range, range);
+            let edit = rename(&snapshot, range.start, "Truck").unwrap().unwrap();
+            let changes = &edit.changes[snapshot.uri()];
+            assert_eq!(changes.len(), 2);
+            let mut changed = source.clone();
+            for change in changes.iter().rev() {
+                let start = snapshot
+                    .byte_offset_for_position(change.range.start)
+                    .unwrap();
+                let end = snapshot.byte_offset_for_position(change.range.end).unwrap();
+                changed.replace_range(start..end, &change.new_text);
+            }
+            assert_eq!(
+                changed,
+                format!(
+                    "classDiagram\nclass {}\n{} --> Wheel\n",
+                    declaration.replacen(spelling, "Truck", 1),
+                    reference.replacen(spelling, "Truck", 1),
+                ),
+                "rename must preserve authored quotes, whitespace and generic types"
+            );
+        }
+    }
+}
+
+#[cfg(feature = "diagram-class")]
+#[test]
+fn class_aggregation_navigation_and_rename_preserve_adjacent_operator_semantics() {
+    use merman_core::SemanticParser;
+    use merman_model::SemanticDiagramModel;
+
+    let harness = SnapshotHarness::new();
+    let parser = SemanticParser::new();
+    for (reference, spelling, type_suffix, line_type) in [
+        ("A-o--B", "A-", "", 0),
+        ("A.o..B", "A.", "", 1),
+        ("A~T~o--B", "A", "~T~", 0),
+        ("`A-`o--B", "A-", "", 0),
+        ("A- o--B", "A-", "", 0),
+        ("类o--B", "类", "", 0),
+    ] {
+        let source = format!("classDiagram\nclass `{spelling}`{type_suffix}\n{reference}\n");
+        let snapshot = harness
+            .analyze(
+                "file:///tmp/class-aggregation.mmd",
+                1,
+                source.clone(),
+                DocumentKind::Diagram,
+            )
+            .expect("Class aggregation document should be accepted");
+        assert_eq!(
+            snapshot.fences()[0].text_index().source(),
+            FenceTextIndexSource::ParserComplete,
+            "{reference}"
+        );
+        let SemanticDiagramModel::Class(original) = parser
+            .parse_diagram_sync(&source)
+            .expect("Class aggregation should parse")
+            .model
+        else {
+            panic!("expected a Class semantic model");
+        };
+        assert_eq!(original.classes.len(), 2, "{reference}");
+        assert!(original.classes.contains_key(spelling), "{reference}");
+        assert_eq!(original.relations.len(), 1, "{reference}");
+        let mut expected_relation = original.relations[0].clone();
+        assert_eq!(expected_relation.id1, spelling, "{reference}");
+        assert_eq!(expected_relation.id2, "B", "{reference}");
+        assert_eq!(
+            expected_relation.relation.type1, 0,
+            "aggregation: {reference}"
+        );
+        assert_eq!(expected_relation.relation.type2, -1, "{reference}");
+        assert_eq!(
+            expected_relation.relation.line_type, line_type,
+            "{reference}"
+        );
+        expected_relation.id1 = "X".to_string();
+
+        let name_len = spelling.encode_utf16().count();
+        let reference_start = usize::from(reference.starts_with('`'));
+        let declaration_range = Range::new(Position::new(1, 7), Position::new(1, 7 + name_len));
+        let reference_range = Range::new(
+            Position::new(2, reference_start),
+            Position::new(2, reference_start + name_len),
+        );
+        let definition = goto_definition(&snapshot, reference_range.start)
+            .expect("adjacent aggregation source must resolve to its declaration");
+        assert_eq!(definition.range, declaration_range, "{reference}");
+
+        for range in [declaration_range, reference_range] {
+            let locations = references(&snapshot, range.start, true).unwrap();
+            assert_eq!(
+                locations
+                    .iter()
+                    .map(|location| location.range)
+                    .collect::<Vec<_>>(),
+                [declaration_range, reference_range],
+                "{reference}"
+            );
+            let prepared = prepare_rename(&snapshot, range.start).unwrap();
+            assert_eq!(prepared.placeholder, spelling, "{reference}");
+            assert_eq!(prepared.range, range, "{reference}");
+            let edit = rename(&snapshot, range.start, "X").unwrap().unwrap();
+            let changes = &edit.changes[snapshot.uri()];
+            assert_eq!(changes.len(), 2, "{reference}");
+            let mut changed = source.clone();
+            for change in changes.iter().rev() {
+                let start = snapshot
+                    .byte_offset_for_position(change.range.start)
+                    .unwrap();
+                let end = snapshot.byte_offset_for_position(change.range.end).unwrap();
+                changed.replace_range(start..end, &change.new_text);
+            }
+
+            let reparsed = harness
+                .analyze(
+                    snapshot.uri().clone(),
+                    2,
+                    changed.clone(),
+                    DocumentKind::Diagram,
+                )
+                .expect("renamed Class document should be accepted");
+            assert_eq!(
+                reparsed.fences()[0].text_index().source(),
+                FenceTextIndexSource::ParserComplete,
+                "{changed}"
+            );
+            let SemanticDiagramModel::Class(renamed) = parser
+                .parse_diagram_sync(&changed)
+                .expect("renamed Class aggregation should parse")
+                .model
+            else {
+                panic!("expected a renamed Class semantic model");
+            };
+            assert_eq!(renamed.classes.len(), 2, "{changed}");
+            assert!(!renamed.classes.contains_key(spelling), "{changed}");
+            assert_eq!(
+                renamed.classes["X"].type_param,
+                original.classes[spelling].type_param
+            );
+            assert_eq!(renamed.classes["B"], original.classes["B"], "{changed}");
+            assert_eq!(renamed.relations, [expected_relation.clone()], "{changed}");
+            let renamed_reference = Position::new(2, reference_start);
+            let definition = goto_definition(&reparsed, renamed_reference).unwrap();
+            assert_eq!(
+                definition.range,
+                Range::new(Position::new(1, 7), Position::new(1, 8))
+            );
+            assert_eq!(
+                references(&reparsed, renamed_reference, true)
+                    .unwrap()
+                    .len(),
+                2
+            );
+            assert_eq!(
+                prepare_rename(&reparsed, renamed_reference)
+                    .unwrap()
+                    .placeholder,
+                "X"
+            );
+        }
+    }
+}
+
+#[test]
 fn typed_reference_groups_keep_same_name_different_kinds_separate() {
     let harness = SnapshotHarness::new();
     let snapshot = harness

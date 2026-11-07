@@ -1,0 +1,19 @@
+---
+config:
+  layout: dagre
+  htmlLabels: false
+  look: classic
+  state:
+    useMaxWidth: false
+  flowchart:
+    diagramPadding: 64
+---
+classDiagram
+  class A:::first { +run() }
+  class B:::second
+  A*--B
+  IService()--Service
+  class `Box`~T~
+  class Box["Container"]
+  Box --> A
+  classDef first,second fill:#edf4ff,stroke:#315b8a
