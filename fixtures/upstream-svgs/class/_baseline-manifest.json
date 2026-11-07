@@ -91,6 +91,16 @@
       "svg_sha256": "2db53c874b110b20ea690607f86ada3422d6294ca98671e4789b025701e01c5f",
       "renderer_profile": "owned-runtime-seeded-puppeteer-seed-1-fixed-date-1704067200000"
     },
+    "regression_svg_relation_label_namespace_dagre": {
+      "input_sha256": "f447b0ee559cc5d2e579d9a7447b410ae995c5ca2124f233b593328cd02035fe",
+      "svg_sha256": "7b29239a29b0c9b5e08359627f9a0159dfdd10087ea5bb2778605f258a468828",
+      "renderer_profile": "owned-runtime-seeded-puppeteer-seed-1-fixed-date-1704067200000"
+    },
+    "regression_svg_relation_label_namespace_elk": {
+      "input_sha256": "6027a30cc3168dc5c5a1f8ff22bed166b41cf24b738a2f843eb18f0c6b1dcc45",
+      "svg_sha256": "a6b4374b0034a6d0a49d73ec31944dab110bdae1694b630f3a7128d69c99d6fb",
+      "renderer_profile": "owned-runtime-seeded-puppeteer-seed-1-fixed-date-1704067200000"
+    },
     "stress_class_association_aggregation_composition_019": {
       "input_sha256": "6dc0fe75244155cb80cc401531a3896d5aa5b2aa70b401b66305b0275a50d3cb",
       "svg_sha256": "07bfe0673f54ffcd33b16be1986e100599f3f2624fc0026ec049b8a6579099f4",

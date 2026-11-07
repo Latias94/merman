@@ -15,6 +15,338 @@ struct SvgFontMeasurer {
     requests: Mutex<Vec<(String, TextStyle)>>,
 }
 
+struct EdgeLabelMeasurer;
+
+impl TextMeasurer for EdgeLabelMeasurer {
+    fn measure(&self, text: &str, style: &TextStyle) -> TextMetrics {
+        TextMetrics {
+            width: text.chars().count() as f64 * 8.0,
+            height: style.font_size
+                + if style.font_style.as_deref() == Some("italic") {
+                    8.0
+                } else {
+                    0.0
+                },
+            line_count: 1,
+        }
+    }
+
+    fn measure_wrapped(
+        &self,
+        text: &str,
+        style: &TextStyle,
+        _max_width: Option<f64>,
+        _wrap: WrapMode,
+    ) -> TextMetrics {
+        self.measure(text, style)
+    }
+
+    fn measure_svg_text_computed_length_px(&self, text: &str, style: &TextStyle) -> f64 {
+        self.measure(text, style).width
+    }
+
+    fn measure_svg_text_bbox_x(&self, text: &str, style: &TextStyle) -> (f64, f64) {
+        let half = self.measure(text, style).width / 2.0;
+        (half + 3.0, half - 1.0)
+    }
+
+    fn measure_svg_create_text_bbox_y_offset_px(&self, _text: &str, style: &TextStyle) -> f64 {
+        if style.font_style.as_deref() == Some("italic") {
+            -3.0
+        } else {
+            2.0
+        }
+    }
+}
+
+fn render_class_with_edge_label_measurer(source: &str, layout: &str) -> String {
+    render_class_with_edge_label_measurer_and_html(source, layout, false)
+}
+
+fn render_class_with_edge_label_measurer_and_html(
+    source: &str,
+    layout: &str,
+    html: bool,
+) -> String {
+    render_and_layout_class_with_edge_label_measurer(source, layout, html).0
+}
+
+fn render_and_layout_class_with_edge_label_measurer(
+    source: &str,
+    layout: &str,
+    html: bool,
+) -> (String, merman_render::model::ClassDiagramLayout) {
+    let profile = TextMeasurementProfile::new(
+        TextMeasurementProfileIdentity::new(
+            MeasurementProfileId::new("class-edge-label-geometry").unwrap(),
+            "test",
+        )
+        .unwrap(),
+        Arc::new(EdgeLabelMeasurer),
+    );
+    let environment = RenderEnvironment::deterministic()
+        .with_text_measurement_policy(TextMeasurementPolicy::uniform(profile));
+    let parsed = MermaidEngine::new()
+        .with_site_config(
+            merman_core::presentation::SourcePresentationConfig::from_value(json!({
+                "layout": layout,
+                "htmlLabels": html,
+                "look": "classic",
+                "themeVariables": { "fontSize": "16px" }
+            })),
+        )
+        .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
+        .unwrap()
+        .unwrap()
+        .into_presentation();
+    let artifact = family::prepare(
+        &parsed,
+        &LayoutOptions::headless_svg_defaults(),
+        environment.begin_session().unwrap(),
+    )
+    .unwrap();
+    let projection = artifact.layout_json().unwrap();
+    let layout = serde_json::from_value(projection["layout"]["ClassDiagramV2"].clone()).unwrap();
+    let svg = artifact
+        .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+        .unwrap()
+        .svg()
+        .to_owned();
+    (svg, layout)
+}
+
+#[cfg(feature = "math")]
+#[test]
+fn class_svg_math_cardinalities_measure_the_emitted_literal_text() {
+    let source = "classDiagram\nA \"$$x$$\" --> \"$$x^2$$\" B\n";
+    for layout in ["dagre", "elk"]
+        .into_iter()
+        .filter(|layout| *layout != "elk" || cfg!(feature = "layout-elk"))
+    {
+        for html in [false, true] {
+            let (svg, projection) =
+                render_and_layout_class_with_edge_label_measurer(source, layout, html);
+            let edge = &projection.edges[0];
+            let labels = [
+                edge.start_label_right.as_ref().unwrap(),
+                edge.end_label_left.as_ref().unwrap(),
+            ];
+            let document = roxmltree::Document::parse(&svg).unwrap();
+            let terminals: Vec<_> = document
+                .descendants()
+                .filter(|node| node.attribute("class") == Some("edgeTerminals"))
+                .collect();
+            assert_eq!(terminals.len(), 2);
+            for ((label, terminal), text) in
+                labels.into_iter().zip(terminals).zip(["$$x$$", "$$x^2$$"])
+            {
+                if html {
+                    assert!(terminal.descendants().any(|node| node.has_tag_name("svg")));
+                    assert!(label.width < text.len() as f64 * 8.0);
+                } else {
+                    let emitted: String = terminal
+                        .descendants()
+                        .filter(|node| node.is_text())
+                        .filter_map(|node| node.text())
+                        .collect();
+                    assert_eq!(emitted, text);
+                    assert_eq!(label.width, text.len() as f64 * 8.0);
+                    assert_eq!(label.height, 11.0);
+                    assert!(
+                        !terminal
+                            .descendants()
+                            .any(|node| node.has_tag_name("foreignObject"))
+                    );
+                }
+            }
+        }
+    }
+}
+
+#[cfg(feature = "math")]
+#[test]
+fn class_rejected_math_relationship_uses_html_measurement_even_when_svg_labels_are_selected() {
+    let source = format!(
+        "classDiagram\nA --> B : {} $${}$$\n",
+        std::iter::repeat_n("word", 15)
+            .collect::<Vec<_>>()
+            .join(" "),
+        r"\frac{1}{"
+    );
+    for layout in ["dagre", "elk"]
+        .into_iter()
+        .filter(|layout| *layout != "elk" || cfg!(feature = "layout-elk"))
+    {
+        let central_html = |html| {
+            let svg = render_class_with_edge_label_measurer_and_html(&source, layout, html);
+            let document = roxmltree::Document::parse(&svg).unwrap();
+            let label = document
+                .descendants()
+                .find(|node| {
+                    node.attribute("class") == Some("label") && node.attribute("data-id").is_some()
+                })
+                .unwrap();
+            let object = label
+                .descendants()
+                .find(|node| node.has_tag_name("foreignObject"))
+                .unwrap();
+            let div = object.first_element_child().unwrap();
+            let style = div.attribute("style").unwrap().to_owned();
+            assert!(
+                style.contains("white-space: break-spaces"),
+                "{layout}, htmlLabels={html}: {style}"
+            );
+            assert!(object.attribute("width").unwrap().parse::<f64>().unwrap() >= 200.0);
+            assert!(label.descendants().all(|node| !node.has_tag_name("text")));
+            (
+                object.attribute("width").unwrap().to_owned(),
+                object.attribute("height").unwrap().to_owned(),
+                style,
+            )
+        };
+        assert_eq!(central_html(false), central_html(true), "{layout}");
+    }
+}
+
+#[test]
+fn class_relationship_label_centers_text_bbox_and_pads_background_in_namespaces() {
+    let source = "classDiagram\ndirection TB\nclass Resource {\n<<abstract>>\n+String id\n}\nnamespace Publishing {\nclass Document {\n+String title\n+addSection(title: String) void\n+renderSummary() String\n}\nclass Section {\n+String heading\n+wordCount() int\n}\n}\nResource <|-- Document\nDocument \"1\" *-- \"1..*\" Section : contains\n";
+    for layout in ["dagre", "elk"]
+        .into_iter()
+        .filter(|layout| *layout != "elk" || cfg!(feature = "layout-elk"))
+    {
+        for source in [
+            source.to_owned(),
+            source.replace("Resource <|-- Document\n", ""),
+        ] {
+            for (title, transform, x, y, width, height) in [
+                ("contains", "translate(2, -10)", "-37", "0", "70", 20.0),
+                ("*contains*", "translate(2, -9)", "-37", "-5", "70", 28.0),
+                (
+                    "contains *sections*",
+                    "translate(2, -9)",
+                    "-73",
+                    "-5",
+                    "142",
+                    28.0,
+                ),
+                (
+                    "contains<br/>contains",
+                    "translate(2, -18.8)",
+                    "-37",
+                    "0",
+                    "70",
+                    37.6,
+                ),
+                (
+                    "contains<br/>contains *sections*",
+                    "translate(2, -20.3)",
+                    "-73",
+                    "0",
+                    "142",
+                    40.6,
+                ),
+            ] {
+                let source = source.replace(": contains\n", &format!(": {title}\n"));
+                let svg = render_class_with_edge_label_measurer(&source, layout);
+                let document = roxmltree::Document::parse(&svg).unwrap();
+                let text = document
+                    .descendants()
+                    .find(|node| node.has_tag_name("tspan") && node.text() == Some("contains"))
+                    .unwrap();
+                let label = text
+                    .ancestors()
+                    .find(|node| node.attribute("class") == Some("label"))
+                    .unwrap();
+                assert_eq!(
+                    label.attribute("transform"),
+                    Some(transform),
+                    "{layout}: {title}"
+                );
+                let background = label
+                    .descendants()
+                    .find(|node| node.has_tag_name("rect"))
+                    .unwrap();
+                assert_eq!(background.attribute("x"), Some(x), "{layout}: {title}");
+                assert_eq!(background.attribute("y"), Some(y), "{layout}: {title}");
+                assert_eq!(
+                    background.attribute("width"),
+                    Some(width),
+                    "{layout}: {title}"
+                );
+                assert!(
+                    (background
+                        .attribute("height")
+                        .unwrap()
+                        .parse::<f64>()
+                        .unwrap()
+                        - height)
+                        .abs()
+                        < 1e-8,
+                    "{layout}: {title}"
+                );
+                for cardinality in ["1", "1..*"] {
+                    assert!(
+                        document.descendants().any(|node| {
+                            node.has_tag_name("tspan")
+                                && node.text() == Some(cardinality)
+                                && node.ancestors().any(|ancestor| {
+                                    ancestor.attribute("class") == Some("edgeTerminals")
+                                })
+                        }),
+                        "{layout}: missing {cardinality}"
+                    );
+                }
+            }
+        }
+    }
+}
+
+#[test]
+fn class_relationship_svg_labels_wrap_prepared_words_without_losing_styles_or_graphemes() {
+    for layout in ["dagre", "elk"]
+        .into_iter()
+        .filter(|layout| *layout != "elk" || cfg!(feature = "layout-elk"))
+    {
+        let long_word = "👩🏽‍💻".repeat(18);
+        for title in [
+            "contains **published** sections with a long relationship label<br/>and *draft* sections".to_owned(),
+            long_word.clone(),
+        ] {
+            let svg = render_class_with_edge_label_measurer(
+                &format!("classDiagram\nA --> B : {title}\n"),
+                layout,
+            );
+            let document = roxmltree::Document::parse(&svg).unwrap();
+            let label = document
+                .descendants()
+                .find(|node| node.attribute("class") == Some("label") && node.attribute("data-id").is_some())
+                .unwrap();
+            let rows = label.descendants().filter(|node| {
+                node.has_tag_name("tspan")
+                    && node.attribute("class").is_some_and(|classes| classes.contains("text-outer-tspan"))
+            }).collect::<Vec<_>>();
+            assert!(rows.len() > 1, "{layout}: the default 200px width must wrap {title}");
+            let words = rows.iter().map(|row| {
+                row.children().filter_map(|node| node.text()).collect::<String>()
+            }).collect::<Vec<_>>();
+            for row in &words {
+                assert!(row.chars().count() as f64 * 8.0 <= 200.0, "{layout}: {row}");
+            }
+            if title == long_word {
+                assert_eq!(words.concat(), long_word, "{layout}");
+                for row in &words {
+                    assert!(row.replace("👩🏽‍💻", "").is_empty(), "{layout}: split grapheme {row}");
+                }
+            } else {
+                assert_eq!(words.join(" "), "contains published sections with a long relationship label and draft sections", "{layout}");
+                assert!(label.descendants().any(|node| node.text() == Some(" published") && node.attribute("font-weight") == Some("bold")));
+                assert!(label.descendants().any(|node| node.text() == Some(" draft") && node.attribute("font-style") == Some("italic")));
+            }
+        }
+    }
+}
+
 impl TextMeasurer for SvgFontMeasurer {
     fn measure(&self, text: &str, style: &TextStyle) -> TextMetrics {
         self.requests

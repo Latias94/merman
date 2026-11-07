@@ -357,7 +357,7 @@ jobs:
       - name: Publish to pub.dev
         if: ${{ steps.send.outputs.upload == 'true' }}
         working-directory: target/flutter-publish
-        run: dart pub publish --force --skip-validation
+        run: dart pub publish --force --from-archive "$GITHUB_WORKSPACE/target/flutter-package/merman-flutter-package.tar.gz"
 
       - name: Reconcile exact public package after publication
         working-directory: trusted

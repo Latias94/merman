@@ -90,7 +90,8 @@ impl<'a> ClassConfigView<'a> {
             wrap_mode_label,
             wrap_mode_note: wrap_mode_node,
             class_padding: self.class_compat_f64("padding").unwrap_or(12.0),
-            namespace_padding: self.flowchart_compat_f64("padding").unwrap_or(15.0),
+            // ClassDB.getData uses class.padding ?? 16 for namespace containers.
+            namespace_padding: self.class_compat_f64("padding").unwrap_or(16.0),
             hide_empty_members_box: self.class_bool("hideEmptyMembersBox").unwrap_or(false),
             text_style,
             html_calc_text_style,
@@ -337,6 +338,7 @@ mod tests {
         assert_eq!(config.html_calc_text_style().font_size, 18.0);
         assert_eq!(config.wrap_probe_font_size(), 18.0);
         assert_eq!(config.layout_settings().class_padding, 30.0);
+        assert_eq!(config.layout_settings().namespace_padding, 30.0);
         assert_eq!(config.class_padding, 12.0);
         assert_eq!(config.viewport_padding, 20.0);
         assert!(!config.diagram_use_html_labels);
@@ -452,7 +454,7 @@ mod tests {
         assert_eq!(settings.wrap_mode_label, WrapMode::SvgLike);
         assert_eq!(settings.wrap_mode_note, WrapMode::SvgLike);
         assert_eq!(settings.class_padding, 30.0);
-        assert_eq!(settings.namespace_padding, 17.0);
+        assert_eq!(settings.namespace_padding, 30.0);
         assert!(settings.hide_empty_members_box);
         assert_eq!(
             settings.text_style.font_family.as_deref(),
@@ -467,6 +469,66 @@ mod tests {
         assert_eq!(settings.wrap_probe_font_size, 18.0);
         assert_eq!(settings.title_margin_top, 3.0);
         assert_eq!(settings.title_margin_bottom, 4.0);
+    }
+
+    #[test]
+    fn class_namespace_padding_defaults_to_sixteen_from_native_config() {
+        let source = crate::test_support::presentation_config_from_config(
+            merman_core::generated::default_site_config(),
+        );
+        assert!(source.as_value()["class"].get("padding").is_none());
+        assert_eq!(source.as_value()["flowchart"]["padding"], json!(15));
+
+        let typography = super::super::ClassTextThemePlan::resolve(None, &source);
+        let config = ClassRenderConfig::resolve(&source, &typography);
+
+        assert_eq!(config.layout_settings().namespace_padding, 16.0);
+        assert_eq!(config.layout_settings().class_padding, 12.0);
+        assert_eq!(config.class_padding, 12.0);
+        assert_eq!(config.viewport_padding, 8.0);
+    }
+
+    #[test]
+    fn class_namespace_padding_uses_class_config_without_flowchart_fallback() {
+        for (cfg, expected) in [
+            (
+                json!({ "class": { "padding": 23 }, "flowchart": { "padding": 83 } }),
+                23.0,
+            ),
+            (json!({ "flowchart": { "padding": 83 } }), 16.0),
+            (json!({ "class": {}, "flowchart": { "padding": 83 } }), 16.0),
+            (
+                json!({ "class": { "padding": null }, "flowchart": { "padding": 83 } }),
+                16.0,
+            ),
+        ] {
+            let settings = ClassConfigView::new(&cfg).layout_settings();
+            assert_eq!(settings.namespace_padding, expected, "config={cfg}");
+        }
+    }
+
+    #[test]
+    fn class_namespace_padding_preserves_compat_numeric_boundaries() {
+        for (padding, expected) in [
+            (json!(0), 0.0),
+            (json!(null), 16.0),
+            (json!(7.5), 7.5),
+            (json!(-2.5), -2.5),
+            (json!("30"), 30.0),
+            (json!("0"), 0.0),
+            (json!(" 7.5 "), 7.5),
+            (json!("30px"), 16.0),
+            (json!("NaN"), 16.0),
+            (json!("Infinity"), 16.0),
+            (json!(false), 16.0),
+        ] {
+            let cfg = json!({ "class": { "padding": padding }, "flowchart": { "padding": 83 } });
+            let settings = ClassConfigView::new(&cfg).layout_settings();
+            assert_eq!(
+                settings.namespace_padding, expected,
+                "class.padding={padding}"
+            );
+        }
     }
 
     #[test]

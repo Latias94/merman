@@ -1,0 +1,141 @@
+{
+  "diagramType": "classDiagram",
+  "layout": {
+    "ClassDiagramV2": {
+      "bounds": {
+        "max_x": 293.72,
+        "max_y": 629.4,
+        "min_x": 12.0,
+        "min_y": 12.0
+      },
+      "clusters": [
+        {
+          "diff": -16.0,
+          "effective_dir": "TB",
+          "height": 444.4,
+          "id": "Publishing",
+          "offset_y": 7.4,
+          "padding": 16.0,
+          "requested_dir": null,
+          "title": "Publishing",
+          "title_label": {
+            "height": 15.4,
+            "width": 56.28,
+            "x": 152.86,
+            "y": 192.7
+          },
+          "title_margin_bottom": 0.0,
+          "title_margin_top": 0.0,
+          "width": 281.72,
+          "x": 152.86,
+          "y": 407.2
+        }
+      ],
+      "edges": [
+        {
+          "end_label_left": null,
+          "end_label_right": null,
+          "end_marker": null,
+          "from": "Resource",
+          "from_cluster": null,
+          "id": "0",
+          "label": null,
+          "points": [
+            {
+              "x": 152.86,
+              "y": 135.0
+            },
+            {
+              "x": 152.86,
+              "y": 175.0
+            },
+            {
+              "x": 152.86,
+              "y": 229.4
+            }
+          ],
+          "start_label_left": null,
+          "start_label_right": null,
+          "start_marker": null,
+          "stroke_dasharray": null,
+          "to": "Document",
+          "to_cluster": null
+        },
+        {
+          "end_label_left": {
+            "height": 12.1,
+            "width": 17.27,
+            "x": 164.895,
+            "y": 473.95
+          },
+          "end_label_right": null,
+          "end_marker": null,
+          "from": "Document",
+          "from_cluster": null,
+          "id": "1",
+          "label": {
+            "height": 21.0,
+            "width": 50.06,
+            "x": 152.39,
+            "y": 433.4
+          },
+          "points": [
+            {
+              "x": 152.86,
+              "y": 372.4
+            },
+            {
+              "x": 152.86,
+              "y": 482.4
+            }
+          ],
+          "start_label_left": null,
+          "start_label_right": {
+            "height": 12.1,
+            "width": 6.16,
+            "x": 140.38,
+            "y": 386.85
+          },
+          "start_marker": null,
+          "stroke_dasharray": null,
+          "to": "Section",
+          "to_cluster": null
+        }
+      ],
+      "nodes": [
+        {
+          "height": 444.4,
+          "id": "Publishing",
+          "is_cluster": true,
+          "width": 281.72,
+          "x": 152.86,
+          "y": 407.2
+        },
+        {
+          "height": 123.0,
+          "id": "Resource",
+          "is_cluster": false,
+          "width": 113.742,
+          "x": 152.86,
+          "y": 73.5
+        },
+        {
+          "height": 143.0,
+          "id": "Document",
+          "is_cluster": false,
+          "width": 233.72,
+          "x": 152.86,
+          "y": 300.9
+        },
+        {
+          "height": 123.0,
+          "id": "Section",
+          "is_cluster": false,
+          "width": 151.335,
+          "x": 152.86,
+          "y": 543.9
+        }
+      ]
+    }
+  }
+}

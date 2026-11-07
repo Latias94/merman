@@ -199,6 +199,66 @@ fn class_direct_input_preserves_whitespace_parents_and_repeated_labels() {
 }
 
 #[test]
+fn class_svg_relationship_wrap_replays_cancellation_from_a_host_probe() {
+    use merman_model::OperationControl;
+    use merman_render::environment::{
+        HostMeasurementResult, HostTextMeasurementRequest, HostTextMeasurer, MeasurementProfileId,
+        TextMeasurementPhase, TextMeasurementPolicy, TextMeasurementProfileIdentity,
+    };
+    use std::sync::Arc;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
+    struct CancelEdgeLabel(AtomicUsize);
+    impl HostTextMeasurer for CancelEdgeLabel {
+        fn measure(&self, _request: HostTextMeasurementRequest<'_>) -> HostMeasurementResult {
+            Ok(None)
+        }
+
+        fn measure_with_control(
+            &self,
+            request: HostTextMeasurementRequest<'_>,
+            control: &OperationControl,
+        ) -> HostMeasurementResult {
+            if request.text.starts_with("cancelword") {
+                self.0.fetch_add(1, Ordering::Relaxed);
+                control.cancel();
+            }
+            Ok(None)
+        }
+    }
+
+    for word_count in [32, 4096] {
+        let source = format!(
+            "---\nconfig:\n  htmlLabels: false\n---\nclassDiagram\nA --> B : {}\n",
+            std::iter::repeat_n("cancelword", word_count)
+                .collect::<Vec<_>>()
+                .join(" ")
+        );
+        let parsed = parse_class(&source);
+        let control = OperationControl::new();
+        let host = Arc::new(CancelEdgeLabel(AtomicUsize::new(0)));
+        let identity = TextMeasurementProfileIdentity::new(
+            MeasurementProfileId::new("test.class-edge-wrap-cancellation").unwrap(),
+            "v1",
+        )
+        .unwrap();
+        let session = RenderEnvironment::deterministic()
+            .with_text_measurement_policy(TextMeasurementPolicy::host_display(
+                identity,
+                host.clone(),
+                TextMeasurementPhase::ALL,
+            ))
+            .begin_session_with_control(control)
+            .unwrap();
+        assert!(matches!(
+            family::prepare(&parsed, &LayoutOptions::headless_svg_defaults(), session),
+            Err(merman_render::Error::Cancelled(_))
+        ));
+        assert_eq!(host.0.load(Ordering::Relaxed), 1);
+    }
+}
+
+#[test]
 fn class_direct_input_parent_validation_preserves_operation_error_priority() {
     use merman_model::OperationControl;
     use merman_render::resources::{RenderResourcePolicy, ResourceLimitId};

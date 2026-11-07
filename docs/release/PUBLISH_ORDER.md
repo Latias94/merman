@@ -1,7 +1,7 @@
 # Publish Order
 
 Status: maintained workspace publish order, with explicitly dated historical channel snapshots.
-Last updated: 2026-11-06 (Asia/Shanghai)
+Last updated: 2026-11-07 (Asia/Shanghai)
 
 Use the [versioned upgrade index](README.md#workspace-upgrades) for consumer migrations and [Releasing](RELEASING.md) for current publication and recovery procedures. Snapshot sections below preserve the versions and observations from their stated dates; they are not instructions to repeat those uploads.
 
@@ -9,34 +9,61 @@ Use the [versioned upgrade index](README.md#workspace-upgrades) for consumer mig
 
 Latest verified maintenance release: `0.9.3` from `release/0.9.x`, covering the workspace Rust crates, CLI/LSP, native C/WASI SDK archives and the Apple XCFramework. After alpha publication, all selected stable Web, Node, Python, Flutter and Android backfills are delivered and independently reconciled below. The Node loader, both transports and all five native members are available at `0.9.3` under `latest`.
 
-The main-line `0.10.0-alpha.1` is published for all 26 Rust crates, CLI/LSP, native C/WASI SDKs, Web and Node npm groups, Python wheels, Flutter, Android local Maven/AAR and Apple local SwiftPM/XCFramework. All selected alpha platform deliveries are reconciled below. The `0.9.x` maintenance source and tags are unchanged.
+The main-line `0.10.0-alpha.2` is published for all selected products, with independently reconciled delivery recorded below. The previous `0.10.0-alpha.1` remains available. The `0.9.x` maintenance source and tags are unchanged.
+
+## 0.10.0-alpha.2 publication
+
+Immutable `v0.10.0-alpha.2` identifies `a25f4e366236696bf962fcdd2ac325833ba9cdf0`, tree `f32fa8311213f94d356a1635b35241b1720d39af`. [PR #281](https://github.com/Latias94/merman/pull/281) merged after its [CI](https://github.com/Latias94/merman/actions/runs/42198400701) passed 68 jobs with four intentional skips. The exact-source [main CI](https://github.com/Latias94/merman/actions/runs/42212269595), attempt 2, also passed; its first attempt stalled while downloading fonts before tests. The public [Release](https://github.com/Latias94/merman/releases/tag/v0.10.0-alpha.2) is a prerelease; stable Latest remains `v0.9.3`.
+
+Complete [preflight 42198335121](https://github.com/Latias94/merman/actions/runs/42198335121), attempt 1, passed all 54 jobs from the same source and workflow commit. Immutable receipt artifact `13505348268` has ZIP SHA-256 `91c4fb4b5611d5231499c616957e09becb3664e006e8d83e38398c180ec47658`. Its 18 qualified SDK archives were reused directly. [Pages](https://github.com/Latias94/merman/actions/runs/42212269419) deployed the same source; all 15 public theme-design links opened the intended design and five samples without page errors.
+
+| Selected surface | Independently verified delivery | Publishing owner |
+| --- | --- | --- |
+| Independent prerequisites | Roughr `0.12.6`, grammar Cargo/npm `0.3.3` and six grammar assets; registry checksums, original bytes and applicable signatures/provenance agree. | [Roughr](https://github.com/Latias94/merman/actions/runs/42212450940), [grammar](https://github.com/Latias94/merman/actions/runs/42212457908), attempt 1 |
+| Rust workspace | All 26 non-yanked `0.10.0-alpha.2` crates; prepared receipts, API, sparse index, public archives, source/VCS and registry provenance agree. | [42226260118](https://github.com/Latias94/merman/actions/runs/42226260118), attempt 1 |
+| CLI/LSP | All 27 public files match the original publication bundle byte-for-byte; bundle verification and all 27 source/tag-bound attestations pass. | [42226260207](https://github.com/Latias94/merman/actions/runs/42226260207), attempt 1 |
+| Native C/WASI SDK | All 18 archives match the original producer bytes and pass manifest, ABI, payload and attestation checks. All 18 parsed sidecars match their archives; three Windows sidecars were normalized from CRLF to LF by the publisher, with no archive difference. | [42233233650](https://github.com/Latias94/merman/actions/runs/42233233650), attempt 1 |
+| Web npm | Five exact `0.10.0-alpha.2` tarballs, integrities, registry signatures and attestations match the original group; `alpha` advances and stable `latest=0.9.3` remains. | [42226577020](https://github.com/Latias94/merman/actions/runs/42226577020), attempt 1 |
+| Node npm | Nine original tarballs, integrities, registry signatures and attestations verified. Two accepted macOS packages were retained; recovery published only the seven remaining members. Existing stable tags remain unchanged, including ARM64's historical `latest=0.10.0-alpha.1`. | Original [42226585315](https://github.com/Latias94/merman/actions/runs/42226585315), recovery [42242480489](https://github.com/Latias94/merman/actions/runs/42242480489), attempt 1 |
+| Python/PyPI | Five `0.10.0a2` wheels match retained artifacts, GitHub downloads and PyPI bytes; five signatures and source/tag/run attestations pass. Four attempt-1 wheels were retained. | [42233085126](https://github.com/Latias94/merman/actions/runs/42233085126), attempt 2 |
+| Android | All four public files match the original artifact; complete `io.merman:merman-android:0.10.0-alpha.2` local Maven repository, embedded/standalone AAR equality, checksums and 16 KB alignment pass. Central remains deferred. | [42233079278](https://github.com/Latias94/merman/actions/runs/42233079278), attempt 1 |
+| Apple | All seven public files match the original artifact, including three ZIP archives and their checksums. XCFramework, complete local SwiftPM and thin delivery-tree source/manifest identities agree. Extracted-package, simulator and controlled HTTPS consumer qualification passed; a public remote SwiftPM repository remains deferred. | [42247417965](https://github.com/Latias94/merman/actions/runs/42247417965), attempt 2 |
+| Flutter | All 59 facade members match the qualified archive, including paths, modes, sizes and bytes; the public archive SHA-256 is identical. All eleven native archives match the source-matched preflight and manifest. The repaired facade uses `09846080864abc97224642c1c7d30122913421e1`; native source and authentication tag retain a25. | [42248563790](https://github.com/Latias94/merman/actions/runs/42248563790), attempt 2 |
+
+Node's two Linux ARM64 trusted-publisher connections had expired before their first OIDC publication. Both were recreated with the same repository/workflow/environment and direct-publish permission, then independently read back as `Valid`. The maintainer explicitly authorized retrying the original GNU tarball after reviewing the retained E404 package-PUT rejection and its bounded historical uncertainty. Recovery workflow `edb67d605f750b54ac8c4c7c1522b0e86d91fc39` reused artifact `13510065594` from the original run and canonical manifest SHA-256 `142c476532cf71bb68c31db8072c584148bea105a75ce74602aeba4fab0a6099`; product source remained a25. The original two macOS attestations retain their original owner, and the seven recovery attestations identify the recovery workflow and run. No accepted tarball or tag was replaced.
+
+Flutter's reviewed facade-only repair raised the `code_assets` floor to 2.2.0 and qualified the facade against the eleven retained native assets without rebuilding them. The maintainer's authenticated Dart CLI published the retained archive using `--from-archive`; pub.dev accepted it at `2026-11-06T16:35:10Z`. Its SHA-256 is `0fbb0f0f1df136fcac51e65851f609a9714326a61abd690335b49cf9f6f2a648`. This was a manual CLI publication, not an OIDC upload. The original publishing owner's failed job was then retried: its pre-upload comparison found the exact accepted package, skipped credential setup and upload, and completed successfully after the final public comparison. Earlier runnerless attempts had sent no package; a failed CLI attempt from an ignored extraction directory selected zero files, with the rejection boundary reviewed against Dart and pub.dev source before the retained archive was sent.
+
+Post-tag recovery changes disable hidden npm upload retries, preserve explicit permission rejections separately from uncertain acceptance, make Apple simulator cleanup diagnostic, normalize future SDK sidecar newlines, migrate Flutter contracts to `code_assets 2.2` and send qualified pub.dev archives directly. These commits do not change the immutable release source. Flutter's repaired facade dependency floor is separately identified above; all native products retain a25. Remote SwiftPM, Maven Central, Typst Universe, Marketplace/Open VSX and stable package-manager updates remain deferred.
+
+Recovery main `af773bacc9e397f5b77a029f71d32c1b822aab59` passed [CI 42251023921](https://github.com/Latias94/merman/actions/runs/42251023921), attempt 2, with 68 successful jobs and four intentional skips. Only the cancelled macOS setup-action check and its aggregate gate were rerun; the other successful results were retained. Later documentation, workflow and renderer changes are reviewed through a separate pull request and require their own source-matched CI.
 
 ## 0.10.0-alpha.2 preparation
 
 Selected for preparation on 2026-11-06 after [#279](https://github.com/Latias94/merman/pull/279), starting from main `1fc62283668c6c909b224aa499d8b98a418c1786`. [#280](https://github.com/Latias94/merman/pull/280) merged at `e6733d6ae4daba7ff6d48782eaf0ab63a65b5041`, tree `0fcdd53438a708d79e11726059cda40a1a8c05b5`. The candidate includes the Mermaid 12.3 migration, expanded theme coverage and editable theme gallery, followed by a dependency and build-tool refresh. Its [PR CI](https://github.com/Latias94/merman/actions/runs/42186457151) passed 68 jobs and four conditional skips at tested merge `653339e24d419a588c18678466629e49fc13416b`; the merged main tree is identical. Main's own CI and the final source's immutable release preflight remain distinct evidence.
 
-The [alpha.2 changelog](../../CHANGELOG.md#0100-alpha2---2026-11-06) and five coupled platform projections use the intended tag date `2026-11-06`. Package READMEs describe target-version use; the host guide retains independently verified available downloads until each publishing owner succeeds. Date preparation does not establish publication. No alpha.2 release tag, registry upload or GitHub Release has been created by this readiness review.
+The [alpha.2 changelog](../../CHANGELOG.md#0100-alpha2---2026-11-06) and five coupled platform projections use the intended tag date `2026-11-06`. Package READMEs describe target-version use; the host guide retains independently verified available downloads until each publishing owner succeeds. At the readiness-review boundary, no alpha.2 release tag, registry upload or GitHub Release had been created. Subsequent publication is recorded above.
 
 The reference graph advances ELK to `0.12.1` and esbuild to `0.28.2`, with compatible D3 patches and Pie path behavior updated together. The [dependency policy](../DEPENDENCY_POLICY.md) records retained renderer, TypeScript and Mermaid companion contracts. Root Rust tooling is `1.99.1` with library MSRV `1.95`; host JavaScript tooling selects Node `26.13.0` and npm `12.2.2`. Independent `roughr-merman 0.12.6` and Tree-sitter Mermaid `0.3.3` remain prerequisites whose owners must publish and verify registry visibility before coupled workspace dependents.
 
 The fresh-resolution admission owner passes the alpha.2 SVG/ASCII typed-family consumer and the previous alpha.1 facade. Alpha.1's exact sibling requirements select published alpha.1 packages, with no alpha.2 sibling patch used in that previous lane; mixed old/new compatibility is explicitly **not verified**. The independent-version guard reports Roughr `0.12.5 → 0.12.6` and grammar `0.3.2 → 0.3.3` against `v0.10.0-alpha.1`. Cargo metadata projects 26 coupled publishable crates. Prior PR verification and these local checks do not replace source-matched `scope=release` preflight.
 
-### Alpha.2 publication scope review
+### Alpha.2 publication scope
 
-The maintainer requested release readiness after merging #280. All existing product owners are selected for nonpublishing qualification. Publication remains deferred pending selection; the recommended scope is the complete alpha.1 product set plus its two independent prerequisites. A version projection, dated changelog or successful candidate build does not select an upload.
+On 2026-11-06, after the readiness review, the maintainer authorized merging #281 once CI passes and publishing alpha.2. The selected scope is the complete alpha.1 product set plus its two independent prerequisites. Independent external channels remain deferred. The immutable candidate is `a25f4e366236696bf962fcdd2ac325833ba9cdf0`, tree `f32fa8311213f94d356a1635b35241b1720d39af`; [release preflight 42198335121](https://github.com/Latias94/merman/actions/runs/42198335121) uses that same source and workflow HEAD. Publication still requires successful qualification and each owner result.
 
-| Delivery surface | Publication state for this readiness review | Public version observed on 2026-11-06 |
+| Delivery surface | Selected publication scope | Public version observed on 2026-11-06 |
 | --- | --- | --- |
-| Rust workspace, 26 crates | deferred pending release selection | `0.10.0-alpha.1`; ordinary OIDC owners retain the three names bootstrapped for alpha.1 |
-| CLI/LSP | deferred pending release selection | `v0.10.0-alpha.1` prerelease archives; stable Latest remains `v0.9.3` |
-| Native C/WASI SDK | deferred pending release selection | alpha.1's 18 archives and 18 checksum sidecars |
-| Web npm, five members | deferred pending release selection | exact `0.10.0-alpha.1` under `alpha`; stable `latest=0.9.3` |
-| Node npm, nine members | deferred pending release selection | exact `0.10.0-alpha.1` under `alpha`; existing seven names retain stable `latest=0.9.3`, and both ARM64 names have `latest=alpha=0.10.0-alpha.1` |
-| Python / PyPI | deferred pending release selection | five `0.10.0a1` wheels; stable `0.9.3` |
-| Flutter / pub.dev and native assets | deferred pending release selection | `0.10.0-alpha.1` and its original native asset URLs; stable `0.9.3` |
-| Apple local SwiftPM / XCFramework | deferred pending release selection | seven alpha.1 assets on the primary workspace Release |
-| Android AAR / local Maven ZIP | deferred pending release selection | `io.merman:merman-android:0.10.0-alpha.1` as GitHub-hosted local-repository assets |
-| Roughr and Tree-sitter independent releases | deferred pending release selection | Roughr `0.12.5`; grammar Cargo/npm/GitHub `0.3.2` |
+| Rust workspace, 26 crates | selected | `0.10.0-alpha.1`; ordinary OIDC owners retain the three names bootstrapped for alpha.1 |
+| CLI/LSP | selected | `v0.10.0-alpha.1` prerelease archives; stable Latest remains `v0.9.3` |
+| Native C/WASI SDK | selected | alpha.1's 18 archives and 18 checksum sidecars |
+| Web npm, five members | selected | exact `0.10.0-alpha.1` under `alpha`; stable `latest=0.9.3` |
+| Node npm, nine members | selected | exact `0.10.0-alpha.1` under `alpha`; existing seven names retain stable `latest=0.9.3`, and both ARM64 names have `latest=alpha=0.10.0-alpha.1` |
+| Python / PyPI | selected | five `0.10.0a1` wheels; stable `0.9.3` |
+| Flutter / pub.dev and native assets | selected | `0.10.0-alpha.1` and its original native asset URLs; stable `0.9.3` |
+| Apple local SwiftPM / XCFramework | selected | seven alpha.1 assets on the primary workspace Release |
+| Android AAR / local Maven ZIP | selected, group `io.merman`, no Central bundle | `io.merman:merman-android:0.10.0-alpha.1` as GitHub-hosted local-repository assets |
+| Roughr and Tree-sitter independent releases | selected before coupled workspace uploads | Roughr `0.12.5`; grammar Cargo/npm/GitHub `0.3.2` |
 | VS Code Marketplace, Typst wrapper, stable package managers, remote SwiftPM and Maven Central | deferred | Not selected by this readiness request; no new availability claim is made for these independent channels |
 
 Read-only observations at `2026-11-06T09:23–09:30Z` query all 26 Cargo names through the [API](https://crates.io/api/v1/crates/merman) and sparse index, all 14 [Web/Node npm members](https://registry.npmjs.org/@mermanjs%2fweb), [PyPI](https://pypi.org/pypi/merman/json), [pub.dev](https://pub.dev/api/packages/merman), and GitHub tags and Releases. No exact alpha.2 package, workspace/Flutter tag or Release is visible. The current alpha.1 Cargo API/index checksums agree for every member; GitHub metadata lists its 27 CLI/LSP assets, 36 SDK files, five wheels, seven Apple files and four Android files. This readiness observation does not re-download or re-attest historical asset bytes. All npm names already exist, so no new-name bootstrap is indicated. Existing GitHub release environments are present, but live Trusted Publisher exchange remains untested until each publishing owner runs.
@@ -46,7 +73,7 @@ Both independent target-version API requests return 404, while their complete of
 ### Alpha.2 owner sequence
 
 1. Freeze the final dated/documented candidate and dispatch `release-preflight.yml` with `scope=release`, its full source SHA and a workflow ref pointing to that same SHA. A successful run is mandatory before the workspace tag; the identical run HEAD also makes its 18 SDK archives eligible for later publication.
-2. After publication selection, run the independent Roughr owner and the tagged Tree-sitter owner. Verify exact Cargo API and sparse-index checksums, grammar npm integrity/provenance and any selected standalone grammar assets before coupled workspace uploads.
+2. After CI and merge, run the independent Roughr owner and the tagged Tree-sitter owner. Verify exact Cargo API and sparse-index checksums, grammar npm integrity/provenance and selected standalone grammar assets before coupled workspace uploads.
 3. Push immutable `v0.10.0-alpha.2` only after successful preflight and independent prerequisites. Its tag triggers Cargo and CLI/LSP. Web and Node publish their complete frozen groups under `alpha`; preserve existing stable tags.
 4. Wait for the public, non-draft primary Release before the selected SDK, Apple, Android and Python upload owners. The SDK publisher consumes the successful source-matched producer run without rebuilding. Android uses explicit group `io.merman` with `prepare_central_bundle=false`; Central signing and submission remain separately deferred.
 5. For selected Flutter publication, push `flutter-v0.10.0-alpha.2` at the same immutable workspace source only after the primary Release exists. This tag provides pub.dev authentication; all eleven native assets attach to `v0.10.0-alpha.2`, with no separate Flutter Release. Keep the existing publisher pattern and original alpha.1 URLs. The normal tag trigger does not require enabling manual-dispatch recovery.

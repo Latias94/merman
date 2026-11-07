@@ -1143,11 +1143,17 @@ already accepted, different pub.dev package at the same version.
 The pub.dev job uses the trusted verifier from the workflow revision, enforces bounded
 regular-file-only extraction into a new directory with `--require-thin`, and configures Dart OIDC
 only after artifact, public-native and upload-history checks succeed. It publishes the qualified
-bytes with `dart pub publish --force --skip-validation`, then reconciles public package members;
+bytes with `dart pub publish --force --from-archive <verified-package.tar.gz>`, then reconciles public package members;
 package hooks do not execute with publication credentials. Upload history covers every matching
 authentication-tag run and attempt, including a new manual dispatch. If an earlier upload
 has an unknown outcome, retain the frozen package and continue observation. A 404 does not permit
 an automatic resend or a new run that bypasses that uncertainty.
+
+For an authorized maintainer-CLI recovery, use that same retained archive with `--from-archive`
+after verifying its receipt and the complete public native downloads. This sends the qualified
+bytes directly; publishing an extracted directory below an ignored checkout path can make Dart's
+Git-aware file selection omit the package. Preserve the command outcome and server diagnostic,
+then reconcile the public package before retrying the original failed publisher.
 
 For a workflow-only recovery after a release tag already exists, Python, Android, and Apple may use
 the updated workflow definition from `main`, but they still check out and verify the immutable

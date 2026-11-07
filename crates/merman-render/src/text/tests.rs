@@ -1434,6 +1434,177 @@ fn flowchart_html_markdown_metrics_preserve_paragraph_break_height() {
     assert!(two_paragraphs.height > single_paragraph.height);
 }
 
+struct MarkdownWrapCancellationMeasurer {
+    cancel_on_probe: usize,
+    cancelled: std::cell::Cell<bool>,
+    cancellation_checks: std::cell::Cell<usize>,
+    probe_lengths: std::cell::RefCell<Vec<usize>>,
+}
+
+impl MarkdownWrapCancellationMeasurer {
+    fn new(cancel_on_probe: usize) -> Self {
+        Self {
+            cancel_on_probe,
+            cancelled: std::cell::Cell::new(false),
+            cancellation_checks: std::cell::Cell::new(0),
+            probe_lengths: std::cell::RefCell::new(Vec::new()),
+        }
+    }
+
+    fn probe(&self, text: &str) -> f64 {
+        assert!(
+            !self.cancelled.get(),
+            "a cancelled Markdown wrap must not issue another probe"
+        );
+        let mut probes = self.probe_lengths.borrow_mut();
+        probes.push(text.len());
+        if probes.len() == self.cancel_on_probe {
+            self.cancelled.set(true);
+            // Match the operation-routed measurer's neutral cancellation result.
+            return 0.0;
+        }
+        text.chars().count() as f64 * 8.0
+    }
+}
+
+impl TextMeasurer for MarkdownWrapCancellationMeasurer {
+    fn cancellation_requested(&self) -> bool {
+        self.cancellation_checks
+            .set(self.cancellation_checks.get() + 1);
+        self.cancelled.get()
+    }
+
+    fn measure(&self, text: &str, style: &TextStyle) -> TextMetrics {
+        TextMetrics {
+            width: self.probe(text),
+            height: style.font_size,
+            line_count: 1,
+        }
+    }
+
+    fn measure_wrapped(
+        &self,
+        text: &str,
+        style: &TextStyle,
+        _max_width: Option<f64>,
+        _wrap_mode: WrapMode,
+    ) -> TextMetrics {
+        self.measure(text, style)
+    }
+
+    fn measure_svg_text_computed_length_px(&self, text: &str, _style: &TextStyle) -> f64 {
+        self.probe(text)
+    }
+}
+
+#[test]
+fn markdown_svg_wrap_cancellation_stops_before_remaining_tokens_and_rows() {
+    let mut expected_checks = None;
+    for word_count in [1, 64, 4096] {
+        let measurer = MarkdownWrapCancellationMeasurer::new(1);
+        let parsed = vec![
+            vec![("word".to_owned(), MermaidMarkdownWordType::Normal); word_count],
+            vec![("unvisited".to_owned(), MermaidMarkdownWordType::Strong); word_count],
+        ];
+        let wrapped = wrap_markdown_word_lines(
+            &measurer,
+            &parsed,
+            &TextStyle::default(),
+            Some(200.0),
+            WrapMode::SvgLike,
+            true,
+            SvgTextEntityMode::DecodedModel,
+        );
+
+        assert!(wrapped.is_empty());
+        assert_eq!(*measurer.probe_lengths.borrow(), [4]);
+        let checks = measurer.cancellation_checks.get();
+        assert_eq!(*expected_checks.get_or_insert(checks), checks);
+    }
+}
+
+#[test]
+fn markdown_svg_wrap_cancellation_stops_between_styled_probes() {
+    let mut expected_checks = None;
+    for remaining_words in [0, 64, 4096] {
+        let measurer = MarkdownWrapCancellationMeasurer::new(2);
+        let mut words = vec![
+            ("word".to_owned(), MermaidMarkdownWordType::Normal),
+            ("styled".to_owned(), MermaidMarkdownWordType::Strong),
+        ];
+        words.extend(std::iter::repeat_n(
+            ("unvisited".to_owned(), MermaidMarkdownWordType::Em),
+            remaining_words,
+        ));
+        let wrapped = wrap_markdown_word_lines(
+            &measurer,
+            &[words],
+            &TextStyle::default(),
+            Some(200.0),
+            WrapMode::SvgLike,
+            true,
+            SvgTextEntityMode::CreateTextSource,
+        );
+
+        assert!(wrapped.is_empty());
+        assert_eq!(*measurer.probe_lengths.borrow(), [4, 4]);
+        let checks = measurer.cancellation_checks.get();
+        assert_eq!(*expected_checks.get_or_insert(checks), checks);
+    }
+}
+
+#[test]
+fn markdown_svg_wrap_cancellation_stops_long_word_grapheme_probes() {
+    let mut expected_checks = None;
+    for grapheme_count in [16, 64, 4096] {
+        let measurer = MarkdownWrapCancellationMeasurer::new(3);
+        let grapheme = "👩🏽‍💻";
+        let word = grapheme.repeat(grapheme_count);
+        let word_bytes = word.len();
+        let wrapped = wrap_markdown_word_lines(
+            &measurer,
+            &[vec![(word, MermaidMarkdownWordType::Em)]],
+            &TextStyle::default(),
+            Some(200.0),
+            WrapMode::SvgLike,
+            true,
+            SvgTextEntityMode::DecodedModel,
+        );
+
+        assert!(wrapped.is_empty());
+        assert_eq!(
+            *measurer.probe_lengths.borrow(),
+            [word_bytes, word_bytes, grapheme.len()]
+        );
+        let checks = measurer.cancellation_checks.get();
+        assert_eq!(*expected_checks.get_or_insert(checks), checks);
+    }
+}
+
+#[test]
+fn markdown_svg_wrap_cancellation_skips_copy_without_a_width_limit() {
+    let parsed = vec![vec![(
+        "unvisited".to_owned(),
+        MermaidMarkdownWordType::Normal,
+    )]];
+    for max_width in [None, Some(0.0), Some(f64::NAN), Some(200.0)] {
+        let measurer = MarkdownWrapCancellationMeasurer::new(1);
+        measurer.cancelled.set(true);
+        let wrapped = wrap_markdown_word_lines(
+            &measurer,
+            &parsed,
+            &TextStyle::default(),
+            max_width,
+            WrapMode::SvgLike,
+            true,
+            SvgTextEntityMode::DecodedModel,
+        );
+
+        assert!(wrapped.is_empty());
+        assert!(measurer.probe_lengths.borrow().is_empty());
+    }
+}
+
 #[test]
 fn markdown_svg_wrapping_keeps_raw_html_tags_literal_but_wraps_like_mermaid() {
     use MermaidMarkdownWordType::*;

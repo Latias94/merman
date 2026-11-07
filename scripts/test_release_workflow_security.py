@@ -334,8 +334,14 @@ class WorkflowSecurityBoundaries(unittest.TestCase):
 
     def test_flutter_upload_does_not_rerun_hooks_or_resend_unknown_outcomes(self) -> None:
         publish = workflow_job(read(WORKFLOW_ROOT / "release-flutter.yml"), "publish")
+        extract = publish.split("      - name: Verify and extract Flutter package artifact\n", 1)[1].split("\n      - ", 1)[0]
+        receipt = "--receipt target/flutter-package/merman-flutter-package.receipt.json"
+        self.assertIn("--archive target/flutter-package/merman-flutter-package.tar.gz", extract)
+        self.assertIn(receipt, extract)
+        self.assertIn('--source-sha "$SOURCE_SHA" --source-tree "$SOURCE_TREE" --version "$VERSION"', extract)
         self.assertLess(publish.index("flutter_release_archive.py extract"),
                         publish.index("Setup Dart with pub.dev OIDC credentials"))
+        self.assertLess(publish.index(receipt), publish.index("--owner flutter"))
         self.assertLess(publish.index("--owner flutter"), publish.index("dart pub publish"))
         self.assertIn('--authentication-tag "$AUTHENTICATION_TAG"', publish)
         self.assertIn('--authentication-sha "$AUTHENTICATION_SHA"', publish)
@@ -343,7 +349,9 @@ class WorkflowSecurityBoundaries(unittest.TestCase):
         before_send = publish.split("      - name: Reconcile before permitting a pub.dev upload\n", 1)[1].split("\n      - ", 1)[0]
         self.assertLess(before_send.index("reconcile_pub_package"), before_send.index("--owner flutter"))
         self.assertIn("echo 'upload=false'", before_send)
-        self.assertIn("--force --skip-validation", publish)
+        self.assertIn('        run: dart pub publish --force --from-archive '
+                      '"$GITHUB_WORKSPACE/target/flutter-package/merman-flutter-package.tar.gz"\n', publish)
+        self.assertNotIn("--skip-validation", publish)
         self.assertNotIn("dart run", publish)
         self.assertNotIn("flutter pub get", publish)
         self.assertFalse((WORKFLOW_ROOT / "release-crates-bootstrap.yml").exists())

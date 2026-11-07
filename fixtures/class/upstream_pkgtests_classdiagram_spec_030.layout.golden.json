@@ -10,12 +10,12 @@
       },
       "clusters": [
         {
-          "diff": -12.0,
+          "diff": -16.0,
           "effective_dir": "TB",
           "height": 188.0,
           "id": "A",
-          "offset_y": 15.0,
-          "padding": 12.0,
+          "offset_y": 13.0,
+          "padding": 16.0,
           "requested_dir": null,
           "title": "A",
           "title_label": {
@@ -31,12 +31,12 @@
           "y": 106.0
         },
         {
-          "diff": -12.0,
+          "diff": -16.0,
           "effective_dir": "TB",
           "height": 188.0,
           "id": "B",
-          "offset_y": 15.0,
-          "padding": 12.0,
+          "offset_y": 13.0,
+          "padding": 16.0,
           "requested_dir": null,
           "title": "B",
           "title_label": {

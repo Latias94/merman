@@ -22,21 +22,30 @@ The `0.10.0-alpha.1` baseline selects Mermaid `12.2.0`, retaining parser `2.0.1`
 `12.0.0`. Its source and artifact admission are recorded in [ADR-0094](../adr/0094-mermaid-12-2-upstream-transition.md).
 This transition does not change package versions, feature ownership, or transport schemas.
 
-Current source development selects Mermaid `12.3.0` with the exact ELK `0.12.1` behavior oracle
-and Cytoscape `3.34.4`. Published alpha.1 identities remain unchanged. See the
-[development migration](../migrations/mermaid-12-3.md) for source and output changes, including
-the explicit static projection for animated Step edges.
+The `0.10.0-alpha.2` release selects Mermaid `12.3.0`, parser `2.0.1`, reference CLI `12.2.0`,
+the exact ELK `0.12.1` behavior oracle, and Cytoscape `3.34.4`. Its shared source baseline is
+the immutable [`v0.10.0-alpha.2` tag](https://github.com/Latias94/merman/tree/v0.10.0-alpha.2).
+Published alpha.1 identities remain unchanged. See the
+[alpha.2 migration](../migrations/mermaid-12-3.md) for source and output changes, including
+the explicit static projection for animated Step edges. Individual channel availability is
+recorded in the [host guide](PREBUILT_PRODUCTS.md#published-versions).
 
 Published `0.10.0-alpha.1` uses Options JSON schema `3`, Web transport API `8`, analysis facts
-schema `2`, and theme execution evidence schema `1`. Current development source retains Options
+schema `2`, and theme execution evidence schema `1`. The `0.10.0-alpha.2` release retains Options
 JSON schema `3` and uses Web transport API `9`, analysis facts schema `3`, and theme execution
-evidence schema `2`. Both provide prepared sources and mounted diagrams; their wrappers and
-artifacts must match the same contract versions. A projected package version does not establish
-publication. The [host guide](PREBUILT_PRODUCTS.md#published-versions) records verified channel
-versions; use immutable `v0.9.3` and its matching documentation for the published maintenance APIs.
-See the [alpha changelog](../../CHANGELOG.md#0100-alpha1---2026-11-02) for required migrations.
+evidence schema `2`. Both alpha releases provide prepared sources and mounted diagrams; their
+wrappers and artifacts must match the same contract versions. Shared release contracts do not
+establish availability on every channel. Use immutable `v0.9.3` and its matching documentation
+for the published maintenance APIs. See the
+[alpha.2 changelog](../../CHANGELOG.md#0100-alpha2---2026-11-06) for required migrations.
 
-The alpha.2 candidate requires the independent `roughr-merman 0.12.6` and Tree-sitter `0.3.3` candidates. Publish those patches before their workspace dependents; published alpha.1 retains `0.12.5` and `0.3.2`. Typst wrapper `0.5.0` bundles Merman `0.9.0`; wrapper `0.4.0` bundles `0.8.0`. See the [dependency policy](../DEPENDENCY_POLICY.md) for compatible version requirements and intentional upgrade exceptions.
+The alpha.2 release requires the independent `roughr-merman 0.12.6` and Tree-sitter Mermaid
+`0.3.3` releases. Both prerequisites were published and independently verified before their
+coupled workspace dependents; the [publication ledger](PUBLISH_ORDER.md#0100-alpha2-publication)
+records their Cargo, grammar npm, and standalone grammar delivery identities. Published alpha.1
+retains Roughr `0.12.5` and grammar `0.3.2`. Typst wrapper `0.5.0` bundles Merman `0.9.0`;
+wrapper `0.4.0` bundles `0.8.0`. See the [dependency policy](../DEPENDENCY_POLICY.md) for compatible
+version requirements and intentional upgrade exceptions.
 
 ## Choose A Surface
 
