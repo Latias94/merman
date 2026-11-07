@@ -28,6 +28,12 @@ retains authored `config` and effective `semantic_config` before theme materiali
 ASCII requests use the same semantic route. Source-config admission, secure-key filtering and
 semantic sanitization still apply.
 
+All source-provided strings reject literal `<`, `>` and the case-sensitive `url(data:` sequence,
+matching the selected Mermaid configuration filter. This includes semantic fields such as
+`gitGraph.mainBranchName`; rejected overrides fall back to the admitted host/default value.
+Array positions remain stable when a string is removed. Trusted host configuration is separate,
+and source CSS/font values also pass the stricter value-token admission described below.
+
 `MermaidEngine` and `PresentationMetadata` are the full API names; the old `Engine` and
 `ParseMetadata` aliases are removed. Enable `presentation` for full Mermaid configuration and
 `Renderer::prepare_presentation()` / `PresentationArtifact`. `MermaidEngine::with_site_config`

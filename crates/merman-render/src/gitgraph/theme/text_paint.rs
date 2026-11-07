@@ -470,7 +470,7 @@ impl GitGraphTextPaintReceipt<'_> {
             .copied()
             .unwrap_or(fallback[1])
             == text_root_inherited;
-        let text_visible = !name.trim().is_empty();
+        let text_visible = crate::gitgraph::gitgraph_branch_label_is_visible(name);
         self.facts.sources[0] +=
             usize::from(root_inherited) + usize::from(text_root_inherited && text_visible);
         self.facts.text_visible |= u8::from(text_visible);

@@ -167,6 +167,197 @@ fn mindmap_can_set_icon_then_class_or_class_then_icon() {
 }
 
 #[test]
+#[cfg(feature = "editor-facts")]
+fn mindmap_multiline_icon_and_editor_facts_share_exact_payload_ranges() {
+    for newline in ["\n", "\r\n"] {
+        for payload in ["  fa\n  fa-star 🌳  ", "\n "] {
+            let raw_payload = payload.replace('\n', newline);
+            let directive = format!("::ICON({raw_payload})");
+            let source = format!(
+                "---{newline}config:{newline}  layout: dagre{newline}---{newline}mindmap{newline}  root[根]{newline}  {directive}{newline}  :::section-12{newline}    child[Child]{newline}"
+            );
+            reset_mindmap_syntax_construction_count();
+            let snapshot = MermaidEngine::new()
+                .parse_diagram_snapshot_sync(&source)
+                .unwrap()
+                .unwrap();
+            let model = snapshot.outcome().parsed_model().unwrap();
+            assert_eq!(model["rootNode"]["icon"], payload);
+            assert_eq!(model["rootNode"]["class"], "section-12");
+            assert_eq!(model["nodes"][0]["icon"], payload);
+            assert_eq!(model["rootNode"]["children"][0]["nodeId"], "child");
+            let crate::ParsedEditorFacts::Available(facts) = snapshot.editor_facts() else {
+                panic!("Mindmap parser facts");
+            };
+            assert_eq!(facts.completeness, EditorSemanticCompleteness::Complete);
+            let icons = facts
+                .symbols
+                .iter()
+                .filter(|symbol| symbol.detail.as_deref() == Some("mindmap icon"))
+                .collect::<Vec<_>>();
+            assert_eq!(icons.len(), 1);
+            let icon = icons[0];
+            let start = source.find(&directive).unwrap();
+            let payload_start = start + "::ICON(".len();
+            assert_eq!(icon.name, payload);
+            assert_eq!(icon.role, EditorSemanticRole::Payload);
+            assert_eq!(icon.span, SourceSpan::new(start, start + directive.len()));
+            assert_eq!(
+                icon.selection,
+                SourceSpan::new(payload_start, payload_start + raw_payload.len())
+            );
+            assert_eq!(
+                &source[icon.selection.start..icon.selection.end],
+                raw_payload
+            );
+            assert!(
+                facts
+                    .directive_prefixes
+                    .iter()
+                    .any(|prefix| prefix == "::icon")
+            );
+            assert_eq!(mindmap_syntax_construction_count(), 1);
+        }
+    }
+}
+
+#[test]
+#[cfg(feature = "editor-facts")]
+fn mindmap_empty_icon_prefixes_keep_following_decorator_source_ranges() {
+    let source = "mindmap\n  root[根]\n  ::icon():::after\n  ::icon()::icon(  retained  )\n";
+    let snapshot = MermaidEngine::new()
+        .parse_diagram_snapshot_sync(source)
+        .unwrap()
+        .unwrap();
+    let model = snapshot.outcome().parsed_model().unwrap();
+    assert_eq!(model["rootNode"]["class"], "after");
+    assert_eq!(model["rootNode"]["icon"], "  retained  ");
+    let crate::ParsedEditorFacts::Available(facts) = snapshot.editor_facts() else {
+        panic!("Mindmap parser facts");
+    };
+    assert_eq!(facts.completeness, EditorSemanticCompleteness::Complete);
+    for (name, statement) in [
+        ("after", ":::after"),
+        ("  retained  ", "::icon(  retained  )"),
+    ] {
+        let symbol = facts
+            .symbols
+            .iter()
+            .find(|symbol| symbol.name == name)
+            .unwrap();
+        let start = source.find(statement).unwrap();
+        assert_eq!(symbol.span, SourceSpan::new(start, start + statement.len()));
+        let selection_start = source.find(name).unwrap();
+        assert_eq!(
+            symbol.selection,
+            SourceSpan::new(selection_start, selection_start + name.len())
+        );
+    }
+}
+
+#[test]
+#[cfg(feature = "editor-facts")]
+fn mindmap_icon_comment_preprocessing_keeps_only_exact_mappable_facts() {
+    let source = concat!(
+        "mindmap\r\n",
+        "  root[根]\r\n",
+        "  ::icon(fa\r\n",
+        "  %% removed comment 🌳\r\n",
+        "  fa-star)\r\n",
+        "    child[Child]\r\n",
+        "    ::icon(  retained  )\r\n",
+        "    ::icon()\r\n",
+    );
+    reset_mindmap_syntax_construction_count();
+    let snapshot = MermaidEngine::new()
+        .parse_diagram_snapshot_sync(source)
+        .unwrap()
+        .unwrap();
+    let model = snapshot.outcome().parsed_model().unwrap();
+    assert_eq!(model["rootNode"]["icon"], "fa\n  fa-star");
+    assert_eq!(model["rootNode"]["children"][0]["icon"], "  retained  ");
+    let crate::ParsedEditorFacts::Available(facts) = snapshot.editor_facts() else {
+        panic!("Mindmap parser facts");
+    };
+    // A single payload crossing a deleted comment has no exact original span.
+    assert_eq!(facts.completeness, EditorSemanticCompleteness::Recovered);
+    assert!(facts.diagnostics.iter().any(|diagnostic| {
+        diagnostic.message.contains("crossed a preprocessing edit") && diagnostic.span.is_none()
+    }));
+    let icons = facts
+        .symbols
+        .iter()
+        .filter(|symbol| symbol.detail.as_deref() == Some("mindmap icon"))
+        .collect::<Vec<_>>();
+    assert_eq!(icons.len(), 1);
+    assert_eq!(icons[0].name, "  retained  ");
+    let start = source.find("  retained  ").unwrap();
+    assert_eq!(
+        icons[0].selection,
+        SourceSpan::new(start, start + "  retained  ".len())
+    );
+    let child_start = source.find("child").unwrap();
+    assert!(facts.symbols.iter().any(|symbol| {
+        symbol.name == "child"
+            && symbol.selection == SourceSpan::new(child_start, child_start + "child".len())
+    }));
+    assert_eq!(mindmap_syntax_construction_count(), 1);
+}
+
+#[test]
+#[cfg(feature = "editor-facts")]
+fn mindmap_invalid_multiline_icons_keep_strict_errors_and_parser_recovery_spans() {
+    for (directive, message, invalid, recovers_child) in [
+        (
+            "::icon(fa\r\n  fa-star) trailing 🌳",
+            "unexpected trailing input after mindmap icon directive",
+            "trailing 🌳",
+            true,
+        ),
+        (
+            "::icon(fa\r\n  fa-star",
+            "unterminated mindmap icon directive",
+            "::icon(fa\r\n  fa-star\r\n    child[Child]",
+            false,
+        ),
+    ] {
+        let source = format!("mindmap\r\n  root[根]\r\n  {directive}\r\n    child[Child]\r\n");
+        let engine = MermaidEngine::new();
+        let start = source.find(invalid).unwrap();
+        let expected_span = SourceSpan::new(start, start + invalid.len());
+        let error = engine
+            .parse_diagram_for_render_model_sync(&source, ParseOptions::strict())
+            .unwrap_err();
+        let crate::Error::DiagramParse { diagnostic, .. } = error else {
+            panic!("expected invalid Mindmap ICON diagnostic");
+        };
+        assert_eq!(diagnostic.message(), message);
+        assert_eq!(diagnostic.span(), Some(expected_span));
+        reset_mindmap_syntax_construction_count();
+        let facts = engine
+            .parse_editor_semantic_facts_with_type_sync("mindmap", &source)
+            .unwrap()
+            .unwrap();
+        assert_eq!(facts.completeness, EditorSemanticCompleteness::Recovered);
+        assert!(facts.diagnostics.iter().any(|diagnostic| {
+            diagnostic.message == format!("mindmap parser recovered after parse error: {message}")
+                && diagnostic.span == Some(expected_span)
+        }));
+        assert!(
+            !facts
+                .symbols
+                .iter()
+                .any(|symbol| symbol.detail.as_deref() == Some("mindmap icon"))
+        );
+        assert_eq!(
+            facts.symbols.iter().any(|symbol| symbol.name == "child"),
+            recovers_child
+        );
+        assert_eq!(mindmap_syntax_construction_count(), 1);
+    }
+}
+
+#[test]
 fn mindmap_quoted_descriptions_can_contain_delimiters() {
     let model = parse("mindmap\n    root[\"String containing []\"]");
     assert_eq!(model["rootNode"]["nodeId"].as_str().unwrap(), "root");

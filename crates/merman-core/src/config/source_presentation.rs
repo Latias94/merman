@@ -1,8 +1,8 @@
 //! Admission of source-provided presentation values before they enter trusted configuration.
 //!
-//! These fields are interpolated as individual CSS values by several renderers. This boundary
-//! accepts values, never declarations or stylesheets. Host configuration and output-consumer CSS
-//! policies have separate owners; this is deliberately not a stylesheet sanitizer.
+//! All source strings follow Mermaid's markup/data-URL filtering. CSS fields additionally admit
+//! individual values, never declarations or stylesheets. Host configuration and output-consumer
+//! CSS policies have separate owners; this is deliberately not a stylesheet sanitizer.
 
 use crate::{OperationControl, OperationControlResult};
 use cssparser::{BasicParseErrorKind, ParseError, Parser, Token};
@@ -17,8 +17,11 @@ pub(super) fn filter(value: &mut Value, control: &OperationControl) -> Operation
                 let rejected = map
                     .iter()
                     .filter(|(key, child)| {
-                        (presentation || is_presentation_field(key))
-                            && child.as_str().is_some_and(|value| !is_css_value(value))
+                        child.as_str().is_some_and(|value| {
+                            rejects_source_string(value)
+                                || ((presentation || is_presentation_field(key))
+                                    && !is_css_value(value))
+                        })
                     })
                     .map(|(key, _)| key.clone())
                     .collect::<Vec<_>>();
@@ -35,7 +38,9 @@ pub(super) fn filter(value: &mut Value, control: &OperationControl) -> Operation
                 // Keep array positions: a rejected font candidate must not authorize another
                 // candidate by shifting an index in a family-specific configuration array.
                 for child in items {
-                    if presentation && child.as_str().is_some_and(|value| !is_css_value(value)) {
+                    if child.as_str().is_some_and(|value| {
+                        rejects_source_string(value) || (presentation && !is_css_value(value))
+                    }) {
                         *child = Value::Null;
                     } else {
                         stack.push((child, presentation));
@@ -46,6 +51,10 @@ pub(super) fn filter(value: &mut Value, control: &OperationControl) -> Operation
         }
     }
     control.checkpoint()
+}
+
+fn rejects_source_string(value: &str) -> bool {
+    value.contains('<') || value.contains('>') || value.contains("url(data:")
 }
 
 pub(crate) fn is_presentation_field(key: &str) -> bool {
@@ -213,6 +222,30 @@ mod tests {
         }
         assert!(is_css_value(r#""A \"Quoted\" Font", serif"#));
         assert!(is_css_value("rgb(1\r\n2\t3)"));
+    }
+
+    #[test]
+    fn source_strings_follow_mermaid_markup_filtering_without_shifting_arrays() {
+        let mut config = serde_json::json!({
+            "gitGraph": {"mainBranchName": "left<br>right"},
+            "custom": {
+                "greater": "a>b",
+                "data": "url(data:image/svg+xml;base64,AAAA)",
+                "caseSensitive": "URL(DATA:image/png;base64,AAAA)",
+                "literal": "left\\nright",
+                "array": ["<br>", "retained", {"nested": "a>b"}]
+            }
+        });
+        filter(&mut config, &OperationControl::new()).unwrap();
+        assert_eq!(config["gitGraph"], serde_json::json!({}));
+        assert_eq!(
+            config["custom"],
+            serde_json::json!({
+                "caseSensitive": "URL(DATA:image/png;base64,AAAA)",
+                "literal": "left\\nright",
+                "array": [null, "retained", {}]
+            })
+        );
     }
 
     #[test]

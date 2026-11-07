@@ -12,6 +12,48 @@ fn sources(config: &Value) -> [String; 2] {
 }
 
 #[test]
+#[cfg(feature = "diagram-git-graph")]
+fn source_branch_names_follow_mermaid_string_filtering_while_host_values_remain_trusted() {
+    use merman_core::{ParseOptions, SemanticParser};
+    use merman_model::semantic::SemanticDiagramModel;
+
+    let host_name = "host<br>branch";
+    let engine =
+        MermaidEngine::new().with_site_config(SourcePresentationConfig::from_value(json!({
+            "gitGraph": {"mainBranchName": host_name}
+        })));
+    for name in ["left<br>right", "a>b", "url(data:image/png;base64,AAAA)"] {
+        let config = json!({"gitGraph": {"mainBranchName": name}});
+        for source in [
+            format!("%%{{init: {config}}}%%\ngitGraph\ncommit id:\"root\"\n"),
+            format!("---\nconfig: {config}\n---\ngitGraph\ncommit id:\"root\"\n"),
+        ] {
+            let parsed = engine
+                .parse_diagram_sync(&source, ParseOptions::strict())
+                .unwrap()
+                .unwrap();
+            assert_eq!(parsed.model["branches"][0]["name"], host_name);
+            assert_eq!(
+                parsed.meta.config.get_str("gitGraph.mainBranchName"),
+                Some(name)
+            );
+            assert_eq!(
+                parsed
+                    .meta
+                    .effective_config
+                    .get_str("gitGraph.mainBranchName"),
+                Some(host_name),
+            );
+            let semantic = SemanticParser::new().parse_diagram_sync(&source).unwrap();
+            let SemanticDiagramModel::GitGraph(model) = semantic.model else {
+                panic!("expected GitGraph semantics");
+            };
+            assert_eq!(model.branches[0].name, "main");
+        }
+    }
+}
+
+#[test]
 fn source_presentation_values_are_allowed_by_default_in_both_syntaxes() {
     let config = json!({
         "theme": "base",

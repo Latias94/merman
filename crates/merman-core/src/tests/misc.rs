@@ -1028,7 +1028,11 @@ fn init_directive_config_sanitizes_deep_values_with_small_stack() {
             assert_eq!(
                 deep_repeated_config_leaf(meta.config.as_value(), "sequence", DEPTH)
                     .and_then(Value::as_str),
-                Some("")
+                Some("<blocked>")
+            );
+            assert!(
+                deep_repeated_config_leaf(meta.effective_config.as_value(), "sequence", DEPTH)
+                    .is_none()
             );
         })
         .expect("spawn deep init config test");

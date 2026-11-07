@@ -635,7 +635,6 @@ fn render_gitgraph_diagram_svg_with_accessibility(
 ) -> Result<root_svg::RootedSvg> {
     const PX: f64 = 4.0;
     const PY: f64 = 2.0;
-    const VIEWBOX_PADDING_PX: f64 = 8.0;
 
     fn include_gitgraph_branch_line_bounds(
         bounds: &mut Bounds,
@@ -689,6 +688,9 @@ fn render_gitgraph_diagram_svg_with_accessibility(
     let aria_title_id = acc_title.map(|_| format!("chart-title-{diagram_id}"));
     let aria_desc_id = acc_descr.map(|_| format!("chart-desc-{diagram_id}"));
 
+    let use_max_width = config_bool(effective_config, &["gitGraph", "useMaxWidth"]).unwrap_or(true);
+    let diagram_padding =
+        config_f64(effective_config, &["gitGraph", "diagramPadding"]).unwrap_or(8.0);
     let mut out = BoundedSvgOutput::new(options.work_meter());
     let aria_describedby = aria_desc_id.as_deref();
     let aria_labelledby = aria_title_id.as_deref();
@@ -696,7 +698,7 @@ fn render_gitgraph_diagram_svg_with_accessibility(
         root_svg::RootViewportContext::new(crate::DiagramFamilyId::GIT_GRAPH, diagram_id);
     let root_document = root_context.begin_document(
         &mut out,
-        root_svg::DeferredRootSpec::responsive(),
+        root_svg::DeferredRootSpec::mermaid(use_max_width),
         root_svg::RootChrome {
             aria_labelledby,
             aria_describedby,
@@ -928,17 +930,23 @@ fn render_gitgraph_diagram_svg_with_accessibility(
                 branch_stroke_style.as_deref(),
             );
 
-            let name = escape_xml(&b.name);
+            let rows = crate::gitgraph::gitgraph_branch_label_rows(&b.name);
             let (bbox_w, bbox_h) = if use_redux_geometry {
                 // Numbered branch classes acquire noteFontWeight only after prelayout.
                 let style = typography_theme.rendered_branch_label_style(idx);
+                let visible_rows = rows.iter().filter(|row| !row.is_empty());
+                let row_span = visible_rows.clone().count().saturating_sub(1);
                 (
-                    measurer
-                        .measure_svg_preserved_tspan_text_bbox_width_px(&b.name, &style)
-                        .max(0.0),
-                    measurer
-                        .measure_svg_tspan_text_bbox_height_px(&b.name, &style)
-                        .max(0.0),
+                    visible_rows
+                        .clone()
+                        .map(|row| {
+                            measurer.measure_svg_preserved_tspan_text_bbox_width_px(row, &style)
+                        })
+                        .fold(0.0_f64, f64::max),
+                    visible_rows
+                        .map(|row| measurer.measure_svg_tspan_text_bbox_height_px(row, &style))
+                        .fold(0.0_f64, f64::max)
+                        + row_span as f64 * style.font_size,
                 )
             } else {
                 (b.bbox_width.max(0.0), b.bbox_height.max(0.0))
@@ -947,7 +955,7 @@ fn render_gitgraph_diagram_svg_with_accessibility(
             let bkg_class = format!(r#"branchLabelBkg label{color_index}"#);
             let label_class = format!(r#"label branch-label{color_index}"#);
 
-            if direction == "TB" {
+            let (tx, ty) = if direction == "TB" {
                 let x = pos - bbox_w / 2.0 - 10.0;
                 let bkg_transform = if use_redux_geometry {
                     format!(
@@ -976,14 +984,7 @@ fn render_gitgraph_diagram_svg_with_accessibility(
                 } else {
                     0.0
                 };
-                let _ = write!(
-                    &mut out,
-                    r#"<g class="branchLabel"><g class="{cls}" transform="translate({x}, {y})"><text><tspan xml:space="preserve" dy="1em" x="0" class="row">{name}</tspan></text></g></g>"#,
-                    cls = label_class,
-                    x = fmt(tx),
-                    y = fmt(ty),
-                    name = name
-                );
+                (tx, ty)
             } else if direction == "BT" {
                 let x = pos - bbox_w / 2.0 - 10.0;
                 let bkg_transform = if use_redux_geometry {
@@ -1014,14 +1015,7 @@ fn render_gitgraph_diagram_svg_with_accessibility(
                 } else {
                     layout.max_pos
                 };
-                let _ = write!(
-                    &mut out,
-                    r#"<g class="branchLabel"><g class="{cls}" transform="translate({x}, {y})"><text><tspan xml:space="preserve" dy="1em" x="0" class="row">{name}</tspan></text></g></g>"#,
-                    cls = label_class,
-                    x = fmt(tx),
-                    y = fmt(ty),
-                    name = name
-                );
+                (tx, ty)
             } else {
                 let rotate_pad = if layout.rotate_commit_label {
                     30.0
@@ -1045,15 +1039,24 @@ fn render_gitgraph_diagram_svg_with_accessibility(
                     ty = fmt(spine_y - 12.0 - branch_label_padding_y / 2.0),
                 );
                 let tx = -bbox_w - 14.0 - rotate_pad + branch_label_padding_x / 2.0;
+                (tx, spine_y - bbox_h / 2.0 - 2.0)
+            };
+            let _ = write!(
+                &mut out,
+                r#"<g class="branchLabel"><g class="{cls}" transform="translate({x}, {y})"><text>"#,
+                cls = label_class,
+                x = fmt(tx),
+                y = fmt(ty),
+            );
+            for row in rows {
                 let _ = write!(
                     &mut out,
-                    r#"<g class="branchLabel"><g class="{cls}" transform="translate({x}, {y})"><text><tspan xml:space="preserve" dy="1em" x="0" class="row">{name}</tspan></text></g></g>"#,
-                    cls = label_class,
-                    x = fmt(tx),
-                    y = fmt(spine_y - bbox_h / 2.0 - 2.0),
-                    name = name
+                    r#"<tspan xml:space="preserve" dy="1em" x="0" class="row">{}</tspan>"#,
+                    escape_xml(row),
                 );
+                out.checkpoint()?;
             }
+            out.push_str("</text></g></g>");
             out.checkpoint()?;
             if let Some(receipt) = node_palette_receipt.as_mut() {
                 receipt.record_branch_label(node_palette, idx);
@@ -1491,9 +1494,8 @@ fn render_gitgraph_diagram_svg_with_accessibility(
     }
     out.push_str("</g>");
 
-    let title_top_margin = config_f64(effective_config, &["gitGraph", "titleTopMargin"])
-        .unwrap_or(25.0)
-        .max(0.0);
+    let title_top_margin =
+        config_f64(effective_config, &["gitGraph", "titleTopMargin"]).unwrap_or(25.0);
     let title_y = -title_top_margin;
 
     out.push_str("</svg>\n");
@@ -1527,17 +1529,16 @@ fn render_gitgraph_diagram_svg_with_accessibility(
         b.max_y = b.max_y.max(title_y + descent);
     }
 
-    let root_bounds = root_svg::DiagramBounds::from_extents(
-        b.min_x,
-        b.min_y,
-        b.max_x,
-        b.max_y,
-        VIEWBOX_PADDING_PX,
+    let root_bounds = root_svg::DiagramBounds::from_view_box(
+        b.min_x - diagram_padding,
+        b.min_y - diagram_padding,
+        b.max_x - b.min_x + 2.0 * diagram_padding,
+        b.max_y - b.min_y + 2.0 * diagram_padding,
     );
     let root_document = root_context.finish_document(
         &mut out,
         root_document,
-        root_svg::RootViewportSpec::responsive(root_bounds)
+        root_svg::RootViewportSpec::mermaid(root_bounds, use_max_width)
             .with_max_width(root_svg::RootMaxWidth::SvgNumber(root_bounds.width)),
     )?;
     if let Some(title) = title {
@@ -1819,6 +1820,22 @@ mod tests {
             &FixtureBranchMeasurer,
             &execution,
         )
+    }
+
+    #[test]
+    fn gitgraph_signed_padding_retains_root_geometry_validation() {
+        let layout = lr_merge_layout(-2.0);
+        for padding in [f64::MAX, -f64::MAX] {
+            let error = match render_geometry_fixture_with_policy(
+                &layout,
+                &json!({"gitGraph": {"diagramPadding": padding}}),
+                RenderResourcePolicy::unbounded_for_trusted_input(),
+            ) {
+                Ok(_) => panic!("overflowing padding must fail root SVG validation"),
+                Err(error) => error,
+            };
+            assert!(error.to_string().contains("must be finite"), "{error}");
+        }
     }
 
     #[test]

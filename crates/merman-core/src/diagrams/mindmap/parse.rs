@@ -3,8 +3,8 @@ use super::MindmapDiagramModel;
 use super::MindmapDiagramRenderModel;
 use super::db::MindmapDb;
 use super::utils::{
-    NodeSpec, NodeSpecContinuation, NodeSpecError, is_statement_terminator,
-    node_closing_delimiter_at_start, parse_node_spec, starts_node_spec, strip_inline_comment,
+    NodeSpec, NodeSpecContinuation, is_statement_terminator, node_closing_delimiter_at_start,
+    parse_node_spec, starts_node_spec, strip_inline_comment,
 };
 #[cfg(feature = "presentation")]
 use crate::SourcePresentationMetadata;
@@ -445,15 +445,18 @@ fn record_mindmap_error(
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
-struct MindmapContinuationState {
-    syntax: NodeSpecContinuation,
-    original_indent: usize,
+enum MindmapContinuationState {
+    Node {
+        syntax: NodeSpecContinuation,
+        original_indent: usize,
+    },
+    Icon,
 }
 
 struct MindmapPendingSyntax {
     state: MindmapContinuationState,
     statement_span: SourceSpan,
-    error: Box<NodeSpecError>,
+    message: String,
 }
 
 enum MindmapLineOutcome {
@@ -478,28 +481,48 @@ fn handle_mindmap_line(
         return MindmapLineOutcome::Done;
     }
 
-    let (indent, rest) = split_indent(line);
+    let (mut indent, rest) = split_indent(line);
     let rest_offset = line.len().saturating_sub(rest.len());
-    let rest = rest.trim_end();
+    let mut rest = rest.trim_end();
+    let mut statement_start = line_start + rest_offset;
+    // Empty ICON states emit no token; the following adjacent statement still owns this line.
+    while starts_with_case_insensitive(rest, "::icon()") {
+        rest = &rest["::icon()".len()..];
+        statement_start += "::icon()".len();
+        let (tail_indent, tail) = split_indent(rest);
+        if tail_indent > 0 {
+            if indent > 0 && !is_statement_terminator(rest) {
+                record_mindmap_error(
+                    first_error,
+                    diagram_type,
+                    "unexpected trailing input after mindmap icon directive",
+                    SourceSpan::new(
+                        statement_start + rest.len() - tail.len(),
+                        statement_start + rest.len(),
+                    ),
+                );
+                return MindmapLineOutcome::Done;
+            }
+            indent = tail_indent;
+            statement_start += rest.len() - tail.len();
+            rest = tail;
+        }
+    }
     if is_statement_terminator(rest) {
         return MindmapLineOutcome::Done;
     }
-    let statement_start = line_start + rest_offset;
     let statement_span = SourceSpan::new(statement_start, statement_start + rest.len());
 
     if starts_with_case_insensitive(rest, "::icon(") {
         let after = &rest["::icon(".len()..];
         let Some(end) = after.find(')') else {
-            record_mindmap_error(
-                first_error,
-                diagram_type,
-                "unterminated mindmap icon directive",
+            return MindmapLineOutcome::NeedMoreInput(MindmapPendingSyntax {
+                state: MindmapContinuationState::Icon,
                 statement_span,
-            );
-            return MindmapLineOutcome::Done;
+                message: "unterminated mindmap icon directive".to_string(),
+            });
         };
-        let icon_raw = &after[..end];
-        let icon = icon_raw.trim();
+        let icon = &after[..end];
         let tail = &after[end + 1..];
         if !is_statement_terminator(tail) {
             let tail_start = statement_start + "::icon(".len() + end + 1;
@@ -512,19 +535,8 @@ fn handle_mindmap_line(
             );
             return MindmapLineOutcome::Done;
         }
-        if icon.is_empty() {
-            record_mindmap_error(
-                first_error,
-                diagram_type,
-                "mindmap icon is empty",
-                statement_span,
-            );
-            return MindmapLineOutcome::Done;
-        }
         #[cfg(feature = "editor-facts")]
-        let icon_leading = icon_raw.len() - icon_raw.trim_start().len();
-        #[cfg(feature = "editor-facts")]
-        let selection_start = statement_start + "::icon(".len() + icon_leading;
+        let selection_start = statement_start + "::icon(".len();
         #[cfg(feature = "editor-facts")]
         let tokens = if parsed.capture_editor {
             parsed.directive_prefixes.push("::icon".to_string());
@@ -627,12 +639,12 @@ fn handle_mindmap_line(
                 .continuation
                 .expect("continuation branch requires typed syntax state");
             MindmapLineOutcome::NeedMoreInput(MindmapPendingSyntax {
-                state: MindmapContinuationState {
+                state: MindmapContinuationState::Node {
                     syntax: continuation,
                     original_indent: indent,
                 },
                 statement_span,
-                error,
+                message: error.message,
             })
         }
         Err(error) => {
@@ -649,10 +661,9 @@ fn finish_pending_mindmap_line(
 ) {
     let MindmapPendingSyntax {
         statement_span,
-        error,
+        message,
         ..
     } = pending.syntax;
-    let NodeSpecError { message, .. } = *error;
     record_mindmap_error(first_error, diagram_type, message, statement_span);
 }
 
@@ -673,22 +684,27 @@ fn pending_mindmap_line_should_synchronize(
     pending: &PendingMindmapLine,
     physical_line: &str,
 ) -> bool {
+    let MindmapContinuationState::Node {
+        syntax,
+        original_indent,
+    } = pending.syntax.state
+    else {
+        // ICON consumes every physical line until ')', regardless of node-like text or indent.
+        return false;
+    };
     let (indent, rest) = split_indent(physical_line);
     let rest = rest.trim_end();
-    if rest.is_empty()
-        || pending.syntax.state.syntax.has_open_text()
-        || indent > pending.syntax.state.original_indent
-    {
+    if rest.is_empty() || syntax.has_open_text() || indent > original_indent {
         return false;
     }
     // `(` also opens an anonymous sibling; only a standalone closer continues this node.
-    if indent == pending.syntax.state.original_indent
+    if indent == original_indent
         && let Some(closing) = node_closing_delimiter_at_start(rest)
         && is_statement_terminator(&rest[closing.len()..])
     {
         return false;
     }
-    indent <= pending.syntax.state.original_indent && is_safe_mindmap_statement(physical_line)
+    indent <= original_indent && is_safe_mindmap_statement(physical_line)
 }
 
 fn process_mindmap_physical_line(
@@ -710,6 +726,14 @@ fn process_mindmap_physical_line(
     if let Some(mut current) = pending.take() {
         current.text.push('\n');
         current.text.push_str(physical_line);
+        if current.syntax.state == MindmapContinuationState::Icon && !physical_line.contains(')') {
+            let content = physical_line.trim_end();
+            if !content.is_empty() {
+                current.syntax.statement_span.end = line_start + content.len();
+            }
+            *pending = Some(current);
+            return;
+        }
         match handle_mindmap_line(
             &current.text,
             current.start,
@@ -1015,30 +1039,18 @@ mod semantic_tests {
     }
 
     #[test]
-    fn semantic_icon_requires_a_statement_terminator() {
-        for suffix in [" trailing", ":::class", "::icon(other)"] {
-            let input = format!("mindmap\n  Root\n  ::icon(star){suffix}\n");
-            let error = parse_mindmap_semantic_model_controlled(
-                &input,
-                &metadata(),
-                #[cfg(feature = "editor-facts")]
-                EditorFactsDemand::Omit,
-                &crate::OperationControl::new(),
-            )
-            .unwrap()
-            .model
-            .unwrap_err();
-            let Error::DiagramParse { diagnostic, .. } = error else {
-                panic!("expected trailing icon input diagnostic");
-            };
-            let start = input.find(suffix).unwrap() + suffix.len() - suffix.trim_start().len();
-            assert_eq!(
-                diagnostic.span(),
-                Some(SourceSpan::new(start, start + suffix.trim_start().len()))
-            );
-        }
-        for suffix in ["", " %% comment"] {
-            let input = format!("mindmap\n  Root\n  ::icon(star){suffix}\n");
+    fn semantic_icon_state_preserves_raw_payload_across_physical_lines() {
+        for payload in [
+            "fa\n  fa-star",
+            "  fa\n\n  fa-star  ",
+            "\n ",
+            "  ",
+            "fa\nliteral[Node]\n:::literal\n  fa-star",
+        ] {
+            let input = format!("mindmap\n  Root\n  ::icon({payload})\n    child[Child]\n");
+            #[cfg(feature = "editor-facts")]
+            crate::editor::test_work::reset();
+            reset_mindmap_syntax_construction_count();
             let model = parse_mindmap_semantic_model_controlled(
                 &input,
                 &metadata(),
@@ -1049,7 +1061,102 @@ mod semantic_tests {
             .unwrap()
             .model
             .unwrap();
-            assert_eq!(model.nodes[0].icon.as_deref(), Some("star"));
+            assert_eq!(model.nodes.len(), 2, "{payload:?}");
+            assert_eq!(model.nodes[0].icon.as_deref(), Some(payload));
+            assert_eq!(model.nodes[0].children, vec![1]);
+            assert_eq!(model.nodes[1].node_id, "child");
+            assert_eq!(mindmap_syntax_construction_count(), 1);
+            #[cfg(feature = "editor-facts")]
+            assert_eq!(crate::editor::test_work::read(), Default::default());
+        }
+    }
+
+    #[test]
+    fn semantic_empty_icon_leaves_the_previous_decoration_intact() {
+        for previous in [None, Some("star")] {
+            let prior = previous
+                .map(|icon| format!("  ::icon({icon})\n"))
+                .unwrap_or_default();
+            let input = format!("mindmap\n  Root\n{prior}  ::icon()\n    child[Child]\n");
+            let model = parse_mindmap_semantic_model_controlled(
+                &input,
+                &metadata(),
+                #[cfg(feature = "editor-facts")]
+                EditorFactsDemand::Omit,
+                &crate::OperationControl::new(),
+            )
+            .unwrap()
+            .model
+            .unwrap();
+            assert_eq!(model.nodes.len(), 2);
+            assert_eq!(model.nodes[0].icon.as_deref(), previous);
+            assert_eq!(model.nodes[0].children, vec![1]);
+        }
+    }
+
+    #[test]
+    fn semantic_empty_icon_prefixes_preserve_the_following_statement() {
+        for (tail, expected_icon, expected_class) in [
+            (":::after", None, Some("after")),
+            ("::icon(other)", Some("other"), None),
+        ] {
+            let input = format!("mindmap\n  Root\n  ::icon()::ICON(){tail}\n");
+            let model = parse_mindmap_semantic_model_controlled(
+                &input,
+                &metadata(),
+                #[cfg(feature = "editor-facts")]
+                EditorFactsDemand::Omit,
+                &crate::OperationControl::new(),
+            )
+            .unwrap()
+            .model
+            .unwrap();
+            assert_eq!(model.nodes[0].icon.as_deref(), expected_icon);
+            assert_eq!(model.nodes[0].class.as_deref(), expected_class);
+        }
+    }
+
+    #[test]
+    fn semantic_icon_requires_a_statement_terminator() {
+        for payload in ["star", "fa\n  fa-star"] {
+            for suffix in [" trailing", ":::class", "::icon(other)"] {
+                let input = format!("mindmap\n  Root\n  ::icon({payload}){suffix}\n");
+                let error = parse_mindmap_semantic_model_controlled(
+                    &input,
+                    &metadata(),
+                    #[cfg(feature = "editor-facts")]
+                    EditorFactsDemand::Omit,
+                    &crate::OperationControl::new(),
+                )
+                .unwrap()
+                .model
+                .unwrap_err();
+                let Error::DiagramParse { diagnostic, .. } = error else {
+                    panic!("expected trailing icon input diagnostic");
+                };
+                let start = input.find(suffix).unwrap() + suffix.len() - suffix.trim_start().len();
+                assert_eq!(
+                    diagnostic.span(),
+                    Some(SourceSpan::new(start, start + suffix.trim_start().len()))
+                );
+            }
+            for suffix in ["", " %% comment"] {
+                let input = format!("mindmap\n  Root\n  ::icon({payload}){suffix}\n");
+                let model = parse_mindmap_semantic_model_controlled(
+                    &input,
+                    &metadata(),
+                    #[cfg(feature = "editor-facts")]
+                    EditorFactsDemand::Omit,
+                    &crate::OperationControl::new(),
+                )
+                .unwrap()
+                .model
+                .unwrap();
+                assert_eq!(
+                    model.nodes[0].icon.as_deref(),
+                    (!payload.is_empty()).then_some(payload)
+                );
+            }
         }
     }
 

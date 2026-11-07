@@ -178,6 +178,11 @@ changing authored semantic order.
 Custom tick intervals retain Mermaid's estimated 10,000-tick admission rule. Generated ticks,
 calendar-day filtering and excluded-day inspection consume the operation work budget and report a
 resource error when exhausted. Filtered day ranges admit their minimum scan work before retaining ticks.
+Multi-step second, minute, hour and month intervals filter the base interval's local field rather
+than adding a fixed multiple after the first tick. Their field resets follow D3 at enclosing-unit
+boundaries. Exclusion shading retains the scan's initial time of day when matching formatted rules,
+then snaps only the painted range to calendar-day boundaries.
+`gantt.useMaxWidth` selects responsive or intrinsic SVG dimensions from the prepared layout size.
 
 Owners: [date parsing/formatting](../../crates/merman-core/src/diagrams/gantt/date.rs),
 [date tests](../../crates/merman-core/src/diagrams/gantt/tests.rs), and
@@ -190,6 +195,15 @@ Commit and arrow colors use an eight-slot ring. Redux branch lines and labels se
 configured theme color limit; color themes reserve the main-branch slot when cycling other branches.
 A branch and its commit can consequently have different color class indices. Merge tags retain their
 literal text and are XML-escaped in SVG; they do not introduce active markup.
+`gitGraph.useMaxWidth` selects responsive or intrinsic SVG dimensions. The final viewport applies
+`gitGraph.diagramPadding` after measuring painted elements, including rotated commit labels;
+browser-dependent text bounds remain a residual rather than a fixed coordinate target.
+Both padding and `gitGraph.titleTopMargin` retain their signs; invalid final viewport dimensions
+still fail the shared root validation. Branch display rows follow the selected LF, literal
+backslash-n and HTML-break splitting and trimming, without changing authored branch identities,
+commit IDs or tags. Ordinary leftward BT fork edges retain the source-owned endpoint side and arc sweep.
+Quoted GitGraph fields use the selected Langium escape conversion before model construction;
+editor selections continue to address the authored escape sequences.
 
 Owners: [parser](../../crates/merman-core/src/diagrams/git_graph.rs),
 [color binding](../../crates/merman-render/src/gitgraph/css_binding.rs), and
@@ -274,6 +288,11 @@ Rectangle, rounded and hexagon label preparation clears the requested node width
 `flowchart.wrappingWidth`, whose default is 120. Other shapes consume the projected Mindmap width.
 Fractional padding remains part of layout and SVG geometry. Font-dependent wrapping and FCoSE
 placement retain the shared browser-measurement boundary.
+Authored `section-*` class names remain literal in SVG and theme ownership; generated sections
+cycle through the display policy. The ICON lexer state spans physical lines, retains nonempty raw
+payloads, and treats an empty `::icon()` as no decoration. Completed icons still enforce their
+statement boundary; an empty prefix emits no token, so a following adjacent decorator is retained.
+Parser-derived source ranges are shared by editor facts.
 
 Owners: [layout](../../crates/merman-render/src/mindmap.rs) and
 [12.3 regressions](../../crates/merman-render/tests/mindmap_mermaid12_3_test.rs).

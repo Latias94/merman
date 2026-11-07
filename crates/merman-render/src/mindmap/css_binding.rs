@@ -200,13 +200,12 @@ impl MindmapCssBinding {
                 node.css_classes
                     .split_whitespace()
                     .filter_map(|class| {
-                        let section = class.strip_prefix("section-")?.parse::<i32>().ok()?;
-                        let section = if section >= super::theme::MINDMAP_SECTION_COUNT as i32 {
-                            section % super::theme::MINDMAP_SECTION_COUNT as i32
-                        } else {
-                            section
-                        };
-                        usize::try_from(section + 1)
+                        let suffix = class.strip_prefix("section-")?;
+                        let section = suffix.parse::<i32>().ok()?;
+                        if suffix != section.to_string() {
+                            return None;
+                        }
+                        usize::try_from(section.checked_add(1)?)
                             .ok()
                             .filter(|slot| *slot < self.sections.len())
                     })

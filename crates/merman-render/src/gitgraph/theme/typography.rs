@@ -496,7 +496,7 @@ impl<'a> GitGraphTypographyThemeReceipt<'a> {
                     && self.layout.branches.get(index).map(|branch| branch.name.as_str())
                         == Some(text)
         );
-        let visible = !text.trim().is_empty();
+        let visible = crate::gitgraph::gitgraph_branch_label_is_visible(text);
         self.record_text_event(matched, visible, true);
         let has_weight_rule = self.layout.branches.get(index).is_some_and(|branch| {
             self.color_indices

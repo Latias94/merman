@@ -821,7 +821,7 @@ impl<'a> LineParser<'a> {
         control: &crate::OperationControl,
     ) -> crate::OperationControlResult<Result<SpannedValue>> {
         self.skip_ws(control)?;
-        let Some(parsed) = parse_langium_string(self.remaining(), self.base_offset + self.pos)
+        let Some(mut parsed) = parse_langium_string(self.remaining(), self.base_offset + self.pos)
         else {
             return Ok(Err(Error::diagram_parse_fallback(
                 "gitGraph".to_string(),
@@ -829,6 +829,32 @@ impl<'a> LineParser<'a> {
             )));
         };
         control.checkpoint()?;
+        // Keep the shared STRING scanner's validation and source spans, but apply Langium 4.2's
+        // ValueConverter.convertEscapeCharacter to every quoted GitGraph payload.
+        let raw = &self.remaining()[1..parsed.consumed - 1];
+        if raw.contains('\\') {
+            parsed.value.clear();
+            let mut escaped = false;
+            for ch in raw.chars() {
+                if escaped {
+                    parsed.value.push(match ch {
+                        'b' => '\u{0008}',
+                        'f' => '\u{000c}',
+                        'n' => '\n',
+                        'r' => '\r',
+                        't' => '\t',
+                        'v' => '\u{000b}',
+                        '0' => '\0',
+                        other => other,
+                    });
+                    escaped = false;
+                } else if ch == '\\' {
+                    escaped = true;
+                } else {
+                    parsed.value.push(ch);
+                }
+            }
+        }
         self.pos += parsed.consumed;
         Ok(Ok(SpannedValue {
             text: parsed.value,
@@ -2677,13 +2703,68 @@ merge feature id:"M1"
     fn gitgraph_uses_langium_string_escapes_and_quote_aware_inline_comments() {
         let model = parse(concat!(
             "gitGraph\n",
-            "commit id:'C1' msg:\"line\\n100%% complete\" tag:'v\\t1' %% outside comment\n",
+            "commit id:'root\\n' msg:\"message\\r100%% complete\" tag:'tag\\t' %% outside comment\n",
+            "branch \"side\\nbranch\"\n",
+            "commit id:\"second\" tag:\"slash\\\\tail\"\n",
         ));
         let commit = &model["commits"][0];
 
-        assert_eq!(commit["id"], "C1");
-        assert_eq!(commit["message"], "linen100%% complete");
-        assert_eq!(commit["tags"], json!(["vt1"]));
+        assert_eq!(commit["id"], "root\n");
+        assert_eq!(commit["message"], "message\r100%% complete");
+        assert_eq!(commit["tags"], json!(["tag\t"]));
+        assert_eq!(model["commits"][1]["branch"], "side\nbranch");
+        assert_eq!(model["commits"][1]["tags"], json!(["slash\\tail"]));
+    }
+
+    #[test]
+    fn gitgraph_quoted_converter_decodes_langium_escapes_and_preserves_source_spans() {
+        let control = crate::OperationControl::new();
+        for quote in ['\'', '"'] {
+            let raw = r#"第一\b\f\n\r\t\v\0\q\\n\"\'"#;
+            let source = format!("{quote}{raw}{quote}");
+            let mut parser = LineParser::new(&source).with_base(11);
+            let parsed = parser.parse_quoted_spanned(&control).unwrap().unwrap();
+            assert_eq!(parsed.text, "第一\u{0008}\u{000c}\n\r\t\u{000b}\0q\\n\"'");
+            assert_eq!(parsed.span, SourceSpan::new(12, 12 + raw.len()));
+            assert!(parser.is_eof());
+        }
+    }
+
+    #[test]
+    #[cfg(feature = "editor-facts")]
+    fn gitgraph_escaped_branch_references_keep_decoded_identity_and_authored_ranges() {
+        let source = concat!(
+            "gitGraph\ncommit id:\"root\"\nbranch \"left\\nright\"\n",
+            "commit id:\"work\"\ncheckout main\nmerge \"left\\nright\" id:\"merged\"\n",
+            "checkout \"left\\nright\"\n",
+        );
+        let model = parse(source);
+        assert_eq!(model["branches"][1]["name"], "left\nright");
+        assert_eq!(model["commits"][1]["branch"], "left\nright");
+        assert_eq!(model["commits"][2]["parents"], json!(["root", "work"]));
+        assert_eq!(model["currentBranch"], "left\nright");
+
+        let facts = MermaidEngine::new()
+            .parse_editor_semantic_facts_with_type_sync("gitGraph", source)
+            .unwrap()
+            .unwrap();
+        assert!(facts.diagnostics.is_empty());
+        let references = facts
+            .symbols
+            .iter()
+            .filter(|symbol| symbol.name == "left\nright")
+            .collect::<Vec<_>>();
+        assert_eq!(references.len(), 3);
+        for symbol in references {
+            assert!(matches!(
+                symbol.detail.as_deref(),
+                Some("gitGraph branch" | "gitGraph merge branch")
+            ));
+            assert_eq!(
+                &source[symbol.selection.start..symbol.selection.end],
+                r"left\nright"
+            );
+        }
     }
 
     #[test]

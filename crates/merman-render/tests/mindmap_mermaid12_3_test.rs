@@ -317,3 +317,227 @@ fn mindmap_mermaid_12_3_default_node_retains_fractional_wrapping_width() {
         }
     }
 }
+
+#[test]
+fn mindmap_mermaid_12_3_authored_section_classes_keep_literal_dom_and_source_paint() {
+    // mindmapDb.ts appends authored classes verbatim; styles.ts emits only sections -1..10.
+    for html_labels in [false, true] {
+        let mut control_css: Option<String> = None;
+        for classes in ["", "section-12 section-edge-12"] {
+            let decoration = if classes.is_empty() {
+                String::new()
+            } else {
+                format!("    :::{classes}\n")
+            };
+            let source = format!(
+                "---\nconfig:\n  theme: default\n  look: classic\n  layout: dagre\n  htmlLabels: {html_labels}\n  themeVariables:\n    cScale1: '#cc0000'\n    cScale2: '#0000cc'\n---\nmindmap\n  R\n    A[A]\n{decoration}"
+            );
+            let (svg, _) = render(&source, "mindmap-12-3-authored");
+            let document = roxmltree::Document::parse(&svg).unwrap();
+            let child = node(&document, "mindmap-12-3-authored-node_1");
+            let mut expected = vec!["node", "mindmap-node", "section-0"];
+            expected.extend(classes.split_whitespace());
+            assert_eq!(
+                child
+                    .attribute("class")
+                    .unwrap()
+                    .split_whitespace()
+                    .collect::<Vec<_>>(),
+                expected
+            );
+            assert!(child.children().any(|element| {
+                element.has_tag_name("rect")
+                    && element.attribute("class") == Some("basic label-container")
+            }));
+            let css = document
+                .descendants()
+                .find(|element| element.has_tag_name("style"))
+                .unwrap()
+                .text()
+                .unwrap();
+            assert!(css.contains(".section-0 path{fill:#cc0000;}"));
+            assert!(css.contains(".section-1 path{fill:#0000cc;}"));
+            assert!(!css.contains(".section-12 "));
+            assert!(!css.contains(".section-edge-12{"));
+            // Matching classes and unchanged generated rules keep the probe's fill red.
+            if let Some(control) = &control_css {
+                assert_eq!(css, control.as_str());
+            } else {
+                control_css = Some(css.to_string());
+            }
+        }
+    }
+}
+
+#[test]
+fn mindmap_mermaid_12_3_label_theme_ownership_uses_literal_section_selectors() {
+    use merman_render::diagram_theme::{
+        CanvasPaint, DiagramThemeCompiler, DiagramThemeSpec, ThemePortabilityRequirement,
+        ThemeRule, ThemeRuleSet, ThemeStylePatch, ThemeTarget,
+    };
+
+    let theme = DiagramThemeCompiler::new()
+        .compile(
+            DiagramThemeSpec::new().with_styles(ThemeRuleSet::default().with_rule(ThemeRule::new(
+                ThemeTarget::NodeLabel,
+                ThemeStylePatch::default().with_fill(CanvasPaint::solid("#b316cd").unwrap()),
+            ))),
+        )
+        .unwrap();
+    let compatibility = merman_core::presentation::ThemeCompatibilityPlan::from_recipe(
+        theme.compatibility_recipe().clone(),
+    );
+    for look in ["classic", "neo"] {
+        for html_labels in [false, true] {
+            for (classes, typed_owns_fill) in [
+                ("", true),
+                ("section-12", true),
+                ("section-01", true),
+                ("section-+1", true),
+                ("section-2147483647", true),
+                ("section-1", false),
+            ] {
+                let decoration = if classes.is_empty() {
+                    String::new()
+                } else {
+                    format!("    :::{classes}\n")
+                };
+                let source = format!(
+                    "---\nconfig:\n  look: {look}\n  layout: dagre\n  htmlLabels: {html_labels}\n  themeVariables:\n    cScaleLabel2: '#2468ac'\n---\nmindmap\n  R\n    A[A]\n{decoration}"
+                );
+                let parsed = MermaidEngine::new()
+                    .with_theme_plan(&compatibility)
+                    .parse_diagram_for_render_model_sync(&source, ParseOptions::strict())
+                    .unwrap()
+                    .unwrap()
+                    .into_presentation();
+                let session = RenderEnvironment::deterministic()
+                    .with_theme_portability_requirement(ThemePortabilityRequirement::BestEffort)
+                    .begin_session_with_theme(&theme)
+                    .unwrap();
+                let artifact =
+                    family::prepare(&parsed, &LayoutOptions::headless_svg_defaults(), session)
+                        .unwrap();
+                let rendered = artifact
+                    .render_svg(
+                        &SvgRenderOptions {
+                            diagram_id: Some("mindmap-12-3-class-owner".to_string()),
+                            ..SvgRenderOptions::default()
+                        },
+                        &SvgDebugOptions::default(),
+                    )
+                    .unwrap();
+                let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+                let child = node(&document, "mindmap-12-3-class-owner-node_1");
+                assert_eq!(
+                    child.attribute("class").unwrap().split_whitespace().last(),
+                    Some(if classes.is_empty() {
+                        "section-0"
+                    } else {
+                        classes
+                    })
+                );
+                let css = document
+                    .descendants()
+                    .find(|element| element.has_tag_name("style"))
+                    .unwrap()
+                    .text()
+                    .unwrap();
+                let selector =
+                    "#mindmap-12-3-class-owner g#mindmap-12-3-class-owner-node_1 > .label text,";
+                let child_fill = css
+                    .split_once(selector)
+                    .and_then(|(_, rest)| rest.split_once('{'))
+                    .and_then(|(_, rest)| rest.split_once('}'))
+                    .map(|(body, _)| body);
+                assert_eq!(
+                    child_fill,
+                    typed_owns_fill.then_some("fill:#b316cd;color:#b316cd;"),
+                    "look={look} html={html_labels} class={classes}"
+                );
+                assert!(css.contains(".section-1 text{fill:#2468ac;}"));
+            }
+        }
+    }
+}
+
+#[test]
+fn mindmap_mermaid_12_3_generated_branch_and_depth_sections_still_cycle() {
+    for color_by in ["branch", "depth"] {
+        let mut source = format!(
+            "---\nconfig:\n  look: classic\n  layout: dagre\n  mindmap:\n    colorBy: {color_by}\n---\nmindmap\n  root[Root]\n"
+        );
+        for index in 0..12 {
+            let indent = if color_by == "depth" {
+                4 + index * 2
+            } else {
+                4
+            };
+            source.push_str(&format!("{}n{index}[N{index}]\n", " ".repeat(indent)));
+        }
+        let (svg, _) = render(&source, "mindmap-12-3-cycle");
+        let document = roxmltree::Document::parse(&svg).unwrap();
+        for index in 0..12 {
+            let section = index % 11;
+            let dom_id = format!("mindmap-12-3-cycle-node_{}", index + 1);
+            assert_eq!(
+                node(&document, &dom_id).attribute("class"),
+                Some(format!("node mindmap-node section-{section}").as_str())
+            );
+            let parent = if color_by == "depth" { index } else { 0 };
+            let edge_id = format!("mindmap-12-3-cycle-edge_{parent}_{}", index + 1);
+            let edge = document
+                .descendants()
+                .find(|element| {
+                    element.has_tag_name("path")
+                        && element.attribute("id") == Some(edge_id.as_str())
+                })
+                .unwrap();
+            let edge_class = format!("section-edge-{section}");
+            assert!(
+                edge.attribute("class")
+                    .unwrap()
+                    .split_whitespace()
+                    .any(|class| class == edge_class)
+            );
+        }
+    }
+}
+
+#[test]
+fn mindmap_mermaid_12_3_icon_state_controls_real_label_backgrounds() {
+    for html_labels in [false, true] {
+        for (decoration, has_icon) in [
+            ("  ::icon(fa\n  fa-star)\n", true),
+            ("  ::icon(fa\n  %% removed comment\n  fa-star)\n", true),
+            ("  ::icon(\n )\n", true),
+            ("  ::icon()\n", false),
+            ("  ::icon(star)\n  ::icon()\n", true),
+        ] {
+            let source = format!(
+                "---\nconfig:\n  look: classic\n  layout: dagre\n  htmlLabels: {html_labels}\n---\nmindmap\n  root[R]\n{decoration}    child[C]\n"
+            );
+            let (svg, layout) = render(&source, "mindmap-12-3-icon");
+            assert_eq!(layout.nodes.len(), 2);
+            let document = roxmltree::Document::parse(&svg).unwrap();
+            let root = node(&document, "mindmap-12-3-icon-node_0");
+            let background_present = if html_labels {
+                root.descendants()
+                    .any(|element| element.attribute("class") == Some("labelBkg"))
+            } else {
+                let background = root
+                    .descendants()
+                    .find(|element| {
+                        element.has_tag_name("rect")
+                            && element.attribute("class") == Some("background")
+                    })
+                    .unwrap();
+                background.attribute("width").is_some() && background.attribute("height").is_some()
+            };
+            assert_eq!(
+                background_present, has_icon,
+                "{decoration:?} html={html_labels}"
+            );
+        }
+    }
+}

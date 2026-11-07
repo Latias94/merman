@@ -181,28 +181,51 @@ fn rewrite_text_block_for_centered_baseline(text_block: &str, text_y: f64) -> St
     let open_tag = set_or_insert_quoted_attr(open_tag, "y", &fmt_number(text_y));
     let open_tag = set_or_insert_quoted_attr(&open_tag, "dominant-baseline", "central");
     let open_tag = set_or_insert_quoted_attr(&open_tag, "alignment-baseline", "central");
-    let content = rewrite_first_tspan_dy_zero(content);
+    let content = rewrite_tspans_for_centered_baseline(content);
 
     format!("{open_tag}{content}{close}")
 }
 
-fn rewrite_first_tspan_dy_zero(content: &str) -> String {
-    let Some(rel_tspan) = content.find("<tspan") else {
+fn rewrite_tspans_for_centered_baseline(content: &str) -> String {
+    let mut first_visible = None;
+    let mut visible_rows = 0usize;
+    let mut cursor = 0;
+    while let Some(rel_tspan) = content[cursor..].find("<tspan") {
+        let start = cursor + rel_tspan;
+        let Some(end) = find_tag_end(content, start) else {
+            break;
+        };
+        let Some(close) = content[end + 1..].find("</tspan>") else {
+            break;
+        };
+        // Empty tspans remain in the DOM but do not advance the rendered SVG text position.
+        if close > 0 {
+            visible_rows += 1;
+            first_visible.get_or_insert((start, end));
+        }
+        cursor = end + 1 + close + "</tspan>".len();
+    }
+    let Some((start, end)) = first_visible else {
         return content.to_string();
     };
-    let Some(tspan_end) = find_tag_end(content, rel_tspan) else {
-        return content.to_string();
+    // Painted rows advance by one em. Center their baseline span as a block while retaining
+    // the existing zero-dy geometry for a single painted row.
+    let row_span = visible_rows.saturating_sub(1);
+    let dy = if row_span == 0 {
+        "0".to_string()
+    } else {
+        format!("{}em", fmt_number(-(row_span as f64) / 2.0))
     };
-    let tag = &content[rel_tspan..=tspan_end];
-    let rewritten_tag = set_or_insert_quoted_attr(tag, "dy", "0");
+    let tag = &content[start..=end];
+    let rewritten_tag = set_or_insert_quoted_attr(tag, "dy", &dy);
     if rewritten_tag == tag {
         return content.to_string();
     }
 
     let mut out = String::with_capacity(content.len() + rewritten_tag.len() - tag.len());
-    out.push_str(&content[..rel_tspan]);
+    out.push_str(&content[..start]);
     out.push_str(&rewritten_tag);
-    out.push_str(&content[tspan_end + 1..]);
+    out.push_str(&content[end + 1..]);
     out
 }
 
@@ -274,6 +297,26 @@ mod tests {
         assert!(out.contains(r#"alignment-baseline="central""#), "{out}");
         assert!(
             out.contains(r#"<tspan xml:space="preserve" dy="0" x="0" class="row">main</tspan>"#)
+        );
+    }
+
+    #[test]
+    fn gitgraph_multiline_branch_label_centering_is_idempotent_with_empty_rows() {
+        let svg = r#"<svg id="g"><g><rect class="branchLabelBkg label0" y="0" height="40"/><g class="label branch-label0"><text><tspan dy="1em"></tspan><tspan dy="1em">first</tspan><tspan dy="1em"></tspan><tspan dy="1em">last</tspan><tspan dy="1em"></tspan></text></g></g></svg>"#;
+        let metadata =
+            SvgPostprocessMetadata::from_svg(svg).with_family_id(DiagramFamilyId::GIT_GRAPH);
+        let session = render_session();
+        let pipeline =
+            SvgPipeline::parity().with_postprocessor(GitGraphBranchLabelBaselinePostprocessor);
+        let centered = pipeline
+            .process_to_string_with_metadata(svg, &metadata, &session)
+            .unwrap();
+        assert_eq!(centered.matches(r#"dy="-0.5em""#).count(), 1);
+        assert_eq!(
+            pipeline
+                .process_to_string_with_metadata(&centered, &metadata, &session)
+                .unwrap(),
+            centered,
         );
     }
 

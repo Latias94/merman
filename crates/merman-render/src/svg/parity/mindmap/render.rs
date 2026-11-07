@@ -228,36 +228,6 @@ fn mindmap_dom_id(diagram_id: SvgDiagramId<'_>, raw_id: &str) -> String {
     format!("{diagram_id}-{raw_id}")
 }
 
-fn mindmap_wrap_section_index(index: i64) -> i64 {
-    let section_count = crate::mindmap::MINDMAP_SECTION_COUNT as i64;
-    if index >= section_count {
-        index % section_count
-    } else {
-        index
-    }
-}
-
-fn mindmap_normalize_section_class_token(token: &str) -> String {
-    for prefix in ["section-edge-", "section-"] {
-        let Some(rest) = token.strip_prefix(prefix) else {
-            continue;
-        };
-        let Ok(index) = rest.parse::<i64>() else {
-            return token.to_string();
-        };
-        return format!("{prefix}{}", mindmap_wrap_section_index(index));
-    }
-    token.to_string()
-}
-
-fn mindmap_normalize_section_classes(classes: &str) -> String {
-    classes
-        .split_whitespace()
-        .map(mindmap_normalize_section_class_token)
-        .collect::<Vec<_>>()
-        .join(" ")
-}
-
 fn mindmap_gradient_defs(diagram_id: &str, binding: &crate::mindmap::MindmapCssBinding) -> String {
     let Some((gradient_start, gradient_stop)) = &binding.gradient else {
         return String::new();
@@ -1035,11 +1005,10 @@ pub(crate) fn render_mindmap_diagram_svg_model_with_config(
         } else {
             curve::curve_linear_path_d(&points_for_data_points)
         };
-        let edge_classes = mindmap_normalize_section_classes(&e.classes);
         let class = format!(
             "edge-thickness-{} edge-pattern-solid {}",
             e.thickness.trim(),
-            edge_classes.trim()
+            e.classes.trim()
         );
         let look = binding.model_look(&e.look);
         let data_look_attr = mindmap_data_look_attr(look);
@@ -1105,7 +1074,8 @@ pub(crate) fn render_mindmap_diagram_svg_model_with_config(
             .unwrap_or((0.0, 0.0, 80.0, 44.0, None, None));
         let padding = n.padding.max(0.0);
         let half_padding = padding / 2.0;
-        let node_classes = mindmap_normalize_section_classes(&n.css_classes);
+        // The display policy cycles generated sections; authored class tokens stay literal.
+        let node_classes = &n.css_classes;
         let class = format!("node {}", node_classes.trim());
         let look = binding.model_look(&n.look);
         let is_root = node_classes

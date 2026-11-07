@@ -163,7 +163,8 @@ pub(crate) fn render_gantt_diagram_svg_model(
         .as_ref()
         .map(|_| format!("chart-desc-{diagram_id}"));
     let root_bounds = root_svg::DiagramBounds::from_view_box(0.0, 0.0, w, h);
-    let root_spec = root_svg::RootViewportSpec::responsive(root_bounds)
+    let use_max_width = config_bool(effective_config, &["gantt", "useMaxWidth"]).unwrap_or(true);
+    let root_spec = root_svg::RootViewportSpec::mermaid(root_bounds, use_max_width)
         .with_max_width(root_svg::RootMaxWidth::SvgNumber(w));
     let mut root_chrome = root_svg::RootChrome::new(diagram_id, "gantt");
     root_chrome.aria_labelledby = aria_labelledby.as_deref();

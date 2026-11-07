@@ -485,27 +485,78 @@ struct ElapsedTickState {
     field: i64,
 }
 
+fn floor_elapsed_tick_with(
+    mut candidate: i64,
+    every: i64,
+    state_at: &mut impl FnMut(i64) -> Option<ElapsedTickState>,
+    work_meter: &OperationWorkMeter,
+) -> Result<Option<i64>> {
+    // timeInterval.filter floors first, then checks the field at the resulting instant. A DST
+    // transition can change the local field during that floor, so checking only before it differs.
+    loop {
+        work_meter.charge(1)?;
+        let Some(state) = state_at(candidate) else {
+            return Ok(None);
+        };
+        let Some(floor) = candidate.checked_sub(state.lower_millis) else {
+            return Ok(None);
+        };
+        let Some(state) = state_at(floor) else {
+            return Ok(None);
+        };
+        if state.field.rem_euclid(every) == 0 {
+            return Ok(Some(floor));
+        }
+        let Some(before) = floor.checked_sub(1) else {
+            return Ok(None);
+        };
+        candidate = before;
+    }
+}
+
+fn offset_elapsed_tick_with(
+    mut candidate: i64,
+    every: i64,
+    unit_millis: i64,
+    state_at: &mut impl FnMut(i64) -> Option<ElapsedTickState>,
+    work_meter: &OperationWorkMeter,
+) -> Result<Option<i64>> {
+    loop {
+        work_meter.charge(1)?;
+        let Some(next) = candidate.checked_add(unit_millis) else {
+            return Ok(None);
+        };
+        candidate = next;
+        let Some(state) = state_at(candidate) else {
+            return Ok(None);
+        };
+        if state.field.rem_euclid(every) == 0 {
+            return Ok(Some(candidate));
+        }
+    }
+}
+
 fn ceil_elapsed_tick_start_with(
     min_ms: i64,
     every: i64,
     unit_millis: i64,
     mut state_at: impl FnMut(i64) -> Option<ElapsedTickState>,
-) -> Option<i64> {
-    let initial = state_at(min_ms)?;
-    let floor = min_ms.checked_sub(initial.lower_millis)?;
-    let mut candidate = if floor < min_ms {
-        floor.checked_add(unit_millis)?
-    } else {
-        floor
-    };
+    work_meter: &OperationWorkMeter,
+) -> Result<Option<i64>> {
     let every = every.max(1);
-
-    loop {
-        if state_at(candidate)?.field.rem_euclid(every) == 0 {
-            return Some(candidate);
-        }
-        candidate = candidate.checked_add(unit_millis)?;
-    }
+    let Some(before) = min_ms.checked_sub(1) else {
+        return Ok(None);
+    };
+    // Match D3's ceil: floor(start - 1), offset by one filtered interval, then floor again.
+    let Some(floor) = floor_elapsed_tick_with(before, every, &mut state_at, work_meter)? else {
+        return Ok(None);
+    };
+    let Some(next) =
+        offset_elapsed_tick_with(floor, every, unit_millis, &mut state_at, work_meter)?
+    else {
+        return Ok(None);
+    };
+    floor_elapsed_tick_with(next, every, &mut state_at, work_meter)
 }
 
 fn elapsed_tick_state(
@@ -513,11 +564,13 @@ fn elapsed_tick_state(
     unit: &str,
     local_time_zone: &LocalTimeZone,
 ) -> Option<ElapsedTickState> {
-    let local = instant_to_local(ms, local_time_zone)?.local_datetime();
+    let datetime = instant_to_local(ms, local_time_zone)?;
+    let local = datetime.local_datetime();
     match unit {
         "second" => Some(ElapsedTickState {
             lower_millis: i64::from(local.millisecond()),
-            field: i64::from(local.second()),
+            // d3-time's second interval uses getUTCSeconds(), including in local-time axes.
+            field: i64::from(datetime.utc_datetime().second()),
         }),
         "minute" => Some(ElapsedTickState {
             lower_millis: i64::from(local.second()) * 1_000 + i64::from(local.millisecond()),
@@ -539,18 +592,56 @@ fn ceil_tick_start(
     unit: &str,
     week_start: Option<&str>,
     local_time_zone: &LocalTimeZone,
-) -> Option<i64> {
+    work_meter: &OperationWorkMeter,
+) -> Result<Option<i64>> {
     if let Some(unit_millis) = match unit {
         "second" => Some(1_000),
         "minute" => Some(60_000),
         "hour" => Some(3_600_000),
         _ => None,
     } {
-        return ceil_elapsed_tick_start_with(min_ms, every, unit_millis, |ms| {
-            elapsed_tick_state(ms, unit, local_time_zone)
-        });
+        return ceil_elapsed_tick_start_with(
+            min_ms,
+            every,
+            unit_millis,
+            |ms| elapsed_tick_state(ms, unit, local_time_zone),
+            work_meter,
+        );
     }
 
+    let Some(mut candidate) =
+        ceil_calendar_tick_start(min_ms, every, unit, week_start, local_time_zone)
+    else {
+        return Ok(None);
+    };
+    if unit == "month" && every > 1 {
+        // timeMonth.every(e) filters getMonth(), a zero-based field that resets each year.
+        loop {
+            work_meter.charge(1)?;
+            let Some(local) = instant_to_local(candidate, local_time_zone) else {
+                return Ok(None);
+            };
+            if i64::from(local.local_datetime().month0()).rem_euclid(every) == 0 {
+                break;
+            }
+            let Some(next) = add_interval(candidate, 1, "month", local_time_zone)
+                .and_then(|next| start_of_day_ms(next, local_time_zone))
+            else {
+                return Ok(None);
+            };
+            candidate = next;
+        }
+    }
+    Ok(Some(candidate))
+}
+
+fn ceil_calendar_tick_start(
+    min_ms: i64,
+    every: i64,
+    unit: &str,
+    week_start: Option<&str>,
+    local_time_zone: &LocalTimeZone,
+) -> Option<i64> {
     let start = match unit {
         "millisecond" => {
             let e = every.max(1);
@@ -608,31 +699,9 @@ fn ceil_tick_start(
         }
         "month" => {
             let local = instant_to_local(min_ms, local_time_zone)?.local_datetime();
-            let month_index = |y: i32, m: u32| (y as i64) * 12 + (m as i64 - 1);
-
-            let mut y = local.year();
-            let mut m = local.month();
-            let mut cur = CivilDate::new(y, m, 1)?.at_midnight();
+            let mut cur = CivilDate::new(local.year(), local.month(), 1)?.at_midnight();
             if cur < local {
-                if m == 12 {
-                    m = 1;
-                    y = y.checked_add(1)?;
-                } else {
-                    m = m.checked_add(1)?;
-                }
-                cur = CivilDate::new(y, m, 1)?.at_midnight();
-            }
-
-            let e = every.max(1);
-            if e > 1 {
-                let mut idx = month_index(y, m);
-                let rem = idx.rem_euclid(e);
-                if rem != 0 {
-                    idx = idx.checked_add(e.checked_sub(rem)?)?;
-                    y = idx.div_euclid(12).try_into().ok()?;
-                    m = u32::try_from(idx.rem_euclid(12)).ok()?.checked_add(1)?;
-                    cur = CivilDate::new(y, m, 1)?.at_midnight();
-                }
+                cur = cur.checked_add_months(1)?;
             }
             cur
         }
@@ -917,25 +986,43 @@ fn build_ticks(request: GanttTickRequest<'_>) -> Result<Vec<GanttAxisTickLayout>
     };
 
     let mut ticks = Vec::new();
-    let mut cur =
-        ceil_tick_start(min_ms, every, unit, week_start, local_time_zone).unwrap_or(min_ms);
-    if unit == "day"
-        && every > 1
-        && cur <= max_ms
-        && let (Some(first), Some(last)) = (
-            instant_to_local(cur, local_time_zone),
-            instant_to_local(max_ms, local_time_zone),
-        )
-    {
-        // A filtered D3 day interval still inspects every intervening calendar day.
-        // Admit this lower bound before retaining ticks, even when the interval estimate is tiny.
-        let days = last
-            .local_datetime()
-            .date()
-            .days_since(first.local_datetime().date())
-            .max(0);
-        let days = usize::try_from(days).map_err(|_| work_meter.arithmetic_overflow())?;
-        work_meter.preflight(days)?;
+    let mut cur = ceil_tick_start(min_ms, every, unit, week_start, local_time_zone, work_meter)?
+        .unwrap_or(min_ms);
+    let can_preflight_scan = !matches!(unit, "second" | "minute" | "hour")
+        || local_time_zone.fixed_offset_minutes().is_some();
+    if every > 1 && cur <= max_ms && can_preflight_scan {
+        // D3's filtered intervals inspect base units, even when the authored stride is huge.
+        // Admit a lower bound on that scan before retaining ticks; charge actual candidates below.
+        // Transition-bearing zones can floor back to the current tick and end the range early,
+        // so elapsed domain spans are not a scan lower bound for those resolvers.
+        let scan_units = match unit {
+            "second" => (i128::from(max_ms) - i128::from(cur)) / 1_000,
+            "minute" => (i128::from(max_ms) - i128::from(cur)) / 60_000,
+            "hour" => (i128::from(max_ms) - i128::from(cur)) / 3_600_000,
+            "day" | "month" => {
+                match (
+                    instant_to_local(cur, local_time_zone),
+                    instant_to_local(max_ms, local_time_zone),
+                ) {
+                    (Some(first), Some(last)) => {
+                        let first = first.local_datetime();
+                        let last = last.local_datetime();
+                        if unit == "day" {
+                            i128::from(last.date().days_since(first.date()).max(0))
+                        } else {
+                            (i128::from(last.year()) - i128::from(first.year())) * 12
+                                + i128::from(last.month0())
+                                - i128::from(first.month0())
+                        }
+                    }
+                    _ => 0,
+                }
+            }
+            _ => 0,
+        };
+        let scan_units =
+            usize::try_from(scan_units.max(0)).map_err(|_| work_meter.arithmetic_overflow())?;
+        work_meter.preflight(scan_units)?;
     }
     while cur <= max_ms {
         work_meter.charge(1)?;
@@ -948,10 +1035,37 @@ fn build_ticks(request: GanttTickRequest<'_>) -> Result<Vec<GanttAxisTickLayout>
             x,
             label,
         });
-        let next = if unit == "day" && every > 1 {
-            add_d3_time_day_every(cur, every, local_time_zone, work_meter)?
-        } else {
-            add_interval(cur, every, unit, local_time_zone)
+        let next = match unit {
+            "day" if every > 1 => add_d3_time_day_every(cur, every, local_time_zone, work_meter)?,
+            "second" | "minute" | "hour" if every > 1 => {
+                let unit_millis = match unit {
+                    "second" => 1_000,
+                    "minute" => 60_000,
+                    _ => 3_600_000,
+                };
+                let mut state_at = |ms| elapsed_tick_state(ms, unit, local_time_zone);
+                // timeInterval.range offsets the filtered interval, then floors the result.
+                match offset_elapsed_tick_with(cur, every, unit_millis, &mut state_at, work_meter)?
+                {
+                    Some(next) => floor_elapsed_tick_with(next, every, &mut state_at, work_meter)?,
+                    None => None,
+                }
+            }
+            "month" if every > 1 => {
+                // Advance just past this boundary so the same month-field ceil finds the next.
+                match cur.checked_add(1) {
+                    Some(after) => ceil_tick_start(
+                        after,
+                        every,
+                        unit,
+                        week_start,
+                        local_time_zone,
+                        work_meter,
+                    )?,
+                    None => None,
+                }
+            }
+            _ => add_interval(cur, every, unit, local_time_zone),
         };
         let Some(next) = next else {
             break;
@@ -1159,11 +1273,12 @@ pub(crate) fn layout_gantt_diagram_typed(
     // Exclude day ranges.
     let mut excludes_layout: Vec<GanttExcludeRangeLayout> = Vec::new();
     if has_excludes_layer {
-        let mut cur = start_of_day_ms(min_ms, local_time_zone).unwrap_or(min_ms);
-        let max_day = start_of_day_ms(max_ms, local_time_zone).unwrap_or(max_ms);
+        // Mermaid matches each calendar day at the first task's clock, then floors only geometry.
+        let mut cur = min_ms;
         let mut range_start: Option<i64> = None;
         let mut range_end: Option<i64> = None;
         let mut append_range = |start_ms: i64, last_day_ms: i64| {
+            let start_ms = start_of_day_ms(start_ms, local_time_zone).unwrap_or(start_ms);
             let id = format!(
                 "exclude-{}",
                 format_yyyy_mm_dd(start_ms, local_time_zone)
@@ -1183,7 +1298,7 @@ pub(crate) fn layout_gantt_diagram_typed(
             });
         };
 
-        while cur <= max_day {
+        while cur <= max_ms {
             work_meter.charge(1)?;
             let invalid = is_invalid_date(
                 cur,
@@ -1689,6 +1804,172 @@ mod tests {
     }
 
     #[test]
+    fn filtered_field_ticks_admit_base_unit_work_even_for_huge_strides() {
+        let utc = merman_model::time::LocalTimeZone::utc();
+        for unit in ["second", "minute", "hour", "month"] {
+            let policy = crate::resources::RenderResourcePolicy::unbounded_for_trusted_input()
+                .with_limit(crate::resources::ResourceLimitId::MaxLayoutWorkUnits, 1000)
+                .unwrap();
+            let meter = crate::resources::OperationWorkMeter::new(policy);
+            let interval = format!("{}{unit}", i64::MAX);
+            let error = super::build_ticks(super::GanttTickRequest {
+                min_ms: 0,
+                max_ms: 8_640_000_000_000_000,
+                range: 100.0,
+                left_padding: 0.0,
+                axis_format: "%Y-%m-%d",
+                tick_interval: Some(&interval),
+                week_start: None,
+                local_time_zone: &utc,
+                work_meter: &meter,
+            })
+            .unwrap_err();
+            assert!(
+                matches!(error, crate::Error::ResourceLimitExceeded(details)
+                if details.limit == "max_layout_work_units" && details.actual > 1_000_000),
+                "{unit}"
+            );
+            assert!(
+                meter.used() < 1000,
+                "preflight before retaining ticks: {unit}"
+            );
+        }
+    }
+
+    #[test]
+    fn filtered_field_ticks_charge_rejected_candidates_during_initial_ceil_and_later_offsets() {
+        let utc = merman_model::time::LocalTimeZone::utc();
+        let february = OffsetDateTime::from_local(
+            CivilDate::new(1970, 2, 1).unwrap().at_midnight(),
+            UtcOffset::UTC,
+        )
+        .unwrap()
+        .timestamp_millis();
+        let march = OffsetDateTime::from_local(
+            CivilDate::new(1970, 3, 1).unwrap().at_midnight(),
+            UtcOffset::UTC,
+        )
+        .unwrap()
+        .timestamp_millis();
+        for (unit, first_rejected, stop) in [
+            ("second", 1_000, 2_000),
+            ("minute", 60_000, 120_000),
+            ("hour", 3_600_000, 7_200_000),
+            ("month", february, march),
+        ] {
+            let initial_meter = crate::resources::OperationWorkMeter::new(
+                crate::resources::RenderResourcePolicy::unbounded_for_trusted_input(),
+            );
+            assert_eq!(
+                ceil_tick_start(0, i64::MAX, unit, None, &utc, &initial_meter).unwrap(),
+                Some(0)
+            );
+            // One budget rejects the initial field search; the other allows the initial tick
+            // and fails while looking for its successor, even though the estimated count is tiny.
+            for (min_ms, limit) in [(first_rejected, 2), (0, initial_meter.used() + 3)] {
+                let policy = crate::resources::RenderResourcePolicy::unbounded_for_trusted_input()
+                    .with_limit(crate::resources::ResourceLimitId::MaxLayoutWorkUnits, limit)
+                    .unwrap();
+                let meter = crate::resources::OperationWorkMeter::new(policy);
+                let interval = format!("{}{unit}", i64::MAX);
+                let error = super::build_ticks(super::GanttTickRequest {
+                    min_ms,
+                    max_ms: stop,
+                    range: 100.0,
+                    left_padding: 0.0,
+                    axis_format: "%Q",
+                    tick_interval: Some(&interval),
+                    week_start: None,
+                    local_time_zone: &utc,
+                    work_meter: &meter,
+                })
+                .unwrap_err();
+                assert!(
+                    matches!(error, crate::Error::ResourceLimitExceeded(details)
+                    if details.limit == "max_layout_work_units" && details.actual == limit + 1),
+                    "{unit}, start {min_ms}"
+                );
+                assert_eq!(meter.used(), limit, "{unit}, start {min_ms}");
+            }
+        }
+    }
+
+    #[test]
+    fn filtered_axes_share_the_operation_work_meter() {
+        let utc = merman_model::time::LocalTimeZone::utc();
+        let build = |meter: &crate::resources::OperationWorkMeter| {
+            super::build_ticks(super::GanttTickRequest {
+                min_ms: 20 * 3_600_000,
+                max_ms: 30 * 3_600_000,
+                range: 100.0,
+                left_padding: 0.0,
+                axis_format: "%H:%M",
+                tick_interval: Some("5hour"),
+                week_start: None,
+                local_time_zone: &utc,
+                work_meter: meter,
+            })
+        };
+        let probe = crate::resources::OperationWorkMeter::new(
+            crate::resources::RenderResourcePolicy::unbounded_for_trusted_input(),
+        );
+        assert_eq!(build(&probe).unwrap().len(), 3);
+        let policy = crate::resources::RenderResourcePolicy::unbounded_for_trusted_input()
+            .with_limit(
+                crate::resources::ResourceLimitId::MaxLayoutWorkUnits,
+                probe.used(),
+            )
+            .unwrap();
+        let meter = crate::resources::OperationWorkMeter::new(policy);
+        assert_eq!(build(&meter).unwrap().len(), 3);
+        assert!(
+            matches!(build(&meter).unwrap_err(), crate::Error::ResourceLimitExceeded(details)
+            if details.limit == "max_layout_work_units")
+        );
+        assert_eq!(meter.used(), probe.used());
+    }
+
+    #[test]
+    fn filtered_hours_use_the_runtime_local_field_with_a_fractional_hour_offset() {
+        let zone = merman_model::time::LocalTimeZone::fixed(330).unwrap();
+        let start = zone
+            .resolve_local(
+                CivilDate::new(2024, 1, 1)
+                    .unwrap()
+                    .at_hms_milli(20, 0, 0, 0)
+                    .unwrap(),
+            )
+            .unwrap()
+            .timestamp_millis();
+        let meter = crate::resources::OperationWorkMeter::new(
+            crate::resources::RenderResourcePolicy::unbounded_for_trusted_input(),
+        );
+        let ticks = super::build_ticks(super::GanttTickRequest {
+            min_ms: start,
+            max_ms: start + 10 * 3_600_000,
+            range: 100.0,
+            left_padding: 0.0,
+            axis_format: "%Y-%m-%d_%H:%M_%Z",
+            tick_interval: Some("5hour"),
+            week_start: None,
+            local_time_zone: &zone,
+            work_meter: &meter,
+        })
+        .unwrap();
+        assert_eq!(
+            ticks
+                .iter()
+                .map(|tick| tick.label.as_str())
+                .collect::<Vec<_>>(),
+            [
+                "2024-01-01_20:00_+0530",
+                "2024-01-02_00:00_+0530",
+                "2024-01-02_05:00_+0530",
+            ]
+        );
+    }
+
+    #[test]
     fn maximum_utc_date_layout_terminates_without_panicking() {
         let max_ms = i64::MAX;
         let mut model = GanttDiagramRenderModel::default();
@@ -1790,37 +2071,118 @@ mod tests {
     #[test]
     fn millisecond_tick_ceil_uses_euclidean_alignment_before_epoch() {
         let utc = merman_model::time::LocalTimeZone::utc();
+        let meter = crate::resources::OperationWorkMeter::new(
+            crate::resources::RenderResourcePolicy::unbounded_for_trusted_input(),
+        );
 
-        assert_eq!(ceil_tick_start(-1, 250, "millisecond", None, &utc), Some(0));
         assert_eq!(
-            ceil_tick_start(-251, 250, "millisecond", None, &utc),
+            ceil_tick_start(-1, 250, "millisecond", None, &utc, &meter).unwrap(),
+            Some(0)
+        );
+        assert_eq!(
+            ceil_tick_start(-251, 250, "millisecond", None, &utc, &meter).unwrap(),
             Some(-250)
         );
         assert_eq!(
-            ceil_tick_start(-250, 250, "millisecond", None, &utc),
+            ceil_tick_start(-250, 250, "millisecond", None, &utc, &meter).unwrap(),
             Some(-250)
         );
     }
 
     #[test]
     fn elapsed_hour_ceil_preserves_the_second_tick_in_a_fall_back_fold() {
-        const FIRST_ONE_OCLOCK: i64 = 3_600_000;
-        const FIRST_ONE_THIRTY: i64 = FIRST_ONE_OCLOCK + 1_800_000;
-        const SECOND_ONE_OCLOCK: i64 = 7_200_000;
+        let meter = crate::resources::OperationWorkMeter::new(
+            crate::resources::RenderResourcePolicy::unbounded_for_trusted_input(),
+        );
+        for every in [1, 2] {
+            let next = ceil_elapsed_tick_start_with(
+                5_400_000,
+                every,
+                3_600_000,
+                |instant| {
+                    let elapsed_hour = instant.div_euclid(3_600_000);
+                    Some(ElapsedTickState {
+                        lower_millis: instant.rem_euclid(3_600_000),
+                        field: (elapsed_hour - i64::from(instant >= 7_200_000)).rem_euclid(24),
+                    })
+                },
+                &meter,
+            )
+            .unwrap();
+            assert_eq!(next, Some(if every == 1 { 7_200_000 } else { 10_800_000 }));
+        }
+    }
 
-        let next =
-            ceil_elapsed_tick_start_with(FIRST_ONE_THIRTY, 1, 3_600_000, |instant| match instant {
-                FIRST_ONE_THIRTY => Some(ElapsedTickState {
-                    lower_millis: 1_800_000,
-                    field: 1,
-                }),
-                SECOND_ONE_OCLOCK => Some(ElapsedTickState {
-                    lower_millis: 0,
-                    field: 1,
-                }),
-                _ => None,
-            });
+    #[test]
+    fn filtered_hour_ceil_floors_after_offset_across_a_partial_hour_dst_gap() {
+        let meter = crate::resources::OperationWorkMeter::new(
+            crate::resources::RenderResourcePolicy::unbounded_for_trusted_input(),
+        );
+        // A 30-minute spring gap makes the qualifying offset land at 05:30. D3 then floors it
+        // to 05:00; retaining the offset's clock would produce a different tick instant.
+        let next = ceil_elapsed_tick_start_with(
+            1,
+            5,
+            3_600_000,
+            |instant| {
+                let local_millis = instant + if instant >= 7_200_000 { 1_800_000 } else { 0 };
+                Some(ElapsedTickState {
+                    lower_millis: local_millis.rem_euclid(3_600_000),
+                    field: local_millis.div_euclid(3_600_000).rem_euclid(24),
+                })
+            },
+            &meter,
+        )
+        .unwrap();
+        assert_eq!(next, Some(16_200_000));
+    }
 
-        assert_eq!(next, Some(SECOND_ONE_OCLOCK));
+    #[test]
+    #[cfg(feature = "system-timezone")]
+    fn filtered_hours_admit_actual_work_when_a_dst_gap_ends_the_axis_early() {
+        const CHILD: &str = "MERMAN_GANTT_DST_BUDGET_CHILD";
+        if std::env::var_os(CHILD).is_none() {
+            let output = std::process::Command::new(std::env::current_exe().unwrap())
+                .args([
+                    "--exact",
+                    "gantt::tests::filtered_hours_admit_actual_work_when_a_dst_gap_ends_the_axis_early",
+                    "--nocapture",
+                ])
+                .env(CHILD, "1")
+                .env("TZ", "Australia/Lord_Howe")
+                .output()
+                .unwrap();
+            assert!(
+                output.status.success(),
+                "{}",
+                String::from_utf8_lossy(&output.stderr)
+            );
+            return;
+        }
+        let zone = merman_model::time::LocalTimeZone::try_system().unwrap();
+        assert_eq!(zone.provenance().identifier(), "Australia/Lord_Howe");
+        let start = zone
+            .resolve_local(CivilDate::new(2024, 10, 6).unwrap().at_midnight())
+            .unwrap()
+            .timestamp_millis();
+        let policy = crate::resources::RenderResourcePolicy::unbounded_for_trusted_input()
+            .with_limit(crate::resources::ResourceLimitId::MaxLayoutWorkUnits, 11)
+            .unwrap();
+        let meter = crate::resources::OperationWorkMeter::new(policy);
+        let ticks = super::build_ticks(super::GanttTickRequest {
+            min_ms: start,
+            max_ms: start + 48 * 3_600_000,
+            range: 100.0,
+            left_padding: 0.0,
+            axis_format: "%Y-%m-%d_%H:%M",
+            tick_interval: Some("2hour"),
+            week_start: None,
+            local_time_zone: &zone,
+            work_meter: &meter,
+        })
+        .unwrap();
+        assert_eq!(ticks.len(), 1);
+        assert_eq!(ticks[0].time_ms, start);
+        assert_eq!(meter.used(), 11);
     }
 }
