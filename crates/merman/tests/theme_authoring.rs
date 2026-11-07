@@ -254,13 +254,34 @@ fn rust_facade_preserves_materialization_and_compilation_error_sources() {
     };
     assert_eq!(error.diagnostic().path(), "/design/styles/node/fill");
 
-    let invalid_target =
-        serde_json::from_value(json!({"styles":{"future-node":{"fill":"#123456"}}})).unwrap();
-    let error = compiler
-        .compile_recipe(ThemeRecipeV1::Design {
-            design: invalid_target,
-        })
-        .unwrap_err();
+    for appearances in [None, Some(json!({"light": {}, "dark": {}}))] {
+        let mut input = json!({"styles":{"future-node":{"fill":"#123456"}}});
+        if let Some(appearances) = appearances {
+            input["appearances"] = appearances;
+            input["default_appearance"] = json!("light");
+        }
+        let error = compiler
+            .compile_recipe(ThemeRecipeV1::Design {
+                design: serde_json::from_value(input.clone()).unwrap(),
+            })
+            .unwrap_err();
+        assert!(error.source().is_some());
+        let ThemeDesignCompileError::Materialization(error) = error else {
+            panic!("editable design admission must retain its authoring diagnostic");
+        };
+        assert_eq!(error.diagnostic().path(), "/design/styles/future-node");
+        assert!(input.pointer("/styles/future-node").is_some());
+    }
+
+    let recipe = serde_json::from_value(json!({
+        "schema_version": 1,
+        "kind": "complete_spec",
+        "complete_spec": {
+            "styles": [{"kind":"rule","target":"future-node","style":{"fill":"#123456"}}]
+        }
+    }))
+    .unwrap();
+    let error = compiler.compile_recipe(recipe).unwrap_err();
     assert!(error.source().is_some());
     assert!(matches!(error, ThemeDesignCompileError::Compilation(_)));
 }

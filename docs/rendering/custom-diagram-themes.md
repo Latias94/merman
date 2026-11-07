@@ -841,6 +841,9 @@ Do not submit a standalone recipe as if it were a raw design.
 Raw-design materialization and inspection use the same complete compiler admission as document
 actions, including semantic targets and effect graphs. Raw inputs retain payload-relative
 diagnostic/reference paths and encoded-byte limits on the raw design, without a recipe envelope.
+Rust compilation failures in editable designs use `ThemeDesignCompileError::Materialization`
+to retain the authoring diagnostic and its source path. Failures in a `complete_spec` remain
+`ThemeDesignCompileError::Compilation`; both variants retain their error source.
 
 For downloaded JSON, preserve the original text when constructing the action request:
 

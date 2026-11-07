@@ -417,12 +417,9 @@ impl DiagramThemeCompiler {
         ),
         ThemeDesignCompileError,
     > {
-        let (spec, references, sources) = super::design_materializer::materialize(
-            &composition.design,
-            self.resource_policy(),
-            true,
-        )
-        .map_err(|error| composition.error(error))?;
+        let (spec, references, sources) =
+            super::design_materializer::materialize(&composition.design, self.resource_policy())
+                .map_err(|error| composition.error(error))?;
         let sources = composition.sources(sources);
         let references = references
             .into_iter()

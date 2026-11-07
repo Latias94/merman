@@ -16,10 +16,10 @@ const MAX_REFERENCE_USES: usize = 4096;
 #[derive(Debug, thiserror::Error)]
 #[non_exhaustive]
 pub enum ThemeDesignCompileError {
-    /// The editable document failed admission or typed resolution.
+    /// The editable document failed admission, typed resolution, or compilation.
     #[error("theme design materialization failed: {0}")]
     Materialization(#[from] ThemeMaterializationErrorV1),
-    /// The materialized concrete specification failed compiler admission.
+    /// A complete specification failed compiler admission.
     #[error("theme design compilation failed: {0}")]
     Compilation(#[from] super::ThemeCompileError),
 }
@@ -185,7 +185,6 @@ fn domain(value_type: &'static str) -> ThemeDesignValueDomain {
 pub(super) fn materialize(
     design: &ThemeDesignV1,
     resources: &ThemeResourcePolicy,
-    inspect: bool,
 ) -> Result<(
     DiagramThemeSpecWireV1,
     Vec<ThemeDesignReferenceUse>,
@@ -233,7 +232,6 @@ pub(super) fn materialize(
         effects: Vec::new(),
         references: Vec::new(),
         reference_uses: 0,
-        inspect,
     };
     for id in design.tokens.keys() {
         resolver.token(id, &child("/tokens", id))?;
@@ -316,9 +314,7 @@ pub(super) fn materialize(
     };
     super::definition_admission::check_typed_input_encoded_bytes(resources, &spec)
         .map_err(encoding_error)?;
-    if inspect {
-        propagate_alias_domains(design, &mut resolver.references);
-    }
+    propagate_alias_domains(design, &mut resolver.references);
     Ok((spec, resolver.references, sources))
 }
 
@@ -448,7 +444,6 @@ struct Resolver<'a> {
     effects: Vec<(ThemeEffectEntryWireV1, String)>,
     references: Vec<ThemeDesignReferenceUse>,
     reference_uses: usize,
-    inspect: bool,
 }
 
 macro_rules! scalar_resolver {
@@ -494,13 +489,11 @@ impl Resolver<'_> {
                 "too many theme reference uses",
             ));
         }
-        if self.inspect {
-            self.references.push(ThemeDesignReferenceUse {
-                token: reference.r#ref.clone(),
-                path: path.to_owned(),
-                domain,
-            });
-        }
+        self.references.push(ThemeDesignReferenceUse {
+            token: reference.r#ref.clone(),
+            path: path.to_owned(),
+            domain,
+        });
         Ok(())
     }
 
