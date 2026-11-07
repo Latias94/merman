@@ -1,5 +1,5 @@
 // auto-generated: "lalrpop 0.23.2"
-// sha3: 7316ef9afb7e300d6baff4127b1b3662c1931c738542eb3fc765f472445a7fee
+// sha3: d29f422bfdb2bb0c62983feb921f98cfde8d5b56b808ac34b4753584aec147df
 // features:
 use crate::diagrams::sequence::ast::{ActionArena, ActionList};
 use crate::diagrams::sequence::{
@@ -128,9 +128,9 @@ mod __parse__Actions {
         // State 36
         37, 0, 15, 7, 8, 10, 0, 88, -42, 91, 95, 92, 86, -42, 93, 94, -42, 90, -42, 89, 14, 0, 0, 0, 13, 12, 16, 11, 87, 0, 6, 9, 0, 0, 0, 0, 101, 99, 0, 0, 0, 0, 102, 100, 98, 96, 97,
         // State 37
-        0, 0, 15, 7, 0, 0, 0, 0, -27, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+        0, 0, 15, 7, 0, 10, 0, 0, -27, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
         // State 38
-        2, 0, -48, -48, 0, 0, 0, 0, -48, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+        2, 0, -48, -48, 0, -48, 0, 0, -48, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
         // State 39
         0, 0, 0, 0, 0, 0, 0, 0, 154, 0, 0, 0, 0, 0, 0, 0, 0, 0, 155, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
         // State 40
@@ -156,7 +156,7 @@ mod __parse__Actions {
         // State 50
         37, 0, 15, 7, 8, 10, 0, 88, -42, 91, 95, 92, 86, -42, 93, 94, 0, 90, 0, 89, 14, 0, 0, 0, 13, 12, 16, 11, 87, 0, 6, 9, 0, 0, 0, 0, 101, 99, 0, 0, 0, 0, 102, 100, 98, 96, 97,
         // State 51
-        0, 0, 15, 7, 0, 0, 0, 0, -27, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+        0, 0, 15, 7, 0, 10, 0, 0, -27, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
         // State 52
         37, 0, 15, 7, 8, 10, 0, 88, -42, 91, 95, 92, 86, 0, 93, 94, 0, 90, -42, 89, 14, 0, 0, 0, 13, 12, 16, 11, 87, 0, 6, 9, 0, 0, 0, 0, 101, 99, 0, 0, 0, 0, 102, 100, 98, 96, 97,
         // State 53
@@ -186,13 +186,13 @@ mod __parse__Actions {
         // State 65
         -25, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
         // State 66
-        -84, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+        -85, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
         // State 67
         -24, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
         // State 68
         -99, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
         // State 69
-        -85, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+        -73, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
         // State 70
         -93, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
         // State 71
@@ -212,7 +212,7 @@ mod __parse__Actions {
         // State 78
         -72, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
         // State 79
-        -83, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+        -84, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
         // State 80
         -92, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
         // State 81
@@ -284,9 +284,9 @@ mod __parse__Actions {
         // State 114
         0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 129, 0, 0, 0, 0, 0, 0, 0, 0,
         // State 115
-        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, -73, -73, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-        // State 116
         0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, -74, -74, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+        // State 116
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, -75, -75, 0, 0, 0, 0, 0, 0, 0, 0, 0,
         // State 117
         -67, 0, 0, 0, 0, 0, 134, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 135, 0, 0, 0, 0, 0,
         // State 118
@@ -324,13 +324,13 @@ mod __parse__Actions {
         // State 134
         -66, 0, 0, 0, 0, 0, 165, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
         // State 135
-        -75, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+        -76, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
         // State 136
         0, 0, 0, 0, 0, 0, 0, 0, 166, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
         // State 137
         0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 167, 0, 0, 0, 0, 0, 0, 0, 0,
         // State 138
-        -82, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+        -83, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
         // State 139
         0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 169, 0, 0, 0, 0, 0, 0, 0, 0,
         // State 140
@@ -354,7 +354,7 @@ mod __parse__Actions {
         // State 149
         0, 0, 0, 0, 0, 0, 0, 0, 176, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
         // State 150
-        0, 0, -50, -50, 0, 0, 0, 0, -50, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+        0, 0, -50, -50, 0, -50, 0, 0, -50, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
         // State 151
         -30, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
         // State 152
@@ -384,17 +384,17 @@ mod __parse__Actions {
         // State 164
         0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 183, 0, 0, 0, 0, 0, 0, 0,
         // State 165
-        -76, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+        -77, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
         // State 166
-        -80, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+        -81, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
         // State 167
         0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 184, 0, 0, 0, 0, 0, 0, 0, 0,
         // State 168
-        -79, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+        -80, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
         // State 169
-        -78, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+        -79, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
         // State 170
-        -77, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+        -78, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
         // State 171
         -69, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
         // State 172
@@ -420,7 +420,7 @@ mod __parse__Actions {
         // State 182
         -65, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
         // State 183
-        -81, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+        -82, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
         // State 184
         0, 0, 0, 0, 0, 0, 0, 0, -10, 0, 0, 0, 0, -10, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
         // State 185
@@ -569,13 +569,13 @@ mod __parse__Actions {
         // State 65
         -25,
         // State 66
-        -84,
+        -85,
         // State 67
         -24,
         // State 68
         -99,
         // State 69
-        -85,
+        -73,
         // State 70
         -93,
         // State 71
@@ -595,7 +595,7 @@ mod __parse__Actions {
         // State 78
         -72,
         // State 79
-        -83,
+        -84,
         // State 80
         -92,
         // State 81
@@ -707,13 +707,13 @@ mod __parse__Actions {
         // State 134
         -66,
         // State 135
-        -75,
+        -76,
         // State 136
         0,
         // State 137
         0,
         // State 138
-        -82,
+        -83,
         // State 139
         0,
         // State 140
@@ -767,17 +767,17 @@ mod __parse__Actions {
         // State 164
         0,
         // State 165
-        -76,
+        -77,
         // State 166
-        -80,
+        -81,
         // State 167
         0,
         // State 168
-        -79,
+        -80,
         // State 169
-        -78,
+        -79,
         // State 170
-        -77,
+        -78,
         // State 171
         -69,
         // State 172
@@ -803,7 +803,7 @@ mod __parse__Actions {
         // State 182
         -65,
         // State 183
-        -81,
+        -82,
         // State 184
         0,
         // State 185
@@ -1640,7 +1640,7 @@ mod __parse__Actions {
             72 => {
                 __state_machine::SimulatedReduce::Reduce {
                     states_to_pop: 1,
-                    nonterminal_produced: 37,
+                    nonterminal_produced: 36,
                 }
             }
             73 => {
@@ -1651,20 +1651,20 @@ mod __parse__Actions {
             }
             74 => {
                 __state_machine::SimulatedReduce::Reduce {
-                    states_to_pop: 3,
-                    nonterminal_produced: 38,
+                    states_to_pop: 1,
+                    nonterminal_produced: 37,
                 }
             }
             75 => {
                 __state_machine::SimulatedReduce::Reduce {
-                    states_to_pop: 4,
-                    nonterminal_produced: 39,
+                    states_to_pop: 3,
+                    nonterminal_produced: 38,
                 }
             }
             76 => {
                 __state_machine::SimulatedReduce::Reduce {
-                    states_to_pop: 5,
-                    nonterminal_produced: 40,
+                    states_to_pop: 4,
+                    nonterminal_produced: 39,
                 }
             }
             77 => {
@@ -1687,20 +1687,20 @@ mod __parse__Actions {
             }
             80 => {
                 __state_machine::SimulatedReduce::Reduce {
-                    states_to_pop: 6,
+                    states_to_pop: 5,
                     nonterminal_produced: 40,
                 }
             }
             81 => {
                 __state_machine::SimulatedReduce::Reduce {
-                    states_to_pop: 4,
+                    states_to_pop: 6,
                     nonterminal_produced: 40,
                 }
             }
             82 => {
                 __state_machine::SimulatedReduce::Reduce {
-                    states_to_pop: 1,
-                    nonterminal_produced: 41,
+                    states_to_pop: 4,
+                    nonterminal_produced: 40,
                 }
             }
             83 => {
@@ -2143,14 +2143,14 @@ mod __parse__Actions {
                 __reduce42(arena, control, __lookahead_start, __symbols, core::marker::PhantomData::<()>)
             }
             43 => {
-                // Doc = Statement, Newline, Doc => ActionFn(28);
+                // Doc = Statement, Newline, Doc => ActionFn(27);
                 assert!(__symbols.len() >= 3);
                 let __sym2 = __pop_Variant4(__symbols);
                 let __sym1 = __pop_Variant0(__symbols);
                 let __sym0 = __pop_Variant4(__symbols);
                 let __start = __sym0.0.clone();
                 let __end = __sym2.2.clone();
-                let __nt = match super::__action28::<>(arena, control, __sym0, __sym1, __sym2) {
+                let __nt = match super::__action27::<>(arena, control, __sym0, __sym1, __sym2) {
                     Ok(v) => v,
                     Err(e) => return Some(Err(e)),
                 };
@@ -2331,6 +2331,9 @@ mod __parse__Actions {
                 __reduce74(arena, control, __lookahead_start, __symbols, core::marker::PhantomData::<()>)
             }
             75 => {
+                __reduce75(arena, control, __lookahead_start, __symbols, core::marker::PhantomData::<()>)
+            }
+            76 => {
                 // RectBlock = "rect", RestOfLine, Doc, "end" => ActionFn(57);
                 assert!(__symbols.len() >= 4);
                 let __sym3 = __pop_Variant0(__symbols);
@@ -2345,9 +2348,6 @@ mod __parse__Actions {
                 };
                 __symbols.push((__start, __Symbol::Variant4(__nt), __end));
                 (4, 39)
-            }
-            76 => {
-                __reduce76(arena, control, __lookahead_start, __symbols, core::marker::PhantomData::<()>)
             }
             77 => {
                 __reduce77(arena, control, __lookahead_start, __symbols, core::marker::PhantomData::<()>)
@@ -2365,6 +2365,9 @@ mod __parse__Actions {
                 __reduce81(arena, control, __lookahead_start, __symbols, core::marker::PhantomData::<()>)
             }
             82 => {
+                __reduce82(arena, control, __lookahead_start, __symbols, core::marker::PhantomData::<()>)
+            }
+            83 => {
                 // Statement = ParticipantStatement => ActionFn(9);
                 let __sym0 = __pop_Variant8(__symbols);
                 let __start = __sym0.0.clone();
@@ -2376,7 +2379,7 @@ mod __parse__Actions {
                 __symbols.push((__start, __Symbol::Variant4(__nt), __end));
                 (1, 41)
             }
-            83 => {
+            84 => {
                 // Statement = CreateStatement => ActionFn(10);
                 let __sym0 = __pop_Variant8(__symbols);
                 let __start = __sym0.0.clone();
@@ -2388,23 +2391,23 @@ mod __parse__Actions {
                 __symbols.push((__start, __Symbol::Variant4(__nt), __end));
                 (1, 41)
             }
-            84 => {
-                // Statement = DestroyStatement => ActionFn(11);
+            85 => {
+                __reduce85(arena, control, __lookahead_start, __symbols, core::marker::PhantomData::<()>)
+            }
+            86 => {
+                // Statement = SignalStatement => ActionFn(12);
                 let __sym0 = __pop_Variant8(__symbols);
                 let __start = __sym0.0.clone();
                 let __end = __sym0.2.clone();
-                let __nt = match super::__action11::<>(arena, control, __sym0) {
+                let __nt = match super::__action12::<>(arena, control, __sym0) {
                     Ok(v) => v,
                     Err(e) => return Some(Err(e)),
                 };
                 __symbols.push((__start, __Symbol::Variant4(__nt), __end));
                 (1, 41)
             }
-            85 => {
-                __reduce85(arena, control, __lookahead_start, __symbols, core::marker::PhantomData::<()>)
-            }
-            86 => {
-                // Statement = SignalStatement => ActionFn(13);
+            87 => {
+                // Statement = NoteStatement => ActionFn(13);
                 let __sym0 = __pop_Variant8(__symbols);
                 let __start = __sym0.0.clone();
                 let __end = __sym0.2.clone();
@@ -2415,23 +2418,23 @@ mod __parse__Actions {
                 __symbols.push((__start, __Symbol::Variant4(__nt), __end));
                 (1, 41)
             }
-            87 => {
-                // Statement = NoteStatement => ActionFn(14);
+            88 => {
+                __reduce88(arena, control, __lookahead_start, __symbols, core::marker::PhantomData::<()>)
+            }
+            89 => {
+                // Statement = LinksStatement => ActionFn(15);
                 let __sym0 = __pop_Variant8(__symbols);
                 let __start = __sym0.0.clone();
                 let __end = __sym0.2.clone();
-                let __nt = match super::__action14::<>(arena, control, __sym0) {
+                let __nt = match super::__action15::<>(arena, control, __sym0) {
                     Ok(v) => v,
                     Err(e) => return Some(Err(e)),
                 };
                 __symbols.push((__start, __Symbol::Variant4(__nt), __end));
                 (1, 41)
             }
-            88 => {
-                __reduce88(arena, control, __lookahead_start, __symbols, core::marker::PhantomData::<()>)
-            }
-            89 => {
-                // Statement = LinksStatement => ActionFn(16);
+            90 => {
+                // Statement = LinkStatement => ActionFn(16);
                 let __sym0 = __pop_Variant8(__symbols);
                 let __start = __sym0.0.clone();
                 let __end = __sym0.2.clone();
@@ -2442,8 +2445,8 @@ mod __parse__Actions {
                 __symbols.push((__start, __Symbol::Variant4(__nt), __end));
                 (1, 41)
             }
-            90 => {
-                // Statement = LinkStatement => ActionFn(17);
+            91 => {
+                // Statement = PropertiesStatement => ActionFn(17);
                 let __sym0 = __pop_Variant8(__symbols);
                 let __start = __sym0.0.clone();
                 let __end = __sym0.2.clone();
@@ -2454,8 +2457,8 @@ mod __parse__Actions {
                 __symbols.push((__start, __Symbol::Variant4(__nt), __end));
                 (1, 41)
             }
-            91 => {
-                // Statement = PropertiesStatement => ActionFn(18);
+            92 => {
+                // Statement = DetailsStatement => ActionFn(18);
                 let __sym0 = __pop_Variant8(__symbols);
                 let __start = __sym0.0.clone();
                 let __end = __sym0.2.clone();
@@ -2466,9 +2469,9 @@ mod __parse__Actions {
                 __symbols.push((__start, __Symbol::Variant4(__nt), __end));
                 (1, 41)
             }
-            92 => {
-                // Statement = DetailsStatement => ActionFn(19);
-                let __sym0 = __pop_Variant8(__symbols);
+            93 => {
+                // Statement = TitleStatement => ActionFn(19);
+                let __sym0 = __pop_Variant2(__symbols);
                 let __start = __sym0.0.clone();
                 let __end = __sym0.2.clone();
                 let __nt = match super::__action19::<>(arena, control, __sym0) {
@@ -2478,8 +2481,8 @@ mod __parse__Actions {
                 __symbols.push((__start, __Symbol::Variant4(__nt), __end));
                 (1, 41)
             }
-            93 => {
-                // Statement = TitleStatement => ActionFn(20);
+            94 => {
+                // Statement = AccTitleStatement => ActionFn(20);
                 let __sym0 = __pop_Variant2(__symbols);
                 let __start = __sym0.0.clone();
                 let __end = __sym0.2.clone();
@@ -2490,8 +2493,8 @@ mod __parse__Actions {
                 __symbols.push((__start, __Symbol::Variant4(__nt), __end));
                 (1, 41)
             }
-            94 => {
-                // Statement = AccTitleStatement => ActionFn(21);
+            95 => {
+                // Statement = AccDescrStatement => ActionFn(21);
                 let __sym0 = __pop_Variant2(__symbols);
                 let __start = __sym0.0.clone();
                 let __end = __sym0.2.clone();
@@ -2502,9 +2505,9 @@ mod __parse__Actions {
                 __symbols.push((__start, __Symbol::Variant4(__nt), __end));
                 (1, 41)
             }
-            95 => {
-                // Statement = AccDescrStatement => ActionFn(22);
-                let __sym0 = __pop_Variant2(__symbols);
+            96 => {
+                // Statement = AutonumberStatement => ActionFn(22);
+                let __sym0 = __pop_Variant5(__symbols);
                 let __start = __sym0.0.clone();
                 let __end = __sym0.2.clone();
                 let __nt = match super::__action22::<>(arena, control, __sym0) {
@@ -2514,8 +2517,8 @@ mod __parse__Actions {
                 __symbols.push((__start, __Symbol::Variant4(__nt), __end));
                 (1, 41)
             }
-            96 => {
-                // Statement = AutonumberStatement => ActionFn(23);
+            97 => {
+                // Statement = ActivateStatement => ActionFn(23);
                 let __sym0 = __pop_Variant5(__symbols);
                 let __start = __sym0.0.clone();
                 let __end = __sym0.2.clone();
@@ -2526,24 +2529,12 @@ mod __parse__Actions {
                 __symbols.push((__start, __Symbol::Variant4(__nt), __end));
                 (1, 41)
             }
-            97 => {
-                // Statement = ActivateStatement => ActionFn(24);
+            98 => {
+                // Statement = DeactivateStatement => ActionFn(24);
                 let __sym0 = __pop_Variant5(__symbols);
                 let __start = __sym0.0.clone();
                 let __end = __sym0.2.clone();
                 let __nt = match super::__action24::<>(arena, control, __sym0) {
-                    Ok(v) => v,
-                    Err(e) => return Some(Err(e)),
-                };
-                __symbols.push((__start, __Symbol::Variant4(__nt), __end));
-                (1, 41)
-            }
-            98 => {
-                // Statement = DeactivateStatement => ActionFn(25);
-                let __sym0 = __pop_Variant5(__symbols);
-                let __start = __sym0.0.clone();
-                let __end = __sym0.2.clone();
-                let __nt = match super::__action25::<>(arena, control, __sym0) {
                     Ok(v) => v,
                     Err(e) => return Some(Err(e)),
                 };
@@ -2731,11 +2722,11 @@ mod __parse__Actions {
         _: core::marker::PhantomData<()>,
     ) -> (usize, usize)
     {
-        // AccDescrStatement = AccDescr => ActionFn(32);
+        // AccDescrStatement = AccDescr => ActionFn(31);
         let __sym0 = __pop_Variant2(__symbols);
         let __start = __sym0.0.clone();
         let __end = __sym0.2.clone();
-        let __nt = super::__action32::<>(arena, control, __sym0);
+        let __nt = super::__action31::<>(arena, control, __sym0);
         __symbols.push((__start, __Symbol::Variant2(__nt), __end));
         (1, 0)
     }
@@ -2748,11 +2739,11 @@ mod __parse__Actions {
         _: core::marker::PhantomData<()>,
     ) -> (usize, usize)
     {
-        // AccDescrStatement = AccDescrMultiline => ActionFn(33);
+        // AccDescrStatement = AccDescrMultiline => ActionFn(32);
         let __sym0 = __pop_Variant2(__symbols);
         let __start = __sym0.0.clone();
         let __end = __sym0.2.clone();
-        let __nt = super::__action33::<>(arena, control, __sym0);
+        let __nt = super::__action32::<>(arena, control, __sym0);
         __symbols.push((__start, __Symbol::Variant2(__nt), __end));
         (1, 0)
     }
@@ -2765,11 +2756,11 @@ mod __parse__Actions {
         _: core::marker::PhantomData<()>,
     ) -> (usize, usize)
     {
-        // AccTitleStatement = AccTitle => ActionFn(31);
+        // AccTitleStatement = AccTitle => ActionFn(30);
         let __sym0 = __pop_Variant2(__symbols);
         let __start = __sym0.0.clone();
         let __end = __sym0.2.clone();
-        let __nt = super::__action31::<>(arena, control, __sym0);
+        let __nt = super::__action30::<>(arena, control, __sym0);
         __symbols.push((__start, __Symbol::Variant2(__nt), __end));
         (1, 1)
     }
@@ -2822,11 +2813,11 @@ mod __parse__Actions {
         _: core::marker::PhantomData<()>,
     ) -> (usize, usize)
     {
-        // ActorId = Actor => ActionFn(34);
+        // ActorId = Actor => ActionFn(33);
         let __sym0 = __pop_Variant2(__symbols);
         let __start = __sym0.0.clone();
         let __end = __sym0.2.clone();
-        let __nt = super::__action34::<>(arena, control, __sym0);
+        let __nt = super::__action33::<>(arena, control, __sym0);
         __symbols.push((__start, __Symbol::Variant2(__nt), __end));
         (1, 4)
     }
@@ -2839,11 +2830,11 @@ mod __parse__Actions {
         _: core::marker::PhantomData<()>,
     ) -> (usize, usize)
     {
-        // ActorId = Num => ActionFn(35);
+        // ActorId = Num => ActionFn(34);
         let __sym0 = __pop_Variant1(__symbols);
         let __start = __sym0.0.clone();
         let __end = __sym0.2.clone();
-        let __nt = super::__action35::<>(arena, control, __sym0);
+        let __nt = super::__action34::<>(arena, control, __sym0);
         __symbols.push((__start, __Symbol::Variant2(__nt), __end));
         (1, 4)
     }
@@ -3338,10 +3329,10 @@ mod __parse__Actions {
         _: core::marker::PhantomData<()>,
     ) -> (usize, usize)
     {
-        // Doc =  => ActionFn(26);
+        // Doc =  => ActionFn(25);
         let __start = __lookahead_start.cloned().or_else(|| __symbols.last().map(|s| s.2.clone())).unwrap_or_default();
         let __end = __start.clone();
-        let __nt = super::__action26::<>(arena, control, &__start, &__end);
+        let __nt = super::__action25::<>(arena, control, &__start, &__end);
         __symbols.push((__start, __Symbol::Variant4(__nt), __end));
         (0, 22)
     }
@@ -3354,13 +3345,13 @@ mod __parse__Actions {
         _: core::marker::PhantomData<()>,
     ) -> (usize, usize)
     {
-        // Doc = Newline, Doc => ActionFn(27);
+        // Doc = Newline, Doc => ActionFn(26);
         assert!(__symbols.len() >= 2);
         let __sym1 = __pop_Variant4(__symbols);
         let __sym0 = __pop_Variant0(__symbols);
         let __start = __sym0.0.clone();
         let __end = __sym1.2.clone();
-        let __nt = super::__action27::<>(arena, control, __sym0, __sym1);
+        let __nt = super::__action26::<>(arena, control, __sym0, __sym1);
         __symbols.push((__start, __Symbol::Variant4(__nt), __end));
         (2, 22)
     }
@@ -3621,7 +3612,7 @@ mod __parse__Actions {
         _: core::marker::PhantomData<()>,
     ) -> (usize, usize)
     {
-        // ParticipantDecl = "participant", ActorId, "as", RestOfLine => ActionFn(36);
+        // ParticipantDecl = "participant", ActorId, "as", RestOfLine => ActionFn(35);
         assert!(__symbols.len() >= 4);
         let __sym3 = __pop_Variant2(__symbols);
         let __sym2 = __pop_Variant0(__symbols);
@@ -3629,7 +3620,7 @@ mod __parse__Actions {
         let __sym0 = __pop_Variant0(__symbols);
         let __start = __sym0.0.clone();
         let __end = __sym3.2.clone();
-        let __nt = super::__action36::<>(arena, control, __sym0, __sym1, __sym2, __sym3);
+        let __nt = super::__action35::<>(arena, control, __sym0, __sym1, __sym2, __sym3);
         __symbols.push((__start, __Symbol::Variant10(__nt), __end));
         (4, 35)
     }
@@ -3642,7 +3633,7 @@ mod __parse__Actions {
         _: core::marker::PhantomData<()>,
     ) -> (usize, usize)
     {
-        // ParticipantDecl = "participant", ActorId, Config, "as", RestOfLine => ActionFn(37);
+        // ParticipantDecl = "participant", ActorId, Config, "as", RestOfLine => ActionFn(36);
         assert!(__symbols.len() >= 5);
         let __sym4 = __pop_Variant2(__symbols);
         let __sym3 = __pop_Variant0(__symbols);
@@ -3651,7 +3642,7 @@ mod __parse__Actions {
         let __sym0 = __pop_Variant0(__symbols);
         let __start = __sym0.0.clone();
         let __end = __sym4.2.clone();
-        let __nt = super::__action37::<>(arena, control, __sym0, __sym1, __sym2, __sym3, __sym4);
+        let __nt = super::__action36::<>(arena, control, __sym0, __sym1, __sym2, __sym3, __sym4);
         __symbols.push((__start, __Symbol::Variant10(__nt), __end));
         (5, 35)
     }
@@ -3664,14 +3655,14 @@ mod __parse__Actions {
         _: core::marker::PhantomData<()>,
     ) -> (usize, usize)
     {
-        // ParticipantDecl = "participant", ActorId, Config => ActionFn(38);
+        // ParticipantDecl = "participant", ActorId, Config => ActionFn(37);
         assert!(__symbols.len() >= 3);
         let __sym2 = __pop_Variant2(__symbols);
         let __sym1 = __pop_Variant2(__symbols);
         let __sym0 = __pop_Variant0(__symbols);
         let __start = __sym0.0.clone();
         let __end = __sym2.2.clone();
-        let __nt = super::__action38::<>(arena, control, __sym0, __sym1, __sym2);
+        let __nt = super::__action37::<>(arena, control, __sym0, __sym1, __sym2);
         __symbols.push((__start, __Symbol::Variant10(__nt), __end));
         (3, 35)
     }
@@ -3684,13 +3675,13 @@ mod __parse__Actions {
         _: core::marker::PhantomData<()>,
     ) -> (usize, usize)
     {
-        // ParticipantDecl = "participant", ActorId => ActionFn(39);
+        // ParticipantDecl = "participant", ActorId => ActionFn(38);
         assert!(__symbols.len() >= 2);
         let __sym1 = __pop_Variant2(__symbols);
         let __sym0 = __pop_Variant0(__symbols);
         let __start = __sym0.0.clone();
         let __end = __sym1.2.clone();
-        let __nt = super::__action39::<>(arena, control, __sym0, __sym1);
+        let __nt = super::__action38::<>(arena, control, __sym0, __sym1);
         __symbols.push((__start, __Symbol::Variant10(__nt), __end));
         (2, 35)
     }
@@ -3703,7 +3694,7 @@ mod __parse__Actions {
         _: core::marker::PhantomData<()>,
     ) -> (usize, usize)
     {
-        // ParticipantDecl = "actor", ActorId, "as", RestOfLine => ActionFn(40);
+        // ParticipantDecl = "actor", ActorId, "as", RestOfLine => ActionFn(39);
         assert!(__symbols.len() >= 4);
         let __sym3 = __pop_Variant2(__symbols);
         let __sym2 = __pop_Variant0(__symbols);
@@ -3711,7 +3702,7 @@ mod __parse__Actions {
         let __sym0 = __pop_Variant0(__symbols);
         let __start = __sym0.0.clone();
         let __end = __sym3.2.clone();
-        let __nt = super::__action40::<>(arena, control, __sym0, __sym1, __sym2, __sym3);
+        let __nt = super::__action39::<>(arena, control, __sym0, __sym1, __sym2, __sym3);
         __symbols.push((__start, __Symbol::Variant10(__nt), __end));
         (4, 35)
     }
@@ -3724,7 +3715,7 @@ mod __parse__Actions {
         _: core::marker::PhantomData<()>,
     ) -> (usize, usize)
     {
-        // ParticipantDecl = "actor", ActorId, Config, "as", RestOfLine => ActionFn(41);
+        // ParticipantDecl = "actor", ActorId, Config, "as", RestOfLine => ActionFn(40);
         assert!(__symbols.len() >= 5);
         let __sym4 = __pop_Variant2(__symbols);
         let __sym3 = __pop_Variant0(__symbols);
@@ -3733,7 +3724,7 @@ mod __parse__Actions {
         let __sym0 = __pop_Variant0(__symbols);
         let __start = __sym0.0.clone();
         let __end = __sym4.2.clone();
-        let __nt = super::__action41::<>(arena, control, __sym0, __sym1, __sym2, __sym3, __sym4);
+        let __nt = super::__action40::<>(arena, control, __sym0, __sym1, __sym2, __sym3, __sym4);
         __symbols.push((__start, __Symbol::Variant10(__nt), __end));
         (5, 35)
     }
@@ -3746,14 +3737,14 @@ mod __parse__Actions {
         _: core::marker::PhantomData<()>,
     ) -> (usize, usize)
     {
-        // ParticipantDecl = "actor", ActorId, Config => ActionFn(42);
+        // ParticipantDecl = "actor", ActorId, Config => ActionFn(41);
         assert!(__symbols.len() >= 3);
         let __sym2 = __pop_Variant2(__symbols);
         let __sym1 = __pop_Variant2(__symbols);
         let __sym0 = __pop_Variant0(__symbols);
         let __start = __sym0.0.clone();
         let __end = __sym2.2.clone();
-        let __nt = super::__action42::<>(arena, control, __sym0, __sym1, __sym2);
+        let __nt = super::__action41::<>(arena, control, __sym0, __sym1, __sym2);
         __symbols.push((__start, __Symbol::Variant10(__nt), __end));
         (3, 35)
     }
@@ -3766,13 +3757,13 @@ mod __parse__Actions {
         _: core::marker::PhantomData<()>,
     ) -> (usize, usize)
     {
-        // ParticipantDecl = "actor", ActorId => ActionFn(43);
+        // ParticipantDecl = "actor", ActorId => ActionFn(42);
         assert!(__symbols.len() >= 2);
         let __sym1 = __pop_Variant2(__symbols);
         let __sym0 = __pop_Variant0(__symbols);
         let __start = __sym0.0.clone();
         let __end = __sym1.2.clone();
-        let __nt = super::__action43::<>(arena, control, __sym0, __sym1);
+        let __nt = super::__action42::<>(arena, control, __sym0, __sym1);
         __symbols.push((__start, __Symbol::Variant10(__nt), __end));
         (2, 35)
     }
@@ -3785,15 +3776,32 @@ mod __parse__Actions {
         _: core::marker::PhantomData<()>,
     ) -> (usize, usize)
     {
-        // ParticipantStatement = ParticipantDecl => ActionFn(44);
+        // ParticipantStatement = ParticipantDecl => ActionFn(43);
         let __sym0 = __pop_Variant10(__symbols);
+        let __start = __sym0.0.clone();
+        let __end = __sym0.2.clone();
+        let __nt = super::__action43::<>(arena, control, __sym0);
+        __symbols.push((__start, __Symbol::Variant8(__nt), __end));
+        (1, 36)
+    }
+    fn __reduce72<
+    >(
+        arena: &mut ActionArena,
+        control: &crate::OperationControl,
+        __lookahead_start: Option<&usize>,
+        __symbols: &mut alloc::vec::Vec<(usize,__Symbol<>,usize)>,
+        _: core::marker::PhantomData<()>,
+    ) -> (usize, usize)
+    {
+        // ParticipantStatement = DestroyStatement => ActionFn(44);
+        let __sym0 = __pop_Variant8(__symbols);
         let __start = __sym0.0.clone();
         let __end = __sym0.2.clone();
         let __nt = super::__action44::<>(arena, control, __sym0);
         __symbols.push((__start, __Symbol::Variant8(__nt), __end));
         (1, 36)
     }
-    fn __reduce72<
+    fn __reduce73<
     >(
         arena: &mut ActionArena,
         control: &crate::OperationControl,
@@ -3810,7 +3818,7 @@ mod __parse__Actions {
         __symbols.push((__start, __Symbol::Variant3(__nt), __end));
         (1, 37)
     }
-    fn __reduce73<
+    fn __reduce74<
     >(
         arena: &mut ActionArena,
         control: &crate::OperationControl,
@@ -3827,7 +3835,7 @@ mod __parse__Actions {
         __symbols.push((__start, __Symbol::Variant3(__nt), __end));
         (1, 37)
     }
-    fn __reduce74<
+    fn __reduce75<
     >(
         arena: &mut ActionArena,
         control: &crate::OperationControl,
@@ -3847,7 +3855,7 @@ mod __parse__Actions {
         __symbols.push((__start, __Symbol::Variant8(__nt), __end));
         (3, 38)
     }
-    fn __reduce76<
+    fn __reduce77<
     >(
         arena: &mut ActionArena,
         control: &crate::OperationControl,
@@ -3869,7 +3877,7 @@ mod __parse__Actions {
         __symbols.push((__start, __Symbol::Variant8(__nt), __end));
         (5, 40)
     }
-    fn __reduce77<
+    fn __reduce78<
     >(
         arena: &mut ActionArena,
         control: &crate::OperationControl,
@@ -3891,7 +3899,7 @@ mod __parse__Actions {
         __symbols.push((__start, __Symbol::Variant8(__nt), __end));
         (5, 40)
     }
-    fn __reduce78<
+    fn __reduce79<
     >(
         arena: &mut ActionArena,
         control: &crate::OperationControl,
@@ -3913,7 +3921,7 @@ mod __parse__Actions {
         __symbols.push((__start, __Symbol::Variant8(__nt), __end));
         (5, 40)
     }
-    fn __reduce79<
+    fn __reduce80<
     >(
         arena: &mut ActionArena,
         control: &crate::OperationControl,
@@ -3935,7 +3943,7 @@ mod __parse__Actions {
         __symbols.push((__start, __Symbol::Variant8(__nt), __end));
         (5, 40)
     }
-    fn __reduce80<
+    fn __reduce81<
     >(
         arena: &mut ActionArena,
         control: &crate::OperationControl,
@@ -3958,7 +3966,7 @@ mod __parse__Actions {
         __symbols.push((__start, __Symbol::Variant8(__nt), __end));
         (6, 40)
     }
-    fn __reduce81<
+    fn __reduce82<
     >(
         arena: &mut ActionArena,
         control: &crate::OperationControl,
@@ -3988,11 +3996,11 @@ mod __parse__Actions {
         _: core::marker::PhantomData<()>,
     ) -> (usize, usize)
     {
-        // Statement = BlockStatement => ActionFn(12);
+        // Statement = BlockStatement => ActionFn(11);
         let __sym0 = __pop_Variant4(__symbols);
         let __start = __sym0.0.clone();
         let __end = __sym0.2.clone();
-        let __nt = super::__action12::<>(arena, control, __sym0);
+        let __nt = super::__action11::<>(arena, control, __sym0);
         __symbols.push((__start, __Symbol::Variant4(__nt), __end));
         (1, 41)
     }
@@ -4005,11 +4013,11 @@ mod __parse__Actions {
         _: core::marker::PhantomData<()>,
     ) -> (usize, usize)
     {
-        // Statement = BoxStatement => ActionFn(15);
+        // Statement = BoxStatement => ActionFn(14);
         let __sym0 = __pop_Variant4(__symbols);
         let __start = __sym0.0.clone();
         let __end = __sym0.2.clone();
-        let __nt = super::__action15::<>(arena, control, __sym0);
+        let __nt = super::__action14::<>(arena, control, __sym0);
         __symbols.push((__start, __Symbol::Variant4(__nt), __end));
         (1, 41)
     }
@@ -4055,11 +4063,11 @@ mod __parse__Actions {
         _: core::marker::PhantomData<()>,
     ) -> (usize, usize)
     {
-        // TitleStatement = Title => ActionFn(29);
+        // TitleStatement = Title => ActionFn(28);
         let __sym0 = __pop_Variant2(__symbols);
         let __start = __sym0.0.clone();
         let __end = __sym0.2.clone();
-        let __nt = super::__action29::<>(arena, control, __sym0);
+        let __nt = super::__action28::<>(arena, control, __sym0);
         __symbols.push((__start, __Symbol::Variant2(__nt), __end));
         (1, 44)
     }
@@ -4072,11 +4080,11 @@ mod __parse__Actions {
         _: core::marker::PhantomData<()>,
     ) -> (usize, usize)
     {
-        // TitleStatement = CompatTitle => ActionFn(30);
+        // TitleStatement = CompatTitle => ActionFn(29);
         let __sym0 = __pop_Variant2(__symbols);
         let __start = __sym0.0.clone();
         let __end = __sym0.2.clone();
-        let __nt = super::__action30::<>(arena, control, __sym0);
+        let __nt = super::__action29::<>(arena, control, __sym0);
         __symbols.push((__start, __Symbol::Variant2(__nt), __end));
         (1, 44)
     }
@@ -4229,18 +4237,6 @@ fn __action11<
 >(
     arena: &mut ActionArena,
     control: &crate::OperationControl,
-    (_, d, _): (usize, Vec<Action>, usize),
-) -> Result<ActionList,__lalrpop_util::ParseError<usize,Tok,crate::diagrams::sequence::LexError>>
-{
-    arena.push_actions(d, control)
-}
-
-#[allow(unused_variables)]
-#[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits, clippy::extra_unused_type_parameters)]
-fn __action12<
->(
-    arena: &mut ActionArena,
-    control: &crate::OperationControl,
     (_, b, _): (usize, ActionList, usize),
 ) -> ActionList
 {
@@ -4249,7 +4245,7 @@ fn __action12<
 
 #[allow(unused_variables)]
 #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits, clippy::extra_unused_type_parameters)]
-fn __action13<
+fn __action12<
 >(
     arena: &mut ActionArena,
     control: &crate::OperationControl,
@@ -4261,7 +4257,7 @@ fn __action13<
 
 #[allow(unused_variables)]
 #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits, clippy::extra_unused_type_parameters)]
-fn __action14<
+fn __action13<
 >(
     arena: &mut ActionArena,
     control: &crate::OperationControl,
@@ -4273,7 +4269,7 @@ fn __action14<
 
 #[allow(unused_variables)]
 #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits, clippy::extra_unused_type_parameters)]
-fn __action15<
+fn __action14<
 >(
     arena: &mut ActionArena,
     control: &crate::OperationControl,
@@ -4281,6 +4277,18 @@ fn __action15<
 ) -> ActionList
 {
     b
+}
+
+#[allow(unused_variables)]
+#[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits, clippy::extra_unused_type_parameters)]
+fn __action15<
+>(
+    arena: &mut ActionArena,
+    control: &crate::OperationControl,
+    (_, l, _): (usize, Vec<Action>, usize),
+) -> Result<ActionList,__lalrpop_util::ParseError<usize,Tok,crate::diagrams::sequence::LexError>>
+{
+    arena.push_actions(l, control)
 }
 
 #[allow(unused_variables)]
@@ -4301,18 +4309,6 @@ fn __action17<
 >(
     arena: &mut ActionArena,
     control: &crate::OperationControl,
-    (_, l, _): (usize, Vec<Action>, usize),
-) -> Result<ActionList,__lalrpop_util::ParseError<usize,Tok,crate::diagrams::sequence::LexError>>
-{
-    arena.push_actions(l, control)
-}
-
-#[allow(unused_variables)]
-#[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits, clippy::extra_unused_type_parameters)]
-fn __action18<
->(
-    arena: &mut ActionArena,
-    control: &crate::OperationControl,
     (_, p, _): (usize, Vec<Action>, usize),
 ) -> Result<ActionList,__lalrpop_util::ParseError<usize,Tok,crate::diagrams::sequence::LexError>>
 {
@@ -4321,7 +4317,7 @@ fn __action18<
 
 #[allow(unused_variables)]
 #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits, clippy::extra_unused_type_parameters)]
-fn __action19<
+fn __action18<
 >(
     arena: &mut ActionArena,
     control: &crate::OperationControl,
@@ -4333,7 +4329,7 @@ fn __action19<
 
 #[allow(unused_variables)]
 #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits, clippy::extra_unused_type_parameters)]
-fn __action20<
+fn __action19<
 >(
     arena: &mut ActionArena,
     control: &crate::OperationControl,
@@ -4345,7 +4341,7 @@ fn __action20<
 
 #[allow(unused_variables)]
 #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits, clippy::extra_unused_type_parameters)]
-fn __action21<
+fn __action20<
 >(
     arena: &mut ActionArena,
     control: &crate::OperationControl,
@@ -4357,7 +4353,7 @@ fn __action21<
 
 #[allow(unused_variables)]
 #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits, clippy::extra_unused_type_parameters)]
-fn __action22<
+fn __action21<
 >(
     arena: &mut ActionArena,
     control: &crate::OperationControl,
@@ -4369,7 +4365,7 @@ fn __action22<
 
 #[allow(unused_variables)]
 #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits, clippy::extra_unused_type_parameters)]
-fn __action23<
+fn __action22<
 >(
     arena: &mut ActionArena,
     control: &crate::OperationControl,
@@ -4381,7 +4377,7 @@ fn __action23<
 
 #[allow(unused_variables)]
 #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits, clippy::extra_unused_type_parameters)]
-fn __action24<
+fn __action23<
 >(
     arena: &mut ActionArena,
     control: &crate::OperationControl,
@@ -4393,7 +4389,7 @@ fn __action24<
 
 #[allow(unused_variables)]
 #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits, clippy::extra_unused_type_parameters)]
-fn __action25<
+fn __action24<
 >(
     arena: &mut ActionArena,
     control: &crate::OperationControl,
@@ -4405,7 +4401,7 @@ fn __action25<
 
 #[allow(unused_variables)]
 #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits, clippy::extra_unused_type_parameters)]
-fn __action26<
+fn __action25<
 >(
     arena: &mut ActionArena,
     control: &crate::OperationControl,
@@ -4418,7 +4414,7 @@ fn __action26<
 
 #[allow(unused_variables)]
 #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits, clippy::extra_unused_type_parameters)]
-fn __action27<
+fn __action26<
 >(
     arena: &mut ActionArena,
     control: &crate::OperationControl,
@@ -4431,7 +4427,7 @@ fn __action27<
 
 #[allow(unused_variables)]
 #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits, clippy::extra_unused_type_parameters)]
-fn __action28<
+fn __action27<
 >(
     arena: &mut ActionArena,
     control: &crate::OperationControl,
@@ -4441,6 +4437,18 @@ fn __action28<
 ) -> Result<ActionList,__lalrpop_util::ParseError<usize,Tok,crate::diagrams::sequence::LexError>>
 {
     arena.concat(s, rest, control)
+}
+
+#[allow(unused_variables)]
+#[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits, clippy::extra_unused_type_parameters)]
+fn __action28<
+>(
+    arena: &mut ActionArena,
+    control: &crate::OperationControl,
+    (_, t, _): (usize, String, usize),
+) -> String
+{
+    t
 }
 
 #[allow(unused_variables)]
@@ -4497,18 +4505,6 @@ fn __action33<
 >(
     arena: &mut ActionArena,
     control: &crate::OperationControl,
-    (_, t, _): (usize, String, usize),
-) -> String
-{
-    t
-}
-
-#[allow(unused_variables)]
-#[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits, clippy::extra_unused_type_parameters)]
-fn __action34<
->(
-    arena: &mut ActionArena,
-    control: &crate::OperationControl,
     (_, a, _): (usize, String, usize),
 ) -> String
 {
@@ -4517,7 +4513,7 @@ fn __action34<
 
 #[allow(unused_variables)]
 #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits, clippy::extra_unused_type_parameters)]
-fn __action35<
+fn __action34<
 >(
     arena: &mut ActionArena,
     control: &crate::OperationControl,
@@ -4529,7 +4525,7 @@ fn __action35<
 
 #[allow(unused_variables)]
 #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits, clippy::extra_unused_type_parameters)]
-fn __action36<
+fn __action35<
 >(
     arena: &mut ActionArena,
     control: &crate::OperationControl,
@@ -4544,7 +4540,7 @@ fn __action36<
 
 #[allow(unused_variables)]
 #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits, clippy::extra_unused_type_parameters)]
-fn __action37<
+fn __action36<
 >(
     arena: &mut ActionArena,
     control: &crate::OperationControl,
@@ -4560,7 +4556,7 @@ fn __action37<
 
 #[allow(unused_variables)]
 #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits, clippy::extra_unused_type_parameters)]
-fn __action38<
+fn __action37<
 >(
     arena: &mut ActionArena,
     control: &crate::OperationControl,
@@ -4574,7 +4570,7 @@ fn __action38<
 
 #[allow(unused_variables)]
 #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits, clippy::extra_unused_type_parameters)]
-fn __action39<
+fn __action38<
 >(
     arena: &mut ActionArena,
     control: &crate::OperationControl,
@@ -4587,7 +4583,7 @@ fn __action39<
 
 #[allow(unused_variables)]
 #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits, clippy::extra_unused_type_parameters)]
-fn __action40<
+fn __action39<
 >(
     arena: &mut ActionArena,
     control: &crate::OperationControl,
@@ -4602,7 +4598,7 @@ fn __action40<
 
 #[allow(unused_variables)]
 #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits, clippy::extra_unused_type_parameters)]
-fn __action41<
+fn __action40<
 >(
     arena: &mut ActionArena,
     control: &crate::OperationControl,
@@ -4618,7 +4614,7 @@ fn __action41<
 
 #[allow(unused_variables)]
 #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits, clippy::extra_unused_type_parameters)]
-fn __action42<
+fn __action41<
 >(
     arena: &mut ActionArena,
     control: &crate::OperationControl,
@@ -4632,7 +4628,7 @@ fn __action42<
 
 #[allow(unused_variables)]
 #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits, clippy::extra_unused_type_parameters)]
-fn __action43<
+fn __action42<
 >(
     arena: &mut ActionArena,
     control: &crate::OperationControl,
@@ -4645,7 +4641,7 @@ fn __action43<
 
 #[allow(unused_variables)]
 #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits, clippy::extra_unused_type_parameters)]
-fn __action44<
+fn __action43<
 >(
     arena: &mut ActionArena,
     control: &crate::OperationControl,
@@ -4655,6 +4651,18 @@ fn __action44<
     vec![
     Action::AddParticipant { id: d.0, description: d.1, draw: d.2, config: d.3 },
   ]
+}
+
+#[allow(unused_variables)]
+#[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits, clippy::extra_unused_type_parameters)]
+fn __action44<
+>(
+    arena: &mut ActionArena,
+    control: &crate::OperationControl,
+    (_, d, _): (usize, Vec<Action>, usize),
+) -> Vec<Action>
+{
+    d
 }
 
 #[allow(unused_variables)]

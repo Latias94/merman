@@ -153,11 +153,11 @@ fn note_block_terminator_range(input: &str) -> Option<(usize, usize)> {
         let line_end = line_start + line_with_ending.trim_end_matches(['\r', '\n']).len();
         if line_start > 0 {
             let line = &input[line_start..line_end];
-            let leading = line.len() - line.trim_start_matches(char::is_whitespace).len();
+            let leading = line.len() - line.trim_start_matches(is_ecmascript_whitespace).len();
             let content = &line[leading..];
             if content
-                .trim_end_matches(char::is_whitespace)
-                .eq_ignore_ascii_case("end note")
+                .get(.."end note".len())
+                .is_some_and(|prefix| prefix.eq_ignore_ascii_case("end note"))
             {
                 let marker_start = line_start + leading;
                 return Some((marker_start, marker_start + "end note".len()));
@@ -696,26 +696,27 @@ impl<'input> Lexer<'input> {
         self.skip_ws();
         let start = self.pos;
 
-        self.peek()?;
-
         if self.mode() == Mode::StateId {
             let body_start = self.pos;
             while let Some(b) = self.peek() {
-                if matches!(b, b'\r' | b'\n' | b'{') {
+                // Upstream STATE_ID uses processId() to put an inline %% suffix back.
+                if matches!(b, b'\r' | b'\n' | b'{') || self.starts_with("%%") {
                     break;
                 }
                 self.pos += 1;
             }
             let raw = &self.input[body_start..self.pos];
             let leading = raw.len() - raw.trim_start_matches(is_ecmascript_whitespace).len();
-            let trailing = raw.trim_end_matches(is_ecmascript_whitespace).len();
+            let trimmed = raw.trim_matches(is_ecmascript_whitespace);
             let id_start = body_start + leading;
-            let id_end = body_start + trailing;
+            let id_end = id_start + trimmed.len();
             let id = self.input[id_start..id_end].to_string();
             self.pop_mode(); // StateId
             self.pop_mode(); // State
             return Some(Ok((id_start, Tok::Id(id), id_end)));
         }
+
+        self.peek()?;
 
         if self.peek() == Some(b'"') {
             self.pos += 1;
@@ -742,7 +743,8 @@ impl<'input> Lexer<'input> {
             return Some(Ok((start, Tok::As, self.pos)));
         }
 
-        // Fork/join/choice markers are recognized using the rest of the line.
+        // The ordered STATE rules greedily match through their marker, then return to
+        // the enclosing mode so a trailing comment or statement keeps its own context.
         let Some(rel) = self.input.get(self.pos..) else {
             return Some(Err(LexError::new(
                 "Internal lexer error: invalid UTF-8 boundary",
@@ -750,30 +752,22 @@ impl<'input> Lexer<'input> {
         };
         let eol = rel.find(['\r', '\n']).unwrap_or(rel.len());
         let line = &rel[..eol];
-        let trimmed = line.trim().to_string();
-        let lower = trimmed.to_ascii_lowercase();
-        for marker in ["<<fork>>", "[[fork]]"] {
-            if lower.ends_with(marker) {
-                let base = trimmed[..trimmed.len() - marker.len()].trim().to_string();
-                self.pos += eol;
+        let lower = line.to_ascii_lowercase();
+        for (marker, token) in [
+            ("<<fork>>", Tok::Fork as fn(String) -> Tok),
+            ("<<join>>", Tok::Join),
+            ("<<choice>>", Tok::Choice),
+            ("[[fork]]", Tok::Fork),
+            ("[[join]]", Tok::Join),
+            ("[[choice]]", Tok::Choice),
+        ] {
+            if let Some(marker_start) = lower.rfind(marker) {
+                let base = line[..marker_start]
+                    .trim_matches(is_ecmascript_whitespace)
+                    .to_string();
+                self.pos += marker_start + marker.len();
                 self.pop_mode();
-                return Some(Ok((start, Tok::Fork(base), self.pos)));
-            }
-        }
-        for marker in ["<<join>>", "[[join]]"] {
-            if lower.ends_with(marker) {
-                let base = trimmed[..trimmed.len() - marker.len()].trim().to_string();
-                self.pos += eol;
-                self.pop_mode();
-                return Some(Ok((start, Tok::Join(base), self.pos)));
-            }
-        }
-        for marker in ["<<choice>>", "[[choice]]"] {
-            if lower.ends_with(marker) {
-                let base = trimmed[..trimmed.len() - marker.len()].trim().to_string();
-                self.pos += eol;
-                self.pop_mode();
-                return Some(Ok((start, Tok::Choice(base), self.pos)));
+                return Some(Ok((start, token(base), self.pos)));
             }
         }
 
@@ -936,6 +930,13 @@ impl TokenScanner for Lexer<'_> {
             return ScanStep::Emit(self.emit_token(item));
         }
 
+        // STATE_ID can emit an empty identifier before a comment, newline or EOF.
+        if self.mode() == Mode::StateId
+            && let Some(tok) = self.lex_state_mode_token()
+        {
+            return ScanStep::Emit(self.emit_result(tok));
+        }
+
         if self.pos >= self.input.len() {
             if self.emitted_eof_newline {
                 return ScanStep::End;
@@ -1000,12 +1001,6 @@ impl TokenScanner for Lexer<'_> {
             return ScanStep::Skip;
         }
 
-        if self.mode() == Mode::StateId
-            && let Some(tok) = self.lex_state_mode_token()
-        {
-            return ScanStep::Emit(self.emit_result(tok));
-        }
-
         if let Some(sd) = self.lex_sd_header() {
             return ScanStep::Emit(self.emit_token(sd));
         }
@@ -1033,7 +1028,11 @@ impl TokenScanner for Lexer<'_> {
             return ScanStep::Emit(self.emit_result(dir));
         }
 
-        if let Some(acc) = self.lex_accessibility() {
+        // Accessibility rules are unqualified in Jison; exclusive struct/STATE
+        // modes instead parse these names as ordinary state identifiers.
+        if self.mode() == Mode::Default
+            && let Some(acc) = self.lex_accessibility()
+        {
             return ScanStep::Emit(self.emit_result(acc));
         }
         if self.pos >= self.input.len() {

@@ -824,6 +824,22 @@ Bob-->>Alice:Back"#;
 }
 
 #[test]
+fn parse_diagram_sequence_autonumber_preserves_zero_payloads() {
+    let parsed = MermaidEngine::new()
+        .parse_diagram_sync(
+            "sequenceDiagram\nautonumber 0 0\nA->>B: first\nautonumber 0\nB-->>A: second\n",
+            ParseOptions::strict(),
+        )
+        .unwrap()
+        .unwrap();
+    let messages = parsed.model["messages"].as_array().unwrap();
+    assert_eq!(messages[0]["message"]["start"].as_f64(), Some(0.0));
+    assert_eq!(messages[0]["message"]["step"].as_f64(), Some(0.0));
+    assert_eq!(messages[2]["message"]["start"].as_f64(), Some(0.0));
+    assert_eq!(messages[2]["message"]["step"].as_f64(), Some(1.0));
+}
+
+#[test]
 fn parse_diagram_sequence_autonumber_rejects_thousandths() {
     let engine = MermaidEngine::new();
     let text = r#"sequenceDiagram
@@ -908,6 +924,57 @@ Alice->Bob:nowrap:Hello again"#;
     assert_eq!(msgs[0]["wrap"], json!(true));
     assert_eq!(msgs[1]["wrap"], json!(false));
     assert_eq!(msgs[1]["message"], json!("Hello again"));
+}
+
+#[test]
+fn parse_diagram_sequence_wrap_prefixes_are_case_sensitive_across_text_owners() {
+    for default_wrap in [false, true] {
+        let engine = MermaidEngine::new().with_site_config(
+            crate::presentation::SourcePresentationConfig::from_value(json!({
+                "sequence": { "wrap": default_wrap }
+            })),
+        );
+        for (prefix, directive) in [
+            ("wrap:", Some(true)),
+            (":wrap:", Some(true)),
+            ("nowrap:", Some(false)),
+            (":nowrap:", Some(false)),
+            ("WRAP:", None),
+            (":NOWRAP:", None),
+            ("wRaP:", None),
+            (":NoWrap:", None),
+        ] {
+            let source = format!(
+                "sequenceDiagram\nbox transparent {prefix}Group\nparticipant A as {prefix}Customer\nend\nA->>B: {prefix}message\nNote over A: {prefix}note\nloop {prefix}loop\nB-->>A: done\nend\n"
+            );
+            let parsed = engine
+                .parse_diagram_sync(&source, ParseOptions::strict())
+                .unwrap()
+                .unwrap();
+            let expected_text = |text: &str| {
+                if directive.is_some() {
+                    text.to_string()
+                } else {
+                    format!("{prefix}{text}")
+                }
+            };
+            let expected_wrap = json!(directive.unwrap_or(default_wrap));
+            let model = &parsed.model;
+            assert_eq!(
+                model["actors"]["A"]["description"],
+                expected_text("Customer")
+            );
+            assert_eq!(model["actors"]["A"]["wrap"], expected_wrap);
+            assert_eq!(model["boxes"][0]["name"], expected_text("Group"));
+            assert_eq!(model["boxes"][0]["wrap"], expected_wrap);
+            for (index, text) in [(0, "message"), (1, "note"), (2, "loop")] {
+                assert_eq!(model["messages"][index]["message"], expected_text(text));
+                assert_eq!(model["messages"][index]["wrap"], expected_wrap);
+            }
+            assert_eq!(model["notes"][0]["message"], expected_text("note"));
+            assert_eq!(model["notes"][0]["wrap"], expected_wrap);
+        }
+    }
 }
 
 #[test]
@@ -1541,6 +1608,48 @@ b ->> c: Where are you?
 }
 
 #[test]
+fn parse_diagram_sequence_destroy_inside_box_preserves_membership_and_lifecycle() {
+    let engine = MermaidEngine::new();
+    for before in ["", "A->>A: before\n"] {
+        let source = format!(
+            "sequenceDiagram\nparticipant A\n{before}box transparent Workers\nparticipant B\ndestroy B\nend\nA-xB: stop\n"
+        );
+        let index = usize::from(!before.is_empty());
+        let parsed = engine
+            .parse_diagram_sync(&source, ParseOptions::strict())
+            .unwrap()
+            .unwrap();
+        assert_eq!(parsed.model["actorOrder"], json!(["A", "B"]));
+        assert_eq!(parsed.model["boxes"][0]["actorKeys"], json!(["B"]));
+        assert_eq!(parsed.model["destroyedActors"]["B"], json!(index));
+        assert_eq!(parsed.model["messages"][index]["message"], "stop");
+
+        let typed = engine
+            .parse_diagram_for_render_model_sync(&source, ParseOptions::strict())
+            .unwrap()
+            .unwrap();
+        let RenderSemanticModel::Sequence(model) = typed.model() else {
+            panic!("expected typed Sequence model");
+        };
+        assert_eq!(model.boxes[0].actor_keys, ["B"]);
+        assert_eq!(model.destroyed_actors["B"], index);
+        assert_eq!(model.destroyed_actor_message_index("B"), Some(index));
+    }
+
+    let error = engine
+        .parse_diagram_sync(
+            "sequenceDiagram\nparticipant A\nbox transparent Workers\nparticipant B\ndestroy B\nend\nA->>A: unrelated\n",
+            ParseOptions::strict(),
+        )
+        .unwrap_err();
+    assert!(
+        error
+            .to_string()
+            .contains("The destroyed participant B does not have an associated destroying message")
+    );
+}
+
+#[test]
 fn parse_diagram_sequence_create_and_destroy_same_actor() {
     let engine = MermaidEngine::new();
     let text = r#"sequenceDiagram
@@ -1633,6 +1742,35 @@ DB->>Queue: enqueue
     assert_eq!(actors["DB"]["description"], json!("Data Store"));
     assert_eq!(actors["Queue"]["type"], json!("queue"));
     assert_eq!(actors["Queue"]["description"], json!("Message Queue"));
+}
+
+#[test]
+fn parse_diagram_sequence_metadata_alias_fallback_uses_parsed_external_text() {
+    let engine = MermaidEngine::new();
+    for (alias, external, expected, wrap) in [
+        ("Public API", None, "Public API", false),
+        ("Public API", Some("API"), "Public API", false),
+        ("Public API", Some("wrap:API"), "Public API", true),
+        ("Public API", Some("nowrap:API"), "Public API", false),
+        ("Internal API", Some("Public API"), "Public API", false),
+        ("wrap:Public API", None, "wrap:Public API", false),
+        ("", Some("API"), "API", false),
+    ] {
+        let metadata = json!({"type": "boundary", "alias": alias});
+        let external = external
+            .map(|text| format!(" as {text}"))
+            .unwrap_or_default();
+        let source =
+            format!("sequenceDiagram\nparticipant API@{metadata}{external}\nAPI->>API: request\n");
+        let parsed = engine
+            .parse_diagram_sync(&source, ParseOptions::strict())
+            .unwrap()
+            .unwrap();
+        let actor = &parsed.model["actors"]["API"];
+        assert_eq!(actor["description"], expected, "{source}");
+        assert_eq!(actor["wrap"], json!(wrap), "{source}");
+        assert_eq!(actor["type"], "boundary");
+    }
 }
 
 #[test]

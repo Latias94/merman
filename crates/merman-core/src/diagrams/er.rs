@@ -1588,12 +1588,11 @@ impl<'input> Lexer<'input> {
     }
 
     fn skip_ws_block(&mut self) {
-        while let Some(b) = self.peek() {
-            if matches!(b, b' ' | b'\t' | b'\r' | b'\n') {
-                self.pos += 1;
-                continue;
+        while let Some(ch) = self.input[self.pos..].chars().next() {
+            if !is_ecmascript_whitespace(ch) {
+                break;
             }
-            break;
+            self.pos += ch.len_utf8();
         }
     }
 
@@ -1939,7 +1938,7 @@ impl<'input> Lexer<'input> {
         ] {
             // Only `|o` and `}o` end with a word character, so only they carry `\b` in Mermaid.
             let needs_boundary = pat.ends_with('o');
-            if s.starts_with(pat) && (!needs_boundary || self.ends_word_at(pat.len())) {
+            if self.starts_with_ci(pat) && (!needs_boundary || self.ends_word_at(pat.len())) {
                 self.pos += pat.len();
                 return Some((start, tok, self.pos));
             }
@@ -2097,37 +2096,63 @@ impl<'input> Lexer<'input> {
             return Some(Ok((body_start, Tok::AttrWord(s), body_end)));
         }
         if let Some(two) = self.input[self.pos..].get(..2) {
-            let two_upper = two.to_ascii_uppercase();
-            if matches!(two_upper.as_str(), "PK" | "FK" | "UK") {
-                let prev_ok = self.pos == 0
-                    || matches!(
-                        self.input.as_bytes()[self.pos - 1],
-                        b' ' | b'\t' | b'\r' | b'\n' | b','
-                    );
+            if ["PK", "FK", "UK"]
+                .iter()
+                .any(|key| two.eq_ignore_ascii_case(key))
+            {
+                let is_word_byte = |b: u8| b.is_ascii_alphanumeric() || b == b'_';
+                let prev_ok = self.pos == 0 || !is_word_byte(self.input.as_bytes()[self.pos - 1]);
                 let next_ok = self
                     .input
                     .as_bytes()
                     .get(self.pos + 2)
                     .copied()
-                    .map(|b| b.is_ascii_whitespace() || matches!(b, b',' | b'"' | b'}'))
+                    .map(|b| !is_word_byte(b))
                     .unwrap_or(true);
                 if prev_ok && next_ok {
+                    let key = two.to_owned();
                     self.pos += 2;
-                    return Some(Ok((start, Tok::AttrKey(two_upper), self.pos)));
+                    return Some(Ok((start, Tok::AttrKey(key), self.pos)));
                 }
+            }
+        }
+
+        // Mermaid's generic rule permits spaces between its first and last tilde on the
+        // same physical line. Only search beyond the first word when it contains a tilde;
+        // a successful match consumes through the last one instead of rescanning suffixes.
+        let rest = &self.input[self.pos..];
+        let prefix_end = rest.find(is_ecmascript_whitespace).unwrap_or(rest.len());
+        if let Some(first_tilde) = rest[..prefix_end].find('~') {
+            let line_end = rest
+                .find(['\r', '\n', '\u{2028}', '\u{2029}'])
+                .unwrap_or(rest.len());
+            if let Some(last_tilde) = rest[..line_end].rfind('~')
+                && last_tilde > first_tilde
+            {
+                let suffix_start = last_tilde + 1;
+                let suffix_len = rest[suffix_start..]
+                    .find(is_ecmascript_whitespace)
+                    .unwrap_or(rest.len() - suffix_start);
+                let end = self.pos + suffix_start + suffix_len;
+                let word = self.input[self.pos..end].to_owned();
+                self.pos = end;
+                return Some(Ok((start, Tok::AttrWord(word), end)));
             }
         }
 
         let start_word = self.pos;
         let mut end = self.pos;
         for (rel, ch) in self.input[self.pos..].char_indices() {
-            if ch.is_whitespace() || matches!(ch, '"' | '}' | '?') {
+            if is_ecmascript_whitespace(ch) || matches!(ch, '"' | '}' | '?') {
                 break;
             }
             end = self.pos + rel + ch.len_utf8();
         }
         if end == start_word {
-            self.pos += self.peek().map(|_| 1).unwrap_or(0);
+            self.pos += self.input[self.pos..]
+                .chars()
+                .next()
+                .map_or(0, char::len_utf8);
             return Some(Err(LexError::new(
                 format!("Unexpected character inside attribute block at {start_word}"),
                 SourceSpan::new(start_word, self.pos),
@@ -2135,11 +2160,6 @@ impl<'input> Lexer<'input> {
         }
         self.pos = end;
         let raw = &self.input[start_word..end];
-        let tilde_count = raw.chars().filter(|&c| c == '~').count();
-        if tilde_count >= 2 {
-            return Some(Ok((start, Tok::AttrWord(raw.to_string()), self.pos)));
-        }
-
         let mut chars = raw.chars();
         let first = chars.next()?;
         let first_ok = first == '*' || first == '_' || first.is_alphabetic() || !first.is_ascii();
@@ -2294,7 +2314,7 @@ impl Iterator for Lexer<'_> {
             }
 
             let start = self.pos;
-            self.pos += 1;
+            self.pos += self.input[self.pos..].chars().next()?.len_utf8();
             return Some(Err(LexError::new(
                 format!("Unexpected character at {start}"),
                 SourceSpan::new(start, self.pos),

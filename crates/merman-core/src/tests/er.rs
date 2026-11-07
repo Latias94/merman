@@ -37,6 +37,64 @@ foo["bar"] {
 }
 
 #[test]
+fn parse_diagram_er_attributes_accept_ecmascript_whitespace_and_preserve_key_spelling() {
+    let engine = MermaidEngine::new();
+    for separator in [
+        '\u{00a0}', '\u{1680}', '\u{2003}', '\u{2028}', '\u{2029}', '\u{202f}', '\u{feff}',
+    ] {
+        let text =
+            format!("erDiagram\nENTITY {{\n  int{separator}id{separator}pk,{separator}Fk\n}}\n");
+        let parsed = block_on(engine.parse_diagram(&text, ParseOptions::strict()))
+            .unwrap_or_else(|error| panic!("{separator:?}: {error}"))
+            .unwrap();
+        let attribute = &parsed.model["entities"]["ENTITY"]["attributes"][0];
+        assert_eq!(attribute["type"], json!("int"));
+        assert_eq!(attribute["name"], json!("id"));
+        assert_eq!(attribute["keys"], json!(["pk", "Fk"]));
+    }
+}
+
+#[test]
+fn parse_diagram_er_generic_type_preserves_internal_spaces() {
+    let engine = MermaidEngine::new();
+    let text =
+        "erDiagram\nENTITY {\n  Map~string, int~ lookup PK\n  List~Map~string, int~~ nested\n}\n";
+    let parsed = block_on(engine.parse_diagram(text, ParseOptions::strict()))
+        .unwrap()
+        .unwrap();
+    let attributes = &parsed.model["entities"]["ENTITY"]["attributes"];
+    assert_eq!(attributes[0]["type"], json!("Map~string, int~"));
+    assert_eq!(attributes[0]["name"], json!("lookup"));
+    assert_eq!(attributes[0]["keys"], json!(["PK"]));
+    assert_eq!(attributes[1]["type"], json!("List~Map~string, int~~"));
+    assert_eq!(attributes[1]["name"], json!("nested"));
+}
+
+#[test]
+fn parse_diagram_er_symbolic_zero_cardinalities_are_case_insensitive() {
+    let engine = MermaidEngine::new();
+    for (symbol, expected) in [
+        ("O{", "ZERO_OR_MORE"),
+        ("}O", "ZERO_OR_MORE"),
+        ("O|", "ZERO_OR_ONE"),
+        ("|O", "ZERO_OR_ONE"),
+    ] {
+        let text = format!("erDiagram\nA ||--{symbol} B : owns\n");
+        let parsed = block_on(engine.parse_diagram(&text, ParseOptions::strict()))
+            .unwrap_or_else(|error| panic!("{symbol}: {error}"))
+            .unwrap();
+        assert_eq!(
+            parsed.model["relationships"][0]["relSpec"]["cardA"],
+            json!(expected)
+        );
+        assert_eq!(
+            parsed.model["relationships"][0]["relSpec"]["cardB"],
+            json!("ONLY_ONE")
+        );
+    }
+}
+
+#[test]
 fn parse_diagram_er_empty_quoted_entity_name_is_error() {
     let engine = MermaidEngine::new();
     let err = block_on(engine.parse_diagram("erDiagram\n\"\"\n", ParseOptions::default()))

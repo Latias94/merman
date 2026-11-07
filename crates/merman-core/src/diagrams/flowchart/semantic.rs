@@ -53,7 +53,7 @@ impl<'a> FlowchartSemanticContext<'a> {
             }
             vertex_css.insert(subgraph.id.clone(), None);
         }
-        let mut seen_edge_indices: HashMap<String, Vec<usize>> = HashMap::new();
+        let mut seen_edge_indices: HashMap<String, usize> = HashMap::new();
         let mut next_built_edge_index = 0usize;
         let mut next_built_subgraph_index = 0usize;
         for (visited, event) in ast.walk().enumerate() {
@@ -334,7 +334,7 @@ impl<'a> FlowchartSemanticContext<'a> {
         active_subgraphs: &HashMap<String, usize>,
         seen_vertex_ids: &mut HashSet<String>,
         vertex_css: &mut HashMap<String, Option<FlowSubgraphVertexStyle>>,
-        seen_edge_indices: &HashMap<String, Vec<usize>>,
+        seen_edge_indices: &HashMap<String, usize>,
     ) -> OperationControlResult<Result<()>> {
         let mut pending_shape_data: Option<(&str, &str)> = None;
         for (index, node) in nodes.iter().enumerate() {
@@ -391,7 +391,7 @@ impl<'a> FlowchartSemanticContext<'a> {
         target: &str,
         yaml: &str,
         active_subgraphs: &HashMap<String, usize>,
-        seen_edge_indices: &HashMap<String, Vec<usize>>,
+        seen_edge_indices: &HashMap<String, usize>,
     ) -> OperationControlResult<Result<()>> {
         let value = match Self::shape_data_value(self.shape_data_documents, self.diagram_type, yaml)
         {
@@ -404,8 +404,9 @@ impl<'a> FlowchartSemanticContext<'a> {
         }) {
             return Ok(Ok(()));
         }
-        if let Some(indices) = seen_edge_indices.get(target) {
-            Self::apply_shape_data_to_edges(self.edges, self.control, indices, value)?;
+        if let Some(&edge_index) = seen_edge_indices.get(target) {
+            // FlowDB's addVertex updates only the first edge with this raw ID.
+            self.apply_shape_data_to_edge(edge_index, value)?;
             return Ok(Ok(()));
         }
 
@@ -421,7 +422,7 @@ impl<'a> FlowchartSemanticContext<'a> {
         class_name: &str,
         active_subgraphs: &HashMap<String, usize>,
         seen_vertex_ids: &HashSet<String>,
-        seen_edge_indices: &HashMap<String, Vec<usize>>,
+        seen_edge_indices: &HashMap<String, usize>,
     ) -> OperationControlResult<()> {
         if let Some(&idx) = active_subgraphs.get(target) {
             self.subgraphs[idx].classes.push(class_name.to_string());
@@ -431,14 +432,10 @@ impl<'a> FlowchartSemanticContext<'a> {
         {
             self.nodes[idx].classes.push(class_name.to_string());
         }
-        if let Some(edge_indices) = seen_edge_indices.get(target) {
-            for (index, edge_index) in edge_indices.iter().copied().enumerate() {
-                if index % 128 == 0 {
-                    self.control.checkpoint()?;
-                }
-                if let Some(edge) = self.edges.get_mut(edge_index) {
-                    edge.classes.push(class_name.to_string());
-                }
+        if let Some(&edge_index) = seen_edge_indices.get(target) {
+            self.control.checkpoint()?;
+            if let Some(edge) = self.edges.get_mut(edge_index) {
+                edge.classes.push(class_name.to_string());
             }
         } else {
             // Preserve the canonical cancellation cadence even when the requested edge id is
@@ -456,7 +453,7 @@ impl<'a> FlowchartSemanticContext<'a> {
         &mut self,
         count: usize,
         next_edge_index: &mut usize,
-        seen_edge_indices: &mut HashMap<String, Vec<usize>>,
+        seen_edge_indices: &mut HashMap<String, usize>,
     ) -> OperationControlResult<Result<()>> {
         let Some(edge_end) = next_edge_index.checked_add(count) else {
             return Ok(Err(Error::diagram_parse_fallback(
@@ -479,10 +476,10 @@ impl<'a> FlowchartSemanticContext<'a> {
                 .interpolate
                 .clone_from(&self.edge_defaults.interpolate);
             if let Some(id) = self.edges[edge_index].id.as_deref() {
+                // FlowDB's addVertex and setClass both find the first matching raw ID.
                 seen_edge_indices
                     .entry(id.to_string())
-                    .or_default()
-                    .push(edge_index);
+                    .or_insert(edge_index);
             }
         }
         *next_edge_index = edge_end;
@@ -551,49 +548,50 @@ impl<'a> FlowchartSemanticContext<'a> {
         true
     }
 
-    fn apply_shape_data_to_edges(
-        edges: &mut [Edge],
-        control: &OperationControl,
-        indices: &[usize],
+    fn apply_shape_data_to_edge(
+        &mut self,
+        edge_index: usize,
         value: &serde_json::Value,
     ) -> OperationControlResult<()> {
         let Some(map) = value.as_object() else {
             return Ok(());
         };
-        for (index, edge_index) in indices.iter().copied().enumerate() {
-            if index % 128 == 0 {
-                control.checkpoint()?;
-            }
-            let Some(edge) = edges.get_mut(edge_index) else {
-                continue;
-            };
-            for (key, value) in map {
-                match key.as_str() {
-                    "animate" => {
-                        if let Some(value) = value_to_bool(value) {
-                            edge.animate = Some(value);
-                        }
+        self.control.checkpoint()?;
+        let Some(edge) = self.edges.get_mut(edge_index) else {
+            return Ok(());
+        };
+        for (key, value) in map {
+            match key.as_str() {
+                "animate" => {
+                    if value.is_null() {
+                        edge.animate = None;
+                    } else if let Some(value) = value_to_bool(value) {
+                        edge.animate = Some(value);
                     }
-                    "animation" => {
-                        if let Some(value) = value_to_string(value) {
-                            edge.animation = Some(value);
-                        }
-                    }
-                    "curve" => {
-                        if let Some(value) = value_to_string(value) {
-                            edge.interpolate = Some(value);
-                        }
-                    }
-                    "step" => {
-                        if let Some(step) = value
-                            .as_f64()
-                            .filter(|step| super::FlowEdge::is_valid_step(*step))
-                        {
-                            edge.step = Some(step);
-                        }
-                    }
-                    _ => {}
                 }
+                "animation" => {
+                    if value.is_null() {
+                        edge.animation = None;
+                    } else if let Some(value) = value_to_string(value) {
+                        edge.animation = Some(value);
+                    }
+                }
+                "curve" => {
+                    if value.is_null() {
+                        edge.interpolate = None;
+                    } else if let Some(value) = value_to_string(value) {
+                        edge.interpolate = Some(value);
+                    }
+                }
+                "step" => {
+                    if let Some(step) = value
+                        .as_f64()
+                        .filter(|step| super::FlowEdge::is_valid_step(*step))
+                    {
+                        edge.step = Some(step);
+                    }
+                }
+                _ => {}
             }
         }
         Ok(())

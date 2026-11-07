@@ -122,7 +122,8 @@ Statement: StateStatement = {
     let mut id_span = Some(SourceSpan::new(l, l + state_id.len()));
     let description = trimmed;
     let mut descriptions: Vec<String> = Vec::new();
-    if let Some((a, b)) = state_id
+    // Only the plain alias production splits a colon; a composite keeps its literal ID.
+    if doc.is_none() && let Some((a, b)) = state_id
       .split_once(':')
       .map(|(a, b)| (a.to_string(), b.to_string())) {
       id_span = Some(SourceSpan::new(l, l + a.len()));

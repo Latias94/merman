@@ -104,7 +104,6 @@ Newlines1: () = {
 Statement: ActionList = {
   <p:ParticipantStatement> =>? arena.push_actions(p, control),
   <c:CreateStatement> =>? arena.push_actions(c, control),
-  <d:DestroyStatement> =>? arena.push_actions(d, control),
   <b:BlockStatement> => b,
   <s:SignalStatement> =>? arena.push_actions(s, control),
   <n:NoteStatement> =>? arena.push_actions(n, control),
@@ -161,6 +160,7 @@ ParticipantStatement: Vec<Action> = {
   <d:ParticipantDecl> => vec![
     Action::AddParticipant { id: d.0, description: d.1, draw: d.2, config: d.3 },
   ],
+  <d:DestroyStatement> => d,
 };
 
 CreateStatement: Vec<Action> = {

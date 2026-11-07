@@ -57,7 +57,7 @@ fn apply_shape_data_document_to_node(
                 node.shape = Some(shape.to_string());
             }
             "label" => {
-                if let Some(label) = value_to_string(v) {
+                if let Some(label) = value_to_string(v).filter(|label| !label.is_empty()) {
                     provided_label = Some(label.clone());
                     node.label = Some(label);
                     node.label_span = None;

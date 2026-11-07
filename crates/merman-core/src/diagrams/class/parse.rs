@@ -444,6 +444,7 @@ struct ClassEditorFactCollector<'a> {
     expected_name: Option<PendingClassExpectation>,
     pending_relation_source: Option<ClassTokenSymbol>,
     after_annotation_start: bool,
+    in_class_declaration: bool,
     css_class_targets_pending: bool,
     interaction: Option<ClassInteractionKind>,
     interaction_action_seen: bool,
@@ -511,6 +512,7 @@ impl<'a> ClassEditorFactCollector<'a> {
             expected_name: None,
             pending_relation_source: None,
             after_annotation_start: false,
+            in_class_declaration: false,
             css_class_targets_pending: false,
             interaction: None,
             interaction_action_seen: false,
@@ -536,6 +538,7 @@ impl<'a> ClassEditorFactCollector<'a> {
             Tok::ClassKw => {
                 facts.push_directive_prefix("class");
                 self.directive_start = Some(start);
+                self.in_class_declaration = true;
                 self.pending_relation_source = None;
                 self.expect_name(ExpectedClassName::Class);
             }
@@ -600,7 +603,11 @@ impl<'a> ClassEditorFactCollector<'a> {
                 self.after_annotation_start = true;
                 self.pending_relation_source = None;
             }
-            Tok::AnnotationStop => self.expect_name(ExpectedClassName::AnnotationName),
+            Tok::AnnotationStop => {
+                if !self.in_class_declaration {
+                    self.expect_name(ExpectedClassName::AnnotationName);
+                }
+            }
             Tok::Line
             | Tok::DottedLine
             | Tok::Ext
@@ -1003,6 +1010,7 @@ impl<'a> ClassEditorFactCollector<'a> {
         self.expected_name = None;
         self.pending_relation_source = None;
         self.after_annotation_start = false;
+        self.in_class_declaration = false;
         self.css_class_targets_pending = false;
         self.interaction = None;
         self.interaction_action_seen = false;
@@ -1334,7 +1342,9 @@ fn is_class_interaction_action_prefix(value: &str) -> bool {
 
 #[cfg(feature = "editor-facts")]
 fn canonical_class_id(name: &str) -> &str {
-    name.split_once('~').map_or(name, |(id, _)| id)
+    name.split_once('~')
+        .filter(|(id, _)| !id.is_empty())
+        .map_or(name, |(id, _)| id)
 }
 
 #[cfg(feature = "editor-facts")]

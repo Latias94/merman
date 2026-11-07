@@ -402,14 +402,15 @@ impl<'a> ClassDb<'a> {
 impl<'a> ClassDb<'a> {
     fn split_class_name_and_type(&self, id: &str) -> (String, String) {
         let id = sanitize_text(id, self.config);
-        let (left, right) = if let Some((left, right)) = id.split_once('~') {
-            (
-                left.to_string(),
-                right.split('~').next().unwrap_or("").to_string(),
-            )
-        } else {
-            (id, String::new())
-        };
+        let (left, right) =
+            if let Some((left, right)) = id.split_once('~').filter(|(left, _)| !left.is_empty()) {
+                (
+                    left.to_string(),
+                    right.split('~').next().unwrap_or("").to_string(),
+                )
+            } else {
+                (id, String::new())
+            };
 
         let class_name = sanitize_text(&left, self.config);
         let type_param = if right.is_empty() {

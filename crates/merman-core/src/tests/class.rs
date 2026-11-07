@@ -138,6 +138,71 @@ fn parse_diagram_class_supports_inline_annotation_after_class_identifier() {
 }
 
 #[test]
+fn parse_class_editor_facts_do_not_expect_a_target_after_inline_annotations() {
+    let engine = MermaidEngine::new();
+    for newline in ["\n", "\r\n", "\r"] {
+        for declaration in [
+            "class Shape <<interface>>",
+            "class Shape <<interface>> ",
+            "class Shape <<interface>> {}",
+            "class Shape <<interface>> {\n+draw()\n}",
+        ] {
+            let declaration = declaration.replace('\n', newline);
+            let text = format!("classDiagram{newline}{declaration}{newline}");
+            let facts = engine
+                .parse_editor_semantic_facts_with_type_sync("classDiagram", &text)
+                .unwrap()
+                .unwrap();
+            assert_eq!(facts.completeness, EditorSemanticCompleteness::Complete);
+            assert!(
+                facts.expected_syntax.iter().all(|expected| {
+                    expected.kind != EditorExpectedSyntaxKind::NodeIdentifier
+                        || expected.span.start != expected.span.end
+                }),
+                "completed inline annotation must not request a class target: {text:?}"
+            );
+            assert!(facts.symbols.iter().any(|symbol| {
+                symbol.name == "interface"
+                    && symbol.role == EditorSemanticRole::Payload
+                    && symbol.detail.as_deref() == Some("class annotation")
+            }));
+        }
+    }
+}
+
+#[test]
+fn parse_class_editor_facts_keep_the_standalone_annotation_target_slot() {
+    let engine = MermaidEngine::new();
+    for newline in ["\n", "\r\n", "\r"] {
+        let text = format!("classDiagram{newline}class Shape{newline}<<interface>>");
+        let facts = engine
+            .parse_editor_semantic_facts_with_type_sync("classDiagram", &text)
+            .unwrap()
+            .unwrap();
+        assert_eq!(facts.completeness, EditorSemanticCompleteness::Recovered);
+        assert!(facts.expected_syntax.iter().any(|expected| {
+            expected.kind == EditorExpectedSyntaxKind::NodeIdentifier
+                && expected.span == SourceSpan::new(text.len(), text.len())
+        }));
+
+        let text = format!("{text} Shape");
+        let facts = engine
+            .parse_editor_semantic_facts_with_type_sync("classDiagram", &text)
+            .unwrap()
+            .unwrap();
+        assert_eq!(facts.completeness, EditorSemanticCompleteness::Complete);
+        let target = facts
+            .symbols
+            .iter()
+            .find(|symbol| symbol.detail.as_deref() == Some("class annotation target"))
+            .unwrap();
+        assert_eq!(target.name, "Shape");
+        assert_eq!(target.role, EditorSemanticRole::Reference);
+        assert_eq!(&text[target.selection.start..target.selection.end], "Shape");
+    }
+}
+
+#[test]
 fn parse_diagram_class_multibyte_name_does_not_panic() {
     let engine = MermaidEngine::new();
     let text = r#"classDiagram
@@ -774,7 +839,9 @@ fn parse_diagram_class_quoted_generic_names_keep_types_and_bodies() {
     for declaration in [
         "class `Car`~T~",
         "class `Car` \t~T~",
+        "class `Car~T~`",
         "class `Car`~T~ {\n+drive()\n}",
+        "class `Car~T~` {\n+drive()\n}",
     ] {
         let text = format!("classDiagram\n{declaration}\n");
         let parsed = engine
@@ -787,6 +854,114 @@ fn parse_diagram_class_quoted_generic_names_keep_types_and_bodies() {
         if declaration.contains("drive") {
             assert_eq!(class["methods"][0]["displayText"], "+drive()");
         }
+    }
+}
+
+#[test]
+fn parse_diagram_class_spaced_generics_keep_labels_members_and_namespace_identity() {
+    let engine = MermaidEngine::new();
+    for whitespace in [" ", "\t", " \t", "\u{00a0}"] {
+        let text = format!(
+            "classDiagram\nnamespace N {{\nclass Box{whitespace}~T, U~[\"Container\"] {{\n+value\n+get()\n}}\n}}\n"
+        );
+        let parsed = engine
+            .parse_diagram_sync(&text, ParseOptions::strict())
+            .unwrap()
+            .unwrap();
+        let classes = parsed.model["classes"].as_object().unwrap();
+        assert_eq!(classes.len(), 1);
+        let class = &classes["Box"];
+        assert_eq!(class["type"], "T, U");
+        assert_eq!(class["label"], "Container");
+        assert_eq!(class["text"], "Container<T, U>");
+        assert_eq!(class["parent"], "N");
+        assert_eq!(class["members"][0]["displayText"], "+value");
+        assert_eq!(class["methods"][0]["displayText"], "+get()");
+        assert_eq!(parsed.model["namespaces"]["N"]["classIds"], json!(["Box"]));
+    }
+}
+
+#[test]
+fn parse_diagram_class_spaced_generic_relation_endpoints_keep_types_and_cardinalities() {
+    let text = "classDiagram\nSource \t~T~ \"1\" o-- \"*\" Target ~U~ : uses\n";
+    let parsed = MermaidEngine::new()
+        .parse_diagram_sync(text, ParseOptions::strict())
+        .unwrap()
+        .unwrap();
+    assert_eq!(parsed.model["classes"].as_object().unwrap().len(), 2);
+    assert_eq!(parsed.model["classes"]["Source"]["type"], "T");
+    assert_eq!(parsed.model["classes"]["Target"]["type"], "U");
+    let relation = &parsed.model["relations"][0];
+    assert_eq!(relation["id1"], "Source");
+    assert_eq!(relation["id2"], "Target");
+    assert_eq!(relation["relationTitle1"], "1");
+    assert_eq!(relation["relationTitle2"], "*");
+    assert_eq!(relation["title"], "uses");
+}
+
+#[test]
+fn parse_diagram_class_bare_names_have_no_semantic_or_editor_side_effects() {
+    let engine = MermaidEngine::new();
+    let declared = "classDiagram\nclass A~T~\n";
+    let text = format!("{declared}A\nA ~Changed~\nMissing~U~\n`Not A Class`\n");
+    let expected = engine
+        .parse_diagram_sync(declared, ParseOptions::strict())
+        .unwrap()
+        .unwrap();
+    let parsed = engine
+        .parse_diagram_sync(&text, ParseOptions::strict())
+        .unwrap()
+        .unwrap();
+    assert_eq!(parsed.model, expected.model);
+
+    let facts = engine
+        .parse_editor_semantic_facts_with_type_sync("classDiagram", &text)
+        .unwrap()
+        .unwrap();
+    assert_eq!(facts.completeness, EditorSemanticCompleteness::Complete);
+    let classes = facts
+        .symbols
+        .iter()
+        .filter(|symbol| symbol.kind == EditorSemanticKind::Class)
+        .collect::<Vec<_>>();
+    assert_eq!(classes.len(), 1);
+    assert_eq!(classes[0].name, "A");
+    assert_eq!(classes[0].role, EditorSemanticRole::Entity);
+}
+
+#[test]
+fn parse_diagram_class_rejects_names_without_an_identity_before_the_generic() {
+    let engine = MermaidEngine::new();
+    for name in ["`~A`", "`~A~`", "`~类型`", "~A~", "``"] {
+        let text = format!("classDiagram\nclass {name}\nclass Valid\n");
+        let start = text
+            .find('~')
+            .unwrap_or_else(|| text.find("``").unwrap() + 1);
+        let error = engine
+            .parse_diagram_sync(&text, ParseOptions::strict())
+            .expect_err("a generic type cannot replace the class identity");
+        let Error::DiagramParse { diagnostic, .. } = error else {
+            panic!("invalid class name must remain a Class parse error");
+        };
+        assert_eq!(diagnostic.span(), Some(SourceSpan::new(start, start + 1)));
+        assert_eq!(diagnostic.span_kind(), ParseDiagnosticSpanKind::Exact);
+
+        let facts = engine
+            .parse_editor_semantic_facts_with_type_sync("classDiagram", &text)
+            .unwrap()
+            .unwrap();
+        assert_eq!(facts.completeness, EditorSemanticCompleteness::Recovered);
+        assert!(facts.symbols.iter().any(|symbol| symbol.name == "Valid"));
+        assert!(facts.symbols.iter().all(|symbol| !symbol.name.is_empty()));
+        assert!(!facts.symbols.iter().any(|symbol| symbol.name == "~A"));
+    }
+    for statement in ["class `~A`\nclass `~B`", "Known --> `~A`", "`~A`"] {
+        let text = format!("classDiagram\n{statement}\n");
+        assert!(
+            engine
+                .parse_diagram_sync(&text, ParseOptions::strict())
+                .is_err()
+        );
     }
 }
 
@@ -1375,8 +1550,11 @@ fn parse_class_editor_facts_canonicalize_generic_class_identity_and_selections()
         ("`Car`~T~", "Car", "Car", "Car"),
         ("Car~T~", "`Car`", "Car", "Car"),
         ("`Car` \t~T~", "Car~U~", "Car", "Car"),
+        ("Car \t~T~", "Car ~U~", "Car", "Car"),
+        ("`Car~T~`", "`Car` ~U~", "Car", "Car"),
         ("`123`~类型~", "123", "classId-123", "123"),
         ("123~类型~", "`123`", "classId-123", "123"),
+        ("123 ~类型~", "`123` ~U~", "classId-123", "123"),
         ("`名𠀀`~类型~", "`名𠀀`", "名𠀀", "名𠀀"),
         (
             "`classId-Car`~T~",

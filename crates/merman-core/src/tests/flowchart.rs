@@ -1868,6 +1868,69 @@ fn parse_diagram_flowchart_node_data_label_type_defaults_to_markdown_but_can_be_
 }
 
 #[test]
+fn parse_diagram_flowchart_empty_metadata_label_preserves_text_and_label_type() {
+    let engine = MermaidEngine::new();
+
+    for (definition, label, label_type) in [
+        ("A[Original]", "Original", "text"),
+        (r#"A["Original"]"#, "Original", "string"),
+        (r#"A["`Original`"]"#, "Original", "markdown"),
+        (
+            r#"A@{ label: "Metadata", labelType: string }"#,
+            "Metadata",
+            "string",
+        ),
+        ("A", "A", "text"),
+    ] {
+        let source = format!(
+            "flowchart LR\n{definition}\nA@{{ label: \"\", labelType: markdown, shape: circle }}\nA --> B\n"
+        );
+        let parsed = block_on(engine.parse_diagram(&source, ParseOptions::default()))
+            .unwrap()
+            .unwrap();
+        let node = parsed.model["nodes"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|node| node["id"] == json!("A"))
+            .unwrap();
+
+        assert_eq!(node["label"], json!(label), "{source}");
+        assert_eq!(node["labelType"], json!(label_type), "{source}");
+        assert_eq!(node["layoutShape"], json!("circle"), "{source}");
+    }
+}
+
+#[test]
+fn parse_diagram_flowchart_empty_metadata_label_preserves_visual_label_rules() {
+    let engine = MermaidEngine::new();
+    let source = r#"flowchart LR
+A@{ icon: "fa:home", label: "" }
+B@{ img: "https://example.com/image.png", label: "" }
+C[Original]
+C@{ icon: "fa:home", label: "" }
+D["Quoted"]
+D@{ img: "https://example.com/image.png", label: "", labelType: markdown }
+"#;
+    let parsed = block_on(engine.parse_diagram(source, ParseOptions::default()))
+        .unwrap()
+        .unwrap();
+    let nodes = parsed.model["nodes"].as_array().unwrap();
+    let find = |id: &str| nodes.iter().find(|node| node["id"] == json!(id)).unwrap();
+
+    for id in ["A", "B"] {
+        assert_eq!(find(id)["label"], json!(""), "{id}");
+        assert_eq!(find(id)["labelType"], json!("text"), "{id}");
+    }
+    assert_eq!(find("C")["label"], json!("Original"));
+    assert_eq!(find("C")["labelType"], json!("text"));
+    assert_eq!(find("D")["label"], json!("Quoted"));
+    assert_eq!(find("D")["labelType"], json!("string"));
+    assert_eq!(find("A")["icon"], json!("fa:home"));
+    assert_eq!(find("B")["img"], json!("https://example.com/image.png"));
+}
+
+#[test]
 fn parse_diagram_flowchart_node_data_link_to_node_with_more_data_multiline_yaml() {
     let engine = MermaidEngine::new();
 
@@ -2223,6 +2286,115 @@ A --> B
 }
 
 #[test]
+fn parse_diagram_flowchart_colliding_edge_metadata_updates_only_the_first_match() {
+    let engine = MermaidEngine::new();
+
+    for (declarations, id) in [
+        ("X L_A_B_0@--> Y\nA --> B\n", "L_A_B_0"),
+        ("A L_A_B_2@--> B\nA --> B\n", "L_A_B_2"),
+    ] {
+        let source = format!(
+            "flowchart LR\n{declarations}{id}@{{ animate: true, animation: slow, curve: step, step: 1 }}\n"
+        );
+        let parsed = block_on(engine.parse_diagram(&source, ParseOptions::default()))
+            .unwrap()
+            .unwrap();
+        let edges = parsed.model["edges"].as_array().unwrap();
+
+        assert_eq!(edges.len(), 2, "{source}");
+        assert_eq!(edges[0]["id"], json!(id), "{source}");
+        assert_eq!(edges[1]["id"], json!(id), "{source}");
+        assert_eq!(edges[0]["isUserDefinedId"], json!(true), "{source}");
+        assert_eq!(edges[1]["isUserDefinedId"], json!(false), "{source}");
+        assert_eq!(edges[0]["animate"], json!(true), "{source}");
+        assert_eq!(edges[0]["animation"], json!("slow"), "{source}");
+        assert_eq!(edges[0]["interpolate"], json!("step"), "{source}");
+        assert_eq!(edges[0]["step"], json!(1), "{source}");
+        assert_eq!(edges[1]["animate"], json!(null), "{source}");
+        assert_eq!(edges[1]["animation"], json!(null), "{source}");
+        assert_eq!(edges[1]["interpolate"], json!(null), "{source}");
+        assert!(edges[1].get("step").is_none(), "{source}");
+    }
+}
+
+#[test]
+fn parse_diagram_flowchart_colliding_edge_classes_update_only_the_first_match() {
+    let engine = MermaidEngine::new();
+
+    for (first_edge, colliding_edge, id) in [
+        ("X L_A_B_0@--> Y", "A --> B", "L_A_B_0"),
+        ("A L_A_B_2@--> B", "A --> B", "L_A_B_2"),
+    ] {
+        let source = format!(
+            "flowchart LR\nclass {id} unseen\n{first_edge}\nclass {id} early\n{colliding_edge}\nclass {id} late\n"
+        );
+        let parsed = block_on(engine.parse_diagram(&source, ParseOptions::default()))
+            .unwrap()
+            .unwrap();
+        let edges = parsed.model["edges"].as_array().unwrap();
+
+        assert_eq!(edges.len(), 2, "{source}");
+        assert_eq!(edges[0]["id"], json!(id), "{source}");
+        assert_eq!(edges[1]["id"], json!(id), "{source}");
+        assert_eq!(edges[0]["classes"], json!(["early", "late"]), "{source}");
+        assert_eq!(edges[1]["classes"], json!([]), "{source}");
+    }
+}
+
+#[test]
+fn parse_diagram_flowchart_colliding_edge_clickable_class_updates_only_the_first_match() {
+    let engine = MermaidEngine::new();
+    let source = r#"flowchart LR
+X L_A_B_0@--> Y
+A --> B
+click L_A_B_0 href "https://example.com/edge"
+"#;
+    let parsed = block_on(engine.parse_diagram(source, ParseOptions::default()))
+        .unwrap()
+        .unwrap();
+    let edges = parsed.model["edges"].as_array().unwrap();
+
+    assert_eq!(edges.len(), 2);
+    assert_eq!(edges[0]["classes"], json!(["clickable"]));
+    assert_eq!(edges[1]["classes"], json!([]));
+}
+
+#[test]
+fn parse_diagram_flowchart_classes_update_same_id_node_subgraph_and_first_edge() {
+    let engine = MermaidEngine::new();
+    let source = r#"flowchart LR
+L_A_B_0[Node]
+subgraph L_A_B_0[Group]
+N
+end
+X L_A_B_0@--> Y
+A --> B
+class L_A_B_0 selected
+"#;
+    let parsed = block_on(engine.parse_diagram(source, ParseOptions::default()))
+        .unwrap()
+        .unwrap();
+    let node = parsed.model["nodes"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|node| node["id"] == json!("L_A_B_0"))
+        .unwrap();
+    let subgraph = parsed.model["subgraphs"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|subgraph| subgraph["id"] == json!("L_A_B_0"))
+        .unwrap();
+    let edges = parsed.model["edges"].as_array().unwrap();
+
+    assert_eq!(node["classes"], json!(["selected"]));
+    assert_eq!(subgraph["classes"], json!(["selected"]));
+    assert_eq!(edges[0]["classes"], json!(["selected"]));
+    assert_eq!(edges[1]["classes"], json!([]));
+}
+
+#[test]
 fn parse_diagram_flowchart_node_data_overrides_edge_animate() {
     let engine = MermaidEngine::new();
 
@@ -2246,6 +2418,45 @@ e3@{ animate: false }
     assert_eq!(edges[1]["animate"], json!(false));
     assert_eq!(edges[2]["id"], json!("e3"));
     assert_eq!(edges[2]["animate"], json!(false));
+}
+
+#[test]
+fn parse_diagram_flowchart_null_edge_metadata_clears_only_present_fields() {
+    let engine = MermaidEngine::new();
+
+    for (update, animate, animation, curve) in [
+        ("animate: null", json!(null), json!("fast"), json!("step")),
+        ("animation: null", json!(true), json!(null), json!("step")),
+        ("curve: null", json!(true), json!("fast"), json!(null)),
+        (
+            "animate: null, animation: null, curve: null",
+            json!(null),
+            json!(null),
+            json!(null),
+        ),
+        ("step: null", json!(true), json!("fast"), json!("step")),
+    ] {
+        let source = format!(
+            "flowchart LR\nlinkStyle default interpolate linear\nA e1@--> B\nB e2@--> C\ne1@{{ animate: true, animation: fast, curve: step, step: 2 }}\ne1@{{ {update} }}\n"
+        );
+        let parsed = block_on(engine.parse_diagram(&source, ParseOptions::default()))
+            .unwrap()
+            .unwrap();
+        let edges = parsed.model["edges"].as_array().unwrap();
+
+        assert_eq!(edges[0]["animate"], animate, "{source}");
+        assert_eq!(edges[0]["animation"], animation, "{source}");
+        assert_eq!(edges[0]["interpolate"], curve, "{source}");
+        assert_eq!(edges[0]["step"], json!(2), "{source}");
+        assert_eq!(edges[1]["animate"], json!(null), "{source}");
+        assert_eq!(edges[1]["animation"], json!(null), "{source}");
+        assert_eq!(edges[1]["interpolate"], json!("linear"), "{source}");
+        assert_eq!(
+            parsed.model["edgeDefaults"]["interpolate"],
+            json!("linear"),
+            "{source}"
+        );
+    }
 }
 
 #[test]

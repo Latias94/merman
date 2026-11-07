@@ -167,13 +167,17 @@ impl SequenceDb {
             ));
         }
 
-        let description = description
-            .or(config_alias)
+        let mut description = description
             .map(|s| self.parse_message(&s))
             .unwrap_or_else(|| ParsedText {
                 text: id.to_string(),
                 wrap: None,
             });
+        if description.text == id
+            && let Some(alias) = config_alias.filter(|alias| !alias.is_empty())
+        {
+            description.text = alias;
+        }
 
         let wrap = description.wrap.unwrap_or(self.auto_wrap());
 
@@ -214,35 +218,16 @@ impl SequenceDb {
 
     fn parse_message(&self, raw: &str) -> ParsedText {
         let trimmed = raw.trim();
-        fn strip_prefix_ci<'a>(s: &'a str, prefix: &[u8]) -> Option<&'a str> {
-            let bytes = s.as_bytes();
-            if bytes.len() < prefix.len() {
-                return None;
-            }
-            for i in 0..prefix.len() {
-                if !bytes[i].eq_ignore_ascii_case(&prefix[i]) {
-                    return None;
-                }
-            }
-            Some(&s[prefix.len()..])
-        }
-
-        let (wrap, cleaned) = if trimmed.len() >= 5
-            && matches!(
-                trimmed.as_bytes().first().copied(),
-                Some(b':' | b'w' | b'W' | b'n' | b'N')
-            ) {
-            if let Some(rest) = strip_prefix_ci(trimmed, b":wrap:") {
-                (Some(true), rest.trim())
-            } else if let Some(rest) = strip_prefix_ci(trimmed, b"wrap:") {
-                (Some(true), rest.trim())
-            } else if let Some(rest) = strip_prefix_ci(trimmed, b":nowrap:") {
-                (Some(false), rest.trim())
-            } else if let Some(rest) = strip_prefix_ci(trimmed, b"nowrap:") {
-                (Some(false), rest.trim())
-            } else {
-                (None, trimmed)
-            }
+        let (wrap, cleaned) = if let Some(rest) = trimmed
+            .strip_prefix(":wrap:")
+            .or_else(|| trimmed.strip_prefix("wrap:"))
+        {
+            (Some(true), rest.trim())
+        } else if let Some(rest) = trimmed
+            .strip_prefix(":nowrap:")
+            .or_else(|| trimmed.strip_prefix("nowrap:"))
+        {
+            (Some(false), rest.trim())
         } else {
             (None, trimmed)
         };
