@@ -3489,6 +3489,67 @@ fn requirement_text_owners_are_independent_for_html_and_svg_labels() {
 }
 
 #[test]
+fn requirement_text_fill_respects_source_palette_fallback_to_text_color() {
+    let theme = requirement_text_theme(ThemeRuleSet::default().with_rule(requirement_text_rule(
+        CanvasPaint::solid("#2468ac").unwrap(),
+    )));
+    for html in [false, true] {
+        for look in ["classic", "neo"] {
+            for node_text_color in [None, Some(""), Some("#135724")] {
+                for source_owned in [false, true] {
+                    let body = format!(
+                        "{}\nelement elem1 {{\n type: simulation\n}}\nreq1 - satisfies -> elem1\n",
+                        requirement_source()
+                    );
+                    let source = if source_owned {
+                        let mut config = serde_json::json!({"theme": "dark"});
+                        if let Some(color) = node_text_color {
+                            config["themeVariables"] = serde_json::json!({"nodeTextColor": color});
+                        }
+                        format!("---\nconfig: {config}\n---\n{body}")
+                    } else {
+                        body
+                    };
+                    let rendered = render_requirement_with_theme_and_engine(
+                        &source,
+                        &theme,
+                        MermaidEngine::new().with_site_config(
+                            merman_core::presentation::SourcePresentationConfig::from_value(
+                                serde_json::json!({
+                                    "theme": "dark",
+                                    "htmlLabels": html,
+                                    "look": look,
+                                    "secure": [],
+                                }),
+                            ),
+                        ),
+                    );
+                    let expected = if source_owned {
+                        node_text_color
+                            .filter(|color| !color.is_empty())
+                            .unwrap_or("#ccc")
+                    } else {
+                        "#2468ac"
+                    };
+                    assert!(
+                        requirement_stylesheet(rendered.svg()).contains(&format!(
+                            ".label text,#requirement-theme span{{fill:{expected};color:{expected};}}"
+                        )),
+                        "source_owned={source_owned}, html={html}, look={look}, node_text_color={node_text_color:?}"
+                    );
+                    let evidence = merman_render::__private::family_evidence(
+                        rendered.into_completion().report(),
+                    );
+                    assert_eq!(evidence.applied_count(), usize::from(!source_owned));
+                    assert_eq!(evidence.not_applicable_count(), usize::from(source_owned));
+                    assert_eq!(evidence.theme_residual_count(), 0);
+                }
+            }
+        }
+    }
+}
+
+#[test]
 fn requirement_text_title_fallback_and_source_owned_nodes_have_exact_evidence() {
     let theme = requirement_text_theme(ThemeRuleSet::default().with_rule(requirement_text_rule(
         CanvasPaint::solid("#2468ac").unwrap(),
