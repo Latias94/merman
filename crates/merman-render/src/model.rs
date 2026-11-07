@@ -761,6 +761,7 @@ pub struct FlowchartLayout {
     feature = "diagram-flowchart",
     feature = "diagram-swimlane",
     feature = "diagram-agentflow",
+    feature = "diagram-er",
     feature = "diagram-mindmap"
 ))]
 pub enum SwimlaneDirection {
@@ -778,6 +779,7 @@ pub enum SwimlaneDirection {
     feature = "diagram-flowchart",
     feature = "diagram-swimlane",
     feature = "diagram-agentflow",
+    feature = "diagram-er",
     feature = "diagram-mindmap"
 ))]
 impl SwimlaneDirection {
@@ -796,6 +798,7 @@ impl SwimlaneDirection {
     feature = "diagram-flowchart",
     feature = "diagram-swimlane",
     feature = "diagram-agentflow",
+    feature = "diagram-er",
     feature = "diagram-mindmap"
 ))]
 pub struct SwimlaneTitleRect {
@@ -810,6 +813,7 @@ pub struct SwimlaneTitleRect {
     feature = "diagram-flowchart",
     feature = "diagram-swimlane",
     feature = "diagram-agentflow",
+    feature = "diagram-er",
     feature = "diagram-mindmap"
 ))]
 pub struct SwimlaneNodeLayout {
@@ -837,6 +841,7 @@ pub struct SwimlaneNodeLayout {
     feature = "diagram-flowchart",
     feature = "diagram-swimlane",
     feature = "diagram-agentflow",
+    feature = "diagram-er",
     feature = "diagram-mindmap"
 ))]
 pub struct SwimlaneLaneLayout {
@@ -866,6 +871,7 @@ pub struct SwimlaneLaneLayout {
     feature = "diagram-flowchart",
     feature = "diagram-swimlane",
     feature = "diagram-agentflow",
+    feature = "diagram-er",
     feature = "diagram-mindmap"
 ))]
 pub struct SwimlaneEdgeLayout {
@@ -884,6 +890,7 @@ pub struct SwimlaneEdgeLayout {
     feature = "diagram-flowchart",
     feature = "diagram-swimlane",
     feature = "diagram-agentflow",
+    feature = "diagram-er",
     feature = "diagram-mindmap"
 ))]
 pub struct SwimlaneLayout {
@@ -985,6 +992,10 @@ pub struct ErDiagramLayout {
     /// that projection beside the canonical layout without serializing it into layout artifacts.
     #[serde(default, skip)]
     pub(crate) render_edges: Vec<LayoutEdge>,
+    /// Selected-provider lane geometry retained for SVG without rerunning layout. Ordinary
+    /// Dagre/ELK layouts and compatibility JSON leave this renderer-owned projection absent.
+    #[serde(skip)]
+    pub(crate) swimlane: Option<crate::er::ErSwimlanePaintLayout>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub clusters: Vec<LayoutCluster>,
     pub bounds: Option<Bounds>,

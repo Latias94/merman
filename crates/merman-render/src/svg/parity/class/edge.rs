@@ -938,7 +938,7 @@ fn render_class_terminal_label(
         out.push_str(&math_html);
         crate::class::ClassTextTerminalFacts::unverified_text(text)
     } else if let Some(config) = mermaid_config {
-        let xhtml = crate::class::class_cardinality_html_fragment(text, config);
+        let xhtml = crate::class::class_plain_html_fragment(text, config);
         out.push_str(&xhtml);
         if crate::math::contains_delimited_math(&decoded) {
             crate::class::ClassTextTerminalFacts::unverified_text(text)

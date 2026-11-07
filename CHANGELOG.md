@@ -12,6 +12,12 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
 
 ### Fixed
 
+- ER accepts Unicode whitespace in attribute blocks without panicking, supports spaces inside generic types and uppercase zero-cardinality markers, and preserves authored key spelling. Numeric zero Dagre spacing uses Mermaid's defaults while string zero remains explicit.
+- ER honors `layout: swimlane` with compound lanes, routed relationships and prepared non-Markdown labels. Relationship wrapping and supported inline HTML font sizes participate in layout. Self-loop relationships report an explicit unsupported-provider error instead of disappearing from a successful diagram; Dagre and ELK remain available for those inputs.
+- State preserves aliases and choice/fork/join types before inline comments, accepts comments after block-note terminators, and keeps literal composite alias IDs and nested states named `accTitle` or `accDescr`.
+- Class accepts whitespace before generic suffixes and redundant bare-name statements, rejects invalid empty generic identities, and avoids offering another class target after a completed inline annotation. Namespace HTML titles preserve supported markup and measure its inline font sizes.
+- Sequence accepts participant destruction inside boxes and follows Mermaid's alias, wrapping-prefix and zero-autonumber rules. Special participant bodies retain custom CSS classes; loose SVG retains supported fragment icon references.
+- Flowchart clears edge animation and curve metadata on explicit null, preserves existing captions on empty metadata labels, and applies metadata and classes to the first matching raw edge ID.
 - ASCII and Unicode Flowchart rendering can route branching review/retry feedback edges around reserved geometry when ordinary candidates collide, preserving labels and independent endpoint markers under the existing resource and cancellation limits. Sequence text output accepts `and` sections inside `par_over` blocks.
 - Flowchart and Class relationship labels apply local solid and transparent theme colors, with matching execution evidence and source/configuration precedence. Class includes cardinalities; Agentflow and Swimlane share Flowchart's SVG, Markdown and HTML label fix.
 - Flowchart preserves node definitions and metadata in source order, captures default curves when each edge is declared, and applies Mermaid's node-padding fallback for numeric zero.

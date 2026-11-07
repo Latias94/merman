@@ -1,6 +1,8 @@
 use super::super::css::er_css_with_resolved_typography;
 use super::super::*;
 
+mod swimlane;
+
 // ER diagram SVG renderer implementation (split from parity.rs).
 
 struct ErTextStyleAttr<'a> {
@@ -26,16 +28,16 @@ impl std::fmt::Display for ErTextStyleAttr<'_> {
     }
 }
 
-// ELK overwrites the model curve after routing; Dagre retains ER's basis curve.
+// ELK and Swimlane normalize ER's basis curve to rounded after routing.
 fn er_edge_path_d(
     points: &[crate::model::LayoutPoint],
-    is_elk_layout: bool,
+    rounded_layout: bool,
     missing_section: bool,
 ) -> String {
     if missing_section {
         return super::super::curve::curve_linear_path_d(points);
     }
-    if is_elk_layout {
+    if rounded_layout {
         return super::super::curve::curve_rounded_path_d_and_bounds(points, 5.0, false, None).0;
     }
     if let [a, b] = points {
@@ -190,6 +192,10 @@ struct ErSubgraphRenderContext<'a> {
     translate_y: f64,
     theme: &'a crate::er::ErEntityThemePlan,
     record_text: bool,
+    swimlane_html_labels: bool,
+    synthetic_color_ordinal: usize,
+    work_meter: &'a crate::resources::OperationWorkMeter,
+    rough_randomness: &'a roughr::core::RoughRandomness,
 }
 
 fn render_er_subgraph_cluster(
@@ -293,11 +299,27 @@ fn render_er_subgraph_clusters(
     out: &mut impl SvgOutput,
     clusters: &[crate::model::LayoutCluster],
     model: &merman_model::families::er::ErDiagramModel,
+    swimlane: Option<&crate::er::ErSwimlanePaintLayout>,
     context: ErSubgraphRenderContext<'_>,
     receipt: &mut crate::er::ErEntityThemeReceipt<'_>,
 ) -> Result<()> {
+    let mut subgraphs = std::collections::HashMap::new();
+    for group in &model.subgraphs {
+        subgraphs.entry(group.id.as_str()).or_insert(group);
+    }
+    let lanes: std::collections::HashMap<_, _> = swimlane
+        .into_iter()
+        .flat_map(|layout| &layout.lanes)
+        .filter(|lane| lane.parent_id.is_none())
+        .map(|lane| (lane.id.as_str(), lane))
+        .collect();
     for cluster in clusters {
-        let Some(subgraph) = model.subgraphs.iter().find(|item| item.id == cluster.id) else {
+        let subgraph = subgraphs.get(cluster.id.as_str()).copied();
+        if let (Some(lane), Some(paint)) = (lanes.get(cluster.id.as_str()), swimlane) {
+            swimlane::render_cluster(out, cluster, lane, paint, subgraph, context, receipt)?;
+            continue;
+        }
+        let Some(subgraph) = subgraph else {
             continue;
         };
         render_er_subgraph_cluster(out, cluster, subgraph, context, receipt)?;
@@ -398,6 +420,8 @@ pub(crate) fn render_er_diagram_svg_model(
     let binding = entity_theme.css_binding();
     let er_render_settings = &binding.render_settings;
     let is_elk_layout = er_render_settings.is_elk_layout;
+    let is_swimlane_layout = layout.swimlane.is_some();
+    let rounded_layout = is_elk_layout || is_swimlane_layout;
     let data_look = er_render_settings.diagram_look.as_str();
     let redux_border_colors = &binding.redux_border_colors;
     let redux_background_colors = &binding.redux_background_colors;
@@ -462,7 +486,7 @@ pub(crate) fn render_er_diagram_svg_model(
     }
     edges.sort_by_key(|edge| {
         let (self_loop, index, secondary) = er_edge_sort_key(edge);
-        (if is_elk_layout { 0 } else { self_loop }, index, secondary)
+        (if rounded_layout { 0 } else { self_loop }, index, secondary)
     });
 
     // Box and Rectpacking intentionally leave sections empty. Resolve their paint geometry
@@ -873,6 +897,11 @@ pub(crate) fn render_er_diagram_svg_model(
         translate_y,
         theme: entity_theme,
         record_text: entity_theme.records_subgraph_labels(),
+        swimlane_html_labels: crate::er::ErConfigView::new(effective_config)
+            .swimlane_title_html_labels(),
+        synthetic_color_ordinal: nodes.iter().filter(|node| !node.is_cluster).count(),
+        work_meter: options.work_meter(),
+        rough_randomness: &hand_drawn_seed,
     };
 
     // Mermaid 12 keeps the cluster wrapper in the common painter for both layout providers.
@@ -885,6 +914,7 @@ pub(crate) fn render_er_diagram_svg_model(
             &mut out,
             &layout.clusters,
             model,
+            layout.swimlane.as_ref(),
             subgraph_context,
             &mut entity_theme_receipt,
         )?;
@@ -896,10 +926,14 @@ pub(crate) fn render_er_diagram_svg_model(
     } else {
         out.push_str(r#"<g class="edgePaths">"#);
     }
-    let line_hops_enabled = is_elk_layout
+    let line_hops_enabled = rounded_layout
         && options.debug.include_edges
         && effective_config
-            .pointer("/elk/lineHops")
+            .pointer(if is_swimlane_layout {
+                "/swimlane/lineHops"
+            } else {
+                "/elk/lineHops"
+            })
             .and_then(serde_json::Value::as_bool)
             != Some(false);
     let shifted_hop_points: Vec<Vec<crate::model::LayoutPoint>> = if line_hops_enabled {
@@ -940,11 +974,15 @@ pub(crate) fn render_er_diagram_svg_model(
                 arrow_type_end: None,
             })
             .collect();
-        super::super::line_hops::elk_line_hop_paths(
-            effective_config,
-            &hop_edges,
-            options.work_meter(),
-        )?
+        if is_swimlane_layout {
+            swimlane::line_hop_paths(effective_config, &hop_edges, options.work_meter())?
+        } else {
+            super::super::line_hops::elk_line_hop_paths(
+                effective_config,
+                &hop_edges,
+                options.work_meter(),
+            )?
+        }
     } else {
         std::collections::HashMap::new()
     };
@@ -975,7 +1013,7 @@ pub(crate) fn render_er_diagram_svg_model(
                 .collect();
             let data_points = base64::engine::general_purpose::STANDARD
                 .encode(serde_json::to_vec(&shifted).unwrap_or_default());
-            let original_d = er_edge_path_d(&shifted, is_elk_layout, missing_section);
+            let original_d = er_edge_path_d(&shifted, rounded_layout, missing_section);
             let hopped_d = hop_paths.get(e.id.as_str()).map(String::as_str);
             let d = hopped_d.unwrap_or(&original_d);
 
@@ -1047,7 +1085,11 @@ pub(crate) fn render_er_diagram_svg_model(
     out.push_str("</g>");
     out.checkpoint()?;
 
-    out.push_str(r#"<g class="edgeLabels">"#);
+    if is_swimlane_layout {
+        out.push_str(r#"<g class="edgeLabels"/><g class="nodes">"#);
+    } else {
+        out.push_str(r#"<g class="edgeLabels">"#);
+    }
     out.checkpoint()?;
     if options.debug.include_edges {
         for e in &edges {
@@ -1069,6 +1111,20 @@ pub(crate) fn render_er_diagram_svg_model(
             // Mermaid's shared renderer checks `Boolean(edge.label)`: an empty role has no
             // label wrapper, while whitespace remains a real (zero-size) label.
             if rel_text_raw.is_empty() {
+                continue;
+            }
+            if is_swimlane_layout {
+                if let Some((index, _)) = rel_idx {
+                    swimlane::render_relationship_label(
+                        &mut out,
+                        e,
+                        index,
+                        model,
+                        layout,
+                        subgraph_context,
+                        &mut entity_theme_receipt,
+                    )?;
+                }
                 continue;
             }
             let has_label_text = !rel_text.is_empty();
@@ -1108,7 +1164,7 @@ pub(crate) fn render_er_diagram_svg_model(
                         y: p.y + translate_y,
                     })
                     .collect();
-                let rendered_d = er_edge_path_d(&shifted, is_elk_layout, false);
+                let rendered_d = er_edge_path_d(&shifted, rounded_layout, false);
                 let position = super::super::edge_label_geometry::position_edge_label(
                     crate::model::LayoutPoint { x: cx, y: cy },
                     Some(&shifted),
@@ -1247,11 +1303,15 @@ pub(crate) fn render_er_diagram_svg_model(
             out.checkpoint()?;
         }
     }
-    out.push_str("</g>\n");
+    if !is_swimlane_layout {
+        out.push_str("</g>\n");
+    }
     out.checkpoint()?;
 
     // Entities drawn after relationships so they cover markers when overlapping.
-    out.push_str(r#"<g class="nodes">"#);
+    if !is_swimlane_layout {
+        out.push_str(r#"<g class="nodes">"#);
+    }
     out.checkpoint()?;
     for n in &nodes {
         if n.is_cluster {
@@ -2329,6 +2389,7 @@ mod tests {
             ],
             edges: Vec::new(),
             render_edges: Vec::new(),
+            swimlane: None,
             clusters: Vec::new(),
             bounds: Some(Bounds {
                 min_x: 0.0,

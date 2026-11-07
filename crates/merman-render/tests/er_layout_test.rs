@@ -234,6 +234,27 @@ fn er_direct_model_parent_admission_preserves_operation_terminals() {
 }
 
 #[test]
+fn er_numeric_zero_spacing_uses_defaults_but_string_zero_remains_explicit() {
+    let source = "erDiagram\nA ||--|| B : ab\nA ||--|| C : ac\n";
+    let defaults = layout_er(&format!("---\nconfig:\n  layout: dagre\n---\n{source}"));
+    let numeric_zero = layout_er(&format!(
+        "---\nconfig:\n  layout: dagre\n  er:\n    nodeSpacing: 0\n    rankSpacing: 0\n---\n{source}"
+    ));
+    let string_zero = layout_er(&format!(
+        "---\nconfig:\n  layout: dagre\n  er:\n    nodeSpacing: \"0\"\n    rankSpacing: \"0\"\n---\n{source}"
+    ));
+    let positions = |layout: &ErDiagramLayout| {
+        layout
+            .nodes
+            .iter()
+            .map(|node| (node.id.clone(), node.x, node.y))
+            .collect::<Vec<_>>()
+    };
+    assert_eq!(positions(&numeric_zero), positions(&defaults));
+    assert_ne!(positions(&string_zero), positions(&defaults));
+}
+
+#[test]
 fn er_layout_produces_positions_and_routes() {
     let path = workspace_root()
         .join("fixtures")

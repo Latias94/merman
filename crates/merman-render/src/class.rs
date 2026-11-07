@@ -2628,7 +2628,7 @@ fn label_metrics(
     (m.width.max(0.0), m.height.max(0.0))
 }
 
-pub(crate) fn class_cardinality_html_fragment(
+pub(crate) fn class_plain_html_fragment(
     text: &str,
     mermaid_config: &merman_model::presentation::PresentationConfig,
 ) -> String {
@@ -2638,7 +2638,7 @@ pub(crate) fn class_cardinality_html_fragment(
     merman_markup::sanitize::sanitize_xhtml(&html, mermaid_config.as_config())
 }
 
-fn class_cardinality_label_metrics(
+fn plain_label_metrics(
     text: &str,
     measurer: &dyn TextMeasurer,
     text_style: &TextStyle,
@@ -2659,13 +2659,12 @@ fn class_cardinality_label_metrics(
         math_renderer,
     )
     .unwrap_or_else(|| {
-        let xhtml = class_cardinality_html_fragment(text, mermaid_config);
-        crate::text::measure_xhtml_label_fragment(
+        let xhtml = class_plain_html_fragment(text, mermaid_config);
+        crate::text::measure_unwrapped_xhtml_label_fragment(
             measurer,
             &xhtml,
             text_style,
-            None,
-            WrapMode::HtmlLike,
+            text_style.font_size,
         )
     });
     (metrics.width.max(0.0), metrics.height.max(0.0))
@@ -2945,7 +2944,7 @@ fn measure_class_diagram(
         );
         namespace_label_metrics_by_id.insert(
             id.to_string(),
-            label_metrics(
+            plain_label_metrics(
                 class_namespace_label(model, id),
                 measurer,
                 text_style,
@@ -3087,7 +3086,7 @@ fn measure_class_diagram(
             .then_some(math_renderer)
             .flatten();
 
-        let (srw, srh) = class_cardinality_label_metrics(
+        let (srw, srh) = plain_label_metrics(
             &start_text,
             measurer,
             &cardinality_text_style,
@@ -3095,7 +3094,7 @@ fn measure_class_diagram(
             mermaid_config,
             terminal_math_renderer,
         );
-        let (elw, elh) = class_cardinality_label_metrics(
+        let (elw, elh) = plain_label_metrics(
             &end_text,
             measurer,
             &cardinality_text_style,

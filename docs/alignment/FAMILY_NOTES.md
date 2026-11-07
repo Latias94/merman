@@ -53,6 +53,30 @@ the maintained rationale for the canary's residual entries.
 Owners: [HTML typography tests](../../crates/merman-render/tests/class_html_typography_test.rs) and
 [SVG/layout integration](../../crates/merman-render/tests/class_svg_test.rs).
 
+## ER
+
+An explicit `layout: swimlane` selects the bundled provider directly from ER's measured entities,
+relationships and compound memberships. Its generated relationship-label nodes use non-Markdown text,
+the Flowchart wrapping width and root `htmlLabels`; lane titles separately follow
+`flowchart.htmlLabels`. Layout owns the prepared label terminals and lane paint geometry, so SVG
+does not parse or lay out the graph again. Sanitized HTML font sizes participate in label measurement
+and output while preserving the configured wrapping width. Class and State retain their own provider
+selection.
+
+Font shaping can select different wrapped rows in browser and headless output; each local row
+reserves its resolved font height. Inline icons retain the shared advance estimates, with the styled
+text viewport as a lower bound. This does not establish exact combined icon/text bounds or loaded
+icon assets.
+
+The selected upstream Swimlane provider fails on ER self-loops. Merman reports this boundary as
+an explicit model error instead of emitting a successful diagram with missing relationships.
+Use Dagre or ELK when ER relationships include self-loops. Fonts, browser bounds and hand-drawn
+primitives retain the shared artifact limits; this backend does not establish pixel identity.
+
+Owners: [ER provider adapter](../../crates/merman-render/src/er/swimlane.rs),
+[shared measured graph](../../crates/merman-render/src/swimlane/flat.rs), and
+[ER Swimlane tests](../../crates/merman-render/tests/er_swimlane_test.rs).
+
 ## Error
 
 Suppressed parse failures can produce the typed Error artifact. A State input stored in
@@ -157,6 +181,12 @@ residual; its exact local signature was renewed after this correction changed on
 rectangle's vertical position and height. Input, upstream SVG, admitted modes and normalization
 remain unchanged. Its differing actor measurements and overall canvas are still bounded residuals,
 not evidence of pixel-identical output.
+
+Participant `properties.icon` fragment references follow the selected output security mode.
+Strict-like SVG omits the icon nodes that Mermaid's final sanitizer removes; loose parity SVG
+retains the source fragment reference. Retaining a `use` node does not prove that its symbol ID
+resolves, and this contract does not establish external image loading. Special participant
+`properties.class` values remain observable on their drawn bodies in either mode.
 
 Sequence math comparison requires its managed math backend. An unavailable backend is a reported
 tooling skip, never a comparator allowance. Owners:

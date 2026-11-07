@@ -1,9 +1,74 @@
-//! Terminal fonts for Block's sanitized, unwrapped XHTML labels.
+//! Terminal fonts and line boxes for sanitized XHTML labels.
 
 use std::sync::Arc;
 
-use super::{InlineTextRun, TextMeasurer, TextMetrics, TextStyle, WrapMode};
+use super::{
+    HtmlBreakKind, InlineBreakPlan, InlineLinePlan, InlineTextRun, TextMeasurer, TextMetrics,
+    TextStyle, WrapMode, html_line_text_with_break, same_inline_style,
+};
 use crate::mermaid_style::{CssFontSizeContext, TextStyleCascade, visit_parsed_style_declarations};
+
+fn run_line_height_px<M: TextMeasurer + ?Sized>(
+    measurer: &M,
+    text: &str,
+    style: &TextStyle,
+) -> f64 {
+    // The routed host can supply taller font extents; inherited unitless line-height:1.5 is
+    // still the CSS floor for every resolved font, independently of the diagram family.
+    measurer
+        .measure_html_line_height_px(text, style)
+        .max(style.font_size.max(1.0) * 1.5)
+}
+
+pub(super) fn measure_line_height_px<M: TextMeasurer + ?Sized>(
+    measurer: &M,
+    runs: &[InlineTextRun],
+    base: &TextStyle,
+) -> f64 {
+    runs.iter()
+        .filter(|run| !run.text.is_empty())
+        .filter_map(|run| {
+            let style = run.terminal_style.as_deref()?;
+            Some(run_line_height_px(measurer, &run.text, style).max(base.font_size.max(1.0) * 1.5))
+        })
+        .fold(0.0_f64, f64::max)
+}
+
+pub(super) fn measure_fragments_line_height_px<M: TextMeasurer + ?Sized>(
+    measurer: &M,
+    runs: &[InlineTextRun],
+    breaks: &InlineBreakPlan,
+    line: InlineLinePlan,
+    selected_break: HtmlBreakKind,
+    base: &TextStyle,
+) -> f64 {
+    let mut height = 0.0_f64;
+    let mut index = line.fragment_start;
+    while index < line.fragment_end {
+        let first = breaks.fragments[index];
+        let run = &runs[first.run_index];
+        let mut end = index + 1;
+        while end < line.fragment_end
+            && same_inline_style(run, &runs[breaks.fragments[end].run_index])
+        {
+            end += 1;
+        }
+        if let Some(style) = run.terminal_style.as_deref() {
+            // Probe the selected line's complete style group, including a conditional hyphen.
+            // Unstyled callers issue no new requests through this font-specific path.
+            let last = breaks.fragments[end - 1];
+            let text = html_line_text_with_break(
+                &breaks.source[first.start..last.end],
+                end == line.fragment_end && selected_break == HtmlBreakKind::SoftHyphen,
+            );
+            height = height
+                .max(run_line_height_px(measurer, &text, style))
+                .max(base.font_size.max(1.0) * 1.5);
+        }
+        index = end;
+    }
+    height
+}
 
 pub(super) fn same_font(left: Option<&TextStyle>, right: Option<&TextStyle>) -> bool {
     match (left, right) {
@@ -26,7 +91,11 @@ pub(super) struct TerminalFonts {
 }
 
 impl TerminalFonts {
-    #[cfg(feature = "diagram-block")]
+    #[cfg(any(
+        feature = "diagram-block",
+        feature = "diagram-class",
+        feature = "diagram-er"
+    ))]
     pub(super) fn new(style: &TextStyle, root_font_size: f64) -> Self {
         Self {
             root_font_size,
@@ -103,6 +172,15 @@ impl TerminalFonts {
         self.line_sizes.push(self.current().font_size);
     }
 
+    pub(super) fn line_height_px(&self, index: usize, base: &TextStyle) -> f64 {
+        self.line_sizes
+            .get(index)
+            .copied()
+            .unwrap_or(base.font_size)
+            .max(1.0)
+            * 1.5
+    }
+
     pub(super) fn measure<M: TextMeasurer + ?Sized>(
         &self,
         measurer: &M,
@@ -122,13 +200,7 @@ impl TerminalFonts {
         let line_count = runs_by_line.len().max(explicit_line_boxes);
         let height = (0..line_count)
             .map(|index| {
-                let strut = self
-                    .line_sizes
-                    .get(index)
-                    .copied()
-                    .unwrap_or(base.font_size)
-                    .max(1.0)
-                    * 1.5;
+                let strut = self.line_height_px(index, base);
                 runs_by_line
                     .get(index)
                     .into_iter()
@@ -136,11 +208,7 @@ impl TerminalFonts {
                     .filter(|run| !run.text.is_empty())
                     .map(|run| {
                         let style = run.terminal_style.as_deref().unwrap_or(base);
-                        // Use the routed terminal measurement for host-specific vertical metrics.
-                        // Block's inherited 1.5 line height still supplies the CSS line-box floor.
-                        measurer
-                            .measure_html_line_height_px(&run.text, style)
-                            .max(style.font_size.max(1.0) * 1.5)
+                        run_line_height_px(measurer, &run.text, style)
                     })
                     .fold(strut, f64::max)
             })

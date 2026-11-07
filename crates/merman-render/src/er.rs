@@ -15,15 +15,16 @@ use std::collections::{BTreeMap, HashMap, HashSet};
 use std::sync::{Arc, OnceLock};
 
 mod config;
+mod swimlane;
 mod theme;
 
-#[cfg(feature = "layout-elk")]
 use crate::layout_backend::GraphLayoutBackend;
 use config::ErLayoutSettings;
 pub(crate) use config::{ErConfigView, ErEntityMeasurementSettings};
+pub(crate) use swimlane::ErSwimlanePaintLayout;
 pub(crate) use theme::{
-    ErAttributeTextRole, ErBaseFontSizePlan, ErCssBinding, ErEntityThemePlan, ErEntityThemeReceipt,
-    subgraph_svg_text_facts,
+    ErAttributeTextRole, ErBaseFontSizePlan, ErCssBinding, ErEntitySourceStyle, ErEntityThemePlan,
+    ErEntityThemeReceipt, subgraph_svg_text_facts,
 };
 
 pub(crate) type ErEntity = merman_model::families::er::ErEntity;
@@ -115,11 +116,19 @@ impl ErBoxLabel {
 
 #[derive(Debug, Clone)]
 pub(crate) struct ErPreparedRelationshipLabel {
-    source: String,
-    xhtml_fragment: String,
     metrics: TextMetrics,
-    html_labels: bool,
-    visible_style_facts: OnceLock<crate::text::VisibleTextStyleFacts>,
+    terminal: ErRelationshipLabelTerminal,
+}
+
+#[derive(Debug, Clone)]
+enum ErRelationshipLabelTerminal {
+    Markdown {
+        source: String,
+        xhtml_fragment: String,
+        html_labels: bool,
+        visible_style_facts: OnceLock<crate::text::VisibleTextStyleFacts>,
+    },
+    Swimlane(swimlane::ErSwimlaneRelationshipLabel),
 }
 
 impl ErPreparedRelationshipLabel {
@@ -152,16 +161,28 @@ impl ErPreparedRelationshipLabel {
             )
         };
         Self {
-            source,
-            xhtml_fragment,
             metrics,
-            html_labels,
-            visible_style_facts: OnceLock::new(),
+            terminal: ErRelationshipLabelTerminal::Markdown {
+                source,
+                xhtml_fragment,
+                html_labels,
+                visible_style_facts: OnceLock::new(),
+            },
         }
     }
 
     pub(crate) fn xhtml_fragment(&self) -> &str {
-        &self.xhtml_fragment
+        match &self.terminal {
+            ErRelationshipLabelTerminal::Markdown { xhtml_fragment, .. } => xhtml_fragment,
+            ErRelationshipLabelTerminal::Swimlane(label) => label.xhtml_fragment().unwrap_or(""),
+        }
+    }
+
+    pub(crate) fn swimlane(&self) -> Option<&swimlane::ErSwimlaneRelationshipLabel> {
+        match &self.terminal {
+            ErRelationshipLabelTerminal::Swimlane(label) => Some(label),
+            ErRelationshipLabelTerminal::Markdown { .. } => None,
+        }
     }
 
     fn dimensions(&self) -> (f64, f64) {
@@ -169,13 +190,34 @@ impl ErPreparedRelationshipLabel {
     }
 
     pub(crate) fn visible_style_facts(&self) -> &crate::text::VisibleTextStyleFacts {
-        self.visible_style_facts.get_or_init(|| {
-            if self.html_labels {
-                crate::text::VisibleTextStyleFacts::from_xhtml_fragment(&self.xhtml_fragment)
-            } else {
-                crate::text::VisibleTextStyleFacts::plain_text(&self.source)
-            }
-        })
+        match &self.terminal {
+            ErRelationshipLabelTerminal::Markdown {
+                source,
+                xhtml_fragment,
+                html_labels,
+                visible_style_facts,
+            } => visible_style_facts.get_or_init(|| {
+                if *html_labels {
+                    crate::text::VisibleTextStyleFacts::from_xhtml_fragment(xhtml_fragment)
+                } else {
+                    crate::text::VisibleTextStyleFacts::plain_text(source)
+                }
+            }),
+            ErRelationshipLabelTerminal::Swimlane(label) => label.visible_style_facts(),
+        }
+    }
+
+    fn new_swimlane(
+        text: &str,
+        measurer: &dyn TextMeasurer,
+        style: &TextStyle,
+        config: &merman_model::MermaidConfig,
+    ) -> Self {
+        let label = swimlane::ErSwimlaneRelationshipLabel::prepare(text, measurer, style, config);
+        Self {
+            metrics: label.metrics(),
+            terminal: ErRelationshipLabelTerminal::Swimlane(label),
+        }
     }
 }
 
@@ -189,10 +231,36 @@ pub(crate) struct ErPreparedLabels {
 }
 
 impl ErPreparedLabels {
+    fn prepare_for_layout(
+        model: &merman_model::families::er::ErDiagramModel,
+        measurer: &dyn TextMeasurer,
+        settings: &ErLayoutSettings,
+        config: &Value,
+    ) -> Self {
+        let swimlane = crate::layout_backend::resolve_er_graph_layout(config).backend
+            == GraphLayoutBackend::Swimlane;
+        let sanitize_config = swimlane.then(|| {
+            merman_model::MermaidConfig::from_value(merman_model::json::clone_value_nonrecursive(
+                config,
+            ))
+        });
+        Self::prepare_with_provider(model, measurer, settings, sanitize_config.as_ref())
+    }
+
+    #[cfg(test)]
     fn prepare(
         model: &merman_model::families::er::ErDiagramModel,
         measurer: &dyn TextMeasurer,
         settings: &ErLayoutSettings,
+    ) -> Self {
+        Self::prepare_with_provider(model, measurer, settings, None)
+    }
+
+    fn prepare_with_provider(
+        model: &merman_model::families::er::ErDiagramModel,
+        measurer: &dyn TextMeasurer,
+        settings: &ErLayoutSettings,
+        swimlane_config: Option<&merman_model::MermaidConfig>,
     ) -> Self {
         let entity_measures = model
             .entities
@@ -214,12 +282,21 @@ impl ErPreparedLabels {
             .relationships
             .iter()
             .map(|relationship| {
-                ErPreparedRelationshipLabel::new(
-                    &relationship.role_a,
-                    measurer,
-                    &settings.relationship_label_style,
-                    settings.relationship_html_labels,
-                )
+                if let Some(config) = swimlane_config {
+                    ErPreparedRelationshipLabel::new_swimlane(
+                        &relationship.role_a,
+                        measurer,
+                        &settings.relationship_label_style,
+                        config,
+                    )
+                } else {
+                    ErPreparedRelationshipLabel::new(
+                        &relationship.role_a,
+                        measurer,
+                        &settings.relationship_label_style,
+                        settings.relationship_html_labels,
+                    )
+                }
             })
             .collect();
         Self {
@@ -260,7 +337,12 @@ pub(crate) fn prepare_er_labels(
 ) -> Arc<ErPreparedLabels> {
     let settings = ErConfigView::new(effective_config)
         .layout_settings_with_font_family(&model.direction, None);
-    Arc::new(ErPreparedLabels::prepare(model, measurer, &settings))
+    Arc::new(ErPreparedLabels::prepare_for_layout(
+        model,
+        measurer,
+        &settings,
+        effective_config,
+    ))
 }
 
 #[cfg(test)]
@@ -1057,7 +1139,7 @@ pub(crate) fn layout_er_diagram_typed_with_resolved_typography(
     font_size_px: Option<f64>,
     work_meter: Arc<crate::resources::OperationWorkMeter>,
 ) -> Result<ErDiagramLayout> {
-    let mut work_control = OperationLayoutWorkControl::new(work_meter);
+    let mut work_control = OperationLayoutWorkControl::new(Arc::clone(&work_meter));
     let settings = ErConfigView::new(effective_config).layout_settings_with_resolved_typography(
         &model.direction,
         font_family_css,
@@ -1066,9 +1148,25 @@ pub(crate) fn layout_er_diagram_typed_with_resolved_typography(
     let adapter_work = er_layout_adapter_work(model, &work_control)?;
     work_control.charge_adapter(adapter_work)?;
     validate_er_relationship_endpoints(model)?;
-    let prepared_labels = Arc::new(ErPreparedLabels::prepare(model, measurer, &settings));
-    let selection = crate::layout_backend::resolve_graph_layout(effective_config);
+    let prepared_labels = Arc::new(ErPreparedLabels::prepare_for_layout(
+        model,
+        measurer,
+        &settings,
+        effective_config,
+    ));
+    let selection = crate::layout_backend::resolve_er_graph_layout(effective_config);
     selection.validate_rootless_graph()?;
+
+    if selection.backend == GraphLayoutBackend::Swimlane {
+        return swimlane::layout_er_diagram_swimlane_typed(
+            model,
+            effective_config,
+            measurer,
+            &settings,
+            prepared_labels,
+            work_meter,
+        );
+    }
 
     #[cfg(feature = "layout-elk")]
     if selection.backend == GraphLayoutBackend::Elk {
@@ -1750,6 +1848,7 @@ fn layout_er_diagram_dagre_typed(
         nodes,
         edges: layout_edges,
         render_edges,
+        swimlane: None,
         clusters,
         bounds,
         prepared_labels,
@@ -1970,6 +2069,7 @@ fn layout_er_diagram_elk_typed(
     Ok(ErDiagramLayout {
         nodes: out_nodes,
         render_edges: out_edges.clone(),
+        swimlane: None,
         edges: out_edges,
         clusters,
         bounds,
@@ -2686,13 +2786,20 @@ mod tests {
         let relationship = prepared
             .relationship(0)
             .expect("prepared relationship label");
+        let super::ErRelationshipLabelTerminal::Markdown {
+            visible_style_facts: relationship_facts,
+            ..
+        } = &relationship.terminal
+        else {
+            panic!("ordinary ER labels keep their Markdown terminal");
+        };
         assert!(entity.label.visible_style_facts.get().is_none());
-        assert!(relationship.visible_style_facts.get().is_none());
+        assert!(relationship_facts.get().is_none());
 
         assert!(entity.label.visible_style_facts().has_visible_runs());
         assert!(relationship.visible_style_facts().has_visible_runs());
         assert!(entity.label.visible_style_facts.get().is_some());
-        assert!(relationship.visible_style_facts.get().is_some());
+        assert!(relationship_facts.get().is_some());
     }
 
     #[test]

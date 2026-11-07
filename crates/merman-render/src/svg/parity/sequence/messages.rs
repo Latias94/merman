@@ -476,10 +476,10 @@ pub(super) fn render_sequence_messages(
             SequenceMessageKind::Autonumber => {
                 if let SequenceSvgMessagePayload::Autonumber(autonumber) = &msg.message {
                     autonumber_visible = autonumber.visible;
-                    if let Some(start) = autonumber.start {
+                    if let Some(start) = autonumber.start.filter(|start| *start != 0.0) {
                         sequence_number = start;
                     }
-                    if let Some(step) = autonumber.step {
+                    if let Some(step) = autonumber.step.filter(|step| *step != 0.0) {
                         sequence_number_step = step;
                     }
                 }
