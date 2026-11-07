@@ -8,6 +8,32 @@
         "min_x": -50.0,
         "min_y": -10.0
       },
+      "boxes": [
+        {
+          "fill": "Purple",
+          "height": 405.0,
+          "title": {
+            "text": "Alice & John",
+            "x": 198.5,
+            "y": 14.0
+          },
+          "width": 437.0,
+          "x": -20.0,
+          "y": -5.0
+        },
+        {
+          "fill": "transparent",
+          "height": 405.0,
+          "title": {
+            "text": "Another Group",
+            "x": 665.5,
+            "y": 14.0
+          },
+          "width": 457.0,
+          "x": 437.0,
+          "y": -5.0
+        }
+      ],
       "clusters": [],
       "edges": [
         {

@@ -151,6 +151,33 @@
           "to_cluster": null
         }
       ],
+      "frames": [
+        {
+          "height": 137.0,
+          "id": "0",
+          "kind": "loop",
+          "label": "health(end)check",
+          "width": 229.0,
+          "x": 64.0,
+          "y": 84.0
+        },
+        {
+          "height": 185.0,
+          "id": "4",
+          "kind": "alt",
+          "label": "should continue",
+          "sections": [
+            {
+              "id": "6",
+              "label": "actually end",
+              "y": 327.0
+            }
+          ],
+          "width": 277.0,
+          "x": 40.0,
+          "y": 231.0
+        }
+      ],
       "nodes": [
         {
           "height": 74.0,

@@ -181,6 +181,33 @@
           "to_cluster": null
         }
       ],
+      "frames": [
+        {
+          "height": 198.0,
+          "id": "2",
+          "kind": "par",
+          "label": "Wrapped parallel",
+          "sections": [
+            {
+              "id": "4",
+              "label": "",
+              "y": 293.0
+            }
+          ],
+          "width": 612.0,
+          "x": 64.0,
+          "y": 179.0
+        },
+        {
+          "height": 159.0,
+          "id": "7",
+          "kind": "loop",
+          "label": "Wrapped loop",
+          "width": 786.0,
+          "x": 64.0,
+          "y": 387.0
+        }
+      ],
       "nodes": [
         {
           "height": 74.0,

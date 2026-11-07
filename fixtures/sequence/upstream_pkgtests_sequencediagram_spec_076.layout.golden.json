@@ -8,6 +8,20 @@
         "min_x": -50.0,
         "min_y": -10.0
       },
+      "boxes": [
+        {
+          "fill": "green",
+          "height": 221.0,
+          "title": {
+            "text": "Group 1",
+            "x": 180.0,
+            "y": 14.0
+          },
+          "width": 400.0,
+          "x": -20.0,
+          "y": -5.0
+        }
+      ],
       "clusters": [],
       "edges": [
         {

@@ -236,6 +236,29 @@
           "to_cluster": null
         }
       ],
+      "frames": [
+        {
+          "height": 273.0,
+          "id": "2",
+          "kind": "par",
+          "label": "over A,B",
+          "sections": [
+            {
+              "id": "4",
+              "label": "over B,C",
+              "y": 246.0
+            },
+            {
+              "id": "6",
+              "label": "over A,C",
+              "y": 337.0
+            }
+          ],
+          "width": 422.0,
+          "x": 64.0,
+          "y": 150.0
+        }
+      ],
       "nodes": [
         {
           "height": 74.0,

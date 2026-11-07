@@ -256,6 +256,40 @@
           "to_cluster": null
         }
       ],
+      "frames": [
+        {
+          "height": 374.0,
+          "id": "0",
+          "kind": "par",
+          "label": "Alice to Bob",
+          "sections": [
+            {
+              "id": "2",
+              "label": "Alice to John",
+              "y": 180.0
+            }
+          ],
+          "width": 851.0,
+          "x": 64.0,
+          "y": 84.0
+        },
+        {
+          "height": 182.0,
+          "id": "4",
+          "kind": "par",
+          "label": "John to Charlie",
+          "sections": [
+            {
+              "id": "6",
+              "label": "John to Diana",
+              "y": 362.0
+            }
+          ],
+          "width": 441.0,
+          "x": 464.0,
+          "y": 266.0
+        }
+      ],
       "nodes": [
         {
           "height": 74.0,

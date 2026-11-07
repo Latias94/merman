@@ -1,40 +1,34 @@
 use super::{SequenceLayoutCheckpoints, sequence_activation_start_x};
+use crate::model::SequenceActivationLayout;
 use rustc_hash::FxHashMap;
 use std::collections::BTreeMap;
 
 #[derive(Debug, Clone)]
 struct SequenceActivationStart {
+    actor: String,
     startx: f64,
     starty: f64,
 }
 
 #[derive(Debug, Clone)]
-pub(crate) struct SequenceActivationRect {
-    pub(crate) startx: f64,
-    pub(crate) starty: f64,
-    pub(crate) width: f64,
-    pub(crate) height: f64,
-    pub(crate) class_idx: usize,
+pub(crate) struct SequenceActivationGroup {
+    pub(crate) layout_index: usize,
     pub(crate) actor_index: usize,
 }
 
 #[derive(Debug, Default)]
 pub(crate) struct SequencePreparedActivationGeometry {
-    pub(crate) groups: Vec<Option<SequenceActivationRect>>,
+    pub(crate) groups: Vec<Option<SequenceActivationGroup>>,
     pub(crate) group_by_start_id: FxHashMap<String, usize>,
-    rect_count: usize,
-}
-impl SequencePreparedActivationGeometry {
-    pub(crate) const fn rect_count(&self) -> usize {
-        self.rect_count
-    }
 }
 
 pub(super) struct SequenceActivationGeometryBuilder {
     width: f64,
     stacks: BTreeMap<usize, Vec<usize>>,
     active: BTreeMap<usize, SequenceActivationStart>,
-    geometry: SequencePreparedActivationGeometry,
+    groups: Vec<Option<(SequenceActivationLayout, usize)>>,
+    group_by_start_id: FxHashMap<String, usize>,
+    rect_count: usize,
 }
 
 impl SequenceActivationGeometryBuilder {
@@ -43,30 +37,33 @@ impl SequenceActivationGeometryBuilder {
             width,
             stacks: BTreeMap::new(),
             active: BTreeMap::new(),
-            geometry: SequencePreparedActivationGeometry::default(),
+            groups: Vec::new(),
+            group_by_start_id: FxHashMap::default(),
+            rect_count: 0,
         }
     }
 
     pub(super) fn start(
         &mut self,
         message_id: &str,
+        actor: &str,
         actor_index: usize,
         center_x: f64,
         cursor_y: f64,
     ) {
         let stack = self.stacks.entry(actor_index).or_default();
-        let group_index = self.geometry.groups.len();
+        let group_index = self.groups.len();
         self.active.insert(
             group_index,
             SequenceActivationStart {
+                actor: actor.to_owned(),
                 startx: sequence_activation_start_x(center_x, stack.len(), self.width),
                 starty: cursor_y + 2.0,
             },
         );
         stack.push(group_index);
-        self.geometry.groups.push(None);
-        self.geometry
-            .group_by_start_id
+        self.groups.push(None);
+        self.group_by_start_id
             .insert(message_id.to_string(), group_index);
     }
 
@@ -74,7 +71,7 @@ impl SequenceActivationGeometryBuilder {
         &mut self,
         actor_index: usize,
         cursor_y: f64,
-    ) -> Option<&SequenceActivationRect> {
+    ) -> Option<&SequenceActivationLayout> {
         let stack = self.stacks.get_mut(&actor_index)?;
         let group_index = stack.pop()?;
         let start = self.active.remove(&group_index)?;
@@ -84,16 +81,17 @@ impl SequenceActivationGeometryBuilder {
             starty = stop_y - 6.0;
             stop_y += 12.0;
         }
-        self.geometry.groups[group_index] = Some(SequenceActivationRect {
-            startx: start.startx,
-            starty,
+        let layout = SequenceActivationLayout {
+            actor: start.actor,
+            x: start.startx,
+            y: starty,
             width: self.width,
             height: (stop_y - starty).max(0.0),
-            class_idx: stack.len() % 3,
-            actor_index,
-        });
-        self.geometry.rect_count += 1;
-        self.geometry.groups[group_index].as_ref()
+            depth: stack.len(),
+        };
+        self.groups[group_index] = Some((layout, actor_index));
+        self.rect_count += 1;
+        self.groups[group_index].as_ref().map(|(layout, _)| layout)
     }
 
     pub(super) fn include_inserted_top(
@@ -114,8 +112,34 @@ impl SequenceActivationGeometryBuilder {
         Ok(())
     }
 
-    pub(super) fn finish(self) -> SequencePreparedActivationGeometry {
-        self.geometry
+    pub(super) fn finish(
+        self,
+        checkpoints: SequenceLayoutCheckpoints<'_>,
+    ) -> crate::Result<(
+        Vec<SequenceActivationLayout>,
+        SequencePreparedActivationGeometry,
+    )> {
+        let mut activations = Vec::with_capacity(self.rect_count);
+        let mut groups = Vec::with_capacity(self.groups.len());
+        for (index, group) in self.groups.into_iter().enumerate() {
+            checkpoints.checkpoint_loop(index)?;
+            groups.push(group.map(|(layout, actor_index)| {
+                let group = SequenceActivationGroup {
+                    layout_index: activations.len(),
+                    actor_index,
+                };
+                activations.push(layout);
+                group
+            }));
+        }
+        checkpoints.checkpoint()?;
+        Ok((
+            activations,
+            SequencePreparedActivationGeometry {
+                groups,
+                group_by_start_id: self.group_by_start_id,
+            },
+        ))
     }
 }
 
@@ -132,8 +156,8 @@ mod tests {
         let meter = OperationWorkMeter::new(policy);
         let checkpoints = super::SequenceLayoutCheckpoints::for_layout(&meter);
         let mut builder = super::SequenceActivationGeometryBuilder::new(10.0);
-        builder.start("first", 0, 50.0, 100.0);
-        builder.start("second", 0, 50.0, 100.0);
+        builder.start("first", "A", 0, 50.0, 100.0);
+        builder.start("second", "A", 0, 50.0, 100.0);
         builder
             .include_inserted_top(90.0, 10.0, checkpoints)
             .unwrap();
@@ -185,7 +209,7 @@ mod tests {
             std::sync::Arc::clone(&work),
         )
         .unwrap();
-        assert_eq!(prepared.activation_geometry().rect_count(), 1);
+        assert_eq!(prepared.layout().activations.len(), 1);
         let mut unmatched = model.clone();
         unmatched
             .messages
@@ -201,7 +225,7 @@ mod tests {
         )
         .unwrap();
         let geometry = unmatched.activation_geometry();
-        assert_eq!(geometry.rect_count(), 0);
+        assert!(unmatched.layout().activations.is_empty());
         assert_eq!(geometry.groups.len(), 1);
         assert!(geometry.groups[0].is_none());
         assert_eq!(geometry.group_by_start_id.len(), 1);

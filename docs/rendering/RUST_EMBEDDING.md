@@ -146,6 +146,38 @@ Use `RenderedDocument` instead when reusing one completed SVG across graphical e
 The [migration reference](../migrations/render-reuse-host-integration.md#reuse-parsed-source-in-rust)
 also covers `prepare(&parsed, ...)`, artifact lifetimes and the removed arbitrary-JSON layout handoff.
 
+## Consume Sequence drawing geometry in development builds
+
+`RenderRequest::layout_json(...)` and a prepared source's `RenderTarget::LayoutJson` expose the
+same owned layout projection. Current development builds extend `layout.SequenceDiagram` with
+the geometry a native painter needs in addition to participant nodes, message edges, and lifelines:
+
+| Field | Geometry |
+| --- | --- |
+| `frames` | Control-frame rectangles, control kinds and labels, and ordered section dividers for `else`, `and`, and `option`. |
+| `activations` | Activation rectangles associated with participant IDs and nesting depth. |
+| `boxes` | Participant-group rectangles and positioned group titles. |
+| `title` | The positioned diagram title, when present. |
+
+These positions come from the same layout preparation consumed by the SVG renderer. A host can
+paint them directly without replaying the semantic message stream to reconstruct placement.
+Coordinates use the existing participant/message layout space; retain negative coordinates and
+apply the enclosing output viewport consistently. Text positions retain their documented anchor
+conventions rather than representing glyph bounding boxes: box titles use a centered anchor,
+while the diagram title uses a start anchor and alphabetic baseline. Rectangle coordinates are
+top-left positions; section `y` values identify the divider strokes.
+
+The added fields are omitted when empty or absent. Existing `nodes`, `edges`, `clusters`, and
+`bounds` retain their meaning. Native hosts still own paint and must measure using the font stack
+they will draw; geometric export does not embed fonts or reproduce a host's text shaping.
+Rust consumers of the former `SequenceBlockLayout` and `block_layouts_by_id` should use
+`SequenceDiagramLayout.frames` and each frame's `sections`. The cursor-replay intermediate type
+is now private; the exported frame geometry includes its final keyword-width and critical-section
+adjustments. Direct `SequenceDiagramLayout` literals must also initialize the new drawing fields.
+See [`inspect_layout.rs`](../../crates/merman/examples/inspect_layout.rs) for the public request and
+managed JSON writer, and the [prepared-source migration](../migrations/render-reuse-host-integration.md)
+for source reuse and independent operation control.
+
 ## Example: an editor with a family allowlist
 
 The reviewed Zed reference snapshot pins `0.8.0-alpha.5` and selects `svg, layout-cytoscape` with defaults disabled. Updating that declaration alone compiles on alpha.7, but strict parsing fails because no built-in family is selected. Add `all-diagrams` to preserve the former language surface, or select the families from the host's own allowlist:

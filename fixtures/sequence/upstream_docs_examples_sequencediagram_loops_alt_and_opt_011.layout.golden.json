@@ -181,6 +181,42 @@
           "to_cluster": null
         }
       ],
+      "frames": [
+        {
+          "height": 384.0,
+          "id": "0",
+          "kind": "loop",
+          "label": "Daily query",
+          "width": 279.0,
+          "x": 54.0,
+          "y": 84.0
+        },
+        {
+          "height": 182.0,
+          "id": "2",
+          "kind": "alt",
+          "label": "is sick",
+          "sections": [
+            {
+              "id": "4",
+              "label": "is well",
+              "y": 271.0
+            }
+          ],
+          "width": 259.0,
+          "x": 64.0,
+          "y": 175.0
+        },
+        {
+          "height": 91.0,
+          "id": "7",
+          "kind": "opt",
+          "label": "Extra response",
+          "width": 259.0,
+          "x": 64.0,
+          "y": 367.0
+        }
+      ],
       "nodes": [
         {
           "height": 74.0,

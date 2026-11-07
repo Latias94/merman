@@ -176,6 +176,35 @@
           "to_cluster": null
         }
       ],
+      "frames": [
+        {
+          "height": 155.0,
+          "id": "0",
+          "kind": "par_over",
+          "label": "Section title",
+          "width": 422.0,
+          "x": 64.0,
+          "y": 84.0
+        },
+        {
+          "height": 227.0,
+          "id": "4",
+          "kind": "par_over",
+          "label": "Two line<br>section title",
+          "width": 570.0,
+          "x": -10.0,
+          "y": 249.0
+        },
+        {
+          "height": 140.0,
+          "id": "9",
+          "kind": "par_over",
+          "label": "Mixed section",
+          "width": 222.0,
+          "x": 64.0,
+          "y": 486.0
+        }
+      ],
       "nodes": [
         {
           "height": 74.0,

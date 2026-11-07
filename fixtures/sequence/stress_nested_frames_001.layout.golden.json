@@ -2,6 +2,32 @@
   "diagramType": "sequence",
   "layout": {
     "SequenceDiagram": {
+      "activations": [
+        {
+          "actor": "W",
+          "depth": 0.0,
+          "height": 850.0,
+          "width": 10.0,
+          "x": 270.0,
+          "y": 120.0
+        },
+        {
+          "actor": "A",
+          "depth": 0.0,
+          "height": 802.0,
+          "width": 10.0,
+          "x": 470.0,
+          "y": 168.0
+        },
+        {
+          "actor": "D",
+          "depth": 0.0,
+          "height": 44.0,
+          "width": 10.0,
+          "x": 670.0,
+          "y": 214.0
+        }
+      ],
       "bounds": {
         "max_x": 800.0,
         "max_y": 1075.0,
@@ -409,6 +435,54 @@
           "stroke_dasharray": null,
           "to": "actor-bottom-D",
           "to_cluster": null
+        }
+      ],
+      "frames": [
+        {
+          "height": 450.0,
+          "id": "8",
+          "kind": "alt",
+          "label": "rows > 0",
+          "sections": [
+            {
+              "id": "13",
+              "label": "empty",
+              "y": 541.0
+            },
+            {
+              "id": "15",
+              "label": "error",
+              "y": 632.0
+            }
+          ],
+          "width": 305.0,
+          "x": 185.0,
+          "y": 268.0
+        },
+        {
+          "height": 167.0,
+          "id": "10",
+          "kind": "opt",
+          "label": "cache enabled",
+          "width": 170.0,
+          "x": 195.0,
+          "y": 359.0
+        },
+        {
+          "height": 242.0,
+          "id": "18",
+          "kind": "par",
+          "label": "render list",
+          "sections": [
+            {
+              "id": "20",
+              "label": "telemetry",
+              "y": 824.0
+            }
+          ],
+          "width": 301.0,
+          "x": 64.0,
+          "y": 728.0
         }
       ],
       "nodes": [

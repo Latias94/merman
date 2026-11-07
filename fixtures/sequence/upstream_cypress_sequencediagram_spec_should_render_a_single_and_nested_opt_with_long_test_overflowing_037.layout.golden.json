@@ -2,6 +2,24 @@
   "diagramType": "sequence",
   "layout": {
     "SequenceDiagram": {
+      "activations": [
+        {
+          "actor": "C",
+          "depth": 0.0,
+          "height": 44.0,
+          "width": 10.0,
+          "x": 470.0,
+          "y": 247.0
+        },
+        {
+          "actor": "G",
+          "depth": 0.0,
+          "height": 44.0,
+          "width": 10.0,
+          "x": 1070.0,
+          "y": 581.0
+        }
+      ],
       "bounds": {
         "max_x": 1200.0,
         "max_y": 902.0,
@@ -429,6 +447,35 @@
           "stroke_dasharray": null,
           "to": "actor-bottom-G",
           "to_cluster": null
+        }
+      ],
+      "frames": [
+        {
+          "height": 171.0,
+          "id": "2",
+          "kind": "opt",
+          "label": "this is an opt with a long title that will overflow",
+          "width": 230.0,
+          "x": 260.0,
+          "y": 130.0
+        },
+        {
+          "height": 394.0,
+          "id": "9",
+          "kind": "opt",
+          "label": "this is another opt with a long title that will overflow",
+          "width": 436.0,
+          "x": 664.0,
+          "y": 357.0
+        },
+        {
+          "height": 171.0,
+          "id": "12",
+          "kind": "opt",
+          "label": "this is a nested opt with a long title that will overflow",
+          "width": 230.0,
+          "x": 860.0,
+          "y": 464.0
         }
       ],
       "nodes": [

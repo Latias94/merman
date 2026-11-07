@@ -236,6 +236,17 @@
           "to_cluster": null
         }
       ],
+      "frames": [
+        {
+          "height": 151.0,
+          "id": "1",
+          "kind": "loop",
+          "label": "Healthcheck",
+          "width": 193.0,
+          "x": 379.5,
+          "y": 130.0
+        }
+      ],
       "nodes": [
         {
           "height": 74.0,

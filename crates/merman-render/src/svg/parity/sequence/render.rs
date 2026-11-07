@@ -211,8 +211,9 @@ pub(in crate::svg::parity) fn render_sequence_diagram_svg_model_with_config(
     prepared
         .expected_effect_applications()
         .set(actor_shadows.len() + message_paint.len() + note_paint.len());
-    let mut activation_plan = SequenceActivationPlan::new(prepared.activation_geometry());
-    let activation_count = prepared.activation_geometry().rect_count();
+    let mut activation_plan =
+        SequenceActivationPlan::new(&layout.activations, prepared.activation_geometry());
+    let activation_count = layout.activations.len();
     let mut activation_receipt = activation_theme.fresh_receipt();
 
     activation_plan.prepare_paint(
@@ -229,13 +230,8 @@ pub(in crate::svg::parity) fn render_sequence_diagram_svg_model_with_config(
         || frame_theme.stroke_width.is_some()
         || keyword_theme.effect.is_some()
         || keyword_theme.stroke_width.is_some();
-    let box_paint_bounds = super::frames::builtin_box_paint_bounds(
-        prepared.box_layouts(),
-        prepared.box_height(),
-        settings.box_margin,
-        compat,
-        checkpoints,
-    )?;
+    let box_paint_bounds =
+        super::frames::builtin_box_paint_bounds(&layout.boxes, compat, checkpoints)?;
     let diagram_id = options.diagram_id_or("merman");
     let mut out = BoundedSvgOutput::new(options.work_meter());
     let root_document = write_sequence_svg_root_open(
@@ -286,11 +282,8 @@ pub(in crate::svg::parity) fn render_sequence_diagram_svg_model_with_config(
             &nodes_by_id,
             SequenceFrameRenderOptions {
                 actor_text_style: &settings.actor_text_style,
-                box_layouts: prepared.box_layouts(),
-                box_title_height: prepared.box_title_height(),
-                box_height: prepared.box_height(),
-                box_margin: settings.box_margin,
-                box_text_margin: settings.box_text_margin,
+                boxes: &layout.boxes,
+                box_indices: prepared.box_indices(),
                 rect_default_fill: &settings.rect_default_fill,
             },
             &actor_ctx.label_context(),
@@ -434,9 +427,9 @@ pub(in crate::svg::parity) fn render_sequence_diagram_svg_model_with_config(
         shadow_evidence: prepared.effect_evidence(),
         model,
         block_widths_by_id: &block_widths_by_id,
-        block_layouts_by_id: &layout.block_layouts_by_id,
+        frames: &layout.frames,
+        frame_placements: prepared.frame_placements(),
         nodes_by_id: &nodes_by_id,
-        edges_by_id: &edges_by_id,
         math_sidecar: prepared.math_sidecar(),
         settings: &settings,
         typography: prepared.typography(),
@@ -578,28 +571,28 @@ pub(in crate::svg::parity) fn render_sequence_diagram_svg_model_with_config(
     )?;
     out.checkpoint()?;
 
-    if let Some(title) = prepared.diagram_title() {
+    if let Some(title) = layout.title.as_ref() {
         let _ = write!(
             &mut out,
             r#"<text x="{x}" y="{y}""#,
-            x = fmt(title.x()),
-            y = fmt(title.y()),
+            x = fmt(title.x),
+            y = fmt(title.y),
         );
         let fill = prepared.theme_evidence().title_fill_css();
         if let Some(fill) = fill {
             let _ = write!(&mut out, r#" fill="{}""#, escape_attr(fill));
         }
-        let _ = write!(&mut out, ">{}</text>", escape_xml_display(title.text()));
+        let _ = write!(&mut out, ">{}</text>", escape_xml_display(&title.text));
         out.checkpoint()?;
         if !prepared
             .theme_evidence()
-            .record_title_emission(title.text(), fill)
+            .record_title_emission(&title.text, fill)
         {
             return Err(crate::Error::InvalidModel {
                 message: "Sequence title paint did not match the terminal SVG".to_owned(),
             });
         }
-        if !title.text().trim().is_empty() {
+        if !title.text.trim().is_empty() {
             typography_receipt.record_inherited_text();
         }
     }

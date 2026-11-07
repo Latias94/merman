@@ -121,6 +121,24 @@
           "to_cluster": null
         }
       ],
+      "frames": [
+        {
+          "height": 182.0,
+          "id": "0",
+          "kind": "alt",
+          "label": "label contains end",
+          "sections": [
+            {
+              "id": "2",
+              "label": "label contains and/par",
+              "y": 180.0
+            }
+          ],
+          "width": 373.0,
+          "x": 64.0,
+          "y": 84.0
+        }
+      ],
       "nodes": [
         {
           "height": 74.0,

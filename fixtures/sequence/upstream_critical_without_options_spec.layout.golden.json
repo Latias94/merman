@@ -91,6 +91,17 @@
           "to_cluster": null
         }
       ],
+      "frames": [
+        {
+          "height": 107.0,
+          "id": "0",
+          "kind": "critical",
+          "label": "Establish a connection to the DB",
+          "width": 222.0,
+          "x": 64.0,
+          "y": 84.0
+        }
+      ],
       "nodes": [
         {
           "height": 74.0,

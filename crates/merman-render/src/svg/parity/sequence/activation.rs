@@ -3,6 +3,7 @@ use crate::sequence::SequenceStaticRectThemeReceipt;
 
 #[derive(Debug, Clone)]
 pub(super) struct SequenceActivationPlan<'a> {
+    layouts: &'a [crate::model::SequenceActivationLayout],
     geometry: &'a crate::sequence::SequencePreparedActivationGeometry,
     fill: String,
     stroke: String,
@@ -16,8 +17,12 @@ pub(super) struct SequenceActivationPlan<'a> {
 }
 
 impl<'a> SequenceActivationPlan<'a> {
-    pub(super) fn new(geometry: &'a crate::sequence::SequencePreparedActivationGeometry) -> Self {
+    pub(super) fn new(
+        layouts: &'a [crate::model::SequenceActivationLayout],
+        geometry: &'a crate::sequence::SequencePreparedActivationGeometry,
+    ) -> Self {
         Self {
+            layouts,
             geometry,
             fill: "#EDF2AE".to_owned(),
             stroke: "#666".to_owned(),
@@ -61,14 +66,15 @@ impl<'a> SequenceActivationPlan<'a> {
             self.shadows.resize(self.geometry.groups.len(), None);
         }
         let width = f64::from(stroke_width.unwrap_or(1.0));
-        for (index, rect) in self.geometry.groups.iter().enumerate() {
+        for (index, group) in self.geometry.groups.iter().enumerate() {
             options.work_meter().charge(1)?;
-            let Some(rect) = rect else { continue };
+            let Some(group) = group else { continue };
+            let rect = &self.layouts[group.layout_index];
             let mut bounds = Bounds {
-                min_x: rect.startx - width / 2.0,
-                min_y: rect.starty - width / 2.0,
-                max_x: rect.startx + rect.width + width / 2.0,
-                max_y: rect.starty + rect.height + width / 2.0,
+                min_x: rect.x - width / 2.0,
+                min_y: rect.y - width / 2.0,
+                max_x: rect.x + rect.width + width / 2.0,
+                max_y: rect.y + rect.height + width / 2.0,
             };
             if let Some(effect) = &self.effect {
                 options
@@ -83,10 +89,10 @@ impl<'a> SequenceActivationPlan<'a> {
                     let region = shadow.region();
                     let [x, y, w, h] = region.as_array().map(f64::from);
                     bounds = Bounds {
-                        min_x: rect.startx + x * rect.width,
-                        min_y: rect.starty + y * rect.height,
-                        max_x: rect.startx + (x + w) * rect.width,
-                        max_y: rect.starty + (y + h) * rect.height,
+                        min_x: rect.x + x * rect.width,
+                        min_y: rect.y + y * rect.height,
+                        max_x: rect.x + (x + w) * rect.width,
+                        max_y: rect.y + (y + h) * rect.height,
                     };
                     self.shadows[index] = Some((
                         format!(
@@ -129,6 +135,7 @@ pub(super) fn render_sequence_activation_group(
     // `<rect class="activation{0..2}">` once ACTIVE_END is encountered.
     out.push_str("<g>");
     if let Some(Some(a)) = plan.geometry.groups.get(group_index) {
+        let layout = &plan.layouts[a.layout_index];
         let is_neo = compat.is_neo;
         let shadow = plan
             .shadows
@@ -141,11 +148,11 @@ pub(super) fn render_sequence_activation_group(
         let _ = write!(
             out,
             r##"<rect x="{x}" y="{y}" fill="{fill}" stroke="{stroke}" width="{w}" height="{h}" class="activation{idx}"{look_attr}"##,
-            x = fmt(a.startx),
-            y = fmt(a.starty),
-            w = fmt(a.width),
-            h = fmt(a.height),
-            idx = a.class_idx,
+            x = fmt(layout.x),
+            y = fmt(layout.y),
+            w = fmt(layout.width),
+            h = fmt(layout.height),
+            idx = layout.depth % 3,
             fill = escape_xml(&plan.fill),
             stroke = escape_xml(&plan.stroke),
             look_attr = if is_neo { r#" data-look="neo""# } else { "" },

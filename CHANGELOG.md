@@ -6,6 +6,10 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
 
 ## [Unreleased]
 
+### Changed
+
+- Sequence layout exports include control frames and section dividers, activation rectangles, participant-group boxes, and positioned titles for native painters. SVG consumes the same prepared geometry. Rust consumers of `SequenceBlockLayout` and `block_layouts_by_id` must migrate to `SequenceDiagramLayout.frames` and `sections`; direct layout literals must initialize the new drawing fields. See the [host integration guide](docs/rendering/RUST_EMBEDDING.md#consume-sequence-drawing-geometry-in-development-builds).
+
 ### Fixed
 
 - ASCII and Unicode Flowchart rendering can route branching review/retry feedback edges around reserved geometry when ordinary candidates collide, preserving labels and independent endpoint markers under the existing resource and cancellation limits. Sequence text output accepts `and` sections inside `par_over` blocks.

@@ -1,4 +1,4 @@
-#[cfg(any(feature = "diagram-class", feature = "diagram-sequence"))]
+#[cfg(feature = "diagram-class")]
 use rustc_hash::FxHashMap;
 use serde::{Deserialize, Serialize};
 #[cfg(any(feature = "diagram-class", feature = "diagram-er"))]
@@ -994,16 +994,73 @@ pub struct ErDiagramLayout {
     pub(crate) prepared_labels: Arc<crate::er::ErPreparedLabels>,
 }
 
-#[derive(Debug, Clone)]
+/// A control-frame divider. Its horizontal endpoints are the enclosing frame's edges.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[cfg(feature = "diagram-sequence")]
-pub struct SequenceBlockLayout {
-    pub start_y: f64,
-    pub stop_y: f64,
-    /// Mermaid expands every active sequence frame by its nesting depth.
-    /// These coordinates are captured during layout replay rather than inferred from SVG nodes.
-    pub start_x: Option<f64>,
-    pub stop_x: Option<f64>,
-    pub section_ys_by_id: FxHashMap<String, f64>,
+pub struct SequenceFrameSectionLayout {
+    /// ID of the semantic `else`, `and`, or `option` message.
+    pub id: String,
+    pub label: String,
+    pub y: f64,
+}
+
+/// Final drawing bounds of a visible Sequence control frame, in diagram coordinates.
+///
+/// `x` and `y` are the top-left corner, unlike the center-based participant nodes. Frames
+/// retain source order, including nested frames. Background `rect` blocks remain in `nodes`.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg(feature = "diagram-sequence")]
+pub struct SequenceFrameLayout {
+    /// ID of the semantic message that opens the frame.
+    pub id: String,
+    pub kind: merman_model::families::sequence::SequenceControlKind,
+    /// Semantic label before presentation-specific brackets, wrapping, and entity decoding.
+    pub label: String,
+    pub x: f64,
+    pub y: f64,
+    pub width: f64,
+    pub height: f64,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub sections: Vec<SequenceFrameSectionLayout>,
+}
+
+/// One completed activation bar, ordered by its activation-start occurrence.
+///
+/// Unclosed activations have no drawing rectangle. The top-left coordinates include Mermaid's
+/// cursor adjustments and the minimum-height rule, including adjustments from intervening notes.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg(feature = "diagram-sequence")]
+pub struct SequenceActivationLayout {
+    pub actor: String,
+    pub x: f64,
+    pub y: f64,
+    pub width: f64,
+    pub height: f64,
+    /// Number of this participant's activations already open when this bar starts.
+    pub depth: usize,
+}
+
+/// A Sequence title's text and drawing anchor in diagram coordinates.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg(feature = "diagram-sequence")]
+pub struct SequenceTextLayout {
+    pub text: String,
+    pub x: f64,
+    pub y: f64,
+}
+
+/// Participant-group drawing rectangle, ordered by the source `box` occurrences.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg(feature = "diagram-sequence")]
+pub struct SequenceParticipantBoxLayout {
+    pub x: f64,
+    pub y: f64,
+    pub width: f64,
+    pub height: f64,
+    pub fill: String,
+    /// Center anchor of the title. SVG presentation distributes multiline text around this anchor.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub title: Option<SequenceTextLayout>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -1013,11 +1070,15 @@ pub struct SequenceDiagramLayout {
     pub edges: Vec<LayoutEdge>,
     pub clusters: Vec<LayoutCluster>,
     pub bounds: Option<Bounds>,
-    /// Canonical vertical geometry captured while replaying Mermaid's sequence layout cursor.
-    ///
-    /// This remains outside compatibility layout JSON because it is renderer-owned phase data.
-    #[serde(skip)]
-    pub block_layouts_by_id: FxHashMap<String, SequenceBlockLayout>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub frames: Vec<SequenceFrameLayout>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub activations: Vec<SequenceActivationLayout>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub boxes: Vec<SequenceParticipantBoxLayout>,
+    /// Diagram title uses SVG's start anchor and alphabetic baseline.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub title: Option<SequenceTextLayout>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

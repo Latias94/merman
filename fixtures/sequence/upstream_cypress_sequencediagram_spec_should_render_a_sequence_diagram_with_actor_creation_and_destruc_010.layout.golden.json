@@ -2,6 +2,16 @@
   "diagramType": "sequence",
   "layout": {
     "SequenceDiagram": {
+      "activations": [
+        {
+          "actor": "Lola",
+          "depth": 0.0,
+          "height": 46.0,
+          "width": 10.0,
+          "x": 1020.0,
+          "y": 1031.0
+        }
+      ],
       "bounds": {
         "max_x": 1150.0,
         "max_y": 1610.0,
@@ -499,6 +509,45 @@
           "stroke_dasharray": null,
           "to": "actor-bottom-Lola",
           "to_cluster": null
+        }
+      ],
+      "frames": [
+        {
+          "height": 365.0,
+          "id": "17",
+          "kind": "alt",
+          "label": "either this",
+          "sections": [
+            {
+              "id": "22",
+              "label": "or this",
+              "y": 1092.0
+            },
+            {
+              "id": "25",
+              "label": "or this will happen",
+              "y": 1183.0
+            }
+          ],
+          "width": 981.0,
+          "x": 64.0,
+          "y": 904.0
+        },
+        {
+          "height": 208.0,
+          "id": "29",
+          "kind": "par",
+          "label": "this happens in parallel",
+          "sections": [
+            {
+              "id": "31",
+              "label": "",
+              "y": 1421.0
+            }
+          ],
+          "width": 972.0,
+          "x": 64.0,
+          "y": 1279.0
         }
       ],
       "nodes": [

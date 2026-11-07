@@ -291,6 +291,26 @@
           "to_cluster": null
         }
       ],
+      "frames": [
+        {
+          "height": 151.0,
+          "id": "2",
+          "kind": "loop",
+          "label": "check C",
+          "width": 170.0,
+          "x": 391.0,
+          "y": 150.0
+        },
+        {
+          "height": 243.0,
+          "id": "7",
+          "kind": "loop",
+          "label": "check D",
+          "width": 317.0,
+          "x": 454.0,
+          "y": 367.0
+        }
+      ],
       "nodes": [
         {
           "height": 74.0,

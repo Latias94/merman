@@ -386,6 +386,45 @@
           "to_cluster": null
         }
       ],
+      "frames": [
+        {
+          "height": 273.0,
+          "id": "6",
+          "kind": "alt",
+          "label": "either this",
+          "sections": [
+            {
+              "id": "8",
+              "label": "or this",
+              "y": 534.0
+            },
+            {
+              "id": "10",
+              "label": "or this will happen",
+              "y": 625.0
+            }
+          ],
+          "width": 464.0,
+          "x": 64.0,
+          "y": 438.0
+        },
+        {
+          "height": 162.0,
+          "id": "13",
+          "kind": "par",
+          "label": "this happens in parallel",
+          "sections": [
+            {
+              "id": "15",
+              "label": "",
+              "y": 817.0
+            }
+          ],
+          "width": 464.0,
+          "x": 64.0,
+          "y": 721.0
+        }
+      ],
       "nodes": [
         {
           "height": 92.0,

@@ -7,6 +7,7 @@ use super::actors::{
     SequenceTopActorContext, append_sequence_footer_actors, append_sequence_top_actors,
     sequence_actor_is_type_width_limited,
 };
+use super::block_geometry::SequenceBlockLayout;
 use super::block_steps::{
     BlockStepPlanContext, SequenceBlockPlan, is_block_end, is_block_section, is_block_start,
     plan_sequence_blocks,
@@ -17,7 +18,7 @@ use super::notes::{SequenceNoteLayoutContext, layout_sequence_note};
 use super::rect::SequenceRectOpen;
 use super::{SEQUENCE_FRAME_SIDE_PAD_PX, SequenceLayoutCheckpoints};
 use crate::Result;
-use crate::model::{LayoutEdge, LayoutNode, SequenceBlockLayout};
+use crate::model::{LayoutEdge, LayoutNode, SequenceActivationLayout};
 use crate::text::{TextMeasurer, TextStyle};
 use merman_model::families::sequence::{
     SequenceControlKind, SequenceControlRole, SequenceDiagramModel, SequenceMessage,
@@ -67,6 +68,7 @@ pub(super) struct SequenceLayoutGraph {
     pub(super) nodes: Vec<LayoutNode>,
     pub(super) edges: Vec<LayoutEdge>,
     pub(super) block_layouts_by_id: rustc_hash::FxHashMap<String, SequenceBlockLayout>,
+    pub(super) activations: Vec<SequenceActivationLayout>,
     pub(super) activation_geometry: SequencePreparedActivationGeometry,
     pub(super) bottom_box_top_y: f64,
     pub(super) box_height: f64,
@@ -262,29 +264,31 @@ fn handle_sequence_directive<'a>(
         .activation_state
         .handle_directive(msg, ctx.actor_index, ctx.actor_centers_x)
     {
-        let Some((actor_index, center_x)) = msg.from.as_deref().and_then(|actor_id| {
+        let Some((actor_id, actor_index, center_x)) = msg.from.as_deref().and_then(|actor_id| {
             let actor_index = *ctx.actor_index.get(actor_id)?;
-            Some((actor_index, *ctx.actor_centers_x.get(actor_index)?))
+            Some((
+                actor_id,
+                actor_index,
+                *ctx.actor_centers_x.get(actor_index)?,
+            ))
         }) else {
             return Ok(true);
         };
         match msg.semantic_kind() {
             SequenceMessageKind::ActivationStart => {
-                state
-                    .activation_geometry
-                    .start(&msg.id, actor_index, center_x, state.cursor_y);
+                state.activation_geometry.start(
+                    &msg.id,
+                    actor_id,
+                    actor_index,
+                    center_x,
+                    state.cursor_y,
+                );
             }
             SequenceMessageKind::ActivationEnd => {
                 let bounds = state
                     .activation_geometry
                     .end(actor_index, state.cursor_y)
-                    .map(|rect| {
-                        (
-                            rect.startx,
-                            rect.startx + rect.width,
-                            rect.starty + rect.height,
-                        )
-                    });
+                    .map(|rect| (rect.x, rect.x + rect.width, rect.y + rect.height));
                 if let Some((start_x, stop_x, stop_y)) = bounds {
                     state.activation_geometry.include_inserted_top(
                         stop_y - 10.0,
@@ -647,11 +651,13 @@ pub(super) fn build_sequence_layout_graph(
     } else {
         state.cursor_y
     };
+    let (activations, activation_geometry) = state.activation_geometry.finish(ctx.checkpoints)?;
     Ok(SequenceLayoutGraph {
         nodes,
         edges,
         block_layouts_by_id: state.block_layouts_by_id,
-        activation_geometry: state.activation_geometry.finish(),
+        activations,
+        activation_geometry,
         bottom_box_top_y,
         box_height,
         bounds_start_x: state.bounds_start_x,

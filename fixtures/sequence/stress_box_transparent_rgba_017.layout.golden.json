@@ -2,12 +2,48 @@
   "diagramType": "sequence",
   "layout": {
     "SequenceDiagram": {
+      "activations": [
+        {
+          "actor": "B",
+          "depth": 0.0,
+          "height": 46.0,
+          "width": 10.0,
+          "x": 495.0,
+          "y": 194.0
+        }
+      ],
       "bounds": {
         "max_x": 830.0,
         "max_y": 469.0,
         "min_x": -50.0,
         "min_y": -10.0
       },
+      "boxes": [
+        {
+          "fill": "transparent",
+          "height": 473.0,
+          "title": {
+            "text": "Aqua",
+            "x": 180.0,
+            "y": 14.0
+          },
+          "width": 400.0,
+          "x": -20.0,
+          "y": -5.0
+        },
+        {
+          "fill": "rgba(33,66,99,0.35)",
+          "height": 473.0,
+          "title": {
+            "text": "Another Group",
+            "x": 600.0,
+            "y": 14.0
+          },
+          "width": 400.0,
+          "x": 400.0,
+          "y": -5.0
+        }
+      ],
       "clusters": [],
       "edges": [
         {
