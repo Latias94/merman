@@ -262,6 +262,9 @@ describe("language intelligence adoption", () => {
       "merman.analysis.lint.disable_rules",
       "merman.analysis.lint.rule_severities",
       "merman.preview.diagramTheme",
+      "merman.preview.appearance",
+      "merman.preview.themeFile",
+      "merman.preview.viewerBackground",
       "merman.preview.displayMode",
       "merman.preview.background",
     ];
@@ -345,25 +348,23 @@ describe("language intelligence adoption", () => {
     };
     const properties = configurationProperties(pkg.contributes.configuration);
 
-    assert.deepEqual(properties["merman.preview.diagramTheme"]?.enum, [
-      "source",
-      "default",
-      "dark",
-      "forest",
-      "neutral",
-      "base",
-    ]);
+    assert.equal(properties["merman.preview.diagramTheme"]?.enum, undefined);
+    assert.equal(properties["merman.preview.diagramTheme"]?.default, "source");
+    assert.deepEqual(properties["merman.preview.appearance"]?.enum, ["follow-editor", "light", "dark"]);
     assert.deepEqual(properties["merman.preview.displayMode"]?.enum, [
       "svg",
       "ascii",
       "unicode",
     ]);
     assert.deepEqual(properties["merman.preview.background"]?.enum, [
+      "theme",
       "paper",
       "transparent",
       "dark",
     ]);
     assert.equal(properties["merman.preview.background"]?.scope, "window");
+    assert.equal(properties["merman.preview.background"]?.default, "theme");
+    assert.equal(properties["merman.preview.viewerBackground"]?.default, "auto");
   });
 
   it("groups settings by LSP-style product areas", () => {

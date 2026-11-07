@@ -84,6 +84,11 @@ pub(crate) fn run(
             run_layout(args, operation_control, context)?;
             0
         }
+        #[cfg(feature = "svg")]
+        ResolvedInvocation::ThemeInspect(args) => {
+            crate::theme::inspect(args, operation_control, context)?;
+            0
+        }
         #[cfg(feature = "analysis")]
         ResolvedInvocation::Lint(args) => run_lint(args, context)?,
         #[cfg(feature = "fixes")]

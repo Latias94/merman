@@ -9,6 +9,7 @@ import { mermanRuntimeStore } from "@/src/runtime/merman";
 import { MERMAID_JS_VERSION } from "@/src/runtime/mermaid-requirements";
 import { renderCoordinatorStore } from "@/src/runtime/render-coordinator-browser";
 import { selectWorkspaceSnapshot, useAppStore } from "@/src/store";
+import { inspectThemeRecipe } from "@/src/lib/theme-appearance";
 
 const ProjectUseDialog = lazy(() => import("./ProjectUseDialog"));
 
@@ -22,10 +23,19 @@ export function ProjectUseLauncher({ compact }: { compact: boolean }) {
     const runtime = mermanRuntimeStore.getState();
     const facade = runtime.status === "ready" ? runtime.facade : null;
     let presets: ProjectHandoffInput["presets"];
-    try { presets = facade?.themeCatalog().presets; }
+    let themeCatalog: ProjectHandoffInput["themeCatalog"];
+    try { themeCatalog = facade?.themeCatalog(); presets = themeCatalog?.presets; }
     catch { /* A completed render can still establish preset availability. */ }
+    const state = useAppStore.getState();
+    let themeRecipeInspection: ProjectHandoffInput["themeRecipeInspection"];
+    if (facade && state.themeRecipeJson) {
+      try { themeRecipeInspection = inspectThemeRecipe(facade, state.themeRecipeJson); } catch { /* Validation reports its error in the dialog. */ }
+    }
     setInput({
-      workspace: selectWorkspaceSnapshot(useAppStore.getState()),
+      workspace: selectWorkspaceSnapshot(state),
+      hostAppearance: state.resolvedTheme,
+      themeCatalog,
+      themeRecipeInspection,
       renderState: renderCoordinatorStore.getState(),
       presets,
       validateThemeRecipe: facade ? (raw) => facade.validateThemeRecipe(raw) : undefined,

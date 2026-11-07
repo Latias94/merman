@@ -1,0 +1,56 @@
+{
+  "schema_version": 1,
+  "kind": "design",
+  "design": {
+    "tokens": {
+      "brand": {
+        "type": "color",
+        "value": "#123456"
+      },
+      "ink": {
+        "type": "color",
+        "value": "#1f2937"
+      }
+    },
+    "styles": {
+      "node": {
+        "fill": {
+          "kind": "solid",
+          "color": {
+            "ref": "brand"
+          }
+        }
+      },
+      "text": {
+        "fill": {
+          "kind": "solid",
+          "color": {
+            "ref": "ink"
+          }
+        }
+      }
+    },
+    "canvas": {
+      "base": "#f8fafc"
+    },
+    "appearances": {
+      "light": {},
+      "dark": {
+        "tokens": {
+          "brand": {
+            "type": "color",
+            "value": "#93c5fd"
+          },
+          "ink": {
+            "type": "color",
+            "value": "#e5e7eb"
+          }
+        },
+        "canvas": {
+          "base": "#0f172a"
+        }
+      }
+    },
+    "default_appearance": "light"
+  }
+}

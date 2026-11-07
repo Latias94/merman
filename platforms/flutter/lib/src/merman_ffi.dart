@@ -1106,8 +1106,12 @@ class MermanThemeCatalog {
   const MermanThemeCatalog({
     required this.schemaVersion,
     required this.structuredSpecAvailable,
+    required this.recipeSchemaVersion,
+    required this.authoringRequestSchemaVersion,
+    required this.authoringResultSchemaVersion,
     required this.supportedOutputIds,
     required this.presets,
+    required this.mermaidThemeDesigns,
     required this.knownCapabilityIds,
     required this.knownTextCapabilityIds,
     required this.knownFontContainerIds,
@@ -1115,12 +1119,17 @@ class MermanThemeCatalog {
     required this.knownSemanticTargetIds,
     required this.knownVariantIds,
     required this.resourceLimits,
+    required this.jsonObject,
   });
 
   final int schemaVersion;
   final bool structuredSpecAvailable;
+  final int? recipeSchemaVersion;
+  final int? authoringRequestSchemaVersion;
+  final int? authoringResultSchemaVersion;
   final List<String> supportedOutputIds;
   final List<MermanThemePreset> presets;
+  final List<MermanMermaidThemeDesign> mermaidThemeDesigns;
   final List<String> knownCapabilityIds;
   final List<String> knownTextCapabilityIds;
   final List<String> knownFontContainerIds;
@@ -1128,6 +1137,7 @@ class MermanThemeCatalog {
   final List<String> knownSemanticTargetIds;
   final List<String> knownVariantIds;
   final List<MermanThemeResourceLimit> resourceLimits;
+  final Map<String, Object?> jsonObject;
 
   factory MermanThemeCatalog.fromJson(Map<String, Object?> json) {
     final schemaVersion = _requiredInt(json, 'schema_version');
@@ -1136,9 +1146,74 @@ class MermanThemeCatalog {
         'unsupported theme catalog schema $schemaVersion',
       );
     }
+    final available = _requiredBool(
+      json,
+      'structured_spec_available',
+      'theme catalog',
+    );
+    int? schema(String field) {
+      if (!json.containsKey(field)) {
+        throw MermanException.contract('theme catalog is missing $field');
+      }
+      if (!available && json[field] == null) return null;
+      if (!available) {
+        throw MermanException.contract(
+          'unavailable theme catalog must not advertise $field',
+        );
+      }
+      final version = _requiredInt(json, field);
+      if (version <= 0 || version > _maxSafeJsonInteger) {
+        throw MermanException.contract('invalid theme catalog.$field');
+      }
+      return version;
+    }
+
     final rawPresets = json['presets'];
     if (rawPresets is! List) {
       throw MermanException.contract('theme catalog.presets must be an array');
+    }
+    final presets = rawPresets.indexed
+        .map(
+          (entry) => MermanThemePreset.fromJson(
+            _asObject(entry.$2, 'theme catalog.presets[${entry.$1}]'),
+          ),
+        )
+        .toList();
+    final presetIds = <String>{};
+    final concreteIds = <String>{};
+    for (final preset in presets) {
+      if (!presetIds.add(preset.id) ||
+          preset.appearances.any(
+            (appearance) => !concreteIds.add(appearance.concretePresetId),
+          )) {
+        throw MermanException.contract('theme preset IDs must be unique');
+      }
+    }
+    final rawMermaidDesigns = json['mermaid_theme_designs'];
+    if (rawMermaidDesigns is! List) {
+      throw MermanException.contract(
+        'theme catalog.mermaid_theme_designs must be an array',
+      );
+    }
+    final mermaidDesigns = rawMermaidDesigns.indexed
+        .map(
+          (entry) => MermanMermaidThemeDesign.fromJson(
+            _asObject(
+              entry.$2,
+              'theme catalog.mermaid_theme_designs[${entry.$1}]',
+            ),
+          ),
+        )
+        .toList();
+    final mermaidIds = <String>{};
+    final mermaidThemeIds = <String>{};
+    for (final design in mermaidDesigns) {
+      if (!mermaidIds.add(design.id) ||
+          design.appearances.any(
+            (appearance) => !mermaidThemeIds.add(appearance.themeId),
+          )) {
+        throw MermanException.contract('Mermaid theme IDs must be unique');
+      }
     }
     final rawResourceLimits = json['resource_limits'];
     if (rawResourceLimits is! List) {
@@ -1163,11 +1238,10 @@ class MermanThemeCatalog {
     }
     return MermanThemeCatalog(
       schemaVersion: schemaVersion,
-      structuredSpecAvailable: _requiredBool(
-        json,
-        'structured_spec_available',
-        'theme catalog',
-      ),
+      structuredSpecAvailable: available,
+      recipeSchemaVersion: schema('recipe_schema_version'),
+      authoringRequestSchemaVersion: schema('authoring_request_schema_version'),
+      authoringResultSchemaVersion: schema('authoring_result_schema_version'),
       supportedOutputIds: List.unmodifiable(
         _requiredSortedUniqueStrings(
           json,
@@ -1175,13 +1249,8 @@ class MermanThemeCatalog {
           'theme catalog.supported_output_ids',
         ),
       ),
-      presets: List.unmodifiable(
-        rawPresets.indexed.map(
-          (entry) => MermanThemePreset.fromJson(
-            _asObject(entry.$2, 'theme catalog.presets[${entry.$1}]'),
-          ),
-        ),
-      ),
+      presets: List.unmodifiable(presets),
+      mermaidThemeDesigns: List.unmodifiable(mermaidDesigns),
       knownCapabilityIds: List.unmodifiable(
         _requiredSortedUniqueStrings(
           json,
@@ -1225,32 +1294,141 @@ class MermanThemeCatalog {
         ),
       ),
       resourceLimits: List.unmodifiable(resourceLimits),
+      jsonObject: _deeplyUnmodifiableJsonObject(json, 'theme catalog'),
     );
   }
 }
 
-/// One built-in compiled theme advertised by the artifact.
+/// One design identity with its declared appearances and complete-document availability.
 class MermanThemePreset {
   const MermanThemePreset({
     required this.id,
     required this.displayName,
-    required this.appearance,
+    required this.supportedAppearances,
+    required this.defaultAppearance,
+    required this.appearances,
     required this.maturity,
     required this.available,
     required this.availabilityReasonIds,
-    required this.qualifiedCells,
-    this.familyDesigns = const [],
-    this.previewColors = const [],
-    this.applicationNotes = const [],
     required this.licenseExpression,
     required this.requiredAttribution,
     required this.exportKind,
+    required this.jsonObject,
   });
 
   final String id;
   final String displayName;
-  final String appearance;
+  final List<String> supportedAppearances;
+  final String defaultAppearance;
+  final List<MermanThemePresetAppearance> appearances;
   final String maturity;
+  final bool available;
+  final List<String> availabilityReasonIds;
+  final String licenseExpression;
+  final String? requiredAttribution;
+  final String exportKind;
+  final Map<String, Object?> jsonObject;
+
+  factory MermanThemePreset.fromJson(Map<String, Object?> json) {
+    final id = _requiredRuntimeIdentifier(json, 'id', 'theme preset');
+    final label = 'theme preset $id';
+    final available = _requiredBool(json, 'available', label);
+    final reasons = _themeAvailabilityReasons(json, label);
+    final rawSupported = json['supported_appearances'];
+    if (rawSupported is! List || rawSupported.isEmpty) {
+      throw MermanException.contract(
+        '$label.supported_appearances must be a nonempty array',
+      );
+    }
+    final supported = rawSupported
+        .map((value) => _themeAppearance(value, '$label.supported_appearances'))
+        .toList();
+    final defaultAppearance = _themeAppearance(
+      json['default_appearance'],
+      '$label.default_appearance',
+    );
+    if (supported.toSet().length != supported.length ||
+        !supported.contains(defaultAppearance)) {
+      throw MermanException.contract('$label has inconsistent appearances');
+    }
+    final rawAppearances = json['appearances'];
+    if (rawAppearances is! List) {
+      throw MermanException.contract('$label.appearances must be an array');
+    }
+    final appearances = rawAppearances.indexed
+        .map(
+          (entry) => MermanThemePresetAppearance.fromJson(
+            _asObject(entry.$2, '$label.appearances[${entry.$1}]'),
+          ),
+        )
+        .toList();
+    if (appearances.length != supported.length) {
+      throw MermanException.contract('$label has inconsistent appearances');
+    }
+    final concreteIds = <String>{};
+    for (final entry in appearances.indexed) {
+      final appearance = entry.$2;
+      if (appearance.appearance != supported[entry.$1] ||
+          appearance.available != available ||
+          appearance.availabilityReasonIds.join('\u0000') !=
+              reasons.join('\u0000') ||
+          !concreteIds.add(appearance.concretePresetId)) {
+        throw MermanException.contract(
+          '$label has inconsistent appearance availability or IDs',
+        );
+      }
+    }
+    if (!json.containsKey('required_attribution')) {
+      throw MermanException.contract('$label is missing required_attribution');
+    }
+    final attribution = json['required_attribution'];
+    if (attribution != null &&
+        (attribution is! String || attribution.isEmpty)) {
+      throw MermanException.contract(
+        '$label.required_attribution must be a nonempty string or null',
+      );
+    }
+    final exportKind = _requiredString(json, 'export_kind', label);
+    if (exportKind != 'design') {
+      throw MermanException.contract('$label.export_kind is unsupported');
+    }
+    return MermanThemePreset(
+      id: id,
+      displayName: _requiredNonEmptyString(json, 'display_name', label),
+      supportedAppearances: List.unmodifiable(supported),
+      defaultAppearance: defaultAppearance,
+      appearances: List.unmodifiable(appearances),
+      maturity: _requiredRuntimeIdentifier(json, 'maturity', label),
+      available: available,
+      availabilityReasonIds: List.unmodifiable(reasons),
+      licenseExpression: _requiredNonEmptyString(
+        json,
+        'license_expression',
+        label,
+      ),
+      requiredAttribution: attribution as String?,
+      exportKind: exportKind,
+      jsonObject: _deeplyUnmodifiableJsonObject(json, label),
+    );
+  }
+}
+
+/// Appearance-specific discovery facts; availability admits the complete design.
+class MermanThemePresetAppearance {
+  const MermanThemePresetAppearance({
+    required this.appearance,
+    required this.concretePresetId,
+    required this.available,
+    required this.availabilityReasonIds,
+    required this.qualifiedCells,
+    required this.familyDesigns,
+    required this.previewColors,
+    required this.applicationNotes,
+    required this.jsonObject,
+  });
+
+  final String appearance;
+  final String concretePresetId;
   final bool available;
   final List<String> availabilityReasonIds;
   final List<MermanThemePresetQualifiedCell> qualifiedCells;
@@ -1264,35 +1442,31 @@ class MermanThemePreset {
 
   /// Curated guidance. Applying recommendations requires a host/user decision.
   final List<MermanThemePresetApplicationNote> applicationNotes;
-  final String licenseExpression;
-  final String? requiredAttribution;
-  final String exportKind;
+  final Map<String, Object?> jsonObject;
 
-  factory MermanThemePreset.fromJson(Map<String, Object?> json) {
-    final id = _requiredRuntimeIdentifier(json, 'id', 'theme preset');
-    final available = _requiredBool(json, 'available', 'theme preset $id');
-    final availabilityReasonIds = _requiredSortedUniqueStrings(
+  factory MermanThemePresetAppearance.fromJson(Map<String, Object?> json) {
+    final id = _requiredRuntimeIdentifier(
       json,
-      'availability_reason_ids',
-      'theme preset $id.availability_reason_ids',
+      'concrete_preset_id',
+      'theme preset appearance',
     );
-    if (available != availabilityReasonIds.isEmpty) {
-      throw MermanException.contract(
-        'theme preset $id availability contradicts its reason IDs',
-      );
-    }
-    final rawPreviewColors = json.containsKey('preview_colors')
-        ? json['preview_colors']
-        : const <Object?>[];
+    final appearance = _themeAppearance(
+      json['appearance'],
+      'theme preset $id appearance',
+    );
+    final available = _requiredBool(json, 'available', 'theme preset $id');
+    final availabilityReasonIds = _themeAvailabilityReasons(
+      json,
+      'theme preset $id',
+    );
+    final rawPreviewColors = json['preview_colors'];
     if (rawPreviewColors is! List ||
         rawPreviewColors.any((color) => color is! String || color.isEmpty)) {
       throw MermanException.contract(
         'theme preset $id.preview_colors must be an array of non-empty strings',
       );
     }
-    final rawApplicationNotes = json.containsKey('application_notes')
-        ? json['application_notes']
-        : const <Object?>[];
+    final rawApplicationNotes = json['application_notes'];
     if (rawApplicationNotes is! List) {
       throw MermanException.contract(
         'theme preset $id.application_notes must be an array',
@@ -1303,9 +1477,7 @@ class MermanThemePreset {
         _asObject(entry.$2, 'theme preset $id.application_notes[${entry.$1}]'),
       ),
     );
-    final rawFamilyDesigns = json.containsKey('family_designs')
-        ? json['family_designs']
-        : const <Object?>[];
+    final rawFamilyDesigns = json['family_designs'];
     if (rawFamilyDesigns is! List) {
       throw MermanException.contract(
         'theme preset $id.family_designs must be an array',
@@ -1348,49 +1520,148 @@ class MermanThemePreset {
       previousCell = key;
       qualifiedCells.add(cell);
     }
-    final requiredAttribution = json['required_attribution'];
-    if (requiredAttribution != null &&
-        (requiredAttribution is! String || requiredAttribution.isEmpty)) {
-      throw MermanException.contract(
-        'theme preset $id.required_attribution must be a non-empty string or null',
-      );
-    }
-    final exportKind = _requiredString(json, 'export_kind', 'theme preset $id');
-    if (exportKind != 'design' && exportKind != 'complete_spec') {
-      throw MermanException.contract(
-        'theme preset $id.export_kind is unsupported',
-      );
-    }
-    return MermanThemePreset(
-      id: id,
-      displayName: _requiredNonEmptyString(
-        json,
-        'display_name',
-        'theme preset $id',
-      ),
-      appearance: _requiredRuntimeIdentifier(
-        json,
-        'appearance',
-        'theme preset $id',
-      ),
-      maturity: _requiredRuntimeIdentifier(
-        json,
-        'maturity',
-        'theme preset $id',
-      ),
+    return MermanThemePresetAppearance(
+      appearance: appearance,
+      concretePresetId: id,
       available: available,
       availabilityReasonIds: List.unmodifiable(availabilityReasonIds),
       qualifiedCells: List.unmodifiable(qualifiedCells),
       familyDesigns: List.unmodifiable(familyDesigns),
       previewColors: List<String>.unmodifiable(rawPreviewColors.cast<String>()),
       applicationNotes: List.unmodifiable(applicationNotes),
-      licenseExpression: _requiredNonEmptyString(
+      jsonObject: _deeplyUnmodifiableJsonObject(
         json,
-        'license_expression',
-        'theme preset $id',
+        'theme preset $id appearance',
       ),
-      requiredAttribution: requiredAttribution as String?,
-      exportKind: exportKind,
+    );
+  }
+}
+
+String _themeAppearance(Object? value, String label) {
+  if (value != 'light' && value != 'dark') {
+    throw MermanException.contract('$label must be light or dark');
+  }
+  return value as String;
+}
+
+List<String> _themeAvailabilityReasons(
+  Map<String, Object?> json,
+  String label,
+) {
+  final rawReasons = json['availability_reason_ids'];
+  if (rawReasons is! List) {
+    throw MermanException.contract(
+      '$label.availability_reason_ids must be an array',
+    );
+  }
+  final reasons = <String>[];
+  String? previous;
+  for (final reason in rawReasons) {
+    if (reason is! String ||
+        !RegExp(r'^[a-z0-9][a-z0-9_.-]*$').hasMatch(reason) ||
+        (previous != null && previous.compareTo(reason) >= 0)) {
+      throw MermanException.contract(
+        '$label availability reasons must be sorted and unique IDs',
+      );
+    }
+    reasons.add(reason);
+    previous = reason;
+  }
+  if (_requiredBool(json, 'available', label) != reasons.isEmpty) {
+    throw MermanException.contract(
+      '$label availability contradicts its reason IDs',
+    );
+  }
+  return reasons;
+}
+
+/// Explicit presentation groups for the upstream Mermaid theme IDs.
+class MermanMermaidThemeDesign {
+  const MermanMermaidThemeDesign({
+    required this.id,
+    required this.displayName,
+    required this.defaultAppearance,
+    required this.appearances,
+    required this.jsonObject,
+  });
+
+  final String id;
+  final String displayName;
+  final String defaultAppearance;
+  final List<MermanMermaidThemeAppearance> appearances;
+  final Map<String, Object?> jsonObject;
+
+  factory MermanMermaidThemeDesign.fromJson(Map<String, Object?> json) {
+    final id = _requiredRuntimeIdentifier(json, 'id', 'Mermaid theme design');
+    final label = 'Mermaid theme $id';
+    final defaultAppearance = _themeAppearance(
+      json['default_appearance'],
+      '$label.default_appearance',
+    );
+    final rawAppearances = json['appearances'];
+    if (rawAppearances is! List || rawAppearances.isEmpty) {
+      throw MermanException.contract(
+        '$label.appearances must be a nonempty array',
+      );
+    }
+    final appearances = rawAppearances.indexed
+        .map(
+          (entry) => MermanMermaidThemeAppearance.fromJson(
+            _asObject(entry.$2, '$label.appearances[${entry.$1}]'),
+          ),
+        )
+        .toList();
+    final modes = appearances
+        .map((appearance) => appearance.appearance)
+        .toSet();
+    final ids = appearances.map((appearance) => appearance.themeId).toSet();
+    if (!appearances.any(
+          (appearance) =>
+              appearance.appearance == defaultAppearance &&
+              appearance.themeId == id,
+        ) ||
+        modes.length != appearances.length ||
+        ids.length != appearances.length) {
+      throw MermanException.contract(
+        '$label has inconsistent appearances or IDs',
+      );
+    }
+    return MermanMermaidThemeDesign(
+      id: id,
+      displayName: _requiredNonEmptyString(json, 'display_name', label),
+      defaultAppearance: defaultAppearance,
+      appearances: List.unmodifiable(appearances),
+      jsonObject: _deeplyUnmodifiableJsonObject(json, label),
+    );
+  }
+}
+
+class MermanMermaidThemeAppearance {
+  const MermanMermaidThemeAppearance({
+    required this.appearance,
+    required this.themeId,
+    required this.jsonObject,
+  });
+
+  final String appearance;
+  final String themeId;
+  final Map<String, Object?> jsonObject;
+
+  factory MermanMermaidThemeAppearance.fromJson(Map<String, Object?> json) {
+    return MermanMermaidThemeAppearance(
+      appearance: _themeAppearance(
+        json['appearance'],
+        'Mermaid theme appearance',
+      ),
+      themeId: _requiredRuntimeIdentifier(
+        json,
+        'theme_id',
+        'Mermaid theme appearance',
+      ),
+      jsonObject: _deeplyUnmodifiableJsonObject(
+        json,
+        'Mermaid theme appearance',
+      ),
     );
   }
 }

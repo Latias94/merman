@@ -85,7 +85,6 @@ impl ThemeSourceMap {
 /// Sources in the wire's mixed style-entry order, consumed alongside decoding.
 #[derive(Debug)]
 pub(super) enum ThemeWireSources {
-    None,
     CompleteSpec,
     Design {
         styles: Vec<ThemeStyleSource>,
@@ -128,7 +127,6 @@ impl ThemeWireSources {
 
     pub(super) fn document(&self) -> Option<ThemeSourceDocument> {
         match self {
-            Self::None => None,
             Self::CompleteSpec => Some(ThemeSourceDocument::CompleteSpec),
             Self::Design { .. } => Some(ThemeSourceDocument::Design),
         }
@@ -136,7 +134,6 @@ impl ThemeWireSources {
 
     pub(super) fn take_style(&mut self, index: usize) -> Option<ThemeStyleSource> {
         match self {
-            Self::None => None,
             Self::CompleteSpec => Some(ThemeStyleSource::authored(format!("/styles/{index}"))),
             Self::Design { styles, .. } => styles.get_mut(index).map(std::mem::take),
         }
@@ -144,7 +141,6 @@ impl ThemeWireSources {
 
     pub(super) fn take_canvas_base(&mut self) -> Option<ThemeStyleSource> {
         match self {
-            Self::None => None,
             Self::CompleteSpec => Some(ThemeStyleSource::authored("/canvas/base".to_owned())),
             Self::Design { canvas_base, .. } => canvas_base.take(),
         }

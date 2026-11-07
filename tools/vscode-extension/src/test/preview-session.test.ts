@@ -5,6 +5,23 @@ import { describe, it } from "node:test";
 import { PreviewSession } from "../preview-session.js";
 
 describe("preview session", () => {
+  it("uses the latest open-document body for hidden locked sources during an appearance refresh", () => {
+    const session = new PreviewSession();
+    const original = textEditor("file:///workspace/notes.md", "notes.md", markdownWithTwoFences(), "markdown", 7, 1);
+    const edited = textEditor("file:///workspace/notes.md", "notes.md", markdownWithEditedSecondFence(), "markdown", 7, 2);
+    session.rememberResource(original.document.uri);
+    const first = session.createSnapshot(original, [original], emptyDiagnostics);
+    session.rememberSnapshot(assertDefined(first));
+    session.setLocked(true);
+    session.trackDocumentChange(documentChange(edited.document, 7, 7, "Alice->>Bob: hello"));
+    const hidden = session.createSnapshot(undefined, [], emptyDiagnostics, true, [edited.document]);
+    assert.equal(hidden?.input.source, "sequenceDiagram\nAlice->>Bob: hello");
+    assert.equal(hidden?.documentVersion, 2);
+    assert.equal(hidden?.input.sourceId, first?.input.sourceId);
+    assert.notEqual(hidden?.sourceKey.sourceHash, first?.sourceKey.sourceHash);
+    assert.equal(hidden?.locked, true);
+  });
+
   it("uses configured preview defaults for new snapshots and reset", () => {
     const session = new PreviewSession({
       diagramTheme: "dark",
@@ -42,7 +59,7 @@ describe("preview session", () => {
     assert.equal(snapshot?.input.kind, "mermaid-file");
     assert.equal(snapshot?.input.sourceId, "document");
     assert.equal(snapshot?.documentUri, "file:///workspace/example.mmd");
-    assert.equal(snapshot?.background, "paper");
+    assert.equal(snapshot?.background, "theme");
   });
 
   it("clears an explicit source selection so preview can follow the cursor again", () => {
@@ -154,10 +171,10 @@ describe("preview session", () => {
     assert.equal(followed.input.sourceId, "fence-2");
     assert.equal(followed.locked, false);
     assert.equal(followed.selected, false);
-    assert.equal(followed.background, "paper");
+    assert.equal(followed.background, "theme");
     assert.equal(followed.diagramTheme, "source");
     assert.equal(original.locked, false);
-    assert.equal(original.background, "paper");
+    assert.equal(original.background, "theme");
     assert.equal(reads.lineAt, editor.document.lineCount);
   });
 

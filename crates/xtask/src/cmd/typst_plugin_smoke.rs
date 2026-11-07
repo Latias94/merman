@@ -98,6 +98,14 @@ pub(crate) fn validate_typst_plugin_with_input(
     cyberpunk["available"] = false.into();
     cyberpunk["availability_reason_ids"] =
         serde_json::json!(["theme-preset.resource-policy-rejected"]);
+    for appearance in cyberpunk["appearances"]
+        .as_array_mut()
+        .ok_or_else(|| smoke_error("Cyberpunk appearance metadata is missing"))?
+    {
+        appearance["available"] = false.into();
+        appearance["availability_reason_ids"] =
+            serde_json::json!(["theme-preset.resource-policy-rejected"]);
+    }
     if theme_catalog
         .get("schema_version")
         .and_then(JsonValue::as_u64)
@@ -179,6 +187,61 @@ pub(crate) fn validate_typst_plugin_with_input(
 
     validate_theme_authoring_vectors(&mut instance, options_json)?;
 
+    let paired_recipe: JsonValue = serde_json::from_str(include_str!(
+        "../../../merman-theme-authoring-fixtures/fixtures/authoring-v1/paired.recipe.json"
+    ))
+    .map_err(|error| smoke_error(format!("invalid paired recipe fixture: {error}")))?;
+    let paired_inspection = call_json(
+        &mut instance,
+        "theme_operation_json",
+        vec![
+            b"materialize-theme-json".to_vec(),
+            serde_json::to_vec(&serde_json::json!({
+                "schema_version": 1, "action": "inspect", "recipe": paired_recipe,
+            }))
+            .map_err(|error| smoke_error(format!("invalid theme inspection request: {error}")))?,
+            options_json.to_vec(),
+        ],
+    )?;
+    let inspection = assert_theme_operation_payload(&paired_inspection, "materialize-theme-json")?;
+    if inspection["supported_appearances"] != serde_json::json!(["light", "dark"])
+        || inspection["default_appearance"] != "light"
+    {
+        return Err(smoke_error(
+            "Typst paired recipe inspection lost its appearances",
+        ));
+    }
+    let mut paired_specs = Vec::new();
+    for appearance in ["light", "dark", "light"] {
+        let envelope = call_json(
+            &mut instance,
+            "theme_operation_json",
+            vec![
+                b"materialize-theme-json".to_vec(),
+                serde_json::to_vec(&serde_json::json!({
+                    "schema_version": 1, "action": "materialize",
+                    "recipe": paired_recipe, "appearance": appearance,
+                }))
+                .map_err(|error| {
+                    smoke_error(format!("invalid theme materialization request: {error}"))
+                })?,
+                options_json.to_vec(),
+            ],
+        )?;
+        let selected = assert_theme_operation_payload(&envelope, "materialize-theme-json")?;
+        if selected["effective_appearance"] != appearance || !selected["spec"].is_object() {
+            return Err(smoke_error(
+                "Typst paired recipe selected an unexpected appearance",
+            ));
+        }
+        paired_specs.push(selected["spec"].clone());
+    }
+    if paired_specs[0] == paired_specs[1] || paired_specs[0] != paired_specs[2] {
+        return Err(smoke_error(
+            "Typst paired materialization lost appearance isolation",
+        ));
+    }
+
     let preset_export = instance.call(
         "theme_operation_json",
         vec![
@@ -192,6 +255,8 @@ pub(crate) fn validate_typst_plugin_with_input(
     if serde_json::from_value::<merman::diagram_theme::ThemeRecipeV1>(preset_export.clone())
         .is_err()
         || preset_export.get("kind").and_then(JsonValue::as_str) != Some("design")
+        || preset_export.pointer("/design/appearances/light").is_none()
+        || preset_export.pointer("/design/appearances/dark").is_none()
     {
         return Err(smoke_error(format!(
             "export-theme-preset-json returned an invalid preset export: {preset_export}"

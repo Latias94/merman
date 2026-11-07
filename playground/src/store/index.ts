@@ -28,6 +28,7 @@ import {
   type DiagramThemeChoice,
   type ThemeRecipeLabel,
 } from "../lib/diagram-appearance.ts";
+import type { ThemeAppearancePreference } from "../lib/theme-appearance.ts";
 
 export type Theme = MermaidThemeSelection;
 export type UITheme = "light" | "dark" | "system";
@@ -57,6 +58,8 @@ export interface AppState {
   themePresetId: string | null;
   themeRecipeJson: string | null;
   themeRecipeLabel: ThemeRecipeLabel | null;
+  themeAppearance: ThemeAppearancePreference;
+  setThemeAppearance: (appearance: ThemeAppearancePreference) => void;
   themePanelOpen: boolean;
   openThemePanel: () => void;
   closeThemePanel: () => void;
@@ -102,6 +105,7 @@ export function selectWorkspaceSnapshot(
     themePresetId: state.themePresetId,
     themeRecipeJson: state.themeRecipeJson,
     ...(state.themeRecipeLabel ? { themeRecipeLabel: state.themeRecipeLabel } : {}),
+    ...(state.themeAppearance && state.themeAppearance !== "default" ? { themeAppearance: state.themeAppearance } : {}),
     svgPipeline: state.svgPipeline,
     textMeasurementMode: state.textMeasurementMode,
     diagramFont: state.diagramFont,
@@ -177,10 +181,15 @@ export const useAppStore = create<AppState>((set, get) => {
 
     // Diagram rendering
     diagramTheme: DEFAULT_WORKSPACE_SNAPSHOT.diagramTheme,
-    setDiagramTheme: (diagramTheme) => changeAppearance({ diagramTheme }),
+    setDiagramTheme: (diagramTheme) => changeAppearance({
+      diagramTheme,
+      ...(get().themePresetId === null && get().themeRecipeJson === null ? { themeAppearance: "default" } : {}),
+    }),
     themePresetId: DEFAULT_WORKSPACE_SNAPSHOT.themePresetId,
     themeRecipeJson: DEFAULT_WORKSPACE_SNAPSHOT.themeRecipeJson,
     themeRecipeLabel: null,
+    themeAppearance: "default",
+    setThemeAppearance: (themeAppearance) => changeAppearance({ themeAppearance }),
     themePanelOpen: false,
     openThemePanel: () => set({ themePanelOpen: true }),
     closeThemePanel: () => set({ themePanelOpen: false }),
@@ -207,12 +216,13 @@ export const useAppStore = create<AppState>((set, get) => {
     setTextMeasurementMode: (textMeasurementMode) => set({ textMeasurementMode }),
     diagramFont: DEFAULT_WORKSPACE_SNAPSHOT.diagramFont,
     setDiagramFont: (diagramFont) => changeAppearance({ diagramFont }),
-    applyWorkspaceSnapshot: (snapshot) => set({ ...snapshot, themeRecipeLabel: snapshot.themeRecipeLabel ?? null, appearanceHistory: [], themePanelOpen: false }),
+    applyWorkspaceSnapshot: (snapshot) => set({ ...snapshot, themeRecipeLabel: snapshot.themeRecipeLabel ?? null, themeAppearance: snapshot.themeAppearance ?? "default", appearanceHistory: [], themePanelOpen: false }),
     shareViewWarning: null,
     applyStartupShareHydration: ({ workspace, view, warning }) =>
       set({
         ...workspace,
         themeRecipeLabel: workspace.themeRecipeLabel ?? null,
+        themeAppearance: workspace.themeAppearance ?? "default",
         appearanceHistory: [],
         themePanelOpen: false,
         workspacePane: view.workspacePane,

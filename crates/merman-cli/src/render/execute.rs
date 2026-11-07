@@ -63,7 +63,10 @@ pub(crate) fn execute_render(
                                 .theme_result
                                 .take()
                                 .expect("theme report requested"),
-                            Err(error) => super::theme_feedback::ThemeResult::failed(error),
+                            Err(error) => super::theme_feedback::ThemeResult::failed(
+                                error,
+                                renderer.selected_theme_appearance(),
+                            ),
                         };
                         let publication =
                             report.encode_single(destination.file()).and_then(|bytes| {
@@ -432,10 +435,13 @@ fn theme_feedback(
             chart,
         );
     }
-    prepared
-        .theme_report
-        .as_ref()
-        .map(|_| super::theme_feedback::ThemeResult::completed(evidence, target))
+    prepared.theme_report.as_ref().map(|_| {
+        super::theme_feedback::ThemeResult::completed(
+            evidence,
+            target,
+            prepared.selected_theme_appearance(),
+        )
+    })
 }
 
 #[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]

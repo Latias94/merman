@@ -448,6 +448,71 @@ fn all_advertised_metadata_remains_callable_through_the_shared_engine() {
     }
 }
 
+#[cfg(feature = "native-fonts")]
+#[test]
+fn paired_theme_authoring_uses_existing_json_requests_and_owned_results() {
+    let mut runtime = Runtime::default();
+    let (engine, constructor) = new_engine(&mut runtime, None, false);
+    runtime.result_free(constructor);
+    let recipe: Value = serde_json::from_str(include_str!(
+        "../../merman-theme-authoring-fixtures/fixtures/authoring-v1/paired.recipe.json"
+    ))
+    .unwrap();
+    let inspection_request = serde_json::to_vec(&json!({
+        "schema_version": 1, "action": "inspect", "recipe": recipe,
+    }))
+    .unwrap();
+    let result = execute(
+        &mut runtime,
+        engine,
+        "materialize-theme-json",
+        &inspection_request,
+        None,
+    );
+    assert_eq!(fields(&runtime, result)[2], wire::STATUS_OK);
+    let inspection: Value = serde_json::from_slice(segment(&runtime, result, 6)).unwrap();
+    assert_eq!(
+        inspection["supported_appearances"],
+        json!(["light", "dark"])
+    );
+    assert_eq!(runtime.result_free(result), 0);
+    let mut specifications = Vec::new();
+    for appearance in ["light", "dark", "light"] {
+        let request = serde_json::to_vec(&json!({
+            "schema_version": 1, "action": "materialize", "recipe": recipe,
+            "appearance": appearance,
+        }))
+        .unwrap();
+        let result = execute(
+            &mut runtime,
+            engine,
+            "materialize-theme-json",
+            &request,
+            None,
+        );
+        assert_eq!(fields(&runtime, result)[2], wire::STATUS_OK);
+        let selected: Value = serde_json::from_slice(segment(&runtime, result, 6)).unwrap();
+        assert_eq!(selected["effective_appearance"], appearance);
+        specifications.push(selected["spec"].clone());
+        assert_eq!(runtime.result_free(result), 0);
+    }
+    assert_ne!(specifications[0], specifications[1]);
+    assert_eq!(specifications[0], specifications[2]);
+    let result = execute(
+        &mut runtime,
+        engine,
+        "export-theme-preset-json",
+        b"editor",
+        None,
+    );
+    assert_eq!(fields(&runtime, result)[2], wire::STATUS_OK);
+    let exported: Value = serde_json::from_slice(segment(&runtime, result, 6)).unwrap();
+    assert!(exported.pointer("/design/appearances/light").is_some());
+    assert!(exported.pointer("/design/appearances/dark").is_some());
+    assert_eq!(runtime.result_free(result), 0);
+    assert_eq!(runtime.engine_close(engine), 0);
+}
+
 #[cfg(feature = "bundled-fonts")]
 #[test]
 fn bundled_font_constructor_needs_no_host_font_blob() {

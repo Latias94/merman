@@ -6,6 +6,7 @@ import {
   BINDING_OPTIONS_SCHEMA_VERSION,
 } from "@mermanjs/web";
 import { browserRenderFixture } from "./merman-browser-test-fixture.ts";
+import { themeCatalogFixture } from "../lib/theme-appearance.test-fixture.ts";
 import {
   createMermanRuntime,
   installMermanDocumentLifecycle,
@@ -189,6 +190,26 @@ test("browser facade keeps each measured or headless SVG with its single executi
     assert.equal(result.error.summary, "Recipe is invalid.");
     assert.match(result.error.detail ?? "", /MERMAN_INVALID_OPTIONS/);
     assert.equal(calls.length, 1);
+  });
+
+  await context.test("unsupported native appearances fail before browser or headless runtime rendering", () => {
+    calls.length = 0;
+    for (const textMeasurementMode of ["browser", "headless"] as const) {
+      const operation = freezeRenderOperation({
+        workspace: { ...DEFAULT_WORKSPACE_SNAPSHOT, diagramTheme: "forest", themeAppearance: "dark", textMeasurementMode },
+        themeCatalog: themeCatalogFixture(), hostAppearance: "dark",
+        asciiEnabled: false, compareEnabled: true, diagnosticsEnabled: false,
+        layoutEnvironment: { containerWidth: 800, containerHeight: 600 }, viewport: { width: 800, height: 600 },
+        versions: { merman: "test-runtime", mermaid: "12.3.0" },
+      });
+      const result = browserSession.facade.render(operation);
+      assert.equal(result.status, "failure");
+      if (result.status !== "failure") continue;
+      assert.equal(result.stage, "render");
+      assert.equal(result.error, operation.configurationError);
+      assert.match(result.error.summary, /does not support the "dark" appearance/);
+      assert.equal(calls.length, 0);
+    }
   });
 
   await context.test("unsafe SVG cannot publish its successful theme evidence", () => {

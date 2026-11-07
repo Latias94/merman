@@ -88,6 +88,16 @@ const COMPILED_PREREQUISITES_BY_OPERATION_ID = new Map(
 const KNOWN_OUTPUT_CONTRACT_BY_ID = new Map(
   NODE_WIRE_CONTRACT.artifact.output_contracts.map((contract) => [contract.id, contract]),
 );
+const THEME_AUTHORING_INPUT_LIMITS = Object.freeze({
+  ...NODE_TRANSPORT_LIMITS.metadata,
+  max_utf8_bytes: NODE_TRANSPORT_FIELD_LIMITS.source_utf8_bytes,
+  max_string_utf8_bytes: NODE_TRANSPORT_FIELD_LIMITS.source_utf8_bytes,
+});
+const THEME_AUTHORING_RESULT_LIMITS = Object.freeze({
+  ...NODE_TRANSPORT_LIMITS.metadata,
+  max_utf8_bytes: NODE_TRANSPORT_FIELD_LIMITS.data_utf8_bytes,
+  max_string_utf8_bytes: NODE_TRANSPORT_FIELD_LIMITS.data_utf8_bytes,
+});
 const MAX_OPERATION_TIMEOUT_MS = 0xffff_ffff;
 const MERMAN_ENGINE_CONSTRUCTION_TOKEN = Symbol("MermanEngine construction");
 
@@ -257,6 +267,33 @@ export class MermanEngine {
       { timeoutMs: options.timeoutMs },
       false,
     );
+  }
+
+  materializeTheme(input, options = {}) {
+    return this.#themeAuthoring("materialize-theme-json", input, options);
+  }
+
+  describeThemeSupport(query, options = {}) {
+    return this.#themeAuthoring("describe-theme-support-json", query, options);
+  }
+
+  exportThemePreset(presetId, options = {}) {
+    if (typeof presetId !== "string") {
+      return Promise.reject(new TypeError("theme preset ID must be a string."));
+    }
+    return this.#themeAuthoring("export-theme-preset-json", presetId, options);
+  }
+
+  async #themeAuthoring(operationId, input, options) {
+    const source = typeof input === "string"
+      ? input
+      : encodeTransportJson(input, "theme authoring input", THEME_AUTHORING_INPUT_LIMITS);
+    const json = await this.#execute(
+      { operationId, source, optionsJson: options.optionsJson },
+      { signal: options.signal, timeoutMs: options.timeoutMs },
+      false,
+    );
+    return parseTransportJsonText(json, "theme authoring result", THEME_AUTHORING_RESULT_LIMITS);
   }
 
   metadataJson(id) {

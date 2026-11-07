@@ -12,11 +12,13 @@ fn human_capabilities_explains_theme_scope_and_explicit_application() {
         .expect("run capabilities without reading stdin");
     assert!(output.status.success(), "{:?}", output.stderr);
     let text = String::from_utf8(output.stdout).unwrap();
-    assert!(text.contains("ghibli\tpie\t"));
-    assert!(text.contains("Hard node shadows need Classic"));
-    assert!(text.contains(r#"{"flowchart":{"look":"classic"}}"#));
+    assert!(text.contains("ghibli\tlight\tpie\t"));
+    assert!(text.contains("Hard node shadows work with supported basic shapes"));
+    assert!(text.contains("Classic and Neo"));
     assert!(text.contains("Unlisted families have unreviewed design scope"));
     assert!(text.contains("--theme-preset ID or --theme-file PATH"));
+    assert!(text.contains("--theme-appearance light|dark"));
+    assert!(text.contains("theme inspect INPUT"));
 }
 
 #[test]
@@ -55,6 +57,7 @@ fn render_help_excludes_mmdc_and_batch_only_options() {
         "--theme-preset",
         "--theme-file",
         "--theme-design-file",
+        "--theme-appearance",
         "--raster-max-width",
         "--icon-pack",
         "--icon-pack-source",
@@ -100,6 +103,7 @@ fn render_short_help_prioritizes_the_common_workflow() {
         "--theme-preset",
         "--theme-file",
         "--theme-design-file",
+        "--theme-appearance",
         "--system-timing",
         "--allow-private-network",
     ] {
@@ -154,6 +158,7 @@ fn batch_help_exposes_only_graphical_batch_options() {
         "--theme-preset",
         "--theme-file",
         "--theme-design-file",
+        "--theme-appearance",
     ] {
         assert!(
             stdout.contains(present),
@@ -189,6 +194,7 @@ fn batch_and_mmdc_use_progressive_help_without_losing_contract_options() {
                 "--theme-preset",
                 "--theme-file",
                 "--theme-design-file",
+                "--theme-appearance",
             ][..],
         ),
         (
@@ -238,7 +244,12 @@ fn batch_and_mmdc_use_progressive_help_without_losing_contract_options() {
             "{command} short help needs an example and long-help cue:\n{short}"
         );
         if command == "mmdc" {
-            for removed in ["--theme-preset", "--theme-file", "--theme-design-file"] {
+            for removed in [
+                "--theme-preset",
+                "--theme-file",
+                "--theme-design-file",
+                "--theme-appearance",
+            ] {
                 assert!(
                     !long.contains(removed),
                     "mmdc long help must not expose provisional native option {removed}:\n{long}"
@@ -258,7 +269,12 @@ fn layout_help_excludes_native_theme_selection() {
 
     assert!(output.status.success(), "stderr: {:?}", output.stderr);
     let stdout = String::from_utf8(output.stdout).expect("stdout should be utf8");
-    for removed in ["--theme-preset", "--theme-file", "--theme-design-file"] {
+    for removed in [
+        "--theme-preset",
+        "--theme-file",
+        "--theme-design-file",
+        "--theme-appearance",
+    ] {
         assert!(
             !stdout.contains(removed),
             "layout help must not expose provisional native option {removed}:\n{stdout}"

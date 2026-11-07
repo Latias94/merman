@@ -339,26 +339,41 @@
           },
           "merman.preview.diagramTheme": {
             "type": "string",
-            "enum": [
+            "examples": [
               "source",
               "default",
               "dark",
-              "forest",
-              "neutral",
-              "base"
-            ],
-            "enumDescriptions": [
-              "Use the Mermaid source or default render theme selected by Merman.",
-              "Use Mermaid default theme.",
-              "Use Mermaid dark theme.",
-              "Use Mermaid forest theme.",
-              "Use Mermaid neutral theme.",
-              "Use Mermaid base theme."
+              "mermaid:neo",
+              "mermaid:redux",
+              "mermaid:redux-color",
+              "preset:editor",
+              "preset:gruvbox",
+              "file"
             ],
             "default": "source",
             "scope": "window",
             "order": 20,
-            "markdownDescription": "Default diagram theme for new Merman preview panels. The preview toolbar can override this for the current panel session."
+            "markdownDescription": "Theme for new preview panels and document export/copy commands. `source` preserves source/default Mermaid behavior. A literal Mermaid ID pins that original theme; `mermaid:<design>` selects a runtime-discovered design, `preset:<id>` selects a Merman preset, and `file` loads `#merman.preview.themeFile#`. The preview's single Theme selector lists the choices supported by your CLI."
+          },
+          "merman.preview.appearance": {
+            "type": "string",
+            "enum": ["follow-editor", "light", "dark"],
+            "enumDescriptions": [
+              "Follow VS Code's active light or dark appearance when the theme provides it; otherwise use the theme's declared default.",
+              "Use the theme's light appearance.",
+              "Use the theme's dark appearance."
+            ],
+            "default": "follow-editor",
+            "scope": "window",
+            "order": 21,
+            "markdownDescription": "Appearance preference for paired diagram themes. Source/default remains source-driven, and literal Mermaid IDs remain fixed. High-contrast editor themes select their light/dark appearance without claiming high-contrast diagram support."
+          },
+          "merman.preview.themeFile": {
+            "type": "string",
+            "default": "",
+            "scope": "window",
+            "order": 22,
+            "markdownDescription": "Portable theme recipe JSON used when `#merman.preview.diagramTheme#` is `file`. Use an absolute path or a path relative to the source document's workspace folder. The CLI validates the complete recipe, including inactive appearances. Import theme in a preview instead to use a panel-local snapshot."
           },
           "merman.preview.displayMode": {
             "type": "string",
@@ -380,19 +395,29 @@
           "merman.preview.background": {
             "type": "string",
             "enum": [
+              "theme",
               "paper",
               "transparent",
               "dark"
             ],
             "enumDescriptions": [
-              "Use the default paper preview background.",
-              "Use a transparent preview background.",
-              "Use a dark preview background."
+              "Use the theme/source canvas without a background override.",
+              "Override the rendered canvas with white, including exports.",
+              "Override the rendered canvas with transparency, including exports.",
+              "Override the rendered canvas with dark paint, including exports."
             ],
-            "default": "paper",
+            "default": "theme",
             "scope": "window",
             "order": 40,
-            "markdownDescription": "Default background for new Merman preview panels and exported preview renders. The preview toolbar can override this for the current panel session."
+            "markdownDescription": "Canvas override for preview and document export/copy. `theme` preserves the theme's own canvas. Existing explicit `paper`, `transparent`, and `dark` values keep their export meaning. Use `#merman.preview.viewerBackground#` to change only the surrounding viewer."
+          },
+          "merman.preview.viewerBackground": {
+            "type": "string",
+            "enum": ["auto", "paper", "transparent", "dark"],
+            "default": "auto",
+            "scope": "window",
+            "order": 41,
+            "markdownDescription": "Viewer backing only; never changes exported SVG/PNG bytes. Automatic uses the displayed diagram's selected appearance where available. A light-only artistic theme remains light inside a dark editor."
           }
         }
       },

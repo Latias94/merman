@@ -590,7 +590,7 @@ class PresetQualificationArchiveTests(unittest.TestCase):
             }
             public_catalog = valid_capabilities_payload()["theme_presets"]
             brutalist = next(entry for entry in public_catalog["presets"] if entry["id"] == "brutalist")
-            brutalist["qualified_cells"] = [{
+            brutalist["appearances"][0]["qualified_cells"] = [{
                 "family_id": "state", "output_id": output,
                 "profile_id": "native-state-system-fonts-v1", "admission_status": "host_dependent",
             } for output in ("png", "svg")]
@@ -630,7 +630,7 @@ class PresetQualificationArchiveTests(unittest.TestCase):
                 qualified_preset = next(
                     entry for entry in catalog["catalog"]["presets"] if entry["id"] == "brutalist"
                 )
-                self.assertEqual(qualified_preset["qualified_cells"], [
+                self.assertEqual(qualified_preset["appearances"][0]["qualified_cells"], [
                     {"family_id": "state", "output_id": output,
                      "profile_id": "native-state-system-fonts-v1", "admission_status": "host_dependent"}
                     for output in ("png", "svg")
@@ -1977,7 +1977,7 @@ class RuntimeContractTests(unittest.TestCase):
                 ("ASCII", lambda value: value.pop("ascii")),
                 ("catalog", lambda value: value.pop("theme_presets")),
                 ("catalog", lambda value: value["theme_presets"]["presets"][0].__setitem__("maturity", "stable")),
-                ("catalog", lambda value: value["theme_presets"]["presets"][0].__setitem__("qualified_cells", [{}])),
+                ("catalog", lambda value: value["theme_presets"]["presets"][0]["appearances"][0].__setitem__("qualified_cells", [{}])),
                 (
                     "ASCII output schema version",
                     lambda value: value["ascii"].__setitem__("output_schema_version", 2),

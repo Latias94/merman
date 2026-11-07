@@ -5,8 +5,16 @@ import {
   type PreviewDiagnostics,
   type PreviewSnapshot,
   type PreviewSourceKey,
+  type PreviewViewerBackground,
 } from "./preview-model.js";
 import type { PreviewInput } from "./preview-source.js";
+import {
+  isDiagramTheme,
+  isThemePreference,
+  type ThemeAppearance,
+  type ThemeAppearancePreference,
+  type ThemeChoice,
+} from "./theme-selection.js";
 
 export interface PreviewSourceOption {
   sourceId: string;
@@ -28,6 +36,13 @@ export interface PreviewSnapshotMessagePayload {
   sourceKey: PreviewSourceKey;
   sources: PreviewSourceOption[];
   diagnostics?: PreviewDiagnostics;
+  appearancePreference?: ThemeAppearancePreference;
+  effectiveAppearance?: ThemeAppearance;
+  supportedAppearances?: ThemeAppearance[];
+  themeLabel?: string;
+  themeChoices?: ThemeChoice[];
+  themeNotice?: string;
+  viewerBackground?: PreviewViewerBackground;
 }
 
 export type PreviewToWebviewMessage =
@@ -88,7 +103,10 @@ export type PreviewFromWebviewMessage =
   | { type: "setLocked"; locked: boolean }
   | { type: "setDiagramTheme"; theme: PreviewDiagramTheme }
   | { type: "setDisplayMode"; mode: PreviewDisplayMode }
-  | { type: "setBackground"; background: PreviewBackground };
+  | { type: "setBackground"; background: PreviewBackground }
+  | { type: "setAppearance"; appearance: ThemeAppearancePreference }
+  | { type: "setViewerBackground"; background: PreviewViewerBackground }
+  | { type: "importTheme" };
 
 export function snapshotMessagePayload(snapshot: PreviewSnapshot): PreviewSnapshotMessagePayload {
   return {
@@ -102,6 +120,13 @@ export function snapshotMessagePayload(snapshot: PreviewSnapshot): PreviewSnapsh
     background: snapshot.background,
     locked: snapshot.locked,
     sourceKey: snapshot.sourceKey,
+    appearancePreference: snapshot.appearancePreference,
+    effectiveAppearance: snapshot.resolvedTheme?.effectiveAppearance,
+    supportedAppearances: snapshot.resolvedTheme?.supportedAppearances,
+    themeLabel: snapshot.resolvedTheme?.label,
+    themeChoices: snapshot.themeChoices,
+    themeNotice: snapshot.themeNotice,
+    viewerBackground: snapshot.viewerBackground,
     diagnostics: snapshot.diagnostics,
     sources: snapshot.sources.map((source) => ({
       sourceId: source.sourceId,
@@ -122,6 +147,8 @@ export function isPreviewFromWebviewMessage(value: unknown): value is PreviewFro
     case "refresh":
     case "showSource":
       return true;
+    case "importTheme":
+      return Object.keys(record).length === 1;
     case "copySvg":
       return typeof record.svg === "string" && isPreviewSourceKey(record.sourceKey);
     case "exportRendered":
@@ -140,7 +167,11 @@ export function isPreviewFromWebviewMessage(value: unknown): value is PreviewFro
     case "setDisplayMode":
       return isPreviewDisplayMode(record.mode);
     case "setBackground":
-      return record.background === "transparent" || record.background === "paper" || record.background === "dark";
+      return record.background === "theme" || record.background === "transparent" || record.background === "paper" || record.background === "dark";
+    case "setAppearance":
+      return isThemePreference(record.appearance);
+    case "setViewerBackground":
+      return record.background === "auto" || record.background === "transparent" || record.background === "paper" || record.background === "dark";
     default:
       return false;
   }
@@ -151,14 +182,7 @@ export function isPreviewDisplayMode(value: unknown): value is PreviewDisplayMod
 }
 
 export function isPreviewDiagramTheme(value: unknown): value is PreviewDiagramTheme {
-  return (
-    value === "source" ||
-    value === "default" ||
-    value === "dark" ||
-    value === "forest" ||
-    value === "neutral" ||
-    value === "base"
-  );
+  return isDiagramTheme(value);
 }
 
 function isPreviewSourceKey(value: unknown): value is PreviewSourceKey {
@@ -172,7 +196,8 @@ function isPreviewSourceKey(value: unknown): value is PreviewSourceKey {
     typeof record.sourceHash === "string" &&
     isPreviewDiagramTheme(record.diagramTheme) &&
     isPreviewDisplayMode(record.displayMode) &&
-    (record.background === "transparent" ||
+    (record.themeSelection === undefined || (typeof record.themeSelection === "string" && record.themeSelection.length < 256)) &&
+    (record.background === "theme" || record.background === "transparent" ||
       record.background === "paper" ||
       record.background === "dark")
   );

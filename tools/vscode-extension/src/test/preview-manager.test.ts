@@ -4,6 +4,8 @@ import type * as vscode from "vscode";
 import { describe, it } from "node:test";
 
 import type { PreviewSnapshotMessagePayload } from "../preview-messages.js";
+import { legacyThemeDiscovery, type ImportedTheme, type ThemeDiscovery } from "../theme-selection.js";
+import { pairedThemeDiscovery } from "./theme-fixtures.js";
 
 type CommandHandler = (target?: unknown) => Promise<void> | void;
 
@@ -49,7 +51,7 @@ interface DeferredRender {
 class FakePreviewHost {
   readonly commands = new Map<string, CommandHandler>();
   readonly panels: FakePanel[] = [];
-  readonly renderCalls: Array<{ source: string; format?: string; outputPath?: string; background?: string }> = [];
+  readonly renderCalls: Array<{ source: string; format?: string; outputPath?: string; background?: string; theme?: string; themePreset?: string; themeAppearance?: string; themeFileContent?: string }> = [];
   readonly renderSignals: AbortSignal[] = [];
   readonly clipboardWrites: string[] = [];
   readonly writtenFiles: Array<{ path: string; data: string }> = [];
@@ -90,6 +92,19 @@ class FakePreviewHost {
   );
   private readonly disposables: FakeDisposable[] = [];
   private readonly activeTextEditorListeners: Array<() => void> = [];
+  private readonly colorThemeListeners: Array<(theme: { kind: number }) => void> = [];
+  activeColorThemeKind = 1;
+  themeDiscovery: ThemeDiscovery = legacyThemeDiscovery();
+  saveDialogDelay: Promise<void> | undefined;
+  importDelay: Promise<void> | undefined;
+  importError: Error | undefined;
+  imported: ImportedTheme = {
+    content: '{"schema_version":1,"kind":"design","design":{"tokens":{"private":"raw-content"}}}',
+    label: "reading.theme.json",
+    supportedAppearances: ["light", "dark"],
+    defaultAppearance: "light",
+  };
+  readonly themeFiles: string[] = [];
   private readonly textDocumentChangeListeners: Array<(event: { document: vscode.TextDocument }) => void> = [];
   private readonly textDocumentCloseListeners: Array<(document: vscode.TextDocument) => void> = [];
   private readonly documents = new Map<string, vscode.TextDocument>();
@@ -130,6 +145,13 @@ class FakePreviewHost {
         },
       },
       window: {
+        get activeColorTheme() {
+          return { kind: host.activeColorThemeKind };
+        },
+        onDidChangeActiveColorTheme: (listener: (theme: { kind: number }) => void) => {
+          host.colorThemeListeners.push(listener);
+          return host.disposable();
+        },
         get activeTextEditor() {
           return host.activeEditor;
         },
@@ -196,7 +218,8 @@ class FakePreviewHost {
           host.errors.push(message);
           return Promise.resolve(undefined);
         },
-        showSaveDialog: (options?: { defaultUri?: vscode.Uri; filters?: Record<string, string[]> }) => {
+        showSaveDialog: async (options?: { defaultUri?: vscode.Uri; filters?: Record<string, string[]> }) => {
+          await host.saveDialogDelay;
           this.saveDialogCounter += 1;
           const extension = saveDialogExtension(options);
           if (this.saveDialogCounter === 1) {
@@ -214,8 +237,12 @@ class FakePreviewHost {
             ),
           );
         },
+        showOpenDialog: async () => [uri("file:///private/reading.theme.json", "/private/reading.theme.json")],
       },
       workspace: {
+        getWorkspaceFolder: (resource: { toString(): string }) => ({
+          uri: uri(resource.toString().split("/").slice(0, 4).join("/")),
+        }),
         getConfiguration: () => ({
           get: (key: string, fallback: unknown) => {
             switch (key) {
@@ -317,6 +344,13 @@ class FakePreviewHost {
   fireDocumentChange(document: vscode.TextDocument): void {
     for (const listener of this.textDocumentChangeListeners) {
       listener({ document });
+    }
+  }
+
+  changeColorTheme(kind: number): void {
+    this.activeColorThemeKind = kind;
+    for (const listener of this.colorThemeListeners) {
+      listener({ kind });
     }
   }
 
@@ -424,6 +458,238 @@ class FakePreviewHost {
 }
 
 describe("preview manager", () => {
+  it("keeps a user-imported recipe when slower configured-file initialization finishes later", async () => {
+    const host = new FakePreviewHost();
+    host.themeDiscovery = pairedThemeDiscovery();
+    host.vscode.workspace.getConfiguration = () => ({
+      get: (key: string, fallback: unknown) => key === "preview.diagramTheme" ? "file"
+        : key === "preview.themeFile" ? "themes/reading.theme.json" : fallback,
+    });
+    host.imported = { ...host.imported, content: "configured-old-content" };
+    let releaseConfigured: () => void = () => {};
+    host.importDelay = new Promise<void>((resolve) => { releaseConfigured = resolve; });
+    const { registerPreview } = loadPreviewModule(host);
+    registerPreview({ extensionUri: uri("file:///extension"), subscriptions: host.subscriptions } as unknown as vscode.ExtensionContext);
+    const opening = host.commands.get("merman.openPreview")?.(host.targetDocument.uri);
+    await flushPreviewWork();
+    assert.equal(host.themeFiles.length, 1);
+    host.importDelay = undefined;
+    host.imported = { ...host.imported, content: "user-picked-new-content" };
+    await host.panels[0]?.receive({ type: "importTheme" });
+    await flushPreviewWork();
+    releaseConfigured();
+    await opening;
+    await host.panels[0]?.receive({ type: "ready" });
+    await flushPreviewWork();
+    assert.equal(host.themeFiles.length, 2);
+    assert.equal(host.renderCalls.at(-1)?.themeFileContent, "user-picked-new-content");
+    for (const subscription of host.subscriptions) subscription.dispose();
+  });
+
+  it("resolves configured recipe paths from an explicit open target in another workspace", async () => {
+    const host = new FakePreviewHost();
+    host.themeDiscovery = pairedThemeDiscovery();
+    const active = textDocument("file:///workspace-one/active.mmd", "/workspace-one/active.mmd", "flowchart TD\nA-->B");
+    const target = textDocument("file:///workspace-two/target.mmd", "/workspace-two/target.mmd", "sequenceDiagram\nA->>B: hi");
+    host.setActiveDocument(target);
+    host.setActiveDocument(active);
+    host.vscode.workspace.getConfiguration = () => ({
+      get: (key: string, fallback: unknown) => key === "preview.diagramTheme" ? "file"
+        : key === "preview.themeFile" ? "themes/reading.theme.json" : fallback,
+    });
+    const { registerPreview } = loadPreviewModule(host);
+    registerPreview({ extensionUri: uri("file:///extension"), subscriptions: host.subscriptions } as unknown as vscode.ExtensionContext);
+    await host.commands.get("merman.openPreview")?.(target.uri);
+    await host.panels[0]?.receive({ type: "ready" });
+    await flushPreviewWork();
+    assert.equal(lastRenderedSnapshot(host.panels[0]).documentUri, target.uri.toString());
+    assert.deepEqual(host.themeFiles, ["file:///workspace-two/themes/reading.theme.json"]);
+    for (const subscription of host.subscriptions) subscription.dispose();
+  });
+
+  it("updates Follow fallback guidance without repainting a single-appearance theme", async () => {
+    const host = new FakePreviewHost();
+    host.themeDiscovery = pairedThemeDiscovery();
+    const { registerPreview } = loadPreviewModule(host);
+    registerPreview({ extensionUri: uri("file:///extension"), subscriptions: host.subscriptions } as unknown as vscode.ExtensionContext);
+    await host.commands.get("merman.openPreview")?.(host.targetDocument.uri);
+    const panel = host.panels[0]!;
+    await panel.receive({ type: "ready" });
+    await panel.receive({ type: "setDiagramTheme", theme: "preset:ghibli" });
+    await flushPreviewWork();
+    const count = host.renderCalls.length;
+    host.changeColorTheme(2);
+    await flushPreviewWork();
+    const settings = panel.postedMessages.filter((message) => (message as { type: string }).type === "settingsUpdated").at(-1) as { snapshot: PreviewSnapshotMessagePayload };
+    assert.match(settings.snapshot.themeNotice!, /does not provide dark/);
+    assert.equal(host.renderCalls.length, count);
+    for (const subscription of host.subscriptions) subscription.dispose();
+  });
+
+  it("does not surface a rejected import after a newer selection superseded it", async () => {
+    const host = new FakePreviewHost();
+    host.themeDiscovery = pairedThemeDiscovery();
+    const { registerPreview } = loadPreviewModule(host);
+    registerPreview({ extensionUri: uri("file:///extension"), subscriptions: host.subscriptions } as unknown as vscode.ExtensionContext);
+    await host.commands.get("merman.openPreview")?.(host.targetDocument.uri);
+    const panel = host.panels[0]!;
+    await panel.receive({ type: "ready" });
+    let releaseImport: () => void = () => {};
+    host.importDelay = new Promise<void>((resolve) => { releaseImport = resolve; });
+    host.importError = new Error("obsolete import rejection");
+    await panel.receive({ type: "importTheme" });
+    await flushPreviewWork();
+    await panel.receive({ type: "setDiagramTheme", theme: "preset:editor" });
+    releaseImport();
+    await flushPreviewWork();
+    assert.equal(lastRenderedSnapshot(panel).diagramTheme, "preset:editor");
+    assert.equal(host.errors.length, 0);
+    for (const subscription of host.subscriptions) subscription.dispose();
+  });
+
+  it("admits imports atomically, rejects delayed adoption, and never sends recipe content or paths to the webview", async () => {
+    const host = new FakePreviewHost();
+    host.themeDiscovery = pairedThemeDiscovery();
+    const { registerPreview } = loadPreviewModule(host);
+    registerPreview({ extensionUri: uri("file:///extension"), subscriptions: host.subscriptions } as unknown as vscode.ExtensionContext);
+    await host.commands.get("merman.openPreview")?.(host.targetDocument.uri);
+    const panel = host.panels[0]!;
+    await panel.receive({ type: "ready" });
+    await flushPreviewWork();
+    host.importError = new Error("invalid inactive dark appearance");
+    await panel.receive({ type: "importTheme" });
+    await flushPreviewWork();
+    assert.equal(lastRenderedSnapshot(panel).diagramTheme, "source");
+    assert.match(host.errors.at(-1)!, /invalid inactive/);
+
+    host.importError = undefined;
+    let releaseImport: () => void = () => {};
+    host.importDelay = new Promise<void>((resolve) => { releaseImport = resolve; });
+    await panel.receive({ type: "importTheme" });
+    await flushPreviewWork();
+    await panel.receive({ type: "setDiagramTheme", theme: "preset:editor" });
+    releaseImport();
+    await flushPreviewWork();
+    assert.equal(lastRenderedSnapshot(panel).diagramTheme, "preset:editor");
+
+    host.importDelay = undefined;
+    await panel.receive({ type: "importTheme" });
+    await flushPreviewWork();
+    assert.equal(lastRenderedSnapshot(panel).diagramTheme, "file");
+    assert.equal(host.renderCalls.at(-1)?.themeFileContent, host.imported.content);
+    const wire = JSON.stringify(panel.postedMessages);
+    assert.equal(wire.includes("/private/reading.theme.json"), false);
+    assert.equal(wire.includes("raw-content"), false);
+    assert.equal(wire.includes("reading.theme.json"), true);
+    for (const subscription of host.subscriptions) subscription.dispose();
+  });
+
+  it("follows editor appearances across hidden locked panels without retargeting their sources", async () => {
+    const host = new FakePreviewHost();
+    host.themeDiscovery = pairedThemeDiscovery();
+    const { registerPreview } = loadPreviewModule(host);
+    registerPreview({ extensionUri: uri("file:///extension"), subscriptions: host.subscriptions } as unknown as vscode.ExtensionContext);
+    await host.commands.get("merman.openPreview")?.(host.targetDocument.uri);
+    const lockedPanel = host.panels[0]!;
+    await lockedPanel.receive({ type: "ready" });
+    await lockedPanel.receive({ type: "setDiagramTheme", theme: "preset:editor" });
+    await flushPreviewWork();
+    await host.commands.get("merman.togglePreviewLock")?.();
+    lockedPanel.setActive(false);
+    await host.commands.get("merman.openPreview")?.(host.secondDocument.uri);
+    await host.panels[1]?.receive({ type: "ready" });
+    await flushPreviewWork();
+    host.renderCalls.splice(0);
+
+    host.changeColorTheme(2);
+    await flushPreviewWork();
+    assert.deepEqual(host.renderCalls.map((call) => [call.source, call.themePreset, call.themeAppearance]), [
+      ["flowchart TD\nA --> B\n", "editor", "dark"],
+    ]);
+    const darkKey = lastRenderedSourceKey(lockedPanel);
+    host.changeColorTheme(3);
+    await flushPreviewWork();
+    assert.equal(host.renderCalls.length, 1);
+    assert.deepEqual(lastRenderedSourceKey(lockedPanel), darkKey);
+    host.changeColorTheme(4);
+    await flushPreviewWork();
+    assert.equal(host.renderCalls.at(-1)?.themeAppearance, "light");
+    assert.notDeepEqual(lastRenderedSourceKey(lockedPanel), darkKey);
+    for (const subscription of host.subscriptions) subscription.dispose();
+  });
+
+  it("keeps explicit and single appearances stable while Follow cancels stale output", async () => {
+    const host = new FakePreviewHost();
+    host.themeDiscovery = pairedThemeDiscovery();
+    const { registerPreview } = loadPreviewModule(host);
+    registerPreview({ extensionUri: uri("file:///extension"), subscriptions: host.subscriptions } as unknown as vscode.ExtensionContext);
+    await host.commands.get("merman.openPreview")?.(host.targetDocument.uri);
+    const panel = host.panels[0]!;
+    await panel.receive({ type: "ready" });
+    await panel.receive({ type: "setDiagramTheme", theme: "preset:editor" });
+    await panel.receive({ type: "setAppearance", appearance: "light" });
+    await flushPreviewWork();
+    const count = host.renderCalls.length;
+    host.changeColorTheme(2);
+    await flushPreviewWork();
+    assert.equal(host.renderCalls.length, count);
+
+    await panel.receive({ type: "setAppearance", appearance: "follow-editor" });
+    await flushPreviewWork();
+    const releaseRender = host.deferNextRender();
+    const darkKey = lastRenderedSourceKey(panel);
+    host.changeColorTheme(1);
+    await flushPreviewWork();
+    const signal = host.renderSignals.at(-1)!;
+    assert.equal(signal.aborted, false);
+    await panel.receive({ type: "exportRendered", format: "svg", sourceKey: darkKey });
+    assert.equal(host.writtenFiles.length, 0);
+    host.changeColorTheme(2);
+    assert.equal(signal.aborted, true);
+    releaseRender();
+    await flushPreviewWork();
+    assert.equal(host.renderCalls.at(-1)?.themeAppearance, "dark");
+    const currentKey = lastRenderedSourceKey(panel);
+    assert.equal(currentKey.themeSelection, darkKey.themeSelection);
+
+    await panel.receive({ type: "setDiagramTheme", theme: "preset:ghibli" });
+    await flushPreviewWork();
+    const singleCount = host.renderCalls.length;
+    host.changeColorTheme(1);
+    await flushPreviewWork();
+    assert.equal(host.renderCalls.length, singleCount);
+    for (const subscription of host.subscriptions) subscription.dispose();
+  });
+
+  it("freezes preview export before a delayed save dialog and keeps viewer backing out of image settings", async () => {
+    const host = new FakePreviewHost();
+    host.themeDiscovery = pairedThemeDiscovery();
+    const { registerPreview } = loadPreviewModule(host);
+    registerPreview({ extensionUri: uri("file:///extension"), subscriptions: host.subscriptions } as unknown as vscode.ExtensionContext);
+    await host.commands.get("merman.openPreview")?.(host.targetDocument.uri);
+    const panel = host.panels[0]!;
+    await panel.receive({ type: "ready" });
+    await panel.receive({ type: "setDiagramTheme", theme: "preset:editor" });
+    await panel.receive({ type: "setBackground", background: "theme" });
+    await flushPreviewWork();
+    const count = host.renderCalls.length;
+    await panel.receive({ type: "setViewerBackground", background: "dark" });
+    await flushPreviewWork();
+    assert.equal(host.renderCalls.length, count);
+    let releaseDialog: () => void = () => {};
+    host.saveDialogDelay = new Promise<void>((resolve) => { releaseDialog = resolve; });
+    await panel.receive({ type: "exportRendered", format: "svg", sourceKey: lastRenderedSourceKey(panel) });
+    await flushPreviewWork();
+    host.changeColorTheme(2);
+    await flushPreviewWork();
+    releaseDialog();
+    await flushPreviewWork();
+    assert.equal(host.renderCalls.at(-1)?.themeAppearance, "light");
+    assert.equal(host.renderCalls.at(-1)?.background, undefined);
+    assert.equal(host.writtenFiles.length, 1);
+    for (const subscription of host.subscriptions) subscription.dispose();
+  });
+
   it("shares extraction across CodeLens and independently configured panels with language intelligence disabled", async () => {
     const host = new FakePreviewHost();
     const { registerPreview, registerSourceCodeLens } = loadPreviewModule(host);
@@ -1150,6 +1416,19 @@ function loadPreviewModule(
     if (request === "vscode") {
       return host.vscode;
     }
+    if (request === "./theme-runtime.js") {
+      return {
+        discoverThemes: async () => host.themeDiscovery,
+        inspectThemeFile: async (_context: unknown, resource: { toString(): string }) => {
+          host.themeFiles.push(resource.toString());
+          const candidate = host.imported;
+          const failure = host.importError;
+          await host.importDelay;
+          if (failure) throw failure;
+          return candidate;
+        },
+      };
+    }
     if (request === "./renderer.js") {
       return {
         renderMermanSource: async (renderRequest: {
@@ -1157,6 +1436,10 @@ function loadPreviewModule(
           format?: string;
           outputPath?: string;
           background?: string;
+          theme?: string;
+          themePreset?: string;
+          themeAppearance?: string;
+          themeFileContent?: string;
           signal?: AbortSignal;
         }) => {
           host.renderCalls.push({
@@ -1164,6 +1447,10 @@ function loadPreviewModule(
             format: renderRequest.format,
             outputPath: renderRequest.outputPath,
             background: renderRequest.background,
+            ...(renderRequest.theme ? { theme: renderRequest.theme } : {}),
+            ...(renderRequest.themePreset ? { themePreset: renderRequest.themePreset } : {}),
+            ...(renderRequest.themeAppearance ? { themeAppearance: renderRequest.themeAppearance } : {}),
+            ...(renderRequest.themeFileContent ? { themeFileContent: renderRequest.themeFileContent } : {}),
           });
           if (renderRequest.signal) {
             host.renderSignals.push(renderRequest.signal);
@@ -1193,6 +1480,8 @@ function loadPreviewModule(
     delete require.cache[require.resolve("../export-workflow.js")];
     delete require.cache[require.resolve("../renderer.js")];
     delete require.cache[require.resolve("../codelens.js")];
+    delete require.cache[require.resolve("../render-settings.js")];
+    delete require.cache[require.resolve("../config.js")];
     return {
       ...(require("../preview.js") as typeof import("../preview.js")),
       ...(require("../codelens.js") as typeof import("../codelens.js")),
@@ -1259,7 +1548,7 @@ async function waitUntil(predicate: () => boolean): Promise<void> {
   assert.fail("Condition was not met");
 }
 
-function lastRenderedSourceKey(panel: FakePanel | undefined): unknown {
+function lastRenderedSourceKey(panel: FakePanel | undefined): PreviewSnapshotMessagePayload["sourceKey"] {
   return lastRenderedSnapshot(panel).sourceKey;
 }
 

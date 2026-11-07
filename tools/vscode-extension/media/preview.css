@@ -14,6 +14,22 @@ select {
   font: inherit;
 }
 
+.theme-controls label {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.theme-summary {
+  max-width: 360px;
+  font-size: 11px;
+  color: var(--vscode-descriptionForeground);
+}
+
+.theme-controls [hidden] {
+  display: none;
+}
+
 button,
 select,
 summary {

@@ -100,6 +100,16 @@ consumers. Read the schema-1 theme catalog through `theme_catalog_json()`; the o
 `presentation_catalog_json()` method is removed. `MermanError.Binding.details_json` preserves
 the shared `theme_authoring` envelope with diagnostic code, path, and details.
 
+The catalog groups one design's supported/default appearances; family guidance, swatches,
+qualification, and `concrete_preset_id` live in each `appearances` entry. Preset export takes a
+plain ID such as `editor` and returns the complete schema-1 `ThemeRecipeV1`. Shared values and
+appearance exceptions live inside `design`, not separate versioned recipes.
+`materialize-theme-json` accepts a schema-1 request with `action: "inspect"` and `recipe` to
+validate all modes, or `action: "materialize"` with an optional concrete `appearance`.
+Render options select `{"theme":{"preset":"editor","appearance":"dark"}}`, or a whole recipe
+object with the same selector. Hosts resolve Follow-app/editor before calling the library.
+The existing API 7 records, methods, and generated foreign bindings carry these JSON payloads.
+
 ## Text Measurement Ownership
 
 Generated bindings use Merman's deterministic, font-agnostic measurer unless a host constructs `MermanEngine` with a `MermanEngineServices` value containing `MermanTextMeasurer`. The same immutable service bundle may carry a sealed `MermanIconRegistry` built transactionally from bounded `MermanIconPack` values. Text-measurement protocol 1 exposes 23 exact operations (`0..22`) and requires a matching tagged result kind for every handled operation. Return `None` for work the host cannot answer synchronously; invalid results and errors returned through UniFFI's generated callback trampoline use the operation's deterministic fallback. Foreign callback code must not unwind, throw, or longjmp across the generated FFI boundary; Merman does not claim to catch arbitrary foreign unwinds.

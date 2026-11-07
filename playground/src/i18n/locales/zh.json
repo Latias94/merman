@@ -1,4 +1,37 @@
 {
+  "appearanceMode": {
+    "title": "外观",
+    "follow": "跟随应用",
+    "light": "浅色",
+    "dark": "深色",
+    "documentDefault": "已保存的主题默认外观",
+    "paired": "浅色 + 深色",
+    "only": "仅{{appearance}}",
+    "unclassified": "固定设计 · 未声明明暗变体",
+    "following": "跟随应用 · {{appearance}}",
+    "selected": "所选外观 · {{appearance}}",
+    "frozen": "捕获的外观 · {{appearance}}",
+    "exportSnapshotChanged": "工作区已更改或正在更新。此导出仍保留捕获时的图表与外观。",
+    "adoption": "这些示例明确渲染{{appearance}}。主题文件仍保留全部外观；使用另一套外观时只需更改选择参数。",
+    "composition": "高级组合：{{theme}} + Mermaid {{base}}",
+    "shareFollow": "此工作区跟随接收方应用的明暗外观。选择浅色或深色后分享，可以固定外观。"
+  },
+  "themeDraft": {
+    "customize": "自定义",
+    "title": "可编辑的主题副本",
+    "hint": "编辑完整主题 JSON，共享值和各外观的覆盖值都保留在此文档。校验全部外观后，点击应用更新图表。源码和布局配置独立维护。",
+    "editor": "可编辑的主题 JSON",
+    "navigate": "导航完整主题文档",
+    "shared": "共享设计",
+    "light": "浅色覆盖",
+    "dark": "深色覆盖",
+    "validate": "校验主题",
+    "validating": "校验中…",
+    "valid": "运行时已接受完整文档，包括每个已声明的外观。",
+    "chooseAppearance": "原先选择的外观已不受支持，请先选择一个外观再应用。",
+    "apply": "应用修改",
+    "cancel": "放弃草稿"
+  },
   "app": {
     "title": "Merman 演练场",
     "description": "基于 Rust + WebAssembly 的在线 Mermaid 图表编辑器",
@@ -358,7 +391,7 @@
     "syntaxIssues": "语法有误"
   },
   "themes": {
-    "auto": "自动（图表默认）",
+    "auto": "源码 / 默认",
     "default": "默认",
     "dark": "深色",
     "forest": "森林",
@@ -373,6 +406,9 @@
     "system": "跟随系统"
   },
   "themePresets": {
+    "editor": "Editor",
+    "gruvbox": "Gruvbox",
+    "ayu": "Ayu",
     "none": "不使用",
     "editor-light": "编辑器浅色",
     "editor-dark": "编辑器深色",
@@ -458,6 +494,7 @@
       "pie": "饼图"
     },
     "themes": {
+      "reading": "共享字体与语义角色的明暗阅读设计，分别调整画布与表面，并保持分类颜色含义一致。",
       "atlas": "克制的蓝灰配色，适合技术笔记与系统图。",
       "nightfall": "安静的深灰蓝底色，搭配柔和配色与清晰标签。",
       "letterpress": "暖纸底色、衬线标题与锈红点缀，适合编辑式图表。",
@@ -579,7 +616,7 @@
     "catalogHint": "色块仅供参考，请查看当前图表的实际效果。预设和配方会为 Merman 渲染添加样式。",
     "catalogPending": "正在等待运行时主题目录…",
     "sources": {
-      "automatic": "自动选择",
+      "automatic": "源码 / 默认",
       "mermaid": "Mermaid.js 官方",
       "builtin": "Merman 预设",
       "exploration": "Merman 示例 · JSON",
@@ -587,7 +624,7 @@
     },
     "groups": {
       "automatic": {
-        "title": "自动",
+        "title": "源码 / 默认",
         "description": "使用图表默认主题，源码和配置中指定的主题仍然优先。"
       },
       "mermaid": {
@@ -624,7 +661,7 @@
     "noExtension": "无 · 使用 Mermaid 和源码样式",
     "combinationHint": "在此更改基础主题会保留当前 Merman 扩展。在主题目录中选择 Mermaid 主题会移除扩展。",
     "noRecipe": "Mermaid 主题没有 Merman 配方。选择预设或配方后可查看其 JSON。",
-    "exchangeHint": "主题 JSON 仅包含 Merman 样式。完整图表及其设置请通过工作区链接分享。",
+    "exchangeHint": "主题 JSON 保留完整设计和全部外观。工作区链接还会保留外观偏好、图表及其设置。",
     "evidenceHint": "这里展示当前 SVG 的运行时观测结果。输出兼容性在导出时检查。",
     "applyRecommendedConfig": "使用推荐配置",
     "recommendedConfigHint": "将这些键合并到当前 JSON 配置，保留无关设置。更改立即生效且可撤销；源码设置仍可能优先。",
@@ -746,7 +783,7 @@
     "description": "在多种图表中浏览完整的视觉设计，复制可编辑主题或取得项目使用代码。",
     "close": "关闭主题设计库",
     "search": "搜索主题设计",
-    "appearance": "画布明暗",
+    "appearance": "按外观筛选设计",
     "filters": {
       "all": "全部设计",
       "light": "浅色",
@@ -756,6 +793,7 @@
     "collectionTitle": "寻找适合你的视觉语言",
     "collectionHint": "视觉特征鲜明的设计优先展示。每套都使用相同的五种图表示例，方便比较效果。",
     "mechanisms": {
+      "reading": "共享语义角色 · 配套明暗表面 · 稳定的分类含义",
       "riso": "双色油墨 · 错位色边 · 紧缩标题",
       "phosphor": "设备面板 · 扫描线 · 局部信号辉光",
       "field-notes": "森林墨色卡片 · 横线纸 · 轻盈便笺",
@@ -774,7 +812,7 @@
     },
     "back": "全部设计",
     "apply": "应用到我的图",
-    "applyHint": "仅应用这套主题。保留当前源码、配置、字体覆盖和图表外观设置。",
+    "applyHint": "应用这套主题和外观，独立的 Mermaid 回退选项恢复为源码 / 默认。保留当前源码、配置、字体覆盖和图表 look 设置。",
     "downloadJson": "下载主题 JSON",
     "acrossDiagrams": "同一设计，多种图表",
     "fixedExamples": "这里展示固定示例，不是你的当前图表。可以在新标签页打开任一样例进行编辑，不会替换当前作品。",

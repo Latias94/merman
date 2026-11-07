@@ -415,6 +415,24 @@ theme authoring payloads.
 #let preset = export-theme-preset("editor-dark")
 ```
 
+Preset export returns one complete editable `ThemeRecipeV1`. For a paired design, its shared
+values and `appearances`/`default_appearance` live inside `design`. Save that complete recipe;
+a materialized `spec` retains only one concrete appearance. The same wrapper accepts explicit
+schema-1 authoring requests:
+
+```typst
+#let recipe = export-theme-preset("editor")
+#let inspection = materialize-theme((schema_version: 1, action: "inspect", recipe: recipe))
+#let dark-request = (
+  schema_version: 1, action: "materialize", recipe: recipe, appearance: "dark",
+)
+#mermaid-theme-definition("flowchart LR\nA --> B", dark-request, width: 80%)
+```
+
+An omitted selector uses the declared default. An explicit unavailable appearance fails.
+Resolve host appearance preferences before choosing `light` or `dark`; the plugin does not
+detect the document viewer's color mode.
+
 Each function returns the canonical result dictionary on success. On failure it returns the same
 structured operation envelope used by rendering, including `ok`, `code_name`, `kind`, `message`,
 and an optional `capability_id`. The plugin always applies its constrained resource policy; caller
@@ -426,7 +444,10 @@ Invalid Mermaid source remains a schema-1 analysis payload with `valid: false`; 
 
 Returns the shared theme catalog for the installed plugin, including available presets, semantic
 selectors, supported outputs, and effective constrained theme resource limits. The catalog remains
-Alpha; an available preset with empty `qualified_cells` has no qualified artifact scope.
+Alpha. Each preset groups `supported_appearances`, `default_appearance`, and `appearances`.
+Family guidance, swatches, `qualified_cells`, and the exact `concrete_preset_id` live in each
+appearance entry. Availability admits the entire design, including inactive modes; an available
+appearance with empty qualification cells has no qualified artifact scope.
 
 ```typst
 #let catalog = theme-catalog()

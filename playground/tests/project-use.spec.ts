@@ -43,7 +43,7 @@ test("project use offers Rust, CLI and local Web consumers with complete config 
   const errors = monitorBrowserErrors(page);
   await page.context().grantPermissions(["clipboard-read", "clipboard-write"]);
   const dialog = await open(page);
-  await expect(dialog.getByTestId("project-use-code")).toContainText('ThemePreset::from_id("one-dark")');
+  await expect(dialog.getByTestId("project-use-code")).toContainText('compile_preset_selection("one-dark", Some(ThemeAppearance::Dark))');
   const rustFiles = await downloadFiles(page, dialog);
   expect(rustFiles["Cargo.toml"]).toContain('../merman/crates/merman');
   expect(rustFiles["src/main.rs"]).toContain("RenderRequest::svg");
@@ -65,7 +65,7 @@ test("project use offers Rust, CLI and local Web consumers with complete config 
   await dialog.getByRole("button", { name: "Copy options.json", exact: true }).click();
   const copied = await page.evaluate(() => navigator.clipboard.readText());
   const options = JSON.parse(copied);
-  expect(options.theme).toEqual({ preset: "one-dark" });
+  expect(options.theme).toEqual({ preset: "one-dark", appearance: "dark" });
   expect(options.site_config.theme).toBe("forest");
   expect(options.site_config.flowchart).toBeUndefined();
   const webFiles = await downloadFiles(page, dialog);
@@ -89,7 +89,7 @@ test("standalone exploration recipes retain their raw text and theme-only is a s
   const current = await downloadFiles(page, dialog);
   expect(current["theme.json"]).toBe(recipe);
   expect(current["options.json"]).toContain(`"theme":${recipe}`);
-  expect(current["src/main.rs"]).toContain("compile_recipe");
+  expect(current["src/main.rs"]).toContain("compile_document");
   expect(current["src/main.rs"]).not.toContain('from_id("atlas")');
   await dialog.getByRole("radio", { name: /^Theme only/ }).check();
   await dialog.getByRole("tab", { name: "Web", exact: true }).click();

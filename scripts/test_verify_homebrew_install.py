@@ -296,7 +296,7 @@ class HomebrewInstallVerifierTests(unittest.TestCase):
                 elif mutation == "stable":
                     catalog["presets"][0]["maturity"] = "stable"
                 elif mutation == "scope":
-                    catalog["presets"][0]["qualified_cells"] = [{}]
+                    catalog["presets"][0]["appearances"][0]["qualified_cells"] = [{}]
                 else:
                     profile["expected"]["capabilities"].remove("svg")
                     fixture.capabilities["capabilities"] = [

@@ -13,6 +13,7 @@ import {
 
 export const executeArtifactAction = createArtifactActionOwner({
   getWorkspace: () => selectWorkspaceSnapshot(useAppStore.getState()),
+  getHostAppearance: () => useAppStore.getState().resolvedTheme,
   getRenderState: renderCoordinatorStore.getState,
   getRuntimeState: mermanRuntimeStore.getState,
   io: {
@@ -24,6 +25,7 @@ export const executeArtifactAction = createArtifactActionOwner({
 
 export const exportTargetOwner = createExportTargetOwner({
   getWorkspace: () => selectWorkspaceSnapshot(useAppStore.getState()),
+  getHostAppearance: () => useAppStore.getState().resolvedTheme,
   getRenderState: renderCoordinatorStore.getState,
   getRuntimeState: mermanRuntimeStore.getState,
 });

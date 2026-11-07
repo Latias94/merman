@@ -68,21 +68,29 @@ IDs through the initialized engine's theme catalog:
 ```js
 const catalog = JSON.parse(engine.metadataJson("theme-catalog"));
 const themedSvg = await engine.renderSvg("flowchart LR\nA --> B", {
-  optionsJson: JSON.stringify({ version: 3, theme: { preset: "spotless" } }),
+  optionsJson: JSON.stringify({ version: 3, theme: { preset: "editor", appearance: "dark" } }),
 });
 ```
 
-Catalog `available` means that the recipe can compile under the current resource policy. All
-built-in presets remain `alpha` with empty `qualified_cells`; availability and unknown
+The catalog groups one design's `supported_appearances`, `default_appearance`, and appearance-specific
+discovery details. `available` means that every declared appearance can compile under the current
+resource policy. All built-in presets remain `alpha` with empty appearance-specific `qualified_cells`; availability and unknown
 profile/admission IDs never establish portable output. Flowchart glow and shadow effects require
 the Classic look and supported shapes. SVG fonts resolve on the viewing host; exported recipes
 do not embed them.
 
-Use `executeOperation()` or `executeOperationSync()` with operation IDs
-`materialize-theme-json`, `describe-theme-support-json`, or `export-theme-preset-json` for
-shared definition JSON, support queries and preset export. Materialization returns a complete
-spec that can be passed as `theme: { spec }`; no intermediate file is required. Replace old
-`presentation.theme` inputs and `presentation-catalog` metadata calls when upgrading. See the
+`engine.exportThemePreset("editor")` returns a complete editable V1 recipe with
+`design.appearances` and `design.default_appearance`. Pass that recipe with a concrete appearance
+through `theme: { recipe, appearance: "dark" }`; omitted appearance uses its declared default.
+`engine.materializeTheme({ schema_version: 1, action: "inspect", recipe })` validates all modes,
+while `action: "materialize"` with an optional `appearance` returns a concrete specification.
+Keep the authored recipe when saving or sharing a theme. Resolve Follow-app/editor in the host.
+
+Both transports share the same async authoring helpers, generic `executeOperation()` and synchronous
+`executeOperationSync()` routes. The original `materialize-theme-json`,
+`describe-theme-support-json`, and `export-theme-preset-json` operation IDs remain unchanged.
+See the [native package examples](https://github.com/Latias94/merman/blob/main/platforms/node/packages/node/README.md#compiled-themes)
+and the
 [theme guide](https://github.com/Latias94/merman/blob/main/docs/rendering/custom-diagram-themes.md)
 for authoring and portability, and the
 [current Node changelog](https://github.com/Latias94/merman/blob/main/platforms/node/CHANGELOG.md)

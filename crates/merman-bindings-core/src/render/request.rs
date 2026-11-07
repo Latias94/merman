@@ -1013,7 +1013,7 @@ mod tests {
             assert_eq!(diagnostic["subject"], "rule");
             assert_eq!(diagnostic["source_document"], kind);
             let path = if kind == "design" {
-                "/rules/0/style"
+                "/design/rules/0/style"
             } else {
                 "/styles/1"
             };

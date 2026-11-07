@@ -54,6 +54,9 @@ pub(crate) enum RawCommand {
     #[cfg(feature = "svg")]
     /// Parse and layout Mermaid source, then print layout JSON.
     Layout(LayoutArgs),
+    #[cfg(feature = "svg")]
+    /// Inspect portable theme recipe documents.
+    Theme(ThemeArgs),
     /// Print the compiled capabilities from the canonical capability descriptor.
     Capabilities(CapabilitiesArgs),
     #[cfg(feature = "shell-completions")]
@@ -66,6 +69,37 @@ pub(crate) struct CapabilitiesArgs {
     /// Emit the machine-readable capability document.
     #[arg(long)]
     pub(crate) json: bool,
+}
+
+#[cfg(feature = "svg")]
+#[derive(Debug, ClapArgs)]
+pub(crate) struct ThemeArgs {
+    #[command(subcommand)]
+    pub(crate) command: ThemeCommand,
+}
+
+#[cfg(feature = "svg")]
+#[derive(Debug, Subcommand)]
+pub(crate) enum ThemeCommand {
+    /// Validate the complete portable recipe and print schema-1 inspection JSON.
+    ///
+    /// Accepts a schema-1 design or concrete complete_spec recipe.
+    /// Render-selection wrappers belong to render --theme-file.
+    Inspect(ThemeInspectArgs),
+}
+
+#[cfg(feature = "svg")]
+#[derive(Debug, ClapArgs)]
+pub(crate) struct ThemeInspectArgs {
+    /// Theme recipe JSON file. Use `-` for stdin.
+    #[arg(value_name = "INPUT", value_hint = ValueHint::FilePath)]
+    pub(crate) input: PathBuf,
+
+    #[command(flatten)]
+    pub(crate) resources: ResourceCliArgs,
+
+    #[command(flatten)]
+    pub(crate) operation: OperationCliArgs,
 }
 
 #[cfg(feature = "rustdoc")]
@@ -673,16 +707,18 @@ pub(crate) struct RenderCliArgs {
     #[arg(
         long = "theme-preset",
         value_parser = theme_preset_value_parser(),
+        group = "merman_theme_selection",
         help_heading = "Merman renderer controls",
         hide_short_help = true
     )]
-    pub(crate) theme_preset: Option<merman::svg::ThemePreset>,
+    pub(crate) theme_preset: Option<String>,
 
     #[cfg(feature = "svg")]
-    /// Versioned theme recipe JSON, or a selection containing exactly one `preset` or `spec`.
+    /// Versioned theme recipe JSON, or an exact preset, recipe, or spec selection.
     #[arg(
         long = "theme-file",
         value_hint = ValueHint::FilePath,
+        group = "merman_theme_selection",
         conflicts_with_all = ["theme_preset", "theme_design_file"],
         help_heading = "Merman renderer controls",
         hide_short_help = true
@@ -691,6 +727,7 @@ pub(crate) struct RenderCliArgs {
 
     #[cfg(feature = "svg")]
     /// Shareable ThemeDesignV1 JSON materialized before rendering.
+    /// Use a portable recipe through --theme-file with --theme-appearance.
     #[arg(
         long = "theme-design-file",
         value_hint = ValueHint::FilePath,
@@ -699,6 +736,19 @@ pub(crate) struct RenderCliArgs {
         hide_short_help = true
     )]
     pub(crate) theme_design_file: Option<PathBuf>,
+
+    #[cfg(feature = "svg")]
+    /// Concrete Merman appearance for --theme-preset or --theme-file; omitted uses the
+    /// selected document's default. Must agree with any selector already in the file.
+    #[arg(
+        long = "theme-appearance",
+        value_parser = theme_appearance_value_parser(),
+        requires = "merman_theme_selection",
+        conflicts_with = "theme_design_file",
+        help_heading = "Merman renderer controls",
+        hide_short_help = true
+    )]
+    pub(crate) theme_appearance: Option<merman::svg::ThemeAppearance>,
 
     #[cfg(feature = "svg")]
     /// Renderer portability requirement; require-portable rejects nonportable target output.
@@ -931,6 +981,7 @@ impl LayoutRenderCliArgs {
             theme_preset: None,
             theme_file: None,
             theme_design_file: None,
+            theme_appearance: None,
             theme_portability: ThemePortabilityKind::default(),
             theme_report: None,
             math_renderer: self.math_renderer,
@@ -1820,10 +1871,10 @@ fn theme_value_parser() -> impl TypedValueParser<Value = String> {
 }
 
 #[cfg(feature = "svg")]
-fn theme_preset_value_parser() -> impl TypedValueParser<Value = merman::svg::ThemePreset> {
+fn theme_preset_value_parser() -> impl TypedValueParser<Value = String> {
     PossibleValuesParser::new(
-        merman::svg::theme_preset_descriptors()
-            .iter()
+        merman::svg::theme_preset_selection_descriptors()
+            .into_iter()
             .map(|descriptor| {
                 PossibleValue::new(descriptor.id()).help(format!(
                     "[{}] {}",
@@ -1832,10 +1883,17 @@ fn theme_preset_value_parser() -> impl TypedValueParser<Value = merman::svg::The
                 ))
             }),
     )
-    .map(|id| {
-        merman::svg::ThemePreset::from_id(&id)
-            .expect("possible values come from the theme preset descriptors")
-    })
+}
+
+#[cfg(feature = "svg")]
+fn theme_appearance_value_parser() -> impl TypedValueParser<Value = merman::svg::ThemeAppearance> {
+    PossibleValuesParser::new(merman::svg::ThemeAppearance::ALL.map(|value| value.as_str())).map(
+        |value| {
+            value
+                .parse()
+                .expect("possible values are concrete appearances")
+        },
+    )
 }
 
 fn parse_resource_limit_override(value: &str) -> Result<ResourceLimitOverride, String> {
@@ -2266,8 +2324,8 @@ mod tests {
                 )
             })
             .collect::<Vec<_>>();
-        let expected = merman::svg::theme_preset_descriptors()
-            .iter()
+        let expected = merman::svg::theme_preset_selection_descriptors()
+            .into_iter()
             .map(|descriptor| {
                 (
                     descriptor.id().to_owned(),

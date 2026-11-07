@@ -187,8 +187,20 @@ fn native_presets_qualify_only_the_declared_host_dependent_profile() {
             assert_eq!(observation.mermaid_residual_count(), 0);
         }
         let entry = receipt.catalog_entry().unwrap();
-        assert_eq!(entry.qualified_cells.len(), 6);
-        for cell in &entry.qualified_cells {
+        let appearance = entry
+            .appearances
+            .iter()
+            .find(|appearance| appearance.concrete_preset_id == preset.id())
+            .unwrap();
+        assert_eq!(appearance.qualified_cells.len(), 6);
+        assert!(
+            entry
+                .appearances
+                .iter()
+                .filter(|appearance| appearance.concrete_preset_id != preset.id())
+                .all(|appearance| appearance.qualified_cells.is_empty())
+        );
+        for cell in &appearance.qualified_cells {
             assert_eq!(cell.profile_id, profile);
             assert_eq!(cell.admission_status, "host_dependent");
             assert!(

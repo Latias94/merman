@@ -13,6 +13,8 @@ use std::sync::Mutex;
 #[derive(Serialize)]
 pub(crate) struct ThemeResult {
     #[serde(skip_serializing_if = "Option::is_none")]
+    selected_appearance: Option<merman::svg::ThemeAppearance>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     evidence: Option<ThemeEvidence>,
     #[serde(skip_serializing_if = "Option::is_none")]
     target: Option<TargetResult>,
@@ -23,6 +25,8 @@ pub(crate) struct ThemeResult {
 #[derive(Serialize)]
 struct ThemeEvidence {
     family: &'static str,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    materialized_theme: Option<&'static str>,
     status: &'static str,
     output_mutated: bool,
     diagnostics: Vec<ThemeDiagnostic>,
@@ -62,10 +66,16 @@ impl From<&TargetAdmissionReceipt> for TargetResult {
 }
 
 impl ThemeResult {
-    pub(crate) fn completed(evidence: &RenderEvidence, target: &TargetAdmissionReceipt) -> Self {
+    pub(crate) fn completed(
+        evidence: &RenderEvidence,
+        target: &TargetAdmissionReceipt,
+        selected_appearance: Option<merman::svg::ThemeAppearance>,
+    ) -> Self {
         Self {
+            selected_appearance,
             evidence: Some(ThemeEvidence {
                 family: evidence.family_id().as_str(),
+                materialized_theme: evidence.materialized_theme().map(|theme| theme.as_str()),
                 status: status_id(evidence.theme_evidence().status()),
                 output_mutated: evidence.theme_evidence().output_mutated(),
                 diagnostics: evidence
@@ -87,7 +97,10 @@ impl ThemeResult {
         }
     }
 
-    pub(crate) fn failed(error: &CliError) -> Self {
+    pub(crate) fn failed(
+        error: &CliError,
+        selected_appearance: Option<merman::svg::ThemeAppearance>,
+    ) -> Self {
         let target = match error {
             CliError::Render(merman::RenderError::TargetAdmission(error)) => {
                 Some(error.receipt().into())
@@ -95,6 +108,7 @@ impl ThemeResult {
             _ => None,
         };
         Self {
+            selected_appearance,
             evidence: None,
             target,
             error: Some(error.to_string()),
@@ -254,17 +268,32 @@ mod tests {
 
     #[test]
     fn failed_render_reports_omit_unavailable_evidence_and_target_receipts() {
-        let bytes = ThemeResult::failed(&CliError::NoDiagram)
+        let bytes = ThemeResult::failed(&CliError::NoDiagram, None)
             .encode_single(None)
             .unwrap();
         let report: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
         let result = &report["results"][0];
         assert!(result["error"].is_string());
-        for unavailable in ["evidence", "target", "output"] {
+        for unavailable in ["evidence", "target", "output", "selected_appearance"] {
             assert!(
                 result.get(unavailable).is_none(),
                 "{unavailable} must not be invented"
             );
         }
+    }
+
+    #[test]
+    fn failed_render_preserves_the_compiled_appearance_without_inventing_render_evidence() {
+        let bytes = ThemeResult::failed(
+            &CliError::NoDiagram,
+            Some(merman::svg::ThemeAppearance::Dark),
+        )
+        .encode_single(None)
+        .unwrap();
+        let report: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+        let result = &report["results"][0];
+        assert_eq!(result["selected_appearance"], "dark");
+        assert!(result.get("evidence").is_none());
+        assert!(result.get("target").is_none());
     }
 }

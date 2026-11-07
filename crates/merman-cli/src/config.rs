@@ -26,11 +26,13 @@ use merman::SvgEnvironment;
 #[cfg(feature = "svg")]
 use merman::svg::{
     DiagramThemeCompiler, IconRegistry, LayoutOptions, MAX_THEME_ENCODED_BYTES_HARD_CAP,
-    SvgRenderOptions, ThemeAdmissionPolicy, ThemePreset, ThemeResourcePolicy, TrustedThemeLane,
+    SvgRenderOptions, ThemeAdmissionPolicy, ThemeAppearance, ThemeResourcePolicy, TrustedThemeLane,
     TrustedThemeLanes,
 };
 #[cfg(feature = "svg")]
-use merman_bindings_core::{compile_theme_design_json_with, compile_theme_selection_json_with};
+use merman_bindings_core::{
+    compile_theme_design_json_with, compile_theme_selection_json_with_appearance,
+};
 
 #[cfg(any(feature = "svg", feature = "ascii"))]
 #[derive(Clone)]
@@ -44,6 +46,13 @@ pub(crate) struct ConfiguredRenderer {
 
 #[cfg(any(feature = "svg", feature = "ascii"))]
 impl ConfiguredRenderer {
+    #[cfg(feature = "svg")]
+    pub(crate) fn selected_theme_appearance(&self) -> Option<ThemeAppearance> {
+        self.theme
+            .as_ref()
+            .and_then(|theme| theme.selected_appearance())
+    }
+
     #[cfg(all(feature = "svg", any(feature = "icons", feature = "native-fonts")))]
     pub(crate) fn with_svg_environment(mut self, environment: SvgEnvironment) -> Self {
         self.svg.environment = environment;
@@ -311,18 +320,40 @@ pub(crate) fn rustdoc_renderer_for_resolved(
 #[cfg(feature = "svg")]
 #[derive(Debug, Clone, Copy)]
 enum ThemeInput<'a> {
-    Preset(ThemePreset),
-    SelectionFile(&'a Path),
+    Preset(&'a str, Option<ThemeAppearance>),
+    SelectionFile(&'a Path, Option<ThemeAppearance>),
     DesignFile(&'a Path),
 }
 
 #[cfg(feature = "svg")]
 impl<'a> ThemeInput<'a> {
+    fn from_resolved(render: &'a ResolvedRenderOptions) -> Result<Option<Self>, CliError> {
+        Self::resolve(
+            render.theme_preset.as_deref(),
+            render.theme_file.as_deref(),
+            render.theme_design_file.as_deref(),
+            render.theme_appearance,
+        )
+    }
+
     fn resolve(
-        preset: Option<ThemePreset>,
+        preset: Option<&'a str>,
         selection_file: Option<&'a Path>,
         design_file: Option<&'a Path>,
+        appearance: Option<ThemeAppearance>,
     ) -> Result<Option<Self>, CliError> {
+        if appearance.is_some() {
+            if design_file.is_some() {
+                return Err(CliError::InvalidInput(
+                    "--theme-appearance requires a portable theme recipe through --theme-file instead of --theme-design-file".to_string(),
+                ));
+            }
+            if preset.is_none() && selection_file.is_none() {
+                return Err(CliError::InvalidInput(
+                    "--theme-appearance requires --theme-preset or --theme-file".to_string(),
+                ));
+            }
+        }
         match (preset, selection_file, design_file) {
             (Some(_), Some(_), _) | (Some(_), _, Some(_)) | (_, Some(_), Some(_)) => {
                 Err(CliError::InvalidInput(
@@ -330,8 +361,8 @@ impl<'a> ThemeInput<'a> {
                         .to_string(),
                 ))
             }
-            (Some(preset), None, None) => Ok(Some(Self::Preset(preset))),
-            (None, Some(path), None) => Ok(Some(Self::SelectionFile(path))),
+            (Some(preset), None, None) => Ok(Some(Self::Preset(preset, appearance))),
+            (None, Some(path), None) => Ok(Some(Self::SelectionFile(path, appearance))),
             (None, None, Some(path)) => Ok(Some(Self::DesignFile(path))),
             (None, None, None) => Ok(None),
         }
@@ -344,11 +375,15 @@ impl<'a> ThemeInput<'a> {
     ) -> Result<merman::svg::DiagramTheme, CliError> {
         crate::operation::checkpoint(control, merman::OperationPhase::Admission)?;
         let theme = match self {
-            Self::Preset(preset) => compiler
-                .compile_preset(preset)
+            Self::Preset(preset, appearance) => compiler
+                .compile_preset_selection(preset, appearance)
                 .map_err(|error| CliError::InvalidInput(format!("invalid theme preset: {error}"))),
-            Self::SelectionFile(path) | Self::DesignFile(path) => {
+            Self::SelectionFile(path, _) | Self::DesignFile(path) => {
                 let design = matches!(self, Self::DesignFile(_));
+                let appearance = match self {
+                    Self::SelectionFile(_, appearance) => appearance,
+                    _ => None,
+                };
                 let input_name = if design {
                     "theme design file"
                 } else {
@@ -367,7 +402,7 @@ impl<'a> ThemeInput<'a> {
                 let result = if design {
                     compile_theme_design_json_with(compiler, &bytes)
                 } else {
-                    compile_theme_selection_json_with(compiler, &bytes)
+                    compile_theme_selection_json_with_appearance(compiler, &bytes, appearance)
                 };
                 result.map_err(|error| {
                     CliError::InvalidInput(format!("invalid {input_name}: {}", error.message()))
@@ -377,6 +412,20 @@ impl<'a> ThemeInput<'a> {
         crate::operation::checkpoint(control, merman::OperationPhase::Admission)?;
         theme
     }
+}
+
+#[cfg(feature = "markdown")]
+pub(crate) fn validate_empty_batch_theme(
+    render: &ResolvedRenderOptions,
+    resources: &ResolvedResourcePolicy,
+    control: &merman::OperationControl,
+) -> Result<(), CliError> {
+    if let Some(input) = ThemeInput::from_resolved(render)? {
+        let compiler = DiagramThemeCompiler::new()
+            .with_resource_policy(ThemeResourcePolicy::for_profile(resources.profile()));
+        input.compile(&compiler, control)?;
+    }
+    Ok(())
 }
 
 #[cfg(feature = "svg")]
@@ -397,9 +446,10 @@ impl<'a> RendererInputs<'a> {
     fn from_cli(render: &'a RenderCliArgs) -> Result<Self, CliError> {
         Ok(Self {
             theme: ThemeInput::resolve(
-                render.theme_preset,
+                render.theme_preset.as_deref(),
                 render.theme_file.as_deref(),
                 render.theme_design_file.as_deref(),
+                render.theme_appearance,
             )?,
             theme_portability: render.theme_portability,
             math_renderer: render.math_renderer,
@@ -412,11 +462,7 @@ impl<'a> RendererInputs<'a> {
 
     fn from_resolved(render: &'a ResolvedRenderOptions) -> Result<Self, CliError> {
         Ok(Self {
-            theme: ThemeInput::resolve(
-                render.theme_preset,
-                render.theme_file.as_deref(),
-                render.theme_design_file.as_deref(),
-            )?,
+            theme: ThemeInput::from_resolved(render)?,
             theme_portability: render.theme_portability,
             math_renderer: render.math_renderer,
             container_width: render.container_width,
@@ -577,6 +623,7 @@ mod tests {
             theme_preset: None,
             theme_file: None,
             theme_design_file: None,
+            theme_appearance: None,
             theme_portability: crate::cli::ThemePortabilityKind::default(),
             theme_report: None,
             #[cfg(feature = "native-fonts")]

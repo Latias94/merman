@@ -4,6 +4,7 @@ import { useTranslation } from "react-i18next";
 import { cn } from "@/lib/utils";
 import type { DiagramThemeChoice } from "@/src/lib/diagram-appearance";
 import type { ThemeFamilyTreatment } from "@/src/lib/theme-discovery";
+import type { ThemeAppearance } from "@mermanjs/web";
 
 export interface ThemeCatalogChoice {
   readonly key: string;
@@ -11,12 +12,14 @@ export interface ThemeCatalogChoice {
   readonly source: "automatic" | "mermaid" | "builtin" | "exploration" | "imported";
   readonly choice: DiagramThemeChoice;
   readonly description?: string;
+  readonly searchTerms?: string;
   readonly colors?: readonly string[];
   readonly available: boolean;
   readonly loading?: boolean;
   readonly unavailableReason?: string;
   readonly maturity?: string;
   readonly treatment?: ThemeFamilyTreatment | "waiting";
+  readonly appearances?: readonly ThemeAppearance[];
 }
 
 export function ThemeChoiceCards({ entries, selectedKey, onSelect }: {
@@ -45,6 +48,9 @@ export function ThemeChoiceCards({ entries, selectedKey, onSelect }: {
           {entry.maturity && <span data-theme-maturity={entry.maturity}>{t(`themePanel.maturity.${entry.maturity}`, { defaultValue: entry.maturity })}</span>}
         </span>
         {entry.description && <span className="text-[11px] leading-relaxed text-muted-foreground">{entry.description}</span>}
+        {entry.appearances && entry.appearances.length > 0 && <span className="text-[10px] text-muted-foreground" data-theme-appearances>
+          {entry.appearances.length > 1 ? t("appearanceMode.paired") : t("appearanceMode.only", { appearance: t(`appearanceMode.${entry.appearances[0]}`) })}
+        </span>}
         {entry.treatment && <span className="text-[11px] leading-relaxed text-muted-foreground">
           {t(entry.treatment === "waiting" ? "themePanel.treatmentWaiting" : `themePanel.treatments.${entry.treatment}`)}
         </span>}

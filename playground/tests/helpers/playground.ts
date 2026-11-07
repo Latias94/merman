@@ -107,7 +107,7 @@ export async function replaceMermaidConfig(
   await page.getByRole("tab", { name: "Code", exact: true }).click();
 }
 
-async function replaceMonacoText(
+export async function replaceMonacoText(
   page: Page,
   ariaLabel: string,
   text: string,

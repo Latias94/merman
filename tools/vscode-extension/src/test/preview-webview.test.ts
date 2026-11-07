@@ -5,6 +5,73 @@ import * as vm from "node:vm";
 import { describe, it } from "node:test";
 
 describe("preview webview app", () => {
+  it("keeps the displayed SVG and its backing together while a new appearance is pending", () => {
+    const app = loadPreviewApp();
+    app.dispatch({
+      type: "renderSucceeded",
+      requestId: 1,
+      snapshot: snapshot({ effectiveAppearance: "light", themeSelection: "light-key" }),
+      content: '<svg viewBox="0 0 100 50"></svg>',
+    });
+    app.dispatch({
+      type: "renderStarted",
+      requestId: 2,
+      snapshot: snapshot({ effectiveAppearance: "dark", themeSelection: "dark-key" }),
+    });
+    assert.equal(app.document.frame.dataset.background, "paper");
+    app.dispatch({
+      type: "renderFailed",
+      requestId: 2,
+      snapshot: snapshot({ effectiveAppearance: "dark", themeSelection: "dark-key" }),
+      error: "render failed",
+    });
+    assert.equal(app.document.frame.dataset.background, "paper");
+    app.dispatch({
+      type: "renderSucceeded",
+      requestId: 3,
+      snapshot: snapshot({ effectiveAppearance: "dark", themeSelection: "dark-key" }),
+      content: '<svg viewBox="0 0 100 50"></svg>',
+    });
+    assert.equal(app.document.frame.dataset.background, "dark");
+  });
+
+  it("shows one runtime-owned theme selector and an appearance selector only for pairs", () => {
+    const app = loadPreviewApp();
+    app.dispatch({
+      type: "settingsUpdated",
+      snapshot: snapshot({
+        diagramTheme: "preset:editor",
+        appearancePreference: "follow-editor",
+        effectiveAppearance: "dark",
+        supportedAppearances: ["light", "dark"],
+        themeChoices: [
+          { id: "preset:editor", label: "Merman · Editor", available: true },
+          { id: "preset:future", label: "Unavailable future theme", available: false },
+        ],
+      }),
+    });
+    assert.equal(app.document.appearanceLabel.hidden, false);
+    assert.equal(app.document.theme.children[1]?.disabled, true);
+    assert.equal(app.document.theme.value, "preset:editor");
+    assert.match(app.document.themeSummary.textContent, /Following editor · dark/);
+    app.dispatch({
+      type: "settingsUpdated",
+      snapshot: snapshot({ effectiveAppearance: "light", supportedAppearances: ["light"] }),
+    });
+    assert.equal(app.document.appearanceLabel.hidden, true);
+    assert.match(app.document.themeSummary.textContent, /light only/);
+    app.document.appearance.value = "dark";
+    app.dispatchDocument("change", { target: app.document.appearance });
+    app.document.viewerBackground.value = "paper";
+    app.dispatchDocument("change", { target: app.document.viewerBackground });
+    app.click(app.document.importTheme);
+    assert.deepEqual(JSON.parse(JSON.stringify(app.postedMessages.slice(-3))), [
+      { type: "setAppearance", appearance: "dark" },
+      { type: "setViewerBackground", background: "paper" },
+      { type: "importTheme" },
+    ]);
+  });
+
   it("preserves viewport state across same-source SVG replacement and resets for a new source", () => {
     const sourceIdentity = previewSourceIdentity("file:///workspace/notes.md", "fence-1", "hash-a");
     const app = loadPreviewApp({
@@ -802,6 +869,12 @@ function snapshot(options: {
   diagnostics?: unknown;
   displayMode?: string;
   background?: string;
+  effectiveAppearance?: string;
+  supportedAppearances?: string[];
+  appearancePreference?: string;
+  viewerBackground?: string;
+  themeChoices?: Array<{ id: string; label: string; available: boolean }>;
+  themeSelection?: string;
   locked?: boolean;
   sources?: Array<{
     sourceId: string;
@@ -827,6 +900,11 @@ function snapshot(options: {
     diagramTheme,
     displayMode,
     background,
+    effectiveAppearance: options.effectiveAppearance,
+    supportedAppearances: options.supportedAppearances,
+    appearancePreference: options.appearancePreference,
+    viewerBackground: options.viewerBackground,
+    themeChoices: options.themeChoices,
     locked,
     sourceKey: {
       documentUri,
@@ -835,6 +913,7 @@ function snapshot(options: {
       diagramTheme,
       displayMode,
       background,
+      ...(options.themeSelection ? { themeSelection: options.themeSelection } : {}),
     },
     sources: options.sources ?? [
       sourceOption("fence-1", "notes.md", "Mermaid fence 1", "markdown-fence"),
@@ -891,6 +970,11 @@ class FakeDocument {
   readonly outputControls = new FakeElement("span", { dataset: { previewOutputControls: "" } });
   readonly displayMode = new FakeSelectElement({ dataset: { action: "display-mode" } });
   readonly theme = new FakeSelectElement({ dataset: { action: "diagram-theme" } });
+  readonly appearance = new FakeSelectElement({ dataset: { action: "appearance" } });
+  readonly appearanceLabel = new FakeElement("label");
+  readonly themeSummary = new FakeElement("span");
+  readonly viewerBackground = new FakeSelectElement({ dataset: { action: "viewer-background" } });
+  readonly importTheme = new FakeButtonElement({ dataset: { action: "import-theme" } });
   readonly background = new FakeSelectElement({ dataset: { action: "background" } });
   readonly copySvg = new FakeButtonElement({ dataset: { action: "copy-svg" } });
   readonly refresh = new FakeButtonElement({ dataset: { action: "refresh" } });
@@ -936,6 +1020,14 @@ class FakeDocument {
         return this.displayMode;
       case '[data-action="diagram-theme"]':
         return this.theme;
+      case '[data-action="appearance"]':
+        return this.appearance;
+      case "[data-preview-appearance]":
+        return this.appearanceLabel;
+      case "[data-preview-theme-summary]":
+        return this.themeSummary;
+      case '[data-action="viewer-background"]':
+        return this.viewerBackground;
       case '[data-action="background"]':
         return this.background;
       case '[data-action="copy-svg"]':

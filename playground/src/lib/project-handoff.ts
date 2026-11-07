@@ -1,9 +1,10 @@
-import type { ThemePresetCatalogEntry } from "@mermanjs/web";
+import type { ThemePresetCatalogEntry, ThemeAppearance, ThemeCatalog } from "@mermanjs/web";
 
 import { DEFAULT_WORKSPACE_SNAPSHOT, type WorkspaceSnapshot } from "./workspace-snapshot.ts";
-import { freezeRenderOperation, type FrozenRenderOperation, type RenderOperationVersions } from "../runtime/merman-operation-input.ts";
+import { freezeRenderOperation, matchesWorkspaceAppearance, type FrozenRenderOperation, type RenderOperationVersions } from "../runtime/merman-operation-input.ts";
 import type { RenderCoordinatorState } from "../runtime/render-coordinator.ts";
 import { projectError } from "../runtime/error-projection.ts";
+import { resolveThemeSelection, type ResolvedThemeSelection, type ThemeAppearanceSupport } from "./theme-appearance.ts";
 
 export type ProjectUseTarget = "rust" | "cli" | "web";
 export type ProjectUseScope = "theme" | "diagram";
@@ -33,6 +34,9 @@ export interface ProjectHandoffInput {
   readonly workspace: Readonly<WorkspaceSnapshot>;
   readonly renderState: RenderCoordinatorState;
   readonly presets?: readonly Pick<ThemePresetCatalogEntry, "id" | "available">[];
+  readonly themeCatalog?: ThemeCatalog | null;
+  readonly themeRecipeInspection?: ThemeAppearanceSupport | null;
+  readonly hostAppearance?: ThemeAppearance;
   readonly versions?: Readonly<RenderOperationVersions>;
   readonly buildIdentity?: Readonly<ProjectHandoffBuildIdentity>;
   readonly validateThemeRecipe?: (recipeJson: string) => unknown;
@@ -49,6 +53,7 @@ export interface ProjectHandoffSnapshot {
   readonly recipeValidation: "valid" | "invalid" | "unavailable";
   readonly recipeError: string | null;
   readonly capturedAt: string;
+  readonly selection: ResolvedThemeSelection;
 }
 
 export interface ProjectHandoffBundle {
@@ -70,12 +75,24 @@ export function captureProjectHandoff(input: ProjectHandoffInput): ProjectHandof
   const { renderState: state, workspace, versions } = input;
   const completed = state.status === "success" || state.status === "partial" || state.status === "failed";
   const candidate = completed && state.merman.status === "success" ? state.snapshot.operation : null;
-  const operation = candidate && operationMatchesWorkspace(candidate, workspace) &&
+  const operation = candidate && operationMatchesWorkspace(candidate, workspace, input.hostAppearance) &&
     (!versions || (versions.merman === candidate.versions.merman && versions.mermaid === candidate.versions.mermaid))
     ? candidate : null;
   const presetId = workspace.themePresetId?.trim();
+  const selection = operation ? Object.freeze({
+    preference: operation.themeAppearancePreference,
+    appearance: operation.resolvedThemeAppearance,
+    mermaidTheme: operation.mermaidTheme,
+    followsApp: operation.themeAppearancePreference === "follow",
+    supported_appearances: operation.supportedThemeAppearances,
+    default_appearance: operation.defaultThemeAppearance,
+  }) : resolveThemeSelection(workspace, input.hostAppearance ?? "light", input.themeCatalog, input.themeRecipeInspection);
+  const presets = input.themeCatalog ? input.themeCatalog.presets.flatMap((preset) => [
+    { id: preset.id, available: preset.available },
+    ...preset.appearances.map((entry) => ({ id: entry.concrete_preset_id, available: preset.available })),
+  ]) : input.presets;
   const presetAvailable = Boolean(presetId && (
-    input.presets?.some((preset) => preset.id === presetId && preset.available) ||
+    presets?.find((preset) => preset.id === presetId)?.available ||
     (operation?.unavailableThemePresetId === null && operation.bindingOptions.theme &&
       "preset" in operation.bindingOptions.theme && operation.bindingOptions.theme.preset === presetId)
   ));
@@ -99,23 +116,29 @@ export function captureProjectHandoff(input: ProjectHandoffInput): ProjectHandof
     recipeValidation,
     recipeError,
     capturedAt: input.capturedAt,
+    selection,
   });
 }
 
-function operationMatchesWorkspace(operation: FrozenRenderOperation, workspace: Readonly<WorkspaceSnapshot>): boolean {
+function operationMatchesWorkspace(operation: FrozenRenderOperation, workspace: Readonly<WorkspaceSnapshot>, hostAppearance?: ThemeAppearance): boolean {
   return operation.source === workspace.code && operation.configJson === workspace.mermaidConfig &&
     operation.theme === workspace.diagramTheme && operation.themePresetId === workspace.themePresetId &&
     operation.themeRecipeJson === workspace.themeRecipeJson && operation.diagramFont === workspace.diagramFont &&
-    operation.textMeasurementMode === workspace.textMeasurementMode && operation.svgPipeline === workspace.svgPipeline;
+    operation.textMeasurementMode === workspace.textMeasurementMode && operation.svgPipeline === workspace.svgPipeline &&
+    matchesWorkspaceAppearance(operation, workspace, hostAppearance);
 }
 
-export function projectHandoffMatchesWorkspace(snapshot: ProjectHandoffSnapshot, workspace: Readonly<WorkspaceSnapshot>): boolean {
+export function projectHandoffMatchesWorkspace(snapshot: ProjectHandoffSnapshot, workspace: Readonly<WorkspaceSnapshot>, hostAppearance?: ThemeAppearance): boolean {
   const frozen = snapshot.workspace;
   return frozen.code === workspace.code && frozen.mermaidConfig === workspace.mermaidConfig &&
     frozen.diagramTheme === workspace.diagramTheme && frozen.themePresetId === workspace.themePresetId &&
     frozen.themeRecipeJson === workspace.themeRecipeJson && frozen.diagramFont === workspace.diagramFont &&
     frozen.textMeasurementMode === workspace.textMeasurementMode && frozen.svgPipeline === workspace.svgPipeline &&
-    frozen.themeRecipeLabel?.name === workspace.themeRecipeLabel?.name && frozen.themeRecipeLabel?.source === workspace.themeRecipeLabel?.source;
+    frozen.themeRecipeLabel?.name === workspace.themeRecipeLabel?.name && frozen.themeRecipeLabel?.source === workspace.themeRecipeLabel?.source &&
+    frozen.themeRecipeLabel?.derivedFrom === workspace.themeRecipeLabel?.derivedFrom &&
+    (frozen.themeAppearance ?? "default") === (workspace.themeAppearance ?? "default") &&
+    (snapshot.selection.preference !== "follow" || !hostAppearance || snapshot.selection.appearance ===
+      (snapshot.selection.supported_appearances.includes(hostAppearance) ? hostAppearance : snapshot.selection.default_appearance));
 }
 
 export function generateProjectHandoff(
@@ -132,6 +155,7 @@ export function generateProjectHandoff(
   },
 ): ProjectHandoffBundle {
   const workspace = snapshot.workspace;
+  if (snapshot.selection.error) throw new ProjectHandoffError("invalid-configuration", snapshot.selection.error);
   if (workspace.themePresetId !== null && workspace.themeRecipeJson !== null) throw new ProjectHandoffError("theme-conflict");
   if (workspace.themeRecipeJson !== null && snapshot.recipeValidation !== "valid") {
     throw new ProjectHandoffError(snapshot.recipeValidation === "invalid" ? "invalid-configuration" : "recipe-unverified", snapshot.recipeError ?? undefined);
@@ -201,6 +225,9 @@ export function generateProjectHandoff(
       recipe_file: workspace.themeRecipeJson === null ? null : "theme.json",
       label: workspace.themeRecipeLabel ?? null,
       mermaid_base: workspace.diagramTheme,
+      appearance_preference: snapshot.selection.preference,
+      resolved_appearance: operation.resolvedThemeAppearance,
+      resolved_mermaid_theme: operation.mermaidTheme,
     },
     configuration: {
       source_file: "diagram.mmd",
@@ -226,12 +253,14 @@ export function generateProjectHandoff(
 }
 
 function themeExampleOperation(snapshot: ProjectHandoffSnapshot, example?: ProjectHandoffThemeExample): FrozenRenderOperation {
-  return freezeRenderOperation({
+  const native = snapshot.workspace.themePresetId === null && snapshot.workspace.themeRecipeJson === null;
+  const operation = freezeRenderOperation({
     workspace: {
       ...DEFAULT_WORKSPACE_SNAPSHOT,
       code: example?.source ?? "flowchart LR\nA[Theme] --> B[Your project]",
       mermaidConfig: example?.configJson ?? "{}",
-      diagramTheme: snapshot.workspace.diagramTheme,
+      diagramTheme: snapshot.selection.mermaidTheme,
+      themeAppearance: native ? "default" : snapshot.selection.appearance ?? "default",
       themePresetId: snapshot.workspace.themePresetId,
       themeRecipeJson: snapshot.workspace.themeRecipeJson,
       textMeasurementMode: "headless",
@@ -240,7 +269,15 @@ function themeExampleOperation(snapshot: ProjectHandoffSnapshot, example?: Proje
     layoutEnvironment: { containerWidth: 800, containerHeight: 600 },
     versions: snapshot.versions ?? { merman: "unknown", mermaid: "unknown" },
     viewport: null,
+    themeRecipeInspection: snapshot.selection,
   });
+  return native ? Object.freeze({
+    ...operation,
+    themeAppearancePreference: snapshot.selection.appearance ?? "default",
+    resolvedThemeAppearance: snapshot.selection.appearance,
+    supportedThemeAppearances: snapshot.selection.supported_appearances,
+    defaultThemeAppearance: snapshot.selection.default_appearance,
+  }) : operation;
 }
 
 function rustConsumer(operation: FrozenRenderOperation, files: Readonly<Record<string, string>>, assets: "files" | "inline"): string {
@@ -252,11 +289,14 @@ function rustConsumer(operation: FrozenRenderOperation, files: Readonly<Record<s
   const embedded = assets === "inline" ? Object.entries(inputNames)
     .filter(([filename]) => files[filename] !== undefined)
     .map(([filename, name]) => `\nconst ${name}: &str = ${rustRawString(files[filename])};\n`).join("") : "";
-  const imports = recipe ? "use merman::diagram_theme::{DiagramThemeCompiler, ThemeRecipeV1};\n"
-    : preset ? "use merman::diagram_theme::{DiagramThemeCompiler, ThemePreset};\n" : "";
+  const appearance = operation.resolvedThemeAppearance;
+  const selector = appearance ? `Some(ThemeAppearance::${appearance === "dark" ? "Dark" : "Light"})` : "None";
+  const appearanceImport = appearance ? ", ThemeAppearance" : "";
+  const imports = recipe ? `use merman::diagram_theme::{DiagramThemeCompiler, ThemeRecipeV1${appearanceImport}};\n`
+    : preset ? `use merman::diagram_theme::{DiagramThemeCompiler${appearanceImport}};\n` : "";
   const theme = recipe
-    ? `    let recipe: ThemeRecipeV1 = serde_json::from_str(${input("theme.json")})?;\n    let theme = DiagramThemeCompiler::new().compile_recipe(recipe)?;\n`
-    : preset ? `    let theme = DiagramThemeCompiler::new().compile_preset(ThemePreset::from_id(${JSON.stringify(preset)})?)?;\n` : "";
+    ? `    let recipe: ThemeRecipeV1 = serde_json::from_str(${input("theme.json")})?;\n    let theme = DiagramThemeCompiler::new().compile_document(recipe, ${selector})?;\n`
+    : preset ? `    let theme = DiagramThemeCompiler::new().compile_preset_selection(${JSON.stringify(preset)}, ${selector})?;\n` : "";
   const site = files["site-config.json"]
     ? `MermaidEngine::new().with_site_config(SourcePresentationConfig::from_value(serde_json::from_str(${input("site-config.json")})?))`
     : "MermaidEngine::new()";
@@ -272,6 +312,8 @@ function cliArguments(operation: FrozenRenderOperation, files: Readonly<Record<s
     ...(files["site-config.json"] ? ["--config-file", "site-config.json"] : []),
     ...(files["theme.json"] !== undefined ? ["--theme-file", "theme.json"]
       : operation.themePresetId ? ["--theme-preset", operation.themePresetId.trim()] : []),
+    ...((files["theme.json"] !== undefined || operation.themePresetId) && operation.resolvedThemeAppearance
+      ? ["--theme-appearance", operation.resolvedThemeAppearance] : []),
     "--svg-pipeline", operation.svgPipeline,
     "--font-measurement", "deterministic", "--font-system", "off",
     ...(layout?.container_width === undefined ? [] : ["--width", String(layout.container_width)]),
@@ -358,6 +400,12 @@ Generated directory
 project/
 ${directory}
 ${rustInputs}
+Appearance selection
+- Playground preference: ${snapshot.selection.preference}.
+- Exported appearance: ${snapshot.selection.appearance ?? "the concrete document or source default"}.
+- Generated code pins the captured appearance when one is declared. Follow app is resolved by the Playground, never passed as an automatic mode to a headless renderer.
+- theme.json, when present, keeps every authored appearance and shared reference. Change the explicit appearance selector to render another declared appearance; do not duplicate or flatten the theme.
+
 Configuration provenance
 - diagram.mmd is the render-ready configured source, including the sample or authored diagram configuration. No extra sample-config step is needed. Do not inject playground-config.json again.
 - For current-diagram materials, source.mmd and playground-config.json retain the original editor inputs.

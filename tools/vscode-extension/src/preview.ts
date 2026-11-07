@@ -56,6 +56,13 @@ class MermanPreviewManager implements vscode.Disposable {
       }),
     );
     this.disposables.push(
+      vscode.window.onDidChangeActiveColorTheme((theme) => {
+        for (const instance of this.instances) {
+          instance.handleEditorAppearanceChanged(theme.kind);
+        }
+      }),
+    );
+    this.disposables.push(
       vscode.window.onDidChangeActiveTextEditor(() => {
         this.scheduleRefresh("active-editor");
       }),

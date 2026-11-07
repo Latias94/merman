@@ -1,4 +1,5 @@
 import type { MermaidThemeSelection } from "./mermaid-theme-name.ts";
+import type { ThemeAppearancePreference } from "./theme-appearance.ts";
 
 import type { DiagramFont } from "./diagram-font.ts";
 import { DEFAULT_MERMAID_CONFIG } from "./mermaid-config.ts";
@@ -11,6 +12,7 @@ import type {
 export interface ThemeRecipeLabel {
   readonly name: string;
   readonly source: "exploration" | "imported";
+  readonly derivedFrom?: string;
 }
 
 export interface WorkspaceSnapshot {
@@ -20,6 +22,7 @@ export interface WorkspaceSnapshot {
   readonly themePresetId: string | null;
   readonly themeRecipeJson: string | null;
   readonly themeRecipeLabel?: ThemeRecipeLabel | null;
+  readonly themeAppearance?: ThemeAppearancePreference;
   readonly svgPipeline: MermanSvgPipeline;
   readonly textMeasurementMode: MermanTextMeasurementMode;
   readonly diagramFont: DiagramFont;

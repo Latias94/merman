@@ -30,6 +30,8 @@ mod resources;
 mod runtime;
 #[cfg(feature = "rustdoc")]
 mod rustdoc;
+#[cfg(feature = "svg")]
+mod theme;
 #[cfg(feature = "markdown")]
 mod transaction;
 

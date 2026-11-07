@@ -5,16 +5,20 @@ import type {
   ThemeExecutionEvidenceV2,
   ThemePresetCatalogEntry,
   ThemePresetFamilyDesign,
+  ThemeAppearance,
 } from "@mermanjs/web";
 import type { CompletedRenderBatch, RenderCoordinatorState } from "../runtime/render-coordinator.ts";
 import type { FrozenRenderOperation } from "../runtime/merman-operation-input.ts";
 import type { WorkspaceSnapshot } from "./workspace-snapshot.ts";
 import { readMermaidAppearanceOverrides } from "./mermaid-appearance.ts";
+import { matchesWorkspaceAppearance } from "../runtime/merman-operation-input.ts";
+
+type ThemeFamilyDesignOwner = Pick<ThemePresetCatalogEntry["appearances"][number], "family_designs">;
 
 export type ThemeFamilyTreatment = "dedicated" | "base_only" | "unreviewed";
 
 export function themeFamilyTreatment(
-  preset: Pick<ThemePresetCatalogEntry, "family_designs">,
+  preset: ThemeFamilyDesignOwner,
   familyId: string | null,
 ): ThemeFamilyTreatment {
   const treatment = preset.family_designs.find((design) => design.family_id === familyId)?.treatment;
@@ -22,7 +26,7 @@ export function themeFamilyTreatment(
 }
 
 export function reviewedThemeFamilies(
-  preset: Pick<ThemePresetCatalogEntry, "family_designs">,
+  preset: ThemeFamilyDesignOwner,
 ): ThemePresetFamilyDesign[] {
   return preset.family_designs.filter((design) => design.treatment === "dedicated" || design.treatment === "base_only");
 }
@@ -46,19 +50,21 @@ export function themeFamilyMetadataId(
 export function currentDiagramDetection(
   state: RenderCoordinatorState,
   workspace: Readonly<WorkspaceSnapshot>,
+  hostAppearance?: ThemeAppearance,
 ): DiagramDetectionFacts | null {
   const batch = state.status === "updating" ? state.previous
     : state.status === "success" || state.status === "partial" || state.status === "failed" ? state : null;
-  return batch && matchesDiagramDetectionInputs(batch.snapshot.operation, workspace) ? batch.detection : null;
+  return batch && matchesDiagramDetectionInputs(batch.snapshot.operation, workspace, hostAppearance) ? batch.detection : null;
 }
 
 export function currentAppearanceOverrides(
   state: RenderCoordinatorState,
   workspace: Readonly<WorkspaceSnapshot>,
+  hostAppearance?: ThemeAppearance,
 ) {
   const batch = state.status === "updating" ? state.previous
     : state.status === "success" || state.status === "partial" || state.status === "failed" ? state : null;
-  return batch && matchesDiagramDetectionInputs(batch.snapshot.operation, workspace)
+  return batch && matchesDiagramDetectionInputs(batch.snapshot.operation, workspace, hostAppearance)
     ? readMermaidAppearanceOverrides(batch.detection.appearance, batch.snapshot.operation.injectedConfigSpan)
     : null;
 }
@@ -71,25 +77,27 @@ export type CurrentThemeRender =
 export function currentThemeRender(
   state: RenderCoordinatorState,
   workspace: Readonly<WorkspaceSnapshot>,
+  hostAppearance?: ThemeAppearance,
 ): CurrentThemeRender {
   if (state.status !== "success" && state.status !== "partial" && state.status !== "failed") {
     return { status: "waiting", reason: "render", batch: null };
   }
-  if (!matchesThemeRenderInputs(state.snapshot.operation, workspace)) {
+  if (!matchesThemeRenderInputs(state.snapshot.operation, workspace, hostAppearance)) {
     return { status: "waiting", reason: "render", batch: null };
   }
   return { status: state.merman.status === "failure" ? "failed" : "ready", batch: state };
 }
 
-function matchesThemeRenderInputs(operation: FrozenRenderOperation, workspace: Readonly<WorkspaceSnapshot>): boolean {
-  return matchesDiagramDetectionInputs(operation, workspace) && operation.themePresetId === workspace.themePresetId &&
+function matchesThemeRenderInputs(operation: FrozenRenderOperation, workspace: Readonly<WorkspaceSnapshot>, hostAppearance?: ThemeAppearance): boolean {
+  return matchesDiagramDetectionInputs(operation, workspace, hostAppearance) && operation.themePresetId === workspace.themePresetId &&
     operation.themeRecipeJson === workspace.themeRecipeJson && operation.svgPipeline === workspace.svgPipeline &&
     operation.textMeasurementMode === workspace.textMeasurementMode;
 }
 
-function matchesDiagramDetectionInputs(operation: FrozenRenderOperation, workspace: Readonly<WorkspaceSnapshot>): boolean {
+function matchesDiagramDetectionInputs(operation: FrozenRenderOperation, workspace: Readonly<WorkspaceSnapshot>, hostAppearance?: ThemeAppearance): boolean {
   return operation.source === workspace.code && operation.configJson === workspace.mermaidConfig &&
-    operation.theme === workspace.diagramTheme && operation.diagramFont === workspace.diagramFont;
+    operation.theme === workspace.diagramTheme && operation.diagramFont === workspace.diagramFont &&
+    matchesWorkspaceAppearance(operation, workspace, hostAppearance);
 }
 
 export function readThemeExecutionEvidence(metadata: SvgRenderMetadata | null): ThemeExecutionEvidenceV2 | null {

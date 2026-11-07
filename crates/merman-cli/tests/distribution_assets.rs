@@ -79,6 +79,14 @@ fn complete_profile_bash_completion_preserves_native_and_mmdc_contracts() {
         render.contains("--theme-design-file"),
         "native render completion must expose shareable theme designs"
     );
+    assert!(
+        render.contains("--theme-appearance"),
+        "native render completion must expose concrete Merman appearances"
+    );
+    assert_eq!(
+        bash_option_values(&script, "render", "--theme-appearance"),
+        ["light", "dark"].into_iter().map(str::to_owned).collect()
+    );
 
     let batch = bash_options(&script, "batch");
     assert!(
@@ -95,7 +103,12 @@ fn complete_profile_bash_completion_preserves_native_and_mmdc_contracts() {
         mmdc.contains("-e"),
         "the permanent mmdc compatibility surface must retain -e"
     );
-    for removed in ["--theme-preset", "--theme-file", "--theme-design-file"] {
+    for removed in [
+        "--theme-preset",
+        "--theme-file",
+        "--theme-design-file",
+        "--theme-appearance",
+    ] {
         assert!(
             !mmdc.contains(removed),
             "mmdc completion must not expose provisional native option {removed}"
@@ -103,7 +116,12 @@ fn complete_profile_bash_completion_preserves_native_and_mmdc_contracts() {
     }
 
     let layout = bash_options(&script, "layout");
-    for removed in ["--theme-preset", "--theme-file", "--theme-design-file"] {
+    for removed in [
+        "--theme-preset",
+        "--theme-file",
+        "--theme-design-file",
+        "--theme-appearance",
+    ] {
         assert!(
             !layout.contains(removed),
             "layout completion must not expose provisional native option {removed}"
@@ -137,7 +155,7 @@ fn complete_profile_bash_completion_preserves_native_and_mmdc_contracts() {
 
 fn preset_completion_entry(
     relative: &str,
-    descriptor: &merman::svg::ThemePresetDescriptor,
+    descriptor: &merman::svg::ThemePresetSelectionDescriptor,
 ) -> String {
     match relative {
         "completions/_merman-cli" => format!(
@@ -157,13 +175,28 @@ fn preset_completion_entry(
 }
 
 fn preset_completion_entries_are_labelled(asset: &str, id: &str, expected: &str) -> bool {
-    let mut entries = asset.lines().filter(|line| line.contains(id)).peekable();
+    let identifier_character = |character: char| {
+        character.is_ascii_alphanumeric() || character == '-' || character == '_'
+    };
+    let mut entries = asset
+        .lines()
+        .filter(|line| {
+            line.match_indices(id).any(|(offset, _)| {
+                !line[..offset].chars().next_back().is_some_and(identifier_character)
+                    && !line[offset + id.len()..]
+                        .chars()
+                        .next()
+                        .is_some_and(identifier_character)
+            })
+        })
+        .peekable();
     entries.peek().is_some() && entries.all(|line| line.contains(expected))
 }
 
 #[test]
 fn preset_completion_guard_rejects_one_missing_label_among_other_alpha_candidates() {
-    let descriptor = merman::svg::theme_preset_descriptors()
+    let descriptors = merman::svg::theme_preset_selection_descriptors();
+    let descriptor = descriptors
         .iter()
         .find(|descriptor| descriptor.id() == "cyberpunk")
         .expect("Cyberpunk descriptor");
@@ -191,8 +224,8 @@ fn preset_completion_guard_rejects_one_missing_label_among_other_alpha_candidate
 fn generated_cli_assets_do_not_publish_theme_presets_without_maturity() {
     for relative in ["completions/_merman-cli", "completions/merman-cli.fish"] {
         let asset = read_asset(relative);
-        for descriptor in merman::svg::theme_preset_descriptors() {
-            let expected = preset_completion_entry(relative, descriptor);
+        for descriptor in merman::svg::theme_preset_selection_descriptors() {
+            let expected = preset_completion_entry(relative, &descriptor);
             assert!(
                 preset_completion_entries_are_labelled(&asset, descriptor.id(), &expected),
                 "generated CLI asset {relative} must label every candidate `{}` with its own maturity and display name",
@@ -206,7 +239,7 @@ fn generated_cli_assets_do_not_publish_theme_presets_without_maturity() {
         "completions/merman-cli.ps1",
     ] {
         let asset = read_asset(relative);
-        for descriptor in merman::svg::theme_preset_descriptors() {
+        for descriptor in merman::svg::theme_preset_selection_descriptors() {
             assert!(
                 !asset.contains(descriptor.id()),
                 "generated CLI asset {relative} cannot label value maturity and must not advertise preset candidates"
@@ -216,7 +249,7 @@ fn generated_cli_assets_do_not_publish_theme_presets_without_maturity() {
 
     for relative in ["man/merman-cli-batch.1", "man/merman-cli-render.1"] {
         let manpage = read_asset(relative);
-        for descriptor in merman::svg::theme_preset_descriptors() {
+        for descriptor in merman::svg::theme_preset_selection_descriptors() {
             let expected = format!(
                 "{}: [{}] {}",
                 descriptor.id().replace('-', "\\-"),

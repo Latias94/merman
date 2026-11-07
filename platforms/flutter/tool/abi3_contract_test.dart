@@ -9,6 +9,7 @@ import 'package:merman/merman.dart';
 import 'package:merman/src/generated/binding_contract.dart' as binding;
 import 'package:merman/src/generated/native_abi.dart' as native;
 import 'package:merman/src/merman_ffi.dart' as ffi_transport;
+import 'theme_catalog_contract_test.dart' as paired_theme_catalog;
 
 void main() {
   projectsCurrentAbi3TableBoundaries();
@@ -19,6 +20,7 @@ void main() {
   preservesScopedPresetQualification();
   preservesPresetFamilyDesigns();
   preservesPresetDiscoveryGuidance();
+  paired_theme_catalog.runPairedThemeCatalogContractTests();
   matchesThePubPackageVersionProjection();
   acceptsSvgCatalogWithOptionalNativeFonts();
   rejectsInconsistentNativeFontServices();
@@ -409,16 +411,32 @@ void decodesTypedMetadataCatalogs() {
   final theme = MermanThemeCatalog.fromJson({
     'schema_version': 1,
     'structured_spec_available': true,
+    'recipe_schema_version': 1,
+    'authoring_request_schema_version': 1,
+    'authoring_result_schema_version': 1,
+    'mermaid_theme_designs': <Object?>[],
     'supported_output_ids': ['svg'],
     'presets': [
       {
         'id': 'one-dark',
         'display_name': 'One Dark',
-        'appearance': 'dark',
+        'supported_appearances': ['dark'],
+        'default_appearance': 'dark',
+        'appearances': [
+          {
+            'appearance': 'dark',
+            'concrete_preset_id': 'one-dark',
+            'available': true,
+            'availability_reason_ids': <String>[],
+            'qualified_cells': <Object?>[],
+            'family_designs': <Object?>[],
+            'preview_colors': <String>[],
+            'application_notes': <Object?>[],
+          },
+        ],
         'maturity': 'alpha',
         'available': true,
         'availability_reason_ids': <String>[],
-        'qualified_cells': <Object?>[],
         'license_expression': 'MIT OR Apache-2.0',
         'required_attribution': null,
         'export_kind': 'design',
@@ -509,26 +527,43 @@ void acceptsAdditiveTypedMetadataFields() {
   final theme = MermanThemeCatalog.fromJson({
     'schema_version': 1,
     'structured_spec_available': true,
+    'recipe_schema_version': 1,
+    'authoring_request_schema_version': 1,
+    'authoring_result_schema_version': 1,
+    'mermaid_theme_designs': <Object?>[],
     'supported_output_ids': ['future-output'],
     'presets': [
       {
         'id': 'future-theme',
         'display_name': 'Future Theme',
-        'appearance': 'adaptive',
+        'supported_appearances': ['dark'],
+        'default_appearance': 'dark',
+        'appearances': [
+          {
+            'appearance': 'dark',
+            'concrete_preset_id': 'future-theme',
+            'available': false,
+            'availability_reason_ids': ['future-resource-unavailable'],
+            'family_designs': <Object?>[],
+            'preview_colors': <String>[],
+            'application_notes': <Object?>[],
+            'qualified_cells': [
+              {
+                'family_id': 'flowchart',
+                'output_id': 'svg',
+                'profile_id': 'future-profile',
+                'admission_status': 'future_admission',
+              },
+            ],
+            'future_field': {'nested': true},
+          },
+        ],
         'maturity': 'experimental',
         'available': false,
         'availability_reason_ids': ['future-resource-unavailable'],
-        'qualified_cells': [
-          {
-            'family_id': 'flowchart',
-            'output_id': 'svg',
-            'profile_id': 'future-profile',
-            'admission_status': 'future_admission',
-          },
-        ],
         'license_expression': 'LicenseRef-Future',
         'required_attribution': 'Future Theme authors',
-        'export_kind': 'complete_spec',
+        'export_kind': 'design',
         'future_field': true,
       },
     ],
@@ -554,14 +589,33 @@ void acceptsAdditiveTypedMetadataFields() {
   _expect(
     ascii.diagramType == 'flowchart-v2' &&
         family.metadataId == null &&
-        theme.presets.single.appearance == 'adaptive' &&
+        theme.presets.single.appearances.single.appearance == 'dark' &&
         theme.presets.single.maturity == 'experimental' &&
-        theme.presets.single.qualifiedCells.single.profileId ==
+        theme
+                .presets
+                .single
+                .appearances
+                .single
+                .qualifiedCells
+                .single
+                .profileId ==
             'future-profile' &&
-        theme.presets.single.qualifiedCells.single.admissionStatus ==
+        theme
+                .presets
+                .single
+                .appearances
+                .single
+                .qualifiedCells
+                .single
+                .admissionStatus ==
             'future_admission' &&
         theme.knownSemanticTargetIds.single == 'future-target' &&
-        theme.resourceLimits.single.effectiveValue == null,
+        theme.resourceLimits.single.effectiveValue == null &&
+        theme.jsonObject['future_field'] == 1 &&
+        theme.presets.single.jsonObject['future_field'] == true &&
+        (theme.presets.single.appearances.single.jsonObject['future_field']
+                as Map)['nested'] ==
+            true,
     'typed metadata decoders must ignore additive JSON fields',
   );
 }
@@ -570,19 +624,35 @@ void rejectsMalformedThemePresetMaturity() {
   Map<String, Object?> preset({required Object? maturity}) => {
     'id': 'one-dark',
     'display_name': 'One Dark',
-    'appearance': 'dark',
+    'supported_appearances': ['dark'],
+    'default_appearance': 'dark',
+    'appearances': [
+      {
+        'appearance': 'dark',
+        'concrete_preset_id': 'one-dark',
+        'available': true,
+        'availability_reason_ids': <String>[],
+        'qualified_cells': <Object?>[],
+        'family_designs': <Object?>[],
+        'preview_colors': <String>[],
+        'application_notes': <Object?>[],
+      },
+    ],
     'maturity': maturity,
     'available': true,
     'availability_reason_ids': <String>[],
-    'qualified_cells': <Object?>[],
     'license_expression': 'MIT OR Apache-2.0',
     'required_attribution': null,
-    'export_kind': 'complete_spec',
+    'export_kind': 'design',
   };
 
   Map<String, Object?> catalog(Map<String, Object?> preset) => {
     'schema_version': 1,
     'structured_spec_available': true,
+    'recipe_schema_version': 1,
+    'authoring_request_schema_version': 1,
+    'authoring_result_schema_version': 1,
+    'mermaid_theme_designs': <Object?>[],
     'supported_output_ids': ['svg'],
     'presets': [preset],
     'known_capability_ids': ['semantic-rules'],
@@ -611,16 +681,14 @@ void preservesScopedPresetQualification() {
     'admission_status': admission,
   };
   Map<String, Object?> preset(List<Object?> cells) => {
-    'id': 'spotless',
-    'display_name': 'Spotless',
     'appearance': 'light',
-    'maturity': 'alpha',
+    'concrete_preset_id': 'spotless',
     'available': true,
     'availability_reason_ids': <String>[],
     'qualified_cells': cells,
-    'license_expression': 'MIT OR Apache-2.0',
-    'required_attribution': null,
-    'export_kind': 'complete_spec',
+    'family_designs': <Object?>[],
+    'preview_colors': <String>[],
+    'application_notes': <Object?>[],
   };
   final vectors =
       jsonDecode(
@@ -634,7 +702,7 @@ void preservesScopedPresetQualification() {
           as List;
   for (final vector in vectors) {
     final expected = vector['cell'] as Map<String, dynamic>;
-    final actual = MermanThemePreset.fromJson(
+    final actual = MermanThemePresetAppearance.fromJson(
       preset([expected]),
     ).qualifiedCells.single;
     _expect(
@@ -645,7 +713,7 @@ void preservesScopedPresetQualification() {
       '${vector['id']}: qualified cells must preserve every open identifier',
     );
   }
-  final parsed = MermanThemePreset.fromJson(
+  final parsed = MermanThemePresetAppearance.fromJson(
     preset([
       cell('embedded-profile', 'portable'),
       cell('host-profile', 'host_dependent'),
@@ -657,7 +725,7 @@ void preservesScopedPresetQualification() {
     'different resource profiles must preserve their admission classes',
   );
   _expectContractFailure(
-    () => MermanThemePreset.fromJson(
+    () => MermanThemePresetAppearance.fromJson(
       preset([
         cell('host-profile', 'host_dependent'),
         cell('host-profile', 'portable'),
@@ -691,44 +759,50 @@ void preservesPresetFamilyDesigns() {
           as List;
   for (final vector in vectors) {
     final json = Map<String, Object?>.from(vector as Map);
-    final expected = json['family_designs'] as List;
-    final preset = MermanThemePreset.fromJson(json);
-    _expect(
-      preset.familyDesigns.length == expected.length,
-      '${preset.id}: family design projection must preserve every entry',
-    );
-    for (var index = 0; index < expected.length; index += 1) {
-      final actual = preset.familyDesigns[index];
+    final group = MermanThemePreset.fromJson(json);
+    final rawAppearances = json['appearances'] as List;
+    for (final entry in group.appearances.indexed) {
+      final preset = entry.$2;
+      final rawAppearance = rawAppearances[entry.$1] as Map;
+      final expected = rawAppearance['family_designs'] as List;
       _expect(
-        actual.familyId == expected[index]['family_id'] &&
-            actual.treatment == expected[index]['treatment'],
-        '${preset.id}: design metadata must match the shared catalog fixture',
+        preset.familyDesigns.length == expected.length,
+        '${preset.concretePresetId}: family design projection must preserve every entry',
+      );
+      for (var index = 0; index < expected.length; index += 1) {
+        final actual = preset.familyDesigns[index];
+        _expect(
+          actual.familyId == expected[index]['family_id'] &&
+              actual.treatment == expected[index]['treatment'],
+          '${preset.concretePresetId}: design metadata must match the shared catalog fixture',
+        );
+      }
+      _expect(
+        jsonEncode(preset.previewColors) ==
+            jsonEncode(rawAppearance['preview_colors']),
+        '${preset.concretePresetId}: preview colors must match the shared catalog fixture',
+      );
+      final notes = rawAppearance['application_notes'] as List;
+      _expect(
+        preset.applicationNotes.length == notes.length,
+        '${preset.concretePresetId}: application notes must preserve every entry',
+      );
+      for (var index = 0; index < notes.length; index += 1) {
+        final actual = preset.applicationNotes[index];
+        _expect(
+          actual.id == notes[index]['id'] &&
+              actual.familyId == notes[index]['family_id'] &&
+              actual.message == notes[index]['message'] &&
+              jsonEncode(actual.recommendedConfig) ==
+                  jsonEncode(notes[index]['recommended_config']),
+          '${preset.concretePresetId}: application notes must match the shared catalog fixture',
+        );
+      }
+      _expect(
+        group.maturity == 'alpha' && preset.qualifiedCells.isEmpty,
+        '${preset.concretePresetId}: discovery guidance must not grant qualification',
       );
     }
-    _expect(
-      jsonEncode(preset.previewColors) == jsonEncode(json['preview_colors']),
-      '${preset.id}: preview colors must match the shared catalog fixture',
-    );
-    final notes = json['application_notes'] as List;
-    _expect(
-      preset.applicationNotes.length == notes.length,
-      '${preset.id}: application notes must preserve every entry',
-    );
-    for (var index = 0; index < notes.length; index += 1) {
-      final actual = preset.applicationNotes[index];
-      _expect(
-        actual.id == notes[index]['id'] &&
-            actual.familyId == notes[index]['family_id'] &&
-            actual.message == notes[index]['message'] &&
-            jsonEncode(actual.recommendedConfig) ==
-                jsonEncode(notes[index]['recommended_config']),
-        '${preset.id}: application notes must match the shared catalog fixture',
-      );
-    }
-    _expect(
-      preset.maturity == 'alpha' && preset.qualifiedCells.isEmpty,
-      '${preset.id}: discovery guidance must not grant qualification',
-    );
   }
   final ghibli = MermanThemePreset.fromJson(
     Map<String, Object?>.from(
@@ -737,26 +811,24 @@ void preservesPresetFamilyDesigns() {
   );
   _expect(
     ghibli.displayName == 'Ghibli' &&
-        ghibli.familyDesigns.single.familyId == 'pie' &&
-        ghibli.familyDesigns.single.treatment == 'dedicated',
+        ghibli.appearances.single.familyDesigns.single.familyId == 'pie' &&
+        ghibli.appearances.single.familyDesigns.single.treatment == 'dedicated',
     'Ghibli discovery must advertise only its dedicated Pie design',
   );
 
-  final source = Map<String, Object?>.from(vectors.first as Map);
+  final source = Map<String, Object?>.from(
+    (vectors.first['appearances'] as List).first as Map,
+  );
 
   final missing = Map<String, Object?>.from(source)..remove('family_designs');
-  final legacy = MermanThemePreset.fromJson(missing);
-  _expect(
-    legacy.familyDesigns.isEmpty,
-    'missing additive design metadata must remain unevaluated',
-  );
+  _expectContractFailure(() => MermanThemePresetAppearance.fromJson(missing));
   final entries = <Object?>[
     {'family_id': 'class', 'treatment': 'dedicated'},
     {'family_id': 'flowchart', 'treatment': 'base_only'},
     {'family_id': 'future-family', 'treatment': 'future_treatment'},
     {'family_id': 'sequence', 'treatment': 'unreviewed'},
   ];
-  final parsed = MermanThemePreset.fromJson({
+  final parsed = MermanThemePresetAppearance.fromJson({
     ...source,
     'family_designs': entries,
     'qualified_cells': <Object?>[],
@@ -773,7 +845,6 @@ void preservesPresetFamilyDesigns() {
     'the parsed design collection must not retain the input list',
   );
   _expectThrows<UnsupportedError>(() => parsed.familyDesigns.clear());
-  _expectThrows<UnsupportedError>(() => legacy.familyDesigns.clear());
 
   for (final invalid in <Object?>[
     null,
@@ -792,7 +863,10 @@ void preservesPresetFamilyDesigns() {
     ],
   ]) {
     _expectContractFailure(
-      () => MermanThemePreset.fromJson({...source, 'family_designs': invalid}),
+      () => MermanThemePresetAppearance.fromJson({
+        ...source,
+        'family_designs': invalid,
+      }),
     );
   }
   for (final field in ['family_id', 'treatment']) {
@@ -815,16 +889,14 @@ void preservesPresetFamilyDesigns() {
 
 void preservesPresetDiscoveryGuidance() {
   const source = <String, Object?>{
-    'id': 'future-preset',
-    'display_name': 'Future Preset',
     'appearance': 'light',
-    'maturity': 'alpha',
+    'concrete_preset_id': 'future-preset',
     'available': true,
     'availability_reason_ids': <String>[],
     'qualified_cells': <Object?>[],
-    'license_expression': 'MIT OR Apache-2.0',
-    'required_attribution': null,
-    'export_kind': 'design',
+    'family_designs': <Object?>[],
+    'preview_colors': <String>[],
+    'application_notes': <Object?>[],
   };
   const note = <String, Object?>{
     'id': 'future-guidance',
@@ -832,21 +904,21 @@ void preservesPresetDiscoveryGuidance() {
     'message': 'Review these settings before applying them.',
     'recommended_config': null,
   };
-  final legacy = MermanThemePreset.fromJson(source);
-  final empty = MermanThemePreset.fromJson({
-    ...source,
-    'preview_colors': <String>[],
-    'application_notes': <Object?>[],
-  });
+  final baseline = MermanThemePresetAppearance.fromJson(source);
   _expect(
-    legacy.previewColors.isEmpty &&
-        legacy.applicationNotes.isEmpty &&
-        empty.previewColors.isEmpty &&
-        empty.applicationNotes.isEmpty,
-    'missing additive metadata and explicit empty arrays must normalize to empty',
+    baseline.previewColors.isEmpty && baseline.applicationNotes.isEmpty,
+    'empty discovery arrays must not invent scope or guidance',
   );
-  _expectThrows<UnsupportedError>(() => legacy.previewColors.clear());
-  _expectThrows<UnsupportedError>(() => legacy.applicationNotes.clear());
+  _expectThrows<UnsupportedError>(() => baseline.previewColors.clear());
+  _expectThrows<UnsupportedError>(() => baseline.applicationNotes.clear());
+  for (final field in [
+    'family_designs',
+    'preview_colors',
+    'application_notes',
+  ]) {
+    final missing = Map<String, Object?>.from(source)..remove(field);
+    _expectContractFailure(() => MermanThemePresetAppearance.fromJson(missing));
+  }
 
   final colors = ['#fedcba', '#123456', '#fedcba'];
   final choice = <String, Object?>{
@@ -868,7 +940,7 @@ void preservesPresetDiscoveryGuidance() {
     },
     {...note, 'id': 'a-future-note'},
   ];
-  final parsed = MermanThemePreset.fromJson({
+  final parsed = MermanThemePresetAppearance.fromJson({
     ...source,
     'preview_colors': colors,
     'application_notes': notes,
@@ -933,7 +1005,10 @@ void preservesPresetDiscoveryGuidance() {
     [''],
   ]) {
     _expectContractFailure(
-      () => MermanThemePreset.fromJson({...source, 'preview_colors': invalid}),
+      () => MermanThemePresetAppearance.fromJson({
+        ...source,
+        'preview_colors': invalid,
+      }),
     );
   }
   for (final invalid in <Object?>[
@@ -947,8 +1022,10 @@ void preservesPresetDiscoveryGuidance() {
     [{}],
   ]) {
     _expectContractFailure(
-      () =>
-          MermanThemePreset.fromJson({...source, 'application_notes': invalid}),
+      () => MermanThemePresetAppearance.fromJson({
+        ...source,
+        'application_notes': invalid,
+      }),
     );
   }
   for (final field in ['id', 'family_id', 'message']) {
@@ -988,7 +1065,7 @@ void preservesPresetDiscoveryGuidance() {
     },
   ]) {
     _expectContractFailure(
-      () => MermanThemePreset.fromJson({
+      () => MermanThemePresetAppearance.fromJson({
         ...source,
         'application_notes': [
           {...note, 'recommended_config': invalid},
