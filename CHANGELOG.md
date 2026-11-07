@@ -16,13 +16,15 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
 
 - Recipe schema remains **v1**: optional `appearances` and `default_appearance` belong inside `design`. Preset discovery now groups appearances under one design, with `concrete_preset_id` on each appearance. Rebuild matching wrappers and runtimes; the Web transport epoch is 10 and CLI contract is 7. Existing concrete preset IDs remain fixed to their appearance.
 - VS Code now preserves theme canvas paint by default. Its viewer background controls only the preview backing; explicit canvas overrides still apply to exports.
-- Family typography inherits each omitted property from the shared default. Rust's `TypographySpec::family_style()` now returns an owned, resolved `TextStyle`; bind the result before borrowing it. Raw theme materialization now validates semantic targets and effects through the same compiler admission as recipe operations.
+- Family typography inherits each omitted property from the shared default. Rust's `TypographySpec::family_style()` now returns an owned, resolved `TextStyle`; bind the result before borrowing it. Raw theme materialization now validates semantic targets and effects through the same compiler admission as recipe operations. Editable-design compilation errors use `ThemeDesignCompileError::Materialization` to preserve authoring diagnostics; `complete_spec` failures retain `Compilation`.
 
 ### Fixed
 
 - Overriding one family font property preserves the theme's shared size, weight and other text settings. Typography diagnostics identify the property that actually supplied an override.
 - Theme validation points invalid effects back to their authored field, including errors in an inactive appearance.
 - VS Code keeps the latest render available for copying and export across repeated theme imports and viewer changes; superseded refreshes cannot replace newer output.
+- VS Code resolves configured theme files against the current source workspace and reloads them after settings changes or Refresh Preview. Imported themes remain panel-local snapshots, and switching through Source preserves a manual Light/Dark preference.
+- Requirement node text preserves source-theme colors when `nodeTextColor` falls back to `textColor`, including Classic/Neo and SVG/HTML labels.
 - Native text measurement recognizes fixed-width fonts with incomplete font metadata. Generic monospace selection no longer depends on font-file order, keeping Class members and relationship label backgrounds sized for the selected font.
 - Flowchart and Class relationship labels apply local solid and transparent theme colors, with matching execution evidence and source/configuration precedence. Class includes cardinalities; Agentflow and Swimlane share Flowchart's SVG, Markdown and HTML label fix.
 - Flowchart preserves node definitions and metadata in source order, captures default curves when each edge is declared, and applies Mermaid's node-padding fallback for numeric zero.
