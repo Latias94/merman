@@ -171,6 +171,73 @@ fn try_render_xychart_svg_with_resource_policy(
 }
 
 #[test]
+fn xychart_orientation_token_case_reaches_bar_geometry_like_upstream() {
+    for (orientation, horizontal) in [
+        ("horizontal", true),
+        ("HORIZONTAL", false),
+        ("Horizontal", false),
+        ("vertical", false),
+    ] {
+        let source = format!("xychart {orientation}\nx-axis [A, B]\ny-axis 0 --> 10\nbar [2, 8]");
+        let svg = render_xychart_svg_from_text(&source);
+        let document = roxmltree::Document::parse(&svg).unwrap();
+        let bars: Vec<_> = xychart_plot_group(&document, "bar-plot-0")
+            .children()
+            .filter(|node| node.has_tag_name("rect"))
+            .map(|node| {
+                ["x", "y", "width", "height"]
+                    .map(|attribute| node.attribute(attribute).unwrap().parse::<f64>().unwrap())
+            })
+            .collect();
+        assert_eq!(bars.len(), 2);
+        let [first, second] = [bars[0], bars[1]];
+        if horizontal {
+            assert!((first[0] - second[0]).abs() < 0.001);
+            assert!(first[1] < second[1]);
+            assert!((first[3] - second[3]).abs() < 0.001);
+            assert!(first[2] > 0.0 && second[2] > first[2]);
+        } else {
+            assert!(first[0] < second[0]);
+            assert!(first[1] > second[1]);
+            assert!((first[2] - second[2]).abs() < 0.001);
+            assert!(first[3] > 0.0 && second[3] > first[3]);
+            assert!((first[1] + first[3] - second[1] - second[3]).abs() < 0.001);
+        }
+    }
+}
+
+#[test]
+fn xychart_same_line_axis_and_bar_statements_reach_visible_svg() {
+    let compact = render_xychart_svg_from_text("xychart x-axis [A, B] bar [1, 2]");
+    let separated = render_xychart_svg_from_text("xychart\nx-axis [A, B]\nbar [1, 2]");
+    let compact_document = roxmltree::Document::parse(&compact).unwrap();
+    let separated_document = roxmltree::Document::parse(&separated).unwrap();
+    let bar_geometry = |document: &roxmltree::Document<'_>| {
+        xychart_plot_group(document, "bar-plot-0")
+            .children()
+            .filter(|node| node.has_tag_name("rect"))
+            .map(|node| {
+                ["x", "y", "width", "height"]
+                    .map(|attribute| node.attribute(attribute).unwrap().parse::<f64>().unwrap())
+            })
+            .collect::<Vec<_>>()
+    };
+    let bars = bar_geometry(&compact_document);
+    assert_eq!(bars.len(), 2);
+    assert_eq!(bars, bar_geometry(&separated_document));
+    assert!(bars[0][0] < bars[1][0]);
+    assert!(bars[0][3] > 0.0);
+    assert!(bars[1][3] > bars[0][3]);
+    for label in ["A", "B"] {
+        assert!(
+            compact_document
+                .descendants()
+                .any(|node| node.has_tag_name("text") && node.text() == Some(label))
+        );
+    }
+}
+
+#[test]
 fn xychart_family_svg_accepts_exact_max_svg_bytes_and_rejects_one_byte_less() {
     let source = "xychart\n  x-axis [A, B]\n  y-axis 0 --> 10\n  bar [4, 7]\n";
     let baseline = try_render_xychart_svg_with_resource_policy(

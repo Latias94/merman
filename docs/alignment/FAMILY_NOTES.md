@@ -137,9 +137,31 @@ arbitrary locale formats and every `Date.parse()` dialect are not a compatibilit
 Runtime time and timezone inputs also affect dates. A host-sensitive daylight-saving or
 seconds-only test is not a portable snapshot contract.
 
+Fractional days and weeks round before changing the local calendar date; month and year setters
+truncate their target field and clamp the day. Invalid JavaScript Date results, including the
+month-end calculation used by calendar setters, keep the task's start as its end. Exclusion shading
+stops at the sixth local-calendar anniversary. Section names that are canonical JavaScript array
+indices enumerate numerically before other names; compact row packing follows that order without
+changing authored semantic order.
+Custom tick intervals retain Mermaid's estimated 10,000-tick admission rule. Generated ticks,
+calendar-day filtering and excluded-day inspection consume the operation work budget and report a
+resource error when exhausted. Filtered day ranges admit their minimum scan work before retaining ticks.
+
 Owners: [date parsing/formatting](../../crates/merman-core/src/diagrams/gantt/date.rs),
 [date tests](../../crates/merman-core/src/diagrams/gantt/tests.rs), and
-[comparison runtime policy](../../crates/xtask/src/cmd/compare/diagrams/gantt.rs).
+[SVG regressions](../../crates/merman-render/tests/gantt_svg_test.rs). The
+[comparison runtime policy](../../crates/xtask/src/cmd/compare/diagrams/gantt.rs) owns snapshot time inputs.
+
+## GitGraph
+
+Commit and arrow colors use an eight-slot ring. Redux branch lines and labels separately use the
+configured theme color limit; color themes reserve the main-branch slot when cycling other branches.
+A branch and its commit can consequently have different color class indices. Merge tags retain their
+literal text and are XML-escaped in SVG; they do not introduce active markup.
+
+Owners: [parser](../../crates/merman-core/src/diagrams/git_graph.rs),
+[color binding](../../crates/merman-render/src/gitgraph/css_binding.rs), and
+[12.3 regressions](../../crates/merman-render/tests/gitgraph_mermaid_12_3_regression_test.rs).
 
 ## Ishikawa and Venn
 
@@ -152,6 +174,16 @@ Venn optimization/intersection source, rather than ad hoc circle placement.
 Owners: [Ishikawa SVG tests](../../crates/merman-render/tests/ishikawa_svg_test.rs),
 [Venn layout](../../crates/merman-render/src/venn.rs), and
 [Venn SVG tests](../../crates/merman-render/tests/venn_svg_test.rs).
+
+## Mindmap
+
+Rectangle, rounded and hexagon label preparation clears the requested node width and uses
+`flowchart.wrappingWidth`, whose default is 120. Other shapes consume the projected Mindmap width.
+Fractional padding remains part of layout and SVG geometry. Font-dependent wrapping and FCoSE
+placement retain the shared browser-measurement boundary.
+
+Owners: [layout](../../crates/merman-render/src/mindmap.rs) and
+[12.3 regressions](../../crates/merman-render/tests/mindmap_mermaid12_3_test.rs).
 
 ## Railroad
 
@@ -248,6 +280,10 @@ Host measurements must use SVG/layout units. Mermaid reverses the browser CTM's 
 vertical scales; headless layout has no screen transform to reverse. Applying that conversion
 again would distort layout. Titles require available plot height including padding, and center on
 the final plot area; a title that cannot fit vertically is omitted rather than forcibly wrapped.
+
+The selected parser accepts orientation keywords without regard to case, but its DB selects horizontal
+layout only for the exact lowercase value `horizontal`. Uppercase `HORIZONTAL` consequently remains
+vertical. Statement boundaries can occur on the same physical line outside quoted and bracketed values.
 
 Owners: [XYChart layout](../../crates/merman-render/src/xychart.rs),
 [SVG tests](../../crates/merman-render/tests/xychart_svg_test.rs), and

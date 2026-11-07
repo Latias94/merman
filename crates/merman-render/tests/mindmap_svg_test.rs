@@ -1219,7 +1219,13 @@ fn try_render_mindmap_svg_with_resource_policy(
 
 #[test]
 fn mindmap_family_svg_accepts_exact_max_svg_bytes_and_rejects_one_byte_less() {
-    let source = "mindmap\n  Root\n    Child\n";
+    let source = concat!(
+        "---\nconfig:\n  layout: dagre\n  look: neo\n",
+        "  mindmap:\n    padding: 10.5\n    maxNodeWidth: 80.5\n",
+        "  flowchart:\n    wrappingWidth: 160\n---\n",
+        "mindmap\n  Root %% literal\n    rect[Wrapped child label with several words]\n",
+        "    cloud(Label]\n",
+    );
     let diagram_id = "mindmap-bounded";
     let baseline = try_render_mindmap_svg_with_resource_policy(
         source,
@@ -2881,8 +2887,9 @@ fn mindmap_classic_raw_theme_css_remains_the_terminal_node_fill_owner() {
 
 #[test]
 fn mindmap_break_spaces_keeps_the_trailing_indentation_line_box() {
+    // mindmapRenderer.ts clears rect width; labelHelper uses flowchart.wrappingWidth.
     let svg = render_mindmap_svg_from_text(
-        "mindmap\n  root[\n    Multi-line root\n    with three lines\n  ]\n",
+        "---\nconfig:\n  flowchart:\n    wrappingWidth: 200\n---\nmindmap\n  root[\n    Multi-line root\n    with three lines\n  ]\n",
         "mindmap-break-spaces",
     );
 
@@ -2890,7 +2897,7 @@ fn mindmap_break_spaces_keeps_the_trailing_indentation_line_box() {
         svg.contains(
             r#"<rect class="basic label-container" style="" x="-120" y="-46" width="240" height="92"/>"#
         ),
-        "expected the fixed-width Mindmap node to include three 24px line boxes: {svg}"
+        "expected the Mindmap node with a 200px wrap limit to include three 24px line boxes: {svg}"
     );
     assert!(
         svg.contains(r#"<foreignObject width="200" height="72">"#),

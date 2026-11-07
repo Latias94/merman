@@ -747,10 +747,6 @@ impl GanttTaskTheme {
         })
     }
 
-    pub(crate) fn needs_layout_binding(&self) -> bool {
-        !self.tasks.is_empty() || self.requires_terminal_receipt()
-    }
-
     pub(crate) fn bind_layout_occurrences(&self, layout_occurrences: Vec<usize>) -> bool {
         if layout_occurrences.len() != self.task_count() {
             return false;
@@ -776,6 +772,10 @@ impl GanttTaskTheme {
         self.layout_task(layout_index)
             .and_then(|task| task.fill.as_ref())
             .map(|fill| fill.css.as_ref())
+    }
+
+    pub(crate) fn semantic_index_for_layout_task(&self, layout_index: usize) -> Option<usize> {
+        self.layout_occurrences.get()?.get(layout_index).copied()
     }
 
     pub(crate) fn terminal_label_fill_for_layout_task(
@@ -916,7 +916,7 @@ impl GanttTaskTheme {
     }
 
     fn layout_task(&self, layout_index: usize) -> Option<&GanttTaskTerminalExpectation> {
-        let semantic_index = *self.layout_occurrences.get()?.get(layout_index)?;
+        let semantic_index = self.semantic_index_for_layout_task(layout_index)?;
         self.tasks.get(semantic_index)
     }
 }
@@ -2281,7 +2281,7 @@ mod tests {
     }
 
     #[test]
-    fn unthemed_layout_preserves_source_states_without_retaining_evidence_mapping() {
+    fn unthemed_layout_binds_source_occurrences_without_retaining_theme_expectations() {
         let tasks = vec![
             GanttRenderTask {
                 semantic: merman_model::families::gantt::GanttTask {
@@ -2326,6 +2326,9 @@ mod tests {
             &crate::text::DeterministicTextMeasurer::default(),
             800.0,
             &merman_model::time::LocalTimeZone::utc(),
+            &crate::resources::OperationWorkMeter::new(
+                crate::resources::RenderResourcePolicy::unbounded_for_trusted_input(),
+            ),
         )
         .expect("unthemed layout");
         let bars = layout
@@ -2341,9 +2344,11 @@ mod tests {
                 ("later", "task activeCrit0")
             ]
         );
-        assert!(
-            plan.layout_occurrences.get().is_none(),
-            "no theme means no evidence mapping"
+        assert!(plan.tasks.is_empty());
+        assert_eq!(
+            plan.layout_occurrences.get().map(AsRef::as_ref),
+            Some([1, 2, 0].as_slice()),
+            "source labels need occurrence binding even without a typed theme"
         );
     }
 

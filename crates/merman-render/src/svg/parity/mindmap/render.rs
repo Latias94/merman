@@ -590,7 +590,6 @@ pub(crate) fn render_mindmap_diagram_svg_model_with_config(
         y: f64,
     }
 
-    let max_node_width_px = crate::mindmap::mindmap_max_node_width_px(config.as_value());
     let text_style = crate::mindmap::mindmap_text_style_with_font_family(
         config.as_value(),
         node_palette.font_family_css(),
@@ -1089,6 +1088,8 @@ pub(crate) fn render_mindmap_diagram_svg_model_with_config(
     out.checkpoint()?;
     let node_fill_ownership = &binding.node_fill_ownership;
     for (node_index, n) in model.nodes.iter().enumerate() {
+        let max_node_width_px =
+            crate::mindmap::mindmap_label_wrapping_width_px(n, config.as_value());
         let (x, y, w, h, label_w, label_h) = node_by_id
             .get(&n.id)
             .map(|ln| {
@@ -1155,8 +1156,8 @@ pub(crate) fn render_mindmap_diagram_svg_model_with_config(
         match n.shape.as_str() {
             "defaultMindmapNode" => {
                 let rd = 5.0;
-                let rect_path = format!(
-                    "\n    M{} {}\n    v{}\n    q0,-{} {},-{}\n    h{}\n    q{},0 {},{}\n    v{}\n    q0,{} -{},{}\n    h{}\n    q-{},0 -{},-{}\n    Z\n  ",
+                let mut rect_path = format!(
+                    "\n    M{} {}\n    v{}\n    q0,-{} {},-{}\n    h{}\n    q{},0 {},{}\n",
                     fmt_path(-(w / 2.0)),
                     fmt_path(h / 2.0 - rd),
                     fmt_path(-h + 2.0 * rd),
@@ -1167,15 +1168,28 @@ pub(crate) fn render_mindmap_diagram_svg_model_with_config(
                     fmt_path(rd),
                     fmt_path(rd),
                     fmt_path(rd),
-                    fmt_path(h - 2.0 * rd),
-                    fmt_path(rd),
-                    fmt_path(rd),
-                    fmt_path(rd),
-                    fmt_path(-w + 2.0 * rd),
-                    fmt_path(rd),
-                    fmt_path(rd),
-                    fmt_path(rd),
                 );
+                if look == "neo" {
+                    let _ = write!(
+                        &mut rect_path,
+                        "    v{}\n    H{}\n    Z\n  ",
+                        fmt_path(h - rd),
+                        fmt_path(-(w / 2.0)),
+                    );
+                } else {
+                    let _ = write!(
+                        &mut rect_path,
+                        "    v{}\n    q0,{} -{},{}\n    h{}\n    q-{},0 -{},-{}\n    Z\n  ",
+                        fmt_path(h - 2.0 * rd),
+                        fmt_path(rd),
+                        fmt_path(rd),
+                        fmt_path(rd),
+                        fmt_path(-w + 2.0 * rd),
+                        fmt_path(rd),
+                        fmt_path(rd),
+                        fmt_path(rd),
+                    );
+                }
 
                 // Recover label bbox dimensions from the rendered node size + padding rules.
                 let bbox_w = label_w.unwrap_or_else(|| (w - 8.0 * half_padding).max(0.0));

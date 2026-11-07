@@ -12,6 +12,11 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
 
 ### Fixed
 
+- Gantt follows Day.js calendar arithmetic for fractional durations, orders numeric section names as Mermaid does, and preserves each duplicate-ID task's label status after date sorting. Custom axes retain ticks beyond 2,000 under the operation budget; exclusion shading uses the calendar-year cutoff.
+- GitGraph preserves fractional main-branch ordering, multiline quoted values and literal merge tags. Redux commits, arrows and branch labels use their respective color slots, and command separators follow Mermaid's ASCII whitespace rules.
+- Mindmap preserves fractional padding and literal `%%` in labels, uses the selected Neo default-node shape, and follows Mermaid's closing-delimiter and icon-directive boundaries. Rectangle, rounded and hexagon labels use the Flowchart wrapping width.
+- Pie accepts multiline quoted labels while preserving their source ranges for editor integrations.
+- XY Chart accepts statements on the same physical line and follows Mermaid's case-sensitive horizontal-orientation behavior.
 - ER accepts Unicode whitespace in attribute blocks without panicking, supports spaces inside generic types and uppercase zero-cardinality markers, and preserves authored key spelling. Numeric zero Dagre spacing uses Mermaid's defaults while string zero remains explicit.
 - ER honors `layout: swimlane` with compound lanes, routed relationships and prepared non-Markdown labels. Relationship wrapping and supported inline HTML font sizes participate in layout. Self-loop relationships report an explicit unsupported-provider error instead of disappearing from a successful diagram; Dagre and ELK remain available for those inputs.
 - State preserves aliases and choice/fork/join types before inline comments, accepts comments after block-note terminators, and keeps literal composite alias IDs and nested states named `accTitle` or `accDescr`.

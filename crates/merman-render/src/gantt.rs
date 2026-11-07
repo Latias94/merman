@@ -4,6 +4,7 @@ use crate::model::{
     Bounds, GanttAxisTickLayout, GanttDiagramLayout, GanttExcludeRangeLayout, GanttRowLayout,
     GanttSectionTitleLayout, GanttTaskBarLayout, GanttTaskLabelLayout, GanttTaskLayout,
 };
+use crate::resources::OperationWorkMeter;
 use crate::text::{TextMeasurer, TextStyle, mermaid_html_breaks_to_newlines};
 use merman_model::time::{CivilDate, CivilDateTime, LocalTimeZone, OffsetDateTime, Weekday};
 use std::collections::{HashMap, hash_map::Entry};
@@ -662,23 +663,39 @@ fn ceil_tick_start(
     Some(local_time_zone.resolve_local(start)?.timestamp_millis())
 }
 
-fn add_d3_time_day_every(ms: i64, every: i64, local_time_zone: &LocalTimeZone) -> Option<i64> {
-    let local = instant_to_local(ms, local_time_zone)?.local_datetime();
+fn add_d3_time_day_every(
+    ms: i64,
+    every: i64,
+    local_time_zone: &LocalTimeZone,
+    work_meter: &OperationWorkMeter,
+) -> Result<Option<i64>> {
+    let Some(local) = instant_to_local(ms, local_time_zone).map(|time| time.local_datetime())
+    else {
+        return Ok(None);
+    };
 
     let e = every.max(1);
     if e <= 1 {
-        return add_interval(ms, 1, "day", local_time_zone);
+        return Ok(add_interval(ms, 1, "day", local_time_zone));
     }
 
     // D3's `timeDay.every(e)` uses a filtered interval based on `(date.getDate() - 1) % e`.
     // This means the modulus resets at month boundaries, and the "next tick" is not simply
     // `+e days` for months with non-multiple-of-e lengths.
-    let mut next_date = local.date().checked_add_days(1)?;
-    while i64::from(next_date.day0()).rem_euclid(e) != 0 {
-        next_date = next_date.checked_add_days(1)?;
+    let mut next_date = local.date();
+    loop {
+        work_meter.charge(1)?;
+        let Some(candidate) = next_date.checked_add_days(1) else {
+            return Ok(None);
+        };
+        next_date = candidate;
+        if i64::from(next_date.day0()).rem_euclid(e) == 0 {
+            break;
+        }
     }
-    let next = civil_with_time(next_date, local)?;
-    Some(local_time_zone.resolve_local(next)?.timestamp_millis())
+    Ok(civil_with_time(next_date, local)
+        .and_then(|next| local_time_zone.resolve_local(next))
+        .map(|next| next.timestamp_millis()))
 }
 
 fn axis_format_to_strftime(axis_format: &str, date_format: &str, cfg_axis_format: &str) -> String {
@@ -846,9 +863,10 @@ struct GanttTickRequest<'a> {
     tick_interval: Option<&'a str>,
     week_start: Option<&'a str>,
     local_time_zone: &'a LocalTimeZone,
+    work_meter: &'a OperationWorkMeter,
 }
 
-fn build_ticks(request: GanttTickRequest<'_>) -> Vec<GanttAxisTickLayout> {
+fn build_ticks(request: GanttTickRequest<'_>) -> Result<Vec<GanttAxisTickLayout>> {
     let GanttTickRequest {
         min_ms,
         max_ms,
@@ -858,6 +876,7 @@ fn build_ticks(request: GanttTickRequest<'_>) -> Vec<GanttAxisTickLayout> {
         tick_interval,
         week_start,
         local_time_zone,
+        work_meter,
     } = request;
     const MAX_TICK_COUNT: f64 = 10_000.0;
 
@@ -900,11 +919,26 @@ fn build_ticks(request: GanttTickRequest<'_>) -> Vec<GanttAxisTickLayout> {
     let mut ticks = Vec::new();
     let mut cur =
         ceil_tick_start(min_ms, every, unit, week_start, local_time_zone).unwrap_or(min_ms);
-    let max_ticks = 2000;
-    for _ in 0..max_ticks {
-        if cur > max_ms {
-            break;
-        }
+    if unit == "day"
+        && every > 1
+        && cur <= max_ms
+        && let (Some(first), Some(last)) = (
+            instant_to_local(cur, local_time_zone),
+            instant_to_local(max_ms, local_time_zone),
+        )
+    {
+        // A filtered D3 day interval still inspects every intervening calendar day.
+        // Admit this lower bound before retaining ticks, even when the interval estimate is tiny.
+        let days = last
+            .local_datetime()
+            .date()
+            .days_since(first.local_datetime().date())
+            .max(0);
+        let days = usize::try_from(days).map_err(|_| work_meter.arithmetic_overflow())?;
+        work_meter.preflight(days)?;
+    }
+    while cur <= max_ms {
+        work_meter.charge(1)?;
         let x = scale_time(cur, min_ms, max_ms, range) + left_padding;
         let label = instant_to_local(cur, local_time_zone)
             .map(|datetime| format_axis_tick_label(datetime, axis_format))
@@ -915,7 +949,7 @@ fn build_ticks(request: GanttTickRequest<'_>) -> Vec<GanttAxisTickLayout> {
             label,
         });
         let next = if unit == "day" && every > 1 {
-            add_d3_time_day_every(cur, every, local_time_zone)
+            add_d3_time_day_every(cur, every, local_time_zone, work_meter)?
         } else {
             add_interval(cur, every, unit, local_time_zone)
         };
@@ -927,7 +961,37 @@ fn build_ticks(request: GanttTickRequest<'_>) -> Vec<GanttAxisTickLayout> {
         }
         cur = next;
     }
-    ticks
+    Ok(ticks)
+}
+
+fn section_array_index(section: &str) -> Option<u32> {
+    if section == "0" {
+        return Some(0);
+    }
+    if section.is_empty()
+        || section.starts_with('0')
+        || !section.as_bytes().iter().all(u8::is_ascii_digit)
+    {
+        return None;
+    }
+    section
+        .parse::<u32>()
+        .ok()
+        .filter(|index| *index < u32::MAX)
+}
+
+fn supports_exclude_range(min_ms: i64, max_ms: i64, local_time_zone: &LocalTimeZone) -> bool {
+    let Some(start) = instant_to_local(min_ms, local_time_zone) else {
+        return false;
+    };
+    let Some(end) = instant_to_local(max_ms, local_time_zone) else {
+        return false;
+    };
+    // A truncated Day.js year difference exceeds five at the sixth calendar anniversary.
+    start
+        .local_datetime()
+        .checked_add_years(6)
+        .is_none_or(|anniversary| end.local_datetime() < anniversary)
 }
 
 /// Mirrors JavaScript remainder stringification for Mermaid's generated Gantt class names.
@@ -949,6 +1013,10 @@ pub(crate) fn gantt_section_class_suffix(
     ((index as i64) % number_section_styles).to_string()
 }
 
+#[allow(
+    clippy::too_many_arguments,
+    reason = "Keep the family layout inputs and shared operation budget explicit"
+)]
 pub(crate) fn layout_gantt_diagram_typed(
     model: &GanttDiagramRenderModel,
     diagram_title: Option<&str>,
@@ -957,6 +1025,7 @@ pub(crate) fn layout_gantt_diagram_typed(
     text_measurer: &dyn TextMeasurer,
     container_width: f64,
     local_time_zone: &merman_model::time::LocalTimeZone,
+    work_meter: &OperationWorkMeter,
 ) -> Result<GanttDiagramLayout> {
     if task_theme.task_count() != model.tasks.len() {
         return Err(crate::Error::InvalidModel {
@@ -1020,6 +1089,12 @@ pub(crate) fn layout_gantt_diagram_typed(
                 }
             }
         }
+        // Object.keys enumerates canonical array indices numerically, then other keys in
+        // insertion order. The stable sort preserves the latter without reordering semantics.
+        section_order.sort_by_key(|section| match section_array_index(section) {
+            Some(index) => (false, index),
+            None => (true, 0),
+        });
 
         let mut order_offset: i64 = 0;
         for sec in section_order {
@@ -1044,6 +1119,11 @@ pub(crate) fn layout_gantt_diagram_typed(
             category_heights.push((c.clone(), count));
         }
     }
+    // Section titles enumerate categoryHeights through Object.keys in both display modes.
+    category_heights.sort_by_key(|(section, _)| match section_array_index(section) {
+        Some(index) => (false, index),
+        None => (true, 0),
+    });
 
     let mut height = 2.0 * top_padding;
     if is_compact {
@@ -1063,11 +1143,9 @@ pub(crate) fn layout_gantt_diagram_typed(
         (0, 0)
     };
     let range = (width - left_padding - right_padding).max(1.0);
-    let span_ms = absolute_millis_between(max_ms, min_ms);
-    let max_exclude_span_ms = i128::from(MS_PER_DAY) * 365 * 5;
     let has_excludes_layer = has_tasks
         && (!m.excludes.is_empty() || !m.includes.is_empty())
-        && span_ms <= max_exclude_span_ms;
+        && supports_exclude_range(min_ms, max_ms, local_time_zone);
 
     // Sort by start time for rendering while retaining the source semantic occurrence. Theme
     // selectors are resolved against source order, so a render-order index is not interchangeable
@@ -1106,6 +1184,7 @@ pub(crate) fn layout_gantt_diagram_typed(
         };
 
         while cur <= max_day {
+            work_meter.charge(1)?;
             let invalid = is_invalid_date(
                 cur,
                 &m.date_format,
@@ -1389,7 +1468,8 @@ pub(crate) fn layout_gantt_diagram_typed(
             tick_interval,
             week_start,
             local_time_zone,
-        })
+            work_meter,
+        })?
     } else {
         Vec::new()
     };
@@ -1404,7 +1484,8 @@ pub(crate) fn layout_gantt_diagram_typed(
             tick_interval,
             week_start,
             local_time_zone,
-        })
+            work_meter,
+        })?
     } else {
         Vec::new()
     };
@@ -1416,9 +1497,8 @@ pub(crate) fn layout_gantt_diagram_typed(
         max_y: height,
     });
 
-    if task_theme.needs_layout_binding()
-        && !task_theme
-            .bind_layout_occurrences(indexed_tasks.into_iter().map(|(index, _)| index).collect())
+    if !task_theme
+        .bind_layout_occurrences(indexed_tasks.into_iter().map(|(index, _)| index).collect())
     {
         return Err(crate::Error::InvalidModel {
             message: "Gantt task theme could not bind semantic occurrences to layout order"
@@ -1489,6 +1569,126 @@ mod tests {
     }
 
     #[test]
+    fn section_array_indices_match_object_key_order_boundaries() {
+        for (section, expected) in [
+            ("0", Some(0)),
+            ("2", Some(2)),
+            ("4294967294", Some(u32::MAX - 1)),
+            ("4294967295", None),
+            ("01", None),
+            ("-1", None),
+            ("1.0", None),
+            ("", None),
+        ] {
+            assert_eq!(super::section_array_index(section), expected);
+        }
+    }
+
+    #[test]
+    fn exclusion_cutoff_uses_the_sixth_calendar_anniversary() {
+        let utc = merman_model::time::LocalTimeZone::utc();
+        let ms = |year, month, day| {
+            OffsetDateTime::from_local(
+                CivilDate::new(year, month, day).unwrap().at_midnight(),
+                UtcOffset::UTC,
+            )
+            .unwrap()
+            .timestamp_millis()
+        };
+        for (start, end, expected) in [
+            ((2020, 1, 1), (2025, 7, 1), true),
+            ((2020, 1, 1), (2025, 12, 31), true),
+            ((2020, 1, 1), (2026, 1, 1), false),
+            ((2020, 2, 29), (2026, 2, 27), true),
+            ((2020, 2, 29), (2026, 2, 28), false),
+        ] {
+            assert_eq!(
+                super::supports_exclude_range(
+                    ms(start.0, start.1, start.2),
+                    ms(end.0, end.1, end.2),
+                    &utc,
+                ),
+                expected,
+            );
+        }
+    }
+
+    #[test]
+    fn ticks_fail_on_the_shared_work_budget_instead_of_returning_a_truncated_axis() {
+        let utc = merman_model::time::LocalTimeZone::utc();
+        let policy = crate::resources::RenderResourcePolicy::unbounded_for_trusted_input()
+            .with_limit(crate::resources::ResourceLimitId::MaxLayoutWorkUnits, 3)
+            .unwrap();
+        let meter = crate::resources::OperationWorkMeter::new(policy);
+        let error = super::build_ticks(super::GanttTickRequest {
+            min_ms: 0,
+            max_ms: 10,
+            range: 100.0,
+            left_padding: 0.0,
+            axis_format: "%L",
+            tick_interval: Some("1millisecond"),
+            week_start: None,
+            local_time_zone: &utc,
+            work_meter: &meter,
+        })
+        .unwrap_err();
+        assert!(matches!(error, crate::Error::ResourceLimitExceeded(details)
+            if details.limit == "max_layout_work_units"));
+    }
+
+    #[test]
+    fn filtered_day_ticks_admit_the_calendar_scan_before_retaining_ticks() {
+        let utc = merman_model::time::LocalTimeZone::utc();
+        let policy = crate::resources::RenderResourcePolicy::unbounded_for_trusted_input()
+            .with_limit(crate::resources::ResourceLimitId::MaxLayoutWorkUnits, 1000)
+            .unwrap();
+        let meter = crate::resources::OperationWorkMeter::new(policy);
+        let error = super::build_ticks(super::GanttTickRequest {
+            min_ms: 0,
+            max_ms: 8_640_000_000_000_000,
+            range: 100.0,
+            left_padding: 0.0,
+            axis_format: "%Y-%m-%d",
+            tick_interval: Some("1000000day"),
+            week_start: None,
+            local_time_zone: &utc,
+            work_meter: &meter,
+        })
+        .unwrap_err();
+        assert!(matches!(error, crate::Error::ResourceLimitExceeded(details)
+            if details.limit == "max_layout_work_units" && details.actual >= 100_000_000));
+        assert_eq!(
+            meter.used(),
+            0,
+            "reject the expansion before allocating ticks"
+        );
+    }
+
+    #[test]
+    fn filtered_day_ticks_charge_rejected_calendar_candidates() {
+        let utc = merman_model::time::LocalTimeZone::utc();
+        let policy = crate::resources::RenderResourcePolicy::unbounded_for_trusted_input()
+            .with_limit(crate::resources::ResourceLimitId::MaxLayoutWorkUnits, 3)
+            .unwrap();
+        let meter = crate::resources::OperationWorkMeter::new(policy);
+        let error = super::build_ticks(super::GanttTickRequest {
+            min_ms: 0,
+            max_ms: 2 * super::MS_PER_DAY,
+            range: 100.0,
+            left_padding: 0.0,
+            axis_format: "%Y-%m-%d",
+            tick_interval: Some("1000000day"),
+            week_start: None,
+            local_time_zone: &utc,
+            work_meter: &meter,
+        })
+        .unwrap_err();
+        assert!(matches!(error, crate::Error::ResourceLimitExceeded(details)
+            if details.limit == "max_layout_work_units" && details.actual == 4));
+        assert_eq!(meter.used(), 3);
+    }
+
+    #[test]
     fn maximum_utc_date_layout_terminates_without_panicking() {
         let max_ms = i64::MAX;
         let mut model = GanttDiagramRenderModel::default();
@@ -1520,6 +1720,9 @@ mod tests {
             &DeterministicTextMeasurer::default(),
             800.0,
             &utc,
+            &crate::resources::OperationWorkMeter::new(
+                crate::resources::RenderResourcePolicy::unbounded_for_trusted_input(),
+            ),
         )
         .expect("maximum-date layout should terminate successfully");
 

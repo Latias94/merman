@@ -2804,5 +2804,155 @@ fn gantt_active_done_labels_preserve_upstream_classes_and_outside_paint_ownershi
     }
 }
 
+#[test]
+fn gantt_compact_sections_use_javascript_object_key_order_without_reordering_semantics() {
+    let source = concat!(
+        "---\nconfig:\n  gantt:\n    displayMode: compact\n---\n",
+        "gantt\ndateFormat YYYY-MM-DD\ntodayMarker off\n",
+        "section 2\nA: a,2026-01-01,1d\n",
+        "section 1\nB: b,2026-01-01,1d\n",
+        "section 01\nC: c,2026-01-01,1d\n",
+        "section Later\nD: d,2026-01-01,1d\n",
+    );
+    let layout = layout_gantt_from_text(source);
+    assert_eq!(
+        layout
+            .tasks
+            .iter()
+            .map(|task| task.id.as_str())
+            .collect::<Vec<_>>(),
+        ["a", "b", "c", "d"],
+    );
+    assert_eq!(
+        layout
+            .tasks
+            .iter()
+            .map(|task| task.order)
+            .collect::<Vec<_>>(),
+        [1, 0, 2, 3],
+    );
+    assert_eq!(
+        layout
+            .section_titles
+            .iter()
+            .map(|title| title.section.as_str())
+            .collect::<Vec<_>>(),
+        ["1", "2", "01", "Later"],
+    );
+    let svg = render_gantt_svg_from_text(source);
+    let document = roxmltree::Document::parse(&svg).unwrap();
+    let titles = document
+        .descendants()
+        .filter(|node| {
+            node.has_tag_name("text")
+                && node
+                    .attribute("class")
+                    .is_some_and(|class| class.starts_with("sectionTitle "))
+        })
+        .map(|node| {
+            node.descendants()
+                .filter_map(|child| child.text())
+                .next()
+                .unwrap()
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(titles, ["1", "2", "01", "Later"]);
+}
+
+#[test]
+fn gantt_duplicate_id_labels_keep_their_semantic_occurrence_after_date_sorting() {
+    let source = concat!(
+        "gantt\ndateFormat YYYY-MM-DD\ntodayMarker off\nsection Work\n",
+        "Later: done,dup,2026-01-02,1d\n",
+        "First: active,dup,2026-01-01,1d\n",
+    );
+    let svg = render_gantt_svg_from_text(source);
+    let document = roxmltree::Document::parse(&svg).unwrap();
+    for (text, expected, other) in [
+        ("First", "activeText0", "doneText0"),
+        ("Later", "doneText0", "activeText0"),
+    ] {
+        let label = document
+            .descendants()
+            .find(|node| node.has_tag_name("text") && node.text() == Some(text))
+            .unwrap();
+        let classes = label.attribute("class").unwrap();
+        assert!(
+            classes
+                .split_ascii_whitespace()
+                .any(|class| class == expected),
+            "{classes}"
+        );
+        assert!(
+            !classes.split_ascii_whitespace().any(|class| class == other),
+            "{classes}"
+        );
+    }
+}
+
+#[test]
+fn gantt_custom_axis_retains_all_admitted_ticks_and_falls_back_above_the_upstream_limit() {
+    for (end, expected_count) in [("2026-04-11", Some(2401)), ("2027-03-01", None)] {
+        let source = format!(
+            concat!(
+                "gantt\ndateFormat YYYY-MM-DD\naxisFormat %Y-%m-%d %H:%M\n",
+                "tickInterval 1hour\ntodayMarker off\nTask: task,2026-01-01,{end}\n",
+            ),
+            end = end
+        );
+        let layout = layout_gantt_from_text(&source);
+        let svg = render_gantt_svg_from_text(&source);
+        let document = roxmltree::Document::parse(&svg).unwrap();
+        let ticks = document
+            .descendants()
+            .filter(|node| node.has_tag_name("g") && node.attribute("class") == Some("tick"))
+            .count();
+        assert_eq!(ticks, layout.bottom_ticks.len());
+        if let Some(count) = expected_count {
+            assert_eq!(ticks, count);
+            assert_eq!(
+                layout.bottom_ticks.first().unwrap().label,
+                "2026-01-01 00:00"
+            );
+            assert_eq!(
+                layout.bottom_ticks.last().unwrap().label,
+                "2026-04-11 00:00"
+            );
+        } else {
+            assert!(
+                ticks < 100,
+                "excessive custom intervals must use the automatic scale"
+            );
+        }
+    }
+}
+
+#[test]
+fn gantt_excluded_days_remain_visible_until_six_calendar_years() {
+    for (end, count) in [("2025-07-01", 287), ("2026-01-01", 0)] {
+        let source = format!(
+            concat!(
+                "gantt\ndateFormat YYYY-MM-DD\ntodayMarker off\nexcludes weekends\n",
+                "Task: task,2020-01-01,{end}\n",
+            ),
+            end = end
+        );
+        let layout = layout_gantt_from_text(&source);
+        assert_eq!(layout.excludes.len(), count);
+        assert_eq!(layout.has_excludes_layer, count > 0);
+        let svg = render_gantt_svg_from_text(&source);
+        let document = roxmltree::Document::parse(&svg).unwrap();
+        assert_eq!(
+            document
+                .descendants()
+                .filter(|node| {
+                    node.has_tag_name("rect") && node.attribute("class") == Some("exclude-range")
+                })
+                .count(),
+            count
+        );
+    }
+}
+
 #[allow(dead_code)]
 mod common;

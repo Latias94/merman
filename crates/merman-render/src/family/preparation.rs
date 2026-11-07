@@ -606,6 +606,7 @@ fn prepare_gantt_family<'parsed>(
         execution.text_measurer(),
         execution.container_width,
         execution.local_time_zone(),
+        execution.work_meter_ref(),
     )?;
     Ok(BuiltinFamilyArtifact::Gantt(Box::new(
         GanttFamilyArtifact {

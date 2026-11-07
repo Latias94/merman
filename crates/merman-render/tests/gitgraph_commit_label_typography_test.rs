@@ -466,7 +466,7 @@ fn gitgraph_branch_weight_requires_its_numbered_css_rule() {
         for limit in [1, 2] {
             let (svg, measurer) = render_source(
                 json!({
-                    "theme": "redux",
+                    "theme": "redux-color",
                     "gitGraph": {"showCommitLabel": false},
                     "themeVariables": {"THEME_COLOR_LIMIT": limit, "noteFontWeight": "bold"}
                 }),
@@ -490,7 +490,12 @@ fn gitgraph_branch_weight_requires_its_numbered_css_rule() {
             } else {
                 (64.0, 25.0)
             };
-            assert_geometry(&svg, "branchLabelBkg label1", width, height);
+            let side_class = if limit > 1 {
+                "branchLabelBkg label1"
+            } else {
+                "branchLabelBkg labelNaN"
+            };
+            assert_geometry(&svg, side_class, width, height);
         }
     }
 }

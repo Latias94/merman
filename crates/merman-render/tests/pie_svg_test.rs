@@ -60,6 +60,40 @@ fn render_pie_from_text_with_options(text: &str, options: &SvgRenderOptions) -> 
 }
 
 #[test]
+fn pie_multiline_string_reaches_visible_legend_and_preserves_slice_values() {
+    let svg = render_pie_from_text("pie showData\n\"First\nSecond\": 10\n\"Other\": 5\n");
+    let document = roxmltree::Document::parse(&svg).expect("valid multiline Pie SVG");
+    let legends: Vec<_> = document
+        .descendants()
+        .filter(|node| node.attribute("class") == Some("legend"))
+        .map(|legend| {
+            legend
+                .children()
+                .find(|node| node.has_tag_name("text"))
+                .unwrap()
+                .text()
+                .unwrap()
+        })
+        .collect();
+    assert_eq!(legends, ["First\nSecond [10]", "Other [5]"]);
+    let percentages: Vec<_> = document
+        .descendants()
+        .filter(|node| node.has_tag_name("text") && node.attribute("class") == Some("slice"))
+        .map(|node| node.text().unwrap())
+        .collect();
+    assert_eq!(percentages, ["67%", "33%"]);
+    assert_eq!(
+        document
+            .descendants()
+            .filter(|node| {
+                node.has_tag_name("path") && node.attribute("class") == Some("pieCircle")
+            })
+            .count(),
+        2
+    );
+}
+
+#[test]
 fn pie_configured_text_sizes_preserve_css_and_expand_the_horizontal_viewport() {
     let diagram = "pie title TitleTitleTitleTitle\n  \"LegendLegendLegend\" : 1\n";
     let baseline = render_pie_from_text(diagram);

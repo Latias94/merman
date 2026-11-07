@@ -10,7 +10,7 @@ use std::collections::HashMap;
 mod css_binding;
 mod theme;
 
-pub(crate) use css_binding::GitGraphCssBinding;
+pub(crate) use css_binding::{GitGraphColorIndices, GitGraphCssBinding};
 
 pub(crate) use theme::{
     GITGRAPH_PALETTE_SLOT_COUNT, GitGraphBranchStrokeReceipt, GitGraphCommitKind,
@@ -39,7 +39,6 @@ pub(crate) fn resolve_gitgraph_title<'a>(
 const LAYOUT_OFFSET: f64 = 10.0;
 const COMMIT_STEP: f64 = 40.0;
 const DEFAULT_POS: f64 = 30.0;
-const THEME_COLOR_LIMIT: usize = GITGRAPH_PALETTE_SLOT_COUNT;
 pub(crate) const REDUX_BRANCH_LABEL_PADDING_Y: f64 = 12.0;
 
 const COMMIT_TYPE_MERGE: i64 = 3;
@@ -577,7 +576,7 @@ fn draw_arrow(
     Some(GitGraphArrowLayout {
         from: commit_a.id.clone(),
         to: commit_b.id.clone(),
-        class_index: (color_class_num % THEME_COLOR_LIMIT) as i64,
+        class_index: color_class_num as i64,
         d,
     })
 }
@@ -772,7 +771,7 @@ pub(crate) fn layout_gitgraph_diagram_typed(
             let Some(commit_a) = commits_by_id.get(parent.as_str()).copied() else {
                 continue;
             };
-            if let Some(a) = draw_arrow(
+            if let Some(mut a) = draw_arrow(
                 commit_a,
                 commit_b,
                 &commits_by_id,
@@ -781,6 +780,10 @@ pub(crate) fn layout_gitgraph_diagram_typed(
                 &mut lanes,
                 &direction,
             ) {
+                a.class_index = typography_theme
+                    .css_binding()
+                    .color_indices
+                    .commit_slot(a.class_index) as i64;
                 arrows.push(a);
             }
         }
