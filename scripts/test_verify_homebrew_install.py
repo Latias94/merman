@@ -27,11 +27,18 @@ SUPPORT_ASSETS_SINCE = "0.8.0"
 
 
 class HomebrewInstallVerifierTests(unittest.TestCase):
-    def test_standard_release_includes_rustdoc_and_its_manpages(self) -> None:
-        self.assertEqual(verifier.CLI_CONTRACT_VERSION, 6)
+    def test_standard_release_includes_rustdoc_theme_and_their_manpages(self) -> None:
+        self.assertEqual(verifier.CLI_CONTRACT_VERSION, 7)
         self.assertIn("rustdoc", verifier.COMMANDS)
-        self.assertEqual(len(verifier.MANPAGE_NAMES), 15)
-        for name in ("merman-cli-rustdoc.1", "merman-cli-rustdoc-build.1", "merman-cli-rustdoc-check.1"):
+        self.assertIn("theme", verifier.COMMANDS)
+        self.assertEqual(len(verifier.MANPAGE_NAMES), 17)
+        for name in (
+            "merman-cli-rustdoc.1",
+            "merman-cli-rustdoc-build.1",
+            "merman-cli-rustdoc-check.1",
+            "merman-cli-theme.1",
+            "merman-cli-theme-inspect.1",
+        ):
             self.assertIn(name, verifier.MANPAGE_NAMES)
 
     def test_versions_before_threshold_keep_the_binary_only_contract(self) -> None:
@@ -119,7 +126,7 @@ class HomebrewInstallVerifierTests(unittest.TestCase):
                 "system_discovery": "before-layout",
             })
             self.assertEqual(fixture.capabilities["schema_version"], 2)
-            self.assertEqual(fixture.capabilities["cli_contract_version"], 6)
+            self.assertEqual(fixture.capabilities["cli_contract_version"], 7)
             self.assertTrue(
                 verifier.verify_homebrew_install(
                     formula_version="0.8.0",
@@ -282,6 +289,39 @@ class HomebrewInstallVerifierTests(unittest.TestCase):
                     runner=fixture.run,
                 )
 
+    def test_complete_installation_requires_the_theme_command(self) -> None:
+        with self.installation_fixture() as fixture:
+            fixture.capabilities["commands"].remove("theme")
+            with self.assertRaisesRegex(
+                verifier.HomebrewVerificationError,
+                "command set differs",
+            ):
+                verifier.verify_homebrew_install(
+                    formula_version="0.8.0",
+                    support_assets_since=SUPPORT_ASSETS_SINCE,
+                    prefix=fixture.prefix,
+                    binary=fixture.binary,
+                    contract_root=fixture.contract_root,
+                    runner=fixture.run,
+                )
+
+    def test_complete_installation_requires_both_theme_manpages(self) -> None:
+        for name in ("merman-cli-theme.1", "merman-cli-theme-inspect.1"):
+            with self.subTest(name=name), self.installation_fixture() as fixture:
+                (fixture.prefix / "share/man/man1" / name).unlink()
+                with self.assertRaisesRegex(
+                    verifier.HomebrewVerificationError,
+                    "man page set differs",
+                ):
+                    verifier.verify_homebrew_install(
+                        formula_version="0.8.0",
+                        support_assets_since=SUPPORT_ASSETS_SINCE,
+                        prefix=fixture.prefix,
+                        binary=fixture.binary,
+                        contract_root=fixture.contract_root,
+                        runner=fixture.run,
+                    )
+
     def test_preset_catalog_rejects_missing_or_unqualified_claim_drift(self) -> None:
         for mutation in ("missing", "null", "schema", "stable", "scope", "without-svg"):
             with self.subTest(mutation=mutation), self.installation_fixture() as fixture:
@@ -296,7 +336,7 @@ class HomebrewInstallVerifierTests(unittest.TestCase):
                 elif mutation == "stable":
                     catalog["presets"][0]["maturity"] = "stable"
                 elif mutation == "scope":
-                    catalog["presets"][0]["qualified_cells"] = [{}]
+                    catalog["presets"][0]["appearances"][0]["qualified_cells"] = [{}]
                 else:
                     profile["expected"]["capabilities"].remove("svg")
                     fixture.capabilities["capabilities"] = [
@@ -697,8 +737,8 @@ class HomebrewInstallVerifierTests(unittest.TestCase):
                     runner=fixture.run,
                 )
 
-    def test_cli_contract_version_must_be_exactly_six(self) -> None:
-        for version in (None, 5, 7, "6", 6.0, True):
+    def test_cli_contract_version_must_be_exactly_seven(self) -> None:
+        for version in (None, 5, 6, 8, "7", 7.0, True):
             with self.subTest(version=version), self.installation_fixture() as fixture:
                 if version is None:
                     fixture.capabilities.pop("cli_contract_version")

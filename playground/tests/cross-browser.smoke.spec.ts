@@ -79,7 +79,7 @@ test("theme designs display five families and expose integration code with keybo
   const trigger = page.getByRole("button", { name: "Theme designs", exact: true });
   await trigger.click();
   const gallery = page.getByTestId("theme-showcase");
-  await expect(gallery.locator("[data-theme-design-card]")).toHaveCount(15);
+  await expect(gallery.locator("[data-theme-design-card]")).toHaveCount(16);
   await gallery.getByRole("button", { name: "Explore Riso", exact: true }).click();
   const images = gallery.locator("[data-theme-sample] img");
   await expect(images).toHaveCount(5);

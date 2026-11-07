@@ -122,6 +122,22 @@ themed_svg = client.render_svg(pie_source, '{"version":3,"theme":{"preset":"ghib
 For a reusable engine, omit `theme` to inherit its selection, use `theme: null` to clear it,
 or supply a complete selection or recipe to replace it.
 
+Each schema-1 catalog entry groups a design's `supported_appearances`, `default_appearance`, and
+`appearances`. Read swatches, `family_designs`, `application_notes`, `qualified_cells`, and the exact
+`concrete_preset_id` from the relevant appearance entry. Select Editor Dark using
+`{"theme":{"preset":"editor","appearance":"dark"}}`. Follow-app/editor is host policy; resolve it
+to `light` or `dark` before rendering. Omitted appearance uses the declared default.
+
+`client.execute()` already carries the complete authoring workflow through
+`MermanOperationRequestV4`. `export-theme-preset-json` takes the plain `editor` ID and returns the
+complete `ThemeRecipeV1`; shared values live in `design`, with local exceptions in
+`design.appearances` and a `design.default_appearance`. Keep that document for saving and editing.
+`materialize-theme-json` accepts schema-1 `action: "inspect"` with `recipe` to validate every
+appearance, or `action: "materialize"` with an optional concrete `appearance` to obtain its `spec`.
+Use `json.dumps({"theme": {"recipe": recipe, "appearance": "dark"}})` for render options.
+The [authoring example](examples/theme_authoring.py) exercises these same JSON operations through
+one-shot and independent reusable clients.
+
 Built-in presets are alpha, with empty public qualification cells. Catalog availability and
 family design scope do not certify the result for every diagram or output target. Flowchart
 glow and shadow effects require Classic look (`site_config.flowchart.look: "classic"`);

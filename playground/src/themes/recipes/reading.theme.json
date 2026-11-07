@@ -1,0 +1,98 @@
+{
+  "schema_version": 1,
+  "kind": "design",
+  "design": {
+    "tokens": {
+      "body-font": {"type": "font-stack", "value": ["sans-serif"]},
+      "class-font": {"type": "font-stack", "value": ["monospace"]}
+    },
+    "canvas": {"base": {"ref": "canvas"}},
+    "typography": {
+      "default": {"font_stack": {"ref": "body-font"}},
+      "families": {
+        "class": {"font_stack": {"ref": "class-font"}, "font_size_px": 14},
+        "sequence": {"font_stack": {"ref": "body-font"}, "font_size_px": 14},
+        "flowchart": {"font_stack": {"ref": "body-font"}, "font_size_px": 15}
+      }
+    },
+    "styles": {
+      "node": {"fill": {"ref": "surface"}, "stroke": {"paint": {"ref": "outline"}}},
+      "node-label": {"fill": {"ref": "ink"}},
+      "edge": {"stroke": {"paint": {"ref": "connector"}, "width": 1.5}},
+      "edge-label": {"fill": {"ref": "ink"}},
+      "edge-label-background": {"fill": {"ref": "canvas"}},
+      "cluster": {"fill": {"ref": "surface-alt"}, "stroke": {"paint": {"ref": "outline"}}}
+    },
+    "rules": [
+      {"family": "flowchart", "target": "text", "style": {"fill": {"ref": "ink"}}},
+      {"family": "class", "target": "text", "style": {"fill": {"ref": "ink"}}},
+      {"family": "xychart", "target": "text", "style": {"fill": {"ref": "ink"}}},
+      {"family": "flowchart", "target": "node", "style": {"stroke": {"paint": {"ref": "accent"}, "width": 1.25}}},
+      {"family": "flowchart", "target": "node-label", "style": {"typography": {"font_weight": 600}}},
+      {"family": "sequence", "target": "actor", "style": {"fill": {"ref": "surface-alt"}, "stroke": {"paint": {"ref": "outline"}, "width": 1.25}}},
+      {"family": "sequence", "target": "actor-label", "style": {"fill": {"ref": "ink"}, "typography": {"font_size_px": 15, "font_weight": 600}}},
+      {"family": "sequence", "target": "lifeline", "style": {"stroke": {"paint": {"ref": "outline"}, "width": 1}}},
+      {"family": "sequence", "target": "message", "style": {"stroke": {"paint": {"ref": "connector"}, "width": 1.5}}},
+      {"family": "sequence", "target": "message-label", "style": {"fill": {"ref": "ink"}, "typography": {"font_size_px": 14}}},
+      {"family": "sequence", "target": "note", "style": {"fill": {"ref": "note-surface"}, "stroke": {"paint": {"ref": "outline"}, "width": 1}}},
+      {"family": "sequence", "target": "note-label", "style": {"fill": {"ref": "note-ink"}, "typography": {"font_size_px": 14}}},
+      {"family": "sequence", "target": "activation", "style": {"fill": {"ref": "accent-surface"}, "stroke": {"paint": {"ref": "accent"}, "width": 1.25}}},
+      {"family": "sequence", "target": "loop", "style": {"stroke": {"paint": {"ref": "outline"}, "width": 1}}},
+      {"family": "sequence", "target": "loop-label-background", "style": {"fill": {"ref": "surface-alt"}, "stroke": {"paint": {"ref": "outline"}, "width": 1}}},
+      {"family": "sequence", "target": "loop-label", "style": {"fill": {"ref": "muted-ink"}, "typography": {"font_size_px": 13}}},
+      {"family": "sequence", "target": "sequence-number", "style": {"fill": {"ref": "canvas"}}},
+      {"family": "xychart", "target": "axis", "style": {"fill": {"ref": "muted-ink"}, "stroke": {"paint": {"ref": "connector"}}}},
+      {"family": "xychart", "target": "axis-tick", "style": {"stroke": {"paint": {"ref": "outline"}}}},
+      {"family": "xychart", "target": "title", "style": {"fill": {"ref": "accent"}, "typography": {"font_size_px": 21, "font_weight": 600}}},
+      {"family": "xychart", "target": "axis-title", "style": {"fill": {"ref": "muted-ink"}, "typography": {"font_size_px": 14}}},
+      {"family": "xychart", "target": "axis-label", "style": {"fill": {"ref": "muted-ink"}, "typography": {"font_size_px": 13}}},
+      {"family": "xychart", "target": "legend", "style": {"fill": {"ref": "ink"}, "typography": {"font_size_px": 14}}},
+      {"family": "xychart", "target": "chart-series", "variant": "line", "style": {"stroke": {"width": 2.5}}},
+      {"family": "pie", "target": "pie-slice", "style": {"stroke": {"paint": {"ref": "surface"}}}},
+      {"family": "pie", "target": "text", "style": {"fill": {"ref": "ink"}, "typography": {"font_size_px": 16, "font_weight": 600}}},
+      {"family": "pie", "target": "title", "style": {"fill": {"ref": "accent"}, "typography": {"font_size_px": 21, "font_weight": 600}}},
+      {"family": "pie", "target": "legend", "style": {"fill": {"ref": "ink"}, "typography": {"font_size_px": 14}}},
+      {"family": "flowchart", "target": "cluster-label", "style": {"fill": {"ref": "accent"}}}
+    ],
+    "palettes": {"chart-series": {"ref": "series"}, "pie-slice": {"ref": "pie-series"}},
+    "appearances": {
+      "light": {
+        "tokens": {
+          "canvas": {"type": "paint", "value": "#F6F7F9"},
+          "surface": {"type": "paint", "value": "#FFFFFF"},
+          "surface-alt": {"type": "paint", "value": "#E8EDF4"},
+          "ink": {"type": "paint", "value": "#243246"},
+          "muted-ink": {"type": "paint", "value": "#506076"},
+          "outline": {"type": "paint", "value": "#75859B"},
+          "connector": {"type": "paint", "value": "#516783"},
+          "accent": {"type": "paint", "value": "#315EAA", "description": "Shared emphasis; category palettes remain independent."},
+          "accent-surface": {"type": "paint", "value": "#DDE9FA"},
+          "note-surface": {"type": "paint", "value": "#F4E9CE", "description": "Annotation fill remains independent from annotation ink and accent."},
+          "note-ink": {"type": "paint", "value": "#634914"},
+          "series": {"type": "palette", "value": ["#486CB0", "#2F7E73", "#8A62A7", "#A96C31"]},
+          "pie-series": {"type": "palette", "value": ["#B9CCE9", "#B3D7CD", "#D5C6E3", "#E6CEAA"]}
+        },
+        "mermaid": {"variables": {"background": "#F6F7F9"}}
+      },
+      "dark": {
+        "tokens": {
+          "canvas": {"type": "paint", "value": "#171C24"},
+          "surface": {"type": "paint", "value": "#222A35"},
+          "surface-alt": {"type": "paint", "value": "#2B3543"},
+          "ink": {"type": "paint", "value": "#E3EAF3"},
+          "muted-ink": {"type": "paint", "value": "#B0BFD1"},
+          "outline": {"type": "paint", "value": "#71839B"},
+          "connector": {"type": "paint", "value": "#9AAEC9"},
+          "accent": {"type": "paint", "value": "#94B9F2", "description": "Shared emphasis; category palettes remain independent."},
+          "accent-surface": {"type": "paint", "value": "#263F61"},
+          "note-surface": {"type": "paint", "value": "#403623", "description": "Annotation fill remains independent from annotation ink and accent."},
+          "note-ink": {"type": "paint", "value": "#E9CF92"},
+          "series": {"type": "palette", "value": ["#91AEDC", "#76BDAE", "#B5A0D4", "#D6AD79"]},
+          "pie-series": {"type": "palette", "value": ["#304D73", "#2E594F", "#55436C", "#655131"]}
+        },
+        "mermaid": {"variables": {"background": "#171C24"}}
+      }
+    },
+    "default_appearance": "light"
+  }
+}

@@ -78,7 +78,7 @@ test("independent recipes remain authored bytes and never turn exploration names
     assert.doesNotMatch(bundle.files["options.json"], /"recipe"\s*:/);
   }
   const rust = generateProjectHandoff(snapshot, { scope: "diagram", target: "rust" });
-  assert.match(rust.code, /compile_recipe/);
+  assert.match(rust.code, /compile_document/);
   assert.match(rust.files["Cargo.toml"], /path = "\.\.\/merman\/crates\/merman"/);
   const web = generateProjectHandoff(snapshot, { scope: "diagram", target: "web" });
   assert.equal(JSON.parse(web.files["package.json"]).dependencies["@mermanjs/web"], "file:../merman/platforms/web/packages/full");
@@ -114,8 +114,8 @@ test("inline Rust embeds the untouched recipe, configured source and frozen site
   assert.ok(inline.code.includes(`const DIAGRAM_SOURCE: &str = r###"${operation!.configuredSource}"###;`));
   assert.ok(inline.code.includes(`const SITE_CONFIG_JSON: &str = r#"${files.files["site-config.json"]}"#;`));
   assert.match(inline.code, /let recipe: ThemeRecipeV1 = serde_json::from_str\(THEME_JSON\)/);
-  assert.ok(inline.code.indexOf("compile_recipe") < inline.code.indexOf("const THEME_JSON"));
-  assert.match(inline.code, /DiagramThemeCompiler::new\(\)\.compile_recipe\(recipe\)/);
+  assert.ok(inline.code.indexOf("compile_document") < inline.code.indexOf("const THEME_JSON"));
+  assert.match(inline.code, /DiagramThemeCompiler::new\(\)\.compile_document\(recipe, None\)/);
   assert.doesNotMatch(inline.code, /include_str!|serde_json::json!/);
   for (const [filename, content] of Object.entries(files.files)) {
     if (filename !== "src/main.rs" && filename !== "README.txt") assert.equal(inline.files[filename], content, filename);
@@ -188,7 +188,7 @@ test("runtime catalog presets use the actual preset APIs", () => {
   const snapshot = capture(value);
   for (const rustAssets of ["files", "inline"] as const) {
     const rust = generateProjectHandoff(snapshot, { scope: "diagram", target: "rust", rustAssets });
-    assert.match(rust.code, /ThemePreset::from_id\("one-dark"\)/);
+    assert.match(rust.code, /compile_preset_selection\("one-dark", None\)/);
     assert.equal(rust.files["theme.json"], undefined);
   }
   const cli = generateProjectHandoff(snapshot, { scope: "diagram", target: "cli" });

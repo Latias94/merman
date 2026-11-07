@@ -29,6 +29,7 @@ import type {
 } from "./render-coordinator.ts";
 import { projectNavigableInlineSvg } from "./render-artifact.ts";
 import { MERMAID_JS_VERSION } from "./mermaid-requirements.ts";
+import { themeCatalogFixture } from "../lib/theme-appearance.test-fixture.ts";
 
 test("enables ASCII export only for lazy or successful artifacts", () => {
   const cases: ReadonlyArray<
@@ -94,6 +95,40 @@ test("a stale publication cannot be exported as the current workspace", async ()
   await assert.rejects(owner({ action: "copy-svg", engine: "merman", publicationId: publication.snapshot.publicationId }), {
     code: "publication-not-current",
   });
+  assert.deepEqual(calls, []);
+});
+
+test("host Follow changes reject stale copy/new exports while an already-open export keeps its concrete appearance", async () => {
+  const value = { ...workspace("same-source"), themePresetId: "editor", themeAppearance: "follow" as const };
+  const operation = freezeRenderOperation({
+    workspace: value, hostAppearance: "light", themeCatalog: themeCatalogFixture(),
+    asciiEnabled: false, compareEnabled: false, diagnosticsEnabled: false,
+    layoutEnvironment: { containerWidth: 800, containerHeight: 600 }, viewport: null,
+    versions: { merman: "test-merman", mermaid: MERMAID_JS_VERSION },
+  });
+  const original = completedPublication("same-source");
+  const publication = { ...original, snapshot: { ...original.snapshot, operation } };
+  let hostAppearance: "light" | "dark" = "light";
+  const calls: string[] = [];
+  const renderedOptions: unknown[] = [];
+  const runtime = readyRuntime((input) => {
+    renderedOptions.push(input.bindingOptions.theme);
+    return { status: "success", artifact: projectNavigableInlineSvg(svg("captured-light")), metadata: null, error: null, renderTime: 1 };
+  });
+  const dependencies = {
+    getRenderState: () => publication, getRuntimeState: () => runtime, getWorkspace: () => value,
+    getHostAppearance: () => hostAppearance,
+  };
+  const exports = createExportTargetOwner(dependencies);
+  const target = exports.freeze({ engine: "merman", publicationId: publication.snapshot.publicationId });
+  assert.equal(target.appearance, "light");
+  hostAppearance = "dark";
+  assert.throws(() => exports.freeze({ engine: "merman", publicationId: publication.snapshot.publicationId }), { code: "publication-not-current" });
+  await assert.rejects(createArtifactActionOwner({ ...dependencies, io: recordingIo(calls) })({
+    action: "copy-svg", engine: "merman", publicationId: publication.snapshot.publicationId,
+  }), { code: "publication-not-current" });
+  exports.rasterArtifact(target);
+  assert.deepEqual(renderedOptions, [{ preset: "editor", appearance: "light" }]);
   assert.deepEqual(calls, []);
 });
 

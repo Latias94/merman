@@ -29,7 +29,12 @@
   output: "standalone-svg",
   subject: (kind: "base-typography", property: "font-stack"),
 ))
-#let preset = export-theme-preset("editor-dark")
+#let preset = export-theme-preset("editor")
+#let inspection = materialize-theme((
+  schema_version: 1,
+  action: "inspect",
+  recipe: preset,
+))
 
 #mermaid-theme-definition(
   "sequenceDiagram\n  Alice->>Bob: Shared theme definition",
@@ -40,3 +45,11 @@
 Support: #support.state
 
 Preset export kind: #preset.kind
+
+Available appearances: #inspection.supported_appearances.join(", ")
+
+#mermaid-theme-definition(
+  "sequenceDiagram\n  Alice->>Bob: One design, dark appearance",
+  (schema_version: 1, action: "materialize", recipe: preset, appearance: "dark"),
+  width: 90%,
+)

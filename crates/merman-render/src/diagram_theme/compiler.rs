@@ -94,6 +94,7 @@ impl DiagramThemeCompiler {
                 .collect::<BTreeSet<_>>(),
         );
         Ok(super::DiagramTheme(Arc::new(super::CompiledDiagramTheme {
+            selected_appearance: None,
             source_map,
             spec,
             catalog,
@@ -142,39 +143,25 @@ impl DiagramThemeCompiler {
         spec: super::DiagramThemeSpecWireV1,
         sources: super::source::ThemeWireSources,
     ) -> Result<super::DiagramTheme, ThemeCompileError> {
+        self.compile_spec_wire_with_sources_located(spec, sources)
+            .map_err(|error| error.error)
+    }
+
+    pub(super) fn compile_spec_wire_with_sources_located(
+        &self,
+        spec: super::DiagramThemeSpecWireV1,
+        sources: super::source::ThemeWireSources,
+    ) -> Result<super::DiagramTheme, super::wire_decode::LocatedCompileError> {
         let (spec, sources) = super::wire_decode::decode(spec, &self.resources, sources)?;
         self.compile_with_sources(spec, sources)
+            .map_err(|error| super::wire_decode::LocatedCompileError::new("", error))
     }
 
     pub fn compile_preset(
         &self,
         preset: super::ThemePreset,
     ) -> Result<super::DiagramTheme, super::ThemeDesignCompileError> {
-        let spec = super::presets::materialize_spec_wire(preset, &self.resources)?;
-        Ok(self.compile_spec_wire_with_sources(spec, super::source::ThemeWireSources::None)?)
-    }
-
-    pub(super) fn validate_preset(
-        &self,
-        preset: super::ThemePreset,
-    ) -> Result<(), super::ThemeDesignCompileError> {
-        let spec = super::presets::materialize_spec_wire(preset, &self.resources)?;
-        self.validate_preset_spec_wire(spec)?;
-        Ok(())
-    }
-
-    fn validate_preset_spec_wire(
-        &self,
-        spec: super::DiagramThemeSpecWireV1,
-    ) -> Result<(), ThemeCompileError> {
-        // Built-in recipes do not supply embedded font assets. Validate their decoded spec
-        // without constructing a family cache, compatibility plan, or recipe fingerprint.
-        let (spec, _) = super::wire_decode::decode(
-            spec,
-            &self.resources,
-            super::source::ThemeWireSources::None,
-        )?;
-        self.validate_spec(&spec)
+        self.compile_preset_selection(preset.id(), None)
     }
 
     /// Compiles a saved recipe through the same authoring and complete-spec admission paths.
@@ -182,17 +169,7 @@ impl DiagramThemeCompiler {
         &self,
         recipe: merman_theme_contract::ThemeRecipeV1,
     ) -> Result<super::DiagramTheme, super::ThemeDesignCompileError> {
-        match recipe {
-            merman_theme_contract::ThemeRecipeV1::Design { design } => {
-                let spec =
-                    super::materialize_theme_design_with_resource_policy(&design, &self.resources)?;
-                let sources = super::source::ThemeWireSources::for_design(&design);
-                Ok(self.compile_spec_wire_with_sources(spec, sources)?)
-            }
-            merman_theme_contract::ThemeRecipeV1::CompleteSpec { complete_spec } => {
-                Ok(self.compile_spec_wire(complete_spec)?)
-            }
-        }
+        self.compile_document(recipe, None)
     }
 
     /// Exports one built-in preset as a self-contained editable recipe under this compiler's
@@ -204,12 +181,11 @@ impl DiagramThemeCompiler {
         merman_theme_contract::ThemeRecipeV1,
         merman_theme_contract::ThemeMaterializationErrorV1,
     > {
-        let design = super::presets::build_design(preset);
-        let complete_spec =
-            super::materialize_theme_design_with_resource_policy(&design, &self.resources)?;
-        self.validate_preset_spec_wire(complete_spec)
-            .map_err(preset_export_error)?;
-        Ok(merman_theme_contract::ThemeRecipeV1::Design { design })
+        self.export_preset_document(preset.id())
+            .map_err(|error| match error {
+                super::ThemeDesignCompileError::Materialization(error) => error,
+                super::ThemeDesignCompileError::Compilation(error) => preset_export_error(error),
+            })
     }
 }
 
@@ -333,15 +309,11 @@ mod tests {
     }
 
     #[test]
-    fn complete_spec_recipe_enforces_payload_budget_without_transport_envelope() {
+    fn complete_spec_recipe_enforces_the_complete_document_budget() {
         let recipe = merman_theme_contract::ThemeRecipeV1::CompleteSpec {
             complete_spec: complete_spec_fixture(),
         };
-        let merman_theme_contract::ThemeRecipeV1::CompleteSpec { complete_spec } = &recipe else {
-            unreachable!()
-        };
-        let size = serde_json::to_vec(complete_spec).unwrap().len();
-        assert!(serde_json::to_vec(&recipe).unwrap().len() > size);
+        let size = serde_json::to_vec(&recipe).unwrap().len();
         for limit in [size - 1, size] {
             let compiler = DiagramThemeCompiler::new().with_resource_policy(
                 ThemeResourcePolicy::interactive()
@@ -350,17 +322,19 @@ mod tests {
             );
             let result = compiler.compile_recipe(recipe.clone());
             if limit == size {
-                result.expect("typed recipe admission counts the payload, not its envelope");
+                result.expect("the complete document fits the caller-owned budget");
             } else {
-                let super::super::ThemeDesignCompileError::Compilation(
-                    ThemeCompileError::ResourceLimit(error),
-                ) = result.expect_err("saved complete recipes must obey encoded-byte admission")
+                let super::super::ThemeDesignCompileError::Materialization(error) =
+                    result.expect_err("saved complete recipes must obey encoded-byte admission")
                 else {
-                    panic!("complete recipes must preserve the compiler resource diagnostic");
+                    panic!("document admission must precede compilation");
                 };
-                assert_eq!(error.limit, "max_theme_encoded_bytes");
-                assert_eq!(error.actual, size);
-                assert_eq!(error.max, limit);
+                assert_eq!(
+                    error.diagnostic().limit_id(),
+                    Some("max_theme_encoded_bytes")
+                );
+                assert_eq!(error.diagnostic().actual(), Some(size as u64));
+                assert_eq!(error.diagnostic().max(), Some(limit as u64));
             }
         }
     }
@@ -457,18 +431,21 @@ mod tests {
             .unwrap();
         let sources = theme.source_map();
         assert_eq!(sources.document().unwrap().id(), "design");
-        assert_eq!(sources.rule(0).unwrap().paths, ["/styles/node"]);
-        assert_eq!(sources.rule(1).unwrap().paths, ["/styles/text"]);
-        assert_eq!(sources.rule(2).unwrap().paths, ["/rules/0/style"]);
+        assert_eq!(sources.rule(0).unwrap().paths, ["/design/styles/node"]);
+        assert_eq!(sources.rule(1).unwrap().paths, ["/design/styles/text"]);
+        assert_eq!(sources.rule(2).unwrap().paths, ["/design/rules/0/style"]);
         assert_eq!(
             sources.palette(ThemeTarget::Node).unwrap().paths,
-            ["/palettes/node"]
+            ["/design/palettes/node"]
         );
         assert_eq!(
             sources.palette(ThemeTarget::PieSlice).unwrap().paths,
-            ["/palettes/pie-slice"]
+            ["/design/palettes/pie-slice"]
         );
-        assert_eq!(sources.canvas_base().unwrap().paths, ["/canvas/base"]);
+        assert_eq!(
+            sources.canvas_base().unwrap().paths,
+            ["/design/canvas/base"]
+        );
         assert!(!sources.rule(0).unwrap().generated);
         assert!(!sources.palette(ThemeTarget::Node).unwrap().generated);
         assert!(!sources.canvas_base().unwrap().generated);
@@ -510,7 +487,7 @@ mod tests {
     }
 
     #[test]
-    fn diagnostic_sources_do_not_invent_documents_for_typed_or_builtin_themes() {
+    fn presets_and_imported_recipes_share_diagnostic_document_locations() {
         let compiler = DiagramThemeCompiler::new();
         let typed = compiler.compile(DiagramThemeSpec::new()).unwrap();
         assert!(typed.source_map().document().is_none());
@@ -518,8 +495,7 @@ mod tests {
         let preset = compiler
             .compile_preset(super::super::ThemePreset::Cyberpunk)
             .unwrap();
-        assert!(preset.source_map().document().is_none());
-        assert!(preset.source_map().rule(0).is_none());
+        assert_eq!(preset.source_map().document().unwrap().id(), "design");
         let imported = compiler
             .compile_recipe(
                 compiler
@@ -528,7 +504,11 @@ mod tests {
             )
             .unwrap();
         assert_eq!(imported.source_map().document().unwrap().id(), "design");
-        assert!(imported.source_map().rule(0).unwrap().paths[0].starts_with("/styles/"));
+        assert!(imported.source_map().rule(0).unwrap().paths[0].starts_with("/design/styles/"));
+        assert_eq!(
+            preset.source_map().rule(0).unwrap().paths,
+            imported.source_map().rule(0).unwrap().paths
+        );
         assert_eq!(preset.recipe_fingerprint(), imported.recipe_fingerprint());
     }
 

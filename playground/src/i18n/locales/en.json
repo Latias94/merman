@@ -1,4 +1,37 @@
 {
+  "appearanceMode": {
+    "title": "Appearance",
+    "follow": "Follow app",
+    "light": "Light",
+    "dark": "Dark",
+    "documentDefault": "Saved theme default",
+    "paired": "Light + dark",
+    "only": "{{appearance}} only",
+    "unclassified": "Fixed design · no declared light/dark variants",
+    "following": "Following app · {{appearance}}",
+    "selected": "Selected appearance · {{appearance}}",
+    "frozen": "Captured appearance · {{appearance}}",
+    "exportSnapshotChanged": "The workspace has changed or is updating. This export keeps the captured diagram and appearance.",
+    "adoption": "These examples explicitly render {{appearance}}. The theme file keeps every appearance; change only the appearance selector to use the other one.",
+    "composition": "Advanced composition: {{theme}} + Mermaid {{base}}",
+    "shareFollow": "This workspace follows the receiving app's appearance. Choose Light or Dark to share a fixed appearance."
+  },
+  "themeDraft": {
+    "customize": "Customize",
+    "title": "Editable theme copy",
+    "hint": "Edit the complete theme JSON. Shared values and each appearance's overrides stay in this document. Validate all appearances, then Apply to update the diagram. Source and layout settings are separate.",
+    "editor": "Editable theme JSON",
+    "navigate": "Navigate the complete theme document",
+    "shared": "Shared design",
+    "light": "Light overrides",
+    "dark": "Dark overrides",
+    "validate": "Validate theme",
+    "validating": "Validating…",
+    "valid": "The runtime accepted the complete document, including every declared appearance.",
+    "chooseAppearance": "The previous appearance is no longer supported. Choose an appearance before applying.",
+    "apply": "Apply changes",
+    "cancel": "Discard draft"
+  },
   "app": {
     "title": "Merman Playground",
     "description": "Online Mermaid diagram editor powered by Rust + WebAssembly",
@@ -358,7 +391,7 @@
     "syntaxIssues": "Syntax issues"
   },
   "themes": {
-    "auto": "Automatic (diagram default)",
+    "auto": "Source / default",
     "default": "Default",
     "dark": "Dark",
     "forest": "Forest",
@@ -373,6 +406,9 @@
     "system": "System"
   },
   "themePresets": {
+    "editor": "Editor",
+    "gruvbox": "Gruvbox",
+    "ayu": "Ayu",
     "none": "None",
     "editor-light": "Editor Light",
     "editor-dark": "Editor Dark",
@@ -454,6 +490,7 @@
       "pie": "Pie"
     },
     "themes": {
+      "reading": "A paired reading design with shared typography and roles, adapted surfaces, and matching category colors for light and dark.",
       "atlas": "Blue-gray precision for technical notes and system diagrams.",
       "nightfall": "Quiet slate, soft color and clear labels for dark canvases.",
       "letterpress": "Warm paper, serif titles and rust accents for editorial diagrams.",
@@ -580,7 +617,7 @@
     "catalogHint": "Theme colors are a guide. Check your current diagram for the result. Presets and recipes style the Merman rendering.",
     "catalogPending": "Waiting for the runtime theme catalog…",
     "sources": {
-      "automatic": "Automatic selection",
+      "automatic": "Source / default",
       "mermaid": "Mermaid.js official",
       "builtin": "Merman preset",
       "exploration": "Merman example · JSON",
@@ -588,7 +625,7 @@
     },
     "groups": {
       "automatic": {
-        "title": "Automatic",
+        "title": "Source / default",
         "description": "Use the diagram's default theme. Source and configuration settings still take precedence."
       },
       "mermaid": {
@@ -625,7 +662,7 @@
     "noExtension": "None · Mermaid and source styles",
     "combinationHint": "Change the base theme here to keep the current Merman extension. Choosing a Mermaid theme in the catalog removes the extension.",
     "noRecipe": "Mermaid themes have no Merman recipe. Select a preset or recipe to view its JSON.",
-    "exchangeHint": "Theme JSON contains Merman styling. Use a workspace link for the full diagram and its settings.",
+    "exchangeHint": "Theme JSON keeps the complete design and all appearances. A workspace link also keeps your appearance preference, diagram and settings.",
     "evidenceHint": "These are the runtime observations for the current SVG. Output compatibility is checked in Export.",
     "applyRecommendedConfig": "Use recommended configuration",
     "recommendedConfigHint": "Merge these keys into the current JSON config, keeping unrelated settings. This change takes effect immediately and can be undone. Source settings can still take precedence.",
@@ -747,7 +784,7 @@
     "description": "Explore complete visual designs across diagrams. Copy an editable theme or take the code to your project.",
     "close": "Close theme designs",
     "search": "Search designs",
-    "appearance": "Canvas appearance",
+    "appearance": "Filter designs by appearance",
     "filters": {
       "all": "All designs",
       "light": "Light",
@@ -757,6 +794,7 @@
     "collectionTitle": "Find a visual language.",
     "collectionHint": "Expressive designs come first. Each uses the same five diagram examples, so you can compare their visual treatment.",
     "mechanisms": {
+      "reading": "Shared semantic roles · coordinated light/dark surfaces · consistent category meaning",
       "riso": "Two inks · offset color edges · condensed titles",
       "phosphor": "Equipment panels · scanlines · focused signal glow",
       "field-notes": "Forest-ink cards · ruled paper · lifted note slips",
@@ -775,7 +813,7 @@
     },
     "back": "All designs",
     "apply": "Apply to my diagram",
-    "applyHint": "Applies only this theme. Your source, configuration, font override, and diagram look stay as you set them.",
+    "applyHint": "Applies this theme and appearance. The separate Mermaid fallback returns to Source / default. Your source, configuration, font override and diagram look stay as you set them.",
     "downloadJson": "Download theme JSON",
     "acrossDiagrams": "One design, across diagrams",
     "fixedExamples": "These are fixed examples, not your current diagram. Open any sample in a new tab to edit it without replacing your work.",

@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { unzlibSync, zlibSync } from "fflate";
+import { resolveThemeSelection } from "./theme-appearance.ts";
+import { themeCatalogFixture } from "./theme-appearance.test-fixture.ts";
 
 import {
   copyShareUrl,
@@ -43,6 +45,36 @@ const CUSTOM_THEME_RECIPE = JSON.stringify({
   schema_version: 1,
   kind: "design",
   design: { tokens: { primaryColor: { type: "color", value: "#ff66aa" } } },
+});
+
+test("s5 saves host preference without capturing the sender's application appearance", () => {
+  const workspace = { ...DEFAULT_WORKSPACE_SNAPSHOT, diagramTheme: "neo" as const, themeAppearance: "follow" as const };
+  const hash = encodeShareHash(workspace);
+  assert.match(hash, /^#s5:/);
+  const shared = decodeShareHash(hash)!;
+  assert.deepEqual(shared, workspace);
+  const catalog = themeCatalogFixture();
+  assert.equal(resolveThemeSelection(shared, "light", catalog).mermaidTheme, "neo");
+  assert.equal(resolveThemeSelection(shared, "dark", catalog).mermaidTheme, "neo-dark");
+  for (const prefix of ["#s2:", "#s3:", "#s4:"]) assert.equal(decodeShareHash(hash.replace("#s5:", prefix)), null);
+  const historical = decodeShareHash(s2Payload({ themeSelection: "auto" }))!;
+  assert.equal(historical.themeAppearance, undefined);
+  assert.equal(resolveThemeSelection(historical, "dark", catalog).mermaidTheme, "auto");
+});
+
+test("s5 preserves the complete unique-v1 recipe, original bytes and customization provenance", () => {
+  const raw = '{"schema_version":1,"kind":"design","design":{"tokens":{},"appearances":{"light":{},"dark":{}},"default_appearance":"light"}}\n';
+  const value = {
+    ...DEFAULT_WORKSPACE_SNAPSHOT, themeRecipeJson: raw, themeAppearance: "dark" as const,
+    themeRecipeLabel: { name: "Editor copy", source: "imported" as const, derivedFrom: "preset:editor-dark" },
+  };
+  assert.deepEqual(decodeShareHash(encodeShareHash(value)), value);
+  const duplicated = { ...value, themeRecipeJson: raw.replace('"tokens":{}', '"tokens":{},"tokens":{}') };
+  assert.equal(decodeShareHash(encodeShareHash(duplicated))?.themeRecipeJson, duplicated.themeRecipeJson);
+  for (const invalid of ["auto", "system", "sepia", null, 1, {}]) {
+    const hash = s2Payload({ themeAppearance: invalid }).replace("#s2:", "#s5:");
+    assert.equal(decodeShareHash(hash), null);
+  }
 });
 
 test("round-trips a custom recipe through s3 without changing s2 links", () => {

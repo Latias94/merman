@@ -53,6 +53,7 @@ CLI_RELEASE_COMMANDS = [
     "parse",
     "render",
     "rustdoc",
+    "theme",
 ]
 SOURCE_ASSET_PATHS = (
     "assets/completions/_merman-cli",
@@ -64,6 +65,8 @@ SOURCE_ASSET_PATHS = (
     "assets/man/merman-cli-rustdoc-build.1",
     "assets/man/merman-cli-rustdoc-check.1",
     "assets/man/merman-cli-rustdoc.1",
+    "assets/man/merman-cli-theme-inspect.1",
+    "assets/man/merman-cli-theme.1",
     "assets/man/merman-cli.1",
 )
 VALID_PNG = (
@@ -229,7 +232,7 @@ def valid_capabilities_payload(
         }
     return {
         "schema_version": 2,
-        "cli_contract_version": 6,
+        "cli_contract_version": 7,
         "package": {"name": "merman-cli", "version": version},
         "compatibility": {
             "mermaid": bundle["release"]["version"],
@@ -590,7 +593,7 @@ class PresetQualificationArchiveTests(unittest.TestCase):
             }
             public_catalog = valid_capabilities_payload()["theme_presets"]
             brutalist = next(entry for entry in public_catalog["presets"] if entry["id"] == "brutalist")
-            brutalist["qualified_cells"] = [{
+            brutalist["appearances"][0]["qualified_cells"] = [{
                 "family_id": "state", "output_id": output,
                 "profile_id": "native-state-system-fonts-v1", "admission_status": "host_dependent",
             } for output in ("png", "svg")]
@@ -630,7 +633,7 @@ class PresetQualificationArchiveTests(unittest.TestCase):
                 qualified_preset = next(
                     entry for entry in catalog["catalog"]["presets"] if entry["id"] == "brutalist"
                 )
-                self.assertEqual(qualified_preset["qualified_cells"], [
+                self.assertEqual(qualified_preset["appearances"][0]["qualified_cells"], [
                     {"family_id": "state", "output_id": output,
                      "profile_id": "native-state-system-fonts-v1", "admission_status": "host_dependent"}
                     for output in ("png", "svg")
@@ -1463,7 +1466,7 @@ class RuntimeContractTests(unittest.TestCase):
             "system_discovery": "before-layout",
         })
         self.assertEqual(payload["schema_version"], 2)
-        self.assertEqual(payload["cli_contract_version"], 6)
+        self.assertEqual(payload["cli_contract_version"], 7)
         self.assertIs(native["system_discovery_compiled"], True)
         self.assertIs(native["system_discovery_runtime_available"], True)
         self.assertEqual(len(native["measurement_operations"]), 23)
@@ -1932,6 +1935,10 @@ class RuntimeContractTests(unittest.TestCase):
                 ),
                 (
                     "cli_contract_version",
+                    lambda value: value.__setitem__("cli_contract_version", 6),
+                ),
+                (
+                    "cli_contract_version",
                     lambda value: value.__setitem__("cli_contract_version", 999),
                 ),
                 (
@@ -1977,7 +1984,7 @@ class RuntimeContractTests(unittest.TestCase):
                 ("ASCII", lambda value: value.pop("ascii")),
                 ("catalog", lambda value: value.pop("theme_presets")),
                 ("catalog", lambda value: value["theme_presets"]["presets"][0].__setitem__("maturity", "stable")),
-                ("catalog", lambda value: value["theme_presets"]["presets"][0].__setitem__("qualified_cells", [{}])),
+                ("catalog", lambda value: value["theme_presets"]["presets"][0]["appearances"][0].__setitem__("qualified_cells", [{}])),
                 (
                     "ASCII output schema version",
                     lambda value: value["ascii"].__setitem__("output_schema_version", 2),

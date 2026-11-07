@@ -298,6 +298,21 @@ int merman_c_consumer_smoke(
                     result.metadata_or_error_json.data,
                     result.metadata_or_error_json.len,
                     "\"known_semantic_target_ids\""
+                ) ||
+                !bytes_contain(
+                    result.metadata_or_error_json.data,
+                    result.metadata_or_error_json.len,
+                    "\"supported_appearances\""
+                ) ||
+                !bytes_contain(
+                    result.metadata_or_error_json.data,
+                    result.metadata_or_error_json.len,
+                    "\"concrete_preset_id\""
+                ) ||
+                !bytes_contain(
+                    result.metadata_or_error_json.data,
+                    result.metadata_or_error_json.len,
+                    "\"mermaid_theme_designs\""
                 )
             )
         ) {
@@ -379,6 +394,37 @@ int merman_c_consumer_smoke(
     request.options_json = borrowed_slice(NULL, 0);
 
     if (require_complete_artifact) {
+        static const uint8_t paired_inspection[] =
+            "{\"schema_version\":1,\"action\":\"inspect\",\"recipe\":"
+            "{\"schema_version\":1,\"kind\":\"design\",\"design\":"
+            "{\"appearances\":{\"light\":{},\"dark\":{}},\"default_appearance\":\"light\"}}}";
+        request.operation = MERMAN_NATIVE_OPERATION_MATERIALIZE_THEME_JSON;
+        request.source = borrowed_slice(paired_inspection, sizeof(paired_inspection) - 1);
+        result = empty_result();
+        status = api.execute_collect(engine, &request, &result);
+        if (status != MERMAN_NATIVE_STATUS_OK || result.status != status ||
+            result.operation != request.operation ||
+            !bytes_contain(result.data.data, result.data.len,
+                           "\"supported_appearances\":[\"light\",\"dark\"]")) {
+            api.result_free(&result);
+            api.engine_try_close(engine);
+            return 35;
+        }
+        api.result_free(&result);
+        request.operation = MERMAN_NATIVE_OPERATION_EXPORT_THEME_PRESET_JSON;
+        request.source = borrowed_slice((const uint8_t *)"editor", strlen("editor"));
+        result = empty_result();
+        status = api.execute_collect(engine, &request, &result);
+        if (status != MERMAN_NATIVE_STATUS_OK || result.status != status ||
+            result.operation != request.operation ||
+            !bytes_contain(result.data.data, result.data.len, "\"appearances\"") ||
+            !bytes_contain(result.data.data, result.data.len, "\"light\"") ||
+            !bytes_contain(result.data.data, result.data.len, "\"dark\"")) {
+            api.result_free(&result);
+            api.engine_try_close(engine);
+            return 36;
+        }
+        api.result_free(&result);
         request.operation = MERMAN_NATIVE_OPERATION_SVG;
         request.source = borrowed_slice(icon_source, sizeof(icon_source) - 1);
         request.options_json = borrowed_slice(

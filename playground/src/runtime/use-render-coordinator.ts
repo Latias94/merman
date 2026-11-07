@@ -37,6 +37,10 @@ export function selectVisibleCanvasTone(
 ): MermaidCanvasTone {
   const batch = selectVisibleRenderBatch(state);
   if (batch?.merman.status === "success") {
+    const operation = batch.snapshot.operation;
+    const appearance = operation.resolvedThemeAppearance;
+    if (appearance && operation.unavailableThemePresetId === null &&
+      (operation.themePresetId !== null || operation.themeRecipeJson !== null)) return appearance;
     const evidence = batch.merman.metadata?.theme_execution_evidence;
     return resolveMermaidCanvasTone(
       evidence?.version === 2 ? evidence.materialized_theme : null,

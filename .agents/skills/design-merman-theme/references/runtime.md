@@ -26,12 +26,15 @@ weaker release build. These commands prepare artifacts; they do not publish pack
 
 ## Appearance and viewer backing
 
-The current theme input selects one concrete theme. For a pair, the host selects the light or
-dark recipe/preset before headless export; automatic system-preference resolution belongs to
-the host. Record the selection and concrete export appearance separately from viewer backing
+Pass the complete v1 recipe and select its concrete `light` or `dark` appearance. For CLI use
+`--theme-appearance dark`; Rust uses `compile_document(recipe, Some(ThemeAppearance::Dark))`;
+Web/Node render options use `theme: { recipe, appearance: "dark" }`.
+Omitting appearance selects the document's declared default. Automatic system/editor-preference
+resolution belongs to the host; `auto` is not a renderer appearance. Record the requested host
+preference and concrete export appearance separately from viewer backing
 and any root/output background policy in the existing render conditions or local note.
 
-Render each saved recipe through the same helper with the same source/configuration and distinct
+Render each appearance of the saved recipe with the same source/configuration and distinct
 output names and sidecars. Inspect the actual exports: changing viewer backing neither rerenders
 nor changes image paint. For intentional transparency, record the receiving background and review
 the composite, including any remaining family-owned backdrops. Follow the paired checks in
@@ -46,15 +49,21 @@ ignored `target/theme-design` output directory first. Use fresh output names for
 node .agents/skills/design-merman-theme/scripts/theme-tool.mjs catalog --engine ENGINE
 node .agents/skills/design-merman-theme/scripts/theme-tool.mjs export cyberpunk --engine ENGINE --out target/theme-design/cyberpunk.theme.json
 node .agents/skills/design-merman-theme/scripts/theme-tool.mjs materialize target/theme-design/design.json --engine ENGINE --out target/theme-design/materialized.json
+node .agents/skills/design-merman-theme/scripts/theme-tool.mjs inspect target/theme-design/theme.json --engine ENGINE
 node .agents/skills/design-merman-theme/scripts/theme-tool.mjs support target/theme-design/support-query.json --engine ENGINE
 node .agents/skills/design-merman-theme/scripts/theme-tool.mjs render .agents/skills/design-merman-theme/assets/starter.theme.json .agents/skills/design-merman-theme/assets/flowchart.mmd --engine ENGINE --options target/theme-design/options.json --out target/theme-design/starter.svg
 ```
 
-`export` retains the preset's declared relationships. `materialize` takes the raw `design` payload,
-not the outer recipe, and returns an inspection result. `support` takes the versioned query in
+`export` retains the preset's declared relationships and returns the complete pair for a canonical
+paired ID. `materialize` takes the raw `design` payload or a complete schema-1 authoring request;
+`inspect` wraps an unmodified portable recipe in an inspect request. For explicit materialization,
+save `{"schema_version":1,"action":"materialize","recipe":RECIPE,"appearance":"dark"}` as the
+input file. `support` takes the versioned query in
 [authoring.md](authoring.md). `render` validates original recipe text, including duplicate keys,
 and writes SVG plus `<name>.metadata.json` from one operation. Read that sidecar after each render.
 Inputs are protected even with `--force`; use it only for an intentional output replacement.
+For paired previews add `--appearance light` or `--appearance dark` to `render`; the helper
+forwards the original recipe bytes inside the selection wrapper.
 
 The `options.json` above is Options JSON 3 without `theme`, which has its own file:
 

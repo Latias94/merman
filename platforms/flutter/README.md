@@ -182,17 +182,22 @@ try {
 
 The typed metadata APIs expose the loaded artifact's diagram, ASCII, parser/render, lint, Mermaid theme, and compiled-theme catalogs. Results are copied into Dart-owned immutable values and cached on the `Merman` instance. Decoders require the documented fields while tolerating additive JSON fields from a compatible newer producer. Theme preset and descriptor IDs remain open strings so compatible producers can add values without requiring Dart enum updates.
 
-`MermanThemePreset.previewColors` exposes ordered picker swatches,
+`MermanThemePreset` groups one design's `supportedAppearances`, `defaultAppearance`, and
+`appearances`. Each `MermanThemePresetAppearance` has the exact `concretePresetId`,
+`previewColors` for ordered picker swatches,
 `familyDesigns` exposes curated family treatment, and `applicationNotes` contains typed
 `MermanThemePresetApplicationNote` values with an open `id`, `familyId`, readable `message`, and
 nullable `recommendedConfig` map. Use a matching artifact that provides this metadata; a package
 version alone does not establish its availability for host-owned libraries loaded with
-`Merman.openPath(...)`. Missing additive arrays from older runtimes normalize to empty immutable
-lists; malformed present fields are rejected. Recommendation maps
+`Merman.openPath(...)`. The current catalog requires its appearance-specific arrays;
+missing or malformed fields are rejected. Recommendation maps
 and their nested maps/lists are also copied and immutable. `base_only` is the shared base appearance with necessary family adaptations;
 `dedicated` is an intentional family design, and absent or unknown treatments remain unreviewed.
 Unknown values survive decoding. This metadata does not grant qualification or portability and
 must not cause an implicit switch to a different preset when the diagram family changes.
+The catalog, presets, appearances, and Mermaid groups expose an immutable `jsonObject` retaining
+additive raw fields. `mermaidThemeDesigns` preserves the upstream literal IDs; Default and Dark
+remain independent, while Neo, Redux, and Redux Color explicitly declare their paired appearances.
 
 Build the picker from the runtime inventory, using `id` for persistence and `displayName` for
 labels. Ghibli is a normal preset with a dedicated Pie design; all current built-ins remain alpha
@@ -224,6 +229,29 @@ final themedSvg = merman.renderSvg(
   optionsJson: '{"version":3,"theme":{"preset":"ghibli"}}',
 );
 ```
+
+One design can also provide both reading modes:
+
+```dart
+import 'dart:convert';
+
+final recipe = merman.execute(MermanOperation.exportThemePresetJson, 'editor').jsonObject;
+final inspection = merman.execute(
+  MermanOperation.materializeThemeJson,
+  jsonEncode({'schema_version': 1, 'action': 'inspect', 'recipe': recipe}),
+).jsonObject;
+final darkSvg = merman.renderSvg(
+  'flowchart LR\nA[Review] --> B[Publish]',
+  optionsJson: jsonEncode({'theme': {'recipe': recipe, 'appearance': 'dark'}}),
+);
+```
+
+Keep the complete recipe for saving and customization. Shared values live in `design`;
+appearance exceptions live in `design.appearances`. An omitted selector uses the declared
+default, while an explicit unsupported appearance fails. Resolve Follow-app/editor in the host
+before submitting `light` or `dark`. Whole-design admission validates inactive appearances too.
+For a concrete snapshot, use the same authoring operation with `action: "materialize"` and
+`appearance: "dark"`; its `spec` no longer retains the shared design relationships.
 
 For a reusable engine, omit `theme` to inherit its selection, use `theme: null` to clear it,
 or supply a complete selection or recipe to replace it.

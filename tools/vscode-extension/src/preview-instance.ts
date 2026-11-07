@@ -2,6 +2,16 @@ import * as vscode from "vscode";
 
 import { getPreviewSettings } from "./config.js";
 import { previewCliBackground } from "./preview-background.js";
+import { configuredThemeFileUri } from "./render-settings.js";
+import { resolvedRenderSettings } from "./render-options.js";
+import { discoverThemes, inspectThemeFile } from "./theme-runtime.js";
+import {
+  editorThemeAppearance,
+  isThemePreference,
+  themeChoice,
+  type ThemeAppearancePreference,
+  type ThemeDiscovery,
+} from "./theme-selection.js";
 import { collectMermanPreviewDiagnostics } from "./preview-diagnostics.js";
 import type { ExportFormat } from "./export-options.js";
 import { exportRenderedDiagram } from "./export-workflow.js";
@@ -62,6 +72,10 @@ export class PreviewInstance implements vscode.Disposable {
   private disposed = false;
   private renderedOutputStale = false;
   private openGeneration = 0;
+  private themeGeneration = 0;
+  private discovery: ThemeDiscovery | undefined;
+  private themeInitialization: Promise<void> | undefined;
+  private themesReady = false;
 
   constructor(
     private readonly context: vscode.ExtensionContext,
@@ -113,6 +127,7 @@ export class PreviewInstance implements vscode.Disposable {
     }
 
     this.ensureWebviewHtml(panel);
+    await this.initializeThemes();
     if (this.isCurrentOpen(openGeneration)) {
       this.scheduleRefresh(shouldRetargetSource ? "manual-open" : "panel-visible", true);
     }
@@ -155,6 +170,61 @@ export class PreviewInstance implements vscode.Disposable {
 
   forceRefresh(): void {
     this.scheduleRefresh("manual-refresh", true);
+  }
+
+  handleEditorAppearanceChanged(kind: number): void {
+    if (!this.themesReady || this.disposed) {
+      return;
+    }
+    try {
+      if (this.session.setHostAppearance(editorThemeAppearance(kind))) {
+        this.invalidateRenderedOutput("editor-appearance");
+      }
+      this.scheduleRefresh("editor-appearance", true);
+    } catch (error) {
+      this.handleRefreshError(error);
+    }
+  }
+
+  private async initializeThemes(): Promise<void> {
+    if (!this.themeInitialization) {
+      this.themeInitialization = (async () => {
+        const revision = this.session.themeSelectionRevision;
+        const discovery = await discoverThemes(this.context);
+        if (this.disposed) {
+          return;
+        }
+        this.discovery = discovery;
+        let imported;
+        if (this.session.diagramTheme === "file") {
+          while (!this.disposed) {
+            const resourceUri = this.session.configurationResourceUri;
+            const resource = resourceUri ? vscode.Uri.parse(resourceUri) : undefined;
+            const settings = getPreviewSettings(resource);
+            try {
+              imported = await inspectThemeFile(this.context, configuredThemeFileUri(settings.themeFile, resource), discovery);
+            } catch (error) {
+              if (this.disposed || revision !== this.session.themeSelectionRevision) {
+                imported = undefined;
+                break;
+              }
+              if (resourceUri !== this.session.configurationResourceUri) continue;
+              throw error;
+            }
+            if (resourceUri === this.session.configurationResourceUri) break;
+          }
+        }
+        if (!this.disposed) {
+          this.session.configureThemes(discovery, editorThemeAppearance(vscode.window.activeColorTheme.kind),
+            revision === this.session.themeSelectionRevision ? imported : undefined);
+          this.themesReady = true;
+        }
+      })().catch((error: unknown) => {
+        this.themeInitialization = undefined;
+        throw error;
+      });
+    }
+    await this.themeInitialization;
   }
 
   get trackedDocumentUri(): string | undefined {
@@ -328,9 +398,13 @@ export class PreviewInstance implements vscode.Disposable {
     if (!panel) {
       return;
     }
+    await this.initializeThemes();
+    if (this.disposed || this.panel !== panel) {
+      return;
+    }
 
     this.ensureWebviewHtml(panel);
-    const snapshot = this.createSnapshot();
+    const snapshot = this.createSnapshot(reason === "editor-appearance");
     const actions = planPreviewUpdate(this.session.snapshot, snapshot, reason);
     if (!snapshot) {
       panel.title = PREVIEW_TITLE;
@@ -387,11 +461,13 @@ export class PreviewInstance implements vscode.Disposable {
     });
   }
 
-  private createSnapshot(): PreviewSnapshot | undefined {
+  private createSnapshot(keepSource = false): PreviewSnapshot | undefined {
     return this.session.createSnapshot(
-      vscode.window.activeTextEditor,
+      keepSource ? undefined : vscode.window.activeTextEditor,
       vscode.window.visibleTextEditors,
       collectPreviewDiagnostics,
+      keepSource,
+      vscode.workspace.textDocuments,
     );
   }
 
@@ -400,8 +476,7 @@ export class PreviewInstance implements vscode.Disposable {
       context: this.context,
       source: snapshot.input.source,
       format: snapshot.displayMode,
-      theme: snapshot.diagramTheme,
-      background: previewCliBackground(snapshot.background),
+      ...resolvedRenderSettings(snapshot.resolvedTheme, previewCliBackground(snapshot.background)),
       outputChannel: this.outputChannel,
       signalLabel: "preview",
       signal,
@@ -476,6 +551,17 @@ export class PreviewInstance implements vscode.Disposable {
       case "setBackground":
         this.setBackground(message.background);
         return;
+      case "setAppearance":
+        this.setAppearance(message.appearance);
+        return;
+      case "setViewerBackground":
+        if (this.session.setViewerBackground(message.background)) {
+          this.scheduleRefresh("viewer-background", true);
+        }
+        return;
+      case "importTheme":
+        await this.importTheme();
+        return;
     }
   }
 
@@ -506,9 +592,55 @@ export class PreviewInstance implements vscode.Disposable {
   }
 
   private setDiagramTheme(theme: PreviewDiagramTheme): void {
-    if (!isPreviewDiagramTheme(theme) || !this.session.setDiagramTheme(theme)) {
+    const choice = this.discovery
+      ? themeChoice(this.discovery, theme) ?? this.session.snapshot?.themeChoices?.find((entry) => entry.id === theme)
+      : undefined;
+    if (!isPreviewDiagramTheme(theme) || !this.discovery ||
+      !choice?.available ||
+      !this.session.setDiagramTheme(theme)) {
       return;
     }
+    this.themeGeneration += 1;
+    this.invalidateRenderedOutput("diagram-theme");
+    this.scheduleRefresh("diagram-theme", true);
+  }
+
+  private setAppearance(preference: ThemeAppearancePreference): void {
+    if (!isThemePreference(preference) || !this.session.setAppearance(preference)) {
+      return;
+    }
+    this.themeGeneration += 1;
+    this.invalidateRenderedOutput("appearance");
+    this.scheduleRefresh("appearance", true);
+  }
+
+  private async importTheme(): Promise<void> {
+    const discovery = this.discovery;
+    if (!discovery?.inspect) {
+      throw new Error("Importing theme recipe JSON requires an updated CLI with theme inspect support.");
+    }
+    const generation = ++this.themeGeneration;
+    const files = await vscode.window.showOpenDialog({
+      canSelectMany: false,
+      canSelectFolders: false,
+      filters: { "Theme recipe JSON": ["json"] },
+      openLabel: "Import theme recipe",
+      title: "Import a portable theme recipe JSON",
+    });
+    if (!files?.[0] || this.disposed || generation !== this.themeGeneration) {
+      return;
+    }
+    let imported;
+    try {
+      imported = await inspectThemeFile(this.context, files[0], discovery);
+    } catch (error) {
+      if (this.disposed || generation !== this.themeGeneration) return;
+      throw error;
+    }
+    if (this.disposed || generation !== this.themeGeneration) {
+      return;
+    }
+    this.session.importTheme(imported);
     this.invalidateRenderedOutput("diagram-theme");
     this.scheduleRefresh("diagram-theme", true);
   }
@@ -559,8 +691,7 @@ export class PreviewInstance implements vscode.Disposable {
         exportBaseName: snapshot.input.exportBaseName,
         source: snapshot.input.source,
         format,
-        theme: snapshot.diagramTheme,
-        background: previewCliBackground(snapshot.background),
+        ...resolvedRenderSettings(snapshot.resolvedTheme, previewCliBackground(snapshot.background)),
         signalLabel: `preview-export-${format}`,
         failureMessagePrefix: "Merman preview export failed",
       });

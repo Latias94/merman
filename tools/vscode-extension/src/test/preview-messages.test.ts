@@ -37,6 +37,9 @@ describe("preview message validation", () => {
     assert.equal(isPreviewFromWebviewMessage({ type: "setDisplayMode", mode: "unicode" }), true);
     assert.equal(isPreviewFromWebviewMessage({ type: "setBackground", background: "paper" }), true);
     assert.equal(isPreviewFromWebviewMessage({ type: "setLocked", locked: true }), true);
+    assert.equal(isPreviewFromWebviewMessage({ type: "setAppearance", appearance: "follow-editor" }), true);
+    assert.equal(isPreviewFromWebviewMessage({ type: "setViewerBackground", background: "auto" }), true);
+    assert.equal(isPreviewFromWebviewMessage({ type: "importTheme" }), true);
   });
 
   it("rejects malformed or unknown webview command payloads", () => {
@@ -53,5 +56,8 @@ describe("preview message validation", () => {
     assert.equal(isPreviewFromWebviewMessage({ type: "setLocked", locked: "true" }), false);
     assert.equal(isPreviewFromWebviewMessage({ type: "unknownPreviewCommand" }), false);
     assert.equal(isPreviewFromWebviewMessage({ type: "deleteEverything" }), false);
+    assert.equal(isPreviewFromWebviewMessage({ type: "importTheme", path: "/private/theme.json" }), false);
+    assert.equal(isPreviewFromWebviewMessage({ type: "setDiagramTheme", theme: "preset:../../secret" }), false);
+    assert.equal(isPreviewFromWebviewMessage({ type: "setAppearance", appearance: "auto" }), false);
   });
 });

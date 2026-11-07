@@ -1,4 +1,6 @@
 import risoRecipe from "./recipes/riso.theme.json?raw";
+import readingRecipe from "./recipes/reading.theme.json?raw";
+import type { ThemeAppearance } from "@mermanjs/web";
 import riso_flowchart from "./previews/riso-flowchart.svg?url";
 import riso_sequence from "./previews/riso-sequence.svg?url";
 import riso_class from "./previews/riso-class.svg?url";
@@ -96,7 +98,16 @@ export interface ExplorationTheme {
   readonly appearance: "light" | "dark";
   readonly colors: readonly string[];
   readonly recipeJson: string;
-  readonly previews: Readonly<Record<ThemeSampleId, string>>;
+  readonly previews: Readonly<Record<ThemeSampleId, string>> | null;
+  readonly appearances?: readonly {
+    readonly appearance: ThemeAppearance;
+    readonly colors: readonly string[];
+  }[];
+}
+
+export function explorationAppearance(theme: ExplorationTheme, appearance: ThemeAppearance) {
+  return theme.appearances?.find((entry) => entry.appearance === appearance) ??
+    { appearance: theme.appearance, colors: theme.colors };
 }
 
 export const EXPLORATION_THEMES: readonly ExplorationTheme[] = [
@@ -187,6 +198,16 @@ export const EXPLORATION_THEMES: readonly ExplorationTheme[] = [
       xychart: groveXychart,
       pie: grovePie,
     },
+  },
+  {
+    id: "reading", name: "Reading", appearance: "light",
+    colors: ["#F6F7F9", "#243246", "#315EAA", "#2F7E73"],
+    recipeJson: readingRecipe,
+    appearances: [
+      { appearance: "light", colors: ["#F6F7F9", "#243246", "#315EAA", "#2F7E73"] },
+      { appearance: "dark", colors: ["#171C24", "#E3EAF3", "#94B9F2", "#76BDAE"] },
+    ],
+    previews: null,
   },
   {
     id: "atlas",

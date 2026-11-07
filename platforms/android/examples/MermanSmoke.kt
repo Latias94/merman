@@ -5,6 +5,7 @@ import io.merman.MermanEngine
 import io.merman.MermanEngineServices
 import io.merman.MermanIconPack
 import io.merman.MermanIconPackSet
+import io.merman.MermanOperationResult
 
 fun runMermanSmoke() {
     val iconPackSet = MermanIconPackSet.fromPacks(
@@ -82,6 +83,51 @@ fun runMermanSmoke() {
                 error.capabilityId == "math") {
                 "constrained math rejection lost its capability identity"
             }
+        }
+    }
+    val themeConsumers: List<Pair<String, (String, String, String?) -> MermanOperationResult>> = listOf(
+        "one-shot" to { operation, source, options -> Merman.execute(operation, source, options) },
+        "reusable" to { operation, source, options -> engine.execute(operation, source, options) },
+    )
+    themeConsumers.forEach { (consumer, execute) ->
+        val recipe = org.json.JSONObject(execute("export-theme-preset-json", "editor", null).utf8Text)
+        val modes = recipe.getJSONObject("design").getJSONObject("appearances")
+        check(recipe.getInt("schema_version") == 1 && modes.has("light") && modes.has("dark")) {
+            "$consumer preset export lost an appearance"
+        }
+        val inspection = org.json.JSONObject(execute(
+            "materialize-theme-json",
+            org.json.JSONObject().put("schema_version", 1).put("action", "inspect")
+                .put("recipe", recipe).toString(),
+            null,
+        ).utf8Text)
+        check(inspection.getJSONArray("supported_appearances").let {
+            it.length() == 2 && it.getString(0) == "light" && it.getString(1) == "dark"
+        } && inspection.getString("default_appearance") == "light") {
+            "$consumer paired inspection lost its declared modes"
+        }
+        val snapshots = mutableListOf<String>()
+        val drawings = mutableListOf<String>()
+        listOf("light", "dark", "light").forEach { appearance ->
+            val selected = org.json.JSONObject(execute(
+                "materialize-theme-json",
+                org.json.JSONObject().put("schema_version", 1).put("action", "materialize")
+                    .put("recipe", recipe).put("appearance", appearance).toString(),
+                null,
+            ).utf8Text)
+            check(selected.getString("effective_appearance") == appearance) {
+                "$consumer paired materialization selected the wrong appearance"
+            }
+            snapshots.add(selected.getJSONObject("spec").toString())
+            val options = org.json.JSONObject()
+                .put("theme", org.json.JSONObject().put("recipe", recipe).put("appearance", appearance))
+                .put("site_config", org.json.JSONObject().put("htmlLabels", false))
+                .put("svg", org.json.JSONObject().put("diagram_id", "android-paired-theme"))
+            drawings.add(execute("svg", "flowchart LR\nA[Review] --> B[Publish]", options.toString()).utf8Text)
+        }
+        check(snapshots[0] != snapshots[1] && snapshots[0] == snapshots[2] &&
+            drawings[0] != drawings[1] && drawings[0] == drawings[2]) {
+            "$consumer lost paired-theme isolation"
         }
     }
     val invalidThemeSource = """

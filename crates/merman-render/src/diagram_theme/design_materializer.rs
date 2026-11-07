@@ -34,7 +34,7 @@ pub fn materialize_theme_design_with_resource_policy(
     design: &ThemeDesignV1,
     resources: &ThemeResourcePolicy,
 ) -> Result<DiagramThemeSpecWireV1> {
-    materialize(design, resources, false).map(|(spec, _)| spec)
+    materialize_input(design, resources, false).map(|(spec, _)| spec)
 }
 
 /// Admits raw design JSON before normalization can discard duplicate fields.
@@ -66,7 +66,7 @@ pub fn materialize_theme_design_json_with_bindings(
 ) -> Result<MaterializedThemeWireV1> {
     check_design_json_input(resources, bytes)?;
     let design = serde_json::from_slice(bytes).map_err(invalid_design_json)?;
-    let (spec, references) = materialize(&design, resources, true)?;
+    let (spec, references) = materialize_input(&design, resources, true)?;
     MaterializedThemeWireV1::try_new(spec)
         .map(|value| value.with_references(references))
         .map_err(|error| failure("", "finite-theme-design", error.to_string()))
@@ -98,8 +98,59 @@ fn encoding_error(
 
 /// Inspects authored references through the same typed resolver used for materialization.
 pub fn inspect_theme_design(design: &ThemeDesignV1) -> Result<ThemeDesignInspection> {
-    materialize(design, &ThemeResourcePolicy::interactive(), true)
+    materialize_input(design, &ThemeResourcePolicy::interactive(), true)
         .map(|(_, references)| ThemeDesignInspection { references })
+}
+
+fn materialize_input(
+    design: &ThemeDesignV1,
+    resources: &ThemeResourcePolicy,
+    inspect: bool,
+) -> Result<(DiagramThemeSpecWireV1, Vec<ThemeDesignReferenceUse>)> {
+    if design.appearances.is_none() && design.default_appearance.is_none() {
+        return materialize(design, resources, inspect);
+    }
+    super::definition_admission::check_typed_input_encoded_bytes(resources, design)
+        .map_err(encoding_error)?;
+    let recipe = ThemeRecipeV1::Design {
+        design: design.clone(),
+    };
+    let result = super::DiagramThemeCompiler::new()
+        .with_resource_policy(resources.clone())
+        .materialize_document(&recipe, None)
+        .map_err(|error| {
+            let error = match error {
+                ThemeDesignCompileError::Materialization(error) => error,
+                ThemeDesignCompileError::Compilation(error) => {
+                    super::document::compilation_error("/design", error)
+                }
+            };
+            let path = error
+                .diagnostic()
+                .path()
+                .strip_prefix("/design")
+                .unwrap_or(error.diagnostic().path())
+                .to_owned();
+            ThemeMaterializationErrorV1::from_diagnostic(error.into_diagnostic().with_path(path))
+        })?;
+    let references = if inspect {
+        result
+            .references
+            .into_iter()
+            .map(|reference| ThemeDesignReferenceUse {
+                token: reference.token,
+                path: reference
+                    .path
+                    .strip_prefix("/design")
+                    .unwrap_or(&reference.path)
+                    .to_owned(),
+                domain: reference.domain,
+            })
+            .collect()
+    } else {
+        Vec::new()
+    };
+    Ok((result.spec, references))
 }
 
 fn failure(path: &str, domain: &str, message: impl Into<String>) -> ThemeMaterializationErrorV1 {
@@ -139,7 +190,7 @@ fn domain(value_type: &'static str) -> ThemeDesignValueDomain {
     }
 }
 
-fn materialize(
+pub(super) fn materialize(
     design: &ThemeDesignV1,
     resources: &ThemeResourcePolicy,
     inspect: bool,

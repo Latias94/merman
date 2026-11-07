@@ -42,6 +42,8 @@ import {
 } from "@/src/lib/mermaid-live";
 import { copyWorkspaceShareUrl } from "@/src/lib/share";
 import { copyIssueShareUrl } from "@/src/lib/share-view";
+import { resolveThemeSelection } from "@/src/lib/theme-appearance";
+import { mermanRuntimeStore } from "@/src/runtime/merman";
 import { currentThemeRender } from "@/src/lib/theme-discovery";
 import { executeArtifactAction } from "@/src/runtime/artifact-actions-browser";
 import { isMermanSvgPipeline, MERMAN_SVG_PIPELINES } from "@/src/runtime/merman-core";
@@ -59,10 +61,11 @@ import {
 export function useToolbarArtifactActions() {
   const { t } = useTranslation();
   const workspace = useAppStore(useShallow(selectWorkspaceSnapshot));
-  const { code, diagramTheme, mermaidConfig, svgPipeline } = workspace;
+  const { code, mermaidConfig, svgPipeline } = workspace;
   const diagramType = useRenderCoordinator(selectCurrentDiagramType);
   const renderState = useRenderCoordinator((state) => state);
-  const render = currentThemeRender(renderState, workspace);
+  const hostAppearance = useAppStore((state) => state.resolvedTheme);
+  const render = currentThemeRender(renderState, workspace, hostAppearance);
   const currentBatch = render.status === "waiting" ? null : selectCompletedRenderBatch(renderState);
   const asciiSupport = useAsciiSupport();
   const { openExport } = useExportWorkbench();
@@ -116,13 +119,13 @@ export function useToolbarArtifactActions() {
     }
     try {
       await navigator.clipboard.writeText(
-        createMarkdownImageLink(code, diagramTheme, mermaidConfig),
+        createMarkdownImageLink(code, currentNativeTheme(), mermaidConfig),
       );
       toast.success(t("share.copied"));
     } catch {
       toast.error(t("share.copyFailed"));
     }
-  }, [code, diagramTheme, mermaidConfig, t]);
+  }, [code, mermaidConfig, t]);
 
   const handleCopySVG = useCallback(async () => {
     try {
@@ -178,12 +181,10 @@ export function useToolbarArtifactActions() {
       toast.error(t("share.copyFailed"));
       return;
     }
-    window.open(
-      createMermaidLiveEditorUrl(code, diagramTheme, mermaidConfig),
-      "_blank",
-      "noopener,noreferrer",
-    );
-  }, [code, diagramTheme, mermaidConfig, t]);
+    try {
+      window.open(createMermaidLiveEditorUrl(code, currentNativeTheme(), mermaidConfig), "_blank", "noopener,noreferrer");
+    } catch { toast.error(t("share.copyFailed")); }
+  }, [code, mermaidConfig, t]);
 
   return {
     svgPipeline,
@@ -199,6 +200,17 @@ export function useToolbarArtifactActions() {
     handleOpenExport,
     handleOpenMermaidLive,
   };
+}
+
+function currentNativeTheme() {
+  const state = useAppStore.getState();
+  const workspace = selectWorkspaceSnapshot(state);
+  if (workspace.themePresetId !== null || workspace.themeRecipeJson !== null || (workspace.themeAppearance ?? "default") === "default") return workspace.diagramTheme;
+  const runtime = mermanRuntimeStore.getState();
+  if (runtime.status !== "ready") throw new Error("Wait for theme discovery before exporting the native Mermaid choice.");
+  const selection = resolveThemeSelection(workspace, state.resolvedTheme, runtime.facade.themeCatalog());
+  if (selection.error) throw new Error(selection.error);
+  return selection.mermaidTheme;
 }
 
 type ToolbarArtifactActionsOwner = ReturnType<

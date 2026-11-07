@@ -4,7 +4,6 @@ import type {
   DiagramFamilyCapability,
   DiagramType,
   LintBindingOptions,
-  LintRuleCatalogEntry,
   LintRuleCatalogResponse,
   LintRuleCategory,
   LintRuleSeverity,
@@ -81,10 +80,15 @@ export interface RuntimeCatalog {
 }
 
 export interface ThemeCatalog {
+  [key: string]: unknown;
   schema_version: 1;
   structured_spec_available: boolean;
+  recipe_schema_version: number | null;
+  authoring_request_schema_version: number | null;
+  authoring_result_schema_version: number | null;
   supported_output_ids: string[];
   presets: ThemePresetCatalogEntry[];
+  mermaid_theme_designs: ThemeMermaidDesignMetadataV1[];
   known_capability_ids: string[];
   known_text_capability_ids: string[];
   known_font_container_ids: string[];
@@ -95,10 +99,24 @@ export interface ThemeCatalog {
 }
 
 export interface ThemePresetCatalogEntry {
+  [key: string]: unknown;
   id: string;
   display_name: string;
-  appearance: string;
+  supported_appearances: ThemeAppearance[];
+  default_appearance: ThemeAppearance;
+  appearances: ThemePresetAppearanceMetadataV1[];
   maturity: string;
+  available: boolean;
+  availability_reason_ids: string[];
+  license_expression: string;
+  required_attribution: string | null;
+  export_kind: "design";
+}
+
+export interface ThemePresetAppearanceMetadataV1 {
+  [key: string]: unknown;
+  appearance: ThemeAppearance;
+  concrete_preset_id: string;
   available: boolean;
   availability_reason_ids: string[];
   /** Ordered color swatches for discovery, not a rendered palette or support claim. */
@@ -108,9 +126,21 @@ export interface ThemePresetCatalogEntry {
   /** Curated visual guidance; recommendations require an explicit host/user decision. */
   application_notes: ThemePresetApplicationNote[];
   qualified_cells: ThemePresetQualifiedCell[];
-  license_expression: string;
-  required_attribution: string | null;
-  export_kind: "design" | "complete_spec";
+}
+
+/** Only the explicitly declared upstream pairs share one presentation identity. */
+export interface ThemeMermaidDesignMetadataV1 {
+  [key: string]: unknown;
+  id: string;
+  display_name: string;
+  default_appearance: ThemeAppearance;
+  appearances: ThemeMermaidAppearanceMetadataV1[];
+}
+
+export interface ThemeMermaidAppearanceMetadataV1 {
+  [key: string]: unknown;
+  appearance: ThemeAppearance;
+  theme_id: ThemeName;
 }
 
 /** Missing families and unknown treatments are unreviewed; preserve unknown IDs. */
@@ -247,11 +277,15 @@ export interface SvgOptions {
   viewBoxPadding?: number;
 }
 
-/** A named preset, direct specification, or shareable recipe. Select exactly one form. */
+/** Resolve host preferences before rendering. Headless selection never accepts "auto". */
+export type ThemeAppearance = "light" | "dark";
+
+/** A whole theme selection. Supplying an object replaces the previous selection atomically. */
 export type DiagramThemeSelection =
   | ({ kind?: never; schema_version?: never; design?: never; complete_spec?: never } & (
-      | { preset: string; spec?: never }
-      | { preset?: never; spec: DiagramThemeSpec }
+      | { preset: string; appearance?: ThemeAppearance; recipe?: never; spec?: never }
+      | { recipe: ThemeRecipeV1; appearance?: ThemeAppearance; preset?: never; spec?: never }
+      | { preset?: never; recipe?: never; spec: DiagramThemeSpec; appearance?: never }
     ))
   | ThemeRecipeV1;
 
@@ -263,6 +297,8 @@ export interface ThemeReferenceV1 {
 
 /** An editable design. Only clearable style fields accept explicit null. */
 export interface ThemeDesignV1 {
+  appearances?: Partial<Record<ThemeAppearance, ThemeAppearanceOverridesV1>>;
+  default_appearance?: ThemeAppearance;
   tokens?: Record<string, ThemeDesignTokenV1>;
   styles?: Record<string, ThemeDesignStyleV1>;
   rules?: ThemeDesignRuleV1[];
@@ -423,6 +459,64 @@ export interface MaterializedThemeWireV1 {
   references?: ThemeDesignReferenceUse[];
 }
 
+/** Inspect every declared appearance; this request never selects a preview appearance. */
+export interface ThemeRecipeInspectionRequestV1 {
+  schema_version: 1;
+  action: "inspect";
+  recipe: ThemeRecipeV1;
+  appearance?: never;
+}
+
+/** Admit the whole document, then materialize one concrete appearance or its declared default. */
+export interface ThemeRecipeMaterializationRequestV1 {
+  schema_version: 1;
+  action: "materialize";
+  recipe: ThemeRecipeV1;
+  appearance?: ThemeAppearance;
+}
+
+export type ThemeAuthoringRequestV1 =
+  | ThemeRecipeInspectionRequestV1
+  | ThemeRecipeMaterializationRequestV1;
+export type ThemeAuthoringInput = ThemeDesignV1 | ThemeAuthoringRequestV1 | string;
+export type ThemeAuthoringResult =
+  | MaterializedThemeWireV1
+  | ThemeRecipeInspectionV1
+  | MaterializedThemeRecipeV1;
+export type ThemeAuthoringResultFor<Input extends ThemeAuthoringInput> =
+  Input extends ThemeRecipeInspectionRequestV1 ? ThemeRecipeInspectionV1
+    : Input extends ThemeRecipeMaterializationRequestV1 ? MaterializedThemeRecipeV1
+      : Input extends string ? ThemeAuthoringResult
+        : MaterializedThemeWireV1;
+
+export interface ThemeRecipeReferenceUseV1 extends ThemeDesignReferenceUse {
+  /** JSON Pointer to the actual shared or appearance-local token definition. */
+  token_path: string;
+}
+
+export interface ThemeAppearanceInspectionV1 {
+  appearance: ThemeAppearance | null;
+  references: ThemeRecipeReferenceUseV1[];
+}
+
+export interface ThemeRecipeInspectionV1 {
+  schema_version: 1;
+  recipe_schema_version: 1;
+  supported_appearances: ThemeAppearance[];
+  default_appearance: ThemeAppearance | null;
+  appearances: ThemeAppearanceInspectionV1[];
+}
+
+export interface MaterializedThemeRecipeV1 {
+  schema_version: 1;
+  recipe_schema_version: 1;
+  supported_appearances: ThemeAppearance[];
+  default_appearance: ThemeAppearance | null;
+  effective_appearance: ThemeAppearance | null;
+  spec: DiagramThemeSpec;
+  references: ThemeRecipeReferenceUseV1[];
+}
+
 export interface ThemeDesignValueDomain {
   value_type: ThemeDesignTokenV1["type"];
   choices?: string[];
@@ -506,10 +600,23 @@ export type ThemeRecipeV1 = {
   schema_version: 1;
   preset?: never;
   spec?: never;
+  recipe?: never;
+  appearance?: never;
 } & (
   | { kind: "design"; design: ThemeDesignV1; complete_spec?: never }
   | { kind: "complete_spec"; complete_spec: DiagramThemeSpec; design?: never }
 );
+
+/** Shared authored values with bounded, typed exceptions for each declared appearance. */
+export interface ThemeAppearanceOverridesV1 {
+  tokens?: ThemeDesignV1["tokens"];
+  styles?: ThemeDesignV1["styles"];
+  rules?: ThemeDesignV1["rules"];
+  palettes?: ThemeDesignV1["palettes"];
+  canvas?: ThemeDesignCanvasV1;
+  typography?: ThemeDesignTypographyV1;
+  mermaid?: MermaidThemeCompatibility;
+}
 
 export interface DiagramThemeSpec {
   mermaid?: MermaidThemeCompatibility;
@@ -1337,8 +1444,9 @@ export interface AnalysisFactsResult extends AnalysisPayloadFields {
 /**
  * An actual render explanation with open identifiers, not a portability certificate.
  * Rule diagnostics may describe partially applied rules; only `property`, when present, names
- * a specific property. Source paths are RFC 6901 pointers relative to the named recipe payload
- * (`design` or `complete_spec`). Generated defaults and Rust input may have no source paths.
+ * a specific property. Source paths are RFC 6901 pointers: design recipe locations begin with
+ * `/design/`, while direct complete-spec locations are relative to that specification. Paths exclude
+ * render-selection and Options JSON wrappers. Generated defaults and Rust input may have no paths.
  */
 export interface ThemeDiagnostic {
   code: string;
@@ -1793,7 +1901,7 @@ export interface MermanWasmModule extends MermanWasmModuleBase {
   materializeTheme: (
     designJson: string,
     optionsJson?: string | null
-  ) => MaterializedThemeWireV1;
+  ) => ThemeAuthoringResult;
   describeThemeSupport: (
     queryJson: string,
     optionsJson?: string | null

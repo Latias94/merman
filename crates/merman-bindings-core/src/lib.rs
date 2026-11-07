@@ -164,7 +164,10 @@ pub use text_measurement::{
     HostTextWhiteSpaceCode, decode_host_text_measurement, host_text_measurement_transport_fields,
 };
 #[cfg(feature = "svg")]
-pub use theme::{compile_theme_selection_json, compile_theme_selection_json_with};
+pub use theme::{
+    compile_theme_selection_json, compile_theme_selection_json_with,
+    compile_theme_selection_json_with_appearance,
+};
 #[cfg(feature = "svg")]
 pub use theme_design::{
     compile_theme_design_json, compile_theme_design_json_with, describe_theme_support_json,

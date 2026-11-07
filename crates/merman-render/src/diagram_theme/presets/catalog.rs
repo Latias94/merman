@@ -3,9 +3,7 @@ use merman_theme_contract::*;
 use super::design::*;
 use super::{ThemePreset, ThemePresetDescriptor, ThemePresetQualifiedCell};
 use crate::DiagramFamilyId;
-use crate::diagram_theme::{
-    ThemeResourcePolicy, ThemeTarget, ThemeVariant, materialize_theme_design_with_resource_policy,
-};
+use crate::diagram_theme::{ThemeTarget, ThemeVariant};
 
 const ALPHA: &str = "alpha";
 const PROJECT_LICENSE: &str = "MIT OR Apache-2.0";
@@ -688,11 +686,15 @@ pub(super) fn entry_for_id(id: &str) -> Option<&'static PresetCatalogEntry> {
         .find(|entry| entry.id == id && is_discoverable(entry))
 }
 
+#[cfg(test)]
 pub(crate) fn materialize_spec_wire(
     preset: ThemePreset,
-    resources: &ThemeResourcePolicy,
+    resources: &crate::diagram_theme::ThemeResourcePolicy,
 ) -> Result<DiagramThemeSpecWireV1, ThemeMaterializationErrorV1> {
-    materialize_theme_design_with_resource_policy(&build_design(preset), resources)
+    crate::diagram_theme::materialize_theme_design_with_resource_policy(
+        &build_design(preset),
+        resources,
+    )
 }
 
 /// Builds the editable source; its caller admits the design before export or compilation.

@@ -38,21 +38,45 @@ IDs through the initialized engine's theme catalog:
 ```js
 const catalog = JSON.parse(engine.metadataJson("theme-catalog"));
 const themedSvg = await engine.renderSvg("flowchart LR\nA --> B", {
-  optionsJson: JSON.stringify({ version: 3, theme: { preset: "spotless" } }),
+  optionsJson: JSON.stringify({ version: 3, theme: { preset: "editor", appearance: "dark" } }),
 });
 ```
 
-Catalog `available` means that the recipe can compile under the current resource policy. All
-built-in presets remain `alpha` with empty `qualified_cells`; availability and unknown
+Each catalog preset represents one design. `supported_appearances`, `default_appearance`,
+and `appearances` describe its modes; each mode contains the exact `concrete_preset_id`,
+swatches, family scope, and application notes. Catalog `available` admits every appearance
+under the current resource policy. All built-in presets remain `alpha` with empty appearance-specific
+`qualified_cells`; availability and unknown
 profile/admission IDs never establish portable output. Flowchart glow and shadow effects require
 the Classic look and supported shapes. SVG fonts resolve on the viewing host; exported recipes
 do not embed them.
 
-Use `executeOperation()` or `executeOperationSync()` with operation IDs
-`materialize-theme-json`, `describe-theme-support-json`, or `export-theme-preset-json` for
-shared definition JSON, support queries and preset export. Materialization returns a complete
-spec that can be passed as `theme: { spec }`; no intermediate file is required. Replace old
-`presentation.theme` inputs and `presentation-catalog` metadata calls when upgrading. See the
+The async authoring helpers use the same queue, cancellation, and JSON operations as rendering:
+
+```js
+const recipe = await engine.exportThemePreset("editor");
+const inspection = await engine.materializeTheme({
+  schema_version: 1, action: "inspect", recipe,
+});
+const snapshot = await engine.materializeTheme({
+  schema_version: 1, action: "materialize", recipe, appearance: "dark",
+});
+const svg = await engine.renderSvg("flowchart LR\nA[Review] --> B[Publish]", {
+  optionsJson: JSON.stringify({ theme: { recipe, appearance: "dark" } }),
+});
+```
+
+Keep the complete recipe for customization and exchange. Shared values live in `recipe.design`;
+local exceptions live in `recipe.design.appearances`. `snapshot.spec` is a concrete snapshot,
+while inspect reports every declared mode and reference provenance. Omitted appearance uses
+the declared default; an explicit unsupported value fails. Resolve Follow-app/editor in the
+host before submitting `light` or `dark`. A supplied `theme` replaces the complete previous
+selection; `null` clears it.
+
+`materializeTheme()` also accepts raw design JSON or raw request text, preserving duplicate-key
+admission in Rust. `describeThemeSupport()` queries renderer mechanisms. Generic and synchronous
+callers can continue using `executeOperation()` or `executeOperationSync()` with the same three
+operation IDs; no additional native entry point is required. See the
 [theme guide](https://github.com/Latias94/merman/blob/main/docs/rendering/custom-diagram-themes.md)
 for authoring and portability, and the
 [current Node changelog](https://github.com/Latias94/merman/blob/main/platforms/node/CHANGELOG.md)

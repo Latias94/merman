@@ -137,6 +137,7 @@ export async function runThemeAuthoringSmoke(module, engine) {
     shared_vectors: 0,
     catalog_checks: 0,
     family_isolation_checks: 0,
+    paired_appearance_checks: 0,
     rule_override_checks: 0,
     cold_spec_checks: 0,
     preset_export_checks: 0,
@@ -191,6 +192,37 @@ export async function runThemeAuthoringSmoke(module, engine) {
       assert.deepEqual(catalog.presets, expectedPresets);
       counts.catalog_checks += 1;
     }
+    const pairedRecipe = JSON.parse(await readFile(new URL("paired.recipe.json", FIXTURES), "utf8"));
+    const renderedPairs = [];
+    for (const client of [engine, fresh]) {
+      const inspection = await client.materializeTheme({
+        schema_version: 1, action: "inspect", recipe: pairedRecipe,
+      });
+      assert.deepEqual(inspection.supported_appearances, ["light", "dark"]);
+      assert.equal(inspection.default_appearance, "light");
+      const snapshots = [];
+      const rendered = [];
+      for (const appearance of ["light", "dark", "light"]) {
+        const selected = await client.materializeTheme({
+          schema_version: 1, action: "materialize", recipe: pairedRecipe, appearance,
+        });
+        assert.equal(selected.effective_appearance, appearance);
+        assert.ok(selected.references.every(({ path, token_path }) =>
+          path.startsWith("/design/") && token_path.startsWith("/design/")));
+        snapshots.push(selected.spec);
+        rendered.push(await renderTheme(client, "flowchart", { recipe: pairedRecipe, appearance }, "node-paired"));
+      }
+      assert.notDeepEqual(snapshots[0], snapshots[1]);
+      assert.deepEqual(snapshots[0], snapshots[2]);
+      assert.notEqual(rendered[0], rendered[1]);
+      assert.equal(rendered[0], rendered[2]);
+      const exportedPair = await client.exportThemePreset("editor");
+      assert.equal(exportedPair.schema_version, 1);
+      assert.deepEqual(Object.keys(exportedPair.design.appearances).sort(), ["dark", "light"]);
+      renderedPairs.push(rendered);
+      counts.paired_appearance_checks += 1;
+    }
+    assert.deepEqual(renderedPairs[0], renderedPairs[1], "paired selection leaked between independent engines");
     const definitions = {};
     for (const name of ["light", "dark"]) {
       const readable = await readFile(new URL(`${name}.design.json`, FIXTURES), "utf8");

@@ -49,7 +49,10 @@ import type {
   RuntimeEmbeddedImageLimits,
   ResourceOptions,
   ThemeCatalog,
+  ThemeAppearance,
   ThemePresetCatalogEntry,
+  ThemePresetAppearanceMetadataV1,
+  ThemeMermaidDesignMetadataV1,
   UnavailableDiagramDetectionFacts,
 } from "./public-types.js";
 
@@ -773,10 +776,14 @@ function normalizeThemeCatalog(value: unknown): ThemeCatalog {
       "known_semantic_target_ids",
       "known_text_capability_ids",
       "known_variant_ids",
+      "mermaid_theme_designs",
       "presets",
       "resource_limits",
       "schema_version",
       "structured_spec_available",
+      "recipe_schema_version",
+      "authoring_request_schema_version",
+      "authoring_result_schema_version",
       "supported_output_ids",
     ],
     "Merman WASM theme catalog"
@@ -784,17 +791,30 @@ function normalizeThemeCatalog(value: unknown): ThemeCatalog {
   if (!Array.isArray(value.presets) || !Array.isArray(value.resource_limits)) {
     throw new Error("Merman WASM returned an invalid theme catalog.");
   }
+  const presets = normalizeThemePresets(value.presets);
+  const structuredSpecAvailable = assertBooleanField(
+    value.structured_spec_available, "theme structured spec availability"
+  );
+  const schemaVersion = (field: string): number | null => {
+    if (!structuredSpecAvailable && value[field] === null) return null;
+    if (!structuredSpecAvailable) {
+      throw new Error(`Merman WASM returned a schema version for unavailable theme authoring: ${field}.`);
+    }
+    return assertSafeIntegerField(value[field], `theme ${field}`, 1);
+  };
   return {
+    ...structuredCloneValue(value),
     schema_version: 1,
-    structured_spec_available: assertBooleanField(
-      value.structured_spec_available,
-      "theme structured spec availability"
-    ),
+    structured_spec_available: structuredSpecAvailable,
+    recipe_schema_version: schemaVersion("recipe_schema_version"),
+    authoring_request_schema_version: schemaVersion("authoring_request_schema_version"),
+    authoring_result_schema_version: schemaVersion("authoring_result_schema_version"),
     supported_output_ids: normalizeSortedIdentifierIds(
       value.supported_output_ids,
       "theme supported output IDs"
     ),
-    presets: normalizeThemePresets(value.presets),
+    presets,
+    mermaid_theme_designs: normalizeMermaidThemeDesigns(value.mermaid_theme_designs),
     known_capability_ids: normalizeSortedIdentifierIds(
       value.known_capability_ids,
       "known theme capability IDs"
@@ -825,6 +845,7 @@ function normalizeThemeCatalog(value: unknown): ThemeCatalog {
 
 function normalizeThemePresets(value: unknown[]): ThemePresetCatalogEntry[] {
   const seen = new Set<string>();
+  const concreteIds = new Set<string>();
   return value.map((entry) => {
     if (!isRecord(entry)) {
       throw new Error("Merman WASM returned an invalid theme preset.");
@@ -834,20 +855,21 @@ function normalizeThemePresets(value: unknown[]): ThemePresetCatalogEntry[] {
       [
         "availability_reason_ids",
         "available",
-        "appearance",
+        "supported_appearances",
+        "default_appearance",
+        "appearances",
         "display_name",
         "export_kind",
         "id",
         "license_expression",
         "maturity",
-        "qualified_cells",
         "required_attribution",
       ],
       "Merman WASM theme preset"
     );
     const id = assertUniqueThemeId(entry.id, seen, "preset");
     const available = assertBooleanField(entry.available, `theme preset ${id} availability`);
-    const availabilityReasonIds = normalizeSortedIdentifierIds(
+    const availabilityReasonIds = normalizeThemeReasonIds(
       entry.availability_reason_ids,
       `theme preset ${id} availability reason IDs`
     );
@@ -855,29 +877,50 @@ function normalizeThemePresets(value: unknown[]): ThemePresetCatalogEntry[] {
       throw new Error(`Merman WASM returned inconsistent availability for theme preset ${id}.`);
     }
     const exportKind = entry.export_kind;
-    if (exportKind !== "design" && exportKind !== "complete_spec") {
+    if (exportKind !== "design") {
       throw new Error(`Merman WASM returned an invalid export kind for theme preset ${id}.`);
     }
+    const supportedAppearances = normalizeThemeAppearances(
+      entry.supported_appearances, `theme preset ${id} supported appearances`
+    );
+    const defaultAppearance = assertThemeAppearance(
+      entry.default_appearance, `theme preset ${id} default appearance`
+    );
+    if (!supportedAppearances.includes(defaultAppearance) || !Array.isArray(entry.appearances)) {
+      throw new Error(`Merman WASM returned inconsistent appearances for theme preset ${id}.`);
+    }
+    const appearances = entry.appearances.map(
+      (appearance) => normalizeThemePresetAppearance(appearance, id)
+    );
+    for (const appearance of appearances) {
+      assertUniqueThemeId(appearance.concrete_preset_id, concreteIds, "concrete preset");
+    }
+    if (
+      appearances.length !== supportedAppearances.length ||
+      appearances.some((appearance, index) =>
+        appearance.appearance !== supportedAppearances[index] ||
+        appearance.available !== available ||
+        appearance.availability_reason_ids.join("\u0000") !== availabilityReasonIds.join("\u0000")
+      )
+    ) {
+      throw new Error(`Merman WASM returned inconsistent appearance availability for theme preset ${id}.`);
+    }
     return {
+      ...structuredCloneValue(entry),
       id,
       display_name: assertNonEmptyStringField(
         entry.display_name,
         `theme preset ${id} display name`
       ),
-      appearance: assertRuntimeIdentifier(
-        entry.appearance,
-        `theme preset ${id} appearance`
-      ),
+      supported_appearances: supportedAppearances,
+      default_appearance: defaultAppearance,
+      appearances,
       maturity: assertRuntimeIdentifier(
         entry.maturity,
         `theme preset ${id} maturity`
       ),
       available,
       availability_reason_ids: availabilityReasonIds,
-      preview_colors: normalizeThemePresetPreviewColors(entry.preview_colors, id),
-      family_designs: normalizeThemePresetFamilyDesigns(entry.family_designs, id),
-      application_notes: normalizeThemePresetApplicationNotes(entry.application_notes, id),
-      qualified_cells: normalizeThemePresetQualifiedCells(entry.qualified_cells, id),
       license_expression: assertNonEmptyStringField(
         entry.license_expression,
         `theme preset ${id} license expression`
@@ -887,6 +930,118 @@ function normalizeThemePresets(value: unknown[]): ThemePresetCatalogEntry[] {
         `theme preset ${id} required attribution`
       ),
       export_kind: exportKind,
+    };
+  });
+}
+
+function normalizeThemeReasonIds(value: unknown, label: string): string[] {
+  if (!Array.isArray(value)) throw new Error(`Merman WASM returned invalid ${label}.`);
+  const reasons = value.map((reason) => {
+    if (typeof reason !== "string" || !/^[a-z0-9][a-z0-9_.-]*$/.test(reason)) {
+      throw new Error(`Merman WASM returned an invalid ${label}.`);
+    }
+    return reason;
+  });
+  if (reasons.some((reason, index) => index > 0 && reasons[index - 1] >= reason)) {
+    throw new Error(`Merman WASM ${label} must be sorted and unique.`);
+  }
+  return reasons;
+}
+
+function assertThemeAppearance(value: unknown, label: string): ThemeAppearance {
+  if (value !== "light" && value !== "dark") {
+    throw new Error(`Merman WASM returned an invalid ${label}.`);
+  }
+  return value;
+}
+
+function normalizeThemeAppearances(value: unknown, label: string): ThemeAppearance[] {
+  if (!Array.isArray(value) || value.length === 0) {
+    throw new Error(`Merman WASM returned invalid ${label}.`);
+  }
+  const appearances = value.map((appearance) => assertThemeAppearance(appearance, label));
+  if (new Set(appearances).size !== appearances.length) {
+    throw new Error(`Merman WASM returned duplicate ${label}.`);
+  }
+  return appearances;
+}
+
+function normalizeThemePresetAppearance(
+  value: unknown,
+  presetId: string
+): ThemePresetAppearanceMetadataV1 {
+  if (!isRecord(value)) {
+    throw new Error(`Merman WASM returned an invalid appearance for theme preset ${presetId}.`);
+  }
+  assertRequiredRecordKeys(value, [
+    "appearance", "concrete_preset_id", "available", "availability_reason_ids", "qualified_cells",
+    "preview_colors", "family_designs", "application_notes",
+  ], `Merman WASM theme preset ${presetId} appearance`);
+  const appearance = assertThemeAppearance(value.appearance, `theme preset ${presetId} appearance`);
+  const label = `${presetId} ${appearance}`;
+  const previewColors = normalizeThemePresetPreviewColors(value.preview_colors, label);
+  const familyDesigns = normalizeThemePresetFamilyDesigns(value.family_designs, label);
+  const applicationNotes = normalizeThemePresetApplicationNotes(value.application_notes, label);
+  const qualifiedCells = normalizeThemePresetQualifiedCells(value.qualified_cells, label);
+  return {
+    ...structuredCloneValue(value),
+    appearance,
+    concrete_preset_id: assertRuntimeIdentifier(
+      value.concrete_preset_id, `theme preset ${label} concrete preset ID`
+    ),
+    available: assertBooleanField(value.available, `theme preset ${label} availability`),
+    availability_reason_ids: normalizeThemeReasonIds(
+      value.availability_reason_ids, `theme preset ${label} availability reason IDs`
+    ),
+    preview_colors: previewColors,
+    family_designs: familyDesigns,
+    application_notes: applicationNotes,
+    qualified_cells: qualifiedCells,
+  };
+}
+
+function normalizeMermaidThemeDesigns(value: unknown): ThemeMermaidDesignMetadataV1[] {
+  if (!Array.isArray(value)) throw new Error("Merman WASM returned invalid Mermaid theme designs.");
+  const seen = new Set<string>();
+  const themeIds = new Set<string>();
+  return value.map((entry) => {
+    if (!isRecord(entry)) throw new Error("Merman WASM returned an invalid Mermaid theme design.");
+    assertRequiredRecordKeys(entry, [
+      "id", "display_name", "default_appearance", "appearances",
+    ], "Merman WASM Mermaid theme design");
+    const id = assertUniqueThemeId(entry.id, seen, "Mermaid design");
+    const defaultAppearance = assertThemeAppearance(entry.default_appearance, `Mermaid theme ${id} default appearance`);
+    if (!Array.isArray(entry.appearances) || entry.appearances.length === 0) {
+      throw new Error(`Merman WASM returned invalid appearances for Mermaid theme ${id}.`);
+    }
+    const appearances = entry.appearances.map((appearance) => {
+      if (!isRecord(appearance) || typeof appearance.theme_id !== "string" || !isThemeName(appearance.theme_id)) {
+        throw new Error(`Merman WASM returned an invalid upstream ID for Mermaid theme ${id}.`);
+      }
+      if (themeIds.has(appearance.theme_id)) {
+        throw new Error("Merman WASM returned duplicate Mermaid theme IDs.");
+      }
+      themeIds.add(appearance.theme_id);
+      return {
+        ...structuredCloneValue(appearance),
+        appearance: assertThemeAppearance(appearance.appearance, `Mermaid theme ${id} appearance`),
+        theme_id: appearance.theme_id,
+      };
+    });
+    if (
+      !appearances.some((appearance) =>
+        appearance.appearance === defaultAppearance && appearance.theme_id === id
+      ) ||
+      new Set(appearances.map((appearance) => appearance.appearance)).size !== appearances.length
+    ) {
+      throw new Error(`Merman WASM returned inconsistent appearances for Mermaid theme ${id}.`);
+    }
+    return {
+      ...structuredCloneValue(entry),
+      id,
+      display_name: assertNonEmptyStringField(entry.display_name, `Mermaid theme ${id} display name`),
+      default_appearance: defaultAppearance,
+      appearances,
     };
   });
 }
@@ -903,7 +1058,7 @@ function normalizeThemePresetPreviewColors(value: unknown, presetId: string): st
 function normalizeThemePresetFamilyDesigns(
   value: unknown,
   presetId: string
-): ThemePresetCatalogEntry["family_designs"] {
+): ThemePresetAppearanceMetadataV1["family_designs"] {
   // Older discovery documents have no curated scope. Do not infer it from qualification.
   if (value === undefined) return [];
   if (!Array.isArray(value)) {
@@ -927,7 +1082,7 @@ function normalizeThemePresetFamilyDesigns(
 function normalizeThemePresetApplicationNotes(
   value: unknown,
   presetId: string
-): ThemePresetCatalogEntry["application_notes"] {
+): ThemePresetAppearanceMetadataV1["application_notes"] {
   if (value === undefined) return [];
   if (!Array.isArray(value)) {
     throw new Error(`Merman WASM returned invalid application notes for theme preset ${presetId}.`);
@@ -971,7 +1126,7 @@ function cloneThemePresetConfigValue(value: unknown, label: string): unknown {
 function normalizeThemePresetQualifiedCells(
   value: unknown,
   presetId: string
-): ThemePresetCatalogEntry["qualified_cells"] {
+): ThemePresetAppearanceMetadataV1["qualified_cells"] {
   if (!Array.isArray(value)) {
     throw new Error(`Merman WASM returned invalid qualified cells for theme preset ${presetId}.`);
   }

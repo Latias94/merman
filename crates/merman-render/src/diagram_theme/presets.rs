@@ -1,6 +1,4 @@
-use merman_theme_contract::{
-    ThemePresetFamilyDesignV1, ThemePresetMetadataV1, ThemePresetQualifiedCellV1,
-};
+use merman_theme_contract::{ThemePresetMetadataV1, ThemePresetQualifiedCellV1};
 
 use super::{DiagramThemeCompiler, FontCatalogError, ThemeCompileError, ThemeDesignCompileError};
 
@@ -9,7 +7,13 @@ mod catalog;
 mod cyberpunk;
 mod design;
 mod ghibli;
+mod grouped;
 mod spotless;
+
+pub(super) use grouped::build_preset_document;
+pub use grouped::{
+    ThemePresetSelectionDescriptor, describe_theme_presets, theme_preset_selection_descriptors,
+};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
 #[non_exhaustive]
@@ -126,40 +130,11 @@ impl ThemePresetDescriptor {
         catalog::entry_at(self.catalog_index as usize)
     }
 
-    /// Describes this recipe under the effective compiler policy without granting qualification.
+    /// Describes the owning canonical design under the effective compiler policy.
+    ///
+    /// The appearance metadata identifies this concrete preset without duplicating its group.
     pub fn describe(self, compiler: &DiagramThemeCompiler) -> ThemePresetMetadataV1 {
-        let availability_reason_ids = compiler
-            .validate_preset(self.preset())
-            .err()
-            .map(|error| vec![theme_preset_unavailability_reason(&error).to_owned()])
-            .unwrap_or_default();
-        ThemePresetMetadataV1 {
-            id: self.id().to_owned(),
-            display_name: self.display_name().to_owned(),
-            appearance: if self.is_dark() { "dark" } else { "light" }.to_owned(),
-            maturity: self.maturity().to_owned(),
-            available: availability_reason_ids.is_empty(),
-            availability_reason_ids,
-            family_designs: self
-                .entry()
-                .family_designs()
-                .iter()
-                .map(|(family_id, treatment)| ThemePresetFamilyDesignV1 {
-                    family_id: (*family_id).to_owned(),
-                    treatment: (*treatment).to_owned(),
-                })
-                .collect(),
-            preview_colors: self.entry().preview_colors(),
-            application_notes: self.entry().application_notes(),
-            qualified_cells: self
-                .qualified_cells()
-                .iter()
-                .map(ThemePresetQualifiedCellV1::from)
-                .collect(),
-            license_expression: self.license_expression().to_owned(),
-            required_attribution: self.required_attribution().map(str::to_owned),
-            export_kind: self.export_kind().to_owned(),
-        }
+        grouped::describe_preset_design(compiler, self.preset())
     }
 
     pub const fn id(self) -> &'static str {
@@ -208,17 +183,6 @@ pub const fn theme_preset_descriptors() -> &'static [ThemePresetDescriptor] {
     catalog::descriptors()
 }
 
-/// Describes built-in presets using this artifact's effective recipe compiler policy.
-///
-/// Availability uses recipe validation under the compiler's resource policy. Maturity and scoped
-/// qualification declarations come directly from the catalog and are not promoted by validation.
-pub fn describe_theme_presets(compiler: &DiagramThemeCompiler) -> Vec<ThemePresetMetadataV1> {
-    theme_preset_descriptors()
-        .iter()
-        .map(|descriptor| descriptor.describe(compiler))
-        .collect()
-}
-
 impl From<&ThemePresetQualifiedCell> for ThemePresetQualifiedCellV1 {
     fn from(cell: &ThemePresetQualifiedCell) -> Self {
         Self {
@@ -245,9 +209,6 @@ fn theme_preset_unavailability_reason(error: &ThemeDesignCompileError) -> &'stat
     }
 }
 
-pub(super) use catalog::build_design;
-pub(crate) use catalog::materialize_spec_wire;
-
 #[cfg(test)]
 fn preset_palette(preset: ThemePreset) -> catalog::PresetPalette {
     catalog::entry_for_preset(preset).palette()
@@ -256,6 +217,8 @@ fn preset_palette(preset: ThemePreset) -> catalog::PresetPalette {
 #[cfg(test)]
 mod tests {
     use std::collections::{BTreeSet, HashSet};
+
+    use merman_theme_contract::ThemePresetFamilyDesignV1;
 
     use super::*;
     use crate::DiagramFamilyId;
@@ -274,16 +237,19 @@ mod tests {
         let rejected =
             describe_theme_presets(&DiagramThemeCompiler::new().with_resource_policy(policy));
 
-        assert_eq!(default.len(), theme_preset_descriptors().len());
+        assert_eq!(default.len(), 8);
         assert_eq!(rejected.len(), default.len());
-        for ((available, rejected), descriptor) in
-            default.iter().zip(rejected).zip(theme_preset_descriptors())
-        {
-            assert_eq!(available.id, descriptor.id());
+        for (available, rejected) in default.iter().zip(rejected) {
+            assert_eq!(available.id, rejected.id);
             assert!(available.available);
             assert!(available.availability_reason_ids.is_empty());
             assert_eq!(available.maturity, "alpha");
-            assert!(available.qualified_cells.is_empty());
+            assert!(
+                available
+                    .appearances
+                    .iter()
+                    .all(|appearance| appearance.qualified_cells.is_empty())
+            );
             assert!(!rejected.available);
             assert_eq!(
                 rejected.availability_reason_ids,
@@ -293,6 +259,10 @@ mod tests {
             expected.available = false;
             expected.availability_reason_ids =
                 vec!["theme-preset.resource-policy-rejected".to_owned()];
+            for appearance in &mut expected.appearances {
+                appearance.available = false;
+                appearance.availability_reason_ids = expected.availability_reason_ids.clone();
+            }
             assert_eq!(rejected, expected);
         }
     }
@@ -522,7 +492,7 @@ mod tests {
             .find(|preset| preset.id == "brutalist")
             .unwrap();
         assert!(
-            brutalist
+            brutalist.appearances[0]
                 .preview_colors
                 .iter()
                 .any(|color| color == "#FFE66D")
@@ -535,8 +505,8 @@ mod tests {
                 .iter()
                 .find(|entry| entry.id == preset.id())
                 .unwrap();
-            assert_eq!(descriptor.application_notes.len(), 1);
-            let note = &descriptor.application_notes[0];
+            assert_eq!(descriptor.appearances[0].application_notes.len(), 1);
+            let note = &descriptor.appearances[0].application_notes[0];
             assert_eq!(note.id, note_id);
             assert_eq!(note.family_id, "flowchart");
             assert_eq!(note.recommended_config, None);
@@ -552,13 +522,13 @@ mod tests {
         }
         let ghibli = catalog.iter().find(|preset| preset.id == "ghibli").unwrap();
         assert_eq!(
-            ghibli.family_designs,
+            ghibli.appearances[0].family_designs,
             [ThemePresetFamilyDesignV1 {
                 family_id: "pie".into(),
                 treatment: "dedicated".into(),
             }]
         );
-        assert!(ghibli.qualified_cells.is_empty());
+        assert!(ghibli.appearances[0].qualified_cells.is_empty());
     }
 
     #[test]
@@ -629,6 +599,8 @@ mod tests {
                 .find(|descriptor| descriptor.preset() == preset)
                 .unwrap()
                 .describe(&compiler)
+                .appearances
+                .remove(0)
                 .family_designs
                 .into_iter()
                 .map(|design| (design.family_id, design.treatment))
@@ -1287,9 +1259,6 @@ mod tests {
     fn preset_final_composition_obeys_encoded_byte_budget() {
         let compiler = DiagramThemeCompiler::new();
         let recipe = compiler.export_preset(ThemePreset::Cyberpunk).unwrap();
-        let merman_theme_contract::ThemeRecipeV1::Design { design } = recipe else {
-            unreachable!()
-        };
         let complete_spec = catalog::materialize_spec_wire(
             ThemePreset::Cyberpunk,
             &ThemeResourcePolicy::interactive(),
@@ -1299,7 +1268,7 @@ mod tests {
         let size = serde_json::to_vec(&complete_spec)
             .unwrap()
             .len()
-            .max(serde_json::to_vec(&design).unwrap().len());
+            .max(serde_json::to_vec(&recipe).unwrap().len());
         let limited = compiler.with_resource_policy(
             ThemeResourcePolicy::interactive()
                 .with_limit(ThemeResourceLimitId::MaxThemeEncodedBytes, size - 1)
@@ -1348,12 +1317,12 @@ mod tests {
             cyberpunk.availability_reason_ids,
             ["theme-preset.resource-policy-rejected"]
         );
-        let editor_light = descriptions
+        let editor = descriptions
             .iter()
-            .find(|descriptor| descriptor.id == ThemePreset::EditorLight.id())
+            .find(|descriptor| descriptor.id == "editor")
             .unwrap();
-        assert!(editor_light.available);
-        assert!(editor_light.availability_reason_ids.is_empty());
+        assert!(editor.available);
+        assert!(editor.availability_reason_ids.is_empty());
     }
 
     #[test]

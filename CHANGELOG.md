@@ -6,8 +6,20 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
 
 ## [Unreleased]
 
+### Added
+
+- A theme can include light and dark appearances in one editable recipe. Editor, Gruvbox and Ayu now appear as paired designs; artistic themes may keep a single appearance. The Playground and VS Code offer **Follow app/editor**, **Light** and **Dark**, with previews and exports using the selected appearance.
+- Customize the full theme JSON in the Playground, validate it before applying, and copy a complete theme with Rust, CLI or Web adoption code. The new [**Reading** example](https://frankorz.com/merman/?theme-design=reading) demonstrates both appearances across Flowchart, Sequence, Class, XY Chart and Pie; its [editable recipe](playground/src/themes/recipes/reading.theme.json) contains both appearances.
+- CLI `--theme-appearance light|dark` selects an appearance, and `theme inspect <file|->` validates a complete recipe. Rust and bindings share the same selection and whole-document validation.
+
+### Alpha migration
+
+- Recipe schema remains **v1**: optional `appearances` and `default_appearance` belong inside `design`. Preset discovery now groups appearances under one design, with `concrete_preset_id` on each appearance. Rebuild matching wrappers and runtimes; the Web transport epoch is 10 and CLI contract is 7. Existing concrete preset IDs remain fixed to their appearance.
+- VS Code now preserves theme canvas paint by default. Its viewer background controls only the preview backing; explicit canvas overrides still apply to exports.
+
 ### Fixed
 
+- Native text measurement recognizes fixed-width fonts with incomplete font metadata. Generic monospace selection no longer depends on font-file order, keeping Class members and relationship label backgrounds sized for the selected font.
 - Flowchart and Class relationship labels apply local solid and transparent theme colors, with matching execution evidence and source/configuration precedence. Class includes cardinalities; Agentflow and Swimlane share Flowchart's SVG, Markdown and HTML label fix.
 - Flowchart preserves node definitions and metadata in source order, captures default curves when each edge is declared, and applies Mermaid's node-padding fallback for numeric zero.
 - Class accepts compact relationships and bodies, quoted generic names and shared `classDef` targets. Relabelled generics retain their type, and editor navigation and renaming preserve generic suffixes.

@@ -257,11 +257,18 @@ pub struct RuleCatalogEntry {
 struct BindingThemeCatalog {
     schema_version: u32,
     structured_spec_available: bool,
+    recipe_schema_version: Option<u32>,
+    authoring_request_schema_version: Option<u32>,
+    authoring_result_schema_version: Option<u32>,
     supported_output_ids: Vec<&'static str>,
     #[cfg(feature = "svg")]
     presets: Vec<merman_theme_contract::ThemePresetMetadataV1>,
     #[cfg(not(feature = "svg"))]
     presets: [(); 0],
+    #[cfg(feature = "svg")]
+    mermaid_theme_designs: Vec<merman_theme_contract::ThemeMermaidDesignMetadataV1>,
+    #[cfg(not(feature = "svg"))]
+    mermaid_theme_designs: [(); 0],
     known_capability_ids: Vec<&'static str>,
     known_text_capability_ids: Vec<&'static str>,
     known_font_container_ids: Vec<&'static str>,
@@ -683,8 +690,12 @@ fn theme_catalog_for(_artifact_contract: &ValidatedArtifactContract) -> BindingT
     BindingThemeCatalog {
         schema_version: THEME_CATALOG_SCHEMA_VERSION,
         structured_spec_available: false,
+        recipe_schema_version: None,
+        authoring_request_schema_version: None,
+        authoring_result_schema_version: None,
         supported_output_ids: Vec::new(),
         presets: [],
+        mermaid_theme_designs: [],
         known_capability_ids: Vec::new(),
         known_text_capability_ids: Vec::new(),
         known_font_container_ids: Vec::new(),
@@ -704,8 +715,12 @@ fn theme_catalog_for_with_compiler(
         return BindingThemeCatalog {
             schema_version: THEME_CATALOG_SCHEMA_VERSION,
             structured_spec_available: false,
+            recipe_schema_version: None,
+            authoring_request_schema_version: None,
+            authoring_result_schema_version: None,
             supported_output_ids: Vec::new(),
             presets: Vec::new(),
+            mermaid_theme_designs: Vec::new(),
             known_capability_ids: Vec::new(),
             known_text_capability_ids: Vec::new(),
             known_font_container_ids: Vec::new(),
@@ -755,8 +770,16 @@ fn theme_catalog_for_with_compiler(
     BindingThemeCatalog {
         schema_version: THEME_CATALOG_SCHEMA_VERSION,
         structured_spec_available: true,
+        recipe_schema_version: Some(merman_theme_contract::THEME_RECIPE_SCHEMA_VERSION_V1),
+        authoring_request_schema_version: Some(
+            crate::theme_design::THEME_AUTHORING_REQUEST_SCHEMA_VERSION_V1,
+        ),
+        authoring_result_schema_version: Some(
+            crate::theme_design::THEME_AUTHORING_RESULT_SCHEMA_VERSION_V1,
+        ),
         supported_output_ids,
         presets,
+        mermaid_theme_designs: merman::svg::describe_mermaid_theme_designs(),
         known_capability_ids: sorted_theme_ids(
             merman::svg::ThemeCapability::ALL
                 .iter()
@@ -1841,8 +1864,12 @@ mod tests {
             serde_json::json!({
                 "schema_version": THEME_CATALOG_SCHEMA_VERSION,
                 "structured_spec_available": false,
+                "recipe_schema_version": null,
+                "authoring_request_schema_version": null,
+                "authoring_result_schema_version": null,
                 "supported_output_ids": [],
                 "presets": [],
+                "mermaid_theme_designs": [],
                 "known_capability_ids": [],
                 "known_text_capability_ids": [],
                 "known_font_container_ids": [],
@@ -1863,6 +1890,9 @@ mod tests {
                 serde_json::from_slice(&theme_catalog_json_for(&svg_contract).unwrap()).unwrap();
             assert_eq!(catalog["schema_version"], THEME_CATALOG_SCHEMA_VERSION);
             assert_eq!(catalog["structured_spec_available"], true);
+            assert_eq!(catalog["recipe_schema_version"], 1);
+            assert_eq!(catalog["authoring_request_schema_version"], 1);
+            assert_eq!(catalog["authoring_result_schema_version"], 1);
             assert_eq!(catalog["supported_output_ids"], serde_json::json!(["svg"]));
             let compiler = merman::svg::DiagramThemeCompiler::new().with_resource_policy(
                 merman::svg::ThemeResourcePolicy::for_profile(
@@ -1873,11 +1903,10 @@ mod tests {
                 catalog["presets"],
                 serde_json::to_value(merman::svg::describe_theme_presets(&compiler)).unwrap()
             );
-            let expected_presets: Value = serde_json::from_str(include_str!(
-                "../../merman-theme-authoring-fixtures/fixtures/authoring-v1/preset-catalog.json"
-            ))
-            .unwrap();
-            assert_eq!(catalog["presets"], expected_presets);
+            assert_eq!(
+                catalog["mermaid_theme_designs"],
+                serde_json::to_value(merman::svg::describe_mermaid_theme_designs()).unwrap()
+            );
             assert!(
                 catalog["known_capability_ids"]
                     .as_array()
@@ -1978,12 +2007,25 @@ mod tests {
         .unwrap();
         let presets = catalog["presets"].as_array().unwrap();
 
-        assert_eq!(presets.len(), merman::svg::theme_preset_descriptors().len());
+        assert!(!presets.is_empty());
         assert!(presets.iter().all(|preset| preset["available"] == false));
         assert!(presets.iter().all(|preset| {
             preset["availability_reason_ids"]
                 == serde_json::json!(["theme-preset.resource-policy-rejected"])
         }));
+        for preset in presets {
+            assert!(
+                preset["appearances"]
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .all(|appearance| {
+                        appearance["available"] == false
+                            && appearance["availability_reason_ids"]
+                                == preset["availability_reason_ids"]
+                    })
+            );
+        }
     }
 
     #[cfg(feature = "svg")]

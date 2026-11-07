@@ -17,6 +17,9 @@ export type PreviewUpdateReason =
   | "diagram-theme"
   | "display-mode"
   | "background"
+  | "appearance"
+  | "editor-appearance"
+  | "viewer-background"
   | "lock";
 
 export type PreviewAction =
@@ -58,6 +61,10 @@ export function planPreviewUpdate(
     previous.diagramTheme !== next.diagramTheme ||
     previous.displayMode !== next.displayMode ||
     previous.background !== next.background ||
+    previous.appearancePreference !== next.appearancePreference ||
+    previous.resolvedTheme?.effectiveAppearance !== next.resolvedTheme?.effectiveAppearance ||
+    previous.viewerBackground !== next.viewerBackground ||
+    previous.themeNotice !== next.themeNotice ||
     previous.locked !== next.locked
   ) {
     actions.push({ type: "settingsUpdated", snapshot: next });

@@ -51,5 +51,55 @@ class StateFillOracleTests(unittest.TestCase):
                 AUTHORING.state_fill(svg)
 
 
+class PairedThemeConsumerTests(unittest.TestCase):
+    def test_existing_json_operations_carry_the_complete_pair_and_concrete_selection(self) -> None:
+        recipe = {
+            "schema_version": 1, "kind": "design",
+            "design": {"appearances": {"light": {}, "dark": {}}, "default_appearance": "light"},
+        }
+        requests, renders = [], []
+
+        def execute(request):
+            requests.append(request)
+            if request.operation_id == "export-theme-preset-json":
+                self.assertEqual(request.source, "editor")
+                result = recipe
+            else:
+                payload = AUTHORING.json.loads(request.source)
+                self.assertEqual(payload["schema_version"], 1)
+                self.assertEqual(payload["recipe"], recipe)
+                if payload["action"] == "inspect":
+                    result = {"supported_appearances": ["light", "dark"], "default_appearance": "light"}
+                else:
+                    result = {
+                        "effective_appearance": payload["appearance"],
+                        "spec": {"canvas": {"base": payload["appearance"]}},
+                    }
+            return types.SimpleNamespace(
+                operation_id=request.operation_id, media_type="application/json",
+                data=AUTHORING.json.dumps(result).encode("utf-8"),
+            )
+
+        def render(source, options_json):
+            options = AUTHORING.json.loads(options_json)
+            self.assertEqual(options["theme"]["recipe"], recipe)
+            self.assertEqual(source, AUTHORING.SOURCES["flowchart"])
+            mode = options["theme"]["appearance"]
+            renders.append(mode)
+            return f'<svg xmlns="http://www.w3.org/2000/svg"><text>{mode}</text></svg>'
+
+        client = types.SimpleNamespace(execute=execute, render_svg=render)
+        with mock.patch.object(
+            AUTHORING.merman, "MermanOperationRequestV4",
+            side_effect=lambda **kwargs: types.SimpleNamespace(**kwargs), create=True,
+        ):
+            AUTHORING.verify_paired_theme(client, recipe)
+        self.assertEqual(renders, ["light", "dark", "light"])
+        self.assertEqual([request.operation_id for request in requests], [
+            "materialize-theme-json", "materialize-theme-json", "materialize-theme-json",
+            "materialize-theme-json", "export-theme-preset-json",
+        ])
+
+
 if __name__ == "__main__":
     unittest.main()

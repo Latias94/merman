@@ -267,7 +267,7 @@ fn expected_commands(capabilities: &[&str]) -> Vec<String> {
         commands.insert("fix".to_string());
     }
     if capabilities.contains("svg") {
-        commands.extend(["layout", "mmdc", "render"].map(str::to_string));
+        commands.extend(["layout", "mmdc", "render", "theme"].map(str::to_string));
     } else if capabilities.contains("ascii") {
         commands.insert("render".to_string());
     }
@@ -308,10 +308,24 @@ fn assert_capability_document(case: &str, payload: &Value) {
     let expected_commands = expected_commands(&expected_ids);
 
     assert_eq!(payload["schema_version"], 2);
-    assert_eq!(payload["cli_contract_version"], 6);
+    assert_eq!(payload["cli_contract_version"], 7);
     #[cfg(feature = "svg")]
     {
         assert_eq!(payload["theme_presets"]["schema_version"], 1);
+        assert_eq!(payload["theme_presets"]["recipe_schema_version"], 1);
+        assert_eq!(
+            payload["theme_presets"]["authoring_request_schema_version"],
+            1
+        );
+        assert_eq!(
+            payload["theme_presets"]["authoring_result_schema_version"],
+            1
+        );
+        assert!(payload["theme_presets"].get("legacy_selections").is_none());
+        assert_eq!(
+            payload["theme_presets"]["mermaid_theme_designs"],
+            serde_json::to_value(merman::svg::describe_mermaid_theme_designs()).unwrap()
+        );
         assert!(
             payload["theme_presets"]["presets"]
                 .as_array()
@@ -555,6 +569,9 @@ fn assert_option_ownership(case: &str, capabilities: &BTreeSet<&str>, commands: 
         let help = command_help("render");
         for (capability, flag) in [
             ("svg", "--svg-pipeline"),
+            ("svg", "--theme-preset"),
+            ("svg", "--theme-file"),
+            ("svg", "--theme-appearance"),
             ("ascii", "--ascii-charset"),
             ("icons", "--icon-pack-source"),
             ("network-icons", "--allow-network"),
@@ -1188,6 +1205,12 @@ fn workflow_completions() {
             assert!(
                 theme_presets.is_empty(),
                 "Bash cannot display per-value maturity, so it must not advertise alpha preset ids as stable-looking candidates: {theme_presets:?}"
+            );
+            assert!(render.contains("--theme-appearance"));
+            assert!(!mmdc.contains("--theme-appearance"));
+            assert_eq!(
+                bash_completion_values(&script, "render", "--theme-appearance"),
+                ["light", "dark"].into_iter().map(str::to_owned).collect()
             );
         }
     }

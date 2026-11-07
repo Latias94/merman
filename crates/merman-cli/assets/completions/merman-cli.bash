@@ -52,11 +52,17 @@ _merman__cli() {
             merman__cli,rustdoc)
                 cmd="merman__cli__subcmd__rustdoc"
                 ;;
+            merman__cli,theme)
+                cmd="merman__cli__subcmd__theme"
+                ;;
             merman__cli__subcmd__rustdoc,build)
                 cmd="merman__cli__subcmd__rustdoc__subcmd__build"
                 ;;
             merman__cli__subcmd__rustdoc,check)
                 cmd="merman__cli__subcmd__rustdoc__subcmd__check"
+                ;;
+            merman__cli__subcmd__theme,inspect)
+                cmd="merman__cli__subcmd__theme__subcmd__inspect"
                 ;;
             *)
                 ;;
@@ -65,7 +71,7 @@ _merman__cli() {
 
     case "${cmd}" in
         merman__cli)
-            opts="-h -V --help --version lint-rules rustdoc capabilities detect parse render batch lint fix completion layout mmdc"
+            opts="-h -V --help --version lint-rules rustdoc theme capabilities detect parse render batch lint fix completion layout mmdc"
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 1 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
                 return 0
@@ -79,7 +85,7 @@ _merman__cli() {
             return 0
             ;;
         merman__cli__subcmd__batch)
-            opts="-o -j -f -b -C -q -s -c -t -w -H -I -h -V --stdin-file-name --output-dir --jobs --format --svg-pipeline --background --css-file --quiet --scale --raster-fit-width --raster-fit-height --raster-max-width --raster-max-height --raster-max-pixels --raster-unbounded --pdf-filter-scale --pdf-max-filter-pixels --pdf-max-filter-image-pixels --pdf-filter-unbounded --pdf-filter-images-unbounded --embedded-image-max-bytes --embedded-image-max-total-bytes --embedded-image-max-pixels --embedded-image-max-total-pixels --embedded-images-unbounded --allow-network --allow-private-network --icon-pack --icon-pack-source --suppress-errors --config-file --theme --runtime --system-clock --system-timezone --system-random --system-timing --fixed-today --fixed-local-offset-minutes --font-file --font-dir --font-measurement --font-system --font-max-measurements --theme-preset --theme-file --theme-design-file --theme-portability --theme-report --math-renderer --width --height --svg-id --hand-drawn-seed --resource-profile --resource-limit --operation-timeout-ms --help --version"
+            opts="-o -j -f -b -C -q -s -c -t -w -H -I -h -V --stdin-file-name --output-dir --jobs --format --svg-pipeline --background --css-file --quiet --scale --raster-fit-width --raster-fit-height --raster-max-width --raster-max-height --raster-max-pixels --raster-unbounded --pdf-filter-scale --pdf-max-filter-pixels --pdf-max-filter-image-pixels --pdf-filter-unbounded --pdf-filter-images-unbounded --embedded-image-max-bytes --embedded-image-max-total-bytes --embedded-image-max-pixels --embedded-image-max-total-pixels --embedded-images-unbounded --allow-network --allow-private-network --icon-pack --icon-pack-source --suppress-errors --config-file --theme --runtime --system-clock --system-timezone --system-random --system-timing --fixed-today --fixed-local-offset-minutes --font-file --font-dir --font-measurement --font-system --font-max-measurements --theme-preset --theme-file --theme-design-file --theme-appearance --theme-portability --theme-report --math-renderer --width --height --svg-id --hand-drawn-seed --resource-profile --resource-limit --operation-timeout-ms --help --version"
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 2 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
                 return 0
@@ -358,6 +364,10 @@ _merman__cli() {
                     if [[ "${BASH_VERSINFO[0]}" -ge 4 ]]; then
                         compopt -o filenames
                     fi
+                    return 0
+                    ;;
+                --theme-appearance)
+                    COMPREPLY=($(compgen -W "light dark" -- "${cur}"))
                     return 0
                     ;;
                 --theme-portability)
@@ -1274,7 +1284,7 @@ _merman__cli() {
             return 0
             ;;
         merman__cli__subcmd__render)
-            opts="-o -f -b -C -q -s -c -t -w -H -I -h -V --output --input-kind --format --svg-pipeline --background --css-file --quiet --scale --raster-fit-width --raster-fit-height --raster-max-width --raster-max-height --raster-max-pixels --raster-unbounded --pdf-filter-scale --pdf-max-filter-pixels --pdf-max-filter-image-pixels --pdf-filter-unbounded --pdf-filter-images-unbounded --embedded-image-max-bytes --embedded-image-max-total-bytes --embedded-image-max-pixels --embedded-image-max-total-pixels --embedded-images-unbounded --allow-network --allow-private-network --icon-pack --icon-pack-source --suppress-errors --config-file --theme --runtime --system-clock --system-timezone --system-random --system-timing --fixed-today --fixed-local-offset-minutes --font-file --font-dir --font-measurement --font-system --font-max-measurements --theme-preset --theme-file --theme-design-file --theme-portability --theme-report --math-renderer --width --height --svg-id --hand-drawn-seed --sequence-mirror-actors --ascii-charset --ascii-width-profile --ascii-node-padding --ascii-node-padding-x --ascii-node-padding-y --ascii-graph-padding-x --ascii-graph-padding-y --ascii-flowchart-node-label-wrap-width --ascii-direction --ascii-color --xychart-vertical-plot-height --xychart-category-band-width --xychart-horizontal-plot-width --ascii-max-grid-cells --ascii-max-width --ascii-overflow --ascii-trim-trailing-spaces --ascii-layout-profile --ascii-report --resource-profile --resource-limit --operation-timeout-ms --help --version"
+            opts="-o -f -b -C -q -s -c -t -w -H -I -h -V --output --input-kind --format --svg-pipeline --background --css-file --quiet --scale --raster-fit-width --raster-fit-height --raster-max-width --raster-max-height --raster-max-pixels --raster-unbounded --pdf-filter-scale --pdf-max-filter-pixels --pdf-max-filter-image-pixels --pdf-filter-unbounded --pdf-filter-images-unbounded --embedded-image-max-bytes --embedded-image-max-total-bytes --embedded-image-max-pixels --embedded-image-max-total-pixels --embedded-images-unbounded --allow-network --allow-private-network --icon-pack --icon-pack-source --suppress-errors --config-file --theme --runtime --system-clock --system-timezone --system-random --system-timing --fixed-today --fixed-local-offset-minutes --font-file --font-dir --font-measurement --font-system --font-max-measurements --theme-preset --theme-file --theme-design-file --theme-appearance --theme-portability --theme-report --math-renderer --width --height --svg-id --hand-drawn-seed --sequence-mirror-actors --ascii-charset --ascii-width-profile --ascii-node-padding --ascii-node-padding-x --ascii-node-padding-y --ascii-graph-padding-x --ascii-graph-padding-y --ascii-flowchart-node-label-wrap-width --ascii-direction --ascii-color --xychart-vertical-plot-height --xychart-category-band-width --xychart-horizontal-plot-width --ascii-max-grid-cells --ascii-max-width --ascii-overflow --ascii-trim-trailing-spaces --ascii-layout-profile --ascii-report --resource-profile --resource-limit --operation-timeout-ms --help --version"
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 2 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
                 return 0
@@ -1552,6 +1562,10 @@ _merman__cli() {
                     fi
                     return 0
                     ;;
+                --theme-appearance)
+                    COMPREPLY=($(compgen -W "light dark" -- "${cur}"))
+                    return 0
+                    ;;
                 --theme-portability)
                     COMPREPLY=($(compgen -W "best-effort require-portable" -- "${cur}"))
                     return 0
@@ -1757,6 +1771,46 @@ _merman__cli() {
                     if [[ "${BASH_VERSINFO[0]}" -ge 4 ]]; then
                         compopt -o filenames
                     fi
+                    return 0
+                    ;;
+                --operation-timeout-ms)
+                    COMPREPLY=($(compgen -f "${cur}"))
+                    return 0
+                    ;;
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+        merman__cli__subcmd__theme)
+            opts="-h -V --help --version inspect"
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 2 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+        merman__cli__subcmd__theme__subcmd__inspect)
+            opts="-h -V --resource-profile --resource-limit --operation-timeout-ms --help --version"
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 3 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                --resource-profile)
+                    COMPREPLY=($(compgen -W "interactive constrained trusted-native unbounded-for-trusted-input" -- "${cur}"))
+                    return 0
+                    ;;
+                --resource-limit)
+                    COMPREPLY=($(compgen -f "${cur}"))
                     return 0
                     ;;
                 --operation-timeout-ms)

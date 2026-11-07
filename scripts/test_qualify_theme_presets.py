@@ -92,7 +92,7 @@ class CliQualificationTests(unittest.TestCase):
         ]}]}
         self.catalog = canonical_theme_preset_catalog()
         entries = {entry["id"]: entry for entry in self.catalog["presets"]}
-        self.catalog["presets"] = [entries[preset_id] for preset_id in ("brutalist", "editor-light")]
+        self.catalog["presets"] = [entries[preset_id] for preset_id in ("brutalist", "editor")]
         self.qualification["catalog"] = copy.deepcopy(self.catalog)
         self.qualification["render_config"] = {
             "htmlLabels": False,
@@ -105,12 +105,13 @@ class CliQualificationTests(unittest.TestCase):
         for cell in preset["cells"]:
             cell["family"] = "state"
             cell["admission"] = "host_dependent"
-        preset["catalog_entry"] = {**self.catalog["presets"][0], "qualified_cells": [
+        preset["catalog_entry"] = copy.deepcopy(self.catalog["presets"][0])
+        preset["catalog_entry"]["appearances"][0]["qualified_cells"] = [
             {"family_id": cell["family"], "output_id": cell["output"],
              "profile_id": preset["profile"], "admission_status": cell["admission"]}
             for cell in preset["cells"]
-        ]}
-        preset["catalog_entry"]["qualified_cells"].sort(
+        ]
+        preset["catalog_entry"]["appearances"][0]["qualified_cells"].sort(
             key=lambda cell: (cell["family_id"], cell["output_id"], cell["profile_id"])
         )
         self.commands = []
@@ -183,10 +184,15 @@ class CliQualificationTests(unittest.TestCase):
         evidence = qualify_cli(self.binary, self.qualification, runner=self.run_cli)
         catalog = evidence["catalog"]
         self.assertEqual(catalog["presets"][0], self.qualification["presets"][0]["catalog_entry"])
-        self.assertEqual([cell["output_id"] for cell in catalog["presets"][0]["qualified_cells"]], ["png", "svg"])
+        self.assertEqual([
+            cell["output_id"]
+            for cell in catalog["presets"][0]["appearances"][0]["qualified_cells"]
+        ], ["png", "svg"])
         self.assertEqual(catalog["presets"][1], self.catalog["presets"][1])
-        self.assertEqual(self.catalog["presets"][0]["qualified_cells"], [])
-        self.assertEqual(self.qualification["catalog"]["presets"][0]["qualified_cells"], [])
+        self.assertEqual(self.catalog["presets"][0]["appearances"][0]["qualified_cells"], [])
+        self.assertEqual(
+            self.qualification["catalog"]["presets"][0]["appearances"][0]["qualified_cells"], [],
+        )
         self.assertIn([str(self.binary.resolve()), "capabilities", "--json"], self.commands)
 
     def test_catalog_rejects_drift_and_scope_forgery(self):
@@ -195,10 +201,10 @@ class CliQualificationTests(unittest.TestCase):
         for field, value in [("family_id", "flowchart"), ("output_id", "pdf"),
                              ("admission_status", "portable"), ("profile_id", "different-profile")]:
             changed = copy.deepcopy(original)
-            changed["presets"][0]["catalog_entry"]["qualified_cells"][0][field] = value
+            changed["presets"][0]["catalog_entry"]["appearances"][0]["qualified_cells"][0][field] = value
             changes.append(changed)
         changed = copy.deepcopy(original)
-        changed["presets"][0]["catalog_entry"]["qualified_cells"].pop()
+        changed["presets"][0]["catalog_entry"]["appearances"][0]["qualified_cells"].pop()
         changes.append(changed)
         changed = copy.deepcopy(original)
         changed["presets"][0]["cells"].append(copy.deepcopy(changed["presets"][0]["cells"][0]))
@@ -245,11 +251,12 @@ class CliQualificationTests(unittest.TestCase):
         for cell in preset["cells"]:
             cell.update(family="xychart", source=source,
                         source_digest=hashlib.sha256(source.encode()).hexdigest())
-        preset["catalog_entry"] = {**base, "qualified_cells": [
+        preset["catalog_entry"] = copy.deepcopy(base)
+        preset["catalog_entry"]["appearances"][0]["qualified_cells"] = [
             {"family_id": "xychart", "output_id": output,
              "profile_id": CYBERPUNK_QUALIFIED_PROFILE, "admission_status": "host_dependent"}
             for output in ["png", "svg"]
-        ]}
+        ]
         evidence = qualify_cli(self.binary, self.qualification, runner=self.run_cli)
         self.assertEqual(evidence["catalog"]["presets"][0], preset["catalog_entry"])
         preset["profile"] = QUALIFIED_PROFILE
@@ -266,6 +273,35 @@ class CliQualificationTests(unittest.TestCase):
         self.qualification["presets"][0]["profile"] = CYBERPUNK_QUALIFIED_PROFILE
         with self.assertRaisesRegex(RuntimeError, "qualification profile"):
             qualify_cli(self.binary, self.qualification, runner=self.run_cli)
+
+    def test_a_concrete_receipt_cannot_qualify_its_sibling_or_the_entire_design(self):
+        group = self.catalog["presets"][0]
+        sibling = copy.deepcopy(group["appearances"][0])
+        sibling.update(appearance="dark", concrete_preset_id="brutalist-dark")
+        group["supported_appearances"].append("dark")
+        group["appearances"].append(sibling)
+        self.qualification["catalog"] = copy.deepcopy(self.catalog)
+        receipt = self.qualification["presets"][0]
+        cells = copy.deepcopy(receipt["catalog_entry"]["appearances"][0]["qualified_cells"])
+        receipt["catalog_entry"] = copy.deepcopy(group)
+        receipt["catalog_entry"]["appearances"][0]["qualified_cells"] = cells
+
+        evidence = qualify_cli(self.binary, self.qualification, runner=self.run_cli)
+        projected = evidence["catalog"]["presets"][0]
+        self.assertEqual(projected["appearances"][0]["qualified_cells"], cells)
+        self.assertEqual(projected["appearances"][1]["qualified_cells"], [])
+        self.assertNotIn("qualified_cells", projected)
+        self.assertEqual(projected["maturity"], "alpha")
+        self.assertEqual(group["appearances"][0]["qualified_cells"], [])
+
+        for broaden in [
+            lambda entry: entry["appearances"][1].__setitem__("qualified_cells", cells),
+            lambda entry: entry.__setitem__("qualified_cells", cells),
+        ]:
+            changed = copy.deepcopy(self.qualification)
+            broaden(changed["presets"][0]["catalog_entry"])
+            with self.subTest(changed=changed), self.assertRaisesRegex(RuntimeError, "catalog scope"):
+                qualify_cli(self.binary, changed, runner=self.run_cli)
 
     def test_cli_rejects_changed_output_and_source(self):
         self.payloads["png"] = b"different PNG"

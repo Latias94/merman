@@ -4,6 +4,8 @@ import { describe, it } from "node:test";
 import type * as vscode from "vscode";
 
 import { listPreviewInputsFromText, previewSourceIdentity } from "../preview-source.js";
+import { legacyThemeDiscovery, type ThemeDiscovery } from "../theme-selection.js";
+import { pairedThemeDiscovery } from "./theme-fixtures.js";
 
 type CommandHandler = (target?: unknown) => Promise<void> | void;
 
@@ -19,6 +21,10 @@ class FakeExportHost {
     format?: string;
     outputPath?: string;
     signalLabel?: string;
+    themePreset?: string;
+    themeAppearance?: string;
+    background?: string;
+    inputKind?: string;
   }> = [];
   readonly writtenFiles: Array<{ path: string; data: string; encoding?: string }> = [];
   readonly saveDialogs: vscode.SaveDialogOptions[] = [];
@@ -28,6 +34,10 @@ class FakeExportHost {
   readonly clipboardWrites: string[] = [];
   readonly executedCommands: Array<{ command: string; args: unknown[] }> = [];
   readonly progressTitles: string[] = [];
+  readonly settings = new Map<string, unknown>();
+  themeDiscovery: ThemeDiscovery = legacyThemeDiscovery();
+  activeColorThemeKind = 1;
+  saveDialogDelay: Promise<void> | undefined;
   quickPickLabel: string | undefined;
   renderStdout = '<svg viewBox="0 0 10 10"><a href="#node">ok</a></svg>';
   remoteName: string | undefined;
@@ -102,6 +112,7 @@ class FakeExportHost {
         },
       },
       window: {
+        get activeColorTheme() { return { kind: host.activeColorThemeKind }; },
         get activeTextEditor() {
           return host.activeEditor;
         },
@@ -113,6 +124,7 @@ class FakeExportHost {
         }),
         showSaveDialog: async (options: vscode.SaveDialogOptions) => {
           host.saveDialogs.push(options);
+          await host.saveDialogDelay;
           return host.saveDialogResult;
         },
         showQuickPick: async (items: readonly { label: string }[]) =>
@@ -140,6 +152,7 @@ class FakeExportHost {
         },
       },
       workspace: {
+        getConfiguration: () => ({ get: (key: string, fallback: unknown) => host.settings.get(key) ?? fallback }),
         fs: {
           writeFile: async (fileUri: vscode.Uri, data: Uint8Array) => {
             host.writtenFiles.push({
@@ -189,6 +202,43 @@ class FakeExportHost {
 }
 
 describe("export commands", () => {
+  it("rasterizes sanitized SVG using the SVG input contract", async () => {
+    const host = new FakeExportHost();
+    const { registerExport } = loadExportModule(host);
+    registerExport({ subscriptions: host.subscriptions } as unknown as vscode.ExtensionContext);
+    await host.commands.get("merman.exportPng")?.();
+    assert.equal(host.renderCalls.length, 2);
+    assert.equal(host.renderCalls[0]?.format, "svg");
+    assert.equal(host.renderCalls[1]?.format, "png");
+    assert.equal(host.renderCalls[1]?.source, host.renderStdout);
+    assert.equal(host.renderCalls[1]?.inputKind, "svg");
+  });
+
+  it("uses configured document selection and freezes Follow before a save dialog", async () => {
+    const host = new FakeExportHost();
+    host.themeDiscovery = pairedThemeDiscovery();
+    host.settings.set("preview.diagramTheme", "preset:editor");
+    host.settings.set("preview.background", "dark");
+    let releaseDialog: () => void = () => {};
+    host.saveDialogDelay = new Promise<void>((resolve) => { releaseDialog = resolve; });
+    const { registerExport } = loadExportModule(host);
+    registerExport({ subscriptions: host.subscriptions } as unknown as vscode.ExtensionContext);
+    const pending = host.commands.get("merman.exportSvg")?.();
+    for (let attempt = 0; attempt < 20 && host.saveDialogs.length === 0; attempt += 1) {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    }
+    assert.equal(host.saveDialogs.length, 1);
+    host.activeColorThemeKind = 2;
+    host.settings.set("preview.diagramTheme", "source");
+    releaseDialog();
+    await pending;
+    assert.equal(host.renderCalls[0]?.themePreset, "editor");
+    assert.equal(host.renderCalls[0]?.themeAppearance, "light");
+    assert.equal(host.renderCalls[0]?.background, "#111827");
+    await host.commands.get("merman.copySvg")?.();
+    assert.equal(host.renderCalls.at(-1)?.themePreset, undefined);
+  });
+
   it("registers command-level export and copy workflows", () => {
     const host = new FakeExportHost();
     const { registerExport } = loadExportModule(host);
@@ -456,6 +506,9 @@ function loadExportModule(host: FakeExportHost): typeof import("../export.js") {
     if (request === "vscode") {
       return host.vscode;
     }
+    if (request === "./theme-runtime.js") {
+      return { discoverThemes: async () => host.themeDiscovery };
+    }
     if (request === "node:fs/promises") {
       return {
         writeFile: async (filePath: string, data: Buffer | string, encoding?: string) => {
@@ -477,12 +530,20 @@ function loadExportModule(host: FakeExportHost): typeof import("../export.js") {
           format?: string;
           outputPath?: string;
           signalLabel?: string;
+          themePreset?: string;
+          themeAppearance?: string;
+          background?: string;
+          inputKind?: string;
         }) => {
           host.renderCalls.push({
             source: renderRequest.source,
             format: renderRequest.format,
             outputPath: renderRequest.outputPath,
             signalLabel: renderRequest.signalLabel,
+            ...(renderRequest.themePreset ? { themePreset: renderRequest.themePreset } : {}),
+            ...(renderRequest.themeAppearance ? { themeAppearance: renderRequest.themeAppearance } : {}),
+            ...(renderRequest.background ? { background: renderRequest.background } : {}),
+            ...(renderRequest.inputKind ? { inputKind: renderRequest.inputKind } : {}),
           });
           return {
             stdout: Buffer.from(host.renderStdout),
@@ -502,6 +563,8 @@ function loadExportModule(host: FakeExportHost): typeof import("../export.js") {
     delete require.cache[require.resolve("../export.js")];
     delete require.cache[require.resolve("../export-workflow.js")];
     delete require.cache[require.resolve("../renderer.js")];
+    delete require.cache[require.resolve("../render-settings.js")];
+    delete require.cache[require.resolve("../config.js")];
     return require("../export.js") as typeof import("../export.js");
   } finally {
     moduleWithLoad._load = originalLoad;

@@ -13,14 +13,15 @@ import type {
   HostTextMetricsResult,
   HostTextMeasurer,
   HostTextMeasurerSvgBindingOptions,
-  MaterializedThemeWireV1,
+  ThemeAuthoringInput,
+  ThemeAuthoringRequestV1,
+  ThemeAuthoringResultFor,
   ThemeRecipeV1,
   SvgBindingOptions,
   ThemeAuthoringOptions,
   SvgPlanResult,
   SvgRenderResult,
   ThemeCapabilityDescriptor,
-  ThemeCapabilityDescriptorV1,
   ThemeDesignV1,
   ThemeSupportQueryV1,
 } from "./public-types.js";
@@ -121,14 +122,14 @@ export function svgPlanJson(
   return getMerman().svgPlanJson(source, encodeOptions(options));
 }
 
-export function materializeTheme(
-  design: ThemeDesignV1 | string,
+export function materializeTheme<Input extends ThemeAuthoringInput>(
+  design: Input,
   options?: ThemeAuthoringOptions | string
-): MaterializedThemeWireV1 {
+): ThemeAuthoringResultFor<Input> {
   return getMerman().materializeTheme(
     encodeThemeAuthoringInput(design, "theme design"),
     encodeOptions(options)
-  );
+  ) as ThemeAuthoringResultFor<Input>;
 }
 
 export function describeThemeSupport(
@@ -149,11 +150,14 @@ export function exportThemePreset(
   presetId: string,
   options?: ThemeAuthoringOptions | string
 ): ThemeRecipeV1 {
-  return getMerman().exportThemePreset(presetId, encodeOptions(options));
+  return getMerman().exportThemePreset(
+    presetId,
+    encodeOptions(options)
+  );
 }
 
 function encodeThemeAuthoringInput(
-  value: ThemeDesignV1 | ThemeSupportQueryV1 | string,
+  value: ThemeDesignV1 | ThemeSupportQueryV1 | ThemeAuthoringRequestV1 | string,
   label: string
 ): string {
   return typeof value === "string" ? value : encodeJsonInput(value, label);

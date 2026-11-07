@@ -36,7 +36,10 @@ export async function run(): Promise<void> {
   assert.equal(merman.get("languageIntelligence.enabled"), true);
   assert.equal(merman.get("preview.diagramTheme"), "source");
   assert.equal(merman.get("preview.displayMode"), "svg");
-  assert.equal(merman.get("preview.background"), "paper");
+  assert.equal(merman.get("preview.background"), "theme");
+  assert.equal(merman.get("preview.appearance"), "follow-editor");
+  assert.equal(merman.get("preview.viewerBackground"), "auto");
+  assert.equal(merman.get("preview.themeFile"), "");
 
   const restartOutcome = await vscode.commands.executeCommand("merman.restartLanguageServer");
   if (fixtureName === "extension-host-lsp-failure") {

@@ -14,6 +14,7 @@ use crate::wire::{
     ThemeLinearGradientRepetitionWireV1, ThemeOrdinalSelectorWireV1,
     ThemeRadialGradientRepetitionWireV1, deserialize_optional_non_null,
 };
+use crate::{ThemeAppearance, ThemeAppearanceOverridesV1};
 
 // Derived Serde structs also accept positional sequences. Authoring objects are JSON maps;
 // delegate their field validation to the derive while excluding that alternate representation.
@@ -107,6 +108,12 @@ impl<'de> Deserialize<'de> for ThemeReferenceV1 {
 #[serde(deny_unknown_fields)]
 #[serde(remote = "Self")]
 pub struct ThemeDesignV1 {
+    /// Optional appearance-local layers; omission keeps one unclassified concrete design.
+    #[serde(default, deserialize_with = "deserialize_optional_non_null")]
+    pub appearances: Option<BTreeMap<ThemeAppearance, ThemeAppearanceOverridesV1>>,
+    /// Required when appearances are declared, and must name one declared entry.
+    #[serde(default, deserialize_with = "deserialize_optional_non_null")]
+    pub default_appearance: Option<ThemeAppearance>,
     /// Named reusable values, keyed by stable document-local identifiers.
     #[serde(default)]
     pub tokens: BTreeMap<String, ThemeDesignTokenV1>,
@@ -159,6 +166,8 @@ impl Serialize for ThemeDesignV1 {
             ));
         }
         let field_count = usize::from(!self.tokens.is_empty())
+            + usize::from(self.appearances.is_some())
+            + usize::from(self.default_appearance.is_some())
             + usize::from(!self.styles.is_empty())
             + usize::from(!self.rules.is_empty())
             + usize::from(!self.palettes.is_empty())
@@ -168,6 +177,12 @@ impl Serialize for ThemeDesignV1 {
             + usize::from(self.assets.is_some())
             + usize::from(self.requirements.is_some());
         let mut state = serializer.serialize_struct("ThemeDesignV1", field_count)?;
+        if let Some(appearances) = &self.appearances {
+            state.serialize_field("appearances", appearances)?;
+        }
+        if let Some(default_appearance) = self.default_appearance {
+            state.serialize_field("default_appearance", &default_appearance)?;
+        }
         if !self.tokens.is_empty() {
             state.serialize_field("tokens", &self.tokens)?;
         }
@@ -751,6 +766,7 @@ impl<T: ContainsNonFiniteNumber> ContainsNonFiniteNumber for ThemeValueV1<T> {
 impl ContainsNonFiniteNumber for ThemeDesignV1 {
     fn contains_non_finite_number(&self) -> bool {
         self.tokens.contains_non_finite_number()
+            || self.appearances.contains_non_finite_number()
             || self.styles.contains_non_finite_number()
             || self.rules.contains_non_finite_number()
             || self.palettes.contains_non_finite_number()

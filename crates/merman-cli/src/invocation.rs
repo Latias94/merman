@@ -28,7 +28,7 @@ use crate::cli::{
     RuntimeCliArgs,
 };
 #[cfg(feature = "svg")]
-use crate::cli::{LayoutArgs, MmdcArgs, MmdcOutputFormat, RenderCliArgs};
+use crate::cli::{LayoutArgs, MmdcArgs, MmdcOutputFormat, RenderCliArgs, ThemeCommand};
 #[cfg(feature = "analysis")]
 use crate::cli::{LintArgs, LintRulesArgs};
 #[cfg(any(feature = "svg", feature = "ascii"))]
@@ -80,6 +80,8 @@ pub(crate) enum ResolvedInvocation {
     Parse(ResolvedParse),
     #[cfg(feature = "svg")]
     Layout(ResolvedLayout),
+    #[cfg(feature = "svg")]
+    ThemeInspect(ResolvedThemeInspect),
     #[cfg(feature = "analysis")]
     Lint(ResolvedLint),
     #[cfg(feature = "fixes")]
@@ -187,6 +189,14 @@ pub(crate) struct ResolvedLayout {
     pub(crate) operation_timeout: Option<Duration>,
     pub(crate) parse: ResolvedParseOptions,
     pub(crate) render: ResolvedRenderOptions,
+    pub(crate) resources: ResolvedResourcePolicy,
+}
+
+#[cfg(feature = "svg")]
+#[derive(Debug)]
+pub(crate) struct ResolvedThemeInspect {
+    pub(crate) input: ResolvedInput,
+    pub(crate) operation_timeout: Option<Duration>,
     pub(crate) resources: ResolvedResourcePolicy,
 }
 
@@ -428,9 +438,10 @@ pub(crate) struct ResolvedRuntimeOptions {
 #[cfg(feature = "svg")]
 #[derive(Debug, Clone)]
 pub(crate) struct ResolvedRenderOptions {
-    pub(crate) theme_preset: Option<merman::svg::ThemePreset>,
+    pub(crate) theme_preset: Option<String>,
     pub(crate) theme_file: Option<PathBuf>,
     pub(crate) theme_design_file: Option<PathBuf>,
+    pub(crate) theme_appearance: Option<merman::svg::ThemeAppearance>,
     pub(crate) theme_portability: crate::cli::ThemePortabilityKind,
     pub(crate) theme_report: Option<PathBuf>,
     #[cfg(feature = "native-fonts")]
@@ -504,6 +515,20 @@ pub(crate) fn resolve(cli: Cli, facts: &InvocationFacts) -> Result<ResolvedInvoc
         RawCommand::Parse(args) => normalize_parse(args, facts).map(ResolvedInvocation::Parse),
         #[cfg(feature = "svg")]
         RawCommand::Layout(args) => normalize_layout(args, facts).map(ResolvedInvocation::Layout),
+        #[cfg(feature = "svg")]
+        RawCommand::Theme(args) => match args.command {
+            ThemeCommand::Inspect(args) => {
+                Ok(ResolvedInvocation::ThemeInspect(ResolvedThemeInspect {
+                    input: if args.input == Path::new("-") {
+                        ResolvedInput::Stdin
+                    } else {
+                        ResolvedInput::File(args.input)
+                    },
+                    operation_timeout: args.operation.timeout_ms.map(Duration::from_millis),
+                    resources: resolve_resource_policy(args.resources)?,
+                }))
+            }
+        },
         #[cfg(feature = "analysis")]
         RawCommand::Lint(args) => normalize_lint(args, facts).map(ResolvedInvocation::Lint),
         #[cfg(feature = "fixes")]
@@ -928,6 +953,7 @@ fn normalize_mmdc(args: MmdcArgs, facts: &InvocationFacts) -> Result<ResolvedMmd
         theme_preset: None,
         theme_file: None,
         theme_design_file: None,
+        theme_appearance: None,
         theme_portability: crate::cli::ThemePortabilityKind::default(),
         theme_report: None,
         #[cfg(feature = "native-fonts")]
@@ -1568,6 +1594,7 @@ fn resolve_render_options(args: RenderCliArgs) -> ResolvedRenderOptions {
         theme_preset: args.theme_preset,
         theme_file: args.theme_file,
         theme_design_file: args.theme_design_file,
+        theme_appearance: args.theme_appearance,
         theme_portability: args.theme_portability,
         theme_report: args.theme_report,
         #[cfg(feature = "native-fonts")]
@@ -1772,6 +1799,7 @@ fn validate_graphical_output_options(
         if options.render.theme_preset.is_some()
             || options.render.theme_file.is_some()
             || options.render.theme_design_file.is_some()
+            || options.render.theme_appearance.is_some()
             || options.render.theme_report.is_some()
             || options.render.theme_portability != crate::cli::ThemePortabilityKind::BestEffort
             || options.render.math_renderer.is_some()
@@ -1822,6 +1850,7 @@ fn validate_raw_svg_options(options: &crate::cli::GraphicalRenderCliArgs) -> Res
     if options.render.theme_preset.is_some()
         || options.render.theme_file.is_some()
         || options.render.theme_design_file.is_some()
+        || options.render.theme_appearance.is_some()
         || options.render.theme_report.is_some()
         || options.render.theme_portability != crate::cli::ThemePortabilityKind::BestEffort
         || options.render.math_renderer.is_some()

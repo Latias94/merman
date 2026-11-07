@@ -22,11 +22,13 @@ mod canvas;
 mod compiler;
 mod definition_admission;
 mod design_materializer;
+mod document;
 mod effects;
 mod family_mechanism_matrix;
 mod family_program;
 mod mechanisms;
 mod mermaid_compatibility;
+mod preset_selection;
 mod presets;
 mod resolved;
 mod resources;
@@ -47,9 +49,11 @@ use std::sync::Arc;
 
 pub use merman_model::config::{MermaidThemeId, MermaidThemeIdParseError};
 pub use merman_theme_contract::{
-    DiagramThemeSpecWireV1, MaterializedThemeWireV1, THEME_SUPPORT_SCHEMA_VERSION_V1,
-    ThemeCapabilityDescriptorV1, ThemeDesignV1, ThemeMaterializationDiagnosticV1,
-    ThemeMaterializationErrorV1, ThemeRuleFacetV1, ThemeSupportBaseTypographyPropertyV1,
+    DiagramThemeSpecWireV1, MaterializedThemeRecipeV1, MaterializedThemeWireV1,
+    THEME_SUPPORT_SCHEMA_VERSION_V1, ThemeAppearance, ThemeAppearanceInspectionV1,
+    ThemeAppearanceOverridesV1, ThemeCapabilityDescriptorV1, ThemeDesignV1,
+    ThemeMaterializationDiagnosticV1, ThemeMaterializationErrorV1, ThemeRecipeInspectionV1,
+    ThemeRecipeReferenceUseV1, ThemeRuleFacetV1, ThemeSupportBaseTypographyPropertyV1,
     ThemeSupportFacetV1, ThemeSupportOutputV1, ThemeSupportQueryV1, ThemeSupportStateV1,
     ThemeSupportSubjectV1,
 };
@@ -95,15 +99,18 @@ pub(crate) use mechanisms::{
     collect_effect_graph_capabilities, paint_capabilities, paint_capability,
 };
 pub use merman_theme_contract::{
-    THEME_PRESET_CATALOG_SCHEMA_VERSION_V1, ThemePresetApplicationNoteV1,
+    THEME_PRESET_CATALOG_SCHEMA_VERSION_V1, ThemeMermaidAppearanceMetadataV1,
+    ThemeMermaidDesignMetadataV1, ThemePresetAppearanceMetadataV1, ThemePresetApplicationNoteV1,
     ThemePresetFamilyDesignV1, ThemePresetMetadataV1, ThemePresetQualifiedCellV1, ThemeRecipeV1,
 };
 pub use merman_theme_contract::{
     ThemeDesignInspection, ThemeDesignReferenceUse, ThemeDesignValueDomain,
 };
+pub use preset_selection::describe_mermaid_theme_designs;
 pub use presets::{
     ThemePreset, ThemePresetDescriptor, ThemePresetParseError, ThemePresetQualifiedCell,
-    describe_theme_presets, theme_preset_descriptors,
+    ThemePresetSelectionDescriptor, describe_theme_presets, theme_preset_descriptors,
+    theme_preset_selection_descriptors,
 };
 pub(crate) use resolved::{
     ResolvedDiagramTheme, ResolvedProperty, ResolvedThemeEffect, ResolvedThemeStyle,
@@ -221,6 +228,18 @@ impl ThemeRecipeReport {
 pub struct DiagramTheme(pub(crate) Arc<CompiledDiagramTheme>);
 
 impl DiagramTheme {
+    /// Returns the selected authored appearance, independently of source-owned paint overrides.
+    pub fn selected_appearance(&self) -> Option<ThemeAppearance> {
+        self.0.selected_appearance
+    }
+
+    pub(super) fn with_selected_appearance(mut self, appearance: Option<ThemeAppearance>) -> Self {
+        Arc::get_mut(&mut self.0)
+            .expect("appearance is attached before sharing a compiled theme")
+            .selected_appearance = appearance;
+        self
+    }
+
     /// Returns the content identity of the canonical recipe and its retained resources.
     ///
     /// This identity does not prove host admission, family evaluation, or output portability.
@@ -309,6 +328,7 @@ impl DiagramTheme {
 
 #[derive(Debug)]
 pub(crate) struct CompiledDiagramTheme {
+    selected_appearance: Option<ThemeAppearance>,
     source_map: source::ThemeSourceMap,
     spec: Arc<DiagramThemeSpec>,
     catalog: FontCatalog,

@@ -1,6 +1,9 @@
 # Theme authoring vectors
 
 `light` and `dark` contain the shared editable-design and materialized-spec oracles. Their `references.json` files pin the authored binding metadata returned alongside each spec.
+`paired.recipe.json` is a complete version-1 recipe with shared roles and light/dark token
+exceptions inside `design`. Consumers inspect the complete document, materialize each appearance,
+and render light/dark/light through reused engines without losing the authored recipe.
 `errors.json` contains exact UTF-8 input strings for `materialize-theme-json` and
 transport-independent error expectations. Send `source` unchanged and use `options_json` when
 present; otherwise use default authoring options. The encoded-byte-limit vector explicitly requests
@@ -40,9 +43,11 @@ These static upper bounds do not certify actual document admission or qualify ou
 
 `preset-catalog.json` freezes the complete ordered preset metadata array under the default
 binding compiler policy on SVG-capable artifacts and Typst's constrained policy. Shared-core, Native C ABI, and UniFFI tests,
-installed Node and Python consumers, Typst plugin smoke, and real Web/WASM smoke compare every field, including availability, appearance,
+installed Node and Python consumers, Typst plugin smoke, and real Web/WASM smoke compare every field,
+including grouped supported/default appearances, concrete preset IDs and per-appearance availability,
 maturity, family design scope, preview colors, application notes, empty qualification cells,
-export kind, license, and attribution. Do not derive this
+export kind, license, and attribution. The current catalog has eight designs and eleven concrete
+preset IDs. Do not derive this
 oracle at test time from production descriptors. Non-SVG artifacts still require an empty array;
 custom resource ceilings may change availability and need a separate expectation. Output IDs and
 resource limits belong to each artifact profile and are outside this preset-only vector. It does

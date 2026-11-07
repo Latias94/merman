@@ -21,7 +21,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     );
     let catalog = json!({
         "schema_version": merman::svg::THEME_PRESET_CATALOG_SCHEMA_VERSION_V1,
+        "recipe_schema_version": 1,
+        "authoring_request_schema_version": 1,
+        "authoring_result_schema_version": 1,
         "presets": merman::svg::describe_theme_presets(&compiler),
+        "mermaid_theme_designs": merman::svg::describe_mermaid_theme_designs(),
     });
     let mut presets = Vec::new();
     for preset in [

@@ -39,6 +39,12 @@ establish availability on every channel. Use immutable `v0.9.3` and its matching
 for the published maintenance APIs. See the
 [alpha.2 changelog](../../CHANGELOG.md#0100-alpha2---2026-11-06) for required migrations.
 
+Current alpha source directly refactors theme recipe and catalog schema `1` to support optional
+paired appearances. It uses Web transport API `10` and CLI contract `7`; Options JSON remains
+schema `3`. These source contracts require matching wrappers and runtimes and do not change the
+immutable alpha.2 artifacts. See the [theme guide](../rendering/custom-diagram-themes.md) for
+the complete-document format and concrete appearance selection.
+
 The alpha.2 release requires the independent `roughr-merman 0.12.6` and Tree-sitter Mermaid
 `0.3.3` releases. Both prerequisites were published and independently verified before their
 coupled workspace dependents; the [publication ledger](PUBLISH_ORDER.md#0100-alpha2-publication)

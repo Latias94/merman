@@ -434,6 +434,7 @@ fn compatibility_commands_reject_native_theme_options_before_input_acquisition()
             ("--theme-preset", "editor-dark"),
             ("--theme-file", "theme.json"),
             ("--theme-design-file", "theme-design-file.json"),
+            ("--theme-appearance", "dark"),
         ] {
             let args = if command == "mmdc" {
                 vec![command, "-i", "missing.mmd", removed, value]
@@ -586,7 +587,7 @@ fn native_theme_preset_values_match_the_compiled_runtime_catalog() {
         stderr.contains("not-a-runtime-preset") && !stderr.contains("missing.mmd:"),
         "theme preset validation must precede input acquisition:\n{stderr}"
     );
-    for descriptor in merman::svg::theme_preset_descriptors() {
+    for descriptor in merman::svg::theme_preset_selection_descriptors() {
         assert!(
             stderr.contains(descriptor.id()),
             "theme preset validation should list `{}`:\n{stderr}",
@@ -1358,6 +1359,11 @@ fn native_render_rejects_each_irrelevant_output_option_before_input_acquisition(
             &["--theme-file", "missing-theme.json"],
         ),
         (
+            "theme appearance on text",
+            "ascii",
+            &["--theme-preset", "editor", "--theme-appearance", "dark"],
+        ),
+        (
             "math renderer on text",
             "ascii",
             &["--math-renderer", "none"],
@@ -1425,6 +1431,10 @@ fn raw_svg_rejects_each_mermaid_only_option_before_input_acquisition() {
         ),
         ("theme preset", &["--theme-preset", "editor-dark"]),
         ("theme file", &["--theme-file", "missing-theme.json"]),
+        (
+            "theme appearance",
+            &["--theme-preset", "editor", "--theme-appearance", "dark"],
+        ),
         ("math renderer", &["--math-renderer", "none"]),
         ("container width", &["--width", "100"]),
         ("container height", &["--height", "100"]),
@@ -1591,10 +1601,24 @@ fn compiled_capabilities_match_the_full_test_artifact() {
     let payload: Value =
         serde_json::from_slice(&output.stdout).expect("capabilities should be JSON");
     assert_eq!(payload["schema_version"], 2);
-    assert_eq!(payload["cli_contract_version"], 6);
+    assert_eq!(payload["cli_contract_version"], 7);
     #[cfg(feature = "svg")]
     {
         assert_eq!(payload["theme_presets"]["schema_version"], 1);
+        assert_eq!(payload["theme_presets"]["recipe_schema_version"], 1);
+        assert_eq!(
+            payload["theme_presets"]["authoring_request_schema_version"],
+            1
+        );
+        assert_eq!(
+            payload["theme_presets"]["authoring_result_schema_version"],
+            1
+        );
+        assert!(payload["theme_presets"].get("legacy_selections").is_none());
+        assert_eq!(
+            payload["theme_presets"]["mermaid_theme_designs"],
+            serde_json::to_value(merman::svg::describe_mermaid_theme_designs()).unwrap()
+        );
         assert!(
             payload["theme_presets"]["presets"]
                 .as_array()
@@ -1644,7 +1668,14 @@ fn compiled_capabilities_match_the_full_test_artifact() {
         command_ids.windows(2).all(|pair| pair[0] < pair[1]),
         "command ids must be sorted and unique: {command_ids:?}"
     );
-    for command in ["batch", "capabilities", "completion", "mmdc", "render"] {
+    for command in [
+        "batch",
+        "capabilities",
+        "completion",
+        "mmdc",
+        "render",
+        "theme",
+    ] {
         assert!(
             command_ids.contains(&command),
             "missing compiled command {command}: {payload}"

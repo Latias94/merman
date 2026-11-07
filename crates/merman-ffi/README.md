@@ -134,6 +134,20 @@ Include [`include/merman_resource_contract.h`](include/merman_resource_contract.
 
 The generic operation enums cover SVG, PNG, JPEG, PDF, ASCII, semantic JSON, layout JSON, analysis, validation, and URI-requiring document analysis. An unavailable operation returns the typed `MERMAN_NATIVE_STATUS_UNSUPPORTED_OPERATION` result rather than exposing a separate phantom API. Failure JSON schema `1` distinguishes `unknown-operation`, `missing-capability`, `reentrant-call`, and `busy` from `generic`; only `missing-capability` carries a non-null descriptor `capability_id`. Parser and ASCII failures may carry additive `details.diagnostic` fields (`code`, bounded byte `span`, `field`, and `diagram_type`) without embedding complete source text.
 
+Theme authoring uses the existing `MERMAN_NATIVE_OPERATION_MATERIALIZE_THEME_JSON`,
+`MERMAN_NATIVE_OPERATION_DESCRIBE_THEME_SUPPORT_JSON`, and
+`MERMAN_NATIVE_OPERATION_EXPORT_THEME_PRESET_JSON` operation codes. Preset export takes a plain ID such as `editor` and
+returns the complete schema-1 recipe, including `design.appearances` and its declared default.
+Materialization accepts a schema-1 `action` (`inspect` or `materialize`) with that `recipe`;
+selected materialization also accepts a concrete `appearance`. Raw design input still materializes
+the default appearance. The `theme-catalog` metadata groups presets and places family guidance,
+swatches, qualification, and `concrete_preset_id` in each appearance entry.
+
+Choose `{"theme":{"preset":"editor","appearance":"dark"}}` in render options, or select a complete
+recipe object with the same `appearance` field. An omitted selector uses the declared default.
+Headless requests accept `light` and `dark`; Follow-app/editor belongs to the host.
+These nested JSON payloads use the current ABI 3 table and Options JSON schema 3 unchanged.
+
 ## Memory-Only Fonts
 
 Enable `native-fonts` to construct an engine with caller-supplied OpenType bytes, or enable

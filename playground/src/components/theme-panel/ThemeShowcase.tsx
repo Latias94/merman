@@ -15,6 +15,11 @@ import { DEFAULT_WORKSPACE_SNAPSHOT, selectWorkspaceSnapshot, useAppStore } from
 import { EXPLORATION_THEMES, type ExplorationTheme } from "@/src/themes/catalog";
 import { THEME_SAMPLES, type ThemeSampleId } from "@/src/themes/samples";
 import { ThemeShowcaseUse } from "./ThemeShowcaseUse";
+import { explorationAppearance } from "@/src/themes/catalog";
+import { inspectThemeRecipe, resolveThemeSelection, type ThemeAppearancePreference } from "@/src/lib/theme-appearance";
+import { ThemeAppearanceControl } from "./ThemeAppearanceControl";
+import { ThemeExamplePreview } from "./ThemeExamplePreview";
+import type { ThemeAppearance } from "@mermanjs/web";
 
 type AppearanceFilter = "all" | "light" | "dark";
 
@@ -33,23 +38,36 @@ export default function ThemeShowcase({ open, onOpenChange, restoreFocus, initia
   const returnCard = useRef<string | null>(null);
   const facade = useMermanRuntime(selectMermanFacade);
   const workspace = useAppStore(useShallow(selectWorkspaceSnapshot));
+  const hostAppearance = useAppStore((state) => state.resolvedTheme);
   const [query, setQuery] = useState("");
   const [appearance, setAppearance] = useState<AppearanceFilter>("all");
   const [detailId, setDetailId] = useState<string | null>(initialThemeId ?? null);
   const [sampleId, setSampleId] = useState<ThemeSampleId>("flowchart");
   const [actionError, setActionError] = useState<string | null>(null);
+  const [detailPreference, setDetailPreference] = useState<ThemeAppearancePreference>("follow");
   const detail = EXPLORATION_THEMES.find((theme) => theme.id === detailId);
   const selected = EXPLORATION_THEMES.find((theme) => theme.recipeJson === workspace.themeRecipeJson);
   const normalizedQuery = query.trim().toLocaleLowerCase(i18n.resolvedLanguage);
   const themes = EXPLORATION_THEMES.filter((theme) =>
-    (appearance === "all" || appearance === theme.appearance) &&
+    (appearance === "all" || (theme.appearances?.some((entry) => entry.appearance === appearance) ?? appearance === theme.appearance)) &&
     `${theme.id} ${theme.name} ${t(`themeGallery.themes.${theme.id}`)} ${t(`themeShowcase.mechanisms.${theme.id}`)}`
       .toLocaleLowerCase(i18n.resolvedLanguage).includes(normalizedQuery));
+  const detailSupport = {
+    supported_appearances: detail?.appearances?.map((entry) => entry.appearance) ?? (detail ? [detail.appearance] : []),
+    default_appearance: detail?.appearance ?? null,
+  };
+  const detailSelection = resolveThemeSelection({
+    ...DEFAULT_WORKSPACE_SNAPSHOT, themeRecipeJson: detail?.recipeJson ?? null,
+    themeAppearance: detail?.appearances ? detailPreference : "default",
+  }, hostAppearance, null, detailSupport);
+  const detailAppearance = detailSelection.appearance ?? detail?.appearance ?? "light";
+  const detailColors = detail ? explorationAppearance(detail, detailAppearance).colors : [];
 
   function explore(theme: ExplorationTheme) {
     gridScroll.current = viewport.current?.scrollTop ?? 0;
     returnCard.current = theme.id;
     setDetailId(theme.id);
+    setDetailPreference("follow");
     setActionError(null);
     if (viewport.current) viewport.current.scrollTop = 0;
     requestAnimationFrame(() => heading.current?.focus());
@@ -69,8 +87,10 @@ export default function ThemeShowcase({ open, onOpenChange, restoreFocus, initia
   function apply(theme: ExplorationTheme) {
     try {
       if (!facade) return;
-      facade.validateThemeRecipe(theme.recipeJson);
-      useAppStore.getState().selectTheme({ kind: "recipe", recipeJson: theme.recipeJson, label: { name: theme.name, source: "exploration" } });
+      inspectThemeRecipe(facade, theme.recipeJson);
+      useAppStore.getState().selectTheme({ kind: "recipe", recipeJson: theme.recipeJson,
+        appearance: theme.appearances ? detailPreference : "default",
+        label: { name: theme.name, source: "exploration" } });
       setActionError(null);
       onOpenChange(false);
     } catch (error) { setActionError(projectError(error).summary); }
@@ -128,6 +148,7 @@ export default function ThemeShowcase({ open, onOpenChange, restoreFocus, initia
               </div>
             </div>
             <p className="text-xs leading-relaxed text-muted-foreground">{t("themeShowcase.applyHint")}</p>
+            <ThemeAppearanceControl selection={detailSelection} onChange={setDetailPreference} />
             {actionError && <p role="alert" className="break-words text-sm text-destructive">{actionError}</p>}
           </div>
           <section aria-labelledby={`${searchId}-examples`} className="space-y-3">
@@ -137,19 +158,18 @@ export default function ThemeShowcase({ open, onOpenChange, restoreFocus, initia
               {THEME_SAMPLES.map((sample) => <article key={sample.id} className="min-w-0 overflow-hidden rounded-md border bg-card" data-theme-sample={sample.id}>
                 <div className="flex items-center justify-between gap-2 border-b px-3 py-2">
                   <h4 className="text-xs font-medium">{t(`themeGallery.samples.${sample.id}`)}</h4>
-                  <a href={sampleWorkspaceUrl(detail, sample.id)} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-xs text-muted-foreground underline-offset-4 hover:text-foreground hover:underline"
+                  <a href={sampleWorkspaceUrl(detail, sample.id, detailAppearance)} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-xs text-muted-foreground underline-offset-4 hover:text-foreground hover:underline"
                     aria-label={t("themeShowcase.openSampleNamed", { sample: t(`themeGallery.samples.${sample.id}`), name: detail.name })}>
                     {t("themeShowcase.openSample")}<ArrowRight className="size-3" aria-hidden="true" />
                   </a>
                 </div>
-                <div className="flex h-72 items-center justify-center p-4" style={{ backgroundColor: detail.colors[0] }}>
-                  <img src={detail.previews[sample.id]} alt={t("appearance.exampleAlt", { name: detail.name, sample: t(`themeGallery.samples.${sample.id}`) })}
-                    loading="lazy" className="h-full w-full min-w-0 object-contain" />
+                <div className="flex h-72 items-center justify-center p-4" style={{ backgroundColor: detailColors[0] }}>
+                  <ThemeExamplePreview theme={detail} appearance={detailAppearance} sampleId={sample.id} />
                 </div>
               </article>)}
             </div>
           </section>
-          <ThemeShowcaseUse key={detail.id} theme={detail} sampleId={sampleId} onSampleChange={setSampleId} />
+          <ThemeShowcaseUse key={`${detail.id}:${detailAppearance}`} theme={detail} appearance={detailAppearance} sampleId={sampleId} onSampleChange={setSampleId} />
         </div> : <div className="space-y-5 p-4 sm:p-6">
           <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-2">
             <h2 className="text-2xl font-semibold tracking-tight">{t("themeShowcase.collectionTitle")}</h2>
@@ -174,16 +194,16 @@ function ThemeDesignCard({ theme, selected, onExplore }: { theme: ExplorationThe
       <div className="space-y-2 px-4 pb-4 pt-4">
         <div className="flex items-center justify-between gap-3"><h3 className="text-xl font-semibold tracking-tight">{theme.name}</h3>
           {selected ? <><Check className="size-4 text-primary" aria-hidden="true" /><span id={currentId} className="sr-only">{t("themeShowcase.current")}</span></>
-            : <span className="text-[10px] text-muted-foreground">{t(`themeShowcase.filters.${theme.appearance}`)}</span>}
+            : <span className="text-[10px] text-muted-foreground">{t(theme.appearances ? "appearanceMode.paired" : `themeShowcase.filters.${theme.appearance}`)}</span>}
         </div>
         <p className="min-h-8 text-xs leading-relaxed text-muted-foreground">{t(`themeShowcase.mechanisms.${theme.id}`)}</p>
       </div>
       <div className="grid h-72 grid-cols-[minmax(0,1.05fr)_minmax(0,1fr)] gap-px overflow-hidden bg-border" aria-hidden="true">
         <div className="row-span-2 flex min-h-0 min-w-0 items-center justify-center p-3" style={{ backgroundColor: theme.colors[0] }}>
-          <img src={theme.previews.flowchart} alt="" loading="lazy" className="h-full w-full object-contain" />
+          <ThemeExamplePreview theme={theme} appearance={theme.appearance} sampleId="flowchart" decorative />
         </div>
         {(["sequence", "pie"] as const).map((family) => <div key={family} className="flex min-h-0 min-w-0 items-center justify-center p-2" style={{ backgroundColor: theme.colors[0] }}>
-          <img src={theme.previews[family]} alt="" loading="lazy" className="h-full w-full object-contain" />
+          <ThemeExamplePreview theme={theme} appearance={theme.appearance} sampleId={family} decorative />
         </div>)}
       </div>
       <div className="flex min-w-0 items-center justify-between gap-3 border-t px-4 py-3">
@@ -198,10 +218,11 @@ function downloadTheme(theme: ExplorationTheme) {
   downloadBlob(new Blob([theme.recipeJson], { type: "application/json;charset=utf-8" }), `${theme.id}.theme.json`);
 }
 
-function sampleWorkspaceUrl(theme: ExplorationTheme, sampleId: ThemeSampleId): string {
+function sampleWorkspaceUrl(theme: ExplorationTheme, sampleId: ThemeSampleId, appearance: ThemeAppearance): string {
   const sample = THEME_SAMPLES.find((entry) => entry.id === sampleId)!;
   return `${import.meta.env.BASE_URL}${encodeShareHash({ ...DEFAULT_WORKSPACE_SNAPSHOT,
-    code: sample.source, mermaidConfig: sample.configJson, diagramTheme: "default", diagramFont: "inherit",
+    code: sample.source, mermaidConfig: sample.configJson, diagramTheme: "auto", diagramFont: "inherit",
+    ...(theme.appearances ? { themeAppearance: appearance } : {}),
     themePresetId: null, themeRecipeJson: theme.recipeJson, themeRecipeLabel: { name: theme.name, source: "exploration" },
   })}`;
 }

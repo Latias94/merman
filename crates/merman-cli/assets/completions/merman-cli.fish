@@ -28,6 +28,7 @@ complete -c merman-cli -n "__fish_merman_cli_needs_command" -s h -l help -d 'Pri
 complete -c merman-cli -n "__fish_merman_cli_needs_command" -s V -l version -d 'Print version'
 complete -c merman-cli -n "__fish_merman_cli_needs_command" -f -a "lint-rules" -d 'List lint rule metadata'
 complete -c merman-cli -n "__fish_merman_cli_needs_command" -f -a "rustdoc" -d 'Build or check committed static Mermaid fragments for Rustdoc'
+complete -c merman-cli -n "__fish_merman_cli_needs_command" -f -a "theme" -d 'Inspect portable theme recipe documents'
 complete -c merman-cli -n "__fish_merman_cli_needs_command" -f -a "capabilities" -d 'Print the compiled capabilities from the canonical capability descriptor'
 complete -c merman-cli -n "__fish_merman_cli_needs_command" -f -a "detect" -d 'Detect the Mermaid diagram type'
 complete -c merman-cli -n "__fish_merman_cli_needs_command" -f -a "parse" -d 'Parse Mermaid source and print the semantic JSON model'
@@ -58,6 +59,17 @@ complete -c merman-cli -n "__fish_merman_cli_using_subcommand rustdoc; and __fis
 complete -c merman-cli -n "__fish_merman_cli_using_subcommand rustdoc; and __fish_seen_subcommand_from check" -l quiet -d 'Suppress non-error progress output'
 complete -c merman-cli -n "__fish_merman_cli_using_subcommand rustdoc; and __fish_seen_subcommand_from check" -s h -l help -d 'Print help (see more with \'--help\')'
 complete -c merman-cli -n "__fish_merman_cli_using_subcommand rustdoc; and __fish_seen_subcommand_from check" -s V -l version -d 'Print version'
+complete -c merman-cli -n "__fish_merman_cli_using_subcommand theme; and not __fish_seen_subcommand_from inspect" -s h -l help -d 'Print help'
+complete -c merman-cli -n "__fish_merman_cli_using_subcommand theme; and not __fish_seen_subcommand_from inspect" -s V -l version -d 'Print version'
+complete -c merman-cli -n "__fish_merman_cli_using_subcommand theme; and not __fish_seen_subcommand_from inspect" -f -a "inspect" -d 'Validate the complete portable recipe and print schema-1 inspection JSON'
+complete -c merman-cli -n "__fish_merman_cli_using_subcommand theme; and __fish_seen_subcommand_from inspect" -l resource-profile -d 'Resource policy for input, semantic models, output, and CLI acquisition' -r -f -a "interactive\t'General interactive applications and public binding surfaces'
+constrained\t'Constrained rendering for untrusted or publicly submitted documents'
+trusted-native\t'Local CLI and controlled native batch rendering'
+unbounded-for-trusted-input\t'Explicitly disable policy budgets while retaining hard backend capabilities'"
+complete -c merman-cli -n "__fish_merman_cli_using_subcommand theme; and __fish_seen_subcommand_from inspect" -l resource-limit -d 'Override a resource budget as STABLE_ID=POSITIVE_U64. Can be repeated' -r
+complete -c merman-cli -n "__fish_merman_cli_using_subcommand theme; and __fish_seen_subcommand_from inspect" -l operation-timeout-ms -d 'Cancel the complete command operation after this many milliseconds' -r
+complete -c merman-cli -n "__fish_merman_cli_using_subcommand theme; and __fish_seen_subcommand_from inspect" -s h -l help -d 'Print help (see more with \'--help\')'
+complete -c merman-cli -n "__fish_merman_cli_using_subcommand theme; and __fish_seen_subcommand_from inspect" -s V -l version -d 'Print version'
 complete -c merman-cli -n "__fish_merman_cli_using_subcommand capabilities" -l json -d 'Emit the machine-readable capability document'
 complete -c merman-cli -n "__fish_merman_cli_using_subcommand capabilities" -s h -l help -d 'Print help'
 complete -c merman-cli -n "__fish_merman_cli_using_subcommand capabilities" -s V -l version -d 'Print version'
@@ -149,19 +161,24 @@ native\t''"
 complete -c merman-cli -n "__fish_merman_cli_using_subcommand render" -l font-system -d 'Control system font discovery; native encoded output enables it by default. Explicit font sources stay closed unless on is selected' -r -f -a "off\t''
 on\t''"
 complete -c merman-cli -n "__fish_merman_cli_using_subcommand render" -l font-max-measurements -d 'Maximum uncached native font shaping probes per diagram (default: 16384); independent of --resource-profile' -r -f
-complete -c merman-cli -n "__fish_merman_cli_using_subcommand render" -l theme-preset -d 'Compiled diagram-theme preset; each value reports its catalog maturity, and explicit Mermaid configuration takes precedence' -r -f -a "editor-light\t'[alpha] Editor Light'
-editor-dark\t'[alpha] Editor Dark'
+complete -c merman-cli -n "__fish_merman_cli_using_subcommand render" -l theme-preset -d 'Compiled diagram-theme preset; each value reports its catalog maturity, and explicit Mermaid configuration takes precedence' -r -f -a "editor\t'[alpha] Editor'
 one-dark\t'[alpha] One Dark'
-gruvbox-light\t'[alpha] Gruvbox Light'
-gruvbox-dark\t'[alpha] Gruvbox Dark'
-ayu-light\t'[alpha] Ayu Light'
-ayu-dark\t'[alpha] Ayu Dark'
+gruvbox\t'[alpha] Gruvbox'
+ayu\t'[alpha] Ayu'
 brutalist\t'[alpha] Brutalist'
 spotless\t'[alpha] Spotless'
 cyberpunk\t'[alpha] Cyberpunk'
-ghibli\t'[alpha] Ghibli'"
-complete -c merman-cli -n "__fish_merman_cli_using_subcommand render" -l theme-file -d 'Versioned theme recipe JSON, or a selection containing exactly one `preset` or `spec`' -r -F
-complete -c merman-cli -n "__fish_merman_cli_using_subcommand render" -l theme-design-file -d 'Shareable ThemeDesignV1 JSON materialized before rendering' -r -F
+ghibli\t'[alpha] Ghibli'
+editor-light\t'[alpha] Editor Light'
+editor-dark\t'[alpha] Editor Dark'
+gruvbox-light\t'[alpha] Gruvbox Light'
+gruvbox-dark\t'[alpha] Gruvbox Dark'
+ayu-light\t'[alpha] Ayu Light'
+ayu-dark\t'[alpha] Ayu Dark'"
+complete -c merman-cli -n "__fish_merman_cli_using_subcommand render" -l theme-file -d 'Versioned theme recipe JSON, or an exact preset, recipe, or spec selection' -r -F
+complete -c merman-cli -n "__fish_merman_cli_using_subcommand render" -l theme-design-file -d 'Shareable ThemeDesignV1 JSON materialized before rendering. Use a portable recipe through --theme-file with --theme-appearance' -r -F
+complete -c merman-cli -n "__fish_merman_cli_using_subcommand render" -l theme-appearance -d 'Concrete Merman appearance for --theme-preset or --theme-file; omitted uses the selected document\'s default. Must agree with any selector already in the file' -r -f -a "light\t''
+dark\t''"
 complete -c merman-cli -n "__fish_merman_cli_using_subcommand render" -l theme-portability -d 'Renderer portability requirement; require-portable rejects nonportable target output' -r -f -a "best-effort\t''
 require-portable\t''"
 complete -c merman-cli -n "__fish_merman_cli_using_subcommand render" -l theme-report -d 'Write versioned theme results to a separate JSON file, including render failures' -r -F
@@ -271,19 +288,24 @@ native\t''"
 complete -c merman-cli -n "__fish_merman_cli_using_subcommand batch" -l font-system -d 'Control system font discovery; native encoded output enables it by default. Explicit font sources stay closed unless on is selected' -r -f -a "off\t''
 on\t''"
 complete -c merman-cli -n "__fish_merman_cli_using_subcommand batch" -l font-max-measurements -d 'Maximum uncached native font shaping probes per diagram (default: 16384); independent of --resource-profile' -r -f
-complete -c merman-cli -n "__fish_merman_cli_using_subcommand batch" -l theme-preset -d 'Compiled diagram-theme preset; each value reports its catalog maturity, and explicit Mermaid configuration takes precedence' -r -f -a "editor-light\t'[alpha] Editor Light'
-editor-dark\t'[alpha] Editor Dark'
+complete -c merman-cli -n "__fish_merman_cli_using_subcommand batch" -l theme-preset -d 'Compiled diagram-theme preset; each value reports its catalog maturity, and explicit Mermaid configuration takes precedence' -r -f -a "editor\t'[alpha] Editor'
 one-dark\t'[alpha] One Dark'
-gruvbox-light\t'[alpha] Gruvbox Light'
-gruvbox-dark\t'[alpha] Gruvbox Dark'
-ayu-light\t'[alpha] Ayu Light'
-ayu-dark\t'[alpha] Ayu Dark'
+gruvbox\t'[alpha] Gruvbox'
+ayu\t'[alpha] Ayu'
 brutalist\t'[alpha] Brutalist'
 spotless\t'[alpha] Spotless'
 cyberpunk\t'[alpha] Cyberpunk'
-ghibli\t'[alpha] Ghibli'"
-complete -c merman-cli -n "__fish_merman_cli_using_subcommand batch" -l theme-file -d 'Versioned theme recipe JSON, or a selection containing exactly one `preset` or `spec`' -r -F
-complete -c merman-cli -n "__fish_merman_cli_using_subcommand batch" -l theme-design-file -d 'Shareable ThemeDesignV1 JSON materialized before rendering' -r -F
+ghibli\t'[alpha] Ghibli'
+editor-light\t'[alpha] Editor Light'
+editor-dark\t'[alpha] Editor Dark'
+gruvbox-light\t'[alpha] Gruvbox Light'
+gruvbox-dark\t'[alpha] Gruvbox Dark'
+ayu-light\t'[alpha] Ayu Light'
+ayu-dark\t'[alpha] Ayu Dark'"
+complete -c merman-cli -n "__fish_merman_cli_using_subcommand batch" -l theme-file -d 'Versioned theme recipe JSON, or an exact preset, recipe, or spec selection' -r -F
+complete -c merman-cli -n "__fish_merman_cli_using_subcommand batch" -l theme-design-file -d 'Shareable ThemeDesignV1 JSON materialized before rendering. Use a portable recipe through --theme-file with --theme-appearance' -r -F
+complete -c merman-cli -n "__fish_merman_cli_using_subcommand batch" -l theme-appearance -d 'Concrete Merman appearance for --theme-preset or --theme-file; omitted uses the selected document\'s default. Must agree with any selector already in the file' -r -f -a "light\t''
+dark\t''"
 complete -c merman-cli -n "__fish_merman_cli_using_subcommand batch" -l theme-portability -d 'Renderer portability requirement; require-portable rejects nonportable target output' -r -f -a "best-effort\t''
 require-portable\t''"
 complete -c merman-cli -n "__fish_merman_cli_using_subcommand batch" -l theme-report -d 'Write versioned theme results to a separate JSON file, including render failures' -r -F

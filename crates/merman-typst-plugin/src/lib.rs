@@ -474,6 +474,14 @@ mod tests {
             cyberpunk["available"] = false.into();
             cyberpunk["availability_reason_ids"] =
                 serde_json::json!(["theme-preset.resource-policy-rejected"]);
+            let reason_ids = cyberpunk["availability_reason_ids"].clone();
+            for appearance in cyberpunk["appearances"]
+                .as_array_mut()
+                .expect("Cyberpunk preset appearances")
+            {
+                appearance["available"] = false.into();
+                appearance["availability_reason_ids"] = reason_ids.clone();
+            }
             assert_eq!(catalog["presets"], expected);
             assert_eq!(catalog["supported_output_ids"], json!(["svg"]));
             let encoded_limit = catalog["resource_limits"]
@@ -678,6 +686,109 @@ mod tests {
         assert!(payload["data"]["result"]["spec"]["styles"]
             .as_array()
             .is_some_and(|styles| !styles.is_empty()));
+    }
+
+    #[cfg(feature = "svg")]
+    #[test]
+    fn theme_operation_json_dispatches_versioned_document_authoring() {
+        let recipe: Value = serde_json::from_slice(include_bytes!(
+            "../../merman-theme-authoring-fixtures/fixtures/authoring-v1/paired.recipe.json"
+        ))
+        .unwrap();
+        for (action, appearance) in [
+            ("inspect", None),
+            ("materialize", None),
+            ("materialize", Some("dark")),
+        ] {
+            let mut request = json!({
+                "schema_version": 1, "action": action, "recipe": recipe
+            });
+            if let Some(appearance) = appearance {
+                request["appearance"] = json!(appearance);
+            }
+            let input = serde_json::to_vec(&request).unwrap();
+            let payload: Value = serde_json::from_slice(&theme_operation_json(
+                b"materialize-theme-json",
+                &input,
+                br#"{"theme":{"preset":"editor","appearance":"dark"}}"#,
+            ))
+            .unwrap();
+            assert_success_envelope(&payload, "materialize-theme-json");
+            let expected: Value = serde_json::from_slice(
+                &merman_bindings_core::materialize_theme_design_json_with_resource_policy(
+                    &input,
+                    &merman_bindings_core::ThemeResourcePolicy::constrained(),
+                )
+                .unwrap(),
+            )
+            .unwrap();
+            assert_eq!(payload["data"]["result"], expected);
+            assert_eq!(
+                payload["data"]["result"]["supported_appearances"],
+                json!(["light", "dark"])
+            );
+            if action == "materialize" {
+                assert_eq!(
+                    payload["data"]["result"]["effective_appearance"],
+                    appearance.unwrap_or("light")
+                );
+            }
+        }
+        let payload: Value = serde_json::from_slice(&theme_operation_json(
+            b"export-theme-preset-json",
+            b"editor",
+            b"",
+        ))
+        .unwrap();
+        assert_success_envelope(&payload, "export-theme-preset-json");
+        assert_eq!(payload["data"]["result"]["schema_version"], 1);
+        assert!(payload["data"]["result"]["design"]["appearances"]["light"].is_object());
+        assert!(payload["data"]["result"]["design"]["appearances"]["dark"].is_object());
+    }
+
+    #[cfg(feature = "svg")]
+    #[test]
+    fn theme_operation_json_admits_raw_versioned_requests_under_its_ceiling() {
+        for request in [
+            r#"{"schema_version":1,"action":"inspect","appearance":"dark","recipe":{"schema_version":1,"kind":"design","design":{}}}"#,
+            r#"{"schema_version":1,"action":"materialize","appearance":null,"recipe":{"schema_version":1,"kind":"design","design":{}}}"#,
+            r#"{"schema_version":1,"action":"materialize","appearance":"auto","recipe":{"schema_version":1,"kind":"design","design":{}}}"#,
+            r#"{"schema_version":1,"action":"inspect","recipe":{"schema_version":1,"schema_\u0076ersion":1,"kind":"design","design":{}}}"#,
+            r#"{"schema_version":1,"action":"inspect","recipe":{"schema_version":1,"kind":"design","design":{"appearances":{"light":{},"dark":{"tokens":{},"tokens":{}}},"default_appearance":"light"}}}"#,
+            r#"{"schema_version":2,"action":"inspect","recipe":{"schema_version":1,"kind":"design","design":{}}}"#,
+        ] {
+            let payload: Value = serde_json::from_slice(&theme_operation_json(
+                b"materialize-theme-json",
+                request.as_bytes(),
+                b"",
+            ))
+            .unwrap();
+            assert_error_envelope(
+                &payload,
+                "materialize-theme-json",
+                "MERMAN_OPTIONS_JSON_ERROR",
+            );
+        }
+        let request = br#"{"schema_version":1,"action":"inspect","recipe":{"schema_version":1,"kind":"design","design":{}}}"#;
+        let options = json!({
+            "resources": {"limits": {"max_theme_encoded_bytes": request.len() - 1}}
+        });
+        let payload: Value = serde_json::from_slice(&theme_operation_json(
+            b"materialize-theme-json",
+            request,
+            &serde_json::to_vec(&options).unwrap(),
+        ))
+        .unwrap();
+        assert_error_envelope(
+            &payload,
+            "materialize-theme-json",
+            "MERMAN_RESOURCE_LIMIT_EXCEEDED",
+        );
+        assert_eq!(
+            payload["details"]["resource"]["limit_id"],
+            "max_theme_encoded_bytes"
+        );
+        assert_eq!(payload["details"]["resource"]["profile"], "constrained");
     }
 
     #[cfg(feature = "svg")]
