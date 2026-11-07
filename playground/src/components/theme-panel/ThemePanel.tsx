@@ -210,7 +210,8 @@ export function ThemePanel({ className, onClose }: { className?: string; onClose
       const raw = recipeForExchange();
       const origin = selectWorkspaceSnapshot(useAppStore.getState());
       const label = origin.themeRecipeLabel ?? {
-        name: selectionName, source: "imported" as const, derivedFrom: `preset:${origin.themePresetId}`,
+        name: selectionName, source: "imported" as const,
+        ...(origin.themePresetId !== null ? { derivedFrom: `preset:${origin.themePresetId}` } : {}),
       };
       setDraft({ raw, origin, label, preference: selection.preference === "default" && selectedPresetChoice?.pinned
         ? selectedPresetChoice.pinned : selection.preference });

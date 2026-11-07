@@ -13,7 +13,7 @@ export function ThemeAppearanceControl({ selection, onChange }: {
     <label htmlFor={id} className="block text-xs font-semibold">{t("appearanceMode.title")}</label>
     {supported.length > 1 ? <select id={id} className="h-8 w-full min-w-0 rounded-md border bg-background px-2 text-xs"
       value={preference} onChange={(event) => onChange(event.target.value as ThemeAppearancePreference)}>
-      {preference === "default" && <option value="default">{t("appearanceMode.documentDefault")}</option>}
+      <option value="default">{t("appearanceMode.documentDefault")}</option>
       <option value="follow">{t("appearanceMode.follow")}</option>
       {supported.map((mode) => <option key={mode} value={mode}>{t(`appearanceMode.${mode}`)}</option>)}
     </select> : <p id={id} className="text-xs text-muted-foreground">

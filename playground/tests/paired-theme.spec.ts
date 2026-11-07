@@ -1,5 +1,6 @@
 import { readFile } from "node:fs/promises";
 import { expect, test, type Locator, type Page } from "@playwright/test";
+import { strFromU8, unzipSync } from "fflate";
 import { decodeShareHash, encodeShareHash } from "../src/lib/share";
 import { DEFAULT_WORKSPACE_SNAPSHOT, type WorkspaceSnapshot } from "../src/lib/workspace-snapshot";
 import { monitorBrowserErrors, openWorkbenchTool, replaceEditorSource, replaceMonacoText, waitForPreviewSvg } from "./helpers/playground";
@@ -168,6 +169,83 @@ test("customization validates inactive branches, applies atomically and preserve
   expect(restored.code).toBe(later);
   expect(restored.diagramTheme).toBe("forest");
   expect(restored.themeAppearance).toBe("dark");
+});
+
+test("customizing a shared recipe without a display label does not invent preset provenance", async ({ page }) => {
+  const panel = await start(page, { ...workspace, themeRecipeLabel: undefined });
+  await panel.getByRole("button", { name: "Customize", exact: true }).click();
+  await validateDraft(panel);
+  await panel.getByRole("button", { name: "Apply changes", exact: true }).click();
+  const saved = await sharedWorkspace(page);
+  expect(saved.themeRecipeJson).toBe(reading);
+  expect(saved.themeAppearance).toBe("follow");
+  expect(saved.themeRecipeLabel).toEqual({ name: "Imported theme", source: "imported" });
+});
+
+test("a paired import retains references, rule order and explicit overrides through edit, default selection and exchange", async ({ page }) => {
+  const authored = JSON.parse(reading);
+  authored.design.tokens["independent.ink"] = { type: "paint", value: "#FFFFFF" };
+  authored.design.rules.push(
+    { family: "flowchart", target: "node", style: { stroke: { width: 5 }, effect: null } },
+    { family: "flowchart", target: "node", style: { stroke: { width: 1.25 } } },
+  );
+  authored.design.appearances.dark.rules = [
+    { family: "flowchart", target: "node-label", style: { fill: { ref: "independent.ink" } } },
+    { family: "flowchart", target: "node-label", style: { fill: "#FFFFFF", typography: { font_weight: 400 } } },
+  ];
+  const original = `${JSON.stringify(authored, null, 2)}\n`;
+  const panel = await start(page, { ...DEFAULT_WORKSPACE_SNAPSHOT, code: workspace.code });
+  await panel.getByLabel("Import JSON", { exact: true }).setInputFiles({
+    name: "Paired review.theme.json", mimeType: "application/json", buffer: Buffer.from(original),
+  });
+  await panel.getByRole("button", { name: "Use imported theme", exact: true }).click();
+  const control = panel.getByTestId("theme-appearance-control");
+  await control.getByRole("combobox").selectOption("dark");
+  await panel.getByRole("button", { name: "Customize", exact: true }).click();
+  authored.design.appearances.light.tokens.accent.value = "#B00020";
+  const edited = `${JSON.stringify(authored, null, 2)}\n`;
+  await replaceDraft(page, edited);
+  await validateDraft(panel);
+  await panel.getByRole("button", { name: "Apply changes", exact: true }).click();
+  expect((await sharedWorkspace(page)).themeAppearance).toBe("dark");
+  await expect(control.getByRole("combobox").locator('option[value="default"]')).toHaveCount(1);
+  await control.getByRole("combobox").selectOption("default");
+  await expect(control).toHaveAttribute("data-effective-appearance", "light");
+  const saved = await sharedWorkspace(page);
+  expect(saved.themeAppearance ?? "default").toBe("default");
+  expect(saved.themeRecipeJson).toBe(edited);
+  await expect.poll(() => canvas(page)).toBe("#F6F7F9");
+  await page.getByTestId("project-use-launcher").click();
+  const project = page.getByTestId("project-use-dialog");
+  for (const scope of ["Reproduce current diagram", "Theme only"]) {
+    await project.getByRole("radio", { name: new RegExp(`^${scope}`) }).check();
+    for (const target of ["Rust", "CLI", "Web"]) {
+      await project.getByRole("tab", { name: target, exact: true }).click();
+      const pending = page.waitForEvent("download");
+      await project.getByRole("button", { name: "Download all files (.zip)", exact: true }).click();
+      const entries = unzipSync(await readFile((await (await pending).path())!));
+      const files = Object.fromEntries(Object.entries(entries).map(([name, bytes]) => [name, strFromU8(bytes)]));
+      expect(files["theme.json"]).toBe(edited);
+      expect(files["options.json"]).toContain(`"recipe":${edited}`);
+      expect(JSON.parse(files["options.json"]).theme.appearance).toBe("light");
+      expect(JSON.parse(files["handoff.json"]).theme.appearance_preference).toBe("default");
+      if (target === "Rust") expect(files["src/main.rs"]).toContain("compile_document(recipe, Some(ThemeAppearance::Light))");
+      if (target === "CLI") expect(files["render-command.txt"]).toContain("--theme-appearance light");
+    }
+  }
+  await page.keyboard.press("Escape");
+  await panel.getByTestId("theme-advanced").locator("summary").first().click();
+  await panel.getByRole("button", { name: "Copy JSON", exact: true }).click();
+  expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(edited);
+  const download = page.waitForEvent("download");
+  await panel.getByRole("button", { name: "Download JSON", exact: true }).click();
+  const exported = await readFile((await (await download).path())!, "utf8");
+  expect(exported).toBe(edited);
+  await panel.getByLabel("Import JSON", { exact: true }).setInputFiles({
+    name: "Round trip.theme.json", mimeType: "application/json", buffer: Buffer.from(exported),
+  });
+  await panel.getByRole("button", { name: "Use imported theme", exact: true }).click();
+  expect((await sharedWorkspace(page)).themeRecipeJson).toBe(edited);
 });
 
 test("Reading previews the same five sources in both appearances and downloads the complete editable recipe", async ({ page }) => {
