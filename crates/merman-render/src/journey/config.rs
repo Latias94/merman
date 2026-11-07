@@ -27,6 +27,19 @@ pub(crate) struct JourneyConfigView<'a> {
     journey_config: &'a Value,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum JourneyTextPlacement {
+    Fo,
+    Old,
+    Tspan,
+}
+
+impl JourneyTextPlacement {
+    pub(crate) const fn has_inherited_label_typography(self) -> bool {
+        matches!(self, Self::Fo | Self::Old)
+    }
+}
+
 impl<'a> JourneyConfigView<'a> {
     pub(crate) fn new(effective_config: &'a Value) -> Self {
         Self {
@@ -76,13 +89,29 @@ impl<'a> JourneyConfigView<'a> {
 
     pub(crate) fn render_settings(&self) -> JourneyRenderSettings {
         JourneyRenderSettings {
+            text_placement: self.text_placement(),
             task_text_style: self.task_text_style(),
+            section_colours: if self.journey_config.get("sectionColours").is_none() {
+                vec!["#fff".to_string()]
+            } else {
+                config_string_vec(self.journey_config, &["sectionColours"])
+            },
             title_font_size: config_string(self.journey_config, &["titleFontSize"])
                 .unwrap_or_else(|| DEFAULT_TITLE_FONT_SIZE.to_string()),
             title_font_family: config_string(self.journey_config, &["titleFontFamily"])
                 .unwrap_or_else(|| DEFAULT_TITLE_FONT_FAMILY.to_string()),
             title_color: config_string(self.journey_config, &["titleColor"])
                 .unwrap_or_else(|| DEFAULT_TITLE_COLOR.to_string()),
+        }
+    }
+
+    fn text_placement(&self) -> JourneyTextPlacement {
+        // Mermaid's schema defaults to `fo`; svgDraw's selector uses exact string equality.
+        match self.journey_config.get("textPlacement") {
+            None => JourneyTextPlacement::Fo,
+            Some(Value::String(value)) if value == "fo" => JourneyTextPlacement::Fo,
+            Some(Value::String(value)) if value == "old" => JourneyTextPlacement::Old,
+            Some(_) => JourneyTextPlacement::Tspan,
         }
     }
 
@@ -156,7 +185,9 @@ pub(crate) struct JourneyLayoutSettings {
 
 #[derive(Debug, Clone)]
 pub(crate) struct JourneyRenderSettings {
+    pub(crate) text_placement: JourneyTextPlacement,
     pub(crate) task_text_style: TextStyle,
+    pub(crate) section_colours: Vec<String>,
     pub(crate) title_font_size: String,
     pub(crate) title_font_family: String,
     pub(crate) title_color: String,
@@ -170,6 +201,34 @@ pub(crate) const fn default_use_max_width() -> bool {
 mod tests {
     use super::*;
     use serde_json::json;
+
+    #[test]
+    fn journey_text_placement_matches_the_upstream_selector() {
+        assert_eq!(
+            JourneyConfigView::new(&json!({}))
+                .render_settings()
+                .text_placement,
+            JourneyTextPlacement::Fo
+        );
+        for (value, expected) in [
+            (json!("fo"), JourneyTextPlacement::Fo),
+            (json!("old"), JourneyTextPlacement::Old),
+            (json!("tspan"), JourneyTextPlacement::Tspan),
+            (json!("FO"), JourneyTextPlacement::Tspan),
+            (json!(""), JourneyTextPlacement::Tspan),
+            (Value::Null, JourneyTextPlacement::Tspan),
+            (json!(1), JourneyTextPlacement::Tspan),
+        ] {
+            let config = json!({"journey": {"textPlacement": value}});
+            assert_eq!(
+                JourneyConfigView::new(&config)
+                    .render_settings()
+                    .text_placement,
+                expected,
+                "{config}"
+            );
+        }
+    }
 
     #[test]
     fn journey_layout_settings_preserve_defaults() {

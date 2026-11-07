@@ -15,7 +15,6 @@ const DEFAULT_TITLE_TOP_MARGIN: f64 = 25.0;
 
 pub(crate) struct RequirementConfigView<'a> {
     effective_config: &'a Value,
-    requirement_config: &'a Value,
     state_config: &'a Value,
 }
 
@@ -23,7 +22,6 @@ impl<'a> RequirementConfigView<'a> {
     pub(crate) fn new(effective_config: &'a Value) -> Self {
         Self {
             effective_config,
-            requirement_config: effective_config.get("requirement").unwrap_or(&Value::Null),
             state_config: effective_config.get("state").unwrap_or(&Value::Null),
         }
     }
@@ -66,8 +64,7 @@ impl<'a> RequirementConfigView<'a> {
                 == Some("elk"),
             look: config_diagram_look(self.effective_config),
             viewport_padding: DEFAULT_VIEWPORT_PADDING,
-            use_max_width: self
-                .requirement_bool("useMaxWidth")
+            use_max_width: config_bool(self.state_config, &["useMaxWidth"])
                 .unwrap_or(DEFAULT_USE_MAX_WIDTH),
             hand_drawn_seed: self
                 .effective_config
@@ -93,8 +90,7 @@ impl<'a> RequirementConfigView<'a> {
                 == Some("elk"),
             look: config_diagram_look(self.effective_config),
             viewport_padding: DEFAULT_VIEWPORT_PADDING,
-            use_max_width: self
-                .requirement_bool("useMaxWidth")
+            use_max_width: config_bool(self.state_config, &["useMaxWidth"])
                 .unwrap_or(DEFAULT_USE_MAX_WIDTH),
             hand_drawn_seed: self
                 .effective_config
@@ -132,10 +128,6 @@ impl<'a> RequirementConfigView<'a> {
         .flatten()
         .find(|value| *value != 0.0)
         .unwrap_or(default)
-    }
-
-    fn requirement_bool(&self, key: &str) -> Option<bool> {
-        config_bool(self.requirement_config, &[key])
     }
 
     fn font_family(&self) -> String {
@@ -312,7 +304,7 @@ mod tests {
             "handDrawnSeed": 7,
             "fontFamily": "Inter, sans-serif",
             "fontSize": "20px",
-            "requirement": {
+            "state": {
                 "useMaxWidth": false
             }
         });

@@ -32,6 +32,11 @@ Owners: [Architecture layout](../../crates/merman-render/src/architecture.rs),
 
 ## C4
 
+Quoted macro values use ECMAScript whitespace trimming for semantics while editor facts retain
+their authored ranges. Physical newlines are admitted inside quoted tokens; formatting an entire
+macro across lines outside such a token remains invalid. Explicit source line breaks are resolved
+before wrapping; decoded final rows do not reinterpret literal entity-encoded `<br>` text.
+
 Mermaid's screen-derived width limit needs an explicit host input in a headless operation.
 `LayoutOptions::screen_available_width` projects browser `screen.availWidth`; when absent, C4 uses
 the operation's container width. Text wrapping can consequently differ between hosts. Relationship
@@ -170,6 +175,61 @@ structure-only boundary declared in [compare facts](../../crates/xtask/src/cmd/c
 Rust `roughr` paths are not coordinate-identical to JavaScript RoughJS. This does not downgrade
 classic SVG or grant a family-wide geometry exemption. Venn layout derives from the admitted
 Venn optimization/intersection source, rather than ad hoc circle placement.
+
+## Journey
+
+Fractional scores are canonical values and determine face position and expression. Invalid scores
+use the existing explicit invalid-score state, including during canonical serialization of direct
+non-finite model values. `journey.textPlacement` selects `fo`, `old`, or SVG `tspan` paths.
+Legend and inherited label typography are separate from the configured task font used by tspan
+labels; theme evidence follows the visible selected path.
+
+Owners: [Journey model](../../crates/merman-model/src/families/journey.rs),
+[layout](../../crates/merman-render/src/journey.rs), and
+[SVG tests](../../crates/merman-render/tests/journey_svg_test.rs).
+
+## Requirement and Block
+
+Requirement's root width switch follows the selected renderer's `state.useMaxWidth` owner.
+Palette slots follow the border palette length; background colors wrap independently. The scalar
+`THEME_COLOR_LIMIT` does not remove rules for slots stamped on Requirement nodes.
+Palette CSS streams through the operation's bounded SVG writer, so repeated long color values
+cannot expand into an unchecked intermediate stylesheet before byte admission.
+
+Block's spaced class list `class A, B hot` retains the selected upstream object behavior: A is
+classified, while an existing B already attached to the hierarchy remains unclassified. The raw
+space-prefixed B lookup creates a replacement database binding. The flat object model retains the
+original hierarchy reference and the replacement separately; compatibility `blocksFlat` projects
+the latest database bindings, while drawing follows attached objects.
+
+Owners: [Requirement config](../../crates/merman-render/src/requirement/config.rs),
+[palette binding](../../crates/merman-render/src/requirement/css_binding.rs),
+[Block model](../../crates/merman-model/src/families/block.rs), and
+[Block SVG tests](../../crates/merman-render/tests/block_svg_test.rs).
+
+## Sankey
+
+Native string-keyed palette lookup deliberately avoids inherited JavaScript object properties.
+The selected upstream renderer can emit invalid `[object Object]` paint for an allowed `__proto__`
+node ID; Merman retains a valid palette color and does not reproduce that artifact. Visible finite
+value labels use ECMAScript number formatting after the source-owned rounding step.
+
+Owners: [palette](../../crates/merman-render/src/sankey/theme.rs) and
+[SVG tests](../../crates/merman-render/tests/sankey_svg_test.rs).
+
+## Timeline
+
+Section suffixes are parsed as remaining source tokens; a valid event still attaches to the
+previous task when the section changes. Accessibility punctuation is retained in the model.
+The selected upstream family exposes those fields through its common DB without direct SVG
+accessibility getters, so model parity does not imply matching upstream SVG metadata.
+
+The selected lexer also skips a single character immediately before `%%` at certain fresh
+statement boundaries, such as `x%% hidden`. Merman currently retains that text as a task. This
+explicit compatibility difference does not authorize stripping percent sequences inside events.
+
+Owners: [Timeline parser](../../crates/merman-core/src/diagrams/timeline.rs) and
+[SVG tests](../../crates/merman-render/tests/timeline_svg_test.rs).
 
 Owners: [Ishikawa SVG tests](../../crates/merman-render/tests/ishikawa_svg_test.rs),
 [Venn layout](../../crates/merman-render/src/venn.rs), and

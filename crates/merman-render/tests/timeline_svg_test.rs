@@ -275,6 +275,82 @@ fn try_render_timeline_svg_with_resource_policy(
 }
 
 #[test]
+fn timeline_svg_renders_section_suffix_events_like_following_lines() {
+    for direction in ["LR", "TD"] {
+        for (section_separator, event_separator) in [("", " "), ("\n", " "), ("", "\n")] {
+            let source = format!(
+                "timeline {direction}\nsection A\nP : Seed\nsection B{section_separator}:{event_separator}Extra\n"
+            );
+            let svg = render_timeline_svg_from_text(&source);
+            let document = roxmltree::Document::parse(&svg).expect("valid Timeline SVG");
+            let tasks = document
+                .descendants()
+                .filter(|node| {
+                    node.has_tag_name("g") && node.attribute("class") == Some("taskWrapper")
+                })
+                .count();
+            let events = document
+                .descendants()
+                .filter(|node| {
+                    node.has_tag_name("g") && node.attribute("class") == Some("eventWrapper")
+                })
+                .map(|event| {
+                    event
+                        .descendants()
+                        .filter(|node| node.is_text())
+                        .filter_map(|node| node.text())
+                        .collect::<String>()
+                })
+                .collect::<Vec<_>>();
+
+            assert_eq!(tasks, 1, "{source}");
+            assert_eq!(events, ["Seed", "Extra"], "{source}");
+        }
+    }
+}
+
+#[test]
+fn timeline_svg_accepts_complete_single_line_accessibility_values() {
+    let source = concat!(
+        "timeline\n",
+        "accTitle: Release; ready #stable\n",
+        "accDescr: Ship; fully #accessible\n",
+        "section A\nP : Seed\n",
+    );
+    let parsed = MermaidEngine::new()
+        .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
+        .expect("Timeline with a11y punctuation parses")
+        .expect("Timeline is detected");
+    let merman_model::presentation::RenderSemanticModel::Timeline(model) = parsed.model() else {
+        panic!("expected Timeline model");
+    };
+    assert_eq!(model.acc_title.as_deref(), Some("Release; ready #stable"));
+    assert_eq!(model.acc_descr.as_deref(), Some("Ship; fully #accessible"));
+    let compatibility = parsed
+        .compatibility_json()
+        .expect("Timeline compatibility JSON");
+    assert_eq!(compatibility["accTitle"], "Release; ready #stable");
+    assert_eq!(compatibility["accDescr"], "Ship; fully #accessible");
+
+    let svg = render_timeline_svg_from_text(source);
+    let document = roxmltree::Document::parse(&svg).expect("valid Timeline SVG");
+    assert_eq!(
+        document
+            .descendants()
+            .filter(|node| node.has_tag_name("g") && node.attribute("class") == Some("taskWrapper"))
+            .count(),
+        1
+    );
+    assert_eq!(
+        document
+            .descendants()
+            .filter(|node| node.has_tag_name("g") && node.attribute("class") == Some("eventWrapper"))
+            .count(),
+        1
+    );
+}
+
+#[test]
 fn timeline_title_fill_accounts_visibility_and_property_local_source_ownership() {
     let text_color = r##"{"textColor":"#abcdef"}"##;
     let title_color = r##"{"titleColor":"#abcdef"}"##;

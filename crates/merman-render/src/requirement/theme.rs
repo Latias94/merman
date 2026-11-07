@@ -691,8 +691,7 @@ fn requirement_paint_owners(
             .get(id)
             .and_then(|index| css.palette_slot(*index));
         owners[*node_index] = (
-            fill || (background_palette
-                && slot.is_some_and(|slot| css.background_colors.get(slot).is_some())),
+            fill || (background_palette && slot.is_some() && !css.background_colors.is_empty()),
             stroke || (border_palette && slot.is_some()),
         );
     }

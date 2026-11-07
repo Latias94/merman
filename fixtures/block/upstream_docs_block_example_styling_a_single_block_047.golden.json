@@ -128,7 +128,9 @@
         "end": "id2",
         "id": "1-id1-id2",
         "label": "",
+        "pattern": "solid",
         "start": "id1",
+        "thickness": "normal",
         "type": "edge"
       }
     ],

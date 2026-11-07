@@ -12,60 +12,72 @@ fn requirement_color_id(border_colors: &[String], color_index: usize) -> Option<
     (!border_colors.is_empty()).then(|| format!("color-{}", color_index % border_colors.len()))
 }
 
-fn requirement_color_css<I>(
+fn write_requirement_color_css<I>(
+    out: &mut impl SvgOutput,
     diagram_id: I,
     data_look: &str,
     border_colors: &[String],
     background_colors: &[String],
-    theme_color_limit: usize,
-) -> String
+) -> Result<()>
 where
     I: SvgDiagramIdValue,
 {
-    let mut out = String::new();
     let diagram_id = crate::svg::escape_css_identifier(diagram_id.semantic_value());
-    for index in 0..theme_color_limit {
-        let Some(border_color) = border_colors.get(index) else {
-            continue;
-        };
-        let fill = background_colors
-            .get(index)
-            .map(|color| format!("fill:{color};"))
-            .unwrap_or_default();
-        let _ = write!(
-            &mut out,
-            r#"#{} [data-look="{}"][data-color-id="color-{}"].node path{{stroke:{};{}}}#{} [data-look="{}"][data-color-id="color-{}"].node rect{{stroke:{};{}}}"#,
-            diagram_id.as_ref(),
-            escape_xml(data_look),
-            index,
-            border_color,
-            fill,
-            diagram_id.as_ref(),
-            escape_xml(data_look),
-            index,
-            border_color,
-            fill,
-        );
+    let data_look = escape_xml(data_look);
+    for (index, border_color) in border_colors.iter().enumerate() {
+        out.checkpoint()?;
+        let background =
+            background_colors.get(index.checked_rem(background_colors.len()).unwrap_or(0));
+        for shape in ["path", "rect"] {
+            let _ = write!(
+                out,
+                r#"#{} [data-look="{}"][data-color-id="color-{}"].node {}{{stroke:{};"#,
+                diagram_id.as_ref(),
+                data_look,
+                index,
+                shape,
+                border_color,
+            );
+            out.checkpoint()?;
+            if let Some(background) = background {
+                let _ = write!(out, "fill:{background};");
+            }
+            out.push('}');
+            out.checkpoint()?;
+        }
     }
-    out
+    Ok(())
 }
 
-fn insert_requirement_color_css<I>(css: &mut String, diagram_id: I, color_css: &str)
+#[cfg(test)]
+fn requirement_color_css<I: SvgDiagramIdValue>(
+    diagram_id: I,
+    data_look: &str,
+    border_colors: &[String],
+    background_colors: &[String],
+) -> String {
+    let mut css = String::new();
+    write_requirement_color_css(
+        &mut css,
+        diagram_id,
+        data_look,
+        border_colors,
+        background_colors,
+    )
+    .expect("unbounded test string output");
+    css
+}
+
+fn requirement_color_css_insertion_point<I>(css: &str, diagram_id: I) -> usize
 where
     I: SvgDiagramIdValue,
 {
-    if color_css.is_empty() {
-        return;
-    }
-
     let escaped_id = crate::svg::escape_css_identifier(diagram_id.semantic_value());
     let family_rule = format!("#{escaped_id} marker");
     let root_rule = format!("#{escaped_id} :root");
-    let insertion_point = css
-        .find(&family_rule)
+    css.find(&family_rule)
         .or_else(|| css.find(&root_rule))
-        .unwrap_or(css.len());
-    css.insert_str(insertion_point, color_css);
+        .unwrap_or(css.len())
 }
 
 pub(crate) fn render_requirement_diagram_svg_model(
@@ -211,7 +223,6 @@ pub(crate) fn render_requirement_diagram_svg_model(
     let binding = paint_theme.css();
     let border_colors = &binding.border_colors;
     let background_colors = &binding.background_colors;
-    let theme_color_limit = binding.theme_color_limit;
     let color_indices = requirement_color_indices(model);
     let has_diagram_id = !diagram_id.semantic_str().is_empty();
 
@@ -500,18 +511,24 @@ pub(crate) fn render_requirement_diagram_svg_model(
     let mut text_paint_receipt = paint_theme
         .text_paint()
         .begin_terminal_receipt(expected_text_terminals, options.work_meter())?;
-    let mut css_emission =
+    let css_emission =
         super::css::write_requirement_css(diagram_id, binding, text_paint_receipt.as_mut());
-    let color_css = requirement_color_css(
-        diagram_id,
-        look,
-        border_colors,
-        background_colors,
-        theme_color_limit,
-    );
-    insert_requirement_color_css(&mut css_emission.css, diagram_id, &color_css);
     out.push_str("<style>");
-    super::super::output::XmlTextOutput::new(&mut out).push_str(&css_emission.css);
+    {
+        let split = requirement_color_css_insertion_point(&css_emission.css, diagram_id);
+        let mut css_out = super::super::output::XmlTextOutput::new(&mut out);
+        css_out.push_str(&css_emission.css[..split]);
+        css_out.checkpoint()?;
+        write_requirement_color_css(
+            &mut css_out,
+            diagram_id,
+            look,
+            border_colors,
+            background_colors,
+        )?;
+        css_out.push_str(&css_emission.css[split..]);
+        css_out.checkpoint()?;
+    }
     out.push_str("</style>");
     if let Some(receipt) = relation_receipt.as_mut() {
         out.checkpoint()?;
@@ -1292,6 +1309,7 @@ fn push_requirement_shadow_defs(out: &mut impl SvgOutput, diagram_id: &str, floo
 
 #[cfg(test)]
 mod tests {
+    use super::super::super::output::{BoundedSvgOutput, SvgOutput};
     use super::super::*;
     use crate::DiagramFamilyId;
     use crate::environment::{RenderEnvironment, TextMeasurementPhase};
@@ -1305,6 +1323,32 @@ mod tests {
     };
     use std::cell::Cell;
     use std::collections::BTreeMap;
+
+    #[test]
+    fn palette_css_rejects_repeated_color_expansion_before_retaining_it() {
+        let borders = vec!["#123456".to_string(); 4096];
+        let backgrounds = vec![format!("rgb({}1 2 3)", " ".repeat(64 * 1024))];
+        let policy = RenderResourcePolicy::unbounded_for_trusted_input()
+            .with_limit(ResourceLimitId::MaxSvgBytes, 1024)
+            .unwrap();
+        let meter = crate::resources::OperationWorkMeter::new(policy);
+        let mut out = BoundedSvgOutput::new(&meter);
+        let error = super::write_requirement_color_css(
+            &mut super::super::super::output::XmlTextOutput::new(&mut out),
+            "bounded-palette",
+            "classic",
+            &borders,
+            &backgrounds,
+        )
+        .expect_err("the expanded palette must fail before its first oversized color is retained");
+        assert!(out.len() <= 1024);
+        let crate::Error::ResourceLimitExceeded(limit) = error else {
+            panic!("expected SVG byte rejection, got {error}");
+        };
+        assert_eq!(limit.limit, ResourceLimitId::MaxSvgBytes.as_str());
+        assert_eq!(limit.max, 1024);
+        assert!(limit.actual > limit.max);
+    }
 
     fn report_call_count(session: &crate::environment::RenderSession) -> u64 {
         session
@@ -1458,7 +1502,7 @@ mod tests {
             Some("color-2")
         );
 
-        let css = super::requirement_color_css("requirement", "classic", &borders, &backgrounds, 3);
+        let css = super::requirement_color_css("requirement", "classic", &borders, &backgrounds);
         assert!(css.contains(
             r##"#requirement [data-look="classic"][data-color-id="color-0"].node path{stroke:#e879f9;fill:#fdf4ff;}"##
         ));
@@ -1466,7 +1510,7 @@ mod tests {
             r##"#requirement [data-look="classic"][data-color-id="color-1"].node rect{stroke:#2dd4bf;fill:#f0fdfa;}"##
         ));
 
-        let dark_css = super::requirement_color_css("requirement", "classic", &borders, &[], 3);
+        let dark_css = super::requirement_color_css("requirement", "classic", &borders, &[]);
         assert!(dark_css.contains(
             r##"#requirement [data-look="classic"][data-color-id="color-0"].node path{stroke:#e879f9;}"##
         ));
@@ -1493,7 +1537,7 @@ mod tests {
         )
         .unwrap();
         let binding = plan.css();
-        assert_eq!(binding.theme_color_limit, 3);
+        assert_eq!(binding.palette_slot(5), Some(2));
 
         let mut merged =
             super::super::css::write_requirement_css("requirement-colors", binding, None).css;
@@ -1502,9 +1546,9 @@ mod tests {
             "classic",
             &binding.border_colors,
             &binding.background_colors,
-            3,
         );
-        super::insert_requirement_color_css(&mut merged, "requirement-colors", &generated);
+        let point = super::requirement_color_css_insertion_point(&merged, "requirement-colors");
+        merged.insert_str(point, &generated);
         let colors = merged.find("[data-color-id=").unwrap();
         let family = merged.find("#requirement-colors marker").unwrap();
         let root = merged.find("#requirement-colors :root").unwrap();
@@ -2258,7 +2302,7 @@ mod tests {
 
         let svg = render_requirement_for_test(
             &empty_requirement_model(),
-            &serde_json::json!({"requirement": {"useMaxWidth": false}}),
+            &serde_json::json!({"state": {"useMaxWidth": false}}),
             None,
             &measurer,
             &options,

@@ -342,7 +342,7 @@ fn push_task(
     document.push_wrapped_prefixed_line_with("  - ", "    ", SUMMARY_WRAP_WIDTH, |line| {
         push_wrapped_field(line, "", "task", &task.task)?;
         line.push_str(" score=")?;
-        if task.score_is_nan {
+        if task.score_is_nan || !task.score.is_finite() {
             line.push_str("NaN")?;
         } else {
             line.write_fmt(format_args!("{}", task.score))?;
@@ -397,7 +397,7 @@ mod tests {
 
     fn actor_tasks() -> Vec<JourneyTask> {
         vec![JourneyTask {
-            score: 0,
+            score: 0.0,
             score_is_nan: false,
             people: vec!["Bob".to_string(), "Alice".to_string(), "Bob".to_string()],
             section: String::new(),

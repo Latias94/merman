@@ -9,7 +9,7 @@ fn journey_render_model_renders_actors_sections_and_scores() {
         sections: vec!["Discovery".to_string()],
         tasks: vec![
             JourneyTask {
-                score: 5,
+                score: 5.0,
                 score_is_nan: false,
                 people: vec!["Alice".to_string(), "Bob".to_string()],
                 section: "Discovery".to_string(),
@@ -18,7 +18,7 @@ fn journey_render_model_renders_actors_sections_and_scores() {
                 task: "Research".to_string(),
             },
             JourneyTask {
-                score: 3,
+                score: 3.0,
                 score_is_nan: false,
                 people: vec!["Bob".to_string()],
                 section: "Discovery".to_string(),
@@ -62,4 +62,35 @@ fn journey_structured_text_framing_distinguishes_actor_list_items() {
         render(RenderSemanticModel::Journey(two_actors)),
         "one authored actor containing a comma must differ from two actor values",
     );
+}
+
+#[test]
+fn journey_direct_scores_preserve_fractions_integer_text_and_nan_controls() {
+    for (score, score_is_nan, expected) in [
+        (3.5, false, "3.5"),
+        (2.75, false, "2.75"),
+        (4.0, false, "4"),
+        (4.0, true, "NaN"),
+        (f64::NAN, false, "NaN"),
+        (f64::INFINITY, false, "NaN"),
+        (f64::NEG_INFINITY, false, "NaN"),
+    ] {
+        let model = JourneyDiagramModel {
+            tasks: vec![JourneyTask {
+                score,
+                score_is_nan,
+                people: Vec::new(),
+                section: String::new(),
+                section_index: None,
+                task_type: String::new(),
+                task: "Pay".to_string(),
+            }],
+            ..Default::default()
+        };
+        let rendered = render(RenderSemanticModel::Journey(model));
+        assert!(
+            rendered.contains(&format!("score={expected}")),
+            "{rendered}"
+        );
+    }
 }

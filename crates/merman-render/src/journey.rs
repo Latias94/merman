@@ -14,7 +14,7 @@ mod text_paint;
 mod theme;
 mod typography;
 
-pub(crate) use config::default_use_max_width;
+pub(crate) use config::{JourneyTextPlacement, default_use_max_width};
 pub(crate) use css_binding::JourneyCssBinding;
 pub(crate) use text_paint::{JourneyTextPaintPlan, JourneyTextPaintReceipt, JourneyTextPaintRole};
 pub(crate) use theme::{JourneyTaskTheme, JourneyTaskThemeReceipt};
@@ -275,19 +275,17 @@ pub(crate) fn layout_journey_diagram_typed_with_resolved_typography(
 
         let center_x = x + cfg.cell_width / 2.0;
         let max_height = JOURNEY_FACE_BASE_Y_PX + 5.0 * JOURNEY_FACE_SCORE_STEP_Y_PX;
-        let face_cy = if task.score_is_nan {
+        let score_is_nan = task.score_is_nan || !task.score.is_finite();
+        let face_cy = if score_is_nan {
             None
         } else {
-            Some(
-                JOURNEY_FACE_BASE_Y_PX
-                    + (5_i64.saturating_sub(task.score) as f64) * JOURNEY_FACE_SCORE_STEP_Y_PX,
-            )
+            Some(JOURNEY_FACE_BASE_Y_PX + (5.0 - task.score) * JOURNEY_FACE_SCORE_STEP_Y_PX)
         };
-        let mouth = if task.score_is_nan {
+        let mouth = if score_is_nan {
             JourneyMouthKind::Ambivalent
-        } else if task.score > 3 {
+        } else if task.score > 3.0 {
             JourneyMouthKind::Smile
-        } else if task.score < 3 {
+        } else if task.score < 3.0 {
             JourneyMouthKind::Sad
         } else {
             JourneyMouthKind::Ambivalent
@@ -394,9 +392,61 @@ pub(crate) fn layout_journey_diagram_typed_with_resolved_typography(
 
 #[cfg(test)]
 mod tests {
+    use crate::model::JourneyMouthKind;
     use crate::text::{DeterministicTextMeasurer, TextMeasurer, TextMetrics, TextStyle};
-    use merman_model::families::journey::JourneyDiagramModel;
+    use merman_model::families::journey::{JourneyDiagramModel, JourneyTask};
     use serde_json::json;
+
+    #[test]
+    fn journey_direct_scores_preserve_fractional_geometry_and_mouth_thresholds() {
+        for (score, score_is_nan, expected_y, expected_mouth) in [
+            (3.5, false, Some(345.0), JourneyMouthKind::Smile),
+            (3.01, false, Some(359.7), JourneyMouthKind::Smile),
+            (2.75, false, Some(367.5), JourneyMouthKind::Sad),
+            (3.0, false, Some(360.0), JourneyMouthKind::Ambivalent),
+            (4.0, false, Some(330.0), JourneyMouthKind::Smile),
+            (0.0, false, Some(450.0), JourneyMouthKind::Sad),
+            (4.0, true, None, JourneyMouthKind::Ambivalent),
+            (f64::NAN, false, None, JourneyMouthKind::Ambivalent),
+            (f64::INFINITY, false, None, JourneyMouthKind::Ambivalent),
+            (f64::NEG_INFINITY, false, None, JourneyMouthKind::Ambivalent),
+        ] {
+            let model = JourneyDiagramModel {
+                tasks: vec![JourneyTask {
+                    score,
+                    score_is_nan,
+                    people: Vec::new(),
+                    section: String::new(),
+                    section_index: None,
+                    task_type: String::new(),
+                    task: "Pay".to_string(),
+                }],
+                ..Default::default()
+            };
+            let layout = super::layout_journey_diagram_typed(
+                &model,
+                &json!({}),
+                &DeterministicTextMeasurer::default(),
+            )
+            .unwrap();
+            let task = &layout.tasks[0];
+            if score.is_nan() {
+                assert!(task.score.is_nan());
+            } else {
+                assert_eq!(task.score, score);
+            }
+            match (task.face_cy, expected_y) {
+                (Some(actual), Some(expected)) => assert!((actual - expected).abs() < 1e-9),
+                (None, None) => {}
+                other => panic!("unexpected face geometry for score {score:?}: {other:?}"),
+            }
+            assert_eq!(
+                std::mem::discriminant(&task.mouth),
+                std::mem::discriminant(&expected_mouth),
+                "score {score:?}"
+            );
+        }
+    }
 
     #[test]
     fn journey_layout_carries_use_max_width_config() {

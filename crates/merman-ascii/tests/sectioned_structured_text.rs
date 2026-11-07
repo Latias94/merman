@@ -20,7 +20,7 @@ fn timeline_task(section: &str, section_index: Option<usize>, task: &str) -> Tim
 
 fn journey_task(section: &str, section_index: Option<usize>, task: &str) -> JourneyTask {
     JourneyTask {
-        score: 3,
+        score: 3.0,
         score_is_nan: false,
         people: Vec::new(),
         section: section.to_string(),

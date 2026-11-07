@@ -2948,7 +2948,7 @@ Drive: bad-score: Dad, Mum
             assert_eq!(model.sections.as_slice(), ["Shopping"]);
             assert_eq!(model.actors.as_slice(), ["Dad", "Mum"]);
             assert_eq!(model.tasks.len(), 2);
-            assert_eq!(model.tasks[0].score, 5);
+            assert_eq!(model.tasks[0].score, 5.0);
             assert!(!model.tasks[0].score_is_nan);
             assert_eq!(model.tasks[0].people.as_slice(), ["Dad"]);
             assert_eq!(model.tasks[1].task, "Drive");

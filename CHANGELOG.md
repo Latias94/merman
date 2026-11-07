@@ -9,9 +9,15 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
 ### Changed
 
 - Sequence layout exports include control frames and section dividers, activation rectangles, participant-group boxes, and positioned titles for native painters. SVG consumes the same prepared geometry. Rust consumers of `SequenceBlockLayout` and `block_layouts_by_id` must migrate to `SequenceDiagramLayout.frames` and `sections`; direct layout literals must initialize the new drawing fields. See the [host integration guide](docs/rendering/RUST_EMBEDDING.md#consume-sequence-drawing-geometry-in-development-builds).
+- Journey task and layout scores use `f64` to preserve fractions; direct Rust literals use values such as `4.0`. Block edge literals initialize the new thickness and pattern fields or use their defaults. See the [Rust migration](docs/migrations/mermaid-12-3.md#rust-source-changes).
 
 ### Fixed
 
+- C4 trims quoted argument values while preserving source ranges, accepts physical newlines inside quoted tokens, and retains explicit label and description line breaks.
+- Journey preserves fractional satisfaction scores and accessibility punctuation, and honors `journey.textPlacement` for SVG text, legacy text and HTML labels. Timeline preserves accessibility punctuation and parses events after section names without discarding invalid suffixes.
+- Kanban accepts multiline quoted labels, retains literal `%%` inside card labels, and omits numeric zero tickets while preserving string tickets.
+- Requirement preserves quoted delimiters and multiline values, follows `state.useMaxWidth`, and emits CSS for every active palette slot within the SVG byte budget. Block preserves both arrow markers, thick and dotted lines, compact thick arrows and spaced class-target behavior.
+- Sankey formats visible large values with Mermaid's scientific notation.
 - Gantt follows Day.js calendar arithmetic for fractional durations, orders numeric section names as Mermaid does, and preserves each duplicate-ID task's label status after date sorting. Custom axes retain ticks beyond 2,000 under the operation budget; exclusion shading uses the calendar-year cutoff.
 - GitGraph preserves fractional main-branch ordering, multiline quoted values and literal merge tags. Redux commits, arrows and branch labels use their respective color slots, and command separators follow Mermaid's ASCII whitespace rules.
 - Mindmap preserves fractional padding and literal `%%` in labels, uses the selected Neo default-node shape, and follows Mermaid's closing-delimiter and icon-directive boundaries. Rectangle, rounded and hexagon labels use the Flowchart wrapping width.

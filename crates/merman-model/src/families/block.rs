@@ -10,9 +10,11 @@ use indexmap::IndexMap;
 #[cfg(all(test, feature = "presentation-data"))]
 mod tests;
 
-/// Flat Block records in Mermaid database insertion order.
+/// Flat Block object records in insertion order.
 ///
-/// Child indices address `blocks_flat`; compatibility serialization expands the nested wire shape.
+/// Child indices address `blocks_flat`; a later record with the same ID replaces its database
+/// binding without changing earlier hierarchy references. Compatibility serialization projects
+/// the latest database bindings separately from the nested hierarchy.
 #[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
 pub struct BlockDiagramModel {
     pub blocks_flat: Vec<BlockNode>,
@@ -180,6 +182,44 @@ pub struct BlockEdge {
     pub arrow_type_start: Option<String>,
     #[serde(default)]
     pub label: String,
+    #[serde(default)]
+    pub thickness: BlockEdgeThickness,
+    #[serde(default)]
+    pub pattern: BlockEdgePattern,
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum BlockEdgeThickness {
+    #[default]
+    Normal,
+    Thick,
+}
+
+impl BlockEdgeThickness {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Normal => "normal",
+            Self::Thick => "thick",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum BlockEdgePattern {
+    #[default]
+    Solid,
+    Dotted,
+}
+
+impl BlockEdgePattern {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Solid => "solid",
+            Self::Dotted => "dotted",
+        }
+    }
 }
 
 impl BlockClassDef {

@@ -130,6 +130,27 @@ fn render_sankey(source: &str, options: &SvgRenderOptions) -> String {
         .to_owned()
 }
 
+#[test]
+fn sankey_visible_values_use_ecmascript_number_text() {
+    for (value, expected) in [
+        ("1e30", "1e+30"),
+        ("1e21", "999999999999999900000"),
+        ("10", "10"),
+    ] {
+        let svg = render_sankey(
+            &format!("sankey\nA,B,{value}\n"),
+            &SvgRenderOptions::default(),
+        );
+        let document = roxmltree::Document::parse(&svg).unwrap();
+        let labels = document
+            .descendants()
+            .filter(|node| node.has_tag_name("text"))
+            .map(|node| node.text().unwrap_or_default().to_string())
+            .collect::<Vec<_>>();
+        assert_eq!(labels, [format!("A\n{expected}"), format!("B\n{expected}")]);
+    }
+}
+
 fn try_render_sankey_with_resource_policy(
     source: &str,
     options: &SvgRenderOptions,

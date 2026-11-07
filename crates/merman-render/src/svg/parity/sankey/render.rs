@@ -214,6 +214,8 @@ pub(crate) fn render_sankey_diagram_svg(
         options.checkpoint_emit()?;
         let text = if show_values {
             let value = (node.value * 100.0).round() / 100.0;
+            let mut number = ryu_js::Buffer::new();
+            let value = number.format(value);
             format!("{}\n{}{}{}", node.id, prefix, value, suffix)
         } else {
             node.id.clone()

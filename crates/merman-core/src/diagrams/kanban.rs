@@ -14,6 +14,7 @@ use std::cell::Cell;
 #[cfg(test)]
 thread_local! {
     static KANBAN_SYNTAX_CONSTRUCTION_COUNT: Cell<usize> = const { Cell::new(0) };
+    static KANBAN_NODE_SCAN_STEPS: Cell<usize> = const { Cell::new(0) };
 }
 
 #[cfg(test)]
@@ -165,15 +166,20 @@ struct KanbanSourceLine<'a> {
     start: usize,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 struct KanbanLineCursor<'a> {
     source: &'a str,
     offset: usize,
+    missing_markdown_terminator_from: Option<usize>,
 }
 
 impl<'a> KanbanLineCursor<'a> {
     fn new(source: &'a str) -> Self {
-        Self { source, offset: 0 }
+        Self {
+            source,
+            offset: 0,
+            missing_markdown_terminator_from: None,
+        }
     }
 
     fn next(&mut self) -> Option<KanbanSourceLine<'a>> {
@@ -347,7 +353,14 @@ fn apply_shape_data(node: &mut KanbanNode, document: &Value, span: SourceSpan) -
     if let Some(assigned) = obj.get("assigned") {
         node.assigned = Some(value_to_string(assigned));
     }
-    if let Some(ticket) = obj.get("ticket") {
+    // Mermaid gates the YAML value before converting it to a string (kanbanDb.ts).
+    if let Some(ticket) = obj.get("ticket").filter(|value| match value {
+        Value::Null => false,
+        Value::Bool(value) => *value,
+        Value::Number(value) => value.as_f64().is_some_and(|value| value != 0.0),
+        Value::String(value) => !value.is_empty(),
+        Value::Array(_) | Value::Object(_) => true,
+    }) {
         node.ticket = Some(value_to_string(ticket));
     }
     if let Some(priority) = obj.get("priority") {
@@ -906,14 +919,15 @@ fn consume_shape_data(
     first: &str,
     first_start: usize,
     #[cfg(feature = "editor-facts")] editor_demand: EditorFactsDemand,
-) -> Result<KanbanShapeData> {
+    control: &crate::OperationControl,
+) -> crate::OperationControlResult<Result<KanbanShapeData>> {
     let Some(mut rest) = first.strip_prefix("@{") else {
-        return Ok(KanbanShapeData {
+        return Ok(Ok(KanbanShapeData {
             text: String::new(),
             span: SourceSpan::new(first_start, first_start),
             #[cfg(feature = "editor-facts")]
             fields: Vec::new(),
-        });
+        }));
     };
 
     let mut out = String::new();
@@ -926,8 +940,12 @@ fn consume_shape_data(
         .then(|| KanbanMetadataCursor::new(lines.source));
 
     loop {
+        control.checkpoint()?;
         let it = rest.char_indices().peekable();
-        for (idx, ch) in it {
+        for (step, (idx, ch)) in it.enumerate() {
+            if step.is_multiple_of(4096) {
+                control.checkpoint()?;
+            }
             let source_offset = current_scan_start + idx;
             if !in_quote && ch == '}' {
                 #[cfg(feature = "editor-facts")]
@@ -944,18 +962,18 @@ fn consume_shape_data(
                     let trailing = visible_tail.trim_end().len();
                     let tail_start = source_offset + ch.len_utf8();
                     let span = SourceSpan::new(tail_start + leading, tail_start + trailing);
-                    return Err(Error::diagram_parse_exact(
+                    return Ok(Err(Error::diagram_parse_exact(
                         "kanban",
                         "unexpected trailing input",
                         span,
-                    ));
+                    )));
                 }
-                return Ok(KanbanShapeData {
+                return Ok(Ok(KanbanShapeData {
                     text: out,
                     span: SourceSpan::new(block_start, source_offset + ch.len_utf8()),
                     #[cfg(feature = "editor-facts")]
                     fields,
-                });
+                }));
             }
             #[cfg(feature = "editor-facts")]
             if let Some(metadata) = &mut metadata {
@@ -992,11 +1010,11 @@ fn consume_shape_data(
             if let Some(metadata) = &mut metadata {
                 metadata.finish_at_eof(lines.offset());
             }
-            return Err(Error::diagram_parse_insertion_point(
+            return Ok(Err(Error::diagram_parse_insertion_point(
                 "kanban",
                 "unterminated @{ ... } metadata block",
                 lines.offset(),
-            ));
+            )));
         };
         if in_quote {
             quoted.push('\n');
@@ -1024,55 +1042,144 @@ fn replace_newline_whitespace_with_br(s: &str) -> String {
     out
 }
 
+#[derive(Clone, Copy)]
+enum KanbanNodeScanMode {
+    Id,
+    Label,
+    QuotedLabel,
+    MarkdownLabel,
+    Tail,
+}
+
 fn split_node_and_shape_data(
     lines: &mut KanbanLineCursor<'_>,
     rest: &str,
     rest_start: usize,
     #[cfg(feature = "editor-facts")] editor_demand: EditorFactsDemand,
-) -> Result<(String, Option<KanbanShapeData>)> {
-    let mut in_quote = false;
-    let mut in_backtick_quote = false;
-    let mut it = rest.char_indices().peekable();
-    while let Some((idx, ch)) = it.next() {
-        if in_backtick_quote {
-            if ch == '`' && it.peek().is_some_and(|(_, next)| *next == '"') {
-                in_backtick_quote = false;
-                it.next();
+    control: &crate::OperationControl,
+) -> crate::OperationControlResult<Result<(String, Option<KanbanShapeData>)>> {
+    // Speculate across quoted physical lines. An unfinished label must leave later
+    // statements available to recovery, just as an unfinished single-line label does.
+    let mut continued_lines = lines.clone();
+    let mut mode = KanbanNodeScanMode::Id;
+    let mut after_quote = KanbanNodeScanMode::Id;
+    let mut markdown_start = rest_start;
+    let mut close = "";
+    let mut current = KanbanSourceLine {
+        text: rest,
+        start: rest_start,
+    };
+    'scan: loop {
+        control.checkpoint()?;
+        let mut it = current.text.char_indices().peekable();
+        let mut steps = 0usize;
+        while let Some((idx, ch)) = it.next() {
+            #[cfg(test)]
+            KANBAN_NODE_SCAN_STEPS.set(KANBAN_NODE_SCAN_STEPS.get() + 1);
+            if steps.is_multiple_of(4096) {
+                control.checkpoint()?;
             }
-            continue;
-        }
-
-        if in_quote {
-            if ch == '"' {
-                in_quote = false;
+            steps += 1;
+            let suffix = &current.text[idx..];
+            match mode {
+                KanbanNodeScanMode::QuotedLabel => {
+                    if ch == '"' {
+                        mode = after_quote;
+                    }
+                }
+                KanbanNodeScanMode::MarkdownLabel => {
+                    if suffix.starts_with("`\"") {
+                        it.next();
+                        mode = after_quote;
+                    }
+                }
+                _ if ch == '"' => {
+                    after_quote = mode;
+                    mode = if it.peek().is_some_and(|(_, next)| *next == '`') {
+                        it.next();
+                        markdown_start = current.start + idx + 2;
+                        if lines
+                            .missing_markdown_terminator_from
+                            .is_some_and(|start| markdown_start >= start)
+                        {
+                            break 'scan;
+                        }
+                        KanbanNodeScanMode::MarkdownLabel
+                    } else {
+                        KanbanNodeScanMode::QuotedLabel
+                    };
+                }
+                KanbanNodeScanMode::Label => {
+                    if suffix.starts_with(close) {
+                        for _ in 1..close.len() {
+                            it.next();
+                        }
+                        mode = KanbanNodeScanMode::Tail;
+                    }
+                }
+                KanbanNodeScanMode::Id | KanbanNodeScanMode::Tail => {
+                    let offset = current.start + idx;
+                    if suffix.starts_with("%%") {
+                        *lines = continued_lines;
+                        return Ok(Ok((
+                            lines.source[rest_start..offset].trim_end().to_string(),
+                            None,
+                        )));
+                    }
+                    if suffix.starts_with("@{") {
+                        *lines = continued_lines;
+                        let node_part = lines.source[rest_start..offset].trim_end().to_string();
+                        return Ok(consume_shape_data(
+                            lines,
+                            suffix,
+                            offset,
+                            #[cfg(feature = "editor-facts")]
+                            editor_demand,
+                            control,
+                        )?
+                        .map(|shape_data| (node_part, Some(shape_data))));
+                    }
+                    if matches!(mode, KanbanNodeScanMode::Id)
+                        && let Some((start, end)) = node_delimiter_pair_at_start(suffix)
+                    {
+                        for _ in 1..start.len() {
+                            it.next();
+                        }
+                        close = end;
+                        mode = KanbanNodeScanMode::Label;
+                    }
+                }
             }
-            continue;
         }
-
-        if ch == '"' {
-            if it.peek().is_some_and(|(_, next)| *next == '`') {
-                in_backtick_quote = true;
-                it.next();
-                continue;
+        match mode {
+            KanbanNodeScanMode::QuotedLabel | KanbanNodeScanMode::MarkdownLabel
+                if matches!(after_quote, KanbanNodeScanMode::Label) =>
+            {
+                let Some(next_line) = continued_lines.next() else {
+                    if matches!(mode, KanbanNodeScanMode::MarkdownLabel) {
+                        // Recovery keeps the real cursor in place. Reuse the failed
+                        // terminator lookup for later quotes in this immutable suffix.
+                        lines.missing_markdown_terminator_from = Some(markdown_start);
+                    }
+                    break;
+                };
+                current = next_line;
             }
-            in_quote = true;
-            continue;
-        }
-
-        if rest[idx..].starts_with("@{") {
-            let node_part = rest[..idx].trim_end().to_string();
-            let shape_data = consume_shape_data(
-                lines,
-                &rest[idx..],
-                rest_start + idx,
-                #[cfg(feature = "editor-facts")]
-                editor_demand,
-            )?;
-            return Ok((node_part, Some(shape_data)));
+            KanbanNodeScanMode::Id | KanbanNodeScanMode::Tail => {
+                let end = current.start + current.text.len();
+                *lines = continued_lines;
+                return Ok(Ok((
+                    lines.source[rest_start..end].trim_end().to_string(),
+                    None,
+                )));
+            }
+            KanbanNodeScanMode::Label
+            | KanbanNodeScanMode::QuotedLabel
+            | KanbanNodeScanMode::MarkdownLabel => break,
         }
     }
 
-    Ok((rest.trim_end().to_string(), None))
+    Ok(Ok((rest.trim_end().to_string(), None)))
 }
 
 fn construct_kanban_semantic_source_controlled(
@@ -1115,24 +1222,32 @@ fn construct_kanban_semantic_source_controlled(
                 span,
             }));
         };
-        let visible = strip_inline_comment(line.text);
+        let visible = line.text;
         let visible_start = visible.len() - visible.trim_start().len();
         let visible_end = visible.trim_end().len();
         if visible_start >= visible_end {
             continue;
         }
         let trimmed = &visible[visible_start..visible_end];
+        if trimmed.starts_with("%%") {
+            continue;
+        }
         let trimmed_start = line.start + visible_start;
         let after_keyword = trimmed
             .get("kanban".len()..)
             .filter(|_| starts_with_case_insensitive(trimmed, "kanban"))
             .filter(|after| {
-                after.is_empty() || after.chars().next().is_some_and(char::is_whitespace)
+                after.is_empty()
+                    || after.starts_with("%%")
+                    || after.chars().next().is_some_and(char::is_whitespace)
             });
         if let Some(after_keyword) = after_keyword {
             let keyword_end = trimmed_start + "kanban".len();
             if !after_keyword.trim().is_empty() {
-                break Some((after_keyword.to_string(), keyword_end));
+                break Some((
+                    line.text[keyword_end - line.start..].to_string(),
+                    keyword_end,
+                ));
             }
             break None;
         }
@@ -1278,13 +1393,12 @@ fn parse_kanban_statement(
         control,
     } = context;
     control.checkpoint()?;
-    let line = strip_inline_comment(source).trim_end();
+    let line = source;
     if line.trim().is_empty() {
         return Ok(Ok(()));
     }
     let (indent, rest) = split_indent(line);
-    let rest = rest.trim_end();
-    if rest.is_empty() {
+    if rest.trim().is_empty() || rest.starts_with("%%") {
         return Ok(Ok(()));
     }
     let rest_start = source_start + line.len() - rest.len();
@@ -1349,6 +1463,7 @@ fn parse_kanban_statement(
     }
 
     if let Some(after) = rest.strip_prefix(":::") {
+        let after = strip_inline_comment(after);
         let class_raw = after.trim();
         #[cfg(feature = "editor-facts")]
         let leading = after.len() - after.trim_start().len();
@@ -1386,7 +1501,8 @@ fn parse_kanban_statement(
         rest_start,
         #[cfg(feature = "editor-facts")]
         editor_demand,
-    ) {
+        control,
+    )? {
         Ok(parsed) => parsed,
         Err(error) => return Ok(Err(error)),
     };
@@ -1958,6 +2074,93 @@ mod tests {
     }
 
     #[test]
+    fn kanban_percent_labels_still_reject_missing_delimiters_and_trailing_input() {
+        let text = "kanban\n  todo\n    card[Progress %% complete\n    next[Next]\n";
+        let diagnostic = parse_err(text);
+        let end = text.find("\n    next").unwrap();
+        assert_eq!(diagnostic.message(), "unterminated node delimiter");
+        assert_eq!(diagnostic.span(), Some(SourceSpan::new(end, end)));
+
+        let text = "kanban\n  todo\n    card[Progress %% complete] extra %% hidden\n";
+        let diagnostic = parse_err(text);
+        let start = text.find("extra").unwrap();
+        assert_eq!(diagnostic.message(), "unexpected trailing input");
+        assert_eq!(diagnostic.span(), Some(SourceSpan::new(start, start + 5)));
+    }
+
+    #[test]
+    fn kanban_multiline_label_trailing_error_keeps_its_range_and_later_recovery() {
+        let text = "kanban\n  todo\n    card[\"First\nSecond\"] extra\n    next[Next]\n";
+        let diagnostic = parse_err(text);
+        let start = text.find("extra").unwrap();
+        assert_eq!(diagnostic.message(), "unexpected trailing input");
+        assert_eq!(diagnostic.span(), Some(SourceSpan::new(start, start + 5)));
+        #[cfg(feature = "editor-facts")]
+        {
+            let facts = crate::family::test_support::editor_facts(
+                parse_kanban_json_and_editor_facts,
+                text,
+                &meta(),
+            );
+            assert_eq!(facts.completeness, EditorSemanticCompleteness::Recovered);
+            assert_eq!(facts.diagnostics.len(), 1);
+            assert_eq!(facts.diagnostics[0].span, diagnostic.span());
+            assert!(facts.symbols.iter().any(|symbol| symbol.name == "next"));
+            assert!(!facts.symbols.iter().any(|symbol| symbol.name == "card"));
+        }
+    }
+
+    #[test]
+    #[cfg(feature = "editor-facts")]
+    fn kanban_multiline_and_percent_label_facts_keep_original_byte_ranges() {
+        let text = concat!(
+            "kanban\n",
+            "  todo[Todo]\n",
+            "    card[\"First 🤓  \n",
+            "Second %% @{literal}\"]@{\n",
+            "      ticket: '0'\n",
+            "      assigned: \"Line 1\n",
+            "         Line 2\"\n",
+            "    } %% hidden\n",
+            "    literal[Progress %% @{literal complete] %% ignored\n",
+            "    next[Next]\n",
+        );
+        let (model, facts) = crate::family::test_support::into_result(
+            parse_kanban_json_and_editor_facts(text, &meta(), &crate::OperationControl::new()),
+        )
+        .unwrap();
+        assert_eq!(facts.completeness, EditorSemanticCompleteness::Complete);
+        assert!(facts.diagnostics.is_empty());
+        assert_eq!(
+            model["nodes"][1]["label"],
+            "First 🤓  \nSecond %% @{literal}"
+        );
+        assert_eq!(model["nodes"][1]["assigned"], "Line 1<br/>Line 2");
+        for (name, detail) in [
+            ("card", "kanban item"),
+            ("First 🤓  \nSecond %% @{literal}", "kanban label"),
+            ("ticket", "kanban metadata key"),
+            ("0", "kanban metadata ticket"),
+            ("Line 1\n         Line 2", "kanban metadata assigned"),
+            ("Progress %% @{literal complete", "kanban label"),
+            ("next", "kanban item"),
+        ] {
+            let start = text.find(name).unwrap();
+            let span = SourceSpan::new(start, start + name.len());
+            assert!(
+                facts.symbols.iter().any(|symbol| {
+                    symbol.name == name
+                        && symbol.detail.as_deref() == Some(detail)
+                        && symbol.span == span
+                        && symbol.selection == span
+                }),
+                "missing exact {detail} fact for {name:?}"
+            );
+        }
+        assert!(!facts.symbols.iter().any(|symbol| symbol.name == "hidden"));
+    }
+
+    #[test]
     fn kanban_unterminated_metadata_reports_eof_insertion_point() {
         let text = "kanban\n  root@{ icon: star\n";
         let diagnostic = parse_err(text);
@@ -2351,6 +2554,343 @@ mod semantic_tests {
             semantic_config: MermaidConfig::empty_object(),
             title: None,
         }
+    }
+
+    fn parse_semantic(source: &str) -> KanbanDiagramModel {
+        parse_kanban_semantic_model_controlled(
+            source,
+            &metadata(),
+            #[cfg(feature = "editor-facts")]
+            EditorFactsDemand::Omit,
+            &crate::OperationControl::new(),
+        )
+        .unwrap()
+        .model
+        .unwrap()
+    }
+
+    #[test]
+    fn semantic_ticket_truthiness_precedes_string_conversion_and_keeps_raw_metadata() {
+        for (raw, authored, expected) in [
+            ("0", serde_json::json!(0), None),
+            ("-0.0", serde_json::json!(-0.0), None),
+            ("false", serde_json::json!(false), None),
+            ("null", serde_json::Value::Null, None),
+            ("''", serde_json::json!(""), None),
+            ("'0'", serde_json::json!("0"), Some("0")),
+            ("1", serde_json::json!(1), Some("1")),
+        ] {
+            let source = format!("kanban\n  todo\n    card[Task]@{{ ticket: {raw} }}\n");
+            let model = parse_semantic(&source);
+            let card = &model.nodes[1];
+            assert_eq!(card.ticket.as_deref(), expected, "ticket: {raw}");
+            assert_eq!(card.metadata.as_ref().unwrap()["ticket"], authored);
+            #[cfg(feature = "presentation")]
+            {
+                let rendered = into_render_model(model, &MermaidConfig::empty_object()).unwrap();
+                assert_eq!(rendered.nodes[1].ticket.as_deref(), expected);
+                assert_eq!(
+                    rendered.nodes[1].compatibility().ticket.as_deref(),
+                    expected
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn semantic_quoted_label_lines_keep_indentation_nesting_and_multiline_metadata() {
+        let source = concat!(
+            "kanban\n",
+            "  todo[Todo]\n",
+            "    card[\"First  \n",
+            "Second\"]@{\n",
+            "      ticket: 'KBN-2'\n",
+            "      assigned: \"Alice\n",
+            "        Smith\"\n",
+            "    } %% hidden\n",
+            "      child[Child]\n",
+            "    sibling[Sibling]\n",
+            "  done[Done]\n",
+            "    final[Final]\n",
+        );
+        let model = parse_semantic(source);
+        let card = &model.nodes[1];
+        assert_eq!(card.label, "First  \nSecond");
+        assert_eq!(card.ticket.as_deref(), Some("KBN-2"));
+        assert_eq!(card.assigned.as_deref(), Some("Alice<br/>Smith"));
+        let start = source.find("card").unwrap();
+        let end = source.find("\"]").unwrap() + 2;
+        assert_eq!(card.span, SourceSpan::new(start, end));
+        let membership: Vec<_> = model
+            .nodes
+            .iter()
+            .map(|node| (node.id.as_str(), node.level, node.parent_id.as_deref()))
+            .collect();
+        assert_eq!(
+            membership,
+            vec![
+                ("todo", 2, None),
+                ("card", 4, Some("todo")),
+                ("child", 6, Some("todo")),
+                ("sibling", 4, Some("todo")),
+                ("done", 2, None),
+                ("final", 4, Some("done")),
+            ]
+        );
+    }
+
+    #[test]
+    fn semantic_quoted_labels_continue_for_markdown_and_other_shapes() {
+        for (open, close, id) in [
+            ("card[\"", "\"]", "card"),
+            ("card[\"`", "`\"]", "card"),
+            ("card((\"", "\"))", "card"),
+            ("[\"", "\"]", "First\nSecond"),
+        ] {
+            let source =
+                format!("kanban\n  todo\n    {open}First\nSecond{close}\n    next[Next]\n");
+            let model = parse_semantic(&source);
+            assert_eq!(model.nodes.len(), 3, "{source}");
+            assert_eq!(model.nodes[1].id, id);
+            assert_eq!(model.nodes[1].label, "First\nSecond");
+            assert_eq!(model.nodes[2].id, "next");
+            assert_eq!(model.nodes[2].parent_id.as_deref(), Some("todo"));
+        }
+
+        let model = parse_semantic("kanban  todo[\"First  \nSecond\"]\n    card[Next]\n");
+        assert_eq!(model.nodes[0].label, "First  \nSecond");
+        assert_eq!(model.nodes[1].parent_id.as_deref(), Some("todo"));
+    }
+
+    #[test]
+    fn semantic_multiline_label_spans_and_text_budgets_use_the_original_source() {
+        use merman_model::resources::{InputResourceLimitId, InputResourcePolicy, ResourceProfile};
+
+        for newline in ["\n", "\r\n"] {
+            let label = format!("First 🤓{newline}Second");
+            let source = format!("kanban{newline}  todo{newline}    card[\"{label}\"]{newline}");
+            let model = parse_semantic(&source);
+            assert_eq!(model.nodes[1].label, label);
+            let start = source.find("card").unwrap();
+            let end = source.rfind(']').unwrap() + 1;
+            assert_eq!(model.nodes[1].span, SourceSpan::new(start, end));
+            let complexity = merman_model::resources::model_complexity_from_kanban_semantic(&model);
+            let policy =
+                InputResourcePolicy::for_profile(ResourceProfile::UnboundedForTrustedInput);
+            policy
+                .with_limit(
+                    InputResourceLimitId::MaxModelTextBytes,
+                    complexity.text_bytes,
+                )
+                .unwrap()
+                .check_model_complexity(complexity)
+                .unwrap();
+            let error = policy
+                .with_limit(
+                    InputResourceLimitId::MaxModelTextBytes,
+                    complexity.text_bytes - 1,
+                )
+                .unwrap()
+                .check_model_complexity(complexity)
+                .unwrap_err();
+            assert_eq!(error.actual, complexity.text_bytes);
+            assert_eq!(error.limit, "max_model_text_bytes");
+        }
+    }
+
+    #[test]
+    fn semantic_shape_labels_keep_literal_percent_and_metadata_openers() {
+        for (open, close) in [
+            ("[", "]"),
+            ("(", ")"),
+            ("((", "))"),
+            ("{{", "}}"),
+            (")", "("),
+        ] {
+            let source = format!(
+                "kanban\n  todo\n    card{open}Progress %% @{{literal complete{close} %% hidden\n    next[Next]\n"
+            );
+            let model = parse_semantic(&source);
+            assert_eq!(model.nodes.len(), 3, "{source}");
+            assert_eq!(model.nodes[1].label, "Progress %% @{literal complete");
+            assert!(model.nodes[1].metadata.is_none());
+            assert_eq!(model.nodes[2].id, "next");
+        }
+        let model = parse_semantic("kanban\n  todo\n    card[\"Progress %% complete\"]\n");
+        assert_eq!(model.nodes[1].label, "Progress %% complete");
+        let model =
+            parse_semantic("kanban%% header comment\n  todo %% section comment\n    card\n");
+        assert_eq!(model.nodes.len(), 2);
+        assert_eq!(model.nodes[0].id, "todo");
+        assert_eq!(model.nodes[1].parent_id.as_deref(), Some("todo"));
+    }
+
+    #[test]
+    fn semantic_unclosed_markdown_recovery_scans_only_linear_work() {
+        for count in [8, 64, 512] {
+            let source = format!(
+                "kanban\n  todo\n{}    safe[Recovered]\n",
+                "    broken[\"`unfinished\n".repeat(count),
+            );
+            KANBAN_NODE_SCAN_STEPS.set(0);
+            let parsed = parse_kanban_semantic_model_controlled(
+                &source,
+                &metadata(),
+                #[cfg(feature = "editor-facts")]
+                EditorFactsDemand::Omit,
+                &crate::OperationControl::new(),
+            )
+            .unwrap();
+            assert!(parsed.model.is_err());
+            let steps = KANBAN_NODE_SCAN_STEPS.get();
+            assert!(steps > count, "the regression must exercise node scanning");
+            assert!(
+                steps <= 2 * source.len(),
+                "{count} unclosed labels used {steps} scan steps for {} bytes",
+                source.len(),
+            );
+        }
+    }
+
+    #[test]
+    #[cfg(feature = "editor-facts")]
+    fn semantic_unclosed_markdown_keeps_later_quoted_node_and_metadata_facts() {
+        let source = concat!(
+            "kanban\r\n",
+            "  todo[Todo]\r\n",
+            "    first[\"`Unclosed\r\n",
+            "    second[\"`Still open\r\n",
+            "    safe[\"Recovered 中文\"]@{ ticket: '0' }\r\n",
+        );
+        let parsed = parse_kanban_semantic_model_controlled(
+            source,
+            &metadata(),
+            EditorFactsDemand::Capture,
+            &crate::OperationControl::new(),
+        )
+        .unwrap();
+        let Error::DiagramParse { diagnostic, .. } = parsed.model.unwrap_err() else {
+            panic!("expected an unterminated node diagnostic");
+        };
+        let end = source.find("\r\n    second").unwrap();
+        assert_eq!(diagnostic.message(), "unterminated node delimiter");
+        assert_eq!(diagnostic.span(), Some(SourceSpan::new(end, end)));
+        let facts = parsed.editor_facts.unwrap();
+        assert_eq!(
+            facts.completeness,
+            crate::EditorSemanticCompleteness::Recovered
+        );
+        assert_eq!(facts.diagnostics.len(), 1);
+        assert_eq!(facts.diagnostics[0].span, diagnostic.span());
+        for (name, detail) in [
+            ("safe", "kanban item"),
+            ("Recovered 中文", "kanban label"),
+            ("ticket", "kanban metadata key"),
+            ("0", "kanban metadata ticket"),
+        ] {
+            let start = source.find(name).unwrap();
+            let span = SourceSpan::new(start, start + name.len());
+            assert!(facts.symbols.iter().any(|symbol| {
+                symbol.name == name
+                    && symbol.detail.as_deref() == Some(detail)
+                    && symbol.span == span
+                    && symbol.selection == span
+            }));
+        }
+        assert!(
+            !facts
+                .symbols
+                .iter()
+                .any(|symbol| { symbol.name == "first" || symbol.name == "second" })
+        );
+    }
+
+    #[test]
+    fn semantic_markdown_lookahead_keeps_valid_multiline_labels_and_facts() {
+        for newline in ["\n", "\r\n"] {
+            let label = format!("First 中文{newline}Second %% @{{literal}}");
+            let source = format!(
+                "kanban{newline}  todo{newline}    card[\"`{label}`\"]@{{ ticket: '0' }}{newline}    next[Next]{newline}"
+            );
+            let parsed = parse_kanban_semantic_model_controlled(
+                &source,
+                &metadata(),
+                #[cfg(feature = "editor-facts")]
+                EditorFactsDemand::Capture,
+                &crate::OperationControl::new(),
+            )
+            .unwrap();
+            let model = parsed.model.unwrap();
+            assert_eq!(model.nodes.len(), 3);
+            assert_eq!(model.nodes[1].id, "card");
+            assert_eq!(model.nodes[1].label, label);
+            assert_eq!(model.nodes[1].ticket.as_deref(), Some("0"));
+            assert_eq!(model.nodes[2].id, "next");
+            assert_eq!(model.nodes[2].parent_id.as_deref(), Some("todo"));
+            #[cfg(feature = "editor-facts")]
+            {
+                let facts = parsed.editor_facts.unwrap();
+                assert_eq!(
+                    facts.completeness,
+                    crate::EditorSemanticCompleteness::Complete
+                );
+                assert!(facts.diagnostics.is_empty());
+                for (name, detail) in [
+                    ("card", "kanban item"),
+                    (label.as_str(), "kanban label"),
+                    ("next", "kanban item"),
+                ] {
+                    let start = source.find(name).unwrap();
+                    let span = SourceSpan::new(start, start + name.len());
+                    assert!(facts.symbols.iter().any(|symbol| {
+                        symbol.name == name
+                            && symbol.detail.as_deref() == Some(detail)
+                            && symbol.span == span
+                            && symbol.selection == span
+                    }));
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn semantic_label_and_metadata_continuations_remain_cancellable() {
+        for (source, checkpoints) in [
+            ("card[\"First\nSecond\"]\n", 2),
+            ("card@{ ticket: \"First\n  Second\" }\n", 4),
+        ] {
+            let mut lines = KanbanLineCursor::new(source);
+            let first = lines.next().unwrap();
+            let control = crate::OperationControl::new().for_phase(crate::OperationPhase::Parse);
+            control.cancel_after_checkpoints(checkpoints);
+            let error = split_node_and_shape_data(
+                &mut lines,
+                first.text,
+                first.start,
+                #[cfg(feature = "editor-facts")]
+                EditorFactsDemand::Omit,
+                &control,
+            )
+            .unwrap_err();
+            assert_eq!(error.phase, crate::OperationPhase::Parse);
+            assert_eq!(control.checkpoint().unwrap_err(), error);
+        }
+        let source = format!("card[\"{}\"]\n", "x".repeat(16 * 1024));
+        let mut lines = KanbanLineCursor::new(&source);
+        let first = lines.next().unwrap();
+        let control = crate::OperationControl::new();
+        control.cancel_after_checkpoints(2);
+        assert!(
+            split_node_and_shape_data(
+                &mut lines,
+                first.text,
+                first.start,
+                #[cfg(feature = "editor-facts")]
+                EditorFactsDemand::Omit,
+                &control,
+            )
+            .is_err()
+        );
     }
 
     #[test]

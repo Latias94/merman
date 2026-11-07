@@ -64,7 +64,9 @@
         "end": "b",
         "id": "1-a-b",
         "label": "",
+        "pattern": "solid",
         "start": "a",
+        "thickness": "normal",
         "type": "edge"
       }
     ],

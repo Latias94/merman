@@ -1,6 +1,6 @@
 use serde_json::Value;
 
-use crate::config::{config_css_number_or_string, config_f64, config_string, config_string_vec};
+use crate::config::{config_css_number_or_string, config_string, config_string_vec};
 use crate::svg::PreparedCommonCss;
 
 use super::config::{RequirementConfigView, RequirementLayoutSettings};
@@ -12,7 +12,6 @@ pub(crate) struct RequirementCssBinding {
     pub(crate) layout: RequirementLayoutSettings,
     pub(crate) border_colors: Vec<String>,
     pub(crate) background_colors: Vec<String>,
-    pub(crate) theme_color_limit: usize,
     pub(crate) default_fill: String,
     pub(crate) default_stroke: String,
     pub(crate) node_text_color: String,
@@ -39,9 +38,7 @@ impl RequirementCssBinding {
         if self.border_colors.is_empty() {
             return None;
         }
-        let slot = color_index % self.border_colors.len();
-        // Node IDs span the border array, but CSS emits only slots below this limit.
-        (slot < self.theme_color_limit).then_some(slot)
+        Some(color_index % self.border_colors.len())
     }
 
     pub(super) fn resolve(
@@ -89,10 +86,6 @@ impl RequirementCssBinding {
                 .layout_settings_with_resolved_typography(font_family, font_size_px),
             border_colors,
             background_colors,
-            theme_color_limit: config_f64(config, &["themeVariables", "THEME_COLOR_LIMIT"])
-                .filter(|value| value.is_finite())
-                .map(|value| value.clamp(0.0, 64.0).ceil() as usize)
-                .unwrap_or(12),
             default_fill: color("mainBkg", "#ECECFF"),
             default_stroke: color("nodeBorder", "#9370DB"),
             node_text_color,
