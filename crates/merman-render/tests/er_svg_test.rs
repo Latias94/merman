@@ -3936,6 +3936,98 @@ fn er_text_fill_ownership_follows_each_html_or_svg_consumer() {
 }
 
 #[test]
+fn er_html_text_fallback_uses_the_selected_color_and_its_owner() {
+    let theme = er_relation_rules_theme([ThemeRule::new(
+        ThemeTarget::Text,
+        ThemeStylePatch::default().with_fill(CanvasPaint::solid("#123456").unwrap()),
+    )]);
+    let source = "erDiagram\nCUSTOMER {\nstring id\n}\nCUSTOMER ||--o{ ORDER : owns\n";
+    let label_color = Regex::new(r"\.label\{font-family:[^;]*;color:([^;]*);").unwrap();
+    for look in ["classic", "neo"] {
+        for from_source in [false, true] {
+            for (node_color, text_color) in [
+                (None, None),
+                (Some(serde_json::Value::Null), None),
+                (Some(json!("")), None),
+                (Some(json!("")), Some("#fedcba")),
+                (None, Some("#fedcba")),
+                (Some(json!("#556677")), Some("#fedcba")),
+            ] {
+                let mut variables = json!({});
+                if let Some(node_color) = node_color {
+                    variables["nodeTextColor"] = node_color;
+                }
+                if let Some(text_color) = text_color {
+                    variables["textColor"] = json!(text_color);
+                }
+                let config = json!({
+                    "htmlLabels": true,
+                    "look": look,
+                    "themeVariables": variables,
+                });
+                let mut site = json!({"secure": [], "theme": "forest"});
+                let text = if from_source {
+                    format!("---\nconfig: {config}\n---\n{source}")
+                } else {
+                    site["htmlLabels"] = config["htmlLabels"].clone();
+                    site["look"] = config["look"].clone();
+                    site["themeVariables"] = config["themeVariables"].clone();
+                    source.to_owned()
+                };
+                let (parsed, layout, session) = prepare_er_family_with_theme_and_engine(
+                    &text,
+                    &theme,
+                    MermaidEngine::new().with_site_config(
+                        merman_core::presentation::SourcePresentationConfig::from_value(site),
+                    ),
+                );
+                let rendered = family::prepare(&parsed, &layout, session)
+                    .unwrap()
+                    .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+                    .unwrap();
+                let effective_config = &rendered.metadata().effective_config;
+                let selected_node = effective_config
+                    .get_str("themeVariables.nodeTextColor")
+                    .filter(|color| !color.is_empty());
+                let expected_color = selected_node
+                    .or_else(|| effective_config.get_str("themeVariables.textColor"))
+                    .unwrap();
+                assert_eq!(
+                    label_color
+                        .captures(rendered.svg())
+                        .unwrap()
+                        .get(1)
+                        .unwrap()
+                        .as_str(),
+                    expected_color,
+                    "look={look}/source={from_source}/{variables}"
+                );
+                let source_owned = selected_node.is_some() || text_color.is_some();
+                let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+                for label in ["CUSTOMER", "ORDER", "string", "id", "owns"] {
+                    let terminal = document
+                        .descendants()
+                        .find(|node| node.is_text() && node.text() == Some(label))
+                        .unwrap_or_else(|| panic!("missing visible ER label {label}"));
+                    assert_eq!(
+                        terminal.ancestors().any(|node| node
+                            .attribute("style")
+                            .is_some_and(|style| style.contains("fill:#123456"))),
+                        !source_owned,
+                        "look={look}/source={from_source}/{variables}/{label}"
+                    );
+                }
+                let completion = rendered.into_completion();
+                let evidence = merman_render::__private::family_evidence(completion.report());
+                assert_eq!(evidence.applied_count(), usize::from(!source_owned));
+                assert_eq!(evidence.not_applicable_count(), usize::from(source_owned));
+                assert_eq!(evidence.theme_residual_count(), 0);
+            }
+        }
+    }
+}
+
+#[test]
 fn er_svg_distinguishes_empty_and_whitespace_relationship_labels() {
     let svg = render_er_svg_from_text(
         r#"erDiagram

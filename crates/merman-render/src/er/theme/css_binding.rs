@@ -34,6 +34,25 @@ pub(crate) struct ErCssBinding {
 }
 
 impl ErCssBinding {
+    pub(super) fn node_text_color_source(
+        config: &serde_json::Value,
+    ) -> (merman_model::presentation::ErPaintInput, Option<&str>) {
+        if let Some(color) = config["themeVariables"]["nodeTextColor"]
+            .as_str()
+            .filter(|color| !color.is_empty())
+        {
+            (
+                merman_model::presentation::ErPaintInput::NodeText,
+                Some(color),
+            )
+        } else {
+            (
+                merman_model::presentation::ErPaintInput::Text,
+                config["themeVariables"]["textColor"].as_str(),
+            )
+        }
+    }
+
     pub(super) fn source_fill_owns_odd_rows(&self) -> bool {
         matches!(
             self.theme_name.as_str(),
@@ -51,6 +70,10 @@ impl ErCssBinding {
         let theme_name = config_string(config, &["theme"]).unwrap_or_else(|| "default".into());
         let redux_color_theme = matches!(theme_name.as_str(), "redux-color" | "redux-dark-color");
         let text_color = color("textColor", "#333");
+        let node_text_color = Self::node_text_color_source(config)
+            .1
+            .unwrap_or(&text_color)
+            .to_owned();
         let main_bkg = color("mainBkg", "#ECECFF");
         let node_border = color("nodeBorder", "#9370DB");
         let tertiary_color = color("tertiaryColor", "hsl(80, 100%, 96.2745098039%)");
@@ -101,7 +124,7 @@ impl ErCssBinding {
             cluster_bkg: color("clusterBkg", &main_bkg),
             cluster_border: color("clusterBorder", &node_border),
             title_color: color("titleColor", &text_color),
-            node_text_color: color("nodeTextColor", &text_color),
+            node_text_color,
             main_bkg,
             node_border,
             tertiary_color,

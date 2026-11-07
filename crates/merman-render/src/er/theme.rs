@@ -1376,8 +1376,11 @@ fn mermaid_owns_text_fill(
     config: &merman_model::presentation::PresentationConfig,
     html_labels: bool,
 ) -> bool {
-    if html_labels && config.get_str("themeVariables.nodeTextColor").is_some() {
-        mermaid_owns_paint_input(config, merman_model::presentation::ErPaintInput::NodeText)
+    if html_labels {
+        mermaid_owns_paint_input(
+            config,
+            css_binding::ErCssBinding::node_text_color_source(config.as_value()).0,
+        )
     } else {
         mermaid_owns_paint_input(config, merman_model::presentation::ErPaintInput::Text)
     }

@@ -163,13 +163,8 @@ impl BlockNodeLabelPaintPlan {
         }) {
             return Ok(plan);
         }
-        let config_owned = [
-            "themeVariables.nodeTextColor",
-            "themeVariables.primaryTextColor",
-            "themeVariables.textColor",
-        ]
-        .into_iter()
-        .any(|path| config.config_paint_overrides_typed_default(path));
+        let (color_path, _) = BlockCssThemeBinding::node_text_color_source(config.as_value());
+        let config_owned = config.config_paint_overrides_typed_default(color_path);
         let has_ordinal = theme.family_rules().any(|(_, rule)| {
             matches!(rule.target(), ThemeTarget::NodeLabel | ThemeTarget::Text)
                 && rule.ordinal().is_some()

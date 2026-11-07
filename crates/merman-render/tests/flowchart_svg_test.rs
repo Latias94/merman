@@ -2996,12 +2996,12 @@ fn flowchart_and_swimlane_node_label_fill_uses_the_effective_mermaid_color_owner
 
     let cases = [
         Case {
-            name: "default textColor is shadowed by nodeTextColor",
+            name: "default textColor owns the fallback winner",
             config: serde_json::json!({
                 "theme": "default",
                 "themeVariables": {"textColor": "#16a34a"}
             }),
-            typed_applies: true,
+            typed_applies: false,
         },
         Case {
             name: "base textColor is shadowed by nodeTextColor",
@@ -3023,12 +3023,12 @@ fn flowchart_and_swimlane_node_label_fill_uses_the_effective_mermaid_color_owner
             typed_applies: false,
         },
         Case {
-            name: "default primaryTextColor owns derived nodeTextColor",
+            name: "default primaryTextColor does not own the textColor fallback",
             config: serde_json::json!({
                 "theme": "default",
                 "themeVariables": {"primaryTextColor": "#16a34a"}
             }),
-            typed_applies: false,
+            typed_applies: true,
         },
         Case {
             name: "base primaryTextColor owns derived nodeTextColor",

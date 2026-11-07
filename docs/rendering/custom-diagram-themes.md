@@ -135,6 +135,12 @@ source or site configuration keep their property-specific dependencies. Site the
 and a recipe's own compatibility theme supply fallback palettes and do not suppress compiled
 style rules. Typography, geometry, effects, and the host canvas retain their independent owners.
 
+ER HTML labels, Block labels and Requirement node labels use a non-empty `themeVariables.nodeTextColor`,
+falling back to `themeVariables.textColor`. Journey titles use a non-empty `journey.titleColor`,
+otherwise inheriting the rendered text color. These fallbacks preserve the selected source or
+explicit configuration's paint ownership; a site theme's default palette still yields to compiled
+paint rules.
+
 | Input | Ownership |
 | --- | --- |
 | Site/base Mermaid theme, including CLI `--theme` | Fallback palette; does not disable compiled recipe rules |
@@ -162,6 +168,9 @@ XY Chart or Wardley backdrop from source, set `themeVariables.xyChart.background
 `themeVariables.wardley.backgroundColor` directly. Changing only the root `background` in source
 does not necessarily recompute an already initialized family backdrop. Root canvas paint remains
 separate from these diagram-owned backgrounds.
+
+Set `themeVariables.archGroupBorderColor` directly to change an Architecture group border.
+Changing only `primaryBorderColor` does not recalculate an initialized group color.
 
 C4 presets pair node surfaces with label colors; compiled edge, marker, boundary-label and
 text colors reach their visible terminals. Filled boundaries paint behind their descendants. Gantt presets preserve normal, active,
