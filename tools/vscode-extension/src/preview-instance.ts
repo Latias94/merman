@@ -25,6 +25,7 @@ import {
   type PreviewSnapshot,
   type PreviewSourceKey,
   previewSourceKeyId,
+  samePreviewRenderKey,
   samePreviewSourceKey,
 } from "./preview-model.js";
 import {
@@ -177,9 +178,7 @@ export class PreviewInstance implements vscode.Disposable {
       return;
     }
     try {
-      if (this.session.setHostAppearance(editorThemeAppearance(kind))) {
-        this.invalidateRenderedOutput("editor-appearance");
-      }
+      this.session.setHostAppearance(editorThemeAppearance(kind));
       this.scheduleRefresh("editor-appearance", true);
     } catch (error) {
       this.handleRefreshError(error);
@@ -398,14 +397,21 @@ export class PreviewInstance implements vscode.Disposable {
     if (!panel) {
       return;
     }
-    await this.initializeThemes();
+    if (!this.themesReady) {
+      await this.initializeThemes();
+    }
     if (this.disposed || this.panel !== panel) {
       return;
     }
 
     this.ensureWebviewHtml(panel);
     const snapshot = this.createSnapshot(reason === "editor-appearance");
-    const actions = planPreviewUpdate(this.session.snapshot, snapshot, reason);
+    const actions = planPreviewUpdate(
+      this.session.snapshot,
+      snapshot,
+      reason,
+      this.renderedOutputStale && !!snapshot && !this.renderQueue.hasPending(snapshot),
+    );
     if (!snapshot) {
       panel.title = PREVIEW_TITLE;
       this.session.clearSource();
@@ -415,45 +421,83 @@ export class PreviewInstance implements vscode.Disposable {
     }
 
     panel.title = `${PREVIEW_TITLE}: ${snapshot.input.title}`;
+    if (actions.some((action) => action.type === "renderRequested")) {
+      this.invalidateRenderedOutput(reason);
+    }
     this.session.rememberSnapshot(snapshot);
     await this.applyActions(actions);
   }
 
   private async applyActions(actions: readonly PreviewAction[]): Promise<void> {
-    for (const action of actions) {
-      switch (action.type) {
-        case "showEmpty":
-          await this.postMessage({
-            type: "showEmpty",
-            requestId: this.renderQueue.currentRequestId(),
-            heading: "No Mermaid source available",
-            detail:
-              "Focus a .mmd, .mermaid, or Markdown document with a Mermaid fence, then run Merman: Open Preview.",
-          });
-          break;
-        case "sourceListUpdated":
-        case "selectionChanged":
-        case "diagnosticsUpdated":
-        case "settingsUpdated":
-          await this.postMessage({
-            type: action.type,
-            snapshot: snapshotMessagePayload(action.snapshot),
-          });
-          break;
-        case "renderRequested":
-          await this.renderSnapshot(action.snapshot, action.reason);
-          break;
+    const postUpdates = async () => {
+      const requestId = this.renderQueue.currentRequestId();
+      for (const action of actions) {
+        if (!this.panel || !this.renderQueue.isCurrentRequest(requestId)) {
+          return;
+        }
+        if ("snapshot" in action && action.snapshot !== this.session.snapshot) {
+          return;
+        }
+        switch (action.type) {
+          case "showEmpty":
+            await this.postMessage({
+              type: "showEmpty",
+              requestId,
+              heading: "No Mermaid source available",
+              detail:
+                "Focus a .mmd, .mermaid, or Markdown document with a Mermaid fence, then run Merman: Open Preview.",
+            });
+            break;
+          case "sourceListUpdated":
+          case "selectionChanged":
+          case "diagnosticsUpdated":
+          case "settingsUpdated":
+            await this.postMessage({
+              type: action.type,
+              snapshot: snapshotMessagePayload(action.snapshot),
+            });
+            break;
+        }
       }
+    };
+    const render = actions.find((action) => action.type === "renderRequested");
+    if (render) {
+      await this.renderSnapshot(render.snapshot, render.reason, postUpdates);
+    } else {
+      await postUpdates();
     }
   }
 
-  private async renderSnapshot(snapshot: PreviewSnapshot, reason: PreviewUpdateReason): Promise<void> {
+  private async renderSnapshot(
+    snapshot: PreviewSnapshot,
+    reason: PreviewUpdateReason,
+    beforeRender?: () => Promise<void>,
+  ): Promise<void> {
+    if (
+      !this.session.snapshot ||
+      !samePreviewRenderKey(snapshot, this.session.snapshot) ||
+      this.renderQueue.hasPending(snapshot)
+    ) {
+      return;
+    }
     await this.renderQueue.render(snapshot, reason, {
+      beforeRender,
       renderContent: (renderedSnapshot, signal) => this.renderContent(renderedSnapshot, signal),
-      postMessage: (message) => this.postMessage(message),
+      postMessage: (message) => {
+        const currentSnapshot = this.session.snapshot;
+        return this.postMessage(
+          currentSnapshot && "snapshot" in message && samePreviewRenderKey(snapshot, currentSnapshot)
+            ? { ...message, snapshot: snapshotMessagePayload(currentSnapshot) }
+            : message,
+        );
+      },
       info: (message) => this.outputChannel.info(message),
       error: (message) => this.outputChannel.error(message),
-      isCurrentRequest: (requestId) => !!this.panel && this.renderQueue.isCurrentRequest(requestId),
+      isCurrentRequest: (requestId) =>
+        !!this.panel &&
+        this.renderQueue.isCurrentRequest(requestId) &&
+        !!this.session.snapshot &&
+        samePreviewRenderKey(snapshot, this.session.snapshot),
       markRendered: (_requestId, renderedSnapshot, content) => {
         this.renderedOutputStale = false;
         this.webviewClient.markRendered(renderedSnapshot, content);
@@ -587,7 +631,6 @@ export class PreviewInstance implements vscode.Disposable {
     ) {
       return;
     }
-    this.invalidateRenderedOutput("source-select");
     this.scheduleRefresh("source-select", true);
   }
 
@@ -601,7 +644,6 @@ export class PreviewInstance implements vscode.Disposable {
       return;
     }
     this.themeGeneration += 1;
-    this.invalidateRenderedOutput("diagram-theme");
     this.scheduleRefresh("diagram-theme", true);
   }
 
@@ -610,7 +652,6 @@ export class PreviewInstance implements vscode.Disposable {
       return;
     }
     this.themeGeneration += 1;
-    this.invalidateRenderedOutput("appearance");
     this.scheduleRefresh("appearance", true);
   }
 
@@ -641,7 +682,6 @@ export class PreviewInstance implements vscode.Disposable {
       return;
     }
     this.session.importTheme(imported);
-    this.invalidateRenderedOutput("diagram-theme");
     this.scheduleRefresh("diagram-theme", true);
   }
 
@@ -649,7 +689,6 @@ export class PreviewInstance implements vscode.Disposable {
     if (!isPreviewDisplayMode(displayMode) || !this.session.setDisplayMode(displayMode)) {
       return;
     }
-    this.invalidateRenderedOutput("display-mode");
     this.scheduleRefresh("display-mode", true);
   }
 
@@ -657,7 +696,6 @@ export class PreviewInstance implements vscode.Disposable {
     if (!this.session.setBackground(background)) {
       return;
     }
-    this.invalidateRenderedOutput("background");
     this.scheduleRefresh("background", true);
   }
 

@@ -99,7 +99,7 @@ class FakePreviewHost {
   importDelay: Promise<void> | undefined;
   importError: Error | undefined;
   imported: ImportedTheme = {
-    content: '{"schema_version":1,"kind":"design","design":{"tokens":{"private":"raw-content"}}}',
+    content: '{"schema_version":1,"kind":"design","design":{"tokens":{"private":{"type":"paint","value":"#123456","description":"raw-content"}},"canvas":{"base":{"ref":"private"}},"appearances":{"light":{},"dark":{}},"default_appearance":"light"}}',
     label: "reading.theme.json",
     supportedAppearances: ["light", "dark"],
     defaultAppearance: "light",
@@ -584,6 +584,178 @@ describe("preview manager", () => {
     for (const subscription of host.subscriptions) subscription.dispose();
   });
 
+  it("keeps identical theme reimports ready for copy and SVG/PNG export", async () => {
+    const host = new FakePreviewHost();
+    host.themeDiscovery = pairedThemeDiscovery();
+    host.activeColorThemeKind = 2;
+    const { registerPreview } = loadPreviewModule(host);
+    registerPreview({ extensionUri: uri("file:///extension"), subscriptions: host.subscriptions } as unknown as vscode.ExtensionContext);
+    await host.commands.get("merman.openPreview")?.(host.targetDocument.uri);
+    const panel = host.panels[0]!;
+    await panel.receive({ type: "ready" });
+    await panel.receive({ type: "importTheme" });
+    await flushPreviewWork();
+    const sourceKey = lastRenderedSourceKey(panel);
+    const renderCount = host.renderCalls.length;
+    panel.postedMessages.splice(0);
+
+    await panel.receive({ type: "importTheme" });
+    await flushPreviewWork();
+
+    assert.equal(host.themeFiles.length, 2);
+    assert.equal(host.renderCalls.length, renderCount);
+    assert.deepEqual(panel.postedMessages, []);
+    const svg = '<svg viewBox="0 0 10 10"></svg>';
+    await panel.receive({ type: "copySvg", svg, sourceKey });
+    await panel.receive({ type: "exportRendered", format: "svg", sourceKey });
+    await flushPreviewWork();
+    await panel.receive({ type: "exportRendered", format: "png", sourceKey });
+    await flushPreviewWork();
+
+    assert.deepEqual(host.clipboardWrites, [svg]);
+    assert.equal(host.writtenFiles.length, 1);
+    assert.deepEqual(host.renderCalls.slice(renderCount).map((call) => [
+      call.format, call.themeFileContent, call.themeAppearance,
+    ]), [
+      ["svg", host.imported.content, "dark"],
+      ["svg", host.imported.content, "dark"],
+      ["png", undefined, undefined],
+    ]);
+    assert.deepEqual(host.informationMessages.slice(-2), ["Exported export-one.svg.", "Exported export-2.png."]);
+    assert.deepEqual(host.warnings, []);
+    assert.deepEqual(host.errors, []);
+    for (const subscription of host.subscriptions) subscription.dispose();
+  });
+
+  it("updates a reimported theme name without discarding its ready output or replay cache", async () => {
+    const host = new FakePreviewHost();
+    host.themeDiscovery = pairedThemeDiscovery();
+    const { registerPreview } = loadPreviewModule(host);
+    registerPreview({ extensionUri: uri("file:///extension"), subscriptions: host.subscriptions } as unknown as vscode.ExtensionContext);
+    await host.commands.get("merman.openPreview")?.(host.targetDocument.uri);
+    const panel = host.panels[0]!;
+    await panel.receive({ type: "ready" });
+    await panel.receive({ type: "importTheme" });
+    await flushPreviewWork();
+    const sourceKey = lastRenderedSourceKey(panel);
+    const renderCount = host.renderCalls.length;
+    panel.postedMessages.splice(0);
+    host.imported = { ...host.imported, label: "Renamed reading.theme.json" };
+
+    await panel.receive({ type: "importTheme" });
+    await flushPreviewWork();
+
+    assert.equal(host.renderCalls.length, renderCount);
+    assert.deepEqual(panel.postedMessages.map((message) => (message as { type: string }).type), ["settingsUpdated"]);
+    const settings = panel.postedMessages[0] as { snapshot: PreviewSnapshotMessagePayload };
+    assert.equal(settings.snapshot.themeLabel, host.imported.label);
+    assert.equal(settings.snapshot.themeChoices?.find((choice) => choice.id === "file")?.label, host.imported.label);
+    assert.deepEqual(settings.snapshot.sourceKey, sourceKey);
+    await panel.receive({ type: "ready" });
+    await flushPreviewWork();
+    assert.equal(host.renderCalls.length, renderCount);
+    assert.equal(lastRenderedSnapshot(panel).themeLabel, host.imported.label);
+    await panel.receive({ type: "copySvg", svg: "<svg></svg>", sourceKey });
+    await panel.receive({ type: "exportRendered", format: "svg", sourceKey });
+    await flushPreviewWork();
+    assert.deepEqual(host.clipboardWrites, ["<svg></svg>"]);
+    assert.equal(host.writtenFiles.length, 1);
+    assert.deepEqual(host.warnings, []);
+    for (const subscription of host.subscriptions) subscription.dispose();
+  });
+
+  it("recovers an invalidated theme reimport when an edit outside the active fence leaves render inputs unchanged", async () => {
+    const host = new FakePreviewHost();
+    host.themeDiscovery = pairedThemeDiscovery();
+    const original = textDocument(
+      "file:///workspace/notes.md", "notes.md", "Before\n```mermaid\nflowchart LR\nA --> B\n```\n", "markdown", 1,
+    );
+    host.setActiveDocument(original);
+    const { registerPreview } = loadPreviewModule(host);
+    registerPreview({ extensionUri: uri("file:///extension"), subscriptions: host.subscriptions } as unknown as vscode.ExtensionContext);
+    await host.commands.get("merman.openPreview")?.(original.uri);
+    const panel = host.panels[0]!;
+    await panel.receive({ type: "ready" });
+    await panel.receive({ type: "importTheme" });
+    await flushPreviewWork();
+    const sourceKey = lastRenderedSourceKey(panel);
+    const renderCount = host.renderCalls.length;
+    panel.postedMessages.splice(0);
+    const edited = textDocument(
+      "file:///workspace/notes.md", "notes.md", "After\n```mermaid\nflowchart LR\nA --> B\n```\n", "markdown", 2,
+    );
+    host.setActiveDocument(edited);
+    host.fireDocumentChange(edited);
+
+    await panel.receive({ type: "importTheme" });
+    await flushPreviewWork();
+
+    assert.equal(host.renderCalls.length, renderCount + 1);
+    assert.deepEqual(lastRenderedSourceKey(panel), sourceKey);
+    assert.equal((panel.postedMessages.at(-1) as { type: string }).type, "renderSucceeded");
+    await panel.receive({ type: "copySvg", svg: "<svg></svg>", sourceKey });
+    await panel.receive({ type: "exportRendered", format: "svg", sourceKey });
+    await flushPreviewWork();
+    assert.deepEqual(host.clipboardWrites, ["<svg></svg>"]);
+    assert.equal(host.writtenFiles.length, 1);
+    assert.deepEqual(host.warnings, []);
+    for (const subscription of host.subscriptions) subscription.dispose();
+  });
+
+  it("invalidates changed recipe output and keeps the applied recipe usable after a rejected import", async () => {
+    const host = new FakePreviewHost();
+    host.themeDiscovery = pairedThemeDiscovery();
+    const { registerPreview } = loadPreviewModule(host);
+    registerPreview({ extensionUri: uri("file:///extension"), subscriptions: host.subscriptions } as unknown as vscode.ExtensionContext);
+    await host.commands.get("merman.openPreview")?.(host.targetDocument.uri);
+    const panel = host.panels[0]!;
+    await panel.receive({ type: "ready" });
+    await panel.receive({ type: "importTheme" });
+    await flushPreviewWork();
+    const previousKey = lastRenderedSourceKey(panel);
+    const renderCount = host.renderCalls.length;
+    host.imported = {
+      ...host.imported,
+      content: '{"schema_version":1,"kind":"design","design":{"canvas":{"base":"#654321"},"appearances":{"light":{},"dark":{}},"default_appearance":"light"}}',
+    };
+    const applied = host.imported.content;
+    const releaseRender = host.deferNextRender();
+    panel.postedMessages.splice(0);
+    await panel.receive({ type: "importTheme" });
+    await flushPreviewWork();
+
+    assert.equal(host.renderCalls.length, renderCount + 1);
+    assert.equal(host.renderCalls.at(-1)?.themeFileContent, applied);
+    assert.ok(panel.postedMessages.some((message) => (message as { type: string }).type === "renderInvalidated"));
+    assert.equal(panel.postedMessages.some((message) => (message as { type: string }).type === "renderSucceeded"), false);
+    await panel.receive({ type: "copySvg", svg: "<svg></svg>", sourceKey: previousKey });
+    await panel.receive({ type: "exportRendered", format: "svg", sourceKey: previousKey });
+    assert.deepEqual(host.clipboardWrites, []);
+    assert.equal(host.writtenFiles.length, 0);
+    assert.equal(host.warnings.length, 2);
+    releaseRender();
+    await flushPreviewWork();
+    const sourceKey = lastRenderedSourceKey(panel);
+    assert.notDeepEqual(sourceKey, previousKey);
+    panel.postedMessages.splice(0);
+    host.importError = new Error("invalid inactive dark appearance");
+
+    await panel.receive({ type: "importTheme" });
+    await flushPreviewWork();
+
+    assert.equal(host.renderCalls.length, renderCount + 1);
+    assert.deepEqual(panel.postedMessages, []);
+    assert.match(host.errors.at(-1)!, /invalid inactive dark appearance/);
+    await panel.receive({ type: "copySvg", svg: "<svg></svg>", sourceKey });
+    await panel.receive({ type: "exportRendered", format: "svg", sourceKey });
+    await flushPreviewWork();
+    assert.deepEqual(host.clipboardWrites, ["<svg></svg>"]);
+    assert.equal(host.writtenFiles.length, 1);
+    assert.equal(host.renderCalls.at(-1)?.themeFileContent, applied);
+    assert.equal(host.warnings.length, 2);
+    for (const subscription of host.subscriptions) subscription.dispose();
+  });
+
   it("follows editor appearances across hidden locked panels without retargeting their sources", async () => {
     const host = new FakePreviewHost();
     host.themeDiscovery = pairedThemeDiscovery();
@@ -659,6 +831,121 @@ describe("preview manager", () => {
     await flushPreviewWork();
     assert.equal(host.renderCalls.length, singleCount);
     for (const subscription of host.subscriptions) subscription.dispose();
+  });
+
+  it("keeps a matching in-flight render when only the viewer background changes", async () => {
+    const host = new FakePreviewHost();
+    const { registerPreview } = loadPreviewModule(host);
+    registerPreview({ extensionUri: uri("file:///extension"), subscriptions: host.subscriptions } as unknown as vscode.ExtensionContext);
+    await host.commands.get("merman.openPreview")?.(host.targetDocument.uri);
+    const panel = host.panels[0]!;
+    await panel.receive({ type: "ready" });
+    await flushPreviewWork();
+    const renderCount = host.renderCalls.length;
+    const releaseRender = host.deferNextRender();
+    try {
+      await panel.receive({ type: "setDisplayMode", mode: "ascii" });
+      await waitUntil(() => host.renderCalls.length > renderCount);
+      const signal = host.renderSignals.at(-1)!;
+      panel.postedMessages.splice(0);
+
+      await panel.receive({ type: "setViewerBackground", background: "dark" });
+      await flushPreviewWork();
+
+      assert.deepEqual(host.renderCalls.slice(renderCount).map((call) => call.format), ["ascii"]);
+      assert.equal(signal.aborted, false);
+      assert.deepEqual(panel.postedMessages.map((message) => (message as { type: string }).type), ["settingsUpdated"]);
+      releaseRender();
+      await flushPreviewWork();
+      assert.equal(lastRenderedSnapshot(panel).displayMode, "ascii");
+      assert.equal(lastRenderedSnapshot(panel).viewerBackground, "dark");
+      assert.deepEqual(host.errors, []);
+    } finally {
+      releaseRender();
+      for (const subscription of host.subscriptions) subscription.dispose();
+    }
+  });
+
+  it("keeps a matching render queued while its settings update is still posting", async () => {
+    const host = new FakePreviewHost();
+    const { registerPreview } = loadPreviewModule(host);
+    registerPreview({ extensionUri: uri("file:///extension"), subscriptions: host.subscriptions } as unknown as vscode.ExtensionContext);
+    await host.commands.get("merman.openPreview")?.(host.targetDocument.uri);
+    const panel = host.panels[0]!;
+    await panel.receive({ type: "ready" });
+    await flushPreviewWork();
+    const renderCount = host.renderCalls.length;
+    let releaseSettings: () => void = () => {};
+    const settingsDelay = new Promise<void>((resolve) => { releaseSettings = resolve; });
+    const postMessage = panel.webview.postMessage;
+    let settingsPending = false;
+    panel.webview.postMessage = async (message) => {
+      const update = message as { type: string; snapshot?: PreviewSnapshotMessagePayload };
+      if (!settingsPending && update.type === "settingsUpdated" && update.snapshot?.displayMode === "ascii") {
+        settingsPending = true;
+        await settingsDelay;
+      }
+      return postMessage(message);
+    };
+    try {
+      await panel.receive({ type: "setDisplayMode", mode: "ascii" });
+      await waitUntil(() => settingsPending);
+      await panel.receive({ type: "setViewerBackground", background: "dark" });
+      await flushPreviewWork();
+
+      assert.equal(host.renderCalls.length, renderCount);
+      releaseSettings();
+      await flushPreviewWork();
+
+      assert.deepEqual(host.renderCalls.slice(renderCount).map((call) => call.format), ["ascii"]);
+      assert.equal(lastRenderedSnapshot(panel).displayMode, "ascii");
+      assert.equal(lastRenderedSnapshot(panel).viewerBackground, "dark");
+      assert.deepEqual(host.errors, []);
+    } finally {
+      releaseSettings();
+      for (const subscription of host.subscriptions) subscription.dispose();
+    }
+  });
+
+  it("does not start an obsolete render after a delayed settings update finishes", async () => {
+    const host = new FakePreviewHost();
+    const { registerPreview } = loadPreviewModule(host);
+    registerPreview({ extensionUri: uri("file:///extension"), subscriptions: host.subscriptions } as unknown as vscode.ExtensionContext);
+    await host.commands.get("merman.openPreview")?.(host.targetDocument.uri);
+    const panel = host.panels[0]!;
+    await panel.receive({ type: "ready" });
+    await flushPreviewWork();
+    const renderCount = host.renderCalls.length;
+    let releaseSettings: () => void = () => {};
+    const settingsDelay = new Promise<void>((resolve) => { releaseSettings = resolve; });
+    const postMessage = panel.webview.postMessage;
+    let settingsPending = false;
+    panel.webview.postMessage = async (message) => {
+      const update = message as { type: string; snapshot?: PreviewSnapshotMessagePayload };
+      if (update.type === "settingsUpdated" && update.snapshot?.displayMode === "ascii") {
+        settingsPending = true;
+        await settingsDelay;
+      }
+      return postMessage(message);
+    };
+    try {
+      await panel.receive({ type: "setDisplayMode", mode: "ascii" });
+      await waitUntil(() => settingsPending);
+      assert.equal(host.renderCalls.length, renderCount);
+
+      await panel.receive({ type: "setDisplayMode", mode: "unicode" });
+      await flushPreviewWork();
+      assert.equal(lastRenderedSnapshot(panel).displayMode, "unicode");
+      releaseSettings();
+      await flushPreviewWork();
+
+      assert.deepEqual(host.renderCalls.slice(renderCount).map((call) => call.format), ["unicode"]);
+      assert.equal(lastRenderedSnapshot(panel).displayMode, "unicode");
+      assert.deepEqual(host.errors, []);
+    } finally {
+      releaseSettings();
+      for (const subscription of host.subscriptions) subscription.dispose();
+    }
   });
 
   it("freezes preview export before a delayed save dialog and keeps viewer backing out of image settings", async () => {
