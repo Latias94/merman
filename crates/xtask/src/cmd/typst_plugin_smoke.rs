@@ -246,7 +246,7 @@ pub(crate) fn validate_typst_plugin_with_input(
         "theme_operation_json",
         vec![
             b"export-theme-preset-json".to_vec(),
-            b"editor-light".to_vec(),
+            b"editor".to_vec(),
             options_json.to_vec(),
         ],
     )?;

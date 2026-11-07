@@ -53,6 +53,7 @@ CLI_RELEASE_COMMANDS = [
     "parse",
     "render",
     "rustdoc",
+    "theme",
 ]
 SOURCE_ASSET_PATHS = (
     "assets/completions/_merman-cli",
@@ -64,6 +65,8 @@ SOURCE_ASSET_PATHS = (
     "assets/man/merman-cli-rustdoc-build.1",
     "assets/man/merman-cli-rustdoc-check.1",
     "assets/man/merman-cli-rustdoc.1",
+    "assets/man/merman-cli-theme-inspect.1",
+    "assets/man/merman-cli-theme.1",
     "assets/man/merman-cli.1",
 )
 VALID_PNG = (
@@ -229,7 +232,7 @@ def valid_capabilities_payload(
         }
     return {
         "schema_version": 2,
-        "cli_contract_version": 6,
+        "cli_contract_version": 7,
         "package": {"name": "merman-cli", "version": version},
         "compatibility": {
             "mermaid": bundle["release"]["version"],
@@ -1463,7 +1466,7 @@ class RuntimeContractTests(unittest.TestCase):
             "system_discovery": "before-layout",
         })
         self.assertEqual(payload["schema_version"], 2)
-        self.assertEqual(payload["cli_contract_version"], 6)
+        self.assertEqual(payload["cli_contract_version"], 7)
         self.assertIs(native["system_discovery_compiled"], True)
         self.assertIs(native["system_discovery_runtime_available"], True)
         self.assertEqual(len(native["measurement_operations"]), 23)
@@ -1929,6 +1932,10 @@ class RuntimeContractTests(unittest.TestCase):
                 (
                     "schema_version",
                     lambda value: value.__setitem__("schema_version", 999),
+                ),
+                (
+                    "cli_contract_version",
+                    lambda value: value.__setitem__("cli_contract_version", 6),
                 ),
                 (
                     "cli_contract_version",

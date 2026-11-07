@@ -175,14 +175,16 @@ fn preset_completion_entry(
 }
 
 fn preset_completion_entries_are_labelled(asset: &str, id: &str, expected: &str) -> bool {
-    let identifier_character = |character: char| {
-        character.is_ascii_alphanumeric() || character == '-' || character == '_'
-    };
+    let identifier_character =
+        |character: char| character.is_ascii_alphanumeric() || character == '-' || character == '_';
     let mut entries = asset
         .lines()
         .filter(|line| {
             line.match_indices(id).any(|(offset, _)| {
-                !line[..offset].chars().next_back().is_some_and(identifier_character)
+                !line[..offset]
+                    .chars()
+                    .next_back()
+                    .is_some_and(identifier_character)
                     && !line[offset + id.len()..]
                         .chars()
                         .next()

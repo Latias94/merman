@@ -293,7 +293,7 @@
 #assert.eq(theme-support.schema_version, 1)
 #assert.eq(theme-support.query.family, "sequence")
 
-#let preset-export = export-theme-preset("editor-light")
+#let preset-export = export-theme-preset("editor")
 #assert.eq(preset-export.kind, "design")
 #assert(type(preset-export.design) == dictionary)
 #assert.eq(preset-export.design.appearances.keys().sorted(), ("dark", "light"))

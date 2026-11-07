@@ -252,7 +252,7 @@ fn rust_facade_preserves_materialization_and_compilation_error_sources() {
     let ThemeDesignCompileError::Materialization(error) = error else {
         panic!("materialization error required");
     };
-    assert_eq!(error.diagnostic().path(), "/styles/node/fill");
+    assert_eq!(error.diagnostic().path(), "/design/styles/node/fill");
 
     let invalid_target =
         serde_json::from_value(json!({"styles":{"future-node":{"fill":"#123456"}}})).unwrap();

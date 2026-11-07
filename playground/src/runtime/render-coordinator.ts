@@ -688,6 +688,7 @@ function previewThemeContext(
   try {
     themeCatalog = facade.themeCatalog();
   } catch {
+    themeCatalog = undefined;
   }
   if (workspace.themeRecipeJson === null) return { themeCatalog };
   try { return { themeCatalog, themeRecipeInspection: inspectThemeRecipe(facade, workspace.themeRecipeJson) }; }

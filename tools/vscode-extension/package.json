@@ -357,7 +357,11 @@
           },
           "merman.preview.appearance": {
             "type": "string",
-            "enum": ["follow-editor", "light", "dark"],
+            "enum": [
+              "follow-editor",
+              "light",
+              "dark"
+            ],
             "enumDescriptions": [
               "Follow VS Code's active light or dark appearance when the theme provides it; otherwise use the theme's declared default.",
               "Use the theme's light appearance.",
@@ -413,7 +417,12 @@
           },
           "merman.preview.viewerBackground": {
             "type": "string",
-            "enum": ["auto", "paper", "transparent", "dark"],
+            "enum": [
+              "auto",
+              "paper",
+              "transparent",
+              "dark"
+            ],
             "default": "auto",
             "scope": "window",
             "order": 41,
