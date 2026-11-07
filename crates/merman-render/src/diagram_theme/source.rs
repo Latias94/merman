@@ -89,11 +89,15 @@ pub(super) enum ThemeWireSources {
     Design {
         styles: Vec<ThemeStyleSource>,
         canvas_base: Option<ThemeStyleSource>,
+        effects: Vec<String>,
     },
 }
 
 impl ThemeWireSources {
-    pub(super) fn for_design(design: &merman_theme_contract::ThemeDesignV1) -> Self {
+    pub(super) fn for_design(
+        design: &merman_theme_contract::ThemeDesignV1,
+        effects: Vec<String>,
+    ) -> Self {
         let escape = |target: &str| target.replace('~', "~0").replace('/', "~1");
         let styles = design
             .styles
@@ -122,6 +126,7 @@ impl ThemeWireSources {
         Self::Design {
             styles,
             canvas_base,
+            effects,
         }
     }
 
@@ -145,6 +150,13 @@ impl ThemeWireSources {
             Self::Design { canvas_base, .. } => canvas_base.take(),
         }
     }
+
+    pub(super) fn effect_path(&self, index: usize) -> String {
+        match self {
+            Self::CompleteSpec => format!("/effects/{index}"),
+            Self::Design { effects, .. } => effects[index].clone(),
+        }
+    }
 }
 
 #[cfg(test)]
@@ -160,7 +172,7 @@ mod tests {
             "canvas":{"base":"white"}
         }))
         .unwrap();
-        let mut sources = ThemeWireSources::for_design(&design);
+        let mut sources = ThemeWireSources::for_design(&design, Vec::new());
         assert_eq!(sources.document().unwrap().id(), "design");
         for (index, expected) in [
             "/styles/a",

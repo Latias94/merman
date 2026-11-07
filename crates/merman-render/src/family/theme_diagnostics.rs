@@ -141,12 +141,14 @@ pub(super) fn project(
                 if let Some(theme) = theme {
                     match theme.source_map().document() {
                         Some(ThemeSourceDocument::CompleteSpec) => {
-                            let has_family = theme
+                            let has_family_property = theme
                                 .spec()
                                 .typography()
                                 .family_overrides()
-                                .any(|(id, _)| id == family.family_id.as_str());
-                            let prefix = if has_family {
+                                .any(|(id, style)| {
+                                    id == family.family_id.as_str() && style.is_specified(*property)
+                                });
+                            let prefix = if has_family_property {
                                 format!("/typography/families/{}", family.family_id.as_str())
                             } else {
                                 "/typography/default".to_owned()

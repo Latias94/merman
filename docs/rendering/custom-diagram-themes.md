@@ -715,6 +715,23 @@ Arrays do not implicitly append. Existing style Clear semantics remain distinct 
 and transparent paint. Assets and requirements belong to the shared design; an appearance
 cannot override them. This is not arbitrary recursive JSON merge.
 
+Within a base `typography` section, family styles inherit each omitted property from `default`.
+An authored `null` removes that property's local override: a family property inherits the shared
+default, while a default property contributes no override to the renderer's configuration.
+It does not pin the renderer's built-in font stack or numeric defaults. Role-style typography
+Clear continues to restore the resolved family base.
+
+Rust's `TypographySpec::family_style(family)` returns an owned, resolved `TextStyle`, combining
+the shared default and the family's explicitly authored properties. Callers that require a
+reference can bind this result locally and borrow it. Unspecified properties remain unspecified
+when neither level supplies them.
+
+Recipe Mermaid compatibility normalizes `mermaid.dark_mode` and `mermaid.variables.darkMode`
+into one slot within each layer before composition. Equal declarations in one layer agree;
+conflicting declarations in the same layer are rejected. Either spelling in an appearance
+overrides the shared value. Native Mermaid source and site configuration retain their existing
+`darkMode` settings.
+
 The same file can be checked and selected without changing its declared default:
 
 ```sh
@@ -820,6 +837,10 @@ The raw-design materialization convenience returns its existing concrete/default
 does not replace full-pair exchange or document inspection. Authoring operations intentionally
 ignore render `options.theme`: supply the recipe and appearance in the action input.
 Do not submit a standalone recipe as if it were a raw design.
+
+Raw-design materialization and inspection use the same complete compiler admission as document
+actions, including semantic targets and effect graphs. Raw inputs retain payload-relative
+diagnostic/reference paths and encoded-byte limits on the raw design, without a recipe envelope.
 
 For downloaded JSON, preserve the original text when constructing the action request:
 

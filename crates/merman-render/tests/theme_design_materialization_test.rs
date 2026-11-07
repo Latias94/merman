@@ -202,3 +202,54 @@ fn design_recipe_compiles_through_the_real_compiler_and_metadata_is_not_render_i
         .unwrap();
     assert_eq!(first.recipe_fingerprint(), second.recipe_fingerprint());
 }
+
+#[test]
+fn base_typography_clear_removes_local_overrides_without_pinning_renderer_defaults() {
+    use merman_theme_contract::ThemeTextStyleWireV1;
+    use serde_json::json;
+
+    let shared = json!({
+        "font_stack":["Theme Serif","serif"],"font_size_px":23,"font_weight":700,
+        "font_style":"italic","line_height":1.5,"letter_spacing_px":2,"word_spacing_px":3,
+        "transform":"uppercase","decoration":"underline","text_align":"center",
+        "white_space":"pre-wrap","wrap":"anywhere"
+    });
+    let clears = shared
+        .as_object()
+        .unwrap()
+        .keys()
+        .map(|property| (property.clone(), serde_json::Value::Null))
+        .collect::<serde_json::Map<_, _>>();
+    let document: ThemeDesignV1 = serde_json::from_value(json!({
+        "typography":{"default":shared,"families":{"flowchart":clears}},
+        "styles":{"node-label":{"typography":{"font_size_px":null}}}
+    }))
+    .unwrap();
+    let spec = materialize_theme_design(&document).unwrap();
+    let typography = spec.typography.as_ref().unwrap();
+    assert_eq!(
+        typography.default.as_ref().unwrap().font_size_px,
+        Some(23.0)
+    );
+    assert_eq!(
+        typography.families.as_ref().unwrap()["flowchart"],
+        ThemeTextStyleWireV1::default(),
+    );
+    let ThemeRuleSetWireV1::Rule { style, .. } = &spec.styles.as_ref().unwrap()[0] else {
+        panic!("the role rule remains a patch")
+    };
+    assert_eq!(
+        style.typography.as_ref().unwrap().font_size_px,
+        SpecifiedWireV1::Clear,
+    );
+
+    let document: ThemeDesignV1 = serde_json::from_value(json!({
+        "typography":{"default":clears}
+    }))
+    .unwrap();
+    let spec = materialize_theme_design(&document).unwrap();
+    assert_eq!(
+        spec.typography.as_ref().unwrap().default,
+        Some(ThemeTextStyleWireV1::default()),
+    );
+}

@@ -161,7 +161,9 @@ pub struct ThemeTypographySpecWireV1 {
     pub families: Option<BTreeMap<String, ThemeTextStyleWireV1>>,
 }
 
-/// A complete text-style wire whose omitted fields retain renderer defaults.
+/// A base text style whose omitted properties inherit the shared default when family-scoped.
+///
+/// Properties omitted from the shared default leave the renderer's configuration in control.
 #[derive(Debug, Default, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ThemeTextStyleWireV1 {

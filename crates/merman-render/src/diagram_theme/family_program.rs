@@ -89,7 +89,7 @@ struct FamilyRuleSlot {
 
 impl FamilyThemeProgram {
     pub(super) fn compile(spec: Arc<DiagramThemeSpec>, family: DiagramFamilyId) -> Self {
-        let base_typography = spec.typography().family_style(family).clone();
+        let base_typography = spec.typography().family_style(family);
         let mut rule_indices = Vec::new();
         let mut slots = BTreeMap::<ThemeTarget, FamilyRuleSlot>::new();
         let mut mechanism_routes = compile_base_typography_routes(family, &base_typography);

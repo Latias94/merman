@@ -1026,6 +1026,69 @@ mod tests {
         }
     }
 
+    #[cfg(feature = "diagram-class")]
+    #[test]
+    fn theme_diagnostics_locate_base_typography_by_property_presence() {
+        for (family_style, expected_path, expected_value) in [
+            (
+                serde_json::json!({"font_stack": ["monospace"]}),
+                "/typography/default/line_height",
+                serde_json::json!(1.5),
+            ),
+            (
+                serde_json::json!({"font_stack": ["monospace"], "line_height": 2}),
+                "/typography/families/class/line_height",
+                serde_json::json!(2),
+            ),
+            (
+                serde_json::json!({"font_stack": ["monospace"], "line_height": "normal"}),
+                "/typography/families/class/line_height",
+                serde_json::json!("normal"),
+            ),
+        ] {
+            let complete_spec = serde_json::json!({
+                "typography": {
+                    "default": {"line_height": 1.5},
+                    "families": {"class": family_style}
+                }
+            });
+            let options = serde_json::to_vec(&serde_json::json!({
+                "theme": {
+                    "schema_version": 1,
+                    "kind": "complete_spec",
+                    "complete_spec": complete_spec
+                },
+                "site_config": {"htmlLabels": false, "look": "classic"},
+                "svg": {"pipeline": "resvg-safe"}
+            }))
+            .unwrap();
+            let result = crate::execute_once(
+                crate::BindingOperationRequest::new("svg", b"classDiagram\nclass A")
+                    .with_options_json(&options),
+            )
+            .expect("render Class with base typography");
+            let evidence = result
+                .metadata()
+                .theme_execution_evidence()
+                .unwrap()
+                .as_v2()
+                .unwrap();
+            let diagnostic = evidence
+                .diagnostics()
+                .unwrap()
+                .iter()
+                .find(|diagnostic| {
+                    diagnostic.subject() == "typography"
+                        && diagnostic.property() == Some("line-height")
+                })
+                .expect("actual render diagnoses unsupported line height");
+            assert_eq!(diagnostic.code(), "unsupported-typography");
+            assert_eq!(diagnostic.source_document(), Some("complete_spec"));
+            assert_eq!(diagnostic.source_paths(), &[expected_path]);
+            assert_eq!(complete_spec.pointer(expected_path), Some(&expected_value));
+        }
+    }
+
     #[test]
     fn theme_diagnostics_do_not_report_fully_overridden_rules() {
         let options = serde_json::to_vec(&serde_json::json!({

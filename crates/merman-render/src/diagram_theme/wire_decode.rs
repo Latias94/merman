@@ -82,9 +82,7 @@ pub(super) fn decode(
         );
     }
     if let Some(effects) = effects {
-        decoded = decoded.with_effects(
-            decode_effects(effects).map_err(|error| LocatedCompileError::new("/effects", error))?,
-        );
+        decoded = decoded.with_effects(decode_effects(effects, &sources)?);
     }
     if let Some(requirements) = requirements {
         decoded = decoded.with_requirements(
@@ -101,7 +99,7 @@ pub(super) fn decode(
     Ok((decoded, source_map))
 }
 
-fn decode_mermaid(
+pub(super) fn decode_mermaid(
     value: wire::MermaidThemeCompatibilityWireV1,
 ) -> Result<MermaidThemeCompatibility, LocatedCompileError> {
     let mut decoded = MermaidThemeCompatibility::default();
@@ -478,53 +476,60 @@ const fn decode_insets(value: wire::ThemeInsetsWireV1) -> InsetsPx {
 
 fn decode_effects(
     entries: Vec<wire::ThemeEffectEntryWireV1>,
-) -> Result<DiagramEffectSet, ThemeCompileError> {
+    sources: &ThemeWireSources,
+) -> Result<DiagramEffectSet, LocatedCompileError> {
     let mut decoded = DiagramEffectSet::default();
-    for entry in entries {
-        match entry {
-            wire::ThemeEffectEntryWireV1::Graph {
-                id,
-                color_space,
-                composition,
-                primitives,
-            } => {
-                let primitives = primitives
-                    .into_iter()
-                    .map(decode_effect_primitive)
-                    .collect::<Result<Vec<_>, _>>()?;
-                let color_space = match color_space.as_deref() {
-                    None | Some("linear-rgb") => super::EffectColorSpace::LinearRgb,
-                    Some("srgb") => super::EffectColorSpace::Srgb,
-                    Some(_) => {
-                        return Err(ThemeCompileValidationError::InvalidValue {
-                            field: "effects.graph.color_space",
-                        }
-                        .into());
+    for (index, entry) in entries.into_iter().enumerate() {
+        let result =
+            (|mut decoded: DiagramEffectSet| -> Result<DiagramEffectSet, ThemeCompileError> {
+                match entry {
+                    wire::ThemeEffectEntryWireV1::Graph {
+                        id,
+                        color_space,
+                        composition,
+                        primitives,
+                    } => {
+                        let primitives = primitives
+                            .into_iter()
+                            .map(decode_effect_primitive)
+                            .collect::<Result<Vec<_>, _>>()?;
+                        let color_space = match color_space.as_deref() {
+                            None | Some("linear-rgb") => super::EffectColorSpace::LinearRgb,
+                            Some("srgb") => super::EffectColorSpace::Srgb,
+                            Some(_) => {
+                                return Err(ThemeCompileValidationError::InvalidValue {
+                                    field: "effects.graph.color_space",
+                                }
+                                .into());
+                            }
+                        };
+                        let composition = match composition.as_deref() {
+                            None | Some("cascade") => super::EffectComposition::Cascade,
+                            Some("independent") => super::EffectComposition::Independent,
+                            Some(_) => {
+                                return Err(ThemeCompileValidationError::InvalidValue {
+                                    field: "effects.graph.composition",
+                                }
+                                .into());
+                            }
+                        };
+                        decoded = decoded.with_graph(
+                            EffectGraph::new(id, primitives)?
+                                .with_color_space(color_space)
+                                .with_composition(composition)?,
+                        )?;
                     }
-                };
-                let composition = match composition.as_deref() {
-                    None | Some("cascade") => super::EffectComposition::Cascade,
-                    Some("independent") => super::EffectComposition::Independent,
-                    Some(_) => {
-                        return Err(ThemeCompileValidationError::InvalidValue {
-                            field: "effects.graph.composition",
-                        }
-                        .into());
+                    wire::ThemeEffectEntryWireV1::Binding { target, effect_id } => {
+                        decoded = decoded.with_binding(EffectBinding::new(
+                            parse_target(&target, "effects.binding.target")?,
+                            effect_id,
+                        )?)?;
                     }
-                };
-                decoded = decoded.with_graph(
-                    EffectGraph::new(id, primitives)?
-                        .with_color_space(color_space)
-                        .with_composition(composition)?,
-                )?;
-            }
-            wire::ThemeEffectEntryWireV1::Binding { target, effect_id } => {
-                decoded = decoded.with_binding(EffectBinding::new(
-                    parse_target(&target, "effects.binding.target")?,
-                    effect_id,
-                )?)?;
-            }
-        }
+                }
+                Ok(decoded)
+            })(decoded);
+        decoded =
+            result.map_err(|error| LocatedCompileError::new(sources.effect_path(index), error))?;
     }
     Ok(decoded)
 }

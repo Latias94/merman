@@ -107,17 +107,9 @@ fn materialize_input(
     resources: &ThemeResourcePolicy,
     inspect: bool,
 ) -> Result<(DiagramThemeSpecWireV1, Vec<ThemeDesignReferenceUse>)> {
-    if design.appearances.is_none() && design.default_appearance.is_none() {
-        return materialize(design, resources, inspect);
-    }
-    super::definition_admission::check_typed_input_encoded_bytes(resources, design)
-        .map_err(encoding_error)?;
-    let recipe = ThemeRecipeV1::Design {
-        design: design.clone(),
-    };
     let result = super::DiagramThemeCompiler::new()
         .with_resource_policy(resources.clone())
-        .materialize_document(&recipe, None)
+        .materialize_raw_design(design)
         .map_err(|error| {
             let error = match error {
                 ThemeDesignCompileError::Materialization(error) => error,
@@ -194,7 +186,11 @@ pub(super) fn materialize(
     design: &ThemeDesignV1,
     resources: &ThemeResourcePolicy,
     inspect: bool,
-) -> Result<(DiagramThemeSpecWireV1, Vec<ThemeDesignReferenceUse>)> {
+) -> Result<(
+    DiagramThemeSpecWireV1,
+    Vec<ThemeDesignReferenceUse>,
+    super::source::ThemeWireSources,
+)> {
     super::definition_admission::check_typed_input_encoded_bytes(resources, design)
         .map_err(encoding_error)?;
     if design.tokens.len() > MAX_TOKENS {
@@ -299,7 +295,7 @@ pub(super) fn materialize(
             _ => None,
         })
         .collect::<BTreeSet<_>>();
-    resolver.effects.retain(|entry| matches!(entry, ThemeEffectEntryWireV1::Graph { id, .. } if used_effects.contains(id.as_str())));
+    resolver.effects.retain(|(entry, _)| matches!(entry, ThemeEffectEntryWireV1::Graph { id, .. } if used_effects.contains(id.as_str())));
     if resolver.effects.len() > super::resources::MAX_EFFECT_GRAPHS_HARD_CAP {
         return Err(failure(
             "/tokens",
@@ -307,12 +303,14 @@ pub(super) fn materialize(
             "too many consumed theme effects",
         ));
     }
+    let (effects, effect_paths): (Vec<_>, Vec<_>) = resolver.effects.into_iter().unzip();
+    let sources = super::source::ThemeWireSources::for_design(design, effect_paths);
     let spec = DiagramThemeSpecWireV1 {
         mermaid: design.mermaid.clone(),
         typography,
         styles: (!styles.is_empty()).then_some(styles),
         canvas,
-        effects: (!resolver.effects.is_empty()).then_some(resolver.effects),
+        effects: (!effects.is_empty()).then_some(effects),
         assets: design.assets.clone(),
         requirements: design.requirements.clone(),
     };
@@ -321,7 +319,7 @@ pub(super) fn materialize(
     if inspect {
         propagate_alias_domains(design, &mut resolver.references);
     }
-    Ok((spec, resolver.references))
+    Ok((spec, resolver.references, sources))
 }
 
 // Charge expanded values as they are retained, before repeated consumers can accumulate a
@@ -447,7 +445,7 @@ struct Resolver<'a> {
     cache_bytes: usize,
     cache: BTreeMap<String, Arc<Value>>,
     visiting: BTreeSet<String>,
-    effects: Vec<ThemeEffectEntryWireV1>,
+    effects: Vec<(ThemeEffectEntryWireV1, String)>,
     references: Vec<ThemeDesignReferenceUse>,
     reference_uses: usize,
     inspect: bool,
@@ -1334,7 +1332,7 @@ impl Resolver<'_> {
             primitives,
         };
         charge_encoded(self.resources, &mut self.cache_bytes, &effect)?;
-        self.effects.push(effect);
+        self.effects.push((effect, path.to_owned()));
         Ok(id)
     }
 }
