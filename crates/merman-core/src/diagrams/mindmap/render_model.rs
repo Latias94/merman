@@ -24,15 +24,15 @@ pub(super) fn model_into_render_model_controlled(
         return Ok(Ok(MindmapDiagramRenderModel::default()));
     };
     let config = meta.effective_config.as_config();
-    let width = super::utils::get_i64(config, "mindmap.maxNodeWidth").unwrap_or(200);
-    let base_padding = super::utils::get_i64(config, "mindmap.padding").unwrap_or(10);
+    let width = super::utils::get_f64(config, "mindmap.maxNodeWidth").unwrap_or(200.0);
+    let base_padding = super::utils::get_f64(config, "mindmap.padding").unwrap_or(10.0);
     let mut nodes = Vec::with_capacity(model.nodes.len());
     for (index, node) in model.nodes.into_iter().enumerate() {
         if index % 128 == 0 {
             control.checkpoint()?;
         }
         let padding = match node.node_type {
-            NODE_TYPE_ROUNDED_RECT | NODE_TYPE_RECT | NODE_TYPE_HEXAGON => base_padding * 2,
+            NODE_TYPE_ROUNDED_RECT | NODE_TYPE_RECT | NODE_TYPE_HEXAGON => base_padding * 2.0,
             _ => base_padding,
         };
         nodes.push(MindmapProjectionNode {
@@ -79,10 +79,10 @@ struct MindmapProjectionNode {
     descr: String,
     ty: i32,
     children: Vec<i32>,
-    width: i64,
-    padding: i64,
+    width: f64,
+    padding: f64,
     section: Option<i32>,
-    height: Option<i64>,
+    height: Option<f64>,
     class: Option<String>,
     icon: Option<String>,
     x: Option<f64>,
@@ -118,9 +118,9 @@ fn mindmap_render_node(
         label_type: "markdown".to_string(),
         is_group: false,
         shape: display.shape(node.ty).to_string(),
-        width: node.width as f64,
-        height: node.height.unwrap_or(0) as f64,
-        padding: node.padding as f64,
+        width: node.width,
+        height: node.height.unwrap_or(0.0),
+        padding: node.padding,
         css_classes: mindmap_node_css_classes(node),
         css_styles: Vec::new(),
         look: look.to_string(),

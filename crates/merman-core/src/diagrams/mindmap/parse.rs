@@ -3,8 +3,8 @@ use super::MindmapDiagramModel;
 use super::MindmapDiagramRenderModel;
 use super::db::MindmapDb;
 use super::utils::{
-    NodeSpec, NodeSpecContinuation, NodeSpecError, parse_node_spec, starts_node_spec,
-    strip_inline_comment,
+    NodeSpec, NodeSpecContinuation, NodeSpecError, is_statement_terminator,
+    node_closing_delimiter_at_start, parse_node_spec, starts_node_spec, strip_inline_comment,
 };
 #[cfg(feature = "presentation")]
 use crate::SourcePresentationMetadata;
@@ -481,7 +481,7 @@ fn handle_mindmap_line(
     let (indent, rest) = split_indent(line);
     let rest_offset = line.len().saturating_sub(rest.len());
     let rest = rest.trim_end();
-    if rest.is_empty() {
+    if is_statement_terminator(rest) {
         return MindmapLineOutcome::Done;
     }
     let statement_start = line_start + rest_offset;
@@ -500,6 +500,18 @@ fn handle_mindmap_line(
         };
         let icon_raw = &after[..end];
         let icon = icon_raw.trim();
+        let tail = &after[end + 1..];
+        if !is_statement_terminator(tail) {
+            let tail_start = statement_start + "::icon(".len() + end + 1;
+            let leading = tail.len() - tail.trim_start().len();
+            record_mindmap_error(
+                first_error,
+                diagram_type,
+                "unexpected trailing input after mindmap icon directive",
+                SourceSpan::new(tail_start + leading, statement_span.end),
+            );
+            return MindmapLineOutcome::Done;
+        }
         if icon.is_empty() {
             record_mindmap_error(
                 first_error,
@@ -569,11 +581,6 @@ fn handle_mindmap_line(
         return MindmapLineOutcome::Done;
     }
 
-    let rest = strip_inline_comment(rest).trim_end();
-    if rest.is_empty() {
-        return MindmapLineOutcome::Done;
-    }
-    let statement_span = SourceSpan::new(statement_start, statement_start + rest.len());
     #[cfg(feature = "editor-facts")]
     let editor_demand = if parsed.capture_editor {
         EditorFactsDemand::Capture
@@ -651,8 +658,8 @@ fn finish_pending_mindmap_line(
 
 fn is_safe_mindmap_statement(line: &str) -> bool {
     let (_, rest) = split_indent(line);
-    let rest = strip_inline_comment(rest).trim();
-    if rest.is_empty() {
+    let rest = rest.trim_end();
+    if is_statement_terminator(rest) {
         return false;
     }
     if starts_with_case_insensitive(rest, "::icon(") || rest.starts_with(":::") {
@@ -674,8 +681,10 @@ fn pending_mindmap_line_should_synchronize(
     {
         return false;
     }
+    // `(` also opens an anonymous sibling; only a standalone closer continues this node.
     if indent == pending.syntax.state.original_indent
-        && rest.starts_with(pending.syntax.state.syntax.expected_closing())
+        && let Some(closing) = node_closing_delimiter_at_start(rest)
+        && is_statement_terminator(&rest[closing.len()..])
     {
         return false;
     }
@@ -846,6 +855,226 @@ mod semantic_tests {
     }
 
     #[test]
+    fn semantic_bare_percent_labels_preserve_literal_text() {
+        reset_mindmap_syntax_construction_count();
+        let construction = parse_mindmap_semantic_model_controlled(
+            "mindmap\n  Root %% literal\n    %% comment line\n    child[Label %% literal] %% comment\n",
+            &metadata(),
+            #[cfg(feature = "editor-facts")]
+            EditorFactsDemand::Omit,
+            &crate::OperationControl::new(),
+        )
+        .unwrap();
+        let model = construction.model.unwrap();
+        assert_eq!(model.nodes.len(), 2);
+        assert_eq!(model.nodes[0].node_id, "Root %% literal");
+        assert_eq!(model.nodes[0].descr, "Root %% literal");
+        assert_eq!(model.nodes[1].descr, "Label %% literal");
+        assert_eq!(model.nodes[0].children, vec![1]);
+        assert_eq!(mindmap_syntax_construction_count(), 1);
+    }
+
+    #[test]
+    fn semantic_shape_uses_the_actual_generic_closing_token() {
+        use super::super::{
+            NODE_TYPE_BANG, NODE_TYPE_CIRCLE, NODE_TYPE_CLOUD, NODE_TYPE_HEXAGON, NODE_TYPE_RECT,
+            NODE_TYPE_ROUNDED_RECT,
+        };
+
+        // Generic NODE_DEND is deliberately permissive in the selected Jison grammar.
+        for (source, label, node_type) in [
+            ("root(Label]", "Label", NODE_TYPE_CLOUD),
+            ("(Label]", "Label", NODE_TYPE_CLOUD),
+            ("root(Label))", "Label", NODE_TYPE_CLOUD),
+            ("root(Label)", "Label", NODE_TYPE_ROUNDED_RECT),
+            ("root[Label)", "Label", NODE_TYPE_RECT),
+            ("root((Label]", "Label", NODE_TYPE_CIRCLE),
+            ("root{{Label]", "Label", NODE_TYPE_HEXAGON),
+            ("root))Label]", "Label", NODE_TYPE_BANG),
+            ("root(\"Label ) ] ((\"]", "Label ) ] ((", NODE_TYPE_CLOUD),
+            ("root(Label-)", "Label-", NODE_TYPE_ROUNDED_RECT),
+            ("root(\"Label\"-)", "Label", NODE_TYPE_CLOUD),
+        ] {
+            let input = format!("mindmap\n  {source}\n");
+            let model = parse_mindmap_semantic_model_controlled(
+                &input,
+                &metadata(),
+                #[cfg(feature = "editor-facts")]
+                EditorFactsDemand::Omit,
+                &crate::OperationControl::new(),
+            )
+            .unwrap()
+            .model
+            .unwrap_or_else(|error| panic!("{source}: {error}"));
+            assert_eq!(model.nodes[0].descr, label, "{source}");
+            assert_eq!(model.nodes[0].node_type, node_type, "{source}");
+        }
+    }
+
+    #[test]
+    #[cfg(feature = "editor-facts")]
+    fn semantic_recovery_preserves_same_indent_anonymous_sibling_spans() {
+        for sibling in ["(Recovered)", "((Recovered))"] {
+            let input = format!("mindmap\n  Root\n    broken[\n    {sibling}\n    after[After]\n");
+            let construction = parse_mindmap_semantic_model_controlled(
+                &input,
+                &metadata(),
+                EditorFactsDemand::Capture,
+                &crate::OperationControl::new(),
+            )
+            .unwrap();
+            let Error::DiagramParse { diagnostic, .. } = construction.model.unwrap_err() else {
+                panic!("expected an incomplete node diagnostic");
+            };
+            let broken_start = input.find("broken[").unwrap();
+            assert_eq!(
+                diagnostic.span(),
+                Some(SourceSpan::new(
+                    broken_start,
+                    broken_start + "broken[".len()
+                ))
+            );
+            assert!(diagnostic.message().contains("unterminated node delimiter"));
+
+            let facts = construction.editor_facts.unwrap();
+            assert_eq!(
+                facts.completeness,
+                crate::EditorSemanticCompleteness::Recovered
+            );
+            let recovered = facts
+                .symbols
+                .iter()
+                .find(|symbol| {
+                    symbol.name == "Recovered" && symbol.detail.as_deref() == Some("mindmap node")
+                })
+                .expect("complete anonymous sibling must survive recovery");
+            let selection_start = input.find("Recovered").unwrap();
+            assert_eq!(
+                recovered.selection,
+                SourceSpan::new(selection_start, selection_start + "Recovered".len())
+            );
+            let statement_start = input.find(sibling).unwrap();
+            assert_eq!(
+                recovered.span,
+                SourceSpan::new(statement_start, statement_start + sibling.len())
+            );
+            assert!(facts.symbols.iter().any(|symbol| symbol.name == "after"));
+            assert!(!facts.symbols.iter().any(|symbol| symbol.name == "broken"));
+        }
+    }
+
+    #[test]
+    fn semantic_standalone_generic_closers_continue_unquoted_nodes() {
+        for closing in ["(", "((", "]"] {
+            for suffix in ["", " %% comment"] {
+                let input = format!(
+                    "mindmap\n  Root\n    child[\n      Label\n    {closing}{suffix}\n    after[After]\n"
+                );
+                let model = parse_mindmap_semantic_model_controlled(
+                    &input,
+                    &metadata(),
+                    #[cfg(feature = "editor-facts")]
+                    EditorFactsDemand::Omit,
+                    &crate::OperationControl::new(),
+                )
+                .unwrap()
+                .model
+                .unwrap();
+                assert_eq!(model.nodes.len(), 3);
+                assert_eq!(model.nodes[0].children, vec![1, 2]);
+                assert_eq!(model.nodes[1].node_id, "child");
+                assert_eq!(model.nodes[1].descr, "\n      Label\n    ");
+                assert_eq!(model.nodes[1].node_type, super::super::NODE_TYPE_RECT);
+                assert_eq!(model.nodes[2].node_id, "after");
+            }
+        }
+    }
+
+    #[test]
+    fn semantic_multiline_quotes_preserve_same_indent_node_shaped_text() {
+        for (opening, closing, markdown) in [("\"", "\"", false), ("\"`", "`\"", true)] {
+            let input = format!(
+                "mindmap\n  Root\n    child[{opening}Start\n    (Literal)\n    End{closing}]\n    after[After]\n"
+            );
+            let model = parse_mindmap_semantic_model_controlled(
+                &input,
+                &metadata(),
+                #[cfg(feature = "editor-facts")]
+                EditorFactsDemand::Omit,
+                &crate::OperationControl::new(),
+            )
+            .unwrap()
+            .model
+            .unwrap();
+            assert_eq!(model.nodes.len(), 3);
+            assert_eq!(model.nodes[0].children, vec![1, 2]);
+            assert_eq!(model.nodes[1].descr, "Start\n    (Literal)\n    End");
+            assert_eq!(model.nodes[1].descr_is_markdown, markdown);
+            assert_eq!(model.nodes[2].node_id, "after");
+        }
+    }
+
+    #[test]
+    fn semantic_icon_requires_a_statement_terminator() {
+        for suffix in [" trailing", ":::class", "::icon(other)"] {
+            let input = format!("mindmap\n  Root\n  ::icon(star){suffix}\n");
+            let error = parse_mindmap_semantic_model_controlled(
+                &input,
+                &metadata(),
+                #[cfg(feature = "editor-facts")]
+                EditorFactsDemand::Omit,
+                &crate::OperationControl::new(),
+            )
+            .unwrap()
+            .model
+            .unwrap_err();
+            let Error::DiagramParse { diagnostic, .. } = error else {
+                panic!("expected trailing icon input diagnostic");
+            };
+            let start = input.find(suffix).unwrap() + suffix.len() - suffix.trim_start().len();
+            assert_eq!(
+                diagnostic.span(),
+                Some(SourceSpan::new(start, start + suffix.trim_start().len()))
+            );
+        }
+        for suffix in ["", " %% comment"] {
+            let input = format!("mindmap\n  Root\n  ::icon(star){suffix}\n");
+            let model = parse_mindmap_semantic_model_controlled(
+                &input,
+                &metadata(),
+                #[cfg(feature = "editor-facts")]
+                EditorFactsDemand::Omit,
+                &crate::OperationControl::new(),
+            )
+            .unwrap()
+            .model
+            .unwrap();
+            assert_eq!(model.nodes[0].icon.as_deref(), Some("star"));
+        }
+    }
+
+    #[test]
+    fn semantic_repaired_syntax_preserves_in_progress_cancellation() {
+        let input = format!(
+            "mindmap\n  Root %% literal\n{}",
+            "    child(Label]\n".repeat(256)
+        );
+        let control = crate::OperationControl::new();
+        control.cancel_after_checkpoints(4);
+        assert!(
+            parse_mindmap_semantic_model_controlled(
+                &input,
+                &metadata(),
+                #[cfg(feature = "editor-facts")]
+                EditorFactsDemand::Omit,
+                &control,
+            )
+            .is_err()
+        );
+        assert!(control.checkpoint().is_err());
+    }
+
+    #[test]
     fn semantic_tree_constructs_once_without_render_fields_or_editor_work() {
         reset_mindmap_syntax_construction_count();
         #[cfg(feature = "editor-facts")]
@@ -883,7 +1112,7 @@ mod semantic_tests {
             "mindmap": {"padding": 40, "colorBy": "depth"}
         }));
         let model = parse_mindmap_semantic_model_controlled(
-            "mindmap\n  root[<script>bad()</script>Safe]\n    leaf[\"`**Markdown**`\"]",
+            "mindmap\n  root[\"<script>bad()</script>Safe\"]\n    leaf[\"`**Markdown**`\"]",
             &metadata,
             #[cfg(feature = "editor-facts")]
             EditorFactsDemand::Omit,

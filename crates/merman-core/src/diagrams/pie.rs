@@ -429,7 +429,7 @@ fn parse_pie_statement(code: &str, offset: usize) -> PieStatement {
         return PieStatement::Empty { next_offset };
     }
 
-    if let Some(section) = parse_pie_section(line, offset) {
+    if let Some((section, next_offset)) = parse_pie_section(code, offset) {
         return PieStatement::Section {
             section,
             next_offset,
@@ -447,28 +447,34 @@ fn parse_pie_statement(code: &str, offset: usize) -> PieStatement {
     }
 }
 
-fn parse_pie_section(line: &str, line_start: usize) -> Option<PieParsedSection> {
+fn parse_pie_section(code: &str, statement_start: usize) -> Option<(PieParsedSection, usize)> {
+    let (input, input_start) = trim_start_with_offset(&code[statement_start..], statement_start);
+    // STRING owns its physical newlines and escapes; only the value's EOL ends a section.
+    let parsed_label = parse_langium_string(input, input_start)?;
+    let (line, next_offset) = physical_line(code, parsed_label.raw_span.end);
     let visible = strip_inline_comment(line);
-    let leading = visible.len() - visible.trim_start().len();
-    let input = &visible[leading..];
-    let parsed_label = parse_quoted_string(input, line_start + leading)?;
-
-    let (rest, rest_start) = trim_start_with_offset(parsed_label.rest, parsed_label.rest_start);
+    let (rest, rest_start) = trim_start_with_offset(visible, parsed_label.raw_span.end);
     let rest = rest.strip_prefix(':')?;
     let (number_and_trailing, number_start) = trim_start_with_offset(rest, rest_start + 1);
     let number = number_and_trailing.trim_end();
     let value = parse_number_pie(number)?;
     let value_span = SourceSpan::new(number_start, number_start + number.len());
 
-    Some(PieParsedSection {
-        label: parsed_label.value,
-        value,
-        #[cfg(feature = "editor-facts")]
-        statement_span: SourceSpan::new(line_start, line_start + line.len()),
-        #[cfg(feature = "editor-facts")]
-        label_span: parsed_label.value_span,
-        value_span,
-    })
+    Some((
+        PieParsedSection {
+            label: parsed_label.value,
+            value,
+            #[cfg(feature = "editor-facts")]
+            statement_span: SourceSpan::new(
+                statement_start,
+                parsed_label.raw_span.end + line.len(),
+            ),
+            #[cfg(feature = "editor-facts")]
+            label_span: parsed_label.value_span,
+            value_span,
+        },
+        next_offset,
+    ))
 }
 
 fn parse_number_pie(input: &str) -> Option<f64> {
@@ -492,25 +498,6 @@ fn parse_number_pie(input: &str) -> Option<f64> {
     input.parse().ok()
 }
 
-struct ParsedQuotedString<'a> {
-    value: String,
-    #[cfg(feature = "editor-facts")]
-    value_span: SourceSpan,
-    rest: &'a str,
-    rest_start: usize,
-}
-
-fn parse_quoted_string(input: &str, input_start: usize) -> Option<ParsedQuotedString<'_>> {
-    let parsed = parse_langium_string(input, input_start)?;
-    Some(ParsedQuotedString {
-        value: parsed.value,
-        #[cfg(feature = "editor-facts")]
-        value_span: parsed.value_span,
-        rest: &input[parsed.consumed..],
-        rest_start: input_start + parsed.consumed,
-    })
-}
-
 fn trim_start_with_offset(input: &str, input_start: usize) -> (&str, usize) {
     let trimmed = input.trim_start();
     (trimmed, input_start + input.len() - trimmed.len())
@@ -532,6 +519,10 @@ fn push_pie_section_editor_fact(facts: &mut EditorSemanticFacts, section: &PiePa
         Some("pie section".to_string()),
         EditorSemanticKind::String,
         section.statement_span,
+        section.label_span,
+    ));
+    facts.push_expected_syntax(EditorExpectedSyntax::new(
+        EditorExpectedSyntaxKind::Payload,
         section.label_span,
     ));
     facts.push_expected_syntax(EditorExpectedSyntax::new(
@@ -701,7 +692,7 @@ mod tests {
         #[cfg(feature = "editor-facts")]
         crate::editor::test_work::reset();
         let model = parse_pie_semantic_model_controlled(
-            "pie showData\ntitle Revenue\n\"A\": 1\n\"A\": 2\n\"B\": 3\n",
+            "pie showData\ntitle Revenue\n\"First\nSecond\": 1\n\"First\nSecond\": 2\n\"B\": 3\n",
             "pie",
             &MermaidConfig::default(),
             #[cfg(feature = "editor-facts")]
@@ -719,7 +710,7 @@ mod tests {
                 "title": "Revenue",
                 "accTitle": null,
                 "accDescr": null,
-                "sections": [{"label": "A", "value": 1.0}, {"label": "B", "value": 3.0}],
+                "sections": [{"label": "First\nSecond", "value": 1.0}, {"label": "B", "value": 3.0}],
             })
         );
         assert_eq!(
