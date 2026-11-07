@@ -590,56 +590,20 @@ impl<'a> ArchitectureStatementParser<'a> {
         let start = self.pos;
         self.bump();
         let selection_start = self.pos;
-        let quote = self.peek_char().filter(|ch| matches!(ch, '"' | '\''));
-        if let Some(quote) = quote {
-            self.bump();
-            let mut escaped = false;
+        let Some(consumed) = architecture_title_end(&self.input[start..]) else {
             while let Some(ch) = self.peek_char() {
-                if escaped {
-                    if is_ecmascript_line_terminator(ch) {
-                        return Err(self.insertion_error(
-                            "escaped line terminator is not valid in an architecture title",
-                        ));
-                    }
-                    escaped = false;
-                    self.bump();
-                    continue;
-                }
-                if ch == '\\' {
-                    escaped = true;
-                    self.bump();
-                    continue;
-                }
-                if ch == quote {
-                    break;
-                }
-                self.bump();
-            }
-            if self.peek_char() != Some(quote) {
-                return Err(self.insertion_error("unterminated architecture title"));
-            }
-            self.bump();
-        } else {
-            let mut count = 0usize;
-            while let Some(ch) = self.peek_char() {
-                if ch == ']' {
-                    break;
+                if ch == ']' && self.pos == selection_start {
+                    return Err(self.insertion_error("empty architecture title"));
                 }
                 if matches!(ch, '[' | '\r' | '\n') {
                     return Err(self.exact_char_error("invalid architecture title", ch));
                 }
-                count += 1;
                 self.bump();
             }
-            if count == 0 {
-                return Err(self.insertion_error("empty architecture title"));
-            }
-        }
-        let selection_end = self.pos;
-        if self.peek_char() != Some(']') {
             return Err(self.insertion_error("unterminated architecture title"));
-        }
-        self.bump();
+        };
+        self.pos = start + consumed;
+        let selection_end = self.pos - 1;
         let raw = &self.input[selection_start..selection_end];
         Ok(Some(self.spanned(
             convert_architecture_title(raw),
@@ -1121,7 +1085,6 @@ fn parse_trace_controlled(
             let common_start = trimmed_start + "architecture-beta".len();
             let statement_start = common_start + leading;
             let entry = match parse_trace_statement(
-                code,
                 &mut lines,
                 rest,
                 statement_start,
@@ -1129,7 +1092,8 @@ fn parse_trace_controlled(
                 mode,
                 #[cfg(feature = "editor-facts")]
                 editor_demand,
-            ) {
+                control,
+            )? {
                 Ok(entry) => entry,
                 Err(error) => return Ok(Err(error)),
             };
@@ -1155,7 +1119,6 @@ fn parse_trace_controlled(
             continue;
         }
         let entry = match parse_trace_statement(
-            code,
             &mut lines,
             trimmed,
             trimmed_start,
@@ -1163,7 +1126,8 @@ fn parse_trace_controlled(
             mode,
             #[cfg(feature = "editor-facts")]
             editor_demand,
-        ) {
+            control,
+        )? {
             Ok(entry) => entry,
             Err(error) => return Ok(Err(error)),
         };
@@ -1212,14 +1176,15 @@ fn handle_header_error(
 }
 
 fn parse_trace_statement(
-    code: &str,
     lines: &mut ArchitectureLineCursor<'_>,
-    statement: &str,
+    _statement: &str,
     statement_start: usize,
     common_start: usize,
     mode: ArchitectureParseMode,
     #[cfg(feature = "editor-facts")] editor_demand: EditorFactsDemand,
-) -> Result<ArchitectureTraceEntry> {
+    control: &OperationControl,
+) -> OperationControlResult<Result<ArchitectureTraceEntry>> {
+    let code = lines.source;
     let parsed = if let Some(common) = parse_langium_common(code, common_start) {
         lines.offset = common_start + common.consumed;
         architecture_common_trace_entry(
@@ -1228,7 +1193,7 @@ fn parse_trace_statement(
             editor_demand,
         )
     } else {
-        let statement = extend_quoted_statement(code, lines, statement, statement_start);
+        let statement = read_statement(code, lines, statement_start, control)?;
         ArchitectureStatementParser::new(
             statement,
             statement_start,
@@ -1237,13 +1202,13 @@ fn parse_trace_statement(
         )
         .parse()
     };
-    match parsed {
+    Ok(match parsed {
         Ok(entry) => Ok(entry),
         Err(failure) if mode == ArchitectureParseMode::Strict => Err(*failure.error),
         Err(_failure) => Ok(ArchitectureTraceEntry {
             statement: None,
             #[cfg(feature = "editor-facts")]
-            span: SourceSpan::new(statement_start, statement_start + statement.len()),
+            span: SourceSpan::new(statement_start, statement_start + _statement.len()),
             #[cfg(feature = "editor-facts")]
             facts: _failure.facts,
             #[cfg(feature = "editor-facts")]
@@ -1251,7 +1216,7 @@ fn parse_trace_statement(
             #[cfg(feature = "editor-facts")]
             directive_prefix: _failure.directive_prefix,
         }),
-    }
+    })
 }
 
 fn architecture_common_trace_entry(
@@ -1317,81 +1282,195 @@ fn architecture_common_value(fact: &LangiumCommonFact) -> ArchitectureSpannedVal
     }
 }
 
-fn extend_quoted_statement<'a>(
-    code: &'a str,
-    lines: &mut ArchitectureLineCursor<'_>,
-    statement: &'a str,
-    statement_start: usize,
-) -> &'a str {
-    if open_quote_at_end(statement).is_none() {
-        return statement;
-    }
-
-    let mut quote = None;
-    let mut escaped = false;
-    for (relative, ch) in code[statement_start..].char_indices() {
-        let offset = statement_start + relative;
-        if let Some(active_quote) = quote {
-            if escaped {
-                if is_ecmascript_line_terminator(ch) {
-                    lines.offset = line_ending_end(code, offset);
-                    return code[statement_start..offset].trim_end_matches([' ', '\t']);
-                }
-                escaped = false;
-            } else if ch == '\\' {
-                escaped = true;
-            } else if ch == active_quote {
-                quote = None;
-            }
-            continue;
-        }
-
-        if matches!(ch, '\'' | '"') {
-            quote = Some(ch);
-        } else if code[offset..].starts_with("%%") {
-            lines.offset = next_physical_line_offset(code, offset);
-            return code[statement_start..offset].trim_end_matches([' ', '\t']);
-        } else if matches!(ch, '\n' | '\r') {
-            lines.offset = line_ending_end(code, offset);
-            return code[statement_start..offset].trim_end_matches([' ', '\t']);
-        }
-    }
-
-    lines.offset = code.len();
-    code[statement_start..].trim_end_matches([' ', '\t'])
+struct QuotedTerminalSearch {
+    end: Option<usize>,
+    examined_end: usize,
 }
 
-fn open_quote_at_end(input: &str) -> Option<char> {
-    let mut quote = None;
+fn search_quoted_terminal<E>(
+    input: &str,
+    mut visit: impl FnMut() -> std::result::Result<(), E>,
+) -> std::result::Result<QuotedTerminalSearch, E> {
+    let mut chars = input.char_indices();
+    let Some((_, quote @ ('\'' | '"'))) = chars.next() else {
+        return Ok(QuotedTerminalSearch {
+            end: None,
+            examined_end: 0,
+        });
+    };
     let mut escaped = false;
-    for ch in input.chars() {
-        if let Some(active_quote) = quote {
-            if escaped {
-                escaped = false;
-            } else if ch == '\\' {
-                escaped = true;
-            } else if ch == active_quote {
-                quote = None;
+    for (offset, ch) in chars {
+        visit()?;
+        if escaped {
+            if is_ecmascript_line_terminator(ch) {
+                return Ok(QuotedTerminalSearch {
+                    end: None,
+                    examined_end: offset + ch.len_utf8(),
+                });
             }
-        } else if matches!(ch, '\'' | '"') {
-            quote = Some(ch);
+            escaped = false;
+        } else if ch == '\\' {
+            escaped = true;
+        } else if ch == quote {
+            return Ok(QuotedTerminalSearch {
+                end: Some(offset + ch.len_utf8()),
+                examined_end: offset + ch.len_utf8(),
+            });
         }
     }
-    quote.filter(|_| !escaped)
+    Ok(QuotedTerminalSearch {
+        end: None,
+        examined_end: input.len(),
+    })
+}
+
+fn quoted_terminal_end(input: &str) -> Option<usize> {
+    match search_quoted_terminal(input, || Ok::<_, std::convert::Infallible>(())) {
+        Ok(search) => search.end,
+        Err(never) => match never {},
+    }
+}
+
+fn architecture_title_end(input: &str) -> Option<usize> {
+    let content = input.strip_prefix('[')?;
+    architecture_title_end_after_quote(input, quoted_terminal_end(content))
+}
+
+fn architecture_title_end_after_quote(input: &str, quoted_end: Option<usize>) -> Option<usize> {
+    let content = input.strip_prefix('[')?;
+    if let Some(end) = quoted_end
+        && content[end..].starts_with(']')
+    {
+        return Some(end + 2);
+    }
+
+    // ARCH_TITLE also permits plain text, including quotes and backslashes. A leading
+    // quote selects the quoted alternative only when that entire terminal matches.
+    for (offset, ch) in content.char_indices() {
+        match ch {
+            ']' => return (offset != 0).then_some(offset + 2),
+            '[' | '\r' | '\n' => return None,
+            _ => {}
+        }
+    }
+    None
+}
+
+fn statement_end_using<E>(
+    input: &str,
+    mut quoted_end: impl FnMut(usize) -> std::result::Result<Option<usize>, E>,
+) -> std::result::Result<usize, E> {
+    let bytes = input.as_bytes();
+    let mut offset = 0;
+    while let Some(&byte) = bytes.get(offset) {
+        match byte {
+            b'[' | b'\'' | b'"' => {
+                let remaining = &input[offset..];
+                let end = if byte == b'[' {
+                    architecture_title_end_after_quote(remaining, quoted_end(offset + 1)?)
+                } else {
+                    quoted_end(offset)?
+                };
+                if let Some(end) = end {
+                    offset += end;
+                    continue;
+                }
+                // An incomplete terminal stays on its physical line for diagnostics and
+                // recovery; only a complete STRING or quoted ARCH_TITLE can span lines.
+                return Ok(offset + remaining.find(['\r', '\n']).unwrap_or(remaining.len()));
+            }
+            b'%' if bytes.get(offset + 1) == Some(&b'%') => return Ok(offset),
+            b'\r' | b'\n' => return Ok(offset),
+            _ => offset += 1,
+        }
+    }
+    Ok(input.len())
+}
+
+pub(super) fn statement_end(input: &str) -> usize {
+    match statement_end_using(input, |offset| {
+        Ok::<_, std::convert::Infallible>(quoted_terminal_end(&input[offset..]))
+    }) {
+        Ok(end) => end,
+        Err(never) => match never {},
+    }
+}
+
+#[derive(Debug, Default)]
+pub(super) struct ArchitectureTerminalLookahead {
+    failed: [Option<std::ops::Range<usize>>; 2],
+    #[cfg(test)]
+    inspected_characters: usize,
+}
+
+impl ArchitectureTerminalLookahead {
+    fn quoted_end(
+        &mut self,
+        code: &str,
+        start: usize,
+        control: &OperationControl,
+    ) -> OperationControlResult<Option<usize>> {
+        let kind = match code.as_bytes().get(start) {
+            Some(b'\'') => 0,
+            Some(b'"') => 1,
+            _ => return Ok(None),
+        };
+        if self.failed[kind]
+            .as_ref()
+            .is_some_and(|range| range.contains(&start))
+        {
+            return Ok(None);
+        }
+        let mut visited = 0usize;
+        let search = search_quoted_terminal(&code[start..], || -> OperationControlResult<()> {
+            if visited.is_multiple_of(256) {
+                control.checkpoint()?;
+            }
+            visited += 1;
+            #[cfg(test)]
+            {
+                self.inspected_characters += 1;
+            }
+            Ok(())
+        })?;
+        if search.end.is_none() {
+            // Every later quote of this kind in the examined interval was escaped.
+            // Starting there reaches the same failure without changing the suffix state.
+            self.failed[kind] = Some(start..start + search.examined_end);
+        }
+        Ok(search.end)
+    }
+
+    fn statement_end(
+        &mut self,
+        code: &str,
+        start: usize,
+        control: &OperationControl,
+    ) -> OperationControlResult<usize> {
+        statement_end_using(&code[start..], |relative| {
+            self.quoted_end(code, start + relative, control)
+        })
+    }
+}
+
+fn read_statement<'a>(
+    code: &'a str,
+    lines: &mut ArchitectureLineCursor<'_>,
+    statement_start: usize,
+    control: &OperationControl,
+) -> OperationControlResult<&'a str> {
+    let end = statement_start
+        + lines
+            .lookahead
+            .statement_end(code, statement_start, control)?;
+    lines.offset = next_physical_line_offset(code, end);
+    Ok(code[statement_start..end].trim_end_matches([' ', '\t']))
 }
 
 fn next_physical_line_offset(code: &str, offset: usize) -> usize {
     code[offset..]
         .find('\n')
         .map_or(code.len(), |relative| offset + relative + 1)
-}
-
-fn line_ending_end(code: &str, offset: usize) -> usize {
-    if code[offset..].starts_with("\r\n") {
-        offset + 2
-    } else {
-        offset + 1
-    }
 }
 
 #[cfg(feature = "editor-facts")]
@@ -1702,5 +1781,133 @@ impl ArchitectureSemanticSource {
         let json = super::render_model_to_compat_json_controlled(&model, meta, control)?;
         control.checkpoint()?;
         Ok((json, self.editor_facts))
+    }
+}
+
+#[cfg(test)]
+mod terminal_scan_tests {
+    use super::*;
+
+    #[test]
+    fn architecture_failed_quote_lookahead_is_linear_during_recovery() {
+        for count in [64, 512] {
+            let mut code = String::from("architecture-beta\n");
+            for _ in 0..count {
+                code.push_str("service broken \\\"\nservice broken \\'\n");
+            }
+            code.push_str("service later [Later]\n");
+            let control = OperationControl::new();
+            let mut lines = ArchitectureLineCursor::new(&code);
+            lines.next().unwrap();
+            let mut statements = 0;
+            let mut last = "";
+            while let Some(line) = lines.next() {
+                last = read_statement(&code, &mut lines, line.start, &control).unwrap();
+                statements += 1;
+            }
+            assert_eq!(statements, count * 2 + 1);
+            assert_eq!(last, "service later [Later]");
+            assert!(
+                lines.lookahead.inspected_characters <= code.len() * 2,
+                "failed searches revisited the document: {} characters for {} bytes",
+                lines.lookahead.inspected_characters,
+                code.len()
+            );
+
+            #[cfg(feature = "editor-facts")]
+            for demand in [EditorFactsDemand::Capture, EditorFactsDemand::Recovery] {
+                let construction =
+                    construct_semantic_source_controlled(&code, "architecture", demand, &control)
+                        .unwrap();
+                assert!(construction.model.is_err());
+                let facts = construction.editor_facts.unwrap();
+                assert_eq!(
+                    facts.completeness,
+                    crate::EditorSemanticCompleteness::Recovered
+                );
+                assert_eq!(facts.diagnostics.len(), count * 2);
+                if demand.captures_rich() {
+                    let later = facts
+                        .symbols
+                        .iter()
+                        .find(|symbol| symbol.name == "later")
+                        .expect("capture must retain the declaration after malformed lines");
+                    assert_eq!(&code[later.selection.start..later.selection.end], "later");
+                } else {
+                    assert!(facts.symbols.is_empty());
+                    let trace = parse_trace_controlled(
+                        &code,
+                        "architecture",
+                        ArchitectureParseMode::Recovering,
+                        demand,
+                        &control,
+                    )
+                    .unwrap()
+                    .unwrap();
+                    let Some(ArchitectureStatement::Service { id, .. }) = trace
+                        .entries
+                        .last()
+                        .and_then(|entry| entry.statement.as_ref())
+                    else {
+                        panic!("diagnostic-only recovery must still parse the later declaration");
+                    };
+                    assert_eq!(id.text, "later");
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn architecture_long_quote_lookahead_observes_cancellation() {
+        let code = format!("service a \"{}\"\n", "長".repeat(4096));
+        let control = OperationControl::new();
+        control.cancel_after_checkpoints(1);
+        let mut lines = ArchitectureLineCursor::new(&code);
+        assert!(read_statement(&code, &mut lines, 0, &control).is_err());
+        assert!(lines.lookahead.inspected_characters <= 256);
+        assert_eq!(lines.offset, 0);
+    }
+
+    #[test]
+    #[cfg(all(feature = "presentation", feature = "editor-facts"))]
+    fn architecture_public_multiline_unicode_crlf_ranges_keep_authored_bytes() {
+        let code = concat!(
+            "architecture-beta\r\n",
+            "service first [\"第一行\r\nUser's 雪%%\"]\r\n",
+            "service later [後続]\r\n",
+        );
+        let engine = crate::MermaidEngine::new();
+        let parsed = engine
+            .parse_diagram_for_render_model_sync(code, crate::ParseOptions::strict())
+            .unwrap()
+            .unwrap();
+        let crate::RenderSemanticModel::Architecture(model) = parsed.model() else {
+            panic!("expected Architecture render model");
+        };
+        assert_eq!(model.nodes[0].title.as_deref(), Some("第一行\nUser's 雪%%"));
+        assert_eq!(model.nodes[1].id, "later");
+        let facts = engine
+            .parse_editor_semantic_facts_with_type_sync("architecture", code)
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            facts.completeness,
+            crate::EditorSemanticCompleteness::Complete
+        );
+        let title = facts
+            .symbols
+            .iter()
+            .find(|symbol| symbol.name == "第一行\nUser's 雪%%")
+            .unwrap();
+        assert_eq!(
+            &code[title.selection.start..title.selection.end],
+            "\"第一行\r\nUser's 雪%%\""
+        );
+        let later = facts
+            .symbols
+            .iter()
+            .find(|symbol| symbol.name == "later")
+            .unwrap();
+        assert_eq!(&code[later.selection.start..later.selection.end], "later");
     }
 }

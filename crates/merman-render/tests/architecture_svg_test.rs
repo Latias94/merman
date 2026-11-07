@@ -7,6 +7,7 @@ type FamilyFixture = (
 );
 
 use merman_core::{MermaidEngine, ParseOptions};
+use merman_model::presentation::RenderSemanticModel;
 use merman_render::diagram_theme::{
     CanvasPaint, DiagramTheme, DiagramThemeCompiler, DiagramThemeSpec, FontStack,
     ThemePortabilityRequirement, ThemeRule, ThemeRuleSet, ThemeStylePatch, ThemeTarget,
@@ -885,6 +886,213 @@ fn architecture_svg_handles_deep_icon_text_xhtml_fragment() {
             svg.contains("Icon"),
             "expected deepest iconText label to render"
         );
+    }
+}
+
+#[test]
+fn architecture_service_icon_text_uses_upstream_string_truthiness() {
+    let mut no_icon_body = None;
+    for (declaration, icon_text, has_icon_text) in [
+        ("service api [API]", None, false),
+        (r#"service api "" [API]"#, Some(""), false),
+        (r#"service api " " [API]"#, Some(" "), true),
+        (r#"service api "X" [API]"#, Some("X"), true),
+    ] {
+        let source = format!("architecture-beta\n{declaration}\n");
+        let (parsed, options, session) =
+            prepare_architecture_text_with_engine(&MermaidEngine::new(), &source);
+        let RenderSemanticModel::Architecture(model) = parsed.model() else {
+            panic!("expected Architecture render model");
+        };
+        assert_eq!(model.nodes.len(), 1);
+        assert_eq!(model.nodes[0].icon_text.as_deref(), icon_text);
+
+        let rendered = family::prepare(&parsed, &options, session)
+            .expect("prepare Architecture icon-text fixture")
+            .render_svg(
+                &SvgRenderOptions {
+                    diagram_id: Some("architecture-icon-truthiness".to_owned()),
+                    ..Default::default()
+                },
+                &SvgDebugOptions::default(),
+            )
+            .expect("render Architecture icon-text fixture");
+        let svg = rendered.svg();
+        let document = roxmltree::Document::parse(svg).expect("valid Architecture SVG");
+        let service = document
+            .descendants()
+            .find(|node| node.attribute("id") == Some("architecture-icon-truthiness-service-api"))
+            .expect("service element");
+        let body = service
+            .children()
+            .rev()
+            .find(|node| node.has_tag_name("g"))
+            .expect("service body");
+        let background = body
+            .descendants()
+            .find(|node| node.has_tag_name("path") && node.attribute("class") == Some("node-bkg"));
+        assert_eq!(background.is_some(), !has_icon_text, "{declaration}");
+        assert_eq!(
+            body.descendants()
+                .filter(|node| node.has_tag_name("foreignObject"))
+                .count(),
+            usize::from(has_icon_text),
+            "{declaration}"
+        );
+        assert_eq!(
+            body.descendants()
+                .filter(|node| {
+                    node.has_tag_name("rect")
+                        && node
+                            .attribute("style")
+                            .is_some_and(|style| style.contains("fill: #087ebf;"))
+                })
+                .count(),
+            usize::from(has_icon_text),
+            "{declaration}"
+        );
+        if let Some(background) = background {
+            assert_eq!(
+                background.attribute("id"),
+                Some("architecture-icon-truthiness-node-api")
+            );
+            assert!(background.attribute("style").is_none());
+            let body_svg = &svg[body.range()];
+            if let Some(expected) = no_icon_body.as_deref() {
+                assert_eq!(
+                    body_svg, expected,
+                    "empty and absent icon bodies must match"
+                );
+            } else {
+                no_icon_body = Some(body_svg.to_owned());
+            }
+        }
+    }
+}
+
+#[test]
+fn architecture_typed_service_background_matches_emission_and_source_ownership() {
+    let theme = DiagramThemeCompiler::new()
+        .compile(
+            DiagramThemeSpec::new().with_styles(
+                ThemeRuleSet::default()
+                    .with_rule(ThemeRule::new(
+                        ThemeTarget::Node,
+                        ThemeStylePatch::default()
+                            .with_fill(CanvasPaint::solid("#123456").unwrap()),
+                    ))
+                    .with_rule(ThemeRule::new(
+                        ThemeTarget::Node,
+                        ThemeStylePatch::default()
+                            .with_stroke(CanvasPaint::solid("#654321").unwrap()),
+                    )),
+            ),
+        )
+        .expect("compile Architecture service background theme");
+    for (declaration, has_background) in [
+        ("service api [API]", true),
+        (r#"service api "" [API]"#, true),
+        (r#"service api " " [API]"#, false),
+        (r#"service api "X" [API]"#, false),
+    ] {
+        for stroke_owner in [
+            None,
+            Some("archGroupBorderColor"),
+            Some("primaryBorderColor"),
+        ] {
+            let source = format!("architecture-beta\n{declaration}\n");
+            let mut config = json!({
+                "architecture": {"numIter": 1, "randomize": false},
+                "themeVariables": {},
+            });
+            if let Some(owner) = stroke_owner {
+                config["themeVariables"][owner] = json!("#abcdef");
+            }
+            let engine = MermaidEngine::new().with_site_config(
+                merman_core::presentation::SourcePresentationConfig::from_value(config),
+            );
+            let (parsed, options, session) = prepare_architecture_with_theme_and_environment(
+                &source,
+                &theme,
+                engine,
+                RenderEnvironment::deterministic(),
+            );
+            let rendered = family::prepare(&parsed, &options, session)
+                .expect("prepare themed Architecture service")
+                .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+                .expect("render themed Architecture service with complete background evidence");
+            let document =
+                roxmltree::Document::parse(rendered.svg()).expect("valid Architecture SVG");
+            let background = document.descendants().find(|node| {
+                node.has_tag_name("path") && node.attribute("class") == Some("node-bkg")
+            });
+            assert_eq!(background.is_some(), has_background, "{declaration}");
+            if let Some(background) = background {
+                assert_eq!(background.attribute("id"), Some("architecture-node-api"));
+                assert_eq!(
+                    background.attribute("style"),
+                    Some(if stroke_owner.is_some() {
+                        "fill:#123456;"
+                    } else {
+                        "fill:#123456;stroke:#654321;"
+                    }),
+                    "{declaration}, stroke owner: {stroke_owner:?}"
+                );
+            }
+            if stroke_owner.is_some() {
+                assert!(
+                    architecture_stylesheet(rendered.svg())
+                        .contains("#architecture .node-bkg{fill:none;stroke:#abcdef;")
+                );
+            }
+
+            let evidence =
+                merman_render::__private::family_evidence(rendered.into_completion().report());
+            let applied = if has_background {
+                2 - usize::from(stroke_owner.is_some())
+            } else {
+                0
+            };
+            assert_eq!(evidence.required_count(), 2);
+            assert_eq!(evidence.accounted_count(), 2);
+            assert_eq!(evidence.applied_count(), applied, "{declaration}");
+            assert_eq!(evidence.not_applicable_count(), 2 - applied);
+            assert_eq!(evidence.theme_residual_count(), 0);
+        }
+    }
+}
+
+#[test]
+fn architecture_icon_text_typography_evidence_matches_emission_without_titles() {
+    let theme = architecture_typography_theme(
+        ThemeTextStyle::default()
+            .with_font_size_px(24.0)
+            .expect("valid Architecture font size"),
+    );
+    for (declaration, has_icon_text) in [
+        ("service api", false),
+        (r#"service api """#, false),
+        (r#"service api " ""#, true),
+        (r#"service api "X""#, true),
+    ] {
+        let source = format!("architecture-beta\n{declaration}\n");
+        let rendered = try_render_architecture_with_theme(&source, &theme)
+            .expect("render Architecture icon-only typography fixture");
+        let document = roxmltree::Document::parse(rendered.svg()).expect("valid Architecture SVG");
+        assert_eq!(
+            document
+                .descendants()
+                .any(|node| node.has_tag_name("foreignObject")),
+            has_icon_text,
+            "{declaration}"
+        );
+        let evidence =
+            merman_render::__private::family_evidence(rendered.into_completion().report());
+        assert_eq!(evidence.required_count(), 1);
+        assert_eq!(evidence.accounted_count(), 1);
+        assert_eq!(evidence.applied_count(), usize::from(has_icon_text));
+        assert_eq!(evidence.not_applicable_count(), usize::from(!has_icon_text));
+        assert_eq!(evidence.theme_residual_count(), 0);
     }
 }
 

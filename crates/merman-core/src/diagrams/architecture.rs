@@ -593,40 +593,7 @@ fn is_dir(c: char) -> bool {
 }
 
 fn strip_inline_comment(line: &str) -> &str {
-    let mut in_quote = false;
-    let mut quote_char: Option<char> = None;
-    let mut in_title = false;
-    let mut it = line.char_indices().peekable();
-    while let Some((idx, ch)) = it.next() {
-        if in_quote {
-            if ch == '\\' {
-                it.next();
-                continue;
-            }
-            if Some(ch) == quote_char {
-                in_quote = false;
-                quote_char = None;
-            }
-            continue;
-        }
-        if ch == '"' || ch == '\'' {
-            in_quote = true;
-            quote_char = Some(ch);
-            continue;
-        }
-        if ch == '[' {
-            in_title = true;
-            continue;
-        }
-        if ch == ']' {
-            in_title = false;
-            continue;
-        }
-        if !in_title && ch == '%' && it.peek().is_some_and(|(_, next)| *next == '%') {
-            return &line[..idx];
-        }
-    }
-    line
+    &line[..parse::statement_end(line)]
 }
 
 struct ArchitectureSourceLine<'a> {
@@ -638,11 +605,16 @@ struct ArchitectureSourceLine<'a> {
 struct ArchitectureLineCursor<'a> {
     source: &'a str,
     offset: usize,
+    lookahead: parse::ArchitectureTerminalLookahead,
 }
 
 impl<'a> ArchitectureLineCursor<'a> {
     fn new(source: &'a str) -> Self {
-        Self { source, offset: 0 }
+        Self {
+            source,
+            offset: 0,
+            lookahead: parse::ArchitectureTerminalLookahead::default(),
+        }
     }
 
     fn next(&mut self) -> Option<ArchitectureSourceLine<'a>> {
@@ -1250,6 +1222,130 @@ service caption(server)[\"title %% kept\"]\n",
         assert_eq!(model["services"][0]["title"], "Structure + Src %% v6");
         assert_eq!(model["services"][1]["title"], "Café");
         assert_eq!(model["edges"][0]["title"], "TCP/IP: v6 %% path");
+    }
+
+    #[test]
+    fn architecture_plain_title_quotes_agree_in_json_render_and_editor_facts() {
+        let text = "architecture-beta\n\
+group root [Owner's \"platform] %% ignored ' \"\n\
+service api [API's \"preview] in root %% ignored ' \"\n\
+service db [Database] in root\n\
+api:R -[Client's \"request]- L:db %% ignored ' \"\n\
+service later [Last's \"title]";
+        let meta = test_meta();
+        let json = parse_architecture(text, &meta).unwrap();
+        let render = parse_architecture_model_for_render(text, &meta).unwrap();
+
+        assert_eq!(
+            render.groups[0].title.as_deref(),
+            Some("Owner's \"platform")
+        );
+        assert_eq!(render.nodes[0].title.as_deref(), Some("API's \"preview"));
+        assert_eq!(render.edges[0].title.as_deref(), Some("Client's \"request"));
+        assert_eq!(render.nodes[2].id, "later");
+        assert_eq!(render.nodes[2].title.as_deref(), Some("Last's \"title"));
+        assert_eq!(render_model_to_compat_json(&render, &meta).unwrap(), json);
+
+        #[cfg(feature = "editor-facts")]
+        {
+            let facts = crate::family::test_support::editor_facts(
+                parse_architecture_json_and_editor_facts,
+                text,
+                &meta,
+            );
+            assert_eq!(facts.completeness, EditorSemanticCompleteness::Complete);
+            assert!(facts.diagnostics.is_empty());
+            for (detail, title) in [
+                ("architecture group title", "Owner's \"platform"),
+                ("architecture service title", "API's \"preview"),
+                ("architecture edge title", "Client's \"request"),
+                ("architecture service title", "Last's \"title"),
+            ] {
+                let selection = payload_selection(&facts, detail, title);
+                assert_eq!(&text[selection.start..selection.end], title);
+            }
+            let later = facts
+                .symbols
+                .iter()
+                .find(|symbol| {
+                    symbol.name == "later"
+                        && symbol.detail.as_deref() == Some("architecture service")
+                })
+                .expect("the later declaration must remain on its own statement");
+            assert_eq!(
+                later.selection,
+                SourceSpan::new(
+                    text.rfind("later").unwrap(),
+                    text.rfind("later").unwrap() + 5
+                )
+            );
+        }
+    }
+
+    #[test]
+    fn architecture_multiline_terminals_keep_percent_and_bracket_payloads() {
+        let text = "architecture-beta\n\
+service icon \"first %% [User's\nsecond]\" [User's icon] %% ignored \"\n\
+group root [\"third %% ]\nfourth's\"] %% ignored ' \"\n\
+service caption(server)['fifth %% ]\nsixth\"s'] in root %% ignored ' \"\n\
+icon:R -[\"edge %% ]\nnext's\"]- L:caption %% ignored ' \"\n\
+service later [Later's label]\n";
+        let meta = test_meta();
+        let json = parse_architecture(text, &meta).unwrap();
+        let render = parse_architecture_model_for_render(text, &meta).unwrap();
+
+        assert_eq!(
+            render.nodes[0].icon_text.as_deref(),
+            Some("first %% [User's\nsecond]")
+        );
+        assert_eq!(render.nodes[0].title.as_deref(), Some("User's icon"));
+        assert_eq!(
+            render.groups[0].title.as_deref(),
+            Some("third %% ]\nfourth's")
+        );
+        assert_eq!(
+            render.nodes[1].title.as_deref(),
+            Some("fifth %% ]\nsixth\"s")
+        );
+        assert_eq!(render.edges[0].title.as_deref(), Some("edge %% ]\nnext's"));
+        assert_eq!(render.nodes[2].id, "later");
+        assert_eq!(render_model_to_compat_json(&render, &meta).unwrap(), json);
+
+        #[cfg(feature = "editor-facts")]
+        {
+            let facts = crate::family::test_support::editor_facts(
+                parse_architecture_json_and_editor_facts,
+                text,
+                &meta,
+            );
+            assert_eq!(facts.completeness, EditorSemanticCompleteness::Complete);
+            assert!(facts.diagnostics.is_empty());
+            for (detail, value, authored) in [
+                (
+                    "architecture service icon text",
+                    "first %% [User's\nsecond]",
+                    "first %% [User's\nsecond]",
+                ),
+                (
+                    "architecture group title",
+                    "third %% ]\nfourth's",
+                    "\"third %% ]\nfourth's\"",
+                ),
+                (
+                    "architecture service title",
+                    "fifth %% ]\nsixth\"s",
+                    "'fifth %% ]\nsixth\"s'",
+                ),
+                (
+                    "architecture edge title",
+                    "edge %% ]\nnext's",
+                    "\"edge %% ]\nnext's\"",
+                ),
+            ] {
+                let selection = payload_selection(&facts, detail, value);
+                assert_eq!(&text[selection.start..selection.end], authored);
+            }
+        }
     }
 
     #[test]
@@ -2194,6 +2290,161 @@ mod semantic_tests {
             config: crate::MermaidConfig::empty_object(),
             semantic_config: crate::MermaidConfig::empty_object(),
             title: None,
+        }
+    }
+
+    #[test]
+    fn architecture_canonical_plain_title_quotes_preserve_statement_boundaries() {
+        for title in [
+            "User's API",
+            "Team's zone",
+            "A \"quoted word",
+            "User's %% API",
+            "'Leading",
+            "\"Leading",
+            "\"quoted\" suffix %% payload",
+            "Plain \\'quote",
+        ] {
+            for newline in ["\n", "\r\n"] {
+                for terminated in [false, true] {
+                    let eof = if terminated { newline } else { "" };
+                    let source = format!(
+                        "architecture-beta{newline}\
+group root [{title}] %% ignored ' \"{newline}\
+service api [{title}] in root %% ignored ' \"{newline}\
+service db in root{newline}\
+api:R -[{title}]- L:db %% ignored ' \"{newline}\
+service later [{title}]{eof}"
+                    );
+                    let model = parse_architecture_semantic_model_controlled(
+                        &source,
+                        &metadata(),
+                        #[cfg(feature = "editor-facts")]
+                        EditorFactsDemand::Omit,
+                        &OperationControl::new(),
+                    )
+                    .unwrap()
+                    .model
+                    .unwrap_or_else(|error| panic!("{source:?}: {error}"));
+
+                    assert_eq!(model.groups[0].title.as_deref(), Some(title));
+                    assert_eq!(model.nodes[0].title.as_deref(), Some(title));
+                    assert_eq!(model.edges[0].title.as_deref(), Some(title));
+                    assert_eq!(
+                        model
+                            .nodes
+                            .iter()
+                            .map(|node| node.id.as_str())
+                            .collect::<Vec<_>>(),
+                        ["api", "db", "later"]
+                    );
+                    assert_eq!(model.nodes[2].title.as_deref(), Some(title));
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn architecture_canonical_rejects_unclosed_terminals_without_absorbing_later_statements() {
+        for malformed in [
+            "service api \"unterminated",
+            "service api 'unterminated",
+            "service api [unterminated",
+            "service api [\"unterminated\"",
+            "group root [unterminated",
+            "group root ['unterminated'",
+            "service api\nservice db\napi:R -[unterminated- L:db",
+        ] {
+            for suffix in ["", "\nservice later [Later]\n"] {
+                let source = format!("architecture-beta\n{malformed}{suffix}");
+                assert!(
+                    parse_architecture_semantic_model_controlled(
+                        &source,
+                        &metadata(),
+                        #[cfg(feature = "editor-facts")]
+                        EditorFactsDemand::Omit,
+                        &OperationControl::new(),
+                    )
+                    .unwrap()
+                    .model
+                    .is_err(),
+                    "an incomplete terminal must remain invalid: {source:?}"
+                );
+                #[cfg(feature = "editor-facts")]
+                if !suffix.is_empty() {
+                    let captured = parse_architecture_semantic_model_controlled(
+                        &source,
+                        &metadata(),
+                        EditorFactsDemand::Capture,
+                        &OperationControl::new(),
+                    )
+                    .unwrap();
+                    assert!(captured.model.is_err());
+                    let facts = captured.editor_facts.unwrap();
+                    assert!(facts.symbols.iter().any(|symbol| {
+                        symbol.name == "later"
+                            && symbol.detail.as_deref() == Some("architecture service")
+                    }));
+                }
+            }
+        }
+    }
+
+    #[test]
+    #[cfg(feature = "editor-facts")]
+    fn architecture_canonical_plain_title_quotes_keep_later_recovery_facts() {
+        let source = "architecture-beta\n\
+service api [User's API] %% ignored \"\n\
+service broken [Owner's \"note] extra\n\
+service later [Later's \"title]";
+        let captured = parse_architecture_semantic_model_controlled(
+            source,
+            &metadata(),
+            EditorFactsDemand::Capture,
+            &OperationControl::new(),
+        )
+        .unwrap();
+        let Error::DiagramParse { diagnostic, .. } = captured.model.unwrap_err() else {
+            panic!("expected a trailing-input diagnostic");
+        };
+        let extra = source.find("extra").unwrap();
+        assert_eq!(diagnostic.message(), "unexpected trailing input");
+        assert_eq!(diagnostic.span(), Some(SourceSpan::new(extra, extra + 5)));
+
+        let facts = captured.editor_facts.unwrap();
+        assert_eq!(
+            facts.completeness,
+            crate::EditorSemanticCompleteness::Recovered
+        );
+        assert_eq!(facts.diagnostics.len(), 1);
+        assert_eq!(facts.diagnostics[0].span, diagnostic.span());
+        for name in ["api", "broken", "later"] {
+            let declaration = facts
+                .symbols
+                .iter()
+                .find(|symbol| {
+                    symbol.name == name && symbol.detail.as_deref() == Some("architecture service")
+                })
+                .unwrap_or_else(|| panic!("missing declaration {name}"));
+            let start = source.find(name).unwrap();
+            assert_eq!(
+                declaration.selection,
+                SourceSpan::new(start, start + name.len())
+            );
+        }
+        for title in ["User's API", "Owner's \"note", "Later's \"title"] {
+            let payload = facts
+                .symbols
+                .iter()
+                .find(|symbol| {
+                    symbol.name == title
+                        && symbol.detail.as_deref() == Some("architecture service title")
+                })
+                .unwrap_or_else(|| panic!("missing title payload {title}"));
+            assert_eq!(
+                &source[payload.selection.start..payload.selection.end],
+                title
+            );
         }
     }
 

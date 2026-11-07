@@ -1,7 +1,9 @@
 use crate::model::Bounds;
 use crate::svg::icon_registry::{IconIdScope, IconIdScopePrefix};
 use crate::text::TextMeasurer;
-use merman_model::families::architecture::{ArchitectureDiagramModel, ArchitectureNodeKind};
+use merman_model::families::architecture::{
+    ArchitectureDiagramModel, ArchitectureNodeKind, ArchitectureNodeModel,
+};
 
 use super::super::{SvgDiagramId, SvgOutput, escape_attr_into, escape_xml_into, fmt};
 use super::ArchitectureEmitCheckpoints;
@@ -33,6 +35,16 @@ pub(super) struct ArchitectureNodeRenderContext<'a, O: SvgOutput> {
     pub(super) typography_emission:
         Option<&'a mut crate::architecture::ArchitectureTypographyEmission>,
     pub(super) checkpoints: ArchitectureEmitCheckpoints<'a>,
+}
+
+pub(super) fn architecture_service_has_icon_text(service: &ArchitectureNodeModel) -> bool {
+    // Mermaid@12.3.0 svgDraw.ts uses string truthiness before sanitizing iconText:
+    // an empty string falls back to the background, while whitespace selects the icon branch.
+    service.icon.is_none()
+        && service
+            .icon_text
+            .as_deref()
+            .is_some_and(|text| !text.is_empty())
 }
 
 fn architecture_icon_scope(
@@ -119,11 +131,8 @@ pub(super) fn push_architecture_services_and_junctions<O: SvgOutput>(
                 y = fmt(y)
             );
 
-            let has_icon_text = svc.icon.is_none()
-                && svc
-                    .icon_text
-                    .as_deref()
-                    .is_some_and(|text| !text.trim().is_empty());
+            let has_icon_text = architecture_service_has_icon_text(svc);
+            let has_background = svc.icon.is_none() && !has_icon_text;
             let service_title_style = surface_styles
                 .as_deref()
                 .and_then(|styles| styles.service_title_style(service_index));
@@ -186,7 +195,7 @@ pub(super) fn push_architecture_services_and_junctions<O: SvgOutput>(
                     }
                     out.push_str("</g>");
                 }
-                (None, Some(icon_text)) => {
+                (None, Some(icon_text)) if has_icon_text => {
                     out.push_str("<g>");
                     write_arch_icon_svg(out, "blank", settings.icon_size_px, None)?;
                     out.push_str("</g>");
@@ -225,7 +234,7 @@ pub(super) fn push_architecture_services_and_junctions<O: SvgOutput>(
                     out.push_str(&sanitized);
                     out.push_str("</div></div></foreignObject></g>");
                 }
-                (None, None) => {
+                (None, _) => {
                     out.push_str(r#"<path class="node-bkg" id=""#);
                     write_diagram_node_id(out, diagram_id, &svc.id);
                     checkpoints.checkpoint()?;
@@ -253,14 +262,13 @@ pub(super) fn push_architecture_services_and_junctions<O: SvgOutput>(
                 emission.record_visible_text();
             }
             if let Some(styles) = surface_styles.as_deref_mut() {
-                let background_emitted = svc.icon.is_none() && svc.icon_text.is_none();
                 styles.record_checkpointed_service(
                     crate::architecture::ArchitectureServiceTerminalEmission {
                         index: service_index,
                         #[cfg(merman_internal_theme_acceptance)]
                         id: svc.id.as_str().into(),
                         background: crate::architecture::ArchitecturePaintTerminalEmission {
-                            emitted: background_emitted,
+                            emitted: has_background,
                         },
                         title: crate::architecture::ArchitectureTextTerminalEmission {
                             emitted: has_title,

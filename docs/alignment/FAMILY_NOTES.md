@@ -13,6 +13,10 @@ release. Families without a special note use the shared contracts and their exec
 
 ## Architecture
 
+Bracketed unquoted titles retain literal quote characters; a quote inside such a title does not
+open a separate multiline string. Authored empty icon text remains present in semantics but uses
+the default service background. A nonempty whitespace-only icon string still selects icon text.
+
 Compound layout is a source-backed headless approximation of Cytoscape/FCoSE. Service body/label
 unions, group expansion, operation randomness, and host text measurements can all affect geometry;
 a seed makes a reference reproducible without proving pixel identity with an arbitrary browser run.
@@ -122,6 +126,11 @@ entities instead of those AST collections. Do not invent visible boxes for gramm
 Data type names do not select distinct HTML/Markdown renderers. Local data labels emit escaped
 text; browser HTML injection, non-breaking-space serialization, and measured wrapping retain a
 bounded compatibility difference.
+
+Hidden comments may begin immediately after scalar fields without intervening whitespace. Explicit
+source references remain in authored order, including repeated occurrences, in semantics and editor
+facts. Layout selects each matching source frame once in frame declaration order, following the
+upstream DB's frame-membership rule.
 
 Owners: [semantic/editor contract tests](../../crates/merman-core/tests/eventmodeling_contract.rs),
 [SVG emitter](../../crates/merman-render/src/svg/parity/eventmodeling.rs), and
@@ -383,6 +392,13 @@ to promote an input. Owners: [Swimlane implementation](../../crates/merman-rende
 [public typed-render tests](../../crates/merman/tests/swimlane_typed_render.rs).
 
 ## TreeView
+
+Bare names and descriptions retain literal `%%` once their payload token has begun. Quoted names
+can span physical lines; the shared parser retains the label text and its authored source range
+for semantic and editor consumers. Comment tokens remain hidden at grammar token boundaries.
+Indentation after a completed name or annotation belongs to the following node even across hidden
+comments and line breaks. A second indentation token before that name, or a dangling indentation
+token at EOF, is invalid under the selected grammar.
 
 Browser text bboxes and fallback fonts, especially for emoji and non-ASCII labels, can move root
 bounds. The render environment exposes `RawBBoxWidth` and `RawBBoxHeight` as separate measurement
