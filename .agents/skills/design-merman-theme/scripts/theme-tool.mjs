@@ -8,6 +8,7 @@ const HELP = `Merman theme design tool (Node.js 22+)
   catalog
   export <preset-id>
   materialize <design.json>
+  inspect <theme.json>
   support <query.json>
   render <theme.json> <diagram.mmd> --out <preview.svg> [--options <options.json>]
 
@@ -15,11 +16,12 @@ Options:
   --engine <module>  ESM module exporting createNodeEngine; default @mermanjs/node
   --out <path>       Write JSON instead of stdout; required for render
   --options <path>   Render options without theme; schema version defaults to 3
+  --appearance <id> Render a concrete light or dark appearance
   --force            Intentionally replace existing output files
   --help            Show usage without loading an engine
 
 Render writes <preview>.metadata.json from the same operation. Materialize takes
-the design payload, not the recipe envelope. Rust owns validation and admission.
+a raw design or authoring request; inspect takes a recipe. Rust owns admission.
 `;
 
 function argumentsFor(argv) {
@@ -30,17 +32,21 @@ function argumentsFor(argv) {
       engine: { type: "string", default: "@mermanjs/node" },
       out: { type: "string" },
       options: { type: "string" },
+      appearance: { type: "string" },
       force: { type: "boolean", default: false },
       help: { type: "boolean", default: false },
     },
   });
   if (values.help) return { help: true };
   const [command, ...inputs] = positionals;
-  const arity = { catalog: 0, export: 1, materialize: 1, support: 1, render: 2 };
+  const arity = { catalog: 0, export: 1, materialize: 1, inspect: 1, support: 1, render: 2 };
   if (!Object.hasOwn(arity, command) || inputs.length !== arity[command]) {
     throw new Error(`Invalid command or arguments.\n${HELP}`);
   }
   if (values.options && command !== "render") throw new Error("--options is only valid for render.");
+  if (values.appearance !== undefined && (command !== "render" || !["light", "dark"].includes(values.appearance))) {
+    throw new Error("--appearance requires render and a concrete light or dark value.");
+  }
   if (command === "render" && (!values.out || !values.out.endsWith(".svg"))) {
     throw new Error("render requires --out <preview.svg>.");
   }
@@ -113,15 +119,21 @@ export async function run(argv, { createEngine = loadEngine, stdout = (text) => 
     }
     if (!Object.hasOwn(options, "version")) options.version = 3;
     // Keep original recipe text: normalizing it in JavaScript would conceal duplicate-key errors.
-    optionsJson = `${JSON.stringify(options).slice(0, -1)},"theme":${recipe}}`;
+    const selection = args.appearance
+      ? `{"recipe":${recipe},"appearance":${JSON.stringify(args.appearance)}}`
+      : recipe;
+    optionsJson = `${JSON.stringify(options).slice(0, -1)},"theme":${selection}}`;
     source = await readFile(inputs[1], "utf8");
+  } else if (command === "inspect") {
+    JSON.parse(source);
+    source = `{"schema_version":1,"action":"inspect","recipe":${source}}`;
   }
   const engine = await createEngine(args.engine);
   try {
     if (command === "catalog") {
       await publish(engine.metadataJson("theme-catalog"));
     } else {
-      const operationId = { export: "export-theme-preset-json", materialize: "materialize-theme-json", support: "describe-theme-support-json", render: "svg" }[command];
+      const operationId = { export: "export-theme-preset-json", materialize: "materialize-theme-json", inspect: "materialize-theme-json", support: "describe-theme-support-json", render: "svg" }[command];
       const result = await engine.executeOperation({ operationId, source, ...(optionsJson ? { optionsJson } : {}) });
       if (command === "render") {
         if (result.media_type !== "image/svg+xml" || typeof result.metadata_json !== "string") {

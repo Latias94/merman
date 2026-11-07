@@ -24,6 +24,7 @@ capability limitations before designing around an uncertain mechanism.
 | `typography` | Default and family-specific text styles |
 | `canvas` | Exported base paint, ordered decorative layers, and bleed |
 | `mermaid` | Restricted theme compatibility values, subject to source/config precedence |
+| `appearances`, `default_appearance` | Optional concrete light/dark layers and the required declared default |
 
 References are exact local values of the form `{"ref":"id"}`. They are typed, can occur inside
 larger paints/effects, and cannot be expressions or arbitrary paths. A `color` token fits a gradient
@@ -65,12 +66,57 @@ owns these distinctions.
 
 ## Paired appearances
 
-Compare two ordinary concrete recipes using current fields. Record shared intentions and
-exceptions for each appearance in the brief, then express them through each recipe's tokens, rules, and
-palettes. Matching token IDs do not create a live relationship between recipes. The current
-envelope defines no paired or conditional-value fields. Catalog `appearance` classifies an entry;
-`design.mermaid.dark_mode` is a compatibility input, not a resolver for paired designs. Keep
-selection and export conditions explicit as described in [runtime.md](runtime.md#appearance-and-viewer-backing).
+Use one `ThemeRecipeV1` with its optional `design.appearances` map and
+`design.default_appearance`. Single-appearance artwork may declare one entry; an ordinary
+concrete design without these fields remains unclassified.
+
+```json
+{
+  "schema_version": 1,
+  "kind": "design",
+  "design": {
+    "styles": {
+      "node": { "fill": { "ref": "surface" } },
+      "node-label": { "fill": { "ref": "ink" } }
+    },
+    "canvas": { "base": { "ref": "surface" } },
+    "appearances": {
+      "light": {
+        "tokens": {
+          "surface": { "type": "paint", "value": "#fafbfc" },
+          "ink": { "type": "paint", "value": "#20242c" }
+        }
+      },
+      "dark": {
+        "tokens": {
+          "surface": { "type": "paint", "value": "#20242c" },
+          "ink": { "type": "paint", "value": "#fafbfc" }
+        }
+      }
+    },
+    "default_appearance": "light"
+  }
+}
+```
+
+This seed covers Flowchart node roles, not every family. For a reviewed multi-family example,
+inspect [Reading](../../../../playground/src/themes/recipes/reading.theme.json).
+Local tokens replace matching IDs; local styles follow shared defaults and rules, then local
+rules run in order. Palettes replace an entire target entry. Canvas and typography replace
+their entire section; Mermaid compatibility merges only declared fields and variable entries.
+Assets and requirements stay shared. No recursive JSON merge or automatic color inversion occurs.
+
+All declared appearances must pass admission, including the inactive branch. Inspect the full
+recipe, then materialize/render each concrete appearance; a broken dark branch cannot become a
+valid light-only import. Keep the complete recipe for exchange. A `complete_spec` snapshot loses
+authoring relationships and appearance selection.
+
+Catalog groups expose supported/default appearances and per-appearance metadata, including
+`concrete_preset_id`. Select canonical `editor`, `gruvbox`, or `ayu` with an appearance; concrete
+IDs remain pinned. Mermaid Default and Dark stay independent. Only Neo, Redux, and Redux Color
+have declared upstream pairs. `design.mermaid.dark_mode` remains a compatibility value.
+Keep selection and export conditions explicit as described in
+[runtime.md](runtime.md#appearance-and-viewer-backing).
 
 ## Backgrounds and shadows
 

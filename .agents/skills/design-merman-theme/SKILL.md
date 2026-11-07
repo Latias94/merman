@@ -43,6 +43,8 @@ and explicit references.
 Give intentional shared values stable IDs and bind their consumers. Edit those bindings or explicit
 local consumers; equal color literals do not establish a shared relationship. Keep the editable
 recipe as the deliverable; a materialized spec is an inspection result.
+For a paired brief, use one v1 design with explicit light/dark appearance layers. Export the
+complete document and pass a concrete appearance for each preview; Follow belongs to the host.
 
 Adapt the mechanism to each family: supported bodies may carry depth while Class uses paint and
 typography and Pie uses distinguishable sectors. A role consuming one facet does not qualify

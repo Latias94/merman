@@ -46,6 +46,42 @@ test("materialization forwards raw design text and writes a separate inspection 
   assert.equal(await readFile(file("design.json"), "utf8"), raw);
 });
 
+test("inspection preserves the complete recipe's original text", async (t) => {
+  const file = await workspace(t);
+  const recipe = '{"schema_version":1,"kind":"design","design":{"tokens":{},"tokens":{}}}';
+  await writeFile(file("theme.json"), recipe);
+  const engine = runtime(() => ({ media_type: "application/json", data: '{"appearances":[]}' }));
+  await run(["inspect", file("theme.json")], engine);
+  assert.equal(engine.state.calls[0].operationId, "materialize-theme-json");
+  assert.equal(
+    engine.state.calls[0].source,
+    `{"schema_version":1,"action":"inspect","recipe":${recipe}}`,
+  );
+  assert.equal(engine.state.disposed, true);
+});
+
+test("paired render selects a concrete appearance without normalizing the recipe", async (t) => {
+  const file = await workspace(t);
+  const recipe = '{"schema_version":1,"kind":"design","design":{"appearances":{"dark":{}},"default_appearance":"dark"}}';
+  await writeFile(file("theme.json"), recipe);
+  await writeFile(file("diagram.mmd"), "flowchart LR\nA --> B");
+  const engine = runtime(() => ({
+    media_type: "image/svg+xml", data: "<svg/>", metadata_json: "{}",
+  }));
+  await run([
+    "render", file("theme.json"), file("diagram.mmd"),
+    "--appearance", "dark", "--out", file("preview.svg"),
+  ], engine);
+  assert.ok(engine.state.calls[0].optionsJson.includes(`"recipe":${recipe}`));
+  assert.equal(JSON.parse(engine.state.calls[0].optionsJson).theme.appearance, "dark");
+  for (const args of [
+    ["catalog", "--appearance", "dark"],
+    ["render", "a", "b", "--appearance", "auto", "--out", "c.svg"],
+  ]) {
+    await assert.rejects(run(args, engine), /concrete light or dark/);
+  }
+});
+
 test("render retains exact theme text, source and options and writes same-execution metadata", async (t) => {
   const file = await workspace(t);
   const theme = '{"schema_version":1,"kind":"design","design":{"canvas":{"base":"red","base":"blue"}}}';
