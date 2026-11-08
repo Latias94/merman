@@ -133,6 +133,16 @@ fn usvg_options_with_system_sans_serif() -> usvg::Options<'static> {
     options
 }
 
+#[cfg(all(feature = "png", feature = "native-fonts"))]
+fn native_export_fonts() -> merman::svg::export::NativeFontContext {
+    let fonts =
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../merman-export/tests/fonts");
+    merman::svg::export::NativeFontOptions::default()
+        .with_font_file(fonts.join("Cousine-Regular.ttf"))
+        .load(&OperationControl::new())
+        .unwrap()
+}
+
 fn usvg_fallback_text_span(svg: &str, label: &str) -> usvg::TextSpan {
     fn find_span(group: &usvg::Group, label: &str) -> Option<usvg::TextSpan> {
         for node in group.children() {
@@ -563,13 +573,14 @@ fn filtered_html_fallback_does_not_assume_unknown_css_is_absent() {
 }
 
 #[test]
-#[cfg(feature = "png")]
+#[cfg(all(feature = "png", feature = "native-fonts"))]
 fn class_native_label_paint_reaches_usvg_and_png() {
     use merman::svg::{
         CanvasPaint, DiagramThemeCompiler, DiagramThemeSpec, ThemeRule, ThemeRuleSet,
         ThemeStylePatch, ThemeTarget,
     };
 
+    let font_context = native_export_fonts();
     let renderer = Renderer::new();
     for (body, label, target) in [
         (
@@ -584,7 +595,7 @@ fn class_native_label_paint_reaches_usvg_and_png() {
         ),
     ] {
         let source = format!(
-            "---\nconfig:\n  htmlLabels: false\n  layout: dagre\n---\nclassDiagram\n{body}"
+            "---\nconfig:\n  htmlLabels: false\n  layout: dagre\n  themeVariables:\n    fontFamily: Cousine\n---\nclassDiagram\n{body}"
         );
         for (paint, expected_fill) in [
             (CanvasPaint::solid("#ff0000").unwrap(), Some((255, 0, 0))),
@@ -619,7 +630,8 @@ fn class_native_label_paint_reaches_usvg_and_png() {
                         OperationControl::new(),
                         merman::PngRequest {
                             svg: SvgRequest::default(),
-                            options: merman::svg::export::RasterOptions::default(),
+                            options: merman::svg::export::RasterOptions::default()
+                                .with_font_context(font_context.clone()),
                         },
                     )
                     .with_theme(theme),
@@ -645,8 +657,9 @@ fn class_native_label_paint_reaches_usvg_and_png() {
 }
 
 #[test]
-#[cfg(feature = "png")]
+#[cfg(all(feature = "png", feature = "native-fonts"))]
 fn filtered_html_fallback_reaches_native_glow_pixels_and_receipts() {
+    let font_context = native_export_fonts();
     let source = r##"<svg id="diagram" xmlns="http://www.w3.org/2000/svg" width="300" height="140" viewBox="0 0 300 140"><style>@keyframes dash {to {stroke-dashoffset:0}} #diagram :root {--mermaid-font-family:sans-serif} #diagram .label text {fill:#222;color:#222}</style><defs><filter id="label-theme-effect-glow" color-interpolation-filters="linearRGB" filterUnits="userSpaceOnUse" x="-20" y="-20" width="170" height="100"><feDropShadow in="SourceGraphic" dx="0" dy="0" stdDeviation="4" flood-color="#ff0080"/></filter></defs><g class="label" transform="translate(60,40)"><g filter="url(#label-theme-effect-glow)"><foreignObject width="120" height="48"><div xmlns="http://www.w3.org/1999/xhtml" style="font-family:sans-serif;font-size:20px;color:#222">Alpha</div></foreignObject></g></g></svg>"##;
     for (overflow, source, expected_receipt) in [
         ("hidden", source.to_string(), false),
@@ -679,8 +692,10 @@ fn filtered_html_fallback_reaches_native_glow_pixels_and_receipts() {
                 .contains(&format!("overflow:{overflow}")),
             "{overflow}: source viewport clipping must survive finalization"
         );
+        let options =
+            merman::svg::export::RasterOptions::default().with_font_context(font_context.clone());
         let (bytes, report) =
-            merman::svg::export::svg_to_png_with_report(&sealed, &Default::default()).unwrap();
+            merman::svg::export::svg_to_png_with_report(&sealed, &options).unwrap();
         let receipt = report.native_filter_receipt();
         // A clipped source viewport cannot prove the exporter's unclipped-glyph receipt.
         // Explicit visible overflow keeps the original glow and its stronger evidence.
@@ -705,8 +720,10 @@ fn filtered_html_fallback_reaches_native_glow_pixels_and_receipts() {
         );
         #[cfg(feature = "pdf")]
         if expected_receipt {
+            let options =
+                merman::svg::export::PdfOptions::default().with_font_context(font_context.clone());
             let (_, pdf_report) =
-                merman::svg::export::svg_to_pdf_with_report(&sealed, &Default::default()).unwrap();
+                merman::svg::export::svg_to_pdf_with_report(&sealed, &options).unwrap();
             assert_eq!(pdf_report.native_filter_receipt(), receipt);
         }
     }
