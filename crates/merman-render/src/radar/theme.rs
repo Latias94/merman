@@ -21,19 +21,9 @@ use crate::resources::{OperationWorkError, OperationWorkMeter};
 
 const RADAR_PALETTE_SLOT_COUNT: usize = 12;
 
-const RADAR_COLOR_SCALE_PATHS: [&str; RADAR_PALETTE_SLOT_COUNT] = [
-    "themeVariables.cScale0",
-    "themeVariables.cScale1",
-    "themeVariables.cScale2",
-    "themeVariables.cScale3",
-    "themeVariables.cScale4",
-    "themeVariables.cScale5",
-    "themeVariables.cScale6",
-    "themeVariables.cScale7",
-    "themeVariables.cScale8",
-    "themeVariables.cScale9",
-    "themeVariables.cScale10",
-    "themeVariables.cScale11",
+const RADAR_COLOR_SCALE_KEYS: [&str; RADAR_PALETTE_SLOT_COUNT] = [
+    "cScale0", "cScale1", "cScale2", "cScale3", "cScale4", "cScale5", "cScale6", "cScale7",
+    "cScale8", "cScale9", "cScale10", "cScale11",
 ];
 
 /// Final Radar base typography shared by stylesheet emission and terminal evidence.
@@ -229,7 +219,7 @@ impl RadarTitleThemePlan {
 
         let title_count = usize::from(title_present);
         let config_owns_fill =
-            effective_config.config_paint_overrides_typed_default("themeVariables.titleColor");
+            super::RadarCssBinding::config_owns_color(effective_config, "titleColor");
         let style = title_present
             .then(|| {
                 theme.style_with_work_meter(
@@ -663,9 +653,9 @@ impl RadarSeriesPaintPlan {
             )?;
             // A cScale slot supplies both curve and swatch fill/stroke. Other source
             // properties, including opacity and stroke width, do not own these paints.
-            let owned = RADAR_COLOR_SCALE_PATHS
-                .get(index)
-                .is_some_and(|path| effective_config.config_paint_overrides_typed_default(path));
+            let owned = RADAR_COLOR_SCALE_KEYS.get(index).is_some_and(|key| {
+                super::RadarCssBinding::config_owns_color(effective_config, key)
+            });
             source_owned.push(owned);
             if !owned {
                 let baseline = plan.colors.get(index).map(String::as_str);
@@ -757,7 +747,8 @@ impl RadarSeriesPaintPlan {
     pub(crate) fn baseline(config: &serde_json::Value, model: &RadarDiagramModel) -> Self {
         Self {
             colors: std::array::from_fn(|index| {
-                config_string(config, &["themeVariables", &format!("cScale{index}")])
+                super::RadarCssBinding::configured_color(config, RADAR_COLOR_SCALE_KEYS[index])
+                    .map(str::to_owned)
                     .unwrap_or_else(|| {
                         crate::svg::render_theme::radar_default_series_color(index).to_string()
                     })

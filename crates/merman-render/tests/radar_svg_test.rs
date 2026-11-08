@@ -918,6 +918,111 @@ fn radar_axis_configuration_owns_only_its_color_channel() {
 }
 
 #[test]
+fn radar_ignored_config_colors_do_not_own_typed_paint() {
+    let styles = [ThemeTarget::Text, ThemeTarget::Title, ThemeTarget::Axis]
+        .into_iter()
+        .fold(ThemeRuleSet::default(), |styles, target| {
+            let paint = CanvasPaint::solid("#123456").unwrap();
+            let patch = if target == ThemeTarget::Axis {
+                ThemeStylePatch::default().with_stroke(paint)
+            } else {
+                ThemeStylePatch::default().with_fill(paint)
+            };
+            styles.with_rule(ThemeRule::new(target, patch).for_family(DiagramFamilyId::RADAR))
+        });
+    let theme = DiagramThemeCompiler::new()
+        .compile(DiagramThemeSpec::new().with_styles(styles))
+        .unwrap();
+    let config = serde_json::json!({
+        "themeVariables": {
+            "textColor": 42,
+            "titleColor": 42,
+            "radar": { "axisColor": 42 }
+        }
+    });
+    for owner in ["site", "frontmatter", "directive"] {
+        let source = match owner {
+            "frontmatter" => format!("---\nconfig: {config}\n---\n{RADAR_TEXT_SOURCE}"),
+            "directive" => format!("%%{{init: {config}}}%%\n{RADAR_TEXT_SOURCE}"),
+            _ => RADAR_TEXT_SOURCE.to_owned(),
+        };
+        let engine = if owner == "site" {
+            MermaidEngine::new().with_site_config(
+                merman_core::presentation::SourcePresentationConfig::from_value(config.clone()),
+            )
+        } else {
+            MermaidEngine::new()
+        };
+        let rendered = render_radar_with_theme_and_engine(&source, &theme, engine);
+        let css = radar_stylesheet(rendered.svg());
+        assert!(
+            css.split_once('}').unwrap().0.ends_with("fill:#123456;"),
+            "{owner}: {css}"
+        );
+        assert!(
+            css.contains(".radarTitle{font-size:16px;color:#123456;fill:#123456;"),
+            "{owner}: {css}"
+        );
+        assert!(
+            css.contains(".radarAxisLine{stroke:#123456;"),
+            "{owner}: {css}"
+        );
+        let evidence =
+            merman_render::__private::family_evidence(rendered.into_completion().report());
+        assert_eq!(evidence.applied_count(), 3, "{owner}");
+        assert_eq!(evidence.not_applicable_count(), 0, "{owner}");
+        assert_eq!(evidence.theme_residual_count(), 0, "{owner}");
+    }
+}
+
+#[test]
+fn radar_ignored_source_scale_slot_allows_scalar_and_palette_winners() {
+    let scalar = DiagramThemeCompiler::new()
+        .compile(
+            DiagramThemeSpec::new().with_styles(
+                ThemeRuleSet::default().with_rule(ThemeRule::new(
+                    ThemeTarget::ChartSeries,
+                    ThemeStylePatch::default()
+                        .with_fill(CanvasPaint::solid("#123456").unwrap())
+                        .with_stroke(CanvasPaint::solid("#abcdef").unwrap()),
+                )),
+            ),
+        )
+        .unwrap();
+    let palette = radar_series_palette_theme(&["#123456"]);
+    let config = serde_json::json!({"themeVariables": {"cScale0": 42}});
+    for source in [
+        format!("---\nconfig: {config}\n---\n{RADAR_TEXT_SOURCE}"),
+        format!("%%{{init: {config}}}%%\n{RADAR_TEXT_SOURCE}"),
+    ] {
+        for (theme, color, stroke) in [
+            (&scalar, "hsl(240, 100%, 76.2745098039%)", "#abcdef"),
+            (&palette, "#123456", "#123456"),
+        ] {
+            let rendered = render_radar_with_theme_and_engine(&source, theme, MermaidEngine::new());
+            let css = radar_stylesheet(rendered.svg());
+            assert!(
+                css.contains(&format!(
+                    ".radarCurve-0{{color:{color};fill:#123456;fill-opacity:0.5;stroke:{stroke};"
+                )),
+                "{css}"
+            );
+            assert!(
+                css.contains(&format!(
+                    ".radarLegendBox-0{{fill:#123456;fill-opacity:0.5;stroke:{stroke};"
+                )),
+                "{css}"
+            );
+            let evidence =
+                merman_render::__private::family_evidence(rendered.into_completion().report());
+            assert_eq!(evidence.applied_count(), 1);
+            assert_eq!(evidence.not_applicable_count(), 0);
+            assert_eq!(evidence.theme_residual_count(), 0);
+        }
+    }
+}
+
+#[test]
 fn radar_static_axis_stroke_overrides_ordinal_palette_in_strict_mode() {
     let palette = OrdinalPalette::new([
         ThemeColorValue::parse("#abcdef").unwrap(),

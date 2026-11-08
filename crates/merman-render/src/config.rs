@@ -195,14 +195,30 @@ pub(crate) fn normalize_css_font_family(font_family: &str) -> String {
     }
 }
 
-pub(crate) fn config_font_family_css(cfg: &Value) -> String {
-    let Some(font_family) = value_at(cfg, &["themeVariables", "fontFamily"])
+pub(crate) fn configured_font_family(cfg: &Value) -> Option<(String, &'static str)> {
+    let (font, path) = value_at(cfg, &["themeVariables", "fontFamily"])
         .and_then(Value::as_str)
-        .or_else(|| value_at(cfg, &["fontFamily"]).and_then(Value::as_str))
-    else {
-        return MERMAID_DEFAULT_FONT_FAMILY_CSS.to_string();
+        .map(|font| (font, "themeVariables.fontFamily"))
+        .or_else(|| {
+            value_at(cfg, &["fontFamily"])
+                .and_then(Value::as_str)
+                .map(|font| (font, "fontFamily"))
+        })?;
+    let normalized = if matches!(
+        font,
+        MERMAID_DEFAULT_FONT_FAMILY_CONFIG | MERMAID_DEFAULT_ROOT_FONT_FAMILY_CONFIG
+    ) {
+        MERMAID_DEFAULT_FONT_FAMILY_CSS.to_owned()
+    } else {
+        normalize_css_font_family(font)
     };
-    font_family_css(font_family)
+    (!normalized.is_empty()).then_some((normalized, path))
+}
+
+pub(crate) fn config_font_family_css(cfg: &Value) -> String {
+    configured_font_family(cfg)
+        .map(|(font, _)| font)
+        .unwrap_or_else(|| MERMAID_DEFAULT_FONT_FAMILY_CSS.to_owned())
 }
 
 /// Mermaid's generated :root custom property reads config.fontFamily, independently

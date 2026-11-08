@@ -39,7 +39,6 @@ impl TreemapCssBinding {
             .unwrap_or_else(|| text_color.clone());
         let raw_theme_name =
             config_string(config, &["theme"]).unwrap_or_else(|| "default".to_owned());
-        let default_theme = raw_theme_name == "default";
         let theme_name = raw_theme_name.trim().to_ascii_lowercase();
         let label_text_color = color("labelTextColor", "black");
         let label_text_is_calculated = label_text_color.trim() == "calculated";
@@ -47,22 +46,10 @@ impl TreemapCssBinding {
         let neutral_special_label_color = color("cScale1", default_c_scale(1));
 
         let color_scale = (0..12)
-            .map(|i| {
-                if default_theme {
-                    default_c_scale(i).to_string()
-                } else {
-                    color(&format!("cScale{i}"), default_c_scale(i))
-                }
-            })
+            .map(|i| color(&format!("cScale{i}"), default_c_scale(i)))
             .collect();
         let color_scale_peer = (0..12)
-            .map(|i| {
-                if default_theme {
-                    default_c_scale_peer(i).to_string()
-                } else {
-                    color(&format!("cScalePeer{i}"), default_c_scale_peer(i))
-                }
-            })
+            .map(|i| color(&format!("cScalePeer{i}"), default_c_scale_peer(i)))
             .collect();
         let color_scale_label = (0..12)
             .map(|i| -> crate::Result<String> {
@@ -119,14 +106,14 @@ impl TreemapCssBinding {
         leaf_fill: &str,
         leaf_rect_style: &str,
         leaf_label_fill: String,
-    ) -> String {
+    ) -> (String, bool) {
         if is_transparent(leaf_fill)
             && !style_has_non_empty_decl(leaf_rect_style, "fill")
             && is_white_like(&leaf_label_fill)
         {
-            self.text_color.clone()
+            (self.text_color.clone(), true)
         } else {
-            leaf_label_fill
+            (leaf_label_fill, false)
         }
     }
 }
@@ -231,21 +218,18 @@ mod tests {
     }
 
     #[test]
-    fn prepared_default_scales_keep_inversion_and_transparent_readability() {
+    fn prepared_default_scales_keep_configured_colors_and_transparent_readability() {
         let binding = TreemapCssBinding::new(&json!({
-            "themeVariables": {"labelTextColor": "rgb(10, 20, 30)", "cScale0": "ignored", "cScalePeer0": "ignored"}
+            "themeVariables": {"labelTextColor": "rgb(10, 20, 30)", "cScale0": "#123456", "cScalePeer0": "#654321"}
         }), "Inter").expect("prepared default scales");
-        assert_eq!(binding.color_scale[0], "hsl(240, 100%, 76.2745098039%)");
-        assert_eq!(
-            binding.color_scale_peer[0],
-            "hsl(240, 100%, 61.2745098039%)"
-        );
+        assert_eq!(binding.color_scale[0], "#123456");
+        assert_eq!(binding.color_scale_peer[0], "#654321");
         assert_eq!(binding.color_scale_label[0], "#f5ebe1");
         assert_eq!(binding.color_scale_label[1], "rgb(10, 20, 30)");
         assert_eq!(binding.color_scale_label[3], "#f5ebe1");
         assert_eq!(
             binding.readable_leaf_label_fill("transparent", "", "#ffffff".into()),
-            "#333"
+            ("#333".to_owned(), true)
         );
         assert_eq!(
             binding.readable_leaf_label_fill(
@@ -253,15 +237,15 @@ mod tests {
                 "fill:var(--fill)",
                 "white".into()
             ),
-            "white"
+            ("white".to_owned(), false)
         );
         assert_eq!(
             binding.readable_leaf_label_fill("transparent", "", "var(--label)".into()),
-            "var(--label)"
+            ("var(--label)".to_owned(), false)
         );
         assert_eq!(
             binding.readable_leaf_label_fill("rgba(10 20 30 / 0)", "", "rgb(250 251 252)".into()),
-            "#333"
+            ("#333".to_owned(), true)
         );
     }
 

@@ -60,7 +60,7 @@ impl TimelineTextPaintPlan {
             terminal: OnceLock::new(),
         };
         let Some(theme) = theme else { return Ok(plan) };
-        let config_owned = config.config_paint_overrides_typed_default("themeVariables.textColor");
+        let config_owned = super::TimelineCssBinding::config_owns_color(config, "textColor");
         let style =
             theme.style_with_work_meter(ThemeTarget::Text, ThemeVariant::Default, None, work)?;
         let winners = style

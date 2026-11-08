@@ -169,6 +169,19 @@ XY Chart or Wardley backdrop from source, set `themeVariables.xyChart.background
 does not necessarily recompute an already initialized family backdrop. Root canvas paint remains
 separate from these diagram-owned backgrounds.
 
+Default XY Chart also keeps its initialized text colors when only root `primaryTextColor`
+changes. Set the corresponding `themeVariables.xyChart` role directly for predictable overrides.
+During site initialization, an explicit XY color object derives its missing fields from root
+colors; a partial source object merges into the already initialized theme. Preserve both the
+configuration location and the nested fields when reproducing an appearance.
+
+Treemap uses `themeVariables.cScaleN` for section and leaf fills and `cScalePeerN` for section
+borders, including with Default. Visible labels normally use `cScaleLabelN`, which overrides
+the `treemap.labelColor` and `valueColor` stylesheets. Transparent leaves can fall back to
+`textColor` for readability. Compiled label paint follows that selected source; unused
+stylesheet colors do not block it. Timeline's colored Redux palettes cycle through
+`borderColorArray`; an empty array restores the theme's `mainBkg`/`nodeBorder` fallback.
+
 Set `themeVariables.archGroupBorderColor` directly to change an Architecture group border.
 Changing only `primaryBorderColor` does not recalculate an initialized group color.
 
