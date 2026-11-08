@@ -6,7 +6,10 @@ use super::constants::{
 use super::message_metrics::{
     SequenceMessageBoundMetrics, SequenceMessageMetricSidecar, SequenceMessageOwner,
 };
-use super::metrics::{SequenceMathHeightMode, measure_sequence_label_for_layout_with_prepared};
+use super::metrics::{
+    SequenceMathHeightMode, measure_sequence_label_for_layout_with_prepared,
+    measure_typed_actor_label_for_layout,
+};
 use super::wrap_sequence_label_like_mermaid_lines;
 use crate::model::{LayoutEdge, LayoutNode, LayoutPoint};
 use crate::text::{TextMeasurer, TextStyle};
@@ -240,24 +243,36 @@ fn measure_actor_boxes(
                 .terminal_text_style(super::SequenceTextSurface::ParticipantLabel),
         );
         let has_prepared_math = prepared_math.is_some();
-        let (text_w, text_h) = measure_sequence_label_for_layout_with_prepared(
-            prepared_math.as_deref(),
+        let terminal_size = measure_typed_actor_label_for_layout(
             ctx.measurer,
             &description,
-            ctx.actor_text_style,
+            ctx.typography.actor().non_normal_typed_terminal_style(),
             ctx.math_config,
-            None,
-            SequenceMathHeightMode::Actor,
             ctx.checkpoints.text(),
         )?;
-        let width = if a.wrap {
+        let (text_w, text_h) = if let Some(size) = terminal_size {
+            size
+        } else {
+            measure_sequence_label_for_layout_with_prepared(
+                prepared_math.as_deref(),
+                ctx.measurer,
+                &description,
+                ctx.actor_text_style,
+                ctx.math_config,
+                None,
+                SequenceMathHeightMode::Actor,
+                ctx.checkpoints.text(),
+            )?
+        };
+        let width = if a.wrap && terminal_size.is_none() {
             ctx.actor_width_min
         } else {
+            // Keep the writer's pinned wrap decisions, but reserve the actual styled ink.
             (text_w + 2.0 * ctx.wrap_padding).max(ctx.actor_width_min)
         };
         let stack_height = if ctx.is_neo {
             sequence_actor_stack_height(text_h)
-        } else if a.wrap {
+        } else if a.wrap || terminal_size.is_some() {
             text_h
         } else {
             0.0

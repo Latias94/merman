@@ -191,6 +191,43 @@ pub(super) fn measure_drawn_svg_like_with_html_br(
     Ok((width, height))
 }
 
+/// The typed non-normal participant extension must measure the emitted tspan, rather than
+/// changing the pinned calculateTextDimensions operation (which intentionally ignores style).
+pub(super) fn measure_typed_actor_label_for_layout(
+    measurer: &dyn TextMeasurer,
+    text: &str,
+    terminal_style: Option<&TextStyle>,
+    config: &PresentationConfig,
+    checkpoints: SequenceTextCheckpoints<'_>,
+) -> Result<Option<(f64, f64)>> {
+    // Preserve prepared, mixed and fallback math measurement, including unmatched delimiters.
+    if text.contains("$$") {
+        return Ok(None);
+    }
+    let Some(style) = terminal_style else {
+        return Ok(None);
+    };
+    let lines = split_html_br_lines(text);
+    let mut width = 0.0_f64;
+    let mut line_height = 0.0_f64;
+    for line in &lines {
+        checkpoints.checkpoint()?;
+        let (w, h) = measure_drawn_svg_like_with_html_br(
+            measurer,
+            line,
+            style,
+            SequenceDrawnTextNode::Tspan,
+            config,
+            checkpoints,
+        )?;
+        width = width.max(w);
+        line_height = line_height.max(h);
+    }
+    // Actor rows use font_size as their dy step, unlike drawText's per-row bbox advance.
+    let height = line_height + lines.len().saturating_sub(1) as f64 * style.font_size;
+    Ok(Some((width, height)))
+}
+
 /// Measures the final text DOM shape, after resolving its inherited font.
 pub(crate) fn measure_sequence_drawn_line_height(
     measurer: &dyn TextMeasurer,
@@ -1219,6 +1256,26 @@ mod tests {
         assert!(calls.iter().any(|(_, _, family)| family == "sans-serif"));
         assert!(calls.iter().any(|(_, _, family)| family.ends_with(';')));
         assert!(calls.iter().any(|(_, text, _)| text == "\u{200b}"));
+    }
+
+    #[test]
+    fn typed_actor_measurement_leaves_math_to_the_existing_owner() {
+        let meter = OperationWorkMeter::new(RenderResourcePolicy::unbounded_for_trusted_input());
+        let probe = OperationProbe::default();
+        for label in ["probe-$$x$$", "probe-$$"] {
+            assert_eq!(
+                super::measure_typed_actor_label_for_layout(
+                    &probe,
+                    label,
+                    Some(&terminal_sequence_style()),
+                    &drawn_text_config(),
+                    checkpoints(&meter, OperationPhase::Layout),
+                )
+                .unwrap(),
+                None
+            );
+        }
+        assert!(probe.calls.borrow().is_empty());
     }
 
     #[test]

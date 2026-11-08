@@ -355,6 +355,17 @@ impl SequenceResolvedTypography {
         &self.terminal_text_style
     }
 
+    pub(super) fn non_normal_typed_terminal_style(&self) -> Option<&TextStyle> {
+        (self
+            .typed_properties
+            .contains(&ThemeTypographyProperty::FontStyle)
+            && matches!(
+                self.terminal_text_style.font_style.as_deref(),
+                Some("italic" | "oblique")
+            ))
+        .then_some(&self.terminal_text_style)
+    }
+
     pub(crate) const fn resolved_style(&self) -> Option<&ResolvedThemeStyle> {
         self.resolved_style.as_ref()
     }
