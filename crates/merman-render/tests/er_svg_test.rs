@@ -1977,6 +1977,63 @@ erDiagram
 }
 
 #[test]
+fn er_font_size_ownership_follows_the_selected_valid_path() {
+    let theme = er_font_size_theme(24.0);
+    let scene = "erDiagram\nCUSTOMER {\n string id PK\n}\nCUSTOMER ||--o{ ORDER : owns\n";
+    for html_labels in [false, true] {
+        for (root_size, expected, applied) in [(None, "24px", 1), (Some(22), "22px", 0)] {
+            for source_owned in [false, true] {
+                let mut config = json!({
+                    "look": "classic", "layout": "dagre", "htmlLabels": html_labels,
+                    "themeVariables": {"fontSize": "invalid"},
+                });
+                if let Some(size) = root_size {
+                    config["fontSize"] = json!(size);
+                }
+                let (source, engine) = if source_owned {
+                    (
+                        format!("---\nconfig: {config}\n---\n{scene}"),
+                        MermaidEngine::new(),
+                    )
+                } else {
+                    (
+                        scene.to_owned(),
+                        MermaidEngine::new().with_site_config(
+                            merman_core::presentation::SourcePresentationConfig::from_value(config),
+                        ),
+                    )
+                };
+                let (parsed, layout, session) =
+                    try_prepare_er_family_with_theme_and_engine_requirement(
+                        &source,
+                        &theme,
+                        engine,
+                        ThemePortabilityRequirement::RequirePortable,
+                    );
+                let artifact = family::prepare(&parsed, &layout, session).unwrap();
+                let rendered = artifact
+                    .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+                    .unwrap();
+                assert!(
+                    Regex::new(&format!(r"#merman\{{[^}}]*font-size:{expected};"))
+                        .unwrap()
+                        .is_match(rendered.svg()),
+                    "{}",
+                    rendered.svg()
+                );
+                assert!(rendered.svg().contains("font-size:14px"));
+                let evidence =
+                    merman_render::__private::family_evidence(rendered.into_completion().report());
+                assert_eq!(evidence.required_count(), 1);
+                assert_eq!(evidence.applied_count(), applied);
+                assert_eq!(evidence.not_applicable_count(), 1 - applied);
+                assert_eq!(evidence.theme_residual_count(), 0);
+            }
+        }
+    }
+}
+
+#[test]
 fn er_title_only_keeps_typed_font_size_applicable() {
     let theme = er_font_size_theme(24.0);
     let source = r#"---

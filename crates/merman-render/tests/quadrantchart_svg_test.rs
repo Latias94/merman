@@ -701,6 +701,72 @@ fn quadrantchart_static_series_radius_reaches_svg_without_overriding_existing_ow
 }
 
 #[test]
+fn quadrantchart_radius_ownership_requires_a_consumed_config_value() {
+    let baseline = DiagramThemeCompiler::new()
+        .compile(DiagramThemeSpec::new())
+        .unwrap();
+    let radius_rule = |radius| {
+        ThemeRule::new(
+            ThemeTarget::ChartSeries,
+            ThemeStylePatch {
+                geometry: ThemeGeometryPatch { radius },
+                ..Default::default()
+            },
+        )
+    };
+    let set = quadrantchart_series_rules_theme([radius_rule(Specified::Value(13.0))]);
+    let clear = quadrantchart_series_rules_theme([
+        radius_rule(Specified::Value(13.0)),
+        radius_rule(Specified::Clear),
+    ]);
+    let body = "quadrantChart\nAlpha: [0.5, 0.5]\n";
+    for (value, configured_radius) in [
+        (serde_json::json!("invalid"), None),
+        (serde_json::json!(true), None),
+        (serde_json::json!("9"), Some("9")),
+        (serde_json::json!(5), Some("5")),
+    ] {
+        let config = serde_json::json!({"quadrantChart": {"pointRadius": value}});
+        let authored = format!("---\nconfig: {config}\n---\n{body}");
+        for (source, site) in [
+            (body, config.clone()),
+            (authored.as_str(), serde_json::json!({})),
+            (
+                authored.as_str(),
+                serde_json::json!({"quadrantChart": {"pointRadius": 11}}),
+            ),
+        ] {
+            let engine = || {
+                MermaidEngine::new().with_site_config(
+                    merman_core::presentation::SourcePresentationConfig::from_value(site.clone()),
+                )
+            };
+            let plain = render_quadrantchart_with_theme_and_engine(source, &baseline, engine());
+            assert!(
+                first_quadrantchart_point_circle(plain.svg())
+                    .contains(&format!(r#" r="{}""#, configured_radius.unwrap_or("5")))
+            );
+            for (theme, default_radius, required) in [(&set, "13", 1), (&clear, "5", 2)] {
+                let rendered = render_quadrantchart_with_theme_and_engine(source, theme, engine());
+                assert!(
+                    first_quadrantchart_point_circle(rendered.svg()).contains(&format!(
+                        r#" r="{}""#,
+                        configured_radius.unwrap_or(default_radius)
+                    ))
+                );
+                let evidence =
+                    merman_render::__private::family_evidence(rendered.into_completion().report());
+                let applied = usize::from(configured_radius.is_none());
+                assert_eq!(evidence.required_count(), required);
+                assert_eq!(evidence.applied_count(), applied);
+                assert_eq!(evidence.not_applicable_count(), required - applied);
+                assert_eq!(evidence.theme_residual_count(), 0);
+            }
+        }
+    }
+}
+
+#[test]
 fn quadrantchart_static_series_fill_reaches_terminal_circles_and_preserves_empty_theme_bytes() {
     let source = "quadrantChart\nFirst: [0.25, 0.75]\nSecond: [0.75, 0.25]\n";
     let baseline = render_quadrantchart_svg_from_text(source);

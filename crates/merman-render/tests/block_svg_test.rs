@@ -1765,6 +1765,109 @@ fn block_explicit_default_font_size_has_a_typed_terminal_receipt() {
 }
 
 #[test]
+fn block_ignored_base_sizes_do_not_own_typed_typography() {
+    let theme = block_typography_theme("Courier New", 29.0);
+    let body = "block\nA[\"Alpha\"] --> B[\"Beta\"]\n";
+    for value in [
+        serde_json::json!(false),
+        serde_json::json!("bad"),
+        serde_json::Value::Null,
+        serde_json::json!({}),
+        serde_json::json!([]),
+        serde_json::json!(23),
+        serde_json::json!("23px"),
+    ] {
+        let expected = if value.is_number() || value.as_str() == Some("23px") {
+            23
+        } else {
+            29
+        };
+        let config = serde_json::json!({"themeVariables":{"fontSize":value}});
+        for from_source in [false, true] {
+            let (source, site) = if from_source {
+                (
+                    format!("---\nconfig: {config}\n---\n{body}"),
+                    serde_json::json!({}),
+                )
+            } else {
+                (body.to_owned(), config.clone())
+            };
+            let rendered = render_block_with_theme_and_engine(
+                &source,
+                &theme,
+                MermaidEngine::new().with_site_config(
+                    merman_core::presentation::SourcePresentationConfig::from_value(site),
+                ),
+            );
+            assert!(
+                rendered.svg().contains(&format!("font-size:{expected}px;")),
+                "source={from_source}: {value}"
+            );
+            let evidence =
+                merman_render::__private::family_evidence(rendered.into_completion().report());
+            assert_eq!(evidence.applied_count(), 1 + usize::from(expected == 29));
+            assert_eq!(evidence.not_applicable_count(), usize::from(expected != 29));
+            assert_eq!(evidence.theme_residual_count(), 0);
+        }
+    }
+}
+
+#[test]
+fn block_font_ownership_follows_accepted_strings_and_first_array_entries() {
+    let theme = block_typography_theme("Courier New", 29.0);
+    let body = "block\nA[\"Alpha\"]\n";
+    for (value, expected) in [
+        (serde_json::json!(42), "\"Courier New\""),
+        (serde_json::json!(false), "\"Courier New\""),
+        (serde_json::json!(""), "\"Courier New\""),
+        (serde_json::json!([""]), "\"Courier New\""),
+        (serde_json::json!([42, "Arial"]), "\"Courier New\""),
+        (serde_json::json!(["Georgia"]), "Georgia"),
+        (serde_json::json!("Georgia"), "Georgia"),
+    ] {
+        let config = serde_json::json!({"themeVariables":{"fontFamily":value}});
+        for from_source in [false, true] {
+            // Source initialization mirrors the root font over non-string theme variables.
+            let expected = if from_source && value.is_array() {
+                "\"Courier New\""
+            } else {
+                expected
+            };
+            let (source, site) = if from_source {
+                (
+                    format!("---\nconfig: {config}\n---\n{body}"),
+                    serde_json::json!({}),
+                )
+            } else {
+                (body.to_owned(), config.clone())
+            };
+            let rendered = render_block_with_theme_and_engine(
+                &source,
+                &theme,
+                MermaidEngine::new().with_site_config(
+                    merman_core::presentation::SourcePresentationConfig::from_value(site),
+                ),
+            );
+            assert!(
+                rendered.svg().contains(&format!("font-family:{expected};")),
+                "source={from_source}: {value}"
+            );
+            let evidence =
+                merman_render::__private::family_evidence(rendered.into_completion().report());
+            assert_eq!(
+                evidence.applied_count(),
+                1 + usize::from(expected != "Georgia")
+            );
+            assert_eq!(
+                evidence.not_applicable_count(),
+                usize::from(expected == "Georgia")
+            );
+            assert_eq!(evidence.theme_residual_count(), 0);
+        }
+    }
+}
+
+#[test]
 fn block_typed_typography_reaches_layout_css_and_strict_receipt() {
     let theme = block_typography_theme("Block Sans", 22.0);
     let rendered = render_block_with_theme_and_engine(

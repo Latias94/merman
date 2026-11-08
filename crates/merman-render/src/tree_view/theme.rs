@@ -227,7 +227,9 @@ impl TreeViewThemePlan {
             BTreeMap::<FamilyThemeMechanismKey, FamilyThemeResidualReason>::new();
 
         let mermaid_owns_line_thickness =
-            effective_config.config_path_overrides_typed_default("treeView.lineThickness");
+            crate::config::config_f64(effective_config.as_value(), &["treeView", "lineThickness"])
+                .is_some()
+                && effective_config.config_path_overrides_typed_default("treeView.lineThickness");
         let static_style = theme.style_with_work_meter(
             ThemeTarget::Edge,
             ThemeVariant::Default,

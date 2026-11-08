@@ -61,6 +61,77 @@ fn tree_view_typography_theme(typography: ThemeTextStyle) -> DiagramTheme {
 }
 
 #[test]
+fn tree_view_ignored_line_thickness_leaves_typed_edge_width_available() {
+    let theme = tree_view_edge_width_theme(Specified::Value(6.0));
+    let body = "treeView-beta\nroot/\n    child.rs\n";
+    for value in [
+        serde_json::json!(false),
+        serde_json::json!("bad"),
+        serde_json::Value::Null,
+        serde_json::json!({}),
+        serde_json::json!([]),
+        serde_json::json!(3),
+        serde_json::json!("3"),
+        serde_json::json!(-2),
+    ] {
+        let expected = if value == serde_json::json!(3) || value == serde_json::json!("3") {
+            3.0
+        } else if value == serde_json::json!(-2) {
+            0.0
+        } else {
+            6.0
+        };
+        let config = serde_json::json!({"treeView":{"lineThickness":value}});
+        for from_source in [false, true] {
+            let (source, site) = if from_source {
+                (
+                    format!("---\nconfig: {config}\n---\n{body}"),
+                    serde_json::json!({}),
+                )
+            } else {
+                (body.to_owned(), config.clone())
+            };
+            let (layout, rendered) = try_render_tree_view_with_theme_and_environment(
+                &source,
+                &theme,
+                MermaidEngine::new().with_site_config(
+                    merman_core::presentation::SourcePresentationConfig::from_value(site),
+                ),
+                ThemePortabilityRequirement::RequirePortable,
+                &RenderEnvironment::deterministic(),
+                "tree-width-invalid",
+            )
+            .unwrap();
+            assert_eq!(
+                layout.line_thickness, expected,
+                "source={from_source}: {value}"
+            );
+            let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+            let lines = document
+                .descendants()
+                .filter(|node| node.attribute("class") == Some("treeView-node-line"))
+                .collect::<Vec<_>>();
+            assert!(!lines.is_empty());
+            assert!(
+                lines
+                    .iter()
+                    .all(|line| line.attribute("stroke-width")
+                        == Some(expected.to_string().as_str()))
+            );
+            drop(document);
+            let evidence =
+                merman_render::__private::family_evidence(rendered.into_completion().report());
+            assert_eq!(evidence.applied_count(), usize::from(expected == 6.0));
+            assert_eq!(
+                evidence.not_applicable_count(),
+                usize::from(expected != 6.0)
+            );
+            assert_eq!(evidence.theme_residual_count(), 0);
+        }
+    }
+}
+
+#[test]
 fn tree_view_highlight_paint_and_font_size_share_their_visible_and_measured_consumers() {
     let source = "treeView-beta\nroot/\n    highlighted.rs :::highlight\n    plain.rs\n";
     let theme = DiagramThemeCompiler::new()

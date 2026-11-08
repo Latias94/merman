@@ -452,6 +452,65 @@ fn radar_typography_config_ownership_is_property_local() {
 }
 
 #[test]
+fn radar_ignored_font_size_config_keeps_typed_size_and_sibling_evidence_independent() {
+    let baseline = DiagramThemeCompiler::new()
+        .compile(DiagramThemeSpec::new())
+        .unwrap();
+    let body = "radar-beta\ntitle Radar heading\naxis Alpha,Beta,Gamma\ncurve Current{3,4,2}\n";
+    for value in [serde_json::json!(true), serde_json::json!("")] {
+        let config = serde_json::json!({"themeVariables": {"fontSize": value}});
+        let authored = format!("---\nconfig: {config}\n---\n{body}");
+        for (source, site) in [
+            (body, config.clone()),
+            (authored.as_str(), serde_json::json!({})),
+            (
+                authored.as_str(),
+                serde_json::json!({"themeVariables": {"fontSize": "23px"}}),
+            ),
+        ] {
+            let engine = || {
+                MermaidEngine::new().with_site_config(
+                    merman_core::presentation::SourcePresentationConfig::from_value(site.clone()),
+                )
+            };
+            let plain = render_radar_with_theme_and_engine(source, &baseline, engine());
+            assert!(radar_stylesheet(plain.svg()).contains(".radarTitle{font-size:16px;"));
+            for unsupported_weight in [false, true] {
+                let mut typography = ThemeTextStyle::default().with_font_size_px(24.0).unwrap();
+                if unsupported_weight {
+                    typography = typography.with_font_weight(700).unwrap();
+                }
+                let theme = radar_typography_theme(typography);
+                let rendered = render_radar_with_theme_requirement(
+                    source,
+                    &theme,
+                    engine(),
+                    ThemePortabilityRequirement::BestEffort,
+                )
+                .unwrap();
+                let css = radar_stylesheet(rendered.svg());
+                assert!(css.contains(".radarTitle{font-size:24px;"));
+                assert!(css.contains(".radarAxisLabel{font-size:12px;"));
+                assert!(css.contains(".radarLegendText{text-anchor:start;font-size:12px;"));
+                assert!(!css.contains("font-weight:700"));
+                let evidence =
+                    merman_render::__private::family_evidence(rendered.into_completion().report());
+                assert_eq!(
+                    evidence.required_count(),
+                    1 + usize::from(unsupported_weight)
+                );
+                assert_eq!(evidence.applied_count(), 1);
+                assert_eq!(evidence.not_applicable_count(), 0);
+                assert_eq!(
+                    evidence.theme_residual_count(),
+                    usize::from(unsupported_weight)
+                );
+            }
+        }
+    }
+}
+
+#[test]
 fn radar_unsupported_typography_sibling_keeps_independent_direct_properties() {
     let typography = ThemeTextStyle::default()
         .with_font_stack(

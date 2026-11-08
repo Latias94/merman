@@ -3,6 +3,9 @@ use std::collections::{BTreeMap, BTreeSet};
 use merman_model::families::pie::PieDiagramModel;
 use merman_model::presentation::PresentationConfig;
 
+use crate::config::{
+    config_css_number_or_string, configured_theme_font_size_css_or_root_number_px,
+};
 use crate::diagram_theme::{
     FamilyThemeDisposition, FamilyThemeMechanism, FamilyThemeMechanismKey, FamilyThemeRuleFacet,
     ResolvedDiagramTheme, ResolvedStyleProperty, Specified, ThemeCapability, ThemeTarget,
@@ -70,6 +73,14 @@ impl PieTextRole {
             Self::Legend => "themeVariables.pieLegendTextSize",
         }
     }
+
+    const fn size_variable(self) -> &'static str {
+        match self {
+            Self::Title => "pieTitleTextSize",
+            Self::Section => "pieSectionTextSize",
+            Self::Legend => "pieLegendTextSize",
+        }
+    }
 }
 
 /// Values returned only after the role's actual stylesheet write passes its sink checkpoint.
@@ -113,10 +124,10 @@ impl PiePreparedText {
                     && route.disposition() == FamilyThemeDisposition::TypedAdapter
             })
         });
+        let base_size_owner = configured_theme_font_size_css_or_root_number_px(config.as_value());
         let base_size_active = base_size_requested
-            && !["themeVariables.fontSize", "fontSize"]
-                .into_iter()
-                .any(|path| config.config_path_overrides_typed_default(path));
+            && !base_size_owner
+                .is_some_and(|(_, path)| config.config_path_overrides_typed_default(path));
         let mut css = PieCssBinding::new(
             config.as_value(),
             Some(inherited_font_stack.font_family_css()),
@@ -229,7 +240,12 @@ impl PiePreparedText {
             }
 
             let fill_owned = config.config_paint_overrides_typed_default(role.fill_path());
-            let size_owned = config.config_path_overrides_typed_default(role.size_path());
+            let size_owned = config.config_path_overrides_typed_default(role.size_path())
+                && config_css_number_or_string(
+                    config.as_value(),
+                    &["themeVariables", role.size_variable()],
+                )
+                .is_some();
             let mut owners = BTreeMap::new();
             if !fill_owned
                 && let Some(fill) = resolve_direct_static_fill(

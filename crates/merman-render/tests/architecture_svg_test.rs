@@ -1174,6 +1174,63 @@ fn architecture_icon_text_clamp_uses_root_svg_font_size_not_architecture_layout_
 }
 
 #[test]
+fn architecture_ignored_base_size_leaves_typed_svg_size_available() {
+    let theme =
+        architecture_typography_theme(ThemeTextStyle::default().with_font_size_px(29.0).unwrap());
+    let body = "architecture-beta\nservice api(server)[API]\n";
+    for value in [
+        json!(false),
+        json!("bad"),
+        serde_json::Value::Null,
+        json!({}),
+        json!([]),
+        json!(23),
+        json!("23px"),
+    ] {
+        let expected = if value.is_number() || value.as_str() == Some("23px") {
+            23
+        } else {
+            29
+        };
+        let config = json!({"themeVariables":{"fontSize":value}});
+        for from_source in [false, true] {
+            let (source, site) = if from_source {
+                (format!("---\nconfig: {config}\n---\n{body}"), json!({}))
+            } else {
+                (body.to_owned(), config.clone())
+            };
+            let (parsed, options, session) = prepare_architecture_with_theme_and_environment(
+                &source,
+                &theme,
+                MermaidEngine::new().with_site_config(
+                    merman_core::presentation::SourcePresentationConfig::from_value(site),
+                ),
+                RenderEnvironment::deterministic(),
+            );
+            let rendered = family::prepare(&parsed, &options, session)
+                .unwrap()
+                .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+                .unwrap();
+            assert!(
+                rendered.svg().contains(&format!("font-size:{expected}px;")),
+                "source={from_source}: {value}"
+            );
+            assert!(
+                roxmltree::Document::parse(rendered.svg())
+                    .unwrap()
+                    .descendants()
+                    .any(|node| node.has_tag_name("tspan") && node.text() == Some("API"))
+            );
+            let evidence =
+                merman_render::__private::family_evidence(rendered.into_completion().report());
+            assert_eq!(evidence.applied_count(), usize::from(expected == 29));
+            assert_eq!(evidence.not_applicable_count(), usize::from(expected != 29));
+            assert_eq!(evidence.theme_residual_count(), 0);
+        }
+    }
+}
+
+#[test]
 fn architecture_typed_base_typography_reaches_svg_css_and_preserves_cytoscape_layout_owner() {
     let font_stack =
         FontStack::new(["Architecture Typed", "monospace"]).expect("valid Architecture font");

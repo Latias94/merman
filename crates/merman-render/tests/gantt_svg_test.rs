@@ -69,6 +69,217 @@ fn gantt_task_rule_theme(rule: ThemeRule) -> DiagramTheme {
     gantt_task_rules_theme([rule])
 }
 
+#[test]
+fn gantt_global_paint_does_not_certify_unsupported_sibling_facets() {
+    let source = "gantt\ntitle Release audit\ndateFormat YYYY-MM-DD\ntodayMarker off\nsection Delivery\nShip: task, 2024-01-01, 4d\n";
+    for target in [ThemeTarget::Title, ThemeTarget::Text] {
+        for clear in [false, true] {
+            for separate_rule in [false, true] {
+                let paint =
+                    ThemeStylePatch::default().with_fill(CanvasPaint::solid("#c2188b").unwrap());
+                let mut typography = ThemeStylePatch::default();
+                typography.typography.font_size_px = if clear {
+                    Specified::Clear
+                } else {
+                    Specified::Value(31.0)
+                };
+                let rules = if separate_rule {
+                    vec![
+                        ThemeRule::new(target, paint),
+                        ThemeRule::new(target, typography),
+                    ]
+                } else {
+                    vec![ThemeRule::new(
+                        target,
+                        ThemeStylePatch {
+                            typography: typography.typography,
+                            ..paint
+                        },
+                    )]
+                };
+                let theme = gantt_task_rules_theme(rules);
+                let parsed = common::install_parse_compatibility(&theme, MermaidEngine::new())
+                    .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
+                    .unwrap()
+                    .unwrap()
+                    .into_presentation();
+                for portability in [
+                    ThemePortabilityRequirement::BestEffort,
+                    ThemePortabilityRequirement::RequirePortable,
+                ] {
+                    let session = RenderEnvironment::deterministic()
+                        .with_theme_portability_requirement(portability)
+                        .begin_session_with_theme(&theme)
+                        .unwrap();
+                    let result = family::prepare(&parsed, &LayoutOptions::default(), session)
+                        .unwrap()
+                        .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default());
+                    if portability == ThemePortabilityRequirement::RequirePortable {
+                        assert_eq!(
+                            result
+                                .err()
+                                .expect("unsupported typography must reject strict completion")
+                                .unverified_family_theme(),
+                            Some((merman_render::DiagramFamilyId::GANTT, 1))
+                        );
+                    } else {
+                        let rendered = result.unwrap();
+                        assert!(rendered.svg().contains("#c2188b"));
+                        assert!(!rendered.svg().contains("font-size:31px"));
+                        let evidence = merman_render::__private::family_evidence(
+                            rendered.into_completion().report(),
+                        );
+                        assert_eq!(evidence.required_count(), if separate_rule { 2 } else { 1 });
+                        assert_eq!(evidence.applied_count(), usize::from(separate_rule));
+                        assert_eq!(evidence.theme_residual_count(), 1);
+                        assert_eq!(evidence.accounted_count(), evidence.required_count());
+                    }
+                }
+            }
+        }
+    }
+}
+
+#[test]
+fn gantt_unsupported_title_styles_require_visible_title_terminals() {
+    for heading in ["", "title Release audit\n", "section Delivery\n"] {
+        let source = format!(
+            "gantt\ndateFormat YYYY-MM-DD\ntodayMarker off\n{heading}Ship: task, 2024-01-01, 4d\n"
+        );
+        for clear in [false, true] {
+            for (with_fill, split) in [(false, false), (true, false), (true, true)] {
+                let mut typography = ThemeStylePatch::default();
+                typography.typography.font_size_px = if clear {
+                    Specified::Clear
+                } else {
+                    Specified::Value(31.0)
+                };
+                let mut rules = vec![ThemeRule::new(ThemeTarget::Title, typography.clone())];
+                if with_fill {
+                    let paint = ThemeStylePatch::default()
+                        .with_fill(CanvasPaint::solid("#c2188b").unwrap());
+                    rules = if split {
+                        vec![
+                            ThemeRule::new(ThemeTarget::Title, paint),
+                            ThemeRule::new(ThemeTarget::Title, typography),
+                        ]
+                    } else {
+                        vec![ThemeRule::new(
+                            ThemeTarget::Title,
+                            ThemeStylePatch {
+                                typography: typography.typography,
+                                ..paint
+                            },
+                        )]
+                    };
+                }
+                let required = rules.len();
+                let theme = gantt_task_rules_theme(rules);
+                let (parsed, options, _) = prepare_gantt_family_with_theme(&source, &theme);
+                for portability in [
+                    ThemePortabilityRequirement::BestEffort,
+                    ThemePortabilityRequirement::RequirePortable,
+                ] {
+                    let session = RenderEnvironment::deterministic()
+                        .with_theme_portability_requirement(portability)
+                        .begin_session_with_theme(&theme)
+                        .unwrap();
+                    let result = family::prepare(&parsed, &options, session)
+                        .unwrap()
+                        .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default());
+                    if !heading.is_empty()
+                        && portability == ThemePortabilityRequirement::RequirePortable
+                    {
+                        assert_eq!(
+                            result.err().unwrap().unverified_family_theme(),
+                            Some((merman_render::DiagramFamilyId::GANTT, 1))
+                        );
+                    } else {
+                        let evidence = merman_render::__private::family_evidence(
+                            result.unwrap().into_completion().report(),
+                        );
+                        assert_eq!(evidence.required_count(), required);
+                        assert_eq!(evidence.accounted_count(), required);
+                        assert_eq!(
+                            evidence.theme_residual_count(),
+                            usize::from(!heading.is_empty())
+                        );
+                        assert_eq!(
+                            evidence.not_applicable_count(),
+                            if heading.is_empty() { required } else { 0 }
+                        );
+                    }
+                }
+            }
+        }
+    }
+}
+
+#[test]
+fn gantt_font_ownership_follows_the_consumed_configuration_value() {
+    let theme = gantt_font_stack_theme(FontStack::single("Courier New").unwrap());
+    let diagram = "gantt\ndateFormat YYYY-MM-DD\nsection Delivery\nShip: task, 2024-01-01, 4d\n";
+    for source_owned in [false, true] {
+        for (config, expected, applied) in [
+            (
+                serde_json::json!({"gantt": {"fontFamily": "  "}}),
+                "\"Courier New\"",
+                1,
+            ),
+            (
+                serde_json::json!({"gantt": {"fontFamily": 32}}),
+                "\"Courier New\"",
+                1,
+            ),
+            (
+                serde_json::json!({"gantt": {"fontFamily": ["Georgia"]}}),
+                "\"Courier New\"",
+                1,
+            ),
+            (
+                serde_json::json!({"gantt": {"fontFamily": "Georgia"}, "themeVariables": {"fontFamily": "Verdana"}, "fontFamily": "Arial"}),
+                "Georgia",
+                0,
+            ),
+            (
+                serde_json::json!({"gantt": {"fontFamily": 32}, "themeVariables": {"fontFamily": "Georgia"}}),
+                "Georgia",
+                0,
+            ),
+        ] {
+            let (source, engine) = if source_owned {
+                (
+                    format!("---\nconfig: {config}\n---\n{diagram}"),
+                    MermaidEngine::new(),
+                )
+            } else {
+                (
+                    diagram.to_owned(),
+                    MermaidEngine::new().with_site_config(
+                        merman_core::presentation::SourcePresentationConfig::from_value(config),
+                    ),
+                )
+            };
+            let (parsed, options, session) =
+                prepare_gantt_family_with_theme_and_engine(&source, &theme, engine);
+            let rendered = family::prepare(&parsed, &options, session)
+                .unwrap()
+                .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+                .unwrap();
+            assert!(
+                rendered.svg().contains(&format!("font-family:{expected};")),
+                "{}",
+                rendered.svg()
+            );
+            let evidence =
+                merman_render::__private::family_evidence(rendered.into_completion().report());
+            assert_eq!(evidence.applied_count(), applied);
+            assert_eq!(evidence.not_applicable_count(), 1 - applied);
+            assert_eq!(evidence.theme_residual_count(), 0);
+        }
+    }
+}
+
 fn gantt_task_radius_theme(radius: Specified<f32>) -> DiagramTheme {
     gantt_task_rule_theme(ThemeRule::new(
         ThemeTarget::Task,

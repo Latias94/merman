@@ -61,6 +61,59 @@ fn journey_typography_theme(font_size: f32) -> merman_render::diagram_theme::Dia
 }
 
 #[test]
+fn journey_ignored_base_sizes_do_not_own_typed_typography() {
+    let theme = journey_typography_theme(27.0);
+    let diagram =
+        "journey\n  title Release audit\n  section Delivery\n    Ship release: 5: Maintainer\n";
+    for source_owned in [false, true] {
+        for (size, expected, applied) in [
+            (serde_json::json!("  "), "27px", 2),
+            (serde_json::json!("bogus"), "27px", 2),
+            (serde_json::json!([32]), "27px", 2),
+            (serde_json::json!("32px"), "32px", 1),
+            (serde_json::json!(32), "32px", 1),
+        ] {
+            let config = serde_json::json!({"themeVariables": {"fontSize": size}});
+            let (source, engine) = if source_owned {
+                (
+                    format!("---\nconfig: {config}\n---\n{diagram}"),
+                    MermaidEngine::new(),
+                )
+            } else {
+                (
+                    diagram.to_owned(),
+                    MermaidEngine::new().with_site_config(
+                        merman_core::presentation::SourcePresentationConfig::from_value(config),
+                    ),
+                )
+            };
+            let parsed = common::install_parse_compatibility(&theme, engine)
+                .parse_diagram_for_render_model_sync(&source, ParseOptions::strict())
+                .unwrap()
+                .unwrap()
+                .into_presentation();
+            let session = RenderEnvironment::deterministic()
+                .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
+                .begin_session_with_theme(&theme)
+                .unwrap();
+            let rendered =
+                family::prepare(&parsed, &LayoutOptions::headless_svg_defaults(), session)
+                    .unwrap()
+                    .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+                    .unwrap();
+            assert!(rendered.svg().contains(&format!("font-size:{expected}")));
+            assert!(rendered.svg().contains("font-family:\"Journey Typed\""));
+            let evidence =
+                merman_render::__private::family_evidence(rendered.into_completion().report());
+            assert_eq!(evidence.required_count(), 2);
+            assert_eq!(evidence.applied_count(), applied);
+            assert_eq!(evidence.not_applicable_count(), 2 - applied);
+            assert_eq!(evidence.theme_residual_count(), 0);
+        }
+    }
+}
+
+#[test]
 fn journey_text_fill_has_portable_terminal_evidence() {
     for variant in [None, Some(ThemeVariant::Default)] {
         for paint in [

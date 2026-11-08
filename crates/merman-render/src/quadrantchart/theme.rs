@@ -142,8 +142,12 @@ impl QuadrantChartPointThemePlan {
             });
         };
 
-        let config_owns_radius =
-            effective_config.config_path_overrides_typed_default("quadrantChart.pointRadius");
+        let config_owns_radius = crate::config::config_f64(
+            effective_config.as_value(),
+            &["quadrantChart", "pointRadius"],
+        )
+        .is_some()
+            && effective_config.config_path_overrides_typed_default("quadrantChart.pointRadius");
         let config_owns_fill =
             QuadrantChartCssBinding::config_owns_color(effective_config, "quadrantPointFill");
         let mermaid_point_radius_px =
