@@ -3,7 +3,7 @@
   "layout": {
     "ErDiagram": {
       "bounds": {
-        "max_x": 252.0,
+        "max_x": 240.08,
         "max_y": 93.0,
         "min_x": 12.0,
         "min_y": 12.0
@@ -14,16 +14,16 @@
           "height": 81.0,
           "id": "entity-ENTITY1-0",
           "is_cluster": false,
-          "width": 100.0,
-          "x": 62.0,
+          "width": 94.04,
+          "x": 59.02,
           "y": 52.5
         },
         {
           "height": 81.0,
           "id": "entity-ENTITY2-1",
           "is_cluster": false,
-          "width": 100.0,
-          "x": 202.0,
+          "width": 94.04,
+          "x": 193.06,
           "y": 52.5
         }
       ]

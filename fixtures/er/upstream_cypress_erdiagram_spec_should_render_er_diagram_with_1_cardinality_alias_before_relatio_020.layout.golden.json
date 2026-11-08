@@ -3,7 +3,7 @@
   "layout": {
     "ErDiagram": {
       "bounds": {
-        "max_x": 409.28,
+        "max_x": 406.58,
         "max_y": 457.0,
         "min_x": 12.0,
         "min_y": 12.0
@@ -109,16 +109,16 @@
           "label": {
             "height": 21.0,
             "width": 112.98,
-            "x": 352.79,
+            "x": 350.09,
             "y": 143.5
           },
           "points": [
             {
-              "x": 352.8,
+              "x": 350.1,
               "y": 93.0
             },
             {
-              "x": 352.8,
+              "x": 350.1,
               "y": 194.0
             }
           ],
@@ -167,7 +167,7 @@
           "height": 81.0,
           "id": "entity-PRODUCT-3",
           "is_cluster": false,
-          "width": 100.0,
+          "width": 98.8,
           "x": 209.2,
           "y": 52.5
         },
@@ -175,8 +175,8 @@
           "height": 81.0,
           "id": "entity-PROFILE-6",
           "is_cluster": false,
-          "width": 100.0,
-          "x": 352.8,
+          "width": 94.6,
+          "x": 350.1,
           "y": 234.5
         },
         {
@@ -184,7 +184,7 @@
           "id": "entity-USER-5",
           "is_cluster": false,
           "width": 100.0,
-          "x": 352.8,
+          "x": 350.1,
           "y": 52.5
         }
       ]
