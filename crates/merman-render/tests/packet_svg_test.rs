@@ -714,6 +714,144 @@ fn packet_default_and_dark_themes_reach_every_visible_css_role() {
 }
 
 #[test]
+fn packet_source_palette_owns_present_text_roles_without_owning_typed_fonts() {
+    let theme = packet_direct_text_theme_with_mermaid(MermaidThemeCompatibility::default());
+    for palette in [
+        "base",
+        "default",
+        "dark",
+        "forest",
+        "neutral",
+        "neo",
+        "neo-dark",
+        "redux",
+        "redux-dark",
+        "redux-color",
+        "redux-dark-color",
+    ] {
+        for owner in ["source", "site"] {
+            let config = serde_json::json!({"theme": palette});
+            let (source, site_config) = if owner == "source" {
+                (
+                    format!("%%{{init: {config}}}%%\n{}", packet_source()),
+                    serde_json::json!({}),
+                )
+            } else {
+                (packet_source().to_owned(), config)
+            };
+            let engine = MermaidEngine::new().with_site_config(
+                merman_core::presentation::SourcePresentationConfig::from_value(site_config),
+            );
+            let rendered = try_render_packet_source_with_theme_and_engine(
+                &source,
+                &theme,
+                engine,
+                "packet-palette-text-ownership",
+            )
+            .expect("Packet paint ownership must preserve independent typed font evidence");
+            let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+            let css = packet_stylesheet(&document);
+            let palette_text = match (owner, palette) {
+                ("source", "dark") => Some("#e0dfdf"),
+                ("source", "forest") => Some("#321b67"),
+                _ => None,
+            };
+            for (class, rule) in [
+                (
+                    "packetByte start",
+                    format!(
+                        ".packetByte.start{{fill:{};}}",
+                        palette_text.unwrap_or("#e5e7eb")
+                    ),
+                ),
+                (
+                    "packetByte end",
+                    format!(
+                        ".packetByte.end{{fill:{};}}",
+                        palette_text.unwrap_or("#e5e7eb")
+                    ),
+                ),
+                (
+                    "packetLabel",
+                    format!(
+                        ".packetLabel{{fill:{};font-size:12px;}}",
+                        palette_text.unwrap_or("#111827")
+                    ),
+                ),
+                (
+                    "packetTitle",
+                    format!(
+                        ".packetTitle{{fill:{};font-size:14px;}}",
+                        palette_text.unwrap_or("#fef3c7")
+                    ),
+                ),
+            ] {
+                assert!(
+                    document
+                        .descendants()
+                        .any(|node| node.attribute("class") == Some(class)),
+                    "{owner}/{palette}: missing visible {class}"
+                );
+                assert!(css.contains(&rule), "{owner}/{palette}: {css}");
+            }
+            assert!(
+                css.contains("#packet-palette-text-ownership{font-family:monospace;"),
+                "{owner}/{palette}: palette must not own the font stack"
+            );
+            drop(document);
+            let evidence =
+                merman_render::__private::family_evidence(rendered.into_completion().report());
+            let owned_roles = if palette_text.is_some() { 3 } else { 0 };
+            assert_eq!(evidence.required_count(), 4, "{owner}/{palette}");
+            assert_eq!(evidence.accounted_count(), 4, "{owner}/{palette}");
+            assert_eq!(
+                evidence.applied_count(),
+                4 - owned_roles,
+                "{owner}/{palette}"
+            );
+            assert_eq!(
+                evidence.not_applicable_count(),
+                owned_roles,
+                "{owner}/{palette}"
+            );
+            assert_eq!(evidence.theme_residual_count(), 0, "{owner}/{palette}");
+        }
+    }
+}
+
+#[test]
+fn packet_source_palette_owns_generic_text_field_label_fallback() {
+    let theme = packet_text_fill_theme(CanvasPaint::solid("#123456").unwrap());
+    for (palette, expected_color) in [("dark", "#e0dfdf"), ("forest", "#321b67")] {
+        let rendered = try_render_packet_source_with_theme_and_engine(
+            &format!(
+                "%%{{init: {{\"theme\": \"{palette}\"}}}}%%\n{}",
+                packet_source()
+            ),
+            &theme,
+            MermaidEngine::new(),
+            "packet-palette-generic-text",
+        )
+        .unwrap();
+        let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+        assert!(packet_stylesheet(&document).contains(&format!(
+            ".packetLabel{{fill:{expected_color};font-size:12px;}}"
+        )));
+        assert!(document.descendants().any(|node| {
+            node.attribute("class") == Some("packetLabel") && node.text() == Some("Header")
+        }));
+        drop(document);
+        let evidence =
+            merman_render::__private::family_evidence(rendered.into_completion().report());
+        assert_eq!(evidence.required_count(), 1, "{palette}");
+        assert_eq!(evidence.accounted_count(), 1, "{palette}");
+        assert_eq!(evidence.applied_count(), 0, "{palette}");
+        assert_eq!(evidence.not_applicable_count(), 1, "{palette}");
+        assert_eq!(evidence.theme_residual_count(), 0, "{palette}");
+    }
+}
+
+#[test]
 fn packet_theme_variable_styles_preserve_root_layout_configuration() {
     for owner in ["source", "site"] {
         let config = serde_json::json!({

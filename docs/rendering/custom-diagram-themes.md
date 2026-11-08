@@ -172,6 +172,13 @@ separate from these diagram-owned backgrounds.
 Set `themeVariables.archGroupBorderColor` directly to change an Architecture group border.
 Changing only `primaryBorderColor` does not recalculate an initialized group color.
 
+Cynefin and Wardley also retain initialized family colors. Set the selected role directly,
+such as `themeVariables.cynefin.textColor`, `themeVariables.cynefin.arrowColor`,
+`themeVariables.wardley.axisTextColor` or `themeVariables.wardley.componentLabelColor`.
+Root colors supply missing roles; an unused fallback does not suppress compiled paint.
+Ownership follows the value the renderer actually accepts, so ignored configuration values
+do not disable a supported theme override.
+
 C4 presets pair node surfaces with label colors; compiled edge, marker, boundary-label and
 text colors reach their visible terminals. Filled boundaries paint behind their descendants. Gantt presets preserve normal, active,
 done and critical task paints with paired inside-label colors; outside labels use the surrounding

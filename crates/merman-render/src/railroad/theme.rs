@@ -229,7 +229,6 @@ pub(crate) struct RailroadTypographyThemePlan {
     title_fill_routes: Box<[FamilyThemeMechanismKey]>,
     text_fill: Option<DirectStaticPaint>,
     text_fill_roles: RailroadTextFillRoles,
-    text_fill_config_owned: bool,
     text_fill_winner_rule: Option<usize>,
     unsupported_terminal_evidence: Option<FamilyThemeOutcomes>,
     text_fill_routes: Box<[FamilyThemeMechanismKey]>,
@@ -260,7 +259,6 @@ impl RailroadTypographyThemePlan {
                 title_fill_routes: Box::new([]),
                 text_fill: None,
                 text_fill_roles: RailroadTextFillRoles::default(),
-                text_fill_config_owned: false,
                 text_fill_winner_rule: None,
                 unsupported_terminal_evidence: None,
                 text_fill_routes: Box::new([]),
@@ -274,7 +272,6 @@ impl RailroadTypographyThemePlan {
         let config_owns_font_stack = railroad_config_owns_font_stack(effective_config);
         let config_owns_font_size = railroad_config_owns_font_size(effective_config);
         let title_fill_config_owned = railroad_config_owns_title_fill(effective_config);
-        let text_fill_config_owned = railroad_config_owns_text_fill(effective_config);
         let mut typed_font_stack = false;
         let mut typed_font_size = false;
         let mut unsupported_properties = BTreeSet::new();
@@ -412,8 +409,7 @@ impl RailroadTypographyThemePlan {
             terminal: !railroad_config_owns_terminal_text_fill(effective_config),
             nonterminal: !railroad_config_owns_nonterminal_text_fill(effective_config),
             comment: !railroad_config_owns_comment_text_fill(effective_config),
-            rule_name: !title_style_has_winner
-                && !railroad_config_owns_rule_name_text_fill(effective_config),
+            rule_name: !title_style_has_winner && !title_fill_config_owned,
         };
         if let Some(title_fill) = title_fill.as_ref() {
             style.rule_name_color = title_fill.css().to_owned();
@@ -455,7 +451,6 @@ impl RailroadTypographyThemePlan {
             title_fill_routes: title_fill_routes.into_iter().collect(),
             text_fill,
             text_fill_roles,
-            text_fill_config_owned,
             text_fill_winner_rule,
             unsupported_terminal_evidence: None,
             text_fill_routes: text_fill_routes.into_iter().collect(),
@@ -733,8 +728,7 @@ impl RailroadTypographyThemePlan {
             }
         }
         for key in &self.text_fill_routes {
-            if self.text_fill_config_owned
-                || !self.text_fill_roles.has_visible_occurrence(receipt)
+            if !self.text_fill_roles.has_visible_occurrence(receipt)
                 || self.is_text_fill_shadowed(key)
             {
                 evidence.mark_not_applicable(key.clone());
@@ -802,90 +796,64 @@ impl RailroadTypographyThemePlan {
 }
 
 fn railroad_config_owns_font_stack(config: &PresentationConfig) -> bool {
-    railroad_config_owns_any(
-        config,
-        [
-            "railroad.fontFamily",
-            "themeVariables.fontFamily",
+    let valid = |value| !super::sanitize_font_family_value(value, "").is_empty();
+    if valid(super::railroad_config_value(
+        config.as_value(),
+        "fontFamily",
+    )) {
+        config.config_path_overrides_typed_default("railroad.fontFamily")
+    } else {
+        valid(super::theme_config_value(
+            config.as_value(),
             "fontFamily",
-        ],
-    )
+            None,
+        )) && config.config_path_overrides_typed_default("themeVariables.fontFamily")
+    }
 }
 
 fn railroad_config_owns_font_size(config: &PresentationConfig) -> bool {
-    railroad_config_owns_any(config, ["railroad.fontSize", "themeVariables.fontSize"])
+    if super::parse_number_value(super::railroad_config_value(config.as_value(), "fontSize"))
+        .is_some_and(|size| size.is_finite() && size >= 0.0)
+    {
+        config.config_path_overrides_typed_default("railroad.fontSize")
+    } else {
+        super::parse_theme_font_size(super::theme_config_value(
+            config.as_value(),
+            "fontSize",
+            None,
+        ))
+        .is_some()
+            && config.config_path_overrides_typed_default("themeVariables.fontSize")
+    }
 }
 
 fn railroad_config_owns_title_fill(config: &PresentationConfig) -> bool {
-    railroad_config_owns_any_paint(
-        config,
-        [
-            "railroad.ruleNameColor",
-            "themeVariables.titleColor",
-            "themeVariables.textColor",
-        ],
-    )
-}
-
-fn railroad_config_owns_text_fill(config: &PresentationConfig) -> bool {
-    railroad_config_owns_any_paint(config, ["themeVariables.textColor"])
+    railroad_paint_role_owned(config, "ruleNameColor", "titleColor", Some("textColor"))
 }
 
 fn railroad_config_owns_terminal_text_fill(config: &PresentationConfig) -> bool {
-    railroad_config_owns_any_paint(
+    railroad_paint_role_owned(
         config,
-        [
-            "railroad.terminalTextColor",
-            "themeVariables.secondaryTextColor",
-            "themeVariables.textColor",
-        ],
+        "terminalTextColor",
+        "secondaryTextColor",
+        Some("textColor"),
     )
 }
 
 fn railroad_config_owns_nonterminal_text_fill(config: &PresentationConfig) -> bool {
-    railroad_config_owns_any_paint(
+    railroad_paint_role_owned(
         config,
-        [
-            "railroad.nonTerminalTextColor",
-            "themeVariables.primaryTextColor",
-            "themeVariables.textColor",
-        ],
+        "nonTerminalTextColor",
+        "primaryTextColor",
+        Some("textColor"),
     )
 }
 
 fn railroad_config_owns_comment_text_fill(config: &PresentationConfig) -> bool {
-    railroad_config_owns_any_paint(
+    railroad_paint_role_owned(
         config,
-        [
-            "railroad.commentTextColor",
-            "themeVariables.tertiaryTextColor",
-            "themeVariables.textColor",
-        ],
+        "commentTextColor",
+        "tertiaryTextColor",
+        Some("textColor"),
     )
-}
-
-fn railroad_config_owns_rule_name_text_fill(config: &PresentationConfig) -> bool {
-    railroad_config_owns_any_paint(
-        config,
-        [
-            "railroad.ruleNameColor",
-            "themeVariables.titleColor",
-            "themeVariables.textColor",
-        ],
-    )
-}
-
-fn railroad_config_owns_any<const N: usize>(config: &PresentationConfig, paths: [&str; N]) -> bool {
-    paths
-        .into_iter()
-        .any(|path| config.config_path_overrides_typed_default(path))
-}
-
-fn railroad_config_owns_any_paint<const N: usize>(
-    config: &PresentationConfig,
-    paths: [&str; N],
-) -> bool {
-    paths
-        .into_iter()
-        .any(|path| config.config_paint_overrides_typed_default(path))
 }

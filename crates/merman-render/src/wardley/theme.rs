@@ -39,6 +39,8 @@ pub(crate) struct WardleyPaintBinding {
     pub(crate) annotation_text: String,
     pub(crate) arrow_fill: String,
     pub(crate) arrow_text: String,
+    pub(crate) axis_text_color_source: &'static str,
+    pub(crate) component_label_color_source: &'static str,
 }
 
 impl WardleyPaintBinding {
@@ -52,19 +54,32 @@ impl WardleyPaintBinding {
                 .or_else(|| config_string(config, &["themeVariables", root_key]))
                 .unwrap_or_else(|| fallback.to_string())
         };
+        let inherited_text = |key, nested_path| {
+            if let Some(color) = config["themeVariables"]["wardley"][key].as_str() {
+                (color.to_owned(), nested_path)
+            } else {
+                (
+                    config_string(config, &["themeVariables", "primaryTextColor"])
+                        .unwrap_or_else(|| "#222".to_owned()),
+                    "themeVariables.primaryTextColor",
+                )
+            }
+        };
+        let (axis_text_color, axis_text_color_source) =
+            inherited_text("axisTextColor", "themeVariables.wardley.axisTextColor");
+        let (component_label_color, component_label_color_source) = inherited_text(
+            "componentLabelColor",
+            "themeVariables.wardley.componentLabelColor",
+        );
 
         Self {
             background_color: nested_or_root("backgroundColor", "background", "#fff"),
             axis_color: nested("axisColor", "#000"),
-            axis_text_color: nested_or_root("axisTextColor", "primaryTextColor", "#222"),
+            axis_text_color,
             grid_color: nested("gridColor", "rgba(100, 100, 100, 0.2)"),
             component_fill: nested("componentFill", "#fff"),
             component_stroke: nested("componentStroke", "#000"),
-            component_label_color: nested_or_root(
-                "componentLabelColor",
-                "primaryTextColor",
-                "#222",
-            ),
+            component_label_color,
             link_stroke: nested("linkStroke", "#000"),
             evolution_stroke: nested("evolutionStroke", "#dc3545"),
             anchor_label_color: nested("anchorLabelColor", "#000"),
@@ -82,6 +97,8 @@ impl WardleyPaintBinding {
             .unwrap_or_else(|| nested_or_root("axisTextColor", "primaryTextColor", "#222")),
             arrow_fill: nested("arrowFill", "white"),
             arrow_text: nested_or_root("axisTextColor", "primaryTextColor", "#222"),
+            axis_text_color_source,
+            component_label_color_source,
         }
     }
 }
@@ -211,12 +228,8 @@ impl WardleyTypographyThemePlan {
             DirectStaticSelectorDomain::Default,
         );
         if text_fill.is_some()
-            && ![
-                "themeVariables.wardley.axisTextColor",
-                "themeVariables.primaryTextColor",
-            ]
-            .iter()
-            .any(|path| effective_config.config_paint_overrides_typed_default(path))
+            && !effective_config
+                .config_paint_overrides_typed_default(plan.paint_binding.axis_text_color_source)
         {
             plan.paint_binding.arrow_text = "#333".to_owned();
         }
@@ -239,10 +252,7 @@ impl WardleyTypographyThemePlan {
             &mut plan.paint_binding.axis_text_color,
             &mut plan.typed_text_fills,
             effective_config,
-            &[
-                "themeVariables.wardley.axisTextColor",
-                "themeVariables.primaryTextColor",
-            ],
+            &[plan.paint_binding.axis_text_color_source],
             &[
                 WardleyTextRole::Title,
                 WardleyTextRole::AxisLabel,
@@ -256,10 +266,7 @@ impl WardleyTypographyThemePlan {
             &mut plan.paint_binding.component_label_color,
             &mut plan.typed_text_fills,
             effective_config,
-            &[
-                "themeVariables.wardley.componentLabelColor",
-                "themeVariables.primaryTextColor",
-            ],
+            &[plan.paint_binding.component_label_color_source],
             &[WardleyTextRole::NodeLabel],
             node_fill.as_ref(),
         );
@@ -532,10 +539,18 @@ mod tests {
         assert_eq!(paint.background_color, "#fff");
         assert_eq!(paint.axis_color, "#000");
         assert_eq!(paint.axis_text_color, "#222");
+        assert_eq!(
+            paint.axis_text_color_source,
+            "themeVariables.primaryTextColor"
+        );
         assert_eq!(paint.grid_color, "rgba(100, 100, 100, 0.2)");
         assert_eq!(paint.component_fill, "#fff");
         assert_eq!(paint.component_stroke, "#000");
         assert_eq!(paint.component_label_color, "#222");
+        assert_eq!(
+            paint.component_label_color_source,
+            "themeVariables.primaryTextColor"
+        );
         assert_eq!(paint.link_stroke, "#000");
         assert_eq!(paint.evolution_stroke, "#dc3545");
 
@@ -561,10 +576,18 @@ mod tests {
         assert_eq!(paint.background_color, "var(--background)");
         assert_eq!(paint.axis_color, "var(--axis)");
         assert_eq!(paint.axis_text_color, "");
+        assert_eq!(
+            paint.axis_text_color_source,
+            "themeVariables.wardley.axisTextColor"
+        );
         assert_eq!(paint.grid_color, "transparent");
         assert_eq!(paint.component_fill, "none");
         assert_eq!(paint.component_stroke, "invalid-color");
         assert_eq!(paint.component_label_color, "currentColor");
+        assert_eq!(
+            paint.component_label_color_source,
+            "themeVariables.primaryTextColor"
+        );
         assert_eq!(paint.link_stroke, "var(--link)");
         assert_eq!(paint.evolution_stroke, "currentColor");
     }

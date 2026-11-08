@@ -1184,6 +1184,159 @@ fn railroad_title_fill_respects_source_and_site_config_ownership() {
 }
 
 #[test]
+fn railroad_text_fallback_ownership_follows_the_selected_role_in_every_dialect() {
+    let theme = railroad_text_fill_theme(None, CanvasPaint::solid("#123456").unwrap());
+    for source in railroad_core_dialect_sources() {
+        for palette in ["default", "base", "dark"] {
+            for source_owner in [false, true] {
+                let config = json!({
+                    "theme": palette,
+                    "themeVariables": {"textColor": "#abcdef"}
+                });
+                let themed_source = if source_owner {
+                    format!("%%{{init: {config}}}%%\n{source}")
+                } else {
+                    source.to_owned()
+                };
+                let engine = if source_owner {
+                    MermaidEngine::new()
+                } else {
+                    MermaidEngine::new().with_site_config(
+                        merman_core::presentation::SourcePresentationConfig::from_value(config),
+                    )
+                };
+                let (_, rendered) = try_render_railroad_source_with_theme(
+                    &themed_source,
+                    &theme,
+                    engine,
+                    &portable_railroad_environment(),
+                    "railroad-fallback",
+                )
+                .unwrap();
+                let style = railroad_style(rendered.svg());
+                for selector in [
+                    ".railroad-terminal text",
+                    ".railroad-nonterminal text",
+                    ".railroad-special text",
+                ] {
+                    let body = railroad_rule_body(&style, "railroad-fallback", selector);
+                    assert_eq!(body.contains("fill:#123456;"), !source_owner, "{palette}");
+                }
+                let rule_name =
+                    railroad_rule_body(&style, "railroad-fallback", ".railroad-rule-name");
+                assert_eq!(
+                    rule_name.contains("fill:#123456;"),
+                    !source_owner && palette != "default",
+                    "{palette}"
+                );
+                if palette == "default" {
+                    assert!(rule_name.contains("fill:#abcdef;"));
+                }
+                let evidence =
+                    merman_render::__private::family_evidence(rendered.into_completion().report());
+                assert_eq!(evidence.applied_count(), usize::from(!source_owner));
+                assert_eq!(evidence.not_applicable_count(), usize::from(source_owner));
+                assert_eq!(evidence.theme_residual_count(), 0);
+            }
+        }
+    }
+}
+
+#[test]
+fn railroad_rejected_local_values_release_typed_paint_and_fonts_in_every_dialect() {
+    let typography = ThemeTextStyle::default()
+        .with_font_stack(FontStack::single("TypedRailroad").unwrap())
+        .with_font_size_px(24.0)
+        .unwrap();
+    let theme = DiagramThemeCompiler::new()
+        .compile(
+            DiagramThemeSpec::new()
+                .with_typography(
+                    TypographySpec::default()
+                        .with_family_style(DiagramFamilyId::RAILROAD, typography),
+                )
+                .with_styles(
+                    ThemeRuleSet::default()
+                        .with_rule(ThemeRule::new(
+                            ThemeTarget::Text,
+                            ThemeStylePatch::default()
+                                .with_fill(CanvasPaint::solid("#123456").unwrap()),
+                        ))
+                        .with_rule(ThemeRule::new(
+                            ThemeTarget::Title,
+                            ThemeStylePatch::default()
+                                .with_fill(CanvasPaint::solid("#345678").unwrap()),
+                        )),
+                ),
+        )
+        .unwrap();
+    for source in railroad_core_dialect_sources() {
+        for rejected in [json!(""), json!("unsafe;value"), Value::Null, json!(-7)] {
+            for source_owner in [false, true] {
+                let config = json!({"railroad": {
+                    "terminalTextColor": rejected,
+                    "nonTerminalTextColor": rejected,
+                    "commentTextColor": rejected,
+                    "ruleNameColor": rejected,
+                    "fontFamily": rejected,
+                    "fontSize": rejected
+                }});
+                let themed_source = if source_owner {
+                    format!("%%{{init: {config}}}%%\n{source}")
+                } else {
+                    source.to_owned()
+                };
+                let engine = if source_owner {
+                    MermaidEngine::new()
+                } else {
+                    MermaidEngine::new().with_site_config(
+                        merman_core::presentation::SourcePresentationConfig::from_value(config),
+                    )
+                };
+                let (_, rendered) = try_render_railroad_source_with_theme(
+                    &themed_source,
+                    &theme,
+                    engine,
+                    &portable_railroad_environment(),
+                    "railroad-rejected",
+                )
+                .unwrap();
+                let style = railroad_style(rendered.svg());
+                for selector in [
+                    ".railroad-terminal text",
+                    ".railroad-nonterminal text",
+                    ".railroad-special text",
+                    ".railroad-rule-name",
+                ] {
+                    assert_railroad_font_rule(
+                        &style,
+                        "railroad-rejected",
+                        selector,
+                        "TypedRailroad",
+                        "24",
+                    );
+                    let expected = if selector == ".railroad-rule-name" {
+                        "#345678"
+                    } else {
+                        "#123456"
+                    };
+                    assert!(
+                        railroad_rule_body(&style, "railroad-rejected", selector)
+                            .contains(&format!("fill:{expected};")),
+                        "{selector}, rejected={rejected}"
+                    );
+                }
+                let evidence =
+                    merman_render::__private::family_evidence(rendered.into_completion().report());
+                assert_eq!(evidence.applied_count(), 4, "rejected={rejected}");
+                assert_eq!(evidence.not_applicable_count(), 0);
+                assert_eq!(evidence.theme_residual_count(), 0);
+            }
+        }
+    }
+}
+
+#[test]
 fn railroad_ordinal_text_fill_uses_the_actual_occurrence_domain() {
     use merman_render::diagram_theme::OrdinalSelector;
     for (ordinal, global) in [(1, true), (100, false)] {

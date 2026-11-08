@@ -2238,6 +2238,366 @@ Data -- Login
     }
 
     #[test]
+    fn usecase_label_paint_ownership_follows_the_actual_svg_or_html_terminal() {
+        for html in [false, true] {
+            for look in ["classic", "neo"] {
+                for (target, label, variable, owned) in [
+                    (ThemeTarget::ActorLabel, "Customer", "actorTextColor", html),
+                    (
+                        ThemeTarget::ActorLabel,
+                        "Customer",
+                        "primaryTextColor",
+                        !html,
+                    ),
+                    (ThemeTarget::NoteLabel, "Remember", "noteTextColor", html),
+                    (
+                        ThemeTarget::NoteLabel,
+                        "Remember",
+                        "primaryTextColor",
+                        !html,
+                    ),
+                    (
+                        ThemeTarget::ClusterLabel,
+                        "Authentication",
+                        "primaryTextColor",
+                        false,
+                    ),
+                    (
+                        ThemeTarget::ClusterLabel,
+                        "Authentication",
+                        "titleColor",
+                        true,
+                    ),
+                ] {
+                    let theme = compile(
+                        ThemeRuleSet::default().with_rule(rule(
+                            target,
+                            ThemeStylePatch::default()
+                                .with_fill(CanvasPaint::solid("#c2188b").unwrap()),
+                        )),
+                    );
+                    for source_owned in [false, true] {
+                        let variables = json!({variable: "#125634"});
+                        let mut config = json!({
+                            "layout":"dagre", "look":look, "htmlLabels":html, "theme":"default"
+                        });
+                        let source = if source_owned {
+                            ALL_ROLES.replacen(
+                                "usecase-beta",
+                                &format!(
+                                    "%%{{init: {{\"themeVariables\":{variables}}}}}%%\nusecase-beta"
+                                ),
+                                1,
+                            )
+                        } else {
+                            config["themeVariables"] = variables;
+                            ALL_ROLES.to_owned()
+                        };
+                        let (_, rendered) = render_with_environment(
+                            &source,
+                            &theme,
+                            config,
+                            RenderEnvironment::deterministic(),
+                            ThemePortabilityRequirement::RequirePortable,
+                        )
+                        .unwrap();
+                        let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+                        assert_eq!(
+                            label_property(&document, label, "fill").as_deref(),
+                            (!owned).then_some("#c2188b"),
+                            "{html}/{look}/{variable}/source={source_owned}"
+                        );
+                        let evidence = merman_render::__private::family_evidence(
+                            rendered.into_completion().report(),
+                        );
+                        assert_eq!(evidence.required_count(), 1);
+                        assert_eq!(evidence.applied_count(), usize::from(!owned));
+                        assert_eq!(evidence.not_applicable_count(), usize::from(owned));
+                        assert_eq!(evidence.theme_residual_count(), 0);
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn usecase_unused_color_fallbacks_do_not_block_compiled_body_or_edge_paint() {
+        for (target, palette, variables) in [
+            (
+                ThemeTarget::Node,
+                "default",
+                json!({"primaryColor":"#125634"}),
+            ),
+            (
+                ThemeTarget::Actor,
+                "redux-color",
+                json!({"mainBkg":"#125634", "actorBorder":"#125634"}),
+            ),
+            (
+                ThemeTarget::Cluster,
+                "redux-color",
+                json!({"clusterBkg":"#125634", "clusterBorder":"#125634"}),
+            ),
+            (
+                ThemeTarget::Edge,
+                "redux-color",
+                json!({"lineColor":"#125634"}),
+            ),
+        ] {
+            let theme = compile(
+                ThemeRuleSet::default().with_rule(rule(
+                    target,
+                    ThemeStylePatch::default()
+                        .with_fill(CanvasPaint::solid("#c2188b").unwrap())
+                        .with_stroke(CanvasPaint::solid("#257a87").unwrap()),
+                )),
+            );
+            for html in [false, true] {
+                let (_, rendered) = render_with_environment(
+                    ALL_ROLES,
+                    &theme,
+                    json!({"layout":"dagre", "look":"classic", "htmlLabels":html,
+                        "theme":palette, "themeVariables":variables}),
+                    RenderEnvironment::deterministic(),
+                    ThemePortabilityRequirement::RequirePortable,
+                )
+                .unwrap();
+                let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+                let terminals = match target {
+                    ThemeTarget::Node => vec![shell(&document, "Login"), shell(&document, "Data")],
+                    ThemeTarget::Actor => vec![
+                        owner(&document, "User")
+                            .descendants()
+                            .find(|node| has_class(*node, "usecase-actor-stick"))
+                            .unwrap(),
+                    ],
+                    ThemeTarget::Cluster => owner(&document, "Auth")
+                        .descendants()
+                        .filter(|node| {
+                            has_class(*node, "boundary-body") || has_class(*node, "boundary-tab")
+                        })
+                        .collect(),
+                    ThemeTarget::Edge => vec![owner(&document, "edge-0")],
+                    _ => unreachable!(),
+                };
+                assert!(!terminals.is_empty());
+                for terminal in terminals {
+                    assert_eq!(
+                        property(terminal, "fill").as_deref(),
+                        Some("#c2188b"),
+                        "{target:?}/{html}"
+                    );
+                    assert_eq!(
+                        property(terminal, "stroke").as_deref(),
+                        Some("#257a87"),
+                        "{target:?}/{html}"
+                    );
+                }
+                if target == ThemeTarget::Edge {
+                    assert!(property(owner(&document, "access"), "stroke").is_none());
+                }
+                let evidence =
+                    merman_render::__private::family_evidence(rendered.into_completion().report());
+                assert_eq!(evidence.applied_count(), 1);
+                assert_eq!(evidence.theme_residual_count(), 0);
+            }
+        }
+    }
+
+    #[test]
+    fn usecase_clear_restores_connector_roles_and_rotating_actor_boundary_palettes() {
+        let targets = [ThemeTarget::Edge, ThemeTarget::Actor, ThemeTarget::Cluster];
+        let mut rules = ThemeRuleSet::default();
+        for target in targets {
+            let mut clear = ThemeStylePatch::default();
+            clear.paint.fill = Specified::Clear;
+            clear.stroke.paint = Specified::Clear;
+            rules = rules
+                .with_rule(rule(
+                    target,
+                    ThemeStylePatch::default()
+                        .with_fill(CanvasPaint::solid("#c2188b").unwrap())
+                        .with_stroke(CanvasPaint::solid("#257a87").unwrap()),
+                ))
+                .with_rule(rule(target, clear));
+        }
+        let theme = compile(rules);
+        let source = "usecase-beta\nactor User(Customer)\nsystemBoundary Auth(Authentication)\nA(First)\nB(Second)\nend\nUser --> A\nA ..> : include B\nA ..> : extend B\n";
+        for palette in ["redux-color", "redux-dark-color"] {
+            for look in ["classic", "neo"] {
+                let config = json!({"layout":"dagre", "look":look, "htmlLabels":false,
+                    "theme":palette, "usecase":{"colorScheme":"rotate"}});
+                let (_, baseline) = render_config(source, config.clone());
+                let baseline_document = roxmltree::Document::parse(&baseline).unwrap();
+                let (_, rendered) = render_with_environment(
+                    source,
+                    &theme,
+                    config,
+                    RenderEnvironment::deterministic(),
+                    ThemePortabilityRequirement::RequirePortable,
+                )
+                .unwrap();
+                let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+                for (id, role) in [("edge-1", "include"), ("edge-2", "extend")] {
+                    let expected = stylesheet_property(
+                        &baseline_document,
+                        &format!("#usecase-test .relationship-{role}"),
+                        "stroke",
+                    )
+                    .unwrap();
+                    assert_eq!(property(owner(&document, id), "stroke"), Some(expected));
+                }
+                for (id, selector, terminal_class) in [
+                    (
+                        "User",
+                        ".usecase-actor .usecase-actor-glyph",
+                        "usecase-actor-stick",
+                    ),
+                    (
+                        "Auth",
+                        ".system-boundary rect.boundary-body",
+                        "boundary-body",
+                    ),
+                ] {
+                    let selector = format!(
+                        "#usecase-test [data-look=\"{look}\"][data-color-id=\"color-0\"]{selector}"
+                    );
+                    let terminal = owner(&document, id)
+                        .descendants()
+                        .find(|node| has_class(*node, terminal_class))
+                        .unwrap();
+                    for key in ["fill", "stroke"] {
+                        if let Some(expected) =
+                            stylesheet_property(&baseline_document, &selector, key)
+                        {
+                            assert_eq!(
+                                property(terminal, key),
+                                Some(expected),
+                                "{palette}/{look}/{id}/{key}"
+                            );
+                        }
+                    }
+                }
+                let evidence =
+                    merman_render::__private::family_evidence(rendered.into_completion().report());
+                assert_eq!(evidence.applied_count(), targets.len());
+                assert_eq!(evidence.not_applicable_count(), targets.len());
+                assert_eq!(evidence.theme_residual_count(), 0);
+            }
+        }
+    }
+
+    #[test]
+    fn usecase_actor_fill_clear_restores_hollow_glyphs_without_claiming_role_colors() {
+        let mut clear = ThemeStylePatch::default();
+        clear.paint.fill = Specified::Clear;
+        let theme = compile(
+            ThemeRuleSet::default()
+                .with_rule(rule(
+                    ThemeTarget::Actor,
+                    ThemeStylePatch::default().with_fill(CanvasPaint::solid("#c2188b").unwrap()),
+                ))
+                .with_rule(rule(ThemeTarget::Actor, clear)),
+        );
+        let source = "usecase-beta\nactor A(Customer)@{type:hollow}\nB(Login)\nA --> B\n";
+        for look in ["classic", "neo", "handDrawn"] {
+            for palette in ["default", "redux-color"] {
+                for explicit_palette in [false, true] {
+                    let mut config = json!({"layout":"dagre", "look":look, "htmlLabels":false,
+                        "theme":palette, "usecase":{"colorScheme":"rotate"}});
+                    if explicit_palette {
+                        config["themeVariables"] = json!({"usecaseActorBkg":"#125634",
+                            "bkgColorArray":["#125634"], "borderColorArray":["#446688"]});
+                    }
+                    let (_, rendered) = render_with_environment(
+                        source,
+                        &theme,
+                        config,
+                        RenderEnvironment::deterministic(),
+                        ThemePortabilityRequirement::RequirePortable,
+                    )
+                    .unwrap();
+                    let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+                    for class in ["usecase-actor-hollow-head", "usecase-actor-hollow-body"] {
+                        let terminal = owner(&document, "A")
+                            .descendants()
+                            .find(|node| has_class(*node, class))
+                            .unwrap();
+                        assert_eq!(terminal.attribute("fill"), Some("none"));
+                        assert_eq!(
+                            property(terminal, "fill").as_deref(),
+                            Some("none"),
+                            "{look}/{palette}/explicit={explicit_palette}/{class}"
+                        );
+                    }
+                    let evidence = merman_render::__private::family_evidence(
+                        rendered.into_completion().report(),
+                    );
+                    assert_eq!(evidence.applied_count(), 1);
+                    assert_eq!(evidence.not_applicable_count(), 1);
+                    assert_eq!(evidence.theme_residual_count(), 0);
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn usecase_generalization_marker_fill_and_stroke_have_separate_config_owners() {
+        let source = "usecase-beta\nA(Parent)\nB(Child)\nB extension@--|> A\n";
+        let theme = compile(
+            ThemeRuleSet::default().with_rule(rule(
+                ThemeTarget::Marker,
+                ThemeStylePatch::default()
+                    .with_fill(CanvasPaint::solid("#c2188b").unwrap())
+                    .with_stroke(CanvasPaint::solid("#257a87").unwrap()),
+            )),
+        );
+        for look in ["classic", "neo"] {
+            for (variables, owns_fill, owns_stroke) in [
+                (json!({"mainBkg":"#125634"}), true, false),
+                (json!({"lineColor":"#125634"}), false, true),
+                (
+                    json!({"mainBkg":"#125634", "lineColor":"#125634"}),
+                    true,
+                    true,
+                ),
+            ] {
+                let (_, rendered) = render_with_environment(
+                    source,
+                    &theme,
+                    json!({"layout":"dagre", "look":look, "htmlLabels":false,
+                        "theme":"default", "themeVariables":variables}),
+                    RenderEnvironment::deterministic(),
+                    ThemePortabilityRequirement::RequirePortable,
+                )
+                .unwrap();
+                let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+                let marker = end_marker(&document, "extension");
+                let terminal = marker.children().find(roxmltree::Node::is_element).unwrap();
+                assert_eq!(
+                    property(terminal, "fill").as_deref(),
+                    (!owns_fill).then_some("#c2188b")
+                );
+                assert_eq!(
+                    property(terminal, "stroke").as_deref(),
+                    (!owns_stroke).then_some("#257a87")
+                );
+                let evidence =
+                    merman_render::__private::family_evidence(rendered.into_completion().report());
+                assert_eq!(
+                    evidence.applied_count(),
+                    usize::from(!owns_fill || !owns_stroke)
+                );
+                assert_eq!(
+                    evidence.not_applicable_count(),
+                    usize::from(owns_fill && owns_stroke)
+                );
+                assert_eq!(evidence.theme_residual_count(), 0);
+            }
+        }
+    }
+
+    #[test]
     fn usecase_compiled_fonts_drive_measurement_and_svg_for_all_text_roles() {
         for stack in [
             FontStack::single("TypedSans").unwrap(),

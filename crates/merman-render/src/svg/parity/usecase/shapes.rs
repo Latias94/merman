@@ -372,11 +372,11 @@ pub(super) fn write_node(
             let note_fill = context
                 .typed_style
                 .and_then(|style| style.fill.as_deref())
-                .unwrap_or(&context.css_binding.note);
+                .unwrap_or(context.css_binding.note.css());
             let note_stroke = context
                 .typed_style
                 .and_then(|style| style.stroke.as_deref())
-                .unwrap_or(&context.css_binding.note_border);
+                .unwrap_or(context.css_binding.note_border.css());
             let mut fill_style = context
                 .typed_style
                 .map(|style| style.note_path_css(false))

@@ -7,7 +7,7 @@ use crate::diagram_theme::{
 };
 use crate::resources::{OperationWorkError, OperationWorkMeter};
 
-use super::{PacketThemeOutcome, PacketThemeSelection, packet_config_path_owns};
+use super::{PacketThemeOutcome, PacketThemeSelection};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub(crate) enum PacketTextRole {
@@ -69,8 +69,9 @@ pub(super) struct PacketTextColorOwnership {
 impl PacketTextColorOwnership {
     pub(super) fn from_config(config: &PresentationConfig) -> Self {
         let packet = crate::packet::config::PacketConfigView::new(config.as_value());
-        let owns =
-            |key, path| packet_config_path_owns(config, path) && packet.style_value(key).is_some();
+        let owns = |key, path| {
+            config.config_paint_overrides_typed_default(path) && packet.style_value(key).is_some()
+        };
         Self {
             byte_start: owns("startByteColor", "themeVariables.packet.startByteColor"),
             byte_end: owns("endByteColor", "themeVariables.packet.endByteColor"),

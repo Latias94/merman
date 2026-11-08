@@ -124,10 +124,9 @@ impl CynefinTypographyThemePlan {
                     .into_boxed_slice()
             })
             .unwrap_or_default();
+        let mut colors = super::cynefin_theme(effective_config.as_value());
         let config_owns_text_fill = theme.is_some()
-            && (effective_config.config_paint_overrides_typed_default("themeVariables.textColor")
-                || effective_config
-                    .config_paint_overrides_typed_default("themeVariables.cynefin.textColor"));
+            && effective_config.config_paint_overrides_typed_default(colors.text_color_source);
         let mut evidence = FamilyThemeOutcomes::default();
         let mut unsupported_routes = cynefin_unsupported_routes(theme, &mut evidence).into_vec();
         if let Some(theme) = theme
@@ -166,7 +165,6 @@ impl CynefinTypographyThemePlan {
         }
         let inherited_font_stack =
             InheritedFontStackPlan::resolve_property_local(theme, effective_config);
-        let mut colors = super::cynefin_theme(effective_config.as_value());
         let base_colors = colors.clone();
         if !config_owns_text_fill && let Some(fill) = &text_fill {
             colors.text_color = fill.css().to_owned();
