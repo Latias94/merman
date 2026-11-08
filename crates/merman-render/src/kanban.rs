@@ -781,17 +781,14 @@ pub(crate) fn prepare_kanban_diagram_typed_with_work_meter(
         &task_theme,
         work_meter,
     )?;
+    let dark_mode = css_binding::dark_mode(effective_config);
     let css = KanbanCssBinding::resolve(
         effective_config.as_value(),
         &task_theme,
         text_paint.fill_css(),
+        dark_mode,
     )?;
-    task_theme.bind_terminal_paints(
-        effective_config
-            .get_bool("darkMode")
-            .or_else(|| effective_config.get_bool("themeVariables.darkMode"))
-            .unwrap_or(false),
-    )?;
+    task_theme.bind_terminal_paints(dark_mode)?;
     Ok(KanbanPreparedArtifact {
         layout,
         adaptation,
@@ -868,7 +865,12 @@ pub(crate) fn prepare_kanban_artifact_from_layout_for_test(
         })
         .collect();
     let task_theme = KanbanTaskTheme::baseline(layout.items.len(), typography);
-    let css = KanbanCssBinding::resolve(effective_config.as_value(), &task_theme, None)?;
+    let css = KanbanCssBinding::resolve(
+        effective_config.as_value(),
+        &task_theme,
+        None,
+        css_binding::dark_mode(effective_config),
+    )?;
     Ok(KanbanPreparedArtifact {
         layout: layout.clone(),
         adaptation: None,

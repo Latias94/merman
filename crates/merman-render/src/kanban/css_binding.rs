@@ -1,6 +1,7 @@
-use crate::config::{config_bool, config_string};
+use crate::config::{config_string, json_value_is_truthy};
 use crate::svg::PreparedCommonCss;
 use merman_markup::theme_color::{darken, lighten};
+use merman_model::presentation::PresentationConfig;
 use serde_json::Value;
 
 use super::KanbanTaskTheme;
@@ -24,9 +25,22 @@ pub(crate) struct KanbanCssBinding {
     pub(crate) sections: Vec<KanbanSectionCssBinding>,
 }
 
-pub(super) fn dark_mode(config: &Value) -> bool {
-    config_bool(config, &["darkMode"])
-        .or_else(|| config_bool(config, &["themeVariables", "darkMode"]))
+pub(super) fn dark_mode(config: &PresentationConfig) -> bool {
+    let variable = config
+        .as_value()
+        .get("themeVariables")
+        .and_then(|variables| variables.get("darkMode"))
+        .map(json_value_is_truthy);
+    // Mermaid's stylesheet reads themeVariables. Keep an explicitly configured root alias,
+    // but do not let its initialized false value shadow the selected or authored theme.
+    if config.explicit_config_owns_path("themeVariables.darkMode") {
+        return variable.unwrap_or(false);
+    }
+    if config.explicit_config_owns_path("darkMode") {
+        return config.get_bool("darkMode").or(variable).unwrap_or(false);
+    }
+    variable
+        .or_else(|| config.get_bool("darkMode"))
         .unwrap_or(false)
 }
 
@@ -35,6 +49,7 @@ impl KanbanCssBinding {
         config: &Value,
         tasks: &KanbanTaskTheme,
         resolved_text_color: Option<&str>,
+        dark_mode: bool,
     ) -> crate::Result<Self> {
         let common = match tasks.resolved_typography_for_css() {
             Some((family, size)) => PreparedCommonCss::with_resolved_typography(
@@ -45,13 +60,14 @@ impl KanbanCssBinding {
             None => PreparedCommonCss::new(config, Some(tasks.font_family_css()))
                 .with_configured_root_font_family(config),
         };
-        Self::from_common(config, common, resolved_text_color)
+        Self::from_common(config, common, resolved_text_color, dark_mode)
     }
 
     fn from_common(
         config: &Value,
         mut common: PreparedCommonCss,
         resolved_text_color: Option<&str>,
+        dark_mode: bool,
     ) -> crate::Result<Self> {
         if let Some(color) = resolved_text_color {
             common = common.with_text_color(color);
@@ -59,13 +75,12 @@ impl KanbanCssBinding {
         let color = |key: &str, fallback: &str| {
             config_string(config, &["themeVariables", key]).unwrap_or_else(|| fallback.to_string())
         };
-        let dark = dark_mode(config);
         let sections = (0..12)
             .map(|index| {
                 let [scale, label, inverse] =
                     crate::svg::render_theme::kanban_section_defaults(index);
                 let c_scale = color(&format!("cScale{index}"), scale);
-                let section_fill = if dark {
+                let section_fill = if dark_mode {
                     darken(&c_scale, 10.0)?
                 } else {
                     lighten(&c_scale, 10.0)?
@@ -101,7 +116,12 @@ impl KanbanCssBinding {
             ),
             None => PreparedCommonCss::new(config, None),
         };
-        Self::from_common(config, common, None)
+        Self::from_common(
+            config,
+            common,
+            None,
+            dark_mode(&crate::test_support::presentation_config(config.clone())),
+        )
     }
 }
 
