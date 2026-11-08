@@ -107,7 +107,9 @@ impl RequirementTextPaintPlan {
             theme: theme.cloned(),
             style,
             fill,
-            node_owned: config.config_paint_overrides_typed_default("themeVariables.nodeTextColor"),
+            node_owned: config.config_paint_overrides_typed_default(
+                super::RequirementCssBinding::node_text_color_source(config.as_value()).0,
+            ),
             relation_owned: config
                 .config_paint_overrides_typed_default("themeVariables.relationLabelColor"),
             ordinal_rules: theme.is_some_and(|theme| {

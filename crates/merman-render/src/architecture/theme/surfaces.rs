@@ -20,9 +20,6 @@ use styles::{
 };
 
 const TEXT_COLOR_PATH: &str = "themeVariables.textColor";
-const ARCH_EDGE_ARROW_COLOR_PATH: &str = "themeVariables.archEdgeArrowColor";
-const ARCH_EDGE_COLOR_PATH: &str = "themeVariables.archEdgeColor";
-const LINE_COLOR_PATH: &str = "themeVariables.lineColor";
 
 /// Family-local plan for real Architecture service, SVG-text, and arrow terminals.
 #[derive(Debug)]
@@ -121,15 +118,6 @@ impl ArchitectureSurfaceThemePlan {
 }
 
 fn mermaid_owns_arrow_fill(config: &PresentationConfig) -> bool {
-    if config.config_paint_overrides_typed_default(ARCH_EDGE_ARROW_COLOR_PATH) {
-        return true;
-    }
-    if config.config_paint_overrides_typed_default(ARCH_EDGE_COLOR_PATH)
-        && config.get_str(ARCH_EDGE_ARROW_COLOR_PATH) == config.get_str(ARCH_EDGE_COLOR_PATH)
-    {
-        return true;
-    }
-    config.config_paint_overrides_typed_default(LINE_COLOR_PATH)
-        && config.get_str(ARCH_EDGE_COLOR_PATH) == config.get_str(LINE_COLOR_PATH)
-        && config.get_str(ARCH_EDGE_ARROW_COLOR_PATH) == config.get_str(ARCH_EDGE_COLOR_PATH)
+    let (path, _) = super::super::ArchitectureCssBinding::arrow_color_source(config.as_value());
+    config.config_paint_overrides_typed_default(path)
 }

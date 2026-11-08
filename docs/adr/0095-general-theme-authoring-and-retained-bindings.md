@@ -37,6 +37,9 @@ winning rendered properties or qualified output support.
 Rust owns bounded admission, typed reference resolution, consumer domains, inspection, and
 materialization. Materialization lowers to concrete compiler inputs. Keep the existing compiler,
 prepared theme reuse, family-owned painting, actual execution evidence, and resource admission.
+Public raw-design and recipe materialization both admit the compiled result; only the private
+lowerer stops at concrete inputs. Raw-design calls retain their own encoded-byte boundary and
+payload-relative diagnostics, so adding appearances does not change which validation applies.
 References are data, not CSS expressions, arbitrary JSON paths, callbacks, or custom interpreters.
 Whole-value aliases share immutable resolved storage. The encoded-byte policy bounds the authored
 input, unique resolved-value cache, and incrementally retained output collections independently;
@@ -88,6 +91,12 @@ Omission inherits; supplied arrays and sections do not recursively merge. Existi
 facets retain Clear, while transparent paint remains a value. A common consumer can reference a
 token supplied by every appearance, so validation resolves the composed appearances rather than
 requiring an independently compilable shared section.
+
+Within a typography section, family styles inherit omitted properties from the shared default.
+An explicit base-typography Clear removes the local property override; a role-style Clear restores
+the resolved family base. Within each Mermaid compatibility layer, `dark_mode` and
+`variables.darkMode` are one semantic setting: same-layer conflicts fail, and either spelling in a
+local appearance overrides the shared setting.
 
 Whole-document admission validates every composition under the same caller policy before
 inspection, selected materialization, compilation, or grouped export succeeds. Invalid inactive

@@ -504,18 +504,17 @@ impl GanttTaskTheme {
                     facet,
                     ..
                 } => {
-                    if !matches!(facet, FamilyThemeRuleFacet::Fill(_)) {
-                        continue;
-                    }
                     let observation = observations
                         .entry((rule_index, ThemeTarget::Title))
                         .or_default();
-                    if !winner_properties.contains(&(rule_index, ResolvedStyleProperty::Fill)) {
+                    if !winner_properties
+                        .contains(&(rule_index, resolved_style_property_for_facet(facet)))
+                    {
                         continue;
                     }
                     observation.applicable = true;
-                    match route.disposition() {
-                        FamilyThemeDisposition::TypedAdapter => {
+                    match (route.disposition(), facet) {
+                        (FamilyThemeDisposition::TypedAdapter, FamilyThemeRuleFacet::Fill(_)) => {
                             if let Some(expectation) = title_fill.as_ref() {
                                 observation.pending.title_fill = true;
                                 observation
@@ -526,11 +525,12 @@ impl GanttTaskTheme {
                                 observation.incomplete = true;
                             }
                         }
-                        FamilyThemeDisposition::Unsupported => {
+                        (FamilyThemeDisposition::Unsupported, facet) => {
                             observation
                                 .residual
                                 .get_or_insert(unsupported_residual_for_facet(facet));
                         }
+                        _ => observation.incomplete = true,
                     }
                 }
                 FamilyThemeMechanism::RuleFacet {
@@ -539,18 +539,17 @@ impl GanttTaskTheme {
                     facet,
                     ..
                 } => {
-                    if !matches!(facet, FamilyThemeRuleFacet::Fill(_)) {
-                        continue;
-                    }
                     let observation = observations
                         .entry((rule_index, ThemeTarget::Text))
                         .or_default();
-                    if !winner_properties.contains(&(rule_index, ResolvedStyleProperty::Fill)) {
+                    if !winner_properties
+                        .contains(&(rule_index, resolved_style_property_for_facet(facet)))
+                    {
                         continue;
                     }
                     observation.applicable = true;
-                    match route.disposition() {
-                        FamilyThemeDisposition::TypedAdapter => {
+                    match (route.disposition(), facet) {
+                        (FamilyThemeDisposition::TypedAdapter, FamilyThemeRuleFacet::Fill(_)) => {
                             if let Some(expectation) = text_fill.as_ref() {
                                 observation.pending.text_fill = true;
                                 observation
@@ -567,11 +566,12 @@ impl GanttTaskTheme {
                                 observation.pending.capabilities.insert(*capability);
                             }
                         }
-                        FamilyThemeDisposition::Unsupported => {
+                        (FamilyThemeDisposition::Unsupported, facet) => {
                             observation
                                 .residual
                                 .get_or_insert(unsupported_residual_for_facet(facet));
                         }
+                        _ => observation.incomplete = true,
                     }
                 }
                 FamilyThemeMechanism::RuleFacet {
@@ -660,7 +660,13 @@ impl GanttTaskTheme {
             if !observation.applicable {
                 evidence.mark_not_applicable(key);
             } else if let Some(reason) = observation.residual {
-                evidence.mark_residual(key, reason);
+                if target == ThemeTarget::Title {
+                    let mut terminal_pending = observation.pending;
+                    terminal_pending.title_residual = Some(reason);
+                    pending.insert(key, terminal_pending);
+                } else {
+                    evidence.mark_residual(key, reason);
+                }
             } else if observation.incomplete {
                 // Mixed rules remain fail-closed until every winning facet has one terminal owner.
             } else if observation.pending.requires_terminal_proof() {
@@ -849,6 +855,14 @@ impl GanttTaskTheme {
             let Some(receipt) = self.terminal_receipt.get() else {
                 break;
             };
+            if let Some(reason) = pending.title_residual {
+                if receipt.title_text_count == 0 {
+                    evidence.mark_not_applicable(key.clone());
+                } else {
+                    evidence.mark_residual(key.clone(), reason);
+                }
+                continue;
+            }
             let rule_index = match key {
                 FamilyThemeMechanismKey::Rule { index, .. } => *index,
                 FamilyThemeMechanismKey::Typography(_)
@@ -992,13 +1006,18 @@ fn gantt_config_font_family_css(config: &PresentationConfig) -> String {
 }
 
 fn gantt_config_owns_font_stack(config: &PresentationConfig) -> bool {
-    [
-        "gantt.fontFamily",
-        "themeVariables.fontFamily",
-        "fontFamily",
-    ]
-    .into_iter()
-    .any(|path| config.config_path_overrides_typed_default(path))
+    let values = config.as_value();
+    if values
+        .get("gantt")
+        .and_then(|gantt| gantt.get("fontFamily"))
+        .and_then(serde_json::Value::as_str)
+        .is_some_and(|font| !crate::config::normalize_css_font_family(font).is_empty())
+    {
+        return config.config_path_overrides_typed_default("gantt.fontFamily");
+    }
+    // An ignored family value or lower-priority root declaration cannot own the prepared font.
+    crate::config::configured_font_family(values)
+        .is_some_and(|(_, path)| config.config_path_overrides_typed_default(path))
 }
 
 #[derive(Debug)]
@@ -1245,6 +1264,7 @@ struct GanttTaskPendingEvidence {
     text_fill: bool,
     label_fill: bool,
     warning_stroke: bool,
+    title_residual: Option<FamilyThemeResidualReason>,
     capabilities: BTreeSet<ThemeCapability>,
 }
 
@@ -1257,6 +1277,7 @@ impl GanttTaskPendingEvidence {
             || self.text_fill
             || self.label_fill
             || self.warning_stroke
+            || self.title_residual.is_some()
     }
 }
 

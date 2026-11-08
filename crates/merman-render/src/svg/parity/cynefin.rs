@@ -50,27 +50,21 @@ fn write_label_paint(
     target: ThemeTarget,
     ordinal: usize,
     domain_label: bool,
-    base: &str,
+    base: &crate::cynefin::CynefinTheme,
 ) -> Result<bool> {
     let style = plan.style(target, ordinal, !domain_label)?;
-    let paths: &[&str] = if domain_label {
-        &[
-            "themeVariables.cynefin.labelColor",
-            "themeVariables.primaryTextColor",
-        ]
+    let (path, color) = if domain_label {
+        (base.label_color_source, base.label_color.as_str())
     } else {
-        &[
-            "themeVariables.cynefin.textColor",
-            "themeVariables.textColor",
-        ]
+        (base.text_color_source, base.text_color.as_str())
     };
     let fill = plan.paint(
         target,
         ordinal,
         style.as_ref(),
         ResolvedStyleProperty::Fill,
-        paths,
-        base,
+        &[path],
+        color,
     );
     plan.unsupported_property(target, style.as_ref(), ResolvedStyleProperty::Stroke);
     let overridden = fill.is_some();
@@ -204,14 +198,7 @@ pub(crate) fn render_cynefin_diagram_svg_model(
             fmt(layout.width / 2.0),
             fmt(-layout.padding / 2.0)
         );
-        write_label_paint(
-            &mut out,
-            &mut paint_plan,
-            ThemeTarget::Title,
-            1,
-            true,
-            &base.label_color,
-        )?;
+        write_label_paint(&mut out, &mut paint_plan, ThemeTarget::Title, 1, true, base)?;
         let _ = write!(&mut out, ">{}</text>", escape_xml_display(title));
         out.checkpoint()?;
         surface_receipt.record_text(
@@ -229,10 +216,7 @@ pub(crate) fn render_cynefin_diagram_svg_model(
             r#"<defs><marker id="cynefin-arrow-{diagram_id}" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" class="cynefinArrowHead""#,
         );
         let style = paint_plan.style(ThemeTarget::Marker, 1, false)?;
-        let paths = &[
-            "themeVariables.cynefin.arrowColor",
-            "themeVariables.lineColor",
-        ];
+        let paths = &[base.arrow_color_source];
         let mut fill = paint_plan.paint(
             ThemeTarget::Marker,
             1,
@@ -260,7 +244,7 @@ pub(crate) fn render_cynefin_diagram_svg_model(
             1,
             style.as_ref(),
             ResolvedStyleProperty::Stroke,
-            paths,
+            &[],
             "none",
         );
         write_paint_style(&mut out, &mut paint_plan, fill, stroke)?;
@@ -318,10 +302,7 @@ fn push_backgrounds(
             ordinal,
             style.as_ref(),
             ResolvedStyleProperty::Stroke,
-            &[
-                "themeVariables.cynefin.boundaryColor",
-                "themeVariables.lineColor",
-            ],
+            &[],
             "none",
         );
         write_paint_style(out, paint_plan, fill, stroke)?;
@@ -359,20 +340,14 @@ fn push_boundaries(
             "cynefinBoundary",
             &fold_path,
             1,
-            &[
-                "themeVariables.cynefin.boundaryColor",
-                "themeVariables.lineColor",
-            ][..],
+            &[theme.boundary_color_source][..],
             &theme.boundary_color,
         ),
         (
             "cynefinBoundary",
             &horizontal_path,
             1,
-            &[
-                "themeVariables.cynefin.boundaryColor",
-                "themeVariables.lineColor",
-            ][..],
+            &[theme.boundary_color_source][..],
             &theme.boundary_color,
         ),
         (
@@ -430,10 +405,7 @@ fn push_boundaries(
         5,
         style.as_ref(),
         ResolvedStyleProperty::Stroke,
-        &[
-            "themeVariables.cynefin.boundaryColor",
-            "themeVariables.lineColor",
-        ],
+        &[theme.boundary_color_source],
         &theme.boundary_color,
     );
     write_paint_style(out, paint_plan, fill, stroke)?;
@@ -475,7 +447,7 @@ fn push_labels(
             ThemeTarget::NodeLabel,
             domain_ordinal(domain_name),
             true,
-            &base.label_color,
+            base,
         )?;
         let _ = write!(
             out,
@@ -500,14 +472,7 @@ fn push_labels(
         fmt(layout.width / 2.0),
         fmt(y)
     );
-    write_label_paint(
-        out,
-        paint_plan,
-        ThemeTarget::NodeLabel,
-        5,
-        true,
-        &base.label_color,
-    )?;
+    write_label_paint(out, paint_plan, ThemeTarget::NodeLabel, 5, true, base)?;
     out.push_str(">Confusion</text></g>");
     out.checkpoint()?;
     surface_receipt.record_text(
@@ -549,7 +514,7 @@ fn push_subtitles(
                 ThemeTarget::NodeLabel,
                 domain_ordinal(domain_name),
                 false,
-                &base.text_color,
+                base,
             )? {
                 surface_receipt.record_text_fill_override();
             }
@@ -573,14 +538,7 @@ fn push_subtitles(
         fmt(layout.width / 2.0),
         fmt(layout.height / 2.0 + 8.0)
     );
-    if write_label_paint(
-        out,
-        paint_plan,
-        ThemeTarget::NodeLabel,
-        5,
-        false,
-        &base.text_color,
-    )? {
+    if write_label_paint(out, paint_plan, ThemeTarget::NodeLabel, 5, false, base)? {
         surface_receipt.record_text_fill_override();
     }
     out.push_str(">Disorder</text></g>");
@@ -636,10 +594,7 @@ fn push_items(
             ordinal,
             style.as_ref(),
             ResolvedStyleProperty::Stroke,
-            &[
-                "themeVariables.cynefin.boundaryColor",
-                "themeVariables.lineColor",
-            ],
+            &[base.boundary_color_source],
             &base.boundary_color,
         );
         write_paint_style(out, paint_plan, typed_fill, typed_stroke)?;
@@ -656,7 +611,7 @@ fn push_items(
                 ThemeTarget::NodeLabel,
                 ordinal,
                 false,
-                &base.text_color,
+                base,
             )?
         {
             surface_receipt.record_text_fill_override();
@@ -709,10 +664,7 @@ fn push_transitions(
             index + 1,
             style.as_ref(),
             ResolvedStyleProperty::Stroke,
-            &[
-                "themeVariables.cynefin.arrowColor",
-                "themeVariables.lineColor",
-            ],
+            &[base.arrow_color_source],
             &base.arrow_color,
         );
         paint_plan.unsupported_property(
@@ -740,7 +692,7 @@ fn push_transitions(
                 ThemeTarget::EdgeLabel,
                 index + 1,
                 false,
-                &base.text_color,
+                base,
             )? {
                 surface_receipt.record_text_fill_override();
             }

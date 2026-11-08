@@ -20,10 +20,8 @@ impl WardleyPaintContext<'_> {
         role: crate::wardley::WardleyTextRole,
     ) -> Result<Option<TerminalPaint>> {
         use crate::wardley::WardleyTextRole as Role;
-        let shared_paths: &[&str] = &[
-            "themeVariables.wardley.axisTextColor",
-            "themeVariables.primaryTextColor",
-        ];
+        let shared_paths: &[&str] = &[self.base.axis_text_color_source];
+        let node_paths: &[&str] = &[self.base.component_label_color_source];
         let (target, paths, base): (_, &[&str], _) = match role {
             Role::Title => (
                 ThemeTarget::Title,
@@ -42,10 +40,7 @@ impl WardleyPaintContext<'_> {
             ),
             Role::NodeLabel => (
                 ThemeTarget::NodeLabel,
-                &[
-                    "themeVariables.wardley.componentLabelColor",
-                    "themeVariables.primaryTextColor",
-                ],
+                node_paths,
                 self.base.component_label_color.as_str(),
             ),
             Role::AnchorLabel => (

@@ -227,7 +227,9 @@ impl TreeViewThemePlan {
             BTreeMap::<FamilyThemeMechanismKey, FamilyThemeResidualReason>::new();
 
         let mermaid_owns_line_thickness =
-            effective_config.config_path_overrides_typed_default("treeView.lineThickness");
+            crate::config::config_f64(effective_config.as_value(), &["treeView", "lineThickness"])
+                .is_some()
+                && effective_config.config_path_overrides_typed_default("treeView.lineThickness");
         let static_style = theme.style_with_work_meter(
             ThemeTarget::Edge,
             ThemeVariant::Default,
@@ -288,11 +290,17 @@ impl TreeViewThemePlan {
         let mut evidence = FamilyThemeOutcomes::default();
 
         let label_config_owned = effective_config
-            .config_paint_overrides_typed_default("themeVariables.treeView.labelColor");
+            .config_paint_overrides_typed_default("themeVariables.treeView.labelColor")
+            && TreeViewCssBinding::configured_color(effective_config.as_value(), "labelColor")
+                .is_some();
         let line_config_owned = effective_config
-            .config_paint_overrides_typed_default("themeVariables.treeView.lineColor");
+            .config_paint_overrides_typed_default("themeVariables.treeView.lineColor")
+            && TreeViewCssBinding::configured_color(effective_config.as_value(), "lineColor")
+                .is_some();
         let icon_config_owned = effective_config
-            .config_paint_overrides_typed_default("themeVariables.treeView.iconColor");
+            .config_paint_overrides_typed_default("themeVariables.treeView.iconColor")
+            && TreeViewCssBinding::configured_color(effective_config.as_value(), "iconColor")
+                .is_some();
         let highlight_config_owns_fill = effective_config
             .config_paint_overrides_typed_default("themeVariables.treeView.highlightBg")
             && TreeViewCssBinding::configured_color(effective_config.as_value(), "highlightBg")

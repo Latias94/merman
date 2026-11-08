@@ -265,6 +265,30 @@ pub(crate) struct VennCssBinding {
 }
 
 impl VennCssBinding {
+    pub(super) fn title_color_source(config: &serde_json::Value) -> Option<(&'static str, String)> {
+        config_string(config, &["themeVariables", "vennTitleTextColor"])
+            .filter(|color| !color.is_empty())
+            .map(|color| ("themeVariables.vennTitleTextColor", color))
+            .or_else(|| {
+                config_string(config, &["themeVariables", "titleColor"])
+                    .map(|color| ("themeVariables.titleColor", color))
+            })
+    }
+
+    pub(super) fn set_text_color_source(
+        config: &serde_json::Value,
+    ) -> Option<(&'static str, String)> {
+        [
+            ("vennSetTextColor", "themeVariables.vennSetTextColor"),
+            ("primaryTextColor", "themeVariables.primaryTextColor"),
+            ("textColor", "themeVariables.textColor"),
+        ]
+        .into_iter()
+        .find_map(|(key, path)| {
+            config_string(config, &["themeVariables", key]).map(|color| (path, color))
+        })
+    }
+
     #[cfg(test)]
     fn circle(&self, index: usize) -> &VennCirclePaintBinding {
         self.areas
@@ -288,7 +312,11 @@ impl VennCssBinding {
         let option = |key: &str| config_string(config, &["themeVariables", key]);
         let dark = is_dark(&option("background").unwrap_or_else(|| "#f4f4f4".into()))?;
         let palette = (1..=8)
-            .filter_map(|index| option(&format!("venn{index}")).map(|color| (index, color)))
+            .filter_map(|index| {
+                option(&format!("venn{index}"))
+                    .filter(|color| !color.is_empty())
+                    .map(|color| (index, color))
+            })
             .collect::<Vec<_>>();
         let primary = option("primaryColor").unwrap_or_else(|| "#ECECFF".into());
         let mut styles = HashMap::<String, BTreeMap<String, String>>::new();
@@ -301,9 +329,7 @@ impl VennCssBinding {
         }
         let set_text_color = text_fill
             .map(str::to_owned)
-            .or_else(|| option("vennSetTextColor"))
-            .or_else(|| option("primaryTextColor"))
-            .or_else(|| option("textColor"))
+            .or_else(|| Self::set_text_color_source(config).map(|(_, color)| color))
             .unwrap_or_else(|| "#333".into());
         let mut circle_index = 0usize;
         let areas = layout
@@ -371,8 +397,7 @@ impl VennCssBinding {
         Ok(Self {
             title_color: title_fill
                 .map(str::to_owned)
-                .or_else(|| option("vennTitleTextColor"))
-                .or_else(|| option("titleColor"))
+                .or_else(|| Self::title_color_source(config).map(|(_, color)| color))
                 .unwrap_or_else(|| "#333".into()),
             set_text_color,
             areas,

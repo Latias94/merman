@@ -147,7 +147,7 @@ When edits require a rerender, the previous SVG stays visible while the new rend
 
 Choose a design in the preview's single **Theme** selector. The connected CLI supplies the Mermaid designs and Merman presets; the extension does not infer pairs from names. A paired design offers **Follow editor**, **Light**, and **Dark**. Single-appearance designs show their supported appearance without inventing another version. Follow uses VS Code's active appearance, including the light/dark interpretation of high-contrast editor themes; this does not certify a diagram as high-contrast accessible.
 
-**Source / default** leaves the Mermaid initialization theme unspecified and preserves source frontmatter, directives, and styles. It does not mean Follow editor. Original Mermaid IDs remain valid settings. Neo, Redux, and Redux Color have metadata-declared pairs; Default and Dark remain separate Mermaid designs.
+**Source / default** leaves the Mermaid initialization theme unspecified and preserves source frontmatter, directives, and styles. It does not mean Follow editor. Switching through Source or a recipe without declared appearances retains the panel's explicit Light/Dark preference for the next paired theme. Original Mermaid IDs remain valid settings. Neo, Redux, and Redux Color have metadata-declared pairs; Default and Dark remain separate Mermaid designs.
 
 Use **Import theme…** to select a portable theme recipe JSON. The CLI admits the entire original document, including inactive appearances, before the preview adopts it. Invalid or superseded imports leave the current selection intact. The panel retains a complete in-memory snapshot; editing the file later requires importing it again. The webview receives the display name and appearance metadata, not the file path or recipe contents. Render-selection wrappers accepted by CLI `render --theme-file` are not portable recipe files and should be used through the CLI instead.
 
@@ -168,7 +168,11 @@ For persistent settings, use one of these alternatives:
 }
 ```
 
-Relative recipe paths resolve from the source document's workspace folder. For a native Mermaid pair, use a discovered design such as `mermaid:neo`; a literal ID such as `neo-dark` remains fixed. Source configuration and styles keep their existing property-specific precedence. Selecting a theme does not rewrite the source.
+Relative recipe paths resolve from the source document's workspace folder. A configured file theme follows the preview's current source, including when a following panel moves to another workspace; a locked panel continues using its own source's workspace. Changing `merman.preview.themeFile` admits the new file before adopting it. **Refresh Preview** rereads a configured file even when its path is unchanged, so saved recipe edits become visible. A rejected reload keeps the previous diagram visible and blocks copying/exporting stale output until a valid render completes.
+
+An explicitly imported theme remains the panel's in-memory snapshot across source/workspace switches, changes to `merman.preview.themeFile`, and manual refreshes. Import it again to pick up edits to that file. Close the panel and open a new preview to restore configured defaults. A pending configured reload cannot replace a later theme selection or import.
+
+For a native Mermaid pair, use a discovered design such as `mermaid:neo`; a literal ID such as `neo-dark` remains fixed. Source configuration and styles keep their existing property-specific precedence. Selecting a theme does not rewrite the source.
 
 Preview toolbar overrides belong to that panel. Its Copy/Export controls use the concrete appearance and complete imported recipe captured for the displayed publication, even if the editor changes appearance while a save dialog is open. Command-palette, editor-title, and CodeLens document exports use the configured settings for that document; they never borrow an arbitrary preview panel's overrides. Follow updates locked and hidden previews without changing their source attachment. ASCII/Unicode retain their separate terminal styling.
 

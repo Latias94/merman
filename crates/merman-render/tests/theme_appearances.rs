@@ -212,6 +212,185 @@ fn compiler_diagnostics_retain_shared_and_local_field_ownership() {
 }
 
 #[test]
+fn each_mermaid_layer_normalizes_dark_mode_aliases_before_overriding() {
+    let compiler = DiagramThemeCompiler::new();
+    for shared in [
+        json!({"dark_mode":false}),
+        json!({"variables":{"darkMode":false}}),
+        json!({"dark_mode":false,"variables":{"darkMode":false}}),
+    ] {
+        for local in [
+            json!({"dark_mode":true}),
+            json!({"variables":{"darkMode":true}}),
+            json!({"dark_mode":true,"variables":{"darkMode":true}}),
+        ] {
+            let input = json!({
+                "schema_version":1,"kind":"design","design":{
+                    "mermaid":shared,
+                    "appearances":{"light":{},"dark":{"mermaid":local}},
+                    "default_appearance":"light"
+                }
+            });
+            let recipe = decode(input.clone());
+            compiler.inspect_document(&recipe).unwrap();
+            for requested in [
+                None,
+                Some(ThemeAppearance::Light),
+                Some(ThemeAppearance::Dark),
+            ] {
+                let selected = compiler.materialize_document(&recipe, requested).unwrap();
+                let appearance = requested.unwrap_or(ThemeAppearance::Light);
+                assert_eq!(selected.effective_appearance, Some(appearance));
+                let mermaid = selected.spec.mermaid.as_ref().unwrap();
+                assert_eq!(mermaid.dark_mode, Some(appearance == ThemeAppearance::Dark));
+                assert!(
+                    mermaid
+                        .variables
+                        .as_ref()
+                        .is_none_or(|variables| !variables.contains_key("darkMode"))
+                );
+                let expected = compiler
+                    .compile_document(
+                        decode(json!({
+                            "schema_version":1,"kind":"design","design":{
+                                "mermaid":{"dark_mode":appearance == ThemeAppearance::Dark}
+                            }
+                        })),
+                        None,
+                    )
+                    .unwrap();
+                assert_eq!(
+                    compiler
+                        .compile_document(recipe.clone(), requested)
+                        .unwrap()
+                        .recipe_fingerprint(),
+                    expected.recipe_fingerprint()
+                );
+            }
+            assert_eq!(serde_json::to_value(&recipe).unwrap(), input);
+        }
+    }
+}
+
+#[test]
+fn same_layer_dark_mode_conflicts_and_invalid_aliases_keep_their_original_paths() {
+    let compiler = DiagramThemeCompiler::new();
+    for (shared, local, path) in [
+        (
+            json!({"dark_mode":false,"variables":{"darkMode":true}}),
+            json!({"dark_mode":true}),
+            "/design/mermaid/variables/darkMode",
+        ),
+        (
+            json!({"variables":{"darkMode":false}}),
+            json!({"dark_mode":true,"variables":{"darkMode":false}}),
+            "/design/appearances/dark/mermaid/variables/darkMode",
+        ),
+        (
+            json!({"dark_mode":false}),
+            json!({"variables":{"darkMode":"true"}}),
+            "/design/appearances/dark/mermaid/variables/darkMode",
+        ),
+    ] {
+        let input = json!({
+            "schema_version":1,"kind":"design","design":{
+                "mermaid":shared,
+                "appearances":{"light":{},"dark":{"mermaid":local}},
+                "default_appearance":"light"
+            }
+        });
+        let recipe = decode(input.clone());
+        for result in [
+            compiler.inspect_document(&recipe).map(|_| ()),
+            compiler
+                .materialize_document(&recipe, Some(ThemeAppearance::Light))
+                .map(|_| ()),
+            compiler
+                .compile_document(recipe.clone(), Some(ThemeAppearance::Light))
+                .map(|_| ()),
+        ] {
+            let ThemeDesignCompileError::Materialization(error) = result.unwrap_err() else {
+                panic!("Mermaid layer errors retain authoring provenance")
+            };
+            assert_eq!(error.diagnostic().path(), path);
+            assert!(input.pointer(path).is_some());
+        }
+    }
+}
+
+#[test]
+fn generated_effect_errors_keep_shared_local_and_pruned_graph_origins() {
+    let compiler = DiagramThemeCompiler::new();
+    let valid = json!({"kind":"graph","primitives":[{"kind":"gaussian-blur","std_deviation":1}]});
+    let invalid = json!({"kind":"graph","primitives":[]});
+    let cases = [
+        (
+            json!({
+                "appearances":{"light":{},"dark":{"styles":{"node":{"effect":invalid}}}},
+                "default_appearance":"light"
+            }),
+            "/design/appearances/dark/styles/node/effect",
+        ),
+        (
+            json!({
+                "tokens":{
+                    "a-unused":{"type":"effect","value":valid},
+                    "z/bad~":{"type":"effect","value":invalid}
+                },
+                "appearances":{"light":{},"dark":{"styles":{"node":{"effect":{"ref":"z/bad~"}}}}},
+                "default_appearance":"light"
+            }),
+            "/design/tokens/z~1bad~0/value",
+        ),
+        (
+            json!({
+                "tokens":{"shadow":{"type":"effect","value":valid}},
+                "styles":{"node":{"effect":{"ref":"shadow"}}},
+                "appearances":{"light":{},"dark":{"tokens":{"shadow":{"type":"effect","value":invalid}}}},
+                "default_appearance":"light"
+            }),
+            "/design/appearances/dark/tokens/shadow/value",
+        ),
+        (
+            json!({
+                "appearances":{"light":{},"dark":{"rules":[{
+                    "target":"node","style":{"effect":invalid}
+                }]}},
+                "default_appearance":"light"
+            }),
+            "/design/appearances/dark/rules/0/style/effect",
+        ),
+    ];
+    for (design, path) in cases {
+        let input = json!({"schema_version":1,"kind":"design","design":design});
+        let recipe = decode(input.clone());
+        for result in [
+            compiler.inspect_document(&recipe).map(|_| ()),
+            compiler
+                .materialize_document(&recipe, Some(ThemeAppearance::Light))
+                .map(|_| ()),
+            compiler
+                .compile_document(recipe.clone(), Some(ThemeAppearance::Light))
+                .map(|_| ()),
+        ] {
+            let ThemeDesignCompileError::Materialization(error) = result.unwrap_err() else {
+                panic!("effect compiler errors retain authoring provenance")
+            };
+            assert_eq!(error.diagnostic().path(), path);
+            assert!(input.pointer(path).is_some());
+        }
+        let ThemeRecipeV1::Design { design } = recipe else {
+            unreachable!()
+        };
+        let raw = materialize_theme_design(&design).unwrap_err();
+        assert_eq!(
+            raw.diagnostic().path(),
+            path.strip_prefix("/design").unwrap()
+        );
+    }
+}
+
+#[test]
 fn single_appearance_and_unclassified_recipes_have_explicit_selection_contracts() {
     let compiler = DiagramThemeCompiler::new();
     let mut input = reading_recipe();

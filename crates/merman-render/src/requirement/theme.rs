@@ -22,18 +22,6 @@ use crate::resources::OperationWorkMeter;
 
 mod node_visual;
 
-fn configured_font_size_css(effective_config: &PresentationConfig) -> Box<str> {
-    crate::config::config_css_number_or_string(
-        effective_config.as_value(),
-        &["themeVariables", "fontSize"],
-    )
-    .or_else(|| {
-        crate::config::config_css_number_or_string(effective_config.as_value(), &["fontSize"])
-    })
-    .unwrap_or_else(|| "16px".to_string())
-    .into_boxed_str()
-}
-
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 struct NodeExpectation {
     fill: Option<DirectPaintExpectation>,
@@ -97,21 +85,22 @@ impl RequirementPaintThemePlan {
             InheritedFontStackPlan::resolve_property_local(theme, effective_config);
         let text_paint =
             super::RequirementTextPaintPlan::resolve(theme, effective_config, work_meter)?;
-        let configured_font_size_css = configured_font_size_css(effective_config);
         let title = title.map(str::trim).filter(|title| !title.is_empty());
         let title_present = title.is_some();
         let title_fill_owned =
             effective_config.config_paint_overrides_typed_default("themeVariables.textColor");
         let Some(theme) = theme else {
+            let css = super::RequirementCssBinding::resolve(
+                effective_config.as_value(),
+                None,
+                None,
+                None,
+                None,
+            );
             return Self {
                 node_visuals: BTreeMap::new(),
-                css: super::RequirementCssBinding::resolve(
-                    effective_config.as_value(),
-                    None,
-                    None,
-                    None,
-                    None,
-                ),
+                font_size_css: css.common.font_size_css().into(),
+                css,
                 relation_paint: None,
                 text_paint,
                 title: title.map(Into::into),
@@ -121,7 +110,6 @@ impl RequirementPaintThemePlan {
                 node_indices: BTreeMap::new(),
                 expectations: None,
                 inherited_font_stack,
-                font_size_css: configured_font_size_css,
                 typed_font_size_requested: false,
                 typed_font_size_active: false,
                 title_present,
@@ -154,21 +142,15 @@ impl RequirementPaintThemePlan {
                 && route.disposition() == FamilyThemeDisposition::TypedAdapter
         });
         let config_owns_font_size = typed_font_size_requested
-            && effective_config.config_path_overrides_typed_default("themeVariables.fontSize");
+            && crate::config::configured_theme_font_size_css_or_root_number_px(
+                effective_config.as_value(),
+            )
+            .is_some_and(|(_, path)| effective_config.config_path_overrides_typed_default(path));
         let typed_font_size_active = typed_font_size_requested && !config_owns_font_size;
-        let (font_size_px, font_size_css) = if typed_font_size_active {
-            let font_size_px = f64::from(theme.typography().font_size_px()).max(1.0);
-            (
-                font_size_px,
-                format!("{}px", theme.typography().font_size_px()).into_boxed_str(),
-            )
-        } else {
-            (
-                crate::config::config_theme_or_root_font_size_px(effective_config.as_value(), 16.0)
-                    .max(1.0),
-                configured_font_size_css,
-            )
-        };
+        let typed_font_size_px =
+            typed_font_size_active.then(|| f64::from(theme.typography().font_size_px()).max(1.0));
+        let typed_font_size_css =
+            typed_font_size_active.then(|| format!("{}px", theme.typography().font_size_px()));
 
         let mut evidence = FamilyThemeOutcomes::default();
         let relation_paint = super::RequirementRelationPaintPlan::resolve(
@@ -183,10 +165,11 @@ impl RequirementPaintThemePlan {
             inherited_font_stack
                 .typed_font_stack_active()
                 .then_some(inherited_font_stack.font_family_css()),
-            typed_font_size_active.then_some(font_size_css.as_ref()),
-            typed_font_size_active.then_some(font_size_px),
+            typed_font_size_css.as_deref(),
+            typed_font_size_px,
             relation_paint.as_ref().and_then(|plan| plan.typed_color()),
         );
+        let font_size_css = css.common.font_size_css().into();
         let mut title_fill = None;
         let mut title_fill_winner = None;
         if title_present && !title_fill_owned {

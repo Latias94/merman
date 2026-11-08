@@ -40,16 +40,19 @@ impl ErBaseFontSizePlan {
         theme: Option<&ResolvedDiagramTheme>,
         effective_config: &merman_model::presentation::PresentationConfig,
     ) -> Self {
-        let configured_font_size_px =
-            crate::config::config_theme_or_root_font_size_px_opt(effective_config.as_value())
+        let configured_font_size =
+            crate::config::configured_theme_or_root_font_size_px(effective_config.as_value())
                 .or_else(|| {
                     crate::config::config_f64_css_px(
                         effective_config.as_value(),
                         &["er", "fontSize"],
                     )
-                })
-                .unwrap_or(16.0)
-                .max(1.0);
+                    .map(|size| (size, "er.fontSize"))
+                });
+        let configured_font_size_px = configured_font_size
+            .map(|(size, _)| size)
+            .unwrap_or(16.0)
+            .max(1.0);
         let typed_requested = theme.is_some_and(|theme| {
             theme.family_mechanism_routes().iter().any(|route| {
                 route.mechanism()
@@ -58,7 +61,9 @@ impl ErBaseFontSizePlan {
             })
         });
         let config_owns = typed_requested
-            && effective_config.config_path_overrides_typed_default("themeVariables.fontSize");
+            && configured_font_size.is_some_and(|(_, path)| {
+                effective_config.config_path_overrides_typed_default(path)
+            });
         let typed_active = typed_requested && !config_owns;
         let (font_size_px, font_size_css) = match theme {
             Some(theme) if typed_active => {
@@ -1376,8 +1381,11 @@ fn mermaid_owns_text_fill(
     config: &merman_model::presentation::PresentationConfig,
     html_labels: bool,
 ) -> bool {
-    if html_labels && config.get_str("themeVariables.nodeTextColor").is_some() {
-        mermaid_owns_paint_input(config, merman_model::presentation::ErPaintInput::NodeText)
+    if html_labels {
+        mermaid_owns_paint_input(
+            config,
+            css_binding::ErCssBinding::node_text_color_source(config.as_value()).0,
+        )
     } else {
         mermaid_owns_paint_input(config, merman_model::presentation::ErPaintInput::Text)
     }

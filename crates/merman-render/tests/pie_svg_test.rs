@@ -2618,3 +2618,147 @@ fn pie_empty_native_theme_preserves_unstyled_svg_bytes() {
         );
     }
 }
+
+#[test]
+fn pie_blank_role_sizes_yield_to_typed_values_without_changing_sibling_roles() {
+    for (target, key, selector, siblings) in [
+        (
+            ThemeTarget::Title,
+            "pieTitleTextSize",
+            "#merman .pieTitleText",
+            [("#merman .slice", "17px"), ("#merman .legend text", "17px")],
+        ),
+        (
+            ThemeTarget::Text,
+            "pieSectionTextSize",
+            "#merman .slice",
+            [
+                ("#merman .pieTitleText", "25px"),
+                ("#merman .legend text", "17px"),
+            ],
+        ),
+        (
+            ThemeTarget::Legend,
+            "pieLegendTextSize",
+            "#merman .legend text",
+            [
+                ("#merman .pieTitleText", "25px"),
+                ("#merman .slice", "17px"),
+            ],
+        ),
+    ] {
+        let mut patch = ThemeStylePatch::default();
+        patch.typography.font_size_px = merman_render::diagram_theme::Specified::Value(31.0);
+        let theme = pie_rules_theme([ThemeRule::new(target, patch)]);
+        for size in ["", "  ", "32px", "150%"] {
+            let config = serde_json::json!({"themeVariables": {key: size}});
+            let source = format!(
+                "---\nconfig: {config}\n---\npie title Release audit\n  \"Alpha\" : 5\n  \"Beta\" : 3\n"
+            );
+            let rendered = try_render_pie_with_theme_requirement(
+                &source,
+                &theme,
+                ThemePortabilityRequirement::RequirePortable,
+            )
+            .unwrap();
+            let expected = if size.trim().is_empty() { "31px" } else { size };
+            assert_eq!(
+                pie_stylesheet_property_values(rendered.svg(), selector, "font-size"),
+                [expected]
+            );
+            for (sibling, baseline) in siblings {
+                assert_eq!(
+                    pie_stylesheet_property_values(rendered.svg(), sibling, "font-size"),
+                    [baseline]
+                );
+            }
+            let evidence =
+                merman_render::__private::family_evidence(rendered.into_completion().report());
+            assert_eq!(
+                evidence.applied_count(),
+                usize::from(size.trim().is_empty())
+            );
+            assert_eq!(
+                evidence.not_applicable_count(),
+                usize::from(!size.trim().is_empty())
+            );
+            assert_eq!(evidence.theme_residual_count(), 0);
+        }
+    }
+}
+
+#[test]
+fn pie_base_size_ownership_follows_the_selected_path_and_root_number_fallback() {
+    let theme = pie_typography_theme(ThemeTextStyle::default().with_font_size_px(27.0).unwrap());
+    for (variables, root, expected, applied) in [
+        (serde_json::json!({}), serde_json::json!(32), "27px", 1),
+        (serde_json::json!({}), serde_json::json!("32px"), "27px", 1),
+        (
+            serde_json::json!({"fontSize": "  "}),
+            serde_json::Value::Null,
+            "27px",
+            1,
+        ),
+        (
+            serde_json::json!({"fontSize": "bogus"}),
+            serde_json::Value::Null,
+            "27px",
+            1,
+        ),
+        (
+            serde_json::json!({"fontSize": "bogus"}),
+            serde_json::json!("32px"),
+            "27px",
+            1,
+        ),
+        (
+            serde_json::json!({"fontSize": "32px"}),
+            serde_json::json!(48),
+            "32px",
+            0,
+        ),
+        (
+            serde_json::json!({"fontSize": "bogus"}),
+            serde_json::json!(32),
+            "32px",
+            0,
+        ),
+    ] {
+        let mut variables = variables;
+        variables["pieTitleTextSize"] = serde_json::json!("150%");
+        variables["pieLegendTextSize"] = serde_json::json!("inherit");
+        let mut config = serde_json::json!({"themeVariables": variables});
+        if !root.is_null() {
+            config["fontSize"] = root;
+        }
+        let source =
+            format!("---\nconfig: {config}\n---\npie title Release audit\n  \"Alpha\" : 5\n");
+        let rendered = try_render_pie_with_theme_requirement(
+            &source,
+            &theme,
+            ThemePortabilityRequirement::RequirePortable,
+        )
+        .unwrap();
+        assert_eq!(
+            pie_stylesheet_property_values(rendered.svg(), "#merman", "font-size"),
+            [expected]
+        );
+        assert_eq!(
+            pie_stylesheet_property_values(rendered.svg(), "#merman .slice", "font-size"),
+            ["17px"]
+        );
+        assert_eq!(
+            pie_stylesheet_property_values(rendered.svg(), "#merman .pieTitleText", "font-size"),
+            ["150%"]
+        );
+        assert_eq!(
+            pie_stylesheet_property_values(rendered.svg(), "#merman .legend text", "font-size"),
+            ["inherit"]
+        );
+        let evidence =
+            merman_render::__private::family_evidence(rendered.into_completion().report());
+        assert_eq!(evidence.applied_count(), applied);
+        assert_eq!(evidence.not_applicable_count(), 1 - applied);
+        assert_eq!(evidence.theme_residual_count(), 0);
+    }
+}

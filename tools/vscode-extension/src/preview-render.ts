@@ -1,5 +1,5 @@
 import { errorMessage } from "./error-message.js";
-import type { PreviewSnapshot } from "./preview-model.js";
+import { samePreviewRenderKey, type PreviewSnapshot } from "./preview-model.js";
 import {
   snapshotMessagePayload,
   type PreviewToWebviewMessage,
@@ -7,6 +7,7 @@ import {
 import type { PreviewUpdateReason } from "./preview-policy.js";
 
 export interface PreviewRenderHost {
+  beforeRender?(): Promise<void>;
   renderContent(snapshot: PreviewSnapshot, signal: AbortSignal): Promise<string>;
   postMessage(message: PreviewToWebviewMessage): Promise<void>;
   info(message: string): void;
@@ -17,17 +18,21 @@ export interface PreviewRenderHost {
 
 export class PreviewRenderQueue {
   private requestId = 0;
-  private abortController: AbortController | undefined;
+  private pending: { snapshot: PreviewSnapshot; abortController: AbortController } | undefined;
 
   cancelPending(): number {
     this.requestId += 1;
-    this.abortController?.abort();
-    this.abortController = undefined;
+    this.pending?.abortController.abort();
+    this.pending = undefined;
     return this.requestId;
   }
 
   currentRequestId(): number {
     return this.requestId;
+  }
+
+  hasPending(snapshot: PreviewSnapshot): boolean {
+    return !!this.pending && samePreviewRenderKey(this.pending.snapshot, snapshot);
   }
 
   async render(
@@ -36,12 +41,17 @@ export class PreviewRenderQueue {
     host: PreviewRenderHost,
   ): Promise<void> {
     const requestId = ++this.requestId;
-    this.abortController?.abort();
+    this.pending?.abortController.abort();
     const abortController = new AbortController();
-    this.abortController = abortController;
+    const pending = { snapshot, abortController };
+    this.pending = pending;
     const snapshotPayload = snapshotMessagePayload(snapshot);
 
     try {
+      await host.beforeRender?.();
+      if (!host.isCurrentRequest(requestId) || abortController.signal.aborted) {
+        return;
+      }
       await host.postMessage({
         type: "renderStarted",
         requestId,
@@ -73,8 +83,8 @@ export class PreviewRenderQueue {
       host.error(message);
       await postRenderFailed(host, requestId, snapshotPayload, message);
     } finally {
-      if (this.abortController === abortController) {
-        this.abortController = undefined;
+      if (this.pending === pending) {
+        this.pending = undefined;
       }
     }
   }

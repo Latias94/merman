@@ -1,10 +1,11 @@
 use std::collections::BTreeMap;
 
 use merman_theme_contract::{
-    DiagramThemeSpecWireV1, MaterializedThemeRecipeV1, ThemeAppearance,
-    ThemeAppearanceInspectionV1, ThemeAppearanceOverridesV1, ThemeDesignReferenceUse,
-    ThemeDesignRuleV1, ThemeDesignV1, ThemeMaterializationDiagnosticV1,
-    ThemeMaterializationErrorV1, ThemeRecipeInspectionV1, ThemeRecipeReferenceUseV1, ThemeRecipeV1,
+    DiagramThemeSpecWireV1, MaterializedThemeRecipeV1, MermaidThemeCompatibilityWireV1,
+    THEME_RECIPE_SCHEMA_VERSION_V1, ThemeAppearance, ThemeAppearanceInspectionV1,
+    ThemeAppearanceOverridesV1, ThemeDesignReferenceUse, ThemeDesignRuleV1, ThemeDesignV1,
+    ThemeMaterializationDiagnosticV1, ThemeMaterializationErrorV1, ThemeRecipeInspectionV1,
+    ThemeRecipeReferenceUseV1, ThemeRecipeV1,
 };
 
 use super::definition_admission::ThemeInputEncodingError;
@@ -19,24 +20,29 @@ struct ComposedDesign {
 }
 
 impl ComposedDesign {
-    fn shared(design: &ThemeDesignV1, prefix: &str) -> Self {
+    fn shared(design: &ThemeDesignV1, prefix: &str) -> Result<Self, ThemeMaterializationErrorV1> {
         let mut design = design.clone();
         design.appearances = None;
         design.default_appearance = None;
-        Self {
+        let mermaid = design.mermaid.take();
+        let mut composed = Self {
             design,
             prefix: prefix.to_owned(),
             context: prefix.to_owned(),
             locations: BTreeMap::new(),
+        };
+        if let Some(mermaid) = mermaid {
+            composed.merge_mermaid(&mermaid, prefix)?;
         }
+        Ok(composed)
     }
 
     fn with_appearance(
         shared: &ThemeDesignV1,
         appearance: ThemeAppearance,
         local: &ThemeAppearanceOverridesV1,
-    ) -> Self {
-        let mut composed = Self::shared(shared, "/design");
+    ) -> Result<Self, ThemeMaterializationErrorV1> {
+        let mut composed = Self::shared(shared, "/design")?;
         let prefix = format!("/design/appearances/{appearance}");
         composed.context.clone_from(&prefix);
         for (id, token) in &local.tokens {
@@ -95,33 +101,64 @@ impl ComposedDesign {
             composed.design.typography = Some(typography.clone());
         }
         if let Some(mermaid) = &local.mermaid {
-            let merged = composed.design.mermaid.get_or_insert_with(Default::default);
-            if let Some(theme) = &mermaid.theme {
-                merged.theme = Some(theme.clone());
-                composed.locations.insert(
-                    "/mermaid/theme".to_owned(),
-                    format!("{prefix}/mermaid/theme"),
-                );
-            }
-            if let Some(dark_mode) = mermaid.dark_mode {
-                merged.dark_mode = Some(dark_mode);
-                composed.locations.insert(
-                    "/mermaid/dark_mode".to_owned(),
-                    format!("{prefix}/mermaid/dark_mode"),
-                );
-            }
-            if let Some(variables) = &mermaid.variables {
-                let merged_variables = merged.variables.get_or_insert_with(Default::default);
-                for (name, value) in variables {
-                    let key = format!("/mermaid/variables/{}", escape(name));
-                    composed
-                        .locations
-                        .insert(key.clone(), format!("{prefix}{key}"));
-                    merged_variables.insert(name.clone(), value.clone());
+            composed.merge_mermaid(mermaid, &prefix)?;
+        }
+        Ok(composed)
+    }
+
+    fn merge_mermaid(
+        &mut self,
+        mermaid: &MermaidThemeCompatibilityWireV1,
+        prefix: &str,
+    ) -> Result<(), ThemeMaterializationErrorV1> {
+        let alias = mermaid
+            .variables
+            .as_ref()
+            .and_then(|variables| variables.get("darkMode"));
+        let dark_mode = super::wire_decode::decode_mermaid(MermaidThemeCompatibilityWireV1 {
+            theme: None,
+            dark_mode: mermaid.dark_mode,
+            variables: alias.map(|value| BTreeMap::from([("darkMode".to_owned(), value.clone())])),
+        })
+        .map_err(|error| {
+            compilation_error(
+                &bounded_path(format!("{prefix}{}", error.path)),
+                error.error,
+            )
+        })?
+        .dark_mode();
+        let merged = self.design.mermaid.get_or_insert_with(Default::default);
+        if let Some(theme) = &mermaid.theme {
+            merged.theme = Some(theme.clone());
+            self.locations.insert(
+                "/mermaid/theme".to_owned(),
+                format!("{prefix}/mermaid/theme"),
+            );
+        }
+        if let Some(dark_mode) = dark_mode {
+            merged.dark_mode = Some(dark_mode);
+            let field = if mermaid.dark_mode.is_some() {
+                "/mermaid/dark_mode"
+            } else {
+                "/mermaid/variables/darkMode"
+            };
+            self.locations
+                .insert("/mermaid/dark_mode".to_owned(), format!("{prefix}{field}"));
+        }
+        if let Some(variables) = &mermaid.variables {
+            for (name, value) in variables {
+                if name == "darkMode" {
+                    continue;
                 }
+                let key = format!("/mermaid/variables/{}", escape(name));
+                self.locations.insert(key.clone(), format!("{prefix}{key}"));
+                merged
+                    .variables
+                    .get_or_insert_with(Default::default)
+                    .insert(name.clone(), value.clone());
             }
         }
-        composed
+        Ok(())
     }
 
     fn path(&self, path: &str) -> String {
@@ -150,17 +187,20 @@ impl ComposedDesign {
         }
     }
 
-    fn sources(&self) -> ThemeWireSources {
-        let mut sources = ThemeWireSources::for_design(&self.design);
+    fn sources(&self, mut sources: ThemeWireSources) -> ThemeWireSources {
         if let ThemeWireSources::Design {
             styles,
             canvas_base,
+            effects,
         } = &mut sources
         {
             for source in styles.iter_mut().chain(canvas_base.iter_mut()) {
                 for path in &mut source.paths {
                     *path = self.path(path);
                 }
+            }
+            for path in effects {
+                *path = self.path(path);
             }
         }
         sources
@@ -186,6 +226,33 @@ struct SelectedDocument {
 struct AdmittedDocument {
     inspection: ThemeRecipeInspectionV1,
     selected: Option<SelectedDocument>,
+}
+
+impl AdmittedDocument {
+    fn into_materialized(self) -> MaterializedThemeRecipeV1 {
+        let selected = self.selected.expect("selected document admitted");
+        MaterializedThemeRecipeV1::new(
+            &self.inspection,
+            selected.appearance,
+            selected.spec,
+            selected.references,
+        )
+    }
+}
+
+#[derive(Clone, Copy)]
+enum DocumentInput<'a> {
+    Design(&'a ThemeDesignV1),
+    CompleteSpec(&'a DiagramThemeSpecWireV1),
+}
+
+impl<'a> From<&'a ThemeRecipeV1> for DocumentInput<'a> {
+    fn from(recipe: &'a ThemeRecipeV1) -> Self {
+        match recipe {
+            ThemeRecipeV1::Design { design } => Self::Design(design),
+            ThemeRecipeV1::CompleteSpec { complete_spec } => Self::CompleteSpec(complete_spec),
+        }
+    }
 }
 
 impl DiagramThemeCompiler {
@@ -217,14 +284,21 @@ impl DiagramThemeCompiler {
         recipe: &ThemeRecipeV1,
         appearance: Option<ThemeAppearance>,
     ) -> Result<MaterializedThemeRecipeV1, ThemeDesignCompileError> {
-        let admitted = self.admit_document(recipe, appearance, true)?;
-        let selected = admitted.selected.expect("selected document admitted");
-        Ok(MaterializedThemeRecipeV1::new(
-            &admitted.inspection,
-            selected.appearance,
-            selected.spec,
-            selected.references,
-        ))
+        self.admit_document(recipe, appearance, true)
+            .map(AdmittedDocument::into_materialized)
+    }
+
+    pub(super) fn materialize_raw_design(
+        &self,
+        design: &ThemeDesignV1,
+    ) -> Result<MaterializedThemeRecipeV1, ThemeDesignCompileError> {
+        super::definition_admission::check_typed_input_encoded_bytes(
+            self.resource_policy(),
+            design,
+        )
+        .map_err(encoding_error)?;
+        self.admit_document_input(DocumentInput::Design(design), None, true)
+            .map(AdmittedDocument::into_materialized)
     }
 
     fn admit_document(
@@ -238,7 +312,16 @@ impl DiagramThemeCompiler {
             recipe,
         )
         .map_err(encoding_error)?;
-        let (supported, default) = document_appearances(recipe)?;
+        self.admit_document_input(recipe.into(), requested, retain_selected)
+    }
+
+    fn admit_document_input(
+        &self,
+        input: DocumentInput<'_>,
+        requested: Option<ThemeAppearance>,
+        retain_selected: bool,
+    ) -> Result<AdmittedDocument, ThemeDesignCompileError> {
+        let (supported, default) = document_appearances(input)?;
         let effective = requested.or(default);
         if let Some(effective) = effective
             && !supported.contains(&effective)
@@ -258,31 +341,31 @@ impl DiagramThemeCompiler {
         let mut selected = None;
         let mut inspections = Vec::with_capacity(modes.len());
         for appearance in modes {
-            let composition = match recipe {
-                ThemeRecipeV1::Design { design } => Some(match appearance {
+            let composition = match input {
+                DocumentInput::Design(design) => Some(match appearance {
                     Some(appearance) => ComposedDesign::with_appearance(
                         design,
                         appearance,
                         &design.appearances.as_ref().expect("validated appearances")[&appearance],
                     ),
                     None => ComposedDesign::shared(design, "/design"),
-                }),
-                ThemeRecipeV1::CompleteSpec { .. } => None,
+                }?),
+                DocumentInput::CompleteSpec(_) => None,
             };
-            let (spec, references, sources) = match recipe {
-                ThemeRecipeV1::CompleteSpec { complete_spec } => (
+            let (spec, references, sources) = match input {
+                DocumentInput::CompleteSpec(complete_spec) => (
                     complete_spec.clone(),
                     Vec::new(),
                     ThemeWireSources::CompleteSpec,
                 ),
-                ThemeRecipeV1::Design { .. } => {
+                DocumentInput::Design(_) => {
                     self.materialize_composition(composition.as_ref().expect("design composition"))?
                 }
             };
             let theme = self
                 .compile_spec_wire_with_sources_located(spec.clone(), sources)
-                .map_err(|error| match recipe {
-                    ThemeRecipeV1::Design { design } if design.appearances.is_some() => {
+                .map_err(|error| match input {
+                    DocumentInput::Design(_) => {
                         let path = if error.path.starts_with("/design/") {
                             bounded_path(error.path)
                         } else {
@@ -314,7 +397,7 @@ impl DiagramThemeCompiler {
         }
         Ok(AdmittedDocument {
             inspection: ThemeRecipeInspectionV1::new(
-                recipe.schema_version(),
+                THEME_RECIPE_SCHEMA_VERSION_V1,
                 supported,
                 default,
                 inspections,
@@ -334,13 +417,10 @@ impl DiagramThemeCompiler {
         ),
         ThemeDesignCompileError,
     > {
-        let (spec, references) = super::design_materializer::materialize(
-            &composition.design,
-            self.resource_policy(),
-            true,
-        )
-        .map_err(|error| composition.error(error))?;
-        let sources = composition.sources();
+        let (spec, references, sources) =
+            super::design_materializer::materialize(&composition.design, self.resource_policy())
+                .map_err(|error| composition.error(error))?;
+        let sources = composition.sources(sources);
         let references = references
             .into_iter()
             .map(|reference| composition.reference(reference))
@@ -350,16 +430,13 @@ impl DiagramThemeCompiler {
 }
 
 fn document_appearances(
-    recipe: &ThemeRecipeV1,
+    input: DocumentInput<'_>,
 ) -> Result<(Vec<ThemeAppearance>, Option<ThemeAppearance>), ThemeMaterializationErrorV1> {
-    let ThemeRecipeV1::Design {
-        design:
-            ThemeDesignV1 {
-                appearances,
-                default_appearance,
-                ..
-            },
-    } = recipe
+    let DocumentInput::Design(ThemeDesignV1 {
+        appearances,
+        default_appearance,
+        ..
+    }) = input
     else {
         return Ok((Vec::new(), None));
     };

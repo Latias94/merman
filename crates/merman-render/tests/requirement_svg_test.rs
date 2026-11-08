@@ -2103,6 +2103,92 @@ requirementDiagram
 }
 
 #[test]
+fn requirement_configured_font_size_receipt_uses_the_emitted_css() {
+    let theme =
+        requirement_typography_theme(ThemeTextStyle::default().with_font_size_px(24.0).unwrap());
+    for html_labels in [false, true] {
+        for (variables, root_size, expected) in [
+            (serde_json::json!({"fontSize": 22}), None, "22px"),
+            (serde_json::json!({"fontSize": "22.0px"}), None, "22px"),
+            (serde_json::json!({"fontSize": "0px"}), None, "1px"),
+            (serde_json::json!({"fontSize": "invalid"}), Some(22), "22px"),
+        ] {
+            for source_owned in [false, true] {
+                let mut config = serde_json::json!({
+                    "look": "classic", "layout": "dagre", "htmlLabels": html_labels,
+                    "themeVariables": variables,
+                });
+                if let Some(size) = root_size {
+                    config["fontSize"] = serde_json::json!(size);
+                }
+                let (source, engine) = if source_owned {
+                    (
+                        format!("---\nconfig: {config}\n---\n{}", requirement_source()),
+                        classic_engine(),
+                    )
+                } else {
+                    (
+                        requirement_source().to_owned(),
+                        MermaidEngine::new().with_site_config(
+                            merman_core::presentation::SourcePresentationConfig::from_value(config),
+                        ),
+                    )
+                };
+                let rendered = render_requirement_with_theme_and_engine(&source, &theme, engine);
+                let css = requirement_stylesheet(rendered.svg());
+                assert!(css.contains(&format!("font-size:{expected}")), "{css}");
+                let evidence =
+                    merman_render::__private::family_evidence(rendered.into_completion().report());
+                assert_eq!(evidence.required_count(), 1);
+                assert_eq!(evidence.applied_count(), 0);
+                assert_eq!(evidence.not_applicable_count(), 1);
+                assert_eq!(evidence.theme_residual_count(), 0);
+            }
+        }
+    }
+}
+
+#[test]
+fn requirement_invalid_font_size_does_not_own_the_typed_default() {
+    let theme =
+        requirement_typography_theme(ThemeTextStyle::default().with_font_size_px(24.0).unwrap());
+    for html_labels in [false, true] {
+        for root_size in [None, Some(serde_json::json!("22px"))] {
+            for source_owned in [false, true] {
+                let mut config = serde_json::json!({
+                    "look": "classic", "layout": "dagre", "htmlLabels": html_labels,
+                    "themeVariables": {"fontSize": "invalid"},
+                });
+                if let Some(size) = root_size.as_ref() {
+                    config["fontSize"] = size.clone();
+                }
+                let (source, engine) = if source_owned {
+                    (
+                        format!("---\nconfig: {config}\n---\n{}", requirement_source()),
+                        classic_engine(),
+                    )
+                } else {
+                    (
+                        requirement_source().to_owned(),
+                        MermaidEngine::new().with_site_config(
+                            merman_core::presentation::SourcePresentationConfig::from_value(config),
+                        ),
+                    )
+                };
+                let rendered = render_requirement_with_theme_and_engine(&source, &theme, engine);
+                assert!(requirement_stylesheet(rendered.svg()).contains("font-size:24px"));
+                let evidence =
+                    merman_render::__private::family_evidence(rendered.into_completion().report());
+                assert_eq!(evidence.required_count(), 1);
+                assert_eq!(evidence.applied_count(), 1);
+                assert_eq!(evidence.not_applicable_count(), 0);
+                assert_eq!(evidence.theme_residual_count(), 0);
+            }
+        }
+    }
+}
+
+#[test]
 fn requirement_unsupported_typography_is_property_local_to_the_typed_font_stack() {
     let typography = ThemeTextStyle::default()
         .with_font_stack(
@@ -3484,6 +3570,67 @@ fn requirement_text_owners_are_independent_for_html_and_svg_labels() {
             );
             assert_eq!(evidence.not_applicable_count(), usize::from(!applied));
             assert_eq!(evidence.theme_residual_count(), 0);
+        }
+    }
+}
+
+#[test]
+fn requirement_text_fill_respects_source_palette_fallback_to_text_color() {
+    let theme = requirement_text_theme(ThemeRuleSet::default().with_rule(requirement_text_rule(
+        CanvasPaint::solid("#2468ac").unwrap(),
+    )));
+    for html in [false, true] {
+        for look in ["classic", "neo"] {
+            for node_text_color in [None, Some(""), Some("#135724")] {
+                for source_owned in [false, true] {
+                    let body = format!(
+                        "{}\nelement elem1 {{\n type: simulation\n}}\nreq1 - satisfies -> elem1\n",
+                        requirement_source()
+                    );
+                    let source = if source_owned {
+                        let mut config = serde_json::json!({"theme": "dark"});
+                        if let Some(color) = node_text_color {
+                            config["themeVariables"] = serde_json::json!({"nodeTextColor": color});
+                        }
+                        format!("---\nconfig: {config}\n---\n{body}")
+                    } else {
+                        body
+                    };
+                    let rendered = render_requirement_with_theme_and_engine(
+                        &source,
+                        &theme,
+                        MermaidEngine::new().with_site_config(
+                            merman_core::presentation::SourcePresentationConfig::from_value(
+                                serde_json::json!({
+                                    "theme": "dark",
+                                    "htmlLabels": html,
+                                    "look": look,
+                                    "secure": [],
+                                }),
+                            ),
+                        ),
+                    );
+                    let expected = if source_owned {
+                        node_text_color
+                            .filter(|color| !color.is_empty())
+                            .unwrap_or("#ccc")
+                    } else {
+                        "#2468ac"
+                    };
+                    assert!(
+                        requirement_stylesheet(rendered.svg()).contains(&format!(
+                            ".label text,#requirement-theme span{{fill:{expected};color:{expected};}}"
+                        )),
+                        "source_owned={source_owned}, html={html}, look={look}, node_text_color={node_text_color:?}"
+                    );
+                    let evidence = merman_render::__private::family_evidence(
+                        rendered.into_completion().report(),
+                    );
+                    assert_eq!(evidence.applied_count(), usize::from(!source_owned));
+                    assert_eq!(evidence.not_applicable_count(), usize::from(source_owned));
+                    assert_eq!(evidence.theme_residual_count(), 0);
+                }
+            }
         }
     }
 }

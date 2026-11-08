@@ -511,7 +511,3 @@ fn packet_config_owns_font_stack(config: &PresentationConfig) -> bool {
     config.config_path_overrides_typed_default("themeVariables.fontFamily")
         || config.config_path_overrides_typed_default("fontFamily")
 }
-
-fn packet_config_path_owns(config: &PresentationConfig, path: &str) -> bool {
-    config.config_path_overrides_typed_default(path)
-}

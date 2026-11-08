@@ -321,6 +321,8 @@ const THEME_VARIABLE_DEPENDENCIES: &[ThemeVariableDependency] = &[
     assigned_theme_dependency!(Default, "actorTextColor", "noteTextColor"),
     assigned_theme_dependency!(Default, "nodeBorder", "innerEndBackground"),
     assigned_theme_dependency!(Default, "lineColor", "specialStateColor"),
+    assigned_theme_dependency!(Default, "lineColor", "archEdgeColor"),
+    assigned_theme_dependency!(Default, "lineColor", "archEdgeArrowColor"),
     ThemeVariableDependency::transformed(
         ThemeVariableDependencyScope::NeoFamily,
         "noteBkgColor",
@@ -350,6 +352,7 @@ const THEME_VARIABLE_DEPENDENCIES: &[ThemeVariableDependency] = &[
         ThemeVariableDependencyTransform::Invert,
     ),
     copied_theme_dependency!(Extended, "primaryColor", "nodeBkg"),
+    copied_theme_dependency!(Extended, "primaryTextColor", "nodeTextColor"),
     copied_theme_dependency!(Extended, "tertiaryTextColor", "titleColor"),
     copied_theme_dependency!(NeoDark, "border1", "nodeBorder"),
     copied_theme_dependency!(Extended, "lineColor", "defaultLinkColor"),
@@ -1125,7 +1128,7 @@ impl ThemeStageSnapshot {
                 && let Some(Value::Object(generated)) = self.variables.get_mut(key)
                 && let Value::Object(explicit) = value
             {
-                // Mermaid 12.1 applyOverride uses a shallow object spread after updateColors.
+                // Mermaid's applyOverride uses a shallow object spread after updateColors.
                 generated.extend(
                     explicit
                         .iter()
@@ -1306,13 +1309,25 @@ fn mk_border(color: &str, dark_mode: bool) -> Result<String, ColorError> {
     )
 }
 
-fn ensure_xychart_theme_defaults(tv: &mut Map<String, Value>, default_palette: &str) {
-    let background = get_truthy_string(tv, "background").unwrap_or_else(|| "white".to_string());
-    let primary_text = get_truthy_string(tv, "primaryTextColor")
-        .or_else(|| get_truthy_string(tv, "textColor"))
-        .unwrap_or_else(|| "#333".to_string());
+const XYCHART_TEXT_COLOR_KEYS: &[&str] = &[
+    "titleColor",
+    "dataLabelColor",
+    "legendTextColor",
+    "xAxisTitleColor",
+    "xAxisLabelColor",
+    "xAxisTickColor",
+    "xAxisLineColor",
+    "yAxisTitleColor",
+    "yAxisLabelColor",
+    "yAxisTickColor",
+    "yAxisLineColor",
+];
 
-    let mut xy = match tv.get("xyChart") {
+fn ensure_default_xychart_theme(tv: &mut Map<String, Value>) {
+    let constructor = ThemeProgram::resolve(MermaidThemeId::Default).prepared_constructor();
+    // An absent object keeps constructor snapshots. An authored object replaces that snapshot
+    // before updateColors derives missing fields; explicit replay restores its authored leaves.
+    let mut xy = match tv.get("xyChart").or_else(|| constructor.get("xyChart")) {
         Some(Value::Object(m)) => m.clone(),
         _ => Map::new(),
     };
@@ -1320,30 +1335,43 @@ fn ensure_xychart_theme_defaults(tv: &mut Map<String, Value>, default_palette: &
     set_if_missing(
         &mut xy,
         "backgroundColor",
-        Value::String(background.clone()),
+        tv.get("background")
+            .cloned()
+            .unwrap_or_else(|| Value::String("white".into())),
     );
-    for key in [
-        "titleColor",
-        "dataLabelColor",
-        "legendTextColor",
-        "xAxisTitleColor",
-        "xAxisLabelColor",
-        "xAxisTickColor",
-        "xAxisLineColor",
-        "yAxisTitleColor",
-        "yAxisLabelColor",
-        "yAxisTickColor",
-        "yAxisLineColor",
-    ] {
-        set_if_missing(&mut xy, key, Value::String(primary_text.clone()));
+    let primary_text = tv
+        .get("primaryTextColor")
+        .cloned()
+        .unwrap_or_else(|| Value::String("#131300".into()));
+    for key in XYCHART_TEXT_COLOR_KEYS {
+        set_if_missing(&mut xy, key, primary_text.clone());
     }
     set_if_missing(
         &mut xy,
         "plotColorPalette",
-        Value::String(default_palette.to_string()),
+        constructor["xyChart"]["plotColorPalette"].clone(),
     );
 
     tv.insert("xyChart".to_string(), Value::Object(xy));
+}
+
+fn propagate_default_xychart_ownership(
+    explicit: &Map<String, Value>,
+    config: &mut SourcePresentationConfig,
+) {
+    let Some(Value::Object(xy)) = explicit.get("xyChart") else {
+        return;
+    };
+    for (key, source) in std::iter::once(("backgroundColor", "background")).chain(
+        XYCHART_TEXT_COLOR_KEYS
+            .iter()
+            .map(|&key| (key, "primaryTextColor")),
+    ) {
+        // A replayed leaf has its own owner, even when its null/false value is ignored by SVG.
+        if !xy.contains_key(key) {
+            config.propagate_theme_variable_ownership(source, &format!("xyChart.{key}"));
+        }
+    }
 }
 
 fn apply_quadrant_theme_defaults(
@@ -1871,6 +1899,9 @@ pub(crate) fn apply_theme_defaults(
             })
             .collect::<Vec<_>>();
         program.propagate_derived_ownership(&explicit_dependency_variables, config);
+        if theme == MermaidThemeId::Default {
+            propagate_default_xychart_ownership(&explicit, config);
+        }
     }
     config.set_materialized_theme(theme);
     Ok(())
@@ -2098,7 +2129,7 @@ fn calculate_default_theme_variables(
 ) -> Result<Map<String, Value>, ColorError> {
     let mut tv = explicit.clone();
 
-    // Mermaid 11.16.1: `theme-default` constructor defaults and `updateColors()`.
+    // Pinned `theme-default` constructor defaults and `updateColors()`.
     // Source: `repo-ref/mermaid/packages/mermaid/src/themes/theme-default.js`.
     let default_primary = "#ECECFF";
     let default_secondary = "#ffffde";
@@ -2214,12 +2245,6 @@ fn calculate_default_theme_variables(
         "edgeLabelBackground",
         Value::String(label_background.clone()),
     );
-    set_if_missing(
-        &mut tv,
-        "nodeTextColor",
-        Value::String(primary_text_color.clone()),
-    );
-
     // Sequence diagram surfaces.
     set_if_missing(&mut tv, "actorBorder", Value::String(border1.clone()));
     set_if_missing(&mut tv, "actorBkg", Value::String(main_bkg.clone()));
@@ -2331,11 +2356,6 @@ fn calculate_default_theme_variables(
         Value::String(line_color.clone()),
     );
     set_if_missing(&mut tv, "archEdgeWidth", Value::String("3".to_string()));
-    set_if_missing(
-        &mut tv,
-        "archGroupBorderColor",
-        Value::String(primary_border_color.clone()),
-    );
     set_if_missing(
         &mut tv,
         "archGroupBorderWidth",
@@ -2669,10 +2689,7 @@ fn calculate_default_theme_variables(
         Value::String("drop-shadow(1px 2px 2px rgba(185, 185, 185, 1))".to_string()),
     );
 
-    ensure_xychart_theme_defaults(
-        &mut tv,
-        "#ECECFF,#8493A6,#FFC3A0,#DCDDE1,#B8E994,#D1A36F,#C3CDE6,#FFB6C1,#496078,#F8F3E3",
-    );
+    ensure_default_xychart_theme(&mut tv);
 
     apply_quadrant_theme_defaults(&mut tv, default_primary, "#131300", &default_primary_border)?;
     validate_explicit_git_transforms(&tv, explicit, ColorTransform::Darken(25.0))?;
@@ -3189,6 +3206,138 @@ mod tests {
                 .resolved_without_overrides();
 
             assert_eq!(actual, expected, "theme {theme}");
+        }
+    }
+
+    #[test]
+    fn node_text_dependencies_follow_the_selected_theme_program() {
+        for &theme in MermaidThemeId::NAMES {
+            let derives_node_text = matches!(
+                theme,
+                "base"
+                    | "neo"
+                    | "neo-dark"
+                    | "redux"
+                    | "redux-dark"
+                    | "redux-color"
+                    | "redux-dark-color"
+            );
+            for owned in [false, true] {
+                for node_text in [None, Some(""), Some("#556677")] {
+                    let mut variables =
+                        json!({"primaryTextColor": "#123456", "textColor": "#fedcba"});
+                    if let Some(color) = node_text {
+                        variables["nodeTextColor"] = json!(color);
+                    }
+                    let mut config = SourcePresentationConfig::from_value(json!({
+                        "theme": theme,
+                        "themeVariables": variables,
+                    }));
+                    if owned {
+                        config.deep_merge_explicit(&json!({"themeVariables": variables}));
+                    }
+                    apply_theme_defaults(&mut config).unwrap();
+                    let expected = node_text.or(derives_node_text.then_some("#123456"));
+                    assert_eq!(
+                        config.get_str("themeVariables.nodeTextColor"),
+                        expected,
+                        "{theme}: owned={owned}, node={node_text:?}"
+                    );
+                    assert_eq!(
+                        config.config_path_overrides_typed_default("themeVariables.nodeTextColor"),
+                        owned && (derives_node_text || node_text.is_some()),
+                        "{theme}: owned={owned}, node={node_text:?}"
+                    );
+                    assert_eq!(config.get_str("themeVariables.textColor"), Some("#fedcba"));
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn architecture_color_dependencies_preserve_explicit_replay_and_ownership() {
+        for &theme in MermaidThemeId::NAMES {
+            for line_color in ["#333333", "#123456", "#777"] {
+                for arrow_color in [None, Some("#556677")] {
+                    for owned in [false, true] {
+                        let mut variables = json!({"lineColor": line_color});
+                        if let Some(color) = arrow_color {
+                            variables["archEdgeArrowColor"] = json!(color);
+                        }
+                        let mut config = SourcePresentationConfig::from_value(json!({
+                            "theme": theme,
+                            "themeVariables": variables,
+                        }));
+                        if owned {
+                            config.deep_merge_explicit(&json!({"themeVariables": variables}));
+                        }
+                        apply_theme_defaults(&mut config).unwrap();
+                        let expected_edge = match theme {
+                            "base" => "#777",
+                            "dark" => "lightgrey",
+                            _ => line_color,
+                        };
+                        assert_eq!(
+                            config.get_str("themeVariables.archEdgeColor"),
+                            Some(expected_edge),
+                            "{theme}: owned={owned}, arrow={arrow_color:?}"
+                        );
+                        assert_eq!(
+                            config.get_str("themeVariables.archEdgeArrowColor"),
+                            Some(arrow_color.unwrap_or(expected_edge)),
+                            "{theme}: owned={owned}, arrow={arrow_color:?}"
+                        );
+                        assert_eq!(
+                            config.config_path_overrides_typed_default(
+                                "themeVariables.archEdgeColor"
+                            ),
+                            owned && !matches!(theme, "base" | "dark"),
+                            "{theme}: owned={owned}, arrow={arrow_color:?}"
+                        );
+                        assert_eq!(
+                            config.config_path_overrides_typed_default(
+                                "themeVariables.archEdgeArrowColor"
+                            ),
+                            owned && (!matches!(theme, "base" | "dark") || arrow_color.is_some()),
+                            "{theme}: owned={owned}, arrow={arrow_color:?}"
+                        );
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn architecture_group_border_remains_independent_of_late_primary_border_overrides() {
+        for &theme in MermaidThemeId::NAMES {
+            let expected = ThemeProgram::resolve(MermaidThemeId::parse(theme).unwrap())
+                .resolved_without_overrides()
+                .get("archGroupBorderColor")
+                .and_then(Value::as_str)
+                .unwrap();
+            for primary_border in [expected, "#123456"] {
+                for group_border in [None, Some("#556677")] {
+                    let mut config = SourcePresentationConfig::from_value(json!({"theme": theme}));
+                    let mut variables = json!({"primaryBorderColor": primary_border});
+                    if let Some(color) = group_border {
+                        variables["archGroupBorderColor"] = json!(color);
+                    }
+                    config.deep_merge_explicit(&json!({"themeVariables": variables}));
+                    apply_theme_defaults(&mut config).unwrap();
+                    assert_eq!(
+                        config.get_str("themeVariables.archGroupBorderColor"),
+                        Some(group_border.unwrap_or(expected)),
+                        "{theme}: primary={primary_border}, group={group_border:?}"
+                    );
+                    assert_eq!(
+                        config.config_path_overrides_typed_default(
+                            "themeVariables.archGroupBorderColor"
+                        ),
+                        group_border.is_some(),
+                        "{theme}: primary={primary_border}, group={group_border:?}"
+                    );
+                }
+            }
         }
     }
 
@@ -6209,6 +6358,86 @@ flowchart TD
             xy.get("dataLabelColor").and_then(|v| v.as_str()),
             Some("#131300")
         );
+    }
+
+    #[test]
+    fn default_xychart_keeps_constructor_colors_until_its_object_is_replaced() {
+        let program = *ThemeProgram::resolve(MermaidThemeId::Default);
+        for (xy, title, sibling, background) in [
+            (None, json!("#131300"), "#131300", "white"),
+            (Some(json!({})), json!("#125634"), "#125634", "#142536"),
+            (
+                Some(json!({"titleColor":"#446688"})),
+                json!("#446688"),
+                "#125634",
+                "#142536",
+            ),
+            (
+                Some(json!({"titleColor":null})),
+                Value::Null,
+                "#125634",
+                "#142536",
+            ),
+            (
+                Some(json!({"titleColor":false})),
+                json!(false),
+                "#125634",
+                "#142536",
+            ),
+        ] {
+            let mut explicit = json!({"primaryTextColor":"#125634", "background":"#142536"});
+            if let Some(xy) = xy {
+                explicit["xyChart"] = xy;
+            }
+            let actual = program
+                .resolve_legacy(explicit.as_object().unwrap())
+                .unwrap();
+            assert_eq!(actual["xyChart"]["titleColor"], title);
+            assert_eq!(actual["xyChart"]["dataLabelColor"], sibling);
+            assert_eq!(actual["xyChart"]["backgroundColor"], background);
+        }
+    }
+
+    #[test]
+    fn default_xychart_object_replacement_propagates_only_actual_root_dependencies() {
+        for replace_object in [false, true] {
+            let mut site = json!({"themeVariables":{
+                "primaryTextColor":"#131300", "background":"#142536"
+            }});
+            if replace_object {
+                site["themeVariables"]["xyChart"] = json!({"titleColor":"#446688"});
+            }
+            let config = crate::MermaidEngine::new()
+                .with_site_config(SourcePresentationConfig::from_value(site))
+                .parse_metadata_sync("xychart\nx-axis [A]\nbar [4]\n")
+                .unwrap()
+                .effective_config;
+            assert_eq!(
+                config.get_str("themeVariables.xyChart.titleColor"),
+                Some(if replace_object { "#446688" } else { "#131300" })
+            );
+            assert_eq!(
+                config.get_str("themeVariables.xyChart.backgroundColor"),
+                Some(if replace_object { "#142536" } else { "white" })
+            );
+            for key in XYCHART_TEXT_COLOR_KEYS
+                .iter()
+                .copied()
+                .chain(["backgroundColor"])
+            {
+                assert_eq!(
+                    config.config_path_overrides_typed_default(&format!(
+                        "themeVariables.xyChart.{key}"
+                    )),
+                    replace_object,
+                    "{key}: replace={replace_object}"
+                );
+            }
+            assert!(
+                !config
+                    .config_path_overrides_typed_default("themeVariables.xyChart.plotColorPalette")
+            );
+        }
     }
 
     #[test]

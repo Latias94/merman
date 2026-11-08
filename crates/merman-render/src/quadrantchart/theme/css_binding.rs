@@ -1,3 +1,4 @@
+use merman_model::presentation::PresentationConfig;
 use serde_json::Value;
 
 #[derive(Debug)]
@@ -20,30 +21,59 @@ pub(crate) struct QuadrantChartCssBinding {
 }
 
 impl QuadrantChartCssBinding {
+    fn configured_color<'a>(
+        config: &'a Value,
+        key: &'static str,
+    ) -> Option<(&'a str, &'static str)> {
+        let variables = config.get("themeVariables")?;
+        variables
+            .get(key)
+            .and_then(Value::as_str)
+            .map(|color| (color, key))
+            .or_else(|| {
+                matches!(
+                    key,
+                    "quadrant1TextFill"
+                        | "quadrantPointTextFill"
+                        | "quadrantXAxisTextFill"
+                        | "quadrantYAxisTextFill"
+                        | "quadrantTitleFill"
+                )
+                .then(|| variables.get("primaryTextColor").and_then(Value::as_str))
+                .flatten()
+                .map(|color| (color, "primaryTextColor"))
+            })
+    }
+
+    pub(in crate::quadrantchart) fn config_owns_color(
+        config: &PresentationConfig,
+        key: &'static str,
+    ) -> bool {
+        Self::configured_color(config.as_value(), key).is_some_and(|(_, key)| {
+            config.config_paint_overrides_typed_default(&format!("themeVariables.{key}"))
+        })
+    }
+
     pub(crate) fn resolve(config: &Value) -> Self {
-        let value = |key: &str, fallback: &str| {
-            config
-                .get("themeVariables")
-                .and_then(|variables| variables.get(key))
-                .and_then(Value::as_str)
-                .unwrap_or(fallback)
+        let value = |key: &'static str, fallback: &str| {
+            Self::configured_color(config, key)
+                .map_or(fallback, |(color, _)| color)
                 .to_owned()
         };
-        let primary_text = value("primaryTextColor", "#131300");
         Self {
             quadrant1_fill: value("quadrant1Fill", "#ECECFF"),
             quadrant2_fill: value("quadrant2Fill", "#f1f1ff"),
             quadrant3_fill: value("quadrant3Fill", "#f6f6ff"),
             quadrant4_fill: value("quadrant4Fill", "#fbfbff"),
-            quadrant1_text_fill: value("quadrant1TextFill", &primary_text),
+            quadrant1_text_fill: value("quadrant1TextFill", "#131300"),
             quadrant2_text_fill: value("quadrant2TextFill", "#0e0e00"),
             quadrant3_text_fill: value("quadrant3TextFill", "#090900"),
             quadrant4_text_fill: value("quadrant4TextFill", "#040400"),
             quadrant_point_fill: value("quadrantPointFill", "hsl(240, 100%, NaN%)"),
-            quadrant_point_text_fill: value("quadrantPointTextFill", &primary_text),
-            quadrant_x_axis_text_fill: value("quadrantXAxisTextFill", &primary_text),
-            quadrant_y_axis_text_fill: value("quadrantYAxisTextFill", &primary_text),
-            quadrant_title_fill: value("quadrantTitleFill", &primary_text),
+            quadrant_point_text_fill: value("quadrantPointTextFill", "#131300"),
+            quadrant_x_axis_text_fill: value("quadrantXAxisTextFill", "#131300"),
+            quadrant_y_axis_text_fill: value("quadrantYAxisTextFill", "#131300"),
+            quadrant_title_fill: value("quadrantTitleFill", "#131300"),
             quadrant_internal_border_stroke_fill: value(
                 "quadrantInternalBorderStrokeFill",
                 "hsl(240, 60%, 86.2745098039%)",

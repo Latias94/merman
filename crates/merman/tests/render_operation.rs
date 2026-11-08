@@ -1026,7 +1026,7 @@ fn architecture_site_group_border_outranks_typed_stroke_without_shadowing_typed_
     let renderer =
         Renderer::new().with_presentation_engine(merman::MermaidEngine::new().with_site_config(
             merman::SourcePresentationConfig::from_value(serde_json::json!({
-                "themeVariables": {"primaryBorderColor": "#f97316"}
+                "themeVariables": {"archGroupBorderColor": "#f97316"}
             })),
         ));
     let output = renderer

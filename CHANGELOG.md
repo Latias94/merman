@@ -16,9 +16,23 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
 
 - Recipe schema remains **v1**: optional `appearances` and `default_appearance` belong inside `design`. Preset discovery now groups appearances under one design, with `concrete_preset_id` on each appearance. Rebuild matching wrappers and runtimes; the Web transport epoch is 10 and CLI contract is 7. Existing concrete preset IDs remain fixed to their appearance.
 - VS Code now preserves theme canvas paint by default. Its viewer background controls only the preview backing; explicit canvas overrides still apply to exports.
+- Family typography inherits each omitted property from the shared default. Rust's `TypographySpec::family_style()` now returns an owned, resolved `TextStyle`; bind the result before borrowing it. Raw theme materialization now validates semantic targets and effects through the same compiler admission as recipe operations. Editable-design compilation errors use `ThemeDesignCompileError::Materialization` to preserve authoring diagnostics; `complete_spec` failures retain `Compilation`.
 
 ### Fixed
 
+- Overriding one family font property preserves the theme's shared size, weight and other text settings. Typography diagnostics identify the property that actually supplied an override.
+- Theme validation points invalid effects back to their authored field, including errors in an inactive appearance.
+- VS Code keeps the latest render available for copying and export across repeated theme imports and viewer changes; superseded refreshes cannot replace newer output.
+- VS Code resolves configured theme files against the current source workspace and reloads them after settings changes or Refresh Preview. Imported themes remain panel-local snapshots, and switching through Source preserves a manual Light/Dark preference.
+- Flowchart, Swimlane, Requirement and ER labels, plus Journey titles, preserve authored text colors when their family-specific colors are omitted or empty.
+- Theme overrides reach Block labels and Architecture edges, arrowheads and group borders without being blocked by unrelated configuration. Mindmap Neo root labels preserve explicit colors with the colored Redux palettes.
+- Usecase, Venn, Railroad, Cynefin and Wardley apply theme overrides according to the colors actually selected for each surface. Unused fallbacks and ignored Tree View color values no longer block supported styling; Packet text preserves source-selected palettes.
+- Venn skips empty palette entries and uses the title-color fallback. Usecase Clear restores include/extend connector colors, rotating actor/boundary palettes and hollow actors; generalization arrowheads preserve independent fill and stroke overrides.
+- XY Chart, Radar, Quadrant Chart and Timeline no longer let ignored values block supported theme colors or XY role sizes. XY Chart's Default colors follow Mermaid's initialization behavior.
+- Theme fonts and sizes follow the configuration values actually selected by each diagram. Ignored or unused values leave supported overrides available; Quadrant point radii and Tree View line widths use the same property-specific priority.
+- Requirement diagrams no longer fail themed rendering when configured font sizes are normalized or clamped. Gantt reports unsupported text styling even when the same rule successfully changes its color, so strict rendering rejects partially applied rules.
+- Sequence sizes themed italic participant labels from their actual styled text, keeping long labels within their participant boxes. Theme documentation now explains font loading, native assets, fallback and exported SVG requirements across hosts.
+- Treemap respects explicit Default color scales and applies label overrides according to the visible label's actual color source. Timeline cycles short color palettes, restores empty-palette fallbacks and follows the selected Redux theme's light/dark colors.
 - Native text measurement recognizes fixed-width fonts with incomplete font metadata. Generic monospace selection no longer depends on font-file order, keeping Class members and relationship label backgrounds sized for the selected font.
 - Flowchart and Class relationship labels apply local solid and transparent theme colors, with matching execution evidence and source/configuration precedence. Class includes cardinalities; Agentflow and Swimlane share Flowchart's SVG, Markdown and HTML label fix.
 - Flowchart preserves node definitions and metadata in source order, captures default curves when each edge is declared, and applies Mermaid's node-padding fallback for numeric zero.

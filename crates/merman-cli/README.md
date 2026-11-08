@@ -391,6 +391,9 @@ codes, subjects, targets, optional properties, source-document names, RFC 6901 s
 and generated-default markers. `target` contains the actual artifact kind, admission status,
 reason IDs and font source. These IDs are open strings. SVG, PNG, JPEG and PDF use the same
 feedback path; the report records each format's own target receipt.
+`target.font_source` describes the output target's font resources, not the selected
+`--font-measurement` mode or the absence of per-request measurement fallback. See the
+[measurement and evidence guide](../../docs/bindings/HOST_TEXT_MEASUREMENT.md).
 `evidence.materialized_theme`, when available, remains the actual Mermaid palette ID and is
 independent of `selected_appearance`.
 

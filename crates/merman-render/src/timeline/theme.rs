@@ -146,9 +146,10 @@ impl TimelineEventTheme {
                     ThemeVariant::Default,
                 ),
             )
-            .with_source_owned_fill(&[
-                effective_config.config_paint_overrides_typed_default("themeVariables.textColor")
-            ])],
+            .with_source_owned_fill(&[super::TimelineCssBinding::config_owns_color(
+                effective_config,
+                "textColor",
+            )])],
             work_meter,
         )?;
         let title = layout
@@ -156,7 +157,7 @@ impl TimelineEventTheme {
             .as_deref()
             .filter(|title| !title.trim().is_empty());
         let title_owned =
-            effective_config.config_paint_overrides_typed_default("themeVariables.textColor");
+            super::TimelineCssBinding::config_owns_color(effective_config, "textColor");
         let mut title_fill = None;
         let mut title_fill_winner = None;
         if title.is_some() && !title_owned {
@@ -277,26 +278,28 @@ impl TimelineEventTheme {
                 if !used {
                     continue;
                 }
-                let color_scale_path = format!("themeVariables.cScale{slot}");
-                let paint =
-                    if effective_config.config_paint_overrides_typed_default(&color_scale_path) {
-                        binding
-                            .source_scale(slot)
-                            .map(|color| TimelinePalettePaint::source_owned(color.to_owned()))
-                    } else {
-                        theme
-                            .series_color(ThemeTarget::TimelineEvent, slot + 1)
-                            .map(|color| {
-                                TimelinePalettePaint::typed(
-                                    color.as_css(),
-                                    if color.is_transparent() {
-                                        ThemeCapability::TransparentPaint
-                                    } else {
-                                        ThemeCapability::SolidPaint
-                                    },
-                                )
-                            })
-                    };
+                let color_scale_key = format!("cScale{slot}");
+                let paint = if super::TimelineCssBinding::config_owns_color(
+                    effective_config,
+                    &color_scale_key,
+                ) {
+                    binding
+                        .source_scale(slot)
+                        .map(|color| TimelinePalettePaint::source_owned(color.to_owned()))
+                } else {
+                    theme
+                        .series_color(ThemeTarget::TimelineEvent, slot + 1)
+                        .map(|color| {
+                            TimelinePalettePaint::typed(
+                                color.as_css(),
+                                if color.is_transparent() {
+                                    ThemeCapability::TransparentPaint
+                                } else {
+                                    ThemeCapability::SolidPaint
+                                },
+                            )
+                        })
+                };
                 if let Some(paint) = paint {
                     let line_stroke =
                         timeline_classic_line_stroke(effective_config, binding, slot, &paint.css);
@@ -327,7 +330,7 @@ impl TimelineEventTheme {
             work_meter,
         )?;
         let source_owns_event_stroke =
-            effective_config.config_paint_overrides_typed_default("themeVariables.nodeBorder");
+            super::TimelineCssBinding::config_owns_color(effective_config, "nodeBorder");
         // nodeBorder is a shared Redux terminal: labels and the activity axis consume it even
         // when there are no events. Color and Neo shapes have independent paint owners.
         let stroke_domain_active =
@@ -347,7 +350,7 @@ impl TimelineEventTheme {
                         rule_index,
                         capability,
                     },
-                    shape_stroke: !binding.is_color_theme && !binding.use_neo_gradient,
+                    shape_stroke: !binding.use_neo_gradient,
                 }
             })
         } else {
@@ -675,10 +678,14 @@ impl TimelineEventTheme {
         timeline_section_slot(section_class)
     }
 
-    pub(crate) fn shape_stroke_for_redux(&self) -> Option<&str> {
+    pub(crate) fn shape_stroke_for_redux(
+        &self,
+        binding: &super::TimelineCssBinding,
+        slot: usize,
+    ) -> Option<&str> {
         self.stroke
             .as_ref()
-            .filter(|stroke| stroke.shape_stroke)
+            .filter(|stroke| stroke.shape_stroke && binding.section_palette_color(slot).is_none())
             .map(|stroke| stroke.paint.css.as_ref())
     }
 
@@ -754,25 +761,17 @@ fn timeline_event_fill_source_owned(
         return false;
     };
     if binding.use_neo_gradient {
-        return config.config_paint_overrides_typed_default("themeVariables.mainBkg");
+        return super::TimelineCssBinding::config_owns_color(config, "mainBkg");
     }
     if !binding.is_redux_theme {
-        return config
-            .config_paint_overrides_typed_default(&format!("themeVariables.cScale{slot}"));
+        return super::TimelineCssBinding::config_owns_color(config, &format!("cScale{slot}"));
     }
 
-    if binding.is_color_theme && !binding.is_dark_theme {
-        if binding.has_source_border_slot(slot) {
-            return config.config_paint_overrides_typed_default("themeVariables.borderColorArray");
-        }
-        // A color theme owns an event fill only when the section has an actual
-        // border-color slot. An empty or short array cannot provide a fill
-        // terminal, so it must not suppress the typed event paint via the
-        // unrelated node-border token.
-        return false;
+    if !binding.is_dark_theme && binding.section_palette_color(slot).is_some() {
+        return config.config_paint_overrides_typed_default("themeVariables.borderColorArray");
     }
 
-    config.config_paint_overrides_typed_default("themeVariables.mainBkg")
+    super::TimelineCssBinding::config_owns_color(config, "mainBkg")
 }
 
 fn timeline_classic_line_stroke(
@@ -784,8 +783,7 @@ fn timeline_classic_line_stroke(
     if binding.is_redux_theme {
         return None;
     }
-    let inverse_path = format!("themeVariables.cScaleInv{slot}");
-    if config.config_paint_overrides_typed_default(&inverse_path) {
+    if super::TimelineCssBinding::config_owns_color(config, &format!("cScaleInv{slot}")) {
         return binding
             .source_inverse(slot)
             .map(str::to_owned)

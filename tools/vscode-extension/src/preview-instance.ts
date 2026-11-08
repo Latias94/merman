@@ -9,6 +9,7 @@ import {
   editorThemeAppearance,
   isThemePreference,
   themeChoice,
+  type ImportedTheme,
   type ThemeAppearancePreference,
   type ThemeDiscovery,
 } from "./theme-selection.js";
@@ -25,6 +26,7 @@ import {
   type PreviewSnapshot,
   type PreviewSourceKey,
   previewSourceKeyId,
+  samePreviewRenderKey,
   samePreviewSourceKey,
 } from "./preview-model.js";
 import {
@@ -61,6 +63,16 @@ const PREVIEW_TITLE = "Merman Preview";
 const RENDER_DEBOUNCE_MS = 180;
 export const EMPTY_PREVIEW_LOCK_WARNING = "Open a Mermaid preview before locking it to a source.";
 
+interface ConfiguredThemeInput {
+  key: string;
+  uri: vscode.Uri;
+}
+
+interface ConfiguredThemeRequest {
+  key: string;
+  promise: Promise<ImportedTheme>;
+}
+
 export class PreviewInstance implements vscode.Disposable {
   private panel: vscode.WebviewPanel | undefined;
   private renderTimer: NodeJS.Timeout | undefined;
@@ -76,6 +88,8 @@ export class PreviewInstance implements vscode.Disposable {
   private discovery: ThemeDiscovery | undefined;
   private themeInitialization: Promise<void> | undefined;
   private themesReady = false;
+  private configuredThemeReloadRevision = 0;
+  private configuredThemeRequest: ConfiguredThemeRequest | undefined;
 
   constructor(
     private readonly context: vscode.ExtensionContext,
@@ -169,6 +183,9 @@ export class PreviewInstance implements vscode.Disposable {
   }
 
   forceRefresh(): void {
+    if (this.session.usesConfiguredThemeFile) {
+      this.configuredThemeReloadRevision += 1;
+    }
     this.scheduleRefresh("manual-refresh", true);
   }
 
@@ -177,9 +194,7 @@ export class PreviewInstance implements vscode.Disposable {
       return;
     }
     try {
-      if (this.session.setHostAppearance(editorThemeAppearance(kind))) {
-        this.invalidateRenderedOutput("editor-appearance");
-      }
+      this.session.setHostAppearance(editorThemeAppearance(kind));
       this.scheduleRefresh("editor-appearance", true);
     } catch (error) {
       this.handleRefreshError(error);
@@ -189,42 +204,59 @@ export class PreviewInstance implements vscode.Disposable {
   private async initializeThemes(): Promise<void> {
     if (!this.themeInitialization) {
       this.themeInitialization = (async () => {
-        const revision = this.session.themeSelectionRevision;
         const discovery = await discoverThemes(this.context);
         if (this.disposed) {
           return;
         }
         this.discovery = discovery;
-        let imported;
-        if (this.session.diagramTheme === "file") {
-          while (!this.disposed) {
-            const resourceUri = this.session.configurationResourceUri;
-            const resource = resourceUri ? vscode.Uri.parse(resourceUri) : undefined;
-            const settings = getPreviewSettings(resource);
-            try {
-              imported = await inspectThemeFile(this.context, configuredThemeFileUri(settings.themeFile, resource), discovery);
-            } catch (error) {
-              if (this.disposed || revision !== this.session.themeSelectionRevision) {
-                imported = undefined;
-                break;
-              }
-              if (resourceUri !== this.session.configurationResourceUri) continue;
-              throw error;
-            }
-            if (resourceUri === this.session.configurationResourceUri) break;
-          }
-        }
-        if (!this.disposed) {
-          this.session.configureThemes(discovery, editorThemeAppearance(vscode.window.activeColorTheme.kind),
-            revision === this.session.themeSelectionRevision ? imported : undefined);
-          this.themesReady = true;
-        }
+        this.session.configureThemes(discovery, editorThemeAppearance(vscode.window.activeColorTheme.kind));
+        this.themesReady = true;
       })().catch((error: unknown) => {
         this.themeInitialization = undefined;
         throw error;
       });
     }
     await this.themeInitialization;
+  }
+
+  private configurationResource(retainSource = false): vscode.Uri | undefined {
+    const resourceUri = this.session.resolveConfigurationResource(
+      vscode.window.activeTextEditor,
+      vscode.window.visibleTextEditors,
+      retainSource,
+    );
+    return resourceUri ? vscode.Uri.parse(resourceUri) : undefined;
+  }
+
+  private configuredThemeInput(retainSource: boolean): ConfiguredThemeInput | undefined {
+    if (!this.session.usesConfiguredThemeFile) {
+      return undefined;
+    }
+    const resource = this.configurationResource(retainSource);
+    if (!resource) {
+      return undefined;
+    }
+    const uri = configuredThemeFileUri(getPreviewSettings(resource).themeFile, resource);
+    return {
+      key: JSON.stringify([resource.toString(), uri.toString(), this.configuredThemeReloadRevision]),
+      uri,
+    };
+  }
+
+  private isCurrentConfiguredTheme(
+    input: ConfiguredThemeInput,
+    request: ConfiguredThemeRequest,
+    retainSource: boolean,
+    panel: vscode.WebviewPanel,
+  ): boolean {
+    if (this.disposed || this.panel !== panel || this.configuredThemeRequest !== request) {
+      return false;
+    }
+    try {
+      return this.configuredThemeInput(retainSource)?.key === input.key;
+    } catch {
+      return false;
+    }
   }
 
   get trackedDocumentUri(): string | undefined {
@@ -328,6 +360,15 @@ export class PreviewInstance implements vscode.Disposable {
       }
       this.onDidChangeActiveState(this, this.panel?.active === true);
     }, null, this.panelDisposables);
+    this.panelDisposables.push(
+      vscode.workspace.onDidChangeConfiguration((event) => {
+        if (this.session.usesConfiguredThemeFile &&
+          event.affectsConfiguration("merman.preview.themeFile", this.configurationResource())) {
+          this.configuredThemeReloadRevision += 1;
+          this.scheduleRefresh("diagram-theme", true);
+        }
+      }),
+    );
     return panel;
   }
 
@@ -398,14 +439,63 @@ export class PreviewInstance implements vscode.Disposable {
     if (!panel) {
       return;
     }
-    await this.initializeThemes();
+    if (!this.themesReady) {
+      await this.initializeThemes();
+    }
     if (this.disposed || this.panel !== panel) {
       return;
     }
 
+    const retainSource = reason === "editor-appearance";
+    let configured;
+    try {
+      configured = this.configuredThemeInput(retainSource);
+    } catch (error) {
+      this.invalidateRenderedOutput(reason);
+      throw error;
+    }
+    if (configured && configured.key !== this.session.configuredThemeFileKey) {
+      const selectionRevision = this.session.themeSelectionRevision;
+      this.invalidateRenderedOutput(reason);
+      let request = this.configuredThemeRequest;
+      if (!request || request.key !== configured.key) {
+        request = {
+          key: configured.key,
+          promise: inspectThemeFile(this.context, configured.uri, this.discovery!),
+        };
+        this.configuredThemeRequest = request;
+      }
+      let theme;
+      try {
+        theme = await request.promise;
+      } catch (error) {
+        const current = this.isCurrentConfiguredTheme(configured, request, retainSource, panel);
+        if (current && selectionRevision !== this.session.themeSelectionRevision) {
+          return;
+        }
+        if (this.configuredThemeRequest === request) {
+          this.configuredThemeRequest = undefined;
+        }
+        if (current) {
+          throw error;
+        }
+        return;
+      }
+      if (selectionRevision !== this.session.themeSelectionRevision ||
+        !this.isCurrentConfiguredTheme(configured, request, retainSource, panel)) {
+        return;
+      }
+      this.session.setConfiguredThemeFile(configured.key, theme);
+    }
+
     this.ensureWebviewHtml(panel);
-    const snapshot = this.createSnapshot(reason === "editor-appearance");
-    const actions = planPreviewUpdate(this.session.snapshot, snapshot, reason);
+    const snapshot = this.createSnapshot(retainSource);
+    const actions = planPreviewUpdate(
+      this.session.snapshot,
+      snapshot,
+      reason,
+      this.renderedOutputStale && !!snapshot && !this.renderQueue.hasPending(snapshot),
+    );
     if (!snapshot) {
       panel.title = PREVIEW_TITLE;
       this.session.clearSource();
@@ -415,45 +505,83 @@ export class PreviewInstance implements vscode.Disposable {
     }
 
     panel.title = `${PREVIEW_TITLE}: ${snapshot.input.title}`;
+    if (actions.some((action) => action.type === "renderRequested")) {
+      this.invalidateRenderedOutput(reason);
+    }
     this.session.rememberSnapshot(snapshot);
     await this.applyActions(actions);
   }
 
   private async applyActions(actions: readonly PreviewAction[]): Promise<void> {
-    for (const action of actions) {
-      switch (action.type) {
-        case "showEmpty":
-          await this.postMessage({
-            type: "showEmpty",
-            requestId: this.renderQueue.currentRequestId(),
-            heading: "No Mermaid source available",
-            detail:
-              "Focus a .mmd, .mermaid, or Markdown document with a Mermaid fence, then run Merman: Open Preview.",
-          });
-          break;
-        case "sourceListUpdated":
-        case "selectionChanged":
-        case "diagnosticsUpdated":
-        case "settingsUpdated":
-          await this.postMessage({
-            type: action.type,
-            snapshot: snapshotMessagePayload(action.snapshot),
-          });
-          break;
-        case "renderRequested":
-          await this.renderSnapshot(action.snapshot, action.reason);
-          break;
+    const postUpdates = async () => {
+      const requestId = this.renderQueue.currentRequestId();
+      for (const action of actions) {
+        if (!this.panel || !this.renderQueue.isCurrentRequest(requestId)) {
+          return;
+        }
+        if ("snapshot" in action && action.snapshot !== this.session.snapshot) {
+          return;
+        }
+        switch (action.type) {
+          case "showEmpty":
+            await this.postMessage({
+              type: "showEmpty",
+              requestId,
+              heading: "No Mermaid source available",
+              detail:
+                "Focus a .mmd, .mermaid, or Markdown document with a Mermaid fence, then run Merman: Open Preview.",
+            });
+            break;
+          case "sourceListUpdated":
+          case "selectionChanged":
+          case "diagnosticsUpdated":
+          case "settingsUpdated":
+            await this.postMessage({
+              type: action.type,
+              snapshot: snapshotMessagePayload(action.snapshot),
+            });
+            break;
+        }
       }
+    };
+    const render = actions.find((action) => action.type === "renderRequested");
+    if (render) {
+      await this.renderSnapshot(render.snapshot, render.reason, postUpdates);
+    } else {
+      await postUpdates();
     }
   }
 
-  private async renderSnapshot(snapshot: PreviewSnapshot, reason: PreviewUpdateReason): Promise<void> {
+  private async renderSnapshot(
+    snapshot: PreviewSnapshot,
+    reason: PreviewUpdateReason,
+    beforeRender?: () => Promise<void>,
+  ): Promise<void> {
+    if (
+      !this.session.snapshot ||
+      !samePreviewRenderKey(snapshot, this.session.snapshot) ||
+      this.renderQueue.hasPending(snapshot)
+    ) {
+      return;
+    }
     await this.renderQueue.render(snapshot, reason, {
+      beforeRender,
       renderContent: (renderedSnapshot, signal) => this.renderContent(renderedSnapshot, signal),
-      postMessage: (message) => this.postMessage(message),
+      postMessage: (message) => {
+        const currentSnapshot = this.session.snapshot;
+        return this.postMessage(
+          currentSnapshot && "snapshot" in message && samePreviewRenderKey(snapshot, currentSnapshot)
+            ? { ...message, snapshot: snapshotMessagePayload(currentSnapshot) }
+            : message,
+        );
+      },
       info: (message) => this.outputChannel.info(message),
       error: (message) => this.outputChannel.error(message),
-      isCurrentRequest: (requestId) => !!this.panel && this.renderQueue.isCurrentRequest(requestId),
+      isCurrentRequest: (requestId) =>
+        !!this.panel &&
+        this.renderQueue.isCurrentRequest(requestId) &&
+        !!this.session.snapshot &&
+        samePreviewRenderKey(snapshot, this.session.snapshot),
       markRendered: (_requestId, renderedSnapshot, content) => {
         this.renderedOutputStale = false;
         this.webviewClient.markRendered(renderedSnapshot, content);
@@ -587,7 +715,6 @@ export class PreviewInstance implements vscode.Disposable {
     ) {
       return;
     }
-    this.invalidateRenderedOutput("source-select");
     this.scheduleRefresh("source-select", true);
   }
 
@@ -601,7 +728,6 @@ export class PreviewInstance implements vscode.Disposable {
       return;
     }
     this.themeGeneration += 1;
-    this.invalidateRenderedOutput("diagram-theme");
     this.scheduleRefresh("diagram-theme", true);
   }
 
@@ -610,7 +736,6 @@ export class PreviewInstance implements vscode.Disposable {
       return;
     }
     this.themeGeneration += 1;
-    this.invalidateRenderedOutput("appearance");
     this.scheduleRefresh("appearance", true);
   }
 
@@ -641,7 +766,6 @@ export class PreviewInstance implements vscode.Disposable {
       return;
     }
     this.session.importTheme(imported);
-    this.invalidateRenderedOutput("diagram-theme");
     this.scheduleRefresh("diagram-theme", true);
   }
 
@@ -649,7 +773,6 @@ export class PreviewInstance implements vscode.Disposable {
     if (!isPreviewDisplayMode(displayMode) || !this.session.setDisplayMode(displayMode)) {
       return;
     }
-    this.invalidateRenderedOutput("display-mode");
     this.scheduleRefresh("display-mode", true);
   }
 
@@ -657,7 +780,6 @@ export class PreviewInstance implements vscode.Disposable {
     if (!this.session.setBackground(background)) {
       return;
     }
-    this.invalidateRenderedOutput("background");
     this.scheduleRefresh("background", true);
   }
 

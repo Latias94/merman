@@ -1130,24 +1130,148 @@ fn block_node_label_mixed_source_ownership_tracks_the_terminal_mode() {
 }
 
 #[test]
-fn block_node_label_config_color_is_not_a_typed_application() {
-    let theme = block_node_label_theme(
+fn block_label_config_color_ownership_follows_the_actual_palette_consumer() {
+    let theme = block_generic_text_theme(
         ThemeStylePatch::default().with_fill(CanvasPaint::solid("#b316cd").unwrap()),
     );
-    for path in ["nodeTextColor", "primaryTextColor", "textColor"] {
-        let rendered = render_block_with_theme_and_engine(
-            "block\n A[\"Alpha\"]\n",
-            &theme,
-            MermaidEngine::new().with_site_config(
-                merman_core::presentation::SourcePresentationConfig::from_value(
-                    serde_json::json!({"themeVariables": {path: "#123456"}}),
-                ),
-            ),
-        );
-        let evidence =
-            merman_render::__private::family_evidence(rendered.into_completion().report());
-        assert_eq!(evidence.applied_count(), 0, "{path}");
-        assert_eq!(evidence.not_applicable_count(), 1, "{path}");
+    for (baseline, variables, applied_by_owner) in [
+        (
+            "default",
+            serde_json::json!({"nodeTextColor": "#123456"}),
+            [false, false],
+        ),
+        (
+            "default",
+            serde_json::json!({"primaryTextColor": "#123456"}),
+            [true, true],
+        ),
+        (
+            "default",
+            serde_json::json!({"textColor": "#123456"}),
+            [false, false],
+        ),
+        (
+            "base",
+            serde_json::json!({"nodeTextColor": "#123456"}),
+            [false, false],
+        ),
+        (
+            "base",
+            serde_json::json!({"primaryTextColor": "#123456"}),
+            [false, true],
+        ),
+        (
+            "base",
+            serde_json::json!({"textColor": "#123456"}),
+            [true, true],
+        ),
+        (
+            "dark",
+            serde_json::json!({"nodeTextColor": "#123456"}),
+            [false, false],
+        ),
+        (
+            "dark",
+            serde_json::json!({"primaryTextColor": "#123456"}),
+            [true, true],
+        ),
+        (
+            "dark",
+            serde_json::json!({"textColor": "#123456"}),
+            [false, false],
+        ),
+        (
+            "redux",
+            serde_json::json!({"nodeTextColor": "#123456"}),
+            [false, false],
+        ),
+        (
+            "redux",
+            serde_json::json!({"primaryTextColor": "#123456"}),
+            [false, true],
+        ),
+        (
+            "redux",
+            serde_json::json!({"textColor": "#123456"}),
+            [true, true],
+        ),
+        (
+            "default",
+            serde_json::json!({"nodeTextColor": ""}),
+            [true, true],
+        ),
+        (
+            "default",
+            serde_json::json!({"nodeTextColor": "", "textColor": "#123456"}),
+            [false, false],
+        ),
+    ] {
+        for html in [false, true] {
+            for source_owned in [false, true] {
+                let applied = applied_by_owner[usize::from(source_owned)];
+                let mut config = common::legacy_init_theme_compat_config().as_value().clone();
+                config["theme"] = serde_json::json!(baseline);
+                config["htmlLabels"] = serde_json::json!(html);
+                let source = if source_owned {
+                    format!(
+                        "---\nconfig: {}\n---\n{BLOCK_CLUSTER_SOURCE}",
+                        serde_json::json!({"themeVariables": variables})
+                    )
+                } else {
+                    config["themeVariables"] = variables.clone();
+                    BLOCK_CLUSTER_SOURCE.to_owned()
+                };
+                let rendered = render_block_with_theme_and_engine(
+                    &source,
+                    &theme,
+                    MermaidEngine::new().with_site_config(
+                        merman_core::presentation::SourcePresentationConfig::from_value(config),
+                    ),
+                );
+                for (key, value) in variables.as_object().unwrap() {
+                    assert_eq!(
+                        rendered
+                            .metadata()
+                            .effective_config
+                            .get_str(&format!("themeVariables.{key}")),
+                        value.as_str(),
+                        "baseline={baseline} html={html} source_owned={source_owned} key={key}"
+                    );
+                }
+                let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+                let typed_style = if html {
+                    "color:#b316cd;"
+                } else {
+                    "fill:#b316cd;"
+                };
+                for id in ["block-theme-group", "block-theme-A", "block-theme-B"] {
+                    let node = document
+                        .descendants()
+                        .find(|node| node.attribute("id") == Some(id))
+                        .unwrap();
+                    let label = node
+                        .descendants()
+                        .find(|node| node.has_tag_name(if html { "p" } else { "text" }))
+                        .unwrap();
+                    assert_eq!(
+                        label.attribute("style").filter(|style| !style.is_empty()),
+                        applied.then_some(typed_style),
+                        "baseline={baseline} html={html} source_owned={source_owned} variables={variables} id={id}"
+                    );
+                }
+                if !applied {
+                    assert!(block_stylesheet_text(rendered.svg()).contains(
+                        "#block-theme .label text,#block-theme span,#block-theme p{fill:#123456;color:#123456;}"
+                    ));
+                }
+                let evidence =
+                    merman_render::__private::family_evidence(rendered.into_completion().report());
+                assert_eq!(evidence.required_count(), 1);
+                assert_eq!(evidence.applied_count(), usize::from(applied));
+                assert_eq!(evidence.not_applicable_count(), usize::from(!applied));
+                assert_eq!(evidence.theme_residual_count(), 0);
+            }
+        }
     }
 }
 
@@ -1637,6 +1761,109 @@ fn block_explicit_default_font_size_has_a_typed_terminal_receipt() {
         assert_eq!(evidence.required_count(), usize::from(explicit));
         assert_eq!(evidence.applied_count(), usize::from(explicit));
         assert_eq!(evidence.theme_residual_count(), 0);
+    }
+}
+
+#[test]
+fn block_ignored_base_sizes_do_not_own_typed_typography() {
+    let theme = block_typography_theme("Courier New", 29.0);
+    let body = "block\nA[\"Alpha\"] --> B[\"Beta\"]\n";
+    for value in [
+        serde_json::json!(false),
+        serde_json::json!("bad"),
+        serde_json::Value::Null,
+        serde_json::json!({}),
+        serde_json::json!([]),
+        serde_json::json!(23),
+        serde_json::json!("23px"),
+    ] {
+        let expected = if value.is_number() || value.as_str() == Some("23px") {
+            23
+        } else {
+            29
+        };
+        let config = serde_json::json!({"themeVariables":{"fontSize":value}});
+        for from_source in [false, true] {
+            let (source, site) = if from_source {
+                (
+                    format!("---\nconfig: {config}\n---\n{body}"),
+                    serde_json::json!({}),
+                )
+            } else {
+                (body.to_owned(), config.clone())
+            };
+            let rendered = render_block_with_theme_and_engine(
+                &source,
+                &theme,
+                MermaidEngine::new().with_site_config(
+                    merman_core::presentation::SourcePresentationConfig::from_value(site),
+                ),
+            );
+            assert!(
+                rendered.svg().contains(&format!("font-size:{expected}px;")),
+                "source={from_source}: {value}"
+            );
+            let evidence =
+                merman_render::__private::family_evidence(rendered.into_completion().report());
+            assert_eq!(evidence.applied_count(), 1 + usize::from(expected == 29));
+            assert_eq!(evidence.not_applicable_count(), usize::from(expected != 29));
+            assert_eq!(evidence.theme_residual_count(), 0);
+        }
+    }
+}
+
+#[test]
+fn block_font_ownership_follows_accepted_strings_and_first_array_entries() {
+    let theme = block_typography_theme("Courier New", 29.0);
+    let body = "block\nA[\"Alpha\"]\n";
+    for (value, expected) in [
+        (serde_json::json!(42), "\"Courier New\""),
+        (serde_json::json!(false), "\"Courier New\""),
+        (serde_json::json!(""), "\"Courier New\""),
+        (serde_json::json!([""]), "\"Courier New\""),
+        (serde_json::json!([42, "Arial"]), "\"Courier New\""),
+        (serde_json::json!(["Georgia"]), "Georgia"),
+        (serde_json::json!("Georgia"), "Georgia"),
+    ] {
+        let config = serde_json::json!({"themeVariables":{"fontFamily":value}});
+        for from_source in [false, true] {
+            // Source initialization mirrors the root font over non-string theme variables.
+            let expected = if from_source && value.is_array() {
+                "\"Courier New\""
+            } else {
+                expected
+            };
+            let (source, site) = if from_source {
+                (
+                    format!("---\nconfig: {config}\n---\n{body}"),
+                    serde_json::json!({}),
+                )
+            } else {
+                (body.to_owned(), config.clone())
+            };
+            let rendered = render_block_with_theme_and_engine(
+                &source,
+                &theme,
+                MermaidEngine::new().with_site_config(
+                    merman_core::presentation::SourcePresentationConfig::from_value(site),
+                ),
+            );
+            assert!(
+                rendered.svg().contains(&format!("font-family:{expected};")),
+                "source={from_source}: {value}"
+            );
+            let evidence =
+                merman_render::__private::family_evidence(rendered.into_completion().report());
+            assert_eq!(
+                evidence.applied_count(),
+                1 + usize::from(expected != "Georgia")
+            );
+            assert_eq!(
+                evidence.not_applicable_count(),
+                usize::from(expected == "Georgia")
+            );
+            assert_eq!(evidence.theme_residual_count(), 0);
+        }
     }
 }
 
@@ -2630,24 +2857,31 @@ fn block_svg_keeps_blank_placeholder_label_paragraph() {
 
 #[test]
 fn block_svg_honors_configured_node_text_color() {
-    let engine = MermaidEngine::new().with_site_config(
-        merman_core::presentation::SourcePresentationConfig::from_value(serde_json::json!({
-            "themeVariables": {
-                "nodeTextColor": "#123456"
-            }
-        })),
-    );
-    let svg = render_block_svg_from_text_with_engine(
-        &engine,
-        r#"block
+    for variables in [
+        serde_json::json!({"nodeTextColor": "#123456", "textColor": "#abcdef"}),
+        serde_json::json!({"textColor": "#123456"}),
+        serde_json::json!({"nodeTextColor": "", "textColor": "#123456"}),
+        serde_json::json!({"nodeTextColor": null, "textColor": "#123456"}),
+    ] {
+        let engine = MermaidEngine::new().with_site_config(
+            merman_core::presentation::SourcePresentationConfig::from_value(
+                serde_json::json!({"themeVariables": variables}),
+            ),
+        );
+        let svg = render_block_svg_from_text_with_engine(
+            &engine,
+            r#"block
   A["Alpha"]
 "#,
-    );
+        );
 
-    assert!(
-        svg.contains(r#"#merman .label text,#merman span,#merman p{fill:#123456;color:#123456;}"#),
-        "expected nodeTextColor theme variable to drive block label color"
-    );
+        assert!(
+            svg.contains(
+                r#"#merman .label text,#merman span,#merman p{fill:#123456;color:#123456;}"#
+            ),
+            "expected nodeTextColor || textColor to drive Block label color: {variables}"
+        );
+    }
 }
 
 #[test]

@@ -32,6 +32,23 @@ pub(crate) struct BlockCssThemeBinding {
 }
 
 impl BlockCssThemeBinding {
+    pub(super) fn node_text_color_source(config: &Value) -> (&'static str, Option<&str>) {
+        if let Some(color) = config
+            .pointer("/themeVariables/nodeTextColor")
+            .and_then(Value::as_str)
+            .filter(|color| !color.is_empty())
+        {
+            ("themeVariables.nodeTextColor", Some(color))
+        } else {
+            (
+                "themeVariables.textColor",
+                config
+                    .pointer("/themeVariables/textColor")
+                    .and_then(Value::as_str),
+            )
+        }
+    }
+
     pub(crate) fn prepare_class_definitions(
         &mut self,
         definitions: &indexmap::IndexMap<String, merman_model::families::block::BlockClassDef>,
@@ -59,7 +76,10 @@ impl BlockCssThemeBinding {
                 .unwrap_or_else(|| fallback.to_owned())
         };
         let text_color = token("textColor", "#333");
-        let node_text_color = token("nodeTextColor", &text_color);
+        let node_text_color = Self::node_text_color_source(config)
+            .1
+            .unwrap_or("#333")
+            .to_owned();
         let main_bkg = token("mainBkg", "#ECECFF");
         let node_border = token("nodeBorder", "#9370DB");
         let line_color = token("lineColor", "#333333");

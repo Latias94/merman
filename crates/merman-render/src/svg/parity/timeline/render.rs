@@ -18,11 +18,7 @@ fn write_timeline_css(
         let sw = 17 - 3 * (i as i64);
 
         if theme.is_redux_theme {
-            let redux_stroke = if theme.is_color_theme {
-                theme.border_colors.get(i).map(String::as_str)
-            } else {
-                Some(theme.node_border.as_str())
-            };
+            let redux_stroke = theme.section_palette_color(i).unwrap_or(&theme.node_border);
             let _ = write!(
                 out,
                 r#"#{diagram_id} .section-{section} rect,#{diagram_id} .section-{section} path,#{diagram_id} .section-{section} circle{{"#,
@@ -30,13 +26,11 @@ fn write_timeline_css(
             if let Some(fill) = timeline_section_fill(theme, i, false) {
                 let _ = write!(out, "fill:{fill};");
             }
-            if let Some(stroke) = event_emission
+            let stroke = event_emission
                 .theme
-                .shape_stroke_for_redux()
-                .or(redux_stroke)
-            {
-                let _ = write!(out, "stroke:{stroke};");
-            }
+                .shape_stroke_for_redux(theme, i)
+                .unwrap_or(redux_stroke);
+            let _ = write!(out, "stroke:{stroke};");
             let _ = write!(
                 out,
                 r#"stroke-width:{};filter:{};}}#{diagram_id} .section-{section} text{{"#,
@@ -159,7 +153,7 @@ fn timeline_section_fill(
         &theme.main_bkg
     } else if theme.is_redux_theme {
         if theme.is_color_theme && !theme.is_dark_theme {
-            return theme.border_colors.get(slot).map(String::as_str);
+            return Some(theme.section_palette_color(slot).unwrap_or(&theme.main_bkg));
         } else {
             &theme.main_bkg
         }

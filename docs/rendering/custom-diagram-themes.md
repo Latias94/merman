@@ -118,6 +118,33 @@ pair; `exportThemePreset("editor-dark")` returns that single declared appearance
 requesting Light from the concrete dark ID fails. Exporting the complete pair does not select
 the preview's current appearance or discard the other one.
 
+## Fonts across hosts
+
+A theme's ordered `font_stack` names the preferred fonts and fallbacks. It does not load font
+files. Review both the selected measurement mode and the output viewer when adopting a design
+such as Riso: the first available face can change text width, wrapping and weight.
+
+| Host or output | How to use the theme's fonts |
+| --- | --- |
+| Web browser | Load application-owned web fonts before a one-shot render, including the weights/styles in use. `document.fonts.load()` starts an unused face loading; `document.fonts.ready` only waits for loads already started. Use a browser measurement session for the display document. `mountDiagram` with browser measurement rerenders when its document's fonts finish loading. |
+| CLI SVG | The default measurement is deterministic and does not measure the named fonts. Pass repeatable `--font-file` / `--font-dir` options for native measurement with fixed assets, or `--font-measurement native` for available system discovery. Explicit assets form a closed set unless `--font-system on` is selected. |
+| CLI PNG/JPEG/PDF | Builds with system fonts use one native context for measurement and painting by default. Explicit font assets make the source set reproducible. A missing glyph can still yield best-effort bytes with rejected target admission; inspect warnings and the theme report. |
+| Rust and C FFI | Use a native font context or a host measurement callback when accurate font geometry is required. Rust's ordinary native context allows per-request fallback; C's `engine_new_with_fonts` requires glyph coverage. Font acquisition is a constructor service, separate from theme JSON. |
+| Other bindings and Typst | Inspect the installed binding's capabilities. Native library code does not automatically expose font-file loading in every wrapper. The current Node facade and Typst plugin use deterministic measurement; mobile hosts can supply their display-stack callback through the supported constructor. |
+| Exported SVG | Text retains its family names and needs compatible fonts in the receiving viewer. Supplying native font files for layout does not embed them into SVG. Opening the SVG elsewhere or rasterizing it in a different host can select different faces. |
+
+For cross-platform recipes, provide named alternatives and a final `sans-serif`, `serif` or
+`monospace` fallback. The current native SVG dependency does not recognize standalone `system-ui`
+as a generic family; it can fall through to its serif fallback. A stack such as
+`["Inter", "Arial", "system-ui", "sans-serif"]` retains a usable native fallback without
+promising the same UI face on every platform. Quoted source font names retain their literal
+meaning; Merman does not rewrite them into generic aliases.
+
+Use representative Latin, CJK and symbol labels when the content needs them. A font's presence
+does not imply glyph coverage, and a successful theme status does not certify either one. The
+[host measurement guide](../bindings/HOST_TEXT_MEASUREMENT.md) describes callback preparation,
+native contexts and per-request fallback evidence.
+
 ## Family configuration and compiled rules
 
 Mermaid compatibility configuration remains a separate input from compiled style rules.
@@ -134,6 +161,12 @@ absent from that palette retain their compiled fallback. Individual explicit var
 source or site configuration keep their property-specific dependencies. Site theme defaults
 and a recipe's own compatibility theme supply fallback palettes and do not suppress compiled
 style rules. Typography, geometry, effects, and the host canvas retain their independent owners.
+
+ER HTML labels, Block labels and Requirement node labels use a non-empty `themeVariables.nodeTextColor`,
+falling back to `themeVariables.textColor`. Journey titles use a non-empty `journey.titleColor`,
+otherwise inheriting the rendered text color. These fallbacks preserve the selected source or
+explicit configuration's paint ownership; a site theme's default palette still yields to compiled
+paint rules.
 
 | Input | Ownership |
 | --- | --- |
@@ -162,6 +195,41 @@ XY Chart or Wardley backdrop from source, set `themeVariables.xyChart.background
 `themeVariables.wardley.backgroundColor` directly. Changing only the root `background` in source
 does not necessarily recompute an already initialized family backdrop. Root canvas paint remains
 separate from these diagram-owned backgrounds.
+
+Default XY Chart also keeps its initialized text colors when only root `primaryTextColor`
+changes. Set the corresponding `themeVariables.xyChart` role directly for predictable overrides.
+During site initialization, an explicit XY color object derives its missing fields from root
+colors; a partial source object merges into the already initialized theme. Preserve both the
+configuration location and the nested fields when reproducing an appearance.
+
+Treemap uses `themeVariables.cScaleN` for section and leaf fills and `cScalePeerN` for section
+borders, including with Default. Visible labels normally use `cScaleLabelN`, which overrides
+the `treemap.labelColor` and `valueColor` stylesheets. Transparent leaves can fall back to
+`textColor` for readability. Compiled label paint follows that selected source; unused
+stylesheet colors do not block it. Timeline's colored Redux palettes cycle through
+`borderColorArray`; an empty array restores the theme's `mainBkg`/`nodeBorder` fallback.
+
+Set `themeVariables.archGroupBorderColor` directly to change an Architecture group border.
+Changing only `primaryBorderColor` does not recalculate an initialized group color.
+
+Cynefin and Wardley also retain initialized family colors. Set the selected role directly,
+such as `themeVariables.cynefin.textColor`, `themeVariables.cynefin.arrowColor`,
+`themeVariables.wardley.axisTextColor` or `themeVariables.wardley.componentLabelColor`.
+Root colors supply missing roles; an unused fallback does not suppress compiled paint.
+Ownership follows the value the renderer actually accepts, so ignored configuration values
+do not disable a supported theme override.
+
+Fonts, sizes, Quadrant point radii and Tree View line widths follow the same rule. An ignored
+value does not own the property, and an unused fallback does not own the selected value.
+Each family's accepted units, font-array handling and numeric clamps remain unchanged. Pie
+title, percentage and legend sizes remain independent; C4 element sizes and ER relationship
+label sizes also retain their own configuration rather than inheriting every base-size change.
+
+Support is checked per property. For example, a Gantt Title or Text rule with visible consumers
+can apply its fill while retaining an `unsupported-typography` diagnostic for its font size.
+Combining those properties in one rule does not make the unsupported styling portable; strict
+completion still rejects it. Title rules without a visible diagram or section title are not
+applicable.
 
 C4 presets pair node surfaces with label colors; compiled edge, marker, boundary-label and
 text colors reach their visible terminals. Filled boundaries paint behind their descendants. Gantt presets preserve normal, active,
@@ -715,6 +783,23 @@ Arrays do not implicitly append. Existing style Clear semantics remain distinct 
 and transparent paint. Assets and requirements belong to the shared design; an appearance
 cannot override them. This is not arbitrary recursive JSON merge.
 
+Within a base `typography` section, family styles inherit each omitted property from `default`.
+An authored `null` removes that property's local override: a family property inherits the shared
+default, while a default property contributes no override to the renderer's configuration.
+It does not pin the renderer's built-in font stack or numeric defaults. Role-style typography
+Clear continues to restore the resolved family base.
+
+Rust's `TypographySpec::family_style(family)` returns an owned, resolved `TextStyle`, combining
+the shared default and the family's explicitly authored properties. Callers that require a
+reference can bind this result locally and borrow it. Unspecified properties remain unspecified
+when neither level supplies them.
+
+Recipe Mermaid compatibility normalizes `mermaid.dark_mode` and `mermaid.variables.darkMode`
+into one slot within each layer before composition. Equal declarations in one layer agree;
+conflicting declarations in the same layer are rejected. Either spelling in an appearance
+overrides the shared value. Native Mermaid source and site configuration retain their existing
+`darkMode` settings.
+
 The same file can be checked and selected without changing its declared default:
 
 ```sh
@@ -820,6 +905,13 @@ The raw-design materialization convenience returns its existing concrete/default
 does not replace full-pair exchange or document inspection. Authoring operations intentionally
 ignore render `options.theme`: supply the recipe and appearance in the action input.
 Do not submit a standalone recipe as if it were a raw design.
+
+Raw-design materialization and inspection use the same complete compiler admission as document
+actions, including semantic targets and effect graphs. Raw inputs retain payload-relative
+diagnostic/reference paths and encoded-byte limits on the raw design, without a recipe envelope.
+Rust compilation failures in editable designs use `ThemeDesignCompileError::Materialization`
+to retain the authoring diagnostic and its source path. Failures in a `complete_spec` remain
+`ThemeDesignCompileError::Compilation`; both variants retain their error source.
 
 For downloaded JSON, preserve the original text when constructing the action request:
 

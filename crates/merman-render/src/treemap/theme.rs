@@ -171,8 +171,6 @@ pub(crate) struct TreemapTypographyThemePlan {
     css: super::css_binding::TreemapCssBinding,
     inherited_font_stack: InheritedFontStackPlan,
     text_fill: Option<DirectStaticPaint>,
-    label_config_owns_text_fill: bool,
-    value_config_owns_text_fill: bool,
     root_font_size_px: f64,
     section_source_styles: Box<[TreemapSourceTextStyle]>,
     leaf_source_styles: Box<[TreemapSourceTextStyle]>,
@@ -224,12 +222,6 @@ impl TreemapTypographyThemePlan {
                 DirectStaticSelectorDomain::Default,
             )
         });
-        let theme_text_color_is_source_owned =
-            effective_config.config_paint_overrides_typed_default("themeVariables.textColor");
-        let label_config_owns_text_fill = theme_text_color_is_source_owned
-            || effective_config.config_paint_overrides_typed_default("treemap.labelColor");
-        let value_config_owns_text_fill = theme_text_color_is_source_owned
-            || effective_config.config_paint_overrides_typed_default("treemap.valueColor");
         let root_font_size_px = crate::config::config_theme_font_size_css_or_root_number_px(
             effective_config.as_value(),
             16.0,
@@ -310,19 +302,13 @@ impl TreemapTypographyThemePlan {
             css.title_color = fill.to_owned();
         }
         if let Some(fill) = text_fill.as_ref() {
-            if !label_config_owns_text_fill {
-                css.label_color = fill.css().to_owned();
-            }
-            if !value_config_owns_text_fill {
-                css.value_color = fill.css().to_owned();
-            }
+            css.label_color = fill.css().to_owned();
+            css.value_color = fill.css().to_owned();
         }
         Self {
             css,
             inherited_font_stack,
             text_fill,
-            label_config_owns_text_fill,
-            value_config_owns_text_fill,
             root_font_size_px,
             section_source_styles: section_source_styles.into_boxed_slice(),
             leaf_source_styles: leaf_source_styles.into_boxed_slice(),
@@ -359,17 +345,11 @@ impl TreemapTypographyThemePlan {
     }
 
     pub(crate) fn label_text_fill_css(&self) -> Option<&str> {
-        (!self.label_config_owns_text_fill)
-            .then_some(self.text_fill.as_ref())
-            .flatten()
-            .map(DirectStaticPaint::css)
+        self.text_fill.as_ref().map(DirectStaticPaint::css)
     }
 
     pub(crate) fn value_text_fill_css(&self) -> Option<&str> {
-        (!self.value_config_owns_text_fill)
-            .then_some(self.text_fill.as_ref())
-            .flatten()
-            .map(DirectStaticPaint::css)
+        self.text_fill.as_ref().map(DirectStaticPaint::css)
     }
 
     pub(crate) fn title_text_style(&self, title_font_size_css: &str) -> TreemapResolvedTextStyle {
@@ -678,7 +658,6 @@ pub(crate) struct TreemapTypographyThemeReceipt<'a> {
     value_text_fill_matches: bool,
     terminal_matches: bool,
     participating_count: usize,
-    config_owned_text_fill: [bool; 2],
     source_owned_count: usize,
     unverified_count: usize,
     next_node: usize,
@@ -714,10 +693,6 @@ impl<'a> TreemapTypographyThemeReceipt<'a> {
             value_text_fill_matches: plan.value_text_fill_css().is_none(),
             terminal_matches: true,
             participating_count: 0,
-            config_owned_text_fill: [
-                plan.label_config_owns_text_fill,
-                plan.value_config_owns_text_fill,
-            ],
             source_owned_count: 0,
             unverified_count: 0,
             next_node: 0,
@@ -857,9 +832,8 @@ impl<'a> TreemapTypographyThemeReceipt<'a> {
             {
                 terminals.push(node_visual::TreemapLabelTerminal {
                     ordinal: visual.map_or(0, |visual| visual.ordinal),
-                    source_owned: self.config_owned_text_fill[usize::from(value_role)]
-                        || fill_ownership == TreemapTextFillOwnership::SourceOwned
-                        || visual.is_some_and(|visual| visual.label_palette_owned),
+                    source_owned: fill_ownership == TreemapTextFillOwnership::SourceOwned
+                        || visual.is_some_and(|visual| visual.label_config_owns_fill),
                     unverified: fill_ownership == TreemapTextFillOwnership::Unverified,
                     paint: expected_paint
                         .map(|paint| (paint.rule_index(), paint.capability()))

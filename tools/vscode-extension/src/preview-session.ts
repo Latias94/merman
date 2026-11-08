@@ -50,6 +50,10 @@ export interface PreviewSourceResolution {
   selected: boolean;
 }
 
+type PreviewFileTheme =
+  | { owner: "configuration"; key: string; theme: ImportedTheme }
+  | { owner: "panel"; theme: ImportedTheme };
+
 const DEFAULT_PREVIEW_SESSION_DEFAULTS: PreviewSessionDefaults = {
   diagramTheme: "source",
   displayMode: "svg",
@@ -72,7 +76,7 @@ export class PreviewSession {
   private locked = false;
   private discovery = legacyThemeDiscovery();
   private hostAppearance: ThemeAppearance = "light";
-  private importedTheme: ImportedTheme | undefined;
+  private fileTheme: PreviewFileTheme | undefined;
   private appearance: ThemeAppearancePreference;
   private viewerBackground: PreviewViewerBackground;
   private themeRevision = 0;
@@ -105,8 +109,12 @@ export class PreviewSession {
     return this.background;
   }
 
-  get configurationResourceUri(): string | undefined {
-    return this.preferredEditorUri ?? this.currentSnapshot?.documentUri ?? this.lastPreviewEditorUri;
+  get usesConfiguredThemeFile(): boolean {
+    return this.theme === "file" && this.fileTheme?.owner !== "panel";
+  }
+
+  get configuredThemeFileKey(): string | undefined {
+    return this.fileTheme?.owner === "configuration" ? this.fileTheme.key : undefined;
   }
 
   get themeSelectionRevision(): number {
@@ -130,7 +138,7 @@ export class PreviewSession {
     this.locked = false;
     this.appearance = this.defaults.appearance ?? "follow-editor";
     this.viewerBackground = this.defaults.viewerBackground ?? "auto";
-    this.importedTheme = undefined;
+    this.fileTheme = undefined;
   }
 
   clearSource(): void {
@@ -218,8 +226,11 @@ export class PreviewSession {
     retainSource = false,
     openDocuments: readonly vscode.TextDocument[] = [],
   ): PreviewSnapshot | undefined {
-    const source =
-      this.takePreferredSource(visibleEditors) ?? this.resolveSource(activeEditor, visibleEditors);
+    const preferred = this.resolvePreferredSource(visibleEditors);
+    if (!this.locked) {
+      this.preferredEditorUri = undefined;
+    }
+    const source = preferred ?? this.resolveSource(activeEditor, visibleEditors);
     if (!source) {
       return this.locked || retainSource
         ? this.createSnapshotFromCurrentState(openDocuments, diagnosticsProvider)
@@ -246,6 +257,17 @@ export class PreviewSession {
       locked: this.locked,
       ...this.themeSnapshotSettings(),
     });
+  }
+
+  resolveConfigurationResource(
+    activeEditor: vscode.TextEditor | undefined,
+    visibleEditors: readonly vscode.TextEditor[],
+    retainSource = false,
+  ): string | undefined {
+    const source = this.resolvePreferredSource(visibleEditors) ??
+      this.resolveSource(retainSource ? undefined : activeEditor, visibleEditors);
+    return source?.editor.document.uri.toString() ??
+      (this.locked || retainSource ? this.currentSnapshot?.documentUri : undefined);
   }
 
   resolveSource(
@@ -311,27 +333,32 @@ export class PreviewSession {
     }
     this.theme = theme;
     this.themeRevision += 1;
-    this.appearance = preferenceForTheme(themeChoice(this.discovery, theme, this.importedTheme), this.appearance);
+    this.appearance = preferenceForTheme(themeChoice(this.discovery, theme, this.fileTheme?.theme), this.appearance);
     return true;
   }
 
-  configureThemes(discovery: ThemeDiscovery, host: ThemeAppearance, imported?: ImportedTheme): void {
+  configureThemes(discovery: ThemeDiscovery, host: ThemeAppearance): void {
     this.discovery = discovery;
     this.hostAppearance = host;
-    if (imported) {
-      this.importedTheme = imported;
+  }
+
+  setConfiguredThemeFile(key: string, theme: ImportedTheme): boolean {
+    if (!this.usesConfiguredThemeFile) {
+      return false;
     }
+    this.fileTheme = { owner: "configuration", key, theme };
+    return true;
   }
 
   importTheme(imported: ImportedTheme): void {
-    this.importedTheme = imported;
+    this.fileTheme = { owner: "panel", theme: imported };
     this.theme = "file";
     this.themeRevision += 1;
     this.appearance = preferenceForTheme(themeChoice(this.discovery, "file", imported), this.appearance);
   }
 
   setAppearance(preference: ThemeAppearancePreference): boolean {
-    const choice = themeChoice(this.discovery, this.theme, this.importedTheme);
+    const choice = themeChoice(this.discovery, this.theme, this.fileTheme?.theme);
     if (!choice || choice.supportedAppearances.length === 0 ||
       (preference !== "follow-editor" && !choice.supportedAppearances.includes(preference))) {
       return false;
@@ -348,9 +375,13 @@ export class PreviewSession {
     if (this.hostAppearance === host) {
       return false;
     }
-    const previous = resolveThemeSelection(this.discovery, this.theme, this.appearance, this.hostAppearance, this.importedTheme);
+    if (!themeChoice(this.discovery, this.theme, this.fileTheme?.theme)?.available) {
+      this.hostAppearance = host;
+      return false;
+    }
+    const previous = resolveThemeSelection(this.discovery, this.theme, this.appearance, this.hostAppearance, this.fileTheme?.theme);
     this.hostAppearance = host;
-    const next = resolveThemeSelection(this.discovery, this.theme, this.appearance, host, this.importedTheme);
+    const next = resolveThemeSelection(this.discovery, this.theme, this.appearance, host, this.fileTheme?.theme);
     return !sameResolvedTheme(previous, next);
   }
 
@@ -363,12 +394,12 @@ export class PreviewSession {
   }
 
   private themeSnapshotSettings() {
-    const resolvedTheme = resolveThemeSelection(this.discovery, this.theme, this.appearance, this.hostAppearance, this.importedTheme);
+    const resolvedTheme = resolveThemeSelection(this.discovery, this.theme, this.appearance, this.hostAppearance, this.fileTheme?.theme);
     const choices = [...this.discovery.choices];
-    if (this.importedTheme) {
-      choices.push(themeChoice(this.discovery, "file", this.importedTheme)!);
+    if (this.fileTheme) {
+      choices.push(themeChoice(this.discovery, "file", this.fileTheme.theme)!);
     }
-    const current = themeChoice(this.discovery, this.theme, this.importedTheme);
+    const current = themeChoice(this.discovery, this.theme, this.fileTheme?.theme);
     if (current && !choices.some((choice) => choice.id === current.id)) {
       choices.push(current);
     }
@@ -429,17 +460,15 @@ export class PreviewSession {
     return input ? { editor, inputs, input, selected: false } : undefined;
   }
 
-  private takePreferredSource(
+  private resolvePreferredSource(
     visibleEditors: readonly vscode.TextEditor[],
   ): PreviewSourceResolution | undefined {
     if (this.locked || !this.preferredEditorUri) {
       return undefined;
     }
 
-    const preferredEditorUri = this.preferredEditorUri;
-    this.preferredEditorUri = undefined;
     for (const editor of visibleEditors) {
-      if (editor.document.uri.toString() === preferredEditorUri) {
+      if (editor.document.uri.toString() === this.preferredEditorUri) {
         const source = this.resolveEditorSource(editor);
         if (source) {
           return source;

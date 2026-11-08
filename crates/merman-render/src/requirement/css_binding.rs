@@ -35,6 +35,23 @@ pub(crate) struct RequirementCssBinding {
 }
 
 impl RequirementCssBinding {
+    pub(super) fn node_text_color_source(config: &Value) -> (&'static str, Option<&str>) {
+        if let Some(color) = config
+            .pointer("/themeVariables/nodeTextColor")
+            .and_then(Value::as_str)
+            .filter(|color| !color.is_empty())
+        {
+            ("themeVariables.nodeTextColor", Some(color))
+        } else {
+            (
+                "themeVariables.textColor",
+                config
+                    .pointer("/themeVariables/textColor")
+                    .and_then(Value::as_str),
+            )
+        }
+    }
+
     pub(crate) fn palette_slot(&self, color_index: usize) -> Option<usize> {
         if self.border_colors.is_empty() {
             return None;
@@ -79,9 +96,10 @@ impl RequirementCssBinding {
             || authored_edge_background
                 .as_ref()
                 .is_some_and(|value| !value.is_empty());
-        let node_text_color = config_string(config, &["themeVariables", "nodeTextColor"])
-            .filter(|color| !color.is_empty())
-            .unwrap_or_else(|| common.text_color().to_owned());
+        let node_text_color = Self::node_text_color_source(config)
+            .1
+            .unwrap_or_else(|| common.text_color())
+            .to_owned();
         let neo = crate::config::config_diagram_look(config).is_neo();
         Self {
             common,

@@ -75,13 +75,12 @@ impl VennTypographyThemePlan {
                     .into_boxed_slice()
             })
             .unwrap_or_default();
-        // `vennSetTextColor` is the renderer's final Venn text-color role.  A caller may set
-        // `textColor` without owning that role: Default retains its constructor snapshot, while
-        // non-Default themes can derive `vennSetTextColor` and carry the ownership edge there.
-        // Check the resolved role rather than its possible source variables.
+        // Use the same selected role as CSS: Default can retain a `vennSetTextColor` snapshot,
+        // while a missing role falls back to the primary/shared text color.
         let config_owns_text_fill = theme.is_some()
-            && effective_config
-                .config_paint_overrides_typed_default("themeVariables.vennSetTextColor");
+            && VennCssBinding::set_text_color_source(effective_config.as_value()).is_some_and(
+                |(path, _)| effective_config.config_paint_overrides_typed_default(path),
+            );
         let mut css_binding = VennCssBinding::resolve(
             effective_config.as_value(),
             model,
@@ -126,9 +125,12 @@ impl VennTypographyThemePlan {
                 .collect::<Vec<_>>();
             let source_label = circles
                 .iter()
+                .zip(&config_owned)
                 .zip(layout.areas.iter().filter(|area| area.sets.len() == 1))
-                .map(|(circle, area)| {
-                    circle.source_text_owned || super::rendered_area_label(area).trim().is_empty()
+                .map(|((circle, &owned), area)| {
+                    circle.source_text_owned
+                        || (!circle.source_fill_owned && owned)
+                        || super::rendered_area_label(area).trim().is_empty()
                 })
                 .collect::<Vec<_>>();
             let visible_label_sources = source_label
@@ -363,8 +365,8 @@ impl VennTitleThemePlan {
             });
         };
         let title_present = title.is_some_and(|title| !title.trim().is_empty());
-        let config_owns_fill = effective_config
-            .config_paint_overrides_typed_default("themeVariables.vennTitleTextColor");
+        let config_owns_fill = VennCssBinding::title_color_source(effective_config.as_value())
+            .is_some_and(|(path, _)| effective_config.config_paint_overrides_typed_default(path));
         let fill = SingleTitleFillPlan::resolve(
             theme,
             title_present,

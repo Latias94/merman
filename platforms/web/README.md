@@ -322,6 +322,9 @@ must not be interpreted as portable. The metadata is descriptive, not an indepen
 `materialized_theme` records the actual materialized Mermaid palette or null. Optional
 `diagnostics` can include rule or property details; an absent or empty list does not establish portability.
 Use `renderSvgResultWithTextMeasurer()` for the corresponding host-measured workflow.
+`font_source: "none"` describes SVG font resources, not whether a host measurer was called.
+The [measurement guide](../../docs/bindings/HOST_TEXT_MEASUREMENT.md) explains per-request fallback
+and the current metadata boundary.
 
 Set `environment: { theme_portability: "require-portable" }` to require the renderer's
 native portability admission. Failure throws the normal structured render error; the runtime does

@@ -798,7 +798,7 @@ fn treemap_receipts_exclude_hidden_values_and_empty_truncated_sections() {
         } else {
             (
                 "treemap\n\"Leaf\": 12\n",
-                serde_json::json!({"treemap": {"labelColor": "#abcdef"}}),
+                serde_json::json!({"themeVariables": {"textColor": "#abcdef"}}),
             )
         };
         let engine = MermaidEngine::new().with_site_config(
@@ -842,8 +842,17 @@ fn treemap_receipts_exclude_hidden_values_and_empty_truncated_sections() {
         } else {
             let label = text_tag_by_text(rendered.svg(), "Leaf");
             assert!(!label.contains("display: none"));
-            let value = text_tag_by_text(rendered.svg(), "12");
-            assert!(value.contains("display: none"));
+            let value = document
+                .descendants()
+                .find(|node| {
+                    node.attribute("class") == Some("treemapValue") && node.text() == Some("12")
+                })
+                .unwrap();
+            assert!(
+                value
+                    .attribute("style")
+                    .is_some_and(|style| style.contains("display: none"))
+            );
         }
         let evidence =
             merman_render::__private::family_evidence(rendered.into_completion().report());
@@ -853,40 +862,37 @@ fn treemap_receipts_exclude_hidden_values_and_empty_truncated_sections() {
 }
 
 #[test]
-fn treemap_text_fill_respects_independent_label_and_value_owners() {
+fn treemap_text_fill_is_not_suppressed_by_unused_stylesheet_colors() {
     let theme =
         treemap_text_fill_theme(CanvasPaint::solid("#123456").expect("valid Treemap text color"));
     let cases = [
         (
-            "label owner",
+            "label stylesheet",
             serde_json::json!({
                 "treemap": { "labelColor": "#fedcba" }
             }),
-            "#fedcba",
-            "#123456",
-            1,
         ),
         (
-            "value owner",
+            "value stylesheet",
             serde_json::json!({
                 "treemap": { "valueColor": "#abcdef" }
             }),
-            "#123456",
-            "#abcdef",
-            1,
         ),
         (
-            "both owners",
+            "both stylesheets",
             serde_json::json!({
                 "treemap": { "labelColor": "#fedcba", "valueColor": "#abcdef" }
             }),
-            "#fedcba",
-            "#abcdef",
-            0,
+        ),
+        (
+            "unused root text color",
+            serde_json::json!({
+                "themeVariables": { "textColor": "#fedcba" }
+            }),
         ),
     ];
 
-    for (name, site_config, expected_label, expected_value, applied_count) in cases {
+    for (name, site_config) in cases {
         let typed_cssom = "rgb(18, 52, 86)";
         let rendered = render_treemap_with_theme(
             "treemap\n\"Section\"\n  \"Leaf\": 12\n",
@@ -903,11 +909,11 @@ fn treemap_text_fill_respects_independent_label_and_value_owners() {
             .and_then(|node| node.text())
             .expect("Treemap stylesheet");
         assert!(
-            stylesheet.contains(&format!(".treemapLabel{{fill:{expected_label};")),
+            stylesheet.contains(".treemapLabel{fill:#123456;"),
             "{name}: {stylesheet}"
         );
         assert!(
-            stylesheet.contains(&format!(".treemapValue{{fill:{expected_value};")),
+            stylesheet.contains(".treemapValue{fill:#123456;"),
             "{name}: {stylesheet}"
         );
         let leaf_label = document
@@ -928,26 +934,14 @@ fn treemap_text_fill_respects_independent_label_and_value_owners() {
             })
             .and_then(|node| node.attribute("style"))
             .expect("Treemap leaf value terminal");
-        if name == "label owner" {
-            assert!(leaf_value.contains(typed_cssom), "{name}: {leaf_value}");
-            assert!(!leaf_label.contains(typed_cssom), "{name}: {leaf_label}");
-        } else if name == "value owner" {
-            assert!(leaf_label.contains(typed_cssom), "{name}: {leaf_label}");
-            assert!(!leaf_value.contains(typed_cssom), "{name}: {leaf_value}");
-        } else {
-            assert!(!leaf_label.contains(typed_cssom), "{name}: {leaf_label}");
-            assert!(!leaf_value.contains(typed_cssom), "{name}: {leaf_value}");
-        }
+        assert!(leaf_label.contains(typed_cssom), "{name}: {leaf_label}");
+        assert!(leaf_value.contains(typed_cssom), "{name}: {leaf_value}");
 
         let evidence =
             merman_render::__private::family_evidence(rendered.into_completion().report());
         assert_eq!(evidence.required_count(), 1, "{name}");
-        assert_eq!(evidence.applied_count(), applied_count, "{name}");
-        assert_eq!(
-            evidence.not_applicable_count(),
-            usize::from(applied_count == 0),
-            "{name}"
-        );
+        assert_eq!(evidence.applied_count(), 1, "{name}");
+        assert_eq!(evidence.not_applicable_count(), 0, "{name}");
         assert_eq!(evidence.theme_residual_count(), 0, "{name}");
     }
 }
@@ -1037,7 +1031,7 @@ fn treemap_text_palette_respects_visible_roles_and_config_owners() {
         ),
         (
             serde_json::json!({"treemap": {"labelColor": "#123456", "showValues": false}}),
-            true,
+            false,
         ),
         (
             serde_json::json!({"treemap": {"labelColor": "#123456", "showValues": true}}),
@@ -1077,6 +1071,23 @@ fn treemap_text_palette_respects_visible_roles_and_config_owners() {
             "{config}"
         );
     }
+
+    let config = serde_json::json!({
+        "themeVariables": {"textColor": "#123456"},
+        "treemap": {"labelColor": "#123456", "valueColor": "#123456"}
+    });
+    let rendered = try_render_treemap_with_theme_requirement(
+        "treemap\n\"Section\"\n  \"Leaf\": 12\n",
+        &theme,
+        MermaidEngine::new().with_site_config(
+            merman_core::presentation::SourcePresentationConfig::from_value(config),
+        ),
+        ThemePortabilityRequirement::BestEffort,
+    )
+    .unwrap();
+    let evidence = merman_render::__private::family_evidence(rendered.into_completion().report());
+    assert_eq!(evidence.not_applicable_count(), 0);
+    assert_eq!(evidence.theme_residual_count(), 1);
 }
 
 #[test]
@@ -2134,6 +2145,164 @@ fn treemap_node_visual_theme(paint: CanvasPaint) -> DiagramTheme {
             ),
         )
         .unwrap()
+}
+
+#[test]
+fn treemap_default_scale_colors_keep_property_local_ownership_from_site_and_source() {
+    let config = serde_json::json!({
+        "themeVariables": {"cScale0": "#125634", "cScalePeer0": "#446688"}
+    });
+    let diagram = "treemap\n\"Section A\"\n  \"Leaf A\": 42\n\"Section B\"\n  \"Leaf B\": 24\n";
+    let source = format!("---\nconfig: {config}\n---\n{diagram}");
+    let baseline = render_treemap_svg_from_source(&source);
+    let baseline_document = roxmltree::Document::parse(&baseline).unwrap();
+    let section = baseline_document
+        .descendants()
+        .find(|node| node.attribute("class") == Some("treemapSection section1"))
+        .unwrap();
+    assert_eq!(section.attribute("fill"), Some("#125634"));
+    assert_eq!(section.attribute("stroke"), Some("#446688"));
+
+    let theme = DiagramThemeCompiler::new()
+        .compile(
+            DiagramThemeSpec::new().with_styles(
+                ThemeRuleSet::default().with_rule(ThemeRule::new(
+                    ThemeTarget::Node,
+                    ThemeStylePatch::default()
+                        .with_fill(CanvasPaint::solid("#c2188b").unwrap())
+                        .with_stroke(CanvasPaint::solid("#f7a13a").unwrap()),
+                )),
+            ),
+        )
+        .unwrap();
+    for source_owned in [false, true] {
+        let engine = if source_owned {
+            MermaidEngine::new()
+        } else {
+            MermaidEngine::new().with_site_config(
+                merman_core::presentation::SourcePresentationConfig::from_value(config.clone()),
+            )
+        };
+        let rendered =
+            render_treemap_with_theme(if source_owned { &source } else { diagram }, &theme, engine);
+        let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+        let bodies = document
+            .descendants()
+            .filter(|node| {
+                node.has_tag_name("rect")
+                    && node.attribute("class").is_some_and(|class| {
+                        class == "treemapLeaf" || class.starts_with("treemapSection section")
+                    })
+                    && !node
+                        .attribute("style")
+                        .unwrap_or_default()
+                        .contains("display: none")
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(bodies.len(), 4);
+        for (body, (fill, stroke)) in bodies.into_iter().zip([
+            ("#125634", "#446688"),
+            ("#c2188b", "#f7a13a"),
+            ("#125634", "#125634"),
+            ("#c2188b", "#f7a13a"),
+        ]) {
+            assert_eq!(
+                body.attribute("fill"),
+                Some(fill),
+                "source_owned={source_owned}"
+            );
+            assert_eq!(
+                body.attribute("stroke"),
+                Some(stroke),
+                "source_owned={source_owned}"
+            );
+        }
+        let evidence =
+            merman_render::__private::family_evidence(rendered.into_completion().report());
+        assert_eq!(evidence.applied_count(), 1);
+        assert_eq!(evidence.theme_residual_count(), 0);
+    }
+}
+
+#[test]
+fn treemap_source_default_palette_preserves_its_initialized_body_paints() {
+    let source =
+        "---\nconfig: {\"theme\":\"default\"}\n---\ntreemap\n\"Section\"\n  \"Leaf\": 42\n";
+    let baseline = render_treemap_svg_from_source(source);
+    let theme = DiagramThemeCompiler::new()
+        .compile(
+            DiagramThemeSpec::new().with_styles(ThemeRuleSet::default().with_rule(ThemeRule::new(
+                ThemeTarget::Node,
+                ThemeStylePatch::default().with_fill(CanvasPaint::solid("#c2188b").unwrap()),
+            ))),
+        )
+        .unwrap();
+    let rendered = render_treemap_with_theme(source, &theme, MermaidEngine::new());
+    assert_eq!(rendered.svg(), baseline);
+    let evidence = merman_render::__private::family_evidence(rendered.into_completion().report());
+    assert_eq!(evidence.applied_count(), 0);
+    assert_eq!(evidence.not_applicable_count(), 1);
+    assert_eq!(evidence.theme_residual_count(), 0);
+}
+
+#[test]
+fn treemap_node_label_ownership_follows_the_selected_readability_fallback() {
+    let theme = DiagramThemeCompiler::new()
+        .compile(
+            DiagramThemeSpec::new().with_styles(ThemeRuleSet::default().with_rule(ThemeRule::new(
+                ThemeTarget::NodeLabel,
+                ThemeStylePatch::default().with_fill(CanvasPaint::solid("#c2188b").unwrap()),
+            ))),
+        )
+        .unwrap();
+    for (diagram, variables, expected, applied) in [
+        (
+            "treemap\n\"Section\"\n  \"Leaf\": 42\n",
+            serde_json::json!({"textColor": "#125634"}),
+            "rgb(194, 24, 139)",
+            1,
+        ),
+        (
+            "treemap\n\"Leaf\": 42\n",
+            serde_json::json!({"textColor": "#125634"}),
+            "rgb(18, 86, 52)",
+            0,
+        ),
+        (
+            "treemap\n\"Leaf\": 42\n",
+            serde_json::json!({"cScaleLabel0": "white"}),
+            "rgb(194, 24, 139)",
+            1,
+        ),
+    ] {
+        let config = serde_json::json!({"themeVariables": variables});
+        let source = format!("---\nconfig: {config}\n---\n{diagram}");
+        let rendered = render_treemap_with_theme(&source, &theme, MermaidEngine::new());
+        let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+        for (class, text) in [("treemapLabel", "Leaf"), ("treemapValue", "42")] {
+            let terminal = document
+                .descendants()
+                .find(|node| node.attribute("class") == Some(class) && node.text() == Some(text))
+                .unwrap();
+            assert!(
+                terminal
+                    .attribute("style")
+                    .is_some_and(|style| style.contains(expected)),
+                "{config}: {terminal:?}"
+            );
+            assert!(
+                !terminal
+                    .attribute("style")
+                    .unwrap_or_default()
+                    .contains("display: none")
+            );
+        }
+        let evidence =
+            merman_render::__private::family_evidence(rendered.into_completion().report());
+        assert_eq!(evidence.applied_count(), applied, "{config}");
+        assert_eq!(evidence.not_applicable_count(), 1 - applied, "{config}");
+        assert_eq!(evidence.theme_residual_count(), 0, "{config}");
+    }
 }
 
 #[test]

@@ -525,5 +525,64 @@ fn source_and_host_fonts_are_xml_encoded_once_at_the_stylesheet_boundary() {
     }
 }
 
+#[test]
+fn partial_family_typography_renders_like_the_explicitly_inherited_style() {
+    use merman_render::diagram_theme::{DiagramThemeCompiler, ThemeRecipeV1};
+
+    for (family_id, source) in [
+        (
+            "flowchart",
+            "flowchart LR\nAlpha[Resource] --> Beta[Document]\n",
+        ),
+        ("class", "classDiagram\nResource --> Document : contains\n"),
+    ] {
+        let render = |family_style: serde_json::Value| {
+            let recipe: ThemeRecipeV1 = serde_json::from_value(json!({
+                "schema_version": 1, "kind": "design", "design": {
+                    "typography": {
+                        "default": {"font_size_px": 25},
+                        "families": {family_id: family_style}
+                    }
+                }
+            }))
+            .unwrap();
+            let theme = DiagramThemeCompiler::new().compile_recipe(recipe).unwrap();
+            let parsed = common::install_parse_compatibility(
+                &theme,
+                MermaidEngine::new().with_site_config(
+                    merman_core::presentation::SourcePresentationConfig::from_value(
+                        json!({"htmlLabels": false}),
+                    ),
+                ),
+            )
+            .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
+            .unwrap()
+            .unwrap()
+            .into_presentation();
+            let session = RenderEnvironment::deterministic()
+                .begin_session_with_theme(&theme)
+                .unwrap();
+            family::prepare(&parsed, &LayoutOptions::headless_svg_defaults(), session)
+                .unwrap()
+                .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+                .unwrap()
+                .svg()
+                .to_owned()
+        };
+        let partial = render(json!({"font_stack": ["monospace"]}));
+        let explicit = render(json!({
+            "font_stack": ["monospace"],
+            "font_size_px": 25
+        }));
+        assert_eq!(partial, explicit, "{family_id}");
+        assert!(partial.contains("font-size:25px"), "{family_id}: {partial}");
+        assert!(
+            partial.contains("font-family:monospace"),
+            "{family_id}: {partial}"
+        );
+        roxmltree::Document::parse(&partial).unwrap();
+    }
+}
+
 #[allow(dead_code)]
 mod common;
