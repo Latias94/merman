@@ -78,3 +78,33 @@ fn flowchart_asset_frame_ignores_numeric_zero_but_accepts_string_zero() {
     assert_eq!(frame_path("w: 0, h: 0"), retained);
     assert_ne!(frame_path("w: \"0\", h: \"0\""), retained);
 }
+
+#[test]
+fn flowchart_visual_metadata_updates_preserve_restored_visible_labels() {
+    for html_labels in [false, true] {
+        for visual in [
+            r#"icon: "fa:home""#,
+            r#"img: "https://example.com/image.png""#,
+        ] {
+            let source = format!(
+                "---\nconfig:\n  layout: dagre\n  look: classic\n  htmlLabels: {html_labels}\n---\nflowchart LR\nA@{{ {visual} }}\nA[\"A\"]\nA@{{ w: 96 }}\n"
+            );
+            let svg = render_flowchart(&source);
+            let document = roxmltree::Document::parse(&svg).unwrap();
+            let node = document
+                .descendants()
+                .find(|node| {
+                    node.attribute("data-id") == Some("A")
+                        && node.attribute("data-et") == Some("node")
+                })
+                .unwrap();
+            assert!(
+                node.descendants()
+                    .filter(|node| node.is_text())
+                    .filter_map(|node| node.text())
+                    .any(|text| text.trim() == "A"),
+                "{source}\n{svg}"
+            );
+        }
+    }
+}

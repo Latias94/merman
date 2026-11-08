@@ -1,6 +1,5 @@
 use std::collections::VecDeque;
 
-use super::MERMAID_DOM_ID_PREFIX;
 use crate::diagrams::{
     jison_unicode::is_mermaid_unicode_text,
     scan::{
@@ -669,9 +668,6 @@ impl<'input> Lexer<'input> {
             self.pos = end;
         } else {
             self.pos = after_name;
-        }
-        if s.chars().next().is_some_and(|c| c.is_ascii_digit()) {
-            s = format!("{MERMAID_DOM_ID_PREFIX}{s}");
         }
         if self.mode == Mode::LineNeedId {
             self.mode = Mode::LineRest;

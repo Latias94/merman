@@ -25,6 +25,10 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
 
 ### Fixed
 
+- Flowchart metadata updates preserve existing labels and visual properties when an authored value is empty, false or numeric zero. Unrelated metadata no longer clears an explicitly restored icon/image label, and hiding a default visual label retains its authored text kind.
+- Class preserves numeric-leading semantic names separately from literal `classId-*` names, follows each interaction method's target routing, and retains quoted note whitespace.
+- State composite IDs retain single-token punctuation such as `-` and `:`. Ordinary aliases use the first colon description segment while composite aliases keep their literal IDs.
+- Sequence preserves actor names such as `left office` and `right office`, and applies Mermaid's numeric-token precedence to message endpoints while retaining numeric participant declarations.
 - Quoted Langium strings decode Mermaid's control-character escapes consistently across diagram families while retaining authored editor ranges. Treemap's separate literal string grammar remains unchanged.
 - Source configuration follows Mermaid's string filtering for markup and inline data-URL syntax in semantic options as well as presentation fields; trusted host configuration retains its separate admission boundary.
 - C4 trims quoted argument values while preserving source ranges, accepts physical newlines inside quoted tokens, and retains explicit label and description line breaks.

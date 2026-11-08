@@ -567,6 +567,29 @@ fn parse_sequence_for_render(engine: &MermaidEngine, text: &str) -> Presentation
         .into_presentation()
 }
 
+#[test]
+fn sequence_relative_note_keyword_prefixes_render_complete_participants() {
+    for name in ["left office", "right office"] {
+        let source = format!(
+            "sequenceDiagram\nA->>+{name}: start\n{name}-->>-A: done\nnote left of A: actual note\n"
+        );
+        let observation =
+            render_sequence_with_environment(&source, &RenderEnvironment::deterministic());
+        let document = roxmltree::Document::parse(&observation.svg).unwrap();
+        for text in [name, "start", "done", "actual note"] {
+            assert!(
+                document
+                    .descendants()
+                    .filter(|node| node.is_text())
+                    .filter_map(|node| node.text())
+                    .any(|value| value == text),
+                "{text}: {}",
+                observation.svg
+            );
+        }
+    }
+}
+
 fn sequence_number_label_theme(fill: CanvasPaint) -> DiagramTheme {
     DiagramThemeCompiler::new()
         .compile(

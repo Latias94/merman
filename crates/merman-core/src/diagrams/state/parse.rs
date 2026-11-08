@@ -407,6 +407,8 @@ pub(super) fn assign_divider_ids(
 #[cfg(feature = "editor-facts")]
 enum StateTokenContext {
     Default,
+    StateAliasAs,
+    StateAliasId,
     ClickTarget,
     ClickAfterTarget,
     ClickAfterHref,
@@ -420,6 +422,7 @@ struct StatePendingEntity {
     selection: SourceSpan,
     detail: &'static str,
     kind: EditorSemanticKind,
+    is_alias: bool,
 }
 
 #[cfg(feature = "editor-facts")]
@@ -503,7 +506,20 @@ impl StateTokenFactCollector<'_> {
     ) -> OperationControlResult<()> {
         match token {
             Tok::Newline => self.finish_statement(line_content_end(self.code, start), facts),
-            Tok::StructStart | Tok::StructStop => self.reset_statement(facts),
+            Tok::StructStart => {
+                if let Some(entity) = self.pending_entity.as_mut()
+                    && entity.is_alias
+                {
+                    entity.is_alias = false;
+                    push_state_expected_syntax(
+                        facts,
+                        EditorExpectedSyntaxKind::NodeIdentifier,
+                        entity.selection,
+                    );
+                }
+                self.reset_statement(facts);
+            }
+            Tok::StructStop => self.reset_statement(facts),
             Tok::Arrow => {
                 self.flush_pending_entity_for_relation(facts);
                 self.relation_label_pending = true;
@@ -599,6 +615,10 @@ impl StateTokenFactCollector<'_> {
                     "state display label",
                     EditorSemanticKind::String,
                 );
+                self.context = StateTokenContext::StateAliasAs;
+            }
+            Tok::As if self.context == StateTokenContext::StateAliasAs => {
+                self.context = StateTokenContext::StateAliasId;
             }
             Tok::Descr(text) => {
                 self.flush_pending_entity(facts);
@@ -873,19 +893,55 @@ impl StateTokenFactCollector<'_> {
         facts: &mut EditorSemanticFacts,
     ) {
         self.flush_pending_entity(facts);
-        let Some(entity) = state_pending_entity(id, start, end, detail) else {
+        let is_alias = self.context == StateTokenContext::StateAliasId;
+        if is_alias {
+            self.context = StateTokenContext::Default;
+        }
+        let Some(mut entity) = state_pending_entity(id, start, end, detail) else {
             return;
         };
-        push_state_expected_syntax(
-            facts,
-            EditorExpectedSyntaxKind::NodeIdentifier,
-            entity.selection,
-        );
+        entity.is_alias = is_alias;
+        if !is_alias {
+            push_state_expected_syntax(
+                facts,
+                EditorExpectedSyntaxKind::NodeIdentifier,
+                entity.selection,
+            );
+        }
         self.pending_entity = Some(entity);
     }
 
+    fn take_pending_entity(
+        &mut self,
+        facts: &mut EditorSemanticFacts,
+    ) -> Option<StatePendingEntity> {
+        let mut entity = self.pending_entity.take()?;
+        if entity.is_alias {
+            if let Some(separator) = entity.name.find(':') {
+                entity.name.truncate(separator);
+            }
+            let trimmed = entity.name.trim();
+            let leading = entity.name.len() - entity.name.trim_start().len();
+            entity.selection.start += leading;
+            entity.selection.end = entity
+                .selection
+                .end
+                .min(entity.selection.start + trimmed.len());
+            entity.name = trimmed.to_string();
+            push_state_expected_syntax(
+                facts,
+                EditorExpectedSyntaxKind::NodeIdentifier,
+                entity.selection,
+            );
+            if !is_editor_visible_state_name(&entity.name) {
+                return None;
+            }
+        }
+        Some(entity)
+    }
+
     fn flush_pending_entity(&mut self, facts: &mut EditorSemanticFacts) {
-        if let Some(entity) = self.pending_entity.take() {
+        if let Some(entity) = self.take_pending_entity(facts) {
             self.declared_entities.insert(entity.name.clone());
             facts.push_symbol(EditorSemanticSymbol::new(
                 entity.name,
@@ -898,7 +954,7 @@ impl StateTokenFactCollector<'_> {
     }
 
     fn flush_pending_entity_for_relation(&mut self, facts: &mut EditorSemanticFacts) {
-        if let Some(entity) = self.pending_entity.take() {
+        if let Some(entity) = self.take_pending_entity(facts) {
             self.push_state_relation_occurrence_with_selection(
                 entity.name,
                 entity.selection,
@@ -1025,6 +1081,7 @@ fn state_pending_entity(
         selection,
         detail,
         kind: EditorSemanticKind::Class,
+        is_alias: false,
     })
 }
 

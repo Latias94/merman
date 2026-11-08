@@ -775,7 +775,7 @@ impl<'input> Lexer<'input> {
         }
 
         // Otherwise treat it as a composite state ID: read only the identifier token.
-        let Some(id) = self.read_plain_id() else {
+        let Some(id) = self.read_composite_id() else {
             self.pop_mode();
             return Some(Err(LexError::new("Expected a state id")));
         };
@@ -875,6 +875,22 @@ impl<'input> Lexer<'input> {
         }
         let body = self.input[body_start..self.pos].trim().to_string();
         Some((start, Tok::Descr(body), self.pos))
+    }
+
+    fn read_composite_id(&mut self) -> Option<String> {
+        let start = self.pos;
+        let mut end = start;
+        while let Some(ch) = self.input[end..].chars().next() {
+            if is_ecmascript_whitespace(ch) || ch == '{' {
+                break;
+            }
+            end += ch.len_utf8();
+        }
+        if end == start {
+            return None;
+        }
+        self.pos = end;
+        Some(self.input[start..end].to_string())
     }
 
     fn read_plain_id(&mut self) -> Option<String> {
@@ -1124,6 +1140,53 @@ impl Iterator for Lexer<'_> {
 #[cfg(test)]
 mod tests {
     use super::{Lexer, Tok};
+
+    #[test]
+    fn composite_ids_preserve_punctuation_and_utf8_token_spans() {
+        for id in ["A-B", "A:B", "外部-状態:組"] {
+            for newline in ["\n", "\r\n"] {
+                let source = format!("stateDiagram-v2{newline}state {id} {{{newline}}}{newline}");
+                let tokens = Lexer::new(&source)
+                    .collect::<Result<Vec<_>, _>>()
+                    .expect("composite tokens");
+                let composites: Vec<_> = tokens
+                    .iter()
+                    .filter_map(|(start, token, end)| match token {
+                        Tok::CompositState(value) => Some((*start, value.as_str(), *end)),
+                        _ => None,
+                    })
+                    .collect();
+                let start = source.find(id).unwrap();
+                assert_eq!(composites, [(start, id, start + id.len())], "{source:?}");
+            }
+        }
+    }
+
+    #[test]
+    fn ordinary_ids_keep_transition_and_description_boundaries() {
+        let tokens = Lexer::new("stateDiagram-v2\nA-->B:x:y")
+            .map(|event| event.expect("ordinary transition token").1)
+            .collect::<Vec<_>>();
+        assert!(matches!(
+            tokens.as_slice(),
+            [
+                Tok::Sd,
+                Tok::Id(source),
+                Tok::Arrow,
+                Tok::Id(target),
+                Tok::Descr(description),
+                Tok::Newline,
+            ] if source == "A" && target == "B" && description == "x:y"
+        ));
+
+        let events: Vec<_> = Lexer::new("stateDiagram-v2\nA-B --> C\n").collect();
+        assert!(events.iter().any(Result::is_err));
+        assert!(
+            !events
+                .iter()
+                .any(|event| { matches!(event, Ok((_, Tok::Id(id), _)) if id == "A-B") })
+        );
+    }
 
     #[test]
     fn missing_state_id_leaves_the_error_state_before_recovery() {

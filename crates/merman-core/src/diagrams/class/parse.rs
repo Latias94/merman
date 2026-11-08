@@ -30,8 +30,6 @@ use std::cell::Cell;
 #[cfg(feature = "editor-facts")]
 use std::collections::HashSet;
 
-#[cfg(feature = "editor-facts")]
-use super::MERMAID_DOM_ID_PREFIX;
 use super::Tok;
 use super::ast::{ActionArena, Actions};
 use super::class_grammar;
@@ -1376,16 +1374,7 @@ fn selection_span_for_class_name(code: &str, name: &str, span: SourceSpan) -> So
     } else {
         (source, span.start)
     };
-    let authored_name = if source_name
-        .as_bytes()
-        .first()
-        .is_some_and(u8::is_ascii_digit)
-    {
-        name.strip_prefix(MERMAID_DOM_ID_PREFIX).unwrap_or(name)
-    } else {
-        name
-    };
-    SourceSpan::new(start, start + authored_name.len().min(source_name.len()))
+    SourceSpan::new(start, start + name.len().min(source_name.len()))
 }
 
 #[cfg(feature = "editor-facts")]
@@ -1550,6 +1539,41 @@ mod semantic_tests {
             config: MermaidConfig::empty_object(),
             semantic_config: MermaidConfig::empty_object(),
             title: None,
+        }
+    }
+
+    #[test]
+    fn canonical_class_preserves_note_bytes_at_the_family_parse_boundary() {
+        for payload in [
+            " padded ",
+            " \t ",
+            "\tTabbed\t",
+            "\ninner\n",
+            "\r\n 名𠀀\r\n",
+            "",
+        ] {
+            let source = format!(
+                "classDiagram\nnote \"{payload}\"\nnamespace Outer {{\nclass 1\nnote for 1 \"{payload}\"\n}}\n"
+            );
+            let model = parse_class_semantic_model_controlled(
+                &source,
+                &metadata(),
+                #[cfg(feature = "editor-facts")]
+                EditorFactsDemand::Omit,
+                &OperationControl::new(),
+            )
+            .unwrap()
+            .model
+            .unwrap();
+            assert_eq!(model.notes.len(), 2);
+            for note in &model.notes {
+                assert_eq!(note.text.as_bytes(), payload.as_bytes(), "{payload:?}");
+            }
+            assert_eq!(model.notes[0].class_id, None);
+            assert_eq!(model.notes[0].parent, None);
+            assert_eq!(model.notes[1].class_id.as_deref(), Some("1"));
+            assert_eq!(model.notes[1].parent.as_deref(), Some("Outer"));
+            assert_eq!(model.namespaces["Outer"].note_ids, ["note1"]);
         }
     }
 

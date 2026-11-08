@@ -1,8 +1,14 @@
 mod support;
 
 use merman_analysis::{FenceTextIndex, FenceTextIndexSource};
+#[cfg(feature = "diagram-class")]
+use merman_core::{EditorSemanticKind, SemanticParser};
 use merman_core::{EditorSemanticRole, EditorSemanticSymbol};
 use merman_editor_core::DocumentKind;
+#[cfg(feature = "diagram-class")]
+use merman_editor_core::{Position, Range, goto_definition, prepare_rename, references, rename};
+#[cfg(feature = "diagram-class")]
+use merman_model::semantic::SemanticDiagramModel;
 use support::SnapshotHarness;
 
 fn outline_items(index: &FenceTextIndex) -> impl Iterator<Item = &EditorSemanticSymbol> {
@@ -10,6 +16,154 @@ fn outline_items(index: &FenceTextIndex) -> impl Iterator<Item = &EditorSemantic
         .semantic_items()
         .iter()
         .filter(|item| item.role.contributes_outline())
+}
+
+#[test]
+#[cfg(feature = "diagram-class")]
+fn class_numeric_collisions_keep_parser_identity_and_rename_groups_distinct() {
+    let source = concat!(
+        "classDiagram\r\n",
+        "namespace Raw {\r\n",
+        "class `1`~T~\r\n",
+        "}\r\n",
+        "namespace Prefixed {\r\n",
+        "class `classId-1`~U~\r\n",
+        "}\r\n",
+        "`1`~Other~ --> `classId-1`~Other~\r\n",
+        "`1`: +rawField\r\n",
+        "`classId-1`: +prefixedField\r\n",
+        "callback `1` \"open\"\r\n",
+        "callback `classId-1` \"open\"\r\n",
+    );
+    let snapshot = SnapshotHarness::new()
+        .analyze(
+            "file:///tmp/class-numeric-collisions.mmd",
+            1,
+            source,
+            DocumentKind::Diagram,
+        )
+        .expect("numeric Class collisions remain valid editor input");
+    let index = snapshot.fences()[0].text_index();
+    assert_eq!(index.source(), FenceTextIndexSource::ParserComplete);
+    for (id, token) in [("1", "`1`"), ("classId-1", "`classId-1`")] {
+        assert!(index.node_ids().any(|candidate| candidate == id));
+        let expected = source
+            .match_indices(token)
+            .map(|(start, _)| {
+                let start = snapshot.source_map().utf16_position(start + 1).unwrap();
+                Range::new(
+                    Position::new(start.line, start.character),
+                    Position::new(start.line, start.character + id.len()),
+                )
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(expected.len(), 4);
+        let symbols = index
+            .semantic_items()
+            .iter()
+            .filter(|item| item.kind == EditorSemanticKind::Class && item.name == id)
+            .collect::<Vec<_>>();
+        assert_eq!(symbols.len(), expected.len());
+        assert_eq!(symbols[0].role, EditorSemanticRole::Entity);
+        for symbol in symbols {
+            assert_eq!(&source[symbol.selection.start..symbol.selection.end], id);
+        }
+        for range in &expected {
+            assert_eq!(
+                goto_definition(&snapshot, range.start).unwrap().range,
+                expected[0]
+            );
+            let locations = references(&snapshot, range.start, true).unwrap();
+            assert_eq!(
+                locations
+                    .iter()
+                    .map(|location| location.range)
+                    .collect::<Vec<_>>(),
+                expected
+            );
+            let prepared = prepare_rename(&snapshot, range.start).unwrap();
+            assert_eq!(prepared.placeholder, id);
+            assert_eq!(prepared.range, *range);
+            let edit = rename(&snapshot, range.start, "Renamed").unwrap().unwrap();
+            let changes = &edit.changes[snapshot.uri()];
+            assert_eq!(
+                changes
+                    .iter()
+                    .map(|change| change.range)
+                    .collect::<Vec<_>>(),
+                expected
+            );
+            let mut changed = source.to_string();
+            for change in changes.iter().rev() {
+                let start = snapshot
+                    .byte_offset_for_position(change.range.start)
+                    .unwrap();
+                let end = snapshot.byte_offset_for_position(change.range.end).unwrap();
+                changed.replace_range(start..end, &change.new_text);
+            }
+            assert_eq!(changed, source.replace(token, "`Renamed`"));
+        }
+    }
+}
+
+#[test]
+#[cfg(feature = "diagram-class")]
+fn class_note_payloads_match_canonical_text_and_crlf_unicode_source_selections() {
+    let payload = " \t名𠀀\n尾 \t";
+    let source = format!(
+        "classDiagram\r\nnamespace Outer {{\r\nnamespace Inner {{\r\nclass Owner\r\nnote for Owner \"{payload}\"\r\nnote \"{payload}\"\r\n}}\r\n}}\r\n"
+    );
+    let snapshot = SnapshotHarness::new()
+        .analyze(
+            "file:///tmp/class-note-payloads.mmd",
+            1,
+            source.clone(),
+            DocumentKind::Diagram,
+        )
+        .expect("raw Class note text remains valid editor input");
+    let index = snapshot.fences()[0].text_index();
+    assert_eq!(index.source(), FenceTextIndexSource::ParserComplete);
+    let semantic = SemanticParser::new().parse_diagram_sync(&source).unwrap();
+    let SemanticDiagramModel::Class(model) = semantic.model else {
+        panic!("expected canonical Class model");
+    };
+    let notes = index
+        .semantic_items()
+        .iter()
+        .filter(|item| item.detail.as_deref() == Some("class note"))
+        .collect::<Vec<_>>();
+    assert_eq!(notes.len(), 2);
+    assert_eq!(model.notes.len(), 2);
+    for (symbol, note) in notes.into_iter().zip(&model.notes) {
+        assert_eq!(note.text, payload);
+        assert_eq!(symbol.name, note.text);
+        assert_eq!(symbol.role, EditorSemanticRole::Payload);
+        assert_eq!(symbol.kind, EditorSemanticKind::String);
+        assert_eq!(
+            &source[symbol.selection.start..symbol.selection.end],
+            note.text
+        );
+        assert_eq!(
+            &source[symbol.span.start..symbol.span.end],
+            format!("\"{payload}\"")
+        );
+        let position = snapshot
+            .source_map()
+            .utf16_position(symbol.selection.start + " \t".len())
+            .unwrap();
+        let position = Position::new(position.line, position.character);
+        assert!(references(&snapshot, position, true).is_none());
+        assert!(prepare_rename(&snapshot, position).is_none());
+    }
+    assert_eq!(model.notes[0].class_id.as_deref(), Some("Owner"));
+    assert_eq!(model.notes[1].class_id, None);
+    assert_eq!(model.namespaces["Outer.Inner"].note_ids, ["note0", "note1"]);
+    assert!(
+        model
+            .notes
+            .iter()
+            .all(|note| note.parent.as_deref() == Some("Outer.Inner"))
+    );
 }
 
 #[test]

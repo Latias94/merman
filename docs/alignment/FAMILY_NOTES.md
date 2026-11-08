@@ -69,6 +69,12 @@ namespace sizing. Quoted `cssClass` target lists retain each comma-separated fra
 for lookup, as the selected DB does. Use `"A,B"` to target both declared classes A and B;
 `"A, B"` does not match B through its space-prefixed second fragment.
 
+Numeric-leading class names retain their authored semantic identity; the DOM prefix does not
+rename the class or merge it with a separately declared `classId-*` name. The selected DB applies
+its numeric target prefix only inside CSS-class and link assignment; tooltip and callback lookup
+retain their own raw targets. Quoted note bodies preserve leading and trailing whitespace in
+semantics and editor facts.
+
 Quoted namespace IDs preserve authored whitespace, so `N` and `N ` remain distinct groups,
 including their qualified descendants. Comma-separated click targets apply link, callback and tooltip
 metadata to each existing class without creating missing targets. Editor references and rename ranges
@@ -175,6 +181,11 @@ Accessibility directives are recognized at the authoritative lexer's plain curso
 inside quoted, Markdown or other label payloads remains label content and cannot replace the
 diagram's accessible name. Asset width and height updates follow the selected DB's truthiness
 before numeric conversion: numeric zero preserves an earlier size, while string `"0"` is explicit.
+
+Label, shape and visual-property metadata also retain the selected DB's authored-value truthiness:
+empty strings, false and numeric zero do not replace earlier values. Default icon/image labels
+are cleared only when the current update supplies that visual, not merely because an earlier
+update set one. Explicitly restored labels and their text kind survive unrelated metadata updates.
 
 Controlled measurement evidence distinguishes three boundaries: dimensions supplied to a provider,
 raw provider output, and the final clipped/straightened/painted route. The
@@ -453,7 +464,12 @@ ordinary message or control-statement comment rules.
 
 Sequence numeric tokens require the selected lexer's ASCII space or LF right boundary; a
 semicolon directly after an autonumber value does not satisfy it. EOF retains the parser's
-synthetic line boundary. Completed blocks can directly precede another block, statement, branch
+synthetic line boundary. The same numeric-token priority applies to ordinary message endpoints:
+`A->>007 : text` is rejected, while `A->>007: text` and explicit numeric participant declarations
+retain the authored ID. Relative-note keywords require their ASCII word boundary, so actor names
+such as `left office` and `right office` remain complete identifiers.
+
+Completed blocks can directly precede another block, statement, branch
 or closing token; ordinary line statements still require their line boundary. Grammar sources
 and their checked-in LALRPOP projection change together, while editor facts use the same token tape.
 
@@ -478,6 +494,10 @@ Root-only interaction, scale, hide and accessibility directives do not reserve o
 names inside an exclusive composite body. Canonical parsing and editor facts share this lexical
 scope and retain original authored ranges. `state.useMaxWidth: false` emits intrinsic root
 dimensions, and choice, fork and join nodes retain safe static links and tooltip titles.
+
+Unquoted composite IDs use their own single-token boundary and retain punctuation such as `-`
+and `:`. A plain quoted alias splits its identifier and first description at colons, ignoring later
+segments as the selected parser does; a composite alias retains its complete literal ID.
 
 An empty final concurrent region is accepted by the selected parser, but its renderer fails on a
 leaf `divider` shape. Merman retains its existing region partitioning for that input; no successful

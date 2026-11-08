@@ -11,8 +11,8 @@ use std::collections::BTreeMap;
 
 use super::ast::{Action, RelationData};
 use super::{
-    LINE_DOTTED, LINE_SOLID, REL_AGGREGATION, REL_COMPOSITION, REL_DEPENDENCY, REL_EXTENSION,
-    REL_LOLLIPOP, REL_NONE,
+    LINE_DOTTED, LINE_SOLID, MERMAID_DOM_ID_PREFIX, REL_AGGREGATION, REL_COMPOSITION,
+    REL_DEPENDENCY, REL_EXTENSION, REL_LOLLIPOP, REL_NONE,
 };
 
 #[derive(Debug, Clone)]
@@ -546,7 +546,11 @@ impl<'a> ClassDb<'a> {
             if id.is_empty() {
                 continue;
             }
-            let (class_name, _) = self.split_class_name_and_type(id);
+            let (class_name, _) = if id.as_bytes().first().is_some_and(u8::is_ascii_digit) {
+                self.split_class_name_and_type(&format!("{MERMAID_DOM_ID_PREFIX}{id}"))
+            } else {
+                self.split_class_name_and_type(id)
+            };
             if let Some(c) = self.classes.get_mut(&class_name) {
                 c.relation_endpoint_facade_candidate = false;
                 let is_first_explicit_assignment = style_event_ordinal.is_some()
@@ -595,7 +599,11 @@ impl<'a> ClassDb<'a> {
 
     fn set_link(&mut self, ids: &str, url: &str, target: Option<String>) {
         for id in ids.split(',') {
-            let (class_name, _) = self.split_class_name_and_type(id);
+            let (class_name, _) = if id.as_bytes().first().is_some_and(u8::is_ascii_digit) {
+                self.split_class_name_and_type(&format!("{MERMAID_DOM_ID_PREFIX}{id}"))
+            } else {
+                self.split_class_name_and_type(id)
+            };
             if let Some(c) = self.classes.get_mut(&class_name) {
                 c.relation_endpoint_facade_candidate = false;
                 c.link = format_url(url, self.config);
@@ -1070,7 +1078,7 @@ impl<'a> ClassDb<'a> {
                 Ok(())
             }
             Action::AddNote { class_id, text } => {
-                self.add_note(class_id, text.trim());
+                self.add_note(class_id, &text);
                 Ok(())
             }
         }

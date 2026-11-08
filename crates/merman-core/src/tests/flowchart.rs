@@ -2167,6 +2167,69 @@ D@{ img: "https://example.com/image.png", label: "", labelType: markdown }
 }
 
 #[test]
+fn parse_diagram_flowchart_falsy_metadata_updates_preserve_fields() {
+    let engine = MermaidEngine::new();
+    for value in ["false", "0", "-0", "null", r#""""#] {
+        for (field, expected) in [
+            ("shape", "square"),
+            ("label", "Original"),
+            ("icon", "fa:home"),
+            ("form", "circle"),
+            ("pos", "t"),
+            ("img", "https://example.com/image.png"),
+            ("constraint", "on"),
+        ] {
+            let source = format!(
+                "flowchart LR\nA[\"Original\"]\nA@{{ icon: \"fa:home\", form: circle, pos: t, img: \"https://example.com/image.png\", constraint: on }}\nA@{{ {field}: {value}, labelType: markdown }}\n"
+            );
+            let parsed = engine
+                .parse_diagram_sync(&source, ParseOptions::strict())
+                .unwrap()
+                .unwrap();
+            let node = &parsed.model["nodes"][0];
+            assert_eq!(node[field], json!(expected), "{source}");
+            assert_eq!(node["label"], json!("Original"), "{source}");
+            assert_eq!(node["labelType"], json!("string"), "{source}");
+        }
+    }
+}
+
+#[test]
+fn parse_diagram_flowchart_unrelated_metadata_preserves_restored_visual_labels() {
+    let engine = MermaidEngine::new();
+    for visual in [
+        r#"icon: "fa:home""#,
+        r#"img: "https://example.com/image.png""#,
+    ] {
+        for (declaration, label_type) in [
+            ("A[A]", "text"),
+            (r#"A["A"]"#, "string"),
+            (r#"A["`A`"]"#, "markdown"),
+        ] {
+            for update in ["w: 96", "shape: rect", r#"label: """#] {
+                let source =
+                    format!("flowchart LR\nA@{{ {visual} }}\n{declaration}\nA@{{ {update} }}\n");
+                let parsed = engine
+                    .parse_diagram_sync(&source, ParseOptions::strict())
+                    .unwrap()
+                    .unwrap();
+                let node = &parsed.model["nodes"][0];
+                assert_eq!(node["label"], json!("A"), "{source}");
+                assert_eq!(node["labelType"], json!(label_type), "{source}");
+            }
+            let source = format!("flowchart LR\n{declaration}\nA@{{ {visual} }}\n");
+            let parsed = engine
+                .parse_diagram_sync(&source, ParseOptions::strict())
+                .unwrap()
+                .unwrap();
+            let node = &parsed.model["nodes"][0];
+            assert_eq!(node["label"], json!(""), "{source}");
+            assert_eq!(node["labelType"], json!(label_type), "{source}");
+        }
+    }
+}
+
+#[test]
 fn parse_diagram_flowchart_node_data_link_to_node_with_more_data_multiline_yaml() {
     let engine = MermaidEngine::new();
 

@@ -1,5 +1,5 @@
 // auto-generated: "lalrpop 0.23.2"
-// sha3: 2629fb2a6137ea1b22e74301203c83672eba1bb8eab9a809bf12f9159f994388
+// sha3: 578c8898d179a0c110f910d62e06234d9ccc2539623bb11e120fa9f66dcab82c
 // features:
 use crate::diagrams::state::{StateStatementClick, StateStatementNote, StateStatementRelation, StateStatementState, StateStatement, StateDocumentScratch as StateDocument, StateDocumentId, Tok};
 use crate::SourceSpan;
@@ -2509,14 +2509,16 @@ fn ___action20<
     let description = trimmed;
     let mut descriptions: Vec<String> = Vec::new();
     // Only the plain alias production splits a colon; a composite keeps its literal ID.
-    if doc.is_none() && let Some((a, b)) = state_id
-      .split_once(':')
-      .map(|(a, b)| (a.to_string(), b.to_string())) {
-      id_span = Some(SourceSpan::new(l, l + a.len()));
-      state_id = a;
-      let extra = b.trim();
-      if !extra.is_empty() {
-        descriptions.push(extra.to_string());
+    if doc.is_none() {
+      let mut parts = state_id.split(':');
+      let alias_id = parts.next().unwrap_or_default();
+      if let Some(extra) = parts.next() {
+        id_span = Some(SourceSpan::new(l, l + alias_id.len()));
+        let extra = extra.trim();
+        if !extra.is_empty() {
+          descriptions.push(extra.to_string());
+        }
+        state_id = alias_id.to_string();
       }
     }
     StateStatement::State(StateStatementState {

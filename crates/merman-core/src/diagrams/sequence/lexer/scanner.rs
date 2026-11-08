@@ -448,12 +448,12 @@ impl<'input> SequenceScanner<'input> {
             return Some((start, Tok::Details, self.pos));
         }
 
-        if self.starts_with_ci("left of") {
+        if self.starts_initial_relative_note_keyword("left of") {
             let after = self.pos + "left of".len();
             self.pos = after;
             return Some((start, Tok::LeftOf, self.pos));
         }
-        if self.starts_with_ci("right of") {
+        if self.starts_initial_relative_note_keyword("right of") {
             let after = self.pos + "right of".len();
             self.pos = after;
             return Some((start, Tok::RightOf, self.pos));
@@ -761,7 +761,7 @@ impl<'input> SequenceScanner<'input> {
     }
 
     fn starts_initial_relative_note_keyword(&self, keyword: &str) -> bool {
-        self.starts_with_ci_at(self.pos, keyword)
+        self.starts_with_ci_word(keyword)
     }
 
     fn forced_actor_uses_id_rules(&self) -> bool {
@@ -865,6 +865,10 @@ impl<'input> SequenceScanner<'input> {
             return self.emit(tok);
         }
 
+        if let Some(tok) = self.lex_num() {
+            return self.emit(tok);
+        }
+
         if let Some(tok) = self.lex_keyword_lines() {
             return self.emit(tok);
         }
@@ -921,10 +925,6 @@ impl<'input> SequenceScanner<'input> {
         }
 
         if let Some(tok) = self.lex_text() {
-            return self.emit(tok);
-        }
-
-        if let Some(tok) = self.lex_num() {
             return self.emit(tok);
         }
 
