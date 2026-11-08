@@ -1,7 +1,7 @@
 use super::SequenceLayoutCheckpoints;
+use super::actors::SequenceActorPopupLayout;
 use super::block_collection::{SequenceBlock, collect_sequence_blocks};
 use super::block_geometry::{frame_x_from_actors, resolved_block_frame_x};
-use super::constants::{sequence_actor_popup_panel_height, sequence_actor_popup_rect_height};
 use super::message_metrics::{SequenceMessageMetricView, SequenceMessageOwner};
 use super::metrics::{SequenceMathHeightMode, measure_sequence_label_for_layout_with_prepared};
 use crate::Result;
@@ -13,7 +13,6 @@ use rustc_hash::FxHashMap;
 use std::collections::HashMap;
 
 pub(super) struct SequenceRootBoundsContext<'a> {
-    pub(super) is_neo: bool,
     pub(super) model: &'a SequenceDiagramModel,
     pub(super) diagram_title: Option<&'a str>,
     pub(super) nodes: &'a [LayoutNode],
@@ -23,7 +22,7 @@ pub(super) struct SequenceRootBoundsContext<'a> {
     pub(super) bounds_stop_x: f64,
     pub(super) actor_index: &'a HashMap<&'a str, usize>,
     pub(super) actor_centers_x: &'a [f64],
-    pub(super) actor_popup_widths: &'a HashMap<String, f64>,
+    pub(super) actor_popup_layouts: &'a HashMap<String, SequenceActorPopupLayout>,
     pub(super) box_layouts: &'a [super::SequenceBoxLayout],
     pub(super) actor_width_min: f64,
     pub(super) actor_height: f64,
@@ -76,8 +75,7 @@ pub(super) fn prepare_sequence_root_geometry(
 ) -> Result<SequenceRootGeometry> {
     let mut content = sequence_content_bounds(&ctx)?;
 
-    include_actor_popup_bottoms(&mut content, &ctx)?;
-    include_actor_popup_widths(&mut content, &ctx)?;
+    include_actor_popup_bounds(&mut content, &ctx)?;
 
     // Mermaid (11.12.2) expands the viewBox vertically when a sequence title is present.
     // See `sequenceRenderer.ts`: `extraVertForTitle = title ? 40 : 0`.
@@ -313,7 +311,7 @@ fn include_footer_row_height(
     Ok(())
 }
 
-fn include_actor_popup_widths(
+fn include_actor_popup_bounds(
     content: &mut ContentBounds,
     ctx: &SequenceRootBoundsContext<'_>,
 ) -> Result<()> {
@@ -333,52 +331,20 @@ fn include_actor_popup_widths(
         if actor.links.is_empty() {
             continue;
         }
-        let panel_width = ctx
-            .actor_popup_widths
-            .get(actor_id)
-            .copied()
-            .unwrap_or(node.width);
+        let Some(popup) = ctx.actor_popup_layouts.get(actor_id) else {
+            return Err(crate::Error::InvalidModel {
+                message: format!("missing prepared Sequence popup for {actor_id}"),
+            });
+        };
         let left = node.x - node.width / 2.0;
-        content.include_x(left, left + panel_width);
-    }
-    Ok(())
-}
-
-fn include_actor_popup_bottoms(
-    content: &mut ContentBounds,
-    ctx: &SequenceRootBoundsContext<'_>,
-) -> Result<()> {
-    // Mermaid's root `getBBox()` still includes actor popup menu panels when links/directives are
-    // present, even when they are emitted hidden by default. Account for the menu panel bottom so
-    // root height stays aligned with upstream for link-only fixtures.
-    let node_prefix = if ctx.mirror_actors {
-        "actor-bottom-"
-    } else {
-        "actor-top-"
-    };
-    for (node_index, node) in ctx.nodes.iter().enumerate() {
-        ctx.checkpoints.checkpoint_loop(node_index)?;
-        let Some(actor_id) = node.id.strip_prefix(node_prefix) else {
-            continue;
-        };
-        let Some(actor) = ctx.model.actors.get(actor_id) else {
-            continue;
-        };
-        if actor.links.is_empty() {
-            continue;
-        }
-        let popup_bottom = sequence_actor_popup_rect_height(
-            &actor.actor_type,
-            node.height,
-            ctx.actor_height,
-            ctx.is_neo,
-            ctx.mirror_actors,
-        ) + sequence_actor_popup_panel_height(actor.links.len());
-        let popup_content_bottom = if ctx.mirror_actors {
-            popup_bottom - ctx.diagram_margin_y - if ctx.has_boxes { ctx.box_margin } else { 0.0 }
-        } else {
-            popup_bottom
-        };
+        content.include_x(left, left + popup.width);
+        // Upstream includes hidden popup panels in root bounds as well as visible menus.
+        let popup_bottom = popup.origin_y + popup.height;
+        // Undo the shared group adjustment for this already-complete panel. Mirrored roots
+        // subtract boxMargin independently of diagramMarginY, matching the upstream formula.
+        let popup_content_bottom = popup_bottom
+            - if ctx.mirror_actors { ctx.box_margin } else { 0.0 }
+            - if ctx.has_boxes { ctx.box_margin } else { 0.0 };
         content.include_y(popup_content_bottom.max(0.0));
     }
     Ok(())

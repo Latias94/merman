@@ -2387,7 +2387,12 @@ fn sequence_title_measurement_and_css_share_root_font_size_precedence() {
         (
             serde_json::json!({"themeVariables": {"fontSize": "40px"}}),
             40.0,
-            24.0,
+            40.0,
+        ),
+        (
+            serde_json::json!({"themeVariables": {"fontSize": "24pt"}}),
+            32.0,
+            32.0,
         ),
         (
             serde_json::json!({"fontSize": 20, "themeVariables": {"fontSize": "40px"}}),
@@ -2437,7 +2442,11 @@ fn sequence_title_measurement_and_css_share_root_font_size_precedence() {
                 .and_then(|rule| rule.split_once('}'))
                 .unwrap()
                 .0;
-            let expected_css = format!("{expected_size}px");
+            let expected_css = config
+                .pointer("/themeVariables/fontSize")
+                .and_then(serde_json::Value::as_str)
+                .map(str::to_owned)
+                .unwrap_or_else(|| format!("{expected_size}px"));
             assert_eq!(
                 inline_style_value(root_rule, "font-size"),
                 Some(expected_css.as_str()),
@@ -5969,37 +5978,23 @@ fn render_sequence_role_terminal_probe(
 }
 
 #[test]
-fn sequence_actor_non_normal_typed_style_measures_terminal_tspan_and_clear_restores_legacy() {
+fn sequence_actor_typed_fonts_measure_terminal_tspan_after_style_clear() {
     use merman_render::diagram_theme::FontStyle;
     let source = "sequenceDiagram\nparticipant A as probe-actor";
-    for (styles, expected_style, expected_width, terminal) in [
-        (vec![], "normal", 150.0, false),
-        (
-            vec![Specified::Value(FontStyle::Italic)],
-            "italic",
-            284.0,
-            true,
-        ),
-        (
-            vec![Specified::Value(FontStyle::Oblique)],
-            "oblique",
-            284.0,
-            true,
-        ),
+    for (styles, expected_style) in [
+        (vec![], "normal"),
+        (vec![Specified::Value(FontStyle::Italic)], "italic"),
+        (vec![Specified::Value(FontStyle::Oblique)], "oblique"),
         (
             vec![
                 Specified::Value(FontStyle::Italic),
                 Specified::Value(FontStyle::Normal),
             ],
             "normal",
-            150.0,
-            false,
         ),
         (
             vec![Specified::Value(FontStyle::Italic), Specified::Clear],
             "normal",
-            150.0,
-            false,
         ),
     ] {
         let (svg, exchanges) = render_sequence_actor_terminal_probe(source, &styles);
@@ -6016,7 +6011,7 @@ fn sequence_actor_non_normal_typed_style_measures_terminal_tspan_and_clear_resto
         for actor in actors {
             assert_eq!(
                 actor.attribute("width").unwrap().parse::<f64>().unwrap(),
-                expected_width,
+                284.0,
                 "{styles:?}"
             );
         }
@@ -6035,26 +6030,115 @@ fn sequence_actor_non_normal_typed_style_measures_terminal_tspan_and_clear_resto
             .map(|exchange| &exchange.request)
             .collect();
         assert!(!requests.is_empty());
-        assert_eq!(
+        assert!(
             requests
                 .iter()
                 .any(|request| request.operation == TextMeasurementOperation::TspanBBoxWidth),
-            terminal,
             "{styles:?}"
         );
-        assert_eq!(
-            requests.iter().any(|request| request.operation
+        assert!(
+            !requests.iter().any(|request| request.operation
                 == TextMeasurementOperation::MermaidCalculateTextDimensions),
-            !terminal,
             "{styles:?}"
         );
-        if terminal {
-            assert!(requests.iter().all(|request| request.font_style.as_deref()
-                == Some(expected_style)
-                && request.font_family.as_deref() == Some("Georgia")
-                && request.font_size_bits == 40.0_f64.to_bits()));
+        assert!(
+            requests
+                .iter()
+                .all(
+                    |request| request.font_style.as_deref().unwrap_or("normal") == expected_style
+                        && request.font_family.as_deref() == Some("Georgia")
+                        && request.font_size_bits == 40.0_f64.to_bits()
+                )
+        );
+    }
+}
+
+#[test]
+fn sequence_popup_typed_fonts_prepare_row_pitch_panel_and_bounds_once() {
+    use merman_render::diagram_theme::FontStyle;
+
+    let source = "---\nconfig: {look: classic, sequence: {forceMenus: true, mirrorActors: false}}\n---\nsequenceDiagram\nparticipant A\nparticipant B\nA->>B: Ping\nlinks A: {\"probe-one\": \"https://example.com/first\", \"probe-two\": \"https://example.com/second\"}";
+    for styles in [vec![], vec![Specified::Value(FontStyle::Italic)]] {
+        let (svg, exchanges, layout_exchange_count) =
+            render_sequence_role_terminal_probe(source, ThemeTarget::ActorLabel, &styles);
+        let document = roxmltree::Document::parse(&svg).unwrap();
+        let popup = document
+            .descendants()
+            .find(|node| node.attribute("class") == Some("actorPopupMenu"))
+            .unwrap();
+        let panel = popup
+            .descendants()
+            .find(|node| node.has_tag_name("rect"))
+            .unwrap();
+        let labels = popup
+            .descendants()
+            .filter(|node| node.has_tag_name("text"))
+            .collect::<Vec<_>>();
+        assert_eq!(labels.len(), 2);
+        let coordinate = |node: roxmltree::Node<'_, '_>, key| {
+            node.attribute(key).unwrap().parse::<f64>().unwrap()
+        };
+        let top = coordinate(panel, "y");
+        let bottom = top + coordinate(panel, "height");
+        let first_y = coordinate(labels[0], "y");
+        let last_y = coordinate(labels[1], "y");
+        // This host deliberately returns 32px glyph boxes and different compatibility metrics.
+        // A fixed 30px pitch overlaps even at the helper's ordinary 40px typed font size.
+        assert!(last_y - first_y >= 32.0, "{styles:?}: {svg}");
+        assert!(first_y - 16.0 >= top);
+        assert!(last_y + 16.0 <= bottom);
+        assert!(coordinate(panel, "width") >= 256.0);
+        let (view_box, _) = root_view_box_and_max_width(&svg);
+        assert!(view_box[1] + view_box[3] >= bottom);
+
+        for label in ["probe-one", "probe-two"] {
+            for operation in [
+                TextMeasurementOperation::TspanBBoxWidth,
+                TextMeasurementOperation::TspanBBoxHeight,
+            ] {
+                assert_eq!(
+                    exchanges[..layout_exchange_count]
+                        .iter()
+                        .filter(|exchange| exchange.request.text == label
+                            && exchange.request.operation == operation)
+                        .count(),
+                    1,
+                    "popup {label} must prepare its {operation:?} once"
+                );
+            }
+            assert!(
+                exchanges[layout_exchange_count..]
+                    .iter()
+                    .all(|exchange| exchange.request.text != label),
+                "popup emission must reuse its prepared geometry"
+            );
         }
     }
+}
+
+#[test]
+fn sequence_popup_without_typed_fonts_keeps_legacy_row_geometry() {
+    let svg = render_sequence_svg_from_text_with_engine(
+        MermaidEngine::new(),
+        "---\nconfig: {sequence: {forceMenus: true, mirrorActors: false}}\n---\nsequenceDiagram\nparticipant A\nlinks A: {\"First\": \"https://example.com/first\", \"Second\": \"https://example.com/second\"}",
+    );
+    let document = roxmltree::Document::parse(&svg).unwrap();
+    let popup = document
+        .descendants()
+        .find(|node| node.attribute("class") == Some("actorPopupMenu"))
+        .unwrap();
+    let panel = popup
+        .descendants()
+        .find(|node| node.has_tag_name("rect"))
+        .unwrap();
+    let top = panel.attribute("y").unwrap().parse::<f64>().unwrap();
+    assert_eq!(panel.attribute("height"), Some("80"));
+    let rows = popup
+        .descendants()
+        .filter(|node| node.has_tag_name("text"))
+        .map(|node| node.attribute("y").unwrap().parse::<f64>().unwrap() - top)
+        .collect::<Vec<_>>();
+    assert_eq!(rows, [30.0, 60.0]);
 }
 
 #[test]

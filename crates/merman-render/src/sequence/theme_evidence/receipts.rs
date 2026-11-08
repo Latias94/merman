@@ -623,6 +623,7 @@ struct SequenceTextSurfaceReceipt {
 #[derive(Debug, Clone, Default)]
 pub(super) struct SequenceBaseTypographyReceipt {
     typed_properties: BTreeSet<ThemeTypographyProperty>,
+    inherited_typed_properties: BTreeSet<ThemeTypographyProperty>,
     inherited_occurrences: Cell<usize>,
 }
 
@@ -630,15 +631,13 @@ impl SequenceBaseTypographyReceipt {
     fn from_plan(plan: &crate::sequence::SequenceTypographyPlan) -> Self {
         Self {
             typed_properties: plan.base_typed_properties().clone(),
+            inherited_typed_properties: plan.root_typed_properties().clone(),
             ..Self::default()
         }
     }
 
     pub(super) fn inherited_occurrences(&self, property: ThemeTypographyProperty) -> usize {
-        if matches!(
-            property,
-            ThemeTypographyProperty::FontStack | ThemeTypographyProperty::FontSize
-        ) {
+        if self.inherited_typed_properties.contains(&property) {
             self.inherited_occurrences.get()
         } else {
             0
@@ -1133,6 +1132,51 @@ pub(super) fn record_style_winners(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn configured_title_size_is_not_counted_as_a_typed_base_font_consumer() {
+        use crate::diagram_theme::{
+            DiagramThemeCompiler, DiagramThemeSpec, ThemeTextStyle, TypographySpec,
+        };
+        use crate::resources::{OperationWorkMeter, RenderResourcePolicy};
+        use crate::sequence::{SequenceTextSurface, SequenceTypographyPlan};
+        use serde_json::json;
+
+        let theme = DiagramThemeCompiler::new()
+            .compile(DiagramThemeSpec::new().with_typography(
+                TypographySpec::default().with_family_style(
+                    crate::DiagramFamilyId::SEQUENCE,
+                    ThemeTextStyle::default().with_font_size_px(24.0).unwrap(),
+                ),
+            ))
+            .unwrap();
+        let resolved = theme.resolve(crate::DiagramFamilyId::SEQUENCE);
+        let config = merman_core::MermaidEngine::new()
+            .with_site_config(
+                merman_core::presentation::SourcePresentationConfig::from_value(json!({
+                    "theme": "base", "themeVariables": {"fontSize": "52px"}
+                })),
+            )
+            .parse_metadata_sync("sequenceDiagram\ntitle Authored Root Size\nA->>B: Ping\n")
+            .unwrap()
+            .effective_config;
+        let meter = OperationWorkMeter::new(RenderResourcePolicy::unbounded_for_trusted_input());
+        let plan = SequenceTypographyPlan::resolve(&config, Some(&resolved), &meter).unwrap();
+        let receipt = SequenceTypographyThemeReceipt::from_plan(&plan);
+
+        receipt.record_inherited_text();
+        assert_eq!(
+            receipt.base_property_relevant_occurrences(ThemeTypographyProperty::FontSize),
+            0
+        );
+        assert!(!receipt.base_property_applied(ThemeTypographyProperty::FontSize));
+        receipt.record_terminal_text(SequenceTextSurface::ParticipantLabel);
+        assert_eq!(
+            receipt.base_property_relevant_occurrences(ThemeTypographyProperty::FontSize),
+            1
+        );
+        assert!(receipt.base_property_applied(ThemeTypographyProperty::FontSize));
+    }
 
     fn math_receipt(
         properties: impl IntoIterator<Item = ThemeTypographyProperty>,
