@@ -12,10 +12,13 @@ use crate::family::{
 };
 use crate::model::JourneyDiagramLayout;
 
+use super::config::JourneyRenderSettings;
+
 /// Resolves Journey's inherited base typography once for layout, CSS, and evidence.
 ///
 /// The legend and the `fo` / `old` label candidates inherit base typography. The `tspan`
-/// candidate and title have separate source configuration owners.
+/// candidate can inherit the font stack while retaining its separate task-size owner.
+/// The title has separate source configuration owners.
 #[derive(Debug)]
 pub(crate) struct JourneyTypographyThemePlan {
     css: super::JourneyCssBinding,
@@ -29,7 +32,16 @@ pub(crate) struct JourneyTypographyThemePlan {
 
 #[derive(Debug, Clone, Copy)]
 struct JourneyTypographyTerminalSeal {
-    has_visible_base_text: bool,
+    has_visible_text: bool,
+    has_visible_font_stack: bool,
+    has_visible_font_size: bool,
+}
+
+#[derive(Debug, Clone, Copy)]
+struct JourneyTypographyTextRun<'a> {
+    text: &'a str,
+    inherits_font_stack: bool,
+    inherits_font_size: bool,
 }
 
 /// Writer-owned proof for Journey's inherited stylesheet and visible text candidates.
@@ -37,11 +49,13 @@ struct JourneyTypographyTerminalSeal {
 pub(crate) struct JourneyTypographyThemeReceipt<'a> {
     expected_font_family_css: &'a str,
     expected_font_size_css: &'a str,
-    expected_text_runs: Box<[&'a str]>,
+    expected_text_runs: Box<[JourneyTypographyTextRun<'a>]>,
     next_text_run: usize,
     css_emitted: bool,
     css_matches: bool,
-    has_visible_base_text: bool,
+    has_visible_text: bool,
+    has_visible_font_stack: bool,
+    has_visible_font_size: bool,
     valid: bool,
 }
 
@@ -137,13 +151,7 @@ impl JourneyTypographyThemePlan {
             JourneyTypographyThemeReceipt::new(
                 self.font_family_css(),
                 self.font_size_css(),
-                journey_inherited_text_runs(
-                    layout,
-                    self.css
-                        .render
-                        .text_placement
-                        .has_inherited_label_typography(),
-                ),
+                journey_text_runs(layout, &self.css.render),
             )
         })
     }
@@ -182,14 +190,16 @@ impl JourneyTypographyThemePlan {
             return;
         };
 
+        // All candidates inherit weight/style, including tspans with their own family/size.
+        // Keep unsupported requests residual whenever those visible terminals exist.
         self.inherited_font_stack
-            .record_unsupported_typography_evidence(evidence, seal.has_visible_base_text);
+            .record_unsupported_typography_evidence(evidence, seal.has_visible_text);
         self.mark_typed_property_evidence(
             evidence,
             ThemeTypographyProperty::FontStack,
             self.inherited_font_stack.typed_font_stack_requested(),
             self.inherited_font_stack.typed_font_stack_active(),
-            seal.has_visible_base_text,
+            seal.has_visible_font_stack,
             true,
         );
         self.mark_typed_property_evidence(
@@ -197,7 +207,7 @@ impl JourneyTypographyThemePlan {
             ThemeTypographyProperty::FontSize,
             self.typed_font_size_requested,
             self.typed_font_size_active,
-            seal.has_visible_base_text,
+            seal.has_visible_font_size,
             true,
         );
     }
@@ -208,7 +218,7 @@ impl JourneyTypographyThemePlan {
         property: ThemeTypographyProperty,
         requested: bool,
         active: bool,
-        has_visible_base_text: bool,
+        has_visible_text: bool,
         terminal_proved: bool,
     ) {
         if !requested {
@@ -219,7 +229,7 @@ impl JourneyTypographyThemePlan {
             evidence.mark_not_applicable(key);
         } else if !terminal_proved {
             evidence.mark_residual(key, FamilyThemeResidualReason::UnsupportedTypography);
-        } else if !has_visible_base_text {
+        } else if !has_visible_text {
             evidence.mark_not_applicable(key);
         } else {
             evidence.mark_applied_with_capabilities(key, [ThemeCapability::Typography]);
@@ -231,7 +241,7 @@ impl<'a> JourneyTypographyThemeReceipt<'a> {
     fn new(
         expected_font_family_css: &'a str,
         expected_font_size_css: &'a str,
-        expected_text_runs: Vec<&'a str>,
+        expected_text_runs: Vec<JourneyTypographyTextRun<'a>>,
     ) -> Self {
         Self {
             expected_font_family_css,
@@ -240,7 +250,9 @@ impl<'a> JourneyTypographyThemeReceipt<'a> {
             next_text_run: 0,
             css_emitted: false,
             css_matches: false,
-            has_visible_base_text: false,
+            has_visible_text: false,
+            has_visible_font_stack: false,
+            has_visible_font_size: false,
             valid: true,
         }
     }
@@ -262,13 +274,17 @@ impl<'a> JourneyTypographyThemeReceipt<'a> {
             && emitted_font_size_css == self.expected_font_size_css;
     }
 
-    pub(crate) fn record_text_run(&mut self, text: &str) {
+    pub(crate) fn record_text_run(&mut self, text: &str, has_visible_text: bool) {
         let expected = self.expected_text_runs.get(self.next_text_run).copied();
-        self.valid &= expected == Some(text);
-        if expected.is_some() {
+        self.valid &= expected.is_some_and(|run| run.text == text);
+        if let Some(run) = expected {
             self.next_text_run = self.next_text_run.saturating_add(1);
+            if has_visible_text {
+                self.has_visible_text = true;
+                self.has_visible_font_stack |= run.inherits_font_stack;
+                self.has_visible_font_size |= run.inherits_font_size;
+            }
         }
-        self.has_visible_base_text |= !text.trim().is_empty();
     }
 
     fn seal(self) -> Option<JourneyTypographyTerminalSeal> {
@@ -277,29 +293,50 @@ impl<'a> JourneyTypographyThemeReceipt<'a> {
             && self.css_matches
             && self.next_text_run == self.expected_text_runs.len())
         .then_some(JourneyTypographyTerminalSeal {
-            has_visible_base_text: self.has_visible_base_text,
+            has_visible_text: self.has_visible_text,
+            has_visible_font_stack: self.has_visible_font_stack,
+            has_visible_font_size: self.has_visible_font_size,
         })
     }
 }
 
-fn journey_inherited_text_runs(layout: &JourneyDiagramLayout, include_labels: bool) -> Vec<&str> {
+fn journey_text_runs<'a>(
+    layout: &'a JourneyDiagramLayout,
+    settings: &JourneyRenderSettings,
+) -> Vec<JourneyTypographyTextRun<'a>> {
     let mut runs = layout
         .actor_legend
         .iter()
-        .flat_map(|item| item.label_lines.iter().map(|line| line.text.as_str()))
+        .flat_map(|item| {
+            item.label_lines
+                .iter()
+                .map(|line| JourneyTypographyTextRun {
+                    text: line.text.as_str(),
+                    inherits_font_stack: true,
+                    inherits_font_size: true,
+                })
+        })
         .collect::<Vec<_>>();
-    if include_labels {
-        let mut sections = layout.sections.iter();
-        let mut last_section = "";
-        for task in &layout.tasks {
-            if last_section != task.section
-                && let Some(section) = sections.next()
-            {
-                runs.push(section.section.as_str());
-            }
-            last_section = task.section.as_str();
-            runs.push(task.task.as_str());
+    let inherits_font_stack = settings.label_inherits_font_stack();
+    let inherits_font_size = settings.label_inherits_font_size();
+    let mut sections = layout.sections.iter();
+    let mut last_section = "";
+    for task in &layout.tasks {
+        if last_section != task.section
+            && let Some(section) = sections.next()
+        {
+            runs.push(JourneyTypographyTextRun {
+                text: section.section.as_str(),
+                inherits_font_stack,
+                inherits_font_size,
+            });
         }
+        last_section = task.section.as_str();
+        runs.push(JourneyTypographyTextRun {
+            text: task.task.as_str(),
+            inherits_font_stack,
+            inherits_font_size,
+        });
     }
     runs
 }

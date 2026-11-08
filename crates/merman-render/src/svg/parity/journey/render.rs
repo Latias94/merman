@@ -87,7 +87,7 @@ fn write_text_candidate(
     text_box: JourneyTextBox,
     style: JourneyTextStyle<'_>,
     text_fill: &str,
-) -> Result<()> {
+) -> Result<bool> {
     let JourneyTextBox {
         x,
         y,
@@ -116,7 +116,8 @@ fn write_text_candidate(
             class = class_esc,
             text = content_esc,
         );
-        return out.checkpoint();
+        out.checkpoint()?;
+        return Ok(!content_esc.trim().is_empty());
     }
 
     if placement == JourneyTextPlacement::Fo {
@@ -140,8 +141,14 @@ fn write_text_candidate(
     }
 
     let lines = split_html_br_lines(content);
+    let mut has_visible_text =
+        placement == JourneyTextPlacement::Fo && !content_esc.trim().is_empty();
     let n = lines.len().max(1) as f64;
     for (i, line) in lines.into_iter().enumerate() {
+        let line_esc = escape_xml(&line);
+        if placement == JourneyTextPlacement::Tspan {
+            has_visible_text |= !line_esc.trim().is_empty();
+        }
         let dy = (i as f64) * task_font_size - (task_font_size * (n - 1.0)) / 2.0;
         let _ = write!(
             out,
@@ -169,7 +176,7 @@ fn write_text_candidate(
             r#""><tspan x="{x}" dy="{dy}">{text}</tspan></text>"#,
             x = fmt(cx),
             dy = fmt(dy),
-            text = escape_xml(&line)
+            text = line_esc
         );
         out.checkpoint()?;
     }
@@ -177,7 +184,8 @@ fn write_text_candidate(
     if placement == JourneyTextPlacement::Fo {
         out.push_str("</switch>");
     }
-    out.checkpoint()
+    out.checkpoint()?;
+    Ok(has_visible_text)
 }
 
 fn write_task_rect<'a>(
@@ -593,16 +601,17 @@ pub(crate) fn render_journey_diagram_svg_model(
             r = fmt(item.circle_r),
         );
         for line in &item.label_lines {
+            let line_esc = escape_xml(&line.text);
             let _ = write!(
                 &mut out,
                 r#"<text x="{x}" y="{y}" class="legend"><tspan x="{tx}">{text}</tspan></text>"#,
                 x = fmt(line.x),
                 y = fmt(line.y),
                 tx = fmt(line.tspan_x),
-                text = escape_xml(&line.text),
+                text = line_esc,
             );
             if let Some(receipt) = typography_receipt.as_mut() {
-                receipt.record_text_run(&line.text);
+                receipt.record_text_run(&line.text, !line_esc.trim().is_empty());
             }
             if let Some(receipt) = text_receipt.as_mut() {
                 receipt.record_label(crate::journey::JourneyTextPaintRole::Legend, None);
@@ -635,7 +644,7 @@ pub(crate) fn render_journey_diagram_svg_model(
                 section,
                 task_theme.terminal_palette_fill_for_section(section_index),
             );
-            write_text_candidate(
+            let has_visible_text = write_text_candidate(
                 &mut out,
                 &section.section,
                 &section_class,
@@ -653,12 +662,8 @@ pub(crate) fn render_journey_diagram_svg_model(
                 },
                 &theme.text_color,
             )?;
-            if render_settings
-                .text_placement
-                .has_inherited_label_typography()
-                && let Some(receipt) = typography_receipt.as_mut()
-            {
-                receipt.record_text_run(&section.section);
+            if let Some(receipt) = typography_receipt.as_mut() {
+                receipt.record_text_run(&section.section, has_visible_text);
             }
             out.push_str("</g>");
             out.checkpoint()?;
@@ -782,7 +787,7 @@ pub(crate) fn render_journey_diagram_svg_model(
             out.checkpoint()?;
         }
 
-        write_text_candidate(
+        let has_visible_text = write_text_candidate(
             &mut out,
             &task.task,
             "task",
@@ -800,12 +805,8 @@ pub(crate) fn render_journey_diagram_svg_model(
             },
             &theme.text_color,
         )?;
-        if render_settings
-            .text_placement
-            .has_inherited_label_typography()
-            && let Some(receipt) = typography_receipt.as_mut()
-        {
-            receipt.record_text_run(&task.task);
+        if let Some(receipt) = typography_receipt.as_mut() {
+            receipt.record_text_run(&task.task, has_visible_text);
         }
 
         out.push_str("</g>");

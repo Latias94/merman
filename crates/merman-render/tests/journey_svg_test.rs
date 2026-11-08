@@ -611,6 +611,160 @@ fn journey_text_placement_owns_label_dom_fonts_and_typography_evidence() {
 }
 
 #[test]
+fn journey_tspan_inherited_font_stack_keeps_task_font_size_independent() {
+    let size_only = DiagramThemeCompiler::new()
+        .compile(DiagramThemeSpec::new().with_typography(
+            TypographySpec::default().with_family_style(
+                merman_render::DiagramFamilyId::JOURNEY,
+                ThemeTextStyle::default().with_font_size_px(21.0).unwrap(),
+            ),
+        ))
+        .unwrap();
+    for (theme, required, inherited_applied) in
+        [(journey_typography_theme(21.0), 2, 1), (size_only, 1, 0)]
+    {
+        for (font_family, inherits) in [
+            ("inherit", true),
+            ("unset", true),
+            (r#""inherit""#, false),
+            ("Task Choice", false),
+        ] {
+            for source in ["journey\nPay: 4\n", "journey\nsection Checkout\nPay: 4\n"] {
+                let rendered = render_journey_with_theme_requirement(
+                    source,
+                    &theme,
+                    serde_json::json!({"journey": {
+                        "textPlacement": "tspan",
+                        "taskFontFamily": font_family,
+                        "taskFontSize": 14
+                    }}),
+                    ThemePortabilityRequirement::RequirePortable,
+                )
+                .unwrap();
+                let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+                assert!(!document.descendants().any(|node| {
+                    node.has_tag_name("foreignObject") || node.attribute("class") == Some("legend")
+                }));
+                let labels = document
+                    .descendants()
+                    .filter(|node| node.has_tag_name("text"))
+                    .collect::<Vec<_>>();
+                assert!(!labels.is_empty());
+                for label in labels {
+                    let style = label.attribute("style").unwrap();
+                    assert!(style.contains(&format!("font-family: {font_family};")));
+                    assert!(style.contains("font-size: 14px;"));
+                }
+                let evidence =
+                    merman_render::__private::family_evidence(rendered.into_completion().report());
+                let applied = if inherits { inherited_applied } else { 0 };
+                assert_eq!(evidence.required_count(), required);
+                assert_eq!(evidence.accounted_count(), required);
+                assert_eq!(evidence.applied_count(), applied, "{font_family}");
+                assert_eq!(evidence.not_applicable_count(), required - applied);
+                assert_eq!(evidence.theme_residual_count(), 0);
+            }
+        }
+    }
+}
+
+#[test]
+fn journey_tspan_empty_rows_do_not_certify_inherited_fonts() {
+    let rendered = render_journey_with_theme_requirement(
+        "journey\n<br/><br>: 4\n",
+        &journey_typography_theme(21.0),
+        serde_json::json!({"journey": {
+            "textPlacement": "tspan",
+            "taskFontFamily": "inherit",
+            "taskFontSize": 14
+        }}),
+        ThemePortabilityRequirement::RequirePortable,
+    )
+    .unwrap();
+    let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+    let rows = document
+        .descendants()
+        .filter(|node| node.has_tag_name("tspan"))
+        .collect::<Vec<_>>();
+    assert_eq!(rows.len(), 3);
+    assert!(rows.iter().all(|row| row.text().is_none()));
+    let evidence = merman_render::__private::family_evidence(rendered.into_completion().report());
+    assert_eq!(evidence.required_count(), 2);
+    assert_eq!(evidence.applied_count(), 0);
+    assert_eq!(evidence.not_applicable_count(), 2);
+    assert_eq!(evidence.theme_residual_count(), 0);
+}
+
+#[test]
+fn journey_tspan_decoded_whitespace_is_not_a_visible_font_consumer() {
+    for text in ["#32;", "#9;", "#32;<br/>#32;"] {
+        let rendered = render_journey_with_theme_requirement(
+            &format!("journey\n{text}: 4\n"),
+            &journey_typography_theme(21.0),
+            serde_json::json!({"journey": {
+                "textPlacement": "tspan", "taskFontFamily": "inherit", "taskFontSize": 14
+            }}),
+            ThemePortabilityRequirement::RequirePortable,
+        )
+        .unwrap();
+        let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+        let rows = document
+            .descendants()
+            .filter(|node| node.has_tag_name("tspan"))
+            .collect::<Vec<_>>();
+        assert!(!rows.is_empty());
+        assert!(
+            rows.iter()
+                .all(|row| row.text().unwrap_or("").trim().is_empty())
+        );
+        let evidence =
+            merman_render::__private::family_evidence(rendered.into_completion().report());
+        assert_eq!(evidence.applied_count(), 0, "{text}");
+        assert_eq!(evidence.not_applicable_count(), 2, "{text}");
+        assert_eq!(evidence.theme_residual_count(), 0);
+    }
+}
+
+#[test]
+fn journey_tspan_visible_weight_and_style_requests_remain_unsupported() {
+    for style in [
+        ThemeTextStyle::default().with_font_weight(700).unwrap(),
+        ThemeTextStyle::default().with_font_style(merman_render::diagram_theme::FontStyle::Italic),
+    ] {
+        let theme = DiagramThemeCompiler::new()
+            .compile(
+                DiagramThemeSpec::new().with_typography(
+                    TypographySpec::default()
+                        .with_family_style(merman_render::DiagramFamilyId::JOURNEY, style),
+                ),
+            )
+            .unwrap();
+        for (text, visible) in [("Pay", true), ("#32;", false)] {
+            let result = render_journey_with_theme_requirement(
+                &format!("journey\n{text}: 4\n"),
+                &theme,
+                serde_json::json!({"journey": {
+                    "textPlacement": "tspan", "taskFontFamily": "Task Choice", "taskFontSize": 14
+                }}),
+                ThemePortabilityRequirement::RequirePortable,
+            );
+            if visible {
+                assert!(matches!(
+                    result,
+                    Err(merman_render::Error::UnverifiedFamilyTheme { .. })
+                ));
+            } else {
+                let rendered = result.unwrap();
+                let evidence =
+                    merman_render::__private::family_evidence(rendered.into_completion().report());
+                assert_eq!(evidence.not_applicable_count(), 1);
+                assert_eq!(evidence.theme_residual_count(), 0);
+            }
+        }
+    }
+}
+
+#[test]
 fn journey_frontmatter_tspan_retains_inherited_legend_typography() {
     let source = concat!(
         "---\nconfig:\n  journey:\n",
