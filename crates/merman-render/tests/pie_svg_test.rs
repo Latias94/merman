@@ -118,6 +118,36 @@ fn pie_configured_text_sizes_preserve_css_and_expand_the_horizontal_viewport() {
 }
 
 #[test]
+fn pie_outer_stroke_config_reaches_layout_circle_and_stylesheet() {
+    assert_eq!(
+        pie_outer_circle_radius(&render_pie_from_text("pie\n\"A\": 1\n")),
+        186.0
+    );
+    for (width, css, expected_radius) in [
+        ("0", "0", 185.0),
+        ("20.5", "20.5", 195.25),
+        ("'20.5px'", "20.5px", 195.0),
+        ("'5em'", "5em", 187.5),
+        ("'100%'", "100%", 235.0),
+        ("'calc(1px + 1em)'", "calc(1px + 1em)", 186.0),
+        ("'2px'", "2px", 186.0),
+    ] {
+        let source = format!(
+            "---\nconfig:\n  themeVariables:\n    pieOuterStrokeWidth: {width}\n---\npie\n\"A\": 1\n"
+        );
+        let layout = layout_pie_from_text(&source);
+        let svg = render_pie_from_text(&source);
+        assert_eq!(layout.outer_radius, expected_radius, "{width}");
+        assert_eq!(pie_outer_circle_radius(&svg), expected_radius, "{width}");
+        assert_eq!(
+            pie_stylesheet_property_values(&svg, "#merman .pieOuterCircle", "stroke-width"),
+            [css],
+            "the authored CSS spelling must survive its separate geometry consumer"
+        );
+    }
+}
+
+#[test]
 fn pie_title_remains_valid_xml_when_control_character_removal_joins_cdata_terminators() {
     let svg = render_pie_from_text("pie title Ω]]\u{1f}>β >\n  \"Alpha\" : 1\n");
     let document = roxmltree::Document::parse(&svg).expect("the Pie producer must emit valid XML");
@@ -1108,44 +1138,49 @@ fn try_render_pie_svg_with_resource_policy(
 
 #[test]
 fn pie_family_svg_accepts_exact_max_svg_bytes_and_rejects_one_byte_less() {
-    let source = r#"pie showData title Bounded distribution
+    for source in [
+        r#"pie showData title Bounded distribution
   "Alpha" : 3
   "Beta" : 2
   "Gamma" : 1
-"#;
-    let baseline = try_render_pie_svg_with_resource_policy(
-        source,
-        RenderResourcePolicy::unbounded_for_trusted_input(),
-    )
-    .expect("render the unbounded Pie baseline");
-    let exact_bytes = baseline.len();
-    assert!(exact_bytes > 1, "Pie fixture must emit a non-empty SVG");
+"#,
+        "---\nconfig:\n  themeVariables:\n    pieOuterStrokeWidth: 20px\n---\npie\n\"A\": 1\n",
+        "---\nconfig:\n  pie:\n    legendPosition: left\n  themeVariables:\n    pieTitleTextSize: 80px\n---\npie showData title WWWWWWWWWWWWWWWW\n\"A\": 1\n",
+    ] {
+        let baseline = try_render_pie_svg_with_resource_policy(
+            source,
+            RenderResourcePolicy::unbounded_for_trusted_input(),
+        )
+        .expect("render the unbounded Pie baseline");
+        let exact_bytes = baseline.len();
+        assert!(exact_bytes > 1, "Pie fixture must emit a non-empty SVG");
 
-    let exact_policy = RenderResourcePolicy::unbounded_for_trusted_input()
-        .with_limit(ResourceLimitId::MaxSvgBytes, exact_bytes)
-        .expect("valid exact Pie SVG byte ceiling");
-    let exact = try_render_pie_svg_with_resource_policy(source, exact_policy)
-        .expect("the exact Pie family SVG byte ceiling must succeed");
-    assert_eq!(exact.as_bytes(), baseline.as_bytes());
+        let exact_policy = RenderResourcePolicy::unbounded_for_trusted_input()
+            .with_limit(ResourceLimitId::MaxSvgBytes, exact_bytes)
+            .expect("valid exact Pie SVG byte ceiling");
+        let exact = try_render_pie_svg_with_resource_policy(source, exact_policy)
+            .expect("the exact Pie family SVG byte ceiling must succeed");
+        assert_eq!(exact.as_bytes(), baseline.as_bytes());
 
-    let below_exact = exact_bytes - 1;
-    let below_policy = RenderResourcePolicy::unbounded_for_trusted_input()
-        .with_limit(ResourceLimitId::MaxSvgBytes, below_exact)
-        .expect("valid below-exact Pie SVG byte ceiling");
-    let error = try_render_pie_svg_with_resource_policy(source, below_policy)
-        .expect_err("one byte below the Pie family SVG size must fail");
-    let merman_render::Error::ResourceLimitExceeded(limit) = error else {
-        panic!("expected Pie MaxSvgBytes rejection, got {error}");
-    };
-    assert_eq!(limit.cause, ResourceLimitCause::Ceiling);
-    assert_eq!(limit.phase, ResourceLimitPhase::SvgOutput);
-    assert_eq!(limit.limit, ResourceLimitId::MaxSvgBytes.as_str());
-    assert_eq!(limit.max, below_exact);
-    assert!(limit.actual > limit.max);
-    assert!(limit.explicit_overrides.iter().any(|resource_override| {
-        resource_override.id == ResourceLimitId::MaxSvgBytes
-            && resource_override.value == below_exact
-    }));
+        let below_exact = exact_bytes - 1;
+        let below_policy = RenderResourcePolicy::unbounded_for_trusted_input()
+            .with_limit(ResourceLimitId::MaxSvgBytes, below_exact)
+            .expect("valid below-exact Pie SVG byte ceiling");
+        let error = try_render_pie_svg_with_resource_policy(source, below_policy)
+            .expect_err("one byte below the Pie family SVG size must fail");
+        let merman_render::Error::ResourceLimitExceeded(limit) = error else {
+            panic!("expected Pie MaxSvgBytes rejection, got {error}");
+        };
+        assert_eq!(limit.cause, ResourceLimitCause::Ceiling);
+        assert_eq!(limit.phase, ResourceLimitPhase::SvgOutput);
+        assert_eq!(limit.limit, ResourceLimitId::MaxSvgBytes.as_str());
+        assert_eq!(limit.max, below_exact);
+        assert!(limit.actual > limit.max);
+        assert!(limit.explicit_overrides.iter().any(|resource_override| {
+            resource_override.id == ResourceLimitId::MaxSvgBytes
+                && resource_override.value == below_exact
+        }));
+    }
 }
 
 fn render_pie_with_svg_limit(
@@ -1219,6 +1254,17 @@ fn pie_content_translate(svg: &str) -> (f64, f64) {
         .collect::<Vec<_>>();
     assert_eq!(values.len(), 2, "two-dimensional translate transform");
     (values[0], values[1])
+}
+
+fn pie_outer_circle_radius(svg: &str) -> f64 {
+    let document = roxmltree::Document::parse(svg).expect("valid Pie SVG");
+    document
+        .descendants()
+        .find(|node| node.attribute("class") == Some("pieOuterCircle"))
+        .and_then(|node| node.attribute("r"))
+        .expect("outer circle radius")
+        .parse()
+        .expect("numeric outer circle radius")
 }
 
 #[test]
@@ -1560,13 +1606,90 @@ pie
 "#,
     );
     let left_offset = pie_content_translate(&left_svg);
-    let expected_left_offset = root_viewbox_width(&left_svg) - 490.0;
     assert!(
-        (left_offset.0 - expected_left_offset).abs() <= 1.0e-9
-            && left_offset.1.abs() <= f64::EPSILON,
+        left_offset.0 > 22.0 && left_offset.1.abs() <= f64::EPSILON,
         "left legend should move the pie group right by legend width: {left_svg}"
     );
     assert!(left_svg.contains(r#"class="legend" transform="translate(-207,-22)""#));
+}
+
+#[test]
+fn pie_left_legend_offset_is_independent_of_title_viewport_expansion() {
+    use merman_render::environment::{
+        MeasurementProfileId, TextMeasurementProfile, TextMeasurementProfileIdentity,
+    };
+    use merman_render::text::{TextMeasurer, TextMetrics, TextStyle};
+    use std::sync::Arc;
+
+    struct FixedPieMeasurer;
+
+    impl TextMeasurer for FixedPieMeasurer {
+        fn measure(&self, text: &str, style: &TextStyle) -> TextMetrics {
+            TextMetrics {
+                width: self.measure_svg_text_bounding_client_rect_width_px(text, style),
+                height: style.font_size,
+                line_count: 1,
+            }
+        }
+
+        fn measure_svg_text_bounding_client_rect_width_px(
+            &self,
+            text: &str,
+            _style: &TextStyle,
+        ) -> f64 {
+            match text {
+                "A" => 12.0,
+                "A [1]" => 40.0,
+                "T" => 80.0,
+                "WWWWWWWWWWWWWWWW" => 1_280.0,
+                other => panic!("unexpected Pie measurement: {other:?}"),
+            }
+        }
+    }
+
+    for (header, expected_viewbox, expected_offset) in [
+        ("", "0 0 524 450", 34.0),
+        (" title T", "0 0 524 450", 34.0),
+        (" title WWWWWWWWWWWWWWWW", "-415 0 1280 450", 34.0),
+        (" showData", "0 0 552 450", 62.0),
+        (" showData title T", "0 0 552 450", 62.0),
+        (" showData title WWWWWWWWWWWWWWWW", "-415 0 1280 450", 62.0),
+    ] {
+        let source =
+            format!("---\nconfig:\n  pie:\n    legendPosition: left\n---\npie{header}\n\"A\": 1\n");
+        let parsed = legacy_init_theme_compat_engine()
+            .parse_diagram_for_render_model_sync(&source, ParseOptions::strict())
+            .unwrap()
+            .unwrap()
+            .into_presentation();
+        let profile = TextMeasurementProfile::new(
+            TextMeasurementProfileIdentity::new(
+                MeasurementProfileId::new("pie-title-legend-geometry").unwrap(),
+                "test",
+            )
+            .unwrap(),
+            Arc::new(FixedPieMeasurer),
+        );
+        let session = RenderEnvironment::deterministic()
+            .with_text_measurement_policy(TextMeasurementPolicy::uniform(profile))
+            .begin_session()
+            .unwrap();
+        let artifact = family::prepare(&parsed, &LayoutOptions::default(), session).unwrap();
+        let rendered = artifact
+            .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+            .unwrap();
+        assert_eq!(
+            pie_content_translate(rendered.svg()),
+            (expected_offset, 0.0),
+            "{header}"
+        );
+        let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+        assert_eq!(
+            document.root_element().attribute("viewBox"),
+            Some(expected_viewbox),
+            "the root must still contain the measured title"
+        );
+    }
 }
 
 #[test]
@@ -1991,6 +2114,48 @@ fn pie_static_stroke_is_verified_from_slice_and_outer_circle_css() {
         assert_eq!(evidence.accounted_count(), 1);
         assert_eq!(evidence.applied_count(), 1);
         assert_eq!(evidence.not_applicable_count(), 0);
+        assert_eq!(evidence.theme_residual_count(), 0);
+    }
+}
+
+#[test]
+fn pie_source_outer_width_preserves_typed_stroke_portable_evidence() {
+    let theme =
+        pie_slice_stroke_theme(CanvasPaint::solid("#7c3aed").expect("valid typed Pie stroke"));
+    for outer_color in [None, Some("#0f172a")] {
+        let source_color = outer_color
+            .map(|color| format!("    pieOuterStrokeColor: '{color}'\n"))
+            .unwrap_or_default();
+        let source = format!(
+            "---\nconfig:\n  themeVariables:\n    pieOuterStrokeWidth: 20px\n{source_color}---\npie\n\"A\": 1\n"
+        );
+        let rendered = try_render_pie_with_theme_requirement(
+            &source,
+            &theme,
+            ThemePortabilityRequirement::RequirePortable,
+        )
+        .expect("source width and independently owned stroke paint remain portable");
+        assert_eq!(pie_outer_circle_radius(rendered.svg()), 195.0);
+        assert_eq!(
+            pie_stylesheet_property_values(rendered.svg(), "#merman .pieCircle", "stroke"),
+            ["#7c3aed"]
+        );
+        assert_eq!(
+            pie_stylesheet_property_values(rendered.svg(), "#merman .pieOuterCircle", "stroke"),
+            [outer_color.unwrap_or("#7c3aed")]
+        );
+        assert_eq!(
+            pie_stylesheet_property_values(
+                rendered.svg(),
+                "#merman .pieOuterCircle",
+                "stroke-width"
+            ),
+            ["20px"]
+        );
+        let evidence =
+            merman_render::__private::family_evidence(rendered.into_completion().report());
+        assert_eq!(evidence.applied_count(), 1);
+        assert_eq!(evidence.accounted_count(), evidence.required_count());
         assert_eq!(evidence.theme_residual_count(), 0);
     }
 }

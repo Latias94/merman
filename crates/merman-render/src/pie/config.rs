@@ -6,6 +6,36 @@ const DEFAULT_DONUT_HOLE: f64 = 0.0;
 const DEFAULT_LEGEND_POSITION: &str = "right";
 const DEFAULT_USE_MAX_WIDTH: bool = true;
 
+/// Mirror parseFontSize: numbers stay fractional; strings use parseInt(_, 10), even with CSS units.
+pub(super) fn pie_outer_stroke_width(config: &Value) -> f64 {
+    let value = &config["themeVariables"]["pieOuterStrokeWidth"];
+    if let Some(width) = value.as_f64() {
+        return width;
+    }
+    value
+        .as_str()
+        .and_then(|text| {
+            let text = text.trim_start_matches(|ch: char| {
+                (ch.is_whitespace() && ch != '\u{85}') || ch == '\u{feff}'
+            });
+            let digits = text
+                .strip_prefix('-')
+                .or_else(|| text.strip_prefix('+'))
+                .unwrap_or(text);
+            let count = digits
+                .bytes()
+                .take_while(|byte| byte.is_ascii_digit())
+                .count();
+            if count == 0 {
+                return None;
+            }
+            text[..text.len() - digits.len() + count]
+                .parse::<f64>()
+                .ok()
+        })
+        .unwrap_or(2.0)
+}
+
 /// Resolve stylesheet sizes whose geometry does not depend on the host document.
 pub(super) fn pie_font_size_px(css: &str, inherited_px: f64) -> f64 {
     pie_font_size(css, inherited_px)
@@ -140,6 +170,30 @@ pub(crate) struct PieRenderSettings {
 mod tests {
     use super::*;
     use serde_json::json;
+
+    #[test]
+    fn outer_stroke_width_matches_mermaid_parse_font_size() {
+        for (value, expected) in [
+            (json!(20.5), 20.5),
+            (json!(0), 0.0),
+            (json!("20.5px"), 20.0),
+            (json!("5em"), 5.0),
+            (json!("100%"), 100.0),
+            (json!("  +7.5rem"), 7.0),
+            (json!(".5px"), 2.0),
+            (json!("calc(1px + 1em)"), 2.0),
+            (json!("var(--width)"), 2.0),
+            (json!(null), 2.0),
+        ] {
+            assert_eq!(
+                pie_outer_stroke_width(&json!({"themeVariables": {
+                    "pieOuterStrokeWidth": value
+                }})),
+                expected
+            );
+        }
+        assert_eq!(pie_outer_stroke_width(&json!({})), 2.0);
+    }
 
     #[test]
     fn pie_layout_settings_preserve_defaults() {

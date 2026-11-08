@@ -300,7 +300,7 @@ impl XyChartState {
                 if point.label.is_empty() {
                     String::new()
                 } else {
-                    sanitize_text(&point.label, config)
+                    sanitize_text(point.label.trim(), config)
                 }
             })
             .collect::<Vec<_>>();
@@ -963,6 +963,34 @@ fn xychart_word(input: &str) -> (Option<XyChartKeyword>, usize) {
     (None, alpha_len)
 }
 
+fn xychart_reserved_text_token_len(input: &str) -> Option<usize> {
+    let (keyword, len) = xychart_word(input);
+    if keyword.is_some() {
+        return Some(len);
+    }
+    // Header literals have a trailing ASCII word boundary; the orientation regexp does not.
+    for word in ["xychart-beta", "xychart"] {
+        if input
+            .get(..word.len())
+            .is_some_and(|prefix| prefix.eq_ignore_ascii_case(word))
+            && !input
+                .as_bytes()
+                .get(word.len())
+                .is_some_and(|byte| byte.is_ascii_alphanumeric() || *byte == b'_')
+        {
+            return Some(word.len());
+        }
+    }
+    ["vertical", "horizontal"]
+        .into_iter()
+        .find(|word| {
+            input
+                .get(..word.len())
+                .is_some_and(|prefix| prefix.eq_ignore_ascii_case(word))
+        })
+        .map(str::len)
+}
+
 #[cfg(feature = "editor-facts")]
 fn push_xychart_payload_fact(
     facts: &mut EditorSemanticFacts,
@@ -1141,7 +1169,30 @@ fn parse_text_prefix_source<'a>(
     }
 
     let mut value = String::new();
-    for (offset, ch) in raw_value.char_indices() {
+    let mut offset = 0;
+    while offset < raw_value.len() {
+        let remaining = &raw_value[offset..];
+        let ch = remaining.chars().next().expect("nonempty text suffix");
+        if ch.is_ascii_alphabetic() {
+            if let Some(len) = xychart_reserved_text_token_len(remaining) {
+                let token = &remaining[..len];
+                return Err(Error::diagram_parse_exact(
+                    "xychart".to_string(),
+                    format!("unexpected reserved token in text: {token}"),
+                    SourceSpan::new(text_start + offset, text_start + offset + len),
+                ));
+            }
+            // Consume ALPHA as one token: a reserved suffix inside `foobar` is text,
+            // but a new token after NUM, punctuation, or whitespace is lexed again.
+            let len = remaining
+                .bytes()
+                .take_while(u8::is_ascii_alphabetic)
+                .count();
+            value.push_str(&remaining[..len]);
+            offset += len;
+            continue;
+        }
+        offset += ch.len_utf8();
         if ch.is_whitespace() {
             continue;
         }
@@ -1149,7 +1200,7 @@ fn parse_text_prefix_source<'a>(
             return Err(Error::diagram_parse_exact(
                 "xychart".to_string(),
                 format!("unexpected token in text: {ch}"),
-                SourceSpan::new(text_start + offset, text_start + offset + ch.len_utf8()),
+                SourceSpan::new(text_start + offset - ch.len_utf8(), text_start + offset),
             ));
         }
         value.push(ch);
@@ -2261,6 +2312,113 @@ mod tests {
     }
 
     #[test]
+    fn xychart_band_text_rejects_reserved_tokens_at_jison_token_boundaries() {
+        for (category, token) in [
+            ("bar", "bar"),
+            ("LINE", "LINE"),
+            ("title", "title"),
+            ("horizontal", "horizontal"),
+            ("horizontalFoo", "horizontal"),
+            ("verticalFoo", "vertical"),
+            ("vertical42", "vertical"),
+            ("HORIZONTAL_name", "HORIZONTAL"),
+            ("xychart-beta", "xychart-beta"),
+            ("1bar", "bar"),
+            ("_line", "line"),
+            ("foo bar", "bar"),
+            ("A-horizontal", "horizontal"),
+        ] {
+            let source = format!("xychart\nx-axis [{category}, B]\nline [1, 2]\n");
+            let error = MermaidEngine::new()
+                .parse_diagram_sync(&source, ParseOptions::strict())
+                .expect_err("inclusive band state must retain reserved lexer rules");
+            let Error::DiagramParse { diagnostic, .. } = error else {
+                panic!("expected exact XY Chart parser diagnostic");
+            };
+            let start = "xychart\nx-axis [".len() + category.rfind(token).unwrap();
+            assert_eq!(
+                diagnostic.message(),
+                format!("unexpected reserved token in text: {token}")
+            );
+            assert_eq!(
+                diagnostic.span(),
+                Some(SourceSpan::new(start, start + token.len()))
+            );
+        }
+    }
+
+    #[test]
+    fn xychart_band_text_keeps_alpha_numeric_and_quoted_controls() {
+        let model = parse(concat!(
+            "xychart\n",
+            "x-axis [barTitle, bar_1, bar1, foobar, b ar, 1foo, accTitle, accDescr, 01]\n",
+            "line [1, 2, 3, 4, 5, 6, 7, 8, 9]\n",
+        ));
+        assert_eq!(
+            model["xAxis"]["categories"],
+            json!([
+                "barTitle", "bar_1", "bar1", "foobar", "bar", "1foo", "accTitle", "accDescr", "01"
+            ])
+        );
+        for (quoted, expected) in [
+            ("\"bar\"", "bar"),
+            ("\"`bar`\"", "bar"),
+            ("\"horizontalFoo\"", "horizontalFoo"),
+        ] {
+            let source = format!("xychart\nx-axis [{quoted}, B]\nline [1, 2]\n");
+            assert_eq!(
+                parse(&source)["xAxis"]["categories"],
+                json!([expected, "B"])
+            );
+        }
+    }
+
+    #[test]
+    #[cfg(feature = "editor-facts")]
+    fn xychart_reserved_band_recovery_preserves_repeated_raw_label_occurrences() {
+        let source = concat!(
+            "xychart\n",
+            "x-axis [bar, B, bar]\n",
+            "line [1 \" bar \", 1 \"bar\", 1 \"bar\"]\n",
+        );
+        let facts = MermaidEngine::new()
+            .parse_editor_semantic_facts_with_type_sync("xychart", source)
+            .unwrap()
+            .unwrap();
+        assert_eq!(facts.completeness, EditorSemanticCompleteness::Recovered);
+        let reserved = source.find("bar").unwrap();
+        assert!(facts.diagnostics.iter().any(|diagnostic| {
+            diagnostic.kind == EditorSemanticDiagnosticKind::ParserRecovery
+                && diagnostic.span == Some(SourceSpan::new(reserved, reserved + 3))
+        }));
+        let occurrences = facts
+            .symbols
+            .iter()
+            .filter(|symbol| symbol.detail.as_deref() == Some("xychart line data label"))
+            .map(|symbol| (symbol.name.as_str(), symbol.selection))
+            .collect::<Vec<_>>();
+        let first = source.find("\" bar \"").unwrap() + 1;
+        let second = source.find("\"bar\"").unwrap() + 1;
+        let third = source.rfind("\"bar\"").unwrap() + 1;
+        assert_eq!(
+            occurrences,
+            vec![
+                (" bar ", SourceSpan::new(first, first + 5)),
+                ("bar", SourceSpan::new(second, second + 3)),
+                ("bar", SourceSpan::new(third, third + 3)),
+            ]
+        );
+        let valid = source.replace("x-axis [bar, B, bar]", "x-axis [\"bar\", B, \"bar\"]");
+        let model = parse(&valid);
+        assert_eq!(model["xAxis"]["categories"], json!(["bar", "B", "bar"]));
+        assert_eq!(model["plots"][0]["values"], json!([1.0, 1.0, 1.0]));
+        assert_eq!(
+            model["plots"][0]["pointLabels"],
+            json!(["bar", "bar", "bar"])
+        );
+    }
+
+    #[test]
     fn xychart_parses_axis_band_and_range_and_plots() {
         let model = parse(
             r#"xychart horizontal
@@ -2931,6 +3089,7 @@ mod semantic_tests {
         for source in [
             format!("xychart title \"{}\" bar [1]", "a".repeat(32768)),
             format!("xychart x-axis [A] %%{}\nbar [1]", "a".repeat(32768)),
+            format!("xychart x-axis [{}bar, B] line [1, 2]", "A ".repeat(32768)),
         ] {
             let control = crate::OperationControl::new();
             control.cancel_after_checkpoints(5);

@@ -7,6 +7,7 @@ use crate::{Error, Result};
 use merman_model::families::xy_chart::{
     XyChartAxisModel, XyChartDiagramRenderModel, XyChartPlotModel, XyChartPlotType,
 };
+use rustc_hash::FxHashMap;
 use serde_json::Value;
 use std::fmt::Write as _;
 
@@ -575,6 +576,8 @@ enum AxisKind {
 #[derive(Debug, Clone)]
 struct Axis {
     kind: AxisKind,
+    // D3 deduplicates only the scale domain; authored categories still own ticks and data.
+    band_domain: FxHashMap<String, usize>,
     axis_config: AxisConfig,
     axis_theme: AxisThemeConfig,
     axis_position: AxisPosition,
@@ -598,8 +601,16 @@ impl Axis {
         axis_theme: AxisThemeConfig,
         title: String,
     ) -> Self {
+        let mut band_domain = FxHashMap::default();
+        if let AxisKind::Band { categories } = &kind {
+            for category in categories {
+                let next = band_domain.len();
+                band_domain.entry(category.clone()).or_insert(next);
+            }
+        }
         Self {
             kind,
+            band_domain,
             axis_config,
             axis_theme,
             axis_position: AxisPosition::Left,
@@ -668,17 +679,17 @@ impl Axis {
 
     fn get_scale_value(&self, value: &str) -> f64 {
         match &self.kind {
-            AxisKind::Band { categories } => {
+            AxisKind::Band { .. } => {
                 let (a, b) = self.get_range();
-                let n = categories.len();
-                if n == 0 {
+                let Some(&idx) = self.band_domain.get(value) else {
+                    // Mermaid falls back to the padded range start for unknown categories.
                     return a;
-                }
+                };
+                let n = self.band_domain.len();
                 if n == 1 {
                     return a + (b - a) * 0.5;
                 }
                 let step = (b - a) / ((n - 1) as f64);
-                let idx = categories.iter().position(|c| c == value).unwrap_or(0);
                 a + step * (idx as f64)
             }
             AxisKind::Linear { domain } => {
@@ -1922,6 +1933,58 @@ mod tests {
     use crate::text::TextMetrics;
     use kurbo::Shape;
     use serde_json::json;
+
+    fn band_axis(categories: &[&str]) -> Axis {
+        let mut axis = Axis::new(
+            AxisKind::Band {
+                categories: categories
+                    .iter()
+                    .map(|category| (*category).to_string())
+                    .collect(),
+            },
+            default_axis_config(),
+            AxisThemeConfig {
+                title_color: "black".to_string(),
+                label_color: "black".to_string(),
+                tick_color: "black".to_string(),
+                axis_line_color: "black".to_string(),
+            },
+            String::new(),
+        );
+        axis.set_axis_position(AxisPosition::Bottom);
+        axis.set_range((10.0, 110.0));
+        axis
+    }
+
+    #[test]
+    fn band_scale_uses_unique_domain_with_authored_tick_count() {
+        let mut axis = band_axis(&["A", "B", "A"]);
+        assert_eq!(axis.band_domain.len(), 2);
+        assert_eq!(axis.tick_values(), ["A", "B", "A"]);
+        assert_eq!(axis.get_scale_value("A"), 10.0);
+        assert_eq!(axis.get_scale_value("B"), 110.0);
+        assert_eq!(axis.get_scale_value("unknown"), 10.0);
+        assert_eq!(axis.tick_distance(), 100.0 / 3.0);
+        axis.recalculate_outer_padding_to_draw_bar();
+        assert_eq!(axis.outer_padding, 11.0);
+        assert_eq!(axis.get_scale_value("A"), 21.0);
+        assert_eq!(axis.get_scale_value("B"), 99.0);
+    }
+
+    #[test]
+    fn band_scale_centers_one_unique_value_and_keeps_numeric_strings_distinct() {
+        let singleton = band_axis(&["A", "A"]);
+        assert_eq!(singleton.get_scale_value("A"), 60.0);
+        assert_eq!(singleton.get_scale_value("unknown"), 10.0);
+        assert_eq!(singleton.tick_values().len(), 2);
+
+        let numeric = band_axis(&["01", "1", "1.0", "01"]);
+        assert_eq!(numeric.band_domain.len(), 3);
+        assert_eq!(numeric.get_scale_value("01"), 10.0);
+        assert_eq!(numeric.get_scale_value("1"), 60.0);
+        assert_eq!(numeric.get_scale_value("1.0"), 110.0);
+        assert_eq!(numeric.tick_values().len(), 4);
+    }
 
     struct UserUnitMeasurer;
 

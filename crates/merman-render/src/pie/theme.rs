@@ -94,6 +94,8 @@ pub(crate) struct PieThemePlan {
     evidence: FamilyThemeOutcomes,
     palette_key: Option<FamilyThemeMechanismKey>,
     pending_rules: BTreeMap<FamilyThemeMechanismKey, PiePendingEvidence>,
+    // Title expansion changes the root viewport, not the chart's legend displacement.
+    content_width: OnceLock<f64>,
     terminal_evidence: OnceLock<PieTerminalEvidence>,
 }
 
@@ -121,6 +123,7 @@ impl PieThemePlan {
             evidence: FamilyThemeOutcomes::default(),
             palette_key: None,
             pending_rules: BTreeMap::new(),
+            content_width: OnceLock::new(),
             terminal_evidence: OnceLock::new(),
         };
         for section in &model.sections {
@@ -181,6 +184,23 @@ impl PieThemePlan {
 
     pub(crate) fn css_binding(&self) -> &PieCssBinding {
         &self.css
+    }
+
+    pub(super) fn prepare_content_width(&self, width: f64) -> crate::Result<()> {
+        self.content_width
+            .set(width)
+            .map_err(|_| crate::Error::InvalidModel {
+                message: "Pie content geometry was already prepared".to_string(),
+            })
+    }
+
+    pub(crate) fn content_width(&self) -> crate::Result<f64> {
+        self.content_width
+            .get()
+            .copied()
+            .ok_or_else(|| crate::Error::InvalidModel {
+                message: "Pie content geometry has not been prepared".to_string(),
+            })
     }
 
     fn resolve_palette(
@@ -989,6 +1009,7 @@ mod tests {
         assert_eq!(css.section_text_color, "var(--section-color)");
         assert_eq!(css.slice_stroke_width, "3");
         assert_eq!(css.outer_stroke_width, "calc(1px + 1em)");
+        assert_eq!(css.outer_stroke_width_number, 2.0);
         assert_eq!(css.slice_opacity, "0.4");
         assert_eq!(css.title_text_size, "1.5em");
         assert_eq!(css.title_measurement_style().font_size, 24.0);

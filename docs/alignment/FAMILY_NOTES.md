@@ -326,6 +326,33 @@ Owners: [parser](../../crates/merman-core/src/diagrams/packet.rs),
 [SVG tests](../../crates/merman-render/tests/packet_svg_test.rs), and
 [ASCII split-field tests](../../crates/merman-ascii/tests/new_family_models/packet.rs).
 
+## Pie
+
+`pieOuterStrokeWidth` affects the prepared outer-circle radius as well as its CSS. The selected
+renderer uses `parseFontSize`'s numeric component for this radius, without converting CSS units into
+pixels. The default width is two and produces a radius of 186 layout units.
+
+A left legend moves the pie by the measured legend text width plus its swatch and spacing. A title
+can expand the final viewBox independently; it does not change that pie translation. Browser text
+measurement can still alter the legend width and root bounds.
+
+Owners: [layout](../../crates/merman-render/src/pie.rs),
+[theme preparation](../../crates/merman-render/src/pie/theme.rs), and
+[SVG tests](../../crates/merman-render/tests/pie_svg_test.rs).
+
+## Quadrant Chart
+
+Title and single-line accessibility terminals consume their full physical-line payload. Semicolons
+and percent pairs within that payload remain literal text. Ordinary quoted and Markdown-delimited
+labels can span physical lines; their backslashes remain literal under the selected Jison grammar.
+Multiline tokens belong to one statement, and editor selections retain the original payload range.
+
+Markdown delimiters select the upstream text token; they do not add rich Markdown rendering to this
+family's direct SVG text terminals. Font measurement remains subject to the shared headless boundary.
+
+Owners: [parser](../../crates/merman-core/src/diagrams/quadrant_chart.rs) and
+[SVG tests](../../crates/merman-render/tests/quadrantchart_svg_test.rs).
+
 ## Radar
 
 A numeric curve with a different number of values than axes remains in the semantic model and
@@ -479,6 +506,13 @@ the final plot area; a title that cannot fit vertically is omitted rather than f
 The selected parser accepts orientation keywords without regard to case, but its DB selects horizontal
 layout only for the exact lowercase value `horizontal`. Uppercase `HORIZONTAL` consequently remains
 vertical. Statement boundaries can occur on the same physical line outside quoted and bracketed values.
+
+Reserved lexer keywords used as band categories require quotes, such as `"bar"`. Quoted values and
+ordinary identifiers retain their authored selections. Band scales use the first occurrence of
+each category to build the unique coordinate domain, as D3 does; canonical categories, plot data
+and repeated tick occurrences remain intact. Repeated categories therefore share a position without
+compressing later unique categories. XY Chart always emits a responsive SVG in the selected upstream
+renderer, including when `xyChart.useMaxWidth` is false.
 
 Owners: [XYChart layout](../../crates/merman-render/src/xychart.rs),
 [SVG tests](../../crates/merman-render/tests/xychart_svg_test.rs), and

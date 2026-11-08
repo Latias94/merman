@@ -2571,9 +2571,13 @@ Point A:::class1: [0.9, 0.0]
     assert!(facts.directive_prefixes.iter().any(|p| p == "title"));
     assert!(facts.directive_prefixes.iter().any(|p| p == "accTitle"));
     assert!(facts.directive_prefixes.iter().any(|p| p == "accDescr"));
-    assert!(facts.symbols.iter().any(
-        |symbol| symbol.name == "Typed Quadrant" && symbol.role == EditorSemanticRole::Payload
-    ));
+    assert!(
+        facts
+            .symbols
+            .iter()
+            .any(|symbol| symbol.name == "\"Typed Quadrant\""
+                && symbol.role == EditorSemanticRole::Payload)
+    );
     assert!(
         facts
             .symbols
@@ -2593,10 +2597,11 @@ Point A:::class1: [0.9, 0.0]
             .any(|symbol| symbol.name == "class1" && symbol.kind == EditorSemanticKind::Class)
     );
 
-    let title_start = text.find("Typed Quadrant").unwrap();
+    let title_start = text.find("\"Typed Quadrant\"").unwrap();
     assert!(facts.expected_syntax.iter().any(|expected| {
         expected.kind == EditorExpectedSyntaxKind::Payload
-            && expected.span == SourceSpan::new(title_start, title_start + "Typed Quadrant".len())
+            && expected.span
+                == SourceSpan::new(title_start, title_start + "\"Typed Quadrant\"".len())
     }));
     let class_use_start = text.find("Point A:::class1").unwrap() + "Point A:::".len();
     assert!(facts.expected_syntax.iter().any(|expected| {
