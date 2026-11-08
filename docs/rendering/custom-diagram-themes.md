@@ -140,7 +140,12 @@ as a generic family; it can fall through to its serif fallback. A stack such as
 promising the same UI face on every platform. Quoted source font names retain their literal
 meaning; Merman does not rewrite them into generic aliases.
 
-Theme sizes use pixels. Raw HTML labels can also contain relative CSS sizes: `em` follows the
+Theme sizes use pixels. Inherited Mermaid theme font sizes also accept absolute CSS lengths,
+including `pt`, `pc`, `in`, `cm`, `mm` and `q`, using 96 CSS pixels per inch. For example,
+`themeVariables.fontSize: "24pt"` supplies 32px to layout and retains its configuration priority
+over a typed base size. Family-specific numeric settings keep their own configuration rules.
+
+Raw HTML labels can also contain relative CSS sizes: `em` follows the
 parent font, while `rem` depends on the receiving document's root font. Class and Requirement
 HTML node-label measurement uses the ordinary 16px document-root baseline; a page with a different
 root size or a standalone SVG document can resolve `rem` differently. Prefer pixel or parent-relative
@@ -151,6 +156,11 @@ parent, including each nested level; `em`, `i`, `cite`, `dfn` and `var` request 
 `kbd`, `samp` and `tt` use monospace. Supported explicit font declarations, including
 `font-weight:initial` and `font-style:inherit`, override these defaults. Supply the corresponding
 faces to the host when their measurements matter; a requested weight does not provide a font file.
+
+Native HTML measurement and export share the same font-size keyword values with a 16px default
+`medium`. A zero-sized inline run contributes no glyph width or ink; its parent line box and
+visible siblings can still occupy space. A receiving browser's default font preferences can
+change keyword sizes, so explicit lengths are preferable for reproducible exports.
 
 Use representative Latin, CJK and symbol labels when the content needs them. A font's presence
 does not imply glyph coverage, and a successful theme status does not certify either one. The
@@ -811,6 +821,12 @@ into one slot within each layer before composition. Equal declarations in one la
 conflicting declarations in the same layer are rejected. Either spelling in an appearance
 overrides the shared value. Native Mermaid source and site configuration retain their existing
 `darkMode` settings.
+
+Kanban derives section and task palette colors from `themeVariables.darkMode`. Choosing the
+Mermaid Dark palette does not itself enable this separate color-derivation input. An explicitly
+configured root `darkMode` remains a fallback;
+when both paths are authored, the theme-variable value takes priority. The initialized root
+default does not override the selected theme's value.
 
 The same file can be checked and selected without changing its declared default:
 
