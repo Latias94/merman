@@ -125,6 +125,8 @@ type MindmapEdgeModel = merman_model::families::mindmap::MindmapDiagramRenderEdg
 #[derive(Debug, Default)]
 pub(crate) struct MindmapPreparedLabels {
     labels: BTreeMap<String, MindmapPreparedLabel>,
+    visible_styles: Vec<crate::text::VisibleTextStyleFacts>,
+    _visible_style_reservation: Option<crate::resources::PreparedTextRetainedReservation>,
 }
 
 #[derive(Debug)]
@@ -134,8 +136,51 @@ struct MindmapPreparedLabel {
 }
 
 impl MindmapPreparedLabels {
+    pub(crate) fn prepare(
+        model: &MindmapModel,
+        config: &PresentationConfig,
+        work_meter: &Arc<crate::resources::OperationWorkMeter>,
+    ) -> Result<Self> {
+        let reservation = work_meter.reserve_prepared_text_retained_bytes(
+            model
+                .nodes
+                .len()
+                .saturating_mul(std::mem::size_of::<crate::text::VisibleTextStyleFacts>()),
+        )?;
+        let mut prepared = Self {
+            visible_styles: Vec::with_capacity(model.nodes.len()),
+            _visible_style_reservation: Some(reservation),
+            ..Self::default()
+        };
+        let html_labels = crate::config::config_effective_html_labels(config.as_value());
+        for node in &model.nodes {
+            work_meter.checkpoint(merman_model::OperationPhase::Layout)?;
+            let facts = if html_labels && !crate::math::contains_delimited_math(&node.label) {
+                let label =
+                    MindmapPreparedLabel::prepare(&node.id, &node.label, config, work_meter)?;
+                let facts =
+                    crate::text::VisibleTextStyleFacts::from_mindmap_xhtml_fragment(&label.xhtml);
+                prepared.insert(node.id.clone(), label);
+                facts
+            } else if html_labels {
+                // Math has a separate renderer-owned terminal; source markup cannot prove it.
+                crate::text::VisibleTextStyleFacts::not_requested()
+            } else {
+                crate::text::VisibleTextStyleFacts::from_svg_markdown_projection(
+                    mindmap_svg_label_source(&node.label).as_ref(),
+                )
+            };
+            prepared.visible_styles.push(facts);
+        }
+        Ok(prepared)
+    }
+
     pub(crate) fn xhtml_for(&self, node_id: &str) -> Option<&str> {
         self.labels.get(node_id).map(|label| label.xhtml.as_str())
+    }
+
+    pub(crate) fn visible_styles(&self) -> &[crate::text::VisibleTextStyleFacts] {
+        &self.visible_styles
     }
 
     fn insert(&mut self, node_id: String, label: MindmapPreparedLabel) {
@@ -150,6 +195,22 @@ impl MindmapPreparedLabel {
         config: &PresentationConfig,
         work_meter: &Arc<crate::resources::OperationWorkMeter>,
     ) -> Result<Self> {
+        Self::prepare_at_phase(
+            node_id,
+            text,
+            config,
+            work_meter,
+            merman_model::OperationPhase::Layout,
+        )
+    }
+
+    fn prepare_at_phase(
+        node_id: &str,
+        text: &str,
+        config: &PresentationConfig,
+        work_meter: &Arc<crate::resources::OperationWorkMeter>,
+        phase: merman_model::OperationPhase,
+    ) -> Result<Self> {
         // Match the conservative owner-slot allowance used by the Flowchart sidecar.
         const OWNER_SLOT_BYTES: usize = 192;
         let owner_bytes = std::mem::size_of::<Self>()
@@ -162,12 +223,7 @@ impl MindmapPreparedLabel {
             .map_or(usize::MAX, |remaining| {
                 remaining.saturating_sub(owner_bytes)
             });
-        let sink = crate::html::HtmlSanitizeSink::new(
-            max,
-            work_meter,
-            &parse_work,
-            merman_model::OperationPhase::Layout,
-        );
+        let sink = crate::html::HtmlSanitizeSink::new(max, work_meter, &parse_work, phase);
         // createText restores entity references before HTML consumption, not after serialization.
         let source = merman_model::text::restore_mermaid_entity_spelling(text);
         let html = crate::text::replace_fontawesome_icons(
@@ -205,6 +261,22 @@ impl MindmapPreparedLabel {
             _retained_reservation: reservation,
         })
     }
+}
+
+/// Native admission uses the same Markdown, entity and sanitizer path as prepared labels.
+pub(crate) fn native_html_label_source(
+    text: &str,
+    config: &PresentationConfig,
+    work_meter: &Arc<crate::resources::OperationWorkMeter>,
+) -> Result<String> {
+    MindmapPreparedLabel::prepare_at_phase(
+        "",
+        text,
+        config,
+        work_meter,
+        merman_model::OperationPhase::Semantic,
+    )
+    .map(|label| label.xhtml)
 }
 
 pub(crate) fn single_image_paragraph_inner(fragment: &str) -> Option<&str> {
@@ -582,23 +654,11 @@ fn layout_mindmap_diagram_model(
     let max_node_width_px = mindmap_max_node_width_px(effective_config);
 
     let mut nodes: Vec<LayoutNode> = Vec::with_capacity(model.nodes.len());
-    let mut prepared_labels = MindmapPreparedLabels::default();
+    let prepared_labels = MindmapPreparedLabels::prepare(model, config, &work_meter)?;
     // Mermaid's Mindmap DB emits nodes in parser preorder, and Cytoscape consumes that order
     // directly. The typed model already preserves it; re-sorting numeric-looking ids here added
     // O(N log N) work and changed the geometry of manually constructed source-order models.
     for n in &model.nodes {
-        let prepared = if crate::config::config_effective_html_labels(effective_config)
-            && !crate::math::contains_delimited_math(&n.label)
-        {
-            Some(MindmapPreparedLabel::prepare(
-                &n.id,
-                &n.label,
-                config,
-                &work_meter,
-            )?)
-        } else {
-            None
-        };
         let (label_width, label_height) = mindmap_label_bbox_px_with_math(
             &n.label,
             text_measurer,
@@ -606,11 +666,8 @@ fn layout_mindmap_diagram_model(
             max_node_width_px,
             config,
             math_renderer,
-            prepared.as_ref().map(|label| label.xhtml.as_str()),
+            prepared_labels.xhtml_for(&n.id),
         )?;
-        if let Some(prepared) = prepared {
-            prepared_labels.insert(n.id.clone(), prepared);
-        }
         let (width, height, label_width, label_height) = mindmap_node_dimensions_from_label_bbox(
             n,
             label_width,
@@ -935,6 +992,80 @@ mod tests {
         assert_eq!(meter.projected_svg_bytes(), 0);
         drop(prepared);
         assert_eq!(meter.prepared_text_retained_bytes(), 0);
+    }
+
+    #[test]
+    fn mindmap_visible_styles_are_collected_once_and_reused_by_theme_and_writer() {
+        use crate::diagram_theme::{
+            DiagramThemeCompiler, DiagramThemeSpec, FontStack, ThemeTextStyle, TypographySpec,
+        };
+
+        let theme = DiagramThemeCompiler::new()
+            .compile(DiagramThemeSpec::new().with_typography(
+                TypographySpec::default().with_family_style(
+                    crate::DiagramFamilyId::MINDMAP,
+                    ThemeTextStyle::default().with_font_stack(FontStack::single("Arial").unwrap()),
+                ),
+            ))
+            .unwrap();
+        let plan = merman_core::presentation::ThemeCompatibilityPlan::from_recipe(
+            theme.compatibility_recipe().clone(),
+        );
+        let parsed = merman_core::MermaidEngine::new()
+            .with_theme_plan(&plan)
+            .parse_diagram_for_render_model_sync(
+                "---\nconfig:\n  layout: tidy-tree\n---\nmindmap\n  Root\n    first[\"**First**\"]\n    second[\"<span style='font-family:monospace'>Second</span>\"]\n",
+                merman_core::ParseOptions::strict(),
+            )
+            .unwrap()
+            .unwrap()
+            .into_presentation();
+        let (_, collections) = crate::text::VisibleTextStyleFacts::count_collections(|| {
+            let session = crate::environment::RenderEnvironment::deterministic()
+                .begin_session_with_theme(&theme)
+                .unwrap();
+            crate::family::prepare(
+                &parsed,
+                &crate::LayoutOptions::headless_svg_defaults(),
+                session,
+            )
+            .unwrap()
+            .render_svg(
+                &crate::svg::SvgRenderOptions::default(),
+                &crate::svg::SvgDebugOptions::default(),
+            )
+            .unwrap()
+        });
+        assert_eq!(
+            collections, 3,
+            "each final XHTML label is inspected only once"
+        );
+    }
+
+    #[test]
+    fn mindmap_math_source_does_not_supply_visible_terminal_evidence() {
+        let parsed = merman_core::MermaidEngine::new()
+            .parse_diagram_for_render_model_sync(
+                "mindmap\n  root[\"$$x^2$$\"]\n",
+                merman_core::ParseOptions::strict(),
+            )
+            .unwrap()
+            .unwrap()
+            .into_presentation();
+        let merman_model::presentation::RenderSemanticModel::Mindmap(model) = parsed.model() else {
+            panic!("Mindmap fixture");
+        };
+        let meter = std::sync::Arc::new(crate::resources::OperationWorkMeter::new(
+            crate::resources::RenderResourcePolicy::unbounded_for_trusted_input(),
+        ));
+        let labels = super::MindmapPreparedLabels::prepare(
+            model,
+            &parsed.metadata().effective_config,
+            &meter,
+        )
+        .unwrap();
+        assert!(!labels.visible_styles()[0].parse_valid());
+        assert!(labels.xhtml_for(&model.nodes[0].id).is_none());
     }
 
     #[test]

@@ -14,6 +14,7 @@ pub(crate) struct VisibleTextStyleFacts {
     unverified_color_runs: usize,
     unverified_portable_color_runs: usize,
     inherited_font_family_runs: usize,
+    source_owned_font_family_runs: usize,
     inherited_font_size_runs: usize,
     inherited_font_weight_runs: usize,
     inherited_font_style_runs: usize,
@@ -29,7 +30,15 @@ enum VisibleTextColorOwner {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum VisibleTextTypographyOwner {
     Inherited,
+    SourceOwned,
     UnmeasuredSource,
+}
+
+#[derive(Clone, Copy)]
+enum VisibleTextStylePolicy {
+    Inline,
+    #[cfg(feature = "diagram-mindmap")]
+    Mindmap,
 }
 
 #[derive(Clone, Copy)]
@@ -67,6 +76,7 @@ impl VisibleTextStyleFacts {
             unverified_color_runs: 0,
             unverified_portable_color_runs: 0,
             inherited_font_family_runs: 0,
+            source_owned_font_family_runs: 0,
             inherited_font_size_runs: 0,
             inherited_font_weight_runs: 0,
             inherited_font_style_runs: 0,
@@ -78,6 +88,16 @@ impl VisibleTextStyleFacts {
     }
 
     pub(crate) fn from_xhtml_fragment(fragment: &str) -> Self {
+        Self::from_xhtml_fragment_with_policy(fragment, VisibleTextStylePolicy::Inline)
+    }
+
+    /// Mindmap's known span-color rules are direct declarations, not inherited ancestor color.
+    #[cfg(feature = "diagram-mindmap")]
+    pub(crate) fn from_mindmap_xhtml_fragment(fragment: &str) -> Self {
+        Self::from_xhtml_fragment_with_policy(fragment, VisibleTextStylePolicy::Mindmap)
+    }
+
+    fn from_xhtml_fragment_with_policy(fragment: &str, policy: VisibleTextStylePolicy) -> Self {
         #[cfg(test)]
         FACT_COLLECTIONS.set(FACT_COLLECTIONS.get() + 1);
         let wrapped = format!("<merman-visible-text>{fragment}</merman-visible-text>");
@@ -85,7 +105,7 @@ impl VisibleTextStyleFacts {
             return Self::empty(false);
         };
         let mut facts = Self::empty(true);
-        collect_visible_facts(document.root_element(), &mut facts);
+        collect_visible_facts(document.root_element(), &mut facts, policy);
         facts
     }
 
@@ -114,6 +134,7 @@ impl VisibleTextStyleFacts {
     pub(crate) fn with_unmeasured_typography(mut self, font_family: bool, font_size: bool) -> Self {
         if font_family {
             self.inherited_font_family_runs = 0;
+            self.source_owned_font_family_runs = 0;
         }
         if font_size {
             self.inherited_font_size_runs = 0;
@@ -147,6 +168,15 @@ impl VisibleTextStyleFacts {
     pub(crate) const fn unverified_font_family_run_count(&self) -> usize {
         self.visible_runs - self.inherited_font_family_runs
     }
+    /// Known local families still count as unverified for existing inheritance-only consumers.
+    #[cfg(feature = "diagram-mindmap")]
+    pub(crate) const fn source_owned_font_family_run_count(&self) -> usize {
+        self.source_owned_font_family_runs
+    }
+    #[cfg(feature = "diagram-mindmap")]
+    pub(crate) const fn unknown_font_family_run_count(&self) -> usize {
+        self.visible_runs - self.inherited_font_family_runs - self.source_owned_font_family_runs
+    }
     pub(crate) const fn inherited_font_size_run_count(&self) -> usize {
         self.inherited_font_size_runs
     }
@@ -174,6 +204,8 @@ impl VisibleTextStyleFacts {
         ));
         self.inherited_font_family_runs +=
             usize::from(owners.font_family == VisibleTextTypographyOwner::Inherited);
+        self.source_owned_font_family_runs +=
+            usize::from(owners.font_family == VisibleTextTypographyOwner::SourceOwned);
         self.inherited_font_size_runs +=
             usize::from(owners.font_size == VisibleTextTypographyOwner::Inherited);
         self.inherited_font_weight_runs +=
@@ -183,7 +215,11 @@ impl VisibleTextStyleFacts {
     }
 }
 
-fn collect_visible_facts(root: crate::xml_dom::Node<'_, '_>, facts: &mut VisibleTextStyleFacts) {
+fn collect_visible_facts(
+    root: crate::xml_dom::Node<'_, '_>,
+    facts: &mut VisibleTextStyleFacts,
+    policy: VisibleTextStylePolicy,
+) {
     // roxmltree's descendants are a flat preorder range. Each ancestor state is pushed and
     // popped once, retaining inheritance without recursion or repeated ancestor scans.
     let mut parents = Vec::<(crate::xml_dom::NodeId, VisibleTextOwners)>::new();
@@ -212,10 +248,35 @@ fn collect_visible_facts(root: crate::xml_dom::Node<'_, '_>, facts: &mut Visible
             let local_color = if has_css_class {
                 VisibleTextColorOwner::CssClass
             } else {
-                inherited.color
+                match policy {
+                    VisibleTextStylePolicy::Inline => inherited.color,
+                    #[cfg(feature = "diagram-mindmap")]
+                    VisibleTextStylePolicy::Mindmap
+                        if node.tag_name().name().eq_ignore_ascii_case("span") =>
+                    {
+                        // Mindmap's section/root CSS sets every span's color directly. Its
+                        // typed label overlay consumes that role; inline inheritance below
+                        // still reads the actual parent and can restore a source-owned color.
+                        match inherited.color {
+                            // An unknown host class can also target descendant spans.
+                            VisibleTextColorOwner::CssClass => VisibleTextColorOwner::CssClass,
+                            _ => VisibleTextColorOwner::Inherited,
+                        }
+                    }
+                    #[cfg(feature = "diagram-mindmap")]
+                    VisibleTextStylePolicy::Mindmap => inherited.color,
+                }
             };
             let local_family = if has_css_class || has_font_face {
                 VisibleTextTypographyOwner::UnmeasuredSource
+            } else if super::xhtml_font_default(node.tag_name().name(), "font-family").is_some() {
+                // Known HTML defaults are specified on the element, before its inline style.
+                // An unresolved ancestor may still supply a host rule targeting descendants.
+                if inherited.font_family == VisibleTextTypographyOwner::UnmeasuredSource {
+                    VisibleTextTypographyOwner::UnmeasuredSource
+                } else {
+                    VisibleTextTypographyOwner::SourceOwned
+                }
             } else {
                 inherited.font_family
             };
@@ -288,6 +349,7 @@ fn collect_visible_facts(root: crate::xml_dom::Node<'_, '_>, facts: &mut Visible
         facts.unverified_color_runs = facts.visible_runs;
         facts.unverified_portable_color_runs = facts.visible_runs;
         facts.inherited_font_family_runs = 0;
+        facts.source_owned_font_family_runs = 0;
         facts.inherited_font_size_runs = 0;
         facts.inherited_font_weight_runs = 0;
         facts.inherited_font_style_runs = 0;
@@ -343,19 +405,80 @@ fn inline_color_owner(
     let Some(style) = style else {
         return *local;
     };
-    let mut winner: Option<(bool, &str)> = None;
-    crate::mermaid_style::visit_parsed_style_declarations(style, |declaration| {
-        if declaration.property() != "color"
-            || !crate::mermaid_style::is_safe_browser_css_color_value(declaration.value())
+    let mut winner: Option<(bool, Option<&str>)> = None;
+    crate::mermaid_style::visit_style_declaration_boundaries(style, |boundary| {
+        let candidate = if let Some(declaration) =
+            crate::mermaid_style::parse_style_declaration(boundary.raw())
         {
-            return;
-        }
-        if winner.is_none_or(|(important, _)| declaration.important() || !important) {
-            winner = Some((declaration.important(), declaration.value()));
+            if declaration.property() == "color" {
+                if crate::mermaid_style::is_safe_browser_css_color_value(declaration.value()) {
+                    Some((declaration.important(), Some(declaration.value())))
+                } else {
+                    let mut value = cssparser::Parser::new(declaration.value());
+                    // A valid browser color may exceed the named/portable subset (escaped names,
+                    // system colors or modern functions). Retain its priority without evaluating it.
+                    let unknown_color = declaration.is_single_component_value()
+                        && matches!(
+                            value.next(),
+                            Ok(cssparser::Token::Ident(_)
+                                | cssparser::Token::Hash(_)
+                                | cssparser::Token::IDHash(_)
+                                | cssparser::Token::Function(_))
+                        );
+                    unknown_color.then_some((declaration.important(), None))
+                }
+            } else if declaration.property() == "all" {
+                if declaration.inherits_property_value() {
+                    Some((declaration.important(), Some(declaration.value())))
+                } else if matches!(
+                    declaration.value().trim().to_ascii_lowercase().as_str(),
+                    "initial" | "revert" | "revert-layer"
+                ) || declaration.analysis().has_dynamic_reference_function()
+                {
+                    Some((declaration.important(), None))
+                } else {
+                    None
+                }
+            } else {
+                None
+            }
+        } else {
+            // Retained browser CSS can exceed the safe-emission subset. A comment must not
+            // turn a local color into proof of inherited paint; retain uncertainty in cascade order.
+            let raw = boundary.raw().trim().trim_end_matches(';');
+            let mut parser = cssparser::Parser::new(raw);
+            let affects_color = parser.expect_ident_cloned().is_ok_and(|property| {
+                property.eq_ignore_ascii_case("color") || property.eq_ignore_ascii_case("all")
+            }) && parser.expect_colon().is_ok();
+            let color_component = affects_color
+                && matches!(
+                    parser.next(),
+                    Ok(cssparser::Token::Ident(_)
+                        | cssparser::Token::Hash(_)
+                        | cssparser::Token::IDHash(_)
+                        | cssparser::Token::Function(_))
+                );
+            if color_component && parser.is_exhausted() {
+                Some((false, None))
+            } else if color_component
+                && parser.try_parse(cssparser::parse_important).is_ok()
+                && parser.is_exhausted()
+            {
+                Some((true, None))
+            } else {
+                None
+            }
+        };
+        if let Some((important, value)) = candidate
+            && winner.is_none_or(|(previous_important, _)| important || !previous_important)
+        {
+            winner = Some((important, value));
         }
     });
-    let Some((important, value)) = winner else {
-        return *local;
+    let (important, value) = match winner {
+        None => return *local,
+        Some((important, Some(value))) => (important, value),
+        Some((_, None)) => return VisibleTextColorOwner::CssClass,
     };
     if matches!(
         value.trim().to_ascii_lowercase().as_str(),
@@ -387,6 +510,13 @@ fn inline_font_family_owner(
                 && (!has_css_class || override_.important()) =>
         {
             *parent
+        }
+        Some(override_)
+            if override_.ownership()
+                == crate::mermaid_style::CssFontFamilyOwnership::SourceOwned
+                && (!has_css_class || override_.important()) =>
+        {
+            VisibleTextTypographyOwner::SourceOwned
         }
         Some(_) => VisibleTextTypographyOwner::UnmeasuredSource,
     }
@@ -576,6 +706,131 @@ mod tests {
         );
         assert_eq!(inherited.inherited_font_family_run_count(), 1);
         assert_eq!(inherited.unverified_font_family_run_count(), 0);
+    }
+
+    #[cfg(feature = "diagram-mindmap")]
+    #[test]
+    fn known_local_font_families_are_distinct_from_unknown_dependencies() {
+        for (fragment, inherited, source_owned, unknown) in [
+            ("<span>Root</span>", 1, 0, 0),
+            ("<span></span>", 0, 0, 0),
+            ("<span style='font-family:monospace'>Root</span>", 0, 1, 0),
+            (
+                "<span style='font-family:monospace'><b style='font-family:inherit'>Root</b></span>",
+                0,
+                1,
+                0,
+            ),
+            ("<span class='host-font'>Root</span>", 0, 0, 1),
+            (
+                "<span style='font-family:var(--host-font)'>Root</span>",
+                0,
+                0,
+                1,
+            ),
+            ("<span style='font-family:initial'>Root</span>", 0, 0, 1),
+            (
+                "<span class='host-font' style='font-family:monospace'>Root</span>",
+                0,
+                0,
+                1,
+            ),
+            (
+                "<span class='host-font' style='font-family:monospace !important'>Root</span>",
+                0,
+                1,
+                0,
+            ),
+            (
+                "<span class='host-font' style='font-family:inherit !important'>Root</span>",
+                1,
+                0,
+                0,
+            ),
+            (
+                "<span style='font-family:monospace !important;font-family:inherit'>Root</span>",
+                0,
+                1,
+                0,
+            ),
+            (
+                "<style>span{font-family:var(--host-font)}</style><span style='font-family:monospace'>Root</span>",
+                0,
+                0,
+                1,
+            ),
+        ] {
+            let facts = VisibleTextStyleFacts::from_xhtml_fragment(fragment);
+            assert!(facts.parse_valid(), "{fragment}");
+            assert_eq!(
+                facts.inherited_font_family_run_count(),
+                inherited,
+                "{fragment}"
+            );
+            assert_eq!(
+                facts.source_owned_font_family_run_count(),
+                source_owned,
+                "{fragment}"
+            );
+            assert_eq!(facts.unknown_font_family_run_count(), unknown, "{fragment}");
+            assert_eq!(
+                facts.unverified_font_family_run_count(),
+                source_owned + unknown,
+                "existing inheritance-only consumers keep their original meaning: {fragment}"
+            );
+        }
+
+        let unmeasured = VisibleTextStyleFacts::from_xhtml_fragment(
+            "<span style='font-family:monospace'>Root</span>",
+        )
+        .with_unmeasured_typography(true, false);
+        assert_eq!(unmeasured.source_owned_font_family_run_count(), 0);
+        assert_eq!(unmeasured.unknown_font_family_run_count(), 1);
+    }
+
+    #[cfg(feature = "diagram-mindmap")]
+    #[test]
+    fn mindmap_span_color_reset_is_explicit_and_keeps_inline_inheritance_priority() {
+        let fragment = "<em style='color:red'><span>Root</span></em>";
+        let default_facts = VisibleTextStyleFacts::from_xhtml_fragment(fragment);
+        let mindmap_facts = VisibleTextStyleFacts::from_mindmap_xhtml_fragment(fragment);
+        assert_eq!(default_facts.inherited_color_run_count(), 0);
+        assert_eq!(mindmap_facts.inherited_color_run_count(), 1);
+
+        for style in [
+            "color:inherit",
+            "color:currentColor",
+            "color:unset",
+            "color:inherit !important;color:blue",
+            "color:blue;color:inherit",
+        ] {
+            let fragment = format!("<em style='color:red'><span style='{style}'>Root</span></em>");
+            let facts = VisibleTextStyleFacts::from_mindmap_xhtml_fragment(&fragment);
+            assert_eq!(facts.inherited_color_run_count(), 0, "{style}");
+            assert_eq!(facts.unverified_portable_color_run_count(), 0, "{style}");
+        }
+
+        let local = VisibleTextStyleFacts::from_mindmap_xhtml_fragment(
+            "<em style='color:red'><span style='color:blue'>Root</span></em>",
+        );
+        assert_eq!(local.inherited_color_run_count(), 0);
+        assert_eq!(local.unverified_portable_color_run_count(), 0);
+        let nested = VisibleTextStyleFacts::from_mindmap_xhtml_fragment(
+            "<em style='color:red;font-family:monospace'><span><b>Root</b></span></em>",
+        );
+        assert_eq!(nested.inherited_color_run_count(), 1);
+        assert_eq!(nested.source_owned_font_family_run_count(), 1);
+
+        let unknown = VisibleTextStyleFacts::from_mindmap_xhtml_fragment(
+            "<em style='color:red'><span class='host-ink'>Root</span></em>",
+        );
+        assert_eq!(unknown.inherited_color_run_count(), 0);
+        assert_eq!(unknown.unverified_portable_color_run_count(), 1);
+        let host_ancestor = VisibleTextStyleFacts::from_mindmap_xhtml_fragment(
+            "<em class='host-ink'><span>Root</span></em>",
+        );
+        assert_eq!(host_ancestor.inherited_color_run_count(), 0);
+        assert_eq!(host_ancestor.unverified_portable_color_run_count(), 1);
     }
 
     #[test]

@@ -476,6 +476,12 @@ pub fn unsupported_native_html_style(
                 &control,
             )
         }
+        #[cfg(feature = "diagram-mindmap")]
+        RenderSemanticModel::Mindmap(model) => unsupported_native_mindmap_html_style(
+            model,
+            &parsed.metadata().effective_config,
+            &control,
+        ),
         #[cfg(feature = "diagram-agentflow")]
         RenderSemanticModel::Agentflow(model) => {
             let config = &parsed.metadata().effective_config;
@@ -515,6 +521,100 @@ pub fn unsupported_native_html_style(
         }
         _ => Ok(None),
     }
+}
+
+#[cfg(feature = "diagram-mindmap")]
+fn unsupported_native_mindmap_html_style(
+    model: &merman_model::families::mindmap::MindmapDiagramRenderModel,
+    config: &merman_model::presentation::PresentationConfig,
+    control: &OperationControl,
+) -> OperationControlResult<Option<String>> {
+    use quick_xml::{Reader, events::Event};
+
+    if !crate::config::config_effective_html_labels(config.as_value()) {
+        return Ok(None);
+    }
+    let work = std::sync::Arc::new(crate::resources::OperationWorkMeter::new_with_control(
+        crate::resources::RenderResourcePolicy::unbounded_for_trusted_input(),
+        control.clone(),
+    ));
+    for node in &model.nodes {
+        control.checkpoint()?;
+        if crate::math::contains_delimited_math(&node.label) {
+            // Math owns its projected HTML and native capability admission separately.
+            continue;
+        }
+        let html = match crate::mindmap::native_html_label_source(&node.label, config, &work) {
+            Ok(html) => html,
+            Err(crate::Error::Cancelled(error)) => return Err(error),
+            Err(_) => return Ok(Some("Mindmap HTML label normalization".into())),
+        };
+        let mut tags = Reader::from_str(&html);
+        loop {
+            control.checkpoint()?;
+            let opening = match tags.read_event() {
+                Ok(Event::Start(opening) | Event::Empty(opening)) => opening,
+                Ok(Event::Eof) | Err(_) => break,
+                _ => continue,
+            };
+            let Some(style) = opening
+                .attributes()
+                .with_checks(false)
+                .filter_map(Result::ok)
+                .find(|attribute| attribute.key.as_ref().eq_ignore_ascii_case("style"))
+            else {
+                continue;
+            };
+            let style = merman_model::text::decode_html_entities_to_unicode(style.value.as_ref());
+            let mut unsupported = None;
+            crate::mermaid_style::visit_style_declaration_boundaries_with_checkpoints(
+                &style,
+                &mut || control.checkpoint(),
+                |boundary| {
+                    // Admission reads retained browser syntax, not permission to emit CSS.
+                    // In particular, a comment in a value must not hide its geometry property.
+                    let raw = boundary.raw();
+                    let mut declaration =
+                        cssparser::Parser::new(raw.strip_suffix(';').unwrap_or(raw).trim());
+                    let Ok(property) = declaration.expect_ident_cloned() else {
+                        return Ok(true);
+                    };
+                    if declaration.expect_colon().is_err() {
+                        return Ok(true);
+                    }
+                    let property = property.to_ascii_lowercase();
+                    if !declaration_scan::UNSUPPORTED_NATIVE_TEXT_STYLES
+                        .contains(&property.as_str())
+                    {
+                        return Ok(true);
+                    }
+                    let Some(first) = declaration.next().ok().cloned() else {
+                        return Ok(true);
+                    };
+                    let inherits = matches!(first, cssparser::Token::Ident(value)
+                        if value.eq_ignore_ascii_case("inherit") || value.eq_ignore_ascii_case("unset"))
+                        && (declaration.is_exhausted()
+                            || (declaration.try_parse(cssparser::parse_important).is_ok()
+                                && declaration.is_exhausted()));
+                    if !inherits {
+                        unsupported = Some(property);
+                    }
+                    Ok(unsupported.is_none())
+                },
+            )?;
+            if unsupported.is_some() {
+                return Ok(unsupported);
+            }
+            // Font longhands are measured, but rem still needs an independent document root.
+            if crate::mermaid_style::root_dependent_font_size([style.as_ref()], control)?.is_some()
+            {
+                return Ok(Some(
+                    "font-size (rem requires a document-root font size)".into(),
+                ));
+            }
+        }
+    }
+    Ok(None)
 }
 
 #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]

@@ -24,6 +24,7 @@ pub(super) struct MindmapLabelPaintPlan {
     pending: BTreeMap<FamilyThemeMechanismKey, ThemeCapability>,
     evidence: FamilyThemeOutcomes,
     fallback: FamilyThemeOutcomes,
+    unverified_rules: BTreeSet<usize>,
 }
 
 impl MindmapLabelPaintPlan {
@@ -32,6 +33,7 @@ impl MindmapLabelPaintPlan {
         config: &PresentationConfig,
         model: &MindmapDiagramRenderModel,
         binding: &super::css_binding::MindmapCssBinding,
+        visible_styles: &[crate::text::VisibleTextStyleFacts],
         work: &OperationWorkMeter,
     ) -> Result<Self, OperationWorkError> {
         let mut plan = Self::default();
@@ -50,13 +52,18 @@ impl MindmapLabelPaintPlan {
         let source_owned = model
             .nodes
             .iter()
-            .map(|node| node.label.trim().is_empty() || binding.label_fill_owned(config, node))
+            .zip(visible_styles)
+            .map(|(node, facts)| {
+                binding.label_fill_owned(config, node)
+                    || (facts.parse_valid()
+                        && facts.inherited_color_run_count() == 0
+                        && facts.unverified_portable_color_run_count() == 0)
+            })
             .collect::<Vec<_>>();
-        let occurrences = model
-            .nodes
+        let occurrences = visible_styles
             .iter()
             .enumerate()
-            .filter(|(_, node)| !node.label.trim().is_empty())
+            .filter(|(_, facts)| !facts.parse_valid() || facts.has_visible_runs())
             .map(|(index, _)| (index + 1, ThemeVariant::Default))
             .collect::<Vec<_>>();
         reconcile_unsupported_terminal_domains(
@@ -71,9 +78,9 @@ impl MindmapLabelPaintPlan {
             work,
         )?;
         let mut winners = BTreeSet::new();
-        for (index, node) in model.nodes.iter().enumerate() {
+        for (index, facts) in visible_styles.iter().enumerate() {
             work.charge(1)?;
-            if node.label.trim().is_empty() {
+            if facts.parse_valid() && !facts.has_visible_runs() {
                 plan.fills.push(None);
                 continue;
             }
@@ -102,6 +109,13 @@ impl MindmapLabelPaintPlan {
                 })
                 .flatten()
                 .map(DirectPaintExpectation::from_paint);
+            if let Some(fill) = &fill
+                && (!facts.parse_valid()
+                    || facts.inherited_color_run_count() != facts.visible_run_count()
+                    || facts.unverified_portable_color_run_count() != 0)
+            {
+                plan.unverified_rules.insert(fill.rule_index());
+            }
             plan.fills.push(fill);
         }
         let mut rules = BTreeSet::new();
@@ -195,19 +209,20 @@ impl MindmapLabelPaintPlan {
             else {
                 continue;
             };
-            let complete = receipt.is_some_and(|receipt| {
-                self.fills
-                    .iter()
-                    .enumerate()
-                    .filter(|(_, fill)| {
-                        fill.as_ref()
-                            .is_some_and(|fill| fill.rule_index() == *rule_index)
-                    })
-                    .all(|(index, _)| {
-                        receipt.css.get(index) == Some(&true)
-                            && receipt.nodes.get(index) == Some(&true)
-                    })
-            });
+            let complete = !self.unverified_rules.contains(rule_index)
+                && receipt.is_some_and(|receipt| {
+                    self.fills
+                        .iter()
+                        .enumerate()
+                        .filter(|(_, fill)| {
+                            fill.as_ref()
+                                .is_some_and(|fill| fill.rule_index() == *rule_index)
+                        })
+                        .all(|(index, _)| {
+                            receipt.css.get(index) == Some(&true)
+                                && receipt.nodes.get(index) == Some(&true)
+                        })
+                });
             if complete {
                 evidence.mark_applied_with_capabilities(key.clone(), [*capability]);
             } else {
