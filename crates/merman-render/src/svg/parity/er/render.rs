@@ -283,10 +283,8 @@ fn render_er_subgraph_cluster(
             );
         }
         if context.record_text {
-            receipt.record_subgraph_label(
-                &subgraph.id,
-                &crate::er::subgraph_svg_text_facts(subgraph, source_style),
-            );
+            receipt
+                .record_subgraph_label(&subgraph.id, &crate::er::subgraph_svg_text_facts(subgraph));
         }
         out.push_str("</g>");
     }

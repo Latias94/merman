@@ -172,12 +172,7 @@ pub(super) fn source_visual(source: &ErEntitySourceStyle) -> ErSourceVisual {
     ErSourceVisual {
         rect_style_attr: format!(r#"style="{}""#, crate::svg::escape_xml(&rect)),
         source_text_attr: format!(r#"style="{}""#, crate::svg::escape_xml(&text)),
-        svg_source_text_attr: attr(&declarations_for_label_mode(
-            &source.text_declarations,
-            true,
-            "; ",
-            true,
-        )),
+        svg_source_text_attr: attr(""),
         ..Default::default()
     }
 }
@@ -314,14 +309,9 @@ impl ErEntityThemePlan {
             let terminal = self
                 .text_terminals
                 .get(&ErTextTerminalId::SubgraphLabel(id.clone().into()));
-            output.subgraph_text_style = source
-                .text_value("color")
-                .map(|css| format!("fill:{css} !important"))
-                .unwrap_or_else(|| {
-                    terminal
-                        .map(|terminal| terminal.visual.typed_style.clone())
-                        .unwrap_or_default()
-                });
+            output.subgraph_text_style = terminal
+                .map(|terminal| terminal.visual.typed_style.clone())
+                .unwrap_or_default();
             work.charge(output.byte_len())?;
             source.visual = output;
         }

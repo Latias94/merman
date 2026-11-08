@@ -203,7 +203,7 @@ impl ClassNodeVisualBinding {
         let html_label_style =
             class_node_label_style(&source.style_attr, typed_label.map(|(_, css)| css));
         let svg_label_style = class_node_label_style(
-            &class_source_label_style(source.color),
+            &class_source_label_style(source.svg_color),
             typed_label.map(|(_, css)| css),
         );
         let label_style = if diagram_use_html_labels || crate::class::class_node_requires_math(node)
@@ -251,7 +251,7 @@ impl ClassNodeVisualBinding {
 
 pub(super) struct ClassInlineStyles<'a> {
     pub style_attr: String,
-    pub color: Option<&'a str>,
+    pub svg_color: Option<&'a str>,
     pub fill: Option<&'a str>,
     pub stroke: Option<&'a str>,
     pub stroke_width: Option<&'a str>,
@@ -276,7 +276,7 @@ impl ClassNodeLabelTerminalTruth {
 
 pub(super) fn class_apply_inline_styles<'a>(node: &'a ClassNode) -> ClassInlineStyles<'a> {
     let mut style_attr = String::new();
-    let mut color: Option<&str> = None;
+    let mut svg_color: Option<&str> = None;
     let mut fill: Option<&str> = None;
     let mut stroke: Option<&str> = None;
     let mut stroke_width: Option<&str> = None;
@@ -294,7 +294,7 @@ pub(super) fn class_apply_inline_styles<'a>(node: &'a ClassNode) -> ClassInlineS
         style_attr.push_str(parsed.source_value());
 
         match parsed.property() {
-            "color" => color = Some(parsed.value()),
+            "color" if svg_color.is_none() => svg_color = Some(parsed.value()),
             "fill" => fill = Some(parsed.value()),
             "stroke" => stroke = Some(parsed.value()),
             "stroke-width" => stroke_width = Some(parsed.value()),
@@ -305,7 +305,7 @@ pub(super) fn class_apply_inline_styles<'a>(node: &'a ClassNode) -> ClassInlineS
 
     ClassInlineStyles {
         style_attr,
-        color,
+        svg_color,
         fill,
         stroke,
         stroke_width,

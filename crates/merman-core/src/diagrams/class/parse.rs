@@ -1050,6 +1050,22 @@ impl<'a> ClassEditorFactCollector<'a> {
         mut symbol: ClassTokenSymbol,
         expected: ExpectedClassName,
     ) {
+        if matches!(expected, ExpectedClassName::ClickTarget) && symbol.name.contains(',') {
+            let source = &self.code[symbol.span.start..symbol.span.end];
+            let mut offset = symbol.span.start;
+            for (name, authored) in symbol.name.split(',').zip(source.split(',')) {
+                self.push_symbol(
+                    facts,
+                    ClassTokenSymbol {
+                        name: name.to_string(),
+                        span: SourceSpan::new(offset, offset + authored.len()),
+                    },
+                    expected,
+                );
+                offset += authored.len() + 1;
+            }
+            return;
+        }
         let detail = match expected {
             ExpectedClassName::Class => "class",
             ExpectedClassName::Namespace => "namespace",

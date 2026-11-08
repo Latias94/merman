@@ -111,16 +111,6 @@ impl VisibleTextStyleFacts {
         Self::plain_text(if has_visible_text { markdown } else { "" })
     }
 
-    pub(crate) fn with_unmeasured_typography(mut self, font_family: bool, font_size: bool) -> Self {
-        if font_family {
-            self.inherited_font_family_runs = 0;
-        }
-        if font_size {
-            self.inherited_font_size_runs = 0;
-        }
-        self
-    }
-
     pub(crate) const fn parse_valid(&self) -> bool {
         self.parse_valid
     }

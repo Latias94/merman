@@ -69,8 +69,17 @@ namespace sizing. Quoted `cssClass` target lists retain each comma-separated fra
 for lookup, as the selected DB does. Use `"A,B"` to target both declared classes A and B;
 `"A, B"` does not match B through its space-prefixed second fragment.
 
+Quoted namespace IDs preserve authored whitespace, so `N` and `N ` remain distinct groups,
+including their qualified descendants. Comma-separated click targets apply link, callback and tooltip
+metadata to each existing class without creating missing targets. Editor references and rename ranges
+track each target separately, preserving authored whitespace and generic suffixes. Ordinary SVG class labels use
+the first authored `color` declaration, while HTML labels retain the CSS declaration order.
+
 Owners: [HTML typography tests](../../crates/merman-render/tests/class_html_typography_test.rs) and
 [SVG/layout integration](../../crates/merman-render/tests/class_svg_test.rs).
+The [node DOM regressions](../../crates/merman-render/tests/class_mermaid12_dom_test.rs) and
+[source-color tests](../../crates/merman-render/tests/class_source_color_parity_test.rs) own the
+corresponding namespace, link, and output-specific color contracts.
 
 ## ER
 
@@ -78,6 +87,12 @@ Relationship statements create both endpoint entities before resolving completed
 The same-name entity remains in the semantic DB, preserving later entity IDs, aliases and source
 styles; the render projection filters it when the subgraph owns that ID. Style targets and
 `classDef` names use their exclusive lexical context, so keyword spellings remain valid there.
+
+Repeated style-class assignments retain their last-occurrence precedence: `red,blue,red` applies
+red last. Inline source styles still override class definitions. Source text styles reach HTML
+subgraph titles; ordinary SVG subgraph titles use the configured theme title role and inherited
+typography, following the selected cluster painter. Ignored SVG source styles do not block typed
+theme colors or fonts. Entity labels retain their own source-style behavior.
 
 Ordinary Dagre and ELK relationship labels use `createText`'s source-owned 200px default width,
 independent of `flowchart.wrappingWidth`. Prepared label rows and dimensions are shared by layout
@@ -112,6 +127,9 @@ Owners: [ER provider adapter](../../crates/merman-render/src/er/swimlane.rs),
 The [endpoint and lexical-scope regressions](../../crates/merman-core/tests/er_keyword_endpoint_parity_test.rs)
 and [ordinary relationship wrapping tests](../../crates/merman-render/tests/er_relationship_wrapping_test.rs)
 own the corresponding semantic and terminal contracts.
+The [class-order regressions](../../crates/merman-render/tests/er_class_order_parity_test.rs) and
+[subgraph theme tests](../../crates/merman-render/tests/er_subgraph_theme_test.rs) own source-style
+precedence and visible subgraph title ownership.
 
 ## Error
 

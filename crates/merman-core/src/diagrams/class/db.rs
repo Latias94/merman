@@ -583,50 +583,55 @@ impl<'a> ClassDb<'a> {
         }
     }
 
-    fn set_tooltip(&mut self, id: &str, tooltip: &str) {
-        let (class_name, _) = self.split_class_name_and_type(id);
-        if let Some(c) = self.classes.get_mut(&class_name) {
-            c.relation_endpoint_facade_candidate = false;
-            c.tooltip = Some(sanitize_text(tooltip, self.config));
-        }
-    }
-
-    fn set_link(&mut self, id: &str, url: &str, target: Option<String>) {
-        let (class_name, _) = self.split_class_name_and_type(id);
-        if let Some(c) = self.classes.get_mut(&class_name) {
-            c.relation_endpoint_facade_candidate = false;
-            c.link = format_url(url, self.config);
-
-            let final_target = if self.security_level == Some("sandbox") {
-                "_top".to_string()
-            } else if let Some(t) = target.clone() {
-                sanitize_text(&t, self.config)
-            } else {
-                "_blank".to_string()
-            };
-            c.link_target = Some(final_target);
-        }
-        self.set_css_class(&class_name, "clickable", None);
-    }
-
-    fn set_click_event(&mut self, id: &str, function: &str, args: Option<String>) {
-        let (class_name, _) = self.split_class_name_and_type(id);
-        if let Some(c) = self.classes.get_mut(&class_name) {
-            c.relation_endpoint_facade_candidate = false;
-            c.have_callback = true;
-            let mut map = serde_json::Map::new();
-            map.insert("function".to_string(), Value::String(function.to_string()));
-            let args = args.and_then(|s| {
-                let t = s.trim().to_string();
-                if t.is_empty() { None } else { Some(t) }
-            });
-            if let Some(args) = args.clone() {
-                map.insert("args".to_string(), Value::String(args.clone()));
+    fn set_tooltip(&mut self, ids: &str, tooltip: &str) {
+        for id in ids.split(',') {
+            let (class_name, _) = self.split_class_name_and_type(id);
+            if let Some(c) = self.classes.get_mut(&class_name) {
+                c.relation_endpoint_facade_candidate = false;
+                c.tooltip = Some(sanitize_text(tooltip, self.config));
             }
-            c.callback = Some(map);
-            c.callback_effective = self.security_level == Some("loose");
         }
-        self.set_css_class(&class_name, "clickable", None);
+    }
+
+    fn set_link(&mut self, ids: &str, url: &str, target: Option<String>) {
+        for id in ids.split(',') {
+            let (class_name, _) = self.split_class_name_and_type(id);
+            if let Some(c) = self.classes.get_mut(&class_name) {
+                c.relation_endpoint_facade_candidate = false;
+                c.link = format_url(url, self.config);
+
+                let final_target = if self.security_level == Some("sandbox") {
+                    "_top".to_string()
+                } else if let Some(target) = target.as_deref() {
+                    sanitize_text(target, self.config)
+                } else {
+                    "_blank".to_string()
+                };
+                c.link_target = Some(final_target);
+            }
+        }
+        self.set_css_class(ids, "clickable", None);
+    }
+
+    fn set_click_event(&mut self, ids: &str, function: &str, args: Option<String>) {
+        let args = args
+            .map(|args| args.trim().to_string())
+            .filter(|args| !args.is_empty());
+        for id in ids.split(',') {
+            let (class_name, _) = self.split_class_name_and_type(id);
+            if let Some(c) = self.classes.get_mut(&class_name) {
+                c.relation_endpoint_facade_candidate = false;
+                c.have_callback = true;
+                let mut map = serde_json::Map::new();
+                map.insert("function".to_string(), Value::String(function.to_string()));
+                if let Some(args) = &args {
+                    map.insert("args".to_string(), Value::String(args.clone()));
+                }
+                c.callback = Some(map);
+                c.callback_effective = self.security_level == Some("loose");
+            }
+        }
+        self.set_css_class(ids, "clickable", None);
     }
 
     fn parse_styles(raw: &str) -> Vec<String> {
@@ -756,7 +761,6 @@ impl<'a> ClassDb<'a> {
     }
 
     fn resolve_qualified_namespace_id(&self, id: &str) -> String {
-        let id = id.trim();
         if let Some(prefix) = self.current_namespace() {
             format!("{prefix}.{id}")
         } else {

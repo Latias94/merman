@@ -212,7 +212,7 @@ pub(crate) fn class_namespace_label<'a>(model: &'a ClassDiagramModel, id: &'a st
     model
         .namespace(id)
         .and_then(|ns| {
-            let label = ns.namespace.label.trim();
+            let label = ns.namespace.label.as_str();
             (!label.is_empty()).then_some(label)
         })
         .unwrap_or(id)
@@ -3311,10 +3311,13 @@ pub fn debug_build_class_diagram_dagre_graph(
 }
 
 fn class_layout_parent<'a>(model: &ClassDiagramModel, parent: Option<&'a str>) -> Option<&'a str> {
-    parent
-        .map(str::trim)
-        .filter(|parent| !parent.is_empty())
-        .filter(|parent| model.namespace(parent).is_some())
+    let parent = parent?;
+    if model.namespace(parent).is_some() {
+        Some(parent)
+    } else {
+        let trimmed = parent.trim();
+        (!trimmed.is_empty() && model.namespace(trimmed).is_some()).then_some(trimmed)
+    }
 }
 
 fn validate_class_namespace_hierarchy(model: &ClassDiagramModel) -> Result<()> {

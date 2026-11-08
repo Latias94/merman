@@ -629,6 +629,83 @@ namespace Company {
 }
 
 #[test]
+fn parse_diagram_class_quoted_namespace_whitespace_keeps_distinct_ids() {
+    let engine = MermaidEngine::new();
+    for namespace_id in ["M", "N ", " N", " N "] {
+        let source = format!(
+            "classDiagram\nnamespace `{namespace_id}` {{\nclass A\n}}\nnamespace N {{\nclass B\n}}\n"
+        );
+        let parsed = engine
+            .parse_diagram_sync(&source, ParseOptions::strict())
+            .unwrap()
+            .unwrap();
+        let namespaces = parsed.model["namespaces"].as_object().unwrap();
+        assert_eq!(namespaces.len(), 2, "{namespace_id:?}");
+        for (id, class_id) in [(namespace_id, "A"), ("N", "B")] {
+            assert_eq!(namespaces[id]["label"], json!(id));
+            assert_eq!(namespaces[id]["parent"], json!(null));
+            assert_eq!(namespaces[id]["explicit"], json!(true));
+            assert_eq!(namespaces[id]["classIds"], json!([class_id]));
+            assert_eq!(parsed.model["classes"][class_id]["parent"], json!(id));
+        }
+    }
+}
+
+#[test]
+fn parse_diagram_class_nested_namespace_redeclarations_preserve_authored_ids() {
+    let source = r#"classDiagram
+namespace `Outer ` {
+  class Before
+  namespace ` Inner `["First"] {
+    class A
+  }
+  class After
+}
+namespace Outer {
+  namespace Inner {
+    class Control
+  }
+}
+namespace `Outer ` {
+  namespace ` Inner `["Renamed"] {
+    class B
+  }
+  class Parent
+}
+namespace `Outer . Inner ` {
+  class C
+}
+class Outside
+"#;
+    let parsed = MermaidEngine::new()
+        .parse_diagram_sync(source, ParseOptions::strict())
+        .unwrap()
+        .unwrap();
+    let namespaces = parsed.model["namespaces"].as_object().unwrap();
+    assert_eq!(namespaces.len(), 4);
+    for (id, label, parent, class_ids) in [
+        ("Outer ", "Outer ", None, vec!["Before", "After", "Parent"]),
+        (
+            "Outer . Inner ",
+            "Renamed",
+            Some("Outer "),
+            vec!["A", "B", "C"],
+        ),
+        ("Outer", "Outer", None, vec![]),
+        ("Outer.Inner", "Inner", Some("Outer"), vec!["Control"]),
+    ] {
+        assert_eq!(namespaces[id]["label"], json!(label));
+        assert_eq!(namespaces[id]["parent"], json!(parent));
+        assert_eq!(namespaces[id]["explicit"], json!(true));
+        assert_eq!(namespaces[id]["classIds"], json!(class_ids));
+        for class_id in class_ids {
+            assert_eq!(parsed.model["classes"][class_id]["parent"], json!(id));
+        }
+    }
+    assert_eq!(parsed.model["classes"]["Outside"]["parent"], json!(null));
+}
+
+#[test]
 fn parse_diagram_class_hierarchical_namespaces_can_be_disabled() {
     let engine = MermaidEngine::new();
     let text = r#"---
@@ -1209,6 +1286,105 @@ callback Class1 "otherCall" "D tooltip"
 }
 
 #[test]
+fn parse_diagram_class_link_lists_match_individual_targets() {
+    let engine = MermaidEngine::new();
+    let declarations = "classDiagram\nclass A\nclass B\n";
+    for (command, href) in [("link", ""), ("click", " href")] {
+        for (target, expected_target) in [("", "_blank"), (" _self", "_self")] {
+            let tail = format!("{href} \"https://example.com/\" \"Open class\"{target}\n");
+            let source = format!("{declarations}{command} `A,Unknown,Later,B`{tail}class Later\n");
+            let individual = ["A", "Unknown", "Later", "B"]
+                .map(|id| format!("{command} {id}{tail}"))
+                .concat();
+            let control = format!("{declarations}{individual}class Later\n");
+            let parsed = engine
+                .parse_diagram_sync(&source, ParseOptions::strict())
+                .unwrap()
+                .unwrap();
+            let control = engine
+                .parse_diagram_sync(&control, ParseOptions::strict())
+                .unwrap()
+                .unwrap();
+            assert_eq!(
+                parsed.model["classes"], control.model["classes"],
+                "{command}{target}"
+            );
+            let classes = parsed.model["classes"].as_object().unwrap();
+            assert_eq!(classes.len(), 3);
+            assert!(!classes.contains_key("Unknown"));
+            for id in ["A", "B"] {
+                assert_eq!(classes[id]["link"], json!("https://example.com/"));
+                assert_eq!(classes[id]["linkTarget"], json!(expected_target));
+                assert_eq!(classes[id]["tooltip"], json!("Open class"));
+                assert_eq!(classes[id]["cssClasses"], json!("default clickable"));
+            }
+            assert_eq!(classes["Later"]["link"], json!(null));
+            assert_eq!(classes["Later"]["linkTarget"], json!(null));
+            assert_eq!(classes["Later"]["tooltip"], json!(null));
+            assert_eq!(classes["Later"]["cssClasses"], json!("default"));
+        }
+    }
+}
+
+#[test]
+fn parse_diagram_class_callback_lists_match_individual_targets() {
+    let declarations = "classDiagram\nclass A~T~\nclass B~U~\n";
+    for security_level in ["strict", "loose"] {
+        let engine = MermaidEngine::new().with_site_config({
+            let mut config = SourcePresentationConfig::empty_object();
+            config.set_value("securityLevel", json!(security_level));
+            config
+        });
+        for (command, tail, expected_args) in [
+            ("callback", " \"open\" \"Open class\"\n", None),
+            ("click", " call open(value) \"Open class\"\n", Some("value")),
+        ] {
+            let source =
+                format!("{declarations}{command} `A~T~,Unknown,Later,B~U~`{tail}class Later\n");
+            let individual = ["A~T~", "Unknown", "Later", "B~U~"]
+                .map(|id| format!("{command} {id}{tail}"))
+                .concat();
+            let control = format!("{declarations}{individual}class Later\n");
+            let parsed = engine
+                .parse_diagram_sync(&source, ParseOptions::strict())
+                .unwrap()
+                .unwrap();
+            let control = engine
+                .parse_diagram_sync(&control, ParseOptions::strict())
+                .unwrap()
+                .unwrap();
+            assert_eq!(
+                parsed.model["classes"], control.model["classes"],
+                "{command} {security_level}"
+            );
+            let classes = parsed.model["classes"].as_object().unwrap();
+            assert_eq!(classes.len(), 3);
+            assert!(!classes.contains_key("Unknown"));
+            for id in ["A", "B"] {
+                assert_eq!(classes[id]["haveCallback"], json!(true));
+                assert_eq!(classes[id]["callback"]["function"], json!("open"));
+                assert_eq!(
+                    classes[id]["callback"]
+                        .get("args")
+                        .and_then(serde_json::Value::as_str),
+                    expected_args
+                );
+                assert_eq!(
+                    classes[id]["callbackEffective"],
+                    json!(security_level == "loose")
+                );
+                assert_eq!(classes[id]["tooltip"], json!("Open class"));
+                assert_eq!(classes[id]["cssClasses"], json!("default clickable"));
+            }
+            assert_eq!(classes["Later"]["haveCallback"], json!(false));
+            assert_eq!(classes["Later"]["callback"], json!(null));
+            assert_eq!(classes["Later"]["tooltip"], json!(null));
+            assert_eq!(classes["Later"]["cssClasses"], json!("default"));
+        }
+    }
+}
+
+#[test]
 fn parse_diagram_class_href_sanitizes_javascript_urls_when_not_loose() {
     let engine = MermaidEngine::new();
     let res = block_on(engine.parse_diagram(
@@ -1268,6 +1444,94 @@ click Class1 call functionCall() "A tooltip"
     assert_eq!(c["callback"]["function"], json!("functionCall"));
     assert!(c["callback"].get("args").is_none());
     assert_eq!(c["callbackEffective"], json!(true));
+}
+
+#[test]
+fn class_interaction_lists_keep_individual_generic_and_whitespace_reference_spans() {
+    for line_ending in ["\n", "\r\n"] {
+        for interaction in [
+            "click `名𠀀~T~,Missing, B~U~,名𠀀~V~,B~W~` href \"https://example.com/\"",
+            "click `名𠀀~T~,Missing, B~U~,名𠀀~V~,B~W~` call open(value)",
+            "link `名𠀀~T~,Missing, B~U~,名𠀀~V~,B~W~` \"https://example.com/\"",
+            "callback `名𠀀~T~,Missing, B~U~,名𠀀~V~,B~W~` \"open\"",
+        ] {
+            let source = format!("classDiagram\nclass `名𠀀`~T~\nclass B~U~\n{interaction}\n")
+                .replace('\n', line_ending);
+            let engine = MermaidEngine::new();
+            for known_type in [false, true] {
+                let facts = if known_type {
+                    engine
+                        .parse_editor_semantic_facts_with_type_sync("classDiagram", &source)
+                        .unwrap()
+                        .unwrap()
+                } else {
+                    let snapshot = engine
+                        .parse_diagram_snapshot_sync(&source)
+                        .unwrap()
+                        .unwrap();
+                    let ParsedEditorFacts::Available(facts) = snapshot.editor_facts() else {
+                        panic!("Class interaction facts must be available");
+                    };
+                    facts.clone()
+                };
+                let targets = facts
+                    .symbols
+                    .iter()
+                    .filter(|symbol| symbol.detail.as_deref() == Some("class interaction target"))
+                    .collect::<Vec<_>>();
+                assert_eq!(
+                    targets
+                        .iter()
+                        .map(|symbol| symbol.name.as_str())
+                        .collect::<Vec<_>>(),
+                    ["名𠀀", "Missing", " B", "名𠀀", "B"]
+                );
+                let target_start = source.find("`名𠀀~T~,Missing").unwrap() + 1;
+                let body = "名𠀀~T~,Missing, B~U~,名𠀀~V~,B~W~";
+                let mut offset = target_start;
+                for (index, (target, authored)) in targets.iter().zip(body.split(',')).enumerate() {
+                    assert_eq!(target.role, EditorSemanticRole::Reference);
+                    assert_eq!(target.kind, EditorSemanticKind::Class);
+                    assert_eq!(
+                        target.span,
+                        SourceSpan::new(
+                            offset - usize::from(index == 0),
+                            offset + authored.len() + usize::from(index == targets.len() - 1)
+                        )
+                    );
+                    assert_eq!(
+                        &source[target.selection.start..target.selection.end],
+                        target.name
+                    );
+                    offset += authored.len() + 1;
+                }
+            }
+        }
+    }
+}
+
+#[test]
+fn class_interaction_list_suffix_outside_quotes_keeps_each_target() {
+    for separator in ["", " \t"] {
+        let source = format!(
+            "classDiagram\nclass A\nclass B\nclick `A`{separator}~T,B~ href \"https://example.com/\"\n"
+        );
+        let facts = MermaidEngine::new()
+            .parse_editor_semantic_facts_with_type_sync("classDiagram", &source)
+            .unwrap()
+            .unwrap();
+        let targets = facts
+            .symbols
+            .iter()
+            .filter(|symbol| symbol.detail.as_deref() == Some("class interaction target"))
+            .collect::<Vec<_>>();
+        assert_eq!(targets.len(), 2);
+        for (target, name) in targets.iter().zip(["A", "B"]) {
+            assert_eq!(target.name, name);
+            assert_eq!(&source[target.selection.start..target.selection.end], name);
+        }
+        assert_eq!(targets[1].selection.start, source.rfind("B~").unwrap());
+    }
 }
 
 #[test]

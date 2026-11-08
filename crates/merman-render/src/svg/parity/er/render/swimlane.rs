@@ -169,12 +169,9 @@ pub(super) fn render_cluster(
         );
         out.push_str("</g></g>");
         if context.record_text
-            && let (Some(group), Some(source)) = (subgraph, source)
+            && let Some(group) = subgraph
         {
-            receipt.record_subgraph_label(
-                &group.id,
-                &crate::er::subgraph_svg_text_facts(group, source),
-            );
+            receipt.record_subgraph_label(&group.id, &crate::er::subgraph_svg_text_facts(group));
         }
     }
     out.push_str("</g></g>");

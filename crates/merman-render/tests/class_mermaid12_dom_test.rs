@@ -550,3 +550,66 @@ fn class_margin_marker_stroke_widths_follow_shared_mermaid_definitions() {
         }
     }
 }
+
+#[test]
+fn class_list_links_reach_each_declared_svg_node() {
+    let layouts = if cfg!(feature = "layout-elk") {
+        &["dagre", "elk"][..]
+    } else {
+        &["dagre"][..]
+    };
+    for layout in layouts {
+        let svg = render_class(&format!(
+            "---\nconfig:\n  layout: {layout}\n---\nclassDiagram\nclass A\nclass B\nclick `A,Missing,B` href \"https://example.com\"\n"
+        ));
+        let document = roxmltree::Document::parse(&svg).expect("valid Class SVG");
+        let anchors: Vec<_> = document
+            .descendants()
+            .filter(|node| node.has_tag_name("a"))
+            .collect();
+        assert_eq!(anchors.len(), 2, "{layout}: only declared targets link");
+        for id in ["A", "B"] {
+            let prefix = format!("merman-classId-{id}-");
+            let node = document
+                .descendants()
+                .find(|node| {
+                    node.attribute("id")
+                        .is_some_and(|id| id.starts_with(&prefix))
+                })
+                .expect("linked Class node");
+            let anchor = node.parent_element().expect("link owns Class node");
+            assert!(anchor.has_tag_name("a"));
+            assert_eq!(
+                anchor.attribute(("http://www.w3.org/1999/xlink", "href")),
+                Some("https://example.com/"),
+                "{layout}: {id} retains its URL"
+            );
+        }
+    }
+}
+
+#[test]
+fn class_quoted_namespace_whitespace_preserves_distinct_svg_clusters() {
+    let layouts = if cfg!(feature = "layout-elk") {
+        &["dagre", "elk"][..]
+    } else {
+        &["dagre"][..]
+    };
+    for layout in layouts {
+        let svg = render_class(&format!(
+            "---\nconfig:\n  layout: {layout}\n---\nclassDiagram\nnamespace `N ` {{\nclass A\n}}\nnamespace N {{\nclass B\n}}\nA --> B\n"
+        ));
+        let document = roxmltree::Document::parse(&svg).expect("valid Class SVG");
+        let clusters = document
+            .descendants()
+            .filter(|node| {
+                node.attribute("class")
+                    .is_some_and(|classes| classes.split_whitespace().any(|name| name == "cluster"))
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(clusters.len(), 2, "{layout}: both namespace frames survive");
+        assert!(document.descendants().any(|node| {
+            node.attribute("data-id") == Some("id_A_B_1") && node.attribute("marker-end").is_some()
+        }));
+    }
+}

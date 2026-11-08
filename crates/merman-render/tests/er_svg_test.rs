@@ -1402,7 +1402,7 @@ erDiagram
 }
 
 #[test]
-fn er_subgraph_text_fill_yields_only_to_explicit_label_color_owners() {
+fn er_svg_subgraph_text_fill_yields_to_config_title_color_and_ignores_source_class_color() {
     let font_spec =
         DiagramThemeSpec::new().with_typography(TypographySpec::default().with_family_style(
             merman_render::DiagramFamilyId::ER,
@@ -1431,7 +1431,7 @@ fn er_subgraph_text_fill_yields_only_to_explicit_label_color_owners() {
             "source-class",
             "",
             "classDef accent color:#fedcba\nclass Orders accent\n",
-            Some("#fedcba"),
+            None,
         ),
     ] {
         let source =
@@ -1472,7 +1472,7 @@ fn er_subgraph_text_fill_yields_only_to_explicit_label_color_owners() {
             let inline =
                 er_inline_style_property(label.attribute("style").unwrap_or_default(), "fill");
             let expected = explicit_color.unwrap_or(if typed { "#112233" } else { default_color });
-            if origin == "source-title" || (!typed && origin == "default") {
+            if origin == "source-title" || !typed {
                 assert_eq!(inline, None, "{origin} typed={typed}");
                 let css = document
                     .descendants()
@@ -3937,19 +3937,39 @@ fn er_text_fill_ownership_follows_each_html_or_svg_consumer() {
 
 #[test]
 fn er_svg_emits_empty_and_whitespace_relationship_label_wrappers() {
-    let svg = render_er_svg_from_text(
-        r#"erDiagram
+    let body = r#"erDiagram
 BOOK }|..|{ AUTHOR : ""
 BOOK }|..|{ GENRE : " "
 AUTHOR }|..|{ GENRE : "  "
-"#,
-        &SvgRenderOptions::default(),
-    );
-    let labels = edge_labels_group(&svg);
-    assert_eq!(labels.matches(r#"<g class="edgeLabel""#).count(), 3);
-    assert!(!labels.contains("undefined"));
-    assert!(!labels.contains("NaN"));
-    assert_eq!(labels.matches(r#"width="0" height="0""#).count(), 3);
+"#;
+    let providers = [
+        (
+            "default",
+            None,
+            if cfg!(feature = "layout-elk") { 2 } else { 3 },
+        ),
+        ("dagre", Some("dagre"), 3),
+        #[cfg(feature = "layout-elk")]
+        ("elk", Some("elk"), 2),
+    ];
+    for (provider, layout, expected_wrappers) in providers {
+        let config = layout.map_or_else(|| json!({}), |layout| json!({"layout": layout}));
+        let source = format!("---\nconfig: {config}\n---\n{body}");
+        let svg = render_er_svg_from_text(&source, &SvgRenderOptions::default());
+        let labels = edge_labels_group(&svg);
+        assert_eq!(
+            labels.matches(r#"<g class="edgeLabel""#).count(),
+            expected_wrappers,
+            "{provider}"
+        );
+        assert!(!labels.contains("undefined"), "{provider}");
+        assert!(!labels.contains("NaN"), "{provider}");
+        assert_eq!(
+            labels.matches(r#"width="0" height="0""#).count(),
+            expected_wrappers,
+            "{provider}"
+        );
+    }
 }
 
 #[test]
@@ -4217,7 +4237,7 @@ style ZOuter color:#123456
     for layout in layouts {
         for html_labels in [false, true] {
             let source = format!(
-                "---\nconfig:\n  layout: {layout}\n  htmlLabels: {html_labels}\n---\n{body}"
+                "---\nconfig:\n  layout: {layout}\n  htmlLabels: {html_labels}\n  themeVariables:\n    titleColor: '#abcdef'\n---\n{body}"
             );
             let svg = render_er_svg_from_text(&source, &SvgRenderOptions::default());
             let document = roxmltree::Document::parse(&svg).expect("valid SVG");
@@ -4287,16 +4307,29 @@ style ZOuter color:#123456
                 .descendants()
                 .find(|node| node.has_tag_name(if html_labels { "span" } else { "text" }))
                 .expect("styled title");
-            assert!(
-                title
-                    .attribute("style")
-                    .unwrap_or_default()
-                    .contains(if html_labels {
-                        "color:#123456"
-                    } else {
-                        "fill:#123456"
-                    })
-            );
+            if html_labels {
+                assert_eq!(
+                    er_inline_style_property(title.attribute("style").unwrap_or_default(), "color"),
+                    Some("#123456"),
+                    "{layout}: HTML title retains its source color"
+                );
+            } else {
+                assert_eq!(title.attribute("style").unwrap_or_default(), "");
+                let label = outer
+                    .children()
+                    .find(|node| node.attribute("class") == Some("cluster-label"))
+                    .expect("outer SVG cluster label");
+                assert_eq!(label.attribute("style").unwrap_or_default(), "");
+                let css = document
+                    .descendants()
+                    .find(|node| node.has_tag_name("style"))
+                    .and_then(|node| node.text())
+                    .expect("ER stylesheet");
+                assert!(
+                    css.contains("#merman .cluster-label text{fill:#abcdef;}"),
+                    "{layout}: SVG title follows its configured theme color"
+                );
+            }
             for class in [
                 "label name",
                 "label attribute-type",
