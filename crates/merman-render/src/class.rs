@@ -2072,12 +2072,9 @@ pub(crate) fn class_prepare_html_label(
     let effective_style = class_effective_text_style(style, css_style);
     let style = effective_style.as_ref();
     let xhtml = crate::text::mermaid_markdown_to_xhtml_label_fragment(text, true);
-    let mut metrics = crate::text::measure_xhtml_label_fragment(
-        measurer,
-        &xhtml,
-        style,
-        max_width,
-        WrapMode::HtmlLike,
+    // HTML rem is relative to the host document, independently of node typography.
+    let mut metrics = crate::text::measure_xhtml_label_fragment_with_terminal_fonts(
+        measurer, &xhtml, style, max_width, 16.0,
     );
 
     let rendered_width = metrics.width;
@@ -2085,7 +2082,9 @@ pub(crate) fn class_prepare_html_label(
         && rendered_width > 0.0
         && rendered_width < max_width_px.max(1) as f64 - 0.01
     {
-        metrics.height = crate::text::flowchart_html_line_height_px(style.font_size);
+        metrics.height = metrics
+            .height
+            .max(crate::text::flowchart_html_line_height_px(style.font_size));
         metrics.line_count = 1;
     }
 

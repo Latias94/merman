@@ -1072,7 +1072,7 @@ fn prepare_requirement_family<'parsed>(
     let layout =
         crate::requirement::layout_requirement_diagram_typed_with_work_meter_and_typography(
             model,
-            meta.effective_config.as_value(),
+            meta.effective_config.as_config(),
             execution.text_measurer(),
             paint_theme.css(),
             &execution.work_meter(),

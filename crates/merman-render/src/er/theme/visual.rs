@@ -32,6 +32,7 @@ pub(crate) struct ErSourceVisual {
     pub(crate) svg_source_text_attr: String,
     pub(crate) subgraph_text_style: String,
     pub(crate) label_div_color_prefix: String,
+    pub(crate) label_div_typography_prefix: String,
     pub(crate) span_style_attr: String,
     pub(crate) box_fill: String,
     pub(crate) box_stroke: String,
@@ -50,6 +51,7 @@ impl ErSourceVisual {
             &self.svg_source_text_attr,
             &self.subgraph_text_style,
             &self.label_div_color_prefix,
+            &self.label_div_typography_prefix,
             &self.span_style_attr,
             &self.box_fill,
             &self.box_stroke,
@@ -137,17 +139,17 @@ pub(super) fn text_visual(paint: Option<&str>) -> ErTextVisual {
 }
 
 pub(super) fn label_style(source: &ErEntitySourceStyle, html_labels: bool) -> String {
-    crate::svg::escape_attr(&declarations_for_label_mode(
-        &source.text_declarations,
-        true,
-        "; ",
-        !html_labels,
-    ))
+    crate::svg::escape_attr(&label_style_css(source, html_labels))
+}
+
+pub(super) fn label_style_css(source: &ErEntitySourceStyle, html_labels: bool) -> String {
+    declarations_for_label_mode(&source.text_declarations, true, "; ", !html_labels)
 }
 
 fn source_text_visual(source: &ErEntitySourceStyle) -> ErSourceVisual {
     let text = declarations(&source.text_declarations, true, "; ");
     ErSourceVisual {
+        label_div_typography_prefix: source.typography_style(),
         label_div_color_prefix: source
             .text_value("color")
             .map(|value| {

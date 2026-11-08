@@ -39,6 +39,28 @@ enum ErSwimlaneLabelContent {
 }
 
 impl ErSwimlaneRelationshipLabel {
+    pub(super) fn retained_buffer_bytes(&self) -> usize {
+        match &self.content {
+            ErSwimlaneLabelContent::Html {
+                fragment,
+                wrapper_style,
+            } => fragment.capacity().saturating_add(wrapper_style.capacity()),
+            ErSwimlaneLabelContent::Svg { lines } => lines.iter().fold(
+                lines
+                    .capacity()
+                    .saturating_mul(std::mem::size_of::<Vec<String>>()),
+                |bytes, row| {
+                    row.iter().fold(
+                        bytes.saturating_add(
+                            row.capacity().saturating_mul(std::mem::size_of::<String>()),
+                        ),
+                        |bytes, word| bytes.saturating_add(word.capacity()),
+                    )
+                },
+            ),
+        }
+    }
+
     pub(super) fn prepare(
         source: &str,
         measurer: &dyn TextMeasurer,
@@ -66,13 +88,13 @@ impl ErSwimlaneRelationshipLabel {
                         line_count: 0,
                     }
                 } else {
-                    crate::text::measure_xhtml_label_fragment_with_fonts(
+                    crate::text::measure_xhtml_label_fragment_with_terminal_fonts(
                         measurer,
                         &fragment,
                         style,
+                        Some(wrapping_width),
                         crate::config::config_theme_or_root_font_size_px_opt(config.as_value())
                             .unwrap_or(16.0),
-                        Some(wrapping_width),
                     )
                 };
             // addHtmlSpan switches a constrained table-cell to a fixed-width break-spaces

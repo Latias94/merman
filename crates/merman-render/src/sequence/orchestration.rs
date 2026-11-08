@@ -66,6 +66,7 @@ pub(super) struct SequenceLayoutGraphContext<'a> {
 
 pub(super) struct SequenceLayoutGraph {
     pub(super) nodes: Vec<LayoutNode>,
+    pub(super) wrapped_note_text: Vec<(usize, String)>,
     pub(super) edges: Vec<LayoutEdge>,
     pub(super) block_layouts_by_id: rustc_hash::FxHashMap<String, SequenceBlockLayout>,
     pub(super) activations: Vec<SequenceActivationLayout>,
@@ -379,6 +380,7 @@ fn handle_sequence_note(
     state: &mut SequenceLayoutLoopState<'_>,
     ctx: &SequenceLayoutGraphContext<'_>,
     nodes: &mut Vec<LayoutNode>,
+    wrapped_note_text: &mut Vec<(usize, String)>,
 ) -> Result<bool> {
     if msg.semantic_kind() != SequenceMessageKind::Note {
         return Ok(false);
@@ -399,6 +401,10 @@ fn handle_sequence_note(
             measurer: ctx.measurer,
             note_text_style: ctx.note_text_style,
             note_terminal_text_style: ctx.note_terminal_text_style,
+            note_non_normal_typed_terminal_style: ctx
+                .typography
+                .note()
+                .non_normal_typed_terminal_style(),
             math_config: ctx.math_config,
             math_terminal_style: ctx
                 .typography
@@ -430,6 +436,9 @@ fn handle_sequence_note(
         ctx.checkpoints,
     )?;
 
+    if let Some(text) = note.wrapped_text {
+        wrapped_note_text.push((message_index, text));
+    }
     nodes.push(note.node);
     state.cursor_y += note.cursor_step;
     Ok(true)
@@ -527,6 +536,7 @@ pub(super) fn build_sequence_layout_graph(
 ) -> Result<SequenceLayoutGraph> {
     let mut nodes: Vec<LayoutNode> = Vec::new();
     let mut edges: Vec<LayoutEdge> = Vec::new();
+    let mut wrapped_note_text = Vec::new();
 
     append_sequence_top_actors(
         &mut nodes,
@@ -563,6 +573,10 @@ pub(super) fn build_sequence_layout_graph(
         measurer: ctx.measurer,
         msg_text_style: ctx.msg_text_style,
         note_text_style: ctx.note_text_style,
+        note_non_normal_typed_terminal_style: ctx
+            .typography
+            .note()
+            .non_normal_typed_terminal_style(),
         loop_text_style: ctx.loop_text_style,
         math_config: ctx.math_config,
         math_terminal_style: ctx
@@ -592,7 +606,14 @@ pub(super) fn build_sequence_layout_graph(
             continue;
         }
 
-        if handle_sequence_note(msg, msg_idx, &mut state, &ctx, &mut nodes)? {
+        if handle_sequence_note(
+            msg,
+            msg_idx,
+            &mut state,
+            &ctx,
+            &mut nodes,
+            &mut wrapped_note_text,
+        )? {
             continue;
         }
 
@@ -654,6 +675,7 @@ pub(super) fn build_sequence_layout_graph(
     let (activations, activation_geometry) = state.activation_geometry.finish(ctx.checkpoints)?;
     Ok(SequenceLayoutGraph {
         nodes,
+        wrapped_note_text,
         edges,
         block_layouts_by_id: state.block_layouts_by_id,
         activations,

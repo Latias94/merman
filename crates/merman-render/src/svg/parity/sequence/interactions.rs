@@ -21,6 +21,7 @@ pub(super) struct SequenceInteractionRenderContext<'a> {
     pub(super) frame_placements: &'a [Option<SequenceFramePlacement>],
     pub(super) nodes_by_id: &'a FxHashMap<&'a str, &'a LayoutNode>,
     pub(super) math_sidecar: &'a crate::sequence::SequenceMathSidecar,
+    pub(super) wrapped_note_text: &'a crate::sequence::SequencePreparedNoteLabels,
     pub(super) sanitize_config: &'a merman_model::presentation::PresentationConfig,
     pub(super) compat: &'a crate::sequence::SequenceCompatBinding,
     pub(super) settings: &'a SequenceRenderSettings,
@@ -65,13 +66,28 @@ pub(super) fn render_sequence_interaction_overlays(
         math_sidecar: ctx.math_sidecar,
         checkpoints: ctx.checkpoints,
     };
+    let note_wrap_widths = ctx.wrapped_note_text.wrap_widths();
     let note_ctx = SequenceNoteRenderContext {
         is_neo: ctx.compat.is_neo,
         text_shadow: ctx.note_text_shadow,
         paint: ctx.note_paint,
         shadow_evidence: ctx.shadow_evidence,
         nodes_by_id: ctx.nodes_by_id,
+        wrapped_note_text: ctx.wrapped_note_text.view(
+            ctx.model,
+            &crate::sequence::SequenceWrappedSideNoteLabelContext {
+                measurer: ctx.measurer,
+                measurement_style: &ctx.settings.note_text_style,
+                terminal_style: ctx.typography.note().terminal_text_style(),
+                config: ctx.sanitize_config,
+                default_width: note_wrap_widths.default_width,
+                note_margin: note_wrap_widths.note_margin,
+                wrap_padding: note_wrap_widths.wrap_padding,
+                checkpoints: ctx.checkpoints.text(),
+            },
+        ),
         measurer: ctx.measurer,
+        note_wrap_widths,
         note_margin: ctx.settings.note_margin,
         wrap_padding: ctx.settings.wrap_padding,
         note_text_style: &ctx.settings.note_text_style,

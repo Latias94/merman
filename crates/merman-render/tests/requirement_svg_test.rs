@@ -1256,7 +1256,23 @@ impl TextMeasurer for RequirementSvgModeProbe {
         mode: WrapMode,
     ) -> TextMetrics {
         self.record(TextMeasurementOperation::Wrapped, text, style, Some(mode));
-        self.measure(text, style)
+        let mut metrics = self.measure(text, style);
+        // HTML reports its CSS line box; SVG probes retain the tight font-sized bbox.
+        if mode == WrapMode::HtmlLike {
+            metrics.height = style.font_size * 1.5;
+        }
+        metrics
+    }
+
+    fn measure_html_line_height_px(&self, text: &str, style: &TextStyle) -> f64 {
+        self.record(
+            TextMeasurementOperation::HtmlLineHeight,
+            text,
+            style,
+            Some(WrapMode::HtmlLike),
+        );
+        self.measure_wrapped(text, style, None, WrapMode::HtmlLike)
+            .height
     }
 
     fn measure_svg_text_computed_length_px(&self, text: &str, style: &TextStyle) -> f64 {
@@ -1291,6 +1307,336 @@ impl TextMeasurer for RequirementSvgModeProbe {
             None,
         );
         self.measure(text, style)
+    }
+}
+
+fn requirement_foreign_object_for_text<'a, 'input>(
+    document: &'a roxmltree::Document<'input>,
+    text: &str,
+) -> roxmltree::Node<'a, 'input> {
+    document
+        .descendants()
+        .find(|node| {
+            node.has_tag_name("foreignObject")
+                && node
+                    .descendants()
+                    .any(|child| child.is_text() && child.text() == Some(text))
+        })
+        .unwrap_or_else(|| panic!("missing Requirement HTML label containing {text:?}"))
+}
+
+#[test]
+fn requirement_html_terminal_projection_preserves_repeated_break_rows() {
+    let theme = requirement_typography_theme(
+        ThemeTextStyle::default()
+            .with_font_stack(FontStack::single("Arial").unwrap())
+            .with_font_size_px(24.0)
+            .unwrap(),
+    );
+    for breaks in 1..=4 {
+        let source = format!(
+            "requirementDiagram\nrequirement req1 {{\ntext: \"First{}Last\"\nrisk: low\n}}\n",
+            "<br/>".repeat(breaks)
+        );
+        let rendered = render_requirement_with_theme_and_engine(
+            &source,
+            &theme,
+            classic_engine().with_site_config(
+                merman_core::presentation::SourcePresentationConfig::from_value(
+                    serde_json::json!({"htmlLabels": true}),
+                ),
+            ),
+        );
+        let document = roxmltree::Document::parse(rendered.svg()).expect("valid Requirement XHTML");
+        let label = requirement_foreign_object_for_text(&document, "Last");
+        assert_eq!(
+            label
+                .descendants()
+                .filter(|node| node.has_tag_name("br"))
+                .count(),
+            breaks,
+        );
+        assert_eq!(
+            label.attribute("height").unwrap().parse::<f64>().unwrap(),
+            (breaks + 1) as f64 * 36.0,
+            "every HTML break retains its line box: {source}"
+        );
+    }
+}
+
+#[test]
+fn requirement_html_terminal_projection_measures_code_without_literal_markup() {
+    let theme = requirement_typography_theme(
+        ThemeTextStyle::default()
+            .with_font_stack(FontStack::single("Arial").unwrap())
+            .with_font_size_px(24.0)
+            .unwrap(),
+    );
+    let calls = Arc::new(Mutex::new(Vec::new()));
+    let profile = TextMeasurementProfile::new(
+        TextMeasurementProfileIdentity::new(
+            MeasurementProfileId::new("test.requirement-html-code-projection").unwrap(),
+            "test",
+        )
+        .unwrap(),
+        Arc::new(RequirementSvgModeProbe {
+            calls: Arc::clone(&calls),
+            width_per_byte: Some(1.0),
+        }),
+    );
+    let rendered = render_requirement_with_theme_requirement_and_environment(
+        "requirementDiagram\nrequirement req1 {\ntext: \"<code>Account</code>\"\n}\n",
+        &theme,
+        classic_engine().with_site_config(
+            merman_core::presentation::SourcePresentationConfig::from_value(
+                serde_json::json!({"htmlLabels": true, "fontSize": 10}),
+            ),
+        ),
+        ThemePortabilityRequirement::RequirePortable,
+        RenderEnvironment::deterministic()
+            .with_text_measurement_policy(TextMeasurementPolicy::uniform(profile)),
+    );
+    let document =
+        roxmltree::Document::parse(rendered.svg()).expect("valid Requirement code XHTML");
+    let label = requirement_foreign_object_for_text(&document, "Account");
+    assert!(label.descendants().any(|node| node.has_tag_name("code")));
+    assert_eq!(label.attribute("height"), Some("36"));
+    let calls = calls.lock().unwrap();
+    assert!(
+        calls.iter().any(|call| {
+            call.is_terminal(true)
+                && call.text == "Account"
+                && call.style.font_family.as_deref() == Some("monospace")
+                && call.style.font_size == 24.0
+        }),
+        "code must be measured with its actual terminal font: {calls:?}"
+    );
+    assert!(
+        calls
+            .iter()
+            .filter(|call| call.is_terminal(true))
+            .all(|call| { !call.text.contains("<code>") && !call.text.contains("</code>") }),
+        "terminal measurement must consume XHTML text rather than source markup: {calls:?}"
+    );
+    assert!(
+        calls.iter().any(|call| {
+            call.operation == TextMeasurementOperation::MermaidCalculateTextDimensions
+                && call.text == "Text: <code>Account</code>"
+                && call.style.font_size == 10.0
+        }),
+        "the independent calculation probe must retain its input and size: {calls:?}"
+    );
+}
+
+#[test]
+fn requirement_html_sized_icons_keep_their_advance_in_node_measurement() {
+    let theme =
+        requirement_typography_theme(ThemeTextStyle::default().with_font_size_px(24.0).unwrap());
+    let width = |text: &str| {
+        let calls = Arc::new(Mutex::new(Vec::new()));
+        let profile = TextMeasurementProfile::new(
+            TextMeasurementProfileIdentity::new(
+                MeasurementProfileId::new("test.requirement-sized-icon").unwrap(),
+                "test",
+            )
+            .unwrap(),
+            Arc::new(RequirementSvgModeProbe {
+                calls: Arc::clone(&calls),
+                width_per_byte: Some(1.0),
+            }),
+        );
+        let rendered = render_requirement_with_theme_requirement_and_environment(
+            &format!("requirementDiagram\nrequirement req1 {{\ntext: \"{text}\"\n}}\n"),
+            &theme,
+            classic_engine().with_site_config(
+                merman_core::presentation::SourcePresentationConfig::from_value(
+                    serde_json::json!({"htmlLabels": true}),
+                ),
+            ),
+            ThemePortabilityRequirement::RequirePortable,
+            RenderEnvironment::deterministic()
+                .with_text_measurement_policy(TextMeasurementPolicy::uniform(profile)),
+        );
+        assert!(
+            calls
+                .lock()
+                .unwrap()
+                .iter()
+                .all(|call| !call.text.contains('\u{fffc}'))
+        );
+        let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+        requirement_foreign_object_for_text(&document, "Account")
+            .attribute("width")
+            .unwrap()
+            .parse::<f64>()
+            .unwrap()
+    };
+    let ordinary = width("<big>Account</big>");
+    let with_icon = width("<big><i class='fa fa-car'></i>Account</big>");
+    assert_eq!(with_icon - ordinary, 36.0);
+}
+
+#[test]
+fn requirement_html_declared_font_height_requests_are_linear_in_each_render_phase() {
+    let theme = requirement_typography_theme(
+        ThemeTextStyle::default()
+            .with_font_stack(FontStack::single("Arial").unwrap())
+            .with_font_size_px(24.0)
+            .unwrap(),
+    );
+    for word_count in [64, 256] {
+        let visible = vec!["x"; word_count].join(" ");
+        let source = format!(
+            "requirementDiagram\nrequirement req1 {{\ntext: \"<span style='font-size:16px'>{visible}</span>\"\n}}\n"
+        );
+        let calls = Arc::new(Mutex::new(Vec::new()));
+        let profile = TextMeasurementProfile::new(
+            TextMeasurementProfileIdentity::new(
+                MeasurementProfileId::new("test.requirement-html-height-payload").unwrap(),
+                "test",
+            )
+            .unwrap(),
+            Arc::new(RequirementSvgModeProbe {
+                calls: Arc::clone(&calls),
+                width_per_byte: Some(1.0),
+            }),
+        );
+        let engine = common::install_parse_compatibility(
+            &theme,
+            classic_engine().with_site_config(
+                merman_core::presentation::SourcePresentationConfig::from_value(
+                    serde_json::json!({"htmlLabels": true, "securityLevel": "loose"}),
+                ),
+            ),
+        );
+        let parsed = engine
+            .parse_diagram_for_render_model_sync(&source, ParseOptions::strict())
+            .unwrap()
+            .unwrap()
+            .into_presentation();
+        let session = RenderEnvironment::deterministic()
+            .with_text_measurement_policy(TextMeasurementPolicy::uniform(profile))
+            .begin_session_with_theme(&theme)
+            .unwrap();
+        let prepared = family::prepare(&parsed, &LayoutOptions::default(), session).unwrap();
+        let prepared_call_count = calls.lock().unwrap().len();
+        let rendered = prepared
+            .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+            .unwrap();
+        let calls = calls.lock().unwrap();
+        for (phase, phase_calls) in [
+            ("prepare", &calls[..prepared_call_count]),
+            ("SVG replay", &calls[prepared_call_count..]),
+        ] {
+            let declared_font: Vec<_> = phase_calls
+                .iter()
+                .filter(|call| {
+                    call.operation == TextMeasurementOperation::HtmlLineHeight
+                        && call.style.font_size == 16.0
+                })
+                .collect();
+            assert_eq!(
+                declared_font.len(),
+                1,
+                "{phase}: the final 16px group needs one height request for {word_count} words"
+            );
+            assert_eq!(
+                declared_font
+                    .iter()
+                    .map(|call| call.text.len())
+                    .sum::<usize>(),
+                visible.len(),
+                "{phase}: submitted height payload must grow linearly with the visible text"
+            );
+            assert_eq!(declared_font[0].text, visible);
+        }
+
+        let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+        let label = requirement_foreign_object_for_text(&document, &visible);
+        assert_eq!(label.attribute("height"), Some("36"));
+        assert!(label.descendants().all(|node| !node.has_tag_name("br")));
+        assert!(label.descendants().any(|node| {
+            node.has_tag_name("div")
+                && node
+                    .attribute("style")
+                    .is_some_and(|style| style.contains("white-space: nowrap"))
+        }));
+        assert!(label.descendants().any(|node| {
+            node.has_tag_name("span")
+                && node
+                    .attribute("style")
+                    .is_some_and(|style| style.contains("font-size:16px"))
+        }));
+    }
+}
+
+#[test]
+fn requirement_html_inline_sizes_use_terminal_parent_and_css_root_contexts() {
+    let theme = requirement_typography_theme(
+        ThemeTextStyle::default()
+            .with_font_stack(FontStack::single("Arial").unwrap())
+            .with_font_size_px(24.0)
+            .unwrap(),
+    );
+    for (size, terminal_size) in [("48px", 48.0), ("2em", 64.0), ("2rem", 32.0)] {
+        let calls = Arc::new(Mutex::new(Vec::new()));
+        let profile = TextMeasurementProfile::new(
+            TextMeasurementProfileIdentity::new(
+                MeasurementProfileId::new("test.requirement-html-inline-size").unwrap(),
+                "test",
+            )
+            .unwrap(),
+            Arc::new(RequirementSvgModeProbe {
+                calls: Arc::clone(&calls),
+                width_per_byte: Some(1.0),
+            }),
+        );
+        let source = format!(
+            "requirementDiagram\nrequirement req1 {{\ntext: \"<span style='font-size:{size}'>Account</span>\"\n}}\nstyle req1 font-size:32px\n"
+        );
+        let rendered = render_requirement_with_theme_requirement_and_environment(
+            &source,
+            &theme,
+            classic_engine().with_site_config(
+                merman_core::presentation::SourcePresentationConfig::from_value(
+                    serde_json::json!({"htmlLabels": true, "fontSize": 10}),
+                ),
+            ),
+            ThemePortabilityRequirement::RequirePortable,
+            RenderEnvironment::deterministic()
+                .with_text_measurement_policy(TextMeasurementPolicy::uniform(profile)),
+        );
+        let document = roxmltree::Document::parse(rendered.svg())
+            .expect("valid Requirement inline-size XHTML");
+        let label = requirement_foreign_object_for_text(&document, "Account");
+        assert!(label.descendants().any(|node| {
+            node.has_tag_name("span")
+                && node
+                    .attribute("style")
+                    .is_some_and(|style| style.contains(size))
+        }));
+        assert_eq!(
+            label.attribute("height").unwrap().parse::<f64>().unwrap(),
+            terminal_size * 1.5,
+            "the prepared label must retain the enlarged terminal line box: {size}"
+        );
+        let calls = calls.lock().unwrap();
+        assert!(
+            calls.iter().any(|call| {
+                call.is_terminal(true)
+                    && call.text.contains("Account")
+                    && call.style.font_size == terminal_size
+            }),
+            "inline size {size} must use the terminal context: {calls:?}"
+        );
+        assert!(
+            calls.iter().any(|call| {
+                call.operation == TextMeasurementOperation::MermaidCalculateTextDimensions
+                    && call.text.contains("font-size:")
+                    && call.style.font_size == 10.0
+            }),
+            "inline sizing must not replace the independent calculation probe: {calls:?}"
+        );
     }
 }
 

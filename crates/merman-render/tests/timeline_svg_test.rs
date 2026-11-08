@@ -2086,6 +2086,60 @@ timeline TD
 }
 
 #[test]
+fn timeline_font_size_ownership_requires_a_consumed_config_value() {
+    let theme = timeline_typography_theme_with_font_size(
+        FontStack::single("sans-serif").unwrap(),
+        Some(24.0),
+    );
+    for (value, expected_size, config_owned) in [
+        (serde_json::json!(true), 24, false),
+        (serde_json::json!(""), 24, false),
+        (serde_json::json!("auto"), 24, false),
+        (serde_json::json!("24em"), 24, false),
+        (serde_json::json!("NaN"), 24, false),
+        (serde_json::json!("Infinity"), 24, false),
+        (serde_json::json!("30px"), 30, true),
+        (serde_json::json!(30), 30, true),
+        (serde_json::json!(0), 1, true),
+        (serde_json::json!(-2), 1, true),
+    ] {
+        let config = serde_json::json!({"themeVariables": {"fontSize": value}});
+        for source_owned in [false, true] {
+            let body = "timeline\nsection Plan\nTask : Event\n";
+            let (source, engine) = if source_owned {
+                (
+                    format!("---\nconfig: {config}\n---\n{body}"),
+                    MermaidEngine::new(),
+                )
+            } else {
+                (
+                    body.to_owned(),
+                    MermaidEngine::new().with_site_config(
+                        merman_core::presentation::SourcePresentationConfig::from_value(
+                            config.clone(),
+                        ),
+                    ),
+                )
+            };
+            let rendered =
+                try_render_timeline_with_theme_and_engine(&source, &theme, engine).unwrap();
+            assert!(
+                rendered.svg().contains(&format!(
+                    "#merman{{font-family:sans-serif;font-size:{expected_size}px;"
+                )),
+                "font size {value}, source-owned={source_owned}"
+            );
+            let evidence =
+                merman_render::__private::family_evidence(rendered.into_completion().report());
+            assert_eq!(evidence.required_count(), 2);
+            assert_eq!(evidence.applied_count(), if config_owned { 1 } else { 2 });
+            assert_eq!(evidence.not_applicable_count(), usize::from(config_owned));
+            assert_eq!(evidence.theme_residual_count(), 0);
+        }
+    }
+}
+
+#[test]
 fn timeline_source_owned_theme_font_size_is_not_claimed_as_typed() {
     let font_stack =
         FontStack::new(["Timeline Typed", "sans-serif"]).expect("valid Timeline font stack");

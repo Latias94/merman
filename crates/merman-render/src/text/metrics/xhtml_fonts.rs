@@ -1,74 +1,9 @@
-//! Terminal fonts and line boxes for sanitized XHTML labels.
+//! Bounded terminal-font inheritance for prepared XHTML labels.
 
 use std::sync::Arc;
 
-use super::{
-    HtmlBreakKind, InlineBreakPlan, InlineLinePlan, InlineTextRun, TextMeasurer, TextMetrics,
-    TextStyle, WrapMode, html_line_text_with_break, same_inline_style,
-};
+use super::{InlineTextRun, TextMeasurer, TextMetrics, TextStyle, WrapMode};
 use crate::mermaid_style::{CssFontSizeContext, TextStyleCascade, visit_parsed_style_declarations};
-
-fn run_line_height_px<M: TextMeasurer + ?Sized>(
-    measurer: &M,
-    text: &str,
-    style: &TextStyle,
-) -> f64 {
-    // The routed host can supply taller font extents; inherited unitless line-height:1.5 is
-    // still the CSS floor for every resolved font, independently of the diagram family.
-    measurer
-        .measure_html_line_height_px(text, style)
-        .max(style.font_size.max(1.0) * 1.5)
-}
-
-pub(super) fn measure_line_height_px<M: TextMeasurer + ?Sized>(
-    measurer: &M,
-    runs: &[InlineTextRun],
-    base: &TextStyle,
-) -> f64 {
-    runs.iter()
-        .filter(|run| !run.text.is_empty())
-        .filter_map(|run| {
-            let style = run.terminal_style.as_deref()?;
-            Some(run_line_height_px(measurer, &run.text, style).max(base.font_size.max(1.0) * 1.5))
-        })
-        .fold(0.0_f64, f64::max)
-}
-
-pub(super) fn measure_fragments_line_height_px<M: TextMeasurer + ?Sized>(
-    measurer: &M,
-    runs: &[InlineTextRun],
-    breaks: &InlineBreakPlan,
-    line: InlineLinePlan,
-    selected_break: HtmlBreakKind,
-    base: &TextStyle,
-) -> f64 {
-    let mut height = 0.0_f64;
-    let mut index = line.fragment_start;
-    while index < line.fragment_end {
-        let first = breaks.fragments[index];
-        let run = &runs[first.run_index];
-        let mut end = index + 1;
-        while end < line.fragment_end
-            && same_inline_style(run, &runs[breaks.fragments[end].run_index])
-        {
-            end += 1;
-        }
-        if let Some(style) = run.terminal_style.as_deref() {
-            // Probe the selected line's complete style group, including a conditional hyphen.
-            // Unstyled callers issue no new requests through this font-specific path.
-            let last = breaks.fragments[end - 1];
-            let text = html_line_text_with_break(
-                &breaks.source[first.start..last.end],
-                end == line.fragment_end && selected_break == HtmlBreakKind::SoftHyphen,
-            );
-            height = height
-                .max(run_line_height_px(measurer, &text, style))
-                .max(base.font_size.max(1.0) * 1.5);
-        }
-        index = end;
-    }
-    height
-}
 
 pub(super) fn same_font(left: Option<&TextStyle>, right: Option<&TextStyle>) -> bool {
     match (left, right) {
@@ -91,11 +26,6 @@ pub(super) struct TerminalFonts {
 }
 
 impl TerminalFonts {
-    #[cfg(any(
-        feature = "diagram-block",
-        feature = "diagram-class",
-        feature = "diagram-er"
-    ))]
     pub(super) fn new(style: &TextStyle, root_font_size: f64) -> Self {
         Self {
             root_font_size,
@@ -115,6 +45,10 @@ impl TerminalFonts {
 
     pub(super) fn has_font_declarations(&self) -> bool {
         self.has_font_declarations
+    }
+
+    pub(super) fn line_sizes(&self) -> &[f64] {
+        &self.line_sizes
     }
 
     pub(super) fn observe_tag(&mut self, name: &str, tag: &str, closing: bool) {
@@ -139,6 +73,12 @@ impl TerminalFonts {
                 cascade.observe("font-style", "italic", false);
             }
             "code" => cascade.observe("font-family", "monospace", false),
+            "big" => {
+                cascade.observe("font-size", "1.2em", false);
+            }
+            "small" => {
+                cascade.observe("font-size", "0.8333333333333334em", false);
+            }
             _ => {}
         }
         let opening = quick_xml::events::BytesStart::from_content(tag, name.len());
@@ -162,14 +102,18 @@ impl TerminalFonts {
             });
         }
         let resolved = Arc::new(cascade.finish().into_owned());
-        self.has_font_declarations |= has_font_declarations;
+        self.has_font_declarations |= has_font_declarations || matches!(name, "big" | "small");
         if !tag.trim_end().ends_with('/') {
             self.stack.push((name.to_owned(), resolved));
         }
     }
 
     pub(super) fn new_line(&mut self) {
-        self.line_sizes.push(self.current().font_size);
+        let break_font_size = self.current().font_size;
+        if let Some(size) = self.line_sizes.last_mut() {
+            *size = size.max(break_font_size);
+        }
+        self.line_sizes.push(self.stack[0].1.font_size);
     }
 
     pub(super) fn line_height_px(&self, index: usize, base: &TextStyle) -> f64 {
@@ -185,16 +129,13 @@ impl TerminalFonts {
         &self,
         measurer: &M,
         runs_by_line: &[Vec<InlineTextRun>],
-        icon_widths: &[f64],
         base: &TextStyle,
         explicit_line_boxes: usize,
     ) -> TextMetrics {
         let width = runs_by_line
             .iter()
-            .enumerate()
-            .map(|(index, runs)| {
+            .map(|runs| {
                 super::measure_inline_runs_width_px(measurer, runs, base, WrapMode::HtmlLike, false)
-                    + icon_widths.get(index).copied().unwrap_or(0.0)
             })
             .fold(0.0_f64, f64::max);
         let line_count = runs_by_line.len().max(explicit_line_boxes);
@@ -208,7 +149,12 @@ impl TerminalFonts {
                     .filter(|run| !run.text.is_empty())
                     .map(|run| {
                         let style = run.terminal_style.as_deref().unwrap_or(base);
-                        run_line_height_px(measurer, &run.text, style)
+                        if run.replaced_width_px.is_some() {
+                            return style.font_size.max(1.0) * 1.5;
+                        }
+                        // Use the routed terminal measurement for host-specific vertical metrics.
+                        // The parent strut supplies the floor without rounding up host precision.
+                        measurer.measure_html_line_height_px(&run.text, style)
                     })
                     .fold(strut, f64::max)
             })

@@ -23,7 +23,7 @@ impl SequenceMessageBoundMetrics {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-struct SequenceMessageMeasurementBinding {
+pub(super) struct SequenceMessageMeasurementBinding {
     font_family: Option<String>,
     font_size_bits: u64,
     font_weight: Option<String>,
@@ -32,7 +32,7 @@ struct SequenceMessageMeasurementBinding {
 }
 
 impl SequenceMessageMeasurementBinding {
-    fn for_measurer(style: &TextStyle, measurer: &dyn TextMeasurer) -> Option<Self> {
+    pub(super) fn for_measurer(style: &TextStyle, measurer: &dyn TextMeasurer) -> Option<Self> {
         Some(Self {
             font_family: style.font_family.clone(),
             font_size_bits: style.font_size.to_bits(),
@@ -44,7 +44,7 @@ impl SequenceMessageMeasurementBinding {
         })
     }
 
-    fn matches(&self, style: &TextStyle, measurer: &dyn TextMeasurer) -> bool {
+    pub(super) fn matches(&self, style: &TextStyle, measurer: &dyn TextMeasurer) -> bool {
         self.font_family == style.font_family
             && self.font_size_bits == style.font_size.to_bits()
             && self.font_weight == style.font_weight
@@ -52,6 +52,14 @@ impl SequenceMessageMeasurementBinding {
             && measurer
                 .builtin_operation_carrier(TextMeasurementOperation::MermaidCalculateTextDimensions)
                 == Some(self.carrier)
+    }
+
+    pub(super) fn retained_heap_bytes(&self) -> Option<usize> {
+        self.font_family
+            .as_ref()
+            .map_or(0, String::capacity)
+            .checked_add(self.font_weight.as_ref().map_or(0, String::capacity))?
+            .checked_add(self.font_style.as_ref().map_or(0, String::capacity))
     }
 }
 

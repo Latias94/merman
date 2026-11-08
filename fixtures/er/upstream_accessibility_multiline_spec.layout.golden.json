@@ -3,7 +3,7 @@
   "layout": {
     "ErDiagram": {
       "bounds": {
-        "max_x": 112.0,
+        "max_x": 110.8,
         "max_y": 275.0,
         "min_x": 12.0,
         "min_y": 12.0
@@ -19,16 +19,16 @@
           "label": {
             "height": 21.0,
             "width": 73.36,
-            "x": 61.68,
+            "x": 61.08,
             "y": 143.5
           },
           "points": [
             {
-              "x": 62.0,
+              "x": 61.4,
               "y": 93.0
             },
             {
-              "x": 62.0,
+              "x": 61.4,
               "y": 194.0
             }
           ],
@@ -45,16 +45,16 @@
           "height": 81.0,
           "id": "entity-STUDENT-1",
           "is_cluster": false,
-          "width": 100.0,
-          "x": 62.0,
+          "width": 98.8,
+          "x": 61.4,
           "y": 234.5
         },
         {
           "height": 81.0,
           "id": "entity-TEACHER-0",
           "is_cluster": false,
-          "width": 100.0,
-          "x": 62.0,
+          "width": 98.8,
+          "x": 61.4,
           "y": 52.5
         }
       ]

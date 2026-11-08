@@ -9,7 +9,7 @@ const DEFAULT_RANK_SPACING: f64 = 80.0;
 const DEFAULT_DIAGRAM_PADDING: f64 = 20.0;
 const DEFAULT_ENTITY_PADDING: f64 = 15.0;
 const DEFAULT_MIN_ENTITY_WIDTH: f64 = 100.0;
-const DEFAULT_WRAPPING_WIDTH: f64 = 200.0;
+const DEFAULT_WRAPPING_WIDTH: f64 = 120.0;
 const DEFAULT_FONT_SIZE: f64 = 16.0;
 const DEFAULT_RELATIONSHIP_FONT_SIZE: f64 = 14.0;
 const DEFAULT_TITLE_TOP_MARGIN: f64 = 25.0;
@@ -73,6 +73,7 @@ impl<'a> ErConfigView<'a> {
             },
             label_style,
             attr_style,
+            calculation_style: self.calculation_text_style(),
             relationship_label_style,
             relationship_html_labels: self.relationship_html_labels(),
             entity_measurement: self.entity_measurement_settings(),
@@ -205,6 +206,23 @@ impl<'a> ErConfigView<'a> {
         crate::config::config_font_family_css(self.effective_config)
     }
 
+    fn calculation_text_style(&self) -> TextStyle {
+        // erBox passes the root config to calculateTextWidth, independently of label CSS.
+        TextStyle {
+            font_family: Some(crate::config::normalize_css_font_family(
+                &crate::config::config_string(self.effective_config, &["fontFamily"])
+                    .unwrap_or_else(|| crate::config::MERMAID_DEFAULT_FONT_FAMILY_CSS.to_owned()),
+            )),
+            font_size: config_f64_css_px(self.effective_config, &["fontSize"])
+                .unwrap_or(DEFAULT_FONT_SIZE),
+            font_weight: crate::config::config_css_number_or_string(
+                self.effective_config,
+                &["fontWeight"],
+            ),
+            font_style: None,
+        }
+    }
+
     fn font_size(&self) -> f64 {
         // Mermaid ER unified renderer inherits the root SVG font-size, so
         // `themeVariables.fontSize` wins when present (including Mermaid's common `"NNpx"` form).
@@ -300,6 +318,7 @@ pub(super) struct ErLayoutSettings {
     pub(super) graph: GraphLabel,
     pub(super) label_style: TextStyle,
     pub(super) attr_style: TextStyle,
+    pub(super) calculation_style: TextStyle,
     pub(super) relationship_label_style: TextStyle,
     pub(super) relationship_html_labels: bool,
     pub(super) entity_measurement: ErEntityMeasurementSettings,
@@ -355,6 +374,30 @@ fn normalize_dir(direction: &str) -> String {
 mod tests {
     use super::*;
     use serde_json::json;
+
+    #[test]
+    fn er_label_probe_keeps_root_typography_and_flowchart_default_width() {
+        let config = json!({
+            "fontFamily": "BudgetFont", "fontSize": 10, "fontWeight": 500,
+            "themeVariables": {"fontFamily": "VisibleFont", "fontSize": "32px"}
+        });
+        let settings = ErConfigView::new(&config).layout_settings_with_font_family("TB", None);
+        assert_eq!(
+            settings.label_style.font_family.as_deref(),
+            Some("VisibleFont")
+        );
+        assert_eq!(settings.label_style.font_size, 32.0);
+        assert_eq!(
+            settings.calculation_style.font_family.as_deref(),
+            Some("BudgetFont")
+        );
+        assert_eq!(settings.calculation_style.font_size, 10.0);
+        assert_eq!(
+            settings.calculation_style.font_weight.as_deref(),
+            Some("500")
+        );
+        assert_eq!(settings.entity_measurement.wrapping_width_px, 120);
+    }
 
     #[test]
     fn er_layout_settings_project_dagre_text_and_relationship_labels() {

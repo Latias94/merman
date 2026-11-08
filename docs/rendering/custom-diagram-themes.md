@@ -140,6 +140,12 @@ as a generic family; it can fall through to its serif fallback. A stack such as
 promising the same UI face on every platform. Quoted source font names retain their literal
 meaning; Merman does not rewrite them into generic aliases.
 
+Theme sizes use pixels. Raw HTML labels can also contain relative CSS sizes: `em` follows the
+parent font, while `rem` depends on the receiving document's root font. Class and Requirement
+HTML node-label measurement uses the ordinary 16px document-root baseline; a page with a different
+root size or a standalone SVG document can resolve `rem` differently. Prefer pixel or parent-relative
+sizes when the same source must travel between hosts.
+
 Use representative Latin, CJK and symbol labels when the content needs them. A font's presence
 does not imply glyph coverage, and a successful theme status does not certify either one. The
 [host measurement guide](../bindings/HOST_TEXT_MEASUREMENT.md) describes callback preparation,
