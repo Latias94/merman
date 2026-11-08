@@ -2,7 +2,7 @@
 
 use super::{
     ErBoxLabel, ErEntity, ErLayoutSettings, ErPreparedLabels, ErPreparedRelationshipLabel,
-    er_box_label_metrics_with_wrap_mode, er_layout_bounds, er_marker_id,
+    er_box_label_metrics_with_wrap_mode, er_layout_bounds, er_marker_id, er_subgraph_title_metrics,
 };
 use crate::model::{
     ErDiagramLayout, LayoutCluster, LayoutEdge, LayoutLabel, LayoutNode, SwimlaneDirection,
@@ -36,6 +36,15 @@ enum ErSwimlaneLabelContent {
     Svg {
         lines: Vec<Vec<String>>,
     },
+}
+
+pub(crate) fn relationship_html_source(source: &str) -> String {
+    if source.is_empty() {
+        String::new()
+    } else {
+        let label = crate::graph_label::flowchart_non_markdown_label_for_html(source, "text");
+        crate::text::replace_fontawesome_icons(&format!("<p>{label}</p>"))
+    }
 }
 
 impl ErSwimlaneRelationshipLabel {
@@ -72,13 +81,7 @@ impl ErSwimlaneRelationshipLabel {
         let (metrics, content) = if view.swimlane_relationship_html_labels() {
             // nonMarkdownToHTML wraps literal text in one paragraph. The sanitizer retains
             // authored HTML semantics, while Markdown punctuation remains ordinary text.
-            let html = if source.is_empty() {
-                String::new()
-            } else {
-                let label =
-                    crate::graph_label::flowchart_non_markdown_label_for_html(source, "text");
-                crate::text::replace_fontawesome_icons(&format!("<p>{label}</p>"))
-            };
+            let html = relationship_html_source(source);
             let fragment = merman_markup::sanitize::sanitize_xhtml(&html, config);
             let metrics =
                 if crate::graph_label::flowchart_label_text_is_empty_for_mode(source, true) {
@@ -289,19 +292,27 @@ pub(super) fn layout_er_diagram_swimlane_typed(
         }
     }
 
+    let view = super::ErConfigView::new(config);
     let mut measured_nodes = Vec::with_capacity(model.entities.len() + model.subgraphs.len());
     for group in model.subgraphs.iter().rev() {
-        let html_labels = super::ErConfigView::new(config).swimlane_title_html_labels();
-        let metrics = er_box_label_metrics_with_wrap_mode(
-            &ErBoxLabel::from_source_with_generic_types(&group.title, false),
-            measurer,
-            &settings.label_style,
-            if html_labels {
-                WrapMode::HtmlLike
-            } else {
-                WrapMode::SvgLike
-            },
-        );
+        // Only top-level groups use the Swimlane painter. Nested groups keep the ordinary
+        // cluster label mode and label type, just as render_er_subgraph_clusters dispatches.
+        let is_lane = !parent_by_id.contains_key(group.id.as_str());
+        let html_labels = view.subgraph_html_labels(is_lane);
+        let metrics = if is_lane {
+            er_box_label_metrics_with_wrap_mode(
+                &ErBoxLabel::from_source_with_generic_types(&group.title, false),
+                measurer,
+                &settings.label_style,
+                if html_labels {
+                    WrapMode::HtmlLike
+                } else {
+                    WrapMode::SvgLike
+                },
+            )
+        } else {
+            er_subgraph_title_metrics(group, measurer, &settings.label_style, html_labels)
+        };
         let has_children = group.nodes.iter().any(|member| {
             subgraph_by_id.contains_key(member.as_str())
                 || entity_id_by_name.contains_key(member.as_str())

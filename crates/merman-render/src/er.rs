@@ -24,6 +24,7 @@ use crate::layout_backend::GraphLayoutBackend;
 use config::ErLayoutSettings;
 pub(crate) use config::{ErConfigView, ErEntityMeasurementSettings};
 pub(crate) use swimlane::ErSwimlanePaintLayout;
+pub(crate) use swimlane::relationship_html_source as swimlane_relationship_html_source;
 pub(crate) use theme::{
     ErAttributeTextRole, ErBaseFontSizePlan, ErCssBinding, ErEntitySourceStyle, ErEntityThemePlan,
     ErEntityThemeReceipt, subgraph_svg_text_facts,
@@ -55,7 +56,7 @@ impl ErBoxLabel {
         Self::from_source_with_generic_types(source, true)
     }
 
-    fn from_source_with_generic_types(source: &str, expand_generic_types: bool) -> Self {
+    pub(crate) fn from_source_with_generic_types(source: &str, expand_generic_types: bool) -> Self {
         // erBox receives source spelling. Browser entity decoding belongs to createText's
         // HTML insertion or SVG word terminals, after authored line breaks are selected.
         let restored = merman_model::text::restore_mermaid_entity_spelling(source);
@@ -935,11 +936,22 @@ fn er_subgraph_title_metrics(
     };
     if subgraph.label_type == "string" || subgraph.label_type == "text" {
         measurer.measure_wrapped(&subgraph.title, style, None, wrap_mode)
-    } else {
-        er_box_label_metrics_with_wrap_mode(
-            &ErBoxLabel::from_source(&subgraph.title),
+    } else if html_labels {
+        // Ordinary clusters project the raw title, without erBox's entity generic conversion.
+        let fragment = crate::text::mermaid_markdown_to_xhtml_label_fragment(&subgraph.title, true);
+        crate::text::measure_xhtml_label_fragment_with_terminal_fonts(
             measurer,
+            &fragment,
             style,
+            None,
+            style.font_size,
+        )
+    } else {
+        crate::text::measure_markdown_with_inline_styles(
+            measurer,
+            &subgraph.title,
+            style,
+            None,
             wrap_mode,
         )
     }

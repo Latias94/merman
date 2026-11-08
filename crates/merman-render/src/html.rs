@@ -64,11 +64,9 @@ impl SanitizeOutputSink for HtmlSanitizeSink<'_> {
     }
 
     fn charge_parse_work(&self, additional: usize) -> Result<(), Self::Error> {
-        match self.phase {
-            OperationPhase::Layout => self.work_meter.charge(additional),
-            _ => self.work_meter.charge_emit_work(additional),
-        }
-        .map_err(HtmlOutputError::Operation)
+        self.work_meter
+            .charge_work(additional, self.phase)
+            .map_err(HtmlOutputError::Operation)
     }
 
     fn check_parse_storage(
@@ -89,11 +87,7 @@ impl SanitizeOutputSink for HtmlSanitizeSink<'_> {
             .and_then(|work| work.checked_add(retained_bytes.div_ceil(BYTES_PER_WORK_UNIT)))
             .ok_or_else(|| HtmlOutputError::Operation(self.work_meter.arithmetic_overflow()))?;
         let additional = work.saturating_sub(self.parse_work.get());
-        match self.phase {
-            OperationPhase::Layout => self.work_meter.charge(additional),
-            _ => self.work_meter.charge_emit_work(additional),
-        }
-        .map_err(HtmlOutputError::Operation)?;
+        self.charge_parse_work(additional)?;
         self.parse_work.set(work);
         Ok(())
     }
@@ -182,7 +176,11 @@ mod tests {
 
     #[test]
     fn html5_ancestor_scans_obey_the_operation_work_budget() {
-        for phase in [OperationPhase::Layout, OperationPhase::Emit] {
+        for phase in [
+            OperationPhase::Semantic,
+            OperationPhase::Layout,
+            OperationPhase::Emit,
+        ] {
             let policy = RenderResourcePolicy::unbounded_for_trusted_input()
                 .with_limit(ResourceLimitId::MaxLayoutWorkUnits, 50_000)
                 .unwrap();

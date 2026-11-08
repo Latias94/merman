@@ -398,6 +398,20 @@ fn mindmap_native_admission_reads_property_syntax_independently_of_emission_safe
         ("letter-spacing:/* comment only */;color:red", None),
         ("color:/* letter-spacing:30px; */red;", None),
         ("--probe:letter-spacing:30px;color:red", None),
+        ("all:initial", Some("all")),
+        ("font-size:64px;all:inherit", Some("all")),
+        ("font-size:64px;all:unset", Some("all")),
+        ("font-size:64px;font:inherit", Some("font")),
+        ("font-size:64px;font:unset", Some("font")),
+        (
+            "font-size:calc(48px)",
+            Some("font-size (unresolved CSS value)"),
+        ),
+        ("font-size:calc(48px);font-size:24px", None),
+        (
+            r"font-size:64px;\61ll:/* value */\75nset !important",
+            Some("all"),
+        ),
     ] {
         let label = format!("<span style='{style}'>AAAA</span>");
         let source = parsed(&label, json!({}), None);
