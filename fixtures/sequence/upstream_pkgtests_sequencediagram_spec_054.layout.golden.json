@@ -121,6 +121,17 @@
           "to_cluster": null
         }
       ],
+      "frames": [
+        {
+          "height": 91.0,
+          "id": "2",
+          "kind": "loop",
+          "label": "Multiple happy responses",
+          "width": 252.0,
+          "x": 64.0,
+          "y": 179.0
+        }
+      ],
       "nodes": [
         {
           "height": 74.0,

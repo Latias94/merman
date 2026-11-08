@@ -345,6 +345,12 @@ impl DeferredRootSpec {
         }
     }
 
+    pub(super) fn mermaid(use_max_width: bool) -> Self {
+        Self {
+            sizing: RootSizing::Mermaid { use_max_width },
+        }
+    }
+
     #[cfg(feature = "layout-cytoscape")]
     pub(super) fn mermaid_or_intrinsic(use_max_width: bool) -> Self {
         Self {
@@ -358,6 +364,7 @@ enum RootDocumentState {
     Deferred {
         view_box_range: Range<usize>,
         max_width_range: Option<Range<usize>>,
+        dimension_ranges: Option<(Range<usize>, Range<usize>)>,
         responsive: bool,
         root_open_snapshot: String,
         root_open_end: usize,
@@ -429,13 +436,19 @@ impl<'a> RootViewportContext<'a> {
             } => false,
             RootSizing::Mermaid {
                 use_max_width: false,
-            }
-            | RootSizing::MermaidWithResponsiveHeight { .. } => {
+            } => false,
+            RootSizing::MermaidWithResponsiveHeight { .. } => {
                 return Err(Error::InvalidModel {
                     message: "unsupported deferred root sizing mode".to_string(),
                 });
             }
         };
+        let intrinsic_dimensions = matches!(
+            spec.sizing,
+            RootSizing::Mermaid {
+                use_max_width: false
+            }
+        );
         let fixed_style = if responsive {
             None
         } else {
@@ -455,10 +468,12 @@ impl<'a> RootViewportContext<'a> {
                 class: chrome.class,
                 width: if responsive {
                     SvgRootWidth::Percent100
+                } else if intrinsic_dimensions {
+                    SvgRootWidth::Fixed(DEFERRED_ROOT_ATTRIBUTE_VALUE)
                 } else {
                     SvgRootWidth::None
                 },
-                height_attr: None,
+                height_attr: intrinsic_dimensions.then_some(DEFERRED_ROOT_ATTRIBUTE_VALUE),
                 style_attr: if responsive {
                     Some(SvgRootAttributeValue::tracked(
                         "max-width: ",
@@ -503,6 +518,18 @@ impl<'a> RootViewportContext<'a> {
         } else {
             None
         };
+        let dimension_ranges = if intrinsic_dimensions {
+            Some((
+                tracked_ranges.width.ok_or_else(|| Error::InvalidModel {
+                    message: "deferred SVG root is missing its width placeholder".to_string(),
+                })?,
+                tracked_ranges.height.ok_or_else(|| Error::InvalidModel {
+                    message: "deferred SVG root is missing its height placeholder".to_string(),
+                })?,
+            ))
+        } else {
+            None
+        };
 
         Ok(RootDocument {
             family: self.family,
@@ -510,6 +537,7 @@ impl<'a> RootViewportContext<'a> {
             state: RootDocumentState::Deferred {
                 view_box_range,
                 max_width_range,
+                dimension_ranges,
                 responsive,
                 root_open_snapshot: out.as_str().to_string(),
                 root_open_end: out.len(),
@@ -531,6 +559,7 @@ impl<'a> RootViewportContext<'a> {
         let RootDocumentState::Deferred {
             view_box_range,
             max_width_range,
+            dimension_ranges,
             responsive,
             root_open_snapshot,
             mut root_open_end,
@@ -541,7 +570,7 @@ impl<'a> RootViewportContext<'a> {
             });
         };
         let plan = self.plan(spec)?;
-        if plan.responsive != responsive || plan.height.is_some() {
+        if plan.responsive != responsive || plan.height.is_some() != dimension_ranges.is_some() {
             return Err(Error::InvalidModel {
                 message: "deferred root sizing changed between open and finalize".to_string(),
             });
@@ -553,6 +582,11 @@ impl<'a> RootViewportContext<'a> {
             || out.as_str().get(view_box_range.clone()) != Some(DEFERRED_ROOT_ATTRIBUTE_VALUE)
             || max_width_range.as_ref().is_some_and(|range| {
                 out.as_str().get(range.clone()) != Some(DEFERRED_ROOT_ATTRIBUTE_VALUE)
+            })
+            || dimension_ranges.as_ref().is_some_and(|(width, height)| {
+                [width, height].into_iter().any(|range| {
+                    out.as_str().get(range.clone()) != Some(DEFERRED_ROOT_ATTRIBUTE_VALUE)
+                })
             })
         {
             return Err(Error::InvalidModel {
@@ -568,6 +602,15 @@ impl<'a> RootViewportContext<'a> {
                     message: "deferred root max-width state changed during finalize".to_string(),
                 });
             }
+        }
+        if let Some((width_range, height_range)) = dimension_ranges {
+            let width = plan.width.ok_or_else(|| Error::InvalidModel {
+                message: "deferred root viewport did not resolve its width".to_string(),
+            })?;
+            let height = plan.height.ok_or_else(|| Error::InvalidModel {
+                message: "deferred root viewport did not resolve its height".to_string(),
+            })?;
+            replacements.extend([(width_range, width), (height_range, height)]);
         }
         replacements.sort_by_key(|(range, _)| std::cmp::Reverse(range.start));
         for (range, replacement) in replacements {
@@ -1921,6 +1964,8 @@ impl<'a> SvgRootAttributeValue<'a> {
 struct SvgRootTrackedRanges {
     view_box: Option<Range<usize>>,
     max_width: Option<Range<usize>>,
+    width: Option<Range<usize>>,
+    height: Option<Range<usize>>,
 }
 
 struct SvgRootAttrs<'a> {
@@ -1986,27 +2031,31 @@ fn push_svg_root_open(out: &mut impl SvgOutput, attrs: SvgRootAttrs<'_>) -> SvgR
     let mut tracked_ranges = SvgRootTrackedRanges::default();
     out.push_str(r#"<svg id=""#);
     diagram_id.write_escaped(out);
+    out.push('"');
     let responsive_height_attr = matches!(width, SvgRootWidth::Percent100)
         .then_some(height_attr)
         .flatten();
     match width {
         SvgRootWidth::None => {
-            out.push_str(r#"" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink""#);
+            out.push_str(
+                r#" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink""#,
+            );
         }
         SvgRootWidth::Percent100 => {
             out.push_str(
-                r#"" width="100%" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink""#,
+                r#" width="100%" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink""#,
             );
         }
         SvgRootWidth::Fixed(w) => {
-            out.push_str(r#"" width=""#);
-            escape_attr_into(out, w);
-            out.push('"');
+            tracked_ranges.width =
+                push_svg_root_attribute(out, "width", SvgRootAttributeValue::tracked("", w, ""));
             match fixed_height_placement {
                 SvgRootFixedHeightPlacement::BeforeXmlns => {
-                    out.push_str(r#" height=""#);
-                    escape_attr_into(out, height_attr.unwrap_or("0"));
-                    out.push('"');
+                    tracked_ranges.height = push_svg_root_attribute(
+                        out,
+                        "height",
+                        SvgRootAttributeValue::tracked("", height_attr.unwrap_or("0"), ""),
+                    );
                     out.push_str(
                         r#" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink""#,
                     );
@@ -2015,9 +2064,11 @@ fn push_svg_root_open(out: &mut impl SvgOutput, attrs: SvgRootAttrs<'_>) -> SvgR
                     out.push_str(
                         r#" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink""#,
                     );
-                    out.push_str(r#" height=""#);
-                    escape_attr_into(out, height_attr.unwrap_or("0"));
-                    out.push('"');
+                    tracked_ranges.height = push_svg_root_attribute(
+                        out,
+                        "height",
+                        SvgRootAttributeValue::tracked("", height_attr.unwrap_or("0"), ""),
+                    );
                 }
                 SvgRootFixedHeightPlacement::AfterClass => {
                     out.push_str(
@@ -2035,9 +2086,8 @@ fn push_svg_root_open(out: &mut impl SvgOutput, attrs: SvgRootAttrs<'_>) -> SvgR
         out.push('"');
     }
     if let Some(h) = deferred_height_after_class.take() {
-        out.push_str(r#" height=""#);
-        escape_attr_into(out, h);
-        out.push('"');
+        tracked_ranges.height =
+            push_svg_root_attribute(out, "height", SvgRootAttributeValue::tracked("", h, ""));
     }
     match style_viewbox_order {
         SvgRootStyleViewBoxOrder::StyleThenViewBox => {
@@ -2910,74 +2960,126 @@ mod tests {
     }
 
     #[test]
-    fn bounded_deferred_root_admits_the_exact_final_size() {
-        let diagram_id = "state";
+    fn deferred_mermaid_root_matches_resolved_dimensions_and_attribute_order() {
+        let diagram_id = "state___MERMAN_ROOT_VIEW_BOX___";
         let context = RootViewportContext::new(DiagramFamilyId::STATE, diagram_id);
-        let final_spec =
-            RootViewportSpec::responsive(DiagramBounds::from_view_box(0.0, 0.0, 10.0, 10.0))
-                .with_max_width(RootMaxWidth::CssSixSignificant(10.0));
+        let properties = [("--marker-text", "__MERMAN_ROOT_MAX_WIDTH__")];
+        for use_max_width in [false, true] {
+            for placement in [
+                SvgRootFixedHeightPlacement::BeforeXmlns,
+                SvgRootFixedHeightPlacement::AfterXmlns,
+                SvgRootFixedHeightPlacement::AfterClass,
+            ] {
+                let chrome = || {
+                    let mut chrome = RootChrome::new(diagram_id, "stateDiagram");
+                    chrome.class = Some("statediagram");
+                    chrome.custom_properties = &properties;
+                    chrome.dom.fixed_height_placement = placement;
+                    chrome.dom.trailing_newline = false;
+                    chrome
+                };
+                let spec = RootViewportSpec::mermaid(
+                    DiagramBounds::from_view_box(-8.0, 2.0, 152.0, 51.0),
+                    use_max_width,
+                )
+                .with_max_width(RootMaxWidth::CssSixSignificant(152.0));
+                let mut deferred = String::new();
+                let document = context
+                    .begin_document(
+                        &mut deferred,
+                        DeferredRootSpec::mermaid(use_max_width),
+                        chrome(),
+                    )
+                    .unwrap();
+                deferred.push_str("<g/>");
+                let document = context
+                    .finish_document(&mut deferred, document, spec)
+                    .unwrap();
+                deferred.push_str("</svg>");
+                let deferred = document.complete(deferred).unwrap();
 
-        let mut expected = String::new();
-        let expected_document = context
-            .begin_document(
-                &mut expected,
-                DeferredRootSpec::responsive(),
-                RootChrome::new(diagram_id, "stateDiagram"),
-            )
-            .unwrap();
-        expected.push_str("<g/>");
-        let expected_document = context
-            .finish_document(&mut expected, expected_document, final_spec)
-            .unwrap();
-        expected.push_str("</svg>");
-        let expected = expected_document.complete(expected).unwrap().svg;
+                let mut resolved = String::new();
+                let document = context.write_open(&mut resolved, spec, chrome()).unwrap();
+                resolved.push_str("<g/></svg>");
+                let resolved = document.complete(resolved).unwrap();
+                assert_eq!(deferred.svg, resolved.svg);
+            }
+        }
+    }
 
-        let exact_policy = RenderResourcePolicy::unbounded_for_trusted_input()
-            .with_limit(
-                crate::resources::ResourceLimitId::MaxSvgBytes,
-                expected.len(),
+    #[test]
+    fn bounded_deferred_root_admits_the_exact_final_size() {
+        for use_max_width in [true, false] {
+            let diagram_id = "state";
+            let context = RootViewportContext::new(DiagramFamilyId::STATE, diagram_id);
+            let final_spec = RootViewportSpec::mermaid(
+                DiagramBounds::from_view_box(0.0, 0.0, 10.0, 10.0),
+                use_max_width,
             )
-            .unwrap();
-        let exact_meter = crate::resources::OperationWorkMeter::new(exact_policy);
-        let mut exact = BoundedSvgOutput::new(&exact_meter);
-        let exact_document = context
-            .begin_document(
-                &mut exact,
-                DeferredRootSpec::responsive(),
-                RootChrome::new(diagram_id, "stateDiagram"),
-            )
-            .unwrap();
-        exact.push_str("<g/>");
-        let exact_document = context
-            .finish_document(&mut exact, exact_document, final_spec)
-            .unwrap();
-        exact.push_str("</svg>");
-        let exact = exact.finish().unwrap();
-        assert_eq!(exact_document.complete(exact).unwrap().svg, expected);
+            .with_max_width(RootMaxWidth::CssSixSignificant(10.0));
 
-        let short_policy = RenderResourcePolicy::unbounded_for_trusted_input()
-            .with_limit(
-                crate::resources::ResourceLimitId::MaxSvgBytes,
-                expected.len() - 1,
-            )
-            .unwrap();
-        let short_meter = crate::resources::OperationWorkMeter::new(short_policy);
-        let mut short = BoundedSvgOutput::new(&short_meter);
-        let short_document = context
-            .begin_document(
-                &mut short,
-                DeferredRootSpec::responsive(),
-                RootChrome::new(diagram_id, "stateDiagram"),
-            )
-            .unwrap();
-        short.push_str("<g/>");
-        context
-            .finish_document(&mut short, short_document, final_spec)
-            .unwrap();
-        short.push_str("</svg>");
-        let error = short.finish().unwrap_err();
-        assert!(matches!(error, Error::ResourceLimitExceeded(_)));
-        assert!(short_meter.projected_svg_bytes() == 0);
+            let mut expected = String::new();
+            let expected_document = context
+                .begin_document(
+                    &mut expected,
+                    DeferredRootSpec::mermaid(use_max_width),
+                    RootChrome::new(diagram_id, "stateDiagram"),
+                )
+                .unwrap();
+            expected.push_str("<g/>");
+            let expected_document = context
+                .finish_document(&mut expected, expected_document, final_spec)
+                .unwrap();
+            expected.push_str("</svg>");
+            let expected = expected_document.complete(expected).unwrap().svg;
+
+            let exact_policy = RenderResourcePolicy::unbounded_for_trusted_input()
+                .with_limit(
+                    crate::resources::ResourceLimitId::MaxSvgBytes,
+                    expected.len(),
+                )
+                .unwrap();
+            let exact_meter = crate::resources::OperationWorkMeter::new(exact_policy);
+            let mut exact = BoundedSvgOutput::new(&exact_meter);
+            let exact_document = context
+                .begin_document(
+                    &mut exact,
+                    DeferredRootSpec::mermaid(use_max_width),
+                    RootChrome::new(diagram_id, "stateDiagram"),
+                )
+                .unwrap();
+            exact.push_str("<g/>");
+            let exact_document = context
+                .finish_document(&mut exact, exact_document, final_spec)
+                .unwrap();
+            exact.push_str("</svg>");
+            let exact = exact.finish().unwrap();
+            assert_eq!(exact_document.complete(exact).unwrap().svg, expected);
+
+            let short_policy = RenderResourcePolicy::unbounded_for_trusted_input()
+                .with_limit(
+                    crate::resources::ResourceLimitId::MaxSvgBytes,
+                    expected.len() - 1,
+                )
+                .unwrap();
+            let short_meter = crate::resources::OperationWorkMeter::new(short_policy);
+            let mut short = BoundedSvgOutput::new(&short_meter);
+            let short_document = context
+                .begin_document(
+                    &mut short,
+                    DeferredRootSpec::mermaid(use_max_width),
+                    RootChrome::new(diagram_id, "stateDiagram"),
+                )
+                .unwrap();
+            short.push_str("<g/>");
+            context
+                .finish_document(&mut short, short_document, final_spec)
+                .unwrap();
+            short.push_str("</svg>");
+            let error = short.finish().unwrap_err();
+            assert!(matches!(error, Error::ResourceLimitExceeded(_)));
+            assert!(short_meter.projected_svg_bytes() == 0);
+        }
     }
 
     #[test]

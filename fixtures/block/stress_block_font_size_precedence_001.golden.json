@@ -64,7 +64,9 @@
         "end": "dispatch",
         "id": "1-ingress-dispatch",
         "label": "Wide edge label",
+        "pattern": "solid",
         "start": "ingress",
+        "thickness": "normal",
         "type": "edge"
       }
     ],

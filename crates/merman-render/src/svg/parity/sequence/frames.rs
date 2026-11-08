@@ -8,32 +8,13 @@ use rustc_hash::FxHashMap;
 #[derive(Debug, Clone, Copy)]
 pub(super) struct SequenceFrameRenderOptions<'a> {
     pub(super) actor_text_style: &'a TextStyle,
-    pub(super) box_layouts: &'a [crate::sequence::SequenceBoxLayout],
-    pub(super) box_title_height: f64,
-    pub(super) box_height: f64,
-    pub(super) box_margin: f64,
-    pub(super) box_text_margin: f64,
+    pub(super) boxes: &'a [crate::model::SequenceParticipantBoxLayout],
+    pub(super) box_indices: &'a [Option<usize>],
     pub(super) rect_default_fill: &'a str,
 }
 
-fn box_rect_geometry(
-    box_layout: &crate::sequence::SequenceBoxLayout,
-    height: f64,
-    margin: f64,
-) -> Option<[f64; 4]> {
-    let padding = margin * 2.0;
-    Some([
-        box_layout.x? - padding,
-        -padding * 0.25,
-        box_layout.width + padding * 2.0,
-        height + padding * 0.75,
-    ])
-}
-
 pub(super) fn builtin_box_paint_bounds(
-    boxes: &[crate::sequence::SequenceBoxLayout],
-    height: f64,
-    margin: f64,
+    boxes: &[crate::model::SequenceParticipantBoxLayout],
     theme: &crate::sequence::SequenceCompatBinding,
     checkpoints: SequenceEmitCheckpoints<'_>,
 ) -> Result<Option<Bounds>> {
@@ -43,9 +24,12 @@ pub(super) fn builtin_box_paint_bounds(
     let mut bounds: Option<Bounds> = None;
     for (index, box_layout) in boxes.iter().enumerate() {
         checkpoints.checkpoint_loop(index)?;
-        let Some([x, y, width, height]) = box_rect_geometry(box_layout, height, margin) else {
-            continue;
-        };
+        let [x, y, width, height] = [
+            box_layout.x,
+            box_layout.y,
+            box_layout.width,
+            box_layout.height,
+        ];
         // Box frames use SVG's default one-pixel stroke and the emitted zero-blur Neo filter.
         let paint =
             super::actor_effect::builtin_neo_rect_paint_bounds([x, y, width, height], 1.0, true);
@@ -73,42 +57,37 @@ pub(super) fn render_sequence_box_frames_and_rect_blocks(
     let typography_receipt = label_ctx.typography_receipt;
     // Mermaid renders "box" frames as root-level `<g><rect class="rect"/>...</g>` nodes before actors.
     // Mermaid renders boxes "behind" other elements; multiple boxes end up reversed in DOM order.
-    let max_box_title_height = options.box_title_height;
-
     checkpoints.checkpoint()?;
-    for (emission_index, (b, box_layout)) in model
+    for (emission_index, (b, box_index)) in model
         .boxes
         .iter()
-        .zip(options.box_layouts)
+        .zip(options.box_indices)
         .rev()
         .enumerate()
     {
         checkpoints.checkpoint_loop(emission_index)?;
-        let Some([x, y, w, h]) =
-            box_rect_geometry(box_layout, options.box_height, options.box_margin)
-        else {
+        let Some(box_index) = *box_index else {
             if b.name.is_some() {
                 typography_receipt
                     .record_missing_text_effect(crate::sequence::SequenceTextSurface::BoxTitle);
             }
             continue;
         };
+        let box_layout = &options.boxes[box_index];
         out.push_str("<g>");
         let _ = write!(
             out,
             r#"<rect x="{x}" y="{y}" fill="{fill}" stroke="rgb(0,0,0, 0.5)" width="{w}" height="{h}" class="rect"/>"#,
-            x = fmt(x),
-            y = fmt(y),
-            w = fmt(w),
-            h = fmt(h),
-            fill = escape_xml_display(&b.fill),
+            x = fmt(box_layout.x),
+            y = fmt(box_layout.y),
+            w = fmt(box_layout.width),
+            h = fmt(box_layout.height),
+            fill = escape_xml_display(&box_layout.fill),
         );
-        if let Some(name) = box_layout.label.as_deref().filter(|name| !name.is_empty()) {
-            let cx = x + (w / 2.0);
-            // Mermaid's `drawBox(...)` places the title at `box.y + boxTextMargin + textMaxHeight/2`.
-            // In upstream, `box.y` is the `verticalPos` passed to `addActorRenderingData`, i.e. 0.
-            let text_y = options.box_text_margin + max_box_title_height / 2.0;
-            let lines = crate::text::split_html_br_lines(name);
+        if let Some(title) = box_layout.title.as_ref() {
+            let cx = title.x;
+            let text_y = title.y;
+            let lines = crate::text::split_html_br_lines(&title.text);
             let count = lines.len().max(1) as f64;
             for (index, raw) in lines.into_iter().enumerate() {
                 checkpoints.checkpoint_loop(index)?;

@@ -1,15 +1,12 @@
 use super::SequenceLayoutCheckpoints;
-use super::block_collection::{SequenceBlock, collect_sequence_blocks};
-use super::block_geometry::{frame_x_from_actors, resolved_block_frame_x};
 use super::constants::{sequence_actor_popup_panel_height, sequence_actor_popup_rect_height};
 use super::message_metrics::{SequenceMessageMetricView, SequenceMessageOwner};
 use super::metrics::{SequenceMathHeightMode, measure_sequence_label_for_layout_with_prepared};
 use crate::Result;
-use crate::model::{Bounds, LayoutEdge, LayoutNode, SequenceBlockLayout};
+use crate::model::{Bounds, LayoutEdge, LayoutNode, SequenceFrameLayout, SequenceTextLayout};
 use crate::text::{TextMeasurer, TextStyle};
 use merman_model::families::sequence::{SequenceDiagramModel, SequenceMessageKind};
 use merman_model::presentation::PresentationConfig;
-use rustc_hash::FxHashMap;
 use std::collections::HashMap;
 
 pub(super) struct SequenceRootBoundsContext<'a> {
@@ -18,7 +15,7 @@ pub(super) struct SequenceRootBoundsContext<'a> {
     pub(super) diagram_title: Option<&'a str>,
     pub(super) nodes: &'a [LayoutNode],
     pub(super) edges: &'a [LayoutEdge],
-    pub(super) block_layouts_by_id: &'a FxHashMap<String, SequenceBlockLayout>,
+    pub(super) frames: &'a [SequenceFrameLayout],
     pub(super) bounds_start_x: f64,
     pub(super) bounds_stop_x: f64,
     pub(super) actor_index: &'a HashMap<&'a str, usize>,
@@ -45,30 +42,14 @@ pub(super) struct SequenceRootBoundsContext<'a> {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) struct SequenceDiagramTitleGeometry {
-    text: String,
-    x: f64,
-    y: f64,
+struct SequenceDiagramTitleGeometry {
+    placement: SequenceTextLayout,
     bounds: Bounds,
-}
-
-impl SequenceDiagramTitleGeometry {
-    pub(crate) fn text(&self) -> &str {
-        &self.text
-    }
-
-    pub(crate) const fn x(&self) -> f64 {
-        self.x
-    }
-
-    pub(crate) const fn y(&self) -> f64 {
-        self.y
-    }
 }
 
 pub(super) struct SequenceRootGeometry {
     pub(super) bounds: Bounds,
-    pub(super) diagram_title: Option<SequenceDiagramTitleGeometry>,
+    pub(super) diagram_title: Option<SequenceTextLayout>,
 }
 
 pub(super) fn prepare_sequence_root_geometry(
@@ -130,7 +111,7 @@ pub(super) fn prepare_sequence_root_geometry(
 
     Ok(SequenceRootGeometry {
         bounds,
-        diagram_title,
+        diagram_title: diagram_title.map(|title| title.placement),
     })
 }
 
@@ -162,9 +143,11 @@ fn prepare_diagram_title_geometry(
     );
 
     Ok(Some(SequenceDiagramTitleGeometry {
-        text: text.to_owned(),
-        x,
-        y,
+        placement: SequenceTextLayout {
+            text: text.to_owned(),
+            x,
+            y,
+        },
         bounds: Bounds {
             min_x: center - left,
             min_y: y - ascent,
@@ -182,61 +165,11 @@ fn include_resolved_block_label_box_bounds(
         return Ok(());
     }
 
-    // Mermaid anchors each label box to the left edge of its resolved control-block frame. Consume
-    // the same family-owned block plan as terminal SVG emission instead of guessing that edge from
-    // a global actor position.
-    let mut nodes_by_id = FxHashMap::default();
-    for (node_index, node) in ctx.nodes.iter().enumerate() {
-        ctx.checkpoints.checkpoint_loop(node_index)?;
-        nodes_by_id.insert(node.id.as_str(), node);
-    }
-    let mut edges_by_id = FxHashMap::default();
-    for (edge_index, edge) in ctx.edges.iter().enumerate() {
-        ctx.checkpoints.checkpoint_loop(edge_index)?;
-        edges_by_id.insert(edge.id.as_str(), edge);
-    }
-    let mut actor_nodes_by_id = FxHashMap::default();
-    for (actor_index, actor_id) in ctx.model.actor_order.iter().enumerate() {
-        ctx.checkpoints.checkpoint_loop(actor_index)?;
-        let node_id = format!("actor-top-{actor_id}");
-        if let Some(node) = nodes_by_id.get(node_id.as_str()).copied() {
-            actor_nodes_by_id.insert(actor_id.as_str(), node);
-        }
-    }
-
-    let Some(default_frame) = frame_x_from_actors(ctx.model, &nodes_by_id, ctx.checkpoints)? else {
-        return Ok(());
-    };
-    let (_, blocks) = collect_sequence_blocks(
-        ctx.model,
-        &actor_nodes_by_id,
-        &edges_by_id,
-        &nodes_by_id,
-        ctx.block_layouts_by_id,
-        ctx.checkpoints,
-    )?;
-    for (block_index, block) in blocks.into_iter().enumerate() {
-        ctx.checkpoints.checkpoint_loop(block_index)?;
-        let Some(layout) = block.layout() else {
-            continue;
-        };
-        let critical_section_count = match &block {
-            SequenceBlock::Critical { sections, .. } => Some(sections.len()),
-            _ => None,
-        };
-        let frame = resolved_block_frame_x(
-            block.geometry(),
-            layout,
-            &actor_nodes_by_id,
-            default_frame,
-            critical_section_count,
-        );
-        let Some((frame_left, frame_right, _)) = frame else {
-            continue;
-        };
+    for (index, frame) in ctx.frames.iter().enumerate() {
+        ctx.checkpoints.checkpoint_loop(index)?;
         bounds_box.include(
-            frame_left,
-            frame_right.max(frame_left + ctx.block_label_box_metrics.width()),
+            frame.x,
+            frame.x + frame.width.max(ctx.block_label_box_metrics.drawn_width()),
         );
     }
     Ok(())

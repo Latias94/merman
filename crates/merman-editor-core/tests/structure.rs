@@ -510,6 +510,115 @@ fn mindmap_node_ids_are_renameable_and_payloads_are_not_navigation_targets() {
 }
 
 #[test]
+fn class_interaction_list_navigation_and_rename_preserve_each_generic_target() {
+    let harness = SnapshotHarness::new();
+    for line_ending in ["\n", "\r\n"] {
+        for name in ["A", "名𠀀"] {
+            for (command, payload) in [
+                ("click", " href \"https://example.com/\""),
+                ("click", " call open(value)"),
+                ("link", " \"https://example.com/\""),
+                ("callback", " \"open\""),
+            ] {
+                let interaction = format!("{command} `{name}~V~,B~W~,{name}~X~`{payload}");
+                let source =
+                    format!("classDiagram\nclass `{name}`~T~\nclass B~U~\n{interaction}\n")
+                        .replace('\n', line_ending);
+                let snapshot = harness
+                    .analyze(
+                        "file:///tmp/class-interaction-list.mmd",
+                        1,
+                        source.clone(),
+                        DocumentKind::Diagram,
+                    )
+                    .expect("Class interaction list must be accepted");
+                let name_len = name.encode_utf16().count();
+                let declaration = Range::new(Position::new(1, 7), Position::new(1, 7 + name_len));
+                let first_start = interaction.find('`').unwrap() + 1;
+                let second_start = first_start + name_len + "~V~,B~W~,".len();
+                let first = Range::new(
+                    Position::new(3, first_start),
+                    Position::new(3, first_start + name_len),
+                );
+                let second = Range::new(
+                    Position::new(3, second_start),
+                    Position::new(3, second_start + name_len),
+                );
+                for range in [declaration, first, second] {
+                    assert_eq!(
+                        goto_definition(&snapshot, range.start).unwrap().range,
+                        declaration
+                    );
+                    assert_eq!(
+                        references(&snapshot, range.start, true)
+                            .unwrap()
+                            .iter()
+                            .map(|location| location.range)
+                            .collect::<Vec<_>>(),
+                        [declaration, first, second]
+                    );
+                    let prepared = prepare_rename(&snapshot, range.start).unwrap();
+                    assert_eq!(prepared.placeholder, name);
+                    assert_eq!(prepared.range, range);
+                    let edit = rename(&snapshot, range.start, "Renamed").unwrap().unwrap();
+                    let changes = &edit.changes[snapshot.uri()];
+                    assert_eq!(changes.len(), 3);
+                    let mut changed = source.clone();
+                    for change in changes.iter().rev() {
+                        let start = snapshot
+                            .byte_offset_for_position(change.range.start)
+                            .unwrap();
+                        let end = snapshot.byte_offset_for_position(change.range.end).unwrap();
+                        changed.replace_range(start..end, &change.new_text);
+                    }
+                    assert_eq!(changed, source.replace(name, "Renamed"));
+                }
+            }
+        }
+    }
+}
+
+#[test]
+fn class_interaction_suffix_target_rename_preserves_external_generic_syntax() {
+    let harness = SnapshotHarness::new();
+    for separator in ["", " \t"] {
+        let interaction = format!("click `A`{separator}~T,B~ href \"https://example.com/\"");
+        let source = format!("classDiagram\nclass A\nclass B\n{interaction}\n");
+        let snapshot = harness
+            .analyze(
+                "file:///tmp/class-external-generic-list.mmd",
+                1,
+                source.clone(),
+                DocumentKind::Diagram,
+            )
+            .unwrap();
+        let declaration = Range::new(Position::new(2, 6), Position::new(2, 7));
+        let start = interaction.find("B~").unwrap();
+        let reference = Range::new(Position::new(3, start), Position::new(3, start + 1));
+        assert_eq!(
+            goto_definition(&snapshot, reference.start).unwrap().range,
+            declaration
+        );
+        assert_eq!(
+            references(&snapshot, declaration.start, true)
+                .unwrap()
+                .iter()
+                .map(|location| location.range)
+                .collect::<Vec<_>>(),
+            [declaration, reference]
+        );
+        let edits = rename(&snapshot, reference.start, "C").unwrap().unwrap();
+        let mut changed = source.clone();
+        for edit in edits.changes[snapshot.uri()].iter().rev() {
+            let start = snapshot.byte_offset_for_position(edit.range.start).unwrap();
+            let end = snapshot.byte_offset_for_position(edit.range.end).unwrap();
+            changed.replace_range(start..end, &edit.new_text);
+        }
+        assert_eq!(changed, source.replace('B', "C"));
+    }
+}
+
+#[test]
 fn class_generic_navigation_and_rename_preserve_quotes_and_type_suffixes() {
     let harness = SnapshotHarness::new();
     for (declaration, reference, spelling) in [

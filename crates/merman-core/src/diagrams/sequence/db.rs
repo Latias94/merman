@@ -148,49 +148,51 @@ impl SequenceDb {
             }
         }
 
-        if let Some(current_box) = self.current_box
-            && let Some(existing) = self.actors.get(id)
-            && let Some(old_box) = existing.box_index
-            && old_box != current_box
+        let mut description = description.map(|s| self.parse_message(&s));
+        if let Some(alias) = config_alias.filter(|alias| !alias.is_empty())
+            && description.as_ref().is_none_or(|text| text.text == id)
         {
-            let old_name = self.boxes[old_box]
-                .name
-                .clone()
-                .unwrap_or_else(|| "undefined".to_string());
-            let new_name = self.boxes[current_box]
-                .name
-                .clone()
-                .unwrap_or_else(|| "undefined".to_string());
-            return Err(format!(
-                "A same participant should only be defined in one Box: {} can't be in '{}' and in '{}' at the same time.",
-                existing.name, old_name, new_name
-            ));
-        }
-
-        let description = description
-            .or(config_alias)
-            .map(|s| self.parse_message(&s))
-            .unwrap_or_else(|| ParsedText {
-                text: id.to_string(),
-                wrap: None,
+            description = Some(ParsedText {
+                text: alias,
+                wrap: description.as_ref().and_then(|text| text.wrap),
             });
-
-        let wrap = description.wrap.unwrap_or(self.auto_wrap());
-
-        if let Some(existing) = self.actors.get_mut(id) {
-            existing.description = description.text;
-            existing.wrap = wrap;
-            existing.actor_type = actor_type;
-            if let Some(current_box) = self.current_box {
-                if existing.box_index.is_none() {
-                    existing.box_index = Some(current_box);
-                }
-                self.boxes[current_box].actor_keys.push(id.to_string());
-            }
-            return Ok(());
         }
 
-        self.actor_order.push(id.to_string());
+        let mut assigned_box = self.current_box;
+        let mut lifecycle = SequenceActorLifecycle::default();
+        if let Some(existing) = self.actors.get_mut(id) {
+            if let Some(current_box) = self.current_box
+                && let Some(old_box) = existing.box_index
+                && old_box != current_box
+            {
+                let old_name = self.boxes[old_box].name.as_deref().unwrap_or("undefined");
+                let new_name = self.boxes[current_box]
+                    .name
+                    .as_deref()
+                    .unwrap_or("undefined");
+                return Err(format!(
+                    "A same participant should only be defined in one Box: {} can't be in '{}' and in '{}' at the same time.",
+                    existing.name, old_name, new_name
+                ));
+            }
+
+            assigned_box = existing.box_index.or(self.current_box);
+            existing.box_index = assigned_box;
+            // Mermaid assigns the box before reusing an actor with no new description.
+            if description.is_none() {
+                return Ok(());
+            }
+            // Lifecycle ownership is independent of Mermaid's replaceable actor display record.
+            lifecycle = existing.lifecycle;
+        } else {
+            self.actor_order.push(id.to_string());
+        }
+
+        let description = description.unwrap_or_else(|| ParsedText {
+            text: id.to_string(),
+            wrap: None,
+        });
+        let wrap = description.wrap.unwrap_or(self.auto_wrap());
         self.actors.insert(
             id.to_string(),
             Actor {
@@ -198,10 +200,10 @@ impl SequenceDb {
                 description: description.text,
                 wrap,
                 actor_type,
-                box_index: self.current_box,
+                box_index: assigned_box,
                 links: serde_json::Map::new(),
                 properties: serde_json::Map::new(),
-                lifecycle: SequenceActorLifecycle::default(),
+                lifecycle,
             },
         );
 
@@ -214,35 +216,16 @@ impl SequenceDb {
 
     fn parse_message(&self, raw: &str) -> ParsedText {
         let trimmed = raw.trim();
-        fn strip_prefix_ci<'a>(s: &'a str, prefix: &[u8]) -> Option<&'a str> {
-            let bytes = s.as_bytes();
-            if bytes.len() < prefix.len() {
-                return None;
-            }
-            for i in 0..prefix.len() {
-                if !bytes[i].eq_ignore_ascii_case(&prefix[i]) {
-                    return None;
-                }
-            }
-            Some(&s[prefix.len()..])
-        }
-
-        let (wrap, cleaned) = if trimmed.len() >= 5
-            && matches!(
-                trimmed.as_bytes().first().copied(),
-                Some(b':' | b'w' | b'W' | b'n' | b'N')
-            ) {
-            if let Some(rest) = strip_prefix_ci(trimmed, b":wrap:") {
-                (Some(true), rest.trim())
-            } else if let Some(rest) = strip_prefix_ci(trimmed, b"wrap:") {
-                (Some(true), rest.trim())
-            } else if let Some(rest) = strip_prefix_ci(trimmed, b":nowrap:") {
-                (Some(false), rest.trim())
-            } else if let Some(rest) = strip_prefix_ci(trimmed, b"nowrap:") {
-                (Some(false), rest.trim())
-            } else {
-                (None, trimmed)
-            }
+        let (wrap, cleaned) = if let Some(rest) = trimmed
+            .strip_prefix(":wrap:")
+            .or_else(|| trimmed.strip_prefix("wrap:"))
+        {
+            (Some(true), rest.trim())
+        } else if let Some(rest) = trimmed
+            .strip_prefix(":nowrap:")
+            .or_else(|| trimmed.strip_prefix("nowrap:"))
+        {
+            (Some(false), rest.trim())
         } else {
             (None, trimmed)
         };

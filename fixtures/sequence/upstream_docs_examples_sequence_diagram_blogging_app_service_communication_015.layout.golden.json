@@ -2,6 +2,24 @@
   "diagramType": "sequence",
   "layout": {
     "SequenceDiagram": {
+      "activations": [
+        {
+          "actor": "account",
+          "depth": 0.0,
+          "height": 274.0,
+          "width": 10.0,
+          "x": 470.0,
+          "y": 169.0
+        },
+        {
+          "actor": "blog",
+          "depth": 0.0,
+          "height": 274.0,
+          "width": 10.0,
+          "x": 270.0,
+          "y": 538.0
+        }
+      ],
       "bounds": {
         "max_x": 1070.0,
         "max_y": 937.0,
@@ -434,6 +452,40 @@
           "stroke_dasharray": null,
           "to": "actor-bottom-db",
           "to_cluster": null
+        }
+      ],
+      "frames": [
+        {
+          "height": 561.0,
+          "id": "5",
+          "kind": "alt",
+          "label": "Credentials not found",
+          "sections": [
+            {
+              "id": "7",
+              "label": "Credentials found",
+              "y": 367.0
+            }
+          ],
+          "width": 940.0,
+          "x": 40.0,
+          "y": 271.0
+        },
+        {
+          "height": 228.0,
+          "id": "14",
+          "kind": "par",
+          "label": "Notifications",
+          "sections": [
+            {
+              "id": "17",
+              "label": "Response",
+              "y": 736.0
+            }
+          ],
+          "width": 892.0,
+          "x": 64.0,
+          "y": 594.0
         }
       ],
       "nodes": [

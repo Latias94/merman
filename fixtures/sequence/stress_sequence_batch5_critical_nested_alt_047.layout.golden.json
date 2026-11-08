@@ -2,6 +2,16 @@
   "diagramType": "sequence",
   "layout": {
     "SequenceDiagram": {
+      "activations": [
+        {
+          "actor": "S",
+          "depth": 0.0,
+          "height": 606.0,
+          "width": 10.0,
+          "x": 270.0,
+          "y": 122.0
+        }
+      ],
       "bounds": {
         "max_x": 600.0,
         "max_y": 833.0,
@@ -384,6 +394,29 @@
           "stroke_dasharray": null,
           "to": "actor-bottom-DB",
           "to_cluster": null
+        }
+      ],
+      "frames": [
+        {
+          "height": 503.0,
+          "id": "2",
+          "kind": "critical",
+          "label": "lock row",
+          "sections": [
+            {
+              "id": "3",
+              "label": "update existing",
+              "y": 180.0
+            },
+            {
+              "id": "8",
+              "label": "create new",
+              "y": 409.0
+            }
+          ],
+          "width": 295.0,
+          "x": 191.0,
+          "y": 130.0
         }
       ],
       "nodes": [

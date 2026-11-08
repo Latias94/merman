@@ -2,7 +2,8 @@
 use crate::SourcePresentationMetadata;
 use crate::common_db::LangiumCommonDbFields;
 use crate::diagrams::langium_common::{
-    LangiumCommonFacts, parse_langium_common, parse_langium_string, strip_langium_inline_comment,
+    LangiumCommonFacts, convert_langium_escape_character, is_ecmascript_line_terminator,
+    parse_langium_common,
 };
 #[cfg(feature = "editor-facts")]
 use crate::diagrams::langium_common::{
@@ -246,7 +247,7 @@ fn construct_packet_semantic_source_controlled(
     #[cfg(test)]
     crate::diagrams::langium_common::record_family_syntax_construction("packet");
 
-    let body = match packet_body_start_controlled(code, control)? {
+    let body_offset = match packet_body_start_controlled(code, control)? {
         Ok(Some(body)) => body,
         Ok(None) => {
             return Ok(Ok(PacketSemanticSource {
@@ -269,7 +270,8 @@ fn construct_packet_semantic_source_controlled(
             )));
         }
     };
-    let mut offset = body.offset;
+    let mut cursor = PacketCursor::new(code, body_offset, control);
+    let mut on_header_line = true;
     let mut common = LangiumCommonFacts::default();
     let mut blocks: Vec<ParsedPacketBlock> = Vec::new();
     #[cfg(feature = "editor-facts")]
@@ -284,9 +286,22 @@ fn construct_packet_semantic_source_controlled(
     };
     let mut first_error = None;
 
-    while offset < code.len() {
+    while cursor.offset < code.len() {
         control.checkpoint()?;
-        if let Some(parsed) = parse_langium_common(code, offset) {
+        cursor.begin_statement();
+        let line_start = cursor.offset;
+        cursor.skip_horizontal_whitespace()?;
+        if cursor.remaining().starts_with("%%") {
+            cursor.skip_line()?;
+            on_header_line = false;
+            continue;
+        }
+        if cursor.consume_eol()? {
+            on_header_line = false;
+            continue;
+        }
+        if let Some(mut parsed) = parse_langium_common(code, cursor.offset) {
+            parsed.fact.raw_span.start = line_start;
             if let Some(diagnostic) = &parsed.diagnostic {
                 #[cfg(feature = "editor-facts")]
                 if let Some(facts) = &mut editor_facts {
@@ -308,20 +323,12 @@ fn construct_packet_semantic_source_controlled(
                 push_langium_common_editor_fact(facts, &parsed.fact, "packet");
             }
             common.push(parsed.fact);
-            offset += parsed.consumed;
+            cursor.offset += parsed.consumed;
+            on_header_line = false;
             continue;
         }
 
-        let line_start = offset;
-        let (line, next_offset) = physical_line(code, offset);
-        offset = next_offset;
-        let visible = strip_inline_comment(line);
-        let t = visible.trim();
-        if t.is_empty() {
-            continue;
-        }
-
-        if let Some(block) = parse_packet_block_spanned(line, line_start) {
+        if let Some(block) = parse_packet_block_controlled(&mut cursor)? {
             #[cfg(feature = "editor-facts")]
             if let Some(facts) = editor_facts
                 .as_mut()
@@ -330,22 +337,21 @@ fn construct_packet_semantic_source_controlled(
                 push_packet_block_editor_fact(facts, &block);
             }
             blocks.push(block.semantic);
+            on_header_line = false;
             continue;
         }
 
-        let diagnostic = if line_start < body.header_line_end {
+        let span = cursor.recover_statement()?;
+        let t = &code[span.start..span.end];
+        let diagnostic = if on_header_line {
             "expected packet".to_string()
         } else {
             format!("unexpected packet statement: {t}")
         };
-        #[cfg(feature = "editor-facts")]
-        let start = line_start + visible.find(t).unwrap_or_default();
+        on_header_line = false;
         #[cfg(feature = "editor-facts")]
         if let Some(facts) = &mut editor_facts {
-            facts.mark_recovered_from_parse_error(
-                diagnostic.clone(),
-                Some(SourceSpan::new(start, start + t.len())),
-            );
+            facts.mark_recovered_from_parse_error(diagnostic.clone(), Some(span));
         }
         first_error.get_or_insert_with(|| Error::diagram_parse_fallback(diagram_type, diagnostic));
     }
@@ -421,11 +427,11 @@ fn push_packet_block_editor_fact(facts: &mut EditorSemanticFacts, block: &Packet
         block.semantic.numeric_span,
     ));
     facts.push_symbol(EditorSemanticSymbol::payload(
-        block.label.text.to_string(),
+        block.semantic.label.clone(),
         Some("packet block".to_string()),
         EditorSemanticKind::String,
-        block.label.span,
-        block.label.span,
+        block.label_span,
+        block.label_span,
     ));
 }
 
@@ -657,102 +663,61 @@ fn get_next_fitting_block(
     ))
 }
 
-fn strip_inline_comment(line: &str) -> &str {
-    strip_langium_inline_comment(line)
-}
-
-fn parse_packet_block_spanned(line: &str, line_start: usize) -> Option<PacketBlockSpanned> {
-    let stripped = strip_inline_comment(line);
-    let trimmed = stripped.trim_start();
-    if trimmed.is_empty() {
-        return None;
+fn parse_packet_block_controlled(
+    cursor: &mut PacketCursor<'_>,
+) -> crate::OperationControlResult<Option<PacketBlockSpanned>> {
+    let relative = cursor.peek() == Some('+');
+    if relative {
+        cursor.advance()?;
+        cursor.skip_horizontal_whitespace()?;
     }
-    let leading = stripped.len() - trimmed.len();
-    let base = line_start + leading;
-    let bytes = trimmed.as_bytes();
-    let mut idx = 0usize;
-
-    let (start, end, bits, numeric_span) = if bytes.first() == Some(&b'+') {
-        idx = 1;
-        while idx < bytes.len() && matches!(bytes[idx], b' ' | b'\t') {
-            idx += 1;
-        }
-        let digits_start = idx;
-        while idx < bytes.len() && bytes[idx].is_ascii_digit() {
-            idx += 1;
-        }
-        if idx == digits_start {
-            return None;
-        }
-        let bits = parse_packet_integer(&trimmed[digits_start..idx])?;
-        let bits_span = SourceSpan::new(base + digits_start, base + idx);
-        (None, None, Some(bits), bits_span)
-    } else {
-        let digits_start = idx;
-        while idx < bytes.len() && bytes[idx].is_ascii_digit() {
-            idx += 1;
-        }
-        if idx == digits_start {
-            return None;
-        }
-        let start = parse_packet_integer(&trimmed[digits_start..idx])?;
-        let start_span = SourceSpan::new(base + digits_start, base + idx);
-        while idx < bytes.len() && matches!(bytes[idx], b' ' | b'\t') {
-            idx += 1;
-        }
-        if idx < bytes.len() && bytes[idx] == b'-' {
-            idx += 1;
-            while idx < bytes.len() && matches!(bytes[idx], b' ' | b'\t') {
-                idx += 1;
-            }
-            let end_digits_start = idx;
-            while idx < bytes.len() && bytes[idx].is_ascii_digit() {
-                idx += 1;
-            }
-            if idx == end_digits_start {
-                return None;
-            }
-            let end = parse_packet_integer(&trimmed[end_digits_start..idx])?;
-            (
-                Some(start),
-                Some(end),
-                None,
-                SourceSpan::new(start_span.start, base + idx),
-            )
-        } else {
-            (Some(start), None, None, start_span)
-        }
+    let Some((first, first_span)) = cursor.integer()? else {
+        return Ok(None);
     };
-
-    let mut rest = &trimmed[idx..];
-    let rest_trimmed = rest.trim_start();
-    let ws1 = rest.len() - rest_trimmed.len();
-    rest = rest_trimmed;
-    if !rest.starts_with(':') {
-        return None;
+    cursor.skip_horizontal_whitespace()?;
+    let (start, end, bits, numeric_span) = if relative {
+        (None, None, Some(first), first_span)
+    } else if cursor.peek() == Some('-') {
+        cursor.advance()?;
+        cursor.skip_horizontal_whitespace()?;
+        let Some((end, end_span)) = cursor.integer()? else {
+            return Ok(None);
+        };
+        cursor.skip_horizontal_whitespace()?;
+        (
+            Some(first),
+            Some(end),
+            None,
+            SourceSpan::new(first_span.start, end_span.end),
+        )
+    } else {
+        (Some(first), None, None, first_span)
+    };
+    if cursor.peek() != Some(':') {
+        return Ok(None);
     }
-    let after_colon_base = base + idx + ws1 + 1;
-    rest = &rest[1..];
-    let rest_trimmed = rest.trim_start();
-    let ws2 = rest.len() - rest_trimmed.len();
-    rest = rest_trimmed;
-    let label_base = after_colon_base + ws2;
-    let (_label, decoded_label, tail) = parse_quoted_string_spanned(rest, label_base)?;
-    if !tail.trim().is_empty() {
-        return None;
+    cursor.advance()?;
+    cursor.skip_horizontal_whitespace()?;
+    let Some((label, _label_span)) = cursor.label()? else {
+        return Ok(None);
+    };
+    cursor.skip_horizontal_whitespace()?;
+    if cursor.remaining().starts_with("%%") {
+        cursor.skip_line()?;
+    } else if !cursor.consume_eol()? {
+        return Ok(None);
     }
-
-    Some(PacketBlockSpanned {
+    Ok(Some(PacketBlockSpanned {
         semantic: ParsedPacketBlock {
             start,
             end,
             bits,
-            label: decoded_label,
+            label,
             numeric_span,
         },
         #[cfg(feature = "editor-facts")]
-        label: _label,
-    })
+        label_span: _label_span,
+    }))
 }
 
 fn parse_packet_integer(token: &str) -> Option<i64> {
@@ -762,22 +727,187 @@ fn parse_packet_integer(token: &str) -> Option<i64> {
     token.parse().ok()
 }
 
-fn parse_quoted_string_spanned(
-    input: &str,
-    base_offset: usize,
-) -> Option<(SpannedText, String, &str)> {
-    let parsed = parse_langium_string(input, base_offset)?;
-    let tail = &input[parsed.consumed..];
-    Some((
-        SpannedText {
-            #[cfg(feature = "editor-facts")]
-            text: parsed.value.clone(),
-            #[cfg(feature = "editor-facts")]
-            span: parsed.value_span,
-        },
-        parsed.value,
-        tail,
-    ))
+const PACKET_SCAN_CHECKPOINT_BYTES: usize = 1024;
+
+/// Consumes Packet STRING values in one pass, retaining only the first physical line for recovery.
+struct PacketCursor<'a> {
+    source: &'a str,
+    offset: usize,
+    control: &'a crate::OperationControl,
+    checkpoint_bytes: usize,
+    recovery: PacketRecoveryLine,
+    // EOF has no later closing delimiter of this kind. Reuse that failure after recovery rather
+    // than scanning the same suffix again; there are only two quote kinds to retain.
+    exhausted_quotes: [Option<usize>; 2],
+    #[cfg(test)]
+    scanned_bytes: usize,
+}
+
+struct PacketRecoveryLine {
+    span: SourceSpan,
+    next_offset: Option<usize>,
+    comment: bool,
+    quote: Option<char>,
+    escaped: bool,
+}
+
+impl PacketRecoveryLine {
+    fn new(start: usize) -> Self {
+        Self {
+            span: SourceSpan::new(start, start),
+            next_offset: None,
+            comment: false,
+            quote: None,
+            escaped: false,
+        }
+    }
+}
+
+impl<'a> PacketCursor<'a> {
+    fn new(source: &'a str, offset: usize, control: &'a crate::OperationControl) -> Self {
+        Self {
+            source,
+            offset,
+            control,
+            checkpoint_bytes: 0,
+            recovery: PacketRecoveryLine::new(offset),
+            exhausted_quotes: [None; 2],
+            #[cfg(test)]
+            scanned_bytes: 0,
+        }
+    }
+
+    fn remaining(&self) -> &'a str {
+        &self.source[self.offset..]
+    }
+
+    fn peek(&self) -> Option<char> {
+        self.remaining().chars().next()
+    }
+
+    fn begin_statement(&mut self) {
+        self.recovery = PacketRecoveryLine::new(self.offset);
+    }
+
+    fn advance(&mut self) -> crate::OperationControlResult<Option<char>> {
+        let Some(ch) = self.peek() else {
+            return Ok(None);
+        };
+        let start = self.offset;
+        self.offset += ch.len_utf8();
+        if self.recovery.next_offset.is_none() {
+            if ch == '\n' {
+                self.recovery.next_offset = Some(self.offset);
+            } else if !self.recovery.comment {
+                if self.recovery.escaped {
+                    self.recovery.escaped = false;
+                } else if self.recovery.quote.is_some() && ch == '\\' {
+                    self.recovery.escaped = true;
+                } else if Some(ch) == self.recovery.quote {
+                    self.recovery.quote = None;
+                } else if self.recovery.quote.is_none() {
+                    if matches!(ch, '\'' | '"') {
+                        self.recovery.quote = Some(ch);
+                    } else if ch == '%' && self.remaining().starts_with('%') {
+                        self.recovery.comment = true;
+                    }
+                }
+                if !self.recovery.comment && !ch.is_whitespace() {
+                    if self.recovery.span.start == self.recovery.span.end {
+                        self.recovery.span.start = start;
+                    }
+                    self.recovery.span.end = self.offset;
+                }
+            }
+        }
+        #[cfg(test)]
+        {
+            self.scanned_bytes += ch.len_utf8();
+        }
+        self.checkpoint_bytes += ch.len_utf8();
+        if self.checkpoint_bytes >= PACKET_SCAN_CHECKPOINT_BYTES {
+            self.control.checkpoint()?;
+            self.checkpoint_bytes = 0;
+        }
+        Ok(Some(ch))
+    }
+
+    fn skip_horizontal_whitespace(&mut self) -> crate::OperationControlResult<()> {
+        while matches!(self.peek(), Some(' ' | '\t')) {
+            self.advance()?;
+        }
+        Ok(())
+    }
+
+    fn integer(&mut self) -> crate::OperationControlResult<Option<(i64, SourceSpan)>> {
+        let start = self.offset;
+        while self.peek().is_some_and(|ch| ch.is_ascii_digit()) {
+            self.advance()?;
+        }
+        Ok(parse_packet_integer(&self.source[start..self.offset])
+            .map(|value| (value, SourceSpan::new(start, self.offset))))
+    }
+
+    fn label(&mut self) -> crate::OperationControlResult<Option<(String, SourceSpan)>> {
+        let quote = match self.peek() {
+            Some(quote @ ('\'' | '"')) => quote,
+            _ => return Ok(None),
+        };
+        let slot = usize::from(quote == '\'');
+        let opening = self.offset;
+        if self.exhausted_quotes[slot].is_some_and(|start| opening >= start) {
+            return Ok(None);
+        }
+        self.advance()?;
+        let start = self.offset;
+        let mut value = String::new();
+        let mut escaped = false;
+        while let Some(ch) = self.advance()? {
+            if escaped {
+                if is_ecmascript_line_terminator(ch) {
+                    return Ok(None);
+                }
+                value.push(convert_langium_escape_character(ch));
+                escaped = false;
+            } else if ch == '\\' {
+                escaped = true;
+            } else if ch == quote {
+                return Ok(Some((value, SourceSpan::new(start, self.offset - 1))));
+            } else {
+                value.push(ch);
+            }
+        }
+        self.exhausted_quotes[slot] = Some(opening);
+        Ok(None)
+    }
+
+    fn consume_eol(&mut self) -> crate::OperationControlResult<bool> {
+        if self.remaining().starts_with("\r\n") {
+            self.advance()?;
+            self.advance()?;
+            return Ok(true);
+        }
+        if self.peek() == Some('\n') {
+            self.advance()?;
+            return Ok(true);
+        }
+        Ok(self.offset == self.source.len())
+    }
+
+    fn skip_line(&mut self) -> crate::OperationControlResult<()> {
+        while let Some(ch) = self.advance()? {
+            if ch == '\n' {
+                break;
+            }
+        }
+        Ok(())
+    }
+
+    fn recover_statement(&mut self) -> crate::OperationControlResult<SourceSpan> {
+        while self.recovery.next_offset.is_none() && self.advance()?.is_some() {}
+        self.offset = self.recovery.next_offset.unwrap_or(self.source.len());
+        Ok(self.recovery.span)
+    }
 }
 
 fn packet_header_token_len(line: &str) -> Option<usize> {
@@ -800,52 +930,30 @@ fn keyword_boundary(rest: &str) -> bool {
         || rest.chars().next().is_some_and(char::is_whitespace)
 }
 
-#[derive(Debug, Clone, Copy)]
-struct PacketBodyStart {
-    offset: usize,
-    header_line_end: usize,
-}
-
 fn packet_body_start_controlled(
     code: &str,
     control: &crate::OperationControl,
-) -> crate::OperationControlResult<Result<Option<PacketBodyStart>>> {
-    let mut offset = 0usize;
-    while offset < code.len() {
+) -> crate::OperationControlResult<Result<Option<usize>>> {
+    let mut cursor = PacketCursor::new(code, 0, control);
+    loop {
         control.checkpoint()?;
-        let (line, next_offset) = physical_line(code, offset);
-        let visible = strip_inline_comment(line);
-        let trimmed = visible.trim_start();
-        if trimmed.trim().is_empty() {
-            offset = next_offset;
+        while cursor.peek().is_some_and(char::is_whitespace) {
+            cursor.advance()?;
+        }
+        if cursor.remaining().starts_with("%%") {
+            cursor.skip_line()?;
             continue;
         }
-
-        let leading = visible.len() - trimmed.len();
-        let Some(header_len) = packet_header_token_len(trimmed) else {
+        if cursor.remaining().is_empty() {
+            return Ok(Ok(None));
+        }
+        let Some(header_len) = packet_header_token_len(cursor.remaining()) else {
             return Ok(Err(Error::diagram_parse_fallback(
                 "packet".to_string(),
                 "expected packet".to_string(),
             )));
         };
-        let body_start = offset + leading + header_len;
-        return Ok(Ok(Some(PacketBodyStart {
-            offset: body_start,
-            header_line_end: next_offset,
-        })));
-    }
-    Ok(Ok(None))
-}
-
-fn physical_line(source: &str, offset: usize) -> (&str, usize) {
-    let rest = &source[offset..];
-    if let Some(newline) = rest.find('\n') {
-        let line = rest[..newline]
-            .strip_suffix('\r')
-            .unwrap_or(&rest[..newline]);
-        (line, offset + newline + 1)
-    } else {
-        (rest, source.len())
+        return Ok(Ok(Some(cursor.offset + header_len)));
     }
 }
 
@@ -863,23 +971,285 @@ fn config_i64(config: &MermaidConfig, dotted_path: &str) -> Option<i64> {
 }
 
 #[derive(Debug, Clone)]
-struct SpannedText {
-    #[cfg(feature = "editor-facts")]
-    text: String,
-    #[cfg(feature = "editor-facts")]
-    span: SourceSpan,
-}
-
-#[derive(Debug, Clone)]
 struct PacketBlockSpanned {
     semantic: ParsedPacketBlock,
     #[cfg(feature = "editor-facts")]
-    label: SpannedText,
+    label_span: SourceSpan,
 }
 
 #[cfg(test)]
 mod semantic_tests {
     use super::*;
+
+    fn parse_raw_packet(source: &str) -> PacketDiagramModel {
+        construct_packet_semantic_source_controlled(
+            source,
+            "packet",
+            &MermaidConfig::empty_object(),
+            #[cfg(feature = "editor-facts")]
+            EditorFactsDemand::Omit,
+            &crate::OperationControl::new(),
+        )
+        .unwrap()
+        .map_err(family::CombinedSemanticFailure::into_error)
+        .unwrap()
+        .output
+        .into_semantic_model()
+    }
+
+    #[test]
+    fn packet_multiline_strings_preserve_values_and_following_fields() {
+        for newline in ["\n", "\r\n"] {
+            for quote in ['\'', '"'] {
+                let label = format!("雪\\n{newline}B%% payload\\{quote}");
+                let expected = format!("雪\n{newline}B%% payload{quote}");
+                let source = format!(
+                    "packet-beta{newline}  0 - 7: {quote}{label}{quote} %% comment{newline}+1: 'next'"
+                );
+                #[cfg(feature = "editor-facts")]
+                crate::editor::test_work::reset();
+                let model = parse_raw_packet(&source);
+                assert_eq!(model.packet.len(), 1);
+                assert_eq!(model.packet[0].len(), 2);
+                let first = &model.packet[0][0];
+                assert_eq!(first.label, expected);
+                assert_eq!((first.start, first.end, first.bits), (0, 7, 8));
+                let next = &model.packet[0][1];
+                assert_eq!(next.label, "next");
+                assert_eq!((next.start, next.end, next.bits), (8, 8, 1));
+                #[cfg(feature = "editor-facts")]
+                assert_eq!(crate::editor::test_work::read(), Default::default());
+            }
+        }
+    }
+
+    #[test]
+    fn packet_multiline_string_can_end_at_eof_or_after_inline_header() {
+        for header in ["packet\n", "packet-beta\n", "packet "] {
+            for quote in ['\'', '"'] {
+                let source = format!("{header}0: {quote}A\nB{quote}");
+                let model = parse_raw_packet(&source);
+                assert_eq!(model.packet[0][0].label, "A\nB");
+                assert_eq!(model.packet[0][0].bits, 1);
+            }
+        }
+    }
+
+    #[test]
+    #[cfg(feature = "editor-facts")]
+    fn packet_multiline_facts_are_captured_once_with_raw_payload_ranges() {
+        for newline in ["\n", "\r\n"] {
+            for quote in ['\'', '"'] {
+                let raw_label = format!("雪\\n{newline}B%% payload");
+                let decoded = format!("雪\n{newline}B%% payload");
+                let source =
+                    format!("packet{newline}\t0 - 7: {quote}{raw_label}{quote}{newline}+1: 'next'");
+                crate::diagrams::langium_common::reset_family_syntax_construction_count("packet");
+                crate::editor::test_work::reset();
+                let parsed = construct_packet_semantic_source_controlled(
+                    &source,
+                    "packet",
+                    &MermaidConfig::empty_object(),
+                    EditorFactsDemand::Capture,
+                    &crate::OperationControl::new(),
+                )
+                .unwrap()
+                .map_err(family::CombinedSemanticFailure::into_error)
+                .unwrap();
+                let facts = parsed.editor_facts.unwrap();
+                assert_eq!(
+                    facts.completeness,
+                    crate::EditorSemanticCompleteness::Complete
+                );
+                assert!(facts.diagnostics.is_empty());
+                assert_eq!(facts.symbols.len(), 2);
+                let label = &facts.symbols[0];
+                assert_eq!(label.name, decoded);
+                let start = source.find(&raw_label).unwrap();
+                let expected_span = SourceSpan::new(start, start + raw_label.len());
+                assert_eq!(label.span, expected_span);
+                assert_eq!(label.selection, expected_span);
+                assert_eq!(
+                    &source[label.selection.start..label.selection.end],
+                    raw_label
+                );
+                let number_start = source.find("0 - 7").unwrap();
+                assert!(facts.expected_syntax.iter().any(|expected| {
+                    expected.span == SourceSpan::new(number_start, number_start + "0 - 7".len())
+                }));
+                assert_eq!(crate::editor::test_work::read().collections, 1);
+                assert_eq!(crate::editor::test_work::read().symbols, 2);
+                assert_eq!(
+                    crate::diagrams::langium_common::family_syntax_construction_count("packet"),
+                    1
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn packet_multiline_strings_reject_trailing_garbage_and_missing_delimiters() {
+        for source in [
+            "packet\n0: \"A\nB\" junk\n",
+            "packet\n0: 'A\nB' +1: 'next'\n",
+            "packet\n0: \"A\nB",
+            "packet\n0: 'A\nB",
+            "packet\n0: \"A\\",
+            "packet\n0: 'A\\",
+        ] {
+            let result = construct_packet_semantic_source_controlled(
+                source,
+                "packet",
+                &MermaidConfig::empty_object(),
+                #[cfg(feature = "editor-facts")]
+                EditorFactsDemand::Omit,
+                &crate::OperationControl::new(),
+            )
+            .unwrap();
+            assert!(
+                result.is_err(),
+                "invalid Packet input was accepted: {source:?}"
+            );
+        }
+        for quote in ['\'', '"'] {
+            for terminator in ["\n", "\r\n", "\u{2028}", "\u{2029}"] {
+                let source = format!("packet\n0: {quote}A\\{terminator}B{quote}\n");
+                let result = construct_packet_semantic_source_controlled(
+                    &source,
+                    "packet",
+                    &MermaidConfig::empty_object(),
+                    #[cfg(feature = "editor-facts")]
+                    EditorFactsDemand::Omit,
+                    &crate::OperationControl::new(),
+                )
+                .unwrap();
+                assert!(
+                    result.is_err(),
+                    "escaped physical newline was accepted: {source:?}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    #[cfg(feature = "editor-facts")]
+    fn packet_multiline_recovery_keeps_following_fields_and_exact_diagnostics() {
+        for invalid in [
+            "  +1: \"unterminated",
+            "  +1: 'unterminated",
+            "  +1: \"bad\" garbage %% hidden",
+            "  +1: \"escaped\\",
+        ] {
+            let source = format!("packet\r\n0: 'valid'\r\n{invalid}\r\n+1: \"next\"\r\n");
+            crate::diagrams::langium_common::reset_family_syntax_construction_count("packet");
+            crate::editor::test_work::reset();
+            let result = construct_packet_semantic_source_controlled(
+                &source,
+                "packet",
+                &MermaidConfig::empty_object(),
+                EditorFactsDemand::Capture,
+                &crate::OperationControl::new(),
+            )
+            .unwrap();
+            let failure = match result {
+                Err(failure) => failure,
+                Ok(_) => panic!("invalid Packet input was accepted: {source:?}"),
+            };
+            let (_, facts) = failure.into_parts();
+            assert_eq!(
+                facts.completeness,
+                crate::EditorSemanticCompleteness::Recovered
+            );
+            assert_eq!(
+                facts
+                    .symbols
+                    .iter()
+                    .map(|symbol| symbol.name.as_str())
+                    .collect::<Vec<_>>(),
+                ["valid", "next"]
+            );
+            let visible = invalid.split(" %%").next().unwrap().trim();
+            let start = source.find(visible).unwrap();
+            let span = SourceSpan::new(start, start + visible.len());
+            assert!(facts.diagnostics.iter().any(|diagnostic| {
+                diagnostic.span == Some(span)
+                    && diagnostic.message == format!("unexpected packet statement: {visible}")
+            }));
+            for symbol in &facts.symbols {
+                assert_eq!(
+                    &source[symbol.selection.start..symbol.selection.end],
+                    symbol.name
+                );
+            }
+            assert_eq!(crate::editor::test_work::read().collections, 1);
+            assert_eq!(
+                crate::diagrams::langium_common::family_syntax_construction_count("packet"),
+                1
+            );
+        }
+    }
+
+    #[test]
+    fn packet_long_tokens_and_recovery_can_cancel_with_bounded_scan_work() {
+        let payload = "雪".repeat(8 * PACKET_SCAN_CHECKPOINT_BYTES);
+        for source in [
+            format!("0: \"{payload}\nB\""),
+            format!("0: '{payload}"),
+            format!("+{}: 'bit'", "9".repeat(payload.len())),
+            format!("0: 'bit' %% {payload}"),
+            format!("invalid {payload}"),
+            format!("0: 'bit' garbage {payload}"),
+        ] {
+            let control = crate::OperationControl::new();
+            control.cancel_after_checkpoints(1);
+            let mut cursor = PacketCursor::new(&source, 0, &control);
+            let cancelled = match parse_packet_block_controlled(&mut cursor) {
+                Err(_) => true,
+                Ok(None) => cursor.recover_statement().is_err(),
+                Ok(Some(_)) => false,
+            };
+            assert!(cancelled, "long Packet scan did not cancel");
+            assert!(cursor.scanned_bytes <= 2 * (PACKET_SCAN_CHECKPOINT_BYTES + 3));
+            assert!(cursor.scanned_bytes < source.len());
+        }
+        let source = format!("packet 0: \"{payload}\nB\"");
+        let control = crate::OperationControl::new();
+        control.cancel_after_checkpoints(8);
+        assert!(matches!(
+            construct_packet_semantic_source_controlled(
+                &source,
+                "packet",
+                &MermaidConfig::empty_object(),
+                #[cfg(feature = "editor-facts")]
+                EditorFactsDemand::Omit,
+                &control,
+            ),
+            Err(crate::OperationCancelled { .. })
+        ));
+    }
+
+    #[test]
+    fn packet_recovery_scans_quoted_suffixes_only_linearly() {
+        let mut source = String::from("+1: 'unterminated\n");
+        for _ in 0..1024 {
+            source.push_str("+1: \"unterminated\n");
+            source.push_str("+1: \"closed\" garbage\n");
+        }
+        source.push_str("+1: \"survivor\"\n");
+        let control = crate::OperationControl::new();
+        let mut cursor = PacketCursor::new(&source, 0, &control);
+        let mut labels = Vec::new();
+        while cursor.offset < source.len() {
+            cursor.begin_statement();
+            if let Some(block) = parse_packet_block_controlled(&mut cursor).unwrap() {
+                labels.push(block.semantic.label);
+            } else {
+                cursor.recover_statement().unwrap();
+            }
+        }
+        assert_eq!(labels, ["survivor"]);
+        assert!(cursor.scanned_bytes <= 3 * source.len());
+    }
 
     #[test]
     fn packet_semantics_preserve_split_ranges_without_editor_work() {
@@ -1212,8 +1582,8 @@ accDescr: Packet accDescription
 "#;
         let model = parse(source);
 
-        assert_eq!(model["packet"][0][0]["label"], "An100%% complete");
-        assert_eq!(model["packet"][0][1]["label"], "Btlabel");
+        assert_eq!(model["packet"][0][0]["label"], "A\n100%% complete");
+        assert_eq!(model["packet"][0][1]["label"], "B\tlabel");
 
         #[cfg(feature = "editor-facts")]
         {
@@ -1224,7 +1594,7 @@ accDescr: Packet accDescription
             let escaped = "A\\n100%% complete";
             let escaped_start = source.find(escaped).unwrap();
             assert!(facts.symbols.iter().any(|symbol| {
-                symbol.name == "An100%% complete"
+                symbol.name == "A\n100%% complete"
                     && symbol.selection
                         == SourceSpan::new(escaped_start, escaped_start + escaped.len())
             }));

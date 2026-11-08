@@ -266,6 +266,38 @@
           "to_cluster": null
         }
       ],
+      "frames": [
+        {
+          "height": 273.0,
+          "id": "0",
+          "kind": "critical",
+          "label": "Reserve seats",
+          "sections": [
+            {
+              "id": "2",
+              "label": "lock ok",
+              "y": 180.0
+            },
+            {
+              "id": "4",
+              "label": "lock failed",
+              "y": 271.0
+            }
+          ],
+          "width": 295.0,
+          "x": -9.0,
+          "y": 84.0
+        },
+        {
+          "height": 137.0,
+          "id": "7",
+          "kind": "break",
+          "label": "invalid payment",
+          "width": 422.0,
+          "x": 64.0,
+          "y": 367.0
+        }
+      ],
       "nodes": [
         {
           "height": 74.0,

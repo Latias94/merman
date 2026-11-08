@@ -40,7 +40,7 @@ pub(crate) use measure::{
     MERMAID_CREATE_TEXT_DEFAULT_WIDTH_PX, measure_mermaid_text_dimensions,
     measure_mermaid_text_dimensions_with_checkpoint,
 };
-#[cfg(feature = "diagram-block")]
+#[cfg(any(feature = "diagram-block", feature = "diagram-class"))]
 pub(crate) use metrics::measure_unwrapped_xhtml_label_fragment;
 #[doc(hidden)]
 #[cfg(any(

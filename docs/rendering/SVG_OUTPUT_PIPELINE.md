@@ -148,6 +148,23 @@ to share loaded fonts across layout and export. Source HTML `nowrap` and its wid
 still apply.
 Stable `data-merman-foreignobject` markers and fallback classes remain available to host consumers.
 
+Short labels can expose this mismatch too: an ER attribute such as `name` can lose part of its
+first or last glyph when the painting font is wider than the deterministic estimate. Increasing
+character-class estimates may move that particular boundary, but cannot establish a fit for an
+unknown font, fallback face, weight, or shaping engine. Keep the source overflow semantics and
+select measurement for the final consumer instead:
+
+- Native encoded output: reuse one `NativeFontContext` for layout and export. The CLI's PNG,
+  JPEG, and PDF defaults already select this route when `system-fonts` is compiled; explicit
+  font files provide a reproducible closed font set. Include faces for the selected scripts;
+  a missing-glyph measurement fallback remains approximate.
+- A host that paints the SVG or typed layout itself: supply measurements from its final font
+  stack before layout, including fallback and shaping. Changing `fontFamily` alone or replacing
+  CSS after fallback generation does not update the measured geometry.
+- Font-agnostic SVG: retain deterministic measurement and treat final-font clipping as a
+  consumer-dependent residual. See the [Rust host guide](RUST_EMBEDDING.md#review-presentation-and-host-services)
+  and [CLI font controls](../../crates/merman-cli/README.md#explicit-fonts).
+
 For Mermaid 11.16 Quadrant, parity output intentionally retains upstream's invalid
 `hsl(..., NaN%)` point presentation attributes. A browser ignores them and uses the SVG initial
 black fill with no stroke. The typed Quadrant resvg-safe path explicitly emits

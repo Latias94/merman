@@ -230,12 +230,6 @@ pub(crate) fn upstream_svg_compare_skip_reason(
         return Some(reason);
     }
 
-    if diagram == "timeline" && stem == "timeline_stress_section_name_repeated" {
-        return Some(
-            "occurrence-aware section ownership intentionally supersedes Mermaid 11.17.2 label-only grouping for duplicate section names",
-        );
-    }
-
     if diagram == "gantt"
         && stem == "upstream_docs_gantt_timeline_with_comments_css_config_in_frontmatter_031"
     {
@@ -587,9 +581,7 @@ mod tests {
         );
         assert_eq!(
             upstream_svg_compare_skip_reason("timeline", "timeline_stress_section_name_repeated"),
-            Some(
-                "occurrence-aware section ownership intentionally supersedes Mermaid 11.17.2 label-only grouping for duplicate section names"
-            )
+            None
         );
         assert_eq!(
             upstream_svg_compare_skip_reason(

@@ -827,7 +827,7 @@ mod tests {
             index: 0,
             section: "Delivery".to_string(),
             task: "Ship safely".to_string(),
-            score: 5,
+            score: 5.0,
             x: 0.0,
             y: 0.0,
             width: 150.0,

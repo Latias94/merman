@@ -516,6 +516,24 @@
           "to_cluster": null
         }
       ],
+      "frames": [
+        {
+          "height": 274.0,
+          "id": "3",
+          "kind": "alt",
+          "label": "cache hit",
+          "sections": [
+            {
+              "id": "5",
+              "label": "miss",
+              "y": 318.0
+            }
+          ],
+          "width": 622.0,
+          "x": 464.0,
+          "y": 222.0
+        }
+      ],
       "nodes": [
         {
           "height": 74.0,

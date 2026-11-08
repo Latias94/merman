@@ -354,6 +354,75 @@ fn render_treemap_svg_from_source(text: &str) -> String {
     render_treemap_svg_and_config_from_source(text).0
 }
 
+#[test]
+fn treemap_intrinsic_svg_size_follows_effective_family_configuration() {
+    use merman_core::presentation::SourcePresentationConfig;
+
+    for (site_value, source_value, responsive) in [
+        (None, None, true),
+        (Some(false), None, false),
+        (Some(true), Some(false), false),
+        (Some(false), Some(true), true),
+    ] {
+        let engine = MermaidEngine::new().with_site_config(SourcePresentationConfig::from_value(
+            serde_json::json!({"useMaxWidth": false, "treemap": {"useMaxWidth": site_value}}),
+        ));
+        let prefix = source_value.map_or_else(String::new, |value| {
+            format!("---\nconfig:\n  treemap:\n    useMaxWidth: {value}\n---\n")
+        });
+        let parsed = engine
+            .parse_diagram_for_render_model_sync(
+                &format!("{prefix}treemap-beta\ntitle Sizes\n\"Root\"\n  \"Child\": 1\n"),
+                ParseOptions::strict(),
+            )
+            .unwrap()
+            .unwrap()
+            .into_presentation();
+        let artifact = family::prepare(
+            &parsed,
+            &LayoutOptions::default(),
+            RenderEnvironment::deterministic().begin_session().unwrap(),
+        )
+        .unwrap();
+        let rendered = artifact
+            .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+            .unwrap();
+        let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+        let root = document.root_element();
+        let view_box = root
+            .attribute("viewBox")
+            .unwrap()
+            .split_ascii_whitespace()
+            .map(|value| value.parse::<f64>().unwrap())
+            .collect::<Vec<_>>();
+        if responsive {
+            assert_eq!(root.attribute("width"), Some("100%"));
+            assert!(root.attribute("height").is_none());
+            assert!(root.attribute("style").unwrap().contains("max-width:"));
+        } else {
+            assert_eq!(
+                root.attribute("width").unwrap().parse::<f64>().unwrap(),
+                view_box[2]
+            );
+            assert_eq!(
+                root.attribute("height").unwrap().parse::<f64>().unwrap(),
+                view_box[3]
+            );
+            assert!(root.attribute("style").is_none());
+        }
+        assert!(
+            document
+                .descendants()
+                .any(|node| node.attribute("class") == Some("treemapLeaf"))
+        );
+        assert!(
+            document
+                .descendants()
+                .any(|node| node.text() == Some("Sizes"))
+        );
+    }
+}
+
 fn treemap_title_fill_theme(fill: CanvasPaint) -> DiagramTheme {
     DiagramThemeCompiler::new()
         .compile(

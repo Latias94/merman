@@ -27,6 +27,19 @@ pub(crate) struct JourneyConfigView<'a> {
     journey_config: &'a Value,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum JourneyTextPlacement {
+    Fo,
+    Old,
+    Tspan,
+}
+
+impl JourneyTextPlacement {
+    pub(crate) const fn has_inherited_label_typography(self) -> bool {
+        matches!(self, Self::Fo | Self::Old)
+    }
+}
+
 impl<'a> JourneyConfigView<'a> {
     pub(crate) fn new(effective_config: &'a Value) -> Self {
         Self {
@@ -60,14 +73,8 @@ impl<'a> JourneyConfigView<'a> {
                 .journey_f64("taskMargin")
                 .unwrap_or(DEFAULT_TASK_MARGIN)
                 .max(0.0),
-            cell_width: self
-                .journey_f64("width")
-                .unwrap_or(DEFAULT_CELL_WIDTH)
-                .max(1.0),
-            cell_height: self
-                .journey_f64("height")
-                .unwrap_or(DEFAULT_CELL_HEIGHT)
-                .max(1.0),
+            cell_width: self.cell_dimension("width", DEFAULT_CELL_WIDTH),
+            cell_height: self.cell_dimension("height", DEFAULT_CELL_HEIGHT),
             actor_colours: self.actor_colours(),
             section_fills: self.section_fills(),
             use_max_width: self.use_max_width(),
@@ -76,7 +83,13 @@ impl<'a> JourneyConfigView<'a> {
 
     pub(crate) fn render_settings(&self) -> JourneyRenderSettings {
         JourneyRenderSettings {
+            text_placement: self.text_placement(),
             task_text_style: self.task_text_style(),
+            section_colours: if self.journey_config.get("sectionColours").is_none() {
+                vec!["#fff".to_string()]
+            } else {
+                config_string_vec(self.journey_config, &["sectionColours"])
+            },
             title_font_size: config_string(self.journey_config, &["titleFontSize"])
                 .unwrap_or_else(|| DEFAULT_TITLE_FONT_SIZE.to_string()),
             title_font_family: config_string(self.journey_config, &["titleFontFamily"])
@@ -86,8 +99,23 @@ impl<'a> JourneyConfigView<'a> {
         }
     }
 
+    fn text_placement(&self) -> JourneyTextPlacement {
+        // Mermaid's schema defaults to `fo`; svgDraw's selector uses exact string equality.
+        match self.journey_config.get("textPlacement") {
+            None => JourneyTextPlacement::Fo,
+            Some(Value::String(value)) if value == "fo" => JourneyTextPlacement::Fo,
+            Some(Value::String(value)) if value == "old" => JourneyTextPlacement::Old,
+            Some(_) => JourneyTextPlacement::Tspan,
+        }
+    }
+
     fn journey_f64(&self, key: &str) -> Option<f64> {
         config_f64(self.journey_config, &[key])
+    }
+
+    fn cell_dimension(&self, key: &str, default: f64) -> f64 {
+        let value = self.journey_f64(key).unwrap_or(default);
+        if value == 0.0 { 0.0 } else { value.max(1.0) }
     }
 
     fn journey_bool(&self, key: &str) -> Option<bool> {
@@ -156,7 +184,9 @@ pub(crate) struct JourneyLayoutSettings {
 
 #[derive(Debug, Clone)]
 pub(crate) struct JourneyRenderSettings {
+    pub(crate) text_placement: JourneyTextPlacement,
     pub(crate) task_text_style: TextStyle,
+    pub(crate) section_colours: Vec<String>,
     pub(crate) title_font_size: String,
     pub(crate) title_font_family: String,
     pub(crate) title_color: String,
@@ -170,6 +200,34 @@ pub(crate) const fn default_use_max_width() -> bool {
 mod tests {
     use super::*;
     use serde_json::json;
+
+    #[test]
+    fn journey_text_placement_matches_the_upstream_selector() {
+        assert_eq!(
+            JourneyConfigView::new(&json!({}))
+                .render_settings()
+                .text_placement,
+            JourneyTextPlacement::Fo
+        );
+        for (value, expected) in [
+            (json!("fo"), JourneyTextPlacement::Fo),
+            (json!("old"), JourneyTextPlacement::Old),
+            (json!("tspan"), JourneyTextPlacement::Tspan),
+            (json!("FO"), JourneyTextPlacement::Tspan),
+            (json!(""), JourneyTextPlacement::Tspan),
+            (Value::Null, JourneyTextPlacement::Tspan),
+            (json!(1), JourneyTextPlacement::Tspan),
+        ] {
+            let config = json!({"journey": {"textPlacement": value}});
+            assert_eq!(
+                JourneyConfigView::new(&config)
+                    .render_settings()
+                    .text_placement,
+                expected,
+                "{config}"
+            );
+        }
+    }
 
     #[test]
     fn journey_layout_settings_preserve_defaults() {
@@ -187,6 +245,27 @@ mod tests {
         assert!(settings.use_max_width);
         assert_eq!(settings.actor_colours.len(), DEFAULT_ACTOR_COLOURS.len());
         assert_eq!(settings.section_fills.len(), DEFAULT_SECTION_FILLS.len());
+    }
+
+    #[test]
+    fn journey_cell_dimensions_preserve_zero_and_existing_invalid_value_bounds() {
+        for (value, expected_width, expected_height) in [
+            (json!(0), 0.0, 0.0),
+            (json!(-0.0), 0.0, 0.0),
+            (json!("0"), 0.0, 0.0),
+            (json!(1), 1.0, 1.0),
+            (json!(-2), 1.0, 1.0),
+            (json!(0.5), 1.0, 1.0),
+            (json!("NaN"), DEFAULT_CELL_WIDTH, DEFAULT_CELL_HEIGHT),
+            (json!("Infinity"), DEFAULT_CELL_WIDTH, DEFAULT_CELL_HEIGHT),
+            (json!("-Infinity"), DEFAULT_CELL_WIDTH, DEFAULT_CELL_HEIGHT),
+            (json!("1e999"), DEFAULT_CELL_WIDTH, DEFAULT_CELL_HEIGHT),
+        ] {
+            let config = json!({"journey": {"width": value, "height": value}});
+            let settings = JourneyConfigView::new(&config).layout_settings();
+            assert_eq!(settings.cell_width, expected_width, "{config}");
+            assert_eq!(settings.cell_height, expected_height, "{config}");
+        }
     }
 
     #[test]

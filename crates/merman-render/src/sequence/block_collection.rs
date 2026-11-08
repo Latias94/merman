@@ -1,7 +1,7 @@
 use super::SequenceOperationCheckpoints;
-use super::block_geometry::SequenceBlockGeometry;
+use super::block_geometry::{SequenceBlockGeometry, SequenceBlockLayout};
 use crate::Result;
-use crate::model::{LayoutEdge, LayoutNode, SequenceBlockLayout};
+use crate::model::{LayoutEdge, LayoutNode};
 use merman_model::families::sequence::{
     SequenceControlKind, SequenceControlRole, SequenceDiagramModel, SequenceMessage,
     SequenceMessageKind,
@@ -9,156 +9,45 @@ use merman_model::families::sequence::{
 use rustc_hash::FxHashMap;
 
 #[derive(Debug, Clone)]
-pub(crate) struct AltSection<'a> {
-    pub(crate) label_id: &'a str,
-    pub(crate) raw_label: &'a str,
-    pub(crate) geometry: SequenceBlockGeometry<'a>,
-    pub(crate) separator_y: Option<f64>,
+pub(super) struct SequenceBlockSection<'a> {
+    pub(super) label_id: &'a str,
+    pub(super) raw_label: &'a str,
+    pub(super) geometry: SequenceBlockGeometry<'a>,
+    pub(super) separator_y: Option<f64>,
 }
 
 #[derive(Debug, Clone)]
-pub(crate) enum SequenceBlock<'a> {
-    Alt {
-        control_id: &'a str,
-        sections: Vec<AltSection<'a>>,
-        layout: Option<&'a SequenceBlockLayout>,
-    },
-    Opt {
-        control_id: &'a str,
-        label_id: &'a str,
-        raw_label: &'a str,
-        geometry: SequenceBlockGeometry<'a>,
-        layout: Option<&'a SequenceBlockLayout>,
-    },
-    Break {
-        control_id: &'a str,
-        label_id: &'a str,
-        raw_label: &'a str,
-        geometry: SequenceBlockGeometry<'a>,
-        layout: Option<&'a SequenceBlockLayout>,
-    },
-    Par {
-        control_id: &'a str,
-        sections: Vec<AltSection<'a>>,
-        layout: Option<&'a SequenceBlockLayout>,
-    },
-    Loop {
-        control_id: &'a str,
-        label_id: &'a str,
-        raw_label: &'a str,
-        geometry: SequenceBlockGeometry<'a>,
-        layout: Option<&'a SequenceBlockLayout>,
-    },
-    Critical {
-        control_id: &'a str,
-        sections: Vec<AltSection<'a>>,
-        layout: Option<&'a SequenceBlockLayout>,
-    },
+pub(super) struct SequenceBlock<'a> {
+    pub(super) sections: Vec<SequenceBlockSection<'a>>,
+    pub(super) layout: Option<&'a SequenceBlockLayout>,
 }
 
-impl SequenceBlock<'_> {
-    pub(crate) fn geometry(&self) -> SequenceBlockGeometry<'_> {
-        match self {
-            Self::Alt { sections, .. }
-            | Self::Par { sections, .. }
-            | Self::Critical { sections, .. } => sequence_block_section_geometry(sections),
-            Self::Loop { geometry, .. }
-            | Self::Opt { geometry, .. }
-            | Self::Break { geometry, .. } => *geometry,
+impl<'a> SequenceBlock<'a> {
+    pub(super) fn geometry(
+        &self,
+        checkpoints: SequenceOperationCheckpoints<'_>,
+    ) -> Result<SequenceBlockGeometry<'a>> {
+        let mut geometry = SequenceBlockGeometry::empty();
+        for (index, section) in self.sections.iter().enumerate() {
+            checkpoints.checkpoint_loop(index)?;
+            geometry.merge(section.geometry);
         }
+        Ok(geometry)
     }
 
-    pub(crate) fn layout(&self) -> Option<&SequenceBlockLayout> {
-        match self {
-            Self::Alt { layout, .. }
-            | Self::Opt { layout, .. }
-            | Self::Break { layout, .. }
-            | Self::Par { layout, .. }
-            | Self::Loop { layout, .. }
-            | Self::Critical { layout, .. } => *layout,
-        }
-    }
-}
-
-pub(crate) fn sequence_block_section_geometry<'a>(
-    sections: &[AltSection<'a>],
-) -> SequenceBlockGeometry<'a> {
-    sections
-        .iter()
-        .fold(SequenceBlockGeometry::empty(), |geometry, section| {
-            geometry.merged(section.geometry)
-        })
-}
-
-#[derive(Debug, Clone)]
-enum BlockStackEntry<'a> {
-    Alt {
-        sections: Vec<AltSection<'a>>,
-        layout: Option<&'a SequenceBlockLayout>,
-    },
-    Loop {
-        label_id: &'a str,
-        raw_label: &'a str,
-        geometry: SequenceBlockGeometry<'a>,
-        layout: Option<&'a SequenceBlockLayout>,
-    },
-    Opt {
-        label_id: &'a str,
-        raw_label: &'a str,
-        geometry: SequenceBlockGeometry<'a>,
-        layout: Option<&'a SequenceBlockLayout>,
-    },
-    Break {
-        label_id: &'a str,
-        raw_label: &'a str,
-        geometry: SequenceBlockGeometry<'a>,
-        layout: Option<&'a SequenceBlockLayout>,
-    },
-    Par {
-        sections: Vec<AltSection<'a>>,
-        layout: Option<&'a SequenceBlockLayout>,
-    },
-    Critical {
-        sections: Vec<AltSection<'a>>,
-        layout: Option<&'a SequenceBlockLayout>,
-    },
-}
-
-impl<'a> BlockStackEntry<'a> {
     fn include_geometry(&mut self, geometry: SequenceBlockGeometry<'a>) {
-        match self {
-            Self::Alt { sections, .. }
-            | Self::Par { sections, .. }
-            | Self::Critical { sections, .. } => {
-                if let Some(section) = sections.last_mut() {
-                    section.geometry.merge(geometry);
-                }
-            }
-            Self::Loop {
-                geometry: current, ..
-            }
-            | Self::Opt {
-                geometry: current, ..
-            }
-            | Self::Break {
-                geometry: current, ..
-            } => current.merge(geometry),
-        }
-    }
-
-    fn geometry(&self) -> SequenceBlockGeometry<'a> {
-        match self {
-            Self::Alt { sections, .. }
-            | Self::Par { sections, .. }
-            | Self::Critical { sections, .. } => sequence_block_section_geometry(sections),
-            Self::Loop { geometry, .. }
-            | Self::Opt { geometry, .. }
-            | Self::Break { geometry, .. } => *geometry,
+        if let Some(section) = self.sections.last_mut() {
+            section.geometry.merge(geometry);
         }
     }
 }
 
-pub(crate) fn collect_sequence_blocks<'a>(
+struct BlockStackEntry<'a> {
+    kind: SequenceControlKind,
+    block: SequenceBlock<'a>,
+}
+
+pub(super) fn collect_sequence_blocks<'a>(
     model: &'a SequenceDiagramModel,
     actor_nodes_by_id: &FxHashMap<&str, &LayoutNode>,
     edges_by_id: &FxHashMap<&str, &LayoutEdge>,
@@ -189,285 +78,77 @@ fn collect_sequence_blocks_with<'a>(
 ) -> Result<(Vec<Option<usize>>, Vec<SequenceBlock<'a>>)> {
     let mut blocks_by_end_index = vec![None; model.messages.len()];
     let mut blocks = Vec::with_capacity(model.messages.len().div_ceil(2));
-    let mut stack = Vec::new();
-
+    let mut stack: Vec<BlockStackEntry<'a>> = Vec::new();
     for (message_index, message) in model.messages.iter().enumerate() {
         checkpoints.checkpoint_loop(message_index)?;
-        let raw_label = message.message_text();
-        let control = message
-            .control_semantics()
-            .map(|semantics| (semantics.kind, semantics.role));
-        match (message.semantic_kind(), control) {
-            (SequenceMessageKind::Note, _) => {
-                if !stack.is_empty() {
-                    include_message_geometry(&mut stack, message_geometry(message));
+        if message.semantic_kind() == SequenceMessageKind::Note {
+            if let Some(entry) = stack.last_mut() {
+                entry.block.include_geometry(message_geometry(message));
+            }
+            continue;
+        }
+        if let Some(control) = message.control_semantics()
+            && control.kind != SequenceControlKind::Rect
+        {
+            match control.role {
+                SequenceControlRole::Start => stack.push(BlockStackEntry {
+                    kind: control.kind,
+                    block: SequenceBlock {
+                        sections: vec![SequenceBlockSection {
+                            label_id: &message.id,
+                            raw_label: message.message_text(),
+                            geometry: SequenceBlockGeometry::empty(),
+                            separator_y: None,
+                        }],
+                        layout: block_layouts_by_id.get(&message.id),
+                    },
+                }),
+                SequenceControlRole::Separator => {
+                    if let Some(entry) = stack.last_mut()
+                        && entry.kind.accepts_separator(control.kind)
+                    {
+                        entry.block.sections.push(SequenceBlockSection {
+                            label_id: &message.id,
+                            raw_label: message.message_text(),
+                            geometry: SequenceBlockGeometry::empty(),
+                            separator_y: entry
+                                .block
+                                .layout
+                                .and_then(|layout| layout.section_ys_by_id.get(&message.id))
+                                .copied(),
+                        });
+                    }
+                }
+                SequenceControlRole::End => {
+                    if let Some(entry) = stack.pop() {
+                        if let Some(parent) = stack.last_mut() {
+                            parent
+                                .block
+                                .include_geometry(entry.block.geometry(checkpoints)?);
+                        }
+                        if entry.kind.accepts_end(control.kind) {
+                            blocks_by_end_index[message_index] = Some(blocks.len());
+                            blocks.push(entry.block);
+                        }
+                    }
                 }
             }
-            (_, Some((SequenceControlKind::Loop, SequenceControlRole::Start))) => {
-                stack.push(BlockStackEntry::Loop {
-                    label_id: message.id.as_str(),
-                    raw_label,
-                    geometry: SequenceBlockGeometry::empty(),
-                    layout: block_layouts_by_id.get(&message.id),
-                })
-            }
-            (_, Some((SequenceControlKind::Loop, SequenceControlRole::End))) => {
-                if let Some(entry) = pop_and_propagate(&mut stack)
-                    && let BlockStackEntry::Loop {
-                        label_id,
-                        raw_label,
-                        geometry,
-                        layout,
-                    } = entry
-                {
-                    push_block(
-                        &mut blocks_by_end_index,
-                        &mut blocks,
-                        message_index,
-                        SequenceBlock::Loop {
-                            control_id: message.id.as_str(),
-                            label_id,
-                            raw_label,
-                            geometry,
-                            layout,
-                        },
-                    );
-                }
-            }
-            (_, Some((SequenceControlKind::Opt, SequenceControlRole::Start))) => {
-                stack.push(BlockStackEntry::Opt {
-                    label_id: message.id.as_str(),
-                    raw_label,
-                    geometry: SequenceBlockGeometry::empty(),
-                    layout: block_layouts_by_id.get(&message.id),
-                });
-            }
-            (_, Some((SequenceControlKind::Opt, SequenceControlRole::End))) => {
-                if let Some(entry) = pop_and_propagate(&mut stack)
-                    && let BlockStackEntry::Opt {
-                        label_id,
-                        raw_label,
-                        geometry,
-                        layout,
-                    } = entry
-                {
-                    push_block(
-                        &mut blocks_by_end_index,
-                        &mut blocks,
-                        message_index,
-                        SequenceBlock::Opt {
-                            control_id: message.id.as_str(),
-                            label_id,
-                            raw_label,
-                            geometry,
-                            layout,
-                        },
-                    );
-                }
-            }
-            (_, Some((SequenceControlKind::Break, SequenceControlRole::Start))) => {
-                stack.push(BlockStackEntry::Break {
-                    label_id: message.id.as_str(),
-                    raw_label,
-                    geometry: SequenceBlockGeometry::empty(),
-                    layout: block_layouts_by_id.get(&message.id),
-                });
-            }
-            (_, Some((SequenceControlKind::Break, SequenceControlRole::End))) => {
-                if let Some(entry) = pop_and_propagate(&mut stack)
-                    && let BlockStackEntry::Break {
-                        label_id,
-                        raw_label,
-                        geometry,
-                        layout,
-                    } = entry
-                {
-                    push_block(
-                        &mut blocks_by_end_index,
-                        &mut blocks,
-                        message_index,
-                        SequenceBlock::Break {
-                            control_id: message.id.as_str(),
-                            label_id,
-                            raw_label,
-                            geometry,
-                            layout,
-                        },
-                    );
-                }
-            }
-            (_, Some((SequenceControlKind::Alt, SequenceControlRole::Start))) => {
-                stack.push(BlockStackEntry::Alt {
-                    sections: vec![AltSection {
-                        label_id: message.id.as_str(),
-                        raw_label,
-                        geometry: SequenceBlockGeometry::empty(),
-                        separator_y: None,
-                    }],
-                    layout: block_layouts_by_id.get(&message.id),
-                });
-            }
-            (_, Some((SequenceControlKind::Alt, SequenceControlRole::Separator))) => {
-                if let Some(BlockStackEntry::Alt { sections, layout }) = stack.last_mut() {
-                    let separator_y = layout
-                        .as_deref()
-                        .and_then(|layout| layout.section_ys_by_id.get(&message.id))
-                        .copied();
-                    sections.push(AltSection {
-                        label_id: message.id.as_str(),
-                        raw_label,
-                        geometry: SequenceBlockGeometry::empty(),
-                        separator_y,
-                    });
-                }
-            }
-            (_, Some((SequenceControlKind::Alt, SequenceControlRole::End))) => {
-                if let Some(entry) = pop_and_propagate(&mut stack)
-                    && let BlockStackEntry::Alt { sections, layout } = entry
-                {
-                    push_block(
-                        &mut blocks_by_end_index,
-                        &mut blocks,
-                        message_index,
-                        SequenceBlock::Alt {
-                            control_id: message.id.as_str(),
-                            sections,
-                            layout,
-                        },
-                    );
-                }
-            }
-            (
-                _,
-                Some((
-                    SequenceControlKind::Par | SequenceControlKind::ParOver,
-                    SequenceControlRole::Start,
-                )),
-            ) => stack.push(BlockStackEntry::Par {
-                sections: vec![AltSection {
-                    label_id: message.id.as_str(),
-                    raw_label,
-                    geometry: SequenceBlockGeometry::empty(),
-                    separator_y: None,
-                }],
-                layout: block_layouts_by_id.get(&message.id),
-            }),
-            (_, Some((SequenceControlKind::Par, SequenceControlRole::Separator))) => {
-                if let Some(BlockStackEntry::Par { sections, layout }) = stack.last_mut() {
-                    let separator_y = layout
-                        .as_deref()
-                        .and_then(|layout| layout.section_ys_by_id.get(&message.id))
-                        .copied();
-                    sections.push(AltSection {
-                        label_id: message.id.as_str(),
-                        raw_label,
-                        geometry: SequenceBlockGeometry::empty(),
-                        separator_y,
-                    });
-                }
-            }
-            (_, Some((SequenceControlKind::Par, SequenceControlRole::End))) => {
-                if let Some(entry) = pop_and_propagate(&mut stack)
-                    && let BlockStackEntry::Par { sections, layout } = entry
-                {
-                    push_block(
-                        &mut blocks_by_end_index,
-                        &mut blocks,
-                        message_index,
-                        SequenceBlock::Par {
-                            control_id: message.id.as_str(),
-                            sections,
-                            layout,
-                        },
-                    );
-                }
-            }
-            (_, Some((SequenceControlKind::Critical, SequenceControlRole::Start))) => {
-                stack.push(BlockStackEntry::Critical {
-                    sections: vec![AltSection {
-                        label_id: message.id.as_str(),
-                        raw_label,
-                        geometry: SequenceBlockGeometry::empty(),
-                        separator_y: None,
-                    }],
-                    layout: block_layouts_by_id.get(&message.id),
-                })
-            }
-            (_, Some((SequenceControlKind::Critical, SequenceControlRole::Separator))) => {
-                if let Some(BlockStackEntry::Critical { sections, layout }) = stack.last_mut() {
-                    let separator_y = layout
-                        .as_deref()
-                        .and_then(|layout| layout.section_ys_by_id.get(&message.id))
-                        .copied();
-                    sections.push(AltSection {
-                        label_id: message.id.as_str(),
-                        raw_label,
-                        geometry: SequenceBlockGeometry::empty(),
-                        separator_y,
-                    });
-                }
-            }
-            (_, Some((SequenceControlKind::Critical, SequenceControlRole::End))) => {
-                if let Some(entry) = pop_and_propagate(&mut stack)
-                    && let BlockStackEntry::Critical { sections, layout } = entry
-                {
-                    push_block(
-                        &mut blocks_by_end_index,
-                        &mut blocks,
-                        message_index,
-                        SequenceBlock::Critical {
-                            control_id: message.id.as_str(),
-                            sections,
-                            layout,
-                        },
-                    );
-                }
-            }
-            _ => {
-                if !stack.is_empty() && message.from.is_some() && message.to.is_some() {
-                    include_message_geometry(&mut stack, message_geometry(message));
-                }
-            }
+            continue;
+        }
+        if message.from.is_some()
+            && message.to.is_some()
+            && let Some(entry) = stack.last_mut()
+        {
+            entry.block.include_geometry(message_geometry(message));
         }
     }
-
     checkpoints.checkpoint()?;
     Ok((blocks_by_end_index, blocks))
 }
 
-fn include_message_geometry<'a>(
-    stack: &mut [BlockStackEntry<'a>],
-    geometry: SequenceBlockGeometry<'a>,
-) {
-    if let Some(entry) = stack.last_mut() {
-        entry.include_geometry(geometry);
-    }
-}
-
-fn pop_and_propagate<'a>(stack: &mut Vec<BlockStackEntry<'a>>) -> Option<BlockStackEntry<'a>> {
-    let entry = stack.pop()?;
-    if let Some(parent) = stack.last_mut() {
-        parent.include_geometry(entry.geometry());
-    }
-    Some(entry)
-}
-
-fn push_block<'a>(
-    blocks_by_end_index: &mut [Option<usize>],
-    blocks: &mut Vec<SequenceBlock<'a>>,
-    end_index: usize,
-    block: SequenceBlock<'a>,
-) {
-    let block_index = blocks.len();
-    blocks.push(block);
-    if let Some(at_end) = blocks_by_end_index.get_mut(end_index) {
-        *at_end = Some(block_index);
-    }
-}
-
 #[cfg(test)]
 mod tests {
-    use super::{SequenceBlock, collect_sequence_blocks_with};
+    use super::collect_sequence_blocks_with;
     use crate::resources::{OperationWorkMeter, RenderResourcePolicy};
     use crate::sequence::block_geometry::SequenceBlockGeometry;
     use merman_model::families::sequence::{
@@ -550,9 +231,7 @@ mod tests {
         assert_eq!(blocks.len(), DEPTH);
         assert_eq!(blocks_by_end_index.iter().flatten().count(), DEPTH);
         for block in blocks {
-            let SequenceBlock::Loop { geometry, .. } = block else {
-                panic!("expected a loop block");
-            };
+            let geometry = block.geometry(checkpoints(&meter)).unwrap();
             assert_eq!(
                 geometry.frame_y_range(),
                 Some((0.0, CONTENT_MESSAGES as f64))
@@ -588,9 +267,7 @@ mod tests {
         )
         .unwrap();
 
-        let SequenceBlock::Alt { sections, .. } = &blocks[1] else {
-            panic!("expected the outer alt block");
-        };
+        let sections = &blocks[1].sections;
         assert_eq!(sections.len(), 2);
         assert_eq!(sections[0].geometry.frame_y_range(), Some((0.0, 2.0)));
         assert_eq!(sections[1].geometry.frame_y_range(), Some((2.0, 3.0)));

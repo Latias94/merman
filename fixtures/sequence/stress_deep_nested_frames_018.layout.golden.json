@@ -2,6 +2,24 @@
   "diagramType": "sequence",
   "layout": {
     "SequenceDiagram": {
+      "activations": [
+        {
+          "actor": "S",
+          "depth": 0.0,
+          "height": 766.0,
+          "width": 10.0,
+          "x": 270.0,
+          "y": 122.0
+        },
+        {
+          "actor": "W",
+          "depth": 0.0,
+          "height": 221.0,
+          "width": 10.0,
+          "x": 470.0,
+          "y": 395.0
+        }
+      ],
       "bounds": {
         "max_x": 800.0,
         "max_y": 993.0,
@@ -349,6 +367,58 @@
           "stroke_dasharray": null,
           "to": "actor-bottom-Q",
           "to_cluster": null
+        }
+      ],
+      "frames": [
+        {
+          "height": 758.0,
+          "id": "2",
+          "kind": "alt",
+          "label": "cache hit",
+          "sections": [
+            {
+              "id": "4",
+              "label": "cache miss",
+              "y": 226.0
+            }
+          ],
+          "width": 642.0,
+          "x": 54.0,
+          "y": 130.0
+        },
+        {
+          "height": 465.0,
+          "id": "6",
+          "kind": "par",
+          "label": "processing",
+          "sections": [
+            {
+              "id": "14",
+              "label": "telemetry",
+              "y": 631.0
+            }
+          ],
+          "width": 491.0,
+          "x": 195.0,
+          "y": 312.0
+        },
+        {
+          "height": 167.0,
+          "id": "9",
+          "kind": "loop",
+          "label": "retry until ok",
+          "width": 170.0,
+          "x": 395.0,
+          "y": 403.0
+        },
+        {
+          "height": 91.0,
+          "id": "17",
+          "kind": "opt",
+          "label": "notify",
+          "width": 226.0,
+          "x": 64.0,
+          "y": 787.0
         }
       ],
       "nodes": [

@@ -121,6 +121,24 @@
           "to_cluster": null
         }
       ],
+      "frames": [
+        {
+          "height": 182.0,
+          "id": "0",
+          "kind": "par_over",
+          "label": "Read",
+          "sections": [
+            {
+              "id": "2",
+              "label": "Observe",
+              "y": 171.0
+            }
+          ],
+          "width": 222.0,
+          "x": 64.0,
+          "y": 75.0
+        }
+      ],
       "nodes": [
         {
           "height": 65.0,

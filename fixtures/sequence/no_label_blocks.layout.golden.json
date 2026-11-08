@@ -271,6 +271,58 @@
           "to_cluster": null
         }
       ],
+      "frames": [
+        {
+          "height": 71.0,
+          "id": "1",
+          "kind": "loop",
+          "label": "",
+          "width": 252.0,
+          "x": 64.0,
+          "y": 130.0
+        },
+        {
+          "height": 71.0,
+          "id": "4",
+          "kind": "opt",
+          "label": "",
+          "width": 252.0,
+          "x": 64.0,
+          "y": 211.0
+        },
+        {
+          "height": 142.0,
+          "id": "7",
+          "kind": "alt",
+          "label": "",
+          "sections": [
+            {
+              "id": "9",
+              "label": "",
+              "y": 368.0
+            }
+          ],
+          "width": 252.0,
+          "x": 64.0,
+          "y": 292.0
+        },
+        {
+          "height": 142.0,
+          "id": "12",
+          "kind": "par",
+          "label": "",
+          "sections": [
+            {
+              "id": "14",
+              "label": "",
+              "y": 520.0
+            }
+          ],
+          "width": 252.0,
+          "x": 64.0,
+          "y": 444.0
+        }
+      ],
       "nodes": [
         {
           "height": 74.0,

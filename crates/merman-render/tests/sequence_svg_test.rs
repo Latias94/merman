@@ -3355,6 +3355,59 @@ Bob->>Alice:Again"#,
 }
 
 #[test]
+fn sequence_autonumber_formats_large_numbers_with_ecmascript_text_and_font_size() {
+    for (start, expected_text, expected_size) in [
+        ("100000000000000000000", "100000000000000000000", "7px"),
+        ("1000000000000000000000", "1e+21", "9px"),
+    ] {
+        let svg = render_sequence_svg_from_text(&format!(
+            "---\nconfig:\n  look: classic\n---\nsequenceDiagram\nautonumber {start}\nA->>B: Request\n"
+        ));
+        let document = roxmltree::Document::parse(&svg).expect("valid Sequence SVG");
+        let numbers: Vec<_> = document
+            .descendants()
+            .filter(|node| {
+                node.has_tag_name("text") && node.attribute("class") == Some("sequenceNumber")
+            })
+            .collect();
+        assert_eq!(numbers.len(), 1);
+        assert_eq!(numbers[0].text(), Some(expected_text), "autonumber {start}");
+        assert_eq!(
+            numbers[0].attribute("font-size"),
+            Some(expected_size),
+            "autonumber {start}"
+        );
+    }
+}
+
+#[test]
+fn sequence_autonumber_zero_preserves_current_index_and_step() {
+    let svg = render_sequence_svg_from_text(
+        r#"sequenceDiagram
+autonumber 0 0
+A->>B: first
+B-->>A: second
+autonumber 10 5
+A->>B: nonzero reset
+autonumber 0 0
+B-->>A: zero reset
+A->>B: after zero reset
+autonumber 0
+A->>B: zero start and default step
+B-->>A: after default step
+autonumber 30 0
+A->>B: nonzero start and retained step
+B-->>A: after retained step
+"#,
+    );
+
+    assert_eq!(
+        text_rows_by_class(&svg, "sequenceNumber"),
+        ["1", "2", "10", "15", "20", "25", "26", "30", "31"]
+    );
+}
+
+#[test]
 fn sequence_autonumber_off_preserves_and_advances_hidden_state() {
     let svg = render_sequence_svg_from_text(
         r#"sequenceDiagram
@@ -6740,7 +6793,12 @@ fn sequence_loop_keyword_typography_expands_the_measured_label_box() {
             ),
         )
         .expect("compile large Sequence LoopLabel theme");
-    let source = r#"sequenceDiagram
+    let source = r#"---
+config:
+  sequence:
+    labelBoxWidth: 1
+---
+sequenceDiagram
 participant Alice
 participant Bob
 participant Carol
@@ -10703,7 +10761,7 @@ fn sequence_control_unsupported_siblings_remain_residual() {
 }
 
 #[test]
-fn sequence_control_keyword_shadow_covers_the_actual_narrow_polygon() {
+fn sequence_control_keyword_shadow_covers_the_minimum_width_polygon() {
     let theme = DiagramThemeCompiler::new()
         .compile(sequence_shadow_spec(
             ThemeTarget::LoopLabelBackground,
@@ -10719,35 +10777,31 @@ fn sequence_control_keyword_shadow_covers_the_actual_narrow_polygon() {
         .descendants()
         .find(|n| n.attribute("class") == Some("labelBox"))
         .unwrap();
-    let min_x = polygon
+    let points: Vec<f64> = polygon
         .attribute("points")
         .unwrap()
         .split_whitespace()
         .map(|pair| pair.split_once(',').unwrap().0.parse::<f64>().unwrap())
-        .reduce(f64::min)
-        .unwrap();
-    let first_x: f64 = polygon
-        .attribute("points")
-        .unwrap()
-        .split_once(',')
-        .unwrap()
-        .0
-        .parse()
-        .unwrap();
-    assert!(
-        first_x - min_x > 7.0,
-        "fixture must retain the outlying keyword vertex"
-    );
+        .collect();
+    let min_x = points.iter().copied().reduce(f64::min).unwrap();
+    let max_x = points.iter().copied().reduce(f64::max).unwrap();
+    assert_eq!(max_x - min_x, 50.0);
+    assert_eq!(points[0], min_x);
     let filter = doc
         .descendants()
         .find(|n| n.has_tag_name("filter"))
         .unwrap();
     let left: f64 = filter.attribute("x").unwrap().parse().unwrap();
     // Shared lowering retains four sigma (32px); the 1px polygon stroke needs its
-    // default miter envelope of 2px. Omitting the x3 vertex cannot satisfy this bound.
+    // default miter envelope of 2px around the corrected 50px keyword polygon.
     assert!(
         left <= min_x - 2.0 - 9.0 - 32.0,
         "left={left}, actual polygon minimum={min_x}"
+    );
+    let right = left + filter.attribute("width").unwrap().parse::<f64>().unwrap();
+    assert!(
+        right >= max_x + 2.0 - 9.0 + 32.0,
+        "right={right}, actual polygon maximum={max_x}"
     );
 }
 
@@ -10831,6 +10885,236 @@ fn sequence_neo_shadow_and_participant_paints_are_scoped_and_look_specific() {
                 );
             }
         }
+    }
+}
+
+#[test]
+fn sequence_property_fragment_icons_follow_loose_dom_contract() {
+    let source = r#"sequenceDiagram
+participant P
+participant C@{type: collections}
+participant Q@{type: queue}
+participant D@{type: database}
+actor U
+properties P: {"icon":" @clock "}
+properties C: {"icon":"@computer"}
+properties Q: {"icon":"@clock"}
+properties D: {"icon":"@database"}
+properties U: {"icon":"@clock"}
+P->>C: store
+C->>Q: enqueue
+Q->>D: persist
+D->>U: notify
+"#;
+    for look in ["classic", "neo"] {
+        for (security, mirror) in [
+            ("strict", true),
+            ("antiscript", false),
+            ("sandbox", true),
+            ("loose", false),
+            ("loose", true),
+        ] {
+            let engine = MermaidEngine::new().with_site_config(
+                merman_core::presentation::SourcePresentationConfig::from_value(
+                    serde_json::json!({
+                        "look": look,
+                        "securityLevel": security,
+                        "sequence": {"mirrorActors": mirror}
+                    }),
+                ),
+            );
+            let svg = render_sequence_svg_from_text_with_engine(engine, source);
+            let doc = roxmltree::Document::parse(&svg).expect("Sequence property icons SVG");
+            let uses: Vec<_> = doc
+                .descendants()
+                .filter(|node| node.has_tag_name("use"))
+                .collect();
+            let copies = if mirror { 2 } else { 1 };
+            let expected = if security == "loose" { 3 * copies } else { 0 };
+            assert_eq!(uses.len(), expected, "{look}/{security}/{mirror}");
+            assert!(!doc.descendants().any(|node| node.has_tag_name("image")));
+            for icon in &uses {
+                let href = icon.attribute(("http://www.w3.org/1999/xlink", "href"));
+                assert!(matches!(href, Some("#clock" | "#computer")));
+                assert!(icon.next_sibling_element().unwrap().has_tag_name("text"));
+            }
+            if security != "loose" {
+                continue;
+            }
+            for (id, href) in [("P", "#clock"), ("C", "#computer"), ("Q", "#clock")] {
+                let group = doc
+                    .descendants()
+                    .find(|node| {
+                        node.attribute("data-et") == Some("participant")
+                            && node.attribute("data-id") == Some(id)
+                    })
+                    .unwrap();
+                let icon = group
+                    .children()
+                    .find(|node| node.has_tag_name("use"))
+                    .expect("property icon belongs to its participant group");
+                assert_eq!(
+                    icon.attribute(("http://www.w3.org/1999/xlink", "href")),
+                    Some(href)
+                );
+                if id != "Q" {
+                    let rectangle = group
+                        .descendants()
+                        .find(|node| {
+                            node.has_tag_name("rect") && node.attribute("name") == Some(id)
+                        })
+                        .unwrap();
+                    let number = |node: roxmltree::Node<'_, '_>, name| {
+                        node.attribute(name).unwrap().parse::<f64>().unwrap()
+                    };
+                    assert!(
+                        (number(icon, "x")
+                            - (number(rectangle, "x") + number(rectangle, "width") - 20.0))
+                            .abs()
+                            <= 1e-6
+                    );
+                    assert!((number(icon, "y") - number(rectangle, "y") - 10.0).abs() <= 1e-6);
+                }
+            }
+        }
+    }
+}
+
+#[test]
+fn sequence_special_actor_classes_reach_body_nodes_and_mirrored_copies() {
+    let source = r#"sequenceDiagram
+participant C@{type: collections}
+participant Q@{type: queue}
+participant D@{type: database}
+properties C: {"class":"audit-collections"}
+properties Q: {"class":"audit-queue"}
+properties D: {"class":"audit-database"}
+C->>Q: enqueue
+Q->>D: persist
+"#;
+    for look in ["classic", "neo"] {
+        let engine = MermaidEngine::new().with_site_config(
+            merman_core::presentation::SourcePresentationConfig::from_value(
+                serde_json::json!({"look": look}),
+            ),
+        );
+        let svg = render_sequence_svg_from_text_with_engine(engine, source);
+        let doc = roxmltree::Document::parse(&svg).unwrap();
+        for placement in ["actor-top", "actor-bottom"] {
+            for kind in ["collections", "queue", "database"] {
+                let class = format!("audit-{kind} {placement}");
+                let bodies: Vec<_> = doc
+                    .descendants()
+                    .filter(|node| node.attribute("class") == Some(class.as_str()))
+                    .collect();
+                assert_eq!(bodies.len(), 1, "{look}/{class}");
+                let body = bodies[0];
+                let label_parent = if kind == "queue" {
+                    assert!(body.has_tag_name("g"));
+                    assert_eq!(
+                        body.descendants()
+                            .filter(|node| node.has_tag_name("path"))
+                            .count(),
+                        2
+                    );
+                    body
+                } else {
+                    if kind == "collections" {
+                        assert!(body.has_tag_name("rect"));
+                        assert_eq!(body.attribute("name"), Some("C"));
+                        assert_eq!(body.attribute("fill"), Some("#EDF2AE"));
+                        let stacked = body.next_sibling_element().unwrap();
+                        assert_eq!(stacked.attribute("class"), Some("actor"));
+                        assert_eq!(stacked.attribute("fill"), Some("#EDF2AE"));
+                    } else {
+                        assert!(body.has_tag_name("g"));
+                        assert!(body.children().any(|node| node.has_tag_name("path")));
+                    }
+                    body.parent().unwrap()
+                };
+                assert!(label_parent.children().any(|node| {
+                    node.has_tag_name("text") && node.attribute("class") == Some("actor actor-box")
+                }));
+            }
+        }
+    }
+}
+
+#[test]
+fn sequence_special_actor_custom_classes_leave_uncovered_theme_paints_residual() {
+    for kind in ["collections", "queue", "database"] {
+        let source = format!(
+            "sequenceDiagram\nparticipant A@{{type: {kind}}}\nproperties A: {{\"class\":\"custom\"}}\nA->>A: message\n"
+        );
+        for property in ["fill", "stroke"] {
+            let paint = CanvasPaint::solid("#00f2ff").unwrap();
+            let patch = if property == "fill" {
+                ThemeStylePatch::default().with_fill(paint)
+            } else {
+                ThemeStylePatch::default().with_stroke(paint)
+            };
+            let theme = DiagramThemeCompiler::new()
+                .compile(DiagramThemeSpec::new().with_styles(
+                    ThemeRuleSet::default().with_rule(ThemeRule::new(ThemeTarget::Actor, patch)),
+                ))
+                .unwrap();
+            let rendered = try_render_sequence_theme_request(
+                &source,
+                &theme,
+                MermaidEngine::new(),
+                ThemePortabilityRequirement::BestEffort,
+            )
+            .unwrap();
+            let completion = rendered.into_completion();
+            let evidence = merman_render::__private::family_evidence(completion.report());
+            assert_eq!(evidence.applied_count(), 0, "{kind}/{property}");
+            assert_eq!(evidence.theme_residual_count(), 1, "{kind}/{property}");
+            assert!(
+                try_render_sequence_theme_request(
+                    &source,
+                    &theme,
+                    MermaidEngine::new(),
+                    ThemePortabilityRequirement::RequirePortable,
+                )
+                .is_err(),
+                "{kind}/{property}"
+            );
+        }
+    }
+}
+
+#[test]
+fn sequence_boxed_destroy_keeps_typed_lifeline_geometry() {
+    for look in ["classic", "neo"] {
+        let source = format!(
+            "---\nconfig:\n  look: {look}\n---\nsequenceDiagram\nparticipant A\nbox transparent Workers\nparticipant B\ndestroy B\nend\nA-xB: stop\nA->>A: after\n"
+        );
+        let layout = layout_sequence_from_environment(&source, &RenderEnvironment::deterministic());
+        let actor = |id: &str| layout.nodes.iter().find(|node| node.id == id).unwrap();
+        let bottom = actor("actor-bottom-B");
+        assert!(bottom.y < actor("actor-bottom-A").y);
+        let lifeline = layout
+            .edges
+            .iter()
+            .find(|edge| edge.id == "lifeline-B")
+            .expect("boxed destroyed actor lifeline");
+        assert_eq!(lifeline.from, "actor-top-B");
+        assert_eq!(lifeline.to, bottom.id);
+        assert!(
+            (lifeline.points.last().unwrap().y - (bottom.y - bottom.height / 2.0)).abs() <= 1e-6
+        );
+        let svg = render_sequence_svg_from_text(&source);
+        let doc = roxmltree::Document::parse(&svg).unwrap();
+        let emitted = doc
+            .descendants()
+            .find(|node| {
+                node.has_tag_name("line")
+                    && node.attribute("data-et") == Some("life-line")
+                    && node.attribute("data-id") == Some("B")
+            })
+            .expect("boxed destroyed actor SVG lifeline");
+        let y2 = emitted.attribute("y2").unwrap().parse::<f64>().unwrap();
+        assert!((y2 - lifeline.points.last().unwrap().y).abs() <= 1e-6);
     }
 }
 

@@ -2,7 +2,7 @@
   "diagramType": "timeline",
   "model": {
     "accDescr": "This is a multiline accDescr block.\nIt contains #hashtags, ;semicolons, and a markdown link [example](https://example.com).\nIt also contains a forced line break token <br> to exercise wrapping rules.",
-    "accTitle": "Timeline accTitle with ﬂ°hash¶ß and",
+    "accTitle": "Timeline accTitle with ﬂ°hash¶ß and ;semi",
     "direction": "LR",
     "sections": [
       "Section A"

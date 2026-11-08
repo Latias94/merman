@@ -170,9 +170,238 @@ fn try_render_xychart_svg_with_resource_policy(
         .to_owned())
 }
 
+fn xychart_svg_path_points(path: roxmltree::Node<'_, '_>) -> Vec<(f64, f64)> {
+    kurbo::BezPath::from_svg(path.attribute("d").expect("SVG path data"))
+        .expect("valid SVG path")
+        .elements()
+        .iter()
+        .filter_map(|element| match element {
+            kurbo::PathEl::MoveTo(point) | kurbo::PathEl::LineTo(point) => Some((point.x, point.y)),
+            _ => None,
+        })
+        .collect()
+}
+
+#[test]
+fn xychart_duplicate_band_line_svg_keeps_endpoints_ticks_and_label_occurrences() {
+    let svg = render_xychart_svg_from_text(concat!(
+        "xychart\n",
+        "x-axis [\" A \", B, A]\n",
+        "y-axis 0 --> 4\n",
+        "line [1 \"same\", 2, 1 \"same\"]\n",
+    ));
+    let control = render_xychart_svg_from_text(concat!(
+        "xychart\n",
+        "x-axis [A, B]\n",
+        "y-axis 0 --> 4\n",
+        "line [1 \"same\", 2]\n",
+    ));
+    let document = roxmltree::Document::parse(&svg).unwrap();
+    let control_document = roxmltree::Document::parse(&control).unwrap();
+    let plot = xychart_plot_group(&document, "line-plot-0");
+    let points = xychart_svg_path_points(
+        plot.children()
+            .find(|node| node.has_tag_name("path"))
+            .unwrap(),
+    );
+    let control_points = xychart_svg_path_points(
+        xychart_plot_group(&control_document, "line-plot-0")
+            .children()
+            .find(|node| node.has_tag_name("path"))
+            .unwrap(),
+    );
+    assert_eq!(points.len(), 3);
+    assert_eq!(
+        points[0], points[2],
+        "equal values at the repeated category share geometry"
+    );
+    assert_eq!(&points[..2], control_points.as_slice());
+    assert!(points[1].0 > points[0].0);
+
+    let labels: Vec<_> = plot
+        .descendants()
+        .filter(|node| node.has_tag_name("text"))
+        .collect();
+    assert_eq!(labels.len(), 2);
+    assert!(labels.iter().all(|label| label.text() == Some("same")));
+    assert_eq!(
+        labels[0].attribute("transform"),
+        labels[1].attribute("transform")
+    );
+    let axis = xychart_plot_group(&document, "bottom-axis");
+    let ticks: Vec<_> = axis
+        .descendants()
+        .filter(|node| node.has_tag_name("text"))
+        .collect();
+    assert_eq!(
+        ticks
+            .iter()
+            .map(|node| node.text().unwrap())
+            .collect::<Vec<_>>(),
+        ["A", "B", "A"]
+    );
+    assert_eq!(
+        ticks[0].attribute("transform"),
+        ticks[2].attribute("transform")
+    );
+}
+
+#[test]
+fn xychart_horizontal_duplicate_band_bar_svg_uses_both_padded_endpoints() {
+    let svg = render_xychart_svg_from_text(concat!(
+        "xychart horizontal\n",
+        "x-axis [A, B, A]\n",
+        "y-axis 0 --> 4\n",
+        "bar [1, 2, 1]\n",
+    ));
+    let document = roxmltree::Document::parse(&svg).unwrap();
+    let bars: Vec<_> = xychart_plot_group(&document, "bar-plot-0")
+        .children()
+        .filter(|node| node.has_tag_name("rect"))
+        .map(|node| {
+            ["x", "y", "width", "height"]
+                .map(|attribute| node.attribute(attribute).unwrap().parse::<f64>().unwrap())
+        })
+        .collect();
+    assert_eq!(bars.len(), 3);
+    assert_eq!(bars[0], bars[2]);
+    assert!(bars[1][2] > bars[0][2]);
+    let first_center = bars[0][1] + bars[0][3] / 2.0;
+    let second_center = bars[1][1] + bars[1][3] / 2.0;
+    assert!(second_center > first_center);
+    let axis = xychart_plot_group(&document, "left-axis");
+    let endpoints = xychart_svg_path_points(
+        axis.descendants()
+            .find(|node| node.has_tag_name("path"))
+            .unwrap(),
+    );
+    assert_eq!(endpoints.len(), 2);
+    assert!((first_center + second_center - endpoints[0].1 - endpoints[1].1).abs() < 0.001);
+    let ticks: Vec<_> = axis
+        .descendants()
+        .filter(|node| node.has_tag_name("text"))
+        .collect();
+    assert_eq!(
+        ticks
+            .iter()
+            .map(|node| node.text().unwrap())
+            .collect::<Vec<_>>(),
+        ["A", "B", "A"]
+    );
+    assert_eq!(
+        ticks[0].attribute("transform"),
+        ticks[2].attribute("transform")
+    );
+}
+
+#[test]
+fn xychart_duplicate_band_observes_cancellation() {
+    use merman_model::OperationControl;
+
+    let source = "xychart\nx-axis [A, B, A]\ny-axis 0 --> 4\nbar [1, 2, 1]\n";
+    let parsed = legacy_init_theme_compat_engine()
+        .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
+        .unwrap()
+        .unwrap()
+        .into_presentation();
+    let environment = RenderEnvironment::deterministic()
+        .with_resource_policy(RenderResourcePolicy::unbounded_for_trusted_input());
+    let control = OperationControl::new();
+    let session = environment
+        .begin_session_with_control(control.clone())
+        .unwrap();
+    control.cancel();
+    assert!(matches!(
+        family::prepare(&parsed, &LayoutOptions::default(), session),
+        Err(merman_render::Error::Cancelled(_))
+    ));
+
+    let control = OperationControl::new();
+    let artifact = family::prepare(
+        &parsed,
+        &LayoutOptions::default(),
+        environment
+            .begin_session_with_control(control.clone())
+            .unwrap(),
+    )
+    .unwrap();
+    control.cancel();
+    assert!(matches!(
+        artifact.render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default()),
+        Err(merman_render::Error::Cancelled(_))
+    ));
+}
+
+#[test]
+fn xychart_orientation_token_case_reaches_bar_geometry_like_upstream() {
+    for (orientation, horizontal) in [
+        ("horizontal", true),
+        ("HORIZONTAL", false),
+        ("Horizontal", false),
+        ("vertical", false),
+    ] {
+        let source = format!("xychart {orientation}\nx-axis [A, B]\ny-axis 0 --> 10\nbar [2, 8]");
+        let svg = render_xychart_svg_from_text(&source);
+        let document = roxmltree::Document::parse(&svg).unwrap();
+        let bars: Vec<_> = xychart_plot_group(&document, "bar-plot-0")
+            .children()
+            .filter(|node| node.has_tag_name("rect"))
+            .map(|node| {
+                ["x", "y", "width", "height"]
+                    .map(|attribute| node.attribute(attribute).unwrap().parse::<f64>().unwrap())
+            })
+            .collect();
+        assert_eq!(bars.len(), 2);
+        let [first, second] = [bars[0], bars[1]];
+        if horizontal {
+            assert!((first[0] - second[0]).abs() < 0.001);
+            assert!(first[1] < second[1]);
+            assert!((first[3] - second[3]).abs() < 0.001);
+            assert!(first[2] > 0.0 && second[2] > first[2]);
+        } else {
+            assert!(first[0] < second[0]);
+            assert!(first[1] > second[1]);
+            assert!((first[2] - second[2]).abs() < 0.001);
+            assert!(first[3] > 0.0 && second[3] > first[3]);
+            assert!((first[1] + first[3] - second[1] - second[3]).abs() < 0.001);
+        }
+    }
+}
+
+#[test]
+fn xychart_same_line_axis_and_bar_statements_reach_visible_svg() {
+    let compact = render_xychart_svg_from_text("xychart x-axis [A, B] bar [1, 2]");
+    let separated = render_xychart_svg_from_text("xychart\nx-axis [A, B]\nbar [1, 2]");
+    let compact_document = roxmltree::Document::parse(&compact).unwrap();
+    let separated_document = roxmltree::Document::parse(&separated).unwrap();
+    let bar_geometry = |document: &roxmltree::Document<'_>| {
+        xychart_plot_group(document, "bar-plot-0")
+            .children()
+            .filter(|node| node.has_tag_name("rect"))
+            .map(|node| {
+                ["x", "y", "width", "height"]
+                    .map(|attribute| node.attribute(attribute).unwrap().parse::<f64>().unwrap())
+            })
+            .collect::<Vec<_>>()
+    };
+    let bars = bar_geometry(&compact_document);
+    assert_eq!(bars.len(), 2);
+    assert_eq!(bars, bar_geometry(&separated_document));
+    assert!(bars[0][0] < bars[1][0]);
+    assert!(bars[0][3] > 0.0);
+    assert!(bars[1][3] > bars[0][3]);
+    for label in ["A", "B"] {
+        assert!(
+            compact_document
+                .descendants()
+                .any(|node| node.has_tag_name("text") && node.text() == Some(label))
+        );
+    }
+}
+
 #[test]
 fn xychart_family_svg_accepts_exact_max_svg_bytes_and_rejects_one_byte_less() {
-    let source = "xychart\n  x-axis [A, B]\n  y-axis 0 --> 10\n  bar [4, 7]\n";
+    let source = "xychart\n  x-axis [A, B, A]\n  y-axis 0 --> 10\n  bar [4, 7, 4]\n";
     let baseline = try_render_xychart_svg_with_resource_policy(
         source,
         RenderResourcePolicy::unbounded_for_trusted_input(),
@@ -467,9 +696,9 @@ config:
     showDataLabel: true
 ---
 xychart horizontal
-  x-axis [A]
+  x-axis [A, A]
   y-axis 0 --> 100
-  bar [73]
+  bar [73, 73]
 "#,
     )
     .expect("finite geometry must remain available to ordinary SVG generation");

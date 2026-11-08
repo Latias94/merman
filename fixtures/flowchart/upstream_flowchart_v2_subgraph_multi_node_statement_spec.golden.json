@@ -273,10 +273,10 @@
         "id": "myTitle",
         "labelType": "text",
         "nodes": [
-          "e",
           "c",
-          "b",
-          "a"
+          "e",
+          "a",
+          "b"
         ],
         "styles": [],
         "title": "myTitle"

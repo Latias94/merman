@@ -1899,3 +1899,327 @@ fn parse_diagram_state_unterminated_accessibility_block_keeps_eof_assignment() {
         .unwrap();
     assert_eq!(parsed.model["accDescr"], "");
 }
+
+#[test]
+fn parse_diagram_state_alias_inline_comments_preserve_identity() {
+    let engine = MermaidEngine::new();
+    for newline in ["\n", "\r\n"] {
+        for comment in [" %% keep { this alias", "%%keep this alias"] {
+            let source = format!(
+                "stateDiagram-v2{newline}\
+                 state \"Ready %% label\" as Ready{comment}{newline}\
+                 Ready --> Done: finish{newline}"
+            );
+            let parsed = engine
+                .parse_diagram_sync(&source, ParseOptions::strict())
+                .unwrap()
+                .unwrap();
+            let states = parsed.model["states"].as_object().unwrap();
+            assert_eq!(states.len(), 2, "{source}");
+            assert_eq!(states["Ready"]["descriptions"], json!(["Ready %% label"]));
+            assert!(states.contains_key("Done"));
+            let nodes = parsed.model["nodes"].as_array().unwrap();
+            assert_eq!(nodes.len(), 2);
+            let ready = nodes.iter().find(|node| node["id"] == "Ready").unwrap();
+            assert_eq!(ready["label"], "Ready %% label");
+            let edges = parsed.model["edges"].as_array().unwrap();
+            assert_eq!(edges.len(), 1);
+            assert_eq!(edges[0]["start"], "Ready");
+            assert_eq!(edges[0]["end"], "Done");
+        }
+    }
+}
+
+#[test]
+fn parse_diagram_state_empty_alias_preserves_upstream_identity_before_a_comment() {
+    let engine = MermaidEngine::new();
+    for tail in ["", "   ", " %% comment", "\u{00a0}%% comment"] {
+        for ending in ["", "\n"] {
+            let source = format!("stateDiagram-v2\nstate \"Label\" as {tail}{ending}");
+            let parsed = engine
+                .parse_diagram_sync(&source, ParseOptions::strict())
+                .unwrap()
+                .unwrap();
+            assert_eq!(parsed.model["states"][""]["descriptions"], json!(["Label"]));
+        }
+    }
+}
+
+#[test]
+fn parse_diagram_state_special_markers_accept_trailing_comments() {
+    let engine = MermaidEngine::new();
+    for (open, close) in [("<<", ">>"), ("[[", "]]")] {
+        for newline in ["\n", "\r\n"] {
+            let source = format!(
+                "stateDiagram-v2{newline}\
+                 state Gate {open}choice{close}%% decision{newline}\
+                 state Split {open}fork{close} %% parallel start{newline}\
+                 state Merge {open}join{close} # parallel end{newline}\
+                 Gate --> Split: yes{newline}\
+                 Split --> Merge{newline}"
+            );
+            let parsed = engine
+                .parse_diagram_sync(&source, ParseOptions::strict())
+                .unwrap()
+                .unwrap();
+            let states = parsed.model["states"].as_object().unwrap();
+            let nodes = parsed.model["nodes"].as_array().unwrap();
+            assert_eq!(states.len(), 3, "{source}");
+            assert_eq!(nodes.len(), 3, "{source}");
+            for (id, ty) in [("Gate", "choice"), ("Split", "fork"), ("Merge", "join")] {
+                assert_eq!(states[id]["type"], ty, "{source}");
+                let node = nodes.iter().find(|node| node["id"] == id).unwrap();
+                assert_eq!(node["shape"], ty, "{source}");
+            }
+            let edges = parsed.model["edges"].as_array().unwrap();
+            assert_eq!(edges.len(), 2);
+            assert_eq!(edges[0]["start"], "Gate");
+            assert_eq!(edges[0]["end"], "Split");
+            assert_eq!(edges[1]["start"], "Split");
+            assert_eq!(edges[1]["end"], "Merge");
+        }
+    }
+}
+
+#[test]
+fn parse_diagram_state_note_terminator_comments_preserve_body_and_following_edges() {
+    let engine = MermaidEngine::new();
+    for newline in ["\n", "\r\n"] {
+        for comment in [
+            " %% close the note",
+            "%%close the note",
+            " # close the note",
+        ] {
+            let source = [
+                "stateDiagram-v2",
+                "A --> B",
+                "note right of A",
+                "  this sentence contains end note %% literal text",
+                "  another %% literal line",
+                &format!("end note{comment}"),
+                "B --> C: continue %% literal label",
+                "",
+            ]
+            .join(newline);
+            let parsed = engine
+                .parse_diagram_sync(&source, ParseOptions::strict())
+                .unwrap()
+                .unwrap();
+            let note_text = "this sentence contains end note %% literal text\n\
+                             another %% literal line";
+            assert_eq!(parsed.model["states"]["A"]["note"]["text"], note_text);
+            let nodes = parsed.model["nodes"].as_array().unwrap();
+            assert!(
+                nodes
+                    .iter()
+                    .any(|node| { node["shape"] == "note" && node["label"] == note_text })
+            );
+            let relations = parsed.model["relations"].as_array().unwrap();
+            assert_eq!(relations.len(), 2);
+            assert_eq!(relations[0]["id1"], "A");
+            assert_eq!(relations[0]["id2"], "B");
+            assert_eq!(relations[1]["id1"], "B");
+            assert_eq!(relations[1]["id2"], "C");
+            let edges = parsed.model["edges"].as_array().unwrap();
+            assert_eq!(edges.len(), 3);
+            assert!(edges.iter().any(|edge| {
+                edge["start"] == "B"
+                    && edge["end"] == "C"
+                    && edge["label"] == "continue %% literal label"
+            }));
+            assert!(edges.iter().any(|edge| {
+                edge["classes"] == "transition note-edge" && edge["arrowhead"] == "none"
+            }));
+        }
+    }
+}
+
+#[test]
+fn parse_diagram_state_composite_alias_keeps_literal_colon_id() {
+    let engine = MermaidEngine::new();
+    for body in ["", "\n  A --> B\n"] {
+        let source = format!("stateDiagram-v2\nstate \"Container\" as Box:tag {{{body}}}\n");
+        let parsed = engine
+            .parse_diagram_sync(&source, ParseOptions::strict())
+            .unwrap()
+            .unwrap();
+        let states = parsed.model["states"].as_object().unwrap();
+        assert!(states.contains_key("Box:tag"), "{source}");
+        assert!(!states.contains_key("Box"), "{source}");
+        assert_eq!(states["Box:tag"]["descriptions"], json!(["Container"]));
+        let doc = states["Box:tag"]["doc"].as_array().unwrap();
+        let nodes = parsed.model["nodes"].as_array().unwrap();
+        let group = nodes.iter().find(|node| node["id"] == "Box:tag").unwrap();
+        assert_eq!(group["label"], "Container");
+        assert_eq!(group["isGroup"], true);
+        if body.is_empty() {
+            assert!(doc.is_empty());
+            assert_eq!(nodes.len(), 1);
+        } else {
+            assert_eq!(doc.len(), 1);
+            assert_eq!(doc[0]["state1"]["id"], "A");
+            assert_eq!(doc[0]["state2"]["id"], "B");
+            assert_eq!(nodes.len(), 3);
+            for id in ["A", "B"] {
+                let child = nodes.iter().find(|node| node["id"] == id).unwrap();
+                assert_eq!(child["parentId"], "Box:tag");
+            }
+        }
+    }
+}
+
+#[test]
+fn parse_diagram_state_nested_accessibility_keywords_are_ordinary_states() {
+    let engine = MermaidEngine::new();
+    let source = concat!(
+        "stateDiagram-v2\n",
+        "accTitle: Initial title\n",
+        "accDescr: Root description\n",
+        "state Outer {\n",
+        "  state Inner {\n",
+        "    accTitle: Nested title\n",
+        "    accDescr: Nested description\n",
+        "    accTitle --> accDescr\n",
+        "  }\n",
+        "}\n",
+        "accTitle: Root title\n",
+    );
+    let parsed = engine
+        .parse_diagram_sync(source, ParseOptions::strict())
+        .unwrap()
+        .unwrap();
+    assert_eq!(parsed.model["accTitle"], "Root title");
+    assert_eq!(parsed.model["accDescr"], "Root description");
+    let doc = parsed.model["states"]["Outer"]["doc"][0]["doc"]
+        .as_array()
+        .unwrap();
+    assert_eq!(doc.len(), 3);
+    let nodes = parsed.model["nodes"].as_array().unwrap();
+    assert_eq!(nodes.len(), 4);
+    for (index, id, label) in [
+        (0, "accTitle", "Nested title"),
+        (1, "accDescr", "Nested description"),
+    ] {
+        assert_eq!(doc[index]["stmt"], "state");
+        assert_eq!(doc[index]["id"], id);
+        assert_eq!(doc[index]["type"], "default");
+        assert_eq!(doc[index]["description"], label);
+        let node = nodes.iter().find(|node| node["id"] == id).unwrap();
+        assert_eq!(node["label"], label);
+        assert_eq!(node["parentId"], "Inner");
+    }
+    let edges = parsed.model["edges"].as_array().unwrap();
+    assert_eq!(edges.len(), 1);
+    assert_eq!(edges[0]["start"], "accTitle");
+    assert_eq!(edges[0]["end"], "accDescr");
+}
+
+#[test]
+fn parse_diagram_state_comment_markers_remain_literal_in_payloads() {
+    let source = concat!(
+        "stateDiagram-v2\n",
+        "state \"quoted %% label\" as Ready %% ignored comment\n",
+        "Ready: state %% description\n",
+        "Ready --> Done: edge %% label\n",
+        "note right of Done: inline %% note\n",
+        "accTitle: title %% text\n",
+        "accDescr { multiline %% description }\n",
+    );
+    let parsed = MermaidEngine::new()
+        .parse_diagram_sync(source, ParseOptions::strict())
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        parsed.model["states"]["Ready"]["descriptions"],
+        json!(["quoted %% label", "state %% description"])
+    );
+    assert_eq!(
+        parsed.model["relations"][0]["relationTitle"],
+        "edge %% label"
+    );
+    assert_eq!(
+        parsed.model["states"]["Done"]["note"]["text"],
+        "inline %% note"
+    );
+    assert_eq!(parsed.model["accTitle"], "title %% text");
+    assert_eq!(parsed.model["accDescr"], "multiline %% description");
+}
+
+#[test]
+fn parse_state_editor_facts_preserve_selections_after_inline_comments() {
+    let engine = MermaidEngine::new();
+    let source = concat!(
+        "stateDiagram-v2\r\n",
+        "accTitle: Root title\r\n",
+        "accDescr: Root description\r\n",
+        "state \"準備 %% label\" as Ready %% ignored alias {\r\n",
+        "state Gate <<choice>> %% ignored choice\r\n",
+        "state Split [[fork]] %% ignored fork\r\n",
+        "state Merge <<join>> %% ignored join\r\n",
+        "state \"Container\" as Box:tag {\r\n",
+        "  accTitle: Nested title\r\n",
+        "  accDescr: Nested description\r\n",
+        "  note right of Ready\r\n",
+        "    body %% literal\r\n",
+        "  end note %% ignored terminator\r\n",
+        "  Ready --> Done: edge %% literal\r\n",
+        "}\r\n",
+    );
+    let facts = engine
+        .parse_editor_semantic_facts_with_type_sync("stateDiagram", source)
+        .unwrap()
+        .unwrap();
+    assert_eq!(facts.completeness, EditorSemanticCompleteness::Complete);
+    assert!(facts.diagnostics.is_empty());
+    for (name, marker) in [
+        ("Ready", "Ready %% ignored alias"),
+        ("Gate", "Gate <<choice>>"),
+        ("Split", "Split [[fork]]"),
+        ("Merge", "Merge <<join>>"),
+        ("Box:tag", "Box:tag {"),
+        ("accTitle", "accTitle: Nested title"),
+        ("accDescr", "accDescr: Nested description"),
+        ("Done", "Done: edge"),
+    ] {
+        let start = source.find(marker).unwrap();
+        assert!(
+            facts.symbols.iter().any(|symbol| {
+                symbol.name == name
+                    && symbol.role == EditorSemanticRole::Entity
+                    && symbol.selection == SourceSpan::new(start, start + name.len())
+            }),
+            "missing entity {name}"
+        );
+    }
+    let reference_start = source.find("Ready --> Done").unwrap();
+    assert!(facts.symbols.iter().any(|symbol| {
+        symbol.name == "Ready"
+            && symbol.role == EditorSemanticRole::Reference
+            && symbol.selection == SourceSpan::new(reference_start, reference_start + "Ready".len())
+    }));
+    for (name, detail) in [
+        ("準備 %% label", "state display label"),
+        ("body %% literal", "state note"),
+        ("edge %% literal", "state relation label"),
+        ("Nested title", "state description"),
+        ("Nested description", "state description"),
+        ("Root title", "state accessibility title"),
+        ("Root description", "state accessibility description"),
+    ] {
+        assert!(
+            facts.symbols.iter().any(|symbol| {
+                symbol.name == name
+                    && symbol.role == EditorSemanticRole::Payload
+                    && symbol.detail.as_deref() == Some(detail)
+                    && source.get(symbol.selection.start..symbol.selection.end) == Some(name)
+            }),
+            "missing payload {name}"
+        );
+    }
+    assert!(
+        !facts
+            .symbols
+            .iter()
+            .any(|symbol| symbol.name.contains("ignored"))
+    );
+}

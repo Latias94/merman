@@ -19,6 +19,11 @@ use serde_json::Value;
 #[cfg(all(test, feature = "compat-json"))]
 use serde_json::json;
 
+#[cfg(test)]
+thread_local! {
+    static TREE_VIEW_BODY_LINE_SCAN_BYTES: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+}
+
 pub(crate) fn sanitize_common_db_fields(
     model: &mut TreeViewDiagramModel,
     config: &crate::MermaidConfig,
@@ -33,7 +38,7 @@ struct ParsedTreeViewInput {
     title: Option<String>,
     acc_title: Option<String>,
     acc_descr: Option<String>,
-    nodes: Vec<TreeViewNodeLineDetails>,
+    nodes: Vec<TreeViewNodeDetails>,
     #[cfg(feature = "editor-facts")]
     editor_facts: Option<EditorSemanticFacts>,
 }
@@ -119,17 +124,7 @@ impl TreeViewParseIssue {
 }
 
 #[derive(Debug, Clone)]
-struct TreeViewNodeStatement {
-    line: String,
-    line_start: usize,
-}
-
-struct TreeViewNodeParseFailure {
-    error: Box<Error>,
-}
-
-#[derive(Debug, Clone)]
-struct TreeViewNodeLineDetails {
+struct TreeViewNodeDetails {
     indent: usize,
     name: String,
     node_type: String,
@@ -168,6 +163,81 @@ struct TreeViewLineView<'a> {
     content: &'a str,
     content_offset: usize,
     expand_content_tabs: bool,
+}
+
+struct TreeViewSourceSegment {
+    text: SourceSpan,
+    source: SourceSpan,
+}
+
+/// Family preprocessing keeps token boundaries tied to the original box-drawing/CRLF input.
+struct TreeViewSource {
+    text: String,
+    segments: Vec<TreeViewSourceSegment>,
+    source_end: usize,
+}
+
+impl TreeViewSource {
+    fn push(&mut self, text: &str, source: SourceSpan) {
+        if text.is_empty() {
+            return;
+        }
+        let start = self.text.len();
+        self.text.push_str(text);
+        if let Some(last) = self.segments.last_mut()
+            && last.source.end == source.start
+            && last.text.end - last.text.start == last.source.end - last.source.start
+            && text.len() == source.end - source.start
+        {
+            last.text.end = self.text.len();
+            last.source.end = source.end;
+        } else {
+            self.segments.push(TreeViewSourceSegment {
+                text: SourceSpan::new(start, self.text.len()),
+                source,
+            });
+        }
+    }
+
+    fn source_offset(&self, offset: usize, end: bool) -> usize {
+        // EOF insertions use the original EOF; token ends use the last retained segment.
+        if offset == self.text.len() && !end {
+            return self.source_end;
+        }
+        let index = if end {
+            self.segments
+                .partition_point(|segment| segment.text.start < offset)
+                .saturating_sub(1)
+        } else {
+            self.segments
+                .partition_point(|segment| segment.text.end <= offset)
+        };
+        let Some(segment) = self.segments.get(index) else {
+            return self.source_end;
+        };
+        if offset <= segment.text.start {
+            segment.source.start
+        } else if offset >= segment.text.end {
+            segment.source.end
+        } else if segment.text.end - segment.text.start == segment.source.end - segment.source.start
+        {
+            segment.source.start + offset - segment.text.start
+        } else if end {
+            segment.source.end
+        } else {
+            segment.source.start
+        }
+    }
+
+    fn source_span(&self, span: SourceSpan) -> SourceSpan {
+        let start = self.source_offset(span.start, false);
+        let end = if span.start == span.end {
+            start
+        } else {
+            self.source_offset(span.end, true)
+        };
+        SourceSpan::new(start, end)
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -345,12 +415,24 @@ fn parse_tree_view_input_controlled(
             });
         }
     };
-    let mut offset = body.offset;
+    let (source, issues) = preprocess_tree_view_body(code, body.offset, diagram_type, control)?;
+    for issue in issues {
+        mark_tree_view_recovery(
+            #[cfg(feature = "editor-facts")]
+            &mut editor_facts,
+            &mut first_issue,
+            issue,
+        );
+    }
+    let code = source.text.as_str();
+    let mut offset = 0;
     let mut title = None;
     let mut acc_title = None;
     let mut acc_descr = None;
-    let mut node_statements = Vec::new();
+    let mut nodes = Vec::new();
     let mut saw_node = false;
+    let mut line_end = 0;
+    let mut next_line_offset = 0;
 
     while offset < code.len() {
         control.checkpoint()?;
@@ -363,7 +445,7 @@ fn parse_tree_view_input_controlled(
                     &mut first_issue,
                     TreeViewParseIssue::new(
                         "tree view title and accessibility fields must precede every node",
-                        Some(span),
+                        Some(source.source_span(span)),
                     ),
                 );
                 offset += parsed.consumed;
@@ -373,7 +455,10 @@ fn parse_tree_view_input_controlled(
             let value = parsed.fact.value.clone();
             #[cfg(feature = "editor-facts")]
             if let Some(facts) = editor_facts.as_mut().filter(|_| demand.captures_rich()) {
-                push_langium_common_editor_fact(facts, &parsed.fact, "tree view");
+                let mut fact = parsed.fact.clone();
+                fact.raw_span = source.source_span(fact.raw_span);
+                fact.value_span = source.source_span(fact.value_span);
+                push_langium_common_editor_fact(facts, &fact, "tree view");
             }
             match field {
                 LangiumCommonField::Title => title = Some(value),
@@ -385,66 +470,65 @@ fn parse_tree_view_input_controlled(
                     #[cfg(feature = "editor-facts")]
                     &mut editor_facts,
                     &mut first_issue,
-                    TreeViewParseIssue::new(diagnostic.message, Some(diagnostic.span)),
+                    TreeViewParseIssue::new(
+                        diagnostic.message,
+                        Some(source.source_span(diagnostic.span)),
+                    ),
                 );
             }
             offset += parsed.consumed;
             continue;
         }
 
-        let (line, next_offset) = physical_line_at(code, offset);
-        let visible = strip_inline_comment_aware(line);
-        if visible.trim().is_empty() {
-            offset = next_offset;
+        // Adjacent quoted nodes can resume within one physical line.
+        if offset >= next_line_offset {
+            let (line, next_offset) = physical_line_at(code, offset);
+            line_end = offset + line.len();
+            next_line_offset = next_offset;
+            #[cfg(test)]
+            TREE_VIEW_BODY_LINE_SCAN_BYTES.with(|bytes| {
+                bytes.set(bytes.get() + next_offset - offset);
+            });
+        }
+        let line = &code[offset..line_end];
+        let starts_physical_line = offset == 0 || code.as_bytes()[offset - 1] == b'\n';
+        if line.is_empty()
+            || (starts_physical_line
+                && (is_tree_view_cleaned_comment_line(line) || line.starts_with("%%")))
+        {
+            offset = next_line_offset;
             continue;
         }
         saw_node = true;
-        node_statements.push(TreeViewNodeStatement {
-            line: visible.to_string(),
-            line_start: offset,
-        });
+        let (parsed, next_offset) = parse_tree_view_node(code, offset, control)?;
         offset = next_offset;
-    }
-
-    let node_lines = node_statements
-        .iter()
-        .map(|statement| statement.line.as_str())
-        .collect::<Vec<_>>();
-    let line_format = TreeViewLineFormat::from_lines(&node_lines);
-    let mut nodes = Vec::new();
-    for (index, statement) in node_statements.into_iter().enumerate() {
-        if index % 128 == 0 {
-            control.checkpoint()?;
-        }
-        match parse_node_line_details(
-            &statement.line,
-            statement.line_start,
-            line_format,
-            diagram_type,
-        ) {
-            Ok(Some(node)) => {
+        match parsed {
+            Ok(node) => {
                 #[cfg(feature = "editor-facts")]
-                if let Some(facts) = editor_facts.as_mut().filter(|_| demand.captures_rich()) {
-                    push_tree_view_node_editor_facts(facts, &node);
+                let mut node = node;
+                #[cfg(feature = "editor-facts")]
+                {
+                    node.span = source.source_span(node.span);
+                    node.selection = source.source_span(node.selection);
+                    for value in [&mut node.css_class, &mut node.icon, &mut node.description]
+                        .into_iter()
+                        .flatten()
+                    {
+                        value.span = source.source_span(value.span);
+                    }
+                    if let Some(facts) = editor_facts.as_mut().filter(|_| demand.captures_rich()) {
+                        push_tree_view_node_editor_facts(facts, &node);
+                    }
                 }
                 nodes.push(node);
             }
-            Ok(None) => {}
-            Err(failure) => {
-                let trimmed = statement.line.trim();
-                let leading = statement
-                    .line
-                    .len()
-                    .saturating_sub(statement.line.trim_start().len());
-                let span = SourceSpan::new(
-                    statement.line_start + leading,
-                    statement.line_start + leading + trimmed.len(),
-                );
+            Err(mut issue) => {
+                issue.span = issue.span.map(|span| source.source_span(span));
                 mark_tree_view_recovery(
                     #[cfg(feature = "editor-facts")]
                     &mut editor_facts,
                     &mut first_issue,
-                    TreeViewParseIssue::new(tree_view_error_message(&failure.error), Some(span)),
+                    issue,
                 );
             }
         }
@@ -477,14 +561,13 @@ fn tree_view_body_start_controlled(
     while offset < code.len() {
         control.checkpoint()?;
         let (line, next_offset) = physical_line_at(code, offset);
-        let visible = strip_inline_comment_aware(line);
-        let trimmed = visible.trim();
-        if trimmed.is_empty() {
+        let trimmed = line.trim();
+        if trimmed.is_empty() || is_tree_view_comment_line(line) {
             offset = next_offset;
             continue;
         }
 
-        let leading = visible.len().saturating_sub(visible.trim_start().len());
+        let leading = line.len().saturating_sub(line.trim_start().len());
         let span = SourceSpan::new(offset + leading, offset + leading + trimmed.len());
         let Some(trailing) = trimmed.strip_prefix("treeView-beta") else {
             return Ok(Err(TreeViewParseIssue::new(
@@ -492,7 +575,7 @@ fn tree_view_body_start_controlled(
                 Some(span),
             )));
         };
-        if !trailing.trim().is_empty() {
+        if !trailing.trim().is_empty() && !trailing.trim_start().starts_with("%%") {
             return Ok(Err(TreeViewParseIssue::new(
                 "unexpected tokens after treeView-beta",
                 Some(span),
@@ -537,7 +620,7 @@ fn tree_view_input_to_model(
     title: Option<String>,
     acc_title: Option<String>,
     acc_descr: Option<String>,
-    nodes: Vec<TreeViewNodeLineDetails>,
+    nodes: Vec<TreeViewNodeDetails>,
     config: &crate::MermaidConfig,
 ) -> std::result::Result<TreeViewDiagramModel, String> {
     let mut arena = vec![ArenaNode {
@@ -631,21 +714,89 @@ fn arena_node_to_model(arena: &[ArenaNode], idx: usize) -> TreeViewNode {
         .unwrap_or_default()
 }
 
-fn parse_node_line_details(
-    line: &str,
-    line_start: usize,
-    line_format: TreeViewLineFormat,
+fn preprocess_tree_view_body(
+    code: &str,
+    body_start: usize,
     diagram_type: &str,
-) -> std::result::Result<Option<TreeViewNodeLineDetails>, TreeViewNodeParseFailure> {
-    let line_view = tree_view_line_view(line, line_format, diagram_type).map_err(|error| {
-        TreeViewNodeParseFailure {
-            error: Box::new(error),
-        }
-    })?;
-    let Some(line_view) = line_view else {
-        return Ok(None);
+    control: &crate::OperationControl,
+) -> crate::OperationControlResult<(TreeViewSource, Vec<TreeViewParseIssue>)> {
+    let lines = code[body_start..].lines().collect::<Vec<_>>();
+    let line_format = TreeViewLineFormat::from_lines(&lines);
+    let mut source = TreeViewSource {
+        text: String::new(),
+        segments: Vec::new(),
+        source_end: code.len(),
     };
-    parse_node_content(line_view, line_start, diagram_type).map(Some)
+    let mut issues = Vec::new();
+    let mut offset = body_start;
+    while offset < code.len() {
+        control.checkpoint()?;
+        let (line, next_offset) = physical_line_at(code, offset);
+        let passthrough = !line_format.box_drawing
+            || line.trim().is_empty()
+            || is_tree_view_comment_line(line)
+            || is_tree_view_metadata_line(line);
+        if passthrough {
+            source.push(line, SourceSpan::new(offset, offset + line.len()));
+        } else {
+            match tree_view_line_view(line, line_format, diagram_type) {
+                Ok(Some(view)) if view.expand_content_tabs => {
+                    let content_start = offset + view.content_offset;
+                    source.push(
+                        &" ".repeat(view.indent),
+                        SourceSpan::new(offset, content_start),
+                    );
+                    let mut start = 0;
+                    for (index, ch) in view.content.char_indices() {
+                        if index % 128 == 0 {
+                            control.checkpoint()?;
+                        }
+                        if ch == '\t' {
+                            source.push(
+                                &view.content[start..index],
+                                SourceSpan::new(content_start + start, content_start + index),
+                            );
+                            source.push(
+                                "    ",
+                                SourceSpan::new(content_start + index, content_start + index + 1),
+                            );
+                            start = index + 1;
+                        }
+                    }
+                    source.push(
+                        &view.content[start..],
+                        SourceSpan::new(content_start + start, content_start + view.content.len()),
+                    );
+                }
+                Ok(Some(_)) => {
+                    source.push(line, SourceSpan::new(offset, offset + line.len()));
+                }
+                Ok(None) => {
+                    offset = next_offset;
+                    continue;
+                }
+                Err(error) => {
+                    let leading = line.len() - line.trim_start().len();
+                    issues.push(TreeViewParseIssue::new(
+                        tree_view_error_message(&error),
+                        Some(SourceSpan::new(
+                            offset + leading,
+                            offset + line.trim_end().len(),
+                        )),
+                    ));
+                    offset = next_offset;
+                    continue;
+                }
+            }
+        }
+        let line_end = offset + line.len();
+        if next_offset > line_end {
+            source.push("\n", SourceSpan::new(line_end, next_offset));
+        }
+        offset = next_offset;
+    }
+    control.checkpoint()?;
+    Ok((source, issues))
 }
 
 impl TreeViewLineFormat {
@@ -758,88 +909,6 @@ fn tree_view_line_view<'a>(
     }))
 }
 
-fn parse_node_content(
-    line_view: TreeViewLineView<'_>,
-    line_start: usize,
-    diagram_type: &str,
-) -> std::result::Result<TreeViewNodeLineDetails, TreeViewNodeParseFailure> {
-    let content = line_view.content;
-    let content_abs = line_start + line_view.content_offset;
-    #[cfg(feature = "editor-facts")]
-    let span = SourceSpan::new(content_abs, content_abs + content.len());
-
-    let (mut raw_name, _name_start, name_end, suffix_start) =
-        if let Some((_, quote @ ('"' | '\''))) = content.char_indices().next() {
-            let mut end = None;
-            for (idx, ch) in content[quote.len_utf8()..].char_indices() {
-                if ch == quote {
-                    end = Some(quote.len_utf8() + idx);
-                    break;
-                }
-            }
-            let Some(end_idx) = end else {
-                return Err(TreeViewNodeParseFailure {
-                    error: Box::new(parse_error(
-                        diagram_type,
-                        "unterminated quoted tree node name",
-                    )),
-                });
-            };
-            (
-                content[quote.len_utf8()..end_idx].to_string(),
-                quote.len_utf8(),
-                end_idx,
-                end_idx + quote.len_utf8(),
-            )
-        } else {
-            let annotation_start =
-                find_next_tree_view_annotation_start(content, 0).unwrap_or(content.len());
-            let name_end = trim_end_byte_index(&content[..annotation_start]);
-            if name_end == 0 {
-                return Err(TreeViewNodeParseFailure {
-                    error: Box::new(parse_error(diagram_type, "expected tree node name")),
-                });
-            }
-            (content[..name_end].to_string(), 0, name_end, name_end)
-        };
-    if line_view.expand_content_tabs {
-        raw_name = raw_name.replace('\t', "    ");
-    }
-
-    let (name, node_type, _selection_end) = normalize_tree_view_node_name(raw_name, name_end);
-    #[cfg(feature = "editor-facts")]
-    let selection = SourceSpan::new(content_abs + _name_start, content_abs + _selection_end);
-
-    let suffix = &content[suffix_start..];
-    let suffix_abs = content_abs + suffix_start;
-    let mut annotations = match parse_tree_view_annotations(suffix, suffix_abs, diagram_type) {
-        Ok(annotations) => annotations,
-        Err(error) => {
-            return Err(TreeViewNodeParseFailure {
-                error: Box::new(error),
-            });
-        }
-    };
-    if line_view.expand_content_tabs
-        && let Some(description) = &mut annotations.description
-    {
-        description.value = description.value.replace('\t', "    ");
-    }
-
-    Ok(TreeViewNodeLineDetails {
-        indent: line_view.indent,
-        name,
-        node_type,
-        css_class: annotations.css_class,
-        icon: annotations.icon,
-        description: annotations.description,
-        #[cfg(feature = "editor-facts")]
-        span,
-        #[cfg(feature = "editor-facts")]
-        selection,
-    })
-}
-
 fn normalize_tree_view_node_name(
     raw_name: String,
     raw_selection_end: usize,
@@ -861,51 +930,180 @@ fn normalize_tree_view_node_name(
     }
 }
 
-fn parse_tree_view_annotations(
-    suffix: &str,
-    _abs_base: usize,
-    diagram_type: &str,
-) -> Result<TreeViewAnnotations> {
-    #[cfg(feature = "editor-facts")]
-    let abs_base = _abs_base;
+fn parse_tree_view_node(
+    code: &str,
+    offset: usize,
+    control: &crate::OperationControl,
+) -> crate::OperationControlResult<(
+    std::result::Result<TreeViewNodeDetails, TreeViewParseIssue>,
+    usize,
+)> {
+    let (indent, content) = split_ascii_indent(&code[offset..]);
+    let mut node_start = code.len() - content.len();
+    // INDENTATION is a grammar token, while NL and comments are hidden. An indent
+    // after a completed node can therefore belong to a name on a later line.
+    loop {
+        control.checkpoint()?;
+        if code.as_bytes().get(node_start) == Some(&b'\n') {
+            node_start += 1;
+            continue;
+        }
+        if code[node_start..].starts_with("%%") {
+            node_start = physical_line_at(code, node_start).1;
+            continue;
+        }
+        if node_start == 0 || code.as_bytes().get(node_start - 1) == Some(&b'\n') {
+            let (line, next_offset) = physical_line_at(code, node_start);
+            if is_tree_view_cleaned_comment_line(line) {
+                node_start = next_offset;
+                continue;
+            }
+        }
+        break;
+    }
+    let content = &code[node_start..];
+    if let Some(common) = parse_langium_common(code, node_start) {
+        return Ok((
+            Err(TreeViewParseIssue::new(
+                "tree view title and accessibility fields must precede every node",
+                Some(common.fact.raw_span),
+            )),
+            node_start + common.consumed,
+        ));
+    }
+    if content.starts_with([' ', '\t']) {
+        return Ok(tree_view_node_failure(
+            code,
+            node_start,
+            node_start,
+            "expected tree node name after indentation",
+        ));
+    }
+    let (raw_name, _name_start, name_end, mut pos) = if let Some(quote @ (b'"' | b'\'')) =
+        content.as_bytes().first().copied()
+    {
+        // QUOTED_NAME has no escapes or line-ending restriction. Only its matching quote
+        // ends the token; comment and metadata spellings inside it are ordinary payload.
+        let mut close = None;
+        for (index, byte) in content.as_bytes()[1..].iter().enumerate() {
+            if index % 128 == 0 {
+                control.checkpoint()?;
+            }
+            if *byte == quote {
+                close = Some(node_start + index + 1);
+                break;
+            }
+        }
+        let Some(close) = close else {
+            return Ok(tree_view_node_failure(
+                code,
+                node_start,
+                node_start,
+                "unterminated quoted tree node name",
+            ));
+        };
+        (
+            code[node_start + 1..close].to_string(),
+            node_start + 1,
+            close,
+            close + 1,
+        )
+    } else {
+        // BARE_NAME excludes these prefixes even when they cannot form an annotation.
+        if content.starts_with(":::") || content.starts_with("icon(") || content.starts_with("##") {
+            return Ok(tree_view_node_failure(
+                code,
+                node_start,
+                node_start,
+                "expected tree node name",
+            ));
+        }
+        let (line, _) = physical_line_at(code, node_start);
+        let annotation_start = find_next_tree_view_annotation_start(line, 0);
+        let end = trim_end_byte_index(&line[..annotation_start.unwrap_or(line.len())]);
+        if end == 0 {
+            return Ok(tree_view_node_failure(
+                code,
+                node_start,
+                node_start,
+                "expected tree node name",
+            ));
+        }
+        (
+            line[..end].to_string(),
+            node_start,
+            node_start + end,
+            // A bare token owns its trailing blanks unless an annotation starts there.
+            node_start
+                + if annotation_start.is_some() {
+                    end
+                } else {
+                    line.len()
+                },
+        )
+    };
+    let (name, node_type, _selection_end) = normalize_tree_view_node_name(raw_name, name_end);
     let mut annotations = TreeViewAnnotations::default();
-    let mut pos = 0usize;
-    while pos < suffix.len() {
-        pos = skip_ascii_whitespace(suffix, pos);
-        if pos >= suffix.len() {
+    let mut _node_end = pos;
+    loop {
+        control.checkpoint()?;
+        let token_start = skip_ascii_whitespace(code, pos);
+        if token_start >= code.len() {
+            break;
+        }
+        if code.as_bytes()[token_start] == b'\n' {
+            if token_start != pos {
+                break;
+            }
+            pos = token_start + 1;
+            continue;
+        }
+        // Hidden ML_COMMENT is recognized between tokens, never within BARE_NAME or DESC.
+        if code[token_start..].starts_with("%%") {
+            if token_start != pos {
+                break;
+            }
+            pos = physical_line_at(code, token_start).1;
+            continue;
+        }
+        if token_start == pos {
             break;
         }
 
-        if suffix[pos..].starts_with(":::") && is_annotation_token_boundary(suffix, pos) {
-            let value_start = skip_ascii_whitespace(suffix, pos + 3);
-            let Some(value_end) = tree_view_class_name_end(suffix, value_start) else {
-                return Err(parse_error(
-                    diagram_type,
+        if code[token_start..].starts_with(":::") {
+            let value_start = skip_ascii_whitespace(code, token_start + 3);
+            let Some(value_end) = tree_view_class_name_end(code, value_start) else {
+                return Ok(tree_view_node_failure(
+                    code,
+                    node_start,
+                    token_start,
                     "expected tree node class after :::",
                 ));
             };
             annotations.css_class = Some(TreeViewSpannedValue {
-                value: suffix[value_start..value_end].to_string(),
+                value: code[value_start..value_end].to_string(),
                 #[cfg(feature = "editor-facts")]
-                span: SourceSpan::new(abs_base + value_start, abs_base + value_end),
+                span: SourceSpan::new(value_start, value_end),
             });
             pos = value_end;
-            continue;
-        }
-
-        if suffix[pos..].starts_with("icon(") && is_annotation_token_boundary(suffix, pos) {
-            let value_start = pos + "icon(".len();
-            let Some(close_rel) = suffix[value_start..].find(')') else {
-                return Err(parse_error(
-                    diagram_type,
+        } else if code[token_start..].starts_with("icon(") {
+            let value_start = token_start + "icon(".len();
+            let (payload_line, _) = physical_line_at(code, value_start);
+            let Some(close_rel) = payload_line.find(')') else {
+                return Ok(tree_view_node_failure(
+                    code,
+                    node_start,
+                    token_start,
                     "unterminated tree node icon annotation",
                 ));
             };
             let value_end = value_start + close_rel;
-            let payload = &suffix[value_start..value_end];
+            let payload = &code[value_start..value_end];
             if !is_tree_view_icon_name(payload) {
-                return Err(parse_error(
-                    diagram_type,
+                return Ok(tree_view_node_failure(
+                    code,
+                    node_start,
+                    token_start,
                     "invalid tree node icon annotation",
                 ));
             }
@@ -917,31 +1115,64 @@ fn parse_tree_view_annotations(
             annotations.icon = Some(TreeViewSpannedValue {
                 value,
                 #[cfg(feature = "editor-facts")]
-                span: SourceSpan::new(abs_base + value_start, abs_base + value_end),
+                span: SourceSpan::new(value_start, value_end),
             });
             pos = value_end + ')'.len_utf8();
-            continue;
-        }
-
-        if suffix[pos..].starts_with("##") && is_annotation_token_boundary(suffix, pos) {
-            let value_start = skip_ascii_whitespace(suffix, pos + 2);
-            let (trimmed_start, trimmed_end) = trim_ascii_span(suffix, value_start, suffix.len());
-            if trimmed_start != trimmed_end {
-                annotations.description = Some(TreeViewSpannedValue {
-                    value: suffix[trimmed_start..trimmed_end].to_string(),
+        } else if code[token_start..].starts_with("##") {
+            let value_start = token_start + 2;
+            let (line, _) = physical_line_at(code, value_start);
+            let end = value_start + line.len();
+            let (trimmed_start, trimmed_end) = trim_ascii_span(code, value_start, end);
+            annotations.description =
+                (trimmed_start != trimmed_end).then(|| TreeViewSpannedValue {
+                    value: code[trimmed_start..trimmed_end].to_string(),
                     #[cfg(feature = "editor-facts")]
-                    span: SourceSpan::new(abs_base + trimmed_start, abs_base + trimmed_end),
+                    span: SourceSpan::new(trimmed_start, trimmed_end),
                 });
-            }
+            pos = end;
+        } else {
             break;
         }
-
-        return Err(parse_error(
-            diagram_type,
-            "unexpected tokens after tree node name",
-        ));
+        _node_end = pos;
     }
-    Ok(annotations)
+
+    Ok((
+        Ok(TreeViewNodeDetails {
+            indent,
+            name,
+            node_type,
+            css_class: annotations.css_class,
+            icon: annotations.icon,
+            description: annotations.description,
+            #[cfg(feature = "editor-facts")]
+            span: SourceSpan::new(node_start, _node_end),
+            #[cfg(feature = "editor-facts")]
+            selection: SourceSpan::new(_name_start, _selection_end),
+        }),
+        pos,
+    ))
+}
+
+fn tree_view_node_failure(
+    code: &str,
+    node_start: usize,
+    error_offset: usize,
+    message: &str,
+) -> (
+    std::result::Result<TreeViewNodeDetails, TreeViewParseIssue>,
+    usize,
+) {
+    let (line, next_offset) = physical_line_at(code, error_offset);
+    (
+        Err(TreeViewParseIssue::new(
+            message,
+            Some(SourceSpan::new(
+                node_start,
+                error_offset + line.trim_end().len(),
+            )),
+        )),
+        next_offset,
+    )
 }
 
 #[cfg(feature = "editor-facts")]
@@ -967,10 +1198,7 @@ fn push_tree_view_spanned_payload_fact(
 }
 
 #[cfg(feature = "editor-facts")]
-fn push_tree_view_node_editor_facts(
-    facts: &mut EditorSemanticFacts,
-    node: &TreeViewNodeLineDetails,
-) {
+fn push_tree_view_node_editor_facts(facts: &mut EditorSemanticFacts, node: &TreeViewNodeDetails) {
     facts.push_expected_syntax(EditorExpectedSyntax::new(
         EditorExpectedSyntaxKind::NodeIdentifier,
         node.selection,
@@ -995,11 +1223,37 @@ fn push_tree_view_node_editor_facts(
 
 fn should_skip_tree_view_box_detection_line(line: &str) -> bool {
     let trimmed = line.trim();
-    trimmed.is_empty() || is_tree_view_comment_line(line) || is_tree_view_decoration_only(line)
+    trimmed.is_empty()
+        || is_tree_view_comment_line(line)
+        || is_tree_view_metadata_line(line)
+        || is_tree_view_decoration_only(line)
+}
+
+fn is_tree_view_metadata_line(line: &str) -> bool {
+    let trimmed = line.trim_start();
+    if let Some(rest) = trimmed.strip_prefix("title") {
+        return rest.starts_with([' ', '\t']);
+    }
+    if let Some(rest) = trimmed.strip_prefix("accTitle") {
+        return rest.trim_start_matches([' ', '\t']).starts_with(':');
+    }
+    if let Some(rest) = trimmed.strip_prefix("accDescr") {
+        return rest.trim_start_matches([' ', '\t']).starts_with(':')
+            || rest.trim_start().starts_with('{');
+    }
+    false
 }
 
 fn is_tree_view_comment_line(line: &str) -> bool {
     line.trim_start().starts_with("%%")
+}
+
+fn is_tree_view_cleaned_comment_line(line: &str) -> bool {
+    // Shared cleanupComments removes only complete non-directive lines with a
+    // nonempty payload. Empty %% is still hidden grammar text, after any indent.
+    line.trim_start()
+        .strip_prefix("%%")
+        .is_some_and(|payload| !payload.is_empty() && !payload.starts_with('{'))
 }
 
 fn infer_tree_view_box_segment_width(content_lines: &[String]) -> usize {
@@ -1161,26 +1415,6 @@ fn trim_end_byte_index(s: &str) -> usize {
     end
 }
 
-fn strip_inline_comment_aware(line: &str) -> &str {
-    let mut in_single = false;
-    let mut in_double = false;
-    let mut iter = line.char_indices().peekable();
-    while let Some((idx, ch)) = iter.next() {
-        match ch {
-            '\'' if !in_double => in_single = !in_single,
-            '"' if !in_single => in_double = !in_double,
-            '%' if !in_single
-                && !in_double
-                && iter.peek().is_some_and(|(_, next)| *next == '%') =>
-            {
-                return &line[..idx];
-            }
-            _ => {}
-        }
-    }
-    line
-}
-
 fn parse_error(diagram_type: &str, message: impl Into<String>) -> Error {
     Error::diagram_parse_fallback(diagram_type.to_string(), message.into())
 }
@@ -1188,6 +1422,503 @@ fn parse_error(diagram_type: &str, message: impl Into<String>) -> Error {
 #[cfg(test)]
 mod semantic_tests {
     use super::*;
+
+    #[test]
+    fn indentation_between_completed_nodes_and_hidden_tokens_belongs_to_the_next_name() {
+        for newline in ["\n", "\r\n"] {
+            for first in ["\"file\"", "'file'", "file :::highlight", "file icon(file)"] {
+                for (gap, level) in [("", 0), (" ", 1), ("   ", 3), ("\t", 1)] {
+                    let text = format!(
+                        "treeView-beta{newline}{first}{gap}%% inline{newline}  %% full-line{newline}{newline}next{newline}"
+                    );
+                    let parsed = crate::SemanticParser::new()
+                        .parse_diagram_sync(&text)
+                        .expect("hidden tokens preserve the next node's indentation");
+                    let crate::SemanticDiagramModel::TreeView(model) = parsed.model else {
+                        panic!("expected TreeView semantics");
+                    };
+                    let next = if level == 0 {
+                        assert_eq!(model.root.children.len(), 2);
+                        &model.root.children[1]
+                    } else {
+                        assert_eq!(model.root.children.len(), 1);
+                        assert_eq!(model.root.children[0].children.len(), 1);
+                        &model.root.children[0].children[0]
+                    };
+                    assert_eq!(next.name, "next");
+                    assert_eq!(next.level, level);
+
+                    #[cfg(feature = "presentation")]
+                    {
+                        let rendered = crate::MermaidEngine::new()
+                            .parse_diagram_for_render_model_sync(
+                                &text,
+                                crate::ParseOptions::strict(),
+                            )
+                            .unwrap()
+                            .unwrap();
+                        let crate::RenderSemanticModel::TreeView(render_model) = rendered.model()
+                        else {
+                            panic!("expected TreeView render model");
+                        };
+                        assert_eq!(
+                            serde_json::to_value(&model).unwrap(),
+                            serde_json::to_value(render_model).unwrap()
+                        );
+                    }
+                    #[cfg(all(feature = "presentation", feature = "editor-facts"))]
+                    {
+                        let facts = crate::MermaidEngine::new()
+                            .parse_editor_semantic_facts_with_type_sync("treeView", &text)
+                            .unwrap()
+                            .unwrap();
+                        assert_eq!(
+                            facts.completeness,
+                            crate::EditorSemanticCompleteness::Complete
+                        );
+                        let symbol = facts
+                            .symbols
+                            .iter()
+                            .find(|symbol| symbol.name == "next")
+                            .unwrap();
+                        let start = text.rfind("next").unwrap();
+                        assert_eq!(symbol.selection, SourceSpan::new(start, start + 4));
+                    }
+                }
+            }
+        }
+
+        for text in [
+            "treeView-beta\n\"file\" \nnext\n",
+            "treeView-beta\n\"file\"\n \nnext\n",
+        ] {
+            let parsed = crate::SemanticParser::new()
+                .parse_diagram_sync(text)
+                .unwrap();
+            let crate::SemanticDiagramModel::TreeView(model) = parsed.model else {
+                panic!("expected TreeView semantics");
+            };
+            assert_eq!(model.root.children[0].children[0].name, "next");
+            assert_eq!(model.root.children[0].children[0].level, 1);
+        }
+        for (text, level) in [
+            ("treeView-beta\n\"file\"\n  %%\nnext\n", 2),
+            ("treeView-beta\n\"file\" %% first\n  %% \nnext\n", 1),
+        ] {
+            let parsed = crate::SemanticParser::new()
+                .parse_diagram_sync(text)
+                .unwrap();
+            let crate::SemanticDiagramModel::TreeView(model) = parsed.model else {
+                panic!("expected TreeView semantics");
+            };
+            assert_eq!(model.root.children.len(), 1);
+            assert_eq!(model.root.children[0].children[0].name, "next");
+            assert_eq!(model.root.children[0].children[0].level, level);
+        }
+        for text in [
+            "treeView-beta\nfile   \nnext\n",
+            "treeView-beta\nfile ## description   \nnext\n",
+        ] {
+            let parsed = crate::SemanticParser::new()
+                .parse_diagram_sync(text)
+                .unwrap();
+            let crate::SemanticDiagramModel::TreeView(model) = parsed.model else {
+                panic!("expected TreeView semantics");
+            };
+            assert_eq!(model.root.children.len(), 2);
+            assert_eq!(model.root.children[0].name, "file");
+            assert_eq!(model.root.children[1].name, "next");
+            assert_eq!(model.root.children[1].level, 0);
+        }
+    }
+
+    #[test]
+    fn dangling_or_repeated_indentation_tokens_reject_missing_names() {
+        for text in [
+            "treeView-beta\n\"file\" %% comment\n",
+            "treeView-beta\n\"file\"   ",
+            "treeView-beta\n\"file\"\n  \n",
+            "treeView-beta\n\"file\" %% comment\n  next\n",
+            "treeView-beta\n\"file\" %% first\n  %%\nnext\n",
+        ] {
+            assert!(
+                crate::SemanticParser::new()
+                    .parse_diagram_sync(text)
+                    .is_err(),
+                "{text:?}"
+            );
+            #[cfg(feature = "presentation")]
+            assert!(
+                crate::MermaidEngine::new()
+                    .parse_diagram_for_render_model_sync(text, crate::ParseOptions::strict())
+                    .is_err(),
+                "{text:?}"
+            );
+        }
+        let parsed = crate::SemanticParser::new()
+            .parse_diagram_sync("treeView-beta\n\"file\"%% comment\n")
+            .expect("a comment without an indentation token is hidden at EOF");
+        let crate::SemanticDiagramModel::TreeView(model) = parsed.model else {
+            panic!("expected TreeView semantics");
+        };
+        assert_eq!(model.root.children.len(), 1);
+        assert_eq!(model.root.children[0].name, "file");
+    }
+
+    #[test]
+    fn pending_indentation_keeps_metadata_terminal_priority_and_recovery_ranges() {
+        for newline in ["\n", "\r\n"] {
+            for first in ["\"file\"", "file :::highlight", "file icon(file)"] {
+                for gap in [" ", " %% comment"] {
+                    for metadata in ["title Late", "accTitle: Late", "accDescr: Late"] {
+                        let text = format!(
+                            "treeView-beta{newline}{first}{gap}{newline}{metadata}{newline}after{newline}"
+                        );
+                        let start = text.find(metadata).unwrap();
+                        let expected = SourceSpan::new(start, start + metadata.len());
+                        let error = crate::SemanticParser::new()
+                            .parse_diagram_sync(&text)
+                            .unwrap_err();
+                        let Error::DiagramParse { diagnostic, .. } = error else {
+                            panic!("expected late metadata diagnostic");
+                        };
+                        assert!(diagnostic.message().contains("must precede every node"));
+                        assert_eq!(diagnostic.span(), Some(expected));
+                        #[cfg(feature = "presentation")]
+                        assert!(
+                            crate::MermaidEngine::new()
+                                .parse_diagram_for_render_model_sync(
+                                    &text,
+                                    crate::ParseOptions::strict()
+                                )
+                                .is_err()
+                        );
+                        #[cfg(all(feature = "presentation", feature = "editor-facts"))]
+                        {
+                            let facts = crate::MermaidEngine::new()
+                                .parse_editor_semantic_facts_with_type_sync("treeView", &text)
+                                .unwrap()
+                                .unwrap();
+                            assert_eq!(
+                                facts.completeness,
+                                crate::EditorSemanticCompleteness::Recovered
+                            );
+                            assert!(
+                                facts
+                                    .diagnostics
+                                    .iter()
+                                    .any(|diagnostic| diagnostic.span == Some(expected))
+                            );
+                            for name in ["file", "after"] {
+                                assert!(facts.symbols.iter().any(|symbol| symbol.name == name));
+                            }
+                            assert!(
+                                !facts
+                                    .symbols
+                                    .iter()
+                                    .any(|symbol| symbol.name.contains("Late"))
+                            );
+                        }
+                    }
+                }
+            }
+        }
+        let parsed = crate::SemanticParser::new()
+            .parse_diagram_sync("treeView-beta\n\"file\" \n\"accTitle: Late\"\nafter\n")
+            .expect("metadata spellings within quoted names remain payloads");
+        let crate::SemanticDiagramModel::TreeView(model) = parsed.model else {
+            panic!("expected TreeView semantics");
+        };
+        assert_eq!(model.root.children[0].children[0].name, "accTitle: Late");
+    }
+
+    #[test]
+    fn quoted_names_reject_annotation_prefixes_as_adjacent_bare_names() {
+        #[cfg(feature = "presentation")]
+        let metadata = SourcePresentationMetadata {
+            diagram_type: "treeView".into(),
+            config: crate::MermaidConfig::default(),
+            effective_config: crate::presentation::SourcePresentationConfig::empty_object(),
+            title: None,
+        };
+        for suffix in [":::9bad", "icon(file)", "## description"] {
+            for tail in ["", "after.txt\n"] {
+                let source = format!("treeView-beta\n\"x\"{suffix}\n{tail}");
+                let start = "treeView-beta\n\"x\"".len();
+                let span = SourceSpan::new(start, start + suffix.len());
+                let errors = [
+                    crate::SemanticParser::new()
+                        .parse_diagram_sync(&source)
+                        .expect_err("annotation prefixes cannot start bare names"),
+                    #[cfg(feature = "presentation")]
+                    parse_tree_view_model_for_render(&source, &metadata)
+                        .expect_err("typed rendering must reject the suffix"),
+                    #[cfg(feature = "compat-json")]
+                    parse_tree_view(&source, &metadata)
+                        .expect_err("compat parsing must reject the suffix"),
+                ];
+                for error in errors {
+                    let Error::DiagramParse { diagnostic, .. } = error else {
+                        panic!("expected a TreeView parse diagnostic");
+                    };
+                    assert!(diagnostic.message().contains("expected tree node name"));
+                    assert_eq!(diagnostic.span(), Some(span));
+                }
+
+                #[cfg(feature = "editor-facts")]
+                {
+                    let outcome = parse_tree_view_input_controlled(
+                        &source,
+                        "treeView",
+                        EditorFactsDemand::Capture,
+                        &crate::OperationControl::new(),
+                    )
+                    .unwrap();
+                    let facts = outcome.snapshot.editor_facts.unwrap();
+                    assert_eq!(
+                        facts.completeness,
+                        crate::EditorSemanticCompleteness::Recovered
+                    );
+                    assert_eq!(facts.diagnostics.len(), 1);
+                    assert_eq!(facts.diagnostics[0].span, Some(span));
+                    let names = facts
+                        .symbols
+                        .iter()
+                        .map(|symbol| symbol.name.as_str())
+                        .collect::<Vec<_>>();
+                    if tail.is_empty() {
+                        assert_eq!(names, ["x"]);
+                    } else {
+                        assert_eq!(names, ["x", "after.txt"]);
+                    }
+                }
+            }
+        }
+
+        let parsed = crate::SemanticParser::new()
+            .parse_diagram_sync("treeView-beta\nfile :::9bad\n")
+            .expect("invalid class markers inside an existing bare name remain literal");
+        let crate::SemanticDiagramModel::TreeView(model) = parsed.model else {
+            panic!("expected TreeView semantics");
+        };
+        assert_eq!(model.root.children[0].name, "file :::9bad");
+        assert!(model.root.children[0].css_class.is_none());
+    }
+
+    #[test]
+    fn box_drawing_eof_mapping_preserves_token_ends_and_eof_insertions() {
+        for newline in ["\n", "\r\n"] {
+            for class_suffix in ["", " :::ready"] {
+                for ending in ["", newline] {
+                    let text =
+                        format!("treeView-beta{newline}├── file.txt{class_suffix}   {ending}");
+                    let (source, issues) = preprocess_tree_view_body(
+                        &text,
+                        "treeView-beta".len() + newline.len(),
+                        "treeView",
+                        &crate::OperationControl::new(),
+                    )
+                    .unwrap();
+                    assert!(issues.is_empty());
+                    let eof = source.text.len();
+                    assert_eq!(
+                        source.source_span(SourceSpan::new(eof, eof)),
+                        SourceSpan::new(text.len(), text.len())
+                    );
+
+                    let crlf_extra = newline.len() - 1;
+                    let mut expected = vec![(
+                        "file.txt",
+                        SourceSpan::new(24 + crlf_extra, 32 + crlf_extra),
+                    )];
+                    if !class_suffix.is_empty() {
+                        expected.push(("ready", SourceSpan::new(36 + crlf_extra, 41 + crlf_extra)));
+                    }
+                    for (payload, span) in &expected {
+                        let start = source.text.find(*payload).unwrap();
+                        assert_eq!(
+                            source.source_span(SourceSpan::new(start, start + payload.len())),
+                            *span
+                        );
+                        assert_eq!(&text[span.start..span.end], *payload);
+                    }
+
+                    #[cfg(feature = "editor-facts")]
+                    {
+                        let outcome = parse_tree_view_input_controlled(
+                            &text,
+                            "treeView",
+                            EditorFactsDemand::Capture,
+                            &crate::OperationControl::new(),
+                        )
+                        .unwrap();
+                        assert!(outcome.first_issue.is_none());
+                        let captures = [
+                            outcome.snapshot.editor_facts.unwrap(),
+                            #[cfg(feature = "presentation")]
+                            crate::MermaidEngine::new()
+                                .parse_editor_semantic_facts_with_type_sync("treeView", &text)
+                                .unwrap()
+                                .unwrap(),
+                        ];
+                        for facts in captures {
+                            assert_eq!(
+                                facts.completeness,
+                                crate::EditorSemanticCompleteness::Complete
+                            );
+                            assert!(facts.diagnostics.is_empty());
+                            for (payload, span) in &expected {
+                                let symbol = facts
+                                    .symbols
+                                    .iter()
+                                    .find(|symbol| symbol.name == *payload)
+                                    .expect("retained box node or class fact");
+                                assert_eq!(symbol.selection, *span);
+                                assert_eq!(
+                                    &text[symbol.selection.start..symbol.selection.end],
+                                    *payload
+                                );
+                                assert!(
+                                    facts
+                                        .expected_syntax
+                                        .iter()
+                                        .any(|syntax| syntax.span == *span)
+                                );
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn adjacent_quoted_nodes_scan_each_physical_line_once() {
+        const HEADER: &str = "treeView-beta\n";
+        for count in [8, 64, 1_024] {
+            for ending in ["", "\n"] {
+                let source = format!("{HEADER}{}{ending}", "\"x\"".repeat(count));
+                TREE_VIEW_BODY_LINE_SCAN_BYTES.with(|bytes| bytes.set(0));
+                let outcome = parse_tree_view_input_controlled(
+                    &source,
+                    "treeView",
+                    #[cfg(feature = "editor-facts")]
+                    EditorFactsDemand::Capture,
+                    &crate::OperationControl::new(),
+                )
+                .unwrap();
+                let scanned_bytes = TREE_VIEW_BODY_LINE_SCAN_BYTES.with(|bytes| bytes.get());
+                assert_eq!(scanned_bytes, source.len() - HEADER.len());
+                assert!(outcome.first_issue.is_none());
+                let snapshot = outcome.snapshot;
+                assert_eq!(snapshot.nodes.len(), count);
+                #[cfg(feature = "editor-facts")]
+                {
+                    let facts = snapshot.editor_facts.as_ref().unwrap();
+                    assert_eq!(
+                        facts.completeness,
+                        crate::EditorSemanticCompleteness::Complete
+                    );
+                    assert!(facts.diagnostics.is_empty());
+                    assert_eq!(facts.symbols.len(), count);
+                    assert_eq!(facts.expected_syntax.len(), count);
+                    for (index, symbol) in facts.symbols.iter().enumerate() {
+                        let start = HEADER.len() + index * "\"x\"".len();
+                        let selection = SourceSpan::new(start + 1, start + 2);
+                        assert_eq!(symbol.name, "x");
+                        assert_eq!(symbol.span, SourceSpan::new(start, start + 3));
+                        assert_eq!(symbol.selection, selection);
+                        assert_eq!(facts.expected_syntax[index].span, selection);
+                        assert_eq!(
+                            facts.expected_syntax[index].kind,
+                            EditorExpectedSyntaxKind::NodeIdentifier
+                        );
+                    }
+                }
+                let model = tree_view_input_to_model(
+                    snapshot.title,
+                    snapshot.acc_title,
+                    snapshot.acc_descr,
+                    snapshot.nodes,
+                    &crate::MermaidConfig::default(),
+                )
+                .unwrap();
+                assert_eq!(model.root.children.len(), count);
+                assert!(model.root.children.iter().all(|node| {
+                    node.name == "x" && node.level == 0 && node.children.is_empty()
+                }));
+            }
+        }
+    }
+
+    #[test]
+    fn canonical_tree_preserves_percent_tokens_and_normalizes_multiline_names() {
+        for newline in ["\n", "\r\n"] {
+            let source = [
+                "treeView-beta",
+                "file%%name.txt",
+                "file.txt ## progress100%%complete",
+                "\"alpha",
+                "beta\" :::highlight icon(file) ## multiline%%description",
+                "after.txt",
+                "",
+            ]
+            .join(newline);
+            let parsed = crate::SemanticParser::new()
+                .parse_diagram_sync(&source)
+                .expect("canonical TreeView tokens");
+            let crate::SemanticDiagramModel::TreeView(model) = parsed.model else {
+                panic!("expected TreeView semantics");
+            };
+            let nodes = &model.root.children;
+            assert_eq!(nodes.len(), 4);
+            assert_eq!(nodes[0].name, "file%%name.txt");
+            assert_eq!(
+                nodes[1].description.as_deref(),
+                Some("progress100%%complete")
+            );
+            assert_eq!(nodes[2].name, "alpha\nbeta");
+            assert_eq!(nodes[2].css_class.as_deref(), Some("highlight"));
+            assert_eq!(nodes[2].icon.as_deref(), Some("file"));
+            assert_eq!(
+                nodes[2].description.as_deref(),
+                Some("multiline%%description")
+            );
+            assert_eq!(nodes[3].name, "after.txt");
+
+            #[cfg(feature = "presentation")]
+            {
+                let full = crate::MermaidEngine::new()
+                    .parse_diagram_for_render_model_sync(&source, crate::ParseOptions::strict())
+                    .unwrap()
+                    .expect("full TreeView parse");
+                let crate::RenderSemanticModel::TreeView(render_model) = full.model() else {
+                    panic!("expected typed TreeView render model");
+                };
+                assert_eq!(
+                    serde_json::to_value(&model).unwrap(),
+                    serde_json::to_value(render_model).unwrap()
+                );
+            }
+            #[cfg(feature = "compat-json")]
+            {
+                let metadata = SourcePresentationMetadata {
+                    diagram_type: "treeView".into(),
+                    config: crate::MermaidConfig::default(),
+                    effective_config: crate::presentation::SourcePresentationConfig::empty_object(),
+                    title: None,
+                };
+                let compat = parse_tree_view(&source, &metadata).expect("compat TreeView tokens");
+                let typed = parse_tree_view_model_for_render(&source, &metadata)
+                    .expect("family TreeView render parse");
+                assert_eq!(compat["root"], serde_json::to_value(&model.root).unwrap());
+                assert_eq!(
+                    serde_json::to_value(&model).unwrap(),
+                    serde_json::to_value(typed).unwrap()
+                );
+            }
+        }
+    }
 
     #[test]
     fn canonical_capture_preserves_spanless_model_build_recovery() {
@@ -1404,6 +2135,285 @@ plain file.ts ## entry point
         assert_eq!(nodes[5]["cssClass"], json!("important"));
         assert_eq!(nodes[6]["name"], json!("plain file.ts"));
         assert_eq!(nodes[6]["description"], json!("entry point"));
+    }
+
+    #[test]
+    fn percent_payloads_and_hidden_comments_follow_tree_view_token_boundaries() {
+        let source = concat!(
+            "treeView-beta%% header comment\n",
+            "file%%name.txt\n",
+            "file.txt %% literal suffix\n",
+            "%% full-line comment\n",
+            "\"file%%name.txt\"%% hidden quoted comment\n",
+            "class.txt :::highlight%% hidden class comment\n",
+            "icon.txt icon(file) %% hidden icon comment\n",
+            "desc.txt ## progress100%%complete\n",
+            "\"continued\"%% hidden before annotation\n",
+            "  :::highlight icon() ## final%%text\n",
+        );
+        let semantic = parse_tree_view(source, &meta()).expect("terminal-aware comments");
+        let nodes = semantic["nodes"].as_array().unwrap();
+        assert_eq!(nodes.len(), 8);
+        assert_eq!(nodes[1]["name"], "file%%name.txt");
+        assert_eq!(nodes[2]["name"], "file.txt %% literal suffix");
+        assert_eq!(nodes[3]["name"], "file%%name.txt");
+        assert_eq!(nodes[4]["name"], "class.txt");
+        assert_eq!(nodes[4]["cssClass"], "highlight");
+        assert_eq!(nodes[5]["name"], "icon.txt");
+        assert_eq!(nodes[5]["icon"], "file");
+        assert_eq!(nodes[6]["description"], "progress100%%complete");
+        assert_eq!(nodes[7]["name"], "continued");
+        assert_eq!(nodes[7]["cssClass"], "highlight");
+        assert_eq!(nodes[7]["icon"], "none");
+        assert_eq!(nodes[7]["description"], "final%%text");
+
+        #[cfg(feature = "editor-facts")]
+        {
+            let (combined, facts) =
+                crate::family::test_support::into_result(parse_tree_view_json_and_editor_facts(
+                    source,
+                    &meta(),
+                    &crate::OperationControl::new(),
+                ))
+                .unwrap();
+            assert_eq!(combined, semantic);
+            assert_eq!(
+                facts.completeness,
+                crate::EditorSemanticCompleteness::Complete
+            );
+            assert!(facts.diagnostics.is_empty());
+            for payload in [
+                "file.txt %% literal suffix",
+                "progress100%%complete",
+                "final%%text",
+            ] {
+                let start = source.find(payload).unwrap();
+                assert!(facts.symbols.iter().any(|symbol| {
+                    symbol.name == payload
+                        && symbol.selection == SourceSpan::new(start, start + payload.len())
+                }));
+            }
+            assert!(
+                facts
+                    .symbols
+                    .iter()
+                    .all(|symbol| !symbol.name.contains("hidden"))
+            );
+        }
+    }
+
+    #[test]
+    fn multiline_quoted_names_keep_normalized_values_and_authored_fact_ranges() {
+        for newline in ["\n", "\r\n"] {
+            for quote in ['"', '\''] {
+                let source = format!(
+                    "treeView-beta{newline}{quote}alpha{newline}title is name{newline}beta/{quote} :::highlight icon(file) ## progress100%%complete{newline}after.txt{newline}"
+                );
+                let semantic = parse_tree_view(&source, &meta()).expect("multiline quoted name");
+                let node = &semantic["nodes"][1];
+                assert_eq!(semantic["nodes"].as_array().unwrap().len(), 3);
+                assert_eq!(node["name"], "alpha\ntitle is name\nbeta");
+                assert_eq!(node["nodeType"], "directory");
+                assert_eq!(node["cssClass"], "highlight");
+                assert_eq!(node["icon"], "file");
+                assert_eq!(node["description"], "progress100%%complete");
+                assert_eq!(semantic["nodes"][2]["name"], "after.txt");
+
+                #[cfg(feature = "editor-facts")]
+                {
+                    let (combined, family_facts) = crate::family::test_support::into_result(
+                        parse_tree_view_json_and_editor_facts(
+                            &source,
+                            &meta(),
+                            &crate::OperationControl::new(),
+                        ),
+                    )
+                    .unwrap();
+                    assert_eq!(combined, semantic);
+                    let public_facts = MermaidEngine::new()
+                        .parse_editor_semantic_facts_with_type_sync("treeView", &source)
+                        .unwrap()
+                        .unwrap();
+                    for facts in [family_facts, public_facts] {
+                        assert_eq!(
+                            facts.completeness,
+                            crate::EditorSemanticCompleteness::Complete
+                        );
+                        assert!(facts.diagnostics.is_empty());
+                        let start = source.find("alpha").unwrap();
+                        let end = source.find("beta/").unwrap() + "beta".len();
+                        let selection = SourceSpan::new(start, end);
+                        let symbol = facts
+                            .symbols
+                            .iter()
+                            .find(|symbol| symbol.name == "alpha\ntitle is name\nbeta")
+                            .expect("one multiline directory symbol");
+                        assert_eq!(symbol.selection, selection);
+                        assert_eq!(
+                            &source[selection.start..selection.end],
+                            format!("alpha{newline}title is name{newline}beta")
+                        );
+                        assert!(facts.expected_syntax.iter().any(|expected| {
+                            expected.kind == EditorExpectedSyntaxKind::NodeIdentifier
+                                && expected.span == selection
+                        }));
+                        for payload in ["highlight", "progress100%%complete", "after.txt"] {
+                            let start = source.find(payload).unwrap();
+                            assert!(facts.symbols.iter().any(|symbol| {
+                                symbol.name == payload
+                                    && symbol.selection
+                                        == SourceSpan::new(start, start + payload.len())
+                            }));
+                        }
+                        let start = source.find("icon(file)").unwrap() + "icon(".len();
+                        assert!(facts.symbols.iter().any(|symbol| {
+                            symbol.name == "file"
+                                && symbol.selection == SourceSpan::new(start, start + "file".len())
+                        }));
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn multiline_box_names_map_expanded_tabs_and_annotations_to_raw_source() {
+        for newline in ["\n", "\r\n"] {
+            let source = [
+                "treeView-beta",
+                "root/",
+                "├── \"alpha\tone",
+                "│   └── βeta\tend\" :::highlight icon(file) ## progress\t100%%complete",
+                "└── after.txt icon()",
+                "",
+            ]
+            .join(newline);
+            let semantic = parse_tree_view(&source, &meta()).expect("multiline box name");
+            let nodes = semantic["nodes"].as_array().unwrap();
+            assert_eq!(nodes.len(), 4);
+            assert_eq!(nodes[2]["name"], "alpha    one\n        βeta    end");
+            assert_eq!(nodes[2]["level"], 4);
+            assert_eq!(nodes[2]["cssClass"], "highlight");
+            assert_eq!(nodes[2]["icon"], "file");
+            assert_eq!(nodes[2]["description"], "progress    100%%complete");
+            assert_eq!(nodes[3]["name"], "after.txt");
+            assert_eq!(nodes[3]["icon"], "none");
+
+            #[cfg(feature = "editor-facts")]
+            {
+                let (combined, family_facts) = crate::family::test_support::into_result(
+                    parse_tree_view_json_and_editor_facts(
+                        &source,
+                        &meta(),
+                        &crate::OperationControl::new(),
+                    ),
+                )
+                .unwrap();
+                assert_eq!(combined, semantic);
+                let public_facts = MermaidEngine::new()
+                    .parse_editor_semantic_facts_with_type_sync("treeView", &source)
+                    .unwrap()
+                    .unwrap();
+                for facts in [family_facts, public_facts] {
+                    assert_eq!(
+                        facts.completeness,
+                        crate::EditorSemanticCompleteness::Complete
+                    );
+                    assert!(facts.diagnostics.is_empty());
+                    let start = source.find("alpha").unwrap();
+                    let end = source.find("end\"").unwrap() + "end".len();
+                    assert!(facts.symbols.iter().any(|symbol| {
+                        symbol.name == "alpha    one\n        βeta    end"
+                            && symbol.selection == SourceSpan::new(start, end)
+                    }));
+                    for (raw, value) in [
+                        ("highlight", "highlight"),
+                        ("progress\t100%%complete", "progress    100%%complete"),
+                        ("after.txt", "after.txt"),
+                    ] {
+                        let start = source.find(raw).unwrap();
+                        assert!(facts.symbols.iter().any(|symbol| {
+                            symbol.name == value
+                                && symbol.selection == SourceSpan::new(start, start + raw.len())
+                        }));
+                    }
+                    let start = source.find("icon(file)").unwrap() + "icon(".len();
+                    assert!(facts.symbols.iter().any(|symbol| {
+                        symbol.name == "file"
+                            && symbol.selection == SourceSpan::new(start, start + "file".len())
+                    }));
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn unmatched_quoted_name_preserves_later_nodes_and_the_authored_error_range() {
+        for newline in ["\n", "\r\n"] {
+            let source = [
+                "treeView-beta",
+                "root/",
+                "  \"unfinished",
+                "  after.txt :::ready icon(file) ## retained%%payload",
+                "next.txt",
+                "",
+            ]
+            .join(newline);
+            let error = parse_tree_view(&source, &meta()).expect_err("truly unmatched quote");
+            assert!(
+                error
+                    .to_string()
+                    .contains("unterminated quoted tree node name")
+            );
+            let start = source.find("\"unfinished").unwrap();
+            let span = SourceSpan::new(start, start + "\"unfinished".len());
+            let Error::DiagramParse { diagnostic, .. } = error else {
+                panic!("expected a TreeView diagnostic");
+            };
+            assert_eq!(diagnostic.span(), Some(span));
+            let error = crate::SemanticParser::new()
+                .parse_diagram_sync(&source)
+                .expect_err("canonical unmatched quote");
+            let Error::DiagramParse { diagnostic, .. } = error else {
+                panic!("expected a canonical TreeView diagnostic");
+            };
+            assert_eq!(diagnostic.span(), Some(span));
+
+            #[cfg(feature = "editor-facts")]
+            {
+                let facts = crate::family::test_support::editor_facts(
+                    parse_tree_view_json_and_editor_facts,
+                    &source,
+                    &meta(),
+                );
+                assert_eq!(
+                    facts.completeness,
+                    crate::EditorSemanticCompleteness::Recovered
+                );
+                assert!(facts.diagnostics.iter().any(|diagnostic| {
+                    diagnostic
+                        .message
+                        .contains("unterminated quoted tree node name")
+                        && diagnostic.span == Some(span)
+                }));
+                for payload in [
+                    "root",
+                    "after.txt",
+                    "ready",
+                    "file",
+                    "retained%%payload",
+                    "next.txt",
+                ] {
+                    assert!(facts.symbols.iter().any(|symbol| symbol.name == payload));
+                }
+                assert!(
+                    facts
+                        .symbols
+                        .iter()
+                        .all(|symbol| !symbol.name.contains("unfinished"))
+                );
+            }
+        }
     }
 
     #[test]

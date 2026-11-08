@@ -121,6 +121,17 @@
           "to_cluster": null
         }
       ],
+      "frames": [
+        {
+          "height": 91.0,
+          "id": "1",
+          "kind": "loop",
+          "label": "Every minute",
+          "width": 259.0,
+          "x": 64.0,
+          "y": 130.0
+        }
+      ],
       "nodes": [
         {
           "height": 74.0,

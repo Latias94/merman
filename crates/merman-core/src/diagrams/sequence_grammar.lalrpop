@@ -79,17 +79,19 @@ extern {
 }
 
 pub Actions: ActionList = {
-  <_n:Newlines> "sequenceDiagram" <_n2:Newlines> <a:Statements> => a
+  <_n:Newlines> "sequenceDiagram" <a:Statements> => a
 };
 
 Statements: ActionList = {
   => ActionList::default(),
-  <s:Statement> <rest:StatementRest> =>? arena.concat(s, rest, control),
+  Newline <rest:Statements> => rest,
+  <b:CompletedBlock> <rest:Statements> =>? arena.concat(b, rest, control),
+  <s:LineStatement> <rest:StatementRest> =>? arena.concat(s, rest, control),
 };
 
 StatementRest: ActionList = {
-  <_n:Newlines1> <s:Statement> <rest:StatementRest> =>? arena.concat(s, rest, control),
-  Newlines => ActionList::default(),
+  => ActionList::default(),
+  Newline <rest:Statements> => rest,
 };
 
 Newlines: () = {
@@ -101,14 +103,12 @@ Newlines1: () = {
   Newline Newlines => (),
 };
 
-Statement: ActionList = {
+// Ordinary statements need a line boundary; a block is complete at its end token.
+LineStatement: ActionList = {
   <p:ParticipantStatement> =>? arena.push_actions(p, control),
   <c:CreateStatement> =>? arena.push_actions(c, control),
-  <d:DestroyStatement> =>? arena.push_actions(d, control),
-  <b:BlockStatement> => b,
   <s:SignalStatement> =>? arena.push_actions(s, control),
   <n:NoteStatement> =>? arena.push_actions(n, control),
-  <b:BoxStatement> => b,
   <l:LinksStatement> =>? arena.push_actions(l, control),
   <l:LinkStatement> =>? arena.push_actions(l, control),
   <p:PropertiesStatement> =>? arena.push_actions(p, control),
@@ -121,10 +121,16 @@ Statement: ActionList = {
   <de:DeactivateStatement> =>? arena.push_actions(vec![de], control),
 };
 
+CompletedBlock: ActionList = {
+  <b:BlockStatement> => b,
+  <b:BoxStatement> => b,
+};
+
 Doc: ActionList = {
   => ActionList::default(),
   Newline <rest:Doc> => rest,
-  <s:Statement> Newline <rest:Doc> =>? arena.concat(s, rest, control),
+  <b:CompletedBlock> <rest:Doc> =>? arena.concat(b, rest, control),
+  <s:LineStatement> Newline <rest:Doc> =>? arena.concat(s, rest, control),
 };
 
 TitleStatement: String = {
@@ -161,6 +167,7 @@ ParticipantStatement: Vec<Action> = {
   <d:ParticipantDecl> => vec![
     Action::AddParticipant { id: d.0, description: d.1, draw: d.2, config: d.3 },
   ],
+  <d:DestroyStatement> => d,
 };
 
 CreateStatement: Vec<Action> = {

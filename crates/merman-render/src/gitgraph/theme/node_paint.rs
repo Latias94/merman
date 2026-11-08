@@ -163,6 +163,7 @@ impl GitGraphNodePaintPlan {
         &'a self,
         layout: &'a GitGraphDiagramLayout,
         branches: &'a HashMap<&'a str, i64>,
+        binding: &'a crate::gitgraph::GitGraphCssBinding,
         palette_fill_masked: [[bool; GITGRAPH_PALETTE_SLOT_COUNT]; 2],
         palette_stroke_masked: [[bool; GITGRAPH_PALETTE_SLOT_COUNT]; 2],
         css: &'a GitGraphNodePaintCss,
@@ -179,6 +180,7 @@ impl GitGraphNodePaintPlan {
             plan: self,
             layout,
             branches,
+            binding,
             palette_fill_masked,
             palette_stroke_masked,
             css,
@@ -252,7 +254,7 @@ pub(crate) struct GitGraphNodePaintCss {
     pub(crate) state: u8,
     pub(crate) tag: u8,
     // Branch background fill, background stroke, and branch text fill.
-    pub(crate) branches: [[u8; GITGRAPH_PALETTE_SLOT_COUNT]; 3],
+    pub(crate) branches: [BTreeMap<usize, u8>; 3],
     // Commit and highlight outer fill/stroke remain independent under palette overrides.
     pub(crate) commits: [[u8; GITGRAPH_PALETTE_SLOT_COUNT]; 2],
     pub(crate) outers: [[u8; GITGRAPH_PALETTE_SLOT_COUNT]; 2],
@@ -269,7 +271,7 @@ impl Default for GitGraphNodePaintCss {
             complete: false,
             state: 0,
             tag: 0,
-            branches: [[0; GITGRAPH_PALETTE_SLOT_COUNT]; 3],
+            branches: std::array::from_fn(|_| BTreeMap::new()),
             commits: [[0; GITGRAPH_PALETTE_SLOT_COUNT]; 2],
             outers: [[0; GITGRAPH_PALETTE_SLOT_COUNT]; 2],
             arrows: [0; GITGRAPH_PALETTE_SLOT_COUNT],
@@ -295,6 +297,7 @@ pub(crate) struct GitGraphNodePaintReceipt<'a> {
     plan: &'a GitGraphNodePaintPlan,
     layout: &'a GitGraphDiagramLayout,
     branches: &'a HashMap<&'a str, i64>,
+    binding: &'a crate::gitgraph::GitGraphCssBinding,
     palette_fill_masked: [[bool; GITGRAPH_PALETTE_SLOT_COUNT]; 2],
     palette_stroke_masked: [[bool; GITGRAPH_PALETTE_SLOT_COUNT]; 2],
     css: &'a GitGraphNodePaintCss,
@@ -319,28 +322,34 @@ impl GitGraphNodePaintReceipt<'_> {
         self.facts.nodes_visible = true;
     }
 
-    pub(crate) fn record_branch(&mut self, index: usize, slot: usize) {
-        self.valid &= self.layout.show_branches
-            && index == self.next_branch
-            && self
-                .layout
-                .branches
-                .get(index)
-                .is_some_and(|branch| palette_slot(branch.index) == slot);
-        if slot < GITGRAPH_PALETTE_SLOT_COUNT {
-            let fill = if self.palette_fill_masked[1][slot] {
+    pub(crate) fn record_branch(&mut self, index: usize, slot: Option<usize>) {
+        self.valid &=
+            self.layout.show_branches
+                && index == self.next_branch
+                && self.layout.branches.get(index).is_some_and(|branch| {
+                    self.binding.color_indices.branch_slot(branch.index) == slot
+                });
+        if let Some(slot) = slot {
+            let fill = if self.palette_fill_masked[1]
+                .get(slot)
+                .copied()
+                .unwrap_or(false)
+            {
                 0
             } else {
-                self.css.branches[0][slot]
+                self.css.branches[0].get(&slot).copied().unwrap_or(0)
             };
-            self.consume(fill | self.css.branches[1][slot] | self.css.branches[2][slot]);
+            self.consume(
+                fill | self.css.branches[1].get(&slot).copied().unwrap_or(0)
+                    | self.css.branches[2].get(&slot).copied().unwrap_or(0),
+            );
         }
         self.next_branch += 1;
     }
 
     fn commit_slot_matches(&self, index: usize, slot: usize) -> bool {
         self.layout.commits.get(index).is_some_and(|commit| {
-            palette_slot(
+            self.binding.color_indices.commit_slot(
                 self.branches
                     .get(commit.branch.as_str())
                     .copied()
@@ -554,22 +563,28 @@ mod tests {
                 },
             );
             css.tag = css.source(2, "#123456") | stroke;
-            css.branches[2][0] = stroke;
+            css.branches[2].insert(0, stroke);
             css.arrows[0] = stroke;
             css.commit_label = stroke;
             if case == "missing-source" {
                 css.values[4] = None;
             }
             css.complete = case != "missing-css";
+            let binding = crate::gitgraph::GitGraphCssBinding::resolve(
+                &serde_json::json!({}),
+                "sans-serif",
+                "16px",
+            );
             let mut receipt = plan.begin_terminal_receipt(
                 &layout,
                 &branches,
+                &binding,
                 [[false; GITGRAPH_PALETTE_SLOT_COUNT]; 2],
                 [[false; GITGRAPH_PALETTE_SLOT_COUNT]; 2],
                 &css,
             );
             if case != "missing-branch" {
-                receipt.record_branch(usize::from(case == "wrong-branch"), 0);
+                receipt.record_branch(usize::from(case == "wrong-branch"), Some(0));
             }
             if case != "missing-arrow" {
                 receipt.record_arrow(usize::from(case == "wrong-arrow"), 0);

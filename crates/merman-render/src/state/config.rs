@@ -148,6 +148,11 @@ impl<'a> StateConfigView<'a> {
     ) -> StateRenderSettings {
         let html_labels = compatibility.html_labels();
         StateRenderSettings {
+            use_max_width: self
+                .state_config
+                .get("useMaxWidth")
+                .and_then(Value::as_bool)
+                .unwrap_or(true),
             title_top_margin: self.title_top_margin(),
             diagram_look: compatibility.diagram_look().to_string(),
             hand_drawn_seed: self
@@ -258,6 +263,7 @@ pub(super) struct StateLayoutSettings {
 }
 
 pub(crate) struct StateRenderSettings {
+    pub(crate) use_max_width: bool,
     pub(crate) title_top_margin: f64,
     pub(crate) diagram_look: String,
     pub(crate) hand_drawn_seed: f64,

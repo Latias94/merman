@@ -2,6 +2,48 @@
   "diagramType": "sequence",
   "layout": {
     "SequenceDiagram": {
+      "activations": [
+        {
+          "actor": "API",
+          "depth": 0.0,
+          "height": 664.0,
+          "width": 10.0,
+          "x": 305.0,
+          "y": 120.0
+        },
+        {
+          "actor": "DB",
+          "depth": 0.0,
+          "height": 44.0,
+          "width": 10.0,
+          "x": 615.0,
+          "y": 244.0
+        },
+        {
+          "actor": "DB",
+          "depth": 0.0,
+          "height": 44.0,
+          "width": 10.0,
+          "x": 615.0,
+          "y": 502.0
+        },
+        {
+          "actor": "API",
+          "depth": 0.0,
+          "height": 138.0,
+          "width": 10.0,
+          "x": 305.0,
+          "y": 889.0
+        },
+        {
+          "actor": "DB",
+          "depth": 0.0,
+          "height": 44.0,
+          "width": 10.0,
+          "x": 615.0,
+          "y": 937.0
+        }
+      ],
       "bounds": {
         "max_x": 745.0,
         "max_y": 1132.0,
@@ -504,6 +546,40 @@
           "stroke_dasharray": null,
           "to": "actor-bottom-DB",
           "to_cluster": null
+        }
+      ],
+      "frames": [
+        {
+          "height": 496.0,
+          "id": "7",
+          "kind": "alt",
+          "label": "User found",
+          "sections": [
+            {
+              "id": "18",
+              "label": "User not found",
+              "y": 708.0
+            }
+          ],
+          "width": 591.0,
+          "x": 54.0,
+          "y": 298.0
+        },
+        {
+          "height": 274.0,
+          "id": "9",
+          "kind": "alt",
+          "label": "Password matches",
+          "sections": [
+            {
+              "id": "15",
+              "label": "Password wrong",
+              "y": 607.0
+            }
+          ],
+          "width": 571.0,
+          "x": 64.0,
+          "y": 419.0
         }
       ],
       "nodes": [

@@ -211,6 +211,34 @@
           "to_cluster": null
         }
       ],
+      "frames": [
+        {
+          "height": 416.0,
+          "id": "1",
+          "kind": "critical",
+          "label": "acquire lock",
+          "sections": [
+            {
+              "id": "2",
+              "label": "granted",
+              "y": 180.0
+            },
+            {
+              "id": "5",
+              "label": "denied",
+              "y": 320.0
+            },
+            {
+              "id": "8",
+              "label": "unknown",
+              "y": 460.0
+            }
+          ],
+          "width": 469.0,
+          "x": -9.0,
+          "y": 130.0
+        }
+      ],
       "nodes": [
         {
           "height": 74.0,

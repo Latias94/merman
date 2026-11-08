@@ -116,6 +116,15 @@ impl TerminalFonts {
         self.line_sizes.push(self.stack[0].1.font_size);
     }
 
+    pub(super) fn line_height_px(&self, index: usize, base: &TextStyle) -> f64 {
+        self.line_sizes
+            .get(index)
+            .copied()
+            .unwrap_or(base.font_size)
+            .max(1.0)
+            * 1.5
+    }
+
     pub(super) fn measure<M: TextMeasurer + ?Sized>(
         &self,
         measurer: &M,
@@ -132,13 +141,7 @@ impl TerminalFonts {
         let line_count = runs_by_line.len().max(explicit_line_boxes);
         let height = (0..line_count)
             .map(|index| {
-                let strut = self
-                    .line_sizes
-                    .get(index)
-                    .copied()
-                    .unwrap_or(base.font_size)
-                    .max(1.0)
-                    * 1.5;
+                let strut = self.line_height_px(index, base);
                 runs_by_line
                     .get(index)
                     .into_iter()

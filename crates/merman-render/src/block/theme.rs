@@ -1357,20 +1357,23 @@ mod tests {
             assert!(evidence.not_applicable_mechanisms().contains(&palette_key));
             assert!(evidence.residuals().is_empty());
 
-            // Empty fragments preserve the earlier source, just as the terminal writer does.
+            // Empty visible fragments preserve the earlier source, as the terminal writer does.
             let fragment = merman_model::families::block::BlockNode {
                 id: "A".to_string(),
                 block_type: "na".to_string(),
                 ..Default::default()
             };
+            let fragment_index = model.blocks_flat.len();
             model.blocks_flat.push(fragment);
+            let root = model.root.unwrap();
+            model.blocks_flat[root].children.push(fragment_index);
             let plan =
                 resolve_node_paint(Some(&theme), &config, &model, &layout, &work_meter).unwrap();
             let evidence = collect_evidence(&theme, |evidence| plan.record_evidence(evidence));
             assert!(evidence.not_applicable_mechanisms().contains(&palette_key));
             assert!(evidence.residuals().is_empty());
 
-            // A later non-empty list replaces the corresponding source list.
+            // A later visible non-empty list replaces the corresponding source list.
             let fragment = merman_model::families::block::BlockNode {
                 id: "A".to_string(),
                 block_type: "na".to_string(),
@@ -1378,7 +1381,10 @@ mod tests {
                 classes: vec!["unowned".to_string()],
                 ..Default::default()
             };
+            let fragment_index = model.blocks_flat.len();
             model.blocks_flat.push(fragment);
+            let root = model.root.unwrap();
+            model.blocks_flat[root].children.push(fragment_index);
             let plan =
                 resolve_node_paint(Some(&theme), &config, &model, &layout, &work_meter).unwrap();
             let evidence = collect_evidence(&theme, |evidence| plan.record_evidence(evidence));

@@ -151,6 +151,29 @@
           "to_cluster": null
         }
       ],
+      "frames": [
+        {
+          "height": 363.0,
+          "id": "0",
+          "kind": "critical",
+          "label": "Establish a connection to the DB",
+          "sections": [
+            {
+              "id": "2",
+              "label": "Network timeout",
+              "y": 180.0
+            },
+            {
+              "id": "4",
+              "label": "Credentials rejected",
+              "y": 301.0
+            }
+          ],
+          "width": 295.0,
+          "x": -9.0,
+          "y": 84.0
+        }
+      ],
       "nodes": [
         {
           "height": 74.0,

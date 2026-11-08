@@ -1,16 +1,11 @@
 use super::super::*;
 use super::SequenceEmitCheckpoints;
 use super::activation::{SequenceActivationPlan, render_sequence_activation_group};
-use super::blocks::{
-    SequenceBlockRenderContext, SimpleSequenceBlock, render_critical_sequence_block,
-    render_sectioned_sequence_block, render_simple_sequence_block,
-};
+use super::blocks::{SequenceBlockRenderContext, render_sequence_block};
 use super::model::*;
 use super::notes::{SequenceNoteRenderContext, render_sequence_note};
 use super::settings::SequenceRenderSettings;
-use crate::sequence::{
-    SequenceBlock, SequenceStaticRectThemeReceipt, collect_sequence_blocks, frame_x_from_actors,
-};
+use crate::sequence::{SequenceFramePlacement, SequenceStaticRectThemeReceipt};
 use rustc_hash::FxHashMap;
 
 pub(super) struct SequenceInteractionRenderContext<'a> {
@@ -22,9 +17,9 @@ pub(super) struct SequenceInteractionRenderContext<'a> {
     pub(super) shadow_evidence: &'a crate::diagram_theme::SvgShadowEvidenceRecorder,
     pub(super) model: &'a SequenceSvgModel,
     pub(super) block_widths_by_id: &'a FxHashMap<String, f64>,
-    pub(super) block_layouts_by_id: &'a FxHashMap<String, crate::model::SequenceBlockLayout>,
+    pub(super) frames: &'a [crate::model::SequenceFrameLayout],
+    pub(super) frame_placements: &'a [Option<SequenceFramePlacement>],
     pub(super) nodes_by_id: &'a FxHashMap<&'a str, &'a LayoutNode>,
-    pub(super) edges_by_id: &'a FxHashMap<&'a str, &'a crate::model::LayoutEdge>,
     pub(super) math_sidecar: &'a crate::sequence::SequenceMathSidecar,
     pub(super) wrapped_note_text: &'a crate::sequence::SequencePreparedNoteLabels,
     pub(super) sanitize_config: &'a merman_model::presentation::PresentationConfig,
@@ -44,42 +39,15 @@ pub(super) fn render_sequence_interaction_overlays(
     note_theme_receipt: &mut SequenceStaticRectThemeReceipt,
     activation_theme_receipt: &mut SequenceStaticRectThemeReceipt,
 ) -> Result<()> {
-    let Some((frame_x1, frame_x2)) =
-        frame_x_from_actors(ctx.model, ctx.nodes_by_id, ctx.checkpoints)?
-    else {
-        return Ok(());
-    };
-
-    let mut actor_nodes_by_id: FxHashMap<&str, &LayoutNode> =
-        FxHashMap::with_capacity_and_hasher(ctx.model.actors.len(), Default::default());
-    for (actor_index, actor_id) in ctx.model.actor_order.iter().enumerate() {
-        ctx.checkpoints.checkpoint_loop(actor_index)?;
-        let node_id = format!("actor-top-{actor_id}");
-        let Some(n) = ctx.nodes_by_id.get(node_id.as_str()).copied() else {
-            continue;
-        };
-        actor_nodes_by_id.insert(actor_id.as_str(), n);
-    }
-
-    let (blocks_by_end_index, blocks) = collect_sequence_blocks(
-        ctx.model,
-        &actor_nodes_by_id,
-        ctx.edges_by_id,
-        ctx.nodes_by_id,
-        ctx.block_layouts_by_id,
-        ctx.checkpoints,
-    )?;
     ctx.checkpoints.checkpoint()?;
 
     let block_ctx = SequenceBlockRenderContext {
         is_neo: ctx.compat.is_neo,
         text_shadow: ctx.loop_text_shadow,
         shadow_evidence: ctx.shadow_evidence,
-        default_frame_x1: frame_x1,
-        default_frame_x2: frame_x2,
         block_widths_by_id: ctx.block_widths_by_id,
-        actor_nodes_by_id: &actor_nodes_by_id,
         label_box_width: ctx.block_label_box_metrics.width(),
+        label_box_drawn_width: ctx.block_label_box_metrics.drawn_width(),
         label_box_height: if ctx.block_label_box_metrics.typography_expanded() {
             ctx.block_label_box_metrics.terminal_height()
         } else {
@@ -142,98 +110,16 @@ pub(super) fn render_sequence_interaction_overlays(
         )?;
         render_sequence_note(out, message_index, msg, &note_ctx, note_theme_receipt)?;
 
-        let Some(block_index) = blocks_by_end_index.get(message_index).copied().flatten() else {
+        let Some(placement) = ctx.frame_placements.get(message_index).copied().flatten() else {
             continue;
         };
-        let Some(block) = blocks.get(block_index) else {
-            continue;
-        };
-        match block {
-            SequenceBlock::Alt {
-                control_id,
-                sections,
-                layout,
-            } => {
-                render_sectioned_sequence_block(
-                    out, control_id, "alt", sections, *layout, &block_ctx,
-                )?;
+        match placement {
+            SequenceFramePlacement::Draw(index) => {
+                render_sequence_block(out, &msg.id, &ctx.frames[index], &block_ctx)?;
             }
-            SequenceBlock::Par {
-                control_id,
-                sections,
-                layout,
-            } => {
-                render_sectioned_sequence_block(
-                    out, control_id, "par", sections, *layout, &block_ctx,
-                )?;
-            }
-            SequenceBlock::Loop {
-                control_id,
-                label_id,
-                raw_label,
-                geometry,
-                layout,
-            } => {
-                render_simple_sequence_block(
-                    out,
-                    SimpleSequenceBlock {
-                        control_id,
-                        label_id,
-                        block_label: "loop",
-                        raw_label,
-                        geometry: *geometry,
-                        layout: *layout,
-                    },
-                    &block_ctx,
-                )?;
-            }
-            SequenceBlock::Opt {
-                control_id,
-                label_id,
-                raw_label,
-                geometry,
-                layout,
-            } => {
-                render_simple_sequence_block(
-                    out,
-                    SimpleSequenceBlock {
-                        control_id,
-                        label_id,
-                        block_label: "opt",
-                        raw_label,
-                        geometry: *geometry,
-                        layout: *layout,
-                    },
-                    &block_ctx,
-                )?;
-            }
-            SequenceBlock::Break {
-                control_id,
-                label_id,
-                raw_label,
-                geometry,
-                layout,
-            } => {
-                render_simple_sequence_block(
-                    out,
-                    SimpleSequenceBlock {
-                        control_id,
-                        label_id,
-                        block_label: "break",
-                        raw_label,
-                        geometry: *geometry,
-                        layout: *layout,
-                    },
-                    &block_ctx,
-                )?;
-            }
-            SequenceBlock::Critical {
-                control_id,
-                sections,
-                layout,
-            } => {
-                render_critical_sequence_block(out, control_id, sections, *layout, &block_ctx)?;
-            }
+            SequenceFramePlacement::Empty => ctx
+                .typography_receipt
+                .record_missing_text_effect(crate::sequence::SequenceTextSurface::ControlKeyword),
         }
     }
     ctx.checkpoints.checkpoint()

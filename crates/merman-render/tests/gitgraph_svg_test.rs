@@ -620,6 +620,28 @@ fn gitgraph_font_size_requires_a_visible_nonempty_branch_label() {
     assert_eq!(visible_evidence.applied_count(), 1);
     assert_eq!(visible_evidence.not_applicable_count(), 0);
 
+    for (name, visible) in [("\n", false), ("\\n", false), ("\\nvisible", true)] {
+        let source = format!(
+            "---\nconfig: {}\n---\ngitGraph\n",
+            json!({"gitGraph": {"mainBranchName": name}}),
+        );
+        let rendered = render_gitgraph_with_theme_and_engine(
+            &source,
+            &theme,
+            MermaidEngine::new(),
+            "git-size-display-rows",
+        );
+        let evidence =
+            merman_render::__private::family_evidence(rendered.into_completion().report());
+        assert_eq!(evidence.applied_count(), usize::from(visible), "{name:?}");
+        assert_eq!(
+            evidence.not_applicable_count(),
+            usize::from(!visible),
+            "{name:?}"
+        );
+        assert_eq!(evidence.theme_residual_count(), 0, "{name:?}");
+    }
+
     let fixed_roles_only = render_gitgraph_with_theme_and_engine(
         r#"---
 title: Fixed size roles only

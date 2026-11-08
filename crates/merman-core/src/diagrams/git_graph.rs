@@ -62,7 +62,7 @@ pub(crate) fn sanitize_common_db_fields(model: &mut GitGraphDiagramModel, config
 
 #[derive(Debug, Clone)]
 struct BranchConfig {
-    order: i64,
+    order: f64,
 }
 
 #[derive(Debug, Clone)]
@@ -76,7 +76,7 @@ struct CommitDb {
 #[derive(Debug, Clone)]
 struct BranchDb {
     name: String,
-    order: i64,
+    order: f64,
 }
 
 #[derive(Debug, Clone)]
@@ -269,7 +269,11 @@ impl GitGraphDb {
             .get_str("gitGraph.mainBranchName")
             .unwrap_or("main")
             .to_string();
-        let main_order = config_i64(config, "gitGraph.mainBranchOrder").unwrap_or(0);
+        let main_order = config
+            .as_value()
+            .pointer("/gitGraph/mainBranchOrder")
+            .and_then(serde_json::Value::as_f64)
+            .unwrap_or(0.0);
         self.curr_branch = main.clone();
 
         self.branches.insert(main.clone(), None);
@@ -500,18 +504,13 @@ impl GitGraphDb {
         };
         let custom_id_flag = merge_db.id.is_some();
 
-        let tags: Vec<String> = merge_db
-            .tags
-            .into_iter()
-            .map(|t| sanitize_text(&t, config))
-            .collect();
-
         let new_commit = Commit {
             id: merge_commit_id.clone(),
             message: format!("merged branch {} into {}", other_branch, current_branch),
             seq: self.seq,
             commit_type: COMMIT_TYPE_MERGE,
-            tags,
+            // Mermaid's merge DB preserves tags verbatim; the SVG writer escapes their text.
+            tags: merge_db.tags,
             parents: vec![current_commit.id, verified_branch],
             branch: current_branch.clone(),
             custom_type: merge_db.commit_type,
@@ -661,7 +660,7 @@ impl GitGraphDb {
             let cfg = self.branch_config.get(name);
             let order = cfg.map(|c| c.order);
             let order_f = match order {
-                Some(v) => v as f64,
+                Some(v) => v,
                 None => format!("0.{i}").parse::<f64>().unwrap_or(0.0),
             };
             entries.push((name.clone(), order_f));
@@ -708,7 +707,7 @@ fn commit_to_model(c: Commit) -> GitGraphCommit {
 }
 
 fn parse_commit_type(raw: &str) -> Result<i64> {
-    match raw.trim() {
+    match raw.trim_matches(is_gitgraph_whitespace) {
         "NORMAL" => Ok(COMMIT_TYPE_NORMAL),
         "REVERSE" => Ok(COMMIT_TYPE_REVERSE),
         "HIGHLIGHT" => Ok(COMMIT_TYPE_HIGHLIGHT),
@@ -756,7 +755,7 @@ impl<'a> LineParser<'a> {
     fn skip_ws(&mut self, control: &crate::OperationControl) -> crate::OperationControlResult<()> {
         control.checkpoint()?;
         let mut next_checkpoint = self.pos.saturating_add(4096);
-        while self.peek_char().is_some_and(|c| c.is_whitespace()) {
+        while self.peek_char().is_some_and(is_gitgraph_whitespace) {
             self.bump();
             if self.pos >= next_checkpoint {
                 control.checkpoint()?;
@@ -778,7 +777,7 @@ impl<'a> LineParser<'a> {
         let start = self.pos;
         let mut next_checkpoint = self.pos.saturating_add(4096);
         while let Some(c) = self.peek_char() {
-            if c.is_whitespace() || c == ':' {
+            if is_gitgraph_whitespace(c) || c == ':' {
                 break;
             }
             self.bump();
@@ -848,7 +847,7 @@ impl<'a> LineParser<'a> {
         let start = self.pos;
         let mut next_checkpoint = self.pos.saturating_add(4096);
         while let Some(c) = self.peek_char() {
-            if c.is_whitespace() {
+            if is_gitgraph_whitespace(c) {
                 break;
             }
             self.bump();
@@ -884,7 +883,10 @@ impl<'a> LineParser<'a> {
         self.skip_ws(control)?;
         let start = self.pos;
         let mut next_checkpoint = self.pos.saturating_add(4096);
-        while self.peek_char().is_some_and(|ch| !ch.is_whitespace()) {
+        while self
+            .peek_char()
+            .is_some_and(|ch| !is_gitgraph_whitespace(ch))
+        {
             self.bump();
             if self.pos >= next_checkpoint {
                 control.checkpoint()?;
@@ -962,7 +964,11 @@ fn is_gitgraph_reference_controlled(
     Ok(true)
 }
 
-fn parse_gitgraph_int(value: &SpannedValue) -> Result<i64> {
+fn is_gitgraph_whitespace(ch: char) -> bool {
+    matches!(ch, ' ' | '\t')
+}
+
+fn parse_gitgraph_int(value: &SpannedValue) -> Result<f64> {
     let bytes = value.text.as_bytes();
     let valid = bytes == b"0"
         || (bytes
@@ -977,7 +983,7 @@ fn parse_gitgraph_int(value: &SpannedValue) -> Result<i64> {
     }
     value
         .text
-        .parse::<i64>()
+        .parse::<f64>()
         .map_err(|error| Error::diagram_parse_fallback("gitGraph".to_string(), error.to_string()))
 }
 
@@ -1089,14 +1095,15 @@ fn parse_git_graph_command(
     control: &crate::OperationControl,
 ) -> std::result::Result<Option<GitGraphCommand>, GitGraphCommandParseAbort> {
     control.checkpoint()?;
-    let line = raw.trim_end_matches('\r');
-    let visible = strip_langium_inline_comment(line);
-    let trimmed = visible.trim();
+    let visible = strip_langium_inline_comment(raw);
+    let trimmed = visible.trim_matches(is_gitgraph_whitespace);
     if trimmed.is_empty() || trimmed.starts_with("%%") {
         return Ok(None);
     }
 
-    let trimmed_start = visible.len().saturating_sub(visible.trim_start().len());
+    let trimmed_start = visible
+        .len()
+        .saturating_sub(visible.trim_start_matches(is_gitgraph_whitespace).len());
     let statement_span = SourceSpan::new(
         line_start + trimmed_start,
         line_start + trimmed_start + trimmed.len(),
@@ -1244,7 +1251,7 @@ fn parse_git_graph_command(
                 EditorSemanticKind::Variable,
                 GitGraphEditorFactRole::Entity,
             );
-            let mut order = 0i64;
+            let mut order = 0.0;
             parser.skip_ws(control)?;
             if !parser.is_eof() {
                 let Some(_) = parser.consume_argument_name("order", control)? else {
@@ -1814,8 +1821,8 @@ fn parse_gitgraph_header(
         control.checkpoint()?;
         let (line, next_offset) = physical_line(code, offset);
         let visible = line.split_once("%%").map_or(line, |(before, _)| before);
-        let trimmed = visible.trim_start();
-        if trimmed.trim().is_empty() {
+        let trimmed = visible.trim_start_matches(is_gitgraph_whitespace);
+        if trimmed.trim_end_matches(is_gitgraph_whitespace).is_empty() {
             offset = next_offset;
             continue;
         }
@@ -1825,11 +1832,9 @@ fn parse_gitgraph_header(
                 "expected gitGraph header".to_string(),
             )));
         };
-        if after_keyword
-            .chars()
-            .next()
-            .is_some_and(|ch| !ch.is_whitespace() && ch != ':' && !after_keyword.starts_with("%%"))
-        {
+        if after_keyword.chars().next().is_some_and(|ch| {
+            !is_gitgraph_whitespace(ch) && ch != ':' && !after_keyword.starts_with("%%")
+        }) {
             return Ok(Err(Error::diagram_parse_fallback(
                 "gitGraph".to_string(),
                 "expected gitGraph header".to_string(),
@@ -1929,7 +1934,7 @@ fn collect_gitgraph_commands(
             continue;
         }
         let line_start = offset;
-        let (line, next_offset) = physical_line(code, offset);
+        let (line, next_offset) = gitgraph_statement(code, offset, control)?;
         offset = next_offset;
         match parse_git_graph_command(
             line,
@@ -1990,6 +1995,49 @@ fn physical_line(source: &str, offset: usize) -> (&str, usize) {
     } else {
         (rest, source.len())
     }
+}
+
+/// Finds an EOL outside STRING/comment terminals without changing source byte offsets.
+fn gitgraph_statement<'a>(
+    source: &'a str,
+    offset: usize,
+    control: &crate::OperationControl,
+) -> crate::OperationControlResult<(&'a str, usize)> {
+    let rest = &source[offset..];
+    let bytes = rest.as_bytes();
+    let mut quote = None;
+    let mut escaped = false;
+    let mut comment = false;
+    for (index, &byte) in bytes.iter().enumerate() {
+        if index % 4096 == 0 {
+            control.checkpoint()?;
+        }
+        if byte == b'\n' && (quote.is_none() || escaped || comment) {
+            let end = index - usize::from(index > 0 && bytes[index - 1] == b'\r');
+            return Ok((&rest[..end], offset + index + 1));
+        }
+        if comment {
+            continue;
+        }
+        if escaped {
+            // An escaped line terminator is not part of common.langium's STRING terminal.
+            if byte == b'\r' && bytes.get(index + 1) == Some(&b'\n') {
+                return Ok((&rest[..index], offset + index + 2));
+            }
+            escaped = false;
+        } else if let Some(open) = quote {
+            if byte == b'\\' {
+                escaped = true;
+            } else if byte == open {
+                quote = None;
+            }
+        } else if matches!(byte, b'"' | b'\'') {
+            quote = Some(byte);
+        } else if byte == b'%' && bytes.get(index + 1) == Some(&b'%') {
+            comment = true;
+        }
+    }
+    Ok((rest, source.len()))
 }
 
 fn new_gitgraph_db() -> GitGraphDb {
@@ -2102,6 +2150,164 @@ mod tests {
             ),
             Err(crate::OperationCancelled { .. })
         ));
+    }
+
+    #[test]
+    fn gitgraph_fractional_main_order_preserves_numeric_sort_and_stable_ties() {
+        for (order, expected) in [
+            (0.5, ["early", "main", "late"]),
+            (-0.5, ["main", "early", "late"]),
+            (0.0, ["main", "early", "late"]),
+            (2.0, ["early", "main", "late"]),
+        ] {
+            let engine = MermaidEngine::new().with_site_config(
+                crate::presentation::SourcePresentationConfig::from_value(json!({
+                    "gitGraph": { "mainBranchOrder": order }
+                })),
+            );
+            let parsed = engine
+                .parse_diagram_for_render_model_sync(
+                    "gitGraph\ncommit id:\"root\"\nbranch early\nbranch late order:2\n",
+                    ParseOptions::strict(),
+                )
+                .unwrap()
+                .unwrap();
+            let RenderSemanticModel::GitGraph(model) = parsed.model() else {
+                panic!("expected GitGraph model");
+            };
+            assert_eq!(
+                model
+                    .branches
+                    .iter()
+                    .map(|branch| branch.name.as_str())
+                    .collect::<Vec<_>>(),
+                expected,
+                "mainBranchOrder={order}"
+            );
+        }
+    }
+
+    #[test]
+    fn gitgraph_quoted_fields_span_lines_without_turning_payload_into_commands() {
+        for newline in ["\n", "\r\n"] {
+            let source = format!(
+                "gitGraph{newline}commit id:\"C\" msg:'first{newline}commit id:\"fake\"' tag:\"first{newline}second %% literal\" tag:'last'{newline}branch feature{newline}commit id:\"F\"{newline}checkout main{newline}merge feature id:\"M\" tag:'merge{newline}tag'{newline}"
+            );
+            let model = parse(&source);
+            assert_eq!(commit_ids(&model), ["C", "F", "M"]);
+            assert_eq!(model["commits"][0]["message"], "first\ncommit id:\"fake\"");
+            assert_eq!(
+                model["commits"][0]["tags"],
+                json!(["first\nsecond %% literal", "last"])
+            );
+            assert_eq!(model["commits"][2]["tags"], json!(["merge\ntag"]));
+        }
+        for source in [
+            "gitGraph\ncommit tag:\"first\nsecond\n",
+            "gitGraph\ncommit tag:\"first\\\nsecond\"\n",
+            "gitGraph\r\ncommit tag:'first\\\r\nsecond'\r\n",
+            "gitGraph\ncommit\ntag:\"separate statement\"\n",
+        ] {
+            assert!(!parse_err(source).is_empty(), "{source:?}");
+        }
+    }
+
+    #[test]
+    #[cfg(feature = "editor-facts")]
+    fn gitgraph_multiline_editor_payloads_keep_original_utf8_and_crlf_spans() {
+        let source = "gitGraph\r\ncommit id:\"C\" tag:\"第一\r\nsecond %% literal\"\r\nbranch feature\r\ncheckout feature\r\n";
+        let facts = MermaidEngine::new()
+            .parse_editor_semantic_facts_with_type_sync("gitGraph", source)
+            .unwrap()
+            .unwrap();
+        assert!(facts.diagnostics.is_empty());
+        for (name, detail) in [
+            ("第一\nsecond %% literal", "gitGraph commit tag"),
+            ("feature", "gitGraph branch"),
+        ] {
+            let symbols = facts
+                .symbols
+                .iter()
+                .filter(|symbol| symbol.name == name && symbol.detail.as_deref() == Some(detail))
+                .collect::<Vec<_>>();
+            assert!(!symbols.is_empty());
+            for symbol in symbols {
+                assert_eq!(
+                    source[symbol.selection.start..symbol.selection.end].replace("\r\n", "\n"),
+                    name
+                );
+            }
+        }
+        assert_eq!(
+            facts
+                .symbols
+                .iter()
+                .filter(|symbol| symbol.name == "feature")
+                .count(),
+            2
+        );
+    }
+
+    #[test]
+    fn gitgraph_statement_scan_can_cancel_inside_a_multiline_string() {
+        let source = format!("commit tag:\"first\n{}\"\n", "x".repeat(32_768));
+        let control = crate::OperationControl::new();
+        control.cancel_after_checkpoints(3);
+        assert!(matches!(
+            gitgraph_statement(&source, 0, &control),
+            Err(crate::OperationCancelled { .. })
+        ));
+    }
+
+    #[test]
+    fn gitgraph_only_ascii_horizontal_whitespace_separates_tokens() {
+        for whitespace in [
+            '\u{00a0}', '\u{2003}', '\u{2028}', '\u{2029}', '\u{000b}', '\u{000c}',
+        ] {
+            for source in [
+                format!("gitGraph\ncommit{whitespace}id:\"C\"\n"),
+                format!("gitGraph\ncommit id:{whitespace}\"C\"\n"),
+                format!("gitGraph\ncommit id:\"C\"{whitespace}\n"),
+                format!("gitGraph\ncommit type:HIGHLIGHT{whitespace}\n"),
+                format!("gitGraph\n{whitespace}commit id:\"C\"\n"),
+            ] {
+                assert!(!parse_err(&source).is_empty(), "{source:?}");
+            }
+        }
+        let model = parse("gitGraph\r\n\tcommit\tid:\t\"C\" tag:\"a\u{00a0}b\"\r\n");
+        assert_eq!(commit_ids(&model), ["C"]);
+        assert_eq!(model["commits"][0]["tags"], json!(["a\u{00a0}b"]));
+        // The engine normalizes CR before parsing; the family still owns exact raw EOL boundaries.
+        let control = crate::OperationControl::new();
+        assert!(matches!(
+            parse_git_graph_command(
+                "commit id:\"C\"\r",
+                0,
+                #[cfg(feature = "editor-facts")]
+                EditorFactsDemand::Omit,
+                &control,
+            ),
+            Err(GitGraphCommandParseAbort::Invalid(_))
+        ));
+        assert_eq!(
+            gitgraph_statement("commit\r\n", 0, &control).unwrap(),
+            ("commit", 8)
+        );
+    }
+
+    #[test]
+    fn gitgraph_merge_tags_preserve_literal_markup_while_commit_tags_are_sanitized() {
+        let model = parse(concat!(
+            "gitGraph\n",
+            "commit id:\"root\" tag:\"<unknown>root</unknown>\"\n",
+            "branch feature\ncommit id:\"F\"\ncheckout main\n",
+            "merge feature id:\"M\" tag:\"<unknown>release</unknown>\" tag:'<script>alert(1)</script>'\n",
+        ));
+        assert_eq!(model["commits"][0]["tags"], json!(["root"]));
+        assert_eq!(
+            model["commits"][2]["tags"],
+            json!(["<unknown>release</unknown>", "<script>alert(1)</script>"])
+        );
     }
 
     #[test]
@@ -2471,13 +2677,68 @@ merge feature id:"M1"
     fn gitgraph_uses_langium_string_escapes_and_quote_aware_inline_comments() {
         let model = parse(concat!(
             "gitGraph\n",
-            "commit id:'C1' msg:\"line\\n100%% complete\" tag:'v\\t1' %% outside comment\n",
+            "commit id:'root\\n' msg:\"message\\r100%% complete\" tag:'tag\\t' %% outside comment\n",
+            "branch \"side\\nbranch\"\n",
+            "commit id:\"second\" tag:\"slash\\\\tail\"\n",
         ));
         let commit = &model["commits"][0];
 
-        assert_eq!(commit["id"], "C1");
-        assert_eq!(commit["message"], "linen100%% complete");
-        assert_eq!(commit["tags"], json!(["vt1"]));
+        assert_eq!(commit["id"], "root\n");
+        assert_eq!(commit["message"], "message\r100%% complete");
+        assert_eq!(commit["tags"], json!(["tag\t"]));
+        assert_eq!(model["commits"][1]["branch"], "side\nbranch");
+        assert_eq!(model["commits"][1]["tags"], json!(["slash\\tail"]));
+    }
+
+    #[test]
+    fn gitgraph_quoted_converter_decodes_langium_escapes_and_preserves_source_spans() {
+        let control = crate::OperationControl::new();
+        for quote in ['\'', '"'] {
+            let raw = r#"第一\b\f\n\r\t\v\0\q\\n\"\'"#;
+            let source = format!("{quote}{raw}{quote}");
+            let mut parser = LineParser::new(&source).with_base(11);
+            let parsed = parser.parse_quoted_spanned(&control).unwrap().unwrap();
+            assert_eq!(parsed.text, "第一\u{0008}\u{000c}\n\r\t\u{000b}\0q\\n\"'");
+            assert_eq!(parsed.span, SourceSpan::new(12, 12 + raw.len()));
+            assert!(parser.is_eof());
+        }
+    }
+
+    #[test]
+    #[cfg(feature = "editor-facts")]
+    fn gitgraph_escaped_branch_references_keep_decoded_identity_and_authored_ranges() {
+        let source = concat!(
+            "gitGraph\ncommit id:\"root\"\nbranch \"left\\nright\"\n",
+            "commit id:\"work\"\ncheckout main\nmerge \"left\\nright\" id:\"merged\"\n",
+            "checkout \"left\\nright\"\n",
+        );
+        let model = parse(source);
+        assert_eq!(model["branches"][1]["name"], "left\nright");
+        assert_eq!(model["commits"][1]["branch"], "left\nright");
+        assert_eq!(model["commits"][2]["parents"], json!(["root", "work"]));
+        assert_eq!(model["currentBranch"], "left\nright");
+
+        let facts = MermaidEngine::new()
+            .parse_editor_semantic_facts_with_type_sync("gitGraph", source)
+            .unwrap()
+            .unwrap();
+        assert!(facts.diagnostics.is_empty());
+        let references = facts
+            .symbols
+            .iter()
+            .filter(|symbol| symbol.name == "left\nright")
+            .collect::<Vec<_>>();
+        assert_eq!(references.len(), 3);
+        for symbol in references {
+            assert!(matches!(
+                symbol.detail.as_deref(),
+                Some("gitGraph branch" | "gitGraph merge branch")
+            ));
+            assert_eq!(
+                &source[symbol.selection.start..symbol.selection.end],
+                r"left\nright"
+            );
+        }
     }
 
     #[test]

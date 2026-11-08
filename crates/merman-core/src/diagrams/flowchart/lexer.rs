@@ -143,6 +143,12 @@ pub(super) struct Lexer<'input> {
     pub(super) pending: VecDeque<std::result::Result<(usize, Tok, usize), LexError>>,
     pub(super) allow_header_direction: bool,
     pub(super) recover_partial_node_labels: bool,
+    #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
+    pub(super) accessibility: super::accessibility::FlowchartAccessibility,
+    #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
+    pub(super) control: Option<OperationControl>,
+    #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
+    pub(super) at_statement_start: bool,
     label_scanner: LabelScanner,
 }
 
@@ -158,6 +164,12 @@ impl<'input> Lexer<'input> {
             pending: VecDeque::new(),
             allow_header_direction: false,
             recover_partial_node_labels: false,
+            #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
+            accessibility: super::accessibility::FlowchartAccessibility::default(),
+            #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
+            control: None,
+            #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
+            at_statement_start: true,
             label_scanner: LabelScanner::default(),
         }
     }
@@ -165,6 +177,9 @@ impl<'input> Lexer<'input> {
     #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
     pub(super) fn with_control(mut self, control: &OperationControl) -> Self {
         self.label_scanner.set_control(control);
+        self.control = Some(control.clone());
+        #[cfg(test)]
+        super::accessibility::record_flowchart_accessibility_scan();
         self
     }
 
@@ -189,10 +204,12 @@ impl<'input> Lexer<'input> {
     #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
     #[cfg(feature = "editor-facts")]
     pub(super) fn recovering(input: &'input str) -> Self {
-        Self {
+        let mut lexer = Self {
             recover_partial_node_labels: true,
             ..Self::new(input)
-        }
+        };
+        lexer.accessibility.capture_statements = true;
+        lexer
     }
 
     pub(super) fn peek(&self) -> Option<u8> {

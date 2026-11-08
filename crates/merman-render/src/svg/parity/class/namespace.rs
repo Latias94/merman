@@ -174,9 +174,14 @@ fn class_namespace_title_html(
             crate::class::ClassTextTerminalFacts::unverified_text(title),
         );
     }
+    let html = ctx.mermaid_config.map_or_else(
+        || format!("<p>{}</p>", escape_xml_display(title)),
+        |config| crate::class::class_plain_html_fragment(title, config),
+    );
+    let visible = crate::text::VisibleTextStyleFacts::from_xhtml_fragment(&html);
     (
-        format!("<p>{}</p>", escape_xml_display(title)),
-        crate::class::ClassTextTerminalFacts::inherited_text(title),
+        html,
+        crate::class::ClassTextTerminalFacts::from_visible_style_facts(&visible),
     )
 }
 

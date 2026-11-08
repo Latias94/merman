@@ -1028,7 +1028,11 @@ fn init_directive_config_sanitizes_deep_values_with_small_stack() {
             assert_eq!(
                 deep_repeated_config_leaf(meta.config.as_value(), "sequence", DEPTH)
                     .and_then(Value::as_str),
-                Some("")
+                Some("<blocked>")
+            );
+            assert!(
+                deep_repeated_config_leaf(meta.effective_config.as_value(), "sequence", DEPTH)
+                    .is_none()
             );
         })
         .expect("spawn deep init config test");
@@ -2567,9 +2571,13 @@ Point A:::class1: [0.9, 0.0]
     assert!(facts.directive_prefixes.iter().any(|p| p == "title"));
     assert!(facts.directive_prefixes.iter().any(|p| p == "accTitle"));
     assert!(facts.directive_prefixes.iter().any(|p| p == "accDescr"));
-    assert!(facts.symbols.iter().any(
-        |symbol| symbol.name == "Typed Quadrant" && symbol.role == EditorSemanticRole::Payload
-    ));
+    assert!(
+        facts
+            .symbols
+            .iter()
+            .any(|symbol| symbol.name == "\"Typed Quadrant\""
+                && symbol.role == EditorSemanticRole::Payload)
+    );
     assert!(
         facts
             .symbols
@@ -2589,10 +2597,11 @@ Point A:::class1: [0.9, 0.0]
             .any(|symbol| symbol.name == "class1" && symbol.kind == EditorSemanticKind::Class)
     );
 
-    let title_start = text.find("Typed Quadrant").unwrap();
+    let title_start = text.find("\"Typed Quadrant\"").unwrap();
     assert!(facts.expected_syntax.iter().any(|expected| {
         expected.kind == EditorExpectedSyntaxKind::Payload
-            && expected.span == SourceSpan::new(title_start, title_start + "Typed Quadrant".len())
+            && expected.span
+                == SourceSpan::new(title_start, title_start + "\"Typed Quadrant\"".len())
     }));
     let class_use_start = text.find("Point A:::class1").unwrap() + "Point A:::".len();
     assert!(facts.expected_syntax.iter().any(|expected| {
@@ -2948,7 +2957,7 @@ Drive: bad-score: Dad, Mum
             assert_eq!(model.sections.as_slice(), ["Shopping"]);
             assert_eq!(model.actors.as_slice(), ["Dad", "Mum"]);
             assert_eq!(model.tasks.len(), 2);
-            assert_eq!(model.tasks[0].score, 5);
+            assert_eq!(model.tasks[0].score, 5.0);
             assert!(!model.tasks[0].score_is_nan);
             assert_eq!(model.tasks[0].people.as_slice(), ["Dad"]);
             assert_eq!(model.tasks[1].task, "Drive");

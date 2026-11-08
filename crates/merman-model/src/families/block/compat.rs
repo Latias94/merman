@@ -33,7 +33,12 @@ pub fn project_controlled(
         }
     }
     let mut blocks_flat = Vec::<ManagedJson>::with_capacity(model.blocks_flat.len());
-    for index in 0..model.blocks_flat.len() {
+    let mut bindings = IndexMap::new();
+    for (index, block) in model.blocks_flat.iter().enumerate() {
+        control.checkpoint()?;
+        bindings.insert(block.id.as_str(), index);
+    }
+    for &index in bindings.values() {
         control.checkpoint()?;
         blocks_flat.push(block_render_node_to_value_controlled(
             model, index, control,
@@ -196,6 +201,8 @@ fn block_render_edge_to_value(edge: &BlockEdge, directions: Option<&[String]>) -
     obj.insert("children".to_string(), json!([]));
     obj.insert("start".to_string(), json!(&edge.start));
     obj.insert("end".to_string(), json!(&edge.end));
+    obj.insert("thickness".to_string(), json!(edge.thickness));
+    obj.insert("pattern".to_string(), json!(edge.pattern));
     if let Some(value) = &edge.arrow_type_end {
         obj.insert("arrowTypeEnd".to_string(), json!(value));
     }

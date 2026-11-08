@@ -569,114 +569,110 @@ impl<'input> Lexer<'input> {
         Some(Ok((start, Tok::Str(s), self.pos)))
     }
 
-    fn lex_name(&mut self) -> Option<(usize, Tok, usize)> {
+    fn lex_name(&mut self) -> Option<std::result::Result<(usize, Tok, usize), LexError>> {
         if self.mode == Mode::ClassBody {
             return None;
         }
         let start = self.pos;
-        if self.peek()? == b'`' {
+        let quoted = self.peek()? == b'`';
+        let mut s = if quoted {
             self.pos += 1;
-            let Some(rel_end) = self.input[self.pos..].find('`') else {
-                let s = self.input[self.pos..].to_string();
-                self.pos = self.input.len();
-                return Some((start, Tok::Name(s), self.pos));
-            };
-            let mut s = self.input[self.pos..self.pos + rel_end].to_string();
-            self.pos = self.pos + rel_end + 1;
-            let after_name = self.pos;
-            self.skip_ws();
-            if self.peek() == Some(b'~')
-                && let Some(close) = self.input[self.pos + 1..].find('~')
-            {
-                let end = self.pos + close + 2;
-                s.push_str(&self.input[self.pos..end]);
-                self.pos = end;
-            } else {
-                self.pos = after_name;
-            }
-            if self.mode == Mode::LineNeedId {
-                self.mode = Mode::LineRest;
-            }
-            if self.mode == Mode::ClassDefNeedId {
-                self.mode = Mode::ClassDefAfterId;
-            }
-            if self.mode == Mode::ClickNeedId {
-                self.mode = Mode::ClickAfterId;
-            }
-            let s = if s.chars().next().is_some_and(|c| c.is_ascii_digit()) {
-                format!("{MERMAID_DOM_ID_PREFIX}{s}")
-            } else {
-                s
-            };
-            return Some((start, Tok::Name(s), self.pos));
-        }
-
-        let bytes = self.input.as_bytes();
-        let mut end = self.pos;
-        while end < self.input.len() {
-            let b = bytes[end];
-            // Jison's exclusive <generic> state accepts any character except its closing '~'.
-            if b == b'~'
-                && let Some(close) = self.input[end + 1..].find('~')
-            {
-                end += close + 2;
-                continue;
-            }
-            if b.is_ascii_whitespace()
-                || b == b'\n'
-                || b == b'{'
-                || b == b'}'
-                || b == b'['
-                || b == b']'
-                || b == b'"'
-                || b == b','
-            {
-                break;
-            }
-            if b == b':' {
-                break;
-            }
-            if b == b'<' || b == b'>' {
-                break;
-            }
-            if b == b'*' || (b == b'(' && bytes.get(end + 1) == Some(&b')')) {
-                break;
-            }
-            // Jison recognizes aggregation when `o` starts a new ALPHA token,
-            // including after punctuation, Unicode text or a generic suffix.
-            if b == b'o' && end > self.pos {
-                let previous = bytes[end - 1];
-                if !previous.is_ascii_alphanumeric()
-                    && previous != b'_'
-                    && (bytes[end + 1..].starts_with(b"--") || bytes[end + 1..].starts_with(b".."))
+            let rel_end = self.input[self.pos..]
+                .find('`')
+                .unwrap_or(self.input.len() - self.pos);
+            let s = self.input[self.pos..self.pos + rel_end].to_string();
+            self.pos = (self.pos + rel_end + 1).min(self.input.len());
+            s
+        } else {
+            let bytes = self.input.as_bytes();
+            let mut end = self.pos;
+            while end < self.input.len() {
+                let b = bytes[end];
+                // Jison's exclusive <generic> state accepts any character except its closing '~'.
+                if b == b'~'
+                    && let Some(close) = self.input[end + 1..].find('~')
+                {
+                    end += close + 2;
+                    continue;
+                }
+                if b.is_ascii_whitespace()
+                    || b == b'\n'
+                    || b == b'{'
+                    || b == b'}'
+                    || b == b'['
+                    || b == b']'
+                    || b == b'"'
+                    || b == b','
                 {
                     break;
                 }
-            }
-            if b == b'.' && end + 1 < bytes.len() && bytes[end + 1] == b'.' {
-                break;
-            }
-            if b == b'-' && end + 1 < bytes.len() && bytes[end + 1] == b'-' {
-                break;
-            }
-            if !b.is_ascii() {
-                let ch = self.input[end..].chars().next()?;
-                if !is_mermaid_unicode_text(ch) {
+                if b == b':' {
                     break;
                 }
-                end += ch.len_utf8();
-                continue;
+                if b == b'<' || b == b'>' {
+                    break;
+                }
+                if b == b'*' || (b == b'(' && bytes.get(end + 1) == Some(&b')')) {
+                    break;
+                }
+                // Jison recognizes aggregation when `o` starts a new ALPHA token,
+                // including after punctuation, Unicode text or a generic suffix.
+                if b == b'o' && end > self.pos {
+                    let previous = bytes[end - 1];
+                    if !previous.is_ascii_alphanumeric()
+                        && previous != b'_'
+                        && (bytes[end + 1..].starts_with(b"--")
+                            || bytes[end + 1..].starts_with(b".."))
+                    {
+                        break;
+                    }
+                }
+                if b == b'.' && end + 1 < bytes.len() && bytes[end + 1] == b'.' {
+                    break;
+                }
+                if b == b'-' && end + 1 < bytes.len() && bytes[end + 1] == b'-' {
+                    break;
+                }
+                if !b.is_ascii() {
+                    let ch = self.input[end..].chars().next()?;
+                    if !is_mermaid_unicode_text(ch) {
+                        break;
+                    }
+                    end += ch.len_utf8();
+                    continue;
+                }
+                end += 1;
             }
-            end += 1;
+            if end == start {
+                return None;
+            }
+            self.pos = end;
+            self.input[start..end].to_string()
+        };
+        if s.is_empty() || s.starts_with('~') {
+            let name_start = start + usize::from(quoted);
+            return Some(Err(LexError::new(
+                "Expected a class name before the generic type",
+                crate::SourceSpan::new(name_start, (name_start + 1).min(self.pos)),
+            )));
         }
-        if end == start {
-            return None;
+
+        // Both quoted and unquoted className productions accept a separate GENERICTYPE token.
+        let after_name = self.pos;
+        self.skip_ws();
+        if (quoted || !s.contains('~'))
+            && self.peek() == Some(b'~')
+            && let Some(close) = self.input[self.pos + 1..].find('~')
+        {
+            let end = self.pos + close + 2;
+            s.push_str(&self.input[self.pos..end]);
+            self.pos = end;
+        } else {
+            self.pos = after_name;
         }
-        let mut s = self.input[start..end].to_string();
         if s.chars().next().is_some_and(|c| c.is_ascii_digit()) {
             s = format!("{MERMAID_DOM_ID_PREFIX}{s}");
         }
-        self.pos = end;
         if self.mode == Mode::LineNeedId {
             self.mode = Mode::LineRest;
         }
@@ -686,7 +682,7 @@ impl<'input> Lexer<'input> {
         if self.mode == Mode::ClickNeedId {
             self.mode = Mode::ClickAfterId;
         }
-        Some((start, Tok::Name(s), self.pos))
+        Some(Ok((start, Tok::Name(s), self.pos)))
     }
 
     fn lex_member(&mut self) -> Option<std::result::Result<(usize, Tok, usize), LexError>> {
@@ -828,7 +824,7 @@ impl TokenScanner for Lexer<'_> {
         }
 
         if let Some(tok) = self.lex_name() {
-            return self.emit(tok);
+            return self.emit_result(tok);
         }
 
         let start = self.pos;

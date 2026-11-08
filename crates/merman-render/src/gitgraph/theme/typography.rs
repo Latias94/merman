@@ -225,9 +225,11 @@ impl GitGraphTypographyThemePlan {
         self.text_style(self.font_size_px)
     }
 
-    pub(crate) fn rendered_branch_label_style(&self, slot: usize) -> TextStyle {
+    pub(crate) fn rendered_branch_label_style(&self, slot: Option<usize>) -> TextStyle {
         let mut style = self.branch_label_style();
-        if self.css_binding.use_redux_geometry && slot < self.css_binding.theme_color_limit {
+        if self.css_binding.use_redux_geometry
+            && slot.is_some_and(|slot| slot < self.css_binding.theme_color_limit)
+        {
             style.font_weight = self.commit_label_font_weight.measured.clone();
         }
         style
@@ -423,6 +425,7 @@ pub(crate) struct GitGraphTypographyThemeReceipt<'a> {
     has_visible_unmeasurable_role_font_weight: bool,
     commit_label_font_size_dependency: GitGraphRoleFontSizeDependency,
     role_font_weight_measurable: bool,
+    color_indices: crate::gitgraph::GitGraphColorIndices,
     branch_role_weight_rule_count: usize,
     tag_label_font_size_dependency: GitGraphRoleFontSizeDependency,
     valid: bool,
@@ -467,6 +470,7 @@ impl<'a> GitGraphTypographyThemeReceipt<'a> {
             has_visible_unmeasurable_role_font_weight: false,
             commit_label_font_size_dependency: plan.commit_label_font_size.dependency,
             role_font_weight_measurable: plan.commit_label_font_weight.measurable,
+            color_indices: plan.css_binding.color_indices,
             branch_role_weight_rule_count: if plan.css_binding.use_redux_geometry {
                 plan.css_binding.theme_color_limit
             } else {
@@ -494,10 +498,12 @@ impl<'a> GitGraphTypographyThemeReceipt<'a> {
                     && self.layout.branches.get(index).map(|branch| branch.name.as_str())
                         == Some(text)
         );
-        let visible = !text.trim().is_empty();
+        let visible = crate::gitgraph::gitgraph_branch_label_is_visible(text);
         self.record_text_event(matched, visible, true);
         let has_weight_rule = self.layout.branches.get(index).is_some_and(|branch| {
-            super::super::palette_slot(branch.index) < self.branch_role_weight_rule_count
+            self.color_indices
+                .branch_slot(branch.index)
+                .is_some_and(|slot| slot < self.branch_role_weight_rule_count)
         });
         if matched && visible && has_weight_rule {
             self.has_visible_unmeasurable_role_font_weight |= !self.role_font_weight_measurable;

@@ -125,6 +125,215 @@ fn try_render_radar_svg_with_resource_policy(
 }
 
 #[test]
+fn radar_svg_skips_mismatched_curves_and_preserves_authored_series_indices() {
+    for graticule in ["circle", "polygon"] {
+        for show_legend in [false, true] {
+            for (curves, expected_indices, series_count) in [
+                ("curve Short{1,2}", Vec::new(), 1),
+                ("curve Long{1,2,3,4}", Vec::new(), 1),
+                (
+                    "curve Short{100,1}, Complete{1,2,3}, Long{1,2,3,200}",
+                    vec![1],
+                    3,
+                ),
+            ] {
+                let source = format!(
+                    "radar-beta\naxis A,B,C\n{curves}\ngraticule {graticule}\nticks 0\nshowLegend {show_legend}\n"
+                );
+                let svg = render_radar_svg_from_text(&source);
+                let document = roxmltree::Document::parse(&svg).unwrap();
+                let curve_nodes = document
+                    .descendants()
+                    .filter(|node| {
+                        node.attribute("class")
+                            .is_some_and(|class| class.starts_with("radarCurve-"))
+                    })
+                    .collect::<Vec<_>>();
+                assert_eq!(
+                    curve_nodes
+                        .iter()
+                        .map(|node| node.attribute("class").unwrap())
+                        .collect::<Vec<_>>(),
+                    expected_indices
+                        .iter()
+                        .map(|index| format!("radarCurve-{index}"))
+                        .collect::<Vec<_>>(),
+                    "{source}"
+                );
+                for node in curve_nodes {
+                    assert_eq!(
+                        node.tag_name().name(),
+                        if graticule == "polygon" {
+                            "polygon"
+                        } else {
+                            "path"
+                        }
+                    );
+                }
+                let legend_classes = document
+                    .descendants()
+                    .filter_map(|node| node.attribute("class"))
+                    .filter(|class| class.starts_with("radarLegendBox-"))
+                    .collect::<Vec<_>>();
+                let legend_count = if show_legend { series_count } else { 0 };
+                assert_eq!(
+                    legend_classes,
+                    (0..legend_count)
+                        .map(|index| format!("radarLegendBox-{index}"))
+                        .collect::<Vec<_>>()
+                );
+            }
+        }
+    }
+}
+
+#[test]
+fn radar_svg_preserves_fractional_tick_counts_and_radii_in_both_graticules() {
+    for graticule in ["circle", "polygon"] {
+        for (ticks, expected_radii) in [
+            ("2", vec![150.0, 300.0]),
+            ("2.0", vec![150.0, 300.0]),
+            ("2.5", vec![120.0, 240.0, 360.0]),
+            ("0", Vec::new()),
+        ] {
+            let source = format!(
+                "radar-beta\naxis A,B,C\ncurve Complete{{1,2,3}}\ngraticule {graticule}\nticks {ticks}\n"
+            );
+            let svg = render_radar_svg_from_text(&source);
+            let document = roxmltree::Document::parse(&svg).unwrap();
+            let graticules = document
+                .descendants()
+                .filter(|node| node.attribute("class") == Some("radarGraticule"))
+                .collect::<Vec<_>>();
+            assert_eq!(graticules.len(), expected_radii.len(), "{source}");
+            for (node, expected_radius) in graticules.iter().zip(expected_radii) {
+                assert_eq!(node.tag_name().name(), graticule);
+                let radius = if graticule == "circle" {
+                    node.attribute("r").unwrap().parse::<f64>().unwrap()
+                } else {
+                    -node
+                        .attribute("points")
+                        .unwrap()
+                        .split_whitespace()
+                        .next()
+                        .unwrap()
+                        .split(',')
+                        .nth(1)
+                        .unwrap()
+                        .parse::<f64>()
+                        .unwrap()
+                };
+                assert!((radius - expected_radius).abs() < 1e-9, "{source}");
+            }
+        }
+    }
+}
+
+#[test]
+fn radar_strict_series_evidence_tracks_sparse_curves_and_real_legend_consumers() {
+    let theme = DiagramThemeCompiler::new()
+        .compile(
+            DiagramThemeSpec::new().with_styles(
+                ThemeRuleSet::default()
+                    .with_rule(ThemeRule::new(
+                        ThemeTarget::ChartSeries,
+                        ThemeStylePatch::default()
+                            .with_stroke(CanvasPaint::solid("#445566").unwrap()),
+                    ))
+                    .with_ordinal_palette(
+                        ThemeTarget::ChartSeries,
+                        OrdinalPalette::new(
+                            ["#123456", "#abcdef", "#fedcba"]
+                                .map(|color| ThemeColorValue::parse(color).unwrap()),
+                        )
+                        .unwrap(),
+                    ),
+            ),
+        )
+        .unwrap();
+    for graticule in ["circle", "polygon"] {
+        for show_legend in [false, true] {
+            for (curves, has_drawable_curve) in [
+                ("curve Short{1,2}, Long{1,2,3,4}", false),
+                ("curve Short{1,2}, Complete{1,2,3}, Long{1,2,3,4}", true),
+            ] {
+                let source = format!(
+                    "radar-beta\naxis A,B,C\n{curves}\ngraticule {graticule}\nshowLegend {show_legend}\n"
+                );
+                let rendered =
+                    render_radar_with_theme_and_engine(&source, &theme, MermaidEngine::new());
+                let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+                assert_eq!(
+                    document
+                        .descendants()
+                        .filter(|node| node.attribute("class") == Some("radarCurve-1"))
+                        .count(),
+                    usize::from(has_drawable_curve)
+                );
+                if has_drawable_curve {
+                    assert!(radar_stylesheet(rendered.svg()).contains(
+                        ".radarCurve-1{color:#abcdef;fill:#abcdef;fill-opacity:0.5;stroke:#445566;"
+                    ));
+                }
+                let visible = has_drawable_curve || show_legend;
+                let evidence =
+                    merman_render::__private::family_evidence(rendered.into_completion().report());
+                assert_eq!(evidence.required_count(), 2);
+                assert_eq!(evidence.accounted_count(), 2);
+                assert_eq!(evidence.applied_count(), if visible { 2 } else { 0 });
+                assert_eq!(evidence.not_applicable_count(), if visible { 0 } else { 2 });
+                assert_eq!(evidence.theme_residual_count(), 0);
+            }
+        }
+    }
+}
+
+#[test]
+fn radar_hidden_skipped_curves_do_not_capture_ordinal_theme_rules() {
+    use merman_render::diagram_theme::OrdinalSelector;
+
+    let source = "radar-beta\naxis A,B,C\ncurve Short{1,2}, Complete{1,2,3}\nshowLegend false\n";
+    for ordinal in [1, 2] {
+        let theme = DiagramThemeCompiler::new()
+            .compile(
+                DiagramThemeSpec::new().with_styles(
+                    ThemeRuleSet::default().with_rule(
+                        ThemeRule::new(
+                            ThemeTarget::ChartSeries,
+                            ThemeStylePatch::default().with_stroke_width(7.0).unwrap(),
+                        )
+                        .with_ordinal(OrdinalSelector::Exact(ordinal)),
+                    ),
+                ),
+            )
+            .unwrap();
+        let result = render_radar_with_theme_requirement(
+            source,
+            &theme,
+            MermaidEngine::new(),
+            ThemePortabilityRequirement::RequirePortable,
+        );
+        if ordinal == 1 {
+            let rendered = result.expect("an ordinal on a hidden skipped series is not applicable");
+            let evidence =
+                merman_render::__private::family_evidence(rendered.into_completion().report());
+            assert_eq!(evidence.not_applicable_count(), 1);
+            assert_eq!(evidence.applied_count(), 0);
+            assert_eq!(evidence.theme_residual_count(), 0);
+        } else {
+            let error = match result {
+                Ok(_) => panic!("unsupported width on the drawable series must remain a residual"),
+                Err(error) => error,
+            };
+            assert_eq!(
+                error.unverified_family_theme(),
+                Some((DiagramFamilyId::RADAR, 1))
+            );
+        }
+    }
+}
+
+#[test]
 fn radar_family_svg_accepts_exact_max_svg_bytes_and_rejects_one_byte_less() {
     let source = r#"radar-beta
 title Bounded capability

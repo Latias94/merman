@@ -77,11 +77,11 @@ impl JourneyDb {
         // and let the SVG renderer re-emit `NaN` for the relevant face/mouth coordinates.
         let score_trim = score_str.trim();
         let (score, score_is_nan) = if score_trim.is_empty() {
-            (0_i64, false)
+            (0.0, false)
         } else {
             match score_trim.parse::<f64>() {
-                Ok(v) if v.is_finite() => (v as i64, false),
-                _ => (0_i64, true),
+                Ok(v) if v.is_finite() => (v, false),
+                _ => (0.0, true),
             }
         };
 
@@ -116,7 +116,9 @@ impl JourneyDb {
                 set.insert(p.clone());
             }
         }
-        set.into_iter().collect()
+        let mut actors: Vec<_> = set.into_iter().collect();
+        actors.sort_by(|left, right| left.encode_utf16().cmp(right.encode_utf16()));
+        actors
     }
 }
 
@@ -155,14 +157,14 @@ fn parse_keyword_arg_one_ws(line: &str, keyword: &str) -> Option<String> {
     Some(split_statement_suffix_hash_or_semi(rest).to_string())
 }
 
-fn parse_key_colon_value(line: &str, key: &str) -> Option<String> {
+fn parse_key_colon_value<'a>(line: &'a str, key: &str) -> Option<&'a str> {
     let t = line.trim_start();
     if !starts_with_case_insensitive(t, key) {
         return None;
     }
     let rest = t[key.len()..].trim_start();
     let rest = rest.strip_prefix(':')?;
-    Some(split_statement_suffix_hash_or_semi(rest).trim().to_string())
+    Some(rest.trim())
 }
 
 struct JourneyBlockText {
@@ -240,6 +242,18 @@ fn strip_comment_prefix(line: &str) -> &str {
     }
     if t.starts_with("%%") && !t.starts_with("%%{") {
         return "";
+    }
+    // The exclusive acc_title / acc_descr lexer states consume the physical-line remainder.
+    if parse_key_colon_value(line, "accTitle").is_some()
+        || parse_key_colon_value(line, "accDescr").is_some()
+    {
+        return line;
+    }
+    // The multiline lexer likewise owns punctuation through its closing brace.
+    if starts_with_case_insensitive(t, "accDescr")
+        && t["accDescr".len()..].trim_start().starts_with('{')
+    {
+        return line;
     }
     split_statement_suffix_hash_or_semi(line)
 }
@@ -508,7 +522,7 @@ fn parse_journey_semantic_source(
                     );
                 }
             }
-            db.acc_title = v;
+            db.acc_title = v.to_string();
             continue;
         }
         if let Some(v) = parse_key_colon_value(stripped, "accDescr") {
@@ -527,7 +541,7 @@ fn parse_journey_semantic_source(
                     );
                 }
             }
-            db.acc_descr = v;
+            db.acc_descr = v.to_string();
             continue;
         }
         if let Some(v) = parse_acc_descr_block_spanned(&mut lines, stripped, line_start, control)? {
@@ -765,17 +779,11 @@ fn spanned_colon_value<'a>(
     line_start: usize,
     key: &str,
 ) -> Option<EditorPayloadSpan<'a>> {
-    let trimmed = line.trim_start();
-    if !starts_with_case_insensitive(trimmed, key) {
-        return None;
-    }
-    let rest = trimmed[key.len()..].trim_start();
-    let rest = rest.strip_prefix(':')?;
-    let value = split_statement_suffix_hash_or_semi(rest).trim();
+    let value = parse_key_colon_value(line, key)?;
     if value.is_empty() {
         return None;
     }
-    let value_rel = line.find(value)?;
+    let value_rel = line.trim_end().len() - value.len();
     Some(EditorPayloadSpan {
         text: value,
         start: line_start + value_rel,
@@ -845,6 +853,65 @@ mod tests {
     #[cfg(all(feature = "compat-json", feature = "editor-facts"))]
     use futures::executor::block_on;
     use serde_json::json;
+
+    #[test]
+    fn journey_scores_retain_fractions_and_existing_non_finite_state() {
+        let mut db = JourneyDb::default();
+        for (literal, expected, expected_nan) in [
+            ("3.5", 3.5, false),
+            ("3.01", 3.01, false),
+            ("2.75", 2.75, false),
+            ("3", 3.0, false),
+            ("4", 4.0, false),
+            (" ", 0.0, false),
+            ("bad", 0.0, true),
+            ("NaN", 0.0, true),
+            ("Infinity", 0.0, true),
+            ("-Infinity", 0.0, true),
+            ("1e999", 0.0, true),
+        ] {
+            db.add_task("Pay", &format!(":{literal}: Customer"))
+                .unwrap();
+            let task = db.tasks.last().unwrap();
+            assert_eq!(task.score, expected, "{literal}");
+            assert_eq!(task.score_is_nan, expected_nan, "{literal}");
+            assert_eq!(task.people, ["Customer"]);
+        }
+    }
+
+    #[test]
+    fn journey_actor_deduplication_uses_ecmascript_utf16_sort_order() {
+        let mut unicode = JourneyDb::default();
+        unicode.add_task("Pay", ":4: 😀, \u{e000}, 😀").unwrap();
+        assert_eq!(unicode.actors_sorted(), ["😀", "\u{e000}"]);
+        assert_eq!(unicode.tasks[0].people, ["😀", "\u{e000}", "😀"]);
+
+        let mut ascii = JourneyDb::default();
+        ascii.add_task("Pay", ":4: A, Z").unwrap();
+        assert_eq!(ascii.actors_sorted(), ["A", "Z"]);
+        assert_eq!(ascii.tasks[0].people, ["A", "Z"]);
+    }
+
+    #[cfg(feature = "editor-facts")]
+    #[test]
+    fn journey_editor_people_facts_keep_authored_unicode_order() {
+        let source = "journey\nPay: 4: \u{e000}, 😀\n";
+        let facts = crate::MermaidEngine::new()
+            .parse_editor_semantic_facts_with_type_sync("journey", source)
+            .unwrap()
+            .unwrap();
+        let people = facts
+            .symbols
+            .iter()
+            .find(|symbol| symbol.detail.as_deref() == Some("journey people"))
+            .unwrap();
+
+        assert_eq!(people.name, "\u{e000}, 😀");
+        assert_eq!(
+            &source[people.selection.start..people.selection.end],
+            "\u{e000}, 😀"
+        );
+    }
 
     #[cfg(all(feature = "compat-json", feature = "editor-facts"))]
     fn parse(text: &str) -> crate::ManagedSemanticJson {
@@ -921,6 +988,78 @@ section Order from website\n",
             model["title"],
             json!("Adding journey diagram functionality to mermaid")
         );
+    }
+
+    #[cfg(all(feature = "compat-json", feature = "editor-facts"))]
+    #[test]
+    fn journey_accessibility_directives_preserve_punctuation_and_exact_payload_facts() {
+        let source = concat!(
+            "journey\r\n",
+            "# ignored whole-line comment\r\n",
+            "%% ignored whole-line comment\r\n",
+            "  accTitle: accTitle #1 支付; ready  \r\n",
+            "  accDescr: Confirm; then pay #ready  \r\n",
+            "section Checkout# ignored section comment\r\n",
+            "Pay: 3.5: Customer # ignored task comment\r\n",
+        );
+        let engine = MermaidEngine::new();
+        let parsed = engine
+            .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
+            .unwrap()
+            .unwrap();
+        let merman_model::presentation::RenderSemanticModel::Journey(model) = parsed.model() else {
+            panic!("expected Journey model");
+        };
+        assert_eq!(model.acc_title.as_deref(), Some("accTitle #1 支付; ready"));
+        assert_eq!(model.acc_descr.as_deref(), Some("Confirm; then pay #ready"));
+        assert_eq!(model.tasks.len(), 1);
+        assert_eq!(model.tasks[0].score, 3.5);
+        assert_eq!(model.tasks[0].people, ["Customer"]);
+        assert_eq!(model.sections, ["Checkout"]);
+        let compat = parsed.compatibility_json().unwrap();
+        assert_eq!(compat["accTitle"], json!("accTitle #1 支付; ready"));
+        assert_eq!(compat["accDescr"], json!("Confirm; then pay #ready"));
+        assert_eq!(compat["tasks"][0]["score"], json!(3.5));
+
+        let facts = engine
+            .parse_editor_semantic_facts_with_type_sync("journey", source)
+            .unwrap()
+            .unwrap();
+        assert!(facts.diagnostics.is_empty());
+        for (detail, payload) in [
+            ("journey accessibility title", "accTitle #1 支付; ready"),
+            (
+                "journey accessibility description",
+                "Confirm; then pay #ready",
+            ),
+            ("journey score", "3.5"),
+        ] {
+            let start = source.find(payload).unwrap();
+            let span = SourceSpan::new(start, start + payload.len());
+            let symbol = facts
+                .symbols
+                .iter()
+                .find(|symbol| symbol.detail.as_deref() == Some(detail))
+                .unwrap();
+            assert_eq!(symbol.name, payload);
+            assert_eq!(symbol.selection, span);
+            assert_eq!(
+                &source[symbol.selection.start..symbol.selection.end],
+                payload
+            );
+            assert!(facts.expected_syntax.iter().any(|expected| {
+                expected.kind == EditorExpectedSyntaxKind::Payload && expected.span == span
+            }));
+        }
+    }
+
+    #[cfg(all(feature = "compat-json", feature = "editor-facts"))]
+    #[test]
+    fn journey_inline_accessibility_block_preserves_punctuation_and_resumes_source() {
+        let source = "journey\naccDescr { Confirm; then pay #ready }Pay: 4: Customer\n";
+        let model = parse(source);
+        assert_eq!(model["accDescr"], json!("Confirm; then pay #ready"));
+        assert_eq!(model["tasks"][0]["task"], json!("Pay"));
     }
 
     #[cfg(all(feature = "compat-json", feature = "editor-facts"))]
@@ -1432,28 +1571,28 @@ R task: 5:\n",
                 .collect::<Vec<_>>(),
             vec![
                 json!({
-                    "score": 5,
+                    "score": 5.0,
                     "people": ["Dad"],
                     "section": "Journey to the shops",
                     "task": "Get car keys",
                     "type": "Journey to the shops",
                 }),
                 json!({
-                    "score": 3,
+                    "score": 3.0,
                     "people": ["Dad", "Mum", "Child#1", "Child#2"],
                     "section": "Journey to the shops",
                     "task": "Go to car",
                     "type": "Journey to the shops",
                 }),
                 json!({
-                    "score": 4,
+                    "score": 4.0,
                     "people": ["Dad"],
                     "section": "Journey to the shops",
                     "task": "Drive to supermarket",
                     "type": "Journey to the shops",
                 }),
                 json!({
-                    "score": 5,
+                    "score": 5.0,
                     "people": ["Mum"],
                     "section": "Do shopping",
                     "task": "Go shopping",

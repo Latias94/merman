@@ -16,7 +16,7 @@ use crate::family::{
 use crate::model::GitGraphDiagramLayout;
 use crate::resources::OperationWorkMeter;
 
-use super::{GitGraphCommitKind, GitGraphLabelEvent, GitGraphLabelEvents, palette_slot};
+use super::{GitGraphCommitKind, GitGraphLabelEvent, GitGraphLabelEvents};
 
 // Text supplies three paint sources; NodeLabel and EdgeLabel also compete for their own
 // label source by global rule order. Configuration owns each source independently.
@@ -331,6 +331,7 @@ impl GitGraphTextPaintPlan {
         &'a self,
         layout: &'a GitGraphDiagramLayout,
         branch_slots: &'a HashMap<&'a str, i64>,
+        binding: &'a crate::gitgraph::GitGraphCssBinding,
         root_geometry: [[bool; 8]; 4],
         root_cherry_pick: bool,
     ) -> Option<GitGraphTextPaintReceipt<'a>> {
@@ -338,6 +339,7 @@ impl GitGraphTextPaintPlan {
             plan: self,
             layout,
             branch_slots,
+            binding,
             root_geometry,
             root_cherry_pick,
             css_recorded: false,
@@ -421,6 +423,7 @@ pub(crate) struct GitGraphTextPaintReceipt<'a> {
     plan: &'a GitGraphTextPaintPlan,
     layout: &'a GitGraphDiagramLayout,
     branch_slots: &'a HashMap<&'a str, i64>,
+    binding: &'a crate::gitgraph::GitGraphCssBinding,
     // Branch backgrounds, ordinary commit outers, highlight outers, and branch text.
     root_geometry: [[bool; 8]; 4],
     root_cherry_pick: bool,
@@ -447,20 +450,27 @@ impl GitGraphTextPaintReceipt<'_> {
     pub(crate) fn record_branch(
         &mut self,
         index: usize,
-        slot: usize,
+        slot: Option<usize>,
         name: &str,
         root_inherited: bool,
         text_root_inherited: bool,
     ) {
         self.valid &= self.layout.show_branches && index == self.next_branch;
-        self.valid &= self
-            .layout
-            .branches
-            .get(index)
-            .is_some_and(|branch| branch.name == name && palette_slot(branch.index) == slot);
-        self.valid &= self.root_geometry[0].get(slot).copied() == Some(root_inherited);
-        self.valid &= self.root_geometry[3].get(slot).copied() == Some(text_root_inherited);
-        let text_visible = !name.trim().is_empty();
+        self.valid &= self.layout.branches.get(index).is_some_and(|branch| {
+            branch.name == name && self.binding.color_indices.branch_slot(branch.index) == slot
+        });
+        let fallback = self.binding.branch_root_inheritance(slot);
+        self.valid &= slot
+            .and_then(|slot| self.root_geometry[0].get(slot))
+            .copied()
+            .unwrap_or(fallback[0])
+            == root_inherited;
+        self.valid &= slot
+            .and_then(|slot| self.root_geometry[3].get(slot))
+            .copied()
+            .unwrap_or(fallback[1])
+            == text_root_inherited;
+        let text_visible = crate::gitgraph::gitgraph_branch_label_is_visible(name);
         self.facts.sources[0] +=
             usize::from(root_inherited) + usize::from(text_root_inherited && text_visible);
         self.facts.text_visible |= u8::from(text_visible);
@@ -478,7 +488,7 @@ impl GitGraphTextPaintReceipt<'_> {
         self.valid &= self.layout.commits.get(index).is_some_and(|commit| {
             kind == GitGraphCommitKind::from_layout(commit)
                 && slot
-                    == palette_slot(
+                    == self.binding.color_indices.commit_slot(
                         self.branch_slots
                             .get(commit.branch.as_str())
                             .copied()
@@ -585,8 +595,13 @@ mod tests {
                 &OperationWorkMeter::new(RenderResourcePolicy::unbounded_for_trusted_input()),
             )
             .unwrap();
+            let binding = crate::gitgraph::GitGraphCssBinding::resolve(
+                &serde_json::json!({}),
+                "sans-serif",
+                "16px",
+            );
             let mut receipt = plan
-                .begin_terminal_receipt(&layout, &branches, [[false; 8]; 4], false)
+                .begin_terminal_receipt(&layout, &branches, &binding, [[false; 8]; 4], false)
                 .unwrap();
             if case != "missing-css" {
                 let mut colors = ["#123456"; 5];

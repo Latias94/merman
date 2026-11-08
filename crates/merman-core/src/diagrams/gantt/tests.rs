@@ -935,6 +935,33 @@ test1: id1,2013-01-01,2h
 }
 
 #[test]
+fn gantt_fractional_durations_follow_dayjs_calendar_setters() {
+    with_test_local_time_zone(crate::time::LocalTimeZone::utc(), || {
+        let model = parse(concat!(
+            "gantt\ndateFormat YYYY-MM-DD\n",
+            "Half day: half_day,2026-01-01,0.5d\n",
+            "Below half day: below,2026-01-01,0.49d\n",
+            "Half week: half_week,2026-01-01,0.5w\n",
+            "Fractional month: month,2026-01-31,1.5M\n",
+            "Fractional year: year,2024-02-29,1.5y\n",
+            "Half hour: hour,2026-01-01,0.5h\n",
+        ));
+        let tasks = model["tasks"].as_array().unwrap();
+        let expected = [
+            utc_ms(2026, 1, 2, 0, 0, 0),
+            utc_ms(2026, 1, 1, 0, 0, 0),
+            utc_ms(2026, 1, 5, 0, 0, 0),
+            utc_ms(2026, 2, 28, 0, 0, 0),
+            utc_ms(2025, 2, 28, 0, 0, 0),
+            utc_ms(2026, 1, 1, 0, 30, 0),
+        ];
+        for (task, expected) in tasks.iter().zip(expected) {
+            assert_eq!(task["endTime"].as_i64(), Some(expected), "{}", task["id"]);
+        }
+    });
+}
+
+#[test]
 fn gantt_relative_after_id() {
     let model = parse(
         r#"
@@ -1209,13 +1236,33 @@ fn gantt_duration_arithmetic_rejects_unrepresentable_ranges_without_panicking() 
 
 #[test]
 fn gantt_huge_calendar_durations_use_the_existing_zero_duration_fallback() {
-    for duration in ["9223372036854775808M", "999999999999999999999999999999999y"] {
+    for duration in [
+        "9223372036854775808M",
+        "999999999999999999999999999999999y",
+        "300000.5y",
+        "3600000.5M",
+    ] {
         let model = parse(&format!(
             "gantt\ndateFormat x\nsection Boundary\nTask: task,0,{duration}\n"
         ));
         let task = &model["tasks"][0];
         assert_eq!(task["startTime"], task["endTime"], "duration {duration}");
     }
+}
+
+#[test]
+fn gantt_fractional_calendar_setters_reject_an_invalid_dayjs_month_end() {
+    with_test_local_time_zone(crate::time::LocalTimeZone::utc(), || {
+        let db = GanttDb::default();
+        for (year, month, duration) in [(275760, 8, "1.5M"), (275759, 9, "1.5y")] {
+            let start =
+                local_from_civil(CivilDate::new(year, month, 13).unwrap().at_midnight()).unwrap();
+            let end = get_end_date(&db, start, "x", duration, false)
+                .unwrap()
+                .unwrap();
+            assert_eq!(end, start, "{duration}");
+        }
+    });
 }
 
 #[test]

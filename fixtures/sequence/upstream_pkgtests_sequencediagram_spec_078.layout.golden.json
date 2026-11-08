@@ -8,6 +8,15 @@
         "min_x": -50.0,
         "min_y": -10.0
       },
+      "boxes": [
+        {
+          "fill": "aqua",
+          "height": 203.0,
+          "width": 400.0,
+          "x": -20.0,
+          "y": -5.0
+        }
+      ],
       "clusters": [],
       "edges": [
         {

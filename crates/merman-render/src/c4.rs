@@ -218,9 +218,10 @@ fn measure_c4_unified_text(
 fn c4_source_word_lines(text: &str) -> Vec<Vec<String>> {
     // Mermaid's nonMarkdownToLines treats literal `\\n`, actual newlines and `<br>` variants as
     // explicit line boundaries before tokenizing each trimmed line.
-    let normalized = text.replace("\\n", "\n");
-    crate::text::split_html_br_lines(&normalized)
+    crate::text::split_html_br_lines(text)
         .into_iter()
+        .flat_map(|line| line.split("\\n"))
+        .flat_map(|line| line.split('\n'))
         .map(|line| {
             crate::text::non_markdown_svg_words(line.trim())
                 .map(str::to_string)
@@ -461,5 +462,49 @@ mod tests {
         assert_eq!(measured.metrics.line_count, 1);
         assert_eq!(measured.metrics.height, 11.0);
         assert_eq!(measured.metrics.width, 70.0);
+    }
+
+    #[test]
+    fn c4_unified_explicit_source_rows_survive_auto_wrap_settings() {
+        let measurer = crate::text::DeterministicTextMeasurer {
+            char_width_factor: 1.0,
+            ..Default::default()
+        };
+        let style = TextStyle {
+            font_size: 10.0,
+            ..Default::default()
+        };
+        for wrap in [false, true] {
+            for text in ["Alice\\nSmith", "Alice\nSmith", "Alice<br/>Smith"] {
+                let measured = measure_c4_unified_text(&measurer, text, &style, wrap, 500.0);
+                let rows = measured
+                    .render_plan
+                    .rows
+                    .iter()
+                    .map(|row| super::c4_visible_row(&row.words))
+                    .collect::<Vec<_>>();
+                assert_eq!(rows, ["Alice", "Smith"], "wrap={wrap} text={text:?}");
+                assert_eq!(measured.metrics.line_count, 2);
+                assert_eq!(measured.metrics.height, 22.0);
+                assert_eq!(measured.metrics.width, 50.0);
+            }
+        }
+    }
+
+    #[test]
+    fn c4_source_breaks_preserve_empty_rows_and_do_not_manufacture_html_tags() {
+        let rows = super::c4_source_word_lines("\\nA\\n\nB<br\n/>C<br>\\n");
+        let visible = rows
+            .iter()
+            .map(|row| super::c4_visible_row(row))
+            .collect::<Vec<_>>();
+        assert_eq!(visible, ["", "A", "", "B", "C", "", ""]);
+
+        let malformed = super::c4_source_word_lines("A<br\\n/>B");
+        let visible = malformed
+            .iter()
+            .map(|row| super::c4_visible_row(row))
+            .collect::<Vec<_>>();
+        assert_eq!(visible, ["A br", "/ B"]);
     }
 }

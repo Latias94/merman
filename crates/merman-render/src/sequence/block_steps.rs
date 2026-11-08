@@ -21,6 +21,7 @@ use merman_model::presentation::PresentationConfig;
 use std::collections::HashMap;
 
 const SEQUENCE_BLOCK_CONTROL_LABELS: [&str; 6] = ["loop", "alt", "opt", "par", "critical", "break"];
+const LEGACY_SEQUENCE_BLOCK_LABEL_BOX_WIDTH: f64 = 50.0;
 const LEGACY_SEQUENCE_BLOCK_LABEL_BOX_HEIGHT: f64 = 20.0;
 
 #[derive(Debug, Clone, Copy)]
@@ -47,7 +48,7 @@ impl SequenceBlockLabelBoxMetrics {
             terminal_height: LEGACY_SEQUENCE_BLOCK_LABEL_BOX_HEIGHT,
             typography_expanded: false,
         };
-        // Authored Mermaid fonts preserve drawLoop's configured geometry. Only typed
+        // Authored Mermaid fonts preserve raw frame/title sizing. Only typed
         // typography adds measured space beyond the upstream label-box contract.
         if !typography.has_typed_typography() {
             return Ok(legacy);
@@ -104,6 +105,10 @@ impl SequenceBlockLabelBoxMetrics {
 
     pub(crate) const fn width(self) -> f64 {
         self.width
+    }
+
+    pub(crate) fn drawn_width(self) -> f64 {
+        self.width.max(LEGACY_SEQUENCE_BLOCK_LABEL_BOX_WIDTH)
     }
 
     pub(crate) const fn layout_height(self) -> f64 {

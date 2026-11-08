@@ -825,6 +825,9 @@ impl<'a> EventModelingCursor<'a> {
                 || rest.starts_with("->>")
                 || rest.starts_with("[[")
                 || rest.starts_with("]]")
+                || rest.starts_with("%%")
+                || rest.starts_with("//")
+                || rest.starts_with("/*")
                 || matches!(ch, '`' | '{' | '}' | '"' | '\'')
             {
                 break;
@@ -2697,6 +2700,34 @@ mod semantic_tests {
                 "securityLevel": "strict"
             })),
             title: None,
+        }
+    }
+
+    #[test]
+    fn adjacent_hidden_comments_separate_scalar_tokens_without_preprocessing() {
+        for separator in [
+            " ",
+            "/**/",
+            "/* boundary */",
+            "// boundary\r\n",
+            "%% boundary\r\n",
+            "%%{init: {}}%%\r\n",
+        ] {
+            let source = format!("eventmodeling\ntf 01{separator}evt{separator}Started\n");
+            let model = parse_eventmodeling_semantic_model_controlled(
+                &source,
+                &metadata(),
+                #[cfg(feature = "editor-facts")]
+                EditorFactsDemand::Omit,
+                &crate::OperationControl::new(),
+            )
+            .unwrap()
+            .model
+            .unwrap_or_else(|error| panic!("{source}: {error}"));
+            assert_eq!(model.frames.len(), 1);
+            assert_eq!(model.frames[0].name, "01");
+            assert_eq!(model.frames[0].model_entity_type, "evt");
+            assert_eq!(model.frames[0].entity_identifier, "Started");
         }
     }
 

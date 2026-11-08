@@ -385,10 +385,7 @@ pub(crate) fn render_radar_diagram_svg_model_with_theme_plans(
         }
     })?;
 
-    let polygon_curves = layout
-        .graticules
-        .first()
-        .is_some_and(|g| g.kind.trim() == "polygon");
+    let polygon_curves = model.options.graticule.trim() == "polygon";
     for (curve_index, curve) in layout.curves.iter().enumerate() {
         if polygon_curves && !curve.points.is_empty() {
             let points = fmt_points(&curve.points);

@@ -1,6 +1,8 @@
 #[cfg(feature = "presentation")]
 use crate::SourcePresentationMetadata;
-use crate::diagrams::scan::{LineCursor, leading_whitespace_len, starts_with_case_insensitive};
+use crate::diagrams::scan::{
+    LineCursor, is_ecmascript_whitespace, physical_line_at, starts_with_case_insensitive,
+};
 #[cfg(feature = "editor-facts")]
 use crate::{
     EditorExpectedSyntax, EditorExpectedSyntaxKind, EditorSemanticFacts, EditorSemanticKind,
@@ -220,12 +222,13 @@ impl<'source> TimelineSource<'source> {
     }
 
     fn trim_start(self) -> Self {
-        let leading = leading_whitespace_len(self.text);
+        let leading =
+            self.text.len() - self.text.trim_start_matches(is_ecmascript_whitespace).len();
         self.subslice(leading, self.text.len())
     }
 
     fn trim_end(self) -> Self {
-        let text = self.text.trim_end();
+        let text = self.text.trim_end_matches(is_ecmascript_whitespace);
         self.subslice(0, text.len())
     }
 
@@ -247,6 +250,7 @@ struct ParsedColonDirective<'source> {
 #[derive(Debug, Clone, Copy)]
 struct ParsedSection<'source> {
     db_value: TimelineSource<'source>,
+    remainder: Option<TimelineSource<'source>>,
     #[cfg(feature = "editor-facts")]
     value: TimelineSource<'source>,
 }
@@ -290,10 +294,51 @@ fn parse_keyword_prefix<'source>(
     if !starts_with_case_insensitive(source.text, keyword) {
         return None;
     }
-    Some((
-        source.subslice(0, keyword.len()),
-        source.subslice(keyword.len(), source.text.len()),
-    ))
+    let after_keyword = source.subslice(keyword.len(), source.text.len());
+    if after_keyword
+        .text
+        .starts_with(|ch: char| ch.is_ascii_alphanumeric() || ch == '_')
+    {
+        return None;
+    }
+    Some((source.subslice(0, keyword.len()), after_keyword))
+}
+
+fn starts_timeline_comment(text: &str) -> bool {
+    if text.starts_with("%%") {
+        return true;
+    }
+
+    // The selected Jison lexer also skips [^\}]\%\%[^\n]* before other
+    // tokens. Its JavaScript regexp consumes one UTF-16 code unit, so an
+    // astral character before %% remains part of a period token.
+    let mut chars = text.chars();
+    chars
+        .next()
+        .is_some_and(|ch| ch != '}' && ch.len_utf16() == 1)
+        && chars.as_str().starts_with("%%")
+}
+
+fn parse_timeline_header(
+    source: TimelineSource<'_>,
+) -> Option<(TimelineDirection, TimelineSource<'_>)> {
+    let (_, after_keyword) = parse_keyword_prefix(source, "timeline")?;
+    let direction_text = after_keyword.text.trim_start_matches([' ', '\t']);
+    if direction_text.len() < after_keyword.text.len() {
+        let direction_source = after_keyword.subslice(
+            after_keyword.text.len() - direction_text.len(),
+            after_keyword.text.len(),
+        );
+        for (keyword, direction) in [
+            ("LR", TimelineDirection::LeftToRight),
+            ("TD", TimelineDirection::TopDown),
+        ] {
+            if let Some((_, remainder)) = parse_keyword_prefix(direction_source, keyword) {
+                return Some((direction, remainder));
+            }
+        }
+    }
+    Some((TimelineDirection::LeftToRight, after_keyword))
 }
 
 fn parse_space_directive<'source>(
@@ -303,7 +348,7 @@ fn parse_space_directive<'source>(
     let line = line.trim_start();
     let (_, after_keyword) = parse_keyword_prefix(line, keyword)?;
     let whitespace = after_keyword.text.chars().next()?;
-    if !whitespace.is_whitespace() {
+    if !is_ecmascript_whitespace(whitespace) {
         return None;
     }
     Some(ParsedSpaceDirective {
@@ -321,30 +366,27 @@ fn parse_colon_directive<'source>(
     let after_colon = after_keyword.text.strip_prefix(':')?;
     let after_colon = TimelineSource::new(after_colon, after_keyword.start + 1).trim_start();
 
-    let terminator = after_colon
-        .text
-        .char_indices()
-        .find(|(_, ch)| matches!(ch, '#' | ';'));
-    let value_source = match terminator {
-        Some((offset, '#')) | Some((offset, ';')) => after_colon.subslice(0, offset).trim(),
-        Some(_) => unreachable!("Timeline terminator is closed"),
-        None => after_colon.trim(),
-    };
-
     Some(ParsedColonDirective {
-        value: value_source,
+        value: after_colon.trim(),
     })
 }
 
 fn parse_section<'source>(line: TimelineSource<'source>) -> Option<ParsedSection<'source>> {
     let parsed = parse_space_directive(line, "section")?;
     let colon = parsed.value.text.find(':');
-    let db_value = match colon {
-        Some(offset) => parsed.value.subslice(0, offset),
-        None => parsed.value,
+    let (db_value, remainder) = match colon {
+        Some(offset) => (
+            parsed.value.subslice(0, offset),
+            Some(parsed.value.subslice(offset, parsed.value.text.len())),
+        ),
+        None => (parsed.value, None),
     };
+    if db_value.text.is_empty() {
+        return None;
+    }
     Some(ParsedSection {
         db_value,
+        remainder,
         #[cfg(feature = "editor-facts")]
         value: db_value.trim(),
     })
@@ -386,7 +428,7 @@ fn parse_acc_descr_block(
         return Ok(Some(ParsedAccDescrBlock {
             keyword: keyword.span(),
             closing: Some(closing),
-            text: text.trim().to_string(),
+            text: text.trim_matches(is_ecmascript_whitespace).to_string(),
             #[cfg(feature = "editor-facts")]
             span: _span,
         }));
@@ -432,23 +474,50 @@ fn parse_acc_descr_block(
     Ok(Some(ParsedAccDescrBlock {
         keyword: keyword.span(),
         closing,
-        text: text.trim().to_string(),
+        text: text.trim_matches(is_ecmascript_whitespace).to_string(),
         #[cfg(feature = "editor-facts")]
         span: _span,
     }))
 }
 
+fn timeline_event_body<'source>(
+    after_colon: TimelineSource<'source>,
+    code: &'source str,
+) -> Option<TimelineSource<'source>> {
+    if let Some(whitespace) = after_colon.text.chars().next() {
+        return is_ecmascript_whitespace(whitespace)
+            .then(|| after_colon.subslice(whitespace.len_utf8(), after_colon.text.len()));
+    }
+
+    // The event rule consumes one whitespace character, which can be LF. Keep the
+    // next physical line borrowed from the source; direct family input can retain CRLF.
+    let rest = &code[after_colon.start..];
+    let after_newline = rest
+        .strip_prefix("\r\n")
+        .or_else(|| rest.strip_prefix('\n'))?;
+    let start = code.len() - after_newline.len();
+    let (text, _) = physical_line_at(code, start);
+    (!text.is_empty()).then_some(TimelineSource::new(text, start))
+}
+
 fn parse_timeline_events<'source>(
     input: TimelineSource<'source>,
+    code: &'source str,
+    cursor: &mut LineCursor<'source>,
     diagram_type: &str,
-) -> ParsedTimelineEvents<'source> {
+    control: &OperationControl,
+) -> OperationControlResult<ParsedTimelineEvents<'source>> {
     let original = input;
     let mut source = input;
     let mut events = Vec::new();
 
     while !source.text.is_empty() {
+        control.checkpoint()?;
+        if starts_timeline_comment(source.text) {
+            break;
+        }
         if !source.text.starts_with(':') {
-            return ParsedTimelineEvents {
+            return Ok(ParsedTimelineEvents {
                 events,
                 issue: Some(timeline_parse_issue(
                     Error::diagram_parse_exact(
@@ -458,12 +527,12 @@ fn parse_timeline_events<'source>(
                     ),
                     source.span(),
                 )),
-            };
+            });
         }
         let after_colon = source.subslice(1, source.text.len());
-        let Some(whitespace) = after_colon.text.chars().next() else {
+        let Some(body) = timeline_event_body(after_colon, code) else {
             let insertion = SourceSpan::new(after_colon.start, after_colon.start);
-            return ParsedTimelineEvents {
+            return Ok(ParsedTimelineEvents {
                 events,
                 issue: Some(timeline_parse_issue(
                     Error::diagram_parse_insertion_point(
@@ -473,39 +542,10 @@ fn parse_timeline_events<'source>(
                     ),
                     insertion,
                 )),
-            };
+            });
         };
-        if !whitespace.is_whitespace() {
-            let insertion = SourceSpan::new(after_colon.start, after_colon.start);
-            return ParsedTimelineEvents {
-                events,
-                issue: Some(timeline_parse_issue(
-                    Error::diagram_parse_insertion_point(
-                        diagram_type.to_string(),
-                        "invalid event token: missing whitespace after ':'",
-                        after_colon.start,
-                    ),
-                    insertion,
-                )),
-            };
-        }
 
-        source = after_colon.subslice(whitespace.len_utf8(), after_colon.text.len());
-        if source.text.is_empty() {
-            let insertion = SourceSpan::new(source.start, source.start);
-            return ParsedTimelineEvents {
-                events,
-                issue: Some(timeline_parse_issue(
-                    Error::diagram_parse_insertion_point(
-                        diagram_type.to_string(),
-                        "invalid event token: expected event text",
-                        source.start,
-                    ),
-                    insertion,
-                )),
-            };
-        }
-
+        source = body;
         let boundary = source.text.char_indices().find_map(|(offset, ch)| {
             if ch != ':' {
                 return None;
@@ -513,7 +553,8 @@ fn parse_timeline_events<'source>(
             source.text[offset + 1..]
                 .chars()
                 .next()
-                .is_some_and(char::is_whitespace)
+                .or_else(|| code[source.end()..].chars().next())
+                .is_some_and(is_ecmascript_whitespace)
                 .then_some(offset)
         });
         let (value, rest) = match boundary {
@@ -523,14 +564,36 @@ fn parse_timeline_events<'source>(
             ),
             None => (source, TimelineSource::new("", source.end())),
         };
+        if value.text.is_empty() {
+            let insertion = SourceSpan::new(value.start, value.start);
+            return Ok(ParsedTimelineEvents {
+                events,
+                issue: Some(timeline_parse_issue(
+                    Error::diagram_parse_insertion_point(
+                        diagram_type.to_string(),
+                        "invalid event token: expected event text",
+                        value.start,
+                    ),
+                    insertion,
+                )),
+            });
+        }
+        // Commit a continued line only after an event body was parsed. An invalid
+        // suffix leaves the following line available to the normal recovery path.
+        while cursor.offset() < value.end() {
+            if cursor.next_line().is_none() {
+                break;
+            }
+            control.checkpoint()?;
+        }
         events.push(ParsedTimelineEvent { value });
         source = rest;
     }
 
-    ParsedTimelineEvents {
+    Ok(ParsedTimelineEvents {
         events,
         issue: None,
-    }
+    })
 }
 
 fn parse_timeline_period(line: TimelineSource<'_>) -> ParsedTimelinePeriod<'_> {
@@ -776,7 +839,7 @@ fn parse_timeline_semantic_source(
             continue;
         }
 
-        if significant.text.starts_with("%%") {
+        if starts_timeline_comment(significant.text) {
             continue;
         }
         if significant.text.starts_with('#') {
@@ -784,7 +847,7 @@ fn parse_timeline_semantic_source(
         }
 
         if !header_seen {
-            let Some((_, after_keyword)) = parse_keyword_prefix(significant, "timeline") else {
+            let Some((direction, remainder)) = parse_timeline_header(significant) else {
                 issues.push(timeline_parse_issue(
                     Error::diagram_parse_exact(
                         diagram_type.to_string(),
@@ -797,65 +860,27 @@ fn parse_timeline_semantic_source(
             };
 
             header_seen = true;
-            if after_keyword.text.is_empty() {
-                continue;
+            db.direction = direction;
+            if !remainder.text.is_empty() {
+                lines.resume_same_line_at(remainder.start);
             }
-            if after_keyword.text.starts_with('#') {
-                continue;
-            }
-            if after_keyword.text.starts_with("%%") {
-                continue;
-            }
-
-            let had_whitespace = after_keyword
-                .text
-                .chars()
-                .next()
-                .is_some_and(char::is_whitespace);
-            let rest = after_keyword.trim_start();
-            if had_whitespace && rest.text.starts_with('#') {
-                continue;
-            }
-            if had_whitespace && rest.text.starts_with("%%") {
-                continue;
-            }
-            let direction_end = rest
-                .text
-                .char_indices()
-                .find_map(|(offset, ch)| ch.is_whitespace().then_some(offset))
-                .unwrap_or(rest.text.len());
-            let direction = rest.subslice(0, direction_end);
-            let trailing = rest.subslice(direction_end, rest.text.len()).trim_start();
-            let valid_direction = had_whitespace
-                && (direction.text.eq_ignore_ascii_case("LR")
-                    || direction.text.eq_ignore_ascii_case("TD"));
-            if valid_direction {
-                db.direction = if direction.text.eq_ignore_ascii_case("TD") {
-                    TimelineDirection::TopDown
-                } else {
-                    TimelineDirection::LeftToRight
-                };
-                if trailing.text.starts_with('#') {
-                    continue;
-                }
-                if trailing.text.is_empty() || trailing.text.starts_with("%%") {
-                    continue;
-                }
-            }
-
-            let invalid = if valid_direction { trailing } else { rest };
-            issues.push(timeline_parse_issue(
-                Error::diagram_parse_exact(
-                    diagram_type.to_string(),
-                    "unexpected content after timeline header",
-                    invalid.span(),
-                ),
-                invalid.span(),
-            ));
             continue;
         }
 
         let statement = line.trim_start();
+        // Header tokens retain their priority over periods, but are only valid once.
+        if let Some((_, remainder)) = parse_timeline_header(statement) {
+            let span = SourceSpan::new(statement.start, remainder.start);
+            issues.push(timeline_parse_issue(
+                Error::diagram_parse_exact(
+                    diagram_type.to_string(),
+                    "unexpected timeline header",
+                    span,
+                ),
+                span,
+            ));
+            continue;
+        }
         if let Some(parsed) = parse_space_directive(statement, "title") {
             #[cfg(feature = "editor-facts")]
             if let Some(facts) = editor_facts
@@ -957,17 +982,21 @@ fn parse_timeline_semantic_source(
                 editor_demand,
                 &mut editor_facts,
                 parsed.value.text,
-                statement.span(),
+                SourceSpan::new(statement.start, parsed.db_value.end()),
                 parsed.value.span(),
                 "timeline section",
                 EditorSemanticKind::Namespace,
             );
             db.add_section(parsed.db_value.text);
+            if let Some(remainder) = parsed.remainder {
+                // A section token ends before ':', then the normal lexer state resumes.
+                lines.resume_same_line_at(remainder.start);
+            }
             continue;
         }
 
         if statement.text.starts_with(':') {
-            let parsed = parse_timeline_events(statement, diagram_type);
+            let parsed = parse_timeline_events(statement, code, &mut lines, diagram_type, control)?;
             for event in parsed.events {
                 match db.add_event(event.value.text) {
                     Ok(()) => {
@@ -1011,7 +1040,8 @@ fn parse_timeline_semantic_source(
             TimelinePeriodSuffix::None => {}
             TimelinePeriodSuffix::HashComment => {}
             TimelinePeriodSuffix::Events(events_source) => {
-                let events = parse_timeline_events(events_source, diagram_type);
+                let events =
+                    parse_timeline_events(events_source, code, &mut lines, diagram_type, control)?;
                 for event in events.events {
                     match db.add_event(event.value.text) {
                         Ok(()) => {
@@ -1063,6 +1093,734 @@ fn parse_timeline_semantic_source(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn timeline_boundary_comments_preserve_the_previous_task_and_section() {
+        for comment in [
+            "%% hidden",
+            "x%% hidden",
+            "  x%% hidden",
+            "中%% hidden",
+            ":%% hidden",
+        ] {
+            let source = format!(
+                "timeline\r\nsection A\r\nP : Seed\r\n{comment}\r\nsection B:%% hidden\r\n: Follow\r\nNext : Ready\r\n"
+            );
+            let model = parse_timeline_semantic_model_controlled(
+                &source,
+                "timeline",
+                &crate::MermaidConfig::default(),
+                #[cfg(feature = "editor-facts")]
+                EditorFactsDemand::Omit,
+                &OperationControl::new(),
+            )
+            .unwrap()
+            .model
+            .expect("boundary comments do not create a task or an invalid event");
+
+            assert_eq!(model.sections, ["A", "B"]);
+            assert_eq!(model.tasks.len(), 2, "{comment:?}");
+            assert_eq!(model.tasks[0].task, "P ");
+            assert_eq!(model.tasks[0].section, "A");
+            assert_eq!(model.tasks[0].events, ["Seed", "Follow"]);
+            assert_eq!(model.tasks[1].task, "Next ");
+            assert_eq!(model.tasks[1].section, "B");
+            assert_eq!(model.tasks[1].events, ["Ready"]);
+        }
+    }
+
+    #[test]
+    fn timeline_boundary_comments_follow_headers_and_directions() {
+        for (header, direction) in [
+            ("timeline x%% hidden", TimelineDirection::LeftToRight),
+            ("timeline:%% hidden", TimelineDirection::LeftToRight),
+            ("timeline LR x%% hidden", TimelineDirection::LeftToRight),
+            ("timeline TD x%% hidden", TimelineDirection::TopDown),
+            ("timeline TD\u{0085}%% hidden", TimelineDirection::TopDown),
+        ] {
+            let source = format!("{header}\nP : Seed\n");
+            let model = parse_timeline_semantic_model_controlled(
+                &source,
+                "timeline",
+                &crate::MermaidConfig::default(),
+                #[cfg(feature = "editor-facts")]
+                EditorFactsDemand::Omit,
+                &OperationControl::new(),
+            )
+            .unwrap()
+            .model
+            .expect("the normal comment lexer resumes after the header token");
+
+            assert_eq!(model.direction, direction);
+            assert_eq!(model.tasks.len(), 1);
+            assert_eq!(model.tasks[0].events, ["Seed"]);
+        }
+    }
+
+    #[test]
+    fn timeline_plain_header_resumes_normal_period_tokens() {
+        for (header, first_task, first_event) in [
+            ("timeline\u{feff}TD", "TD", None),
+            ("timeline LRfoo", "LRfoo", None),
+            ("timeline P : Seed", "P ", Some("Seed")),
+        ] {
+            let source = format!("{header}\nNext : Ready\n");
+            let model = parse_timeline_semantic_model_controlled(
+                &source,
+                "timeline",
+                &crate::MermaidConfig::default(),
+                #[cfg(feature = "editor-facts")]
+                EditorFactsDemand::Omit,
+                &OperationControl::new(),
+            )
+            .unwrap()
+            .model
+            .expect("the plain header leaves its remaining tokens in the normal state");
+
+            assert_eq!(model.direction, TimelineDirection::LeftToRight);
+            assert_eq!(model.tasks.len(), 2);
+            assert_eq!(model.tasks[0].task, first_task);
+            assert_eq!(
+                model.tasks[0].events,
+                first_event.into_iter().collect::<Vec<_>>()
+            );
+            assert_eq!(model.tasks[1].events, ["Ready"]);
+        }
+    }
+
+    #[test]
+    fn timeline_boundary_comments_require_a_complete_header_keyword() {
+        for header in [
+            "timelinex%% hidden",
+            "timeline_%% hidden",
+            "timeline1%% hidden",
+        ] {
+            let source = format!("{header}\nP : Seed\n");
+            let parsed = parse_timeline_semantic_model_controlled(
+                &source,
+                "timeline",
+                &crate::MermaidConfig::default(),
+                #[cfg(feature = "editor-facts")]
+                EditorFactsDemand::Capture,
+                &OperationControl::new(),
+            )
+            .unwrap();
+            let Error::DiagramParse { diagnostic, .. } = parsed.model.unwrap_err() else {
+                panic!("the header keyword must end at a JavaScript word boundary");
+            };
+            assert_eq!(diagnostic.message(), "expected timeline header");
+            assert_eq!(diagnostic.span(), Some(SourceSpan::new(0, header.len())));
+            #[cfg(feature = "editor-facts")]
+            {
+                let facts = parsed.editor_facts.unwrap();
+                assert_eq!(
+                    facts.completeness,
+                    crate::EditorSemanticCompleteness::Recovered
+                );
+                assert_eq!(facts.diagnostics[0].span, diagnostic.span());
+            }
+        }
+    }
+
+    #[test]
+    fn timeline_repeated_headers_remain_invalid_after_resuming_tokens() {
+        for (source, header) in [
+            ("timeline timeline\nP : Seed\n", "timeline"),
+            ("timeline TD timeline LR\nP : Seed\n", "timeline LR"),
+            ("timeline\n  timeline\nP : Seed\n", "timeline"),
+        ] {
+            let parsed = parse_timeline_semantic_model_controlled(
+                source,
+                "timeline",
+                &crate::MermaidConfig::default(),
+                #[cfg(feature = "editor-facts")]
+                EditorFactsDemand::Capture,
+                &OperationControl::new(),
+            )
+            .unwrap();
+            let Error::DiagramParse { diagnostic, .. } = parsed.model.unwrap_err() else {
+                panic!("a second header token is not a period statement");
+            };
+            let start = source.rfind(header).unwrap();
+            assert_eq!(diagnostic.message(), "unexpected timeline header");
+            assert_eq!(
+                diagnostic.span(),
+                Some(SourceSpan::new(start, start + header.len()))
+            );
+            #[cfg(feature = "editor-facts")]
+            {
+                let facts = parsed.editor_facts.unwrap();
+                assert_eq!(
+                    facts.completeness,
+                    crate::EditorSemanticCompleteness::Recovered
+                );
+                assert_eq!(facts.diagnostics.len(), 1);
+                assert_eq!(facts.diagnostics[0].span, diagnostic.span());
+                assert!(facts.symbols.iter().any(|symbol| symbol.name == "P"));
+            }
+        }
+    }
+
+    #[test]
+    fn timeline_boundary_comments_use_ecmascript_whitespace() {
+        for (prefix, skipped) in [("\u{0085}", false), ("\u{feff}", true), ("\u{00a0}", true)] {
+            let source = format!("timeline\nP : Seed\n{prefix}x%% retained\n: Follow\n");
+            let parsed = parse_timeline_semantic_model_controlled(
+                &source,
+                "timeline",
+                &crate::MermaidConfig::default(),
+                #[cfg(feature = "editor-facts")]
+                EditorFactsDemand::Capture,
+                &OperationControl::new(),
+            )
+            .unwrap();
+            let model = parsed.model.expect("whitespace follows the selected lexer");
+            if skipped {
+                assert_eq!(model.tasks.len(), 1);
+                assert_eq!(model.tasks[0].events, ["Seed", "Follow"]);
+            } else {
+                assert_eq!(model.tasks.len(), 2);
+                assert_eq!(model.tasks[0].events, ["Seed"]);
+                assert_eq!(model.tasks[1].task, "\u{0085}x%% retained");
+                assert_eq!(model.tasks[1].events, ["Follow"]);
+            }
+            #[cfg(feature = "editor-facts")]
+            {
+                let facts = parsed.editor_facts.unwrap();
+                let task = facts
+                    .symbols
+                    .iter()
+                    .find(|symbol| symbol.name.contains("retained"));
+                assert_eq!(task.is_none(), skipped);
+                if let Some(task) = task {
+                    let start = source.find(prefix).unwrap();
+                    assert_eq!(task.name, "\u{0085}x%% retained");
+                    assert_eq!(
+                        task.selection,
+                        SourceSpan::new(start, start + task.name.len())
+                    );
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn timeline_boundary_comment_precedes_an_event_token_after_a_period() {
+        let model = parse_timeline_semantic_model_controlled(
+            "timeline\nP:%% hidden\n: Follow\nNext : Ready\n",
+            "timeline",
+            &crate::MermaidConfig::default(),
+            #[cfg(feature = "editor-facts")]
+            EditorFactsDemand::Omit,
+            &OperationControl::new(),
+        )
+        .unwrap()
+        .model
+        .expect("the comment rule resumes after a period token");
+
+        assert_eq!(model.tasks.len(), 2);
+        assert_eq!(model.tasks[0].task, "P");
+        assert_eq!(model.tasks[0].events, ["Follow"]);
+        assert_eq!(model.tasks[1].events, ["Ready"]);
+    }
+
+    #[test]
+    fn timeline_percent_pairs_inside_payload_tokens_remain_literal() {
+        let source = concat!(
+            "timeline\n",
+            "title Release %% ready\n",
+            "accTitle: x%% retained\n",
+            "accDescr {\nx%% retained\n}\n",
+            "section Build %% retained\n",
+            "P : literal %% kept\n",
+            ": x%% also kept\n",
+            ": %% kept\n",
+            ": Seed :%% kept\n",
+            "xx%% retained\n",
+            "}%% retained\n",
+            "🤓%% retained\n",
+        );
+        let model = parse_timeline_semantic_model_controlled(
+            source,
+            "timeline",
+            &crate::MermaidConfig::default(),
+            #[cfg(feature = "editor-facts")]
+            EditorFactsDemand::Omit,
+            &OperationControl::new(),
+        )
+        .unwrap()
+        .model
+        .expect("comment recognition respects lexer token boundaries");
+
+        assert_eq!(model.title.as_deref(), Some("Release %% ready"));
+        assert_eq!(model.acc_title.as_deref(), Some("x%% retained"));
+        assert_eq!(model.acc_descr.as_deref(), Some("x%% retained"));
+        assert_eq!(model.sections, ["Build %% retained"]);
+        assert_eq!(model.tasks.len(), 4);
+        assert_eq!(
+            model.tasks[0].events,
+            [
+                "literal %% kept",
+                "x%% also kept",
+                "%% kept",
+                "Seed :%% kept"
+            ]
+        );
+        assert_eq!(model.tasks[1].task, "xx%% retained");
+        assert_eq!(model.tasks[2].task, "}%% retained");
+        assert_eq!(model.tasks[3].task, "🤓%% retained");
+    }
+
+    #[test]
+    #[cfg(feature = "editor-facts")]
+    fn timeline_boundary_comments_emit_no_payload_facts() {
+        let source = concat!(
+            "timeline\r\n",
+            "section 发布\r\n",
+            "P : Seed\r\n",
+            "  中%% hidden\r\n",
+            "section 后续:%% hidden\r\n",
+            ": literal %% kept\r\n",
+            "Next : Ready\r\n",
+        );
+        let parsed = parse_timeline_semantic_model_controlled(
+            source,
+            "timeline",
+            &crate::MermaidConfig::default(),
+            EditorFactsDemand::Capture,
+            &OperationControl::new(),
+        )
+        .unwrap();
+        assert!(parsed.model.is_ok());
+        let facts = parsed.editor_facts.expect("capture requested");
+        assert!(
+            facts
+                .symbols
+                .iter()
+                .all(|symbol| !symbol.name.contains("hidden"))
+        );
+        let literal = facts
+            .symbols
+            .iter()
+            .find(|symbol| symbol.name == "literal %% kept")
+            .expect("event payload remains available to editor services");
+        let start = source.find("literal %% kept").unwrap();
+        assert_eq!(
+            literal.selection,
+            SourceSpan::new(start, start + "literal %% kept".len())
+        );
+        for expected in &facts.expected_syntax {
+            assert!(!source[expected.span.start..expected.span.end].contains("hidden"));
+        }
+    }
+
+    #[test]
+    fn timeline_accessibility_preserves_complete_single_line_payloads() {
+        for (title, description) in [
+            ("Release ready", "Ship stable"),
+            ("Release; ready", "Ship #stable"),
+            ("发布; ready #stable: 🤓", ";Ship; fully #accessible: 稳定"),
+        ] {
+            let source = format!(
+                "timeline\r\naccTitle:  {title}  \r\naccDescr:  {description}  \r\nP : Seed\r\n"
+            );
+            let model = parse_timeline_semantic_model_controlled(
+                &source,
+                "timeline",
+                &crate::MermaidConfig::default(),
+                #[cfg(feature = "editor-facts")]
+                EditorFactsDemand::Omit,
+                &OperationControl::new(),
+            )
+            .unwrap()
+            .model
+            .expect("complete single-line accessibility values parse");
+
+            assert_eq!(model.acc_title.as_deref(), Some(title));
+            assert_eq!(model.acc_descr.as_deref(), Some(description));
+            assert_eq!(model.tasks.len(), 1);
+            assert_eq!(model.tasks[0].events, ["Seed"]);
+        }
+    }
+
+    #[test]
+    fn timeline_section_suffix_dispatches_events_like_following_lines() {
+        for (section_separator, event_separator) in [
+            ("", " "),
+            ("\n", " "),
+            ("\r\n", " "),
+            ("", "\n"),
+            ("", "\r\n"),
+            ("\n", "\n"),
+        ] {
+            let source = format!(
+                "timeline\nsection A\nP : Seed\nsection B{section_separator}:{event_separator}Extra: https://example.com:8080/a#part;literal %% kept\nNext : Ready\n"
+            );
+            let model = parse_timeline_semantic_model_controlled(
+                &source,
+                "timeline",
+                &crate::MermaidConfig::default(),
+                #[cfg(feature = "editor-facts")]
+                EditorFactsDemand::Omit,
+                &OperationControl::new(),
+            )
+            .unwrap()
+            .model
+            .expect("a section can be followed immediately by event tokens");
+
+            assert_eq!(model.sections, ["A", "B"]);
+            assert_eq!(model.tasks.len(), 2);
+            assert_eq!(model.tasks[0].task, "P ");
+            assert_eq!(model.tasks[0].section, "A");
+            assert_eq!(model.tasks[0].section_index, Some(0));
+            assert_eq!(
+                model.tasks[0].events,
+                [
+                    "Seed",
+                    "Extra",
+                    "https://example.com:8080/a#part;literal %% kept"
+                ]
+            );
+            assert_eq!(model.tasks[1].section, "B");
+            assert_eq!(model.tasks[1].section_index, Some(1));
+            assert_eq!(model.tasks[1].events, ["Ready"]);
+        }
+    }
+
+    #[test]
+    fn timeline_task_suffix_and_later_events_share_the_lf_separator() {
+        for separator in [" ", "\n"] {
+            let source = format!("timeline\nP:{separator}Seed:{separator}Extra\nNext : Ready\n");
+            let model = parse_timeline_semantic_model_controlled(
+                &source,
+                "timeline",
+                &crate::MermaidConfig::default(),
+                #[cfg(feature = "editor-facts")]
+                EditorFactsDemand::Omit,
+                &OperationControl::new(),
+            )
+            .unwrap()
+            .model
+            .expect("task suffixes use the same event rule");
+
+            assert_eq!(model.tasks.len(), 2);
+            assert_eq!(model.tasks[0].task, "P");
+            assert_eq!(model.tasks[0].events, ["Seed", "Extra"]);
+            assert_eq!(model.tasks[1].task, "Next ");
+            assert_eq!(model.tasks[1].events, ["Ready"]);
+        }
+    }
+
+    #[test]
+    fn timeline_section_token_requires_text_before_the_colon() {
+        let model = parse_timeline_semantic_model_controlled(
+            "timeline\nsection : Extra\n",
+            "timeline",
+            &crate::MermaidConfig::default(),
+            #[cfg(feature = "editor-facts")]
+            EditorFactsDemand::Omit,
+            &OperationControl::new(),
+        )
+        .unwrap()
+        .model
+        .expect("without section text the period rule owns the token");
+
+        assert!(model.sections.is_empty());
+        assert_eq!(model.tasks.len(), 1);
+        assert_eq!(model.tasks[0].task, "section ");
+        assert_eq!(model.tasks[0].section_index, None);
+        assert_eq!(model.tasks[0].events, ["Extra"]);
+    }
+
+    #[test]
+    fn timeline_section_suffix_rejects_invalid_event_tokens() {
+        for (suffix, insertion_offset, message) in [
+            (
+                "section B:bad\n",
+                1,
+                "invalid event token: missing whitespace after ':'",
+            ),
+            (
+                "section B:",
+                1,
+                "invalid event token: missing whitespace after ':'",
+            ),
+            (
+                "section B:\n",
+                1,
+                "invalid event token: missing whitespace after ':'",
+            ),
+            ("section B: ", 2, "invalid event token: expected event text"),
+            (":", 1, "invalid event token: missing whitespace after ':'"),
+        ] {
+            let source = format!("timeline\nsection A\nP : Seed\n{suffix}");
+            let result = parse_timeline_semantic_model_controlled(
+                &source,
+                "timeline",
+                &crate::MermaidConfig::default(),
+                #[cfg(feature = "editor-facts")]
+                EditorFactsDemand::Omit,
+                &OperationControl::new(),
+            )
+            .unwrap();
+            let Error::DiagramParse { diagnostic, .. } = result.model.unwrap_err() else {
+                panic!("expected a structured Timeline suffix error for {suffix:?}");
+            };
+            let insertion = source.rfind(':').unwrap() + insertion_offset;
+            assert_eq!(diagnostic.message(), message, "{suffix:?}");
+            assert_eq!(
+                diagnostic.span(),
+                Some(SourceSpan::new(insertion, insertion))
+            );
+            assert_eq!(
+                diagnostic.span_kind(),
+                crate::ParseDiagnosticSpanKind::InsertionPoint
+            );
+        }
+    }
+
+    #[test]
+    #[cfg(feature = "editor-facts")]
+    fn timeline_lf_section_suffix_keeps_event_ranges_and_task_sections() {
+        use crate::{EditorSemanticCompleteness, EditorSemanticRole};
+
+        for separator in [" ", "\n", "\r\n"] {
+            let source = format!(
+                "timeline\r\nsection 前段\r\n发布 : Seed\r\n  section 后段:{separator}额外 🤓: Follow\r\nNext : Ready\r\n"
+            );
+            reset_timeline_syntax_construction_count();
+            let parsed = parse_timeline_semantic_model_controlled(
+                &source,
+                "timeline",
+                &crate::MermaidConfig::default(),
+                EditorFactsDemand::Capture,
+                &OperationControl::new(),
+            )
+            .unwrap();
+            assert_eq!(timeline_syntax_construction_count(), 1);
+            let model = parsed.model.expect("the event separator can be LF");
+            assert_eq!(model.sections, ["前段", "后段"]);
+            assert_eq!(model.tasks.len(), 2);
+            assert_eq!(model.tasks[0].section, "前段");
+            assert_eq!(model.tasks[0].section_index, Some(0));
+            assert_eq!(model.tasks[0].events, ["Seed", "额外 🤓", "Follow"]);
+            assert_eq!(model.tasks[1].task, "Next ");
+            assert_eq!(model.tasks[1].section, "后段");
+            assert_eq!(model.tasks[1].section_index, Some(1));
+            assert_eq!(model.tasks[1].events, ["Ready"]);
+
+            let facts = parsed.editor_facts.unwrap();
+            assert_eq!(facts.completeness, EditorSemanticCompleteness::Complete);
+            for name in ["额外 🤓", "Follow", "Ready"] {
+                let start = source.find(name).unwrap();
+                let span = SourceSpan::new(start, start + name.len());
+                let symbols = facts
+                    .symbols
+                    .iter()
+                    .filter(|symbol| symbol.name == name)
+                    .collect::<Vec<_>>();
+                assert_eq!(symbols.len(), 1);
+                assert_eq!(symbols[0].role, EditorSemanticRole::Payload);
+                assert_eq!(symbols[0].detail.as_deref(), Some("timeline event"));
+                assert_eq!(symbols[0].span, span);
+                assert_eq!(symbols[0].selection, span);
+                assert!(facts.expected_syntax.iter().any(|expected| {
+                    expected.kind == EditorExpectedSyntaxKind::Payload && expected.span == span
+                }));
+            }
+            let section = facts
+                .symbols
+                .iter()
+                .find(|symbol| symbol.name == "后段")
+                .unwrap();
+            let start = source.find("section 后段").unwrap();
+            assert_eq!(section.role, EditorSemanticRole::Outline);
+            assert_eq!(
+                section.span,
+                SourceSpan::new(start, start + "section 后段".len())
+            );
+            assert_eq!(
+                section.selection,
+                SourceSpan::new(start + "section ".len(), start + "section 后段".len())
+            );
+        }
+    }
+
+    #[test]
+    #[cfg(feature = "editor-facts")]
+    fn timeline_lf_event_recovery_keeps_the_next_task() {
+        use crate::{EditorSemanticCompleteness, EditorSemanticRole};
+
+        for suffix in [":bad\n", ":\n\n", ": \n"] {
+            let source = format!("timeline\nsection A\nP : Seed\nsection B{suffix}Next : Ready\n");
+            let outcome = construct_timeline_semantic_source_controlled(
+                &source,
+                "timeline",
+                EditorFactsDemand::Capture,
+                &OperationControl::new(),
+            )
+            .unwrap();
+            assert_eq!(outcome.issues.len(), 1, "{source}");
+            assert_eq!(outcome.source.model.sections, ["A", "B"]);
+            let tasks = &outcome.source.model.tasks;
+            assert_eq!(tasks.len(), 2);
+            assert_eq!(tasks[0].section_index, Some(0));
+            assert_eq!(tasks[0].events, ["Seed"]);
+            assert_eq!(tasks[1].task, "Next ");
+            assert_eq!(tasks[1].section, "B");
+            assert_eq!(tasks[1].section_index, Some(1));
+            assert_eq!(tasks[1].events, ["Ready"]);
+
+            let recovered = outcome.into_semantic_construction(EditorFactsDemand::Capture);
+            assert!(recovered.model.is_err());
+            let facts = recovered.editor_facts.unwrap();
+            assert_eq!(facts.completeness, EditorSemanticCompleteness::Recovered);
+            assert_eq!(facts.diagnostics.len(), 1);
+            for (name, role) in [
+                ("Next", EditorSemanticRole::Outline),
+                ("Ready", EditorSemanticRole::Payload),
+            ] {
+                let start = source.find(name).unwrap();
+                let span = SourceSpan::new(start, start + name.len());
+                assert!(facts.symbols.iter().any(|symbol| {
+                    symbol.name == name && symbol.role == role && symbol.selection == span
+                }));
+            }
+        }
+    }
+
+    #[test]
+    #[cfg(feature = "editor-facts")]
+    fn timeline_accessibility_and_section_suffix_facts_keep_exact_source_ranges() {
+        use crate::{EditorSemanticCompleteness, EditorSemanticRole};
+
+        let source = concat!(
+            "---\r\nconfig:\r\n  timeline:\r\n    disableMulticolor: false\r\n---\r\n",
+            "%% full-line comment\r\n",
+            "timeline\r\n",
+            "accTitle:  发布; ready #stable 🤓  \r\n",
+            "accDescr:  Ship; fully #accessible 稳定  \r\n",
+            "section 前段\r\n",
+            "发布 : Seed\r\n",
+            "  section 后段: 发布; ready #stable %% literal\r\n",
+        );
+        let facts = crate::MermaidEngine::new()
+            .parse_editor_semantic_facts_with_type_sync("timeline", source)
+            .unwrap()
+            .expect("Timeline facts");
+
+        assert_eq!(facts.completeness, EditorSemanticCompleteness::Complete);
+        for (name, detail) in [
+            ("发布; ready #stable 🤓", "timeline accessibility title"),
+            (
+                "Ship; fully #accessible 稳定",
+                "timeline accessibility description",
+            ),
+            ("发布; ready #stable %% literal", "timeline event"),
+        ] {
+            let start = source.find(name).unwrap();
+            let span = SourceSpan::new(start, start + name.len());
+            let symbols = facts
+                .symbols
+                .iter()
+                .filter(|symbol| symbol.detail.as_deref() == Some(detail) && symbol.name == name)
+                .collect::<Vec<_>>();
+            assert_eq!(symbols.len(), 1, "{detail}");
+            assert_eq!(symbols[0].role, EditorSemanticRole::Payload);
+            assert_eq!(symbols[0].span, span);
+            assert_eq!(symbols[0].selection, span);
+            assert!(facts.expected_syntax.iter().any(|expected| {
+                expected.kind == EditorExpectedSyntaxKind::Payload && expected.span == span
+            }));
+        }
+
+        let section = facts
+            .symbols
+            .iter()
+            .find(|symbol| symbol.name == "后段" && symbol.role == EditorSemanticRole::Outline)
+            .expect("section suffix retains the section outline");
+        let start = source.find("section 后段").unwrap();
+        assert_eq!(section.kind, EditorSemanticKind::Namespace);
+        assert_eq!(
+            section.span,
+            SourceSpan::new(start, start + "section 后段".len())
+        );
+        assert_eq!(
+            section.selection,
+            SourceSpan::new(start + "section ".len(), start + "section 后段".len())
+        );
+    }
+
+    #[test]
+    #[cfg(feature = "editor-facts")]
+    fn timeline_section_suffix_recovery_preserves_sections_and_later_events() {
+        use crate::{EditorSemanticCompleteness, EditorSemanticRole};
+
+        let source = concat!(
+            "timeline TD\r\nsection A\r\nP : Seed\r\n",
+            "  section 后段:bad\r\n",
+            ": Recovered 🤓\r\n",
+            "section Later: Still literal %% kept\r\n",
+            "Next : Ready\r\n",
+            "section Broken: \r\n",
+            "After : Done\r\n",
+        );
+        let capture = |demand| {
+            parse_timeline_semantic_model_controlled(
+                source,
+                "timeline",
+                &crate::MermaidConfig::default(),
+                demand,
+                &OperationControl::new(),
+            )
+            .unwrap()
+        };
+        reset_timeline_syntax_construction_count();
+        let parsed = capture(EditorFactsDemand::Capture);
+        assert_eq!(timeline_syntax_construction_count(), 1);
+        let Error::DiagramParse { diagnostic, .. } = parsed.model.unwrap_err() else {
+            panic!("invalid section suffix must fail strict parsing");
+        };
+        let first = source.find(":bad").unwrap() + 1;
+        let second = source.find("Broken: ").unwrap() + "Broken: ".len();
+        assert_eq!(diagnostic.span(), Some(SourceSpan::new(first, first)));
+        let facts = parsed.editor_facts.unwrap();
+        assert_eq!(facts.completeness, EditorSemanticCompleteness::Recovered);
+        assert_eq!(
+            facts
+                .diagnostics
+                .iter()
+                .map(|issue| issue.span)
+                .collect::<Vec<_>>(),
+            [
+                Some(SourceSpan::new(first, first)),
+                Some(SourceSpan::new(second, second))
+            ]
+        );
+        for (name, role) in [
+            ("后段", EditorSemanticRole::Outline),
+            ("Recovered 🤓", EditorSemanticRole::Payload),
+            ("Still literal %% kept", EditorSemanticRole::Payload),
+            ("Broken", EditorSemanticRole::Outline),
+            ("After", EditorSemanticRole::Outline),
+            ("Done", EditorSemanticRole::Payload),
+        ] {
+            assert!(
+                facts
+                    .symbols
+                    .iter()
+                    .any(|symbol| symbol.name == name && symbol.role == role)
+            );
+        }
+        assert!(!facts.symbols.iter().any(|symbol| symbol.name == "bad"));
+
+        let recovery = capture(EditorFactsDemand::Recovery);
+        let recovery_facts = recovery.editor_facts.unwrap();
+        assert!(recovery.model.is_err());
+        assert_eq!(recovery_facts.diagnostics, facts.diagnostics);
+        assert!(recovery_facts.symbols.is_empty());
+        assert!(recovery_facts.expected_syntax.is_empty());
+    }
 
     #[test]
     #[cfg(feature = "editor-facts")]

@@ -8,7 +8,8 @@ use crate::model::{
 };
 use crate::resources::OperationWorkMeter;
 use crate::text::TextMeasurer;
-use merman_model::families::radar::RadarDiagramModel;
+use merman_model::OperationPhase;
+use merman_model::families::radar::{RadarCurve, RadarDiagramModel};
 use serde_json::Value;
 
 mod axis_paint;
@@ -42,11 +43,20 @@ pub(crate) fn effective_title<'a>(
         })
 }
 
+fn drawable_curves(model: &RadarDiagramModel) -> impl Iterator<Item = (usize, &RadarCurve)> {
+    model
+        .curves
+        .iter()
+        .enumerate()
+        .filter(move |(_, curve)| curve.entries.len() == model.axes.len())
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct RadarLayoutWork {
     axes: usize,
     graticule_shapes: usize,
     graticule_points: usize,
+    curve_scans: usize,
     curve_entry_scans: usize,
     curve_shapes: usize,
     curve_points: usize,
@@ -54,10 +64,14 @@ struct RadarLayoutWork {
 }
 
 impl RadarLayoutWork {
-    fn from_model(model: &RadarDiagramModel, ticks: usize) -> Self {
+    fn from_model(
+        model: &RadarDiagramModel,
+        ticks: usize,
+        work_meter: &OperationWorkMeter,
+    ) -> Result<Self> {
         let axes = model.axes.len();
         let curves = model.curves.len();
-        Self {
+        let mut work = Self {
             axes,
             graticule_shapes: ticks,
             graticule_points: if model.options.graticule.trim() == "polygon" {
@@ -65,13 +79,21 @@ impl RadarLayoutWork {
             } else {
                 0
             },
-            curve_entry_scans: model.curves.iter().fold(0usize, |total, curve| {
-                total.saturating_add(curve.entries.len())
-            }),
-            curve_shapes: curves,
-            curve_points: curves.saturating_mul(axes),
+            curve_scans: curves,
+            curve_entry_scans: 0,
+            curve_shapes: 0,
+            curve_points: 0,
             legend_items: if model.options.show_legend { curves } else { 0 },
+        };
+        for curve in &model.curves {
+            work_meter.checkpoint(OperationPhase::Layout)?;
+            work.curve_entry_scans = work.curve_entry_scans.saturating_add(curve.entries.len());
+            if curve.entries.len() == axes {
+                work.curve_shapes = work.curve_shapes.saturating_add(1);
+                work.curve_points = work.curve_points.saturating_add(axes);
+            }
         }
+        Ok(work)
     }
 
     fn total(self) -> usize {
@@ -79,6 +101,7 @@ impl RadarLayoutWork {
             self.axes,
             self.graticule_shapes,
             self.graticule_points,
+            self.curve_scans,
             self.curve_entry_scans,
             self.curve_shapes,
             self.curve_points,
@@ -89,13 +112,28 @@ impl RadarLayoutWork {
     }
 }
 
-fn nonnegative_usize(v: &Value) -> usize {
-    if let Some(value) = v.as_u64() {
-        return usize::try_from(value).unwrap_or(usize::MAX);
+struct RadarTicks {
+    value: f64,
+    iterations: usize,
+}
+
+impl RadarTicks {
+    fn from_value(value: &Value) -> Self {
+        if let Some(value) = value.as_u64() {
+            return Self {
+                value: value as f64,
+                iterations: usize::try_from(value).unwrap_or(usize::MAX),
+            };
+        }
+        let value = value
+            .as_f64()
+            .filter(|value| value.is_finite() && *value > 0.0)
+            .unwrap_or(0.0);
+        Self {
+            value,
+            iterations: value.ceil() as usize,
+        }
     }
-    v.as_i64()
-        .and_then(|value| usize::try_from(value).ok())
-        .unwrap_or(0)
 }
 
 fn fmt_number(v: f64) -> String {
@@ -200,6 +238,7 @@ pub(crate) fn layout_radar_diagram_typed_with_work_meter(
     _measurer: &dyn TextMeasurer,
     work_meter: &OperationWorkMeter,
 ) -> Result<RadarDiagramLayout> {
+    work_meter.checkpoint(OperationPhase::Layout)?;
     work_meter
         .policy()
         .check_model_complexity(merman_model::resources::model_complexity_from_radar(model))?;
@@ -231,12 +270,13 @@ pub(crate) fn layout_radar_diagram_typed_with_work_meter(
     let title_y = -center_y;
 
     let axis_count = model.axes.len();
-    let ticks = nonnegative_usize(&model.options.ticks);
-    let layout_work = RadarLayoutWork::from_model(model, ticks);
+    let ticks = RadarTicks::from_value(&model.options.ticks);
+    let layout_work = RadarLayoutWork::from_model(model, ticks.iterations, work_meter)?;
     work_meter.charge(layout_work.total())?;
     let mut axes: Vec<RadarAxisLayout> = Vec::new();
     if axis_count > 0 {
         for (i, axis) in model.axes.iter().enumerate() {
+            work_meter.checkpoint(OperationPhase::Layout)?;
             let angle = -std::f64::consts::FRAC_PI_2
                 + (i as f64) * (std::f64::consts::TAU / (axis_count as f64));
             let line = polar_xy(base_radius * axis_scale_factor, angle);
@@ -253,20 +293,22 @@ pub(crate) fn layout_radar_diagram_typed_with_work_meter(
     }
 
     let mut graticules: Vec<RadarGraticuleShapeLayout> = Vec::new();
-    if ticks > 0 {
-        for t in 1..=ticks {
-            let r = base_radius * (t as f64) / (ticks as f64);
+    if ticks.iterations > 0 {
+        for t in 1..=ticks.iterations {
+            work_meter.checkpoint(OperationPhase::Layout)?;
+            let r = base_radius * (t as f64) / ticks.value;
             if model.options.graticule.trim() == "polygon" {
                 let points = if axis_count == 0 {
                     Vec::new()
                 } else {
-                    (0..axis_count)
-                        .map(|i| {
-                            let angle = -std::f64::consts::FRAC_PI_2
-                                + (i as f64) * (std::f64::consts::TAU / (axis_count as f64));
-                            polar_xy(r, angle)
-                        })
-                        .collect()
+                    let mut points = Vec::with_capacity(axis_count);
+                    for axis_index in 0..axis_count {
+                        work_meter.checkpoint(OperationPhase::Layout)?;
+                        let angle = -std::f64::consts::FRAC_PI_2
+                            + (axis_index as f64) * (std::f64::consts::TAU / (axis_count as f64));
+                        points.push(polar_xy(r, angle));
+                    }
+                    points
                 };
                 graticules.push(RadarGraticuleShapeLayout {
                     kind: "polygon".to_string(),
@@ -285,7 +327,9 @@ pub(crate) fn layout_radar_diagram_typed_with_work_meter(
 
     let mut inferred_max: f64 = 0.0;
     for c in &model.curves {
+        work_meter.checkpoint(OperationPhase::Layout)?;
         for v in &c.entries {
+            work_meter.checkpoint(OperationPhase::Layout)?;
             if let Some(v) = json_f64(v).filter(|v| v.is_finite()) {
                 inferred_max = inferred_max.max(v);
             }
@@ -302,9 +346,14 @@ pub(crate) fn layout_radar_diagram_typed_with_work_meter(
 
     let mut curves: Vec<RadarCurveLayout> = Vec::new();
     for (curve_idx, curve) in model.curves.iter().enumerate() {
+        work_meter.checkpoint(OperationPhase::Layout)?;
+        if curve.entries.len() != axis_count {
+            continue;
+        }
         let mut points: Vec<LayoutPoint> = Vec::new();
         if axis_count > 0 {
             for i in 0..axis_count {
+                work_meter.checkpoint(OperationPhase::Layout)?;
                 let angle = -std::f64::consts::FRAC_PI_2
                     + (i as f64) * (std::f64::consts::TAU / (axis_count as f64));
                 let v = curve.entries.get(i).and_then(json_f64).unwrap_or(min_value);
@@ -326,11 +375,12 @@ pub(crate) fn layout_radar_diagram_typed_with_work_meter(
     }
 
     let mut legend_items: Vec<RadarLegendItemLayout> = Vec::new();
-    if model.options.show_legend && !curves.is_empty() {
+    if model.options.show_legend {
         let base_x = ((width / 2.0 + margin_right) * 3.0) / 4.0;
         let base_y = (-(height / 2.0 + margin_top) * 3.0) / 4.0;
         let step_y = 20.0;
         for (i, c) in model.curves.iter().enumerate() {
+            work_meter.checkpoint(OperationPhase::Layout)?;
             legend_items.push(RadarLegendItemLayout {
                 label: c.label.clone(),
                 class_index: i as i64,
@@ -363,11 +413,210 @@ pub(crate) fn layout_radar_diagram_typed_with_work_meter(
 
 #[cfg(test)]
 mod tests {
-    use super::{layout_radar_diagram_typed, layout_radar_diagram_typed_with_resource_policy};
+    use super::{
+        RadarTicks, layout_radar_diagram_typed, layout_radar_diagram_typed_with_resource_policy,
+        layout_radar_diagram_typed_with_work_meter,
+    };
+    use crate::resources::OperationWorkMeter;
     use crate::text::DeterministicTextMeasurer;
     use crate::{Error, RenderResourcePolicy, ResourceLimitId};
     use merman_model::families::radar::{RadarAxis, RadarCurve, RadarDiagramModel, RadarOptions};
-    use serde_json::json;
+    use merman_model::{OperationControl, OperationPhase};
+    use serde_json::{Value, json};
+
+    fn radar_model_with_entries(entries: &[&[u64]]) -> RadarDiagramModel {
+        RadarDiagramModel {
+            axes: ["A", "B", "C"]
+                .into_iter()
+                .map(|name| RadarAxis {
+                    name: name.to_owned(),
+                    label: name.to_owned(),
+                })
+                .collect(),
+            curves: entries
+                .iter()
+                .enumerate()
+                .map(|(index, values)| RadarCurve {
+                    name: format!("Curve{index}"),
+                    label: format!("Curve {index}"),
+                    entries: values.iter().copied().map(Value::from).collect(),
+                })
+                .collect(),
+            options: RadarOptions {
+                ticks: json!(0),
+                ..RadarOptions::default()
+            },
+            ..RadarDiagramModel::default()
+        }
+    }
+
+    #[test]
+    fn radar_skips_short_and_long_curves_without_changing_scale_or_legend_indices() {
+        let measurer = DeterministicTextMeasurer::default();
+        for graticule in ["circle", "polygon"] {
+            for show_legend in [false, true] {
+                let mut model = radar_model_with_entries(&[&[100, 1], &[1, 2, 3], &[1, 2, 3, 200]]);
+                model.options.graticule = graticule.to_owned();
+                model.options.show_legend = show_legend;
+                let layout = layout_radar_diagram_typed(&model, &json!({}), &measurer).unwrap();
+
+                assert_eq!(layout.curves.len(), 1);
+                assert_eq!(layout.curves[0].class_index, 1);
+                assert_eq!(layout.curves[0].points.len(), 3);
+                assert!((layout.curves[0].points[0].y + 1.5).abs() < 1e-9);
+                assert_eq!(
+                    layout
+                        .legend_items
+                        .iter()
+                        .map(|item| item.class_index)
+                        .collect::<Vec<_>>(),
+                    if show_legend {
+                        vec![0, 1, 2]
+                    } else {
+                        Vec::new()
+                    }
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn radar_keeps_legend_when_every_curve_is_skipped() {
+        let model = radar_model_with_entries(&[&[1, 2], &[1, 2, 3, 4]]);
+        let layout =
+            layout_radar_diagram_typed(&model, &json!({}), &DeterministicTextMeasurer::default())
+                .unwrap();
+
+        assert!(layout.curves.is_empty());
+        assert_eq!(layout.legend_items.len(), 2);
+        assert_eq!(layout.legend_items[1].class_index, 1);
+    }
+
+    #[test]
+    fn radar_fractional_ticks_use_ceil_iterations_and_the_original_denominator() {
+        for graticule in ["circle", "polygon"] {
+            for (ticks, radii) in [
+                (json!(2), vec![150.0, 300.0]),
+                (json!(2.0), vec![150.0, 300.0]),
+                (json!(2.5), vec![120.0, 240.0, 360.0]),
+                (json!(0.5), vec![600.0]),
+                (json!(0), Vec::new()),
+            ] {
+                let mut model = radar_model_with_entries(&[&[1, 2, 3]]);
+                model.options.graticule = graticule.to_owned();
+                model.options.ticks = ticks;
+                let layout = layout_radar_diagram_typed(
+                    &model,
+                    &json!({}),
+                    &DeterministicTextMeasurer::default(),
+                )
+                .unwrap();
+
+                assert_eq!(layout.graticules.len(), radii.len());
+                for (shape, radius) in layout.graticules.iter().zip(radii) {
+                    assert_eq!(shape.kind, graticule);
+                    if graticule == "polygon" {
+                        assert_eq!(shape.points.len(), 3);
+                        assert!((shape.points[0].y + radius).abs() < 1e-9);
+                    } else {
+                        assert_eq!(shape.r, Some(radius));
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn radar_invalid_or_nonpositive_typed_ticks_do_not_generate_iterations() {
+        for value in [
+            Value::Null,
+            json!(0),
+            json!(0.0),
+            json!(-1),
+            json!(-0.5),
+            json!("NaN"),
+            json!("Infinity"),
+            json!("-Infinity"),
+        ] {
+            let ticks = RadarTicks::from_value(&value);
+            assert_eq!(ticks.iterations, 0, "{value}");
+            assert!(ticks.value.is_finite(), "{value}");
+        }
+        assert_eq!(
+            RadarTicks::from_value(&json!(u64::MAX)).iterations,
+            usize::MAX
+        );
+    }
+
+    #[test]
+    fn radar_work_budget_counts_fractional_graticules_and_only_drawable_curve_geometry() {
+        for (graticule, show_legend, expected_work) in [
+            ("circle", false, 22),
+            ("circle", true, 25),
+            ("polygon", false, 31),
+            ("polygon", true, 34),
+        ] {
+            let mut model = radar_model_with_entries(&[&[100, 1], &[1, 2, 3], &[1, 2, 3, 200]]);
+            model.options.graticule = graticule.to_owned();
+            model.options.ticks = json!(2.5);
+            model.options.show_legend = show_legend;
+            let exact = RenderResourcePolicy::unbounded_for_trusted_input()
+                .with_limit(ResourceLimitId::MaxLayoutWorkUnits, expected_work)
+                .unwrap();
+            let meter = OperationWorkMeter::new(exact);
+            let layout = layout_radar_diagram_typed_with_work_meter(
+                &model,
+                &json!({}),
+                &DeterministicTextMeasurer::default(),
+                &meter,
+            )
+            .unwrap();
+            assert_eq!(meter.used(), expected_work);
+            assert_eq!(layout.graticules.len(), 3);
+            assert_eq!(layout.curves.len(), 1);
+
+            let below = RenderResourcePolicy::unbounded_for_trusted_input()
+                .with_limit(ResourceLimitId::MaxLayoutWorkUnits, expected_work - 1)
+                .unwrap();
+            let error = layout_radar_diagram_typed_with_resource_policy(
+                &model,
+                &json!({}),
+                &DeterministicTextMeasurer::default(),
+                below,
+            )
+            .unwrap_err();
+            let Error::ResourceLimitExceeded(error) = error else {
+                panic!("expected Radar work limit");
+            };
+            assert_eq!(error.actual, expected_work);
+        }
+    }
+
+    #[test]
+    fn radar_layout_observes_cancellation_before_and_during_fractional_graticules() {
+        let mut model = RadarDiagramModel::default();
+        model.options.ticks = json!(2.5);
+        for checkpoints in [0, 2] {
+            let control = OperationControl::new();
+            control.cancel_after_checkpoints(checkpoints);
+            let meter = OperationWorkMeter::new_with_control(
+                RenderResourcePolicy::unbounded_for_trusted_input(),
+                control,
+            );
+            let error = layout_radar_diagram_typed_with_work_meter(
+                &model,
+                &json!({}),
+                &DeterministicTextMeasurer::default(),
+                &meter,
+            )
+            .unwrap_err();
+            assert!(matches!(
+                error,
+                Error::Cancelled(cancelled) if cancelled.phase == OperationPhase::Layout
+            ));
+            assert_eq!(meter.used(), if checkpoints == 0 { 0 } else { 3 });
+        }
+    }
 
     #[test]
     fn radar_legend_layout_uses_mermaid_step_y() {

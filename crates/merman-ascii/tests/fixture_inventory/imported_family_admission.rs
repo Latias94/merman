@@ -10,8 +10,8 @@ use merman_core::SemanticParser;
 use merman_model::{OperationControl, resources::ResourceProfile};
 
 const IMPORTED_FAMILY_FIXTURE_COUNTS: &[(&str, &str, usize)] = &[
-    ("sequence", "sequence", 323),
-    ("class", "class", 251),
+    ("sequence", "sequence", 325),
+    ("class", "class", 255),
     ("er", "er", 101),
 ];
 

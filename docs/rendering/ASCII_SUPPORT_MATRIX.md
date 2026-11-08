@@ -12,7 +12,7 @@ omitted.
 | `semantic_coverage` | `full`, `partial`, or `null` | How much of the family's typed semantics the terminal output preserves. `null` means no output is available. |
 | `primary_projection` | `diagrammatic`, `structured_text`, or `none` | Whether the primary output is box-and-line terminal geometry, a readable report/outline, or unavailable. |
 | `structured_text_fallback` | Boolean | Whether the typed family has an admitted complete structured projection that can be selected when its primary result exceeds a bounded viewport. This applies to both diagrammatic and already-structured families. |
-| `layout_profiles` / `layoutProfiles` | Array | Layout profiles admitted for this family. Flowchart and Sequence expose `canonical`, `compact`, and `auto`; every other supported family currently exposes `canonical` only. |
+| `layout_profiles` / `layoutProfiles` | Array | Layout profiles admitted for this family. The Flowchart projection, including Swimlane, and Sequence expose `canonical`, `compact`, and `auto`; every other supported family currently exposes `canonical` only. |
 | `width_profiles` / `widthProfiles` | Array | Terminal display-width conventions admitted for this family: `unicode` and `cjk` for every supported output. |
 | `encodings` | Array | Primary result encodings admitted for this family: `plain`, `ansi16`, `ansi256`, `truecolor`, and `html` for every supported output. |
 | `fallback_encodings` / `fallbackEncodings` | Array | Encodings admitted with viewport `fallback`. This is currently `plain` only; styled fallback requests are rejected before rendering. |
@@ -24,8 +24,9 @@ diagrammatic-family counts.
 
 ## Runtime Capability Metadata
 
-The same support story is exposed to bindings through 31 total `merman-ascii` capability records
-(`crates/merman-ascii/src/capability.rs`) and the `ascii_capabilities_json` binding helper. The
+The same support story is exposed to bindings through the family capability records in
+[`crates/merman-ascii/src/capability.rs`](../../crates/merman-ascii/src/capability.rs) and the
+`ascii_capabilities_json` binding helper. The
 legacy `ascii_supported_diagrams` list is derived from records with available output. Product counts
 and diagram-only filters use the separate diagrammatic projection.
 
@@ -66,7 +67,7 @@ before flattening under bounded profiles.
 
 | Family set | Layout profiles | Width profiles | Primary encodings | Fallback encodings |
 | --- | --- | --- | --- | --- |
-| Flowchart, Sequence | `canonical`, `compact`, `auto` | `unicode`, `cjk` | `plain`, `ansi16`, `ansi256`, `truecolor`, `html` | `plain` |
+| Flowchart, Swimlane, Sequence | `canonical`, `compact`, `auto` | `unicode`, `cjk` | `plain`, `ansi16`, `ansi256`, `truecolor`, `html` | `plain` |
 | State, Class, ER, XYChart, structured-text families | `canonical` | `unicode`, `cjk` | `plain`, `ansi16`, `ansi256`, `truecolor`, `html` | `plain` |
 | Unsupported families | none | none | none | none |
 
@@ -80,6 +81,7 @@ readable at ordinary terminal widths.
 | Mermaid family | Semantic coverage | Primary projection | Structured-text fallback | What renders well | Important limits |
 | --- | --- | --- | --- | --- | --- |
 | Flowchart / graph | Partial | Diagrammatic | Yes | Root directions, Dagre-compatible ranking, explicit pinned-shape dispositions, common diagrammatic node shapes, terminal-cell wrapped node labels, independent endpoint markers, normal/dotted/thick/invisible edge semantics, labels, subgraphs, nested groups, first-parent compound ownership, scene-level route occupancy, and a family-owned compact wrap policy. | Icons, images, callbacks, links, some uncommon shapes, arbitrary dense-route candidate policy, and mixed-stroke crossing ownership remain unsupported or incomplete; bounded fallback is a typed Plain compatibility projection, not clipped geometry. |
+| Swimlane | Partial | Diagrammatic | Yes | Uses the same terminal projection and admitted profiles as Flowchart while retaining its separate language and feature identity. | Shares Flowchart's geometry and presentation limits; terminal layout is independent of the SVG lane renderer. |
 | Sequence | Partial | Diagrammatic | Yes | Mermaid-valid spaced/Unicode participant IDs, typed headless/filled/cross/point/bidirectional/half-arrow messages, central decorations, notes, lifecycles, boxes, participant-bounded nested control frames, and a family-owned compact participant-spacing policy. | Actor presentation metadata and links are accepted but omitted from the primary scene; bounded fallback discloses typed fields as Plain structured text. |
 | State | Partial | Diagrammatic | Yes | States, transitions, notes, graph-like pseudostates, groups, and terminal colors. | State is canonical-only and does not inherit Flowchart compact policy. Some presentation metadata and future shape variants are approximated; bounded fallback is a typed Plain compatibility projection. |
 | Class | Partial | Diagrammatic | Yes | Class structure, notes, namespaces, four directions, independent source/target relation markers, shared relation components, a strict planar K2×2 four-node/four-edge cycle with four disjoint routes, simple sibling-namespace / namespace-to-root / nested-sibling facade routing with length-framed leaf identity, and explicit relation summaries. | The strict K2×2 layout is a bounded topology-specific path, not support for arbitrary bounded or dense graphs. Dense or colliding namespace-crossing scenes, port-incompatible lanes, and other collision-prone relationships can use lossless `relations:` output. |
@@ -118,23 +120,45 @@ fixtures, spatial facts, StructuredText comparison, and 80/100/120-column reject
 
 | Mermaid family | ASCII status | Notes |
 | --- | --- | --- |
+| Agentflow | Unsupported | A family-owned adapter could reuse graph routing, but must retain node roles, reference/failure connectors, container ownership, and collapse semantics. |
 | Architecture | Unsupported | Rich grouped architecture geometry is SVG-focused. |
-| Block | Unsupported | Block layout is SVG-focused. |
+| Block | Unsupported | Discrete columns and spans are candidates for terminal geometry; nested spans and routed connections still need joint occupancy planning. |
 | C4 | Unsupported | C4 views remain SVG/headless-render output. |
 | Cynefin | Unsupported | No terminal projection has been admitted. |
 | Event Modeling | Unsupported | No terminal projection has been admitted. |
 | Info | Unsupported | Not useful as terminal diagram output today. |
 | Ishikawa | Unsupported | [R34 evaluation rejected the current depth-limited prototype](ASCII_PHASE_GATE_REPORT.md#ishikawa-r34); its typical case adds spatial value, but dense recursive ownership is incomplete. |
-| Pie | Unsupported | No terminal pie/chart approximation yet. |
+| Pie | Unsupported | A proportional bar projection is a useful candidate, but would need an explicit projection contract rather than claiming circular pie geometry. |
 | Quadrant | Unsupported | [R34 evaluation rejected the current collision prototype](ASCII_PHASE_GATE_REPORT.md#quadrant-r34); small/typical cases add spatial value, but dense relative order collapses at all required widths. |
 | Radar | Unsupported | No terminal radar approximation yet. |
 | Railroad | Unsupported | [R34 evaluation rejected the current route-expansion prototype](ASCII_PHASE_GATE_REPORT.md#railroad-r34); choice paths are visible, but repetition loops and dense shared prefixes are not. |
 | Requirement | Unsupported | [R34 evaluation rejected the current tree-expansion prototype](ASCII_PHASE_GATE_REPORT.md#requirement-r34); single relations are exact, but dense convergences lose shared endpoint ownership. |
 | Sankey | Unsupported | Flow widths are SVG-specific. |
 | Treemap | Unsupported | Rectangle packing is SVG-specific. |
+| Usecase | Unsupported | Actors, use cases, boundaries, and typed relationships need a family-owned terminal adapter; a generic box-and-edge conversion would lose semantics. |
 | Venn | Unsupported | No terminal set-overlap projection has been admitted. |
 | Wardley | Unsupported | No terminal map projection has been admitted. |
 | ZenUML | Unsupported | The family has a dedicated typed semantic model and SVG renderer, but no family-owned terminal projection has been admitted. It must not be translated through Sequence as an ASCII shortcut. |
+
+### Further projection candidates
+
+The current dispositions above remain authoritative. These candidates have useful spatial facts
+in their typed models, but require a complete terminal slice before their capability changes:
+
+| Candidate | Useful first spatial slice | Required evidence |
+| --- | --- | --- |
+| Pie | Categories on one shared percentage-bar scale. | Exact value disclosure, proportional lengths, zero totals, tiny categories, and complete long labels. Name the bar projection explicitly. |
+| GitGraph | Commit lanes with a branch and merge. | Each commit appears once; every parent edge remains traceable, including merges with custom display types and cherry-picks. |
+| Packet | A fixed 16- or 32-bit row grid. | Preserve field widths, gaps, cross-row ranges, and bit order; narrow labels must not expand the field's width. |
+| Gantt | Task bars on a common resolved time scale. | Preserve task identity, dependency facts, milestones, excluded dates, and distinctions lost through cell quantization. |
+| Agentflow / Block | A family-owned adapter over shared graph or grid mechanisms. | Preserve role/connector semantics or column/span constraints before admitting dense containers and routes. |
+
+Compare small, typical, and dense cases against the existing complete text representation at
+80, 100, and 120 columns. More spatial output must help recover relationships or quantities while
+preserving identity, labels, and the existing width, encoding, cancellation, and resource contracts.
+For Railroad, Requirement, Ishikawa, and Quadrant, reopening the earlier decision additionally
+requires resolving the concrete ownership or quantization failure recorded in the linked admission
+report. A new outline or table remains StructuredText.
 
 ## Playground Filtering
 

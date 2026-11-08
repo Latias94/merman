@@ -84,6 +84,12 @@ reference implementation is only an implementation aid.
 
 ## Known Limitations
 
+- When the ordinary route candidates collide, a bounded scene-aware grid search can route around
+  reserved nodes, reading margins, accepted labels, and endpoint markers. It reuses the ordinary
+  routing grid, work ledger, and final collision/marker checks. This admits review/retry feedback
+  branches, including wide Japanese labels, without changing an already valid canonical route.
+  Candidate exhaustion still produces `UnsupportedFeature`; resource or cancellation failures
+  remain terminal errors rather than a partial drawing.
 - LR routing now follows the high-value shape of `mermaid-ascii`'s grid path routing, including
   duplicate and bidirectional label lanes for the supported graph subset.
 - TD routing supports vertical chains, branch layouts, same-rank merge/skip edges in either

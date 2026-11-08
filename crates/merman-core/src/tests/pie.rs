@@ -30,6 +30,116 @@ fn parse_diagram_pie_basic() {
 }
 
 #[test]
+fn parse_pie_multiline_strings_keep_semantics_and_editor_source_ranges() {
+    let engine = MermaidEngine::new();
+    for newline in ["\n", "\r\n"] {
+        let text = concat!(
+            "pie showData\n",
+            "  \"First\nSecond\": 10 %% outside the string\n",
+            "  'Other\n\\'quoted\\' %% literal': 5\n",
+            "  \"First\nSecond\": 99\n",
+        )
+        .replace('\n', newline);
+        let first_label = "First\nSecond";
+        let other_label = "Other\n'quoted' %% literal";
+        let canonical = engine
+            .parse_diagram_sync(&text, ParseOptions::strict())
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            canonical.model["sections"],
+            json!([
+                {"label": first_label, "value": 10.0},
+                {"label": other_label, "value": 5.0},
+            ])
+        );
+        crate::diagrams::langium_common::reset_family_syntax_construction_count("pie");
+        let snapshot = engine.parse_diagram_snapshot_sync(&text).unwrap().unwrap();
+        assert_eq!(
+            crate::diagrams::langium_common::family_syntax_construction_count("pie"),
+            1
+        );
+        assert_eq!(snapshot.outcome().parsed_model().unwrap(), &canonical.model);
+        let ParsedEditorFacts::Available(facts) = snapshot.editor_facts() else {
+            panic!("Pie snapshot must retain the same parser's editor facts");
+        };
+        assert_eq!(facts.completeness, EditorSemanticCompleteness::Complete);
+        assert!(facts.diagnostics.is_empty());
+        for (label, raw_label) in [
+            (first_label, format!("First{newline}Second")),
+            (
+                other_label,
+                format!("Other{newline}\\'quoted\\' %% literal"),
+            ),
+        ] {
+            let start = text.find(&raw_label).unwrap();
+            let selection = SourceSpan::new(start, start + raw_label.len());
+            let symbol = facts.symbols.iter().find(|s| s.name == label).unwrap();
+            assert_eq!(symbol.selection, selection);
+            assert_eq!(symbol.role, EditorSemanticRole::Outline);
+            assert!(symbol.span.start < selection.start);
+            assert!(symbol.span.end > selection.end);
+            assert!(facts.expected_syntax.iter().any(|expected| {
+                expected.kind == EditorExpectedSyntaxKind::Payload && expected.span == selection
+            }));
+        }
+        for number in ["10", "5", "99"] {
+            let start = text.find(number).unwrap();
+            assert!(facts.expected_syntax.iter().any(|expected| {
+                expected.kind == EditorExpectedSyntaxKind::Payload
+                    && expected.span == SourceSpan::new(start, start + number.len())
+            }));
+        }
+    }
+}
+
+#[test]
+fn parse_pie_multiline_negative_value_reports_its_original_span_and_recovers() {
+    let text = "pie\n\"First\nSecond\": -10\n\"Other\": 5\n";
+    let engine = MermaidEngine::new();
+    let error = engine
+        .parse_diagram_sync(text, ParseOptions::strict())
+        .unwrap_err();
+    let Error::DiagramParse { diagnostic, .. } = error else {
+        panic!("expected a Pie value diagnostic");
+    };
+    let value_start = text.find("-10").unwrap();
+    let value_span = SourceSpan::new(value_start, value_start + 3);
+    assert_eq!(diagnostic.span(), Some(value_span));
+    assert!(
+        diagnostic
+            .message()
+            .contains("Negative values are not allowed")
+    );
+    let facts = engine
+        .parse_editor_semantic_facts_with_type_sync("pie", text)
+        .unwrap()
+        .unwrap();
+    assert_eq!(facts.completeness, EditorSemanticCompleteness::Recovered);
+    assert!(facts.diagnostics.iter().any(|d| d.span == Some(value_span)));
+    assert!(facts.symbols.iter().any(|s| s.name == "Other"));
+}
+
+#[test]
+fn parse_pie_multiline_support_preserves_upstream_rejection_boundaries() {
+    let engine = MermaidEngine::new();
+    for text in [
+        "pie\"A\": 1\n",
+        "pie\n\"First\nSecond\"\n: 10\n",
+        "pie\n\"First\\\nSecond\": 10\n",
+        "pie\n\"First\nSecond\": 10 \"Other\": 5\n",
+        "pie\n\"First\nSecond: 10\n",
+    ] {
+        assert!(
+            engine
+                .parse_diagram_sync(text, ParseOptions::strict())
+                .is_err(),
+            "unexpectedly accepted {text:?}"
+        );
+    }
+}
+
+#[test]
 fn parse_diagram_pie_rejects_negative_slice_values_like_upstream() {
     let engine = MermaidEngine::new();
     let text = r#"pie title Default text position: Animal adoption

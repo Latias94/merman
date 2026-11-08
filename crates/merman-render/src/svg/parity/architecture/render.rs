@@ -10,7 +10,7 @@ use super::edges::{ArchitectureEdgeRenderContext, push_architecture_edges};
 use super::geometry::{GroupRect, GroupRectComputer, bounds_from_rect, extend_bounds};
 use super::labels::{svg_service_title_bounds, wrap_svg_words_to_lines};
 use super::nodes::{
-    ArchitectureNodeRenderContext, push_architecture_groups,
+    ArchitectureNodeRenderContext, architecture_service_has_icon_text, push_architecture_groups,
     push_architecture_services_and_junctions,
 };
 use super::root::{architecture_a11y_nodes, begin_architecture_document};
@@ -280,7 +280,8 @@ pub(crate) fn render_architecture_diagram_svg_typed_with_config(
             .map(
                 |(index, service)| crate::architecture::ArchitectureServiceTerminal {
                     index,
-                    has_background: service.icon.is_none() && service.icon_text.is_none(),
+                    has_background: service.icon.is_none()
+                        && !architecture_service_has_icon_text(service),
                     has_title: service
                         .title
                         .as_deref()

@@ -216,9 +216,7 @@ fn er_html_entity_name_preserves_source_depth_and_real_breaks() {
 
 #[test]
 fn er_svg_relationship_measures_emitted_rows_and_background() {
-    use merman_render::text::{
-        DeterministicTextMeasurer, TextMeasurer, TextStyle, round_to_1_64_px,
-    };
+    use merman_render::text::{DeterministicTextMeasurer, TextMeasurer, TextStyle};
 
     let style = TextStyle {
         font_size: 14.0,
@@ -250,12 +248,15 @@ fn er_svg_relationship_measures_emitted_rows_and_background() {
             .map(text)
             .collect::<Vec<_>>();
         assert_eq!(rows, expected_rows, "{label}");
-        let expected_width = round_to_1_64_px(
-            rows.iter()
-                .map(|row| measurer.measure_svg_text_computed_length_px(row, &style))
-                .fold(0.0_f64, f64::max),
-        );
-        let expected_height = one_row_ink + (rows.len() - 1) as f64 * 14.0 * 1.1;
+        let ink_width = rows
+            .iter()
+            .map(|row| {
+                let (left, right) = measurer.measure_svg_text_bbox_x(row, &style);
+                left + right
+            })
+            .fold(0.0_f64, f64::max);
+        let expected_width = ink_width + 4.0;
+        let expected_height = one_row_ink + (rows.len() - 1) as f64 * 14.0 * 1.1 + 4.0;
         let geometry = &layout["layout"]["ErDiagram"]["edges"][0]["label"];
         assert!(
             (geometry["width"].as_f64().unwrap() - expected_width).abs() < 1e-9,
@@ -277,6 +278,9 @@ fn er_svg_relationship_measures_emitted_rows_and_background() {
             (number(background, "height") - expected_height).abs() < 1e-9,
             "{label}"
         );
+        assert!((number(background, "x") + ink_width / 2.0 + 2.0).abs() < 1e-9);
+        let ink_y = measurer.measure_svg_create_text_bbox_y_offset_px(&rows[0], &style);
+        assert!((number(background, "y") - ink_y + 2.0).abs() < 1e-9);
         heights.push(geometry["height"].as_f64().unwrap());
     }
     assert_eq!(

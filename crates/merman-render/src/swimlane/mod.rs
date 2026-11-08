@@ -1,13 +1,15 @@
 mod bounds;
 mod config;
 mod direction;
-#[cfg(feature = "diagram-mindmap")]
+#[cfg(any(feature = "diagram-er", feature = "diagram-mindmap"))]
 mod flat;
 mod geometry;
 mod lanes;
 
 #[cfg(feature = "diagram-mindmap")]
 pub(crate) use flat::layout_flat;
+#[cfg(feature = "diagram-er")]
+pub(crate) use flat::{MeasuredNode, layout_compound};
 #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
 mod prepare;
 mod routing;

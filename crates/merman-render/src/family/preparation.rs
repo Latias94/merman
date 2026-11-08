@@ -606,6 +606,7 @@ fn prepare_gantt_family<'parsed>(
         execution.text_measurer(),
         execution.container_width,
         execution.local_time_zone(),
+        execution.work_meter_ref(),
     )?;
     Ok(BuiltinFamilyArtifact::Gantt(Box::new(
         GanttFamilyArtifact {
@@ -664,6 +665,7 @@ fn prepare_timeline_family<'parsed>(
         model,
         typography_theme.layout_settings(),
         execution.text_measurer(),
+        execution.work_meter_ref(),
     )?;
     let event_theme = crate::timeline::TimelineEventTheme::resolve_with_binding(
         execution.resolved_theme(),

@@ -1,5 +1,8 @@
 use crate::Result;
-use crate::model::{LayoutCluster, LayoutNode, SequenceDiagramLayout};
+use crate::model::{
+    LayoutCluster, LayoutNode, SequenceDiagramLayout, SequenceParticipantBoxLayout,
+    SequenceTextLayout,
+};
 use crate::resources::OperationWorkMeter;
 #[cfg(all(test, feature = "diagram-sequence"))]
 use crate::resources::RenderResourcePolicy;
@@ -14,8 +17,8 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 const SEQUENCE_ACTOR_LAYOUT_WORK_UNITS: usize = 12;
-const SEQUENCE_MESSAGE_LAYOUT_WORK_UNITS: usize = 8;
-const SEQUENCE_BOX_LAYOUT_WORK_UNITS: usize = 3;
+const SEQUENCE_MESSAGE_LAYOUT_WORK_UNITS: usize = 12;
+const SEQUENCE_BOX_LAYOUT_WORK_UNITS: usize = 4;
 const SEQUENCE_BOX_MEMBERSHIP_WORK_UNITS: usize = 2;
 const SEQUENCE_POPUP_LINK_LAYOUT_WORK_UNITS: usize = 2;
 const SEQUENCE_TEXT_LINEAR_REPLAY_WORK_UNITS_PER_BYTE: usize = 8;
@@ -29,6 +32,7 @@ mod block_geometry;
 mod block_steps;
 pub(crate) mod config;
 mod constants;
+mod drawing_geometry;
 mod math_artifact;
 mod message_metrics;
 mod messages;
@@ -53,17 +57,12 @@ pub(crate) use theme_binding::SequenceCompatBinding;
 
 pub(crate) use activation::{sequence_activation_stack_bounds, sequence_activation_start_x};
 pub(crate) use activation_geometry::SequencePreparedActivationGeometry;
-pub(crate) use block_collection::{
-    AltSection, SequenceBlock, collect_sequence_blocks, sequence_block_section_geometry,
-};
-pub(crate) use block_geometry::{
-    SequenceBlockGeometry, frame_x_from_actors, resolved_block_frame_x,
-};
 pub(crate) use block_steps::SequenceBlockLabelBoxMetrics;
 pub(crate) use constants::{
     SEQUENCE_FRAME_SIDE_PAD_PX, SEQUENCE_GLYPH_BAND_HEIGHT, SEQUENCE_MESSAGE_WRAP_PADDING_SIDES,
     SequenceActorBands, sequence_actor_popup_panel_height, sequence_actor_popup_rect_height,
 };
+pub(crate) use drawing_geometry::SequenceFramePlacement;
 pub(crate) use math_artifact::{
     SequenceMathArtifactStore, SequenceMathOccurrence, SequenceMathSidecar,
     SequenceMathSidecarBuilder,
@@ -87,12 +86,12 @@ pub(crate) use notes::{
 use actors::{SequenceActorLayoutPlan, SequenceActorLayoutPlanContext, plan_sequence_actors};
 use block_steps::{BlockStepPlanContext, calculate_sequence_block_widths};
 use config::SequenceLayoutSettings;
+use drawing_geometry::{SequenceFrameGeometry, prepare_sequence_frame_geometry};
 use message_metrics::SequenceMessageMetricSidecar;
 use orchestration::{SequenceLayoutGraph, SequenceLayoutGraphContext, build_sequence_layout_graph};
 use rect::{SequenceRectStackBoundsContext, sequence_rect_stack_x_bounds};
 use root_bounds::{
-    SequenceDiagramTitleGeometry, SequenceRootBoundsContext, SequenceRootGeometry,
-    prepare_sequence_root_geometry,
+    SequenceRootBoundsContext, SequenceRootGeometry, prepare_sequence_root_geometry,
 };
 pub(crate) use theme_evidence::{
     SequenceActorThemeReceipt, SequenceControlThemeEmission, SequenceControlThemeReceipt,
@@ -198,9 +197,8 @@ pub(crate) struct SequencePreparedArtifact {
     actor_popup_widths: HashMap<String, f64>,
     wrapped_note_text: SequencePreparedNoteLabels,
     message_metrics: SequenceMessageMetricSidecar,
-    box_layouts: Vec<SequenceBoxLayout>,
-    box_title_height: f64,
-    box_height: f64,
+    box_indices: Vec<Option<usize>>,
+    frame_placements: Vec<Option<SequenceFramePlacement>>,
     math_sidecar: SequenceMathSidecar,
     theme_evidence: SequenceThemeEvidenceRecorder,
     effect_evidence: crate::diagram_theme::SvgShadowEvidenceRecorder,
@@ -210,7 +208,6 @@ pub(crate) struct SequencePreparedArtifact {
     activation_geometry: SequencePreparedActivationGeometry,
     activation_theme: SequencePreparedStaticRectTheme,
     css: SequencePreparedCss,
-    diagram_title: Option<SequenceDiagramTitleGeometry>,
     block_label_box_metrics: SequenceBlockLabelBoxMetrics,
 }
 
@@ -230,16 +227,12 @@ impl SequencePreparedArtifact {
         &self.expected_effect_applications
     }
 
-    pub(crate) fn box_layouts(&self) -> &[SequenceBoxLayout] {
-        &self.box_layouts
+    pub(crate) fn box_indices(&self) -> &[Option<usize>] {
+        &self.box_indices
     }
 
-    pub(crate) fn box_height(&self) -> f64 {
-        self.box_height
-    }
-
-    pub(crate) fn box_title_height(&self) -> f64 {
-        self.box_title_height
+    pub(crate) fn frame_placements(&self) -> &[Option<SequenceFramePlacement>] {
+        &self.frame_placements
     }
 
     pub(crate) fn layout(&self) -> &SequenceDiagramLayout {
@@ -282,10 +275,6 @@ impl SequencePreparedArtifact {
         &self.css
     }
 
-    pub(crate) const fn diagram_title(&self) -> Option<&SequenceDiagramTitleGeometry> {
-        self.diagram_title.as_ref()
-    }
-
     pub(crate) const fn block_label_box_metrics(&self) -> SequenceBlockLabelBoxMetrics {
         self.block_label_box_metrics
     }
@@ -308,7 +297,10 @@ struct SequenceLayoutWorkShape {
 impl SequenceLayoutWorkShape {
     fn work_units(self) -> Option<usize> {
         // Sequence layout has a fixed number of actor and message passes: measurement, spacing,
-        // geometry construction, frame propagation, and final bounds. Box membership is scanned
+        // geometry construction, frame propagation, final drawing DTOs and final bounds. The
+        // message term also admits activation compaction and frame source/emission indexing;
+        // each retained rectangle and index is bounded by an admitted semantic occurrence.
+        // Box membership is scanned
         // twice by Mermaid-compatible actor margin and actor-to-box assignment. Popup labels are
         // measured once with ActorLabel typography. Nested frame accumulators are propagated to
         // their parent once, so block depth does not multiply the per-message term.
@@ -687,6 +679,7 @@ pub(crate) fn prepare_sequence_diagram_typed_with_title_and_work_meter(
         wrapped_note_text,
         edges,
         block_layouts_by_id,
+        activations,
         activation_geometry,
         bottom_box_top_y,
         box_height,
@@ -769,6 +762,48 @@ pub(crate) fn prepare_sequence_diagram_typed_with_title_and_work_meter(
         }
     }
 
+    let SequenceFrameGeometry {
+        frames,
+        placements: frame_placements,
+    } = prepare_sequence_frame_geometry(
+        model,
+        &nodes,
+        &edges,
+        &block_layouts_by_id,
+        block_label_box_metrics.width(),
+        checkpoints,
+    )?;
+
+    let mut boxes = Vec::with_capacity(box_layouts.len());
+    let mut box_indices = Vec::with_capacity(box_layouts.len());
+    let padding = settings.box_margin * 2.0;
+    for (index, (source, actor_box)) in model.boxes.iter().zip(&box_layouts).enumerate() {
+        checkpoints.checkpoint_loop(index)?;
+        let Some(actor_x) = actor_box.x else {
+            box_indices.push(None);
+            continue;
+        };
+        let x = actor_x - padding;
+        let width = actor_box.width + padding * 2.0;
+        box_indices.push(Some(boxes.len()));
+        boxes.push(SequenceParticipantBoxLayout {
+            x,
+            y: -padding * 0.25,
+            width,
+            height: box_height + padding * 0.75,
+            fill: source.fill.clone(),
+            title: actor_box
+                .label
+                .as_deref()
+                .filter(|label| !label.is_empty())
+                .map(|text| SequenceTextLayout {
+                    text: text.to_owned(),
+                    x: x + width / 2.0,
+                    y: settings.box_text_margin + box_title_height / 2.0,
+                }),
+        });
+    }
+
     let SequenceRootGeometry {
         bounds,
         diagram_title,
@@ -778,7 +813,7 @@ pub(crate) fn prepare_sequence_diagram_typed_with_title_and_work_meter(
         diagram_title: effective_title,
         nodes: &nodes,
         edges: &edges,
-        block_layouts_by_id: &block_layouts_by_id,
+        frames: &frames,
         bounds_start_x,
         bounds_stop_x,
         actor_index: &actor_index,
@@ -809,7 +844,7 @@ pub(crate) fn prepare_sequence_diagram_typed_with_title_and_work_meter(
     let activation_theme = SequencePreparedStaticRectTheme::resolve(
         resolved_theme,
         crate::diagram_theme::ThemeTarget::Activation,
-        activation_geometry.rect_count() != 0,
+        !activations.is_empty(),
         effective_config.config_paint_overrides_typed_default("themeVariables.activationBkgColor"),
         effective_config
             .config_paint_overrides_typed_default("themeVariables.activationBorderColor"),
@@ -824,7 +859,10 @@ pub(crate) fn prepare_sequence_diagram_typed_with_title_and_work_meter(
             edges,
             clusters,
             bounds: Some(bounds),
-            block_layouts_by_id,
+            frames,
+            activations,
+            boxes,
+            title: diagram_title,
         },
         actor_popup_widths,
         wrapped_note_text,
@@ -838,11 +876,9 @@ pub(crate) fn prepare_sequence_diagram_typed_with_title_and_work_meter(
         activation_geometry,
         activation_theme,
         css,
-        diagram_title,
         block_label_box_metrics,
-        box_layouts,
-        box_title_height,
-        box_height,
+        box_indices,
+        frame_placements,
     })
 }
 

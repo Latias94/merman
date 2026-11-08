@@ -117,6 +117,74 @@ fn flowchart_neo_animated_edges_keep_unoffset_markers() {
     );
 }
 
+#[test]
+fn flowchart_null_edge_metadata_restores_animation_and_curve_defaults() {
+    for default_interpolate in ["", "linkStyle default interpolate natural\n"] {
+        let source = format!(
+            "---\nconfig:\n  layout: dagre\n  look: classic\n  flowchart:\n    curve: linear\n---\nflowchart LR\nA --> B\nB --> C\nA e1@--> C\n{default_interpolate}"
+        );
+        let baseline = render_flowchart(&source);
+        let reset = render_flowchart(&format!(
+            "{source}e1@{{ animate: true, animation: fast, curve: step }}\ne1@{{ animate: null, animation: null, curve: null }}\n"
+        ));
+        let baseline_document = roxmltree::Document::parse(&baseline).unwrap();
+        let reset_document = roxmltree::Document::parse(&reset).unwrap();
+        let baseline_edge = baseline_document
+            .descendants()
+            .find(|node| {
+                node.attribute("data-edge") == Some("true")
+                    && node.attribute("data-id") == Some("e1")
+            })
+            .unwrap();
+        let reset_edge = reset_document
+            .descendants()
+            .find(|node| {
+                node.attribute("data-edge") == Some("true")
+                    && node.attribute("data-id") == Some("e1")
+            })
+            .unwrap();
+
+        assert!(
+            !reset_edge
+                .attribute("class")
+                .unwrap()
+                .split_whitespace()
+                .any(|class| class.starts_with("edge-animation-")),
+            "explicit null must remove the generated animation class"
+        );
+        assert_eq!(
+            reset_edge.attribute("d"),
+            baseline_edge.attribute("d"),
+            "cleared curve must use the same fallback as an unconfigured edge: {default_interpolate:?}"
+        );
+        assert_eq!(
+            reset_edge.attribute("marker-end"),
+            baseline_edge.attribute("marker-end"),
+            "cleared animation must restore the ordinary marker"
+        );
+    }
+}
+
+#[test]
+fn flowchart_empty_metadata_label_keeps_the_existing_caption() {
+    for html_labels in [true, false] {
+        let svg = render_flowchart(&format!(
+            "---\nconfig:\n  layout: dagre\n  flowchart:\n    htmlLabels: {html_labels}\n---\nflowchart LR\nA[**Original**] --> B\nA@{{ label: \"\", labelType: markdown }}\n"
+        ));
+        let document = roxmltree::Document::parse(&svg).unwrap();
+
+        assert!(
+            document.descendants().any(|node| {
+                node.is_text()
+                    && node
+                        .text()
+                        .is_some_and(|text| text.contains("**Original**"))
+            }),
+            "empty metadata must preserve the plain caption with htmlLabels={html_labels}"
+        );
+    }
+}
+
 #[cfg(feature = "layout-elk")]
 #[test]
 fn flowchart_elk_diamond_departures_stay_on_the_routed_axis() {

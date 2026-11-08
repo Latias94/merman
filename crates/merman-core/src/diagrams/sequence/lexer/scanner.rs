@@ -274,7 +274,7 @@ impl<'input> SequenceScanner<'input> {
             let colon = after + colon_pos;
             self.pos = colon + 1;
             self.skip_ws();
-            let s = self.read_to_line_end();
+            let s = self.read_accessibility_line();
             return Some((
                 start,
                 Tok::AccTitle(trim_ecmascript(&s).to_string()),
@@ -291,7 +291,7 @@ impl<'input> SequenceScanner<'input> {
                     let colon = after + non_ws;
                     self.pos = colon + 1;
                     self.skip_ws();
-                    let s = self.read_to_line_end();
+                    let s = self.read_accessibility_line();
                     return Some((
                         start,
                         Tok::AccDescr(trim_ecmascript(&s).to_string()),
@@ -309,6 +309,16 @@ impl<'input> SequenceScanner<'input> {
         }
 
         None
+    }
+
+    fn read_accessibility_line(&mut self) -> String {
+        // The exclusive accessibility states keep hashes and semicolons through physical LF.
+        let start = self.pos;
+        let end = self.input[start..]
+            .find('\n')
+            .map_or(self.input.len(), |offset| start + offset);
+        self.pos = end;
+        self.input[start..end].to_string()
     }
 
     fn read_to_line_end(&mut self) -> String {
@@ -543,6 +553,11 @@ impl<'input> SequenceScanner<'input> {
             }
             end = decimal_end;
         } else if !saw_digit {
+            return None;
+        }
+
+        // Jison's NUM requires (?=[ \n]+); Diagram.fromText appends LF at EOF.
+        if !matches!(self.input.as_bytes().get(end), None | Some(b' ' | b'\n')) {
             return None;
         }
 
@@ -934,5 +949,26 @@ impl<'input> SequenceScanner<'input> {
             message: format!("Unexpected character at {start}"),
             span: SourceSpan::new(start, self.pos),
         }))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::super::Lexer;
+    use crate::diagrams::scan::collect_lexical_events;
+    use crate::{CancelReason, OperationControl};
+
+    #[test]
+    fn autonumber_lookahead_scanning_observes_cancellation() {
+        let source = format!("sequenceDiagram\n{}", "autonumber 7;\n".repeat(256));
+        let mut lexer = Lexer::new(&source);
+        let control = OperationControl::new();
+        control.cancel_after_checkpoints(1);
+
+        let error = collect_lexical_events(&mut lexer, &control)
+            .expect_err("cancellation must interrupt the shared autonumber token tape");
+        assert_eq!(error.reason, CancelReason::Requested);
+        assert!(lexer.scanner.pos > 0 && lexer.scanner.pos < source.len());
+        assert_eq!(control.checkpoint(), Err(error));
     }
 }

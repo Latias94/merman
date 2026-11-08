@@ -2,6 +2,16 @@
   "diagramType": "sequence",
   "layout": {
     "SequenceDiagram": {
+      "activations": [
+        {
+          "actor": "A",
+          "depth": 0.0,
+          "height": 386.0,
+          "width": 10.0,
+          "x": 270.0,
+          "y": 167.0
+        }
+      ],
       "bounds": {
         "max_x": 600.0,
         "max_y": 668.0,
@@ -234,6 +244,42 @@
           "stroke_dasharray": null,
           "to": "actor-bottom-DB",
           "to_cluster": null
+        }
+      ],
+      "frames": [
+        {
+          "height": 479.0,
+          "id": "0",
+          "kind": "loop",
+          "label": "poll every minute",
+          "width": 442.0,
+          "x": 54.0,
+          "y": 84.0
+        },
+        {
+          "height": 137.0,
+          "id": "3",
+          "kind": "opt",
+          "label": "cache miss",
+          "width": 226.0,
+          "x": 260.0,
+          "y": 175.0
+        },
+        {
+          "height": 231.0,
+          "id": "7",
+          "kind": "alt",
+          "label": "ok",
+          "sections": [
+            {
+              "id": "9",
+              "label": "error",
+              "y": 418.0
+            }
+          ],
+          "width": 226.0,
+          "x": 64.0,
+          "y": 322.0
         }
       ],
       "nodes": [

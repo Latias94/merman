@@ -13,6 +13,7 @@ pub(crate) struct PieCssBinding {
     pub(crate) slice_opacity: String,
     pub(crate) outer_stroke: PieSurfaceStroke,
     pub(crate) outer_stroke_width: String,
+    pub(crate) outer_stroke_width_number: f64,
     pub(crate) title_text_size: String,
     pub(crate) title_text_color: String,
     pub(crate) section_text_size: String,
@@ -80,6 +81,9 @@ impl PieCssBinding {
             slice_opacity: value("pieOpacity", "0.7"),
             outer_stroke: PieSurfaceStroke::baseline(value("pieOuterStrokeColor", "black")),
             outer_stroke_width: value("pieOuterStrokeWidth", "2px"),
+            outer_stroke_width_number: super::super::config::pie_outer_stroke_width(
+                effective_config,
+            ),
             title_text_size: value("pieTitleTextSize", "25px"),
             title_text_color,
             section_text_size: value("pieSectionTextSize", "17px"),

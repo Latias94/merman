@@ -2972,15 +2972,15 @@ impl BuiltinFamilyArtifact<'_> {
             }
             #[cfg(feature = "diagram-sequence")]
             Self::Sequence(pair) => {
-                pair.layout()
-                    .theme_evidence()
-                    .record_unsupported_text_emission(
-                        theme,
-                        pair.layout().diagram_title().is_some(),
-                        session.work_meter().as_ref(),
-                    )?;
+                let prepared = pair.layout();
+                let theme_evidence = prepared.theme_evidence();
+                theme_evidence.record_unsupported_text_emission(
+                    theme,
+                    prepared.layout().title.is_some(),
+                    session.work_meter().as_ref(),
+                )?;
                 evidence.clear_outcomes();
-                pair.layout().theme_evidence().record_into(theme, evidence);
+                theme_evidence.record_into(theme, evidence);
             }
             // State reconciles its terminal and filter receipts in the output finalizer.
             #[cfg(feature = "diagram-state")]

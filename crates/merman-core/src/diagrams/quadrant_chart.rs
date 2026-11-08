@@ -1,6 +1,5 @@
 #[cfg(feature = "presentation")]
 use crate::SourcePresentationMetadata;
-use crate::diagrams::scan::LineCursor;
 #[cfg(feature = "editor-facts")]
 use crate::family::EditorFactsDemand;
 use crate::sanitize::sanitize_text;
@@ -215,32 +214,6 @@ fn next_char_at(s: &str, idx: usize) -> Option<char> {
     s.get(idx..)?.chars().next()
 }
 
-fn strip_inline_comment(line: &str) -> &str {
-    let mut in_quotes = false;
-    let mut brace_depth = 0usize;
-    let mut i = 0usize;
-    while i + 1 < line.len() {
-        let Some(ch) = next_char_at(line, i) else {
-            break;
-        };
-        if ch == '"' {
-            in_quotes = !in_quotes;
-            i += 1;
-            continue;
-        }
-        if !in_quotes && ch == '{' {
-            brace_depth += 1;
-        } else if !in_quotes && ch == '}' {
-            brace_depth = brace_depth.saturating_sub(1);
-        }
-        if !in_quotes && brace_depth == 0 && line[i..].starts_with("%%") {
-            return &line[..i];
-        }
-        i += ch.len_utf8();
-    }
-    line
-}
-
 fn is_axis_delim_at(s: &str, idx: usize) -> Option<(usize, usize)> {
     let bytes = s.as_bytes();
     if idx >= bytes.len() {
@@ -315,33 +288,119 @@ struct ParsedText<'source> {
     content: SourceSlice<'source>,
 }
 
+fn is_quadrant_text_suffix(suffix: &str) -> bool {
+    let mut chars = suffix.char_indices().peekable();
+    while let Some((index, ch)) = chars.next() {
+        if ch.is_ascii_alphabetic() {
+            let rest = &suffix[index..];
+            if [
+                "title",
+                "x-axis",
+                "y-axis",
+                "quadrant-1",
+                "quadrant-2",
+                "quadrant-3",
+                "quadrant-4",
+                "classDef",
+                "quadrantChart",
+            ]
+            .iter()
+            .any(|keyword| {
+                rest.get(..keyword.len())
+                    .is_some_and(|prefix| prefix.eq_ignore_ascii_case(keyword))
+            }) {
+                return false;
+            }
+            while chars.peek().is_some_and(|(_, ch)| ch.is_ascii_alphabetic()) {
+                chars.next();
+            }
+        } else if !ch.is_ascii() {
+            while chars.peek().is_some_and(|(_, ch)| !ch.is_ascii()) {
+                chars.next();
+            }
+        } else if !ch.is_ascii_alphanumeric()
+            && !matches!(
+                ch,
+                ' ' | '\t'
+                    | '\u{000b}'
+                    | '\u{000c}'
+                    | '!'
+                    | '#'
+                    | '$'
+                    | '%'
+                    | '&'
+                    | '\''
+                    | '*'
+                    | '+'
+                    | ','
+                    | '-'
+                    | '.'
+                    | '`'
+                    | '?'
+                    | '\\'
+                    | '_'
+                    | '/'
+                    | '='
+            )
+        {
+            return false;
+        }
+    }
+    true
+}
+
 fn parse_text_slice(input: SourceSlice<'_>) -> Result<ParsedText<'_>> {
     let input = input.trim();
-    if input.text.starts_with("\"`") {
-        if input.text.len() < 4 || !input.text.ends_with("`\"") {
-            return Err(Error::diagram_parse_fallback(
-                "quadrantChart".to_string(),
-                "unterminated markdown string".to_string(),
-            ));
-        }
-        let content = input.subslice(2, input.text.len() - 2);
-        return Ok(ParsedText {
-            value: content.text.to_string(),
-            content,
-        });
-    }
     if input.text.starts_with('"') {
-        if input.text.len() < 2 || !input.text.ends_with('"') {
+        let markdown = input.text.starts_with("\"`");
+        let opening_len = if markdown { 2 } else { 1 };
+        let Some(closing) = input.text[opening_len..].find('"') else {
             return Err(Error::diagram_parse_fallback(
                 "quadrantChart".to_string(),
-                "unterminated string".to_string(),
+                if markdown {
+                    "unterminated markdown string"
+                } else {
+                    "unterminated string"
+                },
+            ));
+        };
+        let closing = opening_len + closing;
+        let suffix = &input.text[closing + 1..];
+        if !is_quadrant_text_suffix(suffix) {
+            return Err(Error::diagram_parse_fallback(
+                "quadrantChart".to_string(),
+                "unexpected text after quoted token",
             ));
         }
-        let content = input.subslice(1, input.text.len() - 1);
-        return Ok(ParsedText {
-            value: content.text.to_string(),
-            content,
-        });
+        let content_end = if markdown {
+            let Some(content_end) = closing.checked_sub(1).filter(|end| *end >= opening_len) else {
+                return Err(Error::diagram_parse_fallback(
+                    "quadrantChart".to_string(),
+                    "unterminated markdown string",
+                ));
+            };
+            if input.text.as_bytes()[content_end] != b'`'
+                || input.text[opening_len..content_end].contains('`')
+                || content_end == opening_len
+            {
+                return Err(Error::diagram_parse_fallback(
+                    "quadrantChart".to_string(),
+                    "invalid markdown string",
+                ));
+            }
+            content_end
+        } else {
+            closing
+        };
+        let token_content = input.subslice(opening_len, content_end);
+        let mut value = token_content.text.to_string();
+        value.push_str(suffix);
+        let content = if suffix.is_empty() {
+            token_content
+        } else {
+            input
+        };
+        return Ok(ParsedText { value, content });
     }
     Ok(ParsedText {
         value: input.text.to_string(),
@@ -611,34 +670,145 @@ struct QuadrantStatement<'source> {
     source: SourceSlice<'source>,
 }
 
-fn split_semicolons_spanned(line: SourceSlice<'_>) -> Vec<QuadrantStatement<'_>> {
-    let mut out = Vec::new();
-    let mut in_quotes = false;
-    let mut brace_depth = 0usize;
-    let mut start = 0usize;
-    let mut i = 0usize;
-    while i < line.text.len() {
-        let Some(ch) = next_char_at(line.text, i) else {
-            break;
-        };
-        if ch == '"' {
-            in_quotes = !in_quotes;
-        } else if !in_quotes && ch == '{' {
-            brace_depth += 1;
-        } else if !in_quotes && ch == '}' {
-            brace_depth = brace_depth.saturating_sub(1);
-        } else if !in_quotes && brace_depth == 0 && ch == ';' {
-            out.push(QuadrantStatement {
-                source: line.subslice(start, i),
-            });
-            start = i + 1;
+#[derive(Clone, Copy)]
+enum QuadrantTerminal {
+    Statement,
+    RawLine,
+    DescriptionBlock,
+}
+
+struct QuadrantStatements<'source> {
+    source: &'source str,
+    offset: usize,
+    #[cfg(test)]
+    scanned_bytes: usize,
+}
+
+impl<'source> QuadrantStatements<'source> {
+    fn new(source: &'source str) -> Self {
+        Self {
+            source,
+            offset: 0,
+            #[cfg(test)]
+            scanned_bytes: 0,
         }
-        i += ch.len_utf8();
     }
-    out.push(QuadrantStatement {
-        source: line.subslice(start, line.text.len()),
-    });
-    out
+
+    fn advance(&mut self, bytes: usize, control: &OperationControl) -> OperationControlResult<()> {
+        let previous = self.offset / 128;
+        self.offset += bytes;
+        #[cfg(test)]
+        {
+            self.scanned_bytes += bytes;
+        }
+        if self.offset / 128 != previous {
+            control.checkpoint()?;
+        }
+        Ok(())
+    }
+
+    fn terminal(&self, control: &OperationControl) -> OperationControlResult<QuadrantTerminal> {
+        let rest = &self.source[self.offset..];
+        for keyword in ["title", "accTitle", "accDescr"] {
+            if !rest
+                .get(..keyword.len())
+                .is_some_and(|prefix| prefix.eq_ignore_ascii_case(keyword))
+            {
+                continue;
+            }
+            if keyword == "title" {
+                return Ok(QuadrantTerminal::RawLine);
+            }
+            for (index, ch) in rest[keyword.len()..].chars().enumerate() {
+                if index.is_multiple_of(128) {
+                    control.checkpoint()?;
+                }
+                if matches!(ch, '\r' | '\n') {
+                    break;
+                }
+                if ch.is_whitespace() {
+                    continue;
+                }
+                return Ok(match ch {
+                    ':' => QuadrantTerminal::RawLine,
+                    '{' if keyword == "accDescr" => QuadrantTerminal::DescriptionBlock,
+                    _ => QuadrantTerminal::Statement,
+                });
+            }
+        }
+        Ok(QuadrantTerminal::Statement)
+    }
+
+    fn next_statement(
+        &mut self,
+        control: &OperationControl,
+    ) -> OperationControlResult<Option<QuadrantStatement<'source>>> {
+        control.checkpoint()?;
+        while let Some(ch) = next_char_at(self.source, self.offset) {
+            if !ch.is_whitespace() && ch != ';' {
+                break;
+            }
+            self.advance(ch.len_utf8(), control)?;
+        }
+        let start = self.offset;
+        if start == self.source.len() {
+            return Ok(None);
+        }
+        let terminal = self.terminal(control)?;
+        let mut in_quotes = false;
+        let mut quote_line_end = None;
+        let mut in_block = false;
+        let mut block_opened = false;
+        while let Some(ch) = next_char_at(self.source, self.offset) {
+            if in_block {
+                in_block = ch != '}';
+            } else if in_quotes {
+                if ch == '"' {
+                    in_quotes = false;
+                    quote_line_end = None;
+                } else if quote_line_end.is_none() && matches!(ch, '\r' | '\n') {
+                    quote_line_end = Some(self.offset);
+                }
+            } else if matches!(ch, '\r' | '\n')
+                || (ch == ';' && !matches!(terminal, QuadrantTerminal::RawLine))
+            {
+                let end = self.offset;
+                self.advance(ch.len_utf8(), control)?;
+                return Ok(Some(QuadrantStatement {
+                    source: SourceSlice::new(&self.source[start..end], start),
+                }));
+            } else if !matches!(terminal, QuadrantTerminal::RawLine) {
+                if ch == '"' {
+                    in_quotes = true;
+                } else if ch == '{'
+                    && !block_opened
+                    && matches!(terminal, QuadrantTerminal::DescriptionBlock)
+                {
+                    in_block = true;
+                    block_opened = true;
+                } else if self.source[self.offset..].starts_with("%%") {
+                    let end = self.offset;
+                    while let Some(ch) = next_char_at(self.source, self.offset) {
+                        self.advance(ch.len_utf8(), control)?;
+                        if matches!(ch, '\r' | '\n') {
+                            break;
+                        }
+                    }
+                    return Ok(Some(QuadrantStatement {
+                        source: SourceSlice::new(&self.source[start..end], start),
+                    }));
+                }
+            }
+            self.advance(ch.len_utf8(), control)?;
+        }
+        // EOF proves this suffix has no closing quote, so only this final suffix can be replayed.
+        if in_quotes && let Some(end) = quote_line_end {
+            self.offset = end;
+        }
+        Ok(Some(QuadrantStatement {
+            source: SourceSlice::new(&self.source[start..self.offset], start),
+        }))
+    }
 }
 
 #[cfg(feature = "editor-facts")]
@@ -691,12 +861,6 @@ fn push_quadrant_outline_fact(
         span,
         span,
     ));
-}
-
-struct QuadrantAccDescrBlock {
-    text: String,
-    #[cfg(feature = "editor-facts")]
-    source_start: usize,
 }
 
 fn quadrant_error_at(error: Error, diagram_type: &str, span: SourceSpan) -> Error {
@@ -840,18 +1004,72 @@ fn parse_quadrant_chart_semantic_source(
     let mut acc_title = None;
     let mut acc_descr = None;
     let mut saw_header = false;
-    let mut acc_descr_block: Option<QuadrantAccDescrBlock> = None;
     let mut first_error = None;
-    let mut lines = LineCursor::new(code);
+    let mut statements = QuadrantStatements::new(code);
 
-    while let Some((segment, line_start)) = lines.next_line() {
-        control.checkpoint()?;
-        let line = SourceSlice::new(segment, line_start);
+    while let Some(statement) = statements.next_statement(control)? {
+        let statement = statement.source;
+        let statement_trimmed = statement.trim();
+        if statement_trimmed.text.is_empty() || statement_trimmed.text.starts_with("%%") {
+            continue;
+        }
+        let statement_span = statement_trimmed.span();
+        let semantic_end = statement_span.end;
 
-        if let Some(mut block) = acc_descr_block.take() {
-            if let Some(end) = line.text.find('}') {
-                block.text.push_str(&line.text[..end]);
-                let text = block.text.trim().to_string();
+        if !saw_header {
+            if statement_trimmed.text.eq_ignore_ascii_case("quadrantChart") {
+                saw_header = true;
+                continue;
+            }
+            first_error.get_or_insert_with(|| {
+                Error::diagram_parse_exact(
+                    diagram_type.to_string(),
+                    "expected quadrantChart",
+                    statement_span,
+                )
+            });
+            continue;
+        }
+
+        if let Some(directive) = parse_colon_value_ci(statement_trimmed, "accTitle") {
+            #[cfg(feature = "editor-facts")]
+            if let Some(facts) = editor_facts
+                .as_mut()
+                .filter(|_| editor_demand.captures_rich())
+            {
+                facts.push_directive_prefix("accTitle");
+            }
+            #[cfg(feature = "editor-facts")]
+            push_quadrant_payload_fact(
+                editor_facts
+                    .as_mut()
+                    .filter(|_| editor_demand.captures_rich()),
+                directive.value.text,
+                directive.value.start,
+                directive.value.end(),
+                "quadrant chart accessibility title",
+                EditorSemanticKind::String,
+            );
+            acc_title = Some(directive.value.text.to_string());
+            continue;
+        }
+
+        if let Some(directive) = parse_keyword_rest_ci(statement_trimmed, "accDescr") {
+            let rest = directive.rest;
+            if rest.text.starts_with('{') {
+                #[cfg(feature = "editor-facts")]
+                if let Some(facts) = editor_facts
+                    .as_mut()
+                    .filter(|_| editor_demand.captures_rich())
+                {
+                    facts.push_directive_prefix("accDescr");
+                }
+                #[cfg(feature = "editor-facts")]
+                let content_start = rest.start + 1;
+                let after_brace = rest.subslice(1, rest.text.len());
+                let closing = after_brace.text.find('}');
+                let content = after_brace.subslice(0, closing.unwrap_or(after_brace.text.len()));
+                let text = content.text.trim().to_string();
                 if !text.is_empty() {
                     #[cfg(feature = "editor-facts")]
                     push_quadrant_payload_fact(
@@ -859,430 +1077,296 @@ fn parse_quadrant_chart_semantic_source(
                             .as_mut()
                             .filter(|_| editor_demand.captures_rich()),
                         &text,
-                        block.source_start,
-                        line.start + end,
+                        content_start,
+                        content.end(),
                         "quadrant chart accessibility description",
                         EditorSemanticKind::String,
                     );
                 }
-                lines.resume_same_line_at(line.start + end + 1);
-                acc_descr = Some(text);
-            } else {
-                block.text.push_str(line.text);
-                block.text.push('\n');
-                acc_descr_block = Some(block);
-            }
-            continue;
-        }
-
-        let stripped_text = strip_inline_comment(line.text);
-        let stripped = line.subslice(0, stripped_text.len());
-
-        if stripped.text.trim().is_empty() {
-            continue;
-        }
-
-        for statement in split_semicolons_spanned(stripped) {
-            control.checkpoint()?;
-            let statement = statement.source;
-            let statement_trimmed = statement.trim();
-            if statement_trimmed.text.is_empty() || statement_trimmed.text.starts_with("%%") {
-                continue;
-            }
-            let statement_span = statement_trimmed.span();
-            let semantic_end = statement_span.end;
-
-            if !saw_header {
-                if statement_trimmed.text.eq_ignore_ascii_case("quadrantChart") {
-                    saw_header = true;
-                    continue;
-                }
-                first_error.get_or_insert_with(|| {
-                    Error::diagram_parse_exact(
-                        diagram_type.to_string(),
-                        "expected quadrantChart",
-                        statement_span,
-                    )
-                });
-                continue;
-            }
-
-            if let Some(directive) = parse_colon_value_ci(statement_trimmed, "accTitle") {
-                #[cfg(feature = "editor-facts")]
-                if let Some(facts) = editor_facts
-                    .as_mut()
-                    .filter(|_| editor_demand.captures_rich())
-                {
-                    facts.push_directive_prefix("accTitle");
-                }
-                #[cfg(feature = "editor-facts")]
-                if editor_demand.captures_rich()
-                    && let Ok(value) = parse_text_slice(directive.value)
-                {
-                    push_quadrant_payload_fact(
-                        editor_facts
-                            .as_mut()
-                            .filter(|_| editor_demand.captures_rich()),
-                        &value.value,
-                        value.content.start,
-                        value.content.end(),
-                        "quadrant chart accessibility title",
-                        EditorSemanticKind::String,
-                    );
-                }
-                acc_title = Some(directive.value.text.to_string());
-                continue;
-            }
-
-            if let Some(directive) = parse_keyword_rest_ci(statement_trimmed, "accDescr") {
-                let rest = directive.rest;
-                if rest.text.starts_with('{') {
-                    #[cfg(feature = "editor-facts")]
-                    if let Some(facts) = editor_facts
-                        .as_mut()
-                        .filter(|_| editor_demand.captures_rich())
-                    {
-                        facts.push_directive_prefix("accDescr");
-                    }
-                    #[cfg(feature = "editor-facts")]
-                    let content_start = rest.start + 1;
-                    let after_brace = rest.subslice(1, rest.text.len());
-                    if let Some(end) = after_brace.text.find('}') {
-                        let content = after_brace.subslice(0, end);
-                        let text = content.text.trim().to_string();
-                        if !text.is_empty() {
-                            #[cfg(feature = "editor-facts")]
-                            push_quadrant_payload_fact(
-                                editor_facts
-                                    .as_mut()
-                                    .filter(|_| editor_demand.captures_rich()),
-                                &text,
-                                content_start,
-                                content.end(),
-                                "quadrant chart accessibility description",
-                                EditorSemanticKind::String,
-                            );
-                        }
-                        let trailing = after_brace.subslice(end + 1, after_brace.text.len()).trim();
-                        if !trailing.text.is_empty() {
-                            first_error.get_or_insert_with(|| {
-                                Error::diagram_parse_exact(
-                                    diagram_type.to_string(),
-                                    "expected ';' or newline after accDescr block",
-                                    trailing.span(),
-                                )
-                            });
-                        }
-                        acc_descr = Some(text);
-                    } else {
-                        let mut text = after_brace.text.trim_start().to_string();
-                        if !text.is_empty() {
-                            text.push('\n');
-                        }
-                        acc_descr_block = Some(QuadrantAccDescrBlock {
-                            text,
-                            #[cfg(feature = "editor-facts")]
-                            source_start: content_start,
-                        });
-                    }
-                    continue;
-                }
-                if rest.text.starts_with(':') {
-                    let value = rest.subslice(1, rest.text.len()).trim();
-                    #[cfg(feature = "editor-facts")]
-                    if let Some(facts) = editor_facts
-                        .as_mut()
-                        .filter(|_| editor_demand.captures_rich())
-                    {
-                        facts.push_directive_prefix("accDescr");
-                    }
-                    #[cfg(feature = "editor-facts")]
-                    if editor_demand.captures_rich()
-                        && let Ok(parsed) = parse_text_slice(value)
-                    {
-                        push_quadrant_payload_fact(
-                            editor_facts
-                                .as_mut()
-                                .filter(|_| editor_demand.captures_rich()),
-                            &parsed.value,
-                            parsed.content.start,
-                            parsed.content.end(),
-                            "quadrant chart accessibility description",
-                            EditorSemanticKind::String,
-                        );
-                    }
-                    acc_descr = Some(value.text.to_string());
-                    continue;
-                }
-            }
-
-            if let Some(directive) = parse_keyword_rest_ci(statement_trimmed, "title") {
-                let value = directive.rest;
-                #[cfg(feature = "editor-facts")]
-                if let Some(facts) = editor_facts
-                    .as_mut()
-                    .filter(|_| editor_demand.captures_rich())
-                {
-                    facts.push_directive_prefix("title");
-                }
-                #[cfg(feature = "editor-facts")]
-                if editor_demand.captures_rich()
-                    && let Ok(parsed) = parse_text_slice(value)
-                {
-                    push_quadrant_payload_fact(
-                        editor_facts
-                            .as_mut()
-                            .filter(|_| editor_demand.captures_rich()),
-                        &parsed.value,
-                        parsed.content.start,
-                        parsed.content.end(),
-                        "quadrant chart title",
-                        EditorSemanticKind::String,
-                    );
-                }
-                title = Some(value.text.to_string());
-                continue;
-            }
-
-            if let Some(directive) = parse_keyword_rest_ci(statement_trimmed, "x-axis") {
-                let axis = match parse_axis_text(directive.rest) {
-                    Ok(axis) => axis,
-                    Err(error) => {
+                if let Some(end) = closing {
+                    let trailing = after_brace.subslice(end + 1, after_brace.text.len()).trim();
+                    if !trailing.text.is_empty() {
                         first_error.get_or_insert_with(|| {
-                            quadrant_error_at(error, diagram_type, statement_span)
+                            Error::diagram_parse_exact(
+                                diagram_type.to_string(),
+                                "expected ';' or newline after accDescr block",
+                                trailing.span(),
+                            )
                         });
-                        continue;
                     }
-                };
-                #[cfg(feature = "editor-facts")]
-                push_quadrant_outline_fact(
-                    editor_facts
-                        .as_mut()
-                        .filter(|_| editor_demand.captures_rich()),
-                    &axis.left.value,
-                    axis.left.content.start,
-                    axis.left.content.end(),
-                    "quadrant chart x-axis",
-                    EditorSemanticKind::String,
-                );
-                #[cfg(feature = "editor-facts")]
-                if let Some(right) = &axis.right {
-                    push_quadrant_outline_fact(
-                        editor_facts
-                            .as_mut()
-                            .filter(|_| editor_demand.captures_rich()),
-                        &right.value,
-                        right.content.start,
-                        right.content.end(),
-                        "quadrant chart x-axis",
-                        EditorSemanticKind::String,
-                    );
-                }
-                let mut left = axis.left.value;
-                if axis.operator.is_some() && axis.right.is_none() {
-                    left.push_str(" ⟶");
-                }
-                db.set_x_axis_left(&left, config);
-                if let Some(right) = axis.right {
-                    db.set_x_axis_right(&right.value, config);
-                }
-                continue;
-            }
-
-            if let Some(directive) = parse_keyword_rest_ci(statement_trimmed, "y-axis") {
-                let axis = match parse_axis_text(directive.rest) {
-                    Ok(axis) => axis,
-                    Err(error) => {
-                        first_error.get_or_insert_with(|| {
-                            quadrant_error_at(error, diagram_type, statement_span)
-                        });
-                        continue;
-                    }
-                };
-                #[cfg(feature = "editor-facts")]
-                push_quadrant_outline_fact(
-                    editor_facts
-                        .as_mut()
-                        .filter(|_| editor_demand.captures_rich()),
-                    &axis.left.value,
-                    axis.left.content.start,
-                    axis.left.content.end(),
-                    "quadrant chart y-axis",
-                    EditorSemanticKind::String,
-                );
-                #[cfg(feature = "editor-facts")]
-                if let Some(top) = &axis.right {
-                    push_quadrant_outline_fact(
-                        editor_facts
-                            .as_mut()
-                            .filter(|_| editor_demand.captures_rich()),
-                        &top.value,
-                        top.content.start,
-                        top.content.end(),
-                        "quadrant chart y-axis",
-                        EditorSemanticKind::String,
-                    );
-                }
-                let mut bottom = axis.left.value;
-                if axis.operator.is_some() && axis.right.is_none() {
-                    bottom.push_str(" ⟶");
-                }
-                db.set_y_axis_bottom(&bottom, config);
-                if let Some(top) = axis.right {
-                    db.set_y_axis_top(&top.value, config);
-                }
-                continue;
-            }
-
-            let mut matched_quadrant = false;
-            for (index, keyword) in [
-                (1u8, "quadrant-1"),
-                (2, "quadrant-2"),
-                (3, "quadrant-3"),
-                (4, "quadrant-4"),
-            ] {
-                let Some(directive) = parse_keyword_rest_ci(statement_trimmed, keyword) else {
-                    continue;
-                };
-                let text = match parse_text_slice(directive.rest) {
-                    Ok(text) => text,
-                    Err(error) => {
-                        first_error.get_or_insert_with(|| {
-                            quadrant_error_at(error, diagram_type, statement_span)
-                        });
-                        matched_quadrant = true;
-                        break;
-                    }
-                };
-                #[cfg(feature = "editor-facts")]
-                push_quadrant_outline_fact(
-                    editor_facts
-                        .as_mut()
-                        .filter(|_| editor_demand.captures_rich()),
-                    &text.value,
-                    text.content.start,
-                    text.content.end(),
-                    "quadrant chart quadrant",
-                    EditorSemanticKind::String,
-                );
-                db.set_quadrant_text(index, &text.value, config);
-                matched_quadrant = true;
-                break;
-            }
-            if matched_quadrant {
-                continue;
-            }
-
-            if let Some(directive) = parse_keyword_rest_ci(statement_trimmed, "classDef") {
-                let rest = directive.rest;
-                let name_end = rest
-                    .text
-                    .char_indices()
-                    .find_map(|(index, ch)| ch.is_whitespace().then_some(index))
-                    .unwrap_or(rest.text.len());
-                let name = rest.subslice(0, name_end).trim();
-                if name.text.is_empty() {
+                } else {
                     first_error.get_or_insert_with(|| {
                         Error::diagram_parse_insertion_point(
                             diagram_type.to_string(),
-                            "expected classDef name",
-                            semantic_end,
+                            "unterminated accDescr block",
+                            code.len(),
                         )
                     });
-                    continue;
                 }
-                let style_text = rest.subslice(name_end, rest.text.len()).trim();
-                let styles = split_style_slices(style_text);
+                acc_descr = Some(text);
+                continue;
+            }
+            if rest.text.starts_with(':') {
+                let value = rest.subslice(1, rest.text.len()).trim();
                 #[cfg(feature = "editor-facts")]
-                push_quadrant_class_fact(
+                if let Some(facts) = editor_facts
+                    .as_mut()
+                    .filter(|_| editor_demand.captures_rich())
+                {
+                    facts.push_directive_prefix("accDescr");
+                }
+                #[cfg(feature = "editor-facts")]
+                push_quadrant_payload_fact(
                     editor_facts
                         .as_mut()
                         .filter(|_| editor_demand.captures_rich()),
-                    statement_span,
-                    name,
+                    value.text,
+                    value.start,
+                    value.end(),
+                    "quadrant chart accessibility description",
+                    EditorSemanticKind::String,
                 );
-                let style_values = styles
-                    .items
-                    .iter()
-                    .map(|style| style.text.to_string())
-                    .collect::<Vec<_>>();
-                if let Err(error) = db.add_class(name.text, &style_values) {
-                    first_error.get_or_insert_with(|| {
-                        quadrant_error_at(error, diagram_type, statement_span)
-                    });
-                }
+                acc_descr = Some(value.text.to_string());
                 continue;
             }
+        }
 
-            match parse_point_statement(statement_trimmed) {
-                Ok(Some(point)) => {
-                    #[cfg(feature = "editor-facts")]
-                    push_quadrant_point_facts(
-                        editor_facts
-                            .as_mut()
-                            .filter(|_| editor_demand.captures_rich()),
-                        statement_span,
-                        &point,
-                    );
-                    let class_name = point.class_name.map(|class| class.text.to_string());
-                    let styles = point
-                        .styles
-                        .iter()
-                        .map(|style| style.text.to_string())
-                        .collect::<Vec<_>>();
-                    if let Err(error) = db.add_point(
-                        &point.label.value,
-                        class_name,
-                        point.x,
-                        point.y,
-                        &styles,
-                        config,
-                    ) {
-                        first_error.get_or_insert_with(|| {
-                            quadrant_error_at(error, diagram_type, statement_span)
-                        });
-                    }
-                    continue;
-                }
-                Ok(None) => {}
+        if let Some(directive) = parse_keyword_rest_ci(statement_trimmed, "title") {
+            let value = directive.rest;
+            #[cfg(feature = "editor-facts")]
+            if let Some(facts) = editor_facts
+                .as_mut()
+                .filter(|_| editor_demand.captures_rich())
+            {
+                facts.push_directive_prefix("title");
+            }
+            #[cfg(feature = "editor-facts")]
+            push_quadrant_payload_fact(
+                editor_facts
+                    .as_mut()
+                    .filter(|_| editor_demand.captures_rich()),
+                value.text,
+                value.start,
+                value.end(),
+                "quadrant chart title",
+                EditorSemanticKind::String,
+            );
+            title = Some(value.text.to_string());
+            continue;
+        }
+
+        if let Some(directive) = parse_keyword_rest_ci(statement_trimmed, "x-axis") {
+            let axis = match parse_axis_text(directive.rest) {
+                Ok(axis) => axis,
                 Err(error) => {
                     first_error.get_or_insert_with(|| {
                         quadrant_error_at(error, diagram_type, statement_span)
                     });
                     continue;
                 }
-            }
-
-            first_error.get_or_insert_with(|| {
-                Error::diagram_parse_exact(
-                    diagram_type.to_string(),
-                    format!("Unrecognized statement: {}", statement_trimmed.text),
-                    statement_span,
-                )
-            });
-        }
-    }
-
-    if let Some(block) = acc_descr_block {
-        let text = block.text.trim().to_string();
-        if !text.is_empty() {
+            };
             #[cfg(feature = "editor-facts")]
-            push_quadrant_payload_fact(
+            push_quadrant_outline_fact(
                 editor_facts
                     .as_mut()
                     .filter(|_| editor_demand.captures_rich()),
-                &text,
-                block.source_start,
-                code.len(),
-                "quadrant chart accessibility description",
+                &axis.left.value,
+                axis.left.content.start,
+                axis.left.content.end(),
+                "quadrant chart x-axis",
                 EditorSemanticKind::String,
             );
+            #[cfg(feature = "editor-facts")]
+            if let Some(right) = &axis.right {
+                push_quadrant_outline_fact(
+                    editor_facts
+                        .as_mut()
+                        .filter(|_| editor_demand.captures_rich()),
+                    &right.value,
+                    right.content.start,
+                    right.content.end(),
+                    "quadrant chart x-axis",
+                    EditorSemanticKind::String,
+                );
+            }
+            let mut left = axis.left.value;
+            if axis.operator.is_some() && axis.right.is_none() {
+                left.push_str(" ⟶");
+            }
+            db.set_x_axis_left(&left, config);
+            if let Some(right) = axis.right {
+                db.set_x_axis_right(&right.value, config);
+            }
+            continue;
         }
+
+        if let Some(directive) = parse_keyword_rest_ci(statement_trimmed, "y-axis") {
+            let axis = match parse_axis_text(directive.rest) {
+                Ok(axis) => axis,
+                Err(error) => {
+                    first_error.get_or_insert_with(|| {
+                        quadrant_error_at(error, diagram_type, statement_span)
+                    });
+                    continue;
+                }
+            };
+            #[cfg(feature = "editor-facts")]
+            push_quadrant_outline_fact(
+                editor_facts
+                    .as_mut()
+                    .filter(|_| editor_demand.captures_rich()),
+                &axis.left.value,
+                axis.left.content.start,
+                axis.left.content.end(),
+                "quadrant chart y-axis",
+                EditorSemanticKind::String,
+            );
+            #[cfg(feature = "editor-facts")]
+            if let Some(top) = &axis.right {
+                push_quadrant_outline_fact(
+                    editor_facts
+                        .as_mut()
+                        .filter(|_| editor_demand.captures_rich()),
+                    &top.value,
+                    top.content.start,
+                    top.content.end(),
+                    "quadrant chart y-axis",
+                    EditorSemanticKind::String,
+                );
+            }
+            let mut bottom = axis.left.value;
+            if axis.operator.is_some() && axis.right.is_none() {
+                bottom.push_str(" ⟶");
+            }
+            db.set_y_axis_bottom(&bottom, config);
+            if let Some(top) = axis.right {
+                db.set_y_axis_top(&top.value, config);
+            }
+            continue;
+        }
+
+        let mut matched_quadrant = false;
+        for (index, keyword) in [
+            (1u8, "quadrant-1"),
+            (2, "quadrant-2"),
+            (3, "quadrant-3"),
+            (4, "quadrant-4"),
+        ] {
+            let Some(directive) = parse_keyword_rest_ci(statement_trimmed, keyword) else {
+                continue;
+            };
+            let text = match parse_text_slice(directive.rest) {
+                Ok(text) => text,
+                Err(error) => {
+                    first_error.get_or_insert_with(|| {
+                        quadrant_error_at(error, diagram_type, statement_span)
+                    });
+                    matched_quadrant = true;
+                    break;
+                }
+            };
+            #[cfg(feature = "editor-facts")]
+            push_quadrant_outline_fact(
+                editor_facts
+                    .as_mut()
+                    .filter(|_| editor_demand.captures_rich()),
+                &text.value,
+                text.content.start,
+                text.content.end(),
+                "quadrant chart quadrant",
+                EditorSemanticKind::String,
+            );
+            db.set_quadrant_text(index, &text.value, config);
+            matched_quadrant = true;
+            break;
+        }
+        if matched_quadrant {
+            continue;
+        }
+
+        if let Some(directive) = parse_keyword_rest_ci(statement_trimmed, "classDef") {
+            let rest = directive.rest;
+            let name_end = rest
+                .text
+                .char_indices()
+                .find_map(|(index, ch)| ch.is_whitespace().then_some(index))
+                .unwrap_or(rest.text.len());
+            let name = rest.subslice(0, name_end).trim();
+            if name.text.is_empty() {
+                first_error.get_or_insert_with(|| {
+                    Error::diagram_parse_insertion_point(
+                        diagram_type.to_string(),
+                        "expected classDef name",
+                        semantic_end,
+                    )
+                });
+                continue;
+            }
+            let style_text = rest.subslice(name_end, rest.text.len()).trim();
+            let styles = split_style_slices(style_text);
+            #[cfg(feature = "editor-facts")]
+            push_quadrant_class_fact(
+                editor_facts
+                    .as_mut()
+                    .filter(|_| editor_demand.captures_rich()),
+                statement_span,
+                name,
+            );
+            let style_values = styles
+                .items
+                .iter()
+                .map(|style| style.text.to_string())
+                .collect::<Vec<_>>();
+            if let Err(error) = db.add_class(name.text, &style_values) {
+                first_error
+                    .get_or_insert_with(|| quadrant_error_at(error, diagram_type, statement_span));
+            }
+            continue;
+        }
+
+        match parse_point_statement(statement_trimmed) {
+            Ok(Some(point)) => {
+                #[cfg(feature = "editor-facts")]
+                push_quadrant_point_facts(
+                    editor_facts
+                        .as_mut()
+                        .filter(|_| editor_demand.captures_rich()),
+                    statement_span,
+                    &point,
+                );
+                let class_name = point.class_name.map(|class| class.text.to_string());
+                let styles = point
+                    .styles
+                    .iter()
+                    .map(|style| style.text.to_string())
+                    .collect::<Vec<_>>();
+                if let Err(error) = db.add_point(
+                    &point.label.value,
+                    class_name,
+                    point.x,
+                    point.y,
+                    &styles,
+                    config,
+                ) {
+                    first_error.get_or_insert_with(|| {
+                        quadrant_error_at(error, diagram_type, statement_span)
+                    });
+                }
+                continue;
+            }
+            Ok(None) => {}
+            Err(error) => {
+                first_error
+                    .get_or_insert_with(|| quadrant_error_at(error, diagram_type, statement_span));
+                continue;
+            }
+        }
+
         first_error.get_or_insert_with(|| {
-            Error::diagram_parse_insertion_point(
+            Error::diagram_parse_exact(
                 diagram_type.to_string(),
-                "unterminated accDescr block",
-                code.len(),
+                format!("Unrecognized statement: {}", statement_trimmed.text),
+                statement_span,
             )
         });
     }
@@ -1818,13 +1902,13 @@ Project A:::priority : [0.2, 0.8]
         let engine = MermaidEngine::new();
         let text = concat!(
             "quadrantChart\n",
-            "title Delivery portfolio\n",
+            "title Delivery portfolio; quadrant-1 Hidden\n",
             "accTitle: Portfolio\n",
             "x-axis Low --> High\n",
             "y-axis Bottom --> Top\n",
-            "quadrant-1 Invest\n",
+            "quadrant-1 \"Invest\nCarefully\"\n",
             "classDef priority color: #109060, radius: 10\n",
-            "Project A:::priority: [0.2, 0.8]\n",
+            "\"`Project\nA`\":::priority: [0.2, 0.8]\n",
         );
         let parsed = engine
             .parse_diagram_sync(text, ParseOptions::strict())
@@ -1896,7 +1980,8 @@ Project A:::priority : [0.2, 0.8]
         let engine = MermaidEngine::new();
         let text = concat!(
             "quadrantChart\n",
-            "title \"Plan; Execute\"; accDescr {first %% literal; second}; quadrant-1 \"Build; Learn\"\n",
+            "title \"Plan; Execute\"\n",
+            "accDescr {first %% literal; second}; quadrant-1 \"Build; Learn\"\n",
             "\"Point; A\": [0.2, 0.8]\n",
         );
         let parsed = engine
@@ -1919,7 +2004,7 @@ Project A:::priority : [0.2, 0.8]
         assert_eq!(parsed.model["points"][0]["text"], json!("Point; A"));
         #[cfg(feature = "editor-facts")]
         for expected in [
-            "Plan; Execute",
+            "\"Plan; Execute\"",
             "first %% literal; second",
             "Build; Learn",
             "Point; A",
@@ -2045,6 +2130,234 @@ mod semantic_tests {
                 "dompurifyConfig": { "FORBID_TAGS": ["b"] }
             })),
             title: None,
+        }
+    }
+
+    #[test]
+    fn raw_line_terminals_keep_semicolons_and_literal_comment_markers() {
+        let source = concat!(
+            "quadrantChart\n",
+            "title Plan; quadrant-1 Hidden %% literal \"\n",
+            "accTitle: Accessible; title Literal\n",
+            "accDescr: Details; quadrant-2 Hidden\n",
+            "quadrant-1 Visible\n",
+        );
+        reset_quadrant_syntax_construction_count();
+        let model = parse_quadrant_chart_semantic_model_controlled(
+            source,
+            &metadata(),
+            #[cfg(feature = "editor-facts")]
+            EditorFactsDemand::Omit,
+            &OperationControl::new(),
+        )
+        .unwrap()
+        .model
+        .unwrap();
+
+        assert_eq!(
+            model.title.as_deref(),
+            Some("Plan; quadrant-1 Hidden %% literal \"")
+        );
+        assert_eq!(
+            model.acc_title.as_deref(),
+            Some("Accessible; title Literal")
+        );
+        assert_eq!(
+            model.acc_descr.as_deref(),
+            Some("Details; quadrant-2 Hidden")
+        );
+        assert_eq!(model.quadrants.quadrant1_text, "Visible");
+        assert!(model.quadrants.quadrant2_text.is_empty());
+        assert_eq!(quadrant_syntax_construction_count(), 1);
+    }
+
+    #[test]
+    fn multiline_text_tokens_share_axes_points_and_legal_text_suffixes() {
+        for (open, close) in [("\"", "\""), ("\"`", "`\"")] {
+            let source = format!(
+                "quadrantChart\nx-axis {open}Low\nEffort{close} --> High\n\
+                 quadrant-1 {open}First\nSecond{close} ???\n\
+                 quadrant-2 {open}Literal\\nValue{close}\n\
+                 {open}Point\nName{close}:::priority: [0.2, 0.8]\n\
+                 classDef priority color:#abc\n"
+            );
+            let model = parse_quadrant_chart_semantic_model_controlled(
+                &source,
+                &metadata(),
+                #[cfg(feature = "editor-facts")]
+                EditorFactsDemand::Omit,
+                &OperationControl::new(),
+            )
+            .unwrap()
+            .model
+            .unwrap();
+
+            assert_eq!(model.axes.x_axis_left_text, "Low\nEffort");
+            assert_eq!(model.axes.x_axis_right_text, "High");
+            assert_eq!(model.quadrants.quadrant1_text, "First\nSecond ???");
+            assert_eq!(model.quadrants.quadrant2_text, r"Literal\nValue");
+            assert_eq!(model.points[0].text, "Point\nName");
+            assert_eq!(model.points[0].class_name.as_deref(), Some("priority"));
+        }
+    }
+
+    #[test]
+    fn mixed_text_rejects_reserved_tokens_without_banning_alpha_suffixes() {
+        for (open, close) in [("\"", "\""), ("\"`", "`\"")] {
+            for (suffix, expected) in [
+                (" title B", None),
+                (" tail", Some("A tail")),
+                (" untitled", Some("A untitled")),
+            ] {
+                let source = format!("quadrantChart\nquadrant-1 {open}A{close}{suffix}\n");
+                let construction = parse_quadrant_chart_semantic_model_controlled(
+                    &source,
+                    &metadata(),
+                    #[cfg(feature = "editor-facts")]
+                    EditorFactsDemand::Omit,
+                    &OperationControl::new(),
+                )
+                .unwrap();
+                match expected {
+                    Some(expected) => {
+                        assert_eq!(
+                            construction.model.unwrap().quadrants.quadrant1_text,
+                            expected
+                        );
+                    }
+                    None => assert!(construction.model.is_err(), "{source}"),
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn unclosed_tokens_replay_safe_lines_with_a_linear_scan_bound() {
+        for open in ["\"", "\"`"] {
+            for line_count in [1, 64, 512] {
+                let broken = format!("quadrant-1 {open}broken");
+                let source = format!(
+                    "{broken}\n{}",
+                    "x-axis Low --> High\nP: [0.5, 0.5]\n".repeat(line_count)
+                );
+                let mut statements = QuadrantStatements::new(&source);
+                let control = OperationControl::new();
+                let first = statements.next_statement(&control).unwrap().unwrap();
+                assert_eq!(first.source.text, broken);
+                for _ in 0..line_count {
+                    let axis = statements.next_statement(&control).unwrap().unwrap();
+                    assert_eq!(axis.source.text, "x-axis Low --> High");
+                    let point = statements.next_statement(&control).unwrap().unwrap();
+                    assert_eq!(point.source.text, "P: [0.5, 0.5]");
+                }
+                assert!(statements.next_statement(&control).unwrap().is_none());
+                assert!(statements.scanned_bytes <= source.len() * 2);
+
+                let mut statements = QuadrantStatements::new(&source);
+                statements.next_statement(&control).unwrap().unwrap();
+                control.cancel();
+                assert!(statements.next_statement(&control).is_err());
+            }
+        }
+    }
+
+    #[test]
+    fn multiline_token_slices_retain_crlf_and_literal_backslashes() {
+        for ending in ["\n", "\r\n"] {
+            for (open, close) in [("\"", "\""), ("\"`", "`\"")] {
+                let payload = format!("First{ending}Second\\nLiteral");
+                let source = format!("{open}{payload}{close}; next");
+                let mut statements = QuadrantStatements::new(&source);
+                let statement = statements
+                    .next_statement(&OperationControl::new())
+                    .unwrap()
+                    .unwrap();
+                let parsed = parse_text_slice(statement.source).unwrap();
+
+                assert_eq!(parsed.value, payload);
+                assert_eq!(parsed.content.text, payload);
+                assert_eq!(parsed.content.start, open.len());
+                assert_eq!(parsed.content.end(), open.len() + payload.len());
+            }
+        }
+    }
+
+    #[test]
+    fn malformed_text_rejects_extra_tokens_and_unclosed_strings() {
+        for text in [
+            "\"First\nSecond\" [junk]",
+            "\"First\nSecond\" \"another token\"",
+            "\"`First\nSecond`\" [junk]",
+            "\"First\nSecond",
+            "\"`First\nSecond",
+            "\"First\\\"Second\"",
+        ] {
+            let source = format!("quadrantChart\nquadrant-1 {text}\n");
+            let construction = parse_quadrant_chart_semantic_model_controlled(
+                &source,
+                &metadata(),
+                #[cfg(feature = "editor-facts")]
+                EditorFactsDemand::Omit,
+                &OperationControl::new(),
+            )
+            .unwrap();
+            assert!(
+                construction.model.is_err(),
+                "accepted malformed text: {text}"
+            );
+        }
+    }
+
+    #[test]
+    #[cfg(feature = "editor-facts")]
+    fn malformed_multiline_text_recovers_following_facts_once() {
+        let source = concat!(
+            "quadrantChart\n",
+            "quadrant-1 \"Broken\nCaption\" [junk]\n",
+            "quadrant-2 \"Valid\nCaption\"\n",
+            "\"`Next\nPoint`\": [0.2, 0.8]\n",
+        );
+        reset_quadrant_syntax_construction_count();
+        let construction = parse_quadrant_chart_semantic_model_controlled(
+            source,
+            &metadata(),
+            EditorFactsDemand::Capture,
+            &OperationControl::new(),
+        )
+        .unwrap();
+        assert!(construction.model.is_err());
+        let facts = construction.editor_facts.unwrap();
+        assert_eq!(quadrant_syntax_construction_count(), 1);
+        assert_eq!(
+            facts.completeness,
+            crate::EditorSemanticCompleteness::Recovered
+        );
+        for name in ["Valid\nCaption", "Next\nPoint"] {
+            let symbol = facts
+                .symbols
+                .iter()
+                .find(|symbol| symbol.name == name)
+                .unwrap();
+            assert_eq!(&source[symbol.selection.start..symbol.selection.end], name);
+        }
+        assert!(
+            !facts
+                .symbols
+                .iter()
+                .any(|symbol| symbol.name.contains("Broken"))
+        );
+        assert!(!facts.diagnostics.is_empty());
+    }
+
+    #[test]
+    fn long_raw_lines_tokens_and_comments_observe_scanning_cancellation() {
+        for prefix in ["title ", "\"", "\"`", "%% ", "accTitle "] {
+            let source = format!("{prefix}{}", " ".repeat(8_192));
+            let mut statements = QuadrantStatements::new(&source);
+            let control = OperationControl::new();
+            control.cancel_after_checkpoints(2);
+            assert!(statements.next_statement(&control).is_err(), "{prefix}");
+            assert!(statements.offset < source.len(), "{prefix}");
         }
     }
 

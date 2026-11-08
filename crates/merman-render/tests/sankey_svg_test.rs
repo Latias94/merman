@@ -130,6 +130,27 @@ fn render_sankey(source: &str, options: &SvgRenderOptions) -> String {
         .to_owned()
 }
 
+#[test]
+fn sankey_visible_values_use_ecmascript_number_text() {
+    for (value, expected) in [
+        ("1e30", "1e+30"),
+        ("1e21", "999999999999999900000"),
+        ("10", "10"),
+    ] {
+        let svg = render_sankey(
+            &format!("sankey\nA,B,{value}\n"),
+            &SvgRenderOptions::default(),
+        );
+        let document = roxmltree::Document::parse(&svg).unwrap();
+        let labels = document
+            .descendants()
+            .filter(|node| node.has_tag_name("text"))
+            .map(|node| node.text().unwrap_or_default().to_string())
+            .collect::<Vec<_>>();
+        assert_eq!(labels, [format!("A\n{expected}"), format!("B\n{expected}")]);
+    }
+}
+
 fn try_render_sankey_with_resource_policy(
     source: &str,
     options: &SvgRenderOptions,
@@ -234,6 +255,162 @@ A,B,10
         svg.contains(".sankey-label-bg"),
         "expected outlined label CSS: {svg}"
     );
+}
+
+#[test]
+fn sankey_viewport_contains_all_raw_labels_with_their_emitted_anchors() {
+    use merman_render::text::{DeterministicTextMeasurer, TextMeasurer, TextStyle};
+
+    let long_records = format!("{},Output,1\n", "WideLabel".repeat(20));
+    let measurer = DeterministicTextMeasurer::default();
+    let text_style = TextStyle {
+        font_family: Some("monospace".to_string()),
+        font_size: 14.0,
+        ..TextStyle::default()
+    };
+    for (label_style, records, show_values) in [
+        ("outlined", "A,B,1\n", false),
+        ("legacy", "A,B,1\n", false),
+        ("outlined", "Input,Hub,1\nOther,Hub,2\nHub,Output,3\n", true),
+        ("legacy", long_records.as_str(), true),
+    ] {
+        for use_max_width in [false, true] {
+            let source = format!(
+                "---\nconfig:\n  fontFamily: monospace\n  sankey:\n    labelStyle: {label_style}\n    showValues: {show_values}\n    useMaxWidth: {use_max_width}\n    prefix: '<br>value: '\n    suffix: ' units'\n---\nsankey\n{records}"
+            );
+            let svg = render_sankey(&source, &SvgRenderOptions::default());
+            let document = roxmltree::Document::parse(&svg).unwrap();
+            let root = document.root_element();
+            let view_box = root
+                .attribute("viewBox")
+                .unwrap()
+                .split_whitespace()
+                .map(|number| number.parse::<f64>().unwrap())
+                .collect::<Vec<_>>();
+            let left = view_box[0];
+            let right = left + view_box[2];
+            let labels = document
+                .descendants()
+                .filter(|node| node.has_tag_name("text"))
+                .collect::<Vec<_>>();
+            assert!(!labels.is_empty());
+            for label in labels {
+                let text = label.text().unwrap_or_default();
+                let width = measurer.measure_svg_raw_text_bbox_width_px(text, &text_style);
+                let x = label.attribute("x").unwrap().parse::<f64>().unwrap();
+                let label_left = match label.attribute("text-anchor") {
+                    Some("start") => x,
+                    Some("end") => x - width,
+                    anchor => panic!("unexpected Sankey label anchor {anchor:?}"),
+                };
+                assert!(
+                    left <= label_left + 1e-6 && right + 1e-6 >= label_left + width,
+                    "viewport [{left}, {right}] must contain {text:?} at [{label_left}, {}]: {source}",
+                    label_left + width
+                );
+            }
+            if use_max_width {
+                assert_eq!(root.attribute("width"), Some("100%"));
+                assert!(
+                    root.attribute("style")
+                        .unwrap()
+                        .contains(&format!("max-width: {}px", view_box[2]))
+                );
+            } else {
+                assert_eq!(
+                    root.attribute("width").unwrap().parse::<f64>().unwrap(),
+                    view_box[2]
+                );
+            }
+            if records == "A,B,1\n" {
+                if label_style == "legacy" {
+                    assert_eq!((left, right), (0.0, 600.0));
+                } else {
+                    assert!(right > 606.0);
+                }
+            } else if label_style == "outlined" {
+                assert!(left < 0.0 && right > 600.0);
+            } else {
+                assert!(right > 600.0);
+            }
+        }
+    }
+}
+
+#[test]
+fn sankey_label_bounds_use_the_raw_text_profile_and_emitted_font() {
+    use merman_render::environment::{
+        MeasurementProfileId, TextMeasurementPhase, TextMeasurementPolicy, TextMeasurementProfile,
+        TextMeasurementProfileIdentity,
+    };
+    use merman_render::text::{TextMeasurer, TextMetrics, TextStyle};
+    use std::sync::{Arc, Mutex};
+
+    #[derive(Default)]
+    struct RawLabelMeasurer {
+        labels: Mutex<Vec<String>>,
+    }
+
+    impl TextMeasurer for RawLabelMeasurer {
+        fn measure(&self, _text: &str, style: &TextStyle) -> TextMetrics {
+            TextMetrics {
+                width: 0.0,
+                height: style.font_size,
+                line_count: 1,
+            }
+        }
+
+        fn measure_svg_raw_text_bbox_width_px(&self, text: &str, style: &TextStyle) -> f64 {
+            assert_eq!(style.font_family.as_deref(), Some("monospace"));
+            assert_eq!(style.font_size, 14.0);
+            assert!(style.font_weight.is_none());
+            assert!(style.font_style.is_none());
+            self.labels.lock().unwrap().push(text.to_owned());
+            80.0
+        }
+    }
+
+    let backend = Arc::new(RawLabelMeasurer::default());
+    let profile = TextMeasurementProfile::new(
+        TextMeasurementProfileIdentity::new(
+            MeasurementProfileId::new("test.sankey-raw-labels").unwrap(),
+            "1",
+        )
+        .unwrap(),
+        backend.clone(),
+    );
+    let environment = RenderEnvironment::deterministic().with_text_measurement_policy(
+        TextMeasurementPolicy::deterministic()
+            .with_profile_for_phase(TextMeasurementPhase::SvgBBox, profile),
+    );
+    let source = concat!(
+        "---\nconfig:\n  fontFamily: monospace\n  sankey:\n",
+        "    labelStyle: outlined\n    prefix: 'total '\n    suffix: ' units'\n---\n",
+        "sankey\nA,B,1\n"
+    );
+    let parsed = MermaidEngine::new()
+        .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
+        .unwrap()
+        .unwrap()
+        .into_presentation();
+    let session = environment.begin_session().unwrap();
+    let rendered = family::prepare(&parsed, &LayoutOptions::default(), session)
+        .unwrap()
+        .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+        .unwrap();
+    let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+    let view_box = document
+        .root_element()
+        .attribute("viewBox")
+        .unwrap()
+        .split_whitespace()
+        .map(|number| number.parse::<f64>().unwrap())
+        .collect::<Vec<_>>();
+    assert_eq!(view_box[0] + view_box[2], 686.0);
+    assert!(sankey_style_text(rendered.svg()).contains(".node-labels{font-family:monospace;}"));
+    let measured = backend.labels.lock().unwrap();
+    assert!(measured.iter().any(|label| label == "A\ntotal 1 units"));
+    assert!(measured.iter().any(|label| label == "B\ntotal 1 units"));
 }
 
 #[test]

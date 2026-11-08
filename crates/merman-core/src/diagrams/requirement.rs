@@ -723,6 +723,7 @@ fn parse_requirement_semantic_source_once(
                 );
             }
             let body = parse_requirement_body(
+                code,
                 &mut lines,
                 diagram_type,
                 #[cfg(feature = "editor-facts")]
@@ -767,6 +768,7 @@ fn parse_requirement_semantic_source_once(
                 );
             }
             let body = parse_element_body(
+                code,
                 &mut lines,
                 diagram_type,
                 #[cfg(feature = "editor-facts")]
@@ -1264,6 +1266,78 @@ fn resolve_requirement_reference_kinds(facts: &mut EditorSemanticFacts, db: &Req
     }
 }
 
+/// Body values beginning with a quoted token may contain physical newlines. A quote inside
+/// an unquoted value is ordinary text in the selected grammar's `unqString` state.
+fn next_requirement_line<'a>(
+    code: &'a str,
+    lines: &mut LineCursor<'a>,
+    control: &OperationControl,
+) -> OperationControlResult<Option<(&'a str, usize)>> {
+    let Some((mut line, start)) = lines.next_line() else {
+        return Ok(None);
+    };
+    let Some(value) =
+        split_key_value_spanned(split_requirement_line(line)).and_then(|pair| pair.value)
+    else {
+        return Ok(Some((line, start)));
+    };
+    let Some(content) = value.text.strip_prefix('"') else {
+        return Ok(Some((line, start)));
+    };
+    let mut content = content;
+    let mut line_start = start;
+    loop {
+        control.checkpoint()?;
+        let mut closed = false;
+        for (index, byte) in content.bytes().enumerate() {
+            if index.is_multiple_of(4096) {
+                control.checkpoint()?;
+            }
+            if byte == b'"' {
+                closed = true;
+                break;
+            }
+        }
+        let end = line_start + line.len();
+        if closed {
+            return Ok(Some((&code[start..end], start)));
+        }
+        let Some((next, next_start)) = lines.next_line() else {
+            return Ok(Some((&code[start..end], start)));
+        };
+        line = next;
+        content = next;
+        line_start = next_start;
+    }
+}
+
+fn find_requirement_token(input: &str, token: &str) -> Option<usize> {
+    let mut quoted = false;
+    let mut unquoted = false;
+    for (index, ch) in input.char_indices() {
+        if quoted {
+            if ch == '"' {
+                quoted = false;
+            }
+            continue;
+        }
+        let delimiter = matches!(ch, ':' | ',' | '\r' | '\n' | '{' | '<' | '>' | '-' | '=');
+        if unquoted && !delimiter {
+            continue;
+        }
+        unquoted = false;
+        if input[index..].starts_with(token) {
+            return Some(index);
+        }
+        if ch == '"' {
+            quoted = true;
+        } else if !delimiter && !ch.is_whitespace() {
+            unquoted = true;
+        }
+    }
+    None
+}
+
 fn split_requirement_line(line: &str) -> &str {
     let lowered = line.trim_start().to_ascii_lowercase();
     if lowered.starts_with("style")
@@ -1452,7 +1526,7 @@ fn split_name_and_classes(input: &str, input_start: usize) -> Result<DefinitionN
         });
     }
 
-    if let Some(pos) = input.find(":::") {
+    if let Some(pos) = find_requirement_token(input, ":::") {
         let name_raw = input[..pos].trim_end();
         let classes_raw = &input[pos + 3..];
         let name = parse_requirement_id_spanned(name_raw, input_start + leading)?;
@@ -1512,8 +1586,9 @@ struct RequirementBodyParse<T> {
     error: Option<Error>,
 }
 
-fn parse_requirement_body(
-    lines: &mut LineCursor<'_>,
+fn parse_requirement_body<'a>(
+    code: &'a str,
+    lines: &mut LineCursor<'a>,
     diagram_type: &str,
     #[cfg(feature = "editor-facts")] facts: &mut EditorSemanticFacts,
     #[cfg(feature = "editor-facts")] editor_demand: EditorFactsDemand,
@@ -1522,7 +1597,7 @@ fn parse_requirement_body(
     control.checkpoint()?;
     let mut b = RequirementBuilder::new();
     let mut error = None;
-    while let Some((raw, line_start)) = lines.next_line() {
+    while let Some((raw, line_start)) = next_requirement_line(code, lines, control)? {
         control.checkpoint()?;
         let line = split_requirement_line(raw);
         let t = line.trim();
@@ -1627,8 +1702,9 @@ fn parse_requirement_body(
     Ok(RequirementBodyParse { value: b, error })
 }
 
-fn parse_element_body(
-    lines: &mut LineCursor<'_>,
+fn parse_element_body<'a>(
+    code: &'a str,
+    lines: &mut LineCursor<'a>,
     diagram_type: &str,
     #[cfg(feature = "editor-facts")] facts: &mut EditorSemanticFacts,
     #[cfg(feature = "editor-facts")] editor_demand: EditorFactsDemand,
@@ -1637,7 +1713,7 @@ fn parse_element_body(
     control.checkpoint()?;
     let mut b = ElementBuilder::new();
     let mut error = None;
-    while let Some((raw, line_start)) = lines.next_line() {
+    while let Some((raw, line_start)) = next_requirement_line(code, lines, control)? {
         control.checkpoint()?;
         let line = split_requirement_line(raw);
         let t = line.trim();
@@ -1881,7 +1957,7 @@ fn parse_shorthand_class_stmt(
     if t.is_empty() || t.ends_with('{') {
         return Ok(None);
     }
-    let Some(pos) = t.find(":::") else {
+    let Some(pos) = find_requirement_token(t, ":::") else {
         return Ok(None);
     };
     let left = t[..pos].trim_end();
@@ -1995,13 +2071,13 @@ fn parse_relationship_stmt(
         return Ok(None);
     }
 
-    if let Some(pos) = t.find("<-") {
+    if let Some(pos) = find_requirement_token(t, "<-") {
         let left = t[..pos].trim_end();
         let after_arrow = &t[pos + 2..];
         let rest_leading = leading_whitespace_len(after_arrow);
         let rest_start = pos + 2 + rest_leading;
         let rest = after_arrow.trim_start();
-        let Some(dash) = rest.find('-') else {
+        let Some(dash) = find_requirement_token(rest, "-") else {
             return Err(Error::diagram_parse_fallback(
                 "requirement".to_string(),
                 format!("invalid relationship statement: {rest}"),
@@ -2036,13 +2112,13 @@ fn parse_relationship_stmt(
         }));
     }
 
-    if let Some(pos) = t.find("->") {
+    if let Some(pos) = find_requirement_token(t, "->") {
         let right_raw = &t[pos + 2..];
         let right_leading = leading_whitespace_len(right_raw);
         let right_start = pos + 2 + right_leading;
         let right = right_raw.trim();
         let left_part = t[..pos].trim_end();
-        let Some(dash) = left_part.find('-') else {
+        let Some(dash) = find_requirement_token(left_part, "-") else {
             return Err(Error::diagram_parse_fallback(
                 "requirement".to_string(),
                 format!("invalid relationship statement: {left_part}"),
@@ -2283,6 +2359,77 @@ mod tests {
             config: MermaidConfig::default(),
             effective_config: crate::presentation::SourcePresentationConfig::default(),
             title: None,
+        }
+    }
+
+    #[test]
+    fn requirement_quoted_names_keep_relationship_and_class_delimiters_literal() {
+        let source = concat!(
+            "requirementDiagram\n",
+            "element \"a-b:::c<-d->e\" {\n}\n",
+            "requirement req {\n}\n",
+            "\"a-b:::c<-d->e\" - traces -> req\n",
+            "req <- traces - \"a-b:::c<-d->e\"\n",
+        );
+        let model = parse(source);
+        assert_eq!(model["elements"][0]["name"], "a-b:::c<-d->e");
+        for relation in model["relationships"].as_array().unwrap() {
+            assert_eq!(relation["src"], "a-b:::c<-d->e");
+            assert_eq!(relation["dst"], "req");
+        }
+    }
+
+    #[test]
+    fn requirement_quoted_body_values_preserve_physical_line_endings_and_comments() {
+        let source = concat!(
+            "requirementDiagram\r\n",
+            "requirement req {\r\n",
+            " text: \"First\r\nSecond %% # café\" # comment\r\n",
+            "}\r\n",
+            "element doc {\r\n type: \"One\r\nTwo\"\r\n}\r\n",
+        );
+        let model = parse(source);
+        assert_eq!(model["requirements"][0]["text"], "First\nSecond %% # café");
+        assert_eq!(model["elements"][0]["type"], "One\nTwo");
+        #[cfg(feature = "editor-facts")]
+        {
+            let facts = crate::family::test_support::editor_facts(
+                parse_requirement_json_and_editor_facts,
+                source,
+                &test_meta(),
+            );
+            let literal = "\"First\r\nSecond %% # café\"";
+            let selection = payload_selection(&facts, "requirement text", literal);
+            assert_eq!(&source[selection.start..selection.end], literal);
+            assert_eq!(facts.completeness, EditorSemanticCompleteness::Complete);
+        }
+        assert!(
+            parse_err("requirementDiagram\nrequirement req {\ntext: \"First\nSecond\n}\n")
+                .contains("unterminated")
+        );
+    }
+
+    #[test]
+    fn requirement_unquoted_inches_do_not_start_a_multiline_string() {
+        let model = parse(
+            "requirementDiagram\nrequirement r {\n text: 5\" display\n}\nelement next {\n}\n",
+        );
+        assert_eq!(model["requirements"][0]["text"], "5\" display");
+        assert_eq!(model["elements"][0]["name"], "next");
+
+        let model = parse(
+            "requirementDiagram\nelement a\"b:::hot {\n}\nrequirement r {\n}\na\"b - traces -> r\n",
+        );
+        assert_eq!(model["elements"][0]["name"], "a\"b");
+        assert_eq!(model["elements"][0]["classes"], json!(["default", "hot"]));
+        assert_eq!(model["relationships"][0]["src"], "a\"b");
+
+        for comment in ["# note: \"", "%% note: \""] {
+            let model = parse(&format!(
+                "requirementDiagram\nrequirement r {{\n{comment}\ntext: retained\n}}\nelement next {{\n}}\n"
+            ));
+            assert_eq!(model["requirements"][0]["text"], "retained");
+            assert_eq!(model["elements"][0]["name"], "next");
         }
     }
 
