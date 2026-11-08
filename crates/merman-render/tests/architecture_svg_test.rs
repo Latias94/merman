@@ -1000,6 +1000,7 @@ fn architecture_typed_service_background_matches_emission_and_source_ownership()
             Some("archGroupBorderColor"),
             Some("primaryBorderColor"),
         ] {
+            let source_owns_stroke = stroke_owner == Some("archGroupBorderColor");
             let source = format!("architecture-beta\n{declaration}\n");
             let mut config = json!({
                 "architecture": {"numIter": 1, "randomize": false},
@@ -1031,7 +1032,7 @@ fn architecture_typed_service_background_matches_emission_and_source_ownership()
                 assert_eq!(background.attribute("id"), Some("architecture-node-api"));
                 assert_eq!(
                     background.attribute("style"),
-                    Some(if stroke_owner.is_some() {
+                    Some(if source_owns_stroke {
                         "fill:#123456;"
                     } else {
                         "fill:#123456;stroke:#654321;"
@@ -1039,17 +1040,17 @@ fn architecture_typed_service_background_matches_emission_and_source_ownership()
                     "{declaration}, stroke owner: {stroke_owner:?}"
                 );
             }
-            if stroke_owner.is_some() {
-                assert!(
-                    architecture_stylesheet(rendered.svg())
-                        .contains("#architecture .node-bkg{fill:none;stroke:#abcdef;")
-                );
-            }
+            assert_eq!(
+                architecture_stylesheet(rendered.svg())
+                    .contains("#architecture .node-bkg{fill:none;stroke:#abcdef;"),
+                source_owns_stroke,
+                "{declaration}, stroke owner: {stroke_owner:?}"
+            );
 
             let evidence =
                 merman_render::__private::family_evidence(rendered.into_completion().report());
             let applied = if has_background {
-                2 - usize::from(stroke_owner.is_some())
+                2 - usize::from(source_owns_stroke)
             } else {
                 0
             };

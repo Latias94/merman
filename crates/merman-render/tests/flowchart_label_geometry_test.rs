@@ -85,13 +85,15 @@ fn assert_close(actual: f64, expected: f64, context: &str) {
 fn ordinary_html_labels_retain_measured_visual_boxes() {
     for layout_mode in LAYOUTS {
         for shape in ["rect", "delay", "doc", "folder"] {
-            for (label, expected_height) in [
-                ("<br/><br/>", 42.0),
-                ("<i class='fa fa-car'></i>", 21.0),
-                ("", 0.0),
+            for (definition, label, expected_height, expected_text) in [
+                ("A", "<br/><br/>", 42.0, ""),
+                ("A", "<i class='fa fa-car'></i>", 21.0, ""),
+                ("A", "", 21.0, "A"),
+                ("A[Original]", "", 21.0, "Original"),
+                (r#"A[" "]"#, "", 0.0, ""),
             ] {
                 let source = format!(
-                    "flowchart LR\nA@{{ shape: {shape}, label: \"{label}\" }} --> B[Rect]\n"
+                    "flowchart LR\n{definition}\nA@{{ shape: {shape}, label: \"{label}\" }} --> B[Rect]\n"
                 );
                 let (_, svg) = render(&source, layout_mode);
                 let document = roxmltree::Document::parse(&svg).unwrap();
@@ -100,6 +102,12 @@ fn ordinary_html_labels_retain_measured_visual_boxes() {
                     .find(|node| node.has_tag_name("foreignObject"))
                     .expect("HTML label box");
                 assert_close(dimension(label_box, "height"), expected_height, &source);
+                let visible_text = label_box
+                    .descendants()
+                    .filter(|node| node.is_text())
+                    .filter_map(|node| node.text())
+                    .collect::<String>();
+                assert_eq!(visible_text.trim(), expected_text, "{source}");
             }
         }
     }
