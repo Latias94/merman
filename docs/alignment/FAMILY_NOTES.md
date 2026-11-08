@@ -11,6 +11,11 @@ and per-family baseline manifests own current admission. Historical input names 
 experiments retain their original scope; they do not establish support for a later Mermaid
 release. Families without a special note use the shared contracts and their executable evidence.
 
+Langium `STRING` values decode `\b`, `\f`, `\n`, `\r`, `\t`, `\v`, and `\0` as control characters;
+other escaped characters lose the backslash without Unicode, hexadecimal, or octal decoding.
+Editor selections retain the authored token range. This conversion does not apply to Treemap's
+literal `STRING2` terminal.
+
 ## Architecture
 
 Bracketed unquoted titles retain literal quote characters; a quote inside such a title does not
@@ -306,6 +311,37 @@ Parser-derived source ranges are shared by editor facts.
 Owners: [layout](../../crates/merman-render/src/mindmap.rs) and
 [12.3 regressions](../../crates/merman-render/tests/mindmap_mermaid12_3_test.rs).
 
+## Packet
+
+Quoted labels can span physical lines; semantic text retains the newline and editor selections
+retain the authored range. `packet.useMaxWidth: false` exports numeric SVG width and height from
+the final viewBox. The default remains responsive.
+
+Split fields use inclusive native `bits` counts (`end - start + 1`), including in compatibility
+JSON and ASCII output. The selected Mermaid DB omits the final bit from that redundant field only
+when splitting a block; its renderer still derives inclusive width from the endpoints. Merman
+keeps the consistent native count rather than reproducing a value rejected by its ASCII contract.
+
+Owners: [parser](../../crates/merman-core/src/diagrams/packet.rs),
+[SVG tests](../../crates/merman-render/tests/packet_svg_test.rs), and
+[ASCII split-field tests](../../crates/merman-ascii/tests/new_family_models/packet.rs).
+
+## Radar
+
+A numeric curve with a different number of values than axes remains in the semantic model and
+legend but produces no curve geometry, as in the selected renderer. Other curves keep their
+original series indices, and maximum-value scaling still considers all authored curves.
+
+Source ticks first apply the selected DB's upper limit of 32. A positive fractional effective value
+then produces `ceil(ticks)` grid lines, using that effective value as the radius denominator. For
+example, `ticks 2.5` draws three lines at `1/2.5`, `2/2.5`, and `3/2.5` of the radius; the final line
+extends beyond the nominal radius. Circle and polygon grids share this rule. Resource accounting
+uses the actual iteration and point counts.
+
+Owners: [layout](../../crates/merman-render/src/radar.rs),
+[theme evidence](../../crates/merman-render/src/radar/theme.rs), and
+[SVG tests](../../crates/merman-render/tests/radar_svg_test.rs).
+
 ## Railroad
 
 `railroad`, `railroadEbnf`, `railroadAbnf`, and `railroadPeg` share typed layout and rendering.
@@ -390,6 +426,22 @@ Their finite geometry and SVG tests do not replace the semantic/layout/baseline 
 to promote an input. Owners: [Swimlane implementation](../../crates/merman-render/src/swimlane/mod.rs),
 [layout tests](../../crates/merman-render/tests/swimlane_layout_test.rs), and
 [public typed-render tests](../../crates/merman/tests/swimlane_typed_render.rs).
+
+## Treemap
+
+Quoted names use the selected `STRING2` terminal: physical newlines remain part of the name, and
+backslashes are literal. The first physical line supplies the item's indentation; lines inside a
+quoted name do not create additional nodes. Editor selections retain the original payload range.
+
+Finite weights follow the selected binary64 number conversion, including leading-dot zero forms
+such as `.0` and values beyond the signed integer range. Large decimal integers can round to the
+same binary64 value; their authored token ranges remain distinct from the converted value.
+`treemap.useMaxWidth: false` exports intrinsic SVG dimensions using the final painted bounds.
+Browser-dependent text measurement can still change those bounds.
+
+Owners: [parser](../../crates/merman-core/src/diagrams/treemap.rs),
+[literal text tests](../../crates/merman-render/tests/treemap_literal_text_test.rs), and
+[SVG tests](../../crates/merman-render/tests/treemap_svg_test.rs).
 
 ## TreeView
 

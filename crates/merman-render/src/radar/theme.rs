@@ -611,6 +611,7 @@ pub(crate) struct RadarSeriesPaintPlan {
     colors: [String; RADAR_PALETTE_SLOT_COUNT],
     typed_capabilities: [Option<ThemeCapability>; RADAR_PALETTE_SLOT_COUNT],
     curve_count: usize,
+    drawable_curve_indices: Vec<usize>,
     show_legend: bool,
     evidence: FamilyThemeOutcomes,
     palette_key: Option<FamilyThemeMechanismKey>,
@@ -632,33 +633,41 @@ impl RadarSeriesPaintPlan {
         model: &RadarDiagramModel,
         work_meter: &OperationWorkMeter,
     ) -> Result<Self, OperationWorkError> {
+        work_meter.charge(model.curves.len())?;
         let mut plan = Self::baseline(effective_config.as_value(), model);
         let Some(theme) = theme else {
             return Ok(plan);
         };
 
         plan.evidence = FamilyThemeOutcomes::default();
-        // With no axes and no legend, only empty curve paths reach the writer.
-        let terminal_count = if !model.axes.is_empty() || model.options.show_legend {
-            model.curves.len()
+        let terminal_variants: Vec<_> = if model.options.show_legend {
+            (1..=model.curves.len())
+                .map(|ordinal| (ordinal, ThemeVariant::Default))
+                .collect()
         } else {
-            0
+            plan.drawable_curve_indices
+                .iter()
+                .filter(|_| !model.axes.is_empty())
+                .map(|index| (index + 1, ThemeVariant::Default))
+                .collect()
         };
-        work_meter.charge(terminal_count)?;
-        plan.paints = vec![RadarSeriesScalarPaint::default(); terminal_count];
+        work_meter.charge(terminal_variants.len())?;
+        plan.paints = vec![RadarSeriesScalarPaint::default(); model.curves.len()];
         let mut rules = PaintRules::new(theme, ThemeTarget::ChartSeries);
-        let mut source_owned = Vec::with_capacity(model.curves.len());
-        let mut palette_fallback = Vec::with_capacity(model.curves.len());
+        let mut source_owned = vec![false; model.curves.len()];
+        let mut palette_fallback = vec![false; model.curves.len()];
         let baseline_text = config_string(
             effective_config.as_value(),
             &["themeVariables", "textColor"],
         )
         .unwrap_or_else(|| "#333".to_owned());
-        for (index, paint) in plan.paints.iter_mut().enumerate() {
+        for &(ordinal, _) in &terminal_variants {
+            let index = ordinal - 1;
+            let paint = &mut plan.paints[index];
             let style = theme.style_with_work_meter(
                 ThemeTarget::ChartSeries,
                 ThemeVariant::Default,
-                Some(index + 1),
+                Some(ordinal),
                 work_meter,
             )?;
             // A cScale slot supplies both curve and swatch fill/stroke. Other source
@@ -666,7 +675,7 @@ impl RadarSeriesPaintPlan {
             let owned = RADAR_COLOR_SCALE_PATHS
                 .get(index)
                 .is_some_and(|path| effective_config.config_paint_overrides_typed_default(path));
-            source_owned.push(owned);
+            source_owned[index] = owned;
             if !owned {
                 let baseline = plan.colors.get(index).map(String::as_str);
                 paint.fill = static_paint(
@@ -690,11 +699,9 @@ impl RadarSeriesPaintPlan {
                 [paint.fill.as_ref(), paint.stroke.as_ref()],
                 work_meter,
             )?;
-            palette_fallback.push(
-                !owned
-                    && (style.fill_resolution().specified().is_unspecified()
-                        || style.stroke_resolution().specified().is_unspecified()),
-            );
+            palette_fallback[index] = !owned
+                && (style.fill_resolution().specified().is_unspecified()
+                    || style.stroke_resolution().specified().is_unspecified());
         }
         plan.pending_rules = rules.finish(&mut plan.evidence);
         reconcile_unsupported_terminal_domains(
@@ -702,7 +709,7 @@ impl RadarSeriesPaintPlan {
             &mut plan.evidence,
             &[UnsupportedTerminalDomain::fallbacks_only(
                 ThemeTarget::ChartSeries,
-                TerminalVariantDomain::uniform(terminal_count, ThemeVariant::Default),
+                TerminalVariantDomain::indexed(&terminal_variants),
             )
             .with_source_owned_fill(&source_owned)
             .with_source_owned_stroke(&source_owned)],
@@ -721,7 +728,10 @@ impl RadarSeriesPaintPlan {
 
         match disposition {
             FamilyThemeDisposition::TypedAdapter => {
-                if model.curves.len() > RADAR_PALETTE_SLOT_COUNT
+                if palette_fallback
+                    .iter()
+                    .skip(RADAR_PALETTE_SLOT_COUNT)
+                    .any(|fallback| *fallback)
                     || !uses_fixed_mermaid_palette_surface(effective_config)
                 {
                     plan.evidence
@@ -764,6 +774,9 @@ impl RadarSeriesPaintPlan {
             }),
             typed_capabilities: [None; RADAR_PALETTE_SLOT_COUNT],
             curve_count: model.curves.len(),
+            drawable_curve_indices: super::drawable_curves(model)
+                .map(|(index, _)| index)
+                .collect(),
             show_legend: model.options.show_legend,
             evidence: FamilyThemeOutcomes::default(),
             palette_key: None,
@@ -900,12 +913,14 @@ impl RadarSeriesPaintReceipt {
         curve_index: usize,
         emitted_class_index: i64,
     ) {
-        if curve_index != self.next_curve_index || curve_index >= plan.curve_count {
+        if curve_index != self.next_curve_index || curve_index >= plan.drawable_curve_indices.len()
+        {
             self.values_match = false;
             return;
         }
         self.next_curve_index += 1;
-        self.values_match &= usize::try_from(emitted_class_index).ok() == Some(curve_index);
+        self.values_match &= usize::try_from(emitted_class_index).ok()
+            == plan.drawable_curve_indices.get(curve_index).copied();
     }
 
     pub(crate) fn record_legend(
@@ -930,7 +945,7 @@ impl RadarSeriesPaintReceipt {
     fn proves(&self, plan: &RadarSeriesPaintPlan) -> bool {
         self.values_match
             && self.next_rule_index == plan.curve_count
-            && self.next_curve_index == plan.curve_count
+            && self.next_curve_index == plan.drawable_curve_indices.len()
             && self.next_legend_index
                 == if plan.show_legend {
                     plan.curve_count
@@ -1000,6 +1015,7 @@ mod tests {
             colors: std::array::from_fn(|_| "#123456".to_string()),
             typed_capabilities: [Some(ThemeCapability::SolidPaint); RADAR_PALETTE_SLOT_COUNT],
             curve_count: 1,
+            drawable_curve_indices: vec![0],
             show_legend: true,
             evidence: FamilyThemeOutcomes::default(),
             palette_key: Some(FamilyThemeMechanismKey::OrdinalPalette {
@@ -1080,6 +1096,54 @@ mod tests {
         mismatch.record_curve(&plan, 0, 0);
         mismatch.record_legend(&plan, 0, 0);
         assert!(!mismatch.proves(&plan));
+    }
+
+    #[test]
+    fn series_paint_receipt_requires_the_exact_sparse_curves_and_complete_legend() {
+        for show_legend in [false, true] {
+            let mut plan = one_curve_plan();
+            plan.curve_count = 3;
+            plan.drawable_curve_indices = vec![1, 2];
+            plan.show_legend = show_legend;
+            for (emitted_indices, valid) in [
+                (vec![1, 2], true),
+                (Vec::new(), false),
+                (vec![1], false),
+                (vec![2], false),
+                (vec![0, 1, 2], false),
+                (vec![1, 1], false),
+                (vec![2, 1], false),
+                (vec![1, 2, 2], false),
+            ] {
+                let mut receipt = RadarSeriesPaintReceipt::new();
+                for index in 0..plan.curve_count {
+                    receipt.record_series_rule(&plan, index, "#123456");
+                }
+                for (position, class_index) in emitted_indices.into_iter().enumerate() {
+                    receipt.record_curve(&plan, position, class_index);
+                }
+                if show_legend {
+                    for index in 0..plan.curve_count {
+                        receipt.record_legend(&plan, index, index as i64);
+                    }
+                }
+                assert_eq!(receipt.proves(&plan), valid);
+            }
+
+            let mut incomplete = RadarSeriesPaintReceipt::new();
+            for index in 0..plan.curve_count {
+                incomplete.record_series_rule(&plan, index, "#123456");
+            }
+            incomplete.record_curve(&plan, 0, 1);
+            incomplete.record_curve(&plan, 1, 2);
+            if show_legend {
+                incomplete.record_legend(&plan, 0, 0);
+                incomplete.record_legend(&plan, 1, 1);
+            } else {
+                incomplete.record_legend(&plan, 0, 0);
+            }
+            assert!(!incomplete.proves(&plan));
+        }
     }
 
     #[test]

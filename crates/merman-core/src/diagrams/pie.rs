@@ -891,8 +891,8 @@ pie showData
             .unwrap()
             .expect("pie parses Langium strings");
 
-        assert_eq!(parsed.model["sections"][0]["label"], "An100%% complete");
-        assert_eq!(parsed.model["sections"][1]["label"], "Btlabel");
+        assert_eq!(parsed.model["sections"][0]["label"], "A\n100%% complete");
+        assert_eq!(parsed.model["sections"][1]["label"], "B\tlabel");
     }
 
     #[cfg(all(feature = "compat-json", feature = "editor-facts"))]

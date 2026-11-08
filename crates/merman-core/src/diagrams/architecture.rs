@@ -1143,7 +1143,7 @@ service api(server)["Double \"quote\" and \'single\'"]
         let text = r#"architecture-beta
 service api "\b\f\n\r\t\v\0\"quote\"\\tail"
 "#;
-        let expected = "bfnrtv0\"quote\"\\tail";
+        let expected = "\u{0008}\u{000c}\n\r\t\u{000b}\0\"quote\"\\tail";
         let meta = test_meta();
         let source = parse::parse_semantic_source(text, &meta).unwrap();
 

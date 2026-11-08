@@ -603,3 +603,92 @@ fn flowchart_invalid_header_direction_recovers_complete_value_and_following_node
         }
     }
 }
+
+#[cfg(feature = "editor-facts")]
+#[test]
+fn packet_and_treemap_multiline_payloads_retain_original_source_selections() {
+    use merman_core::{EditorSemanticCompleteness, ParseOptions, ParsedEditorFacts};
+
+    let engine = MermaidEngine::new();
+    for newline in ["\n", "\r\n"] {
+        for quote in ['\'', '"'] {
+            let raw_name = format!("雪{newline}😀");
+            let prefix = format!(
+                "---{newline}title: 中文😀{newline}---{newline}%%{{init: {{\"theme\": \"default\"}}}}%%{newline}%% removed 中文😀{newline}"
+            );
+            for (family, statement, tail) in [
+                (
+                    "packet",
+                    format!("0: {quote}{raw_name}{quote}"),
+                    "1: \"Tail\"",
+                ),
+                (
+                    "treemap",
+                    format!("{quote}{raw_name}{quote}: .00"),
+                    "\"Tail\": 1",
+                ),
+            ] {
+                let source =
+                    format!("{prefix}{family}{newline}{statement}{newline}{tail}{newline}");
+                for known_type in [false, true] {
+                    let snapshot = if known_type {
+                        engine.parse_diagram_snapshot_with_type_sync(family, &source)
+                    } else {
+                        engine.parse_diagram_snapshot_sync(&source)
+                    }
+                    .unwrap()
+                    .expect("multiline source retains its family");
+                    assert!(snapshot.outcome().parsed_model().is_some(), "{source}");
+                    let ParsedEditorFacts::Available(facts) = snapshot.editor_facts() else {
+                        panic!("multiline payload requires parser-derived facts");
+                    };
+                    assert_eq!(facts.completeness, EditorSemanticCompleteness::Complete);
+                    assert!(facts.diagnostics.is_empty());
+                    assert_editor_fact_spans_belong_to_source(Path::new(family), &source, facts);
+                    for (semantic_name, raw_text) in
+                        [("雪\n😀", raw_name.as_str()), ("Tail", "Tail")]
+                    {
+                        let symbol = facts
+                            .symbols
+                            .iter()
+                            .find(|symbol| symbol.name == semantic_name)
+                            .unwrap();
+                        let start = source.rfind(raw_text).unwrap();
+                        assert_eq!(
+                            symbol.selection,
+                            SourceSpan::new(start, start + raw_text.len())
+                        );
+                        assert_eq!(
+                            &source[symbol.selection.start..symbol.selection.end],
+                            raw_text
+                        );
+                    }
+                    if family == "treemap" {
+                        let value = facts
+                            .symbols
+                            .iter()
+                            .find(|symbol| symbol.name == ".00")
+                            .unwrap();
+                        let start = source.find(".00").unwrap();
+                        assert_eq!(value.selection, SourceSpan::new(start, start + 3));
+                    }
+                    let parsed = if known_type {
+                        engine.parse_diagram_with_type_sync(family, &source, ParseOptions::strict())
+                    } else {
+                        engine.parse_diagram_sync(&source, ParseOptions::strict())
+                    }
+                    .unwrap()
+                    .unwrap();
+                    if family == "packet" {
+                        assert_eq!(parsed.model["packet"][0][0]["label"], "雪\n😀");
+                        assert_eq!(parsed.model["packet"][0][1]["label"], "Tail");
+                    } else {
+                        assert_eq!(parsed.model["nodes"][0]["name"], "雪\n😀");
+                        assert_eq!(parsed.model["nodes"][0]["value"].as_f64(), Some(0.0));
+                        assert_eq!(parsed.model["nodes"][1]["name"], "Tail");
+                    }
+                }
+            }
+        }
+    }
+}

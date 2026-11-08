@@ -821,7 +821,7 @@ impl<'a> LineParser<'a> {
         control: &crate::OperationControl,
     ) -> crate::OperationControlResult<Result<SpannedValue>> {
         self.skip_ws(control)?;
-        let Some(mut parsed) = parse_langium_string(self.remaining(), self.base_offset + self.pos)
+        let Some(parsed) = parse_langium_string(self.remaining(), self.base_offset + self.pos)
         else {
             return Ok(Err(Error::diagram_parse_fallback(
                 "gitGraph".to_string(),
@@ -829,32 +829,6 @@ impl<'a> LineParser<'a> {
             )));
         };
         control.checkpoint()?;
-        // Keep the shared STRING scanner's validation and source spans, but apply Langium 4.2's
-        // ValueConverter.convertEscapeCharacter to every quoted GitGraph payload.
-        let raw = &self.remaining()[1..parsed.consumed - 1];
-        if raw.contains('\\') {
-            parsed.value.clear();
-            let mut escaped = false;
-            for ch in raw.chars() {
-                if escaped {
-                    parsed.value.push(match ch {
-                        'b' => '\u{0008}',
-                        'f' => '\u{000c}',
-                        'n' => '\n',
-                        'r' => '\r',
-                        't' => '\t',
-                        'v' => '\u{000b}',
-                        '0' => '\0',
-                        other => other,
-                    });
-                    escaped = false;
-                } else if ch == '\\' {
-                    escaped = true;
-                } else {
-                    parsed.value.push(ch);
-                }
-            }
-        }
         self.pos += parsed.consumed;
         Ok(Ok(SpannedValue {
             text: parsed.value,

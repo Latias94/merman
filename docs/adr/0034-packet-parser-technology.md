@@ -45,3 +45,15 @@ Mermaid-aligned DB behavior:
 If `packet` expands beyond its current line-oriented grammar or if we need full-fidelity syntax
 errors/spans, reconsider moving it onto the shared lexer + grammar toolchain.
 
+## Current interpretation for Mermaid 12.3.0
+
+Statement boundaries remain line-oriented outside quoted tokens. A Langium `STRING` can contain
+physical newlines, so the parser consumes the complete token before selecting the next statement.
+Semantic construction and editor facts share that source parse and its original byte ranges.
+
+The historical split-`bits` consequence above is superseded by the current native model contract:
+split fields retain the inclusive count `end - start + 1`. ASCII validation and drawing both depend
+on that invariant; the selected Mermaid renderer likewise uses inclusive endpoints even though its
+redundant split DB field omits one bit. Compatibility JSON projects the native count. See the
+[Packet family note](../alignment/FAMILY_NOTES.md#packet) for the maintained boundary.
+

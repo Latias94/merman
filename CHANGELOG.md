@@ -13,6 +13,7 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
 
 ### Fixed
 
+- Quoted Langium strings decode Mermaid's control-character escapes consistently across diagram families while retaining authored editor ranges. Treemap's separate literal string grammar remains unchanged.
 - Source configuration follows Mermaid's string filtering for markup and inline data-URL syntax in semantic options as well as presentation fields; trusted host configuration retains its separate admission boundary.
 - C4 trims quoted argument values while preserving source ranges, accepts physical newlines inside quoted tokens, and retains explicit label and description line breaks.
 - Journey preserves fractional satisfaction scores and accessibility punctuation, and honors `journey.textPlacement` for SVG text, legacy text and HTML labels. Timeline preserves accessibility punctuation, parses events after section names without discarding invalid suffixes, and matches Mermaid's header and comment token boundaries while retaining literal percent pairs inside payloads.
@@ -27,6 +28,9 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
 - Architecture accepts apostrophes in unquoted titles without consuming subsequent declarations and renders empty icon text with the default service background.
 - TreeView preserves literal `%%` in node names and descriptions, accepts multiline quoted names, and retains indentation across hidden comments and line breaks. Editor integrations retain the authored name ranges.
 - Event Modeling accepts hidden comments adjacent to scalar fields and renders each explicit source relation once in frame declaration order while preserving authored reference occurrences.
+- Packet accepts multiline quoted labels and exports intrinsic SVG dimensions when `packet.useMaxWidth` is false.
+- Radar skips curves whose value count differs from the axis count while retaining their legends and original series indices. Fractional tick values preserve Mermaid's grid count and spacing.
+- Treemap preserves multiline quoted names, accepts `.0` and finite weights beyond the signed integer range, and exports intrinsic SVG dimensions when `treemap.useMaxWidth` is false.
 - Pie accepts multiline quoted labels while preserving their source ranges for editor integrations.
 - XY Chart accepts statements on the same physical line and follows Mermaid's case-sensitive horizontal-orientation behavior.
 - ER accepts Unicode whitespace in attribute blocks without panicking, supports spaces inside generic types and uppercase zero-cardinality markers, and preserves authored key spelling. Style commands accept targets and class names that coincide with keywords, and subgraph relationship endpoints preserve entity creation order and subsequent style assignments. Numeric zero Dagre spacing uses Mermaid's defaults while string zero remains explicit.

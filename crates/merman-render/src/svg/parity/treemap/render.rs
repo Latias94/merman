@@ -590,9 +590,10 @@ pub(crate) fn render_treemap_diagram_svg(
         root_svg::RootViewportContext::new(crate::DiagramFamilyId::TREEMAP, diagram_id)
             .write_open(
                 &mut out,
-                root_svg::RootViewportSpec::responsive(root_svg::DiagramBounds::from_view_box(
-                    vb_x, vb_y, vb_w, vb_h,
-                )),
+                root_svg::RootViewportSpec::mermaid(
+                    root_svg::DiagramBounds::from_view_box(vb_x, vb_y, vb_w, vb_h),
+                    layout.use_max_width,
+                ),
                 root_chrome,
             )?;
     out.checkpoint()?;

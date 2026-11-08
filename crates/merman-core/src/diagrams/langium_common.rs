@@ -45,6 +45,19 @@ pub(crate) fn is_ecmascript_line_terminator(ch: char) -> bool {
     matches!(ch, '\n' | '\r' | '\u{2028}' | '\u{2029}')
 }
 
+pub(crate) fn convert_langium_escape_character(ch: char) -> char {
+    match ch {
+        'b' => '\u{0008}',
+        'f' => '\u{000c}',
+        'n' => '\n',
+        'r' => '\r',
+        't' => '\t',
+        'v' => '\u{000b}',
+        '0' => '\0',
+        other => other,
+    }
+}
+
 /// Parses the shared Langium `STRING` terminal and applies `DefaultValueConverter` unescaping.
 pub(crate) fn parse_langium_string(input: &str, input_start: usize) -> Option<LangiumString> {
     let mut chars = input.char_indices();
@@ -60,7 +73,7 @@ pub(crate) fn parse_langium_string(input: &str, input_start: usize) -> Option<La
             if is_ecmascript_line_terminator(ch) {
                 return None;
             }
-            value.push(ch);
+            value.push(convert_langium_escape_character(ch));
             escaped = false;
             continue;
         }
@@ -508,11 +521,16 @@ mod tests {
     use serde_json::Value;
 
     #[test]
-    fn langium_string_removes_escape_backslashes_without_decoding_control_characters() {
+    fn langium_string_decodes_the_selected_value_converter_escape_characters() {
         for (source, expected) in [
-            ("\"\\n\"", "n"),
-            ("\"\\t\"", "t"),
-            ("\"\\0\"", "0"),
+            ("\"\\b\"", "\u{0008}"),
+            ("\"\\f\"", "\u{000c}"),
+            ("\"\\n\"", "\n"),
+            ("\"\\r\"", "\r"),
+            ("\"\\t\"", "\t"),
+            ("\"\\v\"", "\u{000b}"),
+            ("\"\\0\"", "\0"),
+            ("\"\\u0041\\x41\\9\"", "u0041x419"),
             ("\"\\\"\"", "\""),
             ("\"\\\\\"", "\\"),
             ("'\\''", "'"),

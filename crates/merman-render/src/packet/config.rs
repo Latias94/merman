@@ -78,6 +78,10 @@ impl<'a> PacketConfigView<'a> {
         }
     }
 
+    pub(crate) fn use_max_width(&self) -> bool {
+        self.packet_bool("useMaxWidth").unwrap_or(true)
+    }
+
     pub(crate) fn style_settings(&self) -> PacketStyleSettings {
         PacketStyleSettings {
             byte_font_size: self.packet_style("byteFontSize", DEFAULT_BYTE_FONT_SIZE),
