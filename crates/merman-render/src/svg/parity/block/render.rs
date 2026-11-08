@@ -1068,7 +1068,11 @@ pub(crate) fn render_block_diagram_svg_model_with_theme(
         if !edge_points.rendered_points.is_empty() {
             has_rendered_edge = true;
         }
-        let class_attr = "edge-thickness-normal edge-pattern-solid edge-thickness-normal edge-pattern-solid flowchart-link LS-a1 LE-b1";
+        let thickness = e.thickness.as_str();
+        let pattern = e.pattern.as_str();
+        let class_attr = format!(
+            "edge-thickness-{thickness} edge-pattern-{pattern} edge-thickness-{thickness} edge-pattern-{pattern} flowchart-link LS-a1 LE-b1"
+        );
         let prefixed_edge_id = dom_id(diagram_id, &e.id);
         let path_id = dom_id(diagram_id, &prefixed_edge_id);
         let edge_style =
@@ -1082,7 +1086,7 @@ pub(crate) fn render_block_diagram_svg_model_with_theme(
             r#"<path d="{}" id="{}" class="{}" style="{}" data-edge="true" data-et="edge" data-id="{}" data-points="{}""#,
             escape_attr(&d),
             escape_attr(&path_id),
-            escape_attr(class_attr),
+            escape_attr(&class_attr),
             escape_attr(edge_style),
             escape_attr(&prefixed_edge_id),
             escape_attr(&data_points)

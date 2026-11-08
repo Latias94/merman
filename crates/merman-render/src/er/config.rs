@@ -63,8 +63,8 @@ impl<'a> ErConfigView<'a> {
         ErLayoutSettings {
             graph: GraphLabel {
                 rankdir: rank_dir_from(direction),
-                nodesep: self.er_f64("nodeSpacing").unwrap_or(DEFAULT_NODE_SPACING),
-                ranksep: self.er_f64("rankSpacing").unwrap_or(DEFAULT_RANK_SPACING),
+                nodesep: self.er_spacing("nodeSpacing", DEFAULT_NODE_SPACING),
+                ranksep: self.er_spacing("rankSpacing", DEFAULT_RANK_SPACING),
                 // Mermaid's unified Dagre adapter lays out inside an 8px graph margin, then its
                 // root viewport adds the same 8px around the emitted bbox.
                 marginx: 8.0,
@@ -175,6 +175,9 @@ impl<'a> ErConfigView<'a> {
     }
 
     pub(crate) fn relationship_html_labels(&self) -> bool {
+        if self.is_swimlane_layout() {
+            return self.swimlane_relationship_html_labels();
+        }
         // Mermaid ER relationship labels follow `getEffectiveHtmlLabels(config)` from
         // `rendering-elements/edges.js`:
         // - root `htmlLabels` wins when explicitly set
@@ -247,6 +250,38 @@ impl<'a> ErConfigView<'a> {
         resolve_graph_layout(self.effective_config).backend == GraphLayoutBackend::Elk
     }
 
+    pub(crate) fn is_swimlane_layout(&self) -> bool {
+        crate::layout_backend::resolve_er_graph_layout(self.effective_config).backend
+            == GraphLayoutBackend::Swimlane
+    }
+
+    pub(crate) fn swimlane_relationship_html_labels(&self) -> bool {
+        Self::evaluate_html_labels(self.effective_config.get("htmlLabels"))
+    }
+
+    pub(crate) fn swimlane_relationship_wrapping_width(&self) -> f64 {
+        self.flowchart_f64("wrappingWidth")
+            .unwrap_or(DEFAULT_WRAPPING_WIDTH)
+    }
+
+    pub(crate) fn swimlane_title_html_labels(&self) -> bool {
+        // The Swimlane cluster shape reads evaluate(flowchart.htmlLabels) directly.
+        Self::evaluate_html_labels(self.flowchart_config.get("htmlLabels"))
+    }
+
+    fn evaluate_html_labels(value: Option<&Value>) -> bool {
+        match value {
+            None => true,
+            Some(Value::Bool(false) | Value::Null) => false,
+            Some(Value::Number(value)) => value.as_f64() != Some(0.0),
+            Some(Value::String(value)) => !matches!(
+                value.trim().to_ascii_lowercase().as_str(),
+                "false" | "null" | "0"
+            ),
+            Some(_) => true,
+        }
+    }
+
     fn root_bool(&self, key: &str) -> Option<bool> {
         config_bool(self.effective_config, &[key])
     }
@@ -261,6 +296,13 @@ impl<'a> ErConfigView<'a> {
 
     fn er_f64(&self, key: &str) -> Option<f64> {
         config_f64(self.er_config, &[key])
+    }
+
+    fn er_spacing(&self, key: &str, fallback: f64) -> f64 {
+        // Mermaid uses `conf[key] || fallback` before Dagre converts strings to numbers.
+        self.er_f64(key)
+            .filter(|_| self.er_raw_f64(key) != Some(0.0))
+            .unwrap_or(fallback)
     }
 
     fn er_raw_f64(&self, key: &str) -> Option<f64> {

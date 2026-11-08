@@ -261,6 +261,34 @@
           "to_cluster": null
         }
       ],
+      "frames": [
+        {
+          "height": 560.0,
+          "id": "0",
+          "kind": "par",
+          "label": "branch 1",
+          "sections": [
+            {
+              "id": "3",
+              "label": "branch 2",
+              "y": 229.0
+            },
+            {
+              "id": "6",
+              "label": "branch 3",
+              "y": 369.0
+            },
+            {
+              "id": "9",
+              "label": "branch 4",
+              "y": 509.0
+            }
+          ],
+          "width": 670.0,
+          "x": 40.0,
+          "y": 84.0
+        }
+      ],
       "nodes": [
         {
           "height": 74.0,

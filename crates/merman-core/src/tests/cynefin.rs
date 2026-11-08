@@ -193,11 +193,11 @@ fn parse_cynefin_unescapes_common_strings_like_langium() {
 
     assert_eq!(
         parsed.model["domains"][0]["items"][0]["label"],
-        json!("Probensensetrespondbnow")
+        json!("Probe\nsense\trespond\u{0008}now")
     );
     assert_eq!(
         parsed.model["transitions"][0]["label"],
-        json!("Movernowvsoon0")
+        json!("Move\rnow\u{000b}soon\0")
     );
 }
 

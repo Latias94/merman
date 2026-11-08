@@ -1,5 +1,5 @@
 use super::super::*;
-use merman_model::families::gantt::{GanttDiagramRenderModel, GanttRenderTask};
+use merman_model::families::gantt::GanttDiagramRenderModel;
 
 // Gantt diagram SVG renderer implementation (split from parity.rs).
 
@@ -163,7 +163,8 @@ pub(crate) fn render_gantt_diagram_svg_model(
         .as_ref()
         .map(|_| format!("chart-desc-{diagram_id}"));
     let root_bounds = root_svg::DiagramBounds::from_view_box(0.0, 0.0, w, h);
-    let root_spec = root_svg::RootViewportSpec::responsive(root_bounds)
+    let use_max_width = config_bool(effective_config, &["gantt", "useMaxWidth"]).unwrap_or(true);
+    let root_spec = root_svg::RootViewportSpec::mermaid(root_bounds, use_max_width)
         .with_max_width(root_svg::RootMaxWidth::SvgNumber(w));
     let mut root_chrome = root_svg::RootChrome::new(diagram_id, "gantt");
     root_chrome.aria_labelledby = aria_labelledby.as_deref();
@@ -325,12 +326,6 @@ pub(crate) fn render_gantt_diagram_svg_model(
         receipt.record_typography_css(task_theme.font_family_css());
     }
 
-    let mut semantic_task_by_id: std::collections::HashMap<&str, &GanttRenderTask> =
-        std::collections::HashMap::new();
-    for task in &model.tasks {
-        semantic_task_by_id.insert(task.id.as_str(), task);
-    }
-
     if layout.tasks.is_empty() {
         out.push_str("<g/>");
     } else {
@@ -408,7 +403,10 @@ pub(crate) fn render_gantt_diagram_svg_model(
         for (task_index, t) in &tasks_in_draw_order {
             let base_class = &t.label.class;
             let mut task_type_class = String::new();
-            if let Some(task) = semantic_task_by_id.get(t.id.as_str()) {
+            if let Some(task) = task_theme
+                .semantic_index_for_layout_task(*task_index)
+                .and_then(|index| model.tasks.get(index))
+            {
                 let section_suffix = crate::gantt::gantt_section_class_suffix(
                     &task.task_type,
                     &layout.categories,

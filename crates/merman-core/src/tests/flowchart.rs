@@ -65,6 +65,201 @@ fn parse_diagram_flowchart_rejects_non_grammar_acc_description_alias() {
 }
 
 #[test]
+fn parse_diagram_flowchart_accessibility_respects_label_and_metadata_scopes() {
+    let engine = MermaidEngine::new();
+    let payload = "First 雪\naccTitle: Visible\naccDescr: Visible description\nLast";
+    for (definition, expected_label, label_type) in [
+        (format!("A[\"{payload}\"]"), payload.to_owned(), "string"),
+        (
+            format!("A[\"`{payload}`\"]"),
+            payload.to_owned(),
+            "markdown",
+        ),
+        (format!("A[{payload}]"), payload.to_owned(), "text"),
+        (
+            format!("A@{{\n  label: \"{payload}\"\n}}"),
+            payload.replace('\n', "<br>"),
+            "markdown",
+        ),
+        (
+            "A@{\n  accTitle: Metadata title\n  accDescr: Metadata description\n}".to_owned(),
+            "A".to_owned(),
+            "text",
+        ),
+    ] {
+        let prefix = concat!(
+            "flowchart LR\n",
+            "%% accTitle: Comment title\n",
+            "%% accDescr: Comment description\n",
+            "accTitle: Root title\n",
+            "accDescr {Root description}\n",
+        );
+        let source = format!("{prefix}{definition}\nA --> B\n");
+        let parsed = engine
+            .parse_diagram_sync(&source, ParseOptions::strict())
+            .unwrap()
+            .unwrap();
+        let snapshot = engine
+            .parse_diagram_snapshot_with_type_sync("flowchart-v2", &source)
+            .unwrap()
+            .unwrap();
+        for model in [&parsed.model, snapshot.outcome().parsed_model().unwrap()] {
+            assert_eq!(model["accTitle"], json!("Root title"), "{source}");
+            assert_eq!(model["accDescr"], json!("Root description"), "{source}");
+            let node = model["nodes"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .find(|node| node["id"] == "A")
+                .unwrap();
+            assert_eq!(node["label"], json!(expected_label), "{source}");
+            assert_eq!(node["labelType"], json!(label_type), "{source}");
+        }
+
+        let ParsedEditorFacts::Available(facts) = snapshot.editor_facts() else {
+            panic!("Flowchart must retain editor facts");
+        };
+        assert_eq!(facts.completeness, EditorSemanticCompleteness::Complete);
+        for (name, start) in [("A", prefix.len()), ("B", source.rfind('B').unwrap())] {
+            assert!(
+                facts.symbols.iter().any(|symbol| {
+                    symbol.name == name
+                        && symbol.selection == SourceSpan::new(start, start + name.len())
+                }),
+                "{source}: missing source selection for {name}"
+            );
+        }
+        if definition.starts_with("A[") {
+            let label = facts
+                .symbols
+                .iter()
+                .find(|symbol| symbol.detail.as_deref() == Some("flowchart node label"))
+                .expect("multiline node label payload");
+            let start = source.find(payload).unwrap();
+            assert_eq!(label.name, payload);
+            assert_eq!(
+                label.selection,
+                SourceSpan::new(start, start + payload.len())
+            );
+            assert_eq!(&source[label.selection.start..label.selection.end], payload);
+        }
+        for directive in ["accTitle: Root title", "accDescr {Root description}"] {
+            let start = source.find(directive).unwrap();
+            assert!(
+                facts.expected_syntax.iter().any(|expected| {
+                    expected.kind == EditorExpectedSyntaxKind::Directive
+                        && expected.span == SourceSpan::new(start, start + directive.len())
+                }),
+                "{source}: missing directive source span"
+            );
+        }
+        assert!(
+            !facts.expected_syntax.iter().any(|expected| {
+                expected.kind == EditorExpectedSyntaxKind::Directive
+                    && expected.span.start >= prefix.len()
+            }),
+            "label and metadata interiors must not become directive facts: {source}"
+        );
+    }
+}
+
+#[test]
+fn parse_diagram_flowchart_label_keywords_do_not_invent_accessibility_facts() {
+    let source = concat!(
+        "flowchart LR\n",
+        "%% accTitle: Comment\n",
+        "A[\"`First 雪\naccTitle: Visible\naccDescr: Visible description\nLast`\"]\n",
+        "B@{\naccTitle: Metadata title\naccDescr: Metadata description\n}\n",
+        "A --> B\n",
+    );
+    let snapshot = MermaidEngine::new()
+        .parse_diagram_snapshot_with_type_sync("flowchart-v2", source)
+        .unwrap()
+        .unwrap();
+    let model = snapshot.outcome().parsed_model().expect("valid Flowchart");
+    assert_eq!(model["accTitle"], json!(null));
+    assert_eq!(model["accDescr"], json!(null));
+    let ParsedEditorFacts::Available(facts) = snapshot.editor_facts() else {
+        panic!("Flowchart must retain editor facts");
+    };
+    assert!(
+        !facts
+            .directive_prefixes
+            .iter()
+            .any(|prefix| { matches!(prefix.as_str(), "accTitle" | "accDescr") })
+    );
+    assert!(
+        !facts
+            .symbols
+            .iter()
+            .any(|symbol| { matches!(symbol.name.as_str(), "accTitle" | "accDescr") })
+    );
+}
+
+#[test]
+fn parse_diagram_flowchart_accessibility_preserves_block_and_statement_boundaries() {
+    let engine = MermaidEngine::new();
+    let source = concat!(
+        "flowchart LR;accTitle : Root 雪\n",
+        "accDescr {\n  First line\n  second line\n} A --> B\n",
+    );
+    let parsed = engine
+        .parse_diagram_sync(source, ParseOptions::strict())
+        .unwrap()
+        .unwrap();
+    assert_eq!(parsed.model["accTitle"], json!("Root 雪"));
+    assert_eq!(parsed.model["accDescr"], json!("First line\nsecond line"));
+    assert_eq!(parsed.model["edges"].as_array().unwrap().len(), 1);
+
+    let unfinished = engine
+        .parse_diagram_sync(
+            "flowchart LR\naccTitle: Root title\naccDescr {\n  unfinished 雪",
+            ParseOptions::strict(),
+        )
+        .unwrap()
+        .unwrap();
+    assert_eq!(unfinished.model["accTitle"], json!("Root title"));
+    assert_eq!(unfinished.model["accDescr"], json!(null));
+    assert!(
+        engine
+            .parse_diagram_sync(
+                "flowchart LR\nA accTitle: Invalid adjacency\n",
+                ParseOptions::strict()
+            )
+            .is_err()
+    );
+}
+
+#[test]
+fn parse_flowchart_multiline_label_recovery_keeps_original_source_coordinates() {
+    let source = "flowchart LR\nA[\"First 雪\naccTitle: Visible\nLast\"]\nB -->\n";
+    let snapshot = MermaidEngine::new()
+        .parse_diagram_snapshot_with_type_sync("flowchart-v2", source)
+        .unwrap()
+        .unwrap();
+    let DiagramParseOutcome::Failed(Error::DiagramParse { diagnostic, .. }) = snapshot.outcome()
+    else {
+        panic!("the unfinished edge must fail strict parsing");
+    };
+    let eof = source.len() - 1;
+    assert_eq!(diagnostic.span(), Some(SourceSpan::new(eof, eof)));
+    let ParsedEditorFacts::Available(facts) = snapshot.editor_facts() else {
+        panic!("failed Flowchart must retain recovery facts");
+    };
+    assert_eq!(facts.completeness, EditorSemanticCompleteness::Recovered);
+    let start = source.find("B -->").unwrap();
+    assert!(facts.symbols.iter().any(|symbol| {
+        symbol.name == "B" && symbol.selection == SourceSpan::new(start, start + 1)
+    }));
+    assert!(
+        !facts
+            .directive_prefixes
+            .iter()
+            .any(|prefix| prefix == "accTitle")
+    );
+}
+
+#[test]
 fn parse_diagram_flowchart_tolerates_edge_labels() {
     let engine = MermaidEngine::new();
     let text = "graph TD;A--x|text including URL space|B;";
@@ -1868,6 +2063,110 @@ fn parse_diagram_flowchart_node_data_label_type_defaults_to_markdown_but_can_be_
 }
 
 #[test]
+fn parse_diagram_flowchart_asset_dimensions_follow_authored_value_truthiness() {
+    let engine = MermaidEngine::new();
+    // FlowDB checks the authored scalar before Number(...), rather than testing the
+    // converted number or clamping the final dimension.
+    for (value, expected) in [
+        ("0", 96.0),
+        ("-0", 96.0),
+        ("false", 96.0),
+        ("null", 96.0),
+        (r#""""#, 96.0),
+        (r#""0""#, 0.0),
+        (r#"" ""#, 0.0),
+        ("true", 1.0),
+        ("48", 48.0),
+        ("0.5", 0.5),
+        ("-4", -4.0),
+    ] {
+        let source = format!(
+            "flowchart LR\nA@{{ shape: icon, w: 96, h: 96 }}\nA@{{ w: {value}, h: {value} }}\nA --> B\n"
+        );
+        let parsed = engine
+            .parse_diagram_sync(&source, ParseOptions::strict())
+            .unwrap()
+            .unwrap();
+        let node = &parsed.model["nodes"][0];
+        assert_eq!(node["assetWidth"].as_f64(), Some(expected), "{source}");
+        assert_eq!(node["assetHeight"].as_f64(), Some(expected), "{source}");
+        assert_eq!(node["layoutShape"], json!("icon"));
+    }
+    let parsed = engine
+        .parse_diagram_sync(
+            "flowchart LR\nA@{ shape: icon, w: 0, h: 0 }\n",
+            ParseOptions::strict(),
+        )
+        .unwrap()
+        .unwrap();
+    assert_eq!(parsed.model["nodes"][0]["assetWidth"], json!(null));
+    assert_eq!(parsed.model["nodes"][0]["assetHeight"], json!(null));
+}
+
+#[test]
+fn parse_diagram_flowchart_empty_metadata_label_preserves_text_and_label_type() {
+    let engine = MermaidEngine::new();
+
+    for (definition, label, label_type) in [
+        ("A[Original]", "Original", "text"),
+        (r#"A["Original"]"#, "Original", "string"),
+        (r#"A["`Original`"]"#, "Original", "markdown"),
+        (
+            r#"A@{ label: "Metadata", labelType: string }"#,
+            "Metadata",
+            "string",
+        ),
+        ("A", "A", "text"),
+    ] {
+        let source = format!(
+            "flowchart LR\n{definition}\nA@{{ label: \"\", labelType: markdown, shape: circle }}\nA --> B\n"
+        );
+        let parsed = block_on(engine.parse_diagram(&source, ParseOptions::default()))
+            .unwrap()
+            .unwrap();
+        let node = parsed.model["nodes"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|node| node["id"] == json!("A"))
+            .unwrap();
+
+        assert_eq!(node["label"], json!(label), "{source}");
+        assert_eq!(node["labelType"], json!(label_type), "{source}");
+        assert_eq!(node["layoutShape"], json!("circle"), "{source}");
+    }
+}
+
+#[test]
+fn parse_diagram_flowchart_empty_metadata_label_preserves_visual_label_rules() {
+    let engine = MermaidEngine::new();
+    let source = r#"flowchart LR
+A@{ icon: "fa:home", label: "" }
+B@{ img: "https://example.com/image.png", label: "" }
+C[Original]
+C@{ icon: "fa:home", label: "" }
+D["Quoted"]
+D@{ img: "https://example.com/image.png", label: "", labelType: markdown }
+"#;
+    let parsed = block_on(engine.parse_diagram(source, ParseOptions::default()))
+        .unwrap()
+        .unwrap();
+    let nodes = parsed.model["nodes"].as_array().unwrap();
+    let find = |id: &str| nodes.iter().find(|node| node["id"] == json!(id)).unwrap();
+
+    for id in ["A", "B"] {
+        assert_eq!(find(id)["label"], json!(""), "{id}");
+        assert_eq!(find(id)["labelType"], json!("text"), "{id}");
+    }
+    assert_eq!(find("C")["label"], json!("Original"));
+    assert_eq!(find("C")["labelType"], json!("text"));
+    assert_eq!(find("D")["label"], json!("Quoted"));
+    assert_eq!(find("D")["labelType"], json!("string"));
+    assert_eq!(find("A")["icon"], json!("fa:home"));
+    assert_eq!(find("B")["img"], json!("https://example.com/image.png"));
+}
+
+#[test]
 fn parse_diagram_flowchart_node_data_link_to_node_with_more_data_multiline_yaml() {
     let engine = MermaidEngine::new();
 
@@ -2223,6 +2522,115 @@ A --> B
 }
 
 #[test]
+fn parse_diagram_flowchart_colliding_edge_metadata_updates_only_the_first_match() {
+    let engine = MermaidEngine::new();
+
+    for (declarations, id) in [
+        ("X L_A_B_0@--> Y\nA --> B\n", "L_A_B_0"),
+        ("A L_A_B_2@--> B\nA --> B\n", "L_A_B_2"),
+    ] {
+        let source = format!(
+            "flowchart LR\n{declarations}{id}@{{ animate: true, animation: slow, curve: step, step: 1 }}\n"
+        );
+        let parsed = block_on(engine.parse_diagram(&source, ParseOptions::default()))
+            .unwrap()
+            .unwrap();
+        let edges = parsed.model["edges"].as_array().unwrap();
+
+        assert_eq!(edges.len(), 2, "{source}");
+        assert_eq!(edges[0]["id"], json!(id), "{source}");
+        assert_eq!(edges[1]["id"], json!(id), "{source}");
+        assert_eq!(edges[0]["isUserDefinedId"], json!(true), "{source}");
+        assert_eq!(edges[1]["isUserDefinedId"], json!(false), "{source}");
+        assert_eq!(edges[0]["animate"], json!(true), "{source}");
+        assert_eq!(edges[0]["animation"], json!("slow"), "{source}");
+        assert_eq!(edges[0]["interpolate"], json!("step"), "{source}");
+        assert_eq!(edges[0]["step"], json!(1), "{source}");
+        assert_eq!(edges[1]["animate"], json!(null), "{source}");
+        assert_eq!(edges[1]["animation"], json!(null), "{source}");
+        assert_eq!(edges[1]["interpolate"], json!(null), "{source}");
+        assert!(edges[1].get("step").is_none(), "{source}");
+    }
+}
+
+#[test]
+fn parse_diagram_flowchart_colliding_edge_classes_update_only_the_first_match() {
+    let engine = MermaidEngine::new();
+
+    for (first_edge, colliding_edge, id) in [
+        ("X L_A_B_0@--> Y", "A --> B", "L_A_B_0"),
+        ("A L_A_B_2@--> B", "A --> B", "L_A_B_2"),
+    ] {
+        let source = format!(
+            "flowchart LR\nclass {id} unseen\n{first_edge}\nclass {id} early\n{colliding_edge}\nclass {id} late\n"
+        );
+        let parsed = block_on(engine.parse_diagram(&source, ParseOptions::default()))
+            .unwrap()
+            .unwrap();
+        let edges = parsed.model["edges"].as_array().unwrap();
+
+        assert_eq!(edges.len(), 2, "{source}");
+        assert_eq!(edges[0]["id"], json!(id), "{source}");
+        assert_eq!(edges[1]["id"], json!(id), "{source}");
+        assert_eq!(edges[0]["classes"], json!(["early", "late"]), "{source}");
+        assert_eq!(edges[1]["classes"], json!([]), "{source}");
+    }
+}
+
+#[test]
+fn parse_diagram_flowchart_colliding_edge_clickable_class_updates_only_the_first_match() {
+    let engine = MermaidEngine::new();
+    let source = r#"flowchart LR
+X L_A_B_0@--> Y
+A --> B
+click L_A_B_0 href "https://example.com/edge"
+"#;
+    let parsed = block_on(engine.parse_diagram(source, ParseOptions::default()))
+        .unwrap()
+        .unwrap();
+    let edges = parsed.model["edges"].as_array().unwrap();
+
+    assert_eq!(edges.len(), 2);
+    assert_eq!(edges[0]["classes"], json!(["clickable"]));
+    assert_eq!(edges[1]["classes"], json!([]));
+}
+
+#[test]
+fn parse_diagram_flowchart_classes_update_same_id_node_subgraph_and_first_edge() {
+    let engine = MermaidEngine::new();
+    let source = r#"flowchart LR
+L_A_B_0[Node]
+subgraph L_A_B_0[Group]
+N
+end
+X L_A_B_0@--> Y
+A --> B
+class L_A_B_0 selected
+"#;
+    let parsed = block_on(engine.parse_diagram(source, ParseOptions::default()))
+        .unwrap()
+        .unwrap();
+    let node = parsed.model["nodes"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|node| node["id"] == json!("L_A_B_0"))
+        .unwrap();
+    let subgraph = parsed.model["subgraphs"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|subgraph| subgraph["id"] == json!("L_A_B_0"))
+        .unwrap();
+    let edges = parsed.model["edges"].as_array().unwrap();
+
+    assert_eq!(node["classes"], json!(["selected"]));
+    assert_eq!(subgraph["classes"], json!(["selected"]));
+    assert_eq!(edges[0]["classes"], json!(["selected"]));
+    assert_eq!(edges[1]["classes"], json!([]));
+}
+
+#[test]
 fn parse_diagram_flowchart_node_data_overrides_edge_animate() {
     let engine = MermaidEngine::new();
 
@@ -2246,6 +2654,45 @@ e3@{ animate: false }
     assert_eq!(edges[1]["animate"], json!(false));
     assert_eq!(edges[2]["id"], json!("e3"));
     assert_eq!(edges[2]["animate"], json!(false));
+}
+
+#[test]
+fn parse_diagram_flowchart_null_edge_metadata_clears_only_present_fields() {
+    let engine = MermaidEngine::new();
+
+    for (update, animate, animation, curve) in [
+        ("animate: null", json!(null), json!("fast"), json!("step")),
+        ("animation: null", json!(true), json!(null), json!("step")),
+        ("curve: null", json!(true), json!("fast"), json!(null)),
+        (
+            "animate: null, animation: null, curve: null",
+            json!(null),
+            json!(null),
+            json!(null),
+        ),
+        ("step: null", json!(true), json!("fast"), json!("step")),
+    ] {
+        let source = format!(
+            "flowchart LR\nlinkStyle default interpolate linear\nA e1@--> B\nB e2@--> C\ne1@{{ animate: true, animation: fast, curve: step, step: 2 }}\ne1@{{ {update} }}\n"
+        );
+        let parsed = block_on(engine.parse_diagram(&source, ParseOptions::default()))
+            .unwrap()
+            .unwrap();
+        let edges = parsed.model["edges"].as_array().unwrap();
+
+        assert_eq!(edges[0]["animate"], animate, "{source}");
+        assert_eq!(edges[0]["animation"], animation, "{source}");
+        assert_eq!(edges[0]["interpolate"], curve, "{source}");
+        assert_eq!(edges[0]["step"], json!(2), "{source}");
+        assert_eq!(edges[1]["animate"], json!(null), "{source}");
+        assert_eq!(edges[1]["animation"], json!(null), "{source}");
+        assert_eq!(edges[1]["interpolate"], json!("linear"), "{source}");
+        assert_eq!(
+            parsed.model["edgeDefaults"]["interpolate"],
+            json!("linear"),
+            "{source}"
+        );
+    }
 }
 
 #[test]
@@ -3384,21 +3831,54 @@ fn parse_diagram_flowchart_duplicate_subgraph_membership_matches_mermaid_makeuni
 }
 
 #[test]
-fn parse_diagram_flowchart_subgraph_supports_amp_group_syntax_minimally() {
+fn parse_diagram_flowchart_subgraph_group_membership_preserves_order_within_each_group() {
     let engine = MermaidEngine::new();
-    let text = "graph TD\nsubgraph myTitle\na & b --> c & e\nend";
-    let res = block_on(engine.parse_diagram(text, ParseOptions::default()))
+    for (body, expected) in [
+        ("A & B --> C & D", json!(["C", "D", "A", "B"])),
+        ("A --> B --> C --> D", json!(["D", "C", "B", "A"])),
+        ("A & B & C & D", json!(["A", "B", "C", "D"])),
+        ("A & B --> B & C", json!(["B", "C", "A"])),
+    ] {
+        let source = format!("flowchart TB\nsubgraph S\n{body}\nend\n");
+        let res = block_on(engine.parse_diagram(&source, ParseOptions::default()))
+            .unwrap()
+            .unwrap();
+        assert_eq!(res.model["subgraphs"][0]["nodes"], expected, "{source}");
+    }
+}
+
+#[test]
+fn parse_diagram_flowchart_grouped_chains_preserve_nested_repeated_membership_and_claims() {
+    let source = concat!(
+        "flowchart TB\nsubgraph Outer\n",
+        "subgraph S[First]\nA & B --> C & D\nend\n",
+        "subgraph S[Later]\nD & E --> F & B\nend\nend\n",
+        "subgraph Other\nA & B --> G & H\nend\n",
+    );
+    let parsed = MermaidEngine::new()
+        .parse_diagram_sync(source, ParseOptions::strict())
         .unwrap()
         .unwrap();
-    let nodes = res.model["subgraphs"][0]["nodes"].as_array().unwrap();
-    let as_set: std::collections::HashSet<String> = nodes
-        .iter()
-        .map(|v| v.as_str().unwrap().to_string())
-        .collect();
-    assert!(as_set.contains("a"));
-    assert!(as_set.contains("b"));
-    assert!(as_set.contains("c"));
-    assert!(as_set.contains("e"));
+    let groups = parsed.model["subgraphs"].as_array().unwrap();
+    assert_eq!(groups.len(), 3);
+    assert_eq!(groups[0]["id"], "S");
+    assert_eq!(groups[0]["title"], "First");
+    assert_eq!(groups[0]["nodes"], json!(["C", "D", "A", "B", "F", "E"]));
+    assert_eq!(groups[1]["id"], "Outer");
+    assert_eq!(groups[1]["nodes"], json!(["S"]));
+    assert_eq!(groups[2]["id"], "Other");
+    assert_eq!(groups[2]["nodes"], json!(["G", "H"]));
+    assert_eq!(
+        parsed.model["other"]["droppedSubGraphMembers"],
+        json!([
+            {"node": "A", "keptBy": "S", "droppedFrom": "Other"},
+            {"node": "B", "keptBy": "S", "droppedFrom": "Other"}
+        ])
+    );
+    assert_eq!(
+        parsed.model["vertexCalls"],
+        json!(["A", "B", "C", "D", "D", "E", "F", "B", "A", "B", "G", "H"])
+    );
 }
 
 #[test]

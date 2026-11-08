@@ -1,5 +1,5 @@
 // auto-generated: "lalrpop 0.23.2"
-// sha3: deb839c7585e5e321b22c2ea160f91e5074446215b10ba224a2d7091b32b65e6
+// sha3: db806522cc744fd05edf61a4883ae6ce75954e34b61af471ad60c51fb8b64632
 // features:
 use crate::diagrams::class::ast::{ActionArena, ActionList, ClassIdList};
 use crate::diagrams::class::{
@@ -63,7 +63,7 @@ mod __parse__Actions {
         // State 6
         0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 76, 0, 0, 0, 0, 0, 0, 0, 0,
         // State 7
-        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 89, 87, 86, 85, 92, 91, 88, 90, 15, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+        -103, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 89, 87, 86, 85, 92, 91, 88, 90, 15, 0, 0, 0, 0, 0, 0, 0, 0, 0,
         // State 8
         0, 0, 69, 57, 61, 62, 63, 59, 64, 7, 58, 60, 56, 0, 0, 0, 0, 0, 0, 68, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 8, 0, 0, 0, 0, 0, 67, 65, 66,
         // State 9
@@ -137,27 +137,27 @@ mod __parse__Actions {
         // State 43
         0, -81, -81, -81, -81, -81, -81, -81, -81, -81, -81, -81, -81, 0, 0, 0, -81, 0, 0, -81, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, -81, 0, 0, 0, 0, 0, -81, -81, -81,
         // State 44
-        -104, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+        -105, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
         // State 45
-        -110, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+        -111, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
         // State 46
         -102, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
         // State 47
-        -111, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-        // State 48
-        -108, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-        // State 49
-        -103, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-        // State 50
         -112, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+        // State 48
+        -109, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+        // State 49
+        -104, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+        // State 50
+        -113, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
         // State 51
-        -107, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+        -108, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
         // State 52
-        -105, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 71, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+        -106, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 71, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
         // State 53
         0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
         // State 54
-        -109, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+        -110, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
         // State 55
         0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 74, 0, 0, 0, 0, 0, 0, 0, 0,
         // State 56
@@ -189,7 +189,7 @@ mod __parse__Actions {
         // State 69
         0, 0, -82, -82, -82, -82, -82, -82, -82, -82, -82, -82, -82, 0, 0, 0, 0, 0, 0, -82, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, -82, 0, 0, 0, 0, 0, -82, -82, -82,
         // State 70
-        -106, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+        -107, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
         // State 71
         0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
         // State 72
@@ -261,7 +261,7 @@ mod __parse__Actions {
         // State 105
         -83, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, -83, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
         // State 106
-        -117, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+        -118, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
         // State 107
         0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 128, 0, 0, 0, 0, 0, 0, 0, 0,
         // State 108
@@ -394,7 +394,7 @@ mod __parse__Actions {
         // State 2
         0,
         // State 3
-        -115,
+        -116,
         // State 4
         -80,
         // State 5
@@ -402,7 +402,7 @@ mod __parse__Actions {
         // State 6
         0,
         // State 7
-        0,
+        -103,
         // State 8
         0,
         // State 9
@@ -470,33 +470,33 @@ mod __parse__Actions {
         // State 40
         0,
         // State 41
-        -118,
+        -119,
         // State 42
         0,
         // State 43
         -81,
         // State 44
-        -104,
+        -105,
         // State 45
-        -110,
+        -111,
         // State 46
         -102,
         // State 47
-        -111,
-        // State 48
-        -108,
-        // State 49
-        -103,
-        // State 50
         -112,
+        // State 48
+        -109,
+        // State 49
+        -104,
+        // State 50
+        -113,
         // State 51
-        -107,
+        -108,
         // State 52
-        -105,
+        -106,
         // State 53
         -1,
         // State 54
-        -109,
+        -110,
         // State 55
         0,
         // State 56
@@ -528,11 +528,11 @@ mod __parse__Actions {
         // State 69
         -82,
         // State 70
-        -106,
+        -107,
         // State 71
-        -114,
+        -115,
         // State 72
-        -116,
+        -117,
         // State 73
         0,
         // State 74
@@ -600,7 +600,7 @@ mod __parse__Actions {
         // State 105
         -83,
         // State 106
-        -117,
+        -118,
         // State 107
         0,
         // State 108
@@ -612,7 +612,7 @@ mod __parse__Actions {
         // State 111
         0,
         // State 112
-        -113,
+        -114,
         // State 113
         -53,
         // State 114
@@ -1721,13 +1721,13 @@ mod __parse__Actions {
             }
             105 => {
                 __state_machine::SimulatedReduce::Reduce {
-                    states_to_pop: 2,
+                    states_to_pop: 1,
                     nonterminal_produced: 30,
                 }
             }
             106 => {
                 __state_machine::SimulatedReduce::Reduce {
-                    states_to_pop: 1,
+                    states_to_pop: 2,
                     nonterminal_produced: 30,
                 }
             }
@@ -1763,35 +1763,41 @@ mod __parse__Actions {
             }
             112 => {
                 __state_machine::SimulatedReduce::Reduce {
-                    states_to_pop: 3,
-                    nonterminal_produced: 31,
+                    states_to_pop: 1,
+                    nonterminal_produced: 30,
                 }
             }
             113 => {
                 __state_machine::SimulatedReduce::Reduce {
-                    states_to_pop: 1,
+                    states_to_pop: 3,
                     nonterminal_produced: 31,
                 }
             }
             114 => {
                 __state_machine::SimulatedReduce::Reduce {
-                    states_to_pop: 0,
-                    nonterminal_produced: 32,
+                    states_to_pop: 1,
+                    nonterminal_produced: 31,
                 }
             }
             115 => {
                 __state_machine::SimulatedReduce::Reduce {
-                    states_to_pop: 2,
+                    states_to_pop: 0,
                     nonterminal_produced: 32,
                 }
             }
             116 => {
                 __state_machine::SimulatedReduce::Reduce {
+                    states_to_pop: 2,
+                    nonterminal_produced: 32,
+                }
+            }
+            117 => {
+                __state_machine::SimulatedReduce::Reduce {
                     states_to_pop: 3,
                     nonterminal_produced: 33,
                 }
             }
-            117 => __state_machine::SimulatedReduce::Accept,
+            118 => __state_machine::SimulatedReduce::Accept,
             _ => panic!("invalid reduction index {__reduce_index}")
         }
     }
@@ -1892,11 +1898,11 @@ mod __parse__Actions {
                 __reduce4(arena, control, __lookahead_start, __symbols, core::marker::PhantomData::<()>)
             }
             5 => {
-                // ClassDefNames = Name => ActionFn(40);
+                // ClassDefNames = Name => ActionFn(41);
                 let __sym0 = __pop_Variant1(__symbols);
                 let __start = __sym0.0.clone();
                 let __end = __sym0.2.clone();
-                let __nt = match super::__action40::<>(arena, control, __sym0) {
+                let __nt = match super::__action41::<>(arena, control, __sym0) {
                     Ok(v) => v,
                     Err(e) => return Some(Err(e)),
                 };
@@ -1904,14 +1910,14 @@ mod __parse__Actions {
                 (1, 4)
             }
             6 => {
-                // ClassDefNames = ClassDefNames, Comma, Name => ActionFn(41);
+                // ClassDefNames = ClassDefNames, Comma, Name => ActionFn(42);
                 assert!(__symbols.len() >= 3);
                 let __sym2 = __pop_Variant1(__symbols);
                 let __sym1 = __pop_Variant0(__symbols);
                 let __sym0 = __pop_Variant4(__symbols);
                 let __start = __sym0.0.clone();
                 let __end = __sym2.2.clone();
-                let __nt = match super::__action41::<>(arena, control, __sym0, __sym1, __sym2) {
+                let __nt = match super::__action42::<>(arena, control, __sym0, __sym1, __sym2) {
                     Ok(v) => v,
                     Err(e) => return Some(Err(e)),
                 };
@@ -1919,14 +1925,14 @@ mod __parse__Actions {
                 (3, 4)
             }
             7 => {
-                // ClassDefStatement = "classDef", ClassDefNames, RestOfLine => ActionFn(39);
+                // ClassDefStatement = "classDef", ClassDefNames, RestOfLine => ActionFn(40);
                 assert!(__symbols.len() >= 3);
                 let __sym2 = __pop_Variant1(__symbols);
                 let __sym1 = __pop_Variant4(__symbols);
                 let __sym0 = __pop_Variant0(__symbols);
                 let __start = __sym0.0.clone();
                 let __end = __sym2.2.clone();
-                let __nt = match super::__action39::<>(arena, control, __sym0, __sym1, __sym2) {
+                let __nt = match super::__action40::<>(arena, control, __sym0, __sym1, __sym2) {
                     Ok(v) => v,
                     Err(e) => return Some(Err(e)),
                 };
@@ -2120,11 +2126,11 @@ mod __parse__Actions {
                 __reduce69(arena, control, __lookahead_start, __symbols, core::marker::PhantomData::<()>)
             }
             70 => {
-                // NamespaceClassItem = ClassStatementWithId => ActionFn(61);
+                // NamespaceClassItem = ClassStatementWithId => ActionFn(62);
                 let __sym0 = __pop_Variant8(__symbols);
                 let __start = __sym0.0.clone();
                 let __end = __sym0.2.clone();
-                let __nt = match super::__action61::<>(arena, control, __sym0) {
+                let __nt = match super::__action62::<>(arena, control, __sym0) {
                     Ok(v) => v,
                     Err(e) => return Some(Err(e)),
                 };
@@ -2132,11 +2138,11 @@ mod __parse__Actions {
                 (1, 20)
             }
             71 => {
-                // NamespaceClassItem = NoteStatement => ActionFn(62);
+                // NamespaceClassItem = NoteStatement => ActionFn(63);
                 let __sym0 = __pop_Variant3(__symbols);
                 let __start = __sym0.0.clone();
                 let __end = __sym0.2.clone();
-                let __nt = match super::__action62::<>(arena, control, __sym0) {
+                let __nt = match super::__action63::<>(arena, control, __sym0) {
                     Ok(v) => v,
                     Err(e) => return Some(Err(e)),
                 };
@@ -2150,13 +2156,13 @@ mod __parse__Actions {
                 __reduce73(arena, control, __lookahead_start, __symbols, core::marker::PhantomData::<()>)
             }
             74 => {
-                // NamespaceClasses = NamespaceClassItem, NamespaceClassesRest => ActionFn(58);
+                // NamespaceClasses = NamespaceClassItem, NamespaceClassesRest => ActionFn(59);
                 assert!(__symbols.len() >= 2);
                 let __sym1 = __pop_Variant10(__symbols);
                 let __sym0 = __pop_Variant10(__symbols);
                 let __start = __sym0.0.clone();
                 let __end = __sym1.2.clone();
-                let __nt = match super::__action58::<>(arena, control, __sym0, __sym1) {
+                let __nt = match super::__action59::<>(arena, control, __sym0, __sym1) {
                     Ok(v) => v,
                     Err(e) => return Some(Err(e)),
                 };
@@ -2164,14 +2170,14 @@ mod __parse__Actions {
                 (2, 21)
             }
             75 => {
-                // NamespaceClassesRest = Newlines1, NamespaceClassItem, NamespaceClassesRest => ActionFn(59);
+                // NamespaceClassesRest = Newlines1, NamespaceClassItem, NamespaceClassesRest => ActionFn(60);
                 assert!(__symbols.len() >= 3);
                 let __sym2 = __pop_Variant10(__symbols);
                 let __sym1 = __pop_Variant10(__symbols);
                 let __sym0 = __pop_Variant11(__symbols);
                 let __start = __sym0.0.clone();
                 let __end = __sym2.2.clone();
-                let __nt = match super::__action59::<>(arena, control, __sym0, __sym1, __sym2) {
+                let __nt = match super::__action60::<>(arena, control, __sym0, __sym1, __sym2) {
                     Ok(v) => v,
                     Err(e) => return Some(Err(e)),
                 };
@@ -2182,7 +2188,7 @@ mod __parse__Actions {
                 __reduce76(arena, control, __lookahead_start, __symbols, core::marker::PhantomData::<()>)
             }
             77 => {
-                // NamespaceStatement = "namespace", Name, ClassLabel, StructStart, Newlines, NamespaceClasses, StructStop => ActionFn(99);
+                // NamespaceStatement = "namespace", Name, ClassLabel, StructStart, Newlines, NamespaceClasses, StructStop => ActionFn(100);
                 assert!(__symbols.len() >= 7);
                 let __sym6 = __pop_Variant0(__symbols);
                 let __sym5 = __pop_Variant10(__symbols);
@@ -2193,7 +2199,7 @@ mod __parse__Actions {
                 let __sym0 = __pop_Variant0(__symbols);
                 let __start = __sym0.0.clone();
                 let __end = __sym6.2.clone();
-                let __nt = match super::__action99::<>(arena, control, __sym0, __sym1, __sym2, __sym3, __sym4, __sym5, __sym6) {
+                let __nt = match super::__action100::<>(arena, control, __sym0, __sym1, __sym2, __sym3, __sym4, __sym5, __sym6) {
                     Ok(v) => v,
                     Err(e) => return Some(Err(e)),
                 };
@@ -2201,7 +2207,7 @@ mod __parse__Actions {
                 (7, 23)
             }
             78 => {
-                // NamespaceStatement = "namespace", Name, StructStart, Newlines, NamespaceClasses, StructStop => ActionFn(100);
+                // NamespaceStatement = "namespace", Name, StructStart, Newlines, NamespaceClasses, StructStop => ActionFn(101);
                 assert!(__symbols.len() >= 6);
                 let __sym5 = __pop_Variant0(__symbols);
                 let __sym4 = __pop_Variant10(__symbols);
@@ -2211,7 +2217,7 @@ mod __parse__Actions {
                 let __sym0 = __pop_Variant0(__symbols);
                 let __start = __sym0.0.clone();
                 let __end = __sym5.2.clone();
-                let __nt = match super::__action100::<>(arena, control, __sym0, __sym1, __sym2, __sym3, __sym4, __sym5) {
+                let __nt = match super::__action101::<>(arena, control, __sym0, __sym1, __sym2, __sym3, __sym4, __sym5) {
                     Ok(v) => v,
                     Err(e) => return Some(Err(e)),
                 };
@@ -2333,19 +2339,10 @@ mod __parse__Actions {
                 (1, 30)
             }
             102 => {
-                // Statement = MemberStatement => ActionFn(14);
-                let __sym0 = __pop_Variant3(__symbols);
-                let __start = __sym0.0.clone();
-                let __end = __sym0.2.clone();
-                let __nt = match super::__action14::<>(arena, control, __sym0) {
-                    Ok(v) => v,
-                    Err(e) => return Some(Err(e)),
-                };
-                __symbols.push((__start, __Symbol::Variant2(__nt), __end));
-                (1, 30)
+                __reduce102(arena, control, __lookahead_start, __symbols, core::marker::PhantomData::<()>)
             }
             103 => {
-                // Statement = AnnotationStatement => ActionFn(15);
+                // Statement = MemberStatement => ActionFn(15);
                 let __sym0 = __pop_Variant3(__symbols);
                 let __start = __sym0.0.clone();
                 let __end = __sym0.2.clone();
@@ -2357,8 +2354,8 @@ mod __parse__Actions {
                 (1, 30)
             }
             104 => {
-                // Statement = RelationStatement => ActionFn(16);
-                let __sym0 = __pop_Variant13(__symbols);
+                // Statement = AnnotationStatement => ActionFn(16);
+                let __sym0 = __pop_Variant3(__symbols);
                 let __start = __sym0.0.clone();
                 let __end = __sym0.2.clone();
                 let __nt = match super::__action16::<>(arena, control, __sym0) {
@@ -2369,33 +2366,33 @@ mod __parse__Actions {
                 (1, 30)
             }
             105 => {
-                // Statement = RelationStatement, Label => ActionFn(17);
-                assert!(__symbols.len() >= 2);
-                let __sym1 = __pop_Variant1(__symbols);
+                // Statement = RelationStatement => ActionFn(17);
                 let __sym0 = __pop_Variant13(__symbols);
                 let __start = __sym0.0.clone();
-                let __end = __sym1.2.clone();
-                let __nt = match super::__action17::<>(arena, control, __sym0, __sym1) {
-                    Ok(v) => v,
-                    Err(e) => return Some(Err(e)),
-                };
-                __symbols.push((__start, __Symbol::Variant2(__nt), __end));
-                (2, 30)
-            }
-            106 => {
-                // Statement = NoteStatement => ActionFn(18);
-                let __sym0 = __pop_Variant3(__symbols);
-                let __start = __sym0.0.clone();
                 let __end = __sym0.2.clone();
-                let __nt = match super::__action18::<>(arena, control, __sym0) {
+                let __nt = match super::__action17::<>(arena, control, __sym0) {
                     Ok(v) => v,
                     Err(e) => return Some(Err(e)),
                 };
                 __symbols.push((__start, __Symbol::Variant2(__nt), __end));
                 (1, 30)
             }
+            106 => {
+                // Statement = RelationStatement, Label => ActionFn(18);
+                assert!(__symbols.len() >= 2);
+                let __sym1 = __pop_Variant1(__symbols);
+                let __sym0 = __pop_Variant13(__symbols);
+                let __start = __sym0.0.clone();
+                let __end = __sym1.2.clone();
+                let __nt = match super::__action18::<>(arena, control, __sym0, __sym1) {
+                    Ok(v) => v,
+                    Err(e) => return Some(Err(e)),
+                };
+                __symbols.push((__start, __Symbol::Variant2(__nt), __end));
+                (2, 30)
+            }
             107 => {
-                // Statement = CssClassStatement => ActionFn(19);
+                // Statement = NoteStatement => ActionFn(19);
                 let __sym0 = __pop_Variant3(__symbols);
                 let __start = __sym0.0.clone();
                 let __end = __sym0.2.clone();
@@ -2407,7 +2404,7 @@ mod __parse__Actions {
                 (1, 30)
             }
             108 => {
-                // Statement = StyleStatement => ActionFn(20);
+                // Statement = CssClassStatement => ActionFn(20);
                 let __sym0 = __pop_Variant3(__symbols);
                 let __start = __sym0.0.clone();
                 let __end = __sym0.2.clone();
@@ -2419,24 +2416,36 @@ mod __parse__Actions {
                 (1, 30)
             }
             109 => {
-                __reduce109(arena, control, __lookahead_start, __symbols, core::marker::PhantomData::<()>)
-            }
-            110 => {
-                // Statement = ClickStatement => ActionFn(22);
-                let __sym0 = __pop_Variant7(__symbols);
+                // Statement = StyleStatement => ActionFn(21);
+                let __sym0 = __pop_Variant3(__symbols);
                 let __start = __sym0.0.clone();
                 let __end = __sym0.2.clone();
-                let __nt = match super::__action22::<>(arena, control, __sym0) {
+                let __nt = match super::__action21::<>(arena, control, __sym0) {
                     Ok(v) => v,
                     Err(e) => return Some(Err(e)),
                 };
                 __symbols.push((__start, __Symbol::Variant2(__nt), __end));
                 (1, 30)
             }
+            110 => {
+                __reduce110(arena, control, __lookahead_start, __symbols, core::marker::PhantomData::<()>)
+            }
             111 => {
-                __reduce111(arena, control, __lookahead_start, __symbols, core::marker::PhantomData::<()>)
+                // Statement = ClickStatement => ActionFn(23);
+                let __sym0 = __pop_Variant7(__symbols);
+                let __start = __sym0.0.clone();
+                let __end = __sym0.2.clone();
+                let __nt = match super::__action23::<>(arena, control, __sym0) {
+                    Ok(v) => v,
+                    Err(e) => return Some(Err(e)),
+                };
+                __symbols.push((__start, __Symbol::Variant2(__nt), __end));
+                (1, 30)
             }
             112 => {
+                __reduce112(arena, control, __lookahead_start, __symbols, core::marker::PhantomData::<()>)
+            }
+            113 => {
                 // StatementRest = Newlines1, Statement, StatementRest => ActionFn(4);
                 assert!(__symbols.len() >= 3);
                 let __sym2 = __pop_Variant2(__symbols);
@@ -2451,13 +2460,13 @@ mod __parse__Actions {
                 __symbols.push((__start, __Symbol::Variant2(__nt), __end));
                 (3, 31)
             }
-            113 => {
-                __reduce113(arena, control, __lookahead_start, __symbols, core::marker::PhantomData::<()>)
-            }
             114 => {
                 __reduce114(arena, control, __lookahead_start, __symbols, core::marker::PhantomData::<()>)
             }
             115 => {
+                __reduce115(arena, control, __lookahead_start, __symbols, core::marker::PhantomData::<()>)
+            }
+            116 => {
                 // Statements = Statement, StatementRest => ActionFn(3);
                 assert!(__symbols.len() >= 2);
                 let __sym1 = __pop_Variant2(__symbols);
@@ -2471,10 +2480,10 @@ mod __parse__Actions {
                 __symbols.push((__start, __Symbol::Variant2(__nt), __end));
                 (2, 32)
             }
-            116 => {
-                __reduce116(arena, control, __lookahead_start, __symbols, core::marker::PhantomData::<()>)
-            }
             117 => {
+                __reduce117(arena, control, __lookahead_start, __symbols, core::marker::PhantomData::<()>)
+            }
+            118 => {
                 // __Actions = Actions => ActionFn(0);
                 let __sym0 = __pop_Variant2(__symbols);
                 let __start = __sym0.0.clone();
@@ -2665,7 +2674,7 @@ mod __parse__Actions {
         _: core::marker::PhantomData<()>,
     ) -> (usize, usize)
     {
-        // AnnotationStatement = AnnotationStart, Name, AnnotationStop, Name => ActionFn(34);
+        // AnnotationStatement = AnnotationStart, Name, AnnotationStop, Name => ActionFn(35);
         assert!(__symbols.len() >= 4);
         let __sym3 = __pop_Variant1(__symbols);
         let __sym2 = __pop_Variant0(__symbols);
@@ -2673,7 +2682,7 @@ mod __parse__Actions {
         let __sym0 = __pop_Variant0(__symbols);
         let __start = __sym0.0.clone();
         let __end = __sym3.2.clone();
-        let __nt = super::__action34::<>(arena, control, __sym0, __sym1, __sym2, __sym3);
+        let __nt = super::__action35::<>(arena, control, __sym0, __sym1, __sym2, __sym3);
         __symbols.push((__start, __Symbol::Variant3(__nt), __end));
         (4, 1)
     }
@@ -2686,14 +2695,14 @@ mod __parse__Actions {
         _: core::marker::PhantomData<()>,
     ) -> (usize, usize)
     {
-        // ClassBody = StructStart, Members, StructStop => ActionFn(29);
+        // ClassBody = StructStart, Members, StructStop => ActionFn(30);
         assert!(__symbols.len() >= 3);
         let __sym2 = __pop_Variant0(__symbols);
         let __sym1 = __pop_Variant4(__symbols);
         let __sym0 = __pop_Variant0(__symbols);
         let __start = __sym0.0.clone();
         let __end = __sym2.2.clone();
-        let __nt = super::__action29::<>(arena, control, __sym0, __sym1, __sym2);
+        let __nt = super::__action30::<>(arena, control, __sym0, __sym1, __sym2);
         __symbols.push((__start, __Symbol::Variant4(__nt), __end));
         (3, 2)
     }
@@ -2706,11 +2715,11 @@ mod __parse__Actions {
         _: core::marker::PhantomData<()>,
     ) -> (usize, usize)
     {
-        // ClassBody? = ClassBody => ActionFn(79);
+        // ClassBody? = ClassBody => ActionFn(80);
         let __sym0 = __pop_Variant4(__symbols);
         let __start = __sym0.0.clone();
         let __end = __sym0.2.clone();
-        let __nt = super::__action79::<>(arena, control, __sym0);
+        let __nt = super::__action80::<>(arena, control, __sym0);
         __symbols.push((__start, __Symbol::Variant5(__nt), __end));
         (1, 3)
     }
@@ -2723,10 +2732,10 @@ mod __parse__Actions {
         _: core::marker::PhantomData<()>,
     ) -> (usize, usize)
     {
-        // ClassBody? =  => ActionFn(80);
+        // ClassBody? =  => ActionFn(81);
         let __start = __lookahead_start.cloned().or_else(|| __symbols.last().map(|s| s.2.clone())).unwrap_or_default();
         let __end = __start.clone();
-        let __nt = super::__action80::<>(arena, control, &__start, &__end);
+        let __nt = super::__action81::<>(arena, control, &__start, &__end);
         __symbols.push((__start, __Symbol::Variant5(__nt), __end));
         (0, 3)
     }
@@ -2739,14 +2748,14 @@ mod __parse__Actions {
         _: core::marker::PhantomData<()>,
     ) -> (usize, usize)
     {
-        // ClassLabel = SquareStart, Str, SquareStop => ActionFn(26);
+        // ClassLabel = SquareStart, Str, SquareStop => ActionFn(27);
         assert!(__symbols.len() >= 3);
         let __sym2 = __pop_Variant0(__symbols);
         let __sym1 = __pop_Variant1(__symbols);
         let __sym0 = __pop_Variant0(__symbols);
         let __start = __sym0.0.clone();
         let __end = __sym2.2.clone();
-        let __nt = super::__action26::<>(arena, control, __sym0, __sym1, __sym2);
+        let __nt = super::__action27::<>(arena, control, __sym0, __sym1, __sym2);
         __symbols.push((__start, __Symbol::Variant1(__nt), __end));
         (3, 6)
     }
@@ -2759,11 +2768,11 @@ mod __parse__Actions {
         _: core::marker::PhantomData<()>,
     ) -> (usize, usize)
     {
-        // ClassLabel? = ClassLabel => ActionFn(85);
+        // ClassLabel? = ClassLabel => ActionFn(86);
         let __sym0 = __pop_Variant1(__symbols);
         let __start = __sym0.0.clone();
         let __end = __sym0.2.clone();
-        let __nt = super::__action85::<>(arena, control, __sym0);
+        let __nt = super::__action86::<>(arena, control, __sym0);
         __symbols.push((__start, __Symbol::Variant6(__nt), __end));
         (1, 7)
     }
@@ -2776,10 +2785,10 @@ mod __parse__Actions {
         _: core::marker::PhantomData<()>,
     ) -> (usize, usize)
     {
-        // ClassLabel? =  => ActionFn(86);
+        // ClassLabel? =  => ActionFn(87);
         let __start = __lookahead_start.cloned().or_else(|| __symbols.last().map(|s| s.2.clone())).unwrap_or_default();
         let __end = __start.clone();
-        let __nt = super::__action86::<>(arena, control, &__start, &__end);
+        let __nt = super::__action87::<>(arena, control, &__start, &__end);
         __symbols.push((__start, __Symbol::Variant6(__nt), __end));
         (0, 7)
     }
@@ -2792,7 +2801,7 @@ mod __parse__Actions {
         _: core::marker::PhantomData<()>,
     ) -> (usize, usize)
     {
-        // ClassStatement = "class", Name, ClassLabel, InlineAnnotation, CssShorthand, ClassBody => ActionFn(117);
+        // ClassStatement = "class", Name, ClassLabel, InlineAnnotation, CssShorthand, ClassBody => ActionFn(118);
         assert!(__symbols.len() >= 6);
         let __sym5 = __pop_Variant4(__symbols);
         let __sym4 = __pop_Variant1(__symbols);
@@ -2802,7 +2811,7 @@ mod __parse__Actions {
         let __sym0 = __pop_Variant0(__symbols);
         let __start = __sym0.0.clone();
         let __end = __sym5.2.clone();
-        let __nt = super::__action117::<>(arena, control, __sym0, __sym1, __sym2, __sym3, __sym4, __sym5);
+        let __nt = super::__action118::<>(arena, control, __sym0, __sym1, __sym2, __sym3, __sym4, __sym5);
         __symbols.push((__start, __Symbol::Variant7(__nt), __end));
         (6, 8)
     }
@@ -2815,29 +2824,7 @@ mod __parse__Actions {
         _: core::marker::PhantomData<()>,
     ) -> (usize, usize)
     {
-        // ClassStatement = "class", Name, ClassLabel, CssShorthand, ClassBody => ActionFn(118);
-        assert!(__symbols.len() >= 5);
-        let __sym4 = __pop_Variant4(__symbols);
-        let __sym3 = __pop_Variant1(__symbols);
-        let __sym2 = __pop_Variant1(__symbols);
-        let __sym1 = __pop_Variant1(__symbols);
-        let __sym0 = __pop_Variant0(__symbols);
-        let __start = __sym0.0.clone();
-        let __end = __sym4.2.clone();
-        let __nt = super::__action118::<>(arena, control, __sym0, __sym1, __sym2, __sym3, __sym4);
-        __symbols.push((__start, __Symbol::Variant7(__nt), __end));
-        (5, 8)
-    }
-    fn __reduce13<
-    >(
-        arena: &mut ActionArena,
-        control: &crate::OperationControl,
-        __lookahead_start: Option<&usize>,
-        __symbols: &mut alloc::vec::Vec<(usize,__Symbol<>,usize)>,
-        _: core::marker::PhantomData<()>,
-    ) -> (usize, usize)
-    {
-        // ClassStatement = "class", Name, ClassLabel, InlineAnnotation, ClassBody => ActionFn(119);
+        // ClassStatement = "class", Name, ClassLabel, CssShorthand, ClassBody => ActionFn(119);
         assert!(__symbols.len() >= 5);
         let __sym4 = __pop_Variant4(__symbols);
         let __sym3 = __pop_Variant1(__symbols);
@@ -2850,6 +2837,28 @@ mod __parse__Actions {
         __symbols.push((__start, __Symbol::Variant7(__nt), __end));
         (5, 8)
     }
+    fn __reduce13<
+    >(
+        arena: &mut ActionArena,
+        control: &crate::OperationControl,
+        __lookahead_start: Option<&usize>,
+        __symbols: &mut alloc::vec::Vec<(usize,__Symbol<>,usize)>,
+        _: core::marker::PhantomData<()>,
+    ) -> (usize, usize)
+    {
+        // ClassStatement = "class", Name, ClassLabel, InlineAnnotation, ClassBody => ActionFn(120);
+        assert!(__symbols.len() >= 5);
+        let __sym4 = __pop_Variant4(__symbols);
+        let __sym3 = __pop_Variant1(__symbols);
+        let __sym2 = __pop_Variant1(__symbols);
+        let __sym1 = __pop_Variant1(__symbols);
+        let __sym0 = __pop_Variant0(__symbols);
+        let __start = __sym0.0.clone();
+        let __end = __sym4.2.clone();
+        let __nt = super::__action120::<>(arena, control, __sym0, __sym1, __sym2, __sym3, __sym4);
+        __symbols.push((__start, __Symbol::Variant7(__nt), __end));
+        (5, 8)
+    }
     fn __reduce14<
     >(
         arena: &mut ActionArena,
@@ -2859,7 +2868,7 @@ mod __parse__Actions {
         _: core::marker::PhantomData<()>,
     ) -> (usize, usize)
     {
-        // ClassStatement = "class", Name, ClassLabel, ClassBody => ActionFn(120);
+        // ClassStatement = "class", Name, ClassLabel, ClassBody => ActionFn(121);
         assert!(__symbols.len() >= 4);
         let __sym3 = __pop_Variant4(__symbols);
         let __sym2 = __pop_Variant1(__symbols);
@@ -2867,7 +2876,7 @@ mod __parse__Actions {
         let __sym0 = __pop_Variant0(__symbols);
         let __start = __sym0.0.clone();
         let __end = __sym3.2.clone();
-        let __nt = super::__action120::<>(arena, control, __sym0, __sym1, __sym2, __sym3);
+        let __nt = super::__action121::<>(arena, control, __sym0, __sym1, __sym2, __sym3);
         __symbols.push((__start, __Symbol::Variant7(__nt), __end));
         (4, 8)
     }
@@ -2880,7 +2889,7 @@ mod __parse__Actions {
         _: core::marker::PhantomData<()>,
     ) -> (usize, usize)
     {
-        // ClassStatement = "class", Name, InlineAnnotation, CssShorthand, ClassBody => ActionFn(121);
+        // ClassStatement = "class", Name, InlineAnnotation, CssShorthand, ClassBody => ActionFn(122);
         assert!(__symbols.len() >= 5);
         let __sym4 = __pop_Variant4(__symbols);
         let __sym3 = __pop_Variant1(__symbols);
@@ -2889,7 +2898,7 @@ mod __parse__Actions {
         let __sym0 = __pop_Variant0(__symbols);
         let __start = __sym0.0.clone();
         let __end = __sym4.2.clone();
-        let __nt = super::__action121::<>(arena, control, __sym0, __sym1, __sym2, __sym3, __sym4);
+        let __nt = super::__action122::<>(arena, control, __sym0, __sym1, __sym2, __sym3, __sym4);
         __symbols.push((__start, __Symbol::Variant7(__nt), __end));
         (5, 8)
     }
@@ -2902,7 +2911,7 @@ mod __parse__Actions {
         _: core::marker::PhantomData<()>,
     ) -> (usize, usize)
     {
-        // ClassStatement = "class", Name, CssShorthand, ClassBody => ActionFn(122);
+        // ClassStatement = "class", Name, CssShorthand, ClassBody => ActionFn(123);
         assert!(__symbols.len() >= 4);
         let __sym3 = __pop_Variant4(__symbols);
         let __sym2 = __pop_Variant1(__symbols);
@@ -2910,7 +2919,7 @@ mod __parse__Actions {
         let __sym0 = __pop_Variant0(__symbols);
         let __start = __sym0.0.clone();
         let __end = __sym3.2.clone();
-        let __nt = super::__action122::<>(arena, control, __sym0, __sym1, __sym2, __sym3);
+        let __nt = super::__action123::<>(arena, control, __sym0, __sym1, __sym2, __sym3);
         __symbols.push((__start, __Symbol::Variant7(__nt), __end));
         (4, 8)
     }
@@ -2923,7 +2932,7 @@ mod __parse__Actions {
         _: core::marker::PhantomData<()>,
     ) -> (usize, usize)
     {
-        // ClassStatement = "class", Name, InlineAnnotation, ClassBody => ActionFn(123);
+        // ClassStatement = "class", Name, InlineAnnotation, ClassBody => ActionFn(124);
         assert!(__symbols.len() >= 4);
         let __sym3 = __pop_Variant4(__symbols);
         let __sym2 = __pop_Variant1(__symbols);
@@ -2931,7 +2940,7 @@ mod __parse__Actions {
         let __sym0 = __pop_Variant0(__symbols);
         let __start = __sym0.0.clone();
         let __end = __sym3.2.clone();
-        let __nt = super::__action123::<>(arena, control, __sym0, __sym1, __sym2, __sym3);
+        let __nt = super::__action124::<>(arena, control, __sym0, __sym1, __sym2, __sym3);
         __symbols.push((__start, __Symbol::Variant7(__nt), __end));
         (4, 8)
     }
@@ -2944,14 +2953,14 @@ mod __parse__Actions {
         _: core::marker::PhantomData<()>,
     ) -> (usize, usize)
     {
-        // ClassStatement = "class", Name, ClassBody => ActionFn(124);
+        // ClassStatement = "class", Name, ClassBody => ActionFn(125);
         assert!(__symbols.len() >= 3);
         let __sym2 = __pop_Variant4(__symbols);
         let __sym1 = __pop_Variant1(__symbols);
         let __sym0 = __pop_Variant0(__symbols);
         let __start = __sym0.0.clone();
         let __end = __sym2.2.clone();
-        let __nt = super::__action124::<>(arena, control, __sym0, __sym1, __sym2);
+        let __nt = super::__action125::<>(arena, control, __sym0, __sym1, __sym2);
         __symbols.push((__start, __Symbol::Variant7(__nt), __end));
         (3, 8)
     }
@@ -2964,7 +2973,7 @@ mod __parse__Actions {
         _: core::marker::PhantomData<()>,
     ) -> (usize, usize)
     {
-        // ClassStatement = "class", Name, ClassLabel, InlineAnnotation, CssShorthand => ActionFn(125);
+        // ClassStatement = "class", Name, ClassLabel, InlineAnnotation, CssShorthand => ActionFn(126);
         assert!(__symbols.len() >= 5);
         let __sym4 = __pop_Variant1(__symbols);
         let __sym3 = __pop_Variant1(__symbols);
@@ -2973,7 +2982,7 @@ mod __parse__Actions {
         let __sym0 = __pop_Variant0(__symbols);
         let __start = __sym0.0.clone();
         let __end = __sym4.2.clone();
-        let __nt = super::__action125::<>(arena, control, __sym0, __sym1, __sym2, __sym3, __sym4);
+        let __nt = super::__action126::<>(arena, control, __sym0, __sym1, __sym2, __sym3, __sym4);
         __symbols.push((__start, __Symbol::Variant7(__nt), __end));
         (5, 8)
     }
@@ -2986,7 +2995,7 @@ mod __parse__Actions {
         _: core::marker::PhantomData<()>,
     ) -> (usize, usize)
     {
-        // ClassStatement = "class", Name, ClassLabel, CssShorthand => ActionFn(126);
+        // ClassStatement = "class", Name, ClassLabel, CssShorthand => ActionFn(127);
         assert!(__symbols.len() >= 4);
         let __sym3 = __pop_Variant1(__symbols);
         let __sym2 = __pop_Variant1(__symbols);
@@ -2994,7 +3003,7 @@ mod __parse__Actions {
         let __sym0 = __pop_Variant0(__symbols);
         let __start = __sym0.0.clone();
         let __end = __sym3.2.clone();
-        let __nt = super::__action126::<>(arena, control, __sym0, __sym1, __sym2, __sym3);
+        let __nt = super::__action127::<>(arena, control, __sym0, __sym1, __sym2, __sym3);
         __symbols.push((__start, __Symbol::Variant7(__nt), __end));
         (4, 8)
     }
@@ -3007,7 +3016,7 @@ mod __parse__Actions {
         _: core::marker::PhantomData<()>,
     ) -> (usize, usize)
     {
-        // ClassStatement = "class", Name, ClassLabel, InlineAnnotation => ActionFn(127);
+        // ClassStatement = "class", Name, ClassLabel, InlineAnnotation => ActionFn(128);
         assert!(__symbols.len() >= 4);
         let __sym3 = __pop_Variant1(__symbols);
         let __sym2 = __pop_Variant1(__symbols);
@@ -3015,7 +3024,7 @@ mod __parse__Actions {
         let __sym0 = __pop_Variant0(__symbols);
         let __start = __sym0.0.clone();
         let __end = __sym3.2.clone();
-        let __nt = super::__action127::<>(arena, control, __sym0, __sym1, __sym2, __sym3);
+        let __nt = super::__action128::<>(arena, control, __sym0, __sym1, __sym2, __sym3);
         __symbols.push((__start, __Symbol::Variant7(__nt), __end));
         (4, 8)
     }
@@ -3028,14 +3037,14 @@ mod __parse__Actions {
         _: core::marker::PhantomData<()>,
     ) -> (usize, usize)
     {
-        // ClassStatement = "class", Name, ClassLabel => ActionFn(128);
+        // ClassStatement = "class", Name, ClassLabel => ActionFn(129);
         assert!(__symbols.len() >= 3);
         let __sym2 = __pop_Variant1(__symbols);
         let __sym1 = __pop_Variant1(__symbols);
         let __sym0 = __pop_Variant0(__symbols);
         let __start = __sym0.0.clone();
         let __end = __sym2.2.clone();
-        let __nt = super::__action128::<>(arena, control, __sym0, __sym1, __sym2);
+        let __nt = super::__action129::<>(arena, control, __sym0, __sym1, __sym2);
         __symbols.push((__start, __Symbol::Variant7(__nt), __end));
         (3, 8)
     }
@@ -3048,7 +3057,7 @@ mod __parse__Actions {
         _: core::marker::PhantomData<()>,
     ) -> (usize, usize)
     {
-        // ClassStatement = "class", Name, InlineAnnotation, CssShorthand => ActionFn(129);
+        // ClassStatement = "class", Name, InlineAnnotation, CssShorthand => ActionFn(130);
         assert!(__symbols.len() >= 4);
         let __sym3 = __pop_Variant1(__symbols);
         let __sym2 = __pop_Variant1(__symbols);
@@ -3056,7 +3065,7 @@ mod __parse__Actions {
         let __sym0 = __pop_Variant0(__symbols);
         let __start = __sym0.0.clone();
         let __end = __sym3.2.clone();
-        let __nt = super::__action129::<>(arena, control, __sym0, __sym1, __sym2, __sym3);
+        let __nt = super::__action130::<>(arena, control, __sym0, __sym1, __sym2, __sym3);
         __symbols.push((__start, __Symbol::Variant7(__nt), __end));
         (4, 8)
     }
@@ -3069,14 +3078,14 @@ mod __parse__Actions {
         _: core::marker::PhantomData<()>,
     ) -> (usize, usize)
     {
-        // ClassStatement = "class", Name, CssShorthand => ActionFn(130);
+        // ClassStatement = "class", Name, CssShorthand => ActionFn(131);
         assert!(__symbols.len() >= 3);
         let __sym2 = __pop_Variant1(__symbols);
         let __sym1 = __pop_Variant1(__symbols);
         let __sym0 = __pop_Variant0(__symbols);
         let __start = __sym0.0.clone();
         let __end = __sym2.2.clone();
-        let __nt = super::__action130::<>(arena, control, __sym0, __sym1, __sym2);
+        let __nt = super::__action131::<>(arena, control, __sym0, __sym1, __sym2);
         __symbols.push((__start, __Symbol::Variant7(__nt), __end));
         (3, 8)
     }
@@ -3089,14 +3098,14 @@ mod __parse__Actions {
         _: core::marker::PhantomData<()>,
     ) -> (usize, usize)
     {
-        // ClassStatement = "class", Name, InlineAnnotation => ActionFn(131);
+        // ClassStatement = "class", Name, InlineAnnotation => ActionFn(132);
         assert!(__symbols.len() >= 3);
         let __sym2 = __pop_Variant1(__symbols);
         let __sym1 = __pop_Variant1(__symbols);
         let __sym0 = __pop_Variant0(__symbols);
         let __start = __sym0.0.clone();
         let __end = __sym2.2.clone();
-        let __nt = super::__action131::<>(arena, control, __sym0, __sym1, __sym2);
+        let __nt = super::__action132::<>(arena, control, __sym0, __sym1, __sym2);
         __symbols.push((__start, __Symbol::Variant7(__nt), __end));
         (3, 8)
     }
@@ -3109,13 +3118,13 @@ mod __parse__Actions {
         _: core::marker::PhantomData<()>,
     ) -> (usize, usize)
     {
-        // ClassStatement = "class", Name => ActionFn(132);
+        // ClassStatement = "class", Name => ActionFn(133);
         assert!(__symbols.len() >= 2);
         let __sym1 = __pop_Variant1(__symbols);
         let __sym0 = __pop_Variant0(__symbols);
         let __start = __sym0.0.clone();
         let __end = __sym1.2.clone();
-        let __nt = super::__action132::<>(arena, control, __sym0, __sym1);
+        let __nt = super::__action133::<>(arena, control, __sym0, __sym1);
         __symbols.push((__start, __Symbol::Variant7(__nt), __end));
         (2, 8)
     }
@@ -3128,7 +3137,7 @@ mod __parse__Actions {
         _: core::marker::PhantomData<()>,
     ) -> (usize, usize)
     {
-        // ClassStatementWithId = "class", Name, ClassLabel, InlineAnnotation, CssShorthand, ClassBody => ActionFn(133);
+        // ClassStatementWithId = "class", Name, ClassLabel, InlineAnnotation, CssShorthand, ClassBody => ActionFn(134);
         assert!(__symbols.len() >= 6);
         let __sym5 = __pop_Variant4(__symbols);
         let __sym4 = __pop_Variant1(__symbols);
@@ -3138,7 +3147,7 @@ mod __parse__Actions {
         let __sym0 = __pop_Variant0(__symbols);
         let __start = __sym0.0.clone();
         let __end = __sym5.2.clone();
-        let __nt = super::__action133::<>(arena, control, __sym0, __sym1, __sym2, __sym3, __sym4, __sym5);
+        let __nt = super::__action134::<>(arena, control, __sym0, __sym1, __sym2, __sym3, __sym4, __sym5);
         __symbols.push((__start, __Symbol::Variant8(__nt), __end));
         (6, 9)
     }
@@ -3151,29 +3160,7 @@ mod __parse__Actions {
         _: core::marker::PhantomData<()>,
     ) -> (usize, usize)
     {
-        // ClassStatementWithId = "class", Name, ClassLabel, CssShorthand, ClassBody => ActionFn(134);
-        assert!(__symbols.len() >= 5);
-        let __sym4 = __pop_Variant4(__symbols);
-        let __sym3 = __pop_Variant1(__symbols);
-        let __sym2 = __pop_Variant1(__symbols);
-        let __sym1 = __pop_Variant1(__symbols);
-        let __sym0 = __pop_Variant0(__symbols);
-        let __start = __sym0.0.clone();
-        let __end = __sym4.2.clone();
-        let __nt = super::__action134::<>(arena, control, __sym0, __sym1, __sym2, __sym3, __sym4);
-        __symbols.push((__start, __Symbol::Variant8(__nt), __end));
-        (5, 9)
-    }
-    fn __reduce29<
-    >(
-        arena: &mut ActionArena,
-        control: &crate::OperationControl,
-        __lookahead_start: Option<&usize>,
-        __symbols: &mut alloc::vec::Vec<(usize,__Symbol<>,usize)>,
-        _: core::marker::PhantomData<()>,
-    ) -> (usize, usize)
-    {
-        // ClassStatementWithId = "class", Name, ClassLabel, InlineAnnotation, ClassBody => ActionFn(135);
+        // ClassStatementWithId = "class", Name, ClassLabel, CssShorthand, ClassBody => ActionFn(135);
         assert!(__symbols.len() >= 5);
         let __sym4 = __pop_Variant4(__symbols);
         let __sym3 = __pop_Variant1(__symbols);
@@ -3186,6 +3173,28 @@ mod __parse__Actions {
         __symbols.push((__start, __Symbol::Variant8(__nt), __end));
         (5, 9)
     }
+    fn __reduce29<
+    >(
+        arena: &mut ActionArena,
+        control: &crate::OperationControl,
+        __lookahead_start: Option<&usize>,
+        __symbols: &mut alloc::vec::Vec<(usize,__Symbol<>,usize)>,
+        _: core::marker::PhantomData<()>,
+    ) -> (usize, usize)
+    {
+        // ClassStatementWithId = "class", Name, ClassLabel, InlineAnnotation, ClassBody => ActionFn(136);
+        assert!(__symbols.len() >= 5);
+        let __sym4 = __pop_Variant4(__symbols);
+        let __sym3 = __pop_Variant1(__symbols);
+        let __sym2 = __pop_Variant1(__symbols);
+        let __sym1 = __pop_Variant1(__symbols);
+        let __sym0 = __pop_Variant0(__symbols);
+        let __start = __sym0.0.clone();
+        let __end = __sym4.2.clone();
+        let __nt = super::__action136::<>(arena, control, __sym0, __sym1, __sym2, __sym3, __sym4);
+        __symbols.push((__start, __Symbol::Variant8(__nt), __end));
+        (5, 9)
+    }
     fn __reduce30<
     >(
         arena: &mut ActionArena,
@@ -3195,7 +3204,7 @@ mod __parse__Actions {
         _: core::marker::PhantomData<()>,
     ) -> (usize, usize)
     {
-        // ClassStatementWithId = "class", Name, ClassLabel, ClassBody => ActionFn(136);
+        // ClassStatementWithId = "class", Name, ClassLabel, ClassBody => ActionFn(137);
         assert!(__symbols.len() >= 4);
         let __sym3 = __pop_Variant4(__symbols);
         let __sym2 = __pop_Variant1(__symbols);
@@ -3203,7 +3212,7 @@ mod __parse__Actions {
         let __sym0 = __pop_Variant0(__symbols);
         let __start = __sym0.0.clone();
         let __end = __sym3.2.clone();
-        let __nt = super::__action136::<>(arena, control, __sym0, __sym1, __sym2, __sym3);
+        let __nt = super::__action137::<>(arena, control, __sym0, __sym1, __sym2, __sym3);
         __symbols.push((__start, __Symbol::Variant8(__nt), __end));
         (4, 9)
     }
@@ -3216,7 +3225,7 @@ mod __parse__Actions {
         _: core::marker::PhantomData<()>,
     ) -> (usize, usize)
     {
-        // ClassStatementWithId = "class", Name, InlineAnnotation, CssShorthand, ClassBody => ActionFn(137);
+        // ClassStatementWithId = "class", Name, InlineAnnotation, CssShorthand, ClassBody => ActionFn(138);
         assert!(__symbols.len() >= 5);
         let __sym4 = __pop_Variant4(__symbols);
         let __sym3 = __pop_Variant1(__symbols);
@@ -3225,7 +3234,7 @@ mod __parse__Actions {
         let __sym0 = __pop_Variant0(__symbols);
         let __start = __sym0.0.clone();
         let __end = __sym4.2.clone();
-        let __nt = super::__action137::<>(arena, control, __sym0, __sym1, __sym2, __sym3, __sym4);
+        let __nt = super::__action138::<>(arena, control, __sym0, __sym1, __sym2, __sym3, __sym4);
         __symbols.push((__start, __Symbol::Variant8(__nt), __end));
         (5, 9)
     }
@@ -3238,7 +3247,7 @@ mod __parse__Actions {
         _: core::marker::PhantomData<()>,
     ) -> (usize, usize)
     {
-        // ClassStatementWithId = "class", Name, CssShorthand, ClassBody => ActionFn(138);
+        // ClassStatementWithId = "class", Name, CssShorthand, ClassBody => ActionFn(139);
         assert!(__symbols.len() >= 4);
         let __sym3 = __pop_Variant4(__symbols);
         let __sym2 = __pop_Variant1(__symbols);
@@ -3246,7 +3255,7 @@ mod __parse__Actions {
         let __sym0 = __pop_Variant0(__symbols);
         let __start = __sym0.0.clone();
         let __end = __sym3.2.clone();
-        let __nt = super::__action138::<>(arena, control, __sym0, __sym1, __sym2, __sym3);
+        let __nt = super::__action139::<>(arena, control, __sym0, __sym1, __sym2, __sym3);
         __symbols.push((__start, __Symbol::Variant8(__nt), __end));
         (4, 9)
     }
@@ -3259,7 +3268,7 @@ mod __parse__Actions {
         _: core::marker::PhantomData<()>,
     ) -> (usize, usize)
     {
-        // ClassStatementWithId = "class", Name, InlineAnnotation, ClassBody => ActionFn(139);
+        // ClassStatementWithId = "class", Name, InlineAnnotation, ClassBody => ActionFn(140);
         assert!(__symbols.len() >= 4);
         let __sym3 = __pop_Variant4(__symbols);
         let __sym2 = __pop_Variant1(__symbols);
@@ -3267,7 +3276,7 @@ mod __parse__Actions {
         let __sym0 = __pop_Variant0(__symbols);
         let __start = __sym0.0.clone();
         let __end = __sym3.2.clone();
-        let __nt = super::__action139::<>(arena, control, __sym0, __sym1, __sym2, __sym3);
+        let __nt = super::__action140::<>(arena, control, __sym0, __sym1, __sym2, __sym3);
         __symbols.push((__start, __Symbol::Variant8(__nt), __end));
         (4, 9)
     }
@@ -3280,14 +3289,14 @@ mod __parse__Actions {
         _: core::marker::PhantomData<()>,
     ) -> (usize, usize)
     {
-        // ClassStatementWithId = "class", Name, ClassBody => ActionFn(140);
+        // ClassStatementWithId = "class", Name, ClassBody => ActionFn(141);
         assert!(__symbols.len() >= 3);
         let __sym2 = __pop_Variant4(__symbols);
         let __sym1 = __pop_Variant1(__symbols);
         let __sym0 = __pop_Variant0(__symbols);
         let __start = __sym0.0.clone();
         let __end = __sym2.2.clone();
-        let __nt = super::__action140::<>(arena, control, __sym0, __sym1, __sym2);
+        let __nt = super::__action141::<>(arena, control, __sym0, __sym1, __sym2);
         __symbols.push((__start, __Symbol::Variant8(__nt), __end));
         (3, 9)
     }
@@ -3300,7 +3309,7 @@ mod __parse__Actions {
         _: core::marker::PhantomData<()>,
     ) -> (usize, usize)
     {
-        // ClassStatementWithId = "class", Name, ClassLabel, InlineAnnotation, CssShorthand => ActionFn(141);
+        // ClassStatementWithId = "class", Name, ClassLabel, InlineAnnotation, CssShorthand => ActionFn(142);
         assert!(__symbols.len() >= 5);
         let __sym4 = __pop_Variant1(__symbols);
         let __sym3 = __pop_Variant1(__symbols);
@@ -3309,7 +3318,7 @@ mod __parse__Actions {
         let __sym0 = __pop_Variant0(__symbols);
         let __start = __sym0.0.clone();
         let __end = __sym4.2.clone();
-        let __nt = super::__action141::<>(arena, control, __sym0, __sym1, __sym2, __sym3, __sym4);
+        let __nt = super::__action142::<>(arena, control, __sym0, __sym1, __sym2, __sym3, __sym4);
         __symbols.push((__start, __Symbol::Variant8(__nt), __end));
         (5, 9)
     }
@@ -3322,7 +3331,7 @@ mod __parse__Actions {
         _: core::marker::PhantomData<()>,
     ) -> (usize, usize)
     {
-        // ClassStatementWithId = "class", Name, ClassLabel, CssShorthand => ActionFn(142);
+        // ClassStatementWithId = "class", Name, ClassLabel, CssShorthand => ActionFn(143);
         assert!(__symbols.len() >= 4);
         let __sym3 = __pop_Variant1(__symbols);
         let __sym2 = __pop_Variant1(__symbols);
@@ -3330,7 +3339,7 @@ mod __parse__Actions {
         let __sym0 = __pop_Variant0(__symbols);
         let __start = __sym0.0.clone();
         let __end = __sym3.2.clone();
-        let __nt = super::__action142::<>(arena, control, __sym0, __sym1, __sym2, __sym3);
+        let __nt = super::__action143::<>(arena, control, __sym0, __sym1, __sym2, __sym3);
         __symbols.push((__start, __Symbol::Variant8(__nt), __end));
         (4, 9)
     }
@@ -3343,7 +3352,7 @@ mod __parse__Actions {
         _: core::marker::PhantomData<()>,
     ) -> (usize, usize)
     {
-        // ClassStatementWithId = "class", Name, ClassLabel, InlineAnnotation => ActionFn(143);
+        // ClassStatementWithId = "class", Name, ClassLabel, InlineAnnotation => ActionFn(144);
         assert!(__symbols.len() >= 4);
         let __sym3 = __pop_Variant1(__symbols);
         let __sym2 = __pop_Variant1(__symbols);
@@ -3351,7 +3360,7 @@ mod __parse__Actions {
         let __sym0 = __pop_Variant0(__symbols);
         let __start = __sym0.0.clone();
         let __end = __sym3.2.clone();
-        let __nt = super::__action143::<>(arena, control, __sym0, __sym1, __sym2, __sym3);
+        let __nt = super::__action144::<>(arena, control, __sym0, __sym1, __sym2, __sym3);
         __symbols.push((__start, __Symbol::Variant8(__nt), __end));
         (4, 9)
     }
@@ -3364,14 +3373,14 @@ mod __parse__Actions {
         _: core::marker::PhantomData<()>,
     ) -> (usize, usize)
     {
-        // ClassStatementWithId = "class", Name, ClassLabel => ActionFn(144);
+        // ClassStatementWithId = "class", Name, ClassLabel => ActionFn(145);
         assert!(__symbols.len() >= 3);
         let __sym2 = __pop_Variant1(__symbols);
         let __sym1 = __pop_Variant1(__symbols);
         let __sym0 = __pop_Variant0(__symbols);
         let __start = __sym0.0.clone();
         let __end = __sym2.2.clone();
-        let __nt = super::__action144::<>(arena, control, __sym0, __sym1, __sym2);
+        let __nt = super::__action145::<>(arena, control, __sym0, __sym1, __sym2);
         __symbols.push((__start, __Symbol::Variant8(__nt), __end));
         (3, 9)
     }
@@ -3384,7 +3393,7 @@ mod __parse__Actions {
         _: core::marker::PhantomData<()>,
     ) -> (usize, usize)
     {
-        // ClassStatementWithId = "class", Name, InlineAnnotation, CssShorthand => ActionFn(145);
+        // ClassStatementWithId = "class", Name, InlineAnnotation, CssShorthand => ActionFn(146);
         assert!(__symbols.len() >= 4);
         let __sym3 = __pop_Variant1(__symbols);
         let __sym2 = __pop_Variant1(__symbols);
@@ -3392,7 +3401,7 @@ mod __parse__Actions {
         let __sym0 = __pop_Variant0(__symbols);
         let __start = __sym0.0.clone();
         let __end = __sym3.2.clone();
-        let __nt = super::__action145::<>(arena, control, __sym0, __sym1, __sym2, __sym3);
+        let __nt = super::__action146::<>(arena, control, __sym0, __sym1, __sym2, __sym3);
         __symbols.push((__start, __Symbol::Variant8(__nt), __end));
         (4, 9)
     }
@@ -3405,14 +3414,14 @@ mod __parse__Actions {
         _: core::marker::PhantomData<()>,
     ) -> (usize, usize)
     {
-        // ClassStatementWithId = "class", Name, CssShorthand => ActionFn(146);
+        // ClassStatementWithId = "class", Name, CssShorthand => ActionFn(147);
         assert!(__symbols.len() >= 3);
         let __sym2 = __pop_Variant1(__symbols);
         let __sym1 = __pop_Variant1(__symbols);
         let __sym0 = __pop_Variant0(__symbols);
         let __start = __sym0.0.clone();
         let __end = __sym2.2.clone();
-        let __nt = super::__action146::<>(arena, control, __sym0, __sym1, __sym2);
+        let __nt = super::__action147::<>(arena, control, __sym0, __sym1, __sym2);
         __symbols.push((__start, __Symbol::Variant8(__nt), __end));
         (3, 9)
     }
@@ -3425,14 +3434,14 @@ mod __parse__Actions {
         _: core::marker::PhantomData<()>,
     ) -> (usize, usize)
     {
-        // ClassStatementWithId = "class", Name, InlineAnnotation => ActionFn(147);
+        // ClassStatementWithId = "class", Name, InlineAnnotation => ActionFn(148);
         assert!(__symbols.len() >= 3);
         let __sym2 = __pop_Variant1(__symbols);
         let __sym1 = __pop_Variant1(__symbols);
         let __sym0 = __pop_Variant0(__symbols);
         let __start = __sym0.0.clone();
         let __end = __sym2.2.clone();
-        let __nt = super::__action147::<>(arena, control, __sym0, __sym1, __sym2);
+        let __nt = super::__action148::<>(arena, control, __sym0, __sym1, __sym2);
         __symbols.push((__start, __Symbol::Variant8(__nt), __end));
         (3, 9)
     }
@@ -3445,13 +3454,13 @@ mod __parse__Actions {
         _: core::marker::PhantomData<()>,
     ) -> (usize, usize)
     {
-        // ClassStatementWithId = "class", Name => ActionFn(148);
+        // ClassStatementWithId = "class", Name => ActionFn(149);
         assert!(__symbols.len() >= 2);
         let __sym1 = __pop_Variant1(__symbols);
         let __sym0 = __pop_Variant0(__symbols);
         let __start = __sym0.0.clone();
         let __end = __sym1.2.clone();
-        let __nt = super::__action148::<>(arena, control, __sym0, __sym1);
+        let __nt = super::__action149::<>(arena, control, __sym0, __sym1);
         __symbols.push((__start, __Symbol::Variant8(__nt), __end));
         (2, 9)
     }
@@ -3464,14 +3473,14 @@ mod __parse__Actions {
         _: core::marker::PhantomData<()>,
     ) -> (usize, usize)
     {
-        // ClickStatement = "link", Name, Str => ActionFn(42);
+        // ClickStatement = "link", Name, Str => ActionFn(43);
         assert!(__symbols.len() >= 3);
         let __sym2 = __pop_Variant1(__symbols);
         let __sym1 = __pop_Variant1(__symbols);
         let __sym0 = __pop_Variant0(__symbols);
         let __start = __sym0.0.clone();
         let __end = __sym2.2.clone();
-        let __nt = super::__action42::<>(arena, control, __sym0, __sym1, __sym2);
+        let __nt = super::__action43::<>(arena, control, __sym0, __sym1, __sym2);
         __symbols.push((__start, __Symbol::Variant7(__nt), __end));
         (3, 10)
     }
@@ -3484,7 +3493,7 @@ mod __parse__Actions {
         _: core::marker::PhantomData<()>,
     ) -> (usize, usize)
     {
-        // ClickStatement = "link", Name, Str, LinkTarget => ActionFn(43);
+        // ClickStatement = "link", Name, Str, LinkTarget => ActionFn(44);
         assert!(__symbols.len() >= 4);
         let __sym3 = __pop_Variant1(__symbols);
         let __sym2 = __pop_Variant1(__symbols);
@@ -3492,7 +3501,7 @@ mod __parse__Actions {
         let __sym0 = __pop_Variant0(__symbols);
         let __start = __sym0.0.clone();
         let __end = __sym3.2.clone();
-        let __nt = super::__action43::<>(arena, control, __sym0, __sym1, __sym2, __sym3);
+        let __nt = super::__action44::<>(arena, control, __sym0, __sym1, __sym2, __sym3);
         __symbols.push((__start, __Symbol::Variant7(__nt), __end));
         (4, 10)
     }
@@ -3505,7 +3514,7 @@ mod __parse__Actions {
         _: core::marker::PhantomData<()>,
     ) -> (usize, usize)
     {
-        // ClickStatement = "link", Name, Str, Str => ActionFn(44);
+        // ClickStatement = "link", Name, Str, Str => ActionFn(45);
         assert!(__symbols.len() >= 4);
         let __sym3 = __pop_Variant1(__symbols);
         let __sym2 = __pop_Variant1(__symbols);
@@ -3513,7 +3522,7 @@ mod __parse__Actions {
         let __sym0 = __pop_Variant0(__symbols);
         let __start = __sym0.0.clone();
         let __end = __sym3.2.clone();
-        let __nt = super::__action44::<>(arena, control, __sym0, __sym1, __sym2, __sym3);
+        let __nt = super::__action45::<>(arena, control, __sym0, __sym1, __sym2, __sym3);
         __symbols.push((__start, __Symbol::Variant7(__nt), __end));
         (4, 10)
     }
@@ -3526,7 +3535,7 @@ mod __parse__Actions {
         _: core::marker::PhantomData<()>,
     ) -> (usize, usize)
     {
-        // ClickStatement = "link", Name, Str, Str, LinkTarget => ActionFn(45);
+        // ClickStatement = "link", Name, Str, Str, LinkTarget => ActionFn(46);
         assert!(__symbols.len() >= 5);
         let __sym4 = __pop_Variant1(__symbols);
         let __sym3 = __pop_Variant1(__symbols);
@@ -3535,7 +3544,7 @@ mod __parse__Actions {
         let __sym0 = __pop_Variant0(__symbols);
         let __start = __sym0.0.clone();
         let __end = __sym4.2.clone();
-        let __nt = super::__action45::<>(arena, control, __sym0, __sym1, __sym2, __sym3, __sym4);
+        let __nt = super::__action46::<>(arena, control, __sym0, __sym1, __sym2, __sym3, __sym4);
         __symbols.push((__start, __Symbol::Variant7(__nt), __end));
         (5, 10)
     }
@@ -3548,7 +3557,7 @@ mod __parse__Actions {
         _: core::marker::PhantomData<()>,
     ) -> (usize, usize)
     {
-        // ClickStatement = "click", Name, "href", Str => ActionFn(46);
+        // ClickStatement = "click", Name, "href", Str => ActionFn(47);
         assert!(__symbols.len() >= 4);
         let __sym3 = __pop_Variant1(__symbols);
         let __sym2 = __pop_Variant0(__symbols);
@@ -3556,7 +3565,7 @@ mod __parse__Actions {
         let __sym0 = __pop_Variant0(__symbols);
         let __start = __sym0.0.clone();
         let __end = __sym3.2.clone();
-        let __nt = super::__action46::<>(arena, control, __sym0, __sym1, __sym2, __sym3);
+        let __nt = super::__action47::<>(arena, control, __sym0, __sym1, __sym2, __sym3);
         __symbols.push((__start, __Symbol::Variant7(__nt), __end));
         (4, 10)
     }
@@ -3569,29 +3578,7 @@ mod __parse__Actions {
         _: core::marker::PhantomData<()>,
     ) -> (usize, usize)
     {
-        // ClickStatement = "click", Name, "href", Str, LinkTarget => ActionFn(47);
-        assert!(__symbols.len() >= 5);
-        let __sym4 = __pop_Variant1(__symbols);
-        let __sym3 = __pop_Variant1(__symbols);
-        let __sym2 = __pop_Variant0(__symbols);
-        let __sym1 = __pop_Variant1(__symbols);
-        let __sym0 = __pop_Variant0(__symbols);
-        let __start = __sym0.0.clone();
-        let __end = __sym4.2.clone();
-        let __nt = super::__action47::<>(arena, control, __sym0, __sym1, __sym2, __sym3, __sym4);
-        __symbols.push((__start, __Symbol::Variant7(__nt), __end));
-        (5, 10)
-    }
-    fn __reduce49<
-    >(
-        arena: &mut ActionArena,
-        control: &crate::OperationControl,
-        __lookahead_start: Option<&usize>,
-        __symbols: &mut alloc::vec::Vec<(usize,__Symbol<>,usize)>,
-        _: core::marker::PhantomData<()>,
-    ) -> (usize, usize)
-    {
-        // ClickStatement = "click", Name, "href", Str, Str => ActionFn(48);
+        // ClickStatement = "click", Name, "href", Str, LinkTarget => ActionFn(48);
         assert!(__symbols.len() >= 5);
         let __sym4 = __pop_Variant1(__symbols);
         let __sym3 = __pop_Variant1(__symbols);
@@ -3604,6 +3591,28 @@ mod __parse__Actions {
         __symbols.push((__start, __Symbol::Variant7(__nt), __end));
         (5, 10)
     }
+    fn __reduce49<
+    >(
+        arena: &mut ActionArena,
+        control: &crate::OperationControl,
+        __lookahead_start: Option<&usize>,
+        __symbols: &mut alloc::vec::Vec<(usize,__Symbol<>,usize)>,
+        _: core::marker::PhantomData<()>,
+    ) -> (usize, usize)
+    {
+        // ClickStatement = "click", Name, "href", Str, Str => ActionFn(49);
+        assert!(__symbols.len() >= 5);
+        let __sym4 = __pop_Variant1(__symbols);
+        let __sym3 = __pop_Variant1(__symbols);
+        let __sym2 = __pop_Variant0(__symbols);
+        let __sym1 = __pop_Variant1(__symbols);
+        let __sym0 = __pop_Variant0(__symbols);
+        let __start = __sym0.0.clone();
+        let __end = __sym4.2.clone();
+        let __nt = super::__action49::<>(arena, control, __sym0, __sym1, __sym2, __sym3, __sym4);
+        __symbols.push((__start, __Symbol::Variant7(__nt), __end));
+        (5, 10)
+    }
     fn __reduce50<
     >(
         arena: &mut ActionArena,
@@ -3613,7 +3622,7 @@ mod __parse__Actions {
         _: core::marker::PhantomData<()>,
     ) -> (usize, usize)
     {
-        // ClickStatement = "click", Name, "href", Str, Str, LinkTarget => ActionFn(49);
+        // ClickStatement = "click", Name, "href", Str, Str, LinkTarget => ActionFn(50);
         assert!(__symbols.len() >= 6);
         let __sym5 = __pop_Variant1(__symbols);
         let __sym4 = __pop_Variant1(__symbols);
@@ -3623,7 +3632,7 @@ mod __parse__Actions {
         let __sym0 = __pop_Variant0(__symbols);
         let __start = __sym0.0.clone();
         let __end = __sym5.2.clone();
-        let __nt = super::__action49::<>(arena, control, __sym0, __sym1, __sym2, __sym3, __sym4, __sym5);
+        let __nt = super::__action50::<>(arena, control, __sym0, __sym1, __sym2, __sym3, __sym4, __sym5);
         __symbols.push((__start, __Symbol::Variant7(__nt), __end));
         (6, 10)
     }
@@ -3636,14 +3645,14 @@ mod __parse__Actions {
         _: core::marker::PhantomData<()>,
     ) -> (usize, usize)
     {
-        // ClickStatement = "callback", Name, Str => ActionFn(50);
+        // ClickStatement = "callback", Name, Str => ActionFn(51);
         assert!(__symbols.len() >= 3);
         let __sym2 = __pop_Variant1(__symbols);
         let __sym1 = __pop_Variant1(__symbols);
         let __sym0 = __pop_Variant0(__symbols);
         let __start = __sym0.0.clone();
         let __end = __sym2.2.clone();
-        let __nt = super::__action50::<>(arena, control, __sym0, __sym1, __sym2);
+        let __nt = super::__action51::<>(arena, control, __sym0, __sym1, __sym2);
         __symbols.push((__start, __Symbol::Variant7(__nt), __end));
         (3, 10)
     }
@@ -3656,7 +3665,7 @@ mod __parse__Actions {
         _: core::marker::PhantomData<()>,
     ) -> (usize, usize)
     {
-        // ClickStatement = "callback", Name, Str, Str => ActionFn(51);
+        // ClickStatement = "callback", Name, Str, Str => ActionFn(52);
         assert!(__symbols.len() >= 4);
         let __sym3 = __pop_Variant1(__symbols);
         let __sym2 = __pop_Variant1(__symbols);
@@ -3664,7 +3673,7 @@ mod __parse__Actions {
         let __sym0 = __pop_Variant0(__symbols);
         let __start = __sym0.0.clone();
         let __end = __sym3.2.clone();
-        let __nt = super::__action51::<>(arena, control, __sym0, __sym1, __sym2, __sym3);
+        let __nt = super::__action52::<>(arena, control, __sym0, __sym1, __sym2, __sym3);
         __symbols.push((__start, __Symbol::Variant7(__nt), __end));
         (4, 10)
     }
@@ -3677,7 +3686,7 @@ mod __parse__Actions {
         _: core::marker::PhantomData<()>,
     ) -> (usize, usize)
     {
-        // ClickStatement = "click", Name, "call", CallbackName => ActionFn(52);
+        // ClickStatement = "click", Name, "call", CallbackName => ActionFn(53);
         assert!(__symbols.len() >= 4);
         let __sym3 = __pop_Variant1(__symbols);
         let __sym2 = __pop_Variant0(__symbols);
@@ -3685,7 +3694,7 @@ mod __parse__Actions {
         let __sym0 = __pop_Variant0(__symbols);
         let __start = __sym0.0.clone();
         let __end = __sym3.2.clone();
-        let __nt = super::__action52::<>(arena, control, __sym0, __sym1, __sym2, __sym3);
+        let __nt = super::__action53::<>(arena, control, __sym0, __sym1, __sym2, __sym3);
         __symbols.push((__start, __Symbol::Variant7(__nt), __end));
         (4, 10)
     }
@@ -3698,29 +3707,7 @@ mod __parse__Actions {
         _: core::marker::PhantomData<()>,
     ) -> (usize, usize)
     {
-        // ClickStatement = "click", Name, "call", CallbackName, Str => ActionFn(53);
-        assert!(__symbols.len() >= 5);
-        let __sym4 = __pop_Variant1(__symbols);
-        let __sym3 = __pop_Variant1(__symbols);
-        let __sym2 = __pop_Variant0(__symbols);
-        let __sym1 = __pop_Variant1(__symbols);
-        let __sym0 = __pop_Variant0(__symbols);
-        let __start = __sym0.0.clone();
-        let __end = __sym4.2.clone();
-        let __nt = super::__action53::<>(arena, control, __sym0, __sym1, __sym2, __sym3, __sym4);
-        __symbols.push((__start, __Symbol::Variant7(__nt), __end));
-        (5, 10)
-    }
-    fn __reduce55<
-    >(
-        arena: &mut ActionArena,
-        control: &crate::OperationControl,
-        __lookahead_start: Option<&usize>,
-        __symbols: &mut alloc::vec::Vec<(usize,__Symbol<>,usize)>,
-        _: core::marker::PhantomData<()>,
-    ) -> (usize, usize)
-    {
-        // ClickStatement = "click", Name, "call", CallbackName, CallbackArgs => ActionFn(54);
+        // ClickStatement = "click", Name, "call", CallbackName, Str => ActionFn(54);
         assert!(__symbols.len() >= 5);
         let __sym4 = __pop_Variant1(__symbols);
         let __sym3 = __pop_Variant1(__symbols);
@@ -3733,6 +3720,28 @@ mod __parse__Actions {
         __symbols.push((__start, __Symbol::Variant7(__nt), __end));
         (5, 10)
     }
+    fn __reduce55<
+    >(
+        arena: &mut ActionArena,
+        control: &crate::OperationControl,
+        __lookahead_start: Option<&usize>,
+        __symbols: &mut alloc::vec::Vec<(usize,__Symbol<>,usize)>,
+        _: core::marker::PhantomData<()>,
+    ) -> (usize, usize)
+    {
+        // ClickStatement = "click", Name, "call", CallbackName, CallbackArgs => ActionFn(55);
+        assert!(__symbols.len() >= 5);
+        let __sym4 = __pop_Variant1(__symbols);
+        let __sym3 = __pop_Variant1(__symbols);
+        let __sym2 = __pop_Variant0(__symbols);
+        let __sym1 = __pop_Variant1(__symbols);
+        let __sym0 = __pop_Variant0(__symbols);
+        let __start = __sym0.0.clone();
+        let __end = __sym4.2.clone();
+        let __nt = super::__action55::<>(arena, control, __sym0, __sym1, __sym2, __sym3, __sym4);
+        __symbols.push((__start, __Symbol::Variant7(__nt), __end));
+        (5, 10)
+    }
     fn __reduce56<
     >(
         arena: &mut ActionArena,
@@ -3742,7 +3751,7 @@ mod __parse__Actions {
         _: core::marker::PhantomData<()>,
     ) -> (usize, usize)
     {
-        // ClickStatement = "click", Name, "call", CallbackName, CallbackArgs, Str => ActionFn(55);
+        // ClickStatement = "click", Name, "call", CallbackName, CallbackArgs, Str => ActionFn(56);
         assert!(__symbols.len() >= 6);
         let __sym5 = __pop_Variant1(__symbols);
         let __sym4 = __pop_Variant1(__symbols);
@@ -3752,7 +3761,7 @@ mod __parse__Actions {
         let __sym0 = __pop_Variant0(__symbols);
         let __start = __sym0.0.clone();
         let __end = __sym5.2.clone();
-        let __nt = super::__action55::<>(arena, control, __sym0, __sym1, __sym2, __sym3, __sym4, __sym5);
+        let __nt = super::__action56::<>(arena, control, __sym0, __sym1, __sym2, __sym3, __sym4, __sym5);
         __symbols.push((__start, __Symbol::Variant7(__nt), __end));
         (6, 10)
     }
@@ -3765,14 +3774,14 @@ mod __parse__Actions {
         _: core::marker::PhantomData<()>,
     ) -> (usize, usize)
     {
-        // CssClassStatement = "cssClass", Str, Name => ActionFn(37);
+        // CssClassStatement = "cssClass", Str, Name => ActionFn(38);
         assert!(__symbols.len() >= 3);
         let __sym2 = __pop_Variant1(__symbols);
         let __sym1 = __pop_Variant1(__symbols);
         let __sym0 = __pop_Variant0(__symbols);
         let __start = __sym0.0.clone();
         let __end = __sym2.2.clone();
-        let __nt = super::__action37::<>(arena, control, __sym0, __sym1, __sym2);
+        let __nt = super::__action38::<>(arena, control, __sym0, __sym1, __sym2);
         __symbols.push((__start, __Symbol::Variant3(__nt), __end));
         (3, 11)
     }
@@ -3785,13 +3794,13 @@ mod __parse__Actions {
         _: core::marker::PhantomData<()>,
     ) -> (usize, usize)
     {
-        // CssShorthand = StyleSeparator, Name => ActionFn(28);
+        // CssShorthand = StyleSeparator, Name => ActionFn(29);
         assert!(__symbols.len() >= 2);
         let __sym1 = __pop_Variant1(__symbols);
         let __sym0 = __pop_Variant0(__symbols);
         let __start = __sym0.0.clone();
         let __end = __sym1.2.clone();
-        let __nt = super::__action28::<>(arena, control, __sym0, __sym1);
+        let __nt = super::__action29::<>(arena, control, __sym0, __sym1);
         __symbols.push((__start, __Symbol::Variant1(__nt), __end));
         (2, 12)
     }
@@ -3804,11 +3813,11 @@ mod __parse__Actions {
         _: core::marker::PhantomData<()>,
     ) -> (usize, usize)
     {
-        // CssShorthand? = CssShorthand => ActionFn(81);
+        // CssShorthand? = CssShorthand => ActionFn(82);
         let __sym0 = __pop_Variant1(__symbols);
         let __start = __sym0.0.clone();
         let __end = __sym0.2.clone();
-        let __nt = super::__action81::<>(arena, control, __sym0);
+        let __nt = super::__action82::<>(arena, control, __sym0);
         __symbols.push((__start, __Symbol::Variant6(__nt), __end));
         (1, 13)
     }
@@ -3821,10 +3830,10 @@ mod __parse__Actions {
         _: core::marker::PhantomData<()>,
     ) -> (usize, usize)
     {
-        // CssShorthand? =  => ActionFn(82);
+        // CssShorthand? =  => ActionFn(83);
         let __start = __lookahead_start.cloned().or_else(|| __symbols.last().map(|s| s.2.clone())).unwrap_or_default();
         let __end = __start.clone();
-        let __nt = super::__action82::<>(arena, control, &__start, &__end);
+        let __nt = super::__action83::<>(arena, control, &__start, &__end);
         __symbols.push((__start, __Symbol::Variant6(__nt), __end));
         (0, 13)
     }
@@ -3837,14 +3846,14 @@ mod __parse__Actions {
         _: core::marker::PhantomData<()>,
     ) -> (usize, usize)
     {
-        // InlineAnnotation = AnnotationStart, Name, AnnotationStop => ActionFn(27);
+        // InlineAnnotation = AnnotationStart, Name, AnnotationStop => ActionFn(28);
         assert!(__symbols.len() >= 3);
         let __sym2 = __pop_Variant0(__symbols);
         let __sym1 = __pop_Variant1(__symbols);
         let __sym0 = __pop_Variant0(__symbols);
         let __start = __sym0.0.clone();
         let __end = __sym2.2.clone();
-        let __nt = super::__action27::<>(arena, control, __sym0, __sym1, __sym2);
+        let __nt = super::__action28::<>(arena, control, __sym0, __sym1, __sym2);
         __symbols.push((__start, __Symbol::Variant1(__nt), __end));
         (3, 14)
     }
@@ -3857,11 +3866,11 @@ mod __parse__Actions {
         _: core::marker::PhantomData<()>,
     ) -> (usize, usize)
     {
-        // InlineAnnotation? = InlineAnnotation => ActionFn(83);
+        // InlineAnnotation? = InlineAnnotation => ActionFn(84);
         let __sym0 = __pop_Variant1(__symbols);
         let __start = __sym0.0.clone();
         let __end = __sym0.2.clone();
-        let __nt = super::__action83::<>(arena, control, __sym0);
+        let __nt = super::__action84::<>(arena, control, __sym0);
         __symbols.push((__start, __Symbol::Variant6(__nt), __end));
         (1, 15)
     }
@@ -3874,10 +3883,10 @@ mod __parse__Actions {
         _: core::marker::PhantomData<()>,
     ) -> (usize, usize)
     {
-        // InlineAnnotation? =  => ActionFn(84);
+        // InlineAnnotation? =  => ActionFn(85);
         let __start = __lookahead_start.cloned().or_else(|| __symbols.last().map(|s| s.2.clone())).unwrap_or_default();
         let __end = __start.clone();
-        let __nt = super::__action84::<>(arena, control, &__start, &__end);
+        let __nt = super::__action85::<>(arena, control, &__start, &__end);
         __symbols.push((__start, __Symbol::Variant6(__nt), __end));
         (0, 15)
     }
@@ -3890,11 +3899,11 @@ mod __parse__Actions {
         _: core::marker::PhantomData<()>,
     ) -> (usize, usize)
     {
-        // LineType = Line => ActionFn(77);
+        // LineType = Line => ActionFn(78);
         let __sym0 = __pop_Variant0(__symbols);
         let __start = __sym0.0.clone();
         let __end = __sym0.2.clone();
-        let __nt = super::__action77::<>(arena, control, __sym0);
+        let __nt = super::__action78::<>(arena, control, __sym0);
         __symbols.push((__start, __Symbol::Variant9(__nt), __end));
         (1, 16)
     }
@@ -3907,11 +3916,11 @@ mod __parse__Actions {
         _: core::marker::PhantomData<()>,
     ) -> (usize, usize)
     {
-        // LineType = DottedLine => ActionFn(78);
+        // LineType = DottedLine => ActionFn(79);
         let __sym0 = __pop_Variant0(__symbols);
         let __start = __sym0.0.clone();
         let __end = __sym0.2.clone();
-        let __nt = super::__action78::<>(arena, control, __sym0);
+        let __nt = super::__action79::<>(arena, control, __sym0);
         __symbols.push((__start, __Symbol::Variant9(__nt), __end));
         (1, 16)
     }
@@ -3924,11 +3933,11 @@ mod __parse__Actions {
         _: core::marker::PhantomData<()>,
     ) -> (usize, usize)
     {
-        // MemberLine = Member => ActionFn(32);
+        // MemberLine = Member => ActionFn(33);
         let __sym0 = __pop_Variant1(__symbols);
         let __start = __sym0.0.clone();
         let __end = __sym0.2.clone();
-        let __nt = super::__action32::<>(arena, control, __sym0);
+        let __nt = super::__action33::<>(arena, control, __sym0);
         __symbols.push((__start, __Symbol::Variant1(__nt), __end));
         (1, 17)
     }
@@ -3941,13 +3950,13 @@ mod __parse__Actions {
         _: core::marker::PhantomData<()>,
     ) -> (usize, usize)
     {
-        // MemberStatement = Name, Label => ActionFn(33);
+        // MemberStatement = Name, Label => ActionFn(34);
         assert!(__symbols.len() >= 2);
         let __sym1 = __pop_Variant1(__symbols);
         let __sym0 = __pop_Variant1(__symbols);
         let __start = __sym0.0.clone();
         let __end = __sym1.2.clone();
-        let __nt = super::__action33::<>(arena, control, __sym0, __sym1);
+        let __nt = super::__action34::<>(arena, control, __sym0, __sym1);
         __symbols.push((__start, __Symbol::Variant3(__nt), __end));
         (2, 18)
     }
@@ -3960,10 +3969,10 @@ mod __parse__Actions {
         _: core::marker::PhantomData<()>,
     ) -> (usize, usize)
     {
-        // Members =  => ActionFn(30);
+        // Members =  => ActionFn(31);
         let __start = __lookahead_start.cloned().or_else(|| __symbols.last().map(|s| s.2.clone())).unwrap_or_default();
         let __end = __start.clone();
-        let __nt = super::__action30::<>(arena, control, &__start, &__end);
+        let __nt = super::__action31::<>(arena, control, &__start, &__end);
         __symbols.push((__start, __Symbol::Variant4(__nt), __end));
         (0, 19)
     }
@@ -3976,13 +3985,13 @@ mod __parse__Actions {
         _: core::marker::PhantomData<()>,
     ) -> (usize, usize)
     {
-        // Members = MemberLine, Members => ActionFn(31);
+        // Members = MemberLine, Members => ActionFn(32);
         assert!(__symbols.len() >= 2);
         let __sym1 = __pop_Variant4(__symbols);
         let __sym0 = __pop_Variant1(__symbols);
         let __start = __sym0.0.clone();
         let __end = __sym1.2.clone();
-        let __nt = super::__action31::<>(arena, control, __sym0, __sym1);
+        let __nt = super::__action32::<>(arena, control, __sym0, __sym1);
         __symbols.push((__start, __Symbol::Variant4(__nt), __end));
         (2, 19)
     }
@@ -3995,11 +4004,11 @@ mod __parse__Actions {
         _: core::marker::PhantomData<()>,
     ) -> (usize, usize)
     {
-        // NamespaceClassItem = NamespaceStatement => ActionFn(63);
+        // NamespaceClassItem = NamespaceStatement => ActionFn(64);
         let __sym0 = __pop_Variant2(__symbols);
         let __start = __sym0.0.clone();
         let __end = __sym0.2.clone();
-        let __nt = super::__action63::<>(arena, control, __sym0);
+        let __nt = super::__action64::<>(arena, control, __sym0);
         __symbols.push((__start, __Symbol::Variant10(__nt), __end));
         (1, 20)
     }
@@ -4012,10 +4021,10 @@ mod __parse__Actions {
         _: core::marker::PhantomData<()>,
     ) -> (usize, usize)
     {
-        // NamespaceClasses =  => ActionFn(57);
+        // NamespaceClasses =  => ActionFn(58);
         let __start = __lookahead_start.cloned().or_else(|| __symbols.last().map(|s| s.2.clone())).unwrap_or_default();
         let __end = __start.clone();
-        let __nt = super::__action57::<>(arena, control, &__start, &__end);
+        let __nt = super::__action58::<>(arena, control, &__start, &__end);
         __symbols.push((__start, __Symbol::Variant10(__nt), __end));
         (0, 21)
     }
@@ -4028,11 +4037,11 @@ mod __parse__Actions {
         _: core::marker::PhantomData<()>,
     ) -> (usize, usize)
     {
-        // NamespaceClassesRest = Newlines => ActionFn(60);
+        // NamespaceClassesRest = Newlines => ActionFn(61);
         let __sym0 = __pop_Variant11(__symbols);
         let __start = __sym0.0.clone();
         let __end = __sym0.2.clone();
-        let __nt = super::__action60::<>(arena, control, __sym0);
+        let __nt = super::__action61::<>(arena, control, __sym0);
         __symbols.push((__start, __Symbol::Variant10(__nt), __end));
         (1, 22)
     }
@@ -4099,14 +4108,14 @@ mod __parse__Actions {
         _: core::marker::PhantomData<()>,
     ) -> (usize, usize)
     {
-        // NoteStatement = "note_for", Name, Str => ActionFn(35);
+        // NoteStatement = "note_for", Name, Str => ActionFn(36);
         assert!(__symbols.len() >= 3);
         let __sym2 = __pop_Variant1(__symbols);
         let __sym1 = __pop_Variant1(__symbols);
         let __sym0 = __pop_Variant0(__symbols);
         let __start = __sym0.0.clone();
         let __end = __sym2.2.clone();
-        let __nt = super::__action35::<>(arena, control, __sym0, __sym1, __sym2);
+        let __nt = super::__action36::<>(arena, control, __sym0, __sym1, __sym2);
         __symbols.push((__start, __Symbol::Variant3(__nt), __end));
         (3, 26)
     }
@@ -4119,13 +4128,13 @@ mod __parse__Actions {
         _: core::marker::PhantomData<()>,
     ) -> (usize, usize)
     {
-        // NoteStatement = "note", Str => ActionFn(36);
+        // NoteStatement = "note", Str => ActionFn(37);
         assert!(__symbols.len() >= 2);
         let __sym1 = __pop_Variant1(__symbols);
         let __sym0 = __pop_Variant0(__symbols);
         let __start = __sym0.0.clone();
         let __end = __sym1.2.clone();
-        let __nt = super::__action36::<>(arena, control, __sym0, __sym1);
+        let __nt = super::__action37::<>(arena, control, __sym0, __sym1);
         __symbols.push((__start, __Symbol::Variant3(__nt), __end));
         (2, 26)
     }
@@ -4138,14 +4147,14 @@ mod __parse__Actions {
         _: core::marker::PhantomData<()>,
     ) -> (usize, usize)
     {
-        // Relation = RelationType, LineType, RelationType => ActionFn(68);
+        // Relation = RelationType, LineType, RelationType => ActionFn(69);
         assert!(__symbols.len() >= 3);
         let __sym2 = __pop_Variant9(__symbols);
         let __sym1 = __pop_Variant9(__symbols);
         let __sym0 = __pop_Variant9(__symbols);
         let __start = __sym0.0.clone();
         let __end = __sym2.2.clone();
-        let __nt = super::__action68::<>(arena, control, __sym0, __sym1, __sym2);
+        let __nt = super::__action69::<>(arena, control, __sym0, __sym1, __sym2);
         __symbols.push((__start, __Symbol::Variant12(__nt), __end));
         (3, 27)
     }
@@ -4158,13 +4167,13 @@ mod __parse__Actions {
         _: core::marker::PhantomData<()>,
     ) -> (usize, usize)
     {
-        // Relation = LineType, RelationType => ActionFn(69);
+        // Relation = LineType, RelationType => ActionFn(70);
         assert!(__symbols.len() >= 2);
         let __sym1 = __pop_Variant9(__symbols);
         let __sym0 = __pop_Variant9(__symbols);
         let __start = __sym0.0.clone();
         let __end = __sym1.2.clone();
-        let __nt = super::__action69::<>(arena, control, __sym0, __sym1);
+        let __nt = super::__action70::<>(arena, control, __sym0, __sym1);
         __symbols.push((__start, __Symbol::Variant12(__nt), __end));
         (2, 27)
     }
@@ -4177,13 +4186,13 @@ mod __parse__Actions {
         _: core::marker::PhantomData<()>,
     ) -> (usize, usize)
     {
-        // Relation = RelationType, LineType => ActionFn(70);
+        // Relation = RelationType, LineType => ActionFn(71);
         assert!(__symbols.len() >= 2);
         let __sym1 = __pop_Variant9(__symbols);
         let __sym0 = __pop_Variant9(__symbols);
         let __start = __sym0.0.clone();
         let __end = __sym1.2.clone();
-        let __nt = super::__action70::<>(arena, control, __sym0, __sym1);
+        let __nt = super::__action71::<>(arena, control, __sym0, __sym1);
         __symbols.push((__start, __Symbol::Variant12(__nt), __end));
         (2, 27)
     }
@@ -4196,11 +4205,11 @@ mod __parse__Actions {
         _: core::marker::PhantomData<()>,
     ) -> (usize, usize)
     {
-        // Relation = LineType => ActionFn(71);
+        // Relation = LineType => ActionFn(72);
         let __sym0 = __pop_Variant9(__symbols);
         let __start = __sym0.0.clone();
         let __end = __sym0.2.clone();
-        let __nt = super::__action71::<>(arena, control, __sym0);
+        let __nt = super::__action72::<>(arena, control, __sym0);
         __symbols.push((__start, __Symbol::Variant12(__nt), __end));
         (1, 27)
     }
@@ -4213,14 +4222,14 @@ mod __parse__Actions {
         _: core::marker::PhantomData<()>,
     ) -> (usize, usize)
     {
-        // RelationStatement = Name, Relation, Name => ActionFn(64);
+        // RelationStatement = Name, Relation, Name => ActionFn(65);
         assert!(__symbols.len() >= 3);
         let __sym2 = __pop_Variant1(__symbols);
         let __sym1 = __pop_Variant12(__symbols);
         let __sym0 = __pop_Variant1(__symbols);
         let __start = __sym0.0.clone();
         let __end = __sym2.2.clone();
-        let __nt = super::__action64::<>(arena, control, __sym0, __sym1, __sym2);
+        let __nt = super::__action65::<>(arena, control, __sym0, __sym1, __sym2);
         __symbols.push((__start, __Symbol::Variant13(__nt), __end));
         (3, 28)
     }
@@ -4233,7 +4242,7 @@ mod __parse__Actions {
         _: core::marker::PhantomData<()>,
     ) -> (usize, usize)
     {
-        // RelationStatement = Name, Str, Relation, Name => ActionFn(65);
+        // RelationStatement = Name, Str, Relation, Name => ActionFn(66);
         assert!(__symbols.len() >= 4);
         let __sym3 = __pop_Variant1(__symbols);
         let __sym2 = __pop_Variant12(__symbols);
@@ -4241,7 +4250,7 @@ mod __parse__Actions {
         let __sym0 = __pop_Variant1(__symbols);
         let __start = __sym0.0.clone();
         let __end = __sym3.2.clone();
-        let __nt = super::__action65::<>(arena, control, __sym0, __sym1, __sym2, __sym3);
+        let __nt = super::__action66::<>(arena, control, __sym0, __sym1, __sym2, __sym3);
         __symbols.push((__start, __Symbol::Variant13(__nt), __end));
         (4, 28)
     }
@@ -4254,7 +4263,7 @@ mod __parse__Actions {
         _: core::marker::PhantomData<()>,
     ) -> (usize, usize)
     {
-        // RelationStatement = Name, Relation, Str, Name => ActionFn(66);
+        // RelationStatement = Name, Relation, Str, Name => ActionFn(67);
         assert!(__symbols.len() >= 4);
         let __sym3 = __pop_Variant1(__symbols);
         let __sym2 = __pop_Variant1(__symbols);
@@ -4262,7 +4271,7 @@ mod __parse__Actions {
         let __sym0 = __pop_Variant1(__symbols);
         let __start = __sym0.0.clone();
         let __end = __sym3.2.clone();
-        let __nt = super::__action66::<>(arena, control, __sym0, __sym1, __sym2, __sym3);
+        let __nt = super::__action67::<>(arena, control, __sym0, __sym1, __sym2, __sym3);
         __symbols.push((__start, __Symbol::Variant13(__nt), __end));
         (4, 28)
     }
@@ -4275,7 +4284,7 @@ mod __parse__Actions {
         _: core::marker::PhantomData<()>,
     ) -> (usize, usize)
     {
-        // RelationStatement = Name, Str, Relation, Str, Name => ActionFn(67);
+        // RelationStatement = Name, Str, Relation, Str, Name => ActionFn(68);
         assert!(__symbols.len() >= 5);
         let __sym4 = __pop_Variant1(__symbols);
         let __sym3 = __pop_Variant1(__symbols);
@@ -4284,7 +4293,7 @@ mod __parse__Actions {
         let __sym0 = __pop_Variant1(__symbols);
         let __start = __sym0.0.clone();
         let __end = __sym4.2.clone();
-        let __nt = super::__action67::<>(arena, control, __sym0, __sym1, __sym2, __sym3, __sym4);
+        let __nt = super::__action68::<>(arena, control, __sym0, __sym1, __sym2, __sym3, __sym4);
         __symbols.push((__start, __Symbol::Variant13(__nt), __end));
         (5, 28)
     }
@@ -4297,11 +4306,11 @@ mod __parse__Actions {
         _: core::marker::PhantomData<()>,
     ) -> (usize, usize)
     {
-        // RelationType = Agg => ActionFn(72);
+        // RelationType = Agg => ActionFn(73);
         let __sym0 = __pop_Variant0(__symbols);
         let __start = __sym0.0.clone();
         let __end = __sym0.2.clone();
-        let __nt = super::__action72::<>(arena, control, __sym0);
+        let __nt = super::__action73::<>(arena, control, __sym0);
         __symbols.push((__start, __Symbol::Variant9(__nt), __end));
         (1, 29)
     }
@@ -4314,11 +4323,11 @@ mod __parse__Actions {
         _: core::marker::PhantomData<()>,
     ) -> (usize, usize)
     {
-        // RelationType = Ext => ActionFn(73);
+        // RelationType = Ext => ActionFn(74);
         let __sym0 = __pop_Variant0(__symbols);
         let __start = __sym0.0.clone();
         let __end = __sym0.2.clone();
-        let __nt = super::__action73::<>(arena, control, __sym0);
+        let __nt = super::__action74::<>(arena, control, __sym0);
         __symbols.push((__start, __Symbol::Variant9(__nt), __end));
         (1, 29)
     }
@@ -4331,11 +4340,11 @@ mod __parse__Actions {
         _: core::marker::PhantomData<()>,
     ) -> (usize, usize)
     {
-        // RelationType = Comp => ActionFn(74);
+        // RelationType = Comp => ActionFn(75);
         let __sym0 = __pop_Variant0(__symbols);
         let __start = __sym0.0.clone();
         let __end = __sym0.2.clone();
-        let __nt = super::__action74::<>(arena, control, __sym0);
+        let __nt = super::__action75::<>(arena, control, __sym0);
         __symbols.push((__start, __Symbol::Variant9(__nt), __end));
         (1, 29)
     }
@@ -4348,11 +4357,11 @@ mod __parse__Actions {
         _: core::marker::PhantomData<()>,
     ) -> (usize, usize)
     {
-        // RelationType = Dep => ActionFn(75);
+        // RelationType = Dep => ActionFn(76);
         let __sym0 = __pop_Variant0(__symbols);
         let __start = __sym0.0.clone();
         let __end = __sym0.2.clone();
-        let __nt = super::__action75::<>(arena, control, __sym0);
+        let __nt = super::__action76::<>(arena, control, __sym0);
         __symbols.push((__start, __Symbol::Variant9(__nt), __end));
         (1, 29)
     }
@@ -4365,15 +4374,15 @@ mod __parse__Actions {
         _: core::marker::PhantomData<()>,
     ) -> (usize, usize)
     {
-        // RelationType = Lollipop => ActionFn(76);
+        // RelationType = Lollipop => ActionFn(77);
         let __sym0 = __pop_Variant0(__symbols);
         let __start = __sym0.0.clone();
         let __end = __sym0.2.clone();
-        let __nt = super::__action76::<>(arena, control, __sym0);
+        let __nt = super::__action77::<>(arena, control, __sym0);
         __symbols.push((__start, __Symbol::Variant9(__nt), __end));
         (1, 29)
     }
-    fn __reduce109<
+    fn __reduce102<
     >(
         arena: &mut ActionArena,
         control: &crate::OperationControl,
@@ -4382,15 +4391,15 @@ mod __parse__Actions {
         _: core::marker::PhantomData<()>,
     ) -> (usize, usize)
     {
-        // Statement = ClassDefStatement => ActionFn(21);
-        let __sym0 = __pop_Variant2(__symbols);
+        // Statement = Name => ActionFn(14);
+        let __sym0 = __pop_Variant1(__symbols);
         let __start = __sym0.0.clone();
         let __end = __sym0.2.clone();
-        let __nt = super::__action21::<>(arena, control, __sym0);
+        let __nt = super::__action14::<>(arena, control, __sym0);
         __symbols.push((__start, __Symbol::Variant2(__nt), __end));
         (1, 30)
     }
-    fn __reduce111<
+    fn __reduce110<
     >(
         arena: &mut ActionArena,
         control: &crate::OperationControl,
@@ -4399,15 +4408,32 @@ mod __parse__Actions {
         _: core::marker::PhantomData<()>,
     ) -> (usize, usize)
     {
-        // Statement = NamespaceStatement => ActionFn(23);
+        // Statement = ClassDefStatement => ActionFn(22);
         let __sym0 = __pop_Variant2(__symbols);
         let __start = __sym0.0.clone();
         let __end = __sym0.2.clone();
-        let __nt = super::__action23::<>(arena, control, __sym0);
+        let __nt = super::__action22::<>(arena, control, __sym0);
         __symbols.push((__start, __Symbol::Variant2(__nt), __end));
         (1, 30)
     }
-    fn __reduce113<
+    fn __reduce112<
+    >(
+        arena: &mut ActionArena,
+        control: &crate::OperationControl,
+        __lookahead_start: Option<&usize>,
+        __symbols: &mut alloc::vec::Vec<(usize,__Symbol<>,usize)>,
+        _: core::marker::PhantomData<()>,
+    ) -> (usize, usize)
+    {
+        // Statement = NamespaceStatement => ActionFn(24);
+        let __sym0 = __pop_Variant2(__symbols);
+        let __start = __sym0.0.clone();
+        let __end = __sym0.2.clone();
+        let __nt = super::__action24::<>(arena, control, __sym0);
+        __symbols.push((__start, __Symbol::Variant2(__nt), __end));
+        (1, 30)
+    }
+    fn __reduce114<
     >(
         arena: &mut ActionArena,
         control: &crate::OperationControl,
@@ -4424,7 +4450,7 @@ mod __parse__Actions {
         __symbols.push((__start, __Symbol::Variant2(__nt), __end));
         (1, 31)
     }
-    fn __reduce114<
+    fn __reduce115<
     >(
         arena: &mut ActionArena,
         control: &crate::OperationControl,
@@ -4440,7 +4466,7 @@ mod __parse__Actions {
         __symbols.push((__start, __Symbol::Variant2(__nt), __end));
         (0, 32)
     }
-    fn __reduce116<
+    fn __reduce117<
     >(
         arena: &mut ActionArena,
         control: &crate::OperationControl,
@@ -4449,14 +4475,14 @@ mod __parse__Actions {
         _: core::marker::PhantomData<()>,
     ) -> (usize, usize)
     {
-        // StyleStatement = "style", Name, RestOfLine => ActionFn(38);
+        // StyleStatement = "style", Name, RestOfLine => ActionFn(39);
         assert!(__symbols.len() >= 3);
         let __sym2 = __pop_Variant1(__symbols);
         let __sym1 = __pop_Variant1(__symbols);
         let __sym0 = __pop_Variant0(__symbols);
         let __start = __sym0.0.clone();
         let __end = __sym2.2.clone();
-        let __nt = super::__action38::<>(arena, control, __sym0, __sym1, __sym2);
+        let __nt = super::__action39::<>(arena, control, __sym0, __sym1, __sym2);
         __symbols.push((__start, __Symbol::Variant3(__nt), __end));
         (3, 33)
     }
@@ -4645,6 +4671,18 @@ fn __action14<
 >(
     arena: &mut ActionArena,
     control: &crate::OperationControl,
+    (_, _name, _): (usize, String, usize),
+) -> ActionList
+{
+    ActionList::default()
+}
+
+#[allow(unused_variables)]
+#[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits, clippy::extra_unused_type_parameters)]
+fn __action15<
+>(
+    arena: &mut ActionArena,
+    control: &crate::OperationControl,
     (_, m, _): (usize, Action, usize),
 ) -> Result<ActionList,__lalrpop_util::ParseError<usize,Tok,crate::diagrams::class::LexError>>
 {
@@ -4653,7 +4691,7 @@ fn __action14<
 
 #[allow(unused_variables)]
 #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits, clippy::extra_unused_type_parameters)]
-fn __action15<
+fn __action16<
 >(
     arena: &mut ActionArena,
     control: &crate::OperationControl,
@@ -4665,7 +4703,7 @@ fn __action15<
 
 #[allow(unused_variables)]
 #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits, clippy::extra_unused_type_parameters)]
-fn __action16<
+fn __action17<
 >(
     arena: &mut ActionArena,
     control: &crate::OperationControl,
@@ -4677,7 +4715,7 @@ fn __action16<
 
 #[allow(unused_variables)]
 #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits, clippy::extra_unused_type_parameters)]
-fn __action17<
+fn __action18<
 >(
     arena: &mut ActionArena,
     control: &crate::OperationControl,
@@ -4690,7 +4728,7 @@ fn __action17<
 
 #[allow(unused_variables)]
 #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits, clippy::extra_unused_type_parameters)]
-fn __action18<
+fn __action19<
 >(
     arena: &mut ActionArena,
     control: &crate::OperationControl,
@@ -4702,7 +4740,7 @@ fn __action18<
 
 #[allow(unused_variables)]
 #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits, clippy::extra_unused_type_parameters)]
-fn __action19<
+fn __action20<
 >(
     arena: &mut ActionArena,
     control: &crate::OperationControl,
@@ -4714,7 +4752,7 @@ fn __action19<
 
 #[allow(unused_variables)]
 #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits, clippy::extra_unused_type_parameters)]
-fn __action20<
+fn __action21<
 >(
     arena: &mut ActionArena,
     control: &crate::OperationControl,
@@ -4726,7 +4764,7 @@ fn __action20<
 
 #[allow(unused_variables)]
 #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits, clippy::extra_unused_type_parameters)]
-fn __action21<
+fn __action22<
 >(
     arena: &mut ActionArena,
     control: &crate::OperationControl,
@@ -4738,7 +4776,7 @@ fn __action21<
 
 #[allow(unused_variables)]
 #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits, clippy::extra_unused_type_parameters)]
-fn __action22<
+fn __action23<
 >(
     arena: &mut ActionArena,
     control: &crate::OperationControl,
@@ -4750,7 +4788,7 @@ fn __action22<
 
 #[allow(unused_variables)]
 #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits, clippy::extra_unused_type_parameters)]
-fn __action23<
+fn __action24<
 >(
     arena: &mut ActionArena,
     control: &crate::OperationControl,
@@ -4762,7 +4800,7 @@ fn __action23<
 
 #[allow(unused_variables)]
 #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits, clippy::extra_unused_type_parameters)]
-fn __action24<
+fn __action25<
 >(
     arena: &mut ActionArena,
     control: &crate::OperationControl,
@@ -4794,7 +4832,7 @@ fn __action24<
 
 #[allow(unused_variables)]
 #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits, clippy::extra_unused_type_parameters)]
-fn __action25<
+fn __action26<
 >(
     arena: &mut ActionArena,
     control: &crate::OperationControl,
@@ -4826,7 +4864,7 @@ fn __action25<
 
 #[allow(unused_variables)]
 #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits, clippy::extra_unused_type_parameters)]
-fn __action26<
+fn __action27<
 >(
     arena: &mut ActionArena,
     control: &crate::OperationControl,
@@ -4840,7 +4878,7 @@ fn __action26<
 
 #[allow(unused_variables)]
 #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits, clippy::extra_unused_type_parameters)]
-fn __action27<
+fn __action28<
 >(
     arena: &mut ActionArena,
     control: &crate::OperationControl,
@@ -4854,7 +4892,7 @@ fn __action27<
 
 #[allow(unused_variables)]
 #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits, clippy::extra_unused_type_parameters)]
-fn __action28<
+fn __action29<
 >(
     arena: &mut ActionArena,
     control: &crate::OperationControl,
@@ -4867,7 +4905,7 @@ fn __action28<
 
 #[allow(unused_variables)]
 #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits, clippy::extra_unused_type_parameters)]
-fn __action29<
+fn __action30<
 >(
     arena: &mut ActionArena,
     control: &crate::OperationControl,
@@ -4881,7 +4919,7 @@ fn __action29<
 
 #[allow(unused_variables)]
 #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits, clippy::extra_unused_type_parameters)]
-fn __action30<
+fn __action31<
 >(
     arena: &mut ActionArena,
     control: &crate::OperationControl,
@@ -4894,7 +4932,7 @@ fn __action30<
 
 #[allow(unused_variables)]
 #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits, clippy::extra_unused_type_parameters)]
-fn __action31<
+fn __action32<
 >(
     arena: &mut ActionArena,
     control: &crate::OperationControl,
@@ -4911,7 +4949,7 @@ fn __action31<
 
 #[allow(unused_variables)]
 #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits, clippy::extra_unused_type_parameters)]
-fn __action32<
+fn __action33<
 >(
     arena: &mut ActionArena,
     control: &crate::OperationControl,
@@ -4923,7 +4961,7 @@ fn __action32<
 
 #[allow(unused_variables)]
 #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits, clippy::extra_unused_type_parameters)]
-fn __action33<
+fn __action34<
 >(
     arena: &mut ActionArena,
     control: &crate::OperationControl,
@@ -4936,7 +4974,7 @@ fn __action33<
 
 #[allow(unused_variables)]
 #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits, clippy::extra_unused_type_parameters)]
-fn __action34<
+fn __action35<
 >(
     arena: &mut ActionArena,
     control: &crate::OperationControl,
@@ -4951,7 +4989,7 @@ fn __action34<
 
 #[allow(unused_variables)]
 #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits, clippy::extra_unused_type_parameters)]
-fn __action35<
+fn __action36<
 >(
     arena: &mut ActionArena,
     control: &crate::OperationControl,
@@ -4965,7 +5003,7 @@ fn __action35<
 
 #[allow(unused_variables)]
 #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits, clippy::extra_unused_type_parameters)]
-fn __action36<
+fn __action37<
 >(
     arena: &mut ActionArena,
     control: &crate::OperationControl,
@@ -4978,7 +5016,7 @@ fn __action36<
 
 #[allow(unused_variables)]
 #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits, clippy::extra_unused_type_parameters)]
-fn __action37<
+fn __action38<
 >(
     arena: &mut ActionArena,
     control: &crate::OperationControl,
@@ -4992,7 +5030,7 @@ fn __action37<
 
 #[allow(unused_variables)]
 #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits, clippy::extra_unused_type_parameters)]
-fn __action38<
+fn __action39<
 >(
     arena: &mut ActionArena,
     control: &crate::OperationControl,
@@ -5006,7 +5044,7 @@ fn __action38<
 
 #[allow(unused_variables)]
 #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits, clippy::extra_unused_type_parameters)]
-fn __action39<
+fn __action40<
 >(
     arena: &mut ActionArena,
     control: &crate::OperationControl,
@@ -5023,7 +5061,7 @@ fn __action39<
 
 #[allow(unused_variables)]
 #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits, clippy::extra_unused_type_parameters)]
-fn __action40<
+fn __action41<
 >(
     arena: &mut ActionArena,
     control: &crate::OperationControl,
@@ -5038,7 +5076,7 @@ fn __action40<
 
 #[allow(unused_variables)]
 #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits, clippy::extra_unused_type_parameters)]
-fn __action41<
+fn __action42<
 >(
     arena: &mut ActionArena,
     control: &crate::OperationControl,
@@ -5056,7 +5094,7 @@ fn __action41<
 
 #[allow(unused_variables)]
 #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits, clippy::extra_unused_type_parameters)]
-fn __action42<
+fn __action43<
 >(
     arena: &mut ActionArena,
     control: &crate::OperationControl,
@@ -5067,23 +5105,6 @@ fn __action42<
 {
     vec![
     Action::SetLink { id: id.clone(), url, target: None },
-  ]
-}
-
-#[allow(unused_variables)]
-#[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits, clippy::extra_unused_type_parameters)]
-fn __action43<
->(
-    arena: &mut ActionArena,
-    control: &crate::OperationControl,
-    (_, _, _): (usize, Tok, usize),
-    (_, id, _): (usize, String, usize),
-    (_, url, _): (usize, String, usize),
-    (_, t, _): (usize, String, usize),
-) -> Vec<Action>
-{
-    vec![
-    Action::SetLink { id: id.clone(), url, target: Some(t) },
   ]
 }
 
@@ -5096,12 +5117,11 @@ fn __action44<
     (_, _, _): (usize, Tok, usize),
     (_, id, _): (usize, String, usize),
     (_, url, _): (usize, String, usize),
-    (_, tt, _): (usize, String, usize),
+    (_, t, _): (usize, String, usize),
 ) -> Vec<Action>
 {
     vec![
-    Action::SetLink { id: id.clone(), url, target: None },
-    Action::SetTooltip { id, tooltip: tt },
+    Action::SetLink { id: id.clone(), url, target: Some(t) },
   ]
 }
 
@@ -5115,11 +5135,10 @@ fn __action45<
     (_, id, _): (usize, String, usize),
     (_, url, _): (usize, String, usize),
     (_, tt, _): (usize, String, usize),
-    (_, t, _): (usize, String, usize),
 ) -> Vec<Action>
 {
     vec![
-    Action::SetLink { id: id.clone(), url, target: Some(t) },
+    Action::SetLink { id: id.clone(), url, target: None },
     Action::SetTooltip { id, tooltip: tt },
   ]
 }
@@ -5132,12 +5151,14 @@ fn __action46<
     control: &crate::OperationControl,
     (_, _, _): (usize, Tok, usize),
     (_, id, _): (usize, String, usize),
-    (_, _, _): (usize, Tok, usize),
     (_, url, _): (usize, String, usize),
+    (_, tt, _): (usize, String, usize),
+    (_, t, _): (usize, String, usize),
 ) -> Vec<Action>
 {
     vec![
-    Action::SetLink { id: id.clone(), url, target: None },
+    Action::SetLink { id: id.clone(), url, target: Some(t) },
+    Action::SetTooltip { id, tooltip: tt },
   ]
 }
 
@@ -5151,11 +5172,10 @@ fn __action47<
     (_, id, _): (usize, String, usize),
     (_, _, _): (usize, Tok, usize),
     (_, url, _): (usize, String, usize),
-    (_, t, _): (usize, String, usize),
 ) -> Vec<Action>
 {
     vec![
-    Action::SetLink { id: id.clone(), url, target: Some(t) },
+    Action::SetLink { id: id.clone(), url, target: None },
   ]
 }
 
@@ -5169,12 +5189,11 @@ fn __action48<
     (_, id, _): (usize, String, usize),
     (_, _, _): (usize, Tok, usize),
     (_, url, _): (usize, String, usize),
-    (_, tt, _): (usize, String, usize),
+    (_, t, _): (usize, String, usize),
 ) -> Vec<Action>
 {
     vec![
-    Action::SetLink { id: id.clone(), url, target: None },
-    Action::SetTooltip { id, tooltip: tt },
+    Action::SetLink { id: id.clone(), url, target: Some(t) },
   ]
 }
 
@@ -5189,11 +5208,10 @@ fn __action49<
     (_, _, _): (usize, Tok, usize),
     (_, url, _): (usize, String, usize),
     (_, tt, _): (usize, String, usize),
-    (_, t, _): (usize, String, usize),
 ) -> Vec<Action>
 {
     vec![
-    Action::SetLink { id: id.clone(), url, target: Some(t) },
+    Action::SetLink { id: id.clone(), url, target: None },
     Action::SetTooltip { id, tooltip: tt },
   ]
 }
@@ -5206,11 +5224,15 @@ fn __action50<
     control: &crate::OperationControl,
     (_, _, _): (usize, Tok, usize),
     (_, id, _): (usize, String, usize),
-    (_, fn_name, _): (usize, String, usize),
+    (_, _, _): (usize, Tok, usize),
+    (_, url, _): (usize, String, usize),
+    (_, tt, _): (usize, String, usize),
+    (_, t, _): (usize, String, usize),
 ) -> Vec<Action>
 {
     vec![
-    Action::SetClickEvent { id: id.clone(), function: fn_name, args: None },
+    Action::SetLink { id: id.clone(), url, target: Some(t) },
+    Action::SetTooltip { id, tooltip: tt },
   ]
 }
 
@@ -5223,12 +5245,10 @@ fn __action51<
     (_, _, _): (usize, Tok, usize),
     (_, id, _): (usize, String, usize),
     (_, fn_name, _): (usize, String, usize),
-    (_, tt, _): (usize, String, usize),
 ) -> Vec<Action>
 {
     vec![
     Action::SetClickEvent { id: id.clone(), function: fn_name, args: None },
-    Action::SetTooltip { id, tooltip: tt },
   ]
 }
 
@@ -5240,12 +5260,13 @@ fn __action52<
     control: &crate::OperationControl,
     (_, _, _): (usize, Tok, usize),
     (_, id, _): (usize, String, usize),
-    (_, _, _): (usize, Tok, usize),
     (_, fn_name, _): (usize, String, usize),
+    (_, tt, _): (usize, String, usize),
 ) -> Vec<Action>
 {
     vec![
     Action::SetClickEvent { id: id.clone(), function: fn_name, args: None },
+    Action::SetTooltip { id, tooltip: tt },
   ]
 }
 
@@ -5259,12 +5280,10 @@ fn __action53<
     (_, id, _): (usize, String, usize),
     (_, _, _): (usize, Tok, usize),
     (_, fn_name, _): (usize, String, usize),
-    (_, tt, _): (usize, String, usize),
 ) -> Vec<Action>
 {
     vec![
     Action::SetClickEvent { id: id.clone(), function: fn_name, args: None },
-    Action::SetTooltip { id, tooltip: tt },
   ]
 }
 
@@ -5278,11 +5297,12 @@ fn __action54<
     (_, id, _): (usize, String, usize),
     (_, _, _): (usize, Tok, usize),
     (_, fn_name, _): (usize, String, usize),
-    (_, args, _): (usize, String, usize),
+    (_, tt, _): (usize, String, usize),
 ) -> Vec<Action>
 {
     vec![
-    Action::SetClickEvent { id: id.clone(), function: fn_name, args: Some(args) },
+    Action::SetClickEvent { id: id.clone(), function: fn_name, args: None },
+    Action::SetTooltip { id, tooltip: tt },
   ]
 }
 
@@ -5297,6 +5317,24 @@ fn __action55<
     (_, _, _): (usize, Tok, usize),
     (_, fn_name, _): (usize, String, usize),
     (_, args, _): (usize, String, usize),
+) -> Vec<Action>
+{
+    vec![
+    Action::SetClickEvent { id: id.clone(), function: fn_name, args: Some(args) },
+  ]
+}
+
+#[allow(unused_variables)]
+#[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits, clippy::extra_unused_type_parameters)]
+fn __action56<
+>(
+    arena: &mut ActionArena,
+    control: &crate::OperationControl,
+    (_, _, _): (usize, Tok, usize),
+    (_, id, _): (usize, String, usize),
+    (_, _, _): (usize, Tok, usize),
+    (_, fn_name, _): (usize, String, usize),
+    (_, args, _): (usize, String, usize),
     (_, tt, _): (usize, String, usize),
 ) -> Vec<Action>
 {
@@ -5308,7 +5346,7 @@ fn __action55<
 
 #[allow(unused_variables)]
 #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits, clippy::extra_unused_type_parameters)]
-fn __action56<
+fn __action57<
 >(
     arena: &mut ActionArena,
     control: &crate::OperationControl,
@@ -5326,7 +5364,7 @@ fn __action56<
 
 #[allow(unused_variables)]
 #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits, clippy::extra_unused_type_parameters)]
-fn __action57<
+fn __action58<
 >(
     arena: &mut ActionArena,
     control: &crate::OperationControl,
@@ -5339,24 +5377,10 @@ fn __action57<
 
 #[allow(unused_variables)]
 #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits, clippy::extra_unused_type_parameters)]
-fn __action58<
->(
-    arena: &mut ActionArena,
-    control: &crate::OperationControl,
-    (_, c, _): (usize, (ActionList, ClassIdList), usize),
-    (_, rest, _): (usize, (ActionList, ClassIdList), usize),
-) -> Result<(ActionList, ClassIdList),__lalrpop_util::ParseError<usize,Tok,crate::diagrams::class::LexError>>
-{
-    arena.concat_namespace_items(c, rest, control)
-}
-
-#[allow(unused_variables)]
-#[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits, clippy::extra_unused_type_parameters)]
 fn __action59<
 >(
     arena: &mut ActionArena,
     control: &crate::OperationControl,
-    (_, _n, _): (usize, (), usize),
     (_, c, _): (usize, (ActionList, ClassIdList), usize),
     (_, rest, _): (usize, (ActionList, ClassIdList), usize),
 ) -> Result<(ActionList, ClassIdList),__lalrpop_util::ParseError<usize,Tok,crate::diagrams::class::LexError>>
@@ -5370,6 +5394,20 @@ fn __action60<
 >(
     arena: &mut ActionArena,
     control: &crate::OperationControl,
+    (_, _n, _): (usize, (), usize),
+    (_, c, _): (usize, (ActionList, ClassIdList), usize),
+    (_, rest, _): (usize, (ActionList, ClassIdList), usize),
+) -> Result<(ActionList, ClassIdList),__lalrpop_util::ParseError<usize,Tok,crate::diagrams::class::LexError>>
+{
+    arena.concat_namespace_items(c, rest, control)
+}
+
+#[allow(unused_variables)]
+#[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits, clippy::extra_unused_type_parameters)]
+fn __action61<
+>(
+    arena: &mut ActionArena,
+    control: &crate::OperationControl,
     (_, __0, _): (usize, (), usize),
 ) -> (ActionList, ClassIdList)
 {
@@ -5378,7 +5416,7 @@ fn __action60<
 
 #[allow(unused_variables)]
 #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits, clippy::extra_unused_type_parameters)]
-fn __action61<
+fn __action62<
 >(
     arena: &mut ActionArena,
     control: &crate::OperationControl,
@@ -5393,7 +5431,7 @@ fn __action61<
 
 #[allow(unused_variables)]
 #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits, clippy::extra_unused_type_parameters)]
-fn __action62<
+fn __action63<
 >(
     arena: &mut ActionArena,
     control: &crate::OperationControl,
@@ -5405,7 +5443,7 @@ fn __action62<
 
 #[allow(unused_variables)]
 #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits, clippy::extra_unused_type_parameters)]
-fn __action63<
+fn __action64<
 >(
     arena: &mut ActionArena,
     control: &crate::OperationControl,
@@ -5417,7 +5455,7 @@ fn __action63<
 
 #[allow(unused_variables)]
 #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits, clippy::extra_unused_type_parameters)]
-fn __action64<
+fn __action65<
 >(
     arena: &mut ActionArena,
     control: &crate::OperationControl,
@@ -5431,28 +5469,6 @@ fn __action64<
     id2: b,
     relation: rel,
     relation_title1: None,
-    relation_title2: None,
-    title: None,
-  }
-}
-
-#[allow(unused_variables)]
-#[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits, clippy::extra_unused_type_parameters)]
-fn __action65<
->(
-    arena: &mut ActionArena,
-    control: &crate::OperationControl,
-    (_, a, _): (usize, String, usize),
-    (_, t1, _): (usize, String, usize),
-    (_, rel, _): (usize, Relation, usize),
-    (_, b, _): (usize, String, usize),
-) -> crate::diagrams::class::RelationData
-{
-    crate::diagrams::class::RelationData {
-    id1: a,
-    id2: b,
-    relation: rel,
-    relation_title1: Some(t1),
     relation_title2: None,
     title: None,
   }
@@ -5465,6 +5481,28 @@ fn __action66<
     arena: &mut ActionArena,
     control: &crate::OperationControl,
     (_, a, _): (usize, String, usize),
+    (_, t1, _): (usize, String, usize),
+    (_, rel, _): (usize, Relation, usize),
+    (_, b, _): (usize, String, usize),
+) -> crate::diagrams::class::RelationData
+{
+    crate::diagrams::class::RelationData {
+    id1: a,
+    id2: b,
+    relation: rel,
+    relation_title1: Some(t1),
+    relation_title2: None,
+    title: None,
+  }
+}
+
+#[allow(unused_variables)]
+#[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits, clippy::extra_unused_type_parameters)]
+fn __action67<
+>(
+    arena: &mut ActionArena,
+    control: &crate::OperationControl,
+    (_, a, _): (usize, String, usize),
     (_, rel, _): (usize, Relation, usize),
     (_, t2, _): (usize, String, usize),
     (_, b, _): (usize, String, usize),
@@ -5482,7 +5520,7 @@ fn __action66<
 
 #[allow(unused_variables)]
 #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits, clippy::extra_unused_type_parameters)]
-fn __action67<
+fn __action68<
 >(
     arena: &mut ActionArena,
     control: &crate::OperationControl,
@@ -5505,7 +5543,7 @@ fn __action67<
 
 #[allow(unused_variables)]
 #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits, clippy::extra_unused_type_parameters)]
-fn __action68<
+fn __action69<
 >(
     arena: &mut ActionArena,
     control: &crate::OperationControl,
@@ -5519,7 +5557,7 @@ fn __action68<
 
 #[allow(unused_variables)]
 #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits, clippy::extra_unused_type_parameters)]
-fn __action69<
+fn __action70<
 >(
     arena: &mut ActionArena,
     control: &crate::OperationControl,
@@ -5532,7 +5570,7 @@ fn __action69<
 
 #[allow(unused_variables)]
 #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits, clippy::extra_unused_type_parameters)]
-fn __action70<
+fn __action71<
 >(
     arena: &mut ActionArena,
     control: &crate::OperationControl,
@@ -5545,7 +5583,7 @@ fn __action70<
 
 #[allow(unused_variables)]
 #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits, clippy::extra_unused_type_parameters)]
-fn __action71<
+fn __action72<
 >(
     arena: &mut ActionArena,
     control: &crate::OperationControl,
@@ -5557,7 +5595,7 @@ fn __action71<
 
 #[allow(unused_variables)]
 #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits, clippy::extra_unused_type_parameters)]
-fn __action72<
+fn __action73<
 >(
     arena: &mut ActionArena,
     control: &crate::OperationControl,
@@ -5569,7 +5607,7 @@ fn __action72<
 
 #[allow(unused_variables)]
 #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits, clippy::extra_unused_type_parameters)]
-fn __action73<
+fn __action74<
 >(
     arena: &mut ActionArena,
     control: &crate::OperationControl,
@@ -5581,7 +5619,7 @@ fn __action73<
 
 #[allow(unused_variables)]
 #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits, clippy::extra_unused_type_parameters)]
-fn __action74<
+fn __action75<
 >(
     arena: &mut ActionArena,
     control: &crate::OperationControl,
@@ -5593,7 +5631,7 @@ fn __action74<
 
 #[allow(unused_variables)]
 #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits, clippy::extra_unused_type_parameters)]
-fn __action75<
+fn __action76<
 >(
     arena: &mut ActionArena,
     control: &crate::OperationControl,
@@ -5605,7 +5643,7 @@ fn __action75<
 
 #[allow(unused_variables)]
 #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits, clippy::extra_unused_type_parameters)]
-fn __action76<
+fn __action77<
 >(
     arena: &mut ActionArena,
     control: &crate::OperationControl,
@@ -5617,7 +5655,7 @@ fn __action76<
 
 #[allow(unused_variables)]
 #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits, clippy::extra_unused_type_parameters)]
-fn __action77<
+fn __action78<
 >(
     arena: &mut ActionArena,
     control: &crate::OperationControl,
@@ -5629,7 +5667,7 @@ fn __action77<
 
 #[allow(unused_variables)]
 #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits, clippy::extra_unused_type_parameters)]
-fn __action78<
+fn __action79<
 >(
     arena: &mut ActionArena,
     control: &crate::OperationControl,
@@ -5641,7 +5679,7 @@ fn __action78<
 
 #[allow(unused_variables)]
 #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits, clippy::extra_unused_type_parameters)]
-fn __action79<
+fn __action80<
 >(
     arena: &mut ActionArena,
     control: &crate::OperationControl,
@@ -5653,7 +5691,7 @@ fn __action79<
 
 #[allow(unused_variables)]
 #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits, clippy::extra_unused_type_parameters)]
-fn __action80<
+fn __action81<
 >(
     arena: &mut ActionArena,
     control: &crate::OperationControl,
@@ -5666,7 +5704,7 @@ fn __action80<
 
 #[allow(unused_variables)]
 #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits, clippy::extra_unused_type_parameters)]
-fn __action81<
+fn __action82<
 >(
     arena: &mut ActionArena,
     control: &crate::OperationControl,
@@ -5674,19 +5712,6 @@ fn __action81<
 ) -> Option<String>
 {
     Some(__0)
-}
-
-#[allow(unused_variables)]
-#[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits, clippy::extra_unused_type_parameters)]
-fn __action82<
->(
-    arena: &mut ActionArena,
-    control: &crate::OperationControl,
-    __lookbehind: &usize,
-    __lookahead: &usize,
-) -> Option<String>
-{
-    None
 }
 
 #[allow(unused_variables)]
@@ -5695,10 +5720,11 @@ fn __action83<
 >(
     arena: &mut ActionArena,
     control: &crate::OperationControl,
-    (_, __0, _): (usize, String, usize),
+    __lookbehind: &usize,
+    __lookahead: &usize,
 ) -> Option<String>
 {
-    Some(__0)
+    None
 }
 
 #[allow(unused_variables)]
@@ -5707,6 +5733,18 @@ fn __action84<
 >(
     arena: &mut ActionArena,
     control: &crate::OperationControl,
+    (_, __0, _): (usize, String, usize),
+) -> Option<String>
+{
+    Some(__0)
+}
+
+#[allow(unused_variables)]
+#[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits, clippy::extra_unused_type_parameters)]
+fn __action85<
+>(
+    arena: &mut ActionArena,
+    control: &crate::OperationControl,
     __lookbehind: &usize,
     __lookahead: &usize,
 ) -> Option<String>
@@ -5716,7 +5754,7 @@ fn __action84<
 
 #[allow(unused_variables)]
 #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits, clippy::extra_unused_type_parameters)]
-fn __action85<
+fn __action86<
 >(
     arena: &mut ActionArena,
     control: &crate::OperationControl,
@@ -5728,7 +5766,7 @@ fn __action85<
 
 #[allow(unused_variables)]
 #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits, clippy::extra_unused_type_parameters)]
-fn __action86<
+fn __action87<
 >(
     arena: &mut ActionArena,
     control: &crate::OperationControl,
@@ -5737,41 +5775,6 @@ fn __action86<
 ) -> Option<String>
 {
     None
-}
-
-#[allow(unused_variables)]
-#[allow(clippy::too_many_arguments, clippy::needless_lifetimes,
-    clippy::just_underscores_and_digits, clippy::clone_on_copy, clippy::unit_arg)]
-fn __action87<
->(
-    arena: &mut ActionArena,
-    control: &crate::OperationControl,
-    __0: (usize, Tok, usize),
-    __1: (usize, String, usize),
-    __2: (usize, Option<String>, usize),
-    __3: (usize, Option<String>, usize),
-    __4: (usize, Option<String>, usize),
-    __5: (usize, Vec<String>, usize),
-) -> Vec<Action>
-{
-    let __start0 = __5.0.clone();
-    let __end0 = __5.2.clone();
-    let __temp0 = __action79(
-        arena,
-        control,
-        __5,
-    );
-    let __temp0 = (__start0, __temp0, __end0);
-    __action24(
-        arena,
-        control,
-        __0,
-        __1,
-        __2,
-        __3,
-        __4,
-        __temp0,
-    )
 }
 
 #[allow(unused_variables)]
@@ -5786,18 +5789,18 @@ fn __action88<
     __2: (usize, Option<String>, usize),
     __3: (usize, Option<String>, usize),
     __4: (usize, Option<String>, usize),
+    __5: (usize, Vec<String>, usize),
 ) -> Vec<Action>
 {
-    let __start0 = __4.2.clone();
-    let __end0 = __4.2.clone();
+    let __start0 = __5.0.clone();
+    let __end0 = __5.2.clone();
     let __temp0 = __action80(
         arena,
         control,
-        &__start0,
-        &__end0,
+        __5,
     );
     let __temp0 = (__start0, __temp0, __end0);
-    __action24(
+    __action25(
         arena,
         control,
         __0,
@@ -5821,15 +5824,15 @@ fn __action89<
     __2: (usize, Option<String>, usize),
     __3: (usize, Option<String>, usize),
     __4: (usize, Option<String>, usize),
-    __5: (usize, Vec<String>, usize),
-) -> (String, Vec<Action>)
+) -> Vec<Action>
 {
-    let __start0 = __5.0.clone();
-    let __end0 = __5.2.clone();
-    let __temp0 = __action79(
+    let __start0 = __4.2.clone();
+    let __end0 = __4.2.clone();
+    let __temp0 = __action81(
         arena,
         control,
-        __5,
+        &__start0,
+        &__end0,
     );
     let __temp0 = (__start0, __temp0, __end0);
     __action25(
@@ -5856,18 +5859,18 @@ fn __action90<
     __2: (usize, Option<String>, usize),
     __3: (usize, Option<String>, usize),
     __4: (usize, Option<String>, usize),
+    __5: (usize, Vec<String>, usize),
 ) -> (String, Vec<Action>)
 {
-    let __start0 = __4.2.clone();
-    let __end0 = __4.2.clone();
+    let __start0 = __5.0.clone();
+    let __end0 = __5.2.clone();
     let __temp0 = __action80(
         arena,
         control,
-        &__start0,
-        &__end0,
+        __5,
     );
     let __temp0 = (__start0, __temp0, __end0);
-    __action25(
+    __action26(
         arena,
         control,
         __0,
@@ -5888,6 +5891,41 @@ fn __action91<
     control: &crate::OperationControl,
     __0: (usize, Tok, usize),
     __1: (usize, String, usize),
+    __2: (usize, Option<String>, usize),
+    __3: (usize, Option<String>, usize),
+    __4: (usize, Option<String>, usize),
+) -> (String, Vec<Action>)
+{
+    let __start0 = __4.2.clone();
+    let __end0 = __4.2.clone();
+    let __temp0 = __action81(
+        arena,
+        control,
+        &__start0,
+        &__end0,
+    );
+    let __temp0 = (__start0, __temp0, __end0);
+    __action26(
+        arena,
+        control,
+        __0,
+        __1,
+        __2,
+        __3,
+        __4,
+        __temp0,
+    )
+}
+
+#[allow(unused_variables)]
+#[allow(clippy::too_many_arguments, clippy::needless_lifetimes,
+    clippy::just_underscores_and_digits, clippy::clone_on_copy, clippy::unit_arg)]
+fn __action92<
+>(
+    arena: &mut ActionArena,
+    control: &crate::OperationControl,
+    __0: (usize, Tok, usize),
+    __1: (usize, String, usize),
     __2: (usize, String, usize),
     __3: (usize, Option<String>, usize),
     __4: (usize, Option<String>, usize),
@@ -5896,13 +5934,13 @@ fn __action91<
 {
     let __start0 = __2.0.clone();
     let __end0 = __2.2.clone();
-    let __temp0 = __action85(
+    let __temp0 = __action86(
         arena,
         control,
         __2,
     );
     let __temp0 = (__start0, __temp0, __end0);
-    __action87(
+    __action88(
         arena,
         control,
         __0,
@@ -5917,7 +5955,7 @@ fn __action91<
 #[allow(unused_variables)]
 #[allow(clippy::too_many_arguments, clippy::needless_lifetimes,
     clippy::just_underscores_and_digits, clippy::clone_on_copy, clippy::unit_arg)]
-fn __action92<
+fn __action93<
 >(
     arena: &mut ActionArena,
     control: &crate::OperationControl,
@@ -5930,45 +5968,11 @@ fn __action92<
 {
     let __start0 = __1.2.clone();
     let __end0 = __2.0.clone();
-    let __temp0 = __action86(
+    let __temp0 = __action87(
         arena,
         control,
         &__start0,
         &__end0,
-    );
-    let __temp0 = (__start0, __temp0, __end0);
-    __action87(
-        arena,
-        control,
-        __0,
-        __1,
-        __temp0,
-        __2,
-        __3,
-        __4,
-    )
-}
-
-#[allow(unused_variables)]
-#[allow(clippy::too_many_arguments, clippy::needless_lifetimes,
-    clippy::just_underscores_and_digits, clippy::clone_on_copy, clippy::unit_arg)]
-fn __action93<
->(
-    arena: &mut ActionArena,
-    control: &crate::OperationControl,
-    __0: (usize, Tok, usize),
-    __1: (usize, String, usize),
-    __2: (usize, String, usize),
-    __3: (usize, Option<String>, usize),
-    __4: (usize, Option<String>, usize),
-) -> Vec<Action>
-{
-    let __start0 = __2.0.clone();
-    let __end0 = __2.2.clone();
-    let __temp0 = __action85(
-        arena,
-        control,
-        __2,
     );
     let __temp0 = (__start0, __temp0, __end0);
     __action88(
@@ -5977,6 +5981,7 @@ fn __action93<
         __0,
         __1,
         __temp0,
+        __2,
         __3,
         __4,
     )
@@ -5991,20 +5996,53 @@ fn __action94<
     control: &crate::OperationControl,
     __0: (usize, Tok, usize),
     __1: (usize, String, usize),
+    __2: (usize, String, usize),
+    __3: (usize, Option<String>, usize),
+    __4: (usize, Option<String>, usize),
+) -> Vec<Action>
+{
+    let __start0 = __2.0.clone();
+    let __end0 = __2.2.clone();
+    let __temp0 = __action86(
+        arena,
+        control,
+        __2,
+    );
+    let __temp0 = (__start0, __temp0, __end0);
+    __action89(
+        arena,
+        control,
+        __0,
+        __1,
+        __temp0,
+        __3,
+        __4,
+    )
+}
+
+#[allow(unused_variables)]
+#[allow(clippy::too_many_arguments, clippy::needless_lifetimes,
+    clippy::just_underscores_and_digits, clippy::clone_on_copy, clippy::unit_arg)]
+fn __action95<
+>(
+    arena: &mut ActionArena,
+    control: &crate::OperationControl,
+    __0: (usize, Tok, usize),
+    __1: (usize, String, usize),
     __2: (usize, Option<String>, usize),
     __3: (usize, Option<String>, usize),
 ) -> Vec<Action>
 {
     let __start0 = __1.2.clone();
     let __end0 = __2.0.clone();
-    let __temp0 = __action86(
+    let __temp0 = __action87(
         arena,
         control,
         &__start0,
         &__end0,
     );
     let __temp0 = (__start0, __temp0, __end0);
-    __action88(
+    __action89(
         arena,
         control,
         __0,
@@ -6018,7 +6056,7 @@ fn __action94<
 #[allow(unused_variables)]
 #[allow(clippy::too_many_arguments, clippy::needless_lifetimes,
     clippy::just_underscores_and_digits, clippy::clone_on_copy, clippy::unit_arg)]
-fn __action95<
+fn __action96<
 >(
     arena: &mut ActionArena,
     control: &crate::OperationControl,
@@ -6032,13 +6070,13 @@ fn __action95<
 {
     let __start0 = __2.0.clone();
     let __end0 = __2.2.clone();
-    let __temp0 = __action85(
+    let __temp0 = __action86(
         arena,
         control,
         __2,
     );
     let __temp0 = (__start0, __temp0, __end0);
-    __action89(
+    __action90(
         arena,
         control,
         __0,
@@ -6053,7 +6091,7 @@ fn __action95<
 #[allow(unused_variables)]
 #[allow(clippy::too_many_arguments, clippy::needless_lifetimes,
     clippy::just_underscores_and_digits, clippy::clone_on_copy, clippy::unit_arg)]
-fn __action96<
+fn __action97<
 >(
     arena: &mut ActionArena,
     control: &crate::OperationControl,
@@ -6066,45 +6104,11 @@ fn __action96<
 {
     let __start0 = __1.2.clone();
     let __end0 = __2.0.clone();
-    let __temp0 = __action86(
+    let __temp0 = __action87(
         arena,
         control,
         &__start0,
         &__end0,
-    );
-    let __temp0 = (__start0, __temp0, __end0);
-    __action89(
-        arena,
-        control,
-        __0,
-        __1,
-        __temp0,
-        __2,
-        __3,
-        __4,
-    )
-}
-
-#[allow(unused_variables)]
-#[allow(clippy::too_many_arguments, clippy::needless_lifetimes,
-    clippy::just_underscores_and_digits, clippy::clone_on_copy, clippy::unit_arg)]
-fn __action97<
->(
-    arena: &mut ActionArena,
-    control: &crate::OperationControl,
-    __0: (usize, Tok, usize),
-    __1: (usize, String, usize),
-    __2: (usize, String, usize),
-    __3: (usize, Option<String>, usize),
-    __4: (usize, Option<String>, usize),
-) -> (String, Vec<Action>)
-{
-    let __start0 = __2.0.clone();
-    let __end0 = __2.2.clone();
-    let __temp0 = __action85(
-        arena,
-        control,
-        __2,
     );
     let __temp0 = (__start0, __temp0, __end0);
     __action90(
@@ -6113,6 +6117,7 @@ fn __action97<
         __0,
         __1,
         __temp0,
+        __2,
         __3,
         __4,
     )
@@ -6127,20 +6132,53 @@ fn __action98<
     control: &crate::OperationControl,
     __0: (usize, Tok, usize),
     __1: (usize, String, usize),
+    __2: (usize, String, usize),
+    __3: (usize, Option<String>, usize),
+    __4: (usize, Option<String>, usize),
+) -> (String, Vec<Action>)
+{
+    let __start0 = __2.0.clone();
+    let __end0 = __2.2.clone();
+    let __temp0 = __action86(
+        arena,
+        control,
+        __2,
+    );
+    let __temp0 = (__start0, __temp0, __end0);
+    __action91(
+        arena,
+        control,
+        __0,
+        __1,
+        __temp0,
+        __3,
+        __4,
+    )
+}
+
+#[allow(unused_variables)]
+#[allow(clippy::too_many_arguments, clippy::needless_lifetimes,
+    clippy::just_underscores_and_digits, clippy::clone_on_copy, clippy::unit_arg)]
+fn __action99<
+>(
+    arena: &mut ActionArena,
+    control: &crate::OperationControl,
+    __0: (usize, Tok, usize),
+    __1: (usize, String, usize),
     __2: (usize, Option<String>, usize),
     __3: (usize, Option<String>, usize),
 ) -> (String, Vec<Action>)
 {
     let __start0 = __1.2.clone();
     let __end0 = __2.0.clone();
-    let __temp0 = __action86(
+    let __temp0 = __action87(
         arena,
         control,
         &__start0,
         &__end0,
     );
     let __temp0 = (__start0, __temp0, __end0);
-    __action90(
+    __action91(
         arena,
         control,
         __0,
@@ -6154,7 +6192,7 @@ fn __action98<
 #[allow(unused_variables)]
 #[allow(clippy::too_many_arguments, clippy::needless_lifetimes,
     clippy::just_underscores_and_digits, clippy::clone_on_copy, clippy::unit_arg)]
-fn __action99<
+fn __action100<
 >(
     arena: &mut ActionArena,
     control: &crate::OperationControl,
@@ -6169,13 +6207,13 @@ fn __action99<
 {
     let __start0 = __2.0.clone();
     let __end0 = __2.2.clone();
-    let __temp0 = __action85(
+    let __temp0 = __action86(
         arena,
         control,
         __2,
     );
     let __temp0 = (__start0, __temp0, __end0);
-    __action56(
+    __action57(
         arena,
         control,
         __0,
@@ -6191,7 +6229,7 @@ fn __action99<
 #[allow(unused_variables)]
 #[allow(clippy::too_many_arguments, clippy::needless_lifetimes,
     clippy::just_underscores_and_digits, clippy::clone_on_copy, clippy::unit_arg)]
-fn __action100<
+fn __action101<
 >(
     arena: &mut ActionArena,
     control: &crate::OperationControl,
@@ -6205,14 +6243,14 @@ fn __action100<
 {
     let __start0 = __1.2.clone();
     let __end0 = __2.0.clone();
-    let __temp0 = __action86(
+    let __temp0 = __action87(
         arena,
         control,
         &__start0,
         &__end0,
     );
     let __temp0 = (__start0, __temp0, __end0);
-    __action56(
+    __action57(
         arena,
         control,
         __0,
@@ -6221,41 +6259,6 @@ fn __action100<
         __2,
         __3,
         __4,
-        __5,
-    )
-}
-
-#[allow(unused_variables)]
-#[allow(clippy::too_many_arguments, clippy::needless_lifetimes,
-    clippy::just_underscores_and_digits, clippy::clone_on_copy, clippy::unit_arg)]
-fn __action101<
->(
-    arena: &mut ActionArena,
-    control: &crate::OperationControl,
-    __0: (usize, Tok, usize),
-    __1: (usize, String, usize),
-    __2: (usize, String, usize),
-    __3: (usize, Option<String>, usize),
-    __4: (usize, String, usize),
-    __5: (usize, Vec<String>, usize),
-) -> Vec<Action>
-{
-    let __start0 = __4.0.clone();
-    let __end0 = __4.2.clone();
-    let __temp0 = __action81(
-        arena,
-        control,
-        __4,
-    );
-    let __temp0 = (__start0, __temp0, __end0);
-    __action91(
-        arena,
-        control,
-        __0,
-        __1,
-        __2,
-        __3,
-        __temp0,
         __5,
     )
 }
@@ -6271,19 +6274,19 @@ fn __action102<
     __1: (usize, String, usize),
     __2: (usize, String, usize),
     __3: (usize, Option<String>, usize),
-    __4: (usize, Vec<String>, usize),
+    __4: (usize, String, usize),
+    __5: (usize, Vec<String>, usize),
 ) -> Vec<Action>
 {
-    let __start0 = __3.2.clone();
-    let __end0 = __4.0.clone();
+    let __start0 = __4.0.clone();
+    let __end0 = __4.2.clone();
     let __temp0 = __action82(
         arena,
         control,
-        &__start0,
-        &__end0,
+        __4,
     );
     let __temp0 = (__start0, __temp0, __end0);
-    __action91(
+    __action92(
         arena,
         control,
         __0,
@@ -6291,7 +6294,7 @@ fn __action102<
         __2,
         __3,
         __temp0,
-        __4,
+        __5,
     )
 }
 
@@ -6304,17 +6307,18 @@ fn __action103<
     control: &crate::OperationControl,
     __0: (usize, Tok, usize),
     __1: (usize, String, usize),
-    __2: (usize, Option<String>, usize),
-    __3: (usize, String, usize),
+    __2: (usize, String, usize),
+    __3: (usize, Option<String>, usize),
     __4: (usize, Vec<String>, usize),
 ) -> Vec<Action>
 {
-    let __start0 = __3.0.clone();
-    let __end0 = __3.2.clone();
-    let __temp0 = __action81(
+    let __start0 = __3.2.clone();
+    let __end0 = __4.0.clone();
+    let __temp0 = __action83(
         arena,
         control,
-        __3,
+        &__start0,
+        &__end0,
     );
     let __temp0 = (__start0, __temp0, __end0);
     __action92(
@@ -6323,6 +6327,7 @@ fn __action103<
         __0,
         __1,
         __2,
+        __3,
         __temp0,
         __4,
     )
@@ -6338,26 +6343,26 @@ fn __action104<
     __0: (usize, Tok, usize),
     __1: (usize, String, usize),
     __2: (usize, Option<String>, usize),
-    __3: (usize, Vec<String>, usize),
+    __3: (usize, String, usize),
+    __4: (usize, Vec<String>, usize),
 ) -> Vec<Action>
 {
-    let __start0 = __2.2.clone();
-    let __end0 = __3.0.clone();
+    let __start0 = __3.0.clone();
+    let __end0 = __3.2.clone();
     let __temp0 = __action82(
         arena,
         control,
-        &__start0,
-        &__end0,
+        __3,
     );
     let __temp0 = (__start0, __temp0, __end0);
-    __action92(
+    __action93(
         arena,
         control,
         __0,
         __1,
         __2,
         __temp0,
-        __3,
+        __4,
     )
 }
 
@@ -6370,17 +6375,17 @@ fn __action105<
     control: &crate::OperationControl,
     __0: (usize, Tok, usize),
     __1: (usize, String, usize),
-    __2: (usize, String, usize),
-    __3: (usize, Option<String>, usize),
-    __4: (usize, String, usize),
+    __2: (usize, Option<String>, usize),
+    __3: (usize, Vec<String>, usize),
 ) -> Vec<Action>
 {
-    let __start0 = __4.0.clone();
-    let __end0 = __4.2.clone();
-    let __temp0 = __action81(
+    let __start0 = __2.2.clone();
+    let __end0 = __3.0.clone();
+    let __temp0 = __action83(
         arena,
         control,
-        __4,
+        &__start0,
+        &__end0,
     );
     let __temp0 = (__start0, __temp0, __end0);
     __action93(
@@ -6389,8 +6394,8 @@ fn __action105<
         __0,
         __1,
         __2,
-        __3,
         __temp0,
+        __3,
     )
 }
 
@@ -6405,18 +6410,18 @@ fn __action106<
     __1: (usize, String, usize),
     __2: (usize, String, usize),
     __3: (usize, Option<String>, usize),
+    __4: (usize, String, usize),
 ) -> Vec<Action>
 {
-    let __start0 = __3.2.clone();
-    let __end0 = __3.2.clone();
+    let __start0 = __4.0.clone();
+    let __end0 = __4.2.clone();
     let __temp0 = __action82(
         arena,
         control,
-        &__start0,
-        &__end0,
+        __4,
     );
     let __temp0 = (__start0, __temp0, __end0);
-    __action93(
+    __action94(
         arena,
         control,
         __0,
@@ -6436,16 +6441,17 @@ fn __action107<
     control: &crate::OperationControl,
     __0: (usize, Tok, usize),
     __1: (usize, String, usize),
-    __2: (usize, Option<String>, usize),
-    __3: (usize, String, usize),
+    __2: (usize, String, usize),
+    __3: (usize, Option<String>, usize),
 ) -> Vec<Action>
 {
-    let __start0 = __3.0.clone();
+    let __start0 = __3.2.clone();
     let __end0 = __3.2.clone();
-    let __temp0 = __action81(
+    let __temp0 = __action83(
         arena,
         control,
-        __3,
+        &__start0,
+        &__end0,
     );
     let __temp0 = (__start0, __temp0, __end0);
     __action94(
@@ -6454,6 +6460,7 @@ fn __action107<
         __0,
         __1,
         __2,
+        __3,
         __temp0,
     )
 }
@@ -6468,18 +6475,18 @@ fn __action108<
     __0: (usize, Tok, usize),
     __1: (usize, String, usize),
     __2: (usize, Option<String>, usize),
+    __3: (usize, String, usize),
 ) -> Vec<Action>
 {
-    let __start0 = __2.2.clone();
-    let __end0 = __2.2.clone();
+    let __start0 = __3.0.clone();
+    let __end0 = __3.2.clone();
     let __temp0 = __action82(
         arena,
         control,
-        &__start0,
-        &__end0,
+        __3,
     );
     let __temp0 = (__start0, __temp0, __end0);
-    __action94(
+    __action95(
         arena,
         control,
         __0,
@@ -6498,18 +6505,16 @@ fn __action109<
     control: &crate::OperationControl,
     __0: (usize, Tok, usize),
     __1: (usize, String, usize),
-    __2: (usize, String, usize),
-    __3: (usize, Option<String>, usize),
-    __4: (usize, String, usize),
-    __5: (usize, Vec<String>, usize),
-) -> (String, Vec<Action>)
+    __2: (usize, Option<String>, usize),
+) -> Vec<Action>
 {
-    let __start0 = __4.0.clone();
-    let __end0 = __4.2.clone();
-    let __temp0 = __action81(
+    let __start0 = __2.2.clone();
+    let __end0 = __2.2.clone();
+    let __temp0 = __action83(
         arena,
         control,
-        __4,
+        &__start0,
+        &__end0,
     );
     let __temp0 = (__start0, __temp0, __end0);
     __action95(
@@ -6518,9 +6523,7 @@ fn __action109<
         __0,
         __1,
         __2,
-        __3,
         __temp0,
-        __5,
     )
 }
 
@@ -6535,19 +6538,19 @@ fn __action110<
     __1: (usize, String, usize),
     __2: (usize, String, usize),
     __3: (usize, Option<String>, usize),
-    __4: (usize, Vec<String>, usize),
+    __4: (usize, String, usize),
+    __5: (usize, Vec<String>, usize),
 ) -> (String, Vec<Action>)
 {
-    let __start0 = __3.2.clone();
-    let __end0 = __4.0.clone();
+    let __start0 = __4.0.clone();
+    let __end0 = __4.2.clone();
     let __temp0 = __action82(
         arena,
         control,
-        &__start0,
-        &__end0,
+        __4,
     );
     let __temp0 = (__start0, __temp0, __end0);
-    __action95(
+    __action96(
         arena,
         control,
         __0,
@@ -6555,7 +6558,7 @@ fn __action110<
         __2,
         __3,
         __temp0,
-        __4,
+        __5,
     )
 }
 
@@ -6568,17 +6571,18 @@ fn __action111<
     control: &crate::OperationControl,
     __0: (usize, Tok, usize),
     __1: (usize, String, usize),
-    __2: (usize, Option<String>, usize),
-    __3: (usize, String, usize),
+    __2: (usize, String, usize),
+    __3: (usize, Option<String>, usize),
     __4: (usize, Vec<String>, usize),
 ) -> (String, Vec<Action>)
 {
-    let __start0 = __3.0.clone();
-    let __end0 = __3.2.clone();
-    let __temp0 = __action81(
+    let __start0 = __3.2.clone();
+    let __end0 = __4.0.clone();
+    let __temp0 = __action83(
         arena,
         control,
-        __3,
+        &__start0,
+        &__end0,
     );
     let __temp0 = (__start0, __temp0, __end0);
     __action96(
@@ -6587,6 +6591,7 @@ fn __action111<
         __0,
         __1,
         __2,
+        __3,
         __temp0,
         __4,
     )
@@ -6602,26 +6607,26 @@ fn __action112<
     __0: (usize, Tok, usize),
     __1: (usize, String, usize),
     __2: (usize, Option<String>, usize),
-    __3: (usize, Vec<String>, usize),
+    __3: (usize, String, usize),
+    __4: (usize, Vec<String>, usize),
 ) -> (String, Vec<Action>)
 {
-    let __start0 = __2.2.clone();
-    let __end0 = __3.0.clone();
+    let __start0 = __3.0.clone();
+    let __end0 = __3.2.clone();
     let __temp0 = __action82(
         arena,
         control,
-        &__start0,
-        &__end0,
+        __3,
     );
     let __temp0 = (__start0, __temp0, __end0);
-    __action96(
+    __action97(
         arena,
         control,
         __0,
         __1,
         __2,
         __temp0,
-        __3,
+        __4,
     )
 }
 
@@ -6634,17 +6639,17 @@ fn __action113<
     control: &crate::OperationControl,
     __0: (usize, Tok, usize),
     __1: (usize, String, usize),
-    __2: (usize, String, usize),
-    __3: (usize, Option<String>, usize),
-    __4: (usize, String, usize),
+    __2: (usize, Option<String>, usize),
+    __3: (usize, Vec<String>, usize),
 ) -> (String, Vec<Action>)
 {
-    let __start0 = __4.0.clone();
-    let __end0 = __4.2.clone();
-    let __temp0 = __action81(
+    let __start0 = __2.2.clone();
+    let __end0 = __3.0.clone();
+    let __temp0 = __action83(
         arena,
         control,
-        __4,
+        &__start0,
+        &__end0,
     );
     let __temp0 = (__start0, __temp0, __end0);
     __action97(
@@ -6653,8 +6658,8 @@ fn __action113<
         __0,
         __1,
         __2,
-        __3,
         __temp0,
+        __3,
     )
 }
 
@@ -6669,18 +6674,18 @@ fn __action114<
     __1: (usize, String, usize),
     __2: (usize, String, usize),
     __3: (usize, Option<String>, usize),
+    __4: (usize, String, usize),
 ) -> (String, Vec<Action>)
 {
-    let __start0 = __3.2.clone();
-    let __end0 = __3.2.clone();
+    let __start0 = __4.0.clone();
+    let __end0 = __4.2.clone();
     let __temp0 = __action82(
         arena,
         control,
-        &__start0,
-        &__end0,
+        __4,
     );
     let __temp0 = (__start0, __temp0, __end0);
-    __action97(
+    __action98(
         arena,
         control,
         __0,
@@ -6700,16 +6705,17 @@ fn __action115<
     control: &crate::OperationControl,
     __0: (usize, Tok, usize),
     __1: (usize, String, usize),
-    __2: (usize, Option<String>, usize),
-    __3: (usize, String, usize),
+    __2: (usize, String, usize),
+    __3: (usize, Option<String>, usize),
 ) -> (String, Vec<Action>)
 {
-    let __start0 = __3.0.clone();
+    let __start0 = __3.2.clone();
     let __end0 = __3.2.clone();
-    let __temp0 = __action81(
+    let __temp0 = __action83(
         arena,
         control,
-        __3,
+        &__start0,
+        &__end0,
     );
     let __temp0 = (__start0, __temp0, __end0);
     __action98(
@@ -6718,6 +6724,7 @@ fn __action115<
         __0,
         __1,
         __2,
+        __3,
         __temp0,
     )
 }
@@ -6732,18 +6739,18 @@ fn __action116<
     __0: (usize, Tok, usize),
     __1: (usize, String, usize),
     __2: (usize, Option<String>, usize),
+    __3: (usize, String, usize),
 ) -> (String, Vec<Action>)
 {
-    let __start0 = __2.2.clone();
-    let __end0 = __2.2.clone();
+    let __start0 = __3.0.clone();
+    let __end0 = __3.2.clone();
     let __temp0 = __action82(
         arena,
         control,
-        &__start0,
-        &__end0,
+        __3,
     );
     let __temp0 = (__start0, __temp0, __end0);
-    __action98(
+    __action99(
         arena,
         control,
         __0,
@@ -6762,29 +6769,25 @@ fn __action117<
     control: &crate::OperationControl,
     __0: (usize, Tok, usize),
     __1: (usize, String, usize),
-    __2: (usize, String, usize),
-    __3: (usize, String, usize),
-    __4: (usize, String, usize),
-    __5: (usize, Vec<String>, usize),
-) -> Vec<Action>
+    __2: (usize, Option<String>, usize),
+) -> (String, Vec<Action>)
 {
-    let __start0 = __3.0.clone();
-    let __end0 = __3.2.clone();
+    let __start0 = __2.2.clone();
+    let __end0 = __2.2.clone();
     let __temp0 = __action83(
         arena,
         control,
-        __3,
+        &__start0,
+        &__end0,
     );
     let __temp0 = (__start0, __temp0, __end0);
-    __action101(
+    __action99(
         arena,
         control,
         __0,
         __1,
         __2,
         __temp0,
-        __4,
-        __5,
     )
 }
 
@@ -6799,27 +6802,27 @@ fn __action118<
     __1: (usize, String, usize),
     __2: (usize, String, usize),
     __3: (usize, String, usize),
-    __4: (usize, Vec<String>, usize),
+    __4: (usize, String, usize),
+    __5: (usize, Vec<String>, usize),
 ) -> Vec<Action>
 {
-    let __start0 = __2.2.clone();
-    let __end0 = __3.0.clone();
+    let __start0 = __3.0.clone();
+    let __end0 = __3.2.clone();
     let __temp0 = __action84(
         arena,
         control,
-        &__start0,
-        &__end0,
+        __3,
     );
     let __temp0 = (__start0, __temp0, __end0);
-    __action101(
+    __action102(
         arena,
         control,
         __0,
         __1,
         __2,
         __temp0,
-        __3,
         __4,
+        __5,
     )
 }
 
@@ -6837,12 +6840,13 @@ fn __action119<
     __4: (usize, Vec<String>, usize),
 ) -> Vec<Action>
 {
-    let __start0 = __3.0.clone();
-    let __end0 = __3.2.clone();
-    let __temp0 = __action83(
+    let __start0 = __2.2.clone();
+    let __end0 = __3.0.clone();
+    let __temp0 = __action85(
         arena,
         control,
-        __3,
+        &__start0,
+        &__end0,
     );
     let __temp0 = (__start0, __temp0, __end0);
     __action102(
@@ -6852,6 +6856,7 @@ fn __action119<
         __1,
         __2,
         __temp0,
+        __3,
         __4,
     )
 }
@@ -6866,26 +6871,26 @@ fn __action120<
     __0: (usize, Tok, usize),
     __1: (usize, String, usize),
     __2: (usize, String, usize),
-    __3: (usize, Vec<String>, usize),
+    __3: (usize, String, usize),
+    __4: (usize, Vec<String>, usize),
 ) -> Vec<Action>
 {
-    let __start0 = __2.2.clone();
-    let __end0 = __3.0.clone();
+    let __start0 = __3.0.clone();
+    let __end0 = __3.2.clone();
     let __temp0 = __action84(
         arena,
         control,
-        &__start0,
-        &__end0,
+        __3,
     );
     let __temp0 = (__start0, __temp0, __end0);
-    __action102(
+    __action103(
         arena,
         control,
         __0,
         __1,
         __2,
         __temp0,
-        __3,
+        __4,
     )
 }
 
@@ -6899,16 +6904,16 @@ fn __action121<
     __0: (usize, Tok, usize),
     __1: (usize, String, usize),
     __2: (usize, String, usize),
-    __3: (usize, String, usize),
-    __4: (usize, Vec<String>, usize),
+    __3: (usize, Vec<String>, usize),
 ) -> Vec<Action>
 {
-    let __start0 = __2.0.clone();
-    let __end0 = __2.2.clone();
-    let __temp0 = __action83(
+    let __start0 = __2.2.clone();
+    let __end0 = __3.0.clone();
+    let __temp0 = __action85(
         arena,
         control,
-        __2,
+        &__start0,
+        &__end0,
     );
     let __temp0 = (__start0, __temp0, __end0);
     __action103(
@@ -6916,9 +6921,9 @@ fn __action121<
         control,
         __0,
         __1,
+        __2,
         __temp0,
         __3,
-        __4,
     )
 }
 
@@ -6932,26 +6937,26 @@ fn __action122<
     __0: (usize, Tok, usize),
     __1: (usize, String, usize),
     __2: (usize, String, usize),
-    __3: (usize, Vec<String>, usize),
+    __3: (usize, String, usize),
+    __4: (usize, Vec<String>, usize),
 ) -> Vec<Action>
 {
-    let __start0 = __1.2.clone();
-    let __end0 = __2.0.clone();
+    let __start0 = __2.0.clone();
+    let __end0 = __2.2.clone();
     let __temp0 = __action84(
         arena,
         control,
-        &__start0,
-        &__end0,
+        __2,
     );
     let __temp0 = (__start0, __temp0, __end0);
-    __action103(
+    __action104(
         arena,
         control,
         __0,
         __1,
         __temp0,
-        __2,
         __3,
+        __4,
     )
 }
 
@@ -6968,39 +6973,9 @@ fn __action123<
     __3: (usize, Vec<String>, usize),
 ) -> Vec<Action>
 {
-    let __start0 = __2.0.clone();
-    let __end0 = __2.2.clone();
-    let __temp0 = __action83(
-        arena,
-        control,
-        __2,
-    );
-    let __temp0 = (__start0, __temp0, __end0);
-    __action104(
-        arena,
-        control,
-        __0,
-        __1,
-        __temp0,
-        __3,
-    )
-}
-
-#[allow(unused_variables)]
-#[allow(clippy::too_many_arguments, clippy::needless_lifetimes,
-    clippy::just_underscores_and_digits, clippy::clone_on_copy, clippy::unit_arg)]
-fn __action124<
->(
-    arena: &mut ActionArena,
-    control: &crate::OperationControl,
-    __0: (usize, Tok, usize),
-    __1: (usize, String, usize),
-    __2: (usize, Vec<String>, usize),
-) -> Vec<Action>
-{
     let __start0 = __1.2.clone();
     let __end0 = __2.0.clone();
-    let __temp0 = __action84(
+    let __temp0 = __action85(
         arena,
         control,
         &__start0,
@@ -7014,6 +6989,38 @@ fn __action124<
         __1,
         __temp0,
         __2,
+        __3,
+    )
+}
+
+#[allow(unused_variables)]
+#[allow(clippy::too_many_arguments, clippy::needless_lifetimes,
+    clippy::just_underscores_and_digits, clippy::clone_on_copy, clippy::unit_arg)]
+fn __action124<
+>(
+    arena: &mut ActionArena,
+    control: &crate::OperationControl,
+    __0: (usize, Tok, usize),
+    __1: (usize, String, usize),
+    __2: (usize, String, usize),
+    __3: (usize, Vec<String>, usize),
+) -> Vec<Action>
+{
+    let __start0 = __2.0.clone();
+    let __end0 = __2.2.clone();
+    let __temp0 = __action84(
+        arena,
+        control,
+        __2,
+    );
+    let __temp0 = (__start0, __temp0, __end0);
+    __action105(
+        arena,
+        control,
+        __0,
+        __1,
+        __temp0,
+        __3,
     )
 }
 
@@ -7026,17 +7033,16 @@ fn __action125<
     control: &crate::OperationControl,
     __0: (usize, Tok, usize),
     __1: (usize, String, usize),
-    __2: (usize, String, usize),
-    __3: (usize, String, usize),
-    __4: (usize, String, usize),
+    __2: (usize, Vec<String>, usize),
 ) -> Vec<Action>
 {
-    let __start0 = __3.0.clone();
-    let __end0 = __3.2.clone();
-    let __temp0 = __action83(
+    let __start0 = __1.2.clone();
+    let __end0 = __2.0.clone();
+    let __temp0 = __action85(
         arena,
         control,
-        __3,
+        &__start0,
+        &__end0,
     );
     let __temp0 = (__start0, __temp0, __end0);
     __action105(
@@ -7044,9 +7050,8 @@ fn __action125<
         control,
         __0,
         __1,
-        __2,
         __temp0,
-        __4,
+        __2,
     )
 }
 
@@ -7061,25 +7066,25 @@ fn __action126<
     __1: (usize, String, usize),
     __2: (usize, String, usize),
     __3: (usize, String, usize),
+    __4: (usize, String, usize),
 ) -> Vec<Action>
 {
-    let __start0 = __2.2.clone();
-    let __end0 = __3.0.clone();
+    let __start0 = __3.0.clone();
+    let __end0 = __3.2.clone();
     let __temp0 = __action84(
         arena,
         control,
-        &__start0,
-        &__end0,
+        __3,
     );
     let __temp0 = (__start0, __temp0, __end0);
-    __action105(
+    __action106(
         arena,
         control,
         __0,
         __1,
         __2,
         __temp0,
-        __3,
+        __4,
     )
 }
 
@@ -7096,12 +7101,13 @@ fn __action127<
     __3: (usize, String, usize),
 ) -> Vec<Action>
 {
-    let __start0 = __3.0.clone();
-    let __end0 = __3.2.clone();
-    let __temp0 = __action83(
+    let __start0 = __2.2.clone();
+    let __end0 = __3.0.clone();
+    let __temp0 = __action85(
         arena,
         control,
-        __3,
+        &__start0,
+        &__end0,
     );
     let __temp0 = (__start0, __temp0, __end0);
     __action106(
@@ -7111,6 +7117,7 @@ fn __action127<
         __1,
         __2,
         __temp0,
+        __3,
     )
 }
 
@@ -7124,18 +7131,18 @@ fn __action128<
     __0: (usize, Tok, usize),
     __1: (usize, String, usize),
     __2: (usize, String, usize),
+    __3: (usize, String, usize),
 ) -> Vec<Action>
 {
-    let __start0 = __2.2.clone();
-    let __end0 = __2.2.clone();
+    let __start0 = __3.0.clone();
+    let __end0 = __3.2.clone();
     let __temp0 = __action84(
         arena,
         control,
-        &__start0,
-        &__end0,
+        __3,
     );
     let __temp0 = (__start0, __temp0, __end0);
-    __action106(
+    __action107(
         arena,
         control,
         __0,
@@ -7155,15 +7162,15 @@ fn __action129<
     __0: (usize, Tok, usize),
     __1: (usize, String, usize),
     __2: (usize, String, usize),
-    __3: (usize, String, usize),
 ) -> Vec<Action>
 {
-    let __start0 = __2.0.clone();
+    let __start0 = __2.2.clone();
     let __end0 = __2.2.clone();
-    let __temp0 = __action83(
+    let __temp0 = __action85(
         arena,
         control,
-        __2,
+        &__start0,
+        &__end0,
     );
     let __temp0 = (__start0, __temp0, __end0);
     __action107(
@@ -7171,8 +7178,8 @@ fn __action129<
         control,
         __0,
         __1,
+        __2,
         __temp0,
-        __3,
     )
 }
 
@@ -7186,24 +7193,24 @@ fn __action130<
     __0: (usize, Tok, usize),
     __1: (usize, String, usize),
     __2: (usize, String, usize),
+    __3: (usize, String, usize),
 ) -> Vec<Action>
 {
-    let __start0 = __1.2.clone();
-    let __end0 = __2.0.clone();
+    let __start0 = __2.0.clone();
+    let __end0 = __2.2.clone();
     let __temp0 = __action84(
         arena,
         control,
-        &__start0,
-        &__end0,
+        __2,
     );
     let __temp0 = (__start0, __temp0, __end0);
-    __action107(
+    __action108(
         arena,
         control,
         __0,
         __1,
         __temp0,
-        __2,
+        __3,
     )
 }
 
@@ -7219,12 +7226,13 @@ fn __action131<
     __2: (usize, String, usize),
 ) -> Vec<Action>
 {
-    let __start0 = __2.0.clone();
-    let __end0 = __2.2.clone();
-    let __temp0 = __action83(
+    let __start0 = __1.2.clone();
+    let __end0 = __2.0.clone();
+    let __temp0 = __action85(
         arena,
         control,
-        __2,
+        &__start0,
+        &__end0,
     );
     let __temp0 = (__start0, __temp0, __end0);
     __action108(
@@ -7233,6 +7241,7 @@ fn __action131<
         __0,
         __1,
         __temp0,
+        __2,
     )
 }
 
@@ -7245,18 +7254,18 @@ fn __action132<
     control: &crate::OperationControl,
     __0: (usize, Tok, usize),
     __1: (usize, String, usize),
+    __2: (usize, String, usize),
 ) -> Vec<Action>
 {
-    let __start0 = __1.2.clone();
-    let __end0 = __1.2.clone();
+    let __start0 = __2.0.clone();
+    let __end0 = __2.2.clone();
     let __temp0 = __action84(
         arena,
         control,
-        &__start0,
-        &__end0,
+        __2,
     );
     let __temp0 = (__start0, __temp0, __end0);
-    __action108(
+    __action109(
         arena,
         control,
         __0,
@@ -7274,18 +7283,15 @@ fn __action133<
     control: &crate::OperationControl,
     __0: (usize, Tok, usize),
     __1: (usize, String, usize),
-    __2: (usize, String, usize),
-    __3: (usize, String, usize),
-    __4: (usize, String, usize),
-    __5: (usize, Vec<String>, usize),
-) -> (String, Vec<Action>)
+) -> Vec<Action>
 {
-    let __start0 = __3.0.clone();
-    let __end0 = __3.2.clone();
-    let __temp0 = __action83(
+    let __start0 = __1.2.clone();
+    let __end0 = __1.2.clone();
+    let __temp0 = __action85(
         arena,
         control,
-        __3,
+        &__start0,
+        &__end0,
     );
     let __temp0 = (__start0, __temp0, __end0);
     __action109(
@@ -7293,10 +7299,7 @@ fn __action133<
         control,
         __0,
         __1,
-        __2,
         __temp0,
-        __4,
-        __5,
     )
 }
 
@@ -7311,27 +7314,27 @@ fn __action134<
     __1: (usize, String, usize),
     __2: (usize, String, usize),
     __3: (usize, String, usize),
-    __4: (usize, Vec<String>, usize),
+    __4: (usize, String, usize),
+    __5: (usize, Vec<String>, usize),
 ) -> (String, Vec<Action>)
 {
-    let __start0 = __2.2.clone();
-    let __end0 = __3.0.clone();
+    let __start0 = __3.0.clone();
+    let __end0 = __3.2.clone();
     let __temp0 = __action84(
         arena,
         control,
-        &__start0,
-        &__end0,
+        __3,
     );
     let __temp0 = (__start0, __temp0, __end0);
-    __action109(
+    __action110(
         arena,
         control,
         __0,
         __1,
         __2,
         __temp0,
-        __3,
         __4,
+        __5,
     )
 }
 
@@ -7349,12 +7352,13 @@ fn __action135<
     __4: (usize, Vec<String>, usize),
 ) -> (String, Vec<Action>)
 {
-    let __start0 = __3.0.clone();
-    let __end0 = __3.2.clone();
-    let __temp0 = __action83(
+    let __start0 = __2.2.clone();
+    let __end0 = __3.0.clone();
+    let __temp0 = __action85(
         arena,
         control,
-        __3,
+        &__start0,
+        &__end0,
     );
     let __temp0 = (__start0, __temp0, __end0);
     __action110(
@@ -7364,6 +7368,7 @@ fn __action135<
         __1,
         __2,
         __temp0,
+        __3,
         __4,
     )
 }
@@ -7378,26 +7383,26 @@ fn __action136<
     __0: (usize, Tok, usize),
     __1: (usize, String, usize),
     __2: (usize, String, usize),
-    __3: (usize, Vec<String>, usize),
+    __3: (usize, String, usize),
+    __4: (usize, Vec<String>, usize),
 ) -> (String, Vec<Action>)
 {
-    let __start0 = __2.2.clone();
-    let __end0 = __3.0.clone();
+    let __start0 = __3.0.clone();
+    let __end0 = __3.2.clone();
     let __temp0 = __action84(
         arena,
         control,
-        &__start0,
-        &__end0,
+        __3,
     );
     let __temp0 = (__start0, __temp0, __end0);
-    __action110(
+    __action111(
         arena,
         control,
         __0,
         __1,
         __2,
         __temp0,
-        __3,
+        __4,
     )
 }
 
@@ -7411,16 +7416,16 @@ fn __action137<
     __0: (usize, Tok, usize),
     __1: (usize, String, usize),
     __2: (usize, String, usize),
-    __3: (usize, String, usize),
-    __4: (usize, Vec<String>, usize),
+    __3: (usize, Vec<String>, usize),
 ) -> (String, Vec<Action>)
 {
-    let __start0 = __2.0.clone();
-    let __end0 = __2.2.clone();
-    let __temp0 = __action83(
+    let __start0 = __2.2.clone();
+    let __end0 = __3.0.clone();
+    let __temp0 = __action85(
         arena,
         control,
-        __2,
+        &__start0,
+        &__end0,
     );
     let __temp0 = (__start0, __temp0, __end0);
     __action111(
@@ -7428,9 +7433,9 @@ fn __action137<
         control,
         __0,
         __1,
+        __2,
         __temp0,
         __3,
-        __4,
     )
 }
 
@@ -7444,26 +7449,26 @@ fn __action138<
     __0: (usize, Tok, usize),
     __1: (usize, String, usize),
     __2: (usize, String, usize),
-    __3: (usize, Vec<String>, usize),
+    __3: (usize, String, usize),
+    __4: (usize, Vec<String>, usize),
 ) -> (String, Vec<Action>)
 {
-    let __start0 = __1.2.clone();
-    let __end0 = __2.0.clone();
+    let __start0 = __2.0.clone();
+    let __end0 = __2.2.clone();
     let __temp0 = __action84(
         arena,
         control,
-        &__start0,
-        &__end0,
+        __2,
     );
     let __temp0 = (__start0, __temp0, __end0);
-    __action111(
+    __action112(
         arena,
         control,
         __0,
         __1,
         __temp0,
-        __2,
         __3,
+        __4,
     )
 }
 
@@ -7480,39 +7485,9 @@ fn __action139<
     __3: (usize, Vec<String>, usize),
 ) -> (String, Vec<Action>)
 {
-    let __start0 = __2.0.clone();
-    let __end0 = __2.2.clone();
-    let __temp0 = __action83(
-        arena,
-        control,
-        __2,
-    );
-    let __temp0 = (__start0, __temp0, __end0);
-    __action112(
-        arena,
-        control,
-        __0,
-        __1,
-        __temp0,
-        __3,
-    )
-}
-
-#[allow(unused_variables)]
-#[allow(clippy::too_many_arguments, clippy::needless_lifetimes,
-    clippy::just_underscores_and_digits, clippy::clone_on_copy, clippy::unit_arg)]
-fn __action140<
->(
-    arena: &mut ActionArena,
-    control: &crate::OperationControl,
-    __0: (usize, Tok, usize),
-    __1: (usize, String, usize),
-    __2: (usize, Vec<String>, usize),
-) -> (String, Vec<Action>)
-{
     let __start0 = __1.2.clone();
     let __end0 = __2.0.clone();
-    let __temp0 = __action84(
+    let __temp0 = __action85(
         arena,
         control,
         &__start0,
@@ -7526,6 +7501,38 @@ fn __action140<
         __1,
         __temp0,
         __2,
+        __3,
+    )
+}
+
+#[allow(unused_variables)]
+#[allow(clippy::too_many_arguments, clippy::needless_lifetimes,
+    clippy::just_underscores_and_digits, clippy::clone_on_copy, clippy::unit_arg)]
+fn __action140<
+>(
+    arena: &mut ActionArena,
+    control: &crate::OperationControl,
+    __0: (usize, Tok, usize),
+    __1: (usize, String, usize),
+    __2: (usize, String, usize),
+    __3: (usize, Vec<String>, usize),
+) -> (String, Vec<Action>)
+{
+    let __start0 = __2.0.clone();
+    let __end0 = __2.2.clone();
+    let __temp0 = __action84(
+        arena,
+        control,
+        __2,
+    );
+    let __temp0 = (__start0, __temp0, __end0);
+    __action113(
+        arena,
+        control,
+        __0,
+        __1,
+        __temp0,
+        __3,
     )
 }
 
@@ -7538,17 +7545,16 @@ fn __action141<
     control: &crate::OperationControl,
     __0: (usize, Tok, usize),
     __1: (usize, String, usize),
-    __2: (usize, String, usize),
-    __3: (usize, String, usize),
-    __4: (usize, String, usize),
+    __2: (usize, Vec<String>, usize),
 ) -> (String, Vec<Action>)
 {
-    let __start0 = __3.0.clone();
-    let __end0 = __3.2.clone();
-    let __temp0 = __action83(
+    let __start0 = __1.2.clone();
+    let __end0 = __2.0.clone();
+    let __temp0 = __action85(
         arena,
         control,
-        __3,
+        &__start0,
+        &__end0,
     );
     let __temp0 = (__start0, __temp0, __end0);
     __action113(
@@ -7556,9 +7562,8 @@ fn __action141<
         control,
         __0,
         __1,
-        __2,
         __temp0,
-        __4,
+        __2,
     )
 }
 
@@ -7573,25 +7578,25 @@ fn __action142<
     __1: (usize, String, usize),
     __2: (usize, String, usize),
     __3: (usize, String, usize),
+    __4: (usize, String, usize),
 ) -> (String, Vec<Action>)
 {
-    let __start0 = __2.2.clone();
-    let __end0 = __3.0.clone();
+    let __start0 = __3.0.clone();
+    let __end0 = __3.2.clone();
     let __temp0 = __action84(
         arena,
         control,
-        &__start0,
-        &__end0,
+        __3,
     );
     let __temp0 = (__start0, __temp0, __end0);
-    __action113(
+    __action114(
         arena,
         control,
         __0,
         __1,
         __2,
         __temp0,
-        __3,
+        __4,
     )
 }
 
@@ -7608,12 +7613,13 @@ fn __action143<
     __3: (usize, String, usize),
 ) -> (String, Vec<Action>)
 {
-    let __start0 = __3.0.clone();
-    let __end0 = __3.2.clone();
-    let __temp0 = __action83(
+    let __start0 = __2.2.clone();
+    let __end0 = __3.0.clone();
+    let __temp0 = __action85(
         arena,
         control,
-        __3,
+        &__start0,
+        &__end0,
     );
     let __temp0 = (__start0, __temp0, __end0);
     __action114(
@@ -7623,6 +7629,7 @@ fn __action143<
         __1,
         __2,
         __temp0,
+        __3,
     )
 }
 
@@ -7636,18 +7643,18 @@ fn __action144<
     __0: (usize, Tok, usize),
     __1: (usize, String, usize),
     __2: (usize, String, usize),
+    __3: (usize, String, usize),
 ) -> (String, Vec<Action>)
 {
-    let __start0 = __2.2.clone();
-    let __end0 = __2.2.clone();
+    let __start0 = __3.0.clone();
+    let __end0 = __3.2.clone();
     let __temp0 = __action84(
         arena,
         control,
-        &__start0,
-        &__end0,
+        __3,
     );
     let __temp0 = (__start0, __temp0, __end0);
-    __action114(
+    __action115(
         arena,
         control,
         __0,
@@ -7667,15 +7674,15 @@ fn __action145<
     __0: (usize, Tok, usize),
     __1: (usize, String, usize),
     __2: (usize, String, usize),
-    __3: (usize, String, usize),
 ) -> (String, Vec<Action>)
 {
-    let __start0 = __2.0.clone();
+    let __start0 = __2.2.clone();
     let __end0 = __2.2.clone();
-    let __temp0 = __action83(
+    let __temp0 = __action85(
         arena,
         control,
-        __2,
+        &__start0,
+        &__end0,
     );
     let __temp0 = (__start0, __temp0, __end0);
     __action115(
@@ -7683,8 +7690,8 @@ fn __action145<
         control,
         __0,
         __1,
+        __2,
         __temp0,
-        __3,
     )
 }
 
@@ -7698,24 +7705,24 @@ fn __action146<
     __0: (usize, Tok, usize),
     __1: (usize, String, usize),
     __2: (usize, String, usize),
+    __3: (usize, String, usize),
 ) -> (String, Vec<Action>)
 {
-    let __start0 = __1.2.clone();
-    let __end0 = __2.0.clone();
+    let __start0 = __2.0.clone();
+    let __end0 = __2.2.clone();
     let __temp0 = __action84(
         arena,
         control,
-        &__start0,
-        &__end0,
+        __2,
     );
     let __temp0 = (__start0, __temp0, __end0);
-    __action115(
+    __action116(
         arena,
         control,
         __0,
         __1,
         __temp0,
-        __2,
+        __3,
     )
 }
 
@@ -7731,12 +7738,13 @@ fn __action147<
     __2: (usize, String, usize),
 ) -> (String, Vec<Action>)
 {
-    let __start0 = __2.0.clone();
-    let __end0 = __2.2.clone();
-    let __temp0 = __action83(
+    let __start0 = __1.2.clone();
+    let __end0 = __2.0.clone();
+    let __temp0 = __action85(
         arena,
         control,
-        __2,
+        &__start0,
+        &__end0,
     );
     let __temp0 = (__start0, __temp0, __end0);
     __action116(
@@ -7745,6 +7753,7 @@ fn __action147<
         __0,
         __1,
         __temp0,
+        __2,
     )
 }
 
@@ -7757,18 +7766,47 @@ fn __action148<
     control: &crate::OperationControl,
     __0: (usize, Tok, usize),
     __1: (usize, String, usize),
+    __2: (usize, String, usize),
+) -> (String, Vec<Action>)
+{
+    let __start0 = __2.0.clone();
+    let __end0 = __2.2.clone();
+    let __temp0 = __action84(
+        arena,
+        control,
+        __2,
+    );
+    let __temp0 = (__start0, __temp0, __end0);
+    __action117(
+        arena,
+        control,
+        __0,
+        __1,
+        __temp0,
+    )
+}
+
+#[allow(unused_variables)]
+#[allow(clippy::too_many_arguments, clippy::needless_lifetimes,
+    clippy::just_underscores_and_digits, clippy::clone_on_copy, clippy::unit_arg)]
+fn __action149<
+>(
+    arena: &mut ActionArena,
+    control: &crate::OperationControl,
+    __0: (usize, Tok, usize),
+    __1: (usize, String, usize),
 ) -> (String, Vec<Action>)
 {
     let __start0 = __1.2.clone();
     let __end0 = __1.2.clone();
-    let __temp0 = __action84(
+    let __temp0 = __action85(
         arena,
         control,
         &__start0,
         &__end0,
     );
     let __temp0 = (__start0, __temp0, __end0);
-    __action116(
+    __action117(
         arena,
         control,
         __0,

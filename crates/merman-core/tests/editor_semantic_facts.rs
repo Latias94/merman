@@ -603,3 +603,396 @@ fn flowchart_invalid_header_direction_recovers_complete_value_and_following_node
         }
     }
 }
+
+#[cfg(feature = "editor-facts")]
+#[test]
+fn packet_and_treemap_multiline_payloads_retain_original_source_selections() {
+    use merman_core::{EditorSemanticCompleteness, ParseOptions, ParsedEditorFacts};
+
+    let engine = MermaidEngine::new();
+    for newline in ["\n", "\r\n"] {
+        for quote in ['\'', '"'] {
+            let raw_name = format!("雪{newline}😀");
+            let prefix = format!(
+                "---{newline}title: 中文😀{newline}---{newline}%%{{init: {{\"theme\": \"default\"}}}}%%{newline}%% removed 中文😀{newline}"
+            );
+            for (family, statement, tail) in [
+                (
+                    "packet",
+                    format!("0: {quote}{raw_name}{quote}"),
+                    "1: \"Tail\"",
+                ),
+                (
+                    "treemap",
+                    format!("{quote}{raw_name}{quote}: .00"),
+                    "\"Tail\": 1",
+                ),
+            ] {
+                let source =
+                    format!("{prefix}{family}{newline}{statement}{newline}{tail}{newline}");
+                for known_type in [false, true] {
+                    let snapshot = if known_type {
+                        engine.parse_diagram_snapshot_with_type_sync(family, &source)
+                    } else {
+                        engine.parse_diagram_snapshot_sync(&source)
+                    }
+                    .unwrap()
+                    .expect("multiline source retains its family");
+                    assert!(snapshot.outcome().parsed_model().is_some(), "{source}");
+                    let ParsedEditorFacts::Available(facts) = snapshot.editor_facts() else {
+                        panic!("multiline payload requires parser-derived facts");
+                    };
+                    assert_eq!(facts.completeness, EditorSemanticCompleteness::Complete);
+                    assert!(facts.diagnostics.is_empty());
+                    assert_editor_fact_spans_belong_to_source(Path::new(family), &source, facts);
+                    for (semantic_name, raw_text) in
+                        [("雪\n😀", raw_name.as_str()), ("Tail", "Tail")]
+                    {
+                        let symbol = facts
+                            .symbols
+                            .iter()
+                            .find(|symbol| symbol.name == semantic_name)
+                            .unwrap();
+                        let start = source.rfind(raw_text).unwrap();
+                        assert_eq!(
+                            symbol.selection,
+                            SourceSpan::new(start, start + raw_text.len())
+                        );
+                        assert_eq!(
+                            &source[symbol.selection.start..symbol.selection.end],
+                            raw_text
+                        );
+                    }
+                    if family == "treemap" {
+                        let value = facts
+                            .symbols
+                            .iter()
+                            .find(|symbol| symbol.name == ".00")
+                            .unwrap();
+                        let start = source.find(".00").unwrap();
+                        assert_eq!(value.selection, SourceSpan::new(start, start + 3));
+                    }
+                    let parsed = if known_type {
+                        engine.parse_diagram_with_type_sync(family, &source, ParseOptions::strict())
+                    } else {
+                        engine.parse_diagram_sync(&source, ParseOptions::strict())
+                    }
+                    .unwrap()
+                    .unwrap();
+                    if family == "packet" {
+                        assert_eq!(parsed.model["packet"][0][0]["label"], "雪\n😀");
+                        assert_eq!(parsed.model["packet"][0][1]["label"], "Tail");
+                    } else {
+                        assert_eq!(parsed.model["nodes"][0]["name"], "雪\n😀");
+                        assert_eq!(parsed.model["nodes"][0]["value"].as_f64(), Some(0.0));
+                        assert_eq!(parsed.model["nodes"][1]["name"], "Tail");
+                    }
+                }
+            }
+        }
+    }
+}
+
+#[cfg(feature = "editor-facts")]
+#[test]
+fn quadrant_multiline_text_and_literal_title_tail_keep_original_source_ranges() {
+    use merman_core::{EditorSemanticCompleteness, ParseOptions, ParsedEditorFacts};
+
+    let engine = MermaidEngine::new();
+    for newline in ["\n", "\r\n"] {
+        for markdown in [false, true] {
+            let label = format!("雪{newline}😀");
+            let point = format!("点{newline}名");
+            let wrap = |value: &str| {
+                if markdown {
+                    format!("\"`{value}`\"")
+                } else {
+                    format!("\"{value}\"")
+                }
+            };
+            let source = format!(
+                "---{newline}title: 中文😀{newline}---{newline}%%{{init: {{\"theme\": \"default\"}}}}%%{newline}%% removed 中文😀{newline}quadrantChart{newline}title Plan; quadrant-1 Hidden{newline}quadrant-1 {}{newline}{}: [0.25, 0.75]{newline}",
+                wrap(&label),
+                wrap(&point),
+            );
+            for known_type in [false, true] {
+                let snapshot = if known_type {
+                    engine.parse_diagram_snapshot_with_type_sync("quadrantChart", &source)
+                } else {
+                    engine.parse_diagram_snapshot_sync(&source)
+                }
+                .unwrap()
+                .unwrap();
+                assert!(snapshot.outcome().parsed_model().is_some(), "{source}");
+                let ParsedEditorFacts::Available(facts) = snapshot.editor_facts() else {
+                    panic!("Quadrant Chart must expose parser-derived facts");
+                };
+                assert_eq!(facts.completeness, EditorSemanticCompleteness::Complete);
+                assert!(facts.diagnostics.is_empty());
+                assert_editor_fact_spans_belong_to_source(
+                    Path::new("quadrant-multiline"),
+                    &source,
+                    facts,
+                );
+                for (name, raw) in [
+                    ("Plan; quadrant-1 Hidden", "Plan; quadrant-1 Hidden"),
+                    ("雪\n😀", label.as_str()),
+                    ("点\n名", point.as_str()),
+                ] {
+                    let symbol = facts
+                        .symbols
+                        .iter()
+                        .find(|symbol| symbol.name == name)
+                        .unwrap();
+                    let start = source.find(raw).unwrap();
+                    assert_eq!(symbol.selection, SourceSpan::new(start, start + raw.len()));
+                    assert_eq!(&source[symbol.selection.start..symbol.selection.end], raw);
+                }
+                assert!(!facts.symbols.iter().any(|symbol| symbol.name == "Hidden"));
+                let parsed = if known_type {
+                    engine.parse_diagram_with_type_sync(
+                        "quadrantChart",
+                        &source,
+                        ParseOptions::strict(),
+                    )
+                } else {
+                    engine.parse_diagram_sync(&source, ParseOptions::strict())
+                }
+                .unwrap()
+                .unwrap();
+                assert_eq!(parsed.model["title"], "Plan; quadrant-1 Hidden");
+                assert_eq!(parsed.model["quadrants"]["quadrant1Text"], "雪\n😀");
+                assert_eq!(parsed.model["points"][0]["text"], "点\n名");
+            }
+        }
+    }
+}
+
+#[cfg(feature = "editor-facts")]
+#[test]
+fn xychart_reserved_category_diagnostics_map_to_original_crlf_source() {
+    use merman_core::{EditorSemanticCompleteness, ParseOptions, ParsedEditorFacts};
+
+    let prefix = "---\r\ntitle: 中文😀\r\n---\r\n%% removed 中文😀\r\nxychart\r\n";
+    let engine = MermaidEngine::new();
+    for quoted in [false, true] {
+        let category = if quoted { "\"bar\"" } else { "bar" };
+        let source = format!("{prefix}x-axis [{category}, 雪]\r\nline [1, 2]\r\n");
+        let start = source.find(category).unwrap() + usize::from(quoted);
+        for known_type in [false, true] {
+            let snapshot = if known_type {
+                engine.parse_diagram_snapshot_with_type_sync("xychart", &source)
+            } else {
+                engine.parse_diagram_snapshot_sync(&source)
+            }
+            .unwrap()
+            .unwrap();
+            let ParsedEditorFacts::Available(facts) = snapshot.editor_facts() else {
+                panic!("XY Chart must expose parser-derived facts");
+            };
+            assert_editor_fact_spans_belong_to_source(
+                Path::new("xychart-reserved-category"),
+                &source,
+                facts,
+            );
+            let parsed = if known_type {
+                engine.parse_diagram_with_type_sync("xychart", &source, ParseOptions::strict())
+            } else {
+                engine.parse_diagram_sync(&source, ParseOptions::strict())
+            };
+            if quoted {
+                assert!(snapshot.outcome().parsed_model().is_some());
+                assert_eq!(facts.completeness, EditorSemanticCompleteness::Complete);
+                let payload = format!("{category}, 雪");
+                let payload_start = source.find(&payload).unwrap();
+                assert!(facts.expected_syntax.iter().any(|expected| {
+                    expected.span == SourceSpan::new(payload_start, payload_start + payload.len())
+                }));
+                assert_eq!(
+                    parsed.unwrap().unwrap().model["xAxis"]["categories"][0],
+                    "bar"
+                );
+            } else {
+                assert!(parsed.is_err());
+                assert_eq!(facts.completeness, EditorSemanticCompleteness::Recovered);
+                assert!(
+                    facts.diagnostics.iter().any(
+                        |diagnostic| diagnostic.span == Some(SourceSpan::new(start, start + 3))
+                    )
+                );
+            }
+        }
+    }
+}
+
+#[cfg(feature = "editor-facts")]
+#[test]
+fn quadrant_unclosed_multiline_text_preserves_later_original_source_facts() {
+    use merman_core::{EditorSemanticCompleteness, ParseOptions, ParsedEditorFacts};
+
+    let engine = MermaidEngine::new();
+    for newline in ["\n", "\r\n"] {
+        let source = format!(
+            "---{newline}title: 中文😀{newline}---{newline}%% removed 中文😀{newline}quadrantChart{newline}quadrant-1 \"broken{newline}x-axis Low --> High{newline}雪: [0.5, 0.5]{newline}"
+        );
+        for known_type in [false, true] {
+            let snapshot = if known_type {
+                engine.parse_diagram_snapshot_with_type_sync("quadrantChart", &source)
+            } else {
+                engine.parse_diagram_snapshot_sync(&source)
+            }
+            .unwrap()
+            .unwrap();
+            let strict = if known_type {
+                engine.parse_diagram_with_type_sync(
+                    "quadrantChart",
+                    &source,
+                    ParseOptions::strict(),
+                )
+            } else {
+                engine.parse_diagram_sync(&source, ParseOptions::strict())
+            };
+            assert!(strict.is_err());
+            let ParsedEditorFacts::Available(facts) = snapshot.editor_facts() else {
+                panic!("malformed Quadrant source must retain recovery facts");
+            };
+            assert_eq!(facts.completeness, EditorSemanticCompleteness::Recovered);
+            assert!(!facts.diagnostics.is_empty());
+            assert_editor_fact_spans_belong_to_source(
+                Path::new("quadrant-unclosed-recovery"),
+                &source,
+                facts,
+            );
+            for name in ["Low", "High", "雪"] {
+                let symbol = facts
+                    .symbols
+                    .iter()
+                    .find(|symbol| symbol.name == name)
+                    .unwrap();
+                let start = source.rfind(name).unwrap();
+                assert_eq!(symbol.selection, SourceSpan::new(start, start + name.len()));
+            }
+        }
+    }
+}
+
+#[cfg(feature = "editor-facts")]
+#[test]
+fn sankey_csv_quote_errors_and_recovery_keep_original_source_ranges() {
+    use merman_core::{EditorSemanticCompleteness, ParseOptions, ParsedEditorFacts};
+
+    let engine = MermaidEngine::new();
+    for newline in ["\n", "\r\n"] {
+        for quoted in [false, true] {
+            let field = if quoted { "\"A\"\"B\"" } else { "A\"B" };
+            let source = format!(
+                "---{newline}title: 中文😀{newline}---{newline}sankey{newline}Before,Start,1{newline}{field},C,1{newline}Next,End,2{newline}"
+            );
+            for known_type in [false, true] {
+                let snapshot = if known_type {
+                    engine.parse_diagram_snapshot_with_type_sync("sankey", &source)
+                } else {
+                    engine.parse_diagram_snapshot_sync(&source)
+                }
+                .unwrap()
+                .unwrap();
+                let strict = if known_type {
+                    engine.parse_diagram_with_type_sync("sankey", &source, ParseOptions::strict())
+                } else {
+                    engine.parse_diagram_sync(&source, ParseOptions::strict())
+                };
+                let ParsedEditorFacts::Available(facts) = snapshot.editor_facts() else {
+                    panic!("Sankey CSV must expose parser-derived recovery facts");
+                };
+                assert_editor_fact_spans_belong_to_source(
+                    Path::new("sankey-csv-quote-recovery"),
+                    &source,
+                    facts,
+                );
+                for name in ["Before", "Start", "Next", "End"] {
+                    let symbol = facts
+                        .symbols
+                        .iter()
+                        .find(|symbol| symbol.name == name)
+                        .unwrap();
+                    let start = source.find(name).unwrap();
+                    assert_eq!(symbol.selection, SourceSpan::new(start, start + name.len()));
+                }
+                let start = source.find(field).unwrap();
+                if quoted {
+                    let parsed = strict.unwrap().unwrap();
+                    assert_eq!(parsed.model["graph"]["nodes"][2]["id"], "A\"B");
+                    assert_eq!(facts.completeness, EditorSemanticCompleteness::Complete);
+                    let symbol = facts
+                        .symbols
+                        .iter()
+                        .find(|symbol| symbol.name == "A\"B")
+                        .unwrap();
+                    assert_eq!(symbol.selection, SourceSpan::new(start + 1, start + 5));
+                    assert_eq!(
+                        &source[symbol.selection.start..symbol.selection.end],
+                        "A\"\"B"
+                    );
+                } else {
+                    assert!(strict.is_err());
+                    assert_eq!(facts.completeness, EditorSemanticCompleteness::Recovered);
+                    assert!(facts.diagnostics.iter().any(|diagnostic| {
+                        diagnostic.span == Some(SourceSpan::new(start + 1, start + 2))
+                    }));
+                    assert!(!facts.symbols.iter().any(|symbol| symbol.name == "A\"B"));
+                }
+            }
+        }
+    }
+}
+
+#[cfg(feature = "editor-facts")]
+#[test]
+fn flowchart_group_membership_keeps_authored_editor_source_ranges() {
+    use merman_core::{EditorSemanticCompleteness, ParseOptions, ParsedEditorFacts};
+
+    let engine = MermaidEngine::new();
+    for newline in ["\n", "\r\n"] {
+        let source = format!(
+            "---{newline}title: 中文😀{newline}---{newline}%% removed 中文😀{newline}flowchart TD{newline}subgraph S{newline}雪 & B --> C & D{newline}end{newline}"
+        );
+        for known_type in [false, true] {
+            let snapshot = if known_type {
+                engine.parse_diagram_snapshot_with_type_sync("flowchart-v2", &source)
+            } else {
+                engine.parse_diagram_snapshot_sync(&source)
+            }
+            .unwrap()
+            .unwrap();
+            let ParsedEditorFacts::Available(facts) = snapshot.editor_facts() else {
+                panic!("Flowchart groups must retain parser-derived source facts");
+            };
+            assert_eq!(facts.completeness, EditorSemanticCompleteness::Complete);
+            assert_editor_fact_spans_belong_to_source(
+                Path::new("flowchart-group-membership"),
+                &source,
+                facts,
+            );
+            for name in ["雪", "B", "C", "D"] {
+                let symbol = facts
+                    .symbols
+                    .iter()
+                    .find(|symbol| symbol.name == name)
+                    .unwrap();
+                let start = source.rfind(name).unwrap();
+                assert_eq!(symbol.selection, SourceSpan::new(start, start + name.len()));
+            }
+            let parsed = if known_type {
+                engine.parse_diagram_with_type_sync("flowchart-v2", &source, ParseOptions::strict())
+            } else {
+                engine.parse_diagram_sync(&source, ParseOptions::strict())
+            }
+            .unwrap()
+            .unwrap();
+            assert_eq!(
+                parsed.model["subgraphs"][0]["nodes"],
+                serde_json::json!(["C", "D", "雪", "B"])
+            );
+        }
+    }
+}

@@ -2424,9 +2424,8 @@ fn sanitize_directive_controlled(
                 }
             }
             Value::String(s) => {
-                // Presentation values from directives and frontmatter share the final source
-                // admission boundary. Do not erase rejected values here: deleting the override
-                // there lets the trusted host value survive instead of replacing it with "".
+                // CSS values share the final source admission boundary. Keep their original
+                // spelling here so that boundary can reject the override and preserve host values.
                 if path.iter().any(|segment| {
                     matches!(segment, DirectiveValuePathSegment::Key(key)
                         if crate::config::is_presentation_field(key))
@@ -2436,10 +2435,8 @@ fn sanitize_directive_controlled(
                 if directive_path_is_css(&path) && !css_braces_are_balanced(s) {
                     *s = "{ /* ERROR: Unbalanced CSS */ }".to_string();
                 }
-                let blocked = s.contains('<') || s.contains('>') || s.contains("url(data:");
-                if blocked {
-                    s.clear();
-                }
+                // Other strings also reach that shared boundary unchanged. Clearing a rejected
+                // value here would create an empty override instead of the upstream fallback.
             }
             _ => {}
         }
@@ -3969,11 +3966,11 @@ A["<span title="😀">Label</span>"]
             .stack_size(64 * 1024)
             .spawn(move || {
                 sanitize_directive(&mut value);
-                assert_eq!(
-                    deep_directive_leaf(&value, DEPTH).and_then(Value::as_str),
-                    Some("")
-                );
+                let leaf = deep_directive_leaf(&value, DEPTH)
+                    .and_then(Value::as_str)
+                    .map(str::to_owned);
                 crate::json_value::drop_value_nonrecursive(value);
+                assert_eq!(leaf.as_deref(), Some("<blocked>"));
             })
             .expect("spawn deep directive sanitizer test");
         handle
@@ -4004,6 +4001,7 @@ A["<span title="😀">Label</span>"]
     #[test]
     fn sanitize_directive_leaves_theme_values_for_shared_source_admission() {
         let mut value = json!({
+            "gitGraph": {"mainBranchName": "host<br>override"},
             "themeVariables": {
                 "primaryColor": "#123456",
                 "secondaryColor": "rgb(1, 2, 3)",
@@ -4015,6 +4013,7 @@ A["<span title="😀">Label</span>"]
 
         sanitize_directive(&mut value);
 
+        assert_eq!(value["gitGraph"]["mainBranchName"], "host<br>override");
         assert_eq!(value["themeVariables"]["primaryColor"], "#123456");
         assert_eq!(value["themeVariables"]["secondaryColor"], "rgb(1, 2, 3)");
         assert_eq!(

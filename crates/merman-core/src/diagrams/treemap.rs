@@ -103,6 +103,8 @@ struct TreemapParseOutcome {
     editor_demand: EditorFactsDemand,
     parsed: TreemapParsedInput,
     first_issue: Option<TreemapParseIssue>,
+    #[cfg(test)]
+    string2_scanned_bytes: usize,
 }
 
 impl TreemapParseOutcome {
@@ -533,6 +535,8 @@ fn parse_treemap_outcome_controlled(
             editor_facts: EditorSemanticFacts::new(),
         },
         first_issue: None,
+        #[cfg(test)]
+        string2_scanned_bytes: 0,
     };
     let body = match treemap_body_start_controlled(code, control)? {
         Ok(Some(body)) => body,
@@ -592,9 +596,19 @@ fn parse_treemap_outcome_controlled(
         trailing_whitespace_span = None;
 
         let (indent, rest_with_trailing) = split_ascii_indent(visible);
-        let rest = rest_with_trailing.trim_end();
         let statement_start = offset + visible.len().saturating_sub(rest_with_trailing.len());
+        let (statement, statement_next_offset) = treemap_item_statement_controlled(
+            code,
+            statement_start,
+            rest_with_trailing,
+            next_offset,
+            control,
+            #[cfg(test)]
+            &mut outcome.string2_scanned_bytes,
+        )?;
+        let rest = strip_inline_comment_aware(statement).trim_end();
         let statement_span = SourceSpan::new(statement_start, statement_start + rest.len());
+        let mut parsed_next_offset = next_offset;
 
         match parse_class_def(rest, statement_start) {
             Ok(Some(class_def)) => {
@@ -621,6 +635,7 @@ fn parse_treemap_outcome_controlled(
                         push_treemap_row_editor_facts(&mut outcome.parsed.editor_facts, &row);
                     }
                     outcome.parsed.rows.push(row);
+                    parsed_next_offset = statement_next_offset;
                 }
                 Err(message) => {
                     outcome.record_issue(message, Some(statement_span));
@@ -630,7 +645,7 @@ fn parse_treemap_outcome_controlled(
                 outcome.record_issue(message, Some(statement_span));
             }
         }
-        offset = next_offset;
+        offset = parsed_next_offset;
     }
 
     if let Some(span) = trailing_whitespace_span {
@@ -639,6 +654,43 @@ fn parse_treemap_outcome_controlled(
 
     control.checkpoint()?;
     Ok(outcome)
+}
+
+fn treemap_item_statement_controlled<'a>(
+    source: &'a str,
+    statement_start: usize,
+    first_line: &'a str,
+    next_offset: usize,
+    control: &crate::OperationControl,
+    #[cfg(test)] scanned_bytes: &mut usize,
+) -> crate::OperationControlResult<(&'a str, usize)> {
+    let name = first_line.trim_start();
+    let Some(quote @ (b'\'' | b'"')) = name.as_bytes().first().copied() else {
+        return Ok((first_line, next_offset));
+    };
+    let content_start = statement_start + first_line.len() - name.len() + 1;
+    const SCAN_CHUNK_BYTES: usize = 4096;
+    for (chunk_index, chunk) in source.as_bytes()[content_start..]
+        .chunks(SCAN_CHUNK_BYTES)
+        .enumerate()
+    {
+        control.checkpoint()?;
+        let relative_close = chunk.iter().position(|&byte| byte == quote);
+        #[cfg(test)]
+        {
+            *scanned_bytes += relative_close.map_or(chunk.len(), |index| index + 1);
+        }
+        if let Some(relative_close) = relative_close {
+            let close_end = content_start + chunk_index * SCAN_CHUNK_BYTES + relative_close + 1;
+            let (tail, next_offset) = physical_line_at(source, close_end);
+            return Ok((
+                &source[statement_start..close_end + tail.len()],
+                next_offset,
+            ));
+        }
+    }
+
+    Ok((first_line, next_offset))
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -1147,21 +1199,12 @@ fn parse_number2_value(token: &str) -> Option<Value> {
         return None;
     }
     let prefix = &no_commas[..cut];
-
-    if saw_dot {
-        let frac = prefix.split_once('.').map(|(_, b)| b).unwrap_or("");
-        if frac.is_empty() || frac.chars().all(|c| c == '0') {
-            let int_part = prefix.split_once('.').map(|(a, _)| a).unwrap_or(prefix);
-            let i: i64 = int_part.parse().ok()?;
-            return Some(Value::Number(i.into()));
-        }
-        let f: f64 = prefix.parse().ok()?;
-        let n = serde_json::Number::from_f64(f)?;
-        return Some(Value::Number(n));
+    let value: f64 = prefix.parse().ok()?;
+    let number = serde_json::Number::from_f64(value)?;
+    if value.fract() == 0.0 && value < i64::MAX as f64 {
+        return Some(Value::Number((value as i64).into()));
     }
-
-    let i: i64 = prefix.parse().ok()?;
-    Some(Value::Number(i.into()))
+    Some(Value::Number(number))
 }
 
 struct Parser<'a> {
@@ -2089,8 +2132,10 @@ classDef c fill:#ff0000, stroke:rgb(1\,2\,3), color;
             "title Product Map\n",
             "accTitle: Product areas\n",
             "accDescr: Product hierarchy\n",
-            "\"Root\":::important\n",
-            "  \"Leaf\": 42\n",
+            "\"Root\nArea\":::important\n",
+            "  \"Leaf\n雪\": .00\n",
+            "  \"Rounded\": 9007199254740993\n",
+            "  \"Boundary\": 9223372036854775808\n",
             "classDef important fill:#f96,stroke:#333;\n",
         );
         let meta = meta();
@@ -2108,7 +2153,39 @@ classDef c fill:#ff0000, stroke:rgb(1\,2\,3), color;
 
         let standalone_json = parse_treemap(text, &meta).unwrap();
         assert_eq!(combined_json, standalone_json);
-        assert!(!combined_editor.symbols.is_empty());
+        assert_eq!(
+            combined_json["root"]["children"][0]["name"],
+            json!("Root\nArea")
+        );
+        assert_eq!(
+            combined_json["root"]["children"][0]["children"][0]["value"],
+            json!(0)
+        );
+        assert_eq!(
+            combined_json["root"]["children"][0]["children"][1]["value"],
+            json!(9_007_199_254_740_992_i64)
+        );
+        assert_eq!(
+            combined_json["root"]["children"][0]["children"][2]["value"].as_f64(),
+            Some(2_f64.powi(63))
+        );
+        assert_eq!(
+            combined_editor.completeness,
+            crate::EditorSemanticCompleteness::Complete
+        );
+        for name in [
+            "Root\nArea",
+            "Leaf\n雪",
+            ".00",
+            "9007199254740993",
+            "9223372036854775808",
+        ] {
+            let start = text.find(name).unwrap();
+            assert!(combined_editor.symbols.iter().any(|symbol| {
+                symbol.name == name
+                    && symbol.selection == SourceSpan::new(start, start + name.len())
+            }));
+        }
     }
 
     #[test]
@@ -2326,6 +2403,294 @@ mod semantic_tests {
             config: crate::MermaidConfig::empty_object(),
             semantic_config: crate::MermaidConfig::empty_object(),
             title: None,
+        }
+    }
+
+    #[test]
+    fn treemap_number2_finite_values_follow_binary64_prefix_conversion() {
+        let precision_boundary = (1_u64 << 53) as f64;
+        let integer_boundary = 2_f64.powi(63);
+        for (token, expected) in [
+            (".0", 0.0),
+            (".00", 0.0),
+            (".5", 0.5),
+            ("1.", 1.0),
+            ("1_234", 1.0),
+            ("12.5.6", 12.5),
+            ("1,234.50", 1234.5),
+            ("9007199254740991", precision_boundary - 1.0),
+            ("9007199254740992", precision_boundary),
+            ("9007199254740993", precision_boundary),
+            ("9007199254740993.0", precision_boundary),
+            ("9007199254740993.5", precision_boundary + 2.0),
+            ("9007199254740995", precision_boundary + 4.0),
+            ("9223372036854775807", integer_boundary),
+            ("9223372036854775808", integer_boundary),
+            ("18446744073709551616", integer_boundary * 2.0),
+        ] {
+            let source = format!("treemap\n\"Weight\": {token}\n");
+            let model = parse_treemap_semantic_model_controlled(
+                &source,
+                &metadata(),
+                #[cfg(feature = "editor-facts")]
+                EditorFactsDemand::Omit,
+                &crate::OperationControl::new(),
+            )
+            .unwrap()
+            .model
+            .unwrap();
+            let node = model.root.children.as_ref().unwrap()[0];
+            assert_eq!(
+                model.nodes[node].value.as_ref().unwrap().as_f64(),
+                Some(expected),
+                "token {token} must round before entering the model"
+            );
+        }
+    }
+
+    #[test]
+    fn treemap_number2_rejects_invalid_or_nonfinite_values() {
+        let overflowing = "9".repeat(400);
+        for token in [
+            ".",
+            "..1",
+            "_",
+            ",,",
+            "-1",
+            "+1",
+            "1e3",
+            "0x10",
+            "NaN",
+            overflowing.as_str(),
+        ] {
+            let source = format!("treemap\n\"Weight\": {token}\n");
+            let result = parse_treemap_semantic_model_controlled(
+                &source,
+                &metadata(),
+                #[cfg(feature = "editor-facts")]
+                EditorFactsDemand::Omit,
+                &crate::OperationControl::new(),
+            )
+            .unwrap();
+            assert!(result.model.is_err(), "invalid token {token}");
+        }
+    }
+
+    #[test]
+    fn treemap_multiline_string2_preserves_literal_values_indent_and_spans() {
+        for eol in ["\n", "\r\n"] {
+            for quote in ['"', '\''] {
+                let section_name = format!("Group{eol}    子");
+                let leaf_name = format!("雪🦀\\n\\path{eol}%% literal{eol}    title literal");
+                let source = format!(
+                    "treemap{eol}{quote}{section_name}{quote}:::hot{eol}  {quote}{leaf_name}{quote}: .00:::hot{eol}  {quote}Sibling{quote}: 2{eol}{quote}After{quote}: 3{eol}classDef hot fill:#f96;{eol}"
+                );
+                crate::diagrams::langium_common::reset_family_syntax_construction_count("treemap");
+                let construction = parse_treemap_semantic_model_controlled(
+                    &source,
+                    &metadata(),
+                    #[cfg(feature = "editor-facts")]
+                    EditorFactsDemand::Capture,
+                    &crate::OperationControl::new(),
+                )
+                .unwrap();
+                assert_eq!(
+                    crate::diagrams::langium_common::family_syntax_construction_count("treemap"),
+                    1
+                );
+                let model = construction.model.as_ref().unwrap();
+                assert_eq!(model.nodes.len(), 4);
+                assert_eq!(model.root.children.as_deref(), Some([0, 3].as_slice()));
+                assert_eq!(model.nodes[0].name, section_name);
+                assert_eq!(model.nodes[0].children.as_deref(), Some([1, 2].as_slice()));
+                assert_eq!(model.nodes[1].name, leaf_name);
+                assert_eq!(model.nodes[1].value.as_ref().unwrap().as_i64(), Some(0));
+                assert_eq!(model.nodes[1].class_selector.as_deref(), Some("hot"));
+                assert_eq!(model.nodes[2].name, "Sibling");
+                assert_eq!(model.nodes[3].name, "After");
+                assert_eq!(model.title, None);
+                #[cfg(feature = "editor-facts")]
+                {
+                    let facts = construction.editor_facts.as_ref().unwrap();
+                    assert_eq!(
+                        facts.completeness,
+                        crate::EditorSemanticCompleteness::Complete
+                    );
+                    assert!(facts.diagnostics.is_empty());
+                    for (name, detail) in [
+                        (section_name.as_str(), "treemap section"),
+                        (leaf_name.as_str(), "treemap leaf"),
+                        (".00", "treemap value"),
+                    ] {
+                        let start = source.find(name).unwrap();
+                        assert!(facts.symbols.iter().any(|symbol| {
+                            symbol.name == name
+                                && symbol.detail.as_deref() == Some(detail)
+                                && symbol.selection == SourceSpan::new(start, start + name.len())
+                        }));
+                    }
+                    let selector = source.find(".00:::hot").unwrap() + ".00:::".len();
+                    assert!(facts.symbols.iter().any(|symbol| {
+                        symbol.detail.as_deref() == Some("treemap class selector")
+                            && symbol.selection == SourceSpan::new(selector, selector + "hot".len())
+                    }));
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn treemap_malformed_multiline_string2_keeps_following_safe_rows() {
+        for eol in ["\n", "\r\n"] {
+            for quote in ['"', '\''] {
+                let broken = format!("{quote}Broken{eol}  suffix{quote}: _");
+                let source = format!(
+                    "treemap{eol}{quote}Before{quote}: 1{eol}{broken}{eol}{quote}After{quote}: 2{eol}"
+                );
+                let outcome = parse_treemap_outcome_controlled(
+                    &source,
+                    #[cfg(feature = "editor-facts")]
+                    EditorFactsDemand::Capture,
+                    &crate::OperationControl::new(),
+                )
+                .unwrap();
+                let issue = outcome.first_issue.as_ref().unwrap();
+                assert_eq!(issue.message, "expected number");
+                let start = source.find(&broken).unwrap();
+                assert_eq!(
+                    issue.span,
+                    Some(SourceSpan::new(start, start + broken.len()))
+                );
+                let names = outcome
+                    .parsed
+                    .rows
+                    .iter()
+                    .filter_map(|row| match row {
+                        TreemapRow::Item(item) => Some(item.name.text.as_str()),
+                        _ => None,
+                    })
+                    .collect::<Vec<_>>();
+                assert_eq!(names, ["Before", "After"]);
+                #[cfg(feature = "editor-facts")]
+                {
+                    let facts = &outcome.parsed.editor_facts;
+                    assert_eq!(
+                        facts.completeness,
+                        crate::EditorSemanticCompleteness::Recovered
+                    );
+                    let start = source.find("After").unwrap();
+                    assert!(facts.symbols.iter().any(|symbol| {
+                        symbol.name == "After"
+                            && symbol.selection == SourceSpan::new(start, start + "After".len())
+                    }));
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn treemap_failed_string2_candidates_keep_nodes_with_linear_scan_work() {
+        const ROWS: usize = 128;
+        for quote in ['"', '\''] {
+            let mut source = String::from("treemap\n");
+            for index in 0..ROWS {
+                source.push_str(&format!(
+                    "{quote}Broken{index}\n{quote}After{index}{quote}: 1\n"
+                ));
+            }
+            let other_quote = if quote == '"' { '\'' } else { '"' };
+            source.push_str(&format!(
+                "{quote}unclosed\n{other_quote}SafeSuffix{other_quote}: 2\n{other_quote}unclosed other\n"
+            ));
+            for index in 0..ROWS {
+                source.push_str(&format!("classDef hot{index} fill:#f96;\n"));
+            }
+            source.push_str("title Recovered title\n");
+            let outcome = parse_treemap_outcome_controlled(
+                &source,
+                #[cfg(feature = "editor-facts")]
+                EditorFactsDemand::Capture,
+                &crate::OperationControl::new(),
+            )
+            .unwrap();
+            assert!(outcome.first_issue.is_some());
+            let names = outcome
+                .parsed
+                .rows
+                .iter()
+                .filter_map(|row| match row {
+                    TreemapRow::Item(item) => Some(item.name.text.as_str()),
+                    _ => None,
+                })
+                .collect::<Vec<_>>();
+            assert_eq!(names.len(), ROWS + 1);
+            for (index, name) in names[..ROWS].iter().enumerate() {
+                assert_eq!(*name, format!("After{index}"));
+            }
+            assert_eq!(names[ROWS], "SafeSuffix");
+            assert_eq!(outcome.parsed.rows.len(), ROWS * 2 + 1);
+            assert_eq!(outcome.parsed.title.as_deref(), Some("Recovered title"));
+            assert!(
+                outcome.string2_scanned_bytes <= source.len() * 2,
+                "two quote kinds must inspect at most twice the source bytes: {} > {}",
+                outcome.string2_scanned_bytes,
+                source.len() * 2
+            );
+            #[cfg(feature = "editor-facts")]
+            {
+                let facts = &outcome.parsed.editor_facts;
+                for name in ["After0", "After127", "SafeSuffix", "hot127"] {
+                    let start = source.find(name).unwrap();
+                    assert!(facts.symbols.iter().any(|symbol| {
+                        symbol.name == name
+                            && symbol.selection == SourceSpan::new(start, start + name.len())
+                    }));
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn treemap_string2_does_not_treat_backslashes_as_quote_escapes() {
+        for quote in ['"', '\''] {
+            let source = format!("treemap\n{quote}bad\\{quote}suffix{quote}: 1\n");
+            let result = parse_treemap_semantic_model_controlled(
+                &source,
+                &metadata(),
+                #[cfg(feature = "editor-facts")]
+                EditorFactsDemand::Omit,
+                &crate::OperationControl::new(),
+            )
+            .unwrap();
+            assert!(result.model.is_err(), "a backslash cannot escape {quote}");
+        }
+    }
+
+    #[test]
+    fn treemap_multiline_string2_scan_can_cancel_before_the_token_ends() {
+        for quote in ['"', '\''] {
+            for closed in [false, true] {
+                let suffix = if closed {
+                    format!("{quote}: 1\n")
+                } else {
+                    String::new()
+                };
+                let source = format!(
+                    "treemap\n{quote}start\n{}{suffix}",
+                    "tail text\n".repeat(16 * 1024)
+                );
+                let control = crate::OperationControl::new();
+                control.cancel_after_checkpoints(8);
+                assert!(matches!(
+                    parse_treemap_outcome_controlled(
+                        &source,
+                        #[cfg(feature = "editor-facts")]
+                        EditorFactsDemand::Omit,
+                        &control,
+                    ),
+                    Err(crate::OperationCancelled { .. })
+                ));
+            }
         }
     }
 

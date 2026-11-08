@@ -91,6 +91,17 @@
           "to_cluster": null
         }
       ],
+      "frames": [
+        {
+          "height": 189.0,
+          "id": "0",
+          "kind": "par_over",
+          "label": "Parallel overlap",
+          "width": 570.0,
+          "x": -110.0,
+          "y": 84.0
+        }
+      ],
       "nodes": [
         {
           "height": 74.0,

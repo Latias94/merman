@@ -131,17 +131,6 @@ impl VisibleTextStyleFacts {
         Self::plain_text(if has_visible_text { markdown } else { "" })
     }
 
-    pub(crate) fn with_unmeasured_typography(mut self, font_family: bool, font_size: bool) -> Self {
-        if font_family {
-            self.inherited_font_family_runs = 0;
-            self.source_owned_font_family_runs = 0;
-        }
-        if font_size {
-            self.inherited_font_size_runs = 0;
-        }
-        self
-    }
-
     pub(crate) const fn parse_valid(&self) -> bool {
         self.parse_valid
     }
@@ -779,13 +768,6 @@ mod tests {
                 "existing inheritance-only consumers keep their original meaning: {fragment}"
             );
         }
-
-        let unmeasured = VisibleTextStyleFacts::from_xhtml_fragment(
-            "<span style='font-family:monospace'>Root</span>",
-        )
-        .with_unmeasured_typography(true, false);
-        assert_eq!(unmeasured.source_owned_font_family_run_count(), 0);
-        assert_eq!(unmeasured.unknown_font_family_run_count(), 1);
     }
 
     #[cfg(feature = "diagram-mindmap")]

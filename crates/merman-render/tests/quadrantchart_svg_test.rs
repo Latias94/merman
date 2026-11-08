@@ -337,6 +337,77 @@ quadrantChart
 }
 
 #[test]
+fn quadrantchart_title_semicolons_reach_the_title_dom_without_creating_quadrants() {
+    let svg = render_quadrantchart_svg_from_text(
+        "quadrantChart\ntitle Plan; quadrant-1 Hidden\nquadrant-2 Visible\n",
+    );
+    let document = roxmltree::Document::parse(&svg).unwrap();
+    let title = document
+        .descendants()
+        .find(|node| node.has_tag_name("g") && node.attribute("class") == Some("title"))
+        .unwrap();
+    assert_eq!(
+        title
+            .children()
+            .find(|node| node.has_tag_name("text"))
+            .unwrap()
+            .text(),
+        Some("Plan; quadrant-1 Hidden")
+    );
+    let quadrant_texts = document
+        .descendants()
+        .filter(|node| node.has_tag_name("g") && node.attribute("class") == Some("quadrant"))
+        .map(|node| {
+            node.children()
+                .find(|child| child.has_tag_name("text"))
+                .unwrap()
+                .text()
+                .unwrap_or("")
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(quadrant_texts, ["", "Visible", "", ""]);
+}
+
+#[test]
+fn quadrantchart_multiline_literal_tokens_reach_svg_text_nodes() {
+    for ending in ["\n", "\r\n"] {
+        for (open, close) in [("\"", "\""), ("\"`", "`\"")] {
+            let source = format!(
+                "quadrantChart{ending}\
+                 x-axis {open}Low{ending}Effort{close} --> High{ending}\
+                 quadrant-1 {open}**First**{ending}Second{close} ???{ending}\
+                 quadrant-2 {open}Literal\\nValue{close}{ending}\
+                 {open}Point{ending}Name{close}: [0.2, 0.8]{ending}"
+            );
+            let svg = render_quadrantchart_svg_from_text(&source);
+            let document = roxmltree::Document::parse(&svg).unwrap();
+            for (class, expected) in [
+                ("label", "Low\nEffort"),
+                ("quadrant", "**First**\nSecond ???"),
+                ("quadrant", r"Literal\nValue"),
+                ("data-point", "Point\nName"),
+            ] {
+                assert!(
+                    document.descendants().any(|node| {
+                        node.has_tag_name("g")
+                            && node.attribute("class") == Some(class)
+                            && node.children().any(|child| {
+                                child.has_tag_name("text") && child.text() == Some(expected)
+                            })
+                    }),
+                    "missing literal {class} text {expected:?}"
+                );
+            }
+            assert!(
+                !document.descendants().any(|node| {
+                    node.has_tag_name("foreignObject") || node.has_tag_name("tspan")
+                })
+            );
+        }
+    }
+}
+
+#[test]
 fn quadrantchart_typed_font_stack_reaches_scoped_css_and_terminal_receipt() {
     let font_stack =
         FontStack::new(["Quadrant Typed", "monospace"]).expect("valid Quadrant font stack");

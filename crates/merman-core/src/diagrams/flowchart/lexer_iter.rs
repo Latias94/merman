@@ -4,6 +4,17 @@ impl<'input> Iterator for Lexer<'input> {
     type Item = std::result::Result<(usize, Tok, usize), LexError>;
 
     fn next(&mut self) -> Option<Self::Item> {
+        let item = self.next_token();
+        #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
+        if let Some(Ok((_, token, _))) = &item {
+            self.at_statement_start = matches!(token, Tok::Sep | Tok::KwEnd);
+        }
+        item
+    }
+}
+
+impl Lexer<'_> {
+    fn next_token(&mut self) -> Option<std::result::Result<(usize, Tok, usize), LexError>> {
         if let Some(tok) = self.pending.pop_front() {
             return Some(tok);
         }
@@ -53,6 +64,10 @@ impl<'input> Iterator for Lexer<'input> {
             }));
         }
         let start = self.pos;
+        #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
+        if let Some(statement) = self.lex_accessibility_statement() {
+            return Some(statement);
+        }
         if let Some(error) = self.lex_reserved_token_error() {
             return Some(Err(error));
         }

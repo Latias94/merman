@@ -11,6 +11,8 @@ pub(crate) enum GraphLayoutBackend {
     Dagre,
     Elk,
     CoseBilkent,
+    #[cfg(feature = "diagram-er")]
+    Swimlane,
 }
 
 /// The root loaders registered by Mermaid 12. Container metadata has its own allowlist.
@@ -63,6 +65,8 @@ impl GraphLayoutSelection {
     pub(crate) fn required_capability(self) -> Option<crate::RenderCapability> {
         match self.backend {
             GraphLayoutBackend::Dagre => None,
+            #[cfg(feature = "diagram-er")]
+            GraphLayoutBackend::Swimlane => None,
             GraphLayoutBackend::Elk => Some(crate::RenderCapability::LayoutElk),
             GraphLayoutBackend::CoseBilkent => Some(crate::RenderCapability::LayoutCytoscape),
         }
@@ -94,10 +98,45 @@ pub(crate) fn resolve_graph_layout(config: &Value) -> GraphLayoutSelection {
     GraphLayoutSelection { backend }
 }
 
+/// ER supplies measured compound data to Swimlane. Other rootless graph families still use
+/// their existing provider admission until they have a family-specific measured adapter.
+#[cfg(feature = "diagram-er")]
+pub(crate) fn resolve_er_graph_layout(config: &Value) -> GraphLayoutSelection {
+    if config.get("layout").and_then(Value::as_str) == Some("swimlane") {
+        GraphLayoutSelection {
+            backend: GraphLayoutBackend::Swimlane,
+        }
+    } else {
+        resolve_graph_layout(config)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use serde_json::json;
+
+    #[cfg(feature = "diagram-er")]
+    #[test]
+    fn er_admits_swimlane_without_changing_other_rootless_family_selection() {
+        let config = json!({"layout": "swimlane"});
+        let selected = resolve_er_graph_layout(&config);
+        assert_eq!(selected.backend, GraphLayoutBackend::Swimlane);
+        assert_eq!(selected.required_capability(), None);
+        selected.validate_rootless_graph().unwrap();
+        assert_eq!(
+            resolve_graph_layout(&config).backend,
+            GraphLayoutBackend::Dagre
+        );
+
+        for requested in ["dagre", "elk", "cose-bilkent", "unknown", "SWIMLANE"] {
+            let config = json!({"layout": requested});
+            assert_eq!(
+                resolve_er_graph_layout(&config).backend,
+                resolve_graph_layout(&config).backend,
+            );
+        }
+    }
 
     #[test]
     fn registered_cose_preserves_missing_root_failure_while_unknown_layout_falls_back() {

@@ -6,8 +6,9 @@ use super::BlockNode;
 
 /// Effective source fields shared by geometry, theme ownership and SVG emission.
 ///
-/// Flat records preserve Mermaid database insertion order.
-/// Later non-empty fields replace earlier fields for repeated node IDs.
+/// Only hierarchy objects contribute paint. A detached replacement database binding must not
+/// change an older object that remains attached to the hierarchy. For repeated visible IDs,
+/// later non-empty fields replace earlier fields in object insertion order.
 #[derive(Debug)]
 pub(crate) struct BlockNodeSource<'a> {
     pub(crate) color_index: Option<usize>,
@@ -60,8 +61,28 @@ impl<'a> BlockNodeSource<'a> {
 pub(crate) fn resolve_block_node_sources(
     model: &BlockDiagramRenderModel,
 ) -> HashMap<&str, BlockNodeSource<'_>> {
+    let mut visible = vec![false; model.blocks_flat.len()];
+    let root = model.root.or_else(|| {
+        model
+            .blocks_flat
+            .iter()
+            .position(|node| node.id == "root" && node.block_type == "composite")
+    });
+    let mut pending = root.into_iter().collect::<Vec<_>>();
+    while let Some(index) = pending.pop() {
+        let Some(node) = model.block(index) else {
+            continue;
+        };
+        if std::mem::replace(&mut visible[index], true) {
+            continue;
+        }
+        pending.extend(node.children.iter().copied());
+    }
     let mut sources = HashMap::new();
     for (index, node) in model.blocks_flat.iter().enumerate() {
+        if !visible[index] {
+            continue;
+        }
         let color_index = model.visuals.color_indices.get(index).copied().flatten();
         sources
             .entry(node.id.as_str())
@@ -81,7 +102,7 @@ mod tests {
         let root = BlockNode {
             id: "root".to_string(),
             block_type: "composite".to_string(),
-            children: vec![1, 2],
+            children: vec![1, 2, 4, 5],
             ..Default::default()
         };
         let first = BlockNode {

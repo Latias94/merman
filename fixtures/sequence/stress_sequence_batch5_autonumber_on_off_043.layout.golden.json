@@ -326,6 +326,24 @@
           "to_cluster": null
         }
       ],
+      "frames": [
+        {
+          "height": 274.0,
+          "id": "4",
+          "kind": "alt",
+          "label": "unnumbered block",
+          "sections": [
+            {
+              "id": "7",
+              "label": "still unnumbered",
+              "y": 318.0
+            }
+          ],
+          "width": 422.0,
+          "x": 64.0,
+          "y": 176.0
+        }
+      ],
       "nodes": [
         {
           "height": 74.0,

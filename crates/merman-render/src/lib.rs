@@ -238,6 +238,7 @@ pub mod state;
 pub mod svg;
 pub mod svg_security;
 #[cfg(any(
+    feature = "diagram-er",
     feature = "diagram-flowchart",
     feature = "diagram-swimlane",
     feature = "diagram-mindmap"

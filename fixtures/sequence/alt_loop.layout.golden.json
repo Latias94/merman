@@ -181,6 +181,33 @@
           "to_cluster": null
         }
       ],
+      "frames": [
+        {
+          "height": 182.0,
+          "id": "1",
+          "kind": "alt",
+          "label": "ok",
+          "sections": [
+            {
+              "id": "3",
+              "label": "no",
+              "y": 226.0
+            }
+          ],
+          "width": 222.0,
+          "x": 64.0,
+          "y": 130.0
+        },
+        {
+          "height": 91.0,
+          "id": "6",
+          "kind": "loop",
+          "label": "Every day",
+          "width": 222.0,
+          "x": 64.0,
+          "y": 322.0
+        }
+      ],
       "nodes": [
         {
           "height": 74.0,

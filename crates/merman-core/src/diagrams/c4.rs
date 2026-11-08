@@ -1,6 +1,6 @@
 #[cfg(feature = "presentation")]
 use crate::SourcePresentationMetadata;
-use crate::diagrams::scan::{LineCursor, leading_whitespace_len};
+use crate::diagrams::scan::{LineCursor, is_ecmascript_whitespace, leading_whitespace_len};
 #[cfg(feature = "editor-facts")]
 use crate::family::EditorFactsDemand;
 use crate::sanitize::sanitize_text;
@@ -1038,6 +1038,31 @@ fn c4_shape_detail(name: &str) -> &'static str {
     }
 }
 
+fn c4_macro_statement_source<'a>(
+    code: &'a str,
+    stmt_start: usize,
+    control: &OperationControl,
+) -> OperationControlResult<&'a str> {
+    let source = &code[stmt_start..];
+    let bytes = source.as_bytes();
+    let mut in_quotes = false;
+    for (index, &byte) in bytes.iter().enumerate() {
+        if index > 0 && index.is_multiple_of(1024) {
+            control.checkpoint()?;
+        }
+        match byte {
+            b'"' => in_quotes = !in_quotes,
+            b'\n' if in_quotes => control.checkpoint()?,
+            b'\n' => return Ok(&source[..index]),
+            b'%' if !in_quotes && bytes.get(index + 1) == Some(&b'%') => {
+                return Ok(&source[..index]);
+            }
+            _ => {}
+        }
+    }
+    Ok(source)
+}
+
 fn parse_macro_stmt_spanned(t: &str, stmt_start: usize) -> Result<Option<SpannedMacroStmt>> {
     let t = t.trim_end();
     let Some(paren) = t.find('(') else {
@@ -1158,6 +1183,13 @@ fn parse_arg_spanned(seg: &str, seg_base: usize) -> Result<SpannedArg> {
         });
     }
 
+    if trimmed.contains('\n') {
+        return Err(Error::diagram_parse_fallback(
+            "c4".to_string(),
+            "unexpected newline in unquoted C4 argument".to_string(),
+        ));
+    }
+
     Ok(SpannedArg {
         value: SpannedArgValue::Text(SpannedText {
             text: trimmed.to_string(),
@@ -1179,7 +1211,7 @@ fn try_parse_kv_spanned(seg: &str, seg_base: usize) -> Result<Option<SpannedArg>
     };
     let key_source = spanned_trimmed_c4(&rest[..eq], seg_base + 1);
     let key = key_source.text.as_str();
-    if key.is_empty() {
+    if key.is_empty() || rest[..eq].contains('\n') {
         return Err(Error::diagram_parse_fallback(
             "c4".to_string(),
             format!("invalid attribute kv key: {seg}"),
@@ -1228,7 +1260,8 @@ fn parse_quoted_spanned(input: &str, input_base: usize) -> Result<SpannedText> {
         ));
     }
     Ok(SpannedText {
-        text: value.to_string(),
+        // The grammar trims STR and STR_VALUE, but editor ranges still own the authored body.
+        text: value.trim_matches(is_ecmascript_whitespace).to_string(),
         span: value_span,
     })
 }
@@ -2206,7 +2239,14 @@ fn parse_c4_semantic_source(
             ));
             continue;
         }
-        let stmt = match parse_macro_stmt_spanned(t, stmt_start) {
+        // Only quoted macro tokens can carry a physical LF into the next line. Borrow the
+        // original span so comments, CRLF and UTF-8 offsets survive without reconstruction.
+        let macro_source = if t.contains('(') {
+            c4_macro_statement_source(code, stmt_start, control)?
+        } else {
+            t
+        };
+        let stmt = match parse_macro_stmt_spanned(macro_source, stmt_start) {
             Ok(Some(stmt)) => stmt,
             Ok(None) => {
                 issues.push(c4_parse_issue(
@@ -2224,6 +2264,14 @@ fn parse_c4_semantic_source(
                 continue;
             }
         };
+        // Commit lookahead only after syntax succeeds; malformed strings must not consume
+        // later safe lines that recovery can still parse independently.
+        while lines.offset() < stmt.span.end {
+            if lines.next_line().is_none() {
+                break;
+            }
+            control.checkpoint()?;
+        }
         if let Err(error) = validate_c4_macro_args(&stmt) {
             issues.push(c4_parse_issue(error, stmt.span));
             continue;
@@ -2540,6 +2588,258 @@ fn split_next_arg(input: &str) -> (&str, Option<(usize, &str)>) {
 #[cfg(test)]
 mod semantic_tests {
     use super::*;
+
+    #[test]
+    fn c4_quoted_trim_matches_javascript_and_keeps_the_authored_body_range() {
+        for (body, expected) in [
+            (" \t\u{feff}Alice\nSmith\u{feff}\t ", "Alice\nSmith"),
+            ("\u{0085}Alice\u{0085}", "\u{0085}Alice\u{0085}"),
+            (" \t\n\u{feff}", ""),
+        ] {
+            for prefix in ["", "$tags="] {
+                let input = format!("{prefix}\"{body}\"");
+                let arg = parse_arg_spanned(&input, 10).unwrap();
+                let value = C4Arg::from_spanned(&arg);
+                assert_eq!(value.value(), expected);
+                let start = 10 + prefix.len() + 1;
+                assert_eq!(arg.span(), SourceSpan::new(start, start + body.len()));
+            }
+        }
+    }
+
+    #[test]
+    fn c4_quoted_arguments_trim_semantics_across_macros() {
+        let source = concat!(
+            "C4Context\n",
+            "Boundary(\" bank \", \" Bank \", \" company \") {\n",
+            "  Person(\" a \", \" Alice \", \" Description \", $tags=\" external \")\n",
+            "  Container(\" b \", \" App \", \" Rust \", \" Service \", $shape=\" cylinder \")\n",
+            "  Rel(a, b, \" Uses \", \" HTTPS \", \" Request \")\n",
+            "}\n",
+            "UpdateElementStyle(\" a \", $fontColor=\" red \", $bgColor=\" blue \")\n",
+            "UpdateRelStyle(\" a \", \" b \", $lineColor=\" green \", $textColor=\" black \")\n",
+            "UpdateLayoutConfig($c4ShapeInRow=\" 3 \", $c4BoundaryInRow=\" 2 \")\n",
+        );
+        let parsed = crate::SemanticParser::new()
+            .parse_diagram_sync(source)
+            .unwrap();
+        let model = match parsed.model {
+            crate::SemanticDiagramModel::C4(model) => model,
+            #[allow(unreachable_patterns)]
+            _ => panic!("expected C4 semantics"),
+        };
+        assert_eq!(model.boundaries[1].alias, "bank");
+        assert_eq!(model.boundaries[1].label.as_str(), "Bank");
+        assert_eq!(model.boundaries[1].ty.as_ref().unwrap().as_str(), "company");
+        assert_eq!(model.shapes[0].alias, "a");
+        assert_eq!(model.shapes[0].parent_boundary, "bank");
+        assert_eq!(model.shapes[0].label.as_str(), "Alice");
+        assert_eq!(
+            model.shapes[0].descr.as_ref().unwrap().as_str(),
+            "Description"
+        );
+        assert_eq!(model.shapes[0].tags, Some(Value::from("external")));
+        assert_eq!(model.shapes[0].font_color.as_deref(), Some("red"));
+        assert_eq!(model.shapes[0].bg_color.as_deref(), Some("blue"));
+        assert_eq!(model.shapes[1].alias, "b");
+        assert_eq!(model.shapes[1].label.as_str(), "App");
+        assert_eq!(model.shapes[1].techn.as_ref().unwrap().as_str(), "Rust");
+        assert_eq!(model.shapes[1].descr.as_ref().unwrap().as_str(), "Service");
+        assert_eq!(model.shapes[1].shape, Some(Value::from("cylinder")));
+        assert_eq!(model.rels[0].from_alias, "a");
+        assert_eq!(model.rels[0].to_alias, "b");
+        assert_eq!(model.rels[0].label.as_str(), "Uses");
+        assert_eq!(model.rels[0].techn.as_ref().unwrap().as_str(), "HTTPS");
+        assert_eq!(model.rels[0].descr.as_ref().unwrap().as_str(), "Request");
+        assert_eq!(model.rels[0].line_color.as_deref(), Some("green"));
+        assert_eq!(model.rels[0].text_color.as_deref(), Some("black"));
+        assert_eq!(model.layout.c4_shape_in_row, 3);
+        assert_eq!(model.layout.c4_boundary_in_row, 2);
+    }
+
+    #[test]
+    fn c4_quoted_macro_tokens_preserve_physical_lf_and_lexical_punctuation() {
+        let source = concat!(
+            "C4Context\n",
+            "Boundary(bank, \" Bank\nOffice \") {\n",
+            "  Person(\" a \", \" Alice\nSmith \", \" First, (row)\nrow %% literal ) \", ",
+            "$tags=\" external\nuser \") %% outside comment\n",
+            "  System(b, \"B\")\n",
+            "  Rel(a, b, \" Uses\nAPI \")\n",
+            "}\n",
+            "Person(after, \"After\")\n",
+        );
+        let parsed = crate::SemanticParser::new()
+            .parse_diagram_sync(source)
+            .unwrap();
+        let model = match parsed.model {
+            crate::SemanticDiagramModel::C4(model) => model,
+            #[allow(unreachable_patterns)]
+            _ => panic!("expected C4 semantics"),
+        };
+        assert_eq!(model.boundaries[1].label.as_str(), "Bank\nOffice");
+        assert_eq!(model.shapes.len(), 3);
+        assert_eq!(model.shapes[0].alias, "a");
+        assert_eq!(model.shapes[0].label.as_str(), "Alice\nSmith");
+        assert_eq!(
+            model.shapes[0].descr.as_ref().unwrap().as_str(),
+            "First, (row)\nrow %% literal )"
+        );
+        assert_eq!(model.shapes[0].tags, Some(Value::from("external\nuser")));
+        assert_eq!(model.shapes[1].parent_boundary, "bank");
+        assert_eq!(model.shapes[2].alias, "after");
+        assert_eq!(model.shapes[2].parent_boundary, "global");
+        assert_eq!(model.rels[0].label.as_str(), "Uses\nAPI");
+    }
+
+    #[test]
+    fn c4_multiline_strings_do_not_enable_bare_multiline_macro_formatting() {
+        for statement in [
+            "Person(\n a,\n \"Alice\"\n)",
+            "Person(a,\n \"Alice\")",
+            "Person(a, \"Alice\nSmith\",\n \"Description\")",
+            "Person(a, \"Alice\nSmith\"\n)",
+            "Person(a, Alice\"\nSmith\")",
+            "Person(a, \"Alice\\\"Smith\")",
+        ] {
+            let source = format!("C4Context\n{statement}\nSystem(after, \"After\")\n");
+            let error = crate::SemanticParser::new()
+                .parse_diagram_sync(&source)
+                .unwrap_err();
+            assert!(matches!(error, Error::DiagramParse { .. }), "{statement:?}");
+        }
+    }
+
+    #[test]
+    fn c4_unterminated_quoted_macro_lookahead_keeps_later_safe_statements() {
+        let source = concat!(
+            "C4Context\r\n",
+            "Person(broken, \"Unclosed\r\n",
+            "System(after, \"Later\")\r\n",
+            "Rel(after, )\r\n",
+            "Person(next, \"Next\r\nLine\")\r\n",
+        );
+        reset_c4_syntax_construction_count();
+        let outcome = construct_c4_source_controlled(
+            source,
+            "c4",
+            &MermaidConfig::empty_object(),
+            #[cfg(feature = "editor-facts")]
+            EditorFactsDemand::Capture,
+            &OperationControl::new(),
+        )
+        .unwrap();
+        assert_eq!(c4_syntax_construction_count(), 1);
+        assert_eq!(outcome.issues.len(), 2);
+        assert!(
+            outcome.issues[0]
+                .error
+                .to_string()
+                .contains("unterminated macro call")
+        );
+        assert_eq!(
+            outcome.issues[0].span,
+            SourceSpan::new("C4Context\r\n".len(), source.find("\r\nSystem").unwrap())
+        );
+        assert!(
+            outcome.issues[1]
+                .error
+                .to_string()
+                .contains("missing relation target")
+        );
+        let model = outcome.source.db.into_model().unwrap();
+        assert_eq!(model.shapes.len(), 2);
+        assert_eq!(model.shapes[0].alias, "after");
+        assert_eq!(model.shapes[1].label.as_str(), "Next\r\nLine");
+        #[cfg(feature = "editor-facts")]
+        {
+            let facts = outcome.source.editor_facts.unwrap();
+            for name in ["after", "Later", "next", "Next\r\nLine"] {
+                assert!(facts.symbols.iter().any(|symbol| symbol.name == name));
+            }
+            assert!(!facts.symbols.iter().any(|symbol| symbol.name == "broken"));
+        }
+    }
+
+    #[test]
+    #[cfg(feature = "editor-facts")]
+    fn c4_trimmed_multiline_facts_retain_authored_utf8_crlf_ranges() {
+        use crate::{EditorSemanticCompleteness, EditorSemanticRole};
+
+        let source = concat!(
+            "C4Context\r\n",
+            "Person(\" \u{3000}a \t\", \" \tAlice\r\nSmith \t\", \" \u{3000}\t\u{3000}\", ",
+            "$tags=\" \u{feff}external\u{feff} \")\r\n",
+            "System(b, \"B\")\r\n",
+            "Rel(\" a \", b, \" Uses\r\nAPI \")\r\n",
+            "Person(after, \"After\")\r\n",
+        );
+        let metadata = crate::SemanticMetadata {
+            diagram_type: "c4".into(),
+            config: MermaidConfig::empty_object(),
+            semantic_config: MermaidConfig::empty_object(),
+            title: None,
+        };
+        reset_c4_syntax_construction_count();
+        let parsed = parse_c4_semantic_model_controlled(
+            source,
+            &metadata,
+            EditorFactsDemand::Capture,
+            &OperationControl::new(),
+        )
+        .unwrap();
+        assert_eq!(c4_syntax_construction_count(), 1);
+        assert!(parsed.model.is_ok());
+        let facts = parsed.editor_facts.unwrap();
+        assert_eq!(facts.completeness, EditorSemanticCompleteness::Complete);
+        assert!(facts.diagnostics.is_empty());
+        for (name, authored, role) in [
+            ("a", " \u{3000}a \t", EditorSemanticRole::Entity),
+            (
+                "Alice\r\nSmith",
+                " \tAlice\r\nSmith \t",
+                EditorSemanticRole::Payload,
+            ),
+            (
+                "external",
+                " \u{feff}external\u{feff} ",
+                EditorSemanticRole::Payload,
+            ),
+            ("a", " a ", EditorSemanticRole::Reference),
+            ("Uses\r\nAPI", " Uses\r\nAPI ", EditorSemanticRole::Payload),
+            ("after", "after", EditorSemanticRole::Entity),
+        ] {
+            let start = source.find(authored).unwrap();
+            let span = SourceSpan::new(start, start + authored.len());
+            assert!(
+                facts.symbols.iter().any(|symbol| {
+                    symbol.name == name
+                        && symbol.role == role
+                        && symbol.span == span
+                        && symbol.selection == span
+                }),
+                "missing authored range for {name:?}"
+            );
+        }
+        let empty_body = " \u{3000}\t\u{3000}";
+        let start = source.find(empty_body).unwrap();
+        assert!(facts.expected_syntax.iter().any(|expected| {
+            expected.kind == EditorExpectedSyntaxKind::Payload
+                && expected.span == SourceSpan::new(start, start + empty_body.len())
+        }));
+    }
+
+    #[test]
+    fn c4_macro_scanning_observes_cancellation_inside_long_quoted_tokens() {
+        for body in ["row\n".repeat(32), "x".repeat(16 * 1024)] {
+            let source = format!("Person(a, \"{body}\")\n");
+            let control = OperationControl::new().for_phase(crate::OperationPhase::Parse);
+            control.cancel_after_checkpoints(1);
+            let cancelled = c4_macro_statement_source(&source, 0, &control).unwrap_err();
+            assert_eq!(cancelled.reason, crate::CancelReason::Requested);
+            assert_eq!(cancelled.phase, crate::OperationPhase::Parse);
+        }
+    }
 
     #[test]
     #[cfg(feature = "editor-facts")]

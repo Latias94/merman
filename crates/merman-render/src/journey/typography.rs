@@ -14,9 +14,8 @@ use crate::model::JourneyDiagramLayout;
 
 /// Resolves Journey's inherited base typography once for layout, CSS, and evidence.
 ///
-/// Journey task and title typography are intentionally not part of this plan. Mermaid gives
-/// those roles their own configuration paths and the native fallback text writer emits them
-/// explicitly.
+/// The legend and the `fo` / `old` label candidates inherit base typography. The `tspan`
+/// candidate and title have separate source configuration owners.
 #[derive(Debug)]
 pub(crate) struct JourneyTypographyThemePlan {
     css: super::JourneyCssBinding,
@@ -138,7 +137,13 @@ impl JourneyTypographyThemePlan {
             JourneyTypographyThemeReceipt::new(
                 self.font_family_css(),
                 self.font_size_css(),
-                journey_inherited_text_runs(layout),
+                journey_inherited_text_runs(
+                    layout,
+                    self.css
+                        .render
+                        .text_placement
+                        .has_inherited_label_typography(),
+                ),
             )
         })
     }
@@ -277,12 +282,26 @@ impl<'a> JourneyTypographyThemeReceipt<'a> {
     }
 }
 
-fn journey_inherited_text_runs(layout: &JourneyDiagramLayout) -> Vec<&str> {
-    layout
+fn journey_inherited_text_runs(layout: &JourneyDiagramLayout, include_labels: bool) -> Vec<&str> {
+    let mut runs = layout
         .actor_legend
         .iter()
         .flat_map(|item| item.label_lines.iter().map(|line| line.text.as_str()))
-        .collect()
+        .collect::<Vec<_>>();
+    if include_labels {
+        let mut sections = layout.sections.iter();
+        let mut last_section = "";
+        for task in &layout.tasks {
+            if last_section != task.section
+                && let Some(section) = sections.next()
+            {
+                runs.push(section.section.as_str());
+            }
+            last_section = task.section.as_str();
+            runs.push(task.task.as_str());
+        }
+    }
+    runs
 }
 
 #[cfg(test)]

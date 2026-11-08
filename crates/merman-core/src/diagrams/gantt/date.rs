@@ -1082,42 +1082,41 @@ fn add_duration(dt: OffsetDateTime, value: f64, unit: &str) -> Option<OffsetDate
     if !value.is_finite() {
         return None;
     }
-    match unit {
+    let result = match unit {
         "ms" => add_milliseconds(dt, value, 1.0),
         "s" => add_milliseconds(dt, value, 1_000.0),
         "m" => add_milliseconds(dt, value, 60_000.0),
         "h" => add_milliseconds(dt, value, 3_600_000.0),
-        "d" => {
-            if value.fract() == 0.0 {
-                add_days_local(dt, trunc_f64_to_i64(value)?)
-            } else {
-                add_milliseconds(dt, value, 86_400_000.0)
-            }
-        }
-        "w" => {
-            if value.fract() == 0.0 {
-                let days = trunc_f64_to_i64(value)?.checked_mul(7)?;
-                add_days_local(dt, days)
-            } else {
-                add_milliseconds(dt, value, 604_800_000.0)
-            }
-        }
+        // Day.js rounds calendar days/weeks with Math.round before the local date setter.
+        "d" => add_days_local(dt, trunc_f64_to_i64((value + 0.5).floor())?),
+        "w" => add_days_local(dt, trunc_f64_to_i64((value * 7.0 + 0.5).floor())?),
         "M" => {
-            if value.fract() == 0.0 {
-                add_months_local(dt, trunc_f64_to_i64(value)?)
-            } else {
-                None
-            }
+            // Native setMonth truncates the target field, then clamps the original day.
+            let month = i64::from(crate::runtime::datetime_to_local_civil(dt).month0());
+            let target = trunc_f64_to_i64(month as f64 + value)?;
+            add_months_local(dt, target.checked_sub(month)?)
         }
         "y" => {
-            if value.fract() == 0.0 {
-                add_years_local(dt, trunc_f64_to_i64(value)?)
-            } else {
-                None
-            }
+            let year = i64::from(crate::runtime::datetime_to_local_civil(dt).year());
+            let target = trunc_f64_to_i64(year as f64 + value)?;
+            add_years_local(dt, target.checked_sub(year)?)
         }
         _ => None,
+    }?;
+    if matches!(unit, "M" | "y") {
+        // Day.js clamps through daysInMonth(), which computes the target month's end first.
+        let local = crate::runtime::datetime_to_local_civil(result);
+        let last_day = crate::time::days_in_month(local.year(), local.month());
+        let month_end =
+            CivilDate::new(local.year(), local.month(), last_day)?.at_hms_milli(23, 59, 59, 999)?;
+        let month_end = local_from_civil(month_end)?;
+        if !(-JS_MAX_TIME_MILLIS..=JS_MAX_TIME_MILLIS).contains(&month_end.timestamp_millis()) {
+            return None;
+        }
     }
+    (-JS_MAX_TIME_MILLIS..=JS_MAX_TIME_MILLIS)
+        .contains(&result.timestamp_millis())
+        .then_some(result)
 }
 
 pub(super) fn get_end_date(

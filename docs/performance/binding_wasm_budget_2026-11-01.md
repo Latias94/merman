@@ -132,3 +132,117 @@ match Linux exactly; render Brotli is 4,301,346 bytes, one byte below the Linux 
 ceiling uses the Linux measurement, without adding a margin for that local difference. This
 decision accepts artifact size only, without making latency or memory claims. The historical
 failed run remains failed; the updated branch still requires its own CI result.
+
+## Mermaid parity reassessment, 2026-11-08
+
+[PR 287](https://github.com/Latias94/merman/pull/287) integrates the accumulated Mermaid 12.3.0
+parser, model, editor, layout and SVG corrections with main's prepared-label typography.
+The selected reference, supported capabilities and Web product boundaries are unchanged.
+This decision reassesses only the five insufficient Web metrics below; the other 15 Web
+ceilings and all four Typst ceilings remain unchanged.
+
+### Frozen production artifacts
+
+The measurements come from the existing Linux Web package producer and size owner, using
+Rust 1.99.1, Node 26.13.0, wasm-pack 0.15.1 and wasm-tools 1.263.0. Both runs select the
+descriptor-owned `wasm-size` profile and measure stripped final assembled npm WASM with
+the existing gzip and Brotli settings. The current main control is separate from the older
+November 1 and November 6 measurements above.
+
+| Role | Source and run | Package-group artifact |
+| --- | --- | --- |
+| Current main | `ec6f180312cc0efc079434dcf1a633afbc3a0b5b`; [run 42480344060, size job 128737075388](https://github.com/Latias94/merman/actions/runs/42480344060/job/128737075388), attempt 1 | `pages-web-package-1`, ID `13617219109`, 36,986,084 archive bytes |
+| Integrated PR | Head `9dd7a3a686bd52070a5f0ddddc7a4a8b0fe5d492`; checkout `87f2d365a9cefca27252bdd4248dd0065a548ff4`; [run 42484922245, size job 128747130588](https://github.com/Latias94/merman/actions/runs/42484922245/job/128747130588), attempt 1 | `pages-web-package-1`, ID `13619780533`, 37,231,419 archive bytes |
+
+Both downloaded archives match their GitHub SHA-256 digests:
+
+- Main: `750fbac2b9fac15ee7e244e68b271789e5b3e83c39c1059c8e002d76ee98211a`.
+- Integrated PR: `ddb1904b9bcd4d1c103896edc7d77622f9b9bcb2506b2d1ce2e0b0b82c7aa6db`.
+
+All five packages in each archive match every `artifact_files` length and SHA-256 entry
+in schema-2 provenance: 66 analysis, 66 ASCII, 68 editor, 82 full and 76 render files.
+The integrated package input manifests also match the committed source inputs and their
+complete source/input digests through the maintained input verifier. Six untouched Windows
+checkout files have CRLF bytes; their corresponding Git blobs match the Linux manifest
+exactly, so the checkout is left untouched. The Linux producer passes its current-input,
+package-closure, package-smoke and DOM-safety checks.
+
+| Final WASM | Main SHA-256 | Integrated PR SHA-256 |
+| --- | --- | --- |
+| `web-full` | `95411a59f4bb49fe40ef19f2499ae7b88709bf6b9407d3938b9155c8fb1c0bd4` | `076194591efd6dcdca7c8a0d468a7063cd4a3ee2b1a744834d1d03f8d9b9f6a2` |
+| `web-render` | `154df084400776005498073369a505e4b7623d64a2f6539b8af4775ef6d5f0aa` | `ba77227a9eabc410b88d4b6078133f71faae8e656bb729fa91f7acce30ae7c9d` |
+
+The integrated full source/input digests are respectively
+`05422f89cf35e23a290b8b500ac1955360b66b03d1af308781fed39c21901971` and
+`c499be7a11b69ec466abd2937b21d6b60e716825246abbc3bf69f5350a7804a5`.
+The render source/input digests are
+`5463573b152bd5d390e0dea9be64c538a43603279811bc4e535d55b0d9a393ec` and
+`7c5328f4b283d4005675cc62551f0e011e2151603b94d85318327121970c136e`.
+
+### Measurements and attribution
+
+All values are bytes. The native size owner on Windows, with the same wasm-tools 1.263.0,
+remeasures the downloaded main packages without rebuilding WASM; all 20 metrics match Linux
+exactly. The integrated values below are the Linux size owner's measurements of its own
+source-bound package upload.
+
+| Artifact / source | Raw | Stripped | Gzip | Brotli |
+| --- | ---: | ---: | ---: | ---: |
+| `web-analysis` / main | 4,038,888 | 4,038,611 | 1,551,914 | 1,184,039 |
+| `web-analysis` / integrated | 4,062,577 | 4,062,300 | 1,563,196 | 1,191,567 |
+| `web-ascii` / main | 5,696,880 | 5,696,603 | 2,113,817 | 1,595,634 |
+| `web-ascii` / integrated | 5,724,917 | 5,724,640 | 2,124,717 | 1,605,730 |
+| `web-editor` / main | 4,193,804 | 4,193,527 | 1,613,579 | 1,227,345 |
+| `web-editor` / integrated | 4,217,515 | 4,217,238 | 1,623,753 | 1,236,601 |
+| `web-full` / main | 17,612,443 | 17,612,166 | 6,535,429 | 4,813,698 |
+| `web-full` / integrated | 17,712,625 | 17,712,348 | 6,577,331 | 4,841,367 |
+| `web-render` / main | 15,596,883 | 15,596,606 | 5,840,299 | 4,313,881 |
+| `web-render` / integrated | 15,693,337 | 15,693,060 | 5,879,144 | 4,338,821 |
+
+Current main already exceeds the render gzip ceiling by 6,299 bytes. The integrated PR adds
+96,454 raw/stripped bytes (0.62%) and 38,845 gzip bytes (0.67%) to render. Full adds 100,182
+raw bytes, 41,902 gzip bytes and 27,669 Brotli bytes. The amount above a previous ceiling
+therefore differs from the implementation's total size cost.
+
+The source adds reachable semantics across several owners: ER Swimlane graph construction
+and painting, Gantt exclusion/calendar handling, shared XHTML terminal-font measurement,
+Sequence prepared drawing geometry, and parser/model corrections. The main integration
+consolidates the terminal-font measurement API and removes the branch's duplicate height
+path. Similar full/render growth is consistent with shared renderer/model changes; the
+smaller analysis/editor growth is consistent with shared parser changes. These observations
+do not assign exact machine-code bytes to individual fixes.
+
+`Cargo.lock`, root Cargo/toolchain configuration, capability descriptors, Web producer and
+package sources, Pages workflow, optimizer arguments and size-owner implementation are
+unchanged against this main control. Both artifacts lose exactly 277 bytes when stripped;
+custom-section removal cannot recover the raw or compressed excess. No capability removal,
+alternate artifact, compression change or speculative renderer deletion is used to fit the
+old limits.
+
+### Narrow acceptance
+
+| Metric | Integrated bytes | Previous ceiling | Accepted ceiling |
+| --- | ---: | ---: | ---: |
+| `web-full.max_gzip_bytes` | 6,577,331 | 6,550,000 | 6,775,000 |
+| `web-full.max_brotli_bytes` | 4,841,367 | 4,819,000 | 4,987,000 |
+| `web-render.max_raw_bytes` | 15,693,337 | 15,629,000 | 16,165,000 |
+| `web-render.max_stripped_bytes` | 15,693,060 | 15,629,000 | 16,164,000 |
+| `web-render.max_gzip_bytes` | 5,879,144 | 5,834,000 | 6,056,000 |
+
+Each replacement applies the unchanged integer rule independently:
+
+```text
+((measured_bytes * 103 + 99999) // 100000) * 1000
+```
+
+All other 15 Web measurements fit their existing ceilings, including full raw with only
+4,375 bytes left and editor Brotli with 5,399 bytes left. Those ceilings are retained.
+The four Typst limits, runtime capabilities, artifact recipes and functional gates also
+remain unchanged. This explicitly accepts the five measured size costs; it introduces no
+automatic future rebaseline, cross-metric offset or additional platform margin.
+
+The integration passes 277 shared-text/ER unit tests, 531 affected render integration tests,
+the complete layout snapshot corpus, all-target/all-feature Clippy, the defaults-off renderer
+check and the full SVG corpus in all three DOM modes. The budget decision makes no latency,
+memory, pixel-identity or complete-platform-qualification claim. Historical failed runs
+remain failed; the budget follow-up requires its own CI result.

@@ -52,6 +52,21 @@ remain upstream implementation groundwork, outside the registered layout surface
 
 ## Rust source changes
 
+Current development changes `JourneyTask::score` in `merman_model::families::journey`
+and `JourneyTaskLayout::score` in `merman_render::model` from `i64` to `f64`.
+Use floating-point literals such as `score: 4.0` and update integer arithmetic in
+direct consumers. Fractional scores now retain their position and satisfaction
+expression. Direct canonical/layout Serde output may represent whole scores as
+`4.0`; Mermaid compatibility JSON retains `4` for representable whole scores and
+`3.5` for fractional scores. The existing `scoreIsNaN` compatibility flag remains.
+
+`merman_model::families::block::BlockEdge` adds `thickness: BlockEdgeThickness`
+and `pattern: BlockEdgePattern`. Direct struct literals initialize them with
+`BlockEdgeThickness::Normal` and `BlockEdgePattern::Solid`, or use
+`..Default::default()`. Their Serde defaults preserve older inputs. Mermaid
+compatibility edge records now include the upstream `thickness` and `pattern`
+strings, and SVG consumes those semantics together with both endpoint markers.
+
 Struct-literal consumers of `FlowEdge` add `step: None` when no step is authored.
 `FlowchartModel` carries `dropped_subgraph_members` for shared-member provenance;
 ordinary builders can use its default empty collection. These new data use

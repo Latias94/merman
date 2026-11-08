@@ -181,6 +181,29 @@
           "to_cluster": null
         }
       ],
+      "frames": [
+        {
+          "height": 273.0,
+          "id": "2",
+          "kind": "alt",
+          "label": "isWell",
+          "sections": [
+            {
+              "id": "4",
+              "label": "isSick",
+              "y": 275.0
+            },
+            {
+              "id": "6",
+              "label": "default",
+              "y": 366.0
+            }
+          ],
+          "width": 252.0,
+          "x": 64.0,
+          "y": 179.0
+        }
+      ],
       "nodes": [
         {
           "height": 74.0,

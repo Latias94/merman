@@ -8,6 +8,32 @@
         "min_x": -50.0,
         "min_y": -10.0
       },
+      "boxes": [
+        {
+          "fill": "rgb(200,220,255)",
+          "height": 1054.0,
+          "title": {
+            "text": "Authentication",
+            "x": 380.0,
+            "y": 14.0
+          },
+          "width": 800.0,
+          "x": -20.0,
+          "y": -5.0
+        },
+        {
+          "fill": "rgb(200,255,220)",
+          "height": 1054.0,
+          "title": {
+            "text": "Order Processing",
+            "x": 1100.0,
+            "y": 14.0
+          },
+          "width": 600.0,
+          "x": 800.0,
+          "y": -5.0
+        }
+      ],
       "clusters": [],
       "edges": [
         {
@@ -574,6 +600,49 @@
           "stroke_dasharray": null,
           "to": "actor-bottom-AuditLogs",
           "to_cluster": null
+        }
+      ],
+      "frames": [
+        {
+          "height": 639.0,
+          "id": "4",
+          "kind": "alt",
+          "label": "Valid credentials",
+          "sections": [
+            {
+              "id": "17",
+              "label": "Invalid credentials",
+              "y": 803.0
+            }
+          ],
+          "width": 1262.0,
+          "x": 59.0,
+          "y": 296.0
+        },
+        {
+          "height": 208.0,
+          "id": "7",
+          "kind": "par",
+          "label": "Place order",
+          "sections": [
+            {
+              "id": "10",
+              "label": "",
+              "y": 575.0
+            }
+          ],
+          "width": 1242.0,
+          "x": 69.0,
+          "y": 433.0
+        },
+        {
+          "height": 137.0,
+          "id": "13",
+          "kind": "loop",
+          "label": "Until confirmed",
+          "width": 1042.0,
+          "x": 69.0,
+          "y": 651.0
         }
       ],
       "nodes": [

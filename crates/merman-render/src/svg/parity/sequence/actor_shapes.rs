@@ -8,7 +8,7 @@ use merman_model::families::sequence::SequenceActor;
 
 pub(super) struct ActorLifelineIdentity<'a> {
     pub(super) actor_id: &'a str,
-    pub(super) actor_type: &'a str,
+    pub(super) actor: &'a SequenceActor,
 }
 
 #[derive(Clone, Copy)]
@@ -237,14 +237,12 @@ pub(super) const LIFELINE_STROKE_WIDTH_PX: f64 = 0.5;
 pub(super) fn actor_fill_coverage(actor: &SequenceActor) -> ActorFillCoverage {
     match actor.actor_type.as_str() {
         // These actor-man glyphs use only circles/lines covered by the generated selectors.
-        "actor" | "boundary" => ActorFillCoverage::TypedCss,
-        "entity" | "collections" | "queue" | "database" => ActorFillCoverage::TypedCss,
+        "actor" | "boundary" | "entity" => ActorFillCoverage::TypedCss,
         // The control arrow marker path still inherits the wrapper's inline fill. Do not sign the
         // whole Actor fill route until the marker writer participates in the typed receipt.
         "control" => ActorFillCoverage::Unhandled,
-        // A participant with a custom class deliberately omits `.actor`; its source-owned fill
-        // must not be counted as typed theme consumption. Treat it as uncovered so a strict
-        // portable request cannot claim the typed route for a mixed or custom-only diagram.
+        // Custom participant, collections, queue, and database bodies omit `.actor`; their
+        // source-owned paint must not be counted as typed theme consumption.
         _ if actor_custom_class(actor).is_some() => ActorFillCoverage::Unhandled,
         _ => ActorFillCoverage::TypedCss,
     }
@@ -255,7 +253,7 @@ pub(super) fn actor_stroke_coverage(actor: &SequenceActor) -> ActorStrokeCoverag
     match actor.actor_type.as_str() {
         // Actor-man children, regular rectangles, collections, and queue paths all receive the
         // generated `.actor`/`.actor-man` stroke selectors directly or through an unstyled parent.
-        "actor" | "boundary" | "entity" | "collections" | "queue" => ActorStrokeCoverage::TypedCss,
+        "actor" | "boundary" | "entity" => ActorStrokeCoverage::TypedCss,
         // Mermaid's control and database glyphs put inline stroke on their wrappers. The control
         // marker path still inherits that stroke even though its circle/line children are covered.
         // Do not claim a typed stroke until those writers have dedicated terminal receipts.
@@ -302,15 +300,16 @@ impl ActorLabelContext<'_> {
         identity: ActorLifelineIdentity<'_>,
         filter: &str,
     ) {
-        let ActorLifelineIdentity {
-            actor_id,
-            actor_type,
-        } = identity;
+        let ActorLifelineIdentity { actor_id, actor } = identity;
+        let actor_type = actor.actor_type.as_str();
         out.push_str("<g>");
         let root_class = if actor_type == "queue" {
-            r#" class="actor actor-top""#
+            format!(
+                r#" class="{}""#,
+                escape_attr(&actor_placement_class(actor, "actor-top"))
+            )
         } else {
-            ""
+            String::new()
         };
         let _ = write!(
             out,
@@ -337,6 +336,10 @@ impl ActorLabelContext<'_> {
     }
 }
 
+#[allow(
+    clippy::too_many_arguments,
+    reason = "The SVG writer takes geometry, source properties, and terminal evidence separately."
+)]
 pub(super) fn write_collection_actor_shape(
     out: &mut impl SvgOutput,
     n: &LayoutNode,
@@ -345,10 +348,16 @@ pub(super) fn write_collection_actor_shape(
     placement_class: &str,
     actor_index: usize,
     label_ctx: &ActorLabelContext<'_>,
+    property_icon: Option<&str>,
 ) -> Result<()> {
     const OFFSET: f64 = 6.0;
     let (x, y) = node_left_top(n);
     let height = n.height - if label_ctx.is_neo() { OFFSET } else { 0.0 };
+    let fill = if actor_custom_class(actor).is_some() {
+        "#EDF2AE"
+    } else {
+        "#eaeaea"
+    };
     let separate_shadow = label_ctx.separate_label_shadow();
     if separate_shadow {
         out.push_str("<g");
@@ -356,17 +365,18 @@ pub(super) fn write_collection_actor_shape(
         out.push('>');
     }
     for (rect_x, rect_y, class) in [
-        (x, y, format!("actor {placement_class}")),
+        (x, y, actor_placement_class(actor, placement_class)),
         (x - OFFSET, y + OFFSET, "actor".to_string()),
     ] {
         let _ = write!(
             out,
-            r##"<rect x="{x}" y="{y}" fill="#eaeaea" stroke="#666" width="{w}" height="{h}" name="{name}" class="{class}""##,
+            r##"<rect x="{x}" y="{y}" fill="{fill}" stroke="#666" width="{w}" height="{h}" name="{name}" class="{class}""##,
             x = fmt(rect_x),
             y = fmt(rect_y),
             w = fmt(n.width),
             h = fmt(height),
-            name = escape_attr(actor_id)
+            name = escape_attr(actor_id),
+            class = escape_attr(&class),
         );
         if label_ctx.is_neo() {
             out.push_str(r#" data-look="neo""#);
@@ -377,6 +387,7 @@ pub(super) fn write_collection_actor_shape(
     if separate_shadow {
         out.push_str("</g>");
     }
+    write_actor_property_icon(out, n, property_icon);
     label_ctx.write_actor(out, n.x - OFFSET, y + OFFSET + height / 2.0, actor)
 }
 
@@ -386,6 +397,7 @@ pub(super) fn write_queue_actor_shape(
     actor: &SequenceActor,
     actor_index: usize,
     label_ctx: &ActorLabelContext<'_>,
+    property_icon: Option<&str>,
 ) -> Result<()> {
     let (x, y) = node_left_top(n);
     let ry = n.height / 2.0;
@@ -423,6 +435,7 @@ pub(super) fn write_queue_actor_shape(
         }
         out.push_str("\"/></g>");
     }
+    write_actor_property_icon(out, n, property_icon);
     label_ctx.write_actor(out, n.x, y_mid, actor)
 }
 
@@ -450,7 +463,8 @@ pub(super) fn write_database_actor_shape(
         .map_or(y, |band| band.glyph_bottom_y - h - ry);
     let _ = write!(
         out,
-        r#"<g class="actor {placement_class}" transform="translate({}, {})""#,
+        r#"<g class="{}" transform="translate({}, {})""#,
+        escape_attr(&actor_placement_class(actor, placement_class)),
         fmt(w),
         fmt(ry)
     );
@@ -506,6 +520,7 @@ pub(super) fn write_rect_actor_shape(
     rect_style: SequenceActorRectStyle,
     receipt: &crate::sequence::SequenceActorThemeReceipt,
     shadow: Option<super::actor_effect::SequenceActorShadow<'_>>,
+    property_icon: Option<&str>,
 ) -> Result<()> {
     let filter = shadow.as_ref().map(|shadow| shadow.write_definition(out));
     let (x, y) = node_left_top(n);
@@ -515,9 +530,7 @@ pub(super) fn write_rect_actor_shape(
     } else {
         "#eaeaea"
     };
-    let class = custom_class
-        .map(|c| format!("{c} {placement_class}"))
-        .unwrap_or_else(|| format!("actor {placement_class}"));
+    let class = actor_placement_class(actor, placement_class);
     let supported = actor_rect_geometry_supported(actor);
     let is_neo = label_ctx.is_neo();
     let legacy_radius = if is_neo { 6.0 } else { 3.0 };
@@ -564,7 +577,34 @@ pub(super) fn write_rect_actor_shape(
     if supported {
         receipt.record_geometry_rect();
     }
+    write_actor_property_icon(out, n, property_icon);
     label_ctx.write_actor(out, n.x, n.y, actor)
+}
+
+fn write_actor_property_icon(
+    out: &mut impl SvgOutput,
+    node: &LayoutNode,
+    property_icon: Option<&str>,
+) {
+    let Some(icon) = property_icon else {
+        return;
+    };
+    let (x, y) = node_left_top(node);
+    let icon = merman_markup::url::sanitize_url(icon);
+    // Match the loose Mermaid DOM reference without rebasing it to our scoped definitions.
+    // Resource resolution and browser admission remain with the SVG consumer (ADR 0078).
+    let _ = write!(
+        out,
+        r##"<use x="{}" y="{}" xlink:href="#{}"/>"##,
+        fmt(x + node.width - 20.0),
+        fmt(y + 10.0),
+        escape_attr(&icon),
+    );
+}
+
+pub(super) fn actor_placement_class(actor: &SequenceActor, placement_class: &str) -> String {
+    let class = actor_custom_class(actor).unwrap_or("actor");
+    format!("{class} {placement_class}")
 }
 
 fn actor_custom_class(actor: &SequenceActor) -> Option<&str> {

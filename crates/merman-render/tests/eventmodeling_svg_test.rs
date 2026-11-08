@@ -1506,6 +1506,156 @@ fn reset_frames_keep_explicit_sources_without_inventing_previous_frame_relations
     );
 }
 
+fn assert_eventmodeling_relation_projection(
+    source: &str,
+    expected_sources: &[&[&str]],
+    expected_pairs: &[(&str, &str)],
+) {
+    let parsed = MermaidEngine::new()
+        .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
+        .unwrap()
+        .unwrap()
+        .into_presentation();
+    let merman_model::presentation::RenderSemanticModel::EventModeling(model) = parsed.model()
+    else {
+        panic!("expected Event Modeling model");
+    };
+    assert_eq!(model.frames.len(), expected_sources.len());
+    for (frame, expected) in model.frames.iter().zip(expected_sources) {
+        assert_eq!(frame.source_frames, *expected, "frame {}", frame.name);
+    }
+    let authored_model = serde_json::to_value(model).unwrap();
+    let semantic = merman_core::semantic::SemanticParser::new()
+        .parse_diagram_sync(source)
+        .unwrap();
+    let merman_model::semantic::SemanticDiagramModel::EventModeling(semantic_model) =
+        semantic.model
+    else {
+        panic!("expected canonical Event Modeling model");
+    };
+    assert_eq!(
+        authored_model,
+        serde_json::to_value(semantic_model).unwrap()
+    );
+    let artifact = family::prepare(
+        &parsed,
+        &LayoutOptions::default(),
+        RenderEnvironment::deterministic().begin_session().unwrap(),
+    )
+    .unwrap();
+    let projection = artifact.layout_json().unwrap();
+    let layout: EventModelingDiagramLayout =
+        serde_json::from_value(projection["layout"]["EventModelingDiagram"].clone()).unwrap();
+    assert_eq!(layout.boxes.len(), expected_sources.len());
+    let pairs: Vec<_> = layout
+        .relations
+        .iter()
+        .map(|relation| {
+            (
+                relation.source_frame.as_str(),
+                relation.target_frame.as_str(),
+            )
+        })
+        .collect();
+    assert_eq!(pairs, expected_pairs, "{source}");
+
+    let rendered = artifact
+        .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+        .unwrap();
+    let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+    let paths: Vec<_> = document
+        .descendants()
+        .filter(|node| node.has_tag_name("path") && node.attribute("class") == Some("em-relation"))
+        .collect();
+    assert_eq!(paths.len(), expected_pairs.len(), "{source}");
+    for (path, relation) in paths.iter().zip(&layout.relations) {
+        let segments: Vec<_> = svgtypes::PathParser::from(path.attribute("d").unwrap())
+            .collect::<Result<_, _>>()
+            .unwrap();
+        let [
+            svgtypes::PathSegment::MoveTo {
+                abs: true,
+                x: x1,
+                y: y1,
+            },
+            svgtypes::PathSegment::LineTo {
+                abs: true,
+                x: x2,
+                y: y2,
+            },
+        ] = segments.as_slice()
+        else {
+            panic!("expected a straight Event Modeling relation: {segments:?}");
+        };
+        for (actual, expected) in [*x1, *y1, *x2, *y2].into_iter().zip([
+            relation.x1,
+            relation.y1,
+            relation.x2,
+            relation.y2,
+        ]) {
+            assert!((actual - expected).abs() < 1e-6, "{source}: {path:?}");
+        }
+    }
+    assert_eq!(serde_json::to_value(model).unwrap(), authored_model);
+}
+
+#[test]
+fn eventmodeling_repeated_explicit_sources_emit_one_relation_per_frame() {
+    for sources in [&["01"][..], &["01", "01"][..]] {
+        let references = sources
+            .iter()
+            .map(|name| format!(" ->> {name}"))
+            .collect::<String>();
+        let source = format!("eventmodeling\ntf 01 cmd Start\ntf 02 evt Done{references}\n");
+        assert_eventmodeling_relation_projection(&source, &[&[], sources], &[("01", "02")]);
+    }
+}
+
+#[test]
+fn eventmodeling_explicit_relations_follow_frame_declaration_order() {
+    for (first, second) in [("01", "02"), ("20", "10")] {
+        for sources in [&[second, first][..], &[second, first, second][..]] {
+            let references = sources
+                .iter()
+                .map(|name| format!(" ->> {name}"))
+                .collect::<String>();
+            let source = format!(
+                "eventmodeling\ntf {first} evt First\ntf {second} evt Second\ntf 03 cmd Run{references}\n"
+            );
+            assert_eventmodeling_relation_projection(
+                &source,
+                &[&[], &[], sources],
+                &[(first, "03"), (second, "03")],
+            );
+        }
+    }
+}
+
+#[test]
+fn eventmodeling_explicit_sources_skip_missing_and_future_frames_without_fallback() {
+    let source = concat!(
+        "eventmodeling\n",
+        "tf 01 evt First ->> 02 ->> 99 ->> 02\n",
+        "tf 02 cmd Run ->> 99 ->> 99\n",
+        "rf 03 evt Done ->> 02 ->> 99 ->> 02\n",
+        "rf 04 ui OtherUI\n",
+    );
+    assert_eventmodeling_relation_projection(
+        source,
+        &[&["02", "99", "02"], &["99", "99"], &["02", "99", "02"], &[]],
+        &[("02", "03")],
+    );
+}
+
+#[test]
+fn eventmodeling_repeated_self_source_uses_the_already_positioned_current_frame() {
+    assert_eventmodeling_relation_projection(
+        "eventmodeling\ntf 01 cmd Start ->> 01 ->> 01\n",
+        &[&["01", "01"]],
+        &[("01", "01")],
+    );
+}
+
 #[test]
 fn repair_u7_eventmodeling_unmatched_text_variant_is_not_applicable() {
     let theme = DiagramThemeCompiler::new()

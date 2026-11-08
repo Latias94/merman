@@ -1,6 +1,48 @@
 use crate::config::{config_css_number_or_string, config_diagram_look, config_f64, config_string};
 use crate::svg::PreparedCommonCss;
 
+/// Mermaid uses a fixed ring for commits/arrows and a theme-dependent ring for branch labels.
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct GitGraphColorIndices {
+    branch_limit: f64,
+    avoid_default_color: bool,
+}
+
+impl GitGraphColorIndices {
+    pub(crate) fn resolve(config: &serde_json::Value) -> Self {
+        let theme = config_string(config, &["theme"]).unwrap_or_default();
+        Self {
+            branch_limit: if super::gitgraph_theme_is_redux_geometry(&theme) {
+                config_f64(config, &["themeVariables", "THEME_COLOR_LIMIT"]).unwrap_or(12.0)
+            } else {
+                8.0
+            },
+            avoid_default_color: matches!(theme.as_str(), "redux-color" | "redux-dark-color"),
+        }
+    }
+
+    pub(crate) fn commit_slot(self, raw_index: i64) -> usize {
+        self.index(raw_index, 8.0) as usize
+    }
+
+    pub(crate) fn branch_index(self, raw_index: i64) -> f64 {
+        self.index(raw_index, self.branch_limit)
+    }
+
+    pub(crate) fn branch_slot(self, raw_index: i64) -> Option<usize> {
+        let index = self.branch_index(raw_index);
+        (index.is_finite() && index >= 0.0 && index.fract() == 0.0).then_some(index as usize)
+    }
+
+    fn index(self, raw_index: i64, limit: f64) -> f64 {
+        if self.avoid_default_color && raw_index > 0 {
+            ((raw_index - 1) as f64 % (limit - 1.0)) + 1.0
+        } else {
+            raw_index as f64 % limit
+        }
+    }
+}
+
 #[derive(Debug)]
 pub(crate) struct GitGraphNamedPaint {
     pub(crate) git: String,
@@ -14,6 +56,7 @@ pub(crate) struct GitGraphCssBinding {
     pub(crate) use_redux_geometry: bool,
     pub(crate) look_is_neo: bool,
     pub(crate) sources: GitGraphTerminalPaletteSources,
+    pub(crate) color_indices: GitGraphColorIndices,
     pub(crate) theme_color_limit: usize,
     pub(crate) named: [GitGraphNamedPaint; 8],
     pub(crate) border_color_array: Vec<String>,
@@ -46,6 +89,17 @@ impl GitGraphCssBinding {
                 .unwrap_or_else(|| fallback.to_owned())
         };
         let theme = config_string(config, &["theme"]).unwrap_or_else(|| "default".to_owned());
+        let use_color_gen = super::gitgraph_theme_uses_color_gen(&theme);
+        let theme_color_limit =
+            config_f64(config, &["themeVariables", "THEME_COLOR_LIMIT"]).unwrap_or(12.0);
+        // Classic normalTheme uses Array.from's floored length; Neo/Redux genColor loops ceil it.
+        // The SVG owner's resource budgets bound generation instead of truncating the palette.
+        let theme_color_limit = if use_color_gen {
+            theme_color_limit.ceil()
+        } else {
+            theme_color_limit.floor()
+        }
+        .max(0.0) as usize;
         let border_color_array: Vec<String> = config
             .pointer("/themeVariables/borderColorArray")
             .and_then(serde_json::Value::as_array)
@@ -64,6 +118,7 @@ impl GitGraphCssBinding {
             ),
             use_redux_geometry: super::gitgraph_theme_is_redux_geometry(&theme),
             look_is_neo: config_diagram_look(config).is_neo(),
+            color_indices: GitGraphColorIndices::resolve(config),
             sources: GitGraphTerminalPaletteSources {
                 use_color_theme: matches!(theme.as_str(), "redux-color" | "redux-dark-color"),
                 use_neo_theme: matches!(theme.as_str(), "neo" | "neo-dark"),
@@ -71,22 +126,14 @@ impl GitGraphCssBinding {
                     theme.as_str(),
                     "dark" | "redux-dark" | "redux-dark-color" | "neo-dark"
                 ),
-                use_color_gen: super::gitgraph_theme_uses_color_gen(&theme),
+                use_color_gen,
                 use_gradient: config
                     .pointer("/themeVariables/useGradient")
                     .and_then(crate::config::json_bool)
                     .unwrap_or(false),
                 has_border_color_array: !border_color_array.is_empty(),
             },
-            theme_color_limit: config_f64(config, &["themeVariables", "THEME_COLOR_LIMIT"])
-                .map(|v| {
-                    if v.is_nan() {
-                        1
-                    } else {
-                        v.clamp(1.0, 64.0) as usize
-                    }
-                })
-                .unwrap_or(12),
+            theme_color_limit,
             named: std::array::from_fn(|i| GitGraphNamedPaint {
                 git: color(&format!("git{i}"), default_git_color(i)),
                 branch_label: color(&format!("gitBranchLabel{i}"), default_git_branch_label(i)),
@@ -132,6 +179,17 @@ impl GitGraphCssBinding {
             .as_deref()
             .or(self.secondary_border.as_deref())
             .unwrap_or(start)
+    }
+
+    pub(crate) fn branch_root_inheritance(&self, slot: Option<usize>) -> [bool; 2] {
+        if slot.is_none_or(|slot| slot >= self.theme_color_limit) {
+            [true, true]
+        } else {
+            [
+                self.sources.use_neo_theme && !self.sources.use_gradient,
+                false,
+            ]
+        }
     }
 }
 

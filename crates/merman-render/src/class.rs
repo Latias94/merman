@@ -212,7 +212,7 @@ pub(crate) fn class_namespace_label<'a>(model: &'a ClassDiagramModel, id: &'a st
     model
         .namespace(id)
         .and_then(|ns| {
-            let label = ns.namespace.label.trim();
+            let label = ns.namespace.label.as_str();
             (!label.is_empty()).then_some(label)
         })
         .unwrap_or(id)
@@ -1933,16 +1933,12 @@ fn class_box_dimensions(
         node.members.is_empty() && node.methods.is_empty() && !hide_empty_members_box;
 
     // The Dagre node bounds come from the rectangle passed to `updateNodeBounds`.
-    let mut rect_w = w + 2.0 * padding;
+    let rect_w = w + 2.0 * padding;
     let mut rect_h = h + 2.0 * padding;
     if render_extra_box {
         rect_h += padding * 2.0;
     } else if node.members.is_empty() && node.methods.is_empty() {
         rect_h -= padding;
-    }
-
-    if node.type_param == "group" {
-        rect_w = rect_w.max(500.0);
     }
 
     let mut style_facts = title_style_facts;
@@ -2627,7 +2623,7 @@ fn label_metrics(
     (m.width.max(0.0), m.height.max(0.0))
 }
 
-pub(crate) fn class_cardinality_html_fragment(
+pub(crate) fn class_plain_html_fragment(
     text: &str,
     mermaid_config: &merman_model::presentation::PresentationConfig,
 ) -> String {
@@ -2637,7 +2633,7 @@ pub(crate) fn class_cardinality_html_fragment(
     merman_markup::sanitize::sanitize_xhtml(&html, mermaid_config.as_config())
 }
 
-fn class_cardinality_label_metrics(
+fn plain_label_metrics(
     text: &str,
     measurer: &dyn TextMeasurer,
     text_style: &TextStyle,
@@ -2658,13 +2654,12 @@ fn class_cardinality_label_metrics(
         math_renderer,
     )
     .unwrap_or_else(|| {
-        let xhtml = class_cardinality_html_fragment(text, mermaid_config);
-        crate::text::measure_xhtml_label_fragment(
+        let xhtml = class_plain_html_fragment(text, mermaid_config);
+        crate::text::measure_unwrapped_xhtml_label_fragment(
             measurer,
             &xhtml,
             text_style,
-            None,
-            WrapMode::HtmlLike,
+            text_style.font_size,
         )
     });
     (metrics.width.max(0.0), metrics.height.max(0.0))
@@ -2944,7 +2939,7 @@ fn measure_class_diagram(
         );
         namespace_label_metrics_by_id.insert(
             id.to_string(),
-            label_metrics(
+            plain_label_metrics(
                 class_namespace_label(model, id),
                 measurer,
                 text_style,
@@ -3086,7 +3081,7 @@ fn measure_class_diagram(
             .then_some(math_renderer)
             .flatten();
 
-        let (srw, srh) = class_cardinality_label_metrics(
+        let (srw, srh) = plain_label_metrics(
             &start_text,
             measurer,
             &cardinality_text_style,
@@ -3094,7 +3089,7 @@ fn measure_class_diagram(
             mermaid_config,
             terminal_math_renderer,
         );
-        let (elw, elh) = class_cardinality_label_metrics(
+        let (elw, elh) = plain_label_metrics(
             &end_text,
             measurer,
             &cardinality_text_style,
@@ -3315,10 +3310,13 @@ pub fn debug_build_class_diagram_dagre_graph(
 }
 
 fn class_layout_parent<'a>(model: &ClassDiagramModel, parent: Option<&'a str>) -> Option<&'a str> {
-    parent
-        .map(str::trim)
-        .filter(|parent| !parent.is_empty())
-        .filter(|parent| model.namespace(parent).is_some())
+    let parent = parent?;
+    if model.namespace(parent).is_some() {
+        Some(parent)
+    } else {
+        let trimmed = parent.trim();
+        (!trimmed.is_empty() && model.namespace(trimmed).is_some()).then_some(trimmed)
+    }
 }
 
 fn validate_class_namespace_hierarchy(model: &ClassDiagramModel) -> Result<()> {

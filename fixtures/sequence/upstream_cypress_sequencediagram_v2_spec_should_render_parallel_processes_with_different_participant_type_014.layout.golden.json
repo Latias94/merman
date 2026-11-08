@@ -486,6 +486,24 @@
           "to_cluster": null
         }
       ],
+      "frames": [
+        {
+          "height": 162.0,
+          "id": "2",
+          "kind": "par",
+          "label": "Parallel Processing",
+          "sections": [
+            {
+              "id": "4",
+              "label": "",
+              "y": 272.0
+            }
+          ],
+          "width": 422.0,
+          "x": 464.0,
+          "y": 176.0
+        }
+      ],
       "nodes": [
         {
           "height": 74.0,

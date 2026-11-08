@@ -3,11 +3,21 @@ use super::constants::{
     SEQUENCE_FRAME_GEOM_PAD_PX, SEQUENCE_FRAME_SIDE_PAD_PX, SEQUENCE_SELF_MESSAGE_FRAME_EXTRA_Y_PX,
 };
 use crate::Result;
-use crate::model::{LayoutEdge, LayoutNode, SequenceBlockLayout};
+use crate::model::{LayoutEdge, LayoutNode};
 use merman_model::families::sequence::{SequenceDiagramModel, SequenceMessage};
 use rustc_hash::FxHashMap;
 
-pub(crate) fn frame_x_from_actors(
+/// Cursor replay state, consumed when preparing the final public drawing geometry.
+#[derive(Debug, Clone)]
+pub(super) struct SequenceBlockLayout {
+    pub(super) start_y: f64,
+    pub(super) stop_y: f64,
+    pub(super) start_x: Option<f64>,
+    pub(super) stop_x: Option<f64>,
+    pub(super) section_ys_by_id: FxHashMap<String, f64>,
+}
+
+pub(super) fn frame_x_from_actors(
     model: &SequenceDiagramModel,
     nodes_by_id: &FxHashMap<&str, &LayoutNode>,
     checkpoints: SequenceOperationCheckpoints<'_>,
@@ -33,12 +43,12 @@ pub(crate) fn frame_x_from_actors(
     )))
 }
 
-/// Resolves the terminal horizontal frame used by both viewport admission and SVG emission.
+/// Finalizes the horizontal frame during layout preparation.
 ///
-/// Layout-owned nested coordinates are authoritative when present. Geometry reconstruction remains
-/// the compatibility fallback for older or incomplete layouts, and the historical `critical`
-/// option-section expansion is applied after either route resolves.
-pub(crate) fn resolved_block_frame_x(
+/// Cursor-owned nested coordinates are authoritative when present. Content envelopes supply the
+/// fallback for items without horizontal insertions. Critical option sections also include the
+/// source-backed left expansion. SVG consumes the resulting DTO without repeating this resolution.
+pub(super) fn resolved_block_frame_x(
     geometry: SequenceBlockGeometry<'_>,
     layout: &SequenceBlockLayout,
     actor_nodes_by_id: &FxHashMap<&str, &LayoutNode>,
@@ -80,7 +90,7 @@ impl<'a> SelfOnlyActor<'a> {
 }
 
 #[derive(Debug, Clone, Copy)]
-pub(crate) struct SequenceBlockGeometry<'a> {
+pub(super) struct SequenceBlockGeometry<'a> {
     geom_min_x: f64,
     geom_max_x: f64,
     min_actor_center_x: f64,
@@ -92,7 +102,7 @@ pub(crate) struct SequenceBlockGeometry<'a> {
 }
 
 impl<'a> SequenceBlockGeometry<'a> {
-    pub(crate) fn empty() -> Self {
+    pub(super) fn empty() -> Self {
         Self {
             geom_min_x: f64::INFINITY,
             geom_max_x: f64::NEG_INFINITY,
@@ -105,7 +115,7 @@ impl<'a> SequenceBlockGeometry<'a> {
         }
     }
 
-    pub(crate) fn from_message(
+    pub(super) fn from_message(
         msg: &'a SequenceMessage,
         actor_nodes_by_id: &FxHashMap<&str, &LayoutNode>,
         edges_by_id: &FxHashMap<&str, &LayoutEdge>,
@@ -172,7 +182,7 @@ impl<'a> SequenceBlockGeometry<'a> {
         geometry
     }
 
-    pub(crate) fn merge(&mut self, other: Self) {
+    pub(super) fn merge(&mut self, other: Self) {
         self.geom_min_x = self.geom_min_x.min(other.geom_min_x);
         self.geom_max_x = self.geom_max_x.max(other.geom_max_x);
         self.min_actor_center_x = self.min_actor_center_x.min(other.min_actor_center_x);
@@ -183,12 +193,7 @@ impl<'a> SequenceBlockGeometry<'a> {
         self.self_only_actor = self.self_only_actor.merge(other.self_only_actor);
     }
 
-    pub(crate) fn merged(mut self, other: Self) -> Self {
-        self.merge(other);
-        self
-    }
-
-    pub(crate) fn frame_x(
+    pub(super) fn frame_x(
         self,
         actor_nodes_by_id: &FxHashMap<&str, &LayoutNode>,
     ) -> Option<(f64, f64, f64)> {
@@ -221,7 +226,7 @@ impl<'a> SequenceBlockGeometry<'a> {
         Some((x1, x2, self.min_actor_left_x))
     }
 
-    pub(crate) fn frame_y_range(self) -> Option<(f64, f64)> {
+    pub(super) fn frame_y_range(self) -> Option<(f64, f64)> {
         (self.frame_min_y.is_finite() && self.frame_max_y.is_finite())
             .then_some((self.frame_min_y, self.frame_max_y))
     }

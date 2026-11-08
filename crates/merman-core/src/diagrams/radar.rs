@@ -1798,8 +1798,8 @@ curve sample{1,2}
 "#,
         );
 
-        assert_eq!(model["axes"][0]["label"], "An100%% complete");
-        assert_eq!(model["axes"][1]["label"], "Btlabel");
+        assert_eq!(model["axes"][0]["label"], "A\n100%% complete");
+        assert_eq!(model["axes"][1]["label"], "B\tlabel");
     }
 
     #[test]

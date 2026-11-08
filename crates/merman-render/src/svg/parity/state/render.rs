@@ -331,7 +331,7 @@ fn render_state_diagram_svg_with_plan(
     };
     let root_document = root_context.begin_document(
         &mut out,
-        root_svg::DeferredRootSpec::responsive(),
+        root_svg::DeferredRootSpec::mermaid(state_render_settings.use_max_width),
         root_chrome,
     )?;
     options.checkpoint_emit()?;
@@ -453,7 +453,7 @@ fn render_state_diagram_svg_with_plan(
     let root_document = root_context.finish_document(
         &mut out,
         root_document,
-        root_svg::RootViewportSpec::responsive(root_bounds)
+        root_svg::RootViewportSpec::mermaid(root_bounds, state_render_settings.use_max_width)
             .with_max_width(root_svg::RootMaxWidth::CssSixSignificant(root_bounds.width)),
     )?;
 

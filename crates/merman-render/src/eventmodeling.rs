@@ -11,7 +11,7 @@ use merman_model::families::event_modeling::{
     EventModelingDataEntity, EventModelingDiagramModel, EventModelingFrame,
 };
 use merman_model::presentation::PresentationConfig;
-use std::collections::{BTreeMap, HashMap};
+use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::sync::Arc;
 
 mod config;
@@ -156,10 +156,18 @@ pub(crate) fn prepare_eventmodeling_diagram_typed_with_binding(
                     relation_specs.push((source_idx, target_box_idx));
                 }
             } else {
+                // Pinned db.ts::getState filters ast.frames by source membership.
+                // Box indices preserve declaration order without changing authored references.
+                let mut source_indices = BTreeSet::new();
                 for source_name in &frame.source_frames {
+                    work_meter.checkpoint(merman_model::OperationPhase::Layout)?;
                     if let Some(source_idx) = frame_to_box.get(source_name).copied() {
-                        relation_specs.push((source_idx, target_box_idx));
+                        source_indices.insert(source_idx);
                     }
+                }
+                for source_idx in source_indices {
+                    work_meter.checkpoint(merman_model::OperationPhase::Layout)?;
+                    relation_specs.push((source_idx, target_box_idx));
                 }
             }
         }

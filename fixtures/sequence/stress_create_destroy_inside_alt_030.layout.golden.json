@@ -2,6 +2,16 @@
   "diagramType": "sequence",
   "layout": {
     "SequenceDiagram": {
+      "activations": [
+        {
+          "actor": "W",
+          "depth": 0.0,
+          "height": 46.0,
+          "width": 10.0,
+          "x": 545.0,
+          "y": 248.0
+        }
+      ],
       "bounds": {
         "max_x": 681.0,
         "max_y": 708.0,
@@ -264,6 +274,24 @@
           "stroke_dasharray": null,
           "to": "actor-bottom-W",
           "to_cluster": null
+        }
+      ],
+      "frames": [
+        {
+          "height": 427.0,
+          "id": "1",
+          "kind": "alt",
+          "label": "spawn worker",
+          "sections": [
+            {
+              "id": "7",
+              "label": "reuse",
+              "y": 392.0
+            }
+          ],
+          "width": 440.0,
+          "x": 191.0,
+          "y": 130.0
         }
       ],
       "nodes": [

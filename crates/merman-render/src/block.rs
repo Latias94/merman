@@ -90,12 +90,12 @@ impl BlockPreparedLabels {
             if prepared.nodes.contains_key(&node.id) {
                 continue;
             }
-            let label = BlockPreparedHtmlLabel::prepare(
-                sources[node.id.as_str()].label,
-                node.id.len(),
-                &config,
-                work_meter,
-            )?;
+            // Detached database objects are sized with flat records but never painted.
+            // Their own label must not override an attached object's source paint.
+            let text = sources
+                .get(node.id.as_str())
+                .map_or(node.label.as_str(), |source| source.label);
+            let label = BlockPreparedHtmlLabel::prepare(text, node.id.len(), &config, work_meter)?;
             prepared.nodes.insert(node.id.clone(), label);
         }
         for edge in &model.edges {

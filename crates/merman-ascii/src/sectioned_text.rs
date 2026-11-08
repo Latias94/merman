@@ -256,7 +256,7 @@ mod tests {
         let sections = vec!["Repeated".to_string(), "Repeated".to_string()];
         let tasks = vec![
             JourneyTask {
-                score: 5,
+                score: 5.0,
                 score_is_nan: false,
                 people: Vec::new(),
                 section: "Repeated".to_string(),
@@ -265,7 +265,7 @@ mod tests {
                 task: "First".to_string(),
             },
             JourneyTask {
-                score: 3,
+                score: 3.0,
                 score_is_nan: false,
                 people: Vec::new(),
                 section: "Repeated".to_string(),
@@ -285,7 +285,7 @@ mod tests {
         const PRIOR_CELLS: usize = 2;
         let sections = vec!["Repeated".to_string(), "Repeated".to_string()];
         let tasks = vec![JourneyTask {
-            score: 5,
+            score: 5.0,
             score_is_nan: false,
             people: Vec::new(),
             section: "Repeated".to_string(),

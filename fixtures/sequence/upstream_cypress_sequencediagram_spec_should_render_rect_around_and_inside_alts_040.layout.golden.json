@@ -206,6 +206,24 @@
           "to_cluster": null
         }
       ],
+      "frames": [
+        {
+          "height": 302.0,
+          "id": "2",
+          "kind": "alt",
+          "label": "yes",
+          "sections": [
+            {
+              "id": "4",
+              "label": "no",
+              "y": 276.0
+            }
+          ],
+          "width": 190.0,
+          "x": 381.0,
+          "y": 150.0
+        }
+      ],
       "nodes": [
         {
           "height": 74.0,

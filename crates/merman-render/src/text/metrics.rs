@@ -17,7 +17,7 @@ use crate::environment::{
 
 mod xhtml_fonts;
 
-#[cfg(feature = "diagram-block")]
+#[cfg(any(feature = "diagram-block", feature = "diagram-class"))]
 pub(crate) fn measure_unwrapped_xhtml_label_fragment(
     measurer: &dyn TextMeasurer,
     fragment: &str,
@@ -231,6 +231,16 @@ fn inline_text_style(base: &TextStyle, bold: bool, italic: bool, code: bool) -> 
         style.font_family = Some("monospace".to_string());
     }
     style
+}
+
+fn resolved_inline_text_style<'a>(
+    run: &'a InlineTextRun,
+    base: &TextStyle,
+) -> std::borrow::Cow<'a, TextStyle> {
+    match &run.terminal_style {
+        Some(style) => std::borrow::Cow::Borrowed(style.as_ref()),
+        None => std::borrow::Cow::Owned(inline_text_style(base, run.bold, run.italic, run.code)),
+    }
 }
 
 /// Matches createText's explicit word attributes, not the enclosing text's inheritance.
@@ -774,17 +784,7 @@ fn measure_inline_fragments_with_break_width_px<M: TextMeasurer + ?Sized>(
             end == fragment_end && selected_break == HtmlBreakKind::SoftHyphen,
         );
         stats.record_source_slice(&text);
-        let run_style = first_run.terminal_style.as_deref().map_or_else(
-            || {
-                std::borrow::Cow::Owned(inline_text_style(
-                    style,
-                    first_run.bold,
-                    first_run.italic,
-                    first_run.code,
-                ))
-            },
-            std::borrow::Cow::Borrowed,
-        );
+        let run_style = resolved_inline_text_style(first_run, style);
         stats.record_backend_request(text.len());
         width += measurer.measure_html_line_width_px(&text, &run_style);
         index = end;
@@ -1097,14 +1097,7 @@ fn measure_inline_html_line_layout_with_carrier_and_stats<M: TextMeasurer + ?Siz
             if let Some(width) = run.replaced_width_px {
                 return width;
             }
-            let run_style = run.terminal_style.as_deref().map_or_else(
-                || {
-                    std::borrow::Cow::Owned(inline_text_style(
-                        style, run.bold, run.italic, run.code,
-                    ))
-                },
-                std::borrow::Cow::Borrowed,
-            );
+            let run_style = resolved_inline_text_style(run, style);
             stats.record_backend_request(run.text.len());
             measure_inline_run_width_px(measurer, &run.text, &run_style, WrapMode::HtmlLike, false)
         })
@@ -3176,6 +3169,225 @@ mod inline_planning_tests {
         assert_eq!(metrics.line_count, 3);
     }
 
+    #[cfg(feature = "diagram-er")]
+    #[test]
+    fn font_aware_xhtml_preserves_unstyled_opaque_requests() {
+        let legacy = RecordingMeasurer::default();
+        let terminal = RecordingMeasurer::default();
+        let style = TextStyle::default();
+        let html = "<p>aa <strong>BB</strong> cc</p>";
+        let expected =
+            measure_html_with_inline_styles(&legacy, html, &style, Some(4.0), WrapMode::HtmlLike);
+        let actual = measure_xhtml_label_fragment_with_terminal_fonts(
+            &terminal,
+            html,
+            &style,
+            Some(4.0),
+            16.0,
+        );
+        assert_eq!(terminal.calls.into_inner(), legacy.calls.into_inner());
+        assert_eq!(actual.width, expected.width);
+        assert_eq!(actual.height, expected.height);
+        assert_eq!(actual.line_count, expected.line_count);
+    }
+
+    #[cfg(feature = "diagram-er")]
+    #[test]
+    fn wrapped_terminal_fonts_keep_builtin_and_opaque_line_selection() {
+        let session = RenderEnvironment::deterministic().begin_session().unwrap();
+        let builtin = session.text_measurer(TextMeasurementPhase::Wrap);
+        let opaque = DeterministicTextMeasurer::default();
+        let style = TextStyle {
+            font_size: 14.0,
+            ..TextStyle::default()
+        };
+        for html in [
+            "<p><span style='font-size:64px'>A B C D E</span></p>",
+            "<p><span style='font-size:64px'>A</span> B C D E F G H I J K L M N O P</p>",
+            concat!(
+                "<p><span style='font-size:64px;font-family:monospace;font-weight:700'>",
+                "AB&shy;CD EF</span> <span style='font-size:28px;font-style:italic'>GH IJ</span></p>",
+            ),
+        ] {
+            for width in [40.0, 100.0, 1000.0] {
+                let expected = measure_xhtml_label_fragment_with_terminal_fonts(
+                    &opaque,
+                    html,
+                    &style,
+                    Some(width),
+                    16.0,
+                );
+                let actual = measure_xhtml_label_fragment_with_terminal_fonts(
+                    &builtin,
+                    html,
+                    &style,
+                    Some(width),
+                    16.0,
+                );
+                assert_eq!(actual.width, expected.width, "{html} at {width}");
+                assert_eq!(actual.height, expected.height, "{html} at {width}");
+                assert_eq!(actual.line_count, expected.line_count, "{html} at {width}");
+            }
+        }
+        let mixed = measure_xhtml_label_fragment_with_terminal_fonts(
+            &builtin,
+            "<p><span style='font-size:64px'>A</span> B C D E F G H I J K L M N O P</p>",
+            &style,
+            Some(100.0),
+            16.0,
+        );
+        assert!(mixed.line_count > 1);
+        assert_eq!(mixed.height, 96.0 + (mixed.line_count - 1) as f64 * 21.0);
+    }
+
+    #[cfg(feature = "diagram-er")]
+    #[test]
+    fn wrapped_terminal_fonts_preserve_natural_width_activation_and_min_content() {
+        let measurer = DeterministicTextMeasurer {
+            char_width_factor: 1.0,
+            ..DeterministicTextMeasurer::default()
+        };
+        let style = TextStyle {
+            font_size: 14.0,
+            ..TextStyle::default()
+        };
+        let html = "<p><span style='font-size:64px'>A   B</span></p>";
+        let fits = measure_xhtml_label_fragment_with_terminal_fonts(
+            &measurer,
+            html,
+            &style,
+            Some(193.0),
+            16.0,
+        );
+        assert_eq!((fits.width, fits.height, fits.line_count), (192.0, 96.0, 1));
+        let activated = measure_xhtml_label_fragment_with_terminal_fonts(
+            &measurer,
+            html,
+            &style,
+            Some(192.0),
+            16.0,
+        );
+        assert_eq!(
+            (activated.width, activated.height, activated.line_count),
+            (192.0, 192.0, 2),
+            "equality activates break-spaces and retains the authored spaces",
+        );
+        let min_content = measure_xhtml_label_fragment_with_terminal_fonts(
+            &measurer,
+            "<p><span style='font-size:64px'>ABCDE</span></p>",
+            &style,
+            Some(100.0),
+            16.0,
+        );
+        assert_eq!(
+            (
+                min_content.width,
+                min_content.height,
+                min_content.line_count
+            ),
+            (320.0, 96.0, 1),
+            "an unbreakable styled word expands min-content instead of clipping its viewport",
+        );
+    }
+
+    #[cfg(feature = "diagram-er")]
+    #[test]
+    fn wrapped_terminal_fonts_route_inherited_fonts_and_selected_heights_to_the_host() {
+        type FontCall = (TextMeasurementOperation, String, TextStyle, Option<f64>);
+        struct FontHost(Arc<Mutex<Vec<FontCall>>>);
+
+        impl HostTextMeasurer for FontHost {
+            fn measure(&self, request: HostTextMeasurementRequest<'_>) -> HostMeasurementResult {
+                self.0.lock().unwrap().push((
+                    request.operation,
+                    request.text.to_owned(),
+                    request.style.clone(),
+                    request.max_width,
+                ));
+                let width = request.text.chars().count() as f64 * request.style.font_size;
+                Ok(Some(match request.operation {
+                    TextMeasurementOperation::CanvasMeasureTextWidth => {
+                        HostTextMeasurement::Length(width)
+                    }
+                    TextMeasurementOperation::HtmlLineHeight => {
+                        HostTextMeasurement::Length(request.style.font_size * 2.0)
+                    }
+                    _ => HostTextMeasurement::Metrics(TextMetrics {
+                        width,
+                        height: request.style.font_size * 2.0,
+                        line_count: 1,
+                    }),
+                }))
+            }
+        }
+
+        let calls = Arc::new(Mutex::new(Vec::new()));
+        let identity = TextMeasurementProfileIdentity::new(
+            MeasurementProfileId::new("test.wrapped-terminal-font-host").unwrap(),
+            "v1",
+        )
+        .unwrap();
+        let policy = TextMeasurementPolicy::host_display(
+            identity,
+            Arc::new(FontHost(Arc::clone(&calls))),
+            [TextMeasurementPhase::Wrap],
+        );
+        let session = RenderEnvironment::deterministic()
+            .with_text_measurement_policy(policy)
+            .begin_session()
+            .unwrap();
+        let measurer = session.text_measurer(TextMeasurementPhase::Wrap);
+        let style = TextStyle {
+            font_size: 14.0,
+            ..TextStyle::default()
+        };
+        let html = concat!(
+            "<p><span style='font-size:64px;font-family:monospace;font-weight:700;font-style:italic'>",
+            "<strong style='font-size:inherit;font-family:inherit;font-weight:inherit;font-style:inherit'>",
+            "A</strong></span><br/>B<br/>C</p>",
+        );
+        let metrics = measure_xhtml_label_fragment_with_terminal_fonts(
+            &measurer,
+            html,
+            &style,
+            Some(100.0),
+            16.0,
+        );
+        assert_eq!(
+            (metrics.width, metrics.height, metrics.line_count),
+            (64.0, 184.0, 3)
+        );
+        let calls = calls.lock().unwrap();
+        assert_eq!(calls[0].0, TextMeasurementOperation::Wrapped);
+        assert_eq!(calls[0].1, "A\nB\nC");
+        assert_eq!(calls[0].2.font_size, 14.0);
+        assert_eq!(calls[0].3, Some(100.0));
+        for operation in [
+            TextMeasurementOperation::CanvasMeasureTextWidth,
+            TextMeasurementOperation::HtmlLineHeight,
+        ] {
+            let a_calls = calls
+                .iter()
+                .filter(|call| call.0 == operation && call.1 == "A")
+                .collect::<Vec<_>>();
+            assert!(!a_calls.is_empty());
+            for call in a_calls {
+                assert_eq!(call.2.font_size, 64.0);
+                assert_eq!(call.2.font_family.as_deref(), Some("monospace"));
+                assert_eq!(call.2.font_weight.as_deref(), Some("700"));
+                assert_eq!(call.2.font_style.as_deref(), Some("italic"));
+            }
+        }
+        for text in ["B", "C"] {
+            let line_calls = calls
+                .iter()
+                .filter(|call| call.0 == TextMeasurementOperation::HtmlLineHeight && call.1 == text)
+                .collect::<Vec<_>>();
+            assert!(!line_calls.is_empty());
+            assert!(line_calls.iter().all(|call| call.2.font_size == 14.0));
+        }
+    }
+
     fn assert_layout_eq(left: InlineHtmlLineLayout, right: InlineHtmlLineLayout) {
         assert!((left.natural_width - right.natural_width).abs() <= 1.0e-9);
         assert!((left.wrapped_width - right.wrapped_width).abs() <= 1.0e-9);
@@ -4613,7 +4825,6 @@ fn measure_html_with_inline_styles_and_terminal_fonts<M: TextMeasurer + ?Sized>(
                     }
                 }
             }
-            // Preserve the opaque host's complete paragraph request before styled probes.
             if !carrier.is_builtin() {
                 measurer.measure_wrapped(
                     trim_html_collapsible_ascii_whitespace(&plain),

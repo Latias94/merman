@@ -30,6 +30,166 @@ fn render_class_with_id(text: &str, diagram_id: &str) -> String {
 }
 
 #[test]
+fn class_namespace_html_breaks_and_literal_markdown_share_the_safe_label_path() {
+    let layouts = if cfg!(feature = "layout-elk") {
+        &["dagre", "elk"][..]
+    } else {
+        &["dagre"][..]
+    };
+    for layout in layouts {
+        for (title, expected_text) in [
+            ("A<br/>B", "AB"),
+            ("**A**<br>_B_", "**A**_B_"),
+            ("A &amp; B<br />C", "A & BC"),
+        ] {
+            for nested in [false, true] {
+                let namespace = format!("namespace N[\"{title}\"] {{\nclass C\n}}\n");
+                let (body, cluster_id) = if nested {
+                    (
+                        format!(
+                            "namespace Outer {{\n{namespace}}}\nclass Outside\nC --> Outside\n"
+                        ),
+                        "merman-Outer.N",
+                    )
+                } else {
+                    (namespace, "merman-N")
+                };
+                let svg = render_class(&format!(
+                    "---\nconfig:\n  layout: {layout}\n  htmlLabels: true\n---\nclassDiagram\n{body}"
+                ));
+                let document = roxmltree::Document::parse(&svg).expect("valid Class SVG");
+                let cluster = document
+                    .descendants()
+                    .find(|node| node.attribute("id") == Some(cluster_id))
+                    .expect("named namespace cluster");
+                let label = cluster
+                    .descendants()
+                    .find(|node| node.attribute("class") == Some("cluster-label"))
+                    .unwrap();
+                let paragraph = label
+                    .descendants()
+                    .find(|node| node.has_tag_name("p"))
+                    .unwrap();
+                assert_eq!(
+                    paragraph
+                        .descendants()
+                        .filter(|node| node.has_tag_name("br"))
+                        .count(),
+                    1
+                );
+                let text = paragraph
+                    .descendants()
+                    .filter(|node| node.is_text())
+                    .filter_map(|node| node.text())
+                    .collect::<String>();
+                assert_eq!(text, expected_text, "{layout}: {title}");
+                assert!(
+                    !paragraph
+                        .descendants()
+                        .any(|node| { node.has_tag_name("strong") || node.has_tag_name("em") })
+                );
+            }
+        }
+    }
+}
+
+#[test]
+fn class_namespace_html_measures_the_emitted_inline_font_size() {
+    let layouts = if cfg!(feature = "layout-elk") {
+        &["dagre", "elk"][..]
+    } else {
+        &["dagre"][..]
+    };
+    for layout in layouts {
+        let render = |label: &str| {
+            render_class(&format!(
+                "---\nconfig:\n  layout: {layout}\n  htmlLabels: true\n---\nclassDiagram\nnamespace N[\"{label}\"] {{\nclass C\n}}\n"
+            ))
+        };
+        let title_size = |svg: &str| {
+            let document = roxmltree::Document::parse(svg).unwrap();
+            let label = document
+                .descendants()
+                .find(|node| node.attribute("class") == Some("cluster-label"))
+                .unwrap();
+            let foreign_object = label
+                .descendants()
+                .find(|node| node.has_tag_name("foreignObject"))
+                .unwrap();
+            (
+                foreign_object
+                    .attribute("width")
+                    .unwrap()
+                    .parse::<f64>()
+                    .unwrap(),
+                foreign_object
+                    .attribute("height")
+                    .unwrap()
+                    .parse::<f64>()
+                    .unwrap(),
+            )
+        };
+        let plain = render("A");
+        let enlarged = render("<span style='font-size:64px'>A</span>");
+        let (plain_width, plain_height) = title_size(&plain);
+        let (width, height) = title_size(&enlarged);
+        assert!(
+            width > plain_width,
+            "{layout}: inline size must affect title width"
+        );
+        assert!(
+            height > plain_height && height >= 64.0,
+            "{layout}: inline size must affect title height"
+        );
+        let document = roxmltree::Document::parse(&enlarged).unwrap();
+        assert!(document.descendants().any(|node| {
+            node.attribute("style")
+                .is_some_and(|style| style.contains("64px"))
+        }));
+    }
+}
+
+#[test]
+fn class_namespace_html_keeps_safe_markup_without_executable_attributes() {
+    let svg = render_class(
+        "---\nconfig:\n  layout: dagre\n  htmlLabels: true\n---\nclassDiagram\nnamespace N[\"<b onclick='alert(1)'>A</b><br/><script>alert(2)</script>B\"] {\nclass C\n}\n",
+    );
+    let document = roxmltree::Document::parse(&svg).expect("valid Class SVG");
+    let label = document
+        .descendants()
+        .find(|node| node.attribute("class") == Some("cluster-label"))
+        .unwrap();
+    assert!(
+        label
+            .descendants()
+            .any(|node| node.has_tag_name("b") && node.text() == Some("A"))
+    );
+    assert!(label.descendants().any(|node| node.has_tag_name("br")));
+    assert!(!label.descendants().any(|node| {
+        node.has_tag_name("script")
+            || node
+                .attributes()
+                .any(|attribute| attribute.name().starts_with("on"))
+    }));
+}
+
+#[test]
+fn class_spaced_generics_and_bare_names_preserve_the_rendered_graph() {
+    let layouts = if cfg!(feature = "layout-elk") {
+        &["dagre", "elk"][..]
+    } else {
+        &["dagre"][..]
+    };
+    for layout in layouts {
+        let config = format!("---\nconfig:\n  layout: {layout}\n---\nclassDiagram\n");
+        let compact = format!("{config}Box~T~ --> Item~U~ : uses\n");
+        let spaced =
+            format!("{config}Box \t~T~ --> Item ~U~ : uses\nBox\nItem ~Ignored~\nUnused\n");
+        assert_eq!(render_class(&spaced), render_class(&compact), "{layout}");
+    }
+}
+
+#[test]
 fn class_neo_dividers_and_marker_references_follow_look_and_gradient() {
     for (look, use_gradient, divider_class, margin) in [
         ("neo", false, "divider neo-line", "-margin"),
@@ -388,5 +548,68 @@ fn class_margin_marker_stroke_widths_follow_shared_mermaid_definitions() {
                 "{id}"
             );
         }
+    }
+}
+
+#[test]
+fn class_list_links_reach_each_declared_svg_node() {
+    let layouts = if cfg!(feature = "layout-elk") {
+        &["dagre", "elk"][..]
+    } else {
+        &["dagre"][..]
+    };
+    for layout in layouts {
+        let svg = render_class(&format!(
+            "---\nconfig:\n  layout: {layout}\n---\nclassDiagram\nclass A\nclass B\nclick `A,Missing,B` href \"https://example.com\"\n"
+        ));
+        let document = roxmltree::Document::parse(&svg).expect("valid Class SVG");
+        let anchors: Vec<_> = document
+            .descendants()
+            .filter(|node| node.has_tag_name("a"))
+            .collect();
+        assert_eq!(anchors.len(), 2, "{layout}: only declared targets link");
+        for id in ["A", "B"] {
+            let prefix = format!("merman-classId-{id}-");
+            let node = document
+                .descendants()
+                .find(|node| {
+                    node.attribute("id")
+                        .is_some_and(|id| id.starts_with(&prefix))
+                })
+                .expect("linked Class node");
+            let anchor = node.parent_element().expect("link owns Class node");
+            assert!(anchor.has_tag_name("a"));
+            assert_eq!(
+                anchor.attribute(("http://www.w3.org/1999/xlink", "href")),
+                Some("https://example.com/"),
+                "{layout}: {id} retains its URL"
+            );
+        }
+    }
+}
+
+#[test]
+fn class_quoted_namespace_whitespace_preserves_distinct_svg_clusters() {
+    let layouts = if cfg!(feature = "layout-elk") {
+        &["dagre", "elk"][..]
+    } else {
+        &["dagre"][..]
+    };
+    for layout in layouts {
+        let svg = render_class(&format!(
+            "---\nconfig:\n  layout: {layout}\n---\nclassDiagram\nnamespace `N ` {{\nclass A\n}}\nnamespace N {{\nclass B\n}}\nA --> B\n"
+        ));
+        let document = roxmltree::Document::parse(&svg).expect("valid Class SVG");
+        let clusters = document
+            .descendants()
+            .filter(|node| {
+                node.attribute("class")
+                    .is_some_and(|classes| classes.split_whitespace().any(|name| name == "cluster"))
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(clusters.len(), 2, "{layout}: both namespace frames survive");
+        assert!(document.descendants().any(|node| {
+            node.attribute("data-id") == Some("id_A_B_1") && node.attribute("marker-end").is_some()
+        }));
     }
 }

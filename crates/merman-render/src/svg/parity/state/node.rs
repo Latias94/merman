@@ -149,6 +149,57 @@ pub(super) fn render_state_node_svg(
         String::new()
     };
 
+    let mut link_open = String::new();
+    let mut link_close = String::new();
+    let mut node_title_attr = String::new();
+    if let Some(links) = ctx.links.get(node_id) {
+        let mut push_link = |link: &StateSvgLink| {
+            let title_attr = if link.tooltip.is_empty() {
+                String::new()
+            } else {
+                let tooltip = if ctx.security_level_loose {
+                    link.tooltip.as_str()
+                } else {
+                    normalize_mermaid_tooltip_attribute(&link.tooltip)
+                };
+                format!(r#" title="{}""#, escape_attr(tooltip))
+            };
+            if !title_attr.is_empty() {
+                node_title_attr = title_attr.clone();
+            }
+
+            if let Some(href) = prepare_mermaid_navigation_href(
+                &link.url,
+                MermaidNavigationSecurity::from_security_level_loose(ctx.security_level_loose),
+            ) {
+                let target_attr = if ctx.security_level_loose {
+                    r#" target="_blank""#
+                } else {
+                    ""
+                };
+                link_open.push_str(&format!(
+                    r#"<a xlink:href="{}"{}{}>"#,
+                    href.as_serialized_str(),
+                    target_attr,
+                    title_attr
+                ));
+            } else {
+                link_open.push_str(&format!(r#"<a{}>"#, title_attr));
+            }
+            link_close.push_str("</a>");
+        };
+
+        match links {
+            StateSvgLinks::One(link) => push_link(link),
+            StateSvgLinks::Many(links) => {
+                for link in links {
+                    push_link(link);
+                }
+            }
+        }
+    }
+    out.push_str(&link_open);
+
     match node.shape.as_str() {
         "stateStart" => {
             if effective_look == "handDrawn" {
@@ -194,11 +245,12 @@ pub(super) fn render_state_node_svg(
                 let _g_emit = detail_guard(timing, &mut details.leaf_nodes_emit);
                 let _ = write!(
                     out,
-                    r##"<g class="node default" id="{}" data-look="{}" transform="translate({}, {})"><g class="outer-path"><path d="{}" stroke="none" stroke-width="0" fill="{}" style="{}"/><path d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="0 0" style="{}"/></g></g>"##,
+                    r##"<g class="node default" id="{}" data-look="{}" transform="translate({}, {})"{}><g class="outer-path"><path d="{}" stroke="none" stroke-width="0" fill="{}" style="{}"/><path d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="0 0" style="{}"/></g></g>"##,
                     node_dom_id.attr(),
                     escape_xml_display(data_look),
                     fmt_display(cx),
                     fmt_display(cy),
+                    node_title_attr,
                     path_d.as_str(),
                     escape_xml_display(fill),
                     fill_style,
@@ -208,6 +260,7 @@ pub(super) fn render_state_node_svg(
                     stroke_style,
                 );
                 drop(_g_emit);
+                out.push_str(&link_close);
                 return Ok(());
             }
             let mut semantic_style = semantic_shape_style_attr.to_string();
@@ -221,11 +274,12 @@ pub(super) fn render_state_node_svg(
             let _g_emit = detail_guard(timing, &mut details.leaf_nodes_emit);
             let _ = write!(
                 out,
-                r#"<g class="node default" id="{}" data-look="{}" transform="translate({}, {})"><circle class="state-start" r="7" width="14" height="14" style="{}"/></g>"#,
+                r#"<g class="node default" id="{}" data-look="{}" transform="translate({}, {})"{}><circle class="state-start" r="7" width="14" height="14" style="{}"/></g>"#,
                 node_dom_id.attr(),
                 escape_xml_display(data_look),
                 fmt_display(cx),
                 fmt_display(cy),
+                node_title_attr,
                 escape_xml_display(&semantic_style)
             );
             drop(_g_emit);
@@ -323,11 +377,12 @@ pub(super) fn render_state_node_svg(
             let _g_emit = detail_guard(timing, &mut details.leaf_nodes_emit);
             let _ = write!(
                 out,
-                r##"<g class="node default" id="{}" data-look="{}" transform="translate({}, {})"><g class="outer-path"{}><path d="{}" stroke="none" stroke-width="0" fill="{}" style="{}"/><path d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="0 0" style="{}"/><g><path d="{}" stroke="none" stroke-width="0" fill="{}" style="{}"/><path d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="0 0" style="{}"/></g></g></g>"##,
+                r##"<g class="node default" id="{}" data-look="{}" transform="translate({}, {})"{}><g class="outer-path"{}><path d="{}" stroke="none" stroke-width="0" fill="{}" style="{}"/><path d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="0 0" style="{}"/><g><path d="{}" stroke="none" stroke-width="0" fill="{}" style="{}"/><path d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="0 0" style="{}"/></g></g></g>"##,
                 node_dom_id.attr(),
                 escape_attr(data_look),
                 fmt(cx),
                 fmt(cy),
+                node_title_attr,
                 small_shadow_attr,
                 outer_d.as_str(),
                 escape_attr(outer_fill),
@@ -399,12 +454,13 @@ pub(super) fn render_state_node_svg(
             let _g_emit = detail_guard(timing, &mut details.leaf_nodes_emit);
             let _ = write!(
                 out,
-                r##"<g class="{}" id="{}" data-look="{}" transform="translate({}, {})"><g><path d="{}" stroke="none" stroke-width="0" fill="{}" style="{}"/><path d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="0 0" style="{}"/></g></g>"##,
+                r##"<g class="{}" id="{}" data-look="{}" transform="translate({}, {})"{}><g><path d="{}" stroke="none" stroke-width="0" fill="{}" style="{}"/><path d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="0 0" style="{}"/></g></g>"##,
                 escape_xml_display(&node_class),
                 node_dom_id.attr(),
                 escape_xml_display(data_look),
                 fmt_display(cx),
                 fmt_display(cy),
+                node_title_attr,
                 fill_d.as_str(),
                 escape_xml_display(fill_attr),
                 fill_path_style_escaped,
@@ -462,12 +518,13 @@ pub(super) fn render_state_node_svg(
             let _g_emit = detail_guard(timing, &mut details.leaf_nodes_emit);
             let _ = write!(
                 out,
-                r##"<g class="{}" id="{}" data-look="{}" transform="translate({}, {})"><g><path d="{}" stroke="none" stroke-width="0" fill="{}" style="{}"/><path d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="0 0" style="{}"/></g></g>"##,
+                r##"<g class="{}" id="{}" data-look="{}" transform="translate({}, {})"{}><g><path d="{}" stroke="none" stroke-width="0" fill="{}" style="{}"/><path d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="0 0" style="{}"/></g></g>"##,
                 escape_xml_display(&node_class),
                 node_dom_id.attr(),
                 escape_xml_display(data_look),
                 fmt_display(cx),
                 fmt_display(cy),
+                node_title_attr,
                 fill_d.as_str(),
                 escape_xml_display(fill_attr),
                 fill_path_style_escaped,
@@ -603,12 +660,13 @@ pub(super) fn render_state_node_svg(
                 };
                 let _ = write!(
                     out,
-                    r##"<g class="{}" id="{}" data-look="{}" transform="translate({}, {})"><g class="basic label-container outer-path"><path d="{}" stroke="none" stroke-width="0" fill="{}" style="{}"/><path d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="0 0" style="{}"/></g><g class="label noteLabel" style="{}" transform="translate({}, {})"><rect/><foreignObject width="{}" height="{}"><div xmlns="http://www.w3.org/1999/xhtml" style="{}">{}</div></foreignObject></g></g>"##,
+                    r##"<g class="{}" id="{}" data-look="{}" transform="translate({}, {})"{}><g class="basic label-container outer-path"><path d="{}" stroke="none" stroke-width="0" fill="{}" style="{}"/><path d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="0 0" style="{}"/></g><g class="label noteLabel" style="{}" transform="translate({}, {})"><rect/><foreignObject width="{}" height="{}"><div xmlns="http://www.w3.org/1999/xhtml" style="{}">{}</div></foreignObject></g></g>"##,
                     escape_xml_display(&node_class),
                     node_dom_id.attr(),
                     escape_xml_display(data_look),
                     fmt_display(cx),
                     fmt_display(cy),
+                    node_title_attr,
                     fill_d.as_str(),
                     escape_xml_display(fill_attr),
                     fill_path_style_escaped,
@@ -627,12 +685,13 @@ pub(super) fn render_state_node_svg(
             } else {
                 let _ = write!(
                     out,
-                    r##"<g class="{}" id="{}" data-look="{}" transform="translate({}, {})"><g class="basic label-container outer-path"><path d="{}" stroke="none" stroke-width="0" fill="{}" style="{}"/><path d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="0 0" style="{}"/></g><g class="label noteLabel" style="{}" transform="translate({}, {})"><rect/>{}</g></g>"##,
+                    r##"<g class="{}" id="{}" data-look="{}" transform="translate({}, {})"{}><g class="basic label-container outer-path"><path d="{}" stroke="none" stroke-width="0" fill="{}" style="{}"/><path d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="0 0" style="{}"/></g><g class="label noteLabel" style="{}" transform="translate({}, {})"><rect/>{}</g></g>"##,
                     escape_xml_display(&node_class),
                     node_dom_id.attr(),
                     escape_xml_display(data_look),
                     fmt_display(cx),
                     fmt_display(cy),
+                    node_title_attr,
                     fill_d.as_str(),
                     escape_xml_display(fill_attr),
                     fill_path_style_escaped,
@@ -759,12 +818,13 @@ pub(super) fn render_state_node_svg(
             if ctx.html_labels {
                 let _ = write!(
                     out,
-                    r#"<g class="{}" id="{}" data-look="{}" transform="translate({}, {})"><g><rect class="outer title-state" style="{}"{} x="{}" y="{}" width="{}" height="{}"/><line class="divider" style="{}" x1="{}" x2="{}" y1="{}" y2="{}"/></g><g class="label" style="{}" transform="translate({}, {})"><foreignObject width="{}" height="{}" transform="translate( {}, 0)"><div xmlns="http://www.w3.org/1999/xhtml" style="{}">{}</div></foreignObject><foreignObject width="{}" height="{}" transform="translate( {}, {})"><div xmlns="http://www.w3.org/1999/xhtml" style="{}">{}</div></foreignObject></g></g>"#,
+                    r#"<g class="{}" id="{}" data-look="{}" transform="translate({}, {})"{}><g><rect class="outer title-state" style="{}"{} x="{}" y="{}" width="{}" height="{}"/><line class="divider" style="{}" x1="{}" x2="{}" y1="{}" y2="{}"/></g><g class="label" style="{}" transform="translate({}, {})"><foreignObject width="{}" height="{}" transform="translate( {}, 0)"><div xmlns="http://www.w3.org/1999/xhtml" style="{}">{}</div></foreignObject><foreignObject width="{}" height="{}" transform="translate( {}, {})"><div xmlns="http://www.w3.org/1999/xhtml" style="{}">{}</div></foreignObject></g></g>"#,
                     escape_xml_display(&node_class),
                     node_dom_id.attr(),
                     escape_xml_display(data_look),
                     fmt_display(cx),
                     fmt_display(cy),
+                    node_title_attr,
                     shape_style_escaped,
                     radius_attrs,
                     fmt_display(-w / 2.0),
@@ -794,12 +854,13 @@ pub(super) fn render_state_node_svg(
             } else {
                 let _ = write!(
                     out,
-                    r#"<g class="{}" id="{}" data-look="{}" transform="translate({}, {})"><g><rect class="outer title-state" style="{}"{} x="{}" y="{}" width="{}" height="{}"/><line class="divider" style="{}" x1="{}" x2="{}" y1="{}" y2="{}"/></g><g class="label" style="{}" transform="translate({}, {})"><g transform="translate({}, 0)">{}</g><g transform="translate({}, {})">{}</g></g></g>"#,
+                    r#"<g class="{}" id="{}" data-look="{}" transform="translate({}, {})"{}><g><rect class="outer title-state" style="{}"{} x="{}" y="{}" width="{}" height="{}"/><line class="divider" style="{}" x1="{}" x2="{}" y1="{}" y2="{}"/></g><g class="label" style="{}" transform="translate({}, {})"><g transform="translate({}, 0)">{}</g><g transform="translate({}, {})">{}</g></g></g>"#,
                     escape_xml_display(&node_class),
                     node_dom_id.attr(),
                     escape_xml_display(data_look),
                     fmt_display(cx),
                     fmt_display(cy),
+                    node_title_attr,
                     shape_style_escaped,
                     radius_attrs,
                     fmt_display(-w / 2.0),
@@ -856,58 +917,6 @@ pub(super) fn render_state_node_svg(
 
             let lw = state_leaf_label_width(node, ctx, &label, metrics.width);
             let lh = metrics.height.max(0.0);
-
-            let mut link_open = String::new();
-            let mut link_close = String::new();
-            let mut node_title_attr = String::new();
-            if let Some(links) = ctx.links.get(node_id) {
-                let mut push_link = |link: &StateSvgLink| {
-                    let title_attr = if link.tooltip.is_empty() {
-                        String::new()
-                    } else {
-                        let tooltip = if ctx.security_level_loose {
-                            link.tooltip.as_str()
-                        } else {
-                            normalize_mermaid_tooltip_attribute(&link.tooltip)
-                        };
-                        format!(r#" title="{}""#, escape_attr(tooltip))
-                    };
-                    if !title_attr.is_empty() {
-                        node_title_attr = title_attr.clone();
-                    }
-
-                    if let Some(href) = prepare_mermaid_navigation_href(
-                        &link.url,
-                        MermaidNavigationSecurity::from_security_level_loose(
-                            ctx.security_level_loose,
-                        ),
-                    ) {
-                        let target_attr = if ctx.security_level_loose {
-                            r#" target="_blank""#
-                        } else {
-                            ""
-                        };
-                        link_open.push_str(&format!(
-                            r#"<a xlink:href="{}"{}{}>"#,
-                            href.as_serialized_str(),
-                            target_attr,
-                            title_attr
-                        ));
-                    } else {
-                        link_open.push_str(&format!(r#"<a{}>"#, title_attr));
-                    }
-                    link_close.push_str("</a>");
-                };
-
-                match links {
-                    StateSvgLinks::One(link) => push_link(link),
-                    StateSvgLinks::Many(links) => {
-                        for link in links {
-                            push_link(link);
-                        }
-                    }
-                }
-            }
 
             let surface = compatibility
                 .node_shape_surface(node, crate::diagram_theme::ThemeTarget::State)
@@ -1011,8 +1020,7 @@ pub(super) fn render_state_node_svg(
                 if ctx.html_labels {
                     let _ = write!(
                         out,
-                        r##"{}<g class="{}" id="{}" data-look="{}" transform="translate({}, {})"{}><rect class="basic label-container" style="{}"{} rx="{}" ry="{}" x="{}" y="{}" width="{}" height="{}"/><g class="label" style="{}" transform="translate({}, {})"><rect/><foreignObject width="{}" height="{}"><div xmlns="http://www.w3.org/1999/xhtml" style="{}">{}</div></foreignObject></g></g>{}"##,
-                        link_open,
+                        r##"<g class="{}" id="{}" data-look="{}" transform="translate({}, {})"{}><rect class="basic label-container" style="{}"{} rx="{}" ry="{}" x="{}" y="{}" width="{}" height="{}"/><g class="label" style="{}" transform="translate({}, {})"><rect/><foreignObject width="{}" height="{}"><div xmlns="http://www.w3.org/1999/xhtml" style="{}">{}</div></foreignObject></g></g>"##,
                         escape_xml_display(&node_class),
                         node_dom_id.attr(),
                         escape_xml_display(data_look),
@@ -1034,13 +1042,11 @@ pub(super) fn render_state_node_svg(
                         fmt_display(lh),
                         escape_attr(&div_style),
                         label_dom,
-                        link_close
                     );
                 } else {
                     let _ = write!(
                         out,
-                        r##"{}<g class="{}" id="{}" data-look="{}" transform="translate({}, {})"{}><rect class="basic label-container" style="{}"{} rx="{}" ry="{}" x="{}" y="{}" width="{}" height="{}"/><g class="label" style="{}" transform="translate({}, {})"><rect/>{}</g></g>{}"##,
-                        link_open,
+                        r##"<g class="{}" id="{}" data-look="{}" transform="translate({}, {})"{}><rect class="basic label-container" style="{}"{} rx="{}" ry="{}" x="{}" y="{}" width="{}" height="{}"/><g class="label" style="{}" transform="translate({}, {})"><rect/>{}</g></g>"##,
                         escape_xml_display(&node_class),
                         node_dom_id.attr(),
                         escape_xml_display(data_look),
@@ -1059,7 +1065,6 @@ pub(super) fn render_state_node_svg(
                         fmt_display(-lw / 2.0),
                         fmt_display(-lh / 2.0),
                         label_dom,
-                        link_close
                     );
                 }
                 if let Some((effect, scoped_filter_id, _, region)) = effect_filter.as_ref() {
@@ -1067,6 +1072,7 @@ pub(super) fn render_state_node_svg(
                         .record_application(effect, scoped_filter_id, *region);
                 }
                 drop(_g_emit);
+                out.push_str(&link_close);
                 return Ok(());
             }
 
@@ -1098,8 +1104,7 @@ pub(super) fn render_state_node_svg(
             if ctx.html_labels {
                 let _ = write!(
                     out,
-                    r##"{}<g class="{}" id="{}" data-look="{}" transform="translate({}, {})"{}><g class="basic label-container outer-path"><path d="{}" stroke="none" stroke-width="0" fill="{}" style="{}"/><path d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="0 0" style="{}"/></g><g class="label" style="{}" transform="translate({}, {})"><rect/><foreignObject width="{}" height="{}"><div xmlns="http://www.w3.org/1999/xhtml" style="{}">{}</div></foreignObject></g></g>{}"##,
-                    link_open,
+                    r##"<g class="{}" id="{}" data-look="{}" transform="translate({}, {})"{}><g class="basic label-container outer-path"><path d="{}" stroke="none" stroke-width="0" fill="{}" style="{}"/><path d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="0 0" style="{}"/></g><g class="label" style="{}" transform="translate({}, {})"><rect/><foreignObject width="{}" height="{}"><div xmlns="http://www.w3.org/1999/xhtml" style="{}">{}</div></foreignObject></g></g>"##,
                     escape_xml_display(&node_class),
                     node_dom_id.attr(),
                     escape_xml_display(data_look),
@@ -1120,13 +1125,11 @@ pub(super) fn render_state_node_svg(
                     fmt_display(lh),
                     escape_attr(&div_style),
                     label_dom,
-                    link_close
                 );
             } else {
                 let _ = write!(
                     out,
-                    r##"{}<g class="{}" id="{}" data-look="{}" transform="translate({}, {})"{}><g class="basic label-container outer-path"><path d="{}" stroke="none" stroke-width="0" fill="{}" style="{}"/><path d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="0 0" style="{}"/></g><g class="label" style="{}" transform="translate({}, {})"><rect/>{}</g></g>{}"##,
-                    link_open,
+                    r##"<g class="{}" id="{}" data-look="{}" transform="translate({}, {})"{}><g class="basic label-container outer-path"><path d="{}" stroke="none" stroke-width="0" fill="{}" style="{}"/><path d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="0 0" style="{}"/></g><g class="label" style="{}" transform="translate({}, {})"><rect/>{}</g></g>"##,
                     escape_xml_display(&node_class),
                     node_dom_id.attr(),
                     escape_xml_display(data_look),
@@ -1144,12 +1147,12 @@ pub(super) fn render_state_node_svg(
                     fmt_display(-lw / 2.0),
                     fmt_display(-lh / 2.0),
                     label_dom,
-                    link_close
                 );
             }
             drop(_g_emit);
         }
     }
+    out.push_str(&link_close);
     Ok(())
 }
 

@@ -516,6 +516,24 @@
           "to_cluster": null
         }
       ],
+      "frames": [
+        {
+          "height": 504.0,
+          "id": "2",
+          "kind": "alt",
+          "label": "Authentication successful",
+          "sections": [
+            {
+              "id": "10",
+              "label": "Authentication failed",
+              "y": 548.0
+            }
+          ],
+          "width": 1222.0,
+          "x": 64.0,
+          "y": 176.0
+        }
+      ],
       "nodes": [
         {
           "height": 74.0,

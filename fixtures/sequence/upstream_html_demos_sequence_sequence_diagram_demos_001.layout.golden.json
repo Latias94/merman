@@ -2,6 +2,16 @@
   "diagramType": "sequence",
   "layout": {
     "SequenceDiagram": {
+      "activations": [
+        {
+          "actor": "John",
+          "depth": 0.0,
+          "height": 46.0,
+          "width": 10.0,
+          "x": 635.0,
+          "y": 911.0
+        }
+      ],
       "bounds": {
         "max_x": 885.0,
         "max_y": 1444.0,
@@ -474,6 +484,45 @@
           "stroke_dasharray": null,
           "to": "actor-bottom-John",
           "to_cluster": null
+        }
+      ],
+      "frames": [
+        {
+          "height": 319.0,
+          "id": "17",
+          "kind": "alt",
+          "label": "either this",
+          "sections": [
+            {
+              "id": "22",
+              "label": "or this",
+              "y": 972.0
+            },
+            {
+              "id": "25",
+              "label": "or this will happen",
+              "y": 1063.0
+            }
+          ],
+          "width": 591.0,
+          "x": 64.0,
+          "y": 830.0
+        },
+        {
+          "height": 162.0,
+          "id": "29",
+          "kind": "par",
+          "label": "this happens in parallel",
+          "sections": [
+            {
+              "id": "31",
+              "label": "",
+              "y": 1255.0
+            }
+          ],
+          "width": 587.0,
+          "x": 64.0,
+          "y": 1159.0
         }
       ],
       "nodes": [

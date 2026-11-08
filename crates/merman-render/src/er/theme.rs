@@ -241,15 +241,17 @@ pub(crate) fn compile_er_subgraph_source_style(
 }
 
 fn compile_er_source_style<'a>(
-    class_names: impl Iterator<Item = &'a str>,
+    class_names: impl DoubleEndedIterator<Item = &'a str>,
     source_styles: &[String],
     classes: &indexmap::IndexMap<String, merman_model::families::er::ErClassDef>,
 ) -> ErEntitySourceStyle {
     let mut seen_classes = BTreeSet::<&str>::new();
-    let class_defs = class_names
+    let mut class_defs = class_names
+        .rev()
         .filter(|class_name| seen_classes.insert(*class_name))
         .filter_map(|class_name| classes.get(class_name))
         .collect::<Vec<_>>();
+    class_defs.reverse();
     let mut rect_map = BTreeMap::<String, ErStyleDeclaration>::new();
     let mut text_map = BTreeMap::<String, ErStyleDeclaration>::new();
 
@@ -550,10 +552,15 @@ impl ErEntityThemePlan {
 
         let mermaid_owns_fill = mermaid_owns_entity_fill(effective_config);
         let mermaid_owns_stroke = mermaid_owns_entity_stroke(effective_config);
-        let entity_html_labels = super::ErConfigView::new(effective_config.as_value())
-            .entity_html_label_wrap_mode()
-            == crate::text::WrapMode::HtmlLike;
-        let svg_subgraph_labels = !entity_html_labels;
+        let config = super::ErConfigView::new(effective_config.as_value());
+        let entity_html_labels =
+            config.entity_html_label_wrap_mode() == crate::text::WrapMode::HtmlLike;
+        let subgraph_html_labels = if layout.swimlane.is_some() {
+            config.swimlane_title_html_labels()
+        } else {
+            relationship_html_labels
+        };
+        let svg_subgraph_labels = !subgraph_html_labels;
         let mermaid_owns_entity_text = mermaid_owns_text_fill(effective_config, entity_html_labels);
         let mermaid_owns_relation_text =
             mermaid_owns_text_fill(effective_config, relationship_html_labels);
@@ -562,20 +569,12 @@ impl ErEntityThemePlan {
             merman_model::presentation::ErPaintInput::Text,
         );
         let relation_stroke_source_owned = mermaid_owns_relation_stroke(effective_config);
-        let visible_subgraph_styles = if svg_subgraph_labels && needs_text_terminal_evidence {
-            &subgraph_source_styles
-        } else {
-            &BTreeMap::new()
-        };
         if svg_subgraph_labels && needs_text_terminal_evidence {
             for cluster in &layout.clusters {
                 let Some(subgraph) = subgraphs.get(cluster.id.as_str()) else {
                     continue;
                 };
-                let source_style = visible_subgraph_styles
-                    .get(&subgraph.id)
-                    .expect("visible ER subgraph styles are indexed with layout clusters");
-                let facts = subgraph_svg_text_facts(subgraph, source_style);
+                let facts = subgraph_svg_text_facts(subgraph);
                 insert_text_terminal(
                     &mut text_terminals,
                     ErTextTerminalId::SubgraphLabel(subgraph.id.clone().into()),
@@ -587,9 +586,10 @@ impl ErEntityThemePlan {
             entity_source_styles[ordinal - 1]
                 .text_value("font-family")
                 .is_some()
-        }) || visible_subgraph_styles
-            .values()
-            .any(|style| style.text_value("font-family").is_some());
+        }) || (subgraph_html_labels
+            && subgraph_source_styles
+                .values()
+                .any(|style| style.text_value("font-family").is_some()));
         let visible_text_terminal = |terminal_id: &ErTextTerminalId| {
             terminal_id
                 .entity_id()
@@ -603,9 +603,10 @@ impl ErEntityThemePlan {
                     &entity_indices,
                     &entity_source_styles,
                 )
-        }) || visible_subgraph_styles
-            .values()
-            .any(ErEntitySourceStyle::owns_text_font_size);
+        }) || (subgraph_html_labels
+            && subgraph_source_styles
+                .values()
+                .any(ErEntitySourceStyle::owns_text_font_size));
         let diagram_title = diagram_title
             .map(str::trim)
             .filter(|title| !title.is_empty());
@@ -736,15 +737,12 @@ impl ErEntityThemePlan {
             }
             let mermaid_owns_text = match terminal_id {
                 ErTextTerminalId::DiagramTitle => title_fill_source_owned,
-                ErTextTerminalId::SubgraphLabel(id) => {
-                    visible_subgraph_styles
-                        .get(id.as_ref())
-                        .is_some_and(ErEntitySourceStyle::owns_text_color)
-                        || (effective_config
-                            .get_str("themeVariables.titleColor")
-                            .is_some()
-                            && effective_config
-                                .config_paint_overrides_typed_default("themeVariables.titleColor"))
+                ErTextTerminalId::SubgraphLabel(_) => {
+                    (effective_config
+                        .get_str("themeVariables.titleColor")
+                        .is_some()
+                        && effective_config
+                            .config_paint_overrides_typed_default("themeVariables.titleColor"))
                         || mermaid_owns_paint_input(
                             effective_config,
                             merman_model::presentation::ErPaintInput::Text,
@@ -1265,17 +1263,12 @@ fn typed_stroke_expectation(
 
 pub(crate) fn subgraph_svg_text_facts(
     subgraph: &merman_model::families::er::ErSubgraph,
-    source_style: &ErEntitySourceStyle,
 ) -> crate::text::VisibleTextStyleFacts {
-    let facts = if matches!(subgraph.label_type.as_str(), "string" | "text") {
+    if matches!(subgraph.label_type.as_str(), "string" | "text") {
         crate::text::VisibleTextStyleFacts::plain_text(&subgraph.title)
     } else {
         crate::text::VisibleTextStyleFacts::from_svg_markdown_projection(&subgraph.title)
-    };
-    facts.with_unmeasured_typography(
-        source_style.text_value("font-family").is_some(),
-        source_style.owns_text_font_size(),
-    )
+    }
 }
 
 fn collect_text_terminals(

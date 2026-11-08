@@ -218,7 +218,9 @@
         "end": "B",
         "id": "1-A-B",
         "label": "",
+        "pattern": "solid",
         "start": "A",
+        "thickness": "normal",
         "type": "edge"
       },
       {
@@ -228,7 +230,9 @@
         "end": "C",
         "id": "1-A-C",
         "label": "",
+        "pattern": "solid",
         "start": "A",
+        "thickness": "normal",
         "type": "edge"
       },
       {
@@ -238,7 +242,9 @@
         "end": "D",
         "id": "1-A-D",
         "label": "",
+        "pattern": "solid",
         "start": "A",
+        "thickness": "normal",
         "type": "edge"
       }
     ],

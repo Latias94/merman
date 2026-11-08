@@ -46,7 +46,7 @@ pub(crate) fn block_syntax_construction_count() -> usize {
 }
 
 pub(crate) use merman_model::families::block::{
-    BlockClassDef, BlockDiagramModel, BlockEdge, BlockNode,
+    BlockClassDef, BlockDiagramModel, BlockEdge, BlockEdgePattern, BlockEdgeThickness, BlockNode,
 };
 #[cfg(feature = "presentation")]
 pub(crate) use merman_model::families::block::{
@@ -67,6 +67,8 @@ struct Block {
     end: Option<String>,
     arrow_type_end: Option<String>,
     arrow_type_start: Option<String>,
+    thickness: BlockEdgeThickness,
+    pattern: BlockEdgePattern,
 
     width: Option<i64>,
     columns: Option<i64>,
@@ -129,15 +131,6 @@ impl BlockDb {
         }
     }
 
-    fn ensure_block_exists(&mut self, id: &str) -> &mut Block {
-        let index = self
-            .block_ids
-            .get(id)
-            .copied()
-            .unwrap_or_else(|| self.insert_block(Block::new(id.to_string())));
-        &mut self.blocks[index]
-    }
-
     fn add_style_class(&mut self, id: &str, style_attributes: &str) {
         let entry = self
             .classes
@@ -183,9 +176,15 @@ impl BlockDb {
             if id.is_empty() {
                 continue;
             }
-
-            let entry = self.ensure_block_exists(id);
-            entry.classes.push(css_class_name.to_string());
+            let index = self.block_ids.get(raw_id).copied().unwrap_or_else(|| {
+                // Mermaid looks up the authored token before trimming a missing ID. Rebinding
+                // the map must not mutate an older object already attached to the hierarchy.
+                let index = self.blocks.len();
+                self.blocks.push(Block::new(id.to_string()));
+                self.block_ids.insert(id.to_string(), index);
+                index
+            });
+            self.blocks[index].classes.push(css_class_name.to_string());
         }
     }
 
@@ -377,6 +376,8 @@ fn block_to_semantic_edge(b: Block) -> BlockEdge {
         arrow_type_end: b.arrow_type_end,
         arrow_type_start: b.arrow_type_start,
         label: b.label.unwrap_or_default(),
+        thickness: b.thickness,
+        pattern: b.pattern,
     }
 }
 
@@ -671,12 +672,21 @@ fn type_str_to_type(type_str: &str) -> String {
 }
 
 fn edge_str_to_edge_data(type_str: &str) -> String {
-    let trimmed = type_str.trim_matches(|c: char| c.is_whitespace() || c == '-');
-    match trimmed {
-        "x" => "arrow_cross",
-        "o" => "arrow_circle",
-        ">" => "arrow_point",
+    match type_str.trim().chars().next_back() {
+        Some('x') => "arrow_cross",
+        Some('o') => "arrow_circle",
+        Some('>') => "arrow_point",
         _ => "",
+    }
+    .to_string()
+}
+
+fn edge_str_to_start_data(type_str: &str) -> String {
+    match type_str.trim().chars().next() {
+        Some('x') => "arrow_cross",
+        Some('o') => "arrow_circle",
+        Some('<') => "arrow_point",
+        _ => "arrow_open",
     }
     .to_string()
 }
@@ -2005,7 +2015,17 @@ impl<'input, 'control> Parser<'input, 'control> {
                 start: Some(left.block.id.clone()),
                 end: Some(right.block.id.clone()),
                 arrow_type_end: Some(arrow_type_end),
-                arrow_type_start: Some("arrow_open".to_string()),
+                arrow_type_start: Some(edge_str_to_start_data(&edge_marker)),
+                thickness: if edge_marker.contains("==") {
+                    BlockEdgeThickness::Thick
+                } else {
+                    BlockEdgeThickness::Normal
+                },
+                pattern: if edge_marker.contains(".-") {
+                    BlockEdgePattern::Dotted
+                } else {
+                    BlockEdgePattern::Solid
+                },
                 #[cfg(feature = "presentation")]
                 directions: self
                     .presentation_requested
@@ -2370,7 +2390,7 @@ impl<'input, 'control> Parser<'input, 'control> {
             if c.is_whitespace()
                 || matches!(
                     c,
-                    '(' | '[' | '\n' | '-' | ')' | '{' | '}' | '<' | '>' | ':'
+                    '(' | '[' | '\n' | '-' | '=' | ')' | '{' | '}' | '<' | '>' | ':'
                 )
             {
                 break;
@@ -2423,10 +2443,10 @@ impl<'input, 'control> Parser<'input, 'control> {
     fn parse_identifier_list(&mut self) -> Result<BlockSpannedText> {
         self.skip_inline_whitespace();
         let start = self.pos;
-        while let Some(c) = self.peek_char() {
-            if c.is_whitespace() || c == '\n' || c == '\r' {
-                break;
-            }
+        while self
+            .peek_char()
+            .is_some_and(|c| c.is_ascii_alphanumeric() || c == '_')
+        {
             self.bump();
         }
         if self.pos == start {
@@ -2434,6 +2454,27 @@ impl<'input, 'control> Parser<'input, 'control> {
                 "block".to_string(),
                 "expected identifier".to_string(),
             ));
+        }
+        loop {
+            let comma = self.pos;
+            if self.peek_char() != Some(',') {
+                break;
+            }
+            self.bump();
+            while self.peek_char().is_some_and(char::is_whitespace) {
+                self.bump();
+            }
+            let word_start = self.pos;
+            while self
+                .peek_char()
+                .is_some_and(|c| c.is_ascii_alphanumeric() || c == '_')
+            {
+                self.bump();
+            }
+            if self.pos == word_start {
+                self.pos = comma;
+                break;
+            }
         }
         Ok(BlockSpannedText {
             text: self.input[start..self.pos].to_string(),
@@ -2907,6 +2948,53 @@ mod tests {
         assert_eq!(edges[0]["start"].as_str().unwrap(), "id1");
         assert_eq!(edges[0]["end"].as_str().unwrap(), "id2");
         assert_eq!(edges[0]["arrowTypeEnd"].as_str().unwrap(), "arrow_point");
+    }
+
+    #[test]
+    fn block_compact_links_preserve_both_markers_and_line_semantics() {
+        for (token, start, end, thickness, pattern) in [
+            ("-->", "arrow_open", "arrow_point", "normal", "solid"),
+            ("<-->", "arrow_point", "arrow_point", "normal", "solid"),
+            ("<==>", "arrow_point", "arrow_point", "thick", "solid"),
+            ("==>", "arrow_open", "arrow_point", "thick", "solid"),
+            ("-.->", "arrow_open", "arrow_point", "normal", "dotted"),
+            ("x--o", "arrow_cross", "arrow_circle", "normal", "solid"),
+            ("===", "arrow_open", "", "thick", "solid"),
+            ("-.-", "arrow_open", "", "normal", "dotted"),
+        ] {
+            let separator = if token.starts_with(['x', 'o']) {
+                " "
+            } else {
+                ""
+            };
+            let model = parse(&format!("block\nA{separator}{token}B\n"));
+            let edge = &model["edges"][0];
+            assert_eq!(edge["start"], "A", "{token}");
+            assert_eq!(edge["end"], "B", "{token}");
+            assert_eq!(edge["arrowTypeStart"], start, "{token}");
+            assert_eq!(edge["arrowTypeEnd"], end, "{token}");
+            assert_eq!(edge["thickness"], thickness, "{token}");
+            assert_eq!(edge["pattern"], pattern, "{token}");
+        }
+    }
+
+    #[test]
+    fn block_spaced_class_ids_rebind_without_mutating_attached_objects() {
+        let value = parse("block\nA[\"Alpha\"] B[\"Beta\"]\nclass A, B hot\n");
+        assert_eq!(value["blocks"][0]["classes"], json!(["hot"]));
+        assert_eq!(value["blocks"][1]["classes"], Value::Null);
+        assert_eq!(value["blocks"][1]["label"], "Beta");
+        let binding = value["blocksFlat"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|node| node["id"] == "B")
+            .unwrap();
+        assert_eq!(binding["classes"], json!(["hot"]));
+        assert_eq!(binding["type"], "na");
+        let control = parse("block\nA B\nclass A,B hot\n");
+        assert_eq!(control["blocks"][0]["classes"], json!(["hot"]));
+        assert_eq!(control["blocks"][1]["classes"], json!(["hot"]));
     }
 
     #[test]

@@ -75,7 +75,8 @@ pub(crate) fn render_packet_diagram_svg_model(
     let byte_start_role = crate::packet::PacketTextRole::ByteStart;
     let byte_end_role = crate::packet::PacketTextRole::ByteEnd;
     let title_role = crate::packet::PacketTextRole::Title;
-    let bit_order = crate::packet::PacketConfigView::new(effective_config).bit_order();
+    let config = crate::packet::PacketConfigView::new(effective_config);
+    let bit_order = config.bit_order();
 
     let bounds = layout.bounds.clone().unwrap_or(Bounds {
         min_x: 0.0,
@@ -98,7 +99,7 @@ pub(crate) fn render_packet_diagram_svg_model(
         .as_deref()
         .map(|_| format!("chart-desc-{diagram_id}"));
     let root_bounds = root_svg::DiagramBounds::from_view_box(vb_min_x, vb_min_y, vb_w, vb_h);
-    let root_spec = root_svg::RootViewportSpec::responsive(root_bounds);
+    let root_spec = root_svg::RootViewportSpec::mermaid(root_bounds, config.use_max_width());
     let mut root_chrome = root_svg::RootChrome::new(diagram_id, "packet");
     root_chrome.aria_labelledby = aria_labelledby.as_deref();
     root_chrome.aria_describedby = aria_describedby.as_deref();

@@ -2,6 +2,16 @@
   "diagramType": "sequence",
   "layout": {
     "SequenceDiagram": {
+      "activations": [
+        {
+          "actor": "Database",
+          "depth": 0.0,
+          "height": 46.0,
+          "width": 10.0,
+          "x": 670.0,
+          "y": 120.0
+        }
+      ],
       "bounds": {
         "max_x": 800.0,
         "max_y": 317.0,

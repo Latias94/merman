@@ -2141,6 +2141,76 @@ fn render_packet_with_engine(source: &str, engine: MermaidEngine) -> (PacketDiag
 }
 
 #[test]
+fn packet_multiline_labels_reach_svg_as_literal_text() {
+    let source = "packet-beta\n0: \"雪\n<node>&%%\"\n1: \"Tail\"\n";
+    for source in [source.to_owned(), source.replace('\n', "\r\n")] {
+        let (layout, svg) = render_packet(&source);
+        assert_eq!(layout.words[0].blocks.len(), 2);
+        let document = roxmltree::Document::parse(&svg).expect("valid literal Packet SVG");
+        let labels = document
+            .descendants()
+            .filter(|node| node.attribute("class") == Some("packetLabel"))
+            .map(|node| node.text().unwrap())
+            .collect::<Vec<_>>();
+        assert_eq!(labels, ["雪\n<node>&%%", "Tail"]);
+        assert!(!document.descendants().any(|node| node.has_tag_name("node")));
+    }
+}
+
+#[test]
+fn packet_intrinsic_svg_size_follows_effective_family_configuration() {
+    use merman_core::presentation::SourcePresentationConfig;
+
+    for (site_value, source_value, responsive) in [
+        (None, None, true),
+        (Some(false), None, false),
+        (Some(true), Some(false), false),
+        (Some(false), Some(true), true),
+    ] {
+        let engine = MermaidEngine::new().with_site_config(SourcePresentationConfig::from_value(
+            serde_json::json!({"useMaxWidth": false, "packet": {"useMaxWidth": site_value}}),
+        ));
+        let prefix = source_value.map_or_else(String::new, |value| {
+            format!("---\nconfig:\n  packet:\n    useMaxWidth: {value}\n---\n")
+        });
+        let (_, svg) = render_packet_with_engine(
+            &format!("{prefix}packet-beta\n0-31: \"Header\"\n+8: \"Tail\"\n"),
+            engine,
+        );
+        let document = roxmltree::Document::parse(&svg).unwrap();
+        let root = document.root_element();
+        let view_box = root
+            .attribute("viewBox")
+            .unwrap()
+            .split_ascii_whitespace()
+            .map(|value| value.parse::<f64>().unwrap())
+            .collect::<Vec<_>>();
+        if responsive {
+            assert_eq!(root.attribute("width"), Some("100%"));
+            assert!(root.attribute("height").is_none());
+            assert!(root.attribute("style").unwrap().contains("max-width:"));
+        } else {
+            assert_eq!(
+                root.attribute("width").unwrap().parse::<f64>().unwrap(),
+                view_box[2]
+            );
+            assert_eq!(
+                root.attribute("height").unwrap().parse::<f64>().unwrap(),
+                view_box[3]
+            );
+            assert!(root.attribute("style").is_none());
+        }
+        assert_eq!(
+            document
+                .descendants()
+                .filter(|node| node.attribute("class") == Some("packetBlock"))
+                .count(),
+            2
+        );
+    }
+}
+
+#[test]
 fn packet_descending_mirrors_each_row_without_reversing_semantic_ranges() {
     let (ascending, _) = render_packet(&DESCENDING_PACKET.replace("descending", "ascending"));
     let (descending, svg) = render_packet(DESCENDING_PACKET);

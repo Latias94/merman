@@ -71,10 +71,7 @@ pub(super) struct NodeSpecError {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) enum NodeSpecContinuation {
-    AwaitingClosingDelimiter {
-        expected: &'static str,
-        text: Option<NodeTextContinuation>,
-    },
+    AwaitingClosingDelimiter { text: Option<NodeTextContinuation> },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -85,15 +82,9 @@ pub(super) enum NodeTextContinuation {
 }
 
 impl NodeSpecContinuation {
-    pub fn expected_closing(self) -> &'static str {
-        match self {
-            Self::AwaitingClosingDelimiter { expected, .. } => expected,
-        }
-    }
-
     pub fn has_open_text(self) -> bool {
         match self {
-            Self::AwaitingClosingDelimiter { text, .. } => text.is_some(),
+            Self::AwaitingClosingDelimiter { text } => text.is_some(),
         }
     }
 }
@@ -107,8 +98,8 @@ pub(super) fn parse_node_spec(
         return Err(node_spec_error("expected node", None));
     }
 
-    if let Some((start, end)) = node_delimiter_pair_at_start(input) {
-        let (inner, tail, _) = extract_delimited(input, start, end)
+    if let Some(start) = node_opening_delimiter_at_start(input) {
+        let (inner, tail, end) = extract_delimited(input, start)
             .map_err(|failure| node_spec_error(failure.message(), failure.continuation()))?;
         let parsed_text = parse_node_text(inner, start.len());
         let selection = parsed_text.content;
@@ -116,7 +107,7 @@ pub(super) fn parse_node_spec(
         let trace = matches!(editor_demand, EditorFactsDemand::Capture).then_some(NodeSpecTrace {
             description_span: None,
         });
-        if !tail.trim().is_empty() {
+        if !is_statement_terminator(tail) {
             return Err(node_spec_error("unexpected trailing input", None));
         }
         let ty = node_type_for(start, end);
@@ -149,12 +140,12 @@ pub(super) fn parse_node_spec(
         });
     }
 
-    let Some((start, end)) = node_delimiter_pair_at_start(rest) else {
+    let Some(start) = node_opening_delimiter_at_start(rest) else {
         return Err(node_spec_error("expected node delimiter", None));
     };
 
     let rest_start = input.len() - rest.len();
-    let (inner, tail, _) = extract_delimited(rest, start, end)
+    let (inner, tail, end) = extract_delimited(rest, start)
         .map_err(|failure| node_spec_error(failure.message(), failure.continuation()))?;
     let parsed_text = parse_node_text(inner, rest_start + start.len());
     let selection = SourceSpan::new(0, input[..rest_start].trim_end().len());
@@ -162,7 +153,7 @@ pub(super) fn parse_node_spec(
     let trace = matches!(editor_demand, EditorFactsDemand::Capture).then_some(NodeSpecTrace {
         description_span: Some(parsed_text.content),
     });
-    if !tail.trim().is_empty() {
+    if !is_statement_terminator(tail) {
         return Err(node_spec_error("unexpected trailing input", None));
     }
 
@@ -180,7 +171,7 @@ pub(super) fn parse_node_spec(
 
 pub(super) fn starts_node_spec(input: &str) -> bool {
     let input = input.trim_end();
-    if input.is_empty() || node_delimiter_pair_at_start(input).is_some() {
+    if input.is_empty() || node_opening_delimiter_at_start(input).is_some() {
         return !input.is_empty();
     }
     let (id, _) = split_node_id(input);
@@ -208,32 +199,27 @@ fn split_node_id(input: &str) -> (&str, &str) {
     (input, "")
 }
 
-fn node_delimiter_pair_at_start(input: &str) -> Option<(&'static str, &'static str)> {
-    let pairs: &[(&str, &str)] = &[
-        ("(-", "-)"),
-        ("-)", "(-"),
-        ("((", "))"),
-        ("))", "(("),
-        ("{{", "}}"),
-        ("[", "]"),
-        (")", "("),
-        ("(", ")"),
-    ];
+fn node_opening_delimiter_at_start(input: &str) -> Option<&'static str> {
+    ["(-", "-)", "((", "))", "{{", "[", ")", "("]
+        .into_iter()
+        .find(|start| input.starts_with(*start))
+}
 
-    for (start, end) in pairs {
-        if input.starts_with(start) {
-            return Some((*start, *end));
-        }
-    }
-    None
+pub(super) fn node_closing_delimiter_at_start(input: &str) -> Option<&'static str> {
+    // mindmap.jison emits a generic NODE_DEND; only getType interprets its spelling.
+    ["))", ")", "]", "}}", "(-", "-)", "((", "("]
+        .into_iter()
+        .find(|end| input.starts_with(*end))
+}
+
+pub(super) fn is_statement_terminator(input: &str) -> bool {
+    let input = input.trim_start();
+    input.is_empty() || input.starts_with("%%")
 }
 
 enum DelimitedScanFailure {
     ExpectedOpening,
-    AwaitingClosingDelimiter {
-        expected: &'static str,
-        text: Option<NodeTextContinuation>,
-    },
+    AwaitingClosingDelimiter { text: Option<NodeTextContinuation> },
 }
 
 impl DelimitedScanFailure {
@@ -247,8 +233,8 @@ impl DelimitedScanFailure {
     fn continuation(&self) -> Option<NodeSpecContinuation> {
         match *self {
             Self::ExpectedOpening => None,
-            Self::AwaitingClosingDelimiter { expected, text } => {
-                Some(NodeSpecContinuation::AwaitingClosingDelimiter { expected, text })
+            Self::AwaitingClosingDelimiter { text } => {
+                Some(NodeSpecContinuation::AwaitingClosingDelimiter { text })
             }
         }
     }
@@ -276,14 +262,14 @@ impl NodeTextScanState {
 fn extract_delimited<'a>(
     input: &'a str,
     start: &'static str,
-    end: &'static str,
-) -> std::result::Result<(&'a str, &'a str, usize), DelimitedScanFailure> {
+) -> std::result::Result<(&'a str, &'a str, &'static str), DelimitedScanFailure> {
     if !input.starts_with(start) {
         return Err(DelimitedScanFailure::ExpectedOpening);
     }
     let mut text_state = NodeTextScanState::Plain;
 
     let start_len = start.len();
+    let mut token_start = start_len;
     let mut it = input[start_len..].char_indices().peekable();
     while let Some((off, ch)) = it.next() {
         let idx = start_len + off;
@@ -293,12 +279,14 @@ fn extract_delimited<'a>(
                 if ch == '`' && it.peek().is_some_and(|(_, next)| *next == '"') {
                     text_state = NodeTextScanState::Plain;
                     it.next();
+                    token_start = idx + 2;
                 }
                 continue;
             }
             NodeTextScanState::Quoted => {
                 if ch == '"' {
                     text_state = NodeTextScanState::Plain;
+                    token_start = idx + 1;
                 }
                 continue;
             }
@@ -307,10 +295,10 @@ fn extract_delimited<'a>(
                     text_state = NodeTextScanState::Plain;
                     continue;
                 }
-                if input[idx..].starts_with(end) {
-                    let inner = &input[start_len..idx];
-                    let tail = &input[idx + end.len()..];
-                    return Ok((inner, tail, idx));
+                if ch != '-'
+                    && let Some(end) = node_closing_delimiter_at_start(&input[idx..])
+                {
+                    return Ok((&input[start_len..idx], &input[idx + end.len()..], end));
                 }
                 continue;
             }
@@ -334,15 +322,16 @@ fn extract_delimited<'a>(
             _ => {}
         }
 
-        if input[idx..].starts_with(end) {
-            let inner = &input[start_len..idx];
-            let tail = &input[idx + end.len()..];
-            return Ok((inner, tail, idx));
+        // NODE_DESCR consumes a trailing '-' as text before the ')' token, except
+        // when '-)' itself starts a token (for example, after a quoted description).
+        if (ch != '-' || idx == token_start)
+            && let Some(end) = node_closing_delimiter_at_start(&input[idx..])
+        {
+            return Ok((&input[start_len..idx], &input[idx + end.len()..], end));
         }
     }
 
     Err(DelimitedScanFailure::AwaitingClosingDelimiter {
-        expected: end,
         text: text_state.continuation(),
     })
 }
@@ -394,10 +383,10 @@ fn node_type_for(start: &str, end: &str) -> i32 {
 }
 
 #[cfg(feature = "presentation")]
-pub(super) fn get_i64(cfg: &MermaidConfig, dotted_path: &str) -> Option<i64> {
+pub(super) fn get_f64(cfg: &MermaidConfig, dotted_path: &str) -> Option<f64> {
     let mut cur = cfg.as_value();
     for segment in dotted_path.split('.') {
         cur = cur.as_object()?.get(segment)?;
     }
-    cur.as_i64().or_else(|| cur.as_f64().map(|f| f as i64))
+    cur.as_f64()
 }

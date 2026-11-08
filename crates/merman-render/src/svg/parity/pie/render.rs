@@ -384,7 +384,7 @@ pub(crate) fn render_pie_diagram_svg_model_with_paint_plan(
 
     let legend_position = render_settings.legend_position;
     let pie_offset_x = if legend_position == crate::pie::PieLegendPosition::Left {
-        (vb_w - 490.0).max(0.0)
+        (paint_plan.content_width()? - 490.0).max(0.0)
     } else {
         0.0
     };

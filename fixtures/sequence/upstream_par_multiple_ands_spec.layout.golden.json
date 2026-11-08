@@ -241,6 +241,29 @@
           "to_cluster": null
         }
       ],
+      "frames": [
+        {
+          "height": 411.0,
+          "id": "0",
+          "kind": "par",
+          "label": "Parallel one",
+          "sections": [
+            {
+              "id": "3",
+              "label": "Parallel two",
+              "y": 226.0
+            },
+            {
+              "id": "6",
+              "label": "Parallel three",
+              "y": 363.0
+            }
+          ],
+          "width": 278.0,
+          "x": 64.0,
+          "y": 84.0
+        }
+      ],
       "nodes": [
         {
           "height": 74.0,

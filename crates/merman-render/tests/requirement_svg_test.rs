@@ -285,6 +285,37 @@ fn render_requirement_without_theme_and_engine(
         .expect("render Requirement")
 }
 
+#[test]
+fn requirement_root_width_uses_the_state_config_owner() {
+    for (config, responsive) in [
+        (serde_json::json!({}), true),
+        (serde_json::json!({"state": {"useMaxWidth": false}}), false),
+        (
+            serde_json::json!({"requirement": {"useMaxWidth": false}}),
+            true,
+        ),
+        (
+            serde_json::json!({"state": {"useMaxWidth": false}, "requirement": {"useMaxWidth": true}}),
+            false,
+        ),
+    ] {
+        let rendered = render_requirement_without_theme_and_engine(
+            requirement_source(),
+            classic_engine().with_site_config(
+                merman_core::presentation::SourcePresentationConfig::from_value(config),
+            ),
+        );
+        let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+        let root = document.root_element();
+        assert_eq!(root.attribute("width") == Some("100%"), responsive);
+        assert_eq!(
+            root.attribute("style")
+                .is_some_and(|style| style.contains("max-width")),
+            responsive
+        );
+    }
+}
+
 fn terminal_fill_for(document: &roxmltree::Document<'_>, node_id: &str) -> String {
     let requirement = document
         .descendants()
@@ -3576,7 +3607,7 @@ fn requirement_palette_ownership_follows_each_visible_color_slot() {
         "{}\nrequirement req2 {{\n id: 2\n text: Second\n risk: low\n verifymethod: test\n}}\n",
         requirement_source()
     );
-    for limit in [0, 1, 2] {
+    for limit in [0.0, 0.5, 1.0, 2.0] {
         let rendered = render_requirement_with_theme_and_engine(
             &source,
             &theme,
@@ -3594,57 +3625,39 @@ fn requirement_palette_ownership_follows_each_visible_color_slot() {
             ),
         );
         let document = roxmltree::Document::parse(rendered.svg()).unwrap();
-        for (id, slot, border) in [
-            ("requirement-theme-req1", 0, "#abcdef"),
-            ("requirement-theme-req2", 1, "#aabbcc"),
+        for (id, border) in [
+            ("requirement-theme-req1", "#abcdef"),
+            ("requirement-theme-req2", "#aabbcc"),
         ] {
-            let owns_fill = slot == 0 && slot < limit;
-            let owns_stroke = slot < limit;
-            if owns_fill {
-                assert_eq!(
-                    requirement_palette_property(&document, id, "fill").as_deref(),
-                    Some("#fedcba"),
-                    "limit={limit} {id}"
-                );
-                assert_ne!(
-                    terminal_fill_for(&document, id),
-                    "#123456",
-                    "limit={limit} {id}"
-                );
-                assert_requirement_has_no_typed_paint_override(&document, id, "fill", "#123456");
-            } else {
-                assert_eq!(
-                    terminal_fill_for(&document, id),
-                    "#123456",
-                    "limit={limit} {id}"
-                );
-            }
-            if owns_stroke {
-                assert_eq!(
-                    requirement_palette_property(&document, id, "stroke").as_deref(),
-                    Some(border),
-                    "limit={limit} {id}"
-                );
-                assert_ne!(
-                    terminal_stroke_for(&document, id),
-                    "#654321",
-                    "limit={limit} {id}"
-                );
-                assert_requirement_has_no_typed_paint_override(&document, id, "stroke", "#654321");
-            } else {
-                assert_eq!(
-                    terminal_stroke_for(&document, id),
-                    "#654321",
-                    "limit={limit} {id}"
-                );
-            }
+            assert_eq!(
+                requirement_palette_property(&document, id, "fill").as_deref(),
+                Some("#fedcba"),
+                "limit={limit} {id}"
+            );
+            assert_ne!(
+                terminal_fill_for(&document, id),
+                "#123456",
+                "limit={limit} {id}"
+            );
+            assert_requirement_has_no_typed_paint_override(&document, id, "fill", "#123456");
+            assert_eq!(
+                requirement_palette_property(&document, id, "stroke").as_deref(),
+                Some(border),
+                "limit={limit} {id}"
+            );
+            assert_ne!(
+                terminal_stroke_for(&document, id),
+                "#654321",
+                "limit={limit} {id}"
+            );
+            assert_requirement_has_no_typed_paint_override(&document, id, "stroke", "#654321");
         }
         drop(document);
         let evidence =
             merman_render::__private::family_evidence(rendered.into_completion().report());
         assert_eq!(evidence.required_count(), 1, "limit={limit}");
-        assert_eq!(evidence.applied_count(), 1, "limit={limit}");
-        assert_eq!(evidence.not_applicable_count(), 0, "limit={limit}");
+        assert_eq!(evidence.applied_count(), 0, "limit={limit}");
+        assert_eq!(evidence.not_applicable_count(), 1, "limit={limit}");
         assert_eq!(evidence.theme_residual_count(), 0, "limit={limit}");
     }
 
@@ -3670,17 +3683,17 @@ fn requirement_palette_ownership_follows_each_visible_color_slot() {
     assert_eq!(terminals.len(), 1);
     assert_eq!(terminals[0].attribute("data-color-id"), Some("color-1"));
     assert_eq!(
-        terminal_fill_for(&document, "requirement-theme-shared"),
-        "#123456"
+        requirement_palette_property(&document, "requirement-theme-shared", "fill").as_deref(),
+        Some("#aabbcc")
     );
     assert_eq!(
-        terminal_stroke_for(&document, "requirement-theme-shared"),
-        "#654321"
+        requirement_palette_property(&document, "requirement-theme-shared", "stroke").as_deref(),
+        Some("#ddeeff")
     );
     drop(document);
     let evidence = merman_render::__private::family_evidence(rendered.into_completion().report());
-    assert_eq!(evidence.applied_count(), 1);
-    assert_eq!(evidence.not_applicable_count(), 0);
+    assert_eq!(evidence.applied_count(), 0);
+    assert_eq!(evidence.not_applicable_count(), 1);
     assert_eq!(evidence.theme_residual_count(), 0);
 }
 

@@ -100,6 +100,7 @@ Statement: ActionList = {
   <t:AccDescrMultiline> =>? arena.push_actions(vec![Action::SetAccDescr(t)], control),
 
   <c:ClassStatement> =>? arena.push_actions(c, control),
+  <_name:Name> => ActionList::default(),
   <m:MemberStatement> =>? arena.push_actions(vec![m], control),
   <a:AnnotationStatement> =>? arena.push_actions(vec![a], control),
   <r:RelationStatement> =>? arena.push_actions(vec![Action::AddRelation { data: r }], control),

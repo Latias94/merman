@@ -2,6 +2,152 @@
   "diagramType": "sequence",
   "layout": {
     "SequenceDiagram": {
+      "activations": [
+        {
+          "actor": "Mermaid",
+          "depth": 0.0,
+          "height": 878.0,
+          "width": 10.0,
+          "x": 433.0,
+          "y": 169.0
+        },
+        {
+          "actor": "API",
+          "depth": 0.0,
+          "height": 784.0,
+          "width": 10.0,
+          "x": 1021.0,
+          "y": 217.0
+        },
+        {
+          "actor": "Mermaid",
+          "depth": 0.0,
+          "height": 297.0,
+          "width": 10.0,
+          "x": 433.0,
+          "y": 1141.0
+        },
+        {
+          "actor": "Mermaid",
+          "depth": 0.0,
+          "height": 1080.0,
+          "width": 10.0,
+          "x": 433.0,
+          "y": 1484.0
+        },
+        {
+          "actor": "API",
+          "depth": 0.0,
+          "height": 5429.0,
+          "width": 10.0,
+          "x": 1021.0,
+          "y": 2612.0
+        },
+        {
+          "actor": "Preprocessor",
+          "depth": 0.0,
+          "height": 212.0,
+          "width": 10.0,
+          "x": 1628.0,
+          "y": 2704.0
+        },
+        {
+          "actor": "Diagram",
+          "depth": 0.0,
+          "height": 136.0,
+          "width": 10.0,
+          "x": 2058.0,
+          "y": 3981.0
+        },
+        {
+          "actor": "Diagram",
+          "depth": 0.0,
+          "height": 44.0,
+          "width": 10.0,
+          "x": 2058.0,
+          "y": 4210.0
+        },
+        {
+          "actor": "Styles",
+          "depth": 0.0,
+          "height": 1076.0,
+          "width": 10.0,
+          "x": 2458.0,
+          "y": 4556.0
+        },
+        {
+          "actor": "Renderer",
+          "depth": 0.0,
+          "height": 212.0,
+          "width": 10.0,
+          "x": 2258.0,
+          "y": 5818.0
+        },
+        {
+          "actor": "API",
+          "depth": 1.0,
+          "height": 439.0,
+          "width": 10.0,
+          "x": 1026.0,
+          "y": 6717.0
+        },
+        {
+          "actor": "API",
+          "depth": 1.0,
+          "height": 302.0,
+          "width": 10.0,
+          "x": 1026.0,
+          "y": 7279.0
+        },
+        {
+          "actor": "Mermaid",
+          "depth": 0.0,
+          "height": 292.0,
+          "width": 10.0,
+          "x": 433.0,
+          "y": 8043.0
+        },
+        {
+          "actor": "Mermaid",
+          "depth": 0.0,
+          "height": 412.0,
+          "width": 10.0,
+          "x": 433.0,
+          "y": 8383.0
+        },
+        {
+          "actor": "Queue",
+          "depth": 1.0,
+          "height": 366.0,
+          "width": 10.0,
+          "x": 663.0,
+          "y": 8383.0
+        },
+        {
+          "actor": "API",
+          "depth": 0.0,
+          "height": 274.0,
+          "width": 10.0,
+          "x": 1021.0,
+          "y": 8429.0
+        },
+        {
+          "actor": "Mermaid",
+          "depth": 0.0,
+          "height": 237.0,
+          "width": 10.0,
+          "x": 433.0,
+          "y": 8843.0
+        },
+        {
+          "actor": "Mermaid",
+          "depth": 0.0,
+          "height": 393.0,
+          "width": 10.0,
+          "x": 433.0,
+          "y": 9298.0
+        }
+      ],
       "bounds": {
         "max_x": 2827.0,
         "max_y": 10540.0,
@@ -4214,6 +4360,307 @@
           "stroke_dasharray": null,
           "to": "actor-bottom-DOM",
           "to_cluster": null
+        }
+      ],
+      "frames": [
+        {
+          "height": 364.0,
+          "id": "8",
+          "kind": "alt",
+          "label": "Theme Configuration Available",
+          "sections": [
+            {
+              "id": "11",
+              "label": "Default Theme",
+              "y": 641.0
+            }
+          ],
+          "width": 229.0,
+          "x": 916.5,
+          "y": 423.0
+        },
+        {
+          "height": 243.0,
+          "id": "24",
+          "kind": "opt",
+          "label": "startOnLoad is true",
+          "width": 1020.0,
+          "x": 358.0,
+          "y": 1149.0
+        },
+        {
+          "height": 258.0,
+          "id": "36",
+          "kind": "alt",
+          "label": "nodes provided",
+          "sections": [
+            {
+              "id": "38",
+              "label": "querySelector provided",
+              "y": 1788.0
+            }
+          ],
+          "width": 2355.0,
+          "x": 358.0,
+          "y": 1662.0
+        },
+        {
+          "height": 512.0,
+          "id": "43",
+          "kind": "loop",
+          "label": "For each diagram element",
+          "width": 2390.5,
+          "x": 332.5,
+          "y": 2006.0
+        },
+        {
+          "height": 411.0,
+          "id": "45",
+          "kind": "opt",
+          "label": "not processed",
+          "width": 2370.5,
+          "x": 342.5,
+          "y": 2097.0
+        },
+        {
+          "height": 151.0,
+          "id": "69",
+          "kind": "opt",
+          "label": "text length > maxTextSize",
+          "width": 312.0,
+          "x": 875.0,
+          "y": 3018.0
+        },
+        {
+          "height": 556.0,
+          "id": "74",
+          "kind": "alt",
+          "label": "svgContainingElement provided",
+          "sections": [
+            {
+              "id": "81",
+              "label": "no container",
+              "y": 3599.0
+            }
+          ],
+          "width": 1882.5,
+          "x": 840.5,
+          "y": 3331.0
+        },
+        {
+          "height": 208.0,
+          "id": "75",
+          "kind": "alt",
+          "label": "isSandboxed",
+          "sections": [
+            {
+              "id": "78",
+              "label": "",
+              "y": 3518.0
+            }
+          ],
+          "width": 1702.0,
+          "x": 1011.0,
+          "y": 3376.0
+        },
+        {
+          "height": 162.0,
+          "id": "83",
+          "kind": "alt",
+          "label": "isSandboxed",
+          "sections": [
+            {
+              "id": "85",
+              "label": "",
+              "y": 3811.0
+            }
+          ],
+          "width": 1702.0,
+          "x": 1011.0,
+          "y": 3715.0
+        },
+        {
+          "height": 243.0,
+          "id": "96",
+          "kind": "opt",
+          "label": "parsing error occurred",
+          "width": 1164.5,
+          "x": 913.5,
+          "y": 4127.0
+        },
+        {
+          "height": 185.0,
+          "id": "109",
+          "kind": "opt",
+          "label": "config.themeCSS defined",
+          "width": 170.0,
+          "x": 2383.0,
+          "y": 4640.0
+        },
+        {
+          "height": 167.0,
+          "id": "112",
+          "kind": "opt",
+          "label": "fontFamily configured",
+          "width": 203.0,
+          "x": 2366.5,
+          "y": 4835.0
+        },
+        {
+          "height": 422.0,
+          "id": "115",
+          "kind": "opt",
+          "label": "classDefs exist",
+          "width": 339.0,
+          "x": 2298.5,
+          "y": 5012.0
+        },
+        {
+          "height": 367.0,
+          "id": "116",
+          "kind": "loop",
+          "label": "For each styleClassDef",
+          "width": 319.0,
+          "x": 2308.5,
+          "y": 5057.0
+        },
+        {
+          "height": 151.0,
+          "id": "117",
+          "kind": "opt",
+          "label": "has styles",
+          "width": 299.0,
+          "x": 2318.5,
+          "y": 5102.0
+        },
+        {
+          "height": 151.0,
+          "id": "120",
+          "kind": "opt",
+          "label": "has textStyles",
+          "width": 279.0,
+          "x": 2328.5,
+          "y": 5263.0
+        },
+        {
+          "height": 293.0,
+          "id": "139",
+          "kind": "opt",
+          "label": "rendering error",
+          "width": 1867.0,
+          "x": 417.0,
+          "y": 6040.0
+        },
+        {
+          "height": 238.0,
+          "id": "140",
+          "kind": "alt",
+          "label": "suppressErrorRendering",
+          "sections": [
+            {
+              "id": "143",
+              "label": "",
+              "y": 6257.0
+            }
+          ],
+          "width": 1847.0,
+          "x": 427.0,
+          "y": 6085.0
+        },
+        {
+          "height": 167.0,
+          "id": "155",
+          "kind": "opt",
+          "label": "not useArrowMarkerUrls and not sandboxed",
+          "width": 276.0,
+          "x": 898.0,
+          "y": 6725.0
+        },
+        {
+          "height": 576.0,
+          "id": "162",
+          "kind": "alt",
+          "label": "isSandboxed",
+          "sections": [
+            {
+              "id": "170",
+              "label": "not loose security",
+              "y": 7596.0
+            }
+          ],
+          "width": 273.0,
+          "x": 899.0,
+          "y": 7166.0
+        },
+        {
+          "height": 91.0,
+          "id": "175",
+          "kind": "opt",
+          "label": "parseEncounteredException",
+          "width": 614.0,
+          "x": 427.0,
+          "y": 7904.0
+        },
+        {
+          "height": 91.0,
+          "id": "183",
+          "kind": "opt",
+          "label": "postRenderCallback",
+          "width": 389.0,
+          "x": 64.0,
+          "y": 8143.0
+        },
+        {
+          "height": 91.0,
+          "id": "186",
+          "kind": "opt",
+          "label": "bindFunctions exist",
+          "width": 2290.0,
+          "x": 423.0,
+          "y": 8244.0
+        },
+        {
+          "height": 91.0,
+          "id": "210",
+          "kind": "opt",
+          "label": "lazyLoad is false",
+          "width": 1421.0,
+          "x": 423.0,
+          "y": 8943.0
+        },
+        {
+          "height": 562.0,
+          "id": "216",
+          "kind": "alt",
+          "label": "Error occurs",
+          "width": 983.0,
+          "x": 54.0,
+          "y": 9139.0
+        },
+        {
+          "height": 162.0,
+          "id": "221",
+          "kind": "alt",
+          "label": "isDetailedError",
+          "sections": [
+            {
+              "id": "223",
+              "label": "",
+              "y": 9478.0
+            }
+          ],
+          "width": 389.0,
+          "x": 64.0,
+          "y": 9382.0
+        },
+        {
+          "height": 91.0,
+          "id": "226",
+          "kind": "opt",
+          "label": "not suppressErrors",
+          "width": 389.0,
+          "x": 64.0,
+          "y": 9554.0
         }
       ],
       "nodes": [

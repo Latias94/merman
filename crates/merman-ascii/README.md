@@ -118,6 +118,15 @@ unless the caller explicitly overrides the corresponding family option. These ad
 resolved into family-local policies and do not affect State, Class, ER, XYChart, or structured-text
 families.
 
+Graph routing first keeps the existing deterministic route candidates. When every candidate for a
+node-to-node edge collides, it tries the cardinal port pairs on the same bounded coarse grid,
+checking each projected terminal cell against the scene's collision rules. This lets branching
+feedback edges avoid sibling nodes and previously committed arrows without changing already valid
+routes. Opposite authored edges retain separate transit paths; labels and target markers still
+require clear placements. Search work, frontier storage, and parent storage remain bounded by the
+existing routing margin and operation work budget, with cancellation checks during search and cell
+inspection. A graph with no safe route or marker berth still returns a structured diagnostic.
+
 Auto requires an explicit `AsciiViewportPolicy::with_max_width` and is admitted only for Flowchart
 and Sequence. It tries Canonical first, then Compact once on width overflow, selecting the narrower
 valid diagram (Canonical on ties). The existing `Allow`, `Error`, or `Fallback` policy applies to

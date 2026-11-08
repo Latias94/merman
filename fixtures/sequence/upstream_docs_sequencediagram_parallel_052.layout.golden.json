@@ -206,6 +206,24 @@
           "to_cluster": null
         }
       ],
+      "frames": [
+        {
+          "height": 182.0,
+          "id": "0",
+          "kind": "par",
+          "label": "Alice to Bob",
+          "sections": [
+            {
+              "id": "2",
+              "label": "Alice to John",
+              "y": 180.0
+            }
+          ],
+          "width": 422.0,
+          "x": 64.0,
+          "y": 84.0
+        }
+      ],
       "nodes": [
         {
           "height": 74.0,

@@ -8,6 +8,20 @@
         "min_x": -50.0,
         "min_y": -10.0
       },
+      "boxes": [
+        {
+          "fill": "LightGrey",
+          "height": 1048.0,
+          "title": {
+            "text": "Alice and Bob",
+            "x": 195.0,
+            "y": 14.0
+          },
+          "width": 430.0,
+          "x": -20.0,
+          "y": -5.0
+        }
+      ],
       "clusters": [],
       "edges": [
         {
@@ -384,6 +398,45 @@
           "stroke_dasharray": null,
           "to": "actor-bottom-John",
           "to_cluster": null
+        }
+      ],
+      "frames": [
+        {
+          "height": 273.0,
+          "id": "6",
+          "kind": "alt",
+          "label": "either this",
+          "sections": [
+            {
+              "id": "8",
+              "label": "or this",
+              "y": 562.0
+            },
+            {
+              "id": "10",
+              "label": "or this will happen",
+              "y": 653.0
+            }
+          ],
+          "width": 479.0,
+          "x": 69.0,
+          "y": 466.0
+        },
+        {
+          "height": 162.0,
+          "id": "13",
+          "kind": "par",
+          "label": "this happens in parallel",
+          "sections": [
+            {
+              "id": "15",
+              "label": "",
+              "y": 845.0
+            }
+          ],
+          "width": 479.0,
+          "x": 69.0,
+          "y": 749.0
         }
       ],
       "nodes": [

@@ -100,7 +100,6 @@ pub(super) struct WorkingLayout {
 }
 
 impl WorkingLayout {
-    #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
     pub fn refresh_top_lane_ids(&mut self) {
         let lanes = super::lanes::LaneModel::new(&self.nodes);
         for node in self.nodes.values_mut() {

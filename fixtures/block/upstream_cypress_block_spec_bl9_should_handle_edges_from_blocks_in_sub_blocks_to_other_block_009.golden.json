@@ -123,7 +123,9 @@
         "end": "B",
         "id": "1-D-B",
         "label": "",
+        "pattern": "solid",
         "start": "D",
+        "thickness": "normal",
         "type": "edge"
       }
     ],

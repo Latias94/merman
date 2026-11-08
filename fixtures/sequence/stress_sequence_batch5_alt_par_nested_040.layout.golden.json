@@ -2,6 +2,16 @@
   "diagramType": "sequence",
   "layout": {
     "SequenceDiagram": {
+      "activations": [
+        {
+          "actor": "A",
+          "depth": 0.0,
+          "height": 562.0,
+          "width": 10.0,
+          "x": 270.0,
+          "y": 122.0
+        }
+      ],
       "bounds": {
         "max_x": 818.0,
         "max_y": 789.0,
@@ -289,6 +299,49 @@
           "stroke_dasharray": null,
           "to": "actor-bottom-DB",
           "to_cluster": null
+        }
+      ],
+      "frames": [
+        {
+          "height": 554.0,
+          "id": "2",
+          "kind": "par",
+          "label": "execution",
+          "sections": [
+            {
+              "id": "12",
+              "label": "telemetry",
+              "y": 519.0
+            }
+          ],
+          "width": 670.0,
+          "x": 54.0,
+          "y": 130.0
+        },
+        {
+          "height": 329.0,
+          "id": "3",
+          "kind": "alt",
+          "label": "cache hit",
+          "sections": [
+            {
+              "id": "5",
+              "label": "cache miss",
+              "y": 271.0
+            }
+          ],
+          "width": 650.0,
+          "x": 64.0,
+          "y": 175.0
+        },
+        {
+          "height": 91.0,
+          "id": "7",
+          "kind": "loop",
+          "label": "retry until committed",
+          "width": 444.0,
+          "x": 260.0,
+          "y": 357.0
         }
       ],
       "nodes": [

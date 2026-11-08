@@ -107,3 +107,38 @@ fn treemap_literal_title_uses_raw_bbox_and_expands_the_root() {
         "raw title bbox must enter root bounds: {width}"
     );
 }
+
+#[test]
+fn treemap_multiline_label_preserves_dom_text_without_html_or_escape_conversion() {
+    let label = "A\n<script>literal</script>\\n雪🦀";
+    for quote in ['"', '\''] {
+        let source = format!("treemap\n{quote}{label}{quote}: 1\n");
+        let parsed = MermaidEngine::new()
+            .parse_diagram_for_render_model_sync(&source, ParseOptions::strict())
+            .unwrap()
+            .unwrap()
+            .into_presentation();
+        let artifact = family::prepare(
+            &parsed,
+            &LayoutOptions::headless_svg_defaults(),
+            RenderEnvironment::deterministic().begin_session().unwrap(),
+        )
+        .unwrap();
+        let rendered = artifact
+            .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+            .unwrap();
+        let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+        let text = document
+            .descendants()
+            .find(|node| node.attribute("class") == Some("treemapLabel"))
+            .expect("multiline label text node");
+        assert!(text.has_tag_name("text"));
+        assert_eq!(text.text(), Some(label));
+        assert!(!text.children().any(|node| node.is_element()));
+        assert!(
+            !document
+                .descendants()
+                .any(|node| { node.has_tag_name("script") || node.has_tag_name("foreignObject") })
+        );
+    }
+}

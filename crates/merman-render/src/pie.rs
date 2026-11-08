@@ -111,7 +111,7 @@ pub(crate) fn layout_pie_diagram_typed_with_paint_plan(
 
     let center: f64 = 225.0;
     let radius: f64 = 185.0;
-    let outer_radius = radius + 1.0;
+    let outer_radius = radius + paint_plan.css_binding().outer_stroke_width_number / 2.0;
     let cfg = PieConfigView::new(effective_config).layout_settings();
     let title = model.title.as_deref().or(diagram_title);
     let label_radius = radius.max(0.0) * cfg.text_position;
@@ -253,6 +253,7 @@ pub(crate) fn layout_pie_diagram_typed_with_paint_plan(
             }
         }
     };
+    paint_plan.prepare_content_width(chart_and_legend_width)?;
 
     let height = match legend_position {
         PieLegendPosition::Top | PieLegendPosition::Bottom => {
@@ -360,6 +361,63 @@ mod tests {
     fn pie_legend_geometry_constants_match_mermaid() {
         assert_eq!(super::PIE_LEGEND_RECT_SIZE_PX, 18.0);
         assert_eq!(super::PIE_LEGEND_SPACING_PX, 4.0);
+    }
+
+    #[test]
+    fn pie_outer_radius_uses_the_consumed_config_width() {
+        let model = PieDiagramModel::default();
+        let measurer = RecordingBoundingClientRectMeasurer::default();
+        for (width, radius) in [
+            (serde_json::json!(20.5), 195.25),
+            (serde_json::json!("20.5px"), 195.0),
+            (serde_json::json!("5em"), 187.5),
+            (serde_json::json!(0), 185.0),
+            (serde_json::json!("calc(1px + 1em)"), 186.0),
+        ] {
+            let config = serde_json::json!({"themeVariables": {"pieOuterStrokeWidth": width}});
+            let layout = super::layout_pie_diagram_typed(&model, None, &config, &measurer)
+                .expect("configured Pie radius");
+            assert_eq!(layout.outer_radius, radius, "{config}");
+            assert_eq!(
+                layout.radius, 185.0,
+                "slice radius is independent of its outer stroke"
+            );
+        }
+    }
+
+    #[test]
+    fn pie_prepared_content_width_excludes_title_expansion() {
+        for title in [None, Some("Title")] {
+            let model = PieDiagramModel {
+                title: title.map(str::to_owned),
+                sections: vec![PieSection {
+                    label: "Legend".to_owned(),
+                    value: 1.0,
+                }],
+                ..Default::default()
+            };
+            let config = serde_json::json!({"pie": {"legendPosition": "left"}});
+            let plan = super::PieThemePlan::baseline(&model, &config);
+            let layout = super::layout_pie_diagram_typed_with_paint_plan(
+                &model,
+                None,
+                &config,
+                &plan,
+                &RecordingBoundingClientRectMeasurer::default(),
+            )
+            .expect("prepared Pie geometry");
+            let content_width = 512.0 + 123.456_789;
+            assert!((plan.content_width().unwrap() - content_width).abs() < 1e-9);
+            let bounds = layout.bounds.unwrap();
+            if title.is_some() {
+                assert_eq!(bounds.min_x, 225.0 - 1_000.123_456 / 2.0);
+                assert_eq!(bounds.max_x, 225.0 + 1_000.123_456 / 2.0);
+                assert!(bounds.max_x - bounds.min_x > content_width);
+            } else {
+                assert_eq!(bounds.min_x, 0.0);
+                assert!((bounds.max_x - content_width).abs() < 1e-9);
+            }
+        }
     }
 
     #[test]

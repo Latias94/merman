@@ -348,7 +348,7 @@ pub(crate) struct GitGraphNodePalettePlan {
     palette_key: Option<FamilyThemeMechanismKey>,
     visible_surfaces: [GitGraphPaletteSurfaceSet; GITGRAPH_PALETTE_SLOT_COUNT],
     mermaid_source_ownership: GitGraphPaletteSourceOwnership,
-    expected_branch_label_slots: Vec<usize>,
+    expected_branch_label_slots: Vec<Option<usize>>,
     expected_arrow_slots: Vec<usize>,
     expected_commit_elements: Vec<ExpectedCommitElement>,
     terminal_ownership: GitGraphPaletteSurfaceOwnership,
@@ -396,7 +396,11 @@ impl GitGraphNodePalettePlan {
             .ordinal_palette_disposition(ThemeTarget::Node)
             .is_some()
         {
-            plan.initialize_palette_occurrences(layout, work_meter)?;
+            plan.initialize_palette_occurrences(
+                layout,
+                super::GitGraphColorIndices::resolve(effective_config.as_value()),
+                work_meter,
+            )?;
             plan.mermaid_source_ownership =
                 GitGraphPaletteSourceOwnership::from_config(effective_config);
             plan.resolve_node_palette(theme, work_meter)?;
@@ -483,16 +487,23 @@ impl GitGraphNodePalettePlan {
     fn initialize_palette_occurrences(
         &mut self,
         layout: &GitGraphDiagramLayout,
+        color_indices: super::GitGraphColorIndices,
         work_meter: &OperationWorkMeter,
     ) -> Result<(), OperationWorkError> {
         // These identities belong only to palette evidence, not ordinary rendering.
         let mut branch_slots = HashMap::new();
         for branch in &layout.branches {
             work_meter.charge(1)?;
-            branch_slots.insert(branch.name.as_str(), palette_slot(branch.index));
+            branch_slots.insert(
+                branch.name.as_str(),
+                color_indices.commit_slot(branch.index),
+            );
             if layout.show_branches {
-                let slot = palette_slot(branch.index);
-                self.visible_surfaces[slot].insert(GitGraphPaletteSurface::BranchLabelBackground);
+                let slot = color_indices.branch_slot(branch.index);
+                if let Some(slot) = slot.filter(|slot| *slot < GITGRAPH_PALETTE_SLOT_COUNT) {
+                    self.visible_surfaces[slot]
+                        .insert(GitGraphPaletteSurface::BranchLabelBackground);
+                }
                 self.expected_branch_label_slots.push(slot);
             }
         }
@@ -869,14 +880,20 @@ impl GitGraphNodePaletteReceipt {
         self.next_rule += 1;
     }
 
-    pub(crate) fn record_branch_label(&mut self, plan: &GitGraphNodePalettePlan, slot: usize) {
+    pub(crate) fn record_branch_label(
+        &mut self,
+        plan: &GitGraphNodePalettePlan,
+        slot: Option<usize>,
+    ) {
         self.initialize();
         self.values_match &= plan
             .expected_branch_label_slots
             .get(self.next_branch_label)
             .copied()
             == Some(slot);
-        self.record_capability(plan, GitGraphPaletteSurface::BranchLabelBackground, slot);
+        if let Some(slot) = slot {
+            self.record_capability(plan, GitGraphPaletteSurface::BranchLabelBackground, slot);
+        }
         self.next_branch_label += 1;
     }
 
@@ -1065,7 +1082,7 @@ mod tests {
             &work_meter(),
         )
         .unwrap();
-        assert_eq!(plan.expected_branch_label_slots, [0]);
+        assert_eq!(plan.expected_branch_label_slots, [Some(0)]);
         assert_eq!(plan.expected_arrow_slots, [0]);
         assert_eq!(plan.expected_commit_elements.len(), 1);
         assert!(plan.has_palette_assignment());
@@ -1082,7 +1099,11 @@ mod tests {
         let mut baseline = GitGraphNodePalettePlan::baseline(&layout);
         assert!(
             baseline
-                .initialize_palette_occurrences(&layout, &limited)
+                .initialize_palette_occurrences(
+                    &layout,
+                    super::super::GitGraphColorIndices::resolve(&serde_json::json!({})),
+                    &limited,
+                )
                 .is_err()
         );
         assert!(baseline.expected_arrow_slots.is_empty());
@@ -1145,7 +1166,7 @@ mod tests {
             }),
             visible_surfaces,
             mermaid_source_ownership: GitGraphPaletteSourceOwnership::default(),
-            expected_branch_label_slots: vec![0, 1],
+            expected_branch_label_slots: vec![Some(0), Some(1)],
             expected_arrow_slots: vec![1],
             expected_commit_elements: vec![
                 ExpectedCommitElement {
@@ -1247,8 +1268,8 @@ mod tests {
             Some("transparent"),
             None,
         );
-        receipt.record_branch_label(&plan, 0);
-        receipt.record_branch_label(&plan, 1);
+        receipt.record_branch_label(&plan, Some(0));
+        receipt.record_branch_label(&plan, Some(1));
         receipt.record_arrow(&plan, 1);
         receipt.record_commit_element(&plan, 0, 0, 0, GitGraphCommitPaletteRole::BranchSlot);
         receipt.record_commit_element(&plan, 1, 0, 1, GitGraphCommitPaletteRole::BranchSlot);
@@ -1378,8 +1399,8 @@ mod tests {
             Some("transparent"),
             None,
         );
-        mismatch.record_branch_label(&plan, 0);
-        mismatch.record_branch_label(&plan, 1);
+        mismatch.record_branch_label(&plan, Some(0));
+        mismatch.record_branch_label(&plan, Some(1));
         mismatch.record_arrow(&plan, 1);
         mismatch.record_commit_element(&plan, 0, 0, 0, GitGraphCommitPaletteRole::BranchSlot);
         mismatch.record_commit_element(&plan, 1, 0, 1, GitGraphCommitPaletteRole::BranchSlot);
@@ -1392,7 +1413,7 @@ mod tests {
         plan.fills_by_slot[1] = None;
         plan.visible_surfaces[1] = GitGraphPaletteSurfaceSet::default();
         plan.visible_surfaces[0].insert(GitGraphPaletteSurface::Arrow);
-        plan.expected_branch_label_slots = vec![0];
+        plan.expected_branch_label_slots = vec![Some(0)];
         plan.expected_arrow_slots = vec![0];
         plan.expected_commit_elements.truncate(1);
 
@@ -1401,7 +1422,7 @@ mod tests {
         ownership.mark_stroke_owned(GitGraphPaletteSurface::Arrow, 0);
 
         let record_occurrences = |receipt: &mut GitGraphNodePaletteReceipt| {
-            receipt.record_branch_label(&plan, 0);
+            receipt.record_branch_label(&plan, Some(0));
             receipt.record_arrow(&plan, 0);
             receipt.record_commit_element(&plan, 0, 0, 0, GitGraphCommitPaletteRole::BranchSlot);
         };

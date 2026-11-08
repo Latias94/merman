@@ -800,6 +800,12 @@ impl<'input, 'control> CsvParser<'input, 'control> {
             if ch == ',' || ch == '\n' {
                 break;
             }
+            if ch == '"' {
+                return Ok(Err(self.error(
+                    "unexpected quote in unquoted field",
+                    SourceSpan::new(self.pos, self.pos + ch.len_utf8()),
+                )));
+            }
             self.pos += ch.len_utf8();
         }
         let raw = &self.input[start..self.pos];
@@ -1137,6 +1143,135 @@ mod semantic_tests {
                 "dompurifyConfig": { "FORBID_TAGS": ["b"] }
             })),
             title: None,
+        }
+    }
+
+    #[test]
+    fn unquoted_csv_quotes_fail_with_original_source_spans() {
+        for header in ["sankey", "sankey-beta"] {
+            for record in ["A\"B,C,1", "A,B\"C,1", "A,B,1\"2"] {
+                let source = format!("  {header}\r\n\r\n{record}\r\n");
+                let quote = source.find('"').unwrap();
+                let error = parse_sankey_semantic_model_controlled(
+                    &source,
+                    &metadata(),
+                    #[cfg(feature = "editor-facts")]
+                    EditorFactsDemand::Omit,
+                    &crate::OperationControl::new(),
+                )
+                .unwrap()
+                .model
+                .unwrap_err();
+                let Error::DiagramParse { diagnostic, .. } = error else {
+                    panic!("expected a Sankey parse diagnostic");
+                };
+                assert_eq!(diagnostic.message(), "unexpected quote in unquoted field");
+                assert_eq!(diagnostic.span(), Some(SourceSpan::new(quote, quote + 1)));
+                assert_eq!(
+                    diagnostic.span_kind(),
+                    crate::ParseDiagnosticSpanKind::Exact
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn escaped_csv_quotes_remain_valid_and_decode_once() {
+        for header in ["sankey", "sankey-beta"] {
+            let source = format!("{header}\n\"A\"\"B\",\"C\"\"\"\"D\",\"1\"\"2\"\n");
+            let model = parse_sankey_semantic_model_controlled(
+                &source,
+                &metadata(),
+                #[cfg(feature = "editor-facts")]
+                EditorFactsDemand::Omit,
+                &crate::OperationControl::new(),
+            )
+            .unwrap()
+            .model
+            .unwrap();
+            assert_eq!(
+                model
+                    .graph
+                    .nodes
+                    .iter()
+                    .map(|node| node.id.as_str())
+                    .collect::<Vec<_>>(),
+                ["A\"B", "C\"\"D"]
+            );
+            assert_eq!(model.graph.links.len(), 1);
+            let link = &model.graph.links[0];
+            assert_eq!(link.source, "A\"B");
+            assert_eq!(link.target, "C\"\"D");
+            assert_eq!(link.value, Value::from(1));
+        }
+    }
+
+    #[test]
+    #[cfg(feature = "editor-facts")]
+    fn unquoted_csv_quote_recovery_keeps_surrounding_record_spans() {
+        for header in ["sankey", "sankey-beta"] {
+            let source = format!(
+                "  {header}\r\n\r\nBefore,Middle,1\r\nBroken\"Id,Target,2\r\n\"After\"\"Quote\",End,3\r\n"
+            );
+            let capture = |demand| {
+                parse_sankey_semantic_model_controlled(
+                    &source,
+                    &metadata(),
+                    demand,
+                    &crate::OperationControl::new(),
+                )
+                .unwrap()
+            };
+            let full = capture(EditorFactsDemand::Capture);
+            assert!(full.model.is_err());
+            let facts = full.editor_facts.unwrap();
+            assert_eq!(
+                facts.completeness,
+                crate::EditorSemanticCompleteness::Recovered
+            );
+            let quote = source.find('"').unwrap();
+            assert_eq!(facts.diagnostics.len(), 1);
+            assert_eq!(
+                facts.diagnostics[0].kind,
+                crate::EditorSemanticDiagnosticKind::ParserRecovery
+            );
+            assert_eq!(
+                facts.diagnostics[0].span,
+                Some(SourceSpan::new(quote, quote + 1))
+            );
+            assert_eq!(
+                facts.diagnostics[0].message,
+                "unexpected quote in unquoted field"
+            );
+            assert_eq!(
+                facts
+                    .symbols
+                    .iter()
+                    .map(|symbol| symbol.name.as_str())
+                    .collect::<Vec<_>>(),
+                ["Before", "Middle", "1", "After\"Quote", "End", "3"]
+            );
+            for (name, raw) in [
+                ("Before", "Before"),
+                ("Middle", "Middle"),
+                ("1", "1"),
+                ("After\"Quote", "After\"\"Quote"),
+                ("End", "End"),
+                ("3", "3"),
+            ] {
+                let symbol = facts
+                    .symbols
+                    .iter()
+                    .find(|symbol| symbol.name == name)
+                    .unwrap();
+                let start = source.find(raw).unwrap();
+                assert_eq!(symbol.selection, SourceSpan::new(start, start + raw.len()));
+            }
+            let recovery = capture(EditorFactsDemand::Recovery);
+            assert!(recovery.model.is_err());
+            let recovery_facts = recovery.editor_facts.unwrap();
+            assert_eq!(recovery_facts.diagnostics, facts.diagnostics);
+            assert!(recovery_facts.symbols.is_empty());
         }
     }
 

@@ -151,7 +151,9 @@
         "end": "BL",
         "id": "1-B-BL",
         "label": "",
+        "pattern": "solid",
         "start": "B",
+        "thickness": "normal",
         "type": "edge"
       }
     ],

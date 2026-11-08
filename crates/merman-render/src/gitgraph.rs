@@ -3,14 +3,16 @@ use crate::config::{config_bool as cfg_bool, config_f64 as cfg_f64, config_strin
 use crate::model::{
     Bounds, GitGraphArrowLayout, GitGraphBranchLayout, GitGraphCommitLayout, GitGraphDiagramLayout,
 };
-use crate::text::{TextMeasurer, TextStyle};
+use crate::text::{
+    TextMeasurer, TextStyle, trim_ecmascript_whitespace, trim_start_ecmascript_whitespace,
+};
 use merman_model::families::git_graph::{GitGraphCommit, GitGraphDiagramModel};
 use std::collections::HashMap;
 
 mod css_binding;
 mod theme;
 
-pub(crate) use css_binding::GitGraphCssBinding;
+pub(crate) use css_binding::{GitGraphColorIndices, GitGraphCssBinding};
 
 pub(crate) use theme::{
     GITGRAPH_PALETTE_SLOT_COUNT, GitGraphBranchStrokeReceipt, GitGraphCommitKind,
@@ -39,7 +41,6 @@ pub(crate) fn resolve_gitgraph_title<'a>(
 const LAYOUT_OFFSET: f64 = 10.0;
 const COMMIT_STEP: f64 = 40.0;
 const DEFAULT_POS: f64 = 30.0;
-const THEME_COLOR_LIMIT: usize = GITGRAPH_PALETTE_SLOT_COUNT;
 pub(crate) const REDUX_BRANCH_LABEL_PADDING_Y: f64 = 12.0;
 
 const COMMIT_TYPE_MERGE: i64 = 3;
@@ -120,6 +121,44 @@ fn branch_label_bbox_width_px(text: &str, style: &TextStyle, measurer: &dyn Text
     measurer
         .measure_svg_preserved_tspan_text_bbox_width_px(text, style)
         .max(0.0)
+}
+
+/// Projects a branch identity through Mermaid's `drawText` split and per-row trim.
+pub(crate) fn gitgraph_branch_label_rows(text: &str) -> Vec<&str> {
+    let mut rows = Vec::new();
+    let mut start = 0;
+    for (index, ch) in text.char_indices() {
+        if index < start {
+            continue;
+        }
+        let rest = &text[index..];
+        let after_break = match ch {
+            '\n' => Some(&rest[1..]),
+            '\\' => rest
+                .strip_prefix("\\n")
+                .or_else(|| rest.strip_prefix("\\N")),
+            '<' if rest
+                .get(..3)
+                .is_some_and(|name| name.eq_ignore_ascii_case("<br")) =>
+            {
+                let rest = trim_start_ecmascript_whitespace(&rest[3..]);
+                rest.strip_prefix('/').unwrap_or(rest).strip_prefix('>')
+            }
+            _ => None,
+        };
+        if let Some(after_break) = after_break {
+            rows.push(trim_ecmascript_whitespace(&text[start..index]));
+            start = text.len() - after_break.len();
+        }
+    }
+    rows.push(trim_ecmascript_whitespace(&text[start..]));
+    rows
+}
+
+pub(crate) fn gitgraph_branch_label_is_visible(text: &str) -> bool {
+    gitgraph_branch_label_rows(text)
+        .iter()
+        .any(|row| !row.is_empty())
 }
 
 fn should_reroute_arrow(
@@ -480,9 +519,9 @@ fn draw_arrow(
                         "M {} {} L {} {} {} {} {} L {} {}",
                         p1.x,
                         p1.y,
-                        p2.x - radius,
+                        p2.x + radius,
                         p1.y,
-                        arc,
+                        arc2,
                         p2.x,
                         p1.y - offset,
                         p2.x,
@@ -577,7 +616,7 @@ fn draw_arrow(
     Some(GitGraphArrowLayout {
         from: commit_a.id.clone(),
         to: commit_b.id.clone(),
-        class_index: (color_class_num % THEME_COLOR_LIMIT) as i64,
+        class_index: color_class_num as i64,
         d,
     })
 }
@@ -601,9 +640,7 @@ pub(crate) fn layout_gitgraph_diagram_typed(
     let show_commit_label =
         cfg_bool(effective_config, &["gitGraph", "showCommitLabel"]).unwrap_or(true);
     let show_branches = cfg_bool(effective_config, &["gitGraph", "showBranches"]).unwrap_or(true);
-    let diagram_padding = cfg_f64(effective_config, &["gitGraph", "diagramPadding"])
-        .unwrap_or(8.0)
-        .max(0.0);
+    let diagram_padding = cfg_f64(effective_config, &["gitGraph", "diagramPadding"]).unwrap_or(8.0);
     let parallel_commits =
         cfg_bool(effective_config, &["gitGraph", "parallelCommits"]).unwrap_or(false);
     let use_redux_geometry = cfg_string(effective_config, &["theme"])
@@ -620,8 +657,18 @@ pub(crate) fn layout_gitgraph_diagram_typed(
     let mut branch_index: HashMap<&str, usize> = HashMap::new();
     let mut pos = 0.0;
     for (i, b) in model.branches.iter().enumerate() {
-        let metrics = measurer.measure(&b.name, &label_style);
-        let bbox_w = branch_label_bbox_width_px(&b.name, &label_style, measurer);
+        let rows = gitgraph_branch_label_rows(&b.name);
+        // Empty tspans are retained in the DOM without advancing the SVG text position.
+        let visible_rows = rows.iter().filter(|row| !row.is_empty());
+        let row_span = visible_rows.clone().count().saturating_sub(1);
+        let bbox_w = visible_rows
+            .clone()
+            .map(|row| branch_label_bbox_width_px(row, &label_style, measurer))
+            .fold(0.0_f64, f64::max);
+        let bbox_h = visible_rows
+            .map(|row| measurer.measure(row, &label_style).height)
+            .fold(0.0_f64, f64::max)
+            + row_span as f64 * label_style.font_size;
         branch_pos.insert(b.name.as_str(), pos);
         branch_index.insert(b.name.as_str(), i);
 
@@ -630,7 +677,7 @@ pub(crate) fn layout_gitgraph_diagram_typed(
             index: i as i64,
             pos,
             bbox_width: bbox_w.max(0.0),
-            bbox_height: metrics.height.max(0.0),
+            bbox_height: bbox_h.max(0.0),
         });
 
         pos += 50.0
@@ -772,7 +819,7 @@ pub(crate) fn layout_gitgraph_diagram_typed(
             let Some(commit_a) = commits_by_id.get(parent.as_str()).copied() else {
                 continue;
             };
-            if let Some(a) = draw_arrow(
+            if let Some(mut a) = draw_arrow(
                 commit_a,
                 commit_b,
                 &commits_by_id,
@@ -781,6 +828,10 @@ pub(crate) fn layout_gitgraph_diagram_typed(
                 &mut lanes,
                 &direction,
             ) {
+                a.class_index = typography_theme
+                    .css_binding()
+                    .color_indices
+                    .commit_slot(a.class_index) as i64;
                 arrows.push(a);
             }
         }
@@ -965,6 +1016,75 @@ mod tests {
             123.456_789
         );
         assert_eq!(&*measurer.calls.borrow(), &["main", "feature  spaced"]);
+    }
+
+    #[test]
+    fn branch_label_rows_match_draw_text_breaks_trim_and_empty_rows() {
+        for (text, expected) in [
+            (" left  right ", vec!["left  right"]),
+            (" left\n right ", vec!["left", "right"]),
+            (r" left\n right ", vec!["left", "right"]),
+            (r" left\N right ", vec!["left", "right"]),
+            ("left<br/>right<BR >tail", vec!["left", "right", "tail"]),
+            ("left<br\u{feff}/>right", vec!["left", "right"]),
+            ("\nleft\n\nright\n", vec!["", "left", "", "right", ""]),
+            ("left</br>right", vec!["left</br>right"]),
+            ("left<br\u{0085}>right", vec!["left<br\u{0085}>right"]),
+            ("\u{feff}left\u{feff}", vec!["left"]),
+            ("\u{0085}left\u{0085}", vec!["\u{0085}left\u{0085}"]),
+        ] {
+            assert_eq!(gitgraph_branch_label_rows(text), expected, "{text:?}");
+        }
+    }
+
+    #[test]
+    fn layout_measures_branch_rows_with_one_em_spacing_and_preserves_lane_identity() {
+        let config = json!({});
+        let typography = direct_typography_plan(&config, "GitGraphMeasure", 23.0);
+        let style = typography.branch_label_style();
+        let measurer = DeterministicTextMeasurer::default();
+        for direction in ["LR", "TB", "BT"] {
+            let mut model = GitGraphDiagramModel {
+                diagram_type: "gitGraph".to_string(),
+                branches: ["wide branch name", "tail"]
+                    .into_iter()
+                    .map(|name| GitGraphBranch {
+                        name: name.to_string(),
+                    })
+                    .collect(),
+                commits: Vec::new(),
+                current_branch: "wide branch name".to_string(),
+                direction: direction.to_string(),
+                title: None,
+                acc_title: None,
+                acc_descr: None,
+                warning_facts: Vec::new(),
+            };
+            let control =
+                layout_gitgraph_diagram_typed(&model, &config, &typography, &measurer).unwrap();
+            for name in [
+                " short\n wide branch name ",
+                r" short\n wide branch name ",
+                "short<br/>wide branch name",
+                "short\n\nwide branch name",
+                "\nshort\nwide branch name\n",
+            ] {
+                model.branches[0].name = name.to_string();
+                model.current_branch = name.to_string();
+                let layout =
+                    layout_gitgraph_diagram_typed(&model, &config, &typography, &measurer).unwrap();
+                assert_eq!(layout.branches[0].name, name);
+                assert_eq!(
+                    layout.branches[0].bbox_width,
+                    control.branches[0].bbox_width
+                );
+                assert_eq!(
+                    layout.branches[0].bbox_height,
+                    control.branches[0].bbox_height + style.font_size,
+                );
+                assert_eq!(layout.branches[1].pos, control.branches[1].pos);
+            }
+        }
     }
 
     #[test]

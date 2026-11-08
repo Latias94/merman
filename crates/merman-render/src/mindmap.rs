@@ -23,10 +23,20 @@ pub(crate) use theme::{
     MindmapNodePaletteTerminalDecision, MindmapWriterThemeToken,
 };
 
-pub(crate) fn mindmap_max_node_width_px(effective_config: &Value) -> f64 {
-    config_f64_css_px(effective_config, &["mindmap", "maxNodeWidth"])
-        .unwrap_or(200.0)
-        .max(1.0)
+pub(crate) fn mindmap_label_wrapping_width_px(
+    node: &MindmapNodeModel,
+    effective_config: &Value,
+) -> f64 {
+    // mindmapRenderer.ts clears the requested width for these shapes. labelHelper
+    // then falls back to the shared Flowchart wrapping width (default 120px).
+    let clears_width = matches!(node.shape.as_str(), "rect" | "rounded" | "hexagon");
+    if !clears_width && node.width.is_finite() && node.width != 0.0 {
+        node.width.max(1.0)
+    } else {
+        config_f64_css_px(effective_config, &["flowchart", "wrappingWidth"])
+            .unwrap_or(120.0)
+            .max(1.0)
+    }
 }
 
 pub(crate) fn mindmap_node_look<'a>(
@@ -651,7 +661,6 @@ fn layout_mindmap_diagram_model(
 ) -> Result<(MindmapDiagramLayout, MindmapPreparedLabels)> {
     let effective_config = config.as_value();
     let text_style = mindmap_text_style_with_font_family(effective_config, font_family_css);
-    let max_node_width_px = mindmap_max_node_width_px(effective_config);
 
     let mut nodes: Vec<LayoutNode> = Vec::with_capacity(model.nodes.len());
     let prepared_labels = MindmapPreparedLabels::prepare(model, config, &work_meter)?;
@@ -663,7 +672,7 @@ fn layout_mindmap_diagram_model(
             &n.label,
             text_measurer,
             &text_style,
-            max_node_width_px,
+            mindmap_label_wrapping_width_px(n, effective_config),
             config,
             math_renderer,
             prepared_labels.xhtml_for(&n.id),
@@ -1155,7 +1164,7 @@ mod tests {
             &measurer,
             &html,
             &style,
-            Some(200.0),
+            Some(120.0),
             crate::text::WrapMode::HtmlLike,
         );
         assert_eq!(
@@ -1182,30 +1191,40 @@ mod tests {
     }
 
     #[test]
-    fn mindmap_max_node_width_accepts_number_and_px_string() {
-        let numeric = serde_json::json!({
-            "mindmap": {
-                "maxNodeWidth": 320
+    fn mindmap_label_width_observes_projected_width_and_shape_resets() {
+        let mut node: super::MindmapNodeModel = serde_json::from_value(serde_json::json!({
+            "id": "0", "domId": "node_0", "label": "Label", "shape": "defaultMindmapNode",
+            "cssClasses": "mindmap-node section-root section--1", "width": 80.5
+        }))
+        .unwrap();
+        for flowchart_width in [serde_json::json!(160.5), serde_json::json!("160.5px")] {
+            let config = serde_json::json!({
+                "mindmap": {"maxNodeWidth": 240},
+                "flowchart": {"wrappingWidth": flowchart_width}
+            });
+            for shape in ["defaultMindmapNode", "mindmapCircle", "cloud", "bang"] {
+                node.shape = shape.to_string();
+                assert_eq!(super::mindmap_label_wrapping_width_px(&node, &config), 80.5);
             }
-        });
-        assert_eq!(super::mindmap_max_node_width_px(&numeric), 320.0);
-
-        let px_string = serde_json::json!({
-            "mindmap": {
-                "maxNodeWidth": "280px"
+            for shape in ["rect", "rounded", "hexagon"] {
+                node.shape = shape.to_string();
+                assert_eq!(
+                    super::mindmap_label_wrapping_width_px(&node, &config),
+                    160.5
+                );
+                assert_eq!(
+                    super::mindmap_label_wrapping_width_px(&node, &serde_json::json!({})),
+                    120.0
+                );
             }
-        });
-        assert_eq!(super::mindmap_max_node_width_px(&px_string), 280.0);
-
-        let plain_string = serde_json::json!({
-            "mindmap": {
-                "maxNodeWidth": "240"
-            }
-        });
-        assert_eq!(super::mindmap_max_node_width_px(&plain_string), 240.0);
-
-        let fallback = serde_json::json!({});
-        assert_eq!(super::mindmap_max_node_width_px(&fallback), 200.0);
+            node.shape = "defaultMindmapNode".to_string();
+            node.width = 0.0;
+            assert_eq!(
+                super::mindmap_label_wrapping_width_px(&node, &config),
+                160.5
+            );
+            node.width = 80.5;
+        }
     }
 
     #[test]

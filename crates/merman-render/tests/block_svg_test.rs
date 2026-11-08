@@ -1995,6 +1995,91 @@ fn terminal_node_has_class(svg: &str, node_id: &str, expected_class: &str) -> bo
         })
 }
 
+#[test]
+fn block_link_tokens_reach_svg_markers_and_line_classes() {
+    for (token, start, end, thickness, pattern) in [
+        ("-->", false, true, "normal", "solid"),
+        ("<-->", true, true, "normal", "solid"),
+        ("<==>", true, true, "thick", "solid"),
+        ("==>", false, true, "thick", "solid"),
+        ("-.->", false, true, "normal", "dotted"),
+        ("===", false, false, "thick", "solid"),
+        ("-.-", false, false, "normal", "dotted"),
+    ] {
+        let svg = render_block_svg_from_text(&format!("block\nA{token}B\n"));
+        let document = roxmltree::Document::parse(&svg).unwrap();
+        let path = document
+            .descendants()
+            .find(|node| node.attribute("data-edge") == Some("true"))
+            .unwrap();
+        let classes = path
+            .attribute("class")
+            .unwrap()
+            .split_ascii_whitespace()
+            .collect::<Vec<_>>();
+        assert!(
+            classes.contains(&format!("edge-thickness-{thickness}").as_str()),
+            "{token}"
+        );
+        assert!(
+            classes.contains(&format!("edge-pattern-{pattern}").as_str()),
+            "{token}"
+        );
+        for (attribute, expected) in [("marker-start", start), ("marker-end", end)] {
+            let reference = path.attribute(attribute);
+            assert_eq!(reference.is_some(), expected, "{token} {attribute}");
+            if let Some(reference) = reference {
+                let id = reference
+                    .strip_prefix("url(#")
+                    .unwrap()
+                    .strip_suffix(')')
+                    .unwrap();
+                assert!(document.descendants().any(|node| node.has_tag_name("marker") && node.attribute("id") == Some(id)));
+            }
+        }
+    }
+}
+
+#[test]
+fn block_spaced_class_targets_keep_attached_node_identity() {
+    let svg = render_block_svg_from_text("block\nA[\"Alpha\"] B[\"Beta\"]\nclass A, B hot\n");
+    let document = roxmltree::Document::parse(&svg).unwrap();
+    let nodes = document
+        .descendants()
+        .filter(|node| {
+            node.has_tag_name("g")
+                && node.attribute("class").is_some_and(|class| {
+                    class.split_ascii_whitespace().any(|token| token == "node")
+                })
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(nodes.len(), 2);
+    let classes = |node: roxmltree::Node<'_, '_>| {
+        node.attribute("class")
+            .unwrap()
+            .split_ascii_whitespace()
+            .map(str::to_string)
+            .collect::<Vec<_>>()
+    };
+    assert!(classes(nodes[0]).iter().any(|class| class == "hot"));
+    assert!(!classes(nodes[0]).iter().any(|class| class == "B"));
+    assert!(!classes(nodes[1]).iter().any(|class| class == "hot"));
+    assert!(
+        nodes[1]
+            .descendants()
+            .any(|node| node.text() == Some("Beta"))
+    );
+}
+
+#[test]
+fn block_detached_database_records_do_not_require_visible_html_labels() {
+    for source in ["block\nA space B\n", "block\nA\nclass missing hot\n"] {
+        let svg = render_block_svg_from_text(source);
+        let document = roxmltree::Document::parse(&svg).unwrap();
+        assert!(document.descendants().any(|node| node.text() == Some("A")));
+    }
+}
+
 fn terminal_stroke(style: &str) -> Option<&str> {
     style
         .split(';')

@@ -8,6 +8,13 @@ use merman_render::svg::{SvgDebugOptions, SvgRenderOptions};
 use merman_render::{LayoutOptions, family};
 use serde_json::{Value, json};
 
+const LAYOUTS: &[&str] = &[
+    "dagre",
+    #[cfg(feature = "layout-elk")]
+    "elk",
+    "swimlane",
+];
+
 fn render_cluster(config: Value, source_style: &str, paint: CanvasPaint) -> (String, usize, usize) {
     let (svg, applied, not_applicable, _) = render_cluster_with_spec(
         config,
@@ -80,7 +87,7 @@ fn render_cluster_with_spec(
 }
 
 #[test]
-fn dagre_duplicate_subgraph_ids_keep_first_title_style_and_class() {
+fn dagre_duplicate_subgraphs_keep_first_box_style_and_class_without_svg_source_text_color() {
     let theme = DiagramThemeCompiler::new()
         .compile(DiagramThemeSpec::new())
         .expect("compile baseline ER theme");
@@ -142,7 +149,9 @@ style Shared stroke-width:7px
             .descendants()
             .find(|node| node.has_tag_name("text"))
             .expect("SVG title");
-        assert_eq!(text.attribute("style"), Some("fill:#778899 !important"));
+        // The shared upstream cluster painter applies class color only to HTML spans.
+        assert_eq!(label.attribute("style"), Some(""));
+        assert_eq!(text.attribute("style"), Some(""));
         let title: String = text
             .descendants()
             .filter(|node| node.is_text())
@@ -203,27 +212,31 @@ fn svg_cluster_uses_typed_text_fill_when_title_color_selects_the_text_fallback()
 }
 
 #[test]
-fn cluster_title_config_source_color_and_html_labels_keep_their_owners() {
-    for (config, source_style, expected_style) in [
+fn cluster_svg_title_uses_config_color_or_typed_fallback_despite_ignored_source_color() {
+    for (config, source_style, expected_style, expected_counts) in [
         (
             json!({"htmlLabels": false, "themeVariables": {"titleColor": "#c0ffee"}}),
             "",
             Some(""),
+            (0, 1),
         ),
         (
             json!({"htmlLabels": false, "themeVariables": {"titleColor": false, "textColor": "#c0ffee"}}),
             "",
             Some(""),
+            (0, 1),
         ),
         (
             json!({"htmlLabels": false, "themeVariables": {"titleColor": false}}),
             "style Orders color:#c0ffee",
-            Some("fill:#c0ffee !important"),
+            Some("color:#123abc;fill:#123abc"),
+            (1, 0),
         ),
         (
             json!({"htmlLabels": true, "themeVariables": {"titleColor": false}}),
             "",
             None,
+            (0, 1),
         ),
     ] {
         let (svg, applied, not_applicable) =
@@ -238,17 +251,209 @@ fn cluster_title_config_source_color_and_html_labels_keep_their_owners() {
             text.and_then(|text| text.attribute("style")),
             expected_style
         );
-        assert_eq!((applied, not_applicable), (0, 1));
+        assert_eq!((applied, not_applicable), expected_counts);
     }
 }
 
 #[test]
-fn subgraph_source_typography_is_fail_closed_until_measured() {
-    for source_style in [
-        "style Orders font-family:SourceFace",
-        "style Orders font-size:30px",
-    ] {
-        let spec = DiagramThemeSpec::new().with_typography(
+fn cluster_source_label_styles_stay_on_html_spans_and_do_not_leak_to_svg_or_member_labels() {
+    let cases = [
+        (
+            "style Orders color:#ff0000,color:#0000ff",
+            "color:#0000ff !important",
+        ),
+        (
+            "style Orders color:#0000ff,color:#ff0000",
+            "color:#ff0000 !important",
+        ),
+        ("style Orders color:#c0ffee", "color:#c0ffee !important"),
+        (
+            "style Orders font-family:SourceFace",
+            "font-family:SourceFace !important",
+        ),
+        ("style Orders font-size:30px", "font-size:30px !important"),
+        ("style Orders font-weight:900", "font-weight:900 !important"),
+        ("", ""),
+    ];
+    for layout in LAYOUTS {
+        for html_labels in [false, true] {
+            for (source_style, html_style) in cases {
+                let (svg, _, _, _) = render_cluster_with_spec(
+                    json!({
+                        "layout": layout,
+                        "look": "classic",
+                        "htmlLabels": html_labels,
+                        "flowchart": {"htmlLabels": html_labels},
+                        "themeVariables": {"titleColor": "#112233"}
+                    }),
+                    source_style,
+                    DiagramThemeSpec::new(),
+                    ThemePortabilityRequirement::RequirePortable,
+                )
+                .expect("render ER subgraph source-label-style control");
+                let document = roxmltree::Document::parse(&svg).expect("valid ER SVG");
+                let cluster = document
+                    .descendants()
+                    .find(|node| node.attribute("id") == Some("merman-Orders"))
+                    .expect("authored Orders cluster");
+                let label = cluster
+                    .descendants()
+                    .find(|node| {
+                        node.attribute("class").is_some_and(|classes| {
+                            classes
+                                .split_whitespace()
+                                .any(|class| class == "cluster-label")
+                        })
+                    })
+                    .expect("cluster title label");
+                let context = format!("{layout}, htmlLabels={html_labels}, {source_style:?}");
+                assert_eq!(
+                    label
+                        .descendants()
+                        .any(|node| node.has_tag_name("foreignObject")),
+                    html_labels,
+                    "{context}"
+                );
+                if html_labels {
+                    let span = label
+                        .descendants()
+                        .find(|node| {
+                            node.has_tag_name("span")
+                                && node.attribute("class") == Some("nodeLabel")
+                        })
+                        .expect("HTML cluster title span");
+                    assert_eq!(
+                        span.attribute("style").unwrap_or(""),
+                        html_style,
+                        "{context}"
+                    );
+                } else {
+                    let text = label
+                        .descendants()
+                        .find(|node| node.has_tag_name("text"))
+                        .expect("SVG cluster title text");
+                    assert_eq!(label.attribute("style").unwrap_or(""), "", "{context}");
+                    assert_eq!(text.attribute("style").unwrap_or(""), "", "{context}");
+                    for terminal in label.descendants().filter(|node| node.is_element()) {
+                        assert_eq!(terminal.attribute("font-family"), None, "{context}");
+                        assert_eq!(terminal.attribute("font-size"), None, "{context}");
+                        let style = terminal.attribute("style").unwrap_or("");
+                        assert!(!style.contains("font-family"), "{context}: {style}");
+                        assert!(!style.contains("font-size"), "{context}: {style}");
+                        assert!(!style.contains("font-weight"), "{context}: {style}");
+                    }
+                    assert!(svg.contains("fill:#112233"), "{context}: title theme role");
+                }
+                let entity = document
+                    .descendants()
+                    .find(|node| {
+                        node.has_tag_name("g")
+                            && node
+                                .attribute("id")
+                                .is_some_and(|id| id.starts_with("merman-entity-CUSTOMER-"))
+                    })
+                    .expect("independently styled member entity");
+                let entity_label = entity
+                    .descendants()
+                    .find(|node| node.attribute("class") == Some("label"))
+                    .expect("member entity label");
+                let entity_style = if html_labels {
+                    "color:#556677 !important"
+                } else {
+                    "fill:#556677 !important"
+                };
+                assert_eq!(
+                    entity_label.attribute("style"),
+                    Some(entity_style),
+                    "{context}"
+                );
+            }
+        }
+    }
+}
+
+#[test]
+fn ignored_svg_subgraph_source_typography_keeps_typed_fonts_portable() {
+    for layout in LAYOUTS {
+        for source_style in [
+            "",
+            "style Orders font-family:SourceFace",
+            "style Orders font-size:30px",
+            "style Orders font-family:SourceFace,font-size:30px",
+        ] {
+            let spec = DiagramThemeSpec::new().with_typography(
+                merman_render::diagram_theme::TypographySpec::default().with_family_style(
+                    merman_model::family::DiagramFamilyId::ER,
+                    ThemeTextStyle::default()
+                        .with_font_stack(FontStack::single("ErTypedFace").expect("font stack"))
+                        .with_font_size_px(24.0)
+                        .expect("font size"),
+                ),
+            );
+            let (svg, applied, not_applicable, residuals) = render_cluster_with_spec(
+                json!({
+                    "layout": layout,
+                    "htmlLabels": false,
+                    "flowchart": {"htmlLabels": false},
+                    "themeVariables": {"titleColor": false}
+                }),
+                source_style,
+                spec,
+                ThemePortabilityRequirement::RequirePortable,
+            )
+            .expect("ignored SVG subgraph source fonts must not block portable typed fonts");
+            let document = roxmltree::Document::parse(&svg).expect("valid typed ER SVG");
+            let cluster = document
+                .descendants()
+                .find(|node| node.attribute("id") == Some("merman-Orders"))
+                .expect("authored Orders cluster");
+            let label = cluster
+                .descendants()
+                .find(|node| {
+                    node.attribute("class").is_some_and(|classes| {
+                        classes
+                            .split_whitespace()
+                            .any(|class| class == "cluster-label")
+                    })
+                })
+                .expect("SVG cluster title label");
+            let text = label
+                .descendants()
+                .find(|node| node.has_tag_name("text"))
+                .expect("SVG cluster title text");
+            assert_eq!(label.attribute("style").unwrap_or(""), "");
+            assert_eq!(text.attribute("style").unwrap_or(""), "");
+            let css = document
+                .descendants()
+                .find(|node| node.has_tag_name("style"))
+                .and_then(|node| node.text())
+                .expect("typed ER stylesheet");
+            for selector in ["#merman{", "#merman svg{"] {
+                let declarations = css
+                    .split_once(selector)
+                    .and_then(|(_, rule)| rule.split_once('}'))
+                    .map(|(declarations, _)| declarations)
+                    .expect("root font inheritance rule");
+                assert!(
+                    declarations.contains("font-family:ErTypedFace;"),
+                    "{layout}: {source_style}: {declarations}"
+                );
+                assert!(
+                    declarations.contains("font-size:24px;"),
+                    "{layout}: {source_style}: {declarations}"
+                );
+            }
+            assert!(!svg.contains("SourceFace"), "{layout}: {source_style}");
+            assert!(!svg.contains("font-size:30px"), "{layout}: {source_style}");
+            assert_eq!((applied, not_applicable, residuals), (2, 0, 0));
+        }
+    }
+}
+
+#[test]
+fn opposing_root_and_flowchart_label_modes_keep_provider_title_ownership_and_portability() {
+    let spec = DiagramThemeSpec::new()
+        .with_typography(
             merman_render::diagram_theme::TypographySpec::default().with_family_style(
                 merman_model::family::DiagramFamilyId::ER,
                 ThemeTextStyle::default()
@@ -256,33 +461,109 @@ fn subgraph_source_typography_is_fail_closed_until_measured() {
                     .with_font_size_px(24.0)
                     .expect("font size"),
             ),
-        );
-        let (svg, applied, not_applicable, residuals) = render_cluster_with_spec(
-            json!({"htmlLabels": false, "themeVariables": {"titleColor": false}}),
-            source_style,
-            spec.clone(),
-            ThemePortabilityRequirement::BestEffort,
         )
-        .expect("render ER cluster in best effort");
-        assert!(
-            svg.contains("!important"),
-            "source style must remain visible: {svg}"
+        .with_styles(
+            ThemeRuleSet::default().with_rule(ThemeRule::new(
+                ThemeTarget::Text,
+                ThemeStylePatch::default()
+                    .with_fill(CanvasPaint::solid("#123abc").expect("typed title color")),
+            )),
         );
-        // One typography property remains typed; the source-owned property must stay residual.
-        assert_eq!(applied, 1);
-        assert_eq!(not_applicable, 0);
-        assert_eq!(residuals, 1);
-        let error = render_cluster_with_spec(
-            json!({"htmlLabels": false, "themeVariables": {"titleColor": false}}),
-            source_style,
-            spec,
-            ThemePortabilityRequirement::RequirePortable,
-        )
-        .expect_err("unmeasured source cluster typography must be rejected");
-        assert_eq!(
-            error.unverified_family_theme(),
-            Some((merman_model::family::DiagramFamilyId::ER, 1))
-        );
+    let source_style = "style Orders color:#c0ffee,font-family:SourceFace,font-size:30px";
+    for layout in LAYOUTS {
+        for (root_html_labels, flowchart_html_labels) in [(false, true), (true, false)] {
+            let config = json!({
+                "layout": layout,
+                "look": "classic",
+                "htmlLabels": root_html_labels,
+                "flowchart": {"htmlLabels": flowchart_html_labels},
+                "themeVariables": {"titleColor": false}
+            });
+            let title_html_labels = if *layout == "swimlane" {
+                flowchart_html_labels
+            } else {
+                root_html_labels
+            };
+            let context = format!(
+                "{layout}, root htmlLabels={root_html_labels}, flowchart.htmlLabels={flowchart_html_labels}"
+            );
+            for requirement in [
+                ThemePortabilityRequirement::BestEffort,
+                ThemePortabilityRequirement::RequirePortable,
+            ] {
+                let result = render_cluster_with_spec(
+                    config.clone(),
+                    source_style,
+                    spec.clone(),
+                    requirement,
+                );
+                if title_html_labels
+                    && matches!(requirement, ThemePortabilityRequirement::RequirePortable)
+                {
+                    let error = result.expect_err("visible source title fonts remain nonportable");
+                    assert_eq!(
+                        error.unverified_family_theme(),
+                        Some((merman_model::family::DiagramFamilyId::ER, 2)),
+                        "{context}"
+                    );
+                    continue;
+                }
+                let (svg, applied, not_applicable, residuals) =
+                    result.expect("render provider-specific title ownership control");
+                let document = roxmltree::Document::parse(&svg).expect("valid ER SVG");
+                let cluster = document
+                    .descendants()
+                    .find(|node| node.attribute("id") == Some("merman-Orders"))
+                    .expect("authored Orders cluster");
+                let label = cluster
+                    .descendants()
+                    .find(|node| {
+                        node.attribute("class").is_some_and(|classes| {
+                            classes
+                                .split_whitespace()
+                                .any(|class| class == "cluster-label")
+                        })
+                    })
+                    .expect("provider cluster title label");
+                assert_eq!(
+                    label
+                        .descendants()
+                        .any(|node| node.has_tag_name("foreignObject")),
+                    title_html_labels,
+                    "{context}"
+                );
+                if title_html_labels {
+                    let span = label
+                        .descendants()
+                        .find(|node| {
+                            node.has_tag_name("span")
+                                && node.attribute("class") == Some("nodeLabel")
+                        })
+                        .expect("HTML title style owner");
+                    assert_eq!(
+                        span.attribute("style"),
+                        Some(
+                            "color:#c0ffee !important; font-family:SourceFace !important; font-size:30px !important"
+                        ),
+                        "{context}"
+                    );
+                    assert_eq!((applied, not_applicable, residuals), (0, 1, 2), "{context}");
+                } else {
+                    let text = label
+                        .descendants()
+                        .find(|node| node.has_tag_name("text"))
+                        .expect("SVG title style owner");
+                    assert_eq!(
+                        text.attribute("style"),
+                        Some("color:#123abc;fill:#123abc"),
+                        "{context}"
+                    );
+                    assert!(!svg.contains("SourceFace"), "{context}");
+                    assert!(!svg.contains("font-size:30px"), "{context}");
+                    assert_eq!((applied, not_applicable, residuals), (3, 0, 0), "{context}");
+                }
+            }
+        }
     }
 }
 

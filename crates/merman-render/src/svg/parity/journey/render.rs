@@ -1,7 +1,7 @@
 use super::super::*;
 use crate::journey::{
     JOURNEY_FACE_RADIUS_PX, JOURNEY_TITLE_EXTRA_HEIGHT_PX, JOURNEY_VIEWBOX_TOP_PAD_PX,
-    JourneyCssBinding,
+    JourneyCssBinding, JourneyTextPlacement,
 };
 use merman_model::families::journey::JourneyDiagramModel;
 
@@ -74,8 +74,10 @@ struct JourneyTextBox {
 
 #[derive(Debug, Clone, Copy)]
 struct JourneyTextStyle<'a> {
+    placement: JourneyTextPlacement,
     task_font_size: f64,
     task_font_family: &'a str,
+    section_colour: Option<&'a str>,
 }
 
 fn write_text_candidate(
@@ -93,8 +95,10 @@ fn write_text_candidate(
         height,
     } = text_box;
     let JourneyTextStyle {
+        placement,
         task_font_size,
         task_font_family,
+        section_colour,
     } = style;
     let content_esc = escape_xml(content);
     let class_esc = escape_attr(class);
@@ -103,23 +107,37 @@ fn write_text_candidate(
     let cx = x + width / 2.0;
     let cy = y + height / 2.0;
 
-    out.push_str("<switch>");
-    let _ = write!(
-        out,
-        r#"<foreignObject x="{x}" y="{y}" width="{w}" height="{h}">"#,
-        x = fmt(x),
-        y = fmt(y),
-        w = fmt(width),
-        h = fmt(height),
-    );
-    let _ = write!(
-        out,
-        r#"<div class="{class}" xmlns="http://www.w3.org/1999/xhtml" style="display: table; height: 100%; width: 100%;"><div class="label" style="display: table-cell; text-align: center; vertical-align: middle;">{text}</div></div>"#,
-        class = class_esc,
-        text = content_esc
-    );
-    out.push_str("</foreignObject>");
-    out.checkpoint()?;
+    if placement == JourneyTextPlacement::Old {
+        let _ = write!(
+            out,
+            r#"<text x="{x}" y="{y}" class="{class}" style="text-anchor: middle;">{text}</text>"#,
+            x = fmt(cx),
+            y = fmt(cy + 5.0),
+            class = class_esc,
+            text = content_esc,
+        );
+        return out.checkpoint();
+    }
+
+    if placement == JourneyTextPlacement::Fo {
+        out.push_str("<switch>");
+        let _ = write!(
+            out,
+            r#"<foreignObject x="{x}" y="{y}" width="{w}" height="{h}">"#,
+            x = fmt(x),
+            y = fmt(y),
+            w = fmt(width),
+            h = fmt(height),
+        );
+        let _ = write!(
+            out,
+            r#"<div class="{class}" xmlns="http://www.w3.org/1999/xhtml" style="display: table; height: 100%; width: 100%;"><div class="label" style="display: table-cell; text-align: center; vertical-align: middle;">{text}</div></div>"#,
+            class = class_esc,
+            text = content_esc
+        );
+        out.push_str("</foreignObject>");
+        out.checkpoint()?;
+    }
 
     let lines = split_html_br_lines(content);
     let n = lines.len().max(1) as f64;
@@ -127,20 +145,38 @@ fn write_text_candidate(
         let dy = (i as f64) * task_font_size - (task_font_size * (n - 1.0)) / 2.0;
         let _ = write!(
             out,
-            r#"<text x="{x}" y="{y}" dominant-baseline="central" alignment-baseline="central" class="{class}" style="text-anchor: middle; font-size: {fs}px; font-family: {ff}; fill: {fill};"><tspan x="{x}" dy="{dy}">{text}</tspan></text>"#,
+            r#"<text x="{x}" y="{y}" dominant-baseline="central" alignment-baseline="central" class="{class}""#,
             x = fmt(cx),
             y = fmt(cy),
-            fill = fill_esc,
             class = class_esc,
+        );
+        if placement == JourneyTextPlacement::Tspan
+            && let Some(colour) = section_colour
+        {
+            let _ = write!(out, r#" fill="{}""#, escape_attr(colour));
+        }
+        let _ = write!(
+            out,
+            r#" style="text-anchor: middle; font-size: {fs}px; font-family: {ff};"#,
             fs = fmt(task_font_size),
             ff = font_family_esc,
+        );
+        if placement == JourneyTextPlacement::Fo {
+            let _ = write!(out, " fill: {fill_esc};");
+        }
+        let _ = write!(
+            out,
+            r#""><tspan x="{x}" dy="{dy}">{text}</tspan></text>"#,
+            x = fmt(cx),
             dy = fmt(dy),
             text = escape_xml(&line)
         );
         out.checkpoint()?;
     }
 
-    out.push_str("</switch>");
+    if placement == JourneyTextPlacement::Fo {
+        out.push_str("</switch>");
+    }
     out.checkpoint()
 }
 
@@ -577,6 +613,7 @@ pub(crate) fn render_journey_diagram_svg_model(
 
     let mut section_iter = layout.sections.iter();
     let mut section_index = 0usize;
+    let mut section_colour = Some("black");
     // Match layout's empty initial section: tasks before the first section have no header.
     let mut last_section = "";
     let mut task_theme_receipt: Option<crate::journey::JourneyTaskThemeReceipt> =
@@ -589,6 +626,10 @@ pub(crate) fn render_journey_diagram_svg_model(
                     message: "Journey section layout is missing a task's section header".to_owned(),
                 })?;
             let section_class = format!("journey-section section-type-{}", section.num);
+            section_colour = render_settings
+                .section_colours
+                .get(section_index % render_settings.section_colours.len().max(1))
+                .map(String::as_str);
             write_section_rect(
                 &mut out,
                 section,
@@ -605,17 +646,27 @@ pub(crate) fn render_journey_diagram_svg_model(
                     height: section.height,
                 },
                 JourneyTextStyle {
+                    placement: render_settings.text_placement,
                     task_font_size,
                     task_font_family,
+                    section_colour,
                 },
                 &theme.text_color,
             )?;
+            if render_settings
+                .text_placement
+                .has_inherited_label_typography()
+                && let Some(receipt) = typography_receipt.as_mut()
+            {
+                receipt.record_text_run(&section.section);
+            }
             out.push_str("</g>");
             out.checkpoint()?;
             if let Some(receipt) = text_receipt.as_mut() {
                 receipt.record_label(
                     crate::journey::JourneyTextPaintRole::Section,
-                    Some(&theme.text_color),
+                    (render_settings.text_placement == JourneyTextPlacement::Fo)
+                        .then_some(theme.text_color.as_str()),
                 );
             }
             if let Some(receipt) = task_theme_receipt.as_mut() {
@@ -742,18 +793,28 @@ pub(crate) fn render_journey_diagram_svg_model(
                 height: task.height,
             },
             JourneyTextStyle {
+                placement: render_settings.text_placement,
                 task_font_size,
                 task_font_family,
+                section_colour,
             },
             &theme.text_color,
         )?;
+        if render_settings
+            .text_placement
+            .has_inherited_label_typography()
+            && let Some(receipt) = typography_receipt.as_mut()
+        {
+            receipt.record_text_run(&task.task);
+        }
 
         out.push_str("</g>");
         out.checkpoint()?;
         if let Some(receipt) = text_receipt.as_mut() {
             receipt.record_label(
                 crate::journey::JourneyTextPaintRole::Task,
-                Some(&theme.text_color),
+                (render_settings.text_placement == JourneyTextPlacement::Fo)
+                    .then_some(theme.text_color.as_str()),
             );
         }
         if let Some(receipt) = task_theme_receipt.as_mut() {
@@ -863,7 +924,7 @@ mod tests {
                 index: 0,
                 section: "Delivery".to_string(),
                 task: "Ship safely".to_string(),
-                score: 5,
+                score: 5.0,
                 x: 150.0,
                 y: 110.0,
                 width: 150.0,
@@ -1118,7 +1179,7 @@ mod tests {
                 index: 0,
                 section: "A".to_string(),
                 task: "Hello".to_string(),
-                score: 5,
+                score: 5.0,
                 x: 150.0,
                 y: 110.0,
                 width: 150.0,

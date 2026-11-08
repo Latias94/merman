@@ -167,7 +167,7 @@ impl XyChartState {
     }
 
     fn set_orientation(&mut self, o: &str) {
-        if o.eq_ignore_ascii_case("horizontal") {
+        if o == "horizontal" {
             self.orientation = "horizontal".to_string();
         } else {
             self.orientation = "vertical".to_string();
@@ -300,7 +300,7 @@ impl XyChartState {
                 if point.label.is_empty() {
                     String::new()
                 } else {
-                    sanitize_text(&point.label, config)
+                    sanitize_text(point.label.trim(), config)
                 }
             })
             .collect::<Vec<_>>();
@@ -469,30 +469,35 @@ fn parse_xychart_statement(
 ) -> Result<ParsedXyChartStatement> {
     let statement_span = SourceSpan::new(statement_start, statement_start + statement_text.len());
 
-    macro_rules! parse_keyword {
-        ($keyword:literal, $parse:expr, $variant:path) => {
-            if let Some(rest) = strip_keyword(statement_text, $keyword) {
-                let rest_start = statement_start + statement_text.len().saturating_sub(rest.len());
-                return $parse(rest, rest_start).map($variant);
-            }
-        };
+    let (keyword, keyword_len) = xychart_word(statement_text);
+    let rest = &statement_text[keyword_len..];
+    let rest_start = statement_start + keyword_len;
+    match keyword {
+        Some(XyChartKeyword::Title) => {
+            return parse_text_source(rest, rest_start).map(ParsedXyChartStatement::Title);
+        }
+        Some(XyChartKeyword::AccTitle) => {
+            return parse_colon_value_source(rest, rest_start, "accTitle")
+                .map(ParsedXyChartStatement::AccessibilityTitle);
+        }
+        Some(XyChartKeyword::AccDescr) => {
+            return parse_acc_descr_source(rest, rest_start)
+                .map(ParsedXyChartStatement::AccessibilityDescription);
+        }
+        Some(XyChartKeyword::XAxis) => {
+            return parse_x_axis_source(rest, rest_start).map(ParsedXyChartStatement::XAxis);
+        }
+        Some(XyChartKeyword::YAxis) => {
+            return parse_y_axis_source(rest, rest_start).map(ParsedXyChartStatement::YAxis);
+        }
+        Some(XyChartKeyword::Line) => {
+            return parse_plot_stmt_source(rest, rest_start).map(ParsedXyChartStatement::Line);
+        }
+        Some(XyChartKeyword::Bar) => {
+            return parse_plot_stmt_source(rest, rest_start).map(ParsedXyChartStatement::Bar);
+        }
+        None => {}
     }
-
-    parse_keyword!("title", parse_text_source, ParsedXyChartStatement::Title);
-    if let Some(rest) = strip_keyword(statement_text, "accTitle") {
-        let rest_start = statement_start + statement_text.len().saturating_sub(rest.len());
-        return parse_colon_value_source(rest, rest_start, "accTitle")
-            .map(ParsedXyChartStatement::AccessibilityTitle);
-    }
-    parse_keyword!(
-        "accDescr",
-        parse_acc_descr_source,
-        ParsedXyChartStatement::AccessibilityDescription
-    );
-    parse_keyword!("x-axis", parse_x_axis_source, ParsedXyChartStatement::XAxis);
-    parse_keyword!("y-axis", parse_y_axis_source, ParsedXyChartStatement::YAxis);
-    parse_keyword!("line", parse_plot_stmt_source, ParsedXyChartStatement::Line);
-    parse_keyword!("bar", parse_plot_stmt_source, ParsedXyChartStatement::Bar);
 
     Err(Error::diagram_parse_exact(
         diagram_type.to_string(),
@@ -908,14 +913,82 @@ fn header_token_len_and_rest(stmt: &str) -> Option<(usize, &str)> {
     None
 }
 
-fn strip_keyword<'a>(stmt: &'a str, kw: &str) -> Option<&'a str> {
-    let s = stmt.trim_start();
-    let lower = s.to_ascii_lowercase();
-    let kw_lower = kw.to_ascii_lowercase();
-    if !lower.starts_with(&kw_lower) {
-        return None;
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum XyChartKeyword {
+    Title,
+    AccTitle,
+    AccDescr,
+    XAxis,
+    YAxis,
+    Line,
+    Bar,
+}
+
+/// Jison's literal word rules use an ASCII word boundary. Thus `barTitle` and
+/// `bar_1` remain text. Statement dispatch and lexical seams share this owner;
+/// quoted and structured payloads are scanned in their own states.
+fn xychart_word(input: &str) -> (Option<XyChartKeyword>, usize) {
+    let alpha_len = input.bytes().take_while(u8::is_ascii_alphabetic).count();
+    for (word, keyword) in [
+        ("title", XyChartKeyword::Title),
+        ("accTitle", XyChartKeyword::AccTitle),
+        ("accDescr", XyChartKeyword::AccDescr),
+        ("x-axis", XyChartKeyword::XAxis),
+        ("y-axis", XyChartKeyword::YAxis),
+        ("line", XyChartKeyword::Line),
+        ("bar", XyChartKeyword::Bar),
+    ] {
+        if !input
+            .get(..word.len())
+            .is_some_and(|prefix| prefix.eq_ignore_ascii_case(word))
+        {
+            continue;
+        }
+        if matches!(keyword, XyChartKeyword::AccTitle | XyChartKeyword::AccDescr) {
+            let tail = input[word.len()..].trim_start();
+            if !tail.starts_with(':')
+                && !(keyword == XyChartKeyword::AccDescr && tail.starts_with('{'))
+            {
+                continue;
+            }
+        } else if input
+            .as_bytes()
+            .get(word.len())
+            .is_some_and(|byte| byte.is_ascii_alphanumeric() || *byte == b'_')
+        {
+            continue;
+        }
+        return (Some(keyword), word.len());
     }
-    Some(&s[kw.len()..])
+    (None, alpha_len)
+}
+
+fn xychart_reserved_text_token_len(input: &str) -> Option<usize> {
+    let (keyword, len) = xychart_word(input);
+    if keyword.is_some() {
+        return Some(len);
+    }
+    // Header literals have a trailing ASCII word boundary; the orientation regexp does not.
+    for word in ["xychart-beta", "xychart"] {
+        if input
+            .get(..word.len())
+            .is_some_and(|prefix| prefix.eq_ignore_ascii_case(word))
+            && !input
+                .as_bytes()
+                .get(word.len())
+                .is_some_and(|byte| byte.is_ascii_alphanumeric() || *byte == b'_')
+        {
+            return Some(word.len());
+        }
+    }
+    ["vertical", "horizontal"]
+        .into_iter()
+        .find(|word| {
+            input
+                .get(..word.len())
+                .is_some_and(|prefix| prefix.eq_ignore_ascii_case(word))
+        })
+        .map(str::len)
 }
 
 #[cfg(feature = "editor-facts")]
@@ -1096,7 +1169,30 @@ fn parse_text_prefix_source<'a>(
     }
 
     let mut value = String::new();
-    for (offset, ch) in raw_value.char_indices() {
+    let mut offset = 0;
+    while offset < raw_value.len() {
+        let remaining = &raw_value[offset..];
+        let ch = remaining.chars().next().expect("nonempty text suffix");
+        if ch.is_ascii_alphabetic() {
+            if let Some(len) = xychart_reserved_text_token_len(remaining) {
+                let token = &remaining[..len];
+                return Err(Error::diagram_parse_exact(
+                    "xychart".to_string(),
+                    format!("unexpected reserved token in text: {token}"),
+                    SourceSpan::new(text_start + offset, text_start + offset + len),
+                ));
+            }
+            // Consume ALPHA as one token: a reserved suffix inside `foobar` is text,
+            // but a new token after NUM, punctuation, or whitespace is lexed again.
+            let len = remaining
+                .bytes()
+                .take_while(u8::is_ascii_alphabetic)
+                .count();
+            value.push_str(&remaining[..len]);
+            offset += len;
+            continue;
+        }
+        offset += ch.len_utf8();
         if ch.is_whitespace() {
             continue;
         }
@@ -1104,7 +1200,7 @@ fn parse_text_prefix_source<'a>(
             return Err(Error::diagram_parse_exact(
                 "xychart".to_string(),
                 format!("unexpected token in text: {ch}"),
-                SourceSpan::new(text_start + offset, text_start + offset + ch.len_utf8()),
+                SourceSpan::new(text_start + offset - ch.len_utf8(), text_start + offset),
             ));
         }
         value.push(ch);
@@ -1785,6 +1881,9 @@ fn split_statements_spanned_controlled(
     let mut in_quote = false;
     let mut in_md = false;
     let mut in_acc_descr_block = false;
+    let mut in_accessibility_line = false;
+    let mut bracket_depth = 0usize;
+    let mut word_end = 0usize;
     let mut iter = input.char_indices().peekable();
     let mut next_checkpoint = 0usize;
 
@@ -1795,6 +1894,34 @@ fn split_statements_spanned_controlled(
         }
         if cur.is_empty() {
             cur_start = idx;
+        }
+
+        // Accessibility values are lexer states, not ordinary text. In particular,
+        // quotes and command words inside them cannot introduce a new statement.
+        if in_acc_descr_block {
+            cur.push(ch);
+            if ch == '}' {
+                in_acc_descr_block = false;
+                out.push(SpannedStatement {
+                    text: std::mem::take(&mut cur),
+                    start: cur_start,
+                });
+                cur_start = idx + ch.len_utf8();
+            }
+            continue;
+        }
+        if in_accessibility_line {
+            if ch == '\n' {
+                in_accessibility_line = false;
+                out.push(SpannedStatement {
+                    text: std::mem::take(&mut cur),
+                    start: cur_start,
+                });
+                cur_start = idx + ch.len_utf8();
+            } else {
+                cur.push(ch);
+            }
+            continue;
         }
 
         if in_md {
@@ -1838,6 +1965,10 @@ fn split_statements_spanned_controlled(
         {
             let mut next_statement_start = input.len();
             for (comment_idx, comment_ch) in iter.by_ref() {
+                if comment_idx >= next_checkpoint {
+                    control.checkpoint()?;
+                    next_checkpoint = comment_idx.saturating_add(4096);
+                }
                 if comment_ch == '\n' {
                     next_statement_start = comment_idx + comment_ch.len_utf8();
                     break;
@@ -1852,6 +1983,34 @@ fn split_statements_spanned_controlled(
                 cur.clear();
             }
             cur_start = next_statement_start;
+            bracket_depth = 0;
+            continue;
+        }
+
+        if idx < word_end {
+            cur.push(ch);
+            continue;
+        }
+        if ch.is_ascii_alphabetic() {
+            let (keyword, word_len) = xychart_word(&input[idx..]);
+            word_end = idx + word_len;
+            if bracket_depth == 0
+                && let Some(keyword) = keyword
+            {
+                if !cur.trim().is_empty() {
+                    out.push(SpannedStatement {
+                        text: std::mem::take(&mut cur),
+                        start: cur_start,
+                    });
+                } else {
+                    cur.clear();
+                }
+                cur_start = idx;
+                in_accessibility_line = keyword == XyChartKeyword::AccTitle
+                    || (keyword == XyChartKeyword::AccDescr
+                        && input[word_end..].trim_start().starts_with(':'));
+            }
+            cur.push(ch);
             continue;
         }
 
@@ -1859,16 +2018,8 @@ fn split_statements_spanned_controlled(
             '{' if !in_acc_descr_block && is_xychart_accessibility_block_prefix(&cur) => {
                 in_acc_descr_block = true;
             }
-            '}' if in_acc_descr_block => {
-                in_acc_descr_block = false;
-                cur.push(ch);
-                out.push(SpannedStatement {
-                    text: std::mem::take(&mut cur),
-                    start: cur_start,
-                });
-                cur_start = idx + ch.len_utf8();
-                continue;
-            }
+            '[' => bracket_depth += 1,
+            ']' => bracket_depth = bracket_depth.saturating_sub(1),
             _ => {}
         }
 
@@ -1878,6 +2029,7 @@ fn split_statements_spanned_controlled(
                 start: cur_start,
             });
             cur_start = idx + ch.len_utf8();
+            bracket_depth = 0;
             continue;
         }
 
@@ -1999,6 +2151,152 @@ mod tests {
     }
 
     #[test]
+    fn xychart_same_line_commands_preserve_text_and_bar_annotation_controls() {
+        let model = parse(concat!(
+            "xychart title \"Revenue\nbar [literal]\" ",
+            "x-axis \"Fiscal quarter\" [First quarter, \"bar [Q2]\"] ",
+            "y-axis Revenue 0 --> 10 ",
+            "bar barTitle [1 \"ignored\", 2] line lineTitle [2 \"Low\", 4 \"High\"]",
+        ));
+        assert_eq!(model["title"], "Revenue\nbar [literal]");
+        assert_eq!(model["xAxis"]["title"], "Fiscal quarter");
+        assert_eq!(
+            model["xAxis"]["categories"],
+            json!(["Firstquarter", "bar [Q2]"])
+        );
+        assert_eq!(model["yAxis"]["max"], 10.0);
+        assert_eq!(model["plots"].as_array().unwrap().len(), 2);
+        assert_eq!(model["plots"][0]["title"], "barTitle");
+        assert_eq!(
+            model["plots"][0]["data"],
+            json!([["Firstquarter", 1.0], ["bar [Q2]", 2.0]])
+        );
+        assert!(model["plots"][0].get("pointLabels").is_none());
+        assert_eq!(model["plots"][1]["pointLabels"], json!(["Low", "High"]));
+    }
+
+    #[test]
+    #[cfg(feature = "editor-facts")]
+    fn xychart_same_line_editor_facts_keep_multiline_and_structured_payload_ranges() {
+        let text = concat!(
+            "xychart title \"Revenue\nbar [literal]\" ",
+            "x-axis \"Fiscal quarter\" [First quarter, \"bar [Q2]\"] ",
+            "y-axis Revenue 0 --> 10 ",
+            "bar Sales [1 \"ignored\", 2] ",
+            "line Forecast [2 \"Low\nline [literal]\", 4 \"High\"] %% bar [99]\n",
+            "accTitle: Revenue chart; bar [98]\n",
+            "accDescr {A literal \" and bar [97]\nMore %% literal description} ",
+            "title \"After block\" line [3, 4]\n",
+        );
+        let engine = MermaidEngine::new();
+        let canonical = engine
+            .parse_diagram_sync(text, ParseOptions::strict())
+            .unwrap()
+            .unwrap();
+        assert_eq!(canonical.model["title"], "After block");
+        assert_eq!(canonical.model["plots"].as_array().unwrap().len(), 3);
+        assert_eq!(canonical.model["accTitle"], "Revenue chart; bar [98]");
+        assert_eq!(
+            canonical.model["accDescr"],
+            "A literal \" and bar [97]\nMore %% literal description"
+        );
+        reset_xychart_syntax_construction_count();
+        let snapshot = engine
+            .parse_diagram_snapshot_with_type_sync("xychart", text)
+            .unwrap()
+            .unwrap();
+        assert_eq!(xychart_syntax_construction_count(), 1);
+        assert_eq!(snapshot.outcome().parsed_model().unwrap(), &canonical.model);
+        let crate::ParsedEditorFacts::Available(facts) = snapshot.editor_facts() else {
+            panic!("XYChart snapshot must retain the same parser's editor facts");
+        };
+        assert_eq!(facts.completeness, EditorSemanticCompleteness::Complete);
+        assert!(facts.diagnostics.is_empty());
+        for payload in [
+            "Revenue\nbar [literal]",
+            "Fiscal quarter",
+            "Sales",
+            "Forecast",
+            "Low\nline [literal]",
+            "High",
+            "Revenue chart; bar [98]",
+            "A literal \" and bar [97]\nMore %% literal description",
+            "After block",
+        ] {
+            let start = text.find(payload).unwrap();
+            let selection = SourceSpan::new(start, start + payload.len());
+            assert!(
+                facts
+                    .symbols
+                    .iter()
+                    .any(|symbol| { symbol.name == payload && symbol.selection == selection }),
+                "missing source-backed payload {payload:?}"
+            );
+            assert!(facts.expected_syntax.iter().any(|expected| {
+                expected.kind == EditorExpectedSyntaxKind::Payload && expected.span == selection
+            }));
+        }
+        for structured in [
+            "First quarter, \"bar [Q2]\"",
+            "0 --> 10",
+            "1 \"ignored\", 2",
+            "2 \"Low\nline [literal]\", 4 \"High\"",
+            "3, 4",
+        ] {
+            let start = text.find(structured).unwrap();
+            assert!(facts.expected_syntax.iter().any(|expected| {
+                expected.kind == EditorExpectedSyntaxKind::Payload
+                    && expected.span == SourceSpan::new(start, start + structured.len())
+            }));
+        }
+    }
+
+    #[test]
+    #[cfg(feature = "editor-facts")]
+    fn xychart_same_line_recovery_keeps_exact_error_and_later_facts() {
+        let text = "xychart x-axis [A, B] bar [1., 2] line After [3, 4]";
+        let engine = MermaidEngine::new();
+        let error = engine
+            .parse_diagram_sync(text, ParseOptions::strict())
+            .unwrap_err();
+        let Error::DiagramParse { diagnostic, .. } = error else {
+            panic!("expected a numeric diagnostic");
+        };
+        let start = text.find("1.").unwrap();
+        assert_eq!(diagnostic.span(), Some(SourceSpan::new(start, start + 2)));
+        assert_eq!(diagnostic.message(), "invalid number: 1.");
+        let facts = engine
+            .parse_editor_semantic_facts_with_type_sync("xychart", text)
+            .unwrap()
+            .unwrap();
+        assert_eq!(facts.completeness, EditorSemanticCompleteness::Recovered);
+        let later_start = text.find("After").unwrap();
+        assert!(facts.symbols.iter().any(|symbol| {
+            symbol.name == "After"
+                && symbol.selection == SourceSpan::new(later_start, later_start + 5)
+        }));
+    }
+
+    #[test]
+    fn xychart_same_line_support_preserves_upstream_rejection_boundaries() {
+        for text in [
+            "xychart x-axis [A, B] bar [1, 2] stray",
+            "xychart x-axis [A, B bar [1, 2]",
+            "xychart title \"unterminated x-axis [A, B] bar [1, 2]",
+            "xychart title \"A\" \"B\" bar [1, 2]",
+            // XY STR ends at every quote; it has no Langium backslash escape rule.
+            "xychart title \"A\\\"B\" bar [1, 2]",
+        ] {
+            assert!(
+                MermaidEngine::new()
+                    .parse_diagram_sync(text, ParseOptions::strict())
+                    .is_err(),
+                "unexpectedly accepted {text:?}"
+            );
+        }
+    }
+
+    #[test]
     fn xychart_orientation_invalid_throws() {
         let err = parse_err("xychart abc");
         assert!(err.contains("invalid chart orientation"));
@@ -2011,6 +2309,113 @@ mod tests {
 
         let model = parse("xychart\ntitle oneLinertitle");
         assert_eq!(model["title"], json!("oneLinertitle"));
+    }
+
+    #[test]
+    fn xychart_band_text_rejects_reserved_tokens_at_jison_token_boundaries() {
+        for (category, token) in [
+            ("bar", "bar"),
+            ("LINE", "LINE"),
+            ("title", "title"),
+            ("horizontal", "horizontal"),
+            ("horizontalFoo", "horizontal"),
+            ("verticalFoo", "vertical"),
+            ("vertical42", "vertical"),
+            ("HORIZONTAL_name", "HORIZONTAL"),
+            ("xychart-beta", "xychart-beta"),
+            ("1bar", "bar"),
+            ("_line", "line"),
+            ("foo bar", "bar"),
+            ("A-horizontal", "horizontal"),
+        ] {
+            let source = format!("xychart\nx-axis [{category}, B]\nline [1, 2]\n");
+            let error = MermaidEngine::new()
+                .parse_diagram_sync(&source, ParseOptions::strict())
+                .expect_err("inclusive band state must retain reserved lexer rules");
+            let Error::DiagramParse { diagnostic, .. } = error else {
+                panic!("expected exact XY Chart parser diagnostic");
+            };
+            let start = "xychart\nx-axis [".len() + category.rfind(token).unwrap();
+            assert_eq!(
+                diagnostic.message(),
+                format!("unexpected reserved token in text: {token}")
+            );
+            assert_eq!(
+                diagnostic.span(),
+                Some(SourceSpan::new(start, start + token.len()))
+            );
+        }
+    }
+
+    #[test]
+    fn xychart_band_text_keeps_alpha_numeric_and_quoted_controls() {
+        let model = parse(concat!(
+            "xychart\n",
+            "x-axis [barTitle, bar_1, bar1, foobar, b ar, 1foo, accTitle, accDescr, 01]\n",
+            "line [1, 2, 3, 4, 5, 6, 7, 8, 9]\n",
+        ));
+        assert_eq!(
+            model["xAxis"]["categories"],
+            json!([
+                "barTitle", "bar_1", "bar1", "foobar", "bar", "1foo", "accTitle", "accDescr", "01"
+            ])
+        );
+        for (quoted, expected) in [
+            ("\"bar\"", "bar"),
+            ("\"`bar`\"", "bar"),
+            ("\"horizontalFoo\"", "horizontalFoo"),
+        ] {
+            let source = format!("xychart\nx-axis [{quoted}, B]\nline [1, 2]\n");
+            assert_eq!(
+                parse(&source)["xAxis"]["categories"],
+                json!([expected, "B"])
+            );
+        }
+    }
+
+    #[test]
+    #[cfg(feature = "editor-facts")]
+    fn xychart_reserved_band_recovery_preserves_repeated_raw_label_occurrences() {
+        let source = concat!(
+            "xychart\n",
+            "x-axis [bar, B, bar]\n",
+            "line [1 \" bar \", 1 \"bar\", 1 \"bar\"]\n",
+        );
+        let facts = MermaidEngine::new()
+            .parse_editor_semantic_facts_with_type_sync("xychart", source)
+            .unwrap()
+            .unwrap();
+        assert_eq!(facts.completeness, EditorSemanticCompleteness::Recovered);
+        let reserved = source.find("bar").unwrap();
+        assert!(facts.diagnostics.iter().any(|diagnostic| {
+            diagnostic.kind == EditorSemanticDiagnosticKind::ParserRecovery
+                && diagnostic.span == Some(SourceSpan::new(reserved, reserved + 3))
+        }));
+        let occurrences = facts
+            .symbols
+            .iter()
+            .filter(|symbol| symbol.detail.as_deref() == Some("xychart line data label"))
+            .map(|symbol| (symbol.name.as_str(), symbol.selection))
+            .collect::<Vec<_>>();
+        let first = source.find("\" bar \"").unwrap() + 1;
+        let second = source.find("\"bar\"").unwrap() + 1;
+        let third = source.rfind("\"bar\"").unwrap() + 1;
+        assert_eq!(
+            occurrences,
+            vec![
+                (" bar ", SourceSpan::new(first, first + 5)),
+                ("bar", SourceSpan::new(second, second + 3)),
+                ("bar", SourceSpan::new(third, third + 3)),
+            ]
+        );
+        let valid = source.replace("x-axis [bar, B, bar]", "x-axis [\"bar\", B, \"bar\"]");
+        let model = parse(&valid);
+        assert_eq!(model["xAxis"]["categories"], json!(["bar", "B", "bar"]));
+        assert_eq!(model["plots"][0]["values"], json!([1.0, 1.0, 1.0]));
+        assert_eq!(
+            model["plots"][0]["pointLabels"],
+            json!(["bar", "bar", "bar"])
+        );
     }
 
     #[test]
@@ -2611,6 +3016,93 @@ mod semantic_tests {
             config: MermaidConfig::empty_object(),
             semantic_config: MermaidConfig::empty_object(),
             title: None,
+        }
+    }
+
+    #[test]
+    fn semantic_orientation_preserves_upstream_literal_setter_behavior() {
+        let mut metadata = metadata();
+        metadata.semantic_config = MermaidConfig::from_value(serde_json::json!({
+            "xyChart": {"chartOrientation": "horizontal"}
+        }));
+        for (orientation, expected) in [
+            ("horizontal", "horizontal"),
+            ("HORIZONTAL", "vertical"),
+            ("Horizontal", "vertical"),
+            ("vertical", "vertical"),
+            ("VERTICAL", "vertical"),
+        ] {
+            let source = format!("xychart {orientation}\nx-axis [A, B]\nbar [1, 2]");
+            let model = parse_xychart_semantic_model_controlled(
+                &source,
+                &metadata,
+                #[cfg(feature = "editor-facts")]
+                EditorFactsDemand::Omit,
+                &crate::OperationControl::new(),
+            )
+            .unwrap()
+            .model
+            .unwrap();
+            assert_eq!(
+                model.orientation, expected,
+                "orientation token {orientation}"
+            );
+        }
+    }
+
+    #[test]
+    fn semantic_same_line_header_axis_and_plot_share_one_construction() {
+        for header in ["xychart", "xychart-beta"] {
+            reset_xychart_syntax_construction_count();
+            let source = format!("{header} x-axis [A, B] bar [1, 2]");
+            let model = parse_xychart_semantic_model_controlled(
+                &source,
+                &metadata(),
+                #[cfg(feature = "editor-facts")]
+                EditorFactsDemand::Omit,
+                &crate::OperationControl::new(),
+            )
+            .unwrap()
+            .model
+            .unwrap();
+            assert_eq!(xychart_syntax_construction_count(), 1);
+            assert_eq!(model.orientation, "vertical");
+            assert_eq!(
+                model.x_axis,
+                XyChartAxisModel::Band {
+                    title: String::new(),
+                    categories: vec!["A".to_string(), "B".to_string()],
+                }
+            );
+            assert_eq!(model.plots.len(), 1);
+            assert_eq!(model.plots[0].plot_type, XyChartPlotType::Bar);
+            assert_eq!(model.plots[0].values, vec![1.0, 2.0]);
+            assert_eq!(
+                model.plots[0].data,
+                vec![("A".to_string(), Some(1.0)), ("B".to_string(), Some(2.0)),]
+            );
+        }
+    }
+
+    #[test]
+    fn semantic_same_line_lexing_can_cancel_inside_long_strings_and_comments() {
+        for source in [
+            format!("xychart title \"{}\" bar [1]", "a".repeat(32768)),
+            format!("xychart x-axis [A] %%{}\nbar [1]", "a".repeat(32768)),
+            format!("xychart x-axis [{}bar, B] line [1, 2]", "A ".repeat(32768)),
+        ] {
+            let control = crate::OperationControl::new();
+            control.cancel_after_checkpoints(5);
+            assert!(matches!(
+                parse_xychart_semantic_model_controlled(
+                    &source,
+                    &metadata(),
+                    #[cfg(feature = "editor-facts")]
+                    EditorFactsDemand::Omit,
+                    &control,
+                ),
+                Err(crate::OperationCancelled { .. })
+            ));
         }
     }
 
