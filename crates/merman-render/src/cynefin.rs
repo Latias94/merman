@@ -75,6 +75,10 @@ pub(crate) struct CynefinTheme {
     pub arrow_width: f64,
     pub text_color: String,
     pub label_color: String,
+    pub text_color_source: &'static str,
+    pub label_color_source: &'static str,
+    pub boundary_color_source: &'static str,
+    pub arrow_color_source: &'static str,
 }
 
 pub(crate) fn cynefin_layout_settings(
@@ -122,22 +126,51 @@ pub(crate) fn cynefin_theme(effective_config: &serde_json::Value) -> CynefinThem
     }
     fn themed_color(
         cfg: &serde_json::Value,
-        key: &str,
-        fallback_key: &str,
+        key: &'static str,
         fallback: &str,
-    ) -> String {
-        cfg.get("themeVariables")
-            .and_then(|value| value.get("cynefin"))
-            .and_then(|value| value.get(key))
-            .and_then(serde_json::Value::as_str)
-            .map(str::to_string)
-            .or_else(|| config_string(cfg, &["themeVariables", fallback_key]))
-            .unwrap_or_else(|| fallback.to_string())
+    ) -> (String, &'static str) {
+        let (nested_path, root_key, root_path) = match key {
+            "textColor" => (
+                "themeVariables.cynefin.textColor",
+                "textColor",
+                "themeVariables.textColor",
+            ),
+            "labelColor" => (
+                "themeVariables.cynefin.labelColor",
+                "primaryTextColor",
+                "themeVariables.primaryTextColor",
+            ),
+            "boundaryColor" => (
+                "themeVariables.cynefin.boundaryColor",
+                "lineColor",
+                "themeVariables.lineColor",
+            ),
+            "arrowColor" => (
+                "themeVariables.cynefin.arrowColor",
+                "lineColor",
+                "themeVariables.lineColor",
+            ),
+            _ => unreachable!("Cynefin inherited color role"),
+        };
+        if let Some(color) = cfg["themeVariables"]["cynefin"][key].as_str() {
+            (color.to_owned(), nested_path)
+        } else {
+            (
+                config_string(cfg, &["themeVariables", root_key])
+                    .unwrap_or_else(|| fallback.to_owned()),
+                root_path,
+            )
+        }
     }
     fn number(cfg: &serde_json::Value, key: &str, fallback: f64) -> f64 {
         config_f64(cfg, &["themeVariables", "cynefin", key]).unwrap_or(fallback)
     }
 
+    let (text_color, text_color_source) = themed_color(effective_config, "textColor", "#333");
+    let (label_color, label_color_source) = themed_color(effective_config, "labelColor", "#131300");
+    let (boundary_color, boundary_color_source) =
+        themed_color(effective_config, "boundaryColor", "#333333");
+    let (arrow_color, arrow_color_source) = themed_color(effective_config, "arrowColor", "#333333");
     CynefinTheme {
         complex_bg: color(effective_config, "complexBg", "#E8F5E9"),
         complicated_bg: color(effective_config, "complicatedBg", "#E3F2FD"),
@@ -146,19 +179,18 @@ pub(crate) fn cynefin_theme(effective_config: &serde_json::Value) -> CynefinThem
         confusion_bg: color(effective_config, "confusionBg", "#F3E5F5"),
         domain_font_size: number(effective_config, "domainFontSize", 16.0),
         item_font_size: number(effective_config, "itemFontSize", 12.0),
-        boundary_color: themed_color(effective_config, "boundaryColor", "lineColor", "#333333"),
+        boundary_color,
         boundary_width: number(effective_config, "boundaryWidth", 2.0),
         cliff_color: color(effective_config, "cliffColor", "#8B0000"),
         cliff_width: number(effective_config, "cliffWidth", 4.0),
-        arrow_color: themed_color(effective_config, "arrowColor", "lineColor", "#333333"),
+        arrow_color,
         arrow_width: number(effective_config, "arrowWidth", 2.0),
-        text_color: themed_color(effective_config, "textColor", "textColor", "#333"),
-        label_color: themed_color(
-            effective_config,
-            "labelColor",
-            "primaryTextColor",
-            "#131300",
-        ),
+        text_color,
+        label_color,
+        text_color_source,
+        label_color_source,
+        boundary_color_source,
+        arrow_color_source,
     }
 }
 
@@ -659,6 +691,66 @@ fn fmt_number(value: f64) -> String {
 mod tests {
     use super::*;
     use crate::text::{DeterministicTextMeasurer, TextMetrics};
+
+    #[test]
+    fn inherited_colors_retain_the_selected_configuration_source() {
+        for nested in [
+            serde_json::Value::Null,
+            serde_json::json!(7),
+            serde_json::json!(""),
+            serde_json::json!("#446688"),
+        ] {
+            let colors = cynefin_theme(&serde_json::json!({
+                "themeVariables": {
+                    "textColor": "#125634",
+                    "primaryTextColor": "#125634",
+                    "lineColor": "#125634",
+                    "cynefin": {
+                        "textColor": nested,
+                        "labelColor": nested,
+                        "boundaryColor": nested,
+                        "arrowColor": nested
+                    }
+                }
+            }));
+            for (color, source, family_key, root_key) in [
+                (
+                    &colors.text_color,
+                    colors.text_color_source,
+                    "textColor",
+                    "textColor",
+                ),
+                (
+                    &colors.label_color,
+                    colors.label_color_source,
+                    "labelColor",
+                    "primaryTextColor",
+                ),
+                (
+                    &colors.boundary_color,
+                    colors.boundary_color_source,
+                    "boundaryColor",
+                    "lineColor",
+                ),
+                (
+                    &colors.arrow_color,
+                    colors.arrow_color_source,
+                    "arrowColor",
+                    "lineColor",
+                ),
+            ] {
+                assert_eq!(color, nested.as_str().unwrap_or("#125634"));
+                assert_eq!(
+                    source,
+                    if nested.is_string() {
+                        format!("themeVariables.cynefin.{family_key}")
+                    } else {
+                        format!("themeVariables.{root_key}")
+                    }
+                );
+            }
+        }
+    }
 
     struct FixedWidthMeasurer(f64);
 

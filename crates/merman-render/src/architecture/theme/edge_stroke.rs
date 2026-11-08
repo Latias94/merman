@@ -15,9 +15,6 @@ use crate::family::{
 };
 use crate::resources::{OperationWorkError, OperationWorkMeter};
 
-const ARCH_EDGE_COLOR_PATH: &str = "themeVariables.archEdgeColor";
-const LINE_COLOR_PATH: &str = "themeVariables.lineColor";
-
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct ArchitectureEdgeStroke {
     css: Box<str>,
@@ -242,9 +239,6 @@ fn typed_static_stroke(
 }
 
 fn mermaid_owns_edge_stroke(config: &PresentationConfig) -> bool {
-    if config.config_paint_overrides_typed_default(ARCH_EDGE_COLOR_PATH) {
-        return true;
-    }
-    config.config_paint_overrides_typed_default(LINE_COLOR_PATH)
-        && config.get_str(ARCH_EDGE_COLOR_PATH) == config.get_str(LINE_COLOR_PATH)
+    let (path, _) = super::super::ArchitectureCssBinding::edge_color_source(config.as_value());
+    config.config_paint_overrides_typed_default(path)
 }

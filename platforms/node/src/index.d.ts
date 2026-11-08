@@ -16,7 +16,123 @@ export interface MermanBindingOptions {
     profile?: MermanResourceProfile;
     limits?: Record<string, number>;
   };
+  /** A supplied selection replaces the complete constructor theme; null clears it. */
+  theme?: DiagramThemeSelection | null;
   [key: string]: unknown;
+}
+
+export type ThemeAppearance = "light" | "dark";
+export type ThemeJsonValue =
+  | string | number | boolean | null
+  | ThemeJsonValue[]
+  | { [key: string]: ThemeJsonValue };
+export type ThemeJsonObject = { [key: string]: ThemeJsonValue };
+
+/** Editable JSON sections are validated by the shared Rust theme compiler. */
+export interface ThemeDesignV1 {
+  tokens?: Record<string, ThemeJsonValue>;
+  styles?: Record<string, ThemeJsonValue>;
+  rules?: ThemeJsonObject[];
+  palettes?: Record<string, ThemeJsonValue>;
+  canvas?: ThemeJsonObject;
+  typography?: ThemeJsonObject;
+  mermaid?: ThemeJsonObject;
+  assets?: ThemeJsonObject;
+  requirements?: ThemeJsonObject;
+  appearances?: Partial<Record<ThemeAppearance, ThemeAppearanceOverridesV1>>;
+  default_appearance?: ThemeAppearance;
+}
+
+export type ThemeAppearanceOverridesV1 =
+  Omit<ThemeDesignV1, "appearances" | "default_appearance" | "assets" | "requirements">;
+
+export type ThemeRecipeV1 = {
+  schema_version: 1;
+  preset?: never;
+  spec?: never;
+  recipe?: never;
+  appearance?: never;
+} & (
+  | { kind: "design"; design: ThemeDesignV1; complete_spec?: never }
+  | { kind: "complete_spec"; complete_spec: ThemeJsonObject; design?: never }
+);
+
+export type DiagramThemeSelection =
+  | ThemeRecipeV1
+  | ({ kind?: never; schema_version?: never; design?: never; complete_spec?: never } & (
+      | { preset: string; appearance?: ThemeAppearance; recipe?: never; spec?: never }
+      | { recipe: ThemeRecipeV1; appearance?: ThemeAppearance; preset?: never; spec?: never }
+      | { spec: ThemeJsonObject; preset?: never; recipe?: never; appearance?: never }
+    ));
+
+export type ThemeAuthoringRequestV1 =
+  | { schema_version: 1; action: "inspect"; recipe: ThemeRecipeV1; appearance?: never }
+  | { schema_version: 1; action: "materialize"; recipe: ThemeRecipeV1; appearance?: ThemeAppearance };
+export type ThemeAuthoringInput = ThemeDesignV1 | ThemeAuthoringRequestV1 | string;
+
+export interface ThemeDesignReferenceUse {
+  token: string;
+  path: string;
+  domain: ThemeJsonObject;
+}
+
+export interface ThemeRecipeReferenceUseV1 extends ThemeDesignReferenceUse {
+  token_path: string;
+}
+
+export interface MaterializedThemeWireV1 {
+  schema_version: 1;
+  authoring_schema_version: 1;
+  expansion_version: 1;
+  spec_schema_version: 1;
+  spec: ThemeJsonObject;
+  references?: ThemeDesignReferenceUse[];
+}
+
+export interface ThemeRecipeInspectionV1 {
+  schema_version: 1;
+  recipe_schema_version: 1;
+  supported_appearances: ThemeAppearance[];
+  default_appearance: ThemeAppearance | null;
+  appearances: {
+    appearance: ThemeAppearance | null;
+    references: ThemeRecipeReferenceUseV1[];
+  }[];
+}
+
+export interface MaterializedThemeRecipeV1 {
+  schema_version: 1;
+  recipe_schema_version: 1;
+  supported_appearances: ThemeAppearance[];
+  default_appearance: ThemeAppearance | null;
+  effective_appearance: ThemeAppearance | null;
+  spec: ThemeJsonObject;
+  references: ThemeRecipeReferenceUseV1[];
+}
+
+export type ThemeAuthoringResult =
+  | MaterializedThemeWireV1 | ThemeRecipeInspectionV1 | MaterializedThemeRecipeV1;
+export type ThemeAuthoringResultFor<Input extends ThemeAuthoringInput> =
+  Input extends { action: "inspect" } ? ThemeRecipeInspectionV1
+    : Input extends { action: "materialize" } ? MaterializedThemeRecipeV1
+      : Input extends string ? ThemeAuthoringResult : MaterializedThemeWireV1;
+
+export interface ThemeSupportQueryV1 {
+  schema_version: 1;
+  family: string;
+  output: string;
+  subject:
+    | { kind: "rule"; target: string; facet: string }
+    | { kind: "ordinal-palette"; target: string }
+    | { kind: "base-typography"; property: string };
+}
+
+export interface ThemeCapabilityDescriptorV1 {
+  schema_version: 1;
+  claim_revision: number;
+  query: ThemeSupportQueryV1;
+  state: "unconditional" | "conditional" | "not-applicable" | "unsupported" | "unverified" | (string & {});
+  reason_ids: string[];
 }
 
 /** One host-loaded Iconify pack, admitted once into an immutable engine-local registry. */
@@ -201,6 +317,17 @@ export declare class MermanEngine {
     source: string,
     options?: Omit<RenderSvgOptions, "signal">,
   ): string;
+  /** Raw strings preserve duplicate-field admission and source paths in Rust. */
+  materializeTheme<Input extends ThemeAuthoringInput>(
+    input: Input,
+    options?: RenderSvgOptions,
+  ): Promise<ThemeAuthoringResultFor<Input>>;
+  describeThemeSupport(
+    query: ThemeSupportQueryV1 | string,
+    options?: RenderSvgOptions,
+  ): Promise<ThemeCapabilityDescriptorV1>;
+  /** Exports the complete editable design, including every declared appearance. */
+  exportThemePreset(presetId: string, options?: RenderSvgOptions): Promise<ThemeRecipeV1>;
   metadataJson(id: string): string;
   executeOperation(
     request: MermanOperationRequest,

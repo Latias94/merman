@@ -1041,6 +1041,128 @@ fn wardley_typography_only_theme_preserves_plain_paint() {
 }
 
 #[test]
+fn wardley_label_ownership_follows_initialized_family_colors() {
+    let diagram = "wardley-beta\ntitle Palette title\ncomponent API [0.7, 0.4]\ncomponent DB [0.3, 0.6]\nAPI -> DB; Requests\n";
+    for (target, class) in [
+        (ThemeTarget::Text, "wardley-title"),
+        (ThemeTarget::Title, "wardley-title"),
+        (ThemeTarget::NodeLabel, "wardley-node-label"),
+        (ThemeTarget::EdgeLabel, "wardley-link-label"),
+    ] {
+        let theme = DiagramThemeCompiler::new()
+            .compile(
+                DiagramThemeSpec::new().with_styles(
+                    ThemeRuleSet::default().with_rule(ThemeRule::new(
+                        target,
+                        ThemeStylePatch::default()
+                            .with_fill(CanvasPaint::solid("#c2188b").unwrap()),
+                    )),
+                ),
+            )
+            .unwrap();
+        for from_source in [false, true] {
+            for local in [
+                None,
+                Some(serde_json::Value::Null),
+                Some(serde_json::json!("#446688")),
+            ] {
+                // Null selects the authored root fallback instead of the initialized family role.
+                let owned = local.is_some();
+                let expected_color = match local.as_ref() {
+                    None => "#c2188b",
+                    Some(serde_json::Value::Null) => "#125634",
+                    Some(_) => "#446688",
+                };
+                let mut variables = serde_json::json!({"primaryTextColor": "#125634"});
+                if let Some(local) = &local {
+                    variables["wardley"] =
+                        serde_json::json!({"axisTextColor": local, "componentLabelColor": local});
+                }
+                let mut site = serde_json::json!({});
+                let source = if from_source {
+                    format!(
+                        "---\nconfig: {}\n---\n{diagram}",
+                        serde_json::json!({"themeVariables": variables})
+                    )
+                } else {
+                    site["themeVariables"] = variables.clone();
+                    diagram.to_owned()
+                };
+                let (_, rendered) = try_render_wardley_with_theme(
+                    &source,
+                    &theme,
+                    MermaidEngine::new().with_site_config(
+                        merman_core::presentation::SourcePresentationConfig::from_value(site),
+                    ),
+                    &portable_wardley_environment(),
+                    "wardley-selected-color",
+                )
+                .unwrap();
+                let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+                let label = element_with_class(&document, "text", class);
+                assert_eq!(
+                    label.attribute("fill"),
+                    Some(expected_color),
+                    "{target:?}: source={from_source}, variables={variables}"
+                );
+                let evidence =
+                    merman_render::__private::family_evidence(rendered.into_completion().report());
+                assert_eq!(evidence.required_count(), 1);
+                assert_eq!(evidence.applied_count(), usize::from(!owned));
+                assert_eq!(evidence.not_applicable_count(), usize::from(owned));
+                assert_eq!(evidence.theme_residual_count(), 0);
+            }
+        }
+    }
+}
+
+#[test]
+fn wardley_axis_override_does_not_own_component_or_anchor_labels() {
+    let theme = DiagramThemeCompiler::new()
+        .compile(
+            DiagramThemeSpec::new().with_styles(ThemeRuleSet::default().with_rule(ThemeRule::new(
+                ThemeTarget::Text,
+                ThemeStylePatch::default().with_fill(CanvasPaint::solid("#c2188b").unwrap()),
+            ))),
+        )
+        .unwrap();
+    let (_, rendered) = try_render_wardley_with_theme(
+        "wardley-beta\ntitle Palette title\nanchor Customer [0.9, 0.9]\ncomponent API [0.7, 0.4]\nCustomer -> API\n",
+        &theme,
+        MermaidEngine::new().with_site_config(
+            merman_core::presentation::SourcePresentationConfig::from_value(serde_json::json!({
+                "themeVariables": {
+                    "primaryTextColor": "#125634",
+                    "wardley": {"axisTextColor": "#446688"}
+                }
+            })),
+        ),
+        &portable_wardley_environment(),
+        "wardley-independent-labels",
+    ).unwrap();
+    let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+    assert_eq!(
+        element_with_class(&document, "text", "wardley-title").attribute("fill"),
+        Some("#446688")
+    );
+    for (class, expected) in [
+        ("wardley-node--component", "#c2188b"),
+        ("wardley-node--anchor", "#125634"),
+    ] {
+        let label = element_with_class(&document, "g", class)
+            .children()
+            .find(|node| node.has_tag_name("text"))
+            .unwrap();
+        assert_eq!(label.attribute("fill"), Some(expected));
+    }
+    drop(document);
+    let evidence = merman_render::__private::family_evidence(rendered.into_completion().report());
+    assert_eq!(evidence.required_count(), 1);
+    assert_eq!(evidence.applied_count(), 1);
+    assert_eq!(evidence.theme_residual_count(), 0);
+}
+
+#[test]
 fn wardley_non_paint_themes_preserve_authored_palette_paint() {
     let empty = DiagramThemeCompiler::new()
         .compile(DiagramThemeSpec::new())

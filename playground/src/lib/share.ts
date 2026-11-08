@@ -6,6 +6,7 @@ import { isDiagramFont } from "./diagram-font.ts";
 import { exceedsUtf8ByteBudget, utf8ByteLength } from "./utf8.ts";
 import type { ThemeRecipeLabel, WorkspaceSnapshot } from "./workspace-snapshot.ts";
 import { isMermanSvgPipeline } from "../runtime/merman-core.ts";
+import { isThemeAppearancePreference } from "./theme-appearance.ts";
 
 const SHARE_SOURCE_BYTES = 2 * 1024 * 1024;
 const SHARE_CONFIG_BYTES = 1024 * 1024;
@@ -27,6 +28,7 @@ export const SHARE_LIMITS = Object.freeze({
 export const SHARE_V2_PREFIX = "#s2:" as const;
 export const SHARE_V3_PREFIX = "#s3:" as const;
 export const SHARE_V4_PREFIX = "#s4:" as const;
+export const SHARE_V5_PREFIX = "#s5:" as const;
 
 export const SHARE_V3_LIMITS = Object.freeze({
   ...SHARE_LIMITS,
@@ -85,6 +87,10 @@ export const WORKSPACE_V4_DEFAULTS: Readonly<WorkspaceSnapshot> = Object.freeze(
   diagramFont: "inherit",
 });
 
+export const WORKSPACE_V5_DEFAULTS: Readonly<WorkspaceSnapshot> = Object.freeze({
+  ...WORKSPACE_V4_DEFAULTS,
+});
+
 const MAX_LEGACY_ENCODED_HASH_CHARS = SHARE_LIMITS.jsonBytes * 4 + 4;
 const WORKSPACE_V2_KEYS = new Set([
   "code",
@@ -98,6 +104,7 @@ const WORKSPACE_V2_KEYS = new Set([
 ]);
 const WORKSPACE_V3_KEYS = new Set([...WORKSPACE_V2_KEYS, "themeRecipeJson"]);
 const WORKSPACE_V4_KEYS = new Set([...WORKSPACE_V3_KEYS, "themeRecipeLabel"]);
+const WORKSPACE_V5_KEYS = new Set([...WORKSPACE_V4_KEYS, "themeAppearance"]);
 const utf8Encoder = new TextEncoder();
 const utf8Decoder = new TextDecoder("utf-8", { fatal: true });
 
@@ -108,12 +115,15 @@ export function encodeShareHash(data: WorkspaceSnapshot): string {
 
   const customTheme = data.themeRecipeJson !== null;
   const namedTheme = data.themeRecipeLabel != null;
-  const prefix = namedTheme ? SHARE_V4_PREFIX : customTheme ? SHARE_V3_PREFIX : SHARE_V2_PREFIX;
+  const pairedTheme = (data.themeAppearance ?? "default") !== "default" ||
+    data.themeRecipeLabel?.derivedFrom !== undefined;
+  const prefix = pairedTheme ? SHARE_V5_PREFIX : namedTheme ? SHARE_V4_PREFIX : customTheme ? SHARE_V3_PREFIX : SHARE_V2_PREFIX;
   const limits = customTheme ? SHARE_V3_LIMITS : SHARE_LIMITS;
-  const defaults = namedTheme ? WORKSPACE_V4_DEFAULTS : customTheme ? WORKSPACE_V3_DEFAULTS : WORKSPACE_V2_DEFAULTS;
+  const defaults = pairedTheme ? WORKSPACE_V5_DEFAULTS : namedTheme ? WORKSPACE_V4_DEFAULTS : customTheme ? WORKSPACE_V3_DEFAULTS : WORKSPACE_V2_DEFAULTS;
   const payload = encodeWorkspacePayload(data, defaults);
   if (customTheme) payload.themeRecipeJson = data.themeRecipeJson;
   if (namedTheme) payload.themeRecipeLabel = data.themeRecipeLabel;
+  if (pairedTheme && data.themeAppearance && data.themeAppearance !== "default") payload.themeAppearance = data.themeAppearance;
   const json = JSON.stringify(payload);
   if (utf8ByteLength(json) > limits.jsonBytes) {
     throw new RangeError("Workspace exceeds the share URL contract.");
@@ -139,6 +149,9 @@ export function decodeShareHash(
   }
   if (fragment.startsWith(SHARE_V4_PREFIX)) {
     return decodeCompressedWorkspace(fragment.slice(SHARE_V4_PREFIX.length), 4);
+  }
+  if (fragment.startsWith(SHARE_V5_PREFIX)) {
+    return decodeCompressedWorkspace(fragment.slice(SHARE_V5_PREFIX.length), 5);
   }
   return decodeLegacyWorkspaceHash(hash, legacyDefaults);
 }
@@ -199,13 +212,13 @@ function encodeWorkspacePayload(
 
 function decodeCompressedWorkspace(
   encoded: string,
-  version: 2 | 3 | 4,
+  version: 2 | 3 | 4 | 5,
 ): WorkspaceSnapshot | null {
   const customThemes = version !== 2;
   const limits = customThemes ? SHARE_V3_LIMITS : SHARE_LIMITS;
-  const prefix = version === 4 ? SHARE_V4_PREFIX : customThemes ? SHARE_V3_PREFIX : SHARE_V2_PREFIX;
-  const defaults = version === 4 ? WORKSPACE_V4_DEFAULTS : customThemes ? WORKSPACE_V3_DEFAULTS : WORKSPACE_V2_DEFAULTS;
-  const keys = version === 4 ? WORKSPACE_V4_KEYS : customThemes ? WORKSPACE_V3_KEYS : WORKSPACE_V2_KEYS;
+  const prefix = version === 5 ? SHARE_V5_PREFIX : version === 4 ? SHARE_V4_PREFIX : customThemes ? SHARE_V3_PREFIX : SHARE_V2_PREFIX;
+  const defaults = version === 5 ? WORKSPACE_V5_DEFAULTS : version === 4 ? WORKSPACE_V4_DEFAULTS : customThemes ? WORKSPACE_V3_DEFAULTS : WORKSPACE_V2_DEFAULTS;
+  const keys = version === 5 ? WORKSPACE_V5_KEYS : version === 4 ? WORKSPACE_V4_KEYS : customThemes ? WORKSPACE_V3_KEYS : WORKSPACE_V2_KEYS;
   try {
     if (
       encoded.length === 0 ||
@@ -218,7 +231,7 @@ function decodeCompressedWorkspace(
     const jsonBytes = decompressWithinBudget(compressed, limits.jsonBytes);
     const value: unknown = JSON.parse(utf8Decoder.decode(jsonBytes));
     if (!isRecord(value) || !hasOnlyKeys(value, keys)) return null;
-    return decodeWorkspaceRecord(value, defaults);
+    return decodeWorkspaceRecord(value, defaults, version === 5);
   } catch {
     return null;
   }
@@ -227,6 +240,7 @@ function decodeCompressedWorkspace(
 function decodeWorkspaceRecord(
   value: Record<string, unknown>,
   defaults: Readonly<WorkspaceSnapshot>,
+  pairedThemes = false,
 ): WorkspaceSnapshot | null {
   const code = optionalBoundedString(
     value,
@@ -270,7 +284,8 @@ function decodeWorkspaceRecord(
     renderOptions === null ||
     themeRecipeJson === undefined ||
     !isThemeRecipeJson(themeRecipeJson) ||
-    (themeRecipeLabel !== undefined && (!isThemeRecipeLabel(themeRecipeLabel) || themeRecipeJson === null)) ||
+    (Object.hasOwn(value, "themeAppearance") && !isThemeAppearancePreference(value.themeAppearance)) ||
+    (themeRecipeLabel !== undefined && (!isThemeRecipeLabel(themeRecipeLabel, pairedThemes) || themeRecipeJson === null)) ||
     (themeRecipeJson !== null && renderOptions.themePresetId !== null)
   ) {
     return null;
@@ -283,6 +298,7 @@ function decodeWorkspaceRecord(
     ...renderOptions,
     themeRecipeJson,
     ...(themeRecipeLabel ? { themeRecipeLabel: themeRecipeLabel as ThemeRecipeLabel } : {}),
+    ...(value.themeAppearance !== undefined ? { themeAppearance: value.themeAppearance as WorkspaceSnapshot["themeAppearance"] } : {}),
     textMeasurementMode,
     diagramFont,
   };
@@ -332,6 +348,7 @@ function decodeLegacyWorkspaceHash(
       Object.hasOwn(value, "renderViewportMode") ||
       Object.hasOwn(value, "hostThemePreset") ||
       Object.hasOwn(value, "themeRecipeLabel") ||
+      Object.hasOwn(value, "themeAppearance") ||
       Object.hasOwn(value, "themeRecipeJson")
     ) {
       return null;
@@ -481,7 +498,8 @@ function isValidShareSnapshot(value: WorkspaceSnapshot): boolean {
     isMermaidThemeSelection(value.diagramTheme) &&
     isOptionalId(value.themePresetId) &&
     isThemeRecipeJson(value.themeRecipeJson) &&
-    (value.themeRecipeLabel == null || (isThemeRecipeLabel(value.themeRecipeLabel) && value.themeRecipeJson !== null)) &&
+    (value.themeAppearance === undefined || isThemeAppearancePreference(value.themeAppearance)) &&
+    (value.themeRecipeLabel == null || (isThemeRecipeLabel(value.themeRecipeLabel, true) && value.themeRecipeJson !== null)) &&
     (value.themeRecipeJson === null || value.themePresetId === null) &&
     isMermanSvgPipeline(value.svgPipeline) &&
     isTextMeasurementMode(value.textMeasurementMode) &&
@@ -489,9 +507,10 @@ function isValidShareSnapshot(value: WorkspaceSnapshot): boolean {
   );
 }
 
-function isThemeRecipeLabel(value: unknown): value is ThemeRecipeLabel {
-  return isRecord(value) && hasOnlyKeys(value, new Set(["name", "source"])) &&
+function isThemeRecipeLabel(value: unknown, pairedThemes = false): value is ThemeRecipeLabel {
+  return isRecord(value) && hasOnlyKeys(value, new Set(pairedThemes ? ["name", "source", "derivedFrom"] : ["name", "source"])) &&
     isBoundedString(value.name, 256) && value.name.trim().length > 0 &&
+    (value.derivedFrom === undefined || (isBoundedString(value.derivedFrom, 256) && value.derivedFrom.trim().length > 0)) &&
     (value.source === "exploration" || value.source === "imported");
 }
 
@@ -503,8 +522,7 @@ function isThemeRecipeJson(value: unknown): value is string | null {
     const recipe: unknown = JSON.parse(value);
     return (
       isRecord(recipe) &&
-      recipe.schema_version === 1 &&
-      (recipe.kind === "design" || recipe.kind === "complete_spec")
+      recipe.schema_version === 1 && (recipe.kind === "design" || recipe.kind === "complete_spec")
     );
   } catch {
     return false;

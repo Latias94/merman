@@ -1067,6 +1067,237 @@ fn cynefin_source_owns_only_its_authored_paint_properties() {
 }
 
 #[test]
+fn cynefin_paint_ownership_uses_the_selected_family_color() {
+    let diagram = "cynefin-beta\ntitle Palette title\nclear\n\"Runbook\"\ncomplex\n\"Retrospective\"\nclear --> complex : \"Probe\"\n";
+    for (target, root_key, nested_key, class, stroke) in [
+        (
+            ThemeTarget::Text,
+            "textColor",
+            "textColor",
+            "cynefinSubtitle",
+            false,
+        ),
+        (
+            ThemeTarget::Title,
+            "primaryTextColor",
+            "labelColor",
+            "cynefinTitle",
+            false,
+        ),
+        (
+            ThemeTarget::Edge,
+            "lineColor",
+            "arrowColor",
+            "cynefinArrowLine",
+            true,
+        ),
+        (
+            ThemeTarget::Marker,
+            "lineColor",
+            "arrowColor",
+            "cynefinArrowHead",
+            false,
+        ),
+    ] {
+        let paint = CanvasPaint::solid("#c2188b").unwrap();
+        let patch = if stroke {
+            ThemeStylePatch::default().with_stroke(paint)
+        } else {
+            ThemeStylePatch::default().with_fill(paint)
+        };
+        let theme =
+            cynefin_paint_theme(ThemeRuleSet::default().with_rule(ThemeRule::new(target, patch)));
+        for from_source in [false, true] {
+            for local in [
+                None,
+                Some(serde_json::Value::Null),
+                Some(serde_json::json!("#446688")),
+            ] {
+                // Null removes the initialized role, selecting the explicitly owned root fallback.
+                let owned = local.is_some();
+                let expected_color = match local.as_ref() {
+                    None => "#c2188b",
+                    Some(serde_json::Value::Null) => "#125634",
+                    Some(_) => "#446688",
+                };
+                let mut variables = serde_json::json!({(root_key): "#125634"});
+                if let Some(local) = &local {
+                    variables["cynefin"] = serde_json::json!({(nested_key): local});
+                }
+                let mut site = serde_json::json!({"cynefin": {"seed": 42}});
+                let source = if from_source {
+                    format!(
+                        "---\nconfig: {}\n---\n{diagram}",
+                        serde_json::json!({"themeVariables": variables})
+                    )
+                } else {
+                    site["themeVariables"] = variables.clone();
+                    diagram.to_owned()
+                };
+                let (_, rendered) = try_render_cynefin_with_theme(
+                    &source,
+                    &theme,
+                    MermaidEngine::new().with_site_config(
+                        merman_core::presentation::SourcePresentationConfig::from_value(site),
+                    ),
+                    &portable_cynefin_environment(),
+                    "cynefin-selected-color",
+                )
+                .unwrap();
+                let property = if stroke { "stroke" } else { "fill" };
+                if target == ThemeTarget::Text {
+                    let css = cynefin_stylesheet(rendered.svg());
+                    assert!(
+                        cynefin_rule_body(&css, "cynefin-selected-color", ".cynefinSubtitle")
+                            .contains(&format!("fill:{expected_color};")),
+                        "{target:?}: source={from_source}, variables={variables}, css={css}"
+                    );
+                } else {
+                    let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+                    let terminal = cynefin_element(&document, class);
+                    assert_eq!(
+                        cynefin_inline_property(terminal, property),
+                        (!owned).then_some("#c2188b"),
+                        "{target:?}: source={from_source}, variables={variables}"
+                    );
+                    if owned {
+                        let css = cynefin_stylesheet(rendered.svg());
+                        assert!(
+                            cynefin_rule_body(&css, "cynefin-selected-color", &format!(".{class}"))
+                                .contains(&format!("{property}:{expected_color};"))
+                        );
+                    }
+                }
+                let evidence =
+                    merman_render::__private::family_evidence(rendered.into_completion().report());
+                assert_eq!(evidence.required_count(), 1);
+                assert_eq!(evidence.applied_count(), usize::from(!owned));
+                assert_eq!(evidence.not_applicable_count(), usize::from(owned));
+                assert_eq!(evidence.theme_residual_count(), 0);
+            }
+        }
+    }
+}
+
+#[test]
+fn cynefin_boundary_color_does_not_own_domain_background_strokes() {
+    let theme = cynefin_paint_theme(ThemeRuleSet::default().with_rule(ThemeRule::new(
+        ThemeTarget::Node,
+        ThemeStylePatch::default().with_stroke(CanvasPaint::solid("#c2188b").unwrap()),
+    )));
+    for from_source in [false, true] {
+        let config = serde_json::json!({"themeVariables":{"cynefin":{"boundaryColor":"#125634"}}});
+        let (source, site) = if from_source {
+            (
+                CYNEFIN_TEXT_FILL_SOURCE.replacen(
+                    "cynefin-beta",
+                    &format!("%%{{init: {config}}}%%\ncynefin-beta"),
+                    1,
+                ),
+                serde_json::json!({}),
+            )
+        } else {
+            (CYNEFIN_TEXT_FILL_SOURCE.to_owned(), config)
+        };
+        let (_, rendered) = try_render_cynefin_with_theme(
+            &source,
+            &theme,
+            MermaidEngine::new().with_site_config(
+                merman_core::presentation::SourcePresentationConfig::from_value(site),
+            ),
+            &portable_cynefin_environment(),
+            "cynefin-boundary-ownership",
+        )
+        .unwrap();
+        let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+        let domains = document
+            .descendants()
+            .filter(|node| node.attribute("class") == Some("cynefinDomain"))
+            .collect::<Vec<_>>();
+        assert_eq!(domains.len(), 4);
+        for domain in domains {
+            assert_eq!(cynefin_inline_property(domain, "stroke"), Some("#c2188b"));
+        }
+        for class in ["cynefinBoundary", "cynefinConfusion", "cynefinItem"] {
+            assert_eq!(
+                cynefin_inline_property(cynefin_element(&document, class), "stroke"),
+                None
+            );
+            let css = cynefin_stylesheet(rendered.svg());
+            assert!(
+                cynefin_rule_body(&css, "cynefin-boundary-ownership", &format!(".{class}"))
+                    .contains("stroke:#125634;")
+            );
+        }
+        drop(document);
+        let evidence =
+            merman_render::__private::family_evidence(rendered.into_completion().report());
+        assert_eq!(evidence.required_count(), 1);
+        assert_eq!(evidence.applied_count(), 1);
+        assert_eq!(evidence.theme_residual_count(), 0);
+    }
+}
+
+#[test]
+fn cynefin_arrow_fill_does_not_own_marker_stroke_or_its_clear() {
+    for clear in [false, true] {
+        let mut rules = ThemeRuleSet::default().with_rule(ThemeRule::new(
+            ThemeTarget::Marker,
+            ThemeStylePatch::default().with_stroke(CanvasPaint::solid("#c2188b").unwrap()),
+        ));
+        if clear {
+            let mut patch = ThemeStylePatch::default();
+            patch.stroke.paint = Specified::Clear;
+            rules = rules.with_rule(ThemeRule::new(ThemeTarget::Marker, patch));
+        }
+        let theme = cynefin_paint_theme(rules);
+        for from_source in [false, true] {
+            let config = serde_json::json!({"theme":"dark", "themeVariables":{"cynefin":{"arrowColor":"#125634"}}});
+            let (source, site) = if from_source {
+                (
+                    CYNEFIN_TEXT_FILL_SOURCE.replacen(
+                        "cynefin-beta",
+                        &format!("%%{{init: {config}}}%%\ncynefin-beta"),
+                        1,
+                    ),
+                    serde_json::json!({}),
+                )
+            } else {
+                (CYNEFIN_TEXT_FILL_SOURCE.to_owned(), config)
+            };
+            let (_, rendered) = try_render_cynefin_with_theme(
+                &source,
+                &theme,
+                MermaidEngine::new().with_site_config(
+                    merman_core::presentation::SourcePresentationConfig::from_value(site),
+                ),
+                &portable_cynefin_environment(),
+                "cynefin-marker-ownership",
+            )
+            .unwrap();
+            let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+            let marker = cynefin_element(&document, "cynefinArrowHead");
+            assert_eq!(
+                cynefin_inline_property(marker, "stroke"),
+                Some(if clear { "none" } else { "#c2188b" })
+            );
+            assert_eq!(cynefin_inline_property(marker, "fill"), None);
+            let css = cynefin_stylesheet(rendered.svg());
+            assert!(
+                cynefin_rule_body(&css, "cynefin-marker-ownership", ".cynefinArrowHead")
+                    .contains("fill:#125634;")
+            );
+            drop(document);
+            let evidence =
+                merman_render::__private::family_evidence(rendered.into_completion().report());
+            assert_eq!(evidence.applied_count(), 1);
+            assert_eq!(evidence.not_applicable_count(), usize::from(clear));
+            assert_eq!(evidence.theme_residual_count(), 0);
+        }
+    }
+}
+
+#[test]
 fn cynefin_absent_title_is_not_applicable_and_mixed_title_facets_stay_residual() {
     let mut patch = ThemeStylePatch::default().with_fill(CanvasPaint::solid("#abcdef").unwrap());
     patch.paint.opacity = Specified::Value(0.5);

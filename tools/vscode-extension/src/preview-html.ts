@@ -73,6 +73,27 @@ function renderToolbar(): string {
     <span class="toolbar-group">
       <button type="button" data-action="lock" data-preview-lock title="Open a Mermaid preview before locking it to a source" disabled>Follow</button>
     </span>
+    <span class="toolbar-group theme-controls">
+      <label>Theme
+        <select data-action="diagram-theme" title="Diagram theme">
+          <option value="source">Source / default</option>
+          <option value="default">Mermaid · Default</option>
+          <option value="dark">Mermaid · Dark</option>
+          <option value="forest">Mermaid · Forest</option>
+          <option value="neutral">Mermaid · Neutral</option>
+          <option value="base">Mermaid · Base</option>
+        </select>
+      </label>
+      <label data-preview-appearance hidden>Appearance
+        <select data-action="appearance" title="Diagram appearance">
+          <option value="follow-editor">Follow editor</option>
+          <option value="light">Light</option>
+          <option value="dark">Dark</option>
+        </select>
+      </label>
+      <button type="button" data-action="import-theme" title="Import a complete theme recipe JSON">Import theme…</button>
+      <span class="theme-summary" data-preview-theme-summary role="status"></span>
+    </span>
     <details class="preview-menu" data-preview-menu>
       <summary title="Preview settings">...</summary>
       <label>
@@ -84,24 +105,24 @@ function renderToolbar(): string {
         </select>
       </label>
       <label>
-        <span>Theme</span>
-        <select data-action="diagram-theme" title="Mermaid theme">
-          <option value="source">Source</option>
-          <option value="default">Default</option>
-          <option value="dark">Dark</option>
-          <option value="forest">Forest</option>
-          <option value="neutral">Neutral</option>
-          <option value="base">Base</option>
-        </select>
-      </label>
-      <label>
-        <span>Background</span>
-        <select data-action="background" title="Preview background">
+        <span>Viewer backing</span>
+        <select data-action="viewer-background" title="Viewer backing only; does not change exported image">
+          <option value="auto">Automatic</option>
           <option value="paper">Paper</option>
           <option value="transparent">Transparent</option>
           <option value="dark">Dark</option>
         </select>
       </label>
+      <label>
+        <span>Canvas override</span>
+        <select data-action="background" title="Changes the rendered image, including export">
+          <option value="theme">Theme / source</option>
+          <option value="paper">Paper</option>
+          <option value="transparent">Transparent</option>
+          <option value="dark">Dark</option>
+        </select>
+      </label>
+      <p>Viewer backing stays in this panel. Canvas override also applies to image exports.</p>
     </details>
   </nav>`;
 }

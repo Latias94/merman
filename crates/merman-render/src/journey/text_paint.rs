@@ -76,7 +76,8 @@ impl JourneyTextPaintPlan {
             terminal: OnceLock::new(),
         };
         let Some(theme) = theme else { return Ok(plan) };
-        let title_owned = !plan.source_title_color.is_empty();
+        let config_owned = config.config_paint_overrides_typed_default("themeVariables.textColor");
+        let title_owned = !plan.source_title_color.is_empty() || config_owned;
         let mut title_fill_winner = None;
         if plan.title.is_some() && !title_owned {
             let style = theme.style_with_work_meter(
@@ -96,7 +97,6 @@ impl JourneyTextPaintPlan {
                 DirectStaticSelectorDomain::Default,
             );
         }
-        let config_owned = config.config_paint_overrides_typed_default("themeVariables.textColor");
         let style =
             theme.style_with_work_meter(ThemeTarget::Text, ThemeVariant::Default, None, work)?;
         let winners = style

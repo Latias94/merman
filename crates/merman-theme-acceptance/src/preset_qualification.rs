@@ -271,6 +271,11 @@ impl PresetQualificationReceipt {
             .find(|entry| entry.preset() == self.report.preset)
             .ok_or_else(|| failure("qualified recipe is absent from the current catalog"))?
             .describe(&DiagramThemeCompiler::new());
+        let appearance = entry
+            .appearances
+            .iter_mut()
+            .find(|appearance| appearance.concrete_preset_id == self.report.preset.id())
+            .ok_or_else(|| failure("qualified appearance is absent from its canonical design"))?;
         let mut cells: Vec<_> = self
             .report
             .observations
@@ -290,14 +295,15 @@ impl PresetQualificationReceipt {
             ))
         });
         if !entry.available
-            || ((entry.maturity == "stable" || !entry.qualified_cells.is_empty())
-                && entry.qualified_cells != cells)
+            || !appearance.available
+            || ((entry.maturity == "stable" || !appearance.qualified_cells.is_empty())
+                && appearance.qualified_cells != cells)
         {
             return Err(failure(
                 "catalog maturity or scope lacks matching fresh qualification",
             ));
         }
-        entry.qualified_cells = cells;
+        appearance.qualified_cells = cells;
         Ok(entry)
     }
 
@@ -507,8 +513,13 @@ mod tests {
         let entry = original.catalog_entry().unwrap();
         assert_eq!(entry.id, "brutalist");
         assert_eq!(entry.maturity, "alpha");
+        let appearance = entry
+            .appearances
+            .iter()
+            .find(|appearance| appearance.concrete_preset_id == original.report.preset.id())
+            .unwrap();
         assert_eq!(
-            entry
+            appearance
                 .qualified_cells
                 .iter()
                 .map(|cell| (cell.family_id.as_str(), cell.output_id.as_str()))
@@ -522,9 +533,13 @@ mod tests {
                 ("state", "svg")
             ]
         );
-        assert!(entry.qualified_cells.iter().all(
-            |cell| cell.admission_status == "host_dependent" && cell.profile_id == HOST_PROFILE
-        ));
+        assert!(
+            appearance
+                .qualified_cells
+                .iter()
+                .all(|cell| cell.admission_status == "host_dependent"
+                    && cell.profile_id == HOST_PROFILE)
+        );
     }
 
     #[test]

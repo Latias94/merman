@@ -16,10 +16,10 @@ const MAX_REFERENCE_USES: usize = 4096;
 #[derive(Debug, thiserror::Error)]
 #[non_exhaustive]
 pub enum ThemeDesignCompileError {
-    /// The editable document failed admission or typed resolution.
+    /// The editable document failed admission, typed resolution, or compilation.
     #[error("theme design materialization failed: {0}")]
     Materialization(#[from] ThemeMaterializationErrorV1),
-    /// The materialized concrete specification failed compiler admission.
+    /// A complete specification failed compiler admission.
     #[error("theme design compilation failed: {0}")]
     Compilation(#[from] super::ThemeCompileError),
 }
@@ -34,7 +34,7 @@ pub fn materialize_theme_design_with_resource_policy(
     design: &ThemeDesignV1,
     resources: &ThemeResourcePolicy,
 ) -> Result<DiagramThemeSpecWireV1> {
-    materialize(design, resources, false).map(|(spec, _)| spec)
+    materialize_input(design, resources, false).map(|(spec, _)| spec)
 }
 
 /// Admits raw design JSON before normalization can discard duplicate fields.
@@ -66,7 +66,7 @@ pub fn materialize_theme_design_json_with_bindings(
 ) -> Result<MaterializedThemeWireV1> {
     check_design_json_input(resources, bytes)?;
     let design = serde_json::from_slice(bytes).map_err(invalid_design_json)?;
-    let (spec, references) = materialize(&design, resources, true)?;
+    let (spec, references) = materialize_input(&design, resources, true)?;
     MaterializedThemeWireV1::try_new(spec)
         .map(|value| value.with_references(references))
         .map_err(|error| failure("", "finite-theme-design", error.to_string()))
@@ -98,8 +98,51 @@ fn encoding_error(
 
 /// Inspects authored references through the same typed resolver used for materialization.
 pub fn inspect_theme_design(design: &ThemeDesignV1) -> Result<ThemeDesignInspection> {
-    materialize(design, &ThemeResourcePolicy::interactive(), true)
+    materialize_input(design, &ThemeResourcePolicy::interactive(), true)
         .map(|(_, references)| ThemeDesignInspection { references })
+}
+
+fn materialize_input(
+    design: &ThemeDesignV1,
+    resources: &ThemeResourcePolicy,
+    inspect: bool,
+) -> Result<(DiagramThemeSpecWireV1, Vec<ThemeDesignReferenceUse>)> {
+    let result = super::DiagramThemeCompiler::new()
+        .with_resource_policy(resources.clone())
+        .materialize_raw_design(design)
+        .map_err(|error| {
+            let error = match error {
+                ThemeDesignCompileError::Materialization(error) => error,
+                ThemeDesignCompileError::Compilation(error) => {
+                    super::document::compilation_error("/design", error)
+                }
+            };
+            let path = error
+                .diagnostic()
+                .path()
+                .strip_prefix("/design")
+                .unwrap_or(error.diagnostic().path())
+                .to_owned();
+            ThemeMaterializationErrorV1::from_diagnostic(error.into_diagnostic().with_path(path))
+        })?;
+    let references = if inspect {
+        result
+            .references
+            .into_iter()
+            .map(|reference| ThemeDesignReferenceUse {
+                token: reference.token,
+                path: reference
+                    .path
+                    .strip_prefix("/design")
+                    .unwrap_or(&reference.path)
+                    .to_owned(),
+                domain: reference.domain,
+            })
+            .collect()
+    } else {
+        Vec::new()
+    };
+    Ok((result.spec, references))
 }
 
 fn failure(path: &str, domain: &str, message: impl Into<String>) -> ThemeMaterializationErrorV1 {
@@ -139,11 +182,14 @@ fn domain(value_type: &'static str) -> ThemeDesignValueDomain {
     }
 }
 
-fn materialize(
+pub(super) fn materialize(
     design: &ThemeDesignV1,
     resources: &ThemeResourcePolicy,
-    inspect: bool,
-) -> Result<(DiagramThemeSpecWireV1, Vec<ThemeDesignReferenceUse>)> {
+) -> Result<(
+    DiagramThemeSpecWireV1,
+    Vec<ThemeDesignReferenceUse>,
+    super::source::ThemeWireSources,
+)> {
     super::definition_admission::check_typed_input_encoded_bytes(resources, design)
         .map_err(encoding_error)?;
     if design.tokens.len() > MAX_TOKENS {
@@ -186,7 +232,6 @@ fn materialize(
         effects: Vec::new(),
         references: Vec::new(),
         reference_uses: 0,
-        inspect,
     };
     for id in design.tokens.keys() {
         resolver.token(id, &child("/tokens", id))?;
@@ -248,7 +293,7 @@ fn materialize(
             _ => None,
         })
         .collect::<BTreeSet<_>>();
-    resolver.effects.retain(|entry| matches!(entry, ThemeEffectEntryWireV1::Graph { id, .. } if used_effects.contains(id.as_str())));
+    resolver.effects.retain(|(entry, _)| matches!(entry, ThemeEffectEntryWireV1::Graph { id, .. } if used_effects.contains(id.as_str())));
     if resolver.effects.len() > super::resources::MAX_EFFECT_GRAPHS_HARD_CAP {
         return Err(failure(
             "/tokens",
@@ -256,21 +301,21 @@ fn materialize(
             "too many consumed theme effects",
         ));
     }
+    let (effects, effect_paths): (Vec<_>, Vec<_>) = resolver.effects.into_iter().unzip();
+    let sources = super::source::ThemeWireSources::for_design(design, effect_paths);
     let spec = DiagramThemeSpecWireV1 {
         mermaid: design.mermaid.clone(),
         typography,
         styles: (!styles.is_empty()).then_some(styles),
         canvas,
-        effects: (!resolver.effects.is_empty()).then_some(resolver.effects),
+        effects: (!effects.is_empty()).then_some(effects),
         assets: design.assets.clone(),
         requirements: design.requirements.clone(),
     };
     super::definition_admission::check_typed_input_encoded_bytes(resources, &spec)
         .map_err(encoding_error)?;
-    if inspect {
-        propagate_alias_domains(design, &mut resolver.references);
-    }
-    Ok((spec, resolver.references))
+    propagate_alias_domains(design, &mut resolver.references);
+    Ok((spec, resolver.references, sources))
 }
 
 // Charge expanded values as they are retained, before repeated consumers can accumulate a
@@ -396,10 +441,9 @@ struct Resolver<'a> {
     cache_bytes: usize,
     cache: BTreeMap<String, Arc<Value>>,
     visiting: BTreeSet<String>,
-    effects: Vec<ThemeEffectEntryWireV1>,
+    effects: Vec<(ThemeEffectEntryWireV1, String)>,
     references: Vec<ThemeDesignReferenceUse>,
     reference_uses: usize,
-    inspect: bool,
 }
 
 macro_rules! scalar_resolver {
@@ -445,13 +489,11 @@ impl Resolver<'_> {
                 "too many theme reference uses",
             ));
         }
-        if self.inspect {
-            self.references.push(ThemeDesignReferenceUse {
-                token: reference.r#ref.clone(),
-                path: path.to_owned(),
-                domain,
-            });
-        }
+        self.references.push(ThemeDesignReferenceUse {
+            token: reference.r#ref.clone(),
+            path: path.to_owned(),
+            domain,
+        });
         Ok(())
     }
 
@@ -1283,7 +1325,7 @@ impl Resolver<'_> {
             primitives,
         };
         charge_encoded(self.resources, &mut self.cache_bytes, &effect)?;
-        self.effects.push(effect);
+        self.effects.push((effect, path.to_owned()));
         Ok(id)
     }
 }

@@ -1692,7 +1692,7 @@ fn timeline_redux_color_border_array_owns_event_fill() {
 }
 
 #[test]
-fn timeline_redux_color_missing_border_array_slot_does_not_claim_node_border_as_event_fill() {
+fn timeline_redux_color_empty_palette_keeps_node_border_independent_of_event_fill() {
     let theme = timeline_event_rules_theme_with_theme(
         "redux-color",
         [ThemeRule::new(
@@ -3370,19 +3370,21 @@ fn timeline_event_stroke_transparent_default_and_mixed_terminal_receipt() {
 }
 
 #[test]
-fn timeline_color_missing_slots_do_not_fall_back_to_node_border() {
+fn timeline_empty_color_palette_restores_main_background_and_typed_node_border() {
     let theme = timeline_event_stroke_theme("redux-color", CanvasPaint::solid("#123456").unwrap());
     let rendered = try_render_timeline_with_compatibility_baseline(
         "timeline\n    Plan : Build\n",
         &theme,
-        timeline_stroke_engine(
-            serde_json::json!({"themeVariables": {"THEME_COLOR_LIMIT": 1, "borderColorArray": []}}),
-        ),
+        timeline_stroke_engine(serde_json::json!({"themeVariables": {
+            "THEME_COLOR_LIMIT": 1, "borderColorArray": [], "mainBkg": "#abcdef"
+        }})),
     )
     .unwrap();
     assert!(
-        rendered.svg().contains(".section--1 circle{stroke-width:"),
-        "missing Color slot must not manufacture fill/stroke: {}",
+        rendered
+            .svg()
+            .contains(".section--1 circle{fill:#abcdef;stroke:#123456;stroke-width:"),
+        "an empty palette must restore the Redux mainBkg/nodeBorder terminals: {}",
         rendered.svg()
     );
     assert!(rendered.svg().contains(".section--1 text{fill:#123456;"));
@@ -3472,44 +3474,313 @@ fn timeline_event_stroke_keeps_best_effort_output_for_unsupported_sibling() {
 }
 
 #[test]
-fn repair_u7_timeline_filtered_border_slots_share_the_terminal_index() {
-    let theme = timeline_event_rules_theme_with_theme(
-        "redux-color",
-        [ThemeRule::new(
-            ThemeTarget::TimelineEvent,
-            ThemeStylePatch::default().with_fill(CanvasPaint::solid("#123456").unwrap()),
-        )],
-    );
-    let rendered = try_render_timeline_with_compatibility_baseline("timeline\nsection First\nPlan : Build\nsection Second\nShip : Done", &theme,
-        MermaidEngine::new().with_site_config(merman_core::presentation::SourcePresentationConfig::from_value(serde_json::json!({"darkMode":false,"themeVariables":{"borderColorArray":[null,"#abcdef"]}})))).unwrap();
+fn timeline_ignored_source_colors_leave_the_selected_theme_facet_available() {
+    let body = "timeline\ntitle Source color audit\nsection First\nPlan : Build\n";
+    for (selected, channel, target, stroke) in [
+        ("default", "cScale0", ThemeTarget::TimelineEvent, false),
+        ("redux", "mainBkg", ThemeTarget::TimelineEvent, false),
+        ("redux", "nodeBorder", ThemeTarget::TimelineEvent, true),
+        ("default", "textColor", ThemeTarget::Title, false),
+        ("default", "textColor", ThemeTarget::Text, false),
+    ] {
+        let paint = CanvasPaint::solid("#123456").unwrap();
+        let patch = if stroke {
+            ThemeStylePatch::default().with_stroke(paint)
+        } else {
+            ThemeStylePatch::default().with_fill(paint)
+        };
+        let theme = timeline_event_rules_theme([ThemeRule::new(target, patch)]);
+        for value in [
+            serde_json::json!(42),
+            serde_json::json!(true),
+            serde_json::json!([]),
+            serde_json::json!({}),
+        ] {
+            let config = serde_json::json!({"themeVariables":{(channel):value}});
+            let source = format!("---\nconfig: {config}\n---\n{body}");
+            let rendered = try_render_timeline_with_theme_engine_requirement(
+                &source,
+                &theme,
+                MermaidEngine::new().with_site_config(
+                    merman_core::presentation::SourcePresentationConfig::from_value(
+                        serde_json::json!({"theme":selected}),
+                    ),
+                ),
+                ThemePortabilityRequirement::BestEffort,
+            )
+            .unwrap();
+            match target {
+                ThemeTarget::Title => {
+                    let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+                    let title = document
+                        .descendants()
+                        .find(|node| {
+                            node.has_tag_name("text") && node.text() == Some("Source color audit")
+                        })
+                        .unwrap();
+                    assert_eq!(
+                        title.attribute("fill"),
+                        Some("#123456"),
+                        "{channel}: {value}"
+                    );
+                }
+                ThemeTarget::TimelineEvent if stroke => {
+                    assert!(rendered.svg().contains(".lineWrapper line{stroke:#123456;"))
+                }
+                ThemeTarget::TimelineEvent => {
+                    assert!(rendered.svg().contains("style=\"fill:#123456;\""))
+                }
+                ThemeTarget::Text => assert!(
+                    rendered
+                        .svg()
+                        .split_once('}')
+                        .unwrap()
+                        .0
+                        .ends_with("fill:#123456;")
+                ),
+                _ => unreachable!(),
+            }
+            let evidence =
+                merman_render::__private::family_evidence(rendered.into_completion().report());
+            assert_eq!(evidence.applied_count(), 1, "{channel}: {value}");
+            assert_eq!(evidence.theme_residual_count(), 0, "{channel}: {value}");
+        }
+    }
+}
+
+#[test]
+fn timeline_ignored_scale_values_allow_typed_palette_and_derived_connector_color() {
+    let theme = timeline_event_palette_theme(&["#123456"]);
+    let rendered = try_render_timeline_with_theme_and_engine(
+        "---\nconfig: {\"themeVariables\":{\"cScale0\":42,\"cScaleInv0\":false}}\n---\ntimeline\nsection First\nPlan : Build\n",
+        &theme,
+        MermaidEngine::new(),
+    ).unwrap();
     let document = roxmltree::Document::parse(rendered.svg()).unwrap();
-    let styles = document
+    let bodies = document
         .descendants()
-        .filter(|node| node.has_tag_name("g") && node.attribute("class") == Some("eventWrapper"))
-        .flat_map(|node| node.descendants())
         .filter(|node| {
             node.has_tag_name("path") && node.attribute("class") == Some("node-bkg node-undefined")
         })
-        .map(|node| node.attribute("style"))
         .collect::<Vec<_>>();
-    assert_eq!(styles, [None, Some("fill:#123456;")]);
-    assert!(rendered.svg().contains("#abcdef"));
+    assert_eq!(bodies.len(), 3);
+    assert!(
+        bodies
+            .iter()
+            .all(|node| node.attribute("style") == Some("fill:#123456;"))
+    );
+    let lines = document
+        .descendants()
+        .filter(|node| {
+            node.has_tag_name("line")
+                && node
+                    .attribute("class")
+                    .is_some_and(|class| class.starts_with("node-line-"))
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(lines.len(), 3);
+    assert!(
+        lines
+            .iter()
+            .all(|node| node.attribute("style") == Some("stroke:#edcba9;"))
+    );
     let evidence = merman_render::__private::family_evidence(rendered.into_completion().report());
-    assert_eq!(evidence.mermaid_compatibility_residual_count(), 1);
     assert_eq!(evidence.applied_count(), 1);
     assert_eq!(evidence.theme_residual_count(), 0);
 }
 
 #[test]
-fn repair_u7_timeline_effective_dark_mode_selects_the_source_fill_owner() {
-    for (selected, config) in [
+fn timeline_redux_color_missing_slots_keep_independent_fallback_owners() {
+    let theme = timeline_event_rules_theme_with_theme(
+        "redux-color",
+        [ThemeRule::new(
+            ThemeTarget::TimelineEvent,
+            ThemeStylePatch::default()
+                .with_fill(CanvasPaint::solid("#123456").unwrap())
+                .with_stroke(CanvasPaint::solid("#654321").unwrap()),
+        )],
+    );
+    let scene = "timeline\nsection First\nPlan : Build\nsection Second\nShip : Done\nsection Third\nMonitor : Maintain\n";
+    for own_fallback in [false, true] {
+        let mut config = serde_json::json!({"darkMode":false,"themeVariables":{"borderColorArray":[null,"#abcdef"]}});
+        if own_fallback {
+            config["themeVariables"]["mainBkg"] = serde_json::json!("#ddeeff");
+            config["themeVariables"]["nodeBorder"] = serde_json::json!("#112233");
+        }
+        for from_source in [false, true] {
+            let (source, site) = if from_source {
+                (
+                    format!("---\nconfig: {config}\n---\n{scene}"),
+                    serde_json::json!({}),
+                )
+            } else {
+                (scene.to_owned(), config.clone())
+            };
+            let rendered = try_render_timeline_with_compatibility_baseline(
+                &source,
+                &theme,
+                MermaidEngine::new().with_site_config(
+                    merman_core::presentation::SourcePresentationConfig::from_value(site),
+                ),
+            )
+            .unwrap();
+            let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+            let styles = document
+                .descendants()
+                .filter(|node| {
+                    node.has_tag_name("g") && node.attribute("class") == Some("eventWrapper")
+                })
+                .flat_map(|node| node.descendants())
+                .filter(|node| {
+                    node.has_tag_name("path")
+                        && node.attribute("class") == Some("node-bkg node-undefined")
+                })
+                .map(|node| node.attribute("style"))
+                .collect::<Vec<_>>();
+            // Mermaid's source materialization keeps the initialized Redux color array.
+            let typed = (!own_fallback && !from_source).then_some("fill:#123456;");
+            assert_eq!(
+                styles,
+                [typed, None, typed],
+                "source={from_source}, own={own_fallback}"
+            );
+            if from_source {
+                for (slot, color) in [("-1", "#E879F9"), ("0", "#2DD4BF"), ("1", "#FB923C")] {
+                    assert!(rendered.svg().contains(&format!(
+                        ".section-{slot} circle{{fill:{color};stroke:{color};"
+                    )));
+                }
+            } else {
+                assert!(
+                    rendered
+                        .svg()
+                        .contains(".section-0 circle{fill:#abcdef;stroke:#abcdef;")
+                );
+                let fill = if own_fallback { "#ddeeff" } else { "#ffffff" };
+                let stroke = if own_fallback { "#112233" } else { "#654321" };
+                for slot in ["-1", "1"] {
+                    assert!(rendered.svg().contains(&format!(
+                        ".section-{slot} circle{{fill:{fill};stroke:{stroke};"
+                    )));
+                }
+            }
+            let evidence =
+                merman_render::__private::family_evidence(rendered.into_completion().report());
+            assert_eq!(evidence.mermaid_compatibility_residual_count(), 1);
+            assert_eq!(evidence.applied_count(), usize::from(!own_fallback));
+            assert_eq!(evidence.not_applicable_count(), usize::from(own_fallback));
+            assert_eq!(evidence.theme_residual_count(), 0);
+        }
+    }
+}
+
+#[test]
+fn timeline_short_color_palette_wraps_owned_fill_without_hiding_unsupported_siblings() {
+    let body = "timeline\nsection First\nPlan : Build\nsection Second\nShip : Publish\nsection Third\nMonitor : Maintain\n";
+    let config = serde_json::json!({
+        "theme": "redux-color",
+        "themeVariables": {"borderColorArray": ["#125634", "#6644aa"]}
+    });
+    for owner in ["site", "source"] {
+        let (source, engine) = if owner == "site" {
+            (
+                body.to_owned(),
+                MermaidEngine::new().with_site_config(
+                    merman_core::presentation::SourcePresentationConfig::from_value(config.clone()),
+                ),
+            )
+        } else {
+            (
+                format!("---\nconfig: {config}\n---\n{body}"),
+                MermaidEngine::new(),
+            )
+        };
+        let baseline = render_timeline_svg_from_text_with_engine(&source, engine.clone());
+        for unsupported_font in [false, true] {
+            let mut patch =
+                ThemeStylePatch::default().with_fill(CanvasPaint::solid("#c2188b").unwrap());
+            if unsupported_font {
+                patch.typography.font_weight = Specified::Value(600);
+            }
+            let theme =
+                timeline_event_rules_theme([ThemeRule::new(ThemeTarget::TimelineEvent, patch)]);
+            let rendered = try_render_timeline_with_theme_engine_requirement(
+                &source,
+                &theme,
+                engine.clone(),
+                ThemePortabilityRequirement::BestEffort,
+            )
+            .unwrap();
+            assert_eq!(rendered.svg(), baseline, "{owner}, font={unsupported_font}");
+            let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+            let stylesheet = document
+                .descendants()
+                .find(|node| node.has_tag_name("style"))
+                .and_then(|node| node.text())
+                .unwrap();
+            for (section, color) in [("-1", "#125634"), ("0", "#6644aa"), ("1", "#125634")] {
+                assert!(
+                    stylesheet.contains(&format!(
+                        ".section-{section} circle{{fill:{color};stroke:{color};"
+                    )),
+                    "{owner}: section {section} must use its wrapped palette slot"
+                );
+            }
+            let completion = rendered.into_completion();
+            let evidence = merman_render::__private::family_evidence(completion.report());
+            assert_eq!(evidence.required_count(), 1);
+            assert_eq!(evidence.accounted_count(), 1);
+            assert_eq!(evidence.applied_count(), 0);
+            assert_eq!(
+                evidence.not_applicable_count(),
+                usize::from(!unsupported_font)
+            );
+            assert_eq!(
+                evidence.theme_residual_count(),
+                usize::from(unsupported_font)
+            );
+            assert_eq!(
+                completion
+                    .report()
+                    .theme_diagnostics()
+                    .iter()
+                    .any(|diagnostic| {
+                        diagnostic.target() == Some(ThemeTarget::TimelineEvent)
+                            && diagnostic.code() == "unsupported-typography"
+                    }),
+                unsupported_font
+            );
+        }
+    }
+}
+
+#[test]
+fn timeline_redux_fill_owner_follows_selected_theme_and_available_palette() {
+    for (selected, config, typed_applied) in [
         (
             "redux-color",
             serde_json::json!({"darkMode":true,"themeVariables":{"mainBkg":"#abcdef"}}),
+            true,
         ),
         (
             "redux-dark-color",
             serde_json::json!({"darkMode":false,"themeVariables":{"borderColorArray":["#abcdef"]}}),
+            true,
+        ),
+        (
+            "redux-color",
+            serde_json::json!({"darkMode":true,"themeVariables":{"borderColorArray":["#abcdef"]}}),
+            false,
+        ),
+        (
+            "redux-dark-color",
+            serde_json::json!({"darkMode":false,"themeVariables":{"mainBkg":"#abcdef"}}),
+            false,
+        ),
+        (
+            "redux-color",
+            serde_json::json!({"themeVariables":{"borderColorArray":[],"mainBkg":"#abcdef"}}),
+            false,
         ),
     ] {
         let theme = timeline_event_rules_theme_with_theme(
@@ -3539,14 +3810,16 @@ fn repair_u7_timeline_effective_dark_mode_selects_the_source_fill_owner() {
                     && node.attribute("class") == Some("node-bkg node-undefined")
             })
             .unwrap();
-        assert_eq!(path.attribute("style"), None);
-        assert!(!rendered.svg().contains("#123456"));
-        assert!(rendered.svg().contains("#abcdef"));
+        assert_eq!(
+            path.attribute("style"),
+            typed_applied.then_some("fill:#123456;"),
+            "{selected}"
+        );
         let evidence =
             merman_render::__private::family_evidence(rendered.into_completion().report());
         assert_eq!(evidence.mermaid_compatibility_residual_count(), 1);
-        assert_eq!(evidence.applied_count(), 0);
-        assert_eq!(evidence.not_applicable_count(), 1);
+        assert_eq!(evidence.applied_count(), usize::from(typed_applied));
+        assert_eq!(evidence.not_applicable_count(), usize::from(!typed_applied));
         assert_eq!(evidence.theme_residual_count(), 0);
     }
 }

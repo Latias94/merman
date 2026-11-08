@@ -915,7 +915,7 @@ pub(crate) fn resolve_style(
     variant: ThemeVariant,
     ordinal: Option<usize>,
 ) -> ResolvedThemeStyle {
-    let base_typography = spec.typography().family_style(family).clone();
+    let base_typography = spec.typography().family_style(family);
     resolve_matching_rules(
         &base_typography,
         spec.styles()

@@ -41,6 +41,41 @@ func verifyThemeAuthoringGoldens(client: Merman) throws {
             try requireEqual(result.mediaType, "application/json", "\(consumer)/media")
             return try json(result.data)
         }
+        let pairedRecipe = try json(read("paired.recipe.json"))
+        let inspection = try executeJSON("materialize-theme-json", String(decoding: encoded([
+            "schema_version": 1, "action": "inspect", "recipe": pairedRecipe,
+        ]), as: UTF8.self)) as! [String: Any]
+        try requireEqual(inspection["supported_appearances"]!, ["light", "dark"], "\(consumer)/paired appearances")
+        try requireEqual(inspection["default_appearance"]!, "light", "\(consumer)/paired default")
+        var pairedSpecs: [Any] = []
+        var pairedSVGs: [Data] = []
+        for appearance in ["light", "dark", "light"] {
+            let selected = try executeJSON("materialize-theme-json", String(decoding: encoded([
+                "schema_version": 1, "action": "materialize",
+                "recipe": pairedRecipe, "appearance": appearance,
+            ]), as: UTF8.self)) as! [String: Any]
+            try requireEqual(selected["effective_appearance"]!, appearance, "\(consumer)/paired selection")
+            pairedSpecs.append(selected["spec"]!)
+            let options: [String: Any] = [
+                "theme": ["recipe": pairedRecipe, "appearance": appearance],
+                "site_config": ["htmlLabels": false],
+                "svg": ["diagram_id": "apple-paired-theme"],
+            ]
+            let rendered = try execute(request(
+                "svg", "flowchart LR\nA[Review] --> B[Publish]",
+                String(decoding: encoded(options), as: UTF8.self)
+            ))
+            pairedSVGs.append(rendered.data)
+        }
+        try requireEqual(pairedSpecs[0], pairedSpecs[2], "\(consumer)/paired materialization isolation")
+        guard try encoded(pairedSpecs[0]) != encoded(pairedSpecs[1]),
+              pairedSVGs[0] != pairedSVGs[1], pairedSVGs[0] == pairedSVGs[2] else {
+            throw ThemeGoldenError.mismatch("\(consumer): paired appearance isolation")
+        }
+        let exportedPair = try executeJSON("export-theme-preset-json", "editor") as! [String: Any]
+        let exportedDesign = exportedPair["design"] as! [String: Any]
+        let appearances = exportedDesign["appearances"] as! [String: Any]
+        try requireEqual(appearances.keys.sorted(), ["dark", "light"], "\(consumer)/complete pair export")
         for name in ["light", "dark"] {
             let actual = try executeJSON(
                 "materialize-theme-json", String(decoding: read("\(name).design.json"), as: UTF8.self)
@@ -96,7 +131,7 @@ func verifyThemeAuthoringGoldens(client: Merman) throws {
             }
         }
     }
-    print("Apple theme goldens passed: 2 materializations, \(support.count) support queries, 5 errors per consumer")
+    print("Apple theme goldens passed: paired appearances, 2 raw materializations, \(support.count) support queries, 5 errors per consumer")
 }
 
 private enum ThemeGoldenError: Error {

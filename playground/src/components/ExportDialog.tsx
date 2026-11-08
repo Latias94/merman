@@ -47,6 +47,10 @@ import type {
 } from "@/src/runtime/artifact-actions";
 import type { NavigableInlineSvg } from "@/src/runtime/render-artifact";
 import type { RenderPublicationId } from "@/src/runtime/render-coordinator";
+import { useShallow } from "zustand/react/shallow";
+import { selectWorkspaceSnapshot, useAppStore } from "@/src/store";
+import { useRenderCoordinator } from "@/src/runtime/use-render-coordinator";
+import { currentThemeRender } from "@/src/lib/theme-discovery";
 
 type ExportFormat = "svg" | "png" | "jpeg";
 type RasterSizingMode = RasterSizing["mode"];
@@ -181,6 +185,11 @@ function ExportDialog({
   onClose(): void;
 }) {
   const { t } = useTranslation();
+  const workspace = useAppStore(useShallow(selectWorkspaceSnapshot));
+  const hostAppearance = useAppStore((state) => state.resolvedTheme);
+  const renderState = useRenderCoordinator((state) => state);
+  const current = currentThemeRender(renderState, workspace, hostAppearance);
+  const changed = current.batch?.snapshot.publicationId !== target.publicationId;
   const intrinsic = useMemo(
     () => inspectSvgForRasterExport(target.svgArtifact),
     [target],
@@ -421,6 +430,12 @@ function ExportDialog({
               publication: target.publicationId,
             })}
           </DialogDescription>
+          {target.appearance && <p className="text-xs text-muted-foreground" data-testid="export-theme-appearance">
+            {t("appearanceMode.frozen", { appearance: t(`appearanceMode.${target.appearance}`) })}
+          </p>}
+          {changed && <p aria-live="polite" className="text-xs text-muted-foreground" data-testid="export-snapshot-changed">
+            {t("appearanceMode.exportSnapshotChanged")}
+          </p>}
           {target.unavailableThemePresetId && <p role="status" className="break-words text-xs text-muted-foreground" data-testid="export-theme-preset-fallback">
             {t("themePanel.unavailablePresetExport", { id: target.unavailableThemePresetId })}
           </p>}

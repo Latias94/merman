@@ -1,4 +1,4 @@
-use crate::config::{config_bool, config_css_number_or_string, config_string, config_string_vec};
+use crate::config::{config_css_number_or_string, config_string, value_at};
 
 #[derive(Debug)]
 pub(crate) struct TimelineSectionCssBinding {
@@ -25,12 +25,20 @@ pub(crate) struct TimelineCssBinding {
     pub(crate) disabled_text_fill: String,
     pub(crate) root_fill: String,
     pub(crate) root_label: String,
-    pub(crate) border_colors: Vec<String>,
+    pub(crate) border_colors: Vec<Option<String>>,
     pub(crate) sections: Vec<TimelineSectionCssBinding>,
     pub(crate) gradient_stops: [Option<String>; 2],
 }
 
 impl TimelineCssBinding {
+    pub(super) fn config_owns_color(
+        config: &merman_model::presentation::PresentationConfig,
+        key: &str,
+    ) -> bool {
+        let path = format!("themeVariables.{key}");
+        config.get_str(&path).is_some() && config.config_paint_overrides_typed_default(&path)
+    }
+
     pub(crate) fn section_font_weight(&self) -> Option<&str> {
         (self.is_redux_theme && !self.sections.is_empty()).then_some(self.font_weight.as_str())
     }
@@ -76,6 +84,17 @@ impl TimelineCssBinding {
                 .unwrap_or_else(|| fallback.into())
         };
         let section_count = super::timeline_theme_color_limit(config);
+        let border_colors = value_at(config, &["themeVariables", "borderColorArray"])
+            .and_then(serde_json::Value::as_array)
+            .map(|colors| {
+                colors
+                    .iter()
+                    .map(|color| color.as_str().map(str::to_owned))
+                    .collect::<Vec<_>>()
+            })
+            .unwrap_or_default();
+        let is_color_theme = matches!(theme.as_str(), "redux-color" | "redux-dark-color")
+            && !border_colors.is_empty();
         let sections = (0..section_count)
             .map(|index| {
                 let [fill, label, inverse] =
@@ -95,10 +114,10 @@ impl TimelineCssBinding {
             .collect();
         Self {
             is_redux_theme: theme.contains("redux"),
-            is_color_theme: theme.contains("color"),
-            is_dark_theme: config_bool(config, &["darkMode"])
-                .or_else(|| config_bool(config, &["themeVariables", "darkMode"]))
-                .unwrap_or_else(|| theme.contains("dark")),
+            is_color_theme,
+            // Mermaid's Redux section generator selects this branch from the theme name.
+            // The independent darkMode input must not change the selected paint source.
+            is_dark_theme: theme.contains("dark"),
             is_neo: crate::config::config_diagram_look(config).is_neo(),
             use_neo_gradient: super::TimelineConfigView::new(config).uses_neo_gradient(),
             stroke_width: css("strokeWidth", "1"),
@@ -109,7 +128,7 @@ impl TimelineCssBinding {
             disabled_text_fill: color("clusterBorder", "#efefef"),
             root_fill: color("git0", "hsl(240, 100%, 46.2745098039%)"),
             root_label: color("gitBranchLabel0", "#ffffff"),
-            border_colors: config_string_vec(config, &["themeVariables", "borderColorArray"]),
+            border_colors,
             sections,
             gradient_stops: ["gradientStart", "gradientStop"]
                 .map(|key| config_string(config, &["themeVariables", key])),
@@ -130,8 +149,10 @@ impl TimelineCssBinding {
             .then_some(section.c_scale_inv.as_str())
     }
 
-    pub(crate) fn has_source_border_slot(&self, slot: usize) -> bool {
-        self.border_colors.get(slot).is_some()
+    pub(crate) fn section_palette_color(&self, slot: usize) -> Option<&str> {
+        self.is_color_theme
+            .then(|| self.border_colors[slot % self.border_colors.len()].as_deref())
+            .flatten()
     }
 }
 
@@ -164,7 +185,10 @@ mod tests {
         assert_eq!(timeline.disabled_text_fill, "#f97316");
         assert_eq!(timeline.root_fill, "#22c55e");
         assert_eq!(timeline.root_label, "#020617");
-        assert_eq!(timeline.border_colors, ["#ef4444", "#f59e0b"]);
+        assert_eq!(
+            timeline.border_colors,
+            [Some("#ef4444".into()), Some("#f59e0b".into())]
+        );
         assert_eq!(timeline.sections.len(), 2);
         assert_eq!(timeline.sections[0].c_scale, "#ef4444");
         assert_eq!(timeline.sections[0].c_scale_label, "#e879f9");
@@ -209,6 +233,7 @@ mod tests {
             "themeVariables": {
                 "THEME_COLOR_LIMIT": 2, "cScale0": "var(--section)",
                 "strokeWidth": "calc(1px + 2px)", "fontWeight": 500,
+                "borderColorArray": ["#123456"],
                 "useGradient": true, "gradientStart": "currentColor", "gradientStop": null
             }
         }));
@@ -217,20 +242,37 @@ mod tests {
         assert_eq!(binding.stroke_width, "calc(1px + 2px)");
         assert_eq!(binding.font_weight, "500");
         assert!(binding.is_redux_theme && binding.is_color_theme && binding.use_neo_gradient);
-        assert!(!binding.is_dark_theme);
+        assert!(binding.is_dark_theme);
         assert_eq!(binding.gradient_stops, [Some("currentColor".into()), None]);
     }
 
     #[test]
-    fn source_presence_uses_the_filtered_terminal_border_slots() {
+    fn section_palette_preserves_missing_slots_when_wrapping() {
         let binding = TimelineCssBinding::resolve(&serde_json::json!({
+            "theme": "redux-color",
             "themeVariables": {"borderColorArray": [null, "var(--border)"], "cScale0": null}
         }));
-        assert!(binding.has_source_border_slot(0));
-        assert!(!binding.has_source_border_slot(1));
-        assert_eq!(binding.border_colors, ["var(--border)"]);
+        assert_eq!(binding.section_palette_color(0), None);
+        assert_eq!(binding.section_palette_color(1), Some("var(--border)"));
+        assert_eq!(binding.section_palette_color(2), None);
+        assert_eq!(binding.section_palette_color(3), Some("var(--border)"));
+        assert_eq!(binding.border_colors, [None, Some("var(--border)".into())]);
         assert_eq!(binding.source_scale(0), None);
         assert_eq!(binding.source_inverse(0), None);
         assert!(!binding.sections[0].c_scale.is_empty());
+    }
+
+    #[test]
+    fn color_sections_require_a_nonempty_palette() {
+        for colors in [serde_json::json!([]), serde_json::json!([null])] {
+            let binding = TimelineCssBinding::resolve(&serde_json::json!({
+                "theme": "redux-color", "themeVariables": {"borderColorArray": colors}
+            }));
+            assert_eq!(
+                binding.is_color_theme,
+                colors.as_array().is_some_and(|colors| !colors.is_empty())
+            );
+            assert_eq!(binding.section_palette_color(0), None);
+        }
     }
 }

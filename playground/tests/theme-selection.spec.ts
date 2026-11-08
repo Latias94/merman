@@ -136,7 +136,9 @@ test("an imported recipe keeps its own name and source in the same catalog even 
   await expect(panel.getByTestId("theme-current-name")).toHaveText("Team review");
   await expect(panel.getByTestId("theme-current-source")).toHaveText("Imported");
   await panel.getByTestId("theme-advanced").locator("summary").first().click();
-  await expect(panel.getByRole("textbox", { name: "Theme JSON", exact: true })).toHaveValue(raw);
+  await expect(panel.getByTestId("theme-json-document")).toHaveAttribute("data-code-language", "json");
+  await panel.getByRole("button", { name: "Copy JSON", exact: true }).click();
+  expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(raw);
   errors.assertNone();
 });
 

@@ -1,9 +1,11 @@
 import assert from "node:assert/strict";
 import test, { type TestContext } from "node:test";
+import { readFileSync } from "node:fs";
 import type { SvgRenderMetadata, ThemeExecutionEvidence } from "@mermanjs/web";
 import { projectNavigableInlineSvg } from "./render-artifact.ts";
 
 import type { MermanDomainFacade } from "./merman-core.ts";
+import { themeCatalogFixture, themeInspectionFixture } from "../lib/theme-appearance.test-fixture.ts";
 import {
   freezeRenderOperation,
   type FreezeRenderOperationInput,
@@ -72,6 +74,134 @@ test("freezes one canonical environment into Merman and Mermaid inputs", async (
   assert.deepEqual(renderedOperation.viewport, { width: 800, height: 600 });
   assert.deepEqual(compare.calls[0]?.viewport, { width: 800, height: 600 });
   assert.equal(compare.calls[0]?.screenAvailableWidth, 800);
+});
+
+test("host Follow switches the native literal for both engines without changing source", async (t) => {
+  const compare = fakeCompare([Promise.resolve(mermaidSuccess("native"))]);
+  const operations: FrozenRenderOperation[] = [];
+  const base = facade();
+  const domain: MermanDomainFacade = {
+    ...base, themeCatalog: themeCatalogFixture,
+    render(operation) { operations.push(operation as FrozenRenderOperation); return base.render(operation); },
+  };
+  const coordinator = createRenderCoordinator({ compare, debounceMs: 0 });
+  t.after(() => coordinator.dispose());
+  coordinator.setFeatures({ asciiEnabled: false, compareEnabled: true, diagnosticsEnabled: false });
+  coordinator.setInput({ ...input("same native source", domain, { diagramTheme: "neo", themeAppearance: "follow" }), hostAppearance: "dark" });
+  await waitFor(() => coordinator.store.getState().status === "success");
+  assert.equal(compare.calls[0].theme, "neo-dark");
+  assert.equal(operations[0].bindingOptions.site_config?.theme, "neo-dark");
+  assert.equal(operations[0].theme, "neo");
+  assert.equal(operations[0].resolvedThemeAppearance, "dark");
+  assert.equal(operations[0].source, "same native source");
+});
+
+test("unsupported native appearances reject both Compare engines and recover through Follow", async (t) => {
+  const compare = fakeCompare([Promise.resolve(mermaidSuccess("forest-follow", "forest"))]);
+  const operations: FrozenRenderOperation[] = [];
+  const base = facade();
+  const domain: MermanDomainFacade = {
+    ...base, themeCatalog: themeCatalogFixture,
+    render(operation) {
+      operations.push(operation as FrozenRenderOperation);
+      return operation.configurationError
+        ? { status: "failure", stage: "render", artifact: null, renderTime: 0, error: operation.configurationError }
+        : base.render(operation);
+    },
+  };
+  const coordinator = createRenderCoordinator({ compare, debounceMs: 0 });
+  t.after(() => coordinator.dispose());
+  coordinator.setFeatures({ asciiEnabled: false, compareEnabled: true, diagnosticsEnabled: false });
+  const request = input("flowchart LR\nA[Forest] --> B", domain, { diagramTheme: "forest", themeAppearance: "dark" });
+  coordinator.setInput({ ...request, hostAppearance: "dark" });
+  await waitFor(() => coordinator.store.getState().status === "failed");
+  const failed = coordinator.store.getState();
+  assert.equal(failed.status, "failed");
+  if (failed.status !== "failed") return;
+  assert.equal(failed.snapshot.operation.resolvedThemeAppearance, null);
+  assert.match(failed.snapshot.operation.configurationError?.summary ?? "", /does not support the "dark" appearance/);
+  assert.equal(failed.merman.status, "failure");
+  assert.equal(failed.mermaid?.status, "failure");
+  assert.equal(compare.calls.length, 0);
+  coordinator.setInput({ ...request, workspace: { ...request.workspace, themeAppearance: "follow" }, hostAppearance: "dark" });
+  await waitFor(() => coordinator.store.getState().status === "success");
+  assert.equal(compare.calls.length, 1);
+  assert.equal(compare.calls[0].theme, "forest");
+  assert.equal(operations[1].configurationError, null);
+  assert.equal(operations[1].resolvedThemeAppearance, "light");
+});
+
+test("host-only updates rerender Follow only when its effective appearance changes", async (t) => {
+  const operations: FrozenRenderOperation[] = [];
+  const base = facade();
+  let inspected = 0;
+  const domain: MermanDomainFacade = {
+    ...base, themeCatalog: themeCatalogFixture,
+    materializeTheme: (() => { inspected += 1; return themeInspectionFixture(); }) as MermanDomainFacade["materializeTheme"],
+    render(operation) { operations.push(operation as FrozenRenderOperation); return base.render(operation); },
+  };
+  const coordinator = createRenderCoordinator({ compare: fakeCompare([]), debounceMs: 0 });
+  t.after(() => coordinator.dispose());
+  const request = input("same recipe source", domain, {
+    themeRecipeJson: '{"schema_version":1,"kind":"design","design":{}}', themeAppearance: "follow",
+  });
+  coordinator.setInput({ ...request, hostAppearance: "light" });
+  await waitFor(() => operations.length === 1 && coordinator.store.getState().status === "success");
+  coordinator.setInput({ ...request, hostAppearance: "dark" });
+  await waitFor(() => operations.length === 2 && coordinator.store.getState().status === "success");
+  assert.deepEqual(operations.map((operation) => operation.resolvedThemeAppearance), ["light", "dark"]);
+  assert.equal(inspected, 1);
+  coordinator.setInput({ ...request, workspace: { ...request.workspace, themeAppearance: "light" }, hostAppearance: "dark" });
+  await waitFor(() => operations.length === 3 && coordinator.store.getState().status === "success");
+  coordinator.setInput({ ...request, workspace: { ...request.workspace, themeAppearance: "light" }, hostAppearance: "light" });
+  await new Promise((resolve) => setTimeout(resolve, 10));
+  assert.equal(operations.length, 3);
+});
+
+test("Follow on a single appearance does not rerender for an unavailable host appearance", async (t) => {
+  let rendered = 0;
+  const base = facade();
+  const inspection = { ...themeInspectionFixture(), supported_appearances: ["light" as const], default_appearance: "light" as const };
+  const domain: MermanDomainFacade = {
+    ...base, themeCatalog: themeCatalogFixture,
+    materializeTheme: (() => inspection) as MermanDomainFacade["materializeTheme"],
+    render(operation) { rendered += 1; return base.render(operation); },
+  };
+  const coordinator = createRenderCoordinator({ compare: fakeCompare([]), debounceMs: 0 });
+  t.after(() => coordinator.dispose());
+  const request = input("single source", domain, {
+    themeRecipeJson: '{"schema_version":1,"kind":"design","design":{}}', themeAppearance: "follow",
+  });
+  coordinator.setInput({ ...request, hostAppearance: "light" });
+  await waitFor(() => rendered === 1 && coordinator.store.getState().status === "success");
+  coordinator.setInput({ ...request, hostAppearance: "dark" });
+  await new Promise((resolve) => setTimeout(resolve, 10));
+  assert.equal(rendered, 1);
+});
+
+test("a host switch cancels an in-flight old appearance and rejects its late publication", async (t) => {
+  const first = deferred<MermaidRealmRenderResult>();
+  const second = deferred<MermaidRealmRenderResult>();
+  const compare = fakeCompare([first.promise, second.promise]);
+  const domain = { ...facade(), themeCatalog: themeCatalogFixture };
+  const coordinator = createRenderCoordinator({ compare, debounceMs: 0 });
+  t.after(() => coordinator.dispose());
+  coordinator.setFeatures({ asciiEnabled: false, compareEnabled: true, diagnosticsEnabled: false });
+  const request = input("unchanged source", domain, { themePresetId: "editor", themeAppearance: "follow" });
+  coordinator.setInput({ ...request, hostAppearance: "light" });
+  await waitFor(() => compare.calls.length === 1);
+  coordinator.setInput({ ...request, hostAppearance: "dark" });
+  first.resolve(mermaidSuccess("stale-light"));
+  await waitFor(() => compare.calls.length === 2);
+  second.resolve(mermaidSuccess("current-dark"));
+  await waitFor(() => coordinator.store.getState().status === "success");
+  const state = coordinator.store.getState();
+  assert.equal(state.status, "success");
+  if (state.status !== "success") return;
+  assert.equal(state.snapshot.operation.resolvedThemeAppearance, "dark");
+  assert.match(state.mermaid!.artifact.svg, /current-dark/);
+  assert.equal(compare.calls[0].theme, "auto");
+  assert.equal(compare.calls[1].theme, "auto");
 });
 
 test("latest request publishes Merman and Mermaid as one coherent batch", async () => {
@@ -159,6 +289,70 @@ test("successful Merman evidence remains authoritative when Mermaid reports a di
   }));
   await waitFor(() => coordinator.store.getState().status === "success");
   assert.equal(selectVisibleCanvasTone(coordinator.store.getState()), "light");
+});
+
+for (const [selected, materialized, selectedAppearance, actualAppearance] of [
+  ["dark", "default", "dark", "light"],
+  ["default", "dark", "light", "dark"],
+] as const) {
+  test(`native ${selected} selection retains its identity while materialized ${materialized} owns the visible backing`, async (t) => {
+    const compare = fakeCompare([Promise.resolve(mermaidSuccess("source-override", materialized))]);
+    const base = facade();
+    const domain: MermanDomainFacade = {
+      ...base, themeCatalog: themeCatalogFixture,
+      render(operation) {
+        const result = base.render(operation);
+        return result.status === "success" ? {
+          ...result, metadata: renderMetadata("source-override", {
+            ...renderMetadata("source-override").theme_execution_evidence!, version: 2, materialized_theme: materialized,
+          }),
+        } : result;
+      },
+    };
+    const coordinator = createRenderCoordinator({ compare, debounceMs: 0 });
+    t.after(() => coordinator.dispose());
+    coordinator.setFeatures({ asciiEnabled: false, compareEnabled: true, diagnosticsEnabled: false });
+    coordinator.setInput(input("flowchart LR\nA[Source override] --> B", domain, {
+      diagramTheme: selected, mermaidConfig: JSON.stringify({ theme: materialized }),
+    }));
+    await waitFor(() => coordinator.store.getState().status === "success");
+    const state = coordinator.store.getState();
+    assert.equal(state.status, "success");
+    if (state.status !== "success") return;
+    assert.equal(state.snapshot.operation.theme, selected);
+    assert.equal(state.snapshot.operation.resolvedThemeAppearance, selectedAppearance);
+    assert.equal(selectVisibleCanvasTone(state), actualAppearance);
+  });
+}
+
+test("an authored paired canvas keeps its appearance when the native source palette differs", async (t) => {
+  const compare = fakeCompare([Promise.resolve(mermaidSuccess("source-default", "default"))]);
+  const base = facade();
+  const domain: MermanDomainFacade = {
+    ...base, themeCatalog: themeCatalogFixture,
+    materializeTheme: (() => themeInspectionFixture()) as MermanDomainFacade["materializeTheme"],
+    render(operation) {
+      const result = base.render(operation);
+      return result.status === "success" ? {
+        ...result, metadata: renderMetadata("paired-canvas", {
+          ...renderMetadata("paired-canvas").theme_execution_evidence!, version: 2, materialized_theme: "default",
+        }),
+      } : result;
+    },
+  };
+  const coordinator = createRenderCoordinator({ compare, debounceMs: 0 });
+  t.after(() => coordinator.dispose());
+  coordinator.setFeatures({ asciiEnabled: false, compareEnabled: true, diagnosticsEnabled: false });
+  coordinator.setInput(input("flowchart LR\nA[Authored canvas] --> B", domain, {
+    themeRecipeJson: readFileSync(new URL("../themes/recipes/reading.theme.json", import.meta.url), "utf8"),
+    themeAppearance: "dark", mermaidConfig: '{"theme":"default"}',
+  }));
+  await waitFor(() => coordinator.store.getState().status === "success");
+  const state = coordinator.store.getState();
+  assert.equal(state.status, "success");
+  if (state.status !== "success") return;
+  assert.equal(state.snapshot.operation.resolvedThemeAppearance, "dark");
+  assert.equal(selectVisibleCanvasTone(state), "dark");
 });
 
 test("rapid switches retain the visible partial palette and discard stale Mermaid theme evidence", async (t) => {
@@ -1694,7 +1888,11 @@ function facade(packageVersion = "test-merman"): MermanDomainFacade {
     packageVersion,
     diagramFamilyCapabilities: () => [],
     themeCatalog: () => ({
-      schema_version: 3,
+      schema_version: 1,
+      recipe_schema_version: 1,
+      authoring_request_schema_version: 1,
+      authoring_result_schema_version: 1,
+      mermaid_theme_designs: [],
       structured_spec_available: true,
       supported_output_ids: ["svg"],
       presets: [],

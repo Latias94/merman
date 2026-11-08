@@ -5,7 +5,9 @@ import type {
   PreviewBackground,
   PreviewDiagramTheme,
   PreviewDisplayMode,
+  PreviewViewerBackground,
 } from "./preview-model.js";
+import { isDiagramTheme, isThemePreference, type ThemeAppearancePreference } from "./theme-selection.js";
 import {
   BUNDLED_ANALYSIS_CONFIG,
   type NegotiatedAnalysisConfig,
@@ -46,6 +48,9 @@ export interface PreviewSettings {
   diagramTheme: PreviewDiagramTheme;
   displayMode: PreviewDisplayMode;
   background: PreviewBackground;
+  appearance: ThemeAppearancePreference;
+  viewerBackground: PreviewViewerBackground;
+  themeFile: string;
 }
 
 export function getMermanConfiguration(resource?: vscode.Uri): vscode.WorkspaceConfiguration {
@@ -89,14 +94,17 @@ export function getSourceActionSettings(resource: vscode.Uri): SourceActionSetti
   };
 }
 
-export function getPreviewSettings(): PreviewSettings {
-  const config = getMermanConfiguration();
+export function getPreviewSettings(resource?: vscode.Uri): PreviewSettings {
+  const config = getMermanConfiguration(resource);
   return {
     diagramTheme: normalizePreviewDiagramTheme(
       config.get<string>("preview.diagramTheme", "source"),
     ),
     displayMode: normalizePreviewDisplayMode(config.get<string>("preview.displayMode", "svg")),
-    background: normalizePreviewBackground(config.get<string>("preview.background", "paper")),
+    background: normalizePreviewBackground(config.get<string>("preview.background", "theme")),
+    appearance: normalizeAppearance(config.get<string>("preview.appearance", "follow-editor")),
+    viewerBackground: normalizeViewerBackground(config.get<string>("preview.viewerBackground", "auto")),
+    themeFile: config.get<string>("preview.themeFile", "").trim(),
   };
 }
 
@@ -139,17 +147,7 @@ export function getDidChangeConfigurationPayload(
 }
 
 function normalizePreviewDiagramTheme(value: string): PreviewDiagramTheme {
-  switch (value) {
-    case "source":
-    case "default":
-    case "dark":
-    case "forest":
-    case "neutral":
-    case "base":
-      return value;
-    default:
-      return "source";
-  }
+  return isDiagramTheme(value) ? value : "source";
 }
 
 function normalizePreviewDisplayMode(value: string): PreviewDisplayMode {
@@ -165,13 +163,22 @@ function normalizePreviewDisplayMode(value: string): PreviewDisplayMode {
 
 function normalizePreviewBackground(value: string): PreviewBackground {
   switch (value) {
+    case "theme":
     case "paper":
     case "transparent":
     case "dark":
       return value;
     default:
-      return "paper";
+      return "theme";
   }
+}
+
+function normalizeAppearance(value: string): ThemeAppearancePreference {
+  return isThemePreference(value) ? value : "follow-editor";
+}
+
+function normalizeViewerBackground(value: string): PreviewViewerBackground {
+  return value === "paper" || value === "dark" || value === "transparent" ? value : "auto";
 }
 
 function sanitizeStringArray(value: unknown[] | undefined): string[] {

@@ -280,6 +280,21 @@ let themedSvg = try client.renderSvg(
 For a reusable engine, omit `theme` to inherit its selection, use `theme: null` to clear it,
 or supply a complete selection or recipe to replace it.
 
+The schema-1 theme catalog groups each design's `supported_appearances`, `default_appearance`,
+and `appearances`. Swatches, `family_designs`, `application_notes`, `qualified_cells`, and the exact
+`concrete_preset_id` belong to each appearance. Use
+`{"theme":{"preset":"editor","appearance":"dark"}}` for an explicit reading mode.
+Resolve Follow-app/editor in Swift; an omitted selector uses the design's default, and an explicit
+unsupported appearance fails.
+
+The existing `execute(request:)` path accepts `export-theme-preset-json` with the plain `editor`
+ID and returns the complete `ThemeRecipeV1`, including `design.appearances` and
+`design.default_appearance`. Save that editable document rather than a materialized snapshot.
+Send a schema-1 `materialize-theme-json` request with `action: "inspect"` and `recipe` to inspect
+all modes; `action: "materialize"` adds an optional concrete `appearance` and returns its `spec`.
+Pass the full recipe object with `appearance` in the render options' `theme` selection.
+The Swift records and UniFFI API remain unchanged.
+
 Built-in presets are alpha, with empty public qualification cells. Catalog availability and
 family design scope do not certify the result for every diagram or output target. Flowchart
 glow and shadow effects require Classic look (`site_config.flowchart.look: "classic"`);

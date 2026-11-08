@@ -60,7 +60,12 @@ impl XyChartTypographyThemePlan {
             })
         }) {
             XyChartTextRole::ALL.map(|role| {
-                effective_config.config_path_overrides_typed_default(role.size_config_path())
+                let path = role.size_config_path();
+                path.split('.')
+                    .try_fold(effective_config.as_value(), |value, key| value.get(key))
+                    .and_then(crate::config::json_f64)
+                    .is_some()
+                    && effective_config.config_path_overrides_typed_default(path)
             })
         } else {
             [false; 6]

@@ -85,6 +85,17 @@ pub(crate) struct PreparedGraphicalRender {
     pub(super) font_diagnostics: bool,
 }
 
+#[cfg(feature = "svg")]
+impl PreparedGraphicalRender {
+    pub(super) fn selected_theme_appearance(&self) -> Option<merman::svg::ThemeAppearance> {
+        match &self.source {
+            PreparedGraphicalSource::Mermaid(renderer) => renderer.selected_theme_appearance(),
+            #[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
+            PreparedGraphicalSource::RawSvg(_) => None,
+        }
+    }
+}
+
 #[cfg(feature = "rustdoc")]
 pub(crate) struct PreparedRustdocRenderers {
     pub(crate) light: PreparedGraphicalRender,
@@ -803,6 +814,7 @@ fn prepare_rustdoc_renderer(
         theme_preset: None,
         theme_file: None,
         theme_design_file: None,
+        theme_appearance: None,
         theme_portability: crate::cli::ThemePortabilityKind::default(),
         theme_report: None,
         #[cfg(feature = "native-fonts")]

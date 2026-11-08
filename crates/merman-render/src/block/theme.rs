@@ -163,13 +163,8 @@ impl BlockNodeLabelPaintPlan {
         }) {
             return Ok(plan);
         }
-        let config_owned = [
-            "themeVariables.nodeTextColor",
-            "themeVariables.primaryTextColor",
-            "themeVariables.textColor",
-        ]
-        .into_iter()
-        .any(|path| config.config_paint_overrides_typed_default(path));
+        let (color_path, _) = BlockCssThemeBinding::node_text_color_source(config.as_value());
+        let config_owned = config.config_paint_overrides_typed_default(color_path);
         let has_ordinal = theme.family_rules().any(|(_, rule)| {
             matches!(rule.target(), ThemeTarget::NodeLabel | ThemeTarget::Text)
                 && rule.ordinal().is_some()
@@ -623,12 +618,16 @@ impl BlockTypographyThemePlan {
             }
         }
 
-        let config_owns_font_stack = ["themeVariables.fontFamily", "fontFamily"]
-            .into_iter()
-            .any(|path| effective_config.config_path_overrides_typed_default(path));
-        let config_owns_font_size = ["themeVariables.fontSize", "fontSize"]
-            .into_iter()
-            .any(|path| effective_config.config_path_overrides_typed_default(path));
+        let config_owns_font_stack =
+            crate::config::configured_font_family_or_first_array(effective_config.as_value())
+                .is_some_and(|(_, path)| {
+                    effective_config.config_path_overrides_typed_default(path)
+                });
+        let config_owns_font_size =
+            crate::config::configured_theme_or_root_font_size_px(effective_config.as_value())
+                .is_some_and(|(_, path)| {
+                    effective_config.config_path_overrides_typed_default(path)
+                });
         let typed_font_stack_applied = typed_font_stack && !config_owns_font_stack;
         let typed_font_size_applied = typed_font_size && !config_owns_font_size;
         if typed_font_stack_applied {

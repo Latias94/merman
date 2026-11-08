@@ -380,6 +380,37 @@ impl TextStyle {
         self.wrap
     }
 
+    fn inherit_from(&self, default: &Self) -> Self {
+        macro_rules! inherit {
+            ($field:ident, $property:ident) => {
+                if self.is_specified(ThemeTypographyProperty::$property) {
+                    self.$field
+                } else {
+                    default.$field
+                }
+            };
+        }
+        Self {
+            specified: self.specified | default.specified,
+            font_stack: if self.is_specified(ThemeTypographyProperty::FontStack) {
+                self.font_stack.clone()
+            } else {
+                default.font_stack.clone()
+            },
+            font_size_px: inherit!(font_size_px, FontSize),
+            font_weight: inherit!(font_weight, FontWeight),
+            font_style: inherit!(font_style, FontStyle),
+            line_height: inherit!(line_height, LineHeight),
+            letter_spacing_px: inherit!(letter_spacing_px, LetterSpacing),
+            word_spacing_px: inherit!(word_spacing_px, WordSpacing),
+            transform: inherit!(transform, Transform),
+            decoration: inherit!(decoration, Decoration),
+            text_align: inherit!(text_align, TextAlign),
+            white_space: inherit!(white_space, WhiteSpace),
+            wrap: inherit!(wrap, Wrap),
+        }
+    }
+
     pub(crate) fn validate(&self) -> Result<(), ThemeCompileValidationError> {
         self.font_size_px.is_finite().then_some(()).ok_or(
             ThemeCompileValidationError::InvalidNumber {
@@ -514,10 +545,12 @@ impl TypographySpec {
         &self.default
     }
 
-    pub fn family_style(&self, family: DiagramFamilyId) -> &TextStyle {
-        self.family_overrides
-            .get(family.as_str())
-            .unwrap_or(&self.default)
+    /// Resolves shared defaults with the family's explicitly supplied properties applied.
+    pub fn family_style(&self, family: DiagramFamilyId) -> TextStyle {
+        self.family_overrides.get(family.as_str()).map_or_else(
+            || self.default.clone(),
+            |style| style.inherit_from(&self.default),
+        )
     }
 
     pub(crate) fn family_overrides(&self) -> impl ExactSizeIterator<Item = (&str, &TextStyle)> {
@@ -574,24 +607,4 @@ fn apply_specified<T: Clone>(value: &Specified<T>, target: &mut T, base: &T) {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::FontStack;
-
-    #[test]
-    fn font_stack_quotes_names_that_are_not_valid_unquoted_css_identifiers() {
-        let stack = FontStack::new([
-            "123Radar",
-            "-1Radar",
-            "-",
-            "Radar2",
-            "-apple-system",
-            "--radar",
-        ])
-        .expect("valid bounded font stack");
-
-        assert_eq!(
-            stack.as_css(),
-            "\"123Radar\", \"-1Radar\", \"-\", Radar2, -apple-system, --radar"
-        );
-    }
-}
+mod tests;

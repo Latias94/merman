@@ -17,6 +17,9 @@ export type PreviewUpdateReason =
   | "diagram-theme"
   | "display-mode"
   | "background"
+  | "appearance"
+  | "editor-appearance"
+  | "viewer-background"
   | "lock";
 
 export type PreviewAction =
@@ -31,6 +34,7 @@ export function planPreviewUpdate(
   previous: PreviewSnapshot | undefined,
   next: PreviewSnapshot | undefined,
   reason: PreviewUpdateReason,
+  recoverRenderedOutput = false,
 ): PreviewAction[] {
   if (!next) {
     return [{ type: "showEmpty" }];
@@ -58,6 +62,11 @@ export function planPreviewUpdate(
     previous.diagramTheme !== next.diagramTheme ||
     previous.displayMode !== next.displayMode ||
     previous.background !== next.background ||
+    previous.appearancePreference !== next.appearancePreference ||
+    previous.resolvedTheme?.effectiveAppearance !== next.resolvedTheme?.effectiveAppearance ||
+    previous.resolvedTheme?.label !== next.resolvedTheme?.label ||
+    previous.viewerBackground !== next.viewerBackground ||
+    previous.themeNotice !== next.themeNotice ||
     previous.locked !== next.locked
   ) {
     actions.push({ type: "settingsUpdated", snapshot: next });
@@ -71,10 +80,7 @@ export function planPreviewUpdate(
     actions.push({ type: "selectionChanged", snapshot: next });
   }
 
-  if (!sameRenderKey) {
-    actions.push({ type: "renderRequested", snapshot: next, reason });
-  }
-  if (sameRenderKey && reason === "manual-refresh") {
+  if (!sameRenderKey || recoverRenderedOutput || reason === "manual-refresh") {
     actions.push({ type: "renderRequested", snapshot: next, reason });
   }
 

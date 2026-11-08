@@ -16,13 +16,16 @@ import { selectMermanFacade, selectMermanFailure, useMermanRuntime } from "@/src
 import { DEFAULT_WORKSPACE_SNAPSHOT } from "@/src/store";
 import type { ExplorationTheme } from "@/src/themes/catalog";
 import { THEME_SAMPLES, type ThemeSampleId } from "@/src/themes/samples";
+import type { ThemeAppearance } from "@mermanjs/web";
+import { inspectThemeRecipe } from "@/src/lib/theme-appearance";
 
 type UseTab = "theme" | ProjectUseTarget;
 const TABS: readonly UseTab[] = ["theme", "rust", "cli", "web"];
 
-export function ThemeShowcaseUse({ theme, sampleId, onSampleChange }: {
+export function ThemeShowcaseUse({ theme, appearance, sampleId, onSampleChange }: {
   readonly theme: ExplorationTheme;
   readonly sampleId: ThemeSampleId;
+  readonly appearance: ThemeAppearance;
   onSampleChange(id: ThemeSampleId): void;
 }) {
   const { t } = useTranslation();
@@ -41,10 +44,13 @@ export function ThemeShowcaseUse({ theme, sampleId, onSampleChange }: {
     if (!target || !facade) return { bundle: null, error: null };
     try {
       const snapshot = captureProjectHandoff({
-        workspace: { ...DEFAULT_WORKSPACE_SNAPSHOT, diagramTheme: "default", diagramFont: "inherit",
+        workspace: { ...DEFAULT_WORKSPACE_SNAPSHOT, diagramTheme: "auto", diagramFont: "inherit",
+          ...(theme.appearances ? { themeAppearance: appearance } : {}),
           themePresetId: null, themeRecipeJson: theme.recipeJson, themeRecipeLabel: { name: theme.name, source: "exploration" } },
         renderState: { status: "empty" },
         validateThemeRecipe: (raw) => facade.validateThemeRecipe(raw),
+        themeRecipeInspection: inspectThemeRecipe(facade, theme.recipeJson),
+        hostAppearance: appearance,
         versions: { merman: facade.packageVersion, mermaid: MERMAID_JS_VERSION },
         buildIdentity: typeof __PLAYGROUND_BUILD__ === "undefined" ? undefined : __PLAYGROUND_BUILD__,
         capturedAt,
@@ -52,7 +58,7 @@ export function ThemeShowcaseUse({ theme, sampleId, onSampleChange }: {
       return { bundle: generateProjectHandoff(snapshot, { target, scope: "theme", rustAssets,
         themeExample: { source: sample.source, configJson: sample.configJson } }), error: null };
     } catch (error) { return { bundle: null, error: projectError(error).summary }; }
-  }, [capturedAt, facade, rustAssets, sample, target, theme]);
+  }, [capturedAt, facade, rustAssets, sample, target, theme, appearance]);
   const bundle = result.bundle;
   const singleFile = target === "rust" && rustAssets === "inline";
   const filename = tab === "theme" ? "theme.json" : bundle && !singleFile && selectedFile && Object.hasOwn(bundle.files, selectedFile) ? selectedFile : bundle?.codeFilename;
@@ -80,6 +86,9 @@ export function ThemeShowcaseUse({ theme, sampleId, onSampleChange }: {
   return <section aria-labelledby={`${id}-title`} className="min-w-0 space-y-3 rounded-lg border bg-muted/10 p-4 sm:p-5" data-testid="theme-showcase-use">
     <h3 id={`${id}-title`} className="text-lg font-semibold tracking-tight">{t("themeShowcase.useTitle")}</h3>
     <p className="max-w-3xl text-xs leading-relaxed text-muted-foreground">{t("themeShowcase.useHint")}</p>
+    {theme.appearances && <p className="text-xs text-muted-foreground" data-testid="theme-adoption-appearance">
+      {t("appearanceMode.adoption", { appearance: t(`appearanceMode.${appearance}`) })}
+    </p>}
     <dl className="grid gap-3 rounded-md border bg-background/60 p-3 text-xs sm:grid-cols-2" data-testid="theme-adoption-guide">
       <div className="space-y-1"><dt className="font-semibold">{t("themeShowcase.themePurposeTitle")}</dt>
         <dd className="leading-relaxed text-muted-foreground">{t("themeShowcase.themePurpose")}</dd></div>

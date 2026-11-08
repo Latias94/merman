@@ -33,7 +33,7 @@ else:
 ROOT = Path(__file__).resolve().parents[1]
 PROFILE_DESCRIPTOR = Path("capabilities/artifact-profiles-v2.json")
 CLI_RELEASE_PROFILE = "cli-release"
-CLI_CONTRACT_VERSION = 6
+CLI_CONTRACT_VERSION = 7
 CAPABILITIES_SCHEMA_VERSION = 2
 COMMANDS = (
     "batch",
@@ -48,6 +48,7 @@ COMMANDS = (
     "parse",
     "render",
     "rustdoc",
+    "theme",
 )
 HOMEBREW_COMPLETION_PATHS = {
     "bash": Path("etc/bash_completion.d/merman-cli"),
@@ -81,6 +82,8 @@ MANPAGE_NAMES = (
     "merman-cli-rustdoc-build.1",
     "merman-cli-rustdoc-check.1",
     "merman-cli-rustdoc.1",
+    "merman-cli-theme-inspect.1",
+    "merman-cli-theme.1",
     "merman-cli.1",
 )
 RUNTIME_TIMEOUT_SECONDS = 30

@@ -387,6 +387,14 @@ assert.ok(runtimeCatalog.metadata_ids.includes("theme-catalog"));
 assert.equal(themeCatalog.schema_version, 1);
 if (hasCapability("svg")) {
   assert.equal(themeCatalog.structured_spec_available, true);
+  assert.equal(themeCatalog.recipe_schema_version, 1);
+  assert.equal(themeCatalog.authoring_request_schema_version, 1);
+  assert.equal(themeCatalog.authoring_result_schema_version, 1);
+  const upstreamThemeIds = themeCatalog.mermaid_theme_designs
+    .flatMap(({ appearances }) => appearances.map(({ theme_id }) => theme_id)).sort();
+  assert.deepEqual(upstreamThemeIds, [...api.supportedThemes()].sort());
+  assert.equal(themeCatalog.mermaid_theme_designs.length, 8);
+  assert.equal(themeCatalog.mermaid_theme_designs.filter(({ appearances }) => appearances.length === 2).length, 3);
   assert.deepEqual(themeCatalog.supported_output_ids, ["svg"]);
   assert.deepEqual(themeCatalog.presets, JSON.parse(await readFile(path.join(
     repoRoot, "crates/merman-theme-authoring-fixtures/fixtures/authoring-v1/preset-catalog.json",
@@ -440,6 +448,26 @@ if (hasCapability("svg")) {
     styles: { text: { fill: { kind: "solid", color: { ref: "text" } } } },
   };
   const themeResourceOptions = { resources: { profile: "constrained" } };
+  const pairedRecipe = JSON.parse(await readFile(path.join(
+    repoRoot, "crates/merman-theme-authoring-fixtures/fixtures/authoring-v1/paired.recipe.json",
+  ), "utf8"));
+  const inspectionRequest = { schema_version: 1, action: "inspect", recipe: pairedRecipe };
+  const pairedInspection = api.materializeTheme(inspectionRequest, themeResourceOptions);
+  assert.deepEqual(pairedInspection.supported_appearances, ["light", "dark"]);
+  assert.equal(pairedInspection.default_appearance, "light");
+  assert.deepEqual(exportedWasmModule.materializeTheme(
+    JSON.stringify(inspectionRequest), JSON.stringify(themeResourceOptions),
+  ), pairedInspection);
+  const selectedResults = ["light", "dark"].map((appearance) => api.materializeTheme({
+    schema_version: 1, action: "materialize", recipe: pairedRecipe, appearance,
+  }, themeResourceOptions));
+  assert.notDeepEqual(selectedResults[0].spec, selectedResults[1].spec);
+  const pairSource = "flowchart LR\nA[Review] --> B[Publish]";
+  const selectedSvg = ["light", "dark", "light"].map((appearance) => api.renderSvg(pairSource, {
+    theme: { recipe: pairedRecipe, appearance }, svg: { diagram_id: "paired-theme-smoke" },
+  }));
+  assert.notEqual(selectedSvg[0], selectedSvg[1]);
+  assert.equal(selectedSvg[0], selectedSvg[2]);
   const materializedTheme = api.materializeTheme(
     themeDesign,
     themeResourceOptions,
@@ -682,7 +710,7 @@ if (hasCapability("svg")) {
   });
   assert.ok(designOutcome.metadata.theme_execution_evidence.diagnostics.some((diagnostic) =>
     diagnostic.target === "lifeline" && diagnostic.source_document === "design"
-      && JSON.stringify(diagnostic.source_paths) === '["/rules/0/style"]' && !diagnostic.generated),
+      && JSON.stringify(diagnostic.source_paths) === '["/design/rules/0/style"]' && !diagnostic.generated),
   "authoring materialization must preserve the authored rule path");
   for (const invalidRecipe of [
     { ...restoredRecipe, schema_version: 2 },
@@ -1911,8 +1939,12 @@ async function runSameProcessPackageSmoke() {
   assert.deepEqual(analysis.themeCatalog(), {
     schema_version: 1,
     structured_spec_available: false,
+    recipe_schema_version: null,
+    authoring_request_schema_version: null,
+    authoring_result_schema_version: null,
     supported_output_ids: [],
     presets: [],
+    mermaid_theme_designs: [],
     known_capability_ids: [],
     known_text_capability_ids: [],
     known_font_container_ids: [],

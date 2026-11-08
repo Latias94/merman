@@ -59,13 +59,43 @@ const invalidPresetNote: ThemePresetApplicationNote = {
   recommended_config: [],
 };
 declare const discoveredPreset: ThemePresetCatalogEntry;
-const previewColors: string[] = discoveredPreset.preview_colors;
-const applicationNotes: ThemePresetApplicationNote[] = discoveredPreset.application_notes;
+const previewColors: string[] = discoveredPreset.appearances[0].preview_colors;
+const applicationNotes: ThemePresetApplicationNote[] = discoveredPreset.appearances[0].application_notes;
 renderSvgResult("flowchart LR\nA --> B", {
   theme: { preset: discoveredPreset.id },
   site_config: presetNote.recommended_config ?? {},
 });
 void [previewColors, applicationNotes, informationalPresetNote, invalidPresetNote];
+
+const pairedTheme: ThemeRecipeV1 = {
+  schema_version: 1,
+  kind: "design",
+  design: {
+    tokens: { ink: { type: "color", value: "#111111" } },
+    appearances: {
+      light: {},
+      dark: { tokens: { ink: { type: "color", value: "#eeeeee" } } },
+    },
+    default_appearance: "light",
+  },
+};
+const inspectedPair = materializeTheme({ schema_version: 1, action: "inspect", recipe: pairedTheme });
+const selectedPair = materializeTheme({
+  schema_version: 1, action: "materialize", recipe: pairedTheme, appearance: "dark",
+});
+const inspectedDefault: "light" | "dark" | null = inspectedPair.default_appearance;
+const selectedDefault: "light" | "dark" | null = selectedPair.effective_appearance;
+selectedPair.references.forEach(({ token_path }) => token_path.toUpperCase());
+renderSvgResult("flowchart LR\nA --> B", { theme: { recipe: pairedTheme, appearance: "dark" } });
+// @ts-expect-error Host policies must resolve to a concrete appearance before rendering.
+renderSvgResult("flowchart LR\nA --> B", { theme: { recipe: pairedTheme, appearance: "auto" } });
+// @ts-expect-error Inspection validates every appearance rather than selecting one.
+materializeTheme({ schema_version: 1, action: "inspect", recipe: pairedTheme, appearance: "dark" });
+// @ts-expect-error A concrete complete specification does not declare appearance variants.
+renderSvgResult("flowchart LR\nA --> B", { theme: { spec: {}, appearance: "dark" } });
+// @ts-expect-error Appearance exceptions cannot introduce appearance-local assets.
+const localAssets: import("../src/public-types.js").ThemeAppearanceOverridesV1 = { assets: {} };
+void [inspectedDefault, selectedDefault, localAssets];
 
 const editorResources: EditorResourceOptions = {
   profile: "constrained",

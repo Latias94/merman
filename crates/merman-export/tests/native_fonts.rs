@@ -1070,3 +1070,205 @@ fn implicit_fonts_prefer_compatible_serif_sans_and_monospace_faces() {
         }
     }
 }
+
+fn sfnt_table(bytes: &[u8], tag: &[u8; 4]) -> (usize, ttf_parser::TableRecord) {
+    ttf_parser::RawFace::parse(bytes, 0)
+        .unwrap()
+        .table_records
+        .into_iter()
+        .enumerate()
+        .find(|(_, record)| record.tag == ttf_parser::Tag::from_bytes(tag))
+        .map(|(index, record)| (12 + index * 16, record))
+        .expect("controlled fixture has the requested table")
+}
+
+fn unmarked_monospace_font(remove_os2: bool) -> Vec<u8> {
+    let mut bytes = include_bytes!("fonts/Cousine-Regular.ttf").to_vec();
+    let (_, post) = sfnt_table(&bytes, b"post");
+    let fixed_pitch = post.offset as usize + 12;
+    bytes[fixed_pitch..fixed_pitch + 4].fill(0);
+    if remove_os2 {
+        let (entry, _) = sfnt_table(&bytes, b"OS/2");
+        bytes[entry..entry + 4].copy_from_slice(b"OS/3");
+    }
+    let face = ttf_parser::Face::parse(&bytes, 0).unwrap();
+    assert!(!face.is_monospaced());
+    assert_eq!(face.tables().os2.is_none(), remove_os2);
+    bytes
+}
+
+#[test]
+fn implicit_monospace_uses_fixed_latin_metrics_without_monospace_metadata() {
+    let sans = include_bytes!("fonts/NotoSans-Latin-subset.ttf").to_vec();
+    for remove_os2 in [false, true] {
+        let monospace = unmarked_monospace_font(remove_os2);
+        for monospace_first in [false, true] {
+            let sources = if monospace_first {
+                [monospace.clone(), sans.clone()]
+            } else {
+                [sans.clone(), monospace.clone()]
+            };
+            let context = NativeFontContext::from_font_bytes(
+                sources,
+                Default::default(),
+                &OperationControl::new(),
+            )
+            .unwrap();
+            for (family, expected) in [
+                ("monospace", "Cousine-Regular"),
+                ("Cousine", "Cousine-Regular"),
+                ("sans-serif", "NotoSans-Regular"),
+                ("Noto Sans", "NotoSans-Regular"),
+            ] {
+                assert_eq!(
+                    painted_families(&context, family, "V"),
+                    BTreeSet::from([expected.to_owned()]),
+                    "{family}, remove_os2={remove_os2}, monospace_first={monospace_first}"
+                );
+            }
+            let named = style("400", "normal");
+            let generic = TextStyle {
+                font_family: Some("monospace".to_owned()),
+                ..named.clone()
+            };
+            let Some(HostTextMeasurement::HorizontalExtents { left, right }) =
+                measure(&context, "contains", &generic).unwrap()
+            else {
+                panic!("generic monospace must have native extents");
+            };
+            let Some(HostTextMeasurement::HorizontalExtents {
+                left: expected_left,
+                right: expected_right,
+            }) = measure(&context, "contains", &named).unwrap()
+            else {
+                panic!("named monospace must have native extents");
+            };
+            assert_eq!((left, right), (expected_left, expected_right));
+        }
+    }
+}
+
+#[test]
+fn implicit_proportional_fallback_prefers_unclassified_faces_over_known_monospace() {
+    let mut proportional = include_bytes!("fonts/NotoSans-Latin-subset.ttf").to_vec();
+    let (entry, _) = sfnt_table(&proportional, b"OS/2");
+    proportional[entry..entry + 4].copy_from_slice(b"OS/3");
+    let face = ttf_parser::Face::parse(&proportional, 0).unwrap();
+    assert!(face.tables().os2.is_none());
+    assert!(!face.is_monospaced());
+    for metadata_monospace in [false, true] {
+        let monospace = if metadata_monospace {
+            include_bytes!("fonts/Cousine-Regular.ttf").to_vec()
+        } else {
+            unmarked_monospace_font(true)
+        };
+        for monospace_first in [false, true] {
+            let sources = if monospace_first {
+                [monospace.clone(), proportional.clone()]
+            } else {
+                [proportional.clone(), monospace.clone()]
+            };
+            let context = NativeFontContext::from_font_bytes(
+                sources,
+                Default::default(),
+                &OperationControl::new(),
+            )
+            .unwrap();
+            for (family, expected) in [
+                ("serif", "NotoSans-Regular"),
+                ("sans-serif", "NotoSans-Regular"),
+                ("monospace", "Cousine-Regular"),
+                ("Noto Sans", "NotoSans-Regular"),
+                ("Cousine", "Cousine-Regular"),
+            ] {
+                assert_eq!(
+                    painted_families(&context, family, "V"),
+                    BTreeSet::from([expected.to_owned()]),
+                    "{family}, metadata_monospace={metadata_monospace}, monospace_first={monospace_first}"
+                );
+            }
+        }
+    }
+}
+
+#[test]
+fn implicit_monospace_requires_complete_nonzero_uniform_latin_metrics() {
+    for invalid in ["missing-cmap", "zero-advances", "nonuniform-advances"] {
+        let mut bytes = unmarked_monospace_font(true);
+        if invalid == "missing-cmap" {
+            let (entry, _) = sfnt_table(&bytes, b"cmap");
+            bytes[entry..entry + 4].copy_from_slice(b"cmaq");
+        } else {
+            let (_, metrics) = sfnt_table(&bytes, b"hmtx");
+            let face = ttf_parser::Face::parse(&bytes, 0).unwrap();
+            let metric_count = usize::from(face.tables().hhea.number_of_metrics);
+            let offset = metrics.offset as usize;
+            if invalid == "zero-advances" {
+                for metric in bytes[offset..offset + metric_count * 4].chunks_exact_mut(4) {
+                    metric[..2].fill(0);
+                }
+            } else {
+                let glyph = face.glyph_index('~').unwrap();
+                let advance = face.glyph_hor_advance(glyph).unwrap();
+                let offset = offset + usize::from(glyph.0).min(metric_count - 1) * 4;
+                bytes[offset..offset + 2].copy_from_slice(&(advance + 1).to_be_bytes());
+            }
+        }
+        let context = NativeFontContext::from_font_bytes(
+            [
+                include_bytes!("fonts/NotoSans-Latin-subset.ttf").to_vec(),
+                bytes,
+            ],
+            Default::default(),
+            &OperationControl::new(),
+        )
+        .unwrap();
+        let mut options = usvg::Options::default();
+        context.apply_to_usvg_options(&mut options);
+        let selected = options
+            .fontdb
+            .query(&usvg::fontdb::Query {
+                families: &[usvg::fontdb::Family::Monospace],
+                ..Default::default()
+            })
+            .unwrap();
+        assert_eq!(
+            options.fontdb.face(selected).unwrap().post_script_name,
+            "NotoSans-Regular",
+            "{invalid} must not establish monospace compatibility"
+        );
+    }
+}
+
+#[test]
+fn fixed_latin_metrics_do_not_make_symbolic_faces_implicit_text_fonts() {
+    let sans = include_bytes!("fonts/NotoSans-Latin-subset.ttf").to_vec();
+    for (family_class, panose) in [(12, 0), (0, 5)] {
+        let mut symbolic = unmarked_monospace_font(false);
+        let (_, os2) = sfnt_table(&symbolic, b"OS/2");
+        symbolic[os2.offset as usize + 30] = family_class;
+        symbolic[os2.offset as usize + 32] = panose;
+        for symbolic_first in [false, true] {
+            let sources = if symbolic_first {
+                [symbolic.clone(), sans.clone()]
+            } else {
+                [sans.clone(), symbolic.clone()]
+            };
+            let context = NativeFontContext::from_font_bytes(
+                sources,
+                Default::default(),
+                &OperationControl::new(),
+            )
+            .unwrap();
+            assert_eq!(
+                painted_families(&context, "monospace", "V"),
+                BTreeSet::from(["NotoSans-Regular".to_owned()]),
+                "family_class={family_class}, panose={panose}, symbolic_first={symbolic_first}"
+            );
+            assert_eq!(
+                painted_families(&context, "Cousine", "V"),
+                BTreeSet::from(["Cousine-Regular".to_owned()])
+            );
+        }
+    }
+}

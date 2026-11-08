@@ -143,6 +143,47 @@ The preview does not provide its own pin controls, account/sync controls, AI rep
 
 When edits require a rerender, the previous SVG stays visible while the new render runs. If rendering fails, the old SVG remains inspectable and the error appears as an overlay. Zoom is applied by resizing the SVG surface from its `viewBox` instead of scaling the whole canvas layer, so the preview continues to inspect vector output rather than a PNG snapshot.
 
+### Themes and appearance
+
+Choose a design in the preview's single **Theme** selector. The connected CLI supplies the Mermaid designs and Merman presets; the extension does not infer pairs from names. A paired design offers **Follow editor**, **Light**, and **Dark**. Single-appearance designs show their supported appearance without inventing another version. Follow uses VS Code's active appearance, including the light/dark interpretation of high-contrast editor themes; this does not certify a diagram as high-contrast accessible.
+
+**Source / default** leaves the Mermaid initialization theme unspecified and preserves source frontmatter, directives, and styles. It does not mean Follow editor. Switching through Source or a recipe without declared appearances retains the panel's explicit Light/Dark preference for the next paired theme. Original Mermaid IDs remain valid settings. Neo, Redux, and Redux Color have metadata-declared pairs; Default and Dark remain separate Mermaid designs.
+
+Use **Import theme…** to select a portable theme recipe JSON. The CLI admits the entire original document, including inactive appearances, before the preview adopts it. Invalid or superseded imports leave the current selection intact. The panel retains a complete in-memory snapshot; editing the file later requires importing it again. The webview receives the display name and appearance metadata, not the file path or recipe contents. Render-selection wrappers accepted by CLI `render --theme-file` are not portable recipe files and should be used through the CLI instead.
+
+For persistent settings, use one of these alternatives:
+
+```json
+{
+  "merman.preview.diagramTheme": "preset:editor",
+  "merman.preview.appearance": "follow-editor"
+}
+```
+
+```json
+{
+  "merman.preview.diagramTheme": "file",
+  "merman.preview.themeFile": "themes/reading.theme.json",
+  "merman.preview.appearance": "dark"
+}
+```
+
+Relative recipe paths resolve from the source document's workspace folder. A configured file theme follows the preview's current source, including when a following panel moves to another workspace; a locked panel continues using its own source's workspace. Changing `merman.preview.themeFile` admits the new file before adopting it. **Refresh Preview** rereads a configured file even when its path is unchanged, so saved recipe edits become visible. A rejected reload keeps the previous diagram visible and blocks copying/exporting stale output until a valid render completes.
+
+An explicitly imported theme remains the panel's in-memory snapshot across source/workspace switches, changes to `merman.preview.themeFile`, and manual refreshes. Import it again to pick up edits to that file. Close the panel and open a new preview to restore configured defaults. A pending configured reload cannot replace a later theme selection or import.
+
+For a native Mermaid pair, use a discovered design such as `mermaid:neo`; a literal ID such as `neo-dark` remains fixed. Source configuration and styles keep their existing property-specific precedence. Selecting a theme does not rewrite the source.
+
+Preview toolbar overrides belong to that panel. Its Copy/Export controls use the concrete appearance and complete imported recipe captured for the displayed publication, even if the editor changes appearance while a save dialog is open. Command-palette, editor-title, and CodeLens document exports use the configured settings for that document; they never borrow an arbitrary preview panel's overrides. Follow updates locked and hidden previews without changing their source attachment. ASCII/Unicode retain their separate terminal styling.
+
+Paired selection and recipe inspection require CLI contract 7 or later with the corresponding grouped catalog and `theme inspect` command. An older or unavailable runtime reports the limitation and retains the original Source/default choices; it does not simulate missing appearances.
+
+### Background migration
+
+The new `merman.preview.background` default is **`theme`**, which sends no canvas override and lets the theme/source own its background. Existing explicit `paper`, `transparent`, and `dark` settings keep their previous rendered-image and export meanings. Choose `paper` explicitly to retain the old white-canvas default.
+
+**Viewer backing** (`merman.preview.viewerBackground`) changes only the surface around/behind the preview and never image-export bytes. **Canvas override** (`merman.preview.background`) changes the rendered image and exports. Automatic backing follows the displayed publication's concrete appearance where available; it does not recolor an old SVG while a replacement is rendering.
+
 ## Settings
 
 Merman contributes native VS Code settings grouped under Runtime, Language Intelligence, Analysis, Preview and Export, and Development.
@@ -159,8 +200,11 @@ Merman contributes native VS Code settings grouped under Runtime, Language Intel
 - `merman.diagnostics.enabled`: publish Merman diagnostics to VS Code Problems
 - `merman.sourceActions.enabled`: show source-scoped Merman CodeLens actions
 - `merman.preview.diagramTheme`: default theme for new preview panels
+- `merman.preview.appearance`: `follow-editor`, `light`, or `dark` for paired themes
+- `merman.preview.themeFile`: portable recipe path when the theme is `file`
 - `merman.preview.displayMode`: default `svg`, `ascii`, or `unicode` preview mode
-- `merman.preview.background`: default `paper`, `transparent`, or `dark` preview background
+- `merman.preview.background`: rendered canvas override, `theme` (default), `paper`, `transparent`, or `dark`
+- `merman.preview.viewerBackground`: viewer-only backing, `auto` (default), `paper`, `transparent`, or `dark`
 - `merman.analysis.*`: analysis/lint settings forwarded to `merman-lsp`
 
 ## Packaging

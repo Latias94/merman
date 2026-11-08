@@ -1246,6 +1246,178 @@ fn xychart_title_absence_and_configuration_release_only_the_fill_obligation() {
 }
 
 #[test]
+fn xychart_role_paint_follows_the_initialized_or_selected_fallback_color() {
+    use merman_render::diagram_theme::{CanvasPaint, ThemeRule, ThemeStylePatch};
+    let source = "xychart\ntitle Revenue\nx-axis Months [A, B]\ny-axis Amount 0 --> 10\nbar Bars [3, 7]\nline Trend [2, 8]\n";
+    for (target, channel, text, parent_class) in [
+        (ThemeTarget::Title, "titleColor", "Revenue", "chart-title"),
+        (ThemeTarget::AxisTitle, "xAxisTitleColor", "Months", "title"),
+        (ThemeTarget::AxisLabel, "yAxisLabelColor", "0", "label"),
+        (ThemeTarget::Legend, "legendTextColor", "Bars", "label"),
+        (ThemeTarget::Text, "dataLabelColor", "3", "bar-plot-0"),
+    ] {
+        let theme = xychart_paint_rules([ThemeRule::new(
+            target,
+            ThemeStylePatch::default().with_fill(CanvasPaint::solid("#c2188b").unwrap()),
+        )]);
+        for root in [false, true] {
+            for local in [
+                None,
+                Some(serde_json::Value::Null),
+                Some(serde_json::json!(false)),
+                Some(serde_json::json!("#446688")),
+            ] {
+                let expected = match local.as_ref() {
+                    Some(serde_json::Value::String(_)) => "#446688",
+                    Some(_) if root => "#125634",
+                    _ => "#c2188b",
+                };
+                let mut config =
+                    serde_json::json!({"xyChart":{"showDataLabel":true}, "themeVariables":{}});
+                if root {
+                    config["themeVariables"]["primaryTextColor"] = serde_json::json!("#125634");
+                }
+                if let Some(local) = &local {
+                    config["themeVariables"]["xyChart"] = serde_json::json!({(channel):local});
+                }
+                for from_source in [false, true] {
+                    let (source, site) = if from_source {
+                        (
+                            format!("---\nconfig: {config}\n---\n{source}"),
+                            serde_json::json!({}),
+                        )
+                    } else {
+                        (source.to_owned(), config.clone())
+                    };
+                    let rendered = render_xychart_with_theme_and_engine(
+                        &source,
+                        &theme,
+                        MermaidEngine::new().with_site_config(
+                            merman_core::presentation::SourcePresentationConfig::from_value(site),
+                        ),
+                    );
+                    let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+                    let terminal = document
+                        .descendants()
+                        .find(|node| {
+                            node.has_tag_name("text")
+                                && node.text() == Some(text)
+                                && node.parent().and_then(|p| p.attribute("class"))
+                                    == Some(parent_class)
+                        })
+                        .unwrap();
+                    assert_eq!(
+                        terminal.attribute("fill"),
+                        Some(expected),
+                        "{target:?}/{channel}: root={root}, local={local:?}, source={from_source}"
+                    );
+                    let evidence = merman_render::__private::family_evidence(
+                        rendered.into_completion().report(),
+                    );
+                    assert_eq!(evidence.required_count(), 1);
+                    assert_eq!(evidence.accounted_count(), 1);
+                    assert_eq!(evidence.theme_residual_count(), 0);
+                }
+            }
+        }
+    }
+}
+
+#[test]
+fn xychart_ignored_role_font_sizes_preserve_typed_size_and_independent_weight() {
+    use merman_render::diagram_theme::{Specified, ThemeRule, ThemeStylePatch};
+    let source =
+        "xychart\ntitle Revenue\nx-axis Months [A, B]\ny-axis Amount 0 --> 10\nbar Bars [3, 7]\n";
+    for (target, field, axis, text, parent_class) in [
+        (
+            ThemeTarget::Title,
+            "titleFontSize",
+            None,
+            "Revenue",
+            "chart-title",
+        ),
+        (
+            ThemeTarget::AxisTitle,
+            "titleFontSize",
+            Some("xAxis"),
+            "Months",
+            "title",
+        ),
+        (
+            ThemeTarget::AxisLabel,
+            "labelFontSize",
+            Some("yAxis"),
+            "0",
+            "label",
+        ),
+        (ThemeTarget::Legend, "legendFontSize", None, "Bars", "label"),
+    ] {
+        let mut patch = ThemeStylePatch::default();
+        patch.typography.font_size_px = Specified::Value(29.0);
+        patch.typography.font_weight = Specified::Value(700);
+        let theme = xychart_paint_rules([ThemeRule::new(target, patch)]);
+        for value in [
+            serde_json::Value::Null,
+            serde_json::json!(true),
+            serde_json::json!("bad"),
+            serde_json::json!([]),
+            serde_json::json!({}),
+            serde_json::json!(23),
+            serde_json::json!("23"),
+        ] {
+            let mut config = serde_json::json!({"xyChart":{}});
+            if let Some(axis) = axis {
+                config["xyChart"][axis] = serde_json::json!({field:value});
+            } else {
+                config["xyChart"][field] = value.clone();
+            }
+            let expected = if value.is_number() || value.as_str() == Some("23") {
+                "23"
+            } else {
+                "29"
+            };
+            for from_source in [false, true] {
+                let (source, site) = if from_source {
+                    (
+                        format!("---\nconfig: {config}\n---\n{source}"),
+                        serde_json::json!({}),
+                    )
+                } else {
+                    (source.to_owned(), config.clone())
+                };
+                let rendered = render_xychart_with_theme_and_engine(
+                    &source,
+                    &theme,
+                    MermaidEngine::new().with_site_config(
+                        merman_core::presentation::SourcePresentationConfig::from_value(site),
+                    ),
+                );
+                let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+                let terminal = document
+                    .descendants()
+                    .find(|node| {
+                        node.has_tag_name("text")
+                            && node.text() == Some(text)
+                            && node.parent().and_then(|p| p.attribute("class"))
+                                == Some(parent_class)
+                    })
+                    .unwrap();
+                assert_eq!(
+                    terminal.attribute("font-size"),
+                    Some(expected),
+                    "{target:?}: value={value}, source={from_source}"
+                );
+                assert_eq!(terminal.attribute("font-weight"), Some("700"));
+                let evidence =
+                    merman_render::__private::family_evidence(rendered.into_completion().report());
+                assert_eq!(evidence.applied_count(), 1);
+                assert_eq!(evidence.theme_residual_count(), 0);
+            }
+        }
+    }
+}
+
+#[test]
 fn xychart_title_overridden_rules_are_not_applicable_and_mixed_winners_remain_residual() {
     use merman_render::diagram_theme::{
         CanvasPaint, OrdinalSelector, ThemeRule, ThemeStylePatch, ThemeVariant,

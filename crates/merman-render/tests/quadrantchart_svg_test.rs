@@ -772,6 +772,72 @@ fn quadrantchart_static_series_radius_reaches_svg_without_overriding_existing_ow
 }
 
 #[test]
+fn quadrantchart_radius_ownership_requires_a_consumed_config_value() {
+    let baseline = DiagramThemeCompiler::new()
+        .compile(DiagramThemeSpec::new())
+        .unwrap();
+    let radius_rule = |radius| {
+        ThemeRule::new(
+            ThemeTarget::ChartSeries,
+            ThemeStylePatch {
+                geometry: ThemeGeometryPatch { radius },
+                ..Default::default()
+            },
+        )
+    };
+    let set = quadrantchart_series_rules_theme([radius_rule(Specified::Value(13.0))]);
+    let clear = quadrantchart_series_rules_theme([
+        radius_rule(Specified::Value(13.0)),
+        radius_rule(Specified::Clear),
+    ]);
+    let body = "quadrantChart\nAlpha: [0.5, 0.5]\n";
+    for (value, configured_radius) in [
+        (serde_json::json!("invalid"), None),
+        (serde_json::json!(true), None),
+        (serde_json::json!("9"), Some("9")),
+        (serde_json::json!(5), Some("5")),
+    ] {
+        let config = serde_json::json!({"quadrantChart": {"pointRadius": value}});
+        let authored = format!("---\nconfig: {config}\n---\n{body}");
+        for (source, site) in [
+            (body, config.clone()),
+            (authored.as_str(), serde_json::json!({})),
+            (
+                authored.as_str(),
+                serde_json::json!({"quadrantChart": {"pointRadius": 11}}),
+            ),
+        ] {
+            let engine = || {
+                MermaidEngine::new().with_site_config(
+                    merman_core::presentation::SourcePresentationConfig::from_value(site.clone()),
+                )
+            };
+            let plain = render_quadrantchart_with_theme_and_engine(source, &baseline, engine());
+            assert!(
+                first_quadrantchart_point_circle(plain.svg())
+                    .contains(&format!(r#" r="{}""#, configured_radius.unwrap_or("5")))
+            );
+            for (theme, default_radius, required) in [(&set, "13", 1), (&clear, "5", 2)] {
+                let rendered = render_quadrantchart_with_theme_and_engine(source, theme, engine());
+                assert!(
+                    first_quadrantchart_point_circle(rendered.svg()).contains(&format!(
+                        r#" r="{}""#,
+                        configured_radius.unwrap_or(default_radius)
+                    ))
+                );
+                let evidence =
+                    merman_render::__private::family_evidence(rendered.into_completion().report());
+                let applied = usize::from(configured_radius.is_none());
+                assert_eq!(evidence.required_count(), required);
+                assert_eq!(evidence.applied_count(), applied);
+                assert_eq!(evidence.not_applicable_count(), required - applied);
+                assert_eq!(evidence.theme_residual_count(), 0);
+            }
+        }
+    }
+}
+
+#[test]
 fn quadrantchart_static_series_fill_reaches_terminal_circles_and_preserves_empty_theme_bytes() {
     let source = "quadrantChart\nFirst: [0.25, 0.75]\nSecond: [0.75, 0.25]\n";
     let baseline = render_quadrantchart_svg_from_text(source);
@@ -1777,6 +1843,131 @@ fn quadrantchart_axis_border_and_label_owners_are_independent() {
     let evidence = merman_render::__private::family_evidence(rendered.into_completion().report());
     assert_eq!(evidence.not_applicable_count(), 1);
     assert_eq!(evidence.applied_count(), 0);
+}
+
+#[test]
+fn quadrantchart_ignored_config_colors_do_not_own_typed_paint() {
+    let theme = quadrantchart_series_rules_theme(
+        [
+            ThemeTarget::Text,
+            ThemeTarget::Title,
+            ThemeTarget::Axis,
+            ThemeTarget::ChartSeries,
+        ]
+        .into_iter()
+        .map(|target| {
+            ThemeRule::new(
+                target,
+                ThemeStylePatch::default().with_fill(CanvasPaint::solid("#123456").unwrap()),
+            )
+        }),
+    );
+    let config = serde_json::json!({
+        "themeVariables": {
+            "quadrantPointFill": 42,
+            "quadrantPointTextFill": 42,
+            "quadrantXAxisTextFill": 42,
+            "quadrantYAxisTextFill": 42,
+            "quadrantTitleFill": 42,
+            "quadrantExternalBorderStrokeFill": 42,
+            "quadrantInternalBorderStrokeFill": 42
+        }
+    });
+    for owner in ["site", "frontmatter", "directive"] {
+        let source = match owner {
+            "frontmatter" => format!("---\nconfig: {config}\n---\n{TEXT_PAINT_SOURCE}"),
+            "directive" => format!("%%{{init: {config}}}%%\n{TEXT_PAINT_SOURCE}"),
+            _ => TEXT_PAINT_SOURCE.to_owned(),
+        };
+        let engine = if owner == "site" {
+            MermaidEngine::new().with_site_config(
+                merman_core::presentation::SourcePresentationConfig::from_value(config.clone()),
+            )
+        } else {
+            MermaidEngine::new()
+        };
+        let rendered = render_quadrantchart_with_theme_and_engine(&source, &theme, engine);
+        let fills = quadrant_text_fills(rendered.svg());
+        for label in ["Alpha", "Beta", "Low", "High", "Bottom", "Top", "Title"] {
+            assert_eq!(fills[label], "#123456", "{owner}: {label}");
+        }
+        assert_ne!(fills["Caption"], "#123456");
+        let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+        for circle in document
+            .descendants()
+            .filter(|node| node.has_tag_name("circle"))
+        {
+            assert_eq!(circle.attribute("fill"), Some("#123456"), "{owner}");
+            assert_eq!(
+                circle.attribute("stroke"),
+                Some("hsl(240, 100%, NaN%)"),
+                "{owner}"
+            );
+            assert_eq!(circle.attribute("stroke-width"), Some("0px"), "{owner}");
+        }
+        for line in document
+            .descendants()
+            .filter(|node| node.has_tag_name("line"))
+        {
+            assert!(
+                line.attribute("style")
+                    .unwrap()
+                    .starts_with("stroke: #123456;"),
+                "{owner}"
+            );
+        }
+        let evidence =
+            merman_render::__private::family_evidence(rendered.into_completion().report());
+        assert_eq!(evidence.applied_count(), 4, "{owner}");
+        assert_eq!(evidence.not_applicable_count(), 0, "{owner}");
+        assert_eq!(evidence.theme_residual_count(), 0, "{owner}");
+    }
+}
+
+#[test]
+fn quadrantchart_color_ownership_follows_the_selected_primary_text_fallback() {
+    let theme = quadrantchart_series_rule_theme(ThemeRule::new(
+        ThemeTarget::Title,
+        ThemeStylePatch::default().with_fill(CanvasPaint::solid("#123456").unwrap()),
+    ));
+    for explicit_primary in [false, true] {
+        let mut config = serde_json::json!({"themeVariables": {"quadrantTitleFill": 42}});
+        if explicit_primary {
+            config["themeVariables"]["primaryTextColor"] = serde_json::json!("#abcdef");
+        }
+        for owner in ["site", "source"] {
+            let source = if owner == "source" {
+                format!("---\nconfig: {config}\n---\n{TEXT_PAINT_SOURCE}")
+            } else {
+                TEXT_PAINT_SOURCE.to_owned()
+            };
+            let engine = if owner == "site" {
+                MermaidEngine::new().with_site_config(
+                    merman_core::presentation::SourcePresentationConfig::from_value(config.clone()),
+                )
+            } else {
+                MermaidEngine::new()
+            };
+            let rendered = render_quadrantchart_with_theme_and_engine(&source, &theme, engine);
+            assert_eq!(
+                quadrant_text_fills(rendered.svg())["Title"],
+                if explicit_primary {
+                    "#abcdef"
+                } else {
+                    "#123456"
+                },
+                "{owner}: primary owner={explicit_primary}",
+            );
+            let evidence =
+                merman_render::__private::family_evidence(rendered.into_completion().report());
+            assert_eq!(evidence.applied_count(), usize::from(!explicit_primary));
+            assert_eq!(
+                evidence.not_applicable_count(),
+                usize::from(explicit_primary)
+            );
+            assert_eq!(evidence.theme_residual_count(), 0);
+        }
+    }
 }
 
 #[test]

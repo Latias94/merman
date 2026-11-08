@@ -1,4 +1,18 @@
+use merman_model::presentation::PresentationConfig;
 use serde_json::Value;
+
+pub(super) struct XyChartColorBinding<'a> {
+    pub(super) color: &'a str,
+    source: Option<String>,
+}
+
+impl XyChartColorBinding<'_> {
+    pub(super) fn source_owned(&self, config: &PresentationConfig) -> bool {
+        self.source
+            .as_ref()
+            .is_some_and(|path| config.config_paint_overrides_typed_default(path))
+    }
+}
 
 #[derive(Debug)]
 pub(super) struct XyChartCssBinding {
@@ -17,26 +31,43 @@ pub(super) struct XyChartCssBinding {
 }
 
 impl XyChartCssBinding {
+    pub(super) fn color<'a>(config: &'a Value, channel: &str) -> XyChartColorBinding<'a> {
+        let variables = &config["themeVariables"];
+        if let Some(color) = variables["xyChart"][channel].as_str() {
+            return XyChartColorBinding {
+                color,
+                source: Some(format!("themeVariables.xyChart.{channel}")),
+            };
+        }
+        let (root, fallback) = match channel {
+            "backgroundColor" => ("background", "white"),
+            "dataLabelColor" => ("primaryTextColor", "black"),
+            _ => ("primaryTextColor", "#131300"),
+        };
+        if let Some(color) = variables[root].as_str() {
+            XyChartColorBinding {
+                color,
+                source: Some(format!("themeVariables.{root}")),
+            }
+        } else {
+            XyChartColorBinding {
+                color: fallback,
+                source: None,
+            }
+        }
+    }
+
     pub(super) fn resolve(config: &Value) -> Self {
         let variables = config.get("themeVariables");
-        let raw = |key: &str| {
-            variables
-                .and_then(|variables| variables.get(key))
-                .and_then(Value::as_str)
-        };
         let nested = |key: &str| {
             variables
                 .and_then(|variables| variables.get("xyChart"))
                 .and_then(|variables| variables.get(key))
                 .and_then(Value::as_str)
         };
-        let primary_text = raw("primaryTextColor").unwrap_or("#131300");
-        let role = |key| nested(key).unwrap_or(primary_text).to_owned();
+        let role = |key| Self::color(config, key).color.to_owned();
         Self {
-            background_color: nested("backgroundColor")
-                .or_else(|| raw("background"))
-                .unwrap_or("white")
-                .to_owned(),
+            background_color: role("backgroundColor"),
             title_color: role("titleColor"),
             legend_text_color: role("legendTextColor"),
             x_axis_title_color: role("xAxisTitleColor"),

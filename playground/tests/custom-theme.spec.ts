@@ -121,9 +121,8 @@ test("Appearance offers one theme directory and read-only JSON for the current t
   await useImportedTheme(panel);
   await expect.poll(() => svg(page)).toContain("#fef3c7");
   await openAdvanced(panel);
-  const json = panel.getByRole("textbox", { name: "Theme JSON", exact: true });
-  await expect(json).toHaveAttribute("readonly", "");
-  await expect(json).toHaveValue(authored);
+  await expect(panel.getByTestId("theme-json-document")).toHaveAttribute("data-code-language", "json");
+  await expect(panel.getByRole("button", { name: "Customize", exact: true })).toBeEnabled();
   expect(await copyRecipe(page, panel)).toBe(authored);
 });
 
@@ -306,7 +305,7 @@ test("closing Appearance retains immediate theme and font choices alongside auth
   await reopened.getByRole("button", { name: "Close appearance panel", exact: true }).click();
   const url = await copyWorkspaceLink(page);
   const saved = decodeShareHash(new URL(url).hash)!;
-  expect(saved.diagramTheme).toBe("forest");
+  expect(saved.diagramTheme).toBe("auto");
   expect(saved.mermaidConfig).toBe(config);
   expect(saved.diagramFont).toBe("arial");
   expect(saved.themePresetId).toBeNull();
@@ -519,7 +518,7 @@ test("Chinese theme panel keeps import, preview and advanced JSON reachable on a
   await panel.getByRole("button", { name: "采用导入主题", exact: true }).click();
   await expect.poll(() => svg(page)).toContain("#fef3c7");
   await openAdvanced(panel, "高级");
-  await expect(panel.getByRole("textbox", { name: "主题 JSON", exact: true })).toHaveAttribute("readonly", "");
+  await expect(panel.getByTestId("theme-json-document")).toHaveAttribute("data-code-language", "json");
   await expect(panel.getByRole("button", { name: "复制 JSON", exact: true })).toBeVisible();
   const separator = page.getByRole("separator", { name: "调整主题面板大小", exact: true });
   await separator.focus();

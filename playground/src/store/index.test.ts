@@ -9,7 +9,7 @@ import {
 } from "./index.ts";
 import type { StartupShareHydration } from "../lib/share-view.ts";
 
-test("diagram rendering setters update only their own axis", () => {
+test("ordinary theme selection clears the host base and explicit composition stays independent", () => {
   useAppStore.setState({
     diagramTheme: "forest",
     themePresetId: null,
@@ -18,14 +18,14 @@ test("diagram rendering setters update only their own axis", () => {
 
   useAppStore.getState().selectTheme({ kind: "preset", presetId: "future-theme" });
   assert.deepEqual(renderingState(), {
-    diagramTheme: "forest",
+    diagramTheme: "auto",
     themePresetId: "future-theme",
     svgPipeline: "parity",
   });
 
   useAppStore.getState().setSvgPipeline("readable");
   assert.deepEqual(renderingState(), {
-    diagramTheme: "forest",
+    diagramTheme: "auto",
     themePresetId: "future-theme",
     svgPipeline: "readable",
   });
@@ -220,4 +220,54 @@ test("no-op choices create no history and appearance history is bounded", () => 
   assert.equal(useAppStore.getState().appearanceHistory.length, 0);
   for (let i = 0; i < 40; i++) useAppStore.getState().selectTheme({ kind: "preset", presetId: `theme-${i}` });
   assert.equal(useAppStore.getState().appearanceHistory.length, 32);
+});
+
+test("appearance preference changes are undoable while application appearance changes are not", () => {
+  useAppStore.getState().applyWorkspaceSnapshot(DEFAULT_WORKSPACE_SNAPSHOT);
+  useAppStore.getState().selectTheme({ kind: "preset", presetId: "editor", appearance: "follow" });
+  const history = useAppStore.getState().appearanceHistory;
+  useAppStore.getState().setUITheme("light");
+  useAppStore.getState().setUITheme("dark");
+  assert.equal(useAppStore.getState().appearanceHistory, history);
+  assert.equal(useAppStore.getState().themeAppearance, "follow");
+  useAppStore.getState().setThemeAppearance("light");
+  assert.equal(selectWorkspaceSnapshot(useAppStore.getState()).themeAppearance, "light");
+  useAppStore.getState().setCode("later authored source");
+  useAppStore.getState().setMermaidConfig('{"look":"neo"}');
+  assert.equal(useAppStore.getState().undoAppearance(), true);
+  assert.equal(useAppStore.getState().themeAppearance, "follow");
+  assert.equal(useAppStore.getState().code, "later authored source");
+  assert.equal(useAppStore.getState().mermaidConfig, '{"look":"neo"}');
+});
+
+test("customize/apply preserves explicit composition and appearance as one theme-edit transaction", () => {
+  const initial = { ...DEFAULT_WORKSPACE_SNAPSHOT, diagramTheme: "forest" as const, themePresetId: "editor", themeAppearance: "dark" as const };
+  useAppStore.getState().applyWorkspaceSnapshot(initial);
+  useAppStore.getState().selectTheme({
+    kind: "recipe", recipeJson: '{"schema_version":1,"kind":"design","design":{}}', appearance: "dark", compose: true,
+    label: { name: "Editor", source: "imported", derivedFrom: "preset:editor" },
+  });
+  assert.equal(useAppStore.getState().diagramTheme, "forest");
+  assert.equal(useAppStore.getState().themeAppearance, "dark");
+  assert.equal(useAppStore.getState().appearanceHistory.length, 1);
+  useAppStore.getState().setCode("a later source edit");
+  useAppStore.getState().setMermaidConfig('{"flowchart":{"look":"classic"}}');
+  useAppStore.getState().undoAppearance();
+  assert.equal(useAppStore.getState().themePresetId, "editor");
+  assert.equal(useAppStore.getState().themeRecipeJson, null);
+  assert.equal(useAppStore.getState().diagramTheme, "forest");
+  assert.equal(useAppStore.getState().themeAppearance, "dark");
+  assert.equal(useAppStore.getState().code, "a later source edit");
+  assert.equal(useAppStore.getState().mermaidConfig, '{"flowchart":{"look":"classic"}}');
+});
+
+test("a new single-appearance choice updates identity and appearance atomically", () => {
+  useAppStore.getState().applyWorkspaceSnapshot({ ...DEFAULT_WORKSPACE_SNAPSHOT, themePresetId: "editor", themeAppearance: "dark" });
+  const changes: WorkspaceSnapshot[] = [];
+  const dispose = useAppStore.subscribe((state) => changes.push(selectWorkspaceSnapshot(state)));
+  useAppStore.getState().selectTheme({ kind: "preset", presetId: "brutalist", appearance: "light" });
+  dispose();
+  assert.equal(changes.length, 1);
+  assert.equal(changes[0].themePresetId, "brutalist");
+  assert.equal(changes[0].themeAppearance, "light");
 });

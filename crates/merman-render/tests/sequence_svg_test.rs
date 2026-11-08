@@ -65,6 +65,7 @@ enum SequenceHostResponse {
     StatefulMetrics,
     WeightSensitiveMetrics,
     EntitySensitiveMetrics,
+    ActorTerminalMetrics,
     Error,
 }
 
@@ -155,6 +156,22 @@ impl HostTextMeasurer for RecordingSequenceHost {
                     }),
                 }))
             }
+            SequenceHostResponse::ActorTerminalMetrics => match request.operation {
+                TextMeasurementOperation::MermaidCalculateTextDimensions => {
+                    Ok(Some(HostTextMeasurement::Metrics(TextMetrics {
+                        width: request.text.chars().count() as f64 * 8.0,
+                        height: 16.0,
+                        line_count: 1,
+                    })))
+                }
+                TextMeasurementOperation::TspanBBoxWidth => Ok(Some(HostTextMeasurement::Length(
+                    request.text.chars().count() as f64 * 24.0,
+                ))),
+                TextMeasurementOperation::TspanBBoxHeight => {
+                    Ok(Some(HostTextMeasurement::Length(32.0)))
+                }
+                _ => Ok(None),
+            },
             SequenceHostResponse::Error => Err(HostTextMeasurementError::new(
                 "recorded Sequence host failure",
             )),
@@ -5927,6 +5944,200 @@ Alice->>Bob: Clear Message"#;
             .and_then(|style| inline_style_value(style, "font-size")),
         Some("21px")
     );
+}
+
+fn render_sequence_actor_terminal_probe(
+    source: &str,
+    styles: &[Specified<merman_render::diagram_theme::FontStyle>],
+) -> (String, Vec<RecordedSequenceExchange>) {
+    let mut rules = ThemeRuleSet::default().with_rule(ThemeRule::new(
+        ThemeTarget::ActorLabel,
+        ThemeStylePatch {
+            typography: ThemeTextStylePatch {
+                font_stack: Specified::Value(
+                    merman_render::diagram_theme::FontStack::single("Georgia").unwrap(),
+                ),
+                font_size_px: Specified::Value(40.0),
+                ..ThemeTextStylePatch::default()
+            },
+            ..ThemeStylePatch::default()
+        },
+    ));
+    for style in styles {
+        rules = rules.with_rule(ThemeRule::new(
+            ThemeTarget::ActorLabel,
+            ThemeStylePatch {
+                typography: ThemeTextStylePatch {
+                    font_style: style.clone(),
+                    ..ThemeTextStylePatch::default()
+                },
+                ..ThemeStylePatch::default()
+            },
+        ));
+    }
+    let theme = DiagramThemeCompiler::new()
+        .compile(DiagramThemeSpec::new().with_styles(rules))
+        .expect("compile terminal actor typography");
+    let parsed = parse_sequence_for_render(
+        &common::install_parse_compatibility(&theme, MermaidEngine::new()),
+        source,
+    );
+    let host = Arc::new(RecordingSequenceHost::new(
+        SequenceHostResponse::ActorTerminalMetrics,
+    ));
+    let identity = TextMeasurementProfileIdentity::new(
+        MeasurementProfileId::new("sequence-actor-terminal-style").unwrap(),
+        "1",
+    )
+    .unwrap();
+    let session = RenderEnvironment::deterministic()
+        .without_math_renderer()
+        .with_text_measurement_policy(TextMeasurementPolicy::host_display(
+            identity,
+            host.clone(),
+            TextMeasurementPhase::ALL,
+        ))
+        .begin_session_with_theme(&theme)
+        .unwrap();
+    let rendered = family::prepare(&parsed, &LayoutOptions::default(), session)
+        .unwrap()
+        .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+        .unwrap();
+    (rendered.svg().to_owned(), host.snapshot())
+}
+
+#[test]
+fn sequence_actor_non_normal_typed_style_measures_terminal_tspan_and_clear_restores_legacy() {
+    use merman_render::diagram_theme::FontStyle;
+    let source = "sequenceDiagram\nparticipant A as probe-actor";
+    for (styles, expected_style, expected_width, terminal) in [
+        (vec![], "normal", 150.0, false),
+        (
+            vec![Specified::Value(FontStyle::Italic)],
+            "italic",
+            284.0,
+            true,
+        ),
+        (
+            vec![Specified::Value(FontStyle::Oblique)],
+            "oblique",
+            284.0,
+            true,
+        ),
+        (
+            vec![
+                Specified::Value(FontStyle::Italic),
+                Specified::Value(FontStyle::Normal),
+            ],
+            "normal",
+            150.0,
+            false,
+        ),
+        (
+            vec![Specified::Value(FontStyle::Italic), Specified::Clear],
+            "normal",
+            150.0,
+            false,
+        ),
+    ] {
+        let (svg, exchanges) = render_sequence_actor_terminal_probe(source, &styles);
+        let doc = roxmltree::Document::parse(&svg).unwrap();
+        let actors: Vec<_> = doc
+            .descendants()
+            .filter(|node| node.has_tag_name("rect") && node.attribute("name") == Some("A"))
+            .collect();
+        assert_eq!(
+            actors.len(),
+            2,
+            "both participant terminals must be checked"
+        );
+        for actor in actors {
+            assert_eq!(
+                actor.attribute("width").unwrap().parse::<f64>().unwrap(),
+                expected_width,
+                "{styles:?}"
+            );
+        }
+        assert_sequence_role_text_style(
+            &doc,
+            "actor",
+            "probe-actor",
+            "Georgia",
+            "40px",
+            "400",
+            expected_style,
+        );
+        let requests: Vec<_> = exchanges
+            .iter()
+            .filter(|exchange| exchange.request.text == "probe-actor")
+            .map(|exchange| &exchange.request)
+            .collect();
+        assert!(!requests.is_empty());
+        assert_eq!(
+            requests
+                .iter()
+                .any(|request| request.operation == TextMeasurementOperation::TspanBBoxWidth),
+            terminal,
+            "{styles:?}"
+        );
+        assert_eq!(
+            requests.iter().any(|request| request.operation
+                == TextMeasurementOperation::MermaidCalculateTextDimensions),
+            !terminal,
+            "{styles:?}"
+        );
+        if terminal {
+            assert!(requests.iter().all(|request| request.font_style.as_deref()
+                == Some(expected_style)
+                && request.font_family.as_deref() == Some("Georgia")
+                && request.font_size_bits == 40.0_f64.to_bits()));
+        }
+    }
+}
+
+#[test]
+fn sequence_actor_typed_italic_wrap_and_multiline_preserve_rows_and_configured_minima() {
+    use merman_render::diagram_theme::FontStyle;
+    for (wrap, look, width, height, expected_width, expected_height) in [
+        (false, "classic", 120, 20, 284.0, 112.0),
+        (true, "classic", 120, 20, 284.0, 112.0),
+        (true, "neo", 120, 20, 284.0, 168.0),
+        (true, "classic", 1000, 500, 1000.0, 500.0),
+    ] {
+        let source = format!(
+            "---\nconfig: {{look: {look}, sequence: {{wrap: {wrap}, width: {width}, height: {height}, mirrorActors: false}}}}\n---\nsequenceDiagram\nparticipant A as probe-one<br/>probe-two<br/>probe-three"
+        );
+        let (svg, exchanges) =
+            render_sequence_actor_terminal_probe(&source, &[Specified::Value(FontStyle::Italic)]);
+        let doc = roxmltree::Document::parse(&svg).unwrap();
+        let actor = doc
+            .descendants()
+            .find(|node| {
+                node.has_tag_name("rect") && node.attribute("class") == Some("actor actor-top")
+            })
+            .unwrap();
+        assert_eq!(
+            actor.attribute("width").unwrap().parse::<f64>().unwrap(),
+            expected_width,
+            "{source}"
+        );
+        assert_eq!(
+            actor.attribute("height").unwrap().parse::<f64>().unwrap(),
+            expected_height,
+            "{source}"
+        );
+        assert_eq!(
+            text_rows_by_class(&svg, "actor"),
+            ["probe-one", "probe-two", "probe-three"],
+            "{source}"
+        );
+        assert!(
+            exchanges
+                .iter()
+                .any(|exchange| exchange.request.text == "probe-three"
+                    && exchange.request.operation == TextMeasurementOperation::TspanBBoxWidth)
+        );
+    }
 }
 
 #[test]

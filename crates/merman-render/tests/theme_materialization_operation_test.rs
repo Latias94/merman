@@ -1,9 +1,10 @@
 use merman_render::diagram_theme::{
-    DiagramThemeCompiler, ThemeResourceLimitId, ThemeResourcePolicy, materialize_theme_design,
+    DiagramThemeCompiler, ThemeResourceLimitId, ThemeResourcePolicy, inspect_theme_design,
+    materialize_theme_design, materialize_theme_design_json_with_bindings,
     materialize_theme_design_json_with_resource_policy,
     materialize_theme_design_with_resource_policy,
 };
-use merman_theme_contract::{ThemeDesignV1, ThemeRecipeV1};
+use merman_theme_contract::{ThemeAppearance, ThemeDesignV1, ThemeRecipeV1};
 use serde_json::json;
 
 fn decode(input: serde_json::Value) -> ThemeDesignV1 {
@@ -41,14 +42,141 @@ fn typed_json_and_policy_operations_materialize_the_same_explicit_design() {
 }
 
 #[test]
-fn materialization_does_not_eagerly_compile_semantic_targets() {
-    let design = decode(json!({"styles":{"future-node":{"fill":"#abcdef"}}}));
-    materialize_theme_design(&design).expect("materialization resolves values");
-    assert!(
-        DiagramThemeCompiler::new()
-            .compile_recipe(ThemeRecipeV1::Design { design })
-            .is_err()
+fn raw_materialization_and_inspection_share_complete_document_admission() {
+    for (input, path) in [
+        (
+            json!({"styles":{"future-node":{"fill":"#abcdef"}}}),
+            "/styles/future-node",
+        ),
+        (json!({"mermaid":{"theme":"unknown"}}), "/mermaid/theme"),
+        (
+            json!({"styles":{"node":{"effect":{"kind":"graph","primitives":[]}}}}),
+            "/styles/node/effect",
+        ),
+    ] {
+        for classified in [false, true] {
+            let mut input = input.clone();
+            if classified {
+                input["appearances"] = json!({"light":{}});
+                input["default_appearance"] = json!("light");
+            }
+            let design = decode(input.clone());
+            let encoded = serde_json::to_vec(&design).unwrap();
+            let resources = ThemeResourcePolicy::interactive();
+            let typed = materialize_theme_design(&design).unwrap_err();
+            assert_eq!(typed.diagnostic().path(), path);
+            assert!(input.pointer(path).is_some());
+            assert_eq!(inspect_theme_design(&design).unwrap_err(), typed);
+            assert_eq!(
+                materialize_theme_design_json_with_resource_policy(&encoded, &resources)
+                    .unwrap_err(),
+                typed,
+            );
+            assert_eq!(
+                materialize_theme_design_json_with_bindings(&encoded, &resources).unwrap_err(),
+                typed,
+            );
+            let recipe = ThemeRecipeV1::Design { design };
+            assert!(
+                DiagramThemeCompiler::new()
+                    .inspect_document(&recipe)
+                    .is_err()
+            );
+        }
+    }
+}
+
+#[test]
+fn raw_encoded_byte_boundaries_count_the_design_without_a_recipe_envelope() {
+    for input in [
+        json!({}),
+        json!({"appearances":{"light":{}},"default_appearance":"light"}),
+    ] {
+        let design = decode(input);
+        let raw = design.canonical_json_bytes().unwrap();
+        let resources = ThemeResourcePolicy::interactive()
+            .with_limit(ThemeResourceLimitId::MaxThemeEncodedBytes, raw.len())
+            .unwrap();
+        materialize_theme_design_with_resource_policy(&design, &resources).unwrap();
+        materialize_theme_design_json_with_bindings(&raw, &resources).unwrap();
+        let recipe = ThemeRecipeV1::Design {
+            design: design.clone(),
+        };
+        assert!(
+            DiagramThemeCompiler::new()
+                .with_resource_policy(resources)
+                .materialize_document(&recipe, None)
+                .is_err()
+        );
+        let too_small = ThemeResourcePolicy::interactive()
+            .with_limit(ThemeResourceLimitId::MaxThemeEncodedBytes, raw.len() - 1)
+            .unwrap();
+        let typed = materialize_theme_design_with_resource_policy(&design, &too_small).unwrap_err();
+        let decoded =
+            materialize_theme_design_json_with_resource_policy(&raw, &too_small).unwrap_err();
+        assert_eq!(typed, decoded);
+        assert_eq!(typed.diagnostic().path(), "");
+        assert_eq!(
+            typed.diagnostic().limit_id(),
+            Some("max_theme_encoded_bytes")
+        );
+        assert_eq!(typed.diagnostic().actual(), Some(raw.len() as u64));
+        assert_eq!(typed.diagnostic().max(), Some((raw.len() - 1) as u64));
+    }
+}
+
+#[test]
+fn raw_bindings_preserve_default_selection_and_original_relative_locations() {
+    let input = json!({
+        "styles":{"node":{"fill":{"ref":"ink"}}},
+        "appearances":{
+            "light":{"tokens":{"ink":{"type":"paint","value":"white"}}},
+            "dark":{"tokens":{"ink":{"type":"paint","value":"black"}}}
+        },
+        "default_appearance":"dark"
+    });
+    let design = decode(input.clone());
+    let raw = materialize_theme_design_json_with_bindings(
+        &serde_json::to_vec(&input).unwrap(),
+        &ThemeResourcePolicy::interactive(),
+    )
+    .unwrap();
+    let selected = DiagramThemeCompiler::new()
+        .materialize_document(
+            &ThemeRecipeV1::Design { design },
+            Some(ThemeAppearance::Dark),
+        )
+        .unwrap();
+    assert_eq!(raw.spec(), &selected.spec);
+    assert_eq!(raw.references().len(), selected.references.len());
+    for reference in raw.references() {
+        assert_eq!(
+            input.pointer(&reference.path),
+            Some(&json!({"ref":reference.token}))
+        );
+        assert!(selected.references.iter().any(|original| {
+            original.path == format!("/design{}", reference.path)
+                && original.token == reference.token
+                && original.domain == reference.domain
+        }));
+    }
+}
+
+#[test]
+fn raw_materialization_enforces_the_compiler_effect_resource_policy() {
+    let design = decode(json!({"styles":{"node":{"effect":{
+        "kind":"graph","primitives":[{"kind":"gaussian-blur","std_deviation":2}]
+    }}}}));
+    let resources = ThemeResourcePolicy::interactive()
+        .with_limit(ThemeResourceLimitId::MaxEffectBlurMagnitude, 1)
+        .unwrap();
+    let error = materialize_theme_design_with_resource_policy(&design, &resources).unwrap_err();
+    assert_eq!(
+        error.diagnostic().limit_id(),
+        Some("max_effect_blur_magnitude")
     );
+    assert_eq!(error.diagnostic().actual(), Some(2));
+    assert_eq!(error.diagnostic().max(), Some(1));
 }
 
 #[test]

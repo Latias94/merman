@@ -1,4 +1,4 @@
-use crate::config::{config_css_number_or_string, config_f64, config_string};
+use crate::config::{config_css_number_or_string, config_f64};
 use crate::svg::PreparedCommonCss;
 
 #[derive(Debug)]
@@ -16,28 +16,77 @@ pub(crate) struct ArchitectureCssBinding {
 }
 
 impl ArchitectureCssBinding {
+    pub(super) fn edge_color_source(config: &serde_json::Value) -> (&'static str, Option<&str>) {
+        if let Some(color) = config
+            .pointer("/themeVariables/archEdgeColor")
+            .and_then(serde_json::Value::as_str)
+        {
+            ("themeVariables.archEdgeColor", Some(color))
+        } else {
+            (
+                "themeVariables.lineColor",
+                config
+                    .pointer("/themeVariables/lineColor")
+                    .and_then(serde_json::Value::as_str),
+            )
+        }
+    }
+
+    pub(super) fn arrow_color_source(config: &serde_json::Value) -> (&'static str, Option<&str>) {
+        if let Some(color) = config
+            .pointer("/themeVariables/archEdgeArrowColor")
+            .and_then(serde_json::Value::as_str)
+        {
+            ("themeVariables.archEdgeArrowColor", Some(color))
+        } else {
+            Self::edge_color_source(config)
+        }
+    }
+
+    pub(super) fn group_border_color_source(
+        config: &serde_json::Value,
+    ) -> (&'static str, Option<&str>) {
+        if let Some(color) = config
+            .pointer("/themeVariables/archGroupBorderColor")
+            .and_then(serde_json::Value::as_str)
+        {
+            ("themeVariables.archGroupBorderColor", Some(color))
+        } else {
+            (
+                "themeVariables.primaryBorderColor",
+                config
+                    .pointer("/themeVariables/primaryBorderColor")
+                    .and_then(serde_json::Value::as_str),
+            )
+        }
+    }
+
     pub(super) fn resolve(
         config: &serde_json::Value,
         font_family: &str,
         font_size_css: &str,
     ) -> Self {
-        let color = |key: &str, fallback: &str| {
-            config_string(config, &["themeVariables", key]).unwrap_or_else(|| fallback.to_owned())
-        };
-        let line_color = color("lineColor", "#333333");
-        let primary_border = color("primaryBorderColor", "hsl(240, 60%, 86.2745098039%)");
-        let edge_color = color("archEdgeColor", &line_color);
+        let edge_color = Self::edge_color_source(config)
+            .1
+            .unwrap_or("#333333")
+            .to_owned();
         Self {
             common: PreparedCommonCss::with_resolved_typography(
                 config,
                 font_family.to_owned(),
                 font_size_css.to_owned(),
             ),
-            arrow_color: color("archEdgeArrowColor", &edge_color),
+            arrow_color: Self::arrow_color_source(config)
+                .1
+                .unwrap_or("#333333")
+                .to_owned(),
             edge_color,
             edge_width: config_css_number_or_string(config, &["themeVariables", "archEdgeWidth"])
                 .unwrap_or_else(|| "3".to_owned()),
-            group_border_color: color("archGroupBorderColor", &primary_border),
+            group_border_color: Self::group_border_color_source(config)
+                .1
+                .unwrap_or("hsl(240, 60%, 86.2745098039%)")
+                .to_owned(),
             group_border_width: config_css_number_or_string(
                 config,
                 &["themeVariables", "archGroupBorderWidth"],

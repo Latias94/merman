@@ -1,7 +1,7 @@
 import { useId, useState } from "react";
 import { Search } from "lucide-react";
 import { useTranslation } from "react-i18next";
-import type { ThemePresetCatalogEntry } from "@mermanjs/web";
+import type { ThemePresetCatalogEntry, ThemeCatalog, ThemeAppearance } from "@mermanjs/web";
 
 import type { DiagramThemeChoice } from "@/src/lib/diagram-appearance";
 import type { MermaidThemeSelection } from "@/src/lib/mermaid-theme-name";
@@ -11,11 +11,14 @@ import { EXPLORATION_THEMES } from "@/src/themes/catalog";
 import { ThemeChoiceCards, type ThemeCatalogChoice } from "./ThemeChoiceCards";
 import { currentRecipeIdentity, selectedThemeKey } from "./theme-selection";
 import { ThemeShowcaseLauncher } from "./ThemeShowcaseLauncher";
+import { preferredAppearanceForSelection } from "@/src/lib/theme-appearance";
 
-export default function ThemeGallery({ workspace, mermaidThemes, presets, catalogReady, familyId, pending, canSelectRecipes, onSelect }: {
+export default function ThemeGallery({ workspace, mermaidThemes, presets, catalog, selectedAppearance, catalogReady, familyId, pending, canSelectRecipes, onSelect }: {
   readonly workspace: Readonly<WorkspaceSnapshot>;
   readonly mermaidThemes: readonly MermaidThemeSelection[];
   readonly presets: readonly ThemePresetCatalogEntry[];
+  readonly catalog: ThemeCatalog | null;
+  readonly selectedAppearance: ThemeAppearance | null;
   readonly catalogReady: boolean;
   readonly familyId: string | null;
   readonly pending: boolean;
@@ -26,27 +29,42 @@ export default function ThemeGallery({ workspace, mermaidThemes, presets, catalo
   const searchId = useId();
   const [query, setQuery] = useState("");
   const recipe = currentRecipeIdentity(workspace, EXPLORATION_THEMES, t("appearance.importedTheme"));
-  const selectedKey = selectedThemeKey(workspace, EXPLORATION_THEMES);
+  const selectedKey = selectedThemeKey(workspace, EXPLORATION_THEMES, catalog);
   const selectedExploration = EXPLORATION_THEMES.find((theme) => theme.id === recipe?.explorationId);
   const entries: ThemeCatalogChoice[] = [
-    ...mermaidThemes.map((theme): ThemeCatalogChoice => ({
+    ...(catalog ? [{ key: "mermaid:auto", name: t("themes.auto"), source: "automatic" as const,
+      choice: { kind: "mermaid" as const, theme: "auto" as const }, available: true },
+    ...catalog.mermaid_theme_designs.filter((design) =>
+      design.appearances.every((entry) => mermaidThemes.includes(entry.theme_id))).map((design): ThemeCatalogChoice => ({
+      key: `mermaid:${design.id}`,
+      name: t(`themes.${design.id}`, { defaultValue: design.display_name }),
+      source: "mermaid",
+      choice: { kind: "mermaid", theme: design.id as MermaidThemeSelection,
+        appearance: design.appearances.length > 1 ? "follow" : "default" },
+      appearances: design.appearances.map((entry) => entry.appearance),
+      searchTerms: design.appearances.map((entry) => `mermaid:${entry.theme_id}`).join(" "),
+      available: true,
+    }))] : mermaidThemes.map((theme): ThemeCatalogChoice => ({
       key: `mermaid:${theme}`,
       name: t(`themes.${theme}`, { defaultValue: theme }),
       source: theme === "auto" ? "automatic" : "mermaid",
       choice: { kind: "mermaid", theme },
       available: true,
-    })),
+    }))),
     ...presets.map((preset): ThemeCatalogChoice => ({
       key: `preset:${preset.id}`,
       name: t(`themePresets.${preset.id}`, { defaultValue: preset.display_name }),
       source: "builtin",
-      choice: { kind: "preset", presetId: preset.id },
-      colors: preset.preview_colors,
+      choice: { kind: "preset", presetId: preset.id, appearance: preferredAppearanceForSelection(preset) },
+      colors: preset.appearances.find((entry) => entry.appearance === (selectedKey === `preset:${preset.id}` ? selectedAppearance : preset.default_appearance))?.preview_colors,
+      appearances: preset.supported_appearances,
+      searchTerms: preset.appearances.map((entry) => `preset:${entry.concrete_preset_id}`).join(" "),
       available: canSelectRecipes && preset.available,
       loading: !canSelectRecipes,
       unavailableReason: !preset.available ? preset.availability_reason_ids.join(", ") : undefined,
       maturity: preset.maturity,
-      treatment: pending ? "waiting" : themeFamilyTreatment(preset, familyId),
+      treatment: pending ? "waiting" : themeFamilyTreatment(preset.appearances.find((entry) =>
+        entry.appearance === (selectedKey === `preset:${preset.id}` ? selectedAppearance : preset.default_appearance)) ?? { family_designs: [] }, familyId),
     })),
     ...EXPLORATION_THEMES.map((theme): ThemeCatalogChoice => ({
       key: `exploration:${theme.id}`,
@@ -56,17 +74,21 @@ export default function ThemeGallery({ workspace, mermaidThemes, presets, catalo
         name: recipe?.explorationId === theme.id ? recipe.name : theme.name, source: "exploration",
       } },
       description: t(`themeGallery.themes.${theme.id}`),
-      colors: theme.colors,
+      colors: theme.appearances?.find((entry) => entry.appearance === (recipe?.explorationId === theme.id ? selectedAppearance : theme.appearance))?.colors ?? theme.colors,
+      appearances: theme.appearances?.map((entry) => entry.appearance) ?? [theme.appearance],
       available: canSelectRecipes,
       loading: !canSelectRecipes,
     })),
   ];
   if (recipe && !recipe.explorationId) entries.push({
     key: "recipe:current", name: recipe.name, source: recipe.source,
-    choice: { kind: "recipe", recipeJson: recipe.recipeJson, label: { name: recipe.name, source: recipe.source } },
+    choice: { kind: "recipe", recipeJson: recipe.recipeJson, label: {
+      name: recipe.name, source: recipe.source, ...(recipe.derivedFrom ? { derivedFrom: recipe.derivedFrom } : {}),
+    } },
     description: t("appearance.currentRecipe"), available: canSelectRecipes, loading: !canSelectRecipes,
   });
-  if (workspace.themePresetId && !presets.some((preset) => preset.id === workspace.themePresetId)) entries.push({
+  if (workspace.themePresetId && !presets.some((preset) => preset.id === workspace.themePresetId) &&
+    !catalog?.presets.some((entry) => entry.appearances.some((appearance) => appearance.concrete_preset_id === workspace.themePresetId))) entries.push({
     key: `preset:${workspace.themePresetId}`, name: workspace.themePresetId, source: "builtin",
     choice: { kind: "preset", presetId: workspace.themePresetId }, available: false, loading: !catalogReady,
     description: t(catalogReady ? "appearance.unavailablePresetChoice" : "appearance.catalogPending"),
@@ -77,7 +99,7 @@ export default function ThemeGallery({ workspace, mermaidThemes, presets, catalo
     const title = t(`appearance.groups.${source}.title`);
     const description = t(`appearance.groups.${source}.description`);
     const choices = entries.filter((entry) => entry.source === source &&
-      `${entry.key} ${entry.name} ${entry.description ?? ""} ${t(`appearance.sources.${source}`)} ${title} ${description}`
+      `${entry.key} ${entry.name} ${entry.description ?? ""} ${entry.searchTerms ?? ""} ${t(`appearance.sources.${source}`)} ${title} ${description}`
         .toLocaleLowerCase(locale).includes(search));
     if (source !== "mermaid") choices.sort((left, right) =>
       left.name.localeCompare(right.name, locale, { numeric: true, sensitivity: "base" }));

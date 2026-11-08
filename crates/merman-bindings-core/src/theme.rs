@@ -1,6 +1,6 @@
 use merman::svg::{DiagramTheme, DiagramThemeCompiler, ThemeResourcePolicy};
 use merman_theme_contract::{
-    DiagramThemeSpecWireV1, THEME_RECIPE_SCHEMA_VERSION_V1, ThemeRecipeV1,
+    DiagramThemeSpecWireV1, THEME_RECIPE_SCHEMA_VERSION_V1, ThemeAppearance, ThemeRecipeV1,
 };
 use serde::{Deserialize, Deserializer, de::Error as _};
 use serde_json::{Value, value::RawValue};
@@ -8,20 +8,37 @@ use serde_json::{Value, value::RawValue};
 use crate::common::{BindingError, BindingStatus};
 
 #[derive(Debug)]
-#[expect(
-    clippy::large_enum_variant,
-    reason = "A theme selection is one decoded options value; retain its by-value payload"
-)]
 pub(crate) enum BindingThemeOptionsJson {
     Selection(ThemeSelectionJson),
     Recipe(ThemeRecipeV1),
 }
 
-#[derive(Debug, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub(crate) struct ThemeSelectionJson {
-    preset: Option<String>,
-    spec: Option<DiagramThemeSpecWireV1>,
+#[derive(Debug)]
+#[expect(
+    clippy::large_enum_variant,
+    reason = "One decoded selection retains its complete typed recipe or specification"
+)]
+pub(crate) enum ThemeSelectionJson {
+    Preset {
+        preset: String,
+        appearance: Option<ThemeAppearance>,
+    },
+    Recipe {
+        recipe: ThemeRecipeV1,
+        appearance: Option<ThemeAppearance>,
+    },
+    Spec {
+        spec: DiagramThemeSpecWireV1,
+    },
+}
+
+pub(crate) fn deserialize_appearance<'de, D>(
+    deserializer: D,
+) -> Result<Option<ThemeAppearance>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    ThemeAppearance::deserialize(deserializer).map(Some)
 }
 
 /// Decodes one theme value after its tagged union has been validated.
@@ -31,7 +48,33 @@ fn decode_validated_theme_value(
     if value.get("kind").is_some() || value.get("schema_version").is_some() {
         serde_json::from_value(value).map(BindingThemeOptionsJson::Recipe)
     } else {
-        serde_json::from_value(value).map(BindingThemeOptionsJson::Selection)
+        let mut object: serde_json::Map<String, Value> = serde_json::from_value(value)?;
+        let selection = if let Some(preset) = object.remove("preset") {
+            ThemeSelectionJson::Preset {
+                preset: serde_json::from_value(preset)?,
+                appearance: object
+                    .remove("appearance")
+                    .map(serde_json::from_value)
+                    .transpose()?,
+            }
+        } else if let Some(recipe) = object.remove("recipe") {
+            ThemeSelectionJson::Recipe {
+                recipe: serde_json::from_value(recipe)?,
+                appearance: object
+                    .remove("appearance")
+                    .map(serde_json::from_value)
+                    .transpose()?,
+            }
+        } else {
+            ThemeSelectionJson::Spec {
+                spec: serde_json::from_value(
+                    object
+                        .remove("spec")
+                        .expect("validated specification selection"),
+                )?,
+            }
+        };
+        Ok(BindingThemeOptionsJson::Selection(selection))
     }
 }
 
@@ -108,14 +151,14 @@ struct ThemeInputProbe<'a> {
     #[serde(default, borrow, deserialize_with = "present_raw_value")]
     kind: Option<&'a RawValue>,
     #[serde(default, borrow, deserialize_with = "present_raw_value")]
-    design: Option<&'a RawValue>,
-    #[serde(default, borrow, deserialize_with = "present_raw_value")]
     complete_spec: Option<&'a RawValue>,
     #[serde(default, borrow, deserialize_with = "present_raw_value")]
     spec: Option<&'a RawValue>,
+    #[serde(default, borrow, deserialize_with = "present_raw_value")]
+    recipe: Option<&'a RawValue>,
 }
 
-fn present_raw_value<'de, D>(deserializer: D) -> Result<Option<&'de RawValue>, D::Error>
+pub(crate) fn present_raw_value<'de, D>(deserializer: D) -> Result<Option<&'de RawValue>, D::Error>
 where
     D: Deserializer<'de>,
 {
@@ -126,26 +169,55 @@ fn check_theme_json_input(
     compiler: &DiagramThemeCompiler,
     bytes: &[u8],
 ) -> Result<(), BindingError> {
+    check_theme_json_structure(compiler, bytes)?;
     let probe: ThemeInputProbe<'_> = serde_json::from_slice(bytes)
         .map_err(|error| invalid_options(format!("invalid theme JSON: {error}")))?;
     let spec = if probe.kind.is_none() && probe.schema_version.is_none() {
+        if let Some(recipe) = probe.recipe {
+            check_theme_recipe_json_input(compiler, recipe.get().as_bytes())?;
+        }
         // Preserve the selection owner's null-payload diagnostic and error position.
         probe.spec.filter(|raw| raw.get() != "null")
     } else {
-        let version = probe
-            .schema_version
-            .and_then(|raw| serde_json::from_str::<u64>(raw.get()).ok());
-        check_recipe_version(version)?;
-        if let Some(design) = probe.design {
-            compiler
-                .check_design_json_input(design.get().as_bytes())
-                .map_err(|error| {
-                    crate::theme_design::materialization_error(compiler.resource_policy(), error)
-                })?;
-        }
+        check_recipe_version(
+            probe
+                .schema_version
+                .and_then(|raw| serde_json::from_str::<u64>(raw.get()).ok()),
+        )?;
         probe.complete_spec
     };
     if let Some(spec) = spec {
+        serde_json::from_str::<DiagramThemeSpecWireV1>(spec.get())
+            .map_err(|error| invalid_options(format!("invalid complete theme spec: {error}")))?;
+    }
+    Ok(())
+}
+
+pub(crate) fn check_theme_json_structure(
+    compiler: &DiagramThemeCompiler,
+    bytes: &[u8],
+) -> Result<(), BindingError> {
+    compiler
+        .check_encoded_input_bytes(bytes.len())
+        .map_err(theme_resource_error)?;
+    compiler.check_design_json_input(bytes).map_err(|error| {
+        crate::theme_design::materialization_error(compiler.resource_policy(), error)
+    })
+}
+
+pub(crate) fn check_theme_recipe_json_input(
+    compiler: &DiagramThemeCompiler,
+    bytes: &[u8],
+) -> Result<(), BindingError> {
+    check_theme_json_structure(compiler, bytes)?;
+    let probe: ThemeInputProbe<'_> = serde_json::from_slice(bytes)
+        .map_err(|error| invalid_options(format!("invalid theme recipe JSON: {error}")))?;
+    check_recipe_version(
+        probe
+            .schema_version
+            .and_then(|raw| serde_json::from_str::<u64>(raw.get()).ok()),
+    )?;
+    if let Some(spec) = probe.complete_spec {
         serde_json::from_str::<DiagramThemeSpecWireV1>(spec.get())
             .map_err(|error| invalid_options(format!("invalid complete theme spec: {error}")))?;
     }
@@ -179,6 +251,18 @@ pub fn compile_theme_selection_json_with(
     compiler: &DiagramThemeCompiler,
     bytes: &[u8],
 ) -> Result<DiagramTheme, BindingError> {
+    compile_theme_selection_json_with_appearance(compiler, bytes, None)
+}
+
+/// Compiles an exact selection, requiring a file selector and caller selector to agree.
+///
+/// An omitted caller selector preserves the file's selection or deterministic document default.
+/// Raw admission is shared with binding options and occurs before JSON normalization.
+pub fn compile_theme_selection_json_with_appearance(
+    compiler: &DiagramThemeCompiler,
+    bytes: &[u8],
+    appearance: Option<ThemeAppearance>,
+) -> Result<DiagramTheme, BindingError> {
     compiler
         .check_encoded_input_bytes(bytes.len())
         .map_err(theme_resource_error)?;
@@ -190,7 +274,7 @@ pub fn compile_theme_selection_json_with(
         )
     })?;
     let selection = decode_theme_value(value, "theme selection JSON")?;
-    compile_theme_with(compiler, Some(&selection))?.ok_or_else(|| {
+    compile_theme_with_appearance(compiler, Some(&selection), appearance)?.ok_or_else(|| {
         BindingError::internal("validated theme selection did not produce a compiled theme")
     })
 }
@@ -210,39 +294,57 @@ pub(crate) fn validate_theme_wire(theme: Option<&Value>) -> Result<(), BindingEr
     let object = theme
         .as_object()
         .ok_or_else(|| invalid_options("options field `theme` must be an object or null"))?;
-    let has_preset = object.contains_key("preset");
-    let has_spec = object.contains_key("spec");
+    let selections: Vec<_> = ["preset", "recipe", "spec"]
+        .into_iter()
+        .filter(|key| object.contains_key(*key))
+        .collect();
     if object.contains_key("kind") || object.contains_key("schema_version") {
-        if has_preset || has_spec {
+        if !selections.is_empty() || object.contains_key("appearance") {
             return Err(invalid_options(
-                "theme recipe must not also contain `preset` or `spec`",
+                "a direct theme recipe must not contain `preset`, `recipe`, `spec`, or `appearance`; use a recipe selection wrapper for an appearance",
             ));
         }
         check_recipe_version(object.get("schema_version").and_then(Value::as_u64))?;
         return Ok(());
     }
-    match (has_preset, has_spec) {
-        (true, false) | (false, true) => {}
-        (false, false) => {
-            return Err(invalid_options(
-                "options field `theme` must contain exactly one of `preset` or `spec`",
-            ));
+    if selections.len() != 1 {
+        if selections.len() > 1 {
+            return Err(invalid_options(format!(
+                "options field `theme` must not contain both `{}` and `{}`",
+                selections[0], selections[1]
+            )));
         }
-        (true, true) => {
-            return Err(invalid_options(
-                "options field `theme` must not contain both `preset` and `spec`",
-            ));
-        }
-    }
-    if object
-        .get(if has_preset { "preset" } else { "spec" })
-        .is_some_and(Value::is_null)
-    {
         return Err(invalid_options(
-            "options field `theme.preset` or `theme.spec` must not be null",
+            "options field `theme` must contain exactly one of `preset`, `recipe`, or `spec`",
         ));
     }
-
+    let selection = selections[0];
+    if object.get(selection).is_some_and(Value::is_null) {
+        return Err(invalid_options(
+            "options field `theme.preset`, `theme.recipe`, or `theme.spec` must not be null",
+        ));
+    }
+    for key in object.keys() {
+        if key != selection && !(key == "appearance" && selection != "spec") {
+            return Err(invalid_options(format!(
+                "unknown theme selection field `{key}`"
+            )));
+        }
+    }
+    if let Some(appearance) = object.get("appearance")
+        && !matches!(appearance.as_str(), Some("light" | "dark"))
+    {
+        return Err(invalid_options(
+            "theme.appearance must be `light` or `dark`; resolve host preferences before rendering",
+        ));
+    }
+    if selection == "recipe" {
+        let recipe = object.get("recipe").expect("the selected recipe exists");
+        let recipe = recipe
+            .as_object()
+            .ok_or_else(|| invalid_options("theme.recipe must be a versioned recipe object"))?;
+        check_recipe_version(recipe.get("schema_version").and_then(Value::as_u64))?;
+    }
     Ok(())
 }
 
@@ -250,13 +352,35 @@ pub(crate) fn compile_theme_with(
     compiler: &DiagramThemeCompiler,
     selection: Option<&BindingThemeOptionsJson>,
 ) -> Result<Option<DiagramTheme>, BindingError> {
+    compile_theme_with_appearance(compiler, selection, None)
+}
+
+fn selected_appearance(
+    file: Option<ThemeAppearance>,
+    requested: Option<ThemeAppearance>,
+) -> Result<Option<ThemeAppearance>, BindingError> {
+    if let (Some(file), Some(requested)) = (file, requested)
+        && file != requested
+    {
+        return Err(BindingError::invalid_argument(format!(
+            "requested theme appearance `{requested}` conflicts with the theme selection appearance `{file}`"
+        )));
+    }
+    Ok(requested.or(file))
+}
+
+fn compile_theme_with_appearance(
+    compiler: &DiagramThemeCompiler,
+    selection: Option<&BindingThemeOptionsJson>,
+    requested_appearance: Option<ThemeAppearance>,
+) -> Result<Option<DiagramTheme>, BindingError> {
     let Some(selection) = selection else {
         return Ok(None);
     };
     let selection = match selection {
         BindingThemeOptionsJson::Recipe(recipe) => {
             return compiler
-                .compile_recipe(recipe.clone())
+                .compile_document(recipe.clone(), requested_appearance)
                 .map(Some)
                 .map_err(|error| {
                     crate::theme_design::design_compile_error(compiler.resource_policy(), error)
@@ -264,23 +388,36 @@ pub(crate) fn compile_theme_with(
         }
         BindingThemeOptionsJson::Selection(selection) => selection,
     };
-    let theme = match (&selection.preset, &selection.spec) {
-        (Some(id), None) => {
-            let preset = merman::svg::ThemePreset::from_id(id.trim()).map_err(|_| {
-                invalid_theme("theme.preset", format!("unknown theme preset `{id}`"))
-            })?;
-            compiler.compile_preset(preset).map_err(|error| {
+    let theme = match selection {
+        ThemeSelectionJson::Preset { preset, appearance } => compiler
+            .compile_preset_selection(
+                preset.trim(),
+                selected_appearance(*appearance, requested_appearance)?,
+            )
+            .map_err(|error| {
                 crate::theme_design::design_compile_error(compiler.resource_policy(), error)
-            })?
-        }
-        (None, Some(spec)) => compiler
+            })?,
+        ThemeSelectionJson::Recipe { recipe, appearance } => compiler
+            .compile_document(
+                recipe.clone(),
+                selected_appearance(*appearance, requested_appearance)?,
+            )
+            .map_err(|error| {
+                crate::theme_design::design_compile_error(compiler.resource_policy(), error)
+            })?,
+        ThemeSelectionJson::Spec { spec } if requested_appearance.is_some() => compiler
+            .compile_document(
+                ThemeRecipeV1::CompleteSpec {
+                    complete_spec: spec.clone(),
+                },
+                requested_appearance,
+            )
+            .map_err(|error| {
+                crate::theme_design::design_compile_error(compiler.resource_policy(), error)
+            })?,
+        ThemeSelectionJson::Spec { spec } => compiler
             .compile_spec_wire(spec.clone())
             .map_err(theme_compile_error)?,
-        _ => {
-            return Err(invalid_options(
-                "options field `theme` must contain exactly one of `preset` or `spec`",
-            ));
-        }
     };
     Ok(Some(theme))
 }
@@ -396,6 +533,14 @@ mod tests {
     use merman::diagram_theme::{ThemeDesignV1, materialize_theme_design};
     use merman::svg::{ThemeCapability, ThemeResourceLimitId};
 
+    const PAIRED_RECIPE: &[u8] = include_bytes!(
+        "../../merman-theme-authoring-fixtures/fixtures/authoring-v1/paired.recipe.json"
+    );
+
+    fn paired_recipe() -> Value {
+        serde_json::from_slice(PAIRED_RECIPE).unwrap()
+    }
+
     #[test]
     fn theme_wire_requires_exactly_one_selection() {
         for invalid in [
@@ -405,6 +550,18 @@ mod tests {
             serde_json::json!({"spec": null}),
             serde_json::json!({"schema_version": 1, "kind": "complete_spec", "complete_spec": {}, "preset": "editor-dark"}),
             serde_json::json!({"schema_version": 1, "kind": "complete_spec", "complete_spec": {}, "spec": {}}),
+            serde_json::json!({"appearance": "dark"}),
+            serde_json::json!({"preset": "editor", "appearance": null}),
+            serde_json::json!({"preset": "editor", "appearance": "auto"}),
+            serde_json::json!({"preset": "editor", "appearance": "future"}),
+            serde_json::json!({"preset": "editor", "appearance": {}}),
+            serde_json::json!({"preset": "editor", "recipe": paired_recipe()}),
+            serde_json::json!({"recipe": null}),
+            serde_json::json!({"recipe": paired_recipe(), "spec": {}}),
+            serde_json::json!({"spec": {}, "appearance": "light"}),
+            serde_json::json!({"recipe": paired_recipe(), "schema_version": 2}),
+            serde_json::json!({"preset": "editor", "unexpected": true}),
+            serde_json::json!({"schema_version": 2, "kind": "design", "design": {}, "appearance": "dark"}),
         ] {
             let error = validate_theme_wire(Some(&invalid)).unwrap_err();
             assert_eq!(error.status(), BindingStatus::OptionsJsonError);
@@ -413,6 +570,14 @@ mod tests {
         validate_theme_wire(Some(&Value::Null)).unwrap();
         validate_theme_wire(Some(&serde_json::json!({"preset": "editor-light"}))).unwrap();
         validate_theme_wire(Some(&serde_json::json!({"spec": {}}))).unwrap();
+        validate_theme_wire(Some(&serde_json::json!({
+            "preset": "editor", "appearance": "dark"
+        })))
+        .unwrap();
+        validate_theme_wire(Some(&serde_json::json!({
+            "recipe": paired_recipe(), "appearance": "light"
+        })))
+        .unwrap();
     }
 
     #[test]
@@ -500,14 +665,14 @@ mod tests {
         assert_eq!(error.status(), BindingStatus::InvalidArgument);
         assert_eq!(
             error.theme_authoring_details().unwrap().diagnostic().path(),
-            "/styles/node/fill/color"
+            "/design/styles/node/fill/color"
         );
     }
 
     #[test]
     fn recipe_version_errors_precede_future_payload_shape_errors() {
         let bytes =
-            br#"{"kind":"complete_spec","complete_spec":{"future_field":true},"schema_version":2}"#;
+            br#"{"kind":"complete_spec","complete_spec":{"future_field":true},"schema_version":3}"#;
         let error = compile_theme_selection_json(bytes).unwrap_err();
         assert_eq!(error.status(), BindingStatus::OptionsJsonError);
         assert!(
@@ -515,7 +680,7 @@ mod tests {
             "{}",
             error.message()
         );
-        assert!(error.message().contains('2'), "{}", error.message());
+        assert!(error.message().contains('3'), "{}", error.message());
     }
 
     #[test]
@@ -541,7 +706,7 @@ mod tests {
         }
         invalid.push(r#"{"spec":null,"sp\u0065c":{}}"#.to_owned());
         invalid.push(r#"{"schema_version":1,"kind":"complete_spec","complete_spec":null,"complete_\u0073pec":{}}"#.to_owned());
-        for version in ["null", "0", "2", "1.0", "1e0", "\"1\"", "true"] {
+        for version in ["null", "0", "3", "1.0", "1e0", "\"1\"", "true"] {
             invalid.push(format!(
                 r#"{{"design":{design},"kind":"design","schema_version":{version}}}"#
             ));
@@ -573,6 +738,266 @@ mod tests {
                 "{input}"
             );
         }
+    }
+
+    #[test]
+    fn paired_recipe_default_and_explicit_selections_share_the_compiler_route() {
+        let compiler = DiagramThemeCompiler::new();
+        let document: ThemeRecipeV1 = serde_json::from_slice(PAIRED_RECIPE).unwrap();
+        let direct = compile_theme_selection_json(PAIRED_RECIPE).unwrap();
+        for (selector, appearance) in [
+            (None, None),
+            (Some("light"), Some(ThemeAppearance::Light)),
+            (Some("dark"), Some(ThemeAppearance::Dark)),
+        ] {
+            let mut selection = serde_json::json!({"recipe": paired_recipe()});
+            if let Some(selector) = selector {
+                selection["appearance"] = serde_json::json!(selector);
+            }
+            let actual =
+                compile_theme_selection_json(&serde_json::to_vec(&selection).unwrap()).unwrap();
+            let expected = compiler
+                .compile_document(document.clone(), appearance)
+                .unwrap();
+            assert_eq!(actual.recipe_fingerprint(), expected.recipe_fingerprint());
+            if appearance != Some(ThemeAppearance::Dark) {
+                assert_eq!(actual.recipe_fingerprint(), direct.recipe_fingerprint());
+            } else {
+                assert_ne!(actual.recipe_fingerprint(), direct.recipe_fingerprint());
+            }
+        }
+    }
+
+    #[test]
+    fn external_appearance_uses_the_same_raw_selection_admission() {
+        let compiler = DiagramThemeCompiler::new();
+        let dark = compile_theme_selection_json_with_appearance(
+            &compiler,
+            PAIRED_RECIPE,
+            Some(ThemeAppearance::Dark),
+        )
+        .unwrap();
+        assert_eq!(dark.selected_appearance(), Some(ThemeAppearance::Dark));
+        for selection in [
+            serde_json::json!({"recipe": paired_recipe()}),
+            serde_json::json!({"recipe": paired_recipe(), "appearance": "dark"}),
+        ] {
+            let bytes = serde_json::to_vec(&selection).unwrap();
+            let selected = compile_theme_selection_json_with_appearance(
+                &compiler,
+                &bytes,
+                Some(ThemeAppearance::Dark),
+            )
+            .unwrap();
+            assert_eq!(selected.recipe_fingerprint(), dark.recipe_fingerprint());
+            assert_eq!(selected.selected_appearance(), Some(ThemeAppearance::Dark));
+            if selection.get("appearance").is_some() {
+                assert_eq!(
+                    compile_theme_selection_json_with_appearance(&compiler, &bytes, None)
+                        .unwrap()
+                        .recipe_fingerprint(),
+                    dark.recipe_fingerprint()
+                );
+                let error = compile_theme_selection_json_with_appearance(
+                    &compiler,
+                    &bytes,
+                    Some(ThemeAppearance::Light),
+                )
+                .unwrap_err();
+                assert_eq!(error.status(), BindingStatus::InvalidArgument);
+                assert!(error.message().contains("conflicts"));
+            }
+        }
+        let explicit =
+            compile_theme_selection_json(br#"{"preset":"editor","appearance":"dark"}"#).unwrap();
+        for selection in [
+            br#"{"preset":"editor"}"#.as_slice(),
+            br#"{"preset":"editor","appearance":"dark"}"#,
+        ] {
+            let selected = compile_theme_selection_json_with_appearance(
+                &compiler,
+                selection,
+                Some(ThemeAppearance::Dark),
+            )
+            .unwrap();
+            assert_eq!(selected.recipe_fingerprint(), explicit.recipe_fingerprint());
+        }
+        assert!(
+            compile_theme_selection_json_with_appearance(
+                &compiler,
+                br#"{"preset":"editor","appearance":"light"}"#,
+                Some(ThemeAppearance::Dark),
+            )
+            .unwrap_err()
+            .message()
+            .contains("conflicts")
+        );
+        for input in [
+            br#"{"spec":{}}"#.as_slice(),
+            br#"{"schema_version":1,"kind":"design","design":{}}"#,
+        ] {
+            let error = compile_theme_selection_json_with_appearance(
+                &compiler,
+                input,
+                Some(ThemeAppearance::Dark),
+            )
+            .unwrap_err();
+            assert_eq!(error.status(), BindingStatus::InvalidArgument);
+        }
+        let error = compile_theme_selection_json_with_appearance(
+            &compiler,
+            br#"{"preset":"editor","appearance":"light","appearance":"dark"}"#,
+            Some(ThemeAppearance::Dark),
+        )
+        .unwrap_err();
+        assert_eq!(error.status(), BindingStatus::OptionsJsonError);
+    }
+
+    #[test]
+    fn appearance_requires_a_declared_recipe_appearance() {
+        for recipe in [
+            serde_json::json!({"schema_version": 1, "kind": "design", "design": {}}),
+            serde_json::json!({"schema_version": 1, "kind": "complete_spec", "complete_spec": {}}),
+        ] {
+            compile_theme_selection_json(&serde_json::to_vec(&recipe).unwrap()).unwrap();
+            for appearance in ["light", "dark"] {
+                let selection = serde_json::json!({
+                    "recipe": recipe, "appearance": appearance
+                });
+                let error = compile_theme_selection_json(&serde_json::to_vec(&selection).unwrap())
+                    .unwrap_err();
+                assert_eq!(error.status(), BindingStatus::InvalidArgument);
+            }
+        }
+        let mut single = paired_recipe();
+        single["design"]["appearances"]
+            .as_object_mut()
+            .unwrap()
+            .remove("dark");
+        compile_theme_selection_json(
+            &serde_json::to_vec(&serde_json::json!({
+                "recipe": single, "appearance": "light"
+            }))
+            .unwrap(),
+        )
+        .unwrap();
+        let error = compile_theme_selection_json(
+            &serde_json::to_vec(&serde_json::json!({
+                "recipe": single, "appearance": "dark"
+            }))
+            .unwrap(),
+        )
+        .unwrap_err();
+        assert_eq!(error.status(), BindingStatus::InvalidArgument);
+    }
+
+    #[test]
+    fn preset_selections_preserve_concrete_identity() {
+        let fingerprint = |selection: Value| {
+            compile_theme_selection_json(&serde_json::to_vec(&selection).unwrap())
+                .unwrap()
+                .recipe_fingerprint()
+        };
+        for (appearance, concrete) in [("light", "editor-light"), ("dark", "editor-dark")] {
+            assert_eq!(
+                fingerprint(serde_json::json!({"preset": "editor", "appearance": appearance})),
+                fingerprint(serde_json::json!({"preset": concrete}))
+            );
+            assert_eq!(
+                fingerprint(serde_json::json!({"preset": concrete, "appearance": appearance})),
+                fingerprint(serde_json::json!({"preset": concrete}))
+            );
+        }
+        let error =
+            compile_theme_selection_json(br#"{"preset":"editor-dark","appearance":"light"}"#)
+                .unwrap_err();
+        assert_eq!(error.status(), BindingStatus::InvalidArgument);
+    }
+
+    #[test]
+    fn paired_theme_raw_admission_checks_wrappers_and_inactive_payloads() {
+        for input in [
+            r#"{"preset":"editor","preset":"editor","appearance":"dark"}"#,
+            r#"{"preset":"editor","appearance":"light","appe\u0061rance":"dark"}"#,
+            r#"{"recipe":{"schema_version":1,"kind":"design","design":{}},"rec\u0069pe":{"schema_version":1,"kind":"design","design":{}}}"#,
+            r#"{"recipe":{"schema_version":1,"schema_\u0076ersion":1,"kind":"design","design":{}}}"#,
+            r#"{"recipe":{"schema_version":1,"kind":"design","design":{"appearances":{"light":{},"dark":{},"d\u0061rk":{}},"default_appearance":"light"}}}"#,
+            r##"{"recipe":{"schema_version":1,"kind":"design","design":{"appearances":{"light":{},"dark":{"tokens":{"ink":{"type":"color","value":"#123456"},"i\u006ek":{"type":"color","value":"#654321"}}}},"default_appearance":"light"}},"appearance":"light"}"##,
+            r#"{"recipe":{"schema_version":1.0,"kind":"design","design":{}}}"#,
+            r#"{"recipe":{"schema_version":1e0,"kind":"design","design":{}}}"#,
+            r#"{"recipe":{"schema_version":"1","kind":"design","design":{}}}"#,
+            r#"{"recipe":{"schema_version":2,"kind":"design","design":{}}}"#,
+            r#"{"recipe":{"schema_version":3,"kind":"design","design":{}}}"#,
+            r#"{"recipe":{"preset":"editor"}}"#,
+        ] {
+            let options = format!(r#"{{"theme":{input}}}"#);
+            for error in [
+                compile_theme_selection_json(input.as_bytes()).unwrap_err(),
+                crate::common::parse_options(options.as_bytes()).unwrap_err(),
+            ] {
+                assert_eq!(error.status(), BindingStatus::OptionsJsonError, "{input}");
+            }
+        }
+        let mut inactive_invalid = paired_recipe();
+        inactive_invalid["design"]["appearances"]["dark"]["styles"] =
+            serde_json::json!({"node": {"opacity": 2}});
+        let selection = serde_json::json!({
+            "recipe": inactive_invalid, "appearance": "light"
+        });
+        let error =
+            compile_theme_selection_json(&serde_json::to_vec(&selection).unwrap()).unwrap_err();
+        assert_eq!(error.status(), BindingStatus::InvalidArgument);
+    }
+
+    #[test]
+    fn paired_recipe_uses_whole_selection_replacement_in_reusable_engines() {
+        let source = b"flowchart LR\nA-->B\n";
+        let base = serde_json::json!({
+            "svg": {"diagram_id": "paired-selection"},
+            "theme": {"recipe": paired_recipe(), "appearance": "light"}
+        });
+        let engine = crate::BindingEngine::new(&serde_json::to_vec(&base).unwrap()).unwrap();
+        let light = engine.render_svg(source).unwrap();
+        for appearance in ["dark", "light", "dark"] {
+            let request_options = serde_json::json!({
+                "theme": {"recipe": paired_recipe(), "appearance": appearance}
+            });
+            let request_options = serde_json::to_vec(&request_options).unwrap();
+            let actual = engine
+                .execute_data(
+                    crate::BindingOperationRequest::new("svg", source)
+                        .with_options_json(&request_options),
+                )
+                .unwrap();
+            let mut standalone = base.clone();
+            standalone["theme"]["appearance"] = serde_json::json!(appearance);
+            let expected =
+                crate::render_svg(source, &serde_json::to_vec(&standalone).unwrap()).unwrap();
+            assert_eq!(actual, expected);
+            assert_eq!(engine.render_svg(source).unwrap(), light);
+        }
+        for request in [
+            br#"{"theme":{"appearance":"dark"}}"#.as_slice(),
+            br#"{"theme":{"appearance":null}}"#,
+        ] {
+            let error = engine
+                .execute_data(
+                    crate::BindingOperationRequest::new("svg", source).with_options_json(request),
+                )
+                .unwrap_err();
+            assert_eq!(error.status(), BindingStatus::OptionsJsonError);
+        }
+        let cleared = engine
+            .execute_data(
+                crate::BindingOperationRequest::new("svg", source)
+                    .with_options_json(br#"{"theme":null}"#),
+            )
+            .unwrap();
+        assert_eq!(
+            cleared,
+            crate::render_svg(source, br#"{"svg":{"diagram_id":"paired-selection"}}"#).unwrap()
+        );
+        assert_eq!(engine.render_svg(source).unwrap(), light);
     }
 
     #[test]

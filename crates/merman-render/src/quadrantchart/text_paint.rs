@@ -3,6 +3,7 @@ use std::sync::{Arc, OnceLock};
 
 use merman_model::presentation::PresentationConfig;
 
+use super::theme::QuadrantChartCssBinding;
 use crate::diagram_theme::{
     FamilyThemeDisposition, FamilyThemeMechanism, FamilyThemeMechanismKey,
     FamilyThemeSelectorShape, ResolvedDiagramTheme, ResolvedStyleProperty, Specified,
@@ -111,10 +112,10 @@ impl QuadrantChartPaintPlan {
             .take_while(|label| label.rotation == 0.0)
             .count();
         let (x_labels, y_labels) = layout.axis_labels.split_at_mut(x_count);
-        for (target, path, labels) in [
+        for (target, color_key, labels) in [
             (
                 ThemeTarget::Text,
-                "themeVariables.quadrantPointTextFill",
+                "quadrantPointTextFill",
                 layout
                     .points
                     .iter_mut()
@@ -123,21 +124,21 @@ impl QuadrantChartPaintPlan {
             ),
             (
                 ThemeTarget::Axis,
-                "themeVariables.quadrantXAxisTextFill",
+                "quadrantXAxisTextFill",
                 x_labels.iter_mut().collect(),
             ),
             (
                 ThemeTarget::Axis,
-                "themeVariables.quadrantYAxisTextFill",
+                "quadrantYAxisTextFill",
                 y_labels.iter_mut().collect(),
             ),
             (
                 ThemeTarget::Title,
-                "themeVariables.quadrantTitleFill",
+                "quadrantTitleFill",
                 layout.title.iter_mut().collect(),
             ),
         ] {
-            let source_owned = config.config_paint_overrides_typed_default(path);
+            let source_owned = QuadrantChartCssBinding::config_owns_color(config, color_key);
             let static_style = theme.text_style_with_work_meter(
                 target,
                 ThemeVariant::Default,
@@ -293,12 +294,12 @@ impl QuadrantChartPaintPlan {
         let mut borders = Vec::with_capacity(layout.border_lines.len());
         work_meter.charge(layout.border_lines.len())?;
         for (index, line) in layout.border_lines.iter_mut().enumerate() {
-            let path = if index < 4 {
-                "themeVariables.quadrantExternalBorderStrokeFill"
+            let color_key = if index < 4 {
+                "quadrantExternalBorderStrokeFill"
             } else {
-                "themeVariables.quadrantInternalBorderStrokeFill"
+                "quadrantInternalBorderStrokeFill"
             };
-            let source_owned = config.config_paint_overrides_typed_default(path);
+            let source_owned = QuadrantChartCssBinding::config_owns_color(config, color_key);
             if !source_owned && let Some(paint) = &border_paint {
                 line.stroke_fill = paint.css().to_owned();
             }

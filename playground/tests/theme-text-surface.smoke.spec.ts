@@ -67,8 +67,9 @@ test("observes State dark native Note text after an immediate Appearance choice 
   await waitForPreviewSvg(page);
   await page.getByRole("button", { name: "Appearance", exact: true }).click();
   const appearance = page.getByRole("region", { name: "Appearance", exact: true });
-  const editorDark = appearance.locator('[data-theme-choice="preset:editor-dark"]');
+  const editorDark = appearance.locator('[data-theme-choice="preset:editor"]');
   await editorDark.click();
+  await appearance.getByTestId("theme-appearance-control").getByRole("combobox").selectOption("dark");
   await expect(editorDark).toHaveAttribute("aria-pressed", "true");
 
   const mountedSvg = page

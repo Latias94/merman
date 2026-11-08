@@ -49,7 +49,7 @@ archives do not cover musl/Alpine or NixOS; the Nix integration builds from sour
 ## CLI contract migration
 
 Complete releases governed by the current source contract report capability document schema 2
-and CLI contract 6. Default source builds and the official release profile include `native-fonts`
+and CLI contract 7. Default source builds and the official release profile include `native-fonts`
 and `system-fonts`, while ordinary Mermaid SVG/PNG/JPEG/PDF output defaults to deterministic
 measurement without a native font context or system discovery for layout. PNG/JPEG/PDF painting
 can still load system fonts through the existing codec path. Explicit font files/directories
@@ -57,16 +57,21 @@ enable native measurement with a closed set; `--font-measurement native` without
 `--font-system on` explicitly requests system discovery when available. Fixed font contents
 and configuration avoid catalogue discovery for faster, reproducible native output. See the [CLI font guide](../../crates/merman-cli/README.md#explicit-fonts).
 
-Contract 6 retains `-f/--format`, text-first `lint`, narrowed `detect`, the feature-gated top-level
+Contract 7 retains `-f/--format`, text-first `lint`, narrowed `detect`, the feature-gated top-level
 `rustdoc` workflow, the ASCII capability subcontract, and the Plain JSON stderr failure channel
 selected by `--ascii-report`. Rust library, FFI, ASCII, and committed Rustdoc generation defaults
 remain unchanged. Published tags keep their own contract and verifier. The standard
 release command inventory is `batch`, `capabilities`, `completion`, `detect`, `fix`, `layout`,
-`lint`, `lint-rules`, `mmdc`, `parse`, `render`, and `rustdoc`.
+`lint`, `lint-rules`, `mmdc`, `parse`, `render`, `rustdoc`, and `theme`.
 The archive, installation, and Homebrew verifiers require the standard profile's exact contract.
-SVG-enabled artifacts also expose `theme_presets` with alpha maturity, compiler-policy availability,
-and empty built-in qualification scope; archive qualification remains a separate host-scoped
-companion rather than a claim from the installed binary alone.
+Contract 7 adds `theme inspect <INPUT|->` for bounded portable-recipe inspection and
+`--theme-appearance light|dark` for native Merman file/preset selection. Mermaid `--theme` and
+the mmdc dialect retain their original meanings. SVG-enabled artifacts expose the grouped
+schema-1 `theme_presets` catalog with supported/default appearances, exact
+`appearances[].concrete_preset_id` choices, Mermaid presentation groups, and single recipe/authoring
+schema-version fields. Alpha maturity, compiler-policy availability, and empty built-in
+qualification scope remain separate; archive qualification is a host-scoped companion rather
+than a claim from the installed binary alone.
 
 Root invocations beginning with an `mmdc`-owned option are permanently and silently forwarded to
 the explicit compatibility command while remaining absent from help and completions. Native `render` / `batch` use `-f/--format`; the former native `-e` aliases are removed in 0.9.0 as scheduled by 0.8.x. See the [migration guide](../release/V080_TO_V090_UPGRADE_GUIDE.md#fonts-and-cli-discovery). The explicit `merman-cli mmdc` command and its `-e/--outputFormat` option remain supported. Failed ASCII report-mode invocations retain exactly one schema-1 Plain JSON stderr
@@ -335,9 +340,10 @@ capability schema and digest must also match that tag's declared capability auth
 
 Formula versions below `0.8.0` retain the legacy binary-only contract. For `0.8.0` and later,
 verify the CLI contract declared by the selected release tag, match that tag's complete
-`cli-release` capability set, install four Homebrew completion files, and install all 15
-standard-profile man pages. Current-source CLI contract 6 does not redefine historical tags'
-contract 5; a new release advances the contract through its own tag-owned verifier. `SUPPORT_ASSETS_SINCE` in
+`cli-release` capability set, install four Homebrew completion files, and install the complete
+standard-profile manual set declared by that tag. Current-source CLI contract 7 does not redefine
+historical tags' contracts or manual inventories; a new release advances the contract through
+its own tag-owned verifier. `SUPPORT_ASSETS_SINCE` in
 `homebrew.yml` is the single operational threshold. Invalid or prerelease formula versions fail
 rather than falling back to the weaker check.
 

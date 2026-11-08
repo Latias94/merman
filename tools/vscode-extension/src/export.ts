@@ -13,6 +13,7 @@ import {
 } from "./export-options.js";
 import { exportRenderedDiagram, renderSafeRaster, renderSafeSvg } from "./export-workflow.js";
 import { runClipboardCommand } from "./clipboard-command.js";
+import { configuredRenderSettings } from "./render-settings.js";
 import {
   getPreviewSourceSnapshot,
   selectPreviewInput,
@@ -83,7 +84,15 @@ async function exportDiagram(
     return;
   }
 
+  let settings;
+  try {
+    settings = await configuredRenderSettings(context, source.document.uri);
+  } catch (error) {
+    void vscode.window.showErrorMessage(`Merman export settings failed: ${error instanceof Error ? error.message : String(error)}`);
+    return;
+  }
   await exportRenderedDiagram({
+    ...settings,
     context,
     outputChannel,
     sourceUri: source.document.uri,
@@ -111,7 +120,8 @@ async function copySvg(
   }
 
   try {
-    const svg = await renderSafeSvg(context, outputChannel, source.input.source, "copy-svg");
+    const settings = await configuredRenderSettings(context, source.document.uri);
+    const svg = await renderSafeSvg(context, outputChannel, source.input.source, "copy-svg", settings);
     await vscode.env.clipboard.writeText(svg);
     void vscode.window.showInformationMessage("Copied Mermaid SVG to clipboard.");
   } catch (error) {
@@ -153,7 +163,9 @@ async function copyPng(
   const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "merman-vscode-"));
   const tempPath = path.join(tempDir, `${source.input.exportBaseName}.png`);
   try {
+    const settings = await configuredRenderSettings(context, source.document.uri);
     await renderSafeRaster({
+      ...settings,
       context,
       outputChannel,
       source: source.input.source,

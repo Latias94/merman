@@ -2,6 +2,8 @@ import {
   BINDING_OPTIONS_SCHEMA_VERSION,
   type HostTextMeasurerSvgBindingOptions,
   type ThemePresetCatalogEntry,
+  type ThemeCatalog,
+  type ThemeAppearance,
 } from "@mermanjs/web";
 
 import type { DiagramFont } from "../lib/diagram-font.ts";
@@ -12,6 +14,7 @@ import {
 } from "../lib/workspace-snapshot.ts";
 import type { RealmViewport } from "./realm/channel-protocol.ts";
 import { projectError, type ErrorProjection } from "./error-projection.ts";
+import { resolveThemeSelection, type ThemeAppearancePreference, type ThemeAppearanceSupport } from "../lib/theme-appearance.ts";
 
 export const MERMAN_SVG_PIPELINES = [
   "parity",
@@ -32,6 +35,7 @@ export interface MermanOperationOptions {
   readonly layoutEnvironment?: MermanLayoutEnvironment;
   readonly themePresetId?: string | null;
   readonly themeRecipeJson?: string | null;
+  readonly themeAppearance?: ThemeAppearance | null;
   readonly svgPipeline?: MermanSvgPipeline;
   readonly textMeasurementMode?: MermanTextMeasurementMode;
 }
@@ -73,6 +77,11 @@ export interface FrozenRenderOperation
   readonly unavailableThemePresetId: string | null;
   readonly svgPipeline: MermanSvgPipeline;
   readonly theme: WorkspaceSnapshot["diagramTheme"];
+  readonly mermaidTheme: WorkspaceSnapshot["diagramTheme"];
+  readonly themeAppearancePreference: ThemeAppearancePreference;
+  readonly resolvedThemeAppearance: ThemeAppearance | null;
+  readonly supportedThemeAppearances: readonly ThemeAppearance[];
+  readonly defaultThemeAppearance: ThemeAppearance | null;
   readonly versions: Readonly<RenderOperationVersions>;
   readonly viewport: Readonly<RealmViewport> | null;
 }
@@ -86,6 +95,10 @@ export interface FreezeRenderOperationInput {
   readonly viewport: RealmViewport | null;
   readonly workspace: Readonly<WorkspaceSnapshot>;
   readonly themePresets?: readonly Pick<ThemePresetCatalogEntry, "id" | "available">[];
+  readonly themeCatalog?: ThemeCatalog | null;
+  readonly themeRecipeInspection?: ThemeAppearanceSupport | null;
+  readonly themeInspectionError?: ErrorProjection | null;
+  readonly hostAppearance?: ThemeAppearance;
 }
 
 export function configuredMermanOperationInput(
@@ -100,6 +113,7 @@ export function configuredMermanOperationInput(
     themePresetId:
       options?.themePresetId ?? DEFAULT_WORKSPACE_SNAPSHOT.themePresetId,
     themeRecipeJson: options?.themeRecipeJson ?? null,
+    themeAppearance: options?.themeAppearance ?? null,
     svgPipeline: options?.svgPipeline ?? DEFAULT_WORKSPACE_SNAPSHOT.svgPipeline,
     textMeasurementMode:
       options?.textMeasurementMode ??
@@ -116,27 +130,39 @@ export function freezeRenderOperation({
   viewport,
   workspace,
   themePresets,
+  themeCatalog,
+  themeRecipeInspection,
+  themeInspectionError,
+  hostAppearance = "light",
 }: FreezeRenderOperationInput): FrozenRenderOperation {
   const frozenLayout = freezeLayoutEnvironment(layoutEnvironment);
   const selectedPreset = workspace.themePresetId;
+  const availablePresets = themeCatalog ? themeCatalog.presets.flatMap((preset) => [
+    { id: preset.id, available: preset.available },
+    ...preset.appearances.map((entry) => ({ id: entry.concrete_preset_id, available: preset.available })),
+  ]) : themePresets;
   const unavailableThemePresetId = selectedPreset && workspace.themeRecipeJson === null &&
-    themePresets && !themePresets.some((preset) => preset.id === selectedPreset.trim() && preset.available)
+    availablePresets && !availablePresets.find((preset) => preset.id === selectedPreset.trim())?.available
     ? selectedPreset : null;
+  const selection = resolveThemeSelection(workspace, hostAppearance, themeCatalog, themeRecipeInspection);
   const configured = freezeConfiguredInput(
     workspace.code,
-    workspace.diagramTheme,
+    selection.mermaidTheme,
     workspace.mermaidConfig,
     {
       diagramFont: workspace.diagramFont,
       layoutEnvironment: frozenLayout,
       themePresetId: unavailableThemePresetId === null ? workspace.themePresetId : null,
       themeRecipeJson: workspace.themeRecipeJson,
+      themeAppearance: unavailableThemePresetId === null ? selection.appearance : null,
       svgPipeline: workspace.svgPipeline,
       textMeasurementMode: workspace.textMeasurementMode,
     },
   );
   return Object.freeze({
     ...configured,
+    configurationError: themeInspectionError ?? configured.configurationError ??
+      (selection.error ? projectError(selection.error) : null),
     asciiEnabled,
     compareEnabled,
     configJson: workspace.mermaidConfig,
@@ -148,6 +174,11 @@ export function freezeRenderOperation({
     unavailableThemePresetId,
     svgPipeline: workspace.svgPipeline,
     theme: workspace.diagramTheme,
+    mermaidTheme: selection.mermaidTheme,
+    themeAppearancePreference: selection.preference,
+    resolvedThemeAppearance: selection.appearance,
+    supportedThemeAppearances: Object.freeze([...selection.supported_appearances]),
+    defaultThemeAppearance: selection.default_appearance,
     versions: Object.freeze({ ...versions }),
     viewport: viewport ? Object.freeze({ ...viewport }) : null,
   });
@@ -169,7 +200,7 @@ export function renderOperationWithSvgPipeline(
     ...operation,
     bindingOptions: nextOptions,
     bindingOptionsJson: operation.themeRecipeJson
-      ? themeRecipeOptionsJson(nextOptions, operation.themeRecipeJson)
+      ? themeRecipeOptionsJson(nextOptions, operation.themeRecipeJson, operation.resolvedThemeAppearance)
       : null,
     svgPipeline,
   });
@@ -182,6 +213,9 @@ export function sameRenderOperation(
   return (
     left.source === right.source &&
     left.theme === right.theme &&
+    left.mermaidTheme === right.mermaidTheme &&
+    left.themeAppearancePreference === right.themeAppearancePreference &&
+    left.resolvedThemeAppearance === right.resolvedThemeAppearance &&
     left.configJson === right.configJson &&
     left.themePresetId === right.themePresetId &&
     left.themeRecipeJson === right.themeRecipeJson &&
@@ -210,6 +244,7 @@ interface NormalizedMermanOptions {
   readonly layoutEnvironment?: Readonly<MermanLayoutEnvironment>;
   readonly themePresetId: string | null;
   readonly themeRecipeJson: string | null;
+  readonly themeAppearance: ThemeAppearance | null;
   readonly svgPipeline: MermanSvgPipeline;
   readonly textMeasurementMode: MermanTextMeasurementMode;
 }
@@ -238,7 +273,7 @@ function freezeConfiguredInput(
       if (options.themePresetId !== null) {
         throw new Error("Select a Merman preset or a custom theme, not both.");
       }
-      bindingOptionsJson = themeRecipeOptionsJson(bindingOptions, options.themeRecipeJson);
+      bindingOptionsJson = themeRecipeOptionsJson(bindingOptions, options.themeRecipeJson, options.themeAppearance);
     }
   } catch (error) {
     configurationError = projectError(error);
@@ -259,7 +294,7 @@ function bindingOptionsForRender(
   initializationConfig: Readonly<MermaidConfigObject> | undefined,
 ): Readonly<HostTextMeasurerSvgBindingOptions> {
   const theme = options.themePresetId
-    ? Object.freeze({ preset: options.themePresetId })
+    ? Object.freeze({ preset: options.themePresetId, ...(options.themeAppearance ? { appearance: options.themeAppearance } : {}) })
     : undefined;
   const svg =
     options.svgPipeline === "parity"
@@ -302,6 +337,7 @@ function freezeLayoutEnvironment(
 export function themeRecipeOptionsJson(
   options: Readonly<HostTextMeasurerSvgBindingOptions>,
   recipeJson: string,
+  appearance: ThemeAppearance | null = null,
 ): string {
   const recipe: unknown = JSON.parse(recipeJson);
   if (
@@ -309,11 +345,23 @@ export function themeRecipeOptionsJson(
     !("schema_version" in recipe) || recipe.schema_version !== 1 ||
     !("kind" in recipe) || (recipe.kind !== "design" && recipe.kind !== "complete_spec")
   ) {
-    throw new Error("Expected a version 1 theme recipe (definition or complete_spec).");
+    throw new Error("Expected a version 1 theme recipe (design or complete_spec).");
   }
   // JSON.parse above verifies this is one complete value before inserting it into the envelope.
   const { theme: _theme, ...base } = options;
   const encodedBase = JSON.stringify(base);
   const prefix = encodedBase === "{}" ? "{" : `${encodedBase.slice(0, -1)},`;
-  return `${prefix}"theme":${recipeJson}}`;
+  return `${prefix}"theme":${appearance ? `{"recipe":${recipeJson},"appearance":${JSON.stringify(appearance)}}` : recipeJson}}`;
+}
+
+export function matchesWorkspaceAppearance(
+  operation: FrozenRenderOperation,
+  workspace: Readonly<WorkspaceSnapshot>,
+  hostAppearance?: ThemeAppearance,
+): boolean {
+  if (operation.themeAppearancePreference !== (workspace.themeAppearance ?? "default")) return false;
+  if (operation.themeAppearancePreference !== "follow" || !hostAppearance) return true;
+  const expected = operation.supportedThemeAppearances.includes(hostAppearance)
+    ? hostAppearance : operation.defaultThemeAppearance;
+  return operation.resolvedThemeAppearance === expected;
 }

@@ -186,7 +186,7 @@ impl MindmapCssBinding {
             }
         };
         let role = if (neo && matches!(self.theme.as_ref(), "redux" | "redux-dark"))
-            || (root && html && self.theme.contains("redux"))
+            || (root && (html || neo) && self.theme.contains("redux"))
         {
             node_border_role().to_string()
         } else if root && !neo {

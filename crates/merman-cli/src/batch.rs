@@ -155,6 +155,7 @@ pub(crate) fn execute(
     )?;
 
     let renderer = if charts.is_empty() {
+        crate::config::validate_empty_batch_theme(&common.render, &common.resources, &control)?;
         None
     } else {
         let (_, renderer) = crate::render::prepare_graphical_output(

@@ -1,7 +1,7 @@
 # Host Text Measurement
 
 Status: Current
-Last updated: 2026-10-30
+Last updated: 2026-11-08
 
 This guide owns display-stack integration, callback result semantics, and measurement lifecycle
 guidance. The [text-measurement descriptor](../../contracts/abi/text-measurement-v1.json) owns
@@ -40,7 +40,7 @@ retain their host-independent defaults and callback conflict rules. ASCII and
 committed Rustdoc generation defaults are also unchanged. The runtime clock/random
 policy does not select the font policy.
 
-CLI discovery remains on capabilities schema 2 / CLI contract 6. Its
+CLI discovery remains on capabilities schema 2 / CLI contract 7. Its
 `native_fonts.default_policy_scope` is `mermaid-svg-input`, with the existing
 `default_*` values describing deterministic SVG measurement. The additive
 `encoded_output_defaults` object describes encoded Mermaid output separately;
@@ -260,6 +260,12 @@ All three use the configured per-request fallback and do not abort the enclosing
 callback must catch any host-language exception before it crosses the C ABI boundary and normally
 return `MERMAN_NATIVE_STATUS_CALLBACK_ERROR`; returning `MERMAN_NATIVE_STATUS_OK` with `handled=0`
 asks Merman to use the source-backed fallback for that request.
+
+Rust `RenderEvidence` exposes measurement provenance, including these fallback reasons. Current
+binding success metadata projects theme and target outcomes without the per-request measurement
+report or selected-face list. Hosts that need callback diagnostics should record their own
+requests and responses. An SVG result's `font_source: none` describes its output font resources;
+it does not mean that layout skipped the host callback or native font provider.
 
 A browser adapter should use two isolated formatted-text probes, or explicitly clear inherited
 baseline and anchor state between requests. The ordinary probe has no inherited middle baseline;

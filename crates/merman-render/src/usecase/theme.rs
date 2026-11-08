@@ -7,31 +7,76 @@ use serde_json::Value;
 mod compiled;
 pub(crate) use compiled::{UsecaseThemePlan, UsecaseThemeReceipt, UsecaseThemeStyle};
 
+#[derive(Debug, Clone)]
+pub(crate) struct UsecaseCssPaint {
+    color: String,
+    variable: Option<&'static str>,
+}
+
+impl UsecaseCssPaint {
+    fn resolve(config: &Value, keys: &[&'static str], fallback: &str) -> Self {
+        keys.iter()
+            .find_map(|&key| {
+                config_string(config, &["themeVariables", key]).map(|color| Self {
+                    color,
+                    variable: Some(key),
+                })
+            })
+            .unwrap_or_else(|| Self::literal(fallback))
+    }
+
+    pub(super) fn literal(color: &str) -> Self {
+        Self {
+            color: color.to_owned(),
+            variable: None,
+        }
+    }
+
+    pub(crate) fn css(&self) -> &str {
+        &self.color
+    }
+
+    pub(super) fn source_owned(
+        &self,
+        config: &merman_model::presentation::PresentationConfig,
+    ) -> bool {
+        self.variable.is_some_and(|key| {
+            config.config_paint_overrides_typed_default(&format!("themeVariables.{key}"))
+        })
+    }
+}
+
+impl std::fmt::Display for UsecaseCssPaint {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str(self.css())
+    }
+}
+
 #[derive(Debug)]
 pub(crate) struct UsecaseCssBinding {
     pub(crate) generic_font: TextStyle,
     pub(crate) root_font: TextStyle,
     pub(crate) actor_font: TextStyle,
     pub(crate) usecase_font: TextStyle,
-    pub(crate) main: String,
-    pub(crate) node_border: String,
-    pub(crate) body: String,
-    pub(crate) border: String,
-    pub(crate) actor: String,
-    pub(crate) actor_border: String,
-    pub(crate) boundary: String,
-    pub(crate) boundary_border: String,
-    pub(crate) line: String,
-    pub(crate) include: String,
-    pub(crate) extend: String,
-    pub(crate) text: String,
-    pub(crate) root_text: String,
-    pub(crate) actor_text: String,
-    pub(crate) title: String,
-    pub(crate) note: String,
-    pub(crate) note_border: String,
-    pub(crate) note_text: String,
-    pub(crate) edge_background: String,
+    pub(crate) main: UsecaseCssPaint,
+    pub(crate) node_border: UsecaseCssPaint,
+    pub(crate) body: UsecaseCssPaint,
+    pub(crate) border: UsecaseCssPaint,
+    pub(crate) actor: UsecaseCssPaint,
+    pub(crate) actor_border: UsecaseCssPaint,
+    pub(crate) boundary: UsecaseCssPaint,
+    pub(crate) boundary_border: UsecaseCssPaint,
+    pub(crate) line: UsecaseCssPaint,
+    pub(crate) include: UsecaseCssPaint,
+    pub(crate) extend: UsecaseCssPaint,
+    pub(crate) text: UsecaseCssPaint,
+    pub(crate) root_text: UsecaseCssPaint,
+    pub(crate) actor_text: UsecaseCssPaint,
+    pub(crate) title: UsecaseCssPaint,
+    pub(crate) note: UsecaseCssPaint,
+    pub(crate) note_border: UsecaseCssPaint,
+    pub(crate) note_text: UsecaseCssPaint,
+    pub(crate) edge_background: UsecaseCssPaint,
     pub(crate) palette: Vec<String>,
     pub(crate) backgrounds: Vec<String>,
     pub(crate) look: String,
@@ -44,10 +89,8 @@ pub(crate) struct UsecaseCssBinding {
 
 impl UsecaseCssBinding {
     pub(crate) fn new(config: &Value) -> Self {
-        let token = |keys: &[&str], fallback: &str| {
-            keys.iter()
-                .find_map(|key| config_string(config, &["themeVariables", key]))
-                .unwrap_or_else(|| fallback.into())
+        let token = |keys: &[&'static str], fallback: &str| {
+            UsecaseCssPaint::resolve(config, keys, fallback)
         };
         let main = token(&["mainBkg", "primaryColor"], "#ECECFF");
         let node_border = token(&["nodeBorder", "primaryColor"], "#9370DB");
@@ -93,27 +136,33 @@ impl UsecaseCssBinding {
             root_font,
             actor_font: super::measure::text_style(config, Some(true)),
             usecase_font: super::measure::text_style(config, Some(false)),
-            body: token(&["usecaseBkg", "mainBkg"], &main),
+            body: token(&["usecaseBkg", "mainBkg", "primaryColor"], main.css()),
             border: token(
                 &["usecaseBorder", "nodeBorder", "primaryColor"],
-                &node_border,
+                node_border.css(),
             ),
-            actor: token(&["usecaseActorBkg", "actorBkg", "mainBkg"], &main),
+            actor: token(
+                &["usecaseActorBkg", "actorBkg", "mainBkg", "primaryColor"],
+                main.css(),
+            ),
             actor_border: token(
                 &["usecaseActorBorder", "actorBorder", "primaryColor"],
-                &node_border,
+                node_border.css(),
             ),
             boundary: token(&["usecaseBoundaryBkg", "clusterBkg"], "#ffffde"),
             boundary_border: token(&["usecaseBoundaryBorder", "clusterBorder"], "#aaaa33"),
-            include: token(&["usecaseIncludeLine", "lineColor"], &line),
-            extend: token(&["usecaseExtendLine", "lineColor"], &line),
+            include: token(&["usecaseIncludeLine", "lineColor"], line.css()),
+            extend: token(&["usecaseExtendLine", "lineColor"], line.css()),
             root_text: token(&["textColor"], "#333"),
-            actor_text: token(&["actorTextColor", "primaryTextColor"], &text),
-            title: token(&["titleColor", "primaryTextColor"], &text),
+            actor_text: token(&["actorTextColor", "primaryTextColor"], text.css()),
+            title: token(&["titleColor", "primaryTextColor"], text.css()),
             note: token(&["noteBkgColor"], "#fff5ad"),
             note_border: token(&["noteBorderColor"], "#aaaa33"),
-            note_text: token(&["noteTextColor"], &text),
-            edge_background: token(&["edgeLabelBackground"], &main),
+            note_text: token(&["noteTextColor", "primaryTextColor"], text.css()),
+            edge_background: token(
+                &["edgeLabelBackground", "mainBkg", "primaryColor"],
+                main.css(),
+            ),
             main,
             node_border,
             text,
@@ -130,6 +179,20 @@ impl UsecaseCssBinding {
             neo: crate::svg::PreparedCommonNeoCss::new(config),
             look_defs: crate::svg::PreparedLookDefs::new(config),
         }
+    }
+
+    pub(super) fn palette_fill(&self, index: usize) -> Option<UsecaseCssPaint> {
+        (!self.palette.is_empty() && !self.backgrounds.is_empty()).then(|| UsecaseCssPaint {
+            color: self.backgrounds[index % self.palette.len() % self.backgrounds.len()].clone(),
+            variable: Some("bkgColorArray"),
+        })
+    }
+
+    pub(super) fn palette_stroke(&self, index: usize) -> Option<UsecaseCssPaint> {
+        (!self.palette.is_empty()).then(|| UsecaseCssPaint {
+            color: self.palette[index % self.palette.len()].clone(),
+            variable: Some("borderColorArray"),
+        })
     }
 }
 

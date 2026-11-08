@@ -9,16 +9,15 @@ import {
 import { errorMessage } from "./error-message.js";
 import { assertSelfContainedPreviewSvg } from "./preview-svg-safety.js";
 import { renderMermanSource } from "./renderer.js";
+import type { DiagramRenderSettings } from "./render-options.js";
 
-export interface ExportRenderedDiagramRequest {
+export interface ExportRenderedDiagramRequest extends DiagramRenderSettings {
   context: vscode.ExtensionContext;
   outputChannel: vscode.LogOutputChannel;
   sourceUri: vscode.Uri;
   exportBaseName: string;
   source: string;
   format: ExportFormat;
-  theme?: string;
-  background?: string;
   openAfterExport?: boolean;
   signalLabel: string;
   progressTitle?: string;
@@ -78,8 +77,7 @@ async function writeRenderedExport(request: WriteRenderedExportRequest): Promise
       request.outputChannel,
       request.source,
       request.signalLabel,
-      request.theme,
-      request.background,
+      request,
     );
     await vscode.workspace.fs.writeFile(request.target, Buffer.from(svg, "utf8"));
     return;
@@ -93,19 +91,20 @@ async function writeRenderedExport(request: WriteRenderedExportRequest): Promise
     outputPath: request.target.fsPath,
     signalLabel: request.signalLabel,
     theme: request.theme,
+    themePreset: request.themePreset,
+    themeFileContent: request.themeFileContent,
+    themeAppearance: request.themeAppearance,
     background: request.background,
   });
 }
 
-export interface RenderSafeRasterRequest {
+export interface RenderSafeRasterRequest extends DiagramRenderSettings {
   context: vscode.ExtensionContext;
   outputChannel: vscode.LogOutputChannel;
   source: string;
   format: Exclude<ExportFormat, "svg">;
   outputPath: string;
   signalLabel: string;
-  theme?: string;
-  background?: string;
 }
 
 export async function renderSafeRaster(
@@ -116,12 +115,12 @@ export async function renderSafeRaster(
     request.outputChannel,
     request.source,
     request.signalLabel,
-    request.theme,
-    request.background,
+    request,
   );
   await renderMermanSource({
     context: request.context,
     source: svg,
+    inputKind: "svg",
     format: request.format,
     outputPath: request.outputPath,
     background: request.background,
@@ -135,15 +134,17 @@ export async function renderSafeSvg(
   outputChannel: vscode.LogOutputChannel,
   source: string,
   signalLabel: string,
-  theme?: string,
-  background?: string,
+  settings: DiagramRenderSettings = {},
 ): Promise<string> {
   const result = await renderMermanSource({
     context,
     source,
     format: "svg",
-    theme,
-    background,
+    theme: settings.theme,
+    themePreset: settings.themePreset,
+    themeFileContent: settings.themeFileContent,
+    themeAppearance: settings.themeAppearance,
+    background: settings.background,
     outputChannel,
     signalLabel,
   });

@@ -1170,10 +1170,7 @@ pub(crate) fn execute_theme_authoring_with_compiler(
 ) -> Result<Vec<u8>, BindingError> {
     match operation {
         crate::OperationKey::MaterializeThemeJson => {
-            crate::theme_design::materialize_theme_design_json_with_resource_policy(
-                input,
-                compiler.resource_policy(),
-            )
+            crate::theme_design::materialize_theme_json_with(compiler, input)
         }
         crate::OperationKey::DescribeThemeSupportJson => {
             crate::theme_design::describe_theme_support_json_with_resource_policy(
@@ -2053,6 +2050,43 @@ mod tests {
             )
             .unwrap()
         );
+    }
+
+    #[cfg(feature = "svg")]
+    #[test]
+    fn reusable_engine_versioned_theme_authoring_uses_operation_selection() {
+        let recipe: Value = serde_json::from_slice(include_bytes!(
+            "../../merman-theme-authoring-fixtures/fixtures/authoring-v1/paired.recipe.json"
+        ))
+        .unwrap();
+        let engine = BindingEngine::new(
+            br#"{"resources":{"profile":"constrained"},"theme":{"preset":"editor-dark"}}"#,
+        )
+        .unwrap();
+        for action in ["inspect", "materialize"] {
+            let input = serde_json::to_vec(&serde_json::json!({
+                "schema_version": 1, "action": action, "recipe": recipe
+            }))
+            .unwrap();
+            let direct = engine.materialize_theme(&input).unwrap();
+            let generic = engine
+                .execute_data(
+                    crate::BindingOperationRequest::new("materialize-theme-json", &input)
+                        .with_options_json(br#"{"theme":{"preset":"editor","appearance":"dark"}}"#),
+                )
+                .unwrap();
+            assert_eq!(direct, generic);
+            let result: Value = serde_json::from_slice(&direct).unwrap();
+            assert_eq!(result["schema_version"], 1);
+            if action == "materialize" {
+                assert_eq!(result["effective_appearance"], "light");
+            }
+        }
+        let export = engine.export_theme_preset(b"editor").unwrap();
+        let export: Value = serde_json::from_slice(&export).unwrap();
+        assert_eq!(export["schema_version"], 1);
+        assert!(export["design"]["appearances"]["light"].is_object());
+        assert!(export["design"]["appearances"]["dark"].is_object());
     }
 
     #[cfg(feature = "svg")]

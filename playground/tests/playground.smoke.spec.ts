@@ -267,7 +267,7 @@ test("automatic and explicit default themes remain distinct in the presentation 
 
   await compatibility.selectOption("auto");
   await expect(compatibility).toHaveValue("auto");
-  await expect(status).toContainText("Theme: Automatic (diagram default)");
+  await expect(status).toContainText("Theme: Source / default");
   errors.assertNone();
 });
 

@@ -141,8 +141,9 @@ for (const scenario of [
     await page.getByRole("button", { name: "Appearance", exact: true }).click();
     const panel = page.getByRole("region", { name: "Appearance", exact: true });
     await expect(panel.getByLabel("Diagram font", { exact: true })).toHaveValue("arial");
+    await expect(panel.getByTestId("theme-appearance-overrides")).toBeVisible();
     await panel.getByTestId("theme-advanced").locator("summary").first().click();
-    await expect(panel.getByTestId("theme-appearance-overrides")).toContainText(scenario.expectedFont);
+    await expect(panel.getByTestId("theme-appearance-override-details")).toContainText(scenario.expectedFont);
     errors.assertNone();
   });
 }
@@ -201,7 +202,7 @@ for (const theme of SUPPORTED_THEMES) {
     expect(paints[0], theme).toEqual(paints[1]);
     await page.getByRole("button", { name: "Appearance", exact: true }).click();
     const appearance = page.getByRole("region", { name: "Appearance", exact: true });
-    await expect(appearance.locator(`[data-theme-choice="mermaid:${theme}"]`)).toHaveAttribute("aria-pressed", "true");
+    await expect(appearance.locator('[data-theme-source="mermaid"][aria-pressed="true"]')).toHaveCount(1);
     await appearance.getByTestId("theme-advanced").locator("summary").first().click();
     await expect(appearance.getByLabel("Mermaid base theme", { exact: true })).toHaveValue(theme);
     errors.assertNone();

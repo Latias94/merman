@@ -130,15 +130,19 @@ def _qualified_cli_catalog(capabilities: dict, qualification: dict) -> dict:
     if capabilities.get("theme_presets") != baseline:
         raise RuntimeError("CLI preset catalog differs from the candidate renderer")
     catalog = copy.deepcopy(baseline)
-    entries = {entry["id"]: entry for entry in catalog["presets"]}
+    entries = {
+        appearance["concrete_preset_id"]: (entry, appearance)
+        for entry in catalog["presets"]
+        for appearance in entry["appearances"]
+    }
     seen = set()
     for preset in qualification["presets"]:
         preset_id = preset["preset"]
         if preset_id in seen or preset_id not in entries:
             raise RuntimeError("Unknown or duplicate qualified preset catalog scope")
         seen.add(preset_id)
-        base = entries[preset_id]
-        if not base["available"]:
+        base, appearance = entries[preset_id]
+        if not base["available"] or not appearance["available"]:
             raise RuntimeError("Qualified preset is unavailable in CLI catalog")
         profile = preset.get("profile")
         if preset_id == "cyberpunk":
@@ -170,10 +174,17 @@ def _qualified_cli_catalog(capabilities: dict, qualification: dict) -> dict:
         scopes = {(cell["family_id"], cell["output_id"]) for cell in cells}
         if not cells or len(scopes) != len(cells):
             raise RuntimeError("Missing or duplicate qualified catalog scope")
-        expected = {**base, "qualified_cells": cells}
+        expected = copy.deepcopy(next(
+            entry for entry in baseline["presets"] if entry["id"] == base["id"]
+        ))
+        selected = next(
+            entry for entry in expected["appearances"]
+            if entry["concrete_preset_id"] == preset_id
+        )
+        selected["qualified_cells"] = cells
         if preset["catalog_entry"] != expected:
             raise RuntimeError("Qualified catalog scope differs from actual target observations")
-        base["qualified_cells"] = cells
+        appearance["qualified_cells"] = cells
     return catalog
 
 

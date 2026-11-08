@@ -2,15 +2,30 @@
 
 Use this index to choose an upgrade path by the version you have installed. Stable `0.9.3` retains Mermaid `12.1.0`, the Presentation API, and Options JSON schema `2`. Published prerelease `0.10.0-alpha.1` retains Mermaid `12.2.0` and Options JSON schema `3`. Use the [host installation guide](PREBUILT_PRODUCTS.md) for independently delivered package versions and channels. Typst, Tree-sitter, Roughr, and the VS Code extension use independent version numbers.
 
+## Current development source
+
+Current source adds optional Light/Dark appearances within one version-1 theme recipe and
+groups the built-in catalog into 8 design identities with 11 concrete appearances. The Playground
+library has 16 designs, including the paired Reading example. See the
+[theme guide](../rendering/custom-diagram-themes.md#choose-an-appearance) for complete-document
+export, concrete selection, and host-resolved Follow. Native CLI discovery advances to contract 7;
+use matching source-built bindings, editor adapters, and runtimes.
+
+Current Rust source keeps math opt-in, including for the retained complete SVG feature aggregates;
+see [ADR-0097](../adr/0097-explicit-math-capability.md). Ordinary prebuilt SVG profiles, including
+Web full/render and CLI release archives, select math explicitly. Source-default CLI omits it.
+The [host guide](PREBUILT_PRODUCTS.md) distinguishes stable, alpha and source-built products.
+
+These current-source changes do not replace the published alpha.2 artifacts or their historical
+11-preset, 15-design gallery inventory.
+
 ## Merman 0.10.0-alpha.2
 
 The [alpha.2 changelog](../../CHANGELOG.md#0100-alpha2---2026-11-06) records changes since alpha.1. Check the [host installation guide](PREBUILT_PRODUCTS.md#published-versions) for independently verified channel availability and [Publish Order](PUBLISH_ORDER.md#0100-alpha2-preparation) for release qualification and delivery evidence.
 
-Current source selects Mermaid `12.3.0` and the selected ELK `0.12.1` behavior. Start with the [Mermaid 12.3 migration](../migrations/mermaid-12-3.md) for Rust model changes, layout dependencies, Step animation and static output. Custom hosts also need the [binding contract migration](UNRELEASED_CONTRACT_VERSIONS.md#source-appearance-and-render-evidence-follow-up): Web transport API `9`, analysis facts schema `3` and theme execution evidence schema `2` replace alpha.1's `8`, `2` and `1`. Build wrappers and native/WASM artifacts together from the same source revision.
+Published alpha.2 selects Mermaid `12.3.0` and the selected ELK `0.12.1` behavior. Start with the [Mermaid 12.3 migration](../migrations/mermaid-12-3.md) for Rust model changes, layout dependencies, Step animation and static output. Custom hosts also need the [binding contract migration](UNRELEASED_CONTRACT_VERSIONS.md#source-appearance-and-render-evidence-follow-up): Web transport API `9`, analysis facts schema `3` and theme execution evidence schema `2` replace alpha.1's `8`, `2` and `1`. Build wrappers and native/WASM artifacts together from the same source revision.
 
 Preview the [15-design theme gallery](../../CHANGELOG.md#theme-design-gallery) for 30 SVG examples drawn from Flowchart, Sequence, Class, XY Chart and Pie. Each design has an editable JSON recipe and all five examples in the Playground's **Theme designs** library. These are custom recipes, separate from the 11 built-in presets. The gallery explains how to open a sample, apply its theme and copy JSON or integration code; the [theme guide](../rendering/custom-diagram-themes.md#standalone-explorations-and-example-scenes) covers file placement and optional layout settings. Hosted Playground availability follows its deployed build.
-
-Current Rust source keeps math opt-in, including for the retained complete SVG feature aggregates; see [ADR-0097](../adr/0097-explicit-math-capability.md). Ordinary prebuilt SVG products, including Web full/render and CLI release archives, select math explicitly. Source-default CLI omits it. The [host guide](PREBUILT_PRODUCTS.md) distinguishes stable, alpha and source-built products.
 
 ## Merman 0.10.0-alpha.1
 

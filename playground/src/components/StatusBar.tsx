@@ -30,6 +30,7 @@ export function StatusBar() {
     themePresetId,
     themeRecipeJson,
     themeRecipeLabel,
+    themeAppearance,
   } = useAppStore(
     useShallow((state) => ({
       code: state.code,
@@ -40,6 +41,7 @@ export function StatusBar() {
       themePresetId: state.themePresetId,
       themeRecipeJson: state.themeRecipeJson,
       themeRecipeLabel: state.themeRecipeLabel,
+      themeAppearance: state.themeAppearance,
     })),
   );
   const diagramType = useRenderCoordinator(selectCurrentDiagramType);
@@ -155,6 +157,7 @@ export function StatusBar() {
             : themePresetId
               ? t(`themePresets.${themePresetId}`, { defaultValue: themePresetId })
               : t(`themes.${diagramTheme}`, { defaultValue: diagramTheme })}
+          {themeAppearance !== "default" && ` · ${t(`appearanceMode.${themeAppearance}`)}`}
         </span>
         <span className="hidden shrink-0 xl:inline">
           {t("status.svgOutput")}: {t(`svgPipelines.${svgPipeline}`)}

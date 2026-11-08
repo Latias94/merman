@@ -215,9 +215,10 @@ impl InheritedFontStackPlan {
             };
         };
 
-        let config_owns_font_stack = ["themeVariables.fontFamily", "fontFamily"]
-            .into_iter()
-            .any(|path| effective_config.config_path_overrides_typed_default(path));
+        let config_font = crate::config::configured_font_family(effective_config.as_value());
+        let config_owns_font_stack = config_font
+            .as_ref()
+            .is_some_and(|(_, path)| effective_config.config_path_overrides_typed_default(path));
         let mut typed_font_stack = false;
         let mut font_stack_unsupported = false;
         let mut unsupported_typography_properties = BTreeSet::new();
@@ -249,7 +250,9 @@ impl InheritedFontStackPlan {
         let font_family_css = if typed_font_stack_active {
             theme.typography().font_stack().as_css()
         } else {
-            crate::config::config_font_family_css(effective_config.as_value())
+            config_font
+                .map(|(font, _)| font)
+                .unwrap_or_else(|| crate::config::MERMAID_DEFAULT_FONT_FAMILY_CSS.to_owned())
         };
         let outcome = match () {
             _ if typed_font_stack && config_owns_font_stack => {
@@ -400,5 +403,79 @@ mod tests {
             plan.unsupported_typography_properties
                 .contains(&ThemeTypographyProperty::FontSize)
         );
+    }
+
+    #[test]
+    fn font_stack_ownership_follows_the_selected_string_source() {
+        use merman_core::presentation::SourcePresentationConfig;
+        use serde_json::json;
+
+        let theme = resolved_typography_theme(
+            DiagramFamilyId::RADAR,
+            ThemeTextStyle::default().with_font_stack(FontStack::single("Courier New").unwrap()),
+        );
+        let scene = "radar-beta\naxis A,B,C\ncurve Current{3,4,2}\n";
+        for (authored, expected, outcome) in [
+            (
+                json!({"themeVariables":{"fontFamily":42}}),
+                "\"Courier New\"",
+                InheritedFontStackOutcome::Typed,
+            ),
+            (
+                json!({"themeVariables":{"fontFamily":false}}),
+                "\"Courier New\"",
+                InheritedFontStackOutcome::Typed,
+            ),
+            (
+                json!({"fontFamily":false}),
+                "\"Courier New\"",
+                InheritedFontStackOutcome::Typed,
+            ),
+            (
+                json!({"themeVariables":{"fontFamily":""}}),
+                "\"Courier New\"",
+                InheritedFontStackOutcome::Typed,
+            ),
+            (
+                json!({"themeVariables":{"fontFamily":" ; "}}),
+                "\"Courier New\"",
+                InheritedFontStackOutcome::Typed,
+            ),
+            (
+                json!({"themeVariables":{"fontFamily":"serif; color:red"}}),
+                "\"Courier New\"",
+                InheritedFontStackOutcome::Typed,
+            ),
+            (
+                json!({"themeVariables":{"fontFamily":42}, "fontFamily":"Arial"}),
+                "Arial",
+                InheritedFontStackOutcome::ConfigOwned,
+            ),
+            (
+                json!({"themeVariables":{"fontFamily":"Georgia"}, "fontFamily":false}),
+                "Georgia",
+                InheritedFontStackOutcome::ConfigOwned,
+            ),
+        ] {
+            for from_source in [false, true] {
+                let (source, site) = if from_source {
+                    (format!("---\nconfig: {authored}\n---\n{scene}"), json!({}))
+                } else {
+                    (scene.to_owned(), authored.clone())
+                };
+                let config = merman_core::MermaidEngine::new()
+                    .with_site_config(SourcePresentationConfig::from_value(site))
+                    .parse_metadata_sync(&source)
+                    .unwrap()
+                    .effective_config;
+                let plan = InheritedFontStackPlan::resolve_property_local(Some(&theme), &config);
+                assert_eq!(
+                    plan.font_family_css(),
+                    expected,
+                    "{authored}: source={from_source}"
+                );
+                assert_eq!(plan.outcome(), outcome, "{authored}: source={from_source}");
+            }
+        }
     }
 }

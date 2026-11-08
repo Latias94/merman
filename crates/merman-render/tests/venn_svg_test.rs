@@ -260,9 +260,257 @@ fn venn_source_and_config_paints_own_only_their_actual_properties() {
         .unwrap();
     assert!(style.contains("fill: #abcdef;"));
     assert!(style.contains("stroke: #abcdef;"));
+    let text_color = merman_markup::theme_color::darken("#abcdef", 30.0).unwrap();
+    assert!(
+        b.children()
+            .find(|node| node.has_tag_name("text"))
+            .unwrap()
+            .attribute("style")
+            .unwrap()
+            .contains(&format!("fill: {text_color};"))
+    );
     let evidence = merman_render::__private::family_evidence(rendered.into_completion().report());
-    assert_eq!(evidence.applied_count(), 2);
+    assert_eq!(evidence.applied_count(), 1);
+    assert_eq!(evidence.not_applicable_count(), 1);
     assert_eq!(evidence.theme_residual_count(), 0);
+}
+
+#[test]
+fn venn_node_label_paint_respects_the_selected_palette_without_claiming_site_defaults() {
+    let theme = venn_paint_theme([ThemeRule::new(
+        ThemeTarget::NodeLabel,
+        ThemeStylePatch::default().with_fill(solid("#56789a")),
+    )]);
+    for palette in [
+        "default",
+        "base",
+        "dark",
+        "forest",
+        "neutral",
+        "neo",
+        "neo-dark",
+        "redux",
+        "redux-dark",
+        "redux-color",
+        "redux-dark-color",
+    ] {
+        for source_owner in [false, true] {
+            let config = serde_json::json!({"theme": palette});
+            let source = if source_owner {
+                format!("%%{{init: {config}}}%%\n{THEME_TYPOGRAPHY_SOURCE}")
+            } else {
+                THEME_TYPOGRAPHY_SOURCE.to_owned()
+            };
+            let engine = || {
+                if source_owner {
+                    MermaidEngine::new()
+                } else {
+                    MermaidEngine::new().with_site_config(
+                        merman_core::presentation::SourcePresentationConfig::from_value(
+                            config.clone(),
+                        ),
+                    )
+                }
+            };
+            let (_, baseline) = render_typed_venn_with_engine(&source, engine());
+            let rendered = render_venn_with_theme_requirement(
+                &source,
+                &theme,
+                engine(),
+                ThemePortabilityRequirement::RequirePortable,
+            )
+            .unwrap();
+            let baseline = roxmltree::Document::parse(&baseline).unwrap();
+            let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+            for set in ["A", "B"] {
+                let text_style = |doc: &roxmltree::Document<'_>| {
+                    find_venn_area(doc, set, "venn-circle")
+                        .children()
+                        .find(|node| node.has_tag_name("text"))
+                        .unwrap()
+                        .attribute("style")
+                        .unwrap()
+                        .to_owned()
+                };
+                if source_owner {
+                    assert_eq!(text_style(&document), text_style(&baseline), "{palette}");
+                } else {
+                    assert!(
+                        text_style(&document).contains("fill: #56789a;"),
+                        "{palette}"
+                    );
+                }
+            }
+            let evidence =
+                merman_render::__private::family_evidence(rendered.into_completion().report());
+            assert_eq!(evidence.applied_count(), usize::from(!source_owner));
+            assert_eq!(evidence.not_applicable_count(), usize::from(source_owner));
+            assert_eq!(evidence.theme_residual_count(), 0);
+        }
+    }
+}
+
+#[test]
+fn venn_empty_palette_entries_are_skipped_before_contrast_and_ownership_selection() {
+    let theme = venn_paint_theme([ThemeRule::new(
+        ThemeTarget::Node,
+        ThemeStylePatch::default().with_fill(solid("#123456")),
+    )]);
+    for source_owner in [false, true] {
+        let config = serde_json::json!({
+            "theme": "default",
+            "themeVariables": {"venn1": "", "venn2": "#abcdef"}
+        });
+        let source = if source_owner {
+            format!("%%{{init: {config}}}%%\n{THEME_TYPOGRAPHY_SOURCE}")
+        } else {
+            THEME_TYPOGRAPHY_SOURCE.to_owned()
+        };
+        let engine = || {
+            if source_owner {
+                MermaidEngine::new()
+            } else {
+                MermaidEngine::new().with_site_config(
+                    merman_core::presentation::SourcePresentationConfig::from_value(config.clone()),
+                )
+            }
+        };
+        for svg in [
+            render_typed_venn_with_engine(&source, engine()).1,
+            render_venn_with_theme_requirement(
+                &source,
+                &theme,
+                engine(),
+                ThemePortabilityRequirement::RequirePortable,
+            )
+            .unwrap()
+            .svg()
+            .to_owned(),
+        ] {
+            let document = roxmltree::Document::parse(&svg).unwrap();
+            let path = find_venn_area(&document, "A", "venn-circle")
+                .children()
+                .find(|node| node.has_tag_name("path"))
+                .unwrap();
+            assert!(path.attribute("style").unwrap().contains("fill: #abcdef;"));
+        }
+    }
+}
+
+#[test]
+fn venn_title_fill_uses_the_same_nonempty_role_for_paint_and_ownership() {
+    let theme = venn_paint_theme([ThemeRule::new(
+        ThemeTarget::Title,
+        ThemeStylePatch::default().with_fill(solid("#123456")),
+    )]);
+    for source_owner in [false, true] {
+        for explicit_fallback in [false, true] {
+            let mut config = serde_json::json!({
+                "theme": "default", "themeVariables": {"vennTitleTextColor": ""}
+            });
+            if explicit_fallback {
+                config["themeVariables"]["titleColor"] = serde_json::json!("#abcdef");
+            }
+            let source = if source_owner {
+                format!("%%{{init: {config}}}%%\n{THEME_TYPOGRAPHY_SOURCE}")
+            } else {
+                THEME_TYPOGRAPHY_SOURCE.to_owned()
+            };
+            let engine = if source_owner {
+                MermaidEngine::new()
+            } else {
+                MermaidEngine::new().with_site_config(
+                    merman_core::presentation::SourcePresentationConfig::from_value(config),
+                )
+            };
+            let rendered = render_venn_with_theme_requirement(
+                &source,
+                &theme,
+                engine,
+                ThemePortabilityRequirement::RequirePortable,
+            )
+            .unwrap();
+            let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+            let title = document
+                .descendants()
+                .find(|node| node.attribute("class") == Some("venn-title"))
+                .unwrap();
+            let expected = if explicit_fallback {
+                "#abcdef"
+            } else if source_owner {
+                "#333"
+            } else {
+                "#123456"
+            };
+            assert_eq!(
+                title.attribute("style"),
+                Some(format!("fill: {expected};").as_str())
+            );
+            let evidence =
+                merman_render::__private::family_evidence(rendered.into_completion().report());
+            let owned = source_owner || explicit_fallback;
+            assert_eq!(evidence.applied_count(), usize::from(!owned));
+            assert_eq!(evidence.not_applicable_count(), usize::from(owned));
+            assert_eq!(evidence.theme_residual_count(), 0);
+        }
+    }
+}
+
+#[test]
+fn venn_text_fill_follows_the_initialized_or_fallback_color_role() {
+    let theme = venn_paint_theme([ThemeRule::new(
+        ThemeTarget::Text,
+        ThemeStylePatch::default().with_fill(solid("#123456")),
+    )]);
+    for local in [serde_json::Value::Null, serde_json::json!(false)] {
+        for explicit_primary in [false, true] {
+            let mut site = serde_json::json!({
+                "theme": "default", "themeVariables": {"vennSetTextColor": local}
+            });
+            if explicit_primary {
+                site["themeVariables"]["primaryTextColor"] = serde_json::json!("#abcdef");
+            }
+            let engine = MermaidEngine::new().with_site_config(
+                merman_core::presentation::SourcePresentationConfig::from_value(site),
+            );
+            let config = common::install_parse_compatibility(&theme, engine.clone())
+                .parse_metadata_sync(THEME_TYPOGRAPHY_SOURCE)
+                .unwrap()
+                .effective_config;
+            // Null triggers Default's snapshot initialization; non-string roles use the renderer fallback.
+            assert_eq!(
+                config.get_str("themeVariables.vennSetTextColor"),
+                local.is_null().then_some("#333")
+            );
+            let fallback_owned = !local.is_null() && explicit_primary;
+            let rendered = render_venn_with_theme_requirement(
+                THEME_TYPOGRAPHY_SOURCE,
+                &theme,
+                engine,
+                ThemePortabilityRequirement::RequirePortable,
+            )
+            .unwrap();
+            let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+            let intersection = find_venn_area(&document, "A_B", "venn-intersection")
+                .children()
+                .find(|node| node.has_tag_name("text"))
+                .unwrap();
+            let expected = if fallback_owned { "#abcdef" } else { "#123456" };
+            assert!(
+                intersection
+                    .attribute("style")
+                    .unwrap()
+                    .contains(&format!("fill: {expected};")),
+                "local={local}, explicit-primary={explicit_primary}: {}",
+                intersection.attribute("style").unwrap()
+            );
+            let evidence =
+                merman_render::__private::family_evidence(rendered.into_completion().report());
+            assert_eq!(evidence.applied_count(), usize::from(!fallback_owned));
+            assert_eq!(evidence.not_applicable_count(), usize::from(fallback_owned));
+            assert_eq!(evidence.theme_residual_count(), 0);
+        }
+    }
 }
 
 #[test]

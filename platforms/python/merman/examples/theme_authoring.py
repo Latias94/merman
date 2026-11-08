@@ -97,6 +97,40 @@ def state_fill(svg: str) -> str:
     return declarations.get("fill", shape.get("fill", "")).removesuffix("!important").strip()
 
 
+def verify_paired_theme(client, recipe) -> list[str]:
+    inspection = execute_json(client, "materialize-theme-json", json.dumps({
+        "schema_version": 1, "action": "inspect", "recipe": recipe,
+    }, allow_nan=False))
+    require(inspection["supported_appearances"] == ["light", "dark"],
+            "paired inspection lost a declared appearance")
+    require(inspection["default_appearance"] == "light", "paired default changed")
+    snapshots, rendered = [], []
+    for appearance in ("light", "dark", "light"):
+        selected = execute_json(client, "materialize-theme-json", json.dumps({
+            "schema_version": 1, "action": "materialize",
+            "recipe": recipe, "appearance": appearance,
+        }, allow_nan=False))
+        require(selected["effective_appearance"] == appearance,
+                "paired materialization selected the wrong appearance")
+        snapshots.append(selected["spec"])
+        svg = client.render_svg(SOURCES["flowchart"], json.dumps({
+            "version": 3, "theme": {"recipe": recipe, "appearance": appearance},
+            "site_config": {"htmlLabels": False},
+            "svg": {"diagram_id": "python-paired-theme"},
+        }, allow_nan=False))
+        ET.fromstring(svg)
+        rendered.append(svg)
+    require(snapshots[0] != snapshots[1] and snapshots[0] == snapshots[2],
+            "paired materialization lost appearance isolation")
+    require(rendered[0] != rendered[1] and rendered[0] == rendered[2],
+            "paired rendering lost appearance isolation")
+    exported = execute_json(client, "export-theme-preset-json", "editor")
+    require(exported["schema_version"] == 1
+            and set(exported["design"]["appearances"]) == {"light", "dark"},
+            "preset export must retain the complete editable pair")
+    return rendered
+
+
 def run_theme_authoring_smoke() -> None:
     api = merman.Merman()
     engine = merman.MermanEngine(None, None)
@@ -109,6 +143,10 @@ def run_theme_authoring_smoke() -> None:
             require(catalog["structured_spec_available"] is True, "theme spec unavailable")
             require(fixture_canonical_bytes(catalog["presets"]) == fixture_canonical_bytes(expected_presets),
                     "preset catalog differs from shared golden")
+        paired_recipe = json.loads((FIXTURES / "paired.recipe.json").read_text(encoding="utf-8"))
+        paired_renders = [verify_paired_theme(client, paired_recipe) for client in (api, engine, fresh)]
+        require(paired_renders[0] == paired_renders[1] == paired_renders[2],
+                "paired themes differ between one-shot and independent engines")
         error_vectors = json.loads((FIXTURES / "errors.json").read_text(encoding="utf-8"))
         for vector in error_vectors:
             operations = ["materialize-theme-json"]

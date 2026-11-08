@@ -161,6 +161,21 @@ val themedSvg = Merman.renderSvg(
 For a reusable engine, omit `theme` to inherit its selection, use `theme: null` to clear it,
 or supply a complete selection or recipe to replace it.
 
+The schema-1 catalog groups a design's `supported_appearances`, `default_appearance`, and
+`appearances`. Swatches, `family_designs`, `application_notes`, `qualified_cells`, and the exact
+`concrete_preset_id` live in each appearance entry. Select a reading mode with
+`{"theme":{"preset":"editor","appearance":"dark"}}`; omitted appearance uses the declared default.
+Resolve Follow-app/editor in the host instead of sending `auto` to the renderer.
+
+The existing `execute()` entry point accepts `export-theme-preset-json` with the plain ID
+`editor` and returns the complete editable `ThemeRecipeV1`. Keep that recipe for saving and
+customization: appearance exceptions live in `design.appearances`, beside
+`design.default_appearance`. Through `materialize-theme-json`, a schema-1 request with
+`action: "inspect"` and `recipe` validates every mode; `action: "materialize"` adds an optional
+concrete `appearance` and returns a selected `spec`. For rendering, put that complete object in
+`theme.recipe` and set `theme.appearance` to `dark`.
+No new JNI method or native ABI operation is required.
+
 Built-in presets are alpha, with empty public qualification cells. Catalog availability and
 family design scope do not certify the result for every diagram or output target. Flowchart
 glow and shadow effects require Classic look (`site_config.flowchart.look: "classic"`);

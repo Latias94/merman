@@ -286,13 +286,9 @@ pub(crate) struct ArchitectureThemeOutcome {
 fn mermaid_owns_group_stroke(
     effective_config: &merman_model::presentation::PresentationConfig,
 ) -> bool {
-    if effective_config.config_paint_overrides_typed_default("themeVariables.archGroupBorderColor")
-    {
-        return true;
-    }
-    effective_config.config_paint_overrides_typed_default("themeVariables.primaryBorderColor")
-        && effective_config.get_str("themeVariables.archGroupBorderColor")
-            == effective_config.get_str("themeVariables.primaryBorderColor")
+    let (path, _) =
+        super::ArchitectureCssBinding::group_border_color_source(effective_config.as_value());
+    effective_config.config_paint_overrides_typed_default(path)
 }
 
 fn selector_matches_any_group(selector: FamilyThemeSelectorShape, group_count: usize) -> bool {

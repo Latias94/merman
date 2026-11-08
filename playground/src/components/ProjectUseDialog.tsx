@@ -29,7 +29,8 @@ export default function ProjectUseDialog({ input, onClose, onRefresh, restoreFoc
   const scopeId = useId();
   const [snapshot] = useState(() => captureProjectHandoff(input));
   const workspace = useAppStore(useShallow(selectWorkspaceSnapshot));
-  const changed = !projectHandoffMatchesWorkspace(snapshot, workspace);
+  const hostAppearance = useAppStore((state) => state.resolvedTheme);
+  const changed = !projectHandoffMatchesWorkspace(snapshot, workspace, hostAppearance);
   const [target, setTarget] = useState<ProjectUseTarget>("rust");
   const [scope, setScope] = useState<ProjectUseScope>("diagram");
   const [selectedFile, setSelectedFile] = useState<string | null>(null);
@@ -100,6 +101,10 @@ export default function ProjectUseDialog({ input, onClose, onRefresh, restoreFoc
         <dl className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-1 break-words text-xs" data-testid="project-use-inputs">
           <dt className="text-muted-foreground">{t("projectUse.theme")}</dt><dd>{themeName} · {t(label ? `projectUse.origin_${label.source}` : snapshot.workspace.themePresetId ? "projectUse.origin_builtin" : snapshot.workspace.themeRecipeJson !== null ? "projectUse.origin_recipe" : "projectUse.origin_none")}</dd>
           <dt className="text-muted-foreground">{t("projectUse.baseTheme")}</dt><dd>{snapshot.workspace.diagramTheme}</dd>
+          {snapshot.selection.appearance && <>
+            <dt className="text-muted-foreground">{t("appearanceMode.title")}</dt>
+            <dd data-testid="project-use-appearance">{t("appearanceMode.frozen", { appearance: t(`appearanceMode.${snapshot.selection.appearance}`) })}</dd>
+          </>}
           {scope === "diagram" && <>
             <dt className="text-muted-foreground">{t("projectUse.environment")}</dt>
             <dd>{snapshot.workspace.diagramFont} · {snapshot.workspace.textMeasurementMode} · {snapshot.workspace.svgPipeline}

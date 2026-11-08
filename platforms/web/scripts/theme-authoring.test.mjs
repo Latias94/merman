@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import test from "node:test";
 
 import { initMerman, WEB_TRANSPORT_API_VERSION } from "../dist/runtime-core.js";
@@ -174,6 +175,53 @@ test("exported recipes survive JSON storage and enter SVG options without unpack
       options: JSON.stringify({ theme: recipe }),
     },
   ]);
+});
+
+test("paired authoring forwards schema-one actions, explicit selection, and raw JSON unchanged", async () => {
+  const recipe = JSON.parse(readFileSync(new URL(
+    "../../../crates/merman-theme-authoring-fixtures/fixtures/authoring-v1/paired.recipe.json",
+    import.meta.url,
+  ), "utf8"));
+  const calls = [];
+  const customized = customizeNodeColors(recipe, {
+    background: "#fdf6e3", nodeBorder: "#657b83", classFill: "#eee8d5",
+  });
+  assert.deepEqual(customized.design.appearances, recipe.design.appearances);
+  assert.equal(customized.design.default_appearance, "light");
+  assert.equal(customized.design.canvas.base, "#fdf6e3");
+  assert.equal(recipe.design.canvas.base, "#f8fafc", "shared customization must not mutate its source");
+  const runtime = bindSurfaceRuntime(async () => ({
+    default: async () => {},
+    transportApiVersion: () => WEB_TRANSPORT_API_VERSION,
+    materializeTheme(input, options) {
+      calls.push({ input, options });
+      return { schema_version: 1, supported_appearances: ["light", "dark"] };
+    },
+    exportThemePreset(id) { calls.push({ id }); return structuredClone(recipe); },
+  }), { initMerman, materializeTheme, exportThemePreset });
+  await runtime.initMerman();
+  for (const request of [
+    { schema_version: 1, action: "inspect", recipe },
+    { schema_version: 1, action: "materialize", recipe, appearance: "dark" },
+  ]) {
+    runtime.materializeTheme(request);
+    assert.equal(calls.at(-1).input, JSON.stringify(request));
+  }
+  const raw = '{"schema_version":1,"action":"inspect","recipe":{"kind":"design","kind":"complete_spec"}}';
+  runtime.materializeTheme(raw);
+  assert.equal(calls.at(-1).input, raw, "duplicate-field and provenance admission stays in Rust");
+  const exported = runtime.exportThemePreset("editor");
+  assert.deepEqual(exported.design.appearances, recipe.design.appearances);
+  assert.deepEqual(calls.at(-1), { id: "editor" });
+  assert.throws(
+    () => runtime.materializeTheme({
+      schema_version: 1, action: "materialize",
+      recipe: { ...recipe, design: { ...recipe.design, appearances: {
+        dark: { canvas: { bleed: NaN } }, light: {},
+      } } },
+    }),
+    /non-finite/,
+  );
 });
 
 

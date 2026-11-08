@@ -14,6 +14,18 @@ yield with a no-op. These deterministic shims are smoke policies, **not** secure
 randomness and not a production cryptographic host. Actual shim calls are
 recorded. Path functions see no guest preopens; host-only inputs use raw ABI bytes.
 
+Theme selection uses the same Options JSON schema 3 as the other bindings. A request can select
+`{"theme":{"preset":"editor","appearance":"dark"}}` or a complete schema-1 recipe object and a
+concrete appearance. An omitted selector uses the design's declared default; the headless reactor
+never detects host UI brightness.
+
+The existing `execute` transport carries `materialize-theme-json`, `describe-theme-support-json`,
+and `export-theme-preset-json`. Plain-ID preset export returns the complete `ThemeRecipeV1`,
+with `design.appearances` and `design.default_appearance`. Schema-1 authoring actions inspect all
+appearances or materialize one selected `spec`. `theme-catalog` groups presets and supplies
+appearance-specific swatches, family guidance, qualifications, and `concrete_preset_id`.
+The scalar ABI, result descriptor, and native-memory ownership rules remain unchanged.
+
 Math/full have a reviewed dependency-export residual: RaTeX's pinned embedded-font
 closure retains several wasm-bindgen allocation/closure helpers even without a
 JavaScript import. `optional_dependency_exports` records their exact scalar shapes;

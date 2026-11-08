@@ -21,7 +21,7 @@ use crate::model::QuadrantChartDiagramLayout;
 use crate::resources::{OperationWorkError, OperationWorkMeter};
 
 mod css_binding;
-use css_binding::QuadrantChartCssBinding;
+pub(super) use css_binding::QuadrantChartCssBinding;
 
 /// Typed geometry and paint for Quadrant Chart point marks and their terminal evidence.
 #[derive(Debug)]
@@ -142,10 +142,14 @@ impl QuadrantChartPointThemePlan {
             });
         };
 
-        let config_owns_radius =
-            effective_config.config_path_overrides_typed_default("quadrantChart.pointRadius");
-        let config_owns_fill = effective_config
-            .config_paint_overrides_typed_default("themeVariables.quadrantPointFill");
+        let config_owns_radius = crate::config::config_f64(
+            effective_config.as_value(),
+            &["quadrantChart", "pointRadius"],
+        )
+        .is_some()
+            && effective_config.config_path_overrides_typed_default("quadrantChart.pointRadius");
+        let config_owns_fill =
+            QuadrantChartCssBinding::config_owns_color(effective_config, "quadrantPointFill");
         let mermaid_point_radius_px =
             super::QuadrantChartConfigView::new(effective_config.as_value())
                 .layout_settings()

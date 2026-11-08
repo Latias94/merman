@@ -1,5 +1,5 @@
 import { lazy, useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
-import { Copy, Download, FileUp, Palette, Undo2, X } from "lucide-react";
+import { Copy, Download, FileUp, Palette, Pencil, Undo2, X } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { normalizeThemeName, SUPPORTED_THEMES, type ThemeCatalog } from "@mermanjs/web";
@@ -8,6 +8,7 @@ import { useShallow } from "zustand/react/shallow";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { LazyFeatureBoundary } from "@/src/components/LazyFeatureBoundary";
+import { CodePreview } from "@/src/components/CodePreview";
 import type { DiagramThemeChoice } from "@/src/lib/diagram-appearance";
 import { downloadBlob } from "@/src/lib/export";
 import { DIAGRAM_FONT_VALUES, isDiagramFont } from "@/src/lib/diagram-font";
@@ -22,6 +23,11 @@ import { selectWorkspaceSnapshot, useAppStore } from "@/src/store";
 import { ThemeRenderEvidence } from "./ThemeRenderEvidence";
 import { ThemeApplicationNotes } from "./ThemeApplicationNotes";
 import { importedThemeName } from "./theme-selection";
+import { exportSelectedThemeRecipe, inspectThemeRecipe, preferredAppearanceForSelection, resolveThemeSelection, selectedPresetCatalogEntry, type ThemeAppearancePreference } from "@/src/lib/theme-appearance";
+import { sameThemeEditOrigin } from "@/src/lib/theme-draft";
+import type { ThemeRecipeLabel, WorkspaceSnapshot } from "@/src/lib/workspace-snapshot";
+import { ThemeAppearanceControl } from "./ThemeAppearanceControl";
+import { ThemeDraftWorkbench } from "./ThemeDraftWorkbench";
 
 const ThemeGallery = lazy(() => import("./ThemeGallery"));
 
@@ -38,15 +44,17 @@ export function ThemePanel({ className, onClose }: { className?: string; onClose
   const importGeneration = useRef(0);
   const facade = useMermanRuntime(selectMermanFacade);
   const workspace = useAppStore(useShallow(selectWorkspaceSnapshot));
+  const hostAppearance = useAppStore((state) => state.resolvedTheme);
   const historyLength = useAppStore((state) => state.appearanceHistory.length);
   const coordinator = useRenderCoordinator((state) => state);
-  const detection = currentDiagramDetection(coordinator, workspace);
-  const render = currentThemeRender(coordinator, workspace);
+  const detection = currentDiagramDetection(coordinator, workspace, hostAppearance);
+  const render = currentThemeRender(coordinator, workspace, hostAppearance);
   const batch = render.batch;
   const metadata = batch?.merman.status === "success" ? batch.merman.metadata : null;
   const [advanced, setAdvanced] = useState(false);
   const [themeImport, setThemeImport] = useState<ThemeImport | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
+  const [draft, setDraft] = useState<{ raw: string; origin: WorkspaceSnapshot; label: ThemeRecipeLabel; preference: ThemeAppearancePreference } | null>(null);
   const [catalogState, setCatalogState] = useState<{ catalog: ThemeCatalog | null; error: string | null }>({ catalog: null, error: null });
 
   const loadCatalog = useCallback(() => {
@@ -61,10 +69,12 @@ export function ThemePanel({ className, onClose }: { className?: string; onClose
       if (!state.themePanelOpen || state.appearanceHistory !== previous.appearanceHistory ||
         state.diagramTheme !== previous.diagramTheme || state.themePresetId !== previous.themePresetId ||
         state.themeRecipeJson !== previous.themeRecipeJson || state.themeRecipeLabel !== previous.themeRecipeLabel ||
+        state.themeAppearance !== previous.themeAppearance ||
         state.diagramFont !== previous.diagramFont) {
         importGeneration.current += 1;
         setThemeImport(null);
       }
+      if (!state.themePanelOpen || !sameThemeEditOrigin(selectWorkspaceSnapshot(state), selectWorkspaceSnapshot(previous))) setDraft(null);
     });
     return () => { importGeneration.current += 1; unsubscribe(); };
   }, []);
@@ -82,31 +92,41 @@ export function ThemePanel({ className, onClose }: { className?: string; onClose
   }, [facade]);
   const familyId = detectedThemeFamily(detection, families);
   const familyLabel = (id: string) => t(`diagramTypes.${themeFamilyMetadataId(id, families) ?? id}`, { defaultValue: id });
-  const appearanceOverrides = currentAppearanceOverrides(coordinator, workspace);
+  const appearanceOverrides = currentAppearanceOverrides(coordinator, workspace, hostAppearance);
+  const recipeInspection = useMemo(() => {
+    if (!facade || workspace.themeRecipeJson === null) return null;
+    try { return inspectThemeRecipe(facade, workspace.themeRecipeJson); }
+    catch { return null; }
+  }, [facade, workspace.themeRecipeJson]);
+  const selection = resolveThemeSelection(workspace, hostAppearance, catalog, recipeInspection);
   const presets = [...(catalog?.presets ?? [])].sort((left, right) =>
     t(`themePresets.${left.id}`, { defaultValue: left.display_name }).localeCompare(
       t(`themePresets.${right.id}`, { defaultValue: right.display_name }), i18n.resolvedLanguage,
       { numeric: true, sensitivity: "base" }));
-  const selectedPreset = catalog?.presets.find((preset) => preset.id === workspace.themePresetId);
-  const unavailablePresetId = workspace.themePresetId !== null && catalog !== null && !selectedPreset?.available ? workspace.themePresetId : null;
+  const selectedPresetChoice = selectedPresetCatalogEntry(catalog, workspace.themePresetId);
+  const selectedPreset = selectedPresetChoice?.preset;
+  const selectedPresetAppearance = selectedPreset?.appearances.find((entry) => entry.appearance === selection.appearance);
+  const selectedMermaidDesign = catalog?.mermaid_theme_designs.find((entry) =>
+    entry.appearances.some((entry) => entry.theme_id === workspace.diagramTheme));
+  const unavailablePresetId = workspace.themePresetId !== null && catalog !== null && !selectedPresetChoice?.available ? workspace.themePresetId : null;
   const selectionName = workspace.themePresetId !== null
-    ? t(`themePresets.${workspace.themePresetId}`, { defaultValue: selectedPreset?.display_name ?? workspace.themePresetId })
+    ? t(`themePresets.${selectedPreset?.id ?? workspace.themePresetId}`, { defaultValue: selectedPreset?.display_name ?? workspace.themePresetId })
     : workspace.themeRecipeJson !== null ? workspace.themeRecipeLabel?.name ?? t("appearance.importedTheme")
-    : t(`themes.${workspace.diagramTheme}`, { defaultValue: workspace.diagramTheme });
+    : t(`themes.${selectedMermaidDesign?.id ?? workspace.diagramTheme}`, { defaultValue: selectedMermaidDesign?.display_name ?? workspace.diagramTheme });
   const selectionSource = workspace.themePresetId !== null ? "builtin"
     : workspace.themeRecipeJson !== null ? workspace.themeRecipeLabel?.source ?? "imported"
     : workspace.diagramTheme === "auto" ? "automatic" : "mermaid";
-  const reviewedFamilies = selectedPreset ? reviewedThemeFamilies(selectedPreset) : [];
-  const applicationNotes = selectedPreset?.application_notes.filter((note) => note.family_id === familyId) ?? [];
-  const canExchange = Boolean(facade && (workspace.themeRecipeJson !== null || selectedPreset?.available));
+  const reviewedFamilies = selectedPresetAppearance ? reviewedThemeFamilies(selectedPresetAppearance) : [];
+  const applicationNotes = selectedPresetAppearance?.application_notes.filter((note) => note.family_id === familyId) ?? [];
+  const canExchange = Boolean(facade && (workspace.themeRecipeJson !== null || selectedPresetChoice?.available));
   const jsonView = useMemo(() => {
     if (!advanced) return { value: "", error: null };
     if (workspace.themeRecipeJson !== null) return { value: workspace.themeRecipeJson, error: null };
     try {
-      return { value: selectedPreset?.available && facade
-        ? JSON.stringify(facade.exportThemePreset(selectedPreset.id), null, 2) : "", error: null };
+      return { value: selectedPresetChoice?.available && workspace.themePresetId && facade
+        ? exportSelectedThemeRecipe(facade, workspace.themePresetId) : "", error: null };
     } catch (cause) { return { value: "", error: projectError(cause).summary }; }
-  }, [advanced, facade, selectedPreset, workspace.themeRecipeJson]);
+  }, [advanced, facade, selectedPresetChoice?.available, workspace.themePresetId, workspace.themeRecipeJson]);
 
   function dismissImport() {
     importGeneration.current += 1;
@@ -128,13 +148,16 @@ export function ThemePanel({ className, onClose }: { className?: string; onClose
   function validateRecipe(raw: string) {
     if (!facade) throw new Error(t("wasm.notLoaded"));
     checkRecipeSize(raw);
-    checkRecipeSize(facade.validateThemeRecipe(raw));
+    return inspectThemeRecipe(facade, raw);
   }
 
   function selectTheme(choice: DiagramThemeChoice) {
     dismissImport();
     try {
-      if (choice.kind === "recipe") validateRecipe(choice.recipeJson);
+      if (choice.kind === "recipe") {
+        const support = validateRecipe(choice.recipeJson);
+        choice = { ...choice, appearance: choice.appearance ?? preferredAppearanceForSelection(support) };
+      }
       useAppStore.getState().selectTheme(choice);
       setActionError(null);
     } catch (cause) { setActionError(projectError(cause).summary); }
@@ -161,7 +184,7 @@ export function ThemePanel({ className, onClose }: { className?: string; onClose
     if (!facade) throw new Error(t("wasm.notLoaded"));
     const current = selectWorkspaceSnapshot(useAppStore.getState());
     const raw = current.themeRecipeJson ?? (current.themePresetId !== null
-      ? JSON.stringify(facade.exportThemePreset(current.themePresetId), null, 2) : null);
+      ? exportSelectedThemeRecipe(facade, current.themePresetId) : null);
     if (raw === null) throw new Error(t("appearance.noRecipe"));
     validateRecipe(raw);
     return raw;
@@ -179,6 +202,20 @@ export function ThemePanel({ className, onClose }: { className?: string; onClose
       await navigator.clipboard.writeText(recipeForExchange());
       setActionError(null);
       toast.success(t("themePanel.copiedJson"), { position: "top-center" });
+    } catch (cause) { setActionError(projectError(cause).summary); }
+  }
+
+  function customize() {
+    try {
+      const raw = recipeForExchange();
+      const origin = selectWorkspaceSnapshot(useAppStore.getState());
+      const label = origin.themeRecipeLabel ?? {
+        name: selectionName, source: "imported" as const,
+        ...(origin.themePresetId !== null ? { derivedFrom: `preset:${origin.themePresetId}` } : {}),
+      };
+      setDraft({ raw, origin, label, preference: selection.preference === "default" && selectedPresetChoice?.pinned
+        ? selectedPresetChoice.pinned : selection.preference });
+      setActionError(null);
     } catch (cause) { setActionError(projectError(cause).summary); }
   }
 
@@ -208,11 +245,34 @@ export function ThemePanel({ className, onClose }: { className?: string; onClose
           {familyId ? t("themePanel.currentFamily", { family: familyLabel(familyId) })
             : t(detection === null ? "themePanel.familyWaiting" : "themePanel.familyUnknown")}
         </p>
-        {selectedPreset && familyId && <p className="text-xs text-muted-foreground" data-testid="theme-current-treatment">{t(`themePanel.treatments.${themeFamilyTreatment(selectedPreset, familyId)}`)}</p>}
+        {selectedPresetAppearance && familyId && <p className="text-xs text-muted-foreground" data-testid="theme-current-treatment">{t(`themePanel.treatments.${themeFamilyTreatment(selectedPresetAppearance, familyId)}`)}</p>}
         {selectedPreset && <p className="text-[11px] text-muted-foreground" data-testid="theme-current-maturity">
           {selectedPreset.maturity === "alpha" ? t("appearance.alphaHint") : t("themePanel.maturityLabel", { maturity: t(`themePanel.maturity.${selectedPreset.maturity}`, { defaultValue: selectedPreset.maturity }) })}
         </p>}
       </section>
+      <ThemeAppearanceControl selection={selection} onChange={(appearance) => {
+        dismissImport(); useAppStore.getState().setThemeAppearance(appearance); setActionError(null);
+      }} />
+      {(workspace.themePresetId !== null || workspace.themeRecipeJson !== null) && workspace.diagramTheme !== "auto" &&
+        <p className="rounded-md border p-2 text-xs text-muted-foreground" data-testid="theme-active-combination">
+          {t("appearanceMode.composition", { theme: selectionName, base: t(`themes.${workspace.diagramTheme}`, { defaultValue: workspace.diagramTheme }) })}
+        </p>}
+      {appearanceOverrides && Object.values(appearanceOverrides).some(Boolean) && <section className="space-y-2 rounded-md border p-2 text-[11px]" data-testid="theme-appearance-overrides">
+        <h3 className="font-semibold">{t("themePanel.detectedOverrides")}</h3>
+        <p className="leading-relaxed text-muted-foreground">{t("themePanel.detectedOverridesHint")}</p>
+        <div className="flex flex-wrap gap-2">
+          {(["config", "source"] as const).map((origin) => Object.values(appearanceOverrides).some((value) => value?.origin === origin) &&
+            <Button key={origin} type="button" variant="outline" size="sm" onClick={() => {
+              useAppStore.getState().setEditorMode(origin === "config" ? "config" : "code");
+              useAppStore.getState().setWorkspacePane("editor");
+            }}>{t(`themePanel.editOverride.${origin}`)}</Button>)}
+        </div>
+      </section>}
+      {canExchange && <Button type="button" variant="outline" size="sm" disabled={draft !== null} onClick={customize}>
+        <Pencil className="size-3.5" aria-hidden="true" />{t("themeDraft.customize")}
+      </Button>}
+      {draft && facade && <ThemeDraftWorkbench raw={draft.raw} origin={draft.origin} label={draft.label} facade={facade}
+        appearancePreference={draft.preference} onClose={() => setDraft(null)} />}
       <ThemeRenderEvidence render={render} unavailablePresetId={unavailablePresetId} />
       <section className="space-y-2">
         <label htmlFor={`${headingId}-font`} className="block text-xs font-semibold">{t("themePanel.diagramFont")}</label>
@@ -258,7 +318,7 @@ export function ThemePanel({ className, onClose }: { className?: string; onClose
           <Button type="button" variant="outline" size="sm" onClick={loadCatalog}>{t("themePanel.retryCatalog")}</Button>
         </div> : <p role="status" className="text-xs text-muted-foreground">{t("appearance.catalogPending")}</p>)}
         <LazyFeatureBoundary feature={t("appearance.themeCatalog")} presentation={{ kind: "panel" }}>
-          <ThemeGallery workspace={workspace} mermaidThemes={["auto", ...mermaidThemes]} presets={presets}
+          <ThemeGallery workspace={workspace} mermaidThemes={["auto", ...mermaidThemes]} presets={presets} catalog={catalog} selectedAppearance={selection.appearance}
             catalogReady={catalog !== null} familyId={familyId} pending={detection === null} canSelectRecipes={Boolean(facade)} onSelect={selectTheme} />
         </LazyFeatureBoundary>
       </section>
@@ -274,7 +334,8 @@ export function ThemePanel({ className, onClose }: { className?: string; onClose
               value={workspace.diagramTheme} onChange={(event) => {
                 if (isMermaidThemeSelection(event.target.value)) {
                   dismissImport();
-                  useAppStore.getState().setDiagramTheme(event.target.value);
+                  if (workspace.themePresetId !== null || workspace.themeRecipeJson !== null) useAppStore.getState().setDiagramTheme(event.target.value);
+                  else useAppStore.getState().selectTheme({ kind: "mermaid", theme: event.target.value });
                   setActionError(null);
                 }
               }}>
@@ -287,11 +348,16 @@ export function ThemePanel({ className, onClose }: { className?: string; onClose
               onChange={(event) => {
                 const value = event.target.value;
                 if (value === "none") selectTheme({ kind: "none" });
-                else if (presets.some((preset) => `preset:${preset.id}` === value && preset.available)) selectTheme({ kind: "preset", presetId: value.slice(7) });
+                else {
+                  const preset = presets.find((preset) => `preset:${preset.id}` === value && preset.available);
+                  if (preset) selectTheme({ kind: "preset", presetId: preset.id, appearance: preferredAppearanceForSelection(preset), compose: true });
+                }
               }}>
               <option value="none">{t("appearance.noExtension")}</option>
               {workspace.themeRecipeJson !== null && <option value="recipe" disabled>{selectionName}</option>}
-              {workspace.themePresetId !== null && !selectedPreset && <option value={`preset:${workspace.themePresetId}`} disabled>{selectionName}</option>}
+              {workspace.themePresetId !== null && workspace.themePresetId !== selectedPreset?.id && <option value={`preset:${workspace.themePresetId}`} disabled>
+                {selectionName}{selection.appearance ? ` · ${t(`appearanceMode.${selection.appearance}`)}` : ""}
+              </option>}
               {presets.map((preset) => <option key={preset.id} value={`preset:${preset.id}`} disabled={!preset.available}>
                 {t(`themePresets.${preset.id}`, { defaultValue: preset.display_name })}
               </option>)}
@@ -300,7 +366,7 @@ export function ThemePanel({ className, onClose }: { className?: string; onClose
             <p className="leading-relaxed text-muted-foreground">{t("themePanel.layeringHint")}</p>
             <p className="leading-relaxed text-muted-foreground">{t("themePanel.fontPrecedenceHint")}</p>
           </section>
-          {appearanceOverrides && Object.values(appearanceOverrides).some(Boolean) && <section className="space-y-2 rounded-md border p-2 text-[11px]" data-testid="theme-appearance-overrides">
+          {appearanceOverrides && Object.values(appearanceOverrides).some(Boolean) && <section className="space-y-2 rounded-md border p-2 text-[11px]" data-testid="theme-appearance-override-details">
             <h3 className="font-semibold">{t("themePanel.detectedOverrides")}</h3>
             <dl className="space-y-1.5">
               {(["theme", "font", "look"] as const).map((key) => {
@@ -338,7 +404,7 @@ export function ThemePanel({ className, onClose }: { className?: string; onClose
             </div>
             <p className="text-[11px] leading-relaxed text-muted-foreground">{t("themePanel.jsonHint")}</p>
             {jsonView.error ? <p role="alert" className="text-destructive">{jsonView.error}</p>
-              : jsonView.value ? <textarea id={`${headingId}-json`} readOnly value={jsonView.value} spellCheck={false} className="h-48 w-full min-w-0 resize-y rounded border bg-muted/20 p-2 font-mono text-[11px]" />
+              : jsonView.value ? <CodePreview value={jsonView.value} filename="theme.json" label={t("themePanel.json")} testId="theme-json-document" />
               : <p className="text-muted-foreground">{t("appearance.noRecipe")}</p>}
           </section>
           <section className="space-y-2">
@@ -364,6 +430,7 @@ export function ThemePanel({ className, onClose }: { className?: string; onClose
         <p className="min-w-0 flex-1 text-[11px] leading-relaxed text-muted-foreground">{t("appearance.exchangeHint")}</p>
         <Button type="button" variant="outline" size="sm" disabled={!canExchange} onClick={download}><Download className="size-3.5" aria-hidden="true" />{t("customTheme.download")}</Button>
       </div>
+      {workspace.themeAppearance === "follow" && <p className="text-[11px] leading-relaxed text-muted-foreground">{t("appearanceMode.shareFollow")}</p>}
     </div>
   </aside>;
 }

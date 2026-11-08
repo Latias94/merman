@@ -85,16 +85,19 @@ impl ThemeSourceMap {
 /// Sources in the wire's mixed style-entry order, consumed alongside decoding.
 #[derive(Debug)]
 pub(super) enum ThemeWireSources {
-    None,
     CompleteSpec,
     Design {
         styles: Vec<ThemeStyleSource>,
         canvas_base: Option<ThemeStyleSource>,
+        effects: Vec<String>,
     },
 }
 
 impl ThemeWireSources {
-    pub(super) fn for_design(design: &merman_theme_contract::ThemeDesignV1) -> Self {
+    pub(super) fn for_design(
+        design: &merman_theme_contract::ThemeDesignV1,
+        effects: Vec<String>,
+    ) -> Self {
         let escape = |target: &str| target.replace('~', "~0").replace('/', "~1");
         let styles = design
             .styles
@@ -123,12 +126,12 @@ impl ThemeWireSources {
         Self::Design {
             styles,
             canvas_base,
+            effects,
         }
     }
 
     pub(super) fn document(&self) -> Option<ThemeSourceDocument> {
         match self {
-            Self::None => None,
             Self::CompleteSpec => Some(ThemeSourceDocument::CompleteSpec),
             Self::Design { .. } => Some(ThemeSourceDocument::Design),
         }
@@ -136,7 +139,6 @@ impl ThemeWireSources {
 
     pub(super) fn take_style(&mut self, index: usize) -> Option<ThemeStyleSource> {
         match self {
-            Self::None => None,
             Self::CompleteSpec => Some(ThemeStyleSource::authored(format!("/styles/{index}"))),
             Self::Design { styles, .. } => styles.get_mut(index).map(std::mem::take),
         }
@@ -144,9 +146,15 @@ impl ThemeWireSources {
 
     pub(super) fn take_canvas_base(&mut self) -> Option<ThemeStyleSource> {
         match self {
-            Self::None => None,
             Self::CompleteSpec => Some(ThemeStyleSource::authored("/canvas/base".to_owned())),
             Self::Design { canvas_base, .. } => canvas_base.take(),
+        }
+    }
+
+    pub(super) fn effect_path(&self, index: usize) -> String {
+        match self {
+            Self::CompleteSpec => format!("/effects/{index}"),
+            Self::Design { effects, .. } => effects[index].clone(),
         }
     }
 }
@@ -164,7 +172,7 @@ mod tests {
             "canvas":{"base":"white"}
         }))
         .unwrap();
-        let mut sources = ThemeWireSources::for_design(&design);
+        let mut sources = ThemeWireSources::for_design(&design, Vec::new());
         assert_eq!(sources.document().unwrap().id(), "design");
         for (index, expected) in [
             "/styles/a",

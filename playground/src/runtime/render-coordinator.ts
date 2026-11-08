@@ -4,6 +4,7 @@ import {
   type DiagramDetectionFacts,
   type DiagramType,
   type SvgRenderMetadata,
+  type ThemeAppearance,
 } from "@mermanjs/web";
 
 import type {
@@ -16,6 +17,7 @@ import {
   type FrozenRenderOperation,
 } from "./merman-operation-input.ts";
 import type { WorkspaceSnapshot } from "../lib/workspace-snapshot.ts";
+import { inspectThemeRecipe, resolveThemeSelection } from "../lib/theme-appearance.ts";
 import { MERMAID_JS_VERSION } from "./mermaid-requirements.ts";
 import { mermaidExternalRequirementsFor } from "./mermaid-requirements.ts";
 import type {
@@ -36,6 +38,7 @@ export interface RenderCoordinatorInput {
   readonly facade: MermanDomainFacade | null;
   readonly renderViewport: Readonly<CapturedRenderViewport>;
   readonly workspace: Readonly<WorkspaceSnapshot>;
+  readonly hostAppearance?: ThemeAppearance;
 }
 
 export interface FrozenRenderSnapshot {
@@ -256,6 +259,11 @@ export function createRenderCoordinator({
   let timer: ReturnType<typeof setTimeout> | null = null;
   let active: Promise<void> | null = null;
   let activeRequest: ActiveRequest | null = null;
+  let themeContextCache: {
+    facade: MermanDomainFacade;
+    recipeJson: string | null;
+    context: ReturnType<typeof previewThemeContext>;
+  } | null = null;
 
   const replaceState = (state: RenderCoordinatorState) => {
     store.setState(state, true);
@@ -281,7 +289,7 @@ export function createRenderCoordinator({
 
   const scheduleCurrent = (force: boolean, immediate = false) => {
     if (disposed || !enabled || !currentInput) return;
-    const { facade, renderViewport, workspace } = currentInput;
+    const { facade, renderViewport, workspace, hostAppearance } = currentInput;
     if (!facade || !workspace.code.trim()) {
       cancelActiveCompare();
       requestSequence += 1;
@@ -289,6 +297,9 @@ export function createRenderCoordinator({
       clearTimer();
       replaceState(EMPTY_STATE);
       return;
+    }
+    if (force || themeContextCache?.facade !== facade || themeContextCache.recipeJson !== workspace.themeRecipeJson) {
+      themeContextCache = { facade, recipeJson: workspace.themeRecipeJson, context: previewThemeContext(facade, workspace) };
     }
     const operationInput = freezeScheduledOperationInput({
       asciiEnabled,
@@ -301,6 +312,8 @@ export function createRenderCoordinator({
       },
       viewport: compareEnabled ? renderViewport.viewport : null,
       workspace,
+      hostAppearance,
+      ...themeContextCache.context,
     });
     if (
       !force &&
@@ -363,7 +376,6 @@ export function createRenderCoordinator({
         snapshot: Object.freeze({
           operation: freezeOperation({
             ...request.operationInput,
-            themePresets: previewThemePresets(request.facade, request.operationInput.workspace),
           }),
           publicationId: request.publicationId,
         }),
@@ -668,17 +680,19 @@ export function createRenderCoordinator({
   };
 }
 
-function previewThemePresets(
+function previewThemeContext(
   facade: MermanDomainFacade,
   workspace: Readonly<WorkspaceSnapshot>,
-): FreezeRenderOperationInput["themePresets"] {
-  if (!workspace.themePresetId || workspace.themeRecipeJson !== null) return undefined;
+): Pick<FreezeRenderOperationInput, "themeCatalog" | "themeRecipeInspection" | "themeInspectionError"> {
+  let themeCatalog: FreezeRenderOperationInput["themeCatalog"];
   try {
-    return facade.themeCatalog().presets;
+    themeCatalog = facade.themeCatalog();
   } catch {
-    // Without catalog evidence, retain the strict binding request and its normal error.
-    return undefined;
+    themeCatalog = undefined;
   }
+  if (workspace.themeRecipeJson === null) return { themeCatalog };
+  try { return { themeCatalog, themeRecipeInspection: inspectThemeRecipe(facade, workspace.themeRecipeJson) }; }
+  catch (cause) { return { themeCatalog, themeInspectionError: projectError(cause) }; }
 }
 
 function freezeScheduledOperationInput({
@@ -689,6 +703,10 @@ function freezeScheduledOperationInput({
   versions,
   viewport,
   workspace,
+  hostAppearance,
+  themeCatalog,
+  themeRecipeInspection,
+  themeInspectionError,
 }: FreezeRenderOperationInput): FreezeRenderOperationInput {
   return Object.freeze({
     asciiEnabled,
@@ -698,6 +716,10 @@ function freezeScheduledOperationInput({
     versions: Object.freeze({ ...versions }),
     viewport: viewport ? Object.freeze({ ...viewport }) : null,
     workspace: Object.freeze({ ...workspace }),
+    hostAppearance,
+    themeCatalog,
+    themeRecipeInspection,
+    themeInspectionError,
   });
 }
 
@@ -724,11 +746,20 @@ function sameScheduledOperationInput(
     left.workspace.diagramTheme === right.workspace.diagramTheme &&
     left.workspace.themePresetId === right.workspace.themePresetId &&
     left.workspace.themeRecipeJson === right.workspace.themeRecipeJson &&
+    (left.workspace.themeAppearance ?? "default") === (right.workspace.themeAppearance ?? "default") &&
+    sameScheduledAppearance(left, right) &&
     left.workspace.svgPipeline === right.workspace.svgPipeline &&
     left.workspace.textMeasurementMode ===
       right.workspace.textMeasurementMode &&
     left.workspace.diagramFont === right.workspace.diagramFont
   );
+}
+
+function sameScheduledAppearance(left: FreezeRenderOperationInput, right: FreezeRenderOperationInput): boolean {
+  if (left.workspace.themeAppearance !== "follow") return true;
+  const previous = resolveThemeSelection(left.workspace, left.hostAppearance ?? "light", left.themeCatalog, left.themeRecipeInspection);
+  const next = resolveThemeSelection(right.workspace, right.hostAppearance ?? "light", right.themeCatalog, right.themeRecipeInspection);
+  return previous.appearance === next.appearance && previous.mermaidTheme === next.mermaidTheme;
 }
 
 function detectDiagram(
@@ -748,6 +779,12 @@ function renderCompare(
   externalRequirements: ReturnType<typeof mermaidExternalRequirementsFor>,
 ): Promise<MermaidRealmRenderResult | null> {
   if (!operation.compareEnabled) return Promise.resolve(null);
+  if (operation.themePresetId === null && operation.themeRecipeJson === null && operation.configurationError) {
+    return Promise.resolve({
+      status: "failure", stage: "render",
+      message: operation.configurationError.summary, detail: operation.configurationError.detail,
+    });
+  }
   if (!operation.viewport) {
     return Promise.resolve({
       status: "failure",
@@ -770,7 +807,7 @@ function renderCompare(
   try {
     result = compare.render({
       source: operation.source,
-      theme: operation.theme,
+      theme: operation.mermaidTheme,
       configJson: operation.configJson,
       diagramFont: operation.diagramFont,
       externalRequirements,

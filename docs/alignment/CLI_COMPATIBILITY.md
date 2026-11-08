@@ -8,7 +8,7 @@
 | Hidden compatibility alias | Root-level `mmdc` options; permanently supported and not advertised |
 | Native format transition | `render` / `batch -e` through `0.8.x`; use `-f/--format`; removed in `v0.9.0` |
 | Reference source | `tools/mermaid-cli/node_modules/@mermaid-js/mermaid-cli/src/index.js` |
-| Last reviewed | 2026-11-04 |
+| Last reviewed | 2026-11-07 |
 
 Merman provides a browserless compatibility command for scripts that use the official Mermaid CLI. Compatibility is explicit and release-pinned: `merman-cli mmdc` owns the supported `mmdc@11.16.0` argument names, browser-independent defaults, file naming, Markdown detection, warnings, and fence scanner. The repository does not install an `mmdc` executable alias.
 
@@ -168,7 +168,24 @@ The compatibility version is generated from the
 merman-cli capabilities --json
 ```
 
-The current-source JSON document uses capability schema 2 and CLI contract 6. It includes the Merman package version, pinned Mermaid and `mmdc` versions, compiled command/capability/output sets, and the canonical descriptor digest. ASCII-enabled builds also expose schema-1 family/profile/encoding/fallback discovery plus success/error report schemas and streams. Contract 6 separates compiled native/system font support from runtime policy: ordinary Mermaid graphical output uses deterministic measurement without native-context system discovery. PNG/JPEG/PDF painting can still load system fonts through the existing codec path. Explicit font sources enable native measurement with a closed set; `--font-measurement native` without sources or `--font-system on` requests system discovery when available. See the [CLI font guide](../../crates/merman-cli/README.md#explicit-fonts). The CLI contract version tracks native command behavior independently from this pinned compatibility baseline. An `mmdc` behavior change requires a Mermaid baseline alignment, updated tests, this register, and a migration note. Merman does not silently follow the latest npm release.
+The current-source JSON document uses capability schema 2 and CLI contract 7. It includes the
+Merman package version, pinned Mermaid and `mmdc` versions, compiled command/capability/output
+sets, and the canonical descriptor digest. ASCII-enabled builds also expose schema-1
+family/profile/encoding/fallback discovery plus success/error report schemas and streams.
+Contract 7 adds the native `theme inspect` command, concrete `--theme-appearance light|dark`
+selection, and the grouped schema-1 `theme_presets` catalog. These additions do not extend the
+mmdc dialect or reinterpret its literal Mermaid `--theme` values.
+
+Existing native-font policy remains separate from compiled support: ordinary Mermaid graphical
+output uses deterministic measurement without native-context system discovery. PNG/JPEG/PDF
+painting can still load system fonts through the existing codec path. Explicit font sources enable
+native measurement with a closed set; `--font-measurement native` without sources or
+`--font-system on` requests system discovery when available. See the
+[CLI font guide](../../crates/merman-cli/README.md#explicit-fonts).
+The CLI contract version tracks native command behavior independently from this pinned
+compatibility baseline. Published tags retain their own contract and verifier. An `mmdc` behavior
+change requires a Mermaid baseline alignment, updated tests, this register, and a migration note.
+Merman does not silently follow the latest npm release.
 
 ## Verification
 

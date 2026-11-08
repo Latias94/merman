@@ -72,3 +72,12 @@ test("imported names fit the shared label envelope without cutting a Unicode cha
   assert.equal(importedThemeName(`${"中".repeat(100)}.json`), "中".repeat(85));
   assert.equal(importedThemeName(`${"a".repeat(256)}.json`), "a".repeat(256));
 });
+
+test("a customized copy retains its original preset provenance when selected again", () => {
+  const workspace = {
+    ...DEFAULT_WORKSPACE_SNAPSHOT, themeRecipeJson: "{}",
+    themeRecipeLabel: { name: "Editor", source: "imported" as const, derivedFrom: "preset:editor-dark" },
+  };
+  assert.equal(currentRecipeIdentity(workspace, [], "Imported")?.derivedFrom, "preset:editor-dark");
+  assert.equal(selectedThemeKey(workspace, []), "recipe:current");
+});

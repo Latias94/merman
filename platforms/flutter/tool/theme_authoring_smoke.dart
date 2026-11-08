@@ -355,6 +355,78 @@ void main(List<String> args) {
     };
     for (final consumer in consumers.entries) {
       final execute = consumer.value;
+      final pairedRecipe = jsonDecode(read('paired.recipe.json'));
+      final inspection = execute(
+        MermanOperation.materializeThemeJson,
+        jsonEncode({
+          'schema_version': 1,
+          'action': 'inspect',
+          'recipe': pairedRecipe,
+        }),
+      ).jsonObject;
+      _expectJson(inspection['supported_appearances'], [
+        'light',
+        'dark',
+      ], '${consumer.key}/paired appearances');
+      _expectJson(
+        inspection['default_appearance'],
+        'light',
+        '${consumer.key}/paired default',
+      );
+      final snapshots = <Object?>[];
+      final renders = <String>[];
+      for (final appearance in ['light', 'dark', 'light']) {
+        final selected = execute(
+          MermanOperation.materializeThemeJson,
+          jsonEncode({
+            'schema_version': 1,
+            'action': 'materialize',
+            'recipe': pairedRecipe,
+            'appearance': appearance,
+          }),
+        ).jsonObject;
+        _expectJson(
+          selected['effective_appearance'],
+          appearance,
+          '${consumer.key}/paired selection',
+        );
+        snapshots.add(selected['spec']);
+        renders.add(
+          execute(
+            MermanOperation.svg,
+            'flowchart LR\nA[Review] --> B[Publish]',
+            optionsJson: jsonEncode({
+              'theme': {'recipe': pairedRecipe, 'appearance': appearance},
+              'svg': {'diagram_id': 'dart-paired-theme'},
+            }),
+          ).utf8Text,
+        );
+      }
+      _expectJson(
+        snapshots.first,
+        snapshots.last,
+        '${consumer.key}/paired materialization isolation',
+      );
+      _expectJson(
+        renders.first,
+        renders.last,
+        '${consumer.key}/paired render isolation',
+      );
+      if (_sameJson(snapshots[0], snapshots[1]) || renders[0] == renders[1]) {
+        throw StateError(
+          '${consumer.key}: paired theme ignored its selected appearance',
+        );
+      }
+      final exportedPair = execute(
+        MermanOperation.exportThemePresetJson,
+        'editor',
+      ).jsonObject;
+      final exportedDesign = exportedPair['design'] as Map;
+      _expectJson(
+        (exportedDesign['appearances'] as Map).keys.toList()..sort(),
+        ['dark', 'light'],
+        '${consumer.key}/full paired preset export',
+      );
       for (final name in ['light', 'dark']) {
         final result = execute(
           MermanOperation.materializeThemeJson,

@@ -171,7 +171,8 @@ export function Preview({ active = true, className }: PreviewProps) {
   const mermaidRenderTime = visibleMermaid?.renderTimeMs ?? null;
   const renderPending = selectRenderPending(renderState);
   const renderingCurrent = Boolean(code.trim() && ready && renderPending);
-  const currentRender = currentThemeRender(renderState, workspace);
+  const hostAppearance = useAppStore((state) => state.resolvedTheme);
+  const currentRender = currentThemeRender(renderState, workspace, hostAppearance);
   const actionsEnabled = currentBatch !== null && currentRender.status !== "waiting";
   const compareStale = renderState.status === "updating" || currentRender.status === "waiting";
   const diagnostics = currentBatch?.diagnostics ?? EMPTY_DIAGNOSTICS;

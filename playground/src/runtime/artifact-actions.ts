@@ -1,8 +1,9 @@
 import type { MermanDomainFacade, MermanRuntimeState } from "./merman-core.ts";
-import type { SvgRenderMetadata } from "@mermanjs/web";
+import type { SvgRenderMetadata, ThemeAppearance } from "@mermanjs/web";
 import { projectError, type ErrorProjection } from "./error-projection.ts";
 import {
   renderOperationWithSvgPipeline,
+  matchesWorkspaceAppearance,
   type FrozenRenderOperation,
 } from "./merman-operation-input.ts";
 import {
@@ -32,6 +33,7 @@ export interface FrozenExportTarget {
   readonly unavailableThemePresetId: string | null;
   readonly metadata: SvgRenderMetadata | null;
   readonly svgPipeline: FrozenRenderOperation["svgPipeline"] | null;
+  readonly appearance: ThemeAppearance | null;
 }
 
 export interface FreezeExportTargetCommand {
@@ -84,6 +86,7 @@ export interface ArtifactActionDependencies {
   readonly getRenderState: () => RenderCoordinatorState;
   readonly getRuntimeState: () => MermanRuntimeState;
   readonly getWorkspace?: () => WorkspaceSnapshot;
+  readonly getHostAppearance?: () => ThemeAppearance;
   readonly io: ArtifactActionIo;
 }
 
@@ -91,12 +94,14 @@ export interface ExportTargetDependencies {
   readonly getRenderState: () => RenderCoordinatorState;
   readonly getRuntimeState: () => MermanRuntimeState;
   readonly getWorkspace?: () => WorkspaceSnapshot;
+  readonly getHostAppearance?: () => ThemeAppearance;
 }
 
 export function createExportTargetOwner({
   getRenderState,
   getRuntimeState,
   getWorkspace,
+  getHostAppearance,
 }: ExportTargetDependencies): ExportTargetOwner {
   const authorities = new WeakMap<object, RasterAuthority>();
 
@@ -106,7 +111,7 @@ export function createExportTargetOwner({
         getRenderState(),
         command.publicationId,
       );
-      assertCurrentWorkspacePublication(publication, getWorkspace?.());
+      assertCurrentWorkspacePublication(publication, getWorkspace?.(), getHostAppearance?.());
       const svgArtifact = currentSvg(publication, command.engine);
       const target = Object.freeze({
         [FROZEN_EXPORT_TARGET]: true as const,
@@ -117,6 +122,8 @@ export function createExportTargetOwner({
         unavailableThemePresetId: command.engine === "merman" ? publication.snapshot.operation.unavailableThemePresetId : null,
         metadata: command.engine === "merman" ? successfulMermanArtifact(publication).metadata : null,
         svgPipeline: command.engine === "merman" ? publication.snapshot.operation.svgPipeline : null,
+        appearance: command.engine === "merman" && publication.snapshot.operation.unavailableThemePresetId === null
+          ? publication.snapshot.operation.resolvedThemeAppearance : null,
       });
       authorities.set(
         target,
@@ -209,12 +216,13 @@ export function createArtifactActionOwner({
   getRenderState,
   getRuntimeState,
   getWorkspace,
+  getHostAppearance,
   io,
 }: ArtifactActionDependencies): ArtifactActionOwner {
   const renderedAscii = new WeakMap<CompletedRenderBatch, string>();
   return async (command: ArtifactActionCommand): Promise<void> => {
     const state = getRenderState();
-    if (command.action === "copy-svg") assertCurrentWorkspacePublication(currentPublication(state, command.publicationId), getWorkspace?.());
+    if (command.action === "copy-svg") assertCurrentWorkspacePublication(currentPublication(state, command.publicationId), getWorkspace?.(), getHostAppearance?.());
     const plan = freezeActionPlan(command, state, (publication) =>
       currentAscii(publication, getRuntimeState, renderedAscii),
     );
@@ -397,13 +405,14 @@ function actionError(
   return new ArtifactActionError(code, projectError(message));
 }
 
-function assertCurrentWorkspacePublication(publication: CompletedRenderBatch, workspace: WorkspaceSnapshot | undefined): void {
+function assertCurrentWorkspacePublication(publication: CompletedRenderBatch, workspace: WorkspaceSnapshot | undefined, hostAppearance?: ThemeAppearance): void {
   if (!workspace) return;
   const operation = publication.snapshot.operation;
   if (operation.source !== workspace.code || operation.configJson !== workspace.mermaidConfig ||
       operation.theme !== workspace.diagramTheme || operation.diagramFont !== workspace.diagramFont ||
       operation.themePresetId !== workspace.themePresetId || operation.themeRecipeJson !== workspace.themeRecipeJson ||
-      operation.svgPipeline !== workspace.svgPipeline || operation.textMeasurementMode !== workspace.textMeasurementMode) {
+      operation.svgPipeline !== workspace.svgPipeline || operation.textMeasurementMode !== workspace.textMeasurementMode ||
+      !matchesWorkspaceAppearance(operation, workspace, hostAppearance)) {
     throw actionError("publication-not-current", "Wait for the current workspace preview before exporting.");
   }
 }

@@ -2,6 +2,7 @@
 #![deny(missing_docs)]
 #![doc = include_str!("../README.md")]
 
+mod appearances;
 mod canonical_json;
 mod design;
 mod facet;
@@ -15,6 +16,11 @@ mod theme_recipe;
 mod version;
 mod wire;
 
+pub use appearances::{
+    MaterializedThemeRecipeV1, ThemeAppearance, ThemeAppearanceInspectionV1,
+    ThemeAppearanceOverridesV1, ThemeAppearanceParseError, ThemeRecipeInspectionV1,
+    ThemeRecipeReferenceUseV1,
+};
 pub use canonical_json::{CanonicalJsonError, CanonicalJsonErrorKind};
 pub use design::{
     ThemeDesignCanvasLayerV1, ThemeDesignCanvasV1, ThemeDesignEffectV1, ThemeDesignGradientStopV1,
@@ -28,7 +34,8 @@ pub use facet::ThemeRuleFacetV1;
 pub use materialization_error::{ThemeMaterializationDiagnosticV1, ThemeMaterializationErrorV1};
 pub use materialized::MaterializedThemeWireV1;
 pub use preset_catalog::{
-    THEME_PRESET_CATALOG_SCHEMA_VERSION_V1, ThemePresetApplicationNoteV1,
+    THEME_PRESET_CATALOG_SCHEMA_VERSION_V1, ThemeMermaidAppearanceMetadataV1,
+    ThemeMermaidDesignMetadataV1, ThemePresetAppearanceMetadataV1, ThemePresetApplicationNoteV1,
     ThemePresetFamilyDesignV1, ThemePresetMetadataV1, ThemePresetQualifiedCellV1,
 };
 pub use spec::{

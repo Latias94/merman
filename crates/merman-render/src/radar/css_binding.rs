@@ -1,4 +1,6 @@
-use crate::config::{config_f64, config_string};
+use merman_model::presentation::PresentationConfig;
+
+use crate::config::{config_f64, config_string, value_at};
 
 /// Mermaid CSS inputs frozen before Radar's typed paint winners are lowered.
 /// Raw browser colors remain strings; numeric geometry follows the existing coercion.
@@ -21,9 +23,39 @@ pub(crate) struct RadarCssBinding {
 }
 
 impl RadarCssBinding {
+    pub(super) fn configured_color<'a>(
+        config: &'a serde_json::Value,
+        key: &str,
+    ) -> Option<&'a str> {
+        value_at(config, &["themeVariables", key]).and_then(serde_json::Value::as_str)
+    }
+
+    pub(super) fn config_owns_color(config: &PresentationConfig, key: &str) -> bool {
+        Self::configured_color(config.as_value(), key).is_some()
+            && config.config_paint_overrides_typed_default(&format!("themeVariables.{key}"))
+    }
+
+    fn configured_axis_color(config: &serde_json::Value) -> Option<(&str, &'static str)> {
+        value_at(config, &["radar", "axisColor"])
+            .and_then(serde_json::Value::as_str)
+            .map(|color| (color, "radar.axisColor"))
+            .or_else(|| {
+                value_at(config, &["themeVariables", "radar", "axisColor"])
+                    .and_then(serde_json::Value::as_str)
+                    .map(|color| (color, "themeVariables.radar.axisColor"))
+            })
+    }
+
+    pub(super) fn config_owns_axis_color(config: &PresentationConfig) -> bool {
+        Self::configured_axis_color(config.as_value())
+            .is_some_and(|(_, path)| config.config_paint_overrides_typed_default(path))
+    }
+
     pub(crate) fn resolve(config: &serde_json::Value) -> Self {
         let color = |key: &str, fallback: &str| {
-            config_string(config, &["themeVariables", key]).unwrap_or_else(|| fallback.to_string())
+            Self::configured_color(config, key)
+                .unwrap_or(fallback)
+                .to_owned()
         };
         let scoped_string = |key: &str, fallback: &str| {
             config_string(config, &["radar", key])
@@ -41,7 +73,9 @@ impl RadarCssBinding {
             error_bkg_color: color("errorBkgColor", "#552222"),
             error_text_color: color("errorTextColor", "#552222"),
             title_color: color("titleColor", "#333"),
-            axis_color: scoped_string("axisColor", "#333333"),
+            axis_color: Self::configured_axis_color(config)
+                .map_or("#333333", |(color, _)| color)
+                .to_owned(),
             axis_stroke_width: scoped_number("axisStrokeWidth", 2.0),
             axis_label_font_size: scoped_number("axisLabelFontSize", 12.0),
             graticule_color: scoped_string("graticuleColor", "#DEDEDE"),

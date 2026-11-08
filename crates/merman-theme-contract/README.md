@@ -1,8 +1,8 @@
 # merman-theme-contract
 
-`merman-theme-contract` owns Merman's unreleased version 1 theme documents, typed authoring values,
+`merman-theme-contract` owns Merman's alpha version 1 theme documents, typed authoring values,
 materialized results, and canonical JSON. It has no parser, renderer, bindings, or host dependency.
-The first-release schema remains 1 while its unreleased design evolves; there is no legacy decoder.
+The alpha refactors schema 1 directly as the design evolves. Use matching wrappers and runtimes.
 
 ## Save and share a theme
 
@@ -59,6 +59,14 @@ ordinal exceptions after defaults; `palettes` then supplies ordinal color cycles
 gradient stops, shadows, typography, and canvas layers can retain their own references. Editing a
 shared value affects only explicit consumers; equal literal colors remain independent.
 
+For a paired design, put optional `appearances` and `default_appearance` inside `design`.
+The appearance map contains `light`, `dark`, or both; its default must name an existing entry.
+Shared values retain their explicit consumers, while each appearance supplies typed local
+exceptions. An ordinary concrete design may omit both fields. The headless compiler accepts a
+concrete appearance or the declared default; a host resolves Follow app/editor before rendering.
+See the [theme guide](../../docs/rendering/custom-diagram-themes.md#add-light-and-dark-appearances)
+for a complete example and composition rules.
+
 The Rust renderer owns bounded reference resolution, cycle detection, consumer domains, and
 compilation. This contract crate describes values without duplicating those semantics.
 
@@ -67,6 +75,9 @@ compilation. This contract crate describes values without duplicating those sema
 `MaterializedThemeWireV1` contains the concrete `spec` and resolved version tuple. Its optional
 `references` list supplies authored locations and consumer domains for editor controls. These
 locations are not execution evidence, portability claims, preset qualification, or render receipts.
+For a complete recipe, `ThemeRecipeInspectionV1` reports all declared appearances and original
+JSON Pointers. `MaterializedThemeRecipeV1` adds the selected concrete specification and appearance.
+Both require admission of the complete document, including inactive appearances.
 
 ```rust
 use merman_theme_contract::{DiagramThemeSpecWireV1, MaterializedThemeWireV1};

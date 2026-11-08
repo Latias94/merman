@@ -1166,7 +1166,7 @@ test("theme catalog metadata preserves the shared open qualification IDs verbati
   ), "utf8"));
   for (const { id, cell } of vectors) {
     const entries = structuredClone(presets);
-    entries[0].qualified_cells = [cell];
+    entries[0].appearances[0].qualified_cells = [cell];
     const payload = JSON.stringify({ schema_version: 1, presets: entries });
     const calls = [];
     const factory = transportFactory({
@@ -1179,11 +1179,84 @@ test("theme catalog metadata preserves the shared open qualification IDs verbati
     try {
       const result = engine.metadataJson("theme-catalog");
       assert.equal(result, payload, id);
-      assert.deepEqual(JSON.parse(result).presets[0].qualified_cells, [cell], id);
+      assert.deepEqual(JSON.parse(result).presets[0].appearances[0].qualified_cells, [cell], id);
       assert.deepEqual(calls, ["theme-catalog"], id);
     } finally {
       await engine.dispose();
     }
+  }
+});
+
+test("theme authoring facades use the shared queued operations and preserve raw input", async () => {
+  const factory = transportFactory();
+  const output = {
+    schema_version: 1, recipe_schema_version: 1,
+    supported_appearances: ["light", "dark"], default_appearance: "light", appearances: [],
+  };
+  factory.transport.execute = async (requestJson) => {
+    const request = JSON.parse(requestJson);
+    factory.calls.push(request);
+    return jsonSuccess(request.operation_id, output, request.include_metadata !== false);
+  };
+  const engine = await createNodeEngine({}, { loadTransport: factory.loadTransport });
+  const raw = '{"schema_version":1,"action":"inspect","recipe":{"kind":"design","kind":"complete_spec"}}';
+  const input = { schema_version: 1, action: "materialize", recipe: {
+    schema_version: 1, kind: "design", design: {},
+  }, appearance: "dark" };
+  try {
+    assert.deepEqual(await engine.materializeTheme(raw), output);
+    assert.equal(factory.calls.at(-1).source, raw);
+    assert.deepEqual(await engine.materializeTheme(input, { optionsJson: '{"resources":{"profile":"constrained"}}' }), output);
+    assert.deepEqual(JSON.parse(factory.calls.at(-1).source), input);
+    assert.equal(factory.calls.at(-1).options_json, '{"resources":{"profile":"constrained"}}');
+    assert.deepEqual(await engine.exportThemePreset("editor"), output);
+    assert.equal(factory.calls.at(-1).operation_id, "export-theme-preset-json");
+    assert.equal(factory.calls.at(-1).source, "editor");
+    assert.deepEqual(await engine.describeThemeSupport({ schema_version: 1 }), output);
+    assert.equal(factory.calls.at(-1).operation_id, "describe-theme-support-json");
+    const callsBeforeRejection = factory.calls.length;
+    await assert.rejects(engine.materializeTheme({ canvas: { bleed: NaN } }), /JSON|finite/i);
+    await assert.rejects(engine.exportThemePreset({ preset: "editor" }), TypeError);
+    await assert.rejects(engine.materializeTheme(input, { signal: AbortSignal.abort() }), { name: "AbortError" });
+    assert.equal(factory.calls.length, callsBeforeRejection);
+  } finally {
+    await engine.dispose();
+  }
+  await assert.rejects(engine.materializeTheme(input), MermanDisposedError);
+});
+
+test("theme authoring bounds nested payloads independently from transport envelopes", async () => {
+  const fixtureRoot = path.join(
+    repositoryRoot,
+    "crates/merman-theme-authoring-fixtures/fixtures/authoring-v1",
+  );
+  const recipe = JSON.parse(readFileSync(path.join(fixtureRoot, "paired.recipe.json"), "utf8"));
+  const spec = JSON.parse(readFileSync(path.join(fixtureRoot, "light.spec.canonical.json"), "utf8"));
+  const input = {
+    schema_version: 1, action: "materialize", recipe, appearance: "light",
+  };
+  const original = structuredClone(input);
+  const output = {
+    schema_version: 1, recipe_schema_version: 1,
+    supported_appearances: ["light", "dark"], default_appearance: "light",
+    effective_appearance: "light", spec, references: [],
+  };
+  const factory = transportFactory();
+  factory.transport.execute = async (requestJson) => {
+    const request = JSON.parse(requestJson);
+    factory.calls.push(request);
+    return jsonSuccess(request.operation_id, output, request.include_metadata !== false);
+  };
+  const engine = await createNodeEngine({}, { loadTransport: factory.loadTransport });
+  try {
+    const encoded = JSON.stringify(input);
+    assert.deepEqual(await engine.materializeTheme(encoded), output);
+    assert.equal(factory.calls.at(-1).source, encoded);
+    assert.deepEqual(await engine.materializeTheme(input), output);
+    assert.deepEqual(JSON.parse(factory.calls.at(-1).source), input);
+    assert.deepEqual(input, original);
+  } finally {
+    await engine.dispose();
   }
 });
 

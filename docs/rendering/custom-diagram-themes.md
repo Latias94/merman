@@ -1,7 +1,8 @@
 # Create, Customize, and Share Diagram Themes
 
-This guide targets `0.10.0-alpha.1` and its experimental version-1 theme authoring
-contract. Use a matching runtime artifact that exposes theme authoring and catalog operations;
+This guide describes the current development version-1 theme authoring contract, including
+optional paired appearances. Use a matching runtime artifact that exposes theme authoring and
+catalog operations;
 a package version alone does not establish channel availability or feature support. Examples
 assume an initialized SVG-capable runtime.
 
@@ -12,10 +13,10 @@ Choose the kind of change you want:
 | Choice | Playground | CLI | Web options | Scope |
 | --- | --- | --- | --- | --- |
 | Mermaid's base appearance | **Appearance**, Mermaid collection | `--theme dark` | `site_config: {theme: "dark"}` | Shared Mermaid configuration; affects both engines in Compare |
-| A Merman visual design | **Appearance**, built-in collection | `--theme-preset ghibli` | `theme: {preset: "ghibli"}` | Merman recipe: colors, canvas, typography and supported family effects |
+| A Merman visual design | **Appearance**, built-in collection | `--theme-preset editor --theme-appearance dark` | `theme: {preset: "editor", appearance: "dark"}` | Merman recipe: colors, canvas, typography and supported family effects |
 | Your own Merman design | **Import JSON**, validate and adopt | `--theme-file theme.json` | `theme: recipe` | The same editable recipe, independent of the installed catalog |
 
-These inputs can be combined. The Mermaid base supplies defaults, and a Merman recipe supplies
+These inputs can be combined explicitly. The Mermaid base supplies defaults, and a Merman recipe supplies
 its supported styling. Explicit diagram styles and configuration retain property-specific
 precedence. Choosing a preset does not change the source, layout or look.
 
@@ -44,10 +45,14 @@ settings guidance, or `capabilities --json` for the same structured metadata. In
 ```ts
 const preset = themeCatalog().presets.find((entry) => entry.id === "ghibli");
 if (!preset?.available) throw new Error("Ghibli is unavailable in this runtime");
-console.log(preset.family_designs, preset.application_notes);
+const appearance = preset.appearances.find(
+  (entry) => entry.appearance === preset.default_appearance,
+);
+if (!appearance) throw new Error("The runtime did not provide the declared default");
+console.log(appearance.family_designs, appearance.application_notes);
 const { svg, metadata } = renderSvgResult(source, {
   version: 3,
-  theme: { preset: preset.id },
+  theme: { preset: preset.id, appearance: appearance.appearance },
 });
 // Keep metadata with this SVG when explaining any unapplied styling.
 ```
@@ -56,6 +61,89 @@ The installed runtime's catalog is authoritative. Preview colors are illustrativ
 colors; they are not a rendering or an output qualification. Hosts should show unknown
 application notes using their readable message and offer configuration only as an explicit
 user action.
+
+## Choose an appearance
+
+Choose one design, then its appearance. Editor, Gruvbox, and Ayu provide Light and Dark; artistic
+designs may provide just one. A theme's available appearances are authored choices, not automatic
+inversions. A light paper design can remain light inside a dark application.
+
+| Choice | Behavior |
+| --- | --- |
+| Light or Dark | Request that declared appearance explicitly. An unsupported choice fails. |
+| Document default | Omit the selector and use `design.default_appearance`. |
+| Follow app/editor | The host resolves its current appearance before calling Merman. It uses the declared default only when the host appearance is absent from the design. |
+| Unclassified concrete design | With no declared appearances or default, render the concrete values without a selector. Do not infer an appearance from colors or names. |
+
+The core `ThemeAppearance` type contains only Light and Dark. CLI and binding selectors accept
+`light` or `dark`, with omission for a deterministic default; they do not accept `auto`, `system`,
+or `follow`, and do not read the operating system's appearance. Follow must not hide an admission
+failure in a declared branch.
+
+The three JSON shapes have different purposes:
+
+| Shape | Purpose |
+| --- | --- |
+| Raw `ThemeDesignV1` | Authoring payload: tokens, styles, rules, and optional appearances. Accepted by the raw materialization convenience. |
+| `ThemeRecipeV1` | Portable file with `schema_version: 1`, `kind`, and `design` or `complete_spec`. Save and exchange this complete document. |
+| Render-selection wrapper | Preset/recipe choice plus an optional concrete appearance, or a complete specification choice. This expresses how to use a document. |
+
+`design.appearances`, when present, contains one or both named entries and requires
+`design.default_appearance` to name an existing entry. Both fields belong inside `design`,
+not beside the recipe's root version. A complete-spec snapshot is concrete and unclassified.
+Use the [paired example](#add-light-and-dark-appearances) to build a design.
+
+Render options select a declared appearance through a wrapper:
+
+```ts
+const svg = renderSvg(source, {
+  version: 3,
+  theme: { recipe, appearance: "dark" },
+});
+```
+
+Passing `theme: recipe` directly uses its declared default. The render wrapper does not belong
+in a downloaded theme file intended for ordinary document exchange. CLI `--theme-file` also
+accepts wrappers for automation, while `theme inspect` checks portable recipe documents.
+Do not pass a raw design as though it were a recipe or a complete render selection.
+
+Validate the whole document before adopting it. Invalid inactive appearances reject imports,
+inspection, selected materialization, compilation, and grouped preset export. An engine request
+replaces `theme` as a complete value; omission inherits and `null` clears it. An appearance-only
+request cannot recover the existing engine recipe. Changing appearances on a prepared source
+requires preparing it again.
+
+Plain-ID export preserves the authored scope: `exportThemePreset("editor")` returns the complete
+pair; `exportThemePreset("editor-dark")` returns that single declared appearance. Explicitly
+requesting Light from the concrete dark ID fails. Exporting the complete pair does not select
+the preview's current appearance or discard the other one.
+
+## Fonts across hosts
+
+A theme's ordered `font_stack` names the preferred fonts and fallbacks. It does not load font
+files. Review both the selected measurement mode and the output viewer when adopting a design
+such as Riso: the first available face can change text width, wrapping and weight.
+
+| Host or output | How to use the theme's fonts |
+| --- | --- |
+| Web browser | Load application-owned web fonts before a one-shot render, including the weights/styles in use. `document.fonts.load()` starts an unused face loading; `document.fonts.ready` only waits for loads already started. Use a browser measurement session for the display document. `mountDiagram` with browser measurement rerenders when its document's fonts finish loading. |
+| CLI SVG | The default measurement is deterministic and does not measure the named fonts. Pass repeatable `--font-file` / `--font-dir` options for native measurement with fixed assets, or `--font-measurement native` for available system discovery. Explicit assets form a closed set unless `--font-system on` is selected. |
+| CLI PNG/JPEG/PDF | Builds with system fonts use one native context for measurement and painting by default. Explicit font assets make the source set reproducible. A missing glyph can still yield best-effort bytes with rejected target admission; inspect warnings and the theme report. |
+| Rust and C FFI | Use a native font context or a host measurement callback when accurate font geometry is required. Rust's ordinary native context allows per-request fallback; C's `engine_new_with_fonts` requires glyph coverage. Font acquisition is a constructor service, separate from theme JSON. |
+| Other bindings and Typst | Inspect the installed binding's capabilities. Native library code does not automatically expose font-file loading in every wrapper. The current Node facade and Typst plugin use deterministic measurement; mobile hosts can supply their display-stack callback through the supported constructor. |
+| Exported SVG | Text retains its family names and needs compatible fonts in the receiving viewer. Supplying native font files for layout does not embed them into SVG. Opening the SVG elsewhere or rasterizing it in a different host can select different faces. |
+
+For cross-platform recipes, provide named alternatives and a final `sans-serif`, `serif` or
+`monospace` fallback. The current native SVG dependency does not recognize standalone `system-ui`
+as a generic family; it can fall through to its serif fallback. A stack such as
+`["Inter", "Arial", "system-ui", "sans-serif"]` retains a usable native fallback without
+promising the same UI face on every platform. Quoted source font names retain their literal
+meaning; Merman does not rewrite them into generic aliases.
+
+Use representative Latin, CJK and symbol labels when the content needs them. A font's presence
+does not imply glyph coverage, and a successful theme status does not certify either one. The
+[host measurement guide](../bindings/HOST_TEXT_MEASUREMENT.md) describes callback preparation,
+native contexts and per-request fallback evidence.
 
 ## Family configuration and compiled rules
 
@@ -73,6 +161,12 @@ absent from that palette retain their compiled fallback. Individual explicit var
 source or site configuration keep their property-specific dependencies. Site theme defaults
 and a recipe's own compatibility theme supply fallback palettes and do not suppress compiled
 style rules. Typography, geometry, effects, and the host canvas retain their independent owners.
+
+ER HTML labels, Block labels and Requirement node labels use a non-empty `themeVariables.nodeTextColor`,
+falling back to `themeVariables.textColor`. Journey titles use a non-empty `journey.titleColor`,
+otherwise inheriting the rendered text color. These fallbacks preserve the selected source or
+explicit configuration's paint ownership; a site theme's default palette still yields to compiled
+paint rules.
 
 | Input | Ownership |
 | --- | --- |
@@ -101,6 +195,41 @@ XY Chart or Wardley backdrop from source, set `themeVariables.xyChart.background
 `themeVariables.wardley.backgroundColor` directly. Changing only the root `background` in source
 does not necessarily recompute an already initialized family backdrop. Root canvas paint remains
 separate from these diagram-owned backgrounds.
+
+Default XY Chart also keeps its initialized text colors when only root `primaryTextColor`
+changes. Set the corresponding `themeVariables.xyChart` role directly for predictable overrides.
+During site initialization, an explicit XY color object derives its missing fields from root
+colors; a partial source object merges into the already initialized theme. Preserve both the
+configuration location and the nested fields when reproducing an appearance.
+
+Treemap uses `themeVariables.cScaleN` for section and leaf fills and `cScalePeerN` for section
+borders, including with Default. Visible labels normally use `cScaleLabelN`, which overrides
+the `treemap.labelColor` and `valueColor` stylesheets. Transparent leaves can fall back to
+`textColor` for readability. Compiled label paint follows that selected source; unused
+stylesheet colors do not block it. Timeline's colored Redux palettes cycle through
+`borderColorArray`; an empty array restores the theme's `mainBkg`/`nodeBorder` fallback.
+
+Set `themeVariables.archGroupBorderColor` directly to change an Architecture group border.
+Changing only `primaryBorderColor` does not recalculate an initialized group color.
+
+Cynefin and Wardley also retain initialized family colors. Set the selected role directly,
+such as `themeVariables.cynefin.textColor`, `themeVariables.cynefin.arrowColor`,
+`themeVariables.wardley.axisTextColor` or `themeVariables.wardley.componentLabelColor`.
+Root colors supply missing roles; an unused fallback does not suppress compiled paint.
+Ownership follows the value the renderer actually accepts, so ignored configuration values
+do not disable a supported theme override.
+
+Fonts, sizes, Quadrant point radii and Tree View line widths follow the same rule. An ignored
+value does not own the property, and an unused fallback does not own the selected value.
+Each family's accepted units, font-array handling and numeric clamps remain unchanged. Pie
+title, percentage and legend sizes remain independent; C4 element sizes and ER relationship
+label sizes also retain their own configuration rather than inheriting every base-size change.
+
+Support is checked per property. For example, a Gantt Title or Text rule with visible consumers
+can apply its fill while retaining an `unsupported-typography` diagnostic for its font size.
+Combining those properties in one rule does not make the unsupported styling portable; strict
+completion still rejects it. Title rules without a visible diagram or section title are not
+applicable.
 
 C4 presets pair node surfaces with label colors; compiled edge, marker, boundary-label and
 text colors reach their visible terminals. Filled boundaries paint behind their descendants. Gantt presets preserve normal, active,
@@ -139,16 +268,23 @@ the recipe with the skill or an external JSON editor, then import it to inspect 
 
 ## Select, preview, and share in the Playground
 
-Open **Appearance** to keep the panel beside the current diagram. The catalog groups choices in
-this order: **Automatic**, **Mermaid.js official**, **Merman built-in presets**, **Merman theme
-examples**, and **Your imported theme** when present. Automatic is a Playground selection mode,
-not an official theme. Official themes follow the Mermaid catalog order, keeping Neo and Redux
-variants together; presets and JSON examples sort by their displayed names in the current language.
+Open **Appearance** to keep the panel beside the current diagram. The collection distinguishes
+**Source / default**, Mermaid.js official themes, Merman built-in presets, theme examples, and
+your imported design. Source/default omits a Mermaid initialization override; it is not Follow
+app or an official theme. A paired design has one identity and an appearance control.
+Presets and JSON examples sort by their displayed names in the current language.
 Search spans all groups by name, ID, source, or group description and hides empty groups.
 Choosing a valid theme updates the workspace immediately;
 closing the panel keeps that choice. **Undo appearance** reverses selections and font changes
 without discarding source edits. Selecting a Mermaid native theme removes the Merman extension;
-Advanced retains explicit composition of a base theme and an extension.
+an ordinary Merman selection releases a separate host Mermaid override to Source/default so the
+design can supply its own fallback. Advanced retains an explicitly selected composition of the
+Mermaid base and Merman design. Neither action silently removes authored source or configuration.
+
+Follow app rerenders when the application's appearance resolves to a different concrete choice.
+An explicit Light or Dark choice stays pinned. A host-mode change does not create an authoring
+undo entry or invert a single-appearance canvas. The panel shows the supported and effective
+appearance; switching designs must not leave an invisible unsupported choice.
 
 On narrow screens, the panel reserves space for the diagram preview. Drag the separator, or focus
 it and use the arrow keys, to adjust the panel width on desktop or height in a stacked layout.
@@ -156,13 +292,15 @@ These two local display preferences are remembered separately.
 
 ### Standalone explorations and example scenes
 
-Open **Theme designs** from the toolbar or the Appearance panel to browse fifteen standalone
-recipes. Riso, Pop Art, Metro, Carbon Copy and Signal lead the collection, followed by Field Notes,
+Open **Theme designs** from the toolbar or the Appearance panel to browse standalone
+recipes. Reading provides a coordinated Light/Dark example. Riso, Pop Art, Metro, Carbon Copy
+and Signal have distinct artistic treatments, alongside Field Notes,
 Lacquer, Paper Cut, Aurora, Phosphor, Letterpress, Grove, Atlas, Nightfall and Blueprint. Each card combines several diagram
 previews; opening a design shows Flowchart, Sequence,
 Class, XY Chart, and Pie together. Browsing does not change the workspace. **Apply to my diagram**
-uses the recipe on the current source, base theme, font, and configuration. These are not core preset IDs: use their downloaded recipe
-with CLI `--theme-file`, Rust `compile_recipe`, or Web `theme: recipe`. Their names and source
+uses the recipe on the current source and configuration, with an explicit appearance choice.
+These are not core preset IDs: use their downloaded recipe
+with CLI `--theme-file`, Rust `compile_document`, or Web `theme: {recipe, appearance}`. Their names and source
 labels are display metadata, not claims of runtime availability or family support.
 
 Use a direct link such as [Riso](https://frankorz.com/merman/?theme-design=riso) to open a design's five-family preview and integration examples without changing the current workspace.
@@ -193,10 +331,10 @@ matching Mermaid source, theme, configuration, and setup instructions. These mat
 an independent example, not a captured rendering of the current workspace. **Open sample** starts
 a separate tab with the source and configuration, leaving the current work intact.
 
-The saved SVGs are fixed examples, not live previews of the current document.
+Gallery previews use their saved example scenes rather than the current workspace.
 The recipes, shared samples, configurations, and SVGs live in
-[`playground/src/themes`](../../playground/src/themes/). The five example families have been
-rendered with each recipe; other families and targets need their own review. Source styles and
+[`playground/src/themes`](../../playground/src/themes/). The examples cover five families;
+other families and targets need their own review. Source styles and
 explicit font/configuration choices can change the result.
 The shared diagram text is English in both interface languages; controls and explanations retain
 English and Chinese localization.
@@ -257,9 +395,23 @@ font fallbacks still need layout review. Do not treat a verified theme as a pixe
 Mermaid base themes affect both engines in Compare. Merman presets and recipes affect Merman only.
 The pinned Mermaid catalog includes `default`, `base`, `dark`, `forest`, `neutral`, `neo`,
 `neo-dark`, `redux`, `redux-dark`, `redux-color`, and `redux-dark-color`. `auto` is the Playground's
-choice to omit an initialization override, not a Mermaid theme name. Source/configuration
+historical wire value for Source/default, not a Mermaid theme name or Follow policy. Source/configuration
 declarations retain their normal precedence. The panel shows detected theme, font, and look
 locations and offers navigation to their owner; selecting a theme does not silently remove them.
+
+Only three Mermaid designs are presented as pairs:
+
+| Design | Light ID | Dark ID |
+| --- | --- | --- |
+| Neo | `neo` | `neo-dark` |
+| Redux | `redux` | `redux-dark` |
+| Redux Color | `redux-color` | `redux-dark-color` |
+
+Default, Dark, Base, Forest, and Neutral stay independent. All literal IDs remain configuration
+inputs, and Mermaid's `null` sentinel stays separate from registered themes. Hosts read these
+groups from `mermaid_theme_designs`; they do not infer them from suffixes.
+Mermaid `darkMode` and the recipe's compatibility `dark_mode` retain their own color-derivation
+meaning. They do not select, classify, or generate Merman appearances.
 
 Unknown or unavailable saved preset IDs remain in the workspace and shared link. Playground omits
 that extension for preview, keeps the Mermaid base and source styles, and shows a notice beside
@@ -270,18 +422,25 @@ diagram errors retain their failure behavior; they do not trigger this fallback.
 choice; returning to inheritance releases it. Historical links keep their original Trebuchet
 default. Fonts resolve on the receiving host and are not downloaded or embedded.
 
-**Import JSON** reads a standalone version-1 recipe. The Rust compiler validates it before the
+**Import JSON** reads a standalone version-1 recipe, including its complete optional pair.
+The Rust compiler validates every declared appearance before the
 user adopts it. Invalid imports stay local to the import proposal; the current diagram, image
 export, and sharing remain usable. A later selection, closed panel, or workspace replacement
 invalidates pending import work. Files over 256 KiB are rejected before reading. A diagram error
 does not make an otherwise valid recipe invalid.
 
-Original authored JSON, formatting, and shared-value relationships are retained. Export a recipe,
-edit it with the [theme design skill](#design-a-theme-with-an-agent) or another editor, then import
-the revision. The panel does not offer a visual theme editor.
+Original authored JSON, formatting, and shared-value relationships are retained.
+**Customize** opens a highlighted JSON draft of the complete design, with navigation to shared
+values and appearance overrides. Validate the whole document, then Apply it atomically.
+Invalid or stale drafts preserve the active theme. This is a JSON workbench, not a graphical
+token/rule editor. The [theme design skill](#design-a-theme-with-an-agent) or an external editor
+can produce the same portable document.
+Customize retains an explicit Mermaid/Merman composition and any still-supported appearance
+preference. If the draft removes an explicitly selected appearance, choose a supported replacement
+before applying it; a no-op edit does not silently change the composition.
 
 **Download JSON** exports the actual standalone design for a runtime preset, or the original
-JSON for an imported/exploration recipe. No diagram render is required. A native Mermaid theme
+JSON for an imported/exploration recipe, including inactive appearances. No diagram render is required. A native Mermaid theme
 has no Merman recipe to download. Advanced settings can remove Merman styling while retaining
 the Mermaid base; this does not guarantee a transparent diagram.
 
@@ -292,7 +451,8 @@ matching completed render. The handoff preserves configured source and initializ
 separately. Playground's configuration editor is injected into source `init`; moving those values
 to CLI `--config-file` or Web `site_config` can change precedence. The generated materials must
 retain their original ownership. The dialog freezes its input so later editing does not mix two
-scenes in one download.
+scenes in one download. Adoption code pins the captured concrete appearance, including when the
+workspace used Follow; the downloaded theme document still retains its full pair.
 
 Use the theme file alone to reuse its design on another diagram. Use the complete handoff to
 carry source, settings, recipe, output pipeline, and recorded environment conditions together.
@@ -305,17 +465,20 @@ CLI consumers need the matching optional capability when the source contains for
 
 ### Inspection, output, and sharing
 
-Advanced inspection exposes read-only recipe JSON, runtime support information, and same-render
-theme metadata. Catalog intent, mechanism support, and actual execution answer different
+Advanced inspection exposes recipe JSON, runtime support information, and same-render
+theme metadata. Customize edits a complete draft separately from the selected concrete result.
+Catalog intent, mechanism support, and actual execution answer different
 questions. Unknown evidence versions/statuses and an empty diagnostic list do not prove support.
 
 **Export** owns image format, size, background, and compatibility information for its frozen
 artifact. `parity`, `readable`, and `resvg-safe` select pipelines; selecting one does not prove
 portability. Output-target results stay separate from whether theme styling was applied.
 
-**Share → Copy workspace link** includes source, config, font, pipeline, and the selected recipe
-or preset. Named recipes use the `s4` compressed envelope; unnamed recipes use `s3`, and preset-only
-workspaces use `s2`. Existing links remain readable. Recipe JSON is bounded to 256 KiB before
+**Share → Copy workspace link** includes source, config, font, pipeline, the selected recipe
+or preset, and the appearance preference. Preference/provenance-bearing links use the `s5`
+envelope, so Follow resolves on the receiving host. Other workspaces can retain the existing
+`s2`/`s3`/`s4` forms. Historical links keep their original defaults and meaning of `auto`;
+they are not reinterpreted as Follow. Recipe JSON is bounded to 256 KiB before
 compression, with separate limits on the complete URL. Links reference the receiving runtime;
 they do not pin an engine revision or embed fonts. Choices apply to the in-memory workspace;
 save and reopen a workspace link to restore it after reload.
@@ -358,14 +521,22 @@ Read the loaded runtime's `themeCatalog().presets`. Keep these facts separate:
 
 | Field or result | Meaning |
 | --- | --- |
-| `available` | This artifact can construct the preset |
-| `family_designs` treatment `dedicated` | The catalog records a family-specific design |
-| `family_designs` treatment `base_only` | The shared appearance, with necessary family adaptations |
+| Preset `available` | The compiler admits the complete exported design, including every appearance |
+| `supported_appearances`, `default_appearance` | Declared choices and deterministic default |
+| `appearances[].concrete_preset_id` | Exact ID for a fixed appearance; no suffix inference |
+| Appearance `family_designs` treatment `dedicated` | The catalog records a family-specific design |
+| Appearance `family_designs` treatment `base_only` | The shared styling, with necessary family adaptations |
 | Missing family or unknown treatment | Unreviewed design scope; preserve the value conservatively |
-| `preview_colors` | Representative recipe colors for discovery, not a rendered preview |
-| `application_notes` | Readable family guidance and optional explicit configuration suggestions |
-| `qualified_cells` | Evidence for named scenarios and targets, not every possible diagram |
+| Appearance `preview_colors` | Representative recipe colors for discovery, not a rendered preview |
+| Appearance `application_notes` | Readable family guidance and optional explicit configuration suggestions |
+| Appearance `qualified_cells` | Declarations for named scenarios and targets, not every possible diagram |
 | Actual render admission | What this input, output target, resources, and policy can deliver |
+
+The catalog uses `schema_version: 1` with one grouped shape. Its single recipe and authoring
+schema-version fields describe the loaded interface; reduced artifacts can report unavailable
+interfaces. Every child of a grouped design shares the complete-document availability gate.
+One passing appearance cannot make an invalid pair available. Inspect the matching appearance's
+swatches and family notes when explaining a selection.
 
 The current catalog advertises dedicated design scope for Brutalist, Spotless and Ghibli, but it does
 not claim pixel parity with Modern Mermaid. A successful SVG render is not proof of readable dense
@@ -403,11 +574,11 @@ with the usual structured render error. It does not pick a different theme. Host
 browser-dependent output may fail this requirement even when some theme paints were applied.
 `resvg-safe` selects a pipeline and is not a substitute for the explicit policy.
 
-Native CLI exposes the same policy and optional render report:
+Native CLI exposes the same policy and optional render report. For a recipe declaring Dark:
 
 ```text
-merman-cli render diagram.mmd --theme-file theme.json --theme-report theme-result.json -o diagram.svg
-merman-cli render diagram.mmd --theme-file theme.json --theme-portability require-portable -o diagram.svg
+merman-cli render diagram.mmd --theme-file theme.json --theme-appearance dark --theme-report theme-result.json -o diagram.svg
+merman-cli render diagram.mmd --theme-file theme.json --theme-appearance dark --theme-portability require-portable -o diagram.svg
 ```
 
 Best-effort remains the default. Theme diagnostics go to stderr; image stdout stays clean.
@@ -416,6 +587,9 @@ describe the rendering stage, not successful file publication. Some early input/
 failures happen before a report can be written; check the command's exit status and keep reports
 with the invocation that produced them. See the [CLI guide](../../crates/merman-cli/README.md)
 for batch and report-path constraints.
+For a classified design, each CLI report result records `selected_appearance` as the compiler's
+choice. `evidence.materialized_theme` remains the actual Mermaid palette ID. Neither field proves
+that source styles or explicit compatibility variables produce a particular visual mode.
 
 Catalog `supported_output_ids` names artifact formats, such as `svg`. Support queries instead
 name rendering contexts: choose `standalone-svg` for an independent SVG file or `browser-svg`
@@ -461,13 +635,16 @@ a Sequence Lifeline rule can apply its blue stroke while retaining an unsupporte
 }
 ```
 
-`source_paths` are JSON Pointers relative to the named recipe payload, not to the outer options
-object. A complete-spec location refers to its original mixed `styles` array. A `design`
-location identifies `/styles/{target}`, `/rules/{index}/style`, `/palettes/{target}`, or
-`/canvas/base`, rather than the materializer's expanded array position.
-Generated defaults have `generated: true` without an invented input location. Built-in preset
-selection and direct Rust typed specifications have no original JSON document; exporting and
-reimporting a preset gives locations in that new `design` document.
+`source_paths` identify authored locations rather than positions in an expanded specification.
+A complete-spec location refers to its original mixed `styles` array. Recipe-design locations
+include `/design/styles/{target}`, `/design/rules/{index}/style`, `/design/palettes/{target}`,
+and `/design/canvas/base`. Local exceptions retain `/design/appearances/{appearance}/...`
+locations. These pointers do not include an outer render-selection or Options JSON wrapper.
+Raw-design materialization has its own payload-relative reference paths; complete-document
+inspection additionally identifies the supplying `token_path`.
+Generated defaults have `generated: true` without an invented input location. Preset pointers
+describe its exported recipe shape, not a file supplied by the caller. Direct Rust specifications
+can have no original JSON document.
 
 A rule-level diagnostic does not mean every property failed. Its reason identifies a category;
 `property` is present only when the report knows a particular property, such as base typography.
@@ -544,6 +721,215 @@ There is no compulsory palette vocabulary. Name values according to your design,
 and bind only the properties that should share them. A direct value remains independently editable.
 References are exact local IDs, do not interpolate strings, and cannot cross declared value types.
 The Rust materializer validates missing references, cycles, units, and consumer domains.
+This example declares no appearances, so it renders as a concrete unclassified design without
+an appearance selector.
+
+## Add light and dark appearances
+
+Keep common values in `design` and put only deliberate exceptions in
+`design.appearances.light` and `.dark`. Save this complete document as `theme.json`:
+
+```json
+{
+  "schema_version": 1,
+  "kind": "design",
+  "design": {
+    "tokens": {
+      "surface": { "type": "paint", "value": "#f8fafc" },
+      "ink": { "type": "paint", "value": "#1e293b" },
+      "accent": { "type": "paint", "value": "#2563eb" }
+    },
+    "styles": {
+      "node": {
+        "fill": { "ref": "surface" },
+        "stroke": { "paint": { "ref": "accent" } }
+      },
+      "node-label": { "fill": { "ref": "ink" } }
+    },
+    "canvas": { "base": "#ffffff" },
+    "appearances": {
+      "light": {},
+      "dark": {
+        "tokens": {
+          "surface": { "type": "paint", "value": "#1e293b" },
+          "ink": { "type": "paint", "value": "#f1f5f9" },
+          "accent": { "type": "paint", "value": "#60a5fa" }
+        },
+        "canvas": { "base": "#0f172a" }
+      }
+    },
+    "default_appearance": "light"
+  }
+}
+```
+
+Both appearances use the same semantic rules and token identities. A shared edit affects its
+declared consumers unless a local token or rule supplies an exception. Equal direct values are
+still independent. This small Flowchart-oriented example does not promise a complete design
+for every family or output.
+
+Composition is typed, with these replacement rules:
+
+| Local section | Behavior |
+| --- | --- |
+| `tokens` | Replace entries by exact ID; omitted entries inherit. |
+| `styles` | Apply after shared defaults and shared ordered rules. |
+| `rules` | Apply after local styles, preserving authored order. |
+| `palettes` | Replace supplied target palettes; lower after the combined rules. |
+| `canvas`, `typography` | Replace the whole supplied section; omission inherits. |
+| `mermaid` | Merge its declared scalar settings and variable entries only. |
+
+Arrays do not implicitly append. Existing style Clear semantics remain distinct from omission
+and transparent paint. Assets and requirements belong to the shared design; an appearance
+cannot override them. This is not arbitrary recursive JSON merge.
+
+Within a base `typography` section, family styles inherit each omitted property from `default`.
+An authored `null` removes that property's local override: a family property inherits the shared
+default, while a default property contributes no override to the renderer's configuration.
+It does not pin the renderer's built-in font stack or numeric defaults. Role-style typography
+Clear continues to restore the resolved family base.
+
+Rust's `TypographySpec::family_style(family)` returns an owned, resolved `TextStyle`, combining
+the shared default and the family's explicitly authored properties. Callers that require a
+reference can bind this result locally and borrow it. Unspecified properties remain unspecified
+when neither level supplies them.
+
+Recipe Mermaid compatibility normalizes `mermaid.dark_mode` and `mermaid.variables.darkMode`
+into one slot within each layer before composition. Equal declarations in one layer agree;
+conflicting declarations in the same layer are rejected. Either spelling in an appearance
+overrides the shared value. Native Mermaid source and site configuration retain their existing
+`darkMode` settings.
+
+The same file can be checked and selected without changing its declared default:
+
+```sh
+merman-cli theme inspect theme.json
+merman-cli render diagram.mmd --theme-file theme.json --theme-appearance dark -o diagram.svg
+merman-cli batch README.md --output-dir generated --theme-file theme.json --theme-appearance light
+```
+
+`--theme-appearance` requires a Merman file/preset selection and accepts no automatic mode.
+For automation, a `--theme-file` may also contain
+`{"preset":"editor","appearance":"dark"}` or a recipe wrapper. A selector in that file must agree
+with the flag. A raw `--theme-design-file` does not accept the flag; use a portable recipe.
+`theme inspect` accepts only portable recipe documents, including `complete_spec`, or `-` for
+stdin. It emits schema-1 inspection JSON directly, without `--json`. Render wrappers belong to
+the broader `--theme-file` input grammar.
+
+For Web, resolve any host preference before constructing the selection:
+
+```ts
+import { renderSvg, type ThemeRecipeV1 } from "@mermanjs/web";
+
+function renderDark(source: string, recipe: ThemeRecipeV1): string {
+  return renderSvg(source, {
+    version: 3,
+    theme: { recipe, appearance: "dark" },
+  });
+}
+```
+
+For Rust, add SVG-enabled `merman` from the matching source/runtime version and `serde_json`.
+Place `theme.json` at the Cargo project root next to `Cargo.toml`, and save this as `src/main.rs`:
+
+```rust
+use merman::diagram_theme::{DiagramThemeCompiler, ThemeAppearance, ThemeRecipeV1};
+use merman::{OperationControl, RenderOutput, RenderRequest, RenderTarget, Renderer, SvgRequest};
+
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let compiler = DiagramThemeCompiler::new();
+    let raw = include_str!("../theme.json");
+    compiler.check_design_json_input(raw.as_bytes())?;
+    let recipe: ThemeRecipeV1 = serde_json::from_str(raw)?;
+    let theme = compiler.compile_document(recipe, Some(ThemeAppearance::Dark))?;
+    let output = Renderer::new().render(
+        RenderRequest::new(
+            "flowchart LR\nA[Read] --> B[Export]\n",
+            RenderTarget::Svg(SvgRequest::default()),
+            OperationControl::new(),
+        )
+        .with_theme(theme),
+    )?;
+    let RenderOutput::Svg(Some(svg)) = output else {
+        return Err("expected SVG output".into());
+    };
+    std::fs::write("diagram.svg", svg.svg())?;
+    Ok(())
+}
+```
+
+The raw preflight runs before typed deserialization, preserving duplicate-key and allocation
+checks. A typed Rust author can construct `ThemeRecipeV1` directly. Built-in selections use
+`compiler.compile_preset_selection("editor", Some(ThemeAppearance::Dark))`.
+The resulting compiled theme is reusable; host appearance is never consulted during rendering.
+
+## Inspect and materialize the complete document
+
+The existing three JSON operations remain the entry points:
+
+| Operation | Input | Role |
+| --- | --- | --- |
+| `materialize-theme-json` | Raw design, or a schema-1 `inspect`/`materialize` request containing a recipe | Validate bindings and inspect all appearances, or obtain one concrete specification |
+| `export-theme-preset-json` | Plain UTF-8 ID such as `editor` | Export the complete editable recipe; no JSON export wrapper |
+| `describe-theme-support-json` | Schema-1 family/output/subject query | Describe mechanism support, not whether a particular design offers Light/Dark |
+
+Web exposes these as `materializeTheme`, `exportThemePreset`, and `describeThemeSupport`:
+
+```ts
+import { exportThemePreset, materializeTheme } from "@mermanjs/web";
+
+const recipe = exportThemePreset("editor");
+const inspection = materializeTheme({
+  schema_version: 1,
+  action: "inspect",
+  recipe,
+});
+const selected = materializeTheme({
+  schema_version: 1,
+  action: "materialize",
+  recipe,
+  appearance: "dark",
+});
+console.log(inspection.supported_appearances, inspection.default_appearance);
+console.log(selected.effective_appearance, selected.references);
+```
+
+Inspect accepts no appearance selector and admits every declared composition. Its schema-1
+result includes `recipe_schema_version`, supported/default appearances, and each composition's
+references. Materialize performs that same full admission, then returns `spec`,
+`effective_appearance`, and selected references. A reference's `path` identifies its consumer;
+`token_path` identifies the actual shared or local definition, such as
+`/design/appearances/dark/tokens/accent`. These are declared bindings, not winning rendered rules.
+
+The raw-design materialization convenience returns its existing concrete/default result. It
+does not replace full-pair exchange or document inspection. Authoring operations intentionally
+ignore render `options.theme`: supply the recipe and appearance in the action input.
+Do not submit a standalone recipe as if it were a raw design.
+
+Raw-design materialization and inspection use the same complete compiler admission as document
+actions, including semantic targets and effect graphs. Raw inputs retain payload-relative
+diagnostic/reference paths and encoded-byte limits on the raw design, without a recipe envelope.
+Rust compilation failures in editable designs use `ThemeDesignCompileError::Materialization`
+to retain the authoring diagnostic and its source path. Failures in a `complete_spec` remain
+`ThemeDesignCompileError::Compilation`; both variants retain their error source.
+
+For downloaded JSON, preserve the original text when constructing the action request:
+
+```ts
+JSON.parse(themeJson);
+const inspection = materializeTheme(
+  `{"schema_version":1,"action":"inspect","recipe":${themeJson}}`,
+);
+```
+
+The preliminary parse checks only that the input is one complete JSON value. Rust validates
+the closed schema, duplicates, references, every appearance, and resource bounds from the original
+text. A failed inspection must leave the active document unchanged.
+
+Ordinary download saves `recipe`, not `selected.spec`. To intentionally distribute a fixed
+current-appearance snapshot, wrap that spec in
+`{schema_version: 1, kind: "complete_spec", complete_spec: selected.spec}`.
+Reimporting that snapshot neither restores a pair nor infers shared bindings.
 
 ## Customize an existing preset
 
@@ -565,9 +951,13 @@ Token labels, descriptions, and groups organize editor controls without changing
 To customize one consumer independently, replace its reference with a local copy of the authored
 value. Keep nested references that should still follow other shared values. Imported `complete_spec`
 files remain editable with precise concrete controls; lost authoring bindings are not inferred.
+In a pair, shared edits preserve appearance-local exceptions. Edit an entry under
+`design.appearances.dark.tokens` when it should change only Dark; replacing a consumer reference
+with a direct value detaches that consumer, not every equal color in either appearance.
 
-`styles` establishes defaults in deterministic target order, followed by `rules` in authored order
-and then `palettes`. Later matching rules override earlier values on the same target and facet.
+Shared `styles` establishes defaults in deterministic target order, followed by shared `rules`,
+then local appearance styles and local rules. Palettes lower after that combined rule list.
+Later matching rules override earlier values on the same target and facet.
 A family filter limits matching; it does not add CSS specificity. Separate semantic targets such
 as Node and NodeLabel require their own styles. Diagram-owned styles retain their defined priority.
 

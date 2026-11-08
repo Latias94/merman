@@ -30,11 +30,25 @@ use super::typography::{
 };
 use super::{FontStyle, ThemeCompileError, ThemeCompileValidationError, ThemeResourcePolicy};
 
+pub(super) struct LocatedCompileError {
+    pub error: ThemeCompileError,
+    pub path: String,
+}
+
+impl LocatedCompileError {
+    pub(super) fn new(path: impl Into<String>, error: impl Into<ThemeCompileError>) -> Self {
+        Self {
+            error: error.into(),
+            path: path.into(),
+        }
+    }
+}
+
 pub(super) fn decode(
     spec: wire::DiagramThemeSpecWireV1,
     resources: &ThemeResourcePolicy,
     mut sources: ThemeWireSources,
-) -> Result<(DiagramThemeSpec, ThemeSourceMap), ThemeCompileError> {
+) -> Result<(DiagramThemeSpec, ThemeSourceMap), LocatedCompileError> {
     let wire::DiagramThemeSpecWireV1 {
         mermaid,
         typography,
@@ -51,7 +65,10 @@ pub(super) fn decode(
         decoded = decoded.with_mermaid_compatibility(decode_mermaid(mermaid)?);
     }
     if let Some(typography) = typography {
-        decoded = decoded.with_typography(decode_typography(typography)?);
+        decoded = decoded.with_typography(
+            decode_typography(typography)
+                .map_err(|error| LocatedCompileError::new("/typography", error))?,
+        );
     }
     if let Some(styles) = styles {
         decoded = decoded.with_styles(decode_styles(styles, &mut sources, &mut source_map)?);
@@ -60,31 +77,41 @@ pub(super) fn decode(
         if canvas.base.is_some() {
             source_map.set_canvas_base(sources.take_canvas_base());
         }
-        decoded = decoded.with_canvas(decode_canvas(canvas)?);
+        decoded = decoded.with_canvas(
+            decode_canvas(canvas).map_err(|error| LocatedCompileError::new("/canvas", error))?,
+        );
     }
     if let Some(effects) = effects {
-        decoded = decoded.with_effects(decode_effects(effects)?);
+        decoded = decoded.with_effects(decode_effects(effects, &sources)?);
     }
     if let Some(requirements) = requirements {
-        decoded = decoded.with_requirements(decode_requirements(requirements)?);
+        decoded = decoded.with_requirements(
+            decode_requirements(requirements)
+                .map_err(|error| LocatedCompileError::new("/requirements", error))?,
+        );
     }
     if let Some(assets) = assets
-        && let Some(assets) = decode_assets(assets, resources)?
+        && let Some(assets) = decode_assets(assets, resources)
+            .map_err(|error| LocatedCompileError::new("/assets", error))?
     {
         decoded = decoded.with_assets(assets);
     }
     Ok((decoded, source_map))
 }
 
-fn decode_mermaid(
+pub(super) fn decode_mermaid(
     value: wire::MermaidThemeCompatibilityWireV1,
-) -> Result<MermaidThemeCompatibility, ThemeCompileError> {
+) -> Result<MermaidThemeCompatibility, LocatedCompileError> {
     let mut decoded = MermaidThemeCompatibility::default();
     if let Some(theme) = value.theme {
-        decoded = decoded.with_theme(theme)?;
+        decoded = decoded
+            .with_theme(theme)
+            .map_err(|error| LocatedCompileError::new("/mermaid/theme", error))?;
     }
     if let Some(dark_mode) = value.dark_mode {
-        decoded = decoded.with_dark_mode(dark_mode)?;
+        decoded = decoded
+            .with_dark_mode(dark_mode)
+            .map_err(|error| LocatedCompileError::new("/mermaid/dark_mode", error))?;
     }
     for (key, value) in value.variables.unwrap_or_default() {
         let value = match value {
@@ -92,7 +119,13 @@ fn decode_mermaid(
             wire::MermaidThemeValueWireV1::Number(value) => MermaidThemeValue::Number(value),
             wire::MermaidThemeValueWireV1::Boolean(value) => MermaidThemeValue::Boolean(value),
         };
-        decoded = decoded.with_variable(key, value)?;
+        let path = format!(
+            "/mermaid/variables/{}",
+            key.replace('~', "~0").replace('/', "~1")
+        );
+        decoded = decoded
+            .with_variable(key, value)
+            .map_err(|error| LocatedCompileError::new(path, error))?;
     }
     Ok(decoded)
 }
@@ -158,44 +191,54 @@ fn decode_styles(
     entries: Vec<wire::ThemeRuleSetWireV1>,
     sources: &mut ThemeWireSources,
     source_map: &mut ThemeSourceMap,
-) -> Result<ThemeRuleSet, ThemeCompileError> {
+) -> Result<ThemeRuleSet, LocatedCompileError> {
     let mut decoded = ThemeRuleSet::default();
     for (index, entry) in entries.into_iter().enumerate() {
         let source = sources.take_style(index);
-        match entry {
-            wire::ThemeRuleSetWireV1::Rule {
-                target,
-                family,
-                variant,
-                ordinal,
-                style,
-            } => {
-                let mut rule = ThemeRule::new(
-                    parse_target(&target, "styles.rule.target")?,
-                    decode_style_patch(style)?,
-                );
-                if let Some(family) = family {
-                    rule = rule.for_family(parse_family(&family, "styles.rule.family")?);
+        let path = source
+            .as_ref()
+            .and_then(|source| source.paths.first())
+            .cloned()
+            .unwrap_or_else(|| format!("/styles/{index}"));
+        let result = (|mut decoded: ThemeRuleSet| -> Result<ThemeRuleSet, ThemeCompileError> {
+            match entry {
+                wire::ThemeRuleSetWireV1::Rule {
+                    target,
+                    family,
+                    variant,
+                    ordinal,
+                    style,
+                } => {
+                    let mut rule = ThemeRule::new(
+                        parse_target(&target, "styles.rule.target")?,
+                        decode_style_patch(style)?,
+                    );
+                    if let Some(family) = family {
+                        rule = rule.for_family(parse_family(&family, "styles.rule.family")?);
+                    }
+                    if let Some(variant) = variant {
+                        rule = rule.with_variant(parse_variant(&variant, "styles.rule.variant")?);
+                    }
+                    if let Some(ordinal) = ordinal {
+                        rule = rule.with_ordinal(decode_ordinal(ordinal)?);
+                    }
+                    rule.validate()?;
+                    decoded = decoded.with_rule(rule);
+                    source_map.push_rule(source);
                 }
-                if let Some(variant) = variant {
-                    rule = rule.with_variant(parse_variant(&variant, "styles.rule.variant")?);
+                wire::ThemeRuleSetWireV1::OrdinalPalette { target, colors } => {
+                    let colors = colors
+                        .into_iter()
+                        .map(|color| ThemeColorValue::parse(&color))
+                        .collect::<Result<Vec<_>, _>>()?;
+                    let target = parse_target(&target, "styles.ordinal_palette.target")?;
+                    decoded = decoded.with_ordinal_palette(target, OrdinalPalette::new(colors)?);
+                    source_map.insert_palette(target, source);
                 }
-                if let Some(ordinal) = ordinal {
-                    rule = rule.with_ordinal(decode_ordinal(ordinal)?);
-                }
-                decoded = decoded.with_rule(rule);
-                source_map.push_rule(source);
             }
-            wire::ThemeRuleSetWireV1::OrdinalPalette { target, colors } => {
-                let colors = colors
-                    .into_iter()
-                    .map(|color| ThemeColorValue::parse(&color))
-                    .collect::<Result<Vec<_>, _>>()?;
-                let target = parse_target(&target, "styles.ordinal_palette.target")?;
-                decoded = decoded.with_ordinal_palette(target, OrdinalPalette::new(colors)?);
-                source_map.insert_palette(target, source);
-            }
-        }
+            Ok(decoded)
+        })(decoded);
+        decoded = result.map_err(|error| LocatedCompileError::new(path, error))?;
     }
     Ok(decoded)
 }
@@ -433,53 +476,60 @@ const fn decode_insets(value: wire::ThemeInsetsWireV1) -> InsetsPx {
 
 fn decode_effects(
     entries: Vec<wire::ThemeEffectEntryWireV1>,
-) -> Result<DiagramEffectSet, ThemeCompileError> {
+    sources: &ThemeWireSources,
+) -> Result<DiagramEffectSet, LocatedCompileError> {
     let mut decoded = DiagramEffectSet::default();
-    for entry in entries {
-        match entry {
-            wire::ThemeEffectEntryWireV1::Graph {
-                id,
-                color_space,
-                composition,
-                primitives,
-            } => {
-                let primitives = primitives
-                    .into_iter()
-                    .map(decode_effect_primitive)
-                    .collect::<Result<Vec<_>, _>>()?;
-                let color_space = match color_space.as_deref() {
-                    None | Some("linear-rgb") => super::EffectColorSpace::LinearRgb,
-                    Some("srgb") => super::EffectColorSpace::Srgb,
-                    Some(_) => {
-                        return Err(ThemeCompileValidationError::InvalidValue {
-                            field: "effects.graph.color_space",
-                        }
-                        .into());
+    for (index, entry) in entries.into_iter().enumerate() {
+        let result =
+            (|mut decoded: DiagramEffectSet| -> Result<DiagramEffectSet, ThemeCompileError> {
+                match entry {
+                    wire::ThemeEffectEntryWireV1::Graph {
+                        id,
+                        color_space,
+                        composition,
+                        primitives,
+                    } => {
+                        let primitives = primitives
+                            .into_iter()
+                            .map(decode_effect_primitive)
+                            .collect::<Result<Vec<_>, _>>()?;
+                        let color_space = match color_space.as_deref() {
+                            None | Some("linear-rgb") => super::EffectColorSpace::LinearRgb,
+                            Some("srgb") => super::EffectColorSpace::Srgb,
+                            Some(_) => {
+                                return Err(ThemeCompileValidationError::InvalidValue {
+                                    field: "effects.graph.color_space",
+                                }
+                                .into());
+                            }
+                        };
+                        let composition = match composition.as_deref() {
+                            None | Some("cascade") => super::EffectComposition::Cascade,
+                            Some("independent") => super::EffectComposition::Independent,
+                            Some(_) => {
+                                return Err(ThemeCompileValidationError::InvalidValue {
+                                    field: "effects.graph.composition",
+                                }
+                                .into());
+                            }
+                        };
+                        decoded = decoded.with_graph(
+                            EffectGraph::new(id, primitives)?
+                                .with_color_space(color_space)
+                                .with_composition(composition)?,
+                        )?;
                     }
-                };
-                let composition = match composition.as_deref() {
-                    None | Some("cascade") => super::EffectComposition::Cascade,
-                    Some("independent") => super::EffectComposition::Independent,
-                    Some(_) => {
-                        return Err(ThemeCompileValidationError::InvalidValue {
-                            field: "effects.graph.composition",
-                        }
-                        .into());
+                    wire::ThemeEffectEntryWireV1::Binding { target, effect_id } => {
+                        decoded = decoded.with_binding(EffectBinding::new(
+                            parse_target(&target, "effects.binding.target")?,
+                            effect_id,
+                        )?)?;
                     }
-                };
-                decoded = decoded.with_graph(
-                    EffectGraph::new(id, primitives)?
-                        .with_color_space(color_space)
-                        .with_composition(composition)?,
-                )?;
-            }
-            wire::ThemeEffectEntryWireV1::Binding { target, effect_id } => {
-                decoded = decoded.with_binding(EffectBinding::new(
-                    parse_target(&target, "effects.binding.target")?,
-                    effect_id,
-                )?)?;
-            }
-        }
+                }
+                Ok(decoded)
+            })(decoded);
+        decoded =
+            result.map_err(|error| LocatedCompileError::new(sources.effect_path(index), error))?;
     }
     Ok(decoded)
 }

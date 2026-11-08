@@ -173,14 +173,19 @@ Keep `renderSvgToElement()` for a single publication without a retained lifecycl
 ## Choose a preset for a diagram
 
 In the full or render package, read `themeCatalog().presets` from the initialized runtime to build
-a picker. Use each entry's open `id` as the saved selection and `display_name` as its label;
-use `appearance` for light/dark grouping and the ordered `preview_colors` for swatches.
+a picker. Use each entry's open `id` as the saved design identity and `display_name` as its label.
+`supported_appearances` and `default_appearance` describe its available reading modes.
+Each `appearances` entry supplies its `appearance`, exact `concrete_preset_id`, ordered
+`preview_colors`, `family_designs`, `application_notes`, and `qualified_cells`.
 Discover the inventory instead of keeping
 a preset list or count in the host. `supportedThemes()` lists Mermaid base themes and is separate
-from these Merman presets.
+from these Merman presets. `mermaid_theme_designs` groups Neo, Redux, and Redux Color with their
+declared dark counterparts while retaining each literal Mermaid ID. Default and Dark remain
+independent upstream designs.
 
 `available` means that the runtime's compiler can construct the recipe. `maturity` describes the
-catalog entry independently of rendering support. `family_designs` describes curated design intent for a logical family:
+catalog entry independently of rendering support. Availability admits the complete design,
+including inactive appearances. An appearance's `family_designs` describes curated design intent for a logical family:
 `dedicated` is a family-specific design, `base_only` is the shared base appearance (including
 necessary family adaptations), and missing or unknown treatments are unreviewed. None of these
 states certifies readable output or portability; those depend on the actual scene and target.
@@ -207,16 +212,18 @@ if (!selected.available) throw new Error(selected.availability_reason_ids.join("
 
 const choices = catalog.presets.map((preset) => ({
   value: preset.id, label: preset.display_name, disabled: !preset.available,
-  appearance: preset.appearance, maturity: preset.maturity, colors: preset.preview_colors,
+  appearances: preset.supported_appearances, maturity: preset.maturity,
 }));
-const declaredTreatment = selected.family_designs
+const appearance = selected.default_appearance;
+const concrete = selected.appearances.find((entry) => entry.appearance === appearance)!;
+const declaredTreatment = concrete.family_designs
   .find((design) => design.family_id === familyId)?.treatment;
 const treatment = declaredTreatment === "dedicated" || declaredTreatment === "base_only"
   ? declaredTreatment : "unreviewed";
-const notes = selected.application_notes.filter((note) => note.family_id === familyId);
+const notes = concrete.application_notes.filter((note) => note.family_id === familyId);
 console.log({ choices, treatment, notes });
 
-const result = renderSvgResult(source, { theme: { preset: selected.id } });
+const result = renderSvgResult(source, { theme: { preset: selected.id, appearance } });
 console.log(result.metadata.theme_execution_evidence);
 ```
 
@@ -248,8 +255,8 @@ With existing configuration, merge the accepted object into it while preserving 
 keys, then pass the result through `site_config`. Parse and validate stored configuration before
 offering this action; show invalid JSON to the user instead of replacing their edits. Recommendations
 are separate from `options.theme` and exported recipes, so persist accepted configuration separately.
-Absent `preview_colors`, `family_designs`, and `application_notes` fields normalize to empty arrays;
-malformed present fields are rejected. IDs remain open strings, and Web catalog reads return
+The catalog requires its appearance-specific discovery arrays; malformed or missing fields
+are rejected. IDs remain open strings, and Web catalog reads return
 defensive copies, including nested recommendation objects.
 
 Keep the selected preset when the diagram family changes. Apply its shared base plus scoped
@@ -259,6 +266,38 @@ returns only SVG, and `svgPlanJson().ready` is not a theme-application report.
 Do not silently substitute another preset. An unknown
 saved preset ID is an explicit input error; the host can retain it for explanation and offer an
 explicit replacement. `qualified_cells` remains separate evidence for named scenarios and targets.
+
+## Use one theme in light and dark mode
+
+Preset export returns the complete editable recipe. Keep that recipe when saving or sharing a
+design; choose the concrete appearance separately for each render:
+
+```ts
+import { exportThemePreset, materializeTheme, renderSvg } from "@mermanjs/web";
+
+const recipe = exportThemePreset("editor");
+const inspection = materializeTheme({ schema_version: 1, action: "inspect", recipe });
+console.log(inspection.supported_appearances, inspection.default_appearance);
+const svg = renderSvg("flowchart LR\nA[Review] --> B[Publish]", {
+  theme: { recipe, appearance: "dark" },
+});
+const snapshot = materializeTheme({
+  schema_version: 1, action: "materialize", recipe, appearance: "dark",
+});
+```
+
+An omitted selector uses the declared default. An explicit unsupported appearance fails.
+Follow-app/editor is host policy: resolve it to `light` or `dark` before rendering, using the
+declared default when a single-appearance design lacks the host mode. A dark viewer can display
+a light paper design without changing its authored canvas.
+
+For customization, edit shared `recipe.design` values and appearance-specific exceptions under
+`recipe.design.appearances`. The runtime validates every appearance before accepting the design.
+Raw JSON strings passed to `materializeTheme()` retain duplicate-field admission and source paths
+in Rust. Typed inspect/materialize requests infer their corresponding result type.
+The raw-design route still returns `MaterializedThemeWireV1` for the design's default appearance.
+`snapshot.spec` is a concrete snapshot; exporting only it loses shared design relationships.
+Changing a prepared diagram's theme or appearance requires calling `prepareSource()` again.
 
 ## Inspect the actual rendering outcome
 
@@ -283,6 +322,9 @@ must not be interpreted as portable. The metadata is descriptive, not an indepen
 `materialized_theme` records the actual materialized Mermaid palette or null. Optional
 `diagnostics` can include rule or property details; an absent or empty list does not establish portability.
 Use `renderSvgResultWithTextMeasurer()` for the corresponding host-measured workflow.
+`font_source: "none"` describes SVG font resources, not whether a host measurer was called.
+The [measurement guide](../../docs/bindings/HOST_TEXT_MEASUREMENT.md) explains per-request fallback
+and the current metadata boundary.
 
 Set `environment: { theme_portability: "require-portable" }` to require the renderer's
 native portability admission. Failure throws the normal structured render error; the runtime does

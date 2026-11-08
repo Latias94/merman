@@ -81,6 +81,41 @@ _arguments "${_arguments_options[@]}" : \
     ;;
 esac
 ;;
+(theme)
+_arguments "${_arguments_options[@]}" : \
+'-h[Print help]' \
+'--help[Print help]' \
+'-V[Print version]' \
+'--version[Print version]' \
+":: :_merman-cli__subcmd__theme_commands" \
+"*::: :->theme" \
+&& ret=0
+
+    case $state in
+    (theme)
+        words=($line[1] "${words[@]}")
+        (( CURRENT += 1 ))
+        curcontext="${curcontext%:*:*}:merman-cli-theme-command-$line[1]:"
+        case $line[1] in
+            (inspect)
+_arguments "${_arguments_options[@]}" : \
+'--resource-profile=[Resource policy for input, semantic models, output, and CLI acquisition]:PROFILE:((interactive\:"General interactive applications and public binding surfaces"
+constrained\:"Constrained rendering for untrusted or publicly submitted documents"
+trusted-native\:"Local CLI and controlled native batch rendering"
+unbounded-for-trusted-input\:"Explicitly disable policy budgets while retaining hard backend capabilities"))' \
+'*--resource-limit=[Override a resource budget as STABLE_ID=POSITIVE_U64. Can be repeated]:STABLE_ID=POSITIVE_U64:_default' \
+'--operation-timeout-ms=[Cancel the complete command operation after this many milliseconds]:MILLISECONDS:_default' \
+'-h[Print help (see more with '\''--help'\'')]' \
+'--help[Print help (see more with '\''--help'\'')]' \
+'-V[Print version]' \
+'--version[Print version]' \
+':input -- Theme recipe JSON file. Use `-` for stdin:_files' \
+&& ret=0
+;;
+        esac
+    ;;
+esac
+;;
 (capabilities)
 _arguments "${_arguments_options[@]}" : \
 '--json[Emit the machine-readable capability document]' \
@@ -174,19 +209,23 @@ resvg-safe\:"Converts HTML labels and cleans SVG for resvg/usvg consumers"))' \
 '--font-measurement=[Text measurement\: SVG defaults to deterministic; PNG/JPEG/PDF use native fonts for shared layout and painting. Explicit deterministic keeps approximate layout]:FONT_MEASUREMENT:(deterministic native)' \
 '--font-system=[Control system font discovery; native encoded output enables it by default. Explicit font sources stay closed unless on is selected]:FONT_SYSTEM:(off on)' \
 '--font-max-measurements=[Maximum uncached native font shaping probes per diagram (default\: 16384); independent of --resource-profile]:COUNT:' \
-'--theme-preset=[Compiled diagram-theme preset; each value reports its catalog maturity, and explicit Mermaid configuration takes precedence]:THEME_PRESET:((editor-light\:"\[alpha\] Editor Light"
-editor-dark\:"\[alpha\] Editor Dark"
+'--theme-preset=[Compiled diagram-theme preset; each value reports its catalog maturity, and explicit Mermaid configuration takes precedence]:THEME_PRESET:((editor\:"\[alpha\] Editor"
 one-dark\:"\[alpha\] One Dark"
-gruvbox-light\:"\[alpha\] Gruvbox Light"
-gruvbox-dark\:"\[alpha\] Gruvbox Dark"
-ayu-light\:"\[alpha\] Ayu Light"
-ayu-dark\:"\[alpha\] Ayu Dark"
+gruvbox\:"\[alpha\] Gruvbox"
+ayu\:"\[alpha\] Ayu"
 brutalist\:"\[alpha\] Brutalist"
 spotless\:"\[alpha\] Spotless"
 cyberpunk\:"\[alpha\] Cyberpunk"
-ghibli\:"\[alpha\] Ghibli"))' \
-'(--theme-preset --theme-design-file)--theme-file=[Versioned theme recipe JSON, or a selection containing exactly one \`preset\` or \`spec\`]:THEME_FILE:_files' \
-'(--theme-preset --theme-file)--theme-design-file=[Shareable ThemeDesignV1 JSON materialized before rendering]:THEME_DESIGN_FILE:_files' \
+ghibli\:"\[alpha\] Ghibli"
+editor-light\:"\[alpha\] Editor Light"
+editor-dark\:"\[alpha\] Editor Dark"
+gruvbox-light\:"\[alpha\] Gruvbox Light"
+gruvbox-dark\:"\[alpha\] Gruvbox Dark"
+ayu-light\:"\[alpha\] Ayu Light"
+ayu-dark\:"\[alpha\] Ayu Dark"))' \
+'(--theme-preset --theme-design-file)--theme-file=[Versioned theme recipe JSON, or an exact preset, recipe, or spec selection]:THEME_FILE:_files' \
+'(--theme-preset --theme-file)--theme-design-file=[Shareable ThemeDesignV1 JSON materialized before rendering. Use a portable recipe through --theme-file with --theme-appearance]:THEME_DESIGN_FILE:_files' \
+'(--theme-design-file)--theme-appearance=[Concrete Merman appearance for --theme-preset or --theme-file; omitted uses the selected document'\''s default. Must agree with any selector already in the file]:THEME_APPEARANCE:(light dark)' \
 '--theme-portability=[Renderer portability requirement; require-portable rejects nonportable target output]:THEME_PORTABILITY:(best-effort require-portable)' \
 '--theme-report=[Write versioned theme results to a separate JSON file, including render failures]:PATH:_files' \
 '--math-renderer=[Math renderer override. Unspecified uses the compiled default; \`ratex\` requires \`math\`]:MATH_RENDERER:(none ratex)' \
@@ -289,19 +328,23 @@ resvg-safe\:"Converts HTML labels and cleans SVG for resvg/usvg consumers"))' \
 '--font-measurement=[Text measurement\: SVG defaults to deterministic; PNG/JPEG/PDF use native fonts for shared layout and painting. Explicit deterministic keeps approximate layout]:FONT_MEASUREMENT:(deterministic native)' \
 '--font-system=[Control system font discovery; native encoded output enables it by default. Explicit font sources stay closed unless on is selected]:FONT_SYSTEM:(off on)' \
 '--font-max-measurements=[Maximum uncached native font shaping probes per diagram (default\: 16384); independent of --resource-profile]:COUNT:' \
-'--theme-preset=[Compiled diagram-theme preset; each value reports its catalog maturity, and explicit Mermaid configuration takes precedence]:THEME_PRESET:((editor-light\:"\[alpha\] Editor Light"
-editor-dark\:"\[alpha\] Editor Dark"
+'--theme-preset=[Compiled diagram-theme preset; each value reports its catalog maturity, and explicit Mermaid configuration takes precedence]:THEME_PRESET:((editor\:"\[alpha\] Editor"
 one-dark\:"\[alpha\] One Dark"
-gruvbox-light\:"\[alpha\] Gruvbox Light"
-gruvbox-dark\:"\[alpha\] Gruvbox Dark"
-ayu-light\:"\[alpha\] Ayu Light"
-ayu-dark\:"\[alpha\] Ayu Dark"
+gruvbox\:"\[alpha\] Gruvbox"
+ayu\:"\[alpha\] Ayu"
 brutalist\:"\[alpha\] Brutalist"
 spotless\:"\[alpha\] Spotless"
 cyberpunk\:"\[alpha\] Cyberpunk"
-ghibli\:"\[alpha\] Ghibli"))' \
-'(--theme-preset --theme-design-file)--theme-file=[Versioned theme recipe JSON, or a selection containing exactly one \`preset\` or \`spec\`]:THEME_FILE:_files' \
-'(--theme-preset --theme-file)--theme-design-file=[Shareable ThemeDesignV1 JSON materialized before rendering]:THEME_DESIGN_FILE:_files' \
+ghibli\:"\[alpha\] Ghibli"
+editor-light\:"\[alpha\] Editor Light"
+editor-dark\:"\[alpha\] Editor Dark"
+gruvbox-light\:"\[alpha\] Gruvbox Light"
+gruvbox-dark\:"\[alpha\] Gruvbox Dark"
+ayu-light\:"\[alpha\] Ayu Light"
+ayu-dark\:"\[alpha\] Ayu Dark"))' \
+'(--theme-preset --theme-design-file)--theme-file=[Versioned theme recipe JSON, or an exact preset, recipe, or spec selection]:THEME_FILE:_files' \
+'(--theme-preset --theme-file)--theme-design-file=[Shareable ThemeDesignV1 JSON materialized before rendering. Use a portable recipe through --theme-file with --theme-appearance]:THEME_DESIGN_FILE:_files' \
+'(--theme-design-file)--theme-appearance=[Concrete Merman appearance for --theme-preset or --theme-file; omitted uses the selected document'\''s default. Must agree with any selector already in the file]:THEME_APPEARANCE:(light dark)' \
 '--theme-portability=[Renderer portability requirement; require-portable rejects nonportable target output]:THEME_PORTABILITY:(best-effort require-portable)' \
 '--theme-report=[Write versioned theme results to a separate JSON file, including render failures]:PATH:_files' \
 '--math-renderer=[Math renderer override. Unspecified uses the compiled default; \`ratex\` requires \`math\`]:MATH_RENDERER:(none ratex)' \
@@ -543,6 +586,7 @@ _merman-cli_commands() {
     local commands; commands=(
 'lint-rules:List lint rule metadata' \
 'rustdoc:Build or check committed static Mermaid fragments for Rustdoc' \
+'theme:Inspect portable theme recipe documents' \
 'capabilities:Print the compiled capabilities from the canonical capability descriptor' \
 'detect:Detect the Mermaid diagram type' \
 'parse:Parse Mermaid source and print the semantic JSON model' \
@@ -628,6 +672,18 @@ _merman-cli__subcmd__rustdoc__subcmd__build_commands() {
 _merman-cli__subcmd__rustdoc__subcmd__check_commands() {
     local commands; commands=()
     _describe -t commands 'merman-cli rustdoc check commands' commands "$@"
+}
+(( $+functions[_merman-cli__subcmd__theme_commands] )) ||
+_merman-cli__subcmd__theme_commands() {
+    local commands; commands=(
+'inspect:Validate the complete portable recipe and print schema-1 inspection JSON' \
+    )
+    _describe -t commands 'merman-cli theme commands' commands "$@"
+}
+(( $+functions[_merman-cli__subcmd__theme__subcmd__inspect_commands] )) ||
+_merman-cli__subcmd__theme__subcmd__inspect_commands() {
+    local commands; commands=()
+    _describe -t commands 'merman-cli theme inspect commands' commands "$@"
 }
 
 if [ "$funcstack[1]" = "_merman-cli" ]; then

@@ -107,7 +107,9 @@ fn render_chart(
                     .theme_result
                     .take()
                     .expect("theme report requested"),
-                Err(error) => ThemeResult::failed(error),
+                Err(error) => {
+                    ThemeResult::failed(error, context.renderer.selected_theme_appearance())
+                }
             };
             report.record(chart_index, url.clone(), theme);
         }

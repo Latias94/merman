@@ -195,14 +195,33 @@ pub(crate) fn normalize_css_font_family(font_family: &str) -> String {
     }
 }
 
+pub(crate) fn configured_font_family(cfg: &Value) -> Option<(String, &'static str)> {
+    configured_font_family_with(cfg, Value::as_str)
+}
+
+pub(crate) fn configured_font_family_or_first_array(cfg: &Value) -> Option<(String, &'static str)> {
+    configured_font_family_with(cfg, json_str_or_first_array_ref)
+}
+
+fn configured_font_family_with(
+    cfg: &Value,
+    read: fn(&Value) -> Option<&str>,
+) -> Option<(String, &'static str)> {
+    let (font, path) = value_at(cfg, &["themeVariables", "fontFamily"])
+        .and_then(read)
+        .map(|font| (font, "themeVariables.fontFamily"))
+        .or_else(|| {
+            value_at(cfg, &["fontFamily"])
+                .and_then(read)
+                .map(|font| (font, "fontFamily"))
+        })?;
+    normalized_config_font_family(font).map(|font| (font, path))
+}
+
 pub(crate) fn config_font_family_css(cfg: &Value) -> String {
-    let Some(font_family) = value_at(cfg, &["themeVariables", "fontFamily"])
-        .and_then(Value::as_str)
-        .or_else(|| value_at(cfg, &["fontFamily"]).and_then(Value::as_str))
-    else {
-        return MERMAID_DEFAULT_FONT_FAMILY_CSS.to_string();
-    };
-    font_family_css(font_family)
+    configured_font_family(cfg)
+        .map(|(font, _)| font)
+        .unwrap_or_else(|| MERMAID_DEFAULT_FONT_FAMILY_CSS.to_owned())
 }
 
 /// Mermaid's generated :root custom property reads config.fontFamily, independently
@@ -215,17 +234,14 @@ pub(crate) fn config_root_font_family_css(cfg: &Value) -> String {
     if font_family.trim().is_empty() {
         return String::new();
     }
-    font_family_css(font_family)
+    normalized_config_font_family(font_family)
+        .unwrap_or_else(|| MERMAID_DEFAULT_FONT_FAMILY_CSS.to_owned())
 }
 
 pub(crate) fn config_font_family_or_first_array_css(cfg: &Value) -> String {
-    let Some(font_family) = value_at(cfg, &["themeVariables", "fontFamily"])
-        .and_then(json_str_or_first_array_ref)
-        .or_else(|| value_at(cfg, &["fontFamily"]).and_then(json_str_or_first_array_ref))
-    else {
-        return MERMAID_DEFAULT_FONT_FAMILY_CSS.to_string();
-    };
-    font_family_css(font_family)
+    configured_font_family_or_first_array(cfg)
+        .map(|(font, _)| font)
+        .unwrap_or_else(|| MERMAID_DEFAULT_FONT_FAMILY_CSS.to_owned())
 }
 
 fn json_str_or_first_array_ref(value: &Value) -> Option<&str> {
@@ -234,25 +250,26 @@ fn json_str_or_first_array_ref(value: &Value) -> Option<&str> {
         .or_else(|| value.as_array().and_then(|values| values.first()?.as_str()))
 }
 
-fn font_family_css(font_family: &str) -> String {
+fn normalized_config_font_family(font_family: &str) -> Option<String> {
     if matches!(
         font_family,
         MERMAID_DEFAULT_FONT_FAMILY_CONFIG | MERMAID_DEFAULT_ROOT_FONT_FAMILY_CONFIG
     ) {
-        return MERMAID_DEFAULT_FONT_FAMILY_CSS.to_string();
+        return Some(MERMAID_DEFAULT_FONT_FAMILY_CSS.to_owned());
     }
 
     let font_family = normalize_css_font_family(font_family);
-    if font_family.is_empty() {
-        MERMAID_DEFAULT_FONT_FAMILY_CSS.to_string()
-    } else {
-        font_family
-    }
+    (!font_family.is_empty()).then_some(font_family)
 }
 
 pub(crate) fn config_theme_or_root_font_size_px_opt(cfg: &Value) -> Option<f64> {
+    configured_theme_or_root_font_size_px(cfg).map(|(size, _)| size)
+}
+
+pub(crate) fn configured_theme_or_root_font_size_px(cfg: &Value) -> Option<(f64, &'static str)> {
     config_f64_css_px(cfg, &["themeVariables", "fontSize"])
-        .or_else(|| config_f64_css_px(cfg, &["fontSize"]))
+        .map(|size| (size, "themeVariables.fontSize"))
+        .or_else(|| config_f64_css_px(cfg, &["fontSize"]).map(|size| (size, "fontSize")))
 }
 
 pub(crate) fn config_theme_or_root_font_size_px(cfg: &Value, default: f64) -> f64 {
@@ -260,8 +277,15 @@ pub(crate) fn config_theme_or_root_font_size_px(cfg: &Value, default: f64) -> f6
 }
 
 pub(crate) fn config_theme_font_size_css_or_root_number_px_opt(cfg: &Value) -> Option<f64> {
+    configured_theme_font_size_css_or_root_number_px(cfg).map(|(size, _)| size)
+}
+
+pub(crate) fn configured_theme_font_size_css_or_root_number_px(
+    cfg: &Value,
+) -> Option<(f64, &'static str)> {
     config_f64_css_px(cfg, &["themeVariables", "fontSize"])
-        .or_else(|| config_f64(cfg, &["fontSize"]))
+        .map(|size| (size, "themeVariables.fontSize"))
+        .or_else(|| config_f64(cfg, &["fontSize"]).map(|size| (size, "fontSize")))
 }
 
 pub(crate) fn config_theme_font_size_css_or_root_number_px(cfg: &Value, default: f64) -> f64 {
@@ -664,6 +688,89 @@ mod tests {
             })),
             MERMAID_DEFAULT_FONT_FAMILY_CSS
         );
+    }
+
+    #[test]
+    fn configured_font_candidates_keep_only_the_selected_normalized_source() {
+        for (config, expected) in [
+            (
+                json!({"themeVariables":{"fontFamily":["Georgia"]},"fontFamily":"Arial"}),
+                Some(("Georgia", "themeVariables.fontFamily")),
+            ),
+            (
+                json!({"themeVariables":{"fontFamily":[42,"Georgia"]},"fontFamily":"Arial"}),
+                Some(("Arial", "fontFamily")),
+            ),
+            (
+                json!({"themeVariables":{"fontFamily":[""]},"fontFamily":"Arial"}),
+                None,
+            ),
+            (
+                json!({"themeVariables":{"fontFamily":[]},"fontFamily":"Arial"}),
+                Some(("Arial", "fontFamily")),
+            ),
+            (json!({"themeVariables":{"fontFamily":false}}), None),
+        ] {
+            let expected = expected.map(|(font, source)| (font.to_owned(), source));
+            assert_eq!(
+                configured_font_family_or_first_array(&config),
+                expected,
+                "{config}"
+            );
+        }
+    }
+
+    #[test]
+    fn configured_font_size_owner_follows_the_first_numeric_consumer() {
+        for (config, expected) in [
+            (
+                json!({"themeVariables":{"fontSize":"bad"},"fontSize":"18px"}),
+                Some((18.0, "fontSize")),
+            ),
+            (json!({"themeVariables":{"fontSize":false}}), None),
+            (
+                json!({"themeVariables":{"fontSize":"23px"},"fontSize":18}),
+                Some((23.0, "themeVariables.fontSize")),
+            ),
+            (
+                json!({"themeVariables":{"fontSize":0},"fontSize":18}),
+                Some((0.0, "themeVariables.fontSize")),
+            ),
+        ] {
+            assert_eq!(
+                configured_theme_or_root_font_size_px(&config),
+                expected,
+                "{config}"
+            );
+        }
+    }
+
+    #[test]
+    fn configured_font_size_owner_preserves_number_only_root_fallback() {
+        for (config, expected) in [
+            (
+                json!({"themeVariables":{"fontSize":"bad"},"fontSize":"18px"}),
+                None,
+            ),
+            (
+                json!({"themeVariables":{"fontSize":"bad"},"fontSize":"18"}),
+                Some((18.0, "fontSize")),
+            ),
+            (
+                json!({"themeVariables":{"fontSize":"23px"},"fontSize":18}),
+                Some((23.0, "themeVariables.fontSize")),
+            ),
+            (
+                json!({"themeVariables":{"fontSize":false},"fontSize":18}),
+                Some((18.0, "fontSize")),
+            ),
+        ] {
+            assert_eq!(
+                configured_theme_font_size_css_or_root_number_px(&config),
+                expected,
+                "{config}"
+            );
+        }
     }
 
     #[test]

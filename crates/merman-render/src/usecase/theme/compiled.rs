@@ -7,7 +7,8 @@ use std::sync::OnceLock;
 
 use indexmap::IndexMap;
 use merman_model::families::usecase::{
-    UsecaseArrowType, UsecaseDiagramModel, UsecaseNodeKind, UsecaseRelationshipType,
+    UsecaseActorType, UsecaseArrowType, UsecaseDiagramModel, UsecaseNodeKind,
+    UsecaseRelationshipType,
 };
 use merman_model::presentation::PresentationConfig;
 
@@ -25,7 +26,7 @@ use crate::family::{
 use crate::resources::OperationWorkMeter;
 use crate::text::TextStyle;
 
-use super::UsecaseCssBinding;
+use super::{UsecaseCssBinding, UsecaseCssPaint};
 
 #[derive(Debug, Clone)]
 struct Observation {
@@ -164,11 +165,9 @@ struct Surface<'a> {
     textual: bool,
     has_fill: bool,
     source: &'a IndexMap<String, String>,
-    fill_paths: &'a [&'a str],
-    stroke_paths: &'a [&'a str],
     font_prefix: Option<&'a str>,
-    fill_default: &'a str,
-    stroke_default: &'a str,
+    fill: &'a UsecaseCssPaint,
+    stroke: &'a UsecaseCssPaint,
     shadow: bool,
 }
 
@@ -188,6 +187,7 @@ impl UsecaseThemePlan {
             ..Self::default()
         };
         let binding = UsecaseCssBinding::new(config.as_value());
+        let none = UsecaseCssPaint::literal("none");
         let html = crate::config::config_bool(config.as_value(), &["htmlLabels"]).unwrap_or(true);
         let mut counts = BTreeMap::<ThemeTarget, usize>::new();
         let mut ordinal = |target| {
@@ -213,6 +213,12 @@ impl UsecaseThemePlan {
             let role_font = html || separate_stereotype;
             let source = source_styles(model, &node.classes, &node.styles);
             let index = ordinal(target);
+            let palette_fill = (actor && binding.rotate)
+                .then(|| binding.palette_fill(index - 1))
+                .flatten();
+            let palette_stroke = (actor && binding.rotate)
+                .then(|| binding.palette_stroke(index - 1))
+                .flatten();
             let shell = plan.resolve_surface(
                 config,
                 Surface {
@@ -221,12 +227,16 @@ impl UsecaseThemePlan {
                     textual: false,
                     has_fill: true,
                     source: &source,
-                    fill_paths: if actor { ACTOR_FILL } else { NODE_FILL },
-                    stroke_paths: if actor { ACTOR_STROKE } else { NODE_STROKE },
                     font_prefix: None,
-                    fill_default: if actor { &binding.actor } else { &binding.body },
-                    stroke_default: if actor {
-                        &binding.actor_border
+                    fill: if actor && node.actor_type == UsecaseActorType::Hollow {
+                        &none
+                    } else if actor {
+                        palette_fill.as_ref().unwrap_or(&binding.actor)
+                    } else {
+                        &binding.body
+                    },
+                    stroke: if actor {
+                        palette_stroke.as_ref().unwrap_or(&binding.actor_border)
                     } else {
                         &binding.border
                     },
@@ -248,15 +258,13 @@ impl UsecaseThemePlan {
                         textual: true,
                         has_fill: true,
                         source: &source,
-                        fill_paths: if actor { ACTOR_TEXT } else { NODE_TEXT },
-                        stroke_paths: &[],
                         font_prefix: role_font.then_some(if actor { "actor" } else { "usecase" }),
-                        fill_default: if actor {
+                        fill: if actor && html {
                             &binding.actor_text
                         } else {
                             &binding.text
                         },
-                        stroke_default: "none",
+                        stroke: &none,
                         shadow: false,
                     },
                     work,
@@ -272,15 +280,13 @@ impl UsecaseThemePlan {
                         textual: true,
                         has_fill: true,
                         source: &source,
-                        fill_paths: if html && actor { ACTOR_TEXT } else { NODE_TEXT },
-                        stroke_paths: &[],
                         font_prefix: html.then_some(if actor { "actor" } else { "usecase" }),
-                        fill_default: if html && actor {
+                        fill: if html && actor {
                             &binding.actor_text
                         } else {
                             &binding.text
                         },
-                        stroke_default: "none",
+                        stroke: &none,
                         shadow: false,
                     },
                     work,
@@ -300,11 +306,9 @@ impl UsecaseThemePlan {
                     textual: false,
                     has_fill: true,
                     source: &source,
-                    fill_paths: JSON_FILL,
-                    stroke_paths: JSON_STROKE,
                     font_prefix: None,
-                    fill_default: &binding.main,
-                    stroke_default: &binding.node_border,
+                    fill: &binding.main,
+                    stroke: &binding.node_border,
                     shadow: false,
                 },
                 work,
@@ -317,11 +321,9 @@ impl UsecaseThemePlan {
                     textual: true,
                     has_fill: true,
                     source: &source,
-                    fill_paths: NODE_TEXT,
-                    stroke_paths: &[],
                     font_prefix: None,
-                    fill_default: &binding.text,
-                    stroke_default: "none",
+                    fill: &binding.text,
+                    stroke: &none,
                     shadow: false,
                 },
                 work,
@@ -341,11 +343,9 @@ impl UsecaseThemePlan {
                     textual: false,
                     has_fill: true,
                     source: &source,
-                    fill_paths: &["themeVariables.noteBkgColor"],
-                    stroke_paths: &["themeVariables.noteBorderColor"],
                     font_prefix: None,
-                    fill_default: &binding.note,
-                    stroke_default: &binding.note_border,
+                    fill: &binding.note,
+                    stroke: &binding.note_border,
                     shadow: false,
                 },
                 work,
@@ -360,14 +360,13 @@ impl UsecaseThemePlan {
                         textual: true,
                         has_fill: true,
                         source: &source,
-                        fill_paths: &[
-                            "themeVariables.noteTextColor",
-                            "themeVariables.primaryTextColor",
-                        ],
-                        stroke_paths: &[],
                         font_prefix: None,
-                        fill_default: &binding.note_text,
-                        stroke_default: "none",
+                        fill: if html {
+                            &binding.note_text
+                        } else {
+                            &binding.text
+                        },
+                        stroke: &none,
                         shadow: false,
                     },
                     work,
@@ -379,6 +378,8 @@ impl UsecaseThemePlan {
             work.charge(1)?;
             let source = source_styles(model, &boundary.classes, &boundary.styles);
             let index = ordinal(ThemeTarget::Cluster);
+            let palette_fill = binding.palette_fill(index - 1);
+            let palette_stroke = binding.palette_stroke(index - 1);
             let shell = plan.resolve_surface(
                 config,
                 Surface {
@@ -387,17 +388,9 @@ impl UsecaseThemePlan {
                     textual: false,
                     has_fill: true,
                     source: &source,
-                    fill_paths: &[
-                        "themeVariables.usecaseBoundaryBkg",
-                        "themeVariables.clusterBkg",
-                    ],
-                    stroke_paths: &[
-                        "themeVariables.usecaseBoundaryBorder",
-                        "themeVariables.clusterBorder",
-                    ],
                     font_prefix: None,
-                    fill_default: &binding.boundary,
-                    stroke_default: &binding.boundary_border,
+                    fill: palette_fill.as_ref().unwrap_or(&binding.boundary),
+                    stroke: palette_stroke.as_ref().unwrap_or(&binding.boundary_border),
                     shadow: false,
                 },
                 work,
@@ -412,14 +405,9 @@ impl UsecaseThemePlan {
                         textual: true,
                         has_fill: true,
                         source: &source,
-                        fill_paths: &[
-                            "themeVariables.titleColor",
-                            "themeVariables.primaryTextColor",
-                        ],
-                        stroke_paths: &[],
                         font_prefix: None,
-                        fill_default: &binding.title,
-                        stroke_default: "none",
+                        fill: &binding.title,
+                        stroke: &none,
                         shadow: false,
                     },
                     work,
@@ -431,16 +419,10 @@ impl UsecaseThemePlan {
             work.charge(1)?;
             let source = source_styles(model, &edge.classes, &edge.styles);
             let index = ordinal(ThemeTarget::Edge);
-            let stroke_paths = match edge.relationship_type {
-                UsecaseRelationshipType::Include => &[
-                    "themeVariables.usecaseIncludeLine",
-                    "themeVariables.lineColor",
-                ][..],
-                UsecaseRelationshipType::Extend => &[
-                    "themeVariables.usecaseExtendLine",
-                    "themeVariables.lineColor",
-                ][..],
-                _ => &["themeVariables.lineColor"][..],
+            let stroke = match edge.relationship_type {
+                UsecaseRelationshipType::Include => &binding.include,
+                UsecaseRelationshipType::Extend => &binding.extend,
+                _ => &binding.line,
             };
             let shell = plan.resolve_surface(
                 config,
@@ -450,11 +432,9 @@ impl UsecaseThemePlan {
                     textual: false,
                     has_fill: true,
                     source: &source,
-                    fill_paths: &[],
-                    stroke_paths,
                     font_prefix: None,
-                    fill_default: "none",
-                    stroke_default: &binding.line,
+                    fill: &none,
+                    stroke,
                     shadow: false,
                 },
                 work,
@@ -477,11 +457,9 @@ impl UsecaseThemePlan {
                         textual: true,
                         has_fill: true,
                         source: &source,
-                        fill_paths: NODE_TEXT,
-                        stroke_paths: &[],
                         font_prefix: None,
-                        fill_default: &binding.text,
-                        stroke_default: "none",
+                        fill: &binding.text,
+                        stroke: &none,
                         shadow: false,
                     },
                     work,
@@ -494,11 +472,9 @@ impl UsecaseThemePlan {
                         textual: false,
                         has_fill: true,
                         source: &IndexMap::new(),
-                        fill_paths: &["themeVariables.edgeLabelBackground"],
-                        stroke_paths: &[],
                         font_prefix: None,
-                        fill_default: &binding.edge_background,
-                        stroke_default: "none",
+                        fill: &binding.edge_background,
+                        stroke: &none,
                         shadow: false,
                     },
                     work,
@@ -536,17 +512,13 @@ impl UsecaseThemePlan {
                             UsecaseArrowType::Cross | UsecaseArrowType::ReversedCross
                         ),
                         source: &IndexMap::new(),
-                        fill_paths: &["themeVariables.lineColor"],
-                        stroke_paths: &["themeVariables.lineColor"],
                         font_prefix: None,
-                        fill_default: if edge.relationship_type
-                            == UsecaseRelationshipType::Generalization
-                        {
+                        fill: if edge.relationship_type == UsecaseRelationshipType::Generalization {
                             &binding.main
                         } else {
                             &binding.line
                         },
-                        stroke_default: &binding.line,
+                        stroke: &binding.line,
                         shadow: false,
                     },
                     work,
@@ -564,11 +536,9 @@ impl UsecaseThemePlan {
                     textual: false,
                     has_fill: true,
                     source: &IndexMap::new(),
-                    fill_paths: &[],
-                    stroke_paths: &["themeVariables.lineColor"],
                     font_prefix: None,
-                    fill_default: "none",
-                    stroke_default: &binding.line,
+                    fill: &none,
+                    stroke: &binding.line,
                     shadow: false,
                 },
                 work,
@@ -589,11 +559,9 @@ impl UsecaseThemePlan {
                     textual: true,
                     has_fill: true,
                     source: &IndexMap::new(),
-                    fill_paths: NODE_TEXT,
-                    stroke_paths: &[],
                     font_prefix: None,
-                    fill_default: &binding.text,
-                    stroke_default: "none",
+                    fill: &binding.text,
+                    stroke: &none,
                     shadow: false,
                 },
                 work,
@@ -952,18 +920,13 @@ fn source_owns(
             && (!surface.textual || crate::mermaid_style::is_label_style_key(key)))
             || (!surface.textual && surface.source.contains_key("all"))
     };
-    let config_owns = |paths: &[&str]| {
-        paths
-            .iter()
-            .any(|path| config.config_paint_overrides_typed_default(path))
-    };
     match property {
         ResolvedStyleProperty::Fill => {
             !surface.has_fill
                 || owns(if surface.textual { "color" } else { "fill" })
-                || config_owns(surface.fill_paths)
+                || surface.fill.source_owned(config)
         }
-        ResolvedStyleProperty::Stroke => owns("stroke") || config_owns(surface.stroke_paths),
+        ResolvedStyleProperty::Stroke => owns("stroke") || surface.stroke.source_owned(config),
         ResolvedStyleProperty::StrokeWidth => owns("stroke-width"),
         ResolvedStyleProperty::StrokeDasharray => owns("stroke-dasharray"),
         ResolvedStyleProperty::StrokeLinecap => owns("stroke-linecap"),
@@ -1012,13 +975,13 @@ fn apply_property(
             let (paint, fallback, destination) = if property == ResolvedStyleProperty::Fill {
                 (
                     resolved.fill_resolution().specified(),
-                    surface.fill_default,
+                    surface.fill.css(),
                     &mut style.fill,
                 )
             } else {
                 (
                     resolved.stroke_resolution().specified(),
-                    surface.stroke_default,
+                    surface.stroke.css(),
                     &mut style.stroke,
                 )
             };
@@ -1118,32 +1081,3 @@ fn capability(
         _ => None,
     }
 }
-
-const NODE_FILL: &[&str] = &[
-    "themeVariables.usecaseBkg",
-    "themeVariables.mainBkg",
-    "themeVariables.primaryColor",
-];
-const NODE_STROKE: &[&str] = &[
-    "themeVariables.usecaseBorder",
-    "themeVariables.nodeBorder",
-    "themeVariables.primaryColor",
-];
-const JSON_FILL: &[&str] = &["themeVariables.mainBkg", "themeVariables.primaryColor"];
-const JSON_STROKE: &[&str] = &["themeVariables.nodeBorder", "themeVariables.primaryColor"];
-const NODE_TEXT: &[&str] = &["themeVariables.primaryTextColor"];
-const ACTOR_FILL: &[&str] = &[
-    "themeVariables.usecaseActorBkg",
-    "themeVariables.actorBkg",
-    "themeVariables.mainBkg",
-    "themeVariables.primaryColor",
-];
-const ACTOR_STROKE: &[&str] = &[
-    "themeVariables.usecaseActorBorder",
-    "themeVariables.actorBorder",
-    "themeVariables.primaryColor",
-];
-const ACTOR_TEXT: &[&str] = &[
-    "themeVariables.actorTextColor",
-    "themeVariables.primaryTextColor",
-];

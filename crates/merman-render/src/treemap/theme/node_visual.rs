@@ -17,7 +17,7 @@ pub(crate) struct TreemapNodeVisual {
     pub(super) label_paint: Option<DirectPaintExpectation>,
     pub(super) value_paint: Option<DirectPaintExpectation>,
     pub(super) node_label_winner: bool,
-    pub(super) label_palette_owned: bool,
+    pub(super) label_config_owns_fill: bool,
     pub(super) ordinal: usize,
 }
 
@@ -362,7 +362,7 @@ impl TreemapTypographyThemePlan {
             } else {
                 labels.get(&section.name)
             };
-            let label_palette_owned = theme.is_some()
+            let label_config_owns_fill = theme.is_some()
                 && section.depth != 0
                 && label_palette_source_owned(
                     config,
@@ -370,13 +370,13 @@ impl TreemapTypographyThemePlan {
                 );
             let label_fill = self
                 .label_text_fill_css()
-                .filter(|_| !label_palette_owned)
+                .filter(|_| !label_config_owns_fill)
                 .map_or_else(|| baseline.clone(), str::to_owned);
             let value_fill = if section.depth == 0 {
                 String::new()
             } else {
                 self.value_text_fill_css()
-                    .filter(|_| !label_palette_owned)
+                    .filter(|_| !label_config_owns_fill)
                     .map_or(baseline, str::to_owned)
             };
             let mut visual = TreemapNodeVisual {
@@ -388,7 +388,7 @@ impl TreemapTypographyThemePlan {
                 label_styles_suffix: replace_first(&source.label_styles, "color:", "fill:"),
                 text_fill_ownership: source.text_fill_ownership,
                 text_fill_without_font_size_ownership: source.text_fill_without_font_size_ownership,
-                label_palette_owned,
+                label_config_owns_fill,
                 ..Default::default()
             };
             if section.depth != 0 {
@@ -441,23 +441,30 @@ impl TreemapTypographyThemePlan {
                 leaf.css_compiled_styles.as_deref().unwrap_or_default(),
                 work,
             )?;
-            let baseline = self.css.readable_leaf_label_fill(
+            let (baseline, uses_text_color) = self.css.readable_leaf_label_fill(
                 &fill,
                 &source.node_styles,
                 labels.get(&leaf.name),
             );
-            let label_palette_owned = theme.is_some()
-                && label_palette_source_owned(
-                    config,
-                    labels.domain.get(&leaf.name).copied().unwrap_or(0),
-                );
+            // Inline scale colors override the label/value stylesheet. Only the selected
+            // scale entry, or the readable transparent-cell fallback, owns this terminal.
+            let label_config_owns_fill = theme.is_some()
+                && if uses_text_color {
+                    config.get_str("themeVariables.textColor").is_some()
+                        && config.config_paint_overrides_typed_default("themeVariables.textColor")
+                } else {
+                    label_palette_source_owned(
+                        config,
+                        labels.domain.get(&leaf.name).copied().unwrap_or(0),
+                    )
+                };
             let label_fill = self
                 .label_text_fill_css()
-                .filter(|_| !label_palette_owned)
+                .filter(|_| !label_config_owns_fill)
                 .map_or_else(|| baseline.clone(), str::to_owned);
             let value_fill = self
                 .value_text_fill_css()
-                .filter(|_| !label_palette_owned)
+                .filter(|_| !label_config_owns_fill)
                 .map_or(baseline, str::to_owned);
             let mut visual = TreemapNodeVisual {
                 stroke: fill.clone(),
@@ -475,7 +482,7 @@ impl TreemapTypographyThemePlan {
                 ),
                 text_fill_ownership: source.text_fill_ownership,
                 text_fill_without_font_size_ownership: source.text_fill_without_font_size_ownership,
-                label_palette_owned,
+                label_config_owns_fill,
                 ..Default::default()
             };
             node_ordinal += 1;
@@ -617,26 +624,19 @@ impl TreemapTypographyThemePlan {
             &[ThemeTarget::NodeLabel],
             DirectStaticSelectorDomain::Default,
         );
-        for (value, fill, fitted, pending) in [
+        for (fill, fitted, pending) in [
             (
-                false,
                 &mut visual.label_fill,
                 &mut visual.fitted_label_fill,
                 &mut visual.label_paint,
             ),
             (
-                true,
                 &mut visual.value_fill,
                 &mut visual.fitted_value_fill,
                 &mut visual.value_paint,
             ),
         ] {
-            let config_owned = if value {
-                self.value_config_owns_text_fill
-            } else {
-                self.label_config_owns_text_fill
-            };
-            if config_owned || visual.label_palette_owned {
+            if visual.label_config_owns_fill {
                 continue;
             }
             if let Some(paint) = &paint {
@@ -660,7 +660,8 @@ struct TreemapNodeRuleObservation {
 }
 
 fn label_palette_source_owned(config: &PresentationConfig, slot: usize) -> bool {
-    config.config_paint_overrides_typed_default(&format!("themeVariables.cScaleLabel{}", slot % 12))
+    let path = format!("themeVariables.cScaleLabel{}", slot % 12);
+    config.get_str(&path).is_some() && config.config_paint_overrides_typed_default(&path)
 }
 
 fn palette_source_owner(
@@ -672,20 +673,16 @@ fn palette_source_owner(
     if source != TreemapTextFillOwnership::Generated {
         return source;
     }
-    // The body scales prepend the hidden root's transparent slot. Default Mermaid
-    // deliberately ignores authored cScale/cScalePeer values for these body scales.
-    let custom = crate::config::config_string(config.as_value(), &["theme"])
-        .is_some_and(|name| name != "default");
+    // The body scales prepend the hidden root's transparent slot. Initialized null
+    // entries use the family fallback and do not acquire authored paint ownership.
     let slot = slot % 13;
-    if custom
-        && slot != 0
-        && config
-            .config_paint_overrides_typed_default(&format!("themeVariables.{prefix}{}", slot - 1))
-    {
-        TreemapTextFillOwnership::SourceOwned
-    } else {
-        TreemapTextFillOwnership::Generated
+    if slot != 0 {
+        let path = format!("themeVariables.{prefix}{}", slot - 1);
+        if config.get_str(&path).is_some() && config.config_paint_overrides_typed_default(&path) {
+            return TreemapTextFillOwnership::SourceOwned;
+        }
     }
+    TreemapTextFillOwnership::Generated
 }
 
 #[allow(
@@ -1061,7 +1058,7 @@ mod tests {
     }
 
     #[test]
-    fn prepared_default_theme_keeps_fixed_fill_scale_and_explicit_label_scale() {
+    fn prepared_default_theme_keeps_explicit_fill_and_label_scales() {
         let config = crate::test_support::presentation_config(serde_json::json!({
             "themeVariables": {"cScale0":"#111111", "cScaleLabel0":"#333333"}
         }));
@@ -1076,7 +1073,7 @@ mod tests {
         )
         .unwrap();
         let branch = plan.section_visual(1).unwrap();
-        assert_eq!(branch.fill, "hsl(240, 100%, 76.2745098039%)");
+        assert_eq!(branch.fill, "#111111");
         assert_eq!(branch.label_fill, "#333333");
         assert_eq!(plan.leaf_visual(0).unwrap().fill, branch.fill);
     }
@@ -1119,6 +1116,16 @@ mod tests {
                 "slot {slot}"
             );
         }
+        let nulls = crate::test_support::presentation_config(serde_json::json!({
+            "themeVariables": {"cScale0": null, "cScalePeer0": null, "cScaleLabel0": null}
+        }));
+        for prefix in ["cScale", "cScalePeer"] {
+            assert_eq!(
+                palette_source_owner(&nulls, 1, prefix, TreemapTextFillOwnership::Generated),
+                TreemapTextFillOwnership::Generated
+            );
+        }
+        assert!(!label_palette_source_owned(&nulls, 0));
     }
 
     #[test]

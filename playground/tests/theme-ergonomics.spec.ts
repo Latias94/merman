@@ -89,7 +89,7 @@ test("the unified catalog switches between built-in, native and exploration them
   expect(exploration.themePresetId).toBeNull();
   expect(exploration.themeRecipeJson).not.toBeNull();
   expect(exploration.themeRecipeLabel).toEqual({ name: "Atlas", source: "exploration" });
-  expect(exploration.diagramTheme).toBe("forest");
+  expect(exploration.diagramTheme).toBe("auto");
   expect(exploration.code).toBe(original.code);
   expect(exploration.mermaidConfig).toBe(original.mermaidConfig);
 });
@@ -132,7 +132,7 @@ test("Brutalist applies hard shadows in default Neo without changing source or c
   })).toEqual(Array(5).fill({ themed: true, wins: true, childrenUnfiltered: true, offsets: [[6, 6]], deviations: [0] }));
   await expect.poll(() => svg(page)).toContain("Arial");
   const applied = await workspaceFromLink(page);
-  expect(applied.diagramTheme).toBe("dark");
+  expect(applied.diagramTheme).toBe("auto");
   expect(applied.diagramFont).toBe("arial");
   expect(applied.themePresetId).toBe("brutalist");
   expect(applied.code).toBe(original.code);
@@ -144,7 +144,7 @@ test("Brutalist applies hard shadows in default Neo without changing source or c
   await replaceMermaidConfig(page, editedConfig);
   await panel.getByRole("button", { name: "Close appearance panel", exact: true }).click();
   const closed = await workspaceFromLink(page);
-  expect(closed.diagramTheme).toBe("dark");
+  expect(closed.diagramTheme).toBe("auto");
   expect(closed.diagramFont).toBe("arial");
   expect(closed.themePresetId).toBe("brutalist");
   expect(closed.code).toBe(editedSource);
@@ -196,8 +196,9 @@ test("source look overrides are explained with a source editor entry", async ({ 
   const original = await start(page, '{"theme":"forest","fontFamily":"Georgia","flowchart":{"look":"neo"}}');
   const panel = await openPanel(page);
   await panel.getByRole("button", { name: /^Brutalist/ }).click();
+  await expect(panel.getByTestId("theme-appearance-overrides")).toBeVisible();
   await openAdvanced(panel);
-  const overrides = panel.getByTestId("theme-appearance-overrides");
+  const overrides = panel.getByTestId("theme-appearance-override-details");
   await expect(overrides).toContainText("forest");
   await expect(overrides).toContainText("Georgia");
   await expect(overrides).toContainText("handDrawn");
@@ -219,8 +220,9 @@ for (const declaration of [
     await start(page, declaration.config, null, declaration.source);
     const panel = await openPanel(page);
     await panel.getByRole("button", { name: /^Brutalist/ }).click();
+    await expect(panel.getByTestId("theme-appearance-overrides")).toBeVisible();
     await openAdvanced(panel);
-    const overrides = panel.getByTestId("theme-appearance-overrides");
+    const overrides = panel.getByTestId("theme-appearance-override-details");
     await expect(overrides.locator("dt").filter({ hasText: "Look" })).toHaveText(`Look · ${declaration.origin} declaration`);
     await expect(overrides).toContainText(declaration.look);
     const saved = await workspaceFromLink(page);
@@ -332,10 +334,10 @@ test("an immediate theme choice hides previous evidence and gates artifact actio
   const ghibli = panel.getByRole("button", { name: /^Ghibli/ });
   await ghibli.dispatchEvent("click");
   await expect(ghibli).toHaveAttribute("aria-pressed", "true");
-  await expect(ghibli).toHaveAttribute("data-theme-treatment", "unreviewed");
+  await expect(ghibli).toHaveAttribute("data-theme-treatment", "waiting");
   await expect(panel.getByTestId("theme-render-evidence")).toHaveAttribute("data-theme-evidence-state", "waiting");
-  await expect(panel.getByTestId("theme-current-family")).toHaveText("Current diagram: Flowchart");
-  await expect(panel.getByRole("button", { name: /^Brutalist/ })).toHaveAttribute("data-theme-treatment", "dedicated");
+  await expect(panel.getByTestId("theme-current-family")).toContainText("waiting for this render's detection");
+  await expect(panel.getByRole("button", { name: /^Brutalist/ })).toHaveAttribute("data-theme-treatment", "waiting");
   await expect(panel.getByTestId("theme-execution-metadata")).toHaveCount(0);
   await expect(merman.getByRole("button", { name: "Copy SVG", exact: true })).toBeDisabled();
   await expect(merman.getByRole("button", { name: "Export image", exact: true })).toBeDisabled();
@@ -344,6 +346,7 @@ test("an immediate theme choice hides previous evidence and gates artifact actio
   await page.clock.resume();
   await expect(panel.getByTestId("theme-current-family")).toHaveText("Current diagram: Flowchart");
   await expect(ghibli).toHaveAttribute("data-theme-treatment", "unreviewed");
+  await expect(panel.getByRole("button", { name: /^Brutalist/ })).toHaveAttribute("data-theme-treatment", "dedicated");
   await expect(panel.getByTestId("theme-render-evidence")).not.toHaveAttribute("data-theme-evidence-state", "waiting");
   await expect(panel.getByTestId("theme-execution-metadata")).toBeVisible();
   const raw = JSON.parse((await panel.getByTestId("theme-execution-metadata").textContent())!);

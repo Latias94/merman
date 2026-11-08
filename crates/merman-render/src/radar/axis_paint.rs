@@ -3,7 +3,6 @@ use std::sync::OnceLock;
 
 use merman_model::presentation::PresentationConfig;
 
-use crate::config::value_at;
 use crate::diagram_theme::{
     FamilyThemeDisposition, FamilyThemeMechanism, FamilyThemeMechanismKey,
     FamilyThemeSelectorShape, ResolvedDiagramTheme, ResolvedStyleProperty, ThemeTarget,
@@ -83,16 +82,8 @@ impl RadarAxisPaintPlan {
         let mut plan = Self::baseline_with_binding(binding, axis_count);
         let Some(theme) = theme else { return Ok(plan) };
         plan.evidence = FamilyThemeOutcomes::default();
-        let owns_line = config.config_paint_overrides_typed_default("themeVariables.lineColor");
-        let axis_path = if value_at(config.as_value(), &["radar", "axisColor"])
-            .and_then(serde_json::Value::as_str)
-            .is_some()
-        {
-            "radar.axisColor"
-        } else {
-            "themeVariables.radar.axisColor"
-        };
-        let owns_axis = config.config_paint_overrides_typed_default(axis_path);
+        let owns_line = super::RadarCssBinding::config_owns_color(config, "lineColor");
+        let owns_axis = super::RadarCssBinding::config_owns_axis_color(config);
         // Base lineColor styles marker classes that Radar never instantiates. Retain the
         // historical CSS projection, but only axisColor has actual paint terminals here.
         let source_owns_paint = owns_axis;

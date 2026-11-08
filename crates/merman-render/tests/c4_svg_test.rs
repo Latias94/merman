@@ -1676,6 +1676,67 @@ fn c4_text_ordinals_preserve_provable_global_winners() {
 }
 
 #[test]
+fn c4_ignored_base_size_leaves_typed_title_size_available() {
+    let theme = DiagramThemeCompiler::new()
+        .compile(DiagramThemeSpec::new().with_typography(
+            TypographySpec::default().with_family_style(
+                merman_render::DiagramFamilyId::C4,
+                ThemeTextStyle::default().with_font_size_px(29.0).unwrap(),
+            ),
+        ))
+        .unwrap();
+    let body = "C4Context\ntitle Size audit\nSystem(api, \"API\")\n";
+    for value in [
+        serde_json::json!(false),
+        serde_json::json!("bad"),
+        serde_json::Value::Null,
+        serde_json::json!({}),
+        serde_json::json!([]),
+        serde_json::json!(23),
+        serde_json::json!("23px"),
+    ] {
+        let expected = if value.is_number() || value.as_str() == Some("23px") {
+            23
+        } else {
+            29
+        };
+        let config = serde_json::json!({"themeVariables":{"fontSize":value}});
+        for from_source in [false, true] {
+            let (source, site) = if from_source {
+                (
+                    format!("---\nconfig: {config}\n---\n{body}"),
+                    serde_json::json!({}),
+                )
+            } else {
+                (body.to_owned(), config.clone())
+            };
+            let rendered = try_render_c4_rendered_with_engine(
+                &source,
+                &theme,
+                MermaidEngine::new().with_site_config(
+                    merman_core::presentation::SourcePresentationConfig::from_value(site),
+                ),
+            )
+            .unwrap();
+            assert!(
+                rendered.svg().contains(&format!("font-size:{expected}px;")),
+                "source={from_source}: {value}"
+            );
+            assert!(rendered.svg().contains(">Size audit</text>"));
+            assert!(
+                rendered.svg().contains(".c4-shape.c4-system .label{font-family:\"Open Sans\",sans-serif;font-size:14px;"),
+                "element text keeps its own size"
+            );
+            let evidence =
+                merman_render::__private::family_evidence(rendered.into_completion().report());
+            assert_eq!(evidence.applied_count(), usize::from(expected == 29));
+            assert_eq!(evidence.not_applicable_count(), usize::from(expected != 29));
+            assert_eq!(evidence.theme_residual_count(), 0);
+        }
+    }
+}
+
+#[test]
 fn c4_typed_base_typography_reaches_root_css_and_title_evidence() {
     let font_stack = FontStack::single("Inter").expect("valid C4 font stack");
     let theme = c4_typography_theme(font_stack, 18.0);

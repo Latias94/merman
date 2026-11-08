@@ -44,6 +44,7 @@ if __package__:
         verified_archive_contents,
     )
     from .verify_cli_installation import (
+        CLI_CONTRACT_VERSION,
         CliInstallationError,
         _require_exact_json as _require_installation_json,
         _strict_json_object as _strict_installation_json,
@@ -85,6 +86,7 @@ else:
         verified_archive_contents,
     )
     from verify_cli_installation import (
+        CLI_CONTRACT_VERSION,
         CliInstallationError,
         _require_exact_json as _require_installation_json,
         _strict_json_object as _strict_installation_json,
@@ -111,7 +113,6 @@ __all__ = (
 
 PACKAGE_NAME = "merman-cli"
 CAPABILITIES_SCHEMA_VERSION = 2
-CLI_CONTRACT_VERSION = 6
 SVG_SMOKE_SOURCE = b"flowchart LR\nA --> B\n"
 RUSTDOC_SMOKE_SOURCE = (
     b"# Release archive Rustdoc smoke test\n\n"
@@ -512,7 +513,7 @@ def _cli_release_commands(runtime_ids: list[str]) -> list[str]:
         ("markdown", ("batch",)),
         ("rustdoc", ("rustdoc",)),
         ("shell-completions", ("completion",)),
-        ("svg", ("layout", "mmdc")),
+        ("svg", ("layout", "mmdc", "theme")),
     ):
         if capability in enabled:
             commands.update(gated_commands)

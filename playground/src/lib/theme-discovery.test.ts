@@ -38,6 +38,8 @@ const batch: CompletedRenderBatch = {
     injectedConfigSpan: null,
     bindingOptions: { version: 3 }, bindingOptionsJson: null,
     theme: workspace.diagramTheme, configJson: workspace.mermaidConfig,
+    mermaidTheme: workspace.diagramTheme, themeAppearancePreference: "default",
+    resolvedThemeAppearance: null, supportedThemeAppearances: [], defaultThemeAppearance: null,
     themePresetId: workspace.themePresetId, themeRecipeJson: workspace.themeRecipeJson,
     unavailableThemePresetId: null,
     textMeasurementMode: workspace.textMeasurementMode, diagramFont: workspace.diagramFont, svgPipeline: workspace.svgPipeline,

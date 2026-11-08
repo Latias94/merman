@@ -21,7 +21,6 @@ import {
   runtimeCatalog,
   supportedDiagrams,
   supportedThemes,
-  svgPlanJson,
   themeCatalog,
   exportThemePreset,
   UNAVAILABLE_DIAGRAM_DETECTION,
@@ -31,7 +30,6 @@ import {
   type SvgRenderResult,
 } from "@mermanjs/web";
 
-import { themeRecipeOptionsJson } from "./merman-operation-input.ts";
 import { projectError } from "./error-projection.ts";
 import { projectNavigableInlineSvg } from "./render-artifact.ts";
 import type {
@@ -77,10 +75,9 @@ function createFacade(measureText: HostTextMeasurer): MermanDomainFacade {
     describeThemeSupport,
     materializeTheme,
     validateThemeRecipe(recipeJson) {
-      svgPlanJson("flowchart LR\nA --> B", themeRecipeOptionsJson(
-        { version: BINDING_OPTIONS_SCHEMA_VERSION }, recipeJson,
-      ));
-      return JSON.stringify(JSON.parse(recipeJson));
+      JSON.parse(recipeJson);
+      materializeTheme(`{"schema_version":1,"action":"inspect","recipe":${recipeJson}}`);
+      return recipeJson;
     },
     diagramFamilyCapabilities,
 

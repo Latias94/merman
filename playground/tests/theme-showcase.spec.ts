@@ -67,7 +67,7 @@ test("invalid design links retain lazy loading and unknown designs open the coll
   await page.goto(`./?theme-design=unknown-design${encodeShareHash(workspace)}`, { waitUntil: "domcontentloaded" });
   const gallery = page.getByTestId("theme-showcase");
   await expect(gallery.getByTestId("theme-showcase-detail")).toHaveCount(0);
-  await expect(gallery.locator("[data-theme-design-card]")).toHaveCount(designIds.length);
+  await expect(gallery.locator("[data-theme-design-card]")).toHaveCount(designIds.length + 1);
   errors.assertNone();
 });
 
@@ -82,7 +82,7 @@ test("theme designs load on demand and browsing five families preserves the work
   const launcher = page.locator("[data-theme-showcase-launcher]:visible");
   await launcher.click();
   const gallery = page.getByTestId("theme-showcase");
-  await expect(gallery.locator("[data-theme-design-card]")).toHaveCount(designIds.length);
+  await expect(gallery.locator("[data-theme-design-card]")).toHaveCount(designIds.length + 1);
   await expect(gallery.locator("[data-theme-design-card]").first()).toHaveAttribute("data-theme-design-card", "riso");
   await expect(gallery.locator("[data-theme-design-card]").last()).toHaveAttribute("data-theme-design-card", "blueprint");
   expect(requests.some((url) => url.endsWith(output))).toBe(true);
@@ -108,7 +108,7 @@ test("design search and canvas filters reveal independent recipes across the col
   await page.getByRole("button", { name: "Theme designs", exact: true }).click();
   const gallery = page.getByTestId("theme-showcase");
   await gallery.getByRole("button", { name: "Dark", exact: true }).click();
-  await expect(gallery.locator("[data-theme-design-card]")).toHaveCount(6);
+  await expect(gallery.locator("[data-theme-design-card]")).toHaveCount(7);
   await expect(gallery.locator('[data-theme-design-card="phosphor"]')).toBeVisible();
   await gallery.getByRole("button", { name: "All designs", exact: true }).click();
   const search = gallery.getByRole("searchbox", { name: "Search designs", exact: true });
@@ -119,7 +119,7 @@ test("design search and canvas filters reveal independent recipes across the col
   await expect(gallery).toContainText("No themes match");
   await search.press("Escape");
   await expect(gallery).toBeVisible();
-  await expect(gallery.locator("[data-theme-design-card]")).toHaveCount(designIds.length);
+  await expect(gallery.locator("[data-theme-design-card]")).toHaveCount(designIds.length + 1);
   errors.assertNone();
 });
 
@@ -210,7 +210,7 @@ test("Rust offers a highlighted single-file example and explains the include_str
   await expectHighlighted(code, "rust");
   await adoption.getByRole("button", { name: "Copy", exact: true }).click();
   const inline = await page.evaluate(() => navigator.clipboard.readText());
-  expect(inline).toContain("compile_recipe");
+  expect(inline).toContain("compile_document");
   expect(inline).toContain("fn main()");
   expect(inline).not.toContain("include_str!");
   expect(inline).toContain('"schema_version": 1');
@@ -252,7 +252,7 @@ async function expectHighlighted(code: import("@playwright/test").Locator, langu
   }, language)).toBe(true);
 }
 
-test("applying a design changes only the theme and remains undoable", async ({ page }) => {
+test("applying a design clears the host base while preserving authored inputs and remains undoable", async ({ page }) => {
   const errors = monitorBrowserErrors(page);
   await page.context().grantPermissions(["clipboard-read", "clipboard-write"]);
   await start(page);
@@ -265,12 +265,14 @@ test("applying a design changes only the theme and remains undoable", async ({ p
   expect(saved.themeRecipeJson).toBe(await readFile(new URL("../src/themes/recipes/riso.theme.json", import.meta.url), "utf8"));
   expect(saved.themeRecipeLabel).toEqual({ name: "Riso", source: "exploration" });
   expect(saved.themePresetId).toBeNull();
-  for (const key of ["code", "mermaidConfig", "diagramTheme", "diagramFont", "svgPipeline", "textMeasurementMode"] as const) expect(saved[key]).toBe(workspace[key]);
+  expect(saved.diagramTheme).toBe("auto");
+  for (const key of ["code", "mermaidConfig", "diagramFont", "svgPipeline", "textMeasurementMode"] as const) expect(saved[key]).toBe(workspace[key]);
   await page.locator("[data-theme-launcher]:visible").click();
   const panel = page.locator("#theme-panel");
   await expect(panel.getByTestId("theme-current-name")).toHaveText("Riso");
   await panel.getByRole("button", { name: "Undo appearance change", exact: true }).click();
   await expect(panel.getByTestId("theme-current-name")).toHaveText("Brutalist");
+  expect((await shareWorkspace(page)).diagramTheme).toBe(workspace.diagramTheme);
   errors.assertNone();
 });
 
@@ -329,6 +331,6 @@ test("a failed runtime keeps JSON usable and offers recovery for integration cod
   await expect(adoption.getByRole("alert")).toContainText("You can still copy the theme JSON");
   failWasm = false;
   await adoption.getByRole("button", { name: "Retry", exact: true }).click();
-  await expect(adoption.getByTestId("theme-showcase-code")).toContainText("compile_recipe");
+  await expect(adoption.getByTestId("theme-showcase-code")).toContainText("compile_document");
   await expect(adoption.getByRole("alert")).toHaveCount(0);
 });

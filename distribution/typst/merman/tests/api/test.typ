@@ -293,9 +293,28 @@
 #assert.eq(theme-support.schema_version, 1)
 #assert.eq(theme-support.query.family, "sequence")
 
-#let preset-export = export-theme-preset("editor-light")
+#let preset-export = export-theme-preset("editor")
 #assert.eq(preset-export.kind, "design")
 #assert(type(preset-export.design) == dictionary)
+#assert.eq(preset-export.design.appearances.keys().sorted(), ("dark", "light"))
+#let paired-inspection = materialize-theme((
+  schema_version: 1,
+  action: "inspect",
+  recipe: preset-export,
+))
+#assert.eq(paired-inspection.schema_version, 1)
+#assert.eq(paired-inspection.supported_appearances, ("light", "dark"))
+#assert.eq(paired-inspection.default_appearance, "light")
+#let selected-light = materialize-theme((
+  schema_version: 1, action: "materialize", recipe: preset-export, appearance: "light",
+))
+#let selected-dark = materialize-theme((
+  schema_version: 1, action: "materialize", recipe: preset-export, appearance: "dark",
+))
+#assert.eq(selected-light.effective_appearance, "light")
+#assert.eq(selected-dark.effective_appearance, "dark")
+#assert(selected-light.spec != selected-dark.spec)
+#assert.eq(selected-light.spec, materialize-theme(preset-export.design).spec)
 
 #let light-definition = (
   tokens: (
@@ -446,11 +465,19 @@ API fixture passed.
 #assert(catalog.structured_spec_available)
 #assert.eq(catalog.supported_output_ids, ("svg",))
 #assert.eq(catalog.presets.map(preset => preset.id), (
-  "editor-light", "editor-dark", "one-dark", "gruvbox-light", "gruvbox-dark",
-  "ayu-light", "ayu-dark", "brutalist", "spotless", "cyberpunk", "ghibli",
+  "editor", "one-dark", "gruvbox", "ayu", "brutalist", "spotless", "cyberpunk", "ghibli",
 ))
-#assert.eq(catalog.presets.at(0).id, "editor-light")
-#assert.eq(catalog.presets.at(0).qualified_cells, ())
+#assert.eq(catalog.presets.at(0).id, "editor")
+#assert.eq(catalog.presets.at(0).supported_appearances, ("light", "dark"))
+#assert.eq(catalog.presets.at(0).appearances.map(mode => mode.concrete_preset_id), (
+  "editor-light", "editor-dark",
+))
+#for preset in catalog.presets {
+  for mode in preset.appearances {
+    assert.eq(mode.qualified_cells, ())
+    assert.eq(mode.available, preset.available)
+  }
+}
 #assert.eq(merman-capabilities().metadata_ids, ("theme-catalog",))
 #let catalog-preset = export-theme-preset(catalog.presets.at(0).id)
 #assert.eq(catalog-preset.kind, catalog.presets.at(0).export_kind)

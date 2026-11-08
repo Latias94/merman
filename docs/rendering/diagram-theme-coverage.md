@@ -59,10 +59,12 @@ and Neo. Agentflow shares those bounds; Usecase admits bounded Classic body shad
 Classic. A coarse conditional support query does not promise the effect under the current look.
 Other families can have Mermaid look decorations without consuming compiled theme effects.
 
-The 11 built-in presets share paint and typography defaults, with selected family-specific rules.
-Their catalog design scope is narrower than runtime theme availability. The fifteen Playground
-explorations (Riso, Pop Art, Metro, Carbon Copy, Signal, Field Notes, Lacquer, Paper Cut, Aurora, Phosphor, Letterpress, Grove,
-Atlas, Nightfall and Blueprint) have dedicated examples and scoped rules for
+The current source catalog groups 8 built-in design identities with 11 concrete appearances.
+They share paint and typography defaults, with selected family-specific rules. Their catalog
+design scope is narrower than runtime theme availability. The current Playground library contains
+16 designs: Reading adds a coordinated Light/Dark example to Riso, Pop Art, Metro, Carbon Copy,
+Signal, Field Notes, Lacquer, Paper Cut, Aurora, Phosphor, Letterpress, Grove, Atlas, Nightfall,
+and Blueprint. The library uses examples and scoped rules for
 Flowchart, Sequence, Class, XY Chart and Pie. Other families can receive shared text, font, palette
 or canvas values; those changes do not establish a dedicated design for that family.
 
@@ -72,8 +74,10 @@ theme accounting and an admitted output target. These are separate observations.
 
 ## Discover support in the artifact being used
 
-Read the runtime catalog before selecting a family, preset or output. `available` means the artifact
-can compile a preset. A catalog family treatment of `dedicated` or `base_only` describes design
+Read the runtime catalog before selecting a family, preset or output. A grouped preset's `available`
+means the artifact admits the complete design, including every declared appearance. Each child
+reports that same gate and its exact `concrete_preset_id`; a passing branch cannot make an invalid
+pair available. A catalog family treatment of `dedicated` or `base_only` describes design
 intent; missing or unknown treatments remain unreviewed. Preview colors and application notes are
 discovery aids. They do not certify readability, mechanism application or output portability.
 
@@ -124,6 +128,12 @@ and `output_mutated`. Theme `verified` means required root/family work was accou
 execution; it does not certify an arbitrary scene or output. `not_applicable` means no theme evidence
 was required, `residual` retains unresolved work or mutation, and `incomplete` means required
 accounting did not finish. Output mutation prevents an otherwise verified result from being satisfied.
+
+`font_source` describes the output target's font source, not the text-measurement provider.
+SVG can report `none` after host or native measurement because its text still resolves fonts
+in the receiving viewer. Theme verification does not prove that named fonts are installed,
+every glyph is covered, or every measurement avoided fallback. See
+[host measurement evidence](../bindings/HOST_TEXT_MEASUREMENT.md#text-measurement-protocol-summary).
 
 Target `portable` is the target adapter's admission for this operation. `host_dependent`
 (**HostDependent**) retains conditions such as host text measurement or system fonts; it is not

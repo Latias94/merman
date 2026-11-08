@@ -85,6 +85,11 @@ impl C4TypographyThemePlan {
         // The theme-variable path is the typed base-size owner. A top-level `fontSize` remains a
         // Mermaid-compatible fallback and must not shadow an active typed value.
         let config_owns_font_size = typed_font_size_requested
+            && crate::config::config_f64_css_px(
+                effective_config.as_value(),
+                &["themeVariables", "fontSize"],
+            )
+            .is_some()
             && effective_config.config_path_overrides_typed_default("themeVariables.fontSize");
         let typed_font_size_active = typed_font_size_requested && !config_owns_font_size;
         let font_size_css = match (theme, typed_font_size_active) {

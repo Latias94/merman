@@ -12,6 +12,10 @@
   const sourceListElement = document.querySelector("[data-preview-source-list]");
   const displayModeElement = document.querySelector('[data-action="display-mode"]');
   const themeElement = document.querySelector('[data-action="diagram-theme"]');
+  const appearanceElement = document.querySelector('[data-action="appearance"]');
+  const appearanceLabel = document.querySelector("[data-preview-appearance]");
+  const themeSummaryElement = document.querySelector("[data-preview-theme-summary]");
+  const viewerBackgroundElement = document.querySelector('[data-action="viewer-background"]');
   const backgroundElement = document.querySelector('[data-action="background"]');
   const lockElement = document.querySelector("[data-preview-lock]");
   const outputControlsElement = document.querySelector("[data-preview-output-controls]");
@@ -140,6 +144,7 @@
       key.diagramTheme,
       key.displayMode,
       key.background,
+      key.themeSelection ?? "",
     ].join("\u0000");
   }
 
@@ -442,14 +447,36 @@
     state.locked = snapshot.locked === true;
     if (frame) {
       frame.dataset.displayMode = state.displayMode;
-      frame.dataset.background = state.background;
       frame.dataset.locked = state.locked ? "true" : "false";
     }
     if (displayModeElement instanceof HTMLSelectElement) {
       displayModeElement.value = state.displayMode;
     }
     if (themeElement instanceof HTMLSelectElement && snapshot.diagramTheme) {
+      if (Array.isArray(snapshot.themeChoices)) {
+        themeElement.replaceChildren(...snapshot.themeChoices.map((choice) => {
+          const option = document.createElement("option");
+          option.value = choice.id;
+          option.textContent = choice.label;
+          option.disabled = choice.available === false;
+          return option;
+        }));
+      }
       themeElement.value = snapshot.diagramTheme;
+    }
+    const appearances = snapshot.supportedAppearances || [];
+    if (appearanceLabel) {
+      appearanceLabel.hidden = appearances.length < 2;
+    }
+    if (appearanceElement instanceof HTMLSelectElement) {
+      appearanceElement.value = snapshot.appearancePreference || "follow-editor";
+    }
+    const appearanceSummary = snapshot.effectiveAppearance
+      ? `${snapshot.appearancePreference === "follow-editor" && appearances.length > 1 ? "Following editor · " : ""}${snapshot.effectiveAppearance}${appearances.length === 1 ? " only" : ""}`
+      : "Source styling remains authoritative";
+    setText(themeSummaryElement, `${snapshot.themeLabel || "Source / default"} · ${appearanceSummary}${snapshot.themeNotice ? ` — ${snapshot.themeNotice}` : ""}`);
+    if (viewerBackgroundElement instanceof HTMLSelectElement) {
+      viewerBackgroundElement.value = snapshot.viewerBackground || "auto";
     }
     if (backgroundElement instanceof HTMLSelectElement) {
       backgroundElement.value = state.background;
@@ -458,7 +485,22 @@
       outputControlsElement.hidden = state.displayMode !== "svg";
     }
     updateLockControl(true);
+    if (state.sourceKeyId === sourceKeyId(snapshot)) {
+      patchViewerBacking(snapshot);
+    }
     persistState();
+  }
+
+  function patchViewerBacking(snapshot) {
+    if (!frame) {
+      return;
+    }
+    const backing = snapshot?.viewerBackground || "auto";
+    frame.dataset.background = backing === "auto"
+      ? snapshot?.effectiveAppearance === "dark" ? "dark"
+        : snapshot?.effectiveAppearance === "light" ? "paper"
+          : snapshot?.background === "dark" ? "dark" : "paper"
+      : backing;
   }
 
   function updateLockControl(enabled) {
@@ -639,6 +681,7 @@
     state.sourceKey = snapshot?.sourceKey;
     state.sourceLocationKey = sourceLocationKey(snapshot);
     state.sourceIdentityKey = nextSourceIdentityKey;
+    patchViewerBacking(snapshot);
     setRenderState("ready");
     updateCanvas();
     if (state.autoFit && snapshot?.displayMode === "svg") {
@@ -750,6 +793,9 @@
       case "show-source":
         post("showSource", {});
         break;
+      case "import-theme":
+        post("importTheme");
+        break;
       case "export-svg":
         exportRendered("svg");
         break;
@@ -788,11 +834,14 @@
       case "diagram-theme":
         post("setDiagramTheme", { theme: target.value });
         break;
+      case "appearance":
+        post("setAppearance", { appearance: target.value });
+        break;
+      case "viewer-background":
+        post("setViewerBackground", { background: target.value });
+        break;
       case "background":
         state.background = target.value;
-        if (frame) {
-          frame.dataset.background = target.value;
-        }
         post("setBackground", { background: target.value });
         persistState();
         break;

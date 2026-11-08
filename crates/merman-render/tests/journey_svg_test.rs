@@ -61,6 +61,59 @@ fn journey_typography_theme(font_size: f32) -> merman_render::diagram_theme::Dia
 }
 
 #[test]
+fn journey_ignored_base_sizes_do_not_own_typed_typography() {
+    let theme = journey_typography_theme(27.0);
+    let diagram =
+        "journey\n  title Release audit\n  section Delivery\n    Ship release: 5: Maintainer\n";
+    for source_owned in [false, true] {
+        for (size, expected, applied) in [
+            (serde_json::json!("  "), "27px", 2),
+            (serde_json::json!("bogus"), "27px", 2),
+            (serde_json::json!([32]), "27px", 2),
+            (serde_json::json!("32px"), "32px", 1),
+            (serde_json::json!(32), "32px", 1),
+        ] {
+            let config = serde_json::json!({"themeVariables": {"fontSize": size}});
+            let (source, engine) = if source_owned {
+                (
+                    format!("---\nconfig: {config}\n---\n{diagram}"),
+                    MermaidEngine::new(),
+                )
+            } else {
+                (
+                    diagram.to_owned(),
+                    MermaidEngine::new().with_site_config(
+                        merman_core::presentation::SourcePresentationConfig::from_value(config),
+                    ),
+                )
+            };
+            let parsed = common::install_parse_compatibility(&theme, engine)
+                .parse_diagram_for_render_model_sync(&source, ParseOptions::strict())
+                .unwrap()
+                .unwrap()
+                .into_presentation();
+            let session = RenderEnvironment::deterministic()
+                .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
+                .begin_session_with_theme(&theme)
+                .unwrap();
+            let rendered =
+                family::prepare(&parsed, &LayoutOptions::headless_svg_defaults(), session)
+                    .unwrap()
+                    .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+                    .unwrap();
+            assert!(rendered.svg().contains(&format!("font-size:{expected}")));
+            assert!(rendered.svg().contains("font-family:\"Journey Typed\""));
+            let evidence =
+                merman_render::__private::family_evidence(rendered.into_completion().report());
+            assert_eq!(evidence.required_count(), 2);
+            assert_eq!(evidence.applied_count(), applied);
+            assert_eq!(evidence.not_applicable_count(), 2 - applied);
+            assert_eq!(evidence.theme_residual_count(), 0);
+        }
+    }
+}
+
+#[test]
 fn journey_text_fill_has_portable_terminal_evidence() {
     for variant in [None, Some(ThemeVariant::Default)] {
         for paint in [
@@ -815,18 +868,141 @@ fn journey_historical_title_color_has_no_visible_terminal_consumer() {
 }
 
 #[test]
+fn journey_title_fill_respects_inherited_source_text_color() {
+    let diagram = "journey\n  title Release\n  section Delivery\n  Ship: 5: Actor\n";
+    for (owner, prefix, site, inherits_source) in [
+        ("default", "", serde_json::json!({}), false),
+        (
+            "site-palette",
+            "",
+            serde_json::json!({"theme": "dark"}),
+            false,
+        ),
+        (
+            "source-palette",
+            "%%{init: {\"theme\": \"dark\"}}%%\n",
+            serde_json::json!({}),
+            true,
+        ),
+        (
+            "site-variable",
+            "",
+            serde_json::json!({"themeVariables": {"textColor": "#125634"}}),
+            true,
+        ),
+        (
+            "source-variable",
+            "%%{init: {\"themeVariables\": {\"textColor\": \"#125634\"}}}%%\n",
+            serde_json::json!({}),
+            true,
+        ),
+    ] {
+        let source = format!("{prefix}{diagram}");
+        for title_color in [
+            None,
+            Some(serde_json::Value::Null),
+            Some(serde_json::json!("")),
+            Some(serde_json::json!("#223344")),
+        ] {
+            let explicit_title = title_color
+                .as_ref()
+                .and_then(serde_json::Value::as_str)
+                .filter(|color| !color.is_empty());
+            let mut config = site.clone();
+            if let Some(color) = &title_color {
+                config["journey"] = serde_json::json!({"titleColor": color});
+            }
+            let baseline = render_journey_rules_with_requirement(
+                &source,
+                ThemeRuleSet::default(),
+                config.clone(),
+                ThemePortabilityRequirement::RequirePortable,
+            )
+            .unwrap();
+            for paint in [
+                CanvasPaint::solid("#7a3c9a").unwrap(),
+                CanvasPaint::Transparent,
+            ] {
+                let styles = ThemeRuleSet::default().with_rule(ThemeRule::new(
+                    ThemeTarget::Title,
+                    ThemeStylePatch::default().with_fill(paint.clone()),
+                ));
+                let rendered = render_journey_rules_with_requirement(
+                    &source,
+                    styles,
+                    config.clone(),
+                    ThemePortabilityRequirement::RequirePortable,
+                )
+                .unwrap();
+                let owned = inherits_source || explicit_title.is_some();
+                assert_eq!(
+                    rendered.svg() == baseline.svg(),
+                    owned,
+                    "{owner}: {title_color:?}"
+                );
+                let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+                let title = document
+                    .descendants()
+                    .find(|node| node.has_tag_name("text") && node.text() == Some("Release"))
+                    .unwrap();
+                assert_eq!(
+                    title.attribute("fill"),
+                    Some(if owned {
+                        explicit_title.unwrap_or("")
+                    } else if matches!(paint, CanvasPaint::Transparent) {
+                        "transparent"
+                    } else {
+                        "#7a3c9a"
+                    }),
+                    "{owner}: {title_color:?}"
+                );
+                let completion = rendered.into_completion();
+                let evidence = merman_render::__private::family_evidence(completion.report());
+                assert_eq!(evidence.required_count(), 1, "{owner}: {title_color:?}");
+                assert_eq!(evidence.accounted_count(), 1, "{owner}: {title_color:?}");
+                assert_eq!(
+                    evidence.applied_count(),
+                    usize::from(!owned),
+                    "{owner}: {title_color:?}"
+                );
+                assert_eq!(
+                    evidence.not_applicable_count(),
+                    usize::from(owned),
+                    "{owner}: {title_color:?}"
+                );
+                assert_eq!(
+                    evidence.theme_residual_count(),
+                    0,
+                    "{owner}: {title_color:?}"
+                );
+            }
+        }
+    }
+}
+
+#[test]
 fn journey_title_fill_preserves_unsupported_stroke_under_source_and_site_ownership() {
-    for channel in ["none", "site", "source"] {
+    for channel in [
+        "none",
+        "site",
+        "source",
+        "inherited-site",
+        "inherited-source",
+    ] {
         let source = format!(
             "{}journey\n  title Release\n  section Delivery\n  Ship: 5: Actor\n",
             if channel == "source" {
                 "---\nconfig:\n  journey:\n    titleColor: '#fedcba'\n---\n"
+            } else if channel == "inherited-source" {
+                "---\nconfig:\n  themeVariables:\n    textColor: '#fedcba'\n---\n"
             } else {
                 ""
             }
         );
         let config = if channel == "site" {
             serde_json::json!({"journey": {"titleColor": "#fedcba"}})
+        } else if channel == "inherited-site" {
+            serde_json::json!({"themeVariables": {"textColor": "#fedcba"}})
         } else {
             serde_json::json!({})
         };
@@ -852,6 +1028,8 @@ fn journey_title_fill_preserves_unsupported_stroke_under_source_and_site_ownersh
             title.attribute("fill"),
             Some(if channel == "none" {
                 "#987654"
+            } else if channel.starts_with("inherited-") {
+                ""
             } else {
                 "#fedcba"
             })
@@ -1114,7 +1292,7 @@ fn journey_text_paint_preserves_labels_lines_and_title_local_ownership() {
                 (
                     serde_json::json!({"themeVariables": {"textColor": "#abcdef"}}),
                     "#abcdef",
-                    "#987654",
+                    "",
                 ),
                 (
                     serde_json::json!({"journey": {"titleColor": "#fedcba"}}),

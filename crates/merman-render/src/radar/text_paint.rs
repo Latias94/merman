@@ -97,14 +97,14 @@ impl RadarTextPaintPlan {
         let mut plan = Self::baseline_with_binding(binding, layout, model, title);
         let Some(theme) = theme else { return Ok(plan) };
         plan.evidence = FamilyThemeOutcomes::default();
-        let owns_text = config.config_paint_overrides_typed_default("themeVariables.textColor");
+        let owns_text = super::RadarCssBinding::config_owns_color(config, "textColor");
         let title_style = theme.style_with_work_meter(
             ThemeTarget::Title,
             ThemeVariant::Default,
             Some(1),
             work_meter,
         )?;
-        let owns_title = config.config_paint_overrides_typed_default("themeVariables.titleColor")
+        let owns_title = super::RadarCssBinding::config_owns_color(config, "titleColor")
             || title_style.fill_resolution().winner().is_some();
         let static_style = theme.style_with_work_meter(
             ThemeTarget::Text,

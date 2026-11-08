@@ -14,6 +14,7 @@ files rather than caching the library's size or copying every design into this s
 | [Paper Cut](../../../../playground/src/themes/recipes/paper-cut.theme.json) · [Flowchart SVG](../../../../playground/src/themes/previews/paper-cut-flowchart.svg) | Independent hard backing sheets plus a softer contact shadow express paper thickness. | Actors and notes use different stacks; XY bars use reduced offsets; Class and Pie retain paint/type treatments without requesting the same body effect. |
 | [Aurora](../../../../playground/src/themes/recipes/aurora.theme.json) · [XY SVG](../../../../playground/src/themes/previews/aurora-xychart.svg) | Gradient canvas, radial light ribbons, restrained panel halos, and sharp foreground lettering. | Keep unsupported node/sector gradients in the canvas; Class uses solid surfaces; narrow chart type gives legends room. Halos and transparency do not implement backdrop blur. |
 | [Signal](../../../../playground/src/themes/recipes/signal.theme.json) · [Class SVG](../../../../playground/src/themes/previews/signal-class.svg) | Mounted sign plates, straight yellow lower flanges, condensed lettering, and perimeter warning tape. | Dense Class signatures use a measured monospace role; XY accents stay functional; [review.md](review.md#worked-failures-signal) explains the rejected bleed request and height-scaled rails. |
+| [Reading](../../../../playground/src/themes/recipes/reading.theme.json) | One shared role template with two authored appearances and independent annotation/category palettes. | Inspect and render each appearance through the same five scenes; changing a shared font affects its references, while appearance-specific ink and surface values remain local. Gallery previews use the matching runtime. |
 
 For a minimal complete example, use [starter.theme.json](../assets/starter.theme.json) with the
 bundled [Flowchart source](../assets/flowchart.mmd). It intentionally has only three color tokens,
@@ -87,8 +88,8 @@ external skills.
 
 ## Color-system sources and mechanisms
 
-Borrow these relationships through existing tokens, rules, and palettes. They do not introduce
-dependencies, pairing syntax, or automatic contrast guarantees.
+Borrow these relationships through existing tokens, rules, palettes, and appearance layers.
+The external systems do not add dependencies, a second wire syntax, or automatic contrast guarantees.
 
 | Primary source | Mechanism to borrow | Boundary for Merman |
 | --- | --- | --- |

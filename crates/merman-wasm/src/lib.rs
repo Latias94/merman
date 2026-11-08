@@ -903,7 +903,7 @@ mod tests {
     #[test]
     fn transport_api_version_is_independent_from_host_measurement_protocol() {
         assert_eq!(transport_api_version(), WASM_TRANSPORT_API_VERSION);
-        assert_eq!(WASM_TRANSPORT_API_VERSION, 9);
+        assert_eq!(WASM_TRANSPORT_API_VERSION, 10);
     }
 
     #[cfg(feature = "ascii")]

@@ -1,8 +1,9 @@
 import { expect, test } from "@playwright/test";
+import type { ThemePresetCatalogEntry } from "@mermanjs/web";
 import { decodeShareHash, encodeShareHash } from "../src/lib/share";
 import { monitorBrowserErrors, replaceEditorSource, waitForPreviewSvg } from "./helpers/playground";
 
-test("theme selection survives family changes without authoring controls", async ({ page }) => {
+test("theme selection survives family changes with optional whole-document customization", async ({ page }) => {
   const errors = monitorBrowserErrors(page);
   await page.addInitScript(() => window.localStorage.setItem("merman-language", "en"));
   const hash = encodeShareHash({
@@ -31,7 +32,9 @@ test("theme selection survives family changes without authoring controls", async
     if (!scene.source) {
       await page.screenshot({ path: test.info().outputPath("theme-panel-selection.png") });
     }
-    await expect(workbench.getByRole("button", { name: /^(New recipe|Customize|Create from)/ })).toHaveCount(0);
+    await expect(workbench.getByRole("button", { name: "Customize", exact: true })).toBeEnabled();
+    await expect(workbench.getByRole("button", { name: /^(New recipe|Create from)/ })).toHaveCount(0);
+    await expect(workbench.getByTestId("theme-draft-workbench")).toHaveCount(0);
     await expect(workbench.getByTestId("theme-current-family")).toHaveText(`Current diagram: ${scene.family}`);
     const selected = workbench.locator('[data-theme-choice="preset:brutalist"]');
     await expect(selected).toHaveAttribute("aria-pressed", "true");
@@ -87,13 +90,15 @@ test("Ghibli lists only its reviewed Pie design and retains selection for unrevi
   const catalogSummary = panel.locator("summary").filter({ hasText: /^Preset runtime details$/ });
   await catalogSummary.click();
   const details = catalogSummary.locator("..");
-  const catalogEntry = JSON.parse((await details.locator("pre").textContent())!);
-  expect(catalogEntry.preview_colors.length).toBeGreaterThan(0);
+  const catalogEntry = JSON.parse((await details.locator("pre").textContent())!) as ThemePresetCatalogEntry;
+  const appearance = catalogEntry.appearances.find((entry) => entry.appearance === catalogEntry.default_appearance)!;
+  expect(appearance).toBeDefined();
+  expect(appearance.preview_colors.length).toBeGreaterThan(0);
   const expectedColors = await page.evaluate((colors: string[]) => colors.map((color) => {
     const style = document.createElement("span").style;
     style.backgroundColor = color;
     return style.backgroundColor;
-  }), catalogEntry.preview_colors);
+  }), appearance.preview_colors);
   expect(await card.locator("[data-theme-swatches] > span").evaluateAll((spans) =>
     spans.map((span) => (span as HTMLElement).style.backgroundColor),
   )).toEqual(expectedColors);

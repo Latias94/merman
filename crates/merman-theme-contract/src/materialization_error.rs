@@ -229,6 +229,13 @@ impl ThemeMaterializationDiagnosticV1 {
         self.wire.path()
     }
 
+    /// Relocates a diagnostic to its original authored value after bounded composition.
+    #[doc(hidden)]
+    pub fn with_path(mut self, path: String) -> Self {
+        *self.wire.path_mut() = path;
+        Self::from_wire(self.wire)
+    }
+
     /// Returns the bounded, non-identity display message.
     pub fn message(&self) -> &str {
         self.wire.message()
@@ -539,6 +546,19 @@ enum ThemeMaterializationDiagnosticWireV1 {
 }
 
 impl ThemeMaterializationDiagnosticWireV1 {
+    fn path_mut(&mut self) -> &mut String {
+        match self {
+            Self::UnsupportedVersionTuple { path, .. }
+            | Self::InvalidDefinitionJson { path, .. }
+            | Self::InvalidTokenValue { path, .. }
+            | Self::EmptySeries { path, .. }
+            | Self::RuleBudgetExceeded { path, .. }
+            | Self::DuplicatePaletteTarget { path, .. }
+            | Self::EffectReferenceNotSupported { path, .. }
+            | Self::ResourceLimitExceeded { path, .. } => path,
+        }
+    }
+
     fn path(&self) -> &str {
         match self {
             Self::UnsupportedVersionTuple { path, .. }
