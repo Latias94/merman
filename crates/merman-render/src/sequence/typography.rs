@@ -355,7 +355,7 @@ impl SequenceResolvedTypography {
         &self.terminal_text_style
     }
 
-    pub(super) fn non_normal_typed_terminal_style(&self) -> Option<&TextStyle> {
+    pub(crate) fn non_normal_typed_terminal_style(&self) -> Option<&TextStyle> {
         (self
             .typed_properties
             .contains(&ThemeTypographyProperty::FontStyle)

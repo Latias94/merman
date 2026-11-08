@@ -1,5 +1,5 @@
 use std::collections::{BTreeMap, BTreeSet};
-use std::sync::OnceLock;
+use std::sync::{Arc, OnceLock};
 
 use crate::diagram_theme::{
     FamilyThemeDisposition, FamilyThemeMechanism, FamilyThemeMechanismKey, FamilyThemeRuleFacet,
@@ -111,12 +111,80 @@ impl ErBaseFontSizePlan {
 /// same declaration set so source ownership cannot drift between admission and emission.
 #[derive(Debug, Clone, Default)]
 pub(crate) struct ErEntitySourceStyle {
-    rect_declarations: Vec<ErStyleDeclaration>,
-    text_declarations: Vec<ErStyleDeclaration>,
+    rect_declarations: Arc<[ErStyleDeclaration]>,
+    text_declarations: Arc<[ErStyleDeclaration]>,
     pub(crate) visual: visual::ErSourceVisual,
 }
 
 impl ErEntitySourceStyle {
+    pub(crate) fn retained_declaration_bytes(&self) -> usize {
+        let mut bytes = 0usize;
+        for declarations in [&self.rect_declarations, &self.text_declarations] {
+            bytes = bytes
+                .saturating_add(2 * std::mem::size_of::<usize>())
+                .saturating_add(
+                    declarations
+                        .len()
+                        .saturating_mul(std::mem::size_of::<ErStyleDeclaration>()),
+                );
+            for declaration in declarations.iter() {
+                // CssValueAnalysis may own a decoded single identifier; its raw spelling
+                // bounds that allocation without duplicating the shared CSS parser.
+                bytes = bytes.saturating_add(declaration.value().len());
+                for value in [
+                    declaration.raw(),
+                    declaration.property(),
+                    declaration.property_css(),
+                    declaration.source_value(),
+                    declaration.value(),
+                ] {
+                    bytes = bytes
+                        .saturating_add(value.len())
+                        .saturating_add(2 * std::mem::size_of::<usize>());
+                }
+            }
+        }
+        bytes
+    }
+    pub(crate) fn label_style_css(&self, html_labels: bool) -> String {
+        visual::label_style_css(self, html_labels)
+    }
+
+    pub(crate) fn text_style(
+        &self,
+        inherited: &crate::text::TextStyle,
+        root_size: f64,
+    ) -> crate::text::TextStyle {
+        let mut cascade = crate::mermaid_style::TextStyleCascade::new(
+            inherited,
+            crate::mermaid_style::CssFontSizeContext::new(inherited.font_size, root_size),
+        );
+        for declaration in self.text_declarations.iter() {
+            // styles2String emits the selected source value as important on each label layer.
+            cascade.observe(declaration.property(), declaration.value(), true);
+        }
+        cascade.finish().into_owned()
+    }
+
+    pub(crate) fn typography_style(&self) -> String {
+        self.text_declarations
+            .iter()
+            .filter(|declaration| {
+                matches!(
+                    declaration.property(),
+                    "font-family" | "font-size" | "font-weight" | "font-style"
+                )
+            })
+            .map(|declaration| {
+                format!(
+                    "{}:{} !important; ",
+                    declaration.property_css(),
+                    declaration.value()
+                )
+            })
+            .collect()
+    }
+
     pub(crate) fn label_style(&self, html_labels: bool) -> String {
         visual::label_style(self, html_labels)
     }
@@ -221,7 +289,8 @@ fn compile_er_source_style<'a>(
                 "fill-opacity",
                 "stroke-opacity",
             ],
-        ),
+        )
+        .into(),
         text_declarations: ordered_declarations(
             &text_map,
             &[
@@ -229,9 +298,11 @@ fn compile_er_source_style<'a>(
                 "font-family",
                 "font-size",
                 "font-weight",
+                "font-style",
                 "opacity",
             ],
-        ),
+        )
+        .into(),
     }
 }
 
@@ -334,6 +405,8 @@ pub(crate) struct ErEntityThemePlan {
     evidence: FamilyThemeOutcomes,
     pending: BTreeMap<FamilyThemeMechanismKey, BTreeSet<ThemeCapability>>,
     terminal_receipt: OnceLock<terminal::ErThemeOutcomes>,
+    // Drop shared source views before their counted prepared-label owner.
+    _prepared_labels: Arc<crate::er::ErPreparedLabels>,
 }
 
 #[derive(Debug, Clone)]
@@ -388,7 +461,14 @@ impl ErEntityThemePlan {
         let entity_source_styles = model
             .entities
             .values()
-            .map(|entity| compile_er_entity_source_style(entity, &model.classes))
+            .map(|entity| {
+                layout
+                    .prepared_labels
+                    .entity(&entity.id)
+                    .expect("ER preparation retains every semantic entity")
+                    .source_style
+                    .clone()
+            })
             .collect::<Vec<_>>();
         work_meter.charge(model.subgraphs.len())?;
         let mut subgraphs = BTreeMap::new();
@@ -415,6 +495,7 @@ impl ErEntityThemePlan {
         }
         let Some(theme) = theme else {
             return Self {
+                _prepared_labels: Arc::clone(&layout.prepared_labels),
                 css_binding,
                 entity_indices,
                 entity_source_styles,
@@ -905,6 +986,7 @@ impl ErEntityThemePlan {
         }
 
         Self {
+            _prepared_labels: Arc::clone(&layout.prepared_labels),
             css_binding,
             entity_indices,
             entity_source_styles,

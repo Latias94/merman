@@ -6,6 +6,7 @@
 use super::*;
 use crate::elk_edge_geometry::{self as geometry, Outline, Shape};
 use merman_layout_elk as elk;
+use serde_json::Value;
 
 type MeasuredGraph = Graph<NodeLabel, EdgeLabel, GraphLabel>;
 

@@ -162,12 +162,105 @@ fn er_subgraph_label_fragment(subgraph: &crate::er::ErSubgraph) -> String {
     }
 }
 
-fn write_er_svg_box_label(out: &mut impl SvgOutput, label: &crate::er::ErBoxLabel) {
-    crate::svg::parity::label::write_svg_text_markdown_from_create_text_source(
-        out,
-        label.svg_text_source(),
-        true,
-    );
+fn write_er_svg_box_label(out: &mut impl SvgOutput, label: &crate::er::ErBoxLabel, style: &str) {
+    if let Some(markup) = label.svg_markup() {
+        out.push_str(markup);
+    } else {
+        crate::svg::parity::label::write_svg_text_markdown_from_create_text_source_with_style(
+            out,
+            label.svg_text_source(),
+            Some(style),
+        );
+    }
+}
+
+impl crate::er::ErBoxLabel {
+    pub(crate) fn prepare_svg_markup(
+        &self,
+        lines: &[Vec<(String, crate::text::MermaidMarkdownWordType)>],
+        flattened_first_row: Option<&str>,
+        style: &str,
+        work_meter: &crate::resources::OperationWorkMeter,
+    ) -> Result<String> {
+        let mut markup = String::new();
+        super::super::label::write_svg_markdown_word_lines_with_style(
+            &mut markup,
+            lines,
+            Some(style),
+            crate::text::SvgTextEntityMode::CreateTextSource,
+        );
+        work_meter.charge(markup.len())?;
+        if let Some(text) = flattened_first_row {
+            // Apply erBox's one post-createText textContent mutation to the exact shared
+            // serialization. Untouched rows retain the shared writer's word attributes.
+            let range = {
+                let document = crate::xml_dom::Document::parse(&markup).map_err(|error| {
+                    Error::InvalidModel {
+                        message: format!("invalid ER createText projection: {error}"),
+                    }
+                })?;
+                document
+                    .root_element()
+                    .first_element_child()
+                    .map(|row| row.range())
+            };
+            if let Some(range) = range {
+                let row = &markup[range.clone()];
+                if !row.ends_with("/>") {
+                    let opening_end = range.start + row.find('>').expect("SVG row opening") + 1;
+                    let closing_start = range.end - "</tspan>".len();
+                    markup.replace_range(opening_end..closing_start, &escape_xml(text));
+                }
+            }
+        }
+        Ok(markup)
+    }
+
+    fn emit_html_div(
+        &self,
+        out: &mut impl SvgOutput,
+        style_prefix: &str,
+        span_style_attr: &str,
+        markdown_node_label: bool,
+        align: &str,
+    ) {
+        let layout = self
+            .html_layout()
+            .expect("ER HTML projection is prepared before emission");
+        let (display, whitespace) = if layout.break_spaces {
+            ("table", "break-spaces")
+        } else {
+            ("table-cell", "nowrap")
+        };
+        let _ = write!(
+            out,
+            r#"<div xmlns="http://www.w3.org/1999/xhtml" style="{}display: {}; white-space: {}; line-height: 1.5; max-width: {}px; text-align: {};"#,
+            escape_xml(style_prefix),
+            display,
+            whitespace,
+            layout.width_budget,
+            align,
+        );
+        if layout.break_spaces {
+            let _ = write!(out, " width: {}px;", layout.width_budget);
+        }
+        out.push_str(r#"">"#);
+        if self.uses_generic_workaround() {
+            out.push_str(self.xhtml_fragment());
+        } else {
+            let class = if markdown_node_label {
+                "nodeLabel markdown-node-label"
+            } else {
+                "nodeLabel"
+            };
+            let _ = write!(out, r#"<span class="{}"{}>"#, class, span_style_attr);
+            if !self.rendered_text().is_empty() {
+                out.push_str(self.xhtml_fragment());
+            }
+            out.push_str("</span>");
+        }
+        out.push_str("</div>");
+    }
 }
 
 fn write_er_svg_plain_label(out: &mut impl SvgOutput, text: &str) {
@@ -1305,6 +1398,11 @@ pub(crate) fn render_er_diagram_svg_model(
         let visual = &source_style.visual;
         let source_label_style =
             source_style.label_style(matches!(entity_wrap_mode, crate::text::WrapMode::HtmlLike));
+        let svg_text_style = source_style.label_style_css(false);
+        let label_div_style_prefix = format!(
+            "{}{}",
+            visual.label_div_color_prefix, visual.label_div_typography_prefix,
+        );
         let entity_name_terminal_style = entity_theme
             .entity_name_visual(&entity.id)
             .map(|visual| visual.typed_style.as_str())
@@ -1390,15 +1488,21 @@ pub(crate) fn render_er_diagram_svg_model(
             if matches!(wrap_mode, crate::text::WrapMode::HtmlLike) {
                 let _ = write!(
                     &mut out,
-                    r#"<g class="label" transform="translate({}, {})" {}><rect/><foreignObject width="{}" height="{}"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: {}px; text-align: center;">{}</div></foreignObject></g>"#,
+                    r#"<g class="label" transform="translate({}, {})" {}><rect/><foreignObject width="{}" height="{}">"#,
                     fmt(-lw / 2.0),
                     fmt(-lh / 2.0),
                     entity_name_style_attr,
                     fmt(lw),
                     fmt(lh),
-                    measure.label_max_width_px.max(0),
-                    html_label_content(&measure.label, "", true)
                 );
+                measure.label.emit_html_div(
+                    &mut out,
+                    &label_div_style_prefix,
+                    &visual.span_style_attr,
+                    true,
+                    "center",
+                );
+                out.push_str("</foreignObject></g>");
             } else {
                 let _ = write!(
                     &mut out,
@@ -1409,7 +1513,7 @@ pub(crate) fn render_er_diagram_svg_model(
                     fmt(-lw / 2.0),
                 );
                 write_er_svg_label_background(&mut out);
-                write_er_svg_box_label(&mut out, &measure.label);
+                write_er_svg_box_label(&mut out, &measure.label, &svg_text_style);
                 out.push_str("</g></g>");
             }
             out.push_str("</g>");
@@ -1428,34 +1532,7 @@ pub(crate) fn render_er_diagram_svg_model(
             continue;
         }
 
-        fn html_label_content(
-            label: &crate::er::ErBoxLabel,
-            span_style_attr: &str,
-            markdown_node_label: bool,
-        ) -> String {
-            let span_class = if markdown_node_label {
-                "nodeLabel markdown-node-label"
-            } else {
-                "nodeLabel"
-            };
-            let text = label.rendered_text();
-            if text.is_empty() {
-                return format!(r#"<span class="{}"{}></span>"#, span_class, span_style_attr);
-            }
-
-            if label.uses_generic_workaround() {
-                return escape_xml(text);
-            }
-
-            format!(
-                r#"<span class="{}"{}>{}</span>"#,
-                span_class,
-                span_style_attr,
-                label.xhtml_fragment()
-            )
-        }
-
-        let label_div_color_prefix = visual.label_div_color_prefix.as_str();
+        let label_div_color_prefix = label_div_style_prefix.as_str();
         let span_style_attr = visual.span_style_attr.as_str();
 
         // Mermaid erBox.ts uses the configured label mode and paths for the table rows.
@@ -1654,7 +1731,6 @@ pub(crate) fn render_er_diagram_svg_model(
         let name_w = measure.label_html_width.max(0.0);
         let name_x = -name_w / 2.0;
         let name_y = oy + name_row_h / 2.0 - line_h / 2.0;
-        let name_mw_px = measure.label_text_width_px + 100;
         let entity_name_style_attr = ErTextStyleAttr {
             source_style: &source_label_style,
             typed_style: entity_name_terminal_style,
@@ -1662,17 +1738,21 @@ pub(crate) fn render_er_diagram_svg_model(
         if matches!(entity_wrap_mode, crate::text::WrapMode::HtmlLike) {
             let _ = write!(
                 &mut out,
-                r#"<g class="label name" transform="translate({}, {})" {}><foreignObject width="{}" height="{}"><div xmlns="http://www.w3.org/1999/xhtml" style="{}display: table-cell; white-space: nowrap; line-height: 1.5; max-width: {}px; text-align: start;">{}"#,
+                r#"<g class="label name" transform="translate({}, {})" {}><foreignObject width="{}" height="{}">"#,
                 fmt(name_x),
                 fmt(name_y),
                 entity_name_style_attr,
                 fmt(name_w),
                 fmt(line_h),
-                escape_xml(label_div_color_prefix),
-                name_mw_px.max(0),
-                html_label_content(&measure.label, span_style_attr, false)
             );
-            out.push_str("</div></foreignObject></g>");
+            measure.label.emit_html_div(
+                &mut out,
+                label_div_color_prefix,
+                span_style_attr,
+                false,
+                "start",
+            );
+            out.push_str("</foreignObject></g>");
         } else {
             let _ = write!(
                 &mut out,
@@ -1681,11 +1761,7 @@ pub(crate) fn render_er_diagram_svg_model(
                 fmt(name_y),
                 entity_name_style_attr,
             );
-            super::super::label::write_svg_text_markdown_from_create_text_source(
-                &mut out,
-                measure.label.markdown_input(),
-                true,
-            );
+            write_er_svg_box_label(&mut out, &measure.label, &svg_text_style);
             out.push_str("</g>");
         }
         out.checkpoint()?;
@@ -1711,14 +1787,11 @@ pub(crate) fn render_er_diagram_svg_model(
         let mut row_top = sep_y;
         for (row_index, row) in measure.rows.iter().enumerate() {
             let row_h = row.height.max(1.0);
-            let cell_y = if entity_wrap_mode == crate::text::WrapMode::HtmlLike {
-                row_top + row_h / 2.0 - line_h / 2.0
-            } else {
-                row_top + measure.text_padding / 2.0
-            };
+            // erBox top-aligns independently measured cells within the shared row.
+            let cell_y = row_top + measure.text_padding / 2.0;
 
             let [type_w, name_w, keys_w, comment_w] = row.cell_widths;
-            let [type_mw_px, name_mw_px, keys_mw_px, comment_mw_px] = row.cell_max_widths_px;
+            let [type_h, name_h, keys_h, comment_h] = row.cell_heights;
 
             let [
                 type_terminal_style,
@@ -1756,17 +1829,21 @@ pub(crate) fn render_er_diagram_svg_model(
             if matches!(entity_wrap_mode, crate::text::WrapMode::HtmlLike) {
                 let _ = write!(
                     &mut out,
-                    r#"<g class="label attribute-type" transform="translate({}, {})" {}><foreignObject width="{}" height="{}"><div xmlns="http://www.w3.org/1999/xhtml" style="{}display: table-cell; white-space: nowrap; line-height: 1.5; max-width: {}px; text-align: start;">{}"#,
+                    r#"<g class="label attribute-type" transform="translate({}, {})" {}><foreignObject width="{}" height="{}">"#,
                     fmt(type_left),
                     fmt(cell_y),
                     type_style_attr,
                     fmt(type_w),
-                    fmt(line_h),
-                    escape_xml(label_div_color_prefix),
-                    type_mw_px.max(0),
-                    html_label_content(&row.type_label, span_style_attr, false)
+                    fmt(type_h),
                 );
-                out.push_str("</div></foreignObject></g>");
+                row.type_label.emit_html_div(
+                    &mut out,
+                    label_div_color_prefix,
+                    span_style_attr,
+                    false,
+                    "start",
+                );
+                out.push_str("</foreignObject></g>");
             } else {
                 let _ = write!(
                     &mut out,
@@ -1775,28 +1852,28 @@ pub(crate) fn render_er_diagram_svg_model(
                     fmt(cell_y),
                     type_style_attr,
                 );
-                super::super::label::write_svg_text_markdown_from_create_text_source(
-                    &mut out,
-                    row.type_label.markdown_input(),
-                    true,
-                );
+                write_er_svg_box_label(&mut out, &row.type_label, &svg_text_style);
                 out.push_str("</g>");
             }
 
             if matches!(entity_wrap_mode, crate::text::WrapMode::HtmlLike) {
                 let _ = write!(
                     &mut out,
-                    r#"<g class="label attribute-name" transform="translate({}, {})" {}><foreignObject width="{}" height="{}"><div xmlns="http://www.w3.org/1999/xhtml" style="{}display: table-cell; white-space: nowrap; line-height: 1.5; max-width: {}px; text-align: start;">{}"#,
+                    r#"<g class="label attribute-name" transform="translate({}, {})" {}><foreignObject width="{}" height="{}">"#,
                     fmt(name_left),
                     fmt(cell_y),
                     name_style_attr,
                     fmt(name_w),
-                    fmt(line_h),
-                    escape_xml(label_div_color_prefix),
-                    name_mw_px.max(0),
-                    html_label_content(&row.name_label, span_style_attr, false)
+                    fmt(name_h),
                 );
-                out.push_str("</div></foreignObject></g>");
+                row.name_label.emit_html_div(
+                    &mut out,
+                    label_div_color_prefix,
+                    span_style_attr,
+                    false,
+                    "start",
+                );
+                out.push_str("</foreignObject></g>");
             } else {
                 let _ = write!(
                     &mut out,
@@ -1805,32 +1882,28 @@ pub(crate) fn render_er_diagram_svg_model(
                     fmt(cell_y),
                     name_style_attr,
                 );
-                super::super::label::write_svg_text_markdown_from_create_text_source(
-                    &mut out,
-                    row.name_label.markdown_input(),
-                    true,
-                );
+                write_er_svg_box_label(&mut out, &row.name_label, &svg_text_style);
                 out.push_str("</g>");
             }
 
             if matches!(entity_wrap_mode, crate::text::WrapMode::HtmlLike) {
                 let _ = write!(
                     &mut out,
-                    r#"<g class="label attribute-keys" transform="translate({}, {})" {}><foreignObject width="{}" height="{}"><div xmlns="http://www.w3.org/1999/xhtml" style="{}display: table-cell; white-space: nowrap; line-height: 1.5; max-width: {}px; text-align: start;">{}"#,
+                    r#"<g class="label attribute-keys" transform="translate({}, {})" {}><foreignObject width="{}" height="{}">"#,
                     fmt(key_left),
                     fmt(cell_y),
                     keys_style_attr,
                     fmt(keys_w),
-                    fmt(if row.key_label.rendered_text().is_empty() {
-                        0.0
-                    } else {
-                        line_h
-                    }),
-                    escape_xml(label_div_color_prefix),
-                    keys_mw_px.max(0),
-                    html_label_content(&row.key_label, span_style_attr, false)
+                    fmt(keys_h),
                 );
-                out.push_str("</div></foreignObject></g>");
+                row.key_label.emit_html_div(
+                    &mut out,
+                    label_div_color_prefix,
+                    span_style_attr,
+                    false,
+                    "start",
+                );
+                out.push_str("</foreignObject></g>");
             } else {
                 let _ = write!(
                     &mut out,
@@ -1839,32 +1912,28 @@ pub(crate) fn render_er_diagram_svg_model(
                     fmt(cell_y),
                     keys_style_attr,
                 );
-                super::super::label::write_svg_text_markdown_from_create_text_source(
-                    &mut out,
-                    row.key_label.markdown_input(),
-                    true,
-                );
+                write_er_svg_box_label(&mut out, &row.key_label, &svg_text_style);
                 out.push_str("</g>");
             }
 
             if matches!(entity_wrap_mode, crate::text::WrapMode::HtmlLike) {
                 let _ = write!(
                     &mut out,
-                    r#"<g class="label attribute-comment" transform="translate({}, {})" {}><foreignObject width="{}" height="{}"><div xmlns="http://www.w3.org/1999/xhtml" style="{}display: table-cell; white-space: nowrap; line-height: 1.5; max-width: {}px; text-align: start;">{}"#,
+                    r#"<g class="label attribute-comment" transform="translate({}, {})" {}><foreignObject width="{}" height="{}">"#,
                     fmt(comment_left),
                     fmt(cell_y),
                     comment_style_attr,
                     fmt(comment_w),
-                    fmt(if row.comment_label.rendered_text().is_empty() {
-                        0.0
-                    } else {
-                        line_h
-                    }),
-                    escape_xml(label_div_color_prefix),
-                    comment_mw_px.max(0),
-                    html_label_content(&row.comment_label, span_style_attr, false)
+                    fmt(comment_h),
                 );
-                out.push_str("</div></foreignObject></g>");
+                row.comment_label.emit_html_div(
+                    &mut out,
+                    label_div_color_prefix,
+                    span_style_attr,
+                    false,
+                    "start",
+                );
+                out.push_str("</foreignObject></g>");
             } else {
                 let _ = write!(
                     &mut out,
@@ -1873,11 +1942,7 @@ pub(crate) fn render_er_diagram_svg_model(
                     fmt(cell_y),
                     comment_style_attr,
                 );
-                super::super::label::write_svg_text_markdown_from_create_text_source(
-                    &mut out,
-                    row.comment_label.markdown_input(),
-                    true,
-                );
+                write_er_svg_box_label(&mut out, &row.comment_label, &svg_text_style);
                 out.push_str("</g>");
             }
 
@@ -2104,6 +2169,41 @@ mod tests {
     use serde_json::json;
     use std::fmt;
     use std::ops::Range;
+
+    #[test]
+    fn er_unstyled_unwrapped_svg_labels_preserve_terminal_bytes() {
+        let config = json!({ "htmlLabels": false, "flowchart": { "wrappingWidth": 1000 } });
+        let settings = crate::er::ErConfigView::new(&config).render_settings_with_font_family(None);
+        let measurer = crate::text::DeterministicTextMeasurer::default();
+        for source in [
+            "Account",
+            "**Account** *owner*",
+            "A&amp;lt;br&amp;gt;B",
+            "First<br/>Last",
+        ] {
+            let entity = ErEntity {
+                id: "E".to_owned(),
+                label: source.to_owned(),
+                ..Default::default()
+            };
+            let measured = crate::er::measure_entity_box(
+                &entity,
+                &measurer,
+                &settings.label_style,
+                &settings.label_style,
+                settings.entity_measurement,
+            );
+            let mut actual = String::new();
+            super::write_er_svg_box_label(&mut actual, &measured.label, "");
+            let mut previous = String::new();
+            crate::svg::parity::label::write_svg_text_markdown_from_create_text_source(
+                &mut previous,
+                measured.label.svg_text_source(),
+                true,
+            );
+            assert_eq!(actual, previous, "unchanged unwrapped label: {source}");
+        }
+    }
 
     #[derive(Default)]
     struct RejectAfterFirstWrite {

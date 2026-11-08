@@ -292,6 +292,29 @@ fn parity_pipeline_remains_separate_from_the_typography_adapter() {
 }
 
 #[test]
+fn class_html_size_elements_reach_the_native_text_painter() {
+    for (label, expected_size) in [
+        ("AccountAccount", 24.0),
+        ("<big><big><big>AccountAccount</big></big></big>", 41.472),
+        ("<small><small>AccountAccount</small></small>", 24.0 / 1.44),
+        ("<big style='font-size:inherit'>AccountAccount</big>", 24.0),
+    ] {
+        let svg = render_resvg_safe(
+            "resvg-class-html-size",
+            &format!(
+                "---\nconfig:\n  htmlLabels: true\n  securityLevel: loose\n  themeVariables:\n    fontSize: 24px\n---\nclassDiagram\nclass E[\"{label}\"]\n"
+            ),
+        );
+        assert!(!svg.contains("<foreignObject"));
+        let actual_size = usvg_fallback_text_font_size(&svg, "AccountAccount");
+        assert!(
+            (actual_size - expected_size).abs() < 1e-4,
+            "{label}: native painter uses {actual_size}px, expected {expected_size}px"
+        );
+    }
+}
+
+#[test]
 fn er_fallback_keeps_entity_and_relationship_context_typography() {
     let svg = render_resvg_safe(
         "resvg-typography-er",

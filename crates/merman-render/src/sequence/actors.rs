@@ -7,8 +7,12 @@ use super::message_metrics::{
     SequenceMessageBoundMetrics, SequenceMessageMetricSidecar, SequenceMessageOwner,
 };
 use super::metrics::{
-    SequenceMathHeightMode, measure_sequence_label_for_layout_with_prepared,
-    measure_typed_actor_label_for_layout,
+    SequenceMathHeightMode, measure_note_label_for_layout,
+    measure_sequence_label_for_layout_with_prepared, measure_typed_actor_label_for_layout,
+};
+use super::notes::{
+    SequenceWrappedSideNoteLabelContext, prepare_wrapped_side_note_label,
+    typed_wrapped_side_note_style,
 };
 use super::wrap_sequence_label_like_mermaid_lines;
 use crate::model::{LayoutEdge, LayoutNode, LayoutPoint};
@@ -38,6 +42,7 @@ pub(super) struct SequenceActorLayoutPlanContext<'a> {
     pub(super) box_margin: f64,
     pub(super) box_text_margin: f64,
     pub(super) wrap_padding: f64,
+    pub(super) note_margin: f64,
     pub(super) checkpoints: SequenceLayoutCheckpoints<'a>,
 }
 
@@ -355,7 +360,33 @@ fn actor_message_widths(
         }
 
         let is_math = text.contains("$$");
-        let (w0, h0) = if is_math && is_message {
+        let mut typed_note_body_width = None;
+        let (w0, h0) = if let Some(terminal_style) = is_note
+            .then(|| {
+                typed_wrapped_side_note_style(
+                    msg,
+                    ctx.typography.note().non_normal_typed_terminal_style(),
+                )
+            })
+            .flatten()
+        {
+            let label = prepare_wrapped_side_note_label(
+                text,
+                placement.expect("wrapped side note placement"),
+                SequenceWrappedSideNoteLabelContext {
+                    measurer: ctx.measurer,
+                    measurement_style: style,
+                    terminal_style,
+                    config: ctx.math_config,
+                    default_width: ctx.actor_width_min,
+                    note_margin: ctx.note_margin,
+                    wrap_padding: ctx.wrap_padding,
+                    checkpoints: ctx.checkpoints.text(),
+                },
+            )?;
+            typed_note_body_width = Some(label.width);
+            label.text_metrics
+        } else if is_math && is_message {
             let prepared_math = ctx.math_sidecar.prepare_or_get(
                 super::SequenceMathOccurrence::Message(message_index),
                 text,
@@ -391,12 +422,23 @@ fn actor_message_widths(
             } else {
                 text.to_string()
             };
-            measure_svg_like_with_html_br(
-                ctx.measurer,
-                &measured_text,
-                style,
-                ctx.checkpoints.text(),
-            )?
+            if is_note {
+                measure_note_label_for_layout(
+                    ctx.measurer,
+                    &measured_text,
+                    style,
+                    ctx.typography.note().non_normal_typed_terminal_style(),
+                    ctx.math_config,
+                    ctx.checkpoints.text(),
+                )?
+            } else {
+                measure_svg_like_with_html_br(
+                    ctx.measurer,
+                    &measured_text,
+                    style,
+                    ctx.checkpoints.text(),
+                )?
+            }
         };
         if is_message && !msg.wrap && !is_math {
             // Final direct `<text>` drawing is a distinct DOM probe and deliberately does not use
@@ -406,7 +448,9 @@ fn actor_message_widths(
                 SequenceMessageBoundMetrics::new(w0.max(0.0), h0.max(0.0)),
             );
         }
-        let message_w = (w0 + 2.0 * ctx.wrap_padding).max(0.0);
+        let message_w = (w0 + 2.0 * ctx.wrap_padding)
+            .max(typed_note_body_width.unwrap_or(0.0))
+            .max(0.0);
 
         let prev_idx = if to_idx > 0 { Some(to_idx - 1) } else { None };
         let next_idx = if to_idx + 1 < ctx.source_actor_order.len() {

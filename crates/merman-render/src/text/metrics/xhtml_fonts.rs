@@ -1,4 +1,4 @@
-//! Terminal fonts for Block's sanitized, unwrapped XHTML labels.
+//! Bounded terminal-font inheritance for prepared XHTML labels.
 
 use std::sync::Arc;
 
@@ -26,7 +26,6 @@ pub(super) struct TerminalFonts {
 }
 
 impl TerminalFonts {
-    #[cfg(feature = "diagram-block")]
     pub(super) fn new(style: &TextStyle, root_font_size: f64) -> Self {
         Self {
             root_font_size,
@@ -46,6 +45,10 @@ impl TerminalFonts {
 
     pub(super) fn has_font_declarations(&self) -> bool {
         self.has_font_declarations
+    }
+
+    pub(super) fn line_sizes(&self) -> &[f64] {
+        &self.line_sizes
     }
 
     pub(super) fn observe_tag(&mut self, name: &str, tag: &str, closing: bool) {
@@ -70,6 +73,12 @@ impl TerminalFonts {
                 cascade.observe("font-style", "italic", false);
             }
             "code" => cascade.observe("font-family", "monospace", false),
+            "big" => {
+                cascade.observe("font-size", "1.2em", false);
+            }
+            "small" => {
+                cascade.observe("font-size", "0.8333333333333334em", false);
+            }
             _ => {}
         }
         let opening = quick_xml::events::BytesStart::from_content(tag, name.len());
@@ -93,30 +102,31 @@ impl TerminalFonts {
             });
         }
         let resolved = Arc::new(cascade.finish().into_owned());
-        self.has_font_declarations |= has_font_declarations;
+        self.has_font_declarations |= has_font_declarations || matches!(name, "big" | "small");
         if !tag.trim_end().ends_with('/') {
             self.stack.push((name.to_owned(), resolved));
         }
     }
 
     pub(super) fn new_line(&mut self) {
-        self.line_sizes.push(self.current().font_size);
+        let break_font_size = self.current().font_size;
+        if let Some(size) = self.line_sizes.last_mut() {
+            *size = size.max(break_font_size);
+        }
+        self.line_sizes.push(self.stack[0].1.font_size);
     }
 
     pub(super) fn measure<M: TextMeasurer + ?Sized>(
         &self,
         measurer: &M,
         runs_by_line: &[Vec<InlineTextRun>],
-        icon_widths: &[f64],
         base: &TextStyle,
         explicit_line_boxes: usize,
     ) -> TextMetrics {
         let width = runs_by_line
             .iter()
-            .enumerate()
-            .map(|(index, runs)| {
+            .map(|runs| {
                 super::measure_inline_runs_width_px(measurer, runs, base, WrapMode::HtmlLike, false)
-                    + icon_widths.get(index).copied().unwrap_or(0.0)
             })
             .fold(0.0_f64, f64::max);
         let line_count = runs_by_line.len().max(explicit_line_boxes);
@@ -136,11 +146,12 @@ impl TerminalFonts {
                     .filter(|run| !run.text.is_empty())
                     .map(|run| {
                         let style = run.terminal_style.as_deref().unwrap_or(base);
+                        if run.replaced_width_px.is_some() {
+                            return style.font_size.max(1.0) * 1.5;
+                        }
                         // Use the routed terminal measurement for host-specific vertical metrics.
-                        // Block's inherited 1.5 line height still supplies the CSS line-box floor.
-                        measurer
-                            .measure_html_line_height_px(&run.text, style)
-                            .max(style.font_size.max(1.0) * 1.5)
+                        // The parent strut supplies the floor without rounding up host precision.
+                        measurer.measure_html_line_height_px(&run.text, style)
                     })
                     .fold(strut, f64::max)
             })

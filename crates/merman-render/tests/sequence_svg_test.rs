@@ -5897,8 +5897,18 @@ fn render_sequence_actor_terminal_probe(
     source: &str,
     styles: &[Specified<merman_render::diagram_theme::FontStyle>],
 ) -> (String, Vec<RecordedSequenceExchange>) {
+    let (svg, exchanges, _) =
+        render_sequence_role_terminal_probe(source, ThemeTarget::ActorLabel, styles);
+    (svg, exchanges)
+}
+
+fn render_sequence_role_terminal_probe(
+    source: &str,
+    target: ThemeTarget,
+    styles: &[Specified<merman_render::diagram_theme::FontStyle>],
+) -> (String, Vec<RecordedSequenceExchange>, usize) {
     let mut rules = ThemeRuleSet::default().with_rule(ThemeRule::new(
-        ThemeTarget::ActorLabel,
+        target,
         ThemeStylePatch {
             typography: ThemeTextStylePatch {
                 font_stack: Specified::Value(
@@ -5912,7 +5922,7 @@ fn render_sequence_actor_terminal_probe(
     ));
     for style in styles {
         rules = rules.with_rule(ThemeRule::new(
-            ThemeTarget::ActorLabel,
+            target,
             ThemeStylePatch {
                 typography: ThemeTextStylePatch {
                     font_style: style.clone(),
@@ -5924,7 +5934,7 @@ fn render_sequence_actor_terminal_probe(
     }
     let theme = DiagramThemeCompiler::new()
         .compile(DiagramThemeSpec::new().with_styles(rules))
-        .expect("compile terminal actor typography");
+        .expect("compile terminal role typography");
     let parsed = parse_sequence_for_render(
         &common::install_parse_compatibility(&theme, MermaidEngine::new()),
         source,
@@ -5933,7 +5943,7 @@ fn render_sequence_actor_terminal_probe(
         SequenceHostResponse::ActorTerminalMetrics,
     ));
     let identity = TextMeasurementProfileIdentity::new(
-        MeasurementProfileId::new("sequence-actor-terminal-style").unwrap(),
+        MeasurementProfileId::new("sequence-role-terminal-style").unwrap(),
         "1",
     )
     .unwrap();
@@ -5946,11 +5956,16 @@ fn render_sequence_actor_terminal_probe(
         ))
         .begin_session_with_theme(&theme)
         .unwrap();
-    let rendered = family::prepare(&parsed, &LayoutOptions::default(), session)
-        .unwrap()
+    let prepared = family::prepare(&parsed, &LayoutOptions::default(), session).unwrap();
+    let layout_exchange_count = host.snapshot().len();
+    let rendered = prepared
         .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
         .unwrap();
-    (rendered.svg().to_owned(), host.snapshot())
+    (
+        rendered.svg().to_owned(),
+        host.snapshot(),
+        layout_exchange_count,
+    )
 }
 
 #[test]
@@ -6085,6 +6100,623 @@ fn sequence_actor_typed_italic_wrap_and_multiline_preserve_rows_and_configured_m
                     && exchange.request.operation == TextMeasurementOperation::TspanBBoxWidth)
         );
     }
+}
+
+#[test]
+fn sequence_note_non_normal_typography_sizes_all_placements_and_clear_restores_legacy_bytes() {
+    use merman_render::diagram_theme::FontStyle;
+    for placement in ["over A", "left of A", "right of A"] {
+        let source =
+            format!("sequenceDiagram\nparticipant A\nparticipant B\nNote {placement}: probe-note");
+        let (baseline, _, _) =
+            render_sequence_role_terminal_probe(&source, ThemeTarget::NoteLabel, &[]);
+        for (styles, expected_style, expected_width, terminal) in [
+            (vec![], "normal", 150.0, false),
+            (
+                vec![Specified::Value(FontStyle::Italic)],
+                "italic",
+                260.0,
+                true,
+            ),
+            (
+                vec![Specified::Value(FontStyle::Oblique)],
+                "oblique",
+                260.0,
+                true,
+            ),
+            (
+                vec![
+                    Specified::Value(FontStyle::Italic),
+                    Specified::Value(FontStyle::Normal),
+                ],
+                "normal",
+                150.0,
+                false,
+            ),
+            (
+                vec![Specified::Value(FontStyle::Italic), Specified::Clear],
+                "normal",
+                150.0,
+                false,
+            ),
+        ] {
+            let (svg, exchanges, _) =
+                render_sequence_role_terminal_probe(&source, ThemeTarget::NoteLabel, &styles);
+            let doc = roxmltree::Document::parse(&svg).unwrap();
+            let note = doc
+                .descendants()
+                .find(|node| node.has_tag_name("rect") && node.attribute("class") == Some("note"))
+                .unwrap();
+            assert_eq!(
+                note.attribute("width").unwrap().parse::<f64>().unwrap(),
+                expected_width,
+                "{placement}: {styles:?}"
+            );
+            assert_sequence_role_text_style(
+                &doc,
+                "noteText",
+                "probe-note",
+                "Georgia",
+                "40px",
+                "400",
+                expected_style,
+            );
+            let requests: Vec<_> = exchanges
+                .iter()
+                .filter(|exchange| exchange.request.text == "probe-note")
+                .map(|exchange| &exchange.request)
+                .collect();
+            assert!(!requests.is_empty());
+            assert_eq!(
+                requests.iter().any(|request| request.operation
+                    == TextMeasurementOperation::MermaidCalculateTextDimensions),
+                !terminal,
+                "{placement}: {styles:?}"
+            );
+            if terminal {
+                assert!(
+                    requests
+                        .iter()
+                        .all(|request| request.font_family.as_deref() == Some("Georgia")
+                            && request.font_size_bits == 40.0_f64.to_bits()
+                            && request.font_style.as_deref() == Some(expected_style))
+                );
+            } else {
+                assert_eq!(
+                    svg, baseline,
+                    "{placement}: normal/Clear must restore exact SVG bytes"
+                );
+            }
+        }
+    }
+}
+
+#[test]
+fn sequence_note_terminal_width_reaches_actor_spacing_and_both_block_planning_passes() {
+    use merman_render::diagram_theme::FontStyle;
+    for placement in ["right of A", "left of B"] {
+        let source = format!(
+            "sequenceDiagram\nparticipant A\nparticipant B\nloop frame\nNote {placement}: probe-note\nend"
+        );
+        let (svg, exchanges, layout_exchange_count) = render_sequence_role_terminal_probe(
+            &source,
+            ThemeTarget::NoteLabel,
+            &[Specified::Value(FontStyle::Italic)],
+        );
+        let doc = roxmltree::Document::parse(&svg).unwrap();
+        let note = doc
+            .descendants()
+            .find(|node| node.has_tag_name("rect") && node.attribute("class") == Some("note"))
+            .unwrap();
+        let number = |node: roxmltree::Node<'_, '_>, key| {
+            node.attribute(key).unwrap().parse::<f64>().unwrap()
+        };
+        let note_left = number(note, "x");
+        let note_right = note_left + number(note, "width");
+        assert_eq!(number(note, "width"), 260.0);
+        let actor_center = |name| {
+            let actor = doc
+                .descendants()
+                .find(|node| {
+                    node.has_tag_name("rect")
+                        && node.attribute("name") == Some(name)
+                        && node.attribute("class") == Some("actor actor-top")
+                })
+                .unwrap();
+            number(actor, "x") + number(actor, "width") / 2.0
+        };
+        assert!(
+            actor_center("A") < note_left,
+            "Note must clear the preceding lifeline"
+        );
+        assert!(
+            actor_center("B") > note_right,
+            "Note must clear the following lifeline"
+        );
+        let frame = sequence_control_frame_x(&svg, "frame");
+        assert!(frame.0 <= note_left && frame.1 >= note_right);
+        let view_box = root_view_box_and_max_width(&svg).0;
+        assert!(view_box[0] <= frame.0 && view_box[0] + view_box[2] >= frame.1);
+        for phase in [
+            &exchanges[..layout_exchange_count],
+            &exchanges[layout_exchange_count..],
+        ] {
+            let requests: Vec<_> = phase
+                .iter()
+                .filter(|exchange| exchange.request.text == "probe-note")
+                .collect();
+            assert!(
+                requests.iter().any(|exchange| exchange.request.operation
+                    == TextMeasurementOperation::TspanBBoxWidth),
+                "both layout and terminal block planning must measure the Note's final tspan"
+            );
+            assert!(requests.iter().all(|exchange| exchange.request.operation
+                != TextMeasurementOperation::MermaidCalculateTextDimensions
+                && exchange.request.font_family.as_deref() == Some("Georgia")
+                && exchange.request.font_size_bits == 40.0_f64.to_bits()
+                && exchange.request.font_style.as_deref() == Some("italic")));
+        }
+    }
+}
+
+#[test]
+fn sequence_wrapped_side_notes_keep_final_compatibility_rows_inside_the_terminal_envelope() {
+    use merman_render::diagram_theme::FontStyle;
+    for placement in ["right of A", "left of B"] {
+        for style in [FontStyle::Italic, FontStyle::Oblique] {
+            for note_margin in [10, 40] {
+                let source = format!(
+                    "---\nconfig: {{sequence: {{wrap: true, noteMargin: {note_margin}}}}}\n---\nsequenceDiagram\nparticipant A\nparticipant B\nloop frame\nNote {placement}: probe-one probe-two probe-six\nend"
+                );
+                let (svg, exchanges, _) = render_sequence_role_terminal_probe(
+                    &source,
+                    ThemeTarget::NoteLabel,
+                    &[Specified::Value(style)],
+                );
+                let expected_rows = ["probe-one", "probe-two", "probe-six"];
+                assert_eq!(
+                    text_rows_by_class(&svg, "noteText"),
+                    expected_rows,
+                    "{source}"
+                );
+                let doc = roxmltree::Document::parse(&svg).unwrap();
+                let number = |node: roxmltree::Node<'_, '_>, key| {
+                    node.attribute(key).unwrap().parse::<f64>().unwrap()
+                };
+                let note = doc
+                    .descendants()
+                    .find(|node| {
+                        node.has_tag_name("rect") && node.attribute("class") == Some("note")
+                    })
+                    .unwrap();
+                let left = number(note, "x");
+                let width = number(note, "width");
+                let right = left + width;
+                let ink_width = 216.0;
+                assert_eq!(width, ink_width + 2.0 * f64::from(note_margin));
+                for row in doc.descendants().filter(|node| {
+                    node.has_tag_name("text") && node.attribute("class") == Some("noteText")
+                }) {
+                    let center = number(row, "x");
+                    assert!(center - ink_width / 2.0 >= left);
+                    assert!(center + ink_width / 2.0 <= right);
+                }
+                for (name, before) in [("A", true), ("B", false)] {
+                    let actor = doc
+                        .descendants()
+                        .find(|node| {
+                            node.has_tag_name("rect")
+                                && node.attribute("name") == Some(name)
+                                && node.attribute("class") == Some("actor actor-top")
+                        })
+                        .unwrap();
+                    let center = number(actor, "x") + number(actor, "width") / 2.0;
+                    assert!(
+                        if before {
+                            center < left
+                        } else {
+                            center > right
+                        },
+                        "{source}"
+                    );
+                }
+                let frame = sequence_control_frame_x(&svg, "frame");
+                assert!(frame.0 <= left && frame.1 >= right);
+                let view_box = root_view_box_and_max_width(&svg).0;
+                assert!(view_box[0] <= frame.0 && view_box[0] + view_box[2] >= frame.1);
+                let terminal_requests: Vec<_> = exchanges
+                    .iter()
+                    .filter(|exchange| {
+                        exchange.request.operation == TextMeasurementOperation::TspanBBoxWidth
+                            && exchange.request.text.starts_with("probe-")
+                    })
+                    .collect();
+                assert!(!terminal_requests.is_empty());
+                assert!(
+                    terminal_requests.iter().all(|exchange| {
+                        expected_rows.contains(&exchange.request.text.as_str())
+                            && exchange.request.font_family.as_deref() == Some("Georgia")
+                            && exchange.request.font_size_bits == 40.0_f64.to_bits()
+                            && exchange.request.font_style.as_deref() == Some(style.id())
+                    }),
+                    "only the final compatibility rows may reserve terminal ink"
+                );
+
+                let (baseline, _, _) =
+                    render_sequence_role_terminal_probe(&source, ThemeTarget::NoteLabel, &[]);
+                let (cleared, _, _) = render_sequence_role_terminal_probe(
+                    &source,
+                    ThemeTarget::NoteLabel,
+                    &[Specified::Value(style), Specified::Clear],
+                );
+                assert_eq!(
+                    cleared, baseline,
+                    "{placement}: wrapped Clear restores exact SVG bytes"
+                );
+            }
+        }
+    }
+}
+
+fn wrapped_note_replay_theme() -> DiagramTheme {
+    DiagramThemeCompiler::new()
+        .compile(
+            DiagramThemeSpec::new().with_styles(ThemeRuleSet::default().with_rule(ThemeRule::new(
+                ThemeTarget::NoteLabel,
+                ThemeStylePatch {
+                    typography: ThemeTextStylePatch {
+                        font_style: Specified::Value(
+                            merman_render::diagram_theme::FontStyle::Italic,
+                        ),
+                        ..ThemeTextStylePatch::default()
+                    },
+                    ..ThemeStylePatch::default()
+                },
+            ))),
+        )
+        .unwrap()
+}
+
+#[test]
+fn sequence_wrapped_side_note_replay_preserves_layout_numeric_string_widths() {
+    use merman_render::diagram_theme::FontStyle;
+
+    for placement in ["right of A", "left of B"] {
+        for width in ["110", "'110'"] {
+            let source = format!(
+                "---\nconfig: {{sequence: {{wrap: true, width: {width}}}}}\n---\nsequenceDiagram\nparticipant A\nparticipant B\nNote {placement}: alpha beta gamma"
+            );
+            let (svg, _, _) = render_sequence_role_terminal_probe(
+                &source,
+                ThemeTarget::NoteLabel,
+                &[Specified::Value(FontStyle::Italic)],
+            );
+            assert_eq!(
+                text_rows_by_class(&svg, "noteText"),
+                ["alpha beta", "gamma"],
+                "SVG replay must use layout's resolved width: {source}"
+            );
+            let document = roxmltree::Document::parse(&svg).unwrap();
+            let note = document
+                .descendants()
+                .find(|node| node.has_tag_name("rect") && node.attribute("class") == Some("note"))
+                .unwrap();
+            assert_eq!(note.attribute("width"), Some("260"));
+        }
+    }
+}
+
+#[test]
+fn sequence_wrapped_side_note_replays_missing_and_error_host_wraps_with_provenance() {
+    let theme = wrapped_note_replay_theme();
+    let source = "---\nconfig: {sequence: {wrap: true}}\n---\nsequenceDiagram\nparticipant A\nNote right of A: alpha beta gamma";
+    for (response, expected) in [
+        (
+            SequenceHostResponse::Missing,
+            RecordedSequenceOutcome::Missing,
+        ),
+        (SequenceHostResponse::Error, RecordedSequenceOutcome::Error),
+    ] {
+        let host = Arc::new(RecordingSequenceHost::new(response));
+        let policy = TextMeasurementPolicy::host_display(
+            TextMeasurementProfileIdentity::new(
+                MeasurementProfileId::new("sequence-wrapped-note-replay-fallback").unwrap(),
+                "1",
+            )
+            .unwrap(),
+            host.clone(),
+            TextMeasurementPhase::ALL,
+        );
+        let routes = TextMeasurementPhase::ALL.map(|phase| policy.route(phase));
+        let session = RenderEnvironment::deterministic()
+            .without_math_renderer()
+            .with_text_measurement_policy(policy)
+            .begin_session_with_theme(&theme)
+            .unwrap();
+        let engine = common::install_parse_compatibility(&theme, MermaidEngine::new());
+        let parsed = parse_sequence_for_render(&engine, source);
+        let prepared = family::prepare(&parsed, &LayoutOptions::default(), session).unwrap();
+        let preparation_count = host.snapshot().len();
+        let rendered = prepared
+            .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+            .unwrap();
+        let exchanges = host.snapshot();
+        let wrap_probes: Vec<_> = exchanges[preparation_count..]
+            .iter()
+            .filter(|exchange| {
+                exchange.request.text.contains("alpha")
+                    && exchange.request.operation
+                        == TextMeasurementOperation::MermaidCalculateTextDimensions
+            })
+            .collect();
+        assert!(
+            !wrap_probes.is_empty(),
+            "a host fallback must not qualify final Note rows for reuse"
+        );
+        assert!(
+            wrap_probes
+                .iter()
+                .all(|exchange| exchange.outcome == expected)
+        );
+        let (svg, report) = rendered.into_completion().into_output_and_report();
+        assert_eq!(
+            text_rows_by_class(&svg, "noteText").join(" "),
+            "alpha beta gamma"
+        );
+        assert_sequence_host_report_matches_trace(&SequenceHostObservation {
+            render: SequenceRenderObservation {
+                svg,
+                report: report.session_report().measurement().clone(),
+            },
+            requests: exchanges
+                .iter()
+                .map(|exchange| exchange.request.clone())
+                .collect(),
+            outcomes: exchanges.iter().map(|exchange| exchange.outcome).collect(),
+            routes,
+            stateful_response_count: 0,
+        });
+    }
+}
+
+#[test]
+fn sequence_wrapped_side_note_replays_custom_profile_wraps_during_svg() {
+    struct CustomNoteWrapCounter(Arc<AtomicUsize>);
+    impl TextMeasurer for CustomNoteWrapCounter {
+        fn measure(&self, text: &str, style: &merman_render::text::TextStyle) -> TextMetrics {
+            DeterministicTextMeasurer::default().measure(text, style)
+        }
+        fn measure_mermaid_calculate_text_dimensions(
+            &self,
+            text: &str,
+            style: &merman_render::text::TextStyle,
+        ) -> TextMetrics {
+            if text.contains("alpha") {
+                self.0.fetch_add(1, Ordering::SeqCst);
+            }
+            DeterministicTextMeasurer::default()
+                .measure_mermaid_calculate_text_dimensions(text, style)
+        }
+    }
+    let theme = wrapped_note_replay_theme();
+    let source = "---\nconfig: {sequence: {wrap: true}}\n---\nsequenceDiagram\nparticipant A\nNote right of A: alpha beta gamma";
+    let probes = Arc::new(AtomicUsize::new(0));
+    let profile = TextMeasurementProfile::new(
+        TextMeasurementProfileIdentity::new(
+            MeasurementProfileId::new("sequence-wrapped-note-custom-replay").unwrap(),
+            "1",
+        )
+        .unwrap(),
+        Arc::new(CustomNoteWrapCounter(Arc::clone(&probes))),
+    );
+    let session = RenderEnvironment::deterministic()
+        .without_math_renderer()
+        .with_text_measurement_policy(TextMeasurementPolicy::uniform(profile))
+        .begin_session_with_theme(&theme)
+        .unwrap();
+    let engine = common::install_parse_compatibility(&theme, MermaidEngine::new());
+    let parsed = parse_sequence_for_render(&engine, source);
+    let prepared = family::prepare(&parsed, &LayoutOptions::default(), session).unwrap();
+    let preparation_count = probes.load(Ordering::SeqCst);
+    assert!(preparation_count > 0);
+    let rendered = prepared
+        .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+        .unwrap();
+    assert!(
+        probes.load(Ordering::SeqCst) > preparation_count,
+        "a custom profile must receive SVG-stage Note wrapping callbacks"
+    );
+    assert_eq!(
+        text_rows_by_class(rendered.svg(), "noteText").join(" "),
+        "alpha beta gamma"
+    );
+}
+
+#[test]
+fn sequence_wrapped_side_note_without_a_loop_observes_svg_wrap_callback_cancellation() {
+    use std::sync::atomic::AtomicBool;
+
+    struct ArmedNoteHost {
+        inner: RecordingSequenceHost,
+        armed: AtomicBool,
+        after_cancel: AtomicUsize,
+    }
+    impl HostTextMeasurer for ArmedNoteHost {
+        fn measure(&self, request: HostTextMeasurementRequest<'_>) -> HostMeasurementResult {
+            self.inner.measure(request)
+        }
+        fn measure_with_control(
+            &self,
+            request: HostTextMeasurementRequest<'_>,
+            control: &merman_model::OperationControl,
+        ) -> HostMeasurementResult {
+            if control.is_cancelled() {
+                self.after_cancel.fetch_add(1, Ordering::SeqCst);
+            }
+            let result = self.measure(request);
+            if self.armed.load(Ordering::SeqCst)
+                && request.operation == TextMeasurementOperation::MermaidCalculateTextDimensions
+                && request.text.contains("alpha")
+            {
+                control.cancel();
+            }
+            result
+        }
+    }
+    let theme = wrapped_note_replay_theme();
+    for placement in ["right", "left"] {
+        let source = format!(
+            "---\nconfig: {{sequence: {{wrap: true}}}}\n---\nsequenceDiagram\nparticipant A\nNote {placement} of A: alpha beta gamma"
+        );
+        let host = Arc::new(ArmedNoteHost {
+            inner: RecordingSequenceHost::default(),
+            armed: AtomicBool::new(false),
+            after_cancel: AtomicUsize::new(0),
+        });
+        let policy = TextMeasurementPolicy::host_display(
+            TextMeasurementProfileIdentity::new(
+                MeasurementProfileId::new("sequence-wrapped-note-cancellation").unwrap(),
+                "1",
+            )
+            .unwrap(),
+            host.clone(),
+            TextMeasurementPhase::ALL,
+        );
+        let session = RenderEnvironment::deterministic()
+            .without_math_renderer()
+            .with_text_measurement_policy(policy)
+            .begin_session_with_theme(&theme)
+            .unwrap();
+        let engine = common::install_parse_compatibility(&theme, MermaidEngine::new());
+        let parsed = parse_sequence_for_render(&engine, &source);
+        let prepared = family::prepare(&parsed, &LayoutOptions::default(), session).unwrap();
+        let preparation_count = host.inner.snapshot().len();
+        host.armed.store(true, Ordering::SeqCst);
+        let error = prepared
+            .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+            .err()
+            .expect("SVG Note wrapping must propagate callback cancellation");
+        assert!(
+            matches!(error, Error::Cancelled(error) if error.phase == merman_model::OperationPhase::Emit)
+        );
+        let exchanges = host.inner.snapshot();
+        assert_eq!(
+            exchanges[preparation_count..]
+                .iter()
+                .filter(|exchange| {
+                    exchange.request.text.contains("alpha")
+                        && exchange.request.operation
+                            == TextMeasurementOperation::MermaidCalculateTextDimensions
+                })
+                .count(),
+            1,
+            "the first SVG wrap callback must stop the fallible Note planner"
+        );
+        assert_eq!(host.after_cancel.load(Ordering::SeqCst), 0);
+    }
+}
+
+#[test]
+fn sequence_note_terminal_width_preserves_source_font_owners() {
+    use merman_render::diagram_theme::FontStyle;
+    let source = "---\nconfig: {sequence: {noteFontFamily: Courier New, noteFontSize: 24, noteFontWeight: 700}}\n---\nsequenceDiagram\nNote over A: probe-note";
+    let (svg, exchanges, _) = render_sequence_role_terminal_probe(
+        source,
+        ThemeTarget::NoteLabel,
+        &[Specified::Value(FontStyle::Italic)],
+    );
+    let doc = roxmltree::Document::parse(&svg).unwrap();
+    assert_sequence_role_text_style(
+        &doc,
+        "noteText",
+        "probe-note",
+        "Courier New",
+        "24px",
+        "700",
+        "italic",
+    );
+    let requests: Vec<_> = exchanges
+        .iter()
+        .filter(|exchange| exchange.request.text == "probe-note")
+        .collect();
+    assert!(!requests.is_empty());
+    assert!(
+        requests
+            .iter()
+            .all(
+                |exchange| exchange.request.font_family.as_deref() == Some("Courier New")
+                    && exchange.request.font_size_bits == 24.0_f64.to_bits()
+                    && exchange.request.font_weight.as_deref() == Some("700")
+                    && exchange.request.font_style.as_deref() == Some("italic")
+            )
+    );
+}
+
+#[test]
+fn sequence_note_terminal_width_keeps_wrap_decisions_entities_and_empty_rows() {
+    use merman_render::diagram_theme::FontStyle;
+    for wrap in [false, true] {
+        let source = format!(
+            "---\nconfig: {{sequence: {{wrap: {wrap}}}}}\n---\nsequenceDiagram\nNote over A: probe#32;note<br/><br/>end"
+        );
+        let (baseline, _, _) =
+            render_sequence_role_terminal_probe(&source, ThemeTarget::NoteLabel, &[]);
+        let (svg, exchanges, _) = render_sequence_role_terminal_probe(
+            &source,
+            ThemeTarget::NoteLabel,
+            &[Specified::Value(FontStyle::Italic)],
+        );
+        assert_eq!(
+            text_rows_by_class(&svg, "noteText"),
+            ["probe note", "\u{200b}", "end"]
+        );
+        assert_eq!(
+            text_rows_by_class(&svg, "noteText"),
+            text_rows_by_class(&baseline, "noteText")
+        );
+        let doc = roxmltree::Document::parse(&svg).unwrap();
+        let note = doc
+            .descendants()
+            .find(|node| node.has_tag_name("rect") && node.attribute("class") == Some("note"))
+            .unwrap();
+        assert_eq!(
+            note.attribute("width").unwrap().parse::<f64>().unwrap(),
+            if wrap { 150.0 } else { 260.0 }
+        );
+        assert_eq!(
+            note.attribute("height").unwrap().parse::<f64>().unwrap(),
+            116.0
+        );
+        assert!(
+            exchanges
+                .iter()
+                .any(|exchange| exchange.request.text == "probe note"
+                    && exchange.request.operation == TextMeasurementOperation::TspanBBoxWidth)
+        );
+        assert!(
+            !exchanges
+                .iter()
+                .any(|exchange| exchange.request.text == "probe#32;note"
+                    && exchange.request.operation == TextMeasurementOperation::TspanBBoxWidth)
+        );
+    }
+
+    let source = "---\nconfig: {sequence: {wrap: true}}\n---\nsequenceDiagram\nNote over A: probe-one probe-two probe-three";
+    let (baseline, _, _) = render_sequence_role_terminal_probe(source, ThemeTarget::NoteLabel, &[]);
+    let (svg, _, _) = render_sequence_role_terminal_probe(
+        source,
+        ThemeTarget::NoteLabel,
+        &[Specified::Value(FontStyle::Italic)],
+    );
+    assert_eq!(
+        text_rows_by_class(&svg, "noteText"),
+        ["probe-one", "probe-two", "probe-three"]
+    );
+    assert_eq!(
+        text_rows_by_class(&svg, "noteText"),
+        text_rows_by_class(&baseline, "noteText"),
+        "terminal bounds must not replace the compatibility probes used for wrapping"
+    );
 }
 
 #[test]

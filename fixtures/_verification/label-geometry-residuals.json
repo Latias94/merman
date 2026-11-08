@@ -1011,7 +1011,7 @@
       "text": "invoiced at",
       "input_sha256": "02bdf0d49b4f771161740ca46046e142f041dbc39d72fdc4209bb1f9f75e51d0",
       "upstream_svg_sha256": "5debbf5df1b34e8efecf9b99162f4440df063cf6a71ffba1a56a1acab7c8d7ce",
-      "reason": "Mermaid 12 erBox.ts and edges.js use browser getBBox/getBoundingClientRect measurements. Entity and relationship text widths propagate through ELK port spacing, parallel channels, label anchors, and Neo path-length masks. The six-point directed orthogonal routes, all y coordinates, label heights, identity, text, presentation, markers, and CSS agree.",
+      "reason": "Mermaid 12 erBox.ts and edges.js use browser getBBox/getBoundingClientRect measurements. The independent root 16px calculation probe selects drawRect's unclamped branch; final 14px deterministic label widths propagate through ELK port spacing and Neo path-length masks. The local signature reflects that corrected probe instead of the old 14px calculation and 100px ADDRESS floor. The six-point directed orthogonal routes, all y coordinates, label heights, identity, text, presentation, markers, and CSS agree.",
       "upstream": {
         "world": {
           "anchor_x": 45.469,
@@ -1085,9 +1085,9 @@
         "edge": {
           "tag": "path",
           "attributes": {
-            "d": "[MoveTo { abs: true, x: 77.527, y: 93.0 }, LineTo { abs: true, x: 77.527, y: 105.929 }, Quadratic { abs: true, x1: 77.527, y1: 113.0, x: 70.456, y: 113.0 }, LineTo { abs: true, x: 49.571, y: 113.0 }, Quadratic { abs: true, x1: 42.5, y1: 113.0, x: 42.5, y: 120.071 }, LineTo { abs: true, x: 42.5, y: 166.929 }, Quadratic { abs: true, x1: 42.5, y1: 174.0, x: 49.571, y: 174.0 }, LineTo { abs: true, x: 71.656, y: 174.0 }, Quadratic { abs: true, x1: 78.727, y1: 174.0, x: 78.727, y: 181.071 }, LineTo { abs: true, x: 78.727, y: 194.0 }]",
-            "data-points": "[(77.527,93.0),(77.527,113.0),(42.5,113.0),(42.5,174.0),(78.727,174.0),(78.727,194.0)]",
-            "neo-mask-dasharray": "0.0 0.0 161.597 0.0",
+            "d": "[MoveTo { abs: true, x: 77.527, y: 93.0 }, LineTo { abs: true, x: 77.527, y: 105.929 }, Quadratic { abs: true, x1: 77.527, y1: 113.0, x: 70.456, y: 113.0 }, LineTo { abs: true, x: 49.571, y: 113.0 }, Quadratic { abs: true, x1: 42.5, y1: 113.0, x: 42.5, y: 120.071 }, LineTo { abs: true, x: 42.5, y: 166.929 }, Quadratic { abs: true, x1: 42.5, y1: 174.0, x: 49.571, y: 174.0 }, LineTo { abs: true, x: 71.856, y: 174.0 }, Quadratic { abs: true, x1: 78.927, y1: 174.0, x: 78.927, y: 181.071 }, LineTo { abs: true, x: 78.927, y: 194.0 }]",
+            "data-points": "[(77.527,93.0),(77.527,113.0),(42.5,113.0),(42.5,174.0),(78.927,174.0),(78.927,194.0)]",
+            "neo-mask-dasharray": "0.0 0.0 161.797 0.0",
             "transform": "[1.0, 0.0, 0.0, 1.0, 0.0, 0.0]"
           }
         }
@@ -1104,7 +1104,7 @@
       "text": "receives goods at",
       "input_sha256": "02bdf0d49b4f771161740ca46046e142f041dbc39d72fdc4209bb1f9f75e51d0",
       "upstream_svg_sha256": "5debbf5df1b34e8efecf9b99162f4440df063cf6a71ffba1a56a1acab7c8d7ce",
-      "reason": "Mermaid 12 erBox.ts and edges.js use browser getBBox/getBoundingClientRect measurements. Entity and relationship text widths propagate through ELK port spacing, parallel channels, label anchors, and Neo path-length masks. The six-point directed orthogonal routes, all y coordinates, label heights, identity, text, presentation, markers, and CSS agree.",
+      "reason": "Mermaid 12 erBox.ts and edges.js use browser getBBox/getBoundingClientRect measurements. The independent root 16px calculation probe selects drawRect's unclamped branch; final 14px deterministic label widths propagate through ELK port spacing and Neo path-length masks. The local signature reflects that corrected probe instead of the old 14px calculation and 100px ADDRESS floor. The six-point directed orthogonal routes, all y coordinates, label heights, identity, text, presentation, markers, and CSS agree.",
       "upstream": {
         "world": {
           "anchor_x": 153.805,
@@ -1178,9 +1178,9 @@
         "edge": {
           "tag": "path",
           "attributes": {
-            "d": "[MoveTo { abs: true, x: 106.593, y: 93.0 }, LineTo { abs: true, x: 106.593, y: 105.929 }, Quadratic { abs: true, x1: 106.593, y1: 113.0, x: 113.664, y: 113.0 }, LineTo { abs: true, x: 134.549, y: 113.0 }, Quadratic { abs: true, x1: 141.62, y1: 113.0, x: 141.62, y: 120.071 }, LineTo { abs: true, x: 141.62, y: 166.929 }, Quadratic { abs: true, x1: 141.62, y1: 174.0, x: 134.549, y: 174.0 }, LineTo { abs: true, x: 112.464, y: 174.0 }, Quadratic { abs: true, x1: 105.393, y1: 174.0, x: 105.393, y: 181.071 }, LineTo { abs: true, x: 105.393, y: 194.0 }]",
-            "data-points": "[(106.593,93.0),(106.593,113.0),(141.62,113.0),(141.62,174.0),(105.393,174.0),(105.393,194.0)]",
-            "neo-mask-dasharray": "0.0 0.0 161.597 0.0",
+            "d": "[MoveTo { abs: true, x: 106.593, y: 93.0 }, LineTo { abs: true, x: 106.593, y: 105.929 }, Quadratic { abs: true, x1: 106.593, y1: 113.0, x: 113.664, y: 113.0 }, LineTo { abs: true, x: 134.549, y: 113.0 }, Quadratic { abs: true, x1: 141.62, y1: 113.0, x: 141.62, y: 120.071 }, LineTo { abs: true, x: 141.62, y: 166.929 }, Quadratic { abs: true, x1: 141.62, y1: 174.0, x: 134.549, y: 174.0 }, LineTo { abs: true, x: 112.264, y: 174.0 }, Quadratic { abs: true, x1: 105.193, y1: 174.0, x: 105.193, y: 181.071 }, LineTo { abs: true, x: 105.193, y: 194.0 }]",
+            "data-points": "[(106.593,93.0),(106.593,113.0),(141.62,113.0),(141.62,174.0),(105.193,174.0),(105.193,194.0)]",
+            "neo-mask-dasharray": "0.0 0.0 161.797 0.0",
             "transform": "[1.0, 0.0, 0.0, 1.0, 0.0, 0.0]"
           }
         }

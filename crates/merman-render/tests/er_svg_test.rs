@@ -398,6 +398,19 @@ struct ErTypedFontSizeProbeMeasurer {
 }
 
 impl TextMeasurer for ErTypedFontSizeProbeMeasurer {
+    fn measure_mermaid_calculate_text_dimensions(
+        &self,
+        text: &str,
+        style: &TextStyle,
+    ) -> TextMetrics {
+        // The root-config width budget is independent of actual terminal typography.
+        TextMetrics {
+            width: (text.chars().count() as f64 * style.font_size * 0.55).max(1.0),
+            height: style.font_size,
+            line_count: 1,
+        }
+    }
+
     fn measure(&self, text: &str, style: &TextStyle) -> TextMetrics {
         let uses_typed_size = (style.font_size - self.typed_size_px).abs() < f64::EPSILON;
         let uses_relationship_size = (style.font_size - 14.0).abs() < f64::EPSILON;
@@ -1326,27 +1339,54 @@ fn er_generic_html_literal_height_uses_selected_line_measurement() {
         HostMeasurementResult, HostTextMeasurement, HostTextMeasurementRequest, HostTextMeasurer,
         TextMeasurementOperation, TextMeasurementPhase,
     };
+    use std::sync::Mutex;
 
     #[derive(Default)]
-    struct LiteralHeightHost(AtomicUsize);
+    struct LiteralHeightHost(Mutex<Vec<(TextMeasurementOperation, Option<f64>)>>);
 
     impl HostTextMeasurer for LiteralHeightHost {
         fn measure(&self, request: HostTextMeasurementRequest<'_>) -> HostMeasurementResult {
             if request.text != "A<br>B" {
                 return Ok(None);
             }
-            assert_ne!(
-                request.operation,
-                TextMeasurementOperation::Wrapped,
-                "literal HTML height must not re-enter label parsing"
-            );
-            if request.operation != TextMeasurementOperation::HtmlLineHeight {
-                return Ok(None);
-            }
             assert_eq!(request.phase, TextMeasurementPhase::Wrap);
-            assert_eq!(request.max_width, None);
-            self.0.fetch_add(1, Ordering::Relaxed);
-            Ok(Some(HostTextMeasurement::Length(31.25)))
+            let mut calls = self.0.lock().unwrap();
+            match request.operation {
+                TextMeasurementOperation::Wrapped => {
+                    assert!(
+                        !calls.iter().any(|(operation, _)| {
+                            *operation == TextMeasurementOperation::HtmlLineHeight
+                        }),
+                        "createText precedes the final literal textContent measurement"
+                    );
+                    if calls.is_empty() {
+                        assert_eq!(request.max_width, None, "initial nowrap width probe");
+                    } else {
+                        assert!(
+                            request.max_width.is_some_and(|width| width > 0.0),
+                            "the final table measurement consumes the root-probe budget"
+                        );
+                    }
+                    calls.push((request.operation, request.max_width));
+                    Ok(Some(HostTextMeasurement::Metrics(TextMetrics {
+                        width: 64.0,
+                        height: 99.0,
+                        line_count: 1,
+                    })))
+                }
+                TextMeasurementOperation::HtmlLineHeight => {
+                    assert_eq!(request.max_width, None);
+                    assert!(
+                        calls.iter().any(|(operation, max_width)| {
+                            *operation == TextMeasurementOperation::Wrapped && max_width.is_some()
+                        }),
+                        "literal line height must follow createText"
+                    );
+                    calls.push((request.operation, request.max_width));
+                    Ok(Some(HostTextMeasurement::Length(31.25)))
+                }
+                _ => Ok(None),
+            }
         }
     }
 
@@ -1377,9 +1417,18 @@ erDiagram
         .into_presentation();
     let artifact =
         family::prepare(&parsed, &LayoutOptions::default(), session).expect("prepare ER labels");
-    assert!(
-        host.0.load(Ordering::Relaxed) > 0,
-        "layout must receive the literal HtmlLineHeight operation before emission"
+    let prepared_calls = host.0.lock().unwrap().clone();
+    assert_eq!(
+        prepared_calls.len(),
+        3,
+        "initial nowrap and bounded createText requests precede the final literal line height"
+    );
+    assert_eq!(prepared_calls[0], (TextMeasurementOperation::Wrapped, None));
+    assert_eq!(prepared_calls[1].0, TextMeasurementOperation::Wrapped);
+    assert!(prepared_calls[1].1.is_some_and(|width| width > 0.0));
+    assert_eq!(
+        prepared_calls[2],
+        (TextMeasurementOperation::HtmlLineHeight, None)
     );
     let rendered = artifact
         .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
@@ -1397,8 +1446,15 @@ erDiagram
                     == "A<br>B"
         })
         .expect("literal generic HTML terminal");
-    assert!(!terminal.descendants().any(|node| node.has_tag_name("br")));
+    assert!(!terminal.descendants().any(|node| {
+        node.has_tag_name("br") || node.has_tag_name("span") || node.has_tag_name("p")
+    }));
     assert_eq!(terminal.attribute("height"), Some("31.25"));
+    assert_eq!(
+        *host.0.lock().unwrap(),
+        prepared_calls,
+        "emission must consume the prepared terminal without replaying createText"
+    );
 }
 
 #[test]
