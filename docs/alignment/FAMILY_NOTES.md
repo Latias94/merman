@@ -148,6 +148,11 @@ Dagre and ELK are separate layout paths selected through the
 the Mermaid-reachable adapter surface; it is not a promise to implement every Eclipse ELK option.
 Stable source edge identity must survive import, routing, label projection, and SVG emission.
 
+Subgraph membership for grouped chains reverses the group order while retaining authored order
+within each ampersand group. First-owner filtering and dropped-member diagnostics consume that
+same membership sequence; node declarations and edge expansion retain their independent source
+orders. Nested and repeated subgraphs keep their existing completed-declaration ownership.
+
 Accessibility directives are recognized at the authoritative lexer's plain cursor. The same text
 inside quoted, Markdown or other label payloads remains label content and cannot replace the
 diagram's accessible name. Asset width and height updates follow the selected DB's truthiness
@@ -427,6 +432,21 @@ resolves, and this contract does not establish external image loading. Special p
 Bare Sequence participant redeclarations retain an existing display alias. Single-line accessibility
 values retain hashes and semicolons through the physical line boundary; those values do not change
 ordinary message or control-statement comment rules.
+
+Sequence numeric tokens require the selected lexer's ASCII space or LF right boundary; a
+semicolon directly after an autonumber value does not satisfy it. EOF retains the parser's
+synthetic line boundary. Completed blocks can directly precede another block, statement, branch
+or closing token; ordinary line statements still require their line boundary. Grammar sources
+and their checked-in LALRPOP projection change together, while editor facts use the same token tape.
+
+Native Sequence scanning keeps LF as a statement boundary after inline blanks. The selected
+Jison `\s+` rule can consume that LF and reject a following statement; this input-formatting
+failure remains an intentional compatibility difference.
+
+Control keyword polygons use Mermaid's minimum drawn width of 50, independently of the raw
+`sequence.labelBoxWidth` used for frame/title layout. Typed typography can expand that width;
+painting, keyword centering and effect bounds follow the actual polygon. Visible autonumber
+strings use ECMAScript number formatting before selecting their length-dependent font size.
 
 Sequence math comparison requires its managed math backend. An unavailable backend is a reported
 tooling skip, never a comparator allowance. Owners:

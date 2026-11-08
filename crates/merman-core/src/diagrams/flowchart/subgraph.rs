@@ -214,8 +214,8 @@ fn push_statement_items(
             edge_groups,
         } => {
             // Mermaid FlowDB's subgraph membership list is based on the Jison
-            // `vertexStatement.nodes` shape, which prepends the last node in a chain first
-            // (e.g. `a-->b` yields `[b, a]`).
+            // `vertexStatement.nodes` shape, which prepends each later group while
+            // preserving the order within each group (`a & b --> c & d` yields `[c, d, a, b]`).
             //
             // For node-only group statements (e.g. `A & B`), there are no edges and the list
             // preserves the input order.
@@ -227,7 +227,7 @@ fn push_statement_items(
                     out.push(StatementItem::Id(n.id.clone()));
                 }
             } else {
-                for (index, n) in node_groups.iter().flatten().rev().enumerate() {
+                for (index, n) in node_groups.iter().rev().flatten().enumerate() {
                     if index % 128 == 0 {
                         control.checkpoint()?;
                     }

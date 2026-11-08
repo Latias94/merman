@@ -167,7 +167,10 @@ fn include_resolved_block_label_box_bounds(
 
     for (index, frame) in ctx.frames.iter().enumerate() {
         ctx.checkpoints.checkpoint_loop(index)?;
-        bounds_box.include(frame.x, frame.x + frame.width);
+        bounds_box.include(
+            frame.x,
+            frame.x + frame.width.max(ctx.block_label_box_metrics.drawn_width()),
+        );
     }
     Ok(())
 }

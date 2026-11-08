@@ -3338,6 +3338,32 @@ Bob->>Alice:Again"#,
 }
 
 #[test]
+fn sequence_autonumber_formats_large_numbers_with_ecmascript_text_and_font_size() {
+    for (start, expected_text, expected_size) in [
+        ("100000000000000000000", "100000000000000000000", "7px"),
+        ("1000000000000000000000", "1e+21", "9px"),
+    ] {
+        let svg = render_sequence_svg_from_text(&format!(
+            "---\nconfig:\n  look: classic\n---\nsequenceDiagram\nautonumber {start}\nA->>B: Request\n"
+        ));
+        let document = roxmltree::Document::parse(&svg).expect("valid Sequence SVG");
+        let numbers: Vec<_> = document
+            .descendants()
+            .filter(|node| {
+                node.has_tag_name("text") && node.attribute("class") == Some("sequenceNumber")
+            })
+            .collect();
+        assert_eq!(numbers.len(), 1);
+        assert_eq!(numbers[0].text(), Some(expected_text), "autonumber {start}");
+        assert_eq!(
+            numbers[0].attribute("font-size"),
+            Some(expected_size),
+            "autonumber {start}"
+        );
+    }
+}
+
+#[test]
 fn sequence_autonumber_zero_preserves_current_index_and_step() {
     let svg = render_sequence_svg_from_text(
         r#"sequenceDiagram
@@ -5924,7 +5950,12 @@ fn sequence_loop_keyword_typography_expands_the_measured_label_box() {
             ),
         )
         .expect("compile large Sequence LoopLabel theme");
-    let source = r#"sequenceDiagram
+    let source = r#"---
+config:
+  sequence:
+    labelBoxWidth: 1
+---
+sequenceDiagram
 participant Alice
 participant Bob
 participant Carol
@@ -9887,7 +9918,7 @@ fn sequence_control_unsupported_siblings_remain_residual() {
 }
 
 #[test]
-fn sequence_control_keyword_shadow_covers_the_actual_narrow_polygon() {
+fn sequence_control_keyword_shadow_covers_the_minimum_width_polygon() {
     let theme = DiagramThemeCompiler::new()
         .compile(sequence_shadow_spec(
             ThemeTarget::LoopLabelBackground,
@@ -9903,35 +9934,31 @@ fn sequence_control_keyword_shadow_covers_the_actual_narrow_polygon() {
         .descendants()
         .find(|n| n.attribute("class") == Some("labelBox"))
         .unwrap();
-    let min_x = polygon
+    let points: Vec<f64> = polygon
         .attribute("points")
         .unwrap()
         .split_whitespace()
         .map(|pair| pair.split_once(',').unwrap().0.parse::<f64>().unwrap())
-        .reduce(f64::min)
-        .unwrap();
-    let first_x: f64 = polygon
-        .attribute("points")
-        .unwrap()
-        .split_once(',')
-        .unwrap()
-        .0
-        .parse()
-        .unwrap();
-    assert!(
-        first_x - min_x > 7.0,
-        "fixture must retain the outlying keyword vertex"
-    );
+        .collect();
+    let min_x = points.iter().copied().reduce(f64::min).unwrap();
+    let max_x = points.iter().copied().reduce(f64::max).unwrap();
+    assert_eq!(max_x - min_x, 50.0);
+    assert_eq!(points[0], min_x);
     let filter = doc
         .descendants()
         .find(|n| n.has_tag_name("filter"))
         .unwrap();
     let left: f64 = filter.attribute("x").unwrap().parse().unwrap();
     // Shared lowering retains four sigma (32px); the 1px polygon stroke needs its
-    // default miter envelope of 2px. Omitting the x3 vertex cannot satisfy this bound.
+    // default miter envelope of 2px around the corrected 50px keyword polygon.
     assert!(
         left <= min_x - 2.0 - 9.0 - 32.0,
         "left={left}, actual polygon minimum={min_x}"
+    );
+    let right = left + filter.attribute("width").unwrap().parse::<f64>().unwrap();
+    assert!(
+        right >= max_x + 2.0 - 9.0 + 32.0,
+        "right={right}, actual polygon maximum={max_x}"
     );
 }
 

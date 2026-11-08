@@ -3831,21 +3831,54 @@ fn parse_diagram_flowchart_duplicate_subgraph_membership_matches_mermaid_makeuni
 }
 
 #[test]
-fn parse_diagram_flowchart_subgraph_supports_amp_group_syntax_minimally() {
+fn parse_diagram_flowchart_subgraph_group_membership_preserves_order_within_each_group() {
     let engine = MermaidEngine::new();
-    let text = "graph TD\nsubgraph myTitle\na & b --> c & e\nend";
-    let res = block_on(engine.parse_diagram(text, ParseOptions::default()))
+    for (body, expected) in [
+        ("A & B --> C & D", json!(["C", "D", "A", "B"])),
+        ("A --> B --> C --> D", json!(["D", "C", "B", "A"])),
+        ("A & B & C & D", json!(["A", "B", "C", "D"])),
+        ("A & B --> B & C", json!(["B", "C", "A"])),
+    ] {
+        let source = format!("flowchart TB\nsubgraph S\n{body}\nend\n");
+        let res = block_on(engine.parse_diagram(&source, ParseOptions::default()))
+            .unwrap()
+            .unwrap();
+        assert_eq!(res.model["subgraphs"][0]["nodes"], expected, "{source}");
+    }
+}
+
+#[test]
+fn parse_diagram_flowchart_grouped_chains_preserve_nested_repeated_membership_and_claims() {
+    let source = concat!(
+        "flowchart TB\nsubgraph Outer\n",
+        "subgraph S[First]\nA & B --> C & D\nend\n",
+        "subgraph S[Later]\nD & E --> F & B\nend\nend\n",
+        "subgraph Other\nA & B --> G & H\nend\n",
+    );
+    let parsed = MermaidEngine::new()
+        .parse_diagram_sync(source, ParseOptions::strict())
         .unwrap()
         .unwrap();
-    let nodes = res.model["subgraphs"][0]["nodes"].as_array().unwrap();
-    let as_set: std::collections::HashSet<String> = nodes
-        .iter()
-        .map(|v| v.as_str().unwrap().to_string())
-        .collect();
-    assert!(as_set.contains("a"));
-    assert!(as_set.contains("b"));
-    assert!(as_set.contains("c"));
-    assert!(as_set.contains("e"));
+    let groups = parsed.model["subgraphs"].as_array().unwrap();
+    assert_eq!(groups.len(), 3);
+    assert_eq!(groups[0]["id"], "S");
+    assert_eq!(groups[0]["title"], "First");
+    assert_eq!(groups[0]["nodes"], json!(["C", "D", "A", "B", "F", "E"]));
+    assert_eq!(groups[1]["id"], "Outer");
+    assert_eq!(groups[1]["nodes"], json!(["S"]));
+    assert_eq!(groups[2]["id"], "Other");
+    assert_eq!(groups[2]["nodes"], json!(["G", "H"]));
+    assert_eq!(
+        parsed.model["other"]["droppedSubGraphMembers"],
+        json!([
+            {"node": "A", "keptBy": "S", "droppedFrom": "Other"},
+            {"node": "B", "keptBy": "S", "droppedFrom": "Other"}
+        ])
+    );
+    assert_eq!(
+        parsed.model["vertexCalls"],
+        json!(["A", "B", "C", "D", "D", "E", "F", "B", "A", "B", "G", "H"])
+    );
 }
 
 #[test]

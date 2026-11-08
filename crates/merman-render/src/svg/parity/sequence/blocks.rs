@@ -16,6 +16,7 @@ pub(super) struct SequenceBlockRenderContext<'a> {
     pub(super) shadow_evidence: &'a crate::diagram_theme::SvgShadowEvidenceRecorder,
     pub(super) block_widths_by_id: &'a FxHashMap<String, f64>,
     pub(super) label_box_width: f64,
+    pub(super) label_box_drawn_width: f64,
     pub(super) label_box_height: f64,
     pub(super) box_margin: f64,
     pub(super) box_text_margin: f64,
@@ -114,7 +115,7 @@ pub(super) fn write_block_label_box(
     label: &str,
     ctx: &SequenceBlockRenderContext<'_>,
 ) -> Result<()> {
-    let label_box_width = ctx.label_box_width;
+    let label_box_width = ctx.label_box_drawn_width;
     let neo_height = if ctx.is_neo { 15.0 } else { 0.0 };
     let label_box_height = ctx.label_box_height + neo_height;
     let label_box_height = if label_box_height == 0.0 {

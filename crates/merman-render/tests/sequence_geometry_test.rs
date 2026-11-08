@@ -96,8 +96,27 @@ fn assert_text(value: &Value, node: roxmltree::Node<'_, '_>) {
 
 #[test]
 fn sequence_frames_and_sections_share_svg_geometry_in_source_order() {
-    // Exercise configured label-box widening as well as the default nested frame geometry.
-    for prefix in ["", "%%{init: {'sequence': {'labelBoxWidth': 280}}}%%\n"] {
+    // Keep raw frame/title widths distinct from the minimum drawn keyword width in both looks.
+    for (prefix, label_box_width) in [
+        ("", 50.0_f64),
+        ("%%{init: {'sequence': {'labelBoxWidth': 280}}}%%\n", 280.0),
+        (
+            "---\nconfig:\n  look: classic\n  sequence:\n    labelBoxWidth: 1\n---\n",
+            1.0,
+        ),
+        (
+            "---\nconfig:\n  look: classic\n  sequence:\n    labelBoxWidth: 50\n---\n",
+            50.0,
+        ),
+        (
+            "---\nconfig:\n  look: neo\n  sequence:\n    labelBoxWidth: 0\n---\n",
+            0.0,
+        ),
+        (
+            "---\nconfig:\n  look: neo\n  sequence:\n    labelBoxWidth: 50\n---\n",
+            50.0,
+        ),
+    ] {
         let source = format!("{prefix}{NESTED_FRAMES}");
         let (layout, svg) = render(&source);
         let frames = layout["frames"].as_array().expect("export control frames");
@@ -163,6 +182,34 @@ fn sequence_frames_and_sections_share_svg_geometry_in_source_order() {
                         {
                             near(number(*line, attribute), coordinate);
                         }
+                    }
+                    let keyword_box = group
+                        .children()
+                        .find(|node| node.attribute("class") == Some("labelBox"))
+                        .unwrap();
+                    let points: Vec<_> = keyword_box
+                        .attribute("points")
+                        .unwrap()
+                        .split_whitespace()
+                        .map(|point| {
+                            let (x, y) = point.split_once(',').unwrap();
+                            (x.parse::<f64>().unwrap(), y.parse::<f64>().unwrap())
+                        })
+                        .collect();
+                    let drawn_width = label_box_width.max(50.0);
+                    near(points[0].0, x);
+                    near(points[0].1, y);
+                    near(points[1].0 - points[0].0, drawn_width);
+                    let keyword = group
+                        .children()
+                        .find(|node| node.attribute("class") == Some("labelText"))
+                        .unwrap();
+                    near(number(keyword, "x"), (x + drawn_width / 2.0).round());
+                    for title in group
+                        .children()
+                        .filter(|node| node.attribute("class") == Some("loopText"))
+                    {
+                        near(number(title, "x"), (x + label_box_width + right) / 2.0);
                     }
                     let sections = frame
                         .get("sections")

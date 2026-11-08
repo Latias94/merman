@@ -945,3 +945,54 @@ fn sankey_csv_quote_errors_and_recovery_keep_original_source_ranges() {
         }
     }
 }
+
+#[cfg(feature = "editor-facts")]
+#[test]
+fn flowchart_group_membership_keeps_authored_editor_source_ranges() {
+    use merman_core::{EditorSemanticCompleteness, ParseOptions, ParsedEditorFacts};
+
+    let engine = MermaidEngine::new();
+    for newline in ["\n", "\r\n"] {
+        let source = format!(
+            "---{newline}title: 中文😀{newline}---{newline}%% removed 中文😀{newline}flowchart TD{newline}subgraph S{newline}雪 & B --> C & D{newline}end{newline}"
+        );
+        for known_type in [false, true] {
+            let snapshot = if known_type {
+                engine.parse_diagram_snapshot_with_type_sync("flowchart-v2", &source)
+            } else {
+                engine.parse_diagram_snapshot_sync(&source)
+            }
+            .unwrap()
+            .unwrap();
+            let ParsedEditorFacts::Available(facts) = snapshot.editor_facts() else {
+                panic!("Flowchart groups must retain parser-derived source facts");
+            };
+            assert_eq!(facts.completeness, EditorSemanticCompleteness::Complete);
+            assert_editor_fact_spans_belong_to_source(
+                Path::new("flowchart-group-membership"),
+                &source,
+                facts,
+            );
+            for name in ["雪", "B", "C", "D"] {
+                let symbol = facts
+                    .symbols
+                    .iter()
+                    .find(|symbol| symbol.name == name)
+                    .unwrap();
+                let start = source.rfind(name).unwrap();
+                assert_eq!(symbol.selection, SourceSpan::new(start, start + name.len()));
+            }
+            let parsed = if known_type {
+                engine.parse_diagram_with_type_sync("flowchart-v2", &source, ParseOptions::strict())
+            } else {
+                engine.parse_diagram_sync(&source, ParseOptions::strict())
+            }
+            .unwrap()
+            .unwrap();
+            assert_eq!(
+                parsed.model["subgraphs"][0]["nodes"],
+                serde_json::json!(["C", "D", "雪", "B"])
+            );
+        }
+    }
+}

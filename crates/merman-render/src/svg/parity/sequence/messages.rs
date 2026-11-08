@@ -756,7 +756,7 @@ fn round_sequence_number(value: f64) -> f64 {
 
 fn format_sequence_number(value: f64) -> String {
     if value.is_finite() {
-        value.to_string()
+        ryu_js::Buffer::new().format_finite(value).to_owned()
     } else {
         String::new()
     }

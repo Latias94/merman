@@ -46,6 +46,7 @@ pub(super) fn render_sequence_interaction_overlays(
         shadow_evidence: ctx.shadow_evidence,
         block_widths_by_id: ctx.block_widths_by_id,
         label_box_width: ctx.block_label_box_metrics.width(),
+        label_box_drawn_width: ctx.block_label_box_metrics.drawn_width(),
         label_box_height: if ctx.block_label_box_metrics.typography_expanded() {
             ctx.block_label_box_metrics.terminal_height()
         } else {

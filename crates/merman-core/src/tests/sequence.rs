@@ -104,6 +104,153 @@ fn sequence_fragment_carrier_failures_preserve_eof_and_first_error_recovery() {
 }
 
 #[test]
+fn sequence_completed_blocks_allow_adjacent_statements_and_end_tokens() {
+    let engine = MermaidEngine::new();
+    for (source, expected_types) in [
+        (
+            "sequenceDiagram\nloop outer\nopt inner\nA->>B: ping\nend end",
+            vec![10, 15, 0, 16, 11],
+        ),
+        (
+            "sequenceDiagram\nloop outer\nopt inner\nbreak stop\nA->>B: ping\nend end end",
+            vec![10, 15, 30, 0, 31, 16, 11],
+        ),
+        (
+            "sequenceDiagram\nloop outer\nA->>B: ping\nend A->>B: after\n",
+            vec![10, 0, 11, 0],
+        ),
+        (
+            "sequenceDiagram\nloop outer\nA->>B: ping\nend opt next\nA->>B: after\nend",
+            vec![10, 0, 11, 15, 0, 16],
+        ),
+        (
+            "sequenceDiagram\nbox Group\nparticipant A\nend loop outer\nA->>B: ping\nend",
+            vec![10, 0, 11],
+        ),
+    ] {
+        let control = source.replace("end ", "end\n");
+        let expected = engine
+            .parse_diagram_sync(&control, ParseOptions::strict())
+            .unwrap()
+            .unwrap();
+        let parsed = engine
+            .parse_diagram_sync(source, ParseOptions::strict())
+            .unwrap_or_else(|error| panic!("{source:?}: {error}"))
+            .unwrap();
+        assert_eq!(parsed.model, expected.model, "{source:?}");
+        let actual_types: Vec<_> = parsed.model["messages"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|message| message["type"].as_i64().unwrap())
+            .collect();
+        assert_eq!(actual_types, expected_types, "{source:?}");
+        assert_eq!(parsed.model["actorOrder"], json!(["A", "B"]));
+        let semantic = SemanticParser::new().parse_diagram_sync(source).unwrap();
+        let SemanticDiagramModel::Sequence(semantic_model) = semantic.model else {
+            panic!("expected canonical Sequence model");
+        };
+        let typed = engine
+            .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
+            .unwrap()
+            .unwrap();
+        let RenderSemanticModel::Sequence(typed_model) = typed.model() else {
+            panic!("expected typed Sequence model");
+        };
+        assert_eq!(
+            serde_json::to_value(semantic_model).unwrap(),
+            serde_json::to_value(typed_model).unwrap()
+        );
+    }
+}
+
+#[test]
+fn sequence_completed_blocks_allow_adjacent_branch_tokens() {
+    let engine = MermaidEngine::new();
+    for (header, branch, expected_types) in [
+        ("alt outer", "else other", vec![12, 15, 0, 16, 13, 0, 14]),
+        ("par outer", "and other", vec![19, 15, 0, 16, 20, 0, 21]),
+        (
+            "critical outer",
+            "option other",
+            vec![27, 15, 0, 16, 28, 0, 29],
+        ),
+    ] {
+        let source = format!(
+            "sequenceDiagram\n{header}\nopt inner\nA->>B: ping\nend {branch}\nB->>A: pong\nend"
+        );
+        let control = source.replace("end ", "end\n");
+        let expected = engine
+            .parse_diagram_sync(&control, ParseOptions::strict())
+            .unwrap()
+            .unwrap();
+        let parsed = engine
+            .parse_diagram_sync(&source, ParseOptions::strict())
+            .unwrap_or_else(|error| panic!("{source:?}: {error}"))
+            .unwrap();
+        assert_eq!(parsed.model, expected.model, "{source:?}");
+        let actual_types: Vec<_> = parsed.model["messages"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|message| message["type"].as_i64().unwrap())
+            .collect();
+        assert_eq!(actual_types, expected_types, "{source:?}");
+        let facts = engine
+            .parse_editor_semantic_facts_with_type_sync("sequence", &source)
+            .unwrap()
+            .unwrap();
+        assert_eq!(facts.completeness, EditorSemanticCompleteness::Complete);
+        assert!(facts.diagnostics.is_empty());
+    }
+}
+
+#[test]
+fn sequence_completed_blocks_keep_missing_and_extra_end_failures_exact() {
+    let engine = MermaidEngine::new();
+    let missing = "sequenceDiagram\nloop outer\nopt inner\nA->>B: ping\nend";
+    let extra = "sequenceDiagram\nloop outer\nopt inner\nA->>B: ping\nend end end";
+    for (source, span, kind) in [
+        (
+            missing,
+            SourceSpan::new(missing.len(), missing.len()),
+            ParseDiagnosticSpanKind::InsertionPoint,
+        ),
+        (
+            extra,
+            SourceSpan::new(extra.len() - "end".len(), extra.len()),
+            ParseDiagnosticSpanKind::Exact,
+        ),
+    ] {
+        for typed in [false, true] {
+            let error = if typed {
+                engine
+                    .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
+                    .unwrap_err()
+            } else {
+                engine
+                    .parse_diagram_sync(source, ParseOptions::strict())
+                    .unwrap_err()
+            };
+            let Error::DiagramParse { diagnostic, .. } = error else {
+                panic!("unbalanced Sequence blocks must remain parse failures");
+            };
+            assert_eq!(diagnostic.span(), Some(span), "{source:?}");
+            assert_eq!(diagnostic.span_kind(), kind, "{source:?}");
+        }
+        let facts = engine
+            .parse_editor_semantic_facts_with_type_sync("sequence", source)
+            .unwrap()
+            .unwrap();
+        assert_eq!(facts.completeness, EditorSemanticCompleteness::Recovered);
+        assert!(facts.diagnostics.iter().any(|diagnostic| {
+            diagnostic.kind == EditorSemanticDiagnosticKind::ParserRecovery
+                && diagnostic.span == Some(span)
+        }));
+    }
+}
+
+#[test]
 fn parse_diagram_sequence_basic_messages_and_notes() {
     let engine = MermaidEngine::new();
     let text = r#"sequenceDiagram
@@ -851,6 +998,186 @@ Alice->>Bob:Hello"#;
         res.is_err(),
         "expected Mermaid 11.15-compatible parse failure for thousandths"
     );
+}
+
+#[test]
+fn sequence_autonumber_requires_pinned_number_lookahead() {
+    let engine = MermaidEngine::new();
+    let semantic = SemanticParser::new();
+    for directive in [
+        "autonumber 7;",
+        "autonumber 7 2;",
+        "autonumber 7\t",
+        "autonumber 7\t 2",
+        "autonumber 7\t;",
+        "autonumber 7\u{000b};",
+        "autonumber 7\u{000c};",
+        "autonumber 7\u{00a0};",
+        "autonumber 7\u{2003};",
+        "autonumber 7\u{2028};",
+        "autonumber 7#comment",
+        "autonumber 7,2",
+        "autonumber 7:2",
+        "autonumber 7.12.01",
+        "autonumber 7suffix",
+    ] {
+        let source = format!("sequenceDiagram\n{directive}\nA->>B: ping\n");
+        assert!(semantic.parse_diagram_sync(&source).is_err(), "{source:?}");
+        assert!(
+            engine
+                .parse_diagram_sync(&source, ParseOptions::strict())
+                .is_err(),
+            "{source:?}"
+        );
+        assert!(
+            engine
+                .parse_diagram_for_render_model_sync(&source, ParseOptions::strict())
+                .is_err(),
+            "{source:?}"
+        );
+    }
+}
+
+#[test]
+fn sequence_autonumber_keeps_space_lf_and_eof_payloads() {
+    let engine = MermaidEngine::new();
+    for (directive, start, step) in [
+        ("autonumber 7", Some(7.0), Some(1.0)),
+        ("autonumber 7 2", Some(7.0), Some(2.0)),
+        ("autonumber 0 0", Some(0.0), Some(0.0)),
+        ("autonumber 10.1 .01", Some(10.1), Some(0.01)),
+        ("autonumber", None, None),
+        ("autonumber off", None, None),
+    ] {
+        for ending in ["", "\n", "\r\n", "\r", " ;", " # comment", " \t\n"] {
+            let source = format!("sequenceDiagram\n{directive}{ending}");
+            let parsed = engine
+                .parse_diagram_sync(&source, ParseOptions::strict())
+                .unwrap_or_else(|error| panic!("{source:?}: {error}"))
+                .unwrap();
+            let messages = parsed.model["messages"].as_array().unwrap();
+            assert_eq!(messages.len(), 1, "{source:?}");
+            assert_eq!(messages[0]["type"], 26, "{source:?}");
+            assert_eq!(
+                messages[0]["message"]["start"].as_f64(),
+                start,
+                "{source:?}"
+            );
+            assert_eq!(messages[0]["message"]["step"].as_f64(), step, "{source:?}");
+            assert_eq!(
+                messages[0]["message"]["visible"],
+                !directive.ends_with("off"),
+                "{source:?}"
+            );
+        }
+    }
+
+    let source = concat!(
+        "sequenceDiagram\nparticipant 007 as Sender\n",
+        "autonumber 7 ;007->>0.50: ping\n",
+    );
+    let parsed = engine
+        .parse_diagram_sync(source, ParseOptions::strict())
+        .unwrap()
+        .unwrap();
+    assert_eq!(parsed.model["messages"][0]["message"]["start"], 7);
+    assert_eq!(parsed.model["messages"][1]["message"], "ping");
+    assert_eq!(parsed.model["actorOrder"], json!(["007", "0.50"]));
+    let semantic = SemanticParser::new().parse_diagram_sync(source).unwrap();
+    let SemanticDiagramModel::Sequence(semantic_model) = semantic.model else {
+        panic!("expected canonical Sequence model");
+    };
+    let typed = engine
+        .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
+        .unwrap()
+        .unwrap();
+    let RenderSemanticModel::Sequence(typed_model) = typed.model() else {
+        panic!("expected typed Sequence model");
+    };
+    assert_eq!(
+        serde_json::to_value(semantic_model).unwrap(),
+        serde_json::to_value(typed_model).unwrap()
+    );
+}
+
+#[test]
+fn sequence_autonumber_recovery_keeps_original_spans_and_source_facts() {
+    let engine = MermaidEngine::new();
+    for newline in ["\n", "\r\n"] {
+        for directive in ["autonumber 7;", "autonumber 7 2;", "autonumber 7\t;"] {
+            let source = [
+                "---",
+                "config:",
+                "  theme: default",
+                "---",
+                "%%{init: {\"sequence\": {\"wrap\": true}}}%%",
+                "sequenceDiagram",
+                "participant 顧客",
+                directive,
+                "participant 後続",
+                "顧客->>後続: ping",
+                "",
+            ]
+            .join(newline);
+            let number_start = source.find(directive).unwrap()
+                + if directive.starts_with("autonumber 7 2") {
+                    "autonumber 7 ".len()
+                } else {
+                    "autonumber ".len()
+                };
+            let expected_span = SourceSpan::new(number_start, number_start + 1);
+            for typed in [false, true] {
+                let error = if typed {
+                    engine
+                        .parse_diagram_for_render_model_sync(&source, ParseOptions::strict())
+                        .unwrap_err()
+                } else {
+                    engine
+                        .parse_diagram_sync(&source, ParseOptions::strict())
+                        .unwrap_err()
+                };
+                let Error::DiagramParse { diagnostic, .. } = error else {
+                    panic!("invalid autonumber must remain a parse error");
+                };
+                assert_eq!(diagnostic.span(), Some(expected_span), "{source:?}");
+                assert_eq!(diagnostic.span_kind(), ParseDiagnosticSpanKind::Exact);
+            }
+
+            crate::diagrams::sequence::reset_sequence_syntax_construction_count();
+            let snapshot = engine
+                .parse_diagram_snapshot_sync(&source)
+                .unwrap()
+                .unwrap();
+            assert!(matches!(snapshot.outcome(), DiagramParseOutcome::Failed(_)));
+            let ParsedEditorFacts::Available(facts) = snapshot.editor_facts() else {
+                panic!("autonumber failure must retain requested editor facts");
+            };
+            assert_eq!(facts.completeness, EditorSemanticCompleteness::Recovered);
+            assert!(facts.diagnostics.iter().any(|diagnostic| {
+                diagnostic.kind == EditorSemanticDiagnosticKind::ParserRecovery
+                    && diagnostic.span == Some(expected_span)
+            }));
+            for name in ["顧客", "後続"] {
+                let expected: Vec<_> = source
+                    .match_indices(name)
+                    .map(|(start, name)| SourceSpan::new(start, start + name.len()))
+                    .collect();
+                let actual: Vec<_> = facts
+                    .symbols
+                    .iter()
+                    .filter(|symbol| symbol.name == name)
+                    .map(|symbol| symbol.selection)
+                    .collect();
+                assert_eq!(actual, expected, "{source:?}");
+            }
+            assert!(!facts.symbols.iter().any(|symbol| symbol.name == "7"));
+            assert_eq!(snapshot.source_config().directives().len(), 1);
+            assert_eq!(
+                crate::diagrams::sequence::sequence_syntax_construction_count(),
+                1
+            );
+        }
+    }
 }
 
 #[test]

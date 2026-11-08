@@ -556,6 +556,11 @@ impl<'input> SequenceScanner<'input> {
             return None;
         }
 
+        // Jison's NUM requires (?=[ \n]+); Diagram.fromText appends LF at EOF.
+        if !matches!(self.input.as_bytes().get(end), None | Some(b' ' | b'\n')) {
+            return None;
+        }
+
         let n: f64 = self.input[start..end].parse().ok()?;
         if !n.is_finite() {
             return None;
@@ -944,5 +949,26 @@ impl<'input> SequenceScanner<'input> {
             message: format!("Unexpected character at {start}"),
             span: SourceSpan::new(start, self.pos),
         }))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::super::Lexer;
+    use crate::diagrams::scan::collect_lexical_events;
+    use crate::{CancelReason, OperationControl};
+
+    #[test]
+    fn autonumber_lookahead_scanning_observes_cancellation() {
+        let source = format!("sequenceDiagram\n{}", "autonumber 7;\n".repeat(256));
+        let mut lexer = Lexer::new(&source);
+        let control = OperationControl::new();
+        control.cancel_after_checkpoints(1);
+
+        let error = collect_lexical_events(&mut lexer, &control)
+            .expect_err("cancellation must interrupt the shared autonumber token tape");
+        assert_eq!(error.reason, CancelReason::Requested);
+        assert!(lexer.scanner.pos > 0 && lexer.scanner.pos < source.len());
+        assert_eq!(control.checkpoint(), Err(error));
     }
 }
