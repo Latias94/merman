@@ -749,6 +749,92 @@ fn png_pixels(bytes: Vec<u8>) -> (u32, u32, Vec<u8>) {
 
 #[cfg(feature = "png")]
 #[test]
+fn zero_html_glyphs_do_not_paint_or_poison_strict_native_exports() {
+    let context =
+        load_memory(Default::default(), &OperationControl::new()).with_strict_glyph_coverage(true);
+    let session = merman_render::environment::RenderEnvironment::deterministic()
+        .begin_session()
+        .unwrap();
+    let seal = |body: &str| {
+        let source = format!(
+            r#"<svg xmlns="http://www.w3.org/2000/svg" width="400" height="80"><foreignObject width="380" height="72"><div xmlns="http://www.w3.org/1999/xhtml" style="font-family:Cousine;font-size:22px">{body}</div></foreignObject></svg>"#
+        );
+        merman_render::svg::finalize_resvg_svg(&source, &session).unwrap()
+    };
+    let render = |body: &str| {
+        let svg = seal(body);
+        let options = merman_export::RasterOptions::default()
+            .with_font_context(context.for_export(&OperationControl::new()).unwrap());
+        let (png, report) = merman_export::svg_to_png_with_report(&svg, &options).unwrap();
+        assert!(!report.fonts().unresolved_font_request());
+        assert!(!report.fonts().unresolved_glyph_fallback());
+        assert_eq!(report.fonts().notdef_glyph_count(), 0);
+        #[cfg(feature = "pdf")]
+        {
+            let options = merman_export::PdfOptions::default()
+                .with_font_context(context.for_export(&OperationControl::new()).unwrap());
+            let (pdf, report) = merman_export::svg_to_pdf_with_report(&svg, &options).unwrap();
+            assert!(pdf.starts_with(b"%PDF-"));
+            assert!(!report.fonts().unresolved_font_request());
+            assert!(!report.fonts().unresolved_glyph_fallback());
+            assert_eq!(report.fonts().notdef_glyph_count(), 0);
+        }
+        png_pixels(png)
+    };
+    let visible = render("<span>AVA</span>");
+    assert!(
+        visible
+            .2
+            .as_chunks::<4>()
+            .0
+            .iter()
+            .any(|pixel| pixel[3] != 0),
+        "the visible-only control must paint actual glyphs"
+    );
+    for hidden in [
+        "<span style='font-size:0px'>&#x10ffff;</span>",
+        "<span style='font-size:0pt'><big><span style='font-size:150%'>&#x10ffff;</span></big></span>",
+    ] {
+        let blank = render(hidden);
+        assert!(
+            blank.2.as_chunks::<4>().0.iter().all(|pixel| pixel[3] == 0),
+            "zero text cannot paint ink: {hidden}"
+        );
+        for mixed_body in [
+            format!("{hidden}<span>AVA</span>"),
+            format!("<span>AVA</span>{hidden}"),
+            format!("<span>A</span>{hidden}<span>VA</span>"),
+        ] {
+            let mixed = render(&mixed_body);
+            assert_eq!((mixed.0, mixed.1), (visible.0, visible.1));
+            let changed_pixels = mixed
+                .2
+                .as_chunks::<4>()
+                .0
+                .iter()
+                .zip(visible.2.as_chunks::<4>().0)
+                .filter(|(actual, expected)| actual != expected)
+                .count();
+            assert_eq!(
+                changed_pixels, 0,
+                "visible sibling geometry is unchanged: {mixed_body}"
+            );
+        }
+    }
+    let missing = seal("<span>&#x10ffff;</span>");
+    let options = merman_export::RasterOptions::default()
+        .with_font_context(context.for_export(&OperationControl::new()).unwrap());
+    assert!(matches!(
+        merman_export::svg_to_png(&missing, &options),
+        Err(merman_export::ExportError::NativeFont(
+            NativeFontError::MissingGlyphCoverage
+        ))
+    ));
+    context.check().unwrap();
+}
+
+#[cfg(feature = "png")]
+#[test]
 fn bytes_and_files_paint_identical_nonempty_png_pixels() {
     let control = OperationControl::new();
     let svg = export_svg(

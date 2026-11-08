@@ -1,7 +1,7 @@
 use super::html::HtmlTextFragment;
 use crate::mermaid_style::{
-    is_supported_css_color_value, is_supported_css_font_style_value,
-    is_supported_css_font_weight_value, parse_style_declaration,
+    CssFontSizeContext, is_supported_css_color_value, is_supported_css_font_style_value,
+    is_supported_css_font_weight_value, parse_style_declaration, resolve_mermaid_font_size_px,
     visit_style_declaration_boundaries_with_checkpoints,
 };
 use crate::svg::pipeline::{
@@ -1799,28 +1799,13 @@ fn is_admitted_value(property: &str, value: &str, presentation: bool) -> bool {
         return true;
     }
     match property {
-        "font-size" => {
-            matches!(
-                lower.as_str(),
-                "xx-small"
-                    | "x-small"
-                    | "small"
-                    | "medium"
-                    | "large"
-                    | "x-large"
-                    | "xx-large"
-                    | "smaller"
-                    | "larger"
-            ) || ["px", "rem", "em", "%"]
-                .iter()
-                .any(|unit| parse_css_number_with_unit(&lower, unit).is_some())
-                || (presentation
-                    && lower
-                        .parse::<f64>()
-                        .ok()
-                        .and_then(bounded_positive)
-                        .is_some())
-        }
+        "font-size" => resolve_font_size(
+            Some(value),
+            DEFAULT_FONT_SIZE,
+            DEFAULT_FONT_SIZE,
+            presentation,
+        )
+        .is_some(),
         "line-height" => {
             lower == "normal"
                 || lower
@@ -3200,40 +3185,16 @@ fn resolve_font_size(
     root: f64,
     svg_unitless: bool,
 ) -> Option<f64> {
-    let value = value?.trim().to_ascii_lowercase();
-    if matches!(value.as_str(), "inherit" | "unset") {
-        return finite_positive(parent);
+    let value = value?;
+    let size = resolve_mermaid_font_size_px(value, CssFontSizeContext::new(parent, root))?;
+    // Unitless nonzero sizes are the SVG presentation/configuration legacy, not valid HTML CSS.
+    if !svg_unitless && size != 0.0 {
+        let mut parser = Parser::new(value);
+        if matches!(parser.next(), Ok(Token::Number { .. })) {
+            return None;
+        }
     }
-    if value == "initial" {
-        return finite_positive(DEFAULT_FONT_SIZE);
-    }
-    if let Some(number) = value.strip_suffix("px").and_then(parse_number) {
-        return bounded_positive(number);
-    }
-    if let Some(number) = value.strip_suffix("rem").and_then(parse_number) {
-        return bounded_positive(root * number);
-    }
-    if let Some(number) = value.strip_suffix("em").and_then(parse_number) {
-        return bounded_positive(parent * number);
-    }
-    if let Some(number) = value.strip_suffix('%').and_then(parse_number) {
-        return bounded_positive(parent * number / 100.0);
-    }
-    if svg_unitless {
-        return value.parse::<f64>().ok().and_then(bounded_positive);
-    }
-    match value.as_str() {
-        "xx-small" => finite_positive(9.0),
-        "x-small" => finite_positive(10.0),
-        "small" => finite_positive(13.0),
-        "medium" => finite_positive(16.0),
-        "large" => finite_positive(18.0),
-        "x-large" => finite_positive(24.0),
-        "xx-large" => finite_positive(32.0),
-        "smaller" => finite_positive(parent * 0.833_333_333_3),
-        "larger" => finite_positive(parent * 1.2),
-        _ => None,
-    }
+    (size <= MAX_CSS_NUMERIC_VALUE).then_some(size)
 }
 
 fn resolve_inherited_text_value(
@@ -3729,6 +3690,64 @@ mod tests {
                 .collect();
             assert_eq!(sizes.len(), 1);
             assert!((sizes[0] - expected).abs() < 1e-9, "{markup}: {sizes:?}");
+        }
+    }
+
+    #[test]
+    fn fallback_font_sizes_share_the_measurement_scalar_context() {
+        let context = CssFontSizeContext::new(24.0, 18.0);
+        for value in [
+            "0px",
+            "0em",
+            "0%",
+            "xx-small",
+            "x-small",
+            "small",
+            "medium",
+            "large",
+            "x-large",
+            "xx-large",
+            "smaller",
+            "larger",
+            "24pt",
+            "2pc",
+            "1in",
+            "2.54cm",
+            "25.4mm",
+            "101.6q",
+            "1.5em",
+            "125%",
+            "1.5rem",
+            r"24p\74",
+            r"\6c arge",
+        ] {
+            assert_eq!(
+                resolve_font_size(Some(value), 24.0, 18.0, false),
+                resolve_mermaid_font_size_px(value, context),
+                "{value}"
+            );
+            assert!(is_admitted_value("font-size", value, false), "{value}");
+        }
+        assert_eq!(resolve_font_size(Some("1em"), 0.0, 18.0, false), Some(0.0));
+        assert_eq!(
+            resolve_font_size(Some("1rem"), 0.0, 18.0, false),
+            Some(18.0)
+        );
+        assert_eq!(resolve_font_size(Some("32"), 24.0, 18.0, true), Some(32.0));
+        assert_eq!(resolve_font_size(Some("32"), 24.0, 18.0, false), None);
+        for invalid in [
+            "-1px",
+            "-24pt",
+            "-1e-1000px",
+            "24fr",
+            "calc(24px)",
+            "24px trailing",
+        ] {
+            assert_eq!(
+                resolve_font_size(Some(invalid), 24.0, 18.0, false),
+                None,
+                "{invalid}"
+            );
         }
     }
 

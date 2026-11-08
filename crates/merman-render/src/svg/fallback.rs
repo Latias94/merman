@@ -538,8 +538,22 @@ fn foreign_object_label_fallback_svg_text_with_checkpoints<E>(
                                 &mut generated_elements,
                                 preflight_generated,
                             )?;
+                            let mut has_positioned_text = false;
                             for (run_index, run) in normalized.line_runs(line).enumerate() {
                                 checkpoint_loop(run_index, checkpoint)?;
+                                let position =
+                                    if run.typography.font_size > 0.0 && !has_positioned_text {
+                                        has_positioned_text = true;
+                                        if run_index > 0 {
+                                            // usvg skips zero-sized spans together with their x/y.
+                                            // Preserve the row origin on its first paintable span.
+                                            format!(r#" x="{line_x}" y="{y_line}""#)
+                                        } else {
+                                            String::new()
+                                        }
+                                    } else {
+                                        String::new()
+                                    };
                                 let text = escape_xml_text_with_checkpoints(run.text, checkpoint)?;
                                 let style = format!(
                                     "font-family: {} !important; font-size: {}px !important; font-weight: {} !important; font-style: {} !important; fill: {} !important; fill-opacity: 1 !important; stroke: none !important; opacity: 1 !important; display: inline !important; visibility: inherit !important; clip-path: none !important; mask: none !important; filter: none !important; transform: none !important;",
@@ -552,7 +566,9 @@ fn foreign_object_label_fallback_svg_text_with_checkpoints<E>(
                                 let style = escape_xml_attr_with_checkpoints(&style, checkpoint)?;
                                 push_generated_fmt(
                                     &mut overlays,
-                                    format_args!(r#"<tspan style="{style}">{text}</tspan>"#),
+                                    format_args!(
+                                        r#"<tspan{position} style="{style}">{text}</tspan>"#
+                                    ),
                                     1,
                                     svg.len().saturating_add(instance_bytes),
                                     &mut generated_elements,

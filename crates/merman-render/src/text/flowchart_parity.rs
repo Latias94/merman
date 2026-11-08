@@ -1,7 +1,7 @@
 //! Flowchart-specific HTML label measurement parity helpers.
 
 pub fn flowchart_html_line_height_px(font_size_px: f64) -> f64 {
-    (font_size_px.max(1.0) * 1.5).max(1.0)
+    font_size_px.max(0.0) * 1.5
 }
 
 pub fn flowchart_html_has_inline_style_tags(lower_html: &str) -> bool {

@@ -1,6 +1,6 @@
 use crate::config::{
-    config_bool, config_diagram_look, config_f64, config_f64_css_px, config_f64_explicit_css_px,
-    config_string,
+    config_bool, config_diagram_look, config_f64, config_f64_css_px,
+    config_f64_explicit_css_absolute_px, config_string,
 };
 use crate::text::{TextStyle, WrapMode};
 use serde_json::Value;
@@ -152,7 +152,7 @@ impl<'a> ClassConfigView<'a> {
 
     fn render_font_size(&self) -> f64 {
         // HTML labels inherit the same root SVG theme font size as SVG labels.
-        config_f64_explicit_css_px(self.effective_config, &["themeVariables", "fontSize"])
+        config_f64_explicit_css_absolute_px(self.effective_config, &["themeVariables", "fontSize"])
             .unwrap_or(16.0)
             .max(1.0)
     }

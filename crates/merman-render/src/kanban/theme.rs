@@ -65,7 +65,7 @@ impl KanbanTypographyPlan {
             && effective_config.config_path_overrides_typed_default("themeVariables.fontSize");
         let configured_theme_font_size = config_owns_font_size
             .then(|| {
-                positive_font_size(crate::config::config_f64_css_px(
+                positive_font_size(crate::config::config_f64_css_absolute_px(
                     effective_config.as_value(),
                     &["themeVariables", "fontSize"],
                 ))

@@ -22,7 +22,8 @@ pub(super) fn same_font(left: Option<&TextStyle>, right: Option<&TextStyle>) -> 
 
 pub(super) struct TerminalFonts {
     root_font_size: f64,
-    stack: Vec<(String, Arc<TextStyle>)>,
+    // The cached ancestry maximum makes text-range struts independent of stack depth.
+    stack: Vec<(String, Arc<TextStyle>, f64)>,
     open_indices: HashMap<String, Vec<usize>>,
     has_font_declarations: bool,
     line_sizes: Vec<f64>,
@@ -42,7 +43,7 @@ impl TerminalFonts {
     pub(super) fn new(style: &TextStyle, root_font_size: f64) -> Self {
         Self {
             root_font_size,
-            stack: vec![(String::new(), Arc::new(style.clone()))],
+            stack: vec![(String::new(), Arc::new(style.clone()), style.font_size)],
             open_indices: HashMap::new(),
             has_font_declarations: false,
             line_sizes: vec![style.font_size],
@@ -57,6 +58,20 @@ impl TerminalFonts {
             .last()
             .expect("terminal font root remains present")
             .1
+    }
+
+    pub(super) fn current_ancestor_strut_font_size(&self) -> f64 {
+        let (_, style, maximum) = self
+            .stack
+            .last()
+            .expect("terminal font root remains present");
+        // The terminal run and operation root already own their own line-height probes/floors.
+        // Carry only an intermediate ancestor that they cannot otherwise represent.
+        if *maximum > style.font_size && *maximum > self.stack[0].1.font_size {
+            *maximum
+        } else {
+            0.0
+        }
     }
 
     pub(super) fn has_font_declarations(&self) -> bool {
@@ -80,7 +95,7 @@ impl TerminalFonts {
             {
                 // Only suffixes are removed, so surviving stack indices stay valid. Each open
                 // element is drained once; unmatched closes never scan the ancestry stack.
-                for (element, _) in self.stack.drain(index..).rev() {
+                for (element, _, _) in self.stack.drain(index..).rev() {
                     let indices = self
                         .open_indices
                         .get_mut(&element)
@@ -157,7 +172,13 @@ impl TerminalFonts {
                 .entry(name.to_owned())
                 .or_default()
                 .push(self.stack.len());
-            self.stack.push((name.to_owned(), resolved));
+            let maximum = self
+                .stack
+                .last()
+                .expect("terminal font root remains present")
+                .2
+                .max(resolved.font_size);
+            self.stack.push((name.to_owned(), resolved, maximum));
             #[cfg(test)]
             {
                 self.stack_work.pushes += 1;
@@ -166,7 +187,11 @@ impl TerminalFonts {
     }
 
     pub(super) fn new_line(&mut self) {
-        let break_font_size = self.current().font_size;
+        let break_font_size = self
+            .stack
+            .last()
+            .expect("terminal font root remains present")
+            .2;
         if let Some(size) = self.line_sizes.last_mut() {
             *size = size.max(break_font_size);
         }
@@ -194,7 +219,7 @@ impl TerminalFonts {
                     .get(index)
                     .copied()
                     .unwrap_or(base.font_size)
-                    .max(1.0)
+                    .max(0.0)
                     * 1.5;
                 runs_by_line
                     .get(index)
@@ -203,12 +228,14 @@ impl TerminalFonts {
                     .filter(|run| !run.text.is_empty())
                     .map(|run| {
                         let style = run.terminal_style.as_deref().unwrap_or(base);
-                        if run.replaced_width_px.is_some() {
-                            return style.font_size.max(1.0) * 1.5;
-                        }
-                        // Use the routed terminal measurement for host-specific vertical metrics.
-                        // The parent strut supplies the floor without rounding up host precision.
-                        measurer.measure_html_line_height_px(&run.text, style)
+                        let height = if run.replaced_width_px.is_some() {
+                            style.font_size.max(0.0) * 1.5
+                        } else {
+                            // Use the routed terminal measurement for host-specific vertical metrics.
+                            // The parent strut supplies the floor without rounding up host precision.
+                            measurer.measure_html_line_height_px(&run.text, style)
+                        };
+                        height.max(run.ancestor_strut_height_px())
                     })
                     .fold(strut, f64::max)
             })
@@ -224,6 +251,30 @@ impl TerminalFonts {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn ancestor_strut_cache_restores_live_ancestry_without_marking_empty_lines() {
+        let style = TextStyle {
+            font_size: 0.0,
+            ..TextStyle::default()
+        };
+        let mut fonts = TerminalFonts::new(&style, 16.0);
+        fonts.observe_tag("span", "span style='font-size:64px'", false);
+        fonts.observe_tag("span", "span style='font-size:0px'", false);
+        assert_eq!(fonts.current_ancestor_strut_font_size(), 64.0);
+        assert_eq!(fonts.line_sizes(), &[0.0], "openings alone create no strut");
+        fonts.observe_tag("img", "img style='font-size:128px'", false);
+        assert_eq!(fonts.current_ancestor_strut_font_size(), 64.0);
+        fonts.new_line();
+        assert_eq!(fonts.line_sizes(), &[64.0, 0.0]);
+        fonts.observe_tag("span", "/span", true);
+        fonts.observe_tag("span", "/span", true);
+        assert_eq!(fonts.current_ancestor_strut_font_size(), 0.0);
+        assert_eq!(fonts.current().font_size, 0.0);
+        fonts.observe_tag("span", "span style='font-size:10px'", false);
+        assert_eq!(fonts.current_ancestor_strut_font_size(), 0.0);
+        assert_eq!(fonts.current().font_size, 10.0);
+    }
 
     #[test]
     fn unmatched_close_work_is_linear_in_open_depth_and_close_count() {

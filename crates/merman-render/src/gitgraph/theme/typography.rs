@@ -2,7 +2,7 @@ use std::sync::OnceLock;
 
 use merman_model::presentation::PresentationConfig;
 
-use crate::config::{config_f64_css_px, config_string};
+use crate::config::{config_f64_css_absolute_px, config_string};
 use crate::diagram_theme::{
     FamilyThemeDisposition, FamilyThemeMechanism, FamilyThemeMechanismKey, ResolvedDiagramTheme,
     ThemeCapability, ThemeTypographyProperty,
@@ -152,8 +152,10 @@ impl GitGraphTypographyThemePlan {
                     && route.disposition() == FamilyThemeDisposition::TypedAdapter
             })
         });
-        let configured_font_size =
-            config_f64_css_px(effective_config.as_value(), &["themeVariables", "fontSize"]);
+        let configured_font_size = config_f64_css_absolute_px(
+            effective_config.as_value(),
+            &["themeVariables", "fontSize"],
+        );
         let config_owns_font_size = typed_font_size_requested
             && configured_font_size.is_some()
             && effective_config.config_path_overrides_typed_default("themeVariables.fontSize");

@@ -1047,7 +1047,7 @@ impl NativeFontContext {
         self.checkpoint(control)?;
         let style = request.style;
         self.check_label(request.text, style)?;
-        if !(style.font_size.is_finite() && style.font_size > 0.0) {
+        if !(style.font_size.is_finite() && style.font_size >= 0.0) {
             return Err(NativeFontError::MissingGlyphCoverage);
         }
         let result = match request.operation {
@@ -1219,7 +1219,10 @@ impl NativeFontContext {
     ) -> Result<NativeMetrics, NativeFontError> {
         self.checkpoint(control)?;
         self.check_label(text, style)?;
-        if text.is_empty()
+        // A valid zero font paints no glyphs. Do not resolve faces or report missing coverage;
+        // the HTML caller still owns its parent strut and any visible sibling line boxes.
+        if style.font_size == 0.0
+            || text.is_empty()
             || (!preserve && text.chars().all(|c| matches!(c, ' ' | '\t' | '\r' | '\n')))
         {
             return Ok(NativeMetrics::default());

@@ -129,7 +129,10 @@ impl<'a> TextStyleCascade<'a> {
             || initial
             || match property {
                 "font-family" => is_static_css_font_family_list(value),
-                "font-size" => analysis.resolve_font_size_px(self.context).is_some(),
+                "font-size" => {
+                    !matches!(analysis.scalar.as_ref(), Some(super::CssScalar::Number(value)) if *value != 0.0)
+                        && analysis.resolve_font_size_px(self.context).is_some()
+                }
                 "font-weight" => is_supported_css_font_weight_value(value),
                 "font-style" => is_supported_css_font_style_value(value),
                 _ => unreachable!(),
@@ -304,5 +307,46 @@ mod tests {
         cascade.observe("font-weight", "initial", false);
         cascade.observe("font-style", "initial", false);
         assert!(matches!(cascade.finish(), Cow::Borrowed(style) if std::ptr::eq(style, &base)));
+    }
+
+    #[test]
+    fn zero_sizes_keep_cascade_priority_and_relative_descendants() {
+        let base = parent_style();
+        for declarations in [
+            "font-size:0px",
+            "font-size:0pt!important;font-size:32px",
+            "font-size:32px;font-size:0px!important",
+            "font-size:0px;font-size:-1px!important",
+            "font-size:0px;font-size:-1e-1000pt!important",
+        ] {
+            let mut cascade = TextStyleCascade::new(&base, CssFontSizeContext::new(24.0, 18.0));
+            visit_parsed_style_declarations(declarations, |declaration| {
+                cascade.observe_declaration(&declaration);
+            });
+            let zero = cascade.finish();
+            assert_eq!(zero.font_size, 0.0, "{declarations}");
+            for relative in ["150%", "2em", "smaller", "larger", "inherit", "unset"] {
+                let mut child = TextStyleCascade::new(&zero, CssFontSizeContext::new(0.0, 18.0));
+                child.observe("font-size", relative, false);
+                assert_eq!(child.finish().font_size, 0.0, "{declarations}/{relative}");
+            }
+            let mut absolute = TextStyleCascade::new(&zero, CssFontSizeContext::new(0.0, 18.0));
+            absolute.observe("font-size", "24pt", false);
+            assert_eq!(absolute.finish().font_size, 32.0);
+        }
+        assert_eq!(base.font_size, 24.0);
+        let mut invalid_numeric = TextStyleCascade::new(&base, CssFontSizeContext::uniform(24.0));
+        invalid_numeric.observe("font-size", "32", false);
+        assert_eq!(invalid_numeric.finish().font_size, 24.0);
+        let zero = TextStyle {
+            font_size: 0.0,
+            ..base
+        };
+        for invalid in ["-1em", "-100%", "-1rem"] {
+            let mut cascade = TextStyleCascade::new(&zero, CssFontSizeContext::uniform(0.0));
+            cascade.observe("font-size", invalid, true);
+            cascade.observe("font-size", "24px", false);
+            assert_eq!(cascade.finish().font_size, 24.0, "{invalid}");
+        }
     }
 }
