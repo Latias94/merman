@@ -120,17 +120,12 @@ impl XyChartPaintPlan {
     ) -> crate::Result<Self> {
         let mut plan = Self {
             evidence: FamilyThemeOutcomes::default(),
-            data_label_color: crate::config::config_string(
+            data_label_color: super::css_binding::XyChartCssBinding::color(
                 config.as_value(),
-                &["themeVariables", "xyChart", "dataLabelColor"],
+                "dataLabelColor",
             )
-            .or_else(|| {
-                crate::config::config_string(
-                    config.as_value(),
-                    &["themeVariables", "primaryTextColor"],
-                )
-            })
-            .unwrap_or_else(|| "black".to_owned()),
+            .color
+            .to_owned(),
             ..Self::default()
         };
         let Some(theme) = theme else {
@@ -1012,7 +1007,7 @@ pub(crate) fn text_is_visible(text: &str, font_size: f64) -> bool {
 }
 
 fn source_owns(config: &PresentationConfig, channel: &str) -> bool {
-    config.config_paint_overrides_typed_default(&format!("themeVariables.xyChart.{channel}"))
+    super::css_binding::XyChartCssBinding::color(config.as_value(), channel).source_owned(config)
 }
 
 fn text_channel(groups: &[String], orientation: &str) -> Option<(ThemeTarget, &'static str)> {
