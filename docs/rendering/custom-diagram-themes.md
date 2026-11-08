@@ -247,11 +247,28 @@ Each family's accepted units, font-array handling and numeric clamps remain unch
 title, percentage and legend sizes remain independent; C4 element sizes and ER relationship
 label sizes also retain their own configuration rather than inheriting every base-size change.
 
+Requirement source node sizes accept absolute CSS lengths, including `24pt` as 32px. Its
+inherited base size has a 1px minimum, applied to both measurement and emitted CSS even when a
+typed theme requests a smaller positive value. Native measurement rejects source node sizes
+that this adapter cannot resolve, such as relative lengths or CSS expressions.
+
 Support is checked per property. For example, a Gantt Title or Text rule with visible consumers
 can apply its fill while retaining an `unsupported-typography` diagnostic for its font size.
 Combining those properties in one rule does not make the unsupported styling portable; strict
 completion still rejects it. Title rules without a visible diagram or section title are not
 applicable.
+
+Journey's legend and `fo` / `old` labels inherit the base font stack and size. Its `tspan`
+labels retain `journey.taskFontSize` and `journey.taskFontFamily`; setting the task family to
+the CSS keyword `inherit` or `unset` lets the base stack apply without replacing the task size.
+A quoted font name such as `"inherit"` is a literal name. Theme reports account for font stack
+and size separately and do not certify empty labels as visible consumers. Weight and style
+requests remain unsupported where the family cannot measure and emit them consistently.
+
+ER Swimlane top-level lane titles follow `flowchart.htmlLabels`; nested groups retain the root
+`htmlLabels` mode used by ordinary clusters. Their measurement and theme evidence follow those
+separate owners, so a source font on an HTML title does not suppress an unrelated SVG title's
+theme font.
 
 C4 presets pair node surfaces with label colors; compiled edge, marker, boundary-label and
 text colors reach their visible terminals. Filled boundaries paint behind their descendants. Gantt presets preserve normal, active,
