@@ -73,14 +73,8 @@ impl<'a> JourneyConfigView<'a> {
                 .journey_f64("taskMargin")
                 .unwrap_or(DEFAULT_TASK_MARGIN)
                 .max(0.0),
-            cell_width: self
-                .journey_f64("width")
-                .unwrap_or(DEFAULT_CELL_WIDTH)
-                .max(1.0),
-            cell_height: self
-                .journey_f64("height")
-                .unwrap_or(DEFAULT_CELL_HEIGHT)
-                .max(1.0),
+            cell_width: self.cell_dimension("width", DEFAULT_CELL_WIDTH),
+            cell_height: self.cell_dimension("height", DEFAULT_CELL_HEIGHT),
             actor_colours: self.actor_colours(),
             section_fills: self.section_fills(),
             use_max_width: self.use_max_width(),
@@ -117,6 +111,11 @@ impl<'a> JourneyConfigView<'a> {
 
     fn journey_f64(&self, key: &str) -> Option<f64> {
         config_f64(self.journey_config, &[key])
+    }
+
+    fn cell_dimension(&self, key: &str, default: f64) -> f64 {
+        let value = self.journey_f64(key).unwrap_or(default);
+        if value == 0.0 { 0.0 } else { value.max(1.0) }
     }
 
     fn journey_bool(&self, key: &str) -> Option<bool> {
@@ -246,6 +245,27 @@ mod tests {
         assert!(settings.use_max_width);
         assert_eq!(settings.actor_colours.len(), DEFAULT_ACTOR_COLOURS.len());
         assert_eq!(settings.section_fills.len(), DEFAULT_SECTION_FILLS.len());
+    }
+
+    #[test]
+    fn journey_cell_dimensions_preserve_zero_and_existing_invalid_value_bounds() {
+        for (value, expected_width, expected_height) in [
+            (json!(0), 0.0, 0.0),
+            (json!(-0.0), 0.0, 0.0),
+            (json!("0"), 0.0, 0.0),
+            (json!(1), 1.0, 1.0),
+            (json!(-2), 1.0, 1.0),
+            (json!(0.5), 1.0, 1.0),
+            (json!("NaN"), DEFAULT_CELL_WIDTH, DEFAULT_CELL_HEIGHT),
+            (json!("Infinity"), DEFAULT_CELL_WIDTH, DEFAULT_CELL_HEIGHT),
+            (json!("-Infinity"), DEFAULT_CELL_WIDTH, DEFAULT_CELL_HEIGHT),
+            (json!("1e999"), DEFAULT_CELL_WIDTH, DEFAULT_CELL_HEIGHT),
+        ] {
+            let config = json!({"journey": {"width": value, "height": value}});
+            let settings = JourneyConfigView::new(&config).layout_settings();
+            assert_eq!(settings.cell_width, expected_width, "{config}");
+            assert_eq!(settings.cell_height, expected_height, "{config}");
+        }
     }
 
     #[test]

@@ -169,6 +169,256 @@ fn render_journey_with_theme_requirement(
 }
 
 #[test]
+fn journey_numeric_actor_legend_preserves_identity_and_authored_task_people() {
+    for (people, expected_legend, expected_legend_classes) in [
+        ("10, 2, 10", ["2", "10"], ["actor-1", "actor-0"]),
+        ("A10, A2, A10", ["A10", "A2"], ["actor-0", "actor-1"]),
+    ] {
+        let source = format!("journey\nPay: 4: {people}\n");
+        let rendered =
+            render_journey_text_rules(&source, ThemeRuleSet::default(), serde_json::json!({}))
+                .unwrap();
+        let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+        let legend_text = document
+            .descendants()
+            .filter(|node| node.has_tag_name("text") && node.attribute("class") == Some("legend"))
+            .map(|node| {
+                node.descendants()
+                    .find(|span| span.has_tag_name("tspan"))
+                    .and_then(|span| span.text())
+                    .unwrap()
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(legend_text, expected_legend, "{people}");
+
+        let legend_circles = document
+            .descendants()
+            .filter(|node| {
+                node.has_tag_name("circle")
+                    && node
+                        .attribute("class")
+                        .is_some_and(|class| class.starts_with("actor-"))
+                    && !node.children().any(|child| child.has_tag_name("title"))
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(
+            legend_circles
+                .iter()
+                .map(|node| node.attribute("class").unwrap())
+                .collect::<Vec<_>>(),
+            expected_legend_classes,
+            "{people}"
+        );
+        assert_eq!(
+            legend_circles
+                .iter()
+                .map(|node| node.attribute("cy").unwrap())
+                .collect::<Vec<_>>(),
+            ["60", "80"]
+        );
+
+        let task_circles = document
+            .descendants()
+            .filter(|node| {
+                node.has_tag_name("circle")
+                    && node.children().any(|child| child.has_tag_name("title"))
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(
+            task_circles
+                .iter()
+                .map(|node| {
+                    node.children()
+                        .find(|child| child.has_tag_name("title"))
+                        .and_then(|title| title.text())
+                        .unwrap()
+                })
+                .collect::<Vec<_>>(),
+            people.split(", ").collect::<Vec<_>>()
+        );
+        assert_eq!(
+            task_circles
+                .iter()
+                .map(|node| node.attribute("class").unwrap())
+                .collect::<Vec<_>>(),
+            ["actor-0", "actor-1", "actor-0"]
+        );
+        assert_eq!(
+            task_circles
+                .iter()
+                .map(|node| node.attribute("fill").unwrap())
+                .collect::<Vec<_>>(),
+            ["#8FBC8F", "#7CFC00", "#8FBC8F"]
+        );
+    }
+}
+
+#[test]
+fn journey_unicode_actor_order_matches_utf16_sort_and_preserves_source_order() {
+    for (people, expected, task_classes, task_colors) in [
+        (
+            "😀, \u{e000}",
+            ["😀", "\u{e000}"],
+            ["actor-0", "actor-1"],
+            ["#8FBC8F", "#7CFC00"],
+        ),
+        (
+            "\u{e000}, 😀",
+            ["😀", "\u{e000}"],
+            ["actor-1", "actor-0"],
+            ["#7CFC00", "#8FBC8F"],
+        ),
+        (
+            "A, Z",
+            ["A", "Z"],
+            ["actor-0", "actor-1"],
+            ["#8FBC8F", "#7CFC00"],
+        ),
+    ] {
+        let source = format!("journey\nPay: 4: {people}\n");
+        let rendered =
+            render_journey_text_rules(&source, ThemeRuleSet::default(), serde_json::json!({}))
+                .unwrap();
+        let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+        let legend = document
+            .descendants()
+            .filter(|node| node.has_tag_name("text") && node.attribute("class") == Some("legend"))
+            .map(|node| {
+                node.descendants()
+                    .find(|span| span.has_tag_name("tspan"))
+                    .and_then(|span| span.text())
+                    .unwrap()
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(legend, expected, "{people}");
+
+        let legend_circles = document
+            .descendants()
+            .filter(|node| {
+                node.has_tag_name("circle")
+                    && node
+                        .attribute("class")
+                        .is_some_and(|class| class.starts_with("actor-"))
+                    && !node.children().any(|child| child.has_tag_name("title"))
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(
+            legend_circles
+                .iter()
+                .map(|node| node.attribute("class").unwrap())
+                .collect::<Vec<_>>(),
+            ["actor-0", "actor-1"]
+        );
+        assert_eq!(
+            legend_circles
+                .iter()
+                .map(|node| node.attribute("cy").unwrap())
+                .collect::<Vec<_>>(),
+            ["60", "80"]
+        );
+
+        let task_circles = document
+            .descendants()
+            .filter(|node| {
+                node.has_tag_name("circle")
+                    && node.children().any(|child| child.has_tag_name("title"))
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(
+            task_circles
+                .iter()
+                .map(|node| {
+                    node.children()
+                        .find(|child| child.has_tag_name("title"))
+                        .and_then(|title| title.text())
+                        .unwrap()
+                })
+                .collect::<Vec<_>>(),
+            people.split(", ").collect::<Vec<_>>()
+        );
+        assert_eq!(
+            task_circles
+                .iter()
+                .map(|node| node.attribute("class").unwrap())
+                .collect::<Vec<_>>(),
+            task_classes
+        );
+        assert_eq!(
+            task_circles
+                .iter()
+                .map(|node| node.attribute("fill").unwrap())
+                .collect::<Vec<_>>(),
+            task_colors
+        );
+    }
+}
+
+#[test]
+fn journey_frontmatter_zero_cell_dimensions_reach_terminal_svg_geometry() {
+    for (width, height, task_y, face_x, activity_y) in [
+        (0, 0, "10", "150", "0"),
+        (0, 50, "110", "150", "200"),
+        (150, 0, "10", "225", "0"),
+        (1, 1, "12", "150.5", "4"),
+    ] {
+        let source = format!(
+            "---\nconfig:\n  journey:\n    width: {width}\n    height: {height}\n---\njourney\nsection Checkout\nPay: 4\n"
+        );
+        let rendered =
+            render_journey_text_rules(&source, ThemeRuleSet::default(), serde_json::json!({}))
+                .unwrap();
+        let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+        let task = document
+            .descendants()
+            .find(|node| {
+                node.has_tag_name("rect")
+                    && node.attribute("class").is_some_and(|classes| {
+                        classes.split_whitespace().any(|class| class == "task")
+                    })
+            })
+            .unwrap();
+        let section = document
+            .descendants()
+            .find(|node| {
+                node.has_tag_name("rect")
+                    && node.attribute("class").is_some_and(|classes| {
+                        classes
+                            .split_whitespace()
+                            .any(|class| class == "journey-section")
+                    })
+            })
+            .unwrap();
+        let expected_width = width.to_string();
+        let expected_height = height.to_string();
+        for rect in [task, section] {
+            assert_eq!(rect.attribute("width"), Some(expected_width.as_str()));
+            assert_eq!(rect.attribute("height"), Some(expected_height.as_str()));
+        }
+        assert_eq!(task.attribute("y"), Some(task_y));
+        assert_eq!(section.attribute("y"), Some("50"));
+        let face = document
+            .descendants()
+            .find(|node| node.has_tag_name("circle") && node.attribute("class") == Some("face"))
+            .unwrap();
+        assert_eq!(face.attribute("cx"), Some(face_x));
+        let task_line = document
+            .descendants()
+            .find(|node| node.has_tag_name("line") && node.attribute("class") == Some("task-line"))
+            .unwrap();
+        assert_eq!(task_line.attribute("x1"), Some(face_x));
+        assert_eq!(task_line.attribute("x2"), Some(face_x));
+        assert_eq!(task_line.attribute("y1"), Some(task_y));
+        assert_eq!(task_line.attribute("y2"), Some("450"));
+        let activity_line = document
+            .descendants()
+            .find(|node| node.has_tag_name("line") && node.attribute("marker-end").is_some())
+            .unwrap();
+        assert_eq!(activity_line.attribute("y1"), Some(activity_y));
+        assert_eq!(activity_line.attribute("y2"), Some(activity_y));
+    }
+}
+
+#[test]
 fn journey_scores_select_fractional_faces_and_preserve_integer_and_nan_controls() {
     for (literal, expected_y, mouth_tag, mouth_y) in [
         ("3.5", "345", "path", Some("347")),

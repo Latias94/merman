@@ -210,8 +210,14 @@ pub(crate) fn render_sankey_diagram_svg(
         font_style: None,
     };
     let mut label_texts = Vec::with_capacity(layout.nodes.len());
+    let mut max_value = 0.0;
+    let mut central_node_layer = 0usize;
     for node in &layout.nodes {
         options.checkpoint_emit()?;
+        if node.value > max_value {
+            max_value = node.value;
+            central_node_layer = node.layer;
+        }
         let text = if show_values {
             let value = (node.value * 100.0).round() / 100.0;
             let mut number = ryu_js::Buffer::new();
@@ -222,6 +228,18 @@ pub(crate) fn render_sankey_diagram_svg(
         };
         label_texts.push(text);
     }
+    let label_position = |node: &crate::model::SankeyNodeLayout| {
+        let on_right = if outlined_labels {
+            node.layer >= central_node_layer
+        } else {
+            node.x0 < layout_width / 2.0
+        };
+        if on_right {
+            (node.x1 + label_gap_x, "start")
+        } else {
+            (node.x0 - label_gap_x, "end")
+        }
+    };
 
     let mut min_x: f64 = 0.0;
     let mut min_y: f64 = 0.0;
@@ -235,6 +253,18 @@ pub(crate) fn render_sankey_diagram_svg(
         min_y = min_y.min(n.y0 - stroke_outset);
         max_x = max_x.max(n.x1 + stroke_outset);
         max_y = max_y.max(n.y1 + stroke_outset);
+
+        let (label_x, anchor) = label_position(n);
+        let label_width = measurer.measure_svg_raw_text_bbox_width_px(text, &label_style);
+        if label_width > 0.0 {
+            let label_left = if anchor == "end" {
+                label_x - label_width
+            } else {
+                label_x
+            };
+            min_x = min_x.min(label_left);
+            max_x = max_x.max(label_left + label_width);
+        }
 
         let dy_em = if show_values {
             0.0
@@ -337,15 +367,6 @@ pub(crate) fn render_sankey_diagram_svg(
         font_size = fmt(label_font_size)
     );
     out.checkpoint()?;
-    let mut max_value = 0.0;
-    let mut central_node_layer = 0usize;
-    for n in &layout.nodes {
-        options.checkpoint_emit()?;
-        if n.value > max_value {
-            max_value = n.value;
-            central_node_layer = n.layer;
-        }
-    }
 
     let mut append_labels = |out: &mut BoundedSvgOutput<'_>,
                              surface: crate::sankey::SankeyLabelSurface|
@@ -354,17 +375,7 @@ pub(crate) fn render_sankey_diagram_svg(
         for (n, text) in layout.nodes.iter().zip(&label_texts) {
             options.checkpoint_emit()?;
             let y = (n.y0 + n.y1) / 2.0;
-            let (x, anchor) = if outlined_labels {
-                if n.layer < central_node_layer {
-                    (n.x0 - label_gap_x, "end")
-                } else {
-                    (n.x1 + label_gap_x, "start")
-                }
-            } else if n.x0 < layout_width / 2.0 {
-                (n.x1 + label_gap_x, "start")
-            } else {
-                (n.x0 - label_gap_x, "end")
-            };
+            let (x, anchor) = label_position(n);
             let dy = if show_values {
                 "0em".to_string()
             } else {

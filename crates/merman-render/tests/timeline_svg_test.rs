@@ -275,6 +275,127 @@ fn try_render_timeline_svg_with_resource_policy(
 }
 
 #[test]
+fn timeline_repeated_sections_expand_svg_without_duplicating_canonical_tasks() {
+    use merman_model::presentation::RenderSemanticModel;
+
+    for direction in ["LR", "TD"] {
+        for second_section in ["S", "T"] {
+            let source = format!(
+                "timeline {direction}\nsection S\nA : X\nsection {second_section}\nB : Y\n"
+            );
+            let parsed = MermaidEngine::new()
+                .parse_diagram_for_render_model_sync(&source, ParseOptions::strict())
+                .unwrap()
+                .unwrap()
+                .into_presentation();
+            let RenderSemanticModel::Timeline(model) = parsed.model() else {
+                panic!("expected the canonical Timeline model");
+            };
+            let canonical = serde_json::to_value(model).unwrap();
+            assert_eq!(model.tasks.len(), 2);
+            assert_eq!(model.tasks[0].section_index, Some(0));
+            assert_eq!(model.tasks[1].section_index, Some(1));
+            let session = RenderEnvironment::deterministic().begin_session().unwrap();
+            let artifact =
+                family::prepare(&parsed, &LayoutOptions::headless_svg_defaults(), session).unwrap();
+            let rendered = artifact
+                .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+                .unwrap();
+            let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+            let labels = |class| {
+                document
+                    .descendants()
+                    .filter(|node| node.attribute("class") == Some(class))
+                    .map(|wrapper| {
+                        wrapper
+                            .descendants()
+                            .filter(|node| node.is_text())
+                            .filter_map(|node| node.text())
+                            .collect::<String>()
+                    })
+                    .collect::<Vec<_>>()
+            };
+            let (tasks, events): (&[&str], &[&str]) = if second_section == "S" {
+                (&["A", "B", "A", "B"], &["X", "Y", "X", "Y"])
+            } else {
+                (&["A", "B"], &["X", "Y"])
+            };
+            assert_eq!(labels("taskWrapper"), tasks);
+            assert_eq!(labels("eventWrapper"), events);
+            assert_eq!(serde_json::to_value(model).unwrap(), canonical);
+        }
+    }
+}
+
+#[test]
+fn timeline_repeated_sections_observe_cancellation_during_expansion_and_before_emit() {
+    use merman_model::OperationControl;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
+    struct CancelRepeatedTask(AtomicUsize);
+    impl HostTextMeasurer for CancelRepeatedTask {
+        fn measure(&self, _request: HostTextMeasurementRequest<'_>) -> HostMeasurementResult {
+            Ok(None)
+        }
+
+        fn measure_with_control(
+            &self,
+            request: HostTextMeasurementRequest<'_>,
+            control: &OperationControl,
+        ) -> HostMeasurementResult {
+            if request.phase == TextMeasurementPhase::ComputedLength
+                && request.text == "A"
+                && self.0.fetch_add(1, Ordering::Relaxed) == 1
+            {
+                control.cancel();
+            }
+            Ok(None)
+        }
+    }
+
+    for direction in ["LR", "TD"] {
+        let source = format!("timeline {direction}\nsection S\nA : X\nsection S\nB : Y\n");
+        let parsed = MermaidEngine::new()
+            .parse_diagram_for_render_model_sync(&source, ParseOptions::strict())
+            .unwrap()
+            .unwrap()
+            .into_presentation();
+        let control = OperationControl::new();
+        let host = Arc::new(CancelRepeatedTask(AtomicUsize::new(0)));
+        let identity = TextMeasurementProfileIdentity::new(
+            MeasurementProfileId::new("test.timeline-repeated-section-cancellation").unwrap(),
+            "v1",
+        )
+        .unwrap();
+        let session = RenderEnvironment::deterministic()
+            .with_text_measurement_policy(TextMeasurementPolicy::host_display(
+                identity,
+                host.clone(),
+                TextMeasurementPhase::ALL,
+            ))
+            .begin_session_with_control(control)
+            .unwrap();
+        assert!(matches!(
+            family::prepare(&parsed, &LayoutOptions::headless_svg_defaults(), session),
+            Err(merman_render::Error::Cancelled(_))
+        ));
+        assert_eq!(host.0.load(Ordering::Relaxed), 2);
+
+        let control = OperationControl::new();
+        let session = RenderEnvironment::deterministic()
+            .begin_session_with_control(control.clone())
+            .unwrap();
+        let artifact =
+            family::prepare(&parsed, &LayoutOptions::headless_svg_defaults(), session).unwrap();
+        control.cancel();
+        assert!(matches!(
+            artifact.render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default()),
+            Err(merman_render::Error::Cancelled(_))
+        ));
+    }
+}
+
+#[test]
 fn timeline_svg_skips_boundary_comments_and_keeps_literal_event_percent_pairs() {
     for direction in ["LR", "TD"] {
         let source = format!(
@@ -942,7 +1063,7 @@ fn timeline_text_fill_does_not_certify_unsupported_siblings_or_ordinal_rules() {
 
 #[test]
 fn timeline_family_svg_accepts_exact_max_svg_bytes_and_rejects_one_byte_less() {
-    let source = "timeline\n    section Release\n        2026 : Ship\n";
+    let source = "timeline\nsection S\nA : X\nsection S\nB : Y\n";
     let baseline = try_render_timeline_svg_with_resource_policy(
         source,
         RenderResourcePolicy::unbounded_for_trusted_input(),

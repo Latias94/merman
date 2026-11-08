@@ -875,3 +875,73 @@ fn quadrant_unclosed_multiline_text_preserves_later_original_source_facts() {
         }
     }
 }
+
+#[cfg(feature = "editor-facts")]
+#[test]
+fn sankey_csv_quote_errors_and_recovery_keep_original_source_ranges() {
+    use merman_core::{EditorSemanticCompleteness, ParseOptions, ParsedEditorFacts};
+
+    let engine = MermaidEngine::new();
+    for newline in ["\n", "\r\n"] {
+        for quoted in [false, true] {
+            let field = if quoted { "\"A\"\"B\"" } else { "A\"B" };
+            let source = format!(
+                "---{newline}title: 中文😀{newline}---{newline}sankey{newline}Before,Start,1{newline}{field},C,1{newline}Next,End,2{newline}"
+            );
+            for known_type in [false, true] {
+                let snapshot = if known_type {
+                    engine.parse_diagram_snapshot_with_type_sync("sankey", &source)
+                } else {
+                    engine.parse_diagram_snapshot_sync(&source)
+                }
+                .unwrap()
+                .unwrap();
+                let strict = if known_type {
+                    engine.parse_diagram_with_type_sync("sankey", &source, ParseOptions::strict())
+                } else {
+                    engine.parse_diagram_sync(&source, ParseOptions::strict())
+                };
+                let ParsedEditorFacts::Available(facts) = snapshot.editor_facts() else {
+                    panic!("Sankey CSV must expose parser-derived recovery facts");
+                };
+                assert_editor_fact_spans_belong_to_source(
+                    Path::new("sankey-csv-quote-recovery"),
+                    &source,
+                    facts,
+                );
+                for name in ["Before", "Start", "Next", "End"] {
+                    let symbol = facts
+                        .symbols
+                        .iter()
+                        .find(|symbol| symbol.name == name)
+                        .unwrap();
+                    let start = source.find(name).unwrap();
+                    assert_eq!(symbol.selection, SourceSpan::new(start, start + name.len()));
+                }
+                let start = source.find(field).unwrap();
+                if quoted {
+                    let parsed = strict.unwrap().unwrap();
+                    assert_eq!(parsed.model["graph"]["nodes"][2]["id"], "A\"B");
+                    assert_eq!(facts.completeness, EditorSemanticCompleteness::Complete);
+                    let symbol = facts
+                        .symbols
+                        .iter()
+                        .find(|symbol| symbol.name == "A\"B")
+                        .unwrap();
+                    assert_eq!(symbol.selection, SourceSpan::new(start + 1, start + 5));
+                    assert_eq!(
+                        &source[symbol.selection.start..symbol.selection.end],
+                        "A\"\"B"
+                    );
+                } else {
+                    assert!(strict.is_err());
+                    assert_eq!(facts.completeness, EditorSemanticCompleteness::Recovered);
+                    assert!(facts.diagnostics.iter().any(|diagnostic| {
+                        diagnostic.span == Some(SourceSpan::new(start + 1, start + 2))
+                    }));
+                    assert!(!facts.symbols.iter().any(|symbol| symbol.name == "A\"B"));
+                }
+            }
+        }
+    }
+}

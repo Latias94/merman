@@ -239,6 +239,11 @@ non-finite model values. `journey.textPlacement` selects `fo`, `old`, or SVG `ts
 Legend and inherited label typography are separate from the configured task font used by tspan
 labels; theme evidence follows the visible selected path.
 
+Actor identities use ECMAScript's UTF-16 lexical order. Legend enumeration separately places
+canonical array-index names in numeric order, retaining each actor's original color and position;
+task markers retain authored people order. Zero task width and height remain valid through
+configuration, section and task geometry, face placement and activity lines.
+
 Owners: [Journey model](../../crates/merman-model/src/families/journey.rs),
 [layout](../../crates/merman-render/src/journey.rs), and
 [SVG tests](../../crates/merman-render/tests/journey_svg_test.rs).
@@ -269,6 +274,12 @@ The selected upstream renderer can emit invalid `[object Object]` paint for an a
 node ID; Merman retains a valid palette color and does not reproduce that artifact. Visible finite
 value labels use ECMAScript number formatting after the source-owned rounding step.
 
+Canvas bounds include the horizontal extent of each visible label using its actual text anchor
+and raw SVG text measurement. Outlined foreground and background copies occupy the same bounds;
+their stroke does not add artificial padding. Host font measurements remain a bounded residual.
+Unquoted CSV fields reject embedded double quotes; doubled quotes in escaped fields decode once,
+and recovery retains later records with their original source ranges.
+
 Owners: [palette](../../crates/merman-render/src/sankey/theme.rs) and
 [SVG tests](../../crates/merman-render/tests/sankey_svg_test.rs).
 
@@ -278,6 +289,15 @@ Section suffixes are parsed as remaining source tokens; a valid event still atta
 previous task when the section changes. Accessibility punctuation is retained in the model.
 The selected upstream family exposes those fields through its common DB without direct SVG
 accessibility getters, so model parity does not imply matching upstream SVG metadata.
+
+Both LR and TD render each section occurrence using all tasks with the same section text.
+The model and editor facts retain each task's authored occurrence; the render index shares one
+text-keyed bucket across repeated names instead of copying tasks or rescanning the whole model.
+
+For Neo gradients, Merman retains a complete local gradient definition in both orientations.
+The selected upstream TD renderer emits the shared stylesheet's gradient reference without
+creating its definition. This unresolved paint reference is an intentional difference, not a
+text-measurement allowance; Merman preserves its valid SVG resource and the requested styling.
 
 At fresh token boundaries, comment recognition follows the selected lexer's single-character
 prefix rule, including `x%% hidden` and `:%% hidden` after a section. The prefix is one UTF-16

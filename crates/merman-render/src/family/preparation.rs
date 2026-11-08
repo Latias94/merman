@@ -665,6 +665,7 @@ fn prepare_timeline_family<'parsed>(
         model,
         typography_theme.layout_settings(),
         execution.text_measurer(),
+        execution.work_meter_ref(),
     )?;
     let event_theme = crate::timeline::TimelineEventTheme::resolve_with_binding(
         execution.resolved_theme(),

@@ -34,7 +34,18 @@ fn actors_from_tasks(tasks: &[JourneyTask]) -> Vec<String> {
             set.insert(p.to_string());
         }
     }
-    set.into_iter().collect()
+    let mut actors: Vec<_> = set.into_iter().collect();
+    actors.sort_by(|left, right| left.encode_utf16().cmp(right.encode_utf16()));
+    actors
+}
+
+fn actor_legend_array_index(actor: &str) -> Option<u32> {
+    if (actor.len() > 1 && actor.starts_with('0'))
+        || !actor.bytes().all(|byte| byte.is_ascii_digit())
+    {
+        return None;
+    }
+    actor.parse::<u32>().ok().filter(|index| *index < u32::MAX)
 }
 
 fn wrap_actor_label_lines(
@@ -181,7 +192,9 @@ pub(crate) fn layout_journey_diagram_typed_with_resolved_typography(
     let legend_circle_r = JOURNEY_LEGEND_CIRCLE_R_PX;
     let legend_line_step_y = 20.0;
     let mut y_pos = 60.0;
-    for actor in actors.iter() {
+    let mut legend_actors: Vec<_> = actors.iter().collect();
+    legend_actors.sort_by_key(|actor| actor_legend_array_index(actor).unwrap_or(u32::MAX));
+    for actor in legend_actors {
         let (pos, color) = actor_map
             .get(actor)
             .cloned()
@@ -263,7 +276,7 @@ pub(crate) fn layout_journey_diagram_typed_with_resolved_typography(
                 num: current_num,
                 x,
                 y: 50.0,
-                width: section_width.max(1.0),
+                width: section_width,
                 height: cfg.cell_height,
                 fill: current_fill.clone(),
                 task_count: count,
@@ -396,6 +409,174 @@ mod tests {
     use crate::text::{DeterministicTextMeasurer, TextMeasurer, TextMetrics, TextStyle};
     use merman_model::families::journey::{JourneyDiagramModel, JourneyTask};
     use serde_json::json;
+
+    #[test]
+    fn journey_legend_enumerates_array_indices_without_changing_actor_identity() {
+        let actor_names = [
+            "A2",
+            "10",
+            "2",
+            "A10",
+            "01",
+            "0",
+            "4294967294",
+            "4294967295",
+        ];
+        let people = ["10", "2", "10", "01", "A2"];
+        let model = JourneyDiagramModel {
+            actors: actor_names
+                .iter()
+                .map(|actor| (*actor).to_string())
+                .collect(),
+            tasks: vec![JourneyTask {
+                score: 4.0,
+                score_is_nan: false,
+                people: people.iter().map(|actor| (*actor).to_string()).collect(),
+                section: String::new(),
+                section_index: None,
+                task_type: String::new(),
+                task: "Pay".to_string(),
+            }],
+            ..Default::default()
+        };
+        let layout = super::layout_journey_diagram_typed(
+            &model,
+            &json!({"journey": {"actorColours": ["#112233", "#445566"]}}),
+            &BoundingClientRectMeasurer,
+        )
+        .unwrap();
+
+        assert_eq!(
+            layout
+                .actor_legend
+                .iter()
+                .map(|item| (item.actor.as_str(), item.pos, item.color.as_str()))
+                .collect::<Vec<_>>(),
+            [
+                ("0", 5, "#445566"),
+                ("2", 2, "#112233"),
+                ("10", 1, "#445566"),
+                ("4294967294", 6, "#112233"),
+                ("A2", 0, "#112233"),
+                ("A10", 3, "#445566"),
+                ("01", 4, "#112233"),
+                ("4294967295", 7, "#445566"),
+            ]
+        );
+        assert_eq!(
+            layout.tasks[0]
+                .actor_circles
+                .iter()
+                .map(|item| (item.actor.as_str(), item.pos, item.color.as_str()))
+                .collect::<Vec<_>>(),
+            [
+                ("10", 1, "#445566"),
+                ("2", 2, "#112233"),
+                ("10", 1, "#445566"),
+                ("01", 4, "#112233"),
+                ("A2", 0, "#112233"),
+            ]
+        );
+        assert_eq!(layout.tasks[0].people, people);
+    }
+
+    #[test]
+    fn journey_fallback_actor_order_uses_utf16_before_assigning_identity() {
+        let model = JourneyDiagramModel {
+            tasks: vec![JourneyTask {
+                score: 4.0,
+                score_is_nan: false,
+                people: vec![
+                    "\u{e000}".to_string(),
+                    "😀".to_string(),
+                    "\u{e000}".to_string(),
+                ],
+                section: String::new(),
+                section_index: None,
+                task_type: String::new(),
+                task: "Pay".to_string(),
+            }],
+            ..Default::default()
+        };
+        let layout = super::layout_journey_diagram_typed(
+            &model,
+            &json!({"journey": {"actorColours": ["#112233", "#445566"]}}),
+            &BoundingClientRectMeasurer,
+        )
+        .unwrap();
+
+        assert_eq!(
+            layout
+                .actor_legend
+                .iter()
+                .map(|item| (item.actor.as_str(), item.pos, item.color.as_str()))
+                .collect::<Vec<_>>(),
+            [("😀", 0, "#112233"), ("\u{e000}", 1, "#445566")]
+        );
+        assert_eq!(
+            layout.tasks[0]
+                .actor_circles
+                .iter()
+                .map(|item| (item.actor.as_str(), item.pos, item.color.as_str()))
+                .collect::<Vec<_>>(),
+            [
+                ("\u{e000}", 1, "#445566"),
+                ("😀", 0, "#112233"),
+                ("\u{e000}", 1, "#445566"),
+            ]
+        );
+    }
+
+    #[test]
+    fn journey_zero_cell_dimensions_reach_sections_tasks_and_lines() {
+        let model = JourneyDiagramModel {
+            sections: vec!["Checkout".to_string(), "Complete".to_string()],
+            tasks: [
+                ("Pay", "Checkout", 0),
+                ("Confirm", "Checkout", 0),
+                ("Finish", "Complete", 1),
+            ]
+            .into_iter()
+            .map(|(task, section, section_index)| JourneyTask {
+                score: 4.0,
+                score_is_nan: false,
+                people: Vec::new(),
+                section: section.to_string(),
+                section_index: Some(section_index),
+                task_type: section.to_string(),
+                task: task.to_string(),
+            })
+            .collect(),
+            ..Default::default()
+        };
+        for (width, height) in [(0.0, 0.0), (0.0, 50.0), (150.0, 0.0), (1.0, 1.0)] {
+            let layout = super::layout_journey_diagram_typed(
+                &model,
+                &json!({"journey": {"width": width, "height": height}}),
+                &DeterministicTextMeasurer::default(),
+            )
+            .unwrap();
+
+            assert_eq!(layout.sections.len(), 2);
+            assert_eq!(layout.sections[0].width, 2.0 * width + 50.0);
+            assert_eq!(layout.sections[1].width, width);
+            for section in &layout.sections {
+                assert_eq!(section.height, height);
+            }
+            for (index, task) in layout.tasks.iter().enumerate() {
+                let x = 150.0 + index as f64 * (50.0 + width);
+                assert_eq!((task.x, task.y), (x, 2.0 * height + 10.0));
+                assert_eq!((task.width, task.height), (width, height));
+                assert_eq!(task.face_cx, x + width / 2.0);
+                assert_eq!((task.line_x1, task.line_x2), (task.face_cx, task.face_cx));
+                assert_eq!((task.line_y1, task.line_y2), (task.y, 450.0));
+            }
+            assert_eq!(
+                (layout.activity_line.y1, layout.activity_line.y2),
+                (4.0 * height, 4.0 * height)
+            );
+        }
+    }
 
     #[test]
     fn journey_direct_scores_preserve_fractional_geometry_and_mouth_thresholds() {

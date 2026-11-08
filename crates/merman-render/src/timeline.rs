@@ -3,7 +3,9 @@ use crate::model::{
     Bounds, TimelineDiagramLayout, TimelineLineLayout, TimelineNodeLayout, TimelineSectionLayout,
     TimelineTaskLayout,
 };
+use crate::resources::OperationWorkMeter;
 use crate::text::{TextMeasurer, TextStyle};
+use merman_model::OperationPhase;
 use merman_model::families::timeline::{TimelineDiagramModel, TimelineDirection, TimelineTask};
 use std::borrow::Cow;
 
@@ -170,6 +172,9 @@ fn wrap_lines(
     let mut lines: Vec<String> = Vec::new();
     let mut cur: Vec<String> = Vec::new();
     for tok in tokens {
+        if measurer.cancellation_requested() {
+            break;
+        }
         cur.push(tok.clone());
         let candidate = join_trim(&cur);
         let candidate = svg_collapse_whitespace_for_measure(&candidate);
@@ -367,23 +372,29 @@ pub(crate) fn layout_timeline_diagram_typed_with_resolved_typography(
 ) -> Result<TimelineDiagramLayout> {
     let settings = TimelineConfigView::new(effective_config)
         .layout_settings_with_resolved_typography(resolved_font_family_css, resolved_font_size_px);
-    layout_timeline_diagram_typed_with_binding(model, &settings, measurer)
+    let work_meter = OperationWorkMeter::new(
+        crate::resources::RenderResourcePolicy::unbounded_for_trusted_input(),
+    );
+    layout_timeline_diagram_typed_with_binding(model, &settings, measurer, &work_meter)
 }
 
 pub(crate) fn layout_timeline_diagram_typed_with_binding(
     model: &TimelineDiagramModel,
     settings: &config::TimelineLayoutSettings,
     measurer: &dyn TextMeasurer,
+    work_meter: &OperationWorkMeter,
 ) -> Result<TimelineDiagramLayout> {
-    let task_index = TimelineTaskIndex::new(model)?;
-    match model.direction {
+    let task_index = TimelineTaskIndex::new(model, work_meter)?;
+    let layout = match model.direction {
         TimelineDirection::LeftToRight => {
-            layout_timeline_horizontal(model, &task_index, settings, measurer)
+            layout_timeline_horizontal(model, &task_index, settings, measurer, work_meter)
         }
         TimelineDirection::TopDown => {
-            layout_timeline_vertical(model, &task_index, settings, measurer)
+            layout_timeline_vertical(model, &task_index, settings, measurer, work_meter)
         }
-    }
+    }?;
+    work_meter.checkpoint(OperationPhase::Layout)?;
+    Ok(layout)
 }
 
 fn layout_timeline_horizontal(
@@ -391,6 +402,7 @@ fn layout_timeline_horizontal(
     task_index: &TimelineTaskIndex<'_>,
     settings: &config::TimelineLayoutSettings,
     measurer: &dyn TextMeasurer,
+    work_meter: &OperationWorkMeter,
 ) -> Result<TimelineDiagramLayout> {
     let _ = (model.acc_title.as_deref(), model.acc_descr.as_deref());
 
@@ -413,6 +425,7 @@ fn layout_timeline_horizontal(
 
     let mut max_section_height: f64 = 0.0;
     for section in &model.sections {
+        work_meter.checkpoint(OperationPhase::Layout)?;
         let (h, _lines) = virtual_node_height(
             section,
             task_content_width,
@@ -427,6 +440,7 @@ fn layout_timeline_horizontal(
     let mut max_task_height: f64 = 0.0;
     let mut max_event_line_length: f64 = 0.0;
     for task in &model.tasks {
+        work_meter.checkpoint(OperationPhase::Layout)?;
         // Upstream Mermaid's Timeline renderer computes `maxTaskHeight` by passing the entire
         // task object into `getVirtualNodeHeight(...)`, which stringifies to `"[object Object]"`.
         // This inflates `maxTaskHeight` when all task labels are short; replicate for parity.
@@ -443,6 +457,7 @@ fn layout_timeline_horizontal(
 
         let mut task_event_len: f64 = 0.0;
         for ev in &task.events {
+            work_meter.checkpoint(OperationPhase::Layout)?;
             let (eh, _lines) = virtual_node_height(
                 ev,
                 task_content_width,
@@ -475,6 +490,7 @@ fn layout_timeline_horizontal(
         let section_y = base_y;
 
         for (section_number, section_label) in model.sections.iter().enumerate() {
+            work_meter.checkpoint(OperationPhase::Layout)?;
             let tasks_for_section = task_index.tasks_for_section(section_number);
             let section_number = section_number as i64;
             let tasks_for_section_count = tasks_for_section.len().max(1);
@@ -505,6 +521,7 @@ fn layout_timeline_horizontal(
             let mut max_task_height = max_task_height;
 
             for &task in tasks_for_section {
+                work_meter.checkpoint(OperationPhase::Layout)?;
                 let full_section = section_number;
                 let task_node = compute_node(
                     TimelineNodeRequest {
@@ -537,6 +554,7 @@ fn layout_timeline_horizontal(
                 let mut events: Vec<TimelineNodeLayout> = Vec::new();
                 let mut event_y = task_y + EVENT_VERTICAL_OFFSET_FROM_TASK_Y;
                 for ev in &task.events {
+                    work_meter.checkpoint(OperationPhase::Layout)?;
                     let event_node = compute_node(
                         TimelineNodeRequest {
                             kind: "event",
@@ -580,6 +598,7 @@ fn layout_timeline_horizontal(
         let mut max_task_height = max_task_height;
 
         for &task in task_index.orphan_tasks() {
+            work_meter.checkpoint(OperationPhase::Layout)?;
             let task_node = compute_node(
                 TimelineNodeRequest {
                     kind: "task",
@@ -611,6 +630,7 @@ fn layout_timeline_horizontal(
             let mut events: Vec<TimelineNodeLayout> = Vec::new();
             let mut event_y = base_y + EVENT_VERTICAL_OFFSET_FROM_TASK_Y;
             for ev in &task.events {
+                work_meter.checkpoint(OperationPhase::Layout)?;
                 let event_node = compute_node(
                     TimelineNodeRequest {
                         kind: "event",
@@ -776,9 +796,10 @@ fn layout_vertical_tasks<'a>(
     text_style: &TextStyle,
     layout_font_size: f64,
     measurer: &dyn TextMeasurer,
+    work_meter: &OperationWorkMeter,
     all_nodes: &mut Vec<TimelineNodeLayout>,
     all_lines: &mut Vec<TimelineLineLayout>,
-) -> Vec<TimelineTaskLayout> {
+) -> Result<Vec<TimelineTaskLayout>> {
     let mut layouts = Vec::new();
     let mut task_y = start_y;
     let task_width = VERTICAL_NODE_CONTENT_WIDTH + VERTICAL_NODE_PADDING * 2.0;
@@ -786,6 +807,7 @@ fn layout_vertical_tasks<'a>(
     let events_x = timeline_x + VERTICAL_EVENT_AXIS_GAP;
 
     for task in tasks {
+        work_meter.checkpoint(OperationPhase::Layout)?;
         let task_node = compute_node(
             TimelineNodeRequest {
                 kind: "task",
@@ -809,6 +831,7 @@ fn layout_vertical_tasks<'a>(
         let mut connectors = Vec::new();
         let mut event_y = task_y;
         for event in &task.events {
+            work_meter.checkpoint(OperationPhase::Layout)?;
             let event_node = compute_node(
                 TimelineNodeRequest {
                     kind: "event",
@@ -851,7 +874,7 @@ fn layout_vertical_tasks<'a>(
         }
     }
 
-    layouts
+    Ok(layouts)
 }
 
 fn layout_timeline_vertical(
@@ -859,6 +882,7 @@ fn layout_timeline_vertical(
     task_index: &TimelineTaskIndex<'_>,
     settings: &config::TimelineLayoutSettings,
     measurer: &dyn TextMeasurer,
+    work_meter: &OperationWorkMeter,
 ) -> Result<TimelineDiagramLayout> {
     let _ = (model.acc_title.as_deref(), model.acc_descr.as_deref());
 
@@ -878,6 +902,7 @@ fn layout_timeline_vertical(
 
     let mut max_section_height: f64 = 0.0;
     for section in &model.sections {
+        work_meter.checkpoint(OperationPhase::Layout)?;
         let (height, _) = virtual_node_height(
             section,
             section_content_width,
@@ -892,6 +917,7 @@ fn layout_timeline_vertical(
     let mut max_task_height: f64 = 0.0;
     let mut max_event_stack_height: f64 = 0.0;
     for task in &model.tasks {
+        work_meter.checkpoint(OperationPhase::Layout)?;
         let (height, _) = virtual_node_height(
             "[object Object]",
             VERTICAL_NODE_CONTENT_WIDTH,
@@ -904,6 +930,7 @@ fn layout_timeline_vertical(
 
         let mut event_stack_height = 0.0;
         for event in &task.events {
+            work_meter.checkpoint(OperationPhase::Layout)?;
             let (height, _) = virtual_node_height(
                 event,
                 VERTICAL_EVENT_CONTENT_WIDTH,
@@ -934,6 +961,7 @@ fn layout_timeline_vertical(
     let orphan_tasks = if has_sections {
         let mut master_y = base_y;
         for (section_number, section_label) in model.sections.iter().enumerate() {
+            work_meter.checkpoint(OperationPhase::Layout)?;
             let tasks_for_section = task_index.tasks_for_section(section_number);
             let section_number = section_number as i64;
             let section_node = compute_node(
@@ -966,9 +994,10 @@ fn layout_timeline_vertical(
                 &node_text_style,
                 layout_font_size,
                 measurer,
+                work_meter,
                 &mut all_nodes_pre_title,
                 &mut all_lines_pre_title,
-            );
+            )?;
             let task_count = tasks_for_section.len();
             let section_height = section_node.height
                 + VERTICAL_SECTION_TASK_GAP
@@ -998,9 +1027,10 @@ fn layout_timeline_vertical(
             &node_text_style,
             layout_font_size,
             measurer,
+            work_meter,
             &mut all_nodes_pre_title,
             &mut all_lines_pre_title,
-        )
+        )?
     };
 
     let pre_title_bounds = bounds_from_nodes_and_lines(&all_nodes_pre_title, &all_lines_pre_title);
@@ -1185,31 +1215,90 @@ mod tests {
     }
 
     #[test]
-    fn duplicate_section_labels_keep_authored_task_occurrences() {
-        for source in [
-            concat!(
-                "timeline\n",
-                "section Repeated\n",
-                "First\n",
-                "section Repeated\n",
-                "Second\n",
-                "Third\n",
-            ),
-            concat!(
-                "timeline TD\n",
-                "section Repeated\n",
-                "First\n",
-                "section Repeated\n",
-                "Second\n",
-                "Third\n",
-            ),
-        ] {
-            let layout = layout_timeline(source);
+    fn repeated_section_labels_reuse_matching_tasks_in_both_directions() {
+        for direction in ["LR", "TD"] {
+            for second_section in ["S", "T"] {
+                let source = format!(
+                    "timeline {direction}\nsection S\nA : X\nsection {second_section}\nB : Y\n"
+                );
+                let layout = layout_timeline(&source);
+                let repeated = second_section == "S";
+                let expected = if repeated {
+                    vec![vec!["A ", "B "], vec!["A ", "B "]]
+                } else {
+                    vec![vec!["A "], vec!["B "]]
+                };
+                assert_eq!(section_task_labels(&layout), expected);
+                if direction == "LR" {
+                    let width = if repeated { 390.0 } else { 190.0 };
+                    assert_eq!(layout.sections[0].node.width, width);
+                    assert_eq!(layout.sections[1].node.width, width);
+                    assert_eq!(
+                        layout.sections[1].node.x - layout.sections[0].node.x,
+                        if repeated { 400.0 } else { 200.0 }
+                    );
+                }
+            }
+        }
+    }
 
-            assert_eq!(
-                section_task_labels(&layout),
-                vec![vec!["First"], vec!["Second", "Third"]]
-            );
+    #[test]
+    fn repeated_section_expansion_is_admitted_before_text_measurement() {
+        use crate::resources::{RenderResourcePolicy, ResourceLimitId};
+
+        struct UnexpectedMeasurement;
+        impl TextMeasurer for UnexpectedMeasurement {
+            fn measure(&self, _text: &str, _style: &TextStyle) -> crate::text::TextMetrics {
+                panic!("over-budget expansion must fail before measuring layout nodes")
+            }
+        }
+
+        for direction in [TimelineDirection::LeftToRight, TimelineDirection::TopDown] {
+            let mut first = timeline_task(0, "S", Some(0), "A");
+            first.events.push("X".into());
+            let mut second = timeline_task(1, "S", Some(1), "B");
+            second.events.push("Y".into());
+            let mut model = TimelineDiagramModel {
+                direction,
+                sections: vec!["S".into(), "S".into()],
+                tasks: vec![first, second],
+                ..Default::default()
+            };
+            let settings = TimelineConfigView::new(&serde_json::json!({})).layout_settings();
+            let policy = RenderResourcePolicy::unbounded_for_trusted_input()
+                .with_limit(ResourceLimitId::MaxLayoutWorkUnits, 23)
+                .unwrap();
+            let meter = OperationWorkMeter::new(policy);
+            let error = layout_timeline_diagram_typed_with_binding(
+                &model,
+                &settings,
+                &UnexpectedMeasurement,
+                &meter,
+            )
+            .expect_err("repeated output exceeds the work ceiling before allocation");
+            let crate::Error::ResourceLimitExceeded(limit) = error else {
+                panic!("expected a layout work rejection, got {error}");
+            };
+            assert_eq!(limit.limit, ResourceLimitId::MaxLayoutWorkUnits.as_str());
+            assert_eq!((limit.actual, limit.max), (24, 23));
+
+            for (second_section, maximum) in [("S", 24), ("T", 16)] {
+                model.sections[1] = second_section.into();
+                model.tasks[1].section = second_section.into();
+                model.tasks[1].task_type = second_section.into();
+                let meter = OperationWorkMeter::new(
+                    RenderResourcePolicy::unbounded_for_trusted_input()
+                        .with_limit(ResourceLimitId::MaxLayoutWorkUnits, maximum)
+                        .unwrap(),
+                );
+                layout_timeline_diagram_typed_with_binding(
+                    &model,
+                    &settings,
+                    &DeterministicTextMeasurer::default(),
+                    &meter,
+                )
+                .expect("the exact expanded or distinct work ceiling is accepted");
+            }
         }
     }
 

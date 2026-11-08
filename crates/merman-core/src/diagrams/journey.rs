@@ -116,7 +116,9 @@ impl JourneyDb {
                 set.insert(p.clone());
             }
         }
-        set.into_iter().collect()
+        let mut actors: Vec<_> = set.into_iter().collect();
+        actors.sort_by(|left, right| left.encode_utf16().cmp(right.encode_utf16()));
+        actors
     }
 }
 
@@ -875,6 +877,40 @@ mod tests {
             assert_eq!(task.score_is_nan, expected_nan, "{literal}");
             assert_eq!(task.people, ["Customer"]);
         }
+    }
+
+    #[test]
+    fn journey_actor_deduplication_uses_ecmascript_utf16_sort_order() {
+        let mut unicode = JourneyDb::default();
+        unicode.add_task("Pay", ":4: 😀, \u{e000}, 😀").unwrap();
+        assert_eq!(unicode.actors_sorted(), ["😀", "\u{e000}"]);
+        assert_eq!(unicode.tasks[0].people, ["😀", "\u{e000}", "😀"]);
+
+        let mut ascii = JourneyDb::default();
+        ascii.add_task("Pay", ":4: A, Z").unwrap();
+        assert_eq!(ascii.actors_sorted(), ["A", "Z"]);
+        assert_eq!(ascii.tasks[0].people, ["A", "Z"]);
+    }
+
+    #[cfg(feature = "editor-facts")]
+    #[test]
+    fn journey_editor_people_facts_keep_authored_unicode_order() {
+        let source = "journey\nPay: 4: \u{e000}, 😀\n";
+        let facts = crate::MermaidEngine::new()
+            .parse_editor_semantic_facts_with_type_sync("journey", source)
+            .unwrap()
+            .unwrap();
+        let people = facts
+            .symbols
+            .iter()
+            .find(|symbol| symbol.detail.as_deref() == Some("journey people"))
+            .unwrap();
+
+        assert_eq!(people.name, "\u{e000}, 😀");
+        assert_eq!(
+            &source[people.selection.start..people.selection.end],
+            "\u{e000}, 😀"
+        );
     }
 
     #[cfg(all(feature = "compat-json", feature = "editor-facts"))]
