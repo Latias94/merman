@@ -511,6 +511,199 @@ fn radar_ignored_font_size_config_keeps_typed_size_and_sibling_evidence_independ
 }
 
 #[test]
+fn radar_font_size_ownership_ignores_invalid_css_and_preserves_valid_host_values() {
+    let theme = radar_typography_theme(
+        ThemeTextStyle::default()
+            .with_font_stack(FontStack::single("RadarIndependent").unwrap())
+            .with_font_size_px(31.0)
+            .unwrap(),
+    );
+    let body = "radar-beta\ntitle Radar heading\naxis Alpha,Beta,Gamma\ncurve Current{3,4,2}\n";
+    for (value, expected_size, typed_size_applies) in [
+        (serde_json::json!("auto"), "31px", true),
+        (serde_json::json!("red"), "31px", true),
+        (serde_json::json!(24), "31px", true),
+        (serde_json::json!("24"), "31px", true),
+        (serde_json::json!(-2), "31px", true),
+        (serde_json::json!("-2px"), "31px", true),
+        (serde_json::json!("-2pt"), "31px", true),
+        (serde_json::json!("-1vw"), "31px", true),
+        (serde_json::json!("-1rem"), "31px", true),
+        (serde_json::json!("-1rlh"), "31px", true),
+        (serde_json::json!("24furlong"), "31px", true),
+        (serde_json::json!("0futureunit"), "31px", true),
+        (serde_json::json!("24deg"), "31px", true),
+        (serde_json::json!("\"24px\""), "31px", true),
+        (serde_json::json!("-1em"), "31px", true),
+        (serde_json::json!("-30%"), "31px", true),
+        (serde_json::json!("24px 32px"), "31px", true),
+        (serde_json::json!(0), "0", false),
+        (serde_json::json!("0px"), "0px", false),
+        (serde_json::json!("22px"), "22px", false),
+        (serde_json::json!("24pt"), "24pt", false),
+        (serde_json::json!("2vw"), "2vw", false),
+        (serde_json::json!("1cap"), "1cap", false),
+        (serde_json::json!("1rem"), "1rem", false),
+        (serde_json::json!("1rlh"), "1rlh", false),
+        (serde_json::json!("-0.0pt"), "-0.0pt", false),
+        (serde_json::json!("1.5em"), "1.5em", false),
+        (serde_json::json!("120%"), "120%", false),
+        (serde_json::json!("medium"), "medium", false),
+        (serde_json::json!("inherit"), "inherit", false),
+        (serde_json::json!("initial"), "initial", false),
+        (
+            serde_json::json!("calc(20px + 1vw)"),
+            "calc(20px + 1vw)",
+            false,
+        ),
+        (
+            serde_json::json!("clamp(16px, 2vw, 32px)"),
+            "clamp(16px, 2vw, 32px)",
+            false,
+        ),
+    ] {
+        let config = serde_json::json!({"themeVariables": {"fontSize": value}});
+        let authored = format!("---\nconfig: {config}\n---\n{body}");
+        for (source, site) in [
+            (body, config.clone()),
+            (authored.as_str(), serde_json::json!({})),
+            (
+                authored.as_str(),
+                serde_json::json!({"themeVariables": {"fontSize": "23px"}}),
+            ),
+        ] {
+            let engine = MermaidEngine::new().with_site_config(
+                merman_core::presentation::SourcePresentationConfig::from_value(site),
+            );
+            let rendered = render_radar_with_theme_and_engine(source, &theme, engine);
+            let css = radar_stylesheet(rendered.svg());
+            assert!(
+                css.contains(&format!(".radarTitle{{font-size:{expected_size};")),
+                "{config}: {css}"
+            );
+            assert!(css.contains("#radar{font-family:RadarIndependent;"));
+            assert!(css.contains(".radarAxisLabel{font-size:12px;"));
+            assert!(css.contains(".radarLegendText{text-anchor:start;font-size:12px;"));
+
+            let evidence =
+                merman_render::__private::family_evidence(rendered.into_completion().report());
+            assert_eq!(evidence.required_count(), 2, "{config}");
+            assert_eq!(evidence.accounted_count(), 2, "{config}");
+            assert_eq!(
+                evidence.applied_count(),
+                1 + usize::from(typed_size_applies),
+                "{config}"
+            );
+            assert_eq!(
+                evidence.not_applicable_count(),
+                usize::from(!typed_size_applies),
+                "{config}"
+            );
+            assert_eq!(evidence.theme_residual_count(), 0, "{config}");
+        }
+    }
+}
+
+#[test]
+fn radar_source_font_size_admission_preserves_host_values_and_typed_fallback() {
+    let theme = radar_typography_theme(
+        ThemeTextStyle::default()
+            .with_font_stack(FontStack::single("RadarIndependent").unwrap())
+            .with_font_size_px(31.0)
+            .unwrap(),
+    );
+    let body = "radar-beta\ntitle Radar heading\naxis Alpha,Beta,Gamma\ncurve Current{3,4,2}\n";
+    let authored = format!(
+        "---\nconfig: {{\"themeVariables\":{{\"fontSize\":\"var(--radar-size)\"}}}}\n---\n{body}"
+    );
+    for (case, source, site, effective_size, expected_size, typed_size_applies) in [
+        (
+            "host variable",
+            body,
+            serde_json::json!({"themeVariables": {"fontSize": "var(--radar-size)"}}),
+            "var(--radar-size)",
+            "var(--radar-size)",
+            false,
+        ),
+        (
+            "rejected source variable preserves typed fallback",
+            authored.as_str(),
+            serde_json::json!({}),
+            "16px",
+            "31px",
+            true,
+        ),
+        (
+            "rejected source variable preserves static host value",
+            authored.as_str(),
+            serde_json::json!({"themeVariables": {"fontSize": "23px"}}),
+            "23px",
+            "23px",
+            false,
+        ),
+        (
+            "rejected source variable preserves dynamic host value",
+            authored.as_str(),
+            serde_json::json!({"themeVariables": {"fontSize": "var(--radar-size)"}}),
+            "var(--radar-size)",
+            "var(--radar-size)",
+            false,
+        ),
+    ] {
+        let engine = MermaidEngine::new().with_site_config(
+            merman_core::presentation::SourcePresentationConfig::from_value(site),
+        );
+        let parsed = common::install_parse_compatibility(&theme, engine)
+            .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
+            .unwrap()
+            .unwrap()
+            .into_presentation();
+        assert_eq!(
+            parsed
+                .metadata()
+                .effective_config
+                .get_str("themeVariables.fontSize"),
+            Some(effective_size),
+            "{case}"
+        );
+        let session = RenderEnvironment::deterministic()
+            .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
+            .begin_session_with_theme(&theme)
+            .unwrap();
+        let rendered = family::prepare(&parsed, &LayoutOptions::default(), session)
+            .unwrap()
+            .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+            .unwrap_or_else(|error| panic!("{case}: {error}"));
+        let css = radar_stylesheet(rendered.svg());
+        assert!(
+            css.contains(&format!(".radarTitle{{font-size:{expected_size};")),
+            "{case}: {css}"
+        );
+        assert!(
+            css.contains(&format!(
+                "#radar{{font-family:RadarIndependent;font-size:{expected_size};"
+            )),
+            "{case}: {css}"
+        );
+        let evidence =
+            merman_render::__private::family_evidence(rendered.into_completion().report());
+        assert_eq!(evidence.required_count(), 2, "{case}");
+        assert_eq!(evidence.accounted_count(), 2, "{case}");
+        assert_eq!(
+            evidence.applied_count(),
+            1 + usize::from(typed_size_applies),
+            "{case}"
+        );
+        assert_eq!(
+            evidence.not_applicable_count(),
+            usize::from(!typed_size_applies),
+            "{case}"
+        );
+        assert_eq!(evidence.theme_residual_count(), 0, "{case}");
+    }
+}
+
+#[test]
 fn radar_unsupported_typography_sibling_keeps_independent_direct_properties() {
     let typography = ThemeTextStyle::default()
         .with_font_stack(

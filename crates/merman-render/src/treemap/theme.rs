@@ -793,6 +793,7 @@ impl<'a> TreemapTypographyThemeReceipt<'a> {
         measurement_matches: bool,
         emitted_fill: &str,
     ) {
+        let participates = participates && resolved.style().font_size > 0.0;
         let stride = 1 + usize::from(self.show_values);
         let index = self
             .next_role
@@ -895,6 +896,10 @@ fn resolve_treemap_source_text_style(
     work_meter: &OperationWorkMeter,
 ) -> crate::Result<TreemapSourceTextStyle> {
     let mut style = TreemapSourceTextStyle::default();
+    let mut text_transform_unverified = false;
+    let mut letter_spacing_unverified = false;
+    let mut word_spacing_unverified = false;
+    let mut white_space_unverified = false;
     let font_size_context =
         crate::mermaid_style::CssFontSizeContext::new(root_font_size_px, root_font_size_px);
 
@@ -917,9 +922,10 @@ fn resolve_treemap_source_text_style(
                         "font-size" => style.font_size_px = TreemapSourceTextOverride::Unverified,
                         "font-weight" => style.font_weight = TreemapSourceTextOverride::Unverified,
                         "font-style" => style.font_style = TreemapSourceTextOverride::Unverified,
-                        "text-transform" | "letter-spacing" | "word-spacing" | "white-space" => {
-                            style.has_unverified_typography = true
-                        }
+                        "text-transform" => text_transform_unverified = true,
+                        "letter-spacing" => letter_spacing_unverified = true,
+                        "word-spacing" => word_spacing_unverified = true,
+                        "white-space" => white_space_unverified = true,
                         _ => {}
                     }
                     return Ok(true);
@@ -949,6 +955,10 @@ fn resolve_treemap_source_text_style(
                             TreemapSourceTextOverride::Unverified
                         } else if declaration.inherits_property_value() {
                             TreemapSourceTextOverride::Inherited
+                        } else if crate::mermaid_style::css_font_size_is_zero(declaration.value()) {
+                            // The shared positive-size resolver intentionally excludes zero.
+                            // Treemap's fitting pass must retain it so the label stays hidden.
+                            TreemapSourceTextOverride::Value(0.0)
                         } else if let Some(font_size_px) =
                             declaration.resolve_font_size_px(font_size_context)
                         {
@@ -988,24 +998,24 @@ fn resolve_treemap_source_text_style(
                         };
                     }
                     "text-transform" => {
-                        style.has_unverified_typography |= declaration.important()
+                        text_transform_unverified = declaration.important()
                             || !(declaration.inherits_property_value()
                                 || declaration.value().eq_ignore_ascii_case("none"));
                     }
                     "letter-spacing" => {
-                        style.has_unverified_typography |= declaration.important()
+                        letter_spacing_unverified = declaration.important()
                             || !(declaration.inherits_property_value()
                                 || declaration.value().eq_ignore_ascii_case("normal")
                                 || declaration.svg_number_or_px() == Some(0.0));
                     }
                     "word-spacing" => {
-                        style.has_unverified_typography |= declaration.important()
+                        word_spacing_unverified = declaration.important()
                             || !(declaration.inherits_property_value()
                                 || declaration.value().eq_ignore_ascii_case("normal")
                                 || declaration.svg_number_or_px() == Some(0.0));
                     }
                     "white-space" => {
-                        style.has_unverified_typography |= declaration.important()
+                        white_space_unverified = declaration.important()
                             || !(declaration.inherits_property_value()
                                 || declaration.value().eq_ignore_ascii_case("normal"));
                     }
@@ -1015,6 +1025,12 @@ fn resolve_treemap_source_text_style(
             },
         )?;
     }
+    // Mermaid folds repeated class declarations by exact property before emitting CSS.
+    // Only each property's final value can invalidate the measured typography.
+    style.has_unverified_typography = text_transform_unverified
+        || letter_spacing_unverified
+        || word_spacing_unverified
+        || white_space_unverified;
     Ok(style)
 }
 

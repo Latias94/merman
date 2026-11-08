@@ -1602,6 +1602,183 @@ title Dynamic title
 }
 
 #[test]
+fn treemap_shadowed_source_text_spacing_does_not_invalidate_the_final_font() {
+    let theme = treemap_typography_theme(
+        FontStack::single("TreemapTyped").expect("valid Treemap root font stack"),
+    );
+    for (property, earlier, final_value) in [
+        ("text-transform", "uppercase", "none"),
+        ("letter-spacing", "2px", "normal"),
+        ("word-spacing", "3px", "0px"),
+        ("white-space", "pre", "normal"),
+    ] {
+        let body = "\"Section\":::probe\n  \"Leaf with spaces\": 42:::probe\n";
+        let baseline = format!("treemap\nclassDef probe {property}:{final_value};\n{body}");
+        let shadowed = format!(
+            "treemap\nclassDef probe {property}:{earlier};\nclassDef probe {property}:{final_value};\n{body}"
+        );
+        let baseline = try_render_treemap_with_theme_requirement(
+            &baseline,
+            &theme,
+            MermaidEngine::new(),
+            ThemePortabilityRequirement::RequirePortable,
+        )
+        .expect("the final neutral source declaration is supported");
+        let rendered = try_render_treemap_with_theme_requirement(
+            &shadowed,
+            &theme,
+            MermaidEngine::new(),
+            ThemePortabilityRequirement::RequirePortable,
+        )
+        .unwrap_or_else(|error| {
+            panic!("shadowed {property} must not invalidate the font: {error}")
+        });
+        assert_eq!(rendered.svg(), baseline.svg(), "{property}");
+        let evidence =
+            merman_render::__private::family_evidence(rendered.into_completion().report());
+        assert_eq!(evidence.required_count(), 1, "{property}");
+        assert_eq!(evidence.applied_count(), 1, "{property}");
+        assert_eq!(evidence.theme_residual_count(), 0, "{property}");
+    }
+}
+
+#[test]
+fn treemap_neutral_source_text_properties_do_not_clear_other_font_residuals() {
+    let theme = treemap_typography_theme(
+        FontStack::single("TreemapTyped").expect("valid Treemap root font stack"),
+    );
+    for (unsupported, neutral) in [
+        ("text-transform:uppercase", "letter-spacing:normal"),
+        ("letter-spacing:2px", "word-spacing:normal"),
+        ("word-spacing:3px", "white-space:normal"),
+        ("white-space:pre", "text-transform:none"),
+        ("letter-spacing:normal", "letter-spacing:2px"),
+    ] {
+        let source = format!(
+            "treemap\nclassDef probe {unsupported};\nclassDef probe {neutral};\n\"Leaf with spaces\": 42:::probe\n"
+        );
+        let rendered = try_render_treemap_with_theme_requirement(
+            &source,
+            &theme,
+            MermaidEngine::new(),
+            ThemePortabilityRequirement::BestEffort,
+        )
+        .expect("BestEffort preserves unsupported source typography");
+        let evidence =
+            merman_render::__private::family_evidence(rendered.into_completion().report());
+        assert_eq!(evidence.required_count(), 1, "{unsupported}/{neutral}");
+        assert_eq!(evidence.applied_count(), 0, "{unsupported}/{neutral}");
+        assert_eq!(
+            evidence.theme_residual_count(),
+            1,
+            "{unsupported}/{neutral}"
+        );
+        let error = try_render_treemap_with_theme_requirement(
+            &source,
+            &theme,
+            MermaidEngine::new(),
+            ThemePortabilityRequirement::RequirePortable,
+        )
+        .err()
+        .expect("the remaining unsupported declaration must still fail closed");
+        assert_eq!(
+            error.unverified_family_theme(),
+            Some((DiagramFamilyId::TREEMAP, 1)),
+            "{unsupported}/{neutral}"
+        );
+    }
+}
+
+#[test]
+fn treemap_zero_sized_source_labels_stay_hidden_without_certifying_fonts_or_paint() {
+    for target in [ThemeTarget::Text, ThemeTarget::NodeLabel] {
+        let theme = DiagramThemeCompiler::new()
+            .compile(
+                DiagramThemeSpec::new()
+                    .with_typography(
+                        TypographySpec::default().with_family_style(
+                            DiagramFamilyId::TREEMAP,
+                            ThemeTextStyle::default()
+                                .with_font_stack(FontStack::single("TreemapTyped").unwrap()),
+                        ),
+                    )
+                    .with_styles(
+                        ThemeRuleSet::default().with_rule(ThemeRule::new(
+                            target,
+                            ThemeStylePatch::default()
+                                .with_fill(CanvasPaint::solid("#123456").unwrap()),
+                        )),
+                    ),
+            )
+            .unwrap();
+        for size in ["0", "0px", "0em", "0%", "-0.0pt"] {
+            let source = format!(
+                "treemap\nclassDef hidden font-size:{size};\n\"Section\":::hidden\n  \"Leaf\": 42:::hidden\n"
+            );
+            let parsed = common::install_parse_compatibility(&theme, MermaidEngine::new())
+                .parse_diagram_for_render_model_sync(&source, ParseOptions::strict())
+                .unwrap()
+                .unwrap()
+                .into_presentation();
+            let host = Arc::new(CountingTreemapHost::default());
+            let session = counting_treemap_environment(Arc::clone(&host))
+                .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
+                .begin_session_with_theme(&theme)
+                .unwrap();
+            let artifact = family::prepare(&parsed, &LayoutOptions::default(), session).unwrap();
+            host.reset();
+            let rendered = artifact
+                .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+                .unwrap_or_else(|error| panic!("zero size {size} must remain supported: {error}"));
+            for text in ["Section", "Leaf"] {
+                let styles = host.observed_styles_for_text(text);
+                assert!(!styles.is_empty(), "{size}/{text}: missing measurement");
+                assert!(
+                    styles.iter().all(|style| style.font_size == 0.0),
+                    "{size}/{text}: {styles:?}"
+                );
+            }
+            let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+            for class in ["treemapLabel", "treemapValue"] {
+                let node = document
+                    .descendants()
+                    .find(|node| node.attribute("class") == Some(class))
+                    .expect("the hidden leaf text terminal remains in the SVG");
+                let style = node.attribute("style").unwrap();
+                assert!(style.contains("display: none;"), "{size}/{class}: {style}");
+                if class == "treemapLabel" {
+                    assert!(style.contains("font-size: 0px;"), "{size}: {style}");
+                }
+            }
+            for class in ["treemapSectionLabel", "treemapSectionValue"] {
+                let node = document
+                    .descendants()
+                    .find(|node| {
+                        node.attribute("class") == Some(class)
+                            && node.text().is_some()
+                            && node.attribute("style") != Some("display: none;")
+                    })
+                    .expect("the zero-sized section text terminal remains in the SVG");
+                assert!(
+                    node.attribute("style")
+                        .unwrap()
+                        .contains(&format!("font-size:{size} !important")),
+                    "{size}/{class}: {}",
+                    node.attribute("style").unwrap()
+                );
+            }
+            drop(document);
+            let evidence =
+                merman_render::__private::family_evidence(rendered.into_completion().report());
+            assert_eq!(evidence.required_count(), 2, "{target:?}/{size}");
+            assert_eq!(evidence.applied_count(), 0, "{target:?}/{size}");
+            assert_eq!(evidence.not_applicable_count(), 2, "{target:?}/{size}");
+            assert_eq!(evidence.theme_residual_count(), 0, "{target:?}/{size}");
+        }
+    }
+}
+
+#[test]
 fn treemap_unverified_source_fonts_fail_closed_for_portable_themes() {
     let theme = treemap_typography_theme(
         FontStack::single("TreemapTyped").expect("valid Treemap root font stack"),

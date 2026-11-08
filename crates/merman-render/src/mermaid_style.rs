@@ -536,7 +536,23 @@ fn font_size_value_ownership(
         {
             Some(CssFontSizeOwnership::SourceOwned)
         }
-        None => Some(CssFontSizeOwnership::Unverified),
+        None => {
+            // The scalar representation covers measurable units only. Inspect the existing
+            // CSS token to distinguish other lengths from definitely invalid literal values.
+            let mut parser = Parser::new(declaration.value());
+            match parser.next().ok()? {
+                Token::Dimension { unit, .. }
+                    if is_css_length_unit(unit)
+                        && parse_css_number_prefix(declaration.value())
+                            .is_some_and(|value| value.is_finite() && value >= 0.0) =>
+                {
+                    Some(CssFontSizeOwnership::Unverified)
+                }
+                // Expression resolution remains the receiving host's responsibility.
+                Token::Function(_) => Some(CssFontSizeOwnership::Unverified),
+                _ => None,
+            }
+        }
         Some(CssScalar::Number(_) | CssScalar::Ident(_)) => None,
         Some(
             CssScalar::Percentage(_) | CssScalar::Px(_) | CssScalar::Em(_) | CssScalar::Rem(_),
@@ -719,16 +735,20 @@ pub(crate) fn css_font_size_is_zero(raw: &str) -> bool {
     let mut parser = Parser::new(parsed.value);
     match parser.next() {
         Ok(Token::Number { .. } | Token::Percentage { .. }) => true,
-        Ok(Token::Dimension { unit, .. }) => [
-            "px", "cm", "mm", "q", "in", "pt", "pc", "em", "rem", "ex", "rex", "cap", "rcap", "ch",
-            "rch", "ic", "ric", "lh", "rlh", "vw", "vh", "vi", "vb", "vmin", "vmax", "svw", "svh",
-            "svi", "svb", "svmin", "svmax", "lvw", "lvh", "lvi", "lvb", "lvmin", "lvmax", "dvw",
-            "dvh", "dvi", "dvb", "dvmin", "dvmax", "cqw", "cqh", "cqi", "cqb", "cqmin", "cqmax",
-        ]
-        .iter()
-        .any(|length_unit| unit.eq_ignore_ascii_case(length_unit)),
+        Ok(Token::Dimension { unit, .. }) => is_css_length_unit(unit),
         _ => false,
     }
+}
+
+fn is_css_length_unit(unit: &str) -> bool {
+    [
+        "px", "cm", "mm", "q", "in", "pt", "pc", "em", "rem", "ex", "rex", "cap", "rcap", "ch",
+        "rch", "ic", "ric", "lh", "rlh", "vw", "vh", "vi", "vb", "vmin", "vmax", "svw", "svh",
+        "svi", "svb", "svmin", "svmax", "lvw", "lvh", "lvi", "lvb", "lvmin", "lvmax", "dvw", "dvh",
+        "dvi", "dvb", "dvmin", "dvmax", "cqw", "cqh", "cqi", "cqb", "cqmin", "cqmax",
+    ]
+    .iter()
+    .any(|length_unit| unit.eq_ignore_ascii_case(length_unit))
 }
 
 pub(crate) fn strip_css_important(raw: &str) -> &str {
@@ -1637,6 +1657,7 @@ mod tests {
         for declarations in [
             "font-size:40px",
             "font-size:0",
+            "font-size:0rem",
             "font-size:125%",
             "font-size:larger",
         ] {
@@ -1644,12 +1665,31 @@ mod tests {
         }
         for declarations in [
             "font-size:var(--descendant-size)",
+            "font-size:var(--negative-root-size, -1rem)",
             "font-size:calc(20px + 1vw)",
+            "font-size:calc(-1rem)",
+            "font-size:clamp(16px, 2vw, 32px)",
+            "font-size:24pt",
+            "font-size:0pt",
+            "font-size:-0vw",
+            "font-size:2vw",
+            "font-size:1cap",
+            "font-size:1rem",
+            "font-size:1rlh",
+            "font-size:1rex",
+            "font-size:1rcap",
+            "font-size:1rch",
+            "font-size:1ric",
+            "font-size:-0rlh",
+            "font-size:1cqmin",
+            r"font-size:12p\74",
             "font-size:initial",
             "font:16px DescendantOwned",
             "font:caption",
             "all:initial",
             "font-size:/* host comment */40px",
+            "font-size:/*host*/24pt",
+            "font-size: /*host*/ 24pt",
         ] {
             assert_eq!(ownership(declarations), Some(Unverified), "{declarations}");
         }
@@ -1659,6 +1699,21 @@ mod tests {
         for declarations in [
             "font-size:red",
             "font-size:24",
+            "font-size:-2pt",
+            "font-size:-1vw",
+            "font-size:-1rem",
+            "font-size:-1rlh",
+            "font-size:-1rex",
+            "font-size:-1rcap",
+            "font-size:-1rch",
+            "font-size:-1ric",
+            "font-size:24furlong",
+            "font-size:0futureunit",
+            "font-size:24deg",
+            "font-size:1fr",
+            "font-size:\"24px\"",
+            r"font-size:-2p\74",
+            r"font-size:12f\72",
             "font:red",
             "font:16px",
             "all:red",
@@ -1669,7 +1724,7 @@ mod tests {
 
     #[test]
     fn font_size_ownership_follows_source_order_and_important() {
-        use CssFontSizeOwnership::{Inherited, SourceOwned};
+        use CssFontSizeOwnership::{Inherited, SourceOwned, Unverified};
 
         assert_eq!(
             css_font_size_override("font-size:40px;font-size:inherit")
@@ -1691,6 +1746,38 @@ mod tests {
                 .map(CssFontSizeOverride::ownership),
             Some(CssFontSizeOwnership::Unverified)
         );
+        for ignored in ["-2pt", "-1vw", "-1rem", "-1rlh", "24furlong"] {
+            assert_eq!(
+                css_font_size_override(&format!("font-size:40px;font-size:{ignored} !important"))
+                    .map(CssFontSizeOverride::ownership),
+                Some(SourceOwned),
+                "{ignored} cannot replace a valid winner"
+            );
+            assert_eq!(
+                css_font_size_override(&format!(
+                    "font-size:{ignored} !important;font-size:inherit"
+                ))
+                .map(CssFontSizeOverride::ownership),
+                Some(Inherited),
+                "invalid {ignored} cannot reserve important precedence"
+            );
+        }
+        for value in [
+            "24pt",
+            "2vw",
+            "1rem",
+            "1rlh",
+            "/*host*/24pt",
+            "var(--size)",
+            "calc(20px + 1vw)",
+            "calc(-1rem)",
+        ] {
+            let winner =
+                css_font_size_override(&format!("font-size:{value} !important;font-size:inherit"))
+                    .expect("valid unmeasured sizes keep their authored precedence");
+            assert_eq!(winner.ownership(), Unverified, "{value}");
+            assert!(winner.important(), "{value}");
+        }
     }
 
     #[test]
