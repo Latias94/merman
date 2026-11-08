@@ -144,42 +144,42 @@
       },
       "branches": [
         {
-          "bbox_height": 17.6,
+          "bbox_height": 19.0,
           "bbox_width": 30.72,
           "index": 0.0,
           "name": "main",
           "pos": 0.0
         },
         {
-          "bbox_height": 17.6,
+          "bbox_height": 19.0,
           "bbox_width": 38.88,
           "index": 1.0,
           "name": "hotfix",
           "pos": 90.0
         },
         {
-          "bbox_height": 17.6,
+          "bbox_height": 19.0,
           "bbox_width": 45.76,
           "index": 2.0,
           "name": "develop",
           "pos": 180.0
         },
         {
-          "bbox_height": 17.6,
+          "bbox_height": 19.0,
           "bbox_width": 57.76,
           "index": 3.0,
           "name": "featureB",
           "pos": 270.0
         },
         {
-          "bbox_height": 17.6,
+          "bbox_height": 19.0,
           "bbox_width": 57.76,
           "index": 4.0,
           "name": "featureA",
           "pos": 360.0
         },
         {
-          "bbox_height": 17.6,
+          "bbox_height": 19.0,
           "bbox_width": 45.76,
           "index": 5.0,
           "name": "release",

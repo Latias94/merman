@@ -30,14 +30,14 @@
       },
       "branches": [
         {
-          "bbox_height": 26.4,
+          "bbox_height": 28.0,
           "bbox_width": 46.08,
           "index": 0.0,
           "name": "main",
           "pos": 0.0
         },
         {
-          "bbox_height": 26.4,
+          "bbox_height": 28.0,
           "bbox_width": 233.76,
           "index": 1.0,
           "name": "longFeatureBranchName",

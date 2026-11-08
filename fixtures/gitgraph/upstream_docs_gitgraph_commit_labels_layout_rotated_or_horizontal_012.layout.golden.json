@@ -66,28 +66,28 @@
       },
       "branches": [
         {
-          "bbox_height": 17.6,
+          "bbox_height": 19.0,
           "bbox_width": 30.72,
           "index": 0.0,
           "name": "main",
           "pos": 0.0
         },
         {
-          "bbox_height": 17.6,
+          "bbox_height": 19.0,
           "bbox_width": 15.84,
           "index": 1.0,
           "name": "c2",
           "pos": 90.0
         },
         {
-          "bbox_height": 17.6,
+          "bbox_height": 19.0,
           "bbox_width": 15.84,
           "index": 2.0,
           "name": "b1",
           "pos": 180.0
         },
         {
-          "bbox_height": 17.6,
+          "bbox_height": 19.0,
           "bbox_width": 15.84,
           "index": 3.0,
           "name": "b2",

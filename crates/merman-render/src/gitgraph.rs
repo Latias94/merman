@@ -647,7 +647,7 @@ pub(crate) fn layout_gitgraph_diagram_typed(
         .as_deref()
         .is_some_and(gitgraph_theme_is_redux_geometry);
 
-    // Upstream gitGraph uses SVG `getBBox()` probes for branch label widths while the
+    // Upstream gitGraph uses SVG `getBBox()` probes for branch label widths and heights while the
     // `drawText(...)` nodes inherit Mermaid's global font config. Preparation resolves that
     // inheritance once so layout and the terminal stylesheet cannot diverge.
     let label_style = typography_theme.branch_label_style();
@@ -666,7 +666,7 @@ pub(crate) fn layout_gitgraph_diagram_typed(
             .map(|row| branch_label_bbox_width_px(row, &label_style, measurer))
             .fold(0.0_f64, f64::max);
         let bbox_h = visible_rows
-            .map(|row| measurer.measure(row, &label_style).height)
+            .map(|row| measurer.measure_svg_tspan_text_bbox_height_px(row, &label_style))
             .fold(0.0_f64, f64::max)
             + row_span as f64 * label_style.font_size;
         branch_pos.insert(b.name.as_str(), pos);

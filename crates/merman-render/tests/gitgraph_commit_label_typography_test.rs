@@ -44,6 +44,12 @@ impl WeightSensitiveMeasurer {
             Some("725") => (90.0, 20.0),
             _ => (30.0, 9.0),
         };
+        // General line metrics must not stand in for the rendered tspan bbox.
+        let height = if operation == TextMeasurementOperation::Measure {
+            2.0
+        } else {
+            height
+        };
         TextMetrics {
             width,
             height,
@@ -261,8 +267,10 @@ fn gitgraph_commit_label_weight_reaches_host_and_probe_geometry() {
                     }
                     let branch_probes: Vec<_> = requests
                         .iter()
-                        .filter(|(text, operation, _)| {
-                            text == "main" && *operation == TextMeasurementOperation::Measure
+                        .filter(|(text, operation, style)| {
+                            text == "main"
+                                && *operation == TextMeasurementOperation::TspanBBoxHeight
+                                && style.font_weight.is_none()
                         })
                         .collect();
                     assert!(
@@ -496,6 +504,47 @@ fn gitgraph_branch_weight_requires_its_numbered_css_rule() {
                 "branchLabelBkg labelNaN"
             };
             assert_geometry(&svg, side_class, width, height);
+        }
+    }
+}
+
+#[test]
+fn gitgraph_branch_rows_use_tspan_height_without_changing_prelayout_weight() {
+    for host in [true, false] {
+        for theme in ["default", "redux"] {
+            for (name, painted_rows) in [("top", 1), (r"top\nbottom", 2), (r"top\n\nbottom", 2)] {
+                let (svg, measurer) = render_source(
+                    json!({
+                        "theme": theme,
+                        "gitGraph": {"showCommitLabel": false, "rotateCommitLabel": false},
+                        "themeVariables": {"fontSize": "24pt", "noteFontWeight": "bold"}
+                    }),
+                    host,
+                    &format!("gitGraph\nbranch \"{name}\"\ncommit id:\"A\"\n"),
+                );
+                let row_span = f64::from(painted_rows - 1) * 32.0;
+                let (width, height) = if theme == "redux" {
+                    (114.0, 18.0 + row_span + 16.0)
+                } else {
+                    (48.0, 9.0 + row_span + 4.0)
+                };
+                assert_geometry(&svg, "branchLabelBkg label1", width, height);
+                let requests = measurer.requests.lock().unwrap();
+                for text in ["top", "bottom"].into_iter().take(painted_rows as usize) {
+                    assert!(
+                        requests.iter().any(|(row, operation, style)| {
+                            row == text
+                                && *operation == TextMeasurementOperation::TspanBBoxHeight
+                                && style.font_size == 32.0
+                                && style.font_weight.is_none()
+                        }),
+                        "{theme}, host={host}, {name:?}: {requests:?}"
+                    );
+                    assert!(requests.iter().all(|(row, operation, _)| {
+                        row != text || *operation != TextMeasurementOperation::Measure
+                    }));
+                }
+            }
         }
     }
 }

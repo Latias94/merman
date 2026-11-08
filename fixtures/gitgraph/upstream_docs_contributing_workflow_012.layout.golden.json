@@ -54,14 +54,14 @@
       },
       "branches": [
         {
-          "bbox_height": 17.6,
+          "bbox_height": 19.0,
           "bbox_width": 45.76,
           "index": 0.0,
           "name": "develop",
           "pos": 0.0
         },
         {
-          "bbox_height": 17.6,
+          "bbox_height": 19.0,
           "bbox_width": 182.08,
           "index": 1.0,
           "name": "docs/2910_update-guidelines",
