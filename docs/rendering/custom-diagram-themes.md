@@ -146,6 +146,12 @@ HTML node-label measurement uses the ordinary 16px document-root baseline; a pag
 root size or a standalone SVG document can resolve `rem` differently. Prefer pixel or parent-relative
 sizes when the same source must travel between hosts.
 
+HTML emphasis also affects font selection: `strong` and `b` request a weight bolder than their
+parent, including each nested level; `em`, `i`, `cite`, `dfn` and `var` request italic. `code`,
+`kbd`, `samp` and `tt` use monospace. Supported explicit font declarations, including
+`font-weight:initial` and `font-style:inherit`, override these defaults. Supply the corresponding
+faces to the host when their measurements matter; a requested weight does not provide a font file.
+
 Use representative Latin, CJK and symbol labels when the content needs them. A font's presence
 does not imply glyph coverage, and a successful theme status does not certify either one. The
 [host measurement guide](../bindings/HOST_TEXT_MEASUREMENT.md) describes callback preparation,

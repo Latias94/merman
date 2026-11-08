@@ -123,7 +123,10 @@ impl<'a> TextStyleCascade<'a> {
             return;
         }
         let inherits = analysis.inherits_property_value();
+        let initial = matches!(property, "font-weight" | "font-style")
+            && analysis.single_ident() == Some("initial");
         let valid = inherits
+            || initial
             || match property {
                 "font-family" => is_static_css_font_family_list(value),
                 "font-size" => analysis.resolve_font_size_px(self.context).is_some(),
@@ -154,7 +157,9 @@ impl<'a> TextStyleCascade<'a> {
                 };
             }
             "font-weight" => {
-                style.font_weight = if inherits {
+                style.font_weight = if initial {
+                    Some("400".to_owned())
+                } else if inherits {
                     self.base.font_weight.clone()
                 } else {
                     let inherited = self
@@ -170,7 +175,9 @@ impl<'a> TextStyleCascade<'a> {
                 };
             }
             "font-style" => {
-                style.font_style = if inherits {
+                style.font_style = if initial {
+                    Some("normal".to_owned())
+                } else if inherits {
                     self.base.font_style.clone()
                 } else {
                     Some(value.to_owned())
@@ -190,5 +197,112 @@ impl<'a> TextStyleCascade<'a> {
         } else {
             self.style
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::mermaid_style::visit_parsed_style_declarations;
+
+    fn parent_style() -> TextStyle {
+        TextStyle {
+            font_family: Some("Inter, sans-serif".to_owned()),
+            font_size: 24.0,
+            font_weight: Some("600".to_owned()),
+            font_style: Some("oblique".to_owned()),
+        }
+    }
+
+    #[test]
+    fn font_initial_resets_override_primitive_defaults() {
+        let base = parent_style();
+        for value in ["initial", "INITIAL", r"\69nitial"] {
+            let mut cascade = TextStyleCascade::new(&base, CssFontSizeContext::new(24.0, 16.0));
+            cascade.observe("font-weight", "bolder", false);
+            cascade.observe("font-style", "italic", false);
+            visit_parsed_style_declarations(
+                &format!("font-weight:{value};font-style:{value}"),
+                |declaration| cascade.observe_declaration(&declaration),
+            );
+            let resolved = cascade.finish();
+            assert_eq!(resolved.font_weight.as_deref(), Some("400"), "{value}");
+            assert_eq!(resolved.font_style.as_deref(), Some("normal"), "{value}");
+            assert_eq!(resolved.font_family, base.font_family);
+            assert_eq!(resolved.font_size, base.font_size);
+        }
+    }
+
+    #[test]
+    fn font_initial_respects_importance_and_immutable_parent_resolution() {
+        let base = parent_style();
+        for (authored, weight, font_style) in [
+            (
+                "font-weight:initial!important;font-weight:900;\
+                 font-style:initial!important;font-style:italic",
+                "400",
+                "normal",
+            ),
+            (
+                "font-weight:900!important;font-weight:initial;\
+                 font-style:italic!important;font-style:initial",
+                "900",
+                "italic",
+            ),
+            (
+                "font-weight:900!important;font-weight:initial!important;\
+                 font-style:italic!important;font-style:initial!important",
+                "400",
+                "normal",
+            ),
+            (
+                "font-weight:initial;font-weight:bolder;\
+                 font-style:initial;font-style:inherit",
+                "900",
+                "oblique",
+            ),
+            (
+                "font-weight:initial;font-weight:inherit;\
+                 font-style:initial;font-style:unset",
+                "600",
+                "oblique",
+            ),
+            (
+                "font-weight:initial;font-weight:initial 900;\
+                 font-style:initial;font-style:'initial'",
+                "400",
+                "normal",
+            ),
+        ] {
+            let mut cascade = TextStyleCascade::new(&base, CssFontSizeContext::new(24.0, 16.0));
+            cascade.observe("font-weight", "bolder", false);
+            cascade.observe("font-style", "italic", false);
+            visit_parsed_style_declarations(authored, |declaration| {
+                cascade.observe_declaration(&declaration);
+            });
+            let resolved = cascade.finish();
+            assert_eq!(resolved.font_weight.as_deref(), Some(weight), "{authored}");
+            assert_eq!(
+                resolved.font_style.as_deref(),
+                Some(font_style),
+                "{authored}"
+            );
+        }
+    }
+
+    #[test]
+    fn already_initial_fonts_retain_the_borrowed_parent() {
+        let base = TextStyle {
+            font_size: 16.0,
+            font_weight: Some("400".to_owned()),
+            font_style: Some("normal".to_owned()),
+            ..TextStyle::default()
+        };
+        let mut cascade = TextStyleCascade::new(&base, CssFontSizeContext::uniform(16.0));
+        cascade.observe("font-weight", "bolder", false);
+        cascade.observe("font-style", "italic", false);
+        cascade.observe("font-weight", "initial", false);
+        cascade.observe("font-style", "initial", false);
+        assert!(matches!(cascade.finish(), Cow::Borrowed(style) if std::ptr::eq(style, &base)));
     }
 }

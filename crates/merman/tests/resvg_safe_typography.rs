@@ -123,13 +123,13 @@ fn usvg_options_with_system_sans_serif() -> usvg::Options<'static> {
     options
 }
 
-fn usvg_fallback_text_font_size(svg: &str, label: &str) -> f32 {
-    fn find_font_size(group: &usvg::Group, label: &str) -> Option<f32> {
+fn usvg_fallback_text_span(svg: &str, label: &str) -> usvg::TextSpan {
+    fn find_span(group: &usvg::Group, label: &str) -> Option<usvg::TextSpan> {
         for node in group.children() {
             match node {
                 usvg::Node::Group(group) => {
-                    if let Some(size) = find_font_size(group, label) {
-                        return Some(size);
+                    if let Some(span) = find_span(group, label) {
+                        return Some(span);
                     }
                 }
                 usvg::Node::Text(text) => {
@@ -143,7 +143,7 @@ fn usvg_fallback_text_font_size(svg: &str, label: &str) -> f32 {
                             .chunks()
                             .iter()
                             .find_map(|chunk| chunk.spans().first())
-                            .map(|span| span.font_size().get());
+                            .cloned();
                     }
                 }
                 usvg::Node::Path(_) | usvg::Node::Image(_) => {}
@@ -154,8 +154,12 @@ fn usvg_fallback_text_font_size(svg: &str, label: &str) -> f32 {
 
     let options = usvg_options_with_system_sans_serif();
     let tree = usvg::Tree::from_str(svg, &options).expect("resvg-safe output should parse in usvg");
-    find_font_size(tree.root(), label)
+    find_span(tree.root(), label)
         .unwrap_or_else(|| panic!("expected usvg text span for {label:?}: {svg}"))
+}
+
+fn usvg_fallback_text_font_size(svg: &str, label: &str) -> f32 {
+    usvg_fallback_text_span(svg, label).font_size().get()
 }
 
 fn usvg_fallback_text_fill(svg: &str, label: &str) -> Option<(u8, u8, u8)> {
@@ -311,6 +315,112 @@ fn class_html_size_elements_reach_the_native_text_painter() {
             (actual_size - expected_size).abs() < 1e-4,
             "{label}: native painter uses {actual_size}px, expected {expected_size}px"
         );
+    }
+}
+
+#[test]
+fn class_html_emphasis_reaches_the_native_text_painter_with_computed_fonts() {
+    for (label, expected_weight, expected_style) in [
+        (
+            "<span style='font-weight:100'><strong>Account</strong></span>",
+            400,
+            usvg::FontStyle::Normal,
+        ),
+        (
+            "<strong><strong>Account</strong></strong>",
+            900,
+            usvg::FontStyle::Normal,
+        ),
+        (
+            "<span style='font-weight:600'><b>Account</b></span>",
+            900,
+            usvg::FontStyle::Normal,
+        ),
+        (
+            "<span style='font-weight:700'><span style='font-weight:lighter'>Account</span></span>",
+            400,
+            usvg::FontStyle::Normal,
+        ),
+        (
+            "<span style='font-weight:100'><span style='font-weight:bolder'><span style='font-weight:bolder'>Account</span></span></span>",
+            700,
+            usvg::FontStyle::Normal,
+        ),
+        (
+            "<span style='font-weight:700'><b style='font-weight:inherit'>Account</b></span>",
+            700,
+            usvg::FontStyle::Normal,
+        ),
+        (
+            "<b style='font-weight:normal'>Account</b>",
+            400,
+            usvg::FontStyle::Normal,
+        ),
+        (
+            "<b style='font-weight:initial'>Account</b>",
+            400,
+            usvg::FontStyle::Normal,
+        ),
+        (
+            r"<b style='font-weight:\69nitial'>Account</b>",
+            400,
+            usvg::FontStyle::Normal,
+        ),
+        (
+            "<em style='font-style:initial;font-weight:400'>Account</em>",
+            400,
+            usvg::FontStyle::Normal,
+        ),
+        (
+            "<span style='font-weight:400;font-style:oblique'><em>Account</em></span>",
+            400,
+            usvg::FontStyle::Italic,
+        ),
+        (
+            "<span style='font-weight:400;font-style:oblique'><i>Account</i></span>",
+            400,
+            usvg::FontStyle::Italic,
+        ),
+        (
+            "<span style='font-weight:400;font-style:oblique'><em style='font-style:inherit'>Account</em></span>",
+            400,
+            usvg::FontStyle::Oblique,
+        ),
+    ] {
+        let svg = render_resvg_safe(
+            "resvg-class-html-emphasis",
+            &format!(
+                "---\nconfig:\n  htmlLabels: true\n  securityLevel: loose\n---\nclassDiagram\nclass E[\"{label}\"]\n"
+            ),
+        );
+        assert!(!svg.contains("<foreignObject"));
+        let span = usvg_fallback_text_span(&svg, "Account");
+        assert_eq!(span.font().weight(), expected_weight, "{label}");
+        assert_eq!(span.font().style(), expected_style, "{label}");
+    }
+}
+
+#[test]
+fn class_html_phrasing_defaults_reach_the_native_text_painter() {
+    for tag in ["cite", "dfn", "var", "code", "kbd", "samp", "tt"] {
+        let svg = render_resvg_safe(
+            "resvg-class-html-phrasing",
+            &format!(
+                "---\nconfig:\n  htmlLabels: true\n  securityLevel: loose\n---\nclassDiagram\nclass E[\"<{tag}>Account</{tag}>\"]\n"
+            ),
+        );
+        let span = usvg_fallback_text_span(&svg, "Account");
+        if matches!(tag, "cite" | "dfn" | "var") {
+            assert_eq!(span.font().style(), usvg::FontStyle::Italic, "{tag}");
+        } else {
+            assert!(
+                span.font()
+                    .families()
+                    .contains(&usvg::FontFamily::Monospace),
+                "{tag}: {:?}",
+                span.font().families()
+            );
+        }
     }
 }
 

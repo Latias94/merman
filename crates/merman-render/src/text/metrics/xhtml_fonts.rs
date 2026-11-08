@@ -1,5 +1,6 @@
 //! Bounded terminal-font inheritance for prepared XHTML labels.
 
+use std::collections::HashMap;
 use std::sync::Arc;
 
 use super::{InlineTextRun, TextMeasurer, TextMetrics, TextStyle, WrapMode};
@@ -9,10 +10,11 @@ pub(super) fn same_font(left: Option<&TextStyle>, right: Option<&TextStyle>) -> 
     match (left, right) {
         (None, None) => true,
         (Some(left), Some(right)) => {
-            left.font_size == right.font_size
-                && left.font_family == right.font_family
-                && left.font_weight == right.font_weight
-                && left.font_style == right.font_style
+            std::ptr::eq(left, right)
+                || (left.font_size == right.font_size
+                    && left.font_family == right.font_family
+                    && left.font_weight == right.font_weight
+                    && left.font_style == right.font_style)
         }
         _ => false,
     }
@@ -21,8 +23,19 @@ pub(super) fn same_font(left: Option<&TextStyle>, right: Option<&TextStyle>) -> 
 pub(super) struct TerminalFonts {
     root_font_size: f64,
     stack: Vec<(String, Arc<TextStyle>)>,
+    open_indices: HashMap<String, Vec<usize>>,
     has_font_declarations: bool,
     line_sizes: Vec<f64>,
+    #[cfg(test)]
+    stack_work: FontStackWork,
+}
+
+#[cfg(test)]
+#[derive(Debug, Default, PartialEq, Eq)]
+struct FontStackWork {
+    close_lookups: usize,
+    pushes: usize,
+    drains: usize,
 }
 
 impl TerminalFonts {
@@ -30,8 +43,11 @@ impl TerminalFonts {
         Self {
             root_font_size,
             stack: vec![(String::new(), Arc::new(style.clone()))],
+            open_indices: HashMap::new(),
             has_font_declarations: false,
             line_sizes: vec![style.font_size],
+            #[cfg(test)]
+            stack_work: FontStackWork::default(),
         }
     }
 
@@ -53,8 +69,31 @@ impl TerminalFonts {
 
     pub(super) fn observe_tag(&mut self, name: &str, tag: &str, closing: bool) {
         if closing {
-            if let Some(index) = self.stack.iter().rposition(|(element, _)| element == name) {
-                self.stack.truncate(index.max(1));
+            #[cfg(test)]
+            {
+                self.stack_work.close_lookups += 1;
+            }
+            if let Some(index) = self
+                .open_indices
+                .get(name)
+                .and_then(|indices| indices.last().copied())
+            {
+                // Only suffixes are removed, so surviving stack indices stay valid. Each open
+                // element is drained once; unmatched closes never scan the ancestry stack.
+                for (element, _) in self.stack.drain(index..).rev() {
+                    let indices = self
+                        .open_indices
+                        .get_mut(&element)
+                        .expect("each open element has an index");
+                    indices.pop().expect("each open element has an index");
+                    if indices.is_empty() {
+                        self.open_indices.remove(&element);
+                    }
+                    #[cfg(test)]
+                    {
+                        self.stack_work.drains += 1;
+                    }
+                }
             }
             return;
         }
@@ -65,21 +104,10 @@ impl TerminalFonts {
         );
         // Element primitives precede authored declarations. Explicit inherit reads the parent,
         // so font-weight:normal/inherit on strong can override its intrinsic emphasis.
-        match name {
-            "strong" | "b" if !super::style_requests_bold_font_weight(parent) => {
-                cascade.observe("font-weight", "700", false);
+        for property in ["font-weight", "font-style", "font-family", "font-size"] {
+            if let Some(value) = crate::text::xhtml_font_default(name, property) {
+                cascade.observe(property, value, false);
             }
-            "em" | "i" if !super::style_requests_italic_font_style(parent) => {
-                cascade.observe("font-style", "italic", false);
-            }
-            "code" => cascade.observe("font-family", "monospace", false),
-            "big" => {
-                cascade.observe("font-size", "1.2em", false);
-            }
-            "small" => {
-                cascade.observe("font-size", "0.8333333333333334em", false);
-            }
-            _ => {}
         }
         let opening = quick_xml::events::BytesStart::from_content(tag, name.len());
         let mut has_font_declarations = false;
@@ -101,10 +129,39 @@ impl TerminalFonts {
                 }
             });
         }
-        let resolved = Arc::new(cascade.finish().into_owned());
+        let resolved = match cascade.finish() {
+            std::borrow::Cow::Borrowed(_) => Arc::clone(parent),
+            std::borrow::Cow::Owned(style) => Arc::new(style),
+        };
         self.has_font_declarations |= has_font_declarations || matches!(name, "big" | "small");
-        if !tag.trim_end().ends_with('/') {
+        if !tag.trim_end().ends_with('/')
+            && !matches!(
+                name,
+                "area"
+                    | "base"
+                    | "br"
+                    | "col"
+                    | "embed"
+                    | "hr"
+                    | "img"
+                    | "input"
+                    | "link"
+                    | "meta"
+                    | "param"
+                    | "source"
+                    | "track"
+                    | "wbr"
+            )
+        {
+            self.open_indices
+                .entry(name.to_owned())
+                .or_default()
+                .push(self.stack.len());
             self.stack.push((name.to_owned(), resolved));
+            #[cfg(test)]
+            {
+                self.stack_work.pushes += 1;
+            }
         }
     }
 
@@ -160,6 +217,141 @@ impl TerminalFonts {
             width: super::round_to_1_64_px(width),
             height,
             line_count,
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn unmatched_close_work_is_linear_in_open_depth_and_close_count() {
+        let style = TextStyle {
+            font_family: Some("Inter, sans-serif".to_owned()),
+            font_size: 16.0,
+            ..TextStyle::default()
+        };
+        for count in [0, 1, 32, 512, 4096] {
+            let mut fonts = TerminalFonts::new(&style, 16.0);
+            let root = Arc::clone(fonts.current());
+            for _ in 0..count {
+                fonts.observe_tag("span", "span", false);
+            }
+            for _ in 0..count {
+                fonts.observe_tag("b", "/b", true);
+            }
+            assert_eq!(
+                fonts.stack_work,
+                FontStackWork {
+                    close_lookups: count,
+                    pushes: count,
+                    drains: 0,
+                }
+            );
+            assert_eq!(fonts.stack.len(), count + 1);
+            assert!(Arc::ptr_eq(fonts.current(), &root));
+            for _ in 0..count {
+                fonts.observe_tag("span", "/span", true);
+            }
+            assert_eq!(
+                fonts.stack_work,
+                FontStackWork {
+                    close_lookups: count * 2,
+                    pushes: count,
+                    drains: count,
+                }
+            );
+            assert_eq!(fonts.stack.len(), 1);
+            assert!(fonts.open_indices.is_empty());
+            assert!(Arc::ptr_eq(fonts.current(), &root));
+        }
+    }
+
+    #[test]
+    fn ancestor_closures_roll_back_each_tag_index_and_restore_parent_fonts() {
+        let style = TextStyle {
+            font_size: 16.0,
+            font_weight: Some("400".to_owned()),
+            ..TextStyle::default()
+        };
+        let mut fonts = TerminalFonts::new(&style, 16.0);
+        let root = Arc::clone(fonts.current());
+        fonts.observe_tag("span", "span style='font-weight:100'", false);
+        let outer = Arc::clone(fonts.current());
+        fonts.observe_tag("strong", "strong", false);
+        fonts.observe_tag("em", "em", false);
+        fonts.observe_tag("strong", "strong", false);
+        assert_eq!(fonts.current().font_weight.as_deref(), Some("700"));
+        fonts.observe_tag("em", "/em", true);
+        assert_eq!(fonts.stack.len(), 3);
+        assert_eq!(fonts.open_indices.get("strong"), Some(&vec![2]));
+        assert!(!fonts.open_indices.contains_key("em"));
+        assert_eq!(fonts.current().font_weight.as_deref(), Some("400"));
+        assert_eq!(fonts.current().font_style, None);
+        fonts.observe_tag("strong", "/strong", true);
+        assert!(Arc::ptr_eq(fonts.current(), &outer));
+        assert!(!fonts.open_indices.contains_key("strong"));
+
+        // Reusing drained indices must not leave an old descendant in the name index.
+        fonts.observe_tag("strong", "strong", false);
+        fonts.observe_tag("span", "span", false);
+        fonts.observe_tag("span", "/span", true);
+        assert_eq!(fonts.current().font_weight.as_deref(), Some("400"));
+        assert_eq!(fonts.open_indices.get("span"), Some(&vec![1]));
+        fonts.observe_tag("span", "/span", true);
+        assert_eq!(fonts.stack.len(), 1);
+        assert!(fonts.open_indices.is_empty());
+        assert!(Arc::ptr_eq(fonts.current(), &root));
+        assert_eq!(fonts.stack_work.pushes, fonts.stack_work.drains);
+    }
+
+    #[test]
+    fn authored_initial_resets_override_primitive_fonts_without_changing_the_parent() {
+        let style = TextStyle {
+            font_family: Some("Inter, sans-serif".to_owned()),
+            font_size: 24.0,
+            font_weight: Some("600".to_owned()),
+            font_style: Some("oblique".to_owned()),
+        };
+        for (name, tag, weight, font_style) in [
+            (
+                "strong",
+                "strong style='font-weight:initial'",
+                "400",
+                "oblique",
+            ),
+            ("em", "em style='font-style:initial'", "600", "normal"),
+            (
+                "b",
+                "b style='font-weight:initial!important;font-weight:900'",
+                "400",
+                "oblique",
+            ),
+            (
+                "i",
+                "i style='font-style:initial!important;font-style:italic'",
+                "600",
+                "normal",
+            ),
+        ] {
+            let mut fonts = TerminalFonts::new(&style, 16.0);
+            let root = Arc::clone(fonts.current());
+            fonts.observe_tag(name, tag, false);
+            assert_eq!(
+                fonts.current().font_weight.as_deref(),
+                Some(weight),
+                "{tag}"
+            );
+            assert_eq!(
+                fonts.current().font_style.as_deref(),
+                Some(font_style),
+                "{tag}"
+            );
+            assert_eq!(fonts.current().font_family, style.font_family);
+            assert_eq!(fonts.current().font_size, style.font_size);
+            fonts.observe_tag(name, name, true);
+            assert!(Arc::ptr_eq(fonts.current(), &root));
         }
     }
 }

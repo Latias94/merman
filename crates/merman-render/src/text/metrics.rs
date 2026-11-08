@@ -643,11 +643,11 @@ impl InlineStyleKey {
 fn same_inline_style(left: &InlineTextRun, right: &InlineTextRun) -> bool {
     left.replaced_width_px.is_none()
         && right.replaced_width_px.is_none()
-        && InlineStyleKey::from_run(left) == InlineStyleKey::from_run(right)
-        && xhtml_fonts::same_font(
-            left.terminal_style.as_deref(),
-            right.terminal_style.as_deref(),
-        )
+        && match (&left.terminal_style, &right.terminal_style) {
+            (Some(left), Some(right)) => xhtml_fonts::same_font(Some(left), Some(right)),
+            (None, None) => InlineStyleKey::from_run(left) == InlineStyleKey::from_run(right),
+            _ => false,
+        }
 }
 
 fn measure_inline_fragments_width_px<M: TextMeasurer + ?Sized>(
@@ -727,33 +727,50 @@ fn measure_inline_fragments_with_break_width_px<M: TextMeasurer + ?Sized>(
 
 #[derive(Debug, Clone)]
 struct BuiltinInlineGroupWidth {
-    style: InlineStyleKey,
+    run_index: usize,
     width: BuiltinHtmlLineWidth,
 }
 
 struct BuiltinInlineWidthProfiles {
     carrier: InlineHtmlMeasurementCarrier,
     initial: [Option<BuiltinHtmlLineWidth>; 8],
+    terminal: Vec<Option<BuiltinHtmlLineWidth>>,
 }
 
 impl BuiltinInlineWidthProfiles {
-    fn new(carrier: InlineHtmlMeasurementCarrier) -> Self {
+    fn new(carrier: InlineHtmlMeasurementCarrier, runs: &[InlineTextRun]) -> Self {
         debug_assert!(carrier.is_builtin());
         Self {
             carrier,
             initial: std::array::from_fn(|_| None),
+            terminal: if runs.iter().any(|run| run.terminal_style.is_some()) {
+                vec![None; runs.len()]
+            } else {
+                Vec::new()
+            },
         }
     }
 
     fn begin(
         &mut self,
-        style: InlineStyleKey,
+        run_index: usize,
+        runs: &[InlineTextRun],
         base_style: &TextStyle,
         stats: &mut InlineHtmlPlanningStats,
     ) -> BuiltinHtmlLineWidth {
-        let initial = &mut self.initial[style.index()];
+        let run = &runs[run_index];
+        // The immutable run index is a complete, operation-local key for a resolved font.
+        // Primitive profiles retain their fixed-size cache; terminal profiles add O(runs) space.
+        let initial = if run.terminal_style.is_some() {
+            &mut self.terminal[run_index]
+        } else {
+            &mut self.initial[InlineStyleKey::from_run(run).index()]
+        };
         if initial.is_none() {
-            let run_style = style.resolve(base_style);
+            let run_style = run.terminal_style.as_deref().map_or_else(
+                || std::borrow::Cow::Owned(InlineStyleKey::from_run(run).resolve(base_style)),
+                std::borrow::Cow::Borrowed,
+            );
             *initial = Some(
                 self.carrier
                     .begin_inline_html_width(&run_style)
@@ -772,13 +789,14 @@ impl BuiltinInlineWidthProfiles {
 impl BuiltinInlineGroupWidth {
     fn new(
         profiles: &mut BuiltinInlineWidthProfiles,
-        style: InlineStyleKey,
+        run_index: usize,
+        runs: &[InlineTextRun],
         base_style: &TextStyle,
         stats: &mut InlineHtmlPlanningStats,
     ) -> Self {
         Self {
-            style,
-            width: profiles.begin(style, base_style, stats),
+            run_index,
+            width: profiles.begin(run_index, runs, base_style, stats),
         }
     }
 
@@ -796,17 +814,25 @@ impl BuiltinInlineGroupWidth {
 struct BuiltinInlineLineWidth {
     width_before_last: f64,
     last_group: Option<BuiltinInlineGroupWidth>,
+    height: f64,
+    has_content: bool,
 }
 
 impl BuiltinInlineLineWidth {
     fn is_empty(&self) -> bool {
-        self.last_group.is_none()
+        !self.has_content
+    }
+
+    fn height_px(&self, base: &TextStyle) -> f64 {
+        self.height.max(base.font_size.max(1.0) * 1.5)
     }
 
     fn width_px(&self) -> f64 {
         self.last_group
             .as_ref()
-            .map_or(0.0, |last| self.width_before_last + last.width_px())
+            .map_or(self.width_before_last, |last| {
+                self.width_before_last + last.width_px()
+            })
     }
 
     fn push_fragments(
@@ -821,17 +847,34 @@ impl BuiltinInlineLineWidth {
         for fragment in fragments {
             stats.record_fragment_measure_visits(1);
             let run = &runs[fragment.run_index];
-            let run_style = InlineStyleKey::from_run(run);
+            self.has_content = true;
+            self.height = self.height.max(
+                run.terminal_style
+                    .as_deref()
+                    .unwrap_or(style)
+                    .font_size
+                    .max(1.0)
+                    * 1.5,
+            );
+            if let Some(advance) = run.replaced_width_px {
+                self.width_before_last = self.width_px() + advance;
+                self.last_group = None;
+                continue;
+            }
             if !self
                 .last_group
                 .as_ref()
-                .is_some_and(|group| group.style == run_style)
+                .is_some_and(|group| same_inline_style(&runs[group.run_index], run))
             {
                 if let Some(last) = self.last_group.take() {
                     self.width_before_last += last.width_px();
                 }
                 self.last_group = Some(BuiltinInlineGroupWidth::new(
-                    profiles, run_style, style, stats,
+                    profiles,
+                    fragment.run_index,
+                    runs,
+                    style,
+                    stats,
                 ));
             }
             self.last_group
@@ -991,13 +1034,6 @@ fn measure_inline_html_line_layout_with_carrier_and_stats<M: TextMeasurer + ?Siz
             measure_inline_run_width_px(measurer, &run.text, &run_style, WrapMode::HtmlLike, false)
         })
         .sum();
-    // The fixed eight-style fast path represents intrinsic emphasis/code, not arbitrary
-    // terminal font stacks and sizes. Those use the same indexed opaque line planner.
-    let carrier = if runs.iter().any(|run| run.terminal_style.is_some()) {
-        InlineHtmlMeasurementCarrier::opaque()
-    } else {
-        carrier
-    };
     if carrier.is_builtin() {
         let active_max_width = max_width.filter(|width| width.is_finite() && *width > 0.0);
         if active_max_width.is_none_or(|max_width| natural_width <= max_width) {
@@ -1005,13 +1041,26 @@ fn measure_inline_html_line_layout_with_carrier_and_stats<M: TextMeasurer + ?Siz
             // wrapping is disabled). Returning the natural width as a conservative private value
             // avoids indexing every break segment on the dominant built-in fast path; it is at
             // most the active maximum and therefore cannot widen another overflowing line.
+            let height = runs
+                .iter()
+                .filter(|run| !run.text.is_empty() || run.replaced_width_px.is_some())
+                .fold(style.font_size.max(1.0) * 1.5, |height, run| {
+                    height.max(
+                        run.terminal_style
+                            .as_deref()
+                            .unwrap_or(style)
+                            .font_size
+                            .max(1.0)
+                            * 1.5,
+                    )
+                });
             return InlineHtmlLineLayout {
                 natural_width,
                 wrapped_width: natural_width,
                 min_content_width: natural_width,
                 line_count: 1,
-                height: style.font_size.max(1.0) * 1.5,
-                last_line_height: style.font_size.max(1.0) * 1.5,
+                height,
+                last_line_height: height,
             };
         }
 
@@ -1208,8 +1257,24 @@ fn measure_builtin_inline_html_line_layout(
     breaks: &InlineBreakPlan,
     stats: &mut InlineHtmlPlanningStats,
 ) -> InlineHtmlLineLayout {
-    let mut profiles = BuiltinInlineWidthProfiles::new(carrier);
-    stats.record_builtin_profile_cache(std::mem::size_of::<BuiltinInlineWidthProfiles>());
+    let natural_height = runs
+        .iter()
+        .filter(|run| !run.text.is_empty() || run.replaced_width_px.is_some())
+        .fold(style.font_size.max(1.0) * 1.5, |height, run| {
+            height.max(
+                run.terminal_style
+                    .as_deref()
+                    .unwrap_or(style)
+                    .font_size
+                    .max(1.0)
+                    * 1.5,
+            )
+        });
+    let mut profiles = BuiltinInlineWidthProfiles::new(carrier, runs);
+    stats.record_builtin_profile_cache(
+        std::mem::size_of::<BuiltinInlineWidthProfiles>()
+            + profiles.terminal.capacity() * std::mem::size_of::<Option<BuiltinHtmlLineWidth>>(),
+    );
     if breaks
         .segments
         .iter()
@@ -1252,7 +1317,21 @@ fn measure_builtin_inline_html_line_layout(
                     current_width.width_px()
                 }
             },
-            |_, _| style.font_size.max(1.0) * 1.5,
+            |line, _| {
+                breaks.fragments[line.fragment_start..line.fragment_end]
+                    .iter()
+                    .fold(style.font_size.max(1.0) * 1.5, |height, fragment| {
+                        height.max(
+                            runs[fragment.run_index]
+                                .terminal_style
+                                .as_deref()
+                                .unwrap_or(style)
+                                .font_size
+                                .max(1.0)
+                                * 1.5,
+                        )
+                    })
+            },
         );
     }
     let mut min_content_width = 0.0_f64;
@@ -1275,8 +1354,8 @@ fn measure_builtin_inline_html_line_layout(
             wrapped_width: natural_width,
             min_content_width,
             line_count: 1,
-            height: style.font_size.max(1.0) * 1.5,
-            last_line_height: style.font_size.max(1.0) * 1.5,
+            height: natural_height,
+            last_line_height: natural_height,
         };
     };
     if natural_width <= max_width {
@@ -1285,8 +1364,8 @@ fn measure_builtin_inline_html_line_layout(
             wrapped_width: natural_width,
             min_content_width,
             line_count: 1,
-            height: style.font_size.max(1.0) * 1.5,
-            last_line_height: style.font_size.max(1.0) * 1.5,
+            height: natural_height,
+            last_line_height: natural_height,
         };
     }
 
@@ -1294,6 +1373,8 @@ fn measure_builtin_inline_html_line_layout(
     stats.record_line_plan(std::mem::size_of::<BuiltinInlineLineWidth>());
     let mut wrapped_width = 0.0_f64;
     let mut line_count = 0usize;
+    let mut height = 0.0;
+    let mut last_line_height = style.font_size.max(1.0) * 1.5;
     for segment in &breaks.segments {
         let checkpoint = current.clone();
         stats.record_builtin_checkpoint_copy();
@@ -1313,6 +1394,8 @@ fn measure_builtin_inline_html_line_layout(
         current = checkpoint;
         wrapped_width = wrapped_width.max(current.width_px());
         line_count += 1;
+        last_line_height = current.height_px(style);
+        height += last_line_height;
         current = BuiltinInlineLineWidth::default();
         current.push_fragments(
             &mut profiles,
@@ -1328,6 +1411,8 @@ fn measure_builtin_inline_html_line_layout(
     if !current.is_empty() {
         wrapped_width = wrapped_width.max(current.width_px());
         line_count += 1;
+        last_line_height = current.height_px(style);
+        height += last_line_height;
     }
 
     InlineHtmlLineLayout {
@@ -1335,8 +1420,8 @@ fn measure_builtin_inline_html_line_layout(
         wrapped_width,
         min_content_width,
         line_count: line_count.max(1),
-        height: line_count.max(1) as f64 * style.font_size.max(1.0) * 1.5,
-        last_line_height: style.font_size.max(1.0) * 1.5,
+        height: height.max(style.font_size.max(1.0) * 1.5),
+        last_line_height,
     }
 }
 
@@ -1483,17 +1568,24 @@ fn explicit_inline_html_line_boxes(
     runs_by_line
         .iter()
         .zip(image_on_line)
-        .rposition(|(runs, has_image)| !runs.is_empty() || *has_image)
+        .rposition(|(runs, has_image)| runs.iter().any(|run| !run.text.is_empty()) || *has_image)
         .map(|last_content_line| {
             runs_by_line[..=last_content_line]
                 .iter()
                 .zip(&image_on_line[..=last_content_line])
-                .filter(|(runs, has_image)| !runs.is_empty() || !**has_image)
+                .filter(|(runs, has_image)| {
+                    runs.iter().any(|run| !run.text.is_empty()) || !**has_image
+                })
                 .count()
         })
         // With no visible runs, N explicit `<br>` elements produce N line boxes. The parser keeps
         // one initial row plus one row per break, while block-end rows are suppressed below.
         .unwrap_or_else(|| runs_by_line.len().saturating_sub(1))
+}
+
+struct InlineHtmlLineBoxes<'a> {
+    explicit_count: usize,
+    font_sizes: Option<&'a [f64]>,
 }
 
 fn finish_inline_html_layout<M: TextMeasurer + ?Sized>(
@@ -1503,8 +1595,7 @@ fn finish_inline_html_layout<M: TextMeasurer + ?Sized>(
     break_spaces_runs_by_line: Option<&[Vec<InlineTextRun>]>,
     style: &TextStyle,
     max_width: Option<f64>,
-    explicit_line_boxes: usize,
-    line_sizes: Option<&[f64]>,
+    line_boxes: InlineHtmlLineBoxes<'_>,
 ) -> TextMetrics {
     let collapsed = measure_inline_html_layout(
         measurer,
@@ -1512,7 +1603,7 @@ fn finish_inline_html_layout<M: TextMeasurer + ?Sized>(
         runs_by_line,
         style,
         max_width,
-        line_sizes,
+        line_boxes.font_sizes,
     );
     let active_max_width = max_width.filter(|width| width.is_finite() && *width > 0.0);
     let break_spaces_active = active_max_width.is_some_and(|max_width| {
@@ -1521,7 +1612,14 @@ fn finish_inline_html_layout<M: TextMeasurer + ?Sized>(
     let layout = if break_spaces_active {
         break_spaces_runs_by_line
             .map(|runs| {
-                measure_inline_html_layout(measurer, carrier, runs, style, max_width, line_sizes)
+                measure_inline_html_layout(
+                    measurer,
+                    carrier,
+                    runs,
+                    style,
+                    max_width,
+                    line_boxes.font_sizes,
+                )
             })
             .unwrap_or(collapsed)
     } else {
@@ -1545,15 +1643,15 @@ fn finish_inline_html_layout<M: TextMeasurer + ?Sized>(
     };
     TextMetrics {
         width: round_to_1_64_px(width),
-        height: if line_sizes.is_some() {
+        height: if line_boxes.font_sizes.is_some() {
             layout.height
-                + explicit_line_boxes.saturating_sub(layout.line_count) as f64
+                + line_boxes.explicit_count.saturating_sub(layout.line_count) as f64
                     * style.font_size.max(1.0)
                     * 1.5
         } else {
-            layout.line_count.max(explicit_line_boxes) as f64 * style.font_size.max(1.0) * 1.5
+            layout.line_count.max(line_boxes.explicit_count) as f64 * style.font_size.max(1.0) * 1.5
         },
-        line_count: layout.line_count.max(explicit_line_boxes),
+        line_count: layout.line_count.max(line_boxes.explicit_count),
     }
 }
 
@@ -1607,6 +1705,167 @@ mod inline_planning_tests {
                 height: style.font_size,
                 line_count: 1,
             }
+        }
+    }
+
+    #[test]
+    fn html_emphasis_resolves_each_parent_before_measuring_terminal_fonts() {
+        // WHATWG's default strong/b weight is bolder; CSS Fonts computes it against the parent.
+        // These expectations also match Chromium computed styles, including nested emphasis.
+        for (parent_weight, strong, nested) in [
+            (100, 400, 700),
+            (300, 400, 700),
+            (400, 700, 900),
+            (500, 700, 900),
+            (600, 900, 900),
+            (700, 900, 900),
+            (900, 900, 900),
+        ] {
+            let base = TextStyle {
+                font_size: 16.0,
+                font_weight: Some(parent_weight.to_string()),
+                font_style: Some("oblique".to_owned()),
+                ..TextStyle::default()
+            };
+            for (html, weight, font_style) in [
+                ("<strong>A</strong>", strong, "oblique"),
+                ("<b><strong>A</strong></b>", nested, "oblique"),
+                ("<em>A</em>", parent_weight, "italic"),
+                ("<i>A</i>", parent_weight, "italic"),
+                (
+                    "<strong style='font-weight:inherit'>A</strong>",
+                    parent_weight,
+                    "oblique",
+                ),
+                ("<b style='font-weight:normal'>A</b>", 400, "oblique"),
+                ("<b style='font-weight:initial'>A</b>", 400, "oblique"),
+                (
+                    "<em style='font-style:inherit'>A</em>",
+                    parent_weight,
+                    "oblique",
+                ),
+                (
+                    "<em style='font-style:initial'>A</em>",
+                    parent_weight,
+                    "normal",
+                ),
+                (
+                    "<b style='font-weight:500!important;font-weight:900'>A</b>",
+                    500,
+                    "oblique",
+                ),
+            ] {
+                for max_width in [None, Some(1000.0)] {
+                    for prepared in [false, true] {
+                        let measurer = RecordingMeasurer::default();
+                        if prepared {
+                            measure_xhtml_label_fragment_with_terminal_fonts(
+                                &measurer, html, &base, max_width, 16.0,
+                            );
+                        } else {
+                            measure_html_with_inline_styles(
+                                &measurer,
+                                html,
+                                &base,
+                                max_width,
+                                WrapMode::HtmlLike,
+                            );
+                        }
+                        let calls = measurer.calls.borrow();
+                        let (_, actual_weight, actual_style, _) =
+                            calls.last().expect("terminal font measurement");
+                        assert_eq!(
+                            actual_weight.as_deref(),
+                            Some(weight.to_string().as_str()),
+                            "{parent_weight}/{html}/{max_width:?}/prepared={prepared}: {calls:?}"
+                        );
+                        assert_eq!(actual_style.as_deref(), Some(font_style), "{html}");
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn html_phrasing_defaults_and_author_overrides_use_the_same_font_stack() {
+        let base = TextStyle {
+            font_family: Some("serif".to_owned()),
+            font_style: Some("oblique".to_owned()),
+            ..TextStyle::default()
+        };
+        for (tag, property, expected, override_value) in [
+            ("cite", "font-style", "italic", "normal"),
+            ("dfn", "font-style", "italic", "normal"),
+            ("var", "font-style", "italic", "normal"),
+            ("code", "font-family", "monospace", "serif"),
+            ("kbd", "font-family", "monospace", "serif"),
+            ("samp", "font-family", "monospace", "serif"),
+            ("tt", "font-family", "monospace", "serif"),
+        ] {
+            for override_default in [false, true] {
+                let attr = if override_default {
+                    format!(" style='{property}:{override_value}!important'")
+                } else {
+                    String::new()
+                };
+                let measurer = RecordingMeasurer::default();
+                measure_html_with_inline_styles(
+                    &measurer,
+                    &format!("<{tag}{attr}>A</{tag}>"),
+                    &base,
+                    None,
+                    WrapMode::HtmlLike,
+                );
+                let calls = measurer.calls.borrow();
+                let (_, _, actual_style, actual_family) = calls.last().unwrap();
+                let actual = if property == "font-style" {
+                    actual_style
+                } else {
+                    actual_family
+                };
+                assert_eq!(
+                    actual.as_deref(),
+                    Some(if override_default {
+                        override_value
+                    } else {
+                        expected
+                    }),
+                    "{tag}/{attr}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn html_terminal_fonts_restore_the_parent_after_nested_and_void_elements() {
+        let measurer = RecordingMeasurer::default();
+        let base = TextStyle {
+            font_size: 16.0,
+            font_weight: Some("400".to_owned()),
+            ..TextStyle::default()
+        };
+        measure_html_with_inline_styles(
+            &measurer,
+            "<strong>A<strong>B</strong>C</strong>D<img style='font-weight:100'>E",
+            &base,
+            None,
+            WrapMode::HtmlLike,
+        );
+        let calls = measurer.calls.borrow();
+        for (text, expected) in [
+            ("A", "700"),
+            ("B", "900"),
+            ("C", "700"),
+            ("D", "400"),
+            ("E", "400"),
+        ] {
+            assert!(
+                calls
+                    .iter()
+                    .any(|(actual, weight, ..)| actual == text
+                        && weight.as_deref() == Some(expected)),
+                "{text} must use {expected}: {calls:?}"
+            );
         }
     }
 
@@ -1692,6 +1951,13 @@ mod inline_planning_tests {
             ("<p><big>A<br/><br/>B</big></p>", 12.0, 54.0, 3),
             ("<p>A<big><br/></big>B</p>", 10.0, 33.0, 2),
             ("<p><big><br/><br/></big></p>", 0.0, 36.0, 2),
+            ("<p>A<br/><br/><img/></p>", 10.0, 30.0, 2),
+            (
+                "<p style='font-size:10px'>A<br/><br/><img/></p>",
+                10.0,
+                30.0,
+                2,
+            ),
             (
                 "<p><big><i class='fa fa-car'></i>A</big></p>",
                 27.0,
@@ -1708,6 +1974,12 @@ mod inline_planning_tests {
                 "<p><span style='font-size:2rem'>A</span></p>",
                 32.0,
                 48.0,
+                1,
+            ),
+            (
+                "<p>A<span style='font-size:100px'> </span></p>",
+                10.0,
+                15.0,
                 1,
             ),
         ] {
@@ -2193,14 +2465,10 @@ mod inline_planning_tests {
             font_size: 10.0,
             ..TextStyle::default()
         };
-        let mut profiles = BuiltinInlineWidthProfiles::new(carrier);
+        let runs = [run("", 1)];
+        let mut profiles = BuiltinInlineWidthProfiles::new(carrier, &runs);
         let mut stats = InlineHtmlPlanningStats::default();
-        let mut group = BuiltinInlineGroupWidth::new(
-            &mut profiles,
-            InlineStyleKey::from_run(&run("", 1)),
-            &style,
-            &mut stats,
-        );
+        let mut group = BuiltinInlineGroupWidth::new(&mut profiles, 0, &runs, &style, &mut stats);
         let text = format!("a{}", "\u{00ad}\u{0301}".repeat(8192));
         group.push_text(&text, &mut stats);
         assert_eq!(group.width.pushed_chunks, 1);
@@ -3100,6 +3368,186 @@ mod inline_planning_tests {
     }
 
     #[test]
+    fn builtin_terminal_line_height_excludes_collapsed_tails_and_keeps_visible_boxes() {
+        let session = RenderEnvironment::deterministic().begin_session().unwrap();
+        let builtin = session.text_measurer(TextMeasurementPhase::Wrap);
+        let opaque = DeterministicTextMeasurer::default();
+        let base = TextStyle {
+            font_size: 16.0,
+            ..Default::default()
+        };
+        for (html, expected_height) in [
+            ("A<span style='font-size:100px'> </span>", 24.0),
+            ("<span style='font-size:100px'>&nbsp;</span>", 150.0),
+            (
+                "<span style='font-size:100px'><i class='fa fa-car'></i></span>",
+                150.0,
+            ),
+        ] {
+            for max_width in [None, Some(1000.0)] {
+                let expected = measure_html_with_inline_styles(
+                    &opaque,
+                    html,
+                    &base,
+                    max_width,
+                    WrapMode::HtmlLike,
+                );
+                let actual = measure_html_with_inline_styles(
+                    &builtin,
+                    html,
+                    &base,
+                    max_width,
+                    WrapMode::HtmlLike,
+                );
+                assert_eq!(actual.height, expected_height, "{html}/{max_width:?}");
+                assert_eq!(actual.width, expected.width, "{html}/{max_width:?}");
+                assert_eq!(actual.height, expected.height, "{html}/{max_width:?}");
+                assert_eq!(
+                    actual.line_count, expected.line_count,
+                    "{html}/{max_width:?}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn builtin_terminal_fonts_keep_linear_stream_work_near_the_natural_width() {
+        let session = RenderEnvironment::deterministic().begin_session().unwrap();
+        let measurer = session.text_measurer(TextMeasurementPhase::Wrap);
+        let base = TextStyle::default();
+        for words in [64, 512, 8192] {
+            for run_count in [1, 16] {
+                let mut runs = (0..run_count)
+                    .map(|index| InlineTextRun {
+                        text: "x ".repeat(words / run_count),
+                        terminal_style: Some(Arc::new(TextStyle {
+                            font_size: if index % 2 == 0 { 16.0 } else { 22.0 },
+                            font_weight: Some("900".to_owned()),
+                            ..base.clone()
+                        })),
+                        ..Default::default()
+                    })
+                    .collect::<Vec<_>>();
+                runs.last_mut().unwrap().text.pop();
+                let bytes: usize = runs.iter().map(|run| run.text.len()).sum();
+                let natural = measure_inline_runs_width_px(
+                    &measurer,
+                    &runs,
+                    &base,
+                    WrapMode::HtmlLike,
+                    false,
+                );
+                let mut stats = InlineHtmlPlanningStats::default();
+                let layout = measure_inline_html_line_layout_with_carrier_and_stats(
+                    &measurer,
+                    inline_html_carrier(&measurer),
+                    &runs,
+                    &base,
+                    Some(natural - 0.01),
+                    &mut stats,
+                );
+                assert_eq!(layout.line_count, 2, "{words}/{run_count}");
+                assert_eq!(stats.backend_requests, run_count);
+                assert_eq!(stats.backend_request_bytes, bytes);
+                assert!(
+                    stats.builtin_stream_bytes <= 3 * bytes,
+                    "{words}/{run_count}: {stats:?}"
+                );
+                assert!(stats.builtin_profile_initializations <= run_count);
+                assert_eq!(
+                    stats.builtin_profile_cache_bytes,
+                    std::mem::size_of::<BuiltinInlineWidthProfiles>()
+                        + run_count * std::mem::size_of::<Option<BuiltinHtmlLineWidth>>()
+                );
+            }
+        }
+
+        // Retain a small same-font reference to expose the growing-prefix cost of the old route.
+        for words in [32, 64, 128] {
+            let runs = [InlineTextRun {
+                text: vec!["x"; words].join(" "),
+                terminal_style: Some(Arc::new(base.clone())),
+                ..Default::default()
+            }];
+            let natural = measurer.measure_html_line_width_px(&runs[0].text, &base);
+            let mut stats = InlineHtmlPlanningStats::default();
+            measure_inline_html_line_layout_with_stats(
+                &measurer,
+                &runs,
+                &base,
+                Some(natural - 0.01),
+                &mut stats,
+            );
+            assert!(
+                stats.backend_request_bytes >= words * words,
+                "{words}: {stats:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn builtin_terminal_font_streaming_matches_the_opaque_width_and_height_reference() {
+        let session = RenderEnvironment::deterministic().begin_session().unwrap();
+        let measurer = session.text_measurer(TextMeasurementPhase::Wrap);
+        let base = TextStyle::default();
+        let large = Arc::new(TextStyle {
+            font_size: 24.0,
+            font_weight: Some("900".to_owned()),
+            ..base.clone()
+        });
+        let small = Arc::new(TextStyle {
+            font_size: 12.0,
+            font_style: Some("italic".to_owned()),
+            ..base.clone()
+        });
+        for text in [
+            "alpha beta gamma",
+            "alpha\u{00ad}beta gamma",
+            "A\u{301} 👩‍💻 世界\u{200b}مرحبا",
+        ] {
+            for with_icon in [false, true] {
+                let mut runs = vec![InlineTextRun {
+                    text: "alpha ".to_owned(),
+                    terminal_style: Some(Arc::clone(&large)),
+                    ..Default::default()
+                }];
+                if with_icon {
+                    runs.push(InlineTextRun {
+                        text: "\u{fffc}".to_owned(),
+                        terminal_style: Some(Arc::clone(&large)),
+                        replaced_width_px: Some(30.0),
+                        ..Default::default()
+                    });
+                }
+                runs.push(InlineTextRun {
+                    text: text.to_owned(),
+                    terminal_style: Some(Arc::clone(&small)),
+                    ..Default::default()
+                });
+                for max_width in [None, Some(10.0), Some(48.0), Some(120.0), Some(10000.0)] {
+                    let expected =
+                        measure_inline_html_line_layout(&measurer, &runs, &base, max_width);
+                    let actual = measure_inline_html_line_layout_with_carrier(
+                        &measurer,
+                        inline_html_carrier(&measurer),
+                        &runs,
+                        &base,
+                        max_width,
+                    );
+                    assert!((actual.natural_width - expected.natural_width).abs() < 1e-9);
+                    assert!(
+                        (actual.wrapped_width - expected.wrapped_width).abs() < 1e-9,
+                        "{text}/{with_icon}/{max_width:?}: {actual:?} != {expected:?}"
+                    );
+                    assert_eq!(actual.line_count, expected.line_count);
+                    assert_eq!(actual.height, expected.height);
+                    assert_eq!(actual.last_line_height, expected.last_line_height);
+                }
+            }
+        }
+    }
+
+    #[test]
     fn qualified_builtin_active_line_work_is_linear_for_r_by_k_matrix() {
         const SOURCE_BYTES: usize = 4096;
         let style = TextStyle {
@@ -3252,8 +3700,12 @@ pub fn unsupported_html_label_style(
                 // Inheritance can override the intrinsic emphasis or code face modeled below.
                 let overrides_element = match element.as_str() {
                     "strong" | "b" => matches!(property.as_str(), "font-weight" | "font"),
-                    "em" | "i" => matches!(property.as_str(), "font-style" | "font"),
-                    "code" => matches!(property.as_str(), "font-family" | "font"),
+                    "cite" | "dfn" | "em" | "i" | "var" => {
+                        matches!(property.as_str(), "font-style" | "font")
+                    }
+                    "code" | "kbd" | "samp" | "tt" => {
+                        matches!(property.as_str(), "font-family" | "font")
+                    }
                     _ => false,
                 };
                 Ok::<_, cssparser::ParseError<()>>((
@@ -3302,6 +3754,11 @@ fn unsupported_html_style_checks_cancellation_during_fragment_recovery() {
     assert_eq!(control.checkpoint(), Err(error));
 }
 
+/// Measures inline HTML using inherited fonts, element defaults, and supported font longhands.
+///
+/// This compatibility entry point has no document-root context: `rem` uses `style.font_size`.
+/// Family-specific prepared labels can supply a separate root size; callers needing portable
+/// geometry should prefer pixel or parent-relative sizes and a matching host font measurer.
 pub fn measure_html_with_inline_styles(
     measurer: &dyn TextMeasurer,
     html: &str,
@@ -3432,7 +3889,14 @@ fn measure_html_with_inline_styles_with_carrier<M: TextMeasurer + ?Sized>(
     wrap_mode: WrapMode,
 ) -> TextMetrics {
     measure_html_with_inline_styles_and_terminal_fonts(
-        measurer, carrier, html, style, max_width, wrap_mode, None,
+        measurer,
+        carrier,
+        html,
+        style,
+        max_width,
+        wrap_mode,
+        (wrap_mode == WrapMode::HtmlLike)
+            .then(|| xhtml_fonts::TerminalFonts::new(style, style.font_size)),
     )
 }
 
@@ -3780,7 +4244,19 @@ fn measure_html_with_inline_styles_and_terminal_fonts<M: TextMeasurer + ?Sized>(
     let has_inline_icons = icon_on_line.iter().any(|has_icon| *has_icon);
 
     if let Some(fonts) = terminal_fonts {
-        if fonts.has_font_declarations() {
+        // The eight-style planner represents ordinary emphasis and code without retaining an
+        // arbitrary font stack. Keep that fast path only when every terminal font agrees with it;
+        // nested bolder, light/heavy parents, and oblique-to-italic overrides need resolved runs.
+        let requires_terminal_styles = fonts.has_font_declarations()
+            || inline_runs_by_line.iter().flatten().any(|run| {
+                !run.text.is_empty()
+                    && run.replaced_width_px.is_none()
+                    && !xhtml_fonts::same_font(
+                        run.terminal_style.as_deref(),
+                        Some(&inline_text_style(style, run.bold, run.italic, run.code)),
+                    )
+            });
+        if requires_terminal_styles {
             debug_assert!(wrap_mode == WrapMode::HtmlLike);
             let explicit_line_boxes =
                 explicit_inline_html_line_boxes(&inline_runs_by_line, &image_on_line);
@@ -3819,13 +4295,15 @@ fn measure_html_with_inline_styles_and_terminal_fonts<M: TextMeasurer + ?Sized>(
                     break_spaces_runs_by_line.as_deref(),
                     style,
                     max_width,
-                    explicit_line_boxes,
-                    Some(fonts.line_sizes()),
+                    InlineHtmlLineBoxes {
+                        explicit_count: explicit_line_boxes,
+                        font_sizes: Some(fonts.line_sizes()),
+                    },
                 );
             }
             return fonts.measure(measurer, &inline_runs_by_line, style, explicit_line_boxes);
         }
-        // Unstyled markup retains the existing callback and primitive-font behavior.
+        // Representable markup retains the existing callback and primitive-font fast path.
         for run in inline_runs_by_line.iter_mut().flatten() {
             run.terminal_style = None;
             if run.replaced_width_px.take().is_some() {
@@ -3866,8 +4344,10 @@ fn measure_html_with_inline_styles_and_terminal_fonts<M: TextMeasurer + ?Sized>(
             break_spaces_runs_by_line.as_deref(),
             style,
             max_width,
-            explicit_line_boxes,
-            None,
+            InlineHtmlLineBoxes {
+                explicit_count: explicit_line_boxes,
+                font_sizes: None,
+            },
         );
     }
 
@@ -3902,8 +4382,10 @@ fn measure_html_with_inline_styles_and_terminal_fonts<M: TextMeasurer + ?Sized>(
             break_spaces_runs_by_line.as_deref(),
             style,
             max_width,
-            explicit_line_boxes,
-            None,
+            InlineHtmlLineBoxes {
+                explicit_count: explicit_line_boxes,
+                font_sizes: None,
+            },
         );
     }
 

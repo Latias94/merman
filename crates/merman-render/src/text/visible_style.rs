@@ -247,14 +247,18 @@ fn collect_visible_facts(root: crate::xml_dom::Node<'_, '_>, facts: &mut Visible
                     node.attribute("style"),
                     "font-weight",
                     inherited.font_weight,
-                    has_css_class || matches!(node.tag_name().name(), "b" | "strong"),
+                    has_css_class
+                        || super::xhtml_font_default(node.tag_name().name(), "font-weight")
+                            .is_some(),
                     has_css_class,
                 ),
                 font_style: inline_typography_owner(
                     node.attribute("style"),
                     "font-style",
                     inherited.font_style,
-                    has_css_class || matches!(node.tag_name().name(), "i" | "em"),
+                    has_css_class
+                        || super::xhtml_font_default(node.tag_name().name(), "font-style")
+                            .is_some(),
                     has_css_class,
                 ),
             }
@@ -675,6 +679,10 @@ mod tests {
             ("<span>Inherited</span>", 0, 0),
             ("<b>Weight</b>", 1, 0),
             ("<em>Style</em>", 0, 1),
+            ("<cite>Style</cite>", 0, 1),
+            ("<dfn>Style</dfn>", 0, 1),
+            ("<var>Style</var>", 0, 1),
+            ("<cite style='font-style:inherit'>Inherited</cite>", 0, 0),
             ("<span style='font-weight:700'>Weight</span>", 1, 0),
             ("<span style='font-style:italic'>Style</span>", 0, 1),
             ("<span style='all:initial'>Reset</span>", 1, 1),

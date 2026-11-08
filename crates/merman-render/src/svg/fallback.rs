@@ -1398,19 +1398,15 @@ mod tests {
     }
 
     #[test]
-    fn rich_text_fallback_inherits_already_emphasized_measurement_styles() {
+    fn rich_text_fallback_computes_emphasis_from_the_inherited_font() {
         for (base, fragment, expected) in [
-            ("font-weight:600", "<b>Alpha</b>", "font-weight: 600"),
+            ("font-weight:600", "<b>Alpha</b>", "font-weight: 900"),
             (
                 "font-weight:900",
                 "<strong>Alpha</strong>",
                 "font-weight: 900",
             ),
-            (
-                "font-style:oblique",
-                "<em>Alpha</em>",
-                "font-style: oblique",
-            ),
+            ("font-style:oblique", "<em>Alpha</em>", "font-style: italic"),
             (
                 "font-weight:900",
                 "<b style='font-weight:400'>Alpha</b>",
