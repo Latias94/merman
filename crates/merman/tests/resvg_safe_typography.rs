@@ -120,6 +120,16 @@ fn usvg_options_with_system_sans_serif() -> usvg::Options<'static> {
     .expect("usvg typography assertions require at least one system font");
     options.font_family = fallback_family.clone();
     options.fontdb_mut().set_sans_serif_family(fallback_family);
+    // Inline code defaults to the generic monospace family. Fontdb's platform default may name
+    // an absent face even when system sans-serif fonts exist, so give it checked-in test assets.
+    for bytes in [
+        include_bytes!("../../merman-export/tests/fonts/Cousine-Regular.ttf").as_slice(),
+        include_bytes!("../../merman-export/tests/fonts/Cousine-Bold.ttf").as_slice(),
+        include_bytes!("../../merman-export/tests/fonts/Cousine-Italic.ttf").as_slice(),
+    ] {
+        options.fontdb_mut().load_font_data(bytes.to_vec());
+    }
+    options.fontdb_mut().set_monospace_family("Cousine");
     options
 }
 
