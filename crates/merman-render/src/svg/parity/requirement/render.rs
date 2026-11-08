@@ -1024,17 +1024,26 @@ pub(crate) fn render_requirement_diagram_svg_model(
             );
             let mut text_facts = None;
             if render_settings.html_labels {
-                let display_html = mermaid_markdown_to_html(&line.display_text, sanitize_config);
+                let display_html = line
+                    .html
+                    .as_ref()
+                    .ok_or_else(|| Error::InvalidModel {
+                        message: format!(
+                            "missing prepared Requirement XHTML for {} row {}",
+                            n.id, line.source_index
+                        ),
+                    })?
+                    .as_str();
                 if text_paint_receipt.is_some() {
                     options.work_meter().charge(display_html.len())?;
                     text_facts = Some(crate::text::VisibleTextStyleFacts::from_xhtml_fragment(
-                        &display_html,
+                        display_html,
                     ));
                 }
                 mk_label_foreign_object(
                     &mut out,
                     LabelForeignObject {
-                        html: &display_html,
+                        html: display_html,
                         width: metrics.width,
                         height: metrics.height,
                         span_class: "nodeLabel markdown-node-label",

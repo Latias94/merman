@@ -7,8 +7,9 @@ use super::math_label::{
 };
 use crate::sequence::{
     SequenceDrawnTextNode, SequenceMathHeightMode, SequenceStaticRectThemeReceipt,
-    measure_sequence_drawn_line_height, sequence_drawn_text_first_y, sequence_drawn_text_style,
-    sequence_drawn_text_y, sequence_note_final_wrapped_lines,
+    SequenceWrappedSideNoteLabelContext, measure_sequence_drawn_line_height,
+    prepare_wrapped_side_note_label, sequence_drawn_text_first_y, sequence_drawn_text_style,
+    sequence_drawn_text_y, sequence_note_final_wrapped_lines, typed_wrapped_side_note_style,
 };
 use merman_model::families::sequence::{SequenceMessage, SequenceMessageKind};
 use rustc_hash::FxHashMap;
@@ -120,7 +121,9 @@ pub(super) struct SequenceNoteRenderContext<'a> {
     pub(super) paint: &'a SequenceNotePaintPlan,
     pub(super) shadow_evidence: &'a SvgShadowEvidenceRecorder,
     pub(super) nodes_by_id: &'a FxHashMap<&'a str, &'a LayoutNode>,
+    pub(super) wrapped_note_text: crate::sequence::SequencePreparedNoteLabelView<'a>,
     pub(super) measurer: &'a dyn TextMeasurer,
+    pub(super) note_wrap_widths: crate::sequence::SequenceNoteWrapWidths,
     pub(super) note_margin: f64,
     pub(super) wrap_padding: f64,
     pub(super) note_text_style: &'a TextStyle,
@@ -231,6 +234,42 @@ pub(super) fn render_sequence_note(
             ctx.typography_receipt,
             crate::sequence::SequenceTextSurface::NoteLabel,
         );
+    } else if let Some(text) = ctx.wrapped_note_text.get(message_index, msg) {
+        render_sequence_note_lines(
+            out,
+            crate::text::split_html_br_lines(text),
+            text_x,
+            text_y,
+            text_anchor,
+            ctx,
+        )?;
+    } else if let Some(terminal_style) =
+        typed_wrapped_side_note_style(msg, ctx.note_typography.non_normal_typed_terminal_style())
+    {
+        // Opaque routes replay the original planner, including its fallible wrapping probes.
+        // The terminal drawing width is deliberately not a wrapping input.
+        let label = prepare_wrapped_side_note_label(
+            raw,
+            msg.placement.expect("wrapped side note placement"),
+            SequenceWrappedSideNoteLabelContext {
+                measurer: ctx.measurer,
+                measurement_style: ctx.note_text_style,
+                terminal_style,
+                config: ctx.sanitize_config,
+                default_width: ctx.note_wrap_widths.default_width,
+                note_margin: ctx.note_wrap_widths.note_margin,
+                wrap_padding: ctx.note_wrap_widths.wrap_padding,
+                checkpoints: ctx.checkpoints.text(),
+            },
+        )?;
+        render_sequence_note_lines(
+            out,
+            crate::text::split_html_br_lines(&label.effective_text),
+            text_x,
+            text_y,
+            text_anchor,
+            ctx,
+        )?;
     } else if msg.wrap {
         // Mermaid@11.12.2 (Sequence) wraps notes *after* placement width is known:
         //   noteModel.message = wrapLabel(msg.message, noteModel.width - 2*wrapPadding, noteFont)
@@ -385,7 +424,9 @@ mod tests {
                         typography_receipt: &receipt,
                         math_sidecar: &Default::default(),
                         nodes_by_id: &Default::default(),
+                        wrapped_note_text: crate::sequence::SequencePreparedNoteLabelView::empty(),
                         measurer: &crate::text::DeterministicTextMeasurer::default(),
+                        note_wrap_widths: Default::default(),
                         note_margin: 10.0,
                         wrap_padding: 10.0,
                         note_text_style: &crate::text::TextStyle::default(),
@@ -465,7 +506,10 @@ mod tests {
                             typography_receipt: &receipt,
                             math_sidecar: &Default::default(),
                             nodes_by_id: &Default::default(),
+                            wrapped_note_text:
+                                crate::sequence::SequencePreparedNoteLabelView::empty(),
                             measurer: &probe,
+                            note_wrap_widths: Default::default(),
                             note_margin: margin,
                             wrap_padding: 10.0,
                             note_text_style: &settings.note_text_style,

@@ -538,6 +538,66 @@ gitGraph
 }
 
 #[test]
+fn gitgraph_font_size_ownership_requires_a_consumed_config_value() {
+    let theme = gitgraph_typography_theme(
+        ThemeTextStyle::default()
+            .with_font_size_px(29.0)
+            .expect("valid GitGraph font size"),
+    );
+    for (value, expected_size, config_owned) in [
+        (json!(true), 29, false),
+        (json!(""), 29, false),
+        (json!("auto"), 29, false),
+        (json!("24em"), 29, false),
+        (json!("NaN"), 29, false),
+        (json!("Infinity"), 29, false),
+        (json!("30px"), 30, true),
+        (json!(30), 30, true),
+        (json!(0), 1, true),
+        (json!(-2), 1, true),
+    ] {
+        let config = json!({"themeVariables": {"fontSize": value}});
+        for source_owned in [false, true] {
+            let (source, engine) = if source_owned {
+                (
+                    format!("---\nconfig: {config}\n---\n{TWO_BRANCHES}"),
+                    MermaidEngine::new(),
+                )
+            } else {
+                (
+                    TWO_BRANCHES.to_owned(),
+                    MermaidEngine::new().with_site_config(
+                        merman_core::presentation::SourcePresentationConfig::from_value(
+                            config.clone(),
+                        ),
+                    ),
+                )
+            };
+            let rendered = try_render_gitgraph_with_theme_and_engine(
+                &source,
+                &theme,
+                engine,
+                "git-size-owner",
+            )
+            .unwrap();
+            let root_rule =
+                gitgraph_css_rule(&gitgraph_stylesheet(rendered.svg()), "#git-size-owner");
+            assert_eq!(
+                css_property(&root_rule, "font-size"),
+                Some(format!("{expected_size}px").as_str()),
+                "font size {value}, source-owned={source_owned}"
+            );
+            let evidence =
+                merman_render::__private::family_evidence(rendered.into_completion().report());
+            assert_eq!(evidence.required_count(), 1);
+            assert_eq!(evidence.applied_count(), usize::from(!config_owned));
+            assert_eq!(evidence.not_applicable_count(), usize::from(config_owned));
+            assert_eq!(evidence.theme_residual_count(), 0);
+        }
+    }
+}
+
+#[test]
 fn gitgraph_font_size_requires_a_visible_nonempty_branch_label() {
     let theme = gitgraph_typography_theme(
         ThemeTextStyle::default()

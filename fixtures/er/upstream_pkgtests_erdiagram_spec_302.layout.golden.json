@@ -3,8 +3,8 @@
   "layout": {
     "ErDiagram": {
       "bounds": {
-        "max_x": 178.42,
-        "max_y": 275.0,
+        "max_x": 172.0,
+        "max_y": 296.0,
         "min_x": 12.0,
         "min_y": 12.0
       },
@@ -19,16 +19,16 @@
           "label": {
             "height": 21.0,
             "width": 18.06,
-            "x": 94.74,
+            "x": 91.53,
             "y": 143.5
           },
           "points": [
             {
-              "x": 95.21,
+              "x": 92.0,
               "y": 93.0
             },
             {
-              "x": 95.21,
+              "x": 92.0,
               "y": 194.0
             }
           ],
@@ -46,16 +46,16 @@
           "id": "entity-CUSTOMER-0",
           "is_cluster": false,
           "width": 107.2,
-          "x": 95.21,
+          "x": 92.0,
           "y": 52.5
         },
         {
-          "height": 81.0,
+          "height": 102.0,
           "id": "entity-DELIVERY-ADDRESS-1",
           "is_cluster": false,
-          "width": 166.42,
-          "x": 95.21,
-          "y": 234.5
+          "width": 160.0,
+          "x": 92.0,
+          "y": 245.0
         }
       ]
     }

@@ -2,6 +2,7 @@
 use crate::elk_options::layout_options as er_elk_layout_options;
 use crate::layout_work::OperationLayoutWorkControl;
 use crate::model::{Bounds, ErDiagramLayout, LayoutEdge, LayoutLabel, LayoutNode, LayoutPoint};
+use crate::resources::{OperationWorkMeter, PreparedTextRetainedReservation};
 use crate::text::{
     TextMeasurer, TextMetrics, TextStyle, WrapMode, measure_mermaid_text_dimensions,
 };
@@ -30,12 +31,20 @@ pub(crate) type ErEntity = merman_model::families::er::ErEntity;
 pub(crate) type ErRelationship = merman_model::families::er::ErRelationship;
 pub(crate) type ErSubgraph = merman_model::families::er::ErSubgraph;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct ErHtmlLabelLayout {
+    pub(crate) width_budget: i64,
+    pub(crate) break_spaces: bool,
+}
+
+#[derive(Debug)]
 pub(crate) struct ErBoxLabel {
     markdown_input: String,
     rendered_text: String,
     xhtml_fragment: String,
     generic_workaround: bool,
+    svg_markup: Option<String>,
+    html_layout: Option<ErHtmlLabelLayout>,
     visible_style_facts: OnceLock<crate::text::VisibleTextStyleFacts>,
 }
 
@@ -54,12 +63,15 @@ impl ErBoxLabel {
         } else {
             source.to_string()
         };
-        let generic_workaround = parsed != source;
-        let markdown_input = if generic_workaround {
+        let markdown_input = if parsed != source {
             parsed.replace('<', "&lt;").replace('>', "&gt;")
         } else {
             source.to_string()
         };
+        // addText flattens entity-authored angle references too, after createText.
+        // drawRect never enters addText's textContent transformation.
+        let generic_workaround = expand_generic_types
+            && (markdown_input.contains("&lt;") || markdown_input.contains("&gt;"));
         let xhtml_fragment =
             crate::text::mermaid_markdown_to_xhtml_label_fragment(&markdown_input, true);
         let rendered_text = if generic_workaround {
@@ -78,6 +90,8 @@ impl ErBoxLabel {
             rendered_text,
             xhtml_fragment,
             generic_workaround,
+            svg_markup: None,
+            html_layout: None,
             visible_style_facts: OnceLock::new(),
         }
     }
@@ -106,6 +120,199 @@ impl ErBoxLabel {
         }
     }
 
+    pub(crate) fn svg_markup(&self) -> Option<&str> {
+        self.svg_markup.as_deref()
+    }
+
+    pub(crate) fn html_layout(&self) -> Option<ErHtmlLabelLayout> {
+        self.html_layout
+    }
+
+    fn retained_buffer_bytes(&self) -> usize {
+        self.markdown_input
+            .capacity()
+            .saturating_add(self.rendered_text.capacity())
+            .saturating_add(self.xhtml_fragment.capacity())
+            .saturating_add(self.svg_markup.as_ref().map_or(0, String::capacity))
+    }
+
+    #[allow(
+        clippy::too_many_arguments,
+        reason = "ER keeps source font layers and the independent createText width budget explicit."
+    )]
+    fn prepare_metrics(
+        &mut self,
+        measurer: &dyn TextMeasurer,
+        probe_style: &TextStyle,
+        source_style: &theme::ErEntitySourceStyle,
+        width: i64,
+        wrap_mode: WrapMode,
+        root_font_size: f64,
+        work_meter: &OperationWorkMeter,
+    ) -> Result<TextMetrics> {
+        use merman_model::OperationPhase;
+
+        work_meter.checkpoint(OperationPhase::Layout)?;
+        let text_style = source_style.text_style(probe_style, root_font_size);
+        if wrap_mode == WrapMode::HtmlLike {
+            if self.rendered_text().is_empty() {
+                self.html_layout = Some(ErHtmlLabelLayout {
+                    width_budget: width.max(0),
+                    break_spaces: false,
+                });
+                return Ok(TextMetrics {
+                    width: 0.0,
+                    height: 0.0,
+                    line_count: 0,
+                });
+            }
+            // createText measures its original group/div/span before addText may remove
+            // span descendants. Its selected whitespace state survives that removal.
+            let span_style = source_style.text_style(&text_style, root_font_size);
+            let max_width = Some(width.max(0) as f64);
+            let nowrap = crate::text::measure_xhtml_label_fragment_with_terminal_fonts(
+                measurer,
+                self.xhtml_fragment(),
+                &span_style,
+                None,
+                root_font_size,
+            );
+            work_meter.checkpoint(OperationPhase::Layout)?;
+            // The initial table-cell bbox is capped by max-width. The later table's
+            // min-content expansion can exceed that cap without undoing this decision.
+            let break_spaces = width > 0 && nowrap.width >= width as f64;
+            let mut metrics = crate::text::measure_xhtml_label_fragment_with_terminal_fonts(
+                measurer,
+                self.xhtml_fragment(),
+                &span_style,
+                max_width,
+                root_font_size,
+            );
+            work_meter.checkpoint(OperationPhase::Layout)?;
+            let layout = ErHtmlLabelLayout {
+                width_budget: width.max(0),
+                break_spaces,
+            };
+            if self.uses_generic_workaround() {
+                // textContent leaves only the group and div source-font layers.
+                self.xhtml_fragment = crate::svg::escape_xml(self.rendered_text());
+                metrics =
+                    self.measure_html_text_content(measurer, &text_style, layout, work_meter)?;
+            }
+            self.html_layout = Some(layout);
+            return Ok(metrics);
+        }
+        let source = self.markdown_input();
+        let source = source
+            .strip_prefix('`')
+            .and_then(|text| text.strip_suffix('`'))
+            .unwrap_or(source);
+        let lines = crate::text::mermaid_markdown_to_wrapped_word_lines(
+            measurer,
+            source,
+            probe_style,
+            Some(width.max(0) as f64),
+            wrap_mode,
+        );
+        work_meter.checkpoint(OperationPhase::Layout)?;
+        let flattened_first_row = self.uses_generic_workaround().then(|| {
+            lines
+                .first()
+                .into_iter()
+                .flatten()
+                .enumerate()
+                .fold(String::new(), |mut text, (index, (word, _))| {
+                    if index > 0 {
+                        text.push(' ');
+                    }
+                    text.push_str(
+                        &crate::text::SvgTextEntityMode::CreateTextSource.visible_word(word),
+                    );
+                    text
+                })
+                .replace("&lt;", "<")
+                .replace("&gt;", ">")
+        });
+        let metrics = match flattened_first_row.as_deref() {
+            Some(first_row) => {
+                measure_er_flattened_svg_rows(measurer, &lines, first_row, &text_style, work_meter)?
+            }
+            None => crate::text::measure_svg_markdown_word_lines(
+                measurer,
+                &lines,
+                &text_style,
+                crate::text::SvgTextEntityMode::CreateTextSource,
+            ),
+        };
+        work_meter.checkpoint(OperationPhase::Layout)?;
+        self.svg_markup = Some(self.prepare_svg_markup(
+            &lines,
+            flattened_first_row.as_deref(),
+            &source_style.label_style_css(false),
+            work_meter,
+        )?);
+        work_meter.checkpoint(OperationPhase::Layout)?;
+        Ok(metrics)
+    }
+
+    fn measure_html_text_content(
+        &self,
+        measurer: &dyn TextMeasurer,
+        style: &TextStyle,
+        layout: ErHtmlLabelLayout,
+        work_meter: &OperationWorkMeter,
+    ) -> Result<TextMetrics> {
+        use crate::text::html_wrap::{NormalizedHtmlText, plan_html_lines};
+        let mut checkpoint = || {
+            work_meter
+                .checkpoint(merman_model::OperationPhase::Layout)
+                .map_err(Error::from)
+        };
+        let mut normalized = NormalizedHtmlText::default();
+        normalized.append(
+            self.rendered_text(),
+            if layout.break_spaces {
+                crate::text::HtmlWhiteSpace::BreakSpaces
+            } else {
+                crate::text::HtmlWhiteSpace::Nowrap
+            },
+            &mut checkpoint,
+        )?;
+        let lines = plan_html_lines(
+            &normalized,
+            layout.break_spaces.then_some(layout.width_budget as f64),
+            measurer.begin_html_line_width(style),
+            &mut |text| {
+                checkpoint()?;
+                let width = measurer.measure_html_line_width_px(text, style);
+                checkpoint()?;
+                Ok(width)
+            },
+            &mut || {
+                work_meter
+                    .checkpoint(merman_model::OperationPhase::Layout)
+                    .map_err(Error::from)
+            },
+        )?;
+        let mut width = if layout.break_spaces {
+            layout.width_budget as f64
+        } else {
+            0.0
+        };
+        let mut height = 0.0;
+        for line in &lines {
+            checkpoint()?;
+            width = width.max(line.width);
+            height += measurer.measure_html_line_height_px(&line.text, style);
+            checkpoint()?;
+        }
+        Ok(TextMetrics {
+            width,
+            height,
+            line_count: lines.len(),
+        })
+    }
+
     pub(crate) fn visible_style_facts(&self) -> &crate::text::VisibleTextStyleFacts {
         self.visible_style_facts.get_or_init(|| {
             crate::text::VisibleTextStyleFacts::from_xhtml_fragment(&self.xhtml_fragment)
@@ -113,13 +320,72 @@ impl ErBoxLabel {
     }
 }
 
-#[derive(Debug, Clone)]
+fn measure_er_flattened_svg_rows(
+    measurer: &dyn TextMeasurer,
+    lines: &[Vec<(String, crate::text::MermaidMarkdownWordType)>],
+    first_row: &str,
+    style: &TextStyle,
+    work_meter: &OperationWorkMeter,
+) -> Result<TextMetrics> {
+    let mut width = 0.0_f64;
+    let mut ink: Option<(f64, f64)> = None;
+    for (index, words) in lines.iter().enumerate() {
+        work_meter.checkpoint(merman_model::OperationPhase::Layout)?;
+        let mut observe = |text: &str, face: &TextStyle| -> Result<()> {
+            if crate::text::trim_html_collapsible_ascii_whitespace(text).is_empty() {
+                return Ok(());
+            }
+            work_meter.checkpoint(merman_model::OperationPhase::Layout)?;
+            let top = measurer.measure_svg_create_text_bbox_y_offset_px(text, face)
+                + index as f64 * style.font_size * 1.1;
+            work_meter.checkpoint(merman_model::OperationPhase::Layout)?;
+            let height = measurer.measure_svg_tspan_text_bbox_height_px(text, face);
+            work_meter.checkpoint(merman_model::OperationPhase::Layout)?;
+            if height > 0.0 {
+                let bottom = top + height;
+                ink = Some(ink.map_or((top, bottom), |(min, max)| (min.min(top), max.max(bottom))));
+            }
+            Ok(())
+        };
+        if index == 0 {
+            width = width.max(measurer.measure_svg_tspan_text_bbox_width_px(first_row, style));
+            work_meter.checkpoint(merman_model::OperationPhase::Layout)?;
+            observe(first_row, style)?;
+        } else {
+            let measured = crate::text::measure_svg_markdown_word_lines(
+                measurer,
+                std::slice::from_ref(words),
+                style,
+                crate::text::SvgTextEntityMode::CreateTextSource,
+            );
+            work_meter.checkpoint(merman_model::OperationPhase::Layout)?;
+            width = width.max(measured.width);
+            for (word_index, (word, kind)) in words.iter().enumerate() {
+                let visible = crate::text::SvgTextEntityMode::CreateTextSource.visible_word(word);
+                let text = if word_index == 0 {
+                    visible.into_owned()
+                } else {
+                    format!(" {visible}")
+                };
+                observe(&text, &crate::text::svg_markdown_word_style(style, *kind))?;
+            }
+        }
+    }
+    Ok(TextMetrics {
+        width: crate::text::round_to_1_64_px(width),
+        height: ink.map_or(0.0, |(top, bottom)| (bottom - top).max(0.0)),
+        line_count: lines.len(),
+    })
+}
+
+#[derive(Debug)]
 pub(crate) struct ErPreparedRelationshipLabel {
     source: String,
     xhtml_fragment: String,
     metrics: TextMetrics,
     html_labels: bool,
     visible_style_facts: OnceLock<crate::text::VisibleTextStyleFacts>,
+    _retained: Option<PreparedTextRetainedReservation>,
 }
 
 impl ErPreparedRelationshipLabel {
@@ -157,6 +423,7 @@ impl ErPreparedRelationshipLabel {
             metrics,
             html_labels,
             visible_style_facts: OnceLock::new(),
+            _retained: None,
         }
     }
 
@@ -179,13 +446,14 @@ impl ErPreparedRelationshipLabel {
     }
 }
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Default)]
 pub(crate) struct ErPreparedLabels {
     entity_measures: BTreeMap<String, ErEntityMeasure>,
     relationship_labels: Vec<ErPreparedRelationshipLabel>,
     entity_font_size_px: f64,
     attribute_font_size_px: f64,
     relationship_font_size_px: f64,
+    _retained: Option<PreparedTextRetainedReservation>,
 }
 
 impl ErPreparedLabels {
@@ -193,42 +461,74 @@ impl ErPreparedLabels {
         model: &merman_model::families::er::ErDiagramModel,
         measurer: &dyn TextMeasurer,
         settings: &ErLayoutSettings,
-    ) -> Self {
-        let entity_measures = model
-            .entities
-            .values()
-            .map(|entity| {
-                (
-                    entity.id.clone(),
-                    measure_entity_box(
-                        entity,
-                        measurer,
-                        &settings.label_style,
-                        &settings.attr_style,
-                        settings.entity_measurement,
-                    ),
-                )
-            })
-            .collect();
-        let relationship_labels = model
-            .relationships
-            .iter()
-            .map(|relationship| {
-                ErPreparedRelationshipLabel::new(
-                    &relationship.role_a,
-                    measurer,
-                    &settings.relationship_label_style,
-                    settings.relationship_html_labels,
-                )
-            })
-            .collect();
-        Self {
+        work_meter: &Arc<OperationWorkMeter>,
+    ) -> Result<Self> {
+        let owner_bytes = (std::mem::size_of::<Self>() + 2 * std::mem::size_of::<usize>())
+            .saturating_add(
+                model
+                    .relationships
+                    .len()
+                    .saturating_mul(std::mem::size_of::<ErPreparedRelationshipLabel>()),
+            );
+        work_meter.preflight_prepared_text_retained_bytes(owner_bytes)?;
+        let retained = work_meter.reserve_prepared_text_retained_bytes(owner_bytes)?;
+        let mut entity_measures = BTreeMap::new();
+        for entity in model.entities.values() {
+            work_meter.checkpoint(merman_model::OperationPhase::Layout)?;
+            work_meter
+                .preflight_prepared_text_retained_bytes(std::mem::size_of::<ErEntityMeasure>())?;
+            work_meter.charge(entity.css_classes.len())?;
+            for raw in &entity.css_styles {
+                work_meter.charge(raw.len())?;
+            }
+            for class_name in entity.css_classes.split_whitespace() {
+                if let Some(class) = model.classes.get(class_name) {
+                    for raw in class.styles.iter().chain(&class.text_styles) {
+                        work_meter.charge(raw.len())?;
+                    }
+                }
+            }
+            let source_style = theme::compile_er_entity_source_style(entity, &model.classes);
+            work_meter.checkpoint(merman_model::OperationPhase::Layout)?;
+            let mut measure = measure_entity_box_with_source(
+                entity,
+                measurer,
+                &settings.label_style,
+                &settings.attr_style,
+                &settings.calculation_style,
+                settings.entity_measurement,
+                source_style,
+                work_meter,
+            )?;
+            let bytes = measure.retained_bytes().saturating_add(entity.id.len());
+            measure._retained = Some(work_meter.reserve_prepared_text_retained_bytes(bytes)?);
+            entity_measures.insert(entity.id.clone(), measure);
+        }
+        let mut relationship_labels = Vec::with_capacity(model.relationships.len());
+        for relationship in &model.relationships {
+            work_meter.checkpoint(merman_model::OperationPhase::Layout)?;
+            let mut label = ErPreparedRelationshipLabel::new(
+                &relationship.role_a,
+                measurer,
+                &settings.relationship_label_style,
+                settings.relationship_html_labels,
+            );
+            work_meter.checkpoint(merman_model::OperationPhase::Layout)?;
+            let bytes = label
+                .source
+                .capacity()
+                .saturating_add(label.xhtml_fragment.capacity());
+            label._retained = Some(work_meter.reserve_prepared_text_retained_bytes(bytes)?);
+            relationship_labels.push(label);
+        }
+        Ok(Self {
             entity_measures,
             relationship_labels,
             entity_font_size_px: settings.label_style.font_size,
             attribute_font_size_px: settings.attr_style.font_size,
             relationship_font_size_px: settings.relationship_label_style.font_size,
-        }
+            _retained: Some(retained),
+        })
     }
 
     pub(crate) fn entity(&self, entity_id: &str) -> Option<&ErEntityMeasure> {
@@ -260,7 +560,13 @@ pub(crate) fn prepare_er_labels(
 ) -> Arc<ErPreparedLabels> {
     let settings = ErConfigView::new(effective_config)
         .layout_settings_with_font_family(&model.direction, None);
-    Arc::new(ErPreparedLabels::prepare(model, measurer, &settings))
+    let work_meter = Arc::new(OperationWorkMeter::new(
+        crate::resources::RenderResourcePolicy::unbounded_for_trusted_input(),
+    ));
+    Arc::new(
+        ErPreparedLabels::prepare(model, measurer, &settings, &work_meter)
+            .expect("prepare ER labels"),
+    )
 }
 
 #[cfg(test)]
@@ -363,7 +669,7 @@ pub(crate) fn calculate_text_width_like_mermaid_px(
     measure_mermaid_text_dimensions(measurer, text, style).width
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub(crate) struct ErEntityMeasureRow {
     pub type_label: ErBoxLabel,
     pub name_label: ErBoxLabel,
@@ -371,19 +677,18 @@ pub(crate) struct ErEntityMeasureRow {
     pub comment_label: ErBoxLabel,
     pub height: f64,
     pub cell_widths: [f64; 4],
-    pub cell_max_widths_px: [i64; 4],
+    pub cell_heights: [f64; 4],
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub(crate) struct ErEntityMeasure {
+    pub(crate) source_style: theme::ErEntitySourceStyle,
     pub width: f64,
     pub height: f64,
     pub text_padding: f64,
     pub label: ErBoxLabel,
     pub label_html_width: f64,
     pub label_height: f64,
-    pub label_max_width_px: i64,
-    pub label_text_width_px: i64,
     pub unformatted_label_metrics: TextMetrics,
     pub has_key: bool,
     pub has_comment: bool,
@@ -392,8 +697,34 @@ pub(crate) struct ErEntityMeasure {
     pub key_col_w: f64,
     pub comment_col_w: f64,
     pub rows: Vec<ErEntityMeasureRow>,
+    _retained: Option<PreparedTextRetainedReservation>,
 }
 
+impl ErEntityMeasure {
+    fn retained_bytes(&self) -> usize {
+        let mut bytes = std::mem::size_of::<Self>()
+            .saturating_add(self.label.retained_buffer_bytes())
+            .saturating_add(self.source_style.retained_declaration_bytes())
+            .saturating_add(
+                self.rows
+                    .capacity()
+                    .saturating_mul(std::mem::size_of::<ErEntityMeasureRow>()),
+            );
+        for row in &self.rows {
+            for label in [
+                &row.type_label,
+                &row.name_label,
+                &row.key_label,
+                &row.comment_label,
+            ] {
+                bytes = bytes.saturating_add(label.retained_buffer_bytes());
+            }
+        }
+        bytes
+    }
+}
+
+#[cfg(test)]
 pub(crate) fn measure_entity_box(
     entity: &ErEntity,
     measurer: &dyn TextMeasurer,
@@ -401,6 +732,36 @@ pub(crate) fn measure_entity_box(
     attr_style: &TextStyle,
     settings: ErEntityMeasurementSettings,
 ) -> ErEntityMeasure {
+    let work_meter = OperationWorkMeter::new(
+        crate::resources::RenderResourcePolicy::unbounded_for_trusted_input(),
+    );
+    measure_entity_box_with_source(
+        entity,
+        measurer,
+        label_style,
+        attr_style,
+        label_style,
+        settings,
+        theme::compile_er_entity_source_style(entity, &indexmap::IndexMap::new()),
+        &work_meter,
+    )
+    .expect("measure ER entity")
+}
+
+#[allow(
+    clippy::too_many_arguments,
+    reason = "ER entity preparation separates terminal styles, root width probes, and operation ownership."
+)]
+fn measure_entity_box_with_source(
+    entity: &ErEntity,
+    measurer: &dyn TextMeasurer,
+    label_style: &TextStyle,
+    attr_style: &TextStyle,
+    calculation_style: &TextStyle,
+    settings: ErEntityMeasurementSettings,
+    source_style: theme::ErEntitySourceStyle,
+    work_meter: &OperationWorkMeter,
+) -> Result<ErEntityMeasure> {
     // Measure through the same HTML/SVG branch used by Mermaid erBox.ts and the painter.
     // The operation-owned measurer supplies browser metrics or the deterministic fallback.
 
@@ -425,17 +786,12 @@ pub(crate) fn measure_entity_box(
 
     // Attribute-free entities use drawRect/labelHelper, which does not call addText's
     // parseGenericTypes workaround.
-    let label = ErBoxLabel::from_source_with_generic_types(
+    let mut label = ErBoxLabel::from_source_with_generic_types(
         entity.label_source_for_render(),
         !entity.attributes.is_empty(),
     );
-    let label_metrics = er_box_label_metrics_with_wrap_mode(
-        &label,
-        measurer,
-        label_style,
-        settings.label_wrap_mode,
-    );
-    let label_html_width = label_metrics.width.max(0.0);
+    let label_probe_style = source_style.text_style(label_style, label_style.font_size);
+    let attr_probe_style = source_style.text_style(attr_style, label_style.font_size);
 
     // No attributes: use `drawRect`-like padding rules from Mermaid erBox.ts.
     if entity.attributes.is_empty() {
@@ -445,31 +801,44 @@ pub(crate) fn measure_entity_box(
         // not on the HTML label bbox. Preserve that quirk: upstream can end up with nodes that are
         // narrower than `minEntityWidth` when `calculateTextWidth()` is larger than the HTML bbox
         // used by `drawRect`.
-        let calc_w =
-            calculate_text_width_like_mermaid_px(measurer, label_style, label.markdown_input());
+        let calc_w = calculate_text_width_like_mermaid_px(
+            measurer,
+            calculation_style,
+            label.markdown_input(),
+        );
+        let clamp_to_min_w = (calc_w as f64 + label_pad_x * 2.0) < min_w;
+        let label_max_width_px = if clamp_to_min_w {
+            min_w.round().max(0.0) as i64
+        } else {
+            wrapping_width_px
+        };
+        let label_metrics = label.prepare_metrics(
+            measurer,
+            &label_probe_style,
+            &source_style,
+            label_max_width_px,
+            settings.label_wrap_mode,
+            label_style.font_size,
+            work_meter,
+        )?;
+        let label_html_width = label_metrics.width.max(0.0);
         // The painter emits this same prepared terminal. Reusing its metrics preserves
         // entity depth and avoids measuring encoded source as already-decoded text.
         let unformatted_label_metrics = label_metrics;
-        let clamp_to_min_w = (calc_w as f64 + label_pad_x * 2.0) < min_w;
         let width = if clamp_to_min_w {
-            min_w
+            min_w.max(label_html_width + label_pad_x * 2.0)
         } else {
             label_html_width + label_pad_x * 2.0
         };
         let height = label_metrics.height + label_pad_y * 2.0;
-        return ErEntityMeasure {
+        return Ok(ErEntityMeasure {
+            source_style,
             width: width.max(1.0),
             height: height.max(1.0),
             text_padding,
             label,
             label_html_width,
             label_height: label_metrics.height.max(0.0),
-            label_max_width_px: if clamp_to_min_w {
-                min_w.round().max(0.0) as i64
-            } else {
-                wrapping_width_px
-            },
-            label_text_width_px: calc_w,
             unformatted_label_metrics,
             has_key: false,
             has_comment: false,
@@ -478,8 +847,22 @@ pub(crate) fn measure_entity_box(
             key_col_w: 0.0,
             comment_col_w: 0.0,
             rows: Vec::new(),
-        };
+            _retained: None,
+        });
     }
+
+    let label_text_width_px =
+        calculate_text_width_like_mermaid_px(measurer, calculation_style, label.markdown_input());
+    let label_metrics = label.prepare_metrics(
+        measurer,
+        &label_probe_style,
+        &source_style,
+        label_text_width_px.saturating_add(100),
+        settings.label_wrap_mode,
+        label_style.font_size,
+        work_meter,
+    )?;
+    let label_html_width = label_metrics.width.max(0.0);
 
     // Mermaid erBox.ts only applies the `* 1.25` multiplier after the "drawRect" early-return.
     // Keep that behavior: nodes without an attribute table should *not* inherit the multiplier.
@@ -503,20 +886,38 @@ pub(crate) fn measure_entity_box(
     let mut total_rows_h = 0.0;
 
     for a in &entity.attributes {
-        let type_label = ErBoxLabel::from_source(&a.ty);
-        let name_label = ErBoxLabel::from_source(&a.name);
-        let type_m = er_box_label_metrics_with_wrap_mode(
-            &type_label,
-            measurer,
-            attr_style,
-            settings.label_wrap_mode,
-        );
-        let name_m = er_box_label_metrics_with_wrap_mode(
-            &name_label,
-            measurer,
-            attr_style,
-            settings.label_wrap_mode,
-        );
+        work_meter.checkpoint(merman_model::OperationPhase::Layout)?;
+        let mut type_label = ErBoxLabel::from_source(&a.ty);
+        let mut name_label = ErBoxLabel::from_source(&a.name);
+        let mut key_label = ErBoxLabel::from_source(&a.keys.join(","));
+        let mut comment_label = ErBoxLabel::from_source(&a.comment);
+        let cell_max_widths_px =
+            [&type_label, &name_label, &key_label, &comment_label].map(|label| {
+                calculate_text_width_like_mermaid_px(
+                    measurer,
+                    calculation_style,
+                    label.markdown_input(),
+                )
+                .saturating_add(100)
+            });
+        let [type_m, name_m, keys_m, comment_m] = [
+            (&mut type_label, cell_max_widths_px[0]),
+            (&mut name_label, cell_max_widths_px[1]),
+            (&mut key_label, cell_max_widths_px[2]),
+            (&mut comment_label, cell_max_widths_px[3]),
+        ]
+        .map(|(label, width)| {
+            label.prepare_metrics(
+                measurer,
+                &attr_probe_style,
+                &source_style,
+                width,
+                settings.label_wrap_mode,
+                label_style.font_size,
+                work_meter,
+            )
+        });
+        let (type_m, name_m, keys_m, comment_m) = (type_m?, name_m?, keys_m?, comment_m?);
 
         let type_w = type_m.width;
         let name_w = name_m.width;
@@ -525,24 +926,10 @@ pub(crate) fn measure_entity_box(
         max_type_col_w = max_type_col_w.max(type_w + padding);
         max_name_col_w = max_name_col_w.max(name_w + padding);
 
-        let key_label = ErBoxLabel::from_source(&a.keys.join(","));
-        let keys_m = er_box_label_metrics_with_wrap_mode(
-            &key_label,
-            measurer,
-            attr_style,
-            settings.label_wrap_mode,
-        );
         let keys_w = keys_m.width;
         max_keys_raw_w = max_keys_raw_w.max(keys_w);
         max_keys_col_w = max_keys_col_w.max(keys_w + padding);
 
-        let comment_label = ErBoxLabel::from_source(&a.comment);
-        let comment_m = er_box_label_metrics_with_wrap_mode(
-            &comment_label,
-            measurer,
-            attr_style,
-            settings.label_wrap_mode,
-        );
         let comment_w = comment_m.width;
         max_comment_raw_w = max_comment_raw_w.max(comment_w);
         max_comment_col_w = max_comment_col_w.max(comment_w + padding);
@@ -554,15 +941,6 @@ pub(crate) fn measure_entity_box(
             .max(comment_m.height)
             + text_padding;
 
-        let cell_max_widths_px = if settings.label_wrap_mode == WrapMode::HtmlLike {
-            [&type_label, &name_label, &key_label, &comment_label].map(|label| {
-                calculate_text_width_like_mermaid_px(measurer, attr_style, label.markdown_input())
-                    + 100
-            })
-        } else {
-            [0; 4]
-        };
-
         rows.push(ErEntityMeasureRow {
             type_label,
             name_label,
@@ -570,7 +948,13 @@ pub(crate) fn measure_entity_box(
             comment_label,
             height: row_h.max(1.0),
             cell_widths: [type_w, name_w, keys_w, comment_w].map(|width| width.max(0.0)),
-            cell_max_widths_px,
+            cell_heights: [
+                type_m.height,
+                name_m.height,
+                keys_m.height,
+                comment_m.height,
+            ]
+            .map(|height| height.max(0.0)),
         });
         total_rows_h += row_h.max(1.0);
     }
@@ -616,21 +1000,14 @@ pub(crate) fn measure_entity_box(
     let width = (shape_bbox_w + padding * 2.0).max(max_width);
     let name_h = label_metrics.height + text_padding;
     let height = total_rows_h + name_h;
-    let label_text_width_px = if settings.label_wrap_mode == WrapMode::HtmlLike {
-        calculate_text_width_like_mermaid_px(measurer, label_style, label.markdown_input())
-    } else {
-        0
-    };
-
-    ErEntityMeasure {
+    Ok(ErEntityMeasure {
+        source_style,
         width: width.max(1.0),
         height: height.max(1.0),
         text_padding,
         label,
         label_html_width,
         label_height: label_metrics.height.max(0.0),
-        label_max_width_px: wrapping_width_px,
-        label_text_width_px,
         unformatted_label_metrics: label_metrics,
         has_key,
         has_comment,
@@ -639,7 +1016,8 @@ pub(crate) fn measure_entity_box(
         key_col_w: max_keys_col_w.max(0.0),
         comment_col_w: max_comment_col_w.max(0.0),
         rows,
-    }
+        _retained: None,
+    })
 }
 
 fn parse_er_rel_idx_from_edge_name(name: &str) -> Option<usize> {
@@ -1057,7 +1435,7 @@ pub(crate) fn layout_er_diagram_typed_with_resolved_typography(
     font_size_px: Option<f64>,
     work_meter: Arc<crate::resources::OperationWorkMeter>,
 ) -> Result<ErDiagramLayout> {
-    let mut work_control = OperationLayoutWorkControl::new(work_meter);
+    let mut work_control = OperationLayoutWorkControl::new(Arc::clone(&work_meter));
     let settings = ErConfigView::new(effective_config).layout_settings_with_resolved_typography(
         &model.direction,
         font_family_css,
@@ -1066,7 +1444,12 @@ pub(crate) fn layout_er_diagram_typed_with_resolved_typography(
     let adapter_work = er_layout_adapter_work(model, &work_control)?;
     work_control.charge_adapter(adapter_work)?;
     validate_er_relationship_endpoints(model)?;
-    let prepared_labels = Arc::new(ErPreparedLabels::prepare(model, measurer, &settings));
+    let prepared_labels = Arc::new(ErPreparedLabels::prepare(
+        model,
+        measurer,
+        &settings,
+        &work_meter,
+    )?);
     let selection = crate::layout_backend::resolve_graph_layout(effective_config);
     selection.validate_rootless_graph()?;
 
@@ -1185,6 +1568,7 @@ fn layout_er_diagram_dagre_typed(
         graph: graph_label,
         label_style,
         attr_style: _,
+        calculation_style: _,
         relationship_label_style: _,
         relationship_html_labels,
         entity_measurement: _,
@@ -1990,6 +2374,7 @@ fn er_elk_graph(
         graph,
         label_style,
         attr_style: _,
+        calculation_style: _,
         relationship_label_style: _,
         relationship_html_labels,
         entity_measurement: _,
@@ -2215,7 +2600,7 @@ mod tests {
         let settings = super::ErConfigView::new(&effective_config)
             .layout_settings_with_font_family(&model.direction, None);
         let measurer = DeterministicTextMeasurer::default();
-        let prepared_labels = super::ErPreparedLabels::prepare(&model, &measurer, &settings);
+        let prepared_labels = super::prepare_er_labels(&model, &effective_config, &measurer);
         let mut graph = super::er_elk_graph(
             &model,
             &effective_config,
@@ -2283,10 +2668,10 @@ mod tests {
                         &config,
                         &DeterministicTextMeasurer::default(),
                         &settings,
-                        &super::ErPreparedLabels::prepare(
+                        &super::prepare_er_labels(
                             &model,
+                            &config,
                             &DeterministicTextMeasurer::default(),
-                            &settings,
                         ),
                         &mut None,
                     )
@@ -2384,6 +2769,23 @@ mod tests {
                 40.0
             }
 
+            fn measure_svg_tspan_text_bbox_width_px(&self, text: &str, _style: &TextStyle) -> f64 {
+                assert!(text == "book <br> title", "literal first-row bbox: {text}");
+                40.0
+            }
+
+            fn measure_mermaid_calculate_text_dimensions(
+                &self,
+                _text: &str,
+                _style: &TextStyle,
+            ) -> TextMetrics {
+                TextMetrics {
+                    width: 40.0,
+                    height: 18.0,
+                    line_count: 1,
+                }
+            }
+
             fn measure_wrapped(
                 &self,
                 _text: &str,
@@ -2420,15 +2822,15 @@ mod tests {
         let settings = super::ErConfigView::new(&config).entity_measurement_settings();
         let style = default_style();
         // Source entities remain encoded until the retained SVG words are emitted.
-        // Only an authored break may add another row.
+        // addText flattens the first row for angle references without parsing another break.
         for (comment, comment_words, comment_lines) in [
-            ("book &lt;br&gt; title", &["book", " <br>", " title"][..], 1),
+            ("book &lt;br&gt; title", &["book <br> title"][..], 1),
             (
                 "book &amp;lt;br&amp;gt; title",
                 &["book", " &lt;br&gt;", " title"][..],
                 1,
             ),
-            ("book #lt;br#gt; title", &["book", " <br>", " title"][..], 1),
+            ("book #lt;br#gt; title", &["book <br> title"][..], 1),
             ("book<br/>title", &["book", "title"][..], 2),
         ] {
             let entity = super::ErEntity {
@@ -2672,12 +3074,10 @@ mod tests {
                 entity_b: "entity-ENTITY-0".to_string(),
                 ..Default::default()
             });
-        let settings = super::ErConfigView::new(&serde_json::Value::Null)
-            .layout_settings_with_font_family(&model.direction, None);
-        let prepared = super::ErPreparedLabels::prepare(
+        let prepared = super::prepare_er_labels(
             &model,
+            &serde_json::Value::Null,
             &DeterministicTextMeasurer::default(),
-            &settings,
         );
 
         let entity = prepared
@@ -2707,7 +3107,7 @@ mod tests {
     }
 
     #[test]
-    fn er_generic_workaround_is_derived_from_the_source_transformation() {
+    fn er_generic_workaround_covers_transformed_and_authored_angle_references() {
         let generic = super::ErBoxLabel::from_source("*string(99)~T~~~~~~*");
         assert!(generic.uses_generic_workaround());
         assert_eq!(generic.rendered_text(), "string(99)<T<<~>>>");
@@ -2719,5 +3119,171 @@ mod tests {
         let raw_html = super::ErBoxLabel::from_source("<code>type<T></code>");
         assert!(!raw_html.uses_generic_workaround());
         assert!(raw_html.xhtml_fragment().contains("<code>"));
+        let encoded = super::ErBoxLabel::from_source("A&lt;T&gt;B");
+        assert!(encoded.uses_generic_workaround());
+        assert_eq!(encoded.rendered_text(), "A<T>B");
+    }
+
+    fn er_resource_model() -> merman_model::families::er::ErDiagramModel {
+        let mut model = merman_model::families::er::ErDiagramModel::default();
+        model.entities.insert(
+            "A".into(),
+            super::ErEntity {
+                id: "A".into(),
+                label: "AB".into(),
+                css_styles: vec!["font-size:32px".into(), "font-style:italic".into()],
+                ..Default::default()
+            },
+        );
+        model
+    }
+
+    #[test]
+    fn er_prepared_label_projection_rejects_a_one_byte_retained_budget() {
+        use crate::resources::{OperationWorkMeter, RenderResourcePolicy, ResourceLimitId};
+        for html in [false, true] {
+            let meter = std::sync::Arc::new(OperationWorkMeter::new(
+                RenderResourcePolicy::unbounded_for_trusted_input()
+                    .with_limit(ResourceLimitId::MaxPreparedTextRetainedBytes, 1)
+                    .unwrap(),
+            ));
+            let model = er_resource_model();
+            let config = serde_json::json!({"htmlLabels": html});
+            let settings = super::ErConfigView::new(&config)
+                .layout_settings_with_font_family(&model.direction, None);
+            let error = super::ErPreparedLabels::prepare(
+                &model,
+                &DeterministicTextMeasurer::default(),
+                &settings,
+                &meter,
+            )
+            .unwrap_err();
+            let crate::Error::ResourceLimitExceeded(error) = error else {
+                panic!("expected retained-byte rejection")
+            };
+            assert_eq!(error.limit, "max_prepared_text_retained_bytes");
+            assert_eq!(meter.prepared_text_retained_bytes(), 0);
+        }
+    }
+
+    #[test]
+    fn er_prepared_projection_and_shared_source_lease_release_after_the_last_owner() {
+        use crate::resources::{OperationWorkMeter, RenderResourcePolicy};
+        let meter = std::sync::Arc::new(OperationWorkMeter::new(
+            RenderResourcePolicy::unbounded_for_trusted_input(),
+        ));
+        let model = er_resource_model();
+        let config = serde_json::json!({"htmlLabels": false});
+        let settings = super::ErConfigView::new(&config)
+            .layout_settings_with_font_family(&model.direction, None);
+        let prepared = std::sync::Arc::new(
+            super::ErPreparedLabels::prepare(
+                &model,
+                &DeterministicTextMeasurer::default(),
+                &settings,
+                &meter,
+            )
+            .unwrap(),
+        );
+        let entity = prepared.entity("A").unwrap();
+        let bytes = meter.prepared_text_retained_bytes();
+        assert!(
+            bytes
+                >= entity.label.retained_buffer_bytes()
+                    + entity.source_style.retained_declaration_bytes()
+        );
+        assert!(entity.label.svg_markup().is_some());
+        let replay = std::sync::Arc::clone(&prepared);
+        drop(prepared);
+        assert_eq!(meter.prepared_text_retained_bytes(), bytes);
+        drop(replay);
+        assert_eq!(meter.prepared_text_retained_bytes(), 0);
+    }
+
+    #[test]
+    fn er_later_entity_budget_rejection_releases_earlier_prepared_projection() {
+        use crate::resources::{OperationWorkMeter, RenderResourcePolicy, ResourceLimitId};
+        let measuring = std::sync::Arc::new(OperationWorkMeter::new(
+            RenderResourcePolicy::unbounded_for_trusted_input(),
+        ));
+        let mut model = er_resource_model();
+        let config = serde_json::json!({"htmlLabels": false});
+        let settings = super::ErConfigView::new(&config)
+            .layout_settings_with_font_family(&model.direction, None);
+        let first = super::ErPreparedLabels::prepare(
+            &model,
+            &DeterministicTextMeasurer::default(),
+            &settings,
+            &measuring,
+        )
+        .unwrap();
+        let first_bytes = measuring.prepared_text_retained_bytes();
+        drop(first);
+        assert_eq!(measuring.prepared_text_retained_bytes(), 0);
+        model.entities.insert(
+            "B".into(),
+            super::ErEntity {
+                id: "B".into(),
+                label: "CD".into(),
+                ..Default::default()
+            },
+        );
+        let bounded = std::sync::Arc::new(OperationWorkMeter::new(
+            RenderResourcePolicy::unbounded_for_trusted_input()
+                .with_limit(ResourceLimitId::MaxPreparedTextRetainedBytes, first_bytes)
+                .unwrap(),
+        ));
+        assert!(
+            super::ErPreparedLabels::prepare(
+                &model,
+                &DeterministicTextMeasurer::default(),
+                &settings,
+                &bounded
+            )
+            .is_err()
+        );
+        assert_eq!(bounded.prepared_text_retained_bytes_peak(), first_bytes);
+        assert_eq!(bounded.prepared_text_retained_bytes(), 0);
+    }
+
+    #[test]
+    fn er_cancelled_label_measurement_releases_earlier_prepared_projection() {
+        use crate::resources::{OperationWorkMeter, RenderResourcePolicy};
+        let control = merman_model::OperationControl::new();
+        struct CancellingLabel(merman_model::OperationControl);
+        impl TextMeasurer for CancellingLabel {
+            fn measure(&self, text: &str, _style: &TextStyle) -> TextMetrics {
+                if text.trim() == "CD" {
+                    self.0.cancel();
+                }
+                TextMetrics {
+                    width: 20.0,
+                    height: 16.0,
+                    line_count: 1,
+                }
+            }
+        }
+        let meter = std::sync::Arc::new(OperationWorkMeter::new_with_control(
+            RenderResourcePolicy::unbounded_for_trusted_input(),
+            control.clone(),
+        ));
+        let mut model = er_resource_model();
+        model.entities.insert(
+            "B".into(),
+            super::ErEntity {
+                id: "B".into(),
+                label: "CD".into(),
+                ..Default::default()
+            },
+        );
+        let config = serde_json::json!({"htmlLabels": false});
+        let settings = super::ErConfigView::new(&config)
+            .layout_settings_with_font_family(&model.direction, None);
+        let error =
+            super::ErPreparedLabels::prepare(&model, &CancellingLabel(control), &settings, &meter)
+                .unwrap_err();
+        assert!(matches!(error, crate::Error::Cancelled(_)));
+        assert!(meter.prepared_text_retained_bytes_peak() > 0);
+        assert_eq!(meter.prepared_text_retained_bytes(), 0);
     }
 }

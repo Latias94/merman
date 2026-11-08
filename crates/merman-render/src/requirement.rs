@@ -13,6 +13,7 @@ use dugong::{EdgeLabel, GraphLabel, LabelPos, NodeLabel, RankDir};
 use merman_model::families::requirement::{
     RequirementDiagramModel, RequirementElement, RequirementNode,
 };
+#[cfg(test)]
 use serde_json::Value;
 use std::borrow::Cow;
 use std::collections::{HashMap, HashSet};
@@ -22,6 +23,7 @@ mod config;
 mod css_binding;
 #[cfg(feature = "layout-elk")]
 mod elk;
+mod html_label;
 mod relation_paint;
 mod source_typography;
 mod text_paint;
@@ -29,6 +31,7 @@ mod theme;
 
 pub(crate) use config::RequirementConfigView;
 pub(crate) use css_binding::{RequirementCssBinding, requirement_color_indices};
+use html_label::RequirementHtmlLabel;
 pub(crate) use relation_paint::RequirementRelationPaintPlan;
 pub(crate) use source_typography::RequirementNodeTypography;
 pub(crate) use text_paint::{
@@ -96,6 +99,7 @@ struct RequirementLabelMeasurementBinding {
     calculation_font_size_bits: u64,
     dimensions_carrier: BuiltinTextMeasurementOperationCarrier,
     wrapped_carrier: BuiltinTextMeasurementOperationCarrier,
+    html_terminal_carriers: Option<[BuiltinTextMeasurementOperationCarrier; 2]>,
 }
 
 impl RequirementLabelMeasurementBinding {
@@ -117,6 +121,15 @@ impl RequirementLabelMeasurementBinding {
             )?,
             wrapped_carrier: measurer
                 .builtin_operation_carrier(TextMeasurementOperation::Wrapped)?,
+            html_terminal_carriers: if settings.html_labels {
+                Some([
+                    measurer
+                        .builtin_operation_carrier(TextMeasurementOperation::WrappedWithRawWidth)?,
+                    measurer.builtin_operation_carrier(TextMeasurementOperation::HtmlLineHeight)?,
+                ])
+            } else {
+                None
+            },
         })
     }
 
@@ -125,17 +138,7 @@ impl RequirementLabelMeasurementBinding {
         settings: &config::RequirementLayoutSettings,
         measurer: &dyn TextMeasurer,
     ) -> bool {
-        self.html_labels == settings.html_labels
-            && self.edge_html_labels == settings.edge_html_labels
-            && self.font_family == settings.font_family
-            && self.font_size_bits == settings.font_size.to_bits()
-            && self.calculation_font_family == settings.calculation_font_family
-            && self.calculation_font_size_bits == settings.calculation_font_size.to_bits()
-            && measurer
-                .builtin_operation_carrier(TextMeasurementOperation::MermaidCalculateTextDimensions)
-                == Some(self.dimensions_carrier)
-            && measurer.builtin_operation_carrier(TextMeasurementOperation::Wrapped)
-                == Some(self.wrapped_carrier)
+        Self::for_measurer(settings, measurer).as_ref() == Some(self)
     }
 }
 
@@ -206,6 +209,7 @@ pub(crate) struct RequirementNodeLabelPlan {
 #[derive(Debug, Clone)]
 pub(crate) struct RequirementNodeLabelLine {
     pub(crate) display_text: String,
+    pub(crate) html: Option<Arc<RequirementHtmlLabel>>,
     pub(crate) metrics: RequirementLabelMetrics,
     pub(crate) y_offset: f64,
     pub(crate) source_index: usize,
@@ -233,26 +237,24 @@ pub(crate) struct RequirementRenderLabelMeasurements<'a> {
 impl RequirementRenderLabelMeasurements<'_> {
     fn resolve(
         &self,
-        measurer: &dyn TextMeasurer,
         typography: &RequirementNodeTypography,
         styles: &RequirementMeasurementStyles,
-        display_text: &str,
-        measurement_bold: bool,
-        prepared: RequirementLabelMetrics,
+        line: &RequirementNodeLabelLine,
     ) -> Option<RequirementLabelMetrics> {
         if self.reuse_prepared {
-            return Some(prepared);
+            return Some(line.metrics);
         }
-        // Mermaid 11.16's `requirementBox.addText` performs `calculateTextWidth`/`createText`
+        // Mermaid 12.3's `requirementBox.addText` performs `calculateTextWidth`/`createText`
         // during SVG emission. Replaying that request keeps host callback order and provenance
         // observable whenever the private built-in binding cannot prove safe reuse.
         measure_requirement_label_metrics(
-            measurer,
+            self.measurer,
             typography,
             styles,
-            display_text,
-            display_text,
-            measurement_bold,
+            &line.display_text,
+            &line.display_text,
+            line.html.as_ref().map(|html| html.as_str()),
+            line.measurement_bold,
         )
         .map(|metrics| requirement_node_label_metrics(metrics, styles.node_wrap_mode))
     }
@@ -273,18 +275,12 @@ impl RequirementRenderLabelMeasurements<'_> {
             .lines
             .iter()
             .map(|line| {
-                let metrics = self.resolve(
-                    self.measurer,
-                    &prepared.typography,
-                    &styles,
-                    &line.display_text,
-                    line.measurement_bold,
-                    line.metrics,
-                )?;
+                let metrics = self.resolve(&prepared.typography, &styles, line)?;
                 Some((
                     line.source_index,
                     RequirementLabelSpec {
                         display_text: line.display_text.clone(),
+                        html: line.html.clone(),
                         measurement_bold: line.measurement_bold,
                         render_bold: line.bold,
                         keep_centered: line.keep_centered,
@@ -318,6 +314,7 @@ impl RequirementRenderLabelMeasurements<'_> {
 #[derive(Debug)]
 struct RequirementLabelSpec {
     display_text: String,
+    html: Option<Arc<RequirementHtmlLabel>>,
     measurement_bold: bool,
     render_bold: bool,
     keep_centered: bool,
@@ -406,6 +403,7 @@ fn measure_requirement_label_metrics(
     styles: &RequirementMeasurementStyles,
     display_text: &str,
     calculation_text: &str,
+    prepared_html: Option<&str>,
     bold: bool,
 ) -> Option<RequirementLabelMetrics> {
     if display_text.trim().is_empty() {
@@ -424,12 +422,13 @@ fn measure_requirement_label_metrics(
             .max(0);
     let max_width = (max_width_px > 0).then_some(max_width_px as f64);
     let measured = if wrap_mode == WrapMode::HtmlLike {
-        crate::text::measure_markdown_with_inline_styles(
+        crate::text::measure_xhtml_label_fragment_with_terminal_fonts(
             measurer,
-            calculation_text,
+            prepared_html.expect("Requirement HTML labels are prepared before measurement"),
             html_style,
             max_width,
-            wrap_mode,
+            // HTML rem units use the host document root, independently of SVG/node/probe sizes.
+            16.0,
         )
     } else {
         // requirementBox applies inline row styles after createText has wrapped the words.
@@ -449,7 +448,9 @@ fn measure_requirement_label_metrics(
         )
     };
     let height = measured.height.max(1.0);
-    let width = measured.width.max(1.0);
+    // Requirement's createText widths stay on the existing DOM 1/64px lattice, including
+    // plain paragraphs that can now use the prepared-XHTML shortcut. Height keeps host precision.
+    let width = crate::text::round_to_1_64_px(measured.width).max(1.0);
 
     Some(RequirementLabelMetrics {
         width,
@@ -548,6 +549,7 @@ fn requirement_box_layout(
                 styles,
                 &line.display_text,
                 &line.display_text,
+                line.html.as_ref().map(|html| html.as_str()),
                 line.measurement_bold,
             )?;
             let metrics = requirement_node_label_metrics(metrics, styles.node_wrap_mode);
@@ -602,6 +604,7 @@ fn requirement_box_layout_from_measured_lines(
         };
         prepared_lines.push(RequirementNodeLabelLine {
             display_text: line.display_text,
+            html: line.html,
             metrics,
             y_offset: line_y_offset,
             source_index: idx,
@@ -672,10 +675,31 @@ fn node_label_spec(
 ) -> RequirementLabelSpec {
     RequirementLabelSpec {
         display_text,
+        html: None,
         measurement_bold,
         render_bold,
         keep_centered,
     }
+}
+
+fn prepare_requirement_label_specs(
+    mut lines: Vec<RequirementLabelSpec>,
+    html_labels: bool,
+    config: &merman_model::MermaidConfig,
+    work_meter: &Arc<OperationWorkMeter>,
+) -> Result<Vec<RequirementLabelSpec>> {
+    if html_labels {
+        for line in &mut lines {
+            if !line.display_text.trim().is_empty() {
+                line.html = Some(RequirementHtmlLabel::prepare(
+                    &line.display_text,
+                    config,
+                    work_meter,
+                )?);
+            }
+        }
+    }
+    Ok(lines)
 }
 
 fn requirement_node_label_specs(node: &RequirementNode) -> Vec<RequirementLabelSpec> {
@@ -788,9 +812,10 @@ pub(crate) fn layout_requirement_diagram_typed_with_resource_policy(
 ) -> Result<RequirementPreparedArtifact> {
     let work_meter = std::sync::Arc::new(OperationWorkMeter::new(resource_limits));
     let binding = RequirementCssBinding::resolve(effective_config, None, None, None, None);
+    let config = merman_model::MermaidConfig::from_value(effective_config.clone());
     layout_requirement_diagram_typed_with_work_meter_and_typography(
         model,
-        effective_config,
+        &config,
         text_measurer,
         &binding,
         &work_meter,
@@ -802,12 +827,13 @@ pub(crate) fn layout_requirement_diagram_typed_with_resource_policy(
 /// Lays out a Requirement model with renderer-owned inherited typography.
 pub(crate) fn layout_requirement_diagram_typed_with_work_meter_and_typography(
     model: &RequirementDiagramModel,
-    effective_config: &Value,
+    config: &merman_model::MermaidConfig,
     text_measurer: &dyn TextMeasurer,
     css_binding: &RequirementCssBinding,
     work_meter: &std::sync::Arc<OperationWorkMeter>,
     #[cfg(feature = "layout-elk")] operation_seed: merman_layout_elk::ElkOperationSeed,
 ) -> Result<RequirementPreparedArtifact> {
+    let effective_config = config.as_value();
     work_meter
         .policy()
         .check_model_complexity(ModelComplexity::from_requirement(model))?;
@@ -860,7 +886,12 @@ pub(crate) fn layout_requirement_diagram_typed_with_work_meter_and_typography(
             text_measurer,
             &typography,
             &node_styles,
-            requirement_node_label_specs(r),
+            prepare_requirement_label_specs(
+                requirement_node_label_specs(r),
+                cfg.html_labels,
+                config,
+                work_meter,
+            )?,
             gap,
             padding,
         );
@@ -890,7 +921,12 @@ pub(crate) fn layout_requirement_diagram_typed_with_work_meter_and_typography(
             text_measurer,
             &typography,
             &node_styles,
-            element_node_label_specs(e),
+            prepare_requirement_label_specs(
+                element_node_label_specs(e),
+                cfg.html_labels,
+                config,
+                work_meter,
+            )?,
             gap,
             padding,
         );
@@ -1206,6 +1242,19 @@ mod tests {
     use crate::text::{DeterministicTextMeasurer, TextMetrics};
     use std::cell::Cell;
 
+    fn prepared_html_specs(lines: Vec<RequirementLabelSpec>) -> Vec<RequirementLabelSpec> {
+        let meter = Arc::new(OperationWorkMeter::new(
+            RenderResourcePolicy::unbounded_for_trusted_input(),
+        ));
+        prepare_requirement_label_specs(
+            lines,
+            true,
+            &merman_model::MermaidConfig::from_value(serde_json::json!({})),
+            &meter,
+        )
+        .expect("prepare Requirement test HTML")
+    }
+
     struct FamilySelectionMeasurer;
 
     impl TextMeasurer for FamilySelectionMeasurer {
@@ -1374,6 +1423,7 @@ mod tests {
             &styles,
             body,
             body,
+            Some(&format!("<p>{body}</p>")),
             false,
         )
         .expect("text line should be measured");
@@ -1381,7 +1431,7 @@ mod tests {
             &measurer,
             &RequirementNodeTypography::default(),
             &styles,
-            lines,
+            prepared_html_specs(lines),
             20.0,
             20.0,
         );
@@ -1523,6 +1573,7 @@ mod tests {
                 &styles,
                 text,
                 text,
+                None,
                 bold,
             )
             .unwrap();
@@ -1633,6 +1684,35 @@ mod tests {
     }
 
     #[test]
+    fn prepared_html_plain_width_keeps_create_text_quantization_and_host_height() {
+        struct FractionalMetrics;
+        impl TextMeasurer for FractionalMetrics {
+            fn measure(&self, _text: &str, _style: &TextStyle) -> TextMetrics {
+                TextMetrics {
+                    width: 14.4,
+                    height: 31.12345,
+                    line_count: 1,
+                }
+            }
+        }
+        let config = serde_json::json!({"htmlLabels": true});
+        let styles =
+            requirement_measurement_styles(&RequirementConfigView::new(&config).layout_settings());
+        let metrics = measure_requirement_label_metrics(
+            &FractionalMetrics,
+            &RequirementNodeTypography::default(),
+            &styles,
+            "plain",
+            "plain",
+            Some("<p>plain</p>"),
+            false,
+        )
+        .unwrap();
+        assert_eq!(metrics.width, 14.40625);
+        assert_eq!(metrics.height, 31.12345);
+    }
+
+    #[test]
     fn opaque_render_measurements_rebuild_node_stacking_offsets() {
         let measurer = PhaseHeightMeasurer::default();
         let styles = RequirementMeasurementStyles {
@@ -1649,7 +1729,7 @@ mod tests {
             &measurer,
             &RequirementNodeTypography::default(),
             &styles,
-            vec![
+            prepared_html_specs(vec![
                 node_label_spec(
                     "&lt;&lt;Requirement&gt;&gt;".to_string(),
                     false,
@@ -1658,13 +1738,13 @@ mod tests {
                 ),
                 node_label_spec("requirement-a".to_string(), true, true, true),
                 node_label_spec("ID: REQ-1".to_string(), false, false, false),
-            ],
+            ]),
             20.0,
             20.0,
         )
         .into_node_plan()
         .2;
-        let prepared_second_offset = prepared.lines[1].y_offset;
+        let prepared_body_offset = prepared.lines[2].y_offset;
 
         measurer.render_phase.set(true);
         let measurements = RequirementRenderLabelMeasurements {
@@ -1677,9 +1757,19 @@ mod tests {
             .expect("opaque labels remain measurable");
 
         assert!(matches!(rendered, Cow::Owned(_)));
-        assert!(rendered.lines[0].metrics.height > prepared.lines[0].metrics.height);
+        for (prepared, rendered) in prepared.lines.iter().zip(&rendered.lines) {
+            assert!(Arc::ptr_eq(
+                prepared.html.as_ref().expect("prepared HTML"),
+                rendered.html.as_ref().expect("replayed HTML"),
+            ));
+        }
+        assert!(rendered.lines[1].metrics.height > prepared.lines[1].metrics.height);
         assert_eq!(rendered.lines[1].y_offset, rendered.lines[0].metrics.height);
-        assert_ne!(rendered.lines[1].y_offset, prepared_second_offset);
+        assert_eq!(
+            rendered.lines[2].y_offset,
+            rendered.lines[0].metrics.height + rendered.lines[1].metrics.height + 20.0
+        );
+        assert_ne!(rendered.lines[2].y_offset, prepared_body_offset);
         assert_eq!(
             rendered.divider_y_offset,
             Some(rendered.lines[0].metrics.height + rendered.lines[1].metrics.height + 20.0)
@@ -1698,6 +1788,7 @@ mod tests {
             &styles,
             "line",
             "line",
+            None,
             false,
         )
         .unwrap();

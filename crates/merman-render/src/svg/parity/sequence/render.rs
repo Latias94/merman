@@ -424,6 +424,7 @@ pub(in crate::svg::parity) fn render_sequence_diagram_svg_model_with_config(
         options,
     );
     let interaction_ctx = SequenceInteractionRenderContext {
+        wrapped_note_text: prepared.wrapped_note_text(),
         sanitize_config,
         compat,
         frame_paint: &frame_paint,

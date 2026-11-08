@@ -1043,8 +1043,22 @@ impl CascadeIndex {
             );
         }
 
+        let font_size_value = specified
+            .get("font-size")
+            .map(|value| value.value.as_ref())
+            .or_else(|| {
+                if element.namespace == Namespace::Xhtml {
+                    match element.local_name.as_str() {
+                        "big" => Some("1.2em"),
+                        "small" => Some("0.8333333333333334em"),
+                        _ => None,
+                    }
+                } else {
+                    None
+                }
+            });
         let font_size = resolve_font_size(
-            specified.get("font-size").map(|value| value.value.as_ref()),
+            font_size_value,
             parent.font_size,
             root_font_size,
             specified
@@ -3555,6 +3569,46 @@ mod tests {
                 (HtmlWhiteSpace::Normal, Some((2, HtmlWhiteSpace::Nowrap))),
             ]
         );
+    }
+
+    #[test]
+    fn html_size_elements_apply_parent_relative_defaults_below_authored_font_sizes() {
+        for (css, markup, expected) in [
+            ("", "<big><big><big>A</big></big></big>", 41.472),
+            ("", "<small><small>A</small></small>", 24.0 / 1.44),
+            ("", "<big><small>A</small></big>", 24.0),
+            ("", "<big style='font-size:inherit'>A</big>", 24.0),
+            ("", "<small style='font-size:18px'>A</small>", 18.0),
+            ("big{font-size:18px}", "<big>A</big>", 18.0),
+        ] {
+            let mut checkpoint = || Ok::<(), Infallible>(());
+            let mut selector_limit = |_, _| Ok::<(), Infallible>(());
+            let mut cascade = CascadeIndex::new(
+                &format!("<svg><style>{css}</style></svg>"),
+                &mut checkpoint,
+                &mut selector_limit,
+            )
+            .unwrap();
+            let resolved = cascade
+                .resolve_foreign_object(
+                    &[],
+                    "<foreignObject/>",
+                    &format!("<div style='font-size:24px'>{markup}</div>"),
+                    &mut checkpoint,
+                    &mut selector_limit,
+                )
+                .unwrap();
+            let sizes: Vec<_> = resolved
+                .fragments
+                .iter()
+                .filter_map(|fragment| match fragment {
+                    HtmlTextFragment::Text { typography, .. } => Some(typography.font_size),
+                    HtmlTextFragment::HardBreak => None,
+                })
+                .collect();
+            assert_eq!(sizes.len(), 1);
+            assert!((sizes[0] - expected).abs() < 1e-9, "{markup}: {sizes:?}");
+        }
     }
 
     #[test]

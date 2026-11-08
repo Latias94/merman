@@ -191,6 +191,31 @@ pub(super) fn measure_drawn_svg_like_with_html_br(
     Ok((width, height))
 }
 
+/// Typed non-normal notes reserve their emitted tspan bounds without changing Mermaid's
+/// compatibility measurement or wrapping operations. Math keeps its existing preparation route.
+pub(super) fn measure_note_label_for_layout(
+    measurer: &dyn TextMeasurer,
+    text: &str,
+    measurement_style: &TextStyle,
+    non_normal_typed_terminal_style: Option<&TextStyle>,
+    config: &PresentationConfig,
+    checkpoints: SequenceTextCheckpoints<'_>,
+) -> Result<(f64, f64)> {
+    if !text.contains("$$")
+        && let Some(terminal_style) = non_normal_typed_terminal_style
+    {
+        return measure_drawn_svg_like_with_html_br(
+            measurer,
+            text,
+            terminal_style,
+            SequenceDrawnTextNode::Tspan,
+            config,
+            checkpoints,
+        );
+    }
+    measure_svg_like_with_html_br(measurer, text, measurement_style, checkpoints)
+}
+
 /// The typed non-normal participant extension must measure the emitted tspan, rather than
 /// changing the pinned calculateTextDimensions operation (which intentionally ignores style).
 pub(super) fn measure_typed_actor_label_for_layout(
@@ -865,6 +890,67 @@ mod tests {
         assert_eq!(measurer.calls.get(), 1);
     }
 
+    struct CancellingNoteTspanMeasurer {
+        control: OperationControl,
+        cancel_width: bool,
+        width_calls: Cell<usize>,
+        height_calls: Cell<usize>,
+    }
+
+    impl TextMeasurer for CancellingNoteTspanMeasurer {
+        fn measure(&self, _text: &str, _style: &TextStyle) -> TextMetrics {
+            unreachable!("typed notes use terminal tspan operations")
+        }
+
+        fn measure_svg_tspan_text_bbox_width_px(&self, _text: &str, _style: &TextStyle) -> f64 {
+            self.width_calls.set(self.width_calls.get() + 1);
+            if self.cancel_width {
+                self.control.cancel();
+            }
+            100.0
+        }
+
+        fn measure_svg_tspan_text_bbox_height_px(&self, _text: &str, _style: &TextStyle) -> f64 {
+            self.height_calls.set(self.height_calls.get() + 1);
+            self.control.cancel();
+            20.0
+        }
+    }
+
+    #[test]
+    fn typed_note_tspan_cancellation_stops_after_the_width_or_height_callback_in_each_phase() {
+        for phase in [OperationPhase::Layout, OperationPhase::Emit] {
+            for cancel_width in [true, false] {
+                let control = OperationControl::new();
+                let meter = OperationWorkMeter::new_with_control(
+                    RenderResourcePolicy::unbounded_for_trusted_input(),
+                    control.clone(),
+                );
+                let measurer = CancellingNoteTspanMeasurer {
+                    control,
+                    cancel_width,
+                    width_calls: Cell::new(0),
+                    height_calls: Cell::new(0),
+                };
+                let error = super::measure_note_label_for_layout(
+                    &measurer,
+                    "first<br/>second",
+                    &default_sequence_style(),
+                    Some(&terminal_sequence_style()),
+                    &drawn_text_config(),
+                    checkpoints(&meter, phase),
+                )
+                .unwrap_err();
+                let crate::Error::Cancelled(error) = error else {
+                    panic!("expected cancellation from the Note terminal callback");
+                };
+                assert_eq!(error.phase, phase);
+                assert_eq!(measurer.width_calls.get(), 1);
+                assert_eq!(measurer.height_calls.get(), usize::from(!cancel_width));
+            }
+        }
+    }
+
     #[test]
     fn sequence_mixed_math_metrics_preserve_fragment_precision() {
         let config = merman_model::presentation::PresentationConfig::default();
@@ -1276,6 +1362,59 @@ mod tests {
             );
         }
         assert!(probe.calls.borrow().is_empty());
+    }
+
+    #[test]
+    fn note_layout_without_a_non_normal_typed_style_preserves_the_compatibility_trace() {
+        let meter = OperationWorkMeter::new(RenderResourcePolicy::unbounded_for_trusted_input());
+        let expected_probe = OperationProbe::default();
+        let actual_probe = OperationProbe::default();
+        let style = default_sequence_style();
+        let text = "alpha<br><br>beta";
+        let expected = super::measure_svg_like_with_html_br(
+            &expected_probe,
+            text,
+            &style,
+            checkpoints(&meter, OperationPhase::Layout),
+        )
+        .unwrap();
+        let actual = super::measure_note_label_for_layout(
+            &actual_probe,
+            text,
+            &style,
+            None,
+            &drawn_text_config(),
+            checkpoints(&meter, OperationPhase::Layout),
+        )
+        .unwrap();
+        assert_eq!(actual, expected);
+        assert_eq!(*actual_probe.calls.borrow(), *expected_probe.calls.borrow());
+    }
+
+    #[test]
+    fn note_layout_keeps_math_and_unmatched_delimiters_on_the_existing_bound_route() {
+        let meter = OperationWorkMeter::new(RenderResourcePolicy::unbounded_for_trusted_input());
+        let style = default_sequence_style();
+        for label in ["probe-$$x$$", "probe-$$"] {
+            let probe = OperationProbe::default();
+            let metrics = super::measure_note_label_for_layout(
+                &probe,
+                label,
+                &style,
+                Some(&terminal_sequence_style()),
+                &drawn_text_config(),
+                checkpoints(&meter, OperationPhase::Layout),
+            )
+            .unwrap();
+            assert_eq!(metrics, (70.0, 17.0));
+            assert!(
+                probe
+                    .calls
+                    .borrow()
+                    .iter()
+                    .all(|(operation, _, _)| operation == "mermaid-dimensions")
+            );
+        }
     }
 
     #[test]
