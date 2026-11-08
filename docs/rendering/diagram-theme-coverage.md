@@ -129,6 +129,12 @@ execution; it does not certify an arbitrary scene or output. `not_applicable` me
 was required, `residual` retains unresolved work or mutation, and `incomplete` means required
 accounting did not finish. Output mutation prevents an otherwise verified result from being satisfied.
 
+`font_source` describes the output target's font source, not the text-measurement provider.
+SVG can report `none` after host or native measurement because its text still resolves fonts
+in the receiving viewer. Theme verification does not prove that named fonts are installed,
+every glyph is covered, or every measurement avoided fallback. See
+[host measurement evidence](../bindings/HOST_TEXT_MEASUREMENT.md#text-measurement-protocol-summary).
+
 Target `portable` is the target adapter's admission for this operation. `host_dependent`
 (**HostDependent**) retains conditions such as host text measurement or system fonts; it is not
 portable certification. `rejected` records failed target admission; `unverified` means compatibility
