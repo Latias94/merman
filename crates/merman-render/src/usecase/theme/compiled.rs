@@ -935,23 +935,31 @@ fn source_owns(
         ResolvedStyleProperty::FillOpacity => owns("fill-opacity"),
         ResolvedStyleProperty::StrokeOpacity => owns("stroke-opacity"),
         ResolvedStyleProperty::Effect => owns("filter"),
+        ResolvedStyleProperty::Typography(ThemeTypographyProperty::FontSize) => {
+            let configured = match surface.font_prefix {
+                Some(prefix) => {
+                    let key = format!("{prefix}FontSize");
+                    super::super::measure::configured_number(config.as_value(), &key)
+                        .map(|_| format!("usecase.{key}"))
+                }
+                None => super::super::measure::configured_generic_font_size(config.as_value())
+                    .map(|_| "themeVariables.fontSize".to_owned()),
+            };
+            owns("font-size")
+                || owns("font")
+                || configured.is_some_and(|path| config.config_path_overrides_typed_default(&path))
+        }
         ResolvedStyleProperty::Typography(property) => {
             let (key, root, local) = match property {
                 ThemeTypographyProperty::FontStack => ("font-family", "fontFamily", "FontFamily"),
-                ThemeTypographyProperty::FontSize => ("font-size", "fontSize", "FontSize"),
                 ThemeTypographyProperty::FontWeight => ("font-weight", "fontWeight", "FontWeight"),
                 ThemeTypographyProperty::FontStyle => ("font-style", "fontStyle", "FontStyle"),
                 _ => return false,
             };
             owns(key)
                 || owns("font")
-                // Role selectors and HTML labels consume their own size, even when the
-                // generic theme variable is explicit. Ordinary SVG labels inherit it.
-                || ((property != ThemeTypographyProperty::FontSize || surface.font_prefix.is_none())
-                    && config.config_path_overrides_typed_default(&format!("themeVariables.{root}")))
-                // Mermaid's generic size comes from themeVariables.fontSize, never fontSize.
-                || (property != ThemeTypographyProperty::FontSize
-                    && config.config_path_overrides_typed_default(root))
+                || config.config_path_overrides_typed_default(&format!("themeVariables.{root}"))
+                || config.config_path_overrides_typed_default(root)
                 || surface.font_prefix.is_some_and(|prefix| {
                     config.config_path_overrides_typed_default(&format!("usecase.{prefix}{local}"))
                 })
