@@ -9,7 +9,7 @@ use super::metrics::{
 use super::wrap_sequence_label_like_mermaid_lines;
 use crate::Result;
 use crate::model::{LayoutEdge, LayoutLabel, LayoutPoint};
-use crate::text::{TextMeasurer, TextStyle, split_html_br_lines};
+use crate::text::{TextMeasurer, TextStyle, split_mermaid_common_br_lines};
 use merman_model::families::sequence::{
     SequenceCentralDecoration, SequenceMessage, SequenceMessageDirection, SequenceMessageMarker,
     SequenceMessageStroke, SequenceSignalSemantics,
@@ -570,7 +570,7 @@ fn message_vertical_geometry(
         )?
     };
 
-    let lines = split_html_br_lines(effective_text).len().max(1);
+    let lines = split_mermaid_common_br_lines(effective_text).len().max(1);
     let mut geometry = message_vertical_geometry_from_measurement(SequenceMessageVerticalRequest {
         cursor_y: ctx.cursor_y,
         text_height,

@@ -70,6 +70,8 @@ fn journey_ignored_base_sizes_do_not_own_typed_typography() {
             (serde_json::json!("  "), "27px", 2),
             (serde_json::json!("bogus"), "27px", 2),
             (serde_json::json!([32]), "27px", 2),
+            (serde_json::json!(-2), "27px", 2),
+            (serde_json::json!("-2px"), "27px", 2),
             (serde_json::json!("32px"), "32px", 1),
             (serde_json::json!(32), "32px", 1),
         ] {
@@ -110,6 +112,144 @@ fn journey_ignored_base_sizes_do_not_own_typed_typography() {
             assert_eq!(evidence.not_applicable_count(), 2 - applied);
             assert_eq!(evidence.theme_residual_count(), 0);
         }
+    }
+}
+
+#[test]
+fn journey_zero_sizes_keep_hidden_runs_without_certifying_typography() {
+    let theme = journey_typography_theme(24.0);
+    for placement in ["fo", "old", "tspan"] {
+        for task_size in [0.0, 0.5] {
+            let rendered = render_journey_with_theme_requirement(
+                "journey\nsection Work\nShip: 5: Reader\n",
+                &theme,
+                serde_json::json!({
+                    "themeVariables": {"fontSize": "0px"},
+                    "journey": {"textPlacement": placement, "taskFontSize": task_size,
+                                "taskFontFamily": "inherit"}
+                }),
+                ThemePortabilityRequirement::RequirePortable,
+            )
+            .unwrap();
+            assert!(rendered.svg().contains("font-size:0px;"));
+            assert!(rendered.svg().contains("Reader"));
+            assert!(rendered.svg().contains("Ship"));
+            if placement != "old" {
+                assert!(
+                    rendered
+                        .svg()
+                        .contains(&format!("font-size: {task_size}px;"))
+                );
+            }
+            let evidence =
+                merman_render::__private::family_evidence(rendered.into_completion().report());
+            let applied = usize::from(placement == "tspan" && task_size > 0.0);
+            assert_eq!(evidence.applied_count(), applied, "{placement}/{task_size}");
+            assert_eq!(evidence.not_applicable_count(), 2 - applied);
+            assert_eq!(evidence.theme_residual_count(), 0);
+        }
+    }
+}
+
+#[test]
+fn journey_subpixel_typed_size_reaches_css_and_terminal_receipt() {
+    let theme = journey_typography_theme(0.5);
+    let rendered = render_journey_with_theme_requirement(
+        "journey\nsection Work\nShip: 5: Reader\n",
+        &theme,
+        serde_json::json!({}),
+        ThemePortabilityRequirement::RequirePortable,
+    )
+    .unwrap();
+    assert!(rendered.svg().contains("font-size:0.5px;"));
+    let evidence = merman_render::__private::family_evidence(rendered.into_completion().report());
+    assert_eq!(evidence.applied_count(), 2);
+    assert_eq!(evidence.theme_residual_count(), 0);
+}
+
+#[test]
+fn journey_invalid_negative_task_size_inherits_instead_of_hiding_text() {
+    let theme = journey_typography_theme(27.0);
+    for task_size in [-2.0, -0.5] {
+        let rendered = render_journey_with_theme_requirement(
+            "journey\nsection Work\nShip: 5\n",
+            &theme,
+            serde_json::json!({"journey": {"textPlacement": "tspan",
+                "taskFontSize": task_size, "taskFontFamily": "inherit"}}),
+            ThemePortabilityRequirement::RequirePortable,
+        )
+        .unwrap();
+        let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+        for text in document
+            .descendants()
+            .filter(|node| node.has_tag_name("text"))
+        {
+            assert!(!text.attribute("style").unwrap_or("").contains("font-size:"));
+        }
+        let evidence =
+            merman_render::__private::family_evidence(rendered.into_completion().report());
+        assert_eq!(evidence.applied_count(), 2);
+        assert_eq!(evidence.not_applicable_count(), 0);
+        assert_eq!(evidence.theme_residual_count(), 0);
+    }
+}
+
+#[test]
+fn journey_hidden_title_does_not_consume_title_rules() {
+    let theme = DiagramThemeCompiler::new()
+        .compile(
+            DiagramThemeSpec::new().with_styles(ThemeRuleSet::default().with_rule(ThemeRule::new(
+                ThemeTarget::Title,
+                ThemeStylePatch::default().with_fill(CanvasPaint::solid("#123456").unwrap()),
+            ))),
+        )
+        .unwrap();
+    let mut unsupported_style = ThemeStylePatch::default();
+    unsupported_style.typography.font_size_px = Specified::Value(31.0);
+    let unsupported = DiagramThemeCompiler::new()
+        .compile(
+            DiagramThemeSpec::new().with_styles(
+                ThemeRuleSet::default()
+                    .with_rule(ThemeRule::new(ThemeTarget::Title, unsupported_style)),
+            ),
+        )
+        .unwrap();
+    for (base, title_size, applied) in [
+        ("0px", "4ex", 0),
+        ("0px", "24px", 1),
+        ("16px", "0px", 0),
+        ("0px", "var(--title-size)", 1),
+        ("16px", "0px !important", 1),
+        ("16px", "0px;", 1),
+        ("16px", "-5e-324%", 1),
+    ] {
+        let rendered = render_journey_with_theme_requirement(
+            "journey\ntitle Release\nsection Work\nShip: 5: Reader\n",
+            &theme,
+            serde_json::json!({"themeVariables": {"fontSize": base},
+                "journey": {"titleFontSize": title_size}}),
+            ThemePortabilityRequirement::RequirePortable,
+        )
+        .unwrap();
+        let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+        assert!(
+            document
+                .descendants()
+                .any(|node| node.has_tag_name("text") && node.text() == Some("Release"))
+        );
+        let evidence =
+            merman_render::__private::family_evidence(rendered.into_completion().report());
+        assert_eq!(evidence.applied_count(), applied, "{base}/{title_size}");
+        assert_eq!(evidence.not_applicable_count(), 1 - applied);
+        assert_eq!(evidence.theme_residual_count(), 0);
+        let result = render_journey_with_theme_requirement(
+            "journey\ntitle Release\nsection Work\nShip: 5: Reader\n",
+            &unsupported,
+            serde_json::json!({"themeVariables": {"fontSize": base},
+                "journey": {"titleFontSize": title_size}}),
+            ThemePortabilityRequirement::RequirePortable,
+        );
+        assert_eq!(result.is_err(), applied != 0, "{base}/{title_size}");
     }
 }
 
@@ -514,6 +654,38 @@ fn journey_scores_select_fractional_faces_and_preserve_integer_and_nan_controls(
             assert_eq!(mouth.attribute("y1"), Some("NaN"));
             assert_eq!(mouth.attribute("y2"), Some("NaN"));
         }
+    }
+}
+
+#[test]
+fn journey_tspan_breaks_keep_the_opening_tag_rule() {
+    let theme = journey_typography_theme(21.0);
+    for (separator, expected) in [
+        ("<BR />", vec!["Pay", "now"]),
+        ("<br\u{00a0}/>", vec!["Pay", "now"]),
+        ("</br>", vec!["Pay</br>now"]),
+    ] {
+        let source = format!("journey\nPay{separator}now: 4\n");
+        let rendered = render_journey_with_theme_requirement(
+            &source,
+            &theme,
+            serde_json::json!({"journey": {"textPlacement": "tspan"}}),
+            ThemePortabilityRequirement::BestEffort,
+        )
+        .unwrap();
+        let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+        let rows: Vec<_> = document
+            .descendants()
+            .filter(|node| node.has_tag_name("text") && node.attribute("class") == Some("task"))
+            .map(|node| {
+                node.descendants()
+                    .find(|child| child.is_text())
+                    .unwrap()
+                    .text()
+                    .unwrap()
+            })
+            .collect();
+        assert_eq!(rows, expected, "{separator:?}");
     }
 }
 

@@ -835,7 +835,7 @@ fn render_gitgraph_diagram_svg_with_accessibility(
         let mut receipt = text_paint.begin_terminal_receipt(
             layout,
             &branch_idx,
-            binding,
+            typography_theme,
             root_geometry,
             css.root_cherry_pick,
         );

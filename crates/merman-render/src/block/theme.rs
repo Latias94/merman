@@ -241,9 +241,10 @@ impl BlockNodeLabelPaintPlan {
         for (index, node) in layout.nodes.iter().enumerate() {
             work.charge(1)?;
             let source = sources.get(node.id.as_str());
+            let prepared_label = prepared_labels.node_label(&node.id);
             let html_paint = if html_labels {
                 Some(BlockHtmlLabelPaintFacts::prepare(
-                    prepared_labels.node_xhtml(&node.id).unwrap_or_default(),
+                    prepared_label.xhtml().unwrap_or_default(),
                     work,
                 )?)
             } else {
@@ -289,10 +290,13 @@ impl BlockNodeLabelPaintPlan {
             } else {
                 crate::graph_label::flowchart_label_plain_text_for_layout(&label, "text", false)
             };
+            let typography = prepared_label.typography.participation;
             let visible = !text.trim().is_empty()
                 && html_paint.as_ref().is_none_or(|html| html.visible)
-                && node.label_width.unwrap_or(0.0) > 0.0
-                && node.label_height.unwrap_or(0.0) > 0.0;
+                && typography.visible
+                && (typography.unverified
+                    || (node.label_width.unwrap_or(0.0) > 0.0
+                        && node.label_height.unwrap_or(0.0) > 0.0));
             let ordinal_cluster_style;
             let cluster = if composites.contains(node.id.as_str()) {
                 cluster_index += 1;
@@ -353,7 +357,8 @@ impl BlockNodeLabelPaintPlan {
             let style = cluster.filter(|_| cluster_owns_fill).unwrap_or(style);
             let paint_reachable = html_paint
                 .as_ref()
-                .is_none_or(|html| html.first_paragraph_consumes_color);
+                .is_none_or(|html| html.first_paragraph_consumes_color)
+                && !typography.unverified;
             if visible
                 && !owned
                 && !paint_reachable
@@ -532,27 +537,18 @@ fn owns_label_color(raw: &str, property: &str) -> bool {
         .is_some_and(|declaration| declaration.property() == property)
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum BlockTypographyOutcome {
-    Inactive,
-    Typed,
-    ConfigOwned,
-}
-
 /// Final Block typography shared by layout measurement and SVG CSS.
 #[derive(Debug)]
 pub(crate) struct BlockTypographyThemePlan {
     css_binding: BlockCssThemeBinding,
     padding: f64,
     text_style: crate::text::TextStyle,
-    evidence: FamilyThemeOutcomes,
-    outcome: BlockTypographyOutcome,
     unsupported_properties: BTreeSet<ThemeTypographyProperty>,
     typed_font_stack_requested: bool,
     typed_font_size_requested: bool,
     config_owns_font_stack: bool,
     config_owns_font_size: bool,
-    visible_labels: OnceLock<bool>,
+    text_participation: OnceLock<super::BlockTextParticipation>,
 }
 
 impl BlockTypographyThemePlan {
@@ -580,14 +576,12 @@ impl BlockTypographyThemePlan {
                 padding,
                 text_style,
                 css_binding,
-                evidence: FamilyThemeOutcomes::default(),
-                outcome: BlockTypographyOutcome::Inactive,
                 unsupported_properties: BTreeSet::new(),
                 typed_font_stack_requested: false,
                 typed_font_size_requested: false,
                 config_owns_font_stack: false,
                 config_owns_font_size: false,
-                visible_labels: OnceLock::new(),
+                text_participation: OnceLock::new(),
             });
         };
 
@@ -634,30 +628,19 @@ impl BlockTypographyThemePlan {
             text_style.font_family = Some(theme.typography().font_stack().as_css());
         }
         if typed_font_size_applied {
-            text_style.font_size = f64::from(theme.typography().font_size_px()).max(1.0);
+            text_style.font_size = f64::from(theme.typography().font_size_px());
         }
 
-        let requested_typed = typed_font_stack || typed_font_size;
-        let applied_typed = typed_font_stack_applied || typed_font_size_applied;
-        let outcome = if applied_typed {
-            BlockTypographyOutcome::Typed
-        } else if requested_typed {
-            BlockTypographyOutcome::ConfigOwned
-        } else {
-            BlockTypographyOutcome::Inactive
-        };
         Ok(Self {
             padding,
             text_style,
             css_binding,
-            evidence: FamilyThemeOutcomes::default(),
-            outcome,
             unsupported_properties,
             typed_font_stack_requested: typed_font_stack,
             typed_font_size_requested: typed_font_size,
             config_owns_font_stack,
             config_owns_font_size,
-            visible_labels: OnceLock::new(),
+            text_participation: OnceLock::new(),
         })
     }
 
@@ -683,13 +666,13 @@ impl BlockTypographyThemePlan {
             || !self.unsupported_properties.is_empty()
     }
 
-    pub(crate) fn record_visible_labels(&self, visible: bool) {
-        let _ = self.visible_labels.set(visible);
+    pub(crate) fn record_text_participation(&self, participation: super::BlockTextParticipation) {
+        let _ = self.text_participation.set(participation);
     }
 
     pub(crate) fn record_evidence(&self, evidence: &mut FamilyThemeEvidence) {
-        evidence.merge_borrowed(&self.evidence);
-        let visible = self.visible_labels.get().copied();
+        let participation = self.text_participation.get();
+        let visible = participation.map(|text| text.visible);
         for property in &self.unsupported_properties {
             let key = FamilyThemeMechanismKey::Typography(*property);
             if visible == Some(false) {
@@ -714,26 +697,21 @@ impl BlockTypographyThemePlan {
                 continue;
             }
             let key = FamilyThemeMechanismKey::Typography(property);
-            match self.outcome {
-                BlockTypographyOutcome::ConfigOwned if config_owned => {
+            if config_owned || visible == Some(false) {
+                evidence.mark_not_applicable(key);
+            } else if let Some(text) = participation.filter(|text| !text.unverified) {
+                let consumed = match property {
+                    ThemeTypographyProperty::FontStack => text.font_stack,
+                    ThemeTypographyProperty::FontSize => text.font_size,
+                    _ => unreachable!("Block base typography only adapts family and size"),
+                };
+                if consumed {
+                    evidence.mark_applied_with_capabilities(key, [ThemeCapability::Typography]);
+                } else {
                     evidence.mark_not_applicable(key);
                 }
-                BlockTypographyOutcome::Typed if config_owned => {
-                    evidence.mark_not_applicable(key);
-                }
-                BlockTypographyOutcome::Typed => match visible {
-                    Some(true) => {
-                        evidence.mark_applied_with_capabilities(key, [ThemeCapability::Typography]);
-                    }
-                    Some(false) => {
-                        evidence.mark_not_applicable(key);
-                    }
-                    None => {
-                        evidence
-                            .mark_residual(key, FamilyThemeResidualReason::UnsupportedTypography);
-                    }
-                },
-                BlockTypographyOutcome::ConfigOwned | BlockTypographyOutcome::Inactive => {}
+            } else {
+                evidence.mark_residual(key, FamilyThemeResidualReason::UnsupportedTypography);
             }
         }
     }
@@ -1010,6 +988,8 @@ impl BlockNodePaintThemePlan {
                 Ok(sources.get(node.id.as_str()).map(|source| {
                     super::node_binding::lower(
                         source.styles,
+                        source.classes,
+                        &model.class_defs,
                         self.typed_fill(i),
                         self.typed_stroke(i),
                         labels.color(i),
@@ -1273,7 +1253,7 @@ mod tests {
         assert_eq!(plan.font_size_px(), 24.0);
         assert_eq!(plan.padding(), 12.0);
         assert!(!plan.observes_visible_labels());
-        assert!(plan.visible_labels.get().is_none());
+        assert!(plan.text_participation.get().is_none());
     }
 
     #[test]
@@ -1298,7 +1278,10 @@ mod tests {
             )
             .unwrap();
             assert!(plan.observes_visible_labels());
-            plan.record_visible_labels(!label.trim().is_empty());
+            plan.record_text_participation(super::super::BlockTextParticipation {
+                visible: !label.trim().is_empty(),
+                ..Default::default()
+            });
             let evidence = collect_evidence(&resolved, |evidence| plan.record_evidence(evidence));
             assert_eq!(
                 evidence.not_applicable_mechanisms().contains(&key),

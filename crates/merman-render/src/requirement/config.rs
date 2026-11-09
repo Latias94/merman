@@ -50,7 +50,7 @@ impl<'a> RequirementConfigView<'a> {
             settings.calculation_font_family = font_family.to_owned();
         }
         if let Some(font_size_px) = resolved_font_size_px {
-            settings.font_size = font_size_px.max(1.0);
+            settings.font_size = font_size_px;
         }
         settings
     }

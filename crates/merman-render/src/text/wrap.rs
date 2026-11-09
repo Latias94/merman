@@ -3,8 +3,8 @@
 //! This module intentionally mirrors Mermaid behavior (including quirks) for parity.
 
 use super::{
-    DeterministicTextMeasurer, TextMeasurer, TextStyle, trim_end_html_collapsible_ascii_whitespace,
-    trim_html_collapsible_ascii_whitespace,
+    DeterministicTextMeasurer, TextMeasurer, TextStyle, split_html_br_lines,
+    trim_end_html_collapsible_ascii_whitespace, trim_html_collapsible_ascii_whitespace,
 };
 use unicode_segmentation::UnicodeSegmentation;
 
@@ -254,46 +254,6 @@ pub fn wrap_text_lines_measurer(
     }
 }
 
-/// Splits a Mermaid label into lines using Mermaid's `<br>`-style line breaks.
-///
-/// Mirrors Mermaid's `lineBreakRegex = /<br\\s*\\/?>/gi` behavior:
-/// - allows ASCII whitespace between `br` and the optional `/` or `>`
-/// - does not accept extra characters (e.g. `<br \\t/>` with a literal backslash)
-pub fn split_html_br_lines(text: &str) -> Vec<&str> {
-    let b = text.as_bytes();
-    let mut parts: Vec<&str> = Vec::new();
-    let mut start = 0usize;
-    let mut i = 0usize;
-    while i + 3 < b.len() {
-        if b[i] != b'<' {
-            i += 1;
-            continue;
-        }
-        let b1 = b[i + 1];
-        let b2 = b[i + 2];
-        if !matches!(b1, b'b' | b'B') || !matches!(b2, b'r' | b'R') {
-            i += 1;
-            continue;
-        }
-        let mut j = i + 3;
-        while j < b.len() && matches!(b[j], b' ' | b'\t' | b'\r' | b'\n') {
-            j += 1;
-        }
-        if j < b.len() && b[j] == b'/' {
-            j += 1;
-        }
-        if j < b.len() && b[j] == b'>' {
-            parts.push(&text[start..i]);
-            start = j + 1;
-            i = start;
-            continue;
-        }
-        i += 1;
-    }
-    parts.push(&text[start..]);
-    parts
-}
-
 fn try_wrap_label_like_mermaid_lines<E>(
     label: &str,
     measurer: &dyn TextMeasurer,
@@ -310,7 +270,7 @@ fn try_wrap_label_like_mermaid_lines<E>(
     }
 
     // Mermaid short-circuits wrapping if the label already contains `<br>` breaks.
-    let explicit_lines = split_html_br_lines(label);
+    let explicit_lines = super::split_mermaid_common_br_lines(label);
     if explicit_lines.len() > 1 {
         let mut lines = Vec::with_capacity(explicit_lines.len());
         for line in explicit_lines {

@@ -5,7 +5,7 @@ use crate::math::{DelimitedMathLine, MathRenderer, parse_delimited_math_line};
 use crate::text::sequence_text_line_step_px;
 use crate::text::{
     TextMeasurer, TextMetrics, TextStyle, WrapMode,
-    measure_mermaid_text_dimensions_with_checkpoint, split_html_br_lines,
+    measure_mermaid_text_dimensions_with_checkpoint, split_mermaid_common_br_lines,
     wrap_label_like_mermaid_lines_with_checkpoint,
 };
 use merman_model::presentation::PresentationConfig;
@@ -156,7 +156,7 @@ pub(super) fn measure_drawn_svg_like_with_html_br(
 ) -> Result<(f64, f64)> {
     let effective_style = sequence_drawn_text_style(terminal_style, config);
     let terminal_style = &effective_style;
-    let lines = split_html_br_lines(text);
+    let lines = split_mermaid_common_br_lines(text);
     let mut width = 0.0_f64;
     let mut height = 0.0_f64;
     for line in lines {
@@ -232,7 +232,7 @@ pub(super) fn measure_typed_actor_label_for_layout(
     let Some(style) = terminal_style else {
         return Ok(None);
     };
-    let lines = split_html_br_lines(text);
+    let lines = split_mermaid_common_br_lines(text);
     let mut width = 0.0_f64;
     let mut line_height = 0.0_f64;
     for line in &lines {
@@ -426,7 +426,7 @@ fn measure_sequence_mixed_math_label(
     let mut height = 0.0_f64;
     let mut line_count = 0usize;
 
-    for line in split_html_br_lines(text) {
+    for line in split_mermaid_common_br_lines(text) {
         checkpoints.checkpoint()?;
         line_count += 1;
         let (line_width, line_height) = if let Some(parsed) = parse_delimited_math_line(line) {

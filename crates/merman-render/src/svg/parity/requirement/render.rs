@@ -736,11 +736,16 @@ pub(crate) fn render_requirement_diagram_svg_model(
         let mut text_facts = None;
         if render_settings.edge_html_labels {
             let label_html = mermaid_markdown_to_html(label_text, sanitize_config);
-            if text_paint_receipt.is_some() && prepared_label.has_label {
+            if (text_paint_receipt.is_some() || paint_theme_receipt.is_some())
+                && prepared_label.has_label
+            {
                 options.work_meter().charge(label_html.len())?;
-                text_facts = Some(crate::text::VisibleTextStyleFacts::from_xhtml_fragment(
-                    &label_html,
-                ));
+                text_facts = Some(
+                    crate::text::VisibleTextStyleFacts::from_xhtml_fragment_at_font_size(
+                        &label_html,
+                        Some(render_settings.font_size),
+                    ),
+                );
             }
             mk_label_foreign_object(
                 &mut out,
@@ -757,10 +762,15 @@ pub(crate) fn render_requirement_diagram_svg_model(
                 },
             );
         } else {
-            if text_paint_receipt.is_some() && prepared_label.has_label {
+            if (text_paint_receipt.is_some() || paint_theme_receipt.is_some())
+                && prepared_label.has_label
+            {
                 options.work_meter().charge(label_text.len())?;
                 text_facts = Some(
-                    crate::text::VisibleTextStyleFacts::from_svg_markdown_projection(label_text),
+                    crate::text::VisibleTextStyleFacts::from_svg_markdown_projection_at_font_size(
+                        label_text,
+                        Some(render_settings.font_size),
+                    ),
                 );
             }
             out.push_str("<g>");
@@ -789,8 +799,13 @@ pub(crate) fn render_requirement_diagram_svg_model(
         out.push_str("</g></g>");
         if prepared_label.has_label
             && let Some(receipt) = paint_theme_receipt.as_mut()
+            && let Some(facts) = &text_facts
         {
-            receipt.record_edge_text(label_text);
+            receipt.record_label_typography(
+                facts,
+                &crate::requirement::RequirementNodeTypography::default(),
+                "",
+            );
         }
         if let Some(receipt) = text_paint_receipt.as_mut()
             && let Some(facts) = text_facts
@@ -993,6 +1008,9 @@ pub(crate) fn render_requirement_diagram_svg_model(
 
         // Labels.
         let padding = 20.0;
+        let node_font_size = rendered_node
+            .typography
+            .font_size_px(render_settings.font_size);
         for line in &rendered_node.lines {
             let metrics = line.metrics;
             let label_x = if line.keep_centered {
@@ -1041,11 +1059,14 @@ pub(crate) fn render_requirement_diagram_svg_model(
                         ),
                     })?
                     .as_str();
-                if text_paint_receipt.is_some() {
+                if text_paint_receipt.is_some() || paint_theme_receipt.is_some() {
                     options.work_meter().charge(display_html.len())?;
-                    text_facts = Some(crate::text::VisibleTextStyleFacts::from_xhtml_fragment(
-                        display_html,
-                    ));
+                    text_facts = Some(
+                        crate::text::VisibleTextStyleFacts::from_xhtml_fragment_at_font_size(
+                            display_html,
+                            node_font_size,
+                        ),
+                    );
                 }
                 mk_label_foreign_object(
                     &mut out,
@@ -1067,10 +1088,13 @@ pub(crate) fn render_requirement_diagram_svg_model(
                 );
             } else {
                 let source = requirement_label_source(&line.display_text, sanitize_config);
-                if text_paint_receipt.is_some() {
+                if text_paint_receipt.is_some() || paint_theme_receipt.is_some() {
                     options.work_meter().charge(source.len())?;
                     text_facts = Some(
-                        crate::text::VisibleTextStyleFacts::from_svg_markdown_projection(&source),
+                        crate::text::VisibleTextStyleFacts::from_svg_markdown_projection_at_font_size(
+                            &source,
+                            node_font_size,
+                        ),
                     );
                 }
                 let svg_style = if line.bold {
@@ -1099,15 +1123,15 @@ pub(crate) fn render_requirement_diagram_svg_model(
                 out.push_str("</g>");
             }
             out.push_str("</g>");
+            if let Some(receipt) = paint_theme_receipt.as_mut()
+                && let Some(facts) = &text_facts
+            {
+                receipt.record_label_typography(facts, &rendered_node.typography, label_styles);
+            }
             if let Some(receipt) = text_paint_receipt.as_mut()
                 && let Some(facts) = text_facts
             {
                 out.checkpoint()?;
-                let facts = if rendered_node.typography.has_zero_font_size() {
-                    crate::text::VisibleTextStyleFacts::plain_text("")
-                } else {
-                    facts
-                };
                 receipt.record_label(
                     crate::requirement::RequirementTextTerminalId::node(&n.id, line.source_index),
                     false,
@@ -1218,12 +1242,6 @@ pub(crate) fn render_requirement_diagram_svg_model(
         if let Some(receipt) = paint_theme_receipt.as_mut() {
             receipt.record_checkpointed_node(
                 paint_theme_index.expect("themed node index validated before emission"),
-                rendered_node
-                    .lines
-                    .iter()
-                    .any(|line| !line.display_text.trim().is_empty()),
-                &rendered_node.typography,
-                label_styles,
                 visual.source_owns_fill,
                 typed_fill,
                 fill_color,
@@ -1261,10 +1279,18 @@ pub(crate) fn render_requirement_diagram_svg_model(
             });
         }
         if let Some(receipt) = text_paint_receipt.as_mut() {
-            receipt.record_title(paint_theme.title_inherits_text_fill(), options.work_meter())?;
+            receipt.record_title(
+                paint_theme.title_inherits_text_fill(),
+                render_settings.font_size != 0.0,
+                options.work_meter(),
+            )?;
         }
         if let Some(receipt) = paint_theme_receipt.as_mut() {
-            receipt.record_title_text("requirementDiagramTitleText", title);
+            receipt.record_title_text(
+                "requirementDiagramTitleText",
+                title,
+                render_settings.font_size != 0.0,
+            );
         }
     }
 

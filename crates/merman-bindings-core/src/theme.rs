@@ -391,7 +391,7 @@ fn compile_theme_with_appearance(
     let theme = match selection {
         ThemeSelectionJson::Preset { preset, appearance } => compiler
             .compile_preset_selection(
-                preset.trim(),
+                preset,
                 selected_appearance(*appearance, requested_appearance)?,
             )
             .map_err(|error| {
@@ -912,6 +912,35 @@ mod tests {
             compile_theme_selection_json(br#"{"preset":"editor-dark","appearance":"light"}"#)
                 .unwrap_err();
         assert_eq!(error.status(), BindingStatus::InvalidArgument);
+    }
+
+    #[test]
+    fn preset_selection_and_export_require_exact_catalog_ids() {
+        let compiler = DiagramThemeCompiler::new();
+        for id in [
+            " editor",
+            "editor ",
+            " editor ",
+            "\teditor\n",
+            "\u{00a0}editor\u{00a0}",
+            " editor-dark ",
+        ] {
+            let selection = serde_json::to_vec(&serde_json::json!({
+                "preset": id, "appearance": "dark"
+            }))
+            .unwrap();
+            for error in [
+                compile_theme_selection_json_with(&compiler, &selection).unwrap_err(),
+                crate::export_theme_preset_json_with(&compiler, id.as_bytes()).unwrap_err(),
+            ] {
+                assert_eq!(error.status(), BindingStatus::InvalidArgument, "{id:?}");
+                assert_eq!(
+                    error.theme_authoring_details().unwrap().diagnostic().path(),
+                    "/preset",
+                    "{id:?}"
+                );
+            }
+        }
     }
 
     #[test]

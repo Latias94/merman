@@ -331,7 +331,7 @@ impl GitGraphTextPaintPlan {
         &'a self,
         layout: &'a GitGraphDiagramLayout,
         branch_slots: &'a HashMap<&'a str, i64>,
-        binding: &'a crate::gitgraph::GitGraphCssBinding,
+        typography: &'a super::GitGraphTypographyThemePlan,
         root_geometry: [[bool; 8]; 4],
         root_cherry_pick: bool,
     ) -> Option<GitGraphTextPaintReceipt<'a>> {
@@ -339,7 +339,8 @@ impl GitGraphTextPaintPlan {
             plan: self,
             layout,
             branch_slots,
-            binding,
+            binding: typography.css_binding(),
+            typography,
             root_geometry,
             root_cherry_pick,
             css_recorded: false,
@@ -424,6 +425,7 @@ pub(crate) struct GitGraphTextPaintReceipt<'a> {
     layout: &'a GitGraphDiagramLayout,
     branch_slots: &'a HashMap<&'a str, i64>,
     binding: &'a crate::gitgraph::GitGraphCssBinding,
+    typography: &'a super::GitGraphTypographyThemePlan,
     // Branch backgrounds, ordinary commit outers, highlight outers, and branch text.
     root_geometry: [[bool; 8]; 4],
     root_cherry_pick: bool,
@@ -470,7 +472,7 @@ impl GitGraphTextPaintReceipt<'_> {
             .copied()
             .unwrap_or(fallback[1])
             == text_root_inherited;
-        let text_visible = crate::gitgraph::gitgraph_branch_label_is_visible(name);
+        let text_visible = self.typography.branch_label_text_is_visible(name);
         self.facts.sources[0] +=
             usize::from(root_inherited) + usize::from(text_root_inherited && text_visible);
         self.facts.text_visible |= u8::from(text_visible);
@@ -511,8 +513,9 @@ impl GitGraphTextPaintReceipt<'_> {
         let event = self.labels.next();
         self.valid &= event == Some(GitGraphLabelEvent::Commit(index));
         self.valid &= event.and_then(|event| event.text(self.layout)) == Some(text);
-        self.facts.sources[2] += usize::from(!text.trim().is_empty());
-        self.facts.text_visible |= u8::from(!text.trim().is_empty()) << 2;
+        let visible = self.typography.commit_label_text_is_visible(text);
+        self.facts.sources[2] += usize::from(visible);
+        self.facts.text_visible |= u8::from(visible) << 2;
     }
 
     pub(crate) fn record_tag(&mut self, index: usize, output_index: usize, text: &str) {
@@ -521,8 +524,9 @@ impl GitGraphTextPaintReceipt<'_> {
         self.valid &= event.and_then(|event| event.text(self.layout)) == Some(text);
         // Even an empty tag still emits a radius-1.5 colored hole.
         self.facts.sources[0] += 1;
-        self.facts.sources[1] += usize::from(!text.trim().is_empty());
-        self.facts.text_visible |= u8::from(!text.trim().is_empty()) << 1;
+        let visible = self.typography.tag_label_text_is_visible(text);
+        self.facts.sources[1] += usize::from(visible);
+        self.facts.text_visible |= u8::from(visible) << 1;
     }
 
     pub(crate) fn record_title(&mut self, title: Option<&str>, fill: Option<&str>) {
@@ -530,8 +534,9 @@ impl GitGraphTextPaintReceipt<'_> {
             && self.plan.title.as_deref() == title
             && fill == self.plan.title_fill_css();
         self.title_recorded = true;
-        self.facts.sources[0] += usize::from(title.is_some() && fill.is_none());
-        self.facts.text_visible |= u8::from(title.is_some());
+        let visible = title.is_some_and(|text| self.typography.title_text_is_visible(text));
+        self.facts.sources[0] += usize::from(visible && fill.is_none());
+        self.facts.text_visible |= u8::from(visible);
     }
 }
 
@@ -595,13 +600,12 @@ mod tests {
                 &OperationWorkMeter::new(RenderResourcePolicy::unbounded_for_trusted_input()),
             )
             .unwrap();
-            let binding = crate::gitgraph::GitGraphCssBinding::resolve(
-                &serde_json::json!({}),
-                "sans-serif",
-                "16px",
+            let typography = super::super::GitGraphTypographyThemePlan::resolve(
+                None,
+                &PresentationConfig::default(),
             );
             let mut receipt = plan
-                .begin_terminal_receipt(&layout, &branches, &binding, [[false; 8]; 4], false)
+                .begin_terminal_receipt(&layout, &branches, &typography, [[false; 8]; 4], false)
                 .unwrap();
             if case != "missing-css" {
                 let mut colors = ["#123456"; 5];

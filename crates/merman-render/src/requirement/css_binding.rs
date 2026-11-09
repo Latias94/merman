@@ -62,7 +62,6 @@ impl RequirementCssBinding {
         config: &Value,
         font_family: Option<&str>,
         font_size_css: Option<&str>,
-        font_size_px: Option<f64>,
         typed_relation_color: Option<(usize, &str)>,
     ) -> Self {
         let common = match font_size_css {
@@ -75,6 +74,11 @@ impl RequirementCssBinding {
             ),
             None => PreparedCommonCss::new(config, font_family),
         };
+        let font_size_px = crate::mermaid_style::resolve_explicit_css_absolute_font_size_px(
+            common.font_size_css(),
+        );
+        let layout = RequirementConfigView::new(config)
+            .layout_settings_with_resolved_typography(font_family, font_size_px);
         let option = |key: &str, fallback: &str| {
             config_css_number_or_string(config, &["themeVariables", key])
                 .unwrap_or_else(|| fallback.to_owned())
@@ -100,8 +104,7 @@ impl RequirementCssBinding {
         let neo = crate::config::config_diagram_look(config).is_neo();
         Self {
             common,
-            layout: RequirementConfigView::new(config)
-                .layout_settings_with_resolved_typography(font_family, font_size_px),
+            layout,
             border_colors,
             background_colors,
             default_fill: color("mainBkg", "#ECECFF"),
@@ -182,7 +185,7 @@ mod tests {
                 "#000000",
             ),
         ] {
-            let binding = RequirementCssBinding::resolve(&config, None, None, None, None);
+            let binding = RequirementCssBinding::resolve(&config, None, None, None);
             assert_eq!(binding.shadow_flood_color, expected);
         }
     }

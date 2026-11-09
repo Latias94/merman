@@ -72,7 +72,7 @@ where
         out,
         r#"#{} .radarAxisLabel{{font-size:{}px;color:{};}}"#,
         diagram_id,
-        fmt(theme.axis_label_font_size),
+        fmt(theme.axis_label_font_size.css_px()),
         axis_paint.axis_color()
     );
     out.checkpoint()?;
@@ -93,7 +93,7 @@ where
         out,
         r#"#{} .radarLegendText{{text-anchor:start;font-size:{}px;dominant-baseline:hanging;}}"#,
         diagram_id,
-        fmt(theme.legend_font_size)
+        fmt(theme.legend_font_size.css_px())
     );
     out.checkpoint()?;
 
@@ -458,7 +458,7 @@ pub(crate) fn render_radar_diagram_svg_model_with_theme_plans(
                 .map(str::trim)
                 .filter(|title| !title.is_empty())
         });
-    let title_visible = match title {
+    let title_nonempty = match title {
         Some(t) => {
             let _ = write!(
                 &mut out,
@@ -479,10 +479,10 @@ pub(crate) fn render_radar_diagram_svg_model_with_theme_plans(
     };
     out.checkpoint()?;
     if let Some(receipt) = text_paint_receipt.as_mut() {
-        receipt.record_title("radarTitle", title_visible);
+        receipt.record_title("radarTitle", title_nonempty);
     }
     if let Some(receipt) = typography_receipt.as_mut() {
-        receipt.record_title(title_visible);
+        receipt.record_title(title_nonempty);
     }
     if let Some(receipt) = title_theme_receipt.as_mut() {
         receipt.record_title_text("radarTitle");

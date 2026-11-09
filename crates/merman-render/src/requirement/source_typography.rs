@@ -190,10 +190,16 @@ impl RequirementNodeTypography {
             })
     }
 
-    pub(crate) fn has_zero_font_size(&self) -> bool {
-        self.source
-            .as_ref()
-            .is_some_and(|source| source.font_size_px == Some(0.0))
+    pub(crate) fn font_size_px(&self, inherited: f64) -> Option<f64> {
+        if self.font_size_ownership() == CssFontSizeOwnership::Unverified {
+            return None;
+        }
+        Some(
+            self.source
+                .as_ref()
+                .and_then(|source| source.font_size_px)
+                .unwrap_or(inherited),
+        )
     }
 
     pub(super) fn apply_to<'a>(
@@ -450,7 +456,7 @@ mod tests {
                 (style.font_size - expected).abs() < 1e-5,
                 "{value}: {style:?}"
             );
-            assert_eq!(source.has_zero_font_size(), expected == 0.0);
+            assert_eq!(source.font_size_px(16.0), Some(expected));
         }
     }
 

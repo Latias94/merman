@@ -11,7 +11,7 @@ use crate::family::{
     TerminalVariantDomain, UnsupportedTerminalDomain, reconcile_unsupported_terminal_domains,
     resolved_style_property_for_facet, unsupported_residual_for_facet,
 };
-use crate::resources::{OperationWorkError, OperationWorkMeter};
+use crate::resources::{OperationWorkError, OperationWorkMeter, PreparedTextRetainedReservation};
 
 mod css_binding;
 mod terminal;
@@ -47,12 +47,10 @@ impl ErBaseFontSizePlan {
                         effective_config.as_value(),
                         &["er", "fontSize"],
                     )
+                    .filter(|size| *size >= 0.0)
                     .map(|size| (size, "er.fontSize"))
                 });
-        let configured_font_size_px = configured_font_size
-            .map(|(size, _)| size)
-            .unwrap_or(16.0)
-            .max(1.0);
+        let configured_font_size_px = configured_font_size.map(|(size, _)| size).unwrap_or(16.0);
         let typed_requested = theme.is_some_and(|theme| {
             theme.family_mechanism_routes().iter().any(|route| {
                 route.mechanism()
@@ -67,7 +65,7 @@ impl ErBaseFontSizePlan {
         let typed_active = typed_requested && !config_owns;
         let (font_size_px, font_size_css) = match theme {
             Some(theme) if typed_active => {
-                let typed_font_size = theme.typography().font_size_px().max(1.0);
+                let typed_font_size = theme.typography().font_size_px();
                 (
                     f64::from(typed_font_size),
                     format!("{typed_font_size}px").into_boxed_str(),
@@ -207,6 +205,21 @@ impl ErEntitySourceStyle {
 
     fn owns_text_color(&self) -> bool {
         self.text_value("color").is_some()
+    }
+
+    fn owns_text_font_family(&self) -> bool {
+        crate::mermaid_style::css_font_family_declaration_ownership(
+            self.text_declarations.iter().map(ErStyleDeclaration::raw),
+        ) != crate::mermaid_style::CssFontFamilyOwnership::Inherited
+    }
+
+    pub(super) fn terminal_font_size(&self, inherited: Option<f64>) -> Option<f64> {
+        self.text_declarations
+            .iter()
+            .find(|declaration| declaration.property_matches("font-size"))
+            .map_or(inherited, |declaration| {
+                crate::text::visible_text_font_size_after_style(inherited, declaration.raw())
+            })
     }
 
     fn owns_text_font_size(&self) -> bool {
@@ -382,6 +395,62 @@ fn last_source_style_value<'a>(
         .map(ErStyleDeclaration::value)
 }
 
+/// The HTML cluster writer and typography receipt share the same retained title projection.
+#[derive(Debug)]
+pub(crate) struct ErPreparedHtmlSubgraphLabel {
+    fragment: String,
+    font_size: Option<f64>,
+    facts: OnceLock<super::text_facts::ErTextFacts>,
+    _retained: PreparedTextRetainedReservation,
+}
+
+impl ErPreparedHtmlSubgraphLabel {
+    fn prepare(
+        id: &str,
+        font_size: Option<f64>,
+        work_meter: &Arc<OperationWorkMeter>,
+        project: impl FnOnce() -> String,
+    ) -> Result<(String, Self), OperationWorkError> {
+        // Match Class's map entry/control allowance; both String heaps are counted separately.
+        let owner_bytes =
+            std::mem::size_of::<(String, Self)>().saturating_add(std::mem::size_of::<usize>());
+        work_meter.preflight_prepared_text_retained_bytes(owner_bytes.saturating_add(id.len()))?;
+        let fragment = project();
+        // The shared projector is opaque. Admit its actual capacity before copying the key
+        // or allocating the map record, then retain one lease for that complete owner.
+        work_meter.preflight_prepared_text_retained_bytes(
+            owner_bytes
+                .saturating_add(id.len())
+                .saturating_add(fragment.capacity()),
+        )?;
+        let key = id.to_owned();
+        let bytes = owner_bytes
+            .saturating_add(key.capacity())
+            .saturating_add(fragment.capacity());
+        let retained = work_meter.reserve_prepared_text_retained_bytes(bytes)?;
+        Ok((
+            key,
+            Self {
+                fragment,
+                font_size,
+                facts: OnceLock::new(),
+                _retained: retained,
+            },
+        ))
+    }
+
+    pub(crate) fn fragment(&self) -> &str {
+        &self.fragment
+    }
+
+    fn visible_style_facts(&self) -> &crate::text::VisibleTextStyleFacts {
+        &self
+            .facts
+            .get_or_init(|| super::text_facts::ErTextFacts::html(&self.fragment, self.font_size))
+            .visible
+    }
+}
+
 /// ER terminal paint resolved once for the semantic model and shared by layout, SVG, and terminal
 /// theme evidence.
 #[derive(Debug)]
@@ -390,6 +459,7 @@ pub(crate) struct ErEntityThemePlan {
     entity_indices: BTreeMap<String, usize>,
     entity_source_styles: Vec<ErEntitySourceStyle>,
     subgraph_source_styles: BTreeMap<String, ErEntitySourceStyle>,
+    html_subgraph_labels: BTreeMap<String, ErPreparedHtmlSubgraphLabel>,
     inherited_font_stack: InheritedFontStackPlan,
     has_visible_typography: bool,
     font_stack_pending: bool,
@@ -495,6 +565,63 @@ impl ErEntityThemePlan {
                 compile_er_subgraph_source_style(subgraph, &model.classes),
             );
         }
+        let config = super::ErConfigView::new(effective_config.as_value());
+        // Only top-level lanes use flowchart.htmlLabels and unconditional Markdown titles.
+        // Nested groups retain the ordinary cluster writer's root mode and label type.
+        let swimlane_lanes = layout
+            .swimlane
+            .iter()
+            .flat_map(|paint| &paint.lanes)
+            .filter(|lane| lane.parent_id.is_none())
+            .map(|lane| (lane.id.as_str(), lane))
+            .collect::<BTreeMap<_, _>>();
+        let mut html_subgraph_labels = BTreeMap::new();
+        for cluster in &layout.clusters {
+            let lane = swimlane_lanes.get(cluster.id.as_str());
+            if !config.subgraph_html_labels(lane.is_some())
+                || html_subgraph_labels.contains_key(&cluster.id)
+            {
+                continue;
+            }
+            let (title, markdown) = if let Some(lane) = lane {
+                (lane.title.as_str(), true)
+            } else if let Some(subgraph) = subgraphs.get(cluster.id.as_str()) {
+                (
+                    subgraph.title.as_str(),
+                    !matches!(subgraph.label_type.as_str(), "string" | "text"),
+                )
+            } else {
+                continue;
+            };
+            let font_size = subgraph_source_styles
+                .get(&cluster.id)
+                .map_or(Some(base_font_size.font_size_px()), |style| {
+                    style.terminal_font_size(Some(base_font_size.font_size_px()))
+                });
+            let retained_meter = layout
+                .prepared_labels
+                .retained_work_meter
+                .as_ref()
+                .expect("ER prepared layout labels retain their operation ledger");
+            let (key, label) = ErPreparedHtmlSubgraphLabel::prepare(
+                &cluster.id,
+                font_size,
+                retained_meter,
+                || {
+                    if markdown {
+                        crate::text::mermaid_markdown_to_xhtml_label_fragment(title, true)
+                    } else {
+                        crate::svg::escape_xml(title)
+                    }
+                },
+            )?;
+            work_meter.charge(
+                1usize
+                    .saturating_add(key.len())
+                    .saturating_add(label.fragment.len()),
+            )?;
+            html_subgraph_labels.insert(key, label);
+        }
         let Some(theme) = theme else {
             return Self {
                 _prepared_labels: Arc::clone(&layout.prepared_labels),
@@ -502,6 +629,7 @@ impl ErEntityThemePlan {
                 entity_indices,
                 entity_source_styles,
                 subgraph_source_styles,
+                html_subgraph_labels,
                 inherited_font_stack,
                 has_visible_typography: false,
                 font_stack_pending: false,
@@ -542,30 +670,21 @@ impl ErEntityThemePlan {
                 .map(str::trim)
                 .filter(|title| !title.is_empty())
         {
+            let facts =
+                super::text_facts::ErTextFacts::plain(title, Some(base_font_size.font_size_px()));
             insert_text_terminal(
                 &mut text_terminals,
                 ErTextTerminalId::DiagramTitle,
-                &crate::text::VisibleTextStyleFacts::plain_text(title),
+                &facts.visible,
+                facts.has_content,
             );
         }
         let table_rows = collect_table_row_terminals(model);
 
         let mermaid_owns_fill = mermaid_owns_entity_fill(effective_config);
         let mermaid_owns_stroke = mermaid_owns_entity_stroke(effective_config);
-        let config = super::ErConfigView::new(effective_config.as_value());
         let entity_html_labels =
             config.entity_html_label_wrap_mode() == crate::text::WrapMode::HtmlLike;
-        // Use the same top-level lane domain as the SVG writer, without rescanning lanes
-        // for each nested ordinary cluster.
-        let swimlane_ids = layout
-            .swimlane
-            .iter()
-            .flat_map(|paint| &paint.lanes)
-            .filter(|lane| lane.parent_id.is_none())
-            .map(|lane| lane.id.as_str())
-            .collect::<BTreeSet<_>>();
-        let subgraph_html_labels =
-            |id: &str| config.subgraph_html_labels(swimlane_ids.contains(id));
         let mermaid_owns_entity_text = mermaid_owns_text_fill(effective_config, entity_html_labels);
         let mermaid_owns_relation_text =
             mermaid_owns_text_fill(effective_config, relationship_html_labels);
@@ -576,53 +695,72 @@ impl ErEntityThemePlan {
         let relation_stroke_source_owned = mermaid_owns_relation_stroke(effective_config);
         if needs_text_terminal_evidence {
             for cluster in &layout.clusters {
-                if subgraph_html_labels(&cluster.id) {
+                if html_subgraph_labels.contains_key(&cluster.id) {
                     continue;
                 }
                 let Some(subgraph) = subgraphs.get(cluster.id.as_str()) else {
                     continue;
                 };
-                let facts = subgraph_svg_text_facts(subgraph);
+                let facts = subgraph_svg_text_facts(subgraph, base_font_size.font_size_px());
                 insert_text_terminal(
                     &mut text_terminals,
                     ErTextTerminalId::SubgraphLabel(subgraph.id.clone().into()),
                     &facts,
+                    facts.has_content_runs(),
                 );
             }
         }
-        let source_owns_font_family = entity_terminal_occurrences.iter().any(|(ordinal, _)| {
-            entity_source_styles[ordinal - 1]
-                .text_value("font-family")
-                .is_some()
-        }) || subgraph_source_styles.iter().any(|(id, style)| {
-            subgraph_html_labels(id) && style.text_value("font-family").is_some()
-        });
         let visible_text_terminal = |terminal_id: &ErTextTerminalId| {
             terminal_id
                 .entity_id()
                 .is_none_or(|id| visible_entity_ids.contains(id))
         };
-        let source_owns_font_size = text_terminals.keys().any(|terminal_id| {
+        let source_owns_font_family = text_terminals.iter().any(|(terminal_id, terminal)| {
             visible_text_terminal(terminal_id)
+                && terminal.visible_run_count > 0
+                && terminal_id
+                    .entity_id()
+                    .and_then(|id| entity_indices.get(id))
+                    .is_some_and(|index| entity_source_styles[*index].owns_text_font_family())
+        }) || subgraph_source_styles.iter().any(|(id, style)| {
+            html_subgraph_labels
+                .get(id)
+                .is_some_and(|label| label.visible_style_facts().has_visible_runs())
+                && style.owns_text_font_family()
+        });
+        let source_owns_font_size = text_terminals.iter().any(|(terminal_id, terminal)| {
+            visible_text_terminal(terminal_id)
+                && terminal.visible_run_count > 0
                 && !terminal_id.is_relation_label()
                 && text_terminal_font_size_source_owned(
                     terminal_id,
                     &entity_indices,
                     &entity_source_styles,
                 )
-        }) || subgraph_source_styles
-            .iter()
-            .any(|(id, style)| subgraph_html_labels(id) && style.owns_text_font_size());
+        }) || subgraph_source_styles.iter().any(|(id, style)| {
+            html_subgraph_labels
+                .get(id)
+                .is_some_and(|label| label.visible_style_facts().has_visible_runs())
+                && style.owns_text_font_size()
+        });
         let diagram_title = diagram_title
             .map(str::trim)
-            .filter(|title| !title.is_empty());
-        let has_visible_typography =
-            text_terminals.keys().any(visible_text_terminal) || diagram_title.is_some();
-        let has_visible_base_typography = text_terminals.iter().any(|(terminal_id, terminal)| {
-            visible_text_terminal(terminal_id)
-                && !terminal_id.is_relation_label()
-                && terminal.visible_run_count > 0
-        }) || diagram_title.is_some();
+            .filter(|title| !title.is_empty() && base_font_size.font_size_px() > 0.0);
+        // HTML titles consume base typography without joining the SVG Text-paint ordinals.
+        let has_visible_html_subgraph = needs_text_terminal_evidence
+            && html_subgraph_labels
+                .values()
+                .any(|label| label.visible_style_facts().has_visible_runs());
+        let has_visible_typography = has_visible_html_subgraph
+            || text_terminals.iter().any(|(terminal_id, terminal)| {
+                visible_text_terminal(terminal_id) && terminal.visible_run_count > 0
+            });
+        let has_visible_base_typography = has_visible_html_subgraph
+            || text_terminals.iter().any(|(terminal_id, terminal)| {
+                visible_text_terminal(terminal_id)
+                    && !terminal_id.is_relation_label()
+                    && terminal.visible_run_count > 0
+            });
         let font_stack_requested = inherited_font_stack.typed_font_stack_requested();
         let font_stack_pending = has_visible_typography
             && font_stack_requested
@@ -704,7 +842,7 @@ impl ErEntityThemePlan {
         }
 
         for (text_index, (terminal_id, terminal)) in text_terminals.iter_mut().enumerate() {
-            if !visible_text_terminal(terminal_id) {
+            if !visible_text_terminal(terminal_id) || terminal.visible_run_count == 0 {
                 continue;
             }
             let target = if matches!(terminal_id, ErTextTerminalId::DiagramTitle) {
@@ -867,6 +1005,10 @@ impl ErEntityThemePlan {
             });
         }
         let mut evidence = FamilyThemeOutcomes::default();
+        let visible_text_count = text_terminals
+            .values()
+            .filter(|text| text.visible_run_count > 0)
+            .count();
         let mut observations = BTreeMap::<(usize, ThemeTarget), ErRuleObservation>::new();
         for route in theme.family_mechanism_routes().iter().copied() {
             match route.mechanism() {
@@ -884,7 +1026,7 @@ impl ErEntityThemePlan {
                     let occurrence_count = match target {
                         ThemeTarget::Entity => entity_count,
                         ThemeTarget::Relation => model.relationships.len(),
-                        ThemeTarget::Text => text_terminals.len(),
+                        ThemeTarget::Text => visible_text_count,
                         ThemeTarget::Title => usize::from(diagram_title.is_some()),
                         ThemeTarget::Table => table_occurrence_count(&table_rows, selector),
                         _ => unreachable!("guarded ER theme target"),
@@ -995,6 +1137,7 @@ impl ErEntityThemePlan {
             entity_indices,
             entity_source_styles,
             subgraph_source_styles,
+            html_subgraph_labels,
             inherited_font_stack,
             has_visible_typography,
             font_stack_pending,
@@ -1030,6 +1173,10 @@ impl ErEntityThemePlan {
 
     pub(crate) fn subgraph_source_style(&self, id: &str) -> Option<&ErEntitySourceStyle> {
         self.subgraph_source_styles.get(id)
+    }
+
+    pub(crate) fn html_subgraph_label(&self, id: &str) -> Option<&ErPreparedHtmlSubgraphLabel> {
+        self.html_subgraph_labels.get(id)
     }
 
     pub(crate) fn relation_label_visual(&self, index: usize) -> Option<&visual::ErTextVisual> {
@@ -1080,9 +1227,11 @@ impl ErEntityThemePlan {
     }
 
     pub(crate) fn records_subgraph_labels(&self) -> bool {
-        self.text_terminals
-            .keys()
-            .any(|id| matches!(id, ErTextTerminalId::SubgraphLabel(_)))
+        (self.text_terminal_evidence_enabled && !self.html_subgraph_labels.is_empty())
+            || self
+                .text_terminals
+                .keys()
+                .any(|id| matches!(id, ErTextTerminalId::SubgraphLabel(_)))
     }
 
     fn text_terminal_visual(&self, id: &ErTextTerminalId) -> Option<&visual::ErTextVisual> {
@@ -1269,11 +1418,18 @@ fn typed_stroke_expectation(
 
 pub(crate) fn subgraph_svg_text_facts(
     subgraph: &merman_model::families::er::ErSubgraph,
+    font_size: f64,
 ) -> crate::text::VisibleTextStyleFacts {
     if matches!(subgraph.label_type.as_str(), "string" | "text") {
-        crate::text::VisibleTextStyleFacts::plain_text(&subgraph.title)
+        crate::text::VisibleTextStyleFacts::plain_text_at_font_size(
+            &subgraph.title,
+            Some(font_size),
+        )
     } else {
-        crate::text::VisibleTextStyleFacts::from_svg_markdown_projection(&subgraph.title)
+        crate::text::VisibleTextStyleFacts::from_svg_markdown_projection_at_font_size(
+            &subgraph.title,
+            Some(font_size),
+        )
     }
 }
 
@@ -1290,6 +1446,7 @@ fn collect_text_terminals(
             &mut terminals,
             ErTextTerminalId::entity_name(&entity.id),
             measure.label.visible_style_facts(),
+            measure.label.text_facts().has_content,
         );
         for (row_index, row) in measure.rows.iter().enumerate() {
             for (role, label) in [
@@ -1302,6 +1459,7 @@ fn collect_text_terminals(
                     &mut terminals,
                     ErTextTerminalId::attribute(&entity.id, row_index, role),
                     label.visible_style_facts(),
+                    label.text_facts().has_content,
                 );
             }
         }
@@ -1315,6 +1473,7 @@ fn collect_text_terminals(
             &mut terminals,
             ErTextTerminalId::relation_label(relationship_index),
             label.visible_style_facts(),
+            label.text_facts().has_content,
         );
     }
     terminals
@@ -1324,8 +1483,10 @@ fn insert_text_terminal(
     terminals: &mut BTreeMap<ErTextTerminalId, TextTerminalExpectation>,
     id: ErTextTerminalId,
     facts: &crate::text::VisibleTextStyleFacts,
+    has_content: bool,
 ) {
-    if facts.parse_valid() && facts.has_visible_runs() {
+    // A known-zero terminal retains its source ordinal without claiming a visible consumer.
+    if facts.parse_valid() && has_content {
         terminals.insert(
             id,
             TextTerminalExpectation {
@@ -1502,6 +1663,76 @@ fn paint_capability_from_css(css: &str) -> ThemeCapability {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn html_subgraph_retained_capacity_is_shared_until_the_last_owner_drops() {
+        let meter = Arc::new(OperationWorkMeter::new(
+            crate::resources::RenderResourcePolicy::unbounded_for_trusted_input(),
+        ));
+        let (key, label) = ErPreparedHtmlSubgraphLabel::prepare("Lane", Some(16.0), &meter, || {
+            let mut fragment = String::with_capacity(4096);
+            fragment.push_str("<p>Visible title</p>");
+            fragment
+        })
+        .unwrap();
+        let bytes = std::mem::size_of::<(String, ErPreparedHtmlSubgraphLabel)>()
+            + std::mem::size_of::<usize>()
+            + key.capacity()
+            + label.fragment.capacity();
+        assert!(label.fragment.capacity() > label.fragment.len());
+        assert_eq!(meter.prepared_text_retained_bytes(), bytes);
+        assert!(label.visible_style_facts().has_visible_runs());
+        assert_eq!(meter.prepared_text_retained_bytes(), bytes);
+        let owner = Arc::new(BTreeMap::from([(key, label)]));
+        let replay = Arc::clone(&owner);
+        drop(owner);
+        assert_eq!(meter.prepared_text_retained_bytes(), bytes);
+        drop(replay);
+        assert_eq!(meter.prepared_text_retained_bytes(), 0);
+    }
+
+    #[test]
+    fn html_subgraph_retained_preflight_and_exact_capacity_limit() {
+        use crate::resources::{RenderResourcePolicy, ResourceLimitId};
+        let prepare = |meter: &Arc<OperationWorkMeter>, projected: &std::cell::Cell<bool>| {
+            ErPreparedHtmlSubgraphLabel::prepare("Lane", Some(16.0), meter, || {
+                projected.set(true);
+                let mut fragment = String::with_capacity(4096);
+                fragment.push_str("<p>Visible title</p>");
+                fragment
+            })
+        };
+        let measuring = Arc::new(OperationWorkMeter::new(
+            RenderResourcePolicy::unbounded_for_trusted_input(),
+        ));
+        let label = prepare(&measuring, &std::cell::Cell::new(false)).unwrap();
+        let bytes = measuring.prepared_text_retained_bytes();
+        drop(label);
+        assert_eq!(measuring.prepared_text_retained_bytes(), 0);
+        for ceiling in [1, bytes - 1, bytes] {
+            let meter = Arc::new(OperationWorkMeter::new(
+                RenderResourcePolicy::unbounded_for_trusted_input()
+                    .with_limit(ResourceLimitId::MaxPreparedTextRetainedBytes, ceiling)
+                    .unwrap(),
+            ));
+            let projected = std::cell::Cell::new(false);
+            let result = prepare(&meter, &projected);
+            if ceiling == bytes {
+                let label = result.expect("exact retained capacity is admitted");
+                assert_eq!(meter.prepared_text_retained_bytes(), bytes);
+                drop(label);
+            } else {
+                let OperationWorkError::ResourceLimitExceeded(error) = result.unwrap_err() else {
+                    panic!("expected the retained HTML-title byte ceiling");
+                };
+                assert_eq!(error.limit, "max_prepared_text_retained_bytes");
+                assert_eq!(error.max, ceiling);
+                assert!(error.actual > ceiling);
+                assert_eq!(projected.get(), ceiling != 1);
+            }
+            assert_eq!(meter.prepared_text_retained_bytes(), 0);
+        }
+    }
 
     #[test]
     fn redux_entity_palette_owns_typed_paint_only_when_source_selected() {

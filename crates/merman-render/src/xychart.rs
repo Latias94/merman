@@ -143,11 +143,11 @@ fn is_ref_only_object(v: &Value) -> bool {
 fn default_axis_config() -> AxisConfig {
     AxisConfig {
         show_label: true,
-        label_font_size: 14.0,
+        label_font_size: XyChartTextRole::XAxisLabel.default_font_size(),
         label_font_weight: None,
         label_padding: 5.0,
         show_title: true,
-        title_font_size: 16.0,
+        title_font_size: XyChartTextRole::XAxisTitle.default_font_size(),
         title_font_weight: None,
         title_padding: 5.0,
         show_tick: true,
@@ -174,19 +174,22 @@ fn parse_axis_config(effective_config: &Value, axis_key: &str) -> AxisConfig {
     if !v.is_object() || is_ref_only_object(v) {
         return base;
     }
+    let (label_role, title_role) = if axis_key == "xAxis" {
+        (XyChartTextRole::XAxisLabel, XyChartTextRole::XAxisTitle)
+    } else {
+        (XyChartTextRole::YAxisLabel, XyChartTextRole::YAxisTitle)
+    };
 
     AxisConfig {
         show_label: config_bool(effective_config, &["xyChart", axis_key, "showLabel"])
             .unwrap_or(base.show_label),
-        label_font_size: config_f64(effective_config, &["xyChart", axis_key, "labelFontSize"])
-            .unwrap_or(base.label_font_size),
+        label_font_size: label_role.configured_font_size(effective_config),
         label_font_weight: None,
         label_padding: config_f64(effective_config, &["xyChart", axis_key, "labelPadding"])
             .unwrap_or(base.label_padding),
         show_title: config_bool(effective_config, &["xyChart", axis_key, "showTitle"])
             .unwrap_or(base.show_title),
-        title_font_size: config_f64(effective_config, &["xyChart", axis_key, "titleFontSize"])
-            .unwrap_or(base.title_font_size),
+        title_font_size: title_role.configured_font_size(effective_config),
         title_font_weight: None,
         title_padding: config_f64(effective_config, &["xyChart", axis_key, "titlePadding"])
             .unwrap_or(base.title_padding),
@@ -222,14 +225,11 @@ fn parse_chart_config(effective_config: &Value, model: &XyChartDiagramRenderMode
         )
         .unwrap_or(false),
         show_title: config_bool(effective_config, &["xyChart", "showTitle"]).unwrap_or(true),
-        title_font_size: config_f64(effective_config, &["xyChart", "titleFontSize"])
-            .unwrap_or(20.0),
+        title_font_size: XyChartTextRole::Title.configured_font_size(effective_config),
         title_font_weight: None,
         title_padding: config_f64(effective_config, &["xyChart", "titlePadding"]).unwrap_or(10.0),
         show_legend: config_bool(effective_config, &["xyChart", "showLegend"]).unwrap_or(true),
-        legend_font_size: config_f64(effective_config, &["xyChart", "legendFontSize"])
-            .unwrap_or(14.0)
-            .max(1.0),
+        legend_font_size: XyChartTextRole::Legend.configured_font_size(effective_config),
         legend_font_weight: None,
         legend_padding: config_f64(effective_config, &["xyChart", "legendPadding"])
             .unwrap_or(10.0)

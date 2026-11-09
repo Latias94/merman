@@ -1,5 +1,4 @@
 use crate::model::{Bounds, PacketBlockLayout, PacketDiagramLayout, PacketWordLayout};
-use crate::text::TextMeasurer;
 use crate::{Error, Result};
 use merman_model::families::packet::PacketDiagramModel;
 
@@ -16,9 +15,7 @@ pub(crate) fn layout_packet_diagram_typed(
     model: &PacketDiagramModel,
     diagram_title: Option<&str>,
     effective_config: &serde_json::Value,
-    _measurer: &dyn TextMeasurer,
 ) -> Result<PacketDiagramLayout> {
-    let _ = (model.acc_title.as_deref(), model.acc_descr.as_deref());
     let cfg = PacketConfigView::new(effective_config)
         .layout_settings()
         .map_err(|error| crate::Error::InvalidModel {

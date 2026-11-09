@@ -589,7 +589,7 @@ pub(super) fn render_sequence_messages(
             } else {
                 render_sequence_message_text_lines(
                     out,
-                    crate::text::split_html_br_lines(text),
+                    crate::text::split_mermaid_common_br_lines(text),
                     SequenceMessageTextLayout {
                         label_y: lbl.y,
                         label_x,

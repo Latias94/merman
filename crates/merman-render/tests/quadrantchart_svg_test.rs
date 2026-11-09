@@ -455,6 +455,150 @@ fn quadrantchart_typed_font_stack_reaches_scoped_css_and_terminal_receipt() {
     assert_eq!(evidence.theme_residual_count(), 0);
 }
 
+fn zero_sized_quadrantchart_config() -> serde_json::Value {
+    serde_json::json!({
+        "quadrantChart": {
+            "titleFontSize": 0,
+            "pointLabelFontSize": 0,
+            "xAxisLabelFontSize": 0,
+            "yAxisLabelFontSize": 0,
+            "quadrantLabelFontSize": 0
+        }
+    })
+}
+
+#[test]
+fn quadrantchart_zero_size_text_does_not_certify_fonts_but_each_positive_role_does() {
+    let theme = quadrantchart_typography_theme(FontStack::single("Quadrant Typed").unwrap());
+    for (positive_role, expected_visible) in [
+        (None, 0),
+        (Some("titleFontSize"), 1),
+        (Some("pointLabelFontSize"), 2),
+        (Some("xAxisLabelFontSize"), 2),
+        (Some("yAxisLabelFontSize"), 2),
+        (Some("quadrantLabelFontSize"), 1),
+    ] {
+        let mut config = zero_sized_quadrantchart_config();
+        if let Some(role) = positive_role {
+            config["quadrantChart"][role] = serde_json::json!(12);
+        }
+        let engine = MermaidEngine::new().with_site_config(
+            merman_core::presentation::SourcePresentationConfig::from_value(config),
+        );
+        let rendered =
+            render_quadrantchart_with_theme_and_engine(TEXT_PAINT_SOURCE, &theme, engine);
+        let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+        let labels = document
+            .descendants()
+            .filter(|node| node.has_tag_name("text"))
+            .collect::<Vec<_>>();
+        assert_eq!(
+            labels.len(),
+            11,
+            "all hidden and empty labels remain serialized"
+        );
+        assert_eq!(
+            labels
+                .iter()
+                .filter(|label| {
+                    label.text().is_some_and(|text| !text.trim().is_empty())
+                        && label.attribute("font-size") == Some("12")
+                })
+                .count(),
+            expected_visible,
+            "{positive_role:?}"
+        );
+        let evidence =
+            merman_render::__private::family_evidence(rendered.into_completion().report());
+        assert_eq!(evidence.required_count(), 1, "{positive_role:?}");
+        assert_eq!(evidence.accounted_count(), 1, "{positive_role:?}");
+        assert_eq!(
+            evidence.applied_count(),
+            usize::from(positive_role.is_some())
+        );
+        assert_eq!(
+            evidence.not_applicable_count(),
+            usize::from(positive_role.is_none())
+        );
+        assert_eq!(evidence.theme_residual_count(), 0, "{positive_role:?}");
+    }
+}
+
+#[test]
+fn quadrantchart_zero_size_text_does_not_certify_paint_or_hide_non_text_consumers() {
+    for (target, positive_role, applied) in [
+        (ThemeTarget::Text, None, false),
+        (ThemeTarget::Title, None, false),
+        (ThemeTarget::Text, Some("pointLabelFontSize"), true),
+        (ThemeTarget::Title, Some("titleFontSize"), true),
+        (ThemeTarget::Axis, None, true),
+        (ThemeTarget::ChartSeries, None, true),
+    ] {
+        let theme = quadrantchart_series_rule_theme(ThemeRule::new(
+            target,
+            ThemeStylePatch::default().with_fill(CanvasPaint::solid("#13579b").unwrap()),
+        ));
+        let mut config = zero_sized_quadrantchart_config();
+        if let Some(role) = positive_role {
+            config["quadrantChart"][role] = serde_json::json!(12);
+        }
+        let engine = MermaidEngine::new().with_site_config(
+            merman_core::presentation::SourcePresentationConfig::from_value(config),
+        );
+        let rendered =
+            render_quadrantchart_with_theme_and_engine(TEXT_PAINT_SOURCE, &theme, engine);
+        let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+        assert_eq!(
+            document
+                .descendants()
+                .filter(|node| node.has_tag_name("text"))
+                .count(),
+            11
+        );
+        assert_eq!(
+            document
+                .descendants()
+                .filter(|node| node.has_tag_name("line"))
+                .count(),
+            6
+        );
+        assert_eq!(
+            document
+                .descendants()
+                .filter(|node| node.has_tag_name("circle"))
+                .count(),
+            2
+        );
+        let evidence =
+            merman_render::__private::family_evidence(rendered.into_completion().report());
+        assert_eq!(
+            evidence.required_count(),
+            1,
+            "{target:?}: {positive_role:?}"
+        );
+        assert_eq!(
+            evidence.accounted_count(),
+            1,
+            "{target:?}: {positive_role:?}"
+        );
+        assert_eq!(
+            evidence.applied_count(),
+            usize::from(applied),
+            "{target:?}: {positive_role:?}"
+        );
+        assert_eq!(
+            evidence.not_applicable_count(),
+            usize::from(!applied),
+            "{target:?}: {positive_role:?}"
+        );
+        assert_eq!(
+            evidence.theme_residual_count(),
+            0,
+            "{target:?}: {positive_role:?}"
+        );
+    }
+}
+
 #[test]
 fn quadrantchart_site_font_family_outranks_typed_font_stack() {
     let theme = quadrantchart_typography_theme(

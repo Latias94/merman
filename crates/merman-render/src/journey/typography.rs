@@ -7,9 +7,7 @@ use crate::diagram_theme::{
     FamilyThemeDisposition, FamilyThemeMechanism, FamilyThemeMechanismKey, ResolvedDiagramTheme,
     ThemeCapability, ThemeTypographyProperty,
 };
-use crate::family::{
-    FamilyThemeEvidence, FamilyThemeOutcomes, FamilyThemeResidualReason, InheritedFontStackPlan,
-};
+use crate::family::{FamilyThemeEvidence, FamilyThemeResidualReason, InheritedFontStackPlan};
 use crate::model::JourneyDiagramLayout;
 
 use super::config::JourneyRenderSettings;
@@ -26,7 +24,6 @@ pub(crate) struct JourneyTypographyThemePlan {
     font_size_px: f64,
     typed_font_size_requested: bool,
     typed_font_size_active: bool,
-    evidence: FamilyThemeOutcomes,
     terminal_seal: OnceLock<JourneyTypographyTerminalSeal>,
 }
 
@@ -40,6 +37,7 @@ struct JourneyTypographyTerminalSeal {
 #[derive(Debug, Clone, Copy)]
 struct JourneyTypographyTextRun<'a> {
     text: &'a str,
+    font_size_px: f64,
     inherits_font_stack: bool,
     inherits_font_size: bool,
 }
@@ -60,18 +58,9 @@ pub(crate) struct JourneyTypographyThemeReceipt<'a> {
 }
 
 impl JourneyTypographyThemePlan {
-    #[cfg(test)]
     pub(crate) fn resolve(
         theme: Option<&ResolvedDiagramTheme>,
         effective_config: &PresentationConfig,
-    ) -> Self {
-        Self::resolve_with_text_paint(theme, effective_config, None)
-    }
-
-    pub(crate) fn resolve_with_text_paint(
-        theme: Option<&ResolvedDiagramTheme>,
-        effective_config: &PresentationConfig,
-        text_fill: Option<&str>,
     ) -> Self {
         let inherited_font_stack =
             InheritedFontStackPlan::resolve_property_local(theme, effective_config);
@@ -90,18 +79,20 @@ impl JourneyTypographyThemePlan {
                 effective_config.as_value(),
                 &["themeVariables", "fontSize"],
             )
+            .filter(|size| *size >= 0.0)
             .is_some()
             && effective_config.config_path_overrides_typed_default("themeVariables.fontSize");
         let configured_font_size =
-            config_theme_font_size_css_or_root_number_px_opt(effective_config.as_value());
+            config_theme_font_size_css_or_root_number_px_opt(effective_config.as_value())
+                .filter(|size| *size >= 0.0);
         let typed_font_size_active = typed_font_size_requested && !config_owns_font_size;
         let (font_size_px, font_size_css) = match (theme, typed_font_size_active) {
             (Some(theme), true) => {
-                let font_size_px = f64::from(theme.typography().font_size_px()).max(1.0);
+                let font_size_px = f64::from(theme.typography().font_size_px());
                 (font_size_px, format!("{font_size_px}px").into_boxed_str())
             }
             (_, false) | (None, true) => {
-                let font_size_px = configured_font_size.unwrap_or(16.0).max(1.0);
+                let font_size_px = configured_font_size.unwrap_or(16.0).max(0.0);
                 (font_size_px, format!("{font_size_px}px").into_boxed_str())
             }
         };
@@ -110,7 +101,6 @@ impl JourneyTypographyThemePlan {
             effective_config.as_value(),
             inherited_font_stack.font_family_css(),
             &font_size_css,
-            text_fill,
         );
         Self {
             css,
@@ -118,9 +108,20 @@ impl JourneyTypographyThemePlan {
             font_size_px,
             typed_font_size_requested,
             typed_font_size_active,
-            evidence: FamilyThemeOutcomes::default(),
             terminal_seal: OnceLock::new(),
         }
+    }
+
+    pub(crate) fn with_text_paint(mut self, fill: Option<&str>) -> Self {
+        self.css = self.css.with_text_paint(fill);
+        self
+    }
+
+    pub(crate) fn title_can_be_visible(&self) -> bool {
+        !crate::mermaid_style::svg_font_size_is_zero_at_parent(
+            &self.css.render.title_font_size,
+            self.font_size_px,
+        )
     }
 
     pub(crate) fn font_family_css(&self) -> &str {
@@ -151,7 +152,7 @@ impl JourneyTypographyThemePlan {
             JourneyTypographyThemeReceipt::new(
                 self.font_family_css(),
                 self.font_size_css(),
-                journey_text_runs(layout, &self.css.render),
+                journey_text_runs(layout, &self.css.render, self.font_size_px),
             )
         })
     }
@@ -163,7 +164,6 @@ impl JourneyTypographyThemePlan {
     }
 
     pub(crate) fn record_evidence(&self, evidence: &mut FamilyThemeEvidence) {
-        evidence.merge_borrowed(&self.evidence);
         if !self.typography_requested() {
             return;
         }
@@ -279,7 +279,7 @@ impl<'a> JourneyTypographyThemeReceipt<'a> {
         self.valid &= expected.is_some_and(|run| run.text == text);
         if let Some(run) = expected {
             self.next_text_run = self.next_text_run.saturating_add(1);
-            if has_visible_text {
+            if has_visible_text && run.font_size_px > 0.0 {
                 self.has_visible_text = true;
                 self.has_visible_font_stack |= run.inherits_font_stack;
                 self.has_visible_font_size |= run.inherits_font_size;
@@ -303,6 +303,7 @@ impl<'a> JourneyTypographyThemeReceipt<'a> {
 fn journey_text_runs<'a>(
     layout: &'a JourneyDiagramLayout,
     settings: &JourneyRenderSettings,
+    base_font_size_px: f64,
 ) -> Vec<JourneyTypographyTextRun<'a>> {
     let mut runs = layout
         .actor_legend
@@ -312,6 +313,7 @@ fn journey_text_runs<'a>(
                 .iter()
                 .map(|line| JourneyTypographyTextRun {
                     text: line.text.as_str(),
+                    font_size_px: base_font_size_px,
                     inherits_font_stack: true,
                     inherits_font_size: true,
                 })
@@ -319,6 +321,11 @@ fn journey_text_runs<'a>(
         .collect::<Vec<_>>();
     let inherits_font_stack = settings.label_inherits_font_stack();
     let inherits_font_size = settings.label_inherits_font_size();
+    let font_size_px = if inherits_font_size {
+        base_font_size_px
+    } else {
+        settings.task_text_style.font_size
+    };
     let mut sections = layout.sections.iter();
     let mut last_section = "";
     for task in &layout.tasks {
@@ -327,6 +334,7 @@ fn journey_text_runs<'a>(
         {
             runs.push(JourneyTypographyTextRun {
                 text: section.section.as_str(),
+                font_size_px,
                 inherits_font_stack,
                 inherits_font_size,
             });
@@ -334,6 +342,7 @@ fn journey_text_runs<'a>(
         last_section = task.section.as_str();
         runs.push(JourneyTypographyTextRun {
             text: task.task.as_str(),
+            font_size_px,
             inherits_font_stack,
             inherits_font_size,
         });
@@ -417,5 +426,14 @@ mod tests {
         assert_eq!(plan.font_family_css(), "Inter");
         assert_eq!(plan.font_size_css(), "18px");
         assert_eq!(plan.font_size_px(), 18.0);
+        for size in [0.0, 0.5] {
+            let config = crate::test_support::presentation_config(
+                serde_json::json!({"themeVariables": {"fontSize": format!("{size}px")}}),
+            );
+            let plan = JourneyTypographyThemePlan::resolve(Some(&theme), &config);
+            assert_eq!(plan.font_size_px(), size);
+            assert_eq!(plan.font_size_css(), format!("{size}px"));
+            assert_eq!(plan.css.render.task_text_style.font_size, 14.0);
+        }
     }
 }

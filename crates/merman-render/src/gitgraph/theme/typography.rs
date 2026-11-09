@@ -10,6 +10,7 @@ use crate::diagram_theme::{
 use crate::family::{
     FamilyThemeEvidence, FamilyThemeOutcomes, FamilyThemeResidualReason, InheritedFontStackPlan,
 };
+use crate::mermaid_style::{CssFontSizeContext, css_font_size_is_zero, parse_style_declaration};
 use crate::model::{GitGraphCommitLayout, GitGraphDiagramLayout};
 use crate::text::TextStyle;
 
@@ -31,47 +32,55 @@ struct GitGraphRoleFontSize {
     css: Box<str>,
     measured_px: f64,
     dependency: GitGraphRoleFontSizeDependency,
+    // Measurement fallback and arithmetic underflow cannot prove that CSS hides the text.
+    known_zero: bool,
 }
 
 impl GitGraphRoleFontSize {
     fn resolve(raw: String, base_font_size_px: f64) -> Self {
-        let normalized = normalize_role_font_size(&raw);
-        let (measured_px, dependency) = if normalized.eq_ignore_ascii_case("inherit")
-            || normalized.eq_ignore_ascii_case("unset")
-        {
-            (
-                base_font_size_px,
-                GitGraphRoleFontSizeDependency::BaseDependent,
-            )
-        } else if let Some(value) = parse_nonnegative_css_unit(normalized, "px") {
-            (value, GitGraphRoleFontSizeDependency::Fixed)
-        } else if let Some(value) = parse_nonnegative_css_unit(normalized, "em") {
-            (
-                value * base_font_size_px,
-                GitGraphRoleFontSizeDependency::BaseDependent,
-            )
-        } else if let Some(value) = parse_nonnegative_css_unit(normalized, "%") {
-            (
-                value * base_font_size_px / 100.0,
-                GitGraphRoleFontSizeDependency::BaseDependent,
-            )
-        } else if normalized
-            .parse::<f64>()
-            .ok()
-            .is_some_and(|value| value.is_finite() && value == 0.0)
-        {
+        let known_zero = css_font_size_is_zero(&raw);
+        let declaration = format!("font-size:{raw}");
+        let resolved = parse_style_declaration(&declaration).and_then(|declaration| {
+            let measured_px =
+                declaration.resolve_font_size_px(CssFontSizeContext::uniform(base_font_size_px))?;
+            // Keep the family's admitted measurement subset; CSS tokens own syntax and units.
+            let mut parser = cssparser::Parser::new(declaration.value());
+            let dependency = match parser.next().ok()? {
+                cssparser::Token::Dimension { unit, .. } if unit.eq_ignore_ascii_case("px") => {
+                    GitGraphRoleFontSizeDependency::Fixed
+                }
+                cssparser::Token::Dimension { unit, .. } if unit.eq_ignore_ascii_case("em") => {
+                    GitGraphRoleFontSizeDependency::BaseDependent
+                }
+                cssparser::Token::Percentage { .. } => {
+                    GitGraphRoleFontSizeDependency::BaseDependent
+                }
+                cssparser::Token::Ident(_) if declaration.inherits_property_value() => {
+                    GitGraphRoleFontSizeDependency::BaseDependent
+                }
+                cssparser::Token::Number { .. } if known_zero => {
+                    GitGraphRoleFontSizeDependency::Fixed
+                }
+                _ => return None,
+            };
+            Some((measured_px, dependency))
+        });
+        let (measured_px, dependency) = resolved.unwrap_or(if known_zero {
+            // A literal zero in any CSS length unit needs no host metrics. Its background
+            // still gets the upstream fixed padding, without a visible-size fallback.
             (0.0, GitGraphRoleFontSizeDependency::Fixed)
         } else {
             (
                 DEFAULT_LABEL_FONT_SIZE_PX,
                 GitGraphRoleFontSizeDependency::Unmeasurable,
             )
-        };
+        });
 
         Self {
             css: raw.into_boxed_str(),
             measured_px,
             dependency,
+            known_zero,
         }
     }
 
@@ -268,6 +277,26 @@ impl GitGraphTypographyThemePlan {
         TITLE_FONT_SIZE_PX
     }
 
+    pub(super) fn branch_label_text_is_visible(&self, text: &str) -> bool {
+        self.font_size_px != 0.0 && crate::gitgraph::gitgraph_branch_label_is_visible(text)
+    }
+
+    pub(super) fn commit_label_text_is_visible(&self, text: &str) -> bool {
+        !self.commit_label_font_size.known_zero && !text.trim().is_empty()
+    }
+
+    pub(super) fn tag_label_text_is_visible(&self, text: &str) -> bool {
+        !self.tag_label_font_size.known_zero && !text.trim().is_empty()
+    }
+
+    pub(super) fn title_text_is_visible(&self, text: &str) -> bool {
+        Self::text_is_visible(text, self.title_font_size_px())
+    }
+
+    fn text_is_visible(text: &str, font_size_px: f64) -> bool {
+        font_size_px != 0.0 && !text.trim().is_empty()
+    }
+
     pub(crate) fn begin_terminal_receipt<'a>(
         &'a self,
         layout: &'a GitGraphDiagramLayout,
@@ -383,16 +412,6 @@ pub(crate) fn gitgraph_tags_in_output_order(
     commit.tags.iter().rev().map(String::as_str)
 }
 
-fn normalize_role_font_size(raw: &str) -> &str {
-    let raw = raw.trim().trim_end_matches(';').trim();
-    raw.strip_suffix("!important").unwrap_or(raw).trim()
-}
-
-fn parse_nonnegative_css_unit(raw: &str, unit: &str) -> Option<f64> {
-    let value = raw.strip_suffix(unit)?.trim().parse::<f64>().ok()?;
-    (value.is_finite() && value >= 0.0).then_some(value)
-}
-
 /// Exact base typography values observed after the GitGraph stylesheet reached the SVG sink.
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct GitGraphTypographyCssEmission<'a> {
@@ -413,6 +432,7 @@ enum ExpectedTextEvent {
 /// Writer-owned proof that the exact stylesheet and ordered visible text passes were emitted.
 #[derive(Debug)]
 pub(crate) struct GitGraphTypographyThemeReceipt<'a> {
+    plan: &'a GitGraphTypographyThemePlan,
     expected_font_family_css: &'a str,
     expected_font_size_css: &'a str,
     layout: &'a GitGraphDiagramLayout,
@@ -458,6 +478,7 @@ impl<'a> GitGraphTypographyThemeReceipt<'a> {
         };
 
         Self {
+            plan,
             expected_font_family_css: plan.font_family_css(),
             expected_font_size_css: plan.font_size_css(),
             layout,
@@ -500,7 +521,7 @@ impl<'a> GitGraphTypographyThemeReceipt<'a> {
                     && self.layout.branches.get(index).map(|branch| branch.name.as_str())
                         == Some(text)
         );
-        let visible = crate::gitgraph::gitgraph_branch_label_is_visible(text);
+        let visible = self.plan.branch_label_text_is_visible(text);
         self.record_text_event(matched, visible, true);
         let has_weight_rule = self.layout.branches.get(index).is_some_and(|branch| {
             self.color_indices
@@ -519,7 +540,7 @@ impl<'a> GitGraphTypographyThemeReceipt<'a> {
                 if expected_index == index
                     && self.layout.commits.get(index).map(|commit| commit.id.as_str()) == Some(text)
         );
-        let visible = !text.trim().is_empty();
+        let visible = self.plan.commit_label_text_is_visible(text);
         self.record_text_event(matched, visible, false);
         if matched && visible {
             self.record_role_font_size(self.commit_label_font_size_dependency);
@@ -540,7 +561,7 @@ impl<'a> GitGraphTypographyThemeReceipt<'a> {
                 && expected_output_index == output_index
                 && GitGraphLabelEvent::Tag(commit_index, output_index).text(self.layout) == Some(text)
         );
-        let visible = !text.trim().is_empty();
+        let visible = self.plan.tag_label_text_is_visible(text);
         self.record_text_event(matched, visible, false);
         if matched && visible {
             self.record_role_font_size(self.tag_label_font_size_dependency);
@@ -553,7 +574,8 @@ impl<'a> GitGraphTypographyThemeReceipt<'a> {
             self.next_event,
             ExpectedTextEvent::Title if self.expected_title() == title
         );
-        self.record_text_event(matched, title.is_some(), false);
+        let visible = title.is_some_and(|text| self.plan.title_text_is_visible(text));
+        self.record_text_event(matched, visible, false);
     }
 
     fn record_text_event(&mut self, matched: bool, visible: bool, branch: bool) {
@@ -844,7 +866,24 @@ mod tests {
     fn role_font_sizes_distinguish_fixed_base_dependent_and_unmeasurable_values() {
         for (raw, expected_px, expected_dependency) in [
             ("12px", 12.0, GitGraphRoleFontSizeDependency::Fixed),
+            (
+                "12PX !IMPORTANT",
+                12.0,
+                GitGraphRoleFontSizeDependency::Fixed,
+            ),
             ("0", 0.0, GitGraphRoleFontSizeDependency::Fixed),
+            ("0PX", 0.0, GitGraphRoleFontSizeDependency::Fixed),
+            ("0pt", 0.0, GitGraphRoleFontSizeDependency::Fixed),
+            ("0rem", 0.0, GitGraphRoleFontSizeDependency::Fixed),
+            ("0ex", 0.0, GitGraphRoleFontSizeDependency::Fixed),
+            ("0px !IMPORTANT", 0.0, GitGraphRoleFontSizeDependency::Fixed),
+            (r"0p\78", 0.0, GitGraphRoleFontSizeDependency::Fixed),
+            ("0EM", 0.0, GitGraphRoleFontSizeDependency::BaseDependent),
+            (
+                "0% !IMPORTANT",
+                0.0,
+                GitGraphRoleFontSizeDependency::BaseDependent,
+            ),
             (
                 "inherit",
                 20.0,
@@ -852,7 +891,17 @@ mod tests {
             ),
             ("unset", 20.0, GitGraphRoleFontSizeDependency::BaseDependent),
             ("1.5em", 30.0, GitGraphRoleFontSizeDependency::BaseDependent),
+            (
+                "1.5EM !IMPORTANT",
+                30.0,
+                GitGraphRoleFontSizeDependency::BaseDependent,
+            ),
             ("125%", 25.0, GitGraphRoleFontSizeDependency::BaseDependent),
+            (
+                "125% !IMPORTANT",
+                25.0,
+                GitGraphRoleFontSizeDependency::BaseDependent,
+            ),
             (
                 "calc(10px + 1em)",
                 DEFAULT_LABEL_FONT_SIZE_PX,
@@ -868,6 +917,37 @@ mod tests {
             assert_eq!(resolved.css(), raw);
             assert_eq!(resolved.measured_px, expected_px, "raw={raw}");
             assert_eq!(resolved.dependency, expected_dependency, "raw={raw}");
+        }
+    }
+
+    #[test]
+    fn role_zero_proof_requires_valid_css_and_is_independent_of_measurement() {
+        for raw in ["0 px", "0 em", "0 %", "0futureunit", "1e-999px", "-5e-324%"] {
+            let resolved = GitGraphRoleFontSize::resolve(raw.to_owned(), 20.0);
+            assert_eq!(resolved.measured_px, DEFAULT_LABEL_FONT_SIZE_PX, "{raw}");
+            assert_eq!(
+                resolved.dependency,
+                GitGraphRoleFontSizeDependency::Unmeasurable,
+                "{raw}"
+            );
+            assert!(!resolved.known_zero, "{raw}");
+        }
+        for raw in [
+            "0",
+            "0PX",
+            "0px !IMPORTANT",
+            "0EM",
+            "0% !IMPORTANT",
+            r"0p\78",
+        ] {
+            let resolved = GitGraphRoleFontSize::resolve(raw.to_owned(), 20.0);
+            assert!(resolved.known_zero, "{raw}");
+        }
+        // An inherited zero or an underflowed product is not a literal CSS zero proof.
+        for (raw, base) in [("inherit", 0.0), ("5e-324em", 0.5)] {
+            let resolved = GitGraphRoleFontSize::resolve(raw.to_owned(), base);
+            assert_eq!(resolved.measured_px, 0.0, "{raw}");
+            assert!(!resolved.known_zero, "{raw}");
         }
     }
 

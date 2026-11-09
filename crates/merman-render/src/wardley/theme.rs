@@ -154,7 +154,6 @@ pub(crate) struct WardleyTypographyThemePlan {
     config: PresentationConfig,
     source_font_family_css: Option<Box<str>>,
     inherited_font_stack: InheritedFontStackPlan,
-    evidence: FamilyThemeOutcomes,
     unsupported_routes: Box<[WardleyUnsupportedRoute]>,
     direct_text_fill_routes: Box<[WardleyDirectTextFillRoute]>,
     typed_text_fills: BTreeMap<WardleyTextRole, DirectStaticPaint>,
@@ -194,7 +193,6 @@ impl WardleyTypographyThemePlan {
                 theme,
                 effective_config,
             ),
-            evidence: FamilyThemeOutcomes::default(),
             unsupported_routes: wardley_unsupported_routes(theme),
             direct_text_fill_routes: wardley_direct_text_fill_routes(theme),
             typed_text_fills: BTreeMap::new(),
@@ -340,7 +338,6 @@ impl WardleyTypographyThemePlan {
     }
 
     pub(crate) fn record_evidence(&self, evidence: &mut FamilyThemeEvidence) {
-        evidence.merge_borrowed(&self.evidence);
         for route in &self.unsupported_routes {
             evidence.mark_residual(route.key.clone(), route.reason);
         }

@@ -23,19 +23,14 @@ pub(crate) struct JourneyCssBinding {
 }
 
 impl JourneyCssBinding {
-    pub(super) fn new(
-        config: &serde_json::Value,
-        font_family: &str,
-        font_size_css: &str,
-        text_fill: Option<&str>,
-    ) -> Self {
+    pub(super) fn new(config: &serde_json::Value, font_family: &str, font_size_css: &str) -> Self {
         let color = |key: &str, fallback: &str| {
             config_string(config, &["themeVariables", key]).unwrap_or_else(|| fallback.to_owned())
         };
         // The cluster title fallback uses the Mermaid base text color, before typed Text.fill.
         let base_text_color = color("textColor", "#333");
         let title_color = color("titleColor", &base_text_color);
-        let text_color = text_fill.unwrap_or(&base_text_color).to_owned();
+        let text_color = base_text_color;
         let common = PreparedCommonCss::with_resolved_typography(
             config,
             font_family.to_owned(),
@@ -63,6 +58,14 @@ impl JourneyCssBinding {
                 .map(|index| config_string(config, &["themeVariables", &format!("actor{index}")]))
                 .collect(),
         }
+    }
+
+    pub(super) fn with_text_paint(mut self, fill: Option<&str>) -> Self {
+        if let Some(fill) = fill {
+            self.common = self.common.with_text_color(fill);
+            self.text_color = fill.to_owned();
+        }
+        self
     }
 
     pub(crate) fn legend_text_style(&self, font_size: f64) -> TextStyle {
@@ -108,7 +111,8 @@ mod tests {
                 "textColor": "var(--base-text-color)"
             }
         });
-        let binding = JourneyCssBinding::new(&config, "Base Font", "20px", Some("#123456"));
+        let binding =
+            JourneyCssBinding::new(&config, "Base Font", "20px").with_text_paint(Some("#123456"));
         assert_eq!(binding.layout.actor_colours, ["currentColor"]);
         assert_eq!(binding.layout.section_fills, ["var(--section-color)"]);
         assert_eq!(binding.fill_types[0], "var(--css-section-color)");

@@ -1,6 +1,39 @@
 use merman_model::presentation::PresentationConfig;
 
+#[cfg(test)]
+use crate::config::config_css_number_or_string;
 use crate::config::{config_f64, config_string, value_at};
+
+/// Raw numeric CSS and the used-size visibility fact share the prepared root context.
+#[derive(Debug)]
+pub(crate) struct RadarNumericFontSize {
+    css_px: f64,
+    has_visible_ink: bool,
+}
+
+impl RadarNumericFontSize {
+    pub(super) fn resolve(css_px: f64, root_size_css: &str) -> Self {
+        let css_px = crate::number_format::canonicalize_number(css_px);
+        let has_visible_ink = if css_px < 0.0 {
+            // An invalid negative declaration inherits the final root; unknown CSS stays visible.
+            !crate::mermaid_style::css_font_size_is_zero(root_size_css)
+        } else {
+            css_px != 0.0
+        };
+        Self {
+            css_px,
+            has_visible_ink,
+        }
+    }
+
+    pub(crate) fn css_px(&self) -> f64 {
+        self.css_px
+    }
+
+    pub(super) fn has_visible_ink(&self) -> bool {
+        self.has_visible_ink
+    }
+}
 
 /// Mermaid CSS inputs frozen before Radar's typed paint winners are lowered.
 /// Raw browser colors remain strings; numeric geometry follows the existing coercion.
@@ -13,11 +46,11 @@ pub(crate) struct RadarCssBinding {
     pub(crate) title_color: String,
     pub(crate) axis_color: String,
     pub(crate) axis_stroke_width: f64,
-    pub(crate) axis_label_font_size: f64,
+    pub(crate) axis_label_font_size: RadarNumericFontSize,
     pub(crate) graticule_color: String,
     pub(crate) graticule_opacity: f64,
     pub(crate) graticule_stroke_width: f64,
-    pub(crate) legend_font_size: f64,
+    pub(crate) legend_font_size: RadarNumericFontSize,
     pub(crate) curve_opacity: f64,
     pub(crate) curve_stroke_width: f64,
 }
@@ -51,7 +84,20 @@ impl RadarCssBinding {
             .is_some_and(|(_, path)| config.config_paint_overrides_typed_default(path))
     }
 
+    #[cfg(test)]
     pub(crate) fn resolve(config: &serde_json::Value) -> Self {
+        let root_size_css = Self::font_size_css_or_default(config_css_number_or_string(
+            config,
+            &["themeVariables", "fontSize"],
+        ));
+        Self::resolve_with_font_size(config, &root_size_css)
+    }
+
+    pub(super) fn font_size_css_or_default(configured: Option<String>) -> String {
+        configured.unwrap_or_else(|| "16px".to_owned())
+    }
+
+    pub(super) fn resolve_with_font_size(config: &serde_json::Value, root_size_css: &str) -> Self {
         let color = |key: &str, fallback: &str| {
             Self::configured_color(config, key)
                 .unwrap_or(fallback)
@@ -77,11 +123,17 @@ impl RadarCssBinding {
                 .map_or("#333333", |(color, _)| color)
                 .to_owned(),
             axis_stroke_width: scoped_number("axisStrokeWidth", 2.0),
-            axis_label_font_size: scoped_number("axisLabelFontSize", 12.0),
+            axis_label_font_size: RadarNumericFontSize::resolve(
+                scoped_number("axisLabelFontSize", 12.0),
+                root_size_css,
+            ),
             graticule_color: scoped_string("graticuleColor", "#DEDEDE"),
             graticule_opacity: scoped_number("graticuleOpacity", 0.3),
             graticule_stroke_width: scoped_number("graticuleStrokeWidth", 1.0),
-            legend_font_size: scoped_number("legendFontSize", 12.0),
+            legend_font_size: RadarNumericFontSize::resolve(
+                scoped_number("legendFontSize", 12.0),
+                root_size_css,
+            ),
             curve_opacity: scoped_number("curveOpacity", 0.5),
             curve_stroke_width: scoped_number("curveStrokeWidth", 2.0),
         }
@@ -104,6 +156,6 @@ mod tests {
         assert_eq!(binding.axis_color, "var(--axis)");
         assert_eq!(binding.text_color, "currentColor");
         assert_eq!(binding.axis_stroke_width, 3.5);
-        assert_eq!(binding.legend_font_size, 12.0);
+        assert_eq!(binding.legend_font_size.css_px(), 12.0);
     }
 }

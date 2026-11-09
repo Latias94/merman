@@ -633,13 +633,15 @@ pub(crate) fn render_xychart_diagram_svg(
                     n.attr("x", "0");
                     n.attr("y", "0");
                     n.attr("fill", escape_xml(&t.fill));
-                    n.attr("font-size", fmt_string(t.font_size));
-                    if let Some(weight) = crate::xychart::XyChartTextRole::from_groups(
+                    let role = crate::xychart::XyChartTextRole::from_groups(
                         group_texts,
                         &layout.chart_orientation,
-                    )
-                    .and_then(|role| typography_theme.font_weight(role))
-                    {
+                    );
+                    let raw_size = role
+                        .map(|role| typography_theme.svg_font_size(role))
+                        .unwrap_or(t.font_size);
+                    n.attr("font-size", fmt_string(raw_size));
+                    if let Some(weight) = role.and_then(|role| typography_theme.font_weight(role)) {
                         n.attr("font-weight", weight);
                     }
                     n.attr("dominant-baseline", dominant_baseline(&t.vertical_pos));
@@ -1138,6 +1140,9 @@ mod tests {
             ThemeStylePatch, ThemeTarget,
         };
         use crate::xychart::XyChartPaintTerminalId;
+        let config = crate::test_support::presentation_config(serde_json::json!({
+            "xyChart": {"xAxis": {"labelFontSize": f64::from(f32::from_bits(0x417f_ffff))}}
+        }));
         let theme = DiagramThemeCompiler::new()
             .compile(DiagramThemeSpec::new().with_styles(
                 [ThemeTarget::Text, ThemeTarget::Axis].into_iter().fold(
@@ -1155,7 +1160,7 @@ mod tests {
             .resolve(crate::DiagramFamilyId::XY_CHART);
         let typography = crate::xychart::XyChartTypographyThemePlan::resolve(
             Some(&theme),
-            &merman_model::presentation::PresentationConfig::default(),
+            &config,
             &crate::resources::OperationWorkMeter::new(
                 crate::resources::RenderResourcePolicy::interactive(),
             ),
@@ -1219,7 +1224,7 @@ mod tests {
             ];
             crate::xychart::XyChartPaintPlan::resolve(
                 Some(&theme),
-                &merman_model::presentation::PresentationConfig::default(),
+                &config,
                 &mut layout,
                 &typography,
                 &crate::text::DeterministicTextMeasurer::default(),

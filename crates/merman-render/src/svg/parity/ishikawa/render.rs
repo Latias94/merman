@@ -28,6 +28,7 @@ pub(crate) fn render_ishikawa_diagram_svg_with_theme(
     text_theme: &IshikawaTextThemePlan,
     options: &SvgExecution<'_>,
 ) -> Result<root_svg::RootedSvg> {
+    text_theme.ensure_portable_typography(options.family.session().portability_requirement())?;
     let diagram_id = options.diagram_id_or("ishikawa");
     let mut out = BoundedSvgOutput::new(options.work_meter());
     let mut text_terminals = IshikawaTextTerminalWriter::new(text_theme);
@@ -581,7 +582,7 @@ impl<'a> IshikawaTextTerminalWriter<'a> {
         let Some(fill) = self.plan.typed_fill() else {
             return;
         };
-        if text.text.trim().is_empty() {
+        if text.font_size == 0.0 || text.text.trim().is_empty() {
             return;
         }
         out.push_str(r#" style="fill:"#);

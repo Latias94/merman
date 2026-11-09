@@ -7,7 +7,7 @@ use crate::resources::RenderResourcePolicy;
 use crate::svg_security::{
     MermaidNavigationSecurity, SerializedMermaidNavigationHref, prepare_mermaid_navigation_href,
 };
-use crate::text::{TextMeasurer, TextMetrics, TextStyle, WrapMode};
+use crate::text::{TextMeasurer, TextMetrics, TextStyle};
 use merman_model::families::kanban::KanbanDiagramRenderModel;
 
 pub(crate) const KANBAN_SECTION_LABEL_HEIGHT_BASELINE_PX: f64 = 25.0;
@@ -48,12 +48,9 @@ impl<'a> KanbanMarkdown<'a> {
         style: &TextStyle,
         max_width: Option<f64>,
     ) -> TextMetrics {
-        crate::text::measure_xhtml_label_fragment(
-            measurer,
-            html,
-            style,
-            max_width,
-            WrapMode::HtmlLike,
+        // HTML rem lengths use the document's default root, independently of the diagram size.
+        crate::text::measure_xhtml_label_fragment_with_terminal_fonts(
+            measurer, html, style, max_width, 16.0,
         )
     }
 }
@@ -62,6 +59,7 @@ mod config;
 mod css_binding;
 mod text_paint;
 mod theme;
+mod visibility;
 
 pub(crate) use text_paint::{KanbanTextPaintOutcome, KanbanTextPaintPlan};
 
@@ -159,7 +157,7 @@ impl KanbanPreparedArtifact {
 pub(crate) struct KanbanPreparedMarkdownLabel {
     pub(crate) html: String,
     pub(crate) geometry: KanbanPreparedLabelGeometry,
-    pub(crate) visible_style_facts: crate::text::VisibleTextStyleFacts,
+    pub(crate) visible_style_facts: visibility::KanbanVisibleTextStyleFacts,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -191,7 +189,7 @@ pub(crate) struct KanbanPreparedItem {
 pub(crate) struct KanbanPreparedMetadataLabel {
     pub(crate) html: String,
     pub(crate) geometry: KanbanPreparedLabelGeometry,
-    pub(crate) visible_style_facts: crate::text::VisibleTextStyleFacts,
+    pub(crate) visible_style_facts: visibility::KanbanVisibleTextStyleFacts,
 }
 
 #[derive(Debug)]
@@ -266,9 +264,9 @@ fn prepare_kanban_markdown_label(
 
     KanbanPreparedMarkdownLabel {
         visible_style_facts: if capture_style_facts {
-            crate::text::VisibleTextStyleFacts::from_xhtml_fragment(&html)
+            visibility::visible_style_facts(&html, style.font_size)
         } else {
-            crate::text::VisibleTextStyleFacts::not_requested()
+            visibility::KanbanVisibleTextStyleFacts::not_requested()
         },
         html,
         geometry: KanbanPreparedLabelGeometry {
@@ -349,9 +347,9 @@ fn prepare_kanban_metadata_label(
     KanbanPreparedMetadataLabel {
         geometry,
         visible_style_facts: if capture_style_facts {
-            crate::text::VisibleTextStyleFacts::from_xhtml_fragment(&html)
+            visibility::visible_style_facts(&html, style.font_size)
         } else {
-            crate::text::VisibleTextStyleFacts::not_requested()
+            visibility::KanbanVisibleTextStyleFacts::not_requested()
         },
         html,
     }
@@ -540,7 +538,7 @@ pub(crate) fn prepare_kanban_diagram_typed_with_work_meter(
                     label_facts.iter().any(|facts| facts.has_visible_runs()),
                     label_facts
                         .iter()
-                        .any(|facts| facts.parse_valid() && facts.inherited_color_run_count() > 0),
+                        .any(|facts| !facts.parse_valid() || facts.inherited_color_run_count() > 0),
                 ));
             }
             prepared_task_labels.push((prepared_title, prepared_ticket, prepared_assigned));

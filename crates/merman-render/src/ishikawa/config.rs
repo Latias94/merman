@@ -1,4 +1,4 @@
-use crate::config::{config_bool, config_css_number_or_string, config_f64, config_f64_css_px};
+use crate::config::{config_bool, config_f64, json_mermaid_font_size_number};
 use serde_json::Value;
 
 const DEFAULT_PADDING: f64 = 20.0;
@@ -27,17 +27,17 @@ impl<'a> IshikawaConfigView<'a> {
             use_max_width: self
                 .ishikawa_bool("useMaxWidth")
                 .unwrap_or(DEFAULT_USE_MAX_WIDTH),
-            font_size: config_f64_css_px(self.effective_config, &["fontSize"])
+            font_size: self
+                .spacing_font_size()
                 .unwrap_or(DEFAULT_FONT_SIZE)
                 .max(1.0),
         }
     }
 
-    pub(crate) fn stylesheet_font_size_css(&self) -> Option<String> {
-        // Mermaid's diagram stylesheet receives `themeVariables` as its style options, while the
-        // deterministic layout continues to read the root `fontSize`.
-        config_css_number_or_string(self.effective_config, &["themeVariables", "fontSize"])
-            .or_else(|| config_css_number_or_string(self.effective_config, &["fontSize"]))
+    fn spacing_font_size(&self) -> Option<f64> {
+        self.effective_config
+            .get("fontSize")
+            .and_then(json_mermaid_font_size_number)
     }
 
     fn ishikawa_bool(&self, key: &str) -> Option<bool> {
@@ -88,6 +88,24 @@ mod tests {
     }
 
     #[test]
+    fn ishikawa_spacing_matches_mermaid_parse_font_size() {
+        for (value, expected) in [
+            (json!(24.5), 24.5),
+            (json!("24pt"), 24.0),
+            (json!("24px"), 24.0),
+            (json!("18.5px"), 18.0),
+            (json!("\u{feff} +24.5pt"), 24.0),
+            (json!("\u{85}24px"), DEFAULT_FONT_SIZE),
+            (json!(".5px"), DEFAULT_FONT_SIZE),
+            (json!("var(--spacing)"), DEFAULT_FONT_SIZE),
+        ] {
+            let cfg = json!({"fontSize": value});
+            let settings = IshikawaConfigView::new(&cfg).layout_settings();
+            assert_eq!(settings.font_size, expected, "{value}");
+        }
+    }
+
+    #[test]
     fn ishikawa_layout_settings_clamp_geometry() {
         let cfg = json!({
             "fontSize": 0,
@@ -99,34 +117,5 @@ mod tests {
 
         assert_eq!(settings.padding, 0.0);
         assert_eq!(settings.font_size, 1.0);
-    }
-
-    #[test]
-    fn ishikawa_stylesheet_font_size_preserves_theme_variable_spelling() {
-        let cfg = json!({
-            "fontSize": "18px !important;",
-            "themeVariables": {
-                "fontSize": "24px"
-            }
-        });
-        assert_eq!(
-            IshikawaConfigView::new(&cfg)
-                .stylesheet_font_size_css()
-                .as_deref(),
-            Some("24px")
-        );
-    }
-
-    #[test]
-    fn ishikawa_stylesheet_font_size_falls_back_to_root_value() {
-        let cfg = json!({
-            "fontSize": "18px !important;"
-        });
-        assert_eq!(
-            IshikawaConfigView::new(&cfg)
-                .stylesheet_font_size_css()
-                .as_deref(),
-            Some("18px !important")
-        );
     }
 }

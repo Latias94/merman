@@ -169,9 +169,9 @@ impl TreemapResolvedTextStyle {
 #[derive(Debug)]
 pub(crate) struct TreemapTypographyThemePlan {
     css: super::css_binding::TreemapCssBinding,
+    title_font_size_px: Option<f64>,
     inherited_font_stack: InheritedFontStackPlan,
     text_fill: Option<DirectStaticPaint>,
-    root_font_size_px: f64,
     section_source_styles: Box<[TreemapSourceTextStyle]>,
     leaf_source_styles: Box<[TreemapSourceTextStyle]>,
     possible_participating_text_count: usize,
@@ -192,16 +192,16 @@ impl TreemapTypographyThemePlan {
         layout: &TreemapDiagramLayout,
         work_meter: std::sync::Arc<OperationWorkMeter>,
     ) -> crate::Result<Self> {
-        Self::resolve_with_title_fill(theme, effective_config, layout, work_meter, None)
+        Self::resolve_with_title(theme, effective_config, layout, work_meter)
+            .map(|(_, typography)| typography)
     }
 
-    pub(crate) fn resolve_with_title_fill(
+    pub(crate) fn resolve_with_title(
         theme: Option<&ResolvedDiagramTheme>,
         effective_config: &PresentationConfig,
         layout: &TreemapDiagramLayout,
         work_meter: std::sync::Arc<OperationWorkMeter>,
-        title_fill: Option<&str>,
-    ) -> crate::Result<Self> {
+    ) -> crate::Result<(TreemapTitleThemePlan, Self)> {
         let inherited_font_stack =
             InheritedFontStackPlan::resolve_property_local(theme, effective_config);
         let text_style = theme
@@ -222,10 +222,49 @@ impl TreemapTypographyThemePlan {
                 DirectStaticSelectorDomain::Default,
             )
         });
-        let root_font_size_px = crate::config::config_theme_font_size_css_or_root_number_px(
+        let mut css = super::css_binding::TreemapCssBinding::new(
             effective_config.as_value(),
-            16.0,
-        );
+            inherited_font_stack.font_family_css(),
+        )?;
+        let root_font_size_px = css.root_font_size_px();
+        let title_font_size_px = if layout
+            .title
+            .as_deref()
+            .is_some_and(|title| !title.trim().is_empty())
+        {
+            work_meter.charge(1usize.saturating_add(css.title_font_size.len().div_ceil(64)))?;
+            let declaration = format!("font-size:{}", css.title_font_size);
+            crate::mermaid_style::parse_style_declaration(&declaration).and_then(|declaration| {
+                if declaration.font_size_is_literal_zero() {
+                    return Some(0.0);
+                }
+                // A diagram's zero root cannot prove that the receiving document's rem is zero.
+                if declaration.analysis().depends_on_root_font_size() {
+                    return None;
+                }
+                declaration.resolve_font_size_px(crate::mermaid_style::CssFontSizeContext::new(
+                    root_font_size_px,
+                    root_font_size_px,
+                ))
+            })
+        } else {
+            None
+        };
+        let title_theme = TreemapTitleThemePlan::resolve(
+            theme,
+            effective_config,
+            layout.title.as_deref(),
+            title_font_size_px,
+            &work_meter,
+        )?;
+        // Finalize paint before node visuals and their retained-byte reservation are prepared.
+        if let Some(fill) = title_theme.fill_css() {
+            css.title_color = fill.to_owned();
+        }
+        if let Some(fill) = text_fill.as_ref() {
+            css.label_color = fill.css().to_owned();
+            css.value_color = fill.css().to_owned();
+        }
         let retained_upper_bound = treemap_source_style_retained_upper_bound(
             layout,
             inherited_font_stack.font_family_css().len(),
@@ -294,22 +333,11 @@ impl TreemapTypographyThemePlan {
             .ok_or_else(|| crate::Error::from(work_meter.arithmetic_overflow()))?;
         retained_reservation.reconcile_downward(retained_bytes);
 
-        let mut css = super::css_binding::TreemapCssBinding::new(
-            effective_config.as_value(),
-            inherited_font_stack.font_family_css(),
-        )?;
-        if let Some(fill) = title_fill {
-            css.title_color = fill.to_owned();
-        }
-        if let Some(fill) = text_fill.as_ref() {
-            css.label_color = fill.css().to_owned();
-            css.value_color = fill.css().to_owned();
-        }
         Self {
             css,
+            title_font_size_px,
             inherited_font_stack,
             text_fill,
-            root_font_size_px,
             section_source_styles: section_source_styles.into_boxed_slice(),
             leaf_source_styles: leaf_source_styles.into_boxed_slice(),
             possible_participating_text_count,
@@ -322,6 +350,7 @@ impl TreemapTypographyThemePlan {
             _visual_retained_reservation: None,
         }
         .prepare_node_visuals(layout, &work_meter, theme, effective_config)
+        .map(|typography| (title_theme, typography))
     }
 
     pub(crate) fn font_family_css(&self) -> &str {
@@ -352,27 +381,16 @@ impl TreemapTypographyThemePlan {
         self.text_fill.as_ref().map(DirectStaticPaint::css)
     }
 
-    pub(crate) fn title_text_style(&self, title_font_size_css: &str) -> TreemapResolvedTextStyle {
-        let title_font_size_css = crate::mermaid_style::strip_css_important(title_font_size_css);
-        let title_font_size_px = if title_font_size_css.eq_ignore_ascii_case("inherit") {
-            Some(self.root_font_size_px)
-        } else {
-            crate::mermaid_style::resolve_mermaid_font_size_px(
-                title_font_size_css,
-                crate::mermaid_style::CssFontSizeContext::new(
-                    self.root_font_size_px,
-                    self.root_font_size_px,
-                ),
-            )
-        };
+    pub(crate) fn title_text_style(&self) -> TreemapResolvedTextStyle {
+        let root_font_size_px = self.css.root_font_size_px();
         let mut resolved = TreemapSourceTextStyle::default().resolve(
             self.font_family_css(),
-            self.root_font_size_px,
-            title_font_size_px.unwrap_or(14.0),
+            root_font_size_px,
+            self.title_font_size_px.unwrap_or(14.0),
             None,
             None,
         );
-        resolved.verified &= title_font_size_px.is_some();
+        resolved.verified &= self.title_font_size_px.is_some();
         resolved
     }
 
@@ -388,7 +406,7 @@ impl TreemapTypographyThemePlan {
             .map(|style| {
                 style.resolve(
                     self.font_family_css(),
-                    self.root_font_size_px,
+                    self.css.root_font_size_px(),
                     generated_font_size_px,
                     generated_font_weight,
                     generated_font_style,
@@ -416,7 +434,7 @@ impl TreemapTypographyThemePlan {
             .map(|style| {
                 style.resolve(
                     self.font_family_css(),
-                    self.root_font_size_px,
+                    self.css.root_font_size_px(),
                     generated_font_size_px,
                     None,
                     None,
@@ -1045,6 +1063,7 @@ impl TreemapTitleThemePlan {
         theme: Option<&ResolvedDiagramTheme>,
         effective_config: &PresentationConfig,
         title: Option<&str>,
+        title_font_size_px: Option<f64>,
         work_meter: &OperationWorkMeter,
     ) -> crate::Result<Self> {
         let Some(theme) = theme else {
@@ -1052,7 +1071,8 @@ impl TreemapTitleThemePlan {
                 fill: SingleTitleFillPlan::default(),
             });
         };
-        let title_present = title.is_some_and(|title| !title.trim().is_empty());
+        let title_present =
+            title.is_some_and(|title| !title.trim().is_empty()) && title_font_size_px != Some(0.0);
         let config_owns_fill = effective_config
             .config_paint_overrides_typed_default("treemap.titleColor")
             || effective_config.config_paint_overrides_typed_default("themeVariables.titleColor");
@@ -1114,9 +1134,10 @@ impl<'a> TreemapTitleThemeReceipt<'a> {
         self.css_emitted = true;
     }
 
-    pub(crate) fn record_title_text(&mut self, emitted_class: &str) {
+    pub(crate) fn record_title_text(&mut self, emitted_class: &str, font_size_px: f64) {
         self.title_text_count = self.title_text_count.saturating_add(1);
         self.terminal_matches &= emitted_class == super::TREEMAP_TITLE_CLASS;
+        self.terminal_matches &= font_size_px > 0.0;
     }
 
     fn proves(&self, expected_fill: &str) -> bool {
@@ -1197,25 +1218,25 @@ mod tests {
     fn title_receipt_requires_one_matching_stylesheet_and_title_checkpoint() {
         let mut complete = TreemapTitleThemeReceipt::new("#123456");
         complete.record_stylesheet(super::super::TREEMAP_TITLE_CLASS, "#123456");
-        complete.record_title_text("treemapTitle");
+        complete.record_title_text("treemapTitle", 14.0);
         assert!(complete.proves("#123456"));
         assert!(!complete.proves("#abcdef"));
-        complete.record_title_text("treemapTitle");
+        complete.record_title_text("treemapTitle", 14.0);
         assert!(!complete.proves("#123456"));
 
         let mut missing_stylesheet = TreemapTitleThemeReceipt::new("#123456");
-        missing_stylesheet.record_title_text("treemapTitle");
+        missing_stylesheet.record_title_text("treemapTitle", 14.0);
         assert!(!missing_stylesheet.proves("#123456"));
 
         let mut duplicate_stylesheet = TreemapTitleThemeReceipt::new("#123456");
         duplicate_stylesheet.record_stylesheet(super::super::TREEMAP_TITLE_CLASS, "#123456");
-        duplicate_stylesheet.record_title_text("treemapTitle");
+        duplicate_stylesheet.record_title_text("treemapTitle", 14.0);
         duplicate_stylesheet.record_stylesheet(super::super::TREEMAP_TITLE_CLASS, "#123456");
         assert!(!duplicate_stylesheet.proves("#123456"));
 
         let mut empty_fill = TreemapTitleThemeReceipt::new("");
         empty_fill.record_stylesheet(super::super::TREEMAP_TITLE_CLASS, "");
-        empty_fill.record_title_text("treemapTitle");
+        empty_fill.record_title_text("treemapTitle", 14.0);
         assert!(empty_fill.proves(""));
 
         let mut missing_title = TreemapTitleThemeReceipt::new("#123456");
@@ -1224,17 +1245,80 @@ mod tests {
 
         let mut wrong_fill = TreemapTitleThemeReceipt::new("#123456");
         wrong_fill.record_stylesheet(super::super::TREEMAP_TITLE_CLASS, "#abcdef");
-        wrong_fill.record_title_text("treemapTitle");
+        wrong_fill.record_title_text("treemapTitle", 14.0);
         assert!(!wrong_fill.proves("#123456"));
         wrong_fill.record_stylesheet(super::super::TREEMAP_TITLE_CLASS, "#123456");
         assert!(!wrong_fill.proves("#123456"));
 
         let mut wrong_class = TreemapTitleThemeReceipt::new("#123456");
         wrong_class.record_stylesheet("otherTitle", "#123456");
-        wrong_class.record_title_text("treemapTitle");
+        wrong_class.record_title_text("treemapTitle", 14.0);
         assert!(!wrong_class.proves("#123456"));
         wrong_class.record_stylesheet(super::super::TREEMAP_TITLE_CLASS, "#123456");
         assert!(!wrong_class.proves("#123456"));
+
+        let mut zero_sized = TreemapTitleThemeReceipt::new("#123456");
+        zero_sized.record_stylesheet(super::super::TREEMAP_TITLE_CLASS, "#123456");
+        zero_sized.record_title_text("treemapTitle", 0.0);
+        assert!(!zero_sized.proves("#123456"));
+    }
+
+    #[test]
+    fn unresolved_title_size_keeps_title_paint_applicable() {
+        let layout: TreemapDiagramLayout = serde_json::from_value(json!({
+            "title_height": 30, "width": 100, "height": 100, "use_max_width": true,
+            "diagram_padding": 8, "show_values": true, "value_format": ",",
+            "title": "Unknown title size"
+        }))
+        .unwrap();
+        for (size, clear) in [
+            ("var(--treemap-title-size)", false),
+            ("var(--treemap-title-size)", true),
+            ("1rem", false),
+            ("1rem", true),
+        ] {
+            let config = crate::test_support::presentation_config(json!({
+                "themeVariables": {"fontSize": "0px"},
+                "treemap": {"titleFontSize": size}
+            }));
+            let mut patch =
+                ThemeStylePatch::default().with_fill(CanvasPaint::solid("#123456").unwrap());
+            if clear {
+                patch.paint.fill = crate::diagram_theme::Specified::Clear;
+            }
+            let theme = DiagramThemeCompiler::new()
+                .compile(DiagramThemeSpec::new().with_styles(
+                    ThemeRuleSet::default().with_rule(ThemeRule::new(ThemeTarget::Title, patch)),
+                ))
+                .unwrap()
+                .resolve(DiagramFamilyId::TREEMAP);
+            let meter = std::sync::Arc::new(OperationWorkMeter::new(
+                RenderResourcePolicy::unbounded_for_trusted_input(),
+            ));
+            let (title, typography) = TreemapTypographyThemePlan::resolve_with_title(
+                Some(&theme),
+                &config,
+                &layout,
+                meter,
+            )
+            .unwrap();
+            let style = typography.title_text_style();
+            assert!(!style.verified());
+            assert_eq!(style.style().font_size, 14.0);
+            if let Some(mut receipt) = title.begin_terminal_receipt() {
+                receipt.record_stylesheet(
+                    super::super::TREEMAP_TITLE_CLASS,
+                    &typography.css_binding().title_color,
+                );
+                receipt
+                    .record_title_text(super::super::TREEMAP_TITLE_CLASS, style.style().font_size);
+                assert!(title.record_terminal(receipt));
+            }
+            let evidence = collect_evidence(&theme, |evidence| title.record_evidence(evidence));
+            assert_eq!(evidence.applied().len(), usize::from(!clear));
+            assert_eq!(evidence.not_applicable_mechanisms().len(), 0);
+            assert_eq!(evidence.residuals().len(), usize::from(clear));
+        }
     }
 
     #[test]
@@ -1260,11 +1344,17 @@ mod tests {
             .resolve(DiagramFamilyId::TREEMAP);
         let meter = OperationWorkMeter::new(RenderResourcePolicy::unbounded_for_trusted_input());
         let config = crate::test_support::presentation_config(json!({}));
-        let plan = TreemapTitleThemePlan::resolve(Some(&resolved), &config, Some("Title"), &meter)
-            .expect("resolve Treemap title theme");
+        let plan = TreemapTitleThemePlan::resolve(
+            Some(&resolved),
+            &config,
+            Some("Title"),
+            Some(14.0),
+            &meter,
+        )
+        .expect("resolve Treemap title theme");
         let mut receipt = plan.begin_terminal_receipt().expect("typed title receipt");
         receipt.record_stylesheet(super::super::TREEMAP_TITLE_CLASS, "#123456");
-        receipt.record_title_text(super::super::TREEMAP_TITLE_CLASS);
+        receipt.record_title_text(super::super::TREEMAP_TITLE_CLASS, 14.0);
         assert!(plan.record_terminal(receipt));
 
         let evidence = collect_evidence(&resolved, |evidence| plan.record_evidence(evidence));

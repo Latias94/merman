@@ -246,3 +246,60 @@ the complete layout snapshot corpus, all-target/all-feature Clippy, the defaults
 check and the full SVG corpus in all three DOM modes. The budget decision makes no latency,
 memory, pixel-identity or complete-platform-qualification claim. Historical failed runs
 remain failed; the budget follow-up requires its own CI result.
+
+## 2026-11-09 font-correctness follow-up
+
+The current main and PR #289 both exceed only the `web-full` raw and stripped ceilings.
+The size owner measures the final assembled npm package with the unchanged `wasm-size`
+profile, Rust 1.99.1, wasm-pack 0.15.1, wasm-tools 1.263.0, default features disabled,
+and compression applied to stripped bytes. This decision uses the frozen PR head below;
+subsequent renderer changes must pass the same owner against their own produced packages.
+
+| Source | Exact revision | Linux size owner |
+| --- | --- | --- |
+| Current main | `b5e2e6c576ab32d7b7d65e482d6d4eed9e029e33` | [Run 42542343658, job 128923346670](https://github.com/Latias94/merman/actions/runs/42542343658/job/128923346670) |
+| PR #289 | `bf6d9aa31a250f14a4e37954285968905c3d3bda` | [Run 42548444488, job 128941943854](https://github.com/Latias94/merman/actions/runs/42548444488/job/128941943854) |
+
+The PR checkout `65155ba1489965849b9194e844c871b4a2aad5f5` has the same Git tree
+as its head. The source-bound package archives are `pages-web-package-1`, IDs
+`13642009035` for main and `13644966941` for the PR. The CI download step verifies
+their respective SHA-256 digests:
+
+- Main: `85fb28c5d1b27800cb1e1219a439c08a2d3a57dbe146bd40010a311c45747d93`.
+- PR: `3a616c2312060e28e7cfd0fa3ea41ce8297ffc774e1fc17bee4b79207be56d23`.
+
+The following values come from the completed size-job logs. A local archive download
+timed out; no independent local package remeasurement or raw-WASM digest is claimed.
+
+| Artifact / source | Raw | Stripped | Gzip | Brotli |
+| --- | ---: | ---: | ---: | ---: |
+| `web-full` / main | 17,727,462 | 17,727,185 | 6,584,904 | 4,842,828 |
+| `web-full` / PR | 17,738,083 | 17,737,806 | 6,592,375 | 4,850,628 |
+| `web-render` / main | 15,708,448 | 15,708,171 | 5,885,467 | 4,338,997 |
+| `web-render` / PR | 15,719,074 | 15,718,797 | 5,892,367 | 4,350,739 |
+
+Main already exceeds full raw and stripped by 10,462 and 10,185 bytes. The PR adds
+10,621 bytes to both measures, approximately 0.060%; its gzip and Brotli increases
+are 7,471 and 7,800 bytes. Analysis, ASCII and editor have identical measurements
+on both sources, and the other 18 Web measurements fit their ceilings. Both full
+artifacts lose only 277 bytes when stripped, so custom-section removal cannot recover
+the excess. The November 8 full raw baseline had only 4,375 bytes of headroom.
+
+The fixed source delta adds prepared C4 wrapping and resource checks, final-font geometry
+for Ishikawa, Pie and Tree View, and visible-label accounting for Radar and Quadrant.
+It also removes the duplicate Journey break scanner and Pie size parser. Similar
+full/render growth is consistent with shared renderer changes; it does not assign
+machine-code bytes to individual fixes. Cargo dependencies, capability recipes, Web
+producer, optimizer, size owner and compression settings are unchanged. No measured
+redundancy justifies deleting supported behavior to recover this amount.
+
+| Metric | Frozen PR bytes | Previous ceiling | Accepted ceiling |
+| --- | ---: | ---: | ---: |
+| `web-full.max_raw_bytes` | 17,738,083 | 17,717,000 | 18,271,000 |
+| `web-full.max_stripped_bytes` | 17,737,806 | 17,717,000 | 18,270,000 |
+
+Each replacement uses the existing measured-plus-3% integer rule above. The other
+22 ceilings, functional gates, artifact recipes and compression settings remain
+unchanged. This is a bounded acceptance of observed artifact growth, not a claim about
+latency, memory or equal-capability savings. The historical failed runs remain failed;
+the integrated follow-up still needs its own package-size and functional CI results.

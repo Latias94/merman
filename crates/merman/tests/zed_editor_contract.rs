@@ -482,9 +482,23 @@ fn zed_like_pipeline_separates_pre_injection_metrics_from_host_hooks() {
         composed.contains("data-merman-foreignobject=\"fallback\""),
         "stable fallback marker must remain available to Zed postprocessing: {composed}"
     );
-    assert!(
-        composed.contains("font-size: 18px"),
-        "the scoped host stylesheet should remain discoverable after Merman's terminal pass: {composed}"
+    let document = roxmltree::Document::parse(&composed).expect("valid composed SVG XML");
+    let host_css = document
+        .descendants()
+        .find(|node| {
+            node.has_tag_name("style")
+                && node.attribute("data-merman-postprocess") == Some("scoped-css")
+        })
+        .and_then(|node| node.text())
+        .expect("scoped host stylesheet survives Merman's terminal pass");
+    let (selector, declarations) = host_css.split_once('{').expect("scoped host CSS rule");
+    assert_eq!(
+        selector.trim(),
+        "#zed-issue-89-host-hooks .merman-foreignobject-fallback-text"
+    );
+    assert_eq!(
+        declarations.split_ascii_whitespace().collect::<String>(),
+        "font-size:18px;}"
     );
     let composed_style = fallback_text_style(&composed, "User");
     assert!(

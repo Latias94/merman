@@ -202,11 +202,15 @@ impl RequirementTextPaintReceipt<'_> {
     pub(crate) fn record_title(
         &mut self,
         inherits_fill: bool,
+        visible: bool,
         work: &OperationWorkMeter,
     ) -> Result<(), OperationWorkError> {
         self.valid &= !self.title_seen;
         self.title_seen = true;
         work.charge(1)?;
+        if !visible {
+            return Ok(());
+        }
         self.ordinal += 1;
         let theme = self.plan.theme.as_ref().expect("requested text theme");
         let ordinal_style;
@@ -312,6 +316,7 @@ impl RequirementTextPaintReceipt<'_> {
         };
         let source_owned = config_owned || source == RequirementTextColorOwner::Static;
         let unverified = !facts.parse_valid()
+            || !facts.font_visibility_verified()
             || source == RequirementTextColorOwner::Unverified
             || facts.unverified_portable_color_run_count() != 0;
         let inherited = !source_owned && facts.inherited_color_run_count() != 0;

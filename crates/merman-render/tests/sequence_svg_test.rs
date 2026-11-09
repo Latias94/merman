@@ -6227,7 +6227,7 @@ fn sequence_actor_typed_italic_wrap_and_multiline_preserve_rows_and_configured_m
         (true, "classic", 1000, 500, 1000.0, 500.0),
     ] {
         let source = format!(
-            "---\nconfig: {{look: {look}, sequence: {{wrap: {wrap}, width: {width}, height: {height}, mirrorActors: false}}}}\n---\nsequenceDiagram\nparticipant A as probe-one<br/>probe-two<br/>probe-three"
+            "---\nconfig: {{look: {look}, sequence: {{wrap: {wrap}, width: {width}, height: {height}, mirrorActors: false}}}}\n---\nsequenceDiagram\nparticipant A as probe-one</BR >probe-two<br\u{00a0}/>probe-three"
         );
         let (svg, exchanges) =
             render_sequence_actor_terminal_probe(&source, &[Specified::Value(FontStyle::Italic)]);
@@ -12381,6 +12381,45 @@ fn sequence_message_font_size_override_matches_mermaid_cli_baselines() {
         !svg.contains("font-size: 18px"),
         "expected sequence.messageFontSize (18px) to not affect SVG output under the pinned upstream baselines"
     );
+}
+
+#[test]
+fn sequence_common_breaks_preserve_rows_and_geometry_across_text_roles() {
+    for wrap in [false, true] {
+        let source = format!(
+            "---\nconfig: {{sequence: {{wrap: {wrap}, mirrorActors: false}}}}\n---\nsequenceDiagram\nbox transparent Box<br/>Title\nparticipant A as Service<br/>API\nactor B as User<br/>Client\nend\nA->>B: Request<br/>Body\nNote right of A: Note<br/>Details\nalt Accepted<br/>Result\nA->>B: ok\nelse Rejected<br/>Reason\nB->>A: retry\nend"
+        );
+        let baseline = render_sequence_svg_from_text(&source);
+        assert_eq!(text_rows_by_class(&baseline, "text"), ["Box", "Title"]);
+        assert_eq!(
+            text_rows_by_class(&baseline, "actor"),
+            ["Service", "API", "User", "Client"]
+        );
+        assert_eq!(
+            text_rows_by_class(&baseline, "messageText"),
+            ["Request", "Body", "ok", "retry"]
+        );
+        assert_eq!(
+            text_rows_by_class(&baseline, "noteText"),
+            ["Note", "Details"]
+        );
+        assert_eq!(
+            text_rows_by_class(&baseline, "loopText"),
+            ["[Accepted", "Result]"]
+        );
+        assert_eq!(
+            text_rows_by_class(&baseline, "sectionTitle"),
+            ["[Rejected", "Reason]"]
+        );
+
+        for br in ["</br>", "</BR\u{feff}/>"] {
+            let actual = render_sequence_svg_from_text(&source.replace("<br/>", br));
+            assert_eq!(
+                actual, baseline,
+                "common break spelling must preserve emitted rows, geometry, and viewport: wrap={wrap}, br={br:?}"
+            );
+        }
+    }
 }
 
 #[test]

@@ -24,9 +24,13 @@ use crate::resources::OperationWorkMeter;
 pub(crate) struct RadarTextPaintPlan {
     text_color: Box<str>,
     title_color: Box<str>,
-    axis_visible: Box<[bool]>,
-    legend_visible: Box<[bool]>,
-    title_visible: bool,
+    // Terminal accounting retains every label; size facts only gate visible consumers.
+    axis_nonempty: Box<[bool]>,
+    legend_nonempty: Box<[bool]>,
+    title_nonempty: bool,
+    axis_has_visible_size: bool,
+    legend_has_visible_size: bool,
+    title_has_visible_size: bool,
     paint: Option<DirectStaticPaint>,
     pending_rule: Option<usize>,
     title_fallback_rule: Option<usize>,
@@ -53,12 +57,12 @@ impl RadarTextPaintPlan {
         Self {
             text_color: binding.text_color.clone().into_boxed_str(),
             title_color: binding.title_color.clone().into_boxed_str(),
-            axis_visible: layout
+            axis_nonempty: layout
                 .axes
                 .iter()
                 .map(|axis| !axis.label.trim().is_empty())
                 .collect(),
-            legend_visible: layout
+            legend_nonempty: layout
                 .legend_items
                 .iter()
                 .map(|item| {
@@ -68,7 +72,10 @@ impl RadarTextPaintPlan {
                         .is_some_and(|curve| !curve.label.trim().is_empty())
                 })
                 .collect(),
-            title_visible: title.is_some_and(|title| !title.trim().is_empty()),
+            title_nonempty: title.is_some_and(|title| !title.trim().is_empty()),
+            axis_has_visible_size: binding.axis_label_font_size.has_visible_ink(),
+            legend_has_visible_size: binding.legend_font_size.has_visible_ink(),
+            title_has_visible_size: true,
             paint: None,
             pending_rule: None,
             title_fallback_rule: None,
@@ -95,6 +102,7 @@ impl RadarTextPaintPlan {
     ) -> crate::Result<Self> {
         work_meter.charge(layout.axes.len().saturating_add(layout.legend_items.len()))?;
         let mut plan = Self::baseline_with_binding(binding, layout, model, title);
+        plan.title_has_visible_size = title_plan.title_has_visible_size();
         let Some(theme) = theme else { return Ok(plan) };
         plan.evidence = FamilyThemeOutcomes::default();
         let owns_text = super::RadarCssBinding::config_owns_color(config, "textColor");
@@ -133,13 +141,13 @@ impl RadarTextPaintPlan {
         let mut legend_occurrences = Vec::new();
         let mut legend_fill_owned = vec![owns_text; layout.legend_items.len()];
         let mut text_owners = plan
-            .axis_visible
+            .axis_nonempty
             .iter()
-            .filter(|visible| **visible)
+            .filter(|nonempty| plan.axis_has_visible_size && **nonempty)
             .map(|_| owns_text)
             .collect::<Vec<_>>();
-        for (index, visible) in plan.legend_visible.iter().copied().enumerate() {
-            if !visible {
+        for (index, nonempty) in plan.legend_nonempty.iter().copied().enumerate() {
+            if !plan.legend_has_visible_size || !nonempty {
                 continue;
             }
             legend_occurrences.push((index + 1, ThemeVariant::Default));
@@ -172,8 +180,8 @@ impl RadarTextPaintPlan {
         }
         plan.legend_rules = legend_rules.finish(&mut plan.evidence);
         let base_count = text_owners.len();
-        let visible_count = base_count.saturating_add(usize::from(plan.title_visible));
-        if plan.title_visible {
+        let visible_count = base_count.saturating_add(usize::from(plan.title_is_visible()));
+        if plan.title_is_visible() {
             text_owners.push(owns_title);
         }
         let routes = theme
@@ -206,7 +214,7 @@ impl RadarTextPaintPlan {
             )
         });
         for (index, source_owns_fill) in text_owners.iter().copied().enumerate() {
-            let is_title = plan.title_visible && index == base_count;
+            let is_title = plan.title_is_visible() && index == base_count;
             let ordinal_style;
             let style = if has_ordinal {
                 ordinal_style = theme.style_with_work_meter(
@@ -271,7 +279,7 @@ impl RadarTextPaintPlan {
             &mut plan.evidence,
             &[
                 domain,
-                // Legend paint targets actual non-empty labels, independently of swatches.
+                // Legend paint targets visible labels, independently of swatches.
                 UnsupportedTerminalDomain::fallbacks_only(
                     ThemeTarget::Legend,
                     TerminalVariantDomain::indexed(&legend_occurrences),
@@ -309,6 +317,15 @@ impl RadarTextPaintPlan {
             .and_then(Option::as_ref)
             .map(DirectPaintExpectation::css)
     }
+    fn title_is_visible(&self) -> bool {
+        self.title_has_visible_size && self.title_nonempty
+    }
+    fn has_visible_text(&self) -> bool {
+        self.title_is_visible()
+            || (self.axis_has_visible_size && self.axis_nonempty.iter().any(|nonempty| *nonempty))
+            || (self.legend_has_visible_size
+                && self.legend_nonempty.iter().any(|nonempty| *nonempty))
+    }
     fn needs_receipt(&self) -> bool {
         self.pending_rule.is_some()
             || self.title_fallback_rule.is_some()
@@ -324,7 +341,7 @@ impl RadarTextPaintPlan {
     /// True only after a visible title consumed the winning Text fill in finalized SVG.
     pub(crate) fn has_verified_title_fallback(&self) -> bool {
         self.title_fallback_rule.is_some()
-            && self.title_visible
+            && self.title_is_visible()
             && self.terminal_receipt.get().is_some()
     }
 
@@ -354,6 +371,7 @@ impl RadarTextPaintPlan {
 pub(crate) struct RadarTextPaintReceipt {
     expected_text: Box<str>,
     expected_title: Box<str>,
+    expected_size_visibility: [bool; 3],
     base_css: bool,
     title_css: bool,
     axes: Vec<bool>,
@@ -368,11 +386,16 @@ impl RadarTextPaintReceipt {
         Self {
             expected_text: plan.text_color.clone(),
             expected_title: plan.title_color.clone(),
+            expected_size_visibility: [
+                plan.axis_has_visible_size,
+                plan.legend_has_visible_size,
+                plan.title_has_visible_size,
+            ],
             base_css: false,
             title_css: false,
-            axes: Vec::with_capacity(plan.axis_visible.len()),
-            legends: Vec::with_capacity(plan.legend_visible.len()),
-            legend_fills: Vec::with_capacity(plan.legend_visible.len()),
+            axes: Vec::with_capacity(plan.axis_nonempty.len()),
+            legends: Vec::with_capacity(plan.legend_nonempty.len()),
+            legend_fills: Vec::with_capacity(plan.legend_nonempty.len()),
             title: None,
             valid: true,
         }
@@ -424,29 +447,30 @@ impl RadarTextPaintReceipt {
         self.legends.push(!label.trim().is_empty());
         self.legend_fills.push(fill.map(Into::into));
     }
-    pub(crate) fn record_title(&mut self, class: &str, visible: bool) {
+    pub(crate) fn record_title(&mut self, class: &str, nonempty: bool) {
         self.valid &=
             self.base_css && self.title_css && self.title.is_none() && class == "radarTitle";
-        self.title = Some(visible);
+        self.title = Some(nonempty);
     }
     fn proves(&self, plan: &RadarTextPaintPlan) -> bool {
         self.valid
             && self.base_css
             && self.title_css
-            && self.axes.as_slice() == plan.axis_visible.as_ref()
-            && self.legends.as_slice() == plan.legend_visible.as_ref()
+            && self.expected_size_visibility
+                == [
+                    plan.axis_has_visible_size,
+                    plan.legend_has_visible_size,
+                    plan.title_has_visible_size,
+                ]
+            && self.axes.as_slice() == plan.axis_nonempty.as_ref()
+            && self.legends.as_slice() == plan.legend_nonempty.as_ref()
             && self
                 .legend_fills
                 .iter()
                 .enumerate()
                 .all(|(index, fill)| fill.as_deref() == plan.legend_fill(index))
-            && self.title == Some(plan.title_visible)
-            && (plan.title_visible
-                || self
-                    .axes
-                    .iter()
-                    .chain(self.legends.iter())
-                    .any(|visible| *visible))
+            && self.title == Some(plan.title_nonempty)
+            && plan.has_visible_text()
             && self.expected_text == plan.text_color
             && self.expected_title == plan.title_color
     }
@@ -459,9 +483,12 @@ mod tests {
         RadarTextPaintPlan {
             text_color: "#123456".into(),
             title_color: "#abcdef".into(),
-            axis_visible: vec![true].into(),
-            legend_visible: vec![true].into(),
-            title_visible: true,
+            axis_nonempty: vec![true].into(),
+            legend_nonempty: vec![true].into(),
+            title_nonempty: true,
+            axis_has_visible_size: true,
+            legend_has_visible_size: true,
+            title_has_visible_size: true,
             paint: None,
             pending_rule: None,
             title_fallback_rule: None,
@@ -545,6 +572,82 @@ mod tests {
         misordered.record_title("radarTitle", true);
         assert!(!misordered.proves(&plan));
     }
+
+    #[test]
+    fn zero_size_labels_still_require_complete_ordered_terminal_accounting() {
+        let mut plan = plan();
+        plan.axis_has_visible_size = false;
+        plan.legend_has_visible_size = false;
+        plan.pending_rule = Some(0);
+        plan.title_fallback_rule = Some(0);
+
+        let mut missing_axis = css(&plan);
+        missing_axis.record_legend(0, "radarLegendText", "Legend");
+        missing_axis.record_title("radarTitle", true);
+        assert!(!plan.record_terminal(missing_axis));
+
+        let mut missing_legend = css(&plan);
+        missing_legend.record_axis(0, "radarAxisLabel", "Axis");
+        missing_legend.record_title("radarTitle", true);
+        assert!(!plan.record_terminal(missing_legend));
+
+        let mut erased_hidden_axis = css(&plan);
+        erased_hidden_axis.record_axis(0, "radarAxisLabel", "");
+        erased_hidden_axis.record_legend(0, "radarLegendText", "Legend");
+        erased_hidden_axis.record_title("radarTitle", true);
+        assert!(!plan.record_terminal(erased_hidden_axis));
+
+        let mut reordered = css(&plan);
+        reordered.record_legend(0, "radarLegendText", "Legend");
+        reordered.record_axis(0, "radarAxisLabel", "Axis");
+        reordered.record_title("radarTitle", true);
+        assert!(!plan.record_terminal(reordered));
+
+        let mut duplicate = css(&plan);
+        duplicate.record_axis(0, "radarAxisLabel", "Axis");
+        duplicate.record_axis(0, "radarAxisLabel", "Axis");
+        duplicate.record_legend(0, "radarLegendText", "Legend");
+        duplicate.record_title("radarTitle", true);
+        assert!(!plan.record_terminal(duplicate));
+
+        let mut complete = css(&plan);
+        terminals(&mut complete);
+        assert!(plan.record_terminal(complete));
+        assert!(plan.has_verified_title_fallback());
+    }
+
+    #[test]
+    fn zero_size_title_cannot_prove_the_text_title_fallback() {
+        let mut plan = plan();
+        plan.title_has_visible_size = false;
+        plan.pending_rule = Some(0);
+        plan.title_fallback_rule = Some(0);
+        let mut missing_title = css(&plan);
+        missing_title.record_axis(0, "radarAxisLabel", "Axis");
+        missing_title.record_legend(0, "radarLegendText", "Legend");
+        assert!(!plan.record_terminal(missing_title));
+
+        let mut complete = css(&plan);
+        terminals(&mut complete);
+        assert!(plan.record_terminal(complete));
+        assert!(!plan.has_verified_title_fallback());
+    }
+
+    #[test]
+    fn text_receipt_rejects_changed_prepared_size_facts_and_all_zero_size_text() {
+        let mut plan = plan();
+        let mut stale = css(&plan);
+        terminals(&mut stale);
+        plan.title_has_visible_size = false;
+        assert!(!stale.proves(&plan));
+
+        plan.axis_has_visible_size = false;
+        plan.legend_has_visible_size = false;
+        let mut all_zero = css(&plan);
+        terminals(&mut all_zero);
+        assert!(!all_zero.proves(&plan));
+    }
+
     #[test]
     fn text_receipt_rejects_wrong_css_and_absent_visible_text() {
         let mut plan = plan();
@@ -567,9 +670,9 @@ mod tests {
             terminals(&mut wrong);
             assert!(!wrong.proves(&plan));
         }
-        plan.axis_visible = vec![false].into();
-        plan.legend_visible = vec![false].into();
-        plan.title_visible = false;
+        plan.axis_nonempty = vec![false].into();
+        plan.legend_nonempty = vec![false].into();
+        plan.title_nonempty = false;
         let mut empty = css(&plan);
         empty.record_axis(0, "radarAxisLabel", " ");
         empty.record_legend(0, "radarLegendText", "");

@@ -1484,7 +1484,7 @@ fn requirement_html_sized_icons_keep_their_advance_in_node_measurement() {
                     serde_json::json!({"htmlLabels": true}),
                 ),
             ),
-            ThemePortabilityRequirement::RequirePortable,
+            ThemePortabilityRequirement::BestEffort,
             RenderEnvironment::deterministic()
                 .with_text_measurement_policy(TextMeasurementPolicy::uniform(profile)),
         );
@@ -1496,11 +1496,18 @@ fn requirement_html_sized_icons_keep_their_advance_in_node_measurement() {
                 .all(|call| !call.text.contains('\u{fffc}'))
         );
         let document = roxmltree::Document::parse(rendered.svg()).unwrap();
-        requirement_foreign_object_for_text(&document, "Account")
+        let width = requirement_foreign_object_for_text(&document, "Account")
             .attribute("width")
             .unwrap()
             .parse::<f64>()
-            .unwrap()
+            .unwrap();
+        let completion = rendered.into_completion();
+        let evidence = merman_render::__private::family_evidence(completion.report());
+        assert_eq!(
+            evidence.theme_residual_count(),
+            usize::from(text.contains("class="))
+        );
+        width
     };
     let ordinary = width("<big>Account</big>");
     let with_icon = width("<big><i class='fa fa-car'></i>Account</big>");
@@ -1633,7 +1640,11 @@ fn requirement_html_inline_sizes_use_terminal_parent_and_css_root_contexts() {
                     serde_json::json!({"htmlLabels": true, "fontSize": 10}),
                 ),
             ),
-            ThemePortabilityRequirement::RequirePortable,
+            if size == "2rem" {
+                ThemePortabilityRequirement::BestEffort
+            } else {
+                ThemePortabilityRequirement::RequirePortable
+            },
             RenderEnvironment::deterministic()
                 .with_text_measurement_policy(TextMeasurementPolicy::uniform(profile)),
         );
@@ -1667,6 +1678,12 @@ fn requirement_html_inline_sizes_use_terminal_parent_and_css_root_contexts() {
                     && call.style.font_size == 10.0
             }),
             "inline sizing must not replace the independent calculation probe: {calls:?}"
+        );
+        let completion = rendered.into_completion();
+        let evidence = merman_render::__private::family_evidence(completion.report());
+        assert_eq!(
+            evidence.theme_residual_count(),
+            if size == "2rem" { 2 } else { 0 }
         );
     }
 }
@@ -1944,10 +1961,10 @@ fn requirement_source_points_reach_terminal_measurement_and_keep_css_ownership()
 }
 
 #[test]
-fn requirement_typed_base_size_minimum_is_shared_by_measurement_css_and_evidence() {
+fn requirement_typed_subpixel_size_is_shared_by_measurement_css_and_evidence() {
     for html_labels in [false, true] {
         for (requested_size, source_size, expected_size, applied) in [
-            (0.5, None, 1.0, 1),
+            (0.5, None, 0.5, 1),
             (1.0, None, 1.0, 1),
             (2.0, None, 2.0, 1),
             (0.5, Some("0.5px"), 0.5, 0),
@@ -1960,7 +1977,7 @@ fn requirement_typed_base_size_minimum_is_shared_by_measurement_css_and_evidence
             let calls = Arc::new(Mutex::new(Vec::new()));
             let profile = TextMeasurementProfile::new(
                 TextMeasurementProfileIdentity::new(
-                    MeasurementProfileId::new("test.requirement-base-size-minimum").unwrap(),
+                    MeasurementProfileId::new("test.requirement-base-size").unwrap(),
                     "test",
                 )
                 .unwrap(),
@@ -1986,11 +2003,9 @@ fn requirement_typed_base_size_minimum_is_shared_by_measurement_css_and_evidence
                     .with_text_measurement_policy(TextMeasurementPolicy::uniform(profile)),
             );
             let css = requirement_stylesheet(rendered.svg());
-            let root_size = requested_size.max(1.0);
-            assert!(css.contains(&format!("font-size:{root_size}px")), "{css}");
             assert!(
-                !css.contains("font-size:0.5px"),
-                "base CSS retains its 1px minimum: {css}"
+                css.contains(&format!("font-size:{requested_size}px")),
+                "{css}"
             );
             if let Some(size) = source_size {
                 assert!(
@@ -2315,7 +2330,7 @@ fn requirement_source_font_evidence_is_property_local_and_fails_closed() {
             ("font-size:32px", 1, 1, 0),
             ("font-size:0", 0, 2, 0),
             ("font-family:var(--source)", 1, 0, 1),
-            ("font-size:calc(1em)", 1, 0, 1),
+            ("font-size:calc(1em)", 0, 0, 2),
             ("font-weight:bolder", 0, 0, 2),
             ("font-weight:lighter", 0, 0, 2),
             ("font-weight:var(--weight)", 0, 0, 2),
@@ -2653,7 +2668,8 @@ fn requirement_configured_font_size_receipt_uses_the_emitted_css() {
         for (variables, root_size, expected) in [
             (serde_json::json!({"fontSize": 22}), None, "22px"),
             (serde_json::json!({"fontSize": "22.0px"}), None, "22px"),
-            (serde_json::json!({"fontSize": "0px"}), None, "1px"),
+            (serde_json::json!({"fontSize": "0px"}), None, "0px"),
+            (serde_json::json!({"fontSize": "0.5px"}), None, "0.5px"),
             (serde_json::json!({"fontSize": "invalid"}), Some(22), "22px"),
         ] {
             for source_owned in [false, true] {
@@ -2687,6 +2703,202 @@ fn requirement_configured_font_size_receipt_uses_the_emitted_css() {
                 assert_eq!(evidence.not_applicable_count(), 1);
                 assert_eq!(evidence.theme_residual_count(), 0);
             }
+        }
+    }
+}
+
+#[test]
+fn requirement_zero_inherited_size_does_not_claim_fonts_or_text_paint() {
+    let theme = DiagramThemeCompiler::new()
+        .compile(
+            requirement_theme_spec("default")
+                .with_typography(
+                    TypographySpec::default().with_family_style(
+                        DiagramFamilyId::REQUIREMENT,
+                        ThemeTextStyle::default()
+                            .with_font_stack(FontStack::single("RequirementTyped").unwrap())
+                            .with_font_weight(700)
+                            .unwrap(),
+                    ),
+                )
+                .with_styles(
+                    ThemeRuleSet::default()
+                        .with_rule(requirement_text_rule(
+                            CanvasPaint::solid("#2468ac").unwrap(),
+                        ))
+                        .with_rule(
+                            ThemeRule::new(
+                                ThemeTarget::Title,
+                                ThemeStylePatch::default()
+                                    .with_fill(CanvasPaint::solid("#13579b").unwrap()),
+                            )
+                            .for_family(DiagramFamilyId::REQUIREMENT),
+                        ),
+                ),
+        )
+        .unwrap();
+    let node_and_edge = format!(
+        "{}\nelement impl {{\n type: source\n}}\nimpl - satisfies -> req1\n",
+        requirement_source()
+    );
+    for html_labels in [false, true] {
+        for source_owned in [false, true] {
+            for source in [
+                requirement_source().to_owned(),
+                "---\ntitle: Hidden title\n---\nrequirementDiagram\n".to_owned(),
+                node_and_edge.clone(),
+            ] {
+                let config = serde_json::json!({
+                    "look": "classic", "layout": "dagre", "htmlLabels": html_labels,
+                    "themeVariables": {"fontSize": "0px"},
+                });
+                let (source, engine) = if source_owned {
+                    let source = if source.contains("title: Hidden title") {
+                        "---\ntitle: Hidden title\nconfig: CONFIG\n---\nrequirementDiagram\n"
+                            .replace("CONFIG", &config.to_string())
+                    } else {
+                        format!("---\nconfig: {config}\n---\n{source}")
+                    };
+                    (source, classic_engine())
+                } else {
+                    (
+                        source,
+                        classic_engine().with_site_config(
+                            merman_core::presentation::SourcePresentationConfig::from_value(config),
+                        ),
+                    )
+                };
+                let rendered = render_requirement_with_theme_requirement(
+                    &source,
+                    &theme,
+                    engine,
+                    ThemePortabilityRequirement::RequirePortable,
+                );
+                assert!(requirement_stylesheet(rendered.svg()).contains("font-size:0px"));
+                let completion = rendered.into_completion();
+                let evidence = merman_render::__private::family_evidence(completion.report());
+                assert!(evidence.required_count() > 0);
+                assert_eq!(evidence.applied_count(), 0, "{html_labels}/{source}");
+                assert_eq!(evidence.not_applicable_count(), evidence.required_count());
+                assert_eq!(evidence.theme_residual_count(), 0);
+            }
+        }
+    }
+}
+
+#[test]
+fn requirement_local_positive_size_restores_text_under_a_zero_base() {
+    let theme = requirement_typography_theme(
+        ThemeTextStyle::default().with_font_stack(FontStack::single("RequirementTyped").unwrap()),
+    );
+    for (html_labels, source) in [
+        (
+            false,
+            format!("{}\nstyle req1 font-size:24px\n", requirement_source()),
+        ),
+        (
+            true,
+            format!("{}\nstyle req1 font-size:24px\n", requirement_source()),
+        ),
+        (
+            true,
+            requirement_source().replace(
+                "Themed requirement",
+                "<span style='font-size:24px'>Visible text</span>",
+            ),
+        ),
+        (
+            true,
+            format!(
+                "{}\nstyle req1 font-size:0px\n",
+                requirement_source().replace(
+                    "Themed requirement",
+                    "<span style='font-size:24px'>Visible text</span>",
+                )
+            ),
+        ),
+    ] {
+        let rendered = render_requirement_with_theme_requirement(
+            &source,
+            &theme,
+            classic_engine().with_site_config(
+                merman_core::presentation::SourcePresentationConfig::from_value(
+                    serde_json::json!({
+                        "htmlLabels": html_labels, "securityLevel": "loose",
+                        "themeVariables": {"fontSize": "0px"},
+                    }),
+                ),
+            ),
+            ThemePortabilityRequirement::RequirePortable,
+        );
+        let completion = rendered.into_completion();
+        let evidence = merman_render::__private::family_evidence(completion.report());
+        assert_eq!(evidence.applied_count(), 1, "{html_labels}/{source}");
+        assert_eq!(evidence.not_applicable_count(), 0);
+        assert_eq!(evidence.theme_residual_count(), 0);
+    }
+}
+
+#[test]
+fn requirement_restored_runs_preserve_local_family_and_unknown_visibility() {
+    let font_theme = requirement_typography_theme(
+        ThemeTextStyle::default().with_font_stack(FontStack::single("RequirementTyped").unwrap()),
+    );
+    let paint_theme = requirement_text_theme(ThemeRuleSet::default().with_rule(
+        requirement_text_rule(CanvasPaint::solid("#2468ac").unwrap()),
+    ));
+    for (label, theme, not_applicable, residual) in [
+        (
+            "<span style='font-size:24px;font-family:Other'>Restored</span>",
+            &font_theme,
+            1,
+            0,
+        ),
+        (
+            "<span class='host' style='color:inherit!important'>Unknown</span>",
+            &paint_theme,
+            0,
+            1,
+        ),
+        (
+            "<span class='host' style='color:inherit!important'>Unknown</span>",
+            &font_theme,
+            0,
+            1,
+        ),
+    ] {
+        for zero_root in [false, true] {
+            let mut source = requirement_source().replace("Themed requirement", label);
+            if !zero_root {
+                source.push_str("\nstyle req1 font-size:0px\n");
+            }
+            let engine = classic_engine().with_site_config(
+                merman_core::presentation::SourcePresentationConfig::from_value(
+                    serde_json::json!({
+                        "htmlLabels": true, "securityLevel": "loose",
+                        "themeVariables": {"fontSize": if zero_root { "0px" } else { "16px" }},
+                    }),
+                ),
+            );
+            let rendered = render_requirement_with_theme_requirement(
+                &source,
+                theme,
+                engine.clone(),
+                ThemePortabilityRequirement::BestEffort,
+            );
+            let completion = rendered.into_completion();
+            let evidence = merman_render::__private::family_evidence(completion.report());
+            assert_eq!(evidence.applied_count(), 0, "{zero_root}/{label}");
+            assert_eq!(evidence.not_applicable_count(), not_applicable);
+            assert_eq!(evidence.theme_residual_count(), residual);
+            let strict = try_render_requirement_with_theme_requirement_and_environment(
+                &source,
+                theme,
+                engine,
+                ThemePortabilityRequirement::RequirePortable,
+                RenderEnvironment::deterministic(),
+            );
+            assert_eq!(strict.is_ok(), residual == 0, "{zero_root}/{label}");
         }
     }
 }

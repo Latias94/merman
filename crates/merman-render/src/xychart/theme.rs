@@ -1,4 +1,3 @@
-use std::collections::BTreeMap;
 use std::sync::OnceLock;
 
 use merman_model::presentation::PresentationConfig;
@@ -9,7 +8,7 @@ use crate::diagram_theme::{
     ThemeVariant,
 };
 use crate::family::{
-    FamilyThemeEvidence, FamilyThemeOutcomes, FamilyThemeResidualReason, InheritedFontStackOutcome,
+    FamilyThemeEvidence, FamilyThemeResidualReason, InheritedFontStackOutcome,
     InheritedFontStackPlan,
 };
 
@@ -18,9 +17,7 @@ use crate::family::{
 pub(crate) struct XyChartTypographyThemePlan {
     inherited_font_stack: InheritedFontStackPlan,
     common_css: crate::svg::PreparedCommonCss,
-    role_fonts: BTreeMap<XyChartTextRole, RoleFont>,
-    source_sizes: [bool; 6],
-    evidence: FamilyThemeOutcomes,
+    role_fonts: [RoleFont; 6],
     terminal_receipt: OnceLock<XyChartTypographyTerminalSeal>,
 }
 
@@ -46,30 +43,26 @@ impl XyChartTypographyThemePlan {
         effective_config: &PresentationConfig,
         work_meter: &crate::resources::OperationWorkMeter,
     ) -> crate::Result<Self> {
-        let mut role_fonts = BTreeMap::new();
-        // Source ownership is independent of which role-local font rules are present.
-        let source_sizes = if theme.is_some_and(|theme| {
-            theme.family_mechanism_routes().iter().any(|route| {
-                matches!(
-                    route.mechanism(),
-                    FamilyThemeMechanism::RuleFacet {
-                        facet: FamilyThemeRuleFacet::Typography(ThemeTypographyProperty::FontSize),
-                        ..
-                    }
-                )
-            })
-        }) {
-            XyChartTextRole::ALL.map(|role| {
-                let path = role.size_config_path();
-                path.split('.')
-                    .try_fold(effective_config.as_value(), |value, key| value.get(key))
-                    .and_then(crate::config::json_f64)
-                    .is_some()
-                    && effective_config.config_path_overrides_typed_default(path)
-            })
-        } else {
-            [false; 6]
-        };
+        // Bind inherited role sizes and common CSS to the same valid root, including zero.
+        let root_size = crate::config::config_theme_font_size_css_or_root_number_px_opt(
+            effective_config.as_value(),
+        )
+        .unwrap_or(16.0);
+        let root_size = crate::number_format::canonicalize_number(root_size);
+        let mut role_fonts = XyChartTextRole::ALL.map(|role| {
+            let configured_size = role.configured_size(effective_config.as_value());
+            // Legend's accepted numeric configuration is normalized to its independent 1px floor.
+            let source_owns_size = configured_size
+                .is_some_and(|size| role == XyChartTextRole::Legend || size >= 0.0)
+                && effective_config.config_path_overrides_typed_default(role.size_config_path());
+            RoleFont {
+                size: PreparedFontSize::new(role.size_or_default(configured_size), root_size),
+                weight: None,
+                source_owns_size,
+                size_rule: None,
+                weight_rule: None,
+            }
+        });
         if let Some(theme) = theme
             && theme.family_mechanism_routes().iter().any(|route| {
                 matches!(
@@ -90,7 +83,7 @@ impl XyChartTypographyThemePlan {
             for role in XyChartTextRole::ALL {
                 let style = resolve_text_style(theme, role.target(), work_meter)?;
                 let typography = style.typography_resolution();
-                let source_size = source_sizes[role as usize];
+                let font = &mut role_fonts[role as usize];
                 let admitted = |property| {
                     typography
                         .winner(property)
@@ -106,37 +99,34 @@ impl XyChartTypographyThemePlan {
                         })
                         .map(|origin| origin.rule_index())
                 };
-                let size_rule = (!source_size)
+                let size_rule = (!font.source_owns_size)
                     .then(|| admitted(ThemeTypographyProperty::FontSize))
                     .flatten();
                 let weight_rule = admitted(ThemeTypographyProperty::FontWeight);
-                let font = RoleFont {
-                    size: size_rule.and_then(|_| match typography.patch().font_size_px {
-                        Specified::Value(size) => Some(f64::from(size)),
-                        Specified::Clear | Specified::Unspecified => None,
-                    }),
-                    weight: weight_rule.and_then(|_| match typography.patch().font_weight {
-                        Specified::Value(weight) => Some(weight.to_string()),
-                        Specified::Clear | Specified::Unspecified => None,
-                    }),
-                    size_rule,
-                    weight_rule,
-                };
-                role_fonts.insert(role, font);
+                if size_rule.is_some()
+                    && let Specified::Value(size) = typography.patch().font_size_px
+                {
+                    font.size = PreparedFontSize::new(f64::from(size), root_size);
+                }
+                font.weight = weight_rule.and_then(|_| match typography.patch().font_weight {
+                    Specified::Value(weight) => Some(weight.to_string()),
+                    Specified::Clear | Specified::Unspecified => None,
+                });
+                font.size_rule = size_rule;
+                font.weight_rule = weight_rule;
             }
         }
         let inherited_font_stack =
             InheritedFontStackPlan::resolve_property_local(theme, effective_config);
-        let common_css = crate::svg::PreparedCommonCss::new(
+        let common_css = crate::svg::PreparedCommonCss::with_resolved_typography(
             effective_config.as_value(),
-            Some(inherited_font_stack.font_family_css()),
+            inherited_font_stack.font_family_css().to_owned(),
+            format!("{}px", crate::number_format::canonical_number(root_size)),
         );
         Ok(Self {
             inherited_font_stack,
             common_css,
             role_fonts,
-            source_sizes,
-            evidence: FamilyThemeOutcomes::default(),
             terminal_receipt: OnceLock::new(),
         })
     }
@@ -147,22 +137,22 @@ impl XyChartTypographyThemePlan {
         size: &mut f64,
         weight: &mut Option<String>,
     ) {
-        if let Some(font) = self.role_fonts.get(&role) {
-            if let Some(value) = font.size {
-                *size = value;
-            }
-            weight.clone_from(&font.weight);
-        }
+        let font = &self.role_fonts[role as usize];
+        *size = font.size.used;
+        weight.clone_from(&font.weight);
+    }
+
+    /// Parity keeps raw invalid attributes while geometry and visibility use the inherited size.
+    pub(crate) fn svg_font_size(&self, role: XyChartTextRole) -> f64 {
+        self.role_fonts[role as usize].size.raw
     }
 
     pub(crate) fn font_weight(&self, role: XyChartTextRole) -> Option<&str> {
-        self.role_fonts
-            .get(&role)
-            .and_then(|font| font.weight.as_deref())
+        self.role_fonts[role as usize].weight.as_deref()
     }
 
     pub(crate) fn source_owns_size(&self, role: XyChartTextRole) -> bool {
-        self.source_sizes[role as usize]
+        self.role_fonts[role as usize].source_owns_size
     }
 
     pub(crate) fn consumes(
@@ -171,13 +161,12 @@ impl XyChartTypographyThemePlan {
         property: ThemeTypographyProperty,
         rule: usize,
     ) -> bool {
-        self.role_fonts
-            .get(&role)
-            .is_some_and(|font| match property {
-                ThemeTypographyProperty::FontSize => font.size_rule == Some(rule),
-                ThemeTypographyProperty::FontWeight => font.weight_rule == Some(rule),
-                _ => false,
-            })
+        let font = &self.role_fonts[role as usize];
+        match property {
+            ThemeTypographyProperty::FontSize => font.size_rule == Some(rule),
+            ThemeTypographyProperty::FontWeight => font.weight_rule == Some(rule),
+            _ => false,
+        }
     }
 
     pub(crate) fn common_css(&self) -> &crate::svg::PreparedCommonCss {
@@ -210,7 +199,6 @@ impl XyChartTypographyThemePlan {
     }
 
     pub(crate) fn record_evidence(&self, evidence: &mut FamilyThemeEvidence) {
-        evidence.merge_borrowed(&self.evidence);
         if !self.inherited_font_stack.typography_requested() {
             return;
         }
@@ -315,6 +303,35 @@ impl XyChartTextRole {
         }
     }
 
+    fn configured_size(self, config: &serde_json::Value) -> Option<f64> {
+        self.size_config_path()
+            .split('.')
+            .try_fold(config, |value, key| value.get(key))
+            .and_then(crate::config::json_f64_css_px)
+            .map(crate::number_format::canonicalize_number)
+    }
+
+    pub(super) const fn default_font_size(self) -> f64 {
+        match self {
+            Self::Title => 20.0,
+            Self::XAxisTitle | Self::YAxisTitle => 16.0,
+            Self::XAxisLabel | Self::YAxisLabel | Self::Legend => 14.0,
+        }
+    }
+
+    fn size_or_default(self, configured: Option<f64>) -> f64 {
+        let size = configured.unwrap_or(self.default_font_size());
+        if self == Self::Legend {
+            size.max(1.0)
+        } else {
+            size
+        }
+    }
+
+    pub(super) fn configured_font_size(self, config: &serde_json::Value) -> f64 {
+        self.size_or_default(self.configured_size(config))
+    }
+
     pub(crate) fn from_groups(groups: &[String], orientation: &str) -> Option<Self> {
         if groups.len() == 1 && groups[0] == "chart-title" {
             return Some(Self::Title);
@@ -338,10 +355,27 @@ impl XyChartTextRole {
 
 #[derive(Debug)]
 struct RoleFont {
-    size: Option<f64>,
+    size: PreparedFontSize,
     weight: Option<String>,
+    source_owns_size: bool,
     size_rule: Option<usize>,
     weight_rule: Option<usize>,
+}
+
+#[derive(Debug)]
+struct PreparedFontSize {
+    raw: f64,
+    used: f64,
+}
+
+impl PreparedFontSize {
+    fn new(raw: f64, root_size: f64) -> Self {
+        let raw = crate::number_format::canonicalize_number(raw);
+        Self {
+            raw,
+            used: if raw < 0.0 { root_size } else { raw },
+        }
+    }
 }
 
 pub(super) fn logical_axis(group: &str, orientation: &str) -> Option<bool> {

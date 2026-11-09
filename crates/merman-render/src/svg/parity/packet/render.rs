@@ -1,3 +1,4 @@
+use super::super::css::{MermaidBaseCss, write_mermaid_base_css_prefix};
 use super::super::*;
 use merman_model::families::packet::PacketDiagramModel;
 
@@ -18,7 +19,20 @@ fn write_packet_css(
     let end_byte_fill = style.end_byte_color.as_ref();
     let label_fill = style.label_color.as_ref();
     let title_fill = style.title_color.as_ref();
-    write_mermaid_default_base_css_prefix(out, &id, font)?;
+    let font_size_css = format!("{}px", typography_theme.root_font_size_px());
+    write_mermaid_base_css_prefix(
+        out,
+        &id,
+        MermaidBaseCss {
+            font_family: font,
+            font_size_css: &font_size_css,
+            normal_edge_stroke_width_css: "1px",
+            text_color: "#333",
+            line_color: "#333333",
+            error_bkg: "#552222",
+            error_text: "#552222",
+        },
+    )?;
     let _ = write!(
         out,
         r#"#{} .packetByte{{font-size:{};}}#{} {}{{fill:{};}}#{} {}{{fill:{};}}#{} {}{{fill:{};font-size:{};}}#{} {}{{fill:{};font-size:{};}}#{} .packetBlock{{stroke:{};stroke-width:{};fill:{};}}"#,

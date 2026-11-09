@@ -767,6 +767,19 @@ impl SvgPipeline {
         if self.inline_contract == Some(InlineContract::Static) {
             current = step_animation::project_static(current, execution)?;
         }
+        for stage in preset::builtin_stages_before_postprocessors(self.preset) {
+            execution.checkpoint()?;
+            let (output, _) = stage.apply(
+                current,
+                metadata,
+                execution,
+                structure,
+                prepared_math_evidence,
+            )?;
+            current = output;
+            execution.checkpoint()?;
+            execution.preflight_svg_byte_count(current.len())?;
+        }
         if self.isolate_ids {
             current = embedding::normalize_renderer_ids(current, metadata, execution)?;
         }

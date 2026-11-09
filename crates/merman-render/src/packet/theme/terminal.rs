@@ -142,6 +142,38 @@ const fn target_index(target: ThemeTarget) -> Option<usize> {
     }
 }
 
+fn packet_font_size_is_zero_at_parent(size: &str, parent_px: f64) -> bool {
+    let source = format!("font-size:{size}");
+    let Some(declaration) = crate::mermaid_style::parse_style_declaration(&source) else {
+        return false;
+    };
+    if declaration.font_size_is_literal_zero()
+        || (parent_px == 0.0 && declaration.font_size_is_negative_literal())
+        || declaration.resolve_font_size_px(crate::mermaid_style::CssFontSizeContext::new(
+            parent_px, 16.0,
+        )) == Some(0.0)
+    {
+        return true;
+    }
+    if parent_px != 0.0 {
+        return false;
+    }
+    let mut parser = cssparser::Parser::new(declaration.value());
+    let inherits_zero = match parser.next() {
+        // Nonzero unitless numbers are invalid CSS and inherit the zero parent.
+        Ok(cssparser::Token::Number { .. }) => true,
+        // A zero parent supplies zero font metrics; rem keeps its document-root owner.
+        Ok(cssparser::Token::Dimension { value, unit, .. }) => {
+            *value >= 0.0
+                && ["ex", "ch", "cap", "ic"]
+                    .iter()
+                    .any(|candidate| unit.eq_ignore_ascii_case(candidate))
+        }
+        _ => false,
+    };
+    inherits_zero && parser.is_exhausted()
+}
+
 /// Actual text decisions accumulated by the requested-theme SVG writer.
 /// Ordinal rules resolve immediately in writer order; no terminal inventory is retained.
 pub(crate) struct PacketTextOutput<'a> {
@@ -156,6 +188,7 @@ impl<'a> PacketTextOutput<'a> {
     pub(super) fn new(
         selection: &'a PacketThemeSelection,
         css: &crate::packet::config::PacketStyleSettings,
+        root_font_size_px: f64,
     ) -> Self {
         Self {
             selection,
@@ -166,7 +199,7 @@ impl<'a> PacketTextOutput<'a> {
                 css.label_font_size.as_ref(),
                 css.title_font_size.as_ref(),
             ]
-            .map(|size| !crate::mermaid_style::css_font_size_is_zero(size)),
+            .map(|size| !packet_font_size_is_zero_at_parent(size, root_font_size_px)),
             winners: BTreeSet::new(),
         }
     }

@@ -148,8 +148,7 @@ impl<'a> JourneyConfigView<'a> {
             ),
             font_size: self
                 .journey_f64("taskFontSize")
-                .unwrap_or(DEFAULT_TASK_FONT_SIZE)
-                .max(1.0),
+                .unwrap_or(DEFAULT_TASK_FONT_SIZE),
             font_weight: None,
             font_style: None,
         }
@@ -204,11 +203,11 @@ impl JourneyRenderSettings {
     }
 
     pub(super) const fn label_inherits_font_size(&self) -> bool {
-        // The tspan candidate always emits the separately configured numeric task size.
+        // CSS rejects a negative task size, so that tspan inherits the base size too.
         matches!(
             self.text_placement,
             JourneyTextPlacement::Fo | JourneyTextPlacement::Old
-        )
+        ) || self.task_text_style.font_size < 0.0
     }
 }
 

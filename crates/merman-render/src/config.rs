@@ -266,10 +266,16 @@ pub(crate) fn config_theme_or_root_font_size_px_opt(cfg: &Value) -> Option<f64> 
     configured_theme_or_root_font_size_px(cfg).map(|(size, _)| size)
 }
 
+/// Selects a valid nonnegative font size before assigning configuration ownership.
 pub(crate) fn configured_theme_or_root_font_size_px(cfg: &Value) -> Option<(f64, &'static str)> {
     config_f64_css_absolute_px(cfg, &["themeVariables", "fontSize"])
+        .filter(|size| size.is_finite() && *size >= 0.0)
         .map(|size| (size, "themeVariables.fontSize"))
-        .or_else(|| config_f64_css_px(cfg, &["fontSize"]).map(|size| (size, "fontSize")))
+        .or_else(|| {
+            config_f64_css_px(cfg, &["fontSize"])
+                .filter(|size| size.is_finite() && *size >= 0.0)
+                .map(|size| (size, "fontSize"))
+        })
 }
 
 pub(crate) fn config_theme_or_root_font_size_px(cfg: &Value, default: f64) -> f64 {
@@ -284,8 +290,13 @@ pub(crate) fn configured_theme_font_size_css_or_root_number_px(
     cfg: &Value,
 ) -> Option<(f64, &'static str)> {
     config_f64_css_absolute_px(cfg, &["themeVariables", "fontSize"])
+        .filter(|size| size.is_finite() && *size >= 0.0)
         .map(|size| (size, "themeVariables.fontSize"))
-        .or_else(|| config_f64(cfg, &["fontSize"]).map(|size| (size, "fontSize")))
+        .or_else(|| {
+            config_f64(cfg, &["fontSize"])
+                .filter(|size| size.is_finite() && *size >= 0.0)
+                .map(|size| (size, "fontSize"))
+        })
 }
 
 pub(crate) fn config_theme_font_size_css_or_root_number_px(cfg: &Value, default: f64) -> f64 {
@@ -309,6 +320,27 @@ pub(crate) fn config_f64(cfg: &Value, path: &[&str]) -> Option<f64> {
 
 pub(crate) fn config_f64_or(cfg: &Value, path: &[&str], default: f64) -> f64 {
     config_f64(cfg, path).unwrap_or(default)
+}
+
+/// Mermaid `parseFontSize` preserves numeric fractions and reads an integer prefix from strings.
+/// This is a compatibility number, not a conversion from CSS lengths to pixels.
+pub(crate) fn json_mermaid_font_size_number(value: &Value) -> Option<f64> {
+    if let Some(number) = value.as_f64() {
+        return Some(number);
+    }
+    let text = crate::text::trim_start_ecmascript_whitespace(value.as_str()?);
+    let digits = text
+        .strip_prefix('-')
+        .or_else(|| text.strip_prefix('+'))
+        .unwrap_or(text);
+    let count = digits.bytes().take_while(u8::is_ascii_digit).count();
+    if count == 0 {
+        return None;
+    }
+    text[..text.len() - digits.len() + count]
+        .parse::<f64>()
+        .ok()
+        .filter(|number| number.is_finite())
 }
 
 pub(crate) fn json_f64_css_px(value: &Value) -> Option<f64> {
@@ -801,6 +833,18 @@ mod tests {
             ),
             (json!({"themeVariables":{"fontSize":false}}), None),
             (
+                json!({"themeVariables":{"fontSize":"-1px"},"fontSize":"18px"}),
+                Some((18.0, "fontSize")),
+            ),
+            (
+                json!({"themeVariables":{"fontSize":-1},"fontSize":18}),
+                Some((18.0, "fontSize")),
+            ),
+            (
+                json!({"themeVariables":{"fontSize":-1},"fontSize":-2}),
+                None,
+            ),
+            (
                 json!({"themeVariables":{"fontSize":"23px"},"fontSize":18}),
                 Some((23.0, "themeVariables.fontSize")),
             ),
@@ -820,6 +864,18 @@ mod tests {
     #[test]
     fn configured_font_size_owner_preserves_number_only_root_fallback() {
         for (config, expected) in [
+            (
+                json!({"themeVariables":{"fontSize":"-1px"},"fontSize":"18"}),
+                Some((18.0, "fontSize")),
+            ),
+            (
+                json!({"themeVariables":{"fontSize":-1},"fontSize":-2}),
+                None,
+            ),
+            (
+                json!({"themeVariables":{"fontSize":0},"fontSize":18}),
+                Some((0.0, "themeVariables.fontSize")),
+            ),
             (
                 json!({"themeVariables":{"fontSize":"bad"},"fontSize":"18px"}),
                 None,

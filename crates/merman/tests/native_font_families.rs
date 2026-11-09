@@ -445,6 +445,49 @@ fn treemap_emission_uses_native_computed_length_for_fit_decisions() {
 }
 
 #[test]
+#[cfg(feature = "diagram-treemap")]
+fn treemap_native_admission_ignores_unused_classes_but_rejects_selected_styles() {
+    let context = font_context();
+    for (style, property) in [
+        ("letter-spacing:4px", "letter-spacing"),
+        (
+            "font-size:2rem",
+            "font-size (rem requires a document-root font size)",
+        ),
+    ] {
+        let prefix = "---\nconfig:\n  themeVariables:\n    fontFamily: Cousine\n---\n";
+        let source = format!("{prefix}treemap\nclassDef unused {style};\n\"Leaf\": 42\n");
+        let control = render(
+            &format!("{prefix}treemap\n\"Leaf\": 42\n"),
+            Some(context.clone()),
+        );
+        let output = render(&source, Some(context.clone()));
+        assert_native_without_fallback(&output, "treemap");
+        assert_eq!(output.svg(), control.svg(), "unused {style}");
+
+        let selected = source.replace("\"Leaf\": 42", "\"Leaf\": 42:::unused");
+        let error = Renderer::new()
+            .render(RenderRequest::svg(
+                &selected,
+                OperationControl::new(),
+                SvgRequest {
+                    environment: SvgEnvironment::deterministic()
+                        .with_native_font_context(context.clone())
+                        .unwrap(),
+                    ..Default::default()
+                },
+            ))
+            .expect_err("selected unsupported Treemap text styles must still be rejected");
+        assert!(
+            error
+                .to_string()
+                .contains(&format!("text geometry style `{property}`")),
+            "{style}: {error}",
+        );
+    }
+}
+
+#[test]
 fn every_compiled_text_driven_family_uses_native_measurement_without_titles() {
     let cases: &[(&str, &str)] = &[
         #[cfg(feature = "diagram-agentflow")]

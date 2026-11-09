@@ -23,6 +23,11 @@ use crate::resources::{OperationWorkError, OperationWorkMeter};
 mod css_binding;
 pub(super) use css_binding::QuadrantChartCssBinding;
 
+pub(super) fn text_is_visible(text: &str, font_size: f64) -> bool {
+    // Match the serialized SVG number. Invalid negative sizes may inherit; they do not prove zero ink.
+    !text.trim().is_empty() && crate::number_format::canonicalize_number(font_size) != 0.0
+}
+
 /// Typed geometry and paint for Quadrant Chart point marks and their terminal evidence.
 #[derive(Debug)]
 pub(crate) struct QuadrantChartPointThemePlan {
@@ -760,7 +765,7 @@ impl QuadrantChartPointThemeReceipt {
             && root_variable_font_family_css == expected;
     }
 
-    fn record_text(&mut self, role: QuadrantChartTextRole, text: &str) {
+    fn record_text(&mut self, role: QuadrantChartTextRole, text: &str, font_size: f64) {
         match role {
             QuadrantChartTextRole::Quadrant => {
                 self.emitted_text.quadrants = self.emitted_text.quadrants.saturating_add(1);
@@ -775,25 +780,25 @@ impl QuadrantChartPointThemeReceipt {
                 self.emitted_text.titles = self.emitted_text.titles.saturating_add(1);
             }
         }
-        if !text.trim().is_empty() {
+        if text_is_visible(text, font_size) {
             self.visible_text_count = self.visible_text_count.saturating_add(1);
         }
     }
 
-    pub(crate) fn record_quadrant_text(&mut self, text: &str) {
-        self.record_text(QuadrantChartTextRole::Quadrant, text);
+    pub(crate) fn record_quadrant_text(&mut self, text: &str, font_size: f64) {
+        self.record_text(QuadrantChartTextRole::Quadrant, text, font_size);
     }
 
-    pub(crate) fn record_point_text(&mut self, text: &str) {
-        self.record_text(QuadrantChartTextRole::Point, text);
+    pub(crate) fn record_point_text(&mut self, text: &str, font_size: f64) {
+        self.record_text(QuadrantChartTextRole::Point, text, font_size);
     }
 
-    pub(crate) fn record_axis_label(&mut self, text: &str) {
-        self.record_text(QuadrantChartTextRole::AxisLabel, text);
+    pub(crate) fn record_axis_label(&mut self, text: &str, font_size: f64) {
+        self.record_text(QuadrantChartTextRole::AxisLabel, text, font_size);
     }
 
-    pub(crate) fn record_title_text(&mut self, text: &str) {
-        self.record_text(QuadrantChartTextRole::Title, text);
+    pub(crate) fn record_title_text(&mut self, text: &str, font_size: f64) {
+        self.record_text(QuadrantChartTextRole::Title, text, font_size);
     }
 
     pub(crate) fn record_checkpointed_point(
@@ -1018,11 +1023,11 @@ mod tests {
     }
 
     fn record_complete_text_pass(receipt: &mut QuadrantChartPointThemeReceipt) {
-        receipt.record_quadrant_text("Q1");
+        receipt.record_quadrant_text("Q1", 16.0);
         receipt.record_checkpointed_point(0, None, "#123456");
-        receipt.record_point_text("Point");
-        receipt.record_axis_label("Low");
-        receipt.record_title_text("Title");
+        receipt.record_point_text("Point", 12.0);
+        receipt.record_axis_label("Low", 16.0);
+        receipt.record_title_text("Title", 20.0);
     }
 
     #[test]
@@ -1034,10 +1039,10 @@ mod tests {
 
         let mut missing_axis = receipt(true);
         missing_axis.record_css_emission("QuadrantSans", "QuadrantSans", "QuadrantSans");
-        missing_axis.record_quadrant_text("Q1");
+        missing_axis.record_quadrant_text("Q1", 16.0);
         missing_axis.record_checkpointed_point(0, None, "#123456");
-        missing_axis.record_point_text("Point");
-        missing_axis.record_title_text("Title");
+        missing_axis.record_point_text("Point", 12.0);
+        missing_axis.record_title_text("Title", 20.0);
         assert!(!missing_axis.proves_complete());
 
         let mut wrong_css = receipt(true);
@@ -1050,6 +1055,26 @@ mod tests {
         duplicate_css.record_css_emission("QuadrantSans", "QuadrantSans", "QuadrantSans");
         record_complete_text_pass(&mut duplicate_css);
         assert!(!duplicate_css.proves_complete());
+    }
+
+    #[test]
+    fn zero_size_text_still_requires_the_complete_typography_receipt() {
+        for (point_recorded, point_size) in [(false, 0.0), (true, 0.0), (true, 12.0)] {
+            let mut receipt = receipt(true);
+            receipt.record_css_emission("QuadrantSans", "QuadrantSans", "QuadrantSans");
+            receipt.record_quadrant_text("Q1", 0.0);
+            receipt.record_checkpointed_point(0, None, "#123456");
+            if point_recorded {
+                receipt.record_point_text("Point", point_size);
+            }
+            receipt.record_axis_label("Low", 0.0);
+            receipt.record_title_text("Title", 0.0);
+            assert_eq!(receipt.proves_complete(), point_recorded);
+            assert_eq!(
+                receipt.has_visible_text(),
+                point_recorded && point_size > 0.0
+            );
+        }
     }
 
     #[test]

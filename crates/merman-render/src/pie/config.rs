@@ -1,4 +1,4 @@
-use crate::config::{config_bool, config_f64, config_string};
+use crate::config::{config_bool, config_f64, config_string, json_mermaid_font_size_number};
 use serde_json::Value;
 
 const DEFAULT_TEXT_POSITION: f64 = 0.75;
@@ -8,71 +8,7 @@ const DEFAULT_USE_MAX_WIDTH: bool = true;
 
 /// Mirror parseFontSize: numbers stay fractional; strings use parseInt(_, 10), even with CSS units.
 pub(super) fn pie_outer_stroke_width(config: &Value) -> f64 {
-    let value = &config["themeVariables"]["pieOuterStrokeWidth"];
-    if let Some(width) = value.as_f64() {
-        return width;
-    }
-    value
-        .as_str()
-        .and_then(|text| {
-            let text = text.trim_start_matches(|ch: char| {
-                (ch.is_whitespace() && ch != '\u{85}') || ch == '\u{feff}'
-            });
-            let digits = text
-                .strip_prefix('-')
-                .or_else(|| text.strip_prefix('+'))
-                .unwrap_or(text);
-            let count = digits
-                .bytes()
-                .take_while(|byte| byte.is_ascii_digit())
-                .count();
-            if count == 0 {
-                return None;
-            }
-            text[..text.len() - digits.len() + count]
-                .parse::<f64>()
-                .ok()
-        })
-        .unwrap_or(2.0)
-}
-
-/// Resolve stylesheet sizes whose geometry does not depend on the host document.
-pub(super) fn pie_font_size_px(css: &str, inherited_px: f64) -> f64 {
-    pie_font_size(css, inherited_px)
-        .map(|(size, _)| size)
-        .unwrap_or(inherited_px)
-}
-
-/// Retain whether the emitted role size actually consumes the root font size.
-pub(super) fn pie_font_size(css: &str, inherited_px: f64) -> Option<(f64, bool)> {
-    let mut parser = cssparser::Parser::new(css);
-    let size = match parser.next() {
-        Ok(cssparser::Token::Number { value, .. }) if *value == 0.0 => Some((0.0, false)),
-        Ok(cssparser::Token::Dimension { value, unit, .. }) => {
-            let scale = if unit.eq_ignore_ascii_case("px") {
-                Some((1.0, false))
-            } else if unit.eq_ignore_ascii_case("em") {
-                Some((inherited_px, true))
-            } else {
-                None
-            };
-            scale.map(|(scale, inherited)| (f64::from(*value) * scale, inherited))
-        }
-        Ok(cssparser::Token::Percentage { unit_value, .. }) => {
-            Some((f64::from(*unit_value) * inherited_px, true))
-        }
-        Ok(cssparser::Token::Ident(value))
-            if value.eq_ignore_ascii_case("inherit") || value.eq_ignore_ascii_case("unset") =>
-        {
-            Some((inherited_px, true))
-        }
-        _ => None,
-    };
-    let _ = parser.try_parse(cssparser::parse_important);
-    if parser.expect_exhausted().is_err() {
-        return None;
-    }
-    size.filter(|(size, _)| size.is_finite() && *size >= 0.0)
+    json_mermaid_font_size_number(&config["themeVariables"]["pieOuterStrokeWidth"]).unwrap_or(2.0)
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

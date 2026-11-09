@@ -476,7 +476,7 @@ fn classify_math_label(
     let mut saw_math = false;
     let mut all_nonempty_lines_are_formulas = true;
 
-    for raw_line in crate::text::split_html_br_lines(&normalized) {
+    for raw_line in crate::text::split_mermaid_common_br_lines(&normalized) {
         if let Some(work_meter) = work_meter {
             work_meter.checkpoint(OperationPhase::Layout)?;
             work_meter.charge(1usize.saturating_add(raw_line.len() / 64))?;
@@ -552,7 +552,7 @@ fn charge_external_math_source(
     work_meter.checkpoint(OperationPhase::Layout)?;
     work_meter.charge(1)?;
     let mut saw_math = false;
-    for line in crate::text::split_html_br_lines(text) {
+    for line in crate::text::split_mermaid_common_br_lines(text) {
         work_meter.checkpoint(OperationPhase::Layout)?;
         work_meter.charge(1usize.saturating_add(line.len() / 64))?;
         saw_math |= super::parse_delimited_math_line(line).is_some();
@@ -1912,14 +1912,34 @@ mod tests {
     #[cfg(feature = "math")]
     #[test]
     fn classification_distinguishes_pure_mixed_and_unmatched_delimiters_once() {
-        assert!(matches!(
-            classify_math_label("$$x$$<br>$$y$$", None).unwrap(),
-            MathLabelClassification::Pure(lines)
-                if lines == [
-                    ClassifiedPureMathLine::Formula("x".to_string()),
-                    ClassifiedPureMathLine::Formula("y".to_string()),
-                ]
-        ));
+        for br in ["<br>", "</BR >", "<br\u{feff}/>"] {
+            assert!(
+                matches!(
+                    classify_math_label(&format!("$$x$${br}{br}$$y$$"), None).unwrap(),
+                    MathLabelClassification::Pure(lines)
+                        if lines == [
+                            ClassifiedPureMathLine::Formula("x".to_string()),
+                            ClassifiedPureMathLine::Empty,
+                            ClassifiedPureMathLine::Formula("y".to_string()),
+                        ]
+                ),
+                "pure formulas and their empty row must survive common breaks: {br:?}"
+            );
+            assert!(
+                matches!(
+                    classify_math_label(&format!("value: $$x$${br}$$y$$"), None).unwrap(),
+                    MathLabelClassification::Mixed(lines) if lines.len() == 2
+                ),
+                "mixed prose and math must retain both rows: {br:?}"
+            );
+            assert!(
+                matches!(
+                    classify_math_label(&format!("literal $${br}literal $$"), None).unwrap(),
+                    MathLabelClassification::NotMath
+                ),
+                "delimiters must not pair across common break rows: {br:?}"
+            );
+        }
         assert!(matches!(
             classify_math_label("value: $$x$$", None).unwrap(),
             MathLabelClassification::Mixed(_)
@@ -1938,7 +1958,7 @@ mod tests {
         let outcome = backend
             .prepare(
                 PrepareMathLabelRequest::sequence(
-                    "$$x$$<br><br>$$y$$",
+                    "$$x$$<br></br>$$y$$",
                     &PresentationConfig::default(),
                     &style,
                     "#334155",

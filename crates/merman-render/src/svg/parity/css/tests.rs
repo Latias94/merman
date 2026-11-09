@@ -102,6 +102,19 @@ fn mermaid_base_css_fragments_keep_parity_order() {
 }
 
 #[test]
+fn common_css_preserves_nonnegative_configured_font_sizes() {
+    for (size, expected) in [("0px", "0px"), ("0.5px", "0.5px"), ("24pt", "32px")] {
+        let css = info_css_with_config(
+            "diag",
+            &serde_json::json!({"themeVariables": {"fontSize": size}}),
+        );
+        for selector in ["#diag", "#diag svg"] {
+            assert_css_properties(&css, selector, &[("font-size", expected)]);
+        }
+    }
+}
+
+#[test]
 fn shared_css_keeps_selectors_and_url_fragments_in_their_own_escaping_domains() {
     let css = info_css_with_config(
         "seq:prod.v1",

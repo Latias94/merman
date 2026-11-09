@@ -87,7 +87,7 @@ pub(super) fn render_sequence_box_frames_and_rect_blocks(
         if let Some(title) = box_layout.title.as_ref() {
             let cx = title.x;
             let text_y = title.y;
-            let lines = crate::text::split_html_br_lines(&title.text);
+            let lines = crate::text::split_mermaid_common_br_lines(&title.text);
             let count = lines.len().max(1) as f64;
             for (index, raw) in lines.into_iter().enumerate() {
                 checkpoints.checkpoint_loop(index)?;
