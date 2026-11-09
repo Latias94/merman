@@ -252,7 +252,8 @@ impl TreemapTypographyThemePlan {
         };
         let title_theme = TreemapTitleThemePlan::resolve(
             theme,
-            effective_config,
+            css.title_color_source_path
+                .is_some_and(|path| effective_config.config_paint_overrides_typed_default(path)),
             layout.title.as_deref(),
             title_font_size_px,
             &work_meter,
@@ -969,6 +970,16 @@ fn resolve_treemap_source_text_style(
                         };
                     }
                     "font-size" => {
+                        if crate::mermaid_style::css_font_size_value_override(
+                            declaration.source_value(),
+                        )
+                        .is_none()
+                        {
+                            // Mermaid already folded this exact property to its final value.
+                            // Invalid CSS leaves the generated inline size in effect.
+                            style.font_size_px = TreemapSourceTextOverride::Generated;
+                            return Ok(true);
+                        }
                         style.font_size_px = if declaration.important() {
                             TreemapSourceTextOverride::Unverified
                         } else if declaration.inherits_property_value() {
@@ -989,30 +1000,46 @@ fn resolve_treemap_source_text_style(
                             TreemapSourceTextOverride::Unverified
                         };
                     }
-                    "font-weight" => {
-                        style.font_weight = if declaration.important() {
-                            TreemapSourceTextOverride::Unverified
-                        } else if declaration.inherits_property_value() {
-                            TreemapSourceTextOverride::Inherited
-                        } else if crate::mermaid_style::is_supported_css_font_weight_value(
-                            declaration.value(),
-                        ) {
-                            TreemapSourceTextOverride::Value(declaration.value().into())
+                    property @ ("font-weight" | "font-style") => {
+                        let (target, supported) = if property == "font-weight" {
+                            (
+                                &mut style.font_weight,
+                                crate::mermaid_style::is_supported_css_font_weight_value(
+                                    declaration.value(),
+                                ),
+                            )
                         } else {
-                            TreemapSourceTextOverride::Unverified
+                            (
+                                &mut style.font_style,
+                                crate::mermaid_style::is_supported_css_font_style_value(
+                                    declaration.value(),
+                                ),
+                            )
                         };
-                    }
-                    "font-style" => {
-                        style.font_style = if declaration.important() {
+                        *target = if declaration.important() {
                             TreemapSourceTextOverride::Unverified
                         } else if declaration.inherits_property_value() {
                             TreemapSourceTextOverride::Inherited
-                        } else if crate::mermaid_style::is_supported_css_font_style_value(
-                            declaration.value(),
-                        ) {
+                        } else if supported {
                             TreemapSourceTextOverride::Value(declaration.value().into())
                         } else {
-                            TreemapSourceTextOverride::Unverified
+                            // Shared longhand semantics resolve initial weight/style resets.
+                            // Keep the authored value in the separate emitted style suffix.
+                            let inherited = crate::text::TextStyle::default();
+                            let mut cascade = crate::mermaid_style::TextStyleCascade::new(
+                                &inherited,
+                                font_size_context,
+                            );
+                            cascade.observe_declaration(&declaration);
+                            let resolved = cascade.finish();
+                            let reset = if property == "font-weight" {
+                                resolved.font_weight.as_deref()
+                            } else {
+                                resolved.font_style.as_deref()
+                            };
+                            reset.map_or(TreemapSourceTextOverride::Unverified, |value| {
+                                TreemapSourceTextOverride::Value(value.into())
+                            })
                         };
                     }
                     "text-transform" => {
@@ -1061,7 +1088,7 @@ pub(crate) struct TreemapTitleThemePlan {
 impl TreemapTitleThemePlan {
     pub(crate) fn resolve(
         theme: Option<&ResolvedDiagramTheme>,
-        effective_config: &PresentationConfig,
+        config_owns_fill: bool,
         title: Option<&str>,
         title_font_size_px: Option<f64>,
         work_meter: &OperationWorkMeter,
@@ -1073,9 +1100,6 @@ impl TreemapTitleThemePlan {
         };
         let title_present =
             title.is_some_and(|title| !title.trim().is_empty()) && title_font_size_px != Some(0.0);
-        let config_owns_fill = effective_config
-            .config_paint_overrides_typed_default("treemap.titleColor")
-            || effective_config.config_paint_overrides_typed_default("themeVariables.titleColor");
         let fill = SingleTitleFillPlan::resolve(
             theme,
             title_present,
@@ -1343,10 +1367,9 @@ mod tests {
             .expect("compile Treemap title fill and palette theme")
             .resolve(DiagramFamilyId::TREEMAP);
         let meter = OperationWorkMeter::new(RenderResourcePolicy::unbounded_for_trusted_input());
-        let config = crate::test_support::presentation_config(json!({}));
         let plan = TreemapTitleThemePlan::resolve(
             Some(&resolved),
-            &config,
+            false,
             Some("Title"),
             Some(14.0),
             &meter,

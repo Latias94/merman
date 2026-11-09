@@ -7,6 +7,7 @@ pub(crate) struct TreemapCssBinding {
     pub(crate) common: PreparedCommonCss,
     root_font_size_px: f64,
     pub(crate) title_color: String,
+    pub(super) title_color_source_path: Option<&'static str>,
     pub(crate) label_color: String,
     pub(crate) value_color: String,
     pub(crate) section_stroke_color: String,
@@ -32,14 +33,33 @@ impl TreemapCssBinding {
         let color =
             |key: &str, fallback: &str| optional_color(key).unwrap_or_else(|| fallback.to_owned());
         let style_option = |key: &str, fallback: &str| {
-            config_css_number_or_string(config, &["treemap", key])
+            config_css_number_or_string(config, &["themeVariables", "treemap", key])
+                .or_else(|| config_css_number_or_string(config, &["treemap", key]))
                 .unwrap_or_else(|| fallback.to_owned())
         };
 
         let text_color = color("textColor", "#333");
-        let title_color = config_string(config, &["treemap", "titleColor"])
-            .or_else(|| optional_color("titleColor"))
-            .unwrap_or_else(|| text_color.clone());
+        let title_color = [
+            (
+                &["themeVariables", "treemap", "titleColor"][..],
+                "themeVariables.treemap.titleColor",
+            ),
+            (&["treemap", "titleColor"][..], "treemap.titleColor"),
+            (
+                &["themeVariables", "titleColor"][..],
+                "themeVariables.titleColor",
+            ),
+            (
+                &["themeVariables", "textColor"][..],
+                "themeVariables.textColor",
+            ),
+        ]
+        .into_iter()
+        .find_map(|(path, owner)| config_string(config, path).map(|value| (value, owner)));
+        let (title_color, title_color_source_path) = title_color.map_or_else(
+            || (text_color.clone(), None),
+            |(value, path)| (value, Some(path)),
+        );
         let raw_theme_name =
             config_string(config, &["theme"]).unwrap_or_else(|| "default".to_owned());
         let theme_name = raw_theme_name.trim().to_ascii_lowercase();
@@ -89,9 +109,12 @@ impl TreemapCssBinding {
             ),
             root_font_size_px,
             title_color,
-            label_color: config_string(config, &["treemap", "labelColor"])
+            title_color_source_path,
+            label_color: config_string(config, &["themeVariables", "treemap", "labelColor"])
+                .or_else(|| config_string(config, &["treemap", "labelColor"]))
                 .unwrap_or_else(|| text_color.clone()),
-            value_color: config_string(config, &["treemap", "valueColor"])
+            value_color: config_string(config, &["themeVariables", "treemap", "valueColor"])
+                .or_else(|| config_string(config, &["treemap", "valueColor"]))
                 .unwrap_or_else(|| text_color.clone()),
             section_stroke_color: style_option("sectionStrokeColor", "black"),
             section_stroke_width: style_option("sectionStrokeWidth", "1"),
@@ -101,11 +124,7 @@ impl TreemapCssBinding {
             leaf_fill_color: style_option("leafFillColor", "#efefef"),
             label_font_size: style_option("labelFontSize", "12px"),
             value_font_size: style_option("valueFontSize", "10px"),
-            title_font_size: config_css_number_or_string(
-                config,
-                &["themeVariables", "treemap", "titleFontSize"],
-            )
-            .unwrap_or_else(|| style_option("titleFontSize", "14px")),
+            title_font_size: style_option("titleFontSize", "14px"),
             color_scale,
             color_scale_peer,
             color_scale_label,
@@ -203,7 +222,7 @@ mod tests {
                     "textColor": "#101010", "titleColor": "#202020",
                     "labelTextColor": "rgb(10, 20, 30)",
                     "cScale0": "#010203", "cScalePeer0": "#040506", "cScaleLabel0": "#070809",
-                    "treemap": {"titleColor": "ignored", "sectionFillColor": "ignored"}
+                    "treemap": {"titleColor": "#888888", "sectionFillColor": "#999999"}
                 },
                 "treemap": {
                     "titleColor": "#777777", "labelColor": "#555555", "valueColor": "#666666",
@@ -216,12 +235,16 @@ mod tests {
             "Inter",
         )
         .expect("prepared Treemap roles");
-        assert_eq!(binding.title_color, "#777777");
+        assert_eq!(binding.title_color, "#888888");
+        assert_eq!(
+            binding.title_color_source_path,
+            Some("themeVariables.treemap.titleColor")
+        );
         assert_eq!(binding.label_color, "#555555");
         assert_eq!(binding.value_color, "#666666");
         assert_eq!(binding.section_stroke_color, "#111111");
         assert_eq!(binding.section_stroke_width, "2");
-        assert_eq!(binding.section_fill_color, "#222222");
+        assert_eq!(binding.section_fill_color, "#999999");
         assert_eq!(binding.leaf_stroke_color, "#333333");
         assert_eq!(binding.leaf_stroke_width, "3px");
         assert_eq!(binding.leaf_fill_color, "#444444");
