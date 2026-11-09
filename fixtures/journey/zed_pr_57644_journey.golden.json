@@ -19,7 +19,7 @@
         ],
         "score": 5,
         "section": "Browsing & Selection",
-        "task": "        Visit homepage",
+        "task": "Visit homepage",
         "type": "Browsing & Selection"
       },
       {
@@ -28,7 +28,7 @@
         ],
         "score": 4,
         "section": "Browsing & Selection",
-        "task": "        Search for items",
+        "task": "Search for items",
         "type": "Browsing & Selection"
       },
       {
@@ -37,7 +37,7 @@
         ],
         "score": 3,
         "section": "Browsing & Selection",
-        "task": "        Browse recommendations",
+        "task": "Browse recommendations",
         "type": "Browsing & Selection"
       },
       {
@@ -46,7 +46,7 @@
         ],
         "score": 4,
         "section": "Browsing & Selection",
-        "task": "        Add items to cart",
+        "task": "Add items to cart",
         "type": "Browsing & Selection"
       },
       {
@@ -55,7 +55,7 @@
         ],
         "score": 2,
         "section": "Browsing & Selection",
-        "task": "        Check substitution options",
+        "task": "Check substitution options",
         "type": "Browsing & Selection"
       },
       {
@@ -64,7 +64,7 @@
         ],
         "score": 4,
         "section": "Checkout & Delivery",
-        "task": "        Review cart",
+        "task": "Review cart",
         "type": "Checkout & Delivery"
       },
       {
@@ -74,7 +74,7 @@
         ],
         "score": 3,
         "section": "Checkout & Delivery",
-        "task": "        Apply coupon code",
+        "task": "Apply coupon code",
         "type": "Checkout & Delivery"
       },
       {
@@ -83,7 +83,7 @@
         ],
         "score": 2,
         "section": "Checkout & Delivery",
-        "task": "        Choose delivery slot",
+        "task": "Choose delivery slot",
         "type": "Checkout & Delivery"
       },
       {
@@ -93,7 +93,7 @@
         ],
         "score": 3,
         "section": "Checkout & Delivery",
-        "task": "        Enter payment info",
+        "task": "Enter payment info",
         "type": "Checkout & Delivery"
       },
       {
@@ -103,7 +103,7 @@
         ],
         "score": 5,
         "section": "Checkout & Delivery",
-        "task": "        Receive confirmation",
+        "task": "Receive confirmation",
         "type": "Checkout & Delivery"
       },
       {
@@ -113,7 +113,7 @@
         ],
         "score": 4,
         "section": "Checkout & Delivery",
-        "task": "        Track delivery",
+        "task": "Track delivery",
         "type": "Checkout & Delivery"
       },
       {
@@ -123,7 +123,7 @@
         ],
         "score": 5,
         "section": "Checkout & Delivery",
-        "task": "        Receive groceries",
+        "task": "Receive groceries",
         "type": "Checkout & Delivery"
       }
     ],

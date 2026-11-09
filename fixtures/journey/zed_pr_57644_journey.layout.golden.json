@@ -122,7 +122,7 @@
           ],
           "score": 5.0,
           "section": "Browsing & Selection",
-          "task": "        Visit homepage",
+          "task": "Visit homepage",
           "width": 150.0,
           "x": 150.0,
           "y": 110.0
@@ -155,7 +155,7 @@
           ],
           "score": 4.0,
           "section": "Browsing & Selection",
-          "task": "        Search for items",
+          "task": "Search for items",
           "width": 150.0,
           "x": 350.0,
           "y": 110.0
@@ -188,7 +188,7 @@
           ],
           "score": 3.0,
           "section": "Browsing & Selection",
-          "task": "        Browse recommendations",
+          "task": "Browse recommendations",
           "width": 150.0,
           "x": 550.0,
           "y": 110.0
@@ -221,7 +221,7 @@
           ],
           "score": 4.0,
           "section": "Browsing & Selection",
-          "task": "        Add items to cart",
+          "task": "Add items to cart",
           "width": 150.0,
           "x": 750.0,
           "y": 110.0
@@ -254,7 +254,7 @@
           ],
           "score": 2.0,
           "section": "Browsing & Selection",
-          "task": "        Check substitution options",
+          "task": "Check substitution options",
           "width": 150.0,
           "x": 950.0,
           "y": 110.0
@@ -287,7 +287,7 @@
           ],
           "score": 4.0,
           "section": "Checkout & Delivery",
-          "task": "        Review cart",
+          "task": "Review cart",
           "width": 150.0,
           "x": 1150.0,
           "y": 110.0
@@ -329,7 +329,7 @@
           ],
           "score": 3.0,
           "section": "Checkout & Delivery",
-          "task": "        Apply coupon code",
+          "task": "Apply coupon code",
           "width": 150.0,
           "x": 1350.0,
           "y": 110.0
@@ -362,7 +362,7 @@
           ],
           "score": 2.0,
           "section": "Checkout & Delivery",
-          "task": "        Choose delivery slot",
+          "task": "Choose delivery slot",
           "width": 150.0,
           "x": 1550.0,
           "y": 110.0
@@ -404,7 +404,7 @@
           ],
           "score": 3.0,
           "section": "Checkout & Delivery",
-          "task": "        Enter payment info",
+          "task": "Enter payment info",
           "width": 150.0,
           "x": 1750.0,
           "y": 110.0
@@ -446,7 +446,7 @@
           ],
           "score": 5.0,
           "section": "Checkout & Delivery",
-          "task": "        Receive confirmation",
+          "task": "Receive confirmation",
           "width": 150.0,
           "x": 1950.0,
           "y": 110.0
@@ -488,7 +488,7 @@
           ],
           "score": 4.0,
           "section": "Checkout & Delivery",
-          "task": "        Track delivery",
+          "task": "Track delivery",
           "width": 150.0,
           "x": 2150.0,
           "y": 110.0
@@ -530,7 +530,7 @@
           ],
           "score": 5.0,
           "section": "Checkout & Delivery",
-          "task": "        Receive groceries",
+          "task": "Receive groceries",
           "width": 150.0,
           "x": 2350.0,
           "y": 110.0

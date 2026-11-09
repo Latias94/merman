@@ -1,6 +1,6 @@
 use crate::diagrams::scan::{
-    LineCursor, is_ecmascript_whitespace, leading_whitespace_len,
-    split_statement_suffix_hash_or_semi, starts_with_case_insensitive,
+    LineCursor, is_ecmascript_whitespace, split_statement_suffix_hash_or_semi,
+    starts_with_case_insensitive,
 };
 use crate::family::CombinedSemanticFailure;
 #[cfg(feature = "editor-facts")]
@@ -132,28 +132,29 @@ impl JourneySemanticSource {
     }
 }
 
-fn parse_keyword_arg_one_ws(line: &str, keyword: &str) -> Option<String> {
-    let t = line.trim_start();
+fn parse_keyword_arg_one_ws<'a>(line: &'a str, keyword: &str) -> Option<&'a str> {
+    let t = line.trim_start_matches(is_ecmascript_whitespace);
     if !starts_with_case_insensitive(t, keyword) {
         return None;
     }
     let after = &t[keyword.len()..];
     let ws = after.chars().next()?;
-    if !ws.is_whitespace() {
+    if !is_ecmascript_whitespace(ws) {
         return None;
     }
     let rest = &after[ws.len_utf8()..];
-    Some(split_statement_suffix_hash_or_semi(rest).to_string())
+    let value = split_statement_suffix_hash_or_semi(rest);
+    (!value.is_empty()).then_some(value)
 }
 
 fn parse_key_colon_value<'a>(line: &'a str, key: &str) -> Option<&'a str> {
-    let t = line.trim_start();
+    let t = line.trim_start_matches(is_ecmascript_whitespace);
     if !starts_with_case_insensitive(t, key) {
         return None;
     }
-    let rest = t[key.len()..].trim_start();
+    let rest = t[key.len()..].trim_start_matches(is_ecmascript_whitespace);
     let rest = rest.strip_prefix(':')?;
-    Some(rest.trim())
+    Some(rest.trim_matches(is_ecmascript_whitespace))
 }
 
 struct JourneyBlockText {
@@ -171,11 +172,11 @@ fn parse_acc_descr_block_spanned(
     control: &OperationControl,
 ) -> OperationControlResult<Option<JourneyBlockText>> {
     control.checkpoint()?;
-    let t = first_line.trim_start();
+    let t = first_line.trim_start_matches(is_ecmascript_whitespace);
     if !starts_with_case_insensitive(t, "accDescr") {
         return Ok(None);
     }
-    let rest = t["accDescr".len()..].trim_start();
+    let rest = t["accDescr".len()..].trim_start_matches(is_ecmascript_whitespace);
     let Some(rest) = rest.strip_prefix('{') else {
         return Ok(None);
     };
@@ -190,7 +191,7 @@ fn parse_acc_descr_block_spanned(
         let closing = SourceSpan::new(content_start + end, content_start + end + 1);
         lines.resume_same_line_at(closing.end);
         return Ok(Some(JourneyBlockText {
-            text: buf.trim().to_string(),
+            text: buf.trim_matches(is_ecmascript_whitespace).to_string(),
             span: SourceSpan::new(content_start, content_start + end),
             #[cfg(feature = "editor-facts")]
             opening: SourceSpan::new(content_start - 1, content_start),
@@ -216,7 +217,7 @@ fn parse_acc_descr_block_spanned(
         content_end = line_start + line.len();
     }
     Ok(Some(JourneyBlockText {
-        text: buf.trim().to_string(),
+        text: buf.trim_matches(is_ecmascript_whitespace).to_string(),
         span: SourceSpan::new(content_start, content_end.max(content_start)),
         #[cfg(feature = "editor-facts")]
         opening: SourceSpan::new(content_start - 1, content_start),
@@ -225,11 +226,15 @@ fn parse_acc_descr_block_spanned(
 }
 
 fn strip_comment_prefix(line: &str) -> &str {
-    let t = line.trim_start();
+    let t = line.trim_start_matches(is_ecmascript_whitespace);
     if t.starts_with('#') {
         return "";
     }
-    if t.starts_with("%%") && !t.starts_with("%%{") {
+    let prefixed_comment = t
+        .chars()
+        .next()
+        .is_some_and(|ch| ch != '}' && ch.len_utf16() == 1 && t[ch.len_utf8()..].starts_with("%%"));
+    if (t.starts_with("%%") && !t.starts_with("%%{")) || prefixed_comment {
         return "";
     }
     // The exclusive acc_title / acc_descr lexer states consume the physical-line remainder.
@@ -240,7 +245,9 @@ fn strip_comment_prefix(line: &str) -> &str {
     }
     // The multiline lexer likewise owns punctuation through its closing brace.
     if starts_with_case_insensitive(t, "accDescr")
-        && t["accDescr".len()..].trim_start().starts_with('{')
+        && t["accDescr".len()..]
+            .trim_start_matches(is_ecmascript_whitespace)
+            .starts_with('{')
     {
         return line;
     }
@@ -439,7 +446,7 @@ fn parse_journey_semantic_source(
     while let Some((line, line_start)) = lines.next_line() {
         control.checkpoint()?;
         let stripped = strip_comment_prefix(line);
-        let t = stripped.trim();
+        let t = stripped.trim_matches(is_ecmascript_whitespace);
         if t.is_empty() {
             continue;
         }
@@ -449,7 +456,7 @@ fn parse_journey_semantic_source(
                 header_seen = true;
                 let header_start = line_start + line.find(t).unwrap_or(0);
                 let after_header = &t["journey".len()..];
-                let rest = after_header.trim_start();
+                let rest = after_header.trim_start_matches(is_ecmascript_whitespace);
                 if !rest.is_empty() {
                     let start = header_start
                         + "journey".len()
@@ -465,7 +472,8 @@ fn parse_journey_semantic_source(
                 }
                 continue;
             }
-            let start = line_start + leading_whitespace_len(line);
+            let start =
+                line_start + line.len() - line.trim_start_matches(is_ecmascript_whitespace).len();
             first_error.get_or_insert_with(|| {
                 Error::diagram_parse_exact(
                     diagram_type.to_string(),
@@ -492,7 +500,7 @@ fn parse_journey_semantic_source(
                     );
                 }
             }
-            db.title = v;
+            db.title = v.to_string();
             continue;
         }
         if let Some(v) = parse_key_colon_value(stripped, "accTitle") {
@@ -568,7 +576,6 @@ fn parse_journey_semantic_source(
             continue;
         }
         if let Some(v) = parse_keyword_arg_one_ws(stripped, "section")
-            && !v.is_empty()
             && !v.starts_with(':')
         {
             if let Some(colon) = stripped.find(':') {
@@ -587,25 +594,23 @@ fn parse_journey_semantic_source(
                 .filter(|_| editor_demand.captures_rich())
                 && let Some(value) = spanned_keyword_value(line, line_start, "section")
             {
-                let section_text = value.text.trim_matches(is_ecmascript_whitespace);
-                if !section_text.is_empty() {
-                    let section_start = value.start + value.text.find(section_text).unwrap_or(0);
-                    facts.push_symbol(EditorSemanticSymbol::outline(
-                        section_text.to_string(),
-                        Some("journey section".to_string()),
-                        EditorSemanticKind::Namespace,
-                        SourceSpan::new(line_start, line_start + line.len()),
-                        SourceSpan::new(section_start, section_start + section_text.len()),
-                    ));
-                }
+                facts.push_symbol(EditorSemanticSymbol::outline(
+                    value.text.to_string(),
+                    Some("journey section".to_string()),
+                    EditorSemanticKind::Namespace,
+                    SourceSpan::new(line_start, line_start + line.len()),
+                    SourceSpan::new(value.start, value.end),
+                ));
             }
-            db.add_section(&v);
+            db.add_section(v);
             continue;
         }
 
         let colon = stripped.find(':');
-        let task_name_source = colon.map_or(stripped, |colon| &stripped[..colon]);
-        let task_name = task_name_source.trim();
+        let task_name_source = colon
+            .map_or(stripped, |colon| &stripped[..colon])
+            .trim_start_matches(is_ecmascript_whitespace);
+        let task_name = task_name_source.trim_matches(is_ecmascript_whitespace);
         if task_name.is_empty() {
             let start = line_start + line.find(t).unwrap_or(0);
             first_error.get_or_insert_with(|| {
@@ -622,7 +627,8 @@ fn parse_journey_semantic_source(
             .as_mut()
             .filter(|_| editor_demand.captures_rich())
         {
-            let task_start = line_start + task_name_source.find(task_name).unwrap_or(0);
+            let task_relative = task_name.as_ptr() as usize - line.as_ptr() as usize;
+            let task_start = line_start + task_relative;
             let task_end = task_start + task_name.len();
             facts.push_expected_syntax(EditorExpectedSyntax::new(
                 EditorExpectedSyntaxKind::Payload,
@@ -638,7 +644,7 @@ fn parse_journey_semantic_source(
         }
 
         let Some(colon) = colon else {
-            let insertion = line_start + stripped.trim_end().len();
+            let insertion = line_start + stripped.trim_end_matches(is_ecmascript_whitespace).len();
             first_error.get_or_insert_with(|| {
                 Error::diagram_parse_insertion_point(
                     diagram_type.to_string(),
@@ -754,20 +760,11 @@ fn spanned_keyword_value<'a>(
     line_start: usize,
     keyword: &str,
 ) -> Option<EditorPayloadSpan<'a>> {
-    let trimmed = line.trim_start();
-    if !starts_with_case_insensitive(trimmed, keyword) {
-        return None;
-    }
-    let after = &trimmed[keyword.len()..];
-    let ws = after.chars().next()?;
-    if !ws.is_whitespace() {
-        return None;
-    }
-    let value = split_statement_suffix_hash_or_semi(&after[ws.len_utf8()..]).trim();
+    let value = parse_keyword_arg_one_ws(line, keyword)?.trim_matches(is_ecmascript_whitespace);
     if value.is_empty() {
         return None;
     }
-    let value_rel = line.find(value)?;
+    let value_rel = value.as_ptr() as usize - line.as_ptr() as usize;
     Some(EditorPayloadSpan {
         text: value,
         start: line_start + value_rel,
@@ -785,7 +782,7 @@ fn spanned_colon_value<'a>(
     if value.is_empty() {
         return None;
     }
-    let value_rel = line.trim_end().len() - value.len();
+    let value_rel = value.as_ptr() as usize - line.as_ptr() as usize;
     Some(EditorPayloadSpan {
         text: value,
         start: line_start + value_rel,
@@ -931,6 +928,317 @@ mod tests {
         assert_eq!(db.actors_sorted(), ["Alice", "\u{0085}Bob\u{0085}"]);
     }
 
+    #[test]
+    fn journey_structural_whitespace_matches_ecmascript() {
+        let parser = crate::SemanticParser::new();
+        for whitespace in [' ', '\t', '\u{00a0}', '\u{feff}'] {
+            for ending in ["\n", "\r\n"] {
+                let source = format!(
+                    concat!(
+                        "journey{ending}",
+                        "{whitespace}title{whitespace}Checkout{ending}",
+                        "{whitespace}accTitle{whitespace}:{whitespace}Accessible{whitespace}{ending}",
+                        "{whitespace}accDescr{whitespace}:{whitespace}Help{whitespace}{ending}",
+                        "{whitespace}section{whitespace}Payment{ending}",
+                        "{whitespace}Pay: 4: Actor{ending}",
+                    ),
+                    whitespace = whitespace,
+                    ending = ending,
+                );
+                let parsed = parser.parse_diagram_sync(&source).unwrap();
+                let merman_model::semantic::SemanticDiagramModel::Journey(model) = parsed.model
+                else {
+                    panic!("expected Journey model");
+                };
+                assert_eq!(model.title.as_deref(), Some("Checkout"));
+                assert_eq!(model.acc_title.as_deref(), Some("Accessible"));
+                assert_eq!(model.acc_descr.as_deref(), Some("Help"));
+                assert_eq!(model.sections, ["Payment"]);
+                assert_eq!(model.tasks[0].task, "Pay");
+                assert_eq!(model.tasks[0].section_index, Some(0));
+                assert_eq!(model.tasks[0].score, 4.0);
+                assert_eq!(model.tasks[0].people, ["Actor"]);
+            }
+        }
+    }
+
+    #[test]
+    fn journey_keyword_separators_preserve_remaining_label_whitespace() {
+        let source = concat!(
+            "journey\n",
+            "title\u{feff} Title \u{feff} \n",
+            "section\u{feff} \u{feff}Checkout \u{feff} \n",
+            "\u{feff}\t Pay \u{feff} : 4: Actor\n",
+        );
+        let parsed = crate::SemanticParser::new()
+            .parse_diagram_sync(source)
+            .unwrap();
+        let merman_model::semantic::SemanticDiagramModel::Journey(model) = parsed.model else {
+            panic!("expected Journey model");
+        };
+
+        assert_eq!(model.title.as_deref(), Some(" Title \u{feff} "));
+        assert_eq!(model.sections, [" \u{feff}Checkout \u{feff} "]);
+        assert_eq!(model.tasks[0].section, " \u{feff}Checkout \u{feff} ");
+        assert_eq!(model.tasks[0].task, "Pay \u{feff} ");
+    }
+
+    #[test]
+    fn journey_nel_is_task_text_instead_of_structural_whitespace() {
+        let parser = crate::SemanticParser::new();
+        for body in [
+            "\u{0085}section Checkout",
+            "\u{0085}title Checkout",
+            "\u{0085}",
+        ] {
+            let source = format!("journey\n{body}\nPay: 4: Actor\n");
+            assert!(parser.parse_diagram_sync(&source).is_err(), "{source:?}");
+        }
+        for (body, expected_name, expected_nan) in [
+            ("\u{0085}Pay: 4: Actor", "\u{0085}Pay", false),
+            ("\u{0085}: 4: Actor", "\u{0085}", false),
+            ("title\u{0085}Pay: 4: Actor", "title\u{0085}Pay", false),
+            ("section\u{0085}Pay: 4: Actor", "section\u{0085}Pay", false),
+            ("\u{0085}accTitle: Checkout", "\u{0085}accTitle", true),
+            ("accTitle\u{0085}: 4: Actor", "accTitle\u{0085}", false),
+            ("accDescr\u{0085}: 4: Actor", "accDescr\u{0085}", false),
+        ] {
+            let source = format!("journey\n{body}\n");
+            let parsed = parser.parse_diagram_sync(&source).unwrap();
+            let merman_model::semantic::SemanticDiagramModel::Journey(model) = parsed.model else {
+                panic!("expected Journey model");
+            };
+            assert!(model.title.is_none());
+            assert!(model.acc_title.is_none());
+            assert!(model.acc_descr.is_none());
+            assert!(model.sections.is_empty());
+            assert_eq!(model.tasks[0].task, expected_name);
+            assert_eq!(model.tasks[0].score_is_nan, expected_nan);
+        }
+    }
+
+    #[test]
+    fn journey_prefixed_comment_priority_preserves_literal_label_controls() {
+        let parser = crate::SemanticParser::new();
+        for ending in ["\n", "\r\n"] {
+            for line in [
+                "\u{0085}%% Ghost: 4: Actor",
+                "\u{0085}%% Ghost",
+                "x%% Ghost: 4: Actor",
+            ] {
+                let source = format!("journey{ending}{line}{ending}Pay: 5: Actor{ending}");
+                let parsed = parser.parse_diagram_sync(&source).unwrap();
+                let merman_model::semantic::SemanticDiagramModel::Journey(model) = parsed.model
+                else {
+                    panic!("expected Journey model");
+                };
+                assert_eq!(model.tasks.len(), 1, "{source}");
+                assert_eq!(model.tasks[0].task, "Pay");
+                #[cfg(feature = "editor-facts")]
+                {
+                    let crate::SemanticSnapshotCapture::Snapshot(snapshot) =
+                        parser.capture_diagram_snapshot_sync(&source)
+                    else {
+                        panic!("expected Journey snapshot");
+                    };
+                    let crate::ParsedEditorFacts::Available(facts) = snapshot.editor_facts() else {
+                        panic!("expected editor facts");
+                    };
+                    assert!(facts.diagnostics.is_empty());
+                    assert!(
+                        !facts
+                            .symbols
+                            .iter()
+                            .any(|symbol| symbol.name.contains("Ghost"))
+                    );
+                }
+            }
+            for name in ["}%% Visible", "Long%% Visible", "\u{1f680}%% Visible"] {
+                let source =
+                    format!("journey{ending}{name}: 4: Actor{ending}Pay: 5: Actor{ending}");
+                let parsed = parser.parse_diagram_sync(&source).unwrap();
+                let merman_model::semantic::SemanticDiagramModel::Journey(model) = parsed.model
+                else {
+                    panic!("expected Journey model");
+                };
+                assert_eq!(model.tasks.len(), 2);
+                assert_eq!(model.tasks[0].task, name);
+            }
+        }
+    }
+
+    #[cfg(feature = "editor-facts")]
+    #[test]
+    fn journey_unicode_payload_facts_keep_original_keyword_and_task_offsets() {
+        for ending in ["\n", "\r\n"] {
+            let source = format!(
+                concat!(
+                    "journey{ending}",
+                    "\u{feff}title\u{feff}title\u{feff} {ending}",
+                    "\u{feff}accTitle\u{feff}:\u{feff}\u{0085}Accessible\u{0085}\u{feff}{ending}",
+                    "\u{feff}accDescr\u{feff}:\u{feff}\u{0085}Help\u{0085}\u{feff}{ending}",
+                    " \u{feff}section\u{feff}section\u{feff} {ending}",
+                    " \u{feff}\u{0085}Pay\u{0085}\u{feff}: 4: Actor{ending}",
+                ),
+                ending = ending,
+            );
+            let crate::SemanticSnapshotCapture::Snapshot(snapshot) =
+                crate::SemanticParser::new().capture_diagram_snapshot_sync(&source)
+            else {
+                panic!("expected Journey snapshot");
+            };
+            let (_, outcome, editor_facts) = snapshot.into_parts();
+            let crate::SemanticParseOutcome::Parsed(
+                merman_model::semantic::SemanticDiagramModel::Journey(model),
+            ) = outcome
+            else {
+                panic!("expected canonical Journey model");
+            };
+            assert_eq!(
+                model.acc_title.as_deref(),
+                Some("\u{0085}Accessible\u{0085}")
+            );
+            assert_eq!(model.acc_descr.as_deref(), Some("\u{0085}Help\u{0085}"));
+            assert_eq!(model.tasks[0].task, "\u{0085}Pay\u{0085}\u{feff}");
+            let crate::ParsedEditorFacts::Available(facts) = editor_facts else {
+                panic!("expected Journey editor facts");
+            };
+            assert!(facts.diagnostics.is_empty());
+            for (detail, payload, start) in [
+                (
+                    "journey title",
+                    "title",
+                    source.find("title\u{feff}title").unwrap() + "title\u{feff}".len(),
+                ),
+                (
+                    "journey accessibility title",
+                    "\u{0085}Accessible\u{0085}",
+                    source.find("\u{0085}Accessible\u{0085}").unwrap(),
+                ),
+                (
+                    "journey accessibility description",
+                    "\u{0085}Help\u{0085}",
+                    source.find("\u{0085}Help\u{0085}").unwrap(),
+                ),
+                (
+                    "journey section",
+                    "section",
+                    source.find("section\u{feff}section").unwrap() + "section\u{feff}".len(),
+                ),
+                (
+                    "journey task",
+                    "\u{0085}Pay\u{0085}",
+                    source.find("\u{0085}Pay\u{0085}").unwrap(),
+                ),
+            ] {
+                let symbol = facts
+                    .symbols
+                    .iter()
+                    .find(|symbol| symbol.detail.as_deref() == Some(detail))
+                    .unwrap();
+                assert_eq!(symbol.name, payload);
+                assert_eq!(
+                    symbol.selection,
+                    SourceSpan::new(start, start + payload.len())
+                );
+                assert_eq!(
+                    &source[symbol.selection.start..symbol.selection.end],
+                    payload
+                );
+            }
+        }
+    }
+
+    #[cfg(feature = "editor-facts")]
+    #[test]
+    fn journey_accessibility_block_unicode_whitespace_preserves_span_and_continuation() {
+        for ending in ["\n", "\r\n"] {
+            let source = format!(
+                concat!(
+                    "journey{ending}",
+                    "\u{feff}accDescr\u{feff}{{\u{feff}{ending}",
+                    "\u{feff}\u{0085}Description\u{0085}\u{feff}{ending}",
+                    "\u{feff}}}\u{feff} Pay: 4: Actor{ending}",
+                ),
+                ending = ending,
+            );
+            let crate::SemanticSnapshotCapture::Snapshot(snapshot) =
+                crate::SemanticParser::new().capture_diagram_snapshot_sync(&source)
+            else {
+                panic!("expected Journey snapshot");
+            };
+            let (_, outcome, editor_facts) = snapshot.into_parts();
+            let crate::SemanticParseOutcome::Parsed(
+                merman_model::semantic::SemanticDiagramModel::Journey(model),
+            ) = outcome
+            else {
+                panic!("expected canonical Journey model");
+            };
+            assert_eq!(
+                model.acc_descr.as_deref(),
+                Some("\u{0085}Description\u{0085}")
+            );
+            assert_eq!(model.tasks[0].task, "Pay");
+            let crate::ParsedEditorFacts::Available(facts) = editor_facts else {
+                panic!("expected Journey editor facts");
+            };
+            assert!(facts.diagnostics.is_empty());
+            let description = facts
+                .symbols
+                .iter()
+                .find(|symbol| {
+                    symbol.detail.as_deref() == Some("journey accessibility description")
+                })
+                .unwrap();
+            assert_eq!(description.name, "\u{0085}Description\u{0085}");
+            assert_eq!(
+                description.selection,
+                SourceSpan::new(source.find('{').unwrap() + 1, source.find('}').unwrap()),
+            );
+            let task = facts
+                .symbols
+                .iter()
+                .find(|symbol| symbol.detail.as_deref() == Some("journey task"))
+                .unwrap();
+            let task_start = source.find("Pay").unwrap();
+            assert_eq!(
+                task.selection,
+                SourceSpan::new(task_start, task_start + "Pay".len())
+            );
+        }
+    }
+
+    #[cfg(feature = "editor-facts")]
+    #[test]
+    fn journey_recovered_task_range_keeps_nel_and_excludes_bom_indentation() {
+        let source = "journey\r\n\u{feff}Broken\u{0085}\u{feff} \r\n";
+        let crate::SemanticSnapshotCapture::Snapshot(snapshot) =
+            crate::SemanticParser::new().capture_diagram_snapshot_sync(source)
+        else {
+            panic!("expected recovered Journey snapshot");
+        };
+        let crate::ParsedEditorFacts::Available(facts) = snapshot.editor_facts() else {
+            panic!("expected Journey editor facts");
+        };
+        assert_eq!(
+            facts.completeness,
+            crate::EditorSemanticCompleteness::Recovered
+        );
+        let task = facts
+            .symbols
+            .iter()
+            .find(|symbol| symbol.detail.as_deref() == Some("journey task"))
+            .unwrap();
+        let task_start = source.find("Broken").unwrap();
+        let task_end = task_start + "Broken\u{0085}".len();
+        assert_eq!(task.name, "Broken\u{0085}");
+        assert_eq!(task.selection, SourceSpan::new(task_start, task_end));
+        assert!(facts.diagnostics.iter().any(|diagnostic| {
+            diagnostic.kind == crate::EditorSemanticDiagnosticKind::ParserRecovery
+                && diagnostic.span == Some(SourceSpan::new(task_end, task_end))
+        }));
+    }
+
     #[cfg(feature = "editor-facts")]
     #[test]
     fn journey_editor_people_facts_keep_authored_unicode_order() {
@@ -999,6 +1307,7 @@ mod tests {
         for source in [
             "journey\nsection Checkout: 5: Actor\n",
             "journey\nsection \n",
+            "journey\ntitle \n",
         ] {
             assert!(parser.parse_diagram_sync(source).is_err(), "{source:?}");
             #[cfg(feature = "editor-facts")]

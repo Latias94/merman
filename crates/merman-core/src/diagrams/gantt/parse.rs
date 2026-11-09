@@ -372,11 +372,27 @@ struct ClickCallParts<'a> {
     args: Option<SpannedText<'a>>,
 }
 
+enum GanttDirectiveEnd {
+    HashOrSemi,
+    Semi,
+    KeywordPrefix(&'static [&'static str]),
+    Line,
+}
+
+fn starts_with_gantt_fixed_keyword(input: &str, keyword: &str) -> bool {
+    starts_with_case_insensitive(input, keyword)
+        && input
+            .as_bytes()
+            .get(keyword.len())
+            .is_none_or(|byte| !byte.is_ascii_alphanumeric() && *byte != b'_')
+}
+
 fn parse_gantt_keyword_arg_spanned<'a>(
     line: &'a str,
     line_start: usize,
     keyword: &str,
-    terminates_at_statement_suffix: bool,
+    token_end: GanttDirectiveEnd,
+    cursor: &mut LineCursor<'_>,
 ) -> Option<SpannedText<'a>> {
     let trimmed = line.trim_start();
     if !starts_with_case_insensitive(trimmed, keyword) {
@@ -392,21 +408,32 @@ fn parse_gantt_keyword_arg_spanned<'a>(
     let ws_len = ws.len_utf8();
     let rest_start = keyword.len() + ws_len;
     let rest = &after[ws_len..];
-    let text = if terminates_at_statement_suffix {
-        split_statement_suffix_hash_or_semi(rest)
-    } else {
-        rest
+    let text = match token_end {
+        GanttDirectiveEnd::HashOrSemi => split_statement_suffix_hash_or_semi(rest),
+        GanttDirectiveEnd::Semi => rest.split_once(';').map_or(rest, |(text, _)| text),
+        GanttDirectiveEnd::KeywordPrefix(keywords) => {
+            let leading = leading_whitespace_len(rest);
+            let keyword = keywords
+                .iter()
+                .find(|keyword| starts_with_gantt_fixed_keyword(&rest[leading..], keyword));
+            match keyword {
+                Some(keyword) => &rest[..leading + keyword.len()],
+                None if rest.contains(':') => return None,
+                None => rest,
+            }
+        }
+        GanttDirectiveEnd::Line => rest,
     };
     if text.is_empty() {
         return None;
     }
     let leading = line.len().saturating_sub(trimmed.len());
     let start = line_start + leading + rest_start;
-    Some(SpannedText {
-        text,
-        start,
-        end: start + text.len(),
-    })
+    let end = start + text.len();
+    if end < line_start + line.len() {
+        cursor.resume_same_line_at(end);
+    }
+    Some(SpannedText { text, start, end })
 }
 
 #[derive(Debug)]
@@ -1437,7 +1464,13 @@ fn parse_gantt_statement(
         return Ok(Ok(()));
     }
 
-    if let Some(v) = parse_gantt_keyword_arg_spanned(stripped, line_start, "dateFormat", true) {
+    if let Some(v) = parse_gantt_keyword_arg_spanned(
+        stripped,
+        line_start,
+        "dateFormat",
+        GanttDirectiveEnd::HashOrSemi,
+        cursor,
+    ) {
         #[cfg(feature = "editor-facts")]
         if let Some(facts) = facts.as_mut() {
             facts.push_directive_prefix("dateFormat");
@@ -1445,7 +1478,7 @@ fn parse_gantt_statement(
         #[cfg(feature = "editor-facts")]
         if let Some(facts) = facts.as_mut() {
             push_gantt_payload_symbol(
-                stripped,
+                &stripped[..v.end - line_start],
                 line_start,
                 v,
                 "gantt date format",
@@ -1456,7 +1489,12 @@ fn parse_gantt_statement(
         db.set_date_format(v.text);
         return Ok(Ok(()));
     }
-    if starts_with_case_insensitive(t, "inclusiveEndDates") {
+    if starts_with_gantt_fixed_keyword(t, "inclusiveEndDates") {
+        let leading = stripped.len().saturating_sub(stripped.trim_start().len());
+        let end = line_start + leading + "inclusiveEndDates".len();
+        if end < line_start + stripped.len() {
+            cursor.resume_same_line_at(end);
+        }
         #[cfg(feature = "editor-facts")]
         if let Some(facts) = facts.as_mut() {
             facts.push_directive_prefix("inclusiveEndDates");
@@ -1464,7 +1502,12 @@ fn parse_gantt_statement(
         db.enable_inclusive_end_dates();
         return Ok(Ok(()));
     }
-    if starts_with_case_insensitive(t, "topAxis") {
+    if starts_with_gantt_fixed_keyword(t, "topAxis") {
+        let leading = stripped.len().saturating_sub(stripped.trim_start().len());
+        let end = line_start + leading + "topAxis".len();
+        if end < line_start + stripped.len() {
+            cursor.resume_same_line_at(end);
+        }
         #[cfg(feature = "editor-facts")]
         if let Some(facts) = facts.as_mut() {
             facts.push_directive_prefix("topAxis");
@@ -1472,7 +1515,13 @@ fn parse_gantt_statement(
         db.enable_top_axis();
         return Ok(Ok(()));
     }
-    if let Some(v) = parse_gantt_keyword_arg_spanned(stripped, line_start, "axisFormat", true) {
+    if let Some(v) = parse_gantt_keyword_arg_spanned(
+        stripped,
+        line_start,
+        "axisFormat",
+        GanttDirectiveEnd::HashOrSemi,
+        cursor,
+    ) {
         #[cfg(feature = "editor-facts")]
         if let Some(facts) = facts.as_mut() {
             facts.push_directive_prefix("axisFormat");
@@ -1480,7 +1529,7 @@ fn parse_gantt_statement(
         #[cfg(feature = "editor-facts")]
         if let Some(facts) = facts.as_mut() {
             push_gantt_payload_symbol(
-                stripped,
+                &stripped[..v.end - line_start],
                 line_start,
                 v,
                 "gantt axis format",
@@ -1491,7 +1540,13 @@ fn parse_gantt_statement(
         db.set_axis_format(v.text);
         return Ok(Ok(()));
     }
-    if let Some(v) = parse_gantt_keyword_arg_spanned(stripped, line_start, "tickInterval", true) {
+    if let Some(v) = parse_gantt_keyword_arg_spanned(
+        stripped,
+        line_start,
+        "tickInterval",
+        GanttDirectiveEnd::HashOrSemi,
+        cursor,
+    ) {
         #[cfg(feature = "editor-facts")]
         if let Some(facts) = facts.as_mut() {
             facts.push_directive_prefix("tickInterval");
@@ -1499,7 +1554,7 @@ fn parse_gantt_statement(
         #[cfg(feature = "editor-facts")]
         if let Some(facts) = facts.as_mut() {
             push_gantt_payload_symbol(
-                stripped,
+                &stripped[..v.end - line_start],
                 line_start,
                 v,
                 "gantt tick interval",
@@ -1510,7 +1565,13 @@ fn parse_gantt_statement(
         db.set_tick_interval(v.text.trim());
         return Ok(Ok(()));
     }
-    if let Some(v) = parse_gantt_keyword_arg_spanned(stripped, line_start, "includes", true) {
+    if let Some(v) = parse_gantt_keyword_arg_spanned(
+        stripped,
+        line_start,
+        "includes",
+        GanttDirectiveEnd::HashOrSemi,
+        cursor,
+    ) {
         #[cfg(feature = "editor-facts")]
         if let Some(facts) = facts.as_mut() {
             facts.push_directive_prefix("includes");
@@ -1518,7 +1579,7 @@ fn parse_gantt_statement(
         #[cfg(feature = "editor-facts")]
         if let Some(facts) = facts.as_mut() {
             push_gantt_payload_symbol(
-                stripped,
+                &stripped[..v.end - line_start],
                 line_start,
                 v,
                 "gantt includes",
@@ -1529,7 +1590,13 @@ fn parse_gantt_statement(
         db.set_includes(v.text);
         return Ok(Ok(()));
     }
-    if let Some(v) = parse_gantt_keyword_arg_spanned(stripped, line_start, "excludes", true) {
+    if let Some(v) = parse_gantt_keyword_arg_spanned(
+        stripped,
+        line_start,
+        "excludes",
+        GanttDirectiveEnd::HashOrSemi,
+        cursor,
+    ) {
         #[cfg(feature = "editor-facts")]
         if let Some(facts) = facts.as_mut() {
             facts.push_directive_prefix("excludes");
@@ -1537,7 +1604,7 @@ fn parse_gantt_statement(
         #[cfg(feature = "editor-facts")]
         if let Some(facts) = facts.as_mut() {
             push_gantt_payload_symbol(
-                stripped,
+                &stripped[..v.end - line_start],
                 line_start,
                 v,
                 "gantt excludes",
@@ -1548,7 +1615,13 @@ fn parse_gantt_statement(
         db.set_excludes(v.text);
         return Ok(Ok(()));
     }
-    if let Some(v) = parse_gantt_keyword_arg_spanned(stripped, line_start, "todayMarker", false) {
+    if let Some(v) = parse_gantt_keyword_arg_spanned(
+        stripped,
+        line_start,
+        "todayMarker",
+        GanttDirectiveEnd::Semi,
+        cursor,
+    ) {
         #[cfg(feature = "editor-facts")]
         if let Some(facts) = facts.as_mut() {
             facts.push_directive_prefix("todayMarker");
@@ -1556,7 +1629,7 @@ fn parse_gantt_statement(
         #[cfg(feature = "editor-facts")]
         if let Some(facts) = facts.as_mut() {
             push_gantt_payload_symbol(
-                stripped,
+                &stripped[..v.end - line_start],
                 line_start,
                 v,
                 "gantt today marker",
@@ -1567,7 +1640,21 @@ fn parse_gantt_statement(
         db.set_today_marker(v.text.trim());
         return Ok(Ok(()));
     }
-    if let Some(v) = parse_gantt_keyword_arg_spanned(stripped, line_start, "weekday", false) {
+    if let Some(v) = parse_gantt_keyword_arg_spanned(
+        stripped,
+        line_start,
+        "weekday",
+        GanttDirectiveEnd::KeywordPrefix(&[
+            "monday",
+            "tuesday",
+            "wednesday",
+            "thursday",
+            "friday",
+            "saturday",
+            "sunday",
+        ]),
+        cursor,
+    ) {
         #[cfg(feature = "editor-facts")]
         if let Some(facts) = facts.as_mut() {
             facts.push_directive_prefix("weekday");
@@ -1575,7 +1662,7 @@ fn parse_gantt_statement(
         #[cfg(feature = "editor-facts")]
         if let Some(facts) = facts.as_mut() {
             push_gantt_payload_symbol(
-                stripped,
+                &stripped[..v.end - line_start],
                 line_start,
                 v,
                 "gantt weekday",
@@ -1603,7 +1690,13 @@ fn parse_gantt_statement(
         db.set_weekday(&day);
         return Ok(Ok(()));
     }
-    if let Some(v) = parse_gantt_keyword_arg_spanned(stripped, line_start, "weekend", false) {
+    if let Some(v) = parse_gantt_keyword_arg_spanned(
+        stripped,
+        line_start,
+        "weekend",
+        GanttDirectiveEnd::KeywordPrefix(&["friday", "saturday"]),
+        cursor,
+    ) {
         #[cfg(feature = "editor-facts")]
         if let Some(facts) = facts.as_mut() {
             facts.push_directive_prefix("weekend");
@@ -1611,7 +1704,7 @@ fn parse_gantt_statement(
         #[cfg(feature = "editor-facts")]
         if let Some(facts) = facts.as_mut() {
             push_gantt_payload_symbol(
-                stripped,
+                &stripped[..v.end - line_start],
                 line_start,
                 v,
                 "gantt weekend",
@@ -1636,7 +1729,13 @@ fn parse_gantt_statement(
         db.set_weekend(&day);
         return Ok(Ok(()));
     }
-    if let Some(v) = parse_gantt_keyword_arg_spanned(stripped, line_start, "title", false) {
+    if let Some(v) = parse_gantt_keyword_arg_spanned(
+        stripped,
+        line_start,
+        "title",
+        GanttDirectiveEnd::Line,
+        cursor,
+    ) {
         #[cfg(feature = "editor-facts")]
         if let Some(facts) = facts.as_mut() {
             facts.push_directive_prefix("title");
@@ -1655,7 +1754,13 @@ fn parse_gantt_statement(
         db.set_diagram_title(v.text);
         return Ok(Ok(()));
     }
-    if let Some(v) = parse_gantt_keyword_arg_spanned(stripped, line_start, "section", false) {
+    if let Some(v) = parse_gantt_keyword_arg_spanned(
+        stripped,
+        line_start,
+        "section",
+        GanttDirectiveEnd::Line,
+        cursor,
+    ) {
         #[cfg(feature = "editor-facts")]
         if let Some(facts) = facts.as_mut() {
             facts.push_directive_prefix("section");

@@ -1806,6 +1806,7 @@ fn layout_flowchart_with_model(
         {
             continue;
         }
+        super::validate_flowchart_node_asset_dimensions(n)?;
         let raw_label = model.node_label_for_render(n).unwrap_or(&n.id);
         let wrapping_width = super::bpmn::wrapping_width(n.layout_shape.as_deref(), wrapping_width);
         let label_type = n.label_type.as_deref().unwrap_or("text");

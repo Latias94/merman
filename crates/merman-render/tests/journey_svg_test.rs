@@ -895,6 +895,42 @@ fn journey_accessibility_dom_links_complete_punctuation_payloads() {
 }
 
 #[test]
+fn journey_unicode_structural_whitespace_reaches_accessible_and_visible_svg_text() {
+    let source = concat!(
+        "journey\r\n",
+        "\u{feff}title\u{feff}Checkout\r\n",
+        "\u{feff}accTitle\u{feff}:\u{feff}\u{0085}Accessible\u{0085}\u{feff}\r\n",
+        "\u{feff}accDescr\u{feff}{\u{feff}Help\u{feff}}\u{feff}Pay: 4: Customer\r\n",
+        "\u{feff}section\u{feff}Delivery\r\n",
+        "\u{feff}Ship: 5: Customer\r\n",
+    );
+    let rendered =
+        render_journey_text_rules(source, ThemeRuleSet::default(), serde_json::json!({})).unwrap();
+    let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+    let root = document.root_element();
+    for (aria, tag, expected) in [
+        ("aria-labelledby", "title", "\u{0085}Accessible\u{0085}"),
+        ("aria-describedby", "desc", "Help"),
+    ] {
+        let id = root.attribute(aria).unwrap();
+        let target = root
+            .children()
+            .find(|node| node.attribute("id") == Some(id))
+            .unwrap();
+        assert!(target.has_tag_name(tag));
+        assert_eq!(target.text(), Some(expected));
+    }
+    for text in ["Checkout", "Delivery", "Pay", "Ship"] {
+        assert!(
+            document
+                .descendants()
+                .any(|node| node.is_text() && node.text() == Some(text)),
+            "{text}"
+        );
+    }
+}
+
+#[test]
 fn journey_title_fill_consumes_real_titles_and_accounts_source_ownership() {
     for variant in [None, Some(ThemeVariant::Default)] {
         for (paint, expected_fill) in [
@@ -1514,10 +1550,9 @@ fn journey_text_paint_preserves_labels_lines_and_title_local_ownership() {
                     })
                 }));
 
-                for (class, expected_label) in [
-                    ("task", "    Ship release"),
-                    ("journey-section", "Delivery"),
-                ] {
+                for (class, expected_label) in
+                    [("task", "Ship release"), ("journey-section", "Delivery")]
+                {
                     let text = document
                         .descendants()
                         .find(|node| {

@@ -150,7 +150,7 @@
           ],
           "score": 5.0,
           "section": "Onboarding",
-          "task": "      Sign Up",
+          "task": "Sign Up",
           "width": 150.0,
           "x": 469.04,
           "y": 110.0
@@ -183,7 +183,7 @@
           ],
           "score": 3.0,
           "section": "Onboarding",
-          "task": "      Browse Features",
+          "task": "Browse Features",
           "width": 150.0,
           "x": 669.04,
           "y": 110.0
@@ -216,7 +216,7 @@
           ],
           "score": 4.0,
           "section": "Onboarding",
-          "task": "      Use Core Functionality",
+          "task": "Use Core Functionality",
           "width": 150.0,
           "x": 869.04,
           "y": 110.0
@@ -238,7 +238,7 @@
           "people": [],
           "score": 3.0,
           "section": "Engagement",
-          "task": "      Browse Features",
+          "task": "Browse Features",
           "width": 150.0,
           "x": 1069.04,
           "y": 110.0
@@ -260,7 +260,7 @@
           "people": [],
           "score": 4.0,
           "section": "Engagement",
-          "task": "      Use Core Functionality",
+          "task": "Use Core Functionality",
           "width": 150.0,
           "x": 1269.04,
           "y": 110.0

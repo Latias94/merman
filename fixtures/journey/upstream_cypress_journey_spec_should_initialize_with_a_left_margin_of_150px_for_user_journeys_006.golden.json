@@ -17,7 +17,7 @@
         ],
         "score": 5,
         "section": "Onboarding",
-        "task": "      Sign Up",
+        "task": "Sign Up",
         "type": "Onboarding"
       },
       {
@@ -26,7 +26,7 @@
         ],
         "score": 3,
         "section": "Onboarding",
-        "task": "      Browse Features",
+        "task": "Browse Features",
         "type": "Onboarding"
       },
       {
@@ -35,21 +35,21 @@
         ],
         "score": 4,
         "section": "Onboarding",
-        "task": "      Use Core Functionality",
+        "task": "Use Core Functionality",
         "type": "Onboarding"
       },
       {
         "people": [],
         "score": 3,
         "section": "Engagement",
-        "task": "      Browse Features",
+        "task": "Browse Features",
         "type": "Engagement"
       },
       {
         "people": [],
         "score": 4,
         "section": "Engagement",
-        "task": "      Use Core Functionality",
+        "task": "Use Core Functionality",
         "type": "Engagement"
       }
     ],

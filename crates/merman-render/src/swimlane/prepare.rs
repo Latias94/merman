@@ -434,6 +434,7 @@ pub(super) fn prepare(
         if group_ids.contains(&node.id) {
             continue;
         }
+        crate::flowchart::validate_flowchart_node_asset_dimensions(node)?;
         let render_label = model.node_label_for_render(node).unwrap_or(&node.id);
         let mut measured = measure_content_node(
             node,

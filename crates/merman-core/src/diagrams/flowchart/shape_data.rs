@@ -2,13 +2,6 @@ use super::{Node, TitleKind};
 use crate::diagrams::shapes::is_valid_pinned_shape;
 use serde_json::Value;
 
-pub(super) fn apply_shape_data_value_to_node(
-    node: &mut Node,
-    value: &Value,
-) -> std::result::Result<(), String> {
-    apply_shape_data_document_to_node(node, value)
-}
-
 pub(super) fn value_to_string(v: &Value) -> Option<String> {
     crate::inline_config::value_to_string(v)
 }
@@ -25,14 +18,41 @@ fn metadata_string(value: &Value) -> Option<String> {
     }
 }
 
-fn asset_dimension(v: &Value) -> Option<f64> {
-    // FlowDB gates the authored value with `if (doc.w/h)` before `Number(...)`.
-    // Numeric zero is absent, while a nonempty string such as "0" is an update.
-    match v {
-        Value::Number(value) => value.as_f64().filter(|value| *value != 0.0),
-        Value::Bool(true) => Some(1.0),
-        Value::String(value) if !value.is_empty() => crate::utils::parse_js_number(value),
-        _ => None,
+fn has_noncallable_asset_to_string(value: &Value) -> bool {
+    match value {
+        Value::Array(values) => values.iter().any(has_noncallable_asset_to_string),
+        Value::Object(values) => values.contains_key("toString"),
+        _ => false,
+    }
+}
+
+fn asset_dimension(v: &Value) -> std::result::Result<Option<f64>, String> {
+    if has_noncallable_asset_to_string(v) {
+        return Err("Cannot convert object to primitive value".to_string());
+    }
+    let mut value = match v {
+        Value::Null | Value::Bool(false) => return Ok(None),
+        Value::Number(value) => return Ok(value.as_f64().filter(|value| *value != 0.0)),
+        Value::Bool(true) => return Ok(Some(1.0)),
+        Value::String(value) if value.is_empty() => return Ok(None),
+        _ => v,
+    };
+    loop {
+        match value {
+            Value::Array(values) => match values.as_slice() {
+                [] => return Ok(Some(0.0)),
+                [item] => value = item,
+                _ => return Ok(Some(f64::NAN)),
+            },
+            Value::Null => return Ok(Some(0.0)),
+            Value::Number(value) => return Ok(value.as_f64()),
+            Value::String(value) => {
+                return Ok(Some(
+                    crate::utils::parse_js_number(value).unwrap_or(f64::NAN),
+                ));
+            }
+            _ => return Ok(Some(f64::NAN)),
+        }
     }
 }
 
@@ -45,7 +65,7 @@ fn sanitize_shape_label_type(label_type: Option<&str>) -> TitleKind {
     }
 }
 
-fn apply_shape_data_document_to_node(
+pub(super) fn apply_shape_data_value_to_node(
     node: &mut Node,
     document: &Value,
 ) -> std::result::Result<(), String> {
@@ -114,12 +134,12 @@ fn apply_shape_data_document_to_node(
                 }
             }
             "w" => {
-                if let Some(w) = asset_dimension(v) {
+                if let Some(w) = asset_dimension(v)? {
                     node.asset_width = Some(w);
                 }
             }
             "h" => {
-                if let Some(h) = asset_dimension(v) {
+                if let Some(h) = asset_dimension(v)? {
                     node.asset_height = Some(h);
                 }
             }

@@ -193,8 +193,16 @@ inside quoted, Markdown or other label payloads remains label content and cannot
 diagram's accessible name. Asset width and height updates follow the selected DB's truthiness
 before numeric conversion: numeric zero preserves an earlier size, while string `"0"` is explicit.
 Quoted numeric dimensions accept the selected `Number(...)` string forms, including hexadecimal,
-binary and octal values, and use ECMAScript whitespace. The shared scalar parser also owns Journey
-scores; each family retains its separate authored-value and invalid-score policy.
+binary and octal values, and use ECMAScript whitespace. Empty arrays convert to zero; single-item
+arrays follow their string conversion. Invalid truthy dimensions replace earlier values with
+`NaN`; overflow and explicit infinity remain non-finite canonical values. Compatibility JSON
+projects these values as `null`, as upstream JSON serialization does. Dagre, ELK and Swimlane
+reject non-finite dimensions when an icon/image shape consumes them, before provider layout;
+unused dimension metadata on ordinary shapes, collapsed descendants and group-replaced vertices
+remains accepted. This is an explicit rendering
+boundary instead of reproducing upstream SVG with invalid coordinates. Plain YAML objects with a
+non-callable `toString` fail numeric conversion, including inside arrays. The shared scalar parser
+also owns Journey scores; each family retains its separate authored-value and invalid-score policy.
 
 Label, shape and visual-property metadata also retain the selected DB's authored-value truthiness:
 empty strings, false and numeric zero do not replace earlier values. Default icon/image labels
@@ -233,6 +241,14 @@ task IDs for editor navigation. Exclusion validation rejects an all-weekdays mas
 nonempty day scan needs a working day; zero-duration milestones and shorter empty scans remain valid.
 Replayed input retains the selected comment-rule priority at its cursor; literal percent markers
 inside an already-started task label or task-data token remain payload.
+
+Prefix directives also retain unconsumed same-line input and its editor ranges. Date/axis formats,
+tick intervals and inclusion/exclusion lists stop before `#` or `;`; `todayMarker` stops before
+`;` while retaining `#`. Day selectors and fixed flags respect the generated lexer's ASCII word
+boundaries. Titles, sections and accessibility values own their full line. Merman retains its
+working `topAxis` support rather than reproducing the selected runtime's missing `TopAxis()` action.
+Bare title/section keywords that consume a following physical line upstream remain outside the
+current line-oriented parser contract.
 
 The date parser implements evidenced Day.js-style tokens and JavaScript date fallback forms;
 arbitrary locale formats and every `Date.parse()` dialect are not a compatibility promise.
@@ -300,6 +316,22 @@ Scores accept the selected `Number(...)` string forms, including nondecimal inte
 Score and actor trimming use ECMAScript whitespace. The first people field owns editor payloads;
 later colon segments do not become actor names. Section tokens cannot silently discard following
 task data; `section : 4` remains a task named `section ` rather than a section declaration.
+Structural dispatch and accessibility values use the same ECMAScript whitespace set: BOM is
+whitespace and NEL remains literal text. Title/section tokens consume one whitespace separator,
+retaining subsequent payload whitespace; task names omit leading indentation and retain their
+authored tails. Parser-derived editor facts refer to the original byte slices, including repeated
+keyword text, Unicode values, CRLF and a task after a closed accessibility block. Cross-line
+keyword separators remain outside the current line-oriented parser contract.
+At a plain lexer cursor, one BMP character other than `}` immediately followed by `%%` starts a
+comment, including a literal NEL prefix. Longer labels and astral prefixes retain their percent
+markers; accessibility lexer states continue owning their complete payloads.
+The existing long-actor-label browser-text receipt was renewed after task indentation was
+corrected. Restoring only the old six spaces in its five HTML and five native task text nodes
+reconstructs the previous full SVG signature exactly. A fresh selected-runtime browser capture
+confirms the corrected task labels and the archived nine-row actor legend; deterministic
+measurement still produces seven legend rows and a 0.955-pixel wider canvas. Those pre-existing
+measurement differences, the input/upstream digests, modes and comparison precision remain
+unchanged; the renewed receipt binds only the corrected local output.
 Legend and inherited label typography are separate from the configured task font used by tspan
 labels; theme evidence follows the visible selected path.
 
