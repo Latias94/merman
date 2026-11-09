@@ -273,9 +273,17 @@ Native Treemap font admission checks styles selected by rendered nodes. An unuse
 does not require support for typography that never reaches a label.
 Put Treemap stylesheet options under `themeVariables.treemap`, including `titleFontSize` and
 `titleColor`. The corresponding root `treemap` spellings remain Merman fallbacks when those
-theme variables are absent. Class font sizes follow CSS rules: use `24px`
-rather than a nonzero unitless number. `font-weight:initial` resets to normal before labels are
-fitted or shortened.
+theme variables are absent. Treemap's SVG class sizes accept unitless numbers such as `24`,
+equivalent to `24px`, while negative lengths and invalid identifiers leave the generated size
+in effect. `font-weight:initial` resets to normal before labels are fitted or shortened.
+Leaf fitting follows Mermaid's integer read of the inline CSS size, so a class size of `24pt`
+can become `24px` during fitting even though its initial measurement uses 32px. Prefer pixel
+sizes when the fitted label should retain the authored length. Inherited root sizes and section
+text keep their separate measurement rules.
+Leaf size keywords such as `inherit` can make Mermaid generate an invalid value-label position.
+Merman preserves the CSS and omits the invalid coordinate; requested inherited-font evidence
+retains a residual for that value, and strict theme completion rejects it. Use numeric pixel
+sizes for portable value placement.
 
 Set `themeVariables.archGroupBorderColor` directly to change an Architecture group border.
 Changing only `primaryBorderColor` does not recalculate an initialized group color.
