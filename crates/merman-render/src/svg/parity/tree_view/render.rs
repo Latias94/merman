@@ -26,6 +26,7 @@ pub(crate) fn render_tree_view_diagram_svg_model(
     effective_config: &merman_model::presentation::PresentationConfig,
     options: &SvgExecution<'_>,
 ) -> Result<root_svg::RootedSvg> {
+    theme.ensure_portable_typography(options.family.session().portability_requirement())?;
     let diagram_id = options.diagram_id_or("treeView");
     let acc_title = model
         .acc_title
@@ -269,6 +270,9 @@ fn push_tree_view_css(
     let line_color = &theme.line_color;
     let icon_color = &theme.icon_color;
 
+    if let Some(root_font_size) = &theme.root_font_size_css {
+        let _ = write!(out, "#{diagram_id} {{ font-size: {root_font_size}; }} ");
+    }
     let _ = write!(
         out,
         "#{diagram_id} .treeView-node-label {{ font-family: {}; font-size: {}; fill: {}; white-space: pre; }} #{diagram_id} .treeView-node-dir {{ font-weight: {}; }} #{diagram_id} .treeView-node-line {{ stroke: {}; }} #{diagram_id} .treeView-node-icon {{ color: {}; }} #{diagram_id} .treeView-node-description {{ font-family: {}; font-size: {}; fill: {}; font-style: {}; white-space: pre; }} #{diagram_id} .treeView-highlight-bg {{ fill: {}; stroke: {}; stroke-width: 1; }}",

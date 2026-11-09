@@ -118,6 +118,85 @@ fn pie_configured_text_sizes_preserve_css_and_expand_the_horizontal_viewport() {
 }
 
 #[test]
+fn pie_absolute_role_sizes_preserve_css_and_share_the_px_viewport() {
+    let diagram = "pie title Typography sizing comparison comparison\n  \"WideLegendWideLegendWideLegendWideLegend\" : 1\n";
+    for (key, selector) in [
+        ("pieTitleTextSize", "#merman .pieTitleText"),
+        ("pieLegendTextSize", "#merman .legend text"),
+    ] {
+        for (css, pixels, from_site) in [
+            ("24pt", "32px", false),
+            ("2PC", "32px", false),
+            ("1in", "96px", false),
+            ("2.54cm", "96px", false),
+            ("25.4mm", "96px", false),
+            ("101.6q", "96px", false),
+            (r"24p\74", "32px", false),
+            (r"24p\74 !important", "32px", true),
+        ] {
+            let render = |size| {
+                let config = serde_json::json!({"themeVariables": {key: size}});
+                let (source, engine) = if from_site {
+                    (
+                        diagram.to_owned(),
+                        merman_core::MermaidEngine::new().with_site_config(
+                            merman_core::presentation::SourcePresentationConfig::from_value(config),
+                        ),
+                    )
+                } else {
+                    (
+                        format!("---\nconfig: {config}\n---\n{diagram}"),
+                        merman_core::MermaidEngine::new(),
+                    )
+                };
+                let parsed = engine
+                    .parse_diagram_for_render_model_sync(&source, ParseOptions::strict())
+                    .unwrap()
+                    .unwrap()
+                    .into_presentation();
+                assert_eq!(
+                    parsed
+                        .metadata()
+                        .effective_config
+                        .get_str(&format!("themeVariables.{key}")),
+                    Some(size),
+                    "the admitted size must reach measurement, site={from_site}"
+                );
+                let session = RenderEnvironment::deterministic().begin_session().unwrap();
+                family::prepare(&parsed, &LayoutOptions::default(), session)
+                    .unwrap()
+                    .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+                    .unwrap()
+                    .svg()
+                    .to_owned()
+            };
+            let actual = render(css);
+            let expected = render(pixels);
+            assert_eq!(
+                pie_stylesheet_property_values(&actual, selector, "font-size"),
+                [css]
+            );
+            let viewport = |svg: &str| {
+                let document = roxmltree::Document::parse(svg).unwrap();
+                document
+                    .root_element()
+                    .attribute("viewBox")
+                    .unwrap()
+                    .split_whitespace()
+                    .map(|value| value.parse::<f64>().unwrap())
+                    .collect::<Vec<_>>()
+            };
+            for (actual, expected) in viewport(&actual).into_iter().zip(viewport(&expected)) {
+                assert!(
+                    (actual - expected).abs() < 1e-9,
+                    "{key}/{css}: {actual} != {expected}"
+                );
+            }
+        }
+    }
+}
+
+#[test]
 fn pie_outer_stroke_config_reaches_layout_circle_and_stylesheet() {
     assert_eq!(
         pie_outer_circle_radius(&render_pie_from_text("pie\n\"A\": 1\n")),
@@ -2819,7 +2898,7 @@ fn pie_empty_native_theme_preserves_unstyled_svg_bytes() {
 }
 
 #[test]
-fn pie_blank_role_sizes_yield_to_typed_values_without_changing_sibling_roles() {
+fn pie_invalid_role_sizes_yield_to_typed_values_without_changing_sibling_roles() {
     for (target, key, selector, siblings) in [
         (
             ThemeTarget::Title,
@@ -2849,7 +2928,18 @@ fn pie_blank_role_sizes_yield_to_typed_values_without_changing_sibling_roles() {
         let mut patch = ThemeStylePatch::default();
         patch.typography.font_size_px = merman_render::diagram_theme::Specified::Value(31.0);
         let theme = pie_rules_theme([ThemeRule::new(target, patch)]);
-        for size in ["", "  ", "32px", "150%"] {
+        for (size, source_owns_size) in [
+            ("", false),
+            ("  ", false),
+            ("bogus", false),
+            ("-4px", false),
+            ("25", false),
+            ("32px", true),
+            ("24pt", true),
+            ("150%", true),
+            ("0px", true),
+            ("calc(1em + 2px)", true),
+        ] {
             let config = serde_json::json!({"themeVariables": {key: size}});
             let source = format!(
                 "---\nconfig: {config}\n---\npie title Release audit\n  \"Alpha\" : 5\n  \"Beta\" : 3\n"
@@ -2860,7 +2950,7 @@ fn pie_blank_role_sizes_yield_to_typed_values_without_changing_sibling_roles() {
                 ThemePortabilityRequirement::RequirePortable,
             )
             .unwrap();
-            let expected = if size.trim().is_empty() { "31px" } else { size };
+            let expected = if source_owns_size { size } else { "31px" };
             assert_eq!(
                 pie_stylesheet_property_values(rendered.svg(), selector, "font-size"),
                 [expected]
@@ -2873,14 +2963,371 @@ fn pie_blank_role_sizes_yield_to_typed_values_without_changing_sibling_roles() {
             }
             let evidence =
                 merman_render::__private::family_evidence(rendered.into_completion().report());
+            assert_eq!(evidence.applied_count(), usize::from(!source_owns_size));
+            assert_eq!(
+                evidence.not_applicable_count(),
+                usize::from(source_owns_size)
+            );
+            assert_eq!(evidence.theme_residual_count(), 0);
+        }
+    }
+}
+
+#[test]
+fn pie_role_size_admission_preserves_trusted_opaque_owners() {
+    let body = "pie title Typography\n  \"Alpha\" : 1\n";
+    for (target, key, selector, baseline) in [
+        (
+            ThemeTarget::Title,
+            "pieTitleTextSize",
+            "#merman .pieTitleText",
+            "25px",
+        ),
+        (
+            ThemeTarget::Text,
+            "pieSectionTextSize",
+            "#merman .slice",
+            "17px",
+        ),
+        (
+            ThemeTarget::Legend,
+            "pieLegendTextSize",
+            "#merman .legend text",
+            "17px",
+        ),
+    ] {
+        let mut patch = ThemeStylePatch::default();
+        patch.typography.font_size_px = merman_render::diagram_theme::Specified::Value(31.0);
+        let theme = pie_rules_theme([ThemeRule::new(target, patch)]);
+        let variable = "var(--pie-size)";
+        let important = r"24p\74 !important";
+        let source_variable = format!(
+            "---\nconfig: {}\n---\n{body}",
+            serde_json::json!({"themeVariables": {key: variable}})
+        );
+        let source_important = format!(
+            "---\nconfig: {}\n---\n{body}",
+            serde_json::json!({"themeVariables": {key: important}})
+        );
+        // Source admits individual values, not host substitution or declaration priority.
+        // Trusted site values must keep their ownership even when the size is not measurable.
+        for (case, source, host_size, effective_size, emitted_size, typed_applies) in [
+            (
+                "trusted commented important",
+                body,
+                Some("/* host comment */24pt !important"),
+                "/* host comment */24pt !important",
+                "/* host comment */24pt !important",
+                false,
+            ),
+            (
+                "trusted commented expression",
+                body,
+                Some("calc(1em /* comment */ + 2px)"),
+                "calc(1em /* comment */ + 2px)",
+                "calc(1em /* comment */ + 2px)",
+                false,
+            ),
+            (
+                "trusted missing important value",
+                body,
+                Some("!important"),
+                "!important",
+                "31px",
+                true,
+            ),
+            (
+                "trusted duplicate priority",
+                body,
+                Some("bogus !important !important"),
+                "bogus !important !important",
+                "31px",
+                true,
+            ),
+            (
+                "trusted variable",
+                body,
+                Some(variable),
+                variable,
+                variable,
+                false,
+            ),
+            (
+                "trusted escaped important",
+                body,
+                Some(important),
+                important,
+                important,
+                false,
+            ),
+            (
+                "filtered source variable",
+                source_variable.as_str(),
+                None,
+                baseline,
+                "31px",
+                true,
+            ),
+            (
+                "filtered source important",
+                source_important.as_str(),
+                None,
+                baseline,
+                "31px",
+                true,
+            ),
+            (
+                "filtered variable preserves host variable",
+                source_variable.as_str(),
+                Some(variable),
+                variable,
+                variable,
+                false,
+            ),
+            (
+                "filtered important preserves host variable",
+                source_important.as_str(),
+                Some(variable),
+                variable,
+                variable,
+                false,
+            ),
+            (
+                "filtered variable preserves host static",
+                source_variable.as_str(),
+                Some("24pt"),
+                "24pt",
+                "24pt",
+                false,
+            ),
+        ] {
+            let site = host_size.map_or_else(
+                || serde_json::json!({}),
+                |size| serde_json::json!({"themeVariables": {key: size}}),
+            );
+            let engine = common::install_parse_compatibility(
+                &theme,
+                merman_core::MermaidEngine::new().with_site_config(
+                    merman_core::presentation::SourcePresentationConfig::from_value(site),
+                ),
+            );
+            let parsed = engine
+                .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
+                .unwrap()
+                .unwrap()
+                .into_presentation();
+            let path = format!("themeVariables.{key}");
+            assert_eq!(
+                parsed.metadata().effective_config.get_str(&path),
+                Some(effective_size),
+                "{key}/{case}"
+            );
+            assert_eq!(
+                parsed
+                    .metadata()
+                    .effective_config
+                    .config_path_overrides_typed_default(&path),
+                host_size.is_some(),
+                "{key}/{case}: provenance retains admitted host configuration"
+            );
+            let session = RenderEnvironment::deterministic()
+                .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
+                .begin_session_with_theme(&theme)
+                .unwrap();
+            let rendered = family::prepare(&parsed, &LayoutOptions::default(), session)
+                .unwrap()
+                .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+                .unwrap_or_else(|error| panic!("{key}/{case}: {error}"));
+            assert_eq!(
+                pie_stylesheet_property_values(rendered.svg(), selector, "font-size"),
+                [emitted_size],
+                "{key}/{case}"
+            );
+            let evidence =
+                merman_render::__private::family_evidence(rendered.into_completion().report());
+            assert_eq!(evidence.required_count(), 1, "{key}/{case}");
             assert_eq!(
                 evidence.applied_count(),
-                usize::from(size.trim().is_empty())
+                usize::from(typed_applies),
+                "{key}/{case}"
             );
             assert_eq!(
                 evidence.not_applicable_count(),
-                usize::from(!size.trim().is_empty())
+                usize::from(!typed_applies),
+                "{key}/{case}"
             );
+            assert_eq!(evidence.accounted_count(), 1, "{key}/{case}");
+            assert_eq!(evidence.theme_residual_count(), 0, "{key}/{case}");
+        }
+    }
+}
+
+#[test]
+fn pie_site_role_size_ownership_preserves_independent_weight_and_fill() {
+    use merman_render::diagram_theme::Specified;
+
+    let mut patch = ThemeStylePatch::default().with_fill(CanvasPaint::solid("#123456").unwrap());
+    patch.typography.font_size_px = Specified::Value(31.0);
+    patch.typography.font_weight = Specified::Value(650);
+    let theme = pie_rules_theme([ThemeRule::new(ThemeTarget::Legend, patch)]);
+    for (value, expected) in [
+        (serde_json::json!(25), "31px"),
+        (serde_json::json!("bogus"), "31px"),
+        (serde_json::json!("-4px"), "31px"),
+        (serde_json::json!("24pt"), "24pt"),
+        (serde_json::json!("0px"), "0px"),
+    ] {
+        let engine = common::install_parse_compatibility(
+            &theme,
+            merman_core::MermaidEngine::new().with_site_config(
+                merman_core::presentation::SourcePresentationConfig::from_value(
+                    serde_json::json!({"themeVariables": {"pieLegendTextSize": value}}),
+                ),
+            ),
+        );
+        let parsed = engine
+            .parse_diagram_for_render_model_sync("pie\n  \"Alpha\" : 1\n", ParseOptions::strict())
+            .unwrap()
+            .unwrap()
+            .into_presentation();
+        let session = RenderEnvironment::deterministic()
+            .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
+            .begin_session_with_theme(&theme)
+            .unwrap();
+        let rendered = family::prepare(&parsed, &LayoutOptions::default(), session)
+            .unwrap()
+            .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+            .unwrap();
+        for (property, expected) in [
+            ("font-size", expected),
+            ("font-weight", "650"),
+            ("fill", "#123456"),
+        ] {
+            assert_eq!(
+                pie_stylesheet_property_values(rendered.svg(), "#merman .legend text", property),
+                [expected]
+            );
+        }
+        let evidence =
+            merman_render::__private::family_evidence(rendered.into_completion().report());
+        assert_eq!(evidence.required_count(), 1);
+        assert_eq!(evidence.applied_count(), usize::from(expected != "0px"));
+        assert_eq!(
+            evidence.not_applicable_count(),
+            usize::from(expected == "0px")
+        );
+        assert_eq!(evidence.accounted_count(), 1);
+        assert_eq!(evidence.theme_residual_count(), 0);
+    }
+}
+
+#[test]
+fn pie_zero_sized_roles_do_not_certify_fonts_or_paint() {
+    let roles = [
+        (
+            ThemeTarget::Title,
+            "pieTitleTextSize",
+            "#merman .pieTitleText",
+        ),
+        (ThemeTarget::Text, "pieSectionTextSize", "#merman .slice"),
+        (
+            ThemeTarget::Legend,
+            "pieLegendTextSize",
+            "#merman .legend text",
+        ),
+    ];
+    for with_paint in [false, true] {
+        let rules = if with_paint {
+            roles
+                .iter()
+                .fold(ThemeRuleSet::default(), |rules, (target, _, _)| {
+                    rules.with_rule(ThemeRule::new(
+                        *target,
+                        ThemeStylePatch::default()
+                            .with_fill(CanvasPaint::solid("#123456").unwrap()),
+                    ))
+                })
+        } else {
+            ThemeRuleSet::default()
+        };
+        let theme = DiagramThemeCompiler::new()
+            .compile(
+                DiagramThemeSpec::new()
+                    .with_typography(
+                        TypographySpec::default().with_family_style(
+                            DiagramFamilyId::PIE,
+                            ThemeTextStyle::default()
+                                .with_font_stack(FontStack::single("Pie Visibility").unwrap()),
+                        ),
+                    )
+                    .with_styles(rules),
+            )
+            .unwrap();
+        for (zero, positive_role) in [
+            ("0px", None),
+            ("0", None),
+            ("-0pt", None),
+            ("0em", None),
+            ("0%", None),
+            ("0px", Some(0)),
+            ("0px", Some(1)),
+            ("0px", Some(2)),
+        ] {
+            let mut variables = serde_json::Map::new();
+            for (index, (_, key, _)) in roles.iter().enumerate() {
+                variables.insert(
+                    (*key).to_owned(),
+                    serde_json::json!(if positive_role == Some(index) {
+                        "17px"
+                    } else {
+                        zero
+                    }),
+                );
+            }
+            let config = serde_json::json!({"themeVariables": variables});
+            let source = format!("---\nconfig: {config}\n---\npie title Hidden\n  \"Alpha\" : 1\n");
+            let rendered = try_render_pie_with_theme_requirement(
+                &source,
+                &theme,
+                ThemePortabilityRequirement::RequirePortable,
+            )
+            .unwrap();
+            for (index, (_, _, selector)) in roles.iter().enumerate() {
+                assert_eq!(
+                    pie_stylesheet_property_values(rendered.svg(), selector, "font-size"),
+                    [if positive_role == Some(index) {
+                        "17px"
+                    } else {
+                        zero
+                    }]
+                );
+            }
+            let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+            assert_eq!(
+                document
+                    .descendants()
+                    .filter(|node| node.has_tag_name("text")
+                        && node.text().is_some_and(|text| !text.trim().is_empty()))
+                    .count(),
+                3,
+                "hidden text must still reach the complete ordered receipt"
+            );
+            let evidence =
+                merman_render::__private::family_evidence(rendered.into_completion().report());
+            let required = if with_paint { 4 } else { 1 };
+            let applied = if positive_role.is_some() {
+                1 + usize::from(with_paint)
+            } else {
+                0
+            };
+            assert_eq!(evidence.required_count(), required);
+            assert_eq!(
+                evidence.applied_count(),
+                applied,
+                "{zero}/{positive_role:?}/paint={with_paint}"
+            );
+            assert_eq!(evidence.not_applicable_count(), required - applied);
+            assert_eq!(evidence.accounted_count(), required);
             assert_eq!(evidence.theme_residual_count(), 0);
         }
     }

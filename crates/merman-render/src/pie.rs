@@ -453,6 +453,12 @@ mod tests {
         };
         for (title_css, legend_css, title_size, legend_size) in [
             ("60px", "40px", 60.0, 40.0),
+            ("24pt", "18pt", 32.0, 24.0),
+            ("2PC", "1pc", 32.0, 16.0),
+            ("1in", "0.5in", 96.0, 48.0),
+            ("2.54cm", "1.27cm", 96.0, 48.0),
+            ("25.4mm", "12.7mm", 96.0, 48.0),
+            ("101.6q", "50.8q", 96.0, 48.0),
             ("2em", "150%", 40.0, 30.0),
             ("0", "0px", 0.0, 0.0),
             ("60", "invalid", 20.0, 20.0),
@@ -702,7 +708,13 @@ mod tests {
         assert_eq!(styles[1].font_size, 30.0);
         assert_eq!(styles[1].font_weight.as_deref(), Some("650"));
         assert_eq!(styles[1].font_style.as_deref(), Some("italic"));
-        assert_eq!(plan.css_binding().legend_text_size, "1.5em");
-        assert_eq!(plan.css_binding().title_text_size, "30px");
+        assert_eq!(
+            plan.css_binding().text_size(super::PieTextRole::Legend),
+            "1.5em"
+        );
+        assert_eq!(
+            plan.css_binding().text_size(super::PieTextRole::Title),
+            "30px"
+        );
     }
 }

@@ -1318,22 +1318,25 @@ fn prepare_ishikawa_family<'parsed>(
     meta: &PresentationMetadata,
     execution: &LayoutExecution<'_>,
 ) -> Result<BuiltinFamilyArtifact<'parsed>> {
-    let inherited_font_stack = crate::family::InheritedFontStackPlan::resolve_property_local(
+    let cfg = crate::ishikawa::IshikawaConfigView::new(meta.effective_config.as_value())
+        .layout_settings();
+    let typography = crate::ishikawa::IshikawaTypographyPlan::resolve(
         execution.resolved_theme(),
         &meta.effective_config,
+        cfg.font_size,
     );
     let layout = crate::ishikawa::layout_ishikawa_diagram_typed(
         model,
-        meta.effective_config.as_value(),
-        inherited_font_stack.font_family_css(),
+        &cfg,
+        &typography,
         execution.text_measurer(),
     )?;
-    let text_theme = crate::ishikawa::IshikawaTextThemePlan::resolve_with_font_stack(
+    let text_theme = crate::ishikawa::IshikawaTextThemePlan::resolve_with_typography(
         execution.resolved_theme(),
         &meta.effective_config,
         &layout,
         execution.work_meter_ref(),
-        inherited_font_stack,
+        typography,
     )?;
     Ok(BuiltinFamilyArtifact::Ishikawa(Box::new(
         IshikawaFamilyArtifact {

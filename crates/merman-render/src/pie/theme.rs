@@ -705,7 +705,7 @@ impl PieThemeReceipt {
         emitted_text: Option<&str>,
     ) {
         if let Some(text) = self.text.as_mut() {
-            text.record_text(&plan.text, role, index, selector, emitted_text);
+            text.record_text(&plan.text, &plan.css, role, index, selector, emitted_text);
         }
     }
 
@@ -1011,7 +1011,7 @@ mod tests {
         assert_eq!(css.outer_stroke_width, "calc(1px + 1em)");
         assert_eq!(css.outer_stroke_width_number, 2.0);
         assert_eq!(css.slice_opacity, "0.4");
-        assert_eq!(css.title_text_size, "1.5em");
+        assert_eq!(css.text_size(PieTextRole::Title), "1.5em");
         assert_eq!(css.title_measurement_style().font_size, 24.0);
         assert_eq!(css.legend_measurement_style().font_size, 17.0);
     }

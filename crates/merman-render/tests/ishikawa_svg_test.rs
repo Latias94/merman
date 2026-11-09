@@ -3,11 +3,14 @@ mod common;
 use common::legacy_init_theme_compat_engine;
 use merman_core::{MermaidEngine, ParseOptions};
 use merman_render::diagram_theme::{
-    CanvasPaint, DiagramTheme, DiagramThemeCompiler, DiagramThemeSpec, FontStack, OrdinalPalette,
-    ThemeColorValue, ThemePortabilityRequirement, ThemeRule, ThemeRuleSet, ThemeStylePatch,
-    ThemeTarget, ThemeTextStyle, TypographySpec,
+    CanvasPaint, DiagramTheme, DiagramThemeCompiler, DiagramThemeSpec, FontStack, InsetsPx,
+    OrdinalPalette, ThemeColorValue, ThemePortabilityRequirement, ThemeRule, ThemeRuleSet,
+    ThemeStylePatch, ThemeTarget, ThemeTextStyle, TypographySpec,
 };
-use merman_render::environment::RenderEnvironment;
+use merman_render::environment::{
+    HostMeasurementResult, HostTextMeasurementRequest, HostTextMeasurer, MeasurementProfileId,
+    RenderEnvironment, TextMeasurementPhase, TextMeasurementPolicy, TextMeasurementProfileIdentity,
+};
 use merman_render::family;
 use merman_render::model::IshikawaDiagramLayout;
 use merman_render::resources::{
@@ -15,6 +18,7 @@ use merman_render::resources::{
 };
 use merman_render::svg::{SvgDebugOptions, SvgRenderOptions};
 use merman_render::{DiagramFamilyId, LayoutOptions};
+use std::sync::{Arc, Mutex};
 
 const DEEP_ISHIKAWA_RENDER_DEPTH: usize = 1_200;
 
@@ -720,13 +724,45 @@ fn ishikawa_hand_drawn_generation_consumes_the_operation_work_budget() {
     let policy = RenderResourcePolicy::unbounded_for_trusted_input()
         .with_limit(ResourceLimitId::MaxLayoutWorkUnits, 20_000)
         .unwrap();
-    let source = "---\nconfig:\n  look: classic\n  handDrawnSeed: 1\n  fontSize: 512\n---\nishikawa-beta\n  Effect\n  Cause\n    Detail\n";
+    // Large rendered letters produce a large hatched label box. Root fontSize alone only
+    // changes spacing, so it must not be used as a proxy for expensive fill geometry.
+    let source = "---\nconfig:\n  look: classic\n  handDrawnSeed: 1\n  fontSize: 512\n  themeVariables:\n    fontSize: 512px\n---\nishikawa-beta\n  Effect\n  Cause\n    Detail\n";
     try_render_ishikawa_svg_with_resource_policy(source, policy)
         .expect("the small model and classic geometry fit the work budget");
-    let error = match try_render_ishikawa_svg_with_resource_policy(
-        &source.replace("look: classic", "look: handDrawn"),
-        policy,
-    ) {
+    let hand_drawn = source.replace("look: classic", "look: handDrawn");
+    let unbounded = try_render_ishikawa_svg_with_resource_policy(
+        &hand_drawn,
+        RenderResourcePolicy::unbounded_for_trusted_input(),
+    )
+    .expect("the same hand-drawn fixture renders without the work ceiling");
+    let document = roxmltree::Document::parse(&unbounded).unwrap();
+    let label_box = document
+        .descendants()
+        .find(|node| node.attribute("class") == Some("ishikawa-label-box"))
+        .unwrap();
+    assert!(label_box.children().any(|node| node.has_tag_name("path")
+        && node.attribute("stroke-width") == Some("2.5")
+        && node.attribute("fill") == Some("none")
+        && node.attribute("d").is_some_and(|path| !path.is_empty())));
+
+    let parsed = MermaidEngine::new()
+        .parse_diagram_for_render_model_sync(&hand_drawn, ParseOptions::strict())
+        .unwrap()
+        .unwrap()
+        .into_presentation();
+    let session = RenderEnvironment::deterministic()
+        .with_resource_policy(policy)
+        .begin_session()
+        .unwrap();
+    let artifact = family::prepare(&parsed, &LayoutOptions::default(), session)
+        .expect("the hand-drawn model and label layout fit the same work ceiling");
+    let projection = artifact.layout_json().unwrap();
+    assert_eq!(
+        projection["layout"]["IshikawaDiagram"]["pairs"][0]["upper"]["label_group"]["label"]["font_size"],
+        512.0
+    );
+    let error = match artifact.render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+    {
         Ok(_) => panic!("hachure generation must consume the remaining operation work budget"),
         Err(error) => error,
     };
@@ -1254,7 +1290,7 @@ fn ishikawa_explicit_theme_font_size_outranks_typed_size_but_root_size_does_not(
 }
 
 #[test]
-fn ishikawa_typed_font_size_does_not_change_layout_but_root_size_does() {
+fn ishikawa_typed_font_size_changes_text_geometry_without_changing_root_spacing() {
     let small = ishikawa_typography_theme(
         ThemeTextStyle::default()
             .with_font_size_px(12.0)
@@ -1265,11 +1301,30 @@ fn ishikawa_typed_font_size_does_not_change_layout_but_root_size_does() {
             .with_font_size_px(48.0)
             .expect("valid large Ishikawa font size"),
     );
+    let small_layout = ishikawa_layout_json_with_theme(&small, MermaidEngine::new());
+    let large_layout = ishikawa_layout_json_with_theme(&large, MermaidEngine::new());
+    assert_eq!(small_layout["font_size"], large_layout["font_size"]);
+    assert_eq!(small_layout["head"], large_layout["head"]);
     assert_eq!(
-        ishikawa_layout_json_with_theme(&small, MermaidEngine::new()),
-        ishikawa_layout_json_with_theme(&large, MermaidEngine::new()),
-        "Ishikawa typed FontSize is a final CSS terminal"
+        small_layout["pairs"][0]["upper"]["line"],
+        large_layout["pairs"][0]["upper"]["line"]
     );
+    let small_label = &small_layout["pairs"][0]["upper"]["label_group"];
+    let large_label = &large_layout["pairs"][0]["upper"]["label_group"];
+    assert_eq!(
+        small_label["label"]["line_height"],
+        large_label["label"]["line_height"]
+    );
+    assert_eq!(small_label["label"]["font_size"], 12.0);
+    assert_eq!(large_label["label"]["font_size"], 48.0);
+    for dimension in ["width", "height"] {
+        assert!(
+            large_label["label_box"][dimension].as_f64().unwrap()
+                > small_label["label_box"][dimension].as_f64().unwrap()
+        );
+    }
+    assert_ne!(small_layout["bounds"], large_layout["bounds"]);
+    assert_ne!(small_layout["spine"]["x1"], large_layout["spine"]["x1"]);
 
     let baseline = ishikawa_typography_theme(ThemeTextStyle::default());
     let root_small = ishikawa_layout_json_with_theme(
@@ -1295,6 +1350,292 @@ fn ishikawa_typed_font_size_does_not_change_layout_but_root_size_does() {
 }
 
 #[test]
+fn ishikawa_root_spacing_uses_integer_prefix_independently_of_terminal_css_size() {
+    let mut reference = None;
+    for root_size in ["24px", "24pt"] {
+        let source = "ishikawa-beta\n    Problem\n    Cause\n        first<br/>second\n";
+        let parsed = MermaidEngine::new()
+            .with_site_config(
+                merman_core::presentation::SourcePresentationConfig::from_value(
+                    serde_json::json!({
+                        "fontSize": root_size,
+                        "themeVariables": {"fontSize": "32px"}
+                    }),
+                ),
+            )
+            .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
+            .unwrap()
+            .unwrap()
+            .into_presentation();
+        let session = RenderEnvironment::deterministic().begin_session().unwrap();
+        let artifact = family::prepare(&parsed, &LayoutOptions::default(), session).unwrap();
+        let layout = artifact.layout_json().unwrap()["layout"]["IshikawaDiagram"].clone();
+        assert_eq!(layout["font_size"], 24.0, "{root_size}");
+        let detail = &layout["pairs"][0]["upper"]["sub_groups"][0]["label"];
+        assert_eq!(detail["lines"], serde_json::json!(["first", "second"]));
+        assert_eq!(detail["font_size"], 32.0);
+        assert_eq!(detail["line_height"], 24.0 * 1.05);
+        if let Some(reference) = &reference {
+            assert_eq!(&layout, reference, "{root_size}");
+        } else {
+            reference = Some(layout);
+        }
+        let rendered = artifact
+            .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+            .unwrap();
+        let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+        let text = document
+            .descendants()
+            .find(|node| {
+                node.has_tag_name("text")
+                    && node
+                        .descendants()
+                        .any(|child| child.text() == Some("first"))
+            })
+            .unwrap();
+        let second = text
+            .children()
+            .filter(|node| node.has_tag_name("tspan"))
+            .nth(1)
+            .unwrap();
+        let line_step = second.attribute("dy").unwrap().parse::<f64>().unwrap();
+        assert!((line_step - 24.0 * 1.05).abs() < 1e-10);
+    }
+}
+
+#[derive(Default)]
+struct IshikawaFontProbe(Mutex<Vec<(String, merman_render::text::TextStyle)>>);
+
+impl HostTextMeasurer for IshikawaFontProbe {
+    fn measure(&self, request: HostTextMeasurementRequest<'_>) -> HostMeasurementResult {
+        self.0
+            .lock()
+            .unwrap()
+            .push((request.text.to_owned(), request.style.clone()));
+        Ok(None)
+    }
+}
+
+#[test]
+fn ishikawa_final_fonts_size_labels_boxes_spine_and_canvas_in_both_looks() {
+    let theme = ishikawa_typography_theme(
+        ThemeTextStyle::default()
+            .with_font_stack(FontStack::single("IshikawaFinal").unwrap())
+            .with_font_size_px(72.0)
+            .unwrap(),
+    );
+    for look in ["classic", "handDrawn"] {
+        let mut reference = None;
+        for size in ["24pt", "32px", "2pc"] {
+            let config = serde_json::json!({
+                "look": look, "handDrawnSeed": 7, "fontSize": "16px",
+                "themeVariables": {"fontSize": size}
+            });
+            let engine = MermaidEngine::new().with_site_config(
+                merman_core::presentation::SourcePresentationConfig::from_value(config),
+            );
+            let source = "ishikawa-beta\n    Problem\n    WWWWWWWWWWWW\n        WWWWWWWWWWWW\n        Another cause\n";
+            let parsed = common::install_parse_compatibility(&theme, engine)
+                .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
+                .unwrap()
+                .unwrap()
+                .into_presentation();
+            let host = Arc::new(IshikawaFontProbe::default());
+            let session = RenderEnvironment::deterministic()
+                .with_text_measurement_policy(TextMeasurementPolicy::host_display(
+                    TextMeasurementProfileIdentity::new(
+                        MeasurementProfileId::new("test.ishikawa-final-fonts").unwrap(),
+                        "1",
+                    )
+                    .unwrap(),
+                    host.clone(),
+                    TextMeasurementPhase::ALL,
+                ))
+                .begin_session_with_theme(&theme)
+                .unwrap();
+            let artifact = family::prepare(&parsed, &LayoutOptions::default(), session).unwrap();
+            let projection = artifact.layout_json().unwrap()["layout"]["IshikawaDiagram"].clone();
+            if let Some(reference) = &reference {
+                assert_eq!(&projection, reference, "{look}/{size}");
+            } else {
+                reference = Some(projection.clone());
+            }
+            let layout: IshikawaDiagramLayout = serde_json::from_value(projection).unwrap();
+            let bounds = layout.bounds.as_ref().unwrap();
+            let branch = &layout.pairs[0].upper;
+            let label = &branch.label_group.label;
+            assert_eq!(label.font_size, 32.0);
+            assert_eq!(layout.head.as_ref().unwrap().label.font_size, 14.0);
+            assert_eq!(label.line_height, layout.font_size * 1.05);
+            let label_box = &branch.label_group.label_box;
+            assert!(label_box.x <= label.bbox.min_x && label_box.y <= label.bbox.min_y);
+            assert!(label_box.x + label_box.width >= label.bbox.max_x);
+            assert!(label_box.y + label_box.height >= label.bbox.max_y);
+            let minimum_x = std::iter::once(label)
+                .chain(branch.sub_groups.iter().map(|group| &group.label))
+                .map(|label| label.bbox.min_x)
+                .fold(f64::INFINITY, f64::min);
+            assert_eq!(layout.spine.as_ref().unwrap().x1, minimum_x);
+            for text in
+                std::iter::once(label).chain(branch.sub_groups.iter().map(|group| &group.label))
+            {
+                assert!(text.bbox.min_x >= bounds.min_x && text.bbox.max_x <= bounds.max_x);
+                assert!(text.bbox.min_y >= bounds.min_y && text.bbox.max_y <= bounds.max_y);
+            }
+            let requests = host.0.lock().unwrap();
+            assert!(requests.iter().any(|(text, _)| text == "Another cause"));
+            for (text, style) in requests.iter() {
+                assert_eq!(style.font_family.as_deref(), Some("IshikawaFinal"));
+                assert_eq!(
+                    style.font_size,
+                    if text == "Problem" { 14.0 } else { 32.0 },
+                    "{look}/{size}/{text}"
+                );
+                if text == "Problem" {
+                    assert_eq!(style.font_weight.as_deref(), Some("600"));
+                }
+            }
+            drop(requests);
+            let rendered = artifact
+                .render_svg(
+                    &SvgRenderOptions {
+                        diagram_id: Some("ishikawa-final-fonts".to_string()),
+                        ..Default::default()
+                    },
+                    &SvgDebugOptions::default(),
+                )
+                .unwrap();
+            let stylesheet = ishikawa_stylesheet(rendered.svg());
+            assert!(stylesheet.contains(&format!("font-size: {size};")));
+            assert!(stylesheet.contains("font-family: IshikawaFinal;"));
+            let evidence =
+                merman_render::__private::family_evidence(rendered.into_completion().report());
+            assert_eq!(evidence.applied_count(), 1);
+            assert_eq!(evidence.not_applicable_count(), 1);
+            assert_eq!(evidence.theme_residual_count(), 0);
+        }
+    }
+}
+
+#[test]
+fn ishikawa_important_base_size_reaches_the_actual_head_geometry() {
+    let theme =
+        ishikawa_typography_theme(ThemeTextStyle::default().with_font_size_px(48.0).unwrap());
+    let engine = |size| {
+        MermaidEngine::new().with_site_config(
+            merman_core::presentation::SourcePresentationConfig::from_value(serde_json::json!({
+                "themeVariables":{"fontSize":size}
+            })),
+        )
+    };
+    let ordinary = ishikawa_layout_json_with_theme(&theme, engine("24pt"));
+    let important = ishikawa_layout_json_with_theme(&theme, engine("24pt !important"));
+    assert_eq!(ordinary["head"]["label"]["font_size"], 14.0);
+    assert_eq!(important["head"]["label"]["font_size"], 32.0);
+    assert!(
+        important["head"]["width"].as_f64().unwrap() > ordinary["head"]["width"].as_f64().unwrap()
+    );
+    assert_eq!(ordinary["font_size"], important["font_size"]);
+    assert_eq!(
+        ordinary["pairs"][0]["upper"]["label_group"]["label"]["font_size"],
+        32.0
+    );
+    assert_eq!(
+        important["pairs"][0]["upper"]["label_group"]["label"]["font_size"],
+        32.0
+    );
+    let rendered = render_ishikawa_with_theme(
+        &ishikawa_theme_source("classic"),
+        &theme,
+        engine("24pt !important"),
+    );
+    assert!(ishikawa_stylesheet(rendered.svg()).contains("font-size: 24pt !important;"));
+}
+
+#[test]
+fn ishikawa_invalid_config_sizes_do_not_shadow_typed_size() {
+    let theme =
+        ishikawa_typography_theme(ThemeTextStyle::default().with_font_size_px(48.0).unwrap());
+    for invalid in [
+        serde_json::json!("bogus"),
+        serde_json::json!("-2px"),
+        serde_json::json!("20"),
+        serde_json::json!(20),
+        serde_json::json!("!important"),
+        serde_json::json!("24px !important !important"),
+    ] {
+        for from_source in [false, true] {
+            let config = serde_json::json!({"themeVariables":{"fontSize":invalid}});
+            let body = "ishikawa-beta\n Problem\n  Cause\n";
+            let (source, engine) = if from_source {
+                (
+                    format!("---\nconfig: {config}\n---\n{body}"),
+                    MermaidEngine::new(),
+                )
+            } else {
+                (
+                    body.to_owned(),
+                    MermaidEngine::new().with_site_config(
+                        merman_core::presentation::SourcePresentationConfig::from_value(config),
+                    ),
+                )
+            };
+            let rendered = render_ishikawa_with_theme(&source, &theme, engine);
+            assert!(ishikawa_stylesheet(rendered.svg()).contains("font-size: 48px;"));
+            let evidence =
+                merman_render::__private::family_evidence(rendered.into_completion().report());
+            assert_eq!(evidence.applied_count(), 1, "{invalid}/{from_source}");
+            assert_eq!(evidence.theme_residual_count(), 0);
+        }
+    }
+}
+
+#[test]
+fn ishikawa_unknown_config_sizes_keep_source_ownership_without_portable_certification() {
+    let theme =
+        ishikawa_typography_theme(ThemeTextStyle::default().with_font_size_px(48.0).unwrap());
+    for size in [
+        "125%",
+        "1.5em",
+        "var(--ishikawa-size)",
+        "calc(1em + 2px)",
+        "/* comment */24pt!important",
+    ] {
+        let engine = || {
+            MermaidEngine::new().with_site_config(
+                merman_core::presentation::SourcePresentationConfig::from_value(
+                    serde_json::json!({
+                        "themeVariables":{"fontSize":size}
+                    }),
+                ),
+            )
+        };
+        let source = "ishikawa-beta\n Problem\n  Cause\n";
+        let rendered = try_render_ishikawa_with_theme_requirement(
+            source,
+            &theme,
+            engine(),
+            ThemePortabilityRequirement::BestEffort,
+        )
+        .unwrap();
+        assert!(ishikawa_stylesheet(rendered.svg()).contains(&format!("font-size: {size};")));
+        let evidence =
+            merman_render::__private::family_evidence(rendered.into_completion().report());
+        assert_eq!(evidence.applied_count(), 0);
+        assert_eq!(evidence.theme_residual_count(), 1);
+        assert!(
+            try_render_ishikawa_with_theme_requirement(
+                source,
+                &theme,
+                engine(),
+                ThemePortabilityRequirement::RequirePortable,
+            )
+            .is_err()
+        );
+    }
+}
+
+#[test]
 fn ishikawa_font_size_is_not_applicable_without_inherited_text() {
     let theme = ishikawa_typography_theme(
         ThemeTextStyle::default()
@@ -1303,14 +1644,25 @@ fn ishikawa_font_size_is_not_applicable_without_inherited_text() {
     );
 
     for source in ["ishikawa-beta\n", "ishikawa-beta\n Root cause\n"] {
-        let rendered = render_ishikawa_with_theme(source, &theme, MermaidEngine::new());
-        let evidence =
-            merman_render::__private::family_evidence(rendered.into_completion().report());
-        assert_eq!(evidence.required_count(), 1, "source={source:?}");
-        assert_eq!(evidence.accounted_count(), 1, "source={source:?}");
-        assert_eq!(evidence.applied_count(), 0, "source={source:?}");
-        assert_eq!(evidence.not_applicable_count(), 1, "source={source:?}");
-        assert_eq!(evidence.theme_residual_count(), 0, "source={source:?}");
+        for config in [
+            serde_json::json!({}),
+            serde_json::json!({"themeVariables":{"fontSize":"var(--unused-size)"}}),
+        ] {
+            let rendered = render_ishikawa_with_theme(
+                source,
+                &theme,
+                MermaidEngine::new().with_site_config(
+                    merman_core::presentation::SourcePresentationConfig::from_value(config),
+                ),
+            );
+            let evidence =
+                merman_render::__private::family_evidence(rendered.into_completion().report());
+            assert_eq!(evidence.required_count(), 1, "source={source:?}");
+            assert_eq!(evidence.accounted_count(), 1, "source={source:?}");
+            assert_eq!(evidence.applied_count(), 0, "source={source:?}");
+            assert_eq!(evidence.not_applicable_count(), 1, "source={source:?}");
+            assert_eq!(evidence.theme_residual_count(), 0, "source={source:?}");
+        }
     }
 }
 
@@ -1499,6 +1851,75 @@ fn ishikawa_text_fill_is_not_applicable_without_visible_text() {
     assert_eq!(evidence.applied_count(), 0);
     assert_eq!(evidence.not_applicable_count(), 1);
     assert_eq!(evidence.theme_residual_count(), 0);
+}
+
+#[test]
+fn ishikawa_zero_sized_text_retires_font_and_fill_but_keeps_geometry_residuals() {
+    let theme = DiagramThemeCompiler::new()
+        .compile(
+            DiagramThemeSpec::new()
+                .with_typography(
+                    TypographySpec::default().with_family_style(
+                        DiagramFamilyId::ISHIKAWA,
+                        ThemeTextStyle::default()
+                            .with_font_stack(FontStack::single("monospace").unwrap()),
+                    ),
+                )
+                .with_styles(
+                    ThemeRuleSet::default()
+                        .with_rule(ThemeRule::new(
+                            ThemeTarget::Text,
+                            ThemeStylePatch::default()
+                                .with_fill(CanvasPaint::solid("#123456").unwrap()),
+                        ))
+                        .with_rule(ThemeRule::new(
+                            ThemeTarget::NodeLabel,
+                            ThemeStylePatch::default().with_padding(InsetsPx::all(2.0)),
+                        )),
+                ),
+        )
+        .unwrap();
+    for (size, head_visible) in [("0px !important", false), ("0px", true)] {
+        let engine = MermaidEngine::new().with_site_config(
+            merman_core::presentation::SourcePresentationConfig::from_value(serde_json::json!({
+                "themeVariables": {"fontSize": size}
+            })),
+        );
+        let rendered = try_render_ishikawa_with_theme_requirement(
+            "ishikawa-beta\n    Problem\n    Cause\n",
+            &theme,
+            engine,
+            ThemePortabilityRequirement::BestEffort,
+        )
+        .unwrap();
+        let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+        for text in ishikawa_visible_text_nodes(&document) {
+            let consumes_fill =
+                head_visible && text.attribute("class") == Some("ishikawa-head-label");
+            assert_eq!(
+                text.attribute("style"),
+                consumes_fill.then_some("fill:#123456 !important;"),
+                "{size} / {:?}",
+                text.attribute("class")
+            );
+        }
+        drop(document);
+        let evidence =
+            merman_render::__private::family_evidence(rendered.into_completion().report());
+        assert_eq!(evidence.required_count(), 3, "{size}");
+        assert_eq!(evidence.accounted_count(), 3, "{size}");
+        assert_eq!(
+            evidence.applied_count(),
+            if head_visible { 2 } else { 0 },
+            "{size}"
+        );
+        assert_eq!(
+            evidence.not_applicable_count(),
+            if head_visible { 0 } else { 2 },
+            "{size}"
+        );
+        assert_eq!(evidence.theme_residual_count(), 1, "{size}");
+    }
 }
 
 #[test]

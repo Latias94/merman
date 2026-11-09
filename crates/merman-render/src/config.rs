@@ -311,6 +311,27 @@ pub(crate) fn config_f64_or(cfg: &Value, path: &[&str], default: f64) -> f64 {
     config_f64(cfg, path).unwrap_or(default)
 }
 
+/// Mermaid `parseFontSize` preserves numeric fractions and reads an integer prefix from strings.
+/// This is a compatibility number, not a conversion from CSS lengths to pixels.
+pub(crate) fn json_mermaid_font_size_number(value: &Value) -> Option<f64> {
+    if let Some(number) = value.as_f64() {
+        return Some(number);
+    }
+    let text = crate::text::trim_start_ecmascript_whitespace(value.as_str()?);
+    let digits = text
+        .strip_prefix('-')
+        .or_else(|| text.strip_prefix('+'))
+        .unwrap_or(text);
+    let count = digits.bytes().take_while(u8::is_ascii_digit).count();
+    if count == 0 {
+        return None;
+    }
+    text[..text.len() - digits.len() + count]
+        .parse::<f64>()
+        .ok()
+        .filter(|number| number.is_finite())
+}
+
 pub(crate) fn json_f64_css_px(value: &Value) -> Option<f64> {
     json_f64(value).or_else(|| value.as_str().and_then(parse_css_px_to_f64))
 }

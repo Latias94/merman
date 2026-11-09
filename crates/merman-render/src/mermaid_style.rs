@@ -286,6 +286,37 @@ pub(crate) fn css_font_size_override(declaration_list: &str) -> Option<CssFontSi
     winner
 }
 
+/// Classifies one configured size without treating malformed priority as a source owner.
+///
+/// The declaration scanner conservatively retains host CSS outside the safe emission subset,
+/// including comments. Check only the value/priority boundary here; do not evaluate host CSS.
+pub(crate) fn css_font_size_value_override(value: &str) -> Option<CssFontSizeOverride> {
+    let mut parser = Parser::new(value);
+    let mut has_value = false;
+    loop {
+        let state = parser.state();
+        match parser.next() {
+            Ok(Token::Delim('!')) => {
+                parser.reset(&state);
+                if !has_value
+                    || parser.try_parse(parse_important).is_err()
+                    || !parser.is_exhausted()
+                {
+                    return None;
+                }
+                break;
+            }
+            Ok(Token::Semicolon | Token::BadString(_) | Token::BadUrl(_)) => return None,
+            Ok(_) => has_value = true,
+            Err(error) if matches!(error.kind, BasicParseErrorKind::EndOfInput) => break,
+            Err(_) => return None,
+        }
+    }
+    has_value
+        .then(|| css_font_size_override(&format!("font-size:{value}")))
+        .flatten()
+}
+
 pub(crate) fn visit_parsed_style_declarations<'a>(
     declaration_list: &'a str,
     mut visit: impl FnMut(ParsedStyleDeclaration<'a>),
@@ -1400,6 +1431,44 @@ fn source_closes_initial_block(raw_block: &str, close: char) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn configured_font_sizes_keep_host_values_without_admitting_invalid_priority() {
+        for value in [
+            "",
+            "/* comment */",
+            "!important",
+            "!important !important",
+            "bogus",
+            "bogus !important !important",
+            "24px !important !important",
+            "24px !other",
+            "-4px",
+            "25",
+            "24furlong",
+            "24px;fill:red",
+        ] {
+            assert!(css_font_size_value_override(value).is_none(), "{value}");
+        }
+        for value in [
+            "24pt",
+            "0px !important",
+            "24pt !important",
+            r"24p\74 !important",
+            "/* host comment */24pt !important",
+            "24pt /* comment */ ! important",
+            "var(--size)",
+            "calc(1em /* comment */ + 2px)",
+            "var(--size, var(--fallback)) !important",
+        ] {
+            assert!(css_font_size_value_override(value).is_some(), "{value}");
+        }
+        assert_eq!(
+            css_font_size_value_override("/* host comment */24pt !important")
+                .map(CssFontSizeOverride::ownership),
+            Some(CssFontSizeOwnership::Unverified)
+        );
+    }
 
     #[test]
     fn font_family_value_accepts_complete_literal_lists_with_quoted_metacharacters() {

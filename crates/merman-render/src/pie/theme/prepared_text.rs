@@ -3,9 +3,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use merman_model::families::pie::PieDiagramModel;
 use merman_model::presentation::PresentationConfig;
 
-use crate::config::{
-    config_css_number_or_string, configured_theme_font_size_css_or_root_number_px,
-};
+use crate::config::configured_theme_font_size_css_or_root_number_px;
 use crate::diagram_theme::{
     FamilyThemeDisposition, FamilyThemeMechanism, FamilyThemeMechanismKey, FamilyThemeRuleFacet,
     ResolvedDiagramTheme, ResolvedStyleProperty, Specified, ThemeCapability, ThemeTarget,
@@ -71,14 +69,6 @@ impl PieTextRole {
             Self::Title => "themeVariables.pieTitleTextSize",
             Self::Section => "themeVariables.pieSectionTextSize",
             Self::Legend => "themeVariables.pieLegendTextSize",
-        }
-    }
-
-    const fn size_variable(self) -> &'static str {
-        match self {
-            Self::Title => "pieTitleTextSize",
-            Self::Section => "pieSectionTextSize",
-            Self::Legend => "pieLegendTextSize",
         }
     }
 }
@@ -208,44 +198,9 @@ impl PiePreparedText {
             let target = role.target();
             // Shared CSS uses static winners, while evidence observes the actual visible ordinals.
             let style = theme.style_with_work_meter(target, ThemeVariant::Default, None, meter)?;
-            let occurrences = self.expected[role.index()]
-                .iter()
-                .enumerate()
-                .filter(|(_, text)| has_visible_pie_text(text))
-                .map(|(index, _)| (index + 1, ThemeVariant::Default))
-                .collect::<Vec<_>>();
-            meter.charge(theme.family_mechanism_routes().len())?;
-            let has_ordinals = theme.family_rules().any(|(_, rule)| {
-                rule.target() == target
-                    && rule.ordinal().is_some()
-                    && matches!(rule.variant(), None | Some(ThemeVariant::Default))
-            });
-            let mut winners = BTreeSet::new();
-            if has_ordinals {
-                for &(ordinal, variant) in &occurrences {
-                    meter.charge(1)?;
-                    winners.extend(
-                        theme
-                            .style_with_work_meter(target, variant, Some(ordinal), meter)?
-                            .winner_rule_properties()
-                            .map(|(property, origin)| (origin.rule_index(), property)),
-                    );
-                }
-            } else if !occurrences.is_empty() {
-                winners.extend(
-                    style
-                        .winner_rule_properties()
-                        .map(|(property, origin)| (origin.rule_index(), property)),
-                );
-            }
-
             let fill_owned = config.config_paint_overrides_typed_default(role.fill_path());
             let size_owned = config.config_path_overrides_typed_default(role.size_path())
-                && config_css_number_or_string(
-                    config.as_value(),
-                    &["themeVariables", role.size_variable()],
-                )
-                .is_some();
+                && css.configured_text_size_is_admissible(role);
             let mut owners = BTreeMap::new();
             if !fill_owned
                 && let Some(fill) = resolve_direct_static_fill(
@@ -318,6 +273,38 @@ impl PiePreparedText {
                         (origin.rule_index(), ThemeCapability::Typography),
                     );
                 }
+            }
+
+            // Observe the final bound size, including source-owned zero and typed overrides.
+            let occurrences = self.expected[role.index()]
+                .iter()
+                .enumerate()
+                .filter(|(_, text)| css.text_can_be_visible(role) && has_visible_pie_text(text))
+                .map(|(index, _)| (index + 1, ThemeVariant::Default))
+                .collect::<Vec<_>>();
+            meter.charge(theme.family_mechanism_routes().len())?;
+            let has_ordinals = theme.family_rules().any(|(_, rule)| {
+                rule.target() == target
+                    && rule.ordinal().is_some()
+                    && matches!(rule.variant(), None | Some(ThemeVariant::Default))
+            });
+            let mut winners = BTreeSet::new();
+            if has_ordinals {
+                for &(ordinal, variant) in &occurrences {
+                    meter.charge(1)?;
+                    winners.extend(
+                        theme
+                            .style_with_work_meter(target, variant, Some(ordinal), meter)?
+                            .winner_rule_properties()
+                            .map(|(property, origin)| (origin.rule_index(), property)),
+                    );
+                }
+            } else if !occurrences.is_empty() {
+                winners.extend(
+                    style
+                        .winner_rule_properties()
+                        .map(|(property, origin)| (origin.rule_index(), property)),
+                );
             }
 
             let mut observations = BTreeMap::<usize, TextRuleObservation>::new();
@@ -499,6 +486,7 @@ impl PieTextReceipt {
     pub(super) fn record_text(
         &mut self,
         plan: &PiePreparedText,
+        css: &PieCssBinding,
         role: PieTextRole,
         index: usize,
         selector: Option<&str>,
@@ -510,7 +498,8 @@ impl PieTextReceipt {
             || plan.expected[role_index].get(index).map(String::as_str)
                 != Some(text.unwrap_or_default());
         self.next[role_index] = self.next[role_index].saturating_add(1);
-        self.visible[role_index] += usize::from(text.is_some_and(has_visible_pie_text));
+        self.visible[role_index] +=
+            usize::from(css.text_can_be_visible(role) && text.is_some_and(has_visible_pie_text));
     }
 
     pub(super) fn proves_complete(&self, plan: &PiePreparedText) -> bool {
@@ -724,6 +713,7 @@ mod tests {
                     };
                     receipt.record_text(
                         &plan,
+                        &css,
                         role,
                         emitted_index,
                         Some(role.selector()),
@@ -734,6 +724,7 @@ mod tests {
             if case == "extra-text" {
                 receipt.record_text(
                     &plan,
+                    &css,
                     PieTextRole::Title,
                     0,
                     Some(PieTextRole::Title.selector()),
