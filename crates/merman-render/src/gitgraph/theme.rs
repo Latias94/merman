@@ -27,7 +27,7 @@ pub(crate) use static_paint::GitGraphStaticPaintPlan;
 use text_paint::GitGraphTextPaintPlan;
 pub(crate) use typography::{
     GitGraphTypographyCssEmission, GitGraphTypographyThemePlan, gitgraph_commit_label_is_visible,
-    gitgraph_tags_in_output_order,
+    gitgraph_tags_in_output_order, unsupported_native_font_size,
 };
 
 pub(crate) const GITGRAPH_PALETTE_SLOT_COUNT: usize = 8;
@@ -361,7 +361,6 @@ impl GitGraphNodePalettePlan {
         theme: Option<&ResolvedDiagramTheme>,
         effective_config: &PresentationConfig,
         layout: &GitGraphDiagramLayout,
-        _has_title: bool,
         work_meter: &OperationWorkMeter,
     ) -> Result<Self, OperationWorkError> {
         let mut plan = Self::baseline(layout);
@@ -1044,7 +1043,6 @@ mod tests {
                 theme,
                 &PresentationConfig::default(),
                 &layout,
-                false,
                 &work_meter(),
             )
             .unwrap();
@@ -1078,7 +1076,6 @@ mod tests {
             Some(&theme),
             &PresentationConfig::default(),
             &layout,
-            false,
             &work_meter(),
         )
         .unwrap();
@@ -1292,7 +1289,6 @@ mod tests {
                 Some(&theme),
                 &PresentationConfig::default(),
                 &empty_layout(),
-                false,
                 &work_meter(),
             )
             .expect("resolve absent GitGraph marker evidence")
@@ -1317,7 +1313,6 @@ mod tests {
                 Some(&theme),
                 &PresentationConfig::default(),
                 &empty_layout(),
-                true,
                 &work_meter(),
             )
             .expect("resolve visible GitGraph title evidence")

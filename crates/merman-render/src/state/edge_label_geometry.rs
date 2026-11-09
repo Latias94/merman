@@ -334,7 +334,7 @@ impl StateNativeLabelGeometry {
         // below the text origin. Retain the selected DOM bbox offset, then express that same
         // baseline directly from the layout box top instead of replaying y/dy declarations.
         let first_baseline_y_px =
-            padding_px + request.typography.text_style().font_size.max(1.0) - bbox_y_px;
+            padding_px + request.typography.text_style().font_size - bbox_y_px;
         if !width_px.is_finite()
             || !height_px.is_finite()
             || !baseline_x_px.is_finite()

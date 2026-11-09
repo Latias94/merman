@@ -95,22 +95,13 @@ impl<'a> C4ConfigView<'a> {
         C4Look::from_diagram_look(config_diagram_look(self.effective_config))
     }
 
-    #[cfg(test)]
-    pub(crate) fn layout_settings(&self) -> C4LayoutSettings {
-        self.layout_settings_with_prepared_fonts(&self.boundary_font(), &self.message_font())
-    }
-
     pub(crate) fn shape_padding(&self) -> f64 {
         self.c4_f64("c4ShapePadding")
             .unwrap_or(DEFAULT_C4_SHAPE_PADDING)
             .max(0.0)
     }
 
-    pub(crate) fn layout_settings_with_prepared_fonts(
-        &self,
-        boundary: &TextStyle,
-        message: &TextStyle,
-    ) -> C4LayoutSettings {
+    pub(crate) fn layout_settings(&self) -> C4LayoutSettings {
         C4LayoutSettings {
             look: self.look(),
             diagram_margin_x: self
@@ -135,12 +126,6 @@ impl<'a> C4ConfigView<'a> {
             next_line_padding_x: self
                 .c4_f64("nextLinePaddingX")
                 .unwrap_or(DEFAULT_NEXT_LINE_PADDING_X),
-            boundary_font_family: boundary.font_family.clone(),
-            boundary_font_size: boundary.font_size,
-            boundary_font_weight: boundary.font_weight.clone(),
-            message_font_family: message.font_family.clone(),
-            message_font_size: message.font_size,
-            message_font_weight: message.font_weight.clone(),
             use_max_width: self.use_max_width(),
         }
     }
@@ -194,6 +179,17 @@ impl<'a> C4ConfigView<'a> {
         }
     }
 
+    pub(crate) fn shape_font_size_is_emitted(&self, type_c4_shape: &str) -> bool {
+        let key = format!("{type_c4_shape}FontSize");
+        // Mermaid skips a numeric zero before CSSOM assignment and CSSOM rejects negatives.
+        // String "0px" is truthy and remains a valid zero-sized declaration.
+        self.font_size(&key, 14.0) >= 0.0
+            && !self
+                .c4_config
+                .get(&key)
+                .is_some_and(|value| value.is_number() && value.as_f64() == Some(0.0))
+    }
+
     pub(crate) fn use_max_width(&self) -> bool {
         self.c4_bool("useMaxWidth").unwrap_or(DEFAULT_USE_MAX_WIDTH)
     }
@@ -232,33 +228,7 @@ pub(crate) struct C4LayoutSettings {
     pub(crate) height: f64,
     pub(crate) wrap: bool,
     pub(crate) next_line_padding_x: f64,
-    pub(crate) boundary_font_family: Option<String>,
-    pub(crate) boundary_font_size: f64,
-    pub(crate) boundary_font_weight: Option<String>,
-    pub(crate) message_font_family: Option<String>,
-    pub(crate) message_font_size: f64,
-    pub(crate) message_font_weight: Option<String>,
     pub(crate) use_max_width: bool,
-}
-
-impl C4LayoutSettings {
-    pub(crate) fn boundary_font(&self) -> TextStyle {
-        TextStyle {
-            font_family: self.boundary_font_family.clone(),
-            font_size: self.boundary_font_size,
-            font_weight: self.boundary_font_weight.clone(),
-            font_style: None,
-        }
-    }
-
-    pub(crate) fn message_font(&self) -> TextStyle {
-        TextStyle {
-            font_family: self.message_font_family.clone(),
-            font_size: self.message_font_size,
-            font_weight: self.message_font_weight.clone(),
-            font_style: None,
-        }
-    }
 }
 
 pub(crate) const fn default_use_max_width() -> bool {
@@ -286,15 +256,27 @@ mod tests {
         assert_eq!(settings.next_line_padding_x, DEFAULT_NEXT_LINE_PADDING_X);
         assert!(settings.use_max_width);
         assert_eq!(
-            settings.boundary_font_family.as_deref(),
+            C4ConfigView::new(&cfg)
+                .boundary_font()
+                .font_family
+                .as_deref(),
             Some(C4_DEFAULT_FONT_FAMILY)
         );
-        assert_eq!(settings.boundary_font_size, DEFAULT_BOUNDARY_FONT_SIZE);
         assert_eq!(
-            settings.message_font_family.as_deref(),
+            C4ConfigView::new(&cfg).boundary_font().font_size,
+            DEFAULT_BOUNDARY_FONT_SIZE
+        );
+        assert_eq!(
+            C4ConfigView::new(&cfg)
+                .message_font()
+                .font_family
+                .as_deref(),
             Some(C4_DEFAULT_FONT_FAMILY)
         );
-        assert_eq!(settings.message_font_size, DEFAULT_MESSAGE_FONT_SIZE);
+        assert_eq!(
+            C4ConfigView::new(&cfg).message_font().font_size,
+            DEFAULT_MESSAGE_FONT_SIZE
+        );
     }
 
     #[test]
@@ -331,15 +313,33 @@ mod tests {
         assert!(!settings.wrap);
         assert_eq!(settings.next_line_padding_x, 12.0);
         assert_eq!(
-            settings.boundary_font_family.as_deref(),
+            C4ConfigView::new(&cfg)
+                .boundary_font()
+                .font_family
+                .as_deref(),
             Some("Inter, sans-serif")
         );
-        assert_eq!(settings.boundary_font_weight.as_deref(), Some("bold"));
         assert_eq!(
-            settings.message_font_family.as_deref(),
+            C4ConfigView::new(&cfg)
+                .boundary_font()
+                .font_weight
+                .as_deref(),
+            Some("bold")
+        );
+        assert_eq!(
+            C4ConfigView::new(&cfg)
+                .message_font()
+                .font_family
+                .as_deref(),
             Some("Georgia, serif")
         );
-        assert_eq!(settings.message_font_weight.as_deref(), Some("600"));
+        assert_eq!(
+            C4ConfigView::new(&cfg)
+                .message_font()
+                .font_weight
+                .as_deref(),
+            Some("600")
+        );
         assert!(!settings.use_max_width);
     }
 

@@ -21,6 +21,12 @@ const DEFAULT_QUADRANT_INTERNAL_BORDER_STROKE_WIDTH: f64 = 1.0;
 const DEFAULT_QUADRANT_EXTERNAL_BORDER_STROKE_WIDTH: f64 = 2.0;
 const DEFAULT_USE_MAX_WIDTH: bool = true;
 
+pub(super) fn inherited_font_size_px(effective_config: &Value) -> f64 {
+    crate::number_format::canonicalize_number(
+        crate::config::config_theme_font_size_css_or_root_number_px(effective_config, 16.0),
+    )
+}
+
 pub(crate) struct QuadrantChartConfigView<'a> {
     quadrant_config: &'a Value,
     has_render_config: bool,

@@ -31,12 +31,20 @@ impl UsecasePreparedHtmlLabel {
 }
 
 pub(super) fn number(config: &Value, key: &str, fallback: f64) -> f64 {
+    configured_number(config, key).unwrap_or(fallback)
+}
+
+pub(super) fn configured_number(config: &Value, key: &str) -> Option<f64> {
     config
         .get("usecase")
         .and_then(|value| value.get(key))
         .and_then(Value::as_f64)
         .filter(|value| value.is_finite() && *value >= 0.0)
-        .unwrap_or(fallback)
+}
+
+pub(super) fn configured_generic_font_size(config: &Value) -> Option<f64> {
+    crate::config::config_f64_css_absolute_px(config, &["themeVariables", "fontSize"])
+        .filter(|size| size.is_finite() && *size >= 0.0)
 }
 
 pub(super) fn text_style(config: &Value, actor: Option<bool>) -> TextStyle {
@@ -47,14 +55,7 @@ pub(super) fn text_style(config: &Value, actor: Option<bool>) -> TextStyle {
                 .or_else(|| config.get("fontFamily"))
                 .and_then(Value::as_str)
                 .map(str::to_owned),
-            font_size: config
-                .pointer("/themeVariables/fontSize")
-                .and_then(|value| {
-                    value
-                        .as_f64()
-                        .or_else(|| value.as_str()?.trim_end_matches("px").parse().ok())
-                })
-                .unwrap_or(16.0),
+            font_size: configured_generic_font_size(config).unwrap_or(16.0),
             ..Default::default()
         };
     };

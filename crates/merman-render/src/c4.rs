@@ -280,7 +280,7 @@ fn measure_c4_unified_text(
         left = left.max(row_left.max(0.0));
         right = right.max(row_right.max(0.0));
         let y = measurer.measure_svg_create_text_bbox_y_offset_px(&row_text, style)
-            + index as f64 * style.font_size.max(1.0) * 1.1;
+            + index as f64 * style.font_size.max(0.0) * 1.1;
         let height = measurer
             .measure_svg_raw_text_bbox_height_px(&row_text, style)
             .max(0.0);

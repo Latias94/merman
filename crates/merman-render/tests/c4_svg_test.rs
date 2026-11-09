@@ -7,13 +7,19 @@ use merman_render::diagram_theme::{
     ThemeRule, ThemeRuleSet, ThemeStylePatch, ThemeTarget, ThemeTextStyle, ThemeVariant,
     TypographySpec,
 };
-use merman_render::environment::RenderEnvironment;
+use merman_render::environment::{
+    HostMeasurementResult, HostTextMeasurement, HostTextMeasurementRequest, HostTextMeasurer,
+    MeasurementProfileId, RenderEnvironment, TextMeasurementOperation, TextMeasurementPhase,
+    TextMeasurementPolicy, TextMeasurementProfileIdentity,
+};
 use merman_render::family;
 use merman_render::model::C4DiagramLayout;
 use merman_render::resources::{
     RenderResourcePolicy, ResourceLimitCause, ResourceLimitId, ResourceLimitPhase,
 };
 use merman_render::svg::{SvgDebugOptions, SvgRenderOptions};
+use merman_render::text::{TextMetrics, TextStyle};
+use std::sync::{Arc, Mutex};
 
 fn render_c4_svg_with_environment(source: &str, environment: &RenderEnvironment) -> String {
     try_render_c4_svg_with_environment(source, environment).expect("render C4 SVG")
@@ -1463,6 +1469,172 @@ fn c4_legacy_break_only_labels_do_not_certify_visible_role_paint() {
 }
 
 #[test]
+fn c4_role_paint_receipts_separate_zero_size_glyphs_from_dom_occurrences() {
+    for (role, overrides, root_size, body, visible, has_shapes) in [
+        (
+            ThemeTarget::ClusterLabel,
+            serde_json::json!({"boundaryFontSize":0}),
+            29,
+            "Boundary(b, \"\", \"Type\") {\nSystem(a, \"A\")\n}\n",
+            false,
+            true,
+        ),
+        (
+            ThemeTarget::ClusterLabel,
+            serde_json::json!({"boundaryFontSize":14}),
+            29,
+            "Boundary(b, \"\", \"Type\") {\nSystem(a, \"A\")\n}\n",
+            true,
+            true,
+        ),
+        (
+            ThemeTarget::ClusterLabel,
+            serde_json::json!({"boundaryFontSize":0}),
+            29,
+            "Boundary(b, \"Name\", \"Type\") {\nSystem(a, \"A\")\n}\n",
+            true,
+            true,
+        ),
+        (
+            ThemeTarget::ClusterLabel,
+            serde_json::json!({"boundaryFontSize":0}),
+            29,
+            "Deployment_Node(b, \"\", \"Type\", \"Description\") {\nSystem(a, \"A\")\n}\n",
+            true,
+            true,
+        ),
+        (
+            ThemeTarget::ClusterLabel,
+            serde_json::json!({"boundaryFontSize":2}),
+            29,
+            "Deployment_Node(b, \"\", \"\", \"Description\") {\nSystem(a, \"A\")\n}\n",
+            false,
+            true,
+        ),
+        (
+            ThemeTarget::EdgeLabel,
+            serde_json::json!({"messageFontSize":0}),
+            29,
+            "System(a, \"A\")\nSystem(b, \"B\")\nRel(a, b, \"Calls\", \"HTTPS\")\n",
+            false,
+            true,
+        ),
+        (
+            ThemeTarget::EdgeLabel,
+            serde_json::json!({"messageFontSize":12}),
+            29,
+            "System(a, \"A\")\nSystem(b, \"B\")\nRel(a, b, \"Calls\", \"HTTPS\")\n",
+            true,
+            true,
+        ),
+        (
+            ThemeTarget::EdgeLabel,
+            serde_json::json!({"messageFontSize":-1}),
+            29,
+            "System(a, \"A\")\nSystem(b, \"B\")\nRel(a, b, \"Calls\", \"HTTPS\")\n",
+            true,
+            true,
+        ),
+        (
+            ThemeTarget::NodeLabel,
+            serde_json::json!({"systemFontSize":"0px"}),
+            29,
+            "System(a, \"Name\", \"Description\")\n",
+            false,
+            true,
+        ),
+        (
+            ThemeTarget::NodeLabel,
+            serde_json::json!({"systemFontSize":14, "systemFontFamily":"var(--host-font)"}),
+            29,
+            "System(a, \"Name\", \"Description\")\n",
+            true,
+            true,
+        ),
+        (
+            ThemeTarget::NodeLabel,
+            serde_json::json!({"systemFontSize":-1}),
+            29,
+            "System(a, \"Name\", \"Description\")\n",
+            true,
+            true,
+        ),
+        (
+            ThemeTarget::Title,
+            serde_json::json!({}),
+            0,
+            "title Title\nUpdateLayoutConfig(3)\n",
+            false,
+            false,
+        ),
+        (
+            ThemeTarget::Title,
+            serde_json::json!({}),
+            29,
+            "title Title\nUpdateLayoutConfig(3)\n",
+            true,
+            false,
+        ),
+        (
+            ThemeTarget::Title,
+            serde_json::json!({}),
+            -2,
+            "title Title\nUpdateLayoutConfig(3)\n",
+            true,
+            false,
+        ),
+    ] {
+        for target in [ThemeTarget::Text, role] {
+            let theme = c4_cluster_rules_theme([
+                ThemeRule::new(
+                    target,
+                    ThemeStylePatch::default().with_fill(CanvasPaint::solid("#123456").unwrap()),
+                ),
+                ThemeRule::new(
+                    ThemeTarget::Node,
+                    ThemeStylePatch::default().with_fill(CanvasPaint::solid("#aabbcc").unwrap()),
+                ),
+            ]);
+            let mut config = serde_json::json!({"themeVariables":{"fontSize":root_size}, "c4": {
+                "wrap":false, "systemFontSize":"0px"
+            }});
+            config["c4"]
+                .as_object_mut()
+                .unwrap()
+                .extend(overrides.as_object().unwrap().clone());
+            let rendered = try_render_c4_rendered_with_engine(
+                &format!("C4Context\n{body}"),
+                &theme,
+                MermaidEngine::new().with_site_config(
+                    merman_core::presentation::SourcePresentationConfig::from_value(config.clone()),
+                ),
+            )
+            .expect("every emitted occurrence completes even when its glyphs are zero-sized");
+            let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+            assert!(
+                document.descendants().any(|node| {
+                    node.has_tag_name("text")
+                        && !svg_text_content(node).trim().is_empty()
+                        && (c4_effective_property(node, "fill").as_deref() == Some("#123456")
+                            || node
+                                .attribute("style")
+                                .is_some_and(|style| style.contains("#123456")))
+                }),
+                "zero-sized text still retains its DOM and paint declarations: {config}"
+            );
+            let evidence =
+                merman_render::__private::family_evidence(rendered.into_completion().report());
+            let applied = usize::from(visible) + usize::from(has_shapes);
+            assert_eq!(evidence.required_count(), 2);
+            assert_eq!(evidence.accounted_count(), 2);
+            assert_eq!(evidence.applied_count(), applied, "{target:?}, {config}");
+            assert_eq!(evidence.not_applicable_count(), 2 - applied);
+            assert_eq!(evidence.theme_residual_count(), 0);
+        }
+    }
+}
+
+#[test]
 fn c4_visible_brackets_and_unified_literal_break_words_keep_role_paint() {
     for wrap in [false, true] {
         for br in ["<br/>", "</br>", "<br\u{00a0}/>", "</BR\u{feff}/>"] {
@@ -1822,21 +1994,23 @@ fn c4_ignored_base_size_leaves_typed_title_size_available() {
         ))
         .unwrap();
     let body = "C4Context\ntitle Size audit\nSystem(api, \"API\")\n";
-    for value in [
-        serde_json::json!(false),
-        serde_json::json!("bad"),
-        serde_json::Value::Null,
-        serde_json::json!({}),
-        serde_json::json!([]),
-        serde_json::json!(23),
-        serde_json::json!("23px"),
+    for (value, expected) in [
+        (serde_json::json!(false), "29"),
+        (serde_json::json!("bad"), "29"),
+        (serde_json::Value::Null, "29"),
+        (serde_json::json!({}), "29"),
+        (serde_json::json!([]), "29"),
+        (serde_json::json!(-2), "29"),
+        (serde_json::json!("-2px"), "29"),
+        (serde_json::json!(23), "23"),
+        (serde_json::json!("23px"), "23"),
+        (serde_json::json!(0), "0"),
+        (serde_json::json!("0px"), "0"),
+        (serde_json::json!(0.5), "0.5"),
+        (serde_json::json!("0.5px"), "0.5"),
+        (serde_json::json!(1e-7), "0.0000001"),
     ] {
-        let expected = if value.is_number() || value.as_str() == Some("23px") {
-            23
-        } else {
-            29
-        };
-        let config = serde_json::json!({"themeVariables":{"fontSize":value}});
+        let config = serde_json::json!({"fontSize":77, "themeVariables":{"fontSize":value}});
         for from_source in [false, true] {
             let (source, site) = if from_source {
                 (
@@ -1865,8 +2039,11 @@ fn c4_ignored_base_size_leaves_typed_title_size_available() {
             );
             let evidence =
                 merman_render::__private::family_evidence(rendered.into_completion().report());
-            assert_eq!(evidence.applied_count(), usize::from(expected == 29));
-            assert_eq!(evidence.not_applicable_count(), usize::from(expected != 29));
+            assert_eq!(evidence.applied_count(), usize::from(expected == "29"));
+            assert_eq!(
+                evidence.not_applicable_count(),
+                usize::from(expected != "29")
+            );
             assert_eq!(evidence.theme_residual_count(), 0);
         }
     }
@@ -1874,22 +2051,628 @@ fn c4_ignored_base_size_leaves_typed_title_size_available() {
 
 #[test]
 fn c4_typed_base_typography_reaches_root_css_and_title_evidence() {
-    let font_stack = FontStack::single("Inter").expect("valid C4 font stack");
-    let theme = c4_typography_theme(font_stack, 18.0);
     let source = "---\ntitle: C4 typography\n---\nC4Context\nSystem(service, \"Service\")\n";
+    for size in [1e-7, 0.5, 18.0] {
+        let theme = c4_typography_theme(FontStack::single("Inter").unwrap(), size);
+        let rendered =
+            try_render_c4_rendered_with_theme(source, &theme).expect("render typed C4 title");
+        assert!(rendered.svg().contains("font-family:Inter;"));
+        assert!(
+            rendered
+                .svg()
+                .contains(&format!("font-size:{}px;", f64::from(size)))
+        );
+        assert!(rendered.svg().contains(">C4 typography</text>"));
 
-    let rendered =
-        try_render_c4_rendered_with_theme(source, &theme).expect("render typed C4 title");
-    assert!(rendered.svg().contains("font-family:Inter;"));
-    assert!(rendered.svg().contains("font-size:18px;"));
-    assert!(rendered.svg().contains(">C4 typography</text>"));
+        let completion = rendered.into_completion();
+        let evidence = merman_render::__private::family_evidence(completion.report());
+        assert_eq!(evidence.required_count(), 2);
+        assert_eq!(evidence.accounted_count(), 2);
+        assert_eq!(evidence.applied_count(), 2);
+        assert_eq!(evidence.theme_residual_count(), 0);
+    }
+}
 
-    let completion = rendered.into_completion();
-    let evidence = merman_render::__private::family_evidence(completion.report());
-    assert_eq!(evidence.required_count(), 2);
-    assert_eq!(evidence.accounted_count(), 2);
-    assert_eq!(evidence.applied_count(), 2);
-    assert_eq!(evidence.theme_residual_count(), 0);
+#[test]
+fn c4_zero_root_size_only_proves_visible_inherited_roles() {
+    let theme = c4_typography_theme(FontStack::single("Cousine").unwrap(), 29.0);
+    for (family, applied) in [("Independent", 0), ("inherit", 1)] {
+        let config = serde_json::json!({
+            "themeVariables":{"fontSize":0},
+            "c4":{"systemFontFamily":family}
+        });
+        let rendered = try_render_c4_rendered_with_engine(
+            "C4Context\ntitle Invisible title\nSystem(a, \"Visible node\")\n",
+            &theme,
+            MermaidEngine::new().with_site_config(
+                merman_core::presentation::SourcePresentationConfig::from_value(config),
+            ),
+        )
+        .unwrap();
+        assert!(rendered.svg().contains("font-size:0px;"));
+        let evidence =
+            merman_render::__private::family_evidence(rendered.into_completion().report());
+        assert_eq!(evidence.required_count(), 2);
+        assert_eq!(evidence.applied_count(), applied);
+        assert_eq!(evidence.not_applicable_count(), 2 - applied);
+        assert_eq!(evidence.theme_residual_count(), 0);
+    }
+}
+
+#[derive(Default)]
+struct C4FontHost {
+    probes: Mutex<Vec<(String, TextMeasurementOperation, TextStyle)>>,
+}
+
+impl HostTextMeasurer for C4FontHost {
+    fn measure(&self, request: HostTextMeasurementRequest<'_>) -> HostMeasurementResult {
+        self.probes.lock().unwrap().push((
+            request.text.to_owned(),
+            request.operation,
+            request.style.clone(),
+        ));
+        let width = request.text.chars().count() as f64 * request.style.font_size * 0.5;
+        Ok(Some(match request.operation {
+            TextMeasurementOperation::Measure
+            | TextMeasurementOperation::Wrapped
+            | TextMeasurementOperation::MermaidCalculateTextDimensions => {
+                HostTextMeasurement::Metrics(TextMetrics {
+                    width,
+                    height: request.style.font_size,
+                    line_count: 1,
+                })
+            }
+            TextMeasurementOperation::BBoxX => HostTextMeasurement::HorizontalExtents {
+                left: 0.0,
+                right: width,
+            },
+            TextMeasurementOperation::ComputedLength => HostTextMeasurement::Length(width),
+            TextMeasurementOperation::RawBBoxHeight => {
+                HostTextMeasurement::Length(request.style.font_size)
+            }
+            TextMeasurementOperation::CreateTextBBoxYOffset => {
+                HostTextMeasurement::Length(-request.style.font_size * 0.8)
+            }
+            _ => return Ok(None),
+        }))
+    }
+}
+
+fn render_c4_with_font_host(
+    source: &str,
+    config: serde_json::Value,
+    theme: &DiagramTheme,
+) -> (
+    family::RenderedFamilySvg,
+    Vec<(String, TextMeasurementOperation, TextStyle)>,
+    C4DiagramLayout,
+) {
+    let parsed = common::install_parse_compatibility(
+        theme,
+        MermaidEngine::new().with_site_config(
+            merman_core::presentation::SourcePresentationConfig::from_value(config),
+        ),
+    )
+    .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
+    .unwrap()
+    .unwrap()
+    .into_presentation();
+    let host = Arc::new(C4FontHost::default());
+    let identity = TextMeasurementProfileIdentity::new(
+        MeasurementProfileId::new("test.c4-font-host").unwrap(),
+        "1",
+    )
+    .unwrap();
+    let session = RenderEnvironment::deterministic()
+        .with_text_measurement_policy(TextMeasurementPolicy::host_display(
+            identity,
+            host.clone(),
+            TextMeasurementPhase::ALL,
+        ))
+        .begin_session_with_theme(theme)
+        .unwrap();
+    let artifact = family::prepare(&parsed, &LayoutOptions::headless_svg_defaults(), session)
+        .expect("prepare C4 through the production host measurement route");
+    // Snapshot preparation before the writer can contribute any measurement probes.
+    let probes = host.probes.lock().unwrap().clone();
+    let projection = artifact
+        .layout_json()
+        .expect("serialize host-measured C4 layout");
+    let layout = serde_json::from_value(projection["layout"]["C4Diagram"].clone()).unwrap();
+    let rendered = artifact
+        .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+        .unwrap();
+    (rendered, probes, layout)
+}
+
+#[test]
+fn c4_host_measurement_resolves_inherited_fonts_without_rewriting_css() {
+    let theme = c4_typography_theme(FontStack::new(["Cousine", "serif"]).unwrap(), 29.0);
+    for family in ["", "inherit", "unset", r"i\6eherit", r"u\6eset"] {
+        for has_title in [false, true] {
+            let config = serde_json::json!({"c4": {
+                "wrap": false,
+                "systemFontFamily": family, "systemFontSize": 20, "systemFontWeight": 600,
+                "boundaryFontFamily": family, "boundaryFontSize": 22, "boundaryFontWeight": 500,
+                "messageFontFamily": family, "messageFontSize": 24, "messageFontWeight": 300
+            }});
+            let source = format!(
+                "{}C4Context\nDeployment_Node(boundary, \"BoundaryName\", \"BoundaryType\", \"BoundaryDescription\") {{\nSystem(a, \"NodeName\", \"NodeDescription\")\n}}\nSystem(b, \"Peer\")\nRel(a, b, \"MessageLabel\", \"MessageTechnology\")\n",
+                if has_title {
+                    "---\ntitle: Context\n---\n"
+                } else {
+                    ""
+                }
+            );
+            let (rendered, probes, _) = render_c4_with_font_host(&source, config, &theme);
+            for (text, operation, size, weight) in [
+                ("NodeName", TextMeasurementOperation::BBoxX, 20.0, "bold"),
+                (
+                    "[Software System]",
+                    TextMeasurementOperation::BBoxX,
+                    15.0,
+                    "600",
+                ),
+                (
+                    "NodeDescription",
+                    TextMeasurementOperation::BBoxX,
+                    16.4,
+                    "600",
+                ),
+                (
+                    "BoundaryName",
+                    TextMeasurementOperation::MermaidCalculateTextDimensions,
+                    24.0,
+                    "bold",
+                ),
+                (
+                    "[BoundaryType]",
+                    TextMeasurementOperation::MermaidCalculateTextDimensions,
+                    22.0,
+                    "500",
+                ),
+                (
+                    "BoundaryDescription",
+                    TextMeasurementOperation::MermaidCalculateTextDimensions,
+                    20.0,
+                    "500",
+                ),
+                (
+                    "MessageLabel",
+                    TextMeasurementOperation::MermaidCalculateTextDimensions,
+                    24.0,
+                    "300",
+                ),
+                (
+                    "MessageTechnology",
+                    TextMeasurementOperation::MermaidCalculateTextDimensions,
+                    24.0,
+                    "300",
+                ),
+            ] {
+                assert!(
+                    probes.iter().any(|(actual_text, actual_operation, style)| {
+                        actual_text == text
+                            && *actual_operation == operation
+                            && style.font_family.as_deref() == Some("Cousine, serif")
+                            && (style.font_size - size).abs() < 1e-9
+                            && style.font_weight.as_deref() == Some(weight)
+                    }),
+                    "{family}, title={has_title}, missing resolved probe for {text}: {probes:?}"
+                );
+            }
+            assert!(
+                probes.iter().all(|(_, _, style)| {
+                    style.font_family.as_deref() == Some("Cousine, serif")
+                        || style.font_family.as_deref() == Some("sans-serif")
+                }),
+                "legacy dual-font probes may use sans-serif, never unresolved inheritance"
+            );
+            assert!(rendered.svg().contains(&format!(
+                ".c4-shape.c4-system .label{{font-family:{family};font-size:20px;font-weight:600;}}"
+            )));
+            assert!(rendered.svg().contains(&format!("font-family: {family};")));
+            let evidence =
+                merman_render::__private::family_evidence(rendered.into_completion().report());
+            assert_eq!(evidence.required_count(), 2);
+            assert_eq!(evidence.applied_count(), 1 + usize::from(has_title));
+            assert_eq!(evidence.not_applicable_count(), usize::from(!has_title));
+            assert_eq!(evidence.theme_residual_count(), 0);
+        }
+    }
+}
+
+#[test]
+fn c4_font_stack_evidence_follows_actual_inherited_roles() {
+    let theme = c4_typography_theme(FontStack::single("Cousine").unwrap(), 29.0);
+    let nodes = "System(a, \"A\")\nSystem(b, \"B\")\n";
+    for (config, body, inherits) in [
+        (
+            serde_json::json!({}),
+            "System(a, \"A\")\n".to_owned(),
+            false,
+        ),
+        (
+            serde_json::json!({"systemFontFamily":"inherit"}),
+            "System(a, \"\")\n".to_owned(),
+            true,
+        ),
+        (
+            serde_json::json!({"personFontFamily":"inherit"}),
+            nodes.to_owned(),
+            false,
+        ),
+        (
+            serde_json::json!({"personFontFamily":"var(--host-font)"}),
+            nodes.to_owned(),
+            false,
+        ),
+        (
+            serde_json::json!({"systemFontFamily":"inherit", "systemFontSize":"0px"}),
+            nodes.to_owned(),
+            false,
+        ),
+        (
+            serde_json::json!({"boundaryFontFamily":"unset"}),
+            "Boundary(b, \"\", \"\") {\nSystem(a, \"A\")\n}\n".to_owned(),
+            false,
+        ),
+        (
+            serde_json::json!({"boundaryFontFamily":"inherit"}),
+            "Boundary(b, \"Boundary\", \"\") {\nSystem(a, \"A\")\n}\n".to_owned(),
+            true,
+        ),
+        (
+            serde_json::json!({"boundaryFontFamily":"inherit"}),
+            "Boundary(b, \"\", \"Type\") {\nSystem(a, \"A\")\n}\n".to_owned(),
+            true,
+        ),
+        (
+            serde_json::json!({"boundaryFontFamily":"inherit"}),
+            "Deployment_Node(b, \"\", \"\", \"Description\") {\nSystem(a, \"A\")\n}\n".to_owned(),
+            true,
+        ),
+        (
+            serde_json::json!({"messageFontFamily":"inherit"}),
+            nodes.to_owned(),
+            false,
+        ),
+        (
+            serde_json::json!({"messageFontFamily":"inherit"}),
+            format!("{nodes}Rel(a, b, \"Calls\")\n"),
+            true,
+        ),
+        (
+            serde_json::json!({"messageFontFamily":"unset"}),
+            format!("{nodes}Rel(a, b, \"\", \"HTTPS\")\n"),
+            true,
+        ),
+        (
+            serde_json::json!({"messageFontFamily":"inherit"}),
+            format!("{nodes}Rel(a, b, \" \", \" \", \"Hidden description\")\n"),
+            false,
+        ),
+        (
+            serde_json::json!({"systemFontFamily":"inherit", "boundaryFontFamily":"inherit", "messageFontFamily":"inherit"}),
+            "UpdateLayoutConfig($c4ShapeInRow=\"3\")\n".to_owned(),
+            false,
+        ),
+        (
+            serde_json::json!({"systemFontFamily":"\"inherit\""}),
+            nodes.to_owned(),
+            false,
+        ),
+        (
+            serde_json::json!({"systemFontFamily":"\"unset\""}),
+            nodes.to_owned(),
+            false,
+        ),
+    ] {
+        for has_title in [false, true] {
+            let source = format!(
+                "C4Context\n{}{body}",
+                if has_title { "title Context\n" } else { "" }
+            );
+            let rendered = try_render_c4_rendered_with_engine(
+                &source,
+                &theme,
+                MermaidEngine::new().with_site_config(
+                    merman_core::presentation::SourcePresentationConfig::from_value(
+                        serde_json::json!({"c4":config}),
+                    ),
+                ),
+            )
+            .unwrap();
+            let evidence =
+                merman_render::__private::family_evidence(rendered.into_completion().report());
+            let applied = usize::from(has_title || inherits) + usize::from(has_title);
+            assert_eq!(evidence.required_count(), 2);
+            assert_eq!(evidence.applied_count(), applied, "{config}, {source}");
+            assert_eq!(
+                evidence.not_applicable_count(),
+                2 - applied,
+                "{config}, {source}"
+            );
+            assert_eq!(evidence.theme_residual_count(), 0);
+        }
+    }
+}
+
+#[test]
+fn c4_zero_and_fractional_legacy_font_sizes_follow_visible_lines() {
+    let theme = c4_typography_theme(FontStack::single("Cousine").unwrap(), 29.0);
+    let nodes = "System(a, \"A\")\nSystem(b, \"B\")\n";
+    for (key, base, text, raw, used) in [
+        ("messageFontSize", 0.0, "Calls", 0.0, 0.0),
+        ("messageFontSize", 0.5, "Calls", 0.5, 0.5),
+        ("messageFontSize", -1.0, "Calls", -1.0, 29.0),
+        ("messageFontSize", -3.0, "Calls", -3.0, 29.0),
+        ("messageFontSize", -5e-7, "Calls", -5e-7, 29.0),
+        ("messageFontSize", 5e-7, "Calls", 5e-7, 5e-7),
+        ("boundaryFontSize", 0.0, "BoundaryName", 2.0, 2.0),
+        ("boundaryFontSize", 0.0, "[Type]", 0.0, 0.0),
+        ("boundaryFontSize", 0.0, "Description", -2.0, 29.0),
+        ("boundaryFontSize", 0.5, "Description", -1.5, 29.0),
+        ("boundaryFontSize", 2.0, "Description", 0.0, 0.0),
+        (
+            "boundaryFontSize",
+            1.9999995,
+            "Description",
+            1.9999995 - 2.0,
+            29.0,
+        ),
+        (
+            "boundaryFontSize",
+            2.0000005,
+            "Description",
+            2.0000005 - 2.0,
+            2.0000005 - 2.0,
+        ),
+        ("boundaryFontSize", 2.5, "Description", 0.5, 0.5),
+        ("boundaryFontSize", -1.0, "BoundaryName", 1.0, 1.0),
+        ("boundaryFontSize", -1.0, "[Type]", -1.0, 29.0),
+        ("boundaryFontSize", -1.0, "Description", -3.0, 29.0),
+        ("boundaryFontSize", -3.0, "BoundaryName", -1.0, 29.0),
+        ("boundaryFontSize", -3.0, "[Type]", -3.0, 29.0),
+        ("boundaryFontSize", -3.0, "Description", -5.0, 29.0),
+    ] {
+        let body = match text {
+            "Calls" => format!("{nodes}Rel(a, b, \"Calls\", \"HTTPS\")\n"),
+            "BoundaryName" => {
+                "Boundary(b, \"BoundaryName\", \"\") {\nSystem(a, \"A\")\n}\n".to_owned()
+            }
+            "[Type]" => "Boundary(b, \"\", \"Type\") {\nSystem(a, \"A\")\n}\n".to_owned(),
+            _ => "Deployment_Node(b, \"\", \"\", \"Description\") {\nSystem(a, \"A\")\n}\n"
+                .to_owned(),
+        };
+        let source = format!("C4Context\n{body}");
+        for family in ["inherit", "Independent"] {
+            let mut config = serde_json::json!({"c4": {
+                "wrap":false, "boundaryFontFamily":family, "messageFontFamily":family
+            }});
+            config["c4"][key] = serde_json::json!(base);
+            let (rendered, probes, _) = render_c4_with_font_host(&source, config.clone(), &theme);
+            let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+            let label = document
+                .descendants()
+                .find(|node| node.has_tag_name("text") && svg_text_content(*node) == text)
+                .expect("the zero-sized row is still emitted");
+            let css_size = c4_effective_property(label, "font-size").unwrap();
+            assert_eq!(css_size, format!("{raw}px"), "{config}, {source}");
+            // The legacy writer emits only numeric px declarations. Invalid negatives are ignored
+            // by CSS and inherit the root, while zero remains a valid invisible declaration.
+            let computed = css_size.strip_suffix("px").unwrap().parse::<f64>().unwrap();
+            let computed = if computed < 0.0 { 29.0 } else { computed };
+            assert_eq!(computed, used, "{config}, {source}");
+            let measured_family = if family == "inherit" {
+                "Cousine"
+            } else {
+                family
+            };
+            let configured_probes = probes
+                .iter()
+                .filter(|(actual, operation, style)| {
+                    actual == text
+                        && *operation == TextMeasurementOperation::MermaidCalculateTextDimensions
+                        && style.font_family.as_deref() == Some(measured_family)
+                })
+                .collect::<Vec<_>>();
+            assert!(
+                !configured_probes.is_empty(),
+                "missing host probes: {config}, {source}"
+            );
+            assert!(
+                configured_probes
+                    .iter()
+                    .all(|(_, _, style)| style.font_size == computed),
+                "{configured_probes:?}"
+            );
+            assert!(probes.iter().all(|(_, _, style)| style.font_size >= 0.0));
+            let evidence =
+                merman_render::__private::family_evidence(rendered.into_completion().report());
+            let applied = usize::from(used > 0.0 && family == "inherit")
+                + usize::from(used > 0.0 && raw < 0.0);
+            assert_eq!(evidence.required_count(), 2);
+            assert_eq!(evidence.applied_count(), applied, "{config}, {source}");
+            assert_eq!(evidence.not_applicable_count(), 2 - applied);
+            assert_eq!(evidence.theme_residual_count(), 0);
+        }
+    }
+}
+
+#[test]
+fn c4_invalid_element_sizes_inherit_root_before_section_scaling() {
+    let theme = c4_typography_theme(FontStack::single("Cousine").unwrap(), 29.0);
+    let source = "C4Context\nSystem(a, \"NodeName\", \"NodeDescription\")\n";
+    for (raw, used) in [(-3.0, 29.0), (-1.0, 29.0), (0.0, 29.0), (1e-7, 1e-7)] {
+        for family in ["inherit", "Independent"] {
+            let config = serde_json::json!({"c4": {
+                "wrap":false, "systemFontSize":raw, "systemFontFamily":family,
+                "systemFontWeight":600
+            }});
+            let (rendered, probes, _) = render_c4_with_font_host(source, config.clone(), &theme);
+            assert!(rendered.svg().contains("font-size:29px;"));
+            let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+            let stylesheet = document
+                .descendants()
+                .find(|node| node.has_tag_name("style"))
+                .unwrap()
+                .text()
+                .unwrap();
+            let element_rule = stylesheet
+                .split(".c4-shape.c4-system .label{")
+                .nth(1)
+                .unwrap()
+                .split('}')
+                .next()
+                .unwrap();
+            if raw <= 0.0 {
+                assert!(
+                    !element_rule.contains("font-size:"),
+                    "CSSOM drops invalid or falsy sizes: {element_rule}"
+                );
+            } else {
+                assert!(
+                    element_rule.contains(&format!("font-size:{raw}px;")),
+                    "tiny positive CSS sizes remain positive: {element_rule}"
+                );
+            }
+            assert!(
+                stylesheet.contains(".c4-type{font-size:0.75em;}")
+                    && stylesheet.contains(".c4-descr{font-size:0.82em;}")
+            );
+            let measured_family = if family == "inherit" {
+                "Cousine"
+            } else {
+                family
+            };
+            for (text, computed, weight) in [
+                ("NodeName", used, "bold"),
+                ("[Software System]", used * 0.75, "600"),
+                ("NodeDescription", used * 0.82, "600"),
+            ] {
+                let measured = probes
+                    .iter()
+                    .filter(|(actual, operation, _)| {
+                        actual == text && *operation == TextMeasurementOperation::BBoxX
+                    })
+                    .collect::<Vec<_>>();
+                assert!(!measured.is_empty(), "missing section probe for {text}");
+                assert!(
+                    measured.iter().all(|(_, _, style)| {
+                        style.font_family.as_deref() == Some(measured_family)
+                            && (style.font_size - computed).abs() < 1e-9
+                            && style.font_weight.as_deref() == Some(weight)
+                    }),
+                    "{config}, {text}: {measured:?}"
+                );
+            }
+            let evidence =
+                merman_render::__private::family_evidence(rendered.into_completion().report());
+            let applied = usize::from(raw <= 0.0) + usize::from(family == "inherit");
+            assert_eq!(evidence.required_count(), 2);
+            assert_eq!(evidence.applied_count(), applied, "{config}");
+            assert_eq!(evidence.not_applicable_count(), 2 - applied);
+            assert_eq!(evidence.theme_residual_count(), 0);
+        }
+    }
+}
+
+#[test]
+fn c4_unknown_font_owners_remain_property_local_residuals() {
+    let theme = c4_typography_theme(FontStack::single("Cousine").unwrap(), 29.0);
+    for family in ["initial", r"i\6eitial", "revert", "var(--host-font)"] {
+        for has_title in [false, true] {
+            let source = format!(
+                "C4Context\n{}System(a, \"A\")\n",
+                if has_title { "title Context\n" } else { "" }
+            );
+            let engine = MermaidEngine::new().with_site_config(
+                merman_core::presentation::SourcePresentationConfig::from_value(
+                    serde_json::json!({"c4":{"systemFontFamily":family}}),
+                ),
+            );
+            let rendered = try_render_c4_rendered_with_engine_requirement(
+                &source,
+                &theme,
+                engine,
+                ThemePortabilityRequirement::BestEffort,
+            )
+            .unwrap();
+            assert!(rendered.svg().contains(&format!(
+                ".c4-shape.c4-system .label{{font-family:{family};"
+            )));
+            let evidence =
+                merman_render::__private::family_evidence(rendered.into_completion().report());
+            assert_eq!(evidence.applied_count(), usize::from(has_title));
+            assert_eq!(evidence.not_applicable_count(), usize::from(!has_title));
+            assert_eq!(evidence.theme_residual_count(), 1, "{family}, {source}");
+        }
+    }
+}
+
+#[test]
+fn c4_subpixel_root_fallback_multiline_sections_use_actual_em_steps() {
+    let theme = c4_typography_theme(FontStack::single("Cousine").unwrap(), 0.5);
+    for configured_root in [false, true] {
+        let mut config = serde_json::json!({"c4": {
+            "wrap":false, "systemFontSize":-1, "systemFontFamily":"inherit"
+        }});
+        if configured_root {
+            config["themeVariables"] = serde_json::json!({"fontSize":"0.5px"});
+        }
+        let (_, _, single) = render_c4_with_font_host(
+            "C4Context\nSystem(a, \"A\", \"First\")\n",
+            config.clone(),
+            &theme,
+        );
+        let (rendered, probes, multi) = render_c4_with_font_host(
+            "C4Context\nSystem(a, \"A<br/>B\", \"First<br/>Second\")\n",
+            config,
+            &theme,
+        );
+        let single = &single.shapes[0];
+        let multi = &multi.shapes[0];
+        assert!((multi.label.height - single.label.height - 0.55).abs() < 1e-9);
+        assert!((multi.type_block.height - single.type_block.height).abs() < 1e-9);
+        assert!(
+            (multi.descr.as_ref().unwrap().height - single.descr.as_ref().unwrap().height - 0.451)
+                .abs()
+                < 1e-9
+        );
+        assert!((multi.height - single.height - 1.001).abs() < 1e-9);
+        for (text, size) in [("B", 0.5), ("Second", 0.41)] {
+            assert!(probes.iter().any(|(actual, operation, style)| {
+                actual == text
+                    && *operation == TextMeasurementOperation::BBoxX
+                    && (style.font_size - size).abs() < 1e-9
+                    && style.font_family.as_deref() == Some("Cousine")
+            }));
+        }
+        let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+        for class in ["c4-name", "c4-descr"] {
+            let section = document
+                .descendants()
+                .find(|node| node.attribute("class") == Some(class))
+                .unwrap();
+            let rows = section
+                .descendants()
+                .filter(|node| node.attribute("class") == Some("text-outer-tspan row"))
+                .collect::<Vec<_>>();
+            assert_eq!(rows.len(), 2);
+            assert_eq!(rows[0].attribute("y"), Some("-0.1em"));
+            assert_eq!(rows[1].attribute("y"), Some("1em"));
+            assert!(rows.iter().all(|row| row.attribute("dy") == Some("1.1em")));
+        }
+        let evidence =
+            merman_render::__private::family_evidence(rendered.into_completion().report());
+        assert_eq!(evidence.applied_count(), 2 - usize::from(configured_root));
+        assert_eq!(
+            evidence.not_applicable_count(),
+            usize::from(configured_root)
+        );
+        assert_eq!(evidence.theme_residual_count(), 0);
+    }
 }
 
 #[test]

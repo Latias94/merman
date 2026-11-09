@@ -9,9 +9,10 @@
 
 #[cfg(any(
     feature = "native-fonts",
-    feature = "png",
-    feature = "jpeg",
-    feature = "pdf"
+    all(
+        any(feature = "png", feature = "jpeg", feature = "pdf"),
+        any(test, all(feature = "system-fonts", not(target_family = "wasm")))
+    )
 ))]
 mod font_selection;
 #[cfg(all(

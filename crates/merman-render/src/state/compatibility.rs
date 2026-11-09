@@ -432,12 +432,22 @@ impl StateCompatibilityPlan {
                 let css = crate::config::normalize_css_font_family(value);
                 (!css.is_empty()).then_some(css)
             });
-        let owned_font_size = ["themeVariables.fontSize", "fontSize"]
-            .into_iter()
-            .filter(|path| resolver.path_is_owned(path))
-            .find_map(|path| {
-                value_at_dotted_path(resolver.value, path).and_then(crate::config::json_f64_css_px)
-            });
+        let owned_font_size = [
+            (
+                "themeVariables.fontSize",
+                crate::config::config_f64_css_absolute_px(
+                    resolver.value,
+                    &["themeVariables", "fontSize"],
+                ),
+            ),
+            (
+                "fontSize",
+                crate::config::config_f64_css_px(resolver.value, &["fontSize"]),
+            ),
+        ]
+        .into_iter()
+        .filter(|(path, _)| resolver.path_is_owned(path))
+        .find_map(|(_, size)| size.filter(|size| *size >= 0.0));
         let mut typography_config_owned = BTreeSet::new();
         if owned_font_family.is_some() {
             typography_config_owned.insert(ThemeTypographyProperty::FontStack);
@@ -451,11 +461,9 @@ impl StateCompatibilityPlan {
             .contains(&ThemeTypographyProperty::FontStack)
             .then(|| crate::text::parse_css_font_stack(&font_family_css))
             .flatten();
-        let font_size_px = owned_font_size
-            .unwrap_or_else(|| {
-                crate::config::config_theme_or_root_font_size_px(resolver.value, 16.0)
-            })
-            .max(1.0);
+        let font_size_px = owned_font_size.unwrap_or_else(|| {
+            crate::config::config_theme_or_root_font_size_px(resolver.value, 16.0)
+        });
 
         let text_color = resolver.direct_string(&["themeVariables.textColor"], || {
             StateResolvedValue::constant("#333".to_string())

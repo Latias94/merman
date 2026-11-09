@@ -28,6 +28,7 @@ pub(super) type SvgLine = Vec<SvgWord>;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) struct ArchitectureTextWriterFacts {
+    pub(super) has_visible_words: bool,
     #[cfg(merman_internal_theme_acceptance)]
     pub(super) fragment_digest: [u8; 32],
     #[cfg(merman_internal_theme_acceptance)]
@@ -38,7 +39,6 @@ pub(super) struct ArchitectureTextWriterFacts {
 pub(super) struct ArchitectureTextWriterEmission {
     #[cfg(merman_internal_theme_acceptance)]
     pub(super) bounds: Option<Bounds>,
-    #[cfg(merman_internal_theme_acceptance)]
     pub(super) facts: ArchitectureTextWriterFacts,
 }
 
@@ -95,6 +95,9 @@ fn svg_line_computed_length_px(
     measurer: &dyn crate::text::TextMeasurer,
     style: &crate::text::TextStyle,
 ) -> f64 {
+    if style.font_size == 0.0 {
+        return 0.0;
+    }
     line.iter()
         .enumerate()
         .map(|(index, word)| {
@@ -110,8 +113,14 @@ pub(super) fn svg_service_title_bounds(
     measurer: &dyn crate::text::TextMeasurer,
     style: &crate::text::TextStyle,
 ) -> Option<Bounds> {
+    if !svg_lines_have_visible_text(lines, style.font_size) {
+        return None;
+    }
     let mut bounds = None;
     for (row_index, line) in lines.iter().enumerate() {
+        if !svg_lines_have_visible_text(std::slice::from_ref(line), style.font_size) {
+            continue;
+        }
         let mut runs: Vec<(SvgWordType, String)> = Vec::new();
         for (word_index, word) in line.iter().enumerate() {
             if let Some((word_type, text)) = runs.last_mut()
@@ -154,7 +163,7 @@ pub(super) fn svg_service_title_bounds(
         }
         if let Some(mut row) = row_bounds {
             // Each emitted outer tspan restarts at x=0 and advances by 1.1em per row.
-            let row_y = row_index as f64 * style.font_size.max(1.0) * 1.1;
+            let row_y = row_index as f64 * style.font_size * 1.1;
             row.min_x -= advance / 2.0;
             row.max_x -= advance / 2.0;
             row.min_y += row_y;
@@ -204,6 +213,14 @@ pub(super) fn architecture_svg_text_terminal_bounds(
     measurer: &dyn crate::text::TextMeasurer,
     style: &crate::text::TextStyle,
 ) -> Bounds {
+    if !svg_lines_have_visible_text(lines, style.font_size) {
+        return Bounds {
+            min_x: anchor_x,
+            min_y: anchor_y,
+            max_x: anchor_x,
+            max_y: anchor_y,
+        };
+    }
     #[cfg(merman_internal_theme_acceptance)]
     if matches!(anchor, ArchitectureTextAnchor::Middle)
         && matches!(baseline, ArchitectureTextBaseline::Middle)
@@ -244,7 +261,7 @@ pub(super) fn architecture_svg_text_terminal_bounds(
         .measure_svg_tspan_text_bbox_height_px(&first_line, style)
         .max(0.0);
     let extra_lines = lines.len().max(1).saturating_sub(1) as f64;
-    let height = first_line_height + style.font_size.max(1.0) * extra_lines * 1.1;
+    let height = first_line_height + style.font_size * extra_lines * 1.1;
     let y_offset = match baseline {
         ArchitectureTextBaseline::Start => {
             measurer.measure_svg_create_text_bbox_y_offset_px(&first_line, style)
@@ -408,6 +425,29 @@ pub(super) fn wrap_svg_words_to_lines(
         lines
     }
 
+    let parsed_lines = parse_svg_word_lines(text);
+
+    let mut out: Vec<SvgLine> = Vec::new();
+    for line in parsed_lines {
+        if line.is_empty() {
+            out.push(Vec::new());
+            continue;
+        }
+        if check_fit(measurer, style, max_width_px, &line) {
+            out.push(line);
+        } else {
+            out.extend(split_line_to_fit_width(measurer, style, max_width_px, line));
+        }
+    }
+
+    if out.is_empty() {
+        vec![Vec::new()]
+    } else {
+        out
+    }
+}
+
+fn parse_svg_word_lines(text: &str) -> Vec<SvgLine> {
     fn preprocess_svg_markdown(text: &str) -> String {
         // Mermaid preprocesses markdown before lexing:
         // - replace `<br/>` with `\n`
@@ -523,24 +563,26 @@ pub(super) fn wrap_svg_words_to_lines(
         }
     }
 
-    let mut out: Vec<SvgLine> = Vec::new();
-    for line in parsed_lines {
-        if line.is_empty() {
-            out.push(Vec::new());
-            continue;
-        }
-        if check_fit(measurer, style, max_width_px, &line) {
-            out.push(line);
-        } else {
-            out.extend(split_line_to_fit_width(measurer, style, max_width_px, line));
-        }
-    }
+    parsed_lines
+}
 
-    if out.is_empty() {
-        vec![Vec::new()]
-    } else {
-        out
-    }
+fn svg_lines_have_visible_words(lines: &[SvgLine]) -> bool {
+    lines
+        .iter()
+        .flatten()
+        .any(|word| !crate::text::trim_html_collapsible_ascii_whitespace(&word.content).is_empty())
+}
+
+pub(super) fn svg_lines_have_visible_text(lines: &[SvgLine], font_size_px: f64) -> bool {
+    font_size_px > 0.0 && svg_lines_have_visible_words(lines)
+}
+
+pub(super) fn svg_source_has_visible_text(source: Option<&str>, font_size_px: f64) -> bool {
+    font_size_px > 0.0
+        && source.is_some_and(|source| {
+            !source.trim().is_empty()
+                && svg_lines_have_visible_text(&parse_svg_word_lines(source.trim()), font_size_px)
+        })
 }
 
 pub(super) fn write_svg_text_lines(
@@ -548,6 +590,7 @@ pub(super) fn write_svg_text_lines(
     lines: &[SvgLine],
     inline_style: Option<&str>,
 ) -> ArchitectureTextWriterFacts {
+    let has_visible_words = svg_lines_have_visible_words(lines);
     #[cfg(merman_internal_theme_acceptance)]
     let start = out.len();
     out.push_str(r#"<text y="-10.1""#);
@@ -560,9 +603,9 @@ pub(super) fn write_svg_text_lines(
         out.push_str(r#"<tspan class="text-outer-tspan row" x="0" y="-0.1em" dy="1.1em"/>"#);
         out.push_str("</text>");
         #[cfg(merman_internal_theme_acceptance)]
-        return architecture_text_writer_facts(out, start, 1);
+        return architecture_text_writer_facts(out, start, 0, has_visible_words);
         #[cfg(not(merman_internal_theme_acceptance))]
-        return ArchitectureTextWriterFacts {};
+        return ArchitectureTextWriterFacts { has_visible_words };
     }
     for (idx, line) in lines.iter().enumerate() {
         if idx == 0 {
@@ -609,11 +652,12 @@ pub(super) fn write_svg_text_lines(
             lines
                 .len()
                 .saturating_add(lines.iter().map(Vec::len).sum::<usize>()),
+            has_visible_words,
         )
     }
     #[cfg(not(merman_internal_theme_acceptance))]
     {
-        ArchitectureTextWriterFacts {}
+        ArchitectureTextWriterFacts { has_visible_words }
     }
 }
 
@@ -622,11 +666,13 @@ fn architecture_text_writer_facts(
     out: &impl SvgOutput,
     start: usize,
     run_count: usize,
+    has_visible_words: bool,
 ) -> ArchitectureTextWriterFacts {
     let fragment = out.as_str().get(start..).unwrap_or_default();
     ArchitectureTextWriterFacts {
+        has_visible_words,
         fragment_digest: Sha256::digest(fragment.as_bytes()).into(),
-        run_count,
+        run_count: if has_visible_words { run_count } else { 0 },
     }
 }
 
@@ -665,15 +711,11 @@ pub(super) fn write_architecture_service_title(
         x = fmt(icon_size_px / 2.0),
         y = fmt(icon_size_px)
     );
-    #[cfg(merman_internal_theme_acceptance)]
     let facts = write_svg_text_lines(out, &lines, inline_style);
-    #[cfg(not(merman_internal_theme_acceptance))]
-    let _ = write_svg_text_lines(out, &lines, inline_style);
     out.push_str("</g></g>");
     ArchitectureTextWriterEmission {
         #[cfg(merman_internal_theme_acceptance)]
         bounds: terminal_bounds,
-        #[cfg(merman_internal_theme_acceptance)]
         facts,
     }
 }

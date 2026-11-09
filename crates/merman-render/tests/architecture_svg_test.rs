@@ -1070,11 +1070,18 @@ fn architecture_icon_text_typography_evidence_matches_emission_without_titles() 
             .with_font_size_px(24.0)
             .expect("valid Architecture font size"),
     );
-    for (declaration, has_icon_text) in [
-        ("service api", false),
-        (r#"service api """#, false),
-        (r#"service api " ""#, true),
-        (r#"service api "X""#, true),
+    for (declaration, has_icon_text, visible) in [
+        ("service api", false, false),
+        (r#"service api """#, false, false),
+        (r#"service api " ""#, true, false),
+        (r#"service api "<br/>""#, true, false),
+        (r#"service api "<g>x<b>y</b>z</g>""#, true, false),
+        (
+            r#"service api "<span style='font-size:0'>X</span>""#,
+            true,
+            false,
+        ),
+        (r#"service api "X""#, true, true),
     ] {
         let source = format!("architecture-beta\n{declaration}\n");
         let rendered = try_render_architecture_with_theme(&source, &theme)
@@ -1091,8 +1098,183 @@ fn architecture_icon_text_typography_evidence_matches_emission_without_titles() 
             merman_render::__private::family_evidence(rendered.into_completion().report());
         assert_eq!(evidence.required_count(), 1);
         assert_eq!(evidence.accounted_count(), 1);
-        assert_eq!(evidence.applied_count(), usize::from(has_icon_text));
-        assert_eq!(evidence.not_applicable_count(), usize::from(!has_icon_text));
+        assert_eq!(
+            evidence.applied_count(),
+            usize::from(visible),
+            "{declaration}"
+        );
+        assert_eq!(evidence.not_applicable_count(), usize::from(!visible));
+        assert_eq!(evidence.theme_residual_count(), 0);
+    }
+}
+
+#[test]
+fn architecture_icon_text_does_not_claim_svg_text_fill() {
+    let theme = architecture_text_fill_theme(CanvasPaint::solid("#123456").unwrap(), None);
+    for fragment in [" ", "<br/>", "Visible"] {
+        let source = format!("architecture-beta\nservice api \"{fragment}\"\n");
+        let rendered = try_render_architecture_with_theme(&source, &theme).unwrap();
+        let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+        assert!(
+            document
+                .descendants()
+                .any(|node| node.has_tag_name("foreignObject"))
+        );
+        let evidence =
+            merman_render::__private::family_evidence(rendered.into_completion().report());
+        assert_eq!(evidence.required_count(), 1);
+        assert_eq!(evidence.applied_count(), 0);
+        assert_eq!(evidence.not_applicable_count(), 1);
+        assert_eq!(evidence.theme_residual_count(), 0);
+    }
+}
+
+#[test]
+fn architecture_svg_text_evidence_uses_final_words_for_every_label_role() {
+    let theme = DiagramThemeCompiler::new()
+        .compile(
+            DiagramThemeSpec::new()
+                .with_typography(
+                    TypographySpec::default().with_default(
+                        ThemeTextStyle::default()
+                            .with_font_stack(FontStack::single("Architecture Visible").unwrap())
+                            .with_font_size_px(24.0)
+                            .unwrap(),
+                    ),
+                )
+                .with_styles(ThemeRuleSet::default().with_rule(ThemeRule::new(
+                    ThemeTarget::Text,
+                    ThemeStylePatch::default().with_fill(CanvasPaint::solid("#123456").unwrap()),
+                ))),
+        )
+        .unwrap();
+    for body in [
+        "service api [$LABEL]\n",
+        "group core [$LABEL]\nservice api in core\n",
+        "service api\nservice db\napi:R -[$LABEL]- L:db\n",
+    ] {
+        for (label, visible) in [("---", false), ("<br/>", false), ("Visible", true)] {
+            let source = format!("architecture-beta\n{}", body.replace("$LABEL", label));
+            let rendered = try_render_architecture_with_theme(&source, &theme).unwrap();
+            let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+            let text = document
+                .descendants()
+                .filter(|node| node.has_tag_name("text"))
+                .collect::<Vec<_>>();
+            assert_eq!(text.len(), 1, "keep the text branch: {source}");
+            assert_eq!(
+                text[0].descendants().any(|node| {
+                    node.is_text() && node.text().is_some_and(|text| !text.trim().is_empty())
+                }),
+                visible,
+                "{source}",
+            );
+            if visible {
+                assert_eq!(text[0].attribute("style"), Some("fill:#123456;"));
+            }
+            let completion = rendered.into_completion();
+            let evidence = merman_render::__private::family_evidence(completion.report());
+            assert_eq!(evidence.required_count(), 3);
+            assert_eq!(
+                evidence.applied_count(),
+                if visible { 3 } else { 0 },
+                "{source}"
+            );
+            assert_eq!(evidence.not_applicable_count(), if visible { 0 } else { 3 });
+            assert_eq!(evidence.accounted_count(), 3);
+            assert_eq!(evidence.theme_residual_count(), 0);
+        }
+    }
+
+    let mixed = DiagramThemeCompiler::new()
+        .compile(
+            DiagramThemeSpec::new().with_styles(
+                ThemeRuleSet::default().with_rule(ThemeRule::new(
+                    ThemeTarget::Text,
+                    ThemeStylePatch::default()
+                        .with_fill(CanvasPaint::solid("#123456").unwrap())
+                        .with_stroke(CanvasPaint::solid("#654321").unwrap()),
+                )),
+            ),
+        )
+        .unwrap();
+    for label in ["---", "<br/>"] {
+        let source = format!("architecture-beta\nservice api [{label}]\n");
+        let rendered = try_render_architecture_with_theme(&source, &mixed).unwrap();
+        let evidence =
+            merman_render::__private::family_evidence(rendered.into_completion().report());
+        assert_eq!(evidence.not_applicable_count(), 1);
+        assert_eq!(evidence.theme_residual_count(), 0);
+    }
+    assert!(
+        try_render_architecture_with_theme("architecture-beta\nservice api [Visible]\n", &mixed)
+            .is_err()
+    );
+}
+
+#[test]
+fn architecture_icon_text_typography_retains_unverified_child_ownership() {
+    let theme = architecture_typography_theme(
+        ThemeTextStyle::default()
+            .with_font_stack(FontStack::single("Architecture Visible").unwrap())
+            .with_font_size_px(24.0)
+            .unwrap(),
+    );
+    for (fragment, residuals) in [
+        ("<span style='font-family:serif'>X</span>", 1),
+        ("<span style='font-size:12px'>X</span>", 1),
+        ("<span class='external'>X</span>", 2),
+    ] {
+        let source = format!("architecture-beta\nservice api \"{fragment}\"\n");
+        let error = try_render_architecture_with_theme(&source, &theme)
+            .err()
+            .expect("child-owned or unknown fonts cannot prove inherited theme consumption");
+        assert_eq!(
+            error.unverified_family_theme(),
+            Some((DiagramFamilyId::ARCHITECTURE, residuals)),
+            "{fragment}"
+        );
+    }
+    let inherited = "architecture-beta\nservice api \"<span>X</span>\"\n";
+    let rendered = try_render_architecture_with_theme(inherited, &theme).unwrap();
+    let evidence = merman_render::__private::family_evidence(rendered.into_completion().report());
+    assert_eq!(evidence.applied_count(), 2);
+    assert_eq!(evidence.theme_residual_count(), 0);
+}
+
+#[test]
+fn architecture_zero_root_size_keeps_icon_box_and_visible_descendant_family() {
+    let theme = architecture_typography_theme(
+        ThemeTextStyle::default()
+            .with_font_stack(FontStack::single("Architecture Visible").unwrap())
+            .with_font_size_px(24.0)
+            .unwrap(),
+    );
+    for (fragment, applied) in [("X", 0), ("<span style='font-size:12px'>X</span>", 1)] {
+        let source = format!(
+            "---\nconfig: {{themeVariables: {{fontSize: 0}}}}\n---\narchitecture-beta\nservice api \"{fragment}\"\n"
+        );
+        let rendered = try_render_architecture_with_theme(&source, &theme).unwrap();
+        assert!(architecture_stylesheet(rendered.svg()).contains("font-size:0px;"));
+        let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+        let icon = document
+            .descendants()
+            .find(|node| node.has_tag_name("foreignObject"))
+            .unwrap();
+        assert_eq!(icon.attribute("width"), Some("80"));
+        assert_eq!(icon.attribute("height"), Some("80"));
+        assert!(
+            icon.descendants()
+                .any(|node| node.attribute("style") == Some("-webkit-line-clamp: Infinity;"))
+        );
+        assert!(
+            icon.descendants()
+                .any(|node| node.is_text() && node.text() == Some("X"))
+        );
+        let evidence =
+            merman_render::__private::family_evidence(rendered.into_completion().report());
+        assert_eq!(evidence.applied_count(), applied, "{fragment}");
+        assert_eq!(evidence.not_applicable_count(), 2 - applied);
         assert_eq!(evidence.theme_residual_count(), 0);
     }
 }
@@ -1383,24 +1565,115 @@ fn architecture_icon_text_clamp_uses_root_svg_font_size_not_architecture_layout_
 }
 
 #[test]
+fn architecture_icon_text_clamp_preserves_upstream_computed_font_digits() {
+    let body = "architecture-beta\nservice api \"Text Text Text Text\" [Measured]\n";
+    let font_stack = FontStack::single("Architecture Clamp").unwrap();
+    let expected_font_family = font_stack.as_css();
+    for (size, expected_clamp) in [
+        (0.0, "Infinity"),
+        (0.25, "3"),
+        (0.5, "15"),
+        (0.75, "1"),
+        (1.0, "78"),
+        (16.0, "4"),
+        (15.5, "0"),
+        (80.0, "0"),
+    ] {
+        for owner in ["site", "source", "typed"] {
+            let typed_size = if owner == "typed" {
+                // Typed sizes are positive; this value becomes zero in the emitted root CSS.
+                if size == 0.0 { 0.0000001 } else { size as f32 }
+            } else {
+                29.0
+            };
+            let theme = architecture_typography_theme(
+                ThemeTextStyle::default()
+                    .with_font_stack(font_stack.clone())
+                    .with_font_size_px(typed_size)
+                    .unwrap(),
+            );
+            let mut site = json!({
+                "architecture": {"fontSize": 16, "numIter": 1, "randomize": false}
+            });
+            let font_config = json!({"themeVariables": {"fontSize": format!("{size}px")}});
+            let source = match owner {
+                "site" => {
+                    site["themeVariables"] = font_config["themeVariables"].clone();
+                    body.to_owned()
+                }
+                "source" => format!("---\nconfig: {font_config}\n---\n{body}"),
+                "typed" => body.to_owned(),
+                _ => unreachable!(),
+            };
+            let host = Arc::new(CountingArchitectureHost::default());
+            let (parsed, options, session) = prepare_architecture_with_theme_and_environment(
+                &source,
+                &theme,
+                MermaidEngine::new().with_site_config(
+                    merman_core::presentation::SourcePresentationConfig::from_value(site),
+                ),
+                counting_architecture_environment(Arc::clone(&host)),
+            );
+            let artifact = family::prepare(&parsed, &options, session).unwrap();
+            host.styles.lock().unwrap().clear();
+            let rendered = artifact
+                .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+                .unwrap();
+            assert!(
+                architecture_stylesheet(rendered.svg()).contains(&format!("font-size:{size}px;")),
+                "{owner}/{size}: clamp projection must not change the root CSS"
+            );
+            let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+            let clamp = document
+                .descendants()
+                .filter_map(|node| node.attribute("style"))
+                .find(|style| style.starts_with("-webkit-line-clamp:"))
+                .expect("Architecture icon-text clamp");
+            assert_eq!(
+                clamp,
+                format!("-webkit-line-clamp: {expected_clamp};"),
+                "{owner}/{size}"
+            );
+            if size > 0.0 {
+                // Known-zero glyphs skip measurement; unrelated default-font probes are not
+                // measurements of this label. Positive glyphs must use its actual typography.
+                let styles = host.styles.lock().unwrap();
+                let measured_styles = styles
+                    .iter()
+                    .filter(|style| {
+                        style.font_family.as_deref() == Some(expected_font_family.as_str())
+                    })
+                    .collect::<Vec<_>>();
+                assert!(!measured_styles.is_empty(), "{owner}/{size}");
+                assert!(
+                    measured_styles.iter().all(|style| style.font_size == size),
+                    "{owner}/{size}: glyph measurement must retain the actual size: {measured_styles:?}"
+                );
+            }
+        }
+    }
+}
+
+#[test]
 fn architecture_ignored_base_size_leaves_typed_svg_size_available() {
     let theme =
         architecture_typography_theme(ThemeTextStyle::default().with_font_size_px(29.0).unwrap());
     let body = "architecture-beta\nservice api(server)[API]\n";
-    for value in [
-        json!(false),
-        json!("bad"),
-        serde_json::Value::Null,
-        json!({}),
-        json!([]),
-        json!(23),
-        json!("23px"),
+    for (value, expected) in [
+        (json!(false), 29.0),
+        (json!("bad"), 29.0),
+        (serde_json::Value::Null, 29.0),
+        (json!({}), 29.0),
+        (json!([]), 29.0),
+        (json!(-2), 29.0),
+        (json!("-2px"), 29.0),
+        (json!(0), 0.0),
+        (json!("0px"), 0.0),
+        (json!(0.5), 0.5),
+        (json!("0.5px"), 0.5),
+        (json!(23), 23.0),
+        (json!("23px"), 23.0),
     ] {
-        let expected = if value.is_number() || value.as_str() == Some("23px") {
-            23
-        } else {
-            29
-        };
         let config = json!({"themeVariables":{"fontSize":value}});
         for from_source in [false, true] {
             let (source, site) = if from_source {
@@ -1432,10 +1705,155 @@ fn architecture_ignored_base_size_leaves_typed_svg_size_available() {
             );
             let evidence =
                 merman_render::__private::family_evidence(rendered.into_completion().report());
-            assert_eq!(evidence.applied_count(), usize::from(expected == 29));
-            assert_eq!(evidence.not_applicable_count(), usize::from(expected != 29));
+            assert_eq!(evidence.applied_count(), usize::from(expected == 29.0));
+            assert_eq!(
+                evidence.not_applicable_count(),
+                usize::from(expected != 29.0)
+            );
             assert_eq!(evidence.theme_residual_count(), 0);
         }
+    }
+}
+
+#[test]
+fn architecture_ignored_theme_size_does_not_promote_the_root_fallback_to_owner() {
+    let theme =
+        architecture_typography_theme(ThemeTextStyle::default().with_font_size_px(29.0).unwrap());
+    let source = "---\nconfig: {fontSize: 21, themeVariables: {fontSize: -2}}\n---\narchitecture-beta\nservice api [API]\n";
+    let rendered = try_render_architecture_with_theme(source, &theme).unwrap();
+    assert!(architecture_stylesheet(rendered.svg()).contains("font-size:29px;"));
+    let evidence = merman_render::__private::family_evidence(rendered.into_completion().report());
+    assert_eq!(evidence.applied_count(), 1);
+    assert_eq!(evidence.not_applicable_count(), 0);
+}
+
+#[test]
+fn architecture_small_svg_sizes_reach_measurement_and_keep_text_dom() {
+    let theme = DiagramThemeCompiler::new()
+        .compile(
+            DiagramThemeSpec::new()
+                .with_typography(
+                    TypographySpec::default().with_default(
+                        ThemeTextStyle::default()
+                            .with_font_stack(FontStack::single("ArchitectureSmall").unwrap())
+                            .with_font_size_px(0.5)
+                            .unwrap(),
+                    ),
+                )
+                .with_styles(ThemeRuleSet::default().with_rule(ThemeRule::new(
+                    ThemeTarget::Text,
+                    ThemeStylePatch::default().with_fill(CanvasPaint::solid("#123456").unwrap()),
+                ))),
+        )
+        .unwrap();
+    for configured_size in [None, Some(0.0), Some(0.5)] {
+        let prefix = configured_size.map_or_else(String::new, |size| {
+            format!("---\nconfig: {{themeVariables: {{fontSize: {size}}}}}\n---\n")
+        });
+        let source = format!(
+            "{prefix}architecture-beta\ngroup core [Group<br/>Second]\nservice api [API<br/>Second] in core\nservice db\napi:R -[Edge<br/>Second]- L:db\n"
+        );
+        let host = Arc::new(CountingArchitectureHost::default());
+        let (parsed, options, session) = prepare_architecture_with_theme_and_environment(
+            &source,
+            &theme,
+            MermaidEngine::new().with_site_config(
+                merman_core::presentation::SourcePresentationConfig::from_value(
+                    json!({"architecture": {"numIter": 1, "randomize": false}}),
+                ),
+            ),
+            counting_architecture_environment(Arc::clone(&host)),
+        );
+        let artifact = family::prepare(&parsed, &options, session).unwrap();
+        host.styles.lock().unwrap().clear();
+        let rendered = artifact
+            .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+            .unwrap();
+        let expected_size = configured_size.unwrap_or(0.5);
+        assert!(
+            architecture_stylesheet(rendered.svg())
+                .contains(&format!("font-size:{expected_size}px;"))
+        );
+        let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+        assert_eq!(
+            document
+                .descendants()
+                .filter(|node| node.has_tag_name("text"))
+                .count(),
+            3
+        );
+        for word in ["Group", "API", "Edge"] {
+            assert!(
+                document
+                    .descendants()
+                    .any(|node| node.is_text() && node.text() == Some(word))
+            );
+        }
+        let svg_styles = host.styles.lock().unwrap();
+        assert!(
+            svg_styles
+                .iter()
+                .filter(|style| style.font_family.as_deref() == Some("ArchitectureSmall"))
+                .all(|style| style.font_size == expected_size)
+        );
+        if expected_size > 0.0 {
+            assert!(
+                svg_styles
+                    .iter()
+                    .any(|style| style.font_family.as_deref() == Some("ArchitectureSmall"))
+            );
+        }
+        let evidence =
+            merman_render::__private::family_evidence(rendered.into_completion().report());
+        let applied = if expected_size == 0.0 {
+            0
+        } else if configured_size.is_some() {
+            2
+        } else {
+            3
+        };
+        assert_eq!(evidence.required_count(), 3);
+        assert_eq!(evidence.applied_count(), applied);
+        assert_eq!(evidence.not_applicable_count(), 3 - applied);
+        assert_eq!(evidence.theme_residual_count(), 0);
+    }
+}
+
+#[test]
+fn architecture_small_service_text_rows_use_the_emitted_em_step() {
+    let theme =
+        architecture_typography_theme(ThemeTextStyle::default().with_font_size_px(0.5).unwrap());
+    for (size, expected_delta) in [(0.0, 0.0), (0.5, 0.55)] {
+        let render_height = |label: &str| {
+            let source = format!(
+                "---\nconfig: {{themeVariables: {{fontSize: {size}}}}}\n---\narchitecture-beta\nservice api [{label}]\n"
+            );
+            let (parsed, options, session) = prepare_architecture_with_theme_and_environment(
+                &source,
+                &theme,
+                MermaidEngine::new(),
+                counting_architecture_environment(Arc::new(CountingArchitectureHost::default())),
+            );
+            let rendered = family::prepare(&parsed, &options, session)
+                .unwrap()
+                .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+                .unwrap();
+            roxmltree::Document::parse(rendered.svg())
+                .unwrap()
+                .root_element()
+                .attribute("viewBox")
+                .unwrap()
+                .split_whitespace()
+                .nth(3)
+                .unwrap()
+                .parse::<f64>()
+                .unwrap()
+        };
+        assert_close(
+            render_height("A<br/>B") - render_height("A"),
+            expected_delta,
+            "zero text has no glyph extent; 0.5px rows advance by 0.55px",
+        );
     }
 }
 

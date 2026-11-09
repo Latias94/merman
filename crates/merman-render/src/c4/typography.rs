@@ -3,43 +3,114 @@ use std::sync::OnceLock;
 
 use merman_model::presentation::PresentationConfig;
 
-use crate::config::config_theme_font_size_css_or_root_number_px_opt;
+use crate::config::configured_theme_font_size_css_or_root_number_px;
 use crate::diagram_theme::{
     FamilyThemeDisposition, FamilyThemeMechanism, FamilyThemeMechanismKey, ResolvedDiagramTheme,
     ThemeCapability, ThemeTypographyProperty,
 };
-use crate::family::{
-    FamilyThemeEvidence, FamilyThemeOutcomes, FamilyThemeResidualReason, InheritedFontStackPlan,
-};
+use crate::family::{FamilyThemeEvidence, FamilyThemeResidualReason, InheritedFontStackPlan};
+use crate::mermaid_style::CssFontFamilyOwnership;
+use crate::text::TextStyle;
 
 /// Resolves C4's inherited base typography for the diagram title and root stylesheet.
 ///
-/// C4 shape, boundary, and relationship text keep their independent `c4.*Font*` owners. This
-/// plan intentionally proves only the inherited title surface and makes no layout claim.
+/// C4 roles keep their independent `c4.*Font*` owners. Inheriting font families resolve against
+/// the root for measurement while retaining their configured CSS spelling for the writer.
 #[derive(Debug)]
 pub(crate) struct C4TypographyThemePlan {
     common_css: crate::svg::PreparedCommonCss,
     person_border: String,
     person_background: String,
     element_styles: BTreeMap<String, C4ElementStyle>,
-    boundary_font: crate::text::TextStyle,
-    message_font: crate::text::TextStyle,
+    boundary_fonts: C4BoundaryFonts,
+    message_font: C4PreparedFont,
     relationship_text_color: String,
     relationship_line_color: String,
     inherited_font_stack: InheritedFontStackPlan,
+    font_size_px: f64,
     font_size_css: Box<str>,
     typed_font_size_requested: bool,
     typed_font_size_active: bool,
     title: Option<Box<str>>,
-    evidence: FamilyThemeOutcomes,
     terminal_seal: OnceLock<C4TypographyTerminalSeal>,
 }
 
 #[derive(Debug)]
 pub(crate) struct C4ElementStyle {
-    pub(crate) font: crate::text::TextStyle,
-    pub(crate) css_font_family: String,
+    pub(crate) font: C4PreparedFont,
     source_colors: Option<C4ElementColors>,
+}
+
+#[derive(Debug)]
+pub(crate) struct C4PreparedFont {
+    pub(crate) measurement_style: TextStyle,
+    pub(crate) css_font_family: String,
+    pub(crate) css_font_size_px: Option<f64>,
+    family_ownership: CssFontFamilyOwnership,
+    font_size_inherits_root: bool,
+}
+
+impl C4PreparedFont {
+    fn resolve(
+        mut font: TextStyle,
+        root_font_family: &str,
+        root_font_size_px: f64,
+        emit_font_size: bool,
+    ) -> Self {
+        let css_font_family = font
+            .font_family
+            .clone()
+            .unwrap_or_else(|| super::C4_DEFAULT_FONT_FAMILY.to_owned());
+        let declaration = if css_font_family.is_empty() {
+            // An empty property value is ignored by CSS, leaving inherited typography.
+            String::new()
+        } else {
+            format!("font-family:{css_font_family}")
+        };
+        let family_ownership =
+            crate::mermaid_style::css_font_family_ownership([declaration.as_str()]);
+        if family_ownership == CssFontFamilyOwnership::Inherited {
+            font.font_family = Some(root_font_family.to_owned());
+        }
+        // CSS rejects a negative font-size declaration. Legacy rows keep its raw spelling;
+        // element CSSOM rules can omit it. Both inherit the diagram root's used size.
+        let css_font_size_px = emit_font_size.then_some(font.font_size);
+        let font_size_inherits_root = css_font_size_px.is_none_or(|size| size < 0.0);
+        if font_size_inherits_root {
+            font.font_size = root_font_size_px;
+        }
+        Self {
+            measurement_style: font,
+            css_font_family,
+            css_font_size_px,
+            family_ownership,
+            font_size_inherits_root,
+        }
+    }
+}
+
+#[derive(Debug)]
+pub(crate) struct C4BoundaryFonts {
+    pub(crate) name: C4PreparedFont,
+    pub(crate) ty: C4PreparedFont,
+    pub(crate) descr: C4PreparedFont,
+}
+
+impl C4BoundaryFonts {
+    fn resolve(font: TextStyle, root_font_family: &str, root_font_size_px: f64) -> Self {
+        // Apply Mermaid's row arithmetic to the configured size before CSS validation. Resolving
+        // a negative base first would incorrectly turn a -1px name into root + 2px, not 1px.
+        let mut name = font.clone();
+        name.font_size += 2.0;
+        name.font_weight = Some("bold".to_owned());
+        let mut descr = font.clone();
+        descr.font_size -= 2.0;
+        Self {
+            name: C4PreparedFont::resolve(name, root_font_family, root_font_size_px, true),
+            ty: C4PreparedFont::resolve(font, root_font_family, root_font_size_px, true),
+            descr: C4PreparedFont::resolve(descr, root_font_family, root_font_size_px, true),
+        }
+    }
 }
 
 #[derive(Debug)]
@@ -52,17 +123,24 @@ pub(super) struct C4ElementColors {
 #[derive(Debug, Clone, Copy)]
 struct C4TypographyTerminalSeal {
     has_visible_title: bool,
+    has_visible_inherited_font_family: bool,
+    has_visible_inherited_font_size: bool,
+    has_unverified_visible_font_family: bool,
 }
 
-/// Writer-owned proof for C4's inherited stylesheet and optional diagram title.
+/// Writer-owned proof for C4's stylesheet and actual visible inherited text consumers.
 #[derive(Debug)]
 pub(crate) struct C4TypographyThemeReceipt<'a> {
     expected_font_family_css: &'a str,
     expected_font_size_css: &'a str,
     expected_title: Option<&'a str>,
+    expected_font_size_px: f64,
     css_emitted: bool,
     css_matches: bool,
     title_seen: bool,
+    has_visible_inherited_font_family: bool,
+    has_visible_inherited_font_size: bool,
+    has_unverified_visible_font_family: bool,
     valid: bool,
 }
 
@@ -84,27 +162,18 @@ impl C4TypographyThemePlan {
         });
         // The theme-variable path is the typed base-size owner. A top-level `fontSize` remains a
         // Mermaid-compatible fallback and must not shadow an active typed value.
-        let config_owns_font_size = typed_font_size_requested
-            && crate::config::config_f64_css_absolute_px(
-                effective_config.as_value(),
-                &["themeVariables", "fontSize"],
-            )
-            .is_some()
-            && effective_config.config_path_overrides_typed_default("themeVariables.fontSize");
+        let configured_font_size =
+            configured_theme_font_size_css_or_root_number_px(effective_config.as_value());
+        let config_owns_font_size = configured_font_size.is_some_and(|(_, path)| {
+            path == "themeVariables.fontSize"
+                && effective_config.config_path_overrides_typed_default(path)
+        });
         let typed_font_size_active = typed_font_size_requested && !config_owns_font_size;
-        let font_size_css = match (theme, typed_font_size_active) {
-            (Some(theme), true) => {
-                let font_size_px = f64::from(theme.typography().font_size_px()).max(1.0);
-                format!("{font_size_px}px").into_boxed_str()
-            }
-            _ => {
-                let font_size_px =
-                    config_theme_font_size_css_or_root_number_px_opt(effective_config.as_value())
-                        .unwrap_or(16.0)
-                        .max(1.0);
-                format!("{font_size_px}px").into_boxed_str()
-            }
+        let font_size_px = match (theme, typed_font_size_active) {
+            (Some(theme), true) => f64::from(theme.typography().font_size_px()),
+            _ => configured_font_size.map_or(16.0, |(size, _)| size),
         };
+        let font_size_css = format!("{font_size_px}px").into_boxed_str();
 
         let config = effective_config.as_value();
         let view = super::C4ConfigView::new(config);
@@ -120,17 +189,24 @@ impl C4TypographyThemePlan {
             .collect::<std::collections::BTreeSet<_>>()
             .into_iter()
             .map(|name| {
-                let font = view.shape_font(name);
-                let css_font_family = crate::config::normalize_css_font_family(
+                let mut font = view.shape_font(name);
+                // Element stylesheet values retain Mermaid's CSSOM normalization; legacy
+                // boundary/message style attributes keep their existing authored spelling.
+                font.font_family = Some(crate::config::normalize_css_font_family(
                     font.font_family
                         .as_deref()
                         .unwrap_or(super::C4_DEFAULT_FONT_FAMILY),
+                ));
+                let font = C4PreparedFont::resolve(
+                    font,
+                    inherited_font_stack.font_family_css(),
+                    font_size_px,
+                    view.shape_font_size_is_emitted(name),
                 );
                 (
                     name.to_owned(),
                     C4ElementStyle {
                         font,
-                        css_font_family,
                         source_colors: None,
                     },
                 )
@@ -154,16 +230,25 @@ impl C4TypographyThemePlan {
             )
             .unwrap_or_else(|| "#ECECFF".to_owned()),
             element_styles,
-            boundary_font: view.boundary_font(),
-            message_font: view.message_font(),
+            boundary_fonts: C4BoundaryFonts::resolve(
+                view.boundary_font(),
+                inherited_font_stack.font_family_css(),
+                font_size_px,
+            ),
+            message_font: C4PreparedFont::resolve(
+                view.message_font(),
+                inherited_font_stack.font_family_css(),
+                font_size_px,
+                true,
+            ),
             relationship_text_color: view.color("relationship_text_color", "#444444"),
             relationship_line_color: view.color("relationship_line_color", "#444444"),
             inherited_font_stack,
+            font_size_px,
             font_size_css,
             typed_font_size_requested,
             typed_font_size_active,
             title: normalize_title(title),
-            evidence: FamilyThemeOutcomes::default(),
             terminal_seal: OnceLock::new(),
         }
     }
@@ -200,10 +285,10 @@ impl C4TypographyThemePlan {
             }
         }))
     }
-    pub(crate) fn boundary_font(&self) -> &crate::text::TextStyle {
-        &self.boundary_font
+    pub(crate) fn boundary_fonts(&self) -> &C4BoundaryFonts {
+        &self.boundary_fonts
     }
-    pub(crate) fn message_font(&self) -> &crate::text::TextStyle {
+    pub(crate) fn message_font(&self) -> &C4PreparedFont {
         &self.message_font
     }
 
@@ -227,6 +312,10 @@ impl C4TypographyThemePlan {
         &self.font_size_css
     }
 
+    pub(crate) fn font_size_px(&self) -> f64 {
+        self.font_size_px
+    }
+
     pub(crate) fn typography_requested(&self) -> bool {
         self.inherited_font_stack.typography_requested() || self.typed_font_size_requested
     }
@@ -237,9 +326,13 @@ impl C4TypographyThemePlan {
                 expected_font_family_css: self.font_family_css(),
                 expected_font_size_css: self.font_size_css(),
                 expected_title: self.title.as_deref(),
+                expected_font_size_px: self.font_size_px,
                 css_emitted: false,
                 css_matches: false,
                 title_seen: false,
+                has_visible_inherited_font_family: false,
+                has_visible_inherited_font_size: false,
+                has_unverified_visible_font_family: false,
                 valid: true,
             })
     }
@@ -251,7 +344,6 @@ impl C4TypographyThemePlan {
     }
 
     pub(crate) fn record_evidence(&self, evidence: &mut FamilyThemeEvidence) {
-        evidence.merge_borrowed(&self.evidence);
         if !self.typography_requested() {
             return;
         }
@@ -263,12 +355,14 @@ impl C4TypographyThemePlan {
                 self.inherited_font_stack.typed_font_stack_requested(),
                 self.inherited_font_stack.typed_font_stack_active(),
                 false,
+                false,
             );
             self.mark_typed_property_evidence(
                 evidence,
                 ThemeTypographyProperty::FontSize,
                 self.typed_font_size_requested,
                 self.typed_font_size_active,
+                false,
                 false,
             );
             return;
@@ -279,14 +373,16 @@ impl C4TypographyThemePlan {
             ThemeTypographyProperty::FontStack,
             self.inherited_font_stack.typed_font_stack_requested(),
             self.inherited_font_stack.typed_font_stack_active(),
-            seal.has_visible_title,
+            seal.has_visible_title || seal.has_visible_inherited_font_family,
+            seal.has_unverified_visible_font_family,
         );
         self.mark_typed_property_evidence(
             evidence,
             ThemeTypographyProperty::FontSize,
             self.typed_font_size_requested,
             self.typed_font_size_active,
-            seal.has_visible_title,
+            seal.has_visible_title || seal.has_visible_inherited_font_size,
+            false,
         );
     }
 
@@ -296,7 +392,8 @@ impl C4TypographyThemePlan {
         property: ThemeTypographyProperty,
         requested: bool,
         active: bool,
-        has_visible_title: bool,
+        has_visible_consumer: bool,
+        has_unverified_consumer: bool,
     ) {
         if !requested {
             return;
@@ -304,9 +401,9 @@ impl C4TypographyThemePlan {
         let key = FamilyThemeMechanismKey::Typography(property);
         if !active {
             evidence.mark_not_applicable(key);
-        } else if self.terminal_seal.get().is_none() {
+        } else if self.terminal_seal.get().is_none() || has_unverified_consumer {
             evidence.mark_residual(key, FamilyThemeResidualReason::UnsupportedTypography);
-        } else if !has_visible_title {
+        } else if !has_visible_consumer {
             evidence.mark_not_applicable(key);
         } else {
             evidence.mark_applied_with_capabilities(key, [ThemeCapability::Typography]);
@@ -337,13 +434,36 @@ impl<'a> C4TypographyThemeReceipt<'a> {
         self.title_seen = true;
     }
 
+    pub(crate) fn record_visible_font(&mut self, font: &C4PreparedFont) {
+        self.valid &=
+            self.css_emitted && self.css_matches && font.measurement_style.font_size > 0.0;
+        match font.family_ownership {
+            CssFontFamilyOwnership::Inherited => {
+                self.valid &= font.measurement_style.font_family.as_deref()
+                    == Some(self.expected_font_family_css);
+                self.has_visible_inherited_font_family = true;
+            }
+            CssFontFamilyOwnership::SourceOwned => {}
+            CssFontFamilyOwnership::Unverified => {
+                self.has_unverified_visible_font_family = true;
+            }
+        }
+        if font.font_size_inherits_root {
+            self.valid &= font.measurement_style.font_size == self.expected_font_size_px;
+            self.has_visible_inherited_font_size = true;
+        }
+    }
+
     fn seal(self) -> Option<C4TypographyTerminalSeal> {
         (self.valid
             && self.css_emitted
             && self.css_matches
             && self.title_seen == self.expected_title.is_some())
         .then_some(C4TypographyTerminalSeal {
-            has_visible_title: self.expected_title.is_some(),
+            has_visible_title: self.title_seen && self.expected_font_size_px > 0.0,
+            has_visible_inherited_font_family: self.has_visible_inherited_font_family,
+            has_visible_inherited_font_size: self.has_visible_inherited_font_size,
+            has_unverified_visible_font_family: self.has_unverified_visible_font_family,
         })
     }
 }
@@ -369,9 +489,13 @@ mod tests {
             expected_font_family_css: "Inter",
             expected_font_size_css: "18px",
             expected_title: Some("Context"),
+            expected_font_size_px: 18.0,
             css_emitted: false,
             css_matches: false,
             title_seen: false,
+            has_visible_inherited_font_family: false,
+            has_visible_inherited_font_size: false,
+            has_unverified_visible_font_family: false,
             valid: true,
         };
         receipt.record_css_emission("Inter", "18px", true, true);
@@ -382,9 +506,13 @@ mod tests {
             expected_font_family_css: "Inter",
             expected_font_size_css: "18px",
             expected_title: Some("Context"),
+            expected_font_size_px: 18.0,
             css_emitted: false,
             css_matches: false,
             title_seen: false,
+            has_visible_inherited_font_family: false,
+            has_visible_inherited_font_size: false,
+            has_unverified_visible_font_family: false,
             valid: true,
         };
         missing_title.record_css_emission("Inter", "18px", true, true);
@@ -436,16 +564,30 @@ mod tests {
         let actual = plan
             .element_style("custom_type")
             .expect("actual type bound");
-        assert_eq!(actual.font.font_family.as_deref(), Some("Custom Sans"));
-        assert_eq!(actual.font.font_size, 19.0);
-        assert_eq!(actual.font.font_weight.as_deref(), Some("600"));
+        assert_eq!(
+            actual.font.measurement_style.font_family.as_deref(),
+            Some("Custom Sans")
+        );
+        assert_eq!(actual.font.measurement_style.font_size, 19.0);
+        assert_eq!(
+            actual.font.measurement_style.font_weight.as_deref(),
+            Some("600")
+        );
         assert!(
             plan.element_style("").is_some(),
             "default model type is bound"
         );
-        assert_eq!(plan.boundary_font().font_family.as_deref(), Some(""));
-        assert_eq!(plan.boundary_font().font_size, 21.0);
-        assert_eq!(plan.message_font().font_size, 17.0);
+        assert_eq!(plan.boundary_fonts().ty.css_font_family, "");
+        assert_eq!(
+            plan.boundary_fonts()
+                .ty
+                .measurement_style
+                .font_family
+                .as_deref(),
+            Some(plan.font_family_css())
+        );
+        assert_eq!(plan.boundary_fonts().ty.measurement_style.font_size, 21.0);
+        assert_eq!(plan.message_font().measurement_style.font_size, 17.0);
         let view = super::super::C4ConfigView::new(config.as_value());
         let colors = plan
             .prepare_element_colors("custom_type", &view)

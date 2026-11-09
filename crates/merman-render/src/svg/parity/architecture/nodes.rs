@@ -1,6 +1,6 @@
 use crate::model::Bounds;
 use crate::svg::icon_registry::{IconIdScope, IconIdScopePrefix};
-use crate::text::TextMeasurer;
+use crate::text::{TextMeasurer, VisibleTextStyleFacts};
 use merman_model::families::architecture::{
     ArchitectureDiagramModel, ArchitectureNodeKind, ArchitectureNodeModel,
 };
@@ -162,12 +162,16 @@ pub(super) fn push_architecture_services_and_junctions<O: SvgOutput>(
                         surface_styles.is_some(),
                     )
                 });
-            let has_title = service_title_emission.is_some();
+            let has_visible_title = settings.text_style.font_size > 0.0
+                && service_title_emission
+                    .as_ref()
+                    .is_some_and(|emission| emission.facts.has_visible_words);
             #[cfg(merman_internal_theme_acceptance)]
             let service_title_bounds = service_title_emission
                 .as_ref()
                 .and_then(|emission| emission.bounds.as_ref());
 
+            let mut icon_text_facts = None;
             out.push_str("<g>");
             match (svc.icon.as_deref(), svc.icon_text.as_deref()) {
                 (Some(icon), _) => {
@@ -203,9 +207,26 @@ pub(super) fn push_architecture_services_and_junctions<O: SvgOutput>(
                     // Mermaid computes `iconText` clamp from the DOM `font-size` applied to the
                     // foreignObject content. That content inherits the diagram root CSS size;
                     // `architecture.fontSize` remains a separate Cytoscape-layout setting.
-                    let line_clamp = ((settings.icon_size_px - 2.0) / settings.text_style.font_size)
-                        .floor()
-                        .max(1.0) as i64;
+                    // svgDraw.ts strips every nondigit before parseInt: 0.5px becomes 5.
+                    // Apply that source quirk only to the clamp divisor, retaining actual
+                    // fractional sizes for CSS and glyph measurement and zero-sized boxes.
+                    let clamp_font_size = fmt(settings.text_style.font_size)
+                        .to_string()
+                        .chars()
+                        .filter(char::is_ascii_digit)
+                        .collect::<String>()
+                        .parse::<f64>()
+                        .unwrap_or(f64::NAN);
+                    let line_clamp = ((settings.icon_size_px - 2.0) / clamp_font_size).floor();
+                    let line_clamp = if line_clamp == f64::INFINITY {
+                        "Infinity".to_owned()
+                    } else if line_clamp == f64::NEG_INFINITY {
+                        "-Infinity".to_owned()
+                    } else if line_clamp == 0.0 {
+                        "0".to_owned()
+                    } else {
+                        line_clamp.to_string()
+                    };
                     let parse_work = std::cell::Cell::new(0);
                     let sink = crate::html::HtmlSanitizeSink::new(
                         work_meter
@@ -224,6 +245,13 @@ pub(super) fn push_architecture_services_and_junctions<O: SvgOutput>(
                         ),
                         work_meter,
                     )?;
+                    if typography_emission.is_some() {
+                        icon_text_facts =
+                            Some(VisibleTextStyleFacts::from_xhtml_fragment_at_font_size(
+                                &sanitized,
+                                Some(settings.text_style.font_size),
+                            ));
+                    }
                     let _ = write!(
                         out,
                         r#"<g><foreignObject width="{w}" height="{h}"><div class="node-icon-text" style="height: {h}px;" xmlns="http://www.w3.org/1999/xhtml"><div style="-webkit-line-clamp: {clamp};">"#,
@@ -256,10 +284,11 @@ pub(super) fn push_architecture_services_and_junctions<O: SvgOutput>(
 
             out.push_str("</g>");
             out.checkpoint()?;
-            if (has_title || has_icon_text)
-                && let Some(emission) = typography_emission.as_deref_mut()
-            {
-                emission.record_visible_text();
+            if let Some(emission) = typography_emission.as_deref_mut() {
+                emission.record_svg_text(has_visible_title);
+                if let Some(facts) = icon_text_facts.as_ref() {
+                    emission.record_icon_text(facts);
+                }
             }
             if let Some(styles) = surface_styles.as_deref_mut() {
                 styles.record_checkpointed_service(
@@ -271,7 +300,7 @@ pub(super) fn push_architecture_services_and_junctions<O: SvgOutput>(
                             emitted: has_background,
                         },
                         title: crate::architecture::ArchitectureTextTerminalEmission {
-                            emitted: has_title,
+                            emitted: has_visible_title,
                             #[cfg(merman_internal_theme_acceptance)]
                             bounds: service_title_bounds.cloned(),
                             #[cfg(merman_internal_theme_acceptance)]
@@ -415,7 +444,6 @@ pub(super) fn push_architecture_groups<'a, O: SvgOutput>(
                 shifted_y1 += settings.arch_font_size_px / 2.0 - 3.0;
             }
 
-            let has_title = grp.title.is_some_and(|title| !title.trim().is_empty());
             let group_title_style = surface_styles
                 .as_deref()
                 .and_then(|styles| styles.group_title_style(group_index));
@@ -460,15 +488,17 @@ pub(super) fn push_architecture_groups<'a, O: SvgOutput>(
             } else {
                 (None, None)
             };
+            let has_visible_title = settings.text_style.font_size > 0.0
+                && group_writer_facts.is_some_and(|facts| facts.has_visible_words);
             #[cfg(not(merman_internal_theme_acceptance))]
-            let _ = (group_writer_facts, group_title_bounds);
+            let _ = group_title_bounds;
 
             out.push_str("</g>");
             out.checkpoint()?;
             // Clear consumes the successfully emitted baseline without an inline style.
             *group_emitted = true;
-            if has_title && let Some(emission) = typography_emission.as_deref_mut() {
-                emission.record_visible_text();
+            if let Some(emission) = typography_emission.as_deref_mut() {
+                emission.record_svg_text(has_visible_title);
             }
             if let Some(styles) = surface_styles.as_deref_mut() {
                 styles.record_checkpointed_group(
@@ -477,7 +507,7 @@ pub(super) fn push_architecture_groups<'a, O: SvgOutput>(
                         #[cfg(merman_internal_theme_acceptance)]
                         id: grp.id.into(),
                         title: crate::architecture::ArchitectureTextTerminalEmission {
-                            emitted: has_title,
+                            emitted: has_visible_title,
                             #[cfg(merman_internal_theme_acceptance)]
                             bounds: group_title_bounds,
                             #[cfg(merman_internal_theme_acceptance)]

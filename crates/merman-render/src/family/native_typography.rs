@@ -53,41 +53,40 @@ mod declaration_scan {
         "font-size-adjust",
     ];
 
-    fn declaration<'a>(
-        raw: &'a str,
+    fn declaration(
+        raw: &str,
         control: &OperationControl,
-    ) -> OperationControlResult<Option<&'a str>> {
+    ) -> OperationControlResult<Option<String>> {
         control.checkpoint()?;
-        let mut property_start = None;
-        let mut property_end = 0;
-        let mut in_value = false;
-        let mut next_checkpoint = 1024;
-        for (index, ch) in raw.char_indices() {
-            if index >= next_checkpoint {
-                control.checkpoint()?;
-                next_checkpoint = index.saturating_add(1024);
-            }
-            if ch == ';' {
-                property_start = None;
-                in_value = false;
-            } else if !in_value && ch == ':' {
-                if let Some(start) = property_start {
-                    let property = &raw[start..property_end];
-                    if UNSUPPORTED_NATIVE_TEXT_STYLES
+        // Check the supplied byte volume before handing indivisible tokens or comments to
+        // cssparser, whose own cancellation checkpoints are at declaration boundaries.
+        for _ in raw.as_bytes().chunks(1024) {
+            control.checkpoint()?;
+        }
+        let mut unsupported = None;
+        crate::mermaid_style::visit_style_declaration_boundaries_with_checkpoints(
+            raw,
+            &mut || control.checkpoint(),
+            |boundary| {
+                let mut parser = cssparser::Parser::new(boundary.raw());
+                let Ok(property) = parser.expect_ident_cloned() else {
+                    return Ok(true);
+                };
+                // Source-style emission trims Unicode whitespace from property spellings.
+                let property = property.trim();
+                if parser.expect_colon().is_ok()
+                    && UNSUPPORTED_NATIVE_TEXT_STYLES
                         .iter()
                         .any(|name| property.eq_ignore_ascii_case(name))
-                    {
-                        return Ok(Some(property));
-                    }
+                {
+                    unsupported = Some(property.to_string());
+                    return Ok(false);
                 }
-                in_value = true;
-            } else if !in_value && !ch.is_whitespace() {
-                property_start.get_or_insert(index);
-                property_end = index + ch.len_utf8();
-            }
-        }
+                Ok(true)
+            },
+        )?;
         control.checkpoint()?;
-        Ok(None)
+        Ok(unsupported)
     }
 
     pub(super) fn declarations<'a>(
@@ -97,7 +96,7 @@ mod declaration_scan {
         let mut checked_styles = Vec::new();
         for raw in styles {
             if let Some(property) = declaration(raw, control)? {
-                return Ok(Some(property.to_owned()));
+                return Ok(Some(property));
             }
             checked_styles.push(raw);
         }
@@ -133,9 +132,38 @@ mod declaration_scan {
                 None
             );
             assert_eq!(
-                declaration("fill:red; \u{2003}Word-Spacing\u{2003}:2px", &control).unwrap(),
+                declaration("fill:red; \tWord-Spacing\n:2px", &control)
+                    .unwrap()
+                    .as_deref(),
                 Some("Word-Spacing")
             );
+        }
+
+        #[test]
+        fn declaration_headers_follow_css_tokens_and_boundaries() {
+            let control = OperationControl::new();
+            for raw in [
+                "letter-spacing /* comment */ :20px",
+                "/* comment */letter-spacing:20px",
+                r"l\65tter-spacing:20px",
+                r"fill:red; l\65tter-spacing/**/:20px",
+                "--label:';font-size:99px';letter-spacing:20px",
+                "letter-spacing\u{2003}:20px",
+            ] {
+                assert_eq!(
+                    declaration(raw, &control).unwrap().as_deref(),
+                    Some("letter-spacing"),
+                    "{raw}"
+                );
+            }
+            for raw in [
+                r#"font-family:"Face;letter-spacing:20px",monospace"#,
+                r#"--label:"a\";word-spacing:20px";fill:red"#,
+                "/* letter-spacing:20px */fill:red",
+                "--label:fn(letter-spacing:20px;word-spacing:20px);fill:red",
+            ] {
+                assert_eq!(declaration(raw, &control).unwrap(), None, "{raw}");
+            }
         }
 
         #[test]
@@ -207,12 +235,16 @@ mod declaration_scan {
 
         #[test]
         fn native_admission_cancels_during_one_large_declaration() {
-            let raw = format!("fill:{};word-spacing:4px", "a".repeat(64 * 1024));
-            let control = OperationControl::new();
-            control.cancel_after_checkpoints(8);
-            let cancelled =
-                declaration(&raw, &control.for_phase(OperationPhase::Semantic)).unwrap_err();
-            assert_eq!(cancelled.phase, OperationPhase::Semantic);
+            for raw in [
+                format!("fill:{};word-spacing:4px", "a".repeat(64 * 1024)),
+                format!("/*{}*/", "a".repeat(64 * 1024)),
+            ] {
+                let control = OperationControl::new();
+                control.cancel_after_checkpoints(8);
+                let cancelled =
+                    declaration(&raw, &control.for_phase(OperationPhase::Semantic)).unwrap_err();
+                assert_eq!(cancelled.phase, OperationPhase::Semantic);
+            }
         }
     }
 }
@@ -227,6 +259,14 @@ pub fn unsupported_native_text_style(
     #[cfg(feature = "diagram-gantt")]
     if let RenderSemanticModel::Gantt(model) = parsed.model() {
         return crate::gantt::unsupported_native_font_size(
+            model,
+            &parsed.metadata().effective_config,
+            &control,
+        );
+    }
+    #[cfg(feature = "diagram-git-graph")]
+    if let RenderSemanticModel::GitGraph(model) = parsed.model() {
+        return crate::gitgraph::unsupported_native_font_size(
             model,
             &parsed.metadata().effective_config,
             &control,

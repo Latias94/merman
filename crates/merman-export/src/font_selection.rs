@@ -19,6 +19,10 @@ pub(crate) struct FontSelectionPolicy {
 }
 
 impl FontSelectionPolicy {
+    #[cfg(all(
+        any(feature = "png", feature = "jpeg", feature = "pdf"),
+        any(test, all(feature = "system-fonts", not(target_family = "wasm")))
+    ))]
     pub(crate) fn from_database(database: &Database) -> Self {
         let mut policy = Self::default();
         for face in database.faces() {

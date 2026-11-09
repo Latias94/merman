@@ -513,7 +513,7 @@ pub(crate) fn render_journey_diagram_svg_model(
         !task_theme.palette_surface_owned(),
         text_receipt.as_mut(),
     );
-    let mut typography_receipt = typography_theme.begin_terminal_receipt(layout);
+    let mut typography_receipt = typography_theme.begin_terminal_receipt(layout, diagram_title);
     if let Some(receipt) = typography_receipt.as_mut() {
         receipt.record_css_emission(
             &css.font_family,
@@ -791,6 +791,9 @@ pub(crate) fn render_journey_diagram_svg_model(
         out.checkpoint()?;
         if let Some(receipt) = text_receipt.as_mut() {
             receipt.record_title(title, title_color);
+        }
+        if let Some(receipt) = typography_receipt.as_mut() {
+            receipt.record_text_run(title, !title.trim().is_empty());
         }
     }
 

@@ -8,6 +8,7 @@ use crate::diagram_theme::{
     ThemeCapability, ThemeTypographyProperty,
 };
 use crate::family::{FamilyThemeEvidence, FamilyThemeResidualReason, InheritedFontStackPlan};
+use crate::mermaid_style::CssFontFamilyOwnership;
 use crate::model::JourneyDiagramLayout;
 
 use super::config::JourneyRenderSettings;
@@ -30,16 +31,19 @@ pub(crate) struct JourneyTypographyThemePlan {
 #[derive(Debug, Clone, Copy)]
 struct JourneyTypographyTerminalSeal {
     has_visible_text: bool,
+    has_visible_inherited_font_weight: bool,
     has_visible_font_stack: bool,
+    has_unverified_font_stack: bool,
     has_visible_font_size: bool,
 }
 
 #[derive(Debug, Clone, Copy)]
 struct JourneyTypographyTextRun<'a> {
     text: &'a str,
-    font_size_px: f64,
-    inherits_font_stack: bool,
+    visibility: Option<bool>,
+    font_family_ownership: CssFontFamilyOwnership,
     inherits_font_size: bool,
+    inherits_font_weight: bool,
 }
 
 /// Writer-owned proof for Journey's inherited stylesheet and visible text candidates.
@@ -51,9 +55,7 @@ pub(crate) struct JourneyTypographyThemeReceipt<'a> {
     next_text_run: usize,
     css_emitted: bool,
     css_matches: bool,
-    has_visible_text: bool,
-    has_visible_font_stack: bool,
-    has_visible_font_size: bool,
+    outcome: JourneyTypographyTerminalSeal,
     valid: bool,
 }
 
@@ -118,10 +120,47 @@ impl JourneyTypographyThemePlan {
     }
 
     pub(crate) fn title_can_be_visible(&self) -> bool {
-        !crate::mermaid_style::svg_font_size_is_zero_at_parent(
+        self.title_visibility() != Some(false)
+    }
+
+    fn title_visibility(&self) -> Option<bool> {
+        if self.css.render.title_inherits_font_size() {
+            return Some(self.font_size_px > 0.0);
+        }
+        if crate::mermaid_style::svg_font_size_is_zero_at_parent(
             &self.css.render.title_font_size,
             self.font_size_px,
-        )
+        ) {
+            return Some(false);
+        }
+        let raw = self.css.render.title_font_size.trim();
+        let declaration = format!("font-size:{raw}");
+        let parsed = crate::mermaid_style::parse_style_declaration(&declaration)?;
+        if parsed.analysis().depends_on_root_font_size()
+            || parsed.analysis().has_dynamic_reference_function()
+        {
+            return None;
+        }
+        if let Some(size) = parsed.resolve_font_size_px(
+            crate::mermaid_style::CssFontSizeContext::uniform(self.font_size_px),
+        ) {
+            return Some(size > 0.0);
+        }
+        // Font-relative metrics are positive with a positive parent, even though their exact
+        // lengths need the selected face. Expressions and document-root units remain unknown.
+        let mut parser = cssparser::Parser::new(raw);
+        match parser.next() {
+            Ok(cssparser::Token::Dimension { value, unit, .. })
+                if value.is_finite()
+                    && *value > 0.0
+                    && ["ex", "ch", "cap", "ic"]
+                        .iter()
+                        .any(|candidate| unit.eq_ignore_ascii_case(candidate)) =>
+            {
+                Some(self.font_size_px > 0.0)
+            }
+            _ => None,
+        }
     }
 
     pub(crate) fn font_family_css(&self) -> &str {
@@ -147,12 +186,19 @@ impl JourneyTypographyThemePlan {
     pub(crate) fn begin_terminal_receipt<'a>(
         &'a self,
         layout: &'a JourneyDiagramLayout,
+        title: Option<&'a str>,
     ) -> Option<JourneyTypographyThemeReceipt<'a>> {
         self.typography_requested().then(|| {
             JourneyTypographyThemeReceipt::new(
                 self.font_family_css(),
                 self.font_size_css(),
-                journey_text_runs(layout, &self.css.render, self.font_size_px),
+                journey_text_runs(
+                    layout,
+                    &self.css.render,
+                    self.font_size_px,
+                    title,
+                    self.title_visibility(),
+                ),
             )
         })
     }
@@ -168,9 +214,24 @@ impl JourneyTypographyThemePlan {
             return;
         }
 
-        let Some(seal) = self.terminal_seal.get() else {
-            self.inherited_font_stack
-                .record_unsupported_typography_evidence(evidence, true);
+        let seal = self.terminal_seal.get();
+        for property in self
+            .inherited_font_stack
+            .unsupported_typography_properties()
+        {
+            let has_visible_consumer = seal.is_none_or(|seal| match property {
+                // The title's explicit bold weight overrides the inherited base weight.
+                ThemeTypographyProperty::FontWeight => seal.has_visible_inherited_font_weight,
+                _ => seal.has_visible_text,
+            });
+            let key = FamilyThemeMechanismKey::Typography(property);
+            if has_visible_consumer {
+                evidence.mark_residual(key, FamilyThemeResidualReason::UnsupportedTypography);
+            } else {
+                evidence.mark_not_applicable(key);
+            }
+        }
+        let Some(seal) = seal else {
             self.mark_typed_property_evidence(
                 evidence,
                 ThemeTypographyProperty::FontStack,
@@ -190,17 +251,13 @@ impl JourneyTypographyThemePlan {
             return;
         };
 
-        // All candidates inherit weight/style, including tspans with their own family/size.
-        // Keep unsupported requests residual whenever those visible terminals exist.
-        self.inherited_font_stack
-            .record_unsupported_typography_evidence(evidence, seal.has_visible_text);
         self.mark_typed_property_evidence(
             evidence,
             ThemeTypographyProperty::FontStack,
             self.inherited_font_stack.typed_font_stack_requested(),
             self.inherited_font_stack.typed_font_stack_active(),
             seal.has_visible_font_stack,
-            true,
+            seal.has_unverified_font_stack,
         );
         self.mark_typed_property_evidence(
             evidence,
@@ -208,7 +265,7 @@ impl JourneyTypographyThemePlan {
             self.typed_font_size_requested,
             self.typed_font_size_active,
             seal.has_visible_font_size,
-            true,
+            false,
         );
     }
 
@@ -219,7 +276,7 @@ impl JourneyTypographyThemePlan {
         requested: bool,
         active: bool,
         has_visible_text: bool,
-        terminal_proved: bool,
+        has_unverified_consumer: bool,
     ) {
         if !requested {
             return;
@@ -227,7 +284,7 @@ impl JourneyTypographyThemePlan {
         let key = FamilyThemeMechanismKey::Typography(property);
         if !active {
             evidence.mark_not_applicable(key);
-        } else if !terminal_proved {
+        } else if self.terminal_seal.get().is_none() || has_unverified_consumer {
             evidence.mark_residual(key, FamilyThemeResidualReason::UnsupportedTypography);
         } else if !has_visible_text {
             evidence.mark_not_applicable(key);
@@ -250,9 +307,13 @@ impl<'a> JourneyTypographyThemeReceipt<'a> {
             next_text_run: 0,
             css_emitted: false,
             css_matches: false,
-            has_visible_text: false,
-            has_visible_font_stack: false,
-            has_visible_font_size: false,
+            outcome: JourneyTypographyTerminalSeal {
+                has_visible_text: false,
+                has_visible_inherited_font_weight: false,
+                has_visible_font_stack: false,
+                has_unverified_font_stack: false,
+                has_visible_font_size: false,
+            },
             valid: true,
         }
     }
@@ -279,10 +340,23 @@ impl<'a> JourneyTypographyThemeReceipt<'a> {
         self.valid &= expected.is_some_and(|run| run.text == text);
         if let Some(run) = expected {
             self.next_text_run = self.next_text_run.saturating_add(1);
-            if has_visible_text && run.font_size_px > 0.0 {
-                self.has_visible_text = true;
-                self.has_visible_font_stack |= run.inherits_font_stack;
-                self.has_visible_font_size |= run.inherits_font_size;
+            if has_visible_text && run.visibility != Some(false) {
+                self.outcome.has_visible_text = true;
+                self.outcome.has_visible_inherited_font_weight |= run.inherits_font_weight;
+                match run.font_family_ownership {
+                    CssFontFamilyOwnership::Inherited => {
+                        if run.visibility.is_some() {
+                            self.outcome.has_visible_font_stack = true;
+                        } else {
+                            self.outcome.has_unverified_font_stack = true;
+                        }
+                    }
+                    CssFontFamilyOwnership::Unverified => {
+                        self.outcome.has_unverified_font_stack = true;
+                    }
+                    CssFontFamilyOwnership::SourceOwned => {}
+                }
+                self.outcome.has_visible_font_size |= run.inherits_font_size;
             }
         }
     }
@@ -292,11 +366,7 @@ impl<'a> JourneyTypographyThemeReceipt<'a> {
             && self.css_emitted
             && self.css_matches
             && self.next_text_run == self.expected_text_runs.len())
-        .then_some(JourneyTypographyTerminalSeal {
-            has_visible_text: self.has_visible_text,
-            has_visible_font_stack: self.has_visible_font_stack,
-            has_visible_font_size: self.has_visible_font_size,
-        })
+        .then_some(self.outcome)
     }
 }
 
@@ -304,6 +374,8 @@ fn journey_text_runs<'a>(
     layout: &'a JourneyDiagramLayout,
     settings: &JourneyRenderSettings,
     base_font_size_px: f64,
+    title: Option<&'a str>,
+    title_visibility: Option<bool>,
 ) -> Vec<JourneyTypographyTextRun<'a>> {
     let mut runs = layout
         .actor_legend
@@ -313,13 +385,14 @@ fn journey_text_runs<'a>(
                 .iter()
                 .map(|line| JourneyTypographyTextRun {
                     text: line.text.as_str(),
-                    font_size_px: base_font_size_px,
-                    inherits_font_stack: true,
+                    visibility: Some(base_font_size_px > 0.0),
+                    font_family_ownership: CssFontFamilyOwnership::Inherited,
                     inherits_font_size: true,
+                    inherits_font_weight: true,
                 })
         })
         .collect::<Vec<_>>();
-    let inherits_font_stack = settings.label_inherits_font_stack();
+    let font_family_ownership = settings.label_font_family_ownership();
     let inherits_font_size = settings.label_inherits_font_size();
     let font_size_px = if inherits_font_size {
         base_font_size_px
@@ -334,17 +407,28 @@ fn journey_text_runs<'a>(
         {
             runs.push(JourneyTypographyTextRun {
                 text: section.section.as_str(),
-                font_size_px,
-                inherits_font_stack,
+                visibility: Some(font_size_px > 0.0),
+                font_family_ownership,
                 inherits_font_size,
+                inherits_font_weight: true,
             });
         }
         last_section = task.section.as_str();
         runs.push(JourneyTypographyTextRun {
             text: task.task.as_str(),
-            font_size_px,
-            inherits_font_stack,
+            visibility: Some(font_size_px > 0.0),
+            font_family_ownership,
             inherits_font_size,
+            inherits_font_weight: true,
+        });
+    }
+    if let Some(title) = title {
+        runs.push(JourneyTypographyTextRun {
+            text: title,
+            visibility: title_visibility,
+            font_family_ownership: settings.title_font_family_ownership(),
+            inherits_font_size: settings.title_inherits_font_size(),
+            inherits_font_weight: false,
         });
     }
     runs
@@ -402,7 +486,9 @@ mod tests {
             .resolve(crate::DiagramFamilyId::JOURNEY);
         let plan =
             JourneyTypographyThemePlan::resolve(Some(&theme), &PresentationConfig::empty_object());
-        let mut receipt = plan.begin_terminal_receipt(&layout).expect("theme receipt");
+        let mut receipt = plan
+            .begin_terminal_receipt(&layout, None)
+            .expect("theme receipt");
         receipt.record_css_emission("\"Open Sans\"", "16px", true, true);
         assert!(plan.record_terminal(receipt));
     }
