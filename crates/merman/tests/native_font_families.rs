@@ -55,6 +55,64 @@ mod er_native_regressions {
     }
 
     #[test]
+    fn er_native_rejects_retained_relationship_geometry_before_measurement() {
+        let request = request(single_font_context());
+        for (style, property) in [
+            ("letter-spacing:20px", "letter-spacing"),
+            ("letter-spacing:/* value */20px", "letter-spacing"),
+            (
+                r"/* leading */LETTER\2d SPACING/* property */:/* value */20px !important;",
+                "letter-spacing",
+            ),
+            ("all:initial", "all"),
+            ("all:inherit", "all"),
+            ("all:unset", "all"),
+            ("font-size:64px;all:inherit", "all"),
+            ("font-size:64px;all:unset", "all"),
+        ] {
+            let source = format!(
+                "---\nconfig: {{\"layout\":\"swimlane\",\"htmlLabels\":true}}\n---\nerDiagram\nA ||--|| B : \"<span style='{style}'>AAAA</span>\"\n"
+            );
+            let error = Renderer::new()
+                .render(RenderRequest::svg(
+                    &source,
+                    OperationControl::new(),
+                    request.clone(),
+                ))
+                .expect_err("retained relationship geometry is not natively measured");
+            assert!(
+                error
+                    .to_string()
+                    .contains(&format!("inline HTML text geometry style `{property}`")),
+                "{style}: {error}"
+            );
+            render(&source, None);
+        }
+    }
+
+    #[test]
+    fn er_native_admits_svg_relationships_and_removed_inline_styles() {
+        let context = single_font_context();
+        for config in [
+            r#"{"layout":"swimlane","htmlLabels":false}"#,
+            r#"{"layout":"swimlane","htmlLabels":true,"dompurifyConfig":{"FORBID_ATTR":["style"]}}"#,
+        ] {
+            for style in [
+                "letter-spacing:20px",
+                "all:initial",
+                "font-size:64px;all:inherit",
+                "font-size:64px;all:unset",
+            ] {
+                let source = format!(
+                    "---\nconfig: {config}\n---\nerDiagram\nA ||--|| B : \"<span style='{style}'>AAAA</span>\"\n"
+                );
+                let output = render(&source, Some(context.clone()));
+                assert_native_without_fallback(&output, "er");
+            }
+        }
+    }
+
+    #[test]
     fn er_native_default_budget_renders_500_tables() {
         let output = render(&tables(500), Some(single_font_context()));
         assert!(output.svg().contains("entity-T499-499"));

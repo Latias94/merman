@@ -91,6 +91,19 @@ pub(crate) fn resolve_css_font_weight(value: &str, inherited: u16) -> Option<u16
     }
 }
 
+/// User-agent font defaults for the inline HTML elements modeled by label measurement.
+/// Author declarations override these values; relative values use the element's parent.
+pub(crate) fn xhtml_font_default(element: &str, property: &str) -> Option<&'static str> {
+    match (element, property) {
+        ("strong" | "b", "font-weight") => Some("bolder"),
+        ("cite" | "dfn" | "em" | "i" | "var", "font-style") => Some("italic"),
+        ("code" | "kbd" | "samp" | "tt", "font-family") => Some("monospace"),
+        ("big", "font-size") => Some("1.2em"),
+        ("small", "font-size") => Some("0.8333333333333334em"),
+        _ => None,
+    }
+}
+
 fn relative_font_weight(inherited: u16, bolder: bool) -> u16 {
     match (inherited, bolder) {
         (1..=99, true) => 400,

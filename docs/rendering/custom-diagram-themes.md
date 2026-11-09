@@ -140,11 +140,27 @@ as a generic family; it can fall through to its serif fallback. A stack such as
 promising the same UI face on every platform. Quoted source font names retain their literal
 meaning; Merman does not rewrite them into generic aliases.
 
-Theme sizes use pixels. Raw HTML labels can also contain relative CSS sizes: `em` follows the
+Theme sizes use pixels. Inherited Mermaid theme font sizes also accept absolute CSS lengths,
+including `pt`, `pc`, `in`, `cm`, `mm` and `q`, using 96 CSS pixels per inch. For example,
+`themeVariables.fontSize: "24pt"` supplies 32px to layout and retains its configuration priority
+over a typed base size. Family-specific numeric settings keep their own configuration rules.
+
+Raw HTML labels can also contain relative CSS sizes: `em` follows the
 parent font, while `rem` depends on the receiving document's root font. Class and Requirement
 HTML node-label measurement uses the ordinary 16px document-root baseline; a page with a different
 root size or a standalone SVG document can resolve `rem` differently. Prefer pixel or parent-relative
 sizes when the same source must travel between hosts.
+
+HTML emphasis also affects font selection: `strong` and `b` request a weight bolder than their
+parent, including each nested level; `em`, `i`, `cite`, `dfn` and `var` request italic. `code`,
+`kbd`, `samp` and `tt` use monospace. Supported explicit font declarations, including
+`font-weight:initial` and `font-style:inherit`, override these defaults. Supply the corresponding
+faces to the host when their measurements matter; a requested weight does not provide a font file.
+
+Native HTML measurement and export share the same font-size keyword values with a 16px default
+`medium`. A zero-sized inline run contributes no glyph width or ink; its parent line box and
+visible siblings can still occupy space. A receiving browser's default font preferences can
+change keyword sizes, so explicit lengths are preferable for reproducible exports.
 
 Use representative Latin, CJK and symbol labels when the content needs them. A font's presence
 does not imply glyph coverage, and a successful theme status does not certify either one. The
@@ -231,11 +247,28 @@ Each family's accepted units, font-array handling and numeric clamps remain unch
 title, percentage and legend sizes remain independent; C4 element sizes and ER relationship
 label sizes also retain their own configuration rather than inheriting every base-size change.
 
+Requirement source node sizes accept absolute CSS lengths, including `24pt` as 32px. Its
+inherited base size has a 1px minimum, applied to both measurement and emitted CSS even when a
+typed theme requests a smaller positive value. Native measurement rejects source node sizes
+that this adapter cannot resolve, such as relative lengths or CSS expressions.
+
 Support is checked per property. For example, a Gantt Title or Text rule with visible consumers
 can apply its fill while retaining an `unsupported-typography` diagnostic for its font size.
 Combining those properties in one rule does not make the unsupported styling portable; strict
 completion still rejects it. Title rules without a visible diagram or section title are not
 applicable.
+
+Journey's legend and `fo` / `old` labels inherit the base font stack and size. Its `tspan`
+labels retain `journey.taskFontSize` and `journey.taskFontFamily`; setting the task family to
+the CSS keyword `inherit` or `unset` lets the base stack apply without replacing the task size.
+A quoted font name such as `"inherit"` is a literal name. Theme reports account for font stack
+and size separately and do not certify empty labels as visible consumers. Weight and style
+requests remain unsupported where the family cannot measure and emit them consistently.
+
+ER Swimlane top-level lane titles follow `flowchart.htmlLabels`; nested groups retain the root
+`htmlLabels` mode used by ordinary clusters. Their measurement and theme evidence follow those
+separate owners, so a source font on an HTML title does not suppress an unrelated SVG title's
+theme font.
 
 C4 presets pair node surfaces with label colors; compiled edge, marker, boundary-label and
 text colors reach their visible terminals. Filled boundaries paint behind their descendants. Gantt presets preserve normal, active,
@@ -805,6 +838,12 @@ into one slot within each layer before composition. Equal declarations in one la
 conflicting declarations in the same layer are rejected. Either spelling in an appearance
 overrides the shared value. Native Mermaid source and site configuration retain their existing
 `darkMode` settings.
+
+Kanban derives section and task palette colors from `themeVariables.darkMode`. Choosing the
+Mermaid Dark palette does not itself enable this separate color-derivation input. An explicitly
+configured root `darkMode` remains a fallback;
+when both paths are authored, the theme-variable value takes priority. The initialized root
+default does not override the selected theme's value.
 
 The same file can be checked and selected without changing its declared default:
 

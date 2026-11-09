@@ -53,11 +53,12 @@ pub use metrics::{measure_html_with_inline_styles, measure_markdown_with_inline_
 pub(crate) use metrics::{
     measure_svg_markdown_word_lines, measure_wrapped_markdown_with_inline_styles,
     measure_xhtml_label_fragment, measure_xhtml_label_fragment_with_terminal_fonts,
-    mermaid_markdown_to_wrapped_word_lines, style_requests_bold_font_weight,
-    style_requests_italic_font_style, svg_markdown_word_style, wrap_markdown_word_lines,
+    mermaid_markdown_to_wrapped_word_lines, svg_markdown_word_style, wrap_markdown_word_lines,
 };
 
-pub(crate) use css_font::{ParsedCssFontStack, parse_css_font_stack, resolve_css_font_weight};
+pub(crate) use css_font::{
+    ParsedCssFontStack, parse_css_font_stack, resolve_css_font_weight, xhtml_font_default,
+};
 pub(crate) use visible_style::VisibleTextStyleFacts;
 
 pub(crate) use svg_metrics::{

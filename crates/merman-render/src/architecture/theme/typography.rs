@@ -52,7 +52,7 @@ impl ArchitectureTypographyThemePlan {
         // Only the explicit theme-variable path owns this property. A top-level `fontSize` is a
         // Mermaid-compatible fallback and must not shadow an active typed base size.
         let config_owns_font_size = typed_font_size_requested
-            && crate::config::config_f64_css_px(
+            && crate::config::config_f64_css_absolute_px(
                 effective_config.as_value(),
                 &["themeVariables", "fontSize"],
             )

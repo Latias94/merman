@@ -1,6 +1,17 @@
 use merman_model::presentation::{PresentationDiagram, RenderSemanticModel};
 use merman_model::{OperationControl, OperationControlResult, OperationPhase};
 
+#[cfg(feature = "diagram-er")]
+mod er;
+#[cfg(feature = "diagram-requirement")]
+mod requirement;
+#[cfg(any(
+    feature = "diagram-er",
+    feature = "diagram-mindmap",
+    feature = "diagram-requirement"
+))]
+mod retained_html;
+
 #[cfg(any(
     feature = "diagram-flowchart",
     feature = "diagram-swimlane",
@@ -342,20 +353,9 @@ fn unsupported_native_model_text_style(
             &control,
         ),
         #[cfg(feature = "diagram-requirement")]
-        RenderSemanticModel::Requirement(model) => declaration_scan::style_lists(
-            model
-                .classes
-                .values()
-                .flat_map(|class| [class.styles.as_slice(), class.text_styles.as_slice()])
-                .chain(
-                    model
-                        .requirements
-                        .iter()
-                        .map(|node| node.css_styles.as_slice()),
-                )
-                .chain(model.elements.iter().map(|node| node.css_styles.as_slice())),
-            &control,
-        ),
+        RenderSemanticModel::Requirement(model) => {
+            requirement::unsupported_text_style(model, &control)
+        }
         #[cfg(feature = "diagram-usecase")]
         RenderSemanticModel::Usecase(model) => declaration_scan::style_lists(
             model
@@ -476,6 +476,22 @@ pub fn unsupported_native_html_style(
                 &control,
             )
         }
+        #[cfg(feature = "diagram-mindmap")]
+        RenderSemanticModel::Mindmap(model) => unsupported_native_mindmap_html_style(
+            model,
+            &parsed.metadata().effective_config,
+            &control,
+        ),
+        #[cfg(feature = "diagram-er")]
+        RenderSemanticModel::Er(model) => {
+            er::unsupported_html_style(model, &parsed.metadata().effective_config, &control)
+        }
+        #[cfg(feature = "diagram-requirement")]
+        RenderSemanticModel::Requirement(model) => requirement::unsupported_html_style(
+            model,
+            &parsed.metadata().effective_config,
+            &control,
+        ),
         #[cfg(feature = "diagram-agentflow")]
         RenderSemanticModel::Agentflow(model) => {
             let config = &parsed.metadata().effective_config;
@@ -515,6 +531,37 @@ pub fn unsupported_native_html_style(
         }
         _ => Ok(None),
     }
+}
+
+#[cfg(feature = "diagram-mindmap")]
+fn unsupported_native_mindmap_html_style(
+    model: &merman_model::families::mindmap::MindmapDiagramRenderModel,
+    config: &merman_model::presentation::PresentationConfig,
+    control: &OperationControl,
+) -> OperationControlResult<Option<String>> {
+    if !crate::config::config_effective_html_labels(config.as_value()) {
+        return Ok(None);
+    }
+    let work = std::sync::Arc::new(crate::resources::OperationWorkMeter::new_with_control(
+        crate::resources::RenderResourcePolicy::unbounded_for_trusted_input(),
+        control.clone(),
+    ));
+    for node in &model.nodes {
+        control.checkpoint()?;
+        if crate::math::contains_delimited_math(&node.label) {
+            // Math owns its projected HTML and native capability admission separately.
+            continue;
+        }
+        let html = match crate::mindmap::native_html_label_source(&node.label, config, &work) {
+            Ok(html) => html,
+            Err(crate::Error::Cancelled(error)) => return Err(error),
+            Err(_) => return Ok(Some("Mindmap HTML label normalization".into())),
+        };
+        if let Some(property) = retained_html::unsupported_style(&html, control)? {
+            return Ok(Some(property));
+        }
+    }
+    Ok(None)
 }
 
 #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]

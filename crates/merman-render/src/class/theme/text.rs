@@ -293,7 +293,7 @@ impl ClassTextThemePlan {
                 &["themeVariables", "fontSize"],
             )
             .unwrap_or_else(|| "16px".to_string());
-            let font_size_px = crate::config::config_f64_explicit_css_px(
+            let font_size_px = crate::config::config_f64_explicit_css_absolute_px(
                 effective_config.as_value(),
                 &["themeVariables", "fontSize"],
             )

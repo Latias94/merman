@@ -9,10 +9,6 @@ pub(crate) fn sequence_text_dimensions_height_px(font_size_px: f64) -> f64 {
     (font_size_px.max(1.0) * (17.0 / 16.0)).round().max(1.0)
 }
 
-pub(crate) fn sequence_actor_popup_panel_height(link_count: usize) -> f64 {
-    SEQUENCE_ACTOR_POPUP_PANEL_BASE_HEIGHT + (link_count as f64) * SEQUENCE_ACTOR_POPUP_ROW_HEIGHT
-}
-
 pub(crate) fn sequence_actor_popup_rect_height(
     actor_type: &str,
     visual_height: f64,
@@ -40,7 +36,7 @@ pub(super) fn sequence_actor_visual_height(
     base_width: f64,
     base_height: f64,
     label_box_height: f64,
-    has_prepared_math: bool,
+    label_footprint: Option<&SequenceActorLabelFootprint>,
 ) -> f64 {
     let legacy_height = match actor_type {
         // Mermaid derives these from the actor-type glyph bbox + label box height.
@@ -54,59 +50,124 @@ pub(super) fn sequence_actor_visual_height(
         "control" => (44.0 + 2.0 * label_box_height).max(1.0),
         _ => base_height.max(1.0),
     };
-    if has_prepared_math {
+    if label_footprint.is_some() {
         legacy_height.max(base_height).max(1.0)
     } else {
         legacy_height
     }
 }
 
-pub(super) fn sequence_actor_prepared_math_layout_height(
-    actor_type: &str,
-    base_width: f64,
-    actor_height: f64,
-    label_box_height: f64,
-    prepared_height: f64,
-) -> f64 {
-    let legacy_height = sequence_actor_visual_height(
-        actor_type,
-        base_width,
-        actor_height,
-        label_box_height,
-        false,
-    );
-    let half_prepared_height = prepared_height.max(1.0) / 2.0;
-    let label_center_from_top = match actor_type {
-        "actor" => actor_height + 2.5,
-        "boundary" => {
-            let top = 21.0 + 15.0 + actor_height / 2.0;
-            let footer_height = 44.0 + label_box_height;
-            let bottom = 21.0 + 15.0 + footer_height / 2.0;
-            top.max(bottom)
+/// The measurement owner remains distinct even when its resulting geometry is shared.
+#[derive(Debug, Clone, Copy)]
+pub(super) enum SequenceActorLabelKind {
+    TypedText,
+    PreparedMath,
+}
+
+/// Classic actor label geometry, relative to the participant's top, shared by layout and SVG.
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct SequenceActorLabelFootprint {
+    pub(super) layout_height: f64,
+    glyph_label_centers: Option<(f64, f64)>,
+}
+
+impl SequenceActorLabelFootprint {
+    pub(super) fn resolve(
+        kind: SequenceActorLabelKind,
+        actor_type: &str,
+        base_width: f64,
+        actor_height: f64,
+        label_box_height: f64,
+        text_height: f64,
+    ) -> Self {
+        let legacy_height = sequence_actor_visual_height(
+            actor_type,
+            base_width,
+            actor_height,
+            label_box_height,
+            None,
+        );
+        let half_height = text_height.max(1.0) / 2.0;
+        // These are the existing classic writer's translated top/footer label centers and
+        // glyph bottoms. Keep math's legacy centers; typed text needs a separate label band.
+        let glyph = match actor_type {
+            "actor" => {
+                let center = match kind {
+                    SequenceActorLabelKind::PreparedMath => actor_height + 2.5,
+                    SequenceActorLabelKind::TypedText => actor_height / 2.0 + 35.0,
+                };
+                Some((center, center, 60.0, 60.0))
+            }
+            "boundary" => Some((
+                21.0 + 15.0 + actor_height / 2.0,
+                21.0 + 15.0 + (44.0 + label_box_height) / 2.0,
+                55.0,
+                55.0,
+            )),
+            "control" => Some((
+                34.0 + actor_height / 2.0,
+                27.0 + (44.0 + 2.0 * label_box_height) / 2.0,
+                54.0,
+                54.0,
+            )),
+            "entity" => Some((
+                6.0 + 30.0 + actor_height / 2.0,
+                22.0 + 15.0 + (44.0 + label_box_height) / 2.0,
+                53.0,
+                54.0,
+            )),
+            "database" => {
+                let cylinder_height = base_width / 3.0;
+                let ry = cylinder_height / 2.0 / (2.5 + cylinder_height / 50.0);
+                let glyph_bottom = cylinder_height + ry;
+                Some((
+                    35.0 + actor_height / 2.0,
+                    35.0 + (cylinder_height + label_box_height) / 2.0,
+                    glyph_bottom,
+                    glyph_bottom,
+                ))
+            }
+            _ => None,
+        };
+        let mut layout_height =
+            if glyph.is_some() && matches!(kind, SequenceActorLabelKind::PreparedMath) {
+                legacy_height
+            } else {
+                legacy_height.max(text_height).max(1.0)
+            };
+        let glyph_label_centers = glyph.map(|(top, footer, top_bottom, footer_bottom)| {
+            let (top, footer) = match kind {
+                SequenceActorLabelKind::PreparedMath => (top, footer),
+                SequenceActorLabelKind::TypedText => (
+                    top.max(top_bottom + SEQUENCE_ACTOR_LABEL_GAP + half_height),
+                    footer.max(footer_bottom + SEQUENCE_ACTOR_LABEL_GAP + half_height),
+                ),
+            };
+            layout_height = layout_height.max(top.max(footer) + half_height);
+            (top, footer)
+        });
+        if actor_type == "collections" && matches!(kind, SequenceActorLabelKind::TypedText) {
+            // The classic collection label is translated 6px down from its rectangle center.
+            layout_height = layout_height.max(text_height + 2.0 * SEQUENCE_ACTOR_LABEL_GAP);
         }
-        "control" => {
-            let top = 22.0 + 12.0 + actor_height / 2.0;
-            let footer_height = 44.0 + 2.0 * label_box_height;
-            let bottom = 22.0 + 5.0 + footer_height / 2.0;
-            top.max(bottom)
+        if matches!(kind, SequenceActorLabelKind::TypedText) {
+            // Reserve a whole output pixel so serialized label coordinates cannot round outside
+            // their own row. Math keeps its existing exact projection dimensions.
+            layout_height = layout_height.ceil();
         }
-        "entity" => {
-            let top = 6.0 + 30.0 + actor_height / 2.0;
-            let footer_height = 44.0 + label_box_height;
-            let bottom = 22.0 + 15.0 + footer_height / 2.0;
-            top.max(bottom)
+        Self {
+            layout_height,
+            // Prepared math retains its existing writer placement and browser/native projection.
+            glyph_label_centers: matches!(kind, SequenceActorLabelKind::TypedText)
+                .then_some(glyph_label_centers)
+                .flatten(),
         }
-        "database" => {
-            let top = 35.0 + actor_height / 2.0;
-            let footer_height = base_width / 3.0 + label_box_height;
-            let bottom = 35.0 + footer_height / 2.0;
-            top.max(bottom)
-        }
-        _ => return legacy_height.max(prepared_height).max(1.0),
-    };
-    legacy_height
-        .max(label_center_from_top + half_prepared_height)
-        .max(1.0)
+    }
+
+    pub(crate) fn label_center_y(&self, footer: bool) -> Option<f64> {
+        self.glyph_label_centers
+            .map(|(top, bottom)| if footer { bottom } else { top })
+    }
 }
 
 pub(super) fn sequence_actor_lifeline_start_y(
@@ -116,8 +177,7 @@ pub(super) fn sequence_actor_lifeline_start_y(
 ) -> f64 {
     match actor_type {
         // Hard-coded in Mermaid's sequence svgDraw.js for these actor types.
-        // Prepared math may make the terminal actor footprint taller than the legacy glyph. Keep
-        // the lifeline below the complete renderer-owned label projection in that case.
+        // Prepared math and typed text may have a taller terminal footprint than the glyph.
         "actor" | "boundary" => 80.0_f64.max(base_height),
         "control" | "entity" => 75.0_f64.max(base_height),
         // For database, Mermaid starts the lifeline slightly below the actor box.
@@ -128,8 +188,9 @@ pub(super) fn sequence_actor_lifeline_start_y(
 
 /// Mermaid's Neo participant row: glyph, gap, measured text, gap to the lifeline.
 pub(crate) const SEQUENCE_GLYPH_BAND_HEIGHT: f64 = 44.0;
+const SEQUENCE_ACTOR_LABEL_GAP: f64 = 6.0;
 pub(crate) fn sequence_actor_stack_height(text_height: f64) -> f64 {
-    SEQUENCE_GLYPH_BAND_HEIGHT + 6.0 + text_height + 6.0
+    SEQUENCE_GLYPH_BAND_HEIGHT + SEQUENCE_ACTOR_LABEL_GAP + text_height + 6.0
 }
 
 pub(crate) struct SequenceActorBands {
@@ -162,8 +223,6 @@ mod tests {
         assert_eq!(super::SEQUENCE_MESSAGE_WRAP_PADDING_SIDES, 2.0);
         assert_eq!(super::SEQUENCE_ACTOR_POPUP_PANEL_BASE_HEIGHT, 20.0);
         assert_eq!(super::SEQUENCE_ACTOR_POPUP_ROW_HEIGHT, 30.0);
-        assert_eq!(super::sequence_actor_popup_panel_height(0), 20.0);
-        assert_eq!(super::sequence_actor_popup_panel_height(4), 140.0);
         assert_eq!(
             super::sequence_actor_popup_rect_height("queue", 74.0, 65.0, false, false),
             65.0
@@ -180,19 +239,19 @@ mod tests {
         assert_eq!(super::sequence_text_dimensions_height_px(10.0), 11.0);
         assert_eq!(crate::text::sequence_text_line_step_px(16.0), 19.0);
         assert_eq!(
-            super::sequence_actor_visual_height("database", 150.0, 65.0, 20.0, false),
+            super::sequence_actor_visual_height("database", 150.0, 65.0, 20.0, None),
             70.0
         );
         assert_eq!(
-            super::sequence_actor_visual_height("boundary", 150.0, 65.0, 20.0, false),
+            super::sequence_actor_visual_height("boundary", 150.0, 65.0, 20.0, None),
             64.0
         );
         assert_eq!(
-            super::sequence_actor_visual_height("entity", 150.0, 65.0, 20.0, false),
+            super::sequence_actor_visual_height("entity", 150.0, 65.0, 20.0, None),
             64.0
         );
         assert_eq!(
-            super::sequence_actor_visual_height("control", 150.0, 65.0, 20.0, false),
+            super::sequence_actor_visual_height("control", 150.0, 65.0, 20.0, None),
             84.0
         );
         assert_eq!(super::SEQUENCE_SELF_MESSAGE_FRAME_EXTRA_Y_PX, 60.0);
@@ -210,16 +269,24 @@ mod tests {
             ("entity", 109.0),
             ("database", 110.0),
         ] {
-            let layout_height = super::sequence_actor_prepared_math_layout_height(
+            let footprint = super::SequenceActorLabelFootprint::resolve(
+                super::SequenceActorLabelKind::PreparedMath,
                 actor_type,
                 150.0,
                 65.0,
                 20.0,
                 prepared_height,
             );
+            let layout_height = footprint.layout_height;
             assert_eq!(layout_height, expected_minimum, "{actor_type}");
             assert_eq!(
-                super::sequence_actor_visual_height(actor_type, 150.0, layout_height, 20.0, true,),
+                super::sequence_actor_visual_height(
+                    actor_type,
+                    150.0,
+                    layout_height,
+                    20.0,
+                    Some(&footprint),
+                ),
                 expected_minimum,
                 "{actor_type}"
             );
@@ -228,6 +295,49 @@ mod tests {
                     >= layout_height,
                 "{actor_type} lifeline must start below the complete prepared label footprint"
             );
+        }
+    }
+
+    #[test]
+    fn classic_typed_text_footprints_keep_separate_glyph_and_label_bands() {
+        for (actor_type, glyph_bottom) in [
+            ("actor", 60.0),
+            ("boundary", 55.0),
+            ("control", 54.0),
+            ("entity", 54.0),
+            ("database", 50.0 + 25.0 / 3.5),
+        ] {
+            let text = super::SequenceActorLabelFootprint::resolve(
+                super::SequenceActorLabelKind::TypedText,
+                actor_type,
+                150.0,
+                65.0,
+                20.0,
+                125.0,
+            );
+            let math = super::SequenceActorLabelFootprint::resolve(
+                super::SequenceActorLabelKind::PreparedMath,
+                actor_type,
+                150.0,
+                65.0,
+                20.0,
+                125.0,
+            );
+            for footer in [false, true] {
+                let center = text.label_center_y(footer).unwrap();
+                // Entity's top glyph is one pixel shorter than its footer glyph.
+                let bottom = if actor_type == "entity" && !footer {
+                    53.0
+                } else {
+                    glyph_bottom
+                };
+                assert!(center - 62.5 > bottom, "{actor_type}/footer={footer}");
+                assert!(center + 62.5 <= text.layout_height);
+                assert!(
+                    math.label_center_y(footer).is_none(),
+                    "math retains its writer placement"
+                );
+            }
         }
     }
 }

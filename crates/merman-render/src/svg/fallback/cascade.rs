@@ -1,16 +1,14 @@
 use super::html::HtmlTextFragment;
 use crate::mermaid_style::{
-    is_supported_css_color_value, is_supported_css_font_style_value,
-    is_supported_css_font_weight_value, parse_style_declaration,
+    CssFontSizeContext, is_supported_css_color_value, is_supported_css_font_style_value,
+    is_supported_css_font_weight_value, parse_style_declaration, resolve_mermaid_font_size_px,
     visit_style_declaration_boundaries_with_checkpoints,
 };
 use crate::svg::pipeline::{
     SvgTagScanner, checkpoint_loop, decode_xml_style_text_with_checkpoints, end_tag_name,
     find_tag_end_with_checkpoints, find_with_checkpoints, start_tag_name, trim_with_checkpoints,
 };
-use crate::text::{
-    HtmlWhiteSpace, TextStyle, style_requests_bold_font_weight, style_requests_italic_font_style,
-};
+use crate::text::{HtmlWhiteSpace, TextStyle, resolve_css_font_weight, xhtml_font_default};
 use cssparser::{
     AtRuleParser, BasicParseErrorKind, CowRcStr, ParseError, Parser, ParserState,
     QualifiedRuleParser, StyleSheetParser, Token, parse_important,
@@ -988,12 +986,6 @@ impl CascadeIndex {
     ) -> Result<ResolvedStyle, E> {
         let element = path.last().expect("source path is non-empty");
         let parent = inherited.cloned().unwrap_or_else(default_style);
-        let parent_text_style = TextStyle {
-            font_family: None,
-            font_size: parent.font_size,
-            font_weight: parent.font_weight.as_deref().map(str::to_owned),
-            font_style: parent.font_style.as_deref().map(str::to_owned),
-        };
         let mut specified: HashMap<String, Specified> = HashMap::new();
         let candidate_rule_indices = self.candidate_rules_for_path(path, selector_limit)?;
         for (candidate_index, rule_index) in candidate_rule_indices.into_iter().enumerate() {
@@ -1043,20 +1035,15 @@ impl CascadeIndex {
             );
         }
 
+        let default_font = |property| {
+            (element.namespace == Namespace::Xhtml)
+                .then(|| xhtml_font_default(&element.local_name, property))
+                .flatten()
+        };
         let font_size_value = specified
             .get("font-size")
             .map(|value| value.value.as_ref())
-            .or_else(|| {
-                if element.namespace == Namespace::Xhtml {
-                    match element.local_name.as_str() {
-                        "big" => Some("1.2em"),
-                        "small" => Some("0.8333333333333334em"),
-                        _ => None,
-                    }
-                } else {
-                    None
-                }
-            });
+            .or_else(|| default_font("font-size"));
         let font_size = resolve_font_size(
             font_size_value,
             parent.font_size,
@@ -1079,22 +1066,33 @@ impl CascadeIndex {
             specified.get("font-style").map(|value| &value.value),
             parent.font_style.as_ref(),
         );
-        if element.namespace == Namespace::Xhtml {
-            if element.local_name == "code" && !specified.contains_key("font-family") {
-                font_family = "monospace".into();
-            }
-            if matches!(element.local_name.as_str(), "b" | "strong")
-                && !specified.contains_key("font-weight")
-                && !style_requests_bold_font_weight(&parent_text_style)
-            {
-                font_weight = Some("700".into());
-            }
-            if matches!(element.local_name.as_str(), "i" | "em")
-                && !specified.contains_key("font-style")
-                && !style_requests_italic_font_style(&parent_text_style)
-            {
-                font_style = Some("italic".into());
-            }
+        if !specified.contains_key("font-family")
+            && let Some(value) = default_font("font-family")
+        {
+            font_family = value.into();
+        }
+        if !specified.contains_key("font-weight")
+            && let Some(value) = default_font("font-weight")
+        {
+            font_weight = Some(value.into());
+        }
+        if !specified.contains_key("font-style")
+            && let Some(value) = default_font("font-style")
+        {
+            font_style = Some(value.into());
+        }
+        // The fallback flattens source ancestry into SVG text runs. Resolve relative weights
+        // before that ancestry disappears, including authored values on SVG ancestors.
+        if let Some(value) = font_weight.as_deref()
+            && (value.eq_ignore_ascii_case("bolder") || value.eq_ignore_ascii_case("lighter"))
+        {
+            let inherited = parent
+                .font_weight
+                .as_deref()
+                .and_then(|value| resolve_css_font_weight(value, 400))
+                .unwrap_or(400);
+            font_weight =
+                resolve_css_font_weight(value, inherited).map(|weight| weight.to_string().into());
         }
         let line_height = resolve_line_height(
             specified
@@ -1801,28 +1799,13 @@ fn is_admitted_value(property: &str, value: &str, presentation: bool) -> bool {
         return true;
     }
     match property {
-        "font-size" => {
-            matches!(
-                lower.as_str(),
-                "xx-small"
-                    | "x-small"
-                    | "small"
-                    | "medium"
-                    | "large"
-                    | "x-large"
-                    | "xx-large"
-                    | "smaller"
-                    | "larger"
-            ) || ["px", "rem", "em", "%"]
-                .iter()
-                .any(|unit| parse_css_number_with_unit(&lower, unit).is_some())
-                || (presentation
-                    && lower
-                        .parse::<f64>()
-                        .ok()
-                        .and_then(bounded_positive)
-                        .is_some())
-        }
+        "font-size" => resolve_font_size(
+            Some(value),
+            DEFAULT_FONT_SIZE,
+            DEFAULT_FONT_SIZE,
+            presentation,
+        )
+        .is_some(),
         "line-height" => {
             lower == "normal"
                 || lower
@@ -3160,9 +3143,18 @@ fn parse_declarations_with_limit<E>(
         let current_order = order;
         order = order.saturating_add(1);
         let declaration = if let Some(parsed) = parse_style_declaration(boundary.raw()) {
+            let value = if matches!(parsed.property(), "font-weight" | "font-style") {
+                let mut value = Parser::new(parsed.value());
+                match value.expect_ident_cloned() {
+                    Ok(keyword) if value.is_exhausted() => keyword.to_ascii_lowercase().into(),
+                    _ => parsed.value().into(),
+                }
+            } else {
+                parsed.value().into()
+            };
             Declaration {
                 property: parsed.property().to_owned(),
-                value: parsed.value().into(),
+                value,
                 important: parsed.important(),
                 order: current_order,
             }
@@ -3193,40 +3185,16 @@ fn resolve_font_size(
     root: f64,
     svg_unitless: bool,
 ) -> Option<f64> {
-    let value = value?.trim().to_ascii_lowercase();
-    if matches!(value.as_str(), "inherit" | "unset") {
-        return finite_positive(parent);
+    let value = value?;
+    let size = resolve_mermaid_font_size_px(value, CssFontSizeContext::new(parent, root))?;
+    // Unitless nonzero sizes are the SVG presentation/configuration legacy, not valid HTML CSS.
+    if !svg_unitless && size != 0.0 {
+        let mut parser = Parser::new(value);
+        if matches!(parser.next(), Ok(Token::Number { .. })) {
+            return None;
+        }
     }
-    if value == "initial" {
-        return finite_positive(DEFAULT_FONT_SIZE);
-    }
-    if let Some(number) = value.strip_suffix("px").and_then(parse_number) {
-        return bounded_positive(number);
-    }
-    if let Some(number) = value.strip_suffix("rem").and_then(parse_number) {
-        return bounded_positive(root * number);
-    }
-    if let Some(number) = value.strip_suffix("em").and_then(parse_number) {
-        return bounded_positive(parent * number);
-    }
-    if let Some(number) = value.strip_suffix('%').and_then(parse_number) {
-        return bounded_positive(parent * number / 100.0);
-    }
-    if svg_unitless {
-        return value.parse::<f64>().ok().and_then(bounded_positive);
-    }
-    match value.as_str() {
-        "xx-small" => finite_positive(9.0),
-        "x-small" => finite_positive(10.0),
-        "small" => finite_positive(13.0),
-        "medium" => finite_positive(16.0),
-        "large" => finite_positive(18.0),
-        "x-large" => finite_positive(24.0),
-        "xx-large" => finite_positive(32.0),
-        "smaller" => finite_positive(parent * 0.833_333_333_3),
-        "larger" => finite_positive(parent * 1.2),
-        _ => None,
-    }
+    (size <= MAX_CSS_NUMERIC_VALUE).then_some(size)
 }
 
 fn resolve_inherited_text_value(
@@ -3572,6 +3540,120 @@ mod tests {
     }
 
     #[test]
+    fn html_emphasis_and_relative_weights_resolve_before_source_ancestry_is_flattened() {
+        for (css, parent, markup, expected_weight, expected_style) in [
+            ("", "font-weight:100", "<strong>A</strong>", "400", None),
+            (
+                "",
+                "font-weight:400",
+                "<b><strong>A</strong></b>",
+                "900",
+                None,
+            ),
+            ("", "font-weight:600", "<b>A</b>", "900", None),
+            (
+                "",
+                "font-weight:700",
+                "<span style='font-weight:lighter'>A</span>",
+                "400",
+                None,
+            ),
+            (
+                "",
+                "font-weight:100",
+                "<span style='font-weight:bolder'><span style='font-weight:bolder'>A</span></span>",
+                "700",
+                None,
+            ),
+            (
+                "",
+                "font-weight:700",
+                "<b style='font-weight:inherit'>A</b>",
+                "700",
+                None,
+            ),
+            (
+                "",
+                "font-weight:700",
+                "<b style='font-weight:normal'>A</b>",
+                "normal",
+                None,
+            ),
+            (
+                "",
+                "font-weight:700",
+                r"<b style='font-weight:\69nitial'>A</b>",
+                "normal",
+                None,
+            ),
+            (
+                "strong{font-weight:inherit!important}",
+                "font-weight:600",
+                "<strong style='font-weight:100'>A</strong>",
+                "600",
+                None,
+            ),
+            (
+                "",
+                "font-weight:400;font-style:oblique",
+                "<em>A</em>",
+                "400",
+                Some("italic"),
+            ),
+            (
+                "",
+                "font-weight:400;font-style:oblique",
+                "<i>A</i>",
+                "400",
+                Some("italic"),
+            ),
+            (
+                "",
+                "font-weight:400;font-style:oblique",
+                "<em style='font-style:inherit'>A</em>",
+                "400",
+                Some("oblique"),
+            ),
+        ] {
+            let mut checkpoint = || Ok::<(), Infallible>(());
+            let mut selector_limit = |_, _| Ok::<(), Infallible>(());
+            let mut cascade = CascadeIndex::new(
+                &format!("<svg><style>{css}</style></svg>"),
+                &mut checkpoint,
+                &mut selector_limit,
+            )
+            .unwrap();
+            let resolved = cascade
+                .resolve_foreign_object(
+                    &[],
+                    "<foreignObject/>",
+                    &format!("<div style='{parent}'>{markup}</div>"),
+                    &mut checkpoint,
+                    &mut selector_limit,
+                )
+                .unwrap();
+            let typography = resolved
+                .fragments
+                .iter()
+                .find_map(|fragment| match fragment {
+                    HtmlTextFragment::Text { typography, .. } => Some(typography),
+                    HtmlTextFragment::HardBreak => None,
+                })
+                .expect("label text");
+            assert_eq!(
+                typography.font_weight.as_deref().unwrap_or("normal"),
+                expected_weight,
+                "{parent}/{markup}"
+            );
+            assert_eq!(
+                typography.font_style.as_deref(),
+                expected_style,
+                "{parent}/{markup}"
+            );
+        }
+    }
+
+    #[test]
     fn html_size_elements_apply_parent_relative_defaults_below_authored_font_sizes() {
         for (css, markup, expected) in [
             ("", "<big><big><big>A</big></big></big>", 41.472),
@@ -3608,6 +3690,64 @@ mod tests {
                 .collect();
             assert_eq!(sizes.len(), 1);
             assert!((sizes[0] - expected).abs() < 1e-9, "{markup}: {sizes:?}");
+        }
+    }
+
+    #[test]
+    fn fallback_font_sizes_share_the_measurement_scalar_context() {
+        let context = CssFontSizeContext::new(24.0, 18.0);
+        for value in [
+            "0px",
+            "0em",
+            "0%",
+            "xx-small",
+            "x-small",
+            "small",
+            "medium",
+            "large",
+            "x-large",
+            "xx-large",
+            "smaller",
+            "larger",
+            "24pt",
+            "2pc",
+            "1in",
+            "2.54cm",
+            "25.4mm",
+            "101.6q",
+            "1.5em",
+            "125%",
+            "1.5rem",
+            r"24p\74",
+            r"\6c arge",
+        ] {
+            assert_eq!(
+                resolve_font_size(Some(value), 24.0, 18.0, false),
+                resolve_mermaid_font_size_px(value, context),
+                "{value}"
+            );
+            assert!(is_admitted_value("font-size", value, false), "{value}");
+        }
+        assert_eq!(resolve_font_size(Some("1em"), 0.0, 18.0, false), Some(0.0));
+        assert_eq!(
+            resolve_font_size(Some("1rem"), 0.0, 18.0, false),
+            Some(18.0)
+        );
+        assert_eq!(resolve_font_size(Some("32"), 24.0, 18.0, true), Some(32.0));
+        assert_eq!(resolve_font_size(Some("32"), 24.0, 18.0, false), None);
+        for invalid in [
+            "-1px",
+            "-24pt",
+            "-1e-1000px",
+            "24fr",
+            "calc(24px)",
+            "24px trailing",
+        ] {
+            assert_eq!(
+                resolve_font_size(Some(invalid), 24.0, 18.0, false),
+                None,
+                "{invalid}"
+            );
         }
     }
 

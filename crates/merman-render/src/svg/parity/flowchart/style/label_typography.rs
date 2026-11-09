@@ -13,11 +13,11 @@ pub(in crate::svg::parity::flowchart) fn html_label_typography_receipt(
     let facts = VisibleTextStyleFacts::from_xhtml_fragment(html);
     let inherited_stack = facts
         .inherited_font_family_run_count()
-        .saturating_sub(intrinsic_code_family_runs(html));
+        .saturating_sub(intrinsic_monospace_family_runs(html));
     let visible = facts.parse_valid() && facts.has_visible_runs();
     let stack_source = if visible && inherited_stack == 0 {
         if facts.unverified_font_family_run_count() == 0 {
-            // Code's monospace family is shared by HTML measurement and the native cascade.
+            // Intrinsic monospace families are shared by HTML measurement and the native cascade.
             FlowchartSourceFacetStatus::Admitted
         } else {
             FlowchartSourceFacetStatus::Unverified
@@ -57,10 +57,13 @@ pub(in crate::svg::parity::flowchart) fn html_label_typography_receipt(
         .with_local_font_source_ownership(stack_source, size_source)
 }
 
-/// Count runs that inherit the outer family except for HTML code's intrinsic monospace.
+/// Count runs that inherit the outer family except for intrinsic HTML monospace.
 /// Other descendant declarations remain owned by the shared visible-run facts.
-fn intrinsic_code_family_runs(html: &str) -> usize {
-    if !super::contains_ascii_case_insensitive(html, b"<code") {
+fn intrinsic_monospace_family_runs(html: &str) -> usize {
+    if ![b"<code".as_slice(), b"<kbd", b"<samp", b"<tt"]
+        .iter()
+        .any(|tag| super::contains_ascii_case_insensitive(html, tag))
+    {
         return 0;
     }
     let wrapped = format!("<merman-label-fonts>{html}</merman-label-fonts>");
@@ -68,7 +71,7 @@ fn intrinsic_code_family_runs(html: &str) -> usize {
         return 0;
     };
     let mut parents = Vec::<(crate::xml_dom::NodeId, (bool, bool))>::new();
-    let mut code_runs = 0;
+    let mut monospace_runs = 0;
     for node in document.root_element().descendants() {
         let parent = node.parent().map(|parent| parent.id());
         while parents.last().map(|(id, _)| *id) != parent && !parents.is_empty() {
@@ -88,7 +91,8 @@ fn intrinsic_code_family_runs(html: &str) -> usize {
                 inherited.1
                     && !has_class
                     && !has_face
-                    && !node.tag_name().name().eq_ignore_ascii_case("code"),
+                    && crate::text::xhtml_font_default(node.tag_name().name(), "font-family")
+                        != Some("monospace"),
             );
             let owners = match node
                 .attribute("style")
@@ -115,8 +119,38 @@ fn intrinsic_code_family_runs(html: &str) -> usize {
                 !crate::text::trim_html_collapsible_ascii_whitespace(text).is_empty()
             })
         {
-            code_runs += 1;
+            monospace_runs += 1;
         }
     }
-    code_runs
+    monospace_runs
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn intrinsic_monospace_ownership_keeps_author_overrides_and_mixed_runs() {
+        for tag in ["code", "kbd", "samp", "tt"] {
+            assert_eq!(
+                intrinsic_monospace_family_runs(&format!("<span>A</span><{tag}>B</{tag}>")),
+                1,
+                "{tag}"
+            );
+            assert_eq!(
+                intrinsic_monospace_family_runs(&format!(
+                    "<{tag} style='font-family:inherit'>B</{tag}>"
+                )),
+                0,
+                "{tag}"
+            );
+            assert_eq!(
+                intrinsic_monospace_family_runs(&format!(
+                    "<{tag} style='font-family:serif'>B</{tag}>"
+                )),
+                0,
+                "{tag}"
+            );
+        }
+    }
 }

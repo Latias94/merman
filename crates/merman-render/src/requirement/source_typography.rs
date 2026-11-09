@@ -9,6 +9,7 @@ use crate::mermaid_style::{
 };
 use crate::resources::{OperationWorkMeter, PreparedTextRetainedReservation};
 use crate::text::{TextMeasurer, TextMetrics, TextStyle, WrapMode};
+use merman_model::{OperationControl, OperationControlResult};
 use std::borrow::Cow;
 use std::sync::Arc;
 
@@ -68,17 +69,31 @@ fn static_font_weight(value: &str) -> bool {
 }
 
 fn static_font_size_px(value: &str) -> Option<f64> {
-    let mut parser = cssparser::Parser::new(value);
-    match parser.next().ok()? {
-        cssparser::Token::Number { value, .. } if *value == 0.0 => {}
-        cssparser::Token::Dimension { unit, .. } if unit.eq_ignore_ascii_case("px") => {}
-        _ => return None,
+    if let Some(size) = crate::mermaid_style::resolve_explicit_css_absolute_font_size_px(value) {
+        return Some(size);
     }
-    parser.expect_exhausted().ok()?;
-    crate::mermaid_style::parse_svg_number_or_px(value)
+    // Unitless zero is valid CSS; other unitless numbers are configuration-only syntax.
+    crate::mermaid_style::parse_svg_number_or_px(value).filter(|size| *size == 0.0)
 }
 
 impl RequirementNodeTypography {
+    pub(crate) fn has_unmeasured_font_size(
+        declarations: &[String],
+        control: &OperationControl,
+    ) -> OperationControlResult<bool> {
+        let mut source = SourceDeclarations::default();
+        for raw in declarations {
+            control.checkpoint()?;
+            if let Some(declaration) = parse_style_declaration(raw) {
+                source.observe(declaration);
+            }
+        }
+        control.checkpoint()?;
+        Ok(source.font_size.is_some_and(|value| {
+            !source.font_size_inherits && static_font_size_px(value).is_none()
+        }))
+    }
+
     pub(super) fn svg_terminal_measurer<'a>(
         &'a self,
         measurer: &'a dyn TextMeasurer,
@@ -409,6 +424,66 @@ mod tests {
             resolve(&["font:bold 48px serif"]).font_size_ownership(),
             CssFontSizeOwnership::Inherited
         );
+    }
+
+    #[test]
+    fn requirement_source_absolute_sizes_share_measurement_and_ownership() {
+        for (value, expected) in [
+            ("24pt", 32.0),
+            ("2PC", 32.0),
+            ("1in", 96.0),
+            ("2.54cm", 96.0),
+            ("25.4mm", 96.0),
+            ("101.6q", 96.0),
+            (r"24p\74 !important", 32.0),
+            ("0", 0.0),
+            ("-0pt", 0.0),
+        ] {
+            let source = resolve(&[&format!("font-size:{value}")]);
+            assert_eq!(
+                source.font_size_ownership(),
+                CssFontSizeOwnership::SourceOwned,
+                "{value}"
+            );
+            let style = source.resolve_text_style(&TextStyle::default());
+            assert!(
+                (style.font_size - expected).abs() < 1e-5,
+                "{value}: {style:?}"
+            );
+            assert_eq!(source.has_zero_font_size(), expected == 0.0);
+        }
+    }
+
+    #[test]
+    fn requirement_native_size_boundary_follows_the_writer_last_value() {
+        for (values, unmeasured) in [
+            (vec!["font-size:2em"], true),
+            (vec!["font-size:125%"], true),
+            (vec!["font-size:medium"], true),
+            (vec!["font-size:18"], true),
+            (vec!["font-size:-24pt"], true),
+            (vec!["font-size:24pt trailing"], true),
+            (vec!["font-size:var(--size)"], true),
+            (vec!["font-size:calc(24pt)"], true),
+            (vec!["font-size:2rem !important", "font-size:24pt"], false),
+            (vec!["font-size:24pt", "font-size:2em"], true),
+            (vec!["font-size:2em", "font-size:inherit"], false),
+            (vec!["font-size:24pt", "font-size:unset"], false),
+        ] {
+            let declarations = values
+                .iter()
+                .map(|value| (*value).to_owned())
+                .collect::<Vec<_>>();
+            assert_eq!(
+                RequirementNodeTypography::has_unmeasured_font_size(
+                    &declarations,
+                    &OperationControl::new()
+                )
+                .unwrap(),
+                unmeasured,
+                "{values:?}"
+            );
+        }
     }
 
     #[test]

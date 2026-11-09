@@ -807,6 +807,152 @@ fn er_swimlane_relationship_nodes_and_lane_titles_resolve_html_modes_independent
 }
 
 #[test]
+fn er_swimlane_nested_group_measurement_follows_its_ordinary_cluster_writer() {
+    let source = |root, flowchart| {
+        format!(
+            "---\nconfig: {}\n---\nerDiagram\nsubgraph Outer[Outer title]\nsubgraph Inner[Inner title]\nA\nend\nend\n",
+            json!({"layout": "swimlane", "htmlLabels": root,
+                "flowchart": {"htmlLabels": flowchart}}),
+        )
+    };
+    for (root, flowchart) in [(false, true), (true, false)] {
+        let parsed = parse_er(&source(root, flowchart));
+        let artifact = prepare_er(&parsed);
+        let layout = project_layout(&artifact);
+        for (id, html) in [("Outer", flowchart), ("Inner", root)] {
+            let control = layout_er(&source(html, html));
+            let expected = control
+                .clusters
+                .iter()
+                .find(|group| group.id == id)
+                .unwrap();
+            let actual = layout.clusters.iter().find(|group| group.id == id).unwrap();
+            assert_eq!(
+                (actual.title_label.width, actual.title_label.height),
+                (expected.title_label.width, expected.title_label.height),
+                "{id}: root={root}, flowchart={flowchart}"
+            );
+        }
+        let svg = artifact
+            .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+            .unwrap()
+            .svg()
+            .to_owned();
+        let document = roxmltree::Document::parse(&svg).unwrap();
+        for (id, html) in [("Outer", flowchart), ("Inner", root)] {
+            let dom_id = format!("merman-{id}");
+            let group = document
+                .descendants()
+                .find(|element| element.attribute("id") == Some(dom_id.as_str()))
+                .unwrap();
+            assert_eq!(
+                group
+                    .descendants()
+                    .any(|element| element.has_tag_name("foreignObject")),
+                html,
+                "{id}: writer must use the measured label mode"
+            );
+        }
+    }
+}
+
+#[test]
+fn er_swimlane_nested_markdown_titles_measure_the_retained_writer_projection() {
+    use merman_render::environment::TextMeasurementPhase;
+    use merman_render::text::{
+        TextStyle, WrapMode, measure_html_with_inline_styles, measure_markdown_with_inline_styles,
+    };
+
+    let title = "<b>WWWW</b> List~T~";
+    for html in [true, false] {
+        let source = format!(
+            "---\nconfig: {}\n---\nerDiagram\nsubgraph Outer\nsubgraph Inner[\"{title}\"]\nA\nend\nend\n",
+            json!({"layout": "swimlane", "htmlLabels": html,
+                "flowchart": {"htmlLabels": !html},
+                "themeVariables": {"fontFamily": "Arial", "fontSize": "16px"}}),
+        );
+        let parsed = parse_er(&source);
+        let RenderSemanticModel::Er(model) = parsed.model() else {
+            panic!("expected ER model");
+        };
+        let inner = model
+            .subgraphs
+            .iter()
+            .find(|group| group.id == "Inner")
+            .unwrap();
+        assert_eq!(inner.label_type, "markdown");
+        assert_eq!(inner.title, title);
+        let artifact = prepare_er(&parsed);
+        let layout = project_layout(&artifact);
+        let measured = &layout
+            .clusters
+            .iter()
+            .find(|group| group.id == "Inner")
+            .unwrap()
+            .title_label;
+        let svg = artifact
+            .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+            .unwrap()
+            .svg()
+            .to_owned();
+        let document = roxmltree::Document::parse(&svg).unwrap();
+        let group = document
+            .descendants()
+            .find(|node| node.attribute("id") == Some("merman-Inner"))
+            .unwrap();
+        let session = RenderEnvironment::deterministic().begin_session().unwrap();
+        let measurer = session.text_measurer(TextMeasurementPhase::Layout);
+        let style = TextStyle {
+            font_family: Some("Arial".into()),
+            font_size: 16.0,
+            ..TextStyle::default()
+        };
+        let expected = if html {
+            let label = group
+                .descendants()
+                .find(|node| node.attribute("class") == Some("nodeLabel"))
+                .unwrap();
+            assert!(label.descendants().any(|node| node.has_tag_name("b")));
+            assert_eq!(
+                label
+                    .descendants()
+                    .filter(|node| node.is_text())
+                    .filter_map(|node| node.text())
+                    .collect::<String>(),
+                "WWWW List~T~",
+            );
+            measure_html_with_inline_styles(
+                &measurer,
+                &svg[label.range()],
+                &style,
+                None,
+                WrapMode::HtmlLike,
+            )
+        } else {
+            assert!(
+                !group
+                    .descendants()
+                    .any(|node| node.has_tag_name("foreignObject"))
+            );
+            assert_eq!(
+                group
+                    .descendants()
+                    .filter(
+                        |node| node.has_tag_name("tspan") && node.children().all(|n| n.is_text())
+                    )
+                    .filter_map(|node| node.text())
+                    .map(str::trim)
+                    .collect::<Vec<_>>(),
+                ["<b>", "WWWW", "</b>", "List"],
+            );
+            measure_markdown_with_inline_styles(&measurer, title, &style, None, WrapMode::SvgLike)
+        };
+        assert!((measured.width - expected.width).abs() < 1.0e-9);
+        assert!((measured.height - expected.height).abs() < 1.0e-9);
+    }
+}
+
+#[test]
 fn er_swimlane_long_relationship_labels_measure_and_paint_the_configured_wrapping_width() {
     let text = "an unusually long relationship label that needs several wrapped lines";
     for html in [true, false] {
@@ -1026,16 +1172,24 @@ fn er_swimlane_inline_icons_preserve_the_text_font_viewport() {
 
 #[test]
 fn er_swimlane_small_child_fonts_after_breaks_follow_the_measured_upstream_rows() {
-    // Exact Mermaid 12.3 batch 11 returns 117px, not two 96px parent-font rows.
-    for text in [
-        "<span style='font-size:64px'>A<br/><span style='font-size:14px'>B</span></span>",
-        "<span style='font-size:64px'>A<br/></span>B",
+    // A live 64px ancestor supplies a 96px strut on both rows. Closing it after the
+    // break leaves only the 14px operation-root strut on the second row.
+    for (text, expected_height) in [
+        (
+            "<span style='font-size:64px'>A<br/><span style='font-size:14px'>B</span></span>",
+            192.0,
+        ),
+        ("<span style='font-size:64px'>A<br/></span>B", 117.0),
     ] {
         let source = html_relationship_fixture(text, 1000);
         let parsed = parse_er(&source);
         let artifact = prepare_er(&parsed);
         let layout = project_layout(&artifact);
-        assert_eq!(layout.edges[0].label.as_ref().unwrap().height, 117.0);
+        assert_eq!(
+            layout.edges[0].label.as_ref().unwrap().height,
+            expected_height,
+            "{text}"
+        );
         assert_relationship_font_viewport(artifact, &layout, "font-size:64px");
     }
 }

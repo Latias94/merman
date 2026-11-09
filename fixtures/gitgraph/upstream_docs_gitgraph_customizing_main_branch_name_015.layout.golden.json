@@ -108,21 +108,21 @@
       },
       "branches": [
         {
-          "bbox_height": 17.6,
+          "bbox_height": 19.0,
           "bbox_width": 73.92,
           "index": 0.0,
           "name": "MetroLine1",
           "pos": 0.0
         },
         {
-          "bbox_height": 17.6,
+          "bbox_height": 19.0,
           "bbox_width": 73.92,
           "index": 1.0,
           "name": "MetroLine2",
           "pos": 90.0
         },
         {
-          "bbox_height": 17.6,
+          "bbox_height": 19.0,
           "bbox_width": 73.92,
           "index": 2.0,
           "name": "MetroLine3",

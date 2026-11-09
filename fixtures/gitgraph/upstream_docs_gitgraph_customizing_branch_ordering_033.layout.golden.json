@@ -11,35 +11,35 @@
       },
       "branches": [
         {
-          "bbox_height": 17.6,
+          "bbox_height": 19.0,
           "bbox_width": 36.48,
           "index": 0.0,
           "name": "test2",
           "pos": 0.0
         },
         {
-          "bbox_height": 17.6,
+          "bbox_height": 19.0,
           "bbox_width": 36.48,
           "index": 1.0,
           "name": "test3",
           "pos": 90.0
         },
         {
-          "bbox_height": 17.6,
+          "bbox_height": 19.0,
           "bbox_width": 36.48,
           "index": 2.0,
           "name": "test4",
           "pos": 180.0
         },
         {
-          "bbox_height": 17.6,
+          "bbox_height": 19.0,
           "bbox_width": 30.72,
           "index": 3.0,
           "name": "main",
           "pos": 270.0
         },
         {
-          "bbox_height": 17.6,
+          "bbox_height": 19.0,
           "bbox_width": 36.48,
           "index": 4.0,
           "name": "test1",

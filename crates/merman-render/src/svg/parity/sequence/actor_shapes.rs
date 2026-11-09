@@ -26,6 +26,7 @@ pub(super) struct ActorLabelContext<'a> {
     pub(super) typography: &'a crate::sequence::SequenceResolvedTypography,
     pub(super) typography_receipt: &'a crate::sequence::SequenceTypographyThemeReceipt,
     pub(super) math_sidecar: &'a crate::sequence::SequenceMathSidecar,
+    pub(super) actor_label_footprints: &'a [Option<crate::sequence::SequenceActorLabelFootprint>],
     pub(super) actor_index: Option<usize>,
     pub(super) checkpoints: SequenceEmitCheckpoints<'a>,
 }
@@ -113,6 +114,13 @@ impl<'a> ActorLabelContext<'a> {
 
     pub(super) fn is_neo(&self) -> bool {
         self.compat.is_neo
+    }
+
+    pub(super) fn classic_glyph_label_center_y(&self, footer: bool) -> Option<f64> {
+        self.actor_index
+            .and_then(|index| self.actor_label_footprints.get(index))
+            .and_then(Option::as_ref)
+            .and_then(|footprint| footprint.label_center_y(footer))
     }
 
     pub(super) fn bands(&self, node: &LayoutNode, footer: bool) -> Option<SequenceActorBands> {
@@ -474,9 +482,13 @@ pub(super) fn write_database_actor_shape(
     );
     let y_text = bands
         .as_ref()
-        .map_or(y + 35.0 + legacy_actor_height / 2.0, |band| {
-            band.label_center_y
-        });
+        .map(|band| band.label_center_y)
+        .or_else(|| {
+            label_ctx
+                .classic_glyph_label_center_y(placement_class == "actor-bottom")
+                .map(|center| y + center)
+        })
+        .unwrap_or_else(|| y + 35.0 + legacy_actor_height / 2.0);
     label_ctx.write_actor(out, n.x, y_text, actor)
 }
 

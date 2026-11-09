@@ -140,11 +140,15 @@ fn class_html_semantic_sizes_measure_the_displayed_face_and_keep_the_parent_stru
         .into_iter()
         .filter(|layout| *layout != "elk" || cfg!(feature = "layout-elk"))
     {
-        for (label, expected_size) in [
-            ("AccountAccount", 24.0),
-            ("<big><big><big>AccountAccount</big></big></big>", 41.472),
-            ("<small>AccountAccount</small>", 20.0),
-            ("<big><small>AccountAccount</small></big>", 24.0),
+        for (label, expected_size, line_size) in [
+            ("AccountAccount", 24.0, 24.0),
+            (
+                "<big><big><big>AccountAccount</big></big></big>",
+                41.472,
+                41.472,
+            ),
+            ("<small>AccountAccount</small>", 20.0, 24.0),
+            ("<big><small>AccountAccount</small></big>", 24.0, 24.0 * 1.2),
         ] {
             let (svg, requests) =
                 render_class_source(layout, &format!("classDiagram\nclass E[\"{label}\"]\n"));
@@ -167,7 +171,7 @@ fn class_html_semantic_sizes_measure_the_displayed_face_and_keep_the_parent_stru
                 .unwrap();
             let height = title.attribute("height").unwrap().parse::<f64>().unwrap();
             assert!(
-                (height - expected_size.max(24.0) * 1.5).abs() < 1e-6,
+                (height - line_size * 1.5).abs() < 1e-6,
                 "{layout}/{label}: height={height}"
             );
             assert!(
@@ -213,6 +217,209 @@ fn class_html_sized_icons_keep_their_advance_in_node_measurement() {
     let ordinary = width("<big>AccountAccount</big>");
     let with_icon = width("<big><i class='fa fa-car'></i>AccountAccount</big>");
     assert_eq!(with_icon - ordinary, 36.0);
+}
+
+fn html_title_dimensions(svg: &str, text: &str) -> (f64, f64) {
+    let document = roxmltree::Document::parse(svg).unwrap();
+    let title = document
+        .descendants()
+        .find(|node| {
+            node.has_tag_name("foreignObject")
+                && node.descendants().any(|child| child.text() == Some(text))
+        })
+        .expect("Class title foreignObject");
+    (
+        title.attribute("width").unwrap().parse().unwrap(),
+        title.attribute("height").unwrap().parse().unwrap(),
+    )
+}
+
+#[test]
+fn class_html_keyword_and_absolute_sizes_measure_and_emit_like_numeric_controls() {
+    for layout in ["dagre", "elk"]
+        .into_iter()
+        .filter(|layout| *layout != "elk" || cfg!(feature = "layout-elk"))
+    {
+        for (authored, pixels) in [
+            ("xx-small", 9.0),
+            ("x-small", 10.0),
+            ("small", 13.0),
+            ("medium", 16.0),
+            ("large", 18.0),
+            ("x-large", 24.0),
+            ("xx-large", 32.0),
+            ("smaller", 20.0),
+            ("larger", 24.0 * 1.2),
+            ("24pt", 32.0),
+            ("2PC", 32.0),
+            (r"24p\74", 32.0),
+        ] {
+            let source = |size: &str| {
+                format!(
+                    "classDiagram\nclass E[\"<span style='font-size:{size}'>AccountAccount</span>\"]\n"
+                )
+            };
+            let (actual, requests) = render_class_source(layout, &source(authored));
+            let (numeric, _) = render_class_source(layout, &source(&format!("{pixels}px")));
+            let actual_dimensions = html_title_dimensions(&actual, "AccountAccount");
+            let numeric_dimensions = html_title_dimensions(&numeric, "AccountAccount");
+            assert_eq!(actual_dimensions, numeric_dimensions, "{layout}/{authored}");
+            assert!(
+                requests
+                    .displayed
+                    .lock()
+                    .unwrap()
+                    .iter()
+                    .any(|(text, style)| {
+                        text == "AccountAccount" && (style.font_size - pixels).abs() < 1e-9
+                    }),
+                "{layout}/{authored}"
+            );
+
+            let session = RenderEnvironment::deterministic().begin_session().unwrap();
+            for svg in [&actual, &numeric] {
+                let safe = merman_render::svg::finalize_resvg_svg(svg, &session).unwrap();
+                let document = roxmltree::Document::parse(safe.as_str()).unwrap();
+                let size = document
+                    .descendants()
+                    .find(|node| {
+                        (node.has_tag_name("text") || node.has_tag_name("tspan"))
+                            && node.text() == Some("AccountAccount")
+                    })
+                    .and_then(|node| node.attribute("style"))
+                    .and_then(|style| {
+                        style
+                            .split(';')
+                            .find_map(|declaration| declaration.trim().strip_prefix("font-size:"))
+                    })
+                    .and_then(|value| {
+                        value
+                            .trim()
+                            .trim_end_matches("!important")
+                            .trim()
+                            .strip_suffix("px")
+                    })
+                    .and_then(|value| value.parse::<f64>().ok())
+                    .expect("resolved native font size");
+                assert!((size - pixels).abs() < 1e-9, "{layout}/{authored}: {size}");
+            }
+        }
+    }
+}
+
+#[test]
+fn class_html_zero_sizes_preserve_parent_struts_visible_siblings_and_host_requests() {
+    let source = |label: &str| format!("classDiagram\nclass E[\"{label}\"]\n");
+    let (visible, _) = render_class_source("dagre", &source("Visible"));
+    let expected_dimensions = html_title_dimensions(&visible, "Visible");
+    for zero in [
+        "<span style='font-size:0px'>Hidden</span>",
+        "<span style='font-size:0pt!important;font-size:32px'>Hidden</span>",
+        "<span style='font-size:0px'><big><span style='font-size:150%'>Hidden</span></big></span>",
+    ] {
+        let (svg, requests) = render_class_source("dagre", &source(&format!("{zero}Visible")));
+        assert_eq!(
+            html_title_dimensions(&svg, "Visible"),
+            expected_dimensions,
+            "{zero}"
+        );
+        let displayed = requests.displayed.lock().unwrap();
+        assert!(
+            displayed
+                .iter()
+                .any(|(text, style)| text == "Hidden" && style.font_size == 0.0),
+            "{zero}: {displayed:?}"
+        );
+        assert!(
+            displayed
+                .iter()
+                .any(|(text, style)| text == "Visible" && style.font_size == 24.0),
+            "{zero}: {displayed:?}"
+        );
+        assert!(
+            displayed
+                .iter()
+                .any(|(text, style)| text == "HiddenVisible" && style.font_size == 24.0),
+            "the opaque host retains its complete paragraph request: {displayed:?}"
+        );
+        drop(displayed);
+        let session = RenderEnvironment::deterministic().begin_session().unwrap();
+        let safe = merman_render::svg::finalize_resvg_svg(&svg, &session).unwrap();
+        let document = roxmltree::Document::parse(safe.as_str()).unwrap();
+        let hidden = document
+            .descendants()
+            .find(|node| node.has_tag_name("tspan") && node.text() == Some("Hidden"))
+            .unwrap();
+        assert!(
+            hidden
+                .attribute("style")
+                .unwrap()
+                .replace(' ', "")
+                .contains("font-size:0px!important")
+        );
+    }
+    let (zero_only, requests) = render_class_source(
+        "dagre",
+        &source("<span style='font-size:0px'>Hidden</span>"),
+    );
+    let (width, height) = html_title_dimensions(&zero_only, "Hidden");
+    assert!(
+        width <= 1.0,
+        "a native viewport may keep its minimum extent: {width}"
+    );
+    assert_eq!(
+        height, 36.0,
+        "the 24px parent still supplies its HTML strut"
+    );
+    assert!(
+        requests
+            .html_line_heights
+            .lock()
+            .unwrap()
+            .iter()
+            .any(|(text, style)| text == "Hidden" && style.font_size == 0.0)
+    );
+}
+
+#[test]
+fn class_html_nested_zero_text_keeps_ancestor_line_boxes_and_terminal_requests() {
+    let source = |label: &str| format!("classDiagram\nclass E[\"{label}\"]\n");
+    for layout in ["dagre", "elk"]
+        .into_iter()
+        .filter(|layout| *layout != "elk" || cfg!(feature = "layout-elk"))
+    {
+        let (control, _) = render_class_source(layout, &source("Visible"));
+        let (visible_width, visible_height) = html_title_dimensions(&control, "Visible");
+        for tail in ["", "Visible"] {
+            let (svg, requests) = render_class_source(
+                layout,
+                &source(&format!(
+                    "<span style='font-size:64px'><span style='font-size:0px'>Hidden</span></span>{tail}"
+                )),
+            );
+            let (width, height) = html_title_dimensions(&svg, "Hidden");
+            assert_eq!(height, 96.0, "{layout}/{tail}");
+            if !tail.is_empty() {
+                assert_eq!(width, visible_width, "{layout}");
+                assert!(height > visible_height);
+            }
+            let requests = requests.displayed.lock().unwrap();
+            let hidden_request = requests
+                .iter()
+                .position(|(text, style)| text == "Hidden" && style.font_size == 0.0)
+                .expect("zero-sized terminal text request");
+            let paragraph_request = requests
+                .iter()
+                .position(|(text, style)| {
+                    text == &format!("Hidden{tail}") && style.font_size == 24.0
+                })
+                .expect("complete opaque paragraph request");
+            assert!(
+                paragraph_request < hidden_request,
+                "the opaque paragraph request precedes terminal probes: {layout}: {requests:?}"
+            );
+        }
+    }
 }
 
 #[test]

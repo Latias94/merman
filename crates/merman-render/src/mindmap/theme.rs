@@ -201,6 +201,16 @@ pub(crate) struct MindmapNodePalettePlan {
     inherited_font_stack: InheritedFontStackPlan,
     css_binding: OnceLock<super::css_binding::MindmapCssBinding>,
     label_paint: super::label_paint::MindmapLabelPaintPlan,
+    typography: Option<MindmapTypographyFacts>,
+}
+
+#[derive(Debug, Default)]
+struct MindmapTypographyFacts {
+    parse_valid: bool,
+    visible_runs: usize,
+    inherited_font_runs: usize,
+    source_owned_font_runs: usize,
+    unverified_font_runs: usize,
 }
 
 #[derive(Debug)]
@@ -293,13 +303,6 @@ impl MindmapNodePalettePlan {
         plan.resolve_node_palette(theme, visited, work_meter)?;
         plan.resolve_edge_stroke(theme, config, model, work_meter)?;
         plan.prepare_css_binding(config, work_meter)?;
-        plan.label_paint = super::label_paint::MindmapLabelPaintPlan::resolve(
-            theme,
-            config,
-            model,
-            plan.css_binding(),
-            work_meter,
-        )?;
         let absent = TerminalVariantDomain::uniform(0, ThemeVariant::Default);
         reconcile_unsupported_terminal_domains(
             theme,
@@ -322,6 +325,42 @@ impl MindmapNodePalettePlan {
             work_meter,
         )?;
         Ok(plan)
+    }
+
+    /// Settle text ownership after layout has prepared the exact terminal label fragments.
+    pub(crate) fn prepare_label_evidence(
+        &mut self,
+        theme: Option<&ResolvedDiagramTheme>,
+        config: &PresentationConfig,
+        model: &MindmapDiagramRenderModel,
+        labels: &super::MindmapPreparedLabels,
+        work: &OperationWorkMeter,
+    ) -> Result<(), OperationWorkError> {
+        debug_assert_eq!(labels.visible_styles().len(), self.node_count);
+        let mut typography = MindmapTypographyFacts {
+            parse_valid: true,
+            ..MindmapTypographyFacts::default()
+        };
+        for facts in labels.visible_styles() {
+            work.checkpoint(merman_model::OperationPhase::Layout)?;
+            typography.parse_valid &= facts.parse_valid();
+            typography.visible_runs += facts.visible_run_count();
+            typography.inherited_font_runs += facts.inherited_font_family_run_count();
+            typography.source_owned_font_runs += facts.source_owned_font_family_run_count();
+            typography.unverified_font_runs += facts.unknown_font_family_run_count();
+        }
+        self.typography = Some(typography);
+        if let Some(theme) = theme {
+            self.label_paint = super::label_paint::MindmapLabelPaintPlan::resolve(
+                theme,
+                config,
+                model,
+                self.css_binding(),
+                labels.visible_styles(),
+                work,
+            )?;
+        }
+        Ok(())
     }
 
     fn resolve_node_paint(
@@ -719,6 +758,7 @@ impl MindmapNodePalettePlan {
             inherited_font_stack: InheritedFontStackPlan::resolve_property_local(None, config),
             css_binding: OnceLock::new(),
             label_paint: super::label_paint::MindmapLabelPaintPlan::default(),
+            typography: None,
         })
     }
 
@@ -815,6 +855,7 @@ impl MindmapNodePalettePlan {
     pub(crate) fn begin_terminal_receipt(&self) -> MindmapNodePaletteReceipt {
         MindmapNodePaletteReceipt {
             label_paint: self.label_paint.begin_receipt(),
+            labels_valid: true,
             fill_rule: self
                 .node_fill
                 .as_ref()
@@ -828,7 +869,9 @@ impl MindmapNodePalettePlan {
     }
 
     pub(crate) fn record_terminal(&self, receipt: MindmapNodePaletteReceipt) -> bool {
-        self.node_terminal_receipt.set(receipt).is_ok()
+        receipt.labels_valid
+            && receipt.next_label == self.node_count
+            && self.node_terminal_receipt.set(receipt).is_ok()
     }
 
     pub(crate) fn label_fill_for_node(&self, index: usize) -> Option<&str> {
@@ -848,8 +891,18 @@ impl MindmapNodePalettePlan {
     }
 
     pub(crate) fn record_label_node(&self, receipt: &mut MindmapNodePaletteReceipt, index: usize) {
+        receipt.labels_valid &= index == receipt.next_label && index < self.node_count;
+        receipt.next_label = receipt.next_label.saturating_add(1);
         self.label_paint
             .record_node(&mut receipt.label_paint, index);
+    }
+
+    pub(crate) fn record_typography_css(
+        &self,
+        receipt: &mut MindmapNodePaletteReceipt,
+        matches: bool,
+    ) {
+        receipt.typography_css_emitted = matches;
     }
 
     pub(crate) fn terminal_edge_style(&self, edge_index: usize) -> Option<&str> {
@@ -888,7 +941,11 @@ impl MindmapNodePalettePlan {
                 .map(|receipt| &receipt.label_paint),
         );
         evidence.merge_borrowed(&self.evidence);
-        let has_visible_typography = self.node_count != 0;
+        let no_visible_typography = self
+            .typography
+            .as_ref()
+            .is_some_and(|facts| facts.parse_valid && facts.visible_runs == 0);
+        let has_visible_typography = !no_visible_typography;
         for (key, properties) in &self.pending_node_paint {
             let rule_index = match key {
                 FamilyThemeMechanismKey::Rule { index, .. } => *index,
@@ -951,13 +1008,35 @@ impl MindmapNodePalettePlan {
             let typography_key =
                 FamilyThemeMechanismKey::Typography(ThemeTypographyProperty::FontStack);
             match self.inherited_font_stack.outcome() {
-                InheritedFontStackOutcome::Typed if has_visible_typography => {
+                InheritedFontStackOutcome::Typed
+                    if self.typography.as_ref().is_some_and(|facts| {
+                        facts.parse_valid
+                            && facts.inherited_font_runs == 0
+                            && facts.unverified_font_runs == 0
+                    }) =>
+                {
+                    evidence.mark_not_applicable(typography_key);
+                }
+                InheritedFontStackOutcome::Typed
+                    if self
+                        .node_terminal_receipt
+                        .get()
+                        .is_some_and(|receipt| receipt.typography_css_emitted)
+                        && self.typography.as_ref().is_some_and(|facts| {
+                            facts.parse_valid
+                                && facts.source_owned_font_runs == 0
+                                && facts.unverified_font_runs == 0
+                        }) =>
+                {
                     evidence.mark_applied_with_capabilities(
                         typography_key,
                         [ThemeCapability::Typography],
                     );
                 }
-                InheritedFontStackOutcome::Typed => evidence.mark_not_applicable(typography_key),
+                InheritedFontStackOutcome::Typed => evidence.mark_residual(
+                    typography_key,
+                    FamilyThemeResidualReason::UnsupportedTypography,
+                ),
                 InheritedFontStackOutcome::ConfigOwned => {
                     evidence.mark_not_applicable(typography_key)
                 }
@@ -1035,6 +1114,9 @@ pub(crate) enum MindmapNodePaletteTerminalDecision {
 #[derive(Debug, Default)]
 pub(crate) struct MindmapNodePaletteReceipt {
     label_paint: super::label_paint::MindmapLabelPaintReceipt,
+    next_label: usize,
+    labels_valid: bool,
+    typography_css_emitted: bool,
     unsupported_surface: bool,
     applied_capabilities: BTreeSet<ThemeCapability>,
     fill_rule: Option<usize>,
@@ -1336,9 +1418,14 @@ mod tests {
         let model = model_with_sections([None]);
 
         let evidence = collect_evidence(&theme, |evidence| {
-            MindmapNodePalettePlan::resolve(Some(&theme), &config, &model, &work_meter())
-                .expect("resolve Mindmap label terminal evidence")
-                .record_evidence(evidence);
+            let work = std::sync::Arc::new(work_meter());
+            let labels = super::super::MindmapPreparedLabels::prepare(&model, &config, &work)
+                .expect("prepare visible label facts");
+            let mut plan = MindmapNodePalettePlan::resolve(Some(&theme), &config, &model, &work)
+                .expect("resolve Mindmap label terminal evidence");
+            plan.prepare_label_evidence(Some(&theme), &config, &model, &labels, &work)
+                .expect("resolve prepared label evidence");
+            plan.record_evidence(evidence);
         });
 
         assert_eq!(

@@ -34,12 +34,6 @@ pub(crate) enum JourneyTextPlacement {
     Tspan,
 }
 
-impl JourneyTextPlacement {
-    pub(crate) const fn has_inherited_label_typography(self) -> bool {
-        matches!(self, Self::Fo | Self::Old)
-    }
-}
-
 impl<'a> JourneyConfigView<'a> {
     pub(crate) fn new(effective_config: &'a Value) -> Self {
         Self {
@@ -192,6 +186,32 @@ pub(crate) struct JourneyRenderSettings {
     pub(crate) title_color: String,
 }
 
+impl JourneyRenderSettings {
+    pub(super) fn label_inherits_font_stack(&self) -> bool {
+        match self.text_placement {
+            JourneyTextPlacement::Fo | JourneyTextPlacement::Old => true,
+            JourneyTextPlacement::Tspan => {
+                let font_family = self
+                    .task_text_style
+                    .font_family
+                    .as_deref()
+                    .unwrap_or(DEFAULT_TASK_FONT_FAMILY);
+                let declaration = format!("font-family:{font_family}");
+                crate::mermaid_style::parse_style_declaration(&declaration)
+                    .is_some_and(|declaration| declaration.inherits_property_value())
+            }
+        }
+    }
+
+    pub(super) const fn label_inherits_font_size(&self) -> bool {
+        // The tspan candidate always emits the separately configured numeric task size.
+        matches!(
+            self.text_placement,
+            JourneyTextPlacement::Fo | JourneyTextPlacement::Old
+        )
+    }
+}
+
 pub(crate) const fn default_use_max_width() -> bool {
     DEFAULT_USE_MAX_WIDTH
 }
@@ -226,6 +246,41 @@ mod tests {
                 expected,
                 "{config}"
             );
+        }
+    }
+
+    #[test]
+    fn journey_label_font_inheritance_distinguishes_css_keywords_from_font_names() {
+        for placement in ["fo", "old", "tspan"] {
+            for (font_family, inherits) in [
+                ("inherit", true),
+                ("unset", true),
+                ("  InHeRiT  ", true),
+                (r"i\6eherit", true),
+                (r"u\6eset", true),
+                (r#""inherit""#, false),
+                (r#"'unset', sans-serif"#, false),
+                ("Task Choice", false),
+                ("initial", false),
+            ] {
+                let config = json!({"journey": {
+                    "textPlacement": placement,
+                    "taskFontFamily": font_family,
+                    "taskFontSize": 14
+                }});
+                let settings = JourneyConfigView::new(&config).render_settings();
+                assert_eq!(
+                    settings.label_inherits_font_stack(),
+                    placement != "tspan" || inherits,
+                    "{config}"
+                );
+                assert_eq!(settings.label_inherits_font_size(), placement != "tspan");
+                assert_eq!(
+                    settings.task_text_style.font_family.as_deref(),
+                    Some(font_family)
+                );
+                assert_eq!(settings.task_text_style.font_size, 14.0);
+            }
         }
     }
 

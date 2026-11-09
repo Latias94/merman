@@ -32,15 +32,15 @@ impl SequencePreparedCss {
         terminal: &SequencePreparedTerminalTheme,
     ) -> Self {
         let typed_font = typography
-            .base_typed_properties()
+            .root_typed_properties()
             .contains(&ThemeTypographyProperty::FontStack);
         let font_size_override = typography
-            .base_typed_properties()
+            .root_typed_properties()
             .contains(&ThemeTypographyProperty::FontSize)
             .then(|| {
                 format!(
                     "{}px",
-                    crate::number_format::canonical_number(typography.base_font_size_px())
+                    crate::number_format::canonical_number(typography.root_font_size_px())
                 )
             });
         let baseline_declaration = |surface| {
