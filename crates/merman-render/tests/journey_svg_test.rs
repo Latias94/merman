@@ -254,6 +254,212 @@ fn journey_hidden_title_does_not_consume_title_rules() {
 }
 
 #[test]
+fn journey_title_typography_accounts_for_visibility_and_fixed_weight() {
+    for (style, weight_owned) in [
+        (
+            ThemeTextStyle::default()
+                .with_font_style(merman_render::diagram_theme::FontStyle::Italic),
+            false,
+        ),
+        (
+            ThemeTextStyle::default().with_font_weight(900).unwrap(),
+            true,
+        ),
+    ] {
+        let theme = DiagramThemeCompiler::new()
+            .compile(
+                DiagramThemeSpec::new().with_typography(
+                    TypographySpec::default()
+                        .with_family_style(merman_render::DiagramFamilyId::JOURNEY, style),
+                ),
+            )
+            .unwrap();
+        for (source, has_body) in [
+            ("journey\ntitle Release\n", false),
+            ("---\ntitle: Release\n---\njourney\n", false),
+            ("journey\ntitle Release\nPay: 4\n", true),
+        ] {
+            for (base_size, title_size) in [
+                ("16px", "32px"),
+                ("16px", "0px"),
+                ("0px", "inherit"),
+                ("0px", "4ex"),
+                ("0px", "32px"),
+            ] {
+                let config = serde_json::json!({
+                    "themeVariables": {"fontSize": base_size},
+                    "journey": {"textPlacement": "old", "titleFontSize": title_size}
+                });
+                let residual =
+                    (has_body && base_size != "0px") || (title_size == "32px" && !weight_owned);
+                let rendered = render_journey_with_theme_requirement(
+                    source,
+                    &theme,
+                    config.clone(),
+                    ThemePortabilityRequirement::BestEffort,
+                )
+                .unwrap();
+                let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+                let title = document
+                    .descendants()
+                    .find(|node| node.has_tag_name("text") && node.text() == Some("Release"))
+                    .unwrap();
+                assert_eq!(title.attribute("font-size"), Some(title_size));
+                assert_eq!(title.attribute("font-weight"), Some("bold"));
+                assert_eq!(title.attribute("font-style"), None);
+                let evidence =
+                    merman_render::__private::family_evidence(rendered.into_completion().report());
+                assert_eq!(evidence.required_count(), 1);
+                assert_eq!(evidence.accounted_count(), 1);
+                assert_eq!(evidence.applied_count(), 0);
+                assert_eq!(evidence.theme_residual_count(), usize::from(residual));
+                assert_eq!(evidence.not_applicable_count(), usize::from(!residual));
+                let strict = render_journey_with_theme_requirement(
+                    source,
+                    &theme,
+                    config,
+                    ThemePortabilityRequirement::RequirePortable,
+                );
+                if residual {
+                    assert!(matches!(
+                        strict,
+                        Err(merman_render::Error::UnverifiedFamilyTheme { .. })
+                    ));
+                } else {
+                    strict.unwrap();
+                }
+            }
+        }
+    }
+}
+
+#[test]
+fn journey_title_font_ownership_uses_only_visible_inherited_properties() {
+    let theme = journey_typography_theme(24.0);
+    for (family, inherited) in [
+        ("inherit", Some(true)),
+        ("unset", Some(true)),
+        ("", Some(true)),
+        ("123", Some(true)),
+        ("serif; font-family:monospace", Some(true)),
+        (r#""Face;literal""#, Some(false)),
+        (r"Face\;", Some(false)),
+        ("/*comment*/serif", Some(false)),
+        (r#""inherit""#, Some(false)),
+        ("Title Choice", Some(false)),
+        ("var(--title-font)", None),
+        ("/*comment*/var(--title-font)", None),
+    ] {
+        for size in ["32px", "0px"] {
+            let config = serde_json::json!({"journey": {
+                "titleFontFamily": family, "titleFontSize": size
+            }});
+            let visible = size != "0px";
+            let applied = usize::from(visible && inherited == Some(true));
+            let residual = usize::from(visible && inherited.is_none());
+            let rendered = render_journey_with_theme_requirement(
+                "journey\ntitle Release\n",
+                &theme,
+                config.clone(),
+                ThemePortabilityRequirement::BestEffort,
+            )
+            .unwrap();
+            let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+            let title = document
+                .descendants()
+                .find(|node| node.has_tag_name("text") && node.text() == Some("Release"))
+                .unwrap();
+            assert_eq!(title.attribute("font-family"), Some(family));
+            assert_eq!(title.attribute("font-size"), Some(size));
+            let evidence =
+                merman_render::__private::family_evidence(rendered.into_completion().report());
+            assert_eq!(evidence.required_count(), 2);
+            assert_eq!(evidence.accounted_count(), 2);
+            assert_eq!(evidence.applied_count(), applied, "{family}/{size}");
+            assert_eq!(evidence.theme_residual_count(), residual, "{family}/{size}");
+            assert_eq!(evidence.not_applicable_count(), 2 - applied - residual);
+            let strict = render_journey_with_theme_requirement(
+                "journey\ntitle Release\n",
+                &theme,
+                config,
+                ThemePortabilityRequirement::RequirePortable,
+            );
+            assert_eq!(strict.is_err(), residual != 0, "{family}/{size}");
+        }
+    }
+    for size in ["inherit", "unset", "-2px", "24px", "24", "4ex"] {
+        let rendered = render_journey_with_theme_requirement(
+            "journey\ntitle Release\n",
+            &theme,
+            serde_json::json!({"journey": {
+                "titleFontFamily": "inherit", "titleFontSize": size
+            }}),
+            ThemePortabilityRequirement::RequirePortable,
+        )
+        .unwrap();
+        let evidence =
+            merman_render::__private::family_evidence(rendered.into_completion().report());
+        let applied = if matches!(size, "inherit" | "unset" | "-2px") {
+            2
+        } else {
+            1
+        };
+        assert_eq!(evidence.applied_count(), applied, "{size}");
+        assert_eq!(evidence.not_applicable_count(), 2 - applied, "{size}");
+        assert_eq!(evidence.theme_residual_count(), 0);
+    }
+}
+
+#[test]
+fn journey_unresolved_title_size_does_not_certify_an_inherited_font_consumer() {
+    let theme = journey_typography_theme(24.0);
+    for size in [
+        "var(--title-size)",
+        "var(--title-size, 0px)",
+        "calc(0px)",
+        "1rem",
+    ] {
+        for source in [
+            "journey\ntitle Release\n",
+            "journey\ntitle Release\nPay: 4: Alice\n",
+        ] {
+            let config = serde_json::json!({"journey": {
+                "titleFontFamily": "inherit", "titleFontSize": size
+            }});
+            let rendered = render_journey_with_theme_requirement(
+                source,
+                &theme,
+                config.clone(),
+                ThemePortabilityRequirement::BestEffort,
+            )
+            .unwrap();
+            let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+            let title = document
+                .descendants()
+                .find(|node| node.has_tag_name("text") && node.text() == Some("Release"))
+                .unwrap();
+            assert_eq!(title.attribute("font-size"), Some(size));
+            let evidence =
+                merman_render::__private::family_evidence(rendered.into_completion().report());
+            assert_eq!(evidence.theme_residual_count(), 1, "{size}/{source}");
+            assert_eq!(
+                evidence.applied_count(),
+                usize::from(source.contains("Pay"))
+            );
+            assert!(matches!(
+                render_journey_with_theme_requirement(
+                    source,
+                    &theme,
+                    config,
+                    ThemePortabilityRequirement::RequirePortable,
+                ),
+                Err(merman_render::Error::UnverifiedFamilyTheme { .. })
+            ));
+        }
+    }
+}
+
+#[test]
 fn journey_text_fill_has_portable_terminal_evidence() {
     for variant in [None, Some(ThemeVariant::Default)] {
         for paint in [
@@ -796,10 +1002,17 @@ fn journey_tspan_inherited_font_stack_keeps_task_font_size_independent() {
         [(journey_typography_theme(21.0), 2, 1), (size_only, 1, 0)]
     {
         for (font_family, inherits) in [
-            ("inherit", true),
-            ("unset", true),
-            (r#""inherit""#, false),
-            ("Task Choice", false),
+            ("", Some(true)),
+            ("123", Some(true)),
+            ("inherit", Some(true)),
+            ("unset", Some(true)),
+            (r#""inherit""#, Some(false)),
+            (r#"'unset', sans-serif"#, Some(false)),
+            ("Task Choice", Some(false)),
+            ("var(--task-font)", None),
+            ("inherit!important;font-family:var(--task-font)", Some(true)),
+            ("var(--task-font);font-family:inherit", Some(true)),
+            ("var(--task-font)!important;font-family:inherit", None),
         ] {
             for source in ["journey\nPay: 4\n", "journey\nsection Checkout\nPay: 4\n"] {
                 let rendered = render_journey_with_theme_requirement(
@@ -810,7 +1023,7 @@ fn journey_tspan_inherited_font_stack_keeps_task_font_size_independent() {
                         "taskFontFamily": font_family,
                         "taskFontSize": 14
                     }}),
-                    ThemePortabilityRequirement::RequirePortable,
+                    ThemePortabilityRequirement::BestEffort,
                 )
                 .unwrap();
                 let document = roxmltree::Document::parse(rendered.svg()).unwrap();
@@ -829,14 +1042,72 @@ fn journey_tspan_inherited_font_stack_keeps_task_font_size_independent() {
                 }
                 let evidence =
                     merman_render::__private::family_evidence(rendered.into_completion().report());
-                let applied = if inherits { inherited_applied } else { 0 };
+                let applied = if inherits == Some(true) {
+                    inherited_applied
+                } else {
+                    0
+                };
+                let residual = usize::from(inherits.is_none() && inherited_applied != 0);
                 assert_eq!(evidence.required_count(), required);
                 assert_eq!(evidence.accounted_count(), required);
                 assert_eq!(evidence.applied_count(), applied, "{font_family}");
-                assert_eq!(evidence.not_applicable_count(), required - applied);
-                assert_eq!(evidence.theme_residual_count(), 0);
+                assert_eq!(
+                    evidence.not_applicable_count(),
+                    required - applied - residual
+                );
+                assert_eq!(evidence.theme_residual_count(), residual);
+                let strict = render_journey_with_theme_requirement(
+                    source,
+                    &theme,
+                    serde_json::json!({"journey": {
+                        "textPlacement": "tspan", "taskFontFamily": font_family,
+                        "taskFontSize": 14
+                    }}),
+                    ThemePortabilityRequirement::RequirePortable,
+                );
+                assert_eq!(strict.is_err(), residual != 0, "{font_family}");
             }
         }
+    }
+}
+
+#[test]
+fn journey_task_family_uncertainty_follows_visibility_and_precedes_legend_evidence() {
+    let theme = journey_typography_theme(24.0);
+    for (source, task_size, applied, not_applicable, residual) in [
+        ("journey\nPay: 4\n", 0, 0, 2, 0),
+        ("journey\nPay: 4: Reader\n", 0, 2, 0, 0),
+        ("journey\nPay: 4: Reader\n", 14, 1, 0, 1),
+    ] {
+        let config = serde_json::json!({"journey": {
+            "textPlacement": "tspan", "taskFontFamily": "var(--task-font)",
+            "taskFontSize": task_size
+        }});
+        let rendered = render_journey_with_theme_requirement(
+            source,
+            &theme,
+            config.clone(),
+            ThemePortabilityRequirement::BestEffort,
+        )
+        .unwrap();
+        assert!(rendered.svg().contains("font-family: var(--task-font);"));
+        assert!(
+            rendered
+                .svg()
+                .contains(&format!("font-size: {task_size}px;"))
+        );
+        let evidence =
+            merman_render::__private::family_evidence(rendered.into_completion().report());
+        assert_eq!(evidence.applied_count(), applied);
+        assert_eq!(evidence.not_applicable_count(), not_applicable);
+        assert_eq!(evidence.theme_residual_count(), residual);
+        let strict = render_journey_with_theme_requirement(
+            source,
+            &theme,
+            config,
+            ThemePortabilityRequirement::RequirePortable,
+        );
+        assert_eq!(strict.is_err(), residual != 0);
     }
 }
 

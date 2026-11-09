@@ -1,4 +1,5 @@
 use crate::config::{config_bool, config_f64, config_string, config_string_vec};
+use crate::mermaid_style::{self, CssFontFamilyOwnership, CssFontSizeOwnership};
 use crate::text::TextStyle;
 use serde_json::Value;
 
@@ -186,20 +187,70 @@ pub(crate) struct JourneyRenderSettings {
 }
 
 impl JourneyRenderSettings {
-    pub(super) fn label_inherits_font_stack(&self) -> bool {
+    pub(super) fn label_font_family_ownership(&self) -> CssFontFamilyOwnership {
         match self.text_placement {
-            JourneyTextPlacement::Fo | JourneyTextPlacement::Old => true,
+            JourneyTextPlacement::Fo | JourneyTextPlacement::Old => {
+                CssFontFamilyOwnership::Inherited
+            }
             JourneyTextPlacement::Tspan => {
                 let font_family = self
                     .task_text_style
                     .font_family
                     .as_deref()
                     .unwrap_or(DEFAULT_TASK_FONT_FAMILY);
+                if font_family.trim().is_empty() {
+                    return CssFontFamilyOwnership::Inherited;
+                }
                 let declaration = format!("font-family:{font_family}");
-                crate::mermaid_style::parse_style_declaration(&declaration)
-                    .is_some_and(|declaration| declaration.inherits_property_value())
+                mermaid_style::css_font_family_ownership([declaration.as_str()])
             }
         }
+    }
+
+    pub(super) fn title_font_family_ownership(&self) -> CssFontFamilyOwnership {
+        let family = self.title_font_family.trim();
+        if family.is_empty() {
+            return CssFontFamilyOwnership::Inherited;
+        }
+        // Presentation attributes cannot carry declaration priority or a trailing semicolon.
+        let mut parser = cssparser::Parser::new(family);
+        while let Ok(token) = parser.next() {
+            if matches!(token, cssparser::Token::Semicolon) {
+                return CssFontFamilyOwnership::Inherited;
+            }
+        }
+        if mermaid_style::is_static_css_font_family_list(family) {
+            return CssFontFamilyOwnership::SourceOwned;
+        }
+        let declaration = format!("font-family:{family}");
+        // Keep conservative ownership for a single value outside the safe emitter's subset,
+        // including commented host functions, without recovering an attribute as a style list.
+        mermaid_style::css_font_family_override(&declaration).map_or(
+            CssFontFamilyOwnership::Inherited,
+            |winner| {
+                if winner.important() {
+                    CssFontFamilyOwnership::Inherited
+                } else {
+                    winner.ownership()
+                }
+            },
+        )
+    }
+
+    pub(super) fn title_inherits_font_size(&self) -> bool {
+        let size = self.title_font_size.trim();
+        let declaration = format!("font-size:{size}");
+        if let Some(parsed) = mermaid_style::parse_style_declaration(&declaration) {
+            if parsed.important() || parsed.value() != size {
+                return true;
+            }
+            // SVG attributes also admit nonzero unitless sizes, unlike CSS declarations.
+            if parsed.svg_number_or_px().is_some() {
+                return false;
+            }
+        }
+        mermaid_style::css_font_size_value_override(size)
+            .is_none_or(|value| value.ownership() == CssFontSizeOwnership::Inherited)
     }
 
     pub(super) const fn label_inherits_font_size(&self) -> bool {
@@ -249,18 +300,23 @@ mod tests {
     }
 
     #[test]
-    fn journey_label_font_inheritance_distinguishes_css_keywords_from_font_names() {
+    fn journey_label_font_ownership_keeps_invalid_and_unresolved_values_distinct() {
+        use crate::mermaid_style::CssFontFamilyOwnership::{Inherited, SourceOwned, Unverified};
+
         for placement in ["fo", "old", "tspan"] {
-            for (font_family, inherits) in [
-                ("inherit", true),
-                ("unset", true),
-                ("  InHeRiT  ", true),
-                (r"i\6eherit", true),
-                (r"u\6eset", true),
-                (r#""inherit""#, false),
-                (r#"'unset', sans-serif"#, false),
-                ("Task Choice", false),
-                ("initial", false),
+            for (font_family, ownership) in [
+                ("", Inherited),
+                ("123", Inherited),
+                ("inherit", Inherited),
+                ("unset", Inherited),
+                ("  InHeRiT  ", Inherited),
+                (r"i\6eherit", Inherited),
+                (r"u\6eset", Inherited),
+                (r#""inherit""#, SourceOwned),
+                (r#"'unset', sans-serif"#, SourceOwned),
+                ("Task Choice", SourceOwned),
+                ("initial", Unverified),
+                ("var(--task-font)", Unverified),
             ] {
                 let config = json!({"journey": {
                     "textPlacement": placement,
@@ -269,8 +325,12 @@ mod tests {
                 }});
                 let settings = JourneyConfigView::new(&config).render_settings();
                 assert_eq!(
-                    settings.label_inherits_font_stack(),
-                    placement != "tspan" || inherits,
+                    settings.label_font_family_ownership(),
+                    if placement == "tspan" {
+                        ownership
+                    } else {
+                        Inherited
+                    },
                     "{config}"
                 );
                 assert_eq!(settings.label_inherits_font_size(), placement != "tspan");

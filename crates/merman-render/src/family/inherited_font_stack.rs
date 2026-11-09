@@ -302,6 +302,12 @@ impl InheritedFontStackPlan {
         !self.unsupported_typography_properties.is_empty()
     }
 
+    pub(crate) fn unsupported_typography_properties(
+        &self,
+    ) -> impl Iterator<Item = ThemeTypographyProperty> + '_ {
+        self.unsupported_typography_properties.iter().copied()
+    }
+
     /// Whether this family has any native typography evidence to settle.
     ///
     /// Legacy-compatible properties belong to the compatibility ledger and therefore do not make

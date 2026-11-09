@@ -305,6 +305,12 @@ impl<'a> TimelineTypographyEmissionState<'a> {
         }
     }
 
+    fn record_title(&mut self, text: &str) {
+        if let Some(outcome) = &mut self.outcome {
+            outcome.record_title(text, self.plan.layout_settings().text_style.font_size);
+        }
+    }
+
     fn finish(self) {
         if let Some(outcome) = self.outcome {
             self.plan.record_emission(outcome);
@@ -861,6 +867,7 @@ pub(crate) fn render_timeline_diagram_svg_model(
         }
         let _ = write!(&mut out, ">{}</text>", escape_xml(title));
         out.checkpoint()?;
+        typography_emission.record_title(title);
         if !event_theme.record_title_fill(title, fill) {
             return Err(crate::Error::InvalidModel {
                 message: "Timeline title paint did not match the terminal SVG".to_owned(),

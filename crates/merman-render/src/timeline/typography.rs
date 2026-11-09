@@ -23,7 +23,8 @@ pub(crate) struct TimelineTypographyThemePlan {
 
 #[derive(Debug, Default)]
 pub(crate) struct TimelineTypographyOutcome {
-    has_visible_base_text: bool,
+    has_visible_node_text: bool,
+    has_visible_title: bool,
 }
 
 impl TimelineTypographyThemePlan {
@@ -128,9 +129,24 @@ impl TimelineTypographyThemePlan {
             return;
         }
 
-        let Some(outcome) = self.terminal.get() else {
-            self.inherited_font_stack
-                .record_unsupported_typography_evidence(evidence, true);
+        let outcome = self.terminal.get();
+        for property in self
+            .inherited_font_stack
+            .unsupported_typography_properties()
+        {
+            let has_visible_consumer = outcome.is_none_or(|outcome| match property {
+                // The title owns its bold weight independently of inherited node typography.
+                ThemeTypographyProperty::FontWeight => outcome.has_visible_node_text,
+                _ => outcome.has_visible_node_text || outcome.has_visible_title,
+            });
+            let key = FamilyThemeMechanismKey::Typography(property);
+            if has_visible_consumer {
+                evidence.mark_residual(key, FamilyThemeResidualReason::UnsupportedTypography);
+            } else {
+                evidence.mark_not_applicable(key);
+            }
+        }
+        let Some(outcome) = outcome else {
             for (property, requested, active) in [
                 (
                     ThemeTypographyProperty::FontStack,
@@ -156,27 +172,30 @@ impl TimelineTypographyThemePlan {
             return;
         };
 
-        self.inherited_font_stack
-            .record_unsupported_typography_evidence(evidence, outcome.has_visible_base_text);
-        for (property, requested, active) in [
+        for (property, requested, active, has_visible_consumer) in [
             (
                 ThemeTypographyProperty::FontStack,
                 self.inherited_font_stack.typed_font_stack_requested(),
                 self.inherited_font_stack.typed_font_stack_active(),
+                outcome.has_visible_node_text || outcome.has_visible_title,
             ),
             (
                 ThemeTypographyProperty::FontSize,
                 self.typed_font_size_requested,
                 self.typed_font_size_active,
+                // The title's explicit 4ex size is not an inherited font-size declaration.
+                outcome.has_visible_node_text,
             ),
         ] {
             if !requested {
                 continue;
             }
             let key = FamilyThemeMechanismKey::Typography(property);
-            if !outcome.has_visible_base_text || !active {
+            if !has_visible_consumer || !active {
                 evidence.mark_not_applicable(key);
-            } else if !self.css_binding.section_font_weight_is_measurable() {
+            } else if outcome.has_visible_node_text
+                && !self.css_binding.section_font_weight_is_measurable()
+            {
                 evidence.mark_residual(key, FamilyThemeResidualReason::UnsupportedTypography);
             } else {
                 evidence.mark_applied_with_capabilities(key, [ThemeCapability::Typography]);
@@ -187,7 +206,11 @@ impl TimelineTypographyThemePlan {
 
 impl TimelineTypographyOutcome {
     pub(crate) fn record_base_text_run(&mut self, text: &str, font_size_px: f64) {
-        self.has_visible_base_text |= font_size_px > 0.0 && !text.trim().is_empty();
+        self.has_visible_node_text |= font_size_px > 0.0 && !text.trim().is_empty();
+    }
+
+    pub(crate) fn record_title(&mut self, text: &str, parent_font_size_px: f64) {
+        self.has_visible_title |= parent_font_size_px > 0.0 && !text.trim().is_empty();
     }
 }
 
