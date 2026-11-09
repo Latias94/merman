@@ -6,6 +6,7 @@ use crate::sanitize::sanitize_text;
 use crate::utils::format_url;
 use indexmap::IndexMap;
 use merman_model::families::class as class_typed;
+use merman_model::text::is_ecmascript_whitespace;
 use serde_json::Value;
 use std::collections::BTreeMap;
 
@@ -28,7 +29,7 @@ struct ClassMember {
 }
 
 impl ClassMember {
-    fn new(input: &str, member_type: &str, config: &MermaidConfig) -> Self {
+    fn new(input: &str, member_type: &str, config: &MermaidConfig) -> Result<Self, String> {
         let input = sanitize_text(input, config);
         let mut m = Self {
             member_type: member_type.to_string(),
@@ -40,78 +41,59 @@ impl ClassMember {
             display_text: String::new(),
             css_style: String::new(),
         };
-        m.parse_member(&input, member_type);
-        m
+        m.parse_member(&input, member_type)?;
+        Ok(m)
     }
 
     fn parse_method_signature_like_upstream(input: &str) -> Option<(&str, &str, &str, &str, &str)> {
-        let s = input.trim();
-        if s.is_empty() {
-            return None;
+        // The selected unanchored regex uses greedy, non-dotall name/parameter groups.
+        // Scan each line once; only its optional post-parenthesis separator can cross a line.
+        let mut offset = 0;
+        for chunk in input.split_inclusive(is_js_regex_line_terminator) {
+            let line = chunk.trim_end_matches(is_js_regex_line_terminator);
+            let start = offset;
+            offset += chunk.len();
+            let Some(close) = line.rfind(')') else {
+                continue;
+            };
+            let Some(open) = line[..close].rfind('(') else {
+                continue;
+            };
+            if open == 0 {
+                continue;
+            }
+            let (visibility, name) =
+                if open > 1 && matches!(line.as_bytes()[0], b'#' | b'+' | b'~' | b'-') {
+                    (&line[..1], &line[1..open])
+                } else {
+                    ("", &line[..open])
+                };
+            let params = line[open + 1..close].trim_matches(is_ecmascript_whitespace);
+            let after_paren = &input[start + close + 1..];
+            let (classifier, tail) = match after_paren.chars().next() {
+                Some(ch @ ('$' | '*')) => (&after_paren[..1], &after_paren[ch.len_utf8()..]),
+                Some(ch) if is_ecmascript_whitespace(ch) => ("", &after_paren[ch.len_utf8()..]),
+                _ => ("", after_paren),
+            };
+            let end = tail.find(is_js_regex_line_terminator).unwrap_or(tail.len());
+            let return_type = tail[..end].trim_matches(is_ecmascript_whitespace);
+            return Some((visibility, name, params, classifier, return_type));
         }
-
-        if let Some(parsed) = Self::parse_method_signature_from_offset(s, true) {
-            return Some(parsed);
-        }
-        Self::parse_method_signature_from_offset(s, false)
+        None
     }
 
-    fn parse_method_signature_from_offset(
-        input: &str,
-        allow_visibility: bool,
-    ) -> Option<(&str, &str, &str, &str, &str)> {
-        let (visibility, rest) = if allow_visibility {
-            match input.as_bytes()[0] {
-                b'#' | b'+' | b'~' | b'-' => (&input[..1], &input[1..]),
-                _ => ("", input),
-            }
-        } else {
-            ("", input)
-        };
-
-        let paren_close = rest.rfind(')')?;
-        let paren_open = rest[..paren_close].rfind('(')?;
-        if paren_open == 0 {
-            return None;
-        }
-
-        let name = &rest[..paren_open];
-        let params = rest[paren_open + 1..paren_close].trim();
-        let after_paren = &rest[paren_close + 1..];
-
-        let (classifier, return_type) = if let Some(first) = after_paren.chars().next() {
-            if first == '$' || first == '*' {
-                (
-                    &after_paren[..first.len_utf8()],
-                    after_paren[first.len_utf8()..].trim(),
-                )
-            } else if is_js_regex_whitespace(first) {
-                ("", after_paren[first.len_utf8()..].trim())
-            } else {
-                ("", after_paren.trim())
-            }
-        } else {
-            ("", "")
-        };
-
-        Some((visibility, name, params, classifier, return_type))
-    }
-
-    fn parse_member(&mut self, input: &str, member_type: &str) {
+    fn parse_member(&mut self, input: &str, member_type: &str) -> Result<(), String> {
         // AddMember trims authored text before sanitization. A second trim here
         // would reinterpret a trailing classifier after removed markup exposes space.
         if member_type == "method" {
-            if let Some((visibility, id, params, classifier, return_type)) =
+            let (visibility, id, params, classifier, return_type) =
                 Self::parse_method_signature_like_upstream(input)
-            {
-                if matches!(visibility, "#" | "+" | "~" | "-") {
-                    self.visibility = visibility.to_string();
-                }
-                self.id = id.to_string();
-                self.parameters = params.to_string();
-                self.classifier = classifier.to_string();
-                self.return_type = return_type.to_string();
-            }
+                    .ok_or_else(|| "Invalid class method signature".to_string())?;
+            self.visibility = visibility.to_string();
+            self.id = id.to_string();
+            self.parameters = params.to_string();
+            self.classifier = classifier.to_string();
+            self.return_type = return_type.to_string();
 
             if self.classifier.is_empty()
                 && let Some(last) = self.return_type.chars().last()
@@ -119,7 +101,6 @@ impl ClassMember {
             {
                 self.classifier = last.to_string();
                 self.return_type.pop();
-                self.return_type = self.return_type.trim().to_string();
             }
         } else {
             let first = input.chars().next().unwrap_or('\0');
@@ -138,9 +119,9 @@ impl ClassMember {
         }
 
         if self.id.starts_with(' ') {
-            self.id = format!(" {}", self.id.trim());
+            self.id = format!(" {}", self.id.trim_matches(is_ecmascript_whitespace));
         } else {
-            self.id = self.id.trim().to_string();
+            self.id = self.id.trim_matches(is_ecmascript_whitespace).to_string();
         }
 
         self.css_style = match self.classifier.as_str() {
@@ -152,14 +133,17 @@ impl ClassMember {
         let mut display = format!("{}{}", self.visibility, parse_generic_types(&self.id));
         if member_type == "method" {
             display.push('(');
-            display.push_str(&parse_generic_types(self.parameters.trim()));
+            display.push_str(&parse_generic_types(
+                self.parameters.trim_matches(is_ecmascript_whitespace),
+            ));
             display.push(')');
             if !self.return_type.is_empty() {
                 display.push_str(" : ");
-                display.push_str(&parse_generic_types(self.return_type.trim()));
+                display.push_str(&parse_generic_types(&self.return_type));
             }
         }
-        self.display_text = display.trim().to_string();
+        self.display_text = display.trim_matches(is_ecmascript_whitespace).to_string();
+        Ok(())
     }
 
     fn into_typed(self) -> class_typed::ClassMember {
@@ -176,18 +160,8 @@ impl ClassMember {
     }
 }
 
-fn is_js_regex_whitespace(ch: char) -> bool {
-    matches!(
-        ch,
-        '\t' | '\n' | '\u{000B}' | '\u{000C}' | '\r' | ' ' | '\u{00A0}' | '\u{1680}' | '\u{2000}'
-            ..='\u{200A}'
-                | '\u{2028}'
-                | '\u{2029}'
-                | '\u{202F}'
-                | '\u{205F}'
-                | '\u{3000}'
-                | '\u{FEFF}'
-    )
+fn is_js_regex_line_terminator(ch: char) -> bool {
+    matches!(ch, '\n' | '\r' | '\u{2028}' | '\u{2029}')
 }
 
 fn collapse_acc_descr_newline_whitespace(input: &str) -> String {
@@ -199,7 +173,7 @@ fn collapse_acc_descr_newline_whitespace(input: &str) -> String {
         if ch == '\n' {
             while chars
                 .peek()
-                .is_some_and(|next| is_js_regex_whitespace(*next))
+                .is_some_and(|next| is_ecmascript_whitespace(*next))
             {
                 chars.next();
             }
@@ -484,21 +458,20 @@ impl<'a> ClassDb<'a> {
     }
 
     fn cleanup_label(&self, label: &str) -> String {
-        let t = label.trim();
-        let t = t.strip_prefix(':').unwrap_or(t);
-        sanitize_text(t.trim(), self.config)
+        let t = label.strip_prefix(':').unwrap_or(label);
+        sanitize_text(t.trim_matches(is_ecmascript_whitespace), self.config)
     }
 
-    pub(super) fn add_member(&mut self, class_name: &str, member: &str) {
+    pub(super) fn add_member(&mut self, class_name: &str, member: &str) -> Result<(), String> {
         self.add_class(class_name);
         let (class_name, _) = self.split_class_name_and_type(class_name);
         let Some(c) = self.classes.get_mut(&class_name) else {
-            return;
+            return Ok(());
         };
 
-        let member_string = member.trim();
+        let member_string = member.trim_matches(is_ecmascript_whitespace);
         if member_string.is_empty() {
-            return;
+            return Ok(());
         }
         if member_string.starts_with("<<") && member_string.ends_with(">>") {
             c.annotations.push(sanitize_text(
@@ -507,22 +480,24 @@ impl<'a> ClassDb<'a> {
                     .trim_end_matches(">>"),
                 self.config,
             ));
-            return;
+            return Ok(());
         }
-        if member_string.contains(')') {
+        if member_string.find(')').is_some_and(|index| index > 0) {
             c.methods
-                .push(ClassMember::new(member_string, "method", self.config));
-            return;
+                .push(ClassMember::new(member_string, "method", self.config)?);
+            return Ok(());
         }
         c.members
-            .push(ClassMember::new(member_string, "attribute", self.config));
+            .push(ClassMember::new(member_string, "attribute", self.config)?);
+        Ok(())
     }
 
-    fn add_members(&mut self, class_name: &str, mut members: Vec<String>) {
+    fn add_members(&mut self, class_name: &str, mut members: Vec<String>) -> Result<(), String> {
         members.reverse();
         for m in members {
-            self.add_member(class_name, &m);
+            self.add_member(class_name, &m)?;
         }
+        Ok(())
     }
 
     fn add_annotation(&mut self, class_name: &str, annotation: &str) {
@@ -1052,14 +1027,10 @@ impl<'a> ClassDb<'a> {
                 self.set_click_event(&id, &function, args);
                 Ok(())
             }
-            Action::AddMembers { id, members } => {
-                self.add_members(&id, members);
-                Ok(())
-            }
+            Action::AddMembers { id, members } => self.add_members(&id, members),
             Action::AddMember { id, member } => {
                 let cleaned = self.cleanup_label(&member);
-                self.add_member(&id, &cleaned);
-                Ok(())
+                self.add_member(&id, &cleaned)
             }
             Action::AddAnnotation { id, annotation } => {
                 self.add_annotation(&id, &annotation);

@@ -179,6 +179,33 @@ mod tests {
     }
 
     #[test]
+    fn comma_identifiers_keep_literal_unicode_tokens_and_exact_byte_spans() {
+        let source = "甲,乙:::hot\n,甲,,乙,\n";
+        let tokens = Lexer::new(source)
+            .collect::<Result<Vec<_>, _>>()
+            .expect("Mermaid idStringToken accepts commas in literal identifiers");
+        let ids = tokens
+            .iter()
+            .filter_map(|(start, token, end)| match token {
+                Tok::Id(id) => {
+                    assert_eq!(&source[*start..*end], id);
+                    Some((id.as_str(), (*start, *end)))
+                }
+                _ => None,
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(
+            ids,
+            [("甲,乙", (0, 7)), ("hot", (10, 13)), (",甲,,乙,", (14, 24))]
+        );
+        assert!(
+            tokens
+                .iter()
+                .any(|(_, token, _)| matches!(token, Tok::StyleSep))
+        );
+    }
+
+    #[test]
     fn unsupported_unicode_recovery_keeps_character_boundaries() {
         let mut lexer = Lexer::new("😀A");
         assert!(lexer.next().unwrap().is_err());

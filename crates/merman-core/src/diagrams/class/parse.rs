@@ -23,6 +23,8 @@ use crate::{
     },
 };
 use merman_model::families::class as class_typed;
+#[cfg(feature = "editor-facts")]
+use merman_model::text::is_ecmascript_whitespace;
 #[cfg(feature = "compat-json")]
 use serde_json::Value;
 #[cfg(test)]
@@ -1379,9 +1381,11 @@ fn selection_span_for_class_name(code: &str, name: &str, span: SourceSpan) -> So
 
 #[cfg(feature = "editor-facts")]
 fn class_member_selection(member: &str, span: SourceSpan) -> Option<(String, SourceSpan)> {
-    let trimmed_start = member.len().saturating_sub(member.trim_start().len());
+    let trimmed_start = member
+        .len()
+        .saturating_sub(member.trim_start_matches(is_ecmascript_whitespace).len());
     let text = &member[trimmed_start..];
-    let trimmed_len = text.trim_end().len();
+    let trimmed_len = text.trim_end_matches(is_ecmascript_whitespace).len();
     if trimmed_len == 0 {
         return None;
     }
@@ -1400,11 +1404,13 @@ fn class_member_selection(member: &str, span: SourceSpan) -> Option<(String, Sou
 fn class_label_member_selection(label: &str, span: SourceSpan) -> Option<(String, SourceSpan)> {
     let after_colon = label.strip_prefix(':').unwrap_or(label);
     let colon_offset = usize::from(label.starts_with(':'));
-    let leading = after_colon
-        .len()
-        .saturating_sub(after_colon.trim_start().len());
+    let leading = after_colon.len().saturating_sub(
+        after_colon
+            .trim_start_matches(is_ecmascript_whitespace)
+            .len(),
+    );
     let text = &after_colon[leading..];
-    let trimmed_len = text.trim_end().len();
+    let trimmed_len = text.trim_end_matches(is_ecmascript_whitespace).len();
     if trimmed_len == 0 {
         return None;
     }

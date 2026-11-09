@@ -443,14 +443,18 @@ pub(super) fn parse_click_stmt(
 ) -> std::result::Result<ClickStmt, LexError> {
     let mut p = ClickParse::new(rest, rest_start);
     p.skip_ws();
-    #[cfg(feature = "editor-facts")]
     let id_start = p.i;
     let Some(id) = p.take_word() else {
         return Err(LexError::new("Invalid click statement".to_string()));
     };
-    let ids = vec![id];
+    let mut ids = Vec::new();
     #[cfg(feature = "editor-facts")]
-    let id_spans = vec![p.source_span(id_start, p.i)];
+    let mut id_spans = Vec::new();
+    for (target, _span) in split_click_targets(&id, rest_start + id_start) {
+        ids.push(target.to_string());
+        #[cfg(feature = "editor-facts")]
+        id_spans.push(_span);
+    }
 
     #[cfg(feature = "editor-facts")]
     let target_end = p.i;
@@ -772,6 +776,19 @@ pub(super) fn parse_click_stmt(
         interaction_evidence,
         #[cfg(any(test, feature = "editor-facts"))]
         recovery_error: None,
+    })
+}
+
+pub(super) fn split_click_targets(
+    text: &str,
+    text_start: usize,
+) -> impl Iterator<Item = (&str, SourceSpan)> {
+    // Keep JavaScript split's empty entries so IDs and authored byte spans stay paired.
+    let mut cursor = text_start;
+    text.split(',').map(move |target| {
+        let span = SourceSpan::new(cursor, cursor + target.len());
+        cursor += target.len() + 1;
+        (target, span)
     })
 }
 

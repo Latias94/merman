@@ -1247,35 +1247,68 @@ fn collect_editor_facts_from_statements_with_seen_edges(
                 node_groups,
                 edge_groups,
             } => {
-                for (index, node) in node_groups.iter().flatten().enumerate() {
-                    if index % 128 == 0 {
-                        control.checkpoint()?;
+                for (group_index, nodes) in node_groups.iter().enumerate() {
+                    for (index, node) in nodes.iter().enumerate() {
+                        if index % 128 == 0 {
+                            control.checkpoint()?;
+                        }
+                        if seen_edge_ids.contains(&node.id) {
+                            if !node.classes.is_empty() && seen_entities.contains(&node.id) {
+                                push_flowchart_span_symbol(
+                                    facts,
+                                    &node.id,
+                                    "flowchart node",
+                                    EditorSemanticKind::Module,
+                                    node.id_span,
+                                    EditorSemanticRole::Reference,
+                                );
+                            }
+                            continue;
+                        }
+                        let occurrence =
+                            if edge_groups.is_empty() || node_defines_flowchart_entity(node) {
+                                FlowchartNodeOccurrence::Definition
+                            } else {
+                                FlowchartNodeOccurrence::RelationEndpoint
+                            };
+                        push_flowchart_node_symbol(facts, node, seen_entities, occurrence);
                     }
-                    let occurrence =
-                        if edge_groups.is_empty() || node_defines_flowchart_entity(node) {
-                            FlowchartNodeOccurrence::Definition
-                        } else {
-                            FlowchartNodeOccurrence::RelationEndpoint
-                        };
-                    push_flowchart_node_symbol(facts, node, seen_entities, occurrence);
-                }
-                for (index, edge) in edge_groups.iter().flatten().enumerate() {
-                    if index % 128 == 0 {
-                        control.checkpoint()?;
-                    }
-                    push_flowchart_edge_label_symbol(facts, edge, emitted_edge_label_spans);
-                    if let Some(id) = edge.id.as_deref() {
-                        seen_edge_ids.insert(id.to_string());
+                    if let Some(edges) = group_index
+                        .checked_sub(1)
+                        .and_then(|index| edge_groups.get(index))
+                    {
+                        for (index, edge) in edges.iter().enumerate() {
+                            if index % 128 == 0 {
+                                control.checkpoint()?;
+                            }
+                            push_flowchart_edge_label_symbol(facts, edge, emitted_edge_label_spans);
+                            if let Some(id) = edge.id.as_deref() {
+                                seen_edge_ids.insert(id.to_string());
+                            }
+                        }
                     }
                 }
             }
-            Stmt::Node(node) => push_flowchart_node_symbol(
-                #[cfg(feature = "editor-facts")]
-                facts,
-                node,
-                seen_entities,
-                FlowchartNodeOccurrence::Definition,
-            ),
+            Stmt::Node(node) => {
+                if !seen_edge_ids.contains(&node.id) {
+                    push_flowchart_node_symbol(
+                        #[cfg(feature = "editor-facts")]
+                        facts,
+                        node,
+                        seen_entities,
+                        FlowchartNodeOccurrence::Definition,
+                    );
+                } else if !node.classes.is_empty() && seen_entities.contains(&node.id) {
+                    push_flowchart_span_symbol(
+                        facts,
+                        &node.id,
+                        "flowchart node",
+                        EditorSemanticKind::Module,
+                        node.id_span,
+                        EditorSemanticRole::Reference,
+                    );
+                }
+            }
             Stmt::Subgraph(subgraph) => {
                 push_flowchart_subgraph_symbol(facts, subgraph);
             }

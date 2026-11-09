@@ -163,6 +163,85 @@ fn literal_gantt_end_fields_preserve_zero_duration_in_prepared_output() {
     );
 }
 
+#[cfg(feature = "diagram-class")]
+#[test]
+fn class_method_boundaries_reach_prepared_fields_and_visible_svg_text() {
+    let (model, svg) = prepare_and_render(concat!(
+        "classDiagram\nclass C {\n+old\u{2028}run(arg) Result\n",
+        "+keep(\u{85}arg\u{85}) \u{85}Result\u{85}$\n+trim(\u{feff}arg\u{feff}) Result  $\n}\n",
+    ));
+    let methods = model["classes"]["C"]["methods"].as_array().unwrap();
+    assert_eq!(methods[0]["id"], "run");
+    assert_eq!(methods[0]["visibility"], "");
+    assert_eq!(methods[1]["parameters"], "\u{85}arg\u{85}");
+    assert_eq!(methods[1]["returnType"], "\u{85}Result\u{85}");
+    assert_eq!(methods[2]["parameters"], "arg");
+    assert_eq!(methods[2]["returnType"], "Result  ");
+    let document = roxmltree::Document::parse(&svg).unwrap();
+    assert!(
+        !document
+            .descendants()
+            .any(|node| node.is_text() && node.text().is_some_and(|text| text.contains("+old")))
+    );
+    assert!(document.descendants().any(|node|node.is_text()&&node.text().is_some_and(|text|text.contains("run(arg)"))));
+}
+
+#[cfg(feature = "diagram-flowchart")]
+#[test]
+fn comma_click_links_and_inline_edge_classes_reach_svg() {
+    let (model, svg) = prepare_and_render(concat!(
+        "flowchart TD\nclassDef hot stroke:#123abc\nA e@-->B\ne:::hot\n",
+        "click A,B \"https://example.test/path\" \"tip\" _blank\n",
+    ));
+    assert_eq!(model["edges"][0]["classes"], serde_json::json!(["hot"]));
+    for node in model["nodes"].as_array().unwrap() {
+        assert_eq!(node["link"], "https://example.test/path");
+    }
+    let document = roxmltree::Document::parse(&svg).unwrap();
+    assert_eq!(
+        document
+            .descendants()
+            .filter(|node| node.has_tag_name("a")
+                && node.attributes().any(
+                    |attr| attr.name() == "href" && attr.value() == "https://example.test/path"
+                ))
+            .count(),
+        2
+    );
+    assert!(document.descendants().any(|node| {
+        node.attribute("data-edge") == Some("true")
+            && node
+                .attribute("style")
+                .is_some_and(|style| style.contains("#123abc"))
+    }));
+}
+
+#[cfg(feature = "diagram-sequence")]
+#[test]
+fn overflowing_sequence_numbers_keep_visible_js_number_text() {
+    for (directive, expected) in [
+        (
+            format!("autonumber {}", "9".repeat(309)),
+            vec!["Infinity", "Infinity"],
+        ),
+        (
+            format!("autonumber 1 {}", "9".repeat(309)),
+            vec!["1", "Infinity"],
+        ),
+    ] {
+        let (_model, svg) = prepare_and_render(&format!(
+            "sequenceDiagram\n{directive}\nA->>B: first\nB-->>A: second\n"
+        ));
+        let document = roxmltree::Document::parse(&svg).unwrap();
+        let actual = document
+            .descendants()
+            .filter(|node| node.attribute("class") == Some("sequenceNumber"))
+            .map(|node| node.text().unwrap_or(""))
+            .collect::<Vec<_>>();
+        assert_eq!(actual, expected);
+    }
+}
+
 #[cfg(feature = "diagram-sequence")]
 #[test]
 fn sequence_continuation_identity_and_wrapped_menu_reach_svg() {

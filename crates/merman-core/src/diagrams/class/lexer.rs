@@ -706,7 +706,7 @@ impl<'input> Lexer<'input> {
             self.pos += 1;
         }
         let s = &self.input[start..self.pos];
-        Some(Ok((start, Tok::Member(s.trim_end().to_string()), self.pos)))
+        Some(Ok((start, Tok::Member(s.to_string()), self.pos)))
     }
 
     fn emit(

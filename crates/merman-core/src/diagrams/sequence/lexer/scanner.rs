@@ -561,10 +561,8 @@ impl<'input> SequenceScanner<'input> {
             return None;
         }
 
+        // The grammar converts NUM with JavaScript Number(), including positive overflow.
         let n: f64 = self.input[start..end].parse().ok()?;
-        if !n.is_finite() {
-            return None;
-        }
         self.pos = end;
         Some((start, Tok::Num(n), self.pos))
     }

@@ -90,6 +90,15 @@ markers. Colon members retain their earlier label-cleanup stage. The
 and [member cleanup tests](../../crates/merman-core/tests/class_member_sanitization_order_parity_test.rs)
 own these selected-source contracts.
 
+Member fields use ECMAScript trimming throughout token replay, semantic construction and authored
+editor selections. NEL remains literal text while BOM is boundary whitespace. Method parsing
+follows the selected unanchored, greedy, non-dotall signature expression: a Unicode line separator
+ends a name or parameter group, but the optional separator after `)` can cross one line boundary.
+Removing a trailing static/abstract marker does not trim the return type again. A method without
+a matching signature fails semantic construction while the source snapshot retains later editor
+facts. The [method-signature tests](../../crates/merman-core/tests/class_method_signature_parity_test.rs)
+own valid, invalid and recovered inputs.
+
 Numeric-leading class names retain their authored semantic identity; the DOM prefix does not
 rename the class or merge it with a separately declared `classId-*` name. The selected DB applies
 its numeric target prefix only inside CSS-class and link assignment; tooltip and callback lookup
@@ -240,6 +249,14 @@ a space-prefixed `fill` fragment does not suppress that fallback. Default edge s
 this fallback. The [style-order tests](../../crates/merman-core/tests/flowchart_style_order_test.rs)
 and [parsed SVG integration](../../crates/merman-render/tests/parser_parity_render_test.rs) own
 the model and downstream behavior.
+
+Inline `:::` classes replay `setClass` after the vertex operation, including when that operation
+routes to an already-declared edge. They update each existing vertex, first matching raw edge and
+completed subgraph independently. Click targets split on commas for links, callbacks, tooltips
+and editor references; missing targets keep tooltips but do not acquire retroactive links or
+classes. Repeated targets preserve repeated class assignments. Owners:
+[interaction-order tests](../../crates/merman-core/tests/flowchart_interaction_order_parity_test.rs)
+and [editor integration](../../crates/merman-editor-core/tests/parser_parity.rs).
 
 Accessibility directives are recognized at the authoritative lexer's plain cursor. The same text
 inside quoted, Markdown or other label payloads remains label content and cannot replace the
@@ -655,6 +672,12 @@ synthetic line boundary. The same numeric-token priority applies to ordinary mes
 `A->>007 : text` is rejected, while `A->>007: text` and explicit numeric participant declarations
 retain the authored ID. Relative-note keywords require their ASCII word boundary, so actor names
 such as `left office` and `right office` remain complete identifiers.
+
+The numeric token has no decimal digit limit. Positive overflow retains `Infinity` in typed
+autonumber start/step values, projects as JSON `null`, and remains visible as `Infinity` in SVG
+number labels. The existing lexical boundary still rejects a number directly followed by a
+semicolon. Owners: [overflow tests](../../crates/merman-core/tests/sequence_autonumber_overflow_parity_test.rs)
+and [prepared SVG](../../crates/merman-render/tests/parser_parity_render_test.rs).
 
 Completed blocks can directly precede another block, statement, branch
 or closing token; ordinary line statements still require their line boundary. Grammar sources

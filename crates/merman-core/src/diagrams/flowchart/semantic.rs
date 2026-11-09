@@ -346,7 +346,6 @@ impl<'a> FlowchartSemanticContext<'a> {
                 seen_vertex_ids.insert(node.id.clone());
                 if let Some(style) = vertex_css.get_mut(&node.id) {
                     let style = style.get_or_insert_default();
-                    style.classes.extend(node.classes.iter().cloned());
                     style.styles.extend(node.styles.iter().cloned());
                 }
 
@@ -361,7 +360,23 @@ impl<'a> FlowchartSemanticContext<'a> {
                     target.shape.clone_from(&node.shape);
                 }
                 target.styles.extend(node.styles.iter().cloned());
-                target.classes.extend(node.classes.iter().cloned());
+            }
+
+            // A styledVertex calls setClass after addVertex, even when addVertex routed
+            // to an edge. Each comma-separated ID can also own a vertex and subgraph.
+            for class_name in &node.classes {
+                for target in node.id.split(',') {
+                    if let Some(style) = vertex_css.get_mut(target).and_then(Option::as_mut) {
+                        style.classes.push(class_name.clone());
+                    }
+                    self.add_class_to_target(
+                        target,
+                        class_name,
+                        active_subgraphs,
+                        seen_vertex_ids,
+                        seen_edge_indices,
+                    )?;
+                }
             }
 
             // Jison reduces `node shapeData & styledVertex` after adding styledVertex.
@@ -424,6 +439,7 @@ impl<'a> FlowchartSemanticContext<'a> {
         seen_vertex_ids: &HashSet<String>,
         seen_edge_indices: &HashMap<String, usize>,
     ) -> OperationControlResult<()> {
+        self.control.checkpoint()?;
         if let Some(&idx) = active_subgraphs.get(target) {
             self.subgraphs[idx].classes.push(class_name.to_string());
         }
@@ -432,19 +448,10 @@ impl<'a> FlowchartSemanticContext<'a> {
         {
             self.nodes[idx].classes.push(class_name.to_string());
         }
-        if let Some(&edge_index) = seen_edge_indices.get(target) {
-            self.control.checkpoint()?;
-            if let Some(edge) = self.edges.get_mut(edge_index) {
-                edge.classes.push(class_name.to_string());
-            }
-        } else {
-            // Preserve the canonical cancellation cadence even when the requested edge id is
-            // absent. The previous implementation scanned every built edge in this case.
-            for index in 0..self.edges.len() {
-                if index % 128 == 0 {
-                    self.control.checkpoint()?;
-                }
-            }
+        if let Some(&edge_index) = seen_edge_indices.get(target)
+            && let Some(edge) = self.edges.get_mut(edge_index)
+        {
+            edge.classes.push(class_name.to_string());
         }
         Ok(())
     }
@@ -636,111 +643,82 @@ impl<'a> FlowchartSemanticContext<'a> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::diagrams::flowchart::{
-        ClassAssignStmt, FlowEdgeMarker, FlowEdgeStroke, FlowEdgeVisibility, LinkToken,
-    };
+    use crate::diagrams::flowchart::{FlowchartBuildState, parse_flowchart_ast};
 
     #[test]
-    fn class_assignment_can_cancel_during_edge_scanning() {
-        let mut nodes = Vec::new();
-        let mut node_index = HashMap::new();
-        let mut edges = (0..512)
-            .map(|index| Edge {
-                from: format!("n{index}"),
-                to: format!("n{}", index + 1),
-                id: Some(format!("edge-{index}")),
-                link: LinkToken {
-                    end: "arrow_point".to_string(),
-                    start_marker: FlowEdgeMarker::None,
-                    end_marker: FlowEdgeMarker::Point,
-                    stroke_kind: FlowEdgeStroke::Normal,
-                    visibility: FlowEdgeVisibility::Visible,
-                    length: 1,
-                },
-                label: None,
-                label_type: TitleKind::Text,
-                label_span: None,
-                label_selection: None,
-                style: Vec::new(),
-                classes: Vec::new(),
-                interpolate: None,
-                is_user_defined_id: true,
-                animate: None,
-                animation: None,
-                step: None,
-            })
+    fn class_and_click_lists_and_inline_classes_cancel_during_target_projection() {
+        let ids = (0..256)
+            .map(|index| format!("n{index}"))
             .collect::<Vec<_>>();
-        let mut subgraphs = Vec::new();
-        let mut subgraph_vertex_styles = FlowchartSubgraphStyles::default();
-        #[cfg(feature = "presentation")]
-        let mut collapsed_subgraphs = rustc_hash::FxHashSet::default();
-        let mut vertex_calls = Vec::new();
-        let mut warning_facts = Vec::new();
-        let mut class_defs = IndexMap::new();
-        let mut tooltips = HashMap::new();
-        let mut edge_defaults = EdgeDefaults {
-            style: Vec::new(),
-            interpolate: None,
+        let declarations = ids.join(" & ");
+        let targets = ids.join(",");
+        let inline = ids
+            .iter()
+            .map(|id| format!("{id}:::hot"))
+            .collect::<Vec<_>>()
+            .join(" & ");
+        let meta = crate::SemanticMetadata {
+            diagram_type: "flowchart-v2".to_string(),
+            config: MermaidConfig::empty_object(),
+            semantic_config: MermaidConfig::empty_object(),
+            title: None,
         };
-        let config = MermaidConfig::empty_object();
-        let shape_data_documents = HashMap::new();
-        let control = OperationControl::new();
-        control.cancel_after_checkpoints(3);
-        let mut context = FlowchartSemanticContext {
-            nodes: &mut nodes,
-            node_index: &mut node_index,
-            edges: &mut edges,
-            subgraphs: &mut subgraphs,
-            subgraph_declaration_owners: &[],
-            subgraph_vertex_styles: &mut subgraph_vertex_styles,
-            #[cfg(feature = "presentation")]
-            collapsed_subgraphs: Some(&mut collapsed_subgraphs),
-            vertex_calls: &mut vertex_calls,
-            warning_facts: &mut warning_facts,
-            class_defs: &mut class_defs,
-            tooltips: &mut tooltips,
-            edge_defaults: &mut edge_defaults,
-            security_level_loose: false,
-            diagram_type: "flowchart-v2",
-            config: &config,
-            shape_data_documents: &shape_data_documents,
-            control: &control,
-        };
-        let mut statements = super::super::StatementArena::default();
-        let construction_control = OperationControl::new();
-        let id = statements
-            .push(
-                Stmt::ClassAssign(ClassAssignStmt {
-                    targets: vec!["missing-edge".to_string()],
-                    #[cfg(feature = "editor-facts")]
-                    target_spans: Vec::new(),
-                    class_name: "hot".to_string(),
-                    #[cfg(feature = "editor-facts")]
-                    class_name_span: None,
-                    #[cfg(feature = "editor-facts")]
-                    editor_evidence: Default::default(),
-                }),
-                &construction_control,
-            )
-            .unwrap();
-        let root = statements
-            .prepend(
-                id,
-                super::super::StatementList::default(),
-                &construction_control,
-            )
-            .unwrap();
-        let ast = FlowchartAst {
-            keyword: "flowchart".to_string(),
-            direction: Some("TB".to_string()),
-            header_span: crate::SourceSpan::new(0, 0),
-            statements,
-            root,
-        };
-
-        assert!(matches!(
-            apply_semantic_statements(&ast, &mut context),
-            Err(crate::OperationCancelled { .. })
-        ));
+        for body in [
+            format!("{declarations}\nclass {targets} hot"),
+            format!("{declarations}\nclick {targets} call cb()"),
+            inline,
+        ] {
+            let source = format!("flowchart TD\n{body}\n");
+            let ast = parse_flowchart_ast(&source, &meta).unwrap();
+            let mut build = FlowchartBuildState::new(HashSet::new());
+            build
+                .add_statements(&ast, &OperationControl::new())
+                .unwrap();
+            let FlowchartBuildState {
+                mut nodes,
+                mut node_index,
+                mut edges,
+                ..
+            } = build;
+            let mut subgraphs = Vec::new();
+            let mut subgraph_vertex_styles = FlowchartSubgraphStyles::default();
+            let mut vertex_calls = Vec::new();
+            let mut warning_facts = Vec::new();
+            let mut class_defs = IndexMap::new();
+            let mut tooltips = HashMap::new();
+            let mut edge_defaults = EdgeDefaults {
+                style: Vec::new(),
+                interpolate: None,
+            };
+            let shape_data_documents = HashMap::new();
+            let control = OperationControl::new();
+            control.cancel_after_checkpoints(8);
+            let mut context = FlowchartSemanticContext {
+                nodes: &mut nodes,
+                node_index: &mut node_index,
+                edges: &mut edges,
+                subgraphs: &mut subgraphs,
+                subgraph_declaration_owners: &[],
+                subgraph_vertex_styles: &mut subgraph_vertex_styles,
+                #[cfg(feature = "presentation")]
+                collapsed_subgraphs: None,
+                vertex_calls: &mut vertex_calls,
+                warning_facts: &mut warning_facts,
+                class_defs: &mut class_defs,
+                tooltips: &mut tooltips,
+                edge_defaults: &mut edge_defaults,
+                security_level_loose: true,
+                diagram_type: "flowchart-v2",
+                config: &meta.semantic_config,
+                shape_data_documents: &shape_data_documents,
+                control: &control,
+            };
+            assert!(matches!(
+                apply_semantic_statements(&ast, &mut context),
+                Err(crate::OperationCancelled { .. })
+            ));
+            let styled = nodes.iter().filter(|node| !node.classes.is_empty()).count();
+            assert!(styled > 0 && styled < ids.len(), "{styled}");
+        }
     }
 }
