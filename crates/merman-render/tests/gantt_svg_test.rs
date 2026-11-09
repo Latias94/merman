@@ -142,9 +142,16 @@ fn gantt_global_paint_does_not_certify_unsupported_sibling_facets() {
 
 #[test]
 fn gantt_unsupported_title_styles_require_visible_title_terminals() {
-    for heading in ["", "title Release audit\n", "section Delivery\n"] {
+    for (heading, section_font_size, visible) in [
+        ("", 11, false),
+        ("title Release audit\n", 11, true),
+        ("section Delivery\n", 11, true),
+        ("section Delivery\n", 0, false),
+        ("title Release audit\nsection Delivery\n", 0, true),
+    ] {
+        let config = serde_json::json!({"gantt": {"sectionFontSize": section_font_size}});
         let source = format!(
-            "gantt\ndateFormat YYYY-MM-DD\ntodayMarker off\n{heading}Ship: task, 2024-01-01, 4d\n"
+            "---\nconfig: {config}\n---\ngantt\ndateFormat YYYY-MM-DD\ntodayMarker off\n{heading}Ship: task, 2024-01-01, 4d\n"
         );
         for clear in [false, true] {
             for (with_fill, split) in [(false, false), (true, false), (true, true)] {
@@ -187,9 +194,7 @@ fn gantt_unsupported_title_styles_require_visible_title_terminals() {
                     let result = family::prepare(&parsed, &options, session)
                         .unwrap()
                         .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default());
-                    if !heading.is_empty()
-                        && portability == ThemePortabilityRequirement::RequirePortable
-                    {
+                    if visible && portability == ThemePortabilityRequirement::RequirePortable {
                         assert_eq!(
                             result.err().unwrap().unverified_family_theme(),
                             Some((merman_render::DiagramFamilyId::GANTT, 1))
@@ -200,15 +205,127 @@ fn gantt_unsupported_title_styles_require_visible_title_terminals() {
                         );
                         assert_eq!(evidence.required_count(), required);
                         assert_eq!(evidence.accounted_count(), required);
-                        assert_eq!(
-                            evidence.theme_residual_count(),
-                            usize::from(!heading.is_empty())
-                        );
+                        assert_eq!(evidence.theme_residual_count(), usize::from(visible));
                         assert_eq!(
                             evidence.not_applicable_count(),
-                            if heading.is_empty() { required } else { 0 }
+                            if visible { 0 } else { required }
                         );
                     }
+                }
+            }
+        }
+    }
+}
+
+#[test]
+fn gantt_task_label_typography_requires_its_own_visible_winning_terminal() {
+    for (case, font_size, task, variant, visible) in [
+        ("zero", 0, "Ship: a, 2024-01-02, 1d\n", None, false),
+        ("positive", 11, "Ship: a, 2024-01-02, 1d\n", None, true),
+        (
+            "vertical",
+            0,
+            "Marker: vert, v, 2024-01-02, 0d\n",
+            None,
+            true,
+        ),
+        (
+            "unrelated-vertical",
+            0,
+            "Ship: a, 2024-01-02, 1d\nMarker: active, vert, v, 2024-01-02, 0d\n",
+            Some(ThemeVariant::Default),
+            false,
+        ),
+    ] {
+        let config = serde_json::json!({
+            "gantt": {"fontSize": font_size, "sectionFontSize": 0, "tickInterval": "1day"}
+        });
+        let source = format!(
+            "---\nconfig: {config}\n---\ngantt\ntitle Visible diagram title\ndateFormat YYYY-MM-DD\ntodayMarker off\nsection Delivery\n{task}"
+        );
+        for clear in [false, true] {
+            for (with_fill, split) in [(false, false), (true, false), (true, true)] {
+                let mut typography = ThemeStylePatch::default();
+                typography.typography.font_size_px = if clear {
+                    Specified::Clear
+                } else {
+                    Specified::Value(31.0)
+                };
+                let paint =
+                    ThemeStylePatch::default().with_fill(CanvasPaint::solid("#c2188b").unwrap());
+                let patches = match (with_fill, split) {
+                    (false, _) => vec![typography],
+                    (true, true) => vec![paint, typography],
+                    (true, false) => vec![ThemeStylePatch {
+                        typography: typography.typography,
+                        ..paint
+                    }],
+                };
+                let rules = patches
+                    .into_iter()
+                    .map(|patch| {
+                        let rule = ThemeRule::new(ThemeTarget::TaskLabel, patch);
+                        match variant {
+                            Some(variant) => rule.with_variant(variant),
+                            None => rule,
+                        }
+                    })
+                    .collect::<Vec<_>>();
+                let required = rules.len();
+                let theme = gantt_task_rules_theme(rules);
+                let (parsed, options, _) = prepare_gantt_family_with_theme(&source, &theme);
+                for portability in [
+                    ThemePortabilityRequirement::BestEffort,
+                    ThemePortabilityRequirement::RequirePortable,
+                ] {
+                    let session = RenderEnvironment::deterministic()
+                        .with_theme_portability_requirement(portability)
+                        .begin_session_with_theme(&theme)
+                        .unwrap();
+                    let result = family::prepare(&parsed, &options, session)
+                        .unwrap()
+                        .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default());
+                    if visible && portability == ThemePortabilityRequirement::RequirePortable {
+                        assert_eq!(
+                            result.err().unwrap().unverified_family_theme(),
+                            Some((merman_render::DiagramFamilyId::GANTT, 1)),
+                            "{case}/clear={clear}/split={split}"
+                        );
+                        continue;
+                    }
+                    let rendered = result.unwrap();
+                    let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+                    assert!(
+                        document
+                            .descendants()
+                            .any(|node| { node.attribute("class") == Some("tick") }),
+                        "axis text must not prove a TaskLabel rule"
+                    );
+                    assert!(document.descendants().any(|node| {
+                        node.attribute("class") == Some("titleText")
+                            && node.text() == Some("Visible diagram title")
+                    }));
+                    assert!(!rendered.svg().contains("font-size:31px"));
+                    let evidence = merman_render::__private::family_evidence(
+                        rendered.into_completion().report(),
+                    );
+                    assert_eq!(evidence.required_count(), required, "{case}");
+                    assert_eq!(evidence.accounted_count(), required, "{case}");
+                    assert_eq!(
+                        evidence.theme_residual_count(),
+                        usize::from(visible),
+                        "{case}"
+                    );
+                    assert_eq!(
+                        evidence.applied_count(),
+                        usize::from(visible && split),
+                        "{case}"
+                    );
+                    assert_eq!(
+                        evidence.not_applicable_count(),
+                        if visible { 0 } else { required },
+                        "{case}"
+                    );
                 }
             }
         }
@@ -1523,6 +1640,160 @@ fn gantt_title_fill_requires_a_visible_title_terminal() {
     assert_eq!(evidence.applied_count(), 0);
     assert_eq!(evidence.not_applicable_count(), 1);
     assert_eq!(evidence.theme_residual_count(), 0);
+}
+
+#[test]
+fn gantt_zero_size_section_titles_do_not_prove_title_fill() {
+    let theme = gantt_title_fill_theme(CanvasPaint::solid("#123456").unwrap(), None);
+    for (section_font_size, heading, applied) in
+        [(0, "", 0), (11, "", 1), (0, "title Visible title\n", 1)]
+    {
+        let config = serde_json::json!({"gantt": {"sectionFontSize": section_font_size}});
+        let source = format!(
+            "---\nconfig: {config}\n---\ngantt\n{heading}dateFormat YYYY-MM-DD\ntodayMarker off\nsection Delivery\nShip: a, 2024-01-01, 1d\n"
+        );
+        let (parsed, options, session) = prepare_gantt_family_with_theme(&source, &theme);
+        let rendered = family::prepare(&parsed, &options, session)
+            .unwrap()
+            .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+            .unwrap();
+        let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+        let section = document
+            .descendants()
+            .find(|node| node.attribute("class") == Some("sectionTitle sectionTitle0"))
+            .expect("zero-size section text remains in the SVG");
+        assert_eq!(
+            section.attribute("font-size"),
+            Some(section_font_size.to_string().as_str())
+        );
+        assert_eq!(
+            section.first_element_child().unwrap().text(),
+            Some("Delivery")
+        );
+        let evidence =
+            merman_render::__private::family_evidence(rendered.into_completion().report());
+        assert_eq!(evidence.required_count(), 1);
+        assert_eq!(evidence.applied_count(), applied);
+        assert_eq!(evidence.not_applicable_count(), 1 - applied);
+        assert_eq!(evidence.theme_residual_count(), 0);
+    }
+}
+
+#[test]
+fn gantt_zero_size_task_labels_do_not_prove_text_or_task_label_fill() {
+    for target in [ThemeTarget::Text, ThemeTarget::TaskLabel] {
+        let theme = gantt_task_rule_theme(ThemeRule::new(
+            target,
+            ThemeStylePatch::default().with_fill(CanvasPaint::solid("#123456").unwrap()),
+        ));
+        for font_size in [0, 11] {
+            let config = serde_json::json!({
+                "gantt": {"fontSize": font_size, "sectionFontSize": 0},
+                "themeVariables": {"textColor": "#abcdef"}
+            });
+            let source = format!(
+                "---\nconfig: {config}\n---\ngantt\ndateFormat YYYY-MM-DD\ntodayMarker off\nShip: a, 2024-01-01, 4d\n"
+            );
+            let (parsed, options, session) = prepare_gantt_family_with_theme(&source, &theme);
+            let rendered = family::prepare(&parsed, &options, session)
+                .unwrap()
+                .render_svg(
+                    &SvgRenderOptions {
+                        diagram_id: Some("gantt-config".to_owned()),
+                        ..SvgRenderOptions::default()
+                    },
+                    &SvgDebugOptions::default(),
+                )
+                .unwrap();
+            let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+            let baseline_svg = render_gantt_svg_from_text(&source);
+            let baseline = roxmltree::Document::parse(&baseline_svg).unwrap();
+            for id in ["gantt-config-a", "gantt-config-a-text"] {
+                let terminal = document
+                    .descendants()
+                    .find(|node| node.attribute("id") == Some(id))
+                    .unwrap();
+                let original = baseline
+                    .descendants()
+                    .find(|node| node.attribute("id") == Some(id))
+                    .unwrap();
+                for attribute in ["x", "y", "width", "height", "font-size", "class"] {
+                    assert_eq!(terminal.attribute(attribute), original.attribute(attribute));
+                }
+                assert_eq!(terminal.text(), original.text());
+            }
+            let evidence =
+                merman_render::__private::family_evidence(rendered.into_completion().report());
+            assert_eq!(evidence.required_count(), 1);
+            assert_eq!(evidence.applied_count(), usize::from(font_size != 0));
+            assert_eq!(evidence.not_applicable_count(), usize::from(font_size == 0));
+            assert_eq!(evidence.theme_residual_count(), 0);
+        }
+    }
+}
+
+#[test]
+fn gantt_zero_size_tasks_preserve_fixed_size_font_consumers() {
+    let theme = gantt_font_stack_theme(FontStack::single("monospace").unwrap());
+    for (role, heading, marker, tick_interval, applied) in [
+        ("none", "", "", "1month", 0),
+        ("axis", "", "", "1day", 1),
+        ("title", "title Visible title\n", "", "1month", 1),
+        (
+            "vertical",
+            "",
+            "Marker: vert, v, 2024-01-02, 0d\n",
+            "1month",
+            1,
+        ),
+    ] {
+        let config = serde_json::json!({
+            "gantt": {"fontSize": 0, "sectionFontSize": 0, "tickInterval": tick_interval}
+        });
+        let source = format!(
+            "---\nconfig: {config}\n---\ngantt\n{heading}dateFormat YYYY-MM-DD\ntodayMarker off\nsection Delivery\nShip: a, 2024-01-02, 1d\n{marker}"
+        );
+        let (parsed, options, session) = prepare_gantt_family_with_theme(&source, &theme);
+        let rendered = family::prepare(&parsed, &options, session)
+            .unwrap()
+            .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+            .unwrap();
+        assert_eq!(
+            rendered
+                .metadata()
+                .effective_config
+                .get_str("gantt.tickInterval"),
+            Some(tick_interval),
+            "{role}"
+        );
+        let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+        let tick_count = document
+            .descendants()
+            .filter(|node| node.attribute("class") == Some("tick"))
+            .count();
+        assert_eq!(tick_count > 0, role == "axis", "{role}");
+        if role == "vertical" {
+            let label = document
+                .descendants()
+                .find(|node| node.has_tag_name("text") && node.text() == Some("Marker"))
+                .unwrap();
+            assert_eq!(label.attribute("font-size"), Some("0"));
+            assert!(
+                label
+                    .attribute("class")
+                    .unwrap()
+                    .split_ascii_whitespace()
+                    .any(|class| class == "vertText")
+            );
+            assert!(rendered.svg().contains(".vertText{font-size:15px;"));
+        }
+        let evidence =
+            merman_render::__private::family_evidence(rendered.into_completion().report());
+        assert_eq!(evidence.required_count(), 1, "{role}");
+        assert_eq!(evidence.applied_count(), applied, "{role}");
+        assert_eq!(evidence.not_applicable_count(), 1 - applied, "{role}");
+        assert_eq!(evidence.theme_residual_count(), 0, "{role}");
+    }
 }
 
 #[test]

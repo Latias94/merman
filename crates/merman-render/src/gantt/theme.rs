@@ -27,6 +27,10 @@ use label::GanttTaskLabelPlan;
 
 const MERMAID_TASK_RADIUS_PX: f64 = 3.0;
 
+fn text_is_visible(text: &str, font_size_px: f64) -> bool {
+    font_size_px != 0.0 && !text.trim().is_empty()
+}
+
 fn task_label_css_priority(tasks: &[GanttTaskTerminalExpectation]) -> &'static str {
     if tasks
         .iter()
@@ -664,6 +668,12 @@ impl GanttTaskTheme {
                     let mut terminal_pending = observation.pending;
                     terminal_pending.title_residual = Some(reason);
                     pending.insert(key, terminal_pending);
+                } else if target == ThemeTarget::TaskLabel
+                    && reason == FamilyThemeResidualReason::UnsupportedTypography
+                {
+                    let mut terminal_pending = observation.pending;
+                    terminal_pending.task_label_typography_residual = true;
+                    pending.insert(key, terminal_pending);
                 } else {
                     evidence.mark_residual(key, reason);
                 }
@@ -835,7 +845,7 @@ impl GanttTaskTheme {
             } else {
                 GanttTaskThemeReceipt::from_expectations(
                     expectations,
-                    self.font_family_css(),
+                    self.css_binding(),
                     self.typed_font_stack_active,
                     self.title_fill.as_ref(),
                     self.text_fill.as_ref(),
@@ -869,6 +879,17 @@ impl GanttTaskTheme {
                 | FamilyThemeMechanismKey::OrdinalPalette { .. }
                 | FamilyThemeMechanismKey::EffectBinding { .. } => continue,
             };
+            if pending.task_label_typography_residual {
+                if receipt.label_typography_rules.contains(&rule_index) {
+                    evidence.mark_residual(
+                        key.clone(),
+                        FamilyThemeResidualReason::UnsupportedTypography,
+                    );
+                } else {
+                    evidence.mark_not_applicable(key.clone());
+                }
+                continue;
+            }
             if pending.warning_stroke {
                 if receipt.has_matching_rule(rule_index, pending)
                     && receipt.has_typed_warning_terminal()
@@ -1265,6 +1286,7 @@ struct GanttTaskPendingEvidence {
     label_fill: bool,
     warning_stroke: bool,
     title_residual: Option<FamilyThemeResidualReason>,
+    task_label_typography_residual: bool,
     capabilities: BTreeSet<ThemeCapability>,
 }
 
@@ -1278,6 +1300,7 @@ impl GanttTaskPendingEvidence {
             || self.label_fill
             || self.warning_stroke
             || self.title_residual.is_some()
+            || self.task_label_typography_residual
     }
 }
 
@@ -1293,11 +1316,14 @@ pub(crate) struct GanttTaskThemeReceipt {
     typography_css_recorded: bool,
     typography_css_matches: bool,
     typography_text_count: usize,
+    task_font_size: f64,
+    section_font_size: f64,
     terminal_ids: BTreeSet<Box<str>>,
     radius_rules: BTreeSet<usize>,
     fill_rules: BTreeSet<usize>,
     stroke_rules: BTreeSet<usize>,
     label_fill_rules: BTreeSet<usize>,
+    label_typography_rules: BTreeSet<usize>,
     expected_title_fill_css: Option<Box<str>>,
     title_css_recorded: bool,
     title_css_matches: bool,
@@ -1331,12 +1357,13 @@ pub(crate) struct GanttTaskThemeReceipt {
 impl GanttTaskThemeReceipt {
     #[cfg(test)]
     fn new(expectations: Vec<GanttTaskTerminalExpectation>) -> Self {
-        Self::from_expectations(expectations, "", false, None, None, None)
+        let css = GanttCssBinding::new(&serde_json::json!({}), "");
+        Self::from_expectations(expectations, &css, false, None, None, None)
     }
 
     fn from_expectations(
         expectations: Vec<GanttTaskTerminalExpectation>,
-        expected_font_family_css: &str,
+        css: &GanttCssBinding,
         typography_required: bool,
         title_fill: Option<&GanttGlobalFillExpectation>,
         text_fill: Option<&GanttTextFillExpectation>,
@@ -1347,16 +1374,19 @@ impl GanttTaskThemeReceipt {
             checkpointed_labels: vec![false; expectations.len()],
             expectations: expectations.into_boxed_slice(),
             terminals_match: true,
-            expected_font_family_css: typography_required.then(|| expected_font_family_css.into()),
+            expected_font_family_css: typography_required.then(|| css.common.font_family().into()),
             typography_required,
             typography_css_recorded: false,
             typography_css_matches: true,
             typography_text_count: 0,
+            task_font_size: css.task_font_size,
+            section_font_size: css.section_font_size,
             terminal_ids: BTreeSet::new(),
             radius_rules: BTreeSet::new(),
             fill_rules: BTreeSet::new(),
             stroke_rules: BTreeSet::new(),
             label_fill_rules: BTreeSet::new(),
+            label_typography_rules: BTreeSet::new(),
             expected_title_fill_css: title_fill.map(|fill| fill.css.clone()),
             expected_title_fill_rule: title_fill.map(|fill| fill.rule_index),
             title_css_recorded: false,
@@ -1407,11 +1437,14 @@ impl GanttTaskThemeReceipt {
             typography_css_recorded: false,
             typography_css_matches: false,
             typography_text_count: 0,
+            task_font_size: 0.0,
+            section_font_size: 0.0,
             terminal_ids: BTreeSet::new(),
             radius_rules: BTreeSet::new(),
             fill_rules: BTreeSet::new(),
             stroke_rules: BTreeSet::new(),
             label_fill_rules: BTreeSet::new(),
+            label_typography_rules: BTreeSet::new(),
             expected_title_fill_css: None,
             expected_title_fill_rule: None,
             title_css_recorded: false,
@@ -1539,11 +1572,12 @@ impl GanttTaskThemeReceipt {
         let paint = expected.label.paint(class);
         let matches = paint.map(|paint| paint.css()) == emitted_fill;
         self.terminals_match &= matches;
-        if matches
-            && visible
-            && let Some(paint) = paint
-        {
-            self.label_fill_rules.insert(paint.rule_index());
+        if matches && visible {
+            if let Some(paint) = paint {
+                self.label_fill_rules.insert(paint.rule_index());
+            }
+            self.label_typography_rules
+                .extend(expected.label.typography_winner_rules());
         }
     }
 
@@ -1559,14 +1593,33 @@ impl GanttTaskThemeReceipt {
             .is_some_and(|expected| expected == emitted_font_family_css);
     }
 
-    pub(crate) fn record_typography_text(&mut self, text: &str) {
-        if !text.trim().is_empty() {
+    pub(crate) fn task_label_is_visible(&self, text: &str, class: &str) -> bool {
+        // The final .vertText rule owns 15px even when the task's font-size attribute is zero.
+        let font_size = if class
+            .split_ascii_whitespace()
+            .any(|token| token == "vertText")
+        {
+            15.0
+        } else {
+            self.task_font_size
+        };
+        text_is_visible(text, font_size)
+    }
+
+    pub(crate) fn record_typography_text(&mut self, text: &str, class: &str) {
+        if self.task_label_is_visible(text, class) {
             self.typography_text_count = self.typography_text_count.saturating_add(1);
         }
     }
 
+    pub(crate) fn record_section_title_text(&mut self, text: &str) {
+        if text_is_visible(text, self.section_font_size) {
+            self.record_title_text(text);
+        }
+    }
+
     pub(crate) fn record_title_text(&mut self, text: &str) {
-        if !text.trim().is_empty() {
+        if text_is_visible(text, 18.0) {
             self.typography_text_count = self.typography_text_count.saturating_add(1);
             self.title_text_count = self.title_text_count.saturating_add(1);
         }
@@ -1639,8 +1692,9 @@ impl GanttTaskThemeReceipt {
     }
 
     pub(crate) fn record_grid_text(&mut self, text: &str) {
-        if !text.trim().is_empty() {
+        if text_is_visible(text, 10.0) {
             self.grid_text_count = self.grid_text_count.saturating_add(1);
+            self.typography_text_count = self.typography_text_count.saturating_add(1);
         }
     }
 
@@ -1657,7 +1711,10 @@ impl GanttTaskThemeReceipt {
                 || token.starts_with("activeCritText")
                 || token == "vertText"
         });
-        if is_regular_task_label && !has_terminal_override && !text.trim().is_empty() {
+        if is_regular_task_label
+            && !has_terminal_override
+            && self.task_label_is_visible(text, class)
+        {
             self.task_text_count = self.task_text_count.saturating_add(1);
         }
     }
@@ -1715,7 +1772,9 @@ impl GanttTaskThemeReceipt {
     fn proves_complete(&self) -> bool {
         let labels_complete = self.expectations.iter().zip(&self.checkpointed_labels).all(
             |(expected, checkpointed)| {
-                expected.label.typed_candidates().next().is_none() || *checkpointed
+                (expected.label.typed_candidates().next().is_none()
+                    && expected.label.typography_winner_rules().next().is_none())
+                    || *checkpointed
             },
         );
         self.terminals_match
@@ -1864,6 +1923,7 @@ mod tests {
 
     #[test]
     fn global_text_receipt_preserves_property_local_roles_and_rule_identity() {
+        let css_binding = GanttCssBinding::new(&serde_json::json!({}), "sans-serif");
         let pending = GanttTaskPendingEvidence {
             text_fill: true,
             ..GanttTaskPendingEvidence::default()
@@ -1889,7 +1949,7 @@ mod tests {
             let receipt = || {
                 GanttTaskThemeReceipt::from_expectations(
                     Vec::new(),
-                    "sans-serif",
+                    &css_binding,
                     false,
                     None,
                     Some(&expectation),
@@ -1933,7 +1993,7 @@ mod tests {
         };
         let mut receipt = GanttTaskThemeReceipt::from_expectations(
             Vec::new(),
-            "sans-serif",
+            &css_binding,
             false,
             None,
             Some(&source_owned),
@@ -1968,7 +2028,7 @@ mod tests {
             .begin_terminal_receipt()
             .expect("bound typography receipt");
         receipt.record_typography_css("Inter");
-        receipt.record_typography_text("visible task label");
+        receipt.record_typography_text("visible task label", "taskText0");
         receipt.record_checkpointed_task(0, "", "", "", "0", "task task0", 3.0, 3.0, None, None);
         assert!(receipt.proves_typography());
         assert!(task_theme.record_terminal(receipt));
@@ -2014,7 +2074,7 @@ mod tests {
             .begin_terminal_receipt()
             .expect("mixed typography receipt");
         receipt.record_typography_css("Inter");
-        receipt.record_typography_text("visible task label");
+        receipt.record_typography_text("visible task label", "taskText0");
         receipt.record_checkpointed_task(0, "", "", "", "0", "task task0", 3.0, 3.0, None, None);
         assert!(task_theme.record_terminal(receipt));
 
@@ -2193,6 +2253,68 @@ mod tests {
         }
         assert!(!duplicate.proves_complete());
         assert!(!GanttTaskTheme::baseline(&[]).record_terminal(duplicate));
+    }
+
+    #[test]
+    fn typography_only_label_receipt_requires_even_zero_size_terminal_checkpoints() {
+        let mut typography = ThemeStylePatch::default();
+        typography.typography.font_size_px = Specified::Value(31.0);
+        let resolved = DiagramThemeCompiler::new()
+            .compile(
+                DiagramThemeSpec::new().with_styles(
+                    ThemeRuleSet::default()
+                        .with_rule(ThemeRule::new(ThemeTarget::TaskLabel, typography)),
+                ),
+            )
+            .unwrap()
+            .resolve(crate::DiagramFamilyId::GANTT);
+        let task = GanttRenderTask {
+            semantic: merman_model::families::gantt::GanttTask {
+                id: "task-a".to_owned(),
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+        let plan = GanttTaskTheme::resolve(
+            Some(&resolved),
+            &crate::test_support::presentation_config(serde_json::json!({
+                "gantt": {"fontSize": 0}
+            })),
+            &[task],
+            &OperationWorkMeter::new(RenderResourcePolicy::default()),
+        )
+        .unwrap();
+        assert!(plan.bind_layout_occurrences(vec![0]));
+        let mut receipt = plan.begin_terminal_receipt().unwrap();
+        receipt.record_checkpointed_task(
+            0,
+            "g",
+            "task-a",
+            "g-task-a",
+            "0",
+            "task task0",
+            3.0,
+            3.0,
+            None,
+            None,
+        );
+        assert!(!receipt.proves_complete());
+        let visible = receipt.task_label_is_visible("Ship", "taskText taskText0");
+        assert!(!visible);
+        receipt.record_label_fill(0, "taskText taskText0", None, visible);
+        assert!(receipt.proves_complete());
+        assert!(receipt.label_typography_rules.is_empty());
+        assert!(plan.record_terminal(receipt));
+        let evidence = collect_evidence(&resolved, |evidence| plan.record_evidence(evidence));
+        assert!(evidence.residuals().is_empty());
+        assert!(
+            evidence
+                .not_applicable_mechanisms()
+                .contains(&FamilyThemeMechanismKey::Rule {
+                    index: 0,
+                    target: ThemeTarget::TaskLabel,
+                })
+        );
     }
 
     #[test]

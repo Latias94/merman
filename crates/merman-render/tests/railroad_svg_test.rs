@@ -1006,6 +1006,212 @@ fn railroad_typed_typography_is_not_applicable_for_an_empty_diagram() {
 }
 
 #[test]
+fn railroad_zero_sized_text_does_not_consume_theme_typography() {
+    let font_stack = FontStack::single("serif").unwrap();
+    let expected_font = font_stack.as_css();
+    let typography = ThemeTextStyle::default()
+        .with_font_stack(font_stack)
+        .with_font_weight(700)
+        .unwrap();
+    let theme = DiagramThemeCompiler::new()
+        .compile(DiagramThemeSpec::new().with_typography(
+            TypographySpec::default().with_family_style(DiagramFamilyId::RAILROAD, typography),
+        ))
+        .unwrap();
+
+    for source in railroad_core_dialect_sources() {
+        for size in [0, 14] {
+            let site_config = json!({"railroad": {"fontSize": size}});
+            let (_, rendered) = try_render_railroad_source_with_theme(
+                source,
+                &theme,
+                MermaidEngine::new().with_site_config(
+                    merman_core::presentation::SourcePresentationConfig::from_value(
+                        site_config.clone(),
+                    ),
+                ),
+                &RenderEnvironment::deterministic(),
+                "railroad-text-visibility",
+            )
+            .unwrap();
+            let css = railroad_style(rendered.svg());
+            for selector in [
+                ".railroad-diagram",
+                ".railroad-terminal text",
+                ".railroad-nonterminal text",
+                ".railroad-comment text",
+                ".railroad-special text",
+                ".railroad-rule-name",
+            ] {
+                assert_railroad_font_rule(
+                    &css,
+                    "railroad-text-visibility",
+                    selector,
+                    &expected_font,
+                    &size.to_string(),
+                );
+            }
+            let evidence =
+                merman_render::__private::family_evidence(rendered.into_completion().report());
+            assert_eq!(evidence.required_count(), 2);
+            assert_eq!(evidence.accounted_count(), 2);
+            assert_eq!(evidence.applied_count(), usize::from(size > 0));
+            assert_eq!(
+                evidence.not_applicable_count(),
+                if size == 0 { 2 } else { 0 }
+            );
+            assert_eq!(evidence.theme_residual_count(), usize::from(size > 0));
+
+            let strict = try_render_railroad_source_with_theme(
+                source,
+                &theme,
+                MermaidEngine::new().with_site_config(
+                    merman_core::presentation::SourcePresentationConfig::from_value(site_config),
+                ),
+                &portable_railroad_environment(),
+                "railroad-text-visibility",
+            );
+            if size == 0 {
+                strict.expect("zero-sized text cannot consume unsupported font weight");
+            } else {
+                assert_eq!(
+                    strict.err().unwrap().unverified_family_theme(),
+                    Some((DiagramFamilyId::RAILROAD, 1))
+                );
+            }
+        }
+    }
+}
+
+#[test]
+fn railroad_zero_sized_labels_preserve_geometry_and_nontext_paint() {
+    use merman_render::diagram_theme::OrdinalSelector;
+
+    let empty_theme = DiagramThemeCompiler::new()
+        .compile(DiagramThemeSpec::new())
+        .unwrap();
+    for source in railroad_core_dialect_sources() {
+        let site_config = json!({"railroad": {"fontSize": 0}});
+        let (baseline_layout, baseline) = try_render_railroad_source_with_theme(
+            source,
+            &empty_theme,
+            MermaidEngine::new().with_site_config(
+                merman_core::presentation::SourcePresentationConfig::from_value(
+                    site_config.clone(),
+                ),
+            ),
+            &portable_railroad_environment(),
+            "railroad-zero-paint",
+        )
+        .unwrap();
+        let baseline_document = roxmltree::Document::parse(baseline.svg()).unwrap();
+        let baseline_text = baseline_document
+            .descendants()
+            .filter(|node| node.has_tag_name("text"))
+            .map(|node| node.text())
+            .collect::<Vec<_>>();
+        assert!(
+            baseline_text
+                .iter()
+                .any(|text| text.is_some_and(|text| !text.is_empty()))
+        );
+
+        for ordinal in [false, true] {
+            let mut rules = ThemeRuleSet::default();
+            for target in [
+                ThemeTarget::Text,
+                ThemeTarget::Title,
+                ThemeTarget::NodeLabel,
+            ] {
+                let mut rule = ThemeRule::new(
+                    target,
+                    ThemeStylePatch::default().with_fill(CanvasPaint::solid("#123456").unwrap()),
+                );
+                if ordinal {
+                    rule = rule.with_ordinal(OrdinalSelector::exact(1).unwrap());
+                }
+                rules = rules.with_rule(rule);
+            }
+            rules = rules
+                .with_rule(ThemeRule::new(
+                    ThemeTarget::Node,
+                    ThemeStylePatch::default().with_fill(CanvasPaint::solid("#456789").unwrap()),
+                ))
+                .with_rule(ThemeRule::new(
+                    ThemeTarget::Edge,
+                    ThemeStylePatch::default().with_stroke(CanvasPaint::solid("#789abc").unwrap()),
+                ));
+            let theme = DiagramThemeCompiler::new()
+                .compile(DiagramThemeSpec::new().with_styles(rules))
+                .unwrap();
+            let (layout, rendered) = try_render_railroad_source_with_theme(
+                source,
+                &theme,
+                MermaidEngine::new().with_site_config(
+                    merman_core::presentation::SourcePresentationConfig::from_value(
+                        site_config.clone(),
+                    ),
+                ),
+                &portable_railroad_environment(),
+                "railroad-zero-paint",
+            )
+            .expect("invisible text paint must not suppress independent body and track paint");
+            assert_eq!(
+                serde_json::to_value(&layout).unwrap(),
+                serde_json::to_value(&baseline_layout).unwrap()
+            );
+            let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+            let text = document
+                .descendants()
+                .filter(|node| node.has_tag_name("text"))
+                .map(|node| node.text())
+                .collect::<Vec<_>>();
+            assert_eq!(
+                text, baseline_text,
+                "zero-sized text nodes must be retained"
+            );
+            let css = railroad_style(rendered.svg());
+            assert!(
+                railroad_rule_body(&css, "railroad-zero-paint", ".railroad-terminal rect")
+                    .contains("fill:#456789;")
+            );
+            assert!(
+                railroad_rule_body(&css, "railroad-zero-paint", ".railroad-line")
+                    .contains("stroke:#789abc;")
+            );
+            drop(document);
+
+            let evidence =
+                merman_render::__private::family_evidence(rendered.into_completion().report());
+            assert_eq!(evidence.required_count(), 5);
+            assert_eq!(evidence.accounted_count(), 5);
+            assert_eq!(evidence.applied_count(), 2);
+            assert_eq!(evidence.not_applicable_count(), 3);
+            assert_eq!(evidence.theme_residual_count(), 0);
+
+            if ordinal {
+                let strict = try_render_railroad_source_with_theme(
+                    source,
+                    &theme,
+                    MermaidEngine::new().with_site_config(
+                        merman_core::presentation::SourcePresentationConfig::from_value(
+                            json!({"railroad": {"fontSize": 14}}),
+                        ),
+                    ),
+                    &portable_railroad_environment(),
+                    "railroad-positive-paint",
+                );
+                assert_eq!(
+                    strict.err().unwrap().unverified_family_theme(),
+                    Some((DiagramFamilyId::RAILROAD, 3)),
+                    "visible unsupported text ordinals must remain residuals"
+                );
+            }
+        }
+    }
+}
+
+#[test]
 fn railroad_title_fill_reaches_rule_name_through_typed_adapter() {
     for (case, variant) in [
         ("unqualified", None),

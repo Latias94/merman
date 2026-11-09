@@ -98,6 +98,12 @@ impl GanttTaskLabelPlan {
         self.winners.iter().copied()
     }
 
+    pub(super) fn typography_winner_rules(&self) -> impl Iterator<Item = usize> + '_ {
+        self.winners().filter_map(|(rule_index, property)| {
+            matches!(property, ResolvedStyleProperty::Typography(_)).then_some(rule_index)
+        })
+    }
+
     pub(super) fn typed_candidates(&self) -> impl Iterator<Item = &DirectStaticPaint> {
         self.inside.iter().chain(self.outside.iter())
     }

@@ -731,6 +731,237 @@ fn gitgraph_base_dependent_role_sizes_use_the_typed_font_size() {
 }
 
 #[test]
+fn gitgraph_zero_size_commit_and_tag_roles_do_not_prove_typography() {
+    let theme = gitgraph_typography_theme(
+        ThemeTextStyle::default()
+            .with_font_stack(FontStack::single("GitGraphZeroSize").unwrap())
+            .with_font_size_px(29.0)
+            .unwrap(),
+    );
+    for size in [
+        "0",
+        "0px",
+        "0em",
+        "0pt",
+        "0rem",
+        "0ex",
+        "0%",
+        "0PX",
+        "0px !IMPORTANT",
+        "0EM !IMPORTANT",
+        "0% !IMPORTANT",
+    ] {
+        for (source, show_commit_label, class) in [
+            ("gitGraph\n  commit id: \"A\"\n", true, "commit-label"),
+            (
+                "gitGraph\n  commit id: \"A\" tag: \"v1\"\n",
+                false,
+                "tag-label",
+            ),
+        ] {
+            render_source_and_site_config_cases(
+                source,
+                json!({
+                    "gitGraph": {"showBranches": false, "showCommitLabel": show_commit_label},
+                    "themeVariables": {"commitLabelFontSize": size, "tagLabelFontSize": size}
+                }),
+                &theme,
+                "git-zero-role-fonts",
+                |owner, rendered| {
+                    // Source admission rejects declaration priority; trusted site CSS retains it.
+                    let filtered = owner == "source" && size.contains("!IMPORTANT");
+                    let expected_size = if filtered { "10px" } else { size };
+                    let effective = &rendered.metadata().effective_config;
+                    for path in [
+                        "themeVariables.commitLabelFontSize",
+                        "themeVariables.tagLabelFontSize",
+                    ] {
+                        assert_eq!(
+                            effective.get_str(path),
+                            Some(expected_size),
+                            "{owner}/{size}"
+                        );
+                        assert_eq!(
+                            effective.explicit_config_owns_path(path),
+                            !filtered,
+                            "{owner}/{size}"
+                        );
+                    }
+                    let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+                    assert!(
+                        document
+                            .descendants()
+                            .any(|node| { node.has_tag_name("text") && has_class(&node, class) })
+                    );
+                    let stylesheet = gitgraph_stylesheet(rendered.svg());
+                    let rule = gitgraph_css_rule(
+                        &stylesheet,
+                        &format!("#git-zero-role-fonts-{owner} .{class}"),
+                    );
+                    assert_eq!(css_property(&rule, "font-size"), Some(expected_size));
+                    let evidence = merman_render::__private::family_evidence(
+                        rendered.into_completion().report(),
+                    );
+                    assert_eq!(evidence.required_count(), 2, "{owner}/{size}/{class}");
+                    assert_eq!(evidence.accounted_count(), 2, "{owner}/{size}/{class}");
+                    assert_eq!(
+                        evidence.applied_count(),
+                        usize::from(filtered),
+                        "{owner}/{size}/{class}"
+                    );
+                    assert_eq!(
+                        evidence.not_applicable_count(),
+                        2 - usize::from(filtered),
+                        "{owner}/{size}/{class}"
+                    );
+                    assert_eq!(evidence.theme_residual_count(), 0, "{owner}/{size}/{class}");
+                },
+            );
+        }
+    }
+}
+
+#[test]
+fn gitgraph_malformed_zero_role_sizes_retain_base_font_obligations() {
+    let theme = gitgraph_typography_theme(
+        ThemeTextStyle::default()
+            .with_font_stack(FontStack::single("GitGraphInvalidZero").unwrap())
+            .with_font_size_px(29.0)
+            .unwrap(),
+    );
+    for size in ["0 px", "0 em", "0 %"] {
+        for (source, show_commit_label, class) in [
+            ("gitGraph\n  commit id: \"A\"\n", true, "commit-label"),
+            (
+                "gitGraph\n  commit id: \"A\" tag: \"v1\"\n",
+                false,
+                "tag-label",
+            ),
+        ] {
+            for (owner, source, engine) in gitgraph_source_and_site_config_cases(
+                source,
+                json!({
+                    "gitGraph": {"showBranches": false, "showCommitLabel": show_commit_label},
+                    "themeVariables": {"commitLabelFontSize": size, "tagLabelFontSize": size}
+                }),
+            ) {
+                let rendered = try_render_gitgraph_with_theme_engine_and_requirement(
+                    &source,
+                    &theme,
+                    engine,
+                    "git-invalid-zero-role",
+                    ThemePortabilityRequirement::BestEffort,
+                )
+                .unwrap();
+                // A separated percent delimiter is rejected at source admission, not by the theme.
+                let filtered = owner == "source" && size == "0 %";
+                let expected_size = if filtered { "10px" } else { size };
+                let effective = &rendered.metadata().effective_config;
+                for path in [
+                    "themeVariables.commitLabelFontSize",
+                    "themeVariables.tagLabelFontSize",
+                ] {
+                    assert_eq!(
+                        effective.get_str(path),
+                        Some(expected_size),
+                        "{owner}/{size}"
+                    );
+                    assert_eq!(
+                        effective.explicit_config_owns_path(path),
+                        !filtered,
+                        "{owner}/{size}"
+                    );
+                }
+                let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+                assert!(
+                    document
+                        .descendants()
+                        .any(|node| { node.has_tag_name("text") && has_class(&node, class) })
+                );
+                let rule = gitgraph_css_rule(
+                    &gitgraph_stylesheet(rendered.svg()),
+                    &format!("#git-invalid-zero-role .{class}"),
+                );
+                assert_eq!(css_property(&rule, "font-size"), Some(expected_size));
+                let evidence =
+                    merman_render::__private::family_evidence(rendered.into_completion().report());
+                assert_eq!(evidence.required_count(), 2, "{owner}/{size}/{class}");
+                assert_eq!(evidence.accounted_count(), 2, "{owner}/{size}/{class}");
+                assert_eq!(evidence.applied_count(), 1, "{owner}/{size}/{class}");
+                assert_eq!(
+                    evidence.not_applicable_count(),
+                    usize::from(filtered),
+                    "{owner}/{size}/{class}"
+                );
+                assert_eq!(
+                    evidence.theme_residual_count(),
+                    usize::from(!filtered),
+                    "{owner}/{size}/{class}"
+                );
+            }
+        }
+    }
+}
+
+#[test]
+fn gitgraph_zero_size_labels_keep_other_typography_roles_applicable() {
+    let theme = gitgraph_typography_theme(
+        ThemeTextStyle::default()
+            .with_font_stack(FontStack::single("GitGraphVisibleRole").unwrap())
+            .with_font_size_px(29.0)
+            .unwrap(),
+    );
+    for (source, show_branches, commit_size, tag_size, applied) in [
+        (
+            "---\ntitle: Visible title\n---\ngitGraph\n  commit id: \"A\" tag: \"v1\"\n",
+            false,
+            "0em",
+            "0%",
+            1,
+        ),
+        (
+            "gitGraph\n  commit id: \"A\" tag: \"v1\"\n",
+            true,
+            "0em",
+            "0%",
+            2,
+        ),
+        (
+            "gitGraph\n  commit id: \"A\" tag: \"v1\"\n",
+            false,
+            "inherit",
+            "0%",
+            2,
+        ),
+        (
+            "gitGraph\n  commit id: \"A\" tag: \"v1\"\n",
+            false,
+            "0em",
+            "inherit",
+            2,
+        ),
+    ] {
+        let rendered = render_gitgraph_with_theme_and_engine(
+            source,
+            &theme,
+            MermaidEngine::new().with_site_config(
+                merman_core::presentation::SourcePresentationConfig::from_value(json!({
+                    "gitGraph": {"showBranches": show_branches},
+                    "themeVariables": {"commitLabelFontSize": commit_size, "tagLabelFontSize": tag_size}
+                })),
+            ),
+            "git-visible-font-role",
+        );
+        let evidence =
+            merman_render::__private::family_evidence(rendered.into_completion().report());
+        assert_eq!(evidence.required_count(), 2);
+        assert_eq!(evidence.applied_count(), applied);
+        assert_eq!(evidence.not_applicable_count(), 2 - applied);
+        assert_eq!(evidence.theme_residual_count(), 0);
+    }
+}
+
+#[test]
 fn gitgraph_unmeasurable_role_size_fails_closed() {
     let theme = gitgraph_typography_theme(
         ThemeTextStyle::default()
@@ -3386,6 +3617,195 @@ fn gitgraph_label_color_ownership_is_property_local_and_requires_visible_text() 
                 "an unrelated root title is not a label terminal"
             );
         }
+    }
+}
+
+#[test]
+fn gitgraph_zero_size_labels_do_not_prove_local_paint_or_typography() {
+    for (target, key) in [
+        (ThemeTarget::NodeLabel, "tagLabelFontSize"),
+        (ThemeTarget::EdgeLabel, "commitLabelFontSize"),
+    ] {
+        for mixed in [false, true] {
+            let mut patch =
+                ThemeStylePatch::default().with_fill(CanvasPaint::solid("#123456").unwrap());
+            if mixed {
+                patch.typography.font_stack =
+                    Specified::Value(FontStack::single("UnsupportedRoleFont").unwrap());
+            }
+            let theme = gitgraph_edge_rules_theme([ThemeRule::new(target, patch)]);
+            for (size, visible) in [
+                ("0em", false),
+                ("0px", false),
+                ("0PX", false),
+                ("0px !IMPORTANT", false),
+                ("0 px", true),
+                ("0 em", true),
+                ("0 %", true),
+                ("10px", true),
+            ] {
+                let requirement = if visible && mixed {
+                    ThemePortabilityRequirement::BestEffort
+                } else {
+                    ThemePortabilityRequirement::RequirePortable
+                };
+                let engine = || {
+                    MermaidEngine::new().with_site_config(
+                        merman_core::presentation::SourcePresentationConfig::from_value(json!({
+                            "gitGraph": {"showBranches": false},
+                            "themeVariables": {key: size}
+                        })),
+                    )
+                };
+                let rendered = try_render_gitgraph_with_theme_engine_and_requirement(
+                    "gitGraph\n  commit id: \"A\" tag: \"v1\"\n",
+                    &theme,
+                    engine(),
+                    "git-zero-local-label",
+                    requirement,
+                )
+                .expect("zero-size local label typography is not a strict obligation");
+                let evidence =
+                    merman_render::__private::family_evidence(rendered.into_completion().report());
+                assert_eq!(evidence.required_count(), 1, "{target:?}/{mixed}/{size}");
+                assert_eq!(
+                    evidence.applied_count(),
+                    usize::from(visible && !mixed),
+                    "{target:?}/{mixed}/{size}"
+                );
+                assert_eq!(
+                    evidence.not_applicable_count(),
+                    usize::from(!visible),
+                    "{target:?}/{mixed}/{size}"
+                );
+                assert_eq!(
+                    evidence.theme_residual_count(),
+                    usize::from(visible && mixed),
+                    "{target:?}/{mixed}/{size}"
+                );
+                if visible && mixed {
+                    let error = try_render_gitgraph_with_theme_engine_and_requirement(
+                        "gitGraph\n  commit id: \"A\" tag: \"v1\"\n",
+                        &theme,
+                        engine(),
+                        "git-invalid-zero-local-strict",
+                        ThemePortabilityRequirement::RequirePortable,
+                    )
+                    .err()
+                    .expect("invalid zero CSS must not hide unsupported label typography");
+                    assert_eq!(
+                        error.unverified_family_theme(),
+                        Some((DiagramFamilyId::GIT_GRAPH, 1)),
+                        "{target:?}/{size}"
+                    );
+                }
+            }
+        }
+    }
+}
+
+#[test]
+fn gitgraph_zero_size_labels_preserve_terminal_order_backgrounds_and_tag_holes() {
+    let theme = gitgraph_edge_rules_theme_with_spec(
+        [
+            ThemeRule::new(
+                ThemeTarget::Text,
+                ThemeStylePatch::default().with_fill(CanvasPaint::solid("#123456").unwrap()),
+            ),
+            ThemeRule::new(
+                ThemeTarget::NodeLabel,
+                ThemeStylePatch::default().with_fill(CanvasPaint::solid("#654321").unwrap()),
+            ),
+            ThemeRule::new(
+                ThemeTarget::EdgeLabel,
+                ThemeStylePatch::default().with_fill(CanvasPaint::solid("#abcdef").unwrap()),
+            ),
+            ThemeRule::new(
+                ThemeTarget::EdgeLabelBackground,
+                ThemeStylePatch::default().with_fill(CanvasPaint::solid("#fedcba").unwrap()),
+            ),
+        ],
+        DiagramThemeSpec::new().with_typography(
+            TypographySpec::default().with_family_style(
+                DiagramFamilyId::GIT_GRAPH,
+                ThemeTextStyle::default()
+                    .with_font_stack(FontStack::single("GitGraphZeroSize").unwrap())
+                    .with_font_size_px(29.0)
+                    .unwrap(),
+            ),
+        ),
+    );
+    for (commit_size, tag_size) in [("0em", "0%"), ("0pt", "0rem"), ("0ex", "0cap")] {
+        let rendered = render_gitgraph_with_theme_and_engine(
+        "gitGraph\n  commit id: \"A\" tag: \"first\" tag: \"second\"\n  commit id: \"B\"\n",
+        &theme,
+        MermaidEngine::new().with_site_config(
+            merman_core::presentation::SourcePresentationConfig::from_value(json!({
+                "gitGraph": {"showBranches": false, "rotateCommitLabel": false},
+                "themeVariables": {"commitLabelFontSize": commit_size, "tagLabelFontSize": tag_size}
+            })),
+        ),
+        "git-zero-formatting",
+    );
+        let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+        let labels: Vec<_> = document
+            .descendants()
+            .filter(|node| node.has_tag_name("text"))
+            .map(|node| (node.attribute("class").unwrap(), node.text().unwrap()))
+            .collect();
+        assert_eq!(
+            labels,
+            [
+                ("commit-label", "A"),
+                ("tag-label", "second"),
+                ("tag-label", "first"),
+                ("commit-label", "B"),
+            ]
+        );
+        let backgrounds: Vec<_> = document
+            .descendants()
+            .filter(|node| has_class(node, "commit-label-bkg"))
+            .collect();
+        assert_eq!(backgrounds.len(), 2);
+        for background in backgrounds {
+            assert_eq!(background.attribute("width"), Some("4"));
+            assert_eq!(background.attribute("height"), Some("4"));
+        }
+        let holes: Vec<_> = document
+            .descendants()
+            .filter(|node| has_class(node, "tag-hole"))
+            .collect();
+        assert_eq!(holes.len(), 2);
+        assert!(holes.iter().all(|hole| hole.attribute("r") == Some("1.5")));
+        assert_eq!(
+            document
+                .descendants()
+                .filter(|node| has_class(node, "tag-label-bkg"))
+                .count(),
+            2
+        );
+        let stylesheet = gitgraph_stylesheet(rendered.svg());
+        assert_eq!(
+            css_property(
+                &gitgraph_css_rule(&stylesheet, "#git-zero-formatting .tag-hole"),
+                "fill"
+            ),
+            Some("#123456")
+        );
+        assert_eq!(
+            css_property(
+                &gitgraph_css_rule(&stylesheet, "#git-zero-formatting .commit-label-bkg"),
+                "fill"
+            ),
+            Some("#fedcba")
+        );
+        let evidence =
+            merman_render::__private::family_evidence(rendered.into_completion().report());
+        assert_eq!(evidence.required_count(), 6);
+        assert_eq!(evidence.accounted_count(), 6);
+        assert_eq!(evidence.applied_count(), 2);
+        assert_eq!(evidence.not_applicable_count(), 4);
+        assert_eq!(evidence.theme_residual_count(), 0);
     }
 }
 

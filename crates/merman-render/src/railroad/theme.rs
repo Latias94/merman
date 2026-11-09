@@ -218,7 +218,6 @@ impl RailroadSurfaceReceipt {
 #[derive(Debug)]
 pub(crate) struct RailroadTypographyThemePlan {
     style: RailroadStyle,
-    evidence: FamilyThemeOutcomes,
     unsupported_properties: BTreeSet<ThemeTypographyProperty>,
     typed_font_stack_requested: bool,
     typed_font_size_requested: bool,
@@ -248,7 +247,6 @@ impl RailroadTypographyThemePlan {
         let Some(theme) = theme else {
             return Ok(Self {
                 style,
-                evidence: FamilyThemeOutcomes::default(),
                 unsupported_properties: BTreeSet::new(),
                 typed_font_stack_requested: false,
                 typed_font_size_requested: false,
@@ -440,7 +438,6 @@ impl RailroadTypographyThemePlan {
 
         Ok(Self {
             style,
-            evidence: FamilyThemeOutcomes::default(),
             unsupported_properties,
             typed_font_stack_requested: typed_font_stack,
             typed_font_size_requested: typed_font_size,
@@ -474,6 +471,7 @@ impl RailroadTypographyThemePlan {
         let mut source_stroke = Vec::new();
         let mut source_label = Vec::new();
         let mut edge_count = 0usize;
+        let text_visible = self.style.font_size > 0.0;
         for rule in &layout.rules {
             work_meter.charge(1)?;
             edge_count += rule.paths.len();
@@ -487,7 +485,7 @@ impl RailroadTypographyThemePlan {
                 };
                 source_fill.push(self.core_ownership.fill[role]);
                 source_stroke.push(self.core_ownership.stroke[role]);
-                if !element.label.trim().is_empty() {
+                if text_visible && !element.label.trim().is_empty() {
                     source_label.push(self.core_ownership.label[role]);
                 }
             }
@@ -563,10 +561,11 @@ impl RailroadTypographyThemePlan {
             self.style.marker_fill = paint.css().to_owned();
         }
         self.core_paints = vec![node, label, edge, marker];
-        if !self
-            .unsupported_routes
-            .iter()
-            .any(|route| matches!(route.target, ThemeTarget::Text | ThemeTarget::Title))
+        if !text_visible
+            || !self
+                .unsupported_routes
+                .iter()
+                .any(|route| matches!(route.target, ThemeTarget::Text | ThemeTarget::Title))
         {
             return Ok(());
         }
@@ -622,12 +621,14 @@ impl RailroadTypographyThemePlan {
 
     pub(crate) fn begin_terminal_receipt(&self) -> RailroadSurfaceReceipt {
         RailroadSurfaceReceipt {
-            requested: self.typed_font_stack_requested
-                || self.typed_font_size_requested
-                || !self.unsupported_properties.is_empty()
-                || !self.unsupported_routes.is_empty()
-                || !self.title_fill_routes.is_empty()
-                || !self.text_fill_routes.is_empty(),
+            // Every text role, including rule names, uses the final prepared font size.
+            requested: self.style.font_size > 0.0
+                && (self.typed_font_stack_requested
+                    || self.typed_font_size_requested
+                    || !self.unsupported_properties.is_empty()
+                    || !self.unsupported_routes.is_empty()
+                    || !self.title_fill_routes.is_empty()
+                    || !self.text_fill_routes.is_empty()),
             ..RailroadSurfaceReceipt::default()
         }
     }
@@ -637,7 +638,6 @@ impl RailroadTypographyThemePlan {
     }
 
     pub(crate) fn record_evidence(&self, evidence: &mut FamilyThemeEvidence) {
-        evidence.merge_borrowed(&self.evidence);
         let Some(receipt) = self.terminal_receipt.get() else {
             return;
         };
