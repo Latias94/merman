@@ -148,7 +148,9 @@ over a typed base size. Family-specific numeric settings keep their own configur
 Pie title, percentage and legend sizes and Tree View label sizes also resolve absolute CSS
 lengths for measurement. Equivalent `24pt` and `32px` values reserve the same text geometry.
 Tree View resolves parent-relative sizes against an explicit SVG root context; values that
-still need the receiving document or host CSS remain unverified. Ishikawa keeps Mermaid's
+still need the receiving document or host CSS remain unverified for fonts and text paint.
+Relative or inherited sizes under a zero-sized root do not certify visible text. Edges,
+icons and highlight backgrounds retain their independent paint consumers. Ishikawa keeps Mermaid's
 root-size spacing separate from final text size: its text bounds and label boxes use the
 displayed font, while bone spacing and multiline steps retain the root configuration.
 Its ordinary head label uses 14px and weight 600. Invalid shared sizes inherit the standard
@@ -215,6 +217,14 @@ while nested axis sizes set to `null` inherit. These SVG attributes do not accep
 syntax such as `24px !important` or `24px;`. Unresolved sizes preserve their CSS and retain
 unverified theme evidence instead of treating an approximate measurement as proof of visible
 text. Its legend retains its separate numeric layout contract, 1px minimum and configuration priority.
+
+Wardley uses the same accepted explicit font for annotation measurement and SVG inheritance,
+including when no custom typography is requested. Empty or invalid font attributes leave a
+supported theme stack available. Its configurable axis and node-label sizes stay separate
+from fixed 10px and 11px annotation roles; unknown receiving-host sizes retain residuals.
+
+Railroad measures direct SVG text in all four grammar dialects. Empty, whitespace-only or
+sanitized-empty literals reserve their box padding without an extra font-size height.
 
 Block label measurement follows its effective `classDef` typography, including the default class,
 and direct node styles. Class rules and direct declarations retain their CSS priority rather than
@@ -317,6 +327,16 @@ such as `themeVariables.cynefin.textColor`, `themeVariables.cynefin.arrowColor`,
 Root colors supply missing roles; an unused fallback does not suppress compiled paint.
 Ownership follows the value the renderer actually accepts, so ignored configuration values
 do not disable a supported theme override.
+
+Venn derives a circle's default stroke and contrasting label color from its final fill,
+including a compiled Node fill. Explicit source stroke or label colors and independent
+compiled stroke or NodeLabel rules keep their own priority.
+Intersection SVG labels and HTML data text select colors independently: clearing an SVG
+fill can expose its inherited root fill, while an empty HTML color declaration inherits
+the receiving text color. Ownership follows each selected declaration; a rejected value
+does not claim an unused primary-color fallback.
+Mermaid centers an intersection label and its nested data text independently, so using both
+in a small intersection can overlap. Theme verification does not certify collision-free layout.
 
 Fonts, sizes, Quadrant point radii and Tree View line widths follow the same rule. An ignored
 value does not own the property, and an unused fallback does not own the selected value.
