@@ -303,6 +303,14 @@ label sizes also retain their own configuration rather than inheriting every bas
 Usecase accepts absolute lengths for inherited text, while `usecase.actorFontSize` and
 `usecase.usecaseFontSize` retain their independent numeric settings.
 
+Pie ignores invalid role-size CSS, including negative lengths and nonzero unitless values;
+those roles inherit the root size during measurement and theme reporting. Quadrant Chart retains
+its numeric role attributes and layout, while rejected negative sizes inherit the root font for
+visible-text evidence. A zero inherited size does not certify fonts or text paint; an independent
+positive role size can restore that role's visible consumers.
+Numeric CSS outside the supported range retains unverified evidence rather than being treated as
+an invalid declaration or a literal zero.
+
 C4 role fonts can explicitly inherit the diagram's font family with `inherit` or `unset`,
 including boundary and relationship text. Measurement resolves the inherited family before
 layout; the SVG retains the authored family declaration. Role sizes and weights remain independent.
