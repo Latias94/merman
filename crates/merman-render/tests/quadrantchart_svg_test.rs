@@ -525,6 +525,71 @@ fn quadrantchart_zero_size_text_does_not_certify_fonts_but_each_positive_role_do
 }
 
 #[test]
+fn quadrantchart_negative_role_sizes_inherit_for_font_and_text_paint_evidence() {
+    let theme = DiagramThemeCompiler::new()
+        .compile(
+            DiagramThemeSpec::new()
+                .with_typography(
+                    TypographySpec::default().with_default(
+                        ThemeTextStyle::default()
+                            .with_font_stack(FontStack::single("Cousine").unwrap()),
+                    ),
+                )
+                .with_styles(ThemeRuleSet::default().with_rule(ThemeRule::new(
+                    ThemeTarget::Text,
+                    ThemeStylePatch::default().with_fill(CanvasPaint::solid("#13579b").unwrap()),
+                ))),
+        )
+        .unwrap();
+    for (base_size, positive_role, applied) in [
+        ("0px", None, 0),
+        ("24pt", None, 2),
+        ("0px", Some("pointLabelFontSize"), 2),
+        ("0px", Some("quadrantLabelFontSize"), 1),
+    ] {
+        let mut config = zero_sized_quadrantchart_config();
+        config["themeVariables"] = serde_json::json!({"fontSize": base_size});
+        for size in config["quadrantChart"]
+            .as_object_mut()
+            .unwrap()
+            .values_mut()
+        {
+            *size = serde_json::json!(-1);
+        }
+        if let Some(role) = positive_role {
+            config["quadrantChart"][role] = serde_json::json!(12);
+        }
+        let engine = MermaidEngine::new().with_site_config(
+            merman_core::presentation::SourcePresentationConfig::from_value(config.clone()),
+        );
+        let rendered =
+            render_quadrantchart_with_theme_and_engine(TEXT_PAINT_SOURCE, &theme, engine);
+        let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+        let labels = document
+            .descendants()
+            .filter(|node| node.has_tag_name("text"))
+            .collect::<Vec<_>>();
+        assert_eq!(labels.len(), 11);
+        assert!(
+            labels
+                .iter()
+                .any(|node| node.attribute("font-size") == Some("-1"))
+        );
+        assert!(
+            labels
+                .iter()
+                .all(|node| { matches!(node.attribute("font-size"), Some("-1" | "12")) })
+        );
+        let evidence =
+            merman_render::__private::family_evidence(rendered.into_completion().report());
+        assert_eq!(evidence.required_count(), 2);
+        assert_eq!(evidence.applied_count(), applied, "{config}");
+        assert_eq!(evidence.not_applicable_count(), 2 - applied, "{config}");
+        assert_eq!(evidence.theme_residual_count(), 0, "{config}");
+    }
+}
+
+#[test]
 fn quadrantchart_zero_size_text_does_not_certify_paint_or_hide_non_text_consumers() {
     for (target, positive_role, applied) in [
         (ThemeTarget::Text, None, false),

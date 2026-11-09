@@ -94,6 +94,7 @@ impl QuadrantChartPaintPlan {
             )
         });
         let mut ordinal = 0;
+        let inherited_font_size = super::config::inherited_font_size_px(config.as_value());
         let mut role_ordinals = BTreeMap::<ThemeTarget, usize>::new();
         let terminal_count = layout
             .points
@@ -161,7 +162,8 @@ impl QuadrantChartPaintPlan {
                     label.fill = paint.css().to_string();
                 }
                 terminals.push(TextTerminal::from_label(label));
-                if !super::theme::text_is_visible(&label.text, label.font_size) {
+                if !super::theme::text_is_visible(&label.text, label.font_size, inherited_font_size)
+                {
                     continue;
                 }
                 ordinal += 1;

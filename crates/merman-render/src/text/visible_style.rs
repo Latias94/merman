@@ -41,6 +41,8 @@ enum VisibleTextStylePolicy {
     Inline,
     #[cfg(feature = "diagram-mindmap")]
     Mindmap,
+    #[cfg(feature = "diagram-event-modeling")]
+    EventModeling,
 }
 
 #[derive(Clone, Copy)]
@@ -96,7 +98,7 @@ impl VisibleTextStyleFacts {
     }
 
     pub(crate) fn from_xhtml_fragment(fragment: &str) -> Self {
-        Self::from_xhtml_fragment_with_policy(fragment, VisibleTextStylePolicy::Inline, None)
+        Self::from_xhtml_fragment_with_policy(fragment, VisibleTextStylePolicy::Inline, None, None)
     }
 
     /// Excludes only text proven to have zero font size in the actual prepared XHTML.
@@ -105,19 +107,36 @@ impl VisibleTextStyleFacts {
             fragment,
             VisibleTextStylePolicy::Inline,
             Some(font_size),
+            None,
         )
     }
 
     /// Mindmap's known span-color rules are direct declarations, not inherited ancestor color.
     #[cfg(feature = "diagram-mindmap")]
     pub(crate) fn from_mindmap_xhtml_fragment(fragment: &str) -> Self {
-        Self::from_xhtml_fragment_with_policy(fragment, VisibleTextStylePolicy::Mindmap, None)
+        Self::from_xhtml_fragment_with_policy(fragment, VisibleTextStylePolicy::Mindmap, None, None)
+    }
+
+    /// Event Modeling declares its family font and optional raw size on every box span.
+    #[cfg(feature = "diagram-event-modeling")]
+    pub(crate) fn from_eventmodeling_xhtml_fragment_at_font_size(
+        fragment: &str,
+        font_size: Option<f64>,
+        span_font_size_css: Option<&str>,
+    ) -> Self {
+        Self::from_xhtml_fragment_with_policy(
+            fragment,
+            VisibleTextStylePolicy::EventModeling,
+            Some(font_size),
+            span_font_size_css,
+        )
     }
 
     fn from_xhtml_fragment_with_policy(
         fragment: &str,
         policy: VisibleTextStylePolicy,
         font_size: Option<Option<f64>>,
+        span_font_size_css: Option<&str>,
     ) -> Self {
         #[cfg(test)]
         FACT_COLLECTIONS.set(FACT_COLLECTIONS.get() + 1);
@@ -126,7 +145,13 @@ impl VisibleTextStyleFacts {
             return Self::empty(false);
         };
         let mut facts = Self::empty(true);
-        collect_visible_facts(document.root_element(), &mut facts, policy, font_size);
+        collect_visible_facts(
+            document.root_element(),
+            &mut facts,
+            policy,
+            font_size,
+            span_font_size_css,
+        );
         facts
     }
 
@@ -217,7 +242,11 @@ impl VisibleTextStyleFacts {
     pub(crate) const fn source_owned_font_family_run_count(&self) -> usize {
         self.source_owned_font_family_runs
     }
-    #[cfg(any(feature = "diagram-mindmap", feature = "diagram-requirement"))]
+    #[cfg(any(
+        feature = "diagram-mindmap",
+        feature = "diagram-requirement",
+        feature = "diagram-event-modeling"
+    ))]
     pub(crate) const fn unknown_font_family_run_count(&self) -> usize {
         self.visible_runs - self.inherited_font_family_runs - self.source_owned_font_family_runs
     }
@@ -271,6 +300,7 @@ fn collect_visible_facts(
     facts: &mut VisibleTextStyleFacts,
     policy: VisibleTextStylePolicy,
     font_size: Option<Option<f64>>,
+    _span_font_size_css: Option<&str>,
 ) {
     // roxmltree's descendants are a flat preorder range. Each ancestor state is pushed and
     // popped once, retaining inheritance without recursion or repeated ancestor scans.
@@ -295,6 +325,14 @@ fn collect_visible_facts(
         }
         let inherited = parents.last().map_or(root_owners, |(_, owners)| *owners);
         let owners = if node.is_element() {
+            let (direct_root_family, direct_span_size_css) = match policy {
+                #[cfg(feature = "diagram-event-modeling")]
+                VisibleTextStylePolicy::EventModeling => {
+                    let span = node.tag_name().name().eq_ignore_ascii_case("span");
+                    (span, _span_font_size_css.filter(|_| span))
+                }
+                _ => (false, None::<&str>),
+            };
             let has_css_class = node
                 .attribute("class")
                 .is_some_and(|class| !class.trim().is_empty());
@@ -326,10 +364,14 @@ fn collect_visible_facts(
                     }
                     #[cfg(feature = "diagram-mindmap")]
                     VisibleTextStylePolicy::Mindmap => inherited.color,
+                    #[cfg(feature = "diagram-event-modeling")]
+                    VisibleTextStylePolicy::EventModeling => inherited.color,
                 }
             };
             let local_family = if has_css_class || has_font_face {
                 VisibleTextTypographyOwner::UnmeasuredSource
+            } else if direct_root_family && !inherited.host_font_size {
+                VisibleTextTypographyOwner::Inherited
             } else if super::xhtml_font_default(node.tag_name().name(), "font-family").is_some() {
                 // Known HTML defaults are specified on the element, before its inline style.
                 // An unresolved ancestor may still supply a host rule targeting descendants.
@@ -343,6 +385,8 @@ fn collect_visible_facts(
             };
             let local_size = if has_css_class || has_font_size {
                 VisibleTextTypographyOwner::UnmeasuredSource
+            } else if direct_span_size_css.is_some() && !inherited.host_font_size {
+                VisibleTextTypographyOwner::Inherited
             } else {
                 inherited.font_size
             };
@@ -350,7 +394,13 @@ fn collect_visible_facts(
             let used_font_size = if font_size.is_none() || host_font_size {
                 None
             } else {
-                let default_size = if has_font_size {
+                let default_size = if let Some(size_css) = direct_span_size_css {
+                    // Relative declarations use this span's actual parent, not a root snapshot.
+                    visible_text_font_size_after_style(
+                        inherited.used_font_size,
+                        &format!("font-size:{size_css}"),
+                    )
+                } else if has_font_size {
                     None
                 } else {
                     super::xhtml_font_default(node.tag_name().name(), "font-size")
@@ -761,6 +811,146 @@ mod tests {
             assert!(facts.has_content_runs(), "{fragment}");
             assert!(!facts.font_visibility_verified(), "{fragment}");
         }
+    }
+
+    #[cfg(feature = "diagram-event-modeling")]
+    #[test]
+    fn eventmodeling_span_font_rules_follow_emitted_declarations_and_inline_overrides() {
+        for (fragment, size, size_css, visible, family, inherited_size) in [
+            ("<b>View</b>", Some(0.0), Some("0px"), 0, 0, 0),
+            (
+                "<b style='font-size:20px'><span>View</span></b>",
+                Some(0.0),
+                Some("0px"),
+                0,
+                0,
+                0,
+            ),
+            (
+                "<b style='font-size:20px'><span>View</span></b>",
+                Some(0.0),
+                None,
+                1,
+                1,
+                0,
+            ),
+            (
+                "<b style='font-size:20px'>View</b>",
+                Some(0.0),
+                Some("0px"),
+                1,
+                1,
+                0,
+            ),
+            (
+                "<span style='font-size:24pt'>View</span>",
+                Some(0.0),
+                Some("0px"),
+                1,
+                1,
+                0,
+            ),
+            ("<code>Data</code>", Some(16.0), Some("16px"), 1, 0, 1),
+            (
+                "<code><span>Data</span></code>",
+                Some(16.0),
+                Some("16px"),
+                1,
+                1,
+                1,
+            ),
+            (
+                "<code style='font-size:20px'><span>Data</span></code>",
+                Some(0.0),
+                Some("0px"),
+                0,
+                0,
+                0,
+            ),
+            (
+                "<code><span style='font-size:20px'>Data</span></code>",
+                Some(0.0),
+                Some("0px"),
+                1,
+                1,
+                0,
+            ),
+            (
+                "<b style='font-size:20px'><span style='font-size:inherit'>View</span></b>",
+                Some(0.0),
+                Some("0px"),
+                1,
+                1,
+                0,
+            ),
+            ("<span>View</span>", Some(16.0), Some("16px"), 1, 1, 1),
+        ] {
+            let facts = VisibleTextStyleFacts::from_eventmodeling_xhtml_fragment_at_font_size(
+                fragment, size, size_css,
+            );
+            assert!(facts.parse_valid(), "{fragment}");
+            assert!(facts.font_visibility_verified(), "{fragment}");
+            assert_eq!(facts.visible_run_count(), visible, "{fragment}");
+            assert_eq!(
+                facts.inherited_font_family_run_count(),
+                family,
+                "{fragment}"
+            );
+            assert_eq!(facts.unknown_font_family_run_count(), 0, "{fragment}");
+            assert_eq!(
+                facts.inherited_font_size_run_count(),
+                inherited_size,
+                "{fragment}"
+            );
+        }
+    }
+
+    #[cfg(feature = "diagram-event-modeling")]
+    #[test]
+    fn eventmodeling_relative_span_sizes_follow_each_actual_parent() {
+        for size_css in ["inherit", "100%", "2em"] {
+            for (parent_size, visible) in [("0px", 0), ("20px", 1)] {
+                let fragment = format!(
+                    "<b style='font-size:{parent_size}'><span><span>View</span></span></b>"
+                );
+                let facts = VisibleTextStyleFacts::from_eventmodeling_xhtml_fragment_at_font_size(
+                    &fragment,
+                    Some(16.0),
+                    Some(size_css),
+                );
+                assert!(facts.parse_valid(), "{size_css}: {fragment}");
+                assert!(facts.font_visibility_verified(), "{size_css}: {fragment}");
+                assert_eq!(facts.visible_run_count(), visible, "{size_css}: {fragment}");
+            }
+        }
+    }
+
+    #[cfg(feature = "diagram-event-modeling")]
+    #[test]
+    fn eventmodeling_span_rules_preserve_unknown_host_dependencies() {
+        for fragment in [
+            "<span class='host'>View</span>",
+            "<b class='host'><span>View</span></b>",
+            "<span style='font-size:var(--host-size)'>View</span>",
+            "<span>View</span><style>span{font-size:20px}</style>",
+        ] {
+            let facts = VisibleTextStyleFacts::from_eventmodeling_xhtml_fragment_at_font_size(
+                fragment,
+                Some(0.0),
+                Some("0px"),
+            );
+            assert!(facts.parse_valid(), "{fragment}");
+            assert!(facts.has_visible_runs(), "{fragment}");
+            assert!(!facts.font_visibility_verified(), "{fragment}");
+        }
+        let font = VisibleTextStyleFacts::from_eventmodeling_xhtml_fragment_at_font_size(
+            "<span style='font-family:var(--host-font);font-size:20px'>View</span>",
+            Some(0.0),
+            Some("0px"),
+        );
+        assert!(font.font_visibility_verified());
+        assert_eq!(font.inherited_font_family_run_count(), 0);
+        assert_eq!(font.unknown_font_family_run_count(), 1);
     }
 
     #[test]

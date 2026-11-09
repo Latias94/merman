@@ -23,9 +23,16 @@ use crate::resources::{OperationWorkError, OperationWorkMeter};
 mod css_binding;
 pub(super) use css_binding::QuadrantChartCssBinding;
 
-pub(super) fn text_is_visible(text: &str, font_size: f64) -> bool {
-    // Match the serialized SVG number. Invalid negative sizes may inherit; they do not prove zero ink.
-    !text.trim().is_empty() && crate::number_format::canonicalize_number(font_size) != 0.0
+pub(super) fn text_is_visible(text: &str, font_size: f64, inherited_font_size: f64) -> bool {
+    let font_size = crate::number_format::canonicalize_number(font_size);
+    // A negative SVG presentation attribute is ignored, leaving the serialized root size.
+    // Keep its authored geometry while counting only the final size's text consumers.
+    let effective_size = if font_size < 0.0 {
+        inherited_font_size
+    } else {
+        font_size
+    };
+    !text.trim().is_empty() && effective_size != 0.0
 }
 
 /// Typed geometry and paint for Quadrant Chart point marks and their terminal evidence.
@@ -36,6 +43,7 @@ pub(crate) struct QuadrantChartPointThemePlan {
     point_count: usize,
     points: Box<[QuadrantChartPointThemeExpectation]>,
     inherited_font_stack: InheritedFontStackPlan,
+    inherited_font_size: f64,
     evidence: FamilyThemeOutcomes,
     pending: BTreeMap<FamilyThemeMechanismKey, QuadrantChartPointPendingEvidence>,
     terminal_receipt: OnceLock<QuadrantChartPointThemeReceipt>,
@@ -129,6 +137,8 @@ impl QuadrantChartPointThemePlan {
         work_meter.charge(point_count)?;
         let inherited_font_stack =
             InheritedFontStackPlan::resolve_property_local(theme, effective_config);
+        let inherited_font_size =
+            super::config::inherited_font_size_px(effective_config.as_value());
         let css = QuadrantChartCssBinding::resolve(effective_config.as_value());
         let common_css = crate::svg::PreparedCommonCss::new(
             effective_config.as_value(),
@@ -141,6 +151,7 @@ impl QuadrantChartPointThemePlan {
                 point_count,
                 points: Vec::new().into_boxed_slice(),
                 inherited_font_stack,
+                inherited_font_size,
                 evidence: FamilyThemeOutcomes::default(),
                 pending: BTreeMap::new(),
                 terminal_receipt: OnceLock::new(),
@@ -418,6 +429,7 @@ impl QuadrantChartPointThemePlan {
             point_count,
             points: points.into_boxed_slice(),
             inherited_font_stack,
+            inherited_font_size,
             evidence,
             pending,
             terminal_receipt: OnceLock::new(),
@@ -509,6 +521,7 @@ impl QuadrantChartPointThemePlan {
                 QuadrantChartTextOccurrences::from_layout(layout),
                 self.inherited_font_stack.typography_requested(),
                 self.font_family_css(),
+                self.inherited_font_size,
             )
         })
     }
@@ -713,6 +726,7 @@ pub(crate) struct QuadrantChartPointThemeReceipt {
     emitted_text: QuadrantChartTextOccurrences,
     visible_text_count: usize,
     expected_font_family_css: Box<str>,
+    inherited_font_size: f64,
     typography_requested: bool,
     css_emitted: bool,
     css_emission_unique: bool,
@@ -727,6 +741,7 @@ impl QuadrantChartPointThemeReceipt {
         expected_text: QuadrantChartTextOccurrences,
         typography_requested: bool,
         expected_font_family_css: &str,
+        inherited_font_size: f64,
     ) -> Self {
         Self {
             expectations,
@@ -736,6 +751,7 @@ impl QuadrantChartPointThemeReceipt {
             emitted_text: QuadrantChartTextOccurrences::default(),
             visible_text_count: 0,
             expected_font_family_css: expected_font_family_css.into(),
+            inherited_font_size,
             typography_requested,
             css_emitted: false,
             css_emission_unique: true,
@@ -780,7 +796,7 @@ impl QuadrantChartPointThemeReceipt {
                 self.emitted_text.titles = self.emitted_text.titles.saturating_add(1);
             }
         }
-        if text_is_visible(text, font_size) {
+        if text_is_visible(text, font_size, self.inherited_font_size) {
             self.visible_text_count = self.visible_text_count.saturating_add(1);
         }
     }
@@ -1019,6 +1035,7 @@ mod tests {
             } else {
                 ""
             },
+            16.0,
         )
     }
 

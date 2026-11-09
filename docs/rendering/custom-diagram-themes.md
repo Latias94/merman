@@ -170,8 +170,10 @@ visible siblings can still occupy space. A receiving browser's default font pref
 change keyword sizes, so explicit lengths are preferable for reproducible exports.
 Known zero-sized chart labels remain in the SVG but do not count as visible consumers of
 theme fonts or text paint.
+Event Modeling keeps Mermaid's fixed 16px layout measurement when display sizes change;
+its prepared HTML determines whether text, rather than its surrounding shapes, consumes styling.
 Architecture, Block, C4, ER, GitGraph, Journey, Kanban, Requirement, State, Timeline, Pie,
-Treemap and XY Chart preserve valid
+Treemap, Usecase and XY Chart preserve valid
 inherited sizes below 1px and zero. The common SVG stylesheet also preserves these sizes;
 labels with an independent positive size can remain visible below a zero-size ancestor.
 Journey's tspan task size and Timeline's root-size layout offsets retain their
@@ -194,6 +196,10 @@ Its legend retains its separate 1px minimum and configuration priority.
 Block label measurement follows its effective `classDef` typography, including the default class,
 and direct node styles. Class rules and direct declarations retain their CSS priority rather than
 using a separate font choice for measurement.
+
+Native measurement rejects source text geometry that it cannot measure, such as explicit
+`letter-spacing`, including declarations containing CSS comments or escaped property names.
+Semicolons inside quoted font names remain part of the name rather than separate declarations.
 
 Use representative Latin, CJK and symbol labels when the content needs them. A font's presence
 does not imply glyph coverage, and a successful theme status does not certify either one. The
@@ -265,8 +271,19 @@ stylesheet colors do not block it. Timeline's colored Redux palettes cycle throu
 `borderColorArray`; an empty array restores the theme's `mainBkg`/`nodeBorder` fallback.
 Native Treemap font admission checks styles selected by rendered nodes. An unused `classDef`
 does not require support for typography that never reaches a label.
-Set `themeVariables.treemap.titleFontSize` for Mermaid-compatible title sizing. The older
-`treemap.titleFontSize` spelling remains a Merman fallback when that theme variable is absent.
+Put Treemap stylesheet options under `themeVariables.treemap`, including `titleFontSize` and
+`titleColor`. The corresponding root `treemap` spellings remain Merman fallbacks when those
+theme variables are absent. Treemap's SVG class sizes accept unitless numbers such as `24`,
+equivalent to `24px`, while negative lengths and invalid identifiers leave the generated size
+in effect. `font-weight:initial` resets to normal before labels are fitted or shortened.
+Leaf fitting follows Mermaid's integer read of the inline CSS size, so a class size of `24pt`
+can become `24px` during fitting even though its initial measurement uses 32px. Prefer pixel
+sizes when the fitted label should retain the authored length. Inherited root sizes and section
+text keep their separate measurement rules.
+Leaf size keywords such as `inherit` can make Mermaid generate an invalid value-label position.
+Merman preserves the CSS and omits the invalid coordinate; requested inherited-font evidence
+retains a residual for that value, and strict theme completion rejects it. Use numeric pixel
+sizes for portable value placement.
 
 Set `themeVariables.archGroupBorderColor` directly to change an Architecture group border.
 Changing only `primaryBorderColor` does not recalculate an initialized group color.
@@ -283,6 +300,16 @@ value does not own the property, and an unused fallback does not own the selecte
 Family configuration determines its accepted units, font-array handling and numeric bounds. Pie
 title, percentage and legend sizes remain independent; C4 element sizes and ER relationship
 label sizes also retain their own configuration rather than inheriting every base-size change.
+Usecase accepts absolute lengths for inherited text, while `usecase.actorFontSize` and
+`usecase.usecaseFontSize` retain their independent numeric settings.
+
+Pie ignores invalid role-size CSS, including negative lengths and nonzero unitless values;
+those roles inherit the root size during measurement and theme reporting. Quadrant Chart retains
+its numeric role attributes and layout, while rejected negative sizes inherit the root font for
+visible-text evidence. A zero inherited size does not certify fonts or text paint; an independent
+positive role size can restore that role's visible consumers.
+Numeric CSS outside the supported range retains unverified evidence rather than being treated as
+an invalid declaration or a literal zero.
 
 C4 role fonts can explicitly inherit the diagram's font family with `inherit` or `unset`,
 including boundary and relationship text. Measurement resolves the inherited family before
@@ -328,9 +355,12 @@ title consumes it; unused section settings do not reject output.
 Journey's legend and `fo` / `old` labels inherit the base font stack and size. Its `tspan`
 labels retain `journey.taskFontSize` and `journey.taskFontFamily`; setting the task family to
 the CSS keyword `inherit` or `unset` lets the base stack apply without replacing the task size.
-A quoted font name such as `"inherit"` is a literal name. Theme reports account for font stack
-and size separately and do not certify empty labels as visible consumers. Weight and style
-requests remain unsupported where the family cannot measure and emit them consistently.
+Empty or invalid task families also inherit; a quoted font name such as `"inherit"` is a literal
+name. Host-dependent task families retain unresolved evidence. Theme reports account for font
+stack and size separately and do not certify empty labels as visible consumers. Title-only
+Journey and Timeline diagrams also account for their inherited typography; a fixed bold title
+does not prove that a requested base weight was applied. Weight and style requests remain
+unsupported where the family cannot measure and emit them consistently.
 
 ER Swimlane top-level lane titles follow `flowchart.htmlLabels`; nested groups retain the root
 `htmlLabels` mode used by ordinary clusters. Their measurement and theme evidence follow those

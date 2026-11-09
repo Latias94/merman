@@ -170,6 +170,7 @@ fn treemap_direct_input_validation_preserves_operation_error_priority() {
 struct CountingTreemapHost {
     calls: AtomicUsize,
     observations: Mutex<Vec<(String, TextStyle)>>,
+    distinguish_font_variants: bool,
 }
 
 impl CountingTreemapHost {
@@ -179,7 +180,14 @@ impl CountingTreemapHost {
             .lock()
             .expect("text measurement recorder is not poisoned")
             .push((text.to_owned(), style.clone()));
-        text.chars().count() as f64 * style.font_size.max(1.0)
+        let variant_scale = if self.distinguish_font_variants
+            && matches!(style.font_weight.as_deref(), Some("bold" | "700"))
+        {
+            2.0
+        } else {
+            1.0
+        };
+        text.chars().count() as f64 * style.font_size.max(1.0) * variant_scale
     }
 
     fn reset(&self) {
@@ -249,6 +257,26 @@ fn counting_treemap_environment(host: Arc<CountingTreemapHost>) -> RenderEnviron
     RenderEnvironment::deterministic().with_text_measurement_policy(
         TextMeasurementPolicy::host_display(identity, host, TextMeasurementPhase::ALL),
     )
+}
+
+fn render_treemap_with_recorded_host(
+    source: &str,
+    theme: &DiagramTheme,
+    host: Arc<CountingTreemapHost>,
+) -> family::RenderedFamilySvg {
+    let parsed = common::install_parse_compatibility(theme, MermaidEngine::new())
+        .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
+        .unwrap()
+        .unwrap()
+        .into_presentation();
+    let session = counting_treemap_environment(host)
+        .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
+        .begin_session_with_theme(theme)
+        .unwrap();
+    family::prepare(&parsed, &LayoutOptions::default(), session)
+        .unwrap()
+        .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+        .unwrap()
 }
 
 fn workspace_root() -> PathBuf {
@@ -1003,8 +1031,12 @@ fn treemap_text_fill_is_not_suppressed_by_unused_stylesheet_colors() {
             })
             .and_then(|node| node.attribute("style"))
             .expect("Treemap leaf value terminal");
-        assert!(leaf_label.contains(typed_cssom), "{name}: {leaf_label}");
-        assert!(leaf_value.contains(typed_cssom), "{name}: {leaf_value}");
+        for terminal in [leaf_label, leaf_value] {
+            assert!(
+                terminal.contains(typed_cssom) || terminal.contains("fill:#123456;"),
+                "{name}: {terminal}"
+            );
+        }
 
         let evidence =
             merman_render::__private::family_evidence(rendered.into_completion().report());
@@ -2203,14 +2235,15 @@ fn treemap_leaf_label_and_value_remain_visible_and_vertically_ordered() {
 }
 
 #[test]
-fn treemap_huge_source_font_finishes_height_fitting() {
-    struct NarrowTextHost;
+fn treemap_huge_source_font_uses_cssom_scalar_and_bounds_fitting_work() {
+    struct NarrowTextHost(Arc<AtomicUsize>);
     impl HostTextMeasurer for NarrowTextHost {
         fn measure(&self, request: HostTextMeasurementRequest<'_>) -> HostMeasurementResult {
-            Ok(match request.operation {
-                TextMeasurementOperation::ComputedLength => Some(HostTextMeasurement::Length(1.0)),
-                _ => None,
-            })
+            if request.operation != TextMeasurementOperation::ComputedLength {
+                return Ok(None);
+            }
+            self.0.fetch_add(1, Ordering::Relaxed);
+            Ok(Some(HostTextMeasurement::Length(1.0)))
         }
     }
     let source = "treemap\nclassDef huge font-size:100000000000000000000px;\n\"Leaf\": 42:::huge\n";
@@ -2224,10 +2257,11 @@ fn treemap_huge_source_font_finishes_height_fitting() {
         "1",
     )
     .unwrap();
+    let calls = Arc::new(AtomicUsize::new(0));
     let session = RenderEnvironment::deterministic()
         .with_text_measurement_policy(TextMeasurementPolicy::host_display(
             identity,
-            Arc::new(NarrowTextHost),
+            Arc::new(NarrowTextHost(Arc::clone(&calls))),
             TextMeasurementPhase::ALL,
         ))
         .begin_session()
@@ -2237,15 +2271,20 @@ fn treemap_huge_source_font_finishes_height_fitting() {
         .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
         .unwrap();
     let label = text_tag_by_text(rendered.svg(), "Leaf");
+    assert_eq!(font_size_px(label), Some(1.0), "{label}");
+    assert!(label.contains("display: none"), "{label}");
+    let value = text_tag_by_class_and_text(rendered.svg(), "treemapValue", "42");
+    assert!(value.contains("font-size:100000000000000000000px !important"));
+    assert!(value.contains("display: none"));
+    assert_eq!(attr_f64(value, "y"), attr_f64(label, "y"));
     assert!(
-        font_size_px(label).is_some_and(|size| (8.0..1000.0).contains(&size)),
-        "{label}"
+        (1..128).contains(&calls.load(Ordering::Relaxed)),
+        "CSSOM fitting remains bounded"
     );
-    assert!(!label.contains("display: none"));
 }
 
 #[test]
-fn treemap_huge_overwide_source_font_finishes_width_fitting_without_a_work_limit() {
+fn treemap_huge_overwide_source_font_skips_width_search_after_cssom_parse_int() {
     struct WideTextHost(Arc<AtomicUsize>);
     impl HostTextMeasurer for WideTextHost {
         fn measure(&self, request: HostTextMeasurementRequest<'_>) -> HostMeasurementResult {
@@ -2285,10 +2324,14 @@ fn treemap_huge_overwide_source_font_finishes_width_fitting_without_a_work_limit
         .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
         .expect("bounded width fitting must finish");
     let label = text_tag_by_text(rendered.svg(), "Leaf");
-    assert!(font_size_px(label).is_some_and(|size| (8.0..1000.0).contains(&size)));
+    assert_eq!(font_size_px(label), Some(1.0), "{label}");
+    assert!(label.contains("display: none"), "{label}");
+    let value = text_tag_by_class_and_text(rendered.svg(), "treemapValue", "42");
+    assert!(value.contains("display: none"));
+    assert_eq!(attr_f64(value, "y"), attr_f64(label, "y"));
     assert!(
-        calls.load(Ordering::Relaxed) < 128,
-        "width fitting should remain logarithmic for huge source sizes"
+        (1..128).contains(&calls.load(Ordering::Relaxed)),
+        "CSSOM scalar 1 must skip the decrement search for huge source sizes"
     );
 }
 
@@ -2700,19 +2743,19 @@ fn treemap_node_label_ownership_follows_the_selected_readability_fallback() {
         (
             "treemap\n\"Section\"\n  \"Leaf\": 42\n",
             serde_json::json!({"textColor": "#125634"}),
-            "rgb(194, 24, 139)",
+            ["rgb(194, 24, 139)", "fill:#c2188b;"],
             1,
         ),
         (
             "treemap\n\"Leaf\": 42\n",
             serde_json::json!({"textColor": "#125634"}),
-            "rgb(18, 86, 52)",
+            ["rgb(18, 86, 52)", "fill:#125634;"],
             0,
         ),
         (
             "treemap\n\"Leaf\": 42\n",
             serde_json::json!({"cScaleLabel0": "white"}),
-            "rgb(194, 24, 139)",
+            ["rgb(194, 24, 139)", "fill:#c2188b;"],
             1,
         ),
     ] {
@@ -2728,7 +2771,7 @@ fn treemap_node_label_ownership_follows_the_selected_readability_fallback() {
             assert!(
                 terminal
                     .attribute("style")
-                    .is_some_and(|style| style.contains(expected)),
+                    .is_some_and(|style| expected.iter().any(|color| style.contains(color))),
                 "{config}: {terminal:?}"
             );
             assert!(
@@ -3319,6 +3362,624 @@ fn treemap_unsupported_selectors_account_for_real_nodes_and_shadowed_rules() {
         assert_eq!(evidence.applied_count(), 1);
         assert_eq!(evidence.not_applicable_count(), 1);
         assert_eq!(evidence.theme_residual_count(), 0);
+    }
+}
+
+#[test]
+fn treemap_invalid_final_font_sizes_use_generated_sizes_after_property_folding() {
+    let theme = treemap_typography_theme(FontStack::single("Cousine").unwrap());
+    let body = "\"Section\":::probe\n  \"Leaf\": 42:::probe\n";
+    let control_host = Arc::new(CountingTreemapHost::default());
+    let control = render_treemap_with_recorded_host(
+        &format!("treemap\n{}", body.replace(":::probe", "")),
+        &theme,
+        Arc::clone(&control_host),
+    );
+    let control_document = roxmltree::Document::parse(control.svg()).unwrap();
+    let control_text: Vec<_> = control_document
+        .descendants()
+        .filter(|node| node.has_tag_name("text"))
+        .map(|node| {
+            (
+                node.attribute("class"),
+                node.text(),
+                node.attribute("x"),
+                node.attribute("y"),
+            )
+        })
+        .collect();
+
+    for invalid in ["-1px", "-10%", "potato"] {
+        for preceding in ["", "font-size:48px,"] {
+            let source = format!("treemap\nclassDef probe {preceding}font-size:{invalid};\n{body}");
+            let host = Arc::new(CountingTreemapHost::default());
+            let rendered = render_treemap_with_recorded_host(&source, &theme, Arc::clone(&host));
+            assert_eq!(
+                serde_json::to_value(host.observed_styles()).unwrap(),
+                serde_json::to_value(control_host.observed_styles()).unwrap(),
+                "{preceding}{invalid}: measurement must follow the final folded CSS"
+            );
+            let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+            let text: Vec<_> = document
+                .descendants()
+                .filter(|node| node.has_tag_name("text"))
+                .map(|node| {
+                    (
+                        node.attribute("class"),
+                        node.text(),
+                        node.attribute("x"),
+                        node.attribute("y"),
+                    )
+                })
+                .collect();
+            assert_eq!(text, control_text, "{preceding}{invalid}");
+            let section =
+                text_tag_by_class_and_text(rendered.svg(), "treemapSectionLabel", "Section");
+            assert!(section.contains(&format!("font-size:{invalid} !important")));
+            assert!(!section.contains("font-size:48px"));
+            for (class, text) in [("treemapLabel", "Leaf"), ("treemapValue", "42")] {
+                let actual = text_tag_by_class_and_text(rendered.svg(), class, text);
+                let expected = text_tag_by_class_and_text(control.svg(), class, text);
+                assert_eq!(font_size_px(actual), font_size_px(expected));
+                assert_eq!(actual.matches("font-size:").count(), 1);
+                assert!(!actual.contains("font-size:48px"));
+            }
+        }
+    }
+}
+
+#[test]
+fn treemap_unitless_svg_sizes_match_pixel_sizes_during_fitting() {
+    let theme = treemap_typography_theme(FontStack::single("Cousine").unwrap());
+    let render = |size: &str| {
+        let host = Arc::new(CountingTreemapHost::default());
+        let source = format!(
+            "treemap\nclassDef probe font-size:{size};\n\"Section\":::probe\n  \"Leaf\": 42:::probe\n"
+        );
+        let rendered = render_treemap_with_recorded_host(&source, &theme, Arc::clone(&host));
+        let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+        let text = document
+            .descendants()
+            .filter(|node| node.has_tag_name("text"))
+            .map(|node| {
+                (
+                    node.attribute("class").map(str::to_owned),
+                    node.text().map(str::to_owned),
+                    node.attribute("x").map(str::to_owned),
+                    node.attribute("y").map(str::to_owned),
+                )
+            })
+            .collect::<Vec<_>>();
+        for (class, value) in [("treemapLabel", "Leaf"), ("treemapValue", "42")] {
+            let tag = text_tag_by_class_and_text(rendered.svg(), class, value);
+            assert!(font_size_px(tag).is_some_and(|size| size > 0.0));
+        }
+        (text, serde_json::to_value(host.observed_styles()).unwrap())
+    };
+    assert_eq!(render("24"), render("24px"));
+}
+
+#[test]
+fn treemap_leaf_fitting_separates_cssom_scalars_from_used_measurement_sizes() {
+    let theme = treemap_typography_theme(FontStack::single("Cousine").unwrap());
+    for (size, used_px, label_px, value_px, hidden) in [
+        ("24", 24.0, 24.0, 14.0, false),
+        ("24px", 24.0, 24.0, 14.0, false),
+        ("24pt", 32.0, 24.0, 14.0, false),
+        (r"24p\74", 32.0, 24.0, 14.0, false),
+        ("+24px", 24.0, 24.0, 14.0, false),
+        ("24PX", 24.0, 24.0, 14.0, false),
+        ("32px", 32.0, 32.0, 19.0, false),
+        ("1e2px", 100.0, 100.0, 28.0, false),
+        ("1e6px", 1e6, 1.0, 1e6, true),
+        ("1e12px", 1e12, 1.0, 1e12, true),
+        ("1e20px", 1e20, 1.0, 1e20, true),
+        ("100000000000000000000px", 1e20, 1.0, 1e20, true),
+        ("0.000001px", 1e-6, 1.0, 1e-6, true),
+        ("1e-6px", 1e-6, 1.0, 1e-6, true),
+        ("150%", 24.0, 150.0, 28.0, false),
+        ("2em", 32.0, 2.0, 32.0, true),
+        ("0.5px", 0.5, 0.0, 0.5, true),
+        (".5px", 0.5, 0.0, 0.5, true),
+        ("0", 0.0, 0.0, 0.0, true),
+        ("-0.0pt", 0.0, 0.0, 0.0, true),
+    ] {
+        let source = format!("treemap\nclassDef probe font-size:{size};\n\"Leaf\": 42:::probe\n");
+        let host = Arc::new(CountingTreemapHost::default());
+        let rendered = render_treemap_with_recorded_host(&source, &theme, Arc::clone(&host));
+        let measured = host.observed_styles_for_text("Leaf");
+        assert!(!measured.is_empty(), "{size}: missing initial measurement");
+        assert_eq!(measured[0].font_size, used_px, "{size}: initial used size");
+        assert_eq!(
+            measured.last().unwrap().font_size,
+            label_px,
+            "{size}: final used size"
+        );
+        assert!(
+            measured
+                .iter()
+                .all(|style| style.font_size.is_finite() && style.font_size >= 0.0)
+        );
+
+        let label = text_tag_by_class_and_text(rendered.svg(), "treemapLabel", "Leaf");
+        let value = text_tag_by_class_and_text(rendered.svg(), "treemapValue", "42");
+        assert_eq!(font_size_px(label), Some(label_px), "{size}: {label}");
+        assert_eq!(
+            label.contains("; display: none;"),
+            hidden,
+            "{size}: {label}"
+        );
+        assert_eq!(
+            value.contains("; display: none;"),
+            hidden,
+            "{size}: {value}"
+        );
+        assert_eq!(label.matches("font-size:").count(), 1, "{size}: {label}");
+        let label_y = attr_f64(label, "y").unwrap();
+        let value_y = attr_f64(value, "y").unwrap();
+        assert!(label_y.is_finite() && value_y.is_finite(), "{size}");
+        if hidden {
+            assert!(
+                value.contains(&format!("font-size:{size} !important")),
+                "{size}: {value}"
+            );
+            assert_eq!(
+                font_size_px(value),
+                Some(28.0),
+                "{size}: generated value size is retained"
+            );
+            assert_eq!(
+                value_y, label_y,
+                "{size}: hidden value keeps the source placeholder"
+            );
+            assert!(
+                host.observed_styles_for_text("42").is_empty(),
+                "{size}: hidden value is not measured"
+            );
+        } else {
+            assert_eq!(font_size_px(value), Some(value_px), "{size}: {value}");
+            assert_eq!(value.matches("font-size:").count(), 1, "{size}: {value}");
+            assert_eq!(
+                value_y,
+                label_y + label_px / 2.0 + 2.0,
+                "{size}: value follows final inline size"
+            );
+            let measured_values = host.observed_styles_for_text("42");
+            assert!(
+                !measured_values.is_empty(),
+                "{size}: missing value measurement"
+            );
+            assert!(
+                measured_values
+                    .iter()
+                    .all(|style| style.font_size == value_px),
+                "{size}: {measured_values:?}"
+            );
+        }
+        assert!(!rendered.svg().contains("NaN"), "{size}");
+    }
+}
+
+#[test]
+fn treemap_leaf_width_and_height_fitting_use_authored_scalar_after_first_measurement() {
+    let theme = treemap_typography_theme(FontStack::single("Cousine").unwrap());
+    for (size, width, height, used_px, final_px) in [
+        ("24pt", 12.0, 40.0, 32.0, 23.0),
+        ("24pt", 100.0, 8.1, 32.0, 16.0),
+        ("150%", 13.0, 40.0, 24.0, 150.0),
+    ] {
+        let source = format!(
+            "---\nconfig:\n  treemap:\n    nodeWidth: {width}\n    nodeHeight: {height}\n---\n\
+             treemap\nclassDef probe font-size:{size};\n\"Leaf\": 42:::probe\n"
+        );
+        let host = Arc::new(CountingTreemapHost::default());
+        let rendered = render_treemap_with_recorded_host(&source, &theme, Arc::clone(&host));
+        let label = text_tag_by_class_and_text(rendered.svg(), "treemapLabel", "Leaf");
+        let measured = host.observed_styles_for_text("Leaf");
+        assert_eq!(measured[0].font_size, used_px, "{size}/{width}/{height}");
+        assert_eq!(
+            font_size_px(label),
+            Some(final_px),
+            "{size}/{width}/{height}: {label}"
+        );
+        assert!(
+            measured.iter().skip(1).all(|style| {
+                style.font_size == style.font_size.trunc() && style.font_size < 24.0
+            }) || size == "150%",
+            "{size}/{width}/{height}: {measured:?}"
+        );
+        if size == "150%" {
+            assert!(
+                label.contains("display: none"),
+                "the final check must measure 150px: {label}"
+            );
+            let value = text_tag_by_class_and_text(rendered.svg(), "treemapValue", "42");
+            assert!(value.contains("font-size:150% !important") && value.contains("display: none"));
+        } else {
+            assert!(!label.contains("display: none"), "{label}");
+        }
+    }
+}
+
+#[test]
+fn treemap_leaf_fitting_observes_only_the_final_folded_font_size_property() {
+    let theme = treemap_typography_theme(FontStack::single("Cousine").unwrap());
+    for size in [
+        "24pt", "2em", "150%", "0.5px", "inherit", "initial", "medium",
+    ] {
+        let render = |preceding: &str| {
+            let source = format!(
+                "---\nconfig:\n  treemap:\n    showValues: false\n---\n\
+                 treemap\nclassDef probe {preceding}font-size:{size};\n\"Leaf\": 42:::probe\n"
+            );
+            let host = Arc::new(CountingTreemapHost::default());
+            let rendered = render_treemap_with_recorded_host(&source, &theme, Arc::clone(&host));
+            let label =
+                text_tag_by_class_and_text(rendered.svg(), "treemapLabel", "Leaf").to_owned();
+            (
+                label,
+                serde_json::to_value(host.observed_styles_for_text("Leaf")).unwrap(),
+            )
+        };
+        let control = render("");
+        for preceding in ["font-size:48px,", "font-size:potato,", "font-size:inherit,"] {
+            assert_eq!(render(preceding), control, "{preceding}{size}");
+        }
+    }
+}
+
+#[test]
+fn treemap_leaf_keywords_keep_css_ownership_and_bound_invalid_upstream_value_geometry() {
+    let theme = treemap_typography_theme(FontStack::single("Cousine").unwrap());
+    for (size, used_px) in [
+        ("inherit", 16.0),
+        ("unset", 16.0),
+        ("initial", 16.0),
+        ("medium", 16.0),
+        ("large", 18.0),
+        ("larger", 19.2),
+    ] {
+        for show_values in [false, true] {
+            let source = format!(
+                "---\nconfig:\n  treemap:\n    showValues: {show_values}\n---\n\
+                 treemap\nclassDef probe font-size:{size};\n\"Leaf\": 42:::probe\n"
+            );
+            let parsed = common::install_parse_compatibility(&theme, MermaidEngine::new())
+                .parse_diagram_for_render_model_sync(&source, ParseOptions::strict())
+                .unwrap()
+                .unwrap()
+                .into_presentation();
+            let host = Arc::new(CountingTreemapHost::default());
+            let session = counting_treemap_environment(Arc::clone(&host))
+                .begin_session_with_theme(&theme)
+                .unwrap();
+            let artifact = family::prepare(&parsed, &LayoutOptions::default(), session).unwrap();
+            host.reset();
+            let rendered = artifact
+                .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+                .unwrap();
+            let label = text_tag_by_class_and_text(rendered.svg(), "treemapLabel", "Leaf");
+            assert!(
+                label.contains("font-size: 38px;")
+                    && label.contains(&format!("font-size:{size} !important")),
+                "{size}: {label}"
+            );
+            assert!(!label.contains("display: none"), "{size}: {label}");
+            for style in host.observed_styles_for_text("Leaf") {
+                assert!(
+                    (style.font_size - used_px).abs() < 1e-12,
+                    "{size}: {style:?}"
+                );
+            }
+            let pixel_source = source.replace(
+                &format!("font-size:{size}"),
+                &format!("font-size:{used_px}px"),
+            );
+            let pixel_host = Arc::new(CountingTreemapHost::default());
+            let pixel_control =
+                render_treemap_with_recorded_host(&pixel_source, &theme, Arc::clone(&pixel_host));
+            let pixel_label =
+                text_tag_by_class_and_text(pixel_control.svg(), "treemapLabel", "Leaf");
+            assert_eq!(font_size_px(pixel_label), Some(used_px.trunc()), "{size}");
+            assert_eq!(attr_f64(label, "y"), attr_f64(pixel_label, "y"), "{size}");
+            assert!(
+                (pixel_host.observed_styles_for_text("Leaf")[0].font_size - used_px).abs() < 1e-12
+            );
+            if show_values {
+                let value = text_tag_by_class_and_text(rendered.svg(), "treemapValue", "42");
+                assert!(
+                    value.contains("font-size: 28px;")
+                        && value.contains(&format!("font-size:{size} !important")),
+                    "{size}: {value}"
+                );
+                assert_eq!(
+                    attr_f64(value, "y"),
+                    None,
+                    "{size}: invalid upstream y is a residual, not a new position"
+                );
+                let pixel_value =
+                    text_tag_by_class_and_text(pixel_control.svg(), "treemapValue", "42");
+                assert!(
+                    attr_f64(pixel_value, "y").is_some_and(f64::is_finite),
+                    "{size}"
+                );
+                let measured = host.observed_styles_for_text("42");
+                assert!(
+                    !measured.is_empty(),
+                    "{size}: retained value style is measured"
+                );
+                assert!(
+                    measured
+                        .iter()
+                        .all(|style| (style.font_size - used_px).abs() < 1e-12),
+                    "{size}: {measured:?}"
+                );
+            }
+            assert!(!rendered.svg().contains("NaN"), "{size}");
+            let evidence =
+                merman_render::__private::family_evidence(rendered.into_completion().report());
+            assert_eq!(
+                evidence.applied_count(),
+                usize::from(!show_values),
+                "{size}"
+            );
+            assert_eq!(
+                evidence.theme_residual_count(),
+                usize::from(show_values),
+                "{size}"
+            );
+            let strict = try_render_treemap_with_theme_requirement(
+                &source,
+                &theme,
+                MermaidEngine::new(),
+                ThemePortabilityRequirement::RequirePortable,
+            );
+            if show_values {
+                assert_eq!(
+                    strict.err().unwrap().unverified_family_theme(),
+                    Some((DiagramFamilyId::TREEMAP, 1)),
+                    "{size}"
+                );
+            } else {
+                strict.unwrap();
+            }
+        }
+    }
+}
+
+#[test]
+fn treemap_initial_font_resets_match_normal_measurement_and_keep_raw_suffixes() {
+    let theme = treemap_typography_theme(FontStack::single("Cousine").unwrap());
+    let name = "i".repeat(40);
+    let render = |weight: &str, style: &str| {
+        // A weight-sensitive host exposes wrong requests even for monospace fixture fonts.
+        let host = Arc::new(CountingTreemapHost {
+            distinguish_font_variants: true,
+            ..Default::default()
+        });
+        let source = format!(
+            "---\nconfig:\n  treemap:\n    nodeWidth: 20\n---\ntreemap\n\
+             classDef probe font-weight:{weight},font-style:{style};\n\
+             \"{name}\":::probe\n  \"Leaf\": 42\n"
+        );
+        let rendered = render_treemap_with_recorded_host(&source, &theme, Arc::clone(&host));
+        (rendered, host)
+    };
+    let (initial, host) = render("initial", "initial");
+    let (normal, _) = render("normal", "normal");
+    let (bold, _) = render("bold", "normal");
+    let visible_section_label = |svg: &str| {
+        roxmltree::Document::parse(svg)
+            .unwrap()
+            .descendants()
+            .find(|node| {
+                node.attribute("class") == Some("treemapSectionLabel") && node.text().is_some()
+            })
+            .unwrap()
+            .text()
+            .unwrap()
+            .to_owned()
+    };
+    assert_eq!(
+        visible_section_label(initial.svg()),
+        visible_section_label(normal.svg())
+    );
+    assert_ne!(
+        visible_section_label(initial.svg()),
+        visible_section_label(bold.svg()),
+        "the production truncation control must distinguish bold metrics"
+    );
+    let styles = host.observed_styles_for_text(&name);
+    assert!(!styles.is_empty());
+    assert!(styles.iter().all(|style| {
+        style.font_family.as_deref() == Some("Cousine")
+            && style.font_weight.as_deref() == Some("400")
+            && style.font_style.as_deref() == Some("normal")
+    }));
+    let document = roxmltree::Document::parse(initial.svg()).unwrap();
+    for class in ["treemapSectionLabel", "treemapSectionValue"] {
+        let text = document
+            .descendants()
+            .find(|node| {
+                node.attribute("class") == Some(class)
+                    && node.attribute("style") != Some("display: none;")
+            })
+            .unwrap();
+        let suffix = text.attribute("style").unwrap();
+        assert!(suffix.contains("font-weight:initial !important"));
+        assert!(suffix.contains("font-style:initial !important"));
+    }
+    let evidence = merman_render::__private::family_evidence(initial.into_completion().report());
+    assert_eq!(evidence.applied_count(), 1);
+    assert_eq!(evidence.theme_residual_count(), 0);
+}
+
+#[test]
+fn treemap_nested_style_options_override_root_aliases_in_the_production_stylesheet() {
+    let config = serde_json::json!({
+        "treemap": {
+            "titleColor": "#010101", "labelColor": "#020202", "valueColor": "#030303",
+            "titleFontSize": "1px", "labelFontSize": "2px", "valueFontSize": "3px",
+            "sectionStrokeColor": "#040404", "sectionStrokeWidth": 1,
+            "sectionFillColor": "#050505", "leafStrokeColor": "#060606",
+            "leafStrokeWidth": 2, "leafFillColor": "#070707"
+        },
+        "themeVariables": {"treemap": {
+            "titleColor": "#111111", "labelColor": "#222222", "valueColor": "#333333",
+            "titleFontSize": "14px", "labelFontSize": "13px", "valueFontSize": "11px",
+            "sectionStrokeColor": "#444444", "sectionStrokeWidth": 4,
+            "sectionFillColor": "#555555", "leafStrokeColor": "#666666",
+            "leafStrokeWidth": 5, "leafFillColor": "#777777"
+        }}
+    });
+    let svg = render_treemap_svg_from_source(&format!(
+        "---\nconfig: {config}\n---\ntreemap\ntitle Options\n\"Leaf\": 1\n"
+    ));
+    let document = roxmltree::Document::parse(&svg).unwrap();
+    let css = document
+        .descendants()
+        .find(|node| node.has_tag_name("style"))
+        .unwrap()
+        .text()
+        .unwrap();
+    for (selector, expected) in [
+        (".treemapTitle", "fill:#111111;font-size:14px;"),
+        (".treemapLabel", "fill:#222222;font-size:13px;"),
+        (".treemapValue", "fill:#333333;font-size:11px;"),
+        (
+            ".treemapNode.section",
+            "stroke:#444444;stroke-width:4;fill:#555555;",
+        ),
+        (
+            ".treemapNode.leaf",
+            "stroke:#666666;stroke-width:5;fill:#777777;",
+        ),
+    ] {
+        assert_eq!(
+            css_declarations_for_selector_suffix(css, selector),
+            expected
+        );
+    }
+}
+
+#[test]
+fn treemap_title_fill_ownership_follows_only_the_selected_config_source() {
+    let theme = treemap_title_fill_theme(CanvasPaint::solid("#123456").unwrap());
+    for (config, expected, applied) in [
+        (serde_json::json!({}), "#123456", 1),
+        (
+            serde_json::json!({
+                "themeVariables": {"titleColor": "#0000ff", "treemap": {"titleColor": "#ff0000"}},
+                "treemap": {"titleColor": "#00ff00"}
+            }),
+            "#ff0000",
+            0,
+        ),
+        (
+            serde_json::json!({
+                "themeVariables": {"titleColor": "#0000ff"},
+                "treemap": {"titleColor": "#00ff00"}
+            }),
+            "#00ff00",
+            0,
+        ),
+    ] {
+        let source = format!("---\nconfig: {config}\n---\ntreemap\ntitle Ownership\n\"Leaf\": 1\n");
+        let rendered = render_treemap_with_theme(&source, &theme, MermaidEngine::new());
+        let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+        let css = document
+            .descendants()
+            .find(|node| node.has_tag_name("style"))
+            .unwrap()
+            .text()
+            .unwrap();
+        assert_eq!(
+            css_declarations_for_selector_suffix(css, ".treemapTitle"),
+            format!("fill:{expected};font-size:14px;")
+        );
+        let evidence =
+            merman_render::__private::family_evidence(rendered.into_completion().report());
+        assert_eq!(evidence.applied_count(), applied);
+        assert_eq!(evidence.not_applicable_count(), 1 - applied);
+        assert_eq!(evidence.theme_residual_count(), 0);
+    }
+}
+
+#[test]
+fn treemap_unowned_nested_title_snapshot_does_not_block_a_typed_fill() {
+    use merman_model::presentation::{
+        FrozenPresentationConfigParts, PresentationConfig, PresentationDiagram,
+    };
+    use merman_model::resources::InputResourcePolicy;
+    use merman_model::{MermaidConfig, OperationControl};
+
+    let theme = treemap_title_fill_theme(CanvasPaint::solid("#123456").unwrap());
+    let nested = serde_json::json!({
+        "themeVariables": {"treemap": {"titleColor": "#ff0000"}},
+        "treemap": {"titleColor": "#00ff00"}
+    });
+    let text_fallback = serde_json::json!({"themeVariables": {"textColor": "#ff0000"}});
+    for (values, owners, expected, applied) in [
+        (nested.clone(), vec![], "#123456", 1),
+        (nested.clone(), vec!["treemap.titleColor"], "#123456", 1),
+        (
+            nested,
+            vec!["themeVariables.treemap.titleColor"],
+            "#ff0000",
+            0,
+        ),
+        (text_fallback.clone(), vec![], "#123456", 1),
+        (
+            text_fallback,
+            vec!["themeVariables.textColor"],
+            "#ff0000",
+            0,
+        ),
+    ] {
+        let (mut metadata, model, context) = MermaidEngine::new()
+            .parse_diagram_for_render_model_sync(
+                "treemap\ntitle Snapshot\n\"Leaf\": 1\n",
+                ParseOptions::strict(),
+            )
+            .unwrap()
+            .unwrap()
+            .into_presentation()
+            .into_parts();
+        let policy = InputResourcePolicy::default();
+        let control = OperationControl::new();
+        metadata.effective_config = PresentationConfig::try_from_frozen_parts_controlled(
+            FrozenPresentationConfigParts::new(MermaidConfig::from_value(values))
+                .with_explicit_config_paths(Arc::new(owners.into_iter().map(Arc::from).collect()))
+                .with_theme_compatibility(
+                    Some(theme.compatibility_recipe().clone()),
+                    Arc::from([]),
+                ),
+            &policy,
+            &control,
+        )
+        .unwrap()
+        .unwrap();
+        let parsed =
+            PresentationDiagram::try_from_frozen(metadata, model, context, &policy, &control)
+                .unwrap()
+                .unwrap();
+        let session = RenderEnvironment::deterministic()
+            .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
+            .begin_session_with_theme(&theme)
+            .unwrap();
+        let rendered = family::prepare(&parsed, &LayoutOptions::default(), session)
+            .unwrap()
+            .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+            .unwrap();
+        assert!(
+            rendered
+                .svg()
+                .contains(&format!(".treemapTitle{{fill:{expected};font-size:14px;}}"))
+        );
+        let evidence =
+            merman_render::__private::family_evidence(rendered.into_completion().report());
+        assert_eq!(evidence.applied_count(), applied);
+        assert_eq!(evidence.not_applicable_count(), 1 - applied);
     }
 }
 

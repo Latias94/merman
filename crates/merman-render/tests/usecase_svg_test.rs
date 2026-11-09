@@ -2698,6 +2698,178 @@ Data -- Login
     }
 
     #[test]
+    fn usecase_absolute_generic_size_drives_geometry_and_host_measurement() {
+        let theme = compile(ThemeRuleSet::default());
+        let mut geometries = Vec::new();
+        for size in ["24pt", "32px"] {
+            let source = format!(
+                "---\nconfig:\n  theme: base\n  layout: dagre\n  look: classic\n  htmlLabels: false\n  themeVariables:\n    fontSize: {size}\n  usecase:\n    minNodeWidth: 0\n    wrappingWidth: 1000\n---\nusecase-beta\nA(Alpha)\n"
+            );
+            let fonts = Arc::new(ObservedFonts::default());
+            let profile = TextMeasurementProfile::new(
+                TextMeasurementProfileIdentity::new(
+                    MeasurementProfileId::new("test.usecase-absolute-size").unwrap(),
+                    "1",
+                )
+                .unwrap(),
+                fonts.clone(),
+            );
+            let (layout, rendered) = render_with_environment(
+                &source,
+                &theme,
+                json!({}),
+                RenderEnvironment::deterministic()
+                    .with_text_measurement_policy(TextMeasurementPolicy::uniform(profile)),
+                ThemePortabilityRequirement::RequirePortable,
+            )
+            .unwrap();
+            let measurements = fonts.0.lock().unwrap();
+            let labels = measurements
+                .iter()
+                .filter(|(text, _)| text == "Alpha")
+                .collect::<Vec<_>>();
+            assert!(
+                !labels.is_empty(),
+                "{size}: production label was not measured"
+            );
+            assert!(
+                labels.iter().all(|(_, style)| style.font_size == 32.0),
+                "{size}: {labels:?}"
+            );
+            let geometry = &layout["layout"]["UsecaseDiagram"];
+            assert_eq!(
+                geometry["nodes"][0]["width"].as_f64(),
+                Some(200.0),
+                "{size}"
+            );
+            let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+            assert_eq!(
+                stylesheet_property(&document, "#usecase-test", "font-size").as_deref(),
+                Some("32px"),
+                "{size}"
+            );
+            assert!(
+                document
+                    .descendants()
+                    .any(|node| node.text() == Some("Alpha"))
+            );
+            geometries.push(geometry.clone());
+        }
+        assert_eq!(geometries[0], geometries[1]);
+    }
+
+    #[test]
+    fn usecase_ignored_negative_sizes_do_not_own_compiled_typography() {
+        let base_theme = DiagramThemeCompiler::new()
+            .compile(DiagramThemeSpec::new().with_typography(
+                TypographySpec::default().with_family_style(
+                    DiagramFamilyId::USECASE,
+                    ThemeTextStyle::default().with_font_size_px(30.0).unwrap(),
+                ),
+            ))
+            .unwrap();
+        for (declaration, html, prefix) in [
+            ("A(Alpha)", false, None),
+            ("actor A(Alpha)", false, Some("actor")),
+            ("A(Alpha)", true, Some("usecase")),
+        ] {
+            let label_target = if prefix == Some("actor") {
+                ThemeTarget::ActorLabel
+            } else {
+                ThemeTarget::NodeLabel
+            };
+            let rule_theme = compile(ThemeRuleSet::default().with_rule(rule(
+                label_target,
+                ThemeStylePatch {
+                    typography: merman_render::diagram_theme::TextStylePatch {
+                        font_size_px: Specified::Value(30.0),
+                        ..Default::default()
+                    },
+                    ..Default::default()
+                },
+            )));
+            let source = format!("usecase-beta\n{declaration}\n");
+            let mut config = json!({
+                "theme":"base", "layout":"dagre", "look":"classic", "htmlLabels":html,
+                "fontSize":42, "themeVariables":{"fontSize":"-2pt"},
+                "usecase":{"minNodeWidth":0, "wrappingWidth":1000},
+            });
+            if let Some(prefix) = prefix {
+                config["usecase"][format!("{prefix}FontSize")] = json!(-2);
+            }
+            let (_, baseline) = render_config(&source, config.clone());
+            let baseline_document = roxmltree::Document::parse(&baseline).unwrap();
+            assert_eq!(
+                stylesheet_property(&baseline_document, "#usecase-test", "font-size").as_deref(),
+                Some("16px")
+            );
+            for theme in [&base_theme, &rule_theme] {
+                let fonts = Arc::new(ObservedFonts::default());
+                let profile = TextMeasurementProfile::new(
+                    TextMeasurementProfileIdentity::new(
+                        MeasurementProfileId::new("test.usecase-ignored-size").unwrap(),
+                        "1",
+                    )
+                    .unwrap(),
+                    fonts.clone(),
+                );
+                let (layout, rendered) = render_with_environment(
+                    &source,
+                    theme,
+                    config.clone(),
+                    RenderEnvironment::deterministic()
+                        .with_text_measurement_policy(TextMeasurementPolicy::uniform(profile)),
+                    ThemePortabilityRequirement::RequirePortable,
+                )
+                .unwrap();
+                let context = format!("{declaration}/html={html}");
+                let measurements = fonts.0.lock().unwrap();
+                let labels = measurements
+                    .iter()
+                    .filter(|(text, _)| text == "Alpha")
+                    .collect::<Vec<_>>();
+                assert!(!labels.is_empty(), "{context}");
+                assert!(
+                    labels.iter().all(|(_, style)| style.font_size == 30.0),
+                    "{context}: {labels:?}"
+                );
+                assert_eq!(
+                    layout["layout"]["UsecaseDiagram"]["nodes"][0]["width"].as_f64(),
+                    Some(if prefix == Some("actor") {
+                        170.0
+                    } else {
+                        190.0
+                    }),
+                    "{context}"
+                );
+                let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+                assert_eq!(
+                    label_property(&document, "Alpha", "font-size").as_deref(),
+                    Some("30px"),
+                    "{context}"
+                );
+                if let Some(prefix) = prefix {
+                    let variable = if prefix == "actor" {
+                        "--mermaid-usecase-actor-font-size"
+                    } else {
+                        "--mermaid-usecase-font-size"
+                    };
+                    assert_eq!(
+                        property(document.root_element(), variable),
+                        property(baseline_document.root_element(), variable),
+                        "independent role defaults changed: {context}"
+                    );
+                }
+                let evidence =
+                    merman_render::__private::family_evidence(rendered.into_completion().report());
+                assert_eq!(evidence.applied_count(), 1, "{context}");
+                assert_eq!(evidence.not_applicable_count(), 0, "{context}");
+                assert_eq!(evidence.theme_residual_count(), 0, "{context}");
+            }
+        }
+    }
+
+    #[test]
     fn usecase_compiled_font_size_ownership_follows_consumed_config_namespaces() {
         let base_theme = DiagramThemeCompiler::new()
             .compile(DiagramThemeSpec::new().with_typography(

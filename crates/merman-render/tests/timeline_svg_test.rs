@@ -245,6 +245,126 @@ fn timeline_subpixel_typed_size_reaches_css_and_terminal_receipt() {
     }
 }
 
+#[test]
+fn timeline_title_typography_accounts_for_visibility_and_fixed_weight() {
+    for (style, weight_owned) in [
+        (
+            ThemeTextStyle::default()
+                .with_font_style(merman_render::diagram_theme::FontStyle::Italic),
+            false,
+        ),
+        (
+            ThemeTextStyle::default().with_font_weight(900).unwrap(),
+            true,
+        ),
+    ] {
+        let theme = DiagramThemeCompiler::new()
+            .compile(
+                DiagramThemeSpec::new().with_typography(
+                    TypographySpec::default()
+                        .with_family_style(merman_render::DiagramFamilyId::TIMELINE, style),
+                ),
+            )
+            .unwrap();
+        for direction in ["LR", "TD"] {
+            for has_body in [false, true] {
+                let source = format!(
+                    "timeline {direction}\ntitle Release\n{}",
+                    if has_body { "Pay : Event\n" } else { "" }
+                );
+                for size in ["16px", "0px"] {
+                    let engine = || {
+                        MermaidEngine::new().with_site_config(
+                            merman_core::presentation::SourcePresentationConfig::from_value(
+                                serde_json::json!({"themeVariables": {"fontSize": size}}),
+                            ),
+                        )
+                    };
+                    let residual = size != "0px" && (has_body || !weight_owned);
+                    let rendered = try_render_timeline_with_theme_engine_requirement(
+                        &source,
+                        &theme,
+                        engine(),
+                        ThemePortabilityRequirement::BestEffort,
+                    )
+                    .unwrap();
+                    let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+                    let title = document
+                        .descendants()
+                        .find(|node| node.has_tag_name("text") && node.text() == Some("Release"))
+                        .unwrap();
+                    assert_eq!(title.attribute("font-size"), Some("4ex"));
+                    assert_eq!(title.attribute("font-weight"), Some("bold"));
+                    assert_eq!(title.attribute("font-style"), None);
+                    let evidence = merman_render::__private::family_evidence(
+                        rendered.into_completion().report(),
+                    );
+                    assert_eq!(evidence.required_count(), 1);
+                    assert_eq!(evidence.accounted_count(), 1);
+                    assert_eq!(evidence.applied_count(), 0);
+                    assert_eq!(evidence.theme_residual_count(), usize::from(residual));
+                    assert_eq!(evidence.not_applicable_count(), usize::from(!residual));
+                    let strict = try_render_timeline_with_theme_engine_requirement(
+                        &source,
+                        &theme,
+                        engine(),
+                        ThemePortabilityRequirement::RequirePortable,
+                    );
+                    if residual {
+                        assert!(matches!(
+                            strict,
+                            Err(merman_render::Error::UnverifiedFamilyTheme { .. })
+                        ));
+                    } else {
+                        strict.unwrap();
+                    }
+                }
+            }
+        }
+    }
+}
+
+#[test]
+fn timeline_title_consumes_family_without_certifying_owned_size_or_section_weight() {
+    let theme = timeline_typography_theme_with_font_size(
+        FontStack::single("Timeline Typed").unwrap(),
+        Some(24.0),
+    );
+    for direction in ["LR", "TD"] {
+        for visible in [false, true] {
+            let mut config = serde_json::json!({
+                "theme": "redux", "themeVariables": {"fontWeight": "var(--section-weight)"}
+            });
+            if !visible {
+                config["themeVariables"]["fontSize"] = serde_json::json!("0px");
+            }
+            let rendered = try_render_timeline_with_theme_and_engine(
+                &format!("timeline {direction}\ntitle Release\n"),
+                &theme,
+                MermaidEngine::new().with_site_config(
+                    merman_core::presentation::SourcePresentationConfig::from_value(config),
+                ),
+            )
+            .unwrap();
+            let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+            let title = document
+                .descendants()
+                .find(|node| node.has_tag_name("text") && node.text() == Some("Release"))
+                .unwrap();
+            assert_eq!(title.attribute("font-family"), None);
+            assert_eq!(title.attribute("font-size"), Some("4ex"));
+            assert_eq!(title.attribute("font-weight"), Some("bold"));
+            let evidence =
+                merman_render::__private::family_evidence(rendered.into_completion().report());
+            assert_eq!(evidence.required_count(), 2);
+            assert_eq!(evidence.accounted_count(), 2);
+            assert_eq!(evidence.applied_count(), usize::from(visible));
+            assert_eq!(evidence.not_applicable_count(), 2 - usize::from(visible));
+            assert_eq!(evidence.theme_residual_count(), 0);
+        }
+    }
+}
+
 fn try_render_timeline_with_theme_and_engine(
     source: &str,
     theme: &DiagramTheme,
@@ -2264,7 +2384,7 @@ timeline
 }
 
 #[test]
-fn timeline_title_only_does_not_prove_typed_base_typography() {
+fn timeline_title_proves_inherited_stack_but_keeps_its_own_size() {
     let font_stack =
         FontStack::new(["Timeline Typed", "sans-serif"]).expect("valid Timeline font stack");
     let theme = timeline_typography_theme_with_font_size(font_stack, Some(24.0));
@@ -2286,8 +2406,8 @@ fn timeline_title_only_does_not_prove_typed_base_typography() {
     let evidence = merman_render::__private::family_evidence(rendered.into_completion().report());
     assert_eq!(evidence.required_count(), 2);
     assert_eq!(evidence.accounted_count(), 2);
-    assert_eq!(evidence.applied_count(), 0);
-    assert_eq!(evidence.not_applicable_count(), 2);
+    assert_eq!(evidence.applied_count(), 1);
+    assert_eq!(evidence.not_applicable_count(), 1);
     assert_eq!(evidence.theme_residual_count(), 0);
 }
 

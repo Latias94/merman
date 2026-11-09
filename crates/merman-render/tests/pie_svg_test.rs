@@ -2898,6 +2898,149 @@ fn pie_empty_native_theme_preserves_unstyled_svg_bytes() {
 }
 
 #[test]
+fn pie_invalid_role_sizes_inherit_for_font_and_role_style_evidence() {
+    use merman_render::diagram_theme::{FontStyle, Specified};
+
+    let mut patch = ThemeStylePatch::default().with_fill(CanvasPaint::solid("#123456").unwrap());
+    patch.typography.font_weight = Specified::Value(650);
+    patch.typography.font_style = Specified::Value(FontStyle::Italic);
+    let theme = DiagramThemeCompiler::new()
+        .compile(
+            DiagramThemeSpec::new()
+                .with_typography(
+                    TypographySpec::default().with_default(
+                        ThemeTextStyle::default()
+                            .with_font_stack(FontStack::single("Cousine").unwrap()),
+                    ),
+                )
+                .with_styles(
+                    ThemeRuleSet::default().with_rule(ThemeRule::new(ThemeTarget::Title, patch)),
+                ),
+        )
+        .unwrap();
+    for invalid_size in ["-1px", "potato", "24"] {
+        for (base_size, title_size, applied) in [
+            ("0px", invalid_size, 0),
+            ("24pt", invalid_size, 2),
+            ("0px", "24pt", 2),
+        ] {
+            let config = serde_json::json!({"themeVariables": {
+                "fontSize": base_size,
+                "pieTitleTextSize": title_size,
+                "pieSectionTextSize": invalid_size,
+                "pieLegendTextSize": invalid_size
+            }});
+            let source =
+                format!("---\nconfig: {config}\n---\npie title Inherited\n  \"Alpha\" : 1\n");
+            let rendered = try_render_pie_with_theme_requirement(
+                &source,
+                &theme,
+                ThemePortabilityRequirement::RequirePortable,
+            )
+            .expect("ignored sizes have a known inherited consumer");
+            for (selector, size) in [
+                ("#merman .pieTitleText", title_size),
+                ("#merman .slice", invalid_size),
+                ("#merman .legend text", invalid_size),
+            ] {
+                assert_eq!(
+                    pie_stylesheet_property_values(rendered.svg(), selector, "font-size"),
+                    [size]
+                );
+            }
+            assert_eq!(
+                pie_stylesheet_property_values(
+                    rendered.svg(),
+                    "#merman .pieTitleText",
+                    "font-weight"
+                ),
+                ["650"]
+            );
+            assert_eq!(
+                pie_stylesheet_property_values(
+                    rendered.svg(),
+                    "#merman .pieTitleText",
+                    "font-style"
+                ),
+                ["italic"]
+            );
+            let evidence =
+                merman_render::__private::family_evidence(rendered.into_completion().report());
+            assert_eq!(evidence.required_count(), 2);
+            assert_eq!(evidence.applied_count(), applied, "{config}");
+            assert_eq!(evidence.not_applicable_count(), 2 - applied, "{config}");
+            assert_eq!(evidence.theme_residual_count(), 0, "{config}");
+        }
+    }
+}
+
+#[test]
+fn pie_unrepresentable_numeric_role_sizes_remain_unverified() {
+    use merman_render::diagram_theme::{FontStyle, Specified};
+
+    let mut title = ThemeStylePatch::default().with_fill(CanvasPaint::solid("#123456").unwrap());
+    title.typography.font_weight = Specified::Value(650);
+    title.typography.font_style = Specified::Value(FontStyle::Italic);
+    let theme = DiagramThemeCompiler::new()
+        .compile(
+            DiagramThemeSpec::new()
+                .with_typography(
+                    TypographySpec::default().with_default(
+                        ThemeTextStyle::default()
+                            .with_font_stack(FontStack::single("Cousine").unwrap()),
+                    ),
+                )
+                .with_styles(
+                    ThemeRuleSet::default().with_rule(ThemeRule::new(ThemeTarget::Title, title)),
+                ),
+        )
+        .unwrap();
+    for size in ["1e-400px", "1e-400%", "1e308in"] {
+        let config = serde_json::json!({"themeVariables": {
+            "fontSize": "32px",
+            "pieTitleTextSize": size,
+            "pieSectionTextSize": size,
+            "pieLegendTextSize": size
+        }});
+        let source = format!("---\nconfig: {config}\n---\npie title Unresolved\n  \"Alpha\" : 1\n");
+        let rendered = try_render_pie_with_theme_requirement(
+            &source,
+            &theme,
+            ThemePortabilityRequirement::BestEffort,
+        )
+        .expect("best-effort output preserves the host's numeric CSS");
+        for selector in [
+            "#merman .pieTitleText",
+            "#merman .slice",
+            "#merman .legend text",
+        ] {
+            assert_eq!(
+                pie_stylesheet_property_values(rendered.svg(), selector, "font-size"),
+                [size]
+            );
+        }
+        let evidence =
+            merman_render::__private::family_evidence(rendered.into_completion().report());
+        assert_eq!(evidence.required_count(), 2, "{size}");
+        assert_eq!(evidence.applied_count(), 0, "{size}");
+        assert_eq!(evidence.not_applicable_count(), 0, "{size}");
+        assert_eq!(evidence.theme_residual_count(), 2, "{size}");
+        let error = match try_render_pie_with_theme_requirement(
+            &source,
+            &theme,
+            ThemePortabilityRequirement::RequirePortable,
+        ) {
+            Ok(_) => panic!("unresolved numeric CSS must fail strict theme completion: {size}"),
+            Err(error) => error,
+        };
+        assert_eq!(
+            error.unverified_family_theme(),
+            Some((DiagramFamilyId::PIE, 2))
+        );
+    }
+}
+
+#[test]
 fn pie_invalid_role_sizes_yield_to_typed_values_without_changing_sibling_roles() {
     for (target, key, selector, siblings) in [
         (

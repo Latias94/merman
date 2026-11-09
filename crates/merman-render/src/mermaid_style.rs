@@ -567,6 +567,10 @@ fn font_size_value_ownership(
             | CssScalar::Em(value)
             | CssScalar::Rem(value),
         ) if value.is_finite() && *value >= 0.0 => Some(CssFontSizeOwnership::SourceOwned),
+        Some(CssScalar::AbsoluteLengthPx(value)) if *value > 0.0 => {
+            // Conversion to pixels can overflow even when the authored coefficient is finite.
+            Some(CssFontSizeOwnership::Unverified)
+        }
         Some(CssScalar::Ident(keyword))
             if matches!(
                 keyword.as_str(),
@@ -590,12 +594,19 @@ fn font_size_value_ownership(
             // CSS token to distinguish other lengths from definitely invalid literal values.
             let mut parser = Parser::new(declaration.value());
             match parser.next().ok()? {
-                Token::Dimension { unit, .. }
-                    if is_css_length_unit(unit)
-                        && parse_css_number_prefix(declaration.value())
-                            .is_some_and(|value| value.is_finite() && value >= 0.0) =>
-                {
-                    Some(CssFontSizeOwnership::Unverified)
+                Token::Dimension { unit, .. } if is_css_length_unit(unit) => {
+                    // An unrepresentable numeric token is not a definitely invalid value.
+                    // Retain uncertainty instead of treating underflow as inheritance or zero.
+                    parse_css_number_prefix(declaration.value())
+                        .is_none_or(|value| value >= 0.0)
+                        .then_some(CssFontSizeOwnership::Unverified)
+                }
+                Token::Percentage { .. } => {
+                    // Check the coefficient before percentage normalization can erase a
+                    // finite negative value's sign through underflow.
+                    parse_css_number_prefix(declaration.value())
+                        .is_none_or(|value| value >= 0.0)
+                        .then_some(CssFontSizeOwnership::Unverified)
                 }
                 // Expression resolution remains the receiving host's responsibility.
                 Token::Function(_) => Some(CssFontSizeOwnership::Unverified),
@@ -1946,6 +1957,32 @@ mod tests {
         ] {
             assert_eq!(ownership(declarations), None, "{declarations}");
         }
+    }
+
+    #[test]
+    fn unrepresentable_numeric_font_sizes_keep_unverified_ownership() {
+        for value in [
+            "1e-400px",
+            "1e-400pt",
+            "1e-400%",
+            "1e-322%",
+            "1e400px",
+            "1e308in",
+            "-1e-400px",
+        ] {
+            let declarations = format!("font-size:32px !important;font-size:{value} !important");
+            assert_eq!(
+                css_font_size_override(&declarations).map(CssFontSizeOverride::ownership),
+                Some(CssFontSizeOwnership::Unverified),
+                "a legitimate numeric token must not silently restore 32px: {value}"
+            );
+        }
+        assert_eq!(
+            css_font_size_override("font-size:32px !important;font-size:-5e-324% !important")
+                .map(CssFontSizeOverride::ownership),
+            Some(CssFontSizeOwnership::SourceOwned),
+            "a representable negative coefficient remains invalid even when division underflows"
+        );
     }
 
     #[test]

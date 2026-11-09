@@ -1291,6 +1291,7 @@ fn prepare_eventmodeling_family<'parsed>(
         &meta.effective_config,
         css_binding,
         &layout,
+        &prepared_labels,
         execution.work_meter_ref(),
     )?;
     Ok(BuiltinFamilyArtifact::EventModeling(Box::new(
