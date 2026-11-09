@@ -24,7 +24,7 @@ pub(crate) use prepared::{
 };
 
 #[cfg(feature = "math")]
-use crate::text::split_html_br_lines;
+use crate::text::split_mermaid_common_br_lines;
 use crate::text::{TextMetrics, TextStyle, WrapMode};
 use merman_model::presentation::PresentationConfig;
 #[cfg(test)]
@@ -167,7 +167,7 @@ pub(crate) fn parse_delimited_math_line(text: &str) -> Option<DelimitedMathLine<
 }
 
 pub(crate) fn contains_delimited_math(text: &str) -> bool {
-    crate::text::split_html_br_lines(text)
+    crate::text::split_mermaid_common_br_lines(text)
         .into_iter()
         .any(|line| parse_delimited_math_line(line).is_some())
 }
@@ -245,7 +245,7 @@ fn measure_mixed_math_label(
     let mut width = 0.0_f64;
     let mut height = 0.0_f64;
     let mut line_count = 0usize;
-    for line in crate::text::split_html_br_lines(request.raw_label) {
+    for line in crate::text::split_mermaid_common_br_lines(request.raw_label) {
         line_count += 1;
         let (line_width, line_height) = if line.contains("$$") {
             saw_math = true;
@@ -389,7 +389,7 @@ impl RatexMathRenderer {
 
         let mut html = String::new();
         let mut saw_math = false;
-        for line in split_html_br_lines(&normalized) {
+        for line in split_mermaid_common_br_lines(&normalized) {
             if let Some(parsed) = parse_delimited_math_line(line) {
                 saw_math = true;
                 let rendered_line = Self::render_katex_like_line_html(parsed)?;
@@ -924,16 +924,21 @@ mod tests {
     #[test]
     fn delimited_math_detection_requires_a_complete_pair_on_one_label_line() {
         assert!(contains_delimited_math("value: $$x^2$$"));
-        assert!(contains_delimited_math("plain<br>value: $$x^2$$"));
         assert!(!contains_delimited_math("literal $$"));
-        assert!(!contains_delimited_math("literal $$<br>literal $$"));
+        for br in ["<br>", "</BR >", "<br\u{feff}/>"] {
+            assert!(contains_delimited_math(&format!("plain{br}value: $$x^2$$")));
+            assert!(
+                !contains_delimited_math(&format!("literal $${br}literal $$")),
+                "delimiters across common break rows must not form a formula: {br:?}"
+            );
+        }
     }
 
     #[cfg(feature = "math")]
     #[test]
     fn ratex_math_renderer_splits_math_only_labels_with_source_br_shape() {
         assert_eq!(
-            prepared::compiled_ratex_math_only_lines("$$x$$<BR /> $$y$$<bR\t/>$$z$$"),
+            prepared::compiled_ratex_math_only_lines("$$x$$</BR > $$y$$<bR\u{feff}/>$$z$$"),
             Some(vec![
                 prepared::ClassifiedPureMathLine::Formula("x".to_string()),
                 prepared::ClassifiedPureMathLine::Formula("y".to_string()),
@@ -941,7 +946,7 @@ mod tests {
             ])
         );
         assert_eq!(
-            prepared::compiled_ratex_math_only_lines("$$x$$<br><br>$$y$$"),
+            prepared::compiled_ratex_math_only_lines("$$x$$<br></br>$$y$$"),
             Some(vec![
                 prepared::ClassifiedPureMathLine::Formula("x".to_string()),
                 prepared::ClassifiedPureMathLine::Empty,

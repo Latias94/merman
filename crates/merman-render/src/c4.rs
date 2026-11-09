@@ -1,5 +1,9 @@
-use crate::model::{C4TextRenderPlan, C4TextRowLayout};
-use crate::text::{TextMeasurer, TextStyle, WrapMode, measure_mermaid_text_dimensions};
+use crate::model::{C4TextBlockLayout, C4TextRenderPlan, C4TextRowLayout};
+use crate::resources::OperationWorkMeter;
+use crate::text::{
+    TextMeasurer, TextMetrics, TextStyle, measure_mermaid_text_dimensions_with_checkpoint,
+    split_mermaid_common_br_lines, wrap_label_like_mermaid_lines_with_checkpoint,
+};
 use merman_model::families::c4::{C4DiagramModel, C4Shape};
 use serde_json::Value;
 use unicode_segmentation::UnicodeSegmentation;
@@ -113,37 +117,133 @@ pub(crate) struct UnifiedTextMeasure {
     pub(crate) render_plan: C4TextRenderPlan,
 }
 
-fn measure_c4_text(
+struct C4LegacyWrapMeasurer<'a> {
+    measurer: &'a dyn TextMeasurer,
+    work: &'a OperationWorkMeter,
+}
+
+impl TextMeasurer for C4LegacyWrapMeasurer<'_> {
+    fn measure(&self, text: &str, style: &TextStyle) -> TextMetrics {
+        let dimensions = (|| -> crate::Result<_> {
+            self.work.charge(text.len().saturating_add(1))?;
+            measure_mermaid_text_dimensions_with_checkpoint(self.measurer, text, style, || {
+                self.work.charge(1)?;
+                Ok(())
+            })
+        })();
+        // The wrapping helper checks the same sticky operation terminal immediately after
+        // every infallible width probe, before it can consume a failed probe's result.
+        dimensions.map_or_else(
+            |_| TextMetrics {
+                width: 0.0,
+                height: 0.0,
+                line_count: 0,
+            },
+            |dimensions| TextMetrics {
+                width: dimensions.width.max(0) as f64,
+                height: dimensions.height.max(0) as f64,
+                line_count: 1,
+            },
+        )
+    }
+
+    fn measure_svg_simple_text_bbox_width_for_wrap_px(&self, text: &str, style: &TextStyle) -> f64 {
+        self.measure(text, style).width
+    }
+}
+
+/// Prepares the legacy boundary/relationship text consumed by Mermaid's `byTspan` path.
+///
+/// As in `calcC4ShapeTextWH`, `text` retains `wrapLabel`'s actual output. Only inserted
+/// common break tags delimit its rows; literal newlines and entity spellings remain text.
+fn prepare_c4_legacy_text(
     measurer: &dyn TextMeasurer,
     text: &str,
     style: &TextStyle,
     wrap: bool,
-    text_limit_width: f64,
-) -> TextMeasure {
-    let dimensions = measure_mermaid_text_dimensions(measurer, text, style);
+    text_limit_width: Option<f64>,
+    work: &OperationWorkMeter,
+) -> crate::Result<C4TextBlockLayout> {
+    work.charge(text.len().saturating_add(1))?;
+    let source_rows = split_mermaid_common_br_lines(text);
     if wrap {
-        let m = measurer.measure_wrapped(text, style, Some(text_limit_width), WrapMode::SvgLike);
-        let line_count = m.line_count.max(1);
-        return TextMeasure {
-            width: text_limit_width,
-            height: dimensions.line_height.max(0) as f64 * line_count as f64,
-            line_count,
+        let text_limit_width = match text_limit_width {
+            Some(width) => width,
+            None => measure_mermaid_text_dimensions_with_checkpoint(measurer, text, style, || {
+                work.charge(1)?;
+                Ok(())
+            })?
+            .width
+            .max(0) as f64,
         };
+        let text = if source_rows.len() > 1 {
+            // Mermaid's hasBreaks short-circuit preserves authored tag spellings and empty rows.
+            text.to_owned()
+        } else if text.bytes().all(|byte| byte == b' ') {
+            // wrapLabel drops empty ASCII-space-delimited words, including all-space labels.
+            String::new()
+        } else {
+            let lines = wrap_label_like_mermaid_lines_with_checkpoint(
+                text,
+                &C4LegacyWrapMeasurer { measurer, work },
+                style,
+                text_limit_width,
+                || {
+                    work.charge(1)?;
+                    Ok(())
+                },
+            )?;
+            for line in &lines {
+                work.charge(line.len().saturating_add(1))?;
+            }
+            lines.join("<br/>")
+        };
+        work.charge(text.len().saturating_add(1))?;
+        let dimensions =
+            measure_mermaid_text_dimensions_with_checkpoint(measurer, &text, style, || {
+                work.charge(1)?;
+                Ok(())
+            })?;
+        return Ok(C4TextBlockLayout {
+            line_count: split_mermaid_common_br_lines(&text).len(),
+            text,
+            y: 0.0,
+            width: text_limit_width,
+            height: dimensions.height.max(0) as f64,
+            render_plan: None,
+        });
     }
 
-    TextMeasure {
-        width: dimensions.width.max(0) as f64,
-        height: dimensions.height.max(0) as f64,
-        line_count: crate::text::split_html_br_lines(text).len().max(1),
+    // The unwrapped upstream branch probes each row independently; an empty row contributes
+    // zero height here, unlike the wrapped calculateTextHeight call on the complete label.
+    let mut width = 0.0_f64;
+    let mut height = 0.0_f64;
+    for line in &source_rows {
+        work.charge(line.len().saturating_add(1))?;
+        let dimensions =
+            measure_mermaid_text_dimensions_with_checkpoint(measurer, line, style, || {
+                work.charge(1)?;
+                Ok(())
+            })?;
+        width = width.max(dimensions.width.max(0) as f64);
+        height += dimensions.height.max(0) as f64;
     }
+    Ok(C4TextBlockLayout {
+        text: text.to_owned(),
+        y: 0.0,
+        width,
+        height,
+        line_count: source_rows.len(),
+        render_plan: None,
+    })
 }
 
 /// Measures one section of the unified C4 label.
 ///
 /// Unlike the legacy C4 path, the unified label helper sizes from the rendered
 /// section's actual wrapped bounding box; the configured wrap width is only a
-/// line-breaking constraint. Keep the legacy helper above unchanged for
-/// boundaries and relationships, which still use Mermaid's fixed-width path.
+/// line-breaking constraint. Boundaries and relationships use the separate
+/// legacy preparation above and retain Mermaid's fixed-width path.
 fn measure_c4_unified_text(
     measurer: &dyn TextMeasurer,
     text: &str,
@@ -350,9 +450,14 @@ pub(crate) use typography::C4TypographyThemePlan;
 
 #[cfg(test)]
 mod tests {
+    use std::cell::Cell;
+
+    use merman_model::{OperationControl, OperationPhase};
+
+    use crate::resources::{OperationWorkMeter, RenderResourcePolicy, ResourceLimitId};
     use crate::text::{TextMeasurer, TextMetrics};
 
-    use super::{TextStyle, measure_c4_text, measure_c4_unified_text};
+    use super::{TextStyle, measure_c4_unified_text, prepare_c4_legacy_text};
 
     struct C4ProbeMeasurer;
 
@@ -380,13 +485,15 @@ mod tests {
 
     #[test]
     fn c4_unwrapped_text_consumes_shared_mermaid_dimensions() {
-        let measured = measure_c4_text(
+        let measured = prepare_c4_legacy_text(
             &C4ProbeMeasurer,
             "configured text",
             &TextStyle::default(),
             false,
-            500.0,
-        );
+            Some(500.0),
+            &OperationWorkMeter::new(RenderResourcePolicy::unbounded_for_trusted_input()),
+        )
+        .unwrap();
 
         assert_eq!(measured.width, 120.0);
         assert_eq!(measured.height, 19.0);
@@ -394,18 +501,161 @@ mod tests {
     }
 
     #[test]
-    fn c4_wrapped_text_uses_shared_bbox_line_height() {
-        let measured = measure_c4_text(
+    fn c4_wrapped_text_uses_shared_dimensions_for_its_actual_common_rows() {
+        let measured = prepare_c4_legacy_text(
             &C4ProbeMeasurer,
-            "Allows customers to view information about their bank accounts, and make payments.",
+            "First</br>Second",
             &TextStyle::default(),
             true,
-            200.0,
-        );
+            Some(200.0),
+            &OperationWorkMeter::new(RenderResourcePolicy::unbounded_for_trusted_input()),
+        )
+        .unwrap();
 
         assert_eq!(measured.width, 200.0);
-        assert_eq!(measured.height, 57.0);
+        assert_eq!(measured.height, 38.0);
+        assert_eq!(measured.line_count, 2);
+        assert_eq!(measured.text, "First</br>Second");
+    }
+
+    #[derive(Default)]
+    struct C4LegacyProbeMeasurer {
+        probes: Cell<usize>,
+        cancel: Option<OperationControl>,
+    }
+
+    impl TextMeasurer for C4LegacyProbeMeasurer {
+        fn measure(&self, _text: &str, _style: &TextStyle) -> TextMetrics {
+            panic!("legacy C4 must use the calculateTextDimensions measurement operation");
+        }
+
+        fn measure_mermaid_calculate_text_dimensions(
+            &self,
+            text: &str,
+            style: &TextStyle,
+        ) -> TextMetrics {
+            self.probes.set(self.probes.get() + 1);
+            if let Some(control) = &self.cancel {
+                control.cancel();
+            }
+            let sans = style.font_family.as_deref() == Some("sans-serif");
+            TextMetrics {
+                width: text.chars().filter(|ch| *ch != '\u{200b}').count() as f64
+                    * if sans { 2.0 } else { 1.0 },
+                height: if sans { 10.0 } else { 8.0 },
+                line_count: 1,
+            }
+        }
+    }
+
+    #[test]
+    fn c4_legacy_wrap_uses_the_shared_dual_font_probe_and_retains_its_rows() {
+        let measured = prepare_c4_legacy_text(
+            &C4LegacyProbeMeasurer::default(),
+            "Alpha Beta Gamma",
+            &TextStyle::default(),
+            true,
+            Some(14.0),
+            &OperationWorkMeter::new(RenderResourcePolicy::unbounded_for_trusted_input()),
+        )
+        .unwrap();
+
+        assert_eq!(measured.text, "Alpha<br/>Beta<br/>Gamma");
         assert_eq!(measured.line_count, 3);
+        assert_eq!(measured.width, 14.0);
+        assert_eq!(measured.height, 30.0);
+    }
+
+    #[test]
+    fn c4_relationship_wrap_width_uses_the_shared_probe_before_preparing_rows() {
+        let measured = prepare_c4_legacy_text(
+            &C4LegacyProbeMeasurer::default(),
+            "Alpha Beta",
+            &TextStyle::default(),
+            true,
+            None,
+            &OperationWorkMeter::new(RenderResourcePolicy::unbounded_for_trusted_input()),
+        )
+        .unwrap();
+        assert_eq!(measured.text, "Alpha<br/>Beta");
+        assert_eq!(measured.line_count, 2);
+        assert_eq!(measured.width, 20.0);
+        assert_eq!(measured.height, 20.0);
+    }
+
+    #[test]
+    fn c4_legacy_empty_rows_keep_the_upstream_wrapped_height_distinction() {
+        for wrap in [false, true] {
+            let measured = prepare_c4_legacy_text(
+                &C4LegacyProbeMeasurer::default(),
+                "A</br></br>B",
+                &TextStyle::default(),
+                wrap,
+                Some(100.0),
+                &OperationWorkMeter::new(RenderResourcePolicy::unbounded_for_trusted_input()),
+            )
+            .unwrap();
+            assert_eq!(measured.line_count, 3);
+            assert_eq!(measured.height, if wrap { 30.0 } else { 20.0 });
+            assert_eq!(measured.text, "A</br></br>B");
+        }
+    }
+
+    #[test]
+    fn c4_legacy_long_word_work_is_charged_before_each_growing_probe() {
+        let text = "W".repeat(4096);
+        let measurer = C4LegacyProbeMeasurer::default();
+        let work = OperationWorkMeter::new(
+            RenderResourcePolicy::unbounded_for_trusted_input()
+                .with_limit(ResourceLimitId::MaxLayoutWorkUnits, 20_000)
+                .unwrap(),
+        );
+        let error = prepare_c4_legacy_text(
+            &measurer,
+            &text,
+            &TextStyle::default(),
+            true,
+            Some(4096.0),
+            &work,
+        )
+        .unwrap_err();
+        assert!(matches!(
+            error,
+            crate::Error::ResourceLimitExceeded(error) if error.limit == "max_layout_work_units"
+        ));
+        assert!(measurer.probes.get() > 0 && measurer.probes.get() < text.len());
+        assert_eq!(
+            work.checkpoint(OperationPhase::Emit).unwrap_err(),
+            work.charge(1).unwrap_err(),
+            "the wrapping failure remains the operation's sticky terminal"
+        );
+    }
+
+    #[test]
+    fn c4_legacy_wrap_cancellation_stops_before_the_next_font_or_candidate() {
+        let control = OperationControl::new();
+        let measurer = C4LegacyProbeMeasurer {
+            cancel: Some(control.clone()),
+            ..Default::default()
+        };
+        let work = OperationWorkMeter::new_with_control(
+            RenderResourcePolicy::unbounded_for_trusted_input(),
+            control,
+        );
+        let error = prepare_c4_legacy_text(
+            &measurer,
+            &"W".repeat(4096),
+            &TextStyle::default(),
+            true,
+            Some(10.0),
+            &work,
+        )
+        .unwrap_err();
+        assert!(matches!(
+            error,
+            crate::Error::Cancelled(error) if error.phase == OperationPhase::Layout
+        ));
+        assert_eq!(measurer.probes.get(), 1);
     }
 
     struct C4UnifiedWrapProbeMeasurer;

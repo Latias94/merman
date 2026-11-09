@@ -1,12 +1,13 @@
 use super::{
     C4_FRAMED_FRAME_WIDTH, C4_NEO_FRAMED_LABEL_PADDING_X, C4_NEO_FRAMED_LABEL_PADDING_Y, C4Conf,
-    C4ConfigView, C4Look, C4Model, C4NodeShape, c4_node_shape, c4_stereotype_text, measure_c4_text,
-    measure_c4_unified_text,
+    C4ConfigView, C4Look, C4Model, C4NodeShape, c4_node_shape, c4_stereotype_text,
+    measure_c4_unified_text, prepare_c4_legacy_text,
 };
 use crate::model::{
     Bounds, C4BoundaryLayout, C4DiagramLayout, C4ImageLayout, C4RelLayout, C4ShapeLayout,
     C4TextBlockLayout, LayoutPoint,
 };
+use crate::resources::OperationWorkMeter;
 use crate::text::TextMeasurer;
 use crate::{Error, Result};
 use merman_model::families::c4::{C4Boundary, C4DiagramModel};
@@ -129,6 +130,7 @@ struct C4LayoutContext<'a> {
     c4_shape_in_row: usize,
     c4_boundary_in_row: usize,
     measurer: &'a dyn TextMeasurer,
+    work: &'a OperationWorkMeter,
     boundary_children: &'a HashMap<String, Vec<usize>>,
     shape_children: &'a HashMap<String, Vec<usize>>,
 }
@@ -737,7 +739,7 @@ fn prepare_c4_boundary_layout(
     boundary: &C4Boundary,
     width_limit: f64,
     ctx: &C4LayoutContext<'_>,
-) -> (PendingC4BoundaryLayout, f64) {
+) -> Result<(PendingC4BoundaryLayout, f64)> {
     let mut y = 0.0;
 
     let mut image = C4ImageLayout {
@@ -760,66 +762,52 @@ fn prepare_c4_boundary_layout(
     label_conf.font_size += 2.0;
     label_conf.font_weight = Some("bold".to_string());
 
-    let label_text = boundary.label.as_str().to_string();
-    let label_m = measure_c4_text(
+    let mut label = prepare_c4_legacy_text(
         ctx.measurer,
-        &label_text,
+        boundary.label.as_str(),
         &label_conf,
         text_wrap,
-        width_limit,
-    );
-    let label = C4TextBlockLayout {
-        text: label_text,
-        y: y + 8.0,
-        width: label_m.width,
-        height: label_m.height,
-        line_count: label_m.line_count,
-        render_plan: None,
-    };
+        Some(width_limit),
+        ctx.work,
+    )?;
+    label.y = y + 8.0;
     y = label.y + label.height;
 
     let mut ty: Option<C4TextBlockLayout> = None;
     if let Some(boundary_ty) = boundary.ty.as_ref().filter(|t| !t.as_str().is_empty()) {
         let ty_text = format!("[{}]", boundary_ty.as_str());
         let ty_conf = ctx.conf.boundary_font();
-        let m = measure_c4_text(ctx.measurer, &ty_text, &ty_conf, text_wrap, width_limit);
-        let block = C4TextBlockLayout {
-            text: ty_text,
-            y: y + 5.0,
-            width: m.width,
-            height: m.height,
-            line_count: m.line_count,
-            render_plan: None,
-        };
+        let mut block = prepare_c4_legacy_text(
+            ctx.measurer,
+            &ty_text,
+            &ty_conf,
+            text_wrap,
+            Some(width_limit),
+            ctx.work,
+        )?;
+        block.y = y + 5.0;
         y = block.y + block.height;
         ty = Some(block);
     }
 
     let mut descr: Option<C4TextBlockLayout> = None;
     if let Some(boundary_descr) = boundary.descr.as_ref().filter(|t| !t.as_str().is_empty()) {
-        let descr_text = boundary_descr.as_str().to_string();
         let mut descr_conf = ctx.conf.boundary_font();
         descr_conf.font_size -= 2.0;
-        let m = measure_c4_text(
+        let mut block = prepare_c4_legacy_text(
             ctx.measurer,
-            &descr_text,
+            boundary_descr.as_str(),
             &descr_conf,
             text_wrap,
-            width_limit,
-        );
-        let block = C4TextBlockLayout {
-            text: descr_text,
-            y: y + 20.0,
-            width: m.width,
-            height: m.height,
-            line_count: m.line_count,
-            render_plan: None,
-        };
+            Some(width_limit),
+            ctx.work,
+        )?;
+        block.y = y + 20.0;
         y = block.y + block.height;
         descr = Some(block);
     }
 
-    (
+    Ok((
         PendingC4BoundaryLayout {
             alias: boundary.alias.clone(),
             parent_boundary: boundary.parent_boundary.clone(),
@@ -829,7 +817,7 @@ fn prepare_c4_boundary_layout(
             descr,
         },
         y,
-    )
+    ))
 }
 
 fn finish_c4_boundary_layout(
@@ -928,7 +916,7 @@ fn layout_inside_boundary(
 
         let boundary = &ctx.model.boundaries[idx];
         let width_limit = frame.current_bounds.data.width_limit;
-        let (pending, y) = prepare_c4_boundary_layout(boundary, width_limit, ctx);
+        let (pending, y) = prepare_c4_boundary_layout(boundary, width_limit, ctx)?;
 
         let parent_startx = frame
             .parent_bounds
@@ -998,10 +986,11 @@ pub(crate) fn layout_c4_diagram_typed(
     effective_config: &Value,
     typography: &super::C4TypographyThemePlan,
     measurer: &dyn TextMeasurer,
-    container_width: f64,
-    container_height: f64,
+    container: crate::geom::Size,
     screen_available_width: Option<f64>,
+    work: &OperationWorkMeter,
 ) -> Result<C4DiagramLayout> {
+    work.charge(1)?;
     let c4_cfg = C4ConfigView::new(effective_config);
     let conf = c4_cfg
         .layout_settings_with_prepared_fonts(typography.boundary_font(), typography.message_font());
@@ -1038,7 +1027,7 @@ pub(crate) fn layout_c4_diagram_typed(
         conf.diagram_margin_y,
         conf.diagram_margin_y,
     );
-    screen_bounds.data.width_limit = screen_available_width.unwrap_or(container_width);
+    screen_bounds.data.width_limit = screen_available_width.unwrap_or(container.width);
 
     let root_boundaries = boundary_children.get("").cloned().unwrap_or_default();
     if root_boundaries.is_empty() {
@@ -1054,6 +1043,7 @@ pub(crate) fn layout_c4_diagram_typed(
         c4_shape_in_row,
         c4_boundary_in_row,
         measurer,
+        work,
         boundary_children: &boundary_children,
         shape_children: &shape_children,
     };
@@ -1125,52 +1115,26 @@ pub(crate) fn layout_c4_diagram_typed(
 
         let rel_text_wrap = rel.wrap && conf.wrap;
 
-        let label_limit = measurer.measure(&label_text, &rel_font).width;
-        let label_m = measure_c4_text(measurer, &label_text, &rel_font, rel_text_wrap, label_limit);
-        let label = C4TextBlockLayout {
-            text: label_text,
-            y: 0.0,
-            width: label_m.width,
-            height: label_m.height,
-            line_count: label_m.line_count,
-            render_plan: None,
-        };
+        let label =
+            prepare_c4_legacy_text(measurer, &label_text, &rel_font, rel_text_wrap, None, work)?;
 
         let techn = rel
             .techn
             .as_ref()
             .filter(|t| !t.as_str().is_empty())
             .map(|t| {
-                let text = t.as_str().to_string();
-                let limit = measurer.measure(&text, &rel_font).width;
-                let m = measure_c4_text(measurer, &text, &rel_font, rel_text_wrap, limit);
-                C4TextBlockLayout {
-                    text,
-                    y: 0.0,
-                    width: m.width,
-                    height: m.height,
-                    line_count: m.line_count,
-                    render_plan: None,
-                }
-            });
+                prepare_c4_legacy_text(measurer, t.as_str(), &rel_font, rel_text_wrap, None, work)
+            })
+            .transpose()?;
 
         let descr = rel
             .descr
             .as_ref()
             .filter(|t| !t.as_str().is_empty())
             .map(|t| {
-                let text = t.as_str().to_string();
-                let limit = measurer.measure(&text, &rel_font).width;
-                let m = measure_c4_text(measurer, &text, &rel_font, rel_text_wrap, limit);
-                C4TextBlockLayout {
-                    text,
-                    y: 0.0,
-                    width: m.width,
-                    height: m.height,
-                    line_count: m.line_count,
-                    render_plan: None,
-                }
-            });
+                prepare_c4_legacy_text(measurer, t.as_str(), &rel_font, rel_text_wrap, None, work)
+            })
+            .transpose()?;
 
         let (from, from_shape) =
             endpoint_rects
@@ -1246,8 +1210,8 @@ pub(crate) fn layout_c4_diagram_typed(
         bounds,
         width,
         height,
-        container_width,
-        container_height,
+        container_width: container.width,
+        container_height: container.height,
         screen_available_width,
         c4_type: model.c4_type.clone(),
         title: model.title.clone(),

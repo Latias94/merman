@@ -24,7 +24,6 @@ pub(crate) use css_binding::{VennAreaPaintBinding, VennCssBinding};
 pub(crate) struct VennTypographyThemePlan {
     css_binding: VennCssBinding,
     inherited_font_stack: InheritedFontStackPlan,
-    evidence: FamilyThemeOutcomes,
     text_fill: Option<crate::family::DirectStaticPaint>,
     text_fill_routes: Box<[(FamilyThemeMechanismKey, usize)]>,
     config_owns_text_fill: bool,
@@ -189,7 +188,6 @@ impl VennTypographyThemePlan {
                 theme,
                 effective_config,
             ),
-            evidence: FamilyThemeOutcomes::default(),
             text_fill,
             text_fill_routes,
             config_owns_text_fill,
@@ -242,7 +240,6 @@ impl VennTypographyThemePlan {
     }
 
     pub(crate) fn record_evidence(&self, evidence: &mut FamilyThemeEvidence) {
-        evidence.merge_borrowed(&self.evidence);
         let key = FamilyThemeMechanismKey::Typography(ThemeTypographyProperty::FontStack);
         let Some(receipt) = self.terminal_receipt.get() else {
             self.inherited_font_stack

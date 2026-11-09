@@ -245,12 +245,12 @@ fn record_kanban_label_emission(
     decision: &crate::kanban::KanbanTaskTerminalDecision<'_>,
 ) {
     if emission.visible
-        && emission.inherited_color_run_count > 0
+        && (emission.inherited_color_run_count > 0 || !emission.typography.parse_valid)
         && decision.label_css().is_some()
         && let Some(outcome) = outcome
     {
         outcome.record_label(
-            emission.typography.visible_run_count,
+            emission.typography,
             emission.inherited_color_run_count,
             decision,
         );

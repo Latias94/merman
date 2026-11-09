@@ -828,7 +828,7 @@ pub(crate) fn layout_requirement_diagram_typed_with_resource_policy(
     resource_limits: RenderResourcePolicy,
 ) -> Result<RequirementPreparedArtifact> {
     let work_meter = std::sync::Arc::new(OperationWorkMeter::new(resource_limits));
-    let binding = RequirementCssBinding::resolve(effective_config, None, None, None, None);
+    let binding = RequirementCssBinding::resolve(effective_config, None, None, None);
     let config = merman_model::MermaidConfig::from_value(effective_config.clone());
     layout_requirement_diagram_typed_with_work_meter_and_typography(
         model,

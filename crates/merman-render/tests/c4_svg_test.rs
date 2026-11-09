@@ -1409,6 +1409,142 @@ fn c4_boundary_only_text_keeps_stroke_and_effect_applicable() {
 }
 
 #[test]
+fn c4_legacy_break_only_labels_do_not_certify_visible_role_paint() {
+    for wrap in [false, true] {
+        for br in [
+            "<br/>",
+            "</br>",
+            "<BR />",
+            "<br\u{00a0}/>",
+            "</BR\u{feff}/>",
+        ] {
+            for target in [ThemeTarget::EdgeLabel, ThemeTarget::ClusterLabel] {
+                let body = if target == ThemeTarget::EdgeLabel {
+                    format!("System(a, \"Alpha\")\nSystem(b, \"Beta\")\nRel(a, b, \"{br}\")\n")
+                } else {
+                    format!("Boundary(group, \"{br}\", \"\") {{\nSystem(a, \"Alpha\")\n}}\n")
+                };
+                let source = format!(
+                    "---\nconfig: {{wrap: {wrap}, c4: {{wrap: {wrap}}}}}\n---\nC4Context\n{body}"
+                );
+                let theme = c4_cluster_rules_theme([ThemeRule::new(
+                    target,
+                    ThemeStylePatch::default().with_fill(CanvasPaint::solid("#123456").unwrap()),
+                )]);
+                let rendered = try_render_c4_rendered_with_theme(&source, &theme)
+                    .expect("an empty legacy role remains portable");
+                let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+                assert!(
+                    document
+                        .descendants()
+                        .filter(|node| {
+                            node.has_tag_name("text")
+                                && !node.ancestors().any(|ancestor| {
+                                    ancestor.attribute("class").is_some_and(|classes| {
+                                        classes
+                                            .split_ascii_whitespace()
+                                            .any(|class| class == "c4-shape")
+                                    })
+                                })
+                        })
+                        .all(|node| svg_text_content(node).trim().is_empty()),
+                    "wrap={wrap}, {target:?}, {br:?}"
+                );
+                let completion = rendered.into_completion();
+                let evidence = merman_render::__private::family_evidence(completion.report());
+                assert_eq!(evidence.required_count(), 1);
+                assert_eq!(evidence.accounted_count(), 1);
+                assert_eq!(evidence.applied_count(), 0, "{target:?}: {br:?}");
+                assert_eq!(evidence.not_applicable_count(), 1);
+                assert_eq!(evidence.theme_residual_count(), 0);
+            }
+        }
+    }
+}
+
+#[test]
+fn c4_visible_brackets_and_unified_literal_break_words_keep_role_paint() {
+    for wrap in [false, true] {
+        for br in ["<br/>", "</br>", "<br\u{00a0}/>", "</BR\u{feff}/>"] {
+            for (target, body) in [
+                (
+                    ThemeTarget::EdgeLabel,
+                    format!(
+                        "System(a, \"Alpha\")\nSystem(b, \"Beta\")\nRel(a, b, \"\", \"{br}\")\n"
+                    ),
+                ),
+                (
+                    ThemeTarget::ClusterLabel,
+                    format!("Boundary(group, \"\", \"{br}\") {{\nSystem(a, \"Alpha\")\n}}\n"),
+                ),
+            ] {
+                let source = format!(
+                    "---\nconfig: {{wrap: {wrap}, c4: {{wrap: {wrap}}}}}\n---\nC4Context\n{body}"
+                );
+                let theme = c4_cluster_rules_theme([ThemeRule::new(
+                    target,
+                    ThemeStylePatch::default().with_fill(CanvasPaint::solid("#123456").unwrap()),
+                )]);
+                let rendered = try_render_c4_rendered_with_theme(&source, &theme)
+                    .expect("generated brackets remain visible role consumers");
+                let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+                let colored_rows: Vec<_> = document
+                    .descendants()
+                    .filter(|node| node.has_tag_name("text"))
+                    .filter(|node| {
+                        c4_effective_property(*node, "fill").as_deref() == Some("#123456")
+                    })
+                    .map(svg_text_content)
+                    .filter(|text| !text.trim().is_empty())
+                    .collect();
+                assert_eq!(colored_rows, ["[", "]"], "wrap={wrap}, {target:?}: {br:?}");
+                let completion = rendered.into_completion();
+                let evidence = merman_render::__private::family_evidence(completion.report());
+                assert_eq!(evidence.required_count(), 1);
+                assert_eq!(evidence.accounted_count(), 1);
+                assert_eq!(evidence.applied_count(), 1);
+                assert_eq!(evidence.not_applicable_count(), 0);
+                assert_eq!(evidence.theme_residual_count(), 0);
+            }
+        }
+        for (source_word, visible_word) in [
+            ("</br>", "</br>"),
+            ("</BR\u{feff}/>", "</BR\u{feff}/>"),
+            ("&lt;br/&gt;", "<br/>"),
+        ] {
+            let source = format!(
+                "---\nconfig: {{c4: {{wrap: {wrap}}}}}\n---\nC4Context\nSystem(a, \"{source_word}\")\n"
+            );
+            let theme = c4_cluster_rules_theme([ThemeRule::new(
+                ThemeTarget::NodeLabel,
+                ThemeStylePatch::default().with_fill(CanvasPaint::solid("#123456").unwrap()),
+            )]);
+            let rendered = try_render_c4_rendered_with_theme(&source, &theme)
+                .expect("unified labels preserve literal closing and decoded break words");
+            let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+            let name = document
+                .descendants()
+                .find(|node| node.has_tag_name("g") && node.attribute("class") == Some("c4-name"))
+                .expect("visible unified name section");
+            let name_text = name
+                .descendants()
+                .find(|node| node.has_tag_name("text"))
+                .unwrap();
+            assert_eq!(svg_text_content(name_text), visible_word);
+            assert_eq!(
+                c4_effective_property(name_text, "fill").as_deref(),
+                Some("#123456")
+            );
+            let completion = rendered.into_completion();
+            let evidence = merman_render::__private::family_evidence(completion.report());
+            assert_eq!(evidence.applied_count(), 1);
+            assert_eq!(evidence.not_applicable_count(), 0);
+            assert_eq!(evidence.theme_residual_count(), 0);
+        }
+    }
+}
+
+#[test]
 fn c4_text_fill_does_not_certify_unsupported_siblings_or_source_inheritance() {
     let fill = CanvasPaint::solid("#123456").expect("valid paint");
     let mixed = c4_cluster_rules_theme([ThemeRule::new(

@@ -133,7 +133,13 @@ pub(super) fn render_cluster(
         escape_attr(&transform)
     );
     if context.swimlane_html_labels {
-        let fragment = crate::text::mermaid_markdown_to_xhtml_label_fragment(&lane.title, true);
+        let prepared =
+            context
+                .theme
+                .html_subgraph_label(&lane.id)
+                .ok_or_else(|| Error::InvalidModel {
+                    message: format!("ER prepared HTML title is missing Swimlane {}", lane.id),
+                })?;
         let text_attr = source.map_or(r#"style="""#, |source| {
             source.visual.source_text_attr.as_str()
         });
@@ -144,15 +150,10 @@ pub(super) fn render_cluster(
             fmt(height),
             fmt(geometry.width),
             text_attr,
-            fragment,
+            prepared.fragment(),
         );
-        if context.record_text
-            && let Some(group) = subgraph
-        {
-            receipt.record_subgraph_label(
-                &group.id,
-                &crate::text::VisibleTextStyleFacts::from_xhtml_fragment(&fragment),
-            );
+        if context.record_text {
+            receipt.record_html_subgraph_label(&lane.id);
         }
     } else {
         let text_style = source.map_or("", |source| source.visual.subgraph_text_style.as_str());
@@ -171,7 +172,10 @@ pub(super) fn render_cluster(
         if context.record_text
             && let Some(group) = subgraph
         {
-            receipt.record_subgraph_label(&group.id, &crate::er::subgraph_svg_text_facts(group));
+            receipt.record_subgraph_label(
+                &group.id,
+                &crate::er::subgraph_svg_text_facts(group, context.label_style.font_size),
+            );
         }
     }
     out.push_str("</g></g>");
@@ -292,12 +296,17 @@ pub(super) fn render_relationship_label(
     let Some(label) = &edge.label else {
         return Ok(());
     };
-    let prepared = layout
-        .prepared_labels
-        .relationship(index)
-        .and_then(crate::er::ErPreparedRelationshipLabel::swimlane)
+    let prepared_label =
+        layout
+            .prepared_labels
+            .relationship(index)
+            .ok_or_else(|| Error::InvalidModel {
+                message: format!("missing prepared Swimlane relationship label {index}"),
+            })?;
+    let prepared = prepared_label
+        .swimlane()
         .ok_or_else(|| Error::InvalidModel {
-            message: format!("missing prepared Swimlane relationship label {index}"),
+            message: format!("missing prepared Swimlane relationship terminal {index}"),
         })?;
     let visual = context.theme.relation_label_visual(index);
     let dom_id = er_edge_dom_id(&edge.id, &model.relationships);
@@ -343,7 +352,7 @@ pub(super) fn render_relationship_label(
     }
     out.push_str("</g></g>");
     out.checkpoint()?;
-    let facts = prepared.visible_style_facts();
+    let facts = prepared_label.visible_style_facts();
     if receipt.records_text_terminals() && facts.parse_valid() && facts.has_visible_runs() {
         receipt.record_relation_label_text(index, facts);
     }

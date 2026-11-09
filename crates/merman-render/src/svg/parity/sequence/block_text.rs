@@ -75,7 +75,7 @@ pub(super) fn wrap_svg_text_lines(
             checkpoints.text(),
         )?
     } else {
-        let split_lines = crate::text::split_html_br_lines(text);
+        let split_lines = crate::text::split_mermaid_common_br_lines(text);
         let mut lines = Vec::with_capacity(split_lines.len());
         for line in split_lines {
             checkpoints.checkpoint()?;

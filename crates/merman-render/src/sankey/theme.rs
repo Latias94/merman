@@ -1,6 +1,8 @@
+use std::borrow::Cow;
 use std::collections::{BTreeMap, BTreeSet, HashMap};
-use std::sync::OnceLock;
+use std::sync::{Arc, OnceLock};
 
+use merman_model::OperationPhase;
 use merman_model::presentation::PresentationConfig;
 
 use crate::diagram_theme::{
@@ -16,7 +18,7 @@ use crate::family::{
     resolved_style_property_for_facet, unsupported_residual_for_facet,
 };
 use crate::model::SankeyDiagramLayout;
-use crate::resources::{OperationWorkError, OperationWorkMeter};
+use crate::resources::{OperationWorkError, OperationWorkMeter, PreparedTextRetainedReservation};
 
 use super::SankeyConfigView;
 
@@ -42,6 +44,40 @@ impl SankeyLabelSurface {
     }
 }
 
+/// Final literal SVG text, independent of the original node and link identities.
+#[derive(Debug)]
+pub(crate) struct SankeyPreparedLabel {
+    text: Box<str>,
+    visible: bool,
+}
+
+impl SankeyPreparedLabel {
+    fn new(
+        text: Cow<'_, str>,
+        work_meter: &OperationWorkMeter,
+    ) -> Result<Self, OperationWorkError> {
+        let decoded = match crate::entities::decode_mermaid_entities_for_render_text(&text) {
+            Cow::Borrowed(_) => text,
+            Cow::Owned(decoded) => Cow::Owned(decoded),
+        };
+        let text = crate::xml::strip_forbidden_xml_1_0_chars_cow_with_checkpoints(decoded, || {
+            work_meter.checkpoint(OperationPhase::Layout)
+        })?;
+        Ok(Self {
+            visible: !text.trim().is_empty(),
+            text: text.into_owned().into_boxed_str(),
+        })
+    }
+
+    pub(crate) fn text(&self) -> &str {
+        &self.text
+    }
+
+    pub(crate) fn visible(&self) -> bool {
+        self.visible
+    }
+}
+
 /// Final inherited Sankey font stack shared by base CSS, label CSS, and terminal evidence.
 #[derive(Debug)]
 pub(crate) struct SankeyTypographyThemePlan {
@@ -50,7 +86,6 @@ pub(crate) struct SankeyTypographyThemePlan {
     link_color: String,
     outlined_labels: bool,
     inherited_font_stack: InheritedFontStackPlan,
-    evidence: FamilyThemeOutcomes,
     text_fill: Option<DirectStaticPaint>,
     text_rules: BTreeMap<usize, Vec<SankeyTextRuleObservation>>,
     text_rules_have_ordinals: bool,
@@ -184,7 +219,6 @@ impl SankeyTypographyThemePlan {
             link_color: config_view.link_color(),
             outlined_labels: config_view.outlined_labels(),
             inherited_font_stack,
-            evidence: FamilyThemeOutcomes::default(),
             text_fill,
             text_rules,
             text_rules_have_ordinals: has_ordinals,
@@ -233,7 +267,6 @@ impl SankeyTypographyThemePlan {
     }
 
     pub(crate) fn record_evidence(&self, evidence: &mut FamilyThemeEvidence) {
-        evidence.merge_borrowed(&self.evidence);
         let Some(receipt) = self.terminal_receipt.get() else {
             if self.inherited_font_stack.typed_font_stack_requested() {
                 self.inherited_font_stack
@@ -517,7 +550,7 @@ pub(crate) struct SankeyLinkView<'a> {
     pub(crate) paint: SankeyLinkPaint<'a>,
 }
 
-/// Resolves Sankey node paint once for terminal rectangles, derived link colors, and evidence.
+/// Prepares node paint and literal labels for terminal output and occurrence evidence.
 #[derive(Debug)]
 pub(crate) struct SankeyNodePalettePlan {
     node_indices: HashMap<String, SankeyNodeLookup>,
@@ -526,6 +559,8 @@ pub(crate) struct SankeyNodePalettePlan {
     #[cfg(test)]
     endpoint_lookups: usize,
     paints: Vec<SankeyNodePaint>,
+    labels: Vec<SankeyPreparedLabel>,
+    _retained_labels: PreparedTextRetainedReservation,
     evidence: FamilyThemeOutcomes,
     palette_key: Option<FamilyThemeMechanismKey>,
     pending_rules: BTreeMap<usize, BTreeSet<ThemeCapability>>,
@@ -537,9 +572,9 @@ impl SankeyNodePalettePlan {
         theme: Option<&ResolvedDiagramTheme>,
         effective_config: &PresentationConfig,
         layout: &SankeyDiagramLayout,
-        work_meter: &OperationWorkMeter,
+        work_meter: &Arc<OperationWorkMeter>,
     ) -> Result<Self, OperationWorkError> {
-        let mut plan = Self::baseline(effective_config.as_value(), layout);
+        let mut plan = Self::baseline(effective_config.as_value(), layout, work_meter)?;
         let Some(theme) = theme else {
             return Ok(plan);
         };
@@ -634,12 +669,11 @@ impl SankeyNodePalettePlan {
                 plan.pending_rules.insert(index, observation.capabilities);
             }
         }
-        let render_settings = SankeyConfigView::new(effective_config.as_value()).render_settings();
-        let label_occurrences = layout
-            .nodes
+        let label_occurrences = plan
+            .labels
             .iter()
             .enumerate()
-            .filter(|(_, node)| render_settings.show_values || !node.id.trim().is_empty())
+            .filter(|(_, label)| label.visible())
             .map(|(index, _)| (index + 1, ThemeVariant::Default))
             .collect::<Vec<_>>();
         let source_owned_text_fill =
@@ -719,14 +753,72 @@ impl SankeyNodePalettePlan {
         Ok(plan)
     }
 
-    fn baseline(effective_config: &serde_json::Value, layout: &SankeyDiagramLayout) -> Self {
+    fn baseline(
+        effective_config: &serde_json::Value,
+        layout: &SankeyDiagramLayout,
+        work_meter: &Arc<OperationWorkMeter>,
+    ) -> Result<Self, OperationWorkError> {
         let render_settings = SankeyConfigView::new(effective_config).render_settings();
         let node_colors = render_settings.node_colors;
+        let slot_bytes = std::mem::size_of::<SankeyPreparedLabel>();
+        work_meter.preflight_prepared_text_retained_bytes(
+            layout.nodes.len().saturating_mul(slot_bytes),
+        )?;
+        let mut labels = Vec::with_capacity(layout.nodes.len());
+        let label_slots = labels.capacity().saturating_mul(slot_bytes);
+        // A named entity can expand to two Unicode scalars. Allow their maximum UTF-8 bytes
+        // per possible reference start, also covering shorthand restoration, without parsing it.
+        const ENTITY_EXPANSION_BYTES: usize = 2 * char::MAX.len_utf8();
+        let text_allowance = |text: &str| {
+            text.len().saturating_add(
+                text.bytes()
+                    .filter(|byte| matches!(*byte, b'&' | b'#'))
+                    .count()
+                    .saturating_mul(ENTITY_EXPANSION_BYTES),
+            )
+        };
+        let affix_bytes = if render_settings.show_values {
+            1usize
+                .saturating_add(text_allowance(&render_settings.prefix))
+                .saturating_add(text_allowance(&render_settings.suffix))
+        } else {
+            0
+        };
+        let retained_upper_bound = layout.nodes.iter().try_fold(label_slots, |total, node| {
+            work_meter.checkpoint(OperationPhase::Layout)?;
+            let mut bytes = text_allowance(&node.id);
+            if render_settings.show_values {
+                let value = (node.value * 100.0).round() / 100.0;
+                let mut number = ryu_js::Buffer::new();
+                bytes = bytes
+                    .saturating_add(affix_bytes)
+                    .saturating_add(number.format(value).len());
+            }
+            Ok::<_, OperationWorkError>(total.saturating_add(bytes))
+        })?;
+        work_meter.preflight_prepared_text_retained_bytes(retained_upper_bound)?;
+        let mut retained_labels =
+            work_meter.reserve_prepared_text_retained_bytes(retained_upper_bound)?;
         let mut node_indices = HashMap::with_capacity(layout.nodes.len());
         let mut paints = Vec::with_capacity(layout.nodes.len());
         let mut default_color_domain = HashMap::with_capacity(layout.nodes.len());
 
         for (node_index, node) in layout.nodes.iter().enumerate() {
+            work_meter.checkpoint(OperationPhase::Layout)?;
+            let text = if render_settings.show_values {
+                let value = (node.value * 100.0).round() / 100.0;
+                let mut number = ryu_js::Buffer::new();
+                Cow::Owned(format!(
+                    "{}\n{}{}{}",
+                    node.id,
+                    render_settings.prefix,
+                    number.format(value),
+                    render_settings.suffix,
+                ))
+            } else {
+                Cow::Borrowed(node.id.as_str())
+            };
+            labels.push(SankeyPreparedLabel::new(text, work_meter)?);
             let explicit_fill = node_colors
                 .and_then(|colors| colors.get(&node.id))
                 .and_then(serde_json::Value::as_str);
@@ -754,18 +846,29 @@ impl SankeyNodePalettePlan {
             });
         }
 
-        Self {
+        let retained_bytes = labels.iter().fold(label_slots, |bytes, label| {
+            bytes.saturating_add(label.text().len())
+        });
+        retained_labels.reconcile_downward(retained_bytes);
+
+        Ok(Self {
             node_indices,
             links: None,
             literal_link_paint: "".into(),
             #[cfg(test)]
             endpoint_lookups: 0,
             paints,
+            labels,
+            _retained_labels: retained_labels,
             evidence: FamilyThemeOutcomes::default(),
             palette_key: None,
             pending_rules: BTreeMap::new(),
             terminal_capabilities: OnceLock::new(),
-        }
+        })
+    }
+
+    pub(crate) fn labels(&self) -> &[SankeyPreparedLabel] {
+        &self.labels
     }
 
     pub(crate) fn fill_for(&self, node_index: usize, node_id: &str) -> Option<&str> {
@@ -1167,7 +1270,9 @@ mod tests {
             .unwrap()
             .resolve(DiagramFamilyId::SANKEY);
         let config = crate::test_support::presentation_config(json!({}));
-        let meter = OperationWorkMeter::new(RenderResourcePolicy::unbounded_for_trusted_input());
+        let meter = Arc::new(OperationWorkMeter::new(
+            RenderResourcePolicy::unbounded_for_trusted_input(),
+        ));
         let plan =
             SankeyNodePalettePlan::resolve(Some(&theme), &config, &layout(&[]), &meter).unwrap();
         let evidence = collect_evidence(&theme, |evidence| plan.record_evidence(evidence));
@@ -1178,7 +1283,11 @@ mod tests {
 
     #[test]
     fn scalar_node_stroke_receipt_rejects_missing_or_wrong_terminal_stroke() {
-        let mut plan = SankeyNodePalettePlan::baseline(&json!({}), &layout(&["A"]));
+        let meter = Arc::new(OperationWorkMeter::new(
+            RenderResourcePolicy::unbounded_for_trusted_input(),
+        ));
+        let mut plan =
+            SankeyNodePalettePlan::baseline(&json!({}), &layout(&["A"]), &meter).unwrap();
         plan.paints[0].stroke = Some(DirectPaintExpectation::new(
             0,
             "#123456",
@@ -1210,8 +1319,10 @@ mod tests {
             .resolve(DiagramFamilyId::SANKEY);
         let config =
             crate::test_support::presentation_config(json!({"sankey":{"showValues":false}}));
-        let meter = OperationWorkMeter::new(RenderResourcePolicy::unbounded_for_trusted_input());
-        for ids in [&[][..], &[""][..]] {
+        let meter = Arc::new(OperationWorkMeter::new(
+            RenderResourcePolicy::unbounded_for_trusted_input(),
+        ));
+        for ids in [&[][..], &[""][..], &["#32;", "#9;", "#1;"][..]] {
             let plan = SankeyNodePalettePlan::resolve(Some(&theme), &config, &layout(ids), &meter)
                 .unwrap();
             let evidence = collect_evidence(&theme, |evidence| plan.record_evidence(evidence));
@@ -1219,6 +1330,121 @@ mod tests {
             assert!(evidence.applied().is_empty());
             assert!(evidence.residuals().is_empty());
         }
+    }
+
+    #[test]
+    fn prepared_labels_account_for_storage_and_release_the_shared_meter() {
+        use crate::resources::ResourceLimitId;
+        use std::sync::Arc;
+
+        let config =
+            crate::test_support::presentation_config(json!({"sankey":{"showValues":false}}));
+        let plain = layout(&["AB", "CD"]);
+        let probe = Arc::new(OperationWorkMeter::new(
+            RenderResourcePolicy::unbounded_for_trusted_input(),
+        ));
+        let plan = SankeyNodePalettePlan::resolve(None, &config, &plain, &probe).unwrap();
+        let slots = plan.labels.capacity() * std::mem::size_of::<SankeyPreparedLabel>();
+        let retained = slots + 4;
+        assert_eq!(probe.prepared_text_retained_bytes(), retained);
+        assert_eq!(probe.prepared_text_retained_bytes_peak(), retained);
+        drop(plan);
+        assert_eq!(probe.prepared_text_retained_bytes(), 0);
+
+        for (ids, expected) in [
+            (["#35;32;", "#1;"], ["#32;", ""]),
+            (
+                ["#&nLt;&nLt;", ""],
+                ["#\u{226a}\u{20d2}\u{226a}\u{20d2}", ""],
+            ),
+        ] {
+            let decoded = layout(&ids);
+            let plan = SankeyNodePalettePlan::resolve(None, &config, &decoded, &probe).unwrap();
+            for (label, expected) in plan.labels().iter().zip(expected) {
+                assert_eq!(label.text(), expected);
+            }
+            assert_eq!(
+                probe.prepared_text_retained_bytes(),
+                plan.labels.capacity() * std::mem::size_of::<SankeyPreparedLabel>()
+                    + expected.iter().map(|text| text.len()).sum::<usize>(),
+                "decoded payload bytes replace the conservative preparation allowance"
+            );
+            drop(plan);
+            assert_eq!(probe.prepared_text_retained_bytes(), 0);
+        }
+
+        let shared_bytes = 7;
+        let meter = Arc::new(OperationWorkMeter::new(
+            RenderResourcePolicy::unbounded_for_trusted_input()
+                .with_limit(
+                    ResourceLimitId::MaxPreparedTextRetainedBytes,
+                    shared_bytes + retained,
+                )
+                .unwrap(),
+        ));
+        let other_owner = meter
+            .reserve_prepared_text_retained_bytes(shared_bytes)
+            .unwrap();
+        let exact = SankeyNodePalettePlan::resolve(None, &config, &plain, &meter).unwrap();
+        assert_eq!(
+            meter.prepared_text_retained_bytes(),
+            shared_bytes + retained
+        );
+        let error = SankeyNodePalettePlan::resolve(None, &config, &plain, &meter).unwrap_err();
+        let OperationWorkError::ResourceLimitExceeded(error) = error else {
+            panic!("a second owner must share the prepared-text ceiling");
+        };
+        assert_eq!(error.limit, "max_prepared_text_retained_bytes");
+        assert_eq!(
+            meter.prepared_text_retained_bytes(),
+            shared_bytes + retained
+        );
+        drop(exact);
+        assert_eq!(meter.prepared_text_retained_bytes(), shared_bytes);
+        drop(other_owner);
+        assert_eq!(meter.prepared_text_retained_bytes(), 0);
+
+        let below = Arc::new(OperationWorkMeter::new(
+            RenderResourcePolicy::unbounded_for_trusted_input()
+                .with_limit(ResourceLimitId::MaxPreparedTextRetainedBytes, retained - 1)
+                .unwrap(),
+        ));
+        let error = SankeyNodePalettePlan::resolve(None, &config, &plain, &below).unwrap_err();
+        let OperationWorkError::ResourceLimitExceeded(error) = error else {
+            panic!("one byte below the prepared-text boundary must fail");
+        };
+        assert_eq!(error.limit, "max_prepared_text_retained_bytes");
+        assert_eq!(error.max, retained - 1);
+        assert_eq!(error.actual, retained);
+        assert_eq!(below.prepared_text_retained_bytes(), 0);
+        assert_eq!(below.prepared_text_retained_bytes_peak(), 0);
+    }
+
+    #[test]
+    fn prepared_labels_release_their_reservation_when_later_theme_work_fails() {
+        use crate::resources::ResourceLimitId;
+        use std::sync::Arc;
+
+        let meter = Arc::new(OperationWorkMeter::new(
+            RenderResourcePolicy::unbounded_for_trusted_input()
+                .with_limit(ResourceLimitId::MaxLayoutWorkUnits, 1)
+                .unwrap(),
+        ));
+        let other_owner = meter.reserve_prepared_text_retained_bytes(7).unwrap();
+        let config =
+            crate::test_support::presentation_config(json!({"sankey":{"showValues":false}}));
+        let theme = resolved_node_palette(&["#123456", "#abcdef"]);
+        let error =
+            SankeyNodePalettePlan::resolve(Some(&theme), &config, &layout(&["A", "B"]), &meter)
+                .unwrap_err();
+        let OperationWorkError::ResourceLimitExceeded(error) = error else {
+            panic!("theme work must reject after preparing the labels");
+        };
+        assert_eq!(error.limit, "max_layout_work_units");
+        assert!(meter.prepared_text_retained_bytes_peak() > 7);
+        assert_eq!(meter.prepared_text_retained_bytes(), 7);
+        drop(other_owner);
+        assert_eq!(meter.prepared_text_retained_bytes(), 0);
     }
 
     fn complete_typography_receipt(
@@ -1271,8 +1497,9 @@ mod tests {
         let layout = layout(&["A", "B"]);
         let config = crate::test_support::presentation_config(config);
         let theme = resolved_node_palette(&["#123456", "#abcdef"]);
-        let work_meter =
-            OperationWorkMeter::new(RenderResourcePolicy::unbounded_for_trusted_input());
+        let work_meter = Arc::new(OperationWorkMeter::new(
+            RenderResourcePolicy::unbounded_for_trusted_input(),
+        ));
         let plan = SankeyNodePalettePlan::resolve(Some(&theme), &config, &layout, &work_meter)
             .expect("resolve Sankey test palette");
         (plan, theme)

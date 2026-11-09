@@ -1061,7 +1061,7 @@ fn write_marker_path(
     fill: &str,
     edge_ordinal: Option<usize>,
     ordinal: usize,
-    source_path: &str,
+    fill_source_path: &str,
     paint_context: &mut WardleyPaintContext<'_>,
 ) -> Result<()> {
     let style = if edge_ordinal.is_some() {
@@ -1076,7 +1076,7 @@ fn write_marker_path(
         ordinal,
         style.as_ref(),
         ResolvedStyleProperty::Fill,
-        &[source_path],
+        &[fill_source_path],
         fill,
     );
     if let Some(edge_ordinal) = edge_ordinal
@@ -1093,7 +1093,7 @@ fn write_marker_path(
             edge_ordinal,
             edge_style.as_ref(),
             ResolvedStyleProperty::Stroke,
-            &[source_path],
+            &[fill_source_path],
             fill,
         );
     }
@@ -1102,7 +1102,8 @@ fn write_marker_path(
         ordinal,
         style.as_ref(),
         ResolvedStyleProperty::Stroke,
-        &[source_path],
+        // The source color supplies marker fill; upstream marker stroke is independently none.
+        &[],
         "none",
     );
     let actual_fill = typed_fill.as_ref().map_or(fill, TerminalPaint::css);

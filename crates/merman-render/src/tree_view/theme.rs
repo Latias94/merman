@@ -214,10 +214,12 @@ impl TreeViewThemePlan {
         });
         let config_owns_font_size = effective_config
             .config_path_overrides_typed_default("themeVariables.treeView.labelFontSize")
-            && TreeViewCssBinding::configured_font_size_css(effective_config.as_value()).is_some();
+            && css.font_size_configured;
         if typed_font_size_requested && !config_owns_font_size {
             css.label_font_size = f64::from(theme.typography().font_size_px());
             css.label_font_size_css = format!("{}px", theme.typography().font_size_px());
+            css.label_font_size_verified = true;
+            css.root_font_size_css = None;
         }
         let (node_count, expected_line_count, expected_highlight_count) =
             tree_view_terminal_counts(&model.root);
@@ -712,7 +714,9 @@ impl TreeViewThemePlan {
         evidence.merge_borrowed(&self.evidence);
         if self.typed_font_size_requested {
             let key = FamilyThemeMechanismKey::Typography(ThemeTypographyProperty::FontSize);
-            if self.config_owns_font_size || !self.has_visible_typography {
+            if !self.css.label_font_size_verified && self.has_visible_typography {
+                evidence.mark_residual(key, FamilyThemeResidualReason::UnsupportedTypography);
+            } else if self.config_owns_font_size || !self.has_visible_typography {
                 evidence.mark_not_applicable(key);
             } else if self.terminal_receipt.get().is_some() {
                 evidence.mark_applied_with_capabilities(key, [ThemeCapability::Typography]);
@@ -792,9 +796,10 @@ impl TreeViewThemePlan {
                     evidence.mark_not_applicable(key);
                 }
                 InheritedFontStackOutcome::Typed
-                    if self.terminal_receipt.get().is_some_and(|receipt| {
-                        receipt.font_family_matches(self.inherited_font_stack.font_family_css())
-                    }) =>
+                    if self.css.label_font_size_verified
+                        && self.terminal_receipt.get().is_some_and(|receipt| {
+                            receipt.font_family_matches(self.inherited_font_stack.font_family_css())
+                        }) =>
                 {
                     evidence.mark_applied_with_capabilities(key, [ThemeCapability::Typography]);
                 }
@@ -810,6 +815,21 @@ impl TreeViewThemePlan {
 
     pub(crate) fn label_color_css(&self) -> &str {
         &self.css.label_color
+    }
+
+    pub(crate) fn ensure_portable_typography(
+        &self,
+        portability: crate::diagram_theme::ThemePortabilityRequirement,
+    ) -> crate::Result<()> {
+        if !self.css.label_font_size_verified
+            && portability == crate::diagram_theme::ThemePortabilityRequirement::RequirePortable
+        {
+            return Err(crate::Error::UnverifiedFamilyStyle {
+                family_id: crate::DiagramFamilyId::TREE_VIEW,
+                residual_count: 1,
+            });
+        }
+        Ok(())
     }
 
     pub(crate) fn line_color_css(&self) -> &str {

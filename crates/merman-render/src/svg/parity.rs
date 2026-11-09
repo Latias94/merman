@@ -302,8 +302,7 @@ use css::write_pie_css;
 )]
 use css::{
     MermaidBaseCss, write_mermaid_base_css_prefix_with_font_emission,
-    write_mermaid_base_css_root_rule_with_font_emission, write_mermaid_default_base_css_prefix,
-    write_prepared_info_css,
+    write_mermaid_base_css_root_rule_with_font_emission, write_prepared_info_css,
 };
 use output::{BoundedSvgOutput, SvgOutput};
 use path_bounds::{svg_path_bounds_from_d, svg_path_length_from_d};

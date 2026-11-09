@@ -211,6 +211,116 @@ fn sankey_family_svg_accepts_exact_max_svg_bytes_and_rejects_one_byte_less() {
 }
 
 #[test]
+fn sankey_prepared_labels_enforce_the_reported_retained_byte_boundary_without_a_theme() {
+    let source = "---\nconfig:\n  sankey:\n    showValues: false\n---\nsankey\nAB,CD,1\n";
+    let parsed = MermaidEngine::new()
+        .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
+        .unwrap()
+        .unwrap()
+        .into_presentation();
+    let baseline = family::prepare(
+        &parsed,
+        &LayoutOptions::default(),
+        RenderEnvironment::deterministic()
+            .with_resource_policy(RenderResourcePolicy::unbounded_for_trusted_input())
+            .begin_session()
+            .unwrap(),
+    )
+    .unwrap()
+    .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+    .unwrap();
+    let expected_svg = baseline.svg().to_owned();
+    let completion = baseline.into_completion();
+    let exact = completion
+        .report()
+        .session_report()
+        .prepared_text_retained_bytes_peak();
+    assert!(
+        exact >= 4,
+        "both literal labels must own their payload bytes"
+    );
+    drop(completion);
+
+    for maximum in [1, exact - 1, exact] {
+        let result = try_render_sankey_with_resource_policy(
+            source,
+            &SvgRenderOptions::default(),
+            RenderResourcePolicy::unbounded_for_trusted_input()
+                .with_limit(ResourceLimitId::MaxPreparedTextRetainedBytes, maximum)
+                .unwrap(),
+        );
+        if maximum == exact {
+            assert_eq!(result.unwrap(), expected_svg);
+            continue;
+        }
+        let merman_render::Error::ResourceLimitExceeded(limit) = result.unwrap_err() else {
+            panic!("the prepared-label byte ceiling must reject before SVG output");
+        };
+        assert_eq!(limit.cause, ResourceLimitCause::Ceiling);
+        assert_eq!(limit.phase, ResourceLimitPhase::LayoutModel);
+        assert_eq!(
+            limit.limit,
+            ResourceLimitId::MaxPreparedTextRetainedBytes.as_str()
+        );
+        assert_eq!(limit.max, maximum);
+        assert!(limit.actual > maximum);
+        assert!(limit.explicit_overrides.iter().any(|resource_override| {
+            resource_override.id == ResourceLimitId::MaxPreparedTextRetainedBytes
+                && resource_override.value == maximum
+        }));
+    }
+}
+
+#[test]
+fn sankey_prepared_labels_bound_prefix_and_suffix_amplification_before_svg_output() {
+    let prefix = "p".repeat(64 * 1024);
+    let suffix = "s".repeat(8 * 1024);
+    let links = (0..31)
+        .map(|index| format!("N{index},N{},1\n", index + 1))
+        .collect::<String>();
+    let source = format!(
+        "---\nconfig: {}\n---\nsankey\n{links}",
+        serde_json::json!({"sankey": {"showValues": true, "prefix": prefix, "suffix": suffix}})
+    );
+    let parsed = MermaidEngine::new()
+        .parse_diagram_for_render_model_sync(&source, ParseOptions::strict())
+        .unwrap()
+        .unwrap()
+        .into_presentation();
+    for maximum in [4 * 1024, 4 * 1024 * 1024] {
+        let session = RenderEnvironment::deterministic()
+            .with_resource_policy(
+                RenderResourcePolicy::unbounded_for_trusted_input()
+                    .with_limit(ResourceLimitId::MaxPreparedTextRetainedBytes, maximum)
+                    .unwrap()
+                    .with_limit(ResourceLimitId::MaxSvgBytes, 1)
+                    .unwrap(),
+            )
+            .begin_session()
+            .unwrap();
+        match family::prepare(&parsed, &LayoutOptions::default(), session) {
+            Ok(artifact) => {
+                assert_eq!(maximum, 4 * 1024 * 1024);
+                drop(artifact);
+            }
+            Err(merman_render::Error::ResourceLimitExceeded(limit)) => {
+                assert_eq!(maximum, 4 * 1024);
+                assert_eq!(limit.cause, ResourceLimitCause::Ceiling);
+                assert_eq!(limit.phase, ResourceLimitPhase::LayoutModel);
+                assert_eq!(
+                    limit.limit,
+                    ResourceLimitId::MaxPreparedTextRetainedBytes.as_str()
+                );
+                assert_eq!(limit.max, maximum);
+                assert!(limit.actual >= 32 * (64 + 8) * 1024);
+                assert!(limit.actual < 4 * 1024 * 1024);
+            }
+            Err(error) => panic!("unexpected Sankey preparation error: {error}"),
+        }
+    }
+}
+
+#[test]
 fn sankey_svg_uses_configured_node_colors_and_outlined_labels() {
     let svg = render_sankey(
         r##"---
@@ -386,7 +496,7 @@ fn sankey_label_bounds_use_the_raw_text_profile_and_emitted_font() {
     let source = concat!(
         "---\nconfig:\n  fontFamily: monospace\n  sankey:\n",
         "    labelStyle: outlined\n    prefix: 'total '\n    suffix: ' units'\n---\n",
-        "sankey\nA,B,1\n"
+        "sankey\n\"#35;32;\",\"#32;\",1\n"
     );
     let parsed = MermaidEngine::new()
         .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
@@ -409,8 +519,17 @@ fn sankey_label_bounds_use_the_raw_text_profile_and_emitted_font() {
     assert_eq!(view_box[0] + view_box[2], 686.0);
     assert!(sankey_style_text(rendered.svg()).contains(".node-labels{font-family:monospace;}"));
     let measured = backend.labels.lock().unwrap();
-    assert!(measured.iter().any(|label| label == "A\ntotal 1 units"));
-    assert!(measured.iter().any(|label| label == "B\ntotal 1 units"));
+    assert_eq!(*measured, ["#32;\ntotal 1 units", " \ntotal 1 units"]);
+    let emitted = document
+        .descendants()
+        .filter(|node| node.has_tag_name("text"))
+        .map(|node| node.text().unwrap_or_default())
+        .collect::<Vec<_>>();
+    assert_eq!(
+        emitted,
+        ["#32;\ntotal 1 units", " \ntotal 1 units"].repeat(2),
+        "outlined passes must serialize the measured text without decoding it again"
+    );
 }
 
 #[test]
@@ -1529,16 +1648,132 @@ fn sankey_effect_bindings_keep_their_domains_independent_of_source_fill() {
 mod common;
 
 #[test]
+fn sankey_decoded_empty_labels_do_not_consume_text_themes_or_merge_node_identities() {
+    let theme = DiagramThemeCompiler::new()
+        .compile(
+            DiagramThemeSpec::new()
+                .with_typography(
+                    TypographySpec::default().with_family_style(
+                        DiagramFamilyId::SANKEY,
+                        ThemeTextStyle::default()
+                            .with_font_stack(FontStack::single("Sankey Visibility").unwrap())
+                            .with_font_size_px(24.0)
+                            .unwrap(),
+                    ),
+                )
+                .with_styles(
+                    ThemeRuleSet::default()
+                        .with_rule(ThemeRule::new(
+                            ThemeTarget::Text,
+                            ThemeStylePatch::default()
+                                .with_fill(CanvasPaint::solid("#123456").unwrap()),
+                        ))
+                        .with_ordinal_palette(
+                            ThemeTarget::Node,
+                            sankey_node_palette(&["#abcdef", "#fedcba"]),
+                        ),
+                ),
+        )
+        .unwrap();
+    for label_style in ["legacy", "outlined"] {
+        for (first, second, decoded) in [("#32;", "#9;", [" ", "\t"]), ("#1;", "#2;", ["", ""])] {
+            for show_values in [false, true] {
+                let source = format!(
+                    "---\nconfig:\n  sankey:\n    labelStyle: {label_style}\n    showValues: {show_values}\n---\nsankey\n\"{first}\",\"{second}\",1\n"
+                );
+                let parsed = common::install_parse_compatibility(&theme, MermaidEngine::new())
+                    .parse_diagram_for_render_model_sync(&source, ParseOptions::strict())
+                    .unwrap()
+                    .unwrap()
+                    .into_presentation();
+                let merman_model::presentation::RenderSemanticModel::Sankey(model) = parsed.model()
+                else {
+                    panic!("expected Sankey model");
+                };
+                let ids = model
+                    .graph
+                    .nodes
+                    .iter()
+                    .map(|node| node.id.clone())
+                    .collect::<Vec<_>>();
+                assert_eq!(ids.len(), 2);
+                assert_ne!(ids[0], ids[1]);
+                let session = RenderEnvironment::deterministic()
+                    .with_theme_portability_requirement(if show_values {
+                        ThemePortabilityRequirement::BestEffort
+                    } else {
+                        ThemePortabilityRequirement::RequirePortable
+                    })
+                    .begin_session_with_theme(&theme)
+                    .unwrap();
+                let artifact =
+                    family::prepare(&parsed, &LayoutOptions::default(), session).unwrap();
+                let projection = artifact.layout_json().unwrap();
+                let layout = &projection["layout"]["SankeyDiagram"];
+                for (index, id) in ids.iter().enumerate() {
+                    assert_eq!(layout["nodes"][index]["id"].as_str(), Some(id.as_str()));
+                }
+                assert_eq!(layout["links"][0]["source"].as_str(), Some(ids[0].as_str()));
+                assert_eq!(layout["links"][0]["target"].as_str(), Some(ids[1].as_str()));
+                let rendered = artifact
+                    .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+                    .unwrap();
+                let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+                let labels = document
+                    .descendants()
+                    .filter(|node| node.has_tag_name("text"))
+                    .map(|node| node.text().unwrap_or_default().to_owned())
+                    .collect::<Vec<_>>();
+                let expected = decoded.map(|text| {
+                    if show_values {
+                        format!("{text}\n1")
+                    } else {
+                        text.to_owned()
+                    }
+                });
+                assert_eq!(labels.len(), if label_style == "outlined" { 4 } else { 2 });
+                for (index, label) in labels.iter().enumerate() {
+                    assert_eq!(label, &expected[index % 2]);
+                }
+                assert_eq!(sankey_node_fills(rendered.svg()), ["#abcdef", "#fedcba"]);
+                assert_eq!(
+                    document
+                        .descendants()
+                        .filter(|node| node.has_tag_name("path"))
+                        .count(),
+                    1,
+                    "distinct raw IDs retain their connecting edge"
+                );
+                let evidence =
+                    merman_render::__private::family_evidence(rendered.into_completion().report());
+                assert_eq!(evidence.required_count(), 4);
+                assert_eq!(evidence.applied_count(), if show_values { 3 } else { 1 });
+                assert_eq!(
+                    evidence.not_applicable_count(),
+                    if show_values { 0 } else { 3 }
+                );
+                assert_eq!(evidence.theme_residual_count(), usize::from(show_values));
+                assert_eq!(evidence.accounted_count(), 4);
+            }
+        }
+    }
+}
+
+#[test]
 fn sankey_text_ordinals_use_visible_labels_without_renumbering_nodes() {
     use merman_render::diagram_theme::OrdinalSelector;
 
     for label_style in ["legacy", "outlined"] {
-        for (first_id, show_values, ordinal, applicable) in [
-            ("", false, 1, false),
-            ("", false, 2, true),
-            ("", true, 1, true),
-            ("A", false, 1, true),
-            ("", false, 3, false),
+        for (first_id, show_values, ordinal, applicable, first_visible) in [
+            ("", false, 1, false, false),
+            ("", false, 2, true, false),
+            ("", true, 1, true, true),
+            ("A", false, 1, true, true),
+            ("", false, 3, false, false),
+            ("#32;", false, 1, false, false),
+            ("#32;", false, 2, true, false),
+            ("#1;", false, 1, false, false),
+            ("#32;", true, 1, true, true),
         ] {
             let theme = DiagramThemeCompiler::new()
                 .compile(
@@ -1577,11 +1812,7 @@ fn sankey_text_ordinals_use_visible_labels_without_renumbering_nodes() {
                 .collect::<Vec<_>>();
             assert_eq!(
                 visible,
-                [show_values || !first_id.is_empty(), true].repeat(if label_style == "outlined" {
-                    2
-                } else {
-                    1
-                }),
+                [first_visible, true].repeat(if label_style == "outlined" { 2 } else { 1 }),
                 "{source}"
             );
             let evidence =

@@ -1,4 +1,9 @@
 use crate::config::{config_css_number_or_string, config_string};
+use crate::mermaid_style::{
+    CssFontSizeContext, css_font_size_is_zero, css_font_size_override,
+    css_font_size_value_override, parse_style_declaration,
+    resolve_explicit_css_absolute_font_size_px,
+};
 use crate::svg::PreparedCommonCss;
 use crate::text::TextStyle;
 
@@ -14,15 +19,69 @@ pub(crate) struct PieCssBinding {
     pub(crate) outer_stroke: PieSurfaceStroke,
     pub(crate) outer_stroke_width: String,
     pub(crate) outer_stroke_width_number: f64,
-    pub(crate) title_text_size: String,
     pub(crate) title_text_color: String,
-    pub(crate) section_text_size: String,
     pub(crate) section_text_color: String,
-    pub(crate) legend_text_size: String,
     pub(crate) legend_text_color: String,
     inherited_font_size: f64,
+    text_sizes: [PieTextSize; 3],
     text_weights: [Option<String>; 3],
     text_styles: [Option<String>; 3],
+}
+
+/// Keep CSS spelling, measurement, and configuration ownership on the same prepared role.
+#[derive(Debug)]
+struct PieTextSize {
+    css: String,
+    resolution: Option<(f64, bool)>,
+    configured_admissible: bool,
+}
+
+impl PieTextSize {
+    fn new(configured: Option<String>, fallback: &str, inherited_px: f64) -> Self {
+        let configured_admissible = configured
+            .as_ref()
+            .is_some_and(|css| css_font_size_value_override(css).is_some());
+        let css = configured.unwrap_or_else(|| fallback.to_owned());
+        let resolution = Self::resolve(&css, inherited_px);
+        Self {
+            css,
+            resolution,
+            configured_admissible,
+        }
+    }
+
+    fn resolve(css: &str, inherited_px: f64) -> Option<(f64, bool)> {
+        let declaration_list = format!("font-size:{css}");
+        // Invalid CSS, including nonzero unitless numbers, never owns a role's size.
+        css_font_size_override(&declaration_list)?;
+        if let Some(size) = resolve_explicit_css_absolute_font_size_px(css) {
+            return Some((size, false));
+        }
+        if css_font_size_is_zero(css) {
+            return Some((0.0, false));
+        }
+        let declaration = parse_style_declaration(&declaration_list)?;
+        if declaration.analysis().depends_on_root_font_size() {
+            return None;
+        }
+        let size = declaration.resolve_font_size_px(CssFontSizeContext::uniform(inherited_px))?;
+        // Only classify inheritance here; the shared parser owns length/keyword arithmetic.
+        let mut parser = cssparser::Parser::new(declaration.value());
+        let inherited = match parser.next().ok()? {
+            cssparser::Token::Dimension { unit, .. } => unit.eq_ignore_ascii_case("em"),
+            cssparser::Token::Percentage { .. } => true,
+            cssparser::Token::Ident(value) => ["inherit", "unset", "smaller", "larger"]
+                .iter()
+                .any(|keyword| value.eq_ignore_ascii_case(keyword)),
+            _ => false,
+        };
+        Some((size, inherited))
+    }
+
+    fn bind(&mut self, css: &str, inherited_px: f64) {
+        self.css = css.to_owned();
+        self.resolution = Self::resolve(css, inherited_px);
+    }
 }
 
 /// An absent surface keeps its baseline CSS without admitting a typed terminal application.
@@ -58,7 +117,19 @@ impl PieCssBinding {
         effective_config: &serde_json::Value,
         font_family_override: Option<&str>,
     ) -> Self {
-        let common = PreparedCommonCss::new(effective_config, font_family_override);
+        let inherited_font_size =
+            crate::config::config_theme_font_size_css_or_root_number_px(effective_config, 16.0);
+        let mut common = PreparedCommonCss::with_resolved_typography(
+            effective_config,
+            font_family_override.map_or_else(
+                || crate::config::config_font_family_css(effective_config),
+                str::to_owned,
+            ),
+            format!("{inherited_font_size}px"),
+        );
+        if font_family_override.is_none() {
+            common = common.with_configured_root_font_family(effective_config);
+        }
         let color = |key: &str, fallback: &str| {
             config_string(effective_config, &["themeVariables", key])
                 .unwrap_or_else(|| fallback.to_owned())
@@ -71,9 +142,6 @@ impl PieCssBinding {
         let title_text_color = color("pieTitleTextColor", &task_text_dark);
         let section_text_color = color("pieSectionTextColor", common.text_color());
         let legend_text_color = color("pieLegendTextColor", &task_text_dark);
-        let inherited_font_size =
-            crate::config::config_theme_font_size_css_or_root_number_px(effective_config, 16.0)
-                .max(1.0);
         Self {
             common,
             slice_stroke: PieSurfaceStroke::baseline(value("pieStrokeColor", "black")),
@@ -84,13 +152,22 @@ impl PieCssBinding {
             outer_stroke_width_number: super::super::config::pie_outer_stroke_width(
                 effective_config,
             ),
-            title_text_size: value("pieTitleTextSize", "25px"),
             title_text_color,
-            section_text_size: value("pieSectionTextSize", "17px"),
             section_text_color,
-            legend_text_size: value("pieLegendTextSize", "17px"),
             legend_text_color,
             inherited_font_size,
+            text_sizes: [
+                ("pieTitleTextSize", "25px"),
+                ("pieSectionTextSize", "17px"),
+                ("pieLegendTextSize", "17px"),
+            ]
+            .map(|(key, fallback)| {
+                PieTextSize::new(
+                    config_css_number_or_string(effective_config, &["themeVariables", key]),
+                    fallback,
+                    inherited_font_size,
+                )
+            }),
             text_weights: std::array::from_fn(|_| None),
             text_styles: std::array::from_fn(|_| None),
         }
@@ -98,6 +175,9 @@ impl PieCssBinding {
 
     pub(super) fn bind_base_font_size(&mut self, config: &serde_json::Value, size: f32) {
         self.inherited_font_size = f64::from(size);
+        for text_size in &mut self.text_sizes {
+            text_size.resolution = PieTextSize::resolve(&text_size.css, self.inherited_font_size);
+        }
         self.common = PreparedCommonCss::with_resolved_typography(
             config,
             self.common.font_family().to_owned(),
@@ -114,11 +194,11 @@ impl PieCssBinding {
     }
 
     pub(super) fn bind_text_size(&mut self, role: PieTextRole, size: &str) {
-        *match role {
-            PieTextRole::Title => &mut self.title_text_size,
-            PieTextRole::Section => &mut self.section_text_size,
-            PieTextRole::Legend => &mut self.legend_text_size,
-        } = size.to_owned();
+        self.text_sizes[role.index()].bind(size, self.inherited_font_size);
+    }
+
+    pub(super) fn configured_text_size_is_admissible(&self, role: PieTextRole) -> bool {
+        self.text_sizes[role.index()].configured_admissible
     }
 
     pub(super) fn bind_text_weight(&mut self, role: PieTextRole, weight: String) {
@@ -130,11 +210,7 @@ impl PieCssBinding {
     }
 
     pub(crate) fn text_size(&self, role: PieTextRole) -> &str {
-        match role {
-            PieTextRole::Title => &self.title_text_size,
-            PieTextRole::Section => &self.section_text_size,
-            PieTextRole::Legend => &self.legend_text_size,
-        }
+        &self.text_sizes[role.index()].css
     }
 
     pub(crate) fn text_fill(&self, role: PieTextRole) -> &str {
@@ -154,7 +230,13 @@ impl PieCssBinding {
     }
 
     pub(super) fn text_size_resolution(&self, role: PieTextRole) -> Option<(f64, bool)> {
-        super::super::config::pie_font_size(self.text_size(role), self.inherited_font_size)
+        self.text_sizes[role.index()].resolution
+    }
+
+    pub(super) fn text_can_be_visible(&self, role: PieTextRole) -> bool {
+        // Host-dependent sizes remain possible consumers; only known zero excludes them.
+        self.text_size_resolution(role)
+            .is_none_or(|(size, _)| size > 0.0)
     }
 
     pub(crate) fn legend_measurement_style(&self) -> TextStyle {
@@ -168,10 +250,9 @@ impl PieCssBinding {
     fn measurement_style(&self, role: PieTextRole) -> TextStyle {
         TextStyle {
             font_family: Some(self.common.font_family().to_owned()),
-            font_size: super::super::config::pie_font_size_px(
-                self.text_size(role),
-                self.inherited_font_size,
-            ),
+            font_size: self
+                .text_size_resolution(role)
+                .map_or(self.inherited_font_size, |(size, _)| size),
             font_weight: self.text_weight(role).map(str::to_owned),
             font_style: self.text_style(role).map(str::to_owned),
         }

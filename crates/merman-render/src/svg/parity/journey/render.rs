@@ -3,65 +3,12 @@ use crate::journey::{
     JOURNEY_FACE_RADIUS_PX, JOURNEY_TITLE_EXTRA_HEIGHT_PX, JOURNEY_VIEWBOX_TOP_PAD_PX,
     JourneyCssBinding, JourneyTextPlacement,
 };
+use crate::text::split_html_br_lines;
 use merman_model::families::journey::JourneyDiagramModel;
 
 fn fmt_task_face_y(v: Option<f64>) -> String {
     v.map(|x| fmt(x).to_string())
         .unwrap_or_else(|| "NaN".to_string())
-}
-
-fn split_html_br_lines(text: &str) -> Vec<String> {
-    let b = text.as_bytes();
-    let mut out = Vec::new();
-    let mut cur = String::new();
-    let mut i = 0usize;
-    while i < b.len() {
-        if b[i] != b'<' {
-            let Some(ch) = text.get(i..).and_then(|rest| rest.chars().next()) else {
-                break;
-            };
-            cur.push(ch);
-            i += ch.len_utf8();
-            continue;
-        }
-        if i + 3 >= b.len() {
-            cur.push('<');
-            i += 1;
-            continue;
-        }
-        if b[i + 1] == b'/' {
-            cur.push('<');
-            i += 1;
-            continue;
-        }
-        let b1 = b[i + 1];
-        let b2 = b[i + 2];
-        if !matches!(b1, b'b' | b'B') || !matches!(b2, b'r' | b'R') {
-            cur.push('<');
-            i += 1;
-            continue;
-        }
-        let mut j = i + 3;
-        while j < b.len() && matches!(b[j], b' ' | b'\t' | b'\r' | b'\n') {
-            j += 1;
-        }
-        if j < b.len() && b[j] == b'/' {
-            j += 1;
-        }
-        if j < b.len() && b[j] == b'>' {
-            out.push(std::mem::take(&mut cur));
-            i = j + 1;
-            continue;
-        }
-        cur.push('<');
-        i += 1;
-    }
-    out.push(cur);
-    if out.is_empty() {
-        vec!["".to_string()]
-    } else {
-        out
-    }
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -145,7 +92,7 @@ fn write_text_candidate(
         placement == JourneyTextPlacement::Fo && !content_esc.trim().is_empty();
     let n = lines.len().max(1) as f64;
     for (i, line) in lines.into_iter().enumerate() {
-        let line_esc = escape_xml(&line);
+        let line_esc = escape_xml(line);
         if placement == JourneyTextPlacement::Tspan {
             has_visible_text |= !line_esc.trim().is_empty();
         }
@@ -162,12 +109,11 @@ fn write_text_candidate(
         {
             let _ = write!(out, r#" fill="{}""#, escape_attr(colour));
         }
-        let _ = write!(
-            out,
-            r#" style="text-anchor: middle; font-size: {fs}px; font-family: {ff};"#,
-            fs = fmt(task_font_size),
-            ff = font_family_esc,
-        );
+        out.push_str(r#" style="text-anchor: middle;"#);
+        if task_font_size >= 0.0 {
+            let _ = write!(out, " font-size: {}px;", fmt(task_font_size));
+        }
+        let _ = write!(out, " font-family: {font_family_esc};");
         if placement == JourneyTextPlacement::Fo {
             let _ = write!(out, " fill: {fill_esc};");
         }
@@ -982,6 +928,7 @@ mod tests {
                 None,
                 &PresentationConfig::empty_object(),
                 None,
+                &typography_theme,
                 execution.work_meter(),
             )?,
             None,
@@ -1225,6 +1172,7 @@ mod tests {
                     None,
                     &crate::test_support::presentation_config(cfg.clone()),
                     None,
+                    &typography_theme,
                     options.work_meter(),
                 )?,
                 None,
@@ -1289,6 +1237,7 @@ mod tests {
                     None,
                     &PresentationConfig::empty_object(),
                     None,
+                    &typography_theme,
                     options.work_meter(),
                 )?,
                 None,

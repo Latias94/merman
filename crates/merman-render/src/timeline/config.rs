@@ -1,5 +1,6 @@
 use crate::config::{
-    config_bool, config_f64, config_f64_css_px, config_string, config_theme_or_root_font_size_px,
+    config_bool, config_f64, config_f64_css_px, config_string,
+    config_theme_or_root_font_size_px_opt,
 };
 use crate::text::TextStyle;
 use serde_json::Value;
@@ -56,7 +57,7 @@ impl<'a> TimelineConfigView<'a> {
             node_text_style,
             layout_font_size: config_f64_css_px(self.effective_config, &["fontSize"])
                 .unwrap_or(text_style.font_size)
-                .max(1.0),
+                .max(0.0),
             theme_color_limit: timeline_theme_color_limit(self.effective_config),
             is_neo: crate::config::config_diagram_look(self.effective_config).is_neo(),
             left_margin: config_f64(self.timeline_config, &["leftMargin"])
@@ -83,8 +84,8 @@ impl<'a> TimelineConfigView<'a> {
             settings.node_text_style.font_family = Some(font_family_css.to_owned());
         }
         if let Some(font_size_px) = resolved_font_size_px {
-            settings.text_style.font_size = font_size_px.max(1.0);
-            settings.node_text_style.font_size = font_size_px.max(1.0);
+            settings.text_style.font_size = font_size_px.max(0.0);
+            settings.node_text_style.font_size = font_size_px.max(0.0);
         }
         settings
     }
@@ -92,8 +93,9 @@ impl<'a> TimelineConfigView<'a> {
     fn text_style(&self) -> TextStyle {
         TextStyle {
             font_family: self.font_family(),
-            font_size: config_theme_or_root_font_size_px(self.effective_config, DEFAULT_FONT_SIZE)
-                .max(1.0),
+            font_size: config_theme_or_root_font_size_px_opt(self.effective_config)
+                .filter(|size| *size >= 0.0)
+                .unwrap_or(DEFAULT_FONT_SIZE),
             font_weight: None,
             font_style: None,
         }

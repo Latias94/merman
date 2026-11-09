@@ -2141,6 +2141,93 @@ fn render_packet_with_engine(source: &str, engine: MermaidEngine) -> (PacketDiag
 }
 
 #[test]
+fn packet_explicit_root_font_size_preserves_relative_roles_and_fixed_geometry() {
+    let body = "packet\n0-7: \"Header\"\n";
+    let (baseline, _) = render_packet(&format!(
+        "---\nconfig:\n  packet:\n    showBits: false\n---\n{body}"
+    ));
+    for (root_size, expected_px) in [
+        (serde_json::json!("32px"), "32"),
+        (serde_json::json!("24pt"), "32"),
+        (serde_json::json!("0px"), "0"),
+        (serde_json::json!("0.5px"), "0.5"),
+        (serde_json::json!("0.0000000001px"), "0.0000000001"),
+    ] {
+        let config = serde_json::json!({
+            "packet": {"showBits": false},
+            "themeVariables": {
+                "fontFamily": "monospace",
+                "fontSize": root_size,
+                "packet": {"labelFontSize": "1em"}
+            }
+        });
+        let (layout, svg) = render_packet(&format!("---\nconfig: {config}\n---\n{body}"));
+        assert_eq!(
+            serde_json::to_value(&layout).unwrap(),
+            serde_json::to_value(&baseline).unwrap(),
+            "root size {root_size} must not change Packet geometry",
+        );
+        let document = roxmltree::Document::parse(&svg).unwrap();
+        let css = packet_stylesheet(&document);
+        for selector in ["#merman", "#merman svg"] {
+            assert!(
+                css.contains(&format!(
+                    "{selector}{{font-family:monospace;font-size:{expected_px}px;"
+                )),
+                "{root_size}: {css}",
+            );
+        }
+        assert!(css.contains(".packetLabel{fill:black;font-size:1em;}"));
+        assert!(css.contains(".packetByte{font-size:10px;}"));
+        assert!(css.contains(".packetTitle{fill:black;font-size:14px;}"));
+    }
+}
+
+#[test]
+fn packet_zero_root_font_size_accounts_for_relative_and_absolute_roles() {
+    use serde_json::json;
+
+    let theme = packet_direct_text_theme_with_mermaid(MermaidThemeCompatibility::default());
+    for (label_size, applied) in [
+        (json!("1em"), 0),
+        (json!("100%"), 0),
+        (json!("inherit"), 0),
+        (json!("unset"), 0),
+        (json!("-1em"), 0),
+        (json!("-1px"), 0),
+        (json!(24), 0),
+        (json!("24"), 0),
+        (json!("1ex"), 0),
+        (json!("1ch"), 0),
+        (json!("1rem"), 2),
+        (json!("12px"), 2),
+    ] {
+        let engine = MermaidEngine::new().with_site_config(
+            merman_core::presentation::SourcePresentationConfig::from_value(serde_json::json!({
+                "packet": {"showBits": false},
+                "themeVariables": {
+                    "fontSize": "0px",
+                    "packet": {"labelFontSize": label_size}
+                }
+            })),
+        );
+        let rendered = try_render_packet_source_with_theme_and_engine(
+            "packet\n0-7: \"Header\"\n",
+            &theme,
+            engine,
+            "packet-zero-parent",
+        )
+        .expect("relative zero-sized Packet text must not consume paint or fonts");
+        let evidence =
+            merman_render::__private::family_evidence(rendered.into_completion().report());
+        assert_eq!(evidence.required_count(), 4, "{label_size}");
+        assert_eq!(evidence.applied_count(), applied, "{label_size}");
+        assert_eq!(evidence.not_applicable_count(), 4 - applied, "{label_size}");
+        assert_eq!(evidence.theme_residual_count(), 0, "{label_size}");
+    }
+}
+
+#[test]
 fn packet_multiline_labels_reach_svg_as_literal_text() {
     let source = "packet-beta\n0: \"雪\n<node>&%%\"\n1: \"Tail\"\n";
     for source in [source.to_owned(), source.replace('\n', "\r\n")] {

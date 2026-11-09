@@ -5,6 +5,7 @@ use merman_markup::theme_color::{ColorChannel, ThemeColor, invert};
 #[derive(Debug)]
 pub(crate) struct TreemapCssBinding {
     pub(crate) common: PreparedCommonCss,
+    root_font_size_px: f64,
     pub(crate) title_color: String,
     pub(crate) label_color: String,
     pub(crate) value_color: String,
@@ -25,6 +26,8 @@ pub(crate) struct TreemapCssBinding {
 
 impl TreemapCssBinding {
     pub(super) fn new(config: &serde_json::Value, font_family: &str) -> crate::Result<Self> {
+        let root_font_size_px =
+            crate::config::config_theme_font_size_css_or_root_number_px_opt(config).unwrap_or(16.0);
         let optional_color = |key: &str| config_string(config, &["themeVariables", key]);
         let color =
             |key: &str, fallback: &str| optional_color(key).unwrap_or_else(|| fallback.to_owned());
@@ -79,7 +82,12 @@ impl TreemapCssBinding {
             .collect::<crate::Result<Vec<_>>>()?;
 
         Ok(Self {
-            common: PreparedCommonCss::new(config, Some(font_family)),
+            common: PreparedCommonCss::with_resolved_typography(
+                config,
+                font_family.to_owned(),
+                format!("{root_font_size_px}px"),
+            ),
+            root_font_size_px,
             title_color,
             label_color: config_string(config, &["treemap", "labelColor"])
                 .unwrap_or_else(|| text_color.clone()),
@@ -93,12 +101,20 @@ impl TreemapCssBinding {
             leaf_fill_color: style_option("leafFillColor", "#efefef"),
             label_font_size: style_option("labelFontSize", "12px"),
             value_font_size: style_option("valueFontSize", "10px"),
-            title_font_size: style_option("titleFontSize", "14px"),
+            title_font_size: config_css_number_or_string(
+                config,
+                &["themeVariables", "treemap", "titleFontSize"],
+            )
+            .unwrap_or_else(|| style_option("titleFontSize", "14px")),
             color_scale,
             color_scale_peer,
             color_scale_label,
             text_color,
         })
+    }
+
+    pub(super) const fn root_font_size_px(&self) -> f64 {
+        self.root_font_size_px
     }
 
     pub(crate) fn readable_leaf_label_fill(

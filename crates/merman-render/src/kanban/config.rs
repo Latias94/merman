@@ -42,7 +42,7 @@ impl<'a> KanbanConfigView<'a> {
             use_max_width: self.use_max_width(),
             text_style: TextStyle {
                 font_family: Some(font_family.to_owned()),
-                font_size: font_size_px.max(1.0),
+                font_size: font_size_px,
                 font_weight: None,
                 font_style: None,
             },
@@ -133,7 +133,10 @@ mod tests {
             settings.text_style.font_family.as_deref(),
             Some("Inter,sans-serif")
         );
-        assert_eq!(settings.text_style.font_size, 20.0);
+        assert_eq!(
+            settings.text_style.font_size, 16.0,
+            "a root px string retains the stylesheet's numeric fallback contract"
+        );
     }
 
     #[test]

@@ -212,7 +212,7 @@ fn text_bbox_height(lines: &[String], style: &TextStyle, measurer: &dyn TextMeas
     //
     // The first visible line is measured through the operation-selected DOM-shape route. Mermaid
     // places subsequent tspans at `dy=1.1em`, so their contribution is source-derived.
-    let font_size = style.font_size.max(1.0);
+    let font_size = style.font_size;
     let mut visible_lines = lines.iter().filter(|line| !line.trim().is_empty());
     let Some(first_line) = visible_lines.next() else {
         return 0.0;
@@ -237,7 +237,7 @@ fn virtual_node_height(
     let bbox_h = text_bbox_height(&lines, style, measurer);
     // Mermaid timeline uses `conf.fontSize` (top-level `config.fontSize`) for the extra vertical
     // offset, even when the actual rendered font size comes from `themeVariables.fontSize`.
-    let h = bbox_h + layout_font_size.max(1.0) * 1.1 * 0.5 + padding;
+    let h = bbox_h + layout_font_size * 1.1 * 0.5 + padding;
     (h, lines)
 }
 
@@ -715,7 +715,7 @@ fn layout_timeline_horizontal(
     let mut all_lines_full: Vec<TimelineLineLayout> = all_lines_pre_title.clone();
     all_lines_full.push(activity_line.clone());
 
-    if let Some(t) = title.as_deref() {
+    if let Some(t) = title.as_deref().filter(|_| render_font_size > 0.0) {
         // Approximate the title bounds so the viewBox can include it (Mermaid uses a bold 4ex).
         //
         // Note: `ex` depends on the font x-height; for Mermaid's default theme at 16px, `4ex`
@@ -1062,7 +1062,7 @@ fn layout_timeline_vertical(
     let title_x = pre_title_box_width / 2.0 - left_margin;
 
     let mut all_nodes_full = all_nodes_pre_title.clone();
-    if let Some(title) = title.as_deref() {
+    if let Some(title) = title.as_deref().filter(|_| render_font_size > 0.0) {
         let title_font_size = render_font_size * 1.9375;
         let title_style = TextStyle {
             font_family: text_style.font_family.clone(),

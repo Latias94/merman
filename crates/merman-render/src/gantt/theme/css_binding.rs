@@ -1,11 +1,13 @@
 use crate::config::{config_f64, config_string};
 use crate::svg::PreparedCommonCss;
 
+use super::font_size::GanttFontSize;
+
 #[derive(Debug)]
 pub(crate) struct GanttCssBinding {
     pub(crate) common: PreparedCommonCss,
-    pub(crate) task_font_size: f64,
-    pub(crate) section_font_size: f64,
+    pub(crate) task_font_size: GanttFontSize,
+    pub(crate) section_font_size: GanttFontSize,
     pub(crate) text_color: String,
     pub(crate) exclude_bkg_color: String,
     pub(crate) section_bkg_color: String,
@@ -37,8 +39,17 @@ impl GanttCssBinding {
             config_string(config, &["themeVariables", key]).unwrap_or_else(|| fallback.to_owned())
         };
         let common = PreparedCommonCss::new(config, Some(font_family));
+        let inherited_font_size = crate::mermaid_style::resolve_mermaid_font_size_px(
+            common.font_size_css(),
+            crate::mermaid_style::CssFontSizeContext::uniform(16.0),
+        )
+        .expect("prepared common CSS has an absolute root font size");
         let text_color = common.text_color().to_owned();
         let gantt_config = config.get("gantt").unwrap_or(config);
+        let task_size = serde_json::json!(config_f64(gantt_config, &["fontSize"]).unwrap_or(11.0));
+        let task_font_size = GanttFontSize::resolve(Some(&task_size), inherited_font_size);
+        let section_font_size =
+            GanttFontSize::resolve(gantt_config.get("sectionFontSize"), inherited_font_size);
         let title_color = option("titleColor", "#333");
         let title_text_color = if title_color.trim().is_empty() {
             text_color.clone()
@@ -47,8 +58,8 @@ impl GanttCssBinding {
         };
         Self {
             common,
-            task_font_size: config_f64(gantt_config, &["fontSize"]).unwrap_or(11.0),
-            section_font_size: config_f64(gantt_config, &["sectionFontSize"]).unwrap_or(11.0),
+            task_font_size,
+            section_font_size,
             text_color,
             title_color,
             title_text_color,

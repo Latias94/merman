@@ -132,6 +132,188 @@ fn tree_view_ignored_line_thickness_leaves_typed_edge_width_available() {
 }
 
 #[test]
+fn tree_view_css_sizes_share_measurement_geometry_and_emitted_context() {
+    let source = "treeView-beta\nroot/\n    WWWWWWWWWWWWWWWWWWWW.txt ## annotation\n";
+    let theme =
+        tree_view_typography_theme(ThemeTextStyle::default().with_font_size_px(72.0).unwrap());
+    let mut reference = None;
+    for (size, root_size) in [
+        ("32px", "16px"),
+        ("24pt", "16px"),
+        ("2pc", "16px"),
+        ("2em", "16px"),
+        ("200%", "16px"),
+        ("xx-large", "16px"),
+        ("inherit", "32px"),
+        ("100%", "24pt"),
+    ] {
+        let host = Arc::new(TreeViewFontSizeHost::default());
+        let environment = RenderEnvironment::deterministic().with_text_measurement_policy(
+            TextMeasurementPolicy::host_display(
+                TextMeasurementProfileIdentity::new(
+                    MeasurementProfileId::new("test.tree-view-css-size-context").unwrap(),
+                    "1",
+                )
+                .unwrap(),
+                host.clone(),
+                [TextMeasurementPhase::SvgBBox],
+            ),
+        );
+        let (layout, rendered) = try_render_tree_view_with_theme_and_environment(
+            source,
+            &theme,
+            MermaidEngine::new().with_site_config(
+                merman_core::presentation::SourcePresentationConfig::from_value(
+                    serde_json::json!({
+                        "themeVariables": {
+                            "fontSize": root_size,
+                            "treeView": {"labelFontSize": size}
+                        }
+                    }),
+                ),
+            ),
+            ThemePortabilityRequirement::RequirePortable,
+            &environment,
+            "tree-css-size-context",
+        )
+        .unwrap();
+        assert_eq!(layout.label_font_size, 32.0, "{size}/{root_size}");
+        let projection = serde_json::to_value(&layout).unwrap();
+        if let Some(reference) = &reference {
+            assert_eq!(&projection, reference, "{size}/{root_size}");
+        } else {
+            reference = Some(projection);
+        }
+        let requests = host.requests.lock().unwrap();
+        assert!(requests.iter().any(|(text, _)| text == "annotation"));
+        assert!(requests.iter().all(|(_, size)| *size == 32.0));
+        let described = layout
+            .nodes
+            .iter()
+            .find(|node| node.description.is_some())
+            .unwrap();
+        assert!(described.description_x.unwrap() >= described.label_x + described.label_width);
+        assert!(
+            layout.total_width
+                >= described.description_x.unwrap() + described.description_width.unwrap()
+        );
+        let css = tree_view_stylesheet(rendered.svg());
+        for selector in [".treeView-node-label", ".treeView-node-description"] {
+            assert!(tree_view_css_rule(&css, selector).contains(&format!("font-size: {size};")));
+        }
+        if ["2em", "200%", "xx-large", "inherit", "100%"].contains(&size) {
+            let root_px = if root_size == "16px" { 16 } else { 32 };
+            assert!(css.contains(&format!(
+                "#tree-css-size-context {{ font-size: {root_px}px; }}"
+            )));
+        }
+    }
+}
+
+#[test]
+fn tree_view_invalid_font_sizes_do_not_own_the_typed_size() {
+    let theme =
+        tree_view_typography_theme(ThemeTextStyle::default().with_font_size_px(24.0).unwrap());
+    for invalid in [
+        serde_json::json!("bogus"),
+        serde_json::json!("-2px"),
+        serde_json::json!("20"),
+        serde_json::json!(20),
+        serde_json::json!("!important"),
+        serde_json::json!("24px !important !important"),
+    ] {
+        for from_source in [false, true] {
+            let config =
+                serde_json::json!({"themeVariables":{"treeView":{"labelFontSize":invalid}}});
+            let body = "treeView-beta\nroot/\n    file.txt ## annotation\n";
+            let (source, engine) = if from_source {
+                (
+                    format!("---\nconfig: {config}\n---\n{body}"),
+                    MermaidEngine::new(),
+                )
+            } else {
+                (
+                    body.to_owned(),
+                    MermaidEngine::new().with_site_config(
+                        merman_core::presentation::SourcePresentationConfig::from_value(config),
+                    ),
+                )
+            };
+            let (layout, rendered) = try_render_tree_view_with_theme_and_environment(
+                &source,
+                &theme,
+                engine,
+                ThemePortabilityRequirement::RequirePortable,
+                &RenderEnvironment::deterministic(),
+                "tree-invalid-font-size",
+            )
+            .unwrap();
+            assert_eq!(layout.label_font_size, 24.0, "{invalid}/{from_source}");
+            let css = tree_view_stylesheet(rendered.svg());
+            assert!(tree_view_css_rule(&css, ".treeView-node-label").contains("font-size: 24px;"));
+            let evidence =
+                merman_render::__private::family_evidence(rendered.into_completion().report());
+            assert_eq!(evidence.applied_count(), 1);
+            assert_eq!(evidence.theme_residual_count(), 0);
+        }
+    }
+}
+
+#[test]
+fn tree_view_unknown_size_contexts_preserve_residuals_and_reject_portable_output() {
+    let theme =
+        tree_view_typography_theme(ThemeTextStyle::default().with_font_size_px(24.0).unwrap());
+    let empty_theme = DiagramThemeCompiler::new()
+        .compile(DiagramThemeSpec::new())
+        .unwrap();
+    for (size, root_size) in [
+        ("1rem", "16px"),
+        ("var(--tree-size)", "16px"),
+        ("calc(1em + 2px)", "16px"),
+        ("/* comment */24pt!important", "16px"),
+        ("2em", "var(--root-size)"),
+    ] {
+        let config = serde_json::json!({
+            "themeVariables":{"fontSize":root_size,"treeView":{"labelFontSize":size}}
+        });
+        let engine = || {
+            MermaidEngine::new().with_site_config(
+                merman_core::presentation::SourcePresentationConfig::from_value(config.clone()),
+            )
+        };
+        let source = "treeView-beta\nroot/\n    file.txt\n";
+        let (_, rendered) = try_render_tree_view_with_theme_and_environment(
+            source,
+            &theme,
+            engine(),
+            ThemePortabilityRequirement::BestEffort,
+            &RenderEnvironment::deterministic(),
+            "tree-unknown-font-size",
+        )
+        .unwrap();
+        assert!(tree_view_stylesheet(rendered.svg()).contains(&format!("font-size: {size};")));
+        let evidence =
+            merman_render::__private::family_evidence(rendered.into_completion().report());
+        assert_eq!(evidence.theme_residual_count(), 1, "{size}/{root_size}");
+        assert_eq!(evidence.applied_count(), 0);
+        for portable_theme in [&theme, &empty_theme] {
+            assert!(
+                try_render_tree_view_with_theme_and_environment(
+                    source,
+                    portable_theme,
+                    engine(),
+                    ThemePortabilityRequirement::RequirePortable,
+                    &RenderEnvironment::deterministic(),
+                    "tree-unknown-font-size",
+                )
+                .is_err(),
+                "{size}/{root_size}"
+            );
+        }
+    }
+}
+
+#[test]
 fn tree_view_highlight_paint_and_font_size_share_their_visible_and_measured_consumers() {
     let source = "treeView-beta\nroot/\n    highlighted.rs :::highlight\n    plain.rs\n";
     let theme = DiagramThemeCompiler::new()
@@ -494,8 +676,8 @@ fn tree_view_valid_highlight_and_font_config_keep_property_local_ownership() {
         .unwrap();
     for owner in ["site", "source"] {
         for (size, css_size) in [
-            (serde_json::json!(20), "20"),
             (serde_json::json!("20px"), "20px"),
+            (serde_json::json!("15pt"), "15pt"),
         ] {
             let config = serde_json::json!({"themeVariables": {"treeView": {
                 "highlightBg": "#fff7ed",
@@ -1204,13 +1386,8 @@ fn tree_view_zero_sized_labels_do_not_certify_text_fill_or_font_stack() {
             )
             .expect("zero-sized Tree View labels cannot certify text fill or font evidence");
             assert_eq!(
-                layout.label_font_size,
-                if matches!(expected_css, "0" | "0px" | "0.0px !important") {
-                    1.0
-                } else {
-                    16.0
-                },
-                "{owner}/{size}: retain the measurement fallback"
+                layout.label_font_size, 0.0,
+                "{owner}/{size}: zero text must not gain a positive measurement size"
             );
             let stylesheet = tree_view_stylesheet(rendered.svg());
             assert!(

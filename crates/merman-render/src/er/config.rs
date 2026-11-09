@@ -48,7 +48,7 @@ impl<'a> ErConfigView<'a> {
             self.text_style_with_resolved_typography(font_family_override, font_size_override);
         let attr_style = TextStyle {
             font_family: label_style.font_family.clone(),
-            font_size: label_style.font_size.max(1.0),
+            font_size: label_style.font_size,
             font_weight: None,
             font_style: None,
         };
@@ -96,9 +96,7 @@ impl<'a> ErConfigView<'a> {
         let font_family = font_family_override
             .map(str::to_owned)
             .unwrap_or_else(|| self.font_family_css());
-        let font_size = font_size_override
-            .unwrap_or_else(|| self.font_size())
-            .max(1.0);
+        let font_size = font_size_override.unwrap_or_else(|| self.font_size());
         ErRenderSettings {
             is_elk_layout: self.is_elk_layout(),
             diagram_look: config_diagram_look(self.effective_config)
@@ -166,9 +164,7 @@ impl<'a> ErConfigView<'a> {
                     .map(str::to_owned)
                     .unwrap_or_else(|| self.font_family_css()),
             ),
-            font_size: font_size_override
-                .unwrap_or_else(|| self.font_size())
-                .max(1.0),
+            font_size: font_size_override.unwrap_or_else(|| self.font_size()),
             font_weight: None,
             font_style: None,
         }
@@ -227,7 +223,9 @@ impl<'a> ErConfigView<'a> {
         // Mermaid ER unified renderer inherits the root SVG font-size, so
         // `themeVariables.fontSize` wins when present (including Mermaid's common `"NNpx"` form).
         crate::config::config_theme_or_root_font_size_px_opt(self.effective_config)
-            .or_else(|| config_f64_css_px(self.er_config, &["fontSize"]))
+            .or_else(|| {
+                config_f64_css_px(self.er_config, &["fontSize"]).filter(|size| *size >= 0.0)
+            })
             .unwrap_or(DEFAULT_FONT_SIZE)
     }
 
@@ -546,7 +544,7 @@ mod tests {
         assert_eq!(settings.is_elk_layout, cfg!(feature = "layout-elk"));
         assert_eq!(settings.diagram_look, "handDrawn");
         assert_eq!(settings.hand_drawn_seed, 7.0);
-        assert_eq!(settings.font_size, 1.0);
+        assert_eq!(settings.font_size, 0.0);
         assert_eq!(settings.title_top_margin, 12.0);
         assert_eq!(settings.insert_title_top_margin, 12.0);
         assert!(!settings.use_max_width);

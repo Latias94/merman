@@ -25,10 +25,6 @@ pub(super) const MERMAID_TASK_RADIUS_PX: f64 = 5.0;
 const MERMAID_TASK_PALETTE_SLOT_COUNT: usize = 12;
 const MERMAID_BASE_FONT_SIZE_PX: f64 = 16.0;
 
-fn positive_font_size(value: Option<f64>) -> Option<f64> {
-    value.filter(|value| value.is_finite() && *value > 0.0)
-}
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum KanbanFontSizeOutcome {
     Inactive,
@@ -61,61 +57,66 @@ impl KanbanTypographyPlan {
                     && route.disposition() == FamilyThemeDisposition::TypedAdapter
             })
         });
-        let config_owns_font_size = typed_font_size_requested
+        let explicit_theme_font_size = typed_font_size_requested
             && effective_config.config_path_overrides_typed_default("themeVariables.fontSize");
-        let configured_theme_font_size = config_owns_font_size
-            .then(|| {
-                positive_font_size(crate::config::config_f64_css_absolute_px(
-                    effective_config.as_value(),
-                    &["themeVariables", "fontSize"],
-                ))
-            })
-            .flatten();
-        let fallback_font_size_px = || {
-            positive_font_size(crate::config::config_theme_or_root_font_size_px_opt(
-                effective_config.as_value(),
-            ))
-            .unwrap_or(MERMAID_BASE_FONT_SIZE_PX)
-            .max(1.0)
-        };
-        let fallback_font_size_css = || {
-            positive_font_size(
-                crate::config::config_theme_font_size_css_or_root_number_px_opt(
-                    effective_config.as_value(),
-                ),
-            )
-            .unwrap_or(MERMAID_BASE_FONT_SIZE_PX)
-            .max(1.0)
-        };
+        let configured_font_size = crate::config::configured_theme_font_size_css_or_root_number_px(
+            effective_config.as_value(),
+        );
+        let configured_theme_font_size = configured_font_size
+            .filter(|(_, path)| explicit_theme_font_size && *path == "themeVariables.fontSize")
+            .map(|(size, _)| size);
+        // A valid but unmeasured CSS size retains its existing residual. Invalid candidates
+        // cannot claim ownership merely because their configuration path was authored.
+        let unverified_theme_font_size = explicit_theme_font_size
+            && effective_config
+                .as_value()
+                .get("themeVariables")
+                .and_then(|variables| variables.get("fontSize"))
+                .and_then(serde_json::Value::as_str)
+                .and_then(crate::mermaid_style::css_font_size_value_override)
+                .is_some();
         let resolved_css_requested =
             inherited_font_stack.typed_font_stack_requested() || typed_font_size_requested;
+        // Root CSS retains Mermaid's numeric fallback contract. Bind unrequested typography
+        // to its emitted size as well: common CSS can canonicalize a tiny positive value to zero.
+        let fallback_font_size_px = if resolved_css_requested {
+            configured_font_size
+                .map(|(size, _)| size)
+                .unwrap_or(MERMAID_BASE_FONT_SIZE_PX)
+        } else {
+            let common = crate::svg::PreparedCommonCss::new(
+                effective_config.as_value(),
+                Some(inherited_font_stack.font_family_css()),
+            );
+            crate::mermaid_style::parse_svg_number_or_px(common.font_size_css())
+                .expect("prepared Kanban common CSS has an absolute root font size")
+        };
         let font_size_outcome = match () {
             _ if !typed_font_size_requested => KanbanFontSizeOutcome::Inactive,
-            _ if !config_owns_font_size => KanbanFontSizeOutcome::Typed,
             _ if configured_theme_font_size.is_some() => KanbanFontSizeOutcome::ConfigOwned,
-            _ => KanbanFontSizeOutcome::UnverifiedConfig,
+            _ if unverified_theme_font_size => KanbanFontSizeOutcome::UnverifiedConfig,
+            _ => KanbanFontSizeOutcome::Typed,
         };
         let (font_size_px, font_size_css) = match (theme, font_size_outcome) {
             (Some(theme), KanbanFontSizeOutcome::Typed) => {
-                let font_size_px = theme.typography().font_size_px().max(1.0);
+                let font_size_px = theme.typography().font_size_px();
                 (
                     f64::from(font_size_px),
                     Some(format!("{font_size_px}px").into_boxed_str()),
                 )
             }
             (_, KanbanFontSizeOutcome::ConfigOwned) => {
-                let font_size_px = configured_theme_font_size
-                    .expect("validated Kanban theme font-size ownership")
-                    .max(1.0);
+                let font_size_px =
+                    configured_theme_font_size.expect("validated Kanban theme font-size ownership");
                 (
                     font_size_px,
                     Some(format!("{font_size_px}px").into_boxed_str()),
                 )
             }
             _ => (
-                fallback_font_size_px(),
+                fallback_font_size_px,
                 resolved_css_requested
-                    .then(|| format!("{}px", fallback_font_size_css()).into_boxed_str()),
+                    .then(|| format!("{fallback_font_size_px}px").into_boxed_str()),
             ),
         };
 
@@ -179,7 +180,9 @@ pub(crate) struct KanbanTypographyTerminalFacts {
 }
 
 impl KanbanTypographyTerminalFacts {
-    pub(crate) fn from_visible_style_facts(facts: &crate::text::VisibleTextStyleFacts) -> Self {
+    pub(crate) fn from_visible_style_facts(
+        facts: &super::visibility::KanbanVisibleTextStyleFacts,
+    ) -> Self {
         Self {
             parse_valid: facts.parse_valid(),
             visible_run_count: facts.visible_run_count(),
@@ -1029,14 +1032,15 @@ impl KanbanTaskThemeOutcome {
 
     pub(crate) fn record_label(
         &mut self,
-        visible_run_count: usize,
+        facts: KanbanTypographyTerminalFacts,
         inherited_color_run_count: usize,
         decision: &KanbanTaskTerminalDecision<'_>,
     ) {
         if let (Some(capability), Some(rule_index)) =
             (decision.label_capability, decision.label_rule_index)
         {
-            if inherited_color_run_count != visible_run_count {
+            // Unknown visibility cannot be certified by another label using the same rule.
+            if !facts.parse_valid || inherited_color_run_count != facts.visible_run_count {
                 self.unverified_label_rules.insert(rule_index);
             }
             self.label_capabilities

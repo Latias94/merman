@@ -14,66 +14,35 @@ use crate::family::{
     UnsupportedTerminalDomain, reconcile_unsupported_terminal_domains, resolve_direct_static_fill,
     resolved_style_property_for_facet, unsupported_residual_for_facet,
 };
-use crate::model::IshikawaDiagramLayout;
+use crate::mermaid_style::css_font_size_value_override;
+use crate::model::{IshikawaDiagramLayout, IshikawaTextLayout};
 use crate::resources::{OperationWorkError, OperationWorkMeter};
 
 mod css_binding;
 pub(crate) use css_binding::IshikawaCssBinding;
 
-/// Final Ishikawa text styling shared by terminal SVG emission and family evidence.
-///
-/// Upstream deterministic spacing and wrapping consume root `fontSize`. The base CSS size remains
-/// a separate terminal property, so this plan intentionally does not feed typed CSS typography
-/// back into layout.
+/// Final typography prepared before measuring any Ishikawa text.
+/// Root `fontSize` separately owns Mermaid's bone spacing, wrapping, and tspan line step.
 #[derive(Debug)]
-pub(crate) struct IshikawaTextThemePlan {
-    css_binding: IshikawaCssBinding,
-    text_count: usize,
-    base_size_text_count: usize,
-    fill: Option<Box<str>>,
+pub(crate) struct IshikawaTypographyPlan {
     inherited_font_stack: InheritedFontStackPlan,
     font_size_css: Box<str>,
+    text_style: crate::text::TextStyle,
+    head_style: crate::text::TextStyle,
+    head_uses_base_size: bool,
+    font_size_verified: bool,
     typed_font_size_requested: bool,
     typed_font_size_active: bool,
-    evidence: FamilyThemeOutcomes,
-    pending: BTreeMap<FamilyThemeMechanismKey, BTreeSet<ThemeCapability>>,
-    core_paints: Vec<StaticSurfacePaint>,
-    terminal_emitted: OnceLock<()>,
 }
 
-impl IshikawaTextThemePlan {
-    #[cfg(test)]
+impl IshikawaTypographyPlan {
     pub(crate) fn resolve(
         theme: Option<&ResolvedDiagramTheme>,
         effective_config: &PresentationConfig,
-        layout: &IshikawaDiagramLayout,
-        work_meter: &OperationWorkMeter,
-    ) -> Result<Self, OperationWorkError> {
+        spacing_font_size: f64,
+    ) -> Self {
         let inherited_font_stack =
             InheritedFontStackPlan::resolve_property_local(theme, effective_config);
-        Self::resolve_with_font_stack(
-            theme,
-            effective_config,
-            layout,
-            work_meter,
-            inherited_font_stack,
-        )
-    }
-
-    pub(crate) fn resolve_with_font_stack(
-        theme: Option<&ResolvedDiagramTheme>,
-        effective_config: &PresentationConfig,
-        layout: &IshikawaDiagramLayout,
-        work_meter: &OperationWorkMeter,
-        inherited_font_stack: InheritedFontStackPlan,
-    ) -> Result<Self, OperationWorkError> {
-        let (text_count, base_size_text_count) = if theme.is_some() {
-            text_occurrences(layout)
-        } else {
-            (0, 0)
-        };
-        let mut resolved_fill = None;
-        let mut css_binding = IshikawaCssBinding::resolve(effective_config.as_value());
         let typed_font_size_requested = theme.is_some_and(|theme| {
             theme.family_mechanism_routes().iter().any(|route| {
                 route.mechanism()
@@ -81,25 +50,141 @@ impl IshikawaTextThemePlan {
                     && route.disposition() == FamilyThemeDisposition::TypedAdapter
             })
         });
+        let configured_size = crate::config::config_css_number_or_string(
+            effective_config.as_value(),
+            &["themeVariables", "fontSize"],
+        );
         let config_owns_font_size = typed_font_size_requested
-            && effective_config.config_path_overrides_typed_default("themeVariables.fontSize");
+            && effective_config.config_path_overrides_typed_default("themeVariables.fontSize")
+            && configured_size
+                .as_deref()
+                .is_some_and(|size| css_font_size_value_override(size).is_some());
         let typed_font_size_active = typed_font_size_requested && !config_owns_font_size;
         let font_size_css = match theme {
             Some(theme) if typed_font_size_active => {
                 format!("{}px", theme.typography().font_size_px())
             }
-            _ => crate::ishikawa::IshikawaConfigView::new(effective_config.as_value())
-                .stylesheet_font_size_css()
-                .unwrap_or_else(|| format!("{}px", layout.font_size)),
+            _ => configured_size
+                .or_else(|| {
+                    crate::config::config_css_number_or_string(
+                        effective_config.as_value(),
+                        &["fontSize"],
+                    )
+                })
+                .unwrap_or_else(|| format!("{spacing_font_size}px")),
+        };
+        let size_override = css_font_size_value_override(&font_size_css);
+        let resolved_size = size_override.and_then(|_| {
+            crate::mermaid_style::resolve_mermaid_absolute_font_size_px(&font_size_css).or_else(
+                || crate::mermaid_style::css_font_size_is_zero(&font_size_css).then_some(0.0),
+            )
+        });
+        let font_size = resolved_size.unwrap_or(spacing_font_size);
+        let text_style = crate::text::TextStyle {
+            font_family: Some(inherited_font_stack.font_family_css().to_string()),
+            font_size,
+            ..Default::default()
+        };
+        // A source !important on the shared rule outranks the normal head-size rule.
+        let important = size_override.is_some_and(|size| size.important());
+        let head_style = crate::text::TextStyle {
+            font_size: if important { font_size } else { 14.0 },
+            font_weight: Some("600".to_string()),
+            ..text_style.clone()
+        };
+        Self {
+            inherited_font_stack,
+            font_size_css: font_size_css.into_boxed_str(),
+            text_style,
+            head_style,
+            head_uses_base_size: important,
+            font_size_verified: resolved_size.is_some(),
+            typed_font_size_requested,
+            typed_font_size_active,
         }
-        .into_boxed_str();
+    }
+
+    pub(crate) fn text_style(&self, class_name: &str) -> &crate::text::TextStyle {
+        if class_name == "ishikawa-head-label" {
+            &self.head_style
+        } else {
+            &self.text_style
+        }
+    }
+}
+
+/// Final Ishikawa text styling shared by terminal SVG emission and family evidence.
+#[derive(Debug)]
+pub(crate) struct IshikawaTextThemePlan {
+    css_binding: IshikawaCssBinding,
+    text_count: usize,
+    base_size_text_count: usize,
+    fill: Option<Box<str>>,
+    typography: IshikawaTypographyPlan,
+    evidence: FamilyThemeOutcomes,
+    pending: BTreeMap<FamilyThemeMechanismKey, BTreeSet<ThemeCapability>>,
+    core_paints: Vec<StaticSurfacePaint>,
+    terminal_emitted: OnceLock<()>,
+}
+
+impl IshikawaTextThemePlan {
+    pub(crate) fn ensure_portable_typography(
+        &self,
+        portability: crate::diagram_theme::ThemePortabilityRequirement,
+    ) -> crate::Result<()> {
+        if self.has_unverified_text_size()
+            && portability == crate::diagram_theme::ThemePortabilityRequirement::RequirePortable
+        {
+            return Err(crate::Error::UnverifiedFamilyStyle {
+                family_id: crate::DiagramFamilyId::ISHIKAWA,
+                residual_count: 1,
+            });
+        }
+        Ok(())
+    }
+
+    #[cfg(test)]
+    pub(crate) fn resolve(
+        theme: Option<&ResolvedDiagramTheme>,
+        effective_config: &PresentationConfig,
+        layout: &IshikawaDiagramLayout,
+        work_meter: &OperationWorkMeter,
+    ) -> Result<Self, OperationWorkError> {
+        let typography = IshikawaTypographyPlan::resolve(theme, effective_config, layout.font_size);
+        Self::resolve_with_typography(theme, effective_config, layout, work_meter, typography)
+    }
+
+    pub(crate) fn resolve_with_typography(
+        theme: Option<&ResolvedDiagramTheme>,
+        effective_config: &PresentationConfig,
+        layout: &IshikawaDiagramLayout,
+        work_meter: &OperationWorkMeter,
+        typography: IshikawaTypographyPlan,
+    ) -> Result<Self, OperationWorkError> {
+        let mut text_count = 0usize;
+        let mut base_size_text_count = 0usize;
+        let mut source_owned_fill = Vec::new();
+        if theme.is_some() || !typography.font_size_verified {
+            for (text, uses_base_size) in text_occurrences(layout) {
+                let visible = text.font_size != 0.0;
+                text_count += usize::from(visible);
+                base_size_text_count += usize::from(visible && uses_base_size);
+                if theme.is_some() {
+                    // Invisible text retains geometry/effect occurrences without owning paint.
+                    source_owned_fill.push(!visible);
+                }
+            }
+        }
+        let mut resolved_fill = None;
+        let mut css_binding = IshikawaCssBinding::resolve(effective_config.as_value());
         let Some(theme) = theme else {
             return Ok(Self::baseline(
-                inherited_font_stack,
-                font_size_css,
+                typography,
                 css_binding,
+                (text_count, base_size_text_count),
             ));
         };
+        let structural_text_count = source_owned_fill.len();
 
         let mut body_count = usize::from(layout.head.is_some());
         let mut line_count = usize::from(layout.spine.is_some());
@@ -159,11 +244,14 @@ impl IshikawaTextThemePlan {
         }
 
         let mermaid_owns_fill = mermaid_owns_text_fill(effective_config);
+        if mermaid_owns_fill {
+            source_owned_fill.fill(true);
+        }
         let mut winner_properties = BTreeSet::<(usize, ResolvedStyleProperty)>::new();
         let mut expected_capabilities =
             BTreeMap::<(usize, ResolvedStyleProperty), ThemeCapability>::new();
 
-        if text_count != 0 {
+        if structural_text_count != 0 {
             let style = theme.text_style_with_work_meter(
                 ThemeTarget::NodeLabel,
                 ThemeVariant::Default,
@@ -175,7 +263,8 @@ impl IshikawaTextThemePlan {
                     .winner_rule_properties()
                     .map(|(property, origin)| (origin.rule_index(), property)),
             );
-            if !mermaid_owns_fill
+            if text_count != 0
+                && !mermaid_owns_fill
                 && let Some(fill) = resolve_direct_static_fill(
                     theme,
                     &style,
@@ -200,7 +289,9 @@ impl IshikawaTextThemePlan {
                     facet,
                 } => {
                     let observation = observations.entry((rule_index, target)).or_default();
-                    if !selector_matches_text_domain(selector, text_count) {
+                    if !selector_matches_text_domain(selector, structural_text_count)
+                        || (text_count == 0 && matches!(facet, FamilyThemeRuleFacet::Fill(_)))
+                    {
                         continue;
                     }
                     let property = resolved_style_property_for_facet(facet);
@@ -281,14 +372,13 @@ impl IshikawaTextThemePlan {
             }
         }
 
-        let source_owned_fill = vec![mermaid_owns_fill; text_count];
         reconcile_unsupported_terminal_domains(
             theme,
             &mut evidence,
             &[UnsupportedTerminalDomain::textual(
                 ThemeTarget::NodeLabel,
                 &[ThemeTarget::Text, ThemeTarget::NodeLabel],
-                TerminalVariantDomain::uniform(text_count, ThemeVariant::Default),
+                TerminalVariantDomain::uniform(structural_text_count, ThemeVariant::Default),
             )
             .with_source_owned_fill(&source_owned_fill)],
             work_meter,
@@ -318,10 +408,7 @@ impl IshikawaTextThemePlan {
             text_count,
             base_size_text_count,
             fill: resolved_fill,
-            inherited_font_stack,
-            font_size_css,
-            typed_font_size_requested,
-            typed_font_size_active,
+            typography,
             evidence,
             pending,
             core_paints: vec![node, edge, marker],
@@ -330,19 +417,16 @@ impl IshikawaTextThemePlan {
     }
 
     fn baseline(
-        inherited_font_stack: InheritedFontStackPlan,
-        font_size_css: Box<str>,
+        typography: IshikawaTypographyPlan,
         css_binding: IshikawaCssBinding,
+        text_counts: (usize, usize),
     ) -> Self {
         Self {
             css_binding,
-            text_count: 0,
-            base_size_text_count: 0,
+            text_count: text_counts.0,
+            base_size_text_count: text_counts.1,
             fill: None,
-            inherited_font_stack,
-            font_size_css,
-            typed_font_size_requested: false,
-            typed_font_size_active: false,
+            typography,
             evidence: FamilyThemeOutcomes::default(),
             pending: BTreeMap::new(),
             core_paints: Vec::new(),
@@ -364,8 +448,8 @@ impl IshikawaTextThemePlan {
             css,
             "#{diagram_id} .ishikawa text {{ font-family: {}; font-size: {}; fill: {}; }}\
 #{diagram_id} .ishikawa .ishikawa-head-label {{ font-weight: 600; text-anchor: middle; dominant-baseline: middle; font-size: 14px; }}",
-            self.inherited_font_stack.font_family_css(),
-            self.font_size_css,
+            self.typography.inherited_font_stack.font_family_css(),
+            self.typography.font_size_css,
             text_color
         );
     }
@@ -392,7 +476,14 @@ impl IshikawaTextThemePlan {
     }
 
     fn typography_requested(&self) -> bool {
-        self.inherited_font_stack.typography_requested() || self.typed_font_size_requested
+        self.typography.inherited_font_stack.typography_requested()
+            || self.typography.typed_font_size_requested
+    }
+
+    fn has_unverified_text_size(&self) -> bool {
+        !self.typography.font_size_verified
+            && (self.base_size_text_count != 0
+                || (self.typography.head_uses_base_size && self.text_count != 0))
     }
 
     fn record_typography_evidence(&self, evidence: &mut FamilyThemeEvidence) {
@@ -400,18 +491,23 @@ impl IshikawaTextThemePlan {
             return;
         }
         let font_size_has_terminal = self.base_size_text_count != 0;
-        self.inherited_font_stack
+        self.typography
+            .inherited_font_stack
             .record_unsupported_typography_evidence(evidence, self.text_count != 0);
         for (property, requested, applied) in [
             (
                 ThemeTypographyProperty::FontStack,
-                self.inherited_font_stack.typed_font_stack_requested(),
-                self.inherited_font_stack.typed_font_stack_active(),
+                self.typography
+                    .inherited_font_stack
+                    .typed_font_stack_requested(),
+                self.typography
+                    .inherited_font_stack
+                    .typed_font_stack_active(),
             ),
             (
                 ThemeTypographyProperty::FontSize,
-                self.typed_font_size_requested,
-                self.typed_font_size_active && font_size_has_terminal,
+                self.typography.typed_font_size_requested,
+                self.typography.typed_font_size_active && font_size_has_terminal,
             ),
         ] {
             if !requested {
@@ -420,6 +516,8 @@ impl IshikawaTextThemePlan {
             let key = FamilyThemeMechanismKey::Typography(property);
             if self.text_count == 0 {
                 evidence.mark_not_applicable(key);
+            } else if self.has_unverified_text_size() {
+                evidence.mark_residual(key, FamilyThemeResidualReason::UnsupportedTypography);
             } else if applied {
                 evidence.mark_applied_with_capabilities(key, [ThemeCapability::Typography]);
             } else {
@@ -429,25 +527,20 @@ impl IshikawaTextThemePlan {
     }
 }
 
-fn text_occurrences(layout: &IshikawaDiagramLayout) -> (usize, usize) {
-    let mut base_size = 0usize;
-    for pair in &layout.pairs {
-        for branch in std::iter::once(&pair.upper).chain(pair.lower.as_ref()) {
-            base_size += usize::from(!branch.label_group.label.text.trim().is_empty());
-            base_size += branch
-                .sub_groups
-                .iter()
-                .filter(|group| !group.label.text.trim().is_empty())
-                .count();
-        }
-    }
-    let head = usize::from(
-        layout
-            .head
-            .as_ref()
-            .is_some_and(|head| !head.label.text.trim().is_empty()),
-    );
-    (base_size.saturating_add(head), base_size)
+fn text_occurrences(
+    layout: &IshikawaDiagramLayout,
+) -> impl Iterator<Item = (&IshikawaTextLayout, bool)> {
+    let head = layout.head.iter().map(|head| (&head.label, false));
+    let body = layout.pairs.iter().flat_map(|pair| {
+        std::iter::once(&pair.upper)
+            .chain(pair.lower.as_ref())
+            .flat_map(|branch| {
+                std::iter::once((&branch.label_group.label, true))
+                    .chain(branch.sub_groups.iter().map(|group| (&group.label, true)))
+            })
+    });
+    head.chain(body)
+        .filter(|(text, _)| !text.text.trim().is_empty())
 }
 
 fn selector_matches_text_domain(selector: FamilyThemeSelectorShape, text_count: usize) -> bool {
@@ -495,6 +588,37 @@ mod tests {
     };
     use crate::resources::RenderResourcePolicy;
     use serde_json::json;
+
+    #[test]
+    fn prepared_typography_preserves_source_units_and_head_priority() {
+        for (config, css, body_px, head_px) in [
+            (
+                json!({"fontSize":"18px !important;"}),
+                "18px !important",
+                18.0,
+                18.0,
+            ),
+            (
+                json!({"fontSize":"18px", "themeVariables":{"fontSize":"24pt"}}),
+                "24pt",
+                32.0,
+                14.0,
+            ),
+        ] {
+            let config = crate::test_support::presentation_config(config);
+            let typography = IshikawaTypographyPlan::resolve(None, &config, 16.0);
+            assert_eq!(typography.font_size_css.as_ref(), css);
+            assert!(typography.font_size_verified);
+            assert_eq!(
+                typography.text_style("ishikawa-label cause").font_size,
+                body_px
+            );
+            assert_eq!(
+                typography.text_style("ishikawa-head-label").font_size,
+                head_px
+            );
+        }
+    }
 
     #[test]
     fn absent_title_terminal_accounts_every_title_mechanism_as_not_applicable() {

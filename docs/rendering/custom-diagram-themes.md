@@ -60,7 +60,8 @@ const { svg, metadata } = renderSvgResult(source, {
 The installed runtime's catalog is authoritative. Preview colors are illustrative recipe
 colors; they are not a rendering or an output qualification. Hosts should show unknown
 application notes using their readable message and offer configuration only as an explicit
-user action.
+user action. Preset IDs are exact catalog identifiers in Rust, render selections and exports;
+leading or trailing whitespace is rejected.
 
 ## Choose an appearance
 
@@ -144,10 +145,16 @@ Theme sizes use pixels. Inherited Mermaid theme font sizes also accept absolute 
 including `pt`, `pc`, `in`, `cm`, `mm` and `q`, using 96 CSS pixels per inch. For example,
 `themeVariables.fontSize: "24pt"` supplies 32px to layout and retains its configuration priority
 over a typed base size. Family-specific numeric settings keep their own configuration rules.
+Pie title, percentage and legend sizes and Tree View label sizes also resolve absolute CSS
+lengths for measurement. Equivalent `24pt` and `32px` values reserve the same text geometry.
+Tree View resolves parent-relative sizes against an explicit SVG root context; values that
+still need the receiving document or host CSS remain unverified. Ishikawa keeps Mermaid's
+root-size spacing separate from final text size: its text bounds and label boxes use the
+displayed font, while bone spacing and multiline steps retain the root configuration.
 
 Raw HTML labels can also contain relative CSS sizes: `em` follows the
-parent font, while `rem` depends on the receiving document's root font. Class and Requirement
-HTML node-label measurement uses the ordinary 16px document-root baseline; a page with a different
+parent font, while `rem` depends on the receiving document's root font. Class, Requirement and
+Kanban HTML label measurement uses the ordinary 16px document-root baseline; a page with a different
 root size or a standalone SVG document can resolve `rem` differently. Prefer pixel or parent-relative
 sizes when the same source must travel between hosts.
 
@@ -161,6 +168,31 @@ Native HTML measurement and export share the same font-size keyword values with 
 `medium`. A zero-sized inline run contributes no glyph width or ink; its parent line box and
 visible siblings can still occupy space. A receiving browser's default font preferences can
 change keyword sizes, so explicit lengths are preferable for reproducible exports.
+Known zero-sized chart labels remain in the SVG but do not count as visible consumers of
+theme fonts or text paint.
+Block, ER, Journey, Kanban, Requirement, Timeline, Pie, Treemap and XY Chart preserve valid
+inherited sizes below 1px and zero. The common SVG stylesheet also preserves these sizes;
+labels with an independent positive size can remain visible below a zero-size ancestor.
+Journey's tspan task size and Timeline's root-size layout offsets retain their
+independent configuration roles. Hiding text does not remove independently styled nodes, label
+backgrounds or connectors. Typed theme sizes must remain positive; use the owning Mermaid
+configuration when a family supports hiding labels with zero.
+The native SVG pipeline converts absolute CSS font sizes to pixels before painting, including
+`q` lengths and the `xx-small` through `xxx-large` keywords. Absolute keywords use the same 16px
+`medium` baseline as HTML measurement, independently of the parent size. Admitted literal zero
+sizes also become `0px`, including units such as `0rem` that the rasterizer may not recognize.
+Invalid negative literal sizes are ignored so text inherits its parent's size instead of
+disappearing. Parity SVG keeps the authored spelling. Positive host-dependent lengths and CSS
+expressions retain their existing measurement and portability limits.
+
+Packet preserves the configured root size for relative role sizes such as `1em`; its absolute
+role defaults and fixed field geometry remain independent. XY Chart ignores negative title and
+axis sizes when selecting a supported theme override, while a valid zero keeps those labels hidden.
+Its legend retains its separate 1px minimum and configuration priority.
+
+Block label measurement follows its effective `classDef` typography, including the default class,
+and direct node styles. Class rules and direct declarations retain their CSS priority rather than
+using a separate font choice for measurement.
 
 Use representative Latin, CJK and symbol labels when the content needs them. A font's presence
 does not imply glyph coverage, and a successful theme status does not certify either one. The
@@ -230,6 +262,10 @@ the `treemap.labelColor` and `valueColor` stylesheets. Transparent leaves can fa
 `textColor` for readability. Compiled label paint follows that selected source; unused
 stylesheet colors do not block it. Timeline's colored Redux palettes cycle through
 `borderColorArray`; an empty array restores the theme's `mainBkg`/`nodeBorder` fallback.
+Native Treemap font admission checks styles selected by rendered nodes. An unused `classDef`
+does not require support for typography that never reaches a label.
+Set `themeVariables.treemap.titleFontSize` for Mermaid-compatible title sizing. The older
+`treemap.titleFontSize` spelling remains a Merman fallback when that theme variable is absent.
 
 Set `themeVariables.archGroupBorderColor` directly to change an Architecture group border.
 Changing only `primaryBorderColor` does not recalculate an initialized group color.
@@ -243,20 +279,34 @@ do not disable a supported theme override.
 
 Fonts, sizes, Quadrant point radii and Tree View line widths follow the same rule. An ignored
 value does not own the property, and an unused fallback does not own the selected value.
-Each family's accepted units, font-array handling and numeric clamps remain unchanged. Pie
+Family configuration determines its accepted units, font-array handling and numeric bounds. Pie
 title, percentage and legend sizes remain independent; C4 element sizes and ER relationship
 label sizes also retain their own configuration rather than inheriting every base-size change.
 
 Requirement source node sizes accept absolute CSS lengths, including `24pt` as 32px. Its
-inherited base size has a 1px minimum, applied to both measurement and emitted CSS even when a
-typed theme requests a smaller positive value. Native measurement rejects source node sizes
-that this adapter cannot resolve, such as relative lengths or CSS expressions.
+inherited base size and positive typed sizes use the same value for measurement and emitted CSS,
+including values below 1px. Hidden node, relationship and title text does not prove that a
+theme font or text color was applied. An explicitly sized HTML descendant can restore visible
+text below a zero-size ancestor. Native measurement rejects source node sizes that this adapter
+cannot resolve, such as relative lengths or CSS expressions.
+
+Requirement and ER theme reports use the actual SVG or HTML label projection. A local font name
+does not prove that the inherited theme font was used. Host classes, document-relative sizes and
+other unresolved text styles retain unverified evidence even when layout has a fallback estimate.
 
 Support is checked per property. For example, a Gantt Title or Text rule with visible consumers
 can apply its fill while retaining an `unsupported-typography` diagnostic for its font size.
 Combining those properties in one rule does not make the unsupported styling portable; strict
 completion still rejects it. Title rules without a visible diagram or section title are not
 applicable.
+
+Gantt section titles preserve `gantt.sectionFontSize` CSS lengths, including `24pt`, `2em` and
+literal zero. Task labels retain the numeric `gantt.fontSize` setting. An invalid negative task
+size inherits the root font for measurement and drawing. Fixed-size axis labels, diagram titles
+and vertical task labels keep their own sizes. Section classes outside Mermaid's four title-color
+selectors do not prove that a title-color rule was applied. An unresolved section size keeps
+unverified theme evidence and is rejected by native font measurement when a rendered section
+title consumes it; unused section settings do not reject output.
 
 Journey's legend and `fo` / `old` labels inherit the base font stack and size. Its `tspan`
 labels retain `journey.taskFontSize` and `journey.taskFontFamily`; setting the task family to

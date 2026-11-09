@@ -224,6 +224,14 @@ pub fn unsupported_native_text_style(
 ) -> OperationControlResult<Option<String>> {
     let control = control.for_phase(OperationPhase::Semantic);
     control.checkpoint()?;
+    #[cfg(feature = "diagram-gantt")]
+    if let RenderSemanticModel::Gantt(model) = parsed.model() {
+        return crate::gantt::unsupported_native_font_size(
+            model,
+            &parsed.metadata().effective_config,
+            &control,
+        );
+    }
     #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
     if let RenderSemanticModel::Flowchart(model) = parsed.model() {
         let default_context = Default::default();
@@ -375,26 +383,37 @@ fn unsupported_native_model_text_style(
         ),
         #[cfg(feature = "diagram-treemap")]
         RenderSemanticModel::Treemap(model) => {
-            if let Some(styles) = model.compiled_styles(None)
-                && let Some(property) = declaration_scan::style_lists([styles], &control)?
-            {
-                return Ok(Some(property));
-            }
-            for index in 0..model.nodes.len() {
+            let mut pending = vec![(None, &model.root)];
+            let mut seen = vec![false; model.nodes.len()];
+            while let Some((record_id, node)) = pending.pop() {
                 control.checkpoint()?;
-                if let Some(styles) = model.compiled_styles(Some(index))
+                let children = node.children.as_deref().unwrap_or_default();
+                for &index in children.iter().rev() {
+                    control.checkpoint()?;
+                    if let Some(child) = model.nodes.get(index)
+                        && !std::mem::replace(&mut seen[index], true)
+                    {
+                        pending.push((Some(index), child));
+                    }
+                }
+                // The root branch's label and value are hidden by the Treemap writer.
+                if record_id.is_none() && !children.is_empty() {
+                    continue;
+                }
+                // A retained override, including an empty one, replaces the selected class.
+                let styles = model.compiled_styles(record_id).or_else(|| {
+                    node.class_selector
+                        .as_deref()
+                        .and_then(|selector| model.classes.get(selector))
+                        .map(|class| class.styles.as_slice())
+                });
+                if let Some(styles) = styles
                     && let Some(property) = declaration_scan::style_lists([styles], &control)?
                 {
                     return Ok(Some(property));
                 }
             }
-            declaration_scan::style_lists(
-                model
-                    .classes
-                    .values()
-                    .flat_map(|class| [class.styles.as_slice(), class.text_styles.as_slice()]),
-                &control,
-            )
+            Ok(None)
         }
         RenderSemanticModel::Error(_) | RenderSemanticModel::CustomJson(_) => Ok(None),
         #[cfg(feature = "diagram-sequence")]
@@ -633,6 +652,65 @@ fn unsupported_native_flowchart_html_style(
         }
     }
     Ok(None)
+}
+
+#[cfg(all(test, feature = "diagram-treemap"))]
+mod treemap_tests {
+    use super::*;
+    use merman_model::families::treemap::{
+        TreemapClassDef, TreemapDiagramModel, TreemapDiagramRenderModel, TreemapNode,
+    };
+
+    #[test]
+    fn treemap_native_admission_uses_selected_retained_styles() {
+        let semantic = TreemapDiagramModel {
+            root: TreemapNode {
+                children: Some(vec![0]),
+                ..Default::default()
+            },
+            nodes: vec![
+                TreemapNode {
+                    name: "Leaf".into(),
+                    value: Some(serde_json::json!(42).into()),
+                    class_selector: Some("spaced".into()),
+                    ..Default::default()
+                },
+                TreemapNode {
+                    name: "Unreachable".into(),
+                    class_selector: Some("spaced".into()),
+                    ..Default::default()
+                },
+            ],
+            classes: [(
+                "spaced".into(),
+                TreemapClassDef {
+                    id: "spaced".into(),
+                    styles: vec!["letter-spacing:4px".into()],
+                    text_styles: Vec::new(),
+                },
+            )]
+            .into(),
+            ..Default::default()
+        };
+        for (retained, expected) in [
+            (None, Some("letter-spacing")),
+            (Some(Vec::new()), None),
+            (Some(vec!["font-size:24px".into()]), None),
+            (Some(vec!["word-spacing:4px".into()]), Some("word-spacing")),
+        ] {
+            let mut model = TreemapDiagramRenderModel::from_semantic_model(semantic.clone());
+            model.visuals.node_styles = vec![retained];
+            assert_eq!(
+                unsupported_native_model_text_style(
+                    &RenderSemanticModel::Treemap(model),
+                    &OperationControl::new(),
+                )
+                .unwrap()
+                .as_deref(),
+                expected,
+            );
+        }
+    }
 }
 
 #[cfg(all(test, feature = "diagram-block"))]

@@ -1,4 +1,11 @@
 use std::fmt::Write as _;
+
+pub(super) fn is_font_key(key: &str) -> bool {
+    matches!(
+        key,
+        "font-family" | "font-size" | "font-weight" | "font-style"
+    )
+}
 fn is_box_style_key(key: &str) -> bool {
     matches!(
         key,
@@ -12,7 +19,7 @@ fn is_box_style_key(key: &str) -> bool {
     )
 }
 
-fn source_style_winners(
+pub(super) fn source_style_winners(
     styles: &[String],
 ) -> Vec<(&str, crate::mermaid_style::ParsedStyleDeclaration<'_>)> {
     let mut winners: Vec<(&str, crate::mermaid_style::ParsedStyleDeclaration<'_>)> = Vec::new();
@@ -42,47 +49,54 @@ fn source_style_winners(
     winners
 }
 
-pub(super) fn source_text_style(
+/// Mermaid compiles assigned classes in assignment order, followed by direct styles.
+/// The compiled label declarations are inline important values, above class stylesheet rules.
+pub(super) fn source_font_styles(
     styles: &[String],
-    inherited: &crate::text::TextStyle,
-    html: bool,
-) -> crate::text::TextStyle {
-    let declarations = source_style_winners(styles);
-    let mut style = inherited.clone();
-    // HTML repeats source declarations on g/div/span; SVG repeats them on g/text.
-    // Each element resolves relative values against its own inherited font.
-    let has_font = declarations.iter().any(|(_, declaration)| {
-        matches!(
-            declaration.property(),
-            "font-family" | "font-size" | "font-weight" | "font-style"
-        )
-    });
-    let styled_elements = if !has_font {
-        0
-    } else if html {
-        3
-    } else {
-        2
-    };
-    for _ in 0..styled_elements {
-        let mut cascade = crate::mermaid_style::TextStyleCascade::new(
-            &style,
-            crate::mermaid_style::CssFontSizeContext::new(style.font_size, inherited.font_size),
-        );
-        for (_, declaration) in &declarations {
-            cascade.observe_declaration(declaration);
+    classes: &[String],
+    definitions: &indexmap::IndexMap<String, merman_model::families::block::BlockClassDef>,
+) -> Vec<String> {
+    let mut fonts = indexmap::IndexMap::new();
+    for class in classes {
+        if let Some(definition) = definitions.get(class) {
+            for raw in &definition.styles {
+                if let Some(declaration) = crate::mermaid_style::parse_style_declaration(raw)
+                    && is_font_key(declaration.property())
+                {
+                    fonts.insert(
+                        declaration.property().to_owned(),
+                        declaration.value().to_owned(),
+                    );
+                }
+            }
         }
-        style = cascade.finish().into_owned();
     }
-    if !html {
-        // createText's inner word resets inherited weight/style, not size/family.
-        style = crate::text::svg_markdown_word_style(
-            &style,
-            crate::text::MermaidMarkdownWordType::Normal,
-        )
-        .into_owned();
+    let compiled = !fonts.is_empty();
+    let mut direct = Vec::new();
+    for (raw, declaration) in source_style_winners(styles) {
+        if is_font_key(declaration.property()) {
+            if compiled {
+                fonts.insert(
+                    declaration.property().to_owned(),
+                    declaration.value().to_owned(),
+                );
+            } else {
+                direct.push(if declaration.important() {
+                    raw.to_owned()
+                } else {
+                    format!("{raw} !important")
+                });
+            }
+        }
     }
-    style
+    if compiled {
+        fonts
+            .into_iter()
+            .map(|(key, value)| format!("{key}:{value} !important"))
+            .collect()
+    } else {
+        direct
+    }
 }
 
 #[cfg(test)]
@@ -98,6 +112,8 @@ mod tests {
                 "fill:blue !important".into(),
                 "color:var(--text)".into(),
             ],
+            &[],
+            &indexmap::IndexMap::new(),
             None,
             None,
             None,
@@ -129,6 +145,8 @@ mod tests {
                     "fill:#abcdef !important".into(),
                     "FILL:#fedcba".into(),
                 ],
+                &[],
+                &indexmap::IndexMap::new(),
                 None,
                 None,
                 None,
@@ -147,6 +165,8 @@ mod tests {
     fn prepared_typed_candidates_reach_their_separate_label_sinks() {
         let binding = lower(
             &["stroke-width:2px".into()],
+            &[],
+            &indexmap::IndexMap::new(),
             Some("#123456"),
             Some("transparent"),
             Some("#abcdef"),
@@ -172,6 +192,8 @@ pub(crate) struct BlockNodeTerminalBinding {
 
 pub(crate) fn lower(
     styles: &[String],
+    classes: &[String],
+    definitions: &indexmap::IndexMap<String, merman_model::families::block::BlockClassDef>,
     fill: Option<&str>,
     stroke: Option<&str>,
     label: Option<&str>,
@@ -180,7 +202,26 @@ pub(crate) fn lower(
     let mut text_style = String::new();
     let mut div_prefix = String::new();
     let mut svg_text_style = String::new();
-    for (raw, parsed) in source_style_winners(styles) {
+    let fonts = source_font_styles(styles, classes, definitions);
+    let mut declarations = source_style_winners(styles)
+        .into_iter()
+        .map(|(raw, _)| raw.to_owned())
+        .collect::<Vec<_>>();
+    for font in fonts {
+        let parsed = crate::mermaid_style::parse_style_declaration(&font)
+            .expect("prepared font declaration");
+        if let Some(raw) = declarations.iter_mut().find(|raw| {
+            crate::mermaid_style::parse_style_declaration(raw)
+                .is_some_and(|declaration| declaration.property() == parsed.property())
+        }) {
+            *raw = font;
+        } else {
+            declarations.push(font);
+        }
+    }
+    for raw in &declarations {
+        let parsed = crate::mermaid_style::parse_style_declaration(raw)
+            .expect("prepared source declaration");
         let key = parsed.property();
         if is_box_style_key(key) {
             box_style.push_str(raw);

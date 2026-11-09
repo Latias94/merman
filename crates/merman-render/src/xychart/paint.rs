@@ -400,7 +400,12 @@ impl XyChartPaintPlan {
                             PaintTerminal {
                                 content: label.text.clone().into_boxed_str(),
                                 paint: label.fill.clone().into_boxed_str(),
-                                dimension: label.font_size,
+                                dimension: XyChartTextRole::from_groups(
+                                    group_texts,
+                                    &layout.chart_orientation,
+                                )
+                                .map(|role| typography.svg_font_size(role))
+                                .unwrap_or(label.font_size),
                                 opacity: None,
                                 placement: self
                                     .text_effects

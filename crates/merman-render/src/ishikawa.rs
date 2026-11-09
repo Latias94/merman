@@ -6,7 +6,6 @@ use crate::model::{
 use crate::text::{TextMeasurer, TextStyle};
 use crate::{Error, Result};
 use merman_model::families::ishikawa::{IshikawaDiagramModel, IshikawaNode};
-use serde_json::Value;
 use std::collections::HashMap;
 
 const SPINE_BASE_LENGTH: f64 = 250.0;
@@ -19,17 +18,15 @@ const SIN_A: f64 = 0.990_268_068_741_570_4;
 mod config;
 mod theme;
 
-pub(crate) use config::IshikawaConfigView;
-use config::IshikawaLayoutSettings;
-pub(crate) use theme::{IshikawaCssBinding, IshikawaTextThemePlan};
+pub(crate) use config::{IshikawaConfigView, IshikawaLayoutSettings};
+pub(crate) use theme::{IshikawaCssBinding, IshikawaTextThemePlan, IshikawaTypographyPlan};
 
 pub(crate) fn layout_ishikawa_diagram_typed(
     model: &IshikawaDiagramModel,
-    effective_config: &Value,
-    font_family_css: &str,
+    cfg: &IshikawaLayoutSettings,
+    typography: &IshikawaTypographyPlan,
     measurer: &dyn TextMeasurer,
 ) -> Result<IshikawaDiagramLayout> {
-    let cfg = IshikawaConfigView::new(effective_config).layout_settings();
     let Some(root_id) = model.root else {
         return Ok(IshikawaDiagramLayout {
             bounds: Some(Bounds {
@@ -59,7 +56,7 @@ pub(crate) fn layout_ishikawa_diagram_typed(
         })?;
     let mut ctx = LayoutCtx {
         cfg: cfg.clone(),
-        font_family: font_family_css.to_string(),
+        typography,
         measurer,
         records: &model.nodes,
         bounds: BoundsAcc::new(),
@@ -195,7 +192,7 @@ fn count_descendants(records: &[IshikawaNode], root: usize, seen: &mut [bool]) -
 
 struct LayoutCtx<'a> {
     cfg: IshikawaLayoutSettings,
-    font_family: String,
+    typography: &'a IshikawaTypographyPlan,
     measurer: &'a dyn TextMeasurer,
     records: &'a [IshikawaNode],
     bounds: BoundsAcc,
@@ -621,11 +618,10 @@ fn text_layout(
 ) -> IshikawaTextLayout {
     let lines = split_lines(text);
     let line_height = ctx.cfg.font_size * 1.05;
-    let measure_style =
-        ishikawa_text_measure_style(class_name, ctx.cfg.font_size, &ctx.font_family);
-    let horizontal = ishikawa_text_bbox_x(ctx, &lines, &measure_style, class_name, anchor);
+    let measure_style = ctx.typography.text_style(class_name);
+    let horizontal = ishikawa_text_bbox_x(ctx, &lines, measure_style, class_name, anchor);
     let width = horizontal.left + horizontal.right;
-    let single_height = ishikawa_text_bbox_height_px(class_name, ctx.cfg.font_size);
+    let single_height = ishikawa_text_bbox_height_px(class_name, measure_style.font_size);
     let compatibility_height = if lines.is_empty() {
         single_height
     } else {
@@ -636,7 +632,7 @@ fn text_layout(
     let compatibility_min_y = match vertical_mode {
         VerticalMode::Middle => {
             y - compatibility_height / 2.0
-                - ishikawa_middle_bbox_y_offset_px(class_name, ctx.cfg.font_size)
+                - ishikawa_middle_bbox_y_offset_px(class_name, measure_style.font_size)
         }
         VerticalMode::Baseline => y - compatibility_height,
         VerticalMode::Hanging => y,
@@ -644,7 +640,7 @@ fn text_layout(
     let (min_y, height) = ishikawa_measured_vertical_bounds(
         ctx.measurer,
         &lines,
-        &measure_style,
+        measure_style,
         line_height,
         y,
         vertical_mode,
@@ -659,7 +655,7 @@ fn text_layout(
         y,
         anchor: anchor.as_str().to_string(),
         line_height,
-        font_size: ctx.cfg.font_size,
+        font_size: measure_style.font_size,
         bbox: Bounds {
             min_x,
             min_y,
@@ -703,23 +699,6 @@ fn ishikawa_measured_vertical_bounds(
         max_y = max_y.max(row_y + height);
     }
     Some((min_y, (max_y - min_y).max(0.0)))
-}
-
-fn ishikawa_text_measure_style(class_name: &str, font_size: f64, font_family: &str) -> TextStyle {
-    if class_name == "ishikawa-head-label" {
-        TextStyle {
-            font_family: Some(font_family.to_string()),
-            font_size: 14.0,
-            font_weight: Some("600".to_string()),
-            ..Default::default()
-        }
-    } else {
-        TextStyle {
-            font_family: Some(font_family.to_string()),
-            font_size,
-            ..Default::default()
-        }
-    }
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -791,18 +770,20 @@ fn ishikawa_anchored_line_bbox_x(
 }
 
 fn ishikawa_text_bbox_height_px(class_name: &str, font_size: f64) -> f64 {
-    if class_name == "ishikawa-head-label" {
+    if font_size == 0.0 {
+        0.0
+    } else if class_name == "ishikawa-head-label" && font_size == 14.0 {
         16.0
     } else {
-        (font_size.max(1.0) * 1.15).ceil()
+        (font_size * 1.15).ceil()
     }
 }
 
 fn ishikawa_middle_bbox_y_offset_px(class_name: &str, font_size: f64) -> f64 {
-    if class_name == "ishikawa-head-label" {
+    if class_name == "ishikawa-head-label" && font_size == 14.0 {
         0.0
     } else {
-        font_size.max(1.0) * (21.0 / 256.0)
+        font_size * (21.0 / 256.0)
     }
 }
 
@@ -927,21 +908,17 @@ mod font_style_tests {
     fn text_measurement_uses_the_render_theme_family_and_head_weight() {
         let config = json!({
             "fontFamily": "Cousine, sans-serif",
-            "themeVariables": {"fontFamily": "Different, sans-serif"}
+            "themeVariables": {"fontFamily": "Different, sans-serif", "fontSize": "18px"}
         });
         let config = crate::test_support::presentation_config(config);
-        let font_stack =
-            crate::family::InheritedFontStackPlan::resolve_property_local(None, &config);
-        let family = font_stack.font_family_css();
-        assert_eq!(family, "Different,sans-serif");
-
-        let head = ishikawa_text_measure_style("ishikawa-head-label", 18.0, family);
-        assert_eq!(head.font_family.as_deref(), Some(family));
+        let typography = IshikawaTypographyPlan::resolve(None, &config, 16.0);
+        let head = typography.text_style("ishikawa-head-label");
+        assert_eq!(head.font_family.as_deref(), Some("Different,sans-serif"));
         assert_eq!(head.font_size, 14.0);
         assert_eq!(head.font_weight.as_deref(), Some("600"));
 
-        let cause = ishikawa_text_measure_style("ishikawa-label cause", 18.0, family);
-        assert_eq!(cause.font_family.as_deref(), Some(family));
+        let cause = typography.text_style("ishikawa-label cause");
+        assert_eq!(cause.font_family.as_deref(), Some("Different,sans-serif"));
         assert_eq!(cause.font_size, 18.0);
         assert_eq!(cause.font_weight, None);
     }
@@ -966,8 +943,8 @@ mod font_style_tests {
             "fontFamily": "RootFallback",
             "themeVariables": {"fontFamily": "ThemeWinner"}
         }));
-        let font_stack =
-            crate::family::InheritedFontStackPlan::resolve_property_local(None, &config);
+        let cfg = IshikawaConfigView::new(config.as_value()).layout_settings();
+        let typography = IshikawaTypographyPlan::resolve(None, &config, cfg.font_size);
         let probe = FontProbe(std::cell::RefCell::new(Vec::new()));
         let model = IshikawaDiagramModel {
             root: Some(0),
@@ -977,13 +954,7 @@ mod font_style_tests {
             }],
             ..Default::default()
         };
-        layout_ishikawa_diagram_typed(
-            &model,
-            config.as_value(),
-            font_stack.font_family_css(),
-            &probe,
-        )
-        .unwrap();
+        layout_ishikawa_diagram_typed(&model, &cfg, &typography, &probe).unwrap();
         let styles = probe.0.borrow();
         assert!(!styles.is_empty());
         assert!(

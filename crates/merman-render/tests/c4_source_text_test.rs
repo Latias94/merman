@@ -8,6 +8,10 @@ use merman_render::model::C4DiagramLayout;
 use merman_render::svg::{SvgDebugOptions, SvgRenderOptions};
 
 fn render(source: &str) -> (C4DiagramLayout, String) {
+    render_with_layout_options(source, &LayoutOptions::headless_svg_defaults())
+}
+
+fn render_with_layout_options(source: &str, options: &LayoutOptions) -> (C4DiagramLayout, String) {
     let parsed = MermaidEngine::new()
         .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
         .expect("parse C4")
@@ -16,8 +20,7 @@ fn render(source: &str) -> (C4DiagramLayout, String) {
     let session = RenderEnvironment::deterministic()
         .begin_session()
         .expect("render session");
-    let artifact = family::prepare(&parsed, &LayoutOptions::headless_svg_defaults(), session)
-        .expect("prepare C4");
+    let artifact = family::prepare(&parsed, options, session).expect("prepare C4");
     let projection = artifact.layout_json().expect("layout projection");
     let layout =
         serde_json::from_value(projection["layout"]["C4Diagram"].clone()).expect("typed C4 layout");
@@ -160,4 +163,160 @@ fn c4_explicit_rows_increase_geometry_without_changing_unwrapped_source_text() {
             "c4-name"
         )
     );
+}
+
+#[test]
+fn c4_boundaries_and_relationships_share_mermaids_common_break_tags() {
+    for wrap in [false, true] {
+        for separator in ["<br/>", "<BR />", "</br>", "<br\u{00a0}/>", "<br\u{feff}/>"] {
+            let source = format!(
+                "---\nconfig: {{wrap: {wrap}, c4: {{wrap: {wrap}}}}}\n---\nC4Context\n\
+             Boundary(group, \"Outer{separator}Group\", \"First{separator}Second\") {{\n\
+             System(a, \"Alpha\")\n}}\nSystem(b, \"Beta\")\n\
+             Rel(a, b, \"Calls{separator}Service\", \"HTTP{separator}TLS\")\n"
+            );
+            let (layout, svg) = render(&source);
+            assert_eq!(layout.rels[0].label.line_count, 2, "{separator:?}");
+            let boundary = layout
+                .boundaries
+                .iter()
+                .find(|boundary| boundary.alias == "group")
+                .unwrap();
+            assert_eq!(boundary.label.line_count, 2, "{separator:?}");
+            let document = roxmltree::Document::parse(&svg).unwrap();
+            let rows: Vec<_> = document
+                .descendants()
+                .filter(|node| {
+                    node.has_tag_name("text")
+                        && !node.ancestors().any(|ancestor| {
+                            ancestor.attribute("class").is_some_and(|class| {
+                                class
+                                    .split_ascii_whitespace()
+                                    .any(|name| name == "c4-shape")
+                            })
+                        })
+                })
+                .map(text_content)
+                .collect();
+            assert_eq!(
+                rows,
+                [
+                    "Outer", "Group", "[First", "Second]", "Calls", "Service", "[HTTP", "TLS]"
+                ],
+                "{separator:?}"
+            );
+        }
+    }
+}
+
+#[test]
+fn c4_legacy_text_keeps_literal_newlines_and_invalid_break_tags_in_one_text_element() {
+    for separator in [
+        "\n",
+        "\\n",
+        "<br / >",
+        "<br class=x>",
+        "<br\u{0085}>",
+        "&lt;br/&gt;",
+    ] {
+        let source = format!(
+            "---\nconfig: {{c4: {{wrap: false}}}}\n---\nC4Context\n\
+             System(a, \"Alpha\")\nSystem(b, \"Beta\")\n\
+             Rel(a, b, \"Calls{separator}Service\")\n"
+        );
+        let (layout, svg) = render(&source);
+        assert_eq!(layout.rels[0].label.line_count, 1, "{separator:?}");
+        let document = roxmltree::Document::parse(&svg).unwrap();
+        let rows: Vec<_> = document
+            .descendants()
+            .filter(|node| node.has_tag_name("text"))
+            .map(text_content)
+            .filter(|text| text.starts_with("Calls") || text == "Service")
+            .collect();
+        assert_eq!(rows, [format!("Calls{separator}Service")], "{separator:?}");
+    }
+}
+
+#[test]
+fn c4_legacy_automatic_wrap_prepares_the_rows_used_by_the_svg_writer() {
+    let label = "Alpha Beta Gamma Delta Epsilon Zeta Eta Theta Iota Kappa Lambda Mu";
+    for (root_wrap, c4_wrap) in [(false, true), (true, false), (true, true)] {
+        let source = format!(
+            "---\nconfig: {{wrap: {root_wrap}, c4: {{wrap: {c4_wrap}}}}}\n---\nC4Context\n\
+             Boundary(group, \"{label}\", \"\") {{\nSystem(a, \"Alpha\")\n}}\n"
+        );
+        let mut options = LayoutOptions::headless_svg_defaults();
+        options.container_width = 150.0;
+        let (layout, svg) = render_with_layout_options(&source, &options);
+        let boundary = layout
+            .boundaries
+            .iter()
+            .find(|boundary| boundary.alias == "group")
+            .unwrap();
+        let document = roxmltree::Document::parse(&svg).unwrap();
+        let text_nodes: Vec<_> = document
+            .descendants()
+            .filter(|node| node.has_tag_name("text"))
+            .filter(|node| {
+                !node.ancestors().any(|ancestor| {
+                    ancestor.attribute("class").is_some_and(|class| {
+                        class
+                            .split_ascii_whitespace()
+                            .any(|name| name == "c4-shape")
+                    })
+                })
+            })
+            .collect();
+        let rows: Vec<_> = text_nodes.iter().copied().map(text_content).collect();
+        if root_wrap && c4_wrap {
+            assert!(rows.len() > 1, "the boundary title must actually wrap");
+            assert_eq!(boundary.label.width, 150.0);
+            assert!(boundary.label.height > 16.0);
+            assert_eq!(rows.join(" "), label);
+        } else {
+            assert_eq!(rows, [label]);
+        }
+        assert_eq!(boundary.label.text, rows.join("<br/>"));
+        assert_eq!(boundary.label.line_count, rows.len());
+        let dy: Vec<f64> = text_nodes
+            .iter()
+            .map(|node| {
+                node.children()
+                    .find(|child| child.has_tag_name("tspan"))
+                    .unwrap()
+                    .attribute("dy")
+                    .unwrap()
+                    .parse()
+                    .unwrap()
+            })
+            .collect();
+        assert_eq!(dy.len(), rows.len());
+        for (index, dy) in dy.iter().enumerate() {
+            assert_eq!(*dy, index as f64 * 16.0 - 8.0 * (rows.len() - 1) as f64);
+        }
+    }
+}
+
+#[test]
+fn c4_legacy_prepared_rows_preserve_literal_newlines_and_entity_spellings() {
+    for wrap in [false, true] {
+        for literal in ["A\nB", "A\\nB", "A&lt;br/&gt;B", "A&amp;lt;br/&amp;gt;B"] {
+            let label = format!("{literal}</br>Tail");
+            let source = format!(
+                "---\nconfig: {{wrap: {wrap}, c4: {{wrap: {wrap}}}}}\n---\nC4Context\n\
+                 System(a, \"Alpha\")\nSystem(b, \"Beta\")\nRel(a, b, \"{label}\")\n"
+            );
+            let (layout, svg) = render(&source);
+            assert_eq!(layout.rels[0].label.text, label);
+            assert_eq!(layout.rels[0].label.line_count, 2);
+            let document = roxmltree::Document::parse(&svg).unwrap();
+            let rows: Vec<_> = document
+                .descendants()
+                .filter(|node| node.has_tag_name("text"))
+                .map(text_content)
+                .filter(|text| (text.starts_with('A') && text != "Alpha") || text == "Tail")
+                .collect();
+            assert_eq!(rows, [literal, "Tail"], "wrap={wrap}: {literal:?}");
+        }
+    }
 }

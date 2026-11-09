@@ -9,7 +9,9 @@ thread_local! {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct VisibleTextStyleFacts {
     parse_valid: bool,
+    content_runs: usize,
     visible_runs: usize,
+    font_visibility_verified: bool,
     inherited_color_runs: usize,
     unverified_color_runs: usize,
     unverified_portable_color_runs: usize,
@@ -48,6 +50,8 @@ struct VisibleTextOwners {
     font_size: VisibleTextTypographyOwner,
     font_weight: VisibleTextTypographyOwner,
     font_style: VisibleTextTypographyOwner,
+    used_font_size: Option<f64>,
+    host_font_size: bool,
 }
 
 impl VisibleTextOwners {
@@ -57,6 +61,8 @@ impl VisibleTextOwners {
         font_size: VisibleTextTypographyOwner::Inherited,
         font_weight: VisibleTextTypographyOwner::Inherited,
         font_style: VisibleTextTypographyOwner::Inherited,
+        used_font_size: None,
+        host_font_size: false,
     };
 }
 
@@ -71,7 +77,9 @@ impl VisibleTextStyleFacts {
     const fn empty(parse_valid: bool) -> Self {
         Self {
             parse_valid,
+            content_runs: 0,
             visible_runs: 0,
+            font_visibility_verified: parse_valid,
             inherited_color_runs: 0,
             unverified_color_runs: 0,
             unverified_portable_color_runs: 0,
@@ -88,16 +96,29 @@ impl VisibleTextStyleFacts {
     }
 
     pub(crate) fn from_xhtml_fragment(fragment: &str) -> Self {
-        Self::from_xhtml_fragment_with_policy(fragment, VisibleTextStylePolicy::Inline)
+        Self::from_xhtml_fragment_with_policy(fragment, VisibleTextStylePolicy::Inline, None)
+    }
+
+    /// Excludes only text proven to have zero font size in the actual prepared XHTML.
+    pub(crate) fn from_xhtml_fragment_at_font_size(fragment: &str, font_size: Option<f64>) -> Self {
+        Self::from_xhtml_fragment_with_policy(
+            fragment,
+            VisibleTextStylePolicy::Inline,
+            Some(font_size),
+        )
     }
 
     /// Mindmap's known span-color rules are direct declarations, not inherited ancestor color.
     #[cfg(feature = "diagram-mindmap")]
     pub(crate) fn from_mindmap_xhtml_fragment(fragment: &str) -> Self {
-        Self::from_xhtml_fragment_with_policy(fragment, VisibleTextStylePolicy::Mindmap)
+        Self::from_xhtml_fragment_with_policy(fragment, VisibleTextStylePolicy::Mindmap, None)
     }
 
-    fn from_xhtml_fragment_with_policy(fragment: &str, policy: VisibleTextStylePolicy) -> Self {
+    fn from_xhtml_fragment_with_policy(
+        fragment: &str,
+        policy: VisibleTextStylePolicy,
+        font_size: Option<Option<f64>>,
+    ) -> Self {
         #[cfg(test)]
         FACT_COLLECTIONS.set(FACT_COLLECTIONS.get() + 1);
         let wrapped = format!("<merman-visible-text>{fragment}</merman-visible-text>");
@@ -105,16 +126,30 @@ impl VisibleTextStyleFacts {
             return Self::empty(false);
         };
         let mut facts = Self::empty(true);
-        collect_visible_facts(document.root_element(), &mut facts, policy);
+        collect_visible_facts(document.root_element(), &mut facts, policy, font_size);
         facts
     }
 
     pub(crate) fn plain_text(text: &str) -> Self {
+        Self::plain_text_with_font_size(text, None)
+    }
+
+    pub(crate) fn plain_text_at_font_size(text: &str, font_size: Option<f64>) -> Self {
+        Self::plain_text_with_font_size(text, Some(font_size))
+    }
+
+    fn plain_text_with_font_size(text: &str, font_size: Option<Option<f64>>) -> Self {
         #[cfg(test)]
         FACT_COLLECTIONS.set(FACT_COLLECTIONS.get() + 1);
         let mut facts = Self::empty(true);
         if !trim_html_collapsible_ascii_whitespace(text).is_empty() {
-            facts.observe(VisibleTextOwners::INHERITED);
+            facts.observe(
+                VisibleTextOwners {
+                    used_font_size: font_size.flatten(),
+                    ..VisibleTextOwners::INHERITED
+                },
+                font_size.is_some(),
+            );
         }
         facts
     }
@@ -124,11 +159,25 @@ impl VisibleTextStyleFacts {
     /// SVG label writers emit Markdown tokens as escaped text and only vary weight/style. Inline
     /// HTML attributes therefore remain visible text and cannot own `color` or `font-family`.
     pub(crate) fn from_svg_markdown_projection(markdown: &str) -> Self {
+        Self::svg_markdown_projection_with_font_size(markdown, None)
+    }
+
+    pub(crate) fn from_svg_markdown_projection_at_font_size(
+        markdown: &str,
+        font_size: Option<f64>,
+    ) -> Self {
+        Self::svg_markdown_projection_with_font_size(markdown, Some(font_size))
+    }
+
+    fn svg_markdown_projection_with_font_size(
+        markdown: &str,
+        font_size: Option<Option<f64>>,
+    ) -> Self {
         let has_visible_text = super::mermaid_markdown_to_lines(markdown, true)
             .iter()
             .flatten()
             .any(|(word, _)| !trim_html_collapsible_ascii_whitespace(word).is_empty());
-        Self::plain_text(if has_visible_text { markdown } else { "" })
+        Self::plain_text_with_font_size(if has_visible_text { markdown } else { "" }, font_size)
     }
 
     pub(crate) const fn parse_valid(&self) -> bool {
@@ -136,6 +185,12 @@ impl VisibleTextStyleFacts {
     }
     pub(crate) const fn has_visible_runs(&self) -> bool {
         self.visible_runs != 0
+    }
+    pub(crate) const fn has_content_runs(&self) -> bool {
+        self.content_runs != 0
+    }
+    pub(crate) const fn font_visibility_verified(&self) -> bool {
+        self.font_visibility_verified
     }
     pub(crate) const fn visible_run_count(&self) -> usize {
         self.visible_runs
@@ -158,11 +213,11 @@ impl VisibleTextStyleFacts {
         self.visible_runs - self.inherited_font_family_runs
     }
     /// Known local families still count as unverified for existing inheritance-only consumers.
-    #[cfg(feature = "diagram-mindmap")]
+    #[cfg(any(feature = "diagram-mindmap", feature = "diagram-requirement"))]
     pub(crate) const fn source_owned_font_family_run_count(&self) -> usize {
         self.source_owned_font_family_runs
     }
-    #[cfg(feature = "diagram-mindmap")]
+    #[cfg(any(feature = "diagram-mindmap", feature = "diagram-requirement"))]
     pub(crate) const fn unknown_font_family_run_count(&self) -> usize {
         self.visible_runs - self.inherited_font_family_runs - self.source_owned_font_family_runs
     }
@@ -183,7 +238,14 @@ impl VisibleTextStyleFacts {
         self.visible_runs - self.inherited_color_runs
     }
 
-    fn observe(&mut self, owners: VisibleTextOwners) {
+    fn observe(&mut self, owners: VisibleTextOwners, filter_font_size: bool) {
+        self.content_runs += 1;
+        if filter_font_size {
+            if owners.used_font_size == Some(0.0) {
+                return;
+            }
+            self.font_visibility_verified &= owners.used_font_size.is_some();
+        }
         self.visible_runs += 1;
         self.inherited_color_runs += usize::from(owners.color == VisibleTextColorOwner::Inherited);
         self.unverified_color_runs += usize::from(owners.color == VisibleTextColorOwner::CssClass);
@@ -208,21 +270,31 @@ fn collect_visible_facts(
     root: crate::xml_dom::Node<'_, '_>,
     facts: &mut VisibleTextStyleFacts,
     policy: VisibleTextStylePolicy,
+    font_size: Option<Option<f64>>,
 ) {
     // roxmltree's descendants are a flat preorder range. Each ancestor state is pushed and
     // popped once, retaining inheritance without recursion or repeated ancestor scans.
     let mut parents = Vec::<(crate::xml_dom::NodeId, VisibleTextOwners)>::new();
-    let mut stylesheet_present = false;
+    // A stylesheet may target an earlier sibling; establish that uncertainty before filtering.
+    let stylesheet_present = root
+        .descendants()
+        .any(|node| node.is_element() && node.tag_name().name().eq_ignore_ascii_case("style"));
+    let root_owners = VisibleTextOwners {
+        used_font_size: if stylesheet_present {
+            None
+        } else {
+            font_size.flatten()
+        },
+        host_font_size: stylesheet_present,
+        ..VisibleTextOwners::INHERITED
+    };
     for node in root.descendants() {
         let parent = node.parent().map(|parent| parent.id());
         while parents.last().map(|(id, _)| *id) != parent && !parents.is_empty() {
             parents.pop();
         }
-        let inherited = parents
-            .last()
-            .map_or(VisibleTextOwners::INHERITED, |(_, owners)| *owners);
+        let inherited = parents.last().map_or(root_owners, |(_, owners)| *owners);
         let owners = if node.is_element() {
-            stylesheet_present |= node.tag_name().name().eq_ignore_ascii_case("style");
             let has_css_class = node
                 .attribute("class")
                 .is_some_and(|class| !class.trim().is_empty());
@@ -274,6 +346,28 @@ fn collect_visible_facts(
             } else {
                 inherited.font_size
             };
+            let host_font_size = inherited.host_font_size || has_css_class;
+            let used_font_size = if font_size.is_none() || host_font_size {
+                None
+            } else {
+                let default_size = if has_font_size {
+                    None
+                } else {
+                    super::xhtml_font_default(node.tag_name().name(), "font-size")
+                        .map(|value| {
+                            inherited.used_font_size.and_then(|size| {
+                                crate::mermaid_style::resolve_mermaid_font_size_px(
+                                    value,
+                                    crate::mermaid_style::CssFontSizeContext::uniform(size),
+                                )
+                            })
+                        })
+                        .unwrap_or(inherited.used_font_size)
+                };
+                node.attribute("style").map_or(default_size, |style| {
+                    font_size_after_style(inherited.used_font_size, default_size, style)
+                })
+            };
             VisibleTextOwners {
                 color: inline_color_owner(
                     node.attribute("style"),
@@ -311,12 +405,14 @@ fn collect_visible_facts(
                             .is_some(),
                     has_css_class,
                 ),
+                used_font_size,
+                host_font_size,
             }
         } else {
             inherited
         };
         if node.is_element() && is_fontawesome_icon(node) {
-            facts.observe(owners);
+            facts.observe(owners, font_size.is_some());
         }
         if node.is_text()
             && !node
@@ -326,7 +422,7 @@ fn collect_visible_facts(
                 .text()
                 .is_some_and(|text| !trim_html_collapsible_ascii_whitespace(text).is_empty())
         {
-            facts.observe(owners);
+            facts.observe(owners, font_size.is_some());
         }
         if node.is_element() {
             parents.push((node.id(), owners));
@@ -343,6 +439,55 @@ fn collect_visible_facts(
         facts.inherited_font_weight_runs = 0;
         facts.inherited_font_style_runs = 0;
     }
+}
+
+/// Resolves the existing admitted font-size subset while leaving host-dependent CSS unknown.
+pub(crate) fn visible_text_font_size_after_style(parent: Option<f64>, style: &str) -> Option<f64> {
+    font_size_after_style(parent, parent, style)
+}
+
+fn font_size_after_style(parent: Option<f64>, fallback: Option<f64>, style: &str) -> Option<f64> {
+    use crate::mermaid_style::{self, CssFontSizeContext, CssFontSizeOwnership};
+
+    let mut winner = None;
+    mermaid_style::visit_style_declaration_boundaries(style, |boundary| {
+        let Some(owner) = mermaid_style::css_font_size_override(boundary.raw()) else {
+            return;
+        };
+        if winner.is_some_and(|(important, _)| important && !owner.important()) {
+            return;
+        }
+        let size = match owner.ownership() {
+            CssFontSizeOwnership::Inherited => parent,
+            CssFontSizeOwnership::SourceOwned | CssFontSizeOwnership::Unverified => {
+                mermaid_style::parse_style_declaration(boundary.raw()).and_then(|declaration| {
+                    if declaration.property() != "font-size" {
+                        return None;
+                    }
+                    if declaration.font_size_is_literal_zero() {
+                        return Some(0.0);
+                    }
+                    declaration
+                        .analysis()
+                        .context_free_font_size_px()
+                        .or_else(|| {
+                            if declaration.analysis().depends_on_root_font_size()
+                                || owner.ownership() == CssFontSizeOwnership::Unverified
+                            {
+                                None
+                            } else {
+                                parent.and_then(|size| {
+                                    declaration
+                                        .resolve_font_size_px(CssFontSizeContext::uniform(size))
+                                })
+                            }
+                        })
+                })
+            }
+        };
+        winner = Some((owner.important(), size));
+    });
+    winner.map_or(fallback, |(_, size)| size)
 }
 
 fn inline_typography_owner(
@@ -545,6 +690,91 @@ fn is_fontawesome_icon(node: crate::xml_dom::Node<'_, '_>) -> bool {
 #[cfg(test)]
 mod tests {
     use super::VisibleTextStyleFacts;
+
+    #[test]
+    fn sized_facts_exclude_zero_runs_and_keep_positive_descendants() {
+        for (fragment, size, visible) in [
+            ("Hidden", Some(0.0), 0),
+            ("<small><big>Hidden</big></small>", Some(0.0), 0),
+            ("<span style='font-size:2em'>Hidden</span>", Some(0.0), 0),
+            ("<span style='font-size:24pt'>Visible</span>", Some(0.0), 1),
+            ("<span style='font-size:24px'>Visible</span>", None, 1),
+            (
+                "<span style='font-size:0px'>Hidden<span style='font-size:24px'>Visible</span></span>",
+                Some(16.0),
+                1,
+            ),
+        ] {
+            let (facts, collections) = VisibleTextStyleFacts::count_collections(|| {
+                VisibleTextStyleFacts::from_xhtml_fragment_at_font_size(fragment, size)
+            });
+            assert_eq!(collections, 1, "{fragment}");
+            assert!(facts.has_content_runs(), "{fragment}");
+            assert!(facts.parse_valid(), "{fragment}");
+            assert_eq!(facts.visible_run_count(), visible, "{fragment}");
+            assert!(facts.font_visibility_verified(), "{fragment}");
+        }
+    }
+
+    #[test]
+    fn sized_facts_follow_declaration_priority_and_element_defaults() {
+        for (fragment, visible) in [
+            (
+                "<span style='font-size:0px!important;font-size:24px'>Hidden</span>",
+                0,
+            ),
+            (
+                "<span style='font-size:0px;font-size:24px!important'>Visible</span>",
+                1,
+            ),
+            ("<span style='font-size:-1px'>Inherited</span>", 1),
+            ("<small style='font-size:-1px'>Inherited default</small>", 1),
+            ("<span style='font-size:0rem'>Hidden</span>", 0),
+            ("<span style='font-size:0cap'>Hidden</span>", 0),
+        ] {
+            let facts =
+                VisibleTextStyleFacts::from_xhtml_fragment_at_font_size(fragment, Some(16.0));
+            assert_eq!(facts.visible_run_count(), visible, "{fragment}");
+            assert!(facts.font_visibility_verified(), "{fragment}");
+        }
+        let facts = VisibleTextStyleFacts::from_xhtml_fragment_at_font_size(
+            "<span style='font-size:0;color:red'>Hidden</span><strong>Visible</strong>",
+            Some(16.0),
+        );
+        assert_eq!(facts.visible_run_count(), 1);
+        assert_eq!(facts.inherited_color_run_count(), 1);
+        assert_eq!(facts.unverified_font_weight_run_count(), 1);
+    }
+
+    #[test]
+    fn sized_facts_preserve_host_dependent_text_as_unverified() {
+        for fragment in [
+            "<span style='font-size:1rem'>Host root</span>",
+            "<span style='font-size:calc(1em + 1px)'>Expression</span>",
+            "<span class='host'>Host class</span>",
+            "Earlier text<style>span{font-size:24px}</style>",
+            "<span class='host'><span style='font-size:0px'>Host descendant selector</span></span>",
+        ] {
+            let facts =
+                VisibleTextStyleFacts::from_xhtml_fragment_at_font_size(fragment, Some(0.0));
+            assert!(facts.has_visible_runs(), "{fragment}");
+            assert!(facts.has_content_runs(), "{fragment}");
+            assert!(!facts.font_visibility_verified(), "{fragment}");
+        }
+    }
+
+    #[test]
+    fn sized_svg_facts_keep_html_spelling_as_literal_text() {
+        let source = "<span style='font-size:0px;font-family:Other'>Literal</span>";
+        let visible =
+            VisibleTextStyleFacts::from_svg_markdown_projection_at_font_size(source, Some(16.0));
+        assert!(visible.has_visible_runs());
+        assert_eq!(visible.inherited_font_family_run_count(), 1);
+        let hidden =
+            VisibleTextStyleFacts::from_svg_markdown_projection_at_font_size(source, Some(0.0));
+        assert!(hidden.has_content_runs());
+        assert!(!hidden.has_visible_runs());
+    }
 
     #[test]
     fn facts_only_retain_the_queried_ownership_summary() {

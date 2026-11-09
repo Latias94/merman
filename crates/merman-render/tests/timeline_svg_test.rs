@@ -168,6 +168,83 @@ fn timeline_typography_theme_with_font_size(
         .expect("compile Timeline typography theme")
 }
 
+#[test]
+fn timeline_zero_size_keeps_labels_and_event_shapes_without_text_evidence() {
+    let theme = DiagramThemeCompiler::new()
+        .compile(
+            DiagramThemeSpec::new()
+                .with_typography(
+                    TypographySpec::default().with_family_style(
+                        merman_render::DiagramFamilyId::TIMELINE,
+                        ThemeTextStyle::default()
+                            .with_font_stack(FontStack::single("Timeline Typed").unwrap())
+                            .with_font_size_px(24.0)
+                            .unwrap(),
+                    ),
+                )
+                .with_styles(
+                    ThemeRuleSet::default()
+                        .with_rule(ThemeRule::new(
+                            ThemeTarget::Title,
+                            ThemeStylePatch::default()
+                                .with_fill(CanvasPaint::solid("#123456").unwrap()),
+                        ))
+                        .with_rule(ThemeRule::new(
+                            ThemeTarget::TimelineEvent,
+                            ThemeStylePatch::default()
+                                .with_fill(CanvasPaint::solid("#654321").unwrap()),
+                        )),
+                ),
+        )
+        .unwrap();
+    for direction in ["LR", "TD"] {
+        let rendered = try_render_timeline_with_theme_and_engine(
+            &format!("timeline {direction}\ntitle Release\nsection Work\nToday : Ship\n"),
+            &theme,
+            MermaidEngine::new().with_site_config(
+                merman_core::presentation::SourcePresentationConfig::from_value(
+                    serde_json::json!({"themeVariables": {"fontSize": "0px"}}),
+                ),
+            ),
+        )
+        .unwrap();
+        assert!(rendered.svg().contains("font-size:0px;"));
+        assert!(rendered.svg().contains("Ship"));
+        assert!(rendered.svg().contains("#654321"));
+        let evidence =
+            merman_render::__private::family_evidence(rendered.into_completion().report());
+        assert_eq!(evidence.required_count(), 4);
+        assert_eq!(
+            evidence.applied_count(),
+            1,
+            "{direction}: only event paint is visible"
+        );
+        assert_eq!(evidence.not_applicable_count(), 3);
+        assert_eq!(evidence.theme_residual_count(), 0);
+    }
+}
+
+#[test]
+fn timeline_subpixel_typed_size_reaches_css_and_terminal_receipt() {
+    let theme = timeline_typography_theme_with_font_size(
+        FontStack::single("Timeline Typed").unwrap(),
+        Some(0.5),
+    );
+    for direction in ["LR", "TD"] {
+        let rendered = try_render_timeline_with_theme_and_engine(
+            &format!("timeline {direction}\nsection Work\nToday : Ship\n"),
+            &theme,
+            MermaidEngine::new(),
+        )
+        .unwrap();
+        assert!(rendered.svg().contains("font-size:0.5px;"));
+        let evidence =
+            merman_render::__private::family_evidence(rendered.into_completion().report());
+        assert_eq!(evidence.applied_count(), 2);
+        assert_eq!(evidence.theme_residual_count(), 0);
+    }
+}
+
 fn try_render_timeline_with_theme_and_engine(
     source: &str,
     theme: &DiagramTheme,
@@ -2100,8 +2177,10 @@ fn timeline_font_size_ownership_requires_a_consumed_config_value() {
         (serde_json::json!("Infinity"), 24, false),
         (serde_json::json!("30px"), 30, true),
         (serde_json::json!(30), 30, true),
-        (serde_json::json!(0), 1, true),
-        (serde_json::json!(-2), 1, true),
+        (serde_json::json!(0), 0, true),
+        (serde_json::json!(-2), 24, false),
+        (serde_json::json!("-2px"), 24, false),
+        (serde_json::json!("-2pt"), 24, false),
     ] {
         let config = serde_json::json!({"themeVariables": {"fontSize": value}});
         for source_owned in [false, true] {
@@ -2132,8 +2211,15 @@ fn timeline_font_size_ownership_requires_a_consumed_config_value() {
             let evidence =
                 merman_render::__private::family_evidence(rendered.into_completion().report());
             assert_eq!(evidence.required_count(), 2);
-            assert_eq!(evidence.applied_count(), if config_owned { 1 } else { 2 });
-            assert_eq!(evidence.not_applicable_count(), usize::from(config_owned));
+            let applied = if expected_size == 0 {
+                0
+            } else if config_owned {
+                1
+            } else {
+                2
+            };
+            assert_eq!(evidence.applied_count(), applied);
+            assert_eq!(evidence.not_applicable_count(), 2 - applied);
             assert_eq!(evidence.theme_residual_count(), 0);
         }
     }

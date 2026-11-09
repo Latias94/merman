@@ -225,6 +225,22 @@ fn kanban_task_rect_height(document: &roxmltree::Document<'_>, id: &str) -> f64 
         .expect("Kanban task rect height")
 }
 
+fn kanban_root_font_size_css(svg: &str, diagram_id: &str) -> String {
+    let document = roxmltree::Document::parse(svg).expect("valid Kanban SVG");
+    let css = document
+        .descendants()
+        .find(|node| node.has_tag_name("style"))
+        .and_then(|node| node.text())
+        .expect("Kanban stylesheet");
+    css.split('}')
+        .find(|rule| rule.starts_with(&format!("#{diagram_id}{{")))
+        .expect("Kanban root CSS rule")
+        .split(';')
+        .find_map(|declaration| declaration.strip_prefix("font-size:"))
+        .expect("Kanban root font size")
+        .to_owned()
+}
+
 fn kanban_task_label_foreign_object(
     document: &roxmltree::Document<'_>,
     id: &str,
@@ -1300,6 +1316,210 @@ fn kanban_task_label_css_class_ownership_is_not_portably_provable() {
 }
 
 #[test]
+fn kanban_task_label_unknown_metadata_is_residual_despite_a_verified_title() {
+    let theme = kanban_task_label_theme("#123456");
+    for base_size in [0.0, 0.5] {
+        let title = if base_size == 0.0 {
+            "<span style='font-size:12px'>Task</span>"
+        } else {
+            "Task"
+        };
+        for field in ["ticket", "assigned"] {
+            for metadata in [
+                "Visible <span class='host'>Unknown</span>",
+                "Visible <span style='font-size:var(--host-size)'>Unknown</span>",
+            ] {
+                let source = format!(
+                    "kanban\n  todo[Todo]\n    task[\"{title}\"]@{{ {field}: \"{metadata}\" }}\n"
+                );
+                let engine = || {
+                    MermaidEngine::new().with_site_config(
+                        merman_core::presentation::SourcePresentationConfig::from_value(
+                            serde_json::json!({
+                                "securityLevel": "loose",
+                                "themeVariables": { "fontSize": format!("{base_size}px") },
+                                "kanban": { "ticketBaseUrl": "https://example.invalid/#TICKET#" }
+                            }),
+                        ),
+                    )
+                };
+                let rendered = render_kanban_with_theme_and_engine(
+                    &source,
+                    &theme,
+                    engine(),
+                    ThemePortabilityRequirement::BestEffort,
+                );
+                let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+                assert_eq!(
+                    kanban_task_label_style(&document, "kanban-palette-task"),
+                    "color:#123456;fill:#123456;text-align:left !important"
+                );
+                let unknown = document
+                    .descendants()
+                    .find(|node| node.is_text() && node.text() == Some("Unknown"))
+                    .expect("the unverified metadata is emitted");
+                assert!(unknown.parent().is_some_and(|span| {
+                    span.attribute("class") == Some("host")
+                        || span.attribute("style") == Some("font-size:var(--host-size)")
+                }));
+                assert_eq!(
+                    unknown.ancestors().any(|node| node.has_tag_name("a")),
+                    field == "ticket",
+                    "the ticket link retains the same unverified terminal"
+                );
+                let evidence =
+                    merman_render::__private::family_evidence(rendered.into_completion().report());
+                assert_eq!(evidence.required_count(), 1);
+                assert_eq!(evidence.accounted_count(), 1);
+                assert_eq!(evidence.applied_count(), 0, "{field}: {metadata}");
+                assert_eq!(evidence.not_applicable_count(), 0);
+                assert_eq!(evidence.theme_residual_count(), 1, "{field}: {metadata}");
+
+                let error = match try_render_kanban_with_theme_and_engine(
+                    &source,
+                    &theme,
+                    engine(),
+                    ThemePortabilityRequirement::RequirePortable,
+                ) {
+                    Ok(_) => panic!("a verified title cannot certify unknown {field} metadata"),
+                    Err(error) => error,
+                };
+                assert_eq!(
+                    error.unverified_family_theme(),
+                    Some((merman_render::DiagramFamilyId::KANBAN, 1)),
+                    "base={base_size}, {field}: {metadata}"
+                );
+            }
+        }
+    }
+}
+
+#[test]
+fn kanban_task_label_unknown_metadata_only_invalidates_its_terminal_rule() {
+    let source = concat!(
+        "kanban\n  todo[Todo]\n",
+        "    first[First]\n",
+        "    second[Second]@{ assigned: \"Visible <span class='host'>Unknown</span>\" }\n",
+    );
+    for style_second in [false, true] {
+        let mut rules = vec![
+            ThemeRule::new(
+                ThemeTarget::Task,
+                ThemeStylePatch::default().with_fill(CanvasPaint::solid("#fedcba").unwrap()),
+            ),
+            kanban_task_label_rule("#123456", 1),
+        ];
+        if style_second {
+            rules.push(kanban_task_label_rule("#abcdef", 2));
+        }
+        let theme = kanban_task_rules_theme(rules);
+        let rendered = render_kanban_with_theme_and_engine(
+            source,
+            &theme,
+            MermaidEngine::new().with_site_config(
+                merman_core::presentation::SourcePresentationConfig::from_value(
+                    serde_json::json!({
+                        "securityLevel": "loose"
+                    }),
+                ),
+            ),
+            if style_second {
+                ThemePortabilityRequirement::BestEffort
+            } else {
+                ThemePortabilityRequirement::RequirePortable
+            },
+        );
+        let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+        for id in ["kanban-palette-first", "kanban-palette-second"] {
+            assert_eq!(kanban_task_rect_style(&document, id), "fill:#fedcba;");
+        }
+        assert_eq!(
+            kanban_task_label_style(&document, "kanban-palette-first"),
+            "color:#123456;fill:#123456;text-align:left !important"
+        );
+        assert_eq!(
+            kanban_task_label_style(&document, "kanban-palette-second"),
+            if style_second {
+                "color:#abcdef;fill:#abcdef;text-align:left !important"
+            } else {
+                "text-align:left !important"
+            }
+        );
+        let evidence =
+            merman_render::__private::family_evidence(rendered.into_completion().report());
+        assert_eq!(evidence.required_count(), 2 + usize::from(style_second));
+        assert_eq!(evidence.accounted_count(), evidence.required_count());
+        assert_eq!(evidence.applied_count(), 2);
+        assert_eq!(evidence.not_applicable_count(), 0);
+        assert_eq!(evidence.theme_residual_count(), usize::from(style_second));
+    }
+}
+
+#[test]
+fn kanban_task_label_known_metadata_does_not_claim_or_block_source_paint() {
+    let theme = kanban_task_label_theme("#123456");
+    for field in ["ticket", "assigned"] {
+        for metadata in [
+            "<span style='color:#abcdef'>Owned</span>",
+            "<span style='font-size:0px'>Hidden</span>",
+        ] {
+            for inherited_title in [false, true] {
+                let title = if inherited_title {
+                    "Task"
+                } else {
+                    "<span style='color:#abcdef'>Task</span>"
+                };
+                let source = format!(
+                    "kanban\n  todo[Todo]\n    task[\"{title}\"]@{{ {field}: \"{metadata}\" }}\n"
+                );
+                let rendered = render_kanban_with_theme_and_engine(
+                    &source,
+                    &theme,
+                    MermaidEngine::new().with_site_config(
+                        merman_core::presentation::SourcePresentationConfig::from_value(
+                            serde_json::json!({
+                                "securityLevel": "loose",
+                                "themeVariables": { "fontSize": "0.5px" }
+                            }),
+                        ),
+                    ),
+                    ThemePortabilityRequirement::RequirePortable,
+                );
+                let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+                assert_eq!(
+                    kanban_task_label_style(&document, "kanban-palette-task"),
+                    if inherited_title {
+                        "color:#123456;fill:#123456;text-align:left !important"
+                    } else {
+                        "text-align:left !important"
+                    }
+                );
+                let metadata_text = document
+                    .descendants()
+                    .find(|node| node.is_text() && matches!(node.text(), Some("Owned" | "Hidden")))
+                    .expect("known source metadata remains serialized");
+                assert!(metadata_text.parent().is_some_and(|span| {
+                    matches!(
+                        span.attribute("style"),
+                        Some("color:#abcdef" | "font-size:0px")
+                    )
+                }));
+                let evidence =
+                    merman_render::__private::family_evidence(rendered.into_completion().report());
+                assert_eq!(evidence.required_count(), 1);
+                assert_eq!(evidence.accounted_count(), 1);
+                assert_eq!(evidence.applied_count(), usize::from(inherited_title));
+                assert_eq!(
+                    evidence.not_applicable_count(),
+                    usize::from(!inherited_title)
+                );
+                assert_eq!(evidence.theme_residual_count(), 0);
+            }
+        }
+    }
+}
+
+#[test]
 fn kanban_typed_icon_task_label_preserves_the_label_background_class() {
     let theme = kanban_task_label_theme("#123456");
     let rendered = render_kanban_with_theme_and_engine(
@@ -2031,7 +2251,11 @@ fn kanban_configured_diagram_and_root_fonts_preserve_typography_binding_semantic
 #[test]
 fn kanban_root_font_size_preserves_numeric_and_css_unit_fallbacks() {
     for (font_size, expected_css) in [
+        (serde_json::json!(0), "0px"),
+        (serde_json::json!(0.5), "0.5px"),
         (serde_json::json!(20), "20px"),
+        (serde_json::json!("0px"), "16px"),
+        (serde_json::json!("0.5px"), "16px"),
         (serde_json::json!("20px"), "16px"),
     ] {
         let source = format!(
@@ -2041,7 +2265,9 @@ fn kanban_root_font_size_preserves_numeric_and_css_unit_fallbacks() {
                 "themeVariables": { "fontSize": "" }
             })
         );
-        let (_, svg) = parse_layout_and_render(&source);
+        let (layout, svg) = parse_layout_and_render(&source);
+        let expected_size: f64 = expected_css.strip_suffix("px").unwrap().parse().unwrap();
+        assert_eq!(layout.items[0].height, 20.0 + 1.5 * expected_size);
         let document = roxmltree::Document::parse(&svg).expect("valid Kanban SVG");
         let css = document
             .descendants()
@@ -2056,6 +2282,197 @@ fn kanban_root_font_size_preserves_numeric_and_css_unit_fallbacks() {
             root_rule.contains(&format!("font-size:{expected_css};")),
             "font_size={font_size}: {root_rule}"
         );
+    }
+}
+
+#[test]
+fn kanban_source_and_site_nonnegative_sizes_share_geometry_css_and_receipts() {
+    let theme = kanban_typography_theme(
+        ThemeTextStyle::default()
+            .with_font_stack(FontStack::single("KanbanTyped").expect("valid font stack"))
+            .with_font_size_px(24.0)
+            .expect("valid Kanban font size"),
+    );
+    let board = "kanban\n  todo[Todo]\n    task[Task]\n";
+    for from_source in [false, true] {
+        for html_labels in [false, true] {
+            for (value, size) in [
+                (serde_json::json!(0), 0.0),
+                (serde_json::json!("0px"), 0.0),
+                (serde_json::json!(0.5), 0.5),
+                (serde_json::json!("0.5px"), 0.5),
+            ] {
+                let config = serde_json::json!({
+                    "htmlLabels": html_labels,
+                    "themeVariables": { "fontSize": value }
+                });
+                let (source, engine) = if from_source {
+                    (
+                        format!("---\nconfig: {config}\n---\n{board}"),
+                        MermaidEngine::new(),
+                    )
+                } else {
+                    (
+                        board.to_owned(),
+                        MermaidEngine::new().with_site_config(
+                            merman_core::presentation::SourcePresentationConfig::from_value(config),
+                        ),
+                    )
+                };
+                let (layout, rendered) = try_render_kanban_with_layout_and_environment(
+                    &source,
+                    &theme,
+                    engine,
+                    ThemePortabilityRequirement::RequirePortable,
+                    RenderEnvironment::deterministic(),
+                )
+                .expect("render inherited zero/subpixel Kanban size");
+                let context =
+                    format!("source={from_source}, htmlLabels={html_labels}, fontSize={value}");
+                assert_eq!(
+                    kanban_root_font_size_css(rendered.svg(), "kanban-palette"),
+                    format!("{size}px"),
+                    "{context}"
+                );
+                let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+                let expected_height = 20.0 + 1.5 * size;
+                assert_eq!(layout.items[0].height, expected_height, "{context}");
+                assert_eq!(
+                    layout.sections[0].rect_height,
+                    55.0 + 1.5 * size,
+                    "{context}"
+                );
+                assert_eq!(
+                    kanban_task_rect_height(&document, "kanban-palette-task"),
+                    expected_height,
+                    "{context}"
+                );
+                let (width, height) =
+                    kanban_task_label_foreign_object(&document, "kanban-palette-task", "Task");
+                assert_eq!(height, 24.0, "fixed Kanban label wrapper: {context}");
+                if size == 0.0 {
+                    assert_eq!(width, 0.0, "zero-size glyphs reserve no width: {context}");
+                } else {
+                    assert!(width > 0.0 && width < 10.0, "{context}: width={width}");
+                }
+                let evidence =
+                    merman_render::__private::family_evidence(rendered.into_completion().report());
+                assert_eq!(evidence.required_count(), 2, "{context}");
+                assert_eq!(evidence.accounted_count(), 2, "{context}");
+                assert_eq!(
+                    evidence.applied_count(),
+                    usize::from(size > 0.0),
+                    "{context}"
+                );
+                assert_eq!(
+                    evidence.not_applicable_count(),
+                    if size == 0.0 { 2 } else { 1 },
+                    "zero text must not certify the typed font stack: {context}"
+                );
+                assert_eq!(evidence.theme_residual_count(), 0, "{context}");
+            }
+        }
+    }
+}
+
+#[test]
+fn kanban_invalid_theme_size_falls_back_to_valid_root_or_default_without_a_theme() {
+    for from_source in [false, true] {
+        for (theme_size, root_size, expected_size) in [
+            (serde_json::json!(-2), serde_json::json!(0), 0.0),
+            (serde_json::json!("-2px"), serde_json::json!(0.5), 0.5),
+            (serde_json::json!("bogus"), serde_json::json!(0.5), 0.5),
+            (serde_json::json!(""), serde_json::json!(0.5), 0.5),
+            (serde_json::json!(-2), serde_json::json!(-3), 16.0),
+        ] {
+            let config = serde_json::json!({
+                "fontSize": root_size,
+                "themeVariables": { "fontSize": theme_size }
+            });
+            let board = "kanban\n  todo[Todo]\n    task[Task]\n";
+            let (source, engine) = if from_source {
+                (
+                    format!("---\nconfig: {config}\n---\n{board}"),
+                    MermaidEngine::new(),
+                )
+            } else {
+                (
+                    board.to_owned(),
+                    MermaidEngine::new().with_site_config(
+                        merman_core::presentation::SourcePresentationConfig::from_value(config),
+                    ),
+                )
+            };
+            let parsed = engine
+                .parse_diagram_for_render_model_sync(&source, ParseOptions::strict())
+                .unwrap()
+                .unwrap()
+                .into_presentation();
+            let artifact = family::prepare(
+                &parsed,
+                &LayoutOptions::default(),
+                RenderEnvironment::deterministic().begin_session().unwrap(),
+            )
+            .expect("prepare unthemed Kanban size fallback");
+            let (layout, svg) = render_kanban_artifact(artifact).unwrap();
+            assert_eq!(
+                kanban_root_font_size_css(&svg, "kanban-markdown"),
+                format!("{expected_size}px"),
+                "source={from_source}, theme={theme_size}, root={root_size}"
+            );
+            assert_eq!(layout.items[0].height, 20.0 + 1.5 * expected_size);
+        }
+    }
+}
+
+#[test]
+fn kanban_unrequested_typography_measures_the_canonical_common_css_size() {
+    let theme = kanban_task_rules_theme([ThemeRule::new(
+        ThemeTarget::Text,
+        ThemeStylePatch::default().with_fill(CanvasPaint::solid("#123456").unwrap()),
+    )]);
+    for from_source in [false, true] {
+        let config = serde_json::json!({
+            "themeVariables": { "fontSize": "0.00000001px" }
+        });
+        let board = "kanban\n  todo[Todo]\n    task[Task]\n";
+        let (source, engine) = if from_source {
+            (
+                format!("---\nconfig: {config}\n---\n{board}"),
+                MermaidEngine::new(),
+            )
+        } else {
+            (
+                board.to_owned(),
+                MermaidEngine::new().with_site_config(
+                    merman_core::presentation::SourcePresentationConfig::from_value(config),
+                ),
+            )
+        };
+        let (layout, rendered) = try_render_kanban_with_layout_and_environment(
+            &source,
+            &theme,
+            engine,
+            ThemePortabilityRequirement::RequirePortable,
+            RenderEnvironment::deterministic(),
+        )
+        .expect("bind unrequested Kanban typography to its actual common CSS size");
+        assert_eq!(
+            kanban_root_font_size_css(rendered.svg(), "kanban-palette"),
+            "0px"
+        );
+        assert_eq!(layout.items[0].height, 20.0);
+        let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+        assert_eq!(
+            kanban_task_label_foreign_object(&document, "kanban-palette-task", "Task").0,
+            0.0
+        );
+        let evidence =
+            merman_render::__private::family_evidence(rendered.into_completion().report());
+        assert_eq!(evidence.required_count(), 1);
+        assert_eq!(evidence.applied_count(), 0);
+        assert_eq!(evidence.not_applicable_count(), 1);
+        assert_eq!(evidence.theme_residual_count(), 0);
     }
 }
 
@@ -2131,6 +2548,51 @@ fn kanban_typed_font_size_reaches_measurement_layout_css_and_evidence() {
 }
 
 #[test]
+fn kanban_typed_subpixel_size_reaches_the_measurement_callback_css_and_receipt() {
+    let theme = kanban_typography_theme(
+        ThemeTextStyle::default()
+            .with_font_size_px(0.5)
+            .expect("positive typed subpixel font size"),
+    );
+    let (environment, expected_size_calls, unexpected_size_calls) =
+        kanban_probe_environment(0.5, "test.kanban-typed-subpixel-font-size");
+    let (layout, rendered) = try_render_kanban_with_layout_and_environment(
+        "kanban\n  todo[Todo]\n    task[Task]\n",
+        &theme,
+        MermaidEngine::new().with_site_config(
+            merman_core::presentation::SourcePresentationConfig::from_value(serde_json::json!({
+                "fontSize": 30,
+                "kanban": { "fontSize": 0 }
+            })),
+        ),
+        ThemePortabilityRequirement::RequirePortable,
+        environment,
+    )
+    .expect("render typed subpixel Kanban font size");
+    assert!(expected_size_calls.load(Ordering::Relaxed) > 0);
+    assert_eq!(unexpected_size_calls.load(Ordering::Relaxed), 0);
+    assert_eq!(
+        kanban_root_font_size_css(rendered.svg(), "kanban-palette"),
+        "0.5px"
+    );
+    assert_eq!(
+        layout.items[0].height, 33.5,
+        "probe title height plus fixed padding"
+    );
+    let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+    assert_eq!(
+        kanban_task_rect_height(&document, "kanban-palette-task"),
+        33.5
+    );
+    let evidence = merman_render::__private::family_evidence(rendered.into_completion().report());
+    assert_eq!(evidence.required_count(), 1);
+    assert_eq!(evidence.accounted_count(), 1);
+    assert_eq!(evidence.applied_count(), 1);
+    assert_eq!(evidence.not_applicable_count(), 0);
+    assert_eq!(evidence.theme_residual_count(), 0);
+}
+
+#[test]
 fn kanban_typed_font_size_yields_to_explicit_theme_variable_ownership() {
     let source = concat!(
         "kanban\n",
@@ -2186,7 +2648,74 @@ fn kanban_typed_font_size_yields_to_explicit_theme_variable_ownership() {
 }
 
 #[test]
-fn kanban_invalid_explicit_font_size_is_unverified_not_not_applicable() {
+fn kanban_invalid_explicit_font_size_does_not_displace_the_typed_owner() {
+    let theme = kanban_typography_theme(
+        ThemeTextStyle::default()
+            .with_font_size_px(0.5)
+            .expect("valid Kanban font size"),
+    );
+    for from_source in [false, true] {
+        for value in [
+            serde_json::json!(-2),
+            serde_json::json!("-2px"),
+            serde_json::json!("bogus"),
+            serde_json::json!(""),
+            serde_json::Value::Null,
+        ] {
+            let config = serde_json::json!({
+                "fontSize": 30,
+                "themeVariables": { "fontSize": value }
+            });
+            let board = "kanban\n  todo[Todo]\n    task[Task]\n";
+            let (source, engine) = if from_source {
+                (
+                    format!("---\nconfig: {config}\n---\n{board}"),
+                    MermaidEngine::new(),
+                )
+            } else {
+                (
+                    board.to_owned(),
+                    MermaidEngine::new().with_site_config(
+                        merman_core::presentation::SourcePresentationConfig::from_value(config),
+                    ),
+                )
+            };
+            let (environment, expected_size_calls, unexpected_size_calls) =
+                kanban_probe_environment(0.5, "test.kanban-invalid-config-font-size");
+            let (_, rendered) = try_render_kanban_with_layout_and_environment(
+                &source,
+                &theme,
+                engine,
+                ThemePortabilityRequirement::RequirePortable,
+                environment,
+            )
+            .expect("invalid font-size candidate must leave the typed owner active");
+            assert!(expected_size_calls.load(Ordering::Relaxed) > 0);
+            assert_eq!(unexpected_size_calls.load(Ordering::Relaxed), 0);
+            assert_eq!(
+                kanban_root_font_size_css(rendered.svg(), "kanban-palette"),
+                "0.5px"
+            );
+            let evidence =
+                merman_render::__private::family_evidence(rendered.into_completion().report());
+            assert_eq!(
+                evidence.required_count(),
+                1,
+                "source={from_source}, value={value}"
+            );
+            assert_eq!(
+                evidence.applied_count(),
+                1,
+                "source={from_source}, value={value}"
+            );
+            assert_eq!(evidence.not_applicable_count(), 0);
+            assert_eq!(evidence.theme_residual_count(), 0);
+        }
+    }
+}
+
+#[test]
+fn kanban_unmeasured_explicit_font_size_retains_its_portability_residual() {
     let theme = kanban_typography_theme(
         ThemeTextStyle::default()
             .with_font_size_px(24.0)
@@ -2194,12 +2723,8 @@ fn kanban_invalid_explicit_font_size_is_unverified_not_not_applicable() {
     );
 
     for (label, value) in [
-        ("negative number", serde_json::json!(-2)),
-        ("zero number", serde_json::json!(0)),
-        ("negative px", serde_json::json!("-2px")),
-        ("zero px", serde_json::json!("0px")),
         ("relative unit", serde_json::json!("1em")),
-        ("unknown value", serde_json::json!("bogus")),
+        ("host expression", serde_json::json!("var(--kanban-size)")),
     ] {
         let source = "kanban\n  todo[Todo]\n    task[Task]\n";
         let rendered = render_kanban_with_theme_and_engine(
@@ -2216,7 +2741,7 @@ fn kanban_invalid_explicit_font_size_is_unverified_not_not_applicable() {
         );
         assert!(
             rendered.svg().contains("font-size:16px"),
-            "invalid configured size should use a bounded fallback in BestEffort mode: {label}"
+            "unmeasured configured size retains its existing fallback in BestEffort mode: {label}"
         );
         assert!(!rendered.svg().contains("font-size:24px"));
 
@@ -2240,7 +2765,7 @@ fn kanban_invalid_explicit_font_size_is_unverified_not_not_applicable() {
             ),
             ThemePortabilityRequirement::RequirePortable,
         ) {
-            Ok(_) => panic!("invalid source size must fail closed in portable mode"),
+            Ok(_) => panic!("unmeasured source size must fail closed in portable mode"),
             Err(error) => error,
         };
         assert_eq!(
@@ -2329,6 +2854,296 @@ fn kanban_source_owned_font_size_is_a_property_local_portability_residual() {
         error.unverified_family_theme(),
         Some((merman_render::DiagramFamilyId::KANBAN, 1))
     );
+}
+
+#[test]
+fn kanban_zero_base_preserves_local_absolute_sizes_and_independent_font_ownership() {
+    let theme = kanban_typography_theme(
+        ThemeTextStyle::default()
+            .with_font_stack(FontStack::single("KanbanTyped").expect("valid font stack"))
+            .with_font_size_px(24.0)
+            .expect("valid Kanban font size"),
+    );
+    for (label, expected_height, expected_applied, expected_residual) in [
+        ("Hidden", 20.0, 0, 0),
+        ("<span style='font-size:0px'>Hidden</span>", 20.0, 0, 0),
+        ("<span style='font-size:0rem'>Hidden</span>", 20.0, 0, 0),
+        ("<span style='font-size:200%'>Hidden</span>", 20.0, 0, 0),
+        ("<big><small>Hidden</small></big>", 20.0, 0, 0),
+        ("<span style='font-size:-2px'>Hidden</span>", 20.0, 0, 0),
+        (
+            "<span style='font-size:0 !important;font-size:12px'>Hidden</span>",
+            20.0,
+            0,
+            0,
+        ),
+        (
+            "Hidden <span style='font-size:12px'>Restored</span>",
+            38.0,
+            1,
+            0,
+        ),
+        (
+            "<span style='font-size:12px'><span style='font-size:0'>Hidden</span>Restored</span>",
+            38.0,
+            1,
+            0,
+        ),
+        (
+            "<span style='font-size:12px;font-size:-2px !important'>Restored</span>",
+            38.0,
+            1,
+            0,
+        ),
+        (
+            "<small style='font-size:12px'><big style='font-size:inherit'>Restored</big></small>",
+            38.0,
+            1,
+            0,
+        ),
+        (
+            "<span style='font-size:12px;font-family:LocalFont'>Restored</span>",
+            38.0,
+            0,
+            1,
+        ),
+        (
+            "<span style='font-size:var(--local-size)'>Uncertain</span>",
+            20.0,
+            0,
+            1,
+        ),
+        (
+            "<span style='font-size:var(--local-size) !important;font-size:0px'>Uncertain</span>",
+            20.0,
+            0,
+            1,
+        ),
+        ("<span style='font-size:1rem'>Restored</span>", 44.0, 0, 1),
+        ("<span class='local-label'>Uncertain</span>", 20.0, 0, 1),
+    ] {
+        let source = format!("kanban\n  todo[Todo]\n    task[\"{label}\"]\n");
+        let portability = if expected_residual == 0 {
+            ThemePortabilityRequirement::RequirePortable
+        } else {
+            ThemePortabilityRequirement::BestEffort
+        };
+        let (layout, rendered) = try_render_kanban_with_layout_and_environment(
+            &source,
+            &theme,
+            MermaidEngine::new().with_site_config(
+                merman_core::presentation::SourcePresentationConfig::from_value(
+                    serde_json::json!({
+                        "securityLevel": "loose",
+                        "themeVariables": { "fontSize": "0px" }
+                    }),
+                ),
+            ),
+            portability,
+            RenderEnvironment::deterministic(),
+        )
+        .expect("render zero-base Kanban with independent local typography");
+        assert_eq!(
+            kanban_root_font_size_css(rendered.svg(), "kanban-palette"),
+            "0px"
+        );
+        assert_eq!(layout.items[0].height, expected_height, "label={label}");
+        let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+        assert_eq!(
+            kanban_task_rect_height(&document, "kanban-palette-task"),
+            expected_height,
+            "label={label}"
+        );
+        assert!(
+            document.descendants().any(|node| {
+                node.is_text()
+                    && node.text().is_some_and(|text| {
+                        text.contains("Hidden") || text.contains("Restored") || text == "Uncertain"
+                    })
+            }),
+            "visibility receipts must not remove serialized source text: {label}"
+        );
+        if expected_height > 20.0 {
+            let restored = document
+                .descendants()
+                .find(|node| node.is_text() && node.text() == Some("Restored"))
+                .expect("locally restored text");
+            let foreign_object = restored
+                .ancestors()
+                .find(|node| node.has_tag_name("foreignObject"))
+                .unwrap();
+            assert!(
+                foreign_object
+                    .attribute("width")
+                    .unwrap()
+                    .parse::<f64>()
+                    .unwrap()
+                    > 0.0
+            );
+        }
+        let evidence =
+            merman_render::__private::family_evidence(rendered.into_completion().report());
+        assert_eq!(evidence.required_count(), 2, "label={label}");
+        assert_eq!(evidence.accounted_count(), 2, "label={label}");
+        assert_eq!(evidence.applied_count(), expected_applied, "label={label}");
+        assert_eq!(
+            evidence.theme_residual_count(),
+            expected_residual,
+            "label={label}"
+        );
+        assert_eq!(
+            evidence.not_applicable_count(),
+            2 - expected_applied - expected_residual,
+            "label={label}"
+        );
+    }
+}
+
+#[test]
+fn kanban_zero_inline_text_does_not_certify_positive_typed_fonts() {
+    let theme = kanban_typography_theme(
+        ThemeTextStyle::default()
+            .with_font_stack(FontStack::single("KanbanTyped").expect("valid font stack"))
+            .with_font_size_px(0.5)
+            .expect("valid Kanban subpixel font size"),
+    );
+    let rendered = render_kanban_with_theme_and_engine(
+        concat!(
+            "kanban\n",
+            "  todo[\"<span style='font-size:0px'>Todo</span>\"]\n",
+            "    task[\"<span style='font-size:0px'>Task</span>\"]\n",
+        ),
+        &theme,
+        MermaidEngine::new().with_site_config(
+            merman_core::presentation::SourcePresentationConfig::from_value(serde_json::json!({
+                "securityLevel": "loose"
+            })),
+        ),
+        ThemePortabilityRequirement::RequirePortable,
+    );
+    assert_eq!(
+        kanban_root_font_size_css(rendered.svg(), "kanban-palette"),
+        "0.5px"
+    );
+    assert!(rendered.svg().contains("font-size:0px"));
+    let evidence = merman_render::__private::family_evidence(rendered.into_completion().report());
+    assert_eq!(evidence.required_count(), 2);
+    assert_eq!(evidence.applied_count(), 0);
+    assert_eq!(evidence.not_applicable_count(), 2);
+    assert_eq!(evidence.theme_residual_count(), 0);
+}
+
+#[test]
+fn kanban_zero_text_does_not_certify_label_paint_or_suppress_independent_card_paint() {
+    let theme = DiagramThemeCompiler::new()
+        .compile(
+            DiagramThemeSpec::new()
+                .with_typography(
+                    TypographySpec::default().with_family_style(
+                        merman_render::DiagramFamilyId::KANBAN,
+                        ThemeTextStyle::default()
+                            .with_font_stack(FontStack::single("KanbanTyped").unwrap())
+                            .with_font_size_px(0.5)
+                            .unwrap(),
+                    ),
+                )
+                .with_styles(
+                    ThemeRuleSet::default()
+                        .with_rule(ThemeRule::new(
+                            ThemeTarget::Task,
+                            ThemeStylePatch::default()
+                                .with_fill(CanvasPaint::solid("#123456").unwrap()),
+                        ))
+                        .with_rule(ThemeRule::new(
+                            ThemeTarget::TaskLabel,
+                            ThemeStylePatch::default()
+                                .with_fill(CanvasPaint::solid("#abcdef").unwrap()),
+                        ))
+                        .with_rule(ThemeRule::new(
+                            ThemeTarget::Text,
+                            ThemeStylePatch::default()
+                                .with_fill(CanvasPaint::solid("#654321").unwrap()),
+                        )),
+                ),
+        )
+        .unwrap();
+    let rendered = render_kanban_with_theme_and_engine(
+        "kanban\n  todo[Todo]\n    task[Task]\n",
+        &theme,
+        MermaidEngine::new().with_site_config(
+            merman_core::presentation::SourcePresentationConfig::from_value(serde_json::json!({
+                "themeVariables": { "fontSize": "0px" }
+            })),
+        ),
+        ThemePortabilityRequirement::RequirePortable,
+    );
+    let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+    assert!(kanban_task_rect_style(&document, "kanban-palette-task").contains("fill:#123456"));
+    let evidence = merman_render::__private::family_evidence(rendered.into_completion().report());
+    assert_eq!(evidence.required_count(), 5);
+    assert_eq!(evidence.accounted_count(), 5);
+    assert_eq!(evidence.applied_count(), 1);
+    assert_eq!(evidence.not_applicable_count(), 4);
+    assert_eq!(evidence.theme_residual_count(), 0);
+}
+
+#[test]
+fn kanban_zero_base_allows_ticket_and_assigned_absolute_sizes_to_restore_visibility() {
+    let theme = kanban_typography_theme(
+        ThemeTextStyle::default()
+            .with_font_stack(FontStack::single("KanbanTyped").expect("valid font stack")),
+    );
+    for field in ["ticket", "assigned"] {
+        let source = format!(
+            "kanban\n  todo[Todo]\n    task[Task]@{{ {field}: \"<span style='font-size:12px'>Restored</span>\" }}\n"
+        );
+        let (layout, rendered) = try_render_kanban_with_layout_and_environment(
+            &source,
+            &theme,
+            MermaidEngine::new().with_site_config(
+                merman_core::presentation::SourcePresentationConfig::from_value(
+                    serde_json::json!({
+                        "securityLevel": "loose",
+                        "themeVariables": { "fontSize": "0px" }
+                    }),
+                ),
+            ),
+            ThemePortabilityRequirement::RequirePortable,
+            RenderEnvironment::deterministic(),
+        )
+        .expect("metadata can restore visible text below a zero Kanban base");
+        assert_eq!(
+            kanban_root_font_size_css(rendered.svg(), "kanban-palette"),
+            "0px"
+        );
+        assert_eq!(
+            layout.items[0].height, 29.0,
+            "{field} detail contributes half its height"
+        );
+        let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+        let restored = document
+            .descendants()
+            .find(|node| node.is_text() && node.text() == Some("Restored"))
+            .expect("visible prepared metadata");
+        let foreign_object = restored
+            .ancestors()
+            .find(|node| node.has_tag_name("foreignObject"))
+            .unwrap();
+        assert!(
+            foreign_object
+                .attribute("width")
+                .unwrap()
+                .parse::<f64>()
+                .unwrap()
+                > 0.0
+        );
+        let evidence =
+            merman_render::__private::family_evidence(rendered.into_completion().report());
+        assert_eq!(evidence.required_count(), 1);
+        assert_eq!(evidence.applied_count(), 1, "{field}");
+        assert_eq!(evidence.not_applicable_count(), 0);
+        assert_eq!(evidence.theme_residual_count(), 0);
+    }
 }
 
 #[test]

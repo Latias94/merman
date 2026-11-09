@@ -1418,6 +1418,67 @@ fn xychart_ignored_role_font_sizes_preserve_typed_size_and_independent_weight() 
 }
 
 #[test]
+fn xychart_legend_minimum_size_retains_source_and_site_ownership() {
+    use merman_render::diagram_theme::{Specified, ThemeRule, ThemeStylePatch};
+    let mut patch = ThemeStylePatch::default();
+    patch.typography.font_size_px = Specified::Value(24.0);
+    patch.typography.font_weight = Specified::Value(700);
+    let theme = xychart_paint_rules([ThemeRule::new(ThemeTarget::Legend, patch)]);
+    for (value, expected, marker_width) in [
+        (serde_json::json!(-1), "1", "0.75"),
+        (serde_json::json!(0), "1", "0.75"),
+        (serde_json::json!(1), "1", "0.75"),
+        (serde_json::Value::Null, "24", "18"),
+    ] {
+        let config = serde_json::json!({"xyChart": {"legendFontSize": value}});
+        for from_source in [false, true] {
+            let source = "xychart\nx-axis [A]\ny-axis 0 --> 1\nbar Bars [1]\n";
+            let (source, site) = if from_source {
+                (
+                    format!("---\nconfig: {config}\n---\n{source}"),
+                    serde_json::json!({}),
+                )
+            } else {
+                (source.to_owned(), config.clone())
+            };
+            let rendered = render_xychart_with_theme_and_engine(
+                &source,
+                &theme,
+                MermaidEngine::new().with_site_config(
+                    merman_core::presentation::SourcePresentationConfig::from_value(site),
+                ),
+            );
+            let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+            let legend = xychart_plot_group(&document, "legend");
+            let label = legend
+                .descendants()
+                .find(|node| node.has_tag_name("text"))
+                .unwrap();
+            assert_eq!(
+                label.attribute("font-size"),
+                Some(expected),
+                "{value}/{from_source}"
+            );
+            assert_eq!(label.attribute("font-weight"), Some("700"));
+            let marker = legend
+                .descendants()
+                .find(|node| node.has_tag_name("rect"))
+                .unwrap();
+            assert_eq!(marker.attribute("width"), Some(marker_width));
+            let evidence =
+                merman_render::__private::family_evidence(rendered.into_completion().report());
+            assert_eq!(evidence.required_count(), 1);
+            assert_eq!(
+                evidence.applied_count(),
+                1,
+                "independent weight still applies"
+            );
+            assert_eq!(evidence.theme_residual_count(), 0);
+        }
+    }
+}
+
+#[test]
 fn xychart_title_overridden_rules_are_not_applicable_and_mixed_winners_remain_residual() {
     use merman_render::diagram_theme::{
         CanvasPaint, OrdinalSelector, ThemeRule, ThemeStylePatch, ThemeVariant,
@@ -3036,16 +3097,20 @@ fn xychart_legend_fill_distinguishes_absence_source_ownership_and_applied_winner
 
 #[test]
 fn xychart_title_font_metrics_and_output_share_the_typed_winner() {
-    struct TitleProbe(std::sync::atomic::AtomicUsize);
+    struct TitleProbe {
+        size: f64,
+        calls: std::sync::atomic::AtomicUsize,
+    }
     impl TextMeasurer for TitleProbe {
         fn measure_svg_simple_text_bbox_height_px(&self, text: &str, style: &TextStyle) -> f64 {
             self.measure(text, style).height
         }
         fn measure(&self, text: &str, style: &TextStyle) -> TextMetrics {
             if text == "TitleProbe" {
-                assert_eq!(style.font_size, 18.0);
+                assert_eq!(style.font_size, self.size);
                 assert_eq!(style.font_weight.as_deref(), Some("700"));
-                self.0.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                self.calls
+                    .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
             }
             TextMetrics {
                 width: text.len() as f64 * style.font_size,
@@ -3063,36 +3128,151 @@ fn xychart_title_font_metrics_and_output_share_the_typed_winner() {
     }))
     .unwrap();
     let theme = DiagramThemeCompiler::new().compile_recipe(recipe).unwrap();
-    let probe = Arc::new(TitleProbe(std::sync::atomic::AtomicUsize::new(0)));
-    let environment = RenderEnvironment::deterministic().with_text_measurement_policy(
-        TextMeasurementPolicy::uniform(TextMeasurementProfile::new(
-            TextMeasurementProfileIdentity::new(
-                MeasurementProfileId::new("xy-title-test").unwrap(),
-                "1",
-            )
-            .unwrap(),
-            probe.clone(),
-        )),
-    );
-    let (_, rendered) = try_render_xychart_with_theme(
-        "xychart\ntitle TitleProbe\nx-axis [A, B]\ny-axis 0 --> 10\nbar [3, 7]",
-        &theme,
-        MermaidEngine::new(),
-        &environment,
-        "chart",
-    )
-    .unwrap();
-    assert!(probe.0.load(std::sync::atomic::Ordering::Relaxed) > 0);
-    let xml = roxmltree::Document::parse(rendered.svg()).unwrap();
-    let title = xychart_plot_group(&xml, "chart-title")
-        .children()
-        .find(|n| n.has_tag_name("text"))
+    for (configured_size, expected_size, emitted_size) in [
+        (serde_json::Value::Null, 18.0, "18"),
+        (serde_json::json!(-1), 18.0, "18"),
+        (serde_json::json!(0), 0.0, "0"),
+        (serde_json::json!("23px"), 23.0, "23"),
+    ] {
+        let probe = Arc::new(TitleProbe {
+            size: expected_size,
+            calls: std::sync::atomic::AtomicUsize::new(0),
+        });
+        let environment = RenderEnvironment::deterministic().with_text_measurement_policy(
+            TextMeasurementPolicy::uniform(TextMeasurementProfile::new(
+                TextMeasurementProfileIdentity::new(
+                    MeasurementProfileId::new("xy-title-test").unwrap(),
+                    "1",
+                )
+                .unwrap(),
+                probe.clone(),
+            )),
+        );
+        let (_, rendered) = try_render_xychart_with_theme(
+            "xychart\ntitle TitleProbe\nx-axis [A, B]\ny-axis 0 --> 10\nbar [3, 7]",
+            &theme,
+            MermaidEngine::new().with_site_config(
+                merman_core::presentation::SourcePresentationConfig::from_value(
+                    serde_json::json!({
+                        "xyChart": {"titleFontSize": configured_size}
+                    }),
+                ),
+            ),
+            &environment,
+            "chart",
+        )
         .unwrap();
-    assert_eq!(title.attribute("font-size"), Some("18"));
-    assert_eq!(title.attribute("font-weight"), Some("700"));
-    let evidence = merman_render::__private::family_evidence(rendered.into_completion().report());
-    assert_eq!(evidence.required_count(), evidence.accounted_count());
-    assert_eq!(evidence.theme_residual_count(), 0);
+        assert!(probe.calls.load(std::sync::atomic::Ordering::Relaxed) > 0);
+        let xml = roxmltree::Document::parse(rendered.svg()).unwrap();
+        let title = xychart_plot_group(&xml, "chart-title")
+            .children()
+            .find(|n| n.has_tag_name("text"))
+            .unwrap();
+        assert_eq!(title.attribute("font-size"), Some(emitted_size));
+        assert_eq!(title.attribute("font-weight"), Some("700"));
+        let evidence =
+            merman_render::__private::family_evidence(rendered.into_completion().report());
+        assert_eq!(evidence.required_count(), evidence.accounted_count());
+        assert_eq!(evidence.theme_residual_count(), 0);
+    }
+}
+
+#[test]
+fn xychart_negative_source_size_uses_the_emitted_root_for_metrics_and_visibility() {
+    use merman_render::diagram_theme::{CanvasPaint, ThemeRule, ThemeStylePatch};
+
+    struct TitleProbe {
+        size: f64,
+        calls: std::sync::atomic::AtomicUsize,
+    }
+    impl TextMeasurer for TitleProbe {
+        fn measure_svg_simple_text_bbox_height_px(&self, text: &str, style: &TextStyle) -> f64 {
+            self.measure(text, style).height
+        }
+        fn measure(&self, text: &str, style: &TextStyle) -> TextMetrics {
+            if text == "Revenue" {
+                assert_eq!(style.font_size, self.size);
+                self.calls
+                    .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+            }
+            TextMetrics {
+                width: text.len() as f64 * style.font_size,
+                height: style.font_size,
+                line_count: 1,
+            }
+        }
+    }
+    let theme = DiagramThemeCompiler::new()
+        .compile(
+            DiagramThemeSpec::new()
+                .with_typography(TypographySpec::default().with_family_style(
+                    DiagramFamilyId::XY_CHART,
+                    ThemeTextStyle::default().with_font_weight(700).unwrap(),
+                ))
+                .with_styles(ThemeRuleSet::default().with_rule(ThemeRule::new(
+                    ThemeTarget::Title,
+                    ThemeStylePatch::default().with_fill(CanvasPaint::solid("#123456").unwrap()),
+                ))),
+        )
+        .unwrap();
+    for (root, root_css, raw, used, emitted) in [
+        ("24pt", "32px", -1.0, 32.0, "-1"),
+        ("24pt", "32px", 0.0, 0.0, "0"),
+        ("24pt", "32px", 0.5, 0.5, "0.5"),
+        ("0px", "0px", -1.0, 0.0, "-1"),
+        ("0px", "0px", 0.0, 0.0, "0"),
+        ("0.5px", "0.5px", -1.0, 0.5, "-1"),
+    ] {
+        let probe = Arc::new(TitleProbe {
+            size: used,
+            calls: std::sync::atomic::AtomicUsize::new(0),
+        });
+        let environment = RenderEnvironment::deterministic().with_text_measurement_policy(
+            TextMeasurementPolicy::uniform(TextMeasurementProfile::new(
+                TextMeasurementProfileIdentity::new(
+                    MeasurementProfileId::new("xy-inherited-size-test").unwrap(),
+                    "1",
+                )
+                .unwrap(),
+                probe.clone(),
+            )),
+        );
+        let source = format!(
+            "---\nconfig:\n  themeVariables: {{fontSize: {root}}}\n  xyChart:\n    titleFontSize: {raw}\n    xAxis: {{showLabel: false, showTitle: false}}\n    yAxis: {{showLabel: false, showTitle: false}}\n---\nxychart\ntitle Revenue\nx-axis [A]\ny-axis 0 --> 1\nline [1]\n"
+        );
+        let (layout, rendered) = try_render_xychart_with_theme(
+            &source,
+            &theme,
+            MermaidEngine::new(),
+            &environment,
+            "chart",
+        )
+        .unwrap();
+        assert!(probe.calls.load(std::sync::atomic::Ordering::Relaxed) > 0);
+        assert!(layout.drawables.iter().any(|drawable| {
+            matches!(drawable, XyChartDrawableElem::Text { data, .. }
+                if data.iter().any(|label| label.text == "Revenue" && label.font_size == used))
+        }));
+        let xml = roxmltree::Document::parse(rendered.svg()).unwrap();
+        let title = xychart_plot_group(&xml, "chart-title")
+            .children()
+            .find(|node| node.has_tag_name("text"))
+            .unwrap();
+        assert_eq!(title.attribute("font-size"), Some(emitted));
+        assert_eq!(title.attribute("fill"), Some("#123456"));
+        assert!(rendered.svg().contains("#chart{font-family:"));
+        assert!(rendered.svg().contains(&format!("font-size:{root_css};")));
+        let evidence =
+            merman_render::__private::family_evidence(rendered.into_completion().report());
+        assert_eq!(evidence.required_count(), 2);
+        assert_eq!(evidence.accounted_count(), 2);
+        assert_eq!(evidence.applied_count(), usize::from(used > 0.0));
+        assert_eq!(evidence.theme_residual_count(), usize::from(used > 0.0));
+        assert_eq!(
+            evidence.not_applicable_count(),
+            if used == 0.0 { 2 } else { 0 }
+        );
+    }
 }
 
 fn xychart_role_recipe(styles: serde_json::Value) -> DiagramTheme {

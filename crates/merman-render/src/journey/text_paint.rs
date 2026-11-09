@@ -58,6 +58,7 @@ impl JourneyTextPaintPlan {
         theme: Option<&ResolvedDiagramTheme>,
         config: &PresentationConfig,
         diagram_title: Option<&str>,
+        typography: &super::JourneyTypographyThemePlan,
         work: &OperationWorkMeter,
     ) -> Result<Self, OperationWorkError> {
         let mut plan = Self {
@@ -78,8 +79,9 @@ impl JourneyTextPaintPlan {
         let Some(theme) = theme else { return Ok(plan) };
         let config_owned = config.config_paint_overrides_typed_default("themeVariables.textColor");
         let title_owned = !plan.source_title_color.is_empty() || config_owned;
+        let title_can_be_visible = plan.title.is_some() && typography.title_can_be_visible();
         let mut title_fill_winner = None;
-        if plan.title.is_some() && !title_owned {
+        if title_can_be_visible && !title_owned {
             let style = theme.style_with_work_meter(
                 ThemeTarget::Title,
                 ThemeVariant::Default,
@@ -174,7 +176,7 @@ impl JourneyTextPaintPlan {
                 UnsupportedTerminalDomain::direct(
                     ThemeTarget::Title,
                     TerminalVariantDomain::uniform(
-                        usize::from(plan.title.is_some()),
+                        usize::from(title_can_be_visible),
                         ThemeVariant::Default,
                     ),
                 )

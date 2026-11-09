@@ -188,7 +188,7 @@ fn prepare_sankey_family<'parsed>(
         execution.resolved_theme(),
         &meta.effective_config,
         &layout,
-        execution.work_meter_ref(),
+        &execution.work_meter(),
     )?;
     node_palette.prepare_links(
         &layout,
@@ -573,9 +573,9 @@ fn prepare_c4_family<'parsed>(
         meta.effective_config.as_value(),
         &typography_theme,
         execution.text_measurer(),
-        execution.container_width,
-        execution.container_height,
+        crate::geom::Size::new(execution.container_width, execution.container_height),
         execution.screen_available_width,
+        execution.work_meter_ref(),
     )?;
     text_paint.bind_source_terminal_paint(
         model,
@@ -677,7 +677,7 @@ fn prepare_timeline_family<'parsed>(
     let event_theme = crate::timeline::TimelineEventTheme::resolve_with_binding(
         execution.resolved_theme(),
         &meta.effective_config,
-        typography_theme.css_binding(),
+        &typography_theme,
         &layout,
         execution.work_meter_ref(),
     )?;
@@ -698,6 +698,10 @@ fn prepare_journey_family<'parsed>(
     meta: &PresentationMetadata,
     execution: &LayoutExecution<'_>,
 ) -> Result<BuiltinFamilyArtifact<'parsed>> {
+    let typography_theme = crate::journey::JourneyTypographyThemePlan::resolve(
+        execution.resolved_theme(),
+        &meta.effective_config,
+    );
     let text_paint = crate::journey::JourneyTextPaintPlan::resolve(
         execution.resolved_theme(),
         &meta.effective_config,
@@ -706,13 +710,10 @@ fn prepare_journey_family<'parsed>(
             .as_deref()
             .filter(|title| !title.trim().is_empty())
             .or(meta.title.as_deref()),
+        &typography_theme,
         execution.work_meter_ref(),
     )?;
-    let typography_theme = crate::journey::JourneyTypographyThemePlan::resolve_with_text_paint(
-        execution.resolved_theme(),
-        &meta.effective_config,
-        text_paint.fill_css(),
-    );
+    let typography_theme = typography_theme.with_text_paint(text_paint.fill_css());
     let layout = crate::journey::layout_journey_diagram_typed_with_resolved_typography(
         model,
         &typography_theme,
@@ -807,19 +808,13 @@ fn prepare_treemap_family<'parsed>(
         meta.effective_config.as_value(),
         execution.work_meter_ref(),
     )?;
-    let title_theme = crate::treemap::TreemapTitleThemePlan::resolve(
-        execution.resolved_theme(),
-        &meta.effective_config,
-        layout.title.as_deref(),
-        execution.work_meter_ref(),
-    )?;
-    let typography_theme = crate::treemap::TreemapTypographyThemePlan::resolve_with_title_fill(
-        execution.resolved_theme(),
-        &meta.effective_config,
-        &layout,
-        execution.work_meter(),
-        title_theme.fill_css(),
-    )?;
+    let (title_theme, typography_theme) =
+        crate::treemap::TreemapTypographyThemePlan::resolve_with_title(
+            execution.resolved_theme(),
+            &meta.effective_config,
+            &layout,
+            execution.work_meter(),
+        )?;
     Ok(BuiltinFamilyArtifact::Treemap(Box::new(
         TreemapFamilyArtifact {
             pair: FamilyPair::new(model, layout),
@@ -1052,7 +1047,6 @@ fn prepare_packet_family<'parsed>(
         model,
         meta.title.as_deref(),
         meta.effective_config.as_value(),
-        execution.text_measurer(),
     )?;
     Ok(BuiltinFamilyArtifact::Packet(Box::new(
         PacketFamilyArtifact {
@@ -1317,22 +1311,25 @@ fn prepare_ishikawa_family<'parsed>(
     meta: &PresentationMetadata,
     execution: &LayoutExecution<'_>,
 ) -> Result<BuiltinFamilyArtifact<'parsed>> {
-    let inherited_font_stack = crate::family::InheritedFontStackPlan::resolve_property_local(
+    let cfg = crate::ishikawa::IshikawaConfigView::new(meta.effective_config.as_value())
+        .layout_settings();
+    let typography = crate::ishikawa::IshikawaTypographyPlan::resolve(
         execution.resolved_theme(),
         &meta.effective_config,
+        cfg.font_size,
     );
     let layout = crate::ishikawa::layout_ishikawa_diagram_typed(
         model,
-        meta.effective_config.as_value(),
-        inherited_font_stack.font_family_css(),
+        &cfg,
+        &typography,
         execution.text_measurer(),
     )?;
-    let text_theme = crate::ishikawa::IshikawaTextThemePlan::resolve_with_font_stack(
+    let text_theme = crate::ishikawa::IshikawaTextThemePlan::resolve_with_typography(
         execution.resolved_theme(),
         &meta.effective_config,
         &layout,
         execution.work_meter_ref(),
-        inherited_font_stack,
+        typography,
     )?;
     Ok(BuiltinFamilyArtifact::Ishikawa(Box::new(
         IshikawaFamilyArtifact {

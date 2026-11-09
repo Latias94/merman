@@ -175,7 +175,14 @@ impl<'a> ErEntityThemeReceipt<'a> {
     }
 
     fn record_text(&mut self, id: ErTextTerminalId, facts: &VisibleTextStyleFacts) {
-        if !self.records_text_terminals() || !facts.has_visible_runs() {
+        if !self.records_text_terminals()
+            || !facts.has_visible_runs()
+            || self
+                .plan
+                .text_terminals
+                .get(&id)
+                .is_none_or(|text| text.visible_run_count == 0)
+        {
             return;
         }
         if let Some(paint) = self
@@ -185,19 +192,25 @@ impl<'a> ErEntityThemeReceipt<'a> {
             .and_then(|text| text.paint.as_ref())
         {
             self.outcomes.applied_rules.insert(paint.rule_index);
-            if facts.inherited_color_run_count() != facts.visible_run_count() {
+            if !facts.font_visibility_verified()
+                || facts.inherited_color_run_count() != facts.visible_run_count()
+            {
                 self.outcomes.unverified_rules.insert(paint.rule_index);
             }
         }
         if !id.is_subgraph_label() {
-            self.outcomes.font_stack_visible = true;
-            self.outcomes.font_stack_unverified |=
-                facts.inherited_font_family_run_count() != facts.visible_run_count();
-            if !id.is_relation_label() {
-                self.outcomes.font_size_visible = true;
-                self.outcomes.font_size_unverified |=
-                    facts.inherited_font_size_run_count() != facts.visible_run_count();
-            }
+            self.record_typography(facts, id.is_relation_label());
+        }
+    }
+
+    fn record_typography(&mut self, facts: &VisibleTextStyleFacts, is_relation: bool) {
+        self.outcomes.font_stack_visible = true;
+        self.outcomes.font_stack_unverified |= !facts.font_visibility_verified()
+            || facts.inherited_font_family_run_count() != facts.visible_run_count();
+        if !is_relation {
+            self.outcomes.font_size_visible = true;
+            self.outcomes.font_size_unverified |= !facts.font_visibility_verified()
+                || facts.inherited_font_size_run_count() != facts.visible_run_count();
         }
     }
 
@@ -227,11 +240,28 @@ impl<'a> ErEntityThemeReceipt<'a> {
         self.record_text(ErTextTerminalId::SubgraphLabel(id.into()), facts);
     }
 
+    pub(crate) fn record_html_subgraph_label(&mut self, id: &str) {
+        if !self.records_text_terminals() {
+            return;
+        }
+        let plan = self.plan;
+        if let Some(label) = plan.html_subgraph_label(id) {
+            let facts = label.visible_style_facts();
+            if facts.has_visible_runs() {
+                // HTML cluster paint remains outside the typed Text-fill terminal domain.
+                self.record_typography(facts, false);
+            }
+        }
+    }
+
     pub(crate) fn record_diagram_title_paint(&mut self, title: &str) {
         if self.records_text_terminals() {
             self.record_text(
                 ErTextTerminalId::DiagramTitle,
-                &VisibleTextStyleFacts::plain_text(title),
+                &VisibleTextStyleFacts::plain_text_at_font_size(
+                    title,
+                    Some(self.plan.css_binding.render_settings.font_size),
+                ),
             );
         }
     }

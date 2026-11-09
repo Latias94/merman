@@ -1517,7 +1517,9 @@ fn wardley_absent_title_and_unused_marker_definitions_do_not_apply_paint() {
             ))
             .with_rule(ThemeRule::new(
                 ThemeTarget::Marker,
-                ThemeStylePatch::default().with_fill(CanvasPaint::solid("#123456").unwrap()),
+                ThemeStylePatch::default()
+                    .with_fill(CanvasPaint::solid("#123456").unwrap())
+                    .with_stroke(CanvasPaint::solid("#654321").unwrap()),
             )),
     );
     let source = "wardley-beta\ncomponent API [0.5, 0.5]\n";
@@ -1545,6 +1547,95 @@ fn wardley_absent_title_and_unused_marker_definitions_do_not_apply_paint() {
     let evidence = merman_render::__private::family_evidence(rendered.into_completion().report());
     assert_eq!(evidence.not_applicable_count(), 2);
     assert_eq!(evidence.applied_count(), 0);
+}
+
+#[test]
+fn wardley_source_marker_fill_does_not_own_marker_stroke() {
+    for (source, source_key, edge_class, expected_references) in [
+        (
+            "wardley-beta\ncomponent A [0.7, 0.4]\ncomponent B [0.3, 0.6]\nA +<> B\n",
+            "linkStroke",
+            "wardley-link",
+            2,
+        ),
+        (
+            "wardley-beta\ncomponent A [0.7, 0.4]\nevolve A 0.85\n",
+            "evolutionStroke",
+            "wardley-trend",
+            1,
+        ),
+    ] {
+        for (stroke, expected_stroke) in [
+            (
+                Specified::Value(CanvasPaint::solid("#ff0000").unwrap()),
+                "#ff0000",
+            ),
+            (Specified::Value(CanvasPaint::Transparent), "transparent"),
+            (Specified::Clear, "none"),
+        ] {
+            let mut patch =
+                ThemeStylePatch::default().with_fill(CanvasPaint::solid("#445566").unwrap());
+            patch.stroke.paint = stroke;
+            let theme = wardley_paint_theme(
+                ThemeRuleSet::default().with_rule(ThemeRule::new(ThemeTarget::Marker, patch)),
+            );
+            let engine = MermaidEngine::new().with_site_config(
+                merman_core::presentation::SourcePresentationConfig::from_value(
+                    serde_json::json!({
+                        "themeVariables": { "wardley": { (source_key): "#123456" } }
+                    }),
+                ),
+            );
+            let (_, rendered) = try_render_wardley_with_theme(
+                source,
+                &theme,
+                engine,
+                &portable_wardley_environment(),
+                "wardley-marker-ownership",
+            )
+            .expect("source-owned marker fill must leave the independent stroke themeable");
+            let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+            let edge = element_with_class(&document, "line", edge_class);
+            assert_eq!(edge.attribute("stroke"), Some("#123456"));
+            let mut references = 0;
+            for reference in ["marker-start", "marker-end"]
+                .into_iter()
+                .filter_map(|attribute| edge.attribute(attribute))
+            {
+                references += 1;
+                let marker_id = reference
+                    .strip_prefix("url(#")
+                    .and_then(|reference| reference.strip_suffix(')'))
+                    .expect("same-document marker reference");
+                let marker = document
+                    .descendants()
+                    .find(|node| {
+                        node.has_tag_name("marker") && node.attribute("id") == Some(marker_id)
+                    })
+                    .expect("the edge references an emitted marker");
+                let path = marker
+                    .children()
+                    .find(|node| node.has_tag_name("path"))
+                    .unwrap();
+                assert_eq!(path.attribute("fill"), Some("#123456"), "{source_key}");
+                assert_eq!(
+                    path.attribute("stroke"),
+                    Some(expected_stroke),
+                    "{source_key} must not own marker stroke"
+                );
+            }
+            assert_eq!(references, expected_references);
+            drop(document);
+
+            let evidence =
+                merman_render::__private::family_evidence(rendered.into_completion().report());
+            assert_eq!(evidence.required_count(), 1);
+            assert_eq!(evidence.accounted_count(), 1);
+            assert_eq!(evidence.applied_count(), 1);
+            assert_eq!(evidence.not_applicable_count(), 0);
+            assert_eq!(evidence.theme_residual_count(), 0);
+        }
+    }
 }
 
 #[test]

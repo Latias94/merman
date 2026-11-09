@@ -558,6 +558,168 @@ fn radar_digit_leading_font_family_is_quoted_and_portable() {
 }
 
 #[test]
+fn radar_zero_size_text_does_not_certify_fonts_but_positive_and_host_sizes_do() {
+    let theme = radar_typography_theme(
+        ThemeTextStyle::default().with_font_stack(FontStack::single("Radar Typed").unwrap()),
+    );
+    for (title_size, axis_size, legend_size, applied) in [
+        ("0px", 0.0, 0.0, false),
+        ("-0.0pt", 0.0, 0.0, false),
+        ("0em", 0.0, 0.0, false),
+        ("0%", 0.0, 0.0, false),
+        ("0px", -1.0, -1.0, false),
+        ("18px", 0.0, 0.0, true),
+        ("0px", 12.0, 0.0, true),
+        ("0px", 0.0, 12.0, true),
+        ("0px", 0.5, 0.0, true),
+        ("0px", 1e-10, 1e-10, false),
+        ("var(--radar-size)", 0.0, 0.0, true),
+        ("calc(0px + 1vw)", 0.0, 0.0, true),
+    ] {
+        let config = serde_json::json!({
+            "themeVariables": {
+                "fontSize": title_size,
+                "radar": { "axisLabelFontSize": axis_size, "legendFontSize": legend_size }
+            }
+        });
+        let engine = MermaidEngine::new().with_site_config(
+            merman_core::presentation::SourcePresentationConfig::from_value(config.clone()),
+        );
+        let rendered = render_radar_with_theme_and_engine(RADAR_TEXT_SOURCE, &theme, engine);
+        let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+        assert_eq!(
+            document
+                .descendants()
+                .filter(|node| node.has_tag_name("text"))
+                .count(),
+            5
+        );
+        assert_eq!(
+            document
+                .descendants()
+                .filter(|node| node.attribute("class") == Some("radarAxisLine"))
+                .count(),
+            3,
+            "zero-size labels must retain all axis lines"
+        );
+        assert!(
+            document
+                .descendants()
+                .any(|node| node.attribute("class") == Some("radarLegendBox-0"))
+        );
+        assert!(
+            radar_stylesheet(rendered.svg())
+                .contains(&format!(".radarTitle{{font-size:{title_size};"))
+        );
+        let evidence =
+            merman_render::__private::family_evidence(rendered.into_completion().report());
+        assert_eq!(evidence.required_count(), 1, "{config}");
+        assert_eq!(evidence.accounted_count(), 1, "{config}");
+        assert_eq!(evidence.applied_count(), usize::from(applied), "{config}");
+        assert_eq!(
+            evidence.not_applicable_count(),
+            usize::from(!applied),
+            "{config}"
+        );
+        assert_eq!(evidence.theme_residual_count(), 0, "{config}");
+    }
+}
+
+#[test]
+fn radar_negative_local_sizes_inherit_root_visibility_for_typography() {
+    let theme = radar_typography_theme(
+        ThemeTextStyle::default()
+            .with_font_stack(FontStack::single("RadarInherited").unwrap())
+            .with_font_weight(700)
+            .unwrap(),
+    );
+    for (root_size, local_size, visible) in [
+        ("0px", -1.0, false),
+        ("0px", 0.0, false),
+        ("0px", 0.5, true),
+        ("16px", -1.0, true),
+        ("var(--radar-size)", -1.0, true),
+    ] {
+        let config = radar_label_size_config(root_size, local_size, local_size);
+        let rendered = render_radar_with_theme_requirement(
+            "radar-beta\naxis A,B,C\ncurve Alpha{1,2,3}\n",
+            &theme,
+            MermaidEngine::new().with_site_config(
+                merman_core::presentation::SourcePresentationConfig::from_value(config.clone()),
+            ),
+            ThemePortabilityRequirement::BestEffort,
+        )
+        .unwrap();
+        let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+        assert_eq!(
+            document
+                .descendants()
+                .filter(|node| node.has_tag_name("text"))
+                .count(),
+            5,
+            "all text terminals, including the empty title, remain checkpointed"
+        );
+        if local_size == -1.0 {
+            let stylesheet = radar_stylesheet(rendered.svg());
+            assert!(stylesheet.contains(".radarAxisLabel{font-size:-1px;"));
+            assert!(stylesheet.contains(".radarLegendText{text-anchor:start;font-size:-1px;"));
+        }
+        let evidence =
+            merman_render::__private::family_evidence(rendered.into_completion().report());
+        assert_eq!(evidence.required_count(), 2, "{config}");
+        assert_eq!(evidence.accounted_count(), 2, "{config}");
+        assert_eq!(evidence.applied_count(), usize::from(visible), "{config}");
+        assert_eq!(
+            evidence.theme_residual_count(),
+            usize::from(visible),
+            "{config}"
+        );
+        assert_eq!(
+            evidence.not_applicable_count(),
+            if visible { 0 } else { 2 },
+            "{config}"
+        );
+    }
+}
+
+#[test]
+fn radar_zero_size_title_does_not_certify_title_fill() {
+    let theme = radar_title_fill_theme(CanvasPaint::solid("#13579b").unwrap());
+    for (title_size, applied) in [
+        ("0px", false),
+        ("0em", false),
+        ("18px", true),
+        ("var(--radar-size)", true),
+    ] {
+        let engine = MermaidEngine::new().with_site_config(
+            merman_core::presentation::SourcePresentationConfig::from_value(serde_json::json!({
+                "themeVariables": { "fontSize": title_size }
+            })),
+        );
+        let rendered = render_radar_with_theme_and_engine(RADAR_TEXT_SOURCE, &theme, engine);
+        let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+        assert!(document.descendants().any(|node| {
+            node.attribute("class") == Some("radarTitle") && node.text() == Some("Radar heading")
+        }));
+        let evidence =
+            merman_render::__private::family_evidence(rendered.into_completion().report());
+        assert_eq!(evidence.required_count(), 1, "{title_size}");
+        assert_eq!(evidence.accounted_count(), 1, "{title_size}");
+        assert_eq!(
+            evidence.applied_count(),
+            usize::from(applied),
+            "{title_size}"
+        );
+        assert_eq!(
+            evidence.not_applicable_count(),
+            usize::from(!applied),
+            "{title_size}"
+        );
+        assert_eq!(evidence.theme_residual_count(), 0, "{title_size}");
+    }
+}
+
+#[test]
 fn radar_typography_config_ownership_is_property_local() {
     let stack_theme =
         radar_typography_theme(ThemeTextStyle::default().with_font_stack(
@@ -1521,6 +1683,15 @@ fn radar_static_axis_stroke_overrides_ordinal_palette_in_strict_mode() {
 const RADAR_TEXT_SOURCE: &str =
     "radar-beta\ntitle Radar heading\naxis Alpha,Beta,Gamma\ncurve Current{3,4,2}\n";
 
+fn radar_label_size_config(title: &str, axis: f64, legend: f64) -> serde_json::Value {
+    serde_json::json!({
+        "themeVariables": {
+            "fontSize": title,
+            "radar": { "axisLabelFontSize": axis, "legendFontSize": legend }
+        }
+    })
+}
+
 fn radar_text_fill_spec(
     paint: CanvasPaint,
     variant: Option<merman_render::diagram_theme::ThemeVariant>,
@@ -1570,6 +1741,261 @@ fn radar_text_static_fill_reaches_labels_and_title_without_bridge() {
                 merman_render::__private::family_evidence(rendered.into_completion().report());
             assert_eq!(evidence.applied_count(), 1);
             assert_eq!(evidence.theme_residual_count(), 0);
+        }
+    }
+}
+
+#[test]
+fn radar_zero_size_labels_do_not_certify_text_fill() {
+    let theme = DiagramThemeCompiler::new()
+        .compile(radar_text_fill_spec(
+            CanvasPaint::solid("#123456").unwrap(),
+            None,
+        ))
+        .unwrap();
+    for (title_size, axis_size, legend_size, applied) in [
+        ("0px", 0.0, 0.0, false),
+        ("0%", 0.0, 0.0, false),
+        ("0px", -1.0, -1.0, false),
+        ("0px", 1e-10, 1e-10, false),
+        ("18px", 0.0, 0.0, true),
+        ("0px", 12.0, 0.0, true),
+        ("0px", 0.0, 12.0, true),
+        ("18px", -1.0, -1.0, true),
+        ("var(--radar-size)", 0.0, 0.0, true),
+        ("calc(0px + 1vw)", 0.0, 0.0, true),
+    ] {
+        let config = radar_label_size_config(title_size, axis_size, legend_size);
+        let engine = MermaidEngine::new().with_site_config(
+            merman_core::presentation::SourcePresentationConfig::from_value(config.clone()),
+        );
+        let rendered = render_radar_with_theme_and_engine(RADAR_TEXT_SOURCE, &theme, engine);
+        let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+        let labels = document
+            .descendants()
+            .filter(|node| node.has_tag_name("text"))
+            .filter_map(|node| node.text())
+            .collect::<Vec<_>>();
+        assert_eq!(
+            labels,
+            ["Alpha", "Beta", "Gamma", "Current", "Radar heading"]
+        );
+        let evidence =
+            merman_render::__private::family_evidence(rendered.into_completion().report());
+        assert_eq!(evidence.required_count(), 1, "{config}");
+        assert_eq!(evidence.accounted_count(), 1, "{config}");
+        assert_eq!(evidence.applied_count(), usize::from(applied), "{config}");
+        assert_eq!(
+            evidence.not_applicable_count(),
+            usize::from(!applied),
+            "{config}"
+        );
+        assert_eq!(evidence.theme_residual_count(), 0, "{config}");
+    }
+}
+
+#[test]
+fn radar_text_fill_uses_the_final_typed_title_size_and_source_overrides() {
+    let typography = ThemeTextStyle::default().with_font_size_px(31.0).unwrap();
+    let theme = DiagramThemeCompiler::new()
+        .compile(
+            radar_text_fill_spec(CanvasPaint::solid("#123456").unwrap(), None).with_typography(
+                TypographySpec::default().with_family_style(DiagramFamilyId::RADAR, typography),
+            ),
+        )
+        .unwrap();
+    for (configured_size, final_size, applied) in [
+        ("bogus", "31px", 2),
+        ("0px", "0px", 0),
+        ("18px", "18px", 1),
+        ("var(--radar-size)", "var(--radar-size)", 1),
+    ] {
+        let engine = MermaidEngine::new().with_site_config(
+            merman_core::presentation::SourcePresentationConfig::from_value(
+                radar_label_size_config(configured_size, 0.0, 0.0),
+            ),
+        );
+        let rendered = render_radar_with_theme_and_engine(RADAR_TEXT_SOURCE, &theme, engine);
+        assert!(radar_stylesheet(rendered.svg()).contains(&format!(
+            ".radarTitle{{font-size:{final_size};color:#123456;fill:#123456;"
+        )));
+        let evidence =
+            merman_render::__private::family_evidence(rendered.into_completion().report());
+        assert_eq!(evidence.required_count(), 2, "{configured_size}");
+        assert_eq!(evidence.accounted_count(), 2, "{configured_size}");
+        assert_eq!(evidence.applied_count(), applied, "{configured_size}");
+        assert_eq!(
+            evidence.not_applicable_count(),
+            2 - applied,
+            "{configured_size}"
+        );
+        assert_eq!(evidence.theme_residual_count(), 0, "{configured_size}");
+    }
+}
+
+#[test]
+fn radar_zero_size_legend_fill_cannot_borrow_other_visible_text_or_swatches() {
+    let theme = DiagramThemeCompiler::new()
+        .compile(
+            DiagramThemeSpec::new().with_styles(ThemeRuleSet::default().with_rule(ThemeRule::new(
+                ThemeTarget::Legend,
+                ThemeStylePatch::default().with_fill(CanvasPaint::solid("#13579b").unwrap()),
+            ))),
+        )
+        .unwrap();
+    for (legend_size, applied) in [(0.0, false), (1e-10, false), (12.0, true)] {
+        let config = radar_label_size_config("18px", 12.0, legend_size);
+        let engine = MermaidEngine::new().with_site_config(
+            merman_core::presentation::SourcePresentationConfig::from_value(config),
+        );
+        let rendered = render_radar_with_theme_and_engine(RADAR_TEXT_SOURCE, &theme, engine);
+        let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+        let label = document
+            .descendants()
+            .find(|node| node.attribute("class") == Some("radarLegendText"))
+            .unwrap();
+        assert_eq!(label.text(), Some("Current"));
+        assert_eq!(label.attribute("fill"), applied.then_some("#13579b"));
+        assert!(document.descendants().any(|node| {
+            node.has_tag_name("rect") && node.attribute("class") == Some("radarLegendBox-0")
+        }));
+        let evidence =
+            merman_render::__private::family_evidence(rendered.into_completion().report());
+        assert_eq!(evidence.required_count(), 1, "{legend_size}");
+        assert_eq!(evidence.accounted_count(), 1, "{legend_size}");
+        assert_eq!(
+            evidence.applied_count(),
+            usize::from(applied),
+            "{legend_size}"
+        );
+        assert_eq!(
+            evidence.not_applicable_count(),
+            usize::from(!applied),
+            "{legend_size}"
+        );
+        assert_eq!(evidence.theme_residual_count(), 0, "{legend_size}");
+    }
+}
+
+#[test]
+fn radar_zero_size_text_keeps_axis_and_series_paint_consumers() {
+    let styles = [
+        (ThemeTarget::Text, "#123456"),
+        (ThemeTarget::Legend, "#13579b"),
+        (ThemeTarget::Axis, "#2468ac"),
+        (ThemeTarget::ChartSeries, "#abcdef"),
+    ]
+    .into_iter()
+    .fold(ThemeRuleSet::default(), |styles, (target, color)| {
+        styles.with_rule(ThemeRule::new(
+            target,
+            ThemeStylePatch::default().with_fill(CanvasPaint::solid(color).unwrap()),
+        ))
+    });
+    let theme = DiagramThemeCompiler::new()
+        .compile(DiagramThemeSpec::new().with_styles(styles))
+        .unwrap();
+    let engine = MermaidEngine::new().with_site_config(
+        merman_core::presentation::SourcePresentationConfig::from_value(radar_label_size_config(
+            "0px", 0.0, 0.0,
+        )),
+    );
+    let rendered = render_radar_with_theme_and_engine(RADAR_TEXT_SOURCE, &theme, engine);
+    let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+    assert_eq!(
+        document
+            .descendants()
+            .filter(|node| node.attribute("class") == Some("radarAxisLine"))
+            .count(),
+        3
+    );
+    assert!(
+        document
+            .descendants()
+            .any(|node| node.attribute("class") == Some("radarCurve-0"))
+    );
+    assert!(
+        document
+            .descendants()
+            .any(|node| node.attribute("class") == Some("radarLegendBox-0"))
+    );
+    let css = radar_stylesheet(rendered.svg());
+    assert!(css.contains(".radarAxisLine{stroke:#2468ac;"));
+    assert!(
+        css.split_once(".radarCurve-0{")
+            .unwrap()
+            .1
+            .split_once('}')
+            .unwrap()
+            .0
+            .contains("fill:#abcdef;")
+    );
+    assert!(css.contains(".radarLegendBox-0{fill:#abcdef;"));
+    let evidence = merman_render::__private::family_evidence(rendered.into_completion().report());
+    assert_eq!(evidence.required_count(), 4);
+    assert_eq!(evidence.accounted_count(), 4);
+    assert_eq!(evidence.applied_count(), 2);
+    assert_eq!(evidence.not_applicable_count(), 2);
+    assert_eq!(evidence.theme_residual_count(), 0);
+}
+
+#[test]
+fn radar_hidden_text_ordinals_are_not_residual_consumers() {
+    use merman_render::diagram_theme::OrdinalSelector;
+
+    for target in [ThemeTarget::Text, ThemeTarget::Legend] {
+        let theme = DiagramThemeCompiler::new()
+            .compile(
+                DiagramThemeSpec::new().with_styles(
+                    ThemeRuleSet::default().with_rule(
+                        ThemeRule::new(
+                            target,
+                            ThemeStylePatch::default()
+                                .with_fill(CanvasPaint::solid("#123456").unwrap()),
+                        )
+                        .with_ordinal(OrdinalSelector::Exact(1)),
+                    ),
+                ),
+            )
+            .unwrap();
+        for visible in [false, true] {
+            let title_size = if target == ThemeTarget::Text && visible {
+                "18px"
+            } else {
+                "0px"
+            };
+            let legend_size = if target == ThemeTarget::Legend && visible {
+                12.0
+            } else {
+                0.0
+            };
+            let engine = MermaidEngine::new().with_site_config(
+                merman_core::presentation::SourcePresentationConfig::from_value(
+                    radar_label_size_config(title_size, 0.0, legend_size),
+                ),
+            );
+            let rendered = render_radar_with_theme_requirement(
+                RADAR_TEXT_SOURCE,
+                &theme,
+                engine,
+                ThemePortabilityRequirement::BestEffort,
+            )
+            .unwrap();
+            let evidence =
+                merman_render::__private::family_evidence(rendered.into_completion().report());
+            assert_eq!(evidence.required_count(), 1, "{target:?}: {visible}");
+            assert_eq!(evidence.accounted_count(), 1, "{target:?}: {visible}");
+            assert_eq!(evidence.applied_count(), 0, "{target:?}: {visible}");
+            assert_eq!(
+                evidence.not_applicable_count(),
+                usize::from(!visible),
+                "{target:?}: {visible}"
+            );
+            assert_eq!(
+                evidence.theme_residual_count(),
+                usize::from(visible),
+                "{target:?}: {visible}"
+            );
         }
     }
 }

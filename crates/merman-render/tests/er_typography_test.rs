@@ -2,7 +2,8 @@
 
 use merman_core::{MermaidEngine, ParseOptions};
 use merman_render::diagram_theme::{
-    DiagramThemeCompiler, DiagramThemeSpec, FontStack, ThemeTextStyle, TypographySpec,
+    CanvasPaint, DiagramThemeCompiler, DiagramThemeSpec, FontStack, OrdinalSelector, ThemeRule,
+    ThemeRuleSet, ThemeStylePatch, ThemeTarget, ThemeTextStyle, TypographySpec,
 };
 use merman_render::environment::{
     MeasurementProfileId, RenderEnvironment, TextMeasurementPolicy, TextMeasurementProfile,
@@ -14,7 +15,7 @@ use merman_render::text::{
     DeterministicTextMeasurer, TextMeasurer, TextMetrics, TextStyle, WrapMode,
 };
 use merman_render::{DiagramFamilyId, LayoutOptions};
-use serde_json::json;
+use serde_json::{Value, json};
 use std::sync::{Arc, Mutex};
 
 #[allow(dead_code)]
@@ -772,4 +773,507 @@ fn er_generic_html_keeps_the_create_text_width_decision_after_span_removal() {
             .iter()
             .any(|call| call.operation == "html-leaf-height" && call.style.font_size == 54.0)
     );
+}
+
+struct TerminalRender {
+    svg: String,
+    calls: Vec<FontCall>,
+    // Applied, not applicable, and residual family mechanisms, independently of SVG portability.
+    evidence: [usize; 3],
+}
+
+fn font_spec(style: ThemeTextStyle) -> DiagramThemeSpec {
+    DiagramThemeSpec::new()
+        .with_typography(TypographySpec::default().with_family_style(DiagramFamilyId::ER, style))
+}
+
+fn typed_stack() -> ThemeTextStyle {
+    ThemeTextStyle::default().with_font_stack(FontStack::single("TypedFace").unwrap())
+}
+
+fn render_terminal(source: &str, site: Value, spec: DiagramThemeSpec) -> TerminalRender {
+    let fonts = Arc::new(Fonts::default());
+    let profile = TextMeasurementProfile::new(
+        TextMeasurementProfileIdentity::new(
+            MeasurementProfileId::new("test.er-terminal-typography").unwrap(),
+            "test",
+        )
+        .unwrap(),
+        fonts.clone(),
+    );
+    let theme = DiagramThemeCompiler::new().compile(spec).unwrap();
+    let engine = common::install_parse_compatibility(
+        &theme,
+        MermaidEngine::new().with_site_config(
+            merman_core::presentation::SourcePresentationConfig::from_value(site),
+        ),
+    );
+    let parsed = engine
+        .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
+        .unwrap()
+        .unwrap()
+        .into_presentation();
+    let environment = RenderEnvironment::deterministic()
+        .with_text_measurement_policy(TextMeasurementPolicy::uniform(profile));
+    let artifact = family::prepare(
+        &parsed,
+        &LayoutOptions::default(),
+        environment.begin_session_with_theme(&theme).unwrap(),
+    )
+    .unwrap();
+    let prepared_calls = fonts.0.lock().unwrap().len();
+    let rendered = artifact
+        .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+        .unwrap();
+    let svg = rendered.svg().to_owned();
+    let calls = fonts.0.lock().unwrap().clone();
+    if parsed.metadata().title.is_none() {
+        assert_eq!(
+            calls.len(),
+            prepared_calls,
+            "prepared entity/relationship text is reused"
+        );
+    }
+    let evidence = merman_render::__private::family_evidence(rendered.into_completion().report());
+    TerminalRender {
+        svg,
+        calls,
+        evidence: [
+            evidence.applied_count(),
+            evidence.not_applicable_count(),
+            evidence.theme_residual_count(),
+        ],
+    }
+}
+
+fn terminal_providers() -> impl Iterator<Item = &'static str> {
+    layouts().chain(std::iter::once("swimlane"))
+}
+
+fn assert_measured_size(rendered: &TerminalRender, text: &str, size: f64) {
+    let calls: Vec<_> = rendered
+        .calls
+        .iter()
+        .filter(|call| call.operation != "budget" && call.text.trim() == text)
+        .collect();
+    assert!(!calls.is_empty(), "missing terminal measurement for {text}");
+    assert!(
+        calls.iter().all(|call| call.style.font_size == size),
+        "{text}: {calls:?}"
+    );
+}
+
+#[test]
+fn er_configured_zero_and_subpixel_sizes_reach_measurement_css_and_title() {
+    for provider in terminal_providers() {
+        for html in [false, true] {
+            for size in [0.0, 0.5] {
+                for source_owned in [false, true] {
+                    let config = json!({"themeVariables": {"fontSize": format!("{size}px")}});
+                    let mut site = if source_owned {
+                        json!({"themeVariables": {"fontSize": "48px"}})
+                    } else {
+                        config.clone()
+                    };
+                    site.as_object_mut().unwrap().extend(
+                        json!({"secure": [], "look": "classic", "layout": provider,
+                            "htmlLabels": html})
+                        .as_object()
+                        .unwrap()
+                        .clone(),
+                    );
+                    let source_config = if source_owned { config } else { json!({}) };
+                    let source = format!(
+                        "---\ntitle: AuditTitle\nconfig: {source_config}\n---\nerDiagram\nE[EntityTitle] {{\n string FieldName PK \"CommentLabel\"\n}}\nF\nE ||--|| F : RelationLabel\n"
+                    );
+                    let rendered = render_terminal(
+                        &source,
+                        site,
+                        font_spec(typed_stack().with_font_size_px(23.0).unwrap()),
+                    );
+                    for text in [
+                        "EntityTitle",
+                        "string",
+                        "FieldName",
+                        "PK",
+                        "CommentLabel",
+                        "AuditTitle",
+                    ] {
+                        assert_measured_size(&rendered, text, size);
+                    }
+                    assert_measured_size(&rendered, "RelationLabel", 14.0);
+                    assert!(rendered.svg.contains(&format!("font-size:{size}px;")));
+                    assert!(rendered.svg.contains("font-size:14px;"));
+                    assert_eq!(
+                        rendered.evidence,
+                        [1, 1, 0],
+                        "{provider}, {html}, {source_owned}, {size}"
+                    );
+                }
+            }
+        }
+    }
+}
+
+#[test]
+fn er_typed_subpixel_size_is_not_rounded_up_before_its_receipt() {
+    for html in [false, true] {
+        let rendered = render_terminal(
+            "erDiagram\nE {\n string id\n}\n",
+            json!({"look": "classic", "htmlLabels": html}),
+            font_spec(typed_stack().with_font_size_px(0.5).unwrap()),
+        );
+        assert_measured_size(&rendered, "string", 0.5);
+        assert!(rendered.svg.contains("font-size:0.5px;"));
+        assert_eq!(rendered.evidence, [2, 0, 0]);
+    }
+}
+
+#[test]
+fn er_entity_and_cell_receipts_use_the_emitted_html_or_svg_projection() {
+    for provider in terminal_providers() {
+        for html in [false, true] {
+            for declaration in ["font-family:Other", "font-size:40px"] {
+                for attributes in [false, true] {
+                    let literal = format!("<span style='{declaration}'>MMMM</span>");
+                    let source = if attributes {
+                        format!("erDiagram\nE {{\n string id \"{literal}\"\n}}\n")
+                    } else {
+                        format!("erDiagram\nE[\"{literal}\"]\n")
+                    };
+                    let rendered = render_terminal(
+                        &source,
+                        json!({"layout": provider, "look": "classic", "htmlLabels": html}),
+                        font_spec(typed_stack().with_font_size_px(24.0).unwrap()),
+                    );
+                    assert_eq!(rendered.evidence, if html { [1, 0, 1] } else { [2, 0, 0] });
+                    let document = roxmltree::Document::parse(&rendered.svg).unwrap();
+                    if html {
+                        assert!(document.descendants().any(|node| node.has_tag_name("span")
+                            && node.attribute("style") == Some(declaration)));
+                    } else {
+                        let text = document
+                            .descendants()
+                            .filter(|node| node.is_text())
+                            .filter(|node| {
+                                node.ancestors().any(|parent| parent.has_tag_name("text"))
+                            })
+                            .filter_map(|node| node.text())
+                            .collect::<String>();
+                        assert!(text.contains("<span style=") && text.contains("MMMM</span>"));
+                        assert!(
+                            rendered
+                                .calls
+                                .iter()
+                                .filter(|call| call.operation != "budget")
+                                .all(
+                                    |call| call.style.font_family.as_deref() == Some("TypedFace")
+                                        && call.style.font_size == 24.0
+                                )
+                        );
+                    }
+                }
+            }
+        }
+    }
+}
+
+#[test]
+fn er_zero_source_runs_are_not_font_consumers_but_positive_children_and_relations_are() {
+    for html in [false, true] {
+        let rendered = render_terminal(
+            "erDiagram\nE {\n string id\n}\nstyle E font-size:0px\n",
+            json!({"look": "classic", "htmlLabels": html}),
+            font_spec(typed_stack().with_font_size_px(24.0).unwrap()),
+        );
+        assert_eq!(
+            rendered.evidence,
+            [0, 2, 0],
+            "hidden source sizes do not own a visible request"
+        );
+    }
+    for provider in terminal_providers() {
+        for html in [false, true] {
+            for (source, root_size, visible, entity_count) in [
+                (
+                    "erDiagram\nE {\n string id\n}\nstyle E font-size:0px\n",
+                    16,
+                    false,
+                    1,
+                ),
+                (
+                    "---\ntitle: HiddenTitle\n---\nerDiagram\nE {\n string id\n}\n",
+                    0,
+                    false,
+                    1,
+                ),
+                (
+                    "erDiagram\nE {\n string id\n}\nstyle E font-size:20px\n",
+                    0,
+                    true,
+                    1,
+                ),
+                ("erDiagram\nE ||--|| F : VisibleRelation\n", 0, true, 2),
+            ] {
+                let rendered = render_terminal(
+                    source,
+                    json!({"layout": provider, "look": "classic", "htmlLabels": html,
+                        "themeVariables": {"fontSize": format!("{root_size}px")}}),
+                    font_spec(typed_stack()),
+                );
+                assert_eq!(
+                    rendered.evidence,
+                    if visible { [1, 0, 0] } else { [0, 1, 0] }
+                );
+                let document = roxmltree::Document::parse(&rendered.svg).unwrap();
+                let nodes: Vec<_> = document
+                    .descendants()
+                    .filter(|node| {
+                        node.has_tag_name("g")
+                            && node.attribute("class").is_some_and(|class| {
+                                class.split_whitespace().any(|class| class == "node")
+                            })
+                    })
+                    .collect();
+                assert_eq!(nodes.len(), entity_count, "{provider}, html={html}");
+                for node in nodes {
+                    // Tables paint an outer-path group; attribute-free entities use a rect.
+                    let has_body = node.descendants().any(|shape| {
+                        (shape.has_tag_name("rect")
+                            && shape.attribute("class") == Some("basic label-container")
+                            && ["width", "height"].into_iter().all(|dimension| {
+                                shape
+                                    .attribute(dimension)
+                                    .and_then(|value| value.parse::<f64>().ok())
+                                    .is_some_and(|value| value.is_finite() && value > 0.0)
+                            }))
+                            || (shape.has_tag_name("g")
+                                && shape.attribute("class") == Some("outer-path")
+                                && shape.children().any(|path| {
+                                    path.has_tag_name("path")
+                                        && path.attribute("d").is_some_and(|d| !d.is_empty())
+                                }))
+                    });
+                    assert!(
+                        has_body,
+                        "missing entity body: {provider}, html={html}, {:?}",
+                        node.attribute("id")
+                    );
+                }
+            }
+        }
+    }
+    for (root_size, local_style) in [(0, ""), (16, "style E font-size:0px")] {
+        for (comment, visible, measured_size) in [
+            ("<span style='font-size:0px'>Hidden</span>", false, 0.0),
+            (
+                "<span style='font-size:0px'>Hidden<span style='font-size:40px'>Restored</span></span>",
+                true,
+                40.0,
+            ),
+            (
+                "<span style='font-size:40px'><span style='font-size:0px'>Hidden</span></span>",
+                false,
+                0.0,
+            ),
+            (
+                "<span style='font-size:0cap'>Hidden<span style='font-size:24pt'>Restored</span></span>",
+                true,
+                32.0,
+            ),
+        ] {
+            let source = format!("erDiagram\nE {{\n string id \"{comment}\"\n}}\n{local_style}\n");
+            let rendered = render_terminal(
+                &source,
+                json!({"look": "classic", "htmlLabels": true,
+                    "themeVariables": {"fontSize": format!("{root_size}px")}}),
+                font_spec(typed_stack()),
+            );
+            assert_eq!(
+                rendered.evidence,
+                if visible { [1, 0, 0] } else { [0, 1, 0] }
+            );
+            assert_measured_size(
+                &rendered,
+                if visible { "Restored" } else { "Hidden" },
+                measured_size,
+            );
+            assert!(
+                rendered.svg.contains("Hidden"),
+                "evidence filtering must not edit emitted text"
+            );
+            if visible {
+                assert!(rendered.svg.contains("Restored"));
+            }
+        }
+    }
+}
+
+#[test]
+fn er_unknown_html_sizes_remain_possible_consumers_above_a_zero_root() {
+    for html in [false, true] {
+        for markup in [
+            "<span style='font-size:var(--host-size)'>Possible</span>",
+            "<span class='host'>Possible</span>",
+            "<span style='font-size:2rem'>Possible</span>",
+        ] {
+            let source = format!("erDiagram\nE[\"{markup}\"]\n");
+            let rendered = render_terminal(
+                &source,
+                json!({"look": "classic", "htmlLabels": html,
+                    "themeVariables": {"fontSize": if html { "0px" } else { "16px" }}}),
+                font_spec(typed_stack().with_font_weight(600).unwrap()),
+            );
+            assert_eq!(rendered.evidence[1], 0, "unknown CSS cannot prove absence");
+            assert_eq!(
+                rendered.evidence[0],
+                if html { 0 } else { 1 },
+                "unknown visibility cannot certify typography; literal SVG remains verified"
+            );
+            assert!(
+                rendered.evidence[2] > 0,
+                "possible text retains unsupported weight"
+            );
+        }
+    }
+    for html in [false, true] {
+        let rendered = render_terminal(
+            "erDiagram\nE {\n string id\n}\nstyle E font-size:var(--host-size)\n",
+            json!({"look": "classic", "htmlLabels": html,
+                "themeVariables": {"fontSize": "0px"}}),
+            font_spec(typed_stack()),
+        );
+        assert_eq!(
+            rendered.evidence,
+            [0, 0, 1],
+            "an unresolved source size must not certify fallback-zero visibility"
+        );
+    }
+}
+
+#[test]
+fn er_source_and_class_font_inheritance_preserves_the_typed_stack_receipt() {
+    for html in [false, true] {
+        for (value, inherits) in [
+            ("inherit", true),
+            ("unset", true),
+            (r"i\6eherit", true),
+            ("'inherit'", false),
+            ("Other", false),
+        ] {
+            for class_def in [false, true] {
+                let style = if class_def {
+                    format!("classDef local font-family:{value}\nclass E local")
+                } else {
+                    format!("style E font-family:{value}")
+                };
+                let source = format!("erDiagram\nE {{\n string id\n}}\n{style}\n");
+                let rendered = render_terminal(
+                    &source,
+                    json!({"look": "classic", "htmlLabels": html}),
+                    font_spec(typed_stack()),
+                );
+                assert_eq!(
+                    rendered.evidence,
+                    if inherits { [1, 0, 0] } else { [0, 0, 1] }
+                );
+                let document = roxmltree::Document::parse(&rendered.svg).unwrap();
+                assert!(
+                    document
+                        .descendants()
+                        .any(|node| node.attribute("style").is_some_and(
+                            |style| style.contains(&format!("font-family:{value} !important"))
+                        ))
+                );
+                if inherits {
+                    assert!(
+                        rendered
+                            .calls
+                            .iter()
+                            .filter(|call| call.operation != "budget")
+                            .all(|call| call.style.font_family.as_deref() == Some("TypedFace"))
+                    );
+                }
+            }
+        }
+    }
+}
+
+#[test]
+fn er_local_font_inheritance_keeps_an_explicit_site_stack_as_the_owner() {
+    for html in [false, true] {
+        let rendered = render_terminal(
+            "erDiagram\nE {\n string id\n}\nstyle E font-family:inherit\n",
+            json!({"look": "classic", "htmlLabels": html,
+                "themeVariables": {"fontFamily": "SiteFace"}}),
+            font_spec(typed_stack()),
+        );
+        assert_eq!(rendered.evidence, [0, 1, 0]);
+        assert!(rendered.svg.contains("font-family:SiteFace;"));
+        assert!(
+            rendered
+                .calls
+                .iter()
+                .filter(|call| call.operation != "budget")
+                .all(|call| call.style.font_family.as_deref() == Some("SiteFace"))
+        );
+    }
+}
+
+#[test]
+fn er_zero_text_does_not_renumber_later_text_rules() {
+    for html in [false, true] {
+        for (ordinal, expected) in [(1, [2, 1, 0]), (2, [1, 1, 1])] {
+            let spec = font_spec(typed_stack()).with_styles(
+                ThemeRuleSet::default()
+                    .with_rule(ThemeRule::new(
+                        ThemeTarget::Text,
+                        ThemeStylePatch::default()
+                            .with_fill(CanvasPaint::solid("#00aa00").unwrap()),
+                    ))
+                    .with_rule(
+                        ThemeRule::new(
+                            ThemeTarget::Text,
+                            ThemeStylePatch::default()
+                                .with_fill(CanvasPaint::solid("#aa0000").unwrap()),
+                        )
+                        .with_ordinal(OrdinalSelector::exact(ordinal).unwrap()),
+                    ),
+            );
+            let rendered = render_terminal(
+                "erDiagram\nA[Hidden]\nB[Visible]\nstyle A font-size:0px\n",
+                json!({"look": "classic", "htmlLabels": html}),
+                spec,
+            );
+            // An unsupported rule on hidden ordinal 1 is not applicable. On visible ordinal 2
+            // it must stay residual and shadow the supported static fill without being emitted.
+            assert_eq!(
+                rendered.evidence, expected,
+                "html={html}, ordinal={ordinal}"
+            );
+            let document = roxmltree::Document::parse(&rendered.svg).unwrap();
+            let visible_label = document
+                .descendants()
+                .find(|node| {
+                    node.attribute("class") == Some("label")
+                        && node
+                            .descendants()
+                            .any(|text| text.is_text() && text.text() == Some("Visible"))
+                })
+                .expect("the second entity retains its text label");
+            assert_eq!(
+                visible_label
+                    .attribute("style")
+                    .unwrap_or_default()
+                    .contains("fill:#00aa00"),
+                ordinal == 1
+            );
+            assert!(
+                !document.descendants().any(|node| node
+                    .attribute("style")
+                    .is_some_and(|style| style.contains("#aa0000"))),
+                "unsupported ordinal fill must not be emitted"
+            );
+        }
+    }
 }

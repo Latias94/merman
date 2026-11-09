@@ -216,11 +216,11 @@ fn radar_binding_resolves_style_roles() {
     assert_eq!(radar.title_color, "#202020");
     assert_eq!(radar.axis_color, "#606060");
     assert_eq!(radar.axis_stroke_width, 4.0);
-    assert_eq!(radar.axis_label_font_size, 14.0);
+    assert_eq!(radar.axis_label_font_size.css_px(), 14.0);
     assert_eq!(radar.graticule_color, "#707070");
     assert_eq!(radar.graticule_opacity, 0.8);
     assert_eq!(radar.graticule_stroke_width, 5.0);
-    assert_eq!(radar.legend_font_size, 16.0);
+    assert_eq!(radar.legend_font_size.css_px(), 16.0);
     assert_eq!(radar.curve_opacity, 0.9);
     assert_eq!(radar.curve_stroke_width, 6.0);
     let series = crate::radar::RadarSeriesPaintPlan::baseline(
@@ -245,11 +245,11 @@ fn radar_binding_uses_default_style_roles() {
     assert_eq!(radar.title_color, "#333");
     assert_eq!(radar.axis_color, "#333333");
     assert_eq!(radar.axis_stroke_width, 2.0);
-    assert_eq!(radar.axis_label_font_size, 12.0);
+    assert_eq!(radar.axis_label_font_size.css_px(), 12.0);
     assert_eq!(radar.graticule_color, "#DEDEDE");
     assert_eq!(radar.graticule_opacity, 0.3);
     assert_eq!(radar.graticule_stroke_width, 1.0);
-    assert_eq!(radar.legend_font_size, 12.0);
+    assert_eq!(radar.legend_font_size.css_px(), 12.0);
     assert_eq!(radar.curve_opacity, 0.5);
     assert_eq!(radar.curve_stroke_width, 2.0);
     let series = crate::radar::RadarSeriesPaintPlan::baseline(

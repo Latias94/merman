@@ -1,8 +1,8 @@
 //! ER's measured compound graph boundary for the registered Swimlane provider.
 
 use super::{
-    ErBoxLabel, ErEntity, ErLayoutSettings, ErPreparedLabels, ErPreparedRelationshipLabel,
-    er_box_label_metrics_with_wrap_mode, er_layout_bounds, er_marker_id, er_subgraph_title_metrics,
+    ErEntity, ErLayoutSettings, ErPreparedLabels, ErPreparedRelationshipLabel, er_layout_bounds,
+    er_marker_id, er_subgraph_title_metrics, er_swimlane_title_metrics,
 };
 use crate::model::{
     ErDiagramLayout, LayoutCluster, LayoutEdge, LayoutLabel, LayoutNode, SwimlaneDirection,
@@ -24,7 +24,8 @@ use std::sync::{Arc, OnceLock};
 pub(crate) struct ErSwimlaneRelationshipLabel {
     metrics: TextMetrics,
     content: ErSwimlaneLabelContent,
-    visible_style_facts: OnceLock<crate::text::VisibleTextStyleFacts>,
+    font_size_px: f64,
+    visible_style_facts: OnceLock<super::text_facts::ErTextFacts>,
 }
 
 #[derive(Debug, Clone)]
@@ -137,6 +138,7 @@ impl ErSwimlaneRelationshipLabel {
         Self {
             metrics,
             content,
+            font_size_px: style.font_size,
             visible_style_facts: OnceLock::new(),
         }
     }
@@ -166,16 +168,16 @@ impl ErSwimlaneRelationshipLabel {
         }
     }
 
-    pub(crate) fn visible_style_facts(&self) -> &crate::text::VisibleTextStyleFacts {
+    pub(super) fn text_facts(&self) -> &super::text_facts::ErTextFacts {
         self.visible_style_facts
             .get_or_init(|| match &self.content {
                 ErSwimlaneLabelContent::Html { fragment, .. } => {
-                    crate::text::VisibleTextStyleFacts::from_xhtml_fragment(fragment)
+                    super::text_facts::ErTextFacts::html(fragment, Some(self.font_size_px))
                 }
                 ErSwimlaneLabelContent::Svg { lines } => {
                     let plain =
                         crate::graph_label::flowchart_svg_source_word_lines_plain_text(lines);
-                    crate::text::VisibleTextStyleFacts::plain_text(&plain)
+                    super::text_facts::ErTextFacts::plain(&plain, Some(self.font_size_px))
                 }
             })
     }
@@ -300,8 +302,8 @@ pub(super) fn layout_er_diagram_swimlane_typed(
         let is_lane = !parent_by_id.contains_key(group.id.as_str());
         let html_labels = view.subgraph_html_labels(is_lane);
         let metrics = if is_lane {
-            er_box_label_metrics_with_wrap_mode(
-                &ErBoxLabel::from_source_with_generic_types(&group.title, false),
+            er_swimlane_title_metrics(
+                &group.title,
                 measurer,
                 &settings.label_style,
                 if html_labels {

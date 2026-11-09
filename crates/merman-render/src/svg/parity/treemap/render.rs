@@ -440,10 +440,7 @@ pub(crate) fn render_treemap_diagram_svg(
     let mut typography_theme_receipt = typography_theme.begin_terminal_receipt(layout);
     let title_shift_y = layout.title_height;
     let (title_text_style, title_bbox) = if let Some(title) = title {
-        options
-            .work_meter()
-            .charge(1usize.saturating_add(theme.title_font_size.len().div_ceil(64)))?;
-        let title_text_style = typography_theme.title_text_style(&theme.title_font_size);
+        let title_text_style = typography_theme.title_text_style();
         let measurement_work = 1usize.saturating_add(title.len().div_ceil(64));
         options
             .work_meter()
@@ -644,17 +641,18 @@ pub(crate) fn render_treemap_diagram_svg(
             text = escape_xml(title)
         );
         out.checkpoint()?;
+        let title_text_style = title_text_style
+            .as_ref()
+            .expect("an emitted Treemap title has a prepared text style");
         if let Some(receipt) = title_theme_receipt.as_mut() {
-            receipt.record_title_text(TREEMAP_TITLE_CLASS);
+            receipt.record_title_text(TREEMAP_TITLE_CLASS, title_text_style.style().font_size);
         }
         if let Some(receipt) = typography_theme_receipt.as_mut() {
             receipt.record_text(
                 crate::treemap::TreemapTextRole::Title,
                 true,
                 crate::treemap::TreemapTextFillOwnership::Generated,
-                title_text_style
-                    .as_ref()
-                    .expect("a visible Treemap title has a resolved text style"),
+                title_text_style,
                 true,
                 &theme.title_color,
             );
@@ -1626,20 +1624,14 @@ mod tests {
             SvgExecution::unthemed_for_test(&request, &debug, &session, DiagramFamilyId::TREEMAP)
                 .expect("SVG execution");
         let config = crate::test_support::presentation_config(serde_json::json!({}));
-        let title_theme = crate::treemap::TreemapTitleThemePlan::resolve(
-            None,
-            &config,
-            None,
-            session.work_meter().as_ref(),
-        )
-        .unwrap();
-        let typography_theme = crate::treemap::TreemapTypographyThemePlan::resolve(
-            None,
-            &config,
-            &layout,
-            std::sync::Arc::clone(session.work_meter()),
-        )
-        .unwrap();
+        let (title_theme, typography_theme) =
+            crate::treemap::TreemapTypographyThemePlan::resolve_with_title(
+                None,
+                &config,
+                &layout,
+                std::sync::Arc::clone(session.work_meter()),
+            )
+            .unwrap();
         let svg = render_treemap_diagram_svg(&layout, &title_theme, &typography_theme, &execution)
             .unwrap();
 
