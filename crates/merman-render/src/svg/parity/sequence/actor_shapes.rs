@@ -665,7 +665,7 @@ fn write_actor_label(
             h = fmt(katex.height),
             html = katex.html,
         );
-        let raw_lines = crate::text::split_html_br_lines(rendered_label);
+        let raw_lines = crate::text::split_mermaid_common_br_lines(rendered_label);
         let line_count = raw_lines.len();
         write_actor_label_lines(out, cx, cy, raw_lines, line_count, label_class, ctx, false)?;
         out.push_str("</switch>");
@@ -686,7 +686,7 @@ fn write_actor_label(
     // Split/wrap before decoding Mermaid entities so escaped `<br>` (`#lt;br#gt;`) remains
     // literal text rather than being treated as an actual `<br>` break.
     if let Some(wrapped_label) = wrapped_label {
-        let raw_lines = crate::text::split_html_br_lines(&wrapped_label);
+        let raw_lines = crate::text::split_mermaid_common_br_lines(&wrapped_label);
         write_actor_label_lines(
             out,
             cx,
@@ -698,7 +698,7 @@ fn write_actor_label(
             true,
         )?;
     } else {
-        let raw_lines = crate::text::split_html_br_lines(label);
+        let raw_lines = crate::text::split_mermaid_common_br_lines(label);
         let line_count = raw_lines.len();
         write_actor_label_lines(out, cx, cy, raw_lines, line_count, label_class, ctx, true)?;
     }

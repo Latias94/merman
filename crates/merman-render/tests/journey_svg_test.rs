@@ -513,6 +513,38 @@ fn journey_scores_select_fractional_faces_and_preserve_integer_and_nan_controls(
 }
 
 #[test]
+fn journey_tspan_breaks_keep_the_opening_tag_rule() {
+    let theme = journey_typography_theme(21.0);
+    for (separator, expected) in [
+        ("<BR />", vec!["Pay", "now"]),
+        ("<br\u{00a0}/>", vec!["Pay", "now"]),
+        ("</br>", vec!["Pay</br>now"]),
+    ] {
+        let source = format!("journey\nPay{separator}now: 4\n");
+        let rendered = render_journey_with_theme_requirement(
+            &source,
+            &theme,
+            serde_json::json!({"journey": {"textPlacement": "tspan"}}),
+            ThemePortabilityRequirement::BestEffort,
+        )
+        .unwrap();
+        let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+        let rows: Vec<_> = document
+            .descendants()
+            .filter(|node| node.has_tag_name("text") && node.attribute("class") == Some("task"))
+            .map(|node| {
+                node.descendants()
+                    .find(|child| child.is_text())
+                    .unwrap()
+                    .text()
+                    .unwrap()
+            })
+            .collect();
+        assert_eq!(rows, expected, "{separator:?}");
+    }
+}
+
+#[test]
 fn journey_text_placement_owns_label_dom_fonts_and_typography_evidence() {
     let theme = journey_typography_theme(21.0);
     let source = "journey\nsection Order<br/>review\nPay<br>now: 4\n";

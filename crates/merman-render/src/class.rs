@@ -1281,7 +1281,7 @@ pub(crate) fn class_math_label_metrics(
 
 pub(crate) fn class_text_is_math_only(text: &str) -> bool {
     let mut saw_math = false;
-    for line in crate::text::split_html_br_lines(text) {
+    for line in crate::text::split_mermaid_common_br_lines(text) {
         let Some(parsed) = crate::math::parse_delimited_math_line(line) else {
             if !line.trim().is_empty() {
                 return false;
@@ -4111,6 +4111,19 @@ mod tests {
     use merman_model::presentation::RenderSemanticModel;
 
     use crate::text::{DeterministicTextMeasurer, TextMeasurer, TextMetrics, TextStyle, WrapMode};
+
+    #[test]
+    fn class_math_only_labels_use_common_break_rows() {
+        for br in ["<br>", "</BR >", "<br\u{feff}/>"] {
+            assert!(super::class_text_is_math_only(&format!("$$x$${br}$$y$$")));
+            assert!(!super::class_text_is_math_only(&format!(
+                "$$x$${br}value: $$y$$"
+            )));
+            assert!(!super::class_text_is_math_only(&format!(
+                "literal $${br}literal $$"
+            )));
+        }
+    }
 
     #[test]
     fn class_html_prepared_labels_follow_public_layout_and_plan_owners() {

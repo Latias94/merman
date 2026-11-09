@@ -237,7 +237,7 @@ pub(super) fn render_sequence_note(
     } else if let Some(text) = ctx.wrapped_note_text.get(message_index, msg) {
         render_sequence_note_lines(
             out,
-            crate::text::split_html_br_lines(text),
+            crate::text::split_mermaid_common_br_lines(text),
             text_x,
             text_y,
             text_anchor,
@@ -264,7 +264,7 @@ pub(super) fn render_sequence_note(
         )?;
         render_sequence_note_lines(
             out,
-            crate::text::split_html_br_lines(&label.effective_text),
+            crate::text::split_mermaid_common_br_lines(&label.effective_text),
             text_x,
             text_y,
             text_anchor,
@@ -295,7 +295,7 @@ pub(super) fn render_sequence_note(
     } else {
         render_sequence_note_lines(
             out,
-            crate::text::split_html_br_lines(raw),
+            crate::text::split_mermaid_common_br_lines(raw),
             text_x,
             text_y,
             text_anchor,

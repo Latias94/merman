@@ -576,6 +576,7 @@ fn prepare_c4_family<'parsed>(
         execution.container_width,
         execution.container_height,
         execution.screen_available_width,
+        execution.work_meter_ref(),
     )?;
     text_paint.bind_source_terminal_paint(
         model,

@@ -15,6 +15,7 @@ use crate::family::{
     resolve_direct_static_stroke, resolved_style_property_for_facet,
     unsupported_residual_for_facet,
 };
+use crate::model::C4TextBlockLayout;
 use crate::resources::{OperationWorkError, OperationWorkMeter};
 
 /// Owns inherited text paint and the independently selected source colors of C4 terminals.
@@ -370,12 +371,9 @@ impl C4TextPaintPlan {
                 background_paint.as_ref(),
             );
             record_role_paint(&mut typed_roles, ThemeTarget::Node, border_paint.as_ref());
-            let visible = text_is_visible(&shape.label.text)
-                || text_is_visible(&shape.type_block.text)
-                || shape
-                    .descr
-                    .as_ref()
-                    .is_some_and(|text| text_is_visible(&text.text));
+            let visible = text_is_visible(&shape.label)
+                || text_is_visible(&shape.type_block)
+                || shape.descr.as_ref().is_some_and(text_is_visible);
             let (text_paint, _) = self.role_paints(
                 ThemeTarget::NodeLabel,
                 element_text_owned.len() + 1,
@@ -431,10 +429,12 @@ impl C4TextPaintPlan {
             let explicit_line = source
                 .and_then(|source| source.line_color.as_deref())
                 .or_else(|| config.get_str("c4.relationship_line_color"));
-            let label_visible = text_is_visible(&relation.label.text)
+            let label_visible = text_is_visible(&relation.label)
                 || relation
                     .techn
                     .as_ref()
+                    // The writer adds visible brackets around every nonempty technology,
+                    // including one whose prepared contents consist only of break tags.
                     .is_some_and(|text| !text.text.trim().is_empty());
             let (text_paint, _) = self.role_paints(
                 ThemeTarget::EdgeLabel,
@@ -510,15 +510,9 @@ impl C4TextPaintPlan {
                 .get(boundary.alias.as_str())
                 .and_then(|boundary| boundary.font_color.as_deref())
                 .or_else(|| config.get_str("c4.boundary_font_color"));
-            let visible = text_is_visible(&boundary.label.text)
-                || boundary
-                    .ty
-                    .as_ref()
-                    .is_some_and(|text| text_is_visible(&text.text))
-                || boundary
-                    .descr
-                    .as_ref()
-                    .is_some_and(|text| text_is_visible(&text.text));
+            let visible = text_is_visible(&boundary.label)
+                || boundary.ty.as_ref().is_some_and(text_is_visible)
+                || boundary.descr.as_ref().is_some_and(text_is_visible);
             let (paint, _) = self.role_paints(
                 ThemeTarget::ClusterLabel,
                 boundary_text_owned.len() + 1,
@@ -885,11 +879,21 @@ fn is_role_target(target: ThemeTarget) -> bool {
     )
 }
 
-fn text_is_visible(text: &str) -> bool {
-    text.split("<br/>")
-        .flat_map(|line| line.split("<br />"))
-        .flat_map(|line| line.split("<br>"))
-        .any(|line| !line.trim().is_empty())
+fn text_is_visible(block: &C4TextBlockLayout) -> bool {
+    if let Some(plan) = &block.render_plan {
+        // Match the unified writer's prepared words and one-layer textContent decoding.
+        // A closing break tag or a decoded entity remains a literal word on this path.
+        !block.text.trim().is_empty()
+            && plan.rows.iter().flat_map(|row| &row.words).any(|word| {
+                !crate::entities::decode_svg_text_content_entities(word)
+                    .trim()
+                    .is_empty()
+            })
+    } else {
+        crate::text::split_mermaid_common_br_lines(&block.text)
+            .into_iter()
+            .any(|line| !line.trim().is_empty())
+    }
 }
 
 fn record_role_paint(
@@ -911,6 +915,49 @@ fn record_role_paint(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn text_visibility_uses_prepared_unified_words_or_legacy_common_rows() {
+        let mut block = C4TextBlockLayout {
+            text: String::new(),
+            y: 0.0,
+            width: 0.0,
+            height: 0.0,
+            line_count: 1,
+            render_plan: None,
+        };
+        for text in [
+            "",
+            "<br/>",
+            "</br>",
+            "<BR />",
+            "<br\u{00a0}/>",
+            "</BR\u{feff}/>",
+        ] {
+            block.text = text.to_owned();
+            assert!(!text_is_visible(&block), "legacy: {text:?}");
+        }
+        for text in ["[<br/>]", "&lt;br/&gt;", "literal"] {
+            block.text = text.to_owned();
+            assert!(text_is_visible(&block), "legacy: {text:?}");
+        }
+        for (text, words, visible) in [
+            ("</br>", vec!["</br>"], true),
+            ("&lt;br/&gt;", vec!["&lt;br/&gt;"], true),
+            ("<br/>", vec![], false),
+            ("<br/>", vec!["", "\u{00a0}"], false),
+        ] {
+            block.text = text.to_owned();
+            block.render_plan = Some(crate::model::C4TextRenderPlan {
+                rows: vec![crate::model::C4TextRowLayout {
+                    words: words.into_iter().map(str::to_owned).collect(),
+                }],
+                bbox_x: 0.0,
+                bbox_y: 0.0,
+            });
+            assert_eq!(text_is_visible(&block), visible, "unified: {text:?}");
+        }
+    }
 
     #[test]
     fn source_terminal_binding_preserves_actual_layout_defaults_and_last_metadata() {

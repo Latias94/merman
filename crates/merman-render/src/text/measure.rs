@@ -379,7 +379,7 @@ fn try_measure_mermaid_text_dimensions_for_family<E>(
     }
 
     let mut dimensions = MermaidTextDimensions::default();
-    for line in super::split_html_br_lines(text) {
+    for line in super::split_mermaid_common_br_lines(text) {
         checkpoint()?;
         let measured_line = if line.is_empty() { "\u{200b}" } else { line };
         checkpoint()?;

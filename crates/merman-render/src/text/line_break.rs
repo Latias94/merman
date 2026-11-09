@@ -1,28 +1,60 @@
-//! Unicode line-breaking primitives for browser-like HTML labels.
+//! Mermaid break tags and Unicode line-breaking primitives for HTML labels.
+
+fn mermaid_br_ranges(text: &str, allow_closing: bool) -> impl Iterator<Item = (usize, usize)> {
+    text.match_indices('<').filter_map(move |(start, _)| {
+        let rest = &text[start + 1..];
+        let rest = if allow_closing {
+            rest.strip_prefix('/').unwrap_or(rest)
+        } else {
+            rest
+        };
+        if !rest
+            .get(..2)
+            .is_some_and(|name| name.eq_ignore_ascii_case("br"))
+        {
+            return None;
+        }
+        let rest = rest[2..].trim_start_matches(super::is_ecmascript_whitespace);
+        let rest = rest.strip_prefix('/').unwrap_or(rest);
+        let after_tag = rest.strip_prefix('>')?;
+        Some((start, text.len() - after_tag.len()))
+    })
+}
+
+fn split_br_lines(text: &str, allow_closing: bool) -> Vec<&str> {
+    let mut lines = Vec::new();
+    let mut copied_until = 0;
+    for (start, end) in mermaid_br_ranges(text, allow_closing) {
+        lines.push(&text[copied_until..start]);
+        copied_until = end;
+    }
+    lines.push(&text[copied_until..]);
+    lines
+}
+
+/// Splits opening `<br>` tags using Mermaid's `/<br\s*\/?>/gi` rule.
+///
+/// `nonMarkdownToLines` and Journey use this rule rather than `common.lineBreakRegex`.
+/// ECMAScript whitespace is accepted; closing tags, attributes and literal `\\t` are not.
+pub fn split_html_br_lines(text: &str) -> Vec<&str> {
+    split_br_lines(text, false)
+}
+
+/// Splits tags matched by Mermaid's `common.lineBreakRegex` (`/<\/?br\s*\/?>/gi`).
+pub(crate) fn split_mermaid_common_br_lines(text: &str) -> Vec<&str> {
+    split_br_lines(text, true)
+}
 
 /// Replaces tags matched by Mermaid's `common.lineBreakRegex` (`/<\/?br\s*\/?>/gi`).
 /// ELK applies this before Markdown parsing, including for State and Class edge labels.
 pub(crate) fn mermaid_html_breaks_to_newlines(text: &str) -> std::borrow::Cow<'_, str> {
     let mut output: Option<String> = None;
     let mut copied_until = 0;
-    for (start, _) in text.match_indices('<') {
-        let rest = &text[start + 1..];
-        let rest = rest.strip_prefix('/').unwrap_or(rest);
-        if !rest
-            .get(..2)
-            .is_some_and(|name| name.eq_ignore_ascii_case("br"))
-        {
-            continue;
-        }
-        let rest = rest[2..].trim_start_matches(super::is_ecmascript_whitespace);
-        let rest = rest.strip_prefix('/').unwrap_or(rest);
-        let Some(after_tag) = rest.strip_prefix('>') else {
-            continue;
-        };
+    for (start, end) in mermaid_br_ranges(text, true) {
         let output = output.get_or_insert_with(|| String::with_capacity(text.len()));
         output.push_str(&text[copied_until..start]);
         output.push('\n');
-        copied_until = text.len() - after_tag.len();
+        copied_until = end;
     }
     match output {
         Some(mut output) => {
@@ -242,8 +274,40 @@ mod tests {
         CheckpointChars, HtmlBreakKind, HtmlBreakSegment, html_break_spaces_segments,
         html_break_spaces_segments_with_checkpoints,
         html_break_spaces_segments_with_metadata_and_checkpoints, html_has_soft_break_opportunity,
-        mermaid_html_breaks_to_newlines,
+        mermaid_html_breaks_to_newlines, split_html_br_lines, split_mermaid_common_br_lines,
     };
+
+    #[test]
+    fn splitters_keep_the_two_upstream_break_rules_distinct() {
+        for whitespace in [
+            "", " ", "\t", "\n", "\u{000b}", "\u{000c}", "\u{00a0}", "\u{2028}", "\u{feff}",
+        ] {
+            for name in ["br", "BR", "bR"] {
+                for slash in ["", "/"] {
+                    let opening = format!("A<{name}{whitespace}{slash}>B");
+                    assert_eq!(split_html_br_lines(&opening), ["A", "B"]);
+                    assert_eq!(split_mermaid_common_br_lines(&opening), ["A", "B"]);
+                    let closing = format!("A</{name}{whitespace}{slash}>B");
+                    assert_eq!(split_html_br_lines(&closing), [closing.as_str()]);
+                    assert_eq!(split_mermaid_common_br_lines(&closing), ["A", "B"]);
+                }
+            }
+        }
+        for literal in [
+            "A\nB",
+            "A\\nB",
+            "A<br class=x>B",
+            "A<br\\t/>B",
+            "A<br / >B",
+            "A<br\u{0085}>B",
+            "A&lt;br&gt;B",
+        ] {
+            assert_eq!(split_html_br_lines(literal), [literal]);
+            assert_eq!(split_mermaid_common_br_lines(literal), [literal]);
+        }
+        assert_eq!(split_mermaid_common_br_lines("<BR></br>"), ["", "", ""]);
+        assert_eq!(split_html_br_lines(""), [""]);
+    }
 
     #[test]
     fn mermaid_html_breaks_match_source_tags_and_javascript_whitespace() {

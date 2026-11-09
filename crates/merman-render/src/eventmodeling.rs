@@ -4,7 +4,8 @@ use crate::model::{
 };
 use crate::resources::{OperationWorkMeter, PreparedTextRetainedReservation};
 use crate::text::{
-    TextMeasurer, TextStyle, split_html_br_lines, wrap_label_like_mermaid_lines_with_checkpoint,
+    TextMeasurer, TextStyle, split_mermaid_common_br_lines,
+    wrap_label_like_mermaid_lines_with_checkpoint,
 };
 use crate::{Error, Result};
 use merman_model::families::event_modeling::{
@@ -558,7 +559,7 @@ fn measure_eventmodeling_label_html_with_style(
     let mut width: f64 = 0.0;
     let mut height: f64 = 0.0;
     let mut line_height: f64 = 0.0;
-    for line in split_html_br_lines(html) {
+    for line in split_mermaid_common_br_lines(html) {
         let line = line.replace(['\r', '\n'], " ");
         width = width.max(
             measurer

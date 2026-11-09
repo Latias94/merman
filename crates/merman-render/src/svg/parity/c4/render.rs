@@ -190,7 +190,9 @@ fn write_c4_css_with_typography(
 }
 
 struct C4TspanText<'a> {
+    /// Prepared wrapLabel output; unlike unified labels, these rows carry no word markup.
     content: &'a str,
+    line_count: usize,
     x: f64,
     y: f64,
     width: f64,
@@ -203,6 +205,7 @@ struct C4TspanText<'a> {
 fn c4_write_text_by_tspan(out: &mut impl SvgOutput, text: C4TspanText<'_>) -> Result<bool> {
     let C4TspanText {
         content,
+        line_count,
         x,
         y,
         width,
@@ -221,12 +224,14 @@ fn c4_write_text_by_tspan(out: &mut impl SvgOutput, text: C4TspanText<'_>) -> Re
         font_family
     );
 
-    let normalized = content
-        .replace("<br/>", "\n")
-        .replace("<br />", "\n")
-        .replace("<br>", "\n");
-    let lines: Vec<&str> = normalized.split('\n').collect();
-    let n = lines.len().max(1) as f64;
+    out.checkpoint()?;
+    let lines = crate::text::split_mermaid_common_br_lines(content);
+    if lines.len() != line_count {
+        return Err(crate::Error::InvalidModel {
+            message: "C4 legacy text rows do not match their prepared layout".to_owned(),
+        });
+    }
+    let n = line_count as f64;
     let mut visible_text = false;
 
     for (i, line) in lines.iter().enumerate() {
@@ -1165,6 +1170,7 @@ pub(crate) fn render_c4_diagram_svg_typed(
                     &mut out,
                     C4TspanText {
                         content: &b.label.text,
+                        line_count: b.label.line_count,
                         x: b.x,
                         y: b.y + b.label.y,
                         width: b.width,
@@ -1184,6 +1190,7 @@ pub(crate) fn render_c4_diagram_svg_typed(
                         &mut out,
                         C4TspanText {
                             content: &ty.text,
+                            line_count: ty.line_count,
                             x: b.x,
                             y: b.y + ty.y,
                             width: b.width,
@@ -1203,6 +1210,7 @@ pub(crate) fn render_c4_diagram_svg_typed(
                         &mut out,
                         C4TspanText {
                             content: &descr.text,
+                            line_count: descr.line_count,
                             x: b.x,
                             y: b.y + descr.y,
                             width: b.width,
@@ -1354,6 +1362,7 @@ pub(crate) fn render_c4_diagram_svg_typed(
             &mut out,
             C4TspanText {
                 content: &rel.label.text,
+                line_count: rel.label.line_count,
                 x: midx,
                 y: midy,
                 width: rel.label.width,
@@ -1375,6 +1384,7 @@ pub(crate) fn render_c4_diagram_svg_typed(
                 &mut out,
                 C4TspanText {
                     content: &techn_text,
+                    line_count: techn.line_count,
                     x: midx,
                     y: midy + message_size + 5.0,
                     width: rel.label.width.max(techn.width),
@@ -1514,6 +1524,7 @@ mod tests {
             &mut out,
             C4TspanText {
                 content: "first<br>second<br>third",
+                line_count: 3,
                 x: 0.0,
                 y: 0.0,
                 width: 100.0,
