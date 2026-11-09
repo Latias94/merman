@@ -46,9 +46,11 @@ impl TreemapInlineFontSize {
         }
     }
 
-    pub(super) fn changes_for_px(self, generated_px: f64, size: f64) -> bool {
+    pub(super) fn accepts_px_assignment(self) -> bool {
         match self {
-            Self::Generated => generated_px != size,
+            // Keep the writer's established canonical serialization when the fitting pass
+            // assigns a valid pixel value, including one equal to the generated size.
+            Self::Generated => true,
             // Mermaid appends !important to every admitted authored font-size. Even an
             // equal pixel value changes CSSOM when setProperty removes that priority.
             Self::Authored { .. } => true,

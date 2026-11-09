@@ -1027,7 +1027,7 @@ pub(crate) fn render_treemap_diagram_svg(
                 style.font_size = size;
                 final_label_text_style = leaf_label_initial_style.with_font_size_px(size);
                 label_font_size_mutated =
-                    leaf_label_initial_style.font_size_assignment_changes(size);
+                    leaf_label_initial_style.accepts_font_size_assignment(size);
             } else {
                 // D3 reads the inline CSSOM keyword, so parseInt produces NaN. The width
                 // condition still measures the used style, but neither decrement loop runs.
@@ -1060,8 +1060,8 @@ pub(crate) fn render_treemap_diagram_svg(
                     label_hidden = true;
                 }
             }
-            // The final setProperty rejects NaNpx. An unchanged generated size also leaves
-            // the original style attribute intact, including ignored invalid declarations.
+            // The final setProperty rejects NaNpx. Valid pixel assignments retain the writer's
+            // canonical serialization; rejected assignments preserve the authored spelling.
         }
 
         let label_style = if !label_font_size_mutated {
@@ -1148,7 +1148,7 @@ pub(crate) fn render_treemap_diagram_svg(
                 });
                 if let Some(size) = actual_value_font_size {
                     value_font_size_mutated =
-                        leaf_value_initial_style.font_size_assignment_changes(size);
+                        leaf_value_initial_style.accepts_font_size_assignment(size);
                     final_value_text_style = leaf_value_initial_style.with_font_size_px(size);
                 } else {
                     // Upstream writes y=NaN here. Preserve the source spelling, omit the

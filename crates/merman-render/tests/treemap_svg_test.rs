@@ -3421,16 +3421,8 @@ fn treemap_invalid_final_font_sizes_use_generated_sizes_after_property_folding()
                 let actual = text_tag_by_class_and_text(rendered.svg(), class, text);
                 let expected = text_tag_by_class_and_text(control.svg(), class, text);
                 assert_eq!(font_size_px(actual), font_size_px(expected));
-                // Setting the unchanged generated label size leaves its raw attribute intact.
-                // The value changes from 28px to 23px and serializes its accepted CSSOM style.
-                assert_eq!(
-                    actual.matches("font-size:").count(),
-                    if class == "treemapLabel" { 2 } else { 1 }
-                );
-                if class == "treemapLabel" {
-                    assert!(actual.contains(&format!("font-size:{invalid} !important")));
-                    assert!(!actual.contains("font-size:48px"));
-                }
+                assert_eq!(actual.matches("font-size:").count(), 1);
+                assert!(!actual.contains("font-size:48px"));
             }
         }
     }

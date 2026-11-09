@@ -167,12 +167,8 @@ impl TreemapResolvedTextStyle {
         self.inline_font_size.number(self.style.font_size)
     }
 
-    pub(crate) fn font_size_assignment_changes(&self, size: f64) -> bool {
-        size.is_finite()
-            && size >= 0.0
-            && self
-                .inline_font_size
-                .changes_for_px(self.style.font_size, size)
+    pub(crate) fn accepts_font_size_assignment(&self, size: f64) -> bool {
+        size.is_finite() && size >= 0.0 && self.inline_font_size.accepts_px_assignment()
     }
 
     pub(crate) fn mark_fitting_unverified(&mut self) {
