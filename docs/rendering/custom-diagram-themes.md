@@ -170,6 +170,18 @@ visible siblings can still occupy space. A receiving browser's default font pref
 change keyword sizes, so explicit lengths are preferable for reproducible exports.
 Known zero-sized chart labels remain in the SVG but do not count as visible consumers of
 theme fonts or text paint.
+Block, Journey and Timeline preserve positive sizes below 1px as well as Mermaid configuration
+sizes of zero. Journey's tspan task size and Timeline's root-size layout offsets retain their
+independent configuration roles. Hiding text does not remove independently styled nodes, label
+backgrounds or connectors. Typed theme sizes must remain positive; use the owning Mermaid
+configuration when a family supports hiding labels with zero.
+The native SVG pipeline converts admitted literal zero font sizes to `0px`, including units
+such as `0rem` that the rasterizer may not recognize. Parity SVG keeps the authored unit.
+This does not add native measurement for positive sizes in otherwise unsupported CSS units.
+
+Block label measurement follows its effective `classDef` typography, including the default class,
+and direct node styles. Class rules and direct declarations retain their CSS priority rather than
+using a separate font choice for measurement.
 
 Use representative Latin, CJK and symbol labels when the content needs them. A font's presence
 does not imply glyph coverage, and a successful theme status does not certify either one. The
