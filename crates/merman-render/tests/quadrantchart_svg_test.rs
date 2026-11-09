@@ -2177,3 +2177,28 @@ fn quadrantchart_empty_theme_preserves_unthemed_svg_bytes() {
         render_quadrantchart_with_theme_and_engine(TEXT_PAINT_SOURCE, &theme, MermaidEngine::new());
     assert_eq!(plain.svg(), themed.svg());
 }
+
+#[test]
+fn quadrantchart_svg_preserves_db_accessibility_text() {
+    for (title, description, expected_title, expected_description) in [
+        (
+            "Accessible <!--a11y-->",
+            "First\n<!--a11y-->",
+            Some("Accessible "),
+            Some("First\n"),
+        ),
+        (
+            "<!--a11y-->\u{0085}<!--a11y-->",
+            "<!--a11y-->\u{0085}<!--a11y-->",
+            Some("\u{0085}"),
+            Some("\u{0085}"),
+        ),
+        ("<!--a11y-->", "<!--a11y-->", None, None),
+    ] {
+        let source = format!(
+            "quadrantChart\naccTitle: {title}\naccDescr {{\n{description}\n}}\nA: [0.5,0.5]\n"
+        );
+        let svg = render_quadrantchart_svg_from_text(&source);
+        common::assert_svg_accessibility(&svg, expected_title, expected_description);
+    }
+}

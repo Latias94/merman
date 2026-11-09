@@ -592,16 +592,8 @@ pub(crate) fn render_gitgraph_diagram_svg_model(
     options: &SvgExecution<'_>,
 ) -> Result<root_svg::RootedSvg> {
     let diagram_title = crate::gitgraph::resolve_gitgraph_title(model, diagram_title);
-    let acc_title = model
-        .acc_title
-        .as_deref()
-        .map(|s| s.trim())
-        .filter(|s| !s.is_empty());
-    let acc_descr = model
-        .acc_descr
-        .as_deref()
-        .map(|s| s.trim_end_matches('\n'))
-        .filter(|s| !s.is_empty());
+    let acc_title = model.acc_title.as_deref().filter(|s| !s.is_empty());
+    let acc_descr = model.acc_descr.as_deref().filter(|s| !s.is_empty());
 
     render_gitgraph_diagram_svg_with_accessibility(
         layout,

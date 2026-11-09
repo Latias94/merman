@@ -5054,3 +5054,36 @@ fn gitgraph_edge_fill_partial_ordinals_preserve_best_effort_without_false_eviden
 
 #[allow(dead_code)]
 mod common;
+
+#[test]
+fn gitgraph_svg_preserves_db_accessibility_text() {
+    let theme = DiagramThemeCompiler::new()
+        .compile(DiagramThemeSpec::new())
+        .unwrap();
+    for (title, description, expected_title, expected_description) in [
+        (
+            "Accessible <!--a11y-->",
+            "First\n<!--a11y-->",
+            Some("Accessible "),
+            Some("First\n"),
+        ),
+        (
+            "<!--a11y-->\u{0085}<!--a11y-->",
+            "<!--a11y-->\u{0085}<!--a11y-->",
+            Some("\u{0085}"),
+            Some("\u{0085}"),
+        ),
+        ("<!--a11y-->", "<!--a11y-->", None, None),
+    ] {
+        let source =
+            format!("gitGraph\naccTitle: {title}\naccDescr {{\n{description}\n}}\ncommit\n");
+        let rendered = render_gitgraph_with_theme_and_engine(
+            &source,
+            &theme,
+            MermaidEngine::new(),
+            "gitgraph-a11y",
+        );
+        let svg = rendered.svg();
+        common::assert_svg_accessibility(svg, expected_title, expected_description);
+    }
+}

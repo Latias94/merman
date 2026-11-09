@@ -16,6 +16,18 @@ other escaped characters lose the backslash without Unicode, hexadecimal, or oct
 Editor selections retain the authored token range. This conversion does not apply to Treemap's
 literal `STRING2` terminal.
 
+Shared Langium common terminals retain NEL as payload and treat BOM as ECMAScript whitespace.
+Once a trailing `%%` comment starts, later percent pairs and quotes belong to that comment through
+physical CR/LF or EOF. Block descriptions preserve the first line separator in a whitespace run,
+including Unicode line/paragraph separators, while removing the run's remaining indentation.
+The public preprocessing pipeline normalizes authored CR/CRLF to LF; editor payload selections
+continue to reference the original source rather than the normalized value.
+
+SVG accessibility nodes consume the complete nonempty DB title and description. Sanitization can
+expose trailing title spaces or description newlines after removing markup, and SVG emission
+preserves those characters. Each emitted node has a matching root ARIA reference; a sanitized
+empty string emits neither. This does not change visible diagram-title handling.
+
 ## Architecture
 
 Bracketed unquoted titles retain literal quote characters; a quote inside such a title does not
@@ -171,6 +183,16 @@ Hidden comments may begin immediately after scalar fields without intervening wh
 source references remain in authored order, including repeated occurrences, in semantics and editor
 facts. Layout selects each matching source frame once in frame declaration order, following the
 upstream DB's frame-membership rule.
+
+Event Modeling's selected `EM_*` metadata terminals have their own lexer and converter behavior.
+A leading horizontal gap on the same line can select metadata before hidden whitespace; a newline
+and its following indentation are consumed together, exposing identifiers that shadow those
+terminals. Accepted metadata retains the complete raw token, including its directive prefix and
+block delimiters, before DB sanitization. Blocks may be followed by another statement on the same
+line, and each editor payload selects the authored whole token. Rejected metadata keeps later
+independent entity and frame facts available during recovery. Failed block lookahead reuses a
+known unclosed suffix instead of rescanning it for each recovered line. Scalar separators follow
+ECMAScript whitespace, including BOM while retaining NEL as a non-separator.
 
 Owners: [semantic/editor contract tests](../../crates/merman-core/tests/eventmodeling_contract.rs),
 [SVG emitter](../../crates/merman-render/src/svg/parity/eventmodeling.rs), and
@@ -491,6 +513,12 @@ Owners: [parser](../../crates/merman-core/src/diagrams/packet.rs),
 [ASCII split-field tests](../../crates/merman-ascii/tests/new_family_models/packet.rs).
 
 ## Pie
+
+Outside owned tokens, Pie's structural whitespace is space/tab and its line separator is LF/CRLF.
+Other Unicode whitespace between a quoted label, colon, number and line ending is invalid.
+Quoted labels retain their multiline content, and the common description-block prefix admits
+ECMAScript whitespace separately. Recovery diagnostics and later label/number selections keep
+their original byte ranges, including after rejected Unicode prefixes.
 
 `pieOuterStrokeWidth` affects the prepared outer-circle radius as well as its CSS. The selected
 renderer uses `parseFontSize`'s numeric component for this radius, without converting CSS units into

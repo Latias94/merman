@@ -52,18 +52,8 @@ pub(super) fn prepare_flowchart_svg_document(
         .with_max_width(root_svg::RootMaxWidth::CssSixSignificant(root_bounds.width));
     let root_viewport = root_svg::RootViewportContext::new(request.family_id, request.diagram_id);
 
-    let acc_title = request
-        .model
-        .acc_title
-        .as_deref()
-        .map(|s| s.trim())
-        .filter(|s| !s.is_empty());
-    let acc_descr = request
-        .model
-        .acc_descr
-        .as_deref()
-        .map(|s| s.trim_end_matches('\n'))
-        .filter(|s| !s.trim().is_empty());
+    let acc_title = request.model.acc_title.as_deref().filter(|s| !s.is_empty());
+    let acc_descr = request.model.acc_descr.as_deref().filter(|s| !s.is_empty());
     FlowchartSvgDocument {
         diagram_id: request.diagram_id,
         diagram_type: request.diagram_type,

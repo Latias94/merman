@@ -2307,3 +2307,28 @@ fn radar_empty_theme_preserves_unthemed_svg_bytes() {
     let themed = render_radar_with_theme_and_engine(source, &theme, MermaidEngine::new());
     assert_eq!(plain.svg(), themed.svg());
 }
+
+#[test]
+fn radar_svg_preserves_db_accessibility_text() {
+    for (title, description, expected_title, expected_description) in [
+        (
+            "Accessible <!--a11y-->",
+            "First\n<!--a11y-->",
+            Some("Accessible "),
+            Some("First\n"),
+        ),
+        (
+            "<!--a11y-->\u{0085}<!--a11y-->",
+            "<!--a11y-->\u{0085}<!--a11y-->",
+            Some("\u{0085}"),
+            Some("\u{0085}"),
+        ),
+        ("<!--a11y-->", "<!--a11y-->", None, None),
+    ] {
+        let source = format!(
+            "radar-beta\naccTitle: {title}\naccDescr {{\n{description}\n}}\naxis A,B,C\ncurve Metric{{1,2,3}}\n"
+        );
+        let svg = render_radar_svg_from_text(&source);
+        common::assert_svg_accessibility(&svg, expected_title, expected_description);
+    }
+}

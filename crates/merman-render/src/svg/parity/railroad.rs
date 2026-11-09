@@ -10,16 +10,8 @@ pub(crate) fn render_railroad_diagram_svg_model(
     options: &SvgExecution<'_>,
 ) -> Result<root_svg::RootedSvg> {
     let diagram_id = options.diagram_id_or("railroad");
-    let acc_title = model
-        .acc_title
-        .as_deref()
-        .map(str::trim)
-        .filter(|value| !value.is_empty());
-    let acc_descr = model
-        .acc_descr
-        .as_deref()
-        .map(str::trim)
-        .filter(|value| !value.is_empty());
+    let acc_title = model.acc_title.as_deref().filter(|value| !value.is_empty());
+    let acc_descr = model.acc_descr.as_deref().filter(|value| !value.is_empty());
     let aria_labelledby = acc_title.map(|_| format!("chart-title-{diagram_id}"));
     let aria_describedby = acc_descr.map(|_| format!("chart-desc-{diagram_id}"));
     let root_bounds = root_svg::DiagramBounds::from_view_box(0.0, 0.0, layout.width, layout.height);

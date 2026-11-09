@@ -249,14 +249,8 @@ pub(crate) fn render_radar_diagram_svg_model_with_theme_plans(
 ) -> Result<root_svg::RootedSvg> {
     let diagram_id = options.diagram_id_or("radar");
 
-    let has_acc_title = model
-        .acc_title
-        .as_deref()
-        .is_some_and(|s| !s.trim().is_empty());
-    let has_acc_descr = model
-        .acc_descr
-        .as_deref()
-        .is_some_and(|s| !s.trim().is_empty());
+    let has_acc_title = model.acc_title.as_deref().is_some_and(|s| !s.is_empty());
+    let has_acc_descr = model.acc_descr.as_deref().is_some_and(|s| !s.is_empty());
 
     let render_settings = crate::radar::RadarConfigView::new(effective_config).render_settings();
 

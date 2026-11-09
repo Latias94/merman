@@ -2822,3 +2822,16 @@ fn c4_all_presets_consume_title_fill_without_unsupported_title_diagnostics() {
 
 #[allow(dead_code)]
 mod common;
+
+#[test]
+fn c4_svg_preserves_db_accessibility_text() {
+    for (description, expected) in [
+        ("First\n<!--a11y-->", Some("First\n")),
+        ("<!--a11y-->\u{0085}<!--a11y-->", Some("\u{0085}")),
+        ("<!--a11y-->", None),
+    ] {
+        let source = format!("C4Context\naccDescr {{\n{description}\n}}\nSystem(app, \"App\")\n");
+        let svg = render_c4_svg_with_environment(&source, &RenderEnvironment::deterministic());
+        common::assert_svg_accessibility(&svg, None, expected);
+    }
+}

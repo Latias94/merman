@@ -144,16 +144,8 @@ pub(crate) fn render_gantt_diagram_svg_model(
     let w = layout.width.max(1.0);
     let h = layout.height.max(1.0);
 
-    let acc_title = model
-        .acc_title
-        .as_deref()
-        .map(|s| s.trim())
-        .filter(|s| !s.is_empty());
-    let acc_descr = model
-        .acc_descr
-        .as_deref()
-        .map(|s| s.trim_end_matches('\n'))
-        .filter(|s| !s.trim().is_empty());
+    let acc_title = model.acc_title.as_deref().filter(|s| !s.is_empty());
+    let acc_descr = model.acc_descr.as_deref().filter(|s| !s.is_empty());
 
     let mut out = BoundedSvgOutput::new(options.work_meter());
     let aria_labelledby = acc_title

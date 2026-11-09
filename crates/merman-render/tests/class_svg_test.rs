@@ -8032,3 +8032,21 @@ mod class_svg_terminal_contracts {
         }
     }
 }
+
+#[test]
+fn class_svg_preserves_db_accessibility_text() {
+    for (title, description, expected_title, expected_description) in [
+        (
+            "<!--a11y-->\u{0085}<!--a11y-->",
+            "<!--a11y-->\u{0085}<!--a11y-->",
+            Some("\u{0085}"),
+            Some("\u{0085}"),
+        ),
+        ("<!--a11y-->", "<!--a11y-->", None, None),
+    ] {
+        let source =
+            format!("classDiagram\naccTitle: {title}\naccDescr {{\n{description}\n}}\nclass App\n");
+        let svg = render_class_svg_from_text(&source);
+        common::assert_svg_accessibility(&svg, expected_title, expected_description);
+    }
+}

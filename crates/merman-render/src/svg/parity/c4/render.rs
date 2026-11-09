@@ -830,12 +830,8 @@ pub(crate) fn render_c4_diagram_svg_typed(
 
     let aria_roledescription = "c4";
 
-    let aria_describedby = model
-        .acc_descr
-        .as_ref()
-        .map(|s| s.trim_end_matches('\n'))
-        .filter(|s| !s.trim().is_empty())
-        .map(|_| format!("chart-desc-{diagram_id}"));
+    let acc_descr = model.acc_descr.as_deref().filter(|s| !s.is_empty());
+    let aria_describedby = acc_descr.map(|_| format!("chart-desc-{diagram_id}"));
     let aria_labelledby = model
         .acc_title
         .as_ref()
@@ -874,12 +870,7 @@ pub(crate) fn render_c4_diagram_svg_typed(
         );
         out.checkpoint()?;
     }
-    if let Some(descr) = model
-        .acc_descr
-        .as_deref()
-        .map(|s| s.trim_end_matches('\n'))
-        .filter(|s| !s.trim().is_empty())
-    {
+    if let Some(descr) = acc_descr {
         let _ = write!(
             &mut out,
             r#"<desc id="chart-desc-{id}">{text}</desc>"#,

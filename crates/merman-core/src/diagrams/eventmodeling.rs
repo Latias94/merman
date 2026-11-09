@@ -3,8 +3,8 @@ use crate::SourcePresentationMetadata;
 use crate::common_db::{LangiumCommonDbFields, sanitize_acc_descr, sanitize_acc_title};
 #[cfg(feature = "editor-facts")]
 use crate::diagrams::langium_common::push_langium_common_editor_fact;
-use crate::diagrams::langium_common::{LangiumCommonFacts, parse_langium_common};
-use crate::diagrams::scan::physical_line_at;
+use crate::diagrams::langium_common::{LangiumCommonFact, LangiumCommonFacts, LangiumCommonField};
+use crate::diagrams::scan::{is_ecmascript_whitespace, physical_line_at};
 #[cfg(feature = "editor-facts")]
 use crate::family::EditorFactsDemand;
 use crate::sanitize::sanitize_text;
@@ -529,17 +529,15 @@ fn construct_eventmodeling_semantic_source_controlled(
             break;
         }
 
-        if let Some(parsed) = parse_langium_common(code, cursor.offset()) {
-            cursor.set_offset(cursor.offset() + parsed.consumed);
-            syntax.common.push(parsed.fact);
-            if let Some(diagnostic) = parsed.diagnostic {
-                let error = Error::diagram_parse_insertion_point(
-                    diagram_type.to_string(),
-                    diagnostic.message,
-                    diagnostic.span.start,
-                );
-                first_failure.get_or_insert((error, diagnostic.span));
-            }
+        if let Some((field, end)) = cursor.metadata_token() {
+            let span = SourceSpan::new(cursor.offset(), end);
+            syntax.common.push(LangiumCommonFact {
+                field,
+                value: code[span.start..span.end].to_string(),
+                raw_span: span,
+                value_span: span,
+            });
+            cursor.offset = end;
             continue;
         }
 
@@ -661,6 +659,9 @@ struct EventModelingCursor<'a> {
     source: &'a str,
     control: &'a crate::OperationControl,
     offset: usize,
+    unclosed_metadata_from: std::cell::Cell<Option<usize>>,
+    #[cfg(test)]
+    metadata_block_scanned_bytes: std::cell::Cell<usize>,
 }
 
 impl<'a> EventModelingCursor<'a> {
@@ -669,15 +670,14 @@ impl<'a> EventModelingCursor<'a> {
             source,
             control,
             offset: 0,
+            unclosed_metadata_from: std::cell::Cell::new(None),
+            #[cfg(test)]
+            metadata_block_scanned_bytes: std::cell::Cell::new(0),
         }
     }
 
     fn offset(&self) -> usize {
         self.offset
-    }
-
-    fn set_offset(&mut self, offset: usize) {
-        self.offset = offset.min(self.source.len());
     }
 
     fn is_eof(&self) -> bool {
@@ -737,6 +737,9 @@ impl<'a> EventModelingCursor<'a> {
                 .chars()
                 .next()
                 .expect("eventmodeling recovery offset must be a character boundary");
+            if ch == '\n' || ch == '\r' {
+                break;
+            }
             self.offset += ch.len_utf8();
             if self.offset >= next_checkpoint {
                 if self.control.checkpoint().is_err() {
@@ -744,10 +747,91 @@ impl<'a> EventModelingCursor<'a> {
                 }
                 next_checkpoint = self.offset.saturating_add(4096);
             }
-            if ch == '\n' || ch == '\r' {
-                break;
+        }
+    }
+
+    fn scan_while(&self, start: usize, predicate: impl Fn(&str) -> bool) -> Option<usize> {
+        let mut offset = start;
+        let mut next_checkpoint = start.saturating_add(4096);
+        while offset < self.source.len() && predicate(&self.source[offset..]) {
+            offset += self.source[offset..].chars().next()?.len_utf8();
+            if offset >= next_checkpoint {
+                self.control.checkpoint().ok()?;
+                next_checkpoint = offset.saturating_add(4096);
             }
         }
+        Some(offset)
+    }
+
+    fn metadata_token(&self) -> Option<(LangiumCommonField, usize)> {
+        let directive_start = self.scan_while(self.offset, |rest| {
+            rest.starts_with(' ') || rest.starts_with('\t')
+        })?;
+        if directive_start == self.offset {
+            return None;
+        }
+        let rest = &self.source[directive_start..];
+        let (field, after_keyword) = if rest.starts_with("accDescr") {
+            (
+                LangiumCommonField::AccDescr,
+                directive_start + "accDescr".len(),
+            )
+        } else if rest.starts_with("accTitle") {
+            (
+                LangiumCommonField::AccTitle,
+                directive_start + "accTitle".len(),
+            )
+        } else if rest.starts_with("title") {
+            (LangiumCommonField::Title, directive_start + "title".len())
+        } else {
+            return None;
+        };
+
+        let value_start = match field {
+            LangiumCommonField::Title => {
+                if !self.source[after_keyword..].starts_with([' ', '\t']) {
+                    return Some((field, after_keyword));
+                }
+                after_keyword + 1
+            }
+            LangiumCommonField::AccTitle | LangiumCommonField::AccDescr => {
+                let after_gap = self.scan_while(after_keyword, |rest| {
+                    rest.starts_with(' ') || rest.starts_with('\t')
+                })?;
+                if self.source[after_gap..].starts_with(':') {
+                    after_gap + 1
+                } else if field == LangiumCommonField::AccDescr {
+                    let open = self.scan_while(after_gap, |rest| {
+                        rest.chars().next().is_some_and(is_ecmascript_whitespace)
+                    })?;
+                    if !self.source[open..].starts_with('{') {
+                        return None;
+                    }
+                    if self
+                        .unclosed_metadata_from
+                        .get()
+                        .is_some_and(|start| open + 1 >= start)
+                    {
+                        return None;
+                    }
+                    let close = self.scan_while(open + 1, |rest| !rest.starts_with('}'))?;
+                    #[cfg(test)]
+                    self.metadata_block_scanned_bytes
+                        .set(self.metadata_block_scanned_bytes.get() + close - open - 1);
+                    if close == self.source.len() {
+                        self.unclosed_metadata_from.set(Some(open + 1));
+                        return None;
+                    }
+                    return Some((field, close + 1));
+                } else {
+                    return None;
+                }
+            }
+        };
+        let end = self.scan_while(value_start, |rest| {
+            !rest.starts_with(['\r', '\n']) && !rest.starts_with("%%")
+        })?;
+        Some((field, end))
     }
 
     fn skip_hidden(&mut self, diagram_type: &str) -> Result<()> {
@@ -755,10 +839,13 @@ impl<'a> EventModelingCursor<'a> {
             if self.control.checkpoint().is_err() {
                 return Ok(());
             }
+            if self.metadata_token().is_some() {
+                return Ok(());
+            }
             let mut next_checkpoint = self.offset.saturating_add(4096);
             while self.offset < self.source.len() {
                 let ch = self.source[self.offset..].chars().next().unwrap();
-                if !ch.is_whitespace() {
+                if !is_ecmascript_whitespace(ch) {
                     break;
                 }
                 self.offset += ch.len_utf8();
@@ -821,7 +908,7 @@ impl<'a> EventModelingCursor<'a> {
         while self.offset < self.source.len() {
             let rest = &self.source[self.offset..];
             let ch = rest.chars().next().unwrap();
-            if ch.is_whitespace()
+            if is_ecmascript_whitespace(ch)
                 || rest.starts_with("->>")
                 || rest.starts_with("[[")
                 || rest.starts_with("]]")
@@ -1530,21 +1617,19 @@ fn parse_eventmodeling_note_cursor(
 }
 
 fn is_eventmodeling_top_level_start(cursor: &EventModelingCursor<'_>) -> bool {
-    [
-        "title",
-        "accTitle",
-        "accDescr",
-        "entity",
-        "tf",
-        "timeframe",
-        "rf",
-        "resetframe",
-        "data",
-        "note",
-        "gwt",
-    ]
-    .into_iter()
-    .any(|keyword| cursor.starts_keyword(keyword))
+    cursor.metadata_token().is_some()
+        || [
+            "entity",
+            "tf",
+            "timeframe",
+            "rf",
+            "resetframe",
+            "data",
+            "note",
+            "gwt",
+        ]
+        .into_iter()
+        .any(|keyword| cursor.starts_keyword(keyword))
 }
 
 fn parse_eventmodeling_gwt_group(
@@ -2419,14 +2504,11 @@ data ItemAddedData {
 
     #[test]
     fn parses_complete_pinned_langium_grammar_from_one_source() {
-        let text = r#"eventmodeling
-title Checkout flow
-accTitle: Checkout accessibility title
-accDescr {
+        let text = r#"eventmodeling title Checkout flow
+entity CartUpdated accTitle: Checkout accessibility title
+entity ProductChanged accDescr {
   Checkout accessibility description
 }
-entity CartUpdated
-entity ProductChanged
 tf 001 cmd UpdateCart
 tf 002 evt Cart.Updated ->> 001 [[CartData]] `json`{ "ok": true }
 data CartData `json` {
@@ -2445,14 +2527,14 @@ gwt 002
 "#;
 
         let model = parse_eventmodeling_model_for_render(text, &meta()).unwrap();
-        assert_eq!(model.title.as_deref(), Some("Checkout flow"));
+        assert_eq!(model.title.as_deref(), Some(" title Checkout flow"));
         assert_eq!(
             model.acc_title.as_deref(),
-            Some("Checkout accessibility title")
+            Some("accTitle: Checkout accessibility title")
         );
         assert_eq!(
             model.acc_descr.as_deref(),
-            Some("Checkout accessibility description")
+            Some(" accDescr {\nCheckout accessibility description\n}")
         );
         assert_eq!(model.frames.len(), 2);
         assert_eq!(model.data_entities.len(), 1);
@@ -2483,6 +2565,365 @@ gwt 002
                         .iter()
                         .any(|item| item == directive)
                 );
+            }
+        }
+    }
+
+    #[test]
+    fn metadata_matches_selected_runtime_raw_token_values() {
+        let mut metadata = meta();
+        metadata.effective_config = crate::presentation::SourcePresentationConfig::from_value(
+            serde_json::json!({ "securityLevel": "strict" }),
+        );
+        for (source, title, acc_title, acc_descr) in [
+            (
+                "eventmodeling title Value\ntf 01 event Start\n",
+                Some(" title Value"),
+                None,
+                None,
+            ),
+            (
+                "eventmodeling accTitle: Accessible <!--a11y-->\ntf 01 event Start\n",
+                None,
+                Some("accTitle: Accessible "),
+                None,
+            ),
+            (
+                "eventmodeling accDescr { First <!--a11y--> }\ntf 01 event Start\n",
+                None,
+                None,
+                Some(" accDescr { First  }"),
+            ),
+            (
+                "eventmodeling title Value %% comment\ntf 01 event Start\n",
+                Some(" title Value "),
+                None,
+                None,
+            ),
+            (
+                "eventmodeling\ntf 01 event Start accTitle: Accessible\n",
+                None,
+                Some("accTitle: Accessible"),
+                None,
+            ),
+            (
+                "eventmodeling\taccTitle: Accessible\n",
+                None,
+                Some("accTitle: Accessible"),
+                None,
+            ),
+            (
+                "eventmodeling accDescr {\nFirst\n<!--a11y-->\n}\ntf 01 event Start\n",
+                None,
+                None,
+                Some(" accDescr {\nFirst\n}"),
+            ),
+            (
+                "eventmodeling accTitle: <!--a11y-->\u{0085}<!--a11y-->\ntf 01 event Start\n",
+                None,
+                Some("accTitle: \u{0085}"),
+                None,
+            ),
+            (
+                "eventmodeling accTitle: Accessible %% first %% second\ntf 01 event Start\n",
+                None,
+                Some("accTitle: Accessible "),
+                None,
+            ),
+            (
+                "eventmodeling accDescr{One} accDescr{Two}\ntf 01 event Start\n",
+                None,
+                None,
+                Some(" accDescr{Two}"),
+            ),
+            (
+                "eventmodeling accDescr{One} accTitle: Two\n",
+                None,
+                Some("accTitle: Two"),
+                Some(" accDescr{One}"),
+            ),
+            (
+                "eventmodeling  \t accTitle: Value\n",
+                None,
+                Some("accTitle: Value"),
+                None,
+            ),
+            (
+                "eventmodeling accTitle: a \"quote\" %% rest\n",
+                None,
+                Some("accTitle: a \"quote\" "),
+                None,
+            ),
+            ("eventmodeling title\n", Some(" title"), None, None),
+            ("eventmodeling accTitle:\n", None, Some("accTitle:"), None),
+            (
+                "eventmodeling accDescr{}\n",
+                None,
+                None,
+                Some(" accDescr{}"),
+            ),
+            (
+                "eventmodeling accDescr {\nFirst\n<!--a11y-->\n} accTitle: Accessible <!--a11y-->\ntf 01 event Start\n",
+                None,
+                Some("accTitle: Accessible "),
+                Some(" accDescr {\nFirst\n}"),
+            ),
+            (
+                "eventmodeling accDescr {\n<!--a11y-->\u{0085}<!--a11y-->\n} accTitle: <!--a11y-->\u{0085}<!--a11y-->\ntf 01 event Start\n",
+                None,
+                Some("accTitle: \u{0085}"),
+                Some(" accDescr {\n\u{0085}\n}"),
+            ),
+            (
+                "eventmodeling accDescr {\n\n} accTitle: \ntf 01 event Start\n",
+                None,
+                Some("accTitle: "),
+                Some(" accDescr {\n}"),
+            ),
+        ] {
+            let model = parse_eventmodeling_model_for_render(source, &metadata).unwrap();
+            assert_eq!(model.title.as_deref(), title, "source: {source:?}");
+            assert_eq!(model.acc_title.as_deref(), acc_title, "source: {source:?}");
+            assert_eq!(model.acc_descr.as_deref(), acc_descr, "source: {source:?}");
+            let json = parse_eventmodeling(source, &metadata).unwrap();
+            assert_eq!(
+                render_model_to_compat_json(&model, &metadata).unwrap(),
+                json
+            );
+        }
+    }
+
+    #[test]
+    fn metadata_boundaries_match_selected_runtime_rejections() {
+        for source in [
+            "eventmodelingaccTitle: Value\n",
+            "eventmodeling accDescr{One}accTitle: Two\n",
+            "eventmodeling accDescr{One}\n accTitle: Two\n",
+            "eventmodeling accDescr{Oops\n",
+            "eventmodeling\u{feff}accTitle: Nope\n",
+            "eventmodeling\ntitle Value\ntf 01 event Start\n",
+            "eventmodeling\naccDescr {Help}\ntf 01 event Start\n",
+            "eventmodeling\u{feff} accTitle: Accessible\n",
+        ] {
+            assert!(parse_eventmodeling(source, &meta()).is_err(), "{source:?}");
+        }
+    }
+
+    #[test]
+    fn metadata_blocks_allow_following_statements_without_eol_and_last_assignment_wins() {
+        let text = concat!(
+            "eventmodeling accDescr { First }entity Seen title First\r\n",
+            "tf 01 evt Seen accDescr { Second }tf 02 cmd Next title Final\r\n",
+        );
+        let model = parse_eventmodeling_model_for_render(text, &meta()).unwrap();
+        assert_eq!(model.title.as_deref(), Some(" title Final"));
+        assert_eq!(model.acc_descr.as_deref(), Some(" accDescr { Second }"));
+        assert_eq!(model.frames.len(), 2);
+        assert_eq!(model.frames[0].entity_identifier, "Seen");
+        assert_eq!(model.frames[1].entity_identifier, "Next");
+    }
+
+    #[test]
+    #[cfg(feature = "editor-facts")]
+    fn metadata_editor_facts_keep_whole_raw_token_ranges() {
+        let text = concat!(
+            "/* 前置 🤓 */\r\neventmodeling",
+            " accDescr { First %% literal 🤓 } accTitle: Accessible %% hidden \" %%\r\n",
+            "entity Seen title Final\t value\r\n",
+            "tf 01 evt Seen\r\n",
+        );
+        let facts = crate::family::test_support::editor_facts(
+            parse_eventmodeling_json_and_editor_facts,
+            text,
+            &meta(),
+        );
+        assert_eq!(facts.completeness, EditorSemanticCompleteness::Complete);
+        assert!(facts.diagnostics.is_empty());
+        for (raw, detail, directive) in [
+            (
+                " accDescr { First %% literal 🤓 }",
+                "eventmodeling accessibility description",
+                "accDescr",
+            ),
+            (
+                " accTitle: Accessible ",
+                "eventmodeling accessibility title",
+                "accTitle",
+            ),
+            (" title Final\t value", "eventmodeling title", "title"),
+        ] {
+            let start = text.find(raw).unwrap();
+            let span = SourceSpan::new(start, start + raw.len());
+            let symbol = facts
+                .symbols
+                .iter()
+                .find(|symbol| symbol.detail.as_deref() == Some(detail))
+                .unwrap();
+            assert_eq!(symbol.name, raw);
+            assert_eq!(symbol.span, span);
+            assert_eq!(symbol.selection, span);
+            assert_eq!(symbol.role, EditorSemanticRole::Payload);
+            assert!(facts.expected_syntax.iter().any(|expected| {
+                expected.kind == EditorExpectedSyntaxKind::Payload && expected.span == span
+            }));
+            assert!(
+                facts
+                    .directive_prefixes
+                    .iter()
+                    .any(|item| item == directive)
+            );
+        }
+    }
+
+    #[test]
+    fn metadata_shadowed_by_identifiers_rejects_and_recovers_later_records() {
+        for gap in ["\n", "\n ", "\r\n\t", "\u{feff} "] {
+            for directive in [
+                "title Invalid 🤓",
+                "accTitle: Invalid 🤓",
+                "accDescr { Invalid 🤓 }",
+            ] {
+                let text = format!(
+                    "/* 前置 🤓 */\r\neventmodeling{gap}{directive}\r\nentity After\r\ntf 02 evt Done\r\n"
+                );
+                let start = text.find(directive).unwrap();
+                let span = SourceSpan::new(start, start + directive.len());
+                let Error::DiagramParse { diagnostic, .. } =
+                    parse_eventmodeling(&text, &meta()).unwrap_err()
+                else {
+                    panic!("expected metadata rejection for {text:?}");
+                };
+                assert_eq!(diagnostic.span(), Some(span), "source: {text:?}");
+                assert_eq!(diagnostic.span_kind(), ParseDiagnosticSpanKind::Exact);
+
+                #[cfg(feature = "editor-facts")]
+                {
+                    let facts = crate::family::test_support::editor_facts(
+                        parse_eventmodeling_json_and_editor_facts,
+                        &text,
+                        &meta(),
+                    );
+                    assert_eq!(facts.completeness, EditorSemanticCompleteness::Recovered);
+                    assert!(facts.directive_prefixes.is_empty());
+                    assert!(facts.diagnostics.iter().any(|item| item.span == Some(span)));
+                    for (name, detail) in [
+                        ("After", "eventmodeling model entity"),
+                        ("02", "eventmodeling frame"),
+                        ("Done", "eventmodeling entity identifier"),
+                    ] {
+                        let start = text.find(name).unwrap();
+                        let span = SourceSpan::new(start, start + name.len());
+                        assert!(facts.symbols.iter().any(|symbol| {
+                            symbol.name == name
+                                && symbol.detail.as_deref() == Some(detail)
+                                && symbol.span == span
+                                && symbol.selection == span
+                        }));
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    #[cfg(feature = "editor-facts")]
+    fn rejected_metadata_after_blocks_keeps_prefix_and_later_record_spans() {
+        for gap in ["", "\n "] {
+            let raw = " accDescr{One}";
+            let rejected = "accTitle: Invalid 🤓";
+            let text =
+                format!("eventmodeling{raw}{gap}{rejected}\r\nentity After\r\ntf 02 evt Done\r\n");
+            let start = text.find(rejected).unwrap();
+            let rejected_span = SourceSpan::new(start, start + rejected.len());
+            let Error::DiagramParse { diagnostic, .. } =
+                parse_eventmodeling(&text, &meta()).unwrap_err()
+            else {
+                panic!("expected metadata rejection");
+            };
+            assert_eq!(diagnostic.span(), Some(rejected_span));
+            let facts = crate::family::test_support::editor_facts(
+                parse_eventmodeling_json_and_editor_facts,
+                &text,
+                &meta(),
+            );
+            assert_eq!(facts.completeness, EditorSemanticCompleteness::Recovered);
+            assert!(
+                facts
+                    .diagnostics
+                    .iter()
+                    .any(|item| item.span == Some(rejected_span))
+            );
+            assert!(
+                facts
+                    .directive_prefixes
+                    .iter()
+                    .any(|item| item == "accDescr")
+            );
+            assert!(
+                !facts
+                    .directive_prefixes
+                    .iter()
+                    .any(|item| item == "accTitle")
+            );
+            for (name, detail) in [
+                (raw, "eventmodeling accessibility description"),
+                ("After", "eventmodeling model entity"),
+                ("02", "eventmodeling frame"),
+                ("Done", "eventmodeling entity identifier"),
+            ] {
+                let start = text.find(name).unwrap();
+                let span = SourceSpan::new(start, start + name.len());
+                assert!(facts.symbols.iter().any(|symbol| {
+                    symbol.name == name
+                        && symbol.detail.as_deref() == Some(detail)
+                        && symbol.span == span
+                        && symbol.selection == span
+                }));
+            }
+        }
+    }
+
+    #[test]
+    #[cfg(feature = "editor-facts")]
+    fn recovery_preserves_newline_priority_before_indented_metadata() {
+        let text = concat!(
+            "eventmodeling\r\n",
+            "invalid statement\r\n",
+            " accTitle: Unreachable\r\n",
+            "entity After\r\n",
+            "tf 02 evt Done\r\n",
+        );
+        let facts = crate::family::test_support::editor_facts(
+            parse_eventmodeling_json_and_editor_facts,
+            text,
+            &meta(),
+        );
+        assert_eq!(facts.completeness, EditorSemanticCompleteness::Recovered);
+        assert!(facts.directive_prefixes.is_empty());
+        assert!(facts.symbols.iter().any(|symbol| symbol.name == "After"));
+        assert!(facts.symbols.iter().any(|symbol| symbol.name == "Done"));
+    }
+
+    #[test]
+    fn malformed_metadata_tokens_do_not_admit_shared_common_syntax() {
+        for directive in [
+            " AccTitle: Wrong case",
+            " accTitleSuffix: Invalid",
+            " title: Invalid",
+            " titleSuffix",
+            " accDescr { Unterminated",
+        ] {
+            let text = format!("eventmodeling{directive}\ntf 01 evt After\n");
+            assert!(parse_eventmodeling(&text, &meta()).is_err(), "{text:?}");
+            #[cfg(feature = "editor-facts")]
+            {
+                let facts = crate::family::test_support::editor_facts(
+                    parse_eventmodeling_json_and_editor_facts,
+                    &text,
+                    &meta(),
+                );
+                assert_eq!(facts.completeness, EditorSemanticCompleteness::Recovered);
+                assert!(facts.symbols.iter().any(|symbol| symbol.name == "After"));
             }
         }
     }
@@ -2707,6 +3148,9 @@ mod semantic_tests {
     fn adjacent_hidden_comments_separate_scalar_tokens_without_preprocessing() {
         for separator in [
             " ",
+            "\u{feff}",
+            "\u{00a0}",
+            "\u{2028}",
             "/**/",
             "/* boundary */",
             "// boundary\r\n",
@@ -2732,11 +3176,23 @@ mod semantic_tests {
     }
 
     #[test]
+    fn nel_is_not_an_eventmodeling_scalar_separator() {
+        let result = parse_eventmodeling_semantic_model_controlled(
+            "eventmodeling\ntf 01\u{0085}event Start\n",
+            &metadata(),
+            #[cfg(feature = "editor-facts")]
+            EditorFactsDemand::Omit,
+            &crate::OperationControl::new(),
+        )
+        .unwrap();
+        assert!(result.model.is_err());
+    }
+
+    #[test]
     fn semantic_model_preserves_domain_records_without_editor_work() {
         let metadata = metadata();
         let source = concat!(
-            "eventmodeling\n",
-            "accTitle: <script>secret</script>Public\n",
+            "eventmodeling accTitle: <script>secret</script>Public\n",
             "tf 01 cmd AddItem { productId: 7 }\n",
             "tf 02 evt ItemAdded ->> 01\n",
             "data ItemAddedData {\n",
@@ -2756,7 +3212,7 @@ mod semantic_tests {
         .unwrap()
         .model
         .unwrap();
-        assert_eq!(model.acc_title.as_deref(), Some("Public"));
+        assert_eq!(model.acc_title.as_deref(), Some("accTitle: Public"));
         assert_eq!(model.frames[0].name, "01");
         assert_eq!(model.frames[0].model_entity_type, "cmd");
         assert_eq!(model.frames[0].entity_identifier, "AddItem");
@@ -2841,5 +3297,89 @@ mod semantic_tests {
             )
             .is_err()
         );
+    }
+
+    #[test]
+    fn unclosed_metadata_lookahead_scans_each_failed_suffix_once() {
+        for count in [64, 1024] {
+            for newline in ["\n", "\r\n"] {
+                for payload in ["", "🤓"] {
+                    let source = format!(
+                        "eventmodeling{newline}{}entity Later{newline}",
+                        format!("tf 01 evt A accDescr{{{payload}{newline}").repeat(count)
+                    );
+                    let control = crate::OperationControl::new();
+                    let mut cursor = EventModelingCursor::new(&source, &control);
+                    let marker = " accDescr{";
+                    let mut end = 0;
+                    let mut attempts = 0;
+                    while let Some(relative) = source[end..].find(marker) {
+                        cursor.offset = end + relative;
+                        assert!(cursor.metadata_token().is_none());
+                        assert!(cursor.metadata_token().is_none());
+                        end = cursor.offset + marker.len();
+                        attempts += 1;
+                    }
+                    assert_eq!(attempts, count);
+                    assert!(cursor.metadata_block_scanned_bytes.get() <= source.len());
+                }
+            }
+        }
+    }
+
+    #[cfg(feature = "editor-facts")]
+    #[test]
+    fn unclosed_metadata_lookahead_keeps_prefix_and_later_recovery() {
+        let source = concat!(
+            "eventmodeling accDescr{Closed}\n",
+            "tf 01 evt A accDescr{\n",
+            "tf 02 evt B accDescr{\n",
+            "entity Later\n",
+            "tf 03 evt Final\n",
+        );
+        let control = crate::OperationControl::new();
+        let Err(failure) = construct_eventmodeling_semantic_source_controlled(
+            source,
+            "eventmodeling",
+            EditorFactsDemand::Capture,
+            &control,
+        )
+        .unwrap() else {
+            panic!("unclosed metadata must reject");
+        };
+        let (_, facts) = failure.into_error_and_editor_facts();
+        assert_eq!(
+            facts.completeness,
+            crate::EditorSemanticCompleteness::Recovered
+        );
+        for payload in [" accDescr{Closed}", "Later", "Final"] {
+            let start = source.find(payload).unwrap();
+            assert!(facts.symbols.iter().any(|symbol| {
+                symbol.selection == SourceSpan::new(start, start + payload.len())
+            }));
+        }
+    }
+
+    #[test]
+    fn semantic_metadata_scanning_can_cancel_inside_long_tokens() {
+        for (prefix, payload, suffix) in [
+            ("eventmodeling accTitle:", "🤓", "\n"),
+            ("eventmodeling accDescr{", "🤓", "}\n"),
+            ("eventmodeling", " ", "accTitle: Value\n"),
+        ] {
+            let source = format!("{prefix}{}{suffix}", payload.repeat(65_536));
+            let control = crate::OperationControl::new();
+            control.cancel_after_checkpoints(10);
+            assert!(matches!(
+                parse_eventmodeling_semantic_model_controlled(
+                    &source,
+                    &metadata(),
+                    #[cfg(feature = "editor-facts")]
+                    EditorFactsDemand::Omit,
+                    &control,
+                ),
+                Err(crate::OperationCancelled { .. })
+            ));
+        }
     }
 }

@@ -426,14 +426,8 @@ pub(crate) fn render_treemap_diagram_svg(
 
     let theme = typography_theme.css_binding();
 
-    let has_acc_title = layout
-        .acc_title
-        .as_deref()
-        .is_some_and(|s| !s.trim().is_empty());
-    let has_acc_descr = layout
-        .acc_descr
-        .as_deref()
-        .is_some_and(|s| !s.trim().is_empty());
+    let has_acc_title = layout.acc_title.as_deref().is_some_and(|s| !s.is_empty());
+    let has_acc_descr = layout.acc_descr.as_deref().is_some_and(|s| !s.is_empty());
 
     let measurer = options.text_measurer();
     let title = layout.title.as_deref().filter(|t| !t.trim().is_empty());
@@ -610,7 +604,7 @@ pub(crate) fn render_treemap_diagram_svg(
         let _ = write!(
             &mut out,
             r#"<desc id="chart-desc-{diagram_id}">{}</desc>"#,
-            escape_xml(descr.trim_end_matches('\n'))
+            escape_xml(descr)
         );
         out.checkpoint()?;
     }

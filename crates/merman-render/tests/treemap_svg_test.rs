@@ -3129,3 +3129,28 @@ fn treemap_unsupported_selectors_account_for_real_nodes_and_shadowed_rules() {
 
 #[allow(dead_code)]
 mod common;
+
+#[test]
+fn treemap_svg_preserves_db_accessibility_text() {
+    for (title, description, expected_title, expected_description) in [
+        (
+            "Accessible <!--a11y-->",
+            "First\n<!--a11y-->",
+            Some("Accessible "),
+            Some("First\n"),
+        ),
+        (
+            "<!--a11y-->\u{0085}<!--a11y-->",
+            "<!--a11y-->\u{0085}<!--a11y-->",
+            Some("\u{0085}"),
+            Some("\u{0085}"),
+        ),
+        ("<!--a11y-->", "<!--a11y-->", None, None),
+    ] {
+        let source = format!(
+            "treemap-beta\naccTitle: {title}\naccDescr {{\n{description}\n}}\n\"Root\"\n  \"Leaf\": 1\n"
+        );
+        let svg = render_treemap_svg_from_source(&source);
+        common::assert_svg_accessibility(&svg, expected_title, expected_description);
+    }
+}

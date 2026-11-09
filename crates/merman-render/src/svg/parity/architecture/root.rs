@@ -13,17 +13,13 @@ pub(super) fn architecture_a11y_nodes(
     acc_title: Option<&str>,
     acc_descr: Option<&str>,
 ) -> ArchitectureA11y {
-    let aria_labelledby = acc_title
-        .map(str::trim)
-        .filter(|t| !t.is_empty())
-        .map(|_| format!("chart-title-{diagram_id}"));
-    let aria_describedby = acc_descr
-        .map(str::trim)
-        .filter(|t| !t.is_empty())
-        .map(|_| format!("chart-desc-{diagram_id}"));
+    let acc_title = acc_title.filter(|t| !t.is_empty());
+    let acc_descr = acc_descr.filter(|d| !d.is_empty());
+    let aria_labelledby = acc_title.map(|_| format!("chart-title-{diagram_id}"));
+    let aria_describedby = acc_descr.map(|_| format!("chart-desc-{diagram_id}"));
 
     let mut nodes = String::new();
-    if let Some(t) = acc_title.map(str::trim).filter(|t| !t.is_empty()) {
+    if let Some(t) = acc_title {
         let _ = write!(
             &mut nodes,
             r#"<title id="chart-title-{}">{}</title>"#,
@@ -31,7 +27,7 @@ pub(super) fn architecture_a11y_nodes(
             escape_xml_display(t)
         );
     }
-    if let Some(d) = acc_descr.map(str::trim).filter(|t| !t.is_empty()) {
+    if let Some(d) = acc_descr {
         let _ = write!(
             &mut nodes,
             r#"<desc id="chart-desc-{}">{}</desc>"#,

@@ -3449,3 +3449,29 @@ fn gantt_filtered_minute_config_and_body_precedence_reach_both_axes() {
 
 #[allow(dead_code)]
 mod common;
+
+#[test]
+fn gantt_svg_preserves_db_accessibility_text() {
+    for (title, description, expected_title, expected_description) in [
+        (
+            "Accessible <!--a11y-->",
+            "First\n<!--a11y-->",
+            Some("Accessible "),
+            Some("First\n"),
+        ),
+        (
+            "<!--a11y-->\u{0085}<!--a11y-->",
+            "<!--a11y-->\u{0085}<!--a11y-->",
+            Some("\u{0085}"),
+            Some("\u{0085}"),
+        ),
+        ("\u{0085}", "\u{0085}", Some("\u{0085}"), Some("\u{0085}")),
+        ("<!--a11y-->", "<!--a11y-->", None, None),
+    ] {
+        let source = format!(
+            "gantt\naccTitle: {title}\naccDescr {{\n{description}\n}}\ndateFormat YYYY-MM-DD\nTask: task,2026-01-01,1d\n"
+        );
+        let svg = render_gantt_svg_from_text(&source);
+        common::assert_svg_accessibility(&svg, expected_title, expected_description);
+    }
+}

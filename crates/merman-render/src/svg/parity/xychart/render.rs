@@ -455,16 +455,11 @@ pub(crate) fn render_xychart_diagram_svg(
     }
 
     let diagram_id = options.diagram_id_or("xychart");
-    let acc_title = model
-        .acc_title
-        .as_deref()
-        .map(str::trim)
-        .filter(|title| !title.is_empty());
+    let acc_title = model.acc_title.as_deref().filter(|title| !title.is_empty());
     let acc_descr = model
         .acc_descr
         .as_deref()
-        .map(|description| description.trim_end_matches('\n'))
-        .filter(|description| !description.trim().is_empty());
+        .filter(|description| !description.is_empty());
     let aria_labelledby = acc_title.map(|_| format!("chart-title-{diagram_id}"));
     let aria_describedby = acc_descr.map(|_| format!("chart-desc-{diagram_id}"));
     let data_label_config = if layout.show_data_label {

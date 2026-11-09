@@ -8669,3 +8669,23 @@ fn state_explicit_radius_wins_compatibility_css_on_plain_title_and_composite_rec
         }
     }
 }
+
+#[test]
+fn state_svg_preserves_db_accessibility_text() {
+    for (title, description, expected_title, expected_description) in [
+        (
+            "<!--a11y-->\u{0085}<!--a11y-->",
+            "<!--a11y-->\u{0085}<!--a11y-->",
+            Some("\u{0085}"),
+            Some("\u{0085}"),
+        ),
+        ("\u{0085}", "\u{0085}", Some("\u{0085}"), Some("\u{0085}")),
+        ("<!--a11y-->", "<!--a11y-->", None, None),
+    ] {
+        let source = format!(
+            "stateDiagram-v2\naccTitle: {title}\naccDescr {{\n{description}\n}}\n[*] --> Ready\n"
+        );
+        let svg = render_state_svg_from_text(&source);
+        common::assert_svg_accessibility(&svg, expected_title, expected_description);
+    }
+}
