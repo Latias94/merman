@@ -35,6 +35,8 @@ pub(crate) struct TimelineTextPaintOutcome {
     inherited_fill_seen: bool,
     text_seen: bool,
     source_colors_static: bool,
+    unverified_text_seen: bool,
+    unverified_inherited_fill_seen: bool,
 }
 
 impl Default for TimelineTextPaintOutcome {
@@ -43,6 +45,8 @@ impl Default for TimelineTextPaintOutcome {
             inherited_fill_seen: false,
             text_seen: false,
             source_colors_static: true,
+            unverified_text_seen: false,
+            unverified_inherited_fill_seen: false,
         }
     }
 }
@@ -171,6 +175,20 @@ impl TimelineTextPaintPlan {
         for pending in &self.pending {
             match self.terminal.get() {
                 Some(outcome)
+                    if if pending.inherited_fill_only {
+                        outcome.unverified_inherited_fill_seen
+                    } else {
+                        outcome.unverified_text_seen
+                    } =>
+                {
+                    evidence.mark_residual(
+                        pending.key.clone(),
+                        pending
+                            .residual
+                            .unwrap_or(FamilyThemeResidualReason::UnsupportedPaint),
+                    );
+                }
+                Some(outcome)
                     if !outcome.inherited_fill_seen
                         && if pending.inherited_fill_only {
                             outcome.source_colors_static
@@ -205,9 +223,11 @@ impl TimelineTextPaintPlan {
 }
 
 impl TimelineTextPaintOutcome {
-    pub(crate) fn record_title(&mut self, inherits_fill: bool) {
+    pub(crate) fn record_title(&mut self, inherits_fill: bool, font_size_known: bool) {
         self.text_seen = true;
         self.inherited_fill_seen |= inherits_fill;
+        self.unverified_text_seen |= !font_size_known;
+        self.unverified_inherited_fill_seen |= inherits_fill && !font_size_known;
     }
 
     pub(crate) fn record_marker_reference(&mut self) {
@@ -219,27 +239,38 @@ impl TimelineTextPaintOutcome {
         shape_fill: Option<&str>,
         label_fill: Option<&str>,
         has_visible_label: bool,
+        font_size_known: bool,
     ) {
         self.record_fill(shape_fill);
         if has_visible_label {
             self.text_seen = true;
-            self.record_fill(label_fill);
+            let inherits_fill = self.record_fill(label_fill);
+            self.unverified_text_seen |= !font_size_known;
+            self.unverified_inherited_fill_seen |= inherits_fill && !font_size_known;
         }
     }
 
-    fn record_fill(&mut self, fill: Option<&str>) {
+    fn record_fill(&mut self, fill: Option<&str>) -> bool {
         match fill.map(str::trim) {
-            None => self.inherited_fill_seen = true,
+            None => {
+                self.inherited_fill_seen = true;
+                true
+            }
             Some(fill)
                 if fill.eq_ignore_ascii_case("inherit") || fill.eq_ignore_ascii_case("unset") =>
             {
                 self.inherited_fill_seen = true;
+                true
             }
             Some(fill)
-                if fill.eq_ignore_ascii_case("none") || fill.eq_ignore_ascii_case("initial") => {}
+                if fill.eq_ignore_ascii_case("none") || fill.eq_ignore_ascii_case("initial") =>
+            {
+                false
+            }
             Some(fill) => {
                 self.source_colors_static &=
                     crate::mermaid_style::is_supported_css_color_value(fill);
+                false
             }
         }
     }
@@ -253,18 +284,18 @@ mod tests {
     fn inherited_and_dynamic_colors_have_distinct_evidence() {
         for fill in [None, Some(" Inherit "), Some("UNSET")] {
             let mut outcome = TimelineTextPaintOutcome::default();
-            outcome.record_node(fill, Some("#abcdef"), true);
+            outcome.record_node(fill, Some("#abcdef"), true, true);
             assert!(outcome.inherited_fill_seen);
             assert!(outcome.source_colors_static);
         }
         for fill in ["#abcdef", "transparent", "none", "initial"] {
             let mut outcome = TimelineTextPaintOutcome::default();
-            outcome.record_node(Some(fill), Some(fill), true);
+            outcome.record_node(Some(fill), Some(fill), true, true);
             assert!(!outcome.inherited_fill_seen);
             assert!(outcome.source_colors_static);
         }
         let mut outcome = TimelineTextPaintOutcome::default();
-        outcome.record_node(Some("currentColor"), Some("#abcdef"), true);
+        outcome.record_node(Some("currentColor"), Some("#abcdef"), true, true);
         assert!(!outcome.source_colors_static);
     }
 }
