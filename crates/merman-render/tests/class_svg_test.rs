@@ -910,9 +910,12 @@ fn class_font_stack_without_inherited_text_is_not_applicable() {
     let theme = class_typography_theme(ThemeTextStyle::default().with_font_stack(
         FontStack::single("ClassTerminalFree").expect("valid Class terminal-free font"),
     ));
-    let rendered =
-        try_render_class_svg_with_theme_and_engine("classDiagram\n", &theme, MermaidEngine::new())
-            .expect("render terminal-free Class diagram");
+    let rendered = try_render_class_svg_with_theme_and_engine(
+        "classDiagram\ndirection TB\n",
+        &theme,
+        MermaidEngine::new(),
+    )
+    .expect("render terminal-free Class diagram");
 
     assert!(rendered.svg().contains("ClassTerminalFree"));
     let evidence = merman_render::__private::family_evidence(rendered.into_completion().report());
@@ -3493,7 +3496,7 @@ fn class_node_and_label_fallbacks_are_reconciled_against_visible_nodes() {
     assert_eq!(evidence.theme_residual_count(), 3);
 
     let empty = try_render_class_svg_with_theme_requirement(
-        "classDiagram\n",
+        "classDiagram\ndirection TB\n",
         &theme,
         MermaidEngine::new(),
         ThemePortabilityRequirement::RequirePortable,
@@ -4933,7 +4936,7 @@ fn class_background_accounts_for_visible_empty_shadowed_and_source_owned_rules()
             merman_render::__private::family_evidence(rendered.into_completion().report());
         assert_eq!(evidence.theme_residual_count(), usize::from(rejected));
     }
-    for source in ["classDiagram\n", "classDiagram\nA --> B\n"] {
+    for source in ["classDiagram\ndirection TB\n", "classDiagram\nA --> B\n"] {
         let rendered = try_render_class_svg_with_theme_requirement(
             source,
             &theme,
