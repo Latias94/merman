@@ -123,7 +123,11 @@
         "linkTarget": null,
         "pos": null,
         "shape": null,
-        "styles": []
+        "styles": [
+          "fill:#f7f7f7",
+          "stroke:#333",
+          "stroke-width:1px"
+        ]
       },
       {
         "assetHeight": null,
@@ -169,6 +173,19 @@
       "G",
       "G",
       "C"
+    ],
+    "warningFacts": [
+      {
+        "message": "Style applied to unknown node \"G\". This may indicate a typo. The node will be created automatically.",
+        "ruleId": "merman.semantic.flowchart.unknown_style_target",
+        "span": {
+          "end": 504,
+          "start": 503
+        }
+      }
+    ],
+    "warnings": [
+      "Style applied to unknown node \"G\". This may indicate a typo. The node will be created automatically."
     ]
   }
 }

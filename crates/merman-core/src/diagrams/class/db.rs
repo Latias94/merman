@@ -98,7 +98,8 @@ impl ClassMember {
     }
 
     fn parse_member(&mut self, input: &str, member_type: &str) {
-        let input = input.trim();
+        // AddMember trims authored text before sanitization. A second trim here
+        // would reinterpret a trailing classifier after removed markup exposes space.
         if member_type == "method" {
             if let Some((visibility, id, params, classifier, return_type)) =
                 Self::parse_method_signature_like_upstream(input)

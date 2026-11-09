@@ -350,7 +350,12 @@
         "linkTarget": null,
         "pos": null,
         "shape": null,
-        "styles": []
+        "styles": [
+          "fill:#F99",
+          "stroke-width:2px",
+          "stroke:#F0F",
+          "color:darkred"
+        ]
       },
       {
         "assetHeight": null,
@@ -369,7 +374,12 @@
         "linkTarget": null,
         "pos": null,
         "shape": null,
-        "styles": []
+        "styles": [
+          "fill:#999",
+          "stroke-width:10px",
+          "stroke:#0F0",
+          "color:blue"
+        ]
       }
     ],
     "subgraphs": [
@@ -432,6 +442,28 @@
       "D",
       "foo",
       "bar"
+    ],
+    "warningFacts": [
+      {
+        "message": "Style applied to unknown node \"foo\". This may indicate a typo. The node will be created automatically.",
+        "ruleId": "merman.semantic.flowchart.unknown_style_target",
+        "span": {
+          "end": 271,
+          "start": 268
+        }
+      },
+      {
+        "message": "Style applied to unknown node \"bar\". This may indicate a typo. The node will be created automatically.",
+        "ruleId": "merman.semantic.flowchart.unknown_style_target",
+        "span": {
+          "end": 334,
+          "start": 331
+        }
+      }
+    ],
+    "warnings": [
+      "Style applied to unknown node \"foo\". This may indicate a typo. The node will be created automatically.",
+      "Style applied to unknown node \"bar\". This may indicate a typo. The node will be created automatically."
     ]
   }
 }

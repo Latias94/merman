@@ -503,7 +503,9 @@ impl<'input> Lexer<'input> {
             }
             b'o' => {
                 let next = self.input.as_bytes().get(self.pos + 1).copied();
-                if matches!(next, Some(b'-' | b'.' | b' ' | b'\t') | None) {
+                // The aggregation rule wins ties with ALPHA's ASCII `\w+` rule.
+                // A longer ASCII word keeps its `o`; quoted and Unicode names do not.
+                if next.is_none_or(|byte| !byte.is_ascii_alphanumeric() && byte != b'_') {
                     self.pos += 1;
                     Some((start, Tok::Agg, self.pos))
                 } else {

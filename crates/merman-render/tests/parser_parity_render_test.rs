@@ -1,5 +1,8 @@
 #![cfg(any(
     feature = "diagram-er",
+    feature = "diagram-flowchart",
+    feature = "diagram-class",
+    feature = "diagram-gantt",
     feature = "diagram-sequence",
     feature = "diagram-state"
 ))]
@@ -30,6 +33,134 @@ fn prepare_and_render(source: &str) -> (Value, String) {
         .svg()
         .to_owned();
     (projection["semantic"].clone(), svg)
+}
+
+#[cfg(feature = "diagram-flowchart")]
+#[test]
+fn style_created_flowchart_vertices_keep_order_without_duplicating_subgraphs() {
+    for layout in ["dagre", "elk"] {
+        if layout == "elk" && !cfg!(feature = "layout-elk") {
+            continue;
+        }
+        let (model, svg) = prepare_and_render(&format!(
+            concat!(
+                "---\nconfig:\n  layout: {layout}\n  look: classic\n---\n",
+                "flowchart TD\nstyle Ghost fill:#abcdef\nA-->B\n",
+                "linkStyle 0 stroke:#eeaabb, fill:blue\n",
+                "subgraph G\nC\nend\nstyle G stroke:#123456\nD\n",
+            ),
+            layout = layout,
+        ));
+        assert_eq!(
+            model["nodes"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .map(|node| node["id"].as_str().unwrap())
+                .collect::<Vec<_>>(),
+            ["Ghost", "A", "B", "C", "G", "D"]
+        );
+        assert_eq!(
+            model["edges"][0]["style"],
+            serde_json::json!(["stroke:#eeaabb", " fill:blue", "fill:none"])
+        );
+        let document = roxmltree::Document::parse(&svg).unwrap();
+        let clusters = document
+            .descendants()
+            .filter(|node| {
+                node.attribute("class").is_some_and(|classes| {
+                    classes.split_whitespace().any(|class| class == "cluster")
+                })
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(clusters.len(), 1, "{layout}");
+        assert!(
+            clusters[0]
+                .descendants()
+                .any(|node| node.is_text() && node.text() == Some("G"))
+        );
+        let nodes = document
+            .descendants()
+            .filter(|node| {
+                node.attribute("class")
+                    .is_some_and(|classes| classes.split_whitespace().any(|class| class == "node"))
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(
+            nodes.len(),
+            5,
+            "same-ID vertex must not duplicate its subgraph"
+        );
+        assert!(
+            document.descendants().any(|node| node
+                .attribute("style")
+                .is_some_and(|style| style.contains("#abcdef"))),
+            "style-created node must reach SVG"
+        );
+        assert!(
+            document.descendants().any(|node| node
+                .attribute("style")
+                .is_some_and(|style| style.contains("#123456"))),
+            "same-ID vertex CSS must reach its subgraph"
+        );
+        let edge = document
+            .descendants()
+            .find(|node| node.attribute("data-edge") == Some("true"))
+            .expect("rendered Flowchart edge");
+        let style = edge.attribute("style").unwrap();
+        assert!(
+            style.contains("fill:blue") && style.contains("fill:none"),
+            "{layout}: {style}"
+        );
+    }
+}
+
+#[cfg(feature = "diagram-class")]
+#[test]
+fn class_aggregation_and_sanitized_member_modifiers_reach_svg() {
+    let (model, svg) = prepare_and_render(concat!(
+        "classDiagram\nA --o`目标`\nclass A {\n",
+        "+value$ <!--hint-->\n+static$\n}\n",
+    ));
+    assert_eq!(model["relations"][0]["id2"], "目标");
+    assert_eq!(model["relations"][0]["relation"]["type2"], 0);
+    assert_eq!(model["classes"]["A"]["members"][0]["id"], "value$");
+    assert_eq!(model["classes"]["A"]["members"][0]["classifier"], "");
+    assert_eq!(model["classes"]["A"]["members"][1]["classifier"], "$");
+    let document = roxmltree::Document::parse(&svg).unwrap();
+    assert!(document.descendants().any(|node| {
+        node.attribute("marker-end")
+            .is_some_and(|marker| marker.contains("aggregation"))
+    }));
+    assert!(
+        document
+            .descendants()
+            .any(|node| node.is_text() && node.text().is_some_and(|text| text.contains("+value$")))
+    );
+}
+
+#[cfg(feature = "diagram-gantt")]
+#[test]
+fn literal_gantt_end_fields_preserve_zero_duration_in_prepared_output() {
+    let (model, svg) = prepare_and_render(concat!(
+        "gantt\ndateFormat YYYY-MM-DD\n",
+        "Base:a,2026-01-01,1d\nLiteral:b,2026-01-02,\u{0085}until a\n",
+        "Dependent:c,after b,1d\n",
+    ));
+    let tasks = model["tasks"].as_array().unwrap();
+    assert_eq!(tasks[1]["startTime"], tasks[1]["endTime"]);
+    assert_eq!(tasks[2]["startTime"], tasks[1]["endTime"]);
+    assert_eq!(tasks[1]["manualEndTime"], false);
+    let document = roxmltree::Document::parse(&svg).unwrap();
+    let task_id = format!("{}-b", document.root_element().attribute("id").unwrap());
+    let task = document
+        .descendants()
+        .find(|node| node.has_tag_name("rect") && node.attribute("id") == Some(task_id.as_str()))
+        .expect("literal-end task SVG");
+    assert_eq!(
+        task.attribute("width").unwrap().parse::<f64>().unwrap(),
+        0.0
+    );
 }
 
 #[cfg(feature = "diagram-sequence")]

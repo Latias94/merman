@@ -81,6 +81,15 @@ namespace sizing. Quoted `cssClass` target lists retain each comma-separated fra
 for lookup, as the selected DB does. Use `"A,B"` to target both declared classes A and B;
 `"A, B"` does not match B through its space-prefixed second fragment.
 
+Aggregation's `o` wins a lexer tie before a quoted or Unicode endpoint, while a longer ASCII
+word such as `other` remains one name. Generic suffixes and quoted-name selections retain their
+own source ranges through navigation and rename. Block members are trimmed before HTML cleanup;
+spaces exposed by a removed trailing comment remain significant when detecting static or abstract
+markers. Colon members retain their earlier label-cleanup stage. The
+[aggregation boundary tests](../../crates/merman-core/tests/class_aggregation_boundary_parity_test.rs)
+and [member cleanup tests](../../crates/merman-core/tests/class_member_sanitization_order_parity_test.rs)
+own these selected-source contracts.
+
 Numeric-leading class names retain their authored semantic identity; the DOM prefix does not
 rename the class or merge it with a separately declared `classId-*` name. The selected DB applies
 its numeric target prefix only inside CSS-class and link assignment; tooltip and callback lookup
@@ -222,6 +231,16 @@ within each ampersand group. First-owner filtering and dropped-member diagnostic
 same membership sequence; node declarations and edge expansion retain their independent source
 orders. Nested and repeated subgraphs keep their existing completed-declaration ownership.
 
+`style` creates an unknown vertex at that statement's position, preserving its identity through
+later labels, metadata and interactions. It can create a vertex sharing a completed subgraph's ID;
+the model retains that vertex while layout and SVG render the group once using its separate CSS
+owner. An already-declared raw edge ID takes precedence and does not create a vertex. Indexed
+`linkStyle` checks the authored prefix of each style fragment before appending `fill:none`;
+a space-prefixed `fill` fragment does not suppress that fallback. Default edge styles do not use
+this fallback. The [style-order tests](../../crates/merman-core/tests/flowchart_style_order_test.rs)
+and [parsed SVG integration](../../crates/merman-render/tests/parser_parity_render_test.rs) own
+the model and downstream behavior.
+
 Accessibility directives are recognized at the authoritative lexer's plain cursor. The same text
 inside quoted, Markdown or other label payloads remains label content and cannot replace the
 diagram's accessible name. Asset width and height updates follow the selected DB's truthiness
@@ -299,6 +318,14 @@ ECMAScript set. BOM is whitespace, while NEL remains literal task/ID text. Click
 lexed ID without a second trim; a NEL-bearing ID therefore keeps its matching link and editor
 references. Callback arguments use ECMAScript trimming outside their optional quotes. Date-parser
 fallback dialects remain governed by the separate date owner.
+
+Scheduling and semantic constraints use the same task-field boundary whitespace. In particular,
+NEL before `after` is not a dependency prefix; NEL before `until`, a date or a duration remains
+literal end data and leaves the task's end at its start. Dependency navigation and rename do not
+claim IDs inside those literal end fields. The
+[task-boundary tests](../../crates/merman-core/tests/gantt_task_boundary_parity_test.rs) and
+[editor integration](../../crates/merman-editor-core/tests/parser_parity.rs) retain original
+UTF-8 ranges for complete and recovered input.
 
 The date parser implements evidenced Day.js-style tokens and JavaScript date fallback forms;
 arbitrary locale formats and every `Date.parse()` dialect are not a compatibility promise.

@@ -332,6 +332,54 @@
         "pos": null,
         "shape": null,
         "styles": []
+      },
+      {
+        "assetHeight": null,
+        "assetWidth": null,
+        "classes": [],
+        "constraint": null,
+        "form": null,
+        "haveCallback": false,
+        "icon": null,
+        "id": "foo",
+        "img": null,
+        "label": "foo",
+        "labelType": "text",
+        "layoutShape": "squareRect",
+        "link": null,
+        "linkTarget": null,
+        "pos": null,
+        "shape": null,
+        "styles": [
+          "fill:#F99",
+          "stroke-width:2px",
+          "stroke:#F0F",
+          "color:darkred"
+        ]
+      },
+      {
+        "assetHeight": null,
+        "assetWidth": null,
+        "classes": [],
+        "constraint": null,
+        "form": null,
+        "haveCallback": false,
+        "icon": null,
+        "id": "bar",
+        "img": null,
+        "label": "bar",
+        "labelType": "text",
+        "layoutShape": "squareRect",
+        "link": null,
+        "linkTarget": null,
+        "pos": null,
+        "shape": null,
+        "styles": [
+          "fill:#999",
+          "stroke-width:10px",
+          "stroke:#0F0",
+          "color:blue"
+        ]
       }
     ],
     "subgraphs": [
@@ -394,6 +442,28 @@
       "D",
       "foo",
       "bar"
+    ],
+    "warningFacts": [
+      {
+        "message": "Style applied to unknown node \"foo\". This may indicate a typo. The node will be created automatically.",
+        "ruleId": "merman.semantic.flowchart.unknown_style_target",
+        "span": {
+          "end": 216,
+          "start": 213
+        }
+      },
+      {
+        "message": "Style applied to unknown node \"bar\". This may indicate a typo. The node will be created automatically.",
+        "ruleId": "merman.semantic.flowchart.unknown_style_target",
+        "span": {
+          "end": 281,
+          "start": 278
+        }
+      }
+    ],
+    "warnings": [
+      "Style applied to unknown node \"foo\". This may indicate a typo. The node will be created automatically.",
+      "Style applied to unknown node \"bar\". This may indicate a typo. The node will be created automatically."
     ]
   }
 }

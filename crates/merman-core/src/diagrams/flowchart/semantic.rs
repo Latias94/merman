@@ -92,23 +92,23 @@ impl<'a> FlowchartSemanticContext<'a> {
                             .styles
                             .extend(s.styles.iter().cloned());
                     }
-                    if !active_subgraphs.contains_key(&s.target) {
-                        if is_new_vertex {
-                            let mut warning = DiagramWarningFact::new(
-                                FLOWCHART_UNKNOWN_STYLE_TARGET_WARNING_RULE_ID,
-                                format!(
-                                    "Style applied to unknown node \"{}\". This may indicate a typo. The node will be created automatically.",
-                                    s.target
-                                ),
-                            );
-                            if let Some(span) = s.target_span {
-                                warning = warning.with_span(span);
-                            }
-                            self.warning_facts.push(warning);
+                    if is_new_vertex {
+                        let mut warning = DiagramWarningFact::new(
+                            FLOWCHART_UNKNOWN_STYLE_TARGET_WARNING_RULE_ID,
+                            format!(
+                                "Style applied to unknown node \"{}\". This may indicate a typo. The node will be created automatically.",
+                                s.target
+                            ),
+                        );
+                        if let Some(span) = s.target_span {
+                            warning = warning.with_span(span);
                         }
-                        let idx = self.ensure_authored_node(&s.target);
-                        self.nodes[idx].styles.extend(s.styles.iter().cloned());
+                        self.warning_facts.push(warning);
                     }
+                    // Without metadata, addVertex also creates/updates the vertex whose ID
+                    // belongs to a completed subgraph. Its separate CSS owner remains intact.
+                    let idx = self.ensure_authored_node(&s.target);
+                    self.nodes[idx].styles.extend(s.styles.iter().cloned());
                 }
                 Stmt::ClassDef(c) => {
                     for (index, id) in c.ids.iter().enumerate() {
@@ -228,7 +228,7 @@ impl<'a> FlowchartSemanticContext<'a> {
                                         && !self.edges[*i]
                                             .style
                                             .iter()
-                                            .any(|s| s.trim_start().starts_with("fill"))
+                                            .any(|s| s.starts_with("fill"))
                                     {
                                         self.edges[*i].style.push("fill:none".to_string());
                                     }

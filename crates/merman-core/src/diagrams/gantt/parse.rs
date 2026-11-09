@@ -1442,7 +1442,7 @@ fn raw_task_to_semantic_task(t: RawTask, date_format: &str) -> Result<GanttTask>
 }
 
 fn relative_dependency_ids(value: &str, keyword: &str) -> Option<Vec<String>> {
-    relative_ref_ids(value.trim(), keyword).map(|ids| {
+    relative_ref_ids(value.trim_matches(is_ecmascript_whitespace), keyword).map(|ids| {
         ids.split(' ')
             .filter(|id| !id.is_empty())
             .map(str::to_string)
@@ -1451,7 +1451,7 @@ fn relative_dependency_ids(value: &str, keyword: &str) -> Option<Vec<String>> {
 }
 
 fn gantt_end_constraint(value: &str, date_format: &str) -> GanttTaskEndConstraint {
-    let trimmed = value.trim();
+    let trimmed = value.trim_matches(is_ecmascript_whitespace);
     if trimmed.is_empty() {
         return GanttTaskEndConstraint::Unspecified;
     }
