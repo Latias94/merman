@@ -8,7 +8,9 @@ use merman_model::families::architecture::{
 use super::ArchitectureEmitCheckpoints;
 use super::edges::{ArchitectureEdgeRenderContext, push_architecture_edges};
 use super::geometry::{GroupRect, GroupRectComputer, bounds_from_rect, extend_bounds};
-use super::labels::{svg_service_title_bounds, wrap_svg_words_to_lines};
+use super::labels::{
+    svg_service_title_bounds, svg_source_has_visible_text, wrap_svg_words_to_lines,
+};
 use super::nodes::{
     ArchitectureNodeRenderContext, architecture_service_has_icon_text, push_architecture_groups,
     push_architecture_services_and_junctions,
@@ -282,28 +284,25 @@ pub(crate) fn render_architecture_diagram_svg_typed_with_config(
                     index,
                     has_background: service.icon.is_none()
                         && !architecture_service_has_icon_text(service),
-                    has_title: service
-                        .title
-                        .as_deref()
-                        .is_some_and(|title| !title.trim().is_empty()),
+                    has_title: svg_source_has_visible_text(
+                        service.title.as_deref(),
+                        text_style.font_size,
+                    ),
                 },
             ),
         model.groups.iter().enumerate().map(|(index, group)| {
             crate::architecture::ArchitectureGroupTerminal {
                 index,
-                has_title: group
-                    .title
-                    .as_deref()
-                    .is_some_and(|title| !title.trim().is_empty()),
+                has_title: svg_source_has_visible_text(
+                    group.title.as_deref(),
+                    text_style.font_size,
+                ),
             }
         }),
         model.edges.iter().enumerate().map(|(index, edge)| {
             crate::architecture::ArchitectureEdgeTerminal {
                 index,
-                has_label: edge
-                    .title
-                    .as_deref()
-                    .is_some_and(|title| !title.trim().is_empty()),
+                has_label: svg_source_has_visible_text(edge.title.as_deref(), text_style.font_size),
                 has_lhs_arrow: edge.lhs_into == Some(true),
                 has_rhs_arrow: edge.rhs_into == Some(true),
             }
