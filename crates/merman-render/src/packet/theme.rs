@@ -328,10 +328,15 @@ impl PacketThemeSelection {
     fn finish(&self, output: &PacketTextOutput<'_>) -> PacketThemeOutcome {
         let mut evidence = FamilyThemeOutcomes::default();
         let key = FamilyThemeMechanismKey::Typography(ThemeTypographyProperty::FontStack);
-        if output.has_visible_text() {
+        if output.has_potential_text() {
             match self.typography {
                 PacketTypographyOutcome::TypedFontStack => {
-                    evidence.mark_applied_with_capabilities(key, [ThemeCapability::Typography]);
+                    if output.has_unverified_text() {
+                        evidence
+                            .mark_residual(key, FamilyThemeResidualReason::UnsupportedTypography);
+                    } else {
+                        evidence.mark_applied_with_capabilities(key, [ThemeCapability::Typography]);
+                    }
                 }
                 PacketTypographyOutcome::ConfigOwned => evidence.mark_not_applicable(key),
                 PacketTypographyOutcome::Inactive => {}
@@ -341,7 +346,7 @@ impl PacketThemeSelection {
         }
         for property in &self.unsupported_properties {
             let key = FamilyThemeMechanismKey::Typography(*property);
-            if output.has_visible_text() {
+            if output.has_potential_text() {
                 evidence.mark_residual(key, FamilyThemeResidualReason::UnsupportedTypography);
             } else {
                 evidence.mark_not_applicable(key);
@@ -391,13 +396,20 @@ impl PacketThemeSelection {
                     if output.route_won(rule_index, ResolvedStyleProperty::Fill)
                         && output.has_typed_fill(target) =>
                 {
-                    evidence.mark_applied_with_capabilities(key.clone(), [capability]);
+                    if output.target_has_unverified_text(target) {
+                        evidence.mark_residual(
+                            key.clone(),
+                            FamilyThemeResidualReason::UnsupportedTypography,
+                        );
+                    } else {
+                        evidence.mark_applied_with_capabilities(key.clone(), [capability]);
+                    }
                 }
                 _ => evidence.mark_not_applicable(key.clone()),
             }
         }
         let compatibility = self.compatibility_surface_candidate.then(|| {
-            let disposition = if output.has_visible_text() {
+            let disposition = if output.has_potential_text() {
                 ThemeCompatibilityConsumptionDisposition::ReplacedByTypedSurface
             } else {
                 ThemeCompatibilityConsumptionDisposition::NotReadByFamily
