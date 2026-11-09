@@ -12,8 +12,8 @@ use crate::diagram_theme::{
 };
 use crate::family::{
     DirectStaticPaint, DirectStaticSelectorDomain, FamilyThemeEvidence, FamilyThemeOutcomes,
-    FamilyThemeResidualReason, InheritedFontStackOutcome, InheritedFontStackPlan,
-    resolve_direct_static_fill, unsupported_residual_for_facet,
+    FamilyThemeResidualReason, InheritedFontStackPlan, resolve_direct_static_fill,
+    unsupported_residual_for_facet,
 };
 use crate::resources::OperationWorkMeter;
 
@@ -124,6 +124,8 @@ pub(crate) enum WardleyTextRole {
 pub(crate) struct WardleySurfaceReceipt {
     requested: bool,
     text_fills: BTreeMap<WardleyTextRole, BTreeSet<Box<str>>>,
+    uncertain_text_roles: BTreeSet<WardleyTextRole>,
+    emitted_font_family: Option<Box<str>>,
     pub(crate) paint_evidence: FamilyThemeOutcomes,
     pub(crate) paint_overridden_text_roles: BTreeSet<WardleyTextRole>,
 }
@@ -132,13 +134,20 @@ impl WardleySurfaceReceipt {
     pub(crate) fn record_text(
         &mut self,
         role: WardleyTextRole,
-        _emitted_class: Option<&str>,
         text: &str,
         fill: &str,
+        used_font_size: Option<f64>,
     ) {
-        if self.requested && !text.trim().is_empty() {
+        if self.requested && !text.trim().is_empty() && used_font_size != Some(0.0) {
             self.text_fills.entry(role).or_default().insert(fill.into());
+            if used_font_size.is_none() {
+                self.uncertain_text_roles.insert(role);
+            }
         }
+    }
+
+    pub(crate) fn record_font_family(&mut self, font: &str) {
+        self.emitted_font_family = Some(font.into());
     }
 
     fn has_visible_text(&self) -> bool {
@@ -152,7 +161,10 @@ pub(crate) struct WardleyTypographyThemePlan {
     paint_binding: WardleyPaintBinding,
     base_paint_binding: WardleyPaintBinding,
     config: PresentationConfig,
-    source_font_family_css: Option<Box<str>>,
+    font_family_css: Box<str>,
+    config_owns_font_family: bool,
+    write_font_family: bool,
+    font_sizes: super::font_size::WardleyFontSizes,
     inherited_font_stack: InheritedFontStackPlan,
     unsupported_routes: Box<[WardleyUnsupportedRoute]>,
     direct_text_fill_routes: Box<[WardleyDirectTextFillRoute]>,
@@ -178,21 +190,52 @@ impl WardleyTypographyThemePlan {
         effective_config: &PresentationConfig,
         work_meter: &OperationWorkMeter,
     ) -> crate::Result<Self> {
+        let inherited_font_stack =
+            InheritedFontStackPlan::resolve_property_local(theme, effective_config);
+        let config = effective_config.as_value();
+        let family_font =
+            accepted_font_family(config["themeVariables"]["wardley"]["fontFamily"].as_str());
+        let root_font = [
+            (
+                &["themeVariables", "fontFamily"][..],
+                "themeVariables.fontFamily",
+            ),
+            (&["fontFamily"][..], "fontFamily"),
+        ]
+        .into_iter()
+        .find_map(|(path, owner)| {
+            accepted_font_family(crate::config::value_at(config, path).and_then(|v| v.as_str()))
+                .map(|font| (font, owner))
+        });
+        let config_owns_font_family = family_font.is_some()
+            || root_font.as_ref().is_some_and(|(_, path)| {
+                effective_config.config_path_overrides_typed_default(path)
+            });
+        let write_font_family =
+            config_owns_font_family || inherited_font_stack.typed_font_stack_requested();
+        let font_family_css = family_font.unwrap_or_else(|| {
+            if !config_owns_font_family && inherited_font_stack.typed_font_stack_requested() {
+                theme
+                    .expect("a requested font stack has a resolved theme")
+                    .typography()
+                    .font_stack()
+                    .as_css()
+            } else {
+                root_font.map_or_else(
+                    || crate::config::MERMAID_DEFAULT_FONT_FAMILY_CSS.to_owned(),
+                    |(font, _)| font,
+                )
+            }
+        });
         let mut plan = Self {
             paint_binding: WardleyPaintBinding::from_config(effective_config.as_value()),
             base_paint_binding: WardleyPaintBinding::from_config(effective_config.as_value()),
             config: effective_config.clone(),
-            source_font_family_css: config_string(
-                effective_config.as_value(),
-                &["themeVariables", "wardley", "fontFamily"],
-            )
-            .map(|font| crate::config::normalize_css_font_family(&font))
-            .filter(|font| !font.is_empty())
-            .map(String::into_boxed_str),
-            inherited_font_stack: InheritedFontStackPlan::resolve_property_local(
-                theme,
-                effective_config,
-            ),
+            font_family_css: font_family_css.into_boxed_str(),
+            config_owns_font_family,
+            write_font_family,
+            font_sizes: super::font_size::WardleyFontSizes::from_config(config),
+            inherited_font_stack,
             unsupported_routes: wardley_unsupported_routes(theme),
             direct_text_fill_routes: wardley_direct_text_fill_routes(theme),
             typed_text_fills: BTreeMap::new(),
@@ -312,14 +355,19 @@ impl WardleyTypographyThemePlan {
     }
 
     pub(crate) fn font_family_css(&self) -> &str {
-        self.source_font_family_css
-            .as_deref()
-            .unwrap_or_else(|| self.inherited_font_stack.font_family_css())
+        &self.font_family_css
     }
 
     pub(crate) const fn should_write_inherited_font(&self) -> bool {
-        self.source_font_family_css.is_some()
-            || self.inherited_font_stack.typed_font_stack_requested()
+        self.write_font_family
+    }
+
+    pub(crate) fn font_size(&self, role: WardleyTextRole) -> Option<&super::WardleyFontSize> {
+        self.font_sizes.role(role)
+    }
+
+    pub(crate) fn apply_known_font_sizes(&self, layout: &mut super::WardleyDiagramLayout) {
+        self.font_sizes.apply_known_sizes(layout);
     }
 
     pub(crate) fn begin_terminal_receipt(&self) -> WardleySurfaceReceipt {
@@ -328,6 +376,8 @@ impl WardleyTypographyThemePlan {
                 || !self.unsupported_routes.is_empty()
                 || !self.direct_text_fill_routes.is_empty(),
             text_fills: BTreeMap::new(),
+            uncertain_text_roles: BTreeSet::new(),
+            emitted_font_family: None,
             paint_evidence: FamilyThemeOutcomes::default(),
             paint_overridden_text_roles: BTreeSet::new(),
         }
@@ -353,24 +403,17 @@ impl WardleyTypographyThemePlan {
             evidence.mark_not_applicable(key);
             return;
         }
-        if self.source_font_family_css.is_some()
-            && self.inherited_font_stack.typed_font_stack_requested()
-        {
-            evidence.mark_not_applicable(key);
+        if !self.inherited_font_stack.typed_font_stack_requested() {
             return;
         }
-        if self.inherited_font_stack.typed_font_stack_active() {
+        if self.config_owns_font_family {
+            evidence.mark_not_applicable(key);
+        } else if receipt.uncertain_text_roles.is_empty()
+            && receipt.emitted_font_family.as_deref() == Some(self.font_family_css())
+        {
             evidence.mark_applied_with_capabilities(key, [ThemeCapability::Typography]);
         } else {
-            match self.inherited_font_stack.outcome() {
-                InheritedFontStackOutcome::ConfigOwned => {
-                    evidence.mark_not_applicable(key);
-                }
-                InheritedFontStackOutcome::Typed | InheritedFontStackOutcome::Unsupported => {
-                    evidence.mark_residual(key, FamilyThemeResidualReason::UnsupportedTypography);
-                }
-                InheritedFontStackOutcome::Inactive => {}
-            }
+            evidence.mark_residual(key, FamilyThemeResidualReason::UnsupportedTypography);
         }
     }
 
@@ -403,7 +446,9 @@ impl WardleyTypographyThemePlan {
                     continue;
                 };
                 visible = true;
-                matches &= fills.len() == 1 && fills.contains(paint.css());
+                matches &= !receipt.uncertain_text_roles.contains(role)
+                    && fills.len() == 1
+                    && fills.contains(paint.css());
                 capabilities.insert(paint.capability());
             }
             if !visible {
@@ -418,6 +463,26 @@ impl WardleyTypographyThemePlan {
             }
         }
     }
+}
+
+fn accepted_font_family(font: Option<&str>) -> Option<String> {
+    let font = font?.trim();
+    if font.is_empty() {
+        return None;
+    }
+    // These values are emitted as presentation attributes, not declaration lists.
+    let mut parser = cssparser::Parser::new(font);
+    while let Ok(token) = parser.next() {
+        if matches!(
+            token,
+            cssparser::Token::Semicolon | cssparser::Token::Delim('!')
+        ) {
+            return None;
+        }
+    }
+    crate::mermaid_style::css_font_family_override(&format!("font-family:{font}"))?;
+    let normalized = crate::config::normalize_css_font_family(font);
+    (!normalized.is_empty()).then_some(normalized)
 }
 
 fn bind_text_fill(

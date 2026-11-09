@@ -1,5 +1,7 @@
+mod font_size;
 mod theme;
 
+pub(crate) use font_size::WardleyFontSize;
 pub(crate) use theme::{
     WardleyPaintBinding, WardleySurfaceReceipt, WardleyTextRole, WardleyTypographyThemePlan,
 };
@@ -699,13 +701,15 @@ pub(crate) fn layout_wardley_diagram_typed_with_theme(
     typography_theme: &WardleyTypographyThemePlan,
     measurer: &dyn TextMeasurer,
 ) -> Result<WardleyDiagramLayout> {
-    layout_wardley_diagram_with_font_family(
+    let mut layout = layout_wardley_diagram_with_font_family(
         model,
         diagram_title,
         effective_config,
         typography_theme.font_family_css(),
         measurer,
-    )
+    )?;
+    typography_theme.apply_known_font_sizes(&mut layout);
+    Ok(layout)
 }
 
 fn layout_wardley_diagram_with_font_family(
