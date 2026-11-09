@@ -37,8 +37,12 @@ pub(super) fn prepare_native_font_size_value(
     if presentation_attribute && parsed.value() != value.trim() {
         return Unchanged;
     }
-    // Browsers ignore negative literal sizes and inherit. usvg otherwise hides the text.
-    if parsed.font_size_is_negative_literal() {
+    let mut keyword = Parser::new(parsed.value());
+    let single_ident = keyword.expect_ident().is_ok() && keyword.is_exhausted();
+    // Ignored literals must not replace an earlier valid size in usvg's CSS cascade.
+    if parsed.font_size_is_negative_literal()
+        || (single_ident && crate::mermaid_style::css_font_size_value_override(value).is_none())
+    {
         return Invalid;
     }
     let size = if parsed.font_size_is_literal_zero() {
@@ -1173,8 +1177,10 @@ mod tests {
     }
 
     #[test]
-    fn negative_literal_font_sizes_are_ignored_without_hiding_the_parent() {
-        for value in ["-1", "-24pt", "-1rem", "-1cap", "-5e-324%", r"-2p\74"] {
+    fn invalid_literal_font_sizes_are_ignored_without_hiding_the_parent() {
+        for value in [
+            "-1", "-24pt", "-1rem", "-1cap", "-5e-324%", r"-2p\74", "potato", "auto",
+        ] {
             assert_eq!(
                 prepare_native_font_size_value(value, false),
                 NativeFontSizeValue::Invalid,

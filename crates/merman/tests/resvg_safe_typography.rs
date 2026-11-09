@@ -241,15 +241,35 @@ fn native_context_free_font_sizes_keep_the_measured_css_scale() {
 }
 
 #[test]
-fn native_negative_font_sizes_inherit_instead_of_hiding_text() {
+fn native_invalid_font_sizes_inherit_instead_of_hiding_text() {
     let session = merman_render::environment::RenderEnvironment::deterministic()
         .begin_session()
         .unwrap();
-    for size in ["-1", "-1px", "-1pt", "-1em", "-1rem", "-1cap", "-5e-324%"] {
-        for (css, attributes) in [
-            (format!("text{{font-size:{size}!important}}"), String::new()),
-            (String::new(), format!("style='font-size:{size}!important'")),
-            (String::new(), format!("font-size='{size}'")),
+    for size in [
+        "-1", "-1px", "-1pt", "-1em", "-1rem", "-1cap", "-5e-324%", "potato", "auto",
+    ] {
+        for (css, attributes, expected) in [
+            (
+                format!("text{{font-size:{size}!important}}"),
+                String::new(),
+                32.0,
+            ),
+            (
+                String::new(),
+                format!("style='font-size:{size}!important'"),
+                32.0,
+            ),
+            (String::new(), format!("font-size='{size}'"), 32.0),
+            (
+                format!("text{{font-size:38px;font-size:{size}!important}}"),
+                String::new(),
+                38.0,
+            ),
+            (
+                String::new(),
+                format!("style='font-size:38px;font-size:{size}!important'"),
+                38.0,
+            ),
         ] {
             let source = format!(
                 "<svg xmlns='http://www.w3.org/2000/svg' width='200' height='60' font-size='32'><style>{css}</style><text x='10' y='40' {attributes}>Label</text></svg>"
@@ -259,7 +279,7 @@ fn native_negative_font_sizes_inherit_instead_of_hiding_text() {
                 .unwrap();
             assert_eq!(
                 usvg_fallback_text_font_size(&svg, "Label"),
-                32.0,
+                expected,
                 "{size}/{css}/{attributes}: invalid local sizes must leave visible inherited text"
             );
         }
