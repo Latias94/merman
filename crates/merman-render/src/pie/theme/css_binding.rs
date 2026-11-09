@@ -52,15 +52,19 @@ impl PieTextSize {
 
     fn resolve(css: &str, inherited_px: f64) -> Option<(f64, bool)> {
         let declaration_list = format!("font-size:{css}");
+        let declaration = parse_style_declaration(&declaration_list)?;
         // Invalid CSS, including nonzero unitless numbers, never owns a role's size.
-        css_font_size_override(&declaration_list)?;
+        // A parsed, definitely invalid declaration is ignored by the browser, so its text
+        // inherits the root size. Host-dependent values keep their unresolved outcome below.
+        if css_font_size_override(&declaration_list).is_none() {
+            return Some((inherited_px, true));
+        }
         if let Some(size) = resolve_explicit_css_absolute_font_size_px(css) {
             return Some((size, false));
         }
         if css_font_size_is_zero(css) {
             return Some((0.0, false));
         }
-        let declaration = parse_style_declaration(&declaration_list)?;
         if declaration.analysis().depends_on_root_font_size() {
             return None;
         }
