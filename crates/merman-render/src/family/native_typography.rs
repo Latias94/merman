@@ -232,6 +232,14 @@ pub fn unsupported_native_text_style(
             &control,
         );
     }
+    #[cfg(feature = "diagram-git-graph")]
+    if let RenderSemanticModel::GitGraph(model) = parsed.model() {
+        return crate::gitgraph::unsupported_native_font_size(
+            model,
+            &parsed.metadata().effective_config,
+            &control,
+        );
+    }
     #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
     if let RenderSemanticModel::Flowchart(model) = parsed.model() {
         let default_context = Default::default();

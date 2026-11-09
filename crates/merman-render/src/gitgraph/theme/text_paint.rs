@@ -15,6 +15,7 @@ use crate::family::{
 };
 use crate::model::GitGraphDiagramLayout;
 use crate::resources::OperationWorkMeter;
+use crate::text::VisibleTextStyleFacts;
 
 use super::{GitGraphCommitKind, GitGraphLabelEvent, GitGraphLabelEvents};
 
@@ -54,7 +55,6 @@ struct TextObservation {
 pub(crate) struct GitGraphTextPaintPlan {
     fills: [Option<DirectStaticPaint>; 3],
     observations: BTreeMap<FamilyThemeMechanismKey, TextObservation>,
-    evidence: FamilyThemeOutcomes,
     title: Option<Box<str>>,
     title_fill: SingleTitleFillPlan,
     title_requested: bool,
@@ -66,6 +66,7 @@ struct TextTerminalFacts {
     sources: [usize; 3],
     // Root title/branch text, tag text, and commit text, independent of fill ownership.
     text_visible: u8,
+    unverified_text: u8,
 }
 
 impl TextTerminalFacts {
@@ -75,6 +76,16 @@ impl TextTerminalFacts {
             .enumerate()
             .fold(0, |mask, (i, count)| mask | (u8::from(*count > 0) << i))
     }
+
+    fn record_text(&mut self, source: usize, inherited: bool, facts: &VisibleTextStyleFacts) {
+        let mask = 1 << source;
+        if !facts.font_visibility_verified() {
+            self.unverified_text |= mask;
+        } else if facts.has_visible_runs() {
+            self.text_visible |= mask;
+            self.sources[source] += usize::from(inherited);
+        }
+    }
 }
 
 impl GitGraphTextPaintPlan {
@@ -82,7 +93,6 @@ impl GitGraphTextPaintPlan {
         Self {
             fills: std::array::from_fn(|_| None),
             observations: BTreeMap::new(),
-            evidence: FamilyThemeOutcomes::default(),
             title: None,
             title_fill: SingleTitleFillPlan::default(),
             title_requested: false,
@@ -99,10 +109,7 @@ impl GitGraphTextPaintPlan {
         let Some(theme) = theme else {
             return Ok(Self::baseline());
         };
-        let mut plan = Self {
-            evidence: FamilyThemeOutcomes::default(),
-            ..Self::baseline()
-        };
+        let mut plan = Self::baseline();
         plan.title = title
             .map(str::trim)
             .filter(|title| !title.is_empty())
@@ -372,7 +379,6 @@ impl GitGraphTextPaintPlan {
     }
 
     pub(crate) fn record_evidence(&self, evidence: &mut FamilyThemeEvidence) {
-        evidence.merge_borrowed(&self.evidence);
         self.title_fill.record_evidence(evidence);
         for (key, observation) in &self.observations {
             let Some(facts) = self.terminal.get() else {
@@ -382,7 +388,9 @@ impl GitGraphTextPaintPlan {
             let visible = facts.visible_mask();
             // Paint/effect/geometry can consume text or root-inheriting shapes. Typography
             // requires real text in the same role where this property remains the winner.
-            let other_visible = visible | facts.text_visible;
+            let possible_text = facts.text_visible | facts.unverified_text;
+            let possible_paint = visible | facts.unverified_text;
+            let other_visible = visible | possible_text;
             let other_reason = observation
                 .other
                 .iter()
@@ -392,18 +400,20 @@ impl GitGraphTextPaintPlan {
                 });
             if let Some(reason) = other_reason {
                 evidence.mark_residual(key.clone(), reason);
-            } else if facts.text_visible & observation.typography != 0 {
+            } else if possible_text & observation.typography != 0 {
                 evidence.mark_residual(
                     key.clone(),
                     FamilyThemeResidualReason::UnsupportedTypography,
                 );
-            } else if observation.unsupported_fill & visible != 0 {
+            } else if observation.unsupported_fill & possible_paint != 0 {
                 evidence.mark_residual(
                     key.clone(),
                     observation
                         .fill_reason
                         .unwrap_or(FamilyThemeResidualReason::UnsupportedPaint),
                 );
+            } else if observation.direct & facts.unverified_text != 0 {
+                evidence.mark_residual(key.clone(), FamilyThemeResidualReason::UnsupportedPaint);
             } else if observation.direct & visible != 0 {
                 let capabilities = self.fills.iter().enumerate().filter_map(|(i, fill)| {
                     (observation.direct & visible & (1 << i) != 0)
@@ -472,10 +482,12 @@ impl GitGraphTextPaintReceipt<'_> {
             .copied()
             .unwrap_or(fallback[1])
             == text_root_inherited;
-        let text_visible = self.typography.branch_label_text_is_visible(name);
-        self.facts.sources[0] +=
-            usize::from(root_inherited) + usize::from(text_root_inherited && text_visible);
-        self.facts.text_visible |= u8::from(text_visible);
+        self.facts.sources[0] += usize::from(root_inherited);
+        self.facts.record_text(
+            0,
+            text_root_inherited,
+            &self.typography.branch_label_text_facts(name),
+        );
         self.next_branch += 1;
     }
 
@@ -513,9 +525,8 @@ impl GitGraphTextPaintReceipt<'_> {
         let event = self.labels.next();
         self.valid &= event == Some(GitGraphLabelEvent::Commit(index));
         self.valid &= event.and_then(|event| event.text(self.layout)) == Some(text);
-        let visible = self.typography.commit_label_text_is_visible(text);
-        self.facts.sources[2] += usize::from(visible);
-        self.facts.text_visible |= u8::from(visible) << 2;
+        self.facts
+            .record_text(2, true, &self.typography.commit_label_text_facts(text));
     }
 
     pub(crate) fn record_tag(&mut self, index: usize, output_index: usize, text: &str) {
@@ -524,9 +535,8 @@ impl GitGraphTextPaintReceipt<'_> {
         self.valid &= event.and_then(|event| event.text(self.layout)) == Some(text);
         // Even an empty tag still emits a radius-1.5 colored hole.
         self.facts.sources[0] += 1;
-        let visible = self.typography.tag_label_text_is_visible(text);
-        self.facts.sources[1] += usize::from(visible);
-        self.facts.text_visible |= u8::from(visible) << 1;
+        self.facts
+            .record_text(1, true, &self.typography.tag_label_text_facts(text));
     }
 
     pub(crate) fn record_title(&mut self, title: Option<&str>, fill: Option<&str>) {
@@ -534,9 +544,11 @@ impl GitGraphTextPaintReceipt<'_> {
             && self.plan.title.as_deref() == title
             && fill == self.plan.title_fill_css();
         self.title_recorded = true;
-        let visible = title.is_some_and(|text| self.typography.title_text_is_visible(text));
-        self.facts.sources[0] += usize::from(visible && fill.is_none());
-        self.facts.text_visible |= u8::from(visible);
+        self.facts.record_text(
+            0,
+            fill.is_none(),
+            &self.typography.title_text_facts(title.unwrap_or_default()),
+        );
     }
 }
 

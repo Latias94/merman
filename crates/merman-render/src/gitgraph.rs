@@ -19,7 +19,7 @@ pub(crate) use theme::{
     GitGraphNodePaintCss, GitGraphNodePalettePlan, GitGraphNodePaletteReceipt,
     GitGraphPaletteSource, GitGraphPaletteSurface, GitGraphStaticPaintPlan,
     GitGraphTypographyCssEmission, GitGraphTypographyThemePlan, gitgraph_commit_label_is_visible,
-    gitgraph_tags_in_output_order, palette_slot,
+    gitgraph_tags_in_output_order, palette_slot, unsupported_native_font_size,
 };
 
 pub(crate) fn resolve_gitgraph_title<'a>(
