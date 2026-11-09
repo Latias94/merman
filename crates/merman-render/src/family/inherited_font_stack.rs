@@ -453,6 +453,21 @@ mod tests {
                 InheritedFontStackOutcome::Typed,
             ),
             (
+                json!({"themeVariables":{"fontFamily":"24px"}}),
+                "\"Courier New\"",
+                InheritedFontStackOutcome::Typed,
+            ),
+            (
+                json!({"themeVariables":{"fontFamily":"serif,,monospace"}}),
+                "\"Courier New\"",
+                InheritedFontStackOutcome::Typed,
+            ),
+            (
+                json!({"themeVariables":{"fontFamily":"24px"}, "fontFamily":"Arial"}),
+                "Arial",
+                InheritedFontStackOutcome::ConfigOwned,
+            ),
+            (
                 json!({"themeVariables":{"fontFamily":42}, "fontFamily":"Arial"}),
                 "Arial",
                 InheritedFontStackOutcome::ConfigOwned,
