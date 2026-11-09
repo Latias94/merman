@@ -170,14 +170,23 @@ visible siblings can still occupy space. A receiving browser's default font pref
 change keyword sizes, so explicit lengths are preferable for reproducible exports.
 Known zero-sized chart labels remain in the SVG but do not count as visible consumers of
 theme fonts or text paint.
-Block, Journey and Timeline preserve positive sizes below 1px as well as Mermaid configuration
-sizes of zero. Journey's tspan task size and Timeline's root-size layout offsets retain their
+Block, Journey, Timeline, Pie, Treemap and XY Chart preserve valid inherited sizes below 1px and zero.
+Journey's tspan task size and Timeline's root-size layout offsets retain their
 independent configuration roles. Hiding text does not remove independently styled nodes, label
 backgrounds or connectors. Typed theme sizes must remain positive; use the owning Mermaid
 configuration when a family supports hiding labels with zero.
-The native SVG pipeline converts admitted literal zero font sizes to `0px`, including units
-such as `0rem` that the rasterizer may not recognize. Parity SVG keeps the authored unit.
-This does not add native measurement for positive sizes in otherwise unsupported CSS units.
+The native SVG pipeline converts absolute CSS font sizes to pixels before painting, including
+`q` lengths and the `xx-small` through `xxx-large` keywords. Absolute keywords use the same 16px
+`medium` baseline as HTML measurement, independently of the parent size. Admitted literal zero
+sizes also become `0px`, including units such as `0rem` that the rasterizer may not recognize.
+Invalid negative literal sizes are ignored so text inherits its parent's size instead of
+disappearing. Parity SVG keeps the authored spelling. Positive host-dependent lengths and CSS
+expressions retain their existing measurement and portability limits.
+
+Packet preserves the configured root size for relative role sizes such as `1em`; its absolute
+role defaults and fixed field geometry remain independent. XY Chart ignores negative title and
+axis sizes when selecting a supported theme override, while a valid zero keeps those labels hidden.
+Its legend retains its separate 1px minimum and configuration priority.
 
 Block label measurement follows its effective `classDef` typography, including the default class,
 and direct node styles. Class rules and direct declarations retain their CSS priority rather than
@@ -251,6 +260,10 @@ the `treemap.labelColor` and `valueColor` stylesheets. Transparent leaves can fa
 `textColor` for readability. Compiled label paint follows that selected source; unused
 stylesheet colors do not block it. Timeline's colored Redux palettes cycle through
 `borderColorArray`; an empty array restores the theme's `mainBkg`/`nodeBorder` fallback.
+Native Treemap font admission checks styles selected by rendered nodes. An unused `classDef`
+does not require support for typography that never reaches a label.
+Set `themeVariables.treemap.titleFontSize` for Mermaid-compatible title sizing. The older
+`treemap.titleFontSize` spelling remains a Merman fallback when that theme variable is absent.
 
 Set `themeVariables.archGroupBorderColor` directly to change an Architecture group border.
 Changing only `primaryBorderColor` does not recalculate an initialized group color.
@@ -264,7 +277,7 @@ do not disable a supported theme override.
 
 Fonts, sizes, Quadrant point radii and Tree View line widths follow the same rule. An ignored
 value does not own the property, and an unused fallback does not own the selected value.
-Each family's accepted units, font-array handling and numeric clamps remain unchanged. Pie
+Family configuration determines its accepted units, font-array handling and numeric bounds. Pie
 title, percentage and legend sizes remain independent; C4 element sizes and ER relationship
 label sizes also retain their own configuration rather than inheriting every base-size change.
 
