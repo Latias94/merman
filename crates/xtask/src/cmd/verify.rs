@@ -110,12 +110,7 @@ pub(crate) fn verify(args: Vec<String>) -> Result<(), XtaskError> {
     }
 
     println!("\n== cargo fmt ==");
-    let mut fmt_cmd = Command::new("cargo");
-    fmt_cmd
-        .arg("fmt")
-        .arg("--check")
-        .current_dir(&workspace_root);
-    run_checked("cargo fmt --check", &mut fmt_cmd)?;
+    run_format_checks(&workspace_root, &mut run_checked)?;
 
     if !options.strict {
         println!("\n== editor language contract ==");
@@ -321,6 +316,32 @@ pub(crate) fn verify(args: Vec<String>) -> Result<(), XtaskError> {
     Ok(())
 }
 
+fn run_format_checks(
+    workspace_root: &std::path::Path,
+    run_checked: &mut impl FnMut(&str, &mut Command) -> Result<(), XtaskError>,
+) -> Result<(), XtaskError> {
+    #[cfg(windows)]
+    {
+        let packages = super::artifact_profiles::load_workspace_packages(workspace_root, true)
+            .map_err(XtaskError::VerifyFailed)?;
+        for package in packages {
+            let what = format!("cargo fmt --package {} --check", package.name);
+            let mut command = Command::new("cargo");
+            command
+                .args(["fmt", "--package", &package.name, "--check"])
+                .current_dir(workspace_root);
+            run_checked(&what, &mut command)?;
+        }
+        Ok(())
+    }
+    #[cfg(not(windows))]
+    {
+        let mut command = Command::new("cargo");
+        command.args(["fmt", "--check"]).current_dir(workspace_root);
+        run_checked("cargo fmt --check", &mut command)
+    }
+}
+
 fn run_npm_script(
     workspace_root: &std::path::Path,
     package_dir: &str,
@@ -357,6 +378,64 @@ mod tests {
     fn root_verification_extends_the_single_dom_suite() {
         assert_eq!(verification_dom_modes(false), "structure,parity");
         assert_eq!(verification_dom_modes(true), "structure,parity,parity-root");
+    }
+
+    #[cfg(windows)]
+    fn formatting_workspace() -> tempfile::TempDir {
+        let workspace = tempfile::tempdir().unwrap();
+        std::fs::write(
+            workspace.path().join("Cargo.toml"),
+            "[workspace]\nmembers = [\"first\", \"second\"]\nresolver = \"3\"\n",
+        )
+        .unwrap();
+        for package in ["first", "second"] {
+            let dir = workspace.path().join(package);
+            std::fs::create_dir_all(dir.join("src")).unwrap();
+            std::fs::write(
+                dir.join("Cargo.toml"),
+                format!(
+                    "[package]\nname = \"{package}\"\nversion = \"0.1.0\"\nedition = \"2024\"\n"
+                ),
+            )
+            .unwrap();
+            std::fs::write(dir.join("src/lib.rs"), "pub fn example() {}\n").unwrap();
+        }
+        workspace
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn windows_format_checks_cover_each_workspace_package_separately() {
+        let workspace = formatting_workspace();
+        let mut packages = std::collections::BTreeSet::new();
+        run_format_checks(workspace.path(), &mut |_, command| {
+            assert_eq!(command.get_program(), "cargo");
+            assert_eq!(command.get_current_dir(), Some(workspace.path()));
+            let args = command.get_args().collect::<Vec<_>>();
+            assert_eq!(args.len(), 4);
+            assert_eq!(args[0], "fmt");
+            assert_eq!(args[1], "--package");
+            assert_eq!(args[3], "--check");
+            assert!(packages.insert(args[2].to_str().unwrap().to_owned()));
+            Ok(())
+        })
+        .unwrap();
+        assert_eq!(packages, ["first".into(), "second".into()].into());
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn windows_format_checks_propagate_package_failure() {
+        let workspace = formatting_workspace();
+        let mut calls = 0;
+        let result = run_format_checks(workspace.path(), &mut |_, _| {
+            calls += 1;
+            Err(XtaskError::VerifyFailed("formatting failed".into()))
+        });
+        assert_eq!(calls, 1);
+        assert!(
+            matches!(result, Err(XtaskError::VerifyFailed(message)) if message == "formatting failed")
+        );
     }
 
     fn assert_manifest_scripts(manifest: &str, expected: &[&str]) {

@@ -88,6 +88,12 @@ that Cargo packages may exclude. Keep filenames short and put detailed titles in
 The gate reads the Git index, so stage intended renames before checking locally. It does not scan build caches or
 untracked user files.
 
+Windows also limits a process command line to 32,767 UTF-16 code units. A workspace-wide
+`cargo fmt --all --check` can exceed that limit when Cargo groups hundreds of target paths into
+one `rustfmt` invocation, even when every individual path is short. On Windows, `xtask verify`
+checks each workspace package separately using Cargo metadata, preserving all targets and stopping
+on the first formatting failure. For a focused manual check, use `cargo fmt --package <name> --check`.
+
 An already-published tag retains its original paths. For consumers of such a tag on Windows,
 use a short Cargo cache directory and enable `core.longpaths` for Git commands when appropriate.
 Changing a dependency's repository config cannot repair a checkout that fails before that config

@@ -25,6 +25,7 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
 
 ### Fixed
 
+- On Windows, `xtask verify` checks formatting one workspace package at a time, avoiding `os error 206` when Cargo's combined `rustfmt` command exceeds the process command-line limit.
 - Flowchart metadata updates preserve existing labels and visual properties when an authored value is empty, false or numeric zero. Unrelated metadata no longer clears an explicitly restored icon/image label, and hiding a default visual label retains its authored text kind. Asset dimensions follow Mermaid's numeric string and array conversions; invalid updates replace earlier sizes, and active non-finite icon/image geometry reports a render error.
 - Class preserves numeric-leading semantic names separately from literal `classId-*` names, follows each interaction method's target routing, and retains quoted note whitespace.
 - State composite IDs retain single-token punctuation such as `-` and `:`. Ordinary aliases use the first colon description segment while composite aliases keep their literal IDs.
