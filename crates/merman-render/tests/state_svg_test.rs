@@ -644,6 +644,394 @@ fn render_strict_state_svg_with_theme_and_config(
 }
 
 #[test]
+fn state_configuration_preserves_zero_subpixel_and_absolute_font_sizes() {
+    let theme = DiagramThemeCompiler::new()
+        .compile(
+            state_theme_spec().with_typography(
+                TypographySpec::default()
+                    .with_default(ThemeTextStyle::default().with_font_size_px(26.0).unwrap()),
+            ),
+        )
+        .unwrap();
+    let source = "stateDiagram-v2\nReady --> Done: Continue\n";
+    for origin in ["site", "source"] {
+        for html_labels in [false, true] {
+            for (configured, expected) in [("0px", 0.0), ("0.5px", 0.5), ("24pt", 32.0)] {
+                let (svg, evidence) = render_strict_state_svg_with_theme_and_config(
+                    &theme,
+                    source,
+                    serde_json::json!({
+                        "htmlLabels": html_labels,
+                        "themeVariables": {"fontSize": configured}
+                    }),
+                    origin,
+                );
+                assert!(
+                    svg.contains(&format!("font-size:{expected}px;")),
+                    "{origin}/{html_labels}/{configured}: {svg}"
+                );
+                if configured == "24pt" {
+                    let (px_svg, px_evidence) = render_strict_state_svg_with_theme_and_config(
+                        &theme,
+                        source,
+                        serde_json::json!({
+                            "htmlLabels": html_labels,
+                            "themeVariables": {"fontSize": "32px"}
+                        }),
+                        origin,
+                    );
+                    assert_eq!(svg, px_svg, "{origin}/{html_labels}");
+                    assert_eq!(evidence, px_evidence);
+                }
+            }
+        }
+    }
+}
+
+#[test]
+fn state_invalid_font_size_does_not_own_typed_typography() {
+    let theme = DiagramThemeCompiler::new()
+        .compile(
+            state_theme_spec().with_typography(
+                TypographySpec::default()
+                    .with_default(ThemeTextStyle::default().with_font_size_px(26.0).unwrap()),
+            ),
+        )
+        .unwrap();
+    for html_labels in [false, true] {
+        let source = "stateDiagram-v2\nReady --> Done: Continue\n";
+        let expected = render_strict_state_svg_with_theme_and_config(
+            &theme,
+            source,
+            serde_json::json!({"htmlLabels": html_labels}),
+            "site",
+        );
+        for invalid in ["-2px", "-2pt", "invalid"] {
+            let actual = render_strict_state_svg_with_theme_and_config(
+                &theme,
+                source,
+                serde_json::json!({
+                    "htmlLabels": html_labels,
+                    "themeVariables": {"fontSize": invalid}
+                }),
+                "site",
+            );
+            assert_eq!(actual, expected, "{html_labels}/{invalid}");
+        }
+    }
+}
+
+#[test]
+fn state_typed_subpixel_font_size_reaches_base_and_role_terminals() {
+    for role_override in [false, true] {
+        let spec = if role_override {
+            state_theme_spec().with_styles(ThemeRuleSet::default().with_rule(ThemeRule::new(
+                ThemeTarget::StateLabel,
+                ThemeStylePatch {
+                    typography: TextStylePatch {
+                        font_size_px: Specified::Value(0.5),
+                        ..TextStylePatch::default()
+                    },
+                    ..ThemeStylePatch::default()
+                },
+            )))
+        } else {
+            state_theme_spec().with_typography(
+                TypographySpec::default()
+                    .with_default(ThemeTextStyle::default().with_font_size_px(0.5).unwrap()),
+            )
+        };
+        let theme = DiagramThemeCompiler::new().compile(spec).unwrap();
+        let svg = render_state_svg_from_text_with_theme(
+            "stateDiagram-v2\nReady --> Done: Continue\n",
+            &theme,
+        );
+        let expected = if role_override {
+            "font-size: 0.5px !important"
+        } else {
+            "font-size:0.5px;"
+        };
+        assert!(svg.contains(expected), "role={role_override}: {svg}");
+    }
+}
+
+#[test]
+fn state_known_zero_text_does_not_apply_base_font_stack() {
+    let theme = DiagramThemeCompiler::new()
+        .compile(
+            state_theme_spec().with_typography(TypographySpec::default().with_default(
+                ThemeTextStyle::default().with_font_stack(FontStack::single("monospace").unwrap()),
+            )),
+        )
+        .unwrap();
+    for html_labels in [false, true] {
+        for (size, visible) in [(0.0, false), (0.0000001, false), (0.5, true), (16.0, true)] {
+            for root_setting in [false, true] {
+                let mut config = serde_json::json!({"htmlLabels": html_labels});
+                if root_setting {
+                    config["fontSize"] = serde_json::json!(size);
+                } else {
+                    config["themeVariables"] = serde_json::json!({"fontSize": size});
+                }
+                let (svg, evidence) = render_strict_state_svg_with_theme_and_config(
+                    &theme,
+                    "stateDiagram-v2\nstate \"Hidden\" as A\n",
+                    config,
+                    "site",
+                );
+                assert_eq!(evidence.required, 1);
+                assert_eq!(evidence.accounted, 1);
+                assert_eq!(
+                    evidence.applied,
+                    usize::from(visible),
+                    "{html_labels}/{size}/{root_setting}: {svg}"
+                );
+                assert_eq!(evidence.not_applicable, usize::from(!visible));
+                assert_eq!(evidence.residual, 0);
+                if !visible {
+                    assert!(svg.contains("font-size:0px;"), "{svg}");
+                }
+            }
+        }
+    }
+    let tiny_base = DiagramThemeCompiler::new()
+        .compile(
+            state_theme_spec().with_typography(
+                TypographySpec::default().with_default(
+                    ThemeTextStyle::default()
+                        .with_font_stack(FontStack::single("monospace").unwrap())
+                        .with_font_size_px(0.0000001)
+                        .unwrap(),
+                ),
+            ),
+        )
+        .unwrap();
+    for html_labels in [false, true] {
+        let (svg, evidence) = render_strict_state_svg_with_theme_and_config(
+            &tiny_base,
+            "---\ntitle: Hidden title\n---\nstateDiagram-v2\nstate \"Hidden\" as A\n",
+            serde_json::json!({"htmlLabels": html_labels}),
+            "site",
+        );
+        assert_eq!(evidence.required, 2);
+        assert_eq!(evidence.accounted, 2);
+        assert_eq!(evidence.applied, usize::from(html_labels), "{svg}");
+        assert_eq!(evidence.not_applicable, 2 - usize::from(html_labels));
+        assert_eq!(evidence.residual, 0);
+    }
+}
+
+#[test]
+fn state_prepared_text_facts_distinguish_zero_positive_unknown_and_svg_literal_html() {
+    let font_theme = DiagramThemeCompiler::new()
+        .compile(
+            state_theme_spec().with_typography(TypographySpec::default().with_default(
+                ThemeTextStyle::default().with_font_stack(FontStack::single("monospace").unwrap()),
+            )),
+        )
+        .unwrap();
+    let cases = [
+        (
+            "<span style='font-size:0px'>Hidden</span>",
+            16,
+            false,
+            false,
+        ),
+        ("<span style='font-size:2em'>Hidden</span>", 0, false, false),
+        (
+            "<span style='font-size:24pt'>Visible</span>",
+            0,
+            true,
+            false,
+        ),
+        (
+            "<span style='font-size:0px'>Hidden<span style='font-size:12px'>Visible</span></span>",
+            0,
+            true,
+            false,
+        ),
+        ("<span class='host'>Unknown</span>", 0, false, true),
+        (
+            "<span style='font-size:calc(1em + 1px)'>Unknown</span>",
+            0,
+            false,
+            true,
+        ),
+        (
+            "<span style='font-size:12px;font-family:serif'>Local</span>",
+            0,
+            false,
+            true,
+        ),
+        ("<span></span>", 16, false, false),
+        ("<img src=x>", 16, false, false),
+    ];
+    for (label, size, applied, residual) in cases {
+        let source = format!("stateDiagram-v2\nstate \"{label}\" as A\n");
+        let (_, evidence) = render_strict_state_svg_with_theme_and_config(
+            &font_theme,
+            &source,
+            serde_json::json!({"htmlLabels": true, "themeVariables": {"fontSize": size}}),
+            "site",
+        );
+        assert_eq!(evidence.required, 1, "{label}");
+        assert_eq!(evidence.accounted, 1, "{label}");
+        assert_eq!(evidence.applied, usize::from(applied), "{label}");
+        assert_eq!(evidence.residual, usize::from(residual), "{label}");
+        assert_eq!(
+            evidence.not_applicable,
+            usize::from(!applied && !residual),
+            "{label}"
+        );
+    }
+    for html_labels in [false, true] {
+        for (target, source) in [
+            (
+                ThemeTarget::StateLabel,
+                "stateDiagram-v2\nstate \"<span style='font-size:0px'>Hidden</span>\" as A\n",
+            ),
+            (
+                ThemeTarget::TransitionLabel,
+                "stateDiagram-v2\nA --> B: <span style='font-size:0px'>Hidden</span>\n",
+            ),
+        ] {
+            let theme = DiagramThemeCompiler::new()
+                .compile(
+                    state_theme_spec().with_styles(
+                        ThemeRuleSet::default().with_rule(ThemeRule::new(
+                            target,
+                            ThemeStylePatch::default()
+                                .with_fill(CanvasPaint::solid("#b316cd").unwrap()),
+                        )),
+                    ),
+                )
+                .unwrap();
+            let (_, evidence) = render_strict_state_svg_with_theme_and_config(
+                &theme,
+                source,
+                serde_json::json!({"htmlLabels": html_labels}),
+                "site",
+            );
+            assert_eq!(
+                evidence.applied,
+                usize::from(!html_labels),
+                "{target:?}/{html_labels}"
+            );
+            assert_eq!(evidence.not_applicable, usize::from(html_labels));
+            assert_eq!(evidence.residual, 0);
+        }
+    }
+    for target in [ThemeTarget::StateLabel, ThemeTarget::TransitionLabel] {
+        let theme = DiagramThemeCompiler::new()
+            .compile(
+                state_theme_spec().with_styles(ThemeRuleSet::default().with_rule(ThemeRule::new(
+                    target,
+                    ThemeStylePatch::default().with_fill(CanvasPaint::solid("#b316cd").unwrap()),
+                ))),
+            )
+            .unwrap();
+        for (label, applied, residual) in [
+            ("<span style='font-size:0px'>Hidden</span>", 0, 0),
+            (
+                "<span style='font-size:0px'>Hidden<span style='font-size:24pt'>Visible</span></span>",
+                1,
+                0,
+            ),
+            ("<span class='host'>Unknown</span>", 0, 1),
+            (
+                "<span style='font-size:calc(1em + 1px)'>Unknown</span>",
+                0,
+                1,
+            ),
+        ] {
+            let source = if target == ThemeTarget::StateLabel {
+                format!("stateDiagram-v2\nstate \"{label}\" as A\n")
+            } else {
+                format!("stateDiagram-v2\nA --> B: {label}\n")
+            };
+            let (_, evidence) = render_strict_state_svg_with_theme_and_config(
+                &theme,
+                &source,
+                serde_json::json!({"htmlLabels": true, "themeVariables": {"fontSize": "0px"}}),
+                "site",
+            );
+            assert_eq!(evidence.applied, applied, "{target:?}/{label}");
+            assert_eq!(evidence.residual, residual, "{target:?}/{label}");
+            assert_eq!(evidence.accounted, evidence.required);
+        }
+    }
+}
+
+#[test]
+fn state_zero_text_keeps_content_ordinals_and_raw_source_size_owners() {
+    let theme = DiagramThemeCompiler::new()
+        .compile(
+            state_theme_spec().with_styles(
+                ThemeRuleSet::default().with_rule(
+                    ThemeRule::new(
+                        ThemeTarget::StateLabel,
+                        ThemeStylePatch::default()
+                            .with_fill(CanvasPaint::solid("#b316cd").unwrap()),
+                    )
+                    .with_ordinal(OrdinalSelector::exact(2).unwrap()),
+                ),
+            ),
+        )
+        .unwrap();
+    for html_labels in [false, true] {
+        for size in [0.5, 0.0000001] {
+            let source = format!(
+                "stateDiagram-v2\nstate \"Hidden\" as Hidden\nstate \"Restored\" as Restored\nstyle Restored font-size:{size}px\n"
+            );
+            let (svg, evidence) = render_strict_state_svg_with_theme_and_config(
+                &theme,
+                &source,
+                serde_json::json!({"htmlLabels": html_labels, "themeVariables": {"fontSize": "0px"}}),
+                "site",
+            );
+            assert_eq!(evidence.applied, 1, "{html_labels}/{size}: {svg}");
+            assert_eq!(evidence.residual, 0);
+            assert!(
+                svg.contains(&format!("font-size:{size}px !important")),
+                "{svg}"
+            );
+        }
+    }
+    for html_labels in [false, true] {
+        let theme = DiagramThemeCompiler::new()
+            .compile(
+                state_theme_spec().with_styles(ThemeRuleSet::default().with_rule(ThemeRule::new(
+                    ThemeTarget::StateLabel,
+                    ThemeStylePatch {
+                        typography: TextStylePatch {
+                            font_size_px: Specified::Value(0.0000001),
+                            ..TextStylePatch::default()
+                        },
+                        ..ThemeStylePatch::default()
+                    },
+                ))),
+            )
+            .unwrap();
+        let (_, evidence) = render_strict_state_svg_with_theme_and_config(
+            &theme,
+            "stateDiagram-v2\nstate \"Tiny\" as A\n",
+            serde_json::json!({"htmlLabels": html_labels, "themeVariables": {"fontSize": "0px"}}),
+            "site",
+        );
+        assert_eq!(evidence.applied, 0, "configured size owns the role size");
+        assert_eq!(evidence.not_applicable, 1);
+        let (_, evidence) = render_strict_state_svg_with_theme_and_config(
+            &theme,
+            "stateDiagram-v2\nstate \"Tiny\" as A\n",
+            serde_json::json!({"htmlLabels": html_labels}),
+            "site",
+        );
+        assert_eq!(evidence.applied, 1, "raw role size remains positive");
+        assert_eq!(evidence.residual, 0);
+    }
+}
+
+#[test]
 fn state_empty_html_labels_do_not_consume_text_theme_rules() {
     for label in ["<br/>", "<span></span>", "<span> </span>"] {
         for (target, source) in [
@@ -909,6 +1297,7 @@ fn state_empty_html_geometry_consumes_base_font_size_without_text_properties() {
         ("<br/><br/>", 2.0),
         ("<span></span>", 1.0),
         ("<span> </span>", 1.0),
+        ("<span style='font-size:0px'>Hidden</span>", 1.0),
     ] {
         let source = format!("stateDiagram-v2\nstate \"{label}\" as Empty\n");
         let (svg, evidence) = render_strict_state_svg_with_theme_and_config(
@@ -959,33 +1348,36 @@ fn state_empty_html_geometry_keeps_base_line_height_residual_with_applied_font_s
             ),
         )
         .unwrap();
-    let (svg, evidence) = render_strict_state_svg_with_theme_and_config(
-        &theme,
-        "stateDiagram-v2\nstate \"<br/>\" as Empty\n",
-        serde_json::json!({"htmlLabels": true, "look": "classic"}),
-        "site",
-    );
-    let document = roxmltree::Document::parse(&svg).expect("valid empty HTML State SVG");
-    let geometry = document
-        .descendants()
-        .find(|node| node.has_tag_name("foreignObject"))
-        .expect("retained empty HTML line box");
-    let height: f64 = geometry.attribute("height").unwrap().parse().unwrap();
-    assert_eq!(
-        height, 45.0,
-        "the writer still uses its fixed 1.5 line height"
-    );
-    assert_eq!(
-        evidence,
-        StateThemeEvidenceCounts {
-            required: 2,
-            accounted: 2,
-            applied: 1,
-            not_applicable: 0,
-            residual: 1,
-        },
-        "applied base font size must not retire the unsupported base line height"
-    );
+    for label in ["<br/>", "<span style='font-size:0px'>Hidden</span>"] {
+        let source = format!("stateDiagram-v2\nstate \"{label}\" as Empty\n");
+        let (svg, evidence) = render_strict_state_svg_with_theme_and_config(
+            &theme,
+            &source,
+            serde_json::json!({"htmlLabels": true, "look": "classic"}),
+            "site",
+        );
+        let document = roxmltree::Document::parse(&svg).expect("valid empty HTML State SVG");
+        let geometry = document
+            .descendants()
+            .find(|node| node.has_tag_name("foreignObject"))
+            .expect("retained empty HTML line box");
+        let height: f64 = geometry.attribute("height").unwrap().parse().unwrap();
+        assert_eq!(
+            height, 45.0,
+            "the writer still uses its fixed 1.5 line height"
+        );
+        assert_eq!(
+            evidence,
+            StateThemeEvidenceCounts {
+                required: 2,
+                accounted: 2,
+                applied: 1,
+                not_applicable: 0,
+                residual: 1,
+            },
+            "applied base font size must not retire the unsupported base line height"
+        );
+    }
 }
 
 #[test]
@@ -1048,7 +1440,9 @@ fn state_html_geometry_consumes_static_font_size_and_clear_falls_back_to_base() 
     for label in ["<img src=x>", "<br/><br/>", "Visible"] {
         for (target, specified, preceding_value) in [
             (ThemeTarget::Text, Specified::Value(30.0), false),
+            (ThemeTarget::Text, Specified::Value(0.5), false),
             (ThemeTarget::StateLabel, Specified::Value(30.0), false),
+            (ThemeTarget::StateLabel, Specified::Value(0.5), false),
             (ThemeTarget::StateLabel, Specified::Clear, false),
             (ThemeTarget::StateLabel, Specified::Clear, true),
         ] {
@@ -1066,6 +1460,11 @@ fn state_html_geometry_consumes_static_font_size_and_clear_falls_back_to_base() 
                 ));
             }
             let clear = matches!(specified, Specified::Clear);
+            let expected_size = match specified {
+                Specified::Value(size) => f64::from(size),
+                Specified::Clear => 22.0,
+                Specified::Unspecified => unreachable!(),
+            };
             rules = rules.with_rule(ThemeRule::new(
                 target,
                 ThemeStylePatch {
@@ -1098,7 +1497,6 @@ fn state_html_geometry_consumes_static_font_size_and_clear_falls_back_to_base() 
                 .descendants()
                 .find(|node| node.has_tag_name("foreignObject"))
                 .unwrap();
-            let expected_size = if clear { 22.0 } else { 30.0 };
             let lines = if label == "<br/><br/>" { 2.0 } else { 1.0 };
             let height: f64 = geometry.attribute("height").unwrap().parse().unwrap();
             assert_eq!(height, expected_size * 1.5 * lines, "{label}/{target:?}");
@@ -1199,7 +1597,12 @@ fn state_empty_html_geometry_keeps_unsupported_siblings_without_text_consumers()
     )
     .unwrap();
     let effects = DiagramEffectSet::default().with_graph(shadow).unwrap();
-    for label in ["<img src=x>", "<br/>", "<span></span>"] {
+    for label in [
+        "<img src=x>",
+        "<br/>",
+        "<span></span>",
+        "<span style='font-size:0px'>Hidden</span>",
+    ] {
         for font_size in [
             Specified::Unspecified,
             Specified::Value(30.0),
@@ -5290,6 +5693,18 @@ fn native_state_transition_labels_share_layout_background_and_measured_text_orig
             2,
         ),
         (
+            "ordinary-single-subpixel",
+            "%%{init: {\"htmlLabels\": false}}%%\nstateDiagram-v2\nA --> B: Agjp",
+            Some(0.5),
+            1,
+        ),
+        (
+            "ordinary-multiline-subpixel",
+            "%%{init: {\"htmlLabels\": false}}%%\nstateDiagram-v2\nA --> B: Agjp<br/>second",
+            Some(0.5),
+            2,
+        ),
+        (
             "self-loop-single-large",
             "%%{init: {\"htmlLabels\": false}}%%\nstateDiagram-v2\nA --> A: Agjp",
             Some(32.0),
@@ -5394,10 +5809,6 @@ fn native_state_transition_labels_share_layout_background_and_measured_text_orig
         assert!(
             (first_baseline_y - expected_first_baseline_y).abs() <= 1e-9,
             "{case}: measured baseline {expected_first_baseline_y}, actual {first_baseline_y}: {svg}"
-        );
-        assert!(
-            (first_baseline_y - height / 2.0).abs() > 1e-9,
-            "{case}: terminal baseline must not be independently re-centered by label height: {svg}"
         );
         let ink_top_y = first_baseline_y + bbox_y - f64::from(font_size_px);
         assert!((ink_top_y - 2.0).abs() <= 1e-9, "{case}: {svg}");

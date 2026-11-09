@@ -2,11 +2,7 @@
 
 use super::StateNode;
 pub(super) use crate::config::config_f64;
-#[cfg(test)]
-use crate::config::config_string_or_first_array;
 use crate::config::{config_f64_css_px, config_string};
-#[cfg(test)]
-use crate::text::TextStyle;
 use crate::text::WrapMode;
 use dugong::{GraphLabel, RankDir};
 use serde_json::Value;
@@ -18,8 +14,6 @@ const DEFAULT_STATE_TITLE_TOP_MARGIN: f64 = 25.0;
 // Mermaid state defaults set minNodeWidth to 120 in config.schema.yaml.
 const DEFAULT_STATE_LABEL_MIN_WIDTH: f64 = 120.0;
 const DEFAULT_HTML_LABEL_WRAPPING_WIDTH: f64 = 200.0;
-#[cfg(test)]
-const DEFAULT_STATE_FONT_FAMILY: &str = "\"trebuchet ms\", verdana, arial, sans-serif";
 
 pub(super) fn state_node_is_effective_group(n: &StateNode) -> bool {
     n.is_group && n.shape != "note"
@@ -172,32 +166,6 @@ impl<'a> StateConfigView<'a> {
         self.state_compat_f64("titleTopMargin")
             .unwrap_or(DEFAULT_STATE_TITLE_TOP_MARGIN)
             .max(0.0)
-    }
-
-    #[cfg(test)]
-    pub(crate) fn text_style(&self) -> TextStyle {
-        // Mermaid state diagram v2 uses HTML labels (foreignObject) by default, inheriting the
-        // global `#id{font-size: ...}` rule (defaults to 16px). The 10px
-        // `g.stateGroup text{font-size:10px}` rule applies to SVG `<text>` elements, not HTML
-        // labels.
-        let font_family = config_string_or_first_array(self.effective_config, &["fontFamily"])
-            .or_else(|| {
-                config_string_or_first_array(
-                    self.effective_config,
-                    &["themeVariables", "fontFamily"],
-                )
-            })
-            .or_else(|| Some(DEFAULT_STATE_FONT_FAMILY.to_string()));
-        // Mermaid CLI baselines show state labels inheriting the SVG root font-size rule
-        // (`themeVariables.fontSize`, typically a `"NNpx"` string).
-        let font_size =
-            crate::config::config_theme_or_root_font_size_px(self.effective_config, 16.0).max(1.0);
-        TextStyle {
-            font_family,
-            font_size,
-            font_weight: None,
-            font_style: None,
-        }
     }
 
     pub(crate) fn state_label_min_width(&self) -> f64 {
@@ -359,11 +327,6 @@ mod tests {
     #[test]
     fn state_layout_settings_project_dagre_wrap_and_padding() {
         let cfg = json!({
-            "fontFamily": "Root Sans",
-            "themeVariables": {
-                "fontFamily": "Theme Sans",
-                "fontSize": "24px"
-            },
             "flowchart": {
                 "htmlLabels": false,
                 "wrappingWidth": "260px"
@@ -383,10 +346,6 @@ mod tests {
         assert_eq!(settings.wrap_mode, WrapMode::SvgLike);
         assert_eq!(settings.wrapping_width, 260.0);
         assert_eq!(settings.state_padding, 9.0);
-
-        let text_style = StateConfigView::new(&cfg).text_style();
-        assert_eq!(text_style.font_family.as_deref(), Some("Root Sans"));
-        assert_eq!(text_style.font_size, 24.0);
     }
 
     #[test]
