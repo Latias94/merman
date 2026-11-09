@@ -25,6 +25,7 @@ pub(crate) struct C4TextPaintPlan {
     title_fill: Option<DirectPaintExpectation>,
     title: Option<Box<str>>,
     evidence: FamilyThemeOutcomes,
+    title_evidence: FamilyThemeOutcomes,
     pending: Vec<C4PendingTextMechanism>,
     terminal: OnceLock<C4TextPaintTerminalSeal>,
     source_paint: OnceLock<C4SourceTerminalPaint>,
@@ -33,6 +34,7 @@ pub(crate) struct C4TextPaintPlan {
 
 #[derive(Debug)]
 struct C4SourceTerminalPaint {
+    title_visible: bool,
     elements: Vec<C4ElementTerminalPaint>,
     relations: Vec<C4RelationTerminalPaint>,
     boundaries: Vec<Option<C4LabelTerminalPaint>>,
@@ -46,6 +48,7 @@ pub(crate) struct C4ElementTerminalPaint {
     pub(crate) border: String,
     pub(crate) text: String,
     typed_text: bool,
+    visible: bool,
 }
 
 #[derive(Debug)]
@@ -56,6 +59,7 @@ pub(crate) struct C4RelationTerminalPaint {
     pub(crate) marker_fill: String,
     pub(crate) marker_stroke: String,
     typed_text: bool,
+    visible: bool,
 }
 
 #[derive(Debug)]
@@ -87,6 +91,7 @@ pub(crate) struct C4TextPaintReceipt<'a> {
     expected_title_fill: Option<&'a str>,
     title_inherits_fill: bool,
     expected_title: Option<&'a str>,
+    expected_title_visible: bool,
     css_seen: bool,
     title_seen: bool,
     text_seen: bool,
@@ -115,6 +120,7 @@ impl C4TextPaintPlan {
             title_fill: None,
             title,
             evidence: FamilyThemeOutcomes::default(),
+            title_evidence: FamilyThemeOutcomes::default(),
             pending: Vec::new(),
             terminal: OnceLock::new(),
             source_paint: OnceLock::new(),
@@ -124,7 +130,7 @@ impl C4TextPaintPlan {
         let config_owned = config.config_paint_overrides_typed_default("themeVariables.textColor");
         reconcile_unsupported_terminal_domains(
             theme,
-            &mut plan.evidence,
+            &mut plan.title_evidence,
             &[UnsupportedTerminalDomain::direct(
                 ThemeTarget::Title,
                 TerminalVariantDomain::uniform(
@@ -186,14 +192,14 @@ impl C4TextPaintPlan {
                 && route.disposition() == FamilyThemeDisposition::TypedAdapter
             {
                 if title_fill_winner != Some(rule_index) {
-                    plan.evidence
+                    plan.title_evidence
                         .mark_not_applicable(theme.family_mechanism_key(*route));
                 } else if plan
                     .title_fill
                     .as_ref()
                     .is_none_or(|fill| fill.rule_index() != rule_index)
                 {
-                    plan.evidence.mark_residual(
+                    plan.title_evidence.mark_residual(
                         theme.family_mechanism_key(*route),
                         FamilyThemeResidualReason::UnsupportedPaint,
                     );
@@ -336,6 +342,20 @@ impl C4TextPaintPlan {
                     message: format!("c4: missing model shape {}", shape.alias),
                 }
             })?;
+            let font_size = typography
+                .element_style(&shape.type_c4_shape)
+                .ok_or_else(|| crate::Error::InvalidModel {
+                    message: format!("c4: missing prepared element style {}", shape.type_c4_shape),
+                })?
+                .font
+                .measurement_style
+                .font_size;
+            let visible = text_is_visible(&shape.label, font_size)
+                || text_is_visible(&shape.type_block, font_size)
+                || shape
+                    .descr
+                    .as_ref()
+                    .is_some_and(|block| text_is_visible(block, font_size));
             let defaults = typography
                 .prepare_element_colors(&shape.type_c4_shape, &view)
                 .ok_or_else(|| crate::Error::InvalidModel {
@@ -371,9 +391,6 @@ impl C4TextPaintPlan {
                 background_paint.as_ref(),
             );
             record_role_paint(&mut typed_roles, ThemeTarget::Node, border_paint.as_ref());
-            let visible = text_is_visible(&shape.label)
-                || text_is_visible(&shape.type_block)
-                || shape.descr.as_ref().is_some_and(text_is_visible);
             let (text_paint, _) = self.role_paints(
                 ThemeTarget::NodeLabel,
                 element_text_owned.len() + 1,
@@ -406,6 +423,7 @@ impl C4TextPaintPlan {
                     .unwrap_or(&defaults.text)
                     .to_owned(),
                 typed_text: visible && self.uses_inherited_fill(text_paint.as_ref()),
+                visible,
             });
         }
         let source_relations: BTreeMap<_, _> = model
@@ -429,13 +447,15 @@ impl C4TextPaintPlan {
             let explicit_line = source
                 .and_then(|source| source.line_color.as_deref())
                 .or_else(|| config.get_str("c4.relationship_line_color"));
-            let label_visible = text_is_visible(&relation.label)
-                || relation
-                    .techn
-                    .as_ref()
-                    // The writer adds visible brackets around every nonempty technology,
-                    // including one whose prepared contents consist only of break tags.
-                    .is_some_and(|text| !text.text.trim().is_empty());
+            let font_size = typography.message_font().measurement_style.font_size;
+            let label_visible = text_is_visible(&relation.label, font_size)
+                || (font_size > 0.0
+                    && relation
+                        .techn
+                        .as_ref()
+                        // The writer adds visible brackets around every nonempty technology,
+                        // including one whose prepared contents consist only of break tags.
+                        .is_some_and(|text| !text.text.trim().is_empty()));
             let (text_paint, _) = self.role_paints(
                 ThemeTarget::EdgeLabel,
                 relation_text_owned.len() + 1,
@@ -492,6 +512,7 @@ impl C4TextPaintPlan {
                 line,
                 themed_markers,
                 typed_text: label_visible && self.uses_inherited_fill(text_paint.as_ref()),
+                visible: label_visible,
             });
         }
         let mut boundaries = Vec::with_capacity(layout.boundaries.len());
@@ -510,9 +531,14 @@ impl C4TextPaintPlan {
                 .get(boundary.alias.as_str())
                 .and_then(|boundary| boundary.font_color.as_deref())
                 .or_else(|| config.get_str("c4.boundary_font_color"));
-            let visible = text_is_visible(&boundary.label)
-                || boundary.ty.as_ref().is_some_and(text_is_visible)
-                || boundary.descr.as_ref().is_some_and(text_is_visible);
+            let fonts = typography.boundary_fonts();
+            let visible = text_is_visible(&boundary.label, fonts.name.measurement_style.font_size)
+                || boundary.ty.as_ref().is_some_and(|block| {
+                    text_is_visible(block, fonts.ty.measurement_style.font_size)
+                })
+                || boundary.descr.as_ref().is_some_and(|block| {
+                    text_is_visible(block, fonts.descr.measurement_style.font_size)
+                });
             let (paint, _) = self.role_paints(
                 ThemeTarget::ClusterLabel,
                 boundary_text_owned.len() + 1,
@@ -597,6 +623,7 @@ impl C4TextPaintPlan {
         }
         self.source_paint
             .set(C4SourceTerminalPaint {
+                title_visible: self.title.is_some() && typography.font_size_px() > 0.0,
                 elements,
                 relations,
                 boundaries,
@@ -691,6 +718,7 @@ impl C4TextPaintPlan {
             expected_title_fill: self.title_fill_css(),
             title_inherits_fill: self.title_fill.is_none(),
             expected_title: self.title.as_deref(),
+            expected_title_visible: self.source_paint.get().is_some_and(|source| source.title_visible),
             css_seen: false,
             title_seen: false,
             text_seen: false,
@@ -711,18 +739,15 @@ impl C4TextPaintPlan {
             && self
                 .terminal
                 .set(C4TextPaintTerminalSeal {
-                    inherited_title_seen: receipt.title_seen && receipt.title_inherits_fill,
+                    inherited_title_seen: receipt.title_seen
+                        && receipt.expected_title_visible
+                        && receipt.title_inherits_fill,
                     text_seen: receipt.text_seen,
                     source_colors_static: receipt.source_colors_static,
                     typed_fill_seen: receipt.typed_fill_seen,
                     roles_complete: receipt.expected_source.is_some_and(|source| {
                         source.elements.len() == receipt.elements_seen.len()
-                            && source
-                                .boundaries
-                                .iter()
-                                .flatten()
-                                .filter(|paint| paint.visible)
-                                .count()
+                            && source.boundaries.iter().flatten().count()
                                 == receipt.boundaries_seen.len()
                             && source.relations.len() == receipt.relations_seen.len()
                     }),
@@ -732,7 +757,34 @@ impl C4TextPaintPlan {
 
     pub(crate) fn record_evidence(&self, evidence: &mut FamilyThemeEvidence) {
         evidence.merge_borrowed(&self.evidence);
-        if self.terminal.get().is_some()
+        // Title selection retains its DOM paint even at zero size. Only the prepared root size
+        // establishes a visible title domain for applied/unsupported paint evidence.
+        let title_visible = self
+            .source_paint
+            .get()
+            .is_some_and(|source| source.title_visible);
+        if title_visible {
+            evidence.merge_borrowed(&self.title_evidence);
+        } else if let Some(theme) = self.theme.as_ref() {
+            for route in theme.family_mechanism_routes() {
+                if matches!(
+                    route.mechanism(),
+                    FamilyThemeMechanism::RuleFacet {
+                        target: ThemeTarget::Title,
+                        ..
+                    } | FamilyThemeMechanism::OrdinalPalette {
+                        target: ThemeTarget::Title
+                    } | FamilyThemeMechanism::EffectBinding {
+                        target: ThemeTarget::Title,
+                        ..
+                    }
+                ) {
+                    evidence.mark_not_applicable(theme.family_mechanism_key(*route));
+                }
+            }
+        }
+        if title_visible
+            && self.terminal.get().is_some()
             && let Some(fill) = &self.title_fill
         {
             evidence.mark_applied_with_capabilities(
@@ -807,13 +859,14 @@ impl C4TextPaintReceipt<'_> {
         self.css_seen = true;
     }
 
-    pub(crate) fn record_title(&mut self, title: &str, fill: Option<&str>) {
+    pub(crate) fn record_title(&mut self, title: &str, fill: Option<&str>, visible: bool) {
         self.valid &= !self.title_seen
             && Some(title) == self.expected_title
-            && fill == self.expected_title_fill;
+            && fill == self.expected_title_fill
+            && visible == self.expected_title_visible;
         self.title_seen = true;
-        self.text_seen = true;
-        self.typed_fill_seen |= self.title_inherits_fill && self.expected_fill.is_some();
+        self.text_seen |= visible;
+        self.typed_fill_seen |= visible && self.title_inherits_fill && self.expected_fill.is_some();
     }
 
     /// Source-directed inheritance and browser-dependent colors need their own terminal proof.
@@ -823,7 +876,7 @@ impl C4TextPaintReceipt<'_> {
             self.source_colors_static && crate::mermaid_style::is_supported_css_color_value(color);
     }
 
-    pub(crate) fn record_boundary(&mut self, index: usize, color: &str) {
+    pub(crate) fn record_boundary(&mut self, index: usize, color: &str, visible: bool) {
         let Some(expected) = self
             .expected_source
             .and_then(|source| source.boundaries.get(index)?.as_ref())
@@ -831,11 +884,18 @@ impl C4TextPaintReceipt<'_> {
             self.valid = false;
             return;
         };
-        self.valid &= expected.text == color && self.boundaries_seen.insert(index);
+        self.valid &= expected.text == color
+            && expected.visible == visible
+            && self.boundaries_seen.insert(index);
         self.typed_fill_seen |= expected.typed_text;
     }
 
-    pub(crate) fn record_element(&mut self, index: usize, paint: &C4ElementTerminalPaint) {
+    pub(crate) fn record_element(
+        &mut self,
+        index: usize,
+        paint: &C4ElementTerminalPaint,
+        visible: bool,
+    ) {
         let Some(expected) = self
             .expected_source
             .and_then(|source| source.elements.get(index))
@@ -844,13 +904,19 @@ impl C4TextPaintReceipt<'_> {
             return;
         };
         self.valid &= expected.text == paint.text
+            && expected.visible == visible
             && expected.background == paint.background
             && expected.border == paint.border
             && self.elements_seen.insert(index);
         self.typed_fill_seen |= expected.typed_text;
     }
 
-    pub(crate) fn record_relation(&mut self, index: usize, paint: &C4RelationTerminalPaint) {
+    pub(crate) fn record_relation(
+        &mut self,
+        index: usize,
+        paint: &C4RelationTerminalPaint,
+        visible: bool,
+    ) {
         let Some(expected) = self
             .expected_source
             .and_then(|source| source.relations.get(index))
@@ -859,6 +925,7 @@ impl C4TextPaintReceipt<'_> {
             return;
         };
         self.valid &= expected.text == paint.text
+            && expected.visible == visible
             && expected.line == paint.line
             && expected.marker_fill == paint.marker_fill
             && expected.marker_stroke == paint.marker_stroke
@@ -879,7 +946,10 @@ fn is_role_target(target: ThemeTarget) -> bool {
     )
 }
 
-fn text_is_visible(block: &C4TextBlockLayout) -> bool {
+fn text_is_visible(block: &C4TextBlockLayout, used_font_size: f64) -> bool {
+    if used_font_size <= 0.0 {
+        return false;
+    }
     if let Some(plan) = &block.render_plan {
         // Match the unified writer's prepared words and one-layer textContent decoding.
         // A closing break tag or a decoded entity remains a literal word on this path.
@@ -935,11 +1005,12 @@ mod tests {
             "</BR\u{feff}/>",
         ] {
             block.text = text.to_owned();
-            assert!(!text_is_visible(&block), "legacy: {text:?}");
+            assert!(!text_is_visible(&block, 16.0), "legacy: {text:?}");
         }
         for text in ["[<br/>]", "&lt;br/&gt;", "literal"] {
             block.text = text.to_owned();
-            assert!(text_is_visible(&block), "legacy: {text:?}");
+            assert!(text_is_visible(&block, 16.0), "legacy: {text:?}");
+            assert!(!text_is_visible(&block, 0.0), "zero-sized legacy: {text:?}");
         }
         for (text, words, visible) in [
             ("</br>", vec!["</br>"], true),
@@ -955,7 +1026,11 @@ mod tests {
                 bbox_x: 0.0,
                 bbox_y: 0.0,
             });
-            assert_eq!(text_is_visible(&block), visible, "unified: {text:?}");
+            assert_eq!(text_is_visible(&block, 16.0), visible, "unified: {text:?}");
+            assert!(
+                !text_is_visible(&block, 0.0),
+                "zero-sized unified: {text:?}"
+            );
         }
     }
 
@@ -1025,19 +1100,19 @@ mod tests {
             expected_source: plan.source_paint.get(),
             ..title_receipt()
         };
-        complete.record_element(0, paint);
-        complete.record_element(1, external);
+        complete.record_element(0, paint, false);
+        complete.record_element(1, external, false);
         assert!(
             complete.valid,
             "equal aliases are independent layout occurrences"
         );
-        complete.record_element(1, external);
+        complete.record_element(1, external, false);
         assert!(!complete.valid, "one occurrence cannot be proved twice");
         let mut wrong = C4TextPaintReceipt {
             expected_source: plan.source_paint.get(),
             ..title_receipt()
         };
-        wrong.record_element(0, external);
+        wrong.record_element(0, external, false);
         assert!(
             !wrong.valid,
             "paint from another occurrence is not valid evidence"
@@ -1062,6 +1137,7 @@ mod tests {
             expected_title_fill: Some("#123456"),
             title_inherits_fill: true,
             expected_title: Some("Title"),
+            expected_title_visible: true,
             css_seen: false,
             title_seen: false,
             text_seen: false,
@@ -1082,7 +1158,7 @@ mod tests {
             title_inherits_fill: false,
             ..title_receipt()
         };
-        separate_title.record_title("Title", Some("#987654"));
+        separate_title.record_title("Title", Some("#987654"), true);
         assert!(separate_title.valid);
         assert!(!separate_title.typed_fill_seen);
 
@@ -1091,11 +1167,11 @@ mod tests {
         assert!(!wrong_css.valid);
 
         let mut wrong_title = title_receipt();
-        wrong_title.record_title("Other", Some("#123456"));
+        wrong_title.record_title("Other", Some("#123456"), true);
         assert!(!wrong_title.valid);
 
         let mut wrong_fill = title_receipt();
-        wrong_fill.record_title("Title", None);
+        wrong_fill.record_title("Title", None, true);
         assert!(!wrong_fill.valid);
 
         let mut duplicate = title_receipt();
@@ -1104,8 +1180,8 @@ mod tests {
         assert!(!duplicate.valid);
 
         let mut duplicate = title_receipt();
-        duplicate.record_title("Title", Some("#123456"));
-        duplicate.record_title("Title", Some("#123456"));
+        duplicate.record_title("Title", Some("#123456"), true);
+        duplicate.record_title("Title", Some("#123456"), true);
         assert!(!duplicate.valid);
     }
 
@@ -1116,6 +1192,7 @@ mod tests {
             title_fill: None,
             title: Some("Title".into()),
             evidence: FamilyThemeOutcomes::default(),
+            title_evidence: FamilyThemeOutcomes::default(),
             pending: Vec::new(),
             terminal: OnceLock::new(),
             source_paint: OnceLock::new(),
@@ -1128,7 +1205,7 @@ mod tests {
         for expected_success in [true, false] {
             let mut complete = title_receipt();
             complete.record_css(Some("#123456"));
-            complete.record_title("Title", Some("#123456"));
+            complete.record_title("Title", Some("#123456"), true);
             assert_eq!(plan.record_terminal(complete), expected_success);
         }
     }

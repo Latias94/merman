@@ -487,6 +487,7 @@ fn layout_c4_shape_array(
             .element_style(&type_c4_shape)
             .expect("C4 preparation binds every model shape type before layout")
             .font
+            .measurement_style
             .clone();
 
         // Unified C4 labels are measured as stacked name/stereotype/description sections.
@@ -758,14 +759,12 @@ fn prepare_c4_boundary_layout(
     // boundary has no such field and therefore does not wrap when it is absent;
     // do not substitute the diagram model's root directive here.
     let text_wrap = boundary.wrap.unwrap_or(false) && ctx.conf.wrap;
-    let mut label_conf = ctx.conf.boundary_font();
-    label_conf.font_size += 2.0;
-    label_conf.font_weight = Some("bold".to_string());
+    let fonts = ctx.typography.boundary_fonts();
 
     let mut label = prepare_c4_legacy_text(
         ctx.measurer,
         boundary.label.as_str(),
-        &label_conf,
+        &fonts.name.measurement_style,
         text_wrap,
         Some(width_limit),
         ctx.work,
@@ -776,11 +775,10 @@ fn prepare_c4_boundary_layout(
     let mut ty: Option<C4TextBlockLayout> = None;
     if let Some(boundary_ty) = boundary.ty.as_ref().filter(|t| !t.as_str().is_empty()) {
         let ty_text = format!("[{}]", boundary_ty.as_str());
-        let ty_conf = ctx.conf.boundary_font();
         let mut block = prepare_c4_legacy_text(
             ctx.measurer,
             &ty_text,
-            &ty_conf,
+            &fonts.ty.measurement_style,
             text_wrap,
             Some(width_limit),
             ctx.work,
@@ -792,12 +790,10 @@ fn prepare_c4_boundary_layout(
 
     let mut descr: Option<C4TextBlockLayout> = None;
     if let Some(boundary_descr) = boundary.descr.as_ref().filter(|t| !t.as_str().is_empty()) {
-        let mut descr_conf = ctx.conf.boundary_font();
-        descr_conf.font_size -= 2.0;
         let mut block = prepare_c4_legacy_text(
             ctx.measurer,
             boundary_descr.as_str(),
-            &descr_conf,
+            &fonts.descr.measurement_style,
             text_wrap,
             Some(width_limit),
             ctx.work,
@@ -992,8 +988,7 @@ pub(crate) fn layout_c4_diagram_typed(
 ) -> Result<C4DiagramLayout> {
     work.charge(1)?;
     let c4_cfg = C4ConfigView::new(effective_config);
-    let conf = c4_cfg
-        .layout_settings_with_prepared_fonts(typography.boundary_font(), typography.message_font());
+    let conf = c4_cfg.layout_settings();
 
     let c4_shape_in_row = (model.layout.c4_shape_in_row.max(1)) as usize;
     let c4_boundary_in_row = (model.layout.c4_boundary_in_row.max(1)) as usize;
@@ -1105,7 +1100,7 @@ pub(crate) fn layout_c4_diagram_typed(
             });
     }
 
-    let rel_font = conf.message_font();
+    let rel_font = &typography.message_font().measurement_style;
     let mut rels_out: Vec<C4RelLayout> = Vec::new();
     for (i, rel) in model.rels.iter().enumerate() {
         let mut label_text = rel.label.as_str().to_string();
@@ -1116,14 +1111,14 @@ pub(crate) fn layout_c4_diagram_typed(
         let rel_text_wrap = rel.wrap && conf.wrap;
 
         let label =
-            prepare_c4_legacy_text(measurer, &label_text, &rel_font, rel_text_wrap, None, work)?;
+            prepare_c4_legacy_text(measurer, &label_text, rel_font, rel_text_wrap, None, work)?;
 
         let techn = rel
             .techn
             .as_ref()
             .filter(|t| !t.as_str().is_empty())
             .map(|t| {
-                prepare_c4_legacy_text(measurer, t.as_str(), &rel_font, rel_text_wrap, None, work)
+                prepare_c4_legacy_text(measurer, t.as_str(), rel_font, rel_text_wrap, None, work)
             })
             .transpose()?;
 
@@ -1132,7 +1127,7 @@ pub(crate) fn layout_c4_diagram_typed(
             .as_ref()
             .filter(|t| !t.as_str().is_empty())
             .map(|t| {
-                prepare_c4_legacy_text(measurer, t.as_str(), &rel_font, rel_text_wrap, None, work)
+                prepare_c4_legacy_text(measurer, t.as_str(), rel_font, rel_text_wrap, None, work)
             })
             .transpose()?;
 
