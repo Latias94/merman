@@ -463,44 +463,56 @@ fn timeline_svg_renders_section_suffix_events_like_following_lines() {
 }
 
 #[test]
-fn timeline_svg_accepts_complete_single_line_accessibility_values() {
-    let source = concat!(
+fn timeline_svg_accepts_complete_accessibility_values_and_crossline_tokens() {
+    let same_line = concat!(
         "timeline\n",
         "accTitle: Release; ready #stable\n",
         "accDescr: Ship; fully #accessible\n",
         "section A\nP : Seed\n",
     );
-    let parsed = MermaidEngine::new()
-        .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
-        .expect("Timeline with a11y punctuation parses")
-        .expect("Timeline is detected");
-    let merman_model::presentation::RenderSemanticModel::Timeline(model) = parsed.model() else {
-        panic!("expected Timeline model");
-    };
-    assert_eq!(model.acc_title.as_deref(), Some("Release; ready #stable"));
-    assert_eq!(model.acc_descr.as_deref(), Some("Ship; fully #accessible"));
-    let compatibility = parsed
-        .compatibility_json()
-        .expect("Timeline compatibility JSON");
-    assert_eq!(compatibility["accTitle"], "Release; ready #stable");
-    assert_eq!(compatibility["accDescr"], "Ship; fully #accessible");
+    let cross_line = concat!(
+        "timeline\r\n",
+        "accTitle\r\n\u{feff}:\r\nRelease; ready #stable\r\n",
+        "accDescr\r\n{\r\nShip; fully #accessible\r\n}\r\n",
+        "section\r\nA\r\nP :\r\nSeed\r\n",
+    );
+    for source in [same_line, cross_line] {
+        let parsed = MermaidEngine::new()
+            .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
+            .expect("Timeline with a11y punctuation parses")
+            .expect("Timeline is detected");
+        let merman_model::presentation::RenderSemanticModel::Timeline(model) = parsed.model()
+        else {
+            panic!("expected Timeline model");
+        };
+        assert_eq!(model.acc_title.as_deref(), Some("Release; ready #stable"));
+        assert_eq!(model.acc_descr.as_deref(), Some("Ship; fully #accessible"));
+        let compatibility = parsed
+            .compatibility_json()
+            .expect("Timeline compatibility JSON");
+        assert_eq!(compatibility["accTitle"], "Release; ready #stable");
+        assert_eq!(compatibility["accDescr"], "Ship; fully #accessible");
 
-    let svg = render_timeline_svg_from_text(source);
-    let document = roxmltree::Document::parse(&svg).expect("valid Timeline SVG");
-    assert_eq!(
-        document
-            .descendants()
-            .filter(|node| node.has_tag_name("g") && node.attribute("class") == Some("taskWrapper"))
-            .count(),
-        1
-    );
-    assert_eq!(
-        document
-            .descendants()
-            .filter(|node| node.has_tag_name("g") && node.attribute("class") == Some("eventWrapper"))
-            .count(),
-        1
-    );
+        let svg = render_timeline_svg_from_text(source);
+        let document = roxmltree::Document::parse(&svg).expect("valid Timeline SVG");
+        assert_eq!(
+            document
+                .descendants()
+                .filter(
+                    |node| node.has_tag_name("g") && node.attribute("class") == Some("taskWrapper")
+                )
+                .count(),
+            1
+        );
+        assert_eq!(
+            document
+                .descendants()
+                .filter(|node| node.has_tag_name("g")
+                    && node.attribute("class") == Some("eventWrapper"))
+                .count(),
+            1
+        );
+    }
 }
 
 #[test]

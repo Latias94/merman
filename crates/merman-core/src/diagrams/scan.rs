@@ -61,8 +61,17 @@ pub(crate) fn consume_line_ending(source: &str, offset: usize) -> Option<usize> 
 pub(crate) struct LineCursor<'a> {
     source: &'a str,
     segments: std::str::SplitInclusive<'a, char>,
-    same_line_remainder: Option<(usize, usize)>,
+    remainder: Option<LineRemainder>,
+    current_segment: Option<(usize, usize)>,
     offset: usize,
+    #[cfg(test)]
+    scanned_bytes: usize,
+}
+
+struct LineRemainder {
+    start: usize,
+    end: usize,
+    advance_offset: bool,
 }
 
 impl<'a> LineCursor<'a> {
@@ -70,18 +79,32 @@ impl<'a> LineCursor<'a> {
         Self {
             source: code,
             segments: code.split_inclusive('\n'),
-            same_line_remainder: None,
+            remainder: None,
+            current_segment: None,
             offset: 0,
+            #[cfg(test)]
+            scanned_bytes: 0,
         }
     }
 
     pub(crate) fn next_line(&mut self) -> Option<(&'a str, usize)> {
-        if let Some((start, end)) = self.same_line_remainder.take() {
-            return Some((strip_line_ending(&self.source[start..end]), start));
+        if let Some(remainder) = self.remainder.take() {
+            if remainder.advance_offset {
+                self.offset = remainder.end;
+            }
+            return Some((
+                strip_line_ending(&self.source[remainder.start..remainder.end]),
+                remainder.start,
+            ));
         }
         let segment = self.segments.next()?;
         let line_start = self.offset;
         self.offset += segment.len();
+        self.current_segment = Some((line_start, self.offset));
+        #[cfg(test)]
+        {
+            self.scanned_bytes += segment.len();
+        }
         Some((strip_line_ending(segment), line_start))
     }
 
@@ -91,13 +114,29 @@ impl<'a> LineCursor<'a> {
     /// line parsers use this operation to preserve the same source-backed behavior without
     /// rescanning or manufacturing a synthetic line.
     pub(crate) fn resume_same_line_at(&mut self, start: usize) {
-        debug_assert!(self.same_line_remainder.is_none());
+        debug_assert!(self.remainder.is_none());
         debug_assert!(start <= self.source.len());
         debug_assert!(self.source.is_char_boundary(start));
-        let end = self.source[start..]
-            .find('\n')
-            .map_or(self.source.len(), |relative| start + relative);
-        self.same_line_remainder = Some((start, end));
+        let end = if let Some((segment_start, segment_end)) = self.current_segment
+            && start >= segment_start
+            && start < segment_end
+        {
+            segment_end - usize::from(self.source.as_bytes().get(segment_end - 1) == Some(&b'\n'))
+        } else {
+            let end = self.source[start..]
+                .find('\n')
+                .map_or(self.source.len(), |relative| start + relative);
+            #[cfg(test)]
+            {
+                self.scanned_bytes += end - start;
+            }
+            end
+        };
+        self.remainder = Some(LineRemainder {
+            start,
+            end,
+            advance_offset: false,
+        });
     }
 
     pub(crate) fn offset(&self) -> usize {
@@ -111,9 +150,24 @@ impl<'a> LineCursor<'a> {
     pub(crate) fn resume_at(&mut self, start: usize) {
         debug_assert!(start <= self.source.len());
         debug_assert!(self.source.is_char_boundary(start));
-        self.segments = self.source[start..].split_inclusive('\n');
-        self.same_line_remainder = None;
+        self.remainder = None;
         self.offset = start;
+        if let Some((segment_start, segment_end)) = self.current_segment
+            && start >= segment_start
+            && start < segment_end
+        {
+            self.remainder = Some(LineRemainder {
+                start,
+                end: segment_end,
+                advance_offset: true,
+            });
+            return;
+        }
+        if self.current_segment.is_some_and(|(_, end)| start == end) {
+            return;
+        }
+        self.segments = self.source[start..].split_inclusive('\n');
+        self.current_segment = None;
     }
 }
 
@@ -280,6 +334,30 @@ mod tests {
         cursor.resume_at(source.len());
         assert_eq!(cursor.offset(), source.len());
         assert_eq!(cursor.next_line(), None);
+    }
+
+    #[test]
+    fn repeated_same_line_resumption_reuses_the_original_newline_search() {
+        for ending in ["\n", "\r\n", ""] {
+            let source = format!("{}{}", " accDescr{界}".repeat(4096), ending);
+            let mut cursor = LineCursor::new(&source);
+            cursor.next_line().unwrap();
+            let scanned = cursor.scanned_bytes;
+            for (start, _) in source.match_indices(" accDescr") {
+                cursor.resume_at(start);
+                assert_eq!(cursor.offset(), start);
+                let (_, actual) = cursor.next_line().unwrap();
+                assert_eq!(actual, start);
+                assert_eq!(cursor.offset(), source.len());
+                cursor.resume_same_line_at(start + 1);
+                assert_eq!(cursor.next_line().unwrap().1, start + 1);
+                assert_eq!(cursor.offset(), source.len());
+            }
+            assert_eq!(cursor.scanned_bytes, scanned);
+            assert_eq!(scanned, source.len());
+            cursor.resume_at(source.len());
+            assert_eq!(cursor.next_line(), None);
+        }
     }
 
     #[test]

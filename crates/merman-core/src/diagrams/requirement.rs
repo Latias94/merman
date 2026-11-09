@@ -1,6 +1,8 @@
 #[cfg(feature = "presentation")]
 use crate::SourcePresentationMetadata;
-use crate::diagrams::scan::{LineCursor, leading_whitespace_len};
+use crate::diagrams::scan::{
+    LineCursor, is_ecmascript_whitespace, leading_whitespace_len, starts_with_case_insensitive,
+};
 #[cfg(feature = "editor-facts")]
 use crate::family::EditorFactsDemand;
 #[cfg(feature = "editor-facts")]
@@ -418,7 +420,7 @@ struct SpannedValue<'a> {
 }
 
 fn requirement_statement_start(line: &str, line_start: usize) -> usize {
-    line_start + leading_whitespace_len(line)
+    line_start + line.len() - line.trim_start_matches(is_ecmascript_whitespace).len()
 }
 
 fn trim_spanned_value(raw: &str, raw_start: usize) -> Option<SpannedValue<'_>> {
@@ -433,27 +435,6 @@ fn trim_spanned_value(raw: &str, raw_start: usize) -> Option<SpannedValue<'_>> {
         text: &raw[leading..end],
         start: raw_start + leading,
     })
-}
-
-fn parse_keyword_rest_ci<'a>(line: &'a str, key: &str) -> Option<(&'a str, usize)> {
-    let leading = line.len() - line.trim_start().len();
-    let t = &line[leading..];
-    if !t
-        .get(..key.len())
-        .is_some_and(|head| head.eq_ignore_ascii_case(key))
-    {
-        return None;
-    }
-    let rest_start = leading + key.len();
-    let rest = &line[rest_start..];
-    let rest_leading = rest.len() - rest.trim_start().len();
-    let rest_start = rest_start + rest_leading;
-    let rest = &line[rest_start..];
-    if rest.starts_with(':') || rest.starts_with('{') {
-        Some((rest, rest_start))
-    } else {
-        None
-    }
 }
 
 #[cfg(feature = "editor-facts")]
@@ -591,71 +572,96 @@ fn parse_requirement_semantic_source_once(
         crate::editor::test_work::record_collection();
     }
     let mut lines = LineCursor::new(code);
+    let mut direction_lookahead = RequirementDirectionLookahead::default();
     let mut saw_header = false;
     let mut first_error = None;
 
     while let Some((raw, line_start)) = lines.next_line() {
         control.checkpoint()?;
-        let stripped = split_requirement_line(raw);
-        let t = stripped.trim();
-        if t.is_empty() {
+        let statement_start = requirement_statement_start(raw, line_start);
+        if raw.is_empty() {
             continue;
         }
-        let statement_start = requirement_statement_start(stripped, line_start);
-
-        if let Some((rest, rest_start)) = parse_keyword_rest_ci(stripped, "accTitle")
-            && let Some(raw_value) = rest.strip_prefix(':')
+        let accessibility = parse_requirement_accessibility(&mut lines, line_start, control)?;
+        if accessibility.is_none()
+            && !starts_requirement_title_token(&code[line_start..])
+            && let Some((direction, end)) =
+                direction_lookahead.parse(code, line_start, line_start + raw.len(), control)?
         {
-            let value = trim_spanned_value(raw_value, rest_start + 1);
-            #[cfg(feature = "editor-facts")]
-            if editor_demand == EditorFactsDemand::Capture {
-                editor_facts.push_directive_prefix("accTitle");
+            lines.resume_at(end);
+            if saw_header {
+                #[cfg(feature = "editor-facts")]
+                if editor_demand == EditorFactsDemand::Capture {
+                    direction.emit_editor_fact(&mut editor_facts, SourceSpan::new(line_start, end));
+                }
+                if let Some(value) = direction.value {
+                    db.set_direction(value);
+                }
+            } else {
+                first_error.get_or_insert(Error::diagram_parse_exact(
+                    diagram_type.to_string(),
+                    "expected requirementDiagram",
+                    SourceSpan::new(line_start, end),
+                ));
             }
-            #[cfg(feature = "editor-facts")]
-            if let Some(value) = value
-                && editor_demand == EditorFactsDemand::Capture
-            {
-                push_requirement_payload_fact(
-                    &mut editor_facts,
-                    value.text,
-                    line_start + value.start,
-                    "requirement accessibility title",
-                    EditorSemanticKind::String,
-                );
-            }
-            acc_title = Some(
-                value
-                    .map(|value| value.text)
-                    .unwrap_or_default()
-                    .to_string(),
-            );
             continue;
         }
-        if let Some(parsed) =
-            parse_requirement_acc_descr(stripped, raw, line_start, &mut lines, control)?
-        {
+        if let Some(parsed) = accessibility {
             #[cfg(feature = "editor-facts")]
             if editor_demand == EditorFactsDemand::Capture {
-                editor_facts.push_directive_prefix("accDescr");
+                editor_facts.push_directive_prefix(parsed.key);
                 parsed.emit_editor_fact(&mut editor_facts);
             }
             if !parsed.complete {
                 #[cfg(feature = "editor-facts")]
                 if editor_demand.needs_recovery() {
                     editor_facts.mark_recovered_from_parse_error(
-                        "requirement parser recovered from unterminated accDescr block",
+                        "requirement parser recovered from incomplete accessibility directive",
                         Some(parsed.statement_span),
                     );
                 }
                 first_error.get_or_insert_with(|| {
                     Error::diagram_parse_insertion_point(
                         diagram_type.to_string(),
-                        "unterminated accDescr block",
+                        if parsed.block {
+                            "unterminated accDescr block"
+                        } else if parsed.key == "accTitle" {
+                            "expected requirement accessibility title value"
+                        } else {
+                            "expected requirement accessibility description value"
+                        },
                         parsed.statement_span.end,
                     )
                 });
             }
-            acc_descr = Some(parsed.value);
+            if let Some(value) = parsed.value {
+                if parsed.key == "accTitle" {
+                    acc_title = Some(value.text.to_string());
+                } else {
+                    acc_descr = Some(value.text.to_string());
+                }
+            }
+            continue;
+        }
+
+        if code[line_start..]
+            .chars()
+            .next()
+            .is_some_and(is_ecmascript_whitespace)
+        {
+            let end = scan_requirement_accessibility_while(
+                code,
+                line_start,
+                is_ecmascript_whitespace,
+                control,
+            )?;
+            lines.resume_at(end);
+            continue;
+        }
+
+        let stripped = split_requirement_line(raw);
+        let t = stripped.trim_matches(is_ecmascript_whitespace);
+        if t.is_empty() {
             continue;
         }
 
@@ -668,6 +674,15 @@ fn parse_requirement_semantic_source_once(
                 diagram_type.to_string(),
                 "expected requirementDiagram",
                 requirement_statement_span(raw, line_start),
+            ));
+            continue;
+        }
+
+        if let Some(ch) = t.chars().next().filter(|ch| ch.is_whitespace()) {
+            first_error.get_or_insert(Error::diagram_parse_exact(
+                diagram_type.to_string(),
+                "unexpected non-ECMAScript whitespace at requirement statement",
+                SourceSpan::new(statement_start, statement_start + ch.len_utf8()),
             ));
             continue;
         }
@@ -961,32 +976,46 @@ fn requirement_exact_error(error: Error, diagram_type: &str, span: SourceSpan) -
 }
 
 fn requirement_statement_span(line: &str, line_start: usize) -> SourceSpan {
-    let leading = leading_whitespace_len(line);
-    let end = line.trim_end().len();
-    SourceSpan::new(line_start + leading, line_start + end.max(leading))
+    let start = requirement_statement_start(line, line_start);
+    let end = line_start + line.trim_end_matches(is_ecmascript_whitespace).len();
+    SourceSpan::new(start, end.max(start))
 }
 
-struct RequirementAccDescr {
-    value: String,
+struct RequirementAccessibility<'a> {
+    key: &'static str,
+    value: Option<SpannedValue<'a>>,
     statement_span: SourceSpan,
-    #[cfg(feature = "editor-facts")]
-    selection: Option<SourceSpan>,
     complete: bool,
+    block: bool,
 }
 
-impl RequirementAccDescr {
+impl RequirementAccessibility<'_> {
     #[cfg(feature = "editor-facts")]
     fn emit_editor_fact(&self, facts: &mut EditorSemanticFacts) {
-        let Some(selection) = self.selection else {
+        let Some(value) = self.value else {
+            if !self.complete {
+                facts.push_expected_syntax(EditorExpectedSyntax::new(
+                    EditorExpectedSyntaxKind::Payload,
+                    SourceSpan::new(self.statement_span.end, self.statement_span.end),
+                ));
+            }
             return;
         };
+        let selection = SourceSpan::new(value.start, value.start + value.text.len());
         facts.push_expected_syntax(EditorExpectedSyntax::new(
             EditorExpectedSyntaxKind::Payload,
             selection,
         ));
         facts.push_symbol(EditorSemanticSymbol::payload(
-            self.value.clone(),
-            Some("requirement accessibility description".to_string()),
+            value.text.to_string(),
+            Some(
+                if self.key == "accTitle" {
+                    "requirement accessibility title"
+                } else {
+                    "requirement accessibility description"
+                }
+                .to_string(),
+            ),
             EditorSemanticKind::String,
             self.statement_span,
             selection,
@@ -994,123 +1023,78 @@ impl RequirementAccDescr {
     }
 }
 
-fn parse_requirement_acc_descr(
-    line: &str,
-    raw_line: &str,
-    line_start: usize,
-    cursor: &mut LineCursor<'_>,
+fn scan_requirement_accessibility_while(
+    source: &str,
+    start: usize,
+    mut accepts: impl FnMut(char) -> bool,
     control: &OperationControl,
-) -> OperationControlResult<Option<RequirementAccDescr>> {
-    control.checkpoint()?;
-    let Some((rest, rest_start)) = parse_keyword_rest_ci(line, "accDescr") else {
-        return Ok(None);
-    };
-    let statement_start = requirement_statement_span(raw_line, line_start).start;
-
-    if let Some(raw_value) = rest.strip_prefix(':') {
-        let value = trim_spanned_value(raw_value, rest_start + 1);
-        return Ok(Some(RequirementAccDescr {
-            value: value
-                .map(|value| value.text)
-                .unwrap_or_default()
-                .to_string(),
-            statement_span: requirement_statement_span(raw_line, line_start),
-            #[cfg(feature = "editor-facts")]
-            selection: value.map(|value| {
-                SourceSpan::new(
-                    line_start + value.start,
-                    line_start + value.start + value.text.len(),
-                )
-            }),
-            complete: true,
-        }));
-    }
-
-    let Some(after_brace) = rest.strip_prefix('{') else {
-        return Ok(None);
-    };
-    let mut value_lines = Vec::new();
-    let mut first_content_start = None;
-    let mut last_content_end = None;
-    let mut statement_end = line_start + raw_line.len();
-    let mut complete = false;
-
-    let first_start = line_start + rest_start + 1;
-    if let Some(close) = after_brace.find('}') {
-        append_requirement_acc_descr_line(
-            &after_brace[..close],
-            first_start,
-            &mut value_lines,
-            &mut first_content_start,
-            &mut last_content_end,
-        );
-        statement_end = first_start + close + 1;
-        complete = true;
-        cursor.resume_same_line_at(statement_end);
-    } else {
-        append_requirement_acc_descr_line(
-            after_brace,
-            first_start,
-            &mut value_lines,
-            &mut first_content_start,
-            &mut last_content_end,
-        );
-        while let Some((next, next_start)) = cursor.next_line() {
+) -> OperationControlResult<usize> {
+    for (count, (relative, ch)) in source[start..].char_indices().enumerate() {
+        if count.is_multiple_of(128) {
             control.checkpoint()?;
-            statement_end = next_start + next.len();
-            if let Some(close) = next.find('}') {
-                append_requirement_acc_descr_line(
-                    &next[..close],
-                    next_start,
-                    &mut value_lines,
-                    &mut first_content_start,
-                    &mut last_content_end,
-                );
-                statement_end = next_start + close + 1;
-                complete = true;
-                cursor.resume_same_line_at(statement_end);
-                break;
-            }
-            append_requirement_acc_descr_line(
-                next,
-                next_start,
-                &mut value_lines,
-                &mut first_content_start,
-                &mut last_content_end,
-            );
+        }
+        if !accepts(ch) {
+            return Ok(start + relative);
         }
     }
-
-    let parsed = RequirementAccDescr {
-        value: value_lines.join("\n").trim().to_string(),
-        statement_span: SourceSpan::new(statement_start, statement_end),
-        #[cfg(feature = "editor-facts")]
-        selection: first_content_start
-            .zip(last_content_end)
-            .map(|(start, end)| SourceSpan::new(start, end)),
-        complete,
-    };
-    Ok(Some(parsed))
+    control.checkpoint()?;
+    Ok(source.len())
 }
 
-fn append_requirement_acc_descr_line(
-    raw: &str,
+fn parse_requirement_accessibility<'a>(
+    cursor: &mut LineCursor<'a>,
     start: usize,
-    lines: &mut Vec<String>,
-    first_content_start: &mut Option<usize>,
-    last_content_end: &mut Option<usize>,
-) {
-    let leading = leading_whitespace_len(raw);
-    let trimmed = raw.trim();
-    if trimmed.is_empty() {
-        if !lines.is_empty() {
-            lines.push(String::new());
-        }
-        return;
-    }
-    *first_content_start = Some(first_content_start.unwrap_or(start + leading));
-    *last_content_end = Some(start + raw.trim_end().len());
-    lines.push(trimmed.to_string());
+    control: &OperationControl,
+) -> OperationControlResult<Option<RequirementAccessibility<'a>>> {
+    let source = cursor.source();
+    let key = if starts_with_case_insensitive(&source[start..], "accTitle") {
+        "accTitle"
+    } else if starts_with_case_insensitive(&source[start..], "accDescr") {
+        "accDescr"
+    } else {
+        return Ok(None);
+    };
+    let delimiter = scan_requirement_accessibility_while(
+        source,
+        start + key.len(),
+        is_ecmascript_whitespace,
+        control,
+    )?;
+    let block = match source.as_bytes().get(delimiter) {
+        Some(b':') => false,
+        Some(b'{') if key == "accDescr" => true,
+        _ => return Ok(None),
+    };
+    let value_start = scan_requirement_accessibility_while(
+        source,
+        delimiter + 1,
+        is_ecmascript_whitespace,
+        control,
+    )?;
+    let value_end = scan_requirement_accessibility_while(
+        source,
+        value_start,
+        |ch| ch != if block { '}' } else { '\n' },
+        control,
+    )?;
+    let complete = if block {
+        value_end < source.len()
+    } else {
+        value_start < value_end
+    };
+    let end = value_end + usize::from(block && complete);
+    let text = source[value_start..value_end].trim_end_matches(is_ecmascript_whitespace);
+    cursor.resume_at(end);
+    Ok(Some(RequirementAccessibility {
+        key,
+        value: (!text.is_empty()).then_some(SpannedValue {
+            text,
+            start: value_start,
+        }),
+        statement_span: SourceSpan::new(start, end),
+        complete,
+        block,
+    }))
 }
 
 #[cfg(feature = "editor-facts")]
@@ -1339,7 +1323,9 @@ fn find_requirement_token(input: &str, token: &str) -> Option<usize> {
 }
 
 fn split_requirement_line(line: &str) -> &str {
-    let lowered = line.trim_start().to_ascii_lowercase();
+    let lowered = line
+        .trim_start_matches(is_ecmascript_whitespace)
+        .to_ascii_lowercase();
     if lowered.starts_with("style")
         || lowered.starts_with("classdef")
         || lowered.starts_with("class ")
@@ -1374,6 +1360,130 @@ fn split_requirement_line(line: &str) -> &str {
 struct ParsedRequirementDirection {
     value: Option<&'static str>,
     selection: SourceSpan,
+}
+
+fn starts_requirement_title_token(source: &str) -> bool {
+    if !starts_with_case_insensitive(source, "title") {
+        return false;
+    }
+    let after = &source["title".len()..];
+    let Some(separator) = after
+        .chars()
+        .next()
+        .filter(|ch| is_ecmascript_whitespace(*ch))
+    else {
+        return false;
+    };
+    after[separator.len_utf8()..]
+        .chars()
+        .next()
+        .is_some_and(|ch| !matches!(ch, '#' | ';' | '\n'))
+}
+
+#[derive(Default)]
+struct RequirementDirectionLookahead {
+    line: Option<RequirementDirectionLine>,
+}
+
+struct RequirementDirectionLine {
+    start: usize,
+    prefix_end: usize,
+    candidates: [Option<RequirementDirectionCandidate>; 4],
+}
+
+#[derive(Clone, Copy)]
+struct RequirementDirectionCandidate {
+    keyword_start: usize,
+    value_start: usize,
+    end: usize,
+}
+
+impl RequirementDirectionLookahead {
+    fn parse(
+        &mut self,
+        source: &str,
+        start: usize,
+        line_end: usize,
+        control: &OperationControl,
+    ) -> OperationControlResult<Option<(ParsedRequirementDirection, usize)>> {
+        if self
+            .line
+            .as_ref()
+            .is_none_or(|line| start < line.start || start > line.prefix_end)
+        {
+            let mut line = RequirementDirectionLine {
+                start,
+                prefix_end: source.len(),
+                candidates: [None; 4],
+            };
+            for (count, (offset, ch)) in source[start..].char_indices().enumerate() {
+                if count.is_multiple_of(128) {
+                    control.checkpoint()?;
+                }
+                if matches!(ch, '\n' | '\r' | '\u{2028}' | '\u{2029}') {
+                    line.prefix_end = start + offset;
+                    break;
+                }
+                let keyword_start = start + offset;
+                if !starts_with_case_insensitive(&source[keyword_start..], "direction") {
+                    continue;
+                }
+                let after_keyword = keyword_start + "direction".len();
+                let value = scan_requirement_accessibility_while(
+                    source,
+                    after_keyword,
+                    is_ecmascript_whitespace,
+                    control,
+                )?;
+                if value == after_keyword {
+                    continue;
+                }
+                for (index, direction) in ["TB", "BT", "RL", "LR"].into_iter().enumerate() {
+                    if !starts_with_case_insensitive(&source[value..], direction) {
+                        continue;
+                    }
+                    let value_end = value + direction.len();
+                    let end = if value_end <= line_end {
+                        line_end
+                    } else {
+                        scan_requirement_accessibility_while(
+                            source,
+                            value_end,
+                            |ch| ch != '\n',
+                            control,
+                        )?
+                    };
+                    line.candidates[index] = Some(RequirementDirectionCandidate {
+                        keyword_start,
+                        value_start: value,
+                        end,
+                    });
+                    break;
+                }
+            }
+            self.line = Some(line);
+        }
+        let Some(line) = &self.line else {
+            return Ok(None);
+        };
+        for (candidate, direction) in line.candidates.iter().zip(["TB", "BT", "RL", "LR"]) {
+            let Some(candidate) = candidate.filter(|candidate| candidate.keyword_start >= start)
+            else {
+                continue;
+            };
+            return Ok(Some((
+                ParsedRequirementDirection {
+                    value: Some(direction),
+                    selection: SourceSpan::new(
+                        candidate.value_start,
+                        candidate.value_start + direction.len(),
+                    ),
+                },
+                candidate.end,
+            )));
+        }
+        Ok(None)
+    }
 }
 
 impl ParsedRequirementDirection {
@@ -3177,12 +3287,8 @@ classDef class2 color:blue
     }
 
     #[test]
-    fn requirement_top_level_directives_require_exact_first_word() {
-        for statement in [
-            "styleNode fill:#f00",
-            "classify myReq myClass",
-            "foo direction LR",
-        ] {
+    fn requirement_style_and_class_directives_require_exact_first_word() {
+        for statement in ["styleNode fill:#f00", "classify myReq myClass"] {
             let message = parse_err(&format!("requirementDiagram\n{statement}\n"));
             assert!(
                 message.contains("unexpected requirement statement"),
@@ -3195,6 +3301,215 @@ classDef class2 color:blue
 #[cfg(test)]
 mod semantic_tests {
     use super::*;
+
+    #[test]
+    fn requirement_default_whitespace_keeps_its_greedy_crossline_endpoint() {
+        for ending in ["\n", "\r\n"] {
+            for (blank, direction_wins) in
+                [("", true), (" ", false), ("\t", false), ("\u{feff}", false)]
+            {
+                for statement in [
+                    "accTitle: direction LR",
+                    "accDescr: direction LR",
+                    "accDescr{direction LR}",
+                ] {
+                    let source =
+                        format!("requirementDiagram{ending}{blank}{ending} {statement}{ending}");
+                    let parsed = crate::SemanticParser::new()
+                        .parse_diagram_sync(&source)
+                        .unwrap();
+                    let merman_model::semantic::SemanticDiagramModel::Requirement(model) =
+                        parsed.model
+                    else {
+                        panic!("expected Requirement model");
+                    };
+                    assert_eq!(model.direction, if direction_wins { "LR" } else { "TB" });
+                    let payload = if statement.starts_with("accTitle") {
+                        model.acc_title
+                    } else {
+                        model.acc_descr
+                    };
+                    assert_eq!(
+                        payload.as_deref(),
+                        if direction_wins {
+                            None
+                        } else {
+                            Some("direction LR")
+                        }
+                    );
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn requirement_repeated_same_line_blocks_keep_total_checkpoint_work_linear() {
+        for count in [128, 2048] {
+            for block in [" accDescr{}", " accDescr{界}"] {
+                for capture in [false, true] {
+                    let source = format!("requirementDiagram\n{}\n", block.repeat(count));
+                    let control = OperationControl::new();
+                    control.cancel_after_checkpoints(count * 10 + 64);
+                    let result = parse_requirement_semantic_model_controlled(
+                        &source,
+                        &metadata(),
+                        #[cfg(feature = "editor-facts")]
+                        if capture {
+                            EditorFactsDemand::Capture
+                        } else {
+                            EditorFactsDemand::Omit
+                        },
+                        &control,
+                    )
+                    .expect("same-line token consumption must stay within linear checkpoint work");
+                    let model = result.model.unwrap();
+                    assert_eq!(
+                        model.acc_descr.as_deref(),
+                        if block.contains('界') {
+                            Some("界")
+                        } else {
+                            None
+                        }
+                    );
+                    #[cfg(feature = "editor-facts")]
+                    if capture && block.contains('界') {
+                        assert_eq!(result.editor_facts.unwrap().symbols.len(), count);
+                    }
+                    #[cfg(not(feature = "editor-facts"))]
+                    let _ = capture;
+                }
+            }
+        }
+        let source = " prefix direction LR accDescr{} direction BT";
+        let mut lookahead = RequirementDirectionLookahead::default();
+        let first = lookahead
+            .parse(source, 0, source.len(), &OperationControl::new())
+            .unwrap()
+            .unwrap();
+        assert_eq!(first.0.value, Some("BT"));
+        let after = source.find("direction BT").unwrap() + "direction BT".len();
+        assert!(
+            lookahead
+                .parse(source, after, source.len(), &OperationControl::new())
+                .unwrap()
+                .is_none()
+        );
+    }
+
+    #[test]
+    fn requirement_default_direction_tokens_keep_ordered_lexer_priority() {
+        for ending in ["\n", "\r\n"] {
+            for prefix in ["", " ", "\t", "\u{feff}", "\u{85}"] {
+                for (statement, title, description) in [
+                    ("accTitle: direction LR", Some("direction LR"), None),
+                    ("accDescr: direction LR", None, Some("direction LR")),
+                    ("accDescr{direction LR}", None, Some("direction LR")),
+                ] {
+                    let source = format!("requirementDiagram{ending}{prefix}{statement}{ending}");
+                    let parsed = crate::SemanticParser::new()
+                        .parse_diagram_sync(&source)
+                        .unwrap();
+                    let merman_model::semantic::SemanticDiagramModel::Requirement(model) =
+                        parsed.model
+                    else {
+                        panic!("expected Requirement model");
+                    };
+                    assert_eq!(model.direction, if prefix.is_empty() { "TB" } else { "LR" });
+                    assert_eq!(
+                        model.acc_title.as_deref(),
+                        if prefix.is_empty() { title } else { None }
+                    );
+                    assert_eq!(
+                        model.acc_descr.as_deref(),
+                        if prefix.is_empty() { description } else { None }
+                    );
+                }
+            }
+            for (statement, expected) in [
+                ("prefix direction LR suffix", "LR"),
+                ("direction\n\u{feff}LR", "LR"),
+                ("prefix direction BT direction LR", "BT"),
+                ("prefix direction LR direction TB", "TB"),
+                ("prefix direction LRX", "LR"),
+            ] {
+                let source = format!("requirementDiagram\n{statement}\n").replace('\n', ending);
+                let parsed = crate::SemanticParser::new()
+                    .parse_diagram_sync(&source)
+                    .unwrap();
+                let merman_model::semantic::SemanticDiagramModel::Requirement(model) = parsed.model
+                else {
+                    panic!("expected Requirement model");
+                };
+                assert_eq!(model.direction, expected);
+            }
+            for statement in ["accTitle\n:direction LR", "accDescr\n{direction LR}"] {
+                let source = format!("requirementDiagram\n{statement}\n").replace('\n', ending);
+                let parsed = crate::SemanticParser::new()
+                    .parse_diagram_sync(&source)
+                    .unwrap();
+                let merman_model::semantic::SemanticDiagramModel::Requirement(model) = parsed.model
+                else {
+                    panic!("expected Requirement model");
+                };
+                assert_eq!(model.direction, "TB");
+            }
+            for statement in [
+                "title direction LR",
+                "title\ndirection LR",
+                "prefix\u{2028}direction LR",
+            ] {
+                let source = format!("requirementDiagram\n{statement}\n").replace('\n', ending);
+                assert!(
+                    crate::SemanticParser::new()
+                        .parse_diagram_sync(&source)
+                        .is_err()
+                );
+            }
+        }
+    }
+
+    #[test]
+    #[cfg(feature = "editor-facts")]
+    fn requirement_literal_nel_root_prefixes_never_publish_shifted_identity_ranges() {
+        for ending in ["\n", "\r\n"] {
+            for statement in [
+                "element Ghost {\n}\n",
+                "requirement Ghost {\n}\n",
+                "style Ghost fill:red\n",
+                "class Ghost hot\n",
+                "classDef Ghost fill:red\n",
+                "Ghost - satisfies -> Target\n",
+            ] {
+                let source = format!(
+                    "requirementDiagram\n\u{85}{statement}element Target {{\n}}\nelement Source {{\n}}\nSource - satisfies -> Target\n"
+                ).replace('\n', ending);
+                let parser = crate::SemanticParser::new();
+                assert!(parser.parse_diagram_sync(&source).is_err());
+                let crate::SemanticSnapshotCapture::Snapshot(snapshot) =
+                    parser.capture_diagram_snapshot_sync(&source)
+                else {
+                    panic!("expected Requirement snapshot");
+                };
+                let crate::ParsedEditorFacts::Available(facts) = snapshot.editor_facts() else {
+                    panic!("expected recovered Requirement facts");
+                };
+                assert!(!facts.symbols.iter().any(|symbol| symbol.name == "Ghost"));
+                for symbol in facts
+                    .symbols
+                    .iter()
+                    .filter(|symbol| matches!(symbol.name.as_str(), "Source" | "Target"))
+                {
+                    assert_eq!(
+                        &source[symbol.selection.start..symbol.selection.end],
+                        symbol.name
+                    );
+                }
+                let nel = source.find('\u{85}').unwrap();
+                assert!(facts.diagnostics.iter().any(|diagnostic| diagnostic.span
+                    == Some(SourceSpan::new(nel, nel + '\u{85}'.len_utf8()))));
+            }
+        }
+    }
 
     #[test]
     fn canonical_capture_resolves_forward_reference_kinds() {
@@ -3253,6 +3568,408 @@ mod semantic_tests {
                 "securityLevel": "strict"
             })),
             title: None,
+        }
+    }
+
+    #[test]
+    fn requirement_multiline_accessibility_scalars_keep_punctuation_and_js_whitespace() {
+        let parser = crate::SemanticParser::new();
+        for ending in ["\n", "\r\n"] {
+            let source = format!(
+                concat!(
+                    "requirementDiagram{ending}",
+                    "\u{feff}accTitle{ending}\u{00a0}\u{2028}:{ending}{ending}",
+                    "\u{feff}\u{0085}Title;#%%literal\u{0085}\u{feff}{ending}",
+                    "accDescr{ending}%% Removed{ending}\u{feff}:{ending}",
+                    "\u{00a0}\u{0085}Help;#%%literal\u{0085}\u{feff}{ending}",
+                    "requirement R {{{ending} id: 1{ending} text: \"Body\"{ending}}}{ending}",
+                ),
+                ending = ending,
+            );
+            let parsed = parser.parse_diagram_sync(&source).unwrap();
+            let merman_model::semantic::SemanticDiagramModel::Requirement(model) = parsed.model
+            else {
+                panic!("expected Requirement model");
+            };
+            assert_eq!(
+                model.acc_title.as_deref(),
+                Some("\u{0085}Title;#%%literal\u{0085}")
+            );
+            assert_eq!(
+                model.acc_descr.as_deref(),
+                Some("\u{0085}Help;#%%literal\u{0085}")
+            );
+            assert_eq!(model.requirements.len(), 1);
+            assert_eq!(model.requirements[0].name, "R");
+            assert_eq!(model.requirements[0].text, "Body");
+        }
+    }
+
+    #[test]
+    fn requirement_root_accessibility_structural_whitespace_matches_ecmascript() {
+        let parser = crate::SemanticParser::new();
+        for whitespace in ["\u{feff}", "\u{00a0}", "\u{2028}"] {
+            let source = format!(
+                "{whitespace}requirementDiagram\n{whitespace}accTitle{whitespace}:{whitespace}Value\n"
+            );
+            let parsed = parser.parse_diagram_sync(&source).unwrap();
+            let merman_model::semantic::SemanticDiagramModel::Requirement(model) = parsed.model
+            else {
+                panic!("expected Requirement model");
+            };
+            assert_eq!(model.acc_title.as_deref(), Some("Value"));
+        }
+        for statement in [
+            "\u{0085}accTitle: Value",
+            "accTitle\u{0085}: Value",
+            "\u{0085}accDescr: Value",
+            "accDescr\u{0085}{Help}",
+        ] {
+            let source = format!("requirementDiagram\n{statement}\n");
+            assert!(parser.parse_diagram_sync(&source).is_err(), "{source:?}");
+        }
+    }
+
+    #[test]
+    fn requirement_empty_blocks_preserve_description_and_replay_closed_suffixes() {
+        let parser = crate::SemanticParser::new();
+        for ending in ["\n", "\r\n"] {
+            let source = format!(
+                concat!(
+                    "requirementDiagram{ending}",
+                    "accDescr: Old{ending}",
+                    "accDescr{{}}{ending}",
+                    "accDescr{ending}\u{feff}{{ {ending}\u{00a0}\u{2028}}}",
+                    "accTitle{ending}:Value{ending}",
+                    "element E {{{ending}}}{ending}",
+                ),
+                ending = ending,
+            );
+            let parsed = parser.parse_diagram_sync(&source).unwrap();
+            let merman_model::semantic::SemanticDiagramModel::Requirement(model) = parsed.model
+            else {
+                panic!("expected Requirement model");
+            };
+            assert_eq!(model.acc_title.as_deref(), Some("Value"));
+            assert_eq!(model.acc_descr.as_deref(), Some("Old"));
+            assert_eq!(model.elements.len(), 1);
+            assert_eq!(model.elements[0].name, "E");
+        }
+    }
+
+    #[test]
+    fn requirement_accessibility_states_own_directive_text_and_same_line_replacements() {
+        let parser = crate::SemanticParser::new();
+        for ending in ["\n", "\r\n"] {
+            for (directives, title, description) in [
+                ("accTitle:\ndirection LR\n", Some("direction LR"), None),
+                (
+                    "accDescr:\naccTitle: Literal\n",
+                    None,
+                    Some("accTitle: Literal"),
+                ),
+                (
+                    "accDescr\n{\naccTitle: Keep\ndirection LR\n}\n",
+                    None,
+                    Some("accTitle: Keep\ndirection LR"),
+                ),
+                (
+                    "accDescr: Old\naccDescr{\u{0085}}\n",
+                    None,
+                    Some("\u{0085}"),
+                ),
+                ("accDescr{First}accDescr{Second}\n", None, Some("Second")),
+                (
+                    "accDescr{Help}\u{feff}accTitle\n:Value\n",
+                    Some("Value"),
+                    Some("Help"),
+                ),
+            ] {
+                let source = format!(
+                    "requirementDiagram{ending}{}element E {{{ending}}}{ending}",
+                    directives.replace('\n', ending),
+                );
+                let parsed = parser.parse_diagram_sync(&source).unwrap();
+                let merman_model::semantic::SemanticDiagramModel::Requirement(model) = parsed.model
+                else {
+                    panic!("expected Requirement model");
+                };
+                assert_eq!(model.acc_title.as_deref(), title, "{source:?}");
+                assert_eq!(model.acc_descr.as_deref(), description, "{source:?}");
+                assert_eq!(model.direction, "TB");
+                assert_eq!(model.elements.len(), 1);
+            }
+        }
+    }
+
+    #[test]
+    fn requirement_accessibility_block_borrows_original_content_and_preserves_suffix() {
+        let source = "accDescr\r\n\u{feff}{\r\n First  \r\n  Next #%%;\r\n}accTitle\n:Value\n";
+        let mut cursor = LineCursor::new(source);
+        cursor.next_line();
+        let parsed = parse_requirement_accessibility(&mut cursor, 0, &OperationControl::new())
+            .unwrap()
+            .unwrap();
+        let value = parsed.value.unwrap();
+        assert_eq!(value.text, "First  \r\n  Next #%%;");
+        assert_eq!(value.start, source.find("First").unwrap());
+        assert_eq!(value.text.as_ptr(), source[value.start..].as_ptr());
+        assert_eq!(parsed.statement_span.end, source.find('}').unwrap() + 1);
+        assert!(parsed.complete);
+        let suffix_start = parsed.statement_span.end;
+        assert_eq!(cursor.next_line(), Some(("accTitle", suffix_start)));
+        let suffix =
+            parse_requirement_accessibility(&mut cursor, suffix_start, &OperationControl::new())
+                .unwrap()
+                .unwrap();
+        assert_eq!(suffix.value.unwrap().text, "Value");
+        assert_eq!(cursor.next_line(), Some(("", source.len() - 1)));
+        assert!(cursor.next_line().is_none());
+    }
+
+    #[test]
+    fn requirement_accessibility_prefix_grammar_stays_family_local_and_title_is_unadmitted() {
+        let source = concat!(
+            "accTitle\n:\nAccessible\n",
+            "accDescr: Old\naccDescr { }accDescr\n{Help}\n",
+            "requirementDiagram\nrequirement R {\n id: 1\n}\n",
+        );
+        let construction = parse_requirement_semantic_model_controlled(
+            source,
+            &metadata(),
+            #[cfg(feature = "editor-facts")]
+            EditorFactsDemand::Omit,
+            &OperationControl::new(),
+        )
+        .unwrap();
+        let model = construction.model.unwrap();
+        assert_eq!(model.acc_title.as_deref(), Some("Accessible"));
+        assert_eq!(model.acc_descr.as_deref(), Some("Help"));
+        assert_eq!(model.requirements.len(), 1);
+
+        let parser = crate::SemanticParser::new();
+        assert!(parser.parse_diagram_sync(source).is_err());
+        assert!(
+            parser
+                .parse_diagram_sync("requirementDiagram\ntitle Unsupported\n")
+                .is_err()
+        );
+    }
+
+    #[test]
+    fn requirement_missing_accessibility_values_reject_at_eof_and_keep_prior_facts() {
+        let parser = crate::SemanticParser::new();
+        for ending in ["\n", "\r\n"] {
+            for suffix in [
+                "accTitle:".to_string(),
+                format!("accTitle{ending}:\u{feff}{ending}"),
+                "accDescr:".to_string(),
+                format!("accDescr:{ending}{ending}"),
+                "accDescr{".to_string(),
+                format!("accDescr{ending}{{\u{feff}{ending}"),
+                format!("accDescr{ending}{{Help{ending}unfinished"),
+            ] {
+                let source =
+                    format!("requirementDiagram{ending}element E {{{ending}}}{ending}{suffix}");
+                assert!(parser.parse_diagram_sync(&source).is_err(), "{source:?}");
+                #[cfg(feature = "editor-facts")]
+                {
+                    let crate::SemanticSnapshotCapture::Snapshot(snapshot) =
+                        parser.capture_diagram_snapshot_sync(&source)
+                    else {
+                        panic!("expected recovered Requirement snapshot");
+                    };
+                    let crate::ParsedEditorFacts::Available(facts) = snapshot.editor_facts() else {
+                        panic!("expected Requirement editor facts");
+                    };
+                    assert_eq!(
+                        facts.completeness,
+                        crate::EditorSemanticCompleteness::Recovered
+                    );
+                    let entity = facts
+                        .symbols
+                        .iter()
+                        .find(|symbol| symbol.name == "E")
+                        .unwrap();
+                    assert_eq!(&source[entity.selection.start..entity.selection.end], "E");
+                    assert!(
+                        facts.diagnostics.iter().any(|diagnostic| {
+                            diagnostic.kind == crate::EditorSemanticDiagnosticKind::ParserRecovery
+                                && diagnostic.span
+                                    == Some(SourceSpan::new(source.len(), source.len()))
+                        }),
+                        "{source:?}"
+                    );
+                }
+            }
+        }
+    }
+
+    #[cfg(feature = "editor-facts")]
+    #[test]
+    fn requirement_multiline_accessibility_facts_keep_exact_original_ranges() {
+        for ending in ["\n", "\r\n"] {
+            let source = format!(
+                concat!(
+                    "requirementDiagram{ending}",
+                    "\u{feff}accDescr{ending} \u{feff}{{{ending}",
+                    "Help  {ending}  Next #%%;{ending}}}",
+                    "accTitle{ending}%% Removed{ending}:{ending}\u{0085}Accessible\u{0085}\u{feff}{ending}",
+                    "element E {{{ending}}}{ending}",
+                ),
+                ending = ending,
+            );
+            let crate::SemanticSnapshotCapture::Snapshot(snapshot) =
+                crate::SemanticParser::new().capture_diagram_snapshot_sync(&source)
+            else {
+                panic!("expected Requirement snapshot");
+            };
+            let (_, outcome, editor_facts) = snapshot.into_parts();
+            let crate::SemanticParseOutcome::Parsed(
+                merman_model::semantic::SemanticDiagramModel::Requirement(model),
+            ) = outcome
+            else {
+                panic!("expected Requirement model");
+            };
+            assert_eq!(
+                model.acc_title.as_deref(),
+                Some("\u{0085}Accessible\u{0085}")
+            );
+            assert_eq!(model.acc_descr.as_deref(), Some("Help  \nNext #%%;"));
+            let crate::ParsedEditorFacts::Available(facts) = editor_facts else {
+                panic!("expected Requirement editor facts");
+            };
+            assert!(facts.diagnostics.is_empty());
+            let block = facts
+                .symbols
+                .iter()
+                .find(|symbol| {
+                    symbol.detail.as_deref() == Some("requirement accessibility description")
+                })
+                .unwrap();
+            let content = format!("Help  {ending}  Next #%%;");
+            let content_start = source.find("Help").unwrap();
+            assert_eq!(block.name, "Help  \n  Next #%%;");
+            assert_eq!(
+                block.selection,
+                SourceSpan::new(content_start, content_start + content.len())
+            );
+            assert_eq!(&source[block.selection.start..block.selection.end], content);
+            assert_eq!(
+                block.span,
+                SourceSpan::new(
+                    source.find("accDescr").unwrap(),
+                    source.find('}').unwrap() + 1
+                )
+            );
+
+            let title = facts
+                .symbols
+                .iter()
+                .find(|symbol| symbol.detail.as_deref() == Some("requirement accessibility title"))
+                .unwrap();
+            let value_start = source.find('\u{0085}').unwrap();
+            assert_eq!(title.name, "\u{0085}Accessible\u{0085}");
+            assert_eq!(
+                title.selection,
+                SourceSpan::new(value_start, value_start + title.name.len())
+            );
+            assert_eq!(
+                &source[title.selection.start..title.selection.end],
+                title.name
+            );
+            assert_eq!(title.span.start, source.find("accTitle").unwrap());
+            assert!(source[title.span.start..title.span.end].contains("%% Removed"));
+            assert!(facts.expected_syntax.iter().any(|syntax| {
+                syntax.kind == EditorExpectedSyntaxKind::Payload && syntax.span == title.selection
+            }));
+            let entity = facts
+                .symbols
+                .iter()
+                .find(|symbol| symbol.name == "E")
+                .unwrap();
+            assert_eq!(&source[entity.selection.start..entity.selection.end], "E");
+        }
+    }
+
+    #[test]
+    fn requirement_accessibility_scans_observe_cancellation_inside_long_tokens() {
+        for source in [
+            format!("accTitle{}:Value", "\u{feff}\n".repeat(4096)),
+            format!("accTitle:{}", "\u{0085}".repeat(8192)),
+            format!("accDescr{{{}", "accDescr{\n".repeat(1024)),
+            format!("accDescr{{{}}}", "\u{0085}".repeat(8192)),
+        ] {
+            let control = OperationControl::new();
+            control.cancel_after_checkpoints(5);
+            assert!(
+                parse_requirement_accessibility(&mut LineCursor::new(&source), 0, &control)
+                    .is_err()
+            );
+        }
+    }
+
+    #[test]
+    fn requirement_unclosed_accessibility_owns_recovery_tail_once() {
+        let source = format!("accDescr{{\n{}", "accDescr{\n".repeat(512));
+        let control = OperationControl::new();
+        control.cancel_after_checkpoints(128);
+        let mut cursor = LineCursor::new(&source);
+        cursor.next_line();
+        let parsed = parse_requirement_accessibility(&mut cursor, 0, &control)
+            .unwrap()
+            .unwrap();
+        assert!(!parsed.complete);
+        assert_eq!(parsed.statement_span, SourceSpan::new(0, source.len()));
+        assert_eq!(cursor.offset(), source.len());
+        assert!(cursor.next_line().is_none());
+        assert!(
+            parsed
+                .value
+                .unwrap()
+                .text
+                .starts_with("accDescr{\naccDescr{")
+        );
+    }
+
+    #[cfg(feature = "editor-facts")]
+    #[test]
+    fn requirement_closed_block_suffix_errors_recover_at_the_original_range() {
+        for ending in ["\n", "\r\n"] {
+            let source = format!(
+                concat!(
+                    "requirementDiagram{ending}",
+                    "accDescr{ending}{{Help}}unexpected{ending}",
+                    "element E {{{ending}}}{ending}",
+                ),
+                ending = ending,
+            );
+            let parser = crate::SemanticParser::new();
+            assert!(parser.parse_diagram_sync(&source).is_err());
+            let crate::SemanticSnapshotCapture::Snapshot(snapshot) =
+                parser.capture_diagram_snapshot_sync(&source)
+            else {
+                panic!("expected recovered Requirement snapshot");
+            };
+            let crate::ParsedEditorFacts::Available(facts) = snapshot.editor_facts() else {
+                panic!("expected Requirement editor facts");
+            };
+            assert_eq!(
+                facts.completeness,
+                crate::EditorSemanticCompleteness::Recovered
+            );
+            let bad_start = source.find("unexpected").unwrap();
+            assert!(facts.diagnostics.iter().any(|diagnostic| {
+                diagnostic.span == Some(SourceSpan::new(bad_start, bad_start + "unexpected".len()))
+            }));
+            for name in ["Help", "E"] {
+                let symbol = facts
+                    .symbols
+                    .iter()
+                    .find(|symbol| symbol.name == name)
+                    .unwrap();
+                assert_eq!(&source[symbol.selection.start..symbol.selection.end], name);
+            }
         }
     }
 

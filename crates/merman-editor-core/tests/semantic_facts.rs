@@ -152,6 +152,97 @@ fn gantt_tasks_after_directives_keep_navigation_and_applied_rename() {
 }
 
 #[test]
+#[cfg(feature = "diagram-requirement")]
+fn requirement_multiline_accessibility_keeps_navigation_and_applied_rename() {
+    use merman_editor_core::{Position, goto_definition, rename};
+
+    let diagram = concat!(
+        "requirementDiagram\r\n",
+        "accTitle\r\n%% Removed before parsing\r\n\u{feff}:\r\nAccessible\r\n",
+        "accDescr\r\n{\r\n\u{1f680} Help\r\n}requirement Feature {\r\n",
+        " id: 1\r\n text: \"Body\"\r\n}\r\n",
+        "element Implementation {\r\n type: service\r\n}\r\n",
+        "Implementation - satisfies -> Feature\r\n",
+    );
+    for (diagram, expected_source) in [
+        (diagram.to_string(), FenceTextIndexSource::ParserComplete),
+        (
+            diagram.replacen(
+                "requirementDiagram\r\n",
+                "requirementDiagram\r\n\u{85}element Ghost {\r\n}\r\n",
+                1,
+            ),
+            FenceTextIndexSource::ParserRecovered,
+        ),
+    ] {
+        for markdown in [false, true] {
+            let source = if markdown {
+                format!("# Requirements\r\n\r\n```mermaid\r\n{diagram}```\r\n")
+            } else {
+                diagram.clone()
+            };
+            let kind = if markdown {
+                DocumentKind::Markdown
+            } else {
+                DocumentKind::Diagram
+            };
+            let snapshot = SnapshotHarness::new()
+                .analyze(
+                    "file:///tmp/requirement-crossline.mmd",
+                    1,
+                    source.as_str(),
+                    kind,
+                )
+                .unwrap();
+            assert_eq!(snapshot.fences()[0].text_index().source(), expected_source);
+            assert!(
+                !snapshot.fences()[0]
+                    .text_index()
+                    .node_ids()
+                    .any(|id| id == "Ghost")
+            );
+            let reference = source.rfind("Feature").unwrap();
+            let position = snapshot.source_map().utf16_position(reference).unwrap();
+            let position = Position::new(position.line, position.character);
+            let definition = goto_definition(&snapshot, position).unwrap();
+            assert_eq!(
+                snapshot.byte_offset_for_position(definition.range.start),
+                source.find("Feature")
+            );
+            let edits = rename(&snapshot, position, "Renamed").unwrap().unwrap();
+            assert_eq!(edits.changes[snapshot.uri()].len(), 2);
+            let mut changed = source.clone();
+            for edit in edits.changes[snapshot.uri()].iter().rev() {
+                let start = snapshot.byte_offset_for_position(edit.range.start).unwrap();
+                let end = snapshot.byte_offset_for_position(edit.range.end).unwrap();
+                changed.replace_range(start..end, &edit.new_text);
+            }
+            assert_eq!(changed, source.replace("Feature", "Renamed"));
+            let reparsed = SnapshotHarness::new()
+                .analyze(
+                    "file:///tmp/requirement-crossline.mmd",
+                    2,
+                    changed.as_str(),
+                    kind,
+                )
+                .unwrap();
+            assert_eq!(reparsed.fences()[0].text_index().source(), expected_source);
+            let position = reparsed
+                .source_map()
+                .utf16_position(changed.rfind("Renamed").unwrap())
+                .unwrap();
+            let definition =
+                goto_definition(&reparsed, Position::new(position.line, position.character))
+                    .unwrap();
+            assert_eq!(
+                reparsed.byte_offset_for_position(definition.range.start),
+                changed.find("Renamed")
+            );
+        }
+    }
+}
+
+#[test]
 #[cfg(feature = "diagram-git-graph")]
 fn gitgraph_overwritten_ids_do_not_participate_in_navigation_or_rename() {
     use merman_editor_core::{

@@ -373,6 +373,24 @@ Palette slots follow the border palette length; background colors wrap independe
 Palette CSS streams through the operation's bounded SVG writer, so repeated long color values
 cannot expand into an unchecked intermediate stylesheet before byte admission.
 
+Requirement accessibility prefixes consume ECMAScript whitespace across physical lines around
+their punctuation. Scalar values own the following line, including hash, semicolon and percent
+text; blocks own their original source through the first closing brace. Empty closed blocks emit
+no replacement value, while scalar EOF without a value and unclosed blocks reject with recovery
+facts. A closed block can resume into another root statement on the same line. Structural BOM is
+whitespace and NEL remains literal. Editor selections retain original byte boundaries after CRLF
+normalization and comment deletion. SVG metadata consumes the model's complete accessible text
+without a second trim, including NEL-only values. The lexer's title token is not an admitted Requirement grammar
+statement; directives preceding the header remain subject to the public detector's separate rules.
+Before a root token begins, the selected lexer's broad direction rules precede whitespace skipping
+and preserve their TB/BT/RL/LR rule order. An immediately matched accessibility prefix keeps its
+exclusive payload; leading whitespace can instead expose a whole-line direction token. Literal
+NEL prefixes that match no such token reject before legacy definition/style helpers can publish
+identity ranges. Recovery retains independent later declarations and references.
+Default whitespace consumes its entire run across physical lines before the next token starts.
+Direction lookahead and source resumption reuse known line boundaries, so repeated same-line
+accessibility blocks do not repeatedly search the remaining line.
+
 Block's spaced class list `class A, B hot` retains the selected upstream object behavior: A is
 classified, while an existing B already attached to the hierarchy remains unclassified. The raw
 space-prefixed B lookup creates a replacement database binding. The flat object model retains the
@@ -417,7 +435,8 @@ creating its definition. This unresolved paint reference is an intentional diffe
 text-measurement allowance; Merman preserves its valid SVG resource and the requested styling.
 
 At fresh token boundaries, comment recognition follows the selected lexer's single-character
-prefix rule, including `x%% hidden` and `:%% hidden` after a section. The prefix is one UTF-16
+prefix rule, including `x%% hidden` and `:%% hidden` after a section. A leading single `%` also
+starts a comment unless immediately followed by `{`. The prefix is one UTF-16
 code unit other than `}`; an astral character or a longer prefix remains task text. Percent pairs
 inside event, title, section and accessibility payloads remain literal. Skipped comments create
 neither tasks nor editor payload facts, and later events still attach to the preceding task.
@@ -425,6 +444,14 @@ Header recognition retains the JavaScript word boundary, and whitespace follows 
 U+0085 is payload text rather than ignorable indentation. Direction headers require ASCII spaces
 or tabs before `LR`/`TD`; other remaining tokens resume normal parsing. A repeated header token
 is rejected instead of becoming a period task.
+
+Title, section and event tokens consume one whitespace separator followed by a nonempty payload;
+the separator can be LF. When a keyword does not complete its directive token, ordinary period
+parsing still applies. Accessibility prefixes instead consume repeated whitespace across physical
+lines and retain punctuation in their scalar or block values. Empty closed description blocks
+preserve earlier text; missing scalar EOF values and unclosed blocks reject. Tokens borrow the
+original parser buffer and resume at their consumed endpoint, preserving event ownership and
+editor ranges through normalized line endings and removed comments.
 
 Owners: [Timeline parser](../../crates/merman-core/src/diagrams/timeline.rs) and
 [SVG tests](../../crates/merman-render/tests/timeline_svg_test.rs).

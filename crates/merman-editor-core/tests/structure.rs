@@ -72,6 +72,43 @@ fn journey_multiline_sections_keep_outline_ranges_in_markdown() {
 }
 
 #[test]
+#[cfg(feature = "diagram-timeline")]
+fn timeline_multiline_tokens_keep_markdown_outline_selections() {
+    let source = concat!(
+        "# Release\r\n\r\n```mermaid\r\ntimeline\r\n",
+        "title\r\n%% Removed before parsing\r\nRoadmap\r\n",
+        "accTitle\r\n\u{feff}:\r\nAccessible\r\n",
+        "section\r\n\u{feff}Delivery\r\n",
+        "Period :\r\n\u{1f680} Ship\r\n```\r\n",
+    );
+    let snapshot = SnapshotHarness::new()
+        .analyze(
+            "file:///tmp/timeline-crossline.md",
+            1,
+            source,
+            DocumentKind::Markdown,
+        )
+        .unwrap();
+    assert_eq!(
+        snapshot.fences()[0].text_index().source(),
+        FenceTextIndexSource::ParserComplete
+    );
+    let symbols = document_symbols(&snapshot);
+    let section = symbols[0]
+        .children
+        .iter()
+        .find(|symbol| symbol.name == "Delivery")
+        .unwrap();
+    let start = snapshot
+        .byte_offset_for_position(section.selection_range.start)
+        .unwrap();
+    let end = snapshot
+        .byte_offset_for_position(section.selection_range.end)
+        .unwrap();
+    assert_eq!(&source[start..end], "Delivery");
+}
+
+#[test]
 fn root_semantic_kind_is_independent_of_flowchart_variant_name() {
     let harness = SnapshotHarness::new();
 

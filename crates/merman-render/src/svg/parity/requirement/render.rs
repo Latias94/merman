@@ -421,12 +421,7 @@ pub(crate) fn render_requirement_diagram_svg_model(
     let mut aria_labelledby: Option<String> = None;
     let mut aria_describedby: Option<String> = None;
     let mut a11y_nodes = String::new();
-    if let Some(t) = model
-        .acc_title
-        .as_deref()
-        .map(str::trim)
-        .filter(|t| !t.is_empty())
-    {
+    if let Some(t) = model.acc_title.as_deref().filter(|t| !t.is_empty()) {
         aria_labelledby = Some(format!("chart-title-{diagram_id}"));
         let _ = write!(
             &mut a11y_nodes,
@@ -435,12 +430,7 @@ pub(crate) fn render_requirement_diagram_svg_model(
             escape_xml(t)
         );
     }
-    if let Some(d) = model
-        .acc_descr
-        .as_deref()
-        .map(str::trim)
-        .filter(|d| !d.is_empty())
-    {
+    if let Some(d) = model.acc_descr.as_deref().filter(|d| !d.is_empty()) {
         aria_describedby = Some(format!("chart-desc-{diagram_id}"));
         let _ = write!(
             &mut a11y_nodes,
