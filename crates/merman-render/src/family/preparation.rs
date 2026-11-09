@@ -960,7 +960,6 @@ fn prepare_gitgraph_family<'parsed>(
     meta: &PresentationMetadata,
     execution: &LayoutExecution<'_>,
 ) -> Result<BuiltinFamilyArtifact<'parsed>> {
-    let has_title = crate::gitgraph::resolve_gitgraph_title(model, meta.title.as_deref()).is_some();
     let typography_theme = crate::gitgraph::GitGraphTypographyThemePlan::resolve(
         execution.resolved_theme(),
         &meta.effective_config,
@@ -975,7 +974,6 @@ fn prepare_gitgraph_family<'parsed>(
         execution.resolved_theme(),
         &meta.effective_config,
         &layout,
-        has_title,
         execution.work_meter_ref(),
     )?;
     node_palette.resolve_text_paint(

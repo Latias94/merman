@@ -12,8 +12,8 @@ use super::super::{
 use super::ArchitectureEmitCheckpoints;
 use super::geometry::{arrow_shift, bounds_from_rect, extend_bounds, is_arch_dir_x, is_arch_dir_y};
 use super::labels::{
-    svg_line_formatted_bbox_width_px, svg_line_plain_text, wrap_svg_words_to_lines,
-    write_svg_text_lines,
+    svg_line_formatted_bbox_width_px, svg_line_plain_text, svg_lines_have_visible_text,
+    wrap_svg_words_to_lines, write_svg_text_lines,
 };
 use super::settings::ArchitectureRenderSettings;
 use crate::model::ArchitectureDiagramLayout;
@@ -335,22 +335,31 @@ fn architecture_edge_label_plan(
 
     let mut bbox_w = 0.0f64;
     let mut first_line_text = None;
-    for line in &lines {
-        let s = svg_line_plain_text(line);
-        bbox_w = bbox_w.max(svg_line_formatted_bbox_width_px(
-            line,
-            text_measurer,
-            &settings.text_style,
-        ));
-        first_line_text.get_or_insert(s);
-    }
     let line_count = lines.len().max(1);
-    let (bbox_y_min, bbox_y_max) = architecture_create_text_middle_bbox_y_range_px(
-        first_line_text.as_deref().unwrap_or(label),
-        &settings.text_style,
-        line_count,
-        text_measurer,
-    );
+    let (bbox_y_min, bbox_y_max) =
+        if svg_lines_have_visible_text(&lines, settings.text_style.font_size) {
+            for line in &lines {
+                let s = svg_line_plain_text(line);
+                bbox_w = bbox_w.max(svg_line_formatted_bbox_width_px(
+                    line,
+                    text_measurer,
+                    &settings.text_style,
+                ));
+                first_line_text.get_or_insert(s);
+            }
+            let (top, first_line_bottom) = architecture_create_text_middle_bbox_y_range_px(
+                first_line_text.as_deref().unwrap_or(label),
+                &settings.text_style,
+                1,
+                text_measurer,
+            );
+            (
+                top,
+                first_line_bottom + settings.text_style.font_size * (line_count - 1) as f64 * 1.1,
+            )
+        } else {
+            (0.0, 0.0)
+        };
     let bbox_h = bbox_y_max - bbox_y_min;
     let half_bbox_h = bbox_h / 2.0;
     let half_bbox_w = bbox_w / 2.0;
@@ -630,7 +639,9 @@ pub(super) fn push_architecture_edges<O: SvgOutput>(
             }
 
             let label_plan = architecture_edge_label_plan(edge, points, settings, text_measurer);
-            let has_label = label_plan.is_some();
+            let has_visible_label = label_plan.as_ref().is_some_and(|plan| {
+                svg_lines_have_visible_text(&plan.lines, settings.text_style.font_size)
+            });
             #[cfg(merman_internal_theme_acceptance)]
             let label_bounds = label_plan.as_ref().map(|plan| plan.bounds.clone());
             if let Some(label_plan) = label_plan.as_ref() {
@@ -685,8 +696,8 @@ pub(super) fn push_architecture_edges<O: SvgOutput>(
             out.push_str("</g>");
             out.checkpoint()?;
             *ctx.edge_style_emitted |= edge_inline_style.is_some();
-            if has_label && let Some(emission) = typography_emission.as_deref_mut() {
-                emission.record_visible_text();
+            if let Some(emission) = typography_emission.as_deref_mut() {
+                emission.record_svg_text(has_visible_label);
             }
             if let Some(styles) = surface_styles.as_deref_mut() {
                 styles.record_checkpointed_edge(
@@ -697,7 +708,7 @@ pub(super) fn push_architecture_edges<O: SvgOutput>(
                         #[cfg(merman_internal_theme_acceptance)]
                         rhs_id: edge.rhs_id.as_str().into(),
                         label: crate::architecture::ArchitectureTextTerminalEmission {
-                            emitted: has_label,
+                            emitted: has_visible_label,
                             #[cfg(merman_internal_theme_acceptance)]
                             bounds: label_bounds,
                             #[cfg(merman_internal_theme_acceptance)]

@@ -1,5 +1,5 @@
 use super::super::*;
-use crate::c4::{C4_DEFAULT_FONT_FAMILY, C4_ELEMENT_TYPES, C4_FRAMED_FRAME_WIDTH, C4ConfigView};
+use crate::c4::{C4_ELEMENT_TYPES, C4_FRAMED_FRAME_WIDTH, C4ConfigView};
 use crate::svg::parity::roughjs_common::closed_path_d_from_points;
 use crate::svg::parity::roughjs_common::paths::{
     roughjs_hand_drawn_stroke_path_for_svg_path, roughjs_paths_for_circle,
@@ -149,18 +149,18 @@ fn write_c4_css_with_typography(
         let style = typography
             .element_style(type_name)
             .expect("known prepared C4 type");
-        let font = &style.font;
-        let family = &style.css_font_family;
+        let font = &style.font.measurement_style;
+        let family = &style.font.css_font_family;
         let weight = font.font_weight.as_deref().unwrap_or("normal");
         let _ = write!(
             out,
-            r#"#{} .c4-shape.c4-{} .label{{font-family:{};font-size:{}px;font-weight:{};}}"#,
-            diagram_id,
-            type_name,
-            family,
-            fmt(font.font_size),
-            weight,
+            r#"#{} .c4-shape.c4-{} .label{{font-family:{};"#,
+            diagram_id, type_name, family,
         );
+        if let Some(size) = style.font.css_font_size_px {
+            let _ = write!(out, "font-size:{size}px;");
+        }
+        let _ = write!(out, "font-weight:{weight};}}");
         out.checkpoint()?;
     }
     let _ = write!(
@@ -198,6 +198,7 @@ struct C4TspanText<'a> {
     width: f64,
     font_family: &'a str,
     font_size: f64,
+    used_font_size: f64,
     font_weight: &'a str,
     attrs: &'a [(&'a str, &'a str)],
 }
@@ -211,6 +212,7 @@ fn c4_write_text_by_tspan(out: &mut impl SvgOutput, text: C4TspanText<'_>) -> Re
         width,
         font_family,
         font_size,
+        used_font_size,
         font_weight,
         attrs,
     } = text;
@@ -219,9 +221,7 @@ fn c4_write_text_by_tspan(out: &mut impl SvgOutput, text: C4TspanText<'_>) -> Re
     let _ = write!(
         &mut style,
         "text-anchor: middle; font-size: {}px; font-weight: {}; font-family: {};",
-        fmt(font_size.max(1.0)),
-        font_weight,
-        font_family
+        font_size, font_weight, font_family
     );
 
     out.checkpoint()?;
@@ -257,7 +257,7 @@ fn c4_write_text_by_tspan(out: &mut impl SvgOutput, text: C4TspanText<'_>) -> Re
             escape_xml(line)
         );
         out.checkpoint()?;
-        visible_text = visible_text || !line.trim().is_empty();
+        visible_text = visible_text || (used_font_size > 0.0 && !line.trim().is_empty());
     }
 
     Ok(visible_text)
@@ -1088,11 +1088,19 @@ pub(crate) fn render_c4_diagram_svg_typed(
                 }
                 out.push_str("</g></g></g>");
                 out.checkpoint()?;
+                let font = &typography_theme
+                    .element_style(s.type_c4_shape.as_str())
+                    .expect("prepared C4 shape font")
+                    .font;
+                shape_text_visible &= font.measurement_style.font_size > 0.0;
                 if shape_text_visible && let Some(receipt) = text_paint_receipt.as_mut() {
                     receipt.record_owned_color(font_color);
                 }
+                if shape_text_visible && let Some(receipt) = typography_receipt.as_mut() {
+                    receipt.record_visible_font(font);
+                }
                 if let Some(receipt) = text_paint_receipt.as_mut() {
-                    receipt.record_element(index, paint);
+                    receipt.record_element(index, paint, shape_text_visible);
                 }
             }
             C4PaintItem::Boundary(index) => {
@@ -1159,13 +1167,8 @@ pub(crate) fn render_c4_diagram_svg_typed(
                 }
                 boundary_emission_ordinal = boundary_emission_ordinal.saturating_add(1);
 
-                let boundary_font = typography_theme.boundary_font();
-                let boundary_family = boundary_font
-                    .font_family
-                    .as_deref()
-                    .unwrap_or(C4_DEFAULT_FONT_FAMILY);
-                let boundary_weight = "bold";
-                let boundary_size = boundary_font.font_size + 2.0;
+                let boundary_fonts = typography_theme.boundary_fonts();
+                let name_font = &boundary_fonts.name;
                 let mut boundary_text_visible = c4_write_text_by_tspan(
                     &mut out,
                     C4TspanText {
@@ -1174,19 +1177,25 @@ pub(crate) fn render_c4_diagram_svg_typed(
                         x: b.x,
                         y: b.y + b.label.y,
                         width: b.width,
-                        font_family: boundary_family,
-                        font_size: boundary_size,
-                        font_weight: boundary_weight,
+                        font_family: &name_font.css_font_family,
+                        font_size: name_font.css_font_size_px.expect("legacy name size"),
+                        used_font_size: name_font.measurement_style.font_size,
+                        font_weight: name_font
+                            .measurement_style
+                            .font_weight
+                            .as_deref()
+                            .unwrap_or("bold"),
                         attrs: &[("fill", font_color)],
                     },
                 )?;
+                if boundary_text_visible && let Some(receipt) = typography_receipt.as_mut() {
+                    receipt.record_visible_font(name_font);
+                }
                 if let Some(ty) = &b.ty
                     && !ty.text.trim().is_empty()
                 {
-                    let boundary_type_weight =
-                        boundary_font.font_weight.as_deref().unwrap_or("normal");
-                    let boundary_type_size = boundary_font.font_size;
-                    boundary_text_visible |= c4_write_text_by_tspan(
+                    let ty_font = &boundary_fonts.ty;
+                    let type_visible = c4_write_text_by_tspan(
                         &mut out,
                         C4TspanText {
                             content: &ty.text,
@@ -1194,19 +1203,27 @@ pub(crate) fn render_c4_diagram_svg_typed(
                             x: b.x,
                             y: b.y + ty.y,
                             width: b.width,
-                            font_family: boundary_family,
-                            font_size: boundary_type_size,
-                            font_weight: boundary_type_weight,
+                            font_family: &ty_font.css_font_family,
+                            font_size: ty_font.css_font_size_px.expect("legacy type size"),
+                            used_font_size: ty_font.measurement_style.font_size,
+                            font_weight: ty_font
+                                .measurement_style
+                                .font_weight
+                                .as_deref()
+                                .unwrap_or("normal"),
                             attrs: &[("fill", font_color)],
                         },
                     )?;
+                    if type_visible && let Some(receipt) = typography_receipt.as_mut() {
+                        receipt.record_visible_font(ty_font);
+                    }
+                    boundary_text_visible |= type_visible;
                 }
                 if let Some(descr) = &b.descr
                     && !descr.text.trim().is_empty()
                 {
-                    let descr_weight = boundary_font.font_weight.as_deref().unwrap_or("normal");
-                    let descr_size = (boundary_font.font_size - 2.0).max(1.0);
-                    boundary_text_visible |= c4_write_text_by_tspan(
+                    let descr_font = &boundary_fonts.descr;
+                    let descr_visible = c4_write_text_by_tspan(
                         &mut out,
                         C4TspanText {
                             content: &descr.text,
@@ -1214,19 +1231,32 @@ pub(crate) fn render_c4_diagram_svg_typed(
                             x: b.x,
                             y: b.y + descr.y,
                             width: b.width,
-                            font_family: boundary_family,
-                            font_size: descr_size,
-                            font_weight: descr_weight,
+                            font_family: &descr_font.css_font_family,
+                            font_size: descr_font
+                                .css_font_size_px
+                                .expect("legacy description size"),
+                            used_font_size: descr_font.measurement_style.font_size,
+                            font_weight: descr_font
+                                .measurement_style
+                                .font_weight
+                                .as_deref()
+                                .unwrap_or("normal"),
                             attrs: &[("fill", font_color)],
                         },
                     )?;
+                    if descr_visible && let Some(receipt) = typography_receipt.as_mut() {
+                        receipt.record_visible_font(descr_font);
+                    }
+                    boundary_text_visible |= descr_visible;
                 }
 
                 out.push_str("</g>");
                 out.checkpoint()?;
-                if boundary_text_visible && let Some(receipt) = text_paint_receipt.as_mut() {
-                    receipt.record_owned_color(font_color);
-                    receipt.record_boundary(index, font_color);
+                if let Some(receipt) = text_paint_receipt.as_mut() {
+                    if boundary_text_visible {
+                        receipt.record_owned_color(font_color);
+                    }
+                    receipt.record_boundary(index, font_color, boundary_text_visible);
                 }
             }
         }
@@ -1351,13 +1381,11 @@ pub(crate) fn render_c4_diagram_svg_typed(
             + (rel.end_point.y - rel.start_point.y).abs() / 2.0
             + offset_y;
 
-        let message_font = typography_theme.message_font();
-        let message_family = message_font
-            .font_family
-            .as_deref()
-            .unwrap_or(C4_DEFAULT_FONT_FAMILY);
+        let message_style = typography_theme.message_font();
+        let message_font = &message_style.measurement_style;
+        let message_family = message_style.css_font_family.as_str();
         let message_weight = message_font.font_weight.as_deref().unwrap_or("normal");
-        let message_size = message_font.font_size;
+        let message_size = message_style.css_font_size_px.expect("legacy message size");
         let label_visible = c4_write_text_by_tspan(
             &mut out,
             C4TspanText {
@@ -1368,6 +1396,7 @@ pub(crate) fn render_c4_diagram_svg_typed(
                 width: rel.label.width,
                 font_family: message_family,
                 font_size: message_size,
+                used_font_size: message_font.font_size,
                 font_weight: message_weight,
                 attrs: &[("fill", text_color)],
             },
@@ -1375,6 +1404,7 @@ pub(crate) fn render_c4_diagram_svg_typed(
         if label_visible && let Some(receipt) = text_paint_receipt.as_mut() {
             receipt.record_owned_color(text_color);
         }
+        let mut message_text_visible = label_visible;
 
         if let Some(techn) = &rel.techn
             && !techn.text.trim().is_empty()
@@ -1390,6 +1420,7 @@ pub(crate) fn render_c4_diagram_svg_typed(
                     width: rel.label.width.max(techn.width),
                     font_family: message_family,
                     font_size: message_size,
+                    used_font_size: message_font.font_size,
                     font_weight: message_weight,
                     attrs: &[("fill", text_color), ("font-style", "italic")],
                 },
@@ -1397,9 +1428,13 @@ pub(crate) fn render_c4_diagram_svg_typed(
             if techn_visible && let Some(receipt) = text_paint_receipt.as_mut() {
                 receipt.record_owned_color(text_color);
             }
+            message_text_visible |= techn_visible;
+        }
+        if message_text_visible && let Some(receipt) = typography_receipt.as_mut() {
+            receipt.record_visible_font(message_style);
         }
         if let Some(receipt) = text_paint_receipt.as_mut() {
-            receipt.record_relation(idx, paint);
+            receipt.record_relation(idx, paint, message_text_visible);
         }
     }
     out.push_str("</g>");
@@ -1420,7 +1455,11 @@ pub(crate) fn render_c4_diagram_svg_typed(
         let _ = write!(&mut out, ">{}</text>", escape_xml(&title));
         out.checkpoint()?;
         if let Some(receipt) = text_paint_receipt.as_mut() {
-            receipt.record_title(&title, text_paint.title_fill_css());
+            receipt.record_title(
+                &title,
+                text_paint.title_fill_css(),
+                typography_theme.font_size_px() > 0.0,
+            );
         }
         if let Some(receipt) = typography_receipt.as_mut() {
             receipt.record_title_text(&title);
@@ -1530,6 +1569,7 @@ mod tests {
                 width: 100.0,
                 font_family: "sans-serif",
                 font_size: 16.0,
+                used_font_size: 16.0,
                 font_weight: "normal",
                 attrs: &[("fill", "#444444")],
             },

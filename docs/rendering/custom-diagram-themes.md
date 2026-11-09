@@ -170,7 +170,8 @@ visible siblings can still occupy space. A receiving browser's default font pref
 change keyword sizes, so explicit lengths are preferable for reproducible exports.
 Known zero-sized chart labels remain in the SVG but do not count as visible consumers of
 theme fonts or text paint.
-Block, ER, Journey, Kanban, Requirement, Timeline, Pie, Treemap and XY Chart preserve valid
+Architecture, Block, C4, ER, GitGraph, Journey, Kanban, Requirement, State, Timeline, Pie,
+Treemap and XY Chart preserve valid
 inherited sizes below 1px and zero. The common SVG stylesheet also preserves these sizes;
 labels with an independent positive size can remain visible below a zero-size ancestor.
 Journey's tspan task size and Timeline's root-size layout offsets retain their
@@ -282,6 +283,22 @@ value does not own the property, and an unused fallback does not own the selecte
 Family configuration determines its accepted units, font-array handling and numeric bounds. Pie
 title, percentage and legend sizes remain independent; C4 element sizes and ER relationship
 label sizes also retain their own configuration rather than inheriting every base-size change.
+
+C4 role fonts can explicitly inherit the diagram's font family with `inherit` or `unset`,
+including boundary and relationship text. Measurement resolves the inherited family before
+layout; the SVG retains the authored family declaration. Role sizes and weights remain independent.
+An empty role or zero-sized text does not prove that a theme font was used. A separately sized
+boundary name can remain visible when the other boundary rows have zero size.
+
+GitGraph commit and tag sizes accept absolute CSS lengths such as `24pt`, equivalent to
+`32px`, as well as supported parent-relative sizes. Backgrounds and text use the same resolved
+size. Native font measurement rejects an unresolved size only when a rendered role consumes it.
+CSS expressions and document-dependent sizes retain unverified theme evidence; an estimated
+layout size does not prove that the requested font or text paint is visible.
+
+Architecture text reports follow the rendered Markdown words and sanitized icon content.
+Empty text projections do not prove that a theme font or text paint was applied. Local HTML
+font declarations and host-dependent styles remain separate from inherited theme typography.
 
 Requirement source node sizes accept absolute CSS lengths, including `24pt` as 32px. Its
 inherited base size and positive typed sizes use the same value for measurement and emitted CSS,

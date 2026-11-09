@@ -639,14 +639,37 @@ impl<'a> StateThemeEvidenceBuilder<'a> {
         }
     }
 
-    fn observe_html_text_source(
+    fn observe_text_source(
         &mut self,
         use_id: Option<StateThemeUseId>,
         source: &crate::text::VisibleTextStyleFacts,
+        font_size_geometry: bool,
     ) {
         let Some(use_id) = use_id else {
             return;
         };
+        if source.parse_valid() && !source.has_visible_runs() {
+            // Content keeps its selector ordinal. Without an HTML geometry consumer, none
+            // of this text use survives. Retained HTML boxes follow consume_font_size_style:
+            // size can apply, while unsupported paint/effect/geometry siblings stay residual.
+            if !font_size_geometry {
+                self.uses[use_id.0].properties.clear();
+                return;
+            }
+            self.uses[use_id.0]
+                .properties
+                .retain(|property| match property.property {
+                    ResolvedStyleProperty::Fill => false,
+                    ResolvedStyleProperty::Typography(kind) => {
+                        matches!(
+                            kind,
+                            ThemeTypographyProperty::FontSize | ThemeTypographyProperty::LineHeight
+                        )
+                    }
+                    _ => true,
+                });
+            return;
+        }
         for property in &mut self.uses[use_id.0].properties {
             if matches!(
                 property.outcome,
@@ -657,6 +680,7 @@ impl<'a> StateThemeEvidenceBuilder<'a> {
             match property.property {
                 ResolvedStyleProperty::Fill => {
                     if !source.parse_valid()
+                        || !source.font_visibility_verified()
                         || source.unverified_portable_color_run_count() != 0
                         || (source.inherited_color_run_count() != 0
                             && source.inherited_color_run_count() != source.visible_run_count())
@@ -685,6 +709,13 @@ impl<'a> StateThemeEvidenceBuilder<'a> {
         target: ThemeTarget,
         source: &crate::text::VisibleTextStyleFacts,
     ) -> bool {
+        if source.parse_valid() && !source.has_visible_runs() {
+            return false;
+        }
+        if !source.font_visibility_verified() {
+            self.residual_palettes.insert(target);
+            return false;
+        }
         if source.parse_valid() && source.inherited_color_run_count() == source.visible_run_count()
         {
             return true;
@@ -703,10 +734,12 @@ fn source_typography_is_unverified(
     source: &crate::text::VisibleTextStyleFacts,
     property: ThemeTypographyProperty,
 ) -> bool {
-    if !source.parse_valid() {
+    if !source.parse_valid() || !source.font_visibility_verified() {
         return true;
     }
     match property {
+        // State's inheritance-only admission does not distinguish every known local family
+        // from unmeasured source fonts. Both remain residual instead of claiming base use.
         ThemeTypographyProperty::FontStack => source.unverified_font_family_run_count() != 0,
         ThemeTypographyProperty::FontSize => source.unverified_font_size_run_count() != 0,
         ThemeTypographyProperty::FontWeight => source.unverified_font_weight_run_count() != 0,
@@ -850,6 +883,10 @@ impl StateStylePlan {
                 &compatibility.typography_config_owned,
             );
         }
+        // Root CSS uses the shared numeric formatter. Resolve that owner before measurement
+        // and receipts; role and source declarations retain their own inline numeric values.
+        base_text_style.font_size =
+            crate::number_format::canonicalize_number(base_text_style.font_size);
         let mut title_base_text_style = config_text_style;
         title_base_text_style.font_size = 18.0;
         if let Some(theme) = resolved_theme {
@@ -859,6 +896,8 @@ impl StateStylePlan {
                 &compatibility.typography_config_owned,
             );
         }
+        title_base_text_style.font_size =
+            crate::number_format::canonicalize_number(title_base_text_style.font_size);
         let mut residuals = Vec::new();
         let mut theme_evidence = StateThemeEvidenceBuilder::new(
             resolved_theme,
@@ -906,7 +945,12 @@ impl StateStylePlan {
             .with_config_typography(&base_text_style, &compatibility);
         let mut title_label_typography = ResolvedLabelTypography::new(title_text_style)
             .with_config_typography(&title_base_text_style, &compatibility);
-        if has_title {
+        let title_facts = crate::text::VisibleTextStyleFacts::plain_text_at_font_size(
+            title.unwrap_or_default(),
+            Some(title_label_typography.text_style().font_size),
+        );
+        let title_visible = has_title && title_facts.has_visible_runs();
+        if title_visible {
             theme_evidence.observe_base_typography_use(
                 semantic_title_text.as_ref(),
                 &BTreeSet::new(),
@@ -922,7 +966,7 @@ impl StateStylePlan {
         let title_style_attr = resolved_theme
             .zip(semantic_title_text.as_ref())
             .map(|(theme, style)| {
-                let use_id = has_title
+                let use_id = title_visible
                     .then(|| theme_evidence.consume_text_style(style, StateThemeSurface::Title));
                 if title_fill_owned {
                     theme_evidence.shadow_source_property(use_id, ResolvedStyleProperty::Fill);
@@ -1048,7 +1092,6 @@ impl StateStylePlan {
                 variant,
                 one_based_ordinal,
                 label_ordinal,
-                label_source.as_ref(),
                 composite_header_ordinal,
                 special_state_inner_ordinal,
                 &mut residuals,
@@ -1098,8 +1141,13 @@ impl StateStylePlan {
                     theme_evidence.observe_target(ThemeTarget::TransitionMarker);
                 }
             }
+            let label_text = if backend == crate::layout_backend::GraphLayoutBackend::Elk {
+                crate::text::mermaid_html_breaks_to_newlines(&edge.label)
+            } else {
+                std::borrow::Cow::Borrowed(edge.label.as_str())
+            };
             let edge_plan = prepare_edge(
-                label_source.as_ref(),
+                &label_text,
                 &base_text_style,
                 resolved_theme,
                 ordinal,
@@ -1249,7 +1297,7 @@ fn apply_theme_base_typography(
         ));
     }
     if !config_owned.contains(&ThemeTypographyProperty::FontSize) {
-        base.font_size = f64::from(style.font_size_px()).max(1.0);
+        base.font_size = f64::from(style.font_size_px());
     }
     base.font_weight = Some(style.font_weight().to_string());
     base.font_style = Some(style.font_style().id().to_string());
@@ -2380,7 +2428,6 @@ fn prepare_node(
     variant: ThemeVariant,
     ordinal: Option<usize>,
     label_ordinal: Option<usize>,
-    label_source: Option<&crate::text::VisibleTextStyleFacts>,
     composite_header_ordinal: Option<usize>,
     special_state_inner_ordinal: Option<usize>,
     residuals: &mut Vec<SourceStyleResidual>,
@@ -2900,21 +2947,39 @@ fn prepare_node(
     label_typography.canonicalize_emission(&mut label_emission);
     label_typography.canonicalize_emission(&mut composite_header_text_emission);
 
-    if let Some(source) = label_source {
-        theme_evidence.observe_html_text_source(label_use, source);
+    let label_source = (resolved_theme.is_some()
+        && (label_ordinal.is_some() || label_font_size_geometry))
+        .then(|| {
+            super::label::state_label_used_style_facts(
+                &node_label_text_for_evidence(node),
+                cluster_label_typography
+                    .as_ref()
+                    .unwrap_or(&label_typography)
+                    .text_style()
+                    .font_size,
+                compatibility.html_labels(),
+                node.shape == "rectWithTitle" || super::config::state_node_is_effective_group(node),
+            )
+        });
+    if let Some(source) = label_source.as_ref() {
+        theme_evidence.observe_text_source(label_use, source, label_font_size_geometry);
         if label_uses_series_color {
             label_uses_series_color =
                 theme_evidence.observe_html_palette_source(label_target, source);
         }
     }
-    if label_ordinal.is_some() || label_font_size_geometry {
+    let has_visible_text = label_ordinal.is_some()
+        && label_source
+            .as_ref()
+            .is_some_and(|source| !source.parse_valid() || source.has_visible_runs());
+    if has_visible_text || label_font_size_geometry {
         let occurrence = StateThemeSurface::Node;
         theme_evidence.observe_base_typography_use(
             semantic_label.as_ref(),
             &shadowed_label_properties,
             occurrence,
-            label_source,
-            label_ordinal.is_some(),
+            label_source.as_ref(),
+            has_visible_text,
         );
     }
 
@@ -3035,7 +3100,7 @@ fn css_opacity_is_valid_zero(value: &str) -> bool {
     reason = "Edge preparation receives distinct source, theme, text, and work inputs"
 )]
 fn prepare_edge(
-    source: Option<&crate::text::VisibleTextStyleFacts>,
+    label_text: &str,
     base_text_style: &TextStyle,
     resolved_theme: Option<&ResolvedDiagramTheme>,
     ordinal: Option<usize>,
@@ -3182,6 +3247,21 @@ fn prepare_edge(
         label_ordinal,
         work_meter,
     )?;
+    let mut label_typography = ResolvedLabelTypography::new(resolve_semantic_text_style(
+        base_text_style,
+        semantic_label.as_ref(),
+    ))
+    .with_config_typography(base_text_style, compatibility);
+    let source = (resolved_theme.is_some()
+        && (label_ordinal.is_some() || label_font_size_geometry))
+        .then(|| {
+            super::label::state_label_used_style_facts(
+                label_text,
+                label_typography.text_style().font_size,
+                html_labels,
+                false,
+            )
+        });
     let mut label_emission = IndexMap::<String, EmittedDeclaration>::new();
     if let Some((theme, style)) = resolved_theme.zip(semantic_label.as_ref()) {
         let use_id = if label_ordinal.is_some() {
@@ -3194,8 +3274,8 @@ fn prepare_edge(
         if label_fill_owned {
             theme_evidence.shadow_source_property(use_id, ResolvedStyleProperty::Fill);
         }
-        if let Some(source) = source {
-            theme_evidence.observe_html_text_source(use_id, source);
+        if let Some(source) = source.as_ref() {
+            theme_evidence.observe_text_source(use_id, source, label_font_size_geometry);
         }
         append_theme_base_text_emission(theme, &mut label_emission);
         append_semantic_text_emission(style, &mut label_emission);
@@ -3213,7 +3293,7 @@ fn prepare_edge(
             insert_emitted(&mut label_emission, "color", color);
         }
         if color_uses_series
-            && source.is_none_or(|source| {
+            && source.as_ref().is_none_or(|source| {
                 theme_evidence.observe_html_palette_source(ThemeTarget::TransitionLabel, source)
             })
         {
@@ -3223,20 +3303,19 @@ fn prepare_edge(
             );
         }
     }
-    if label_ordinal.is_some() || label_font_size_geometry {
+    let has_visible_text = label_ordinal.is_some()
+        && source
+            .as_ref()
+            .is_some_and(|source| !source.parse_valid() || source.has_visible_runs());
+    if has_visible_text || label_font_size_geometry {
         theme_evidence.observe_base_typography_use(
             semantic_label.as_ref(),
             &BTreeSet::new(),
             StateThemeSurface::Edge,
-            source,
-            label_ordinal.is_some(),
+            source.as_ref(),
+            has_visible_text,
         );
     }
-    let mut label_typography = ResolvedLabelTypography::new(resolve_semantic_text_style(
-        base_text_style,
-        semantic_label.as_ref(),
-    ))
-    .with_config_typography(base_text_style, compatibility);
     label_typography.canonicalize_emission(&mut label_emission);
 
     Ok(StateEdgeStylePlan {
@@ -3445,6 +3524,10 @@ fn state_is_hidden_id(prefixes: &[String], id: &str) -> bool {
 fn node_label_source_style_facts(
     node: &StateDiagramRenderNode,
 ) -> Option<crate::text::VisibleTextStyleFacts> {
+    super::state_label_source_style_facts(&node_label_text_for_evidence(node))
+}
+
+fn node_label_text_for_evidence(node: &StateDiagramRenderNode) -> String {
     let mut text = node
         .label
         .as_ref()
@@ -3456,7 +3539,7 @@ fn node_label_source_style_facts(
         text.push_str("<br/>");
         text.push_str(&description.join("<br/>"));
     }
-    super::state_label_source_style_facts(&text)
+    text
 }
 
 fn has_visible_label(node: &StateDiagramRenderNode) -> bool {
@@ -3492,7 +3575,7 @@ fn resolve_semantic_text_style(
         style.font_family = Some(stack.as_css());
     }
     if let Specified::Value(size) = patch.font_size_px {
-        style.font_size = f64::from(size).max(1.0);
+        style.font_size = f64::from(size);
     }
     if let Specified::Value(weight) = patch.font_weight {
         style.font_weight = Some(weight.to_string());
