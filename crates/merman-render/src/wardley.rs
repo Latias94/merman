@@ -269,7 +269,7 @@ pub struct WardleyAnnotationPointLayout {
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct WardleyAnnotationLayout {
-    pub number: u64,
+    pub number: f64,
     pub points: Vec<WardleyAnnotationPointLayout>,
     pub segments: Vec<WardleyLineLayout>,
 }
@@ -715,6 +715,15 @@ fn layout_wardley_diagram_with_font_family(
     font_family_css: &str,
     measurer: &dyn TextMeasurer,
 ) -> Result<WardleyDiagramLayout> {
+    if model
+        .annotations
+        .iter()
+        .any(|annotation| annotation.number.is_nan())
+    {
+        return Err(Error::InvalidModel {
+            message: "Wardley annotation numbers must not be NaN".to_string(),
+        });
+    }
     let settings = WardleySettings::from_config(effective_config);
     let width = model.size.map_or(settings.width, |size| size.width);
     let height = model.size.map_or(settings.height, |size| size.height);
@@ -1084,7 +1093,7 @@ fn layout_wardley_diagram_with_font_family(
                     center,
                     radius: 10.0,
                     label: text_layout(
-                        annotation.number.to_string(),
+                        ryu_js::Buffer::new().format(annotation.number).to_owned(),
                         center.x,
                         center.y,
                         10.0,
@@ -1120,7 +1129,13 @@ fn layout_wardley_diagram_with_font_family(
                         .is_some_and(|text| !text.is_empty())
                 })
                 .collect();
-            sorted_annotations.sort_by_key(|annotation| annotation.number);
+            // The upstream comparator subtracts Numbers; NaN (Infinity - Infinity) is equal.
+            // Stable sorting retains authored order for rounded ties and overflowing integers.
+            sorted_annotations.sort_by(|left, right| {
+                (left.number - right.number)
+                    .partial_cmp(&0.0)
+                    .unwrap_or(std::cmp::Ordering::Equal)
+            });
 
             if sorted_annotations.is_empty() {
                 return WardleyAnnotationsBoxLayout {
@@ -1145,7 +1160,7 @@ fn layout_wardley_diagram_with_font_family(
                 .map(|annotation| {
                     format!(
                         "{}. {}",
-                        annotation.number,
+                        ryu_js::Buffer::new().format(annotation.number),
                         annotation.text.as_deref().unwrap_or_default()
                     )
                 })

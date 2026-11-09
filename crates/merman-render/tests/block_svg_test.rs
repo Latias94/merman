@@ -106,16 +106,16 @@ fn block_direct_input_rejects_repeated_child_indices_before_layout_expansion() {
 }
 
 #[test]
-fn block_direct_input_checks_normalized_column_span_totals() {
-    for second_span in [1, 0, i64::MIN] {
+fn block_direct_input_rejects_invalid_column_spans() {
+    for second_span in [-1.0, 1.5, f64::NAN, f64::NEG_INFINITY] {
         let mut model = independent_block_tree(&[&[1, 2], &[], &[]]);
-        model.blocks_flat[1].width_in_columns = Some(i64::MAX);
+        model.blocks_flat[1].width_in_columns = Some(1.0);
         model.blocks_flat[2].width_in_columns = Some(second_span);
         let parsed = independent_block_presentation(model);
         let session = RenderEnvironment::deterministic().begin_session().unwrap();
         let error = family::prepare(&parsed, &LayoutOptions::default(), session)
             .err()
-            .expect("normalized child spans must fit before grid arithmetic");
+            .expect("invalid direct spans must fail before grid arithmetic");
         assert!(matches!(
             error,
             merman_render::Error::InvalidModel { ref message }
@@ -126,7 +126,7 @@ fn block_direct_input_checks_normalized_column_span_totals() {
 
 #[test]
 fn block_direct_input_preserves_distinct_records_and_supported_column_spans() {
-    for (first_span, second_span) in [(0, -3), (i64::MAX - 1, 1)] {
+    for (first_span, second_span) in [(1.0, 3.0), (9223372036854775808.0, 1.0)] {
         let mut model = independent_block_tree(&[&[1, 2], &[], &[]]);
         model.blocks_flat[1].id = "Repeated".to_string();
         model.blocks_flat[2].id = "Repeated".to_string();
@@ -135,7 +135,7 @@ fn block_direct_input_preserves_distinct_records_and_supported_column_spans() {
         let parsed = independent_block_presentation(model);
         let session = RenderEnvironment::deterministic().begin_session().unwrap();
         let artifact = family::prepare(&parsed, &LayoutOptions::default(), session)
-            .expect("distinct flat records and representable normalized spans remain valid");
+            .expect("distinct flat records and JavaScript Number spans remain valid");
         let projection = artifact.layout_json().expect("project finite Block layout");
         let layout: merman_render::model::BlockDiagramLayout =
             serde_json::from_value(projection["layout"]["BlockDiagram"].clone()).unwrap();
@@ -187,6 +187,58 @@ fn block_direct_input_validation_preserves_operation_error_priority() {
         error,
         merman_render::Error::ResourceLimitExceeded(replayed) if replayed == first
     ));
+}
+
+#[test]
+fn block_large_columns_preserve_the_auto_grid_without_integer_rejection() {
+    let automatic = render_block_svg_from_text("block\ncolumns auto\nA\nB\n");
+    for columns in [
+        "9007199254740993",
+        "9223372036854775808",
+        "18446744073709551615",
+    ] {
+        let svg = render_block_svg_from_text(&format!("block\ncolumns {columns}\nA\nB\n"));
+        assert_eq!(svg, automatic, "{columns}");
+    }
+}
+
+#[test]
+fn block_zero_and_overflowing_counts_keep_the_upstream_render_stage() {
+    let engine = MermaidEngine::new();
+    for columns in ["0".to_string(), "9".repeat(309)] {
+        let error = try_render_block_svg_from_text_with_engine(
+            &engine,
+            &format!("block\ncolumns {columns}\nA\n"),
+        )
+        .expect_err("the selected layout rejects zero and nonfinite columns");
+        assert!(
+            matches!(error, merman_render::Error::InvalidModel { ref message } if message == "Columns must be an integer !== 0.")
+        );
+        try_render_block_svg_from_text_with_engine(&engine, &format!("block\ncolumns {columns}\n"))
+            .expect("an empty composite never calculates a column position");
+    }
+    let token = "9".repeat(309);
+    let error =
+        try_render_block_svg_from_text_with_engine(&engine, &format!("block\nA:{token}\nB\n"))
+            .expect_err("a subsequent position becomes nonfinite");
+    assert!(
+        matches!(error, merman_render::Error::InvalidModel { ref message } if message == "Position must be a non-negative integer.Infinity")
+    );
+    for source in [
+        "block\nA:0\nB\n".to_string(),
+        "block\nA{{\"A\"}}:0\nB\n".to_string(),
+        "block\nA[(\"A\")]:0\nB\n".to_string(),
+        format!("block\nA:{token}\n"),
+        format!("block\ncolumns 2\nA:{token}\nB\n"),
+    ] {
+        let error = try_render_block_svg_from_text_with_engine(&engine, &source)
+            .expect_err("nonfinite layout must retain the shared finite-root SVG contract");
+        assert!(
+            matches!(error, merman_render::Error::InvalidModel { ref message }
+            if message.starts_with("root SVG viewBox ") && message.contains("must be finite")),
+            "{source}"
+        );
+    }
 }
 
 fn render_block_svg_from_text(text: &str) -> String {
@@ -1461,7 +1513,7 @@ fn block_label_source_ownership_matches_structural_class_and_paint_domains() {
                         ]) {
                             node.id = id.to_string();
                             node.label = label.to_string();
-                            node.columns = Some(1);
+                            node.columns = Some(1.0);
                             if assigned && id != "root" {
                                 node.classes.push("plain".into());
                             }

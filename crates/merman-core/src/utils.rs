@@ -10,7 +10,14 @@ pub(crate) use merman_markup::url::format_url;
 #[cfg(feature = "diagram-gantt")]
 pub(crate) use merman_markup::url::sanitize_url;
 
-#[cfg(any(feature = "diagram-pie", feature = "diagram-xychart"))]
+#[cfg(any(
+    feature = "diagram-block",
+    feature = "diagram-packet",
+    feature = "diagram-pie",
+    feature = "diagram-radar",
+    feature = "diagram-wardley",
+    feature = "diagram-xychart"
+))]
 pub(crate) fn format_js_number(value: f64) -> String {
     // Mermaid template strings use Number text, including nonfinite values and unsigned zero.
     ryu_js::Buffer::new().format(value).to_owned()

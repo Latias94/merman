@@ -2855,9 +2855,9 @@ accDescr: Packet accDescription
             assert_eq!(model.acc_descr.as_deref(), Some("Packet accDescription"));
             assert_eq!(model.packet.len(), 1);
             assert_eq!(model.packet[0].len(), 2);
-            assert_eq!(model.packet[0][0].start, 0);
-            assert_eq!(model.packet[0][0].end, 7);
-            assert_eq!(model.packet[0][0].bits, 8);
+            assert_eq!(model.packet[0][0].start, 0.0);
+            assert_eq!(model.packet[0][0].end, 7.0);
+            assert_eq!(model.packet[0][0].bits, 8.0);
             assert_eq!(model.packet[0][0].label, "byte");
         }
         other => panic!("packet render parse should return typed model, got {other:?}"),
@@ -3206,9 +3206,9 @@ graticule polygon
             assert_eq!(model.curves[0].entries, vec![json!(1), json!(2), json!(3)]);
             assert_eq!(model.curves[1].entries, vec![json!(7), json!(8), json!(9)]);
             assert!(!model.options.show_legend);
-            assert_eq!(model.options.ticks, json!(4));
-            assert_eq!(model.options.min, json!(1));
-            assert_eq!(model.options.max, Some(json!(10)));
+            assert_eq!(model.options.ticks, 4.0);
+            assert_eq!(model.options.min, 1.0);
+            assert_eq!(model.options.max, Some(10.0));
             assert_eq!(model.options.graticule, "polygon");
         }
         other => panic!("radar render parse should return typed model, got {other:?}"),

@@ -67,7 +67,9 @@ impl<'a> PacketConfigView<'a> {
                 .packet_f64("bitWidth")
                 .unwrap_or(DEFAULT_BIT_WIDTH)
                 .max(1.0),
-            bits_per_row: validate_packet_bits_per_row(self.packet_i64("bitsPerRow"))?,
+            bits_per_row: validate_packet_bits_per_row(
+                self.packet_config.get("bitsPerRow").and_then(Value::as_f64),
+            )?,
         })
     }
 
@@ -105,10 +107,6 @@ impl<'a> PacketConfigView<'a> {
         config_f64(self.packet_config, &[key])
     }
 
-    fn packet_i64(&self, key: &str) -> Option<i64> {
-        self.packet_config.get(key)?.as_i64()
-    }
-
     fn packet_style(&self, key: &str, default_value: &'static str) -> Cow<'static, str> {
         self.style_value(key)
             .map(Cow::Owned)
@@ -137,7 +135,7 @@ pub(crate) struct PacketLayoutSettings {
     pub(crate) padding_x: f64,
     pub(crate) padding_y: f64,
     pub(crate) bit_width: f64,
-    pub(crate) bits_per_row: i64,
+    pub(crate) bits_per_row: f64,
 }
 
 #[derive(Debug)]
@@ -198,11 +196,11 @@ mod tests {
         assert_eq!(settings.padding_x, 9.0);
         assert_eq!(settings.padding_y, 11.0);
         assert_eq!(settings.bit_width, 24.0);
-        assert_eq!(settings.bits_per_row, 16);
+        assert_eq!(settings.bits_per_row, 16.0);
     }
 
     #[test]
-    fn packet_layout_settings_clamp_geometry_and_keep_bits_per_row_integer_only() {
+    fn packet_layout_settings_clamp_geometry_and_keep_row_width_numeric() {
         let cfg = json!({
             "packet": {
                 "rowHeight": -40,
@@ -227,7 +225,7 @@ mod tests {
 
         let error = PacketConfigView::new(&cfg).layout_settings().unwrap_err();
 
-        assert_eq!(error.value, 0);
+        assert_eq!(error.value, 0.0);
     }
 
     #[test]

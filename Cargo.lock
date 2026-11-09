@@ -2376,6 +2376,7 @@ dependencies = [
  "merman-core",
  "merman-model",
  "rustc-hash",
+ "ryu-js",
  "serde",
  "serde_json",
  "sha2",

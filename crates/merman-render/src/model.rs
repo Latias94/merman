@@ -394,8 +394,9 @@ pub struct RadarAxisLayout {
 #[cfg(feature = "diagram-radar")]
 pub struct RadarGraticuleShapeLayout {
     pub kind: String,
+    #[serde(default, with = "crate::radar::point_list::radius")]
     pub r: Option<f64>,
-    #[serde(default)]
+    #[serde(default, with = "crate::radar::point_list")]
     pub points: Vec<LayoutPoint>,
 }
 
@@ -404,7 +405,7 @@ pub struct RadarGraticuleShapeLayout {
 pub struct RadarCurveLayout {
     pub label: String,
     pub class_index: i64,
-    #[serde(default)]
+    #[serde(default, with = "crate::radar::point_list")]
     pub points: Vec<LayoutPoint>,
     pub path_d: String,
 }
@@ -1102,8 +1103,8 @@ pub struct InfoDiagramLayout {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg(feature = "diagram-packet")]
 pub struct PacketBlockLayout {
-    pub start: i64,
-    pub end: i64,
+    pub start: f64,
+    pub end: f64,
     pub label: String,
     pub x: f64,
     pub y: f64,
@@ -1127,7 +1128,7 @@ pub struct PacketDiagramLayout {
     pub padding_x: f64,
     pub padding_y: f64,
     pub bit_width: f64,
-    pub bits_per_row: i64,
+    pub bits_per_row: f64,
     pub show_bits: bool,
     pub words: Vec<PacketWordLayout>,
 }

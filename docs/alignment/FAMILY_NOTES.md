@@ -504,6 +504,16 @@ space-prefixed B lookup creates a replacement database binding. The flat object 
 original hierarchy reference and the replacement separately; compatibility `blocksFlat` projects
 the latest database bindings, while drawing follows attached objects.
 
+Block column counts and spans follow JavaScript Number rounding and overflow rather than a
+machine integer range. Zero spans remain explicit. The lexer owns complete `columns\s+(auto|\d+)`
+tokens, so `columns Infinity` declares nodes while `A:1e3` assigns span 1 and then declares `e3`.
+Space tokens are independent statements on both shared and separate lines. Placeholder expansion
+has one cumulative 200,000-item bound checked before materialization; large column counts and
+spans do not allocate extra placeholders. Layout retains the source's zero/nonfinite column and
+position errors instead of clamping spans or overflowing integer arithmetic.
+Nonfinite Block layout bounds remain a typed SVG root-admission error; the shared finite-root
+contract is stricter than browser SVG recovery and does not replace invalid dimensions with zero.
+
 Owners: [Requirement config](../../crates/merman-render/src/requirement/config.rs),
 [palette binding](../../crates/merman-render/src/requirement/css_binding.rs),
 [Block model](../../crates/merman-model/src/families/block.rs), and
@@ -594,10 +604,14 @@ Quoted labels can span physical lines; semantic text retains the newline and edi
 retain the authored range. `packet.useMaxWidth: false` exports numeric SVG width and height from
 the final viewBox. The default remains responsive.
 
-Split fields use inclusive native `bits` counts (`end - start + 1`), including in compatibility
-JSON and ASCII output. The selected Mermaid DB omits the final bit from that redundant field only
-when splitting a block; its renderer still derives inclusive width from the endpoints. Merman
-keeps the consistent native count rather than reproducing a value rejected by its ASCII contract.
+Packet endpoints and retained DB `bits` use JavaScript Number conversion and arithmetic. Split
+tails preserve the selected DB's redundant width, which can differ from `end - start + 1`;
+geometry derives inclusive width from the endpoints. Row width accepts finite numeric values at
+least one, including fractions. Row splitting keeps the materialized row limit and rejects
+arithmetic that cannot make progress before allocating repeated fragments.
+Fractional rows can retain a negative redundant `bits` or an `end` below `start` while the inclusive
+extent stays positive. SVG uses that extent and the unmodified Number remainder for positioning;
+ASCII reports the DB fields without a second integer-range or row-containment interpretation.
 
 Owners: [parser](../../crates/merman-core/src/diagrams/packet.rs),
 [SVG tests](../../crates/merman-render/tests/packet_svg_test.rs), and
@@ -666,6 +680,10 @@ then produces `ceil(ticks)` grid lines, using that effective value as the radius
 example, `ticks 2.5` draws three lines at `1/2.5`, `2/2.5`, and `3/2.5` of the radius; the final line
 extends beyond the nominal radius. Circle and polygon grids share this rule. Resource accounting
 uses the actual iteration and point counts.
+
+Numeric tokens convert directly to binary64 in every option and curve slot, without an
+intermediate integer range. The final authored ticks assignment wins before the upper limit is
+applied. Canonical models retain nonfinite values; compatibility JSON projects them as null.
 
 Owners: [layout](../../crates/merman-render/src/radar.rs),
 [theme evidence](../../crates/merman-render/src/radar/theme.rs), and
@@ -859,6 +877,11 @@ Owners: [TreeView layout](../../crates/merman-render/src/tree_view.rs) and
 Annotation sizing uses distinct text-length and bbox measurements from the operation's measurer.
 Coincident link endpoints are rejected instead of emitting upstream non-finite geometry. Browser
 font differences remain measurement diagnostics, not a fixture-specific layout rule.
+
+Annotation numbers retain the grammar's binary64 conversion instead of saturating to `u64`.
+Point and annotation-box labels use JavaScript Number text, and numeric box sorting remains stable
+for rounded ties and multiple overflowing values. Canonical models retain nonfinite numbers;
+compatibility JSON projects them as null.
 
 Owners: [Wardley layout](../../crates/merman-render/src/wardley.rs) and
 [SVG tests](../../crates/merman-render/tests/wardley_svg_test.rs).

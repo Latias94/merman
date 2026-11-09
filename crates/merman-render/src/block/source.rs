@@ -17,7 +17,7 @@ pub(crate) struct BlockNodeSource<'a> {
     pub(crate) classes: &'a [String],
     pub(crate) styles: &'a [String],
     pub(crate) directions: &'a [String],
-    pub(crate) width_in_columns: i64,
+    pub(crate) width_in_columns: f64,
 }
 
 impl<'a> BlockNodeSource<'a> {
@@ -29,7 +29,7 @@ impl<'a> BlockNodeSource<'a> {
             classes: &node.classes,
             styles: &node.styles,
             directions: &node.directions,
-            width_in_columns: node.width_in_columns.unwrap_or(1).max(1),
+            width_in_columns: node.width_in_columns.unwrap_or(1.0),
         }
     }
 
@@ -53,7 +53,7 @@ impl<'a> BlockNodeSource<'a> {
             self.directions = &node.directions;
         }
         if let Some(width) = node.width_in_columns {
-            self.width_in_columns = width.max(1);
+            self.width_in_columns = width;
         }
     }
 }
@@ -112,7 +112,7 @@ mod tests {
             classes: vec!["first".to_string()],
             styles: vec!["color:red".to_string()],
             directions: vec!["left".to_string()],
-            width_in_columns: Some(3),
+            width_in_columns: Some(3.0),
             ..Default::default()
         };
         let branch = BlockNode {
@@ -125,7 +125,7 @@ mod tests {
             block_type: "circle".to_string(),
             label: "Nested".to_string(),
             classes: vec!["nested".to_string()],
-            width_in_columns: Some(2),
+            width_in_columns: Some(2.0),
             ..Default::default()
         };
         let last = BlockNode {
@@ -134,7 +134,7 @@ mod tests {
             label: "Last".to_string(),
             styles: vec!["color:blue".to_string()],
             directions: vec!["right".to_string()],
-            width_in_columns: Some(0),
+            width_in_columns: Some(0.0),
             ..Default::default()
         };
         let empty = BlockNode {
@@ -150,7 +150,7 @@ mod tests {
         assert_eq!(node.classes, ["nested"]);
         assert_eq!(node.styles, ["color:blue"]);
         assert_eq!(node.directions, ["right"]);
-        assert_eq!(node.width_in_columns, 1);
+        assert_eq!(node.width_in_columns, 0.0);
         assert_eq!(node.color_index, Some(1));
         assert_eq!(sources.len(), 3);
     }

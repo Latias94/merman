@@ -84,6 +84,42 @@ and `pattern: BlockEdgePattern`. Direct struct literals initialize them with
 compatibility edge records now include the upstream `thickness` and `pattern`
 strings, and SVG consumes those semantics together with both endpoint markers.
 
+`BlockNode::columns`, `width_in_columns`, and `width` change from `Option<i64>` to
+`Option<f64>`. Use literals such as `columns: Some(3.0)` and preserve authored zero spans.
+Counts use binary64 rounding, including values beyond `i64`; column counts do not allocate
+empty slots. Only `space` materializes placeholders, with a cumulative 200,000-item parser
+limit. Zero and nonfinite column counts fail when a nonempty composite reaches layout,
+matching the selected upstream stage.
+Nonfinite layout bounds still fail the shared finite-root SVG admission contract instead of
+emitting a browser-dependent invalid viewBox.
+
+`PacketBlock::start`, `end`, and `bits`, together with `PacketBlockLayout::start` and `end`,
+use `f64`. `DEFAULT_PACKET_BITS_PER_ROW`, `validate_packet_bits_per_row`, and
+`PacketDiagramLayout::bits_per_row` also use `f64`; row-width configuration accepts finite
+numbers at least `1.0`, including fractions. Preserve the DB's `bits` value separately from
+the inclusive endpoint width used for geometry. Row expansion retains its existing item
+limit and rejects Number arithmetic that cannot advance the split.
+`PacketBitsPerRowError::value` also uses `f64`; the error retains `PartialEq` and no longer
+implements `Eq`.
+Fractional splitting can produce a short fragment with `end < start` and negative retained
+`bits`; use `end - start + 1.0` for its actual width rather than imposing integer interval rules.
+
+`RadarOptions::ticks` and `min` use `f64`, `max` uses `Option<f64>`, and
+`RadarCurve::entries` uses `Vec<f64>` instead of JSON values. Construct numeric values
+directly, for example `ticks: 5.0`, `max: Some(10.0)`, and `entries: vec![2.0, 4.0]`.
+The DB applies the final authored ticks value before enforcing its upper limit of 32.
+
+`WardleyAnnotation::number` and `WardleyAnnotationLayout::number` change from `u64` to
+`f64`. Use `number: 1.0` in direct literals. Annotation labels use JavaScript Number text,
+and the annotation box preserves authored order when rounded or overflowing numbers tie.
+
+These Block, Packet, Radar, and Wardley canonical numeric fields retain finite integer JSON
+shapes where representable, preserve negative zero, and encode nonfinite values as exactly
+`"Infinity"`, `"-Infinity"`, or `"NaN"`. Canonical decoders accept numbers and those strings;
+optional fields additionally accept `null` as absence. Compatibility JSON uses numeric
+values and projects nonfinite values as `null`, following `JSON.stringify`. Source grammars
+retain their own numeric token rules; the canonical strings do not introduce source syntax.
+
 Struct-literal consumers of `FlowEdge` add `step: None` when no step is authored.
 `FlowchartModel` carries `dropped_subgraph_members` for shared-member provenance;
 ordinary builders can use its default empty collection. These new data use

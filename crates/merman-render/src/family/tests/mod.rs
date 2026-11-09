@@ -3735,7 +3735,7 @@ fn class_node_unsupported_rules_use_node_not_relation_applicability() {
         Some((DiagramFamilyId::CLASS, 1))
     );
 
-    let canonical_20 = parse("classDiagram\n");
+    let canonical_20 = parse("classDiagram\naccTitle: Empty\n");
     let empty = prepare(
         &canonical_20,
         &LayoutOptions::default(),

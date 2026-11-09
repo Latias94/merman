@@ -98,7 +98,12 @@ pub struct WardleyPipeline {
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct WardleyAnnotation {
-    pub number: u64,
+    /// The grammar's INT converted to a JavaScript Number, including decimal overflow.
+    ///
+    /// Canonical JSON retains nonfinite values as "Infinity", "-Infinity", or "NaN".
+    /// The Mermaid compatibility projection separately emits JSON null for these values.
+    #[serde(with = "crate::number::serde_number")]
+    pub number: f64,
     #[serde(default)]
     pub coordinates: Vec<WardleyPoint>,
     #[serde(default, skip_serializing_if = "Option::is_none")]

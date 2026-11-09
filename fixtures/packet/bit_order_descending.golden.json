@@ -24,7 +24,7 @@
           "start": 12
         },
         {
-          "bits": 3,
+          "bits": 2,
           "end": 15,
           "label": "FLAGS",
           "start": 13
@@ -32,7 +32,7 @@
       ],
       [
         {
-          "bits": 5,
+          "bits": 4,
           "end": 20,
           "label": "FLAGS",
           "start": 16

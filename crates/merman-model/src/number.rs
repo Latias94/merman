@@ -1,5 +1,69 @@
 //! Numeric value conversion shared by source and output consumers.
 
+/// Canonical Serde representation of a JavaScript Number, including nonfinite states.
+///
+/// Finite whole values retain their integer JSON shape. Nonfinite values use exactly `"Infinity"`,
+/// `"-Infinity"`, or `"NaN"`; Mermaid compatibility output instead uses `json::number_value`.
+pub mod serde_number {
+    use serde::{Deserialize, Serialize};
+
+    pub fn serialize<S: serde::Serializer>(value: &f64, serializer: S) -> Result<S::Ok, S::Error> {
+        if value.is_nan() {
+            serializer.serialize_str("NaN")
+        } else if *value == f64::INFINITY {
+            serializer.serialize_str("Infinity")
+        } else if *value == f64::NEG_INFINITY {
+            serializer.serialize_str("-Infinity")
+        } else if *value == 0.0 && value.is_sign_negative() {
+            serializer.serialize_f64(*value)
+        } else {
+            crate::json::number_value(*value).serialize(serializer)
+        }
+    }
+
+    pub fn deserialize<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Result<f64, D::Error> {
+        #[derive(Deserialize)]
+        #[serde(untagged)]
+        enum Number {
+            Finite(f64),
+            Nonfinite(String),
+        }
+        match Number::deserialize(deserializer)? {
+            Number::Finite(value) => Ok(value),
+            Number::Nonfinite(value) => match value.as_str() {
+                "Infinity" => Ok(f64::INFINITY),
+                "-Infinity" => Ok(f64::NEG_INFINITY),
+                "NaN" => Ok(f64::NAN),
+                _ => Err(serde::de::Error::custom(
+                    "expected a number, \"Infinity\", \"-Infinity\", or \"NaN\"",
+                )),
+            },
+        }
+    }
+}
+
+/// Optional canonical Number; `null` denotes absence rather than an erased nonfinite value.
+pub mod serde_optional_number {
+    use serde::{Deserialize, Serialize};
+
+    #[derive(Deserialize, Serialize)]
+    #[serde(transparent)]
+    struct Number(#[serde(with = "super::serde_number")] f64);
+
+    pub fn serialize<S: serde::Serializer>(
+        value: &Option<f64>,
+        serializer: S,
+    ) -> Result<S::Ok, S::Error> {
+        value.map(Number).serialize(serializer)
+    }
+
+    pub fn deserialize<'de, D: serde::Deserializer<'de>>(
+        deserializer: D,
+    ) -> Result<Option<f64>, D::Error> {
+        Ok(Option::<Number>::deserialize(deserializer)?.map(|value| value.0))
+    }
+}
+
 /// Converts unsigned base-2, base-8, or base-16 digits with one binary64 rounding step.
 ///
 /// The caller owns prefixes, signs, and token boundaries. Empty or invalid digits are rejected;

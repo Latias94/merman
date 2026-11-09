@@ -83,7 +83,7 @@ struct BlockShapeInputs<'a> {
 struct BlockShapeAllocation {
     width: f64,
     height: f64,
-    width_in_columns: i64,
+    width_in_columns: f64,
 }
 
 impl BlockShapeGeometry {
@@ -92,7 +92,7 @@ impl BlockShapeGeometry {
         block_type: &str,
         directions: &[String],
         padding: f64,
-        width_in_columns: i64,
+        width_in_columns: f64,
         shape_settings: BlockShapeSettings,
     ) -> Option<Self> {
         // Mermaid renders a block twice: the first pass measures the label and shape, while the
@@ -474,7 +474,7 @@ fn rendered_boundary_for(
         "block_arrow" => {
             let natural_width = label_width + label_height + 3.0 * padding;
             let height = label_height + 2.0 * padding;
-            let width = if allocation.width_in_columns > 1 && slot_width > natural_width {
+            let width = if allocation.width_in_columns > 1.0 && slot_width > natural_width {
                 slot_width
             } else {
                 natural_width.max(1.0)
@@ -533,14 +533,23 @@ fn cylinder_boundary(
         0.0
     };
     let adjusted_height = if slot_height > 0.0 {
-        (slot_height - padding - original_radius_y * 3.0).max(8.0)
+        let height = slot_height - padding - original_radius_y * 3.0;
+        // The upstream minimum-height comparison leaves NaN untouched.
+        if height < 8.0 { 8.0 } else { height }
     } else {
         0.0
     };
     let width = (adjusted_width.max(label_width) + padding).max(1.0);
     let radius_x = width / 2.0;
     let radius_y = radius_x / (2.5 + width / 50.0);
-    let body_height = (adjusted_height.max(label_height) + padding + radius_y).max(1.0);
+    // Math.max propagates a NaN cap-height adjustment; f64::max would replace it with the label.
+    let measured_height = if adjusted_height.is_nan() {
+        f64::NAN
+    } else {
+        adjusted_height.max(label_height)
+    };
+    let body_height = measured_height + padding + radius_y;
+    let body_height = if body_height < 1.0 { 1.0 } else { body_height };
     BlockShapeBoundary::Cylinder {
         width,
         body_height,
@@ -1119,6 +1128,25 @@ fn intersect_polygon(
 mod tests {
     use super::*;
 
+    #[test]
+    fn nonfinite_cylinder_caps_preserve_nan_until_root_admission() {
+        // cylinder.ts computes Infinity / Infinity before its minimum-height comparison.
+        // It must not be turned into an ordinary finite cylinder by f64::max.
+        let BlockShapeBoundary::Cylinder {
+            width,
+            body_height,
+            radius_x,
+            radius_y,
+        } = cylinder_boundary(20.0, 20.0, 8.0, f64::INFINITY, 40.0)
+        else {
+            panic!("expected cylinder geometry")
+        };
+        assert_eq!(width, f64::INFINITY);
+        assert_eq!(radius_x, f64::INFINITY);
+        assert!(radius_y.is_nan());
+        assert!(body_height.is_nan());
+    }
+
     fn point_segment_distance(point: &LayoutPoint, start: &LayoutPoint, end: &LayoutPoint) -> f64 {
         let dx = end.x - start.x;
         let dy = end.y - start.y;
@@ -1386,7 +1414,7 @@ mod tests {
                 BlockShapeAllocation {
                     width: 120.0,
                     height: 72.0,
-                    width_in_columns: 2,
+                    width_in_columns: 2.0,
                 },
             )
             .unwrap_or_else(|| panic!("{block_type} must own a visible boundary"));

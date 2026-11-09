@@ -1,20 +1,21 @@
 //! Canonical Packet data and declared full-output facts.
 
-pub const DEFAULT_PACKET_BITS_PER_ROW: i64 = 32;
+pub const DEFAULT_PACKET_BITS_PER_ROW: f64 = 32.0;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
-#[error("packet.bitsPerRow must be an integer greater than or equal to 1; received {value}")]
+#[derive(Debug, Clone, Copy, PartialEq, thiserror::Error)]
+#[error("packet.bitsPerRow must be a finite number greater than or equal to 1; received {value}")]
 pub struct PacketBitsPerRowError {
-    pub value: i64,
+    pub value: f64,
 }
 
 /// Validates the shared Packet row-width configuration before either semantic construction or
-/// layout consumes it. Mermaid's configuration schema declares a minimum of one.
+/// layout consumes it. Mermaid's configuration schema accepts numbers, including fractions, with
+/// a minimum of one. The width is never an allocation count.
 pub fn validate_packet_bits_per_row(
-    value: Option<i64>,
-) -> std::result::Result<i64, PacketBitsPerRowError> {
+    value: Option<f64>,
+) -> std::result::Result<f64, PacketBitsPerRowError> {
     let value = value.unwrap_or(DEFAULT_PACKET_BITS_PER_ROW);
-    if value < 1 {
+    if !value.is_finite() || value < 1.0 {
         return Err(PacketBitsPerRowError { value });
     }
     Ok(value)
@@ -33,9 +34,14 @@ pub struct PacketDiagramModel {
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct PacketBlock {
-    pub start: i64,
-    pub end: i64,
-    pub bits: i64,
+    /// JavaScript Number values after grammar conversion and row splitting.
+    #[serde(with = "crate::number::serde_number")]
+    pub start: f64,
+    #[serde(with = "crate::number::serde_number")]
+    pub end: f64,
+    /// Retained DB width; upstream split widths need not equal `end - start + 1`.
+    #[serde(with = "crate::number::serde_number")]
+    pub bits: f64,
     pub label: String,
 }
 

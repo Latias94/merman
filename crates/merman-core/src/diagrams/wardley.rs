@@ -343,9 +343,7 @@ struct WardleyAnnotationsBoxAst {
 
 #[derive(Debug, Clone)]
 struct WardleyAnnotationAst {
-    number: u64,
-    #[cfg(feature = "editor-facts")]
-    number_span: SourceSpan,
+    number: SpannedNumber,
     x: SpannedNumber,
     y: SpannedNumber,
     text: SpannedText,
@@ -906,12 +904,7 @@ fn parse_wardley_statement(
         let annotation = parse_annotation(body, body_start(statement, statement_start, body))?;
         #[cfg(feature = "editor-facts")]
         if editor_demand.captures_rich() {
-            push_integer_fact(
-                editor_facts,
-                annotation.number,
-                annotation.number_span,
-                "wardley annotation number",
-            );
+            push_number_fact(editor_facts, annotation.number, "wardley annotation number");
             push_number_fact(editor_facts, annotation.x, "wardley annotation visibility");
             push_number_fact(editor_facts, annotation.y, "wardley annotation evolution");
             push_payload_fact(editor_facts, &annotation.text, "wardley annotation text");
@@ -1647,14 +1640,7 @@ fn parse_annotation(
     )?;
     cursor.pos += consumed;
     cursor.expect_end("wardley annotation")?;
-    Ok(WardleyAnnotationAst {
-        number: number.value as u64,
-        #[cfg(feature = "editor-facts")]
-        number_span: number.span,
-        x,
-        y,
-        text,
-    })
+    Ok(WardleyAnnotationAst { number, x, y, text })
 }
 
 fn parse_force(
@@ -2371,10 +2357,13 @@ fn build_wardley_model_controlled(
         let point = wardley_try!(to_coordinates(
             annotation.x,
             annotation.y,
-            &format!("Annotation {}", annotation.number),
+            &format!(
+                "Annotation {}",
+                crate::utils::format_js_number(annotation.number.value)
+            ),
         ));
         builder.annotations.push(WardleyAnnotation {
-            number: annotation.number,
+            number: annotation.number.value,
             coordinates: vec![point],
             text: Some(annotation.text.text.clone()),
         });
@@ -2438,7 +2427,7 @@ fn to_percent(
         return Err(WardleyParseProblem::new(
             format!(
                 "{context} must be between 0-1 (decimal) or 0-100 (percentage). Received: {}",
-                value.value
+                crate::utils::format_js_number(value.value)
             ),
             value.span,
         ));
@@ -2561,26 +2550,11 @@ fn push_number_fact(facts: &mut EditorSemanticFacts, value: SpannedNumber, detai
         value.span,
     ));
     facts.push_symbol(EditorSemanticSymbol::payload(
-        value.value.to_string(),
+        crate::utils::format_js_number(value.value),
         Some(detail.to_string()),
         EditorSemanticKind::Property,
         value.span,
         value.span,
-    ));
-}
-
-#[cfg(feature = "editor-facts")]
-fn push_integer_fact(facts: &mut EditorSemanticFacts, value: u64, span: SourceSpan, detail: &str) {
-    facts.push_expected_syntax(EditorExpectedSyntax::new(
-        EditorExpectedSyntaxKind::Payload,
-        span,
-    ));
-    facts.push_symbol(EditorSemanticSymbol::payload(
-        value.to_string(),
-        Some(detail.to_string()),
-        EditorSemanticKind::Property,
-        span,
-        span,
     ));
 }
 
