@@ -24,6 +24,7 @@ pub(crate) struct XyChartTypographyThemePlan {
 #[derive(Debug, Clone, Copy)]
 struct XyChartTypographyTerminalSeal {
     emitted_visible_text_count: usize,
+    emitted_uncertain_text_count: usize,
     css_seen: bool,
     font_family_matches: bool,
 }
@@ -33,6 +34,7 @@ struct XyChartTypographyTerminalSeal {
 pub(crate) struct XyChartTypographyTerminalReceipt {
     expected_font_family: Box<str>,
     emitted_visible_text_count: usize,
+    emitted_uncertain_text_count: usize,
     css_seen: bool,
     font_family_matches: bool,
 }
@@ -50,13 +52,11 @@ impl XyChartTypographyThemePlan {
         .unwrap_or(16.0);
         let root_size = crate::number_format::canonicalize_number(root_size);
         let mut role_fonts = XyChartTextRole::ALL.map(|role| {
-            let configured_size = role.configured_size(effective_config.as_value());
-            // Legend's accepted numeric configuration is normalized to its independent 1px floor.
-            let source_owns_size = configured_size
-                .is_some_and(|size| role == XyChartTextRole::Legend || size >= 0.0)
+            let (size, admissible) = role.prepare_size(effective_config.as_value(), root_size);
+            let source_owns_size = admissible
                 && effective_config.config_path_overrides_typed_default(role.size_config_path());
             RoleFont {
-                size: PreparedFontSize::new(role.size_or_default(configured_size), root_size),
+                size,
                 weight: None,
                 source_owns_size,
                 size_rule: None,
@@ -142,9 +142,13 @@ impl XyChartTypographyThemePlan {
         weight.clone_from(&font.weight);
     }
 
-    /// Parity keeps raw invalid attributes while geometry and visibility use the inherited size.
-    pub(crate) fn svg_font_size(&self, role: XyChartTextRole) -> f64 {
-        self.role_fonts[role as usize].size.raw
+    /// Known numeric sizes stay canonical; unresolved CSS stays attached to its actual role.
+    pub(crate) fn svg_font_size(&self, role: XyChartTextRole) -> &str {
+        &self.role_fonts[role as usize].size.css
+    }
+
+    pub(crate) fn font_size_known(&self, role: XyChartTextRole) -> bool {
+        self.role_fonts[role as usize].size.known
     }
 
     pub(crate) fn font_weight(&self, role: XyChartTextRole) -> Option<&str> {
@@ -183,6 +187,7 @@ impl XyChartTypographyThemePlan {
             .then(|| XyChartTypographyTerminalReceipt {
                 expected_font_family: self.font_family_css().into(),
                 emitted_visible_text_count: 0,
+                emitted_uncertain_text_count: 0,
                 css_seen: false,
                 font_family_matches: true,
             })
@@ -192,6 +197,7 @@ impl XyChartTypographyThemePlan {
         self.terminal_receipt
             .set(XyChartTypographyTerminalSeal {
                 emitted_visible_text_count: receipt.emitted_visible_text_count,
+                emitted_uncertain_text_count: receipt.emitted_uncertain_text_count,
                 css_seen: receipt.css_seen,
                 font_family_matches: receipt.font_family_matches,
             })
@@ -215,7 +221,8 @@ impl XyChartTypographyThemePlan {
             return;
         };
 
-        let has_visible_text = receipt.emitted_visible_text_count != 0;
+        let has_uncertain_text = receipt.emitted_uncertain_text_count != 0;
+        let has_visible_text = receipt.emitted_visible_text_count != 0 || has_uncertain_text;
         self.inherited_font_stack
             .record_unsupported_typography_evidence(evidence, has_visible_text);
         if !has_visible_text {
@@ -232,6 +239,7 @@ impl XyChartTypographyThemePlan {
             match self.inherited_font_stack.outcome() {
                 InheritedFontStackOutcome::Typed
                     if self.inherited_font_stack.typed_font_stack_active()
+                        && !has_uncertain_text
                         && receipt.css_seen
                         && receipt.font_family_matches =>
                 {
@@ -259,6 +267,10 @@ impl XyChartTypographyTerminalReceipt {
 
     pub(crate) fn record_visible_text(&mut self) {
         self.emitted_visible_text_count = self.emitted_visible_text_count.saturating_add(1);
+    }
+
+    pub(crate) fn record_uncertain_text(&mut self) {
+        self.emitted_uncertain_text_count = self.emitted_uncertain_text_count.saturating_add(1);
     }
 }
 
@@ -303,12 +315,129 @@ impl XyChartTextRole {
         }
     }
 
-    fn configured_size(self, config: &serde_json::Value) -> Option<f64> {
+    fn configured_value(self, config: &serde_json::Value) -> Option<&serde_json::Value> {
         self.size_config_path()
             .split('.')
             .try_fold(config, |value, key| value.get(key))
-            .and_then(crate::config::json_f64_css_px)
-            .map(crate::number_format::canonicalize_number)
+    }
+
+    fn configured_size(self, config: &serde_json::Value) -> Option<f64> {
+        self.configured_value(config)
+            .and_then(|value| {
+                crate::config::json_f64_css_px(value).or_else(|| {
+                    // Title and axis text emit SVG sizes directly. Legend dimensions also
+                    // multiply their numeric option, so its existing numeric contract is separate.
+                    if self == Self::Legend {
+                        return None;
+                    }
+                    value
+                        .as_str()
+                        .and_then(crate::mermaid_style::resolve_mermaid_absolute_font_size_px)
+                })
+            })
+            .map(|size| {
+                if self == Self::Legend {
+                    crate::number_format::canonicalize_number(size)
+                } else {
+                    size
+                }
+            })
+    }
+
+    fn prepare_size(self, config: &serde_json::Value, root_size: f64) -> (PreparedFontSize, bool) {
+        use crate::mermaid_style::{
+            CssFontSizeContext, CssFontSizeOwnership, css_font_size_value_override,
+            parse_style_declaration,
+        };
+
+        // Legend layout performs numeric arithmetic, including its existing 1px floor.
+        if self == Self::Legend {
+            let configured = self.configured_size(config);
+            return (
+                PreparedFontSize::new(self.size_or_default(configured), root_size),
+                configured.is_some(),
+            );
+        }
+        let Some(value) = self.configured_value(config) else {
+            return (
+                PreparedFontSize::new(self.default_font_size(), root_size),
+                false,
+            );
+        };
+        // The shallow title option's configuration merge retains its default for null and
+        // container values. Nested axis nulls instead reach the SVG attribute and inherit.
+        if self == Self::Title && (value.is_null() || value.is_array() || value.is_object()) {
+            return (
+                PreparedFontSize::new(self.default_font_size(), root_size),
+                false,
+            );
+        }
+        let mut value = value;
+        while let serde_json::Value::Array(items) = value {
+            let [item] = items.as_slice() else {
+                return (PreparedFontSize::css("inherit", root_size, true), false);
+            };
+            value = item;
+        }
+        if let Some(css) = value.as_str() {
+            // Presentation attributes accept a value, not declaration priority or terminators.
+            // Inspect the existing CSS token stream before any legacy numeric normalization.
+            let mut parser = cssparser::Parser::new(css);
+            while let Ok(token) = parser.next() {
+                if matches!(
+                    token,
+                    cssparser::Token::Semicolon | cssparser::Token::Delim('!')
+                ) {
+                    return (PreparedFontSize::css("inherit", root_size, true), false);
+                }
+            }
+            let ownership = css_font_size_value_override(css).map(|size| size.ownership());
+            // Preserve host-dependent and unrepresentable values before a legacy number
+            // coercion can erase their uncertainty, e.g. numeric underflow to zero.
+            if ownership == Some(CssFontSizeOwnership::Unverified) {
+                return (PreparedFontSize::css(css, root_size, false), true);
+            }
+            if let Some(size) = crate::config::json_f64_css_px(value)
+                .or_else(|| crate::mermaid_style::resolve_mermaid_absolute_font_size_px(css))
+            {
+                return (PreparedFontSize::new(size, root_size), size >= 0.0);
+            }
+            // Unlike stylesheet font-size, an SVG attribute accepts unitless numbers.
+            // A numeric token outside the measurable range is unknown, not invalid CSS.
+            let mut parser = cssparser::Parser::new(css);
+            if matches!(parser.next(), Ok(cssparser::Token::Number { .. })) && parser.is_exhausted()
+            {
+                return (PreparedFontSize::css(css, root_size, false), true);
+            }
+            return match ownership {
+                None => (PreparedFontSize::css("inherit", root_size, true), false),
+                Some(CssFontSizeOwnership::Inherited) => {
+                    (PreparedFontSize::css(css, root_size, true), true)
+                }
+                Some(CssFontSizeOwnership::SourceOwned) => {
+                    let resolved = parse_style_declaration(&format!("font-size:{css}"))
+                        .filter(|declaration| !declaration.analysis().depends_on_root_font_size())
+                        .and_then(|declaration| {
+                            declaration.resolve_font_size_px(CssFontSizeContext::uniform(root_size))
+                        });
+                    (
+                        PreparedFontSize::css(
+                            css,
+                            resolved.unwrap_or(root_size),
+                            resolved.is_some(),
+                        ),
+                        true,
+                    )
+                }
+                Some(CssFontSizeOwnership::Unverified) => unreachable!("handled above"),
+            };
+        }
+        if let Some(size) = crate::config::json_f64(value) {
+            return (PreparedFontSize::new(size, root_size), size >= 0.0);
+        }
+        // Unsupported JSON types cannot supply an SVG font-size declaration. An ignored
+        // declaration inherits; it must not create a new role default or own a typed size.
+        (PreparedFontSize::css("inherit", root_size, true), false)
     }
 
     pub(super) const fn default_font_size(self) -> f64 {
@@ -364,16 +493,31 @@ struct RoleFont {
 
 #[derive(Debug)]
 struct PreparedFontSize {
-    raw: f64,
+    css: String,
     used: f64,
+    known: bool,
 }
 
 impl PreparedFontSize {
     fn new(raw: f64, root_size: f64) -> Self {
+        let invalid_negative = raw < 0.0;
         let raw = crate::number_format::canonicalize_number(raw);
         Self {
-            raw,
-            used: if raw < 0.0 { root_size } else { raw },
+            css: if invalid_negative && raw == 0.0 {
+                "inherit".to_owned()
+            } else {
+                crate::number_format::canonical_number(raw).to_string()
+            },
+            used: if invalid_negative { root_size } else { raw },
+            known: true,
+        }
+    }
+
+    fn css(css: &str, used: f64, known: bool) -> Self {
+        Self {
+            css: css.to_owned(),
+            used: crate::number_format::canonicalize_number(used),
+            known,
         }
     }
 }
