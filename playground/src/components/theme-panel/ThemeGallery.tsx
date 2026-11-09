@@ -12,6 +12,7 @@ import { ThemeChoiceCards, type ThemeCatalogChoice } from "./ThemeChoiceCards";
 import { currentRecipeIdentity, selectedThemeKey } from "./theme-selection";
 import { ThemeShowcaseLauncher } from "./ThemeShowcaseLauncher";
 import { preferredAppearanceForSelection } from "@/src/lib/theme-appearance";
+import { themeDesignTreatment } from "@/src/lib/theme-library";
 
 export default function ThemeGallery({ workspace, mermaidThemes, presets, catalog, selectedAppearance, catalogReady, familyId, pending, canSelectRecipes, onSelect }: {
   readonly workspace: Readonly<WorkspaceSnapshot>;
@@ -76,6 +77,9 @@ export default function ThemeGallery({ workspace, mermaidThemes, presets, catalo
       description: t(`themeGallery.themes.${theme.id}`),
       colors: theme.appearances?.find((entry) => entry.appearance === (recipe?.explorationId === theme.id ? selectedAppearance : theme.appearance))?.colors ?? theme.colors,
       appearances: theme.appearances?.map((entry) => entry.appearance) ?? [theme.appearance],
+      searchTerms: theme.families.map((family) => `${family} ${t(`themeGallery.samples.${family}`)}`).join(" "),
+      treatment: pending ? "waiting" : themeDesignTreatment(theme, familyId),
+      designedFamilies: theme.families,
       available: canSelectRecipes,
       loading: !canSelectRecipes,
     })),

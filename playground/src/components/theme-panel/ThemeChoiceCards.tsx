@@ -20,6 +20,7 @@ export interface ThemeCatalogChoice {
   readonly maturity?: string;
   readonly treatment?: ThemeFamilyTreatment | "waiting";
   readonly appearances?: readonly ThemeAppearance[];
+  readonly designedFamilies?: readonly string[];
 }
 
 export function ThemeChoiceCards({ entries, selectedKey, onSelect }: {
@@ -50,6 +51,10 @@ export function ThemeChoiceCards({ entries, selectedKey, onSelect }: {
         {entry.description && <span className="text-[11px] leading-relaxed text-muted-foreground">{entry.description}</span>}
         {entry.appearances && entry.appearances.length > 0 && <span className="text-[10px] text-muted-foreground" data-theme-appearances>
           {entry.appearances.length > 1 ? t("appearanceMode.paired") : t("appearanceMode.only", { appearance: t(`appearanceMode.${entry.appearances[0]}`) })}
+        </span>}
+        {entry.designedFamilies && <span className="text-[10px] text-muted-foreground" data-theme-family-count
+          title={entry.designedFamilies.map((family) => t(`themeGallery.samples.${family}`, { defaultValue: family })).join(" · ")}>
+          {t("themeLibrary.familyCount", { count: entry.designedFamilies.length })}
         </span>}
         {entry.treatment && <span className="text-[11px] leading-relaxed text-muted-foreground">
           {t(entry.treatment === "waiting" ? "themePanel.treatmentWaiting" : `themePanel.treatments.${entry.treatment}`)}

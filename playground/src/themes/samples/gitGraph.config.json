@@ -1,0 +1,9 @@
+{
+  "look": "classic",
+  "gitGraph": {
+    "showBranches": true,
+    "showCommitLabel": true,
+    "rotateCommitLabel": false,
+    "diagramPadding": 24
+  }
+}

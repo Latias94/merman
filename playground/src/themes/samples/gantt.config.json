@@ -1,0 +1,11 @@
+{
+  "look": "classic",
+  "gantt": {
+    "useMaxWidth": false,
+    "barHeight": 28,
+    "barGap": 10,
+    "topPadding": 64,
+    "leftPadding": 160,
+    "rightPadding": 36
+  }
+}

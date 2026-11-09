@@ -1,0 +1,27 @@
+requirementDiagram
+    direction TB
+
+    requirement reviewed_publication {
+        id: DOC-101
+        text: "Every report retains its reviewed source."
+        risk: medium
+        verifymethod: inspection
+    }
+    functionalRequirement archived_reference_integrity {
+        id: DOC-102
+        text: "Each citation resolves to an archived reference."
+        risk: low
+        verifymethod: test
+    }
+    element document_review_service {
+        type: application
+        docref: design/review-service.md
+    }
+    element publication_acceptance_suite {
+        type: test suite
+        docref: checks/publication-acceptance.md
+    }
+
+    reviewed_publication - contains -> archived_reference_integrity
+    document_review_service - satisfies -> archived_reference_integrity
+    publication_acceptance_suite - verifies -> reviewed_publication

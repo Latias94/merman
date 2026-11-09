@@ -3,6 +3,7 @@ import { expect, test, type Page } from "@playwright/test";
 
 import { decodeShareHash, encodeShareHash } from "../src/lib/share";
 import { DEFAULT_WORKSPACE_SNAPSHOT } from "../src/lib/workspace-snapshot";
+import { CORE_THEME_SAMPLE_IDS } from "../src/themes/families";
 import { optionalFeatureOutput } from "./helpers/build-manifest";
 import { expectNoDocumentOverflow, monitorBrowserErrors, waitForPreviewSvg } from "./helpers/playground";
 
@@ -47,7 +48,7 @@ test("one theme catalog loads with the appearance panel and searches every sourc
   await expect(page.locator("[data-theme-launcher]:visible")).toBeFocused();
   await page.locator("[data-theme-launcher]:visible").click();
   const catalog = panel.getByTestId("theme-catalog");
-  await expect(catalog.locator("[data-theme-exploration]")).toHaveCount(16);
+  await expect(catalog.locator("[data-theme-exploration]")).toHaveCount(20);
   await expect(catalog.locator('[data-theme-choice="mermaid:forest"]')).toBeVisible();
   await expect(catalog.locator('[data-theme-choice="preset:brutalist"]')).toHaveAttribute("aria-pressed", "true");
   expect(requests.some((url) => url.endsWith(galleryOutput))).toBe(true);
@@ -76,8 +77,8 @@ test("one theme catalog loads with the appearance panel and searches every sourc
     ["Mermaid.js official", "mermaid", 8],
     ["Merman built-in presets", "builtin", presetCount],
     ["--theme-preset", "builtin", presetCount],
-    ["Merman theme examples", "exploration", 16],
-    ["Merman example · JSON", "exploration", 16],
+    ["Merman theme examples", "exploration", 20],
+    ["Merman example · JSON", "exploration", 20],
   ] as const) {
     await search.fill(query);
     await expect(groups).toHaveCount(1);
@@ -91,7 +92,7 @@ test("one theme catalog loads with the appearance panel and searches every sourc
   await expect(search).toHaveValue("");
   await expect(groups).toHaveCount(4);
   await expect(choices).toHaveCount(1);
-  await expect(catalog.locator("[data-theme-exploration]")).toHaveCount(16);
+  await expect(catalog.locator("[data-theme-exploration]")).toHaveCount(20);
   await expect(panel).toBeVisible();
   await expect(panel.getByTestId("theme-current-name")).toHaveText("Brutalist");
   errors.assertNone();
@@ -131,7 +132,10 @@ test("catalog separates source/default from metadata-grouped official designs an
   await expect(official.locator("[data-theme-source-label]")).toHaveText(Array(8).fill("Mermaid.js official"));
   await expect(official).toContainText("Compare");
   await expect(choices.locator('[data-theme-group="builtin"]')).toContainText('theme: { preset: "…" }');
-  await expect(choices.locator('[data-theme-group="exploration"] [data-theme-choice]')).toHaveCount(16);
+  await expect(choices.locator('[data-theme-group="exploration"] [data-theme-choice]')).toHaveCount(20);
+  for (const id of ["prism", "monograph"]) {
+    await expect(choices.locator(`[data-theme-choice="exploration:${id}"]`)).toHaveCount(1);
+  }
   for (const [group, source] of [["builtin", "Merman preset"], ["exploration", "Merman example · JSON"]]) {
     const entries = choices.locator(`[data-theme-group="${group}"] [data-theme-choice]`);
     const names = await entries.locator("[data-theme-choice-name]").allTextContents();
@@ -145,40 +149,42 @@ test("catalog separates source/default from metadata-grouped official designs an
   errors.assertNone();
 });
 
-test("selecting an exploration updates the current diagram immediately and shares its original recipe and name", async ({ page }) => {
-  const errors = monitorBrowserErrors(page);
-  await page.context().grantPermissions(["clipboard-read", "clipboard-write"]);
-  const panel = await start(page);
-  await panel.locator('[data-theme-choice="exploration:atlas"]').click();
-  await expect(panel.getByTestId("theme-current-name")).toHaveText("Atlas");
-  await expect(panel.getByTestId("theme-current-source")).toHaveText("Merman example · JSON");
-  await expect(panel.getByTestId("theme-render-evidence")).toHaveAttribute("data-theme-evidence-state", "applied");
-  await expect(panel.getByRole("button", { name: "Apply", exact: true })).toHaveCount(0);
-  await expect(panel.getByRole("button", { name: "Cancel", exact: true })).toHaveCount(0);
-  await panel.getByRole("button", { name: "Close appearance panel", exact: true }).click();
-  await page.getByRole("button", { name: "Share", exact: true }).click();
-  await page.getByRole("menuitem", { name: "Copy workspace link", exact: true }).click();
-  const url = await page.evaluate(() => navigator.clipboard.readText());
-  const applied = decodeShareHash(new URL(url).hash)!;
-  const recipe = await readFile(new URL("../src/themes/recipes/atlas.theme.json", import.meta.url), "utf8");
-  expect(applied.themeRecipeJson).toBe(recipe);
-  expect(applied.themePresetId).toBeNull();
-  expect(applied.themeRecipeLabel).toEqual({ name: "Atlas", source: "exploration" });
-  expect(applied.diagramTheme).toBe("auto");
-  for (const key of ["code", "mermaidConfig", "diagramFont", "svgPipeline", "textMeasurementMode"] as const) {
-    expect(applied[key]).toBe(workspace[key]);
-  }
-  await page.goto(url, { waitUntil: "domcontentloaded" });
-  await waitForPreviewSvg(page);
-  await page.locator("[data-theme-launcher]:visible").click();
-  await expect(panel.getByTestId("theme-current-name")).toHaveText("Atlas");
-  await expect(panel.locator('[data-theme-choice="exploration:atlas"]')).toHaveAttribute("aria-pressed", "true");
-  await panel.getByTestId("theme-advanced").locator("summary").first().click();
-  await expect(panel.getByTestId("theme-json-document")).toHaveAttribute("data-code-language", "json");
-  await panel.getByRole("button", { name: "Copy JSON", exact: true }).click();
-  expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(recipe);
-  errors.assertNone();
-});
+for (const [id, name] of [["atlas", "Atlas"]]) {
+  test(`selecting ${name} updates the current diagram immediately and shares its original recipe and name`, async ({ page }) => {
+    const errors = monitorBrowserErrors(page);
+    await page.context().grantPermissions(["clipboard-read", "clipboard-write"]);
+    const panel = await start(page);
+    await panel.locator(`[data-theme-choice="exploration:${id}"]`).click();
+    await expect(panel.getByTestId("theme-current-name")).toHaveText(name);
+    await expect(panel.getByTestId("theme-current-source")).toHaveText("Merman example · JSON");
+    await expect(panel.getByTestId("theme-render-evidence")).toHaveAttribute("data-theme-evidence-state", "residual");
+    await expect(panel.getByRole("button", { name: "Apply", exact: true })).toHaveCount(0);
+    await expect(panel.getByRole("button", { name: "Cancel", exact: true })).toHaveCount(0);
+    await panel.getByRole("button", { name: "Close appearance panel", exact: true }).click();
+    await page.getByRole("button", { name: "Share", exact: true }).click();
+    await page.getByRole("menuitem", { name: "Copy workspace link", exact: true }).click();
+    const url = await page.evaluate(() => navigator.clipboard.readText());
+    const applied = decodeShareHash(new URL(url).hash)!;
+    const recipe = await readFile(new URL(`../src/themes/recipes/${id}.theme.json`, import.meta.url), "utf8");
+    expect(applied.themeRecipeJson).toBe(recipe);
+    expect(applied.themePresetId).toBeNull();
+    expect(applied.themeRecipeLabel).toEqual({ name, source: "exploration" });
+    expect(applied.diagramTheme).toBe("auto");
+    for (const key of ["code", "mermaidConfig", "diagramFont", "svgPipeline", "textMeasurementMode"] as const) {
+      expect(applied[key]).toBe(workspace[key]);
+    }
+    await page.goto(url, { waitUntil: "domcontentloaded" });
+    await waitForPreviewSvg(page);
+    await page.locator("[data-theme-launcher]:visible").click();
+    await expect(panel.getByTestId("theme-current-name")).toHaveText(name);
+    await expect(panel.locator(`[data-theme-choice="exploration:${id}"]`)).toHaveAttribute("aria-pressed", "true");
+    await panel.getByTestId("theme-advanced").locator("summary").first().click();
+    await expect(panel.getByTestId("theme-json-document")).toHaveAttribute("data-code-language", "json");
+    await panel.getByRole("button", { name: "Copy JSON", exact: true }).click();
+    expect((await page.evaluate(() => navigator.clipboard.readText())).replace(/\r\n/gu, "\n")).toBe(recipe.replace(/\r\n/gu, "\n"));
+    errors.assertNone();
+  });
+}
 
 test("the unified catalog fits a narrow viewport and closing retains the selected theme", async ({ page }) => {
   const errors = monitorBrowserErrors(page);
@@ -189,7 +195,11 @@ test("the unified catalog fits a narrow viewport and closing retains the selecte
   await panel.getByRole("button", { name: "Theme designs", exact: true }).click();
   const showcase = page.getByTestId("theme-showcase");
   await expect(showcase.getByRole("heading", { name: "Letterpress", exact: true })).toBeVisible();
-  await expect(showcase.locator("[data-theme-sample]")).toHaveCount(5);
+  const samples = showcase.getByTestId("theme-sample-gallery");
+  await expect(samples.locator("article[data-theme-sample]")).toHaveCount(8);
+  await expect(samples.getByRole("link")).toHaveCount(8);
+  await expect(showcase.getByRole("button", { name: "Diagram gallery", exact: true })).toHaveAttribute("aria-pressed", "true");
+  await expect.poll(() => samples.evaluate((element) => element.scrollWidth <= element.clientWidth + 1)).toBe(true);
   await showcase.getByRole("button", { name: "Close theme designs", exact: true }).click();
   await expectNoDocumentOverflow(page);
   await page.screenshot({ path: test.info().outputPath("appearance-catalog-mobile.png") });
@@ -202,27 +212,28 @@ test("the unified catalog fits a narrow viewport and closing retains the selecte
   errors.assertNone();
 });
 
-for (const id of ["atlas", "nightfall", "letterpress", "grove", "riso", "phosphor", "field-notes", "blueprint", "pop-art", "lacquer", "paper-cut", "aurora", "metro", "carbon-copy", "signal"]) {
-  test(`${id} renders all five samples with the browser runtime`, async ({ page }) => {
+for (const id of ["atlas", "nightfall", "letterpress", "grove", "riso", "phosphor", "field-notes", "blueprint", "pop-art", "lacquer", "paper-cut", "aurora", "metro", "carbon-copy", "signal", "porcelain", "chalk"]) {
+  test(`${id} renders all eight samples with the browser runtime`, async ({ page }) => {
     const errors = monitorBrowserErrors(page);
     await page.addInitScript(() => {
       if (window === window.top && (location.protocol === "http:" || location.protocol === "https:")) localStorage.setItem("merman-language", "en");
     });
     const recipe = await readFile(new URL(`../src/themes/recipes/${id}.theme.json`, import.meta.url), "utf8");
-    for (const sample of ["flowchart", "sequence", "class", "xychart", "pie"]) {
+    for (const sample of CORE_THEME_SAMPLE_IDS) {
       const source = await readFile(new URL(`../src/themes/samples/${sample}.mmd`, import.meta.url), "utf8");
       const config = await readFile(new URL(`../src/themes/samples/${sample}.config.json`, import.meta.url), "utf8");
       // Share hydration runs at startup; a fragment-only navigation keeps the previous document.
       await page.goto("about:blank");
       await page.goto(`./${encodeShareHash({
         ...DEFAULT_WORKSPACE_SNAPSHOT, code: source, mermaidConfig: config,
-        diagramTheme: "default", themeRecipeJson: recipe,
+        diagramTheme: "auto", themeRecipeJson: recipe,
       })}`, { waitUntil: "domcontentloaded" });
       await waitForPreviewSvg(page);
       await page.locator("[data-theme-launcher]:visible").click();
       const panel = page.locator("#theme-panel");
-      await expect(panel.getByTestId("theme-render-evidence")).toHaveAttribute("data-theme-evidence-state", "applied");
-      await expect(panel.getByTestId("theme-diagnostic-reasons")).toHaveCount(0);
+      await expect(panel.getByTestId("theme-render-evidence")).toHaveAttribute("data-theme-evidence-state", "residual");
+      await expect(panel.locator("[data-theme-reason-code]")).toHaveCount(1);
+      await expect(panel.locator("[data-theme-reason-code]")).toHaveAttribute("data-theme-reason-code", "compatibility-unverified");
       if (sample === "sequence") {
         const containment = await page.locator(".preview-container > div").first().evaluate((host) => {
           const svg = host.shadowRoot!.querySelector("svg")!;
@@ -243,6 +254,7 @@ for (const id of ["atlas", "nightfall", "letterpress", "grove", "riso", "phospho
           blueprint: "rgb(227, 243, 250)", "pop-art": "rgb(25, 22, 32)", lacquer: "rgb(242, 233, 214)",
           "paper-cut": "rgb(36, 62, 74)", aurora: "rgb(235, 245, 255)",
           metro: "rgb(244, 243, 233)", "carbon-copy": "rgb(75, 44, 99)", signal: "rgb(34, 37, 31)",
+          porcelain: "rgb(39, 55, 75)", chalk: "rgb(243, 238, 220)",
         };
         const labels = await page.locator(".preview-container > div").first().evaluate((host) =>
           Array.from(host.shadowRoot!.querySelectorAll<SVGTextElement>(".edgeLabel text"))

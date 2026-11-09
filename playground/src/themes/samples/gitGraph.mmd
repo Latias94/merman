@@ -1,0 +1,19 @@
+---
+title: Release routes
+---
+gitGraph LR:
+  commit id: "Plan"
+  branch feature
+  checkout feature
+  commit id: "Build"
+  checkout main
+  commit id: "Docs"
+  branch review
+  checkout review
+  commit id: "Audit"
+  checkout feature
+  commit id: "Test"
+  checkout main
+  merge feature id: "Integrate"
+  merge review id: "Approve" tag: "v1.0"
+  commit id: "Ship"

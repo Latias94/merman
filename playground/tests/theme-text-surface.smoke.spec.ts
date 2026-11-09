@@ -17,6 +17,8 @@ import {
   waitForPreviewSvg,
 } from "./helpers/playground";
 import { encodeShareHash } from "../src/lib/share";
+import { DEFAULT_WORKSPACE_SNAPSHOT } from "../src/lib/workspace-snapshot";
+import { chooseThemeOption } from "./helpers/theme-select";
 
 const NOTE_TEXT = "[data-c6-role='note-label'][data-c6-occurrence='note-0-line-0']";
 const NOTE_SURFACE = "[data-c6-surface='note-0']";
@@ -69,7 +71,7 @@ test("observes State dark native Note text after an immediate Appearance choice 
   const appearance = page.getByRole("region", { name: "Appearance", exact: true });
   const editorDark = appearance.locator('[data-theme-choice="preset:editor"]');
   await editorDark.click();
-  await appearance.getByTestId("theme-appearance-control").getByRole("combobox").selectOption("dark");
+  await chooseThemeOption(page, appearance.getByTestId("theme-appearance-control").getByRole("combobox"), "dark");
   await expect(editorDark).toHaveAttribute("aria-pressed", "true");
 
   const mountedSvg = page
@@ -102,6 +104,91 @@ test("observes State dark native Note text after an immediate Appearance choice 
     0x42, 0x20, 0x06,
   ]);
   errors.assertNone();
+});
+
+test("centers the measured Pop Art composite title inside its native header", async ({ page }) => {
+  const errors = monitorBrowserErrors(page);
+  const [code, mermaidConfig, themeRecipeJson] = await Promise.all([
+    "samples/state.mmd", "samples/state.config.json", "recipes/pop-art.theme.json",
+  ].map((name) => readFile(new URL(`../src/themes/${name}`, import.meta.url), "utf8")));
+  await page.goto(`./${encodeShareHash({
+    ...DEFAULT_WORKSPACE_SNAPSHOT, code, mermaidConfig, themeRecipeJson,
+    diagramFont: "inherit", diagramTheme: "auto", themePresetId: null,
+  })}`, { waitUntil: "domcontentloaded" });
+  await waitForPreviewSvg(page);
+  const svg = page.locator(".preview-container > div").first().locator("svg");
+  await expect(svg).toContainText("Review");
+  const centered = await svg.evaluate(async (node) => {
+    await document.fonts.ready;
+    const composite = node.querySelector('[data-id="Review"]')!;
+    const box = (selector: string) => {
+      const element = composite.querySelector<SVGGraphicsElement>(selector)!;
+      const bounds = element.getBBox();
+      const matrix = (node as SVGSVGElement).getScreenCTM()!.inverse().multiply(element.getScreenCTM()!);
+      return {
+        topLeft: new DOMPoint(bounds.x, bounds.y).matrixTransform(matrix),
+        bottomRight: new DOMPoint(bounds.x + bounds.width, bounds.y + bounds.height).matrixTransform(matrix),
+      };
+    };
+    const text = box(".cluster-label text");
+    const outer = box("rect.outer");
+    const inner = box("rect.inner");
+    return {
+      x: (text.topLeft.x + text.bottomRight.x - outer.topLeft.x - outer.bottomRight.x) / 2,
+      y: (text.topLeft.y + text.bottomRight.y - outer.topLeft.y - inner.topLeft.y) / 2,
+      contained: text.topLeft.y >= outer.topLeft.y && text.bottomRight.y <= inner.topLeft.y,
+    };
+  });
+  expect(centered.contained).toBe(true);
+  // Bound host font rounding in SVG user units, independent of viewport scale.
+  expect(Math.abs(centered.x)).toBeLessThan(1);
+  expect(Math.abs(centered.y)).toBeLessThan(1);
+  errors.assertNone();
+});
+
+test("composites State depth and its translucent surface as separate canvas layers", async ({ page }) => {
+  for (const colorSpace of ["srgb", "linear-rgb"]) {
+    for (const [opacity, fillOpacity, expected] of [
+      [0.75, 1, [204, 204, 204, 239]],
+      [1, 0.5, [170, 170, 170, 191]],
+    ] as const) {
+      const svg = renderBindingSvg(
+        `---\nconfig: {"look":"classic","layout":"dagre","htmlLabels":false}\n---\nstateDiagram-v2\nA\nstyle A fill:#ffffff,fill-opacity:${fillOpacity},opacity:${opacity},stroke:none\n`,
+        JSON.stringify({ theme: { recipe: {
+          schema_version: 1, kind: "design", design: {
+            canvas: { base: "transparent" },
+            rules: [{ family: "state", target: "state", style: { effect: {
+              kind: "shadow-stack", composition: "independent", color_space: colorSpace,
+              shadows: [{ offset_x: 6, offset_y: 6, std_deviation: 0, color: "#000000" }],
+            } } }],
+          },
+        } } }),
+      );
+      await page.setContent(svg);
+      const rgba = await page.locator("svg").evaluate(async (root, markup) => {
+        const element = root.querySelector<SVGRectElement>(".nodes .node rect.basic.label-container")!;
+        const rect = element.getBBox();
+        const svg = root as SVGSVGElement;
+        const matrix = svg.getScreenCTM()!.inverse().multiply(element.getScreenCTM()!);
+        // Inside the face/depth overlap, away from text, stroke and offset boundaries.
+        const point = new DOMPoint(rect.x + rect.width - 14, rect.y + rect.height - 4).matrixTransform(matrix);
+        const viewBox = svg.viewBox.baseVal;
+        const scale = 4;
+        const canvas = document.createElement("canvas");
+        canvas.width = Math.ceil(viewBox.width * scale);
+        canvas.height = Math.ceil(viewBox.height * scale);
+        const image = new Image();
+        image.src = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(markup)}`;
+        await image.decode();
+        const context = canvas.getContext("2d")!;
+        context.drawImage(image, 0, 0, viewBox.width * scale, viewBox.height * scale);
+        return [...context.getImageData(Math.floor((point.x - viewBox.x) * scale), Math.floor((point.y - viewBox.y) * scale), 1, 1).data];
+      }, svg);
+      for (const [index, value] of rgba.entries()) {
+        expect(Math.abs(value - expected[index]), `${colorSpace}, opacity=${opacity}, fill-opacity=${fillOpacity}, RGBA=${rgba}`).toBeLessThanOrEqual(2);
+      }
+    }
+  }
 });
 
 test("observes Packet dark byte, title, and field-label role surfaces", async ({

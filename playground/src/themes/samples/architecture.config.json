@@ -1,0 +1,8 @@
+{
+  "look": "classic",
+  "architecture": {
+    "useMaxWidth": false,
+    "iconSize": 64,
+    "padding": 36
+  }
+}

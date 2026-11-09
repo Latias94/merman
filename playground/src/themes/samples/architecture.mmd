@@ -1,0 +1,14 @@
+architecture-beta
+  group platform[Publishing platform]
+  group storage[Data services] in platform
+
+  service gateway(internet)[Public gateway] in platform
+  service api[Content API] in platform
+  service worker[Build worker] in platform
+  service database(database)[Document store] in storage
+  service archive(disk)[Asset archive] in storage
+
+  gateway:R -[HTTPS]-> L:api
+  api:B -[jobs]-> T:worker
+  api:R -[read]-> L:database
+  worker:R -[write]-> L:archive

@@ -1,0 +1,10 @@
+{
+  "htmlLabels": false,
+  "sankey": {
+    "width": 760,
+    "height": 440,
+    "useMaxWidth": true,
+    "showValues": true,
+    "nodeAlignment": "justify"
+  }
+}

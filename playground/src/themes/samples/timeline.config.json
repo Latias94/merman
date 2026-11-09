@@ -1,0 +1,8 @@
+{
+  "look": "classic",
+  "timeline": {
+    "useMaxWidth": false,
+    "padding": 36,
+    "leftMargin": 60
+  }
+}

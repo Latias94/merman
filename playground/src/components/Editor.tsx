@@ -5,6 +5,7 @@ import type { editor, IDisposable } from "monaco-editor";
 import { LoaderCircle, RotateCcw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { localMonaco } from "@/src/editor/monaco";
+import { bindCodeEditor } from "@/src/editor/code-editor-binding";
 import { WORKBENCH_EDITOR_THEMES } from "@/src/editor/workbench-editor-theme";
 import {
   ensureMermaidLanguageRegistered,
@@ -36,12 +37,12 @@ export function CodeEditor({
 }: CodeEditorProps) {
   const { t } = useTranslation();
   const editorRef = useRef<editor.IStandaloneCodeEditor | null>(null);
+  const sourceBindingRef = useRef<IDisposable | null>(null);
   const modelBindingRef = useRef<IDisposable | null>(null);
   const registrationRef = useRef<MermaidLanguageRegistration | null>(null);
   const languageGenerationRef = useRef(0);
   const languageFailureRef = useRef<Error | null>(null);
-  const code = useAppStore((state) => state.code);
-  const setCode = useAppStore((state) => state.setCode);
+  const [initialCode] = useState(() => useAppStore.getState().code);
   const resolvedTheme = useAppStore((state) => state.resolvedTheme);
   const editorTheme = WORKBENCH_EDITOR_THEMES[resolvedTheme].name;
   const [language, setLanguage] = useState<LanguageState>({
@@ -171,6 +172,8 @@ export function CodeEditor({
 
   useEffect(
     () => () => {
+      sourceBindingRef.current?.dispose();
+      sourceBindingRef.current = null;
       editorRef.current = null;
     },
     [],
@@ -214,6 +217,8 @@ export function CodeEditor({
         return;
       }
 
+      sourceBindingRef.current?.dispose();
+      sourceBindingRef.current = bindCodeEditor(instance, useAppStore, () => setRequestRejection(null));
       instance.layout();
       const registration = registrationRef.current;
       if (registration) {
@@ -225,14 +230,6 @@ export function CodeEditor({
       }
     },
     [bindLanguageService, markLanguageUnavailable, t],
-  );
-
-  const handleEditorChange = useCallback(
-    (value: string | undefined) => {
-      setRequestRejection(null);
-      setCode(value ?? "");
-    },
-    [setCode],
   );
 
   const retryLanguageService = useCallback(() => {
@@ -252,8 +249,7 @@ export function CodeEditor({
         language={MERMAID_LANGUAGE_ID}
         path={MERMAID_DOCUMENT_URI}
         theme={editorTheme}
-        value={code}
-        onChange={handleEditorChange}
+        defaultValue={initialCode}
         beforeMount={handleEditorWillMount}
         onMount={handleEditorDidMount}
         loading={
