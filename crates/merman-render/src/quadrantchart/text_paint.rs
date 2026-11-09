@@ -24,7 +24,7 @@ use crate::resources::OperationWorkMeter;
 /// Quadrant captions have separate Mermaid color channels.
 #[derive(Debug, Default)]
 pub(crate) struct QuadrantChartPaintPlan {
-    terminals: Arc<[(Box<str>, Box<str>)]>,
+    terminals: Arc<[TextTerminal]>,
     pending: BTreeMap<(ThemeTarget, usize), BTreeSet<ThemeCapability>>,
     borders: Arc<[BorderTerminal]>,
     evidence: FamilyThemeOutcomes,
@@ -105,7 +105,7 @@ impl QuadrantChartPaintPlan {
         let mut palette_targets = BTreeSet::new();
         let mut effect_targets = BTreeSet::new();
         // Ordinals follow the writer's text order: points, visible axis labels, title.
-        // Empty text elements are still checkpointed, but have no semantic occurrence.
+        // Empty and zero-size text elements are still checkpointed, but have no semantic occurrence.
         let x_count = layout
             .axis_labels
             .iter()
@@ -160,11 +160,8 @@ impl QuadrantChartPaintPlan {
                 if let Some(paint) = &paint {
                     label.fill = paint.css().to_string();
                 }
-                terminals.push((
-                    label.text.clone().into_boxed_str(),
-                    label.fill.clone().into_boxed_str(),
-                ));
-                if label.text.trim().is_empty() {
+                terminals.push(TextTerminal::from_label(label));
+                if !super::theme::text_is_visible(&label.text, label.font_size) {
                     continue;
                 }
                 ordinal += 1;
@@ -458,7 +455,7 @@ impl QuadrantChartPaintPlan {
 
 #[derive(Debug)]
 pub(crate) struct QuadrantChartPaintReceipt {
-    expected: Arc<[(Box<str>, Box<str>)]>,
+    expected: Arc<[TextTerminal]>,
     expected_borders: Arc<[BorderTerminal]>,
     next_border: usize,
     next: usize,
@@ -478,8 +475,31 @@ impl QuadrantChartPaintReceipt {
         self.valid &= self
             .expected
             .get(self.next)
-            .is_some_and(|(text, fill)| text.as_ref() == label.text && fill.as_ref() == label.fill);
+            .is_some_and(|expected| expected.matches(label));
         self.next = self.next.saturating_add(1);
+    }
+}
+
+#[derive(Debug, Clone)]
+struct TextTerminal {
+    text: Box<str>,
+    fill: Box<str>,
+    font_size: f64,
+}
+
+impl TextTerminal {
+    fn from_label(label: &QuadrantChartTextData) -> Self {
+        Self {
+            text: label.text.clone().into_boxed_str(),
+            fill: label.fill.clone().into_boxed_str(),
+            font_size: crate::number_format::canonicalize_number(label.font_size),
+        }
+    }
+
+    fn matches(&self, label: &QuadrantChartTextData) -> bool {
+        self.text.as_ref() == label.text
+            && self.fill.as_ref() == label.fill
+            && self.font_size == crate::number_format::canonicalize_number(label.font_size)
     }
 }
 
@@ -552,8 +572,8 @@ mod tests {
         QuadrantChartPaintPlan {
             evidence: FamilyThemeOutcomes::default(),
             terminals: vec![
-                ("Point".into(), "#123456".into()),
-                ("Title".into(), "#abcdef".into()),
+                TextTerminal::from_label(&label("Point", "#123456")),
+                TextTerminal::from_label(&label("Title", "#abcdef")),
             ]
             .into(),
             pending: BTreeMap::from([(
@@ -579,6 +599,13 @@ mod tests {
             (label("Point", "wrong"), label("Title", "#abcdef")),
             (label("Title", "#abcdef"), label("Point", "#123456")),
             (label("Point", "#123456"), label("Point", "#123456")),
+            (
+                QuadrantChartTextData {
+                    font_size: 0.0,
+                    ..label("Point", "#123456")
+                },
+                label("Title", "#abcdef"),
+            ),
         ] {
             let mut receipt = plan.begin_terminal_receipt().unwrap();
             receipt.record(&first);
@@ -606,6 +633,29 @@ mod tests {
             1
         );
     }
+
+    #[test]
+    fn paint_receipt_counts_zero_size_text_in_writer_order() {
+        let mut plan = plan();
+        let hidden = QuadrantChartTextData {
+            font_size: 0.0,
+            ..label("Point", "#123456")
+        };
+        plan.terminals = vec![
+            TextTerminal::from_label(&hidden),
+            TextTerminal::from_label(&label("Title", "#abcdef")),
+        ]
+        .into();
+        let mut missing = plan.begin_terminal_receipt().unwrap();
+        missing.record(&label("Title", "#abcdef"));
+        assert!(!plan.record_terminal(missing));
+
+        let mut complete = plan.begin_terminal_receipt().unwrap();
+        complete.record(&hidden);
+        complete.record(&label("Title", "#abcdef"));
+        assert!(plan.record_terminal(complete));
+    }
+
     #[test]
     fn border_receipt_rejects_missing_reordered_changed_and_foreign_terminals() {
         let mut plan = plan();

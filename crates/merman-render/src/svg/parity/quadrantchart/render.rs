@@ -209,7 +209,7 @@ pub(crate) fn render_quadrantchart_diagram_svg(
         );
         out.checkpoint()?;
         if let Some(receipt) = point_theme_receipt.as_mut() {
-            receipt.record_quadrant_text(&quadrant.text.text);
+            receipt.record_quadrant_text(&quadrant.text.text, quadrant.text.font_size);
         }
         out.push_str("</g>");
         out.checkpoint()?;
@@ -287,7 +287,7 @@ pub(crate) fn render_quadrantchart_diagram_svg(
         );
         out.checkpoint()?;
         if let Some(receipt) = point_theme_receipt.as_mut() {
-            receipt.record_point_text(&point.text.text);
+            receipt.record_point_text(&point.text.text, point.text.font_size);
         }
         if let Some(receipt) = text_paint_receipt.as_mut() {
             receipt.record(&point.text);
@@ -303,7 +303,7 @@ pub(crate) fn render_quadrantchart_diagram_svg(
     out.checkpoint()?;
     write_quadrantchart_axis_labels(&mut out, &layout.axis_labels, |label| {
         if let Some(receipt) = point_theme_receipt.as_mut() {
-            receipt.record_axis_label(&label.text);
+            receipt.record_axis_label(&label.text, label.font_size);
         }
         if let Some(receipt) = text_paint_receipt.as_mut() {
             receipt.record(label);
@@ -328,7 +328,7 @@ pub(crate) fn render_quadrantchart_diagram_svg(
         );
         out.checkpoint()?;
         if let Some(receipt) = point_theme_receipt.as_mut() {
-            receipt.record_title_text(&t.text);
+            receipt.record_title_text(&t.text, t.font_size);
         }
         if let Some(receipt) = text_paint_receipt.as_mut() {
             receipt.record(t);

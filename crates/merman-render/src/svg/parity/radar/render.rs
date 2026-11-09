@@ -464,7 +464,7 @@ pub(crate) fn render_radar_diagram_svg_model_with_theme_plans(
                 .map(str::trim)
                 .filter(|title| !title.is_empty())
         });
-    let title_visible = match title {
+    let title_nonempty = match title {
         Some(t) => {
             let _ = write!(
                 &mut out,
@@ -485,10 +485,10 @@ pub(crate) fn render_radar_diagram_svg_model_with_theme_plans(
     };
     out.checkpoint()?;
     if let Some(receipt) = text_paint_receipt.as_mut() {
-        receipt.record_title("radarTitle", title_visible);
+        receipt.record_title("radarTitle", title_nonempty);
     }
     if let Some(receipt) = typography_receipt.as_mut() {
-        receipt.record_title(title_visible);
+        receipt.record_title(title_nonempty);
     }
     if let Some(receipt) = title_theme_receipt.as_mut() {
         receipt.record_title_text("radarTitle");
