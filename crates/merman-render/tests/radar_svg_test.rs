@@ -567,9 +567,11 @@ fn radar_zero_size_text_does_not_certify_fonts_but_positive_and_host_sizes_do() 
         ("-0.0pt", 0.0, 0.0, false),
         ("0em", 0.0, 0.0, false),
         ("0%", 0.0, 0.0, false),
+        ("0px", -1.0, -1.0, false),
         ("18px", 0.0, 0.0, true),
         ("0px", 12.0, 0.0, true),
         ("0px", 0.0, 12.0, true),
+        ("0px", 0.5, 0.0, true),
         ("0px", 1e-10, 1e-10, false),
         ("var(--radar-size)", 0.0, 0.0, true),
         ("calc(0px + 1vw)", 0.0, 0.0, true),
@@ -620,6 +622,63 @@ fn radar_zero_size_text_does_not_certify_fonts_but_positive_and_host_sizes_do() 
             "{config}"
         );
         assert_eq!(evidence.theme_residual_count(), 0, "{config}");
+    }
+}
+
+#[test]
+fn radar_negative_local_sizes_inherit_root_visibility_for_typography() {
+    let theme = radar_typography_theme(
+        ThemeTextStyle::default()
+            .with_font_stack(FontStack::single("RadarInherited").unwrap())
+            .with_font_weight(700)
+            .unwrap(),
+    );
+    for (root_size, local_size, visible) in [
+        ("0px", -1.0, false),
+        ("0px", 0.0, false),
+        ("0px", 0.5, true),
+        ("16px", -1.0, true),
+        ("var(--radar-size)", -1.0, true),
+    ] {
+        let config = radar_label_size_config(root_size, local_size, local_size);
+        let rendered = render_radar_with_theme_requirement(
+            "radar-beta\naxis A,B,C\ncurve Alpha{1,2,3}\n",
+            &theme,
+            MermaidEngine::new().with_site_config(
+                merman_core::presentation::SourcePresentationConfig::from_value(config.clone()),
+            ),
+            ThemePortabilityRequirement::BestEffort,
+        )
+        .unwrap();
+        let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+        assert_eq!(
+            document
+                .descendants()
+                .filter(|node| node.has_tag_name("text"))
+                .count(),
+            5,
+            "all text terminals, including the empty title, remain checkpointed"
+        );
+        if local_size == -1.0 {
+            let stylesheet = radar_stylesheet(rendered.svg());
+            assert!(stylesheet.contains(".radarAxisLabel{font-size:-1px;"));
+            assert!(stylesheet.contains(".radarLegendText{text-anchor:start;font-size:-1px;"));
+        }
+        let evidence =
+            merman_render::__private::family_evidence(rendered.into_completion().report());
+        assert_eq!(evidence.required_count(), 2, "{config}");
+        assert_eq!(evidence.accounted_count(), 2, "{config}");
+        assert_eq!(evidence.applied_count(), usize::from(visible), "{config}");
+        assert_eq!(
+            evidence.theme_residual_count(),
+            usize::from(visible),
+            "{config}"
+        );
+        assert_eq!(
+            evidence.not_applicable_count(),
+            if visible { 0 } else { 2 },
+            "{config}"
+        );
     }
 }
 
@@ -1697,10 +1756,12 @@ fn radar_zero_size_labels_do_not_certify_text_fill() {
     for (title_size, axis_size, legend_size, applied) in [
         ("0px", 0.0, 0.0, false),
         ("0%", 0.0, 0.0, false),
+        ("0px", -1.0, -1.0, false),
         ("0px", 1e-10, 1e-10, false),
         ("18px", 0.0, 0.0, true),
         ("0px", 12.0, 0.0, true),
         ("0px", 0.0, 12.0, true),
+        ("18px", -1.0, -1.0, true),
         ("var(--radar-size)", 0.0, 0.0, true),
         ("calc(0px + 1vw)", 0.0, 0.0, true),
     ] {

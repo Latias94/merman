@@ -451,23 +451,26 @@ mod tests {
             }],
             ..Default::default()
         };
-        for (title_css, legend_css, title_size, legend_size) in [
-            ("60px", "40px", 60.0, 40.0),
-            ("24pt", "18pt", 32.0, 24.0),
-            ("2PC", "1pc", 32.0, 16.0),
-            ("1in", "0.5in", 96.0, 48.0),
-            ("2.54cm", "1.27cm", 96.0, 48.0),
-            ("25.4mm", "12.7mm", 96.0, 48.0),
-            ("101.6q", "50.8q", 96.0, 48.0),
-            ("2em", "150%", 40.0, 30.0),
-            ("0", "0px", 0.0, 0.0),
-            ("60", "invalid", 20.0, 20.0),
-            ("inherit", "unset", 20.0, 20.0),
+        for (base_css, title_css, legend_css, title_size, legend_size) in [
+            ("20px", "60px", "40px", 60.0, 40.0),
+            ("20px", "24pt", "18pt", 32.0, 24.0),
+            ("20px", "2PC", "1pc", 32.0, 16.0),
+            ("20px", "1in", "0.5in", 96.0, 48.0),
+            ("20px", "2.54cm", "1.27cm", 96.0, 48.0),
+            ("20px", "25.4mm", "12.7mm", 96.0, 48.0),
+            ("20px", "101.6q", "50.8q", 96.0, 48.0),
+            ("20px", "2em", "150%", 40.0, 30.0),
+            ("20px", "0", "0px", 0.0, 0.0),
+            ("20px", "60", "invalid", 20.0, 20.0),
+            ("20px", "inherit", "unset", 20.0, 20.0),
+            ("0px", "inherit", "100%", 0.0, 0.0),
+            ("0.5px", "inherit", "100%", 0.5, 0.5),
+            ("0px", "14px", "17px", 14.0, 17.0),
         ] {
             let measurer = SizeSensitiveMeasurer(Mutex::new(Vec::new()));
             let config = serde_json::json!({"themeVariables": {
                 "fontFamily": "Bound Pie",
-                "fontSize": "20px",
+                "fontSize": base_css,
                 "pieTitleTextSize": title_css,
                 "pieLegendTextSize": legend_css
             }});

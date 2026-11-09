@@ -73,12 +73,8 @@ impl RadarTextPaintPlan {
                 })
                 .collect(),
             title_nonempty: title.is_some_and(|title| !title.trim().is_empty()),
-            axis_has_visible_size: super::theme::numeric_font_size_has_visible_ink(
-                binding.axis_label_font_size,
-            ),
-            legend_has_visible_size: super::theme::numeric_font_size_has_visible_ink(
-                binding.legend_font_size,
-            ),
+            axis_has_visible_size: binding.axis_label_font_size.has_visible_ink(),
+            legend_has_visible_size: binding.legend_font_size.has_visible_ink(),
             title_has_visible_size: true,
             paint: None,
             pending_rule: None,

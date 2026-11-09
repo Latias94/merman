@@ -3334,6 +3334,184 @@ fn pie_zero_sized_roles_do_not_certify_fonts_or_paint() {
 }
 
 #[test]
+fn pie_negative_base_sizes_leave_valid_fallbacks_and_themes_available() {
+    let theme = pie_typography_theme(ThemeTextStyle::default().with_font_size_px(27.0).unwrap());
+    for invalid in [
+        serde_json::json!(-1),
+        serde_json::json!("-1"),
+        serde_json::json!("-1px"),
+    ] {
+        for legacy_root in [None, Some(32)] {
+            let mut config = serde_json::json!({
+                "themeVariables": {
+                    "fontSize": invalid,
+                    "pieTitleTextSize": "inherit",
+                    "pieSectionTextSize": "1em",
+                    "pieLegendTextSize": "100%"
+                }
+            });
+            if let Some(size) = legacy_root {
+                config["fontSize"] = serde_json::json!(size);
+            }
+            let source =
+                format!("---\nconfig: {config}\n---\npie title Negative base\n  \"Alpha\" : 1\n");
+            let plain = render_pie_from_text(&source);
+            let expected_plain = format!("{}px", legacy_root.unwrap_or(16));
+            assert_eq!(
+                pie_stylesheet_property_values(&plain, "#merman", "font-size"),
+                [expected_plain]
+            );
+            let rendered = render_pie_with_theme(&source, &theme);
+            let expected = format!("{}px", legacy_root.unwrap_or(27));
+            for selector in ["#merman", "#merman svg"] {
+                assert_eq!(
+                    pie_stylesheet_property_values(rendered.svg(), selector, "font-size"),
+                    [expected.as_str()],
+                    "{invalid}/{legacy_root:?}"
+                );
+            }
+            let evidence =
+                merman_render::__private::family_evidence(rendered.into_completion().report());
+            assert_eq!(evidence.required_count(), 1);
+            assert_eq!(evidence.applied_count(), usize::from(legacy_root.is_none()));
+            assert_eq!(
+                evidence.not_applicable_count(),
+                usize::from(legacy_root.is_some())
+            );
+            assert_eq!(evidence.theme_residual_count(), 0);
+        }
+    }
+}
+
+#[test]
+fn pie_inherited_zero_and_subpixel_sizes_share_css_measurement_and_visibility() {
+    let roles = [
+        (
+            ThemeTarget::Title,
+            "pieTitleTextSize",
+            "#merman .pieTitleText",
+            "inherit",
+        ),
+        (
+            ThemeTarget::Text,
+            "pieSectionTextSize",
+            "#merman .slice",
+            "1em",
+        ),
+        (
+            ThemeTarget::Legend,
+            "pieLegendTextSize",
+            "#merman .legend text",
+            "100%",
+        ),
+    ];
+    let mut rules = ThemeRuleSet::default().with_rule(ThemeRule::new(
+        ThemeTarget::PieSlice,
+        ThemeStylePatch::default().with_fill(CanvasPaint::solid("#abcdef").unwrap()),
+    ));
+    for (target, _, _, _) in roles {
+        rules = rules.with_rule(ThemeRule::new(
+            target,
+            ThemeStylePatch::default().with_fill(CanvasPaint::solid("#123456").unwrap()),
+        ));
+    }
+    let theme = DiagramThemeCompiler::new()
+        .compile(
+            DiagramThemeSpec::new()
+                .with_typography(
+                    TypographySpec::default().with_family_style(
+                        DiagramFamilyId::PIE,
+                        ThemeTextStyle::default()
+                            .with_font_stack(FontStack::single("Pie Inheritance").unwrap()),
+                    ),
+                )
+                .with_styles(rules),
+        )
+        .unwrap();
+    for (base, positive_title) in [
+        ("0px", false),
+        ("0.5px", false),
+        ("1px", false),
+        ("0px", true),
+    ] {
+        let mut variables = serde_json::json!({"fontSize": base});
+        for (_, key, _, relative) in roles {
+            variables[key] = serde_json::json!(if positive_title && key == "pieTitleTextSize" {
+                "17px"
+            } else {
+                relative
+            });
+        }
+        let source = format!(
+            "---\nconfig: {}\n---\npie title Hidden\n  \"Alpha\" : 1\n",
+            serde_json::json!({"themeVariables": variables})
+        );
+        let rendered = try_render_pie_with_theme_requirement(
+            &source,
+            &theme,
+            ThemePortabilityRequirement::RequirePortable,
+        )
+        .unwrap();
+        for selector in ["#merman", "#merman svg"] {
+            assert_eq!(
+                pie_stylesheet_property_values(rendered.svg(), selector, "font-size"),
+                [base]
+            );
+        }
+        for (_, key, selector, relative) in roles {
+            assert_eq!(
+                pie_stylesheet_property_values(rendered.svg(), selector, "font-size"),
+                [if positive_title && key == "pieTitleTextSize" {
+                    "17px"
+                } else {
+                    relative
+                }]
+            );
+        }
+        let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+        assert_eq!(
+            document
+                .descendants()
+                .filter(|node| node.has_tag_name("text"))
+                .count(),
+            3,
+            "zero-sized terminals remain in the ordered receipt"
+        );
+        assert!(document.descendants().any(|node| {
+            node.attribute("class") == Some("pieCircle")
+                && node.attribute("fill") == Some("#abcdef")
+        }));
+        assert!(document.descendants().any(|node| {
+            node.attribute("class") == Some("pieOuterCircle") && node.attribute("r") == Some("186")
+        }));
+        if base == "0px" && !positive_title {
+            assert_eq!(
+                document.root_element().attribute("viewBox"),
+                Some("0 0 512 450")
+            );
+        }
+        let evidence =
+            merman_render::__private::family_evidence(rendered.into_completion().report());
+        let applied = if base != "0px" {
+            5
+        } else if positive_title {
+            3
+        } else {
+            1
+        };
+        assert_eq!(evidence.required_count(), 5);
+        assert_eq!(
+            evidence.applied_count(),
+            applied,
+            "{base}, title={positive_title}"
+        );
+        assert_eq!(evidence.not_applicable_count(), 5 - applied);
+        assert_eq!(evidence.accounted_count(), 5);
+        assert_eq!(evidence.theme_residual_count(), 0);
+    }
+}
+
+#[test]
 fn pie_base_size_ownership_follows_the_selected_path_and_root_number_fallback() {
     let theme = pie_typography_theme(ThemeTextStyle::default().with_font_size_px(27.0).unwrap());
     for (variables, root, expected, applied) in [

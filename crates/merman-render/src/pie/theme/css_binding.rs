@@ -117,7 +117,19 @@ impl PieCssBinding {
         effective_config: &serde_json::Value,
         font_family_override: Option<&str>,
     ) -> Self {
-        let common = PreparedCommonCss::new(effective_config, font_family_override);
+        let inherited_font_size =
+            crate::config::config_theme_font_size_css_or_root_number_px(effective_config, 16.0);
+        let mut common = PreparedCommonCss::with_resolved_typography(
+            effective_config,
+            font_family_override.map_or_else(
+                || crate::config::config_font_family_css(effective_config),
+                str::to_owned,
+            ),
+            format!("{inherited_font_size}px"),
+        );
+        if font_family_override.is_none() {
+            common = common.with_configured_root_font_family(effective_config);
+        }
         let color = |key: &str, fallback: &str| {
             config_string(effective_config, &["themeVariables", key])
                 .unwrap_or_else(|| fallback.to_owned())
@@ -130,9 +142,6 @@ impl PieCssBinding {
         let title_text_color = color("pieTitleTextColor", &task_text_dark);
         let section_text_color = color("pieSectionTextColor", common.text_color());
         let legend_text_color = color("pieLegendTextColor", &task_text_dark);
-        let inherited_font_size =
-            crate::config::config_theme_font_size_css_or_root_number_px(effective_config, 16.0)
-                .max(1.0);
         Self {
             common,
             slice_stroke: PieSurfaceStroke::baseline(value("pieStrokeColor", "black")),

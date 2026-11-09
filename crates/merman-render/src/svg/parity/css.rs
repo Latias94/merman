@@ -180,29 +180,6 @@ fn emit_mermaid_base_css_prefix<'a>(
     })
 }
 
-pub(super) fn write_mermaid_default_base_css_prefix<I>(
-    out: &mut impl SvgOutput,
-    id: I,
-    font_family: &str,
-) -> Result<()>
-where
-    I: Copy + std::fmt::Display,
-{
-    write_mermaid_base_css_prefix(
-        out,
-        id,
-        MermaidBaseCss {
-            font_family,
-            font_size_css: "16px",
-            normal_edge_stroke_width_css: "1px",
-            text_color: "#333",
-            line_color: "#333333",
-            error_bkg: "#552222",
-            error_text: "#552222",
-        },
-    )
-}
-
 pub(super) fn write_mermaid_paragraph_css_to(
     out: &mut impl SvgOutput,
     id: impl std::fmt::Display,

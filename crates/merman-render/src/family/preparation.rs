@@ -188,7 +188,7 @@ fn prepare_sankey_family<'parsed>(
         execution.resolved_theme(),
         &meta.effective_config,
         &layout,
-        execution.work_meter_ref(),
+        &execution.work_meter(),
     )?;
     node_palette.prepare_links(
         &layout,
@@ -808,19 +808,13 @@ fn prepare_treemap_family<'parsed>(
         meta.effective_config.as_value(),
         execution.work_meter_ref(),
     )?;
-    let title_theme = crate::treemap::TreemapTitleThemePlan::resolve(
-        execution.resolved_theme(),
-        &meta.effective_config,
-        layout.title.as_deref(),
-        execution.work_meter_ref(),
-    )?;
-    let typography_theme = crate::treemap::TreemapTypographyThemePlan::resolve_with_title_fill(
-        execution.resolved_theme(),
-        &meta.effective_config,
-        &layout,
-        execution.work_meter(),
-        title_theme.fill_css(),
-    )?;
+    let (title_theme, typography_theme) =
+        crate::treemap::TreemapTypographyThemePlan::resolve_with_title(
+            execution.resolved_theme(),
+            &meta.effective_config,
+            &layout,
+            execution.work_meter(),
+        )?;
     Ok(BuiltinFamilyArtifact::Treemap(Box::new(
         TreemapFamilyArtifact {
             pair: FamilyPair::new(model, layout),
@@ -1053,7 +1047,6 @@ fn prepare_packet_family<'parsed>(
         model,
         meta.title.as_deref(),
         meta.effective_config.as_value(),
-        execution.text_measurer(),
     )?;
     Ok(BuiltinFamilyArtifact::Packet(Box::new(
         PacketFamilyArtifact {

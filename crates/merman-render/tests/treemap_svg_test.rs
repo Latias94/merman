@@ -1393,6 +1393,126 @@ fn treemap_title_fill_is_not_applicable_without_a_title() {
 }
 
 #[test]
+fn treemap_title_paint_uses_prepared_zero_and_positive_font_sizes() {
+    for fill in [
+        Specified::Value(CanvasPaint::solid("#123456").unwrap()),
+        Specified::Value(CanvasPaint::Transparent),
+        Specified::Clear,
+    ] {
+        let clear = matches!(&fill, Specified::Clear);
+        let mut patch = ThemeStylePatch::default();
+        patch.paint.fill = fill;
+        let theme = DiagramThemeCompiler::new()
+            .compile(
+                DiagramThemeSpec::new().with_styles(
+                    ThemeRuleSet::default()
+                        .with_rule(
+                            ThemeRule::new(ThemeTarget::Title, patch)
+                                .for_family(DiagramFamilyId::TREEMAP),
+                        )
+                        .with_rule(
+                            ThemeRule::new(
+                                ThemeTarget::Node,
+                                ThemeStylePatch::default()
+                                    .with_fill(CanvasPaint::solid("#abcdef").unwrap()),
+                            )
+                            .for_family(DiagramFamilyId::TREEMAP),
+                        ),
+                ),
+            )
+            .unwrap();
+        for (root_size, title_size, visible) in [
+            ("16px", "0px", false),
+            ("16px", "-0.0pt", false),
+            ("16px", "0rem", false),
+            ("16px", "0cap", false),
+            ("0px", "inherit", false),
+            ("0px", "100em", false),
+            ("0.5px", "1em", true),
+            ("0px", "14px", true),
+        ] {
+            let source = format!(
+                "---\nconfig:\n  themeVariables:\n    fontSize: {root_size}\n  treemap:\n    titleFontSize: {title_size}\n---\ntreemap\ntitle Sized title\n\"Leaf\": 1\n"
+            );
+            let residual = visible && clear;
+            let rendered = try_render_treemap_with_theme_requirement(
+                &source,
+                &theme,
+                MermaidEngine::new(),
+                if residual {
+                    ThemePortabilityRequirement::BestEffort
+                } else {
+                    ThemePortabilityRequirement::RequirePortable
+                },
+            )
+            .unwrap_or_else(|error| {
+                panic!("root={root_size}/title={title_size}/clear={clear}: {error}")
+            });
+            let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+            let title = document
+                .descendants()
+                .find(|node| node.attribute("class") == Some("treemapTitle"))
+                .expect("zero-sized titles retain their terminal node");
+            assert_eq!(title.text(), Some("Sized title"));
+            let leaf = document
+                .descendants()
+                .find(|node| {
+                    node.has_tag_name("rect") && node.attribute("class") == Some("treemapLeaf")
+                })
+                .expect("Title visibility retains the independently styled leaf");
+            assert_eq!(leaf.attribute("fill"), Some("#abcdef"));
+            let stylesheet = document
+                .descendants()
+                .find(|node| node.has_tag_name("style"))
+                .unwrap()
+                .text()
+                .unwrap();
+            let title_rule = css_declarations_for_selector_suffix(stylesheet, ".treemapTitle");
+            assert!(title_rule.contains(&format!("font-size:{title_size};")));
+            if !visible {
+                assert!(!title_rule.contains("fill:#123456;"));
+                assert!(!title_rule.contains("fill:transparent;"));
+            }
+            drop(document);
+            let evidence =
+                merman_render::__private::family_evidence(rendered.into_completion().report());
+            let case = format!("root={root_size}/title={title_size}/clear={clear}");
+            assert_eq!(evidence.required_count(), 2, "{case}");
+            assert_eq!(
+                evidence.applied_count(),
+                1 + usize::from(visible && !clear),
+                "{case}"
+            );
+            assert_eq!(
+                evidence.not_applicable_count(),
+                usize::from(!visible),
+                "{case}"
+            );
+            assert_eq!(
+                evidence.theme_residual_count(),
+                usize::from(residual),
+                "{case}"
+            );
+            if residual {
+                let error = try_render_treemap_with_theme_requirement(
+                    &source,
+                    &theme,
+                    MermaidEngine::new(),
+                    ThemePortabilityRequirement::RequirePortable,
+                )
+                .err()
+                .expect("a live Clear title fill must retain its unsupported-paint diagnostic");
+                assert_eq!(
+                    error.unverified_family_theme(),
+                    Some((DiagramFamilyId::TREEMAP, 1)),
+                    "{case}"
+                );
+            }
+        }
+    }
+}
+
+#[test]
 fn treemap_typed_font_stack_reaches_css_and_all_text_measurements() {
     let expected_font = "TreemapTyped, monospace";
     let theme = treemap_typography_theme(
@@ -1609,6 +1729,81 @@ title Config-sized title
     assert_eq!(evidence.required_count(), 1);
     assert_eq!(evidence.applied_count(), 1);
     assert_eq!(evidence.theme_residual_count(), 0);
+}
+
+#[test]
+fn treemap_root_font_size_is_shared_by_css_and_relative_text_measurements() {
+    let theme = treemap_typography_theme(FontStack::single("TreemapRoot").unwrap());
+    for (root_size, expected_root_px, expected_text_px, nested_style) in [
+        ("0px", "0", 0.0, false),
+        ("0.5px", "0.5", 50.0, false),
+        ("0.0000000001px", "0.0000000001", 0.00000001, false),
+        ("24pt", "32", 3200.0, false),
+        ("0px", "0", 0.0, true),
+        ("0.5px", "0.5", 50.0, true),
+    ] {
+        let mut config = serde_json::json!({
+            "themeVariables": {"fontSize": root_size},
+            "treemap": {"titleFontSize": "100em"}
+        });
+        if nested_style {
+            config["themeVariables"]["treemap"] = serde_json::json!({"titleFontSize": "100em"});
+            config["treemap"]["titleFontSize"] = serde_json::json!("1px");
+        }
+        let source = format!(
+            "---\nconfig: {config}\n---\ntreemap\ntitle Scaled title\nclassDef scaled font-size:100em;\n\"Section\":::scaled\n  \"Leaf\": 42\n"
+        );
+        let parsed = common::install_parse_compatibility(&theme, MermaidEngine::new())
+            .parse_diagram_for_render_model_sync(&source, ParseOptions::strict())
+            .unwrap()
+            .unwrap()
+            .into_presentation();
+        let host = Arc::new(CountingTreemapHost::default());
+        let session = counting_treemap_environment(Arc::clone(&host))
+            .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
+            .begin_session_with_theme(&theme)
+            .unwrap();
+        let artifact = family::prepare(&parsed, &LayoutOptions::default(), session).unwrap();
+        host.reset();
+        let rendered = artifact
+            .render_svg(
+                &SvgRenderOptions {
+                    diagram_id: Some("treemap-root-size".into()),
+                    ..Default::default()
+                },
+                &SvgDebugOptions::default(),
+            )
+            .unwrap();
+        let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+        let css = document
+            .descendants()
+            .find(|node| node.has_tag_name("style"))
+            .unwrap()
+            .text()
+            .unwrap();
+        for selector in ["#treemap-root-size", "#treemap-root-size svg"] {
+            assert!(
+                css.contains(&format!(
+                    "{selector}{{font-family:TreemapRoot;font-size:{expected_root_px}px;"
+                )),
+                "{root_size}: {css}",
+            );
+        }
+        assert!(
+            css_declarations_for_selector_suffix(css, ".treemapTitle").contains("font-size:100em;")
+        );
+        for text in ["Scaled title", "Section"] {
+            let observed = host.observed_styles_for_text(text);
+            assert!(!observed.is_empty(), "{root_size}/{text}");
+            assert!(
+                observed.iter().all(|style| {
+                    style.font_family.as_deref() == Some("TreemapRoot")
+                        && (style.font_size - expected_text_px).abs() < 1e-12
+                }),
+                "{root_size}/{text}: {observed:?}",
+            );
+        }
+    }
 }
 
 #[test]

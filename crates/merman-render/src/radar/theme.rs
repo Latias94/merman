@@ -26,18 +26,12 @@ const RADAR_COLOR_SCALE_KEYS: [&str; RADAR_PALETTE_SLOT_COUNT] = [
     "cScale8", "cScale9", "cScale10", "cScale11",
 ];
 
-pub(super) fn numeric_font_size_has_visible_ink(font_size: f64) -> bool {
-    // Use the same number that reaches SVG; invalid negative CSS does not prove zero ink.
-    crate::number_format::canonicalize_number(font_size) != 0.0
-}
-
 /// Final Radar base typography shared by stylesheet emission and terminal evidence.
 #[derive(Debug)]
 pub(crate) struct RadarTypographyThemePlan {
     css_binding: super::RadarCssBinding,
     inherited_font_stack: InheritedFontStackPlan,
     font_size: RadarFontSizeBinding,
-    evidence: FamilyThemeOutcomes,
     terminal_receipt: OnceLock<RadarTypographyTerminalSeal>,
 }
 
@@ -76,7 +70,7 @@ impl RadarFontSizeBinding {
             Some(theme) if typed_font_size_active => {
                 format!("{}px", theme.typography().font_size_px())
             }
-            _ => configured_font_size.unwrap_or_else(|| "16px".to_string()),
+            _ => super::RadarCssBinding::font_size_css_or_default(configured_font_size),
         }
         .into_boxed_str();
 
@@ -97,14 +91,17 @@ impl RadarTypographyThemePlan {
         theme: Option<&ResolvedDiagramTheme>,
         effective_config: &PresentationConfig,
     ) -> Self {
+        let font_size = RadarFontSizeBinding::resolve(theme, effective_config);
         Self {
-            css_binding: super::RadarCssBinding::resolve(effective_config.as_value()),
+            css_binding: super::RadarCssBinding::resolve_with_font_size(
+                effective_config.as_value(),
+                &font_size.css,
+            ),
             inherited_font_stack: InheritedFontStackPlan::resolve_property_local(
                 theme,
                 effective_config,
             ),
-            font_size: RadarFontSizeBinding::resolve(theme, effective_config),
-            evidence: FamilyThemeOutcomes::default(),
+            font_size,
             terminal_receipt: OnceLock::new(),
         }
     }
@@ -137,7 +134,6 @@ impl RadarTypographyThemePlan {
     }
 
     pub(crate) fn record_evidence(&self, evidence: &mut FamilyThemeEvidence) {
-        evidence.merge_borrowed(&self.evidence);
         if !self.typography_requested() {
             return;
         }
@@ -551,12 +547,8 @@ impl<'a> RadarTypographyThemeReceipt<'a> {
             expected_font_family_css: plan.font_family_css(),
             expected_font_size_css: plan.font_size_css(),
             title_has_visible_size: plan.font_size.has_visible_size(),
-            axis_has_visible_size: numeric_font_size_has_visible_ink(
-                plan.css_binding.axis_label_font_size,
-            ),
-            legend_has_visible_size: numeric_font_size_has_visible_ink(
-                plan.css_binding.legend_font_size,
-            ),
+            axis_has_visible_size: plan.css_binding.axis_label_font_size.has_visible_ink(),
+            legend_has_visible_size: plan.css_binding.legend_font_size.has_visible_ink(),
             css_emitted: false,
             next_axis_index: 0,
             next_legend_index: 0,
@@ -1227,8 +1219,10 @@ mod tests {
                 &PresentationConfig::empty_object(),
             );
             plan.font_size.css = "0px".into();
-            plan.css_binding.axis_label_font_size = 0.0;
-            plan.css_binding.legend_font_size = 0.0;
+            plan.css_binding.axis_label_font_size =
+                super::super::css_binding::RadarNumericFontSize::resolve(0.0, "0px");
+            plan.css_binding.legend_font_size =
+                super::super::css_binding::RadarNumericFontSize::resolve(0.0, "0px");
             let mut receipt = plan.begin_terminal_receipt(1, 1).unwrap();
             receipt.record_css_emission(expected_typography_css_emission(&plan));
             if axis_recorded {

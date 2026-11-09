@@ -72,7 +72,7 @@ where
         out,
         r#"#{} .radarAxisLabel{{font-size:{}px;color:{};}}"#,
         diagram_id,
-        fmt(theme.axis_label_font_size),
+        fmt(theme.axis_label_font_size.css_px()),
         axis_paint.axis_color()
     );
     out.checkpoint()?;
@@ -93,7 +93,7 @@ where
         out,
         r#"#{} .radarLegendText{{text-anchor:start;font-size:{}px;dominant-baseline:hanging;}}"#,
         diagram_id,
-        fmt(theme.legend_font_size)
+        fmt(theme.legend_font_size.css_px())
     );
     out.checkpoint()?;
 

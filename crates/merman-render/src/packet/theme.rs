@@ -60,6 +60,7 @@ impl PacketRuleObservation {
 pub(crate) struct PacketTypographyThemePlan {
     css_binding: super::config::PacketStyleSettings,
     font_family_css: Box<str>,
+    root_font_size_px: f64,
     selection: Option<PacketThemeSelection>,
 }
 
@@ -106,11 +107,16 @@ impl PacketTypographyThemePlan {
     ) -> Result<Self, OperationWorkError> {
         let mut css_binding =
             super::PacketConfigView::new(effective_config.as_value()).style_settings();
+        let root_font_size_px = crate::config::config_theme_font_size_css_or_root_number_px_opt(
+            effective_config.as_value(),
+        )
+        .unwrap_or(16.0);
         let Some(theme) = theme.filter(|theme| !theme.family_mechanism_routes().is_empty()) else {
             return Ok(Self {
                 css_binding,
                 font_family_css: crate::config::config_font_family_css(effective_config.as_value())
                     .into_boxed_str(),
+                root_font_size_px,
                 selection: None,
             });
         };
@@ -270,6 +276,7 @@ impl PacketTypographyThemePlan {
         Ok(Self {
             css_binding,
             font_family_css: font_family_css.into_boxed_str(),
+            root_font_size_px,
             selection: Some(PacketThemeSelection {
                 blocks,
                 text_color_ownership,
@@ -288,14 +295,18 @@ impl PacketTypographyThemePlan {
         &self.font_family_css
     }
 
+    pub(crate) const fn root_font_size_px(&self) -> f64 {
+        self.root_font_size_px
+    }
+
     pub(crate) fn css_binding(&self) -> &super::config::PacketStyleSettings {
         &self.css_binding
     }
 
     pub(crate) fn begin_text_output(&self) -> Option<PacketTextOutput<'_>> {
-        self.selection
-            .as_ref()
-            .map(|selection| PacketTextOutput::new(selection, &self.css_binding))
+        self.selection.as_ref().map(|selection| {
+            PacketTextOutput::new(selection, &self.css_binding, self.root_font_size_px)
+        })
     }
 
     pub(crate) fn finish_blocks(
