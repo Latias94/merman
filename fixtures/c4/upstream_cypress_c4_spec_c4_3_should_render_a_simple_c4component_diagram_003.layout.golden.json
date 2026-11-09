@@ -86,7 +86,7 @@
             "y": 0.0
           },
           "offset_x": null,
-          "offset_y": -40.0,
+          "offset_y": "-40",
           "rel_type": "rel_b",
           "start_point": {
             "x": 266.923,

@@ -9,6 +9,7 @@ pub mod config;
 pub mod families;
 pub mod family;
 pub mod json;
+pub mod number;
 pub mod operation;
 #[cfg(feature = "presentation-data")]
 pub mod presentation;

@@ -70,7 +70,7 @@ impl BoundsState {
         *target = fun(val, *target);
     }
 
-    fn insert_rect(&mut self, rect: &mut Rect, c4_shape_in_row: usize, conf: &C4Conf) {
+    fn insert_rect(&mut self, rect: &mut Rect, c4_shape_in_row: f64, conf: &C4Conf) {
         self.next.cnt += 1;
 
         let startx = if self.next.startx == self.next.stopx {
@@ -84,7 +84,7 @@ impl BoundsState {
 
         if startx >= self.data.width_limit
             || stopx >= self.data.width_limit
-            || self.next.cnt > c4_shape_in_row
+            || self.next.cnt as f64 > c4_shape_in_row
         {
             let startx2 = self.next.startx + rect.margin + conf.next_line_padding_x;
             let starty2 = self.next.stopy + rect.margin * 2.0;
@@ -127,8 +127,8 @@ struct C4LayoutContext<'a> {
     model: &'a C4Model,
     typography: &'a super::C4TypographyThemePlan,
     conf: &'a C4Conf,
-    c4_shape_in_row: usize,
-    c4_boundary_in_row: usize,
+    c4_shape_in_row: f64,
+    c4_boundary_in_row: f64,
     measurer: &'a dyn TextMeasurer,
     work: &'a OperationWorkMeter,
     boundary_children: &'a HashMap<String, Vec<usize>>,
@@ -720,8 +720,10 @@ impl C4BoundaryFrame {
         parent_bounds: BoundsState,
         ctx: &C4LayoutContext<'_>,
     ) -> Self {
-        let denom = ctx.c4_boundary_in_row.min(boundary_indices.len().max(1));
-        let width_limit = parent_bounds.data.width_limit / denom as f64;
+        let denom = ctx
+            .c4_boundary_in_row
+            .min(boundary_indices.len().max(1) as f64);
+        let width_limit = parent_bounds.data.width_limit / denom;
         let mut current_bounds = BoundsState::default();
         current_bounds.data.width_limit = width_limit;
 
@@ -933,7 +935,7 @@ fn layout_inside_boundary(
                 message: "c4: parent bounds missing stopy".to_string(),
             })?;
 
-        if i == 0 || i % ctx.c4_boundary_in_row == 0 {
+        if i == 0 || i as f64 % ctx.c4_boundary_in_row == 0.0 {
             let x = parent_startx + ctx.conf.diagram_margin_x;
             let y0 = parent_stopy + ctx.conf.diagram_margin_y + y;
             frame.current_bounds.set_data(x, x, y0, y0);
@@ -995,8 +997,8 @@ pub(crate) fn layout_c4_diagram_typed(
     let conf = c4_cfg
         .layout_settings_with_prepared_fonts(typography.boundary_font(), typography.message_font());
 
-    let c4_shape_in_row = (model.layout.c4_shape_in_row.max(1)) as usize;
-    let c4_boundary_in_row = (model.layout.c4_boundary_in_row.max(1)) as usize;
+    let c4_shape_in_row = model.layout.c4_shape_in_row.max(1.0);
+    let c4_boundary_in_row = model.layout.c4_boundary_in_row.max(1.0);
 
     let mut boundary_children: HashMap<String, Vec<usize>> = HashMap::new();
     for (i, b) in model.boundaries.iter().enumerate() {
@@ -1178,8 +1180,8 @@ pub(crate) fn layout_c4_diagram_typed(
             rel_type: rel.rel_type.clone(),
             start_point,
             end_point,
-            offset_x: rel.offset_x,
-            offset_y: rel.offset_y,
+            offset_x: rel.offset_x.clone(),
+            offset_y: rel.offset_y.clone(),
             label,
             techn,
             descr,

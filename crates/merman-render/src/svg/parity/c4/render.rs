@@ -5,11 +5,27 @@ use crate::svg::parity::roughjs_common::paths::{
     roughjs_hand_drawn_stroke_path_for_svg_path, roughjs_paths_for_circle,
     roughjs_paths_for_hand_drawn_svg_path,
 };
-use merman_model::families::c4::{C4Boundary, C4DiagramModel, C4Shape};
+use merman_model::families::c4::{
+    C4Boundary, C4DiagramModel, C4RelationOffset, C4Shape, parse_integer_prefix,
+};
 type C4SvgModelShape = C4Shape;
 type C4SvgModelBoundary = C4Boundary;
 
 // C4 diagram SVG renderer implementation (split from parity.rs).
+
+fn c4_relation_offset(offset: Option<&C4RelationOffset>) -> f64 {
+    // svgDraw.ts uses `rel.offsetX ? parseInt(String(rel.offsetX)) : 0`. In particular,
+    // Number(1e21) becomes "1e+21" and then 1, whereas a raw decimal string stays large.
+    match offset {
+        None => 0.0,
+        Some(C4RelationOffset::Number(value)) if *value == 0.0 || value.is_nan() => 0.0,
+        Some(C4RelationOffset::Number(value)) => {
+            parse_integer_prefix(ryu_js::Buffer::new().format(*value)).unwrap_or(f64::NAN)
+        }
+        Some(C4RelationOffset::String(value)) if value.is_empty() => 0.0,
+        Some(C4RelationOffset::String(value)) => parse_integer_prefix(value).unwrap_or(f64::NAN),
+    }
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum C4PaintItem {
@@ -241,8 +257,8 @@ fn c4_write_text_by_tspan(out: &mut impl SvgOutput, text: C4TspanText<'_>) -> Re
         let _ = write!(
             out,
             r#"<text x="{}" y="{}" dominant-baseline="middle""#,
-            fmt(x),
-            fmt(y)
+            crate::number_format::canonical_number_with_nonfinite(x),
+            crate::number_format::canonical_number_with_nonfinite(y)
         );
         out.checkpoint()?;
         for (k, v) in attrs {
@@ -1262,8 +1278,8 @@ pub(crate) fn render_c4_diagram_svg_typed(
         }
         let arrowhead_url = scoped_svg_url(diagram_id, &arrowhead);
         let arrowend_url = scoped_svg_url(diagram_id, &arrowend);
-        let offset_x = rel.offset_x.unwrap_or(0) as f64;
-        let offset_y = rel.offset_y.unwrap_or(0) as f64;
+        let offset_x = c4_relation_offset(rel.offset_x.as_ref());
+        let offset_y = c4_relation_offset(rel.offset_y.as_ref());
 
         if idx == 0 {
             let _ = write!(

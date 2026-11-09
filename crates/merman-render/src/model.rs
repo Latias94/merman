@@ -1284,6 +1284,9 @@ pub struct JourneyTaskLayout {
     pub index: i64,
     pub section: String,
     pub task: String,
+    /// JavaScript Number score, including signed infinities.
+    ///
+    /// Invalid authored Number input retains zero with NaN geometry in `face_cy`.
     pub score: f64,
     pub x: f64,
     pub y: f64,
@@ -1299,6 +1302,10 @@ pub struct JourneyTaskLayout {
     pub line_x2: f64,
     pub line_y2: f64,
     pub face_cx: f64,
+    /// Face center y coordinate; `None` represents a NaN score.
+    ///
+    /// `Some` retains signed infinity from either the score or coordinate arithmetic overflow.
+    /// SVG emits its JavaScript spelling; JSON serialization projects it as null.
     pub face_cy: Option<f64>,
     pub mouth: JourneyMouthKind,
 }
@@ -1991,9 +1998,9 @@ pub struct C4RelLayout {
     pub start_point: LayoutPoint,
     pub end_point: LayoutPoint,
     #[serde(default)]
-    pub offset_x: Option<i64>,
+    pub offset_x: Option<merman_model::families::c4::C4RelationOffset>,
     #[serde(default)]
-    pub offset_y: Option<i64>,
+    pub offset_y: Option<merman_model::families::c4::C4RelationOffset>,
     pub label: C4TextBlockLayout,
     #[serde(default)]
     pub techn: Option<C4TextBlockLayout>,

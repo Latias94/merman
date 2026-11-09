@@ -2465,6 +2465,7 @@ dependencies = [
  "merman-model",
  "regex",
  "rustc-hash",
+ "ryu-js",
  "serde",
  "serde_json",
  "thiserror 2.0.21",

@@ -64,11 +64,20 @@ the operation's container width. Text wrapping can consequently differ between h
 offsets belong to their ordered relation and named field. Browser text differences do not excuse
 incorrect shape intersections or swapped offsets.
 
+C4 numeric values follow the selected database's JavaScript `parseInt` semantics, including
+binary64 rounding and signed zero. Relationship offset slots contain converted numbers, while
+named offsets supplied in color slots remain strings. The SVG renderer applies
+`parseInt(String(offset))` to both forms before positioning labels; a numeric `1e21` therefore
+becomes an offset of `1`, while an unconverted decimal string retains its full integer prefix.
+
 Owners: [C4 layout](../../crates/merman-render/src/c4.rs),
 [relation geometry tests](../../crates/merman-render/tests/c4_relation_geometry_test.rs), and
 [public typed-render tests](../../crates/merman/tests/c4_typed_render.rs).
 
 ## Class
+
+Interaction lines restore the initial lexer state at their line ending, so following accessibility
+directives retain both their semantic values and original editor payload spans.
 
 Final HTML title bounds use the displayed XHTML font, including the title weight, separately from
 the wrapping-budget probe. Text measurements can change ELK placement and terminal bends. The
@@ -420,8 +429,12 @@ Venn optimization/intersection source, rather than ad hoc circle placement.
 ## Journey
 
 Fractional scores are canonical values and determine face position and expression. Invalid scores
-use the existing explicit invalid-score state, including during canonical serialization of direct
-non-finite model values. `journey.textPlacement` selects `fo`, `old`, or SVG `tspan` paths.
+use the existing explicit invalid-score state. Positive and negative infinity remain distinct
+numeric scores: their signs determine the expression and their positions retain the selected
+renderer arithmetic. Compatibility JSON projects infinity as `null` without setting `scoreIsNaN`.
+Canonical JSON encodes signed infinity as `"Infinity"` or `"-Infinity"` to preserve model round
+trips; terminal text retains the same signed names.
+`journey.textPlacement` selects `fo`, `old`, or SVG `tspan` paths.
 Scores accept the selected `Number(...)` string forms, including nondecimal integer prefixes.
 Score and actor trimming use ECMAScript whitespace. The first people field owns editor payloads;
 later colon segments do not become actor names. Section tokens cannot silently discard following
@@ -598,6 +611,10 @@ Quoted labels retain their multiline content, and the common description-block p
 ECMAScript whitespace separately. Recovery diagnostics and later label/number selections keep
 their original byte ranges, including after rejected Unicode prefixes.
 
+Negative-value diagnostics stringify the converted JavaScript Number, including shortest decimal
+and exponent forms and `-Infinity`, while retaining the original numeric token's diagnostic span.
+Negative zero and negative values that underflow to zero remain valid.
+
 `pieOuterStrokeWidth` affects the prepared outer-circle radius as well as its CSS. The selected
 renderer uses `parseFontSize`'s numeric component for this radius, without converting CSS units into
 pixels. The default width is two and produces a radius of 186 layout units.
@@ -617,10 +634,19 @@ and percent pairs within that payload remain literal text. Ordinary quoted and M
 labels can span physical lines; their backslashes remain literal under the selected Jison grammar.
 Multiline tokens belong to one statement, and editor selections retain the original payload range.
 
-Coordinate boundaries use ECMAScript whitespace. Style validation reads only the first two
+Coordinate boundaries use ECMAScript whitespace. The selected coordinate lexer uses the greedy
+pattern `(1)|(0(.\d+)?)`, whose unescaped dot matches one non-line-terminator UTF-16 code unit.
+Tokens such as `0x1`, `001`, and `0,5` are accepted before D3's Number coercion; greedy matching
+rejects `[0,1]` but accepts `[0, 1]`. Coordinate lexer states own embedded commas, brackets,
+quotes, semicolons, and multiline padding. Canonical coordinates store the coerced number, with
+NaN for nonnumeric tokens. D3 unknown inputs remove the corresponding circle attribute; numeric
+overflow inside interpolation retains NaN, and label arithmetic preserves the distinction.
+
+Style validation reads only the first two
 colon-separated components, but every component must first pass the selected lexer alphabet.
 Empty radius values fail rather than becoming zero; missing and ignored values retain the DB's
-own validation behavior. Owners:
+own validation behavior. Radius values retain JavaScript `parseInt` binary64 rounding and overflow;
+an explicit zero still overrides the class radius. Owners:
 [value ingestion tests](../../crates/merman-core/tests/quadrant_value_ingestion_parity_test.rs).
 
 Markdown delimiters select the upstream text token; they do not add rich Markdown rendering to this
@@ -858,7 +884,8 @@ renderer, including when `xyChart.useMaxWidth` is false.
 Numeric ranges and plot lists apply ECMAScript whitespace consistently through parsing and
 original-source diagnostics: BOM is permitted padding, while NEL cannot be discarded to make an
 invalid number valid. Numeric token grammar remains separate from JavaScript conversion, as in
-Pie and Sankey. Owners:
+Pie and Sankey. Generated numeric x labels use JavaScript Number stringification, including its
+exponent thresholds, shortest rounded representation, unsigned zero, and nonfinite values. Owners:
 [numeric whitespace tests](../../crates/merman-core/tests/xychart_numeric_whitespace_parity_test.rs)
 and [cross-family numeric tests](../../crates/merman-core/tests/popular_numeric_grammar_parity_test.rs).
 

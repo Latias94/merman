@@ -10,10 +10,17 @@ pub(crate) use merman_markup::url::format_url;
 #[cfg(feature = "diagram-gantt")]
 pub(crate) use merman_markup::url::sanitize_url;
 
+#[cfg(any(feature = "diagram-pie", feature = "diagram-xychart"))]
+pub(crate) fn format_js_number(value: f64) -> String {
+    // Mermaid template strings use Number text, including nonfinite values and unsigned zero.
+    ryu_js::Buffer::new().format(value).to_owned()
+}
+
 #[cfg(any(
     feature = "diagram-flowchart",
     feature = "diagram-swimlane",
-    feature = "diagram-journey"
+    feature = "diagram-journey",
+    feature = "diagram-quadrant-chart"
 ))]
 pub(crate) fn parse_js_number(input: &str) -> Option<f64> {
     let input = input.trim_matches(merman_model::text::is_ecmascript_whitespace);
@@ -33,25 +40,7 @@ pub(crate) fn parse_js_number(input: &str) -> Option<f64> {
         else {
             continue;
         };
-        if digits.is_empty() || !digits.chars().all(|digit| digit.is_digit(radix)) {
-            return None;
-        }
-        let digits = digits.trim_start_matches('0');
-        if digits.is_empty() {
-            return Some(0.0);
-        }
-        let bits_per_digit = radix.ilog2() as usize;
-        let leading_len = digits.len().min(64 / bits_per_digit);
-        let leading = u64::from_str_radix(&digits[..leading_len], radix).ok()?;
-        let trailing = &digits[leading_len..];
-        let sticky_bit = u64::from(trailing.bytes().any(|digit| digit != b'0'));
-        let significand = leading | sticky_bit;
-        let shift = trailing.len().saturating_mul(bits_per_digit);
-        return Some(if shift >= 1024 {
-            f64::INFINITY
-        } else {
-            (significand as f64) * 2_f64.powi(shift as i32)
-        });
+        return merman_model::number::parse_power_of_two_digits(digits, radix);
     }
     input.parse().ok()
 }

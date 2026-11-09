@@ -86,7 +86,7 @@
             "y": 0.0
           },
           "offset_x": null,
-          "offset_y": -40.0,
+          "offset_y": "-40",
           "rel_type": "rel",
           "start_point": {
             "x": 581.53,
@@ -115,7 +115,7 @@
             "width": 140.0,
             "y": 0.0
           },
-          "offset_x": -40.0,
+          "offset_x": "-40",
           "offset_y": 60.0,
           "rel_type": "rel",
           "start_point": {
@@ -140,7 +140,7 @@
             "y": 0.0
           },
           "offset_x": 10.0,
-          "offset_y": -40.0,
+          "offset_y": "-40",
           "rel_type": "rel",
           "start_point": {
             "x": 300.701,

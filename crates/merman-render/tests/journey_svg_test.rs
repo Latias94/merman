@@ -626,7 +626,8 @@ fn journey_scores_select_fractional_faces_and_preserve_integer_and_nan_controls(
         ("\u{0085}3.5\u{0085}", "NaN", "line", None),
         ("bad", "NaN", "line", None),
         ("NaN", "NaN", "line", None),
-        ("Infinity", "NaN", "line", None),
+        ("Infinity", "-Infinity", "path", Some("-Infinity")),
+        ("-Infinity", "Infinity", "path", Some("Infinity")),
     ] {
         let source = format!("journey\nPay: {literal}: Customer\n");
         let rendered =

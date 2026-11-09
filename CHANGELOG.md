@@ -22,9 +22,12 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
 
 - Sequence layout exports include control frames and section dividers, activation rectangles, participant-group boxes, and positioned titles for native painters. SVG consumes the same prepared geometry. Rust consumers of `SequenceBlockLayout` and `block_layouts_by_id` must migrate to `SequenceDiagramLayout.frames` and `sections`; direct layout literals must initialize the new drawing fields. See the [host integration guide](docs/rendering/RUST_EMBEDDING.md#consume-sequence-drawing-geometry-in-development-builds).
 - Journey task and layout scores use `f64` to preserve fractions; direct Rust literals use values such as `4.0`. Block edge literals initialize the new thickness and pattern fields or use their defaults. See the [Rust migration](docs/migrations/mermaid-12-3.md#rust-source-changes).
+- Quadrant point radii and C4 row counts retain JavaScript floating-point values. C4 relation offsets preserve converted numbers separately from named string offsets; direct Rust consumers use `C4RelationOffset`. See the [Rust migration](docs/migrations/mermaid-12-3.md#rust-source-changes).
 
 ### Fixed
 
+- Quadrant coordinates follow Mermaid's greedy token boundaries and Number conversion, including punctuation inside coordinate tokens and multiline padding. Point radii retain large-number rounding and overflow. XY Chart labels and Pie diagnostics use JavaScript number text; Journey distinguishes infinity from invalid scores, and C4 relation offsets apply the selected renderer's second integer conversion.
+- Class interaction lines restore accessibility parsing for following `accTitle` and `accDescr` directives, including their editor payload ranges.
 - On Windows, `xtask verify` checks formatting one workspace package at a time, avoiding `os error 206` when Cargo's combined `rustfmt` command exceeds the process command-line limit.
 - Flowchart metadata updates preserve existing labels and visual properties when an authored value is empty, false or numeric zero. Unrelated metadata no longer clears an explicitly restored icon/image label, and hiding a default visual label retains its authored text kind. Asset dimensions follow Mermaid's numeric string and array conversions; invalid updates replace earlier sizes, and active non-finite icon/image geometry reports a render error.
 - Class preserves numeric-leading semantic names separately from literal `classId-*` names, follows each interaction method's target routing, and retains quoted note whitespace.

@@ -218,6 +218,110 @@ fn render_quadrantchart_svg_from_text(text: &str) -> String {
         .to_owned()
 }
 
+#[test]
+fn quadrantchart_wildcard_coordinates_use_number_coercion_and_d3_scaling() {
+    let svg = render_quadrantchart_svg_from_text("quadrantChart\nP: [0x1,001]\n");
+    let document = roxmltree::Document::parse(&svg).unwrap();
+    let circle = document
+        .descendants()
+        .find(|node| node.has_tag_name("circle"))
+        .unwrap();
+    assert_eq!(circle.attribute("cx"), Some("495"));
+    assert_eq!(circle.attribute("cy"), Some("5"));
+    let text = document
+        .descendants()
+        .find(|node| node.has_tag_name("text") && node.text() == Some("P"))
+        .unwrap();
+    assert_eq!(
+        text.attribute("transform"),
+        Some("translate(495, 10) rotate(0)")
+    );
+}
+
+#[test]
+fn quadrantchart_unknown_coordinates_remove_circle_attributes_and_preserve_label_arithmetic() {
+    for (coordinates, expected_x, expected_y, transform) in [
+        (
+            "0,5,0.5",
+            None,
+            Some("250"),
+            "translate(undefined, 255) rotate(0)",
+        ),
+        (
+            "0.5,0;5",
+            Some("250"),
+            None,
+            "translate(250, NaN) rotate(0)",
+        ),
+        (
+            "0\"5,0]5",
+            None,
+            None,
+            "translate(undefined, NaN) rotate(0)",
+        ),
+    ] {
+        let svg =
+            render_quadrantchart_svg_from_text(&format!("quadrantChart\nP: [{coordinates}]\n"));
+        let document = roxmltree::Document::parse(&svg).unwrap();
+        let circle = document
+            .descendants()
+            .find(|node| node.has_tag_name("circle"))
+            .unwrap();
+        assert_eq!(circle.attribute("cx"), expected_x);
+        assert_eq!(circle.attribute("cy"), expected_y);
+        let text = document
+            .descendants()
+            .find(|node| node.has_tag_name("text") && node.text() == Some("P"))
+            .unwrap();
+        assert_eq!(text.attribute("transform"), Some(transform));
+    }
+}
+
+#[test]
+fn quadrantchart_numeric_overflow_is_distinct_from_an_unknown_scale_input() {
+    let source = format!("quadrantChart\nP: [0{},0.5]\n", "9".repeat(350));
+    let svg = render_quadrantchart_svg_from_text(&source);
+    let document = roxmltree::Document::parse(&svg).unwrap();
+    let circle = document
+        .descendants()
+        .find(|node| node.has_tag_name("circle"))
+        .unwrap();
+    assert_eq!(circle.attribute("cx"), Some("NaN"));
+    let text = document
+        .descendants()
+        .find(|node| node.has_tag_name("text") && node.text() == Some("P"))
+        .unwrap();
+    assert_eq!(
+        text.attribute("transform"),
+        Some("translate(NaN, 255) rotate(0)")
+    );
+}
+
+#[test]
+fn quadrantchart_radius_preserves_js_rounding_overflow_and_zero_override() {
+    for (style, expected) in [
+        ("radius:9007199254740993".to_string(), "9007199254740992"),
+        (
+            "radius:9223372036854775808".to_string(),
+            "9223372036854776000",
+        ),
+        (format!("radius:{}", "9".repeat(309)), "Infinity"),
+        ("radius:0".to_string(), "0"),
+    ] {
+        let source = format!(
+            "quadrantChart\nclassDef C radius:{}\nP:::C: [0.5,0.5] {style}\n",
+            "9".repeat(309)
+        );
+        let svg = render_quadrantchart_svg_from_text(&source);
+        let document = roxmltree::Document::parse(&svg).unwrap();
+        let circle = document
+            .descendants()
+            .find(|node| node.has_tag_name("circle"))
+            .unwrap();
+        assert_eq!(circle.attribute("r"), Some(expected));
+    }
+}
+
 fn try_render_quadrantchart_svg_with_resource_policy(
     text: &str,
     resource_policy: RenderResourcePolicy,
@@ -1292,10 +1396,15 @@ quadrantChart
     );
 
     assert!(!svg.contains("NaN"), "SVG leaked invalid color: {svg}");
-    assert_contains(
-        &svg,
-        r##"<circle cx="355.79999999999995" cy="129.79999999999995" r="5" fill="#facc15" stroke="#facc15" stroke-width="0px"/>"##,
-    );
+    let document = roxmltree::Document::parse(&svg).unwrap();
+    let circle = document
+        .descendants()
+        .find(|node| node.has_tag_name("circle"))
+        .unwrap();
+    assert_eq!(circle.attribute("fill"), Some("#facc15"));
+    assert_eq!(circle.attribute("stroke"), Some("#facc15"));
+    assert_eq!(circle.attribute("r"), Some("5"));
+    assert_eq!(circle.attribute("stroke-width"), Some("0px"));
     assert_contains(&svg, r##"fill="#111827" font-size="12""##);
 }
 

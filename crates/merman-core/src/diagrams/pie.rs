@@ -340,7 +340,8 @@ fn construct_pie_semantic_source_controlled(
             {
                 let message = format!(
                     "\"{}\" has invalid value: {}. Negative values are not allowed in pie charts. All slice values must be >= 0.",
-                    section.label, section.value
+                    section.label,
+                    crate::utils::format_js_number(section.value)
                 );
                 #[cfg(feature = "editor-facts")]
                 if let Some(facts) = &mut editor_facts {

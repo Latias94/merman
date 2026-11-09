@@ -60,6 +60,23 @@ expression. Direct canonical/layout Serde output may represent whole scores as
 `4.0`; Mermaid compatibility JSON retains `4` for representable whole scores and
 `3.5` for fractional scores. The existing `scoreIsNaN` compatibility flag remains.
 
+`QuadrantChartStyles::radius` changes from `Option<i64>` to `Option<f64>` to retain JavaScript
+integer rounding and overflow. Direct Rust consumers use literals such as `radius: Some(5.0)`.
+Canonical point coordinates remain `f64` and now include the Number-coerced results of the selected
+wildcard lexer, including NaN for nonnumeric tokens. Compatibility JSON retains integer radius
+values where representable and projects nonfinite values as `null`.
+
+C4 layout row counts use `f64`. `C4Relation::offset_x`, `offset_y`, and the matching
+`C4RelLayout` fields use `Option<C4RelationOffset>`, with `Number(f64)` for converted offset slots
+and `String(String)` for named offsets supplied in color slots. Direct producers must preserve
+that distinction because the SVG renderer applies JavaScript `parseInt(String(offset))` before
+positioning relation labels. Use `Some(C4RelationOffset::Number(10.0))` for an ordinary numeric
+offset. Journey infinity scores remain signed numeric values and no longer set `scoreIsNaN`;
+canonical JSON represents them as the exact strings `"Infinity"` and `"-Infinity"` so that
+model round trips retain their face geometry and expression. The canonical decoder accepts
+numbers and those two strings. Compatibility JSON represents infinities as `null`, and terminal
+text retains `Infinity` or `-Infinity`.
+
 `merman_model::families::block::BlockEdge` adds `thickness: BlockEdgeThickness`
 and `pattern: BlockEdgePattern`. Direct struct literals initialize them with
 `BlockEdgeThickness::Normal` and `BlockEdgePattern::Solid`, or use

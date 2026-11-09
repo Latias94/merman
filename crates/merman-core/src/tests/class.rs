@@ -1877,6 +1877,59 @@ fn class_interaction_list_suffix_outside_quotes_keeps_each_target() {
 }
 
 #[test]
+fn class_interaction_newlines_restore_accessibility_fields_and_payload_spans() {
+    // Mermaid 12.3.0 classDiagram.jison restores INITIAL after interaction strings/args;
+    // the following accessibility directives keep their dedicated tokens and values.
+    for newline in ["\n", "\r\n"] {
+        for interaction in [
+            "click User href \"https://example.com\" \"Open user\" _blank",
+            "click User call open(userId) \"Open user\"",
+            "click User call open()",
+        ] {
+            let text = format!(
+                "classDiagram{newline}class User{newline}{interaction}{newline}accTitle: Class chart{newline}accDescr: Shows class relationships{newline}"
+            );
+            let engine = MermaidEngine::new();
+            let canonical = engine
+                .parse_diagram_sync(&text, ParseOptions::strict())
+                .unwrap()
+                .unwrap();
+            assert_eq!(canonical.model["accTitle"], "Class chart", "{interaction}");
+            assert_eq!(
+                canonical.model["accDescr"], "Shows class relationships",
+                "{interaction}",
+            );
+            let facts = engine
+                .parse_editor_semantic_facts_with_type_sync("classDiagram", &text)
+                .unwrap()
+                .unwrap();
+            assert_eq!(facts.completeness, EditorSemanticCompleteness::Complete);
+            for (value, detail) in [
+                ("Class chart", "class accessibility title"),
+                (
+                    "Shows class relationships",
+                    "class accessibility description",
+                ),
+            ] {
+                let symbols = facts
+                    .symbols
+                    .iter()
+                    .filter(|symbol| symbol.detail.as_deref() == Some(detail))
+                    .collect::<Vec<_>>();
+                assert_eq!(symbols.len(), 1, "{interaction}: {detail}");
+                let symbol = symbols[0];
+                assert_eq!(symbol.name, value, "{interaction}");
+                assert_eq!(symbol.role, EditorSemanticRole::Payload);
+                let start = text.find(value).unwrap();
+                assert_eq!(symbol.selection.start, start);
+                assert_eq!(symbol.selection.end, start + value.len());
+                assert_eq!(&text[symbol.selection.start..symbol.selection.end], value);
+            }
+        }
+    }
+}
+
+#[test]
 fn parse_class_editor_facts_preserve_parser_symbol_spans() {
     let engine = MermaidEngine::new();
     let text = r#"classDiagram

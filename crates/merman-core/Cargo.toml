@@ -76,7 +76,7 @@ diagram-journey = ["merman-model/diagram-journey"]
 diagram-kanban = ["merman-model/diagram-kanban"]
 diagram-mindmap = ["merman-model/diagram-mindmap"]
 diagram-packet = ["merman-model/diagram-packet"]
-diagram-pie = ["merman-model/diagram-pie"]
+diagram-pie = ["merman-model/diagram-pie", "dep:ryu-js"]
 diagram-quadrant-chart = ["merman-model/diagram-quadrant-chart"]
 diagram-radar = ["merman-model/diagram-radar"]
 diagram-railroad = ["merman-model/diagram-railroad"]
@@ -90,7 +90,7 @@ diagram-tree-view = ["merman-model/diagram-tree-view"]
 diagram-treemap = ["merman-model/diagram-treemap"]
 diagram-venn = ["merman-model/diagram-venn"]
 diagram-wardley = ["merman-model/diagram-wardley", "dep:indexmap"]
-diagram-xychart = ["merman-model/diagram-xychart"]
+diagram-xychart = ["merman-model/diagram-xychart", "dep:ryu-js"]
 diagram-zenuml = ["merman-model/diagram-zenuml", "dep:unicode-general-category", "dep:indexmap"]
 # Configuration, sanitization, detection, and family identity remain unconditional.
 # Parsers and typed models are selected independently from explicit system adapters.
@@ -106,6 +106,7 @@ system-timing = ["merman-model/system-timing"]
 merman-markup = { workspace = true, features = ["html", "url"] }
 merman-model = { workspace = true, features = ["html-entities"] }
 cssparser.workspace = true
+ryu-js = { workspace = true, optional = true }
 indexmap = { workspace = true, features = ["serde"], optional = true }
 lalrpop-util = { workspace = true, optional = true }
 serde.workspace = true

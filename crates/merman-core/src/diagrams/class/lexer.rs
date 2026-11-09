@@ -193,7 +193,10 @@ impl<'input> Lexer<'input> {
                 self.pos = after_line_ending + offset + ch.len_utf8();
             }
         }
-        if matches!(self.mode, Mode::AfterClass | Mode::ClassDefNeedId) {
+        if matches!(
+            self.mode,
+            Mode::AfterClass | Mode::ClassDefNeedId | Mode::ClickAfterId
+        ) {
             self.mode = Mode::Default;
         }
         Some((start, Tok::Newline, self.pos))

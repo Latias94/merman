@@ -73,10 +73,10 @@ impl JourneyDb {
         // - whitespace-only => 0
         // - invalid strings => NaN (and Mermaid happily renders an SVG containing `NaN`)
         //
-        // JSON snapshots cannot represent NaN, so we model it as `score=0` + `scoreIsNaN=true`,
-        // and let the SVG renderer re-emit `NaN` for the relevant face/mouth coordinates.
+        // Retain the legacy `score=0` + `scoreIsNaN=true` state for invalid Number input.
+        // Signed infinities are valid Number results and must retain their score and mouth kind.
         let (score, score_is_nan) = match crate::utils::parse_js_number(score_str) {
-            Some(value) if value.is_finite() => (value, false),
+            Some(value) if !value.is_nan() => (value, false),
             _ => (0.0, true),
         };
 
@@ -902,9 +902,9 @@ mod tests {
             (" ", 0.0, false),
             ("bad", 0.0, true),
             ("NaN", 0.0, true),
-            ("Infinity", 0.0, true),
-            ("-Infinity", 0.0, true),
-            ("1e999", 0.0, true),
+            ("Infinity", f64::INFINITY, false),
+            ("-Infinity", f64::NEG_INFINITY, false),
+            ("1e999", f64::INFINITY, false),
         ] {
             db.add_task("Pay", &format!(":{literal}: Customer"));
             let task = db.tasks.last().unwrap();

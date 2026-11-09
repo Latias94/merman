@@ -272,13 +272,16 @@ impl XyChartState {
                 .collect(),
             AxisData::Linear { min, max, .. } => {
                 if data.len() == 1 {
-                    vec![(format!("{min}"), data.first().copied())]
+                    vec![(crate::utils::format_js_number(*min), data.first().copied())]
                 } else {
                     let step = (*max - *min) / ((data.len() as f64) - 1.0);
                     data.iter()
                         .enumerate()
                         .map(|(index, datum)| {
-                            (format!("{}", *min + (index as f64) * step), Some(*datum))
+                            (
+                                crate::utils::format_js_number(*min + (index as f64) * step),
+                                Some(*datum),
+                            )
                         })
                         .collect()
                 }

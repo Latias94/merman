@@ -42,8 +42,8 @@
         "label": {
           "text": "Uses"
         },
-        "offsetX": -160,
-        "offsetY": 10,
+        "offsetX": "-160",
+        "offsetY": "10",
         "techn": {
           "text": ""
         },
@@ -59,8 +59,8 @@
         "label": {
           "text": "Uses"
         },
-        "offsetX": 140,
-        "offsetY": 10,
+        "offsetX": "140",
+        "offsetY": "10",
         "techn": {
           "text": ""
         },
@@ -76,7 +76,7 @@
         "label": {
           "text": "Read & write to"
         },
-        "offsetY": -40,
+        "offsetY": "-40",
         "techn": {
           "text": "JDBC"
         },
@@ -92,7 +92,7 @@
         "label": {
           "text": "Uses"
         },
-        "offsetY": -40,
+        "offsetY": "-40",
         "techn": {
           "text": "XML/HTTPS"
         },
@@ -108,7 +108,7 @@
         "label": {
           "text": "Uses"
         },
-        "offsetY": -40,
+        "offsetY": "-40",
         "techn": {
           "text": "JSON/HTTPS"
         },
@@ -124,8 +124,8 @@
         "label": {
           "text": "Uses"
         },
-        "offsetX": 40,
-        "offsetY": 40,
+        "offsetX": "40",
+        "offsetY": "40",
         "techn": {
           "text": "JSON/HTTPS"
         },
@@ -141,8 +141,8 @@
         "label": {
           "text": "Uses"
         },
-        "offsetX": -90,
-        "offsetY": 40,
+        "offsetX": "-90",
+        "offsetY": "40",
         "techn": {
           "text": "JSON/HTTPS"
         },
@@ -158,7 +158,7 @@
         "label": {
           "text": "Uses"
         },
-        "offsetY": -40,
+        "offsetY": "-40",
         "techn": {
           "text": "JSON/HTTPS"
         },

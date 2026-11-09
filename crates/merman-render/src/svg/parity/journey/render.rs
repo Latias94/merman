@@ -7,8 +7,10 @@ use crate::text::split_html_br_lines;
 use merman_model::families::journey::JourneyDiagramModel;
 
 fn fmt_task_face_y(v: Option<f64>) -> String {
-    v.map(|x| fmt(x).to_string())
-        .unwrap_or_else(|| "NaN".to_string())
+    match v {
+        Some(value) => crate::number_format::canonical_number_with_nonfinite(value).to_string(),
+        None => "NaN".to_string(),
+    }
 }
 
 #[derive(Debug, Clone, Copy)]
